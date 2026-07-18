@@ -93,6 +93,12 @@ The Notebook must be running inside an allocation that can launch 24 MPI
 processes. See `docs/JUPYTER.md` for field metadata, all-rank statistics,
 live field modification, cleanup, and global-layout limitations.
 
+The shortest Notebook smoke test is:
+
+```python
+%run /glade/work/ruitong/pycam-sima/examples/try_notebook_session.py --steps 2
+```
+
 ## Development checks
 
 ```bash

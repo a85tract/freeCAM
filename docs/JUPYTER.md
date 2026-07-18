@@ -8,6 +8,15 @@ The Notebook must run inside a compute allocation that can launch 24 MPI
 processes. Prepare a fresh run directory containing `atm_in`; do not point a
 new session at a directory containing results that must be preserved.
 
+For the quickest test, run the ready-made script in a Notebook cell:
+
+```python
+%run /glade/work/ruitong/pycam-sima/examples/try_notebook_session.py --steps 2
+```
+
+After it finishes, inspect `last_field`, `last_stats`, and `run_dir_used`
+directly in subsequent cells.
+
 ```python
 from pathlib import Path
 
