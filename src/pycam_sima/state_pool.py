@@ -19,14 +19,19 @@ class FieldSpec:
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "dtype", np.dtype(self.dtype))
-        if self.owner != "python":
-            raise ValueError("all pycam-sima numeric fields must be Python-owned")
+        if self.owner not in {"python", "native_view"}:
+            raise ValueError("owner must be python or native_view")
         if self.intent not in {"in", "out", "inout"}:
             raise ValueError(f"invalid intent {self.intent!r}")
 
 
 class StatePool(MutableMapping[str, np.ndarray[Any, Any]]):
-    """Authoritative Python-owned state, keyed by CCPP standard name."""
+    """Python state registry keyed by CCPP standard name.
+
+    Kernel-mode fields are allocated by Python.  Full-CAM fields are zero-copy
+    NumPy views of CAM's long-lived allocations and are marked ``native_view``.
+    In both modes users inspect and edit the same arrays through this registry.
+    """
 
     def __init__(self) -> None:
         self._arrays: dict[str, np.ndarray[Any, Any]] = {}

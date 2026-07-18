@@ -1,47 +1,55 @@
 # pycam-sima implementation status
 
-## Implemented in this milestone
+## Implemented target
 
-- The repository owns the Python driver and pins CAM-SIMA at
-  `f8daa568eae2696b7c4ebff7768f02f5d097d9df`.
-- `StatePool` owns every numeric array. Native routines receive stable raw
-  pointers and do not allocate replacement model-state arrays.
-- `DataInitialize` and `ModelAdvance` reproduce the ATM-only ordering around
-  `physics_before_coupler` and `physics_after_coupler`.
-- All 19 before-coupler and 5 after-coupler entries from `suite_kessler.xml`
-  have typed Python-to-Fortran calls.
-- The shared library compiles the pinned CAM-SIMA scheme sources, including
-  `kessler_run`, `check_energy_chng`, `qneg`, state/tendency diagnostics and
-  timestep lifecycle routines. CAM history calls are adapted to Python
-  observers; the non-portable `cam_thermo` dependency is limited to the
-  FKESSLER hydrostatic-energy algorithm.
-- Taskflow expresses the dependent control sequence. mpi4py supplies the
-  communicator, rank and gather operations. Derecho's active Cray MPICH ABI
-  path is selected before Python loads mpi4py.
-- Observers can read or modify arrays in interactive mode. Validation mode
-  enforces read-only callbacks. CLI watchers and per-rank NPZ snapshots expose
-  values at step or function boundaries.
+The complete fixed target is implemented:
 
-## Verified
+- CAM-SIMA `f8daa568eae2696b7c4ebff7768f02f5d097d9df`
+- `FKESSLER`, `ne3pg3_ne3pg3_mg37`, L30
+- DCMIP2016 moist baroclinic-wave analytic initial condition
+- real SE dynamics with `se_nsplit=2`, `se_qsplit=1`, `se_tstep_type=4`
+- Kessler `physics_before_coupler` and `physics_after_coupler`
+- mpi4py communicator, 24 ranks, 1800-second timestep
+- Python/Taskflow control of `DataInitialize` and every `ModelAdvance` phase
+- Python observers and zero-copy state views at phase and step boundaries
 
-- GNU Fortran shared-library build succeeds.
-- Seven unit/integration tests pass.
-- A serial 50-step native Kessler kernel run succeeds.
-- PBS job `6778826.desched1` completed a 24-rank, 50-step run with the marker
-  `PYCAM_SIMA_JOB_OK job=6778826.desched1 ranks=24 steps=50`.
+`libpycam_sima_full.so` links the real PIC-enabled CAM-SIMA ATM archive. Its
+explicit C ABI separates initialization, `cam_run1`, `cam_run2`, `cam_run3`,
+timestep finalization, time advancement, finalization, and state queries. The
+Python driver therefore owns the control loop; it does not launch `cesm.exe`.
 
-The 24-rank evidence is an MPI/ABI/control-flow kernel smoke. It is not a BFB
-comparison with CAM-SIMA.
+## State ownership
 
-## Deliberately not claimed
+The Python `StatePool` is the single user-facing registry in both modes.
 
-- `libpycam_sima_se.so` and the real SE dynamics state transitions are not yet
-  implemented. The current dynamics boundary is explicitly named `identity`.
-- The Python initializer is a deterministic column-kernel state, not the full
-  DCMIP2016 moist baroclinic-wave analytic initial condition on the ne3pg3
-  spectral-element grid.
-- No CAM-SIMA 50-step reference capture has been compared field-by-field, so
-  there is no BFB claim.
+- Kernel mode: NumPy owns the allocations and native Kessler functions borrow
+  their pointers.
+- Full mode: CAM must retain allocation ownership for SE derived types and
+  module state. The pool holds writable zero-copy NumPy views of those stable
+  allocations. Reading or editing a pool array reads or edits the exact memory
+  used by the next CAM phase; no snapshot copy is involved.
 
-These three items form the next integration gate. A future full-model
-validation command must fail closed until all three are available.
+The full pool exposes 21 major state groups, including all primary atmospheric
+state fields, physics tendencies and the complete constituent array. Temporary
+SE scratch arrays are intentionally not part of the public state contract.
+
+## Verification
+
+- 8 unit/integration tests pass.
+- The small Kessler library passes serial and 24-rank/50-step smoke tests.
+- Native CAM-SIMA reference job `6779760.desched1` completed successfully.
+- Python-controlled full-model job `6779818.desched1` completed successfully
+  with marker `PYCAM_SIMA_FULL_JOB_OK job=6779818.desched1 ranks=24 steps=50`.
+- `compare-history` compared 51 timestamps: no missing/extra files and no
+  differing value in any of the 26 numeric history variables. The five
+  prognostic fields `T`, `Q`, `U`, `V`, and `PS` were REAL64 and bitwise
+  identical. Numeric-state BFB is true for this fixed target.
+
+Machine-readable evidence is in `validation/fkessler_full_bfb.json`.
+
+## Scope boundary
+
+This is not yet a general replacement for every CAM-SIMA configuration. Other
+physics suites, grids, vertical levels, mediator-enabled surface components,
+restart/branch runs, MPAS dynamics and GPU configurations remain outside the
+implemented target. BFB applies only to the fixed configuration above.

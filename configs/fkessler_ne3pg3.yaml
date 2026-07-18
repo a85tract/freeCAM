@@ -20,6 +20,6 @@ source:
 
 native:
   kessler_library: build/native/libpycam_sima_kessler.so
-  se_library: build/native/libpycam_sima_se.so
+  se_library: build/libpycam_sima_full.so
 
 observers: []
