@@ -2,14 +2,14 @@
 
 `NotebookSession` lets one ordinary Jupyter kernel control the validated
 24-rank CAM-SIMA configuration. It starts a separate MPI worker and exposes a
-synchronous Python API over an authenticated socket on the same node.
+synchronous Python API over an authenticated socket connection.
 
-The Notebook must run inside a compute allocation that can launch 24 MPI
-processes. Prepare a fresh run directory containing `atm_in`; do not point a
-new session at a directory containing results that must be preserved.
-When Jupyter does not expose `PBS_NODEFILE`, `NotebookSession` automatically
-passes the current compute hostname to Cray PALS. It refuses to launch on a
-Derecho login node.
+The Notebook can run on a Derecho login node. In that environment,
+`NotebookSession.start()` automatically submits a 24-rank PBS job and waits for
+the compute worker to connect back to the kernel. Inside an existing compute
+allocation it launches the worker locally. Prepare a fresh run directory
+containing `atm_in`; do not point a new session at a directory containing
+results that must be preserved.
 
 Open the ready-made Notebook for a real cell-by-cell test:
 

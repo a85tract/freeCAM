@@ -66,10 +66,11 @@ def test_jupyter_without_pbs_uses_local_compute_host(
     assert session._launcher_command({"PBS_NODEFILE": "/tmp/nodes"}) == ["mpiexec"]
 
 
-def test_jupyter_refuses_derecho_login_node(
+def test_auto_mode_uses_pbs_on_login_and_forced_local_mode_refuses(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     session = _session(tmp_path, monkeypatch)
     monkeypatch.setattr("pycam_sima.notebook_session.socket.gethostname", lambda: "derecho6")
+    assert session._resolve_launch_mode({}) == "pbs"
     with pytest.raises(RuntimeError, match="login node"):
         session._launcher_command({})

@@ -89,9 +89,10 @@ with NotebookSession(
     print(temperature.min(), temperature.max())
 ```
 
-The Notebook must be running inside an allocation that can launch 24 MPI
-processes. See `docs/JUPYTER.md` for field metadata, all-rank statistics,
-live field modification, cleanup, and global-layout limitations.
+From a Derecho login-node Notebook, `start()` automatically submits the
+24-rank worker through PBS; inside an existing compute allocation it launches
+locally. See `docs/JUPYTER.md` for field metadata, all-rank statistics, live
+field modification, cleanup, and global-layout limitations.
 
 The ready-to-run interactive Notebook is:
 

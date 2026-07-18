@@ -52,9 +52,14 @@ SE scratch arrays are intentionally not part of the public state contract.
   returned 21 live fields, completed two interactive steps, gathered all-rank
   statistics, and finalized cleanly. Its three output timestamps matched all
   26 numeric reference variables bitwise.
+- Login-node test on `derecho6` automatically submitted PBS worker job
+  `6788530.desched1`, returned a live rank-zero temperature array after one
+  interactive step, and finalized cleanly. Both output timestamps matched all
+  26 numeric reference variables bitwise.
 
 Machine-readable evidence is in `validation/fkessler_full_bfb.json` and
-`validation/notebook_session_smoke.json`.
+`validation/notebook_session_smoke.json`; login-node evidence is in
+`validation/notebook_login_session.json`.
 
 ## Scope boundary
 

@@ -32,8 +32,10 @@ class NotebookSession:
 
     A normal Jupyter kernel is not part of an MPI world.  This class starts a
     separate ``mpiexec`` worker, sends collective model commands to rank zero,
-    and returns copied NumPy fields to the notebook over an authenticated local
-    socket.  CAM's live state remains zero-copy inside each worker rank.
+    and returns copied NumPy fields to the notebook over an authenticated
+    socket. On a Derecho login node it submits the worker through PBS; inside
+    an allocation it launches directly. CAM's live state remains zero-copy
+    inside each worker rank.
     """
 
     def __init__(
@@ -46,8 +48,12 @@ class NotebookSession:
         env_script: str | Path | None = None,
         launcher: str | Sequence[str] = "mpiexec",
         hosts: str | Sequence[str] | None = None,
+        launch_mode: str = "auto",
+        pbs_account: str = "UCUB0188",
+        pbs_queue: str = "develop",
+        pbs_walltime: str = "00:30:00",
         python_executable: str | Path | None = None,
-        startup_timeout: float = 300.0,
+        startup_timeout: float = 900.0,
         request_timeout: float = 600.0,
         log_path: str | Path | None = None,
     ) -> None:
@@ -83,6 +89,12 @@ class NotebookSession:
             self.hosts = tuple(host for host in hosts.split(",") if host)
         else:
             self.hosts = tuple(hosts or ())
+        if launch_mode not in {"auto", "local", "pbs"}:
+            raise ValueError("launch_mode must be auto, local, or pbs")
+        self.launch_mode = launch_mode
+        self.pbs_account = pbs_account
+        self.pbs_queue = pbs_queue
+        self.pbs_walltime = pbs_walltime
         self.python_executable = str(python_executable or sys.executable)
         self.startup_timeout = float(startup_timeout)
         self.request_timeout = float(request_timeout)
@@ -98,6 +110,9 @@ class NotebookSession:
             self.log_path = Path(log_path).resolve()
 
         self._process: subprocess.Popen[bytes] | None = None
+        self._job_id: str | None = None
+        self._pbs_script: Path | None = None
+        self._launch_mode_used: str | None = None
         self._connection: Connection | None = None
         self._listener: Listener | None = None
         self._log_handle: Any = None
@@ -106,7 +121,17 @@ class NotebookSession:
 
     @property
     def running(self) -> bool:
-        return self._process is not None and self._process.poll() is None
+        local_running = self._process is not None and self._process.poll() is None
+        batch_running = self._job_id is not None
+        return self._connection is not None and (local_running or batch_running)
+
+    @property
+    def launch_mode_used(self) -> str | None:
+        return self._launch_mode_used
+
+    @property
+    def job_id(self) -> str | None:
+        return self._job_id
 
     @property
     def current_step(self) -> int:
@@ -126,13 +151,22 @@ class NotebookSession:
         if self.running or self._connection is not None:
             raise RuntimeError("NotebookSession is already running")
 
-        authkey = secrets.token_bytes(32)
-        listener = Listener(("127.0.0.1", 0), authkey=authkey)
-        self._listener = listener
-        host, port = listener.address
         environment = self._worker_environment()
         environment["PYTHONUNBUFFERED"] = "1"
-        launcher = self._launcher_command(environment)
+        launch_mode = self._resolve_launch_mode(environment)
+        self._launch_mode_used = launch_mode
+
+        authkey = secrets.token_bytes(32)
+        bind_host = "0.0.0.0" if launch_mode == "pbs" else "127.0.0.1"
+        listener = Listener((bind_host, 0), authkey=authkey)
+        self._listener = listener
+        _, port = listener.address
+        host = socket.getfqdn() if launch_mode == "pbs" else "127.0.0.1"
+        launcher = (
+            list(self.launcher)
+            if launch_mode == "pbs"
+            else self._launcher_command(environment)
+        )
         command = [
             *launcher,
             "-n",
@@ -157,16 +191,19 @@ class NotebookSession:
         ]
 
         self.log_path.parent.mkdir(parents=True, exist_ok=True)
-        self._log_handle = self.log_path.open("ab", buffering=0)
         try:
-            self._process = subprocess.Popen(
-                command,
-                stdin=subprocess.DEVNULL,
-                stdout=self._log_handle,
-                stderr=subprocess.STDOUT,
-                env=environment,
-                start_new_session=True,
-            )
+            if launch_mode == "pbs":
+                self._submit_pbs_worker(command, environment)
+            else:
+                self._log_handle = self.log_path.open("ab", buffering=0)
+                self._process = subprocess.Popen(
+                    command,
+                    stdin=subprocess.DEVNULL,
+                    stdout=self._log_handle,
+                    stderr=subprocess.STDOUT,
+                    env=environment,
+                    start_new_session=True,
+                )
             self._connection = self._accept_worker(listener, self.startup_timeout)
             ready = self._receive(self.startup_timeout)
             result = self._unwrap(ready)
@@ -222,7 +259,7 @@ class NotebookSession:
         )
 
     def close(self) -> None:
-        if self._connection is None and self._process is None:
+        if self._connection is None and self._process is None and self._job_id is None:
             return
         error: BaseException | None = None
         if self._connection is not None and self.running:
@@ -335,6 +372,63 @@ class NotebookSession:
         # validated ranks on the Notebook's one allocated node.
         return [*command, "--hosts", local_host, "--no-vni"]
 
+    def _resolve_launch_mode(self, environment: Mapping[str, str]) -> str:
+        if self.launch_mode != "auto":
+            return self.launch_mode
+        if environment.get("PBS_NODEFILE"):
+            return "local"
+        short_host = socket.gethostname().split(".", 1)[0]
+        if short_host.startswith("derecho") and short_host[7:].isdigit():
+            return "pbs"
+        return "local"
+
+    def _submit_pbs_worker(
+        self,
+        worker_command: Sequence[str],
+        environment: Mapping[str, str],
+    ) -> None:
+        script = self.run_dir / f".pycam-notebook-{secrets.token_hex(6)}.pbs"
+        source = (
+            f"source {shlex.quote(str(self.env_script))} >/dev/null 2>&1\n"
+            if self.env_script is not None
+            else ""
+        )
+        loader_path = shlex.quote(environment["LD_LIBRARY_PATH"])
+        command = " ".join(shlex.quote(value) for value in worker_command)
+        script.write_text(
+            "#!/bin/bash\n"
+            "#PBS -N pycam_nb\n"
+            f"#PBS -A {self.pbs_account}\n"
+            f"#PBS -q {self.pbs_queue}\n"
+            f"#PBS -l select=1:ncpus={self.ranks}:mpiprocs={self.ranks}:mem=45GB\n"
+            f"#PBS -l walltime={self.pbs_walltime}\n"
+            "#PBS -j oe\n"
+            f"#PBS -o {self.log_path}\n"
+            "set -euo pipefail\n"
+            f"{source}"
+            f"export LD_LIBRARY_PATH={loader_path}\n"
+            f"exec {command}\n"
+        )
+        self._pbs_script = script
+        try:
+            result = subprocess.run(
+                ["qsub", str(script)],
+                check=True,
+                capture_output=True,
+                text=True,
+                env=dict(environment),
+            )
+        except subprocess.CalledProcessError as exc:
+            raise NotebookWorkerError(
+                f"cannot submit CAM-SIMA PBS worker: {exc.stderr.strip()}"
+            ) from exc
+        self._job_id = result.stdout.strip().splitlines()[-1]
+        print(
+            f"PyCAM-SIMA PBS worker submitted as {self._job_id}; "
+            f"waiting for {self.ranks} MPI ranks ...",
+            flush=True,
+        )
+
     def _accept_worker(self, listener: Listener, timeout: float) -> Connection:
         results: queue.Queue[tuple[bool, Any]] = queue.Queue(maxsize=1)
 
@@ -366,6 +460,13 @@ class NotebookSession:
         process = self._process
         if process is not None and process.poll() is None:
             self._terminate_process(process)
+        if self._job_id is not None:
+            subprocess.run(
+                ["qdel", self._job_id],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                check=False,
+            )
         self._cleanup_handles()
 
     @staticmethod
@@ -393,6 +494,7 @@ class NotebookSession:
         self._connection = None
         self._listener = None
         self._process = None
+        self._job_id = None
         self._log_handle = None
         self._fields = {}
 
