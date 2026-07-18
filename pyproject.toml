@@ -1,0 +1,33 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "pycam-sima"
+version = "0.1.0"
+description = "Python-owned CAM-SIMA FKESSLER driver and observable state pool"
+readme = "README.md"
+requires-python = ">=3.11,<3.12"
+dependencies = [
+  "cffi>=1.17",
+  "f90nml>=1.4",
+  "mpi4py>=4.0",
+  "netCDF4>=1.7",
+  "numpy>=2.0",
+  "PyYAML>=6.0",
+  "taskflow>=5.10",
+]
+
+[project.optional-dependencies]
+build = ["cmake>=3.24", "ninja>=1.11"]
+test = ["pytest>=8.0"]
+
+[project.scripts]
+pycam-sima = "pycam_sima.cli:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/pycam_sima"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra"

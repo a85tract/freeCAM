@@ -1,0 +1,18 @@
+#!/bin/bash
+#PBS -A UCUB0188
+#PBS -q develop
+#PBS -N pycam-kessler-24
+#PBS -l select=1:ncpus=128:mpiprocs=24
+#PBS -l walltime=00:10:00
+#PBS -j oe
+#PBS -o /glade/work/ruitong/pycam-sima/artifacts/fkessler_kernel_smoke_24.log
+
+set -euo pipefail
+cd /glade/work/ruitong/pycam-sima
+
+run_log="artifacts/fkessler_kernel_smoke_24.${PBS_JOBID}.log"
+mpiexec -n 24 .venv/bin/python -m pycam_sima.cli run \
+  configs/fkessler_ne3pg3.yaml \
+  --backend native \
+  --steps 50 >"${run_log}" 2>&1
+echo "PYCAM_SIMA_JOB_OK job=${PBS_JOBID} ranks=24 steps=50" >>"${run_log}"

@@ -1,0 +1,3 @@
+[submodule "external/CAM-SIMA"]
+	path = external/CAM-SIMA
+	url = https://github.com/ESCOMP/CAM-SIMA
