@@ -7,6 +7,9 @@ synchronous Python API over an authenticated socket on the same node.
 The Notebook must run inside a compute allocation that can launch 24 MPI
 processes. Prepare a fresh run directory containing `atm_in`; do not point a
 new session at a directory containing results that must be preserved.
+When Jupyter does not expose `PBS_NODEFILE`, `NotebookSession` automatically
+passes the current compute hostname to Cray PALS. It refuses to launch on a
+Derecho login node.
 
 Open the ready-made Notebook for a real cell-by-cell test:
 

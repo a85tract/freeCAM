@@ -16,6 +16,8 @@ RUN_DIR=/glade/derecho/scratch/ruitong/pycam-sima/notebook_session_smoke/${PBS_J
 mkdir -p "$RUN_DIR"
 cp "$REFERENCE/atm_in" "$RUN_DIR/atm_in"
 source "$CASE/.env_mach_specific.sh" >/dev/null 2>&1
+# Exercise the same no-host-list path used by an ordinary Jupyter kernel.
+unset PBS_NODEFILE
 cd "$REPO"
 
 "$REPO/.venv/bin/python" tools/notebook_session_smoke.py \

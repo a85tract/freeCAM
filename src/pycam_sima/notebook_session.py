@@ -6,6 +6,7 @@ import queue
 import secrets
 import shlex
 import signal
+import socket
 import subprocess
 import sys
 import tempfile
@@ -44,6 +45,7 @@ class NotebookSession:
         ranks: int | None = None,
         env_script: str | Path | None = None,
         launcher: str | Sequence[str] = "mpiexec",
+        hosts: str | Sequence[str] | None = None,
         python_executable: str | Path | None = None,
         startup_timeout: float = 300.0,
         request_timeout: float = 600.0,
@@ -77,6 +79,10 @@ class NotebookSession:
         self.launcher = tuple(shlex.split(launcher) if isinstance(launcher, str) else launcher)
         if not self.launcher:
             raise ValueError("launcher cannot be empty")
+        if isinstance(hosts, str):
+            self.hosts = tuple(host for host in hosts.split(",") if host)
+        else:
+            self.hosts = tuple(hosts or ())
         self.python_executable = str(python_executable or sys.executable)
         self.startup_timeout = float(startup_timeout)
         self.request_timeout = float(request_timeout)
@@ -126,8 +132,9 @@ class NotebookSession:
         host, port = listener.address
         environment = self._worker_environment()
         environment["PYTHONUNBUFFERED"] = "1"
+        launcher = self._launcher_command(environment)
         command = [
-            *self.launcher,
+            *launcher,
             "-n",
             str(self.ranks),
             self.python_executable,
@@ -302,6 +309,31 @@ class NotebookSession:
             key, value = entry.split(b"=", 1)
             environment[os.fsdecode(key)] = os.fsdecode(value)
         return mpi_loader_environment(environment)
+
+    def _launcher_command(self, environment: Mapping[str, str]) -> list[str]:
+        command = list(self.launcher)
+        has_host_option = any(
+            option in {"--hosts", "--hostfile"} or option.startswith("--hosts=")
+            for option in command
+        )
+        if has_host_option:
+            return command
+        if self.hosts:
+            return [*command, "--hosts", ",".join(self.hosts)]
+        if environment.get("PBS_NODEFILE"):
+            return command
+
+        local_host = socket.gethostname()
+        short_host = local_host.split(".", 1)[0]
+        if short_host.startswith("derecho") and short_host[7:].isdigit():
+            raise RuntimeError(
+                f"cannot start CAM-SIMA on Derecho login node {local_host}; "
+                "open the Notebook in a compute-node allocation"
+            )
+        # Cray PALS normally receives a host list from PBS.  Jupyter compute
+        # sessions do not always retain PBS_NODEFILE, so explicitly launch all
+        # validated ranks on the Notebook's one allocated node.
+        return [*command, "--hosts", local_host, "--no-vni"]
 
     def _accept_worker(self, listener: Listener, timeout: float) -> Connection:
         results: queue.Queue[tuple[bool, Any]] = queue.Queue(maxsize=1)

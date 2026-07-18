@@ -50,3 +50,26 @@ def test_worker_response_and_environment_script(
     assert session._unwrap({"status": "ok", "result": 7}) == 7
     with pytest.raises(NotebookWorkerError, match="remote failure"):
         session._unwrap({"status": "error", "error": "remote failure"})
+
+
+def test_jupyter_without_pbs_uses_local_compute_host(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    session = _session(tmp_path, monkeypatch)
+    monkeypatch.setattr("pycam_sima.notebook_session.socket.gethostname", lambda: "dec9999")
+    assert session._launcher_command({}) == [
+        "mpiexec",
+        "--hosts",
+        "dec9999",
+        "--no-vni",
+    ]
+    assert session._launcher_command({"PBS_NODEFILE": "/tmp/nodes"}) == ["mpiexec"]
+
+
+def test_jupyter_refuses_derecho_login_node(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    session = _session(tmp_path, monkeypatch)
+    monkeypatch.setattr("pycam_sima.notebook_session.socket.gethostname", lambda: "derecho6")
+    with pytest.raises(RuntimeError, match="login node"):
+        session._launcher_command({})

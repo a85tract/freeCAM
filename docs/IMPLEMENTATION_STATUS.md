@@ -47,7 +47,8 @@ SE scratch arrays are intentionally not part of the public state contract.
   differing value in any of the 26 numeric history variables. The five
   prognostic fields `T`, `Q`, `U`, `V`, and `PS` were REAL64 and bitwise
   identical. Numeric-state BFB is true for this fixed target.
-- Notebook session job `6787846.desched1` started from one non-MPI controller,
+- Notebook session job `6788371.desched1` started from one non-MPI controller
+  with `PBS_NODEFILE` intentionally removed,
   returned 21 live fields, completed two interactive steps, gathered all-rank
   statistics, and finalized cleanly. Its three output timestamps matched all
   26 numeric reference variables bitwise.

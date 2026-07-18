@@ -1,10 +1,12 @@
 {
-  "job_id": "6787846.desched1",
+  "job_id": "6788371.desched1",
   "configuration": {
     "controller_processes": 1,
     "mpi_worker_ranks": 24,
     "requested_steps": 2,
-    "exposed_fields": 21
+    "exposed_fields": 21,
+    "pbs_nodefile_removed": true,
+    "automatic_local_host_launch": true
   },
   "interaction": {
     "start": true,
@@ -23,8 +25,8 @@
     "bfb": true,
     "files": 3,
     "numeric_fields": 26,
-    "marker": "NOTEBOOK_NUMERIC_BFB_OK files=3 fields=26"
+    "marker": "NOTEBOOK_NO_HOSTLIST_BFB_OK files=3 fields=26"
   },
   "success_marker": "PYCAM_SIMA_NOTEBOOK_SESSION_OK steps=2 fields=21 shape=(27, 30) min=149.84058007737622 max=306.30448088433747",
-  "run_dir": "/glade/derecho/scratch/ruitong/pycam-sima/notebook_session_smoke/6787846.desched1/run"
+  "run_dir": "/glade/derecho/scratch/ruitong/pycam-sima/notebook_session_smoke/6788371.desched1/run"
 }
