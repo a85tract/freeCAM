@@ -71,6 +71,28 @@ complete CCPP constituent array. Interactive observers may edit these arrays;
 validation observers are read-only. `--snapshot-dir` writes selected fields to
 per-rank NPZ snapshots.
 
+## Jupyter Notebook
+
+An ordinary single-process Notebook can control a separate 24-rank MPI worker
+and receive live fields without writing an intermediate snapshot:
+
+```python
+from pycam_sima import NotebookSession
+
+with NotebookSession(
+    "configs/fkessler_ne3pg3.yaml",
+    run_dir="/path/to/fresh/runtime-directory",
+    env_script="reference/cases/FKESSLER_ne3pg3_gnu_24x50/.env_mach_specific.sh",
+) as model:
+    model.step()
+    temperature = model.get_field("air_temperature", rank=0)
+    print(temperature.min(), temperature.max())
+```
+
+The Notebook must be running inside an allocation that can launch 24 MPI
+processes. See `docs/JUPYTER.md` for field metadata, all-rank statistics,
+live field modification, cleanup, and global-layout limitations.
+
 ## Development checks
 
 ```bash

@@ -12,6 +12,9 @@ The complete fixed target is implemented:
 - mpi4py communicator, 24 ranks, 1800-second timestep
 - Python/Taskflow control of `DataInitialize` and every `ModelAdvance` phase
 - Python observers and zero-copy state views at phase and step boundaries
+- ordinary Jupyter kernel control through a separate authenticated 24-rank MPI
+  worker, with synchronous `step`, `get_field`, `get_field_stats`, and
+  `set_field` operations
 
 `libpycam_sima_full.so` links the real PIC-enabled CAM-SIMA ATM archive. Its
 explicit C ABI separates initialization, `cam_run1`, `cam_run2`, `cam_run3`,
@@ -44,8 +47,13 @@ SE scratch arrays are intentionally not part of the public state contract.
   differing value in any of the 26 numeric history variables. The five
   prognostic fields `T`, `Q`, `U`, `V`, and `PS` were REAL64 and bitwise
   identical. Numeric-state BFB is true for this fixed target.
+- Notebook session job `6787846.desched1` started from one non-MPI controller,
+  returned 21 live fields, completed two interactive steps, gathered all-rank
+  statistics, and finalized cleanly. Its three output timestamps matched all
+  26 numeric reference variables bitwise.
 
-Machine-readable evidence is in `validation/fkessler_full_bfb.json`.
+Machine-readable evidence is in `validation/fkessler_full_bfb.json` and
+`validation/notebook_session_smoke.json`.
 
 ## Scope boundary
 
