@@ -93,11 +93,14 @@ The Notebook must be running inside an allocation that can launch 24 MPI
 processes. See `docs/JUPYTER.md` for field metadata, all-rank statistics,
 live field modification, cleanup, and global-layout limitations.
 
-The shortest Notebook smoke test is:
+The ready-to-run interactive Notebook is:
 
-```python
-%run /glade/work/ruitong/pycam-sima/examples/try_notebook_session.py --steps 2
+```text
+examples/try_notebook_session.ipynb
 ```
+
+It keeps the model alive between cells. `examples/try_notebook_session.py` is
+the non-interactive command-line companion.
 
 ## Development checks
 
