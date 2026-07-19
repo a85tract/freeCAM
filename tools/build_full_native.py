@@ -13,6 +13,7 @@ REQUIRED_SYMBOLS = (
     "pycam_full_run1",
     "pycam_full_run2",
     "pycam_full_run3",
+    "pycam_full_run4",
     "pycam_full_timestep_final",
     "pycam_full_advance_timestep",
     "pycam_full_get_field",

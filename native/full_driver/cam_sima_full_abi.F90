@@ -1,10 +1,11 @@
 module cam_sima_full_abi
   use, intrinsic :: iso_c_binding, only : c_int, c_ptr, c_loc, c_null_ptr
   use mpi, only : MPI_Comm_rank, MPI_Comm_size
-  use pio, only : pio_init, pio_finalize, PIO_REARR_BOX, PIO_IOTYPE_PNETCDF, &
-       PIO_64BIT_DATA
-  use ESMF, only : ESMF_Initialize, ESMF_LOGKIND_MULTI_ON_ERROR, &
-       ESMF_CALKIND_GREGORIAN
+  use pio, only : pio_init, pio_finalize, pio_rearr_opt_t, PIO_REARR_BOX, &
+       PIO_REARR_COMM_P2P, PIO_REARR_COMM_FC_2D_ENABLE, &
+       PIO_IOTYPE_PNETCDF, PIO_64BIT_DATA
+  use ESMF, only : ESMF_Initialize, ESMF_VM, ESMF_VMGet, &
+       ESMF_LOGKIND_MULTI_ON_ERROR, ESMF_CALKIND_GREGORIAN
   use shr_pio_mod, only : io_compname, pio_comp_settings, iosystems, io_compid
   use shr_orb_mod, only : shr_orb_params, SHR_ORB_UNDEF_REAL
   use spmd_utils, only : spmd_init
@@ -18,7 +19,7 @@ module cam_sima_full_abi
   implicit none
   private
 
-  integer, parameter :: ABI_VERSION = 1
+  integer, parameter :: ABI_VERSION = 2
   integer, parameter :: ATM_ID = 2
   logical :: initialized = .false.
 
@@ -28,6 +29,7 @@ module cam_sima_full_abi
   public :: pycam_full_run1
   public :: pycam_full_run2
   public :: pycam_full_run3
+  public :: pycam_full_run4
   public :: pycam_full_timestep_final
   public :: pycam_full_advance_timestep
   public :: pycam_full_finalize
@@ -42,7 +44,8 @@ contains
 
   integer(c_int) function pycam_full_initialize(comm) bind(C)
     integer(c_int), value :: comm
-    integer :: rank, npes, num_iotasks, rc
+    integer :: rank, npes, lmpicom, rc
+    type(ESMF_VM) :: vm
     real(kind_phys) :: eccen, obliq, mvelp, obliqr, lambm0, mvelpp
     character(len=256) :: caseid, ctitle, model_doi_url
     character(len=80) :: calendar
@@ -58,15 +61,18 @@ contains
     call ESMF_Initialize(mpiCommunicator=comm, &
          logkindflag=ESMF_LOGKIND_MULTI_ON_ERROR, logappendflag=.false., &
          defaultCalkind=ESMF_CALKIND_GREGORIAN, ioUnitLBound=5001, &
-         ioUnitUBound=5101, rc=rc)
+         ioUnitUBound=5101, vm=vm, rc=rc)
+    if (rc /= 0) return
+    call ESMF_VMGet(vm, mpiCommunicator=lmpicom, localPet=rank, &
+         petCount=npes, rc=rc)
     if (rc /= 0) return
 
-    call spmd_init(comm)
-    call initialize_pio(comm, rank, npes)
+    call spmd_init(lmpicom)
+    call initialize_pio(lmpicom, rank, npes)
     call cam_instance_init(ATM_ID, 'ATM', 1, '')
 
-    caseid = 'PYCAM_SIMA_FKESSLER'
-    ctitle = 'Python controlled CAM-SIMA FKESSLER'
+    caseid = 'PYCAM_SIMA'
+    ctitle = 'Python controlled CAM-SIMA'
     model_doi_url = 'not_set'
     calendar = 'NO_LEAP'
 
@@ -95,12 +101,15 @@ contains
   subroutine initialize_pio(comm, rank, npes)
     integer, intent(in) :: comm, rank, npes
     integer :: num_iotasks, stride
+    type(pio_rearr_opt_t) :: rearr_opts
 
     allocate(pio_comp_settings(1), io_compid(1), io_compname(1), iosystems(1))
     io_compid(1) = ATM_ID
     io_compname(1) = 'ATM'
-    num_iotasks = max(1, min(npes, 4))
-    stride = max(1, npes / num_iotasks)
+    ! Match the synchronous ATM layout and rearranger controls.  The Python
+    ! component owns rank 0, so use it as the I/O root as well.
+    num_iotasks = 1
+    stride = npes
     pio_comp_settings(1)%pio_root = 0
     pio_comp_settings(1)%pio_stride = stride
     pio_comp_settings(1)%pio_numiotasks = num_iotasks
@@ -108,8 +117,16 @@ contains
     pio_comp_settings(1)%pio_rearranger = PIO_REARR_BOX
     pio_comp_settings(1)%pio_netcdf_ioformat = PIO_64BIT_DATA
     pio_comp_settings(1)%pio_async_interface = .false.
+    rearr_opts%comm_type = PIO_REARR_COMM_P2P
+    rearr_opts%fcd = PIO_REARR_COMM_FC_2D_ENABLE
+    rearr_opts%comm_fc_opts_comp2io%enable_hs = .true.
+    rearr_opts%comm_fc_opts_comp2io%enable_isend = .false.
+    rearr_opts%comm_fc_opts_comp2io%max_pend_req = num_iotasks
+    rearr_opts%comm_fc_opts_io2comp%enable_hs = .false.
+    rearr_opts%comm_fc_opts_io2comp%enable_isend = .true.
+    rearr_opts%comm_fc_opts_io2comp%max_pend_req = 64
     call pio_init(rank, comm, num_iotasks, 0, stride, PIO_REARR_BOX, &
-         iosystems(1), 0)
+         iosystems(1), pio_comp_settings(1)%pio_root, rearr_opts)
   end subroutine initialize_pio
 
   integer(c_int) function pycam_full_timestep_init() bind(C)
@@ -136,10 +153,15 @@ contains
     call cam_run3()
   end function pycam_full_run3
 
+  integer(c_int) function pycam_full_run4() bind(C)
+    pycam_full_run4 = require_initialized()
+    if (pycam_full_run4 /= 0) return
+    call cam_run4(.false., .false.)
+  end function pycam_full_run4
+
   integer(c_int) function pycam_full_timestep_final() bind(C)
     pycam_full_timestep_final = require_initialized()
     if (pycam_full_timestep_final /= 0) return
-    call cam_run4(.false., .false.)
     call cam_timestep_final(.false., .false., do_ncdata_check=.false.)
   end function pycam_full_timestep_final
 

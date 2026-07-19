@@ -67,16 +67,32 @@ class CaseConfig:
         return result
 
     def validate(self) -> None:
-        if self.compset != "FKESSLER":
-            raise ValueError(f"Only FKESSLER is supported, got {self.compset!r}")
-        if self.physics_suite != "kessler":
-            raise ValueError("physics_suite must be 'kessler'")
+        supported_profiles = {
+            "FKESSLER": ("kessler", "moist_baroclinic_wave_dcmip2016"),
+            "FADIAB": ("adiabatic", "held_suarez_1994"),
+        }
+        expected = supported_profiles.get(self.compset)
+        if expected is None:
+            raise ValueError(
+                f"supported compsets are {tuple(supported_profiles)}, got {self.compset!r}"
+            )
+        expected_suite, expected_ic = expected
+        if self.physics_suite != expected_suite:
+            raise ValueError(
+                f"{self.compset} requires physics_suite={expected_suite!r}, "
+                f"got {self.physics_suite!r}"
+            )
+        if self.analytic_ic_type != expected_ic:
+            raise ValueError(
+                f"{self.compset} requires analytic_ic_type={expected_ic!r}, "
+                f"got {self.analytic_ic_type!r}"
+            )
         if self.mediator_present:
             raise ValueError("v1 implements the ATM-only, no-mediator run sequence")
         if self.pver != 30 or self.se_ne != 3:
             raise ValueError("the supported v1 kernel layout is pver=30 and se_ne=3")
         if self.dt_seconds != 1800:
-            raise ValueError("the validated FKESSLER step is 1800 seconds")
+            raise ValueError("the supported CAM-SIMA step is 1800 seconds")
         if self.commit != PINNED_CAM_SIMA_COMMIT:
             raise ValueError(
                 f"CAM-SIMA must be pinned to {PINNED_CAM_SIMA_COMMIT}, got {self.commit}"

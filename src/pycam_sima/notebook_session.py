@@ -118,6 +118,8 @@ class NotebookSession:
         self._log_handle: Any = None
         self._fields: dict[str, dict[str, Any]] = {}
         self._current_step = 0
+        self._phase_names: tuple[str, ...] = ()
+        self._phase_status: dict[str, Any] = {}
 
     @property
     def running(self) -> bool:
@@ -136,6 +138,19 @@ class NotebookSession:
     @property
     def current_step(self) -> int:
         return self._current_step
+
+    @property
+    def phase_names(self) -> tuple[str, ...]:
+        return self._phase_names
+
+    @property
+    def phase_status(self) -> Mapping[str, Any]:
+        return dict(self._phase_status)
+
+    @property
+    def next_phase(self) -> str | None:
+        value = self._phase_status.get("next_phase")
+        return None if value is None else str(value)
 
     @property
     def field_names(self) -> tuple[str, ...]:
@@ -211,6 +226,8 @@ class NotebookSession:
                 raise NotebookWorkerError(f"unexpected worker startup response: {result!r}")
             self._fields = dict(result["fields"])
             self._current_step = int(result["step"])
+            self._phase_names = tuple(result["phase_names"])
+            self._update_phase_status(result["phase_status"])
             return self
         except BaseException:
             self._abort()
@@ -225,7 +242,40 @@ class NotebookSession:
             raise ValueError("step count must be positive")
         result = self._request({"op": "step", "count": count})
         self._current_step = int(result["step"])
+        self._update_phase_status(result["phase_status"])
         return self._current_step
+
+    def run_phase(
+        self,
+        phase: str | None = None,
+        *,
+        allow_unsafe_order: bool = False,
+    ) -> Mapping[str, Any]:
+        if phase is not None and phase not in self._phase_names:
+            raise ValueError(
+                f"unknown CAM phase {phase!r}; choose one of {self._phase_names}"
+            )
+        result = self._request(
+            {
+                "op": "run_phase",
+                "phase": phase,
+                "allow_unsafe_order": bool(allow_unsafe_order),
+            }
+        )
+        self._current_step = int(result["step"])
+        self._update_phase_status(result)
+        return self.phase_status
+
+    def run_sequence(
+        self,
+        phases: Sequence[str],
+        *,
+        allow_unsafe_order: bool = False,
+    ) -> tuple[Mapping[str, Any], ...]:
+        return tuple(
+            self.run_phase(phase, allow_unsafe_order=allow_unsafe_order)
+            for phase in phases
+        )
 
     def get_field(self, name: str, *, rank: int | str = 0) -> np.ndarray | list[np.ndarray]:
         self._validate_field(name)
@@ -291,6 +341,11 @@ class NotebookSession:
         self._ensure_running()
         if name not in self._fields:
             raise KeyError(f"unknown CAM-SIMA field: {name}")
+
+    def _update_phase_status(self, status: Mapping[str, Any]) -> None:
+        self._phase_status = dict(status)
+        if "step" in status:
+            self._current_step = int(status["step"])
 
     def _validate_rank(self, rank: int | str) -> int | str:
         if rank == "all":
@@ -497,6 +552,8 @@ class NotebookSession:
         self._job_id = None
         self._log_handle = None
         self._fields = {}
+        self._phase_names = ()
+        self._phase_status = {}
 
     def _log_tail(self, lines: int = 40) -> str:
         try:

@@ -9,8 +9,11 @@ The complete fixed target is implemented:
 - DCMIP2016 moist baroclinic-wave analytic initial condition
 - real SE dynamics with `se_nsplit=2`, `se_qsplit=1`, `se_tstep_type=4`
 - Kessler `physics_before_coupler` and `physics_after_coupler`
+- `FADIAB` dynamics profile with Held--Suarez analytic initial state and no
+  parameterized-physics forcing
 - mpi4py communicator, 24 ranks, 1800-second timestep
 - Python/Taskflow control of `DataInitialize` and every `ModelAdvance` phase
+- explicit Notebook control of the seven top-level calls in one advance cycle
 - Python observers and zero-copy state views at phase and step boundaries
 - ordinary Jupyter kernel control through a separate authenticated 24-rank MPI
   worker, with synchronous `step`, `get_field`, `get_field_stats`, and
@@ -18,8 +21,9 @@ The complete fixed target is implemented:
 
 `libpycam_sima_full.so` links the real PIC-enabled CAM-SIMA ATM archive. Its
 explicit C ABI separates initialization, `cam_run1`, `cam_run2`, `cam_run3`,
-timestep finalization, time advancement, finalization, and state queries. The
-Python driver therefore owns the control loop; it does not launch `cesm.exe`.
+`cam_run4`, timestep finalization, time advancement, finalization, and state
+queries. The Python driver therefore owns the control loop; it does not launch
+`cesm.exe`.
 
 ## State ownership
 
@@ -38,15 +42,22 @@ SE scratch arrays are intentionally not part of the public state contract.
 
 ## Verification
 
-- 8 unit/integration tests pass.
+- 17 unit/integration tests pass.
 - The small Kessler library passes serial and 24-rank/50-step smoke tests.
 - Native CAM-SIMA reference job `6779760.desched1` completed successfully.
-- Python-controlled full-model job `6779818.desched1` completed successfully
-  with marker `PYCAM_SIMA_FULL_JOB_OK job=6779818.desched1 ranks=24 steps=50`.
+- Current Python-controlled Kessler job `6790949.desched1` completed
+  successfully with marker
+  `PYCAM_SIMA_FULL_JOB_OK job=6790949.desched1 ranks=24 steps=50`.
 - `compare-history` compared 51 timestamps: no missing/extra files and no
   differing value in any of the 26 numeric history variables. The five
   prognostic fields `T`, `Q`, `U`, `V`, and `PS` were REAL64 and bitwise
   identical. Numeric-state BFB is true for this fixed target.
+- Kessler phase-session job `6790950.desched1` and adiabatic phase-session job
+  `6790933.desched1` each paused after all seven phases, inspected temperature,
+  completed the initial-send cycle and requested step 1, and finalized cleanly.
+- The 24-rank, 50-step `FADIAB` reference job `6790929.desched1` and
+  Python-controlled job `6790932.desched1` each produced 51 history files. All
+  26 numeric variables were bitwise identical at every timestamp.
 - Notebook session job `6788371.desched1` started from one non-MPI controller
   with `PBS_NODEFILE` intentionally removed,
   returned 21 live fields, completed two interactive steps, gathered all-rank
@@ -57,13 +68,15 @@ SE scratch arrays are intentionally not part of the public state contract.
   interactive step, and finalized cleanly. Both output timestamps matched all
   26 numeric reference variables bitwise.
 
-Machine-readable evidence is in `validation/fkessler_full_bfb.json` and
+Machine-readable evidence is in `validation/fkessler_full_bfb.json`,
+`validation/adiabatic_full_bfb.json`, and
 `validation/notebook_session_smoke.json`; login-node evidence is in
 `validation/notebook_login_session.json`.
 
 ## Scope boundary
 
-This is not yet a general replacement for every CAM-SIMA configuration. Other
-physics suites, grids, vertical levels, mediator-enabled surface components,
+This is not yet a general replacement for every CAM-SIMA configuration. Only
+the Kessler and adiabatic suites described above are supported. Other physics
+suites, grids, vertical levels, mediator-enabled surface components,
 restart/branch runs, MPAS dynamics and GPU configurations remain outside the
-implemented target. BFB applies only to the fixed configuration above.
+implemented target. BFB applies only to the fixed configurations above.

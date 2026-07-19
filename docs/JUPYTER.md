@@ -11,7 +11,8 @@ allocation it launches the worker locally. Prepare a fresh run directory
 containing `atm_in`; do not point a new session at a directory containing
 results that must be preserved.
 
-Open the ready-made Notebook for a real cell-by-cell test:
+Open the single maintained Notebook for the complete-model, phase-by-phase,
+and editable Kessler-kernel workflows:
 
 ```text
 /glade/work/ruitong/pycam-sima/examples/try_notebook_session.ipynb

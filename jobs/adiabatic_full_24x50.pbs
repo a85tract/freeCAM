@@ -1,5 +1,5 @@
 #!/bin/bash
-#PBS -N pycam_full_24x50
+#PBS -N pycam_adiab_24x50
 #PBS -A UCUB0188
 #PBS -q develop
 #PBS -l select=1:ncpus=24:mpiprocs=24:mem=45GB
@@ -9,9 +9,9 @@
 set -euo pipefail
 
 REPO=/glade/work/ruitong/pycam-sima
-CASE=$REPO/reference/cases/FKESSLER_ne3pg3_gnu_24x50
-REFERENCE_RUN=/glade/derecho/scratch/ruitong/pycam-sima/FKESSLER_ne3pg3_gnu_24x50/FKESSLER_ne3pg3_gnu_24x50/run
-RUN_DIR=/glade/derecho/scratch/ruitong/pycam-sima/pyphase_bfb/FKESSLER_ne3pg3_24x50/run
+CASE=$REPO/reference/cases/FADIAB_ne3pg3_gnu_24x50
+REFERENCE_RUN=/glade/derecho/scratch/ruitong/pycam-sima/FADIAB_ne3pg3_gnu_24x50/FADIAB_ne3pg3_gnu_24x50/run
+RUN_DIR=/glade/derecho/scratch/ruitong/pycam-sima/pyadiabatic_bfb/FADIAB_ne3pg3_24x50/run
 
 source "$CASE/.env_mach_specific.sh" >/dev/null 2>&1
 mkdir -p "$RUN_DIR"
@@ -20,10 +20,10 @@ cp "$REFERENCE_RUN/atm_in" "$RUN_DIR/atm_in"
 cd "$REPO"
 
 mpiexec -n 24 "$REPO/.venv/bin/python" -m pycam_sima.cli run-full \
-  "$REPO/configs/fkessler_ne3pg3.yaml" \
+  "$REPO/configs/adiabatic_ne3pg3.yaml" \
   --run-dir "$RUN_DIR" \
   --steps 50 \
   --watch air_temperature \
   --watch-event step_end
 
-echo "PYCAM_SIMA_FULL_JOB_OK job=${PBS_JOBID:-unknown} ranks=24 steps=50"
+echo "PYCAM_SIMA_ADIABATIC_OK job=${PBS_JOBID:-unknown} ranks=24 steps=50"

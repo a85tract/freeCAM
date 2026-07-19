@@ -13,6 +13,34 @@ It has two execution modes:
   dynamics/physics mappings and Kessler suite. Long-lived CAM allocations are
   writable zero-copy NumPy views registered in the Python `StatePool`.
 
+The small Kessler path also exposes a declarative Python step plan and mutable
+runtime controls:
+
+```python
+from pycam_sima import FKesslerDriver, RuntimeOptions, StepPlan
+from pycam_sima.config import CaseConfig
+
+config = CaseConfig.from_yaml("configs/fkessler_ne3pg3.yaml")
+options = RuntimeOptions(
+    timestep_seconds=1800,
+    physics_before=True,
+    physics_after=True,
+    dynamics=True,
+)
+model = FKesslerDriver(config, options=options, step_plan=StepPlan.default())
+model.initialize()
+
+print(model.step_plan.describe(model.options))
+model.parameters.surface_reference_pressure = 98_500.0
+model.step()
+temperature = model.pool["air_temperature"]
+```
+
+Optional physics/dynamics sections can be switched between steps. Required
+lifecycle phases are protected, and changing CAM's default order requires an
+explicit `unsafe=True`. See `docs/KERNEL_STEP_CONTROL.md` for parameter edits,
+phase-boundary observers, and order experiments.
+
 The source is pinned at `external/CAM-SIMA` commit
 `f8daa568eae2696b7c4ebff7768f02f5d097d9df`.
 
@@ -52,6 +80,19 @@ second pass also verified all 26 numeric variables in the history files.
 Evidence is recorded in `validation/fkessler_full_bfb.json`.
 
 ## Inspecting state in Python
+
+Interactive sessions can also execute one top-level CAM phase at a time:
+
+```python
+model.run_phase("cam_run2")
+temperature_after_physics = model.get_field("air_temperature", rank=0)
+model.run_phase("cam_run3")
+temperature_after_dynamics = model.get_field("air_temperature", rank=0)
+```
+
+The safe default order is checked by a Python state machine. See
+`docs/PHASE_CONTROL.md` for phase status, explicit unsafe-order experiments,
+and the `FADIAB` no-physics-forcing dynamics configuration.
 
 Use `--watch` at any Python phase boundary:
 
@@ -94,7 +135,7 @@ From a Derecho login-node Notebook, `start()` automatically submits the
 locally. See `docs/JUPYTER.md` for field metadata, all-rank statistics, live
 field modification, cleanup, and global-layout limitations.
 
-The ready-to-run interactive Notebook is:
+The single maintained interactive Notebook is:
 
 ```text
 examples/try_notebook_session.ipynb

@@ -1,0 +1,35 @@
+#!/bin/bash
+#PBS -N pycam_phase
+#PBS -A UCUB0188
+#PBS -q develop
+#PBS -l select=1:ncpus=24:mpiprocs=24:mem=45GB
+#PBS -l walltime=00:10:00
+#PBS -j oe
+
+set -euo pipefail
+
+REPO=/glade/work/ruitong/pycam-sima
+PROFILE=${PROFILE:-kessler}
+
+if [[ "$PROFILE" == "adiabatic" ]]; then
+  CONFIG=$REPO/configs/adiabatic_ne3pg3.yaml
+  CASE=$REPO/reference/cases/FADIAB_ne3pg3_gnu_24x50
+  REFERENCE_RUN=/glade/derecho/scratch/ruitong/pycam-sima/FADIAB_ne3pg3_gnu_24x50/FADIAB_ne3pg3_gnu_24x50/run
+else
+  CONFIG=$REPO/configs/fkessler_ne3pg3.yaml
+  CASE=$REPO/reference/cases/FKESSLER_ne3pg3_gnu_24x50
+  REFERENCE_RUN=/glade/derecho/scratch/ruitong/pycam-sima/FKESSLER_ne3pg3_gnu_24x50/FKESSLER_ne3pg3_gnu_24x50/run
+fi
+
+RUN_DIR=/glade/derecho/scratch/ruitong/pycam-sima/phase_smoke/${PROFILE}-${PBS_JOBID}/run
+mkdir -p "$RUN_DIR"
+cp "$REFERENCE_RUN/atm_in" "$RUN_DIR/atm_in"
+
+source "$CASE/.env_mach_specific.sh" >/dev/null 2>&1
+cd "$REPO"
+
+"$REPO/.venv/bin/python" tools/phase_session_smoke.py \
+  --config "$CONFIG" \
+  --run-dir "$RUN_DIR" \
+  --env-script "$CASE/.env_mach_specific.sh" \
+  --log-path "$RUN_DIR/mpi-worker.log"

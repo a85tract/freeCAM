@@ -63,6 +63,7 @@ class FullNativeBackend:
             int pycam_full_run1(void);
             int pycam_full_run2(void);
             int pycam_full_run3(void);
+            int pycam_full_run4(void);
             int pycam_full_timestep_final(void);
             int pycam_full_advance_timestep(void);
             int pycam_full_finalize(void);
@@ -72,7 +73,7 @@ class FullNativeBackend:
         )
         self.lib = self.ffi.dlopen(str(self.library))
         version = int(self.lib.pycam_full_abi_version())
-        if version != 1:
+        if version != 2:
             raise RuntimeError(f"unsupported full CAM-SIMA ABI version {version}")
         self._buffers: dict[str, Any] = {}
         self._initialized = False
@@ -102,6 +103,9 @@ class FullNativeBackend:
 
     def run3(self) -> None:
         self._call("run3", self.lib.pycam_full_run3)
+
+    def run4(self) -> None:
+        self._call("run4", self.lib.pycam_full_run4)
 
     def timestep_final(self) -> None:
         self._call("timestep_final", self.lib.pycam_full_timestep_final)

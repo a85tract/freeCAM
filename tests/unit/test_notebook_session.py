@@ -74,3 +74,46 @@ def test_auto_mode_uses_pbs_on_login_and_forced_local_mode_refuses(
     assert session._resolve_launch_mode({}) == "pbs"
     with pytest.raises(RuntimeError, match="login node"):
         session._launcher_command({})
+
+
+def test_phase_api_tracks_worker_status(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    session = _session(tmp_path, monkeypatch)
+    session._phase_names = (
+        "cam_run2",
+        "cam_run3",
+        "cam_run4",
+        "cam_timestep_final",
+        "advance_timestep",
+        "cam_timestep_init",
+        "cam_run1",
+    )
+    requests = []
+
+    def request(payload):
+        requests.append(payload)
+        return {
+            "last_phase": payload["phase"],
+            "next_phase": "cam_run3",
+            "sequence_safe": True,
+            "cycle_kind": "initial_send",
+            "cycle_complete": False,
+            "step": 0,
+            "native_nstep": 0,
+        }
+
+    monkeypatch.setattr(session, "_request", request)
+    status = session.run_phase("cam_run2")
+    assert status["last_phase"] == "cam_run2"
+    assert session.next_phase == "cam_run3"
+    assert requests == [
+        {
+            "op": "run_phase",
+            "phase": "cam_run2",
+            "allow_unsafe_order": False,
+        }
+    ]
+
+    with pytest.raises(ValueError, match="unknown CAM phase"):
+        session.run_phase("not_a_phase")

@@ -34,7 +34,18 @@ def _local_command(request: dict[str, Any], driver: FullCAMDriver, comm: Any) ->
     operation = request.get("op")
     if operation == "step":
         driver.run(int(request["count"]))
-        return {"step": driver.clock.step, "native_nstep": driver.backend.nstep}
+        return {
+            "step": driver.clock.step,
+            "native_nstep": driver.backend.nstep,
+            "phase_status": driver.phase_status.to_dict(),
+        }
+
+    if operation == "run_phase":
+        status = driver.run_phase(
+            request.get("phase"),
+            allow_unsafe_order=bool(request.get("allow_unsafe_order", False)),
+        )
+        return status.to_dict()
 
     if operation in {"get_field", "get_field_stats", "set_field"}:
         name = str(request["field"])
@@ -192,6 +203,8 @@ def main() -> int:
                             "step": driver.clock.step,
                             "native_nstep": driver.backend.nstep,
                             "fields": _field_metadata(driver),
+                            "phase_names": driver.phase_names,
+                            "phase_status": driver.phase_status.to_dict(),
                         },
                     },
                 )
