@@ -10,6 +10,7 @@ import numpy as np
 
 from .config import CaseConfig
 from .full_driver import FullCAMDriver
+from .full_runtime_control import FullCAMRuntimeOptions, FullCAMStepPlan
 
 
 def _error() -> str:
@@ -33,6 +34,7 @@ def _field_metadata(driver: FullCAMDriver) -> dict[str, dict[str, Any]]:
 def _local_command(request: dict[str, Any], driver: FullCAMDriver, comm: Any) -> Any:
     operation = request.get("op")
     if operation == "step":
+        driver.set_step_plan(FullCAMStepPlan.from_payload(request["step_plan"]))
         driver.run(int(request["count"]))
         return {
             "step": driver.clock.step,
@@ -133,6 +135,8 @@ def main() -> int:
     parser.add_argument("--config", required=True)
     parser.add_argument("--run-dir", required=True)
     parser.add_argument("--library", required=True)
+    parser.add_argument("--timestep-seconds", required=True, type=int)
+    parser.add_argument("--physics-profile", required=True)
     args = parser.parse_args()
 
     from mpi4py import MPI
@@ -169,11 +173,18 @@ def main() -> int:
     initialized = False
     try:
         config = CaseConfig.from_yaml(args.config)
+        options = FullCAMRuntimeOptions(
+            timestep_seconds=args.timestep_seconds,
+            physics_profile=args.physics_profile,
+            mediator_present=config.mediator_present,
+        )
+        options.validate(config)
         driver = FullCAMDriver(
             config,
             comm,
             library=args.library,
             run_dir=args.run_dir,
+            options=options,
         )
         try:
             driver.initialize()
@@ -205,6 +216,7 @@ def main() -> int:
                             "fields": _field_metadata(driver),
                             "phase_names": driver.phase_names,
                             "phase_status": driver.phase_status.to_dict(),
+                            "runtime_options": driver.options.describe(),
                         },
                     },
                 )

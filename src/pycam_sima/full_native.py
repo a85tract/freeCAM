@@ -58,7 +58,7 @@ class FullNativeBackend:
         self.ffi.cdef(
             """
             int pycam_full_abi_version(void);
-            int pycam_full_initialize(int comm);
+            int pycam_full_initialize(int comm, int timestep_seconds);
             int pycam_full_timestep_init(void);
             int pycam_full_run1(void);
             int pycam_full_run2(void);
@@ -73,7 +73,7 @@ class FullNativeBackend:
         )
         self.lib = self.ffi.dlopen(str(self.library))
         version = int(self.lib.pycam_full_abi_version())
-        if version != 2:
+        if version != 3:
             raise RuntimeError(f"unsupported full CAM-SIMA ABI version {version}")
         self._buffers: dict[str, Any] = {}
         self._initialized = False
@@ -82,14 +82,21 @@ class FullNativeBackend:
     def nstep(self) -> int:
         return int(self.lib.pycam_full_get_nstep())
 
-    def initialize(self, comm: Any) -> None:
+    def initialize(self, comm: Any, timestep_seconds: int) -> None:
         if self._initialized:
             raise RuntimeError("full CAM-SIMA backend is already initialized")
+        if timestep_seconds <= 0:
+            raise ValueError("timestep_seconds must be positive")
         try:
             fortran_comm = int(comm.py2f())
         except AttributeError as exc:
             raise TypeError("full CAM-SIMA requires an mpi4py communicator") from exc
-        self._call("initialize", self.lib.pycam_full_initialize, fortran_comm)
+        self._call(
+            "initialize",
+            self.lib.pycam_full_initialize,
+            fortran_comm,
+            int(timestep_seconds),
+        )
         self._initialized = True
 
     def timestep_init(self) -> None:

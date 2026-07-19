@@ -11,21 +11,21 @@ allocation it launches the worker locally. Prepare a fresh run directory
 containing `atm_in`; do not point a new session at a directory containing
 results that must be preserved.
 
-Open the single maintained Notebook for the complete-model, phase-by-phase,
-and editable Kessler-kernel workflows:
+Open the single maintained Notebook for the complete-model step plan,
+phase-by-phase execution, runtime options, and typed live-field controls:
 
 ```text
 /glade/work/ruitong/pycam-sima/examples/try_notebook_session.ipynb
 ```
 
 It keeps the MPI session open between cells, so `model.step()` and
-`model.get_field()` are genuinely interactive. The companion `.py` file is
-only a command-line or `%run` smoke test.
+`model.get_field()` are genuinely interactive. This is the only maintained
+example; the CAM controls are demonstrated directly in its cells.
 
 ```python
 from pathlib import Path
 
-from pycam_sima import NotebookSession
+from pycam_sima import FullCAMRuntimeOptions, FullCAMStepPlan, NotebookSession
 
 repo = Path("/glade/work/ruitong/pycam-sima")
 run_dir = Path(
@@ -45,25 +45,49 @@ model = NotebookSession(
     repo / "configs/fkessler_ne3pg3.yaml",
     run_dir=run_dir,
     env_script=case / ".env_mach_specific.sh",
+    options=FullCAMRuntimeOptions(
+        timestep_seconds=1800,
+        physics_profile="kessler",
+        mediator_present=False,
+    ),
+    step_plan=FullCAMStepPlan.default(),
 )
 model.start()
+```
+
+`model.options` contains settings consumed by `cam_init`. They can be edited
+before `start()`, but changing them afterward is rejected because CAM's time
+manager, physics suite, and dycore are already initialized. Select
+`configs/adiabatic_ne3pg3.yaml` with `physics_profile="adiabatic"` for a real
+SE dynamics-only run. The reference BFB configuration uses 1800 seconds;
+changing the timestep intentionally selects a different experiment.
+
+Inspect the exact plan used by `model.step()`:
+
+```python
+model.step_plan.describe()
+
+# Explicitly unsafe experiments only:
+# model.step_plan.disable("cam_run3", unsafe=True)
+# model.step_plan.move("cam_run3", before="cam_run2", unsafe=True)
 ```
 
 Inspect the available rank-zero fields before or after a step:
 
 ```python
-model.field_names
-model.field_info("air_temperature")
+model.parameters.describe()
+temperature_field = model.parameters.air_temperature
+temperature_field.info
 
 model.step()
-temperature = model.get_field("air_temperature", rank=0)
+temperature = temperature_field.get(rank=0)
 temperature.shape, temperature.min(), temperature.max()
 ```
 
 Get one value without transferring every rank-local array:
 
 ```python
-statistics = model.get_field_stats("air_temperature", rank="all")
+statistics = temperature_field.stats(rank="all")
 statistics[0]
 ```
 
@@ -75,9 +99,9 @@ Interactive sessions may modify live CAM memory. The following change is
 applied on rank zero and is consumed by the next model step:
 
 ```python
-temperature = model.get_field("air_temperature", rank=0)
+temperature = temperature_field.get(rank=0)
 temperature[0, 0] += 0.01
-model.set_field("air_temperature", temperature, rank=0)
+temperature_field.set(temperature, rank=0)
 model.step()
 ```
 

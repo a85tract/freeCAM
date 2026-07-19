@@ -9,6 +9,7 @@ from pathlib import Path
 from .config import CaseConfig
 from .driver import FKesslerDriver
 from .full_driver import FullCAMDriver
+from .full_runtime_control import FullCAMRuntimeOptions
 from .history_compare import compare_history, history_manifest
 from .mpi_runtime import world_comm
 from .native import NativeKesslerBackend, RecordingBackend
@@ -71,11 +72,21 @@ def command_run_full(args: argparse.Namespace) -> int:
             "run the full backend with mpiexec -n 24"
         )
     library = args.library or config.native.se_library
+    options = FullCAMRuntimeOptions(
+        timestep_seconds=(
+            config.dt_seconds
+            if args.timestep_seconds is None
+            else args.timestep_seconds
+        ),
+        physics_profile=config.physics_suite,
+        mediator_present=config.mediator_present,
+    )
     driver = FullCAMDriver(
         config,
         comm,
         library=library,
         run_dir=args.run_dir,
+        options=options,
     )
     for field in args.watch:
         def show(context, field=field):
@@ -170,6 +181,7 @@ def main() -> int:
     full.add_argument("--run-dir", required=True)
     full.add_argument("--library")
     full.add_argument("--steps", type=int, default=None)
+    full.add_argument("--timestep-seconds", type=int)
     full.add_argument("--allow-rank-mismatch", action="store_true")
     full.add_argument("--watch", action="append", default=[], metavar="FIELD")
     full.add_argument("--watch-event", default="step_end")

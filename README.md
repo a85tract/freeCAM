@@ -13,6 +13,39 @@ It has two execution modes:
   dynamics/physics mappings and Kessler suite. Long-lived CAM allocations are
   writable zero-copy NumPy views registered in the Python `StatePool`.
 
+The complete model exposes the same Python control concepts through the
+Notebook MPI controller:
+
+```python
+from pycam_sima import (
+    FullCAMRuntimeOptions,
+    FullCAMStepPlan,
+    NotebookSession,
+)
+
+options = FullCAMRuntimeOptions(
+    timestep_seconds=1800,
+    physics_profile="kessler",
+    mediator_present=False,
+)
+model = NotebookSession(
+    config,
+    run_dir=run_dir,
+    options=options,
+    step_plan=FullCAMStepPlan.default(),
+)
+model.start()
+
+print(model.step_plan.describe())
+temperature = model.parameters.air_temperature.get(rank=0)
+model.step()
+```
+
+The runtime options are fixed at `cam_init`. Live fields may be changed at any
+Python boundary. Changing or disabling a required complete-CAM phase requires
+an explicit `unsafe=True`; use the FADIAB profile for a scientifically valid
+SE dynamics-only run.
+
 The small Kessler path also exposes a declarative Python step plan and mutable
 runtime controls:
 
@@ -57,6 +90,10 @@ Build the complete position-independent CAM/SE shared library from that case:
 ```bash
 uv run python tools/build_full_native.py \
   --case-root reference/cases/FKESSLER_ne3pg3_gnu_24x50
+
+uv run python tools/build_full_native.py \
+  --case-root reference/cases/FADIAB_ne3pg3_gnu_24x50 \
+  --output build/libpycam_sima_adiabatic_full.so
 ```
 
 Run the Python driver through PBS:
@@ -126,7 +163,7 @@ with NotebookSession(
     env_script="reference/cases/FKESSLER_ne3pg3_gnu_24x50/.env_mach_specific.sh",
 ) as model:
     model.step()
-    temperature = model.get_field("air_temperature", rank=0)
+    temperature = model.parameters.air_temperature.get(rank=0)
     print(temperature.min(), temperature.max())
 ```
 

@@ -36,10 +36,57 @@ marks that session unsafe and disables `model.step()`:
 model.run_phase("cam_run3", allow_unsafe_order=True)
 ```
 
-`model.step()` still uses exactly the same phase state machine. It is accepted
-only at a complete-cycle boundary. The first cycle is CAM-SIMA's `nstep=0`
+`model.step()` uses the declarative `model.step_plan`. The default plan contains
+the same seven phases and is accepted only at a complete-cycle boundary:
+
+```python
+model.step_plan.describe()
+model.step()
+```
+
+The first cycle is CAM-SIMA's `nstep=0`
 initial-send cycle and does not increment the Python step counter; the next
 cycle produces requested step 1.
+
+Every full-CAM phase is required by the validated lifecycle. An on/off or
+ordering experiment therefore requires explicit acknowledgement:
+
+```python
+# Control experiment only; this is not a valid dynamics-only CAM setup.
+model.step_plan.disable("cam_run3", unsafe=True)
+
+# Control experiment only; CAM may reject the native lifecycle.
+model.step_plan.move("cam_run3", before="cam_run2", unsafe=True)
+
+model.step()
+```
+
+Once an unsafe plan executes, that native session cannot be declared safe
+again. Start a fresh session to return to the validated plan.
+
+## Explicit initialization settings and live fields
+
+The complete CAM initialization parameters are ordinary Python objects:
+
+```python
+options = FullCAMRuntimeOptions(
+    timestep_seconds=1800,
+    physics_profile="kessler",
+    mediator_present=False,
+)
+```
+
+They are passed through the C ABI into `cam_init`; they cannot be changed after
+initialization. The 1800-second setting is the BFB-validated configuration;
+other positive integer timesteps are explicit experiments. Live CAM fields can
+be read or written at any phase boundary:
+
+```python
+temperature = model.parameters.air_temperature
+values = temperature.get(rank=0)
+values[0, 0] += 0.01
+temperature.set(values, rank=0)
+```
 
 ## No-physics-forcing dynamics configuration
 

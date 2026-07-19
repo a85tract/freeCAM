@@ -50,6 +50,7 @@ set -euo pipefail
 source {shlex.quote(str(case / '.env_mach_specific.sh'))} >/dev/null 2>&1
 B={shlex.quote(str(build))}
 ftn -c -fPIC -O2 -ffp-contract=off -ffree-line-length-none \
+  -J{shlex.quote(str(target.parent))} \
   -I$B/atm/obj -I$B/gnu/mpich/nodebug/nothreads/include \
   -I$PIO/include -I$NCAR_ROOT_ESMF/include \
   {shlex.quote(str(wrapper))} -o {shlex.quote(str(obj))}

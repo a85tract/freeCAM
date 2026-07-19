@@ -1,0 +1,13 @@
+{
+  "job_id": "6792973.desched1",
+  "configuration": "FKESSLER_ne3pg3_gnu_24x50",
+  "mpi_ranks": 24,
+  "steps": 50,
+  "requested_timestep_seconds": 900,
+  "history_files": 51,
+  "history_mdt_values": [900],
+  "first_timestamp": "0001-01-01-00000.nc",
+  "last_timestamp": "0001-01-01-45000.nc",
+  "run_dir": "/glade/derecho/scratch/ruitong/pycam-sima/pydt900/FKESSLER_ne3pg3_24x50/run",
+  "success_marker": "PYCAM_SIMA_DT900_OK job=6792973.desched1 ranks=24 steps=50 dt=900"
+}

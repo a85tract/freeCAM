@@ -20,6 +20,11 @@ from typing import Any
 import numpy as np
 
 from .config import CaseConfig
+from .full_runtime_control import (
+    FullCAMParameters,
+    FullCAMRuntimeOptions,
+    FullCAMStepPlan,
+)
 from .runtime_env import mpi_loader_environment
 
 
@@ -56,6 +61,8 @@ class NotebookSession:
         startup_timeout: float = 900.0,
         request_timeout: float = 600.0,
         log_path: str | Path | None = None,
+        options: FullCAMRuntimeOptions | None = None,
+        step_plan: FullCAMStepPlan | None = None,
     ) -> None:
         if isinstance(config, CaseConfig):
             if config.config_path is None:
@@ -65,6 +72,17 @@ class NotebookSession:
         else:
             self.config_path = Path(config).resolve()
             self.config = CaseConfig.from_yaml(self.config_path)
+
+        self.options = (
+            options
+            if options is not None
+            else FullCAMRuntimeOptions.from_config(self.config)
+        )
+        self.options.validate(self.config)
+        self.step_plan = (
+            step_plan.copy() if step_plan is not None else FullCAMStepPlan.default()
+        )
+        self.parameters = FullCAMParameters(self)
 
         self.run_dir = Path(run_dir).resolve()
         self.library = Path(library or self.config.native.se_library).resolve()
@@ -120,6 +138,7 @@ class NotebookSession:
         self._current_step = 0
         self._phase_names: tuple[str, ...] = ()
         self._phase_status: dict[str, Any] = {}
+        self._started_options_fingerprint: tuple[int, str, bool] | None = None
 
     @property
     def running(self) -> bool:
@@ -166,6 +185,7 @@ class NotebookSession:
         if self.running or self._connection is not None:
             raise RuntimeError("NotebookSession is already running")
 
+        self.options.validate(self.config)
         environment = self._worker_environment()
         environment["PYTHONUNBUFFERED"] = "1"
         launch_mode = self._resolve_launch_mode(environment)
@@ -203,6 +223,10 @@ class NotebookSession:
             str(self.run_dir),
             "--library",
             str(self.library),
+            "--timestep-seconds",
+            str(self.options.timestep_seconds),
+            "--physics-profile",
+            self.options.physics_profile,
         ]
 
         self.log_path.parent.mkdir(parents=True, exist_ok=True)
@@ -228,6 +252,12 @@ class NotebookSession:
             self._current_step = int(result["step"])
             self._phase_names = tuple(result["phase_names"])
             self._update_phase_status(result["phase_status"])
+            worker_options = dict(result["runtime_options"])
+            if worker_options != self.options.describe():
+                raise NotebookWorkerError(
+                    f"worker runtime options differ from the controller: {worker_options!r}"
+                )
+            self._started_options_fingerprint = self.options.fingerprint()
             return self
         except BaseException:
             self._abort()
@@ -240,7 +270,14 @@ class NotebookSession:
         count = int(count)
         if count <= 0:
             raise ValueError("step count must be positive")
-        result = self._request({"op": "step", "count": count})
+        self._validate_started_options()
+        result = self._request(
+            {
+                "op": "step",
+                "count": count,
+                "step_plan": self.step_plan.to_payload(),
+            }
+        )
         self._current_step = int(result["step"])
         self._update_phase_status(result["phase_status"])
         return self._current_step
@@ -251,6 +288,7 @@ class NotebookSession:
         *,
         allow_unsafe_order: bool = False,
     ) -> Mapping[str, Any]:
+        self._validate_started_options()
         if phase is not None and phase not in self._phase_names:
             raise ValueError(
                 f"unknown CAM phase {phase!r}; choose one of {self._phase_names}"
@@ -341,6 +379,15 @@ class NotebookSession:
         self._ensure_running()
         if name not in self._fields:
             raise KeyError(f"unknown CAM-SIMA field: {name}")
+
+    def _validate_started_options(self) -> None:
+        self._ensure_running()
+        self.options.validate(self.config)
+        if self._started_options_fingerprint != self.options.fingerprint():
+            raise RuntimeError(
+                "complete-CAM runtime options changed after cam_init; close this "
+                "session, create a fresh run directory, and start a new session"
+            )
 
     def _update_phase_status(self, status: Mapping[str, Any]) -> None:
         self._phase_status = dict(status)
@@ -554,6 +601,7 @@ class NotebookSession:
         self._fields = {}
         self._phase_names = ()
         self._phase_status = {}
+        self._started_options_fingerprint = None
 
     def _log_tail(self, lines: int = 40) -> str:
         try:

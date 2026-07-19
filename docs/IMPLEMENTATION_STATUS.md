@@ -14,6 +14,9 @@ The complete fixed target is implemented:
 - mpi4py communicator, 24 ranks, 1800-second timestep
 - Python/Taskflow control of `DataInitialize` and every `ModelAdvance` phase
 - explicit Notebook control of the seven top-level calls in one advance cycle
+- declarative `FullCAMStepPlan` control used directly by complete-CAM `step()`
+- explicit `FullCAMRuntimeOptions` passed through the ABI into `cam_init`
+- typed `FullCAMParameters` field handles for live MPI state inspection/editing
 - Python observers and zero-copy state views at phase and step boundaries
 - ordinary Jupyter kernel control through a separate authenticated 24-rank MPI
   worker, with synchronous `step`, `get_field`, `get_field_stats`, and
@@ -42,12 +45,12 @@ SE scratch arrays are intentionally not part of the public state contract.
 
 ## Verification
 
-- 17 unit/integration tests pass.
+- 28 unit/integration tests pass.
 - The small Kessler library passes serial and 24-rank/50-step smoke tests.
 - Native CAM-SIMA reference job `6779760.desched1` completed successfully.
-- Current Python-controlled Kessler job `6790949.desched1` completed
+- Current Python-controlled Kessler job `6792903.desched1` completed
   successfully with marker
-  `PYCAM_SIMA_FULL_JOB_OK job=6790949.desched1 ranks=24 steps=50`.
+  `PYCAM_SIMA_FULL_JOB_OK job=6792903.desched1 ranks=24 steps=50`.
 - `compare-history` compared 51 timestamps: no missing/extra files and no
   differing value in any of the 26 numeric history variables. The five
   prognostic fields `T`, `Q`, `U`, `V`, and `PS` were REAL64 and bitwise
@@ -56,8 +59,8 @@ SE scratch arrays are intentionally not part of the public state contract.
   `6790933.desched1` each paused after all seven phases, inspected temperature,
   completed the initial-send cycle and requested step 1, and finalized cleanly.
 - The 24-rank, 50-step `FADIAB` reference job `6790929.desched1` and
-  Python-controlled job `6790932.desched1` each produced 51 history files. All
-  26 numeric variables were bitwise identical at every timestamp.
+  current Python-controlled job `6792935.desched1` each produced 51 history
+  files. All 26 numeric variables were bitwise identical at every timestamp.
 - Notebook session job `6788371.desched1` started from one non-MPI controller
   with `PBS_NODEFILE` intentionally removed,
   returned 21 live fields, completed two interactive steps, gathered all-rank
@@ -67,11 +70,21 @@ SE scratch arrays are intentionally not part of the public state contract.
   `6788530.desched1`, returned a live rank-zero temperature array after one
   interactive step, and finalized cleanly. Both output timestamps matched all
   26 numeric reference variables bitwise.
+- Complete-CAM control API job `6792924.desched1` exercised explicit runtime
+  options, the seven-phase `FullCAMStepPlan`, typed temperature access, and one
+  collective step from a login-node controller. Both available timestamps
+  matched all 26 numeric reference variables bitwise.
+- Non-default runtime-option job `6792973.desched1` ran 24 ranks for 50 steps
+  with `timestep_seconds=900`. All 51 history files report `mdt=900`, proving
+  that the Python option reached CAM's native time manager through ABI v3.
 
 Machine-readable evidence is in `validation/fkessler_full_bfb.json`,
 `validation/adiabatic_full_bfb.json`, and
 `validation/notebook_session_smoke.json`; login-node evidence is in
-`validation/notebook_login_session.json`.
+`validation/notebook_login_session.json`, and the complete control-facade
+evidence is in `validation/full_control_notebook_smoke.json`.
+The non-default timestep evidence is in
+`validation/fkessler_dt900_smoke.json`.
 
 ## Scope boundary
 

@@ -17,8 +17,8 @@
     "run_dir": "/glade/derecho/scratch/ruitong/pycam-sima/FKESSLER_ne3pg3_gnu_24x50/FKESSLER_ne3pg3_gnu_24x50/run"
   },
   "python_driver": {
-    "job_id": "6790949.desched1",
-    "success_marker": "PYCAM_SIMA_FULL_JOB_OK job=6790949.desched1 ranks=24 steps=50",
+    "job_id": "6792903.desched1",
+    "success_marker": "PYCAM_SIMA_FULL_JOB_OK job=6792903.desched1 ranks=24 steps=50",
     "history_files": 51,
     "run_dir": "/glade/derecho/scratch/ruitong/pycam-sima/pyphase_bfb/FKESSLER_ne3pg3_24x50/run"
   },

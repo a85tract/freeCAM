@@ -17,6 +17,9 @@ def _session(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, *, env_script=None
     config_path.touch()
     config = SimpleNamespace(
         config_path=config_path,
+        dt_seconds=1800,
+        physics_suite="kessler",
+        mediator_present=False,
         mpi_ranks=24,
         native=SimpleNamespace(se_library=library),
     )
@@ -90,6 +93,7 @@ def test_phase_api_tracks_worker_status(
         "cam_run1",
     )
     requests = []
+    monkeypatch.setattr(session, "_validate_started_options", lambda: None)
 
     def request(payload):
         requests.append(payload)
@@ -117,3 +121,55 @@ def test_phase_api_tracks_worker_status(
 
     with pytest.raises(ValueError, match="unknown CAM phase"):
         session.run_phase("not_a_phase")
+
+
+def test_step_sends_the_explicit_plan_and_runtime_options_lock_after_start(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    session = _session(tmp_path, monkeypatch)
+    requests = []
+    session._started_options_fingerprint = session.options.fingerprint()
+    monkeypatch.setattr(session, "_ensure_running", lambda: None)
+
+    def request(payload):
+        requests.append(payload)
+        return {
+            "step": 1,
+            "phase_status": {
+                "step": 1,
+                "next_phase": "cam_run2",
+            },
+        }
+
+    monkeypatch.setattr(session, "_request", request)
+    assert session.step() == 1
+    assert requests[0]["step_plan"] == session.step_plan.to_payload()
+
+    session.options.timestep_seconds = 900
+    with pytest.raises(RuntimeError, match="changed after cam_init"):
+        session.step()
+
+
+def test_typed_complete_cam_parameter_facade(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    session = _session(tmp_path, monkeypatch)
+    session._fields = {
+        "air_temperature": {"shape": (27, 30), "dtype": "<f8"},
+        "eastward_wind": {"shape": (27, 30), "dtype": "<f8"},
+    }
+    monkeypatch.setattr(
+        session,
+        "get_field_stats",
+        lambda name, rank=0: {"field": name, "rank": rank, "mean": 240.0},
+    )
+
+    assert session.parameters.air_temperature.name == "air_temperature"
+    assert session.parameters.air_temperature.stats(rank=3) == {
+        "field": "air_temperature",
+        "rank": 3,
+        "mean": 240.0,
+    }
+    description = session.parameters.describe()
+    assert description["runtime"]["physics_profile"] == "kessler"
+    assert "air_temperature" in description["key_fields"]

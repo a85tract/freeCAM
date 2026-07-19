@@ -19,9 +19,9 @@
     "run_dir": "/glade/derecho/scratch/ruitong/pycam-sima/FADIAB_ne3pg3_gnu_24x50/FADIAB_ne3pg3_gnu_24x50/run"
   },
   "python_driver": {
-    "job_id": "6790932.desched1",
+    "job_id": "6792935.desched1",
     "pio_root": 0,
-    "success_marker": "PYCAM_SIMA_ADIABATIC_OK job=6790932.desched1 ranks=24 steps=50",
+    "success_marker": "PYCAM_SIMA_ADIABATIC_OK job=6792935.desched1 ranks=24 steps=50",
     "history_files": 51,
     "run_dir": "/glade/derecho/scratch/ruitong/pycam-sima/pyadiabatic_bfb/FADIAB_ne3pg3_24x50/run"
   },

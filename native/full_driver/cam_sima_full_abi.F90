@@ -19,7 +19,7 @@ module cam_sima_full_abi
   implicit none
   private
 
-  integer, parameter :: ABI_VERSION = 2
+  integer, parameter :: ABI_VERSION = 3
   integer, parameter :: ATM_ID = 2
   logical :: initialized = .false.
 
@@ -42,8 +42,8 @@ contains
     pycam_full_abi_version = ABI_VERSION
   end function pycam_full_abi_version
 
-  integer(c_int) function pycam_full_initialize(comm) bind(C)
-    integer(c_int), value :: comm
+  integer(c_int) function pycam_full_initialize(comm, timestep_seconds) bind(C)
+    integer(c_int), value :: comm, timestep_seconds
     integer :: rank, npes, lmpicom, rc
     type(ESMF_VM) :: vm
     real(kind_phys) :: eccen, obliq, mvelp, obliqr, lambm0, mvelpp
@@ -52,6 +52,7 @@ contains
 
     pycam_full_initialize = 1_c_int
     if (initialized) return
+    if (timestep_seconds <= 0_c_int) return
 
     call MPI_Comm_rank(comm, rank, rc)
     if (rc /= 0) return
@@ -90,7 +91,7 @@ contains
          brnch_retain_casename=.false., aqua_planet=.false., &
          single_column=.false., scmlat=-999._kind_phys, scmlon=-999._kind_phys, &
          eccen=eccen, obliqr=obliqr, lambm0=lambm0, mvelpp=mvelpp, &
-         perpetual_run=.false., perpetual_ymd=0, dtime=1800, &
+         perpetual_run=.false., perpetual_ymd=0, dtime=int(timestep_seconds), &
          start_ymd=10101, start_tod=0, ref_ymd=10101, ref_tod=0, &
          stop_ymd=99990101, stop_tod=0, curr_ymd=10101, curr_tod=0)
 
