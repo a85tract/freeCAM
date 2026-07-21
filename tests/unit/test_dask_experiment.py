@@ -91,6 +91,9 @@ def test_dask_future_fans_out_independent_branches(tmp_path: Path) -> None:
     assert results["plus-one"].stats["value"] == 11
     assert results["plus-two"].stats["value"] == 12
     assert summaries["plus-one"]["step"] == 1
+    assert summaries["plus-one"]["run_dir"] == "/run/plus-one"
+    assert summaries["plus-one"]["history_dir"] == "/history/plus-one"
+    assert summaries["plus-one"]["checkpoint_dir"] == "/checkpoint/plus-one"
     assert results["plus-one"].parent_branch == "base"
     assert results["plus-two"].parent_branch == "base"
     assert results["plus-one"].snapshot is not results["plus-two"].snapshot

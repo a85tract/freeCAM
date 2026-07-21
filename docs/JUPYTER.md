@@ -169,4 +169,5 @@ The base Future is a dependency of every branch, so Dask computes it once.
 The value retained by Dask is a serialized copy of every rank's Python-owned
 state, not a live MPI communicator. Each branch restores new
 Fortran-contiguous arrays and creates a new `MPI.COMM_WORLD`. `summaries()`
-returns only metadata; `gather()` also downloads the complete state bundles.
+returns only metadata, including `run_dir`, `history_dir`, and
+`checkpoint_dir`; `gather()` also downloads the complete state bundles.

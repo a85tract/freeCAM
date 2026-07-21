@@ -69,6 +69,8 @@ class DaskRunResult:
             "parent_branch": self.parent_branch,
             "step": self.stats.get("step"),
             "history_samples": self.stats.get("history_samples"),
+            "run_dir": self.run_dir,
+            "history_dir": self.history_dir,
             "checkpoint_dir": self.checkpoint_dir,
             "snapshot_nbytes": self.snapshot_nbytes,
             "pbs_job_id": self.pbs_job_id,

@@ -155,8 +155,9 @@ branches = experiments.fork(
 summaries = experiments.summaries(branches)
 ```
 
-`summaries()` returns only small metadata to the Notebook. `gather()` is also
-available, but it downloads each complete checkpoint bundle. Dask keeps a
+`summaries()` returns only small metadata to the Notebook, including each
+branch's run, history, checkpoint, and log paths. `gather()` is also available,
+but it downloads each complete checkpoint bundle. Dask keeps a
 bundle in distributed memory while its Future is referenced; the durable
 checkpoint directories allow restart after a Dask worker or PBS allocation has
 ended. `run-segment` is the non-socket MPI entry point used by these tasks.
