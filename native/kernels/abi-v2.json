@@ -1,0 +1,21 @@
+{
+  "abi_version": 2,
+  "description": "Stateless numerical kernels for the Python model",
+  "library": "libpycam_sima_kernels.so",
+  "persistent_native_state": false,
+  "exports": {
+    "pycam_sima_abi_version": [],
+    "pycam_sima_kessler_v1": ["ncol", "nz", "dt", "lv", "pref_pa", "rhoqr", "cpair", "rair", "rho", "z", "pk", "theta", "qv", "qc", "qr", "precl", "relhum", "errflg"],
+    "pycam_sima_kessler_update_v1": ["ncol", "nz", "dt", "theta", "exner", "temp_prev", "ttend_t"],
+    "pycam_sima_physics_diagnostics_v1": ["ncol", "nlev", "nconst", "update_dse", "gravity", "zvir", "temp", "q", "pdel", "pmid", "rair", "cpair", "phis", "zi", "zm", "dse"],
+    "pycam_sima_validate_se_dimensions_v2": ["np", "ngp", "errflg"],
+    "pycam_sima_laplace_weak_v2": ["nelem", "nlev", "np", "ra", "dvv", "dinv", "spheremp", "scalar", "laplace"],
+    "pycam_sima_vector_laplace_weak_v2": ["nelem", "nlev", "np", "ra", "nu_ratio", "dvv", "dmat", "dinv", "metinv", "metdet", "rmetdet", "spheremp", "mp", "vector", "laplace"],
+    "pycam_sima_hypervis_reference_v2": ["nelem", "nlev", "np", "ps0", "rair", "cpair", "gravit", "tref", "lapse", "cappa", "hyai", "hybi", "hyam", "hybm", "phis", "dp_ref", "t_ref", "ps_ref", "nu_scale_top"],
+    "pycam_sima_limiter_optim_v2": ["nelem", "nlev", "nq", "ptens", "sphweights", "minp", "maxp", "dpmass"],
+    "pycam_sima_wind_tendency_v2": ["nelem", "nlev", "np", "ra", "ps0", "cpair", "dvv", "dinv", "fcor", "u", "v", "tv", "pressure", "phi", "kappa", "vort", "vtens1", "vtens2"],
+    "pycam_sima_remap_fv3_v1": ["nx", "nlev", "nq", "identifier", "mass_field", "kord", "ptop", "field", "dp_source", "dp_target"],
+    "pycam_sima_fvm_displacement_v2": ["config", "irecons_levels", "pressure", "swept_flux", "displacement_maximum", "vertex_cartesian", "errflg"],
+    "pycam_sima_fvm_transport_v2": ["config", "irecons_levels", "dt", "subflux", "tracer", "dp", "psc", "se_flux", "dp_ref", "dp_ref_inverse", "area", "inverse_area", "cubeboundary", "displ_max", "flux_vec", "vtx_cart", "flux_orient", "ifct", "rot_matrix", "spherecentroid", "recons_metrics", "recons_metrics_integral", "jx_min", "jx_max", "jy_min", "jy_max", "ibase", "halo_weight", "centroid_stretch", "vertex_weights", "errflg"]
+  }
+}

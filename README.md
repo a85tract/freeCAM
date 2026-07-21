@@ -1,192 +1,142 @@
 # pycam-sima
 
-`pycam-sima` is a Python control layer for the fixed CAM-SIMA configuration
-`FKESSLER + ne3pg3 + L30 + moist_baroclinic_wave_dcmip2016`.
+`pycam-sima` is a Python-owned driver for one validated CAM-SIMA target:
+FKESSLER, `ne3np4.pg3`, L30, 24 MPI ranks, a 1800-second timestep, and the
+DCMIP2016 moist baroclinic-wave initial condition.
 
-It has two execution modes:
+Python owns the model lifecycle, clock, grid/decomposition metadata, persistent
+NumPy state, mpi4py communication, phase and CCPP-scheme ordering, and NetCDF
+history output.
+Every MPI worker constructs the CSLAM/FVM geometry directly in Python from the
+cubed-sphere topology and hybrid coordinate; no pre-generated grid file is
+loaded. Dimensions and runtime controls are passed from Python through ABI v2.
+FP-sensitive SE layout values are validated in a separate ABI call immediately
+before the numerical call, so a control argument cannot change the kernel's
+floating-point instruction order.
+The shared library contains stateless numerical kernels only. It does not
+export or call `cam_init`, `cam_run*`, ESMF, PIO, or CAM's native control loop.
+Its clean build does not load the CAM machine environment and has no MPI,
+ESMF, PIO, NetCDF, or HDF5 dynamic dependency.
 
-- `run` is the small Python-owned Kessler kernel path. Every numeric buffer is
-  allocated by NumPy and individual CCPP scheme wrappers borrow those buffers.
-- `run-full` is the complete CAM-SIMA path. Python and Taskflow schedule
-  `cam_init`, `cam_run1`, `cam_run2`, `cam_run3`, timestep finalization and time
-  advancement. The shared library contains the real SE dycore, analytic IC,
-  dynamics/physics mappings and Kessler suite. Long-lived CAM allocations are
-  writable zero-copy NumPy views registered in the Python `StatePool`.
+The current architecture is also available as an interactive
+[online diagram](https://pycam-sima-architecture-2026.bubblehuntr.chatgpt.site)
+and as the repository-local
+[`docs/pycam_sima_architecture.html`](docs/pycam_sima_architecture.html).
 
-The complete model exposes the same Python control concepts through the
-Notebook MPI controller:
+```text
+pycam_sima/
+  core/       MPI loader and remote-field utilities
+  model/      complete Python-owned CAM driver
+  notebook/   Jupyter/PBS controller and MPI worker
+```
+
+## Run the model
+
+```bash
+uv sync --extra test
+uv run pycam-sima build-kernels
+uv run python tools/validate_kessler_kernel.py
+readelf -d build/libpycam_sima_kernels.so
+
+RUN_DIR=/path/containing/atm_in \
+HISTORY_DIR=/new/history/directory \
+STEPS=50 qsub -V jobs/fkessler_model_24x50.pbs
+
+uv run pycam-sima compare-history \
+  /path/to/oracle/history /new/history/directory \
+  --files 51 --numeric-variables 26
+```
+
+The history gate compares filenames, timestamps, dtype, shape, and float64 bit
+patterns for all 51 output times and 26 diagnostic variables. The upstream
+CAM-SIMA executable is used only to produce an external test oracle; it is not
+a selectable pycam-sima backend.
+
+## Python API
 
 ```python
 from pycam_sima import (
-    FullCAMRuntimeOptions,
-    FullCAMStepPlan,
-    NotebookSession,
+    CAMDriver,
+    ModelConfig,
+    PHYSICS_AFTER_COUPLER,
 )
 
-options = FullCAMRuntimeOptions(
-    timestep_seconds=1800,
-    physics_profile="kessler",
-    mediator_present=False,
-)
-model = NotebookSession(
-    config,
-    run_dir=run_dir,
-    options=options,
-    step_plan=FullCAMStepPlan.default(),
-)
-model.start()
+config = ModelConfig.from_yaml("configs/fkessler_model.yaml")
+model = CAMDriver(config, run_dir=run_dir, history_dir=history_dir).start()
+assert model.backend.call_count == 0  # initialization is pure Python
 
-print(model.step_plan.describe())
-temperature = model.parameters.air_temperature.get(rank=0)
+temperature = model.get_field("air_temperature")
+model.prepare_initial_step()          # writes nstep=0
+model.run_scheme_group(PHYSICS_AFTER_COUPLER)
 model.step()
+model.finalize()
 ```
 
-The runtime options are fixed at `cam_init`. Live fields may be changed at any
-Python boundary. Changing or disabling a required complete-CAM phase requires
-an explicit `unsafe=True`; use the FADIAB profile for a scientifically valid
-SE dynamics-only run.
-
-The small Kessler path also exposes a declarative Python step plan and mutable
-runtime controls:
+The fixed Kessler suite exposes all 19 `physics_before_coupler` schemes and all
+5 `physics_after_coupler` schemes individually. `model.scheme_plan.describe()`
+shows their exact pinned-XML order, and `run_scheme()` pauses after one scheme:
 
 ```python
-from pycam_sima import FKesslerDriver, RuntimeOptions, StepPlan
-from pycam_sima.config import CaseConfig
+model.run_scheme("kessler", group="physics_before_coupler")
 
-config = CaseConfig.from_yaml("configs/fkessler_ne3pg3.yaml")
-options = RuntimeOptions(
-    timestep_seconds=1800,
-    physics_before=True,
-    physics_after=True,
-    dynamics=True,
+# Explicit control experiments are marked unsafe because they are not BFB gates.
+model.scheme_plan.disable("kessler_diagnostics", unsafe=True)
+model.scheme_plan.move(
+    "kessler", after="kessler_update", unsafe=True,
 )
-model = FKesslerDriver(config, options=options, step_plan=StepPlan.default())
-model.initialize()
-
-print(model.step_plan.describe(model.options))
-model.parameters.surface_reference_pressure = 98_500.0
-model.step()
-temperature = model.pool["air_temperature"]
+model.scheme_plan.reset()
 ```
 
-Optional physics/dynamics sections can be switched between steps. Required
-lifecycle phases are protected, and changing CAM's default order requires an
-explicit `unsafe=True`. See `docs/KERNEL_STEP_CONTROL.md` for parameter edits,
-phase-boundary observers, and order experiments.
+`step()` executes only enabled schemes, in the editable plan order. Scheme
+names are group-qualified internally because `check_energy_scaling` occurs in
+both groups. The default unmodified plan is the only scientifically validated
+order.
 
-The source is pinned at `external/CAM-SIMA` commit
-`f8daa568eae2696b7c4ebff7768f02f5d097d9df`.
+All persistent fields have `owner="python"`. Prognostic, tendency, and process
+arrays are writable at phase boundaries. Static grid/topology arrays require
+`unsafe=True`; kernel calls must preserve every NumPy address.
 
-## Full-model workflow
+`FVMKernelConfig.from_pool(model.pool)` derives `nc`, `nlev`, tracer count,
+halo widths, reconstruction order, quadrature count, jet-level range, active
+level range, and the large-Courant switch in Python. The resulting C-compatible
+configuration is supplied to both FVM kernel calls; the Fortran wrappers do not
+define case dimensions or timestep controls.
 
-Create the 24-rank, 50-step native reference case:
+To preserve CAM's BFB floating-point instruction order, `build-kernels` also
+generates a compile-time specialization module from
+`configs/fkessler_model.yaml`. ABI v2 checks the Python values against that
+specialization on every FVM call. A different shape therefore requires a new
+Python configuration and rebuild; it never silently reuses the wrong layout.
 
-```bash
-uv run python tools/create_reference_case.py --build --submit
-```
+## Jupyter
 
-Build the complete position-independent CAM/SE shared library from that case:
-
-```bash
-uv run python tools/build_full_native.py \
-  --case-root reference/cases/FKESSLER_ne3pg3_gnu_24x50
-
-uv run python tools/build_full_native.py \
-  --case-root reference/cases/FADIAB_ne3pg3_gnu_24x50 \
-  --output build/libpycam_sima_adiabatic_full.so
-```
-
-Run the Python driver through PBS:
-
-```bash
-qsub jobs/fkessler_full_24x50.pbs
-```
-
-Compare the five prognostic history fields, failing closed on a missing file,
-extra file, shape/dtype change, or one-bit numerical difference:
-
-```bash
-uv run pycam-sima compare-history \
-  /glade/derecho/scratch/ruitong/pycam-sima/FKESSLER_ne3pg3_gnu_24x50/FKESSLER_ne3pg3_gnu_24x50/run \
-  /glade/derecho/scratch/ruitong/pycam-sima/pyfull_bfb/FKESSLER_ne3pg3_24x50/run
-```
-
-The validated run compared 51 timestamps (the nstep-0 send cycle plus 50
-requested steps). `T`, `Q`, `U`, `V`, and `PS` were bitwise identical; a
-second pass also verified all 26 numeric variables in the history files.
-Evidence is recorded in `validation/fkessler_full_bfb.json`.
-
-## Inspecting state in Python
-
-Interactive sessions can also execute one top-level CAM phase at a time:
-
-```python
-model.run_phase("cam_run2")
-temperature_after_physics = model.get_field("air_temperature", rank=0)
-model.run_phase("cam_run3")
-temperature_after_dynamics = model.get_field("air_temperature", rank=0)
-```
-
-The safe default order is checked by a Python state machine. See
-`docs/PHASE_CONTROL.md` for phase status, explicit unsafe-order experiments,
-and the `FADIAB` no-physics-forcing dynamics configuration.
-
-Use `--watch` at any Python phase boundary:
-
-```bash
-mpiexec -n 24 .venv/bin/python -m pycam_sima.cli run-full \
-  configs/fkessler_ne3pg3.yaml \
-  --run-dir /path/to/runtime-directory \
-  --steps 50 \
-  --watch air_temperature \
-  --watch-event step_end
-```
-
-The full state registry currently exposes temperature, winds, wet/dry surface
-and layer pressures, interface pressures, geopotential/geopotential height,
-omega, Exner function, dry static energy, total physics tendencies, and the
-complete CCPP constituent array. Interactive observers may edit these arrays;
-validation observers are read-only. `--snapshot-dir` writes selected fields to
-per-rank NPZ snapshots.
-
-## Jupyter Notebook
-
-An ordinary single-process Notebook can control a separate 24-rank MPI worker
-and receive live fields without writing an intermediate snapshot:
+`NotebookSession` controls 24 MPI workers from a normal one-process Notebook:
 
 ```python
 from pycam_sima import NotebookSession
 
 with NotebookSession(
-    "configs/fkessler_ne3pg3.yaml",
-    run_dir="/path/to/fresh/runtime-directory",
-    env_script="reference/cases/FKESSLER_ne3pg3_gnu_24x50/.env_mach_specific.sh",
+    "configs/fkessler_model.yaml",
+    run_dir=run_dir,
 ) as model:
+    model.prepare_initial_step()
+    model.scheme_plan.describe("physics_before_coupler")
+    model.run_scheme("kessler", group="physics_before_coupler")
     model.step()
-    temperature = model.parameters.air_temperature.get(rank=0)
-    print(temperature.min(), temperature.max())
+    field = model.parameters.air_temperature.get(rank=0)
 ```
 
-From a Derecho login-node Notebook, `start()` automatically submits the
-24-rank worker through PBS; inside an existing compute allocation it launches
-locally. See `docs/JUPYTER.md` for field metadata, all-rank statistics, live
-field modification, cleanup, and global-layout limitations.
+On a Derecho login node, `start()` submits the worker through PBS; inside an
+allocation it launches locally. The only maintained Notebook is
+`examples/try_notebook_session.ipynb`. See `docs/JUPYTER.md` for details.
 
-The single maintained interactive Notebook is:
-
-```text
-examples/try_notebook_session.ipynb
-```
-
-It keeps the model alive between cells. `examples/try_notebook_session.py` is
-the non-interactive command-line companion.
-
-## Development checks
+## Development
 
 ```bash
-uv sync --extra build --extra test
 uv run pytest
-uv run pycam-sima build-native
-uv run pycam-sima inspect-contract
-qsub jobs/fkessler_kernel_smoke_24.pbs
+uv run python tools/validate_kessler_kernel.py
+git diff --check
 ```
+
+The CAM-SIMA source is pinned at commit
+`f8daa568eae2696b7c4ebff7768f02f5d097d9df`.

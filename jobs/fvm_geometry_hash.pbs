@@ -1,0 +1,16 @@
+#!/bin/bash
+#PBS -A UCUB0188
+#PBS -q develop
+#PBS -l select=1:ncpus=24:mpiprocs=24:mem=8GB
+#PBS -l walltime=00:05:00
+#PBS -j oe
+#PBS -N pycam_fvm_hash
+
+set -euo pipefail
+cd /glade/work/ruitong/pycam-sima
+source reference/cases/FKESSLER_ne3pg3_gnu_24x50/.env_mach_specific.sh >/dev/null 2>&1
+MPI_ROOT=${CRAY_MPICH_DIR:-/opt/cray/pe/mpich/8.1.27/ofi/gnu/9.1}
+export LD_LIBRARY_PATH="$MPI_ROOT/lib-abi-mpich:$MPI_ROOT/lib:${LD_LIBRARY_PATH:-}"
+exec mpiexec -n 24 .venv/bin/python tools/hash_fvm_geometry.py \
+  --vertical-coordinate /glade/campaign/cesm/cesmdata/cseg/inputdata/atm/cam/inic/se/cami_0000-01-01_ne3np4_L30_c120315.nc \
+  --load-library build/libpycam_sima_kernels.so

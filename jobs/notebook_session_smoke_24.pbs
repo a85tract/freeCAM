@@ -21,7 +21,7 @@ unset PBS_NODEFILE
 cd "$REPO"
 
 "$REPO/.venv/bin/python" tools/notebook_session_smoke.py \
-  --config "$REPO/configs/fkessler_ne3pg3.yaml" \
+  --config "$REPO/configs/fkessler_model.yaml" \
   --run-dir "$RUN_DIR" \
   --env-script "$CASE/.env_mach_specific.sh" \
   --log-path "$RUN_DIR/mpi-worker.log"

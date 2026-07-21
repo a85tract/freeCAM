@@ -1,0 +1,717 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="pycam-sima 当前 Python-owned CAM 架构、初始化、单步流程、MPI 和 ABI 数据边界。">
+  <title>pycam-sima · 当前架构</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #07111f;
+      --bg-soft: #0b1729;
+      --panel: rgba(15, 29, 49, .88);
+      --panel-strong: #10233b;
+      --line: rgba(157, 183, 217, .2);
+      --text: #eff6ff;
+      --muted: #9eb0c8;
+      --python: #54d7b7;
+      --python-soft: rgba(84, 215, 183, .13);
+      --native: #ffb45a;
+      --native-soft: rgba(255, 180, 90, .13);
+      --mpi: #77a8ff;
+      --mpi-soft: rgba(119, 168, 255, .13);
+      --pink: #f28bb8;
+      --ok: #6ee7a8;
+      --danger: #ff7c83;
+      --shadow: 0 24px 70px rgba(0, 0, 0, .3);
+      --radius: 22px;
+    }
+
+    [data-theme="light"] {
+      color-scheme: light;
+      --bg: #eef5fb;
+      --bg-soft: #f7fbff;
+      --panel: rgba(255, 255, 255, .9);
+      --panel-strong: #ffffff;
+      --line: rgba(36, 60, 90, .16);
+      --text: #10233b;
+      --muted: #5f7188;
+      --python-soft: rgba(16, 145, 116, .1);
+      --native-soft: rgba(205, 116, 15, .1);
+      --mpi-soft: rgba(53, 104, 205, .1);
+      --python: #0e8f72;
+      --native: #c66b08;
+      --mpi: #3568cd;
+      --pink: #b54b7b;
+      --ok: #128b50;
+      --danger: #c53b44;
+      --shadow: 0 22px 60px rgba(67, 92, 121, .16);
+    }
+
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background:
+        radial-gradient(circle at 10% 0%, rgba(84, 215, 183, .12), transparent 31rem),
+        radial-gradient(circle at 90% 6%, rgba(119, 168, 255, .12), transparent 34rem),
+        var(--bg);
+      color: var(--text);
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      line-height: 1.6;
+    }
+
+    button { font: inherit; }
+    code, pre { font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace; }
+    code { color: var(--python); }
+
+    .page { width: min(1180px, calc(100% - 32px)); margin: 0 auto; padding: 24px 0 64px; }
+    .topbar {
+      position: sticky;
+      top: 12px;
+      z-index: 20;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 20px;
+      padding: 10px 12px 10px 18px;
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      background: color-mix(in srgb, var(--bg-soft) 82%, transparent);
+      backdrop-filter: blur(18px);
+      box-shadow: 0 14px 36px rgba(0, 0, 0, .13);
+    }
+
+    .brand { display: flex; align-items: center; gap: 11px; font-weight: 750; letter-spacing: -.02em; }
+    .brand-mark {
+      display: grid;
+      place-items: center;
+      width: 32px;
+      height: 32px;
+      border-radius: 10px;
+      color: #07111f;
+      background: linear-gradient(135deg, var(--python), #9cf3dd);
+      box-shadow: 0 0 30px rgba(84, 215, 183, .25);
+    }
+    .top-actions { display: flex; gap: 8px; }
+    .icon-button {
+      width: 38px;
+      height: 38px;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      color: var(--text);
+      background: var(--panel);
+      cursor: pointer;
+    }
+    .icon-button:hover { border-color: var(--python); transform: translateY(-1px); }
+
+    .hero {
+      display: grid;
+      grid-template-columns: 1.55fr .85fr;
+      gap: 22px;
+      align-items: stretch;
+      padding: 84px 0 34px;
+    }
+    .eyebrow {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 10px;
+      border: 1px solid rgba(110, 231, 168, .3);
+      border-radius: 999px;
+      color: var(--ok);
+      background: rgba(110, 231, 168, .07);
+      font-size: 12px;
+      font-weight: 750;
+      letter-spacing: .08em;
+      text-transform: uppercase;
+    }
+    .dot { width: 8px; height: 8px; border-radius: 50%; background: currentColor; box-shadow: 0 0 14px currentColor; }
+    h1 { max-width: 770px; margin: 20px 0 18px; font-size: clamp(44px, 7vw, 78px); line-height: .98; letter-spacing: -.065em; }
+    .gradient-text {
+      color: transparent;
+      background: linear-gradient(100deg, var(--python), #8db6ff 58%, var(--native));
+      background-clip: text;
+      -webkit-background-clip: text;
+    }
+    .lead { max-width: 760px; margin: 0; color: var(--muted); font-size: clamp(18px, 2vw, 22px); }
+    .lead strong { color: var(--text); }
+
+    .hero-card {
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      min-height: 270px;
+      padding: 24px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: linear-gradient(145deg, var(--panel-strong), var(--panel));
+      box-shadow: var(--shadow);
+    }
+    .hero-card-label { color: var(--muted); font-size: 12px; font-weight: 750; letter-spacing: .12em; text-transform: uppercase; }
+    .hero-formula { margin: 18px 0; font-size: clamp(24px, 3vw, 34px); font-weight: 780; line-height: 1.25; letter-spacing: -.04em; }
+    .hero-formula .py { color: var(--python); }
+    .hero-formula .ft { color: var(--native); }
+    .hero-note { color: var(--muted); font-size: 14px; }
+
+    .metrics { display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px; margin: 10px 0 44px; }
+    .metric { padding: 18px; border: 1px solid var(--line); border-radius: 17px; background: var(--panel); }
+    .metric b { display: block; font-size: 26px; line-height: 1.1; letter-spacing: -.04em; }
+    .metric span { color: var(--muted); font-size: 12px; }
+
+    .tabs {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 22px;
+      overflow-x: auto;
+      scrollbar-width: thin;
+      padding-bottom: 4px;
+    }
+    .tab {
+      flex: 0 0 auto;
+      padding: 10px 15px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      color: var(--muted);
+      background: transparent;
+      cursor: pointer;
+    }
+    .tab:hover { color: var(--text); border-color: color-mix(in srgb, var(--python) 55%, var(--line)); }
+    .tab[aria-selected="true"] { color: #07111f; border-color: var(--python); background: var(--python); font-weight: 750; }
+    .tab-panel { display: none; animation: appear .25s ease; }
+    .tab-panel.active { display: block; }
+    @keyframes appear { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+
+    .section-head { display: flex; justify-content: space-between; align-items: end; gap: 18px; margin: 0 0 20px; }
+    .section-head h2 { margin: 0; font-size: clamp(28px, 4vw, 44px); letter-spacing: -.045em; line-height: 1.05; }
+    .section-head p { max-width: 570px; margin: 0; color: var(--muted); }
+
+    .card { border: 1px solid var(--line); border-radius: var(--radius); background: var(--panel); box-shadow: var(--shadow); }
+    .architecture { padding: 24px; }
+    .layer {
+      position: relative;
+      display: grid;
+      grid-template-columns: 170px 1fr;
+      gap: 18px;
+      padding: 19px;
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      background: var(--bg-soft);
+    }
+    .layer + .flow-arrow { display: grid; place-items: center; height: 44px; color: var(--muted); }
+    .flow-arrow span { display: inline-flex; align-items: center; gap: 9px; font-size: 12px; }
+    .flow-arrow span::before, .flow-arrow span::after { content: ""; width: 42px; height: 1px; background: var(--line); }
+    .layer-tag { display: flex; flex-direction: column; justify-content: center; }
+    .layer-index { color: var(--muted); font-size: 11px; font-weight: 750; letter-spacing: .12em; }
+    .layer-title { margin-top: 4px; font-size: 18px; font-weight: 760; }
+    .layer-body { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+    .node { padding: 14px; border: 1px solid var(--line); border-radius: 14px; background: var(--panel); }
+    .node b { display: block; margin-bottom: 3px; }
+    .node small { display: block; color: var(--muted); line-height: 1.45; }
+    .node.python { border-color: color-mix(in srgb, var(--python) 40%, var(--line)); background: var(--python-soft); }
+    .node.mpi { border-color: color-mix(in srgb, var(--mpi) 40%, var(--line)); background: var(--mpi-soft); }
+    .node.native { border-color: color-mix(in srgb, var(--native) 42%, var(--line)); background: var(--native-soft); }
+    .layer.python-layer { border-left: 4px solid var(--python); }
+    .layer.native-layer { border-left: 4px solid var(--native); }
+    .layer.mpi-layer { border-left: 4px solid var(--mpi); }
+
+    .legend { display: flex; flex-wrap: wrap; gap: 18px; margin-top: 18px; color: var(--muted); font-size: 12px; }
+    .legend span { display: inline-flex; align-items: center; gap: 7px; }
+    .swatch { width: 10px; height: 10px; border-radius: 3px; background: currentColor; }
+
+    .notice {
+      display: grid;
+      grid-template-columns: auto 1fr;
+      gap: 13px;
+      margin-top: 18px;
+      padding: 17px 19px;
+      border: 1px solid color-mix(in srgb, var(--python) 35%, var(--line));
+      border-radius: 17px;
+      background: var(--python-soft);
+    }
+    .notice strong { display: block; margin-bottom: 2px; }
+    .notice p { margin: 0; color: var(--muted); font-size: 14px; }
+
+    .steps { display: grid; gap: 12px; counter-reset: stage; }
+    .step-card {
+      display: grid;
+      grid-template-columns: 54px 240px 1fr;
+      gap: 16px;
+      align-items: center;
+      padding: 16px 18px;
+      border: 1px solid var(--line);
+      border-radius: 17px;
+      background: var(--panel);
+    }
+    .step-number { display: grid; place-items: center; width: 38px; height: 38px; border-radius: 12px; color: #07111f; background: var(--python); font-weight: 800; }
+    .step-card b { line-height: 1.2; }
+    .step-card p { margin: 0; color: var(--muted); font-size: 14px; }
+
+    .timeline { position: relative; display: grid; gap: 14px; }
+    .timeline::before { content: ""; position: absolute; left: 24px; top: 24px; bottom: 24px; width: 2px; background: var(--line); }
+    .phase-group { position: relative; padding: 18px 18px 18px 64px; border: 1px solid var(--line); border-radius: 18px; background: var(--panel); }
+    .phase-group::before { content: attr(data-order); position: absolute; left: 11px; top: 18px; display: grid; place-items: center; width: 28px; height: 28px; border: 2px solid var(--bg); border-radius: 50%; color: #07111f; background: var(--python); font-size: 12px; font-weight: 800; z-index: 1; }
+    .phase-group.loop::before { background: var(--mpi); }
+    .phase-group.finish::before { background: var(--native); }
+    .phase-title { display: flex; justify-content: space-between; gap: 12px; align-items: center; }
+    .phase-title h3 { margin: 0; font-size: 17px; }
+    .loop-badge { padding: 3px 8px; border-radius: 999px; color: var(--mpi); background: var(--mpi-soft); font-size: 11px; font-weight: 800; }
+    .phase-list { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 12px; }
+    .chip { padding: 5px 9px; border: 1px solid var(--line); border-radius: 9px; color: var(--muted); background: var(--bg-soft); font-family: "SFMono-Regular", Consolas, monospace; font-size: 11px; }
+    .chip.native { color: var(--native); border-color: color-mix(in srgb, var(--native) 33%, var(--line)); }
+    .branch { margin-top: 12px; padding: 9px 11px; border-left: 3px solid var(--mpi); color: var(--muted); background: var(--mpi-soft); font-size: 13px; }
+
+    .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+    .panel-pad { padding: 22px; }
+    .panel-pad h3 { margin: 0 0 7px; font-size: 20px; letter-spacing: -.025em; }
+    .panel-pad > p { margin: 0 0 18px; color: var(--muted); }
+    .data-path { display: grid; gap: 8px; }
+    .data-hop { display: flex; gap: 12px; align-items: center; padding: 11px 13px; border: 1px solid var(--line); border-radius: 13px; background: var(--bg-soft); }
+    .hop-index { flex: 0 0 auto; display: grid; place-items: center; width: 25px; height: 25px; border-radius: 8px; color: #07111f; background: var(--python); font-size: 11px; font-weight: 800; }
+    .data-hop small { display: block; color: var(--muted); }
+    .boundary { margin: 13px 0; border-top: 1px dashed var(--native); text-align: center; }
+    .boundary span { position: relative; top: -11px; padding: 0 9px; color: var(--native); background: var(--panel); font-size: 11px; font-weight: 750; }
+
+    pre { position: relative; margin: 0; padding: 18px; overflow: auto; border: 1px solid var(--line); border-radius: 15px; color: #dcecff; background: #07101d; font-size: 12px; line-height: 1.65; }
+    [data-theme="light"] pre { color: #daeaff; background: #0b1c31; }
+    .copy { position: absolute; right: 9px; top: 9px; padding: 5px 8px; border: 1px solid rgba(255,255,255,.16); border-radius: 8px; color: #b8c9db; background: rgba(255,255,255,.05); cursor: pointer; font-size: 11px; }
+
+    .mpi-flow { display: grid; grid-template-columns: .8fr 54px 1.25fr; gap: 8px; align-items: stretch; }
+    .mpi-column { padding: 20px; border: 1px solid var(--line); border-radius: 18px; background: var(--panel); }
+    .mpi-column h3 { margin: 0 0 12px; }
+    .mpi-column p { color: var(--muted); font-size: 14px; }
+    .connector { display: grid; place-items: center; color: var(--mpi); font-size: 28px; }
+    .ranks { display: grid; grid-template-columns: repeat(6, 1fr); gap: 6px; margin: 15px 0; }
+    .rank { display: grid; place-items: center; aspect-ratio: 1; border: 1px solid color-mix(in srgb, var(--mpi) 45%, var(--line)); border-radius: 9px; color: var(--mpi); background: var(--mpi-soft); font-size: 11px; font-weight: 800; }
+    .rank.root { color: #07111f; background: var(--mpi); }
+
+    .status-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 13px; }
+    .status-card { padding: 19px; border: 1px solid var(--line); border-radius: 17px; background: var(--panel); }
+    .status-card .value { margin: 8px 0 3px; font-size: 28px; font-weight: 800; letter-spacing: -.04em; }
+    .status-card small { color: var(--muted); }
+    .status-card.ok { border-top: 3px solid var(--ok); }
+    .status-card.bound { border-top: 3px solid var(--native); }
+    .status-card.python { border-top: 3px solid var(--python); }
+
+    .scope { margin-top: 18px; padding: 22px; }
+    .scope h3 { margin-top: 0; }
+    .scope-columns { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
+    .scope ul { margin: 8px 0 0; padding-left: 19px; color: var(--muted); }
+    .scope li + li { margin-top: 6px; }
+    .yes { color: var(--ok); }
+    .no { color: var(--danger); }
+
+    footer { display: flex; justify-content: space-between; gap: 20px; margin-top: 48px; padding: 22px 2px 0; border-top: 1px solid var(--line); color: var(--muted); font-size: 12px; }
+
+    @media (max-width: 900px) {
+      .hero { grid-template-columns: 1fr; padding-top: 58px; }
+      .metrics { grid-template-columns: repeat(2, 1fr); }
+      .layer { grid-template-columns: 1fr; }
+      .layer-body { grid-template-columns: 1fr; }
+      .step-card { grid-template-columns: 44px 1fr; }
+      .step-card p { grid-column: 2; }
+      .two-col, .scope-columns { grid-template-columns: 1fr; }
+      .mpi-flow { grid-template-columns: 1fr; }
+      .connector { transform: rotate(90deg); height: 44px; }
+      .status-grid { grid-template-columns: 1fr 1fr; }
+    }
+
+    @media (max-width: 560px) {
+      .page { width: min(100% - 20px, 1180px); padding-top: 10px; }
+      .brand span:last-child { display: none; }
+      .hero { padding-top: 42px; }
+      h1 { font-size: 44px; }
+      .metrics, .status-grid { grid-template-columns: 1fr; }
+      .architecture { padding: 12px; }
+      .layer { padding: 14px; }
+      .section-head { display: block; }
+      .section-head p { margin-top: 9px; }
+      .ranks { grid-template-columns: repeat(4, 1fr); }
+      footer { display: block; }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after { scroll-behavior: auto !important; animation: none !important; transition: none !important; }
+    }
+  </style>
+</head>
+<body>
+  <main class="page">
+    <nav class="topbar" aria-label="页面导航">
+      <div class="brand"><span class="brand-mark">Py</span><span>pycam-sima architecture</span></div>
+      <div class="top-actions">
+        <button class="icon-button" id="printButton" title="打印或导出 PDF" aria-label="打印或导出 PDF">⇩</button>
+        <button class="icon-button" id="themeButton" title="切换颜色主题" aria-label="切换颜色主题">☼</button>
+      </div>
+    </nav>
+
+    <header class="hero">
+      <div>
+        <span class="eyebrow"><span class="dot"></span>24-rank · 50-step · BFB verified</span>
+        <h1>现在的 <span class="gradient-text">pycam-sima</span><br>是什么架构？</h1>
+        <p class="lead"><strong>Python 是模型本身，Fortran 只是计算函数库。</strong>每个 MPI rank 都运行一个 Python worker，由 Python 创建网格、申请状态、安排 phase、执行通信并写输出；Fortran 不再拥有模型生命周期。</p>
+      </div>
+      <aside class="hero-card">
+        <span class="hero-card-label">一句话架构</span>
+        <div class="hero-formula"><span class="py">Python owns state + control</span><br>↓ ABI v2<br><span class="ft">stateless Fortran kernels</span></div>
+        <div class="hero-note">不是 Python → cam_run*；也不是完整 CAM 编译成一个大 `.so`。</div>
+      </aside>
+    </header>
+
+    <section class="metrics" aria-label="当前验证指标">
+      <div class="metric"><b>24</b><span>Python MPI workers</span></div>
+      <div class="metric"><b>214</b><span>Python-owned canonical fields</span></div>
+      <div class="metric"><b>24</b><span>independent CCPP scheme interfaces</span></div>
+      <div class="metric"><b>51</b><span>history timestamps</span></div>
+      <div class="metric"><b>BFB</b><span>26 numeric variables</span></div>
+    </section>
+
+    <div class="tabs" role="tablist" aria-label="架构内容">
+      <button class="tab" role="tab" aria-selected="true" aria-controls="overview" id="tab-overview">总览</button>
+      <button class="tab" role="tab" aria-selected="false" aria-controls="initialization" id="tab-initialization">初始化</button>
+      <button class="tab" role="tab" aria-selected="false" aria-controls="step-flow" id="tab-step-flow">model.step()</button>
+      <button class="tab" role="tab" aria-selected="false" aria-controls="schemes" id="tab-schemes">CCPP schemes</button>
+      <button class="tab" role="tab" aria-selected="false" aria-controls="state-abi" id="tab-state-abi">变量池与 ABI</button>
+      <button class="tab" role="tab" aria-selected="false" aria-controls="notebook-mpi" id="tab-notebook-mpi">Notebook 与 MPI</button>
+      <button class="tab" role="tab" aria-selected="false" aria-controls="validation" id="tab-validation">验证与边界</button>
+    </div>
+
+    <section class="tab-panel active" id="overview" role="tabpanel" aria-labelledby="tab-overview">
+      <div class="section-head">
+        <h2>五层结构</h2>
+        <p>控制权从 Notebook 到 MPI workers，再进入 Python driver 和状态池。只有纯数值计算才越过 ABI 进入 Fortran。</p>
+      </div>
+      <div class="architecture card">
+        <div class="layer mpi-layer">
+          <div class="layer-tag"><span class="layer-index">LAYER 01</span><span class="layer-title">交互控制</span></div>
+          <div class="layer-body">
+            <div class="node mpi"><b>Jupyter Notebook</b><small>用户调用 `start / step / run_phase / run_scheme / get_field / set_field`</small></div>
+            <div class="node mpi"><b>NotebookSession</b><small>创建监听 socket；在登录节点提交 PBS，或在计算节点本地启动</small></div>
+            <div class="node mpi"><b>Rank 0 command bridge</b><small>接收命令并用 `comm.bcast` 发给全部 worker</small></div>
+          </div>
+        </div>
+        <div class="flow-arrow"><span>socket command + copied result</span></div>
+        <div class="layer python-layer">
+          <div class="layer-tag"><span class="layer-index">LAYER 02</span><span class="layer-title">24 个 Python workers</span></div>
+          <div class="layer-body">
+            <div class="node python"><b>InitializationPlan</b><small>配置、分块、FVM geometry、初始场、时间和参数全部由 Python 初始化</small></div>
+            <div class="node python"><b>CAMDriver + SchemePlan</b><small>定义 phase、19+5 个 CCPP scheme、两层循环、时钟推进和状态转换</small></div>
+            <div class="node mpi"><b>mpi4py COMM_WORLD</b><small>halo exchange、collective、rank 间同步和 history 协调</small></div>
+          </div>
+        </div>
+        <div class="flow-arrow"><span>direct NumPy access</span></div>
+        <div class="layer python-layer">
+          <div class="layer-tag"><span class="layer-index">LAYER 03</span><span class="layer-title">Python 状态与输出</span></div>
+          <div class="layer-body">
+            <div class="node python"><b>StatePool</b><small>每个 rank 本地、Fortran-contiguous 的 NumPy arrays；Python 持有生命周期</small></div>
+            <div class="node python"><b>Clock + contracts</b><small>NO_LEAP 时间、字段 shape/dtype/owner/writable 规则和指针稳定性</small></div>
+            <div class="node python"><b>HistoryWriter</b><small>Python 写 NetCDF history；oracle 只用于外部比较</small></div>
+          </div>
+        </div>
+        <div class="flow-arrow"><span>ctypes pointers + scalar/config arguments</span></div>
+        <div class="layer native-layer">
+          <div class="layer-tag"><span class="layer-index">LAYER 04</span><span class="layer-title">ABI v2</span></div>
+          <div class="layer-body">
+            <div class="node native"><b>KernelBackend</b><small>检查 dtype、shape、Fortran layout；把 NumPy 地址和参数传给 `bind(C)`</small></div>
+            <div class="node native"><b>FVMKernelConfig</b><small>从 StatePool 推导维度、halo、重构和 active-level 控制</small></div>
+            <div class="node native"><b>Pointer stability</b><small>每个 public phase 和 scheme 前后核对数组地址，kernel 不得替换 Python 存储</small></div>
+          </div>
+        </div>
+        <div class="flow-arrow"><span>in-place numerical update</span></div>
+        <div class="layer native-layer">
+          <div class="layer-tag"><span class="layer-index">LAYER 05</span><span class="layer-title">无状态 Fortran `.so`</span></div>
+          <div class="layer-body">
+            <div class="node native"><b>Kessler kernels</b><small>微物理和 update 数值计算</small></div>
+            <div class="node native"><b>SE / FVM / remap kernels</b><small>动力、transport、limiter、vertical remap 等 FP-sensitive kernel</small></div>
+            <div class="node native"><b>No framework runtime</b><small>不保存数组指针；不包含 MPI、ESMF、PIO 或 `cam_run*`</small></div>
+          </div>
+        </div>
+        <div class="legend">
+          <span style="color:var(--python)"><i class="swatch"></i>Python ownership</span>
+          <span style="color:var(--mpi)"><i class="swatch"></i>control / MPI communication</span>
+          <span style="color:var(--native)"><i class="swatch"></i>native numerical boundary</span>
+        </div>
+      </div>
+      <div class="notice">
+        <span>◎</span>
+        <div><strong>最关键的变化</strong><p>以前是 Fortran/CAM 创建状态后让 Python 看指针；现在相反：Python 先申请 NumPy 数组，Fortran kernel 临时接收这些数组的地址并原地计算。</p></div>
+      </div>
+    </section>
+
+    <section class="tab-panel" id="initialization" role="tabpanel" aria-labelledby="tab-initialization">
+      <div class="section-head">
+        <h2>初始化完全在 Python</h2>
+        <p><code>model.start()</code> 执行十个可描述的串行任务。完成时 native call count 必须仍然是 0。</p>
+      </div>
+      <div class="steps">
+        <div class="step-card"><span class="step-number">01</span><b>parse_configuration</b><p>验证 YAML、固定 CAM-SIMA revision，并读取 `atm_in`。</p></div>
+        <div class="step-card"><span class="step-number">02</span><b>establish_mpi_layout</b><p>确认 `COMM_WORLD` 正好有 24 ranks，并验证当前 rank。</p></div>
+        <div class="step-card"><span class="step-number">03</span><b>allocate_state_pool</b><p>按本地分块尺寸申请 214 个 Python-owned、Fortran-contiguous NumPy arrays。</p></div>
+        <div class="step-card"><span class="step-number">04</span><b>load_vertical_coordinate</b><p>Python 读取 hybrid coordinate，并放入 StatePool。</p></div>
+        <div class="step-card"><span class="step-number">05</span><b>constants_and_clock</b><p>初始化物理常数、NO_LEAP clock、动力子步参数和 hyperviscosity 参数。</p></div>
+        <div class="step-card"><span class="step-number">06</span><b>grid_and_topology</b><p>Python 建立 cubed-sphere 分块，并从拓扑独立生成完整 FVM geometry；不读取预生成 geometry 文件。</p></div>
+        <div class="step-card"><span class="step-number">07</span><b>register_constituents</b><p>建立 vapor、cloud water、rain water 的 index、下限和分子量。</p></div>
+        <div class="step-card"><span class="step-number">08</span><b>DCMIP2016 initial state</b><p>Python 生成 moist baroclinic-wave 初始场并完成所需 MPI 操作。</p></div>
+        <div class="step-card"><span class="step-number">09</span><b>derived_buffers</b><p>初始化 tracer aliases、FVM state、质量矩阵、压力和诊断缓冲区。</p></div>
+        <div class="step-card"><span class="step-number">10</span><b>validate_and_seal</b><p>检查 shape、dtype、ownership、Fortran layout、有限值和 alias 共享内存；随后锁定静态字段。</p></div>
+      </div>
+      <div class="notice">
+        <span>✓</span>
+        <div><strong>初始化完成的含义</strong><p>每个 rank 已经拥有本地 StatePool、grid、初始场和时钟，但还没有调用任何 Fortran kernel，也还没有完成 nstep=0 的 Kessler prep。</p></div>
+      </div>
+    </section>
+
+    <section class="tab-panel" id="step-flow" role="tabpanel" aria-labelledby="tab-step-flow">
+      <div class="section-head">
+        <h2><code>model.step()</code> 的真实顺序</h2>
+        <p>这是当前 Python driver 里的流程，不是对原始 <code>ModelAdvance</code> 的黑盒调用。蓝色节点表示循环或条件。</p>
+      </div>
+      <div class="timeline">
+        <div class="phase-group" data-order="0">
+          <div class="phase-title"><h3>首次调用才执行：准备 nstep=0</h3><span class="loop-badge">if INITIALIZED</span></div>
+          <div class="phase-list">
+            <span class="chip">dynamics_to_physics</span><span class="chip">physics_timestep_initial</span><span class="chip">19 个 before-coupler schemes</span><span class="chip">write history[0]</span>
+          </div>
+        </div>
+        <div class="phase-group" data-order="1">
+          <div class="phase-title"><h3>physics → dynamics forcing</h3></div>
+          <div class="phase-list"><span class="chip">5 个 after-coupler schemes</span><span class="chip">physics_to_dynamics</span><span class="chip">scale_physics_forcing</span></div>
+          <div class="branch">当前是 ATM-only，<code>mediator_present=False</code>；phase 名保留耦合边界，但没有外部分量交换。</div>
+        </div>
+        <div class="phase-group loop" data-order="2">
+          <div class="phase-title"><h3>动力外循环</h3><span class="loop-badge">for nsubstep in (1, 2)</span></div>
+          <div class="phase-list"><span class="chip">apply_cam_forcing</span><span class="chip">substep 2 使用专用 forcing phase</span></div>
+        </div>
+        <div class="phase-group loop" data-order="3">
+          <div class="phase-title"><h3>Runge–Kutta 内循环</h3><span class="loop-badge">for rstep in range(1, 4)</span></div>
+          <div class="branch">如果 <code>rstep &gt; 1</code>，先执行 <code>update_time_levels</code>。</div>
+          <div class="phase-list"><span class="chip">initialize_prim_step</span><span class="chip native">se_type4_rk</span><span class="chip native">advance_hyperviscosity</span><span class="chip">surface_dry_air_pressure</span><span class="chip native">advance_se_tracers</span></div>
+        </div>
+        <div class="phase-group loop" data-order="4">
+          <div class="phase-title"><h3>每个 dynamics substep 收尾</h3><span class="loop-badge">仍在 2 次外循环内</span></div>
+          <div class="phase-list"><span class="chip native">advance_fvm_tracers</span><span class="chip native">vertical_remap_se</span><span class="chip native">vertical_remap_fvm</span></div>
+          <div class="branch">仅当 <code>nsubstep == 2</code> 时计算 <code>compute_final_omega</code>；之后总是 <code>update_time_levels</code>。</div>
+        </div>
+        <div class="phase-group finish" data-order="5">
+          <div class="phase-title"><h3>结束这个 1800 秒模型步</h3></div>
+          <div class="phase-list"><span class="chip">physics_timestep_final</span><span class="chip">clock.advance(+1800s)</span><span class="chip">更新 step/date/seconds</span></div>
+        </div>
+        <div class="phase-group finish" data-order="6">
+          <div class="phase-title"><h3>为下一步准备物理状态并写 history</h3></div>
+          <div class="phase-list"><span class="chip">dynamics_to_physics</span><span class="chip">physics_timestep_initial</span><span class="chip">19 个 before-coupler schemes</span><span class="chip">write history[nstep]</span></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="tab-panel" id="schemes" role="tabpanel" aria-labelledby="tab-schemes">
+      <div class="section-head">
+        <h2>before / after 不再是黑盒</h2>
+        <p>默认顺序逐项对应 pinned <code>suite_kessler.xml</code>。每个块都能单独调用和观察；group 执行时只运行 enabled 的 scheme。</p>
+      </div>
+      <div class="timeline">
+        <div class="phase-group" data-order="0">
+          <div class="phase-title"><h3>physics_before_coupler</h3><span class="loop-badge">19 schemes</span></div>
+          <div class="phase-list">
+            <span class="chip">calc_exner</span><span class="chip">temp_to_potential_temp</span><span class="chip">calc_dry_air_ideal_gas_density</span><span class="chip">wet_to_dry_water_vapor</span><span class="chip">wet_to_dry_cloud_liquid_water</span><span class="chip">wet_to_dry_rain</span><span class="chip native">kessler</span><span class="chip">potential_temp_to_temp</span><span class="chip">dry_to_wet_water_vapor</span><span class="chip">dry_to_wet_cloud_liquid_water</span><span class="chip">dry_to_wet_rain</span><span class="chip native">kessler_update</span><span class="chip">qneg</span><span class="chip native">geopotential_temp</span><span class="chip">check_energy_zero_fluxes</span><span class="chip">check_energy_scaling</span><span class="chip">check_energy_chng</span><span class="chip">sima_state_diagnostics</span><span class="chip">kessler_diagnostics</span>
+          </div>
+        </div>
+        <div class="phase-group finish" data-order="1">
+          <div class="phase-title"><h3>physics_after_coupler</h3><span class="loop-badge">5 schemes</span></div>
+          <div class="phase-list">
+            <span class="chip">thermo_water_update</span><span class="chip">check_energy_scaling</span><span class="chip">dycore_energy_consistency_adjust</span><span class="chip">apply_tendency_of_air_temperature</span><span class="chip">sima_tend_diagnostics</span>
+          </div>
+        </div>
+      </div>
+      <div class="two-col" style="margin-top:18px">
+        <article class="card panel-pad">
+          <h3>单独执行并读取结果</h3>
+          <pre><button class="copy">复制</button><code>model.run_scheme(
+    "kessler",
+    group="physics_before_coupler",
+)
+T = model.get_field("physics_air_temperature", rank=0)</code></pre>
+        </article>
+        <article class="card panel-pad">
+          <h3>on/off 与顺序实验</h3>
+          <pre><button class="copy">复制</button><code>model.scheme_plan.disable(
+    "kessler_diagnostics", unsafe=True,
+)
+model.scheme_plan.move(
+    "kessler", after="kessler_update", unsafe=True,
+)
+model.scheme_plan.reset()</code></pre>
+        </article>
+      </div>
+      <div class="notice">
+        <span>!</span>
+        <div><strong>为什么必须写 unsafe=True？</strong><p>默认 24-scheme 计划是 BFB 合同。关闭或重排 required scheme 是允许的控制实验，但不再代表经过验证的科学路径；数组、MPI、shape 和 ABI 安全检查仍然保留。</p></div>
+      </div>
+    </section>
+
+    <section class="tab-panel" id="state-abi" role="tabpanel" aria-labelledby="tab-state-abi">
+      <div class="section-head">
+        <h2>变量到底在哪里？</h2>
+        <p>模型状态位于每个 Python worker 的地址空间。Fortran 不分配永久模型数组，也不保存调用后的指针。</p>
+      </div>
+      <div class="two-col">
+        <article class="card panel-pad">
+          <h3>Worker 内：真正的零拷贝路径</h3>
+          <p>计算 kernel 直接修改 StatePool 拥有的同一块内存。</p>
+          <div class="data-path">
+            <div class="data-hop"><span class="hop-index">1</span><div><b>StatePool 创建 NumPy array</b><small>例如 `air_temperature`，Python owns data</small></div></div>
+            <div class="data-hop"><span class="hop-index">2</span><div><b>KernelBackend 验证 array</b><small>shape、float64、Fortran-contiguous</small></div></div>
+            <div class="data-hop"><span class="hop-index">3</span><div><b>ctypes 传 data pointer</b><small>同时传入 ABI v2 dimensions / controls</small></div></div>
+            <div class="boundary"><span>Python / Fortran ABI boundary</span></div>
+            <div class="data-hop"><span class="hop-index">4</span><div><b>`bind(C)` wrapper 接收指针</b><small>把地址解释成当前调用需要的 Fortran array</small></div></div>
+            <div class="data-hop"><span class="hop-index">5</span><div><b>kernel 原地更新</b><small>返回后 Python 立即看到新值，没有中间模型副本</small></div></div>
+          </div>
+        </article>
+        <article class="card panel-pad">
+          <h3>Notebook 中：远程字段访问</h3>
+          <p>Notebook 不和 worker 共享地址空间，所以这里有一次明确的数据复制。</p>
+          <div class="data-path">
+            <div class="data-hop"><span class="hop-index">1</span><div><b>`model.get_field(name, rank=0)`</b><small>控制器发送 socket 请求</small></div></div>
+            <div class="data-hop"><span class="hop-index">2</span><div><b>rank 0 广播命令</b><small>24 ranks 同步进入同一个 command</small></div></div>
+            <div class="data-hop"><span class="hop-index">3</span><div><b>目标 worker 复制数组</b><small>`np.array(array, copy=True, order="F")`</small></div></div>
+            <div class="data-hop"><span class="hop-index">4</span><div><b>结果返回 Notebook</b><small>适合观察和修改 phase boundary，不是跨进程零拷贝 view</small></div></div>
+          </div>
+        </article>
+      </div>
+      <div class="two-col" style="margin-top:18px">
+        <article class="card panel-pad">
+          <h3>直接运行 Python worker</h3>
+          <pre><button class="copy">复制</button><code>from pycam_sima import CAMDriver, ModelConfig
+
+config = ModelConfig.from_yaml("configs/fkessler_model.yaml")
+model = CAMDriver(config, run_dir=run_dir).start()
+
+T = model.get_field("air_temperature")  # rank-local NumPy view
+model.prepare_initial_step()
+model.run_scheme_group("physics_after_coupler")
+model.step()</code></pre>
+        </article>
+        <article class="card panel-pad">
+          <h3>Notebook 远程控制</h3>
+          <pre><button class="copy">复制</button><code>from pycam_sima import NotebookSession
+
+with NotebookSession(
+    "configs/fkessler_model.yaml",
+    run_dir=run_dir,
+) as model:
+    model.prepare_initial_step()
+    model.step()
+    T0 = model.get_field("air_temperature", rank=0)
+    stats = model.get_field_stats("air_temperature", rank="all")</code></pre>
+        </article>
+      </div>
+    </section>
+
+    <section class="tab-panel" id="notebook-mpi" role="tabpanel" aria-labelledby="tab-notebook-mpi">
+      <div class="section-head">
+        <h2>Notebook 怎么控制 24 个 MPI ranks？</h2>
+        <p>Notebook 本身不是模型的 MPI rank。它是控制器；24 个 Python worker 才构成模型的 <code>MPI.COMM_WORLD</code>。</p>
+      </div>
+      <div class="mpi-flow">
+        <article class="mpi-column">
+          <h3>Notebook process</h3>
+          <p><code>NotebookSession.start()</code> 创建带 authkey 的 Listener，然后通过 PBS 或本地 <code>mpiexec -n 24</code> 启动 workers。</p>
+          <div class="node mpi"><b>Commands</b><small>step · run_phase · run_scheme · configure_scheme_plan · get_field · set_field · close</small></div>
+        </article>
+        <div class="connector">⇄</div>
+        <article class="mpi-column">
+          <h3>Worker communicator</h3>
+          <div class="ranks" aria-label="24 MPI ranks">
+            <span class="rank root">R0</span><span class="rank">R1</span><span class="rank">R2</span><span class="rank">R3</span><span class="rank">R4</span><span class="rank">R5</span>
+            <span class="rank">R6</span><span class="rank">R7</span><span class="rank">R8</span><span class="rank">R9</span><span class="rank">R10</span><span class="rank">R11</span>
+            <span class="rank">R12</span><span class="rank">R13</span><span class="rank">R14</span><span class="rank">R15</span><span class="rank">R16</span><span class="rank">R17</span>
+            <span class="rank">R18</span><span class="rank">R19</span><span class="rank">R20</span><span class="rank">R21</span><span class="rank">R22</span><span class="rank">R23</span>
+          </div>
+          <p>只有 R0 连接 socket。R0 收到请求后调用 <code>comm.bcast</code>；24 ranks 执行相同 driver command，再由 <code>comm.gather</code> 汇总结果和异常。</p>
+        </article>
+      </div>
+      <div class="notice">
+        <span>Ⅱ</span>
+        <div><strong>“暂停”并不是暂停正在执行的 Fortran</strong><p>一个 command 执行完后，所有 ranks 回到 worker loop，阻塞等待下一条 socket/broadcast 指令。kernel 调用中间不会被 Notebook 打断；现在可观察点包括每个 scheme、phase 或完整 step 边界。</p></div>
+      </div>
+    </section>
+
+    <section class="tab-panel" id="validation" role="tabpanel" aria-labelledby="tab-validation">
+      <div class="section-head">
+        <h2>已经证明了什么？</h2>
+        <p>验证对象是固定 FKESSLER target，而不是对所有 CAM 配置的普适声明。</p>
+      </div>
+      <div class="status-grid">
+        <div class="status-card ok"><small>MODEL GATE</small><div class="value">BFB</div><small>24 ranks × 50 steps</small></div>
+        <div class="status-card ok"><small>HISTORY</small><div class="value">51 / 51</div><small>timestamps and file set equal</small></div>
+        <div class="status-card ok"><small>NUMERIC FIELDS</small><div class="value">26 / 26</div><small>float64 bit patterns equal</small></div>
+        <div class="status-card python"><small>FVM GEOMETRY</small><div class="value">23 / 23</div><small>fields BFB to removed legacy asset</small></div>
+        <div class="status-card python"><small>PYTEST</small><div class="value">24 passed</div><small>contracts and state transitions</small></div>
+        <div class="status-card bound"><small>NATIVE ELF</small><div class="value">0</div><small>MPI / ESMF / PIO dependencies</small></div>
+      </div>
+      <article class="scope card">
+        <h3>当前支持边界</h3>
+        <div class="scope-columns">
+          <div>
+            <strong class="yes">已支持并验证</strong>
+            <ul><li>FKESSLER</li><li>ne3np4.pg3 / L30</li><li>24 MPI ranks / 1 thread</li><li>1800-second timestep / 50 steps</li><li>DCMIP2016 moist baroclinic wave</li><li>startup · ATM-only · NO_LEAP</li></ul>
+          </div>
+          <div>
+            <strong class="no">尚未泛化</strong>
+            <ul><li>其他 physics suites 和 grids</li><li>其他 vertical levels / MPI sizes</li><li>restart / branch runs</li><li>mediator 和 surface components</li><li>MPAS 或 GPU execution</li><li>单一 `.so` 任意 shape：新 shape 目前需要按 Python YAML 重编译</li></ul>
+          </div>
+        </div>
+      </article>
+    </section>
+
+    <footer>
+      <span>pycam-sima architecture · source-aligned snapshot</span>
+      <span>Evidence: PBS 6829370 · 24-scheme plan · kernel ABI 2 · CAM-SIMA f8daa568</span>
+    </footer>
+  </main>
+
+  <script>
+    const root = document.documentElement;
+    const tabs = [...document.querySelectorAll('[role="tab"]')];
+    const panels = [...document.querySelectorAll('[role="tabpanel"]')];
+
+    function activateTab(tab) {
+      tabs.forEach(item => item.setAttribute('aria-selected', String(item === tab)));
+      panels.forEach(panel => panel.classList.toggle('active', panel.id === tab.getAttribute('aria-controls')));
+      history.replaceState(null, '', `#${tab.getAttribute('aria-controls')}`);
+    }
+
+    tabs.forEach((tab, index) => {
+      tab.addEventListener('click', () => activateTab(tab));
+      tab.addEventListener('keydown', event => {
+        if (!['ArrowLeft', 'ArrowRight'].includes(event.key)) return;
+        event.preventDefault();
+        const delta = event.key === 'ArrowRight' ? 1 : -1;
+        const next = tabs[(index + delta + tabs.length) % tabs.length];
+        next.focus();
+        activateTab(next);
+      });
+    });
+
+    const initialPanel = location.hash.slice(1);
+    const initialTab = tabs.find(tab => tab.getAttribute('aria-controls') === initialPanel);
+    if (initialTab) activateTab(initialTab);
+
+    document.getElementById('themeButton').addEventListener('click', () => {
+      const light = root.getAttribute('data-theme') === 'light';
+      root.setAttribute('data-theme', light ? 'dark' : 'light');
+    });
+    document.getElementById('printButton').addEventListener('click', () => window.print());
+
+    document.querySelectorAll('.copy').forEach(button => {
+      button.addEventListener('click', async () => {
+        const code = button.parentElement.querySelector('code').innerText;
+        await navigator.clipboard.writeText(code);
+        button.textContent = '已复制';
+        setTimeout(() => { button.textContent = '复制'; }, 1200);
+      });
+    });
+  </script>
+</body>
+</html>

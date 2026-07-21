@@ -1,0 +1,160 @@
+{
+  "schema_version": 4,
+  "validated_at": "2026-07-21T04:58:06-06:00",
+  "repository": {
+    "root": "/glade/work/ruitong/pycam-sima",
+    "git_head_before_changes": "82b9eab5bf6bf14c5d78eb62ff4f55fc7b7d820c",
+    "package_version": "0.7.0"
+  },
+  "architecture": {
+    "source_packages": [
+      "core",
+      "model",
+      "notebook"
+    ],
+    "model_driver": "pycam_sima.model.CAMDriver",
+    "selectable_model_backends": 1,
+    "runtime_selector_present": false,
+    "cam_init_cam_run_wrapper_present": false,
+    "legacy_package_present": false,
+    "python_native_package_present": false,
+    "maintained_notebooks": 1,
+    "scheme_interfaces": 24,
+    "before_coupler_schemes": 19,
+    "after_coupler_schemes": 5
+  },
+  "runtime": "model",
+  "configuration": {
+    "physics_suite": "FKESSLER",
+    "grid": "ne3np4.pg3",
+    "vertical_levels": 30,
+    "mpi_ranks": 24,
+    "threads_per_rank": 1,
+    "timestep_seconds": 1800,
+    "steps": 50,
+    "history_samples": 51,
+    "calendar": "NO_LEAP",
+    "run_type": "startup",
+    "analytic_initial_condition": "moist_baroclinic_wave_dcmip2016"
+  },
+  "cam_sima": {
+    "root": "/glade/work/ruitong/pycam-sima/external/CAM-SIMA",
+    "commit": "f8daa568eae2696b7c4ebff7768f02f5d097d9df"
+  },
+  "python_owned_state": {
+    "canonical_fields": 214,
+    "notebook_fields_and_aliases": 316,
+    "owner_values": [
+      "python"
+    ],
+    "lifetime_values": [
+      "persistent"
+    ],
+    "initialized_native_calls": 0,
+    "initialized_abi_checked": false,
+    "pointer_stability_checked_at_each_public_phase_and_scheme": true
+  },
+  "scheme_control": {
+    "source": "external/CAM-SIMA/src/physics/ncar_ccpp/suites/suite_kessler.xml",
+    "source_order_tested_exactly": true,
+    "group_qualified_keys": true,
+    "independently_callable": 24,
+    "before_coupler_schemes": 19,
+    "after_coupler_schemes": 5,
+    "enabled_disabled_from_python": true,
+    "reorderable_within_group": true,
+    "required_changes_require_unsafe_true": true,
+    "default_sequence_safe": true,
+    "mpi_worker_plan_synchronized": true,
+    "notebook_smoke": {
+      "pbs_job_id": "6829377.desched1",
+      "pbs_exit_status": 0,
+      "mpi_ranks": 24,
+      "steps": 2,
+      "completion_marker": "PYCAM_SIMA_NOTEBOOK_SESSION_OK steps=2 fields=316 schemes=24"
+    }
+  },
+  "fvm_geometry": {
+    "mode": "generated independently by Python on every MPI rank",
+    "generator": "pycam_sima.model.fvm_geometry.generate_fvm_geometry",
+    "packaged_grid_asset_present": false,
+    "full_geometry_fields": 23,
+    "full_geometry_sha256": "c6415cb9701f630dcab586a02288ff4ad8941a4d39440f94f31284ccb4b792b5",
+    "rank_consistency": {
+      "pbs_job_id": "6828936.desched1",
+      "pbs_exit_status": 0,
+      "mpi_ranks": 24,
+      "identical_digests": 24
+    },
+    "legacy_asset_equivalence": {
+      "pbs_job_id": "6828863.desched1",
+      "pbs_exit_status": 0,
+      "mpi_ranks": 24,
+      "bitwise_equal_fields": 23,
+      "differing_fields": 0
+    }
+  },
+  "kernel_library": {
+    "path": "/glade/work/ruitong/pycam-sima/build/libpycam_sima_kernels.so",
+    "sha256": "44dc0a9e1d491ca1e1ae58de547ff433e3256c968ebbb1325e471598b8fcad6f",
+    "size_bytes": 220312,
+    "abi_version": 2,
+    "versioned_exports": 13,
+    "export_set_matches_abi_json": true,
+    "persistent_native_state": false,
+    "cam_control_symbols_present": false,
+    "build_environment": "env -i with direct GCC 12.2 gfortran",
+    "direct_needed_libraries": [
+      "libgfortran.so.5",
+      "libm.so.6",
+      "libmvec.so.1",
+      "libc.so.6"
+    ],
+    "rpath_or_runpath_present": false,
+    "mpi_pmi_pals_esmf_pio_netcdf_hdf5_libsci_dependencies_present": false,
+    "dimension_contract": {
+      "runtime_dimensions_and_controls_passed_from_python": true,
+      "handwritten_fortran_case_dimensions_present": false,
+      "build_specialization_generated_from_python_yaml": true,
+      "new_grid_shape_requires_rebuild": true
+    },
+    "kessler_source_validation": "KESSLER_SOURCE_BFB fields=11"
+  },
+  "full_run": {
+    "pbs_job_id": "6829370.desched1",
+    "pbs_exit_status": 0,
+    "walltime": "00:07:25",
+    "run_dir": "/glade/derecho/scratch/ruitong/pycam-sima/scheme_plan_20260721-045004/run",
+    "history_dir": "/glade/derecho/scratch/ruitong/pycam-sima/scheme_plan_20260721-045004/history",
+    "result": {
+      "runtime": "model",
+      "mpi_ranks": 24,
+      "step": 50,
+      "history_samples": 51,
+      "native_calls": 14904,
+      "initialized_native_calls": 0,
+      "initialized_abi_checked": false,
+      "last_phase": "physics_timestep_initial",
+      "last_scheme": "physics_before_coupler.kessler_diagnostics",
+      "scheme_sequence_safe": true
+    }
+  },
+  "oracle_comparison": {
+    "oracle_kind": "external pinned CAM-SIMA executable output; not a pycam-sima backend",
+    "oracle_dir": "/glade/derecho/scratch/ruitong/pycam_sima_legacy_oracle_f8daa568/run",
+    "result": "BFB",
+    "history_file_set_equal": true,
+    "history_files": 51,
+    "diagnostic_numeric_variables": 26,
+    "time_fields_compared": 4,
+    "grid_and_vertical_fields_compared": 9,
+    "dtype_shape_timestamp_and_float64_bits_equal": true
+  },
+  "local_verification": {
+    "pytest": "24 passed, 1 third-party deprecation warning",
+    "notebook_count": 1,
+    "kernel_source_bfb": "passed",
+    "clean_dependency_and_export_gate": "passed",
+    "git_diff_check": "passed"
+  }
+}

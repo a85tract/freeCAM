@@ -3,7 +3,6 @@ from __future__ import annotations
 
 import argparse
 import subprocess
-import sys
 from pathlib import Path
 
 
@@ -20,7 +19,6 @@ def append_once(path: Path, line: str) -> None:
 def main() -> int:
     repo = Path(__file__).resolve().parents[1]
     parser = argparse.ArgumentParser()
-    parser.add_argument("--compset", choices=("FKESSLER", "FADIAB"), default="FKESSLER")
     parser.add_argument("--steps", type=int, default=50)
     parser.add_argument(
         "--case-root",
@@ -37,7 +35,7 @@ def main() -> int:
     args = parser.parse_args()
 
     cam = repo / "external/CAM-SIMA"
-    case_name = f"{args.compset}_ne3pg3_gnu_24x{args.steps}"
+    case_name = f"FKESSLER_ne3pg3_gnu_24x{args.steps}"
     case = (args.case_root or repo / "reference/cases" / case_name).resolve()
     output_root = (
         args.output_root
@@ -52,7 +50,7 @@ def main() -> int:
             "--case",
             str(case),
             "--compset",
-            args.compset,
+            "FKESSLER",
             "--res",
             "ne3pg3_ne3pg3_mg37",
             "--machine",
@@ -81,23 +79,9 @@ def main() -> int:
         ],
         cwd=case,
     )
-    if args.compset == "FADIAB":
-        run(
-            [
-                "./xmlchange",
-                "CAM_CONFIG_OPTS=--physics-suites adiabatic --analytic-ic",
-            ],
-            cwd=case,
-        )
     run(["./case.setup"], cwd=case)
     append_once(case / "user_nl_cam", "hist_precision;h1: REAL64")
     append_once(case / "user_nl_cam", "hist_max_frames;h1: 1")
-    if args.compset == "FADIAB":
-        append_once(case / "user_nl_cam", "analytic_ic_type = 'held_suarez_1994'")
-    run(
-        [sys.executable, str(repo / "tools/enable_pic_case.py"), str(case)],
-        cwd=repo,
-    )
     run(["./preview_namelists"], cwd=case)
     if args.build or args.submit:
         run(["./case.build"], cwd=case)

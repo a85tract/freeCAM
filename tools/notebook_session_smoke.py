@@ -23,8 +23,21 @@ def main() -> int:
         env_script=args.env_script,
         log_path=args.log_path,
     ) as model:
-        if len(model.field_names) != 21:
-            raise RuntimeError(f"expected 21 fields, got {len(model.field_names)}")
+        if len(model.field_names) != 316:
+            raise RuntimeError(f"expected 316 fields, got {len(model.field_names)}")
+        if len(model.scheme_names) != 24:
+            raise RuntimeError(
+                f"expected 24 scheme interfaces, got {len(model.scheme_names)}"
+            )
+        model.run_scheme(
+            "sima_state_diagnostics", group="physics_before_coupler"
+        )
+        model.scheme_plan.disable("kessler_diagnostics", unsafe=True)
+        if model.scheme_plan.sequence_safe:
+            raise RuntimeError("unsafe remote scheme edit was not recorded")
+        model.scheme_plan.enable("kessler_diagnostics")
+        if not model.scheme_plan.sequence_safe:
+            raise RuntimeError("restored default scheme plan is not safe")
         initial = model.get_field("air_temperature", rank=0)
         model.set_field("air_temperature", initial, rank=0)
         roundtrip = model.get_field("air_temperature", rank=0)
@@ -39,6 +52,7 @@ def main() -> int:
         print(
             "PYCAM_SIMA_NOTEBOOK_SESSION_OK "
             f"steps={model.current_step} fields={len(model.field_names)} "
+            f"schemes={len(model.scheme_names)} "
             f"shape={final.shape} min={final.min():.17g} max={final.max():.17g}"
         )
     return 0
