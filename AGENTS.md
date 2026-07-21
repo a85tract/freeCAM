@@ -9,7 +9,8 @@ Fortran kernels live in `native/kernels/`, with generated libraries written to
 `build/`. Tests are in `tests/unit/`, with Fortran source adapters in
 `tests/fortran/`. Configuration, PBS scripts, tools, documentation, and durable
 evidence belong in `configs/`, `jobs/`, `tools/`, `docs/`, and `validation/`.
-Maintain only `examples/try_notebook_session.ipynb`.
+Maintain only `examples/try_notebook_session.ipynb`. Route PBS standard output
+and error to `logs/`; do not leave scheduler logs in the repository root.
 
 ## Build, Test, and Development Commands
 

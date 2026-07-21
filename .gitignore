@@ -12,3 +12,5 @@ native/kernels/*.mod
 native/kernels/.build/
 native/kernels/.defined-symbols
 /pycam_*.o*
+/logs/*
+!/logs/.gitkeep

@@ -47,6 +47,9 @@ uv run pycam-sima compare-history \
   --files 51 --numeric-variables 26
 ```
 
+The maintained PBS jobs merge standard output and error and write their job
+logs under `logs/`, rather than into the repository root.
+
 The history gate compares filenames, timestamps, dtype, shape, and float64 bit
 patterns for all 51 output times and 26 diagnostic variables. The upstream
 CAM-SIMA executable is used only to produce an external test oracle; it is not

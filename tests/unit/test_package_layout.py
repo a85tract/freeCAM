@@ -21,3 +21,14 @@ def test_top_level_package_contains_only_public_entrypoints() -> None:
 def test_root_api_delegates_to_responsibility_packages() -> None:
     assert CAMDriver is ModelDriver
     assert NotebookSession is NotebookController
+
+
+def test_maintained_pbs_jobs_write_to_the_shared_log_directory() -> None:
+    repository = Path(__file__).resolve().parents[2]
+    output_directive = "#PBS -o /glade/work/ruitong/pycam-sima/logs/"
+
+    jobs = tuple((repository / "jobs").glob("*.pbs"))
+    assert jobs
+    for job in jobs:
+        assert output_directive in job.read_text().splitlines()
+    assert (repository / "logs" / ".gitkeep").is_file()
