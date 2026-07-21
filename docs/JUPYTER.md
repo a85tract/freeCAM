@@ -8,6 +8,14 @@ directly.
 The only maintained Notebook is
 `examples/try_notebook_session.ipynb`.
 
+There are now two control modes:
+
+- `NotebookSession` keeps one 24-rank model alive for low-latency phase,
+  scheme, field, and step interaction.
+- `DaskExperimentClient` submits restartable PBS/MPI tasks. A common base
+  `Future` retains an immutable checkpoint bundle and can fan out into
+  independent model branches without a persistent socket worker.
+
 ## Start a session
 
 Create a fresh run directory containing `atm_in`, then construct the model:
@@ -121,3 +129,44 @@ Always close the worker, or use a context manager:
 with NotebookSession(repo / "configs/fkessler_model.yaml", run_dir=run_dir) as model:
     model.step(50)
 ```
+
+## Fork independent Dask tasks
+
+Install the optional scheduler dependencies with
+`uv sync --extra test --extra notebook`. The Dask client runs only the orchestration
+tasks; every CAM segment still runs as a new 24-rank MPI job.
+
+```python
+from dask.distributed import Client
+from pycam_sima import BranchSpec, DaskExperimentClient, FieldEdit
+
+client = Client(processes=False, n_workers=3, threads_per_worker=1)
+experiments = DaskExperimentClient(
+    client,
+    config=repo / "configs/fkessler_model.yaml",
+    initial_run_dir=reference_run,
+    run_root=scratch / "pycam-sima/dask-branches",
+    python_executable=repo / ".venv/bin/python",
+)
+
+base = experiments.submit_base(BranchSpec("base", steps=10))
+branches = experiments.fork(
+    base,
+    (
+        BranchSpec("control", steps=5),
+        BranchSpec("no-kessler", steps=5, disable_schemes=("kessler",)),
+        BranchSpec(
+            "warm",
+            steps=5,
+            field_edits=(FieldEdit("air_temperature", "add", 1.0),),
+        ),
+    ),
+)
+summaries = experiments.summaries(branches)
+```
+
+The base Future is a dependency of every branch, so Dask computes it once.
+The value retained by Dask is a serialized copy of every rank's Python-owned
+state, not a live MPI communicator. Each branch restores new
+Fortran-contiguous arrays and creates a new `MPI.COMM_WORLD`. `summaries()`
+returns only metadata; `gather()` also downloads the complete state bundles.

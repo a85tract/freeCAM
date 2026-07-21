@@ -33,7 +33,7 @@ pycam_sima/
 ## Run the model
 
 ```bash
-uv sync --extra test
+uv sync --extra test --extra notebook
 uv run pycam-sima build-kernels
 uv run python tools/validate_kessler_kernel.py
 readelf -d build/libpycam_sima_kernels.so
@@ -103,6 +103,60 @@ the only scientifically validated order.
 A cross-group move changes the execution stage: moving a scheme from before to
 after removes it from nstep=0/end-of-step preparation and places it at the
 beginning of the following model step.
+
+## Dask experiment fan-out
+
+Dask is an optional experiment-level scheduler; it does not replace mpi4py
+inside one model run. A base task runs a restartable 24-rank MPI segment and
+returns a `Future` whose result contains an immutable serialized checkpoint for
+all ranks. Multiple branch tasks may depend on that same Future. Each branch
+creates new MPI processes, restores private Fortran-contiguous NumPy arrays,
+applies its edits, and continues independently without a persistent socket.
+
+```python
+from dask.distributed import Client
+from pycam_sima import (
+    BranchSpec,
+    DaskExperimentClient,
+    FieldEdit,
+)
+
+client = Client(processes=False, n_workers=2, threads_per_worker=1)
+experiments = DaskExperimentClient(
+    client,
+    config=repo / "configs/fkessler_model.yaml",
+    initial_run_dir=reference_run,
+    run_root=scratch / "pycam-sima/dask-experiments",
+    python_executable=repo / ".venv/bin/python",
+)
+
+base = experiments.submit_base(BranchSpec("base", steps=10))
+branches = experiments.fork(
+    base,
+    (
+        BranchSpec("control", steps=5),
+        BranchSpec("no-kessler", steps=5, disable_schemes=("kessler",)),
+        BranchSpec(
+            "warm",
+            steps=5,
+            field_edits=(FieldEdit("air_temperature", "add", 1.0),),
+        ),
+    ),
+)
+summaries = experiments.summaries(branches)
+```
+
+`summaries()` returns only small metadata to the Notebook. `gather()` is also
+available, but it downloads each complete checkpoint bundle. Dask keeps a
+bundle in distributed memory while its Future is referenced; the durable
+checkpoint directories allow restart after a Dask worker or PBS allocation has
+ended. `run-segment` is the non-socket MPI entry point used by these tasks.
+
+The committed validation in `validation/dask_checkpoint_fanout.json` records a
+real 24-rank base Future and two PBS branches. The control branch changed no
+fields; the edited branch changed only `air_temperature` by exactly `+1.0`.
+The separate 25+25 restart gate produced all 51 history files BFB against the
+external CAM-SIMA oracle.
 
 All persistent fields have `owner="python"`. Prognostic, tendency, and process
 arrays are writable at phase boundaries. Static grid/topology arrays require

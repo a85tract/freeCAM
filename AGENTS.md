@@ -2,9 +2,10 @@
 
 ## Project Structure & Module Organization
 
-Python sources live in `src/pycam_sima/`. The complete Python-owned CAM driver
-is in `model/`; shared MPI-loader and remote-field utilities are in `core/`;
-and `notebook/` contains the Jupyter/PBS controller and MPI worker. Stateless
+Python sources live in `src/pycam_sima/`. The complete Python-owned CAM driver,
+branch edits, and bit-preserving checkpoints are in `model/`; shared MPI-loader
+and remote-field utilities are in `core/`; and `notebook/` contains the
+Jupyter/PBS controller, Dask experiment client, and MPI worker. Stateless
 Fortran kernels live in `native/kernels/`, with generated libraries written to
 `build/`. Tests are in `tests/unit/`, with Fortran source adapters in
 `tests/fortran/`. Configuration, PBS scripts, tools, documentation, and durable
@@ -14,11 +15,15 @@ and error to `logs/`; do not leave scheduler logs in the repository root.
 
 ## Build, Test, and Development Commands
 
-- `uv sync --extra test`: install the Python 3.11 environment.
+- `uv sync --extra test --extra notebook`: install the Python 3.11/Jupyter environment.
 - `uv run pycam-sima build-kernels`: build `libpycam_sima_kernels.so`.
 - `uv run python tools/validate_kessler_kernel.py`: compare the Kessler kernel
   bit-for-bit with pinned CAM-SIMA source.
 - `uv run pytest`: run the complete local test suite.
+- `uv run python tools/dask_branch_smoke.py --run-root ... --initial-run-dir ...`:
+  submit a common checkpoint and two Dask-controlled PBS branches.
+- `uv run python tools/validate_dask_branch.py RUN_ROOT`: verify branch-state
+  isolation and the exact requested field edit.
 - `RUN_DIR=... HISTORY_DIR=... STEPS=50 qsub -V jobs/fkessler_model_24x50.pbs`:
   run the required 24-rank model gate.
 - `uv run pycam-sima compare-history ORACLE CANDIDATE`: verify 51 files and 26

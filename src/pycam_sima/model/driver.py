@@ -404,6 +404,20 @@ class CAMDriver:
         self.comm.barrier()
         self.state = DriverState.FINALIZED
 
+    def snapshot(self):
+        """Capture this rank's immutable state for a branch or checkpoint."""
+
+        from .checkpoint import ModelSnapshot
+
+        return ModelSnapshot.capture(self)
+
+    def write_checkpoint(self, path: str | Path) -> Path:
+        """Collectively persist all MPI ranks without finalizing the driver."""
+
+        from .checkpoint import write_checkpoint
+
+        return write_checkpoint(self, path)
+
     def _run_phases(
         self,
         phases: tuple[str, ...],

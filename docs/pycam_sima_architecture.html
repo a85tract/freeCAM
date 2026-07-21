@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="description" content="pycam-sima 当前 Python-owned CAM 架构、初始化、单步流程、MPI 和 ABI 数据边界。">
+  <meta name="description" content="pycam-sima 当前 Python-owned CAM 架构、Dask 分支、初始化、MPI 和 ABI 数据边界。">
   <title>pycam-sima · 当前架构</title>
   <style>
     :root {
@@ -349,9 +349,9 @@
 
     <header class="hero">
       <div>
-        <span class="eyebrow"><span class="dot"></span>24-rank · 50-step · BFB verified</span>
+        <span class="eyebrow"><span class="dot"></span>24-rank · 25+25 restart · BFB verified</span>
         <h1>现在的 <span class="gradient-text">pycam-sima</span><br>是什么架构？</h1>
-        <p class="lead"><strong>Python 是模型本身，Fortran 只是计算函数库。</strong>每个 MPI rank 都运行一个 Python worker，由 Python 创建网格、申请状态、安排 phase、执行通信并写输出；Fortran 不再拥有模型生命周期。</p>
+        <p class="lead"><strong>Python 是模型本身，Fortran 只是计算函数库。</strong>每个 MPI rank 都运行一个 Python worker，由 Python 创建网格、申请状态、安排 phase、执行通信并写输出；Dask 可以从公共 checkpoint Future 分叉独立实验，Fortran 不再拥有模型生命周期。</p>
       </div>
       <aside class="hero-card">
         <span class="hero-card-label">一句话架构</span>
@@ -374,7 +374,7 @@
       <button class="tab" role="tab" aria-selected="false" aria-controls="step-flow" id="tab-step-flow">model.step()</button>
       <button class="tab" role="tab" aria-selected="false" aria-controls="schemes" id="tab-schemes">CCPP schemes</button>
       <button class="tab" role="tab" aria-selected="false" aria-controls="state-abi" id="tab-state-abi">变量池与 ABI</button>
-      <button class="tab" role="tab" aria-selected="false" aria-controls="notebook-mpi" id="tab-notebook-mpi">Notebook 与 MPI</button>
+      <button class="tab" role="tab" aria-selected="false" aria-controls="notebook-mpi" id="tab-notebook-mpi">Notebook、Dask 与 MPI</button>
       <button class="tab" role="tab" aria-selected="false" aria-controls="validation" id="tab-validation">验证与边界</button>
     </div>
 
@@ -388,11 +388,11 @@
           <div class="layer-tag"><span class="layer-index">LAYER 01</span><span class="layer-title">交互控制</span></div>
           <div class="layer-body">
             <div class="node mpi"><b>Jupyter Notebook</b><small>用户调用 `start / step / run_phase / run_scheme / get_field / set_field`</small></div>
-            <div class="node mpi"><b>NotebookSession</b><small>创建监听 socket；在登录节点提交 PBS，或在计算节点本地启动</small></div>
-            <div class="node mpi"><b>Rank 0 command bridge</b><small>接收命令并用 `comm.bcast` 发给全部 worker</small></div>
+            <div class="node mpi"><b>NotebookSession</b><small>交互模式：保持24 ranks存活，在 scheme/phase/step 边界观察和修改</small></div>
+            <div class="node mpi"><b>DaskExperimentClient</b><small>任务模式：公共 checkpoint Future 分叉多个独立 PBS/MPI segments</small></div>
           </div>
         </div>
-        <div class="flow-arrow"><span>socket command + copied result</span></div>
+        <div class="flow-arrow"><span>socket command or Dask Future/checkpoint dependency</span></div>
         <div class="layer python-layer">
           <div class="layer-tag"><span class="layer-index">LAYER 02</span><span class="layer-title">24 个 Python workers</span></div>
           <div class="layer-body">
@@ -638,6 +638,29 @@ with NotebookSession(
         <span>Ⅱ</span>
         <div><strong>“暂停”并不是暂停正在执行的 Fortran</strong><p>一个 command 执行完后，所有 ranks 回到 worker loop，阻塞等待下一条 socket/broadcast 指令。kernel 调用中间不会被 Notebook 打断；现在可观察点包括每个 scheme、phase 或完整 step 边界。</p></div>
       </div>
+      <div class="two-col" style="margin-top:18px">
+        <article class="card panel-pad">
+          <h3>Dask：没有持久 socket 的任务模式</h3>
+          <p>Base task 启动24-rank MPI segment，结束前把214个 Python-owned fields、clock、scheme plan 和 process state 写成按 rank 分片的 bit-preserving checkpoint。Dask Future 保留其不可变序列化 bundle。</p>
+          <pre><button class="copy">复制</button><code>base = experiments.submit_base(
+    BranchSpec("base", steps=10),
+)
+branches = experiments.fork(base, (
+    BranchSpec("control", steps=5),
+    BranchSpec("no-kessler", steps=5,
+               disable_schemes=("kessler",)),
+))</code></pre>
+        </article>
+        <article class="card panel-pad">
+          <h3>一次分叉的真实含义</h3>
+          <p>每个 branch task 接收同一个 base Future，但恢复自己的 Fortran-contiguous NumPy arrays，并建立新的24-rank <code>MPI.COMM_WORLD</code>。它不是对已经初始化的 MPI 进程执行系统 <code>fork()</code>。</p>
+          <div class="data-path">
+            <div class="data-hop"><span class="hop-index">1</span><div><b>Base PBS/MPI task</b><small>run → checkpoint → process exits</small></div></div>
+            <div class="data-hop"><span class="hop-index">2</span><div><b>Dask Future</b><small>holds immutable 24-rank checkpoint bundle</small></div></div>
+            <div class="data-hop"><span class="hop-index">3</span><div><b>Independent branches</b><small>restore copies → new MPI communicators → continue</small></div></div>
+          </div>
+        </article>
+      </div>
     </section>
 
     <section class="tab-panel" id="validation" role="tabpanel" aria-labelledby="tab-validation">
@@ -650,19 +673,21 @@ with NotebookSession(
         <div class="status-card ok"><small>HISTORY</small><div class="value">51 / 51</div><small>timestamps and file set equal</small></div>
         <div class="status-card ok"><small>NUMERIC FIELDS</small><div class="value">26 / 26</div><small>float64 bit patterns equal</small></div>
         <div class="status-card python"><small>FVM GEOMETRY</small><div class="value">23 / 23</div><small>fields BFB to removed legacy asset</small></div>
-        <div class="status-card python"><small>PYTEST</small><div class="value">26 passed</div><small>contracts and state transitions</small></div>
+        <div class="status-card python"><small>PYTEST</small><div class="value">33 passed</div><small>contracts, snapshots and Dask graph</small></div>
         <div class="status-card bound"><small>NATIVE ELF</small><div class="value">0</div><small>MPI / ESMF / PIO dependencies</small></div>
+        <div class="status-card ok"><small>DASK FAN-OUT</small><div class="value">1 → 2</div><small>base Future · isolated PBS branches</small></div>
+        <div class="status-card ok"><small>RESTART GATE</small><div class="value">25 + 25</div><small>51 history files remain BFB</small></div>
       </div>
       <article class="scope card">
         <h3>当前支持边界</h3>
         <div class="scope-columns">
           <div>
             <strong class="yes">已支持并验证</strong>
-            <ul><li>FKESSLER</li><li>ne3np4.pg3 / L30</li><li>24 MPI ranks / 1 thread</li><li>1800-second timestep / 50 steps</li><li>DCMIP2016 moist baroclinic wave</li><li>startup · ATM-only · NO_LEAP</li></ul>
+            <ul><li>FKESSLER</li><li>ne3np4.pg3 / L30</li><li>24 MPI ranks / 1 thread</li><li>1800-second timestep / 50 steps</li><li>25+25 checkpoint/restart BFB</li><li>Dask base Future → independent control/edited branches</li><li>DCMIP2016 moist baroclinic wave</li><li>startup · ATM-only · NO_LEAP</li></ul>
           </div>
           <div>
             <strong class="no">尚未泛化</strong>
-            <ul><li>其他 physics suites 和 grids</li><li>其他 vertical levels / MPI sizes</li><li>restart / branch runs</li><li>mediator 和 surface components</li><li>MPAS 或 GPU execution</li><li>单一 `.so` 任意 shape：新 shape 目前需要按 Python YAML 重编译</li></ul>
+            <ul><li>其他 physics suites 和 grids</li><li>其他 vertical levels / MPI sizes</li><li>mediator 和 surface components</li><li>MPAS 或 GPU execution</li><li>单一 `.so` 任意 shape：新 shape 目前需要按 Python YAML 重编译</li></ul>
           </div>
         </div>
       </article>
@@ -670,7 +695,7 @@ with NotebookSession(
 
     <footer>
       <span>pycam-sima architecture · source-aligned snapshot</span>
-      <span>Evidence: PBS 6829430 · cross-group control · kernel ABI 2 · CAM-SIMA f8daa568</span>
+      <span>Evidence: PBS 6835553 · Dask 6835577/6835590/6835591 · kernel ABI 2 · CAM-SIMA f8daa568</span>
     </footer>
   </main>
 

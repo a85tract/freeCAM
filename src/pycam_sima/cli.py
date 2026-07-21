@@ -4,12 +4,20 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import subprocess
 from pathlib import Path
 
 from .core.mpi import world_comm
 from .core.runtime_env import ensure_mpi_loader_environment
-from .model import CAMDriver, ModelConfig
+from .model import (
+    BranchSpec,
+    CAMDriver,
+    ModelConfig,
+    read_checkpoint,
+    restore_driver,
+)
+from .model.checkpoint import CHECKPOINT_SCHEMA_VERSION
 from .model.validation import compare_history_directories
 
 
@@ -56,6 +64,73 @@ def command_run(args: argparse.Namespace) -> int:
     return 0
 
 
+def command_run_segment(args: argparse.Namespace) -> int:
+    """Run one restartable MPI segment without a persistent socket worker."""
+
+    config = ModelConfig.from_yaml(args.config)
+    ensure_mpi_loader_environment()
+    comm = world_comm()
+    if comm.size != config.mpi_size:
+        raise SystemExit(
+            f"configuration requires {config.mpi_size} MPI ranks, got {comm.size}"
+        )
+
+    if args.branch_spec:
+        payload = json.loads(Path(args.branch_spec).read_text())
+        spec = BranchSpec.from_mapping(payload)
+        if args.steps is not None:
+            raise SystemExit("use steps in --branch-spec or --steps, not both")
+    else:
+        spec = BranchSpec(name=args.name, steps=1 if args.steps is None else args.steps)
+
+    history_dir = Path(args.history_dir).resolve()
+    if args.input_checkpoint:
+        snapshot = read_checkpoint(args.input_checkpoint, comm)
+        driver = restore_driver(
+            snapshot,
+            run_dir=args.run_dir,
+            comm=comm,
+            kernel_library=args.library,
+            history_dir=history_dir,
+            expected_config=config,
+        )
+    else:
+        exists = history_dir.exists() if comm.rank == 0 else None
+        if comm.bcast(exists, root=0):
+            raise SystemExit(
+                f"refusing to replace existing history directory: {history_dir}"
+            )
+        driver = CAMDriver(
+            config,
+            run_dir=args.run_dir,
+            comm=comm,
+            kernel_library=args.library,
+            history_dir=history_dir,
+        ).start()
+
+    spec.apply(driver)
+    for _ in range(spec.steps):
+        driver.step()
+    checkpoint = driver.write_checkpoint(args.output_checkpoint)
+    result = driver.stats()
+    result.update(
+        branch=spec.name,
+        segment_steps=spec.steps,
+        checkpoint=str(checkpoint),
+        checkpoint_schema=CHECKPOINT_SCHEMA_VERSION,
+        pbs_job_id=os.environ.get("PBS_JOBID"),
+    )
+    driver.finalize()
+    if comm.rank == 0:
+        encoded = json.dumps(result, indent=2, sort_keys=True)
+        if args.result_json:
+            result_path = Path(args.result_json).resolve()
+            result_path.parent.mkdir(parents=True, exist_ok=True)
+            result_path.write_text(encoded)
+        print(encoded)
+    return 0
+
+
 def command_build_kernels(_args: argparse.Namespace) -> int:
     subprocess.run(
         ["make", "-C", str(_repo_root() / "native" / "kernels"), "clean", "all"],
@@ -86,6 +161,22 @@ def main() -> int:
     run.add_argument("--library")
     run.add_argument("--steps", type=int, default=50)
     run.set_defaults(func=command_run)
+
+    segment = sub.add_parser(
+        "run-segment",
+        help="run one checkpointed model segment for Dask fan-out",
+    )
+    segment.add_argument("config")
+    segment.add_argument("--run-dir", required=True)
+    segment.add_argument("--history-dir", required=True)
+    segment.add_argument("--library")
+    segment.add_argument("--input-checkpoint")
+    segment.add_argument("--output-checkpoint", required=True)
+    segment.add_argument("--branch-spec")
+    segment.add_argument("--name", default="segment")
+    segment.add_argument("--steps", type=int)
+    segment.add_argument("--result-json")
+    segment.set_defaults(func=command_run_segment)
 
     build = sub.add_parser("build-kernels", help="build stateless model kernels")
     build.set_defaults(func=command_build_kernels)

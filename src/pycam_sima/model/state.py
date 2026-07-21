@@ -139,6 +139,38 @@ class StatePool:
         if changed:
             raise StateOwnershipError(f"kernel replaced or reshaped Python arrays: {changed}")
 
+    def snapshot_arrays(self, *, readonly: bool = True) -> dict[str, np.ndarray]:
+        """Copy canonical storage for an isolated model-state snapshot."""
+
+        arrays: dict[str, np.ndarray] = {}
+        for name, value in self._arrays.items():
+            copied = np.array(value, dtype=value.dtype, order="F", copy=True)
+            if readonly:
+                copied.flags.writeable = False
+            arrays[name] = copied
+        return arrays
+
+    def restore_arrays(self, arrays: Mapping[str, np.ndarray]) -> None:
+        """Restore exact canonical values without replacing owned buffers."""
+
+        expected = set(self._arrays)
+        actual = set(arrays)
+        if actual != expected:
+            missing = sorted(expected - actual)
+            extra = sorted(actual - expected)
+            raise StateOwnershipError(
+                f"snapshot field mismatch: missing={missing}, extra={extra}"
+            )
+        for name, target in self._arrays.items():
+            source = np.asarray(arrays[name])
+            if source.shape != target.shape or source.dtype != target.dtype:
+                raise StateOwnershipError(
+                    f"snapshot field {name!r} has shape/dtype "
+                    f"{source.shape}/{source.dtype}, expected "
+                    f"{target.shape}/{target.dtype}"
+                )
+            np.copyto(target, source, casting="no")
+
     def validate(self, *, finite: bool = True) -> None:
         errors: list[str] = []
         for name, contract in self.contracts.items():

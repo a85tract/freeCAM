@@ -5,10 +5,17 @@ This package contains the rank-local implementation used by its 24 MPI
 workers.
 """
 
+from .checkpoint import (
+    CheckpointBundle,
+    ModelSnapshot,
+    read_checkpoint,
+    restore_driver,
+)
 from .config import ModelConfig
 from .control import ModelOptions, ModelParameters
 from .contracts import FieldContract, default_contracts, export_contract
 from .driver import CAMDriver, DriverState
+from .experiment import BranchSpec, FieldEdit, SchemeMove
 from .scheme_plan import (
     KesslerSchemePlan,
     PHYSICS_AFTER_COUPLER,
@@ -18,17 +25,24 @@ from .scheme_plan import (
 from .state import StatePool
 
 __all__ = [
+    "BranchSpec",
+    "CheckpointBundle",
     "FieldContract",
     "CAMDriver",
     "DriverState",
+    "FieldEdit",
     "KesslerSchemePlan",
     "PHYSICS_AFTER_COUPLER",
     "PHYSICS_BEFORE_COUPLER",
     "PhysicsScheme",
+    "SchemeMove",
     "default_contracts",
     "export_contract",
     "ModelConfig",
+    "ModelSnapshot",
     "ModelOptions",
     "ModelParameters",
     "StatePool",
+    "read_checkpoint",
+    "restore_driver",
 ]

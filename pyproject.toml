@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "pycam-sima"
-version = "0.7.1"
+version = "0.8.0"
 description = "Python-owned CAM-SIMA model driver and observable state pool"
 readme = "README.md"
 requires-python = ">=3.11,<3.12"
@@ -18,7 +18,13 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-test = ["pytest>=8.0"]
+dask = ["dask[distributed]>=2025.1", "dask-jobqueue>=0.9"]
+notebook = [
+  "dask[distributed]>=2025.1",
+  "dask-jobqueue>=0.9",
+  "ipykernel>=7.0",
+]
+test = ["pytest>=8.0", "dask[distributed]>=2025.1"]
 
 [project.scripts]
 pycam-sima = "pycam_sima.cli:main"
