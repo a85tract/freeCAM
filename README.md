@@ -23,6 +23,15 @@ The current architecture is also available as an interactive
 and as the repository-local
 [`docs/pycam_sima_architecture.html`](docs/pycam_sima_architecture.html).
 
+Runnable examples are split by execution mode:
+
+- [`examples/try_notebook_session.ipynb`](examples/try_notebook_session.ipynb)
+  keeps a 24-rank MPI worker alive for interactive phase, scheme, step, and
+  field control through the authenticated socket bridge.
+- [`examples/try_dask_fanout.ipynb`](examples/try_dask_fanout.ipynb) submits a
+  restartable base PBS/MPI task, fans out independent Dask branches, and reads
+  their final checkpoints and per-step history fields.
+
 ```text
 pycam_sima/
   core/       MPI loader and remote-field utilities
