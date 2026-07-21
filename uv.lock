@@ -367,7 +367,7 @@ wheels = [
 
 [[package]]
 name = "pycam-sima"
-version = "0.7.0"
+version = "0.7.1"
 source = { editable = "." }
 dependencies = [
     { name = "f90nml" },

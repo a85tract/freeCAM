@@ -508,7 +508,7 @@
     <section class="tab-panel" id="schemes" role="tabpanel" aria-labelledby="tab-schemes">
       <div class="section-head">
         <h2>before / after 不再是黑盒</h2>
-        <p>默认顺序逐项对应 pinned <code>suite_kessler.xml</code>。每个块都能单独调用和观察；group 执行时只运行 enabled 的 scheme。</p>
+        <p>默认顺序逐项对应 pinned <code>suite_kessler.xml</code>。每个块都能单独调用和观察，也能在 before/after 之间移动；稳定的 source identity 与当前 execution group 分开保存。</p>
       </div>
       <div class="timeline">
         <div class="phase-group" data-order="0">
@@ -541,12 +541,15 @@ T = model.get_field("physics_air_temperature", rank=0)</code></pre>
 model.scheme_plan.move(
     "kessler", after="kessler_update", unsafe=True,
 )
+model.scheme_plan.move(
+    "kessler", to_group="physics_after_coupler", unsafe=True,
+)
 model.scheme_plan.reset()</code></pre>
         </article>
       </div>
       <div class="notice">
         <span>!</span>
-        <div><strong>为什么必须写 unsafe=True？</strong><p>默认 24-scheme 计划是 BFB 合同。关闭或重排 required scheme 是允许的控制实验，但不再代表经过验证的科学路径；数组、MPI、shape 和 ABI 安全检查仍然保留。</p></div>
+        <div><strong>为什么必须写 unsafe=True？</strong><p>默认 24-scheme 计划是 BFB 合同。跨组移动会真正改变模型时间位置：离开 before 后不再参与 nstep=0/步末准备，而在下一步的 after 阶段执行。这是允许的控制实验，但不再代表经过验证的科学路径；数组、MPI、shape 和 ABI 安全检查仍然保留。</p></div>
       </div>
     </section>
 
@@ -647,7 +650,7 @@ with NotebookSession(
         <div class="status-card ok"><small>HISTORY</small><div class="value">51 / 51</div><small>timestamps and file set equal</small></div>
         <div class="status-card ok"><small>NUMERIC FIELDS</small><div class="value">26 / 26</div><small>float64 bit patterns equal</small></div>
         <div class="status-card python"><small>FVM GEOMETRY</small><div class="value">23 / 23</div><small>fields BFB to removed legacy asset</small></div>
-        <div class="status-card python"><small>PYTEST</small><div class="value">24 passed</div><small>contracts and state transitions</small></div>
+        <div class="status-card python"><small>PYTEST</small><div class="value">26 passed</div><small>contracts and state transitions</small></div>
         <div class="status-card bound"><small>NATIVE ELF</small><div class="value">0</div><small>MPI / ESMF / PIO dependencies</small></div>
       </div>
       <article class="scope card">
@@ -667,7 +670,7 @@ with NotebookSession(
 
     <footer>
       <span>pycam-sima architecture · source-aligned snapshot</span>
-      <span>Evidence: PBS 6829370 · 24-scheme plan · kernel ABI 2 · CAM-SIMA f8daa568</span>
+      <span>Evidence: PBS 6829430 · cross-group control · kernel ABI 2 · CAM-SIMA f8daa568</span>
     </footer>
   </main>
 

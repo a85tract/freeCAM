@@ -45,6 +45,39 @@ def test_required_scheme_changes_must_be_explicitly_unsafe() -> None:
     plan.enable("kessler")
     assert plan.sequence_safe
 
+
+def test_scheme_can_move_between_coupler_groups() -> None:
+    plan = KesslerSchemePlan.default()
+    plan.move(
+        "kessler",
+        to_group=PHYSICS_AFTER_COUPLER,
+        unsafe=True,
+    )
+    assert "kessler" not in {
+        scheme.name for scheme in plan.active(PHYSICS_BEFORE_COUPLER)
+    }
+    assert plan.active(PHYSICS_AFTER_COUPLER)[-1].key == (
+        "physics_before_coupler.kessler"
+    )
+    moved = plan.scheme("physics_before_coupler.kessler")
+    assert moved.source_group == PHYSICS_BEFORE_COUPLER
+    assert moved.group == PHYSICS_AFTER_COUPLER
+    described = plan.describe(PHYSICS_AFTER_COUPLER)[-1]
+    assert described["source_group"] == PHYSICS_BEFORE_COUPLER
+    assert described["execution_group"] == PHYSICS_AFTER_COUPLER
+    assert not plan.sequence_safe
+
+    restored = KesslerSchemePlan.from_payload(plan.to_payload())
+    assert restored.to_payload() == plan.to_payload()
+    plan.reset()
+    assert plan.scheme("kessler").group == PHYSICS_BEFORE_COUPLER
+    assert plan.sequence_safe
+
+    plan.move("kessler", before="thermo_water_update", unsafe=True)
+    assert plan.active(PHYSICS_AFTER_COUPLER)[0].key == (
+        "physics_before_coupler.kessler"
+    )
+
     with pytest.raises(ValueError, match="unsafe=True"):
         plan.move("kessler", after="kessler_update")
     plan.move("kessler", after="kessler_update", unsafe=True)
@@ -66,3 +99,14 @@ def test_duplicate_scheme_name_requires_group_and_payload_round_trips() -> None:
     restored = KesslerSchemePlan.from_payload(plan.to_payload())
     assert restored.keys == plan.keys
     assert restored.to_payload() == plan.to_payload()
+
+    plan.move(
+        "physics_before_coupler.check_energy_scaling",
+        to_group=PHYSICS_AFTER_COUPLER,
+        unsafe=True,
+    )
+    with pytest.raises(ValueError, match="ambiguous"):
+        plan.scheme("check_energy_scaling", group=PHYSICS_AFTER_COUPLER)
+    assert plan.scheme(
+        "physics_before_coupler.check_energy_scaling"
+    ).group == PHYSICS_AFTER_COUPLER

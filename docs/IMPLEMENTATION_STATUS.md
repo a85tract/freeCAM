@@ -17,9 +17,10 @@ communication through mpi4py, advances the clock, and writes history.
 retains no array pointer or mutable model state between calls.
 
 The Python scheme plan mirrors every active entry in the pinned Kessler CCPP
-suite. Its 19 before-coupler and 5 after-coupler schemes are independently
-callable, observable, enabled/disabled, and reorderable. Required-scheme
-changes demand `unsafe=True`; the untouched XML order is the BFB contract.
+suite. Its default 19 before-coupler and 5 after-coupler schemes are
+independently callable, observable, enabled/disabled, reorderable, and movable
+between groups. Required-scheme changes demand `unsafe=True`; the untouched
+XML order is the BFB contract.
 The two Kessler boundaries and the FP-sensitive geopotential helper call
 stateless Fortran kernels. The remaining conversion, thermodynamic,
 conservation, tendency, and diagnostic boundaries execute against the same

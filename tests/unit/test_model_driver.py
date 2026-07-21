@@ -6,6 +6,7 @@ import pytest
 from pycam_sima.model import (
     CAMDriver,
     DriverState,
+    KesslerSchemePlan,
     ModelConfig,
     PHYSICS_AFTER_COUPLER,
     PHYSICS_BEFORE_COUPLER,
@@ -67,6 +68,20 @@ def test_real_stateless_kessler_preserves_addresses(session):
     assert session.backend.call_count == 1
 
 
+def test_group_execution_follows_a_cross_group_move() -> None:
+    plan = KesslerSchemePlan.default()
+    plan.move("kessler", to_group=PHYSICS_AFTER_COUPLER, unsafe=True)
+    driver = object.__new__(CAMDriver)
+    driver.scheme_plan = plan
+    calls = []
+    driver.run_scheme = calls.append
+
+    CAMDriver.run_scheme_group(driver, PHYSICS_BEFORE_COUPLER)
+    assert "physics_before_coupler.kessler" not in calls
+    CAMDriver.run_scheme_group(driver, PHYSICS_AFTER_COUPLER)
+    assert calls[-1] == "physics_before_coupler.kessler"
+
+
 def test_step_uses_complete_python_orchestrator(session, monkeypatch):
     session.run_scheme("kessler_update", group=PHYSICS_BEFORE_COUPLER)
     session.state = DriverState.PRIMED
@@ -76,7 +91,8 @@ def test_step_uses_complete_python_orchestrator(session, monkeypatch):
         calls.append(f"phase:{name}")
 
     def record_scheme(name, *, group=None):
-        calls.append(f"scheme:{group}.{name}")
+        del group
+        calls.append(f"scheme:{name}")
 
     monkeypatch.setattr(session, "run_phase", record_phase)
     monkeypatch.setattr(session, "run_scheme", record_scheme)

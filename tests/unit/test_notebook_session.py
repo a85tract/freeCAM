@@ -162,7 +162,7 @@ def test_scheme_plan_is_editable_and_scheme_calls_are_collective(
             "phase_status": {"step": 0, "last_phase": None},
             "scheme_status": {
                 "last_scheme": (
-                    f"{payload['group']}.{payload['scheme']}"
+                    payload["scheme"]
                     if payload["op"] == "run_scheme"
                     else None
                 ),
@@ -181,8 +181,7 @@ def test_scheme_plan_is_editable_and_scheme_calls_are_collective(
     assert requests == [
         {
             "op": "run_scheme",
-            "scheme": "kessler",
-            "group": PHYSICS_BEFORE_COUPLER,
+            "scheme": "physics_before_coupler.kessler",
         }
     ]
 

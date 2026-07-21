@@ -1,10 +1,11 @@
 {
   "schema_version": 4,
-  "validated_at": "2026-07-21T04:58:06-06:00",
+  "validated_at": "2026-07-21T05:21:05-06:00",
   "repository": {
     "root": "/glade/work/ruitong/pycam-sima",
     "git_head_before_changes": "82b9eab5bf6bf14c5d78eb62ff4f55fc7b7d820c",
-    "package_version": "0.7.0"
+    "cross_group_parent_commit": "db56591288d8635b61d745a9c9af81ad92a06cdf",
+    "package_version": "0.7.1"
   },
   "architecture": {
     "source_packages": [
@@ -63,11 +64,14 @@
     "after_coupler_schemes": 5,
     "enabled_disabled_from_python": true,
     "reorderable_within_group": true,
+    "movable_between_groups": true,
+    "source_identity_preserved_after_move": true,
+    "cross_group_execution_tested": true,
     "required_changes_require_unsafe_true": true,
     "default_sequence_safe": true,
     "mpi_worker_plan_synchronized": true,
     "notebook_smoke": {
-      "pbs_job_id": "6829377.desched1",
+      "pbs_job_id": "6829431.desched1",
       "pbs_exit_status": 0,
       "mpi_ranks": 24,
       "steps": 2,
@@ -121,11 +125,11 @@
     "kessler_source_validation": "KESSLER_SOURCE_BFB fields=11"
   },
   "full_run": {
-    "pbs_job_id": "6829370.desched1",
+    "pbs_job_id": "6829430.desched1",
     "pbs_exit_status": 0,
-    "walltime": "00:07:25",
-    "run_dir": "/glade/derecho/scratch/ruitong/pycam-sima/scheme_plan_20260721-045004/run",
-    "history_dir": "/glade/derecho/scratch/ruitong/pycam-sima/scheme_plan_20260721-045004/history",
+    "walltime": "00:07:16",
+    "run_dir": "/glade/derecho/scratch/ruitong/pycam-sima/cross_group_20260721-051232/run",
+    "history_dir": "/glade/derecho/scratch/ruitong/pycam-sima/cross_group_20260721-051232/history",
     "result": {
       "runtime": "model",
       "mpi_ranks": 24,
@@ -136,6 +140,7 @@
       "initialized_abi_checked": false,
       "last_phase": "physics_timestep_initial",
       "last_scheme": "physics_before_coupler.kessler_diagnostics",
+      "last_scheme_group": "physics_before_coupler",
       "scheme_sequence_safe": true
     }
   },
@@ -151,7 +156,7 @@
     "dtype_shape_timestamp_and_float64_bits_equal": true
   },
   "local_verification": {
-    "pytest": "24 passed, 1 third-party deprecation warning",
+    "pytest": "26 passed, 1 third-party deprecation warning",
     "notebook_count": 1,
     "kernel_source_bfb": "passed",
     "clean_dependency_and_export_gate": "passed",

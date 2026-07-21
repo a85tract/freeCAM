@@ -84,13 +84,22 @@ model.scheme_plan.disable("kessler_diagnostics", unsafe=True)
 model.scheme_plan.move(
     "kessler", after="kessler_update", unsafe=True,
 )
+# Move a before-coupler scheme to the end of the after-coupler group.
+model.scheme_plan.move(
+    "kessler", to_group="physics_after_coupler", unsafe=True,
+)
 model.scheme_plan.reset()
 ```
 
-`step()` executes only enabled schemes, in the editable plan order. Scheme
-names are group-qualified internally because `check_energy_scaling` occurs in
-both groups. The default unmodified plan is the only scientifically validated
-order.
+`step()` executes only enabled schemes, in the editable plan order and current
+execution group. Schemes may move within a group or between the before/after
+groups. Their source-qualified identity remains stable because
+`check_energy_scaling` occurs in both groups. The default unmodified plan is
+the only scientifically validated order.
+
+A cross-group move changes the execution stage: moving a scheme from before to
+after removes it from nstep=0/end-of-step preparation and places it at the
+beginning of the following model step.
 
 All persistent fields have `owner="python"`. Prognostic, tendency, and process
 arrays are writable at phase boundaries. Static grid/topology arrays require

@@ -93,7 +93,23 @@ Reordering also requires explicit acknowledgement:
 model.scheme_plan.move(
     "kessler", after="kessler_update", unsafe=True,
 )
+
+# Append kessler to physics_after_coupler instead.
+model.scheme_plan.move(
+    "kessler", to_group="physics_after_coupler", unsafe=True,
+)
 ```
+
+When `to_group` is supplied without `before` or `after`, the scheme is appended
+to that group. An anchor in the other group also moves it across the boundary,
+for example `after="sima_tend_diagnostics"`. `describe(group)` reports both its
+current `group` and immutable `source_group`, so duplicate names remain
+unambiguous after a move.
+
+Moving groups changes the model-time location, not just the printed order. A
+scheme moved out of `physics_before_coupler` no longer runs during nstep=0 or
+end-of-step preparation; it instead runs when the next step enters
+`physics_after_coupler`.
 
 `unsafe=True` is required because disabling or moving a required scheme makes
 the sequence scientifically different from the validated default. It does not

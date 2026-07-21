@@ -42,7 +42,12 @@ def _local_command(request: dict[str, Any], driver: CAMDriver, comm: Any) -> Any
         return driver.phase_status
     if operation == "run_scheme":
         driver.run_scheme(
-            str(request["scheme"]), group=str(request["group"])
+            str(request["scheme"]),
+            group=(
+                None
+                if request.get("group") is None
+                else str(request["group"])
+            ),
         )
         return _runtime_status(driver)
     if operation == "run_scheme_group":

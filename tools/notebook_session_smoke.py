@@ -38,6 +38,15 @@ def main() -> int:
         model.scheme_plan.enable("kessler_diagnostics")
         if not model.scheme_plan.sequence_safe:
             raise RuntimeError("restored default scheme plan is not safe")
+        model.scheme_plan.move(
+            "kessler_diagnostics",
+            to_group="physics_after_coupler",
+            unsafe=True,
+        )
+        moved = model.scheme_plan.describe("physics_after_coupler")[-1]
+        if moved["key"] != "physics_before_coupler.kessler_diagnostics":
+            raise RuntimeError("cross-group scheme move was not synchronized")
+        model.scheme_plan.reset()
         initial = model.get_field("air_temperature", rank=0)
         model.set_field("air_temperature", initial, rank=0)
         roundtrip = model.get_field("air_temperature", rank=0)

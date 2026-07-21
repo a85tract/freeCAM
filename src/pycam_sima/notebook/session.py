@@ -70,6 +70,7 @@ class NotebookSchemePlan:
         before: str | None = None,
         after: str | None = None,
         group: str | None = None,
+        to_group: str | None = None,
         unsafe: bool = False,
     ) -> None:
         self._mutate(
@@ -78,6 +79,7 @@ class NotebookSchemePlan:
             before=before,
             after=after,
             group=group,
+            to_group=to_group,
             unsafe=unsafe,
         )
 
@@ -216,6 +218,7 @@ class NotebookSession:
         self._scheme_names: tuple[str, ...] = self._scheme_plan.keys
         self._scheme_status: dict[str, Any] = {
             "last_scheme": None,
+            "last_scheme_group": None,
             "sequence_safe": self._scheme_plan.sequence_safe,
             "plan": self._scheme_plan.to_payload(),
         }
@@ -450,8 +453,7 @@ class NotebookSession:
         result = self._request(
             {
                 "op": "run_scheme",
-                "scheme": selected.name,
-                "group": selected.group,
+                "scheme": selected.key,
             }
         )
         self._update_runtime_status(result)
@@ -580,6 +582,7 @@ class NotebookSession:
         self._scheme_names = candidate.keys
         self._scheme_status = {
             "last_scheme": None,
+            "last_scheme_group": None,
             "sequence_safe": candidate.sequence_safe,
             "plan": candidate.to_payload(),
         }
@@ -794,6 +797,7 @@ class NotebookSession:
         self._scheme_names = self._scheme_plan.keys
         self._scheme_status = {
             "last_scheme": None,
+            "last_scheme_group": None,
             "sequence_safe": self._scheme_plan.sequence_safe,
             "plan": self._scheme_plan.to_payload(),
         }

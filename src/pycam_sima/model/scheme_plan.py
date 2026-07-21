@@ -14,16 +14,25 @@ SCHEME_GROUPS = (PHYSICS_BEFORE_COUPLER, PHYSICS_AFTER_COUPLER)
 @dataclass(frozen=True, slots=True)
 class PhysicsScheme:
     name: str
+    # ``group`` is the current execution group and may be edited.
     group: str
     category: str
     description: str
     implementation: str
     required: bool = True
     enabled: bool = True
+    # The source group is immutable identity from suite_kessler.xml.
+    source_group: str = ""
+
+    def __post_init__(self) -> None:
+        if not self.source_group:
+            object.__setattr__(self, "source_group", self.group)
 
     @property
     def key(self) -> str:
-        return f"{self.group}.{self.name}"
+        """Stable identity, independent of the current execution group."""
+
+        return f"{self.source_group}.{self.name}"
 
 
 def _scheme(
@@ -33,7 +42,14 @@ def _scheme(
     description: str,
     implementation: str = "python",
 ) -> PhysicsScheme:
-    return PhysicsScheme(name, group, category, description, implementation)
+    return PhysicsScheme(
+        name=name,
+        group=group,
+        category=category,
+        description=description,
+        implementation=implementation,
+        source_group=group,
+    )
 
 
 DEFAULT_KESSLER_SCHEMES = (
@@ -94,7 +110,9 @@ class KesslerSchemePlan:
             if not isinstance(row, Mapping):
                 raise TypeError("each scheme plan row must be a mapping")
             group, name = str(row.get("group")), str(row.get("name"))
-            key = f"{group}.{name}"
+            source_group = str(row.get("source_group", group))
+            cls._validate_group(group)
+            key = f"{source_group}.{name}"
             try:
                 template = _DEFAULT_BY_KEY[key]
             except KeyError as exc:
@@ -102,7 +120,9 @@ class KesslerSchemePlan:
             enabled = row.get("enabled")
             if not isinstance(enabled, bool):
                 raise TypeError(f"enabled for {key!r} must be bool")
-            schemes.append(replace(template, enabled=enabled))
+            schemes.append(
+                replace(template, group=group, enabled=enabled)
+            )
         claimed_safe = payload.get("sequence_safe", False)
         if not isinstance(claimed_safe, bool):
             raise TypeError("scheme plan sequence_safe must be bool")
@@ -133,10 +153,15 @@ class KesslerSchemePlan:
     def scheme(
         self, name: str, *, group: str | None = None
     ) -> PhysicsScheme:
-        if group is None and name in _DEFAULT_BY_KEY:
-            group, name = name.split(".", 1)
         if group is not None:
             self._validate_group(group)
+        if name in _DEFAULT_BY_KEY:
+            matches = [
+                scheme for scheme in self._schemes
+                if scheme.key == name
+                and (group is None or scheme.group == group)
+            ]
+        elif group is not None:
             matches = [
                 scheme for scheme in self._schemes
                 if scheme.group == group and scheme.name == name
@@ -146,9 +171,9 @@ class KesslerSchemePlan:
         if not matches:
             raise ValueError(f"unknown FKESSLER scheme {name!r}")
         if len(matches) > 1:
-            groups = tuple(scheme.group for scheme in matches)
+            identities = tuple(scheme.key for scheme in matches)
             raise ValueError(
-                f"scheme {name!r} is ambiguous; specify group= from {groups}"
+                f"scheme {name!r} is ambiguous; use one of {identities}"
             )
         return matches[0]
 
@@ -179,22 +204,49 @@ class KesslerSchemePlan:
         before: str | None = None,
         after: str | None = None,
         group: str | None = None,
+        to_group: str | None = None,
         unsafe: bool = False,
     ) -> None:
-        if (before is None) == (after is None):
-            raise ValueError("provide exactly one of before= or after=")
+        """Move a scheme within or across groups.
+
+        An anchor determines the destination group. With only ``to_group``,
+        the scheme is appended to that group. ``group`` selects a scheme by
+        its current location; a source-qualified key is always unambiguous.
+        """
+
+        if before is not None and after is not None:
+            raise ValueError("provide at most one of before= or after=")
+        if before is None and after is None and to_group is None:
+            raise ValueError("provide before=, after=, or to_group=")
+        if to_group is not None:
+            self._validate_group(to_group)
         moving = self.scheme(name, group=group)
         target_name = before if before is not None else after
-        assert target_name is not None
-        target = self.scheme(target_name, group=moving.group)
-        if moving.key == target.key:
-            raise ValueError("a scheme cannot be moved relative to itself")
+        target = None
+        if target_name is not None:
+            target = self.scheme(target_name, group=to_group)
+            if moving.key == target.key:
+                raise ValueError("a scheme cannot be moved relative to itself")
+            destination = target.group
+        else:
+            assert to_group is not None
+            destination = to_group
         if not unsafe:
             raise ValueError("changing the validated scheme order requires unsafe=True")
         self._schemes.remove(moving)
-        target_index = self._schemes.index(target)
-        insert_at = target_index if before is not None else target_index + 1
-        self._schemes.insert(insert_at, moving)
+        moved = replace(moving, group=destination)
+        if target is None:
+            group_indices = [
+                index for index, scheme in enumerate(self._schemes)
+                if scheme.group == destination
+            ]
+            insert_at = (
+                group_indices[-1] + 1 if group_indices else len(self._schemes)
+            )
+        else:
+            target_index = self._schemes.index(target)
+            insert_at = target_index if before is not None else target_index + 1
+        self._schemes.insert(insert_at, moved)
         self._sequence_safe = False
 
     def reset(self) -> None:
@@ -218,6 +270,8 @@ class KesslerSchemePlan:
                     "key": scheme.key,
                     "name": scheme.name,
                     "group": scheme.group,
+                    "execution_group": scheme.group,
+                    "source_group": scheme.source_group,
                     "category": scheme.category,
                     "description": scheme.description,
                     "implementation": scheme.implementation,
@@ -233,6 +287,7 @@ class KesslerSchemePlan:
             "schemes": [
                 {
                     "group": scheme.group,
+                    "source_group": scheme.source_group,
                     "name": scheme.name,
                     "enabled": scheme.enabled,
                 }
@@ -252,16 +307,11 @@ class KesslerSchemePlan:
 
     def _validate(self) -> None:
         if len(self.keys) != len(set(self.keys)):
-            raise ValueError("scheme keys must be unique within their groups")
+            raise ValueError("scheme source identities must be unique")
         if set(self.keys) != set(_DEFAULT_BY_KEY):
             raise ValueError("a scheme plan must contain every FKESSLER scheme exactly once")
-        for group in SCHEME_GROUPS:
-            actual = [scheme for scheme in self._schemes if scheme.group == group]
-            expected_count = sum(
-                scheme.group == group for scheme in DEFAULT_KESSLER_SCHEMES
-            )
-            if len(actual) != expected_count:
-                raise ValueError(f"scheme plan group {group!r} is incomplete")
+        for scheme in self._schemes:
+            self._validate_group(scheme.group)
 
     @staticmethod
     def _validate_group(group: str) -> None:

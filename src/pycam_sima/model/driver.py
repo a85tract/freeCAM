@@ -126,6 +126,7 @@ class CAMDriver:
         self.clock = None
         self._last_phase: str | None = None
         self._last_scheme: str | None = None
+        self._last_scheme_group: str | None = None
         self.scheme_plan = (
             KesslerSchemePlan.default()
             if scheme_plan is None
@@ -176,6 +177,7 @@ class CAMDriver:
     def scheme_status(self) -> dict[str, object]:
         return {
             "last_scheme": self._last_scheme,
+            "last_scheme_group": self._last_scheme_group,
             "sequence_safe": self.scheme_plan.sequence_safe,
             "groups": SCHEME_GROUPS,
             "plan": self.scheme_plan.to_payload(),
@@ -188,6 +190,7 @@ class CAMDriver:
             "state": self.state.value,
             "last_phase": self._last_phase,
             "last_scheme": self._last_scheme,
+            "last_scheme_group": self._last_scheme_group,
             "next_phase": None,
             "sequence_safe": self.scheme_plan.sequence_safe,
             "step": None if self.clock is None else self.clock.nstep,
@@ -259,6 +262,7 @@ class CAMDriver:
         self._scheme_handlers()[scheme.key](self.pool)
         self.pool.assert_pointer_stability(before)
         self._last_scheme = scheme.key
+        self._last_scheme_group = scheme.group
         return self
 
     def run_scheme_group(
@@ -270,7 +274,9 @@ class CAMDriver:
         """Run all enabled schemes in one coupler group in plan order."""
 
         for scheme in self.scheme_plan.active(group):
-            self.run_scheme(scheme.name, group=group)
+            # Use the stable source identity: a scheme may execute in a group
+            # different from the one where suite_kessler.xml defined it.
+            self.run_scheme(scheme.key)
             if callback is not None:
                 callback(scheme.key, self)
         return self
@@ -388,6 +394,7 @@ class CAMDriver:
             ),
             "last_phase": self._last_phase,
             "last_scheme": self._last_scheme,
+            "last_scheme_group": self._last_scheme_group,
             "scheme_sequence_safe": self.scheme_plan.sequence_safe,
         }
 
