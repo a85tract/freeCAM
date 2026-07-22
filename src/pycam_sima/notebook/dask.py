@@ -2,19 +2,25 @@
 
 from __future__ import annotations
 
+from contextlib import contextmanager
 from dataclasses import dataclass
+import fcntl
 import json
 import os
 from pathlib import Path
 import secrets
 import shlex
 import shutil
+import socket
 import subprocess
 import sys
-from typing import Any, Callable, Mapping, Sequence
+from typing import Any, Callable, Iterator, Literal, Mapping, Sequence
 
 from ..model.checkpoint import CheckpointBundle
 from ..model.experiment import BranchSpec
+
+
+ExecutionMode = Literal["pbs", "allocation"]
 
 
 @dataclass(frozen=True, slots=True)
@@ -43,6 +49,7 @@ class SegmentRequest:
     python_executable: str
     log_dir: str
     pbs: DaskPBSOptions
+    execution_mode: ExecutionMode
 
 
 @dataclass(frozen=True, slots=True)
@@ -55,6 +62,7 @@ class DaskRunResult:
     history_dir: str
     checkpoint_dir: str
     log_path: str
+    execution_mode: ExecutionMode
     pbs_job_id: str | None
     stats: Mapping[str, Any]
     snapshot: CheckpointBundle
@@ -73,6 +81,7 @@ class DaskRunResult:
             "history_dir": self.history_dir,
             "checkpoint_dir": self.checkpoint_dir,
             "snapshot_nbytes": self.snapshot_nbytes,
+            "execution_mode": self.execution_mode,
             "pbs_job_id": self.pbs_job_id,
             "log_path": self.log_path,
         }
@@ -96,6 +105,7 @@ class DaskExperimentClient:
         python_executable: str | Path | None = None,
         log_dir: str | Path | None = None,
         pbs: DaskPBSOptions | None = None,
+        execution_mode: ExecutionMode = "pbs",
         task_runner: TaskRunner | None = None,
     ) -> None:
         if not callable(getattr(client, "submit", None)):
@@ -118,7 +128,14 @@ class DaskExperimentClient:
         )
         self.log_dir = Path(log_dir or project / "logs").resolve()
         self.pbs = pbs or DaskPBSOptions()
-        self.task_runner = task_runner or run_pbs_segment
+        if execution_mode not in ("pbs", "allocation"):
+            raise ValueError("execution_mode must be 'pbs' or 'allocation'")
+        self.execution_mode: ExecutionMode = execution_mode
+        runners: dict[ExecutionMode, TaskRunner] = {
+            "pbs": run_pbs_segment,
+            "allocation": run_allocation_segment,
+        }
+        self.task_runner = task_runner or runners[execution_mode]
 
         required = (
             self.config,
@@ -199,7 +216,20 @@ class DaskExperimentClient:
             python_executable=str(self.python_executable),
             log_dir=str(self.log_dir),
             pbs=self.pbs,
+            execution_mode=self.execution_mode,
         )
+
+
+@dataclass(frozen=True, slots=True)
+class _SegmentPaths:
+    branch_root: Path
+    run_dir: Path
+    history_dir: Path
+    checkpoint_dir: Path
+    result_json: Path
+    branch_json: Path
+    input_checkpoint: Path | None
+    log_path: Path
 
 
 def run_pbs_segment(
@@ -208,6 +238,102 @@ def run_pbs_segment(
 ) -> DaskRunResult:
     """Materialize a Future snapshot, run one PBS segment, and return a Future snapshot."""
 
+    if request.execution_mode != "pbs":
+        raise ValueError("run_pbs_segment requires execution_mode='pbs'")
+    paths = _prepare_segment(request, parent)
+    script = paths.branch_root / "job.pbs"
+    script.write_text(
+        _pbs_script(
+            request,
+            run_dir=paths.run_dir,
+            history_dir=paths.history_dir,
+            input_checkpoint=paths.input_checkpoint,
+            checkpoint_dir=paths.checkpoint_dir,
+            branch_json=paths.branch_json,
+            result_json=paths.result_json,
+            log_path=paths.log_path,
+        )
+    )
+    try:
+        completed = subprocess.run(
+            ("qsub", "-W", "block=true", str(script)),
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+    except subprocess.CalledProcessError as exc:
+        raise RuntimeError(
+            "Dask CAM PBS segment failed to submit or complete: "
+            f"{exc.stderr.strip()}{_log_tail(paths.log_path)}"
+        ) from exc
+    stats = _read_segment_stats(paths, label="PBS")
+    job_id = stats.get("pbs_job_id")
+    if not job_id:
+        lines = completed.stdout.strip().splitlines()
+        job_id = lines[-1] if lines else None
+    return _segment_result(request, parent, paths, stats, job_id=job_id)
+
+
+def run_allocation_segment(
+    request: SegmentRequest,
+    parent: DaskRunResult | None,
+) -> DaskRunResult:
+    """Run one MPI segment directly inside the Dask controller's PBS allocation."""
+
+    if request.execution_mode != "allocation":
+        raise ValueError(
+            "run_allocation_segment requires execution_mode='allocation'"
+        )
+    outer_job_id = os.environ.get("PBS_JOBID")
+    if not outer_job_id:
+        raise RuntimeError(
+            "allocation execution requires an active PBS allocation (PBS_JOBID is unset)"
+        )
+
+    paths = _prepare_segment(request, parent)
+    environment = _sourced_environment(Path(request.environment_script))
+    environment.update(
+        {
+            "OMP_NUM_THREADS": "1",
+            "PYTHONUNBUFFERED": "1",
+            "PYTHONFAULTHANDLER": "1",
+        }
+    )
+    command = [
+        *_allocation_launcher(environment, request.pbs.ranks),
+        *_segment_arguments(request, paths),
+    ]
+    try:
+        with _allocation_mpi_lock(Path(request.run_root)):
+            with paths.log_path.open("w") as log:
+                subprocess.run(
+                    command,
+                    check=True,
+                    cwd=request.project_root,
+                    env=environment,
+                    stdout=log,
+                    stderr=subprocess.STDOUT,
+                    text=True,
+                )
+    except subprocess.CalledProcessError as exc:
+        raise RuntimeError(
+            "Dask CAM allocation segment failed: "
+            f"command exited with {exc.returncode}{_log_tail(paths.log_path)}"
+        ) from exc
+
+    stats = _read_segment_stats(paths, label="allocation")
+    job_id = stats.get("pbs_job_id") or outer_job_id
+    if job_id != outer_job_id:
+        raise RuntimeError(
+            f"segment reported PBS job {job_id}, expected outer job {outer_job_id}"
+        )
+    return _segment_result(request, parent, paths, stats, job_id=job_id)
+
+
+def _prepare_segment(
+    request: SegmentRequest,
+    parent: DaskRunResult | None,
+) -> _SegmentPaths:
     branch_root = Path(request.run_root) / request.branch.name
     if branch_root.exists():
         raise FileExistsError(f"refusing to replace Dask branch: {branch_root}")
@@ -228,57 +354,136 @@ def run_pbs_segment(
     branch_json.write_text(
         json.dumps(request.branch.as_dict(), indent=2, sort_keys=True)
     )
-
     log_path = (
         Path(request.log_dir)
-        / f"pycam_dask_{request.branch.name}_{request.task_id}.log"
-    )
-    script = branch_root / "job.pbs"
-    script.write_text(
-        _pbs_script(
-            request,
-            run_dir=run_dir,
-            history_dir=history_dir,
-            input_checkpoint=input_checkpoint,
-            checkpoint_dir=checkpoint_dir,
-            branch_json=branch_json,
-            result_json=result_json,
-            log_path=log_path,
+        / (
+            f"pycam_dask_{request.execution_mode}_{request.branch.name}_"
+            f"{request.task_id}.log"
         )
     )
-    try:
-        completed = subprocess.run(
-            ("qsub", "-W", "block=true", str(script)),
-            check=True,
-            capture_output=True,
-            text=True,
-        )
-    except subprocess.CalledProcessError as exc:
+    return _SegmentPaths(
+        branch_root=branch_root,
+        run_dir=run_dir,
+        history_dir=history_dir,
+        checkpoint_dir=checkpoint_dir,
+        result_json=result_json,
+        branch_json=branch_json,
+        input_checkpoint=input_checkpoint,
+        log_path=log_path,
+    )
+
+
+def _segment_arguments(
+    request: SegmentRequest,
+    paths: _SegmentPaths,
+) -> list[str]:
+    arguments = [
+        request.python_executable,
+        "-m",
+        "pycam_sima.cli",
+        "run-segment",
+        request.config,
+        "--run-dir",
+        str(paths.run_dir),
+        "--history-dir",
+        str(paths.history_dir),
+        "--library",
+        request.library,
+        "--output-checkpoint",
+        str(paths.checkpoint_dir),
+        "--branch-spec",
+        str(paths.branch_json),
+        "--result-json",
+        str(paths.result_json),
+    ]
+    if paths.input_checkpoint is not None:
+        arguments.extend(("--input-checkpoint", str(paths.input_checkpoint)))
+    return arguments
+
+
+def _read_segment_stats(paths: _SegmentPaths, *, label: str) -> dict[str, Any]:
+    if not paths.result_json.is_file():
         raise RuntimeError(
-            "Dask CAM PBS segment failed to submit or complete: "
-            f"{exc.stderr.strip()}{_log_tail(log_path)}"
-        ) from exc
-    if not result_json.is_file():
-        raise RuntimeError(
-            f"PBS segment produced no result file: {result_json}{_log_tail(log_path)}"
+            f"{label} segment produced no result file: "
+            f"{paths.result_json}{_log_tail(paths.log_path)}"
         )
-    stats = json.loads(result_json.read_text())
-    job_id = stats.get("pbs_job_id")
-    if not job_id:
-        lines = completed.stdout.strip().splitlines()
-        job_id = lines[-1] if lines else None
-    snapshot = CheckpointBundle.from_directory(checkpoint_dir)
+    return json.loads(paths.result_json.read_text())
+
+
+def _segment_result(
+    request: SegmentRequest,
+    parent: DaskRunResult | None,
+    paths: _SegmentPaths,
+    stats: Mapping[str, Any],
+    *,
+    job_id: str | None,
+) -> DaskRunResult:
     return DaskRunResult(
         branch=request.branch.name,
         parent_branch=None if parent is None else parent.branch,
-        run_dir=str(run_dir),
-        history_dir=str(history_dir),
-        checkpoint_dir=str(checkpoint_dir),
-        log_path=str(log_path),
+        run_dir=str(paths.run_dir),
+        history_dir=str(paths.history_dir),
+        checkpoint_dir=str(paths.checkpoint_dir),
+        log_path=str(paths.log_path),
+        execution_mode=request.execution_mode,
         pbs_job_id=job_id,
         stats=stats,
-        snapshot=snapshot,
+        snapshot=CheckpointBundle.from_directory(paths.checkpoint_dir),
     )
+
+
+def _sourced_environment(script: Path) -> dict[str, str]:
+    try:
+        completed = subprocess.run(
+            (
+                "bash",
+                "-c",
+                'source "$1" >/dev/null 2>&1 && env -0',
+                "pycam-sima-environment",
+                str(script),
+            ),
+            check=True,
+            capture_output=True,
+        )
+    except subprocess.CalledProcessError as exc:
+        message = os.fsdecode(exc.stderr).strip()
+        raise RuntimeError(
+            f"failed to source machine environment {script}: {message}"
+        ) from exc
+    environment: dict[str, str] = {}
+    for entry in completed.stdout.split(b"\0"):
+        if not entry:
+            continue
+        key, separator, value = entry.partition(b"=")
+        if separator:
+            environment[os.fsdecode(key)] = os.fsdecode(value)
+    return environment
+
+
+def _allocation_launcher(environment: Mapping[str, str], ranks: int) -> list[str]:
+    if environment.get("PBS_NODEFILE"):
+        return ["mpiexec", "-n", str(ranks)]
+    return [
+        "mpiexec",
+        "--hosts",
+        socket.gethostname(),
+        "--no-vni",
+        "-n",
+        str(ranks),
+    ]
+
+
+@contextmanager
+def _allocation_mpi_lock(run_root: Path) -> Iterator[None]:
+    """Serialize full-node MPI launches within one allocation."""
+
+    run_root.mkdir(parents=True, exist_ok=True)
+    with (run_root / ".allocation-mpi.lock").open("w") as handle:
+        fcntl.flock(handle, fcntl.LOCK_EX)
+        try:
+            yield
+        finally:
+            fcntl.flock(handle, fcntl.LOCK_UN)
 
 
 def _pbs_script(
@@ -292,27 +497,17 @@ def _pbs_script(
     result_json: Path,
     log_path: Path,
 ) -> str:
-    arguments = [
-        request.python_executable,
-        "-m",
-        "pycam_sima.cli",
-        "run-segment",
-        request.config,
-        "--run-dir",
-        str(run_dir),
-        "--history-dir",
-        str(history_dir),
-        "--library",
-        request.library,
-        "--output-checkpoint",
-        str(checkpoint_dir),
-        "--branch-spec",
-        str(branch_json),
-        "--result-json",
-        str(result_json),
-    ]
-    if input_checkpoint is not None:
-        arguments.extend(("--input-checkpoint", str(input_checkpoint)))
+    paths = _SegmentPaths(
+        branch_root=run_dir.parent,
+        run_dir=run_dir,
+        history_dir=history_dir,
+        checkpoint_dir=checkpoint_dir,
+        result_json=result_json,
+        branch_json=branch_json,
+        input_checkpoint=input_checkpoint,
+        log_path=log_path,
+    )
+    arguments = _segment_arguments(request, paths)
     command = shlex.join(arguments)
     return (
         "#!/bin/bash\n"
@@ -350,7 +545,7 @@ def _log_tail(path: Path, lines: int = 60) -> str:
     if not path.is_file():
         return ""
     content = path.read_text(errors="replace").splitlines()
-    return f"\nPBS log ({path}):\n" + "\n".join(content[-lines:])
+    return f"\nSegment log ({path}):\n" + "\n".join(content[-lines:])
 
 
 def _describe_result(result: DaskRunResult) -> dict[str, Any]:

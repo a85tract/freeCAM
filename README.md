@@ -155,6 +155,19 @@ branches = experiments.fork(
 summaries = experiments.summaries(branches)
 ```
 
+The default `execution_mode="pbs"` submits a PBS job for every segment. The
+single-allocation mode reserves one node once, starts the Dask scheduler and
+worker inside it, and lets every Dask task call `mpiexec` directly:
+
+```bash
+qsub jobs/dask_allocation_fanout_24x50.pbs
+```
+
+Its Python controller uses `execution_mode="allocation"` and one Dask worker.
+All base/branch summaries therefore have the same outer `PBS_JOBID`, and no
+branch invokes `qsub`. Full-node 24-rank segments are serialized; concurrent
+branches require explicit multi-node resource partitioning.
+
 `summaries()` returns only small metadata to the Notebook, including each
 branch's run, history, checkpoint, and log paths. `gather()` is also available,
 but it downloads each complete checkpoint bundle. Dask keeps a

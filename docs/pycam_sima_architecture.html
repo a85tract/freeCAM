@@ -389,7 +389,7 @@
           <div class="layer-body">
             <div class="node mpi"><b>Jupyter Notebook</b><small>用户调用 `start / step / run_phase / run_scheme / get_field / set_field`</small></div>
             <div class="node mpi"><b>NotebookSession</b><small>交互模式：保持24 ranks存活，在 scheme/phase/step 边界观察和修改</small></div>
-            <div class="node mpi"><b>DaskExperimentClient</b><small>任务模式：公共 checkpoint Future 分叉多个独立 PBS/MPI segments</small></div>
+            <div class="node mpi"><b>DaskExperimentClient</b><small>任务模式：公共 checkpoint Future 分叉；可在一个 PBS allocation 内直接启动多个 MPI segments</small></div>
           </div>
         </div>
         <div class="flow-arrow"><span>socket command or Dask Future/checkpoint dependency</span></div>
@@ -641,7 +641,7 @@ with NotebookSession(
       <div class="two-col" style="margin-top:18px">
         <article class="card panel-pad">
           <h3>Dask：没有持久 socket 的任务模式</h3>
-          <p>Base task 启动24-rank MPI segment，结束前把214个 Python-owned fields、clock、scheme plan 和 process state 写成按 rank 分片的 bit-preserving checkpoint。Dask Future 保留其不可变序列化 bundle。</p>
+          <p>外层只申请一次 PBS allocation，并在其中启动本地 Dask scheduler 和一个 worker。Base task 直接执行 <code>mpiexec -n 24</code>；结束前把214个 Python-owned fields、clock、scheme plan 和 process state 写成按 rank 分片的 bit-preserving checkpoint。Dask Future 保留其不可变序列化 bundle。</p>
           <pre><button class="copy">复制</button><code>base = experiments.submit_base(
     BranchSpec("base", steps=10),
 )
@@ -653,11 +653,11 @@ branches = experiments.fork(base, (
         </article>
         <article class="card panel-pad">
           <h3>一次分叉的真实含义</h3>
-          <p>每个 branch task 接收同一个 base Future，但恢复自己的 Fortran-contiguous NumPy arrays，并建立新的24-rank <code>MPI.COMM_WORLD</code>。它不是对已经初始化的 MPI 进程执行系统 <code>fork()</code>。</p>
+          <p>每个 branch task 接收同一个 base Future，但恢复自己的 Fortran-contiguous NumPy arrays，并建立新的24-rank <code>MPI.COMM_WORLD</code>。它不是对已经初始化的 MPI 进程执行系统 <code>fork()</code>。当前每个 segment 占满24 ranks，因此任务在同一 allocation 内串行执行；branch 不再调用 <code>qsub</code>。</p>
           <div class="data-path">
-            <div class="data-hop"><span class="hop-index">1</span><div><b>Base PBS/MPI task</b><small>run → checkpoint → process exits</small></div></div>
+            <div class="data-hop"><span class="hop-index">1</span><div><b>One outer PBS job</b><small>Dask scheduler + worker stay alive</small></div></div>
             <div class="data-hop"><span class="hop-index">2</span><div><b>Dask Future</b><small>holds immutable 24-rank checkpoint bundle</small></div></div>
-            <div class="data-hop"><span class="hop-index">3</span><div><b>Independent branches</b><small>restore copies → new MPI communicators → continue</small></div></div>
+            <div class="data-hop"><span class="hop-index">3</span><div><b>Direct MPI branch tasks</b><small>restore copies → mpiexec → same PBS_JOBID</small></div></div>
           </div>
         </article>
       </div>
@@ -673,9 +673,9 @@ branches = experiments.fork(base, (
         <div class="status-card ok"><small>HISTORY</small><div class="value">51 / 51</div><small>timestamps and file set equal</small></div>
         <div class="status-card ok"><small>NUMERIC FIELDS</small><div class="value">26 / 26</div><small>float64 bit patterns equal</small></div>
         <div class="status-card python"><small>FVM GEOMETRY</small><div class="value">23 / 23</div><small>fields BFB to removed legacy asset</small></div>
-        <div class="status-card python"><small>PYTEST</small><div class="value">33 passed</div><small>contracts, snapshots and Dask graph</small></div>
+        <div class="status-card python"><small>PYTEST</small><div class="value">36 passed</div><small>contracts, snapshots and Dask execution modes</small></div>
         <div class="status-card bound"><small>NATIVE ELF</small><div class="value">0</div><small>MPI / ESMF / PIO dependencies</small></div>
-        <div class="status-card ok"><small>DASK FAN-OUT</small><div class="value">1 → 2</div><small>base Future · isolated PBS branches</small></div>
+        <div class="status-card ok"><small>DASK FAN-OUT</small><div class="value">1 PBS</div><small>base + branches · direct MPI segments</small></div>
         <div class="status-card ok"><small>RESTART GATE</small><div class="value">25 + 25</div><small>51 history files remain BFB</small></div>
       </div>
       <article class="scope card">
@@ -695,7 +695,7 @@ branches = experiments.fork(base, (
 
     <footer>
       <span>pycam-sima architecture · source-aligned snapshot</span>
-      <span>Evidence: PBS 6835553 · Dask 6835577/6835590/6835591 · kernel ABI 2 · CAM-SIMA f8daa568</span>
+      <span>Evidence: restart PBS 6835553 · single-allocation Dask PBS 6852327 · kernel ABI 2 · CAM-SIMA f8daa568</span>
     </footer>
   </main>
 

@@ -5,16 +5,19 @@ MPI model over an authenticated socket. On a Derecho login node `start()`
 submits the worker through PBS; inside an allocation it uses `mpiexec`
 directly.
 
-The only maintained Notebook is
-`examples/try_notebook_session.ipynb`.
+The maintained Notebooks are `examples/try_notebook_session.ipynb` for a
+persistent interactive worker and `examples/try_dask_fanout.ipynb` for
+checkpoint/restart experiments.
 
 There are now two control modes:
 
 - `NotebookSession` keeps one 24-rank model alive for low-latency phase,
   scheme, field, and step interaction.
-- `DaskExperimentClient` submits restartable PBS/MPI tasks. A common base
-  `Future` retains an immutable checkpoint bundle and can fan out into
-  independent model branches without a persistent socket worker.
+- `DaskExperimentClient` submits restartable MPI tasks. A common base `Future`
+  retains an immutable checkpoint bundle and can fan out into independent
+  model branches without a persistent socket worker. It can either submit one
+  PBS job per segment or launch segments directly inside one existing PBS
+  allocation.
 
 ## Start a session
 
@@ -133,8 +136,8 @@ with NotebookSession(repo / "configs/fkessler_model.yaml", run_dir=run_dir) as m
 ## Fork independent Dask tasks
 
 Install the optional scheduler dependencies with
-`uv sync --extra test --extra notebook`. The Dask client runs only the orchestration
-tasks; every CAM segment still runs as a new 24-rank MPI job.
+`uv sync --extra test --extra notebook`. The Dask client runs only orchestration
+tasks; every CAM segment still creates a new 24-rank MPI world.
 
 ```python
 from dask.distributed import Client
@@ -165,9 +168,39 @@ branches = experiments.fork(
 summaries = experiments.summaries(branches)
 ```
 
+The example above uses the default `execution_mode="pbs"`: each Dask task
+calls blocking `qsub` for its own segment. To reserve one node once and keep
+all segments in that allocation, submit:
+
+```bash
+qsub jobs/dask_allocation_fanout_24x50.pbs
+```
+
+Inside that job the controller starts one in-process Dask scheduler and one
+worker, then constructs the experiment with:
+
+```python
+client = Client(processes=False, n_workers=1, threads_per_worker=1)
+experiments = DaskExperimentClient(
+    client,
+    config=repo / "configs/fkessler_model.yaml",
+    initial_run_dir=reference_run,
+    run_root=run_root,
+    python_executable=repo / ".venv/bin/python",
+    execution_mode="allocation",
+)
+```
+
+Every task then runs `mpiexec -n 24 ... run-segment` directly. No task writes
+`job.pbs` or invokes `qsub`; all result summaries carry the same outer
+`PBS_JOBID`. The current one-node implementation serializes full-node MPI
+segments. Running branches simultaneously requires separately partitioned
+nodes/ranks and is not enabled by this mode.
+
 The base Future is a dependency of every branch, so Dask computes it once.
 The value retained by Dask is a serialized copy of every rank's Python-owned
 state, not a live MPI communicator. Each branch restores new
 Fortran-contiguous arrays and creates a new `MPI.COMM_WORLD`. `summaries()`
 returns only metadata, including `run_dir`, `history_dir`, and
-`checkpoint_dir`; `gather()` also downloads the complete state bundles.
+`checkpoint_dir`; it also reports `execution_mode` and `pbs_job_id`.
+`gather()` downloads the complete state bundles.
