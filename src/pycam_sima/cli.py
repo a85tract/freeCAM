@@ -14,6 +14,8 @@ from .model import (
     BranchSpec,
     CAMDriver,
     ModelConfig,
+    SegmentPlan,
+    execute_segment_plan,
     read_checkpoint,
     restore_driver,
 )
@@ -75,13 +77,23 @@ def command_run_segment(args: argparse.Namespace) -> int:
             f"configuration requires {config.mpi_size} MPI ranks, got {comm.size}"
         )
 
-    if args.branch_spec:
-        payload = json.loads(Path(args.branch_spec).read_text())
-        spec = BranchSpec.from_mapping(payload)
+    if args.branch_spec and args.segment_plan:
+        raise SystemExit("use --branch-spec or --segment-plan, not both")
+    if args.segment_plan:
+        payload = _read_json_collective(Path(args.segment_plan), comm)
+        plan = SegmentPlan.from_mapping(payload)
+        if args.steps is not None:
+            raise SystemExit("use actions in --segment-plan or --steps, not both")
+    elif args.branch_spec:
+        payload = _read_json_collective(Path(args.branch_spec), comm)
+        plan = BranchSpec.from_mapping(payload).to_segment_plan()
         if args.steps is not None:
             raise SystemExit("use steps in --branch-spec or --steps, not both")
     else:
-        spec = BranchSpec(name=args.name, steps=1 if args.steps is None else args.steps)
+        plan = BranchSpec(
+            name=args.name,
+            steps=1 if args.steps is None else args.steps,
+        ).to_segment_plan()
 
     history_dir = Path(args.history_dir).resolve()
     if args.input_checkpoint:
@@ -108,14 +120,15 @@ def command_run_segment(args: argparse.Namespace) -> int:
             history_dir=history_dir,
         ).start()
 
-    spec.apply(driver)
-    for _ in range(spec.steps):
-        driver.step()
+    action_trace = execute_segment_plan(driver, plan)
     checkpoint = driver.write_checkpoint(args.output_checkpoint)
     result = driver.stats()
     result.update(
-        branch=spec.name,
-        segment_steps=spec.steps,
+        branch=plan.name,
+        segment_steps=plan.step_count,
+        action_count=len(plan.actions),
+        action_trace=action_trace,
+        segment_plan=plan.as_dict(),
         checkpoint=str(checkpoint),
         checkpoint_schema=CHECKPOINT_SCHEMA_VERSION,
         pbs_job_id=os.environ.get("PBS_JOBID"),
@@ -129,6 +142,25 @@ def command_run_segment(args: argparse.Namespace) -> int:
             result_path.write_text(encoded)
         print(encoded)
     return 0
+
+
+def _read_json_collective(path: Path, comm) -> dict:
+    """Read one controller payload once and broadcast it to every MPI rank."""
+
+    payload = None
+    error = None
+    if comm.rank == 0:
+        try:
+            payload = json.loads(path.read_text())
+        except BaseException as exc:
+            error = f"{type(exc).__name__}: {exc}"
+    error = comm.bcast(error, root=0)
+    if error:
+        raise SystemExit(f"cannot read segment payload {path}: {error}")
+    payload = comm.bcast(payload, root=0)
+    if not isinstance(payload, dict):
+        raise SystemExit(f"segment payload must be a JSON object: {path}")
+    return payload
 
 
 def command_build_kernels(_args: argparse.Namespace) -> int:
@@ -173,6 +205,7 @@ def main() -> int:
     segment.add_argument("--input-checkpoint")
     segment.add_argument("--output-checkpoint", required=True)
     segment.add_argument("--branch-spec")
+    segment.add_argument("--segment-plan")
     segment.add_argument("--name", default="segment")
     segment.add_argument("--steps", type=int)
     segment.add_argument("--result-json")

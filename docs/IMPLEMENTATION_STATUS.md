@@ -55,6 +55,15 @@ The previous `cam_init`/`cam_run*` wrapper backend has been removed. The
 upstream CAM-SIMA executable remains external to this package and is used only
 to create immutable BFB oracle output.
 
+Dask execution supports both legacy edit-then-step `BranchSpec` segments and
+versioned `SegmentPlan` action sequences. One plan may run phase, scheme,
+scheme-group, observation, field-edit, and complete-step actions against one
+live StatePool in one MPI launch. `submit_action()` makes one action a durable
+checkpoint/Future boundary, while `field()` extracts one rank-local array
+without gathering the complete checkpoint bundle. Granular model actions are
+explicitly unsafe experiments; only the unchanged complete-step order carries
+the model BFB contract.
+
 ## Verification contract
 
 - Initialization must execute zero native calls and must not probe the kernel
@@ -68,12 +77,15 @@ to create immutable BFB oracle output.
 - The fixed 24-rank run must produce nstep=0 plus 50 steps.
 - All 51 filenames, timestamps, shapes, dtypes, and bit patterns for the 26
   numeric history variables must match the oracle.
+- A batched granular plan and the equivalent chain of single-action checkpoint
+  segments must produce bitwise-identical StatePool arrays on all 24 ranks.
 
 Machine-readable evidence is stored in
-`validation/fkessler_model_bfb.json`.
+`validation/fkessler_model_bfb.json` and
+`validation/dask_granular_actions.json`. The latter records both real PBS
+segments and the single-allocation batch-versus-checkpoint-chain comparison.
 
 ## Scope boundary
 
-Other suites, grids, vertical levels, MPI sizes, timesteps, restart/branch
-runs, mediator or surface components, MPAS, GPU execution, and FADIAB are not
-supported.
+Other suites, grids, vertical levels, MPI sizes, timesteps, mediator or surface
+components, MPAS, GPU execution, and FADIAB are not supported.

@@ -1,7 +1,14 @@
 from pathlib import Path
 
 import pycam_sima
-from pycam_sima import CAMDriver, DaskExperimentClient, NotebookSession
+from pycam_sima import (
+    CAMDriver,
+    DaskExperimentClient,
+    NotebookSession,
+    RunPhase,
+    RunScheme,
+    SegmentPlan,
+)
 from pycam_sima.model import CAMDriver as ModelDriver
 from pycam_sima.notebook import (
     DaskExperimentClient as DaskController,
@@ -25,6 +32,9 @@ def test_root_api_delegates_to_responsibility_packages() -> None:
     assert CAMDriver is ModelDriver
     assert NotebookSession is NotebookController
     assert DaskExperimentClient is DaskController
+    assert pycam_sima.SegmentPlan is SegmentPlan
+    assert pycam_sima.RunPhase is RunPhase
+    assert pycam_sima.RunScheme is RunScheme
 
 
 def test_maintained_pbs_jobs_write_to_the_shared_log_directory() -> None:

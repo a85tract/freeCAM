@@ -1,6 +1,7 @@
 """Public API for the Python-owned CAM model."""
 
 from .model import (
+    Action,
     BranchSpec,
     CAMDriver,
     CheckpointBundle,
@@ -11,10 +12,19 @@ from .model import (
     ModelOptions,
     ModelSnapshot,
     ModelParameters,
+    MoveScheme,
+    ObserveFields,
     PHYSICS_AFTER_COUPLER,
     PHYSICS_BEFORE_COUPLER,
     PhysicsScheme,
+    PrepareInitialStep,
+    RunPhase,
+    RunScheme,
+    RunSchemeGroup,
+    RunSteps,
     SchemeMove,
+    SegmentPlan,
+    SetSchemeEnabled,
     StatePool,
 )
 from .notebook import (
@@ -26,6 +36,7 @@ from .notebook import (
 )
 
 __all__ = [
+    "Action",
     "BranchSpec",
     "CAMDriver",
     "CheckpointBundle",
@@ -39,12 +50,21 @@ __all__ = [
     "ModelOptions",
     "ModelSnapshot",
     "ModelParameters",
+    "MoveScheme",
+    "ObserveFields",
     "PHYSICS_AFTER_COUPLER",
     "PHYSICS_BEFORE_COUPLER",
     "PhysicsScheme",
+    "PrepareInitialStep",
+    "RunPhase",
+    "RunScheme",
+    "RunSchemeGroup",
+    "RunSteps",
     "SchemeMove",
+    "SegmentPlan",
+    "SetSchemeEnabled",
     "NotebookSession",
     "NotebookWorkerError",
     "StatePool",
 ]
-__version__ = "0.8.0"
+__version__ = "0.9.0"

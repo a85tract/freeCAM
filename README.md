@@ -155,6 +155,57 @@ branches = experiments.fork(
 summaries = experiments.summaries(branches)
 ```
 
+`BranchSpec` remains the compact interface for edit-then-step experiments.
+For phase/scheme boundaries, submit a serializable `SegmentPlan`:
+
+```python
+from pycam_sima import (
+    ObserveFields,
+    RunPhase,
+    RunScheme,
+    SegmentPlan,
+)
+
+granular = experiments.submit_plan(
+    base,
+    SegmentPlan(
+        "kessler-then-map",
+        (
+            RunScheme(
+                "kessler",
+                group="physics_before_coupler",
+            ),
+            ObserveFields((
+                "potential_temperature",
+                "large_scale_precipitation_rate",
+            )),
+            RunPhase("physics_to_dynamics"),
+        ),
+        unsafe=True,
+    ),
+)
+summary = experiments.summary(granular).result()
+temperature = experiments.field(
+    granular,
+    "potential_temperature",
+    rank=0,
+).result()
+```
+
+All actions in one plan share one live StatePool and one 24-rank MPI launch.
+`submit_action(parent, name=..., action=...)` creates a separate checkpointed
+Dask task when an action boundary must become a Future or fork point. A
+separate task starts new MPI processes and restores private arrays from the
+parent checkpoint; it does not inherit process memory. Standalone phase,
+scheme, and scheme-group actions require `unsafe=True`. They do not advance the
+clock or write history; `RunSteps` retains the complete validated model
+semantics.
+
+The version-1 action vocabulary is `PrepareInitialStep`, `RunPhase`,
+`RunScheme`, `RunSchemeGroup`, `RunSteps`, `SetSchemeEnabled`, `MoveScheme`,
+`FieldEdit`, and `ObserveFields`. A plan is completely validated before its
+first action mutates model state.
+
 The default `execution_mode="pbs"` submits a PBS job for every segment. The
 single-allocation mode reserves one node once, starts the Dask scheduler and
 worker inside it, and lets every Dask task call `mpiexec` directly:
@@ -169,8 +220,11 @@ branch invokes `qsub`. Full-node 24-rank segments are serialized; concurrent
 branches require explicit multi-node resource partitioning.
 
 `summaries()` returns only small metadata to the Notebook, including each
-branch's run, history, checkpoint, and log paths. `gather()` is also available,
-but it downloads each complete checkpoint bundle. Dask keeps a
+branch's run, history, checkpoint, log paths, segment plan, and action trace.
+`ObserveFields` adds rank-local and global statistics to that trace.
+`experiments.field()` extracts one rank-local array on a Dask worker without
+downloading the complete snapshot. `gather()` is also available, but it
+downloads each complete checkpoint bundle. Dask keeps a
 bundle in distributed memory while its Future is referenced; the durable
 checkpoint directories allow restart after a Dask worker or PBS allocation has
 ended. `run-segment` is the non-socket MPI entry point used by these tasks.
@@ -180,6 +234,12 @@ real 24-rank base Future and two PBS branches. The control branch changed no
 fields; the edited branch changed only `air_temperature` by exactly `+1.0`.
 The separate 25+25 restart gate produced all 51 history files BFB against the
 external CAM-SIMA oracle.
+
+`validation/dask_granular_actions.json` records the action-level gates: real
+PBS-mode parent and phase segments, one-allocation batch and chained action
+execution, all-rank StatePool bitwise comparison, direct
+`CAMDriver.run_phase()` comparison, one-call Kessler proof, field extraction,
+and the unchanged 24-rank/50-step history BFB result.
 
 All persistent fields have `owner="python"`. Prognostic, tendency, and process
 arrays are writable at phase boundaries. Static grid/topology arrays require

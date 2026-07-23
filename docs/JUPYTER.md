@@ -168,6 +168,49 @@ branches = experiments.fork(
 summaries = experiments.summaries(branches)
 ```
 
+For finer control, submit a serializable action plan. All actions in one plan
+share the same in-memory `StatePool` and one 24-rank MPI launch:
+
+```python
+from pycam_sima import ObserveFields, RunPhase, RunScheme, SegmentPlan
+
+plan = SegmentPlan(
+    name="custom-kessler-path",
+    unsafe=True,
+    actions=(
+        RunScheme("kessler", group="physics_before_coupler"),
+        ObserveFields(
+            ("physics_air_temperature", "large_scale_precipitation_rate")
+        ),
+        RunPhase("physics_to_dynamics"),
+        ObserveFields(("air_temperature",)),
+    ),
+)
+result = experiments.submit_plan(base, plan)
+summary = experiments.summaries({"custom": result})["custom"]
+temperature = experiments.field(
+    result, "air_temperature", rank=0
+).result()
+```
+
+Use `submit_action()` when the action boundary itself must become a restartable
+or forkable checkpoint:
+
+```python
+after_kessler = experiments.submit_action(
+    base,
+    name="after-kessler",
+    action=RunScheme("kessler", group="physics_before_coupler"),
+)
+```
+
+Independent phase and scheme calls require `SegmentPlan(unsafe=True)`. They do
+not advance the model clock, write a history sample, or insert omitted
+prerequisite phases. `RunSteps(count)` remains the validated complete-step
+operation. `summaries()` includes the compact action trace, while `field()`
+loads and returns only one requested rank-local array from the final
+checkpoint.
+
 The example above uses the default `execution_mode="pbs"`: each Dask task
 calls blocking `qsub` for its own segment. To reserve one node once and keep
 all segments in that allocation, submit:

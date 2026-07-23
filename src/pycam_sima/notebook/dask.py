@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 from contextlib import contextmanager
-from dataclasses import dataclass
+from dataclasses import dataclass, field as dataclass_field
 import fcntl
+from io import BytesIO
 import json
 import os
 from pathlib import Path
@@ -16,8 +17,10 @@ import subprocess
 import sys
 from typing import Any, Callable, Iterator, Literal, Mapping, Sequence
 
+import numpy as np
+
 from ..model.checkpoint import CheckpointBundle
-from ..model.experiment import BranchSpec
+from ..model.experiment import Action, BranchSpec, SegmentPlan
 
 
 ExecutionMode = Literal["pbs", "allocation"]
@@ -38,7 +41,7 @@ class DaskPBSOptions:
 
 @dataclass(frozen=True, slots=True)
 class SegmentRequest:
-    branch: BranchSpec
+    plan: SegmentPlan
     task_id: str
     project_root: str
     config: str
@@ -66,6 +69,8 @@ class DaskRunResult:
     pbs_job_id: str | None
     stats: Mapping[str, Any]
     snapshot: CheckpointBundle
+    action_trace: tuple[Mapping[str, Any], ...] = ()
+    segment_plan: Mapping[str, Any] = dataclass_field(default_factory=dict)
 
     @property
     def snapshot_nbytes(self) -> int:
@@ -84,6 +89,9 @@ class DaskRunResult:
             "execution_mode": self.execution_mode,
             "pbs_job_id": self.pbs_job_id,
             "log_path": self.log_path,
+            "action_count": len(self.action_trace),
+            "action_trace": [dict(record) for record in self.action_trace],
+            "segment_plan": dict(self.segment_plan),
         }
 
 
@@ -150,7 +158,7 @@ class DaskExperimentClient:
         self.run_root.mkdir(parents=True, exist_ok=True)
         self.log_dir.mkdir(parents=True, exist_ok=True)
 
-    def submit_base(self, branch: BranchSpec) -> Any:
+    def submit_base(self, branch: BranchSpec | SegmentPlan) -> Any:
         """Submit the one task whose snapshot becomes the fan-out parent."""
 
         request = self._request(branch)
@@ -161,7 +169,9 @@ class DaskExperimentClient:
             pure=False,
         )
 
-    def submit_branch(self, parent: Any, branch: BranchSpec) -> Any:
+    def submit_branch(
+        self, parent: Any, branch: BranchSpec | SegmentPlan
+    ) -> Any:
         """Submit one branch that depends on a parent Dask Future."""
 
         request = self._request(branch)
@@ -172,10 +182,32 @@ class DaskExperimentClient:
             pure=False,
         )
 
+    def submit_plan(self, parent: Any, plan: SegmentPlan) -> Any:
+        """Submit one multi-action MPI segment from a parent snapshot."""
+
+        if not isinstance(plan, SegmentPlan):
+            raise TypeError("plan must be SegmentPlan")
+        return self.submit_branch(parent, plan)
+
+    def submit_action(
+        self,
+        parent: Any,
+        *,
+        name: str,
+        action: Action,
+        unsafe: bool = True,
+    ) -> Any:
+        """Submit one action as its own checkpointed MPI segment."""
+
+        return self.submit_plan(
+            parent,
+            SegmentPlan(name=name, actions=(action,), unsafe=unsafe),
+        )
+
     def fork(
         self,
         parent: Any,
-        branches: Sequence[BranchSpec],
+        branches: Sequence[BranchSpec | SegmentPlan],
     ) -> dict[str, Any]:
         """Fan out independent tasks from one common snapshot Future."""
 
@@ -203,9 +235,31 @@ class DaskExperimentClient:
         values = self.client.gather(futures)
         return dict(zip(branches, values))
 
-    def _request(self, branch: BranchSpec) -> SegmentRequest:
+    def field(self, result: Any, name: str, *, rank: int = 0) -> Any:
+        """Return a Future for one rank-local field, not the full snapshot."""
+
+        if not 0 <= rank < self.pbs.ranks:
+            raise ValueError(
+                f"rank must be between 0 and {self.pbs.ranks - 1}, got {rank}"
+            )
+        return self.client.submit(
+            _extract_checkpoint_field,
+            result,
+            str(name),
+            int(rank),
+            pure=False,
+        )
+
+    def _request(self, branch: BranchSpec | SegmentPlan) -> SegmentRequest:
+        plan = (
+            branch.to_segment_plan()
+            if isinstance(branch, BranchSpec)
+            else branch
+        )
+        if not isinstance(plan, SegmentPlan):
+            raise TypeError("Dask branches must be BranchSpec or SegmentPlan")
         return SegmentRequest(
-            branch=branch,
+            plan=plan,
             task_id=secrets.token_hex(6),
             project_root=str(Path(__file__).resolve().parents[3]),
             config=str(self.config),
@@ -227,7 +281,7 @@ class _SegmentPaths:
     history_dir: Path
     checkpoint_dir: Path
     result_json: Path
-    branch_json: Path
+    plan_json: Path
     input_checkpoint: Path | None
     log_path: Path
 
@@ -236,7 +290,7 @@ def run_pbs_segment(
     request: SegmentRequest,
     parent: DaskRunResult | None,
 ) -> DaskRunResult:
-    """Materialize a Future snapshot, run one PBS segment, and return a Future snapshot."""
+    """Run one PBS segment from a materialized Future snapshot."""
 
     if request.execution_mode != "pbs":
         raise ValueError("run_pbs_segment requires execution_mode='pbs'")
@@ -249,7 +303,7 @@ def run_pbs_segment(
             history_dir=paths.history_dir,
             input_checkpoint=paths.input_checkpoint,
             checkpoint_dir=paths.checkpoint_dir,
-            branch_json=paths.branch_json,
+            plan_json=paths.plan_json,
             result_json=paths.result_json,
             log_path=paths.log_path,
         )
@@ -287,7 +341,8 @@ def run_allocation_segment(
     outer_job_id = os.environ.get("PBS_JOBID")
     if not outer_job_id:
         raise RuntimeError(
-            "allocation execution requires an active PBS allocation (PBS_JOBID is unset)"
+            "allocation execution requires an active PBS allocation "
+            "(PBS_JOBID is unset)"
         )
 
     paths = _prepare_segment(request, parent)
@@ -334,14 +389,14 @@ def _prepare_segment(
     request: SegmentRequest,
     parent: DaskRunResult | None,
 ) -> _SegmentPaths:
-    branch_root = Path(request.run_root) / request.branch.name
+    branch_root = Path(request.run_root) / request.plan.name
     if branch_root.exists():
         raise FileExistsError(f"refusing to replace Dask branch: {branch_root}")
     run_dir = branch_root / "run"
     history_dir = branch_root / "history"
     checkpoint_dir = branch_root / "checkpoint"
     result_json = branch_root / "result.json"
-    branch_json = branch_root / "branch.json"
+    plan_json = branch_root / "segment-plan.json"
     input_checkpoint: Path | None = None
     run_dir.mkdir(parents=True)
     shutil.copy2(Path(request.initial_run_dir) / "atm_in", run_dir / "atm_in")
@@ -351,13 +406,13 @@ def _prepare_segment(
             branch_root / "input-checkpoint"
         )
         _inherit_history(Path(parent.history_dir), history_dir)
-    branch_json.write_text(
-        json.dumps(request.branch.as_dict(), indent=2, sort_keys=True)
+    plan_json.write_text(
+        json.dumps(request.plan.as_dict(), indent=2, sort_keys=True)
     )
     log_path = (
         Path(request.log_dir)
         / (
-            f"pycam_dask_{request.execution_mode}_{request.branch.name}_"
+            f"pycam_dask_{request.execution_mode}_{request.plan.name}_"
             f"{request.task_id}.log"
         )
     )
@@ -367,7 +422,7 @@ def _prepare_segment(
         history_dir=history_dir,
         checkpoint_dir=checkpoint_dir,
         result_json=result_json,
-        branch_json=branch_json,
+        plan_json=plan_json,
         input_checkpoint=input_checkpoint,
         log_path=log_path,
     )
@@ -391,8 +446,8 @@ def _segment_arguments(
         request.library,
         "--output-checkpoint",
         str(paths.checkpoint_dir),
-        "--branch-spec",
-        str(paths.branch_json),
+        "--segment-plan",
+        str(paths.plan_json),
         "--result-json",
         str(paths.result_json),
     ]
@@ -419,7 +474,7 @@ def _segment_result(
     job_id: str | None,
 ) -> DaskRunResult:
     return DaskRunResult(
-        branch=request.branch.name,
+        branch=request.plan.name,
         parent_branch=None if parent is None else parent.branch,
         run_dir=str(paths.run_dir),
         history_dir=str(paths.history_dir),
@@ -429,6 +484,8 @@ def _segment_result(
         pbs_job_id=job_id,
         stats=stats,
         snapshot=CheckpointBundle.from_directory(paths.checkpoint_dir),
+        action_trace=tuple(stats.get("action_trace", ())),
+        segment_plan=dict(stats.get("segment_plan", request.plan.as_dict())),
     )
 
 
@@ -493,7 +550,7 @@ def _pbs_script(
     history_dir: Path,
     input_checkpoint: Path | None,
     checkpoint_dir: Path,
-    branch_json: Path,
+    plan_json: Path,
     result_json: Path,
     log_path: Path,
 ) -> str:
@@ -503,7 +560,7 @@ def _pbs_script(
         history_dir=history_dir,
         checkpoint_dir=checkpoint_dir,
         result_json=result_json,
-        branch_json=branch_json,
+        plan_json=plan_json,
         input_checkpoint=input_checkpoint,
         log_path=log_path,
     )
@@ -550,3 +607,45 @@ def _log_tail(path: Path, lines: int = 60) -> str:
 
 def _describe_result(result: DaskRunResult) -> dict[str, Any]:
     return result.describe()
+
+
+def _extract_checkpoint_field(
+    result: DaskRunResult, name: str, rank: int
+) -> np.ndarray:
+    """Extract one canonical field or zero-copy alias from a Future snapshot."""
+
+    from ..model.contracts import default_alias_rules, default_contracts
+
+    filename = f"rank-{rank:03d}.npz"
+    try:
+        content = next(
+            content
+            for stored_name, content in result.snapshot.files
+            if stored_name == filename
+        )
+    except StopIteration as exc:
+        raise KeyError(
+            f"checkpoint for rank {rank} is absent from branch {result.branch!r}"
+        ) from exc
+
+    direct_aliases = {
+        alias: contract.standard_name
+        for contract in default_contracts()
+        for alias in contract.aliases
+    }
+    alias_rules = {rule.alias: rule for rule in default_alias_rules()}
+    with np.load(BytesIO(content), allow_pickle=False) as stored:
+        if name in stored.files:
+            value = stored[name]
+        elif name in direct_aliases:
+            value = stored[direct_aliases[name]]
+        elif name in alias_rules:
+            rule = alias_rules[name]
+            value = stored[rule.target]
+            if rule.index is not None:
+                selector = [slice(None)] * value.ndim
+                selector[rule.axis] = rule.index
+                value = value[tuple(selector)]
+        else:
+            raise KeyError(f"unknown checkpoint field {name!r}")
+        return np.array(value, dtype=value.dtype, order="F", copy=True)

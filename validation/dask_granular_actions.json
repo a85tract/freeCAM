@@ -1,0 +1,199 @@
+{
+  "schema_version": 1,
+  "validated_at": "2026-07-23T06:40:42.745556+00:00",
+  "repository": {
+    "root": "/glade/work/ruitong/pycam-sima",
+    "parent_commit": "ccfe5fdd1522fce3a986b494cbe37fab099f694b",
+    "package_version": "0.9.0"
+  },
+  "software": {
+    "dask": "2026.7.1",
+    "distributed": "2026.7.1",
+    "mpi4py": "4.1.2",
+    "numpy": "2.4.6",
+    "action_schema": 1,
+    "checkpoint_schema": 1
+  },
+  "pbs_mode": {
+    "controller_command": ".venv/bin/python tools/dask_granular_pbs_smoke.py",
+    "run_root": "/glade/derecho/scratch/ruitong/pycam-sima/dask_granular_pbs/20260723-000905",
+    "root_segment": {
+      "pbs_job_id": "6859162.desched1",
+      "exit_status": 0,
+      "walltime_used": "00:00:20",
+      "execution_mode": "pbs",
+      "branch": "pbs-root",
+      "parent": null
+    },
+    "granular_segment": {
+      "pbs_job_id": "6859165.desched1",
+      "exit_status": 0,
+      "walltime_used": "00:00:09",
+      "execution_mode": "pbs",
+      "branch": "pbs-granular-phase",
+      "parent": "pbs-root",
+      "action_count": 2,
+      "actions": [
+        {
+          "type": "run_phase",
+          "name": "dynamics_to_physics"
+        },
+        {
+          "type": "observe_fields",
+          "fields": [
+            "air_temperature"
+          ],
+          "statistics": [
+            "min",
+            "max",
+            "mean"
+          ]
+        }
+      ]
+    },
+    "field_extraction": {
+      "field": "air_temperature",
+      "rank": 0,
+      "shape": [
+        4,
+        4,
+        30,
+        3,
+        3
+      ],
+      "dtype": "<f8",
+      "min": 149.84337724047597,
+      "max": 306.20463514548004,
+      "mean": 237.25174410239765
+    },
+    "completion_marker": "PYCAM_SIMA_DASK_GRANULAR_PBS_OK jobs=6859162.desched1,6859165.desched1"
+  },
+  "allocation_mode": {
+    "command": "qsub jobs/dask_granular_actions_24x50.pbs",
+    "job_id": "6859342.desched1",
+    "exit_status": 0,
+    "resources": "select=1:ncpus=25:mpiprocs=24:ompthreads=1:mem=80GB",
+    "walltime_used": "00:10:45",
+    "run_root": "/glade/derecho/scratch/ruitong/pycam-sima/dask_granular/6859342.desched1",
+    "execution_mode": "allocation",
+    "dask_workers": 1,
+    "nested_qsub": 0,
+    "outer_job_shared_by_all_segments": true,
+    "plan": {
+      "schema_version": 1,
+      "name": "granular-batch",
+      "unsafe": true,
+      "actions": [
+        {
+          "type": "run_phase",
+          "name": "dynamics_to_physics"
+        },
+        {
+          "type": "run_phase",
+          "name": "physics_timestep_initial"
+        },
+        {
+          "type": "run_scheme",
+          "name": "calc_exner",
+          "group": "physics_before_coupler"
+        },
+        {
+          "type": "run_scheme",
+          "name": "temp_to_potential_temp",
+          "group": "physics_before_coupler"
+        },
+        {
+          "type": "run_scheme",
+          "name": "calc_dry_air_ideal_gas_density",
+          "group": "physics_before_coupler"
+        },
+        {
+          "type": "run_scheme",
+          "name": "wet_to_dry_water_vapor",
+          "group": "physics_before_coupler"
+        },
+        {
+          "type": "run_scheme",
+          "name": "wet_to_dry_cloud_liquid_water",
+          "group": "physics_before_coupler"
+        },
+        {
+          "type": "run_scheme",
+          "name": "wet_to_dry_rain",
+          "group": "physics_before_coupler"
+        },
+        {
+          "type": "run_scheme",
+          "name": "kessler",
+          "group": "physics_before_coupler"
+        },
+        {
+          "type": "observe_fields",
+          "fields": [
+            "potential_temperature",
+            "large_scale_precipitation_rate"
+          ],
+          "statistics": [
+            "min",
+            "max",
+            "mean"
+          ]
+        }
+      ]
+    },
+    "batch_vs_chained": {
+      "bitwise_identical": true,
+      "ranks": 24,
+      "arrays_compared": 5136,
+      "bytes_compared": 35841016
+    },
+    "run_phase_vs_direct_driver": {
+      "phase": "dynamics_to_physics",
+      "bitwise_identical": true,
+      "ranks": 24,
+      "arrays_compared": 5136,
+      "bytes_compared": 35841016,
+      "native_calls_delta": 0,
+      "pbs_job_id": "6859342.desched1",
+      "log_path": "/glade/work/ruitong/pycam-sima/logs/pycam_direct_phase_6859342.log"
+    },
+    "kessler_native_call": {
+      "action_index": 8,
+      "name": "kessler",
+      "group": "physics_before_coupler",
+      "native_calls_delta": 1
+    },
+    "field_extraction": {
+      "field": "potential_temperature",
+      "rank": 0,
+      "shape": [
+        27,
+        30
+      ],
+      "dtype": "<f8",
+      "min": 288.87725526863306,
+      "max": 748.2336611689697,
+      "mean": 376.53535129519025
+    },
+    "legacy_branch_spec_gate": {
+      "branch": "control-50step",
+      "step": 50,
+      "history_samples": 51,
+      "history_files": 51,
+      "numeric_variables": 26,
+      "oracle": "/glade/derecho/scratch/ruitong/pycam_sima_legacy_oracle_f8daa568/run",
+      "result": "BFB"
+    },
+    "granular_marker": "PYCAM_SIMA_DASK_GRANULAR_OK job=6859342.desched1 actions=10 ranks=24 nested_qsub=0",
+    "completion_marker": "PYCAM_SIMA_DASK_GRANULAR_BFB"
+  },
+  "local_verification": {
+    "pytest": "50 passed, 1 third-party deprecation warning",
+    "notebook_json": "valid",
+    "pbs_shell_syntax": "valid",
+    "python_compile": "passed",
+    "uv_lock_check": "passed",
+    "site_worker": "root=200, missing=404",
+    "git_diff_check": "passed"
+  }
+}

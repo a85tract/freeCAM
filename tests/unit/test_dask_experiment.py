@@ -1,9 +1,19 @@
+from io import BytesIO
 from pathlib import Path
 
 from distributed import Client
+import numpy as np
 import pytest
 
-from pycam_sima import BranchSpec, CheckpointBundle, FieldEdit
+from pycam_sima import (
+    BranchSpec,
+    CheckpointBundle,
+    FieldEdit,
+    ObserveFields,
+    RunPhase,
+    RunScheme,
+    SegmentPlan,
+)
 from pycam_sima.notebook.dask import (
     _allocation_launcher,
     DaskExperimentClient,
@@ -14,23 +24,37 @@ from pycam_sima.notebook.dask import (
 
 def _fake_segment(request, parent):
     value = 10 if parent is None else int(parent.stats["value"])
-    for edit in request.branch.field_edits:
-        if edit.operation == "add":
-            value += int(edit.value)
+    for action in request.plan.actions:
+        if isinstance(action, FieldEdit) and action.operation == "add":
+            value += int(action.value)
+    stream = BytesIO()
+    np.savez(
+        stream,
+        air_temperature=np.full((2, 2), value, dtype=np.float64, order="F"),
+    )
     bundle = CheckpointBundle(
-        (("manifest.json", f'{{"value": {value}}}'.encode()),)
+        (
+            ("manifest.json", f'{{"value": {value}}}'.encode()),
+            ("rank-000.npz", stream.getvalue()),
+        )
+    )
+    action_trace = tuple(
+        {"index": index, "type": type(action).__name__}
+        for index, action in enumerate(request.plan.actions)
     )
     return DaskRunResult(
-        branch=request.branch.name,
+        branch=request.plan.name,
         parent_branch=None if parent is None else parent.branch,
-        run_dir=f"/run/{request.branch.name}",
-        history_dir=f"/history/{request.branch.name}",
-        checkpoint_dir=f"/checkpoint/{request.branch.name}",
-        log_path=f"/logs/{request.branch.name}.log",
+        run_dir=f"/run/{request.plan.name}",
+        history_dir=f"/history/{request.plan.name}",
+        checkpoint_dir=f"/checkpoint/{request.plan.name}",
+        log_path=f"/logs/{request.plan.name}.log",
         execution_mode=request.execution_mode,
         pbs_job_id=None,
-        stats={"value": value, "step": request.branch.steps},
+        stats={"value": value, "step": request.plan.step_count},
         snapshot=bundle,
+        action_trace=action_trace,
+        segment_plan=request.plan.as_dict(),
     )
 
 
@@ -88,6 +112,9 @@ def test_dask_future_fans_out_independent_branches(tmp_path: Path) -> None:
             ),
         )
         summaries = experiments.summaries(branches)
+        temperature = experiments.field(
+            branches["plus-one"], "T", rank=0
+        ).result()
         results = experiments.gather(branches)
         base_result = base.result()
 
@@ -99,9 +126,54 @@ def test_dask_future_fans_out_independent_branches(tmp_path: Path) -> None:
     assert summaries["plus-one"]["history_dir"] == "/history/plus-one"
     assert summaries["plus-one"]["checkpoint_dir"] == "/checkpoint/plus-one"
     assert summaries["plus-one"]["execution_mode"] == "pbs"
+    assert summaries["plus-one"]["action_count"] == 2
+    assert np.array_equal(temperature, np.full((2, 2), 11.0))
     assert results["plus-one"].parent_branch == "base"
     assert results["plus-two"].parent_branch == "base"
     assert results["plus-one"].snapshot is not results["plus-two"].snapshot
+
+
+def test_submit_plan_and_single_action_keep_parent_future(
+    tmp_path: Path,
+) -> None:
+    with Client(
+        processes=False,
+        n_workers=1,
+        threads_per_worker=1,
+        dashboard_address=None,
+    ) as client:
+        experiments = DaskExperimentClient(
+            client,
+            task_runner=_fake_segment,
+            **_inputs(tmp_path),
+        )
+        base = experiments.submit_base(BranchSpec("base", steps=0))
+        batch = experiments.submit_plan(
+            base,
+            SegmentPlan(
+                "batch",
+                (
+                    RunScheme(
+                        "kessler", group="physics_before_coupler"
+                    ),
+                    ObserveFields(("air_temperature",)),
+                ),
+                unsafe=True,
+            ),
+        )
+        single = experiments.submit_action(
+            batch,
+            name="single-phase",
+            action=RunPhase("dynamics_to_physics"),
+        )
+        batch_result, single_result = client.gather((batch, single))
+
+    assert batch_result.parent_branch == "base"
+    assert single_result.parent_branch == "batch"
+    assert batch_result.segment_plan["unsafe"] is True
+    assert single_result.segment_plan["actions"] == [
+        {"type": "run_phase", "name": "dynamics_to_physics"}
+    ]
 
 
 class _SubmitClient:

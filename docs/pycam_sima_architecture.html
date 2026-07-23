@@ -786,7 +786,7 @@
           <div class="mode-copy">
             <span class="mode-label">MODE B · RESTARTABLE TASKS</span>
             <h3>每个 task 是一个新的 MPI segment</h3>
-            <p>Dask Client 把依赖交给 Scheduler；Worker 收到可运行的 segment 后直接调用 <code>mpiexec -n 24</code>。segment 从父 checkpoint 创建私有 StatePool，运行后写出新的 checkpoint 并退出。</p>
+            <p>Dask Client 把依赖交给 Scheduler；Worker 收到可运行的 segment 后直接调用 <code>mpiexec -n 24</code>。segment 从父 checkpoint 创建私有 StatePool，可在同一次 MPI 启动中按 <code>SegmentPlan</code> 连续运行多个 phase、scheme 或 step，最后写出新的 checkpoint 并退出。</p>
             <div class="flow">
               <div class="flow-row">
                 <div class="node dask"><b>Dask Client</b><small>submit Future</small></div>
@@ -802,7 +802,7 @@
           <div class="mode-facts">
             <div class="fact"><b>状态</b><span>immutable checkpoint Future</span></div>
             <div class="fact"><b>MPI进程</b><span>每个 segment 新建</span></div>
-            <div class="fact"><b>观察点</b><span>task / checkpoint 边界</span></div>
+            <div class="fact"><b>观察点</b><span>action trace + task checkpoint</span></div>
             <div class="fact"><b>最适合</b><span>分支实验、批量参数探索</span></div>
           </div>
         </div>
@@ -829,7 +829,7 @@
             <div class="branch-stack">
               <div class="dag-node">control<br><small>restore base</small></div>
               <div class="dag-node">no-kessler<br><small>restore base + disable</small></div>
-              <div class="dag-node">warm<br><small>restore edited parent</small></div>
+              <div class="dag-node">action plan<br><small>scheme → observe → phase</small></div>
             </div>
           </div>
           <p style="margin:16px 0 0;color:var(--muted);font-size:13px">串行只表示它们复用同一组24-rank资源；control 的计算结果不会流入 no-kessler，分支状态仍彼此隔离。</p>
@@ -853,7 +853,7 @@
           <div class="role-icon dask-color">D</div>
           <h3>Dask</h3>
           <p>连接 Notebook 中的实验意图与可重启任务。</p>
-          <ul><li>Client 提交 Future</li><li>Scheduler 管依赖</li><li>Worker 启动 segment</li></ul>
+          <ul><li>Client 提交 Future</li><li>Scheduler 管依赖</li><li>Worker 执行 action plan</li></ul>
         </article>
         <article class="role">
           <div class="role-icon pbs-color">P</div>
@@ -916,7 +916,7 @@
           <tbody>
             <tr><td>MPI生命周期</td><td>同一批24 ranks持续存活</td><td>每个segment新建24 ranks，结束后退出</td></tr>
             <tr><td>状态位置</td><td>原进程中的live StatePool</td><td>父checkpoint → 分支私有StatePool</td></tr>
-            <tr><td>控制粒度</td><td>scheme、phase、step边界</td><td>task / checkpoint边界</td></tr>
+            <tr><td>控制粒度</td><td>scheme、phase、step边界</td><td>segment内为scheme/phase/step；跨task为checkpoint</td></tr>
             <tr><td>单次交互延迟</td><td class="yes">低：无需重启MPI和恢复checkpoint</td><td>较高：需要mpiexec、restore、write</td></tr>
             <tr><td>分支隔离</td><td>需要显式snapshot/restore</td><td class="yes">Future依赖天然表达独立分支</td></tr>
             <tr><td>进程故障后状态</td><td class="no">live内存可能丢失</td><td class="yes">durable checkpoint可重启</td></tr>
@@ -948,7 +948,7 @@
         </article>
         <article class="card panel-pad">
           <span class="mode-label" style="color:var(--dask);background:var(--dask-soft)">Dask allocation</span>
-          <h3>从公共 checkpoint 分叉</h3>
+          <h3>从公共 checkpoint 运行 action plan</h3>
           <pre><button class="copy">复制</button><code>client = Client(
     processes=False,
     n_workers=1,
@@ -962,17 +962,28 @@ experiments = DaskExperimentClient(
 base = experiments.submit_base(
     BranchSpec("base", steps=10)
 )
-branches = experiments.fork(base, (
-    BranchSpec("control", steps=5),
-    BranchSpec("no-kessler", steps=5,
-               disable_schemes=("kessler",)),
-))
-summaries = experiments.summaries(branches)</code></pre>
+granular = experiments.submit_plan(
+    base,
+    SegmentPlan(
+        "kessler-then-map",
+        (
+            RunScheme("kessler",
+                group="physics_before_coupler"),
+            ObserveFields(("potential_temperature",)),
+            RunPhase("physics_to_dynamics"),
+        ),
+        unsafe=True,
+    ),
+)
+summary = experiments.summary(granular).result()
+field = experiments.field(
+    granular, "potential_temperature", rank=0
+).result()</code></pre>
         </article>
       </div>
       <div class="notice">
         <span>i</span>
-        <div><strong><code>summaries()</code> 是等待点</strong><p><code>fork()</code> 很快返回 Future；<code>summaries()</code> 会等待所有 segment 真正完成，再只取回路径、step、PBS job ID 等小型 metadata，不下载完整 checkpoint bundle。</p></div>
+        <div><strong><code>summaries()</code> 是等待点</strong><p><code>submit_plan()</code> 和 <code>fork()</code> 很快返回 Future；<code>summaries()</code> 会等待 segment 完成，并取回路径、step、action trace 和 PBS job ID 等小型 metadata。<code>field()</code> 只提取一个 rank 的指定数组，不下载完整 checkpoint bundle。</p></div>
       </div>
     </section>
 
@@ -1012,6 +1023,7 @@ summaries = experiments.summaries(branches)</code></pre>
       </div>
       <div class="card" style="overflow:hidden">
         <details open><summary>Dask 可以让同一批 MPI ranks 一直活着吗？</summary><p>当前 task/checkpoint 模式不可以。Dask Worker 只启动并等待一个 MPI segment；segment结束后进程退出。要控制同一批live ranks，仍需常驻 server 或等价的持久IPC。</p></details>
+        <details><summary>细粒度 action 是否每次都重新启动 MPI？</summary><p>不一定。一个 <code>SegmentPlan</code> 内的所有 action 共用同一次24-rank MPI启动和同一个live StatePool；只有使用 <code>submit_action()</code> 把边界变成新的Future时，才会结束当前segment、写checkpoint并为下一个task重新启动MPI。</p></details>
         <details><summary>为什么单-allocation模式仍然需要几分钟？</summary><p>它只去掉了每个分支重新排PBS队列的时间。模型step、MPI进程启动、24-rank checkpoint恢复与写入仍然真实发生；一个worker还会让占满24 ranks的segments串行执行。</p></details>
         <details><summary>串行执行意味着后一个分支读取前一个分支吗？</summary><p>不意味着。control和no-kessler都从base的不可变snapshot创建私有副本；warm从它明确指定的parent创建副本。串行只是资源安排，不是状态依赖。</p></details>
         <details><summary>自定义 server 为什么需要 socket？</summary><p>因为Notebook和24-rank模型是不同进程。模型完成一条命令后要继续存活并等待下一条命令，就必须有socket、pipe、ZeroMQ或MPI intercommunicator之类的持久IPC。当前实现使用带authkey的socket。</p></details>
@@ -1028,6 +1040,7 @@ summaries = experiments.summaries(branches)</code></pre>
         <div class="evidence-card"><small>HISTORY</small><b>51 / 51</b><small>timestamps</small></div>
         <div class="evidence-card"><small>NUMERIC</small><b>26 / 26</b><small>variables</small></div>
         <div class="evidence-card"><small>DASK ALLOCATION</small><b>1 PBS</b><small>base + branches · direct MPI</small></div>
+        <div class="evidence-card"><small>GRANULAR ACTIONS</small><b class="yes">BFB</b><small>batch = checkpoint chain</small></div>
       </div>
     </section>
 
