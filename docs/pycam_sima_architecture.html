@@ -3,8 +3,8 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="description" content="pycam-sima 的两种控制模式：常驻 socket server 与 Dask checkpoint fan-out，以及它们和 PBS、MPI、Python StatePool 的边界。">
-  <title>pycam-sima · 两种控制模式</title>
+  <meta name="description" content="pycam-sima 的 Python-owned 数据总线、自动生成的 Fortran scheme 连接器，以及常驻 socket 与 Dask checkpoint 两种控制模式。">
+  <title>pycam-sima · Python 数据总线与 Fortran devices</title>
   <style>
     :root {
       color-scheme: dark;
@@ -232,7 +232,7 @@
 
     .metrics {
       display: grid;
-      grid-template-columns: repeat(5, 1fr);
+      grid-template-columns: repeat(6, 1fr);
       border: 1px solid var(--line);
       border-radius: 18px;
       background: var(--panel);
@@ -679,6 +679,7 @@
       <div class="brand"><span class="brand-mark">Py</span> pycam-sima control map</div>
       <nav aria-label="页面导航">
         <a href="#overview">总览</a>
+        <a href="#devices">Fortran devices</a>
         <a href="#two-modes">两种模式</a>
         <a href="#roles">职责边界</a>
         <a href="#state">状态如何流动</a>
@@ -690,12 +691,14 @@
 
     <header class="hero">
       <div>
-        <span class="eyebrow"><i></i>Python-owned CAM · 24 MPI ranks</span>
-        <h1>同一个模型核心<br><span class="gradient">两种控制模式</span></h1>
+        <span class="eyebrow"><i></i>Python-owned field bus · original Fortran schemes</span>
+        <h1>一条通用数据线<br><span class="gradient">连接原始计算内核</span></h1>
         <p class="lead">
+          <strong>StatePool</strong> 是由 Python 拥有的通用数据总线，<strong>DeviceRegistry</strong>
+          按 CCPP standard_name 自动接线，生成的薄 adapter 调用未经改写的原始 Fortran scheme。
           <strong>常驻 server</strong> 让同一批 MPI 进程和 StatePool 一直活着，适合逐步观察与修改；
           <strong>Dask</strong> 把 checkpoint 组织成任务图，适合从公共状态分叉独立实验。
-          它们都不替代 MPI，也不改变 Python 拥有模型状态这一事实。
+          两种控制模式共用同一个数据层和 device 层。
         </p>
       </div>
       <aside class="hero-card">
@@ -703,8 +706,9 @@
         <div class="formula">
           <div class="formula-row"><b class="server-color">SERVER</b><span>控制正在存活的模型</span></div>
           <div class="formula-row"><b class="dask-color">DASK</b><span>组织可重启的模型任务</span></div>
+          <div class="formula-row"><b class="mpi-color">DEVICE</b><span>连接 StatePool 与原始 scheme</span></div>
           <div class="formula-row"><b class="pbs-color">PBS</b><span>分配计算节点和时间</span></div>
-          <div class="formula-row"><b class="mpi-color">MPI</b><span>完成一次模型内部通信</span></div>
+          <div class="formula-row"><b class="mpi-color">MPI</b><span>完成模型内部通信</span></div>
         </div>
       </aside>
     </header>
@@ -713,6 +717,7 @@
       <div class="metric"><b>2</b><span>control modes</span></div>
       <div class="metric"><b>24</b><span>MPI ranks per segment</span></div>
       <div class="metric"><b>214</b><span>Python-owned fields</span></div>
+      <div class="metric"><b>2</b><span>generated source devices</span></div>
       <div class="metric"><b>1 PBS</b><span>allocation-mode fan-out</span></div>
       <div class="metric"><b>BFB</b><span>51 files · 26 variables</span></div>
     </div>
@@ -720,7 +725,7 @@
     <section id="overview">
       <div class="section-head">
         <div><span class="kicker">Shared model core</span><h2>底层模型没有两套</h2></div>
-        <p>两种模式只改变“谁在什么时候发出控制命令、状态如何跨执行边界保存”。真正的模型仍然是同一套 Python CAMDriver、StatePool、mpi4py 通信和无状态 Fortran kernels。</p>
+        <p>两种模式只改变“谁在什么时候发出控制命令、状态如何跨执行边界保存”。真正的模型仍然是同一套 Python CAMDriver、StatePool、DeviceRegistry、mpi4py 通信和原始 Fortran schemes。</p>
       </div>
       <div class="card mode-stage">
         <div class="flow-row">
@@ -730,7 +735,7 @@
           <div class="arrow">→</div>
           <div class="node mpi"><b>Python StatePool</b><small>NumPy owns 214 fields</small></div>
           <div class="arrow">→</div>
-          <div class="node pbs"><b>Fortran kernels</b><small>temporary ABI pointers</small></div>
+          <div class="node pbs"><b>DeviceRegistry</b><small>manifest + standard_name</small></div>
         </div>
         <div class="flow-row" style="margin-top:8px">
           <div class="node dask"><b>DaskExperimentClient</b><small>task graph + checkpoints</small></div>
@@ -742,8 +747,66 @@
           <div class="node pbs"><b>NetCDF / NPZ</b><small>durable artifacts</small></div>
         </div>
         <div class="flow-note" style="margin-top:16px">
-          Fortran `.so` 不保存 StatePool 指针，也不拥有模型生命周期；Python 临时把 Fortran-contiguous NumPy 地址传给 kernel，kernel 原地计算后立即返回。
+          Device `.so` 不保存 StatePool 指针，也不拥有模型生命周期；Python 临时把 Fortran-contiguous NumPy 地址交给生成的 adapter，adapter 调用原始 scheme，计算完成后立即返回。
         </div>
+      </div>
+    </section>
+
+    <section id="devices">
+      <div class="section-head">
+        <div><span class="kicker">Universal device interface</span><h2>原始 Fortran 如何接上 Python？</h2></div>
+        <p>PyCAM-SIMA 不再维护一份手写的 Kessler 数值副本。CCPP metadata 是接口真相，生成器只产生机械性的 <code>bind(C)</code> 连接器和机器可读 manifest。</p>
+      </div>
+      <div class="card mode-stage">
+        <div class="flow-row">
+          <div class="node mpi"><b>Python StatePool</b><small>owns NumPy memory</small></div>
+          <div class="arrow">→</div>
+          <div class="node server"><b>standard_name</b><small>field contract</small></div>
+          <div class="arrow">→</div>
+          <div class="node dask"><b>DeviceRegistry</b><small>validate + route</small></div>
+          <div class="arrow">→</div>
+          <div class="node pbs"><b>original scheme</b><small>generated adapter · zero-copy</small></div>
+        </div>
+        <div class="flow-note" style="margin-top:16px">
+          末端设备由 <code>device.yaml</code> 描述。构建器使用固定版本的 CCPP parser
+          同时读取 <code>kessler.meta</code> 和原始 <code>kessler.F90</code>，核对 entrypoint、
+          intent、rank、dimension、kind 和 units，随后生成 adapter、symbol version map 与
+          <code>device.json</code>。
+        </div>
+      </div>
+      <div class="three-col" style="margin-top:18px">
+        <article class="card panel-pad">
+          <h3>1 · 数据总线</h3>
+          <p style="color:var(--muted)">StatePool 为字段保存内部名称、CCPP standard_name、dtype、shape、units、intent 和所有权。device 不需要知道某个数组在 Python 中叫 T 还是 air_temperature。</p>
+        </article>
+        <article class="card panel-pad">
+          <h3>2 · 自动连接器</h3>
+          <p style="color:var(--muted)">生成的 adapter 只处理 C ABI、错误字符串和原始 subroutine 调用，不包含 Kessler 方程。Python 通过 manifest 动态构造 ctypes 签名。</p>
+        </article>
+        <article class="card panel-pad">
+          <h3>3 · 末端计算设备</h3>
+          <p style="color:var(--muted)">当前接入原始 Kessler 与 Kessler update。新增 scheme 的正常工作是增加一个 descriptor；MPI、ESMF、PIO 或未声明 module 依赖会在构建时直接失败。</p>
+        </article>
+      </div>
+      <div class="two-col" style="margin-top:18px">
+        <article class="card panel-pad">
+          <h3>源文件到 device 的构建链</h3>
+          <pre><code>original scheme.F90 + scheme.meta
+             + device.yaml
+                    │ pinned CCPP parser
+                    ▼
+generated bind(C) adapter + device.json
+                    │ clean compiler environment
+                    ▼
+libpycam_device_&lt;name&gt;.so</code></pre>
+        </article>
+        <article class="card panel-pad">
+          <h3>显式 native state policy</h3>
+          <pre><code>stateless
+reinitialize_each_run
+initialize_once</code></pre>
+          <p style="margin:14px 0 0;color:var(--muted);font-size:13px">Kessler 使用 <code>reinitialize_each_run</code>：每次计算前用 Python StatePool 中的参数调用原始 <code>kessler_init</code>，避免 Python 分支共享隐藏的 Fortran module state。</p>
+        </article>
       </div>
     </section>
 
@@ -866,6 +929,12 @@
           <h3>MPI / mpi4py</h3>
           <p>负责一次模型运行内部24个 ranks 之间的数据通信。</p>
           <ul><li>halo exchange</li><li>bcast / gather / allreduce</li><li>barrier 与一致性</li></ul>
+        </article>
+        <article class="role">
+          <div class="role-icon server-color">R</div>
+          <h3>DeviceRegistry</h3>
+          <p>把通用 StatePool 字段连接到生成的 scheme device。</p>
+          <ul><li>按 standard_name 接线</li><li>验证 dtype/shape/units</li><li>检查零拷贝地址稳定</li></ul>
         </article>
       </div>
       <div class="notice">
@@ -1018,7 +1087,7 @@ field = experiments.field(
 
     <section id="faq">
       <div class="section-head">
-        <div><span class="kicker">Common questions</span><h2>容易混淆的四件事</h2></div>
+        <div><span class="kicker">Common questions</span><h2>容易混淆的关键边界</h2></div>
         <p>这些问题都来自“任务、进程、状态和资源”四个层次被放在同一句话里。展开即可看到清晰边界。</p>
       </div>
       <div class="card" style="overflow:hidden">
@@ -1027,6 +1096,8 @@ field = experiments.field(
         <details><summary>为什么单-allocation模式仍然需要几分钟？</summary><p>它只去掉了每个分支重新排PBS队列的时间。模型step、MPI进程启动、24-rank checkpoint恢复与写入仍然真实发生；一个worker还会让占满24 ranks的segments串行执行。</p></details>
         <details><summary>串行执行意味着后一个分支读取前一个分支吗？</summary><p>不意味着。control和no-kessler都从base的不可变snapshot创建私有副本；warm从它明确指定的parent创建副本。串行只是资源安排，不是状态依赖。</p></details>
         <details><summary>自定义 server 为什么需要 socket？</summary><p>因为Notebook和24-rank模型是不同进程。模型完成一条命令后要继续存活并等待下一条命令，就必须有socket、pipe、ZeroMQ或MPI intercommunicator之类的持久IPC。当前实现使用带authkey的socket。</p></details>
+        <details><summary>为了接入 Kessler，是否改写了原始 Fortran 数值代码？</summary><p>没有。构建器读取固定 CAM-SIMA revision 中的原始 <code>kessler.F90</code> 和 CCPP metadata，生成一个只负责 ABI 转换的 adapter。原始 scheme 直接参与 device <code>.so</code> 编译；旧的手写 <code>kessler_kernel.F90</code> 已删除。</p></details>
+        <details><summary>任意 CCPP scheme 现在都能无条件自动接入吗？</summary><p>还不能无条件接入。当前通用 ABI 支持已验证的 real/integer/logical scalar 与显式形状数组。scheme 如果依赖 MPI、ESMF、PIO、CAM history、复杂 derived type 或未声明 module，生成器会 fail closed，要求先提供明确的 provider 或扩展 ABI，而不是悄悄猜测。</p></details>
       </div>
     </section>
 
@@ -1041,12 +1112,14 @@ field = experiments.field(
         <div class="evidence-card"><small>NUMERIC</small><b>26 / 26</b><small>variables</small></div>
         <div class="evidence-card"><small>DASK ALLOCATION</small><b>1 PBS</b><small>base + branches · direct MPI</small></div>
         <div class="evidence-card"><small>GRANULAR ACTIONS</small><b class="yes">BFB</b><small>batch = checkpoint chain</small></div>
+        <div class="evidence-card"><small>ORIGINAL KESSLER</small><b class="yes">BFB</b><small>11 fields · source device</small></div>
+        <div class="evidence-card"><small>DEVICE ELF</small><b class="yes">CLEAN</b><small>no MPI / ESMF / PIO</small></div>
       </div>
     </section>
 
     <footer>
-      <span>pycam-sima · two control modes · source-aligned July 2026</span>
-      <span>Python owns state · Dask/server own control · PBS owns resources · MPI owns communication</span>
+      <span>pycam-sima · Python field bus + generated Fortran devices · source-aligned July 2026</span>
+      <span>Python owns state · DeviceRegistry owns connection · original Fortran owns computation</span>
     </footer>
   </main>
 

@@ -16,13 +16,15 @@ SOURCE = (
     ROOT
     / "external/CAM-SIMA/src/physics/ncar_ccpp/schemes/kessler/kessler.F90"
 )
-KERNEL_LIBRARY = ROOT / "build/libpycam_sima_kernels.so"
+KERNEL_LIBRARY = (
+    ROOT / "build/devices/kessler/libpycam_device_kessler.so"
+)
 F64F = np.ctypeslib.ndpointer(
     dtype=np.float64, flags=("F_CONTIGUOUS", "ALIGNED")
 )
 
 
-def _signature(function: ctypes._CFuncPtr) -> None:
+def _reference_signature(function: ctypes._CFuncPtr) -> None:
     function.argtypes = [
         ctypes.c_int,
         ctypes.c_int,
@@ -34,6 +36,20 @@ def _signature(function: ctypes._CFuncPtr) -> None:
         ctypes.POINTER(ctypes.c_int),
     ]
     function.restype = None
+
+
+def _device_signature(function: ctypes._CFuncPtr) -> None:
+    function.argtypes = [
+        ctypes.c_int,
+        ctypes.c_int,
+        ctypes.c_double,
+        ctypes.c_int,
+        ctypes.c_int,
+        *([F64F] * 11),
+        ctypes.POINTER(ctypes.c_char),
+        ctypes.c_int,
+    ]
+    function.restype = ctypes.c_int
 
 
 def _inputs() -> list[np.ndarray]:
@@ -85,22 +101,47 @@ def main() -> int:
         )
         native = ctypes.CDLL(str(KERNEL_LIBRARY))
         reference = ctypes.CDLL(str(reference_library))
-        actual_function = native.pycam_sima_kessler_v1
+        initialize = native.pycam_device_kessler_initialize_v1
+        initialize.argtypes = [
+            ctypes.c_double,
+            ctypes.c_double,
+            ctypes.c_double,
+            ctypes.POINTER(ctypes.c_char),
+            ctypes.c_int,
+        ]
+        initialize.restype = ctypes.c_int
+        actual_function = native.pycam_device_kessler_run_v1
         expected_function = reference.kessler_reference_v1
-        _signature(actual_function)
-        _signature(expected_function)
+        _device_signature(actual_function)
+        _reference_signature(expected_function)
         actual, expected = _inputs(), _inputs()
-        actual_error, expected_error = ctypes.c_int(), ctypes.c_int()
+        expected_error = ctypes.c_int()
         scalars = (5, 30, 1800.0, 2.501e6, 100000.0, 1000.0)
-        actual_function(
-            *scalars, *actual, ctypes.byref(actual_error)
+        message = ctypes.create_string_buffer(2048)
+        actual_error = initialize(
+            *scalars[3:], message, len(message)
+        )
+        if actual_error:
+            raise SystemExit(
+                "generated Kessler initialize failed: "
+                f"{message.value.decode(errors='replace')}"
+            )
+        actual_error = actual_function(
+            scalars[0],
+            scalars[1],
+            scalars[2],
+            scalars[1],
+            1,
+            *actual,
+            message,
+            len(message),
         )
         expected_function(
             *scalars, *expected, ctypes.byref(expected_error)
         )
-        if actual_error.value != expected_error.value:
+        if actual_error != expected_error.value:
             raise SystemExit(
-                f"error flag mismatch: {actual_error.value} != "
+                f"error flag mismatch: {actual_error} != "
                 f"{expected_error.value}"
             )
         names = (

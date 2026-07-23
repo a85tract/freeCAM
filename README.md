@@ -1,8 +1,13 @@
 # pycam-sima
 
-`pycam-sima` is a Python-owned driver for one validated CAM-SIMA target:
-FKESSLER, `ne3np4.pg3`, L30, 24 MPI ranks, a 1800-second timestep, and the
-DCMIP2016 moist baroclinic-wave initial condition.
+`pycam-sima` is a Python-owned, CCPP-like coupling framework for numerical
+model components. Python supplies the lifecycle, process scheduler, common
+field bus, MPI communication, and checkpoint semantics; independently built
+Fortran devices supply numerical schemes through a generated C ABI.
+
+The first fully validated model target is CAM-SIMA FKESSLER,
+`ne3np4.pg3`, L30, 24 MPI ranks, a 1800-second timestep, and the DCMIP2016
+moist baroclinic-wave initial condition.
 
 Python owns the model lifecycle, clock, grid/decomposition metadata, persistent
 NumPy state, mpi4py communication, phase and CCPP-scheme ordering, and NetCDF
@@ -13,10 +18,13 @@ loaded. Dimensions and runtime controls are passed from Python through ABI v2.
 FP-sensitive SE layout values are validated in a separate ABI call immediately
 before the numerical call, so a control argument cannot change the kernel's
 floating-point instruction order.
-The shared library contains stateless numerical kernels only. It does not
-export or call `cam_init`, `cam_run*`, ESMF, PIO, or CAM's native control loop.
-Its clean build does not load the CAM machine environment and has no MPI,
-ESMF, PIO, NetCDF, or HDF5 dynamic dependency.
+The main shared library contains numerical dycore/mapping kernels only.
+CCPP schemes such as Kessler are compiled from the pinned, unmodified upstream
+Fortran source into separate device libraries. A generated adapter translates
+explicit NumPy pointers and scalar values to the scheme's original interface.
+No device exports or calls `cam_init`, `cam_run*`, ESMF, PIO, or CAM's native
+control loop. Clean builds do not load the CAM machine environment and reject
+MPI, ESMF, PIO, NetCDF, HDF5, and RPATH dependencies.
 
 The current architecture is also available as an interactive
 [online diagram](https://pycam-sima-architecture-2026.bubblehuntr.chatgpt.site)
@@ -35,8 +43,14 @@ Runnable examples are split by execution mode:
 ```text
 pycam_sima/
   core/       MPI loader and remote-field utilities
-  model/      complete Python-owned CAM driver
+  model/      Python driver, StatePool, DeviceRegistry, device runtime
   notebook/   Jupyter/PBS controller and MPI worker
+devices/      source/metadata descriptors for pluggable Fortran schemes
+native/
+  devices/    portable dependency providers used by generated adapters
+  kernels/    non-CCPP dycore/mapping kernels and clean build
+build/devices/
+  <name>/     generated adapter, manifest, and one independent device .so
 ```
 
 ## Run the model
@@ -46,6 +60,7 @@ uv sync --extra test --extra notebook
 uv run pycam-sima build-kernels
 uv run python tools/validate_kessler_kernel.py
 readelf -d build/libpycam_sima_kernels.so
+readelf -d build/devices/kessler/libpycam_device_kessler.so
 
 RUN_DIR=/path/containing/atm_in \
 HISTORY_DIR=/new/history/directory \
@@ -62,7 +77,76 @@ logs under `logs/`, rather than into the repository root.
 The history gate compares filenames, timestamps, dtype, shape, and float64 bit
 patterns for all 51 output times and 26 diagnostic variables. The upstream
 CAM-SIMA executable is used only to produce an external test oracle; it is not
-a selectable pycam-sima backend.
+a selectable pycam-sima backend. The source-device build and full-run evidence
+is recorded in
+[`validation/source_preserving_devices.json`](validation/source_preserving_devices.json).
+
+## Source-preserving Fortran devices
+
+A device is defined by a small YAML description, the original CCPP `.meta`
+file, and the original Fortran sources. `build-kernels` runs CAM-SIMA's own
+CCPP parser to verify that metadata and source signatures agree, scans
+Fortran module dependencies, generates the C ABI adapter and JSON manifest,
+and compiles one isolated `.so`:
+
+```text
+devices/kessler/device.yaml
+       ├── kessler.meta
+       ├── original kessler.F90
+       └── ccpp_kinds provider
+                   │
+                   ▼
+            CCPP parser/verifier
+                   │
+                   ├── generated kessler_adapter.F90
+                   ├── generated device.json
+                   └── libpycam_device_kessler.so
+```
+
+The generated adapter contains calls to `kessler_init` and `kessler_run`; it
+does not contain Kessler's formulas or loops. The former handwritten
+`native/kernels/kessler_kernel.F90` algorithm copy has been removed.
+
+Build one descriptor independently with:
+
+```bash
+uv run pycam-sima build-device devices/kessler/device.yaml
+```
+
+At runtime, `DeviceRegistry` reads `device.json`. Every ABI argument declares
+its CCPP `standard_name`, dtype, rank, dimensions, units, intent, and binding.
+`StatePool` resolves that standard name to its canonical array or a zero-copy
+constituent slice, verifies the complete contract, and passes the existing
+Fortran-contiguous NumPy address:
+
+```python
+from pycam_sima import DeviceRegistry
+
+registry = DeviceRegistry("build/devices")
+assert registry.process_names == {"kessler", "kessler_update"}
+print(registry.describe())
+registry.invoke("kessler", model.pool)
+```
+
+Users normally keep calling `model.run_scheme("kessler", ...)`; the driver
+routes that process through the registry. Adding a compatible CCPP scheme does
+not require adding a hard-coded ctypes signature or StatePool argument list to
+`backend.py`.
+
+Fortran module state is explicit in the device policy. Kessler is
+`reinitialize_each_run`: Python passes `lv`, `pref`, and `rhoqr` through the
+generated initialize adapter immediately before each original run, so Python
+remains the authoritative and checkpointed state. `stateless` and
+`initialize_once` policies are also supported. The latter is marked as
+persistent native state and must be treated explicitly by future restart
+contracts.
+
+Dependency handling is fail-closed. Intrinsic modules, source-local modules,
+and declared portable providers are accepted. An undeclared module or a
+host/framework dependency such as MPI, ESMF, PIO, or `cam_history` stops device
+generation instead of silently linking the complete CAM runtime.
+See [`docs/DEVICE_AUTHORING.md`](docs/DEVICE_AUTHORING.md) for the descriptor,
+ABI-v1 support matrix, state policies, and new-scheme checklist.
 
 ## Python API
 

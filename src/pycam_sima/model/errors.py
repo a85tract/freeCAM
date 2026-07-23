@@ -18,7 +18,15 @@ class StateOwnershipError(PyCamSimaError):
 
 
 class MissingKernelError(PyCamSimaError):
-    """A required stateless kernel is not present in the selected backend."""
+    """A required main kernel or generated device is not present."""
+
+
+class DeviceContractError(PyCamSimaError):
+    """A device manifest cannot be connected safely to the Python StatePool."""
+
+
+class DeviceBuildError(PyCamSimaError):
+    """A source scheme cannot be converted into a standalone device."""
 
 
 class NativeInitializationError(PyCamSimaError):

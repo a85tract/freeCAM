@@ -8,6 +8,7 @@ from pathlib import Path
 
 import numpy as np
 
+from .devices import DeviceRegistry
 from .errors import MissingKernelError, StateOwnershipError
 
 
@@ -84,11 +85,19 @@ class FVMKernelConfig:
 
 
 class KernelBackend:
-    def __init__(self, library: str | Path):
+    def __init__(
+        self,
+        library: str | Path,
+        *,
+        device_root: str | Path | None = None,
+    ):
         self.path = Path(library).resolve()
         if not self.path.is_file():
             raise MissingKernelError(f"kernel library does not exist: {self.path}")
         self.lib = ctypes.CDLL(str(self.path), mode=ctypes.RTLD_LOCAL)
+        self.devices = DeviceRegistry(
+            device_root or self.path.parent / "devices"
+        )
         self.call_count = 0
         self.lib.pycam_sima_abi_version.restype = ctypes.c_int
         self._validate_se_dimensions = self.lib.pycam_sima_validate_se_dimensions_v2
@@ -97,12 +106,6 @@ class KernelBackend:
         ]
         self._validate_se_dimensions.restype = None
         self._abi_checked = False
-        self._kessler = self.lib.pycam_sima_kessler_v1
-        self._kessler.argtypes = [ctypes.c_int, ctypes.c_int, ctypes.c_double, ctypes.c_double, ctypes.c_double, ctypes.c_double] + [_F64_F] * 11 + [ctypes.POINTER(ctypes.c_int)]
-        self._kessler.restype = None
-        self._update = self.lib.pycam_sima_kessler_update_v1
-        self._update.argtypes = [ctypes.c_int, ctypes.c_int, ctypes.c_double] + [_F64_F] * 4
-        self._update.restype = None
         self._wind_tendency = self.lib.pycam_sima_wind_tendency_v2
         self._wind_tendency.argtypes = [
             ctypes.c_int,
@@ -180,25 +183,15 @@ class KernelBackend:
 
     @property
     def available_phases(self) -> frozenset[str]:
-        return frozenset(("kessler", "kessler_update"))
+        return self.devices.process_names
 
     def run_phase(self, phase: str, pool) -> None:
         if phase not in self.available_phases:
             raise MissingKernelError(
-                f"phase {phase!r} has no stateless kernel implementation"
+                f"phase {phase!r} has no generated device implementation"
             )
-        self._ensure_abi()
         before = pool.pointer_records()
-        if phase == "kessler":
-            arrays = [pool.get(name) for name in ("column_dry_air_specific_heat", "column_dry_air_gas_constant", "dry_air_density", "thermodynamic_level_height", "exner_function", "potential_temperature", "physics_water_vapor", "physics_cloud_liquid_water", "physics_rain_water", "large_scale_precipitation_rate", "relative_humidity")]
-            if not all(value.flags.f_contiguous and value.dtype == np.float64 for value in arrays):
-                raise StateOwnershipError("Kessler ABI requires Fortran-contiguous float64 arrays")
-            error = ctypes.c_int()
-            self._kessler(arrays[0].shape[0], arrays[0].shape[1], float(pool.get("model_timestep")), float(pool.get("latent_heat_of_vaporization")), float(pool.get("reference_pressure")), float(pool.get("liquid_water_density")), *arrays, ctypes.byref(error))
-            if error.value:
-                raise RuntimeError(f"stateless Kessler kernel failed with code {error.value}")
-        else:
-            self._update(pool.dimensions["nphys_local"], pool.dimensions["pver"], float(pool.get("model_timestep")), pool.get("potential_temperature"), pool.get("exner_function"), pool.get("temperature_before_kessler"), pool.get("physics_air_temperature_tendency"))
+        self.devices.invoke(phase, pool)
         self.call_count += 1
         pool.assert_pointer_stability(before)
 

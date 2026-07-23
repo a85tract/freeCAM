@@ -1,0 +1,39 @@
+schema_version: 1
+name: kessler
+fortran_module: kessler
+
+sources:
+  - external/CAM-SIMA/src/physics/ncar_ccpp/schemes/kessler/kessler.F90
+metadata:
+  - external/CAM-SIMA/src/physics/ncar_ccpp/schemes/kessler/kessler.meta
+
+source_modules:
+  - kessler
+providers:
+  ccpp_kinds: native/devices/support/ccpp_kinds.F90
+
+# The original module stores lv/pref/rhoqr. Replaying its init entrypoint from
+# Python before every run keeps StatePool as the authoritative configuration.
+state_policy: reinitialize_each_run
+initialize_entrypoint: initialize
+
+dimension_bindings:
+  horizontal_loop_extent: nphys_local
+  vertical_layer_dimension: pver
+
+bindings:
+  vertical_index_at_surface_adjacent_layer:
+    source: dimension
+    name: pver
+  vertical_index_at_top_adjacent_layer:
+    source: literal
+    value: 1
+
+entrypoints:
+  initialize:
+    table: kessler_init
+  run:
+    table: kessler_run
+
+processes:
+  kessler: run

@@ -14,6 +14,8 @@ from .checkpoint import (
 from .config import ModelConfig
 from .control import ModelOptions, ModelParameters
 from .contracts import FieldContract, default_contracts, export_contract
+from .devices import DeviceRegistry, FortranDevice
+from .errors import DeviceBuildError, DeviceContractError
 from .driver import CAMDriver, DriverState
 from .experiment import (
     Action,
@@ -43,7 +45,11 @@ __all__ = [
     "Action",
     "BranchSpec",
     "CheckpointBundle",
+    "DeviceRegistry",
+    "DeviceBuildError",
+    "DeviceContractError",
     "FieldContract",
+    "FortranDevice",
     "CAMDriver",
     "DriverState",
     "FieldEdit",

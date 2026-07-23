@@ -4,6 +4,10 @@ import pycam_sima
 from pycam_sima import (
     CAMDriver,
     DaskExperimentClient,
+    DeviceBuildError,
+    DeviceContractError,
+    DeviceRegistry,
+    FortranDevice,
     NotebookSession,
     RunPhase,
     RunScheme,
@@ -32,6 +36,10 @@ def test_root_api_delegates_to_responsibility_packages() -> None:
     assert CAMDriver is ModelDriver
     assert NotebookSession is NotebookController
     assert DaskExperimentClient is DaskController
+    assert pycam_sima.DeviceRegistry is DeviceRegistry
+    assert pycam_sima.DeviceBuildError is DeviceBuildError
+    assert pycam_sima.DeviceContractError is DeviceContractError
+    assert pycam_sima.FortranDevice is FortranDevice
     assert pycam_sima.SegmentPlan is SegmentPlan
     assert pycam_sima.RunPhase is RunPhase
     assert pycam_sima.RunScheme is RunScheme

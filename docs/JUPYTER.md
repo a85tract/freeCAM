@@ -47,6 +47,16 @@ assert model.initialized_abi_checked is False
 There is no runtime selector or fallback backend. A failed Python
 initialization is reported directly.
 
+The worker discovers generated Fortran devices beside the main kernel
+library. `driver.stats()["devices"]` reports their source hashes, libraries,
+entrypoints, processes, and state policies.
+
+For Kessler, `run_scheme()` does not enter a handwritten replacement
+algorithm. It resolves CCPP standard names from StatePool, zero-copy passes
+their NumPy addresses through the generated adapter, and calls the original
+CAM-SIMA `kessler_init` plus `kessler_run`. Every MPI rank loads its own
+device `.so`; device code does not create or replace the communicator.
+
 ## Inspect and edit fields
 
 ```python

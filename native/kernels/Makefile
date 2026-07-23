@@ -11,10 +11,23 @@ KERNEL_CONFIG := .build/kernel_config.F90
 ABI_MAP := .build/abi-v2.map
 ABI_SYMBOLS := .build/abi-v2.symbols
 ABI_MANIFEST := abi-v2.json
+DEVICE_OUTPUT := $(PROJECT_ROOT)/build/devices
+DEVICE_DESCRIPTORS := \
+	$(PROJECT_ROOT)/devices/kessler/device.yaml \
+	$(PROJECT_ROOT)/devices/kessler_update/device.yaml
+DEVICE_INPUTS := \
+	$(DEVICE_DESCRIPTORS) \
+	$(PROJECT_ROOT)/src/pycam_sima/model/device_codegen.py \
+	$(PROJECT_ROOT)/native/devices/support/ccpp_kinds.F90 \
+	$(PROJECT_ROOT)/external/CAM-SIMA/src/physics/ncar_ccpp/schemes/kessler/kessler.F90 \
+	$(PROJECT_ROOT)/external/CAM-SIMA/src/physics/ncar_ccpp/schemes/kessler/kessler.meta \
+	$(PROJECT_ROOT)/external/CAM-SIMA/src/physics/ncar_ccpp/schemes/kessler/kessler_update.F90 \
+	$(PROJECT_ROOT)/external/CAM-SIMA/src/physics/ncar_ccpp/schemes/kessler/kessler_update.meta
+DEVICE_STAMP := $(DEVICE_OUTPUT)/.built
 PYTHON ?= python3
 
-.PHONY: all clean check-symbols
-all: $(TARGET) check-symbols
+.PHONY: all clean check-symbols devices
+all: $(TARGET) devices check-symbols
 
 $(FVM_SOURCE): prepare_fvm_source.py $(CAM_SE)/fvm_consistent_se_cslam.F90
 	$(PYTHON) prepare_fvm_source.py $(CAM_SE)/fvm_consistent_se_cslam.F90 $@
@@ -26,9 +39,22 @@ $(ABI_MAP) $(ABI_SYMBOLS): $(ABI_MANIFEST) prepare_abi_exports.py
 	@mkdir -p .build
 	$(PYTHON) prepare_abi_exports.py $(ABI_MANIFEST) $(ABI_MAP) $(ABI_SYMBOLS)
 
-$(TARGET): kessler_kernel.F90 physics_diagnostics_kernel.F90 se_startup_kernel.F90 remap_stubs.F90 remap_support.F90 fvm_kernel_stubs.F90 fvm_transport_kernel.F90 fvm_displacement_kernel.F90 $(CAM_SE)/fv_mapz.F90 $(CAM_SE)/fvm_reconstruction_mod.F90 $(CAM_SE)/fvm_analytic_mod.F90 $(FVM_SOURCE) $(KERNEL_CONFIG) $(ABI_MAP)
+$(TARGET): abi_version.F90 physics_diagnostics_kernel.F90 se_startup_kernel.F90 remap_stubs.F90 remap_support.F90 fvm_kernel_stubs.F90 fvm_transport_kernel.F90 fvm_displacement_kernel.F90 $(CAM_SE)/fv_mapz.F90 $(CAM_SE)/fvm_reconstruction_mod.F90 $(CAM_SE)/fvm_analytic_mod.F90 $(FVM_SOURCE) $(KERNEL_CONFIG) $(ABI_MAP)
 	@mkdir -p $(dir $@)
-	env -i PATH=/usr/bin:/bin HOME=$$HOME $(FC) $(FFLAGS) -shared $(LDFLAGS) -Wl,--version-script=$(ABI_MAP) -o $@ $(KERNEL_CONFIG) kessler_kernel.F90 physics_diagnostics_kernel.F90 se_startup_kernel.F90 remap_stubs.F90 $(CAM_SE)/fv_mapz.F90 remap_support.F90 fvm_kernel_stubs.F90 $(CAM_SE)/fvm_reconstruction_mod.F90 $(CAM_SE)/fvm_analytic_mod.F90 $(FVM_SOURCE) fvm_transport_kernel.F90 fvm_displacement_kernel.F90
+	env -i PATH=/usr/bin:/bin HOME=$$HOME $(FC) $(FFLAGS) -shared $(LDFLAGS) -Wl,--version-script=$(ABI_MAP) -o $@ $(KERNEL_CONFIG) abi_version.F90 physics_diagnostics_kernel.F90 se_startup_kernel.F90 remap_stubs.F90 $(CAM_SE)/fv_mapz.F90 remap_support.F90 fvm_kernel_stubs.F90 $(CAM_SE)/fvm_reconstruction_mod.F90 $(CAM_SE)/fvm_analytic_mod.F90 $(FVM_SOURCE) fvm_transport_kernel.F90 fvm_displacement_kernel.F90
+
+$(DEVICE_STAMP): $(DEVICE_INPUTS)
+	rm -rf $(DEVICE_OUTPUT)
+	$(PYTHON) $(PROJECT_ROOT)/src/pycam_sima/model/device_codegen.py \
+		--project-root $(PROJECT_ROOT) \
+		--output-root $(DEVICE_OUTPUT) \
+		--compiler $(FC) \
+		--fflags '$(FFLAGS)' \
+		--ldflags '$(LDFLAGS)' \
+		$(DEVICE_DESCRIPTORS)
+	@touch $@
+
+devices: $(DEVICE_STAMP)
 
 check-symbols: $(TARGET)
 	@nm -D --defined-only $(TARGET) | awk '{print $$3}' | sed 's/@@PYCAM_SIMA_[0-9.]*$$//' | grep '^pycam_sima_' | sort > .defined-symbols
@@ -38,4 +64,4 @@ check-symbols: $(TARGET)
 	@! readelf -d $(TARGET) | grep -Eiq 'NEEDED.*(mpi|pmi|pals|esmf|pio|netcdf|hdf5|sci)|RPATH|RUNPATH'
 
 clean:
-	rm -rf $(TARGET) *.mod .defined-symbols .build
+	rm -rf $(TARGET) $(DEVICE_OUTPUT) *.mod .defined-symbols .build

@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import shlex
 import subprocess
 from pathlib import Path
 
@@ -20,6 +21,7 @@ from .model import (
     restore_driver,
 )
 from .model.checkpoint import CHECKPOINT_SCHEMA_VERSION
+from .model.device_codegen import build_device
 from .model.validation import compare_history_directories
 
 
@@ -171,6 +173,21 @@ def command_build_kernels(_args: argparse.Namespace) -> int:
     return 0
 
 
+def command_build_device(args: argparse.Namespace) -> int:
+    output_root = Path(args.output_root or _repo_root() / "build/devices")
+    for descriptor in args.descriptors:
+        manifest = build_device(
+            descriptor,
+            project_root=_repo_root(),
+            output_root=output_root,
+            compiler=args.compiler,
+            fflags=shlex.split(args.fflags),
+            ldflags=shlex.split(args.ldflags),
+        )
+        print(manifest)
+    return 0
+
+
 def command_compare_history(args: argparse.Namespace) -> int:
     compare_history_directories(
         args.reference_dir,
@@ -211,8 +228,32 @@ def main() -> int:
     segment.add_argument("--result-json")
     segment.set_defaults(func=command_run_segment)
 
-    build = sub.add_parser("build-kernels", help="build stateless model kernels")
+    build = sub.add_parser(
+        "build-kernels",
+        help="build main model kernels and generated Fortran devices",
+    )
     build.set_defaults(func=command_build_kernels)
+
+    device = sub.add_parser(
+        "build-device",
+        help="generate and build source-preserving CCPP Fortran devices",
+    )
+    device.add_argument("descriptors", nargs="+")
+    device.add_argument("--output-root")
+    device.add_argument(
+        "--compiler", default="/opt/cray/pe/gcc/12.2.0/bin/gfortran"
+    )
+    device.add_argument(
+        "--fflags",
+        default=(
+            "-O2 -march=znver3 -fPIC -ffp-contract=off -fno-fast-math "
+            "-ffree-line-length-none -cpp"
+        ),
+    )
+    device.add_argument(
+        "--ldflags", default="-Wl,--as-needed -Wl,--no-undefined"
+    )
+    device.set_defaults(func=command_build_device)
 
     compare = sub.add_parser("compare-history", help="run the fixed BFB gate")
     compare.add_argument("reference_dir")

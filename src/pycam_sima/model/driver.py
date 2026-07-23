@@ -396,6 +396,7 @@ class CAMDriver:
             "last_scheme": self._last_scheme,
             "last_scheme_group": self._last_scheme_group,
             "scheme_sequence_safe": self.scheme_plan.sequence_safe,
+            "devices": self.backend.devices.describe(),
         }
 
     def finalize(self) -> None:

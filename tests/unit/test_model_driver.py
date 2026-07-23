@@ -55,17 +55,22 @@ def test_initialize_is_python_owned_and_zero_native_calls(session):
     assert session.state == DriverState.INITIALIZED
     assert session.backend.call_count == 0
     assert session.backend._abi_checked is False
+    assert all(
+        device._abi_checked is False
+        for device in session.backend.devices.devices.values()
+    )
     assert len(session.pool.inventory()) == 214
     assert all(item["owner"] == "python" for item in session.pool.inventory())
     assert np.isfinite(session.get_field("air_temperature")).all()
     assert set(session._scheme_handlers()) == set(session.scheme_names)
 
 
-def test_real_stateless_kessler_preserves_addresses(session):
+def test_original_kessler_device_preserves_addresses(session):
     before = session.pool.pointer_records()
     session.run_scheme("kessler", group=PHYSICS_BEFORE_COUPLER)
     session.pool.assert_pointer_stability(before)
     assert session.backend.call_count == 1
+    assert session.backend.devices.devices["kessler"]._abi_checked is True
 
 
 def test_group_execution_follows_a_cross_group_move() -> None:

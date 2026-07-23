@@ -64,7 +64,7 @@ def test_limiter_flattened_grid_dimension_is_validated_separately() -> None:
 def test_kernel_library_has_no_model_framework_dependency() -> None:
     library = ROOT / "build/libpycam_sima_kernels.so"
     if not library.exists():
-        pytest.skip("build the stateless kernels before checking ELF dependencies")
+        pytest.skip("build the native libraries before checking ELF dependencies")
     dynamic = subprocess.run(
         ("readelf", "-d", str(library)),
         check=True,
@@ -80,3 +80,29 @@ def test_kernel_library_has_no_model_framework_dependency() -> None:
     makefile = (ROOT / "native/kernels/Makefile").read_text()
     assert "env -i" in makefile
     assert ".env_mach_specific" not in makefile
+
+    main_symbols = subprocess.run(
+        ("nm", "-D", "--defined-only", str(library)),
+        check=True,
+        stdout=subprocess.PIPE,
+        text=True,
+    ).stdout
+    assert "pycam_sima_kessler" not in main_symbols
+
+    for device in ("kessler", "kessler_update"):
+        device_library = (
+            ROOT
+            / f"build/devices/{device}/libpycam_device_{device}.so"
+        )
+        assert device_library.is_file()
+        device_dynamic = subprocess.run(
+            ("readelf", "-d", str(device_library)),
+            check=True,
+            stdout=subprocess.PIPE,
+            text=True,
+        ).stdout.lower()
+        for forbidden in (
+            "mpi", "pmi", "pals", "esmf", "pio", "netcdf", "hdf5",
+            "libsci", "rpath", "runpath",
+        ):
+            assert forbidden not in device_dynamic

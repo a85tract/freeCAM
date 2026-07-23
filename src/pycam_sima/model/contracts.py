@@ -18,6 +18,7 @@ class FieldContract:
     category: str
     units: str = "1"
     aliases: tuple[str, ...] = ()
+    ccpp_standard_name: str | None = None
     owner: str = "python"
     lifetime: str = "persistent"
     history: bool = False
@@ -45,6 +46,7 @@ class AliasRule:
     target: str
     axis: int | None = None
     index: int | None = None
+    ccpp_standard_name: str | None = None
 
 
 def _field(
@@ -56,6 +58,7 @@ def _field(
     units: str = "1",
     *,
     aliases: Iterable[str] = (),
+    ccpp_standard_name: str | None = None,
     history: bool = False,
     restart: bool = False,
     writable: bool = True,
@@ -68,6 +71,7 @@ def _field(
         category=category,
         units=units,
         aliases=tuple(aliases),
+        ccpp_standard_name=ccpp_standard_name,
         history=history,
         restart=restart,
         writable=writable,
@@ -80,7 +84,17 @@ def default_contracts() -> tuple[FieldContract, ...]:
     static = False
     return (
         # Configuration, constants, time, and indices.
-        _field("model_timestep", "float64", (), "in", "configuration", "s", aliases=("dt",), writable=static),
+        _field(
+            "model_timestep",
+            "float64",
+            (),
+            "in",
+            "configuration",
+            "s",
+            aliases=("dt",),
+            ccpp_standard_name="timestep_for_physics",
+            writable=static,
+        ),
         _field("dynamics_timestep", "float64", (), "in", "configuration", "s", writable=static),
         _field("vertical_remap_timestep", "float64", (), "in", "configuration", "s", writable=static),
         _field("hyperviscosity_subcycles", "int32", (), "in", "configuration", writable=static),
@@ -109,8 +123,28 @@ def default_contracts() -> tuple[FieldContract, ...]:
         _field("dynamics_time_level_n0", "int32", (), "inout", "time", restart=True),
         _field("dynamics_time_level_np1", "int32", (), "inout", "time", restart=True),
         _field("dynamics_internal_step", "int64", (), "inout", "time", restart=True),
-        _field("reference_pressure", "float64", (), "in", "constants", "Pa", aliases=("ps0",), writable=static),
-        _field("gravitational_acceleration", "float64", (), "in", "constants", "m s-2", aliases=("gravit",), writable=static),
+        _field(
+            "reference_pressure",
+            "float64",
+            (),
+            "in",
+            "constants",
+            "Pa",
+            aliases=("ps0",),
+            ccpp_standard_name="surface_reference_pressure",
+            writable=static,
+        ),
+        _field(
+            "gravitational_acceleration",
+            "float64",
+            (),
+            "in",
+            "constants",
+            "m s-2",
+            aliases=("gravit",),
+            ccpp_standard_name="standard_gravitational_acceleration",
+            writable=static,
+        ),
         _field("dry_air_gas_constant", "float64", (), "in", "constants", "J kg-1 K-1", aliases=("rair",), writable=static),
         _field("water_vapor_gas_constant", "float64", (), "in", "constants", "J kg-1 K-1", aliases=("rh2o",), writable=static),
         _field("virtual_temperature_coefficient", "float64", (), "in", "constants", aliases=("zvir",), writable=static),
@@ -121,8 +155,26 @@ def default_contracts() -> tuple[FieldContract, ...]:
         _field("orbital_obliquity", "float64", (), "in", "constants", "radian", writable=static),
         _field("orbital_longitude_of_perihelion", "float64", (), "in", "constants", "radian", writable=static),
         _field("water_to_dry_molecular_weight_ratio", "float64", (), "in", "constants", writable=static),
-        _field("latent_heat_of_vaporization", "float64", (), "in", "constants", "J kg-1", writable=static),
-        _field("liquid_water_density", "float64", (), "in", "constants", "kg m-3", writable=static),
+        _field(
+            "latent_heat_of_vaporization",
+            "float64",
+            (),
+            "in",
+            "constants",
+            "J kg-1",
+            ccpp_standard_name="latent_heat_of_vaporization_of_water_at_0c",
+            writable=static,
+        ),
+        _field(
+            "liquid_water_density",
+            "float64",
+            (),
+            "in",
+            "constants",
+            "kg m-3",
+            ccpp_standard_name="fresh_liquid_water_density_at_0c",
+            writable=static,
+        ),
         _field("water_vapor_specific_heat", "float64", (), "in", "constants", "J kg-1 K-1", aliases=("cpwv",), writable=static),
         _field("liquid_water_specific_heat", "float64", (), "in", "constants", "J kg-1 K-1", aliases=("cpliq",), writable=static),
         # Hybrid vertical coordinate.
@@ -250,10 +302,30 @@ def default_contracts() -> tuple[FieldContract, ...]:
         # Physics state and tendencies on PG3 columns.
         _field("physics_zonal_wind", "float64", ("nphys_local", "pver"), "inout", "physics_state", "m s-1", aliases=("phys_u",), history=True),
         _field("physics_meridional_wind", "float64", ("nphys_local", "pver"), "inout", "physics_state", "m s-1", aliases=("phys_v",), history=True),
-        _field("physics_air_temperature", "float64", ("nphys_local", "pver"), "inout", "physics_state", "K", aliases=("phys_t",), history=True),
+        _field(
+            "physics_air_temperature",
+            "float64",
+            ("nphys_local", "pver"),
+            "inout",
+            "physics_state",
+            "K",
+            aliases=("phys_t",),
+            ccpp_standard_name="air_temperature",
+            history=True,
+        ),
         _field("physics_surface_pressure", "float64", ("nphys_local",), "inout", "physics_state", "Pa", aliases=("phys_ps",), history=True),
         _field("physics_surface_dry_air_pressure", "float64", ("nphys_local",), "inout", "physics_state", "Pa", aliases=("phys_psdry",), history=True),
-        _field("physics_surface_geopotential", "float64", ("nphys_local",), "inout", "physics_state", "m2 s-2", aliases=("phys_phis",), history=True),
+        _field(
+            "physics_surface_geopotential",
+            "float64",
+            ("nphys_local",),
+            "inout",
+            "physics_state",
+            "m2 s-2",
+            aliases=("phys_phis",),
+            ccpp_standard_name="surface_geopotential",
+            history=True,
+        ),
         _field("physics_layer_pressure_thickness", "float64", ("nphys_local", "pver"), "inout", "physics_state", "Pa", aliases=("phys_dp",), history=True),
         _field("physics_dry_layer_pressure_thickness", "float64", ("nphys_local", "pver"), "inout", "physics_state", "Pa", aliases=("phys_dpdry",), history=True),
         _field("physics_midpoint_pressure", "float64", ("nphys_local", "pver"), "inout", "physics_state", "Pa", aliases=("phys_pmid",), history=True),
@@ -270,25 +342,129 @@ def default_contracts() -> tuple[FieldContract, ...]:
         _field("physics_vertical_pressure_velocity", "float64", ("nphys_local", "pver"), "inout", "physics_state", "Pa s-1", aliases=("phys_omega",), history=True),
         _field("physics_interface_geopotential_height", "float64", ("nphys_local", "pverp"), "inout", "physics_state", "m", aliases=("phys_zi",), history=True),
         _field("physics_constituent_mixing_ratio", "float64", ("nphys_local", "pver", "nconst"), "inout", "physics_state", "kg kg-1", aliases=("phys_q",), history=True),
-        _field("physics_air_temperature_tendency", "float64", ("nphys_local", "pver"), "inout", "physics_tendency", "K s-1", aliases=("ttend_t",)),
+        _field(
+            "physics_air_temperature_tendency",
+            "float64",
+            ("nphys_local", "pver"),
+            "inout",
+            "physics_tendency",
+            "K s-1",
+            aliases=("ttend_t",),
+            ccpp_standard_name=(
+                "tendency_of_air_temperature_due_to_model_physics"
+            ),
+        ),
         _field("physics_zonal_wind_tendency", "float64", ("nphys_local", "pver"), "inout", "physics_tendency", "m s-2"),
         _field("physics_meridional_wind_tendency", "float64", ("nphys_local", "pver"), "inout", "physics_tendency", "m s-2"),
         _field("physics_constituent_tendency", "float64", ("nphys_local", "pver", "nconst"), "inout", "physics_tendency", "kg kg-1 s-1"),
         _field("physics_constituent_previous", "float64", ("nphys_local", "pver", "nconst"), "inout", "coupling", "kg kg-1"),
         # Kessler process state. Values formerly stored by *_init are explicit here.
-        _field("potential_temperature", "float64", ("nphys_local", "pver"), "inout", "kessler_process", "K", aliases=("theta",)),
-        _field("exner_function", "float64", ("nphys_local", "pver"), "inout", "kessler_process", aliases=("exner",)),
-        _field("dry_air_density", "float64", ("nphys_local", "pver"), "inout", "kessler_process", "kg m-3", aliases=("rho",)),
-        _field("thermodynamic_level_height", "float64", ("nphys_local", "pver"), "inout", "kessler_process", "m", aliases=("z",)),
-        _field("column_dry_air_specific_heat", "float64", ("nphys_local", "pver"), "inout", "kessler_process", "J kg-1 K-1", aliases=("cpair_column",)),
-        _field("column_dry_air_gas_constant", "float64", ("nphys_local", "pver"), "inout", "kessler_process", "J kg-1 K-1", aliases=("rair_column",)),
-        _field("temperature_before_kessler", "float64", ("nphys_local", "pver"), "inout", "kessler_process", "K", aliases=("temp_prev",)),
+        _field(
+            "potential_temperature",
+            "float64",
+            ("nphys_local", "pver"),
+            "inout",
+            "kessler_process",
+            "K",
+            aliases=("theta",),
+            ccpp_standard_name="air_potential_temperature",
+        ),
+        _field(
+            "exner_function",
+            "float64",
+            ("nphys_local", "pver"),
+            "inout",
+            "kessler_process",
+            aliases=("exner",),
+            ccpp_standard_name="dimensionless_exner_function",
+        ),
+        _field(
+            "dry_air_density",
+            "float64",
+            ("nphys_local", "pver"),
+            "inout",
+            "kessler_process",
+            "kg m-3",
+            aliases=("rho",),
+            ccpp_standard_name="dry_air_density",
+        ),
+        _field(
+            "thermodynamic_level_height",
+            "float64",
+            ("nphys_local", "pver"),
+            "inout",
+            "kessler_process",
+            "m",
+            aliases=("z",),
+            ccpp_standard_name="geopotential_height_wrt_surface",
+        ),
+        _field(
+            "column_dry_air_specific_heat",
+            "float64",
+            ("nphys_local", "pver"),
+            "inout",
+            "kessler_process",
+            "J kg-1 K-1",
+            aliases=("cpair_column",),
+            ccpp_standard_name=(
+                "composition_dependent_specific_heat_of_dry_air_at_"
+                "constant_pressure"
+            ),
+        ),
+        _field(
+            "column_dry_air_gas_constant",
+            "float64",
+            ("nphys_local", "pver"),
+            "inout",
+            "kessler_process",
+            "J kg-1 K-1",
+            aliases=("rair_column",),
+            ccpp_standard_name="composition_dependent_gas_constant_of_dry_air",
+        ),
+        _field(
+            "temperature_before_kessler",
+            "float64",
+            ("nphys_local", "pver"),
+            "inout",
+            "kessler_process",
+            "K",
+            aliases=("temp_prev",),
+            ccpp_standard_name="air_temperature_on_previous_timestep",
+        ),
         _field("dycore_heat_capacity", "float64", ("nphys_local", "pver"), "inout", "coupling", "J kg-1 K-1", aliases=("cp_or_cv_dycore",)),
         _field("dycore_energy_scaling", "float64", ("nphys_local", "pver"), "inout", "coupling", aliases=("scaling_dycore",)),
         _field("temperature_consistency_tendency", "float64", ("nphys_local", "pver"), "inout", "physics_tendency", "K s-1"),
-        _field("large_scale_precipitation_rate", "float64", ("nphys_local",), "inout", "kessler_process", "m s-1", aliases=("PRECL",), history=True),
-        _field("relative_humidity", "float64", ("nphys_local", "pver"), "inout", "kessler_process", "%", aliases=("RELHUM",), history=True),
-        _field("static_energy", "float64", ("nphys_local", "pver"), "inout", "kessler_process", "J kg-1"),
+        _field(
+            "large_scale_precipitation_rate",
+            "float64",
+            ("nphys_local",),
+            "inout",
+            "kessler_process",
+            "m s-1",
+            aliases=("PRECL",),
+            ccpp_standard_name="total_precipitation_rate_at_surface",
+            history=True,
+        ),
+        _field(
+            "relative_humidity",
+            "float64",
+            ("nphys_local", "pver"),
+            "inout",
+            "kessler_process",
+            "%",
+            aliases=("RELHUM",),
+            ccpp_standard_name="relative_humidity",
+            history=True,
+        ),
+        _field(
+            "static_energy",
+            "float64",
+            ("nphys_local", "pver"),
+            "inout",
+            "kessler_process",
+            "J kg-1",
+            ccpp_standard_name="dry_static_energy",
+        ),
         # Coupling/mapping buffers and history accumulators.
         _field("dynamics_to_physics_buffer", "float64", ("nphys_local", "pver", "mapping_fields"), "inout", "mapping"),
         _field("physics_to_dynamics_buffer", "float64", ("np", "np", "pver", "nelem_local", "mapping_fields"), "inout", "mapping"),
@@ -311,13 +487,31 @@ def default_alias_rules() -> tuple[AliasRule, ...]:
         AliasRule("cloud_liquid_water", "constituent_mixing_ratio", -2, 0),
         AliasRule("rain_water", "constituent_mixing_ratio", -2, 1),
         AliasRule("water_vapor", "constituent_mixing_ratio", -2, 2),
-        AliasRule("physics_cloud_liquid_water", "physics_constituent_mixing_ratio", -1, 0),
-        AliasRule("physics_rain_water", "physics_constituent_mixing_ratio", -1, 1),
-        AliasRule("physics_water_vapor", "physics_constituent_mixing_ratio", -1, 2),
+        AliasRule(
+            "physics_cloud_liquid_water",
+            "physics_constituent_mixing_ratio",
+            -1,
+            0,
+            "cloud_liquid_water_mixing_ratio_wrt_dry_air",
+        ),
+        AliasRule(
+            "physics_rain_water",
+            "physics_constituent_mixing_ratio",
+            -1,
+            1,
+            "rain_mixing_ratio_wrt_dry_air",
+        ),
+        AliasRule(
+            "physics_water_vapor",
+            "physics_constituent_mixing_ratio",
+            -1,
+            2,
+            "water_vapor_mixing_ratio_wrt_dry_air",
+        ),
     )
 
 
 def export_contract(path: str | Path, contracts: Iterable[FieldContract] | None = None) -> None:
     records = [item.machine_record() for item in (contracts or default_contracts())]
     with Path(path).open("w", encoding="utf-8") as stream:
-        yaml.safe_dump({"version": 1, "fields": records}, stream, sort_keys=False)
+        yaml.safe_dump({"version": 2, "fields": records}, stream, sort_keys=False)

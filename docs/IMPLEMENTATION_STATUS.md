@@ -2,7 +2,8 @@
 
 ## Implemented target
 
-The repository implements one complete configuration:
+The repository implements a general, manifest-driven Python/Fortran device
+boundary and one complete model configuration:
 
 - CAM-SIMA `f8daa568eae2696b7c4ebff7768f02f5d097d9df`
 - FKESSLER, `ne3np4.pg3`, L30, 24 ranks, one thread per rank
@@ -13,18 +14,57 @@ The repository implements one complete configuration:
 Python parses `atm_in`, initializes the grid and analytic state, owns all 214
 canonical persistent fields, executes the model phase graph, performs MPI
 communication through mpi4py, advances the clock, and writes history.
-`libpycam_sima_kernels.so` exposes versioned stateless numerical kernels and
-retains no array pointer or mutable model state between calls.
+`libpycam_sima_kernels.so` exposes versioned dycore/mapping kernels and retains
+no array pointer or mutable model state between calls. CCPP schemes are
+separate source-preserving devices under `build/devices/`.
 
 The Python scheme plan mirrors every active entry in the pinned Kessler CCPP
 suite. Its default 19 before-coupler and 5 after-coupler schemes are
 independently callable, observable, enabled/disabled, reorderable, and movable
 between groups. Required-scheme changes demand `unsafe=True`; the untouched
 XML order is the BFB contract.
-The two Kessler boundaries and the FP-sensitive geopotential helper call
-stateless Fortran kernels. The remaining conversion, thermodynamic,
-conservation, tendency, and diagnostic boundaries execute against the same
-Python-owned StatePool.
+The Kessler and Kessler-update boundaries are supplied by generated devices.
+Their adapters call the pinned, unmodified `kessler.F90` and
+`kessler_update.F90`; no second copy of either numerical algorithm is
+maintained. The FP-sensitive geopotential helper remains a main numerical
+kernel. The remaining conversion, thermodynamic, conservation, tendency, and
+diagnostic boundaries execute against the same Python-owned StatePool.
+
+## General device interface
+
+Each device descriptor identifies:
+
+- original Fortran source and CCPP metadata;
+- source modules and portable dependency providers;
+- lifecycle entrypoints and state policy;
+- CCPP-dimension to StatePool-dimension bindings;
+- named processes exposed to the Python scheduler.
+
+The generator reuses CAM-SIMA's CCPP metadata and Fortran parsers to verify the
+source signature. It emits an explicit-shape `bind(C)` adapter, a version
+script, and `device.json`; then it builds and scans an isolated device `.so`.
+The runtime `DeviceRegistry` discovers manifests without scheme-specific
+Python code. It binds arguments by CCPP `standard_name`, validates dtype,
+shape, units, intent, writable state, and Fortran contiguity, and preserves
+all NumPy addresses.
+
+The implemented state policies are:
+
+- `stateless`: call the requested entrypoint directly;
+- `reinitialize_each_run`: replay a Python-sourced initialize entrypoint before
+  every process call;
+- `initialize_once`: initialize once per Python worker and explicitly report
+  persistent native state in the manifest.
+
+Kessler and Kessler update use `reinitialize_each_run`. Their Fortran module
+configuration can never become the checkpoint authority because each process
+invocation reloads it from StatePool.
+
+Dependency resolution is fail-closed. Intrinsic modules, declared source
+modules, and portable providers are accepted. MPI, ESMF, PIO, CAM history, any
+undeclared module, forbidden ELF dependency, RPATH, or RUNPATH fails the
+build. The current device libraries depend only on `libgfortran`, `libm`, and
+`libc`.
 
 CSLAM/FVM geometry is generated independently by Python on every rank. The
 generator ports CAM-SIMA's cubed-sphere vertices, exact spherical moments,
@@ -70,6 +110,11 @@ the model BFB contract.
   ABI.
 - Initialization must not read a pre-generated FVM grid file.
 - The native ELF dependency scan must pass after a clean-environment build.
+- Every device's CCPP metadata must match its original Fortran signature.
+- Generated adapters must call original scheme entrypoints and contain no
+  copied numerical algorithm.
+- Every device argument must resolve through a complete StatePool contract.
+- Device errors must carry the original Fortran error message into Python.
 - Every persistent field must report `owner="python"`.
 - Every public phase checks NumPy pointer stability.
 - Every scheme call checks NumPy pointer stability, and the default 24-scheme
@@ -82,10 +127,16 @@ the model BFB contract.
 
 Machine-readable evidence is stored in
 `validation/fkessler_model_bfb.json` and
+`validation/source_preserving_devices.json`; Dask action evidence is stored in
 `validation/dask_granular_actions.json`. The latter records both real PBS
 segments and the single-allocation batch-versus-checkpoint-chain comparison.
 
 ## Scope boundary
 
-Other suites, grids, vertical levels, MPI sizes, timesteps, mediator or surface
-components, MPAS, GPU execution, and FADIAB are not supported.
+The framework can ingest additional compatible CCPP schemes, but only Kessler
+and Kessler update are registered and model-validated today. Schemes with
+optional arguments, derived types, non-interoperable kinds, callbacks, or
+undeclared host dependencies are rejected by device ABI v1 until an explicit
+provider/ABI rule is implemented. Other complete suites, grids, vertical
+levels, MPI sizes, timesteps, mediator or surface components, MPAS, GPU
+execution, and FADIAB are not model-validated.

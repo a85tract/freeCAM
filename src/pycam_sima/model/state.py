@@ -41,15 +41,33 @@ class StatePool:
         }
         self._arrays: dict[str, np.ndarray] = {}
         self._aliases: dict[str, tuple[str, int | None, int | None]] = {}
+        self._ccpp_fields: dict[str, str] = {}
         self._sealed = False
 
         for item in self.contracts.values():
             shape = item.shape(self.dimensions)
             self._arrays[item.standard_name] = np.zeros(shape, dtype=item.dtype, order="F")
+            if item.ccpp_standard_name is not None:
+                self._register_ccpp_name(
+                    item.ccpp_standard_name, item.standard_name
+                )
             for alias in item.aliases:
                 self._register_alias(alias, item.standard_name, None, None)
-        for rule in alias_rules or default_alias_rules():
+        rules = default_alias_rules() if alias_rules is None else alias_rules
+        for rule in rules:
             self._register_alias(rule.alias, rule.target, rule.axis, rule.index)
+            if rule.ccpp_standard_name is not None:
+                self._register_ccpp_name(
+                    rule.ccpp_standard_name, rule.alias
+                )
+
+    def _register_ccpp_name(self, standard_name: str, field_name: str) -> None:
+        key = standard_name.lower()
+        if key in self._ccpp_fields:
+            raise StateOwnershipError(
+                f"duplicate CCPP standard name {standard_name!r}"
+            )
+        self._ccpp_fields[key] = field_name
 
     def _register_alias(
         self,
@@ -76,6 +94,23 @@ class StatePool:
 
     def contract(self, name: str) -> FieldContract:
         return self.contracts[self.canonical_name(name)]
+
+    def ccpp_field_name(self, standard_name: str) -> str:
+        """Resolve one CCPP standard name to a canonical field or zero-copy alias."""
+
+        try:
+            return self._ccpp_fields[standard_name.lower()]
+        except KeyError as exc:
+            raise KeyError(
+                f"no StatePool field provides CCPP standard name "
+                f"{standard_name!r}"
+            ) from exc
+
+    def get_ccpp(self, standard_name: str, *, unsafe: bool = False) -> np.ndarray:
+        return self.get(self.ccpp_field_name(standard_name), unsafe=unsafe)
+
+    def contract_ccpp(self, standard_name: str) -> FieldContract:
+        return self.contract(self.ccpp_field_name(standard_name))
 
     def _resolve(self, name: str) -> np.ndarray:
         if name in self._arrays:
