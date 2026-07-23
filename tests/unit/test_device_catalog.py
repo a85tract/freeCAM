@@ -1,9 +1,12 @@
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
-from pycam_sima import DeviceCatalog
+from pycam_sima import DeviceBuildError, DeviceCatalog
+from pycam_sima import cli
 from pycam_sima.model.device_codegen import DeviceDescription
+from pycam_sima.model.device_catalog import _load_descriptor_overrides
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -27,7 +30,22 @@ def test_catalog_covers_every_pinned_suite_scheme(catalog: DeviceCatalog):
         "tj2016",
     }
     assert summary["active_scheme_count"] > 100
-    assert all(entry.metadata and entry.source for entry in catalog.entries.values())
+    assert summary["descriptor_override_count"] == 2
+    assert summary["descriptor_override_source"] == "devices/overrides.yaml"
+    assert all(
+        entry.metadata and entry.source
+        for entry in catalog.entries.values()
+    )
+
+
+def test_descriptor_source_tree_has_no_parallel_scheme_directories() -> None:
+    directories = {
+        path.name
+        for path in (ROOT / "devices").iterdir()
+        if path.is_dir()
+    }
+    assert directories == {"generated"}
+    assert (ROOT / "devices/overrides.yaml").is_file()
 
 
 def test_catalog_records_lifecycle_and_suite_occurrences(
@@ -95,7 +113,77 @@ def test_catalog_generates_one_valid_descriptor_per_active_scheme(
         "kessler": "run",
         "kessler:run": "run",
     }
+    assert kessler.state_policy == "reinitialize_each_run"
+    assert kessler.initialize_entrypoint == "initialize"
+    assert kessler.global_bindings == {
+        "vertical_index_at_surface_adjacent_layer": {
+            "source": "dimension",
+            "name": "pver",
+        },
+        "vertical_index_at_top_adjacent_layer": {
+            "source": "literal",
+            "value": 1,
+        },
+    }
     assert kessler.providers["ccpp_kinds"] == (
         ROOT / "native/devices/support/ccpp_kinds.F90"
     )
     assert "shr_kind_mod" in kessler.providers
+
+    kessler_update = DeviceDescription.from_yaml(
+        tmp_path / "kessler_update/device.yaml", project_root=ROOT
+    )
+    assert kessler_update.state_policy == "reinitialize_each_run"
+    assert kessler_update.initialize_entrypoint == "initialize"
+
+
+def test_descriptor_overrides_fail_closed(
+    tmp_path: Path,
+) -> None:
+    override = tmp_path / "overrides.yaml"
+    override.write_text(
+        "schema_version: 1\n"
+        "schemes:\n"
+        "  not_in_suite:\n"
+        "    state_policy: stateless\n"
+    )
+    with pytest.raises(DeviceBuildError, match="inactive schemes"):
+        _load_descriptor_overrides(override, frozenset({"kessler"}))
+
+    override.write_text(
+        "schema_version: 1\n"
+        "schemes:\n"
+        "  kessler:\n"
+        "    sources: [replacement.F90]\n"
+    )
+    with pytest.raises(DeviceBuildError, match="unsupported keys"):
+        _load_descriptor_overrides(override, frozenset({"kessler"}))
+
+
+def test_build_kernels_regenerates_descriptors_before_make(
+    monkeypatch,
+) -> None:
+    calls: list[tuple] = []
+
+    class _Catalog:
+        def write_descriptors(self, output, *, clean):
+            calls.append(("generate", Path(output), clean))
+
+    monkeypatch.setattr(
+        cli.DeviceCatalog, "discover", lambda _root: _Catalog()
+    )
+    monkeypatch.setattr(
+        cli.subprocess,
+        "run",
+        lambda command, *, check: calls.append(
+            ("make", tuple(command), check)
+        ),
+    )
+
+    assert cli.command_build_kernels(SimpleNamespace()) == 0
+    assert calls[0] == (
+        "generate",
+        ROOT / "devices/generated",
+        True,
+    )
+    assert calls[1][0] == "make"

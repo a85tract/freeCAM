@@ -173,8 +173,12 @@ def _read_json_collective(path: Path, comm) -> dict:
 
 
 def command_build_kernels(_args: argparse.Namespace) -> int:
+    root = _repo_root()
+    DeviceCatalog.discover(root).write_descriptors(
+        root / "devices/generated", clean=True
+    )
     subprocess.run(
-        ["make", "-C", str(_repo_root() / "native" / "kernels"), "clean", "all"],
+        ["make", "-C", str(root / "native" / "kernels"), "clean", "all"],
         check=True,
     )
     return 0

@@ -1,0 +1,22 @@
+schema_version: 1
+
+# CCPP metadata describes arguments and lifecycle entrypoints, but it cannot
+# express host policy such as "refresh module parameters before every run" or
+# a model-specific vertical-index convention.  Keep those small exceptions
+# here so every scheme descriptor can still be regenerated under
+# devices/generated/.
+schemes:
+  kessler:
+    state_policy: reinitialize_each_run
+    initialize_entrypoint: initialize
+    bindings:
+      vertical_index_at_surface_adjacent_layer:
+        source: dimension
+        name: pver
+      vertical_index_at_top_adjacent_layer:
+        source: literal
+        value: 1
+
+  kessler_update:
+    state_policy: reinitialize_each_run
+    initialize_entrypoint: initialize

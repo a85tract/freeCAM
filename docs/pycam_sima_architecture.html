@@ -772,7 +772,10 @@
           从 7 个 suite XML 中发现 155 个活跃 scheme，并同时读取每个 <code>.meta</code>
           和原始 <code>.F90</code>，核对 entrypoint、
           intent、rank、dimension、kind 和 units，随后生成 adapter、symbol version map 与
-          <code>device.json</code>。
+          <code>device.json</code>。全部 descriptor 只保存在
+          <code>devices/generated/&lt;scheme&gt;/</code>；metadata 无法表达的少量
+          host policy 从统一的 <code>devices/overrides.yaml</code> 合并，不再为
+          Kessler 维护平行目录。
         </div>
       </div>
       <div class="three-col" style="margin-top:18px">
@@ -1101,6 +1104,7 @@ field = experiments.field(
         <details><summary>串行执行意味着后一个分支读取前一个分支吗？</summary><p>不意味着。control和no-kessler都从base的不可变snapshot创建私有副本；warm从它明确指定的parent创建副本。串行只是资源安排，不是状态依赖。</p></details>
         <details><summary>自定义 server 为什么需要 socket？</summary><p>因为Notebook和24-rank模型是不同进程。模型完成一条命令后要继续存活并等待下一条命令，就必须有socket、pipe、ZeroMQ或MPI intercommunicator之类的持久IPC。当前实现使用带authkey的socket。</p></details>
         <details><summary>为了接入 Kessler，是否改写了原始 Fortran 数值代码？</summary><p>没有。构建器读取固定 CAM-SIMA revision 中的原始 <code>kessler.F90</code> 和 CCPP metadata，生成一个只负责 ABI 转换的 adapter。原始 scheme 直接参与 device <code>.so</code> 编译；旧的手写 <code>kessler_kernel.F90</code> 已删除。</p></details>
+        <details><summary>为什么 Kessler 不再有单独的 descriptor 目录？</summary><p>所有 155 个 scheme 现在都只有 <code>devices/generated/&lt;scheme&gt;/device.yaml</code> 这一份生成结果。Kessler 特有的每次运行前初始化和垂直索引约定来自 <code>devices/overrides.yaml</code>；它只补充 metadata 无法表达的 host policy，不允许替换原始源码、entrypoint 或 ABI。</p></details>
         <details><summary>任意 CCPP scheme 现在都能无条件自动接入吗？</summary><p>所有 155 个活跃 scheme 都会自动得到 connector 与机器可读状态，但这不等于全部都已科学运行。通用 ABI 已覆盖 real/integer/default-logical、fixed-width character、Python-owned shaped allocatable arrays 和 non-allocatable derived state；纯 history scheme 由 Python service 接管。当前 100 个 native device 加 29 个 host service 可执行；仍依赖 MPI reduction、PIO/NetCDF input、外部 MUSICA 源码或 allocatable object 的 26 个 scheme 会 fail closed，并在 <code>all_scheme_support.json</code> 写明原因。</p></details>
       </div>
     </section>

@@ -146,6 +146,14 @@ read instead of treating connector generation as proof that every scientific
 configuration has run. The aggregate build, load, ELF, and 50-step regression
 evidence is in `validation/all_scheme_connectors.json`.
 
+The descriptor source of truth is a single
+`devices/generated/<scheme>/device.yaml` tree. The two Kessler descriptors are
+not maintained as special parallel directories; their non-metadata lifecycle
+and vertical-index policy is declared in `devices/overrides.yaml` and merged
+by the same deterministic catalog generator. The corresponding clean-build
+and 24-rank/50-step BFB record is
+`validation/descriptor_unification.json`.
+
 The portable `ref_pres` provider implements the low-top behavior documented
 inside the original Holtslag–Boville interstitial (`ntop_eddy = 1`). It is
 valid for the seven pinned suites and is not a WACCM-X reference-pressure

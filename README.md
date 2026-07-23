@@ -104,6 +104,15 @@ data, external source, or an allocatable-object policy. Thus “connector
 generated” and “scientifically executable” are separate, machine-readable
 claims.
 
+All 155 descriptors live under this single generated tree. Host policy that
+cannot be inferred from CCPP metadata is maintained separately in
+`devices/overrides.yaml` and merged deterministically during generation.
+For example, the Kessler entries preserve their validated
+`reinitialize_each_run` policy and vertical-index bindings without keeping a
+second hand-written descriptor directory. The clean rebuild, lifecycle, and
+50-step BFB evidence for this consolidation is recorded in
+[`validation/descriptor_unification.json`](validation/descriptor_unification.json).
+
 For the pinned revision, the clean full-catalog build produces 100 original
 Fortran numerical devices with zero build failures. Another 29 pure history
 schemes are executable Python host services. The remaining 26 connectors fail
@@ -147,7 +156,7 @@ Fortran module dependencies, generates the C ABI adapter and JSON manifest,
 and compiles one isolated `.so`:
 
 ```text
-devices/kessler/device.yaml
+devices/generated/kessler/device.yaml
        ├── kessler.meta
        ├── original kessler.F90
        └── ccpp_kinds provider
@@ -167,7 +176,7 @@ does not contain Kessler's formulas or loops. The former handwritten
 Build one descriptor independently with:
 
 ```bash
-uv run pycam-sima build-device devices/kessler/device.yaml
+uv run pycam-sima build-device devices/generated/kessler/device.yaml
 ```
 
 At runtime, `DeviceRegistry` reads `device.json`. Every ABI argument declares

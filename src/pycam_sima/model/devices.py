@@ -363,10 +363,20 @@ class FortranDevice:
                 f"device {self.name!r} has no process {process!r}"
             ) from exc
         if self.state_policy == "reinitialize_each_run":
-            if self.initialize_entrypoint is not None:
+            # Generated descriptors also expose explicit lifecycle processes.
+            # Reinitialize only before the numerical run entrypoint; applying
+            # this policy to ``scheme:initialize`` would call initialize twice.
+            if (
+                entrypoint == "run"
+                and self.initialize_entrypoint is not None
+            ):
                 self.call(self.initialize_entrypoint, pool)
         elif self.state_policy == "initialize_once":
-            if not self._initialized and self.initialize_entrypoint is not None:
+            if (
+                entrypoint != self.initialize_entrypoint
+                and not self._initialized
+                and self.initialize_entrypoint is not None
+            ):
                 self.call(self.initialize_entrypoint, pool)
                 self._initialized = True
         elif self.state_policy != "stateless":
@@ -375,6 +385,11 @@ class FortranDevice:
                 f"{self.state_policy!r}"
             )
         self.call(entrypoint, pool)
+        if (
+            self.state_policy == "initialize_once"
+            and entrypoint == self.initialize_entrypoint
+        ):
+            self._initialized = True
 
     def describe(self) -> dict[str, Any]:
         return {
@@ -406,9 +421,8 @@ class DeviceRegistry:
                 continue
             for manifest in sorted(device_root.glob("*/device.json")):
                 device = FortranDevice(manifest)
-                # Earlier roots have priority.  This lets a validated,
-                # hand-configured policy override its catalog-generated
-                # connector without creating two implementations.
+                # Earlier build roots have priority when a focused core build
+                # and a full-catalog build contain the same generated device.
                 if device.name in self.devices:
                     continue
                 self.register(device)

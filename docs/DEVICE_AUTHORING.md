@@ -13,64 +13,46 @@ unmodified Fortran + CCPP metadata + device.yaml
 ```
 
 The device is the original scheme, not a translated copy of its numerical
-body. Generated files belong under `build/devices/` and are reproducible from
-the descriptor.
+body. Source-derived descriptors belong under `devices/generated/`; adapters,
+manifests, and libraries belong under `build/devices/` and are reproducible
+from those descriptors.
 
-## Descriptor
+## Generated descriptor and policy overrides
 
-`devices/kessler/device.yaml` is the reference descriptor:
+Every active suite scheme has exactly one descriptor under
+`devices/generated/<scheme>/device.yaml`. Do not edit these generated files
+directly. Source-independent host policy that CCPP metadata cannot express is
+kept in `devices/overrides.yaml`. Kessler is the reference override:
 
 ```yaml
 schema_version: 1
-name: kessler
-fortran_module: kessler
-
-sources:
-  - external/CAM-SIMA/src/physics/ncar_ccpp/schemes/kessler/kessler.F90
-metadata:
-  - external/CAM-SIMA/src/physics/ncar_ccpp/schemes/kessler/kessler.meta
-
-source_modules: [kessler]
-providers:
-  ccpp_kinds: native/devices/support/ccpp_kinds.F90
-
-state_policy: reinitialize_each_run
-initialize_entrypoint: initialize
-
-dimension_bindings:
-  horizontal_loop_extent: nphys_local
-  vertical_layer_dimension: pver
-
-bindings:
-  vertical_index_at_surface_adjacent_layer:
-    source: dimension
-    name: pver
-  vertical_index_at_top_adjacent_layer:
-    source: literal
-    value: 1
-
-entrypoints:
-  initialize:
-    table: kessler_init
-  run:
-    table: kessler_run
-
-processes:
-  kessler: run
+schemes:
+  kessler:
+    state_policy: reinitialize_each_run
+    initialize_entrypoint: initialize
+    bindings:
+      vertical_index_at_surface_adjacent_layer:
+        source: dimension
+        name: pver
+      vertical_index_at_top_adjacent_layer:
+        source: literal
+        value: 1
 ```
 
 Most array/scalar bindings do not appear in this file. The generator carries
 the metadata `standard_name` into `device.json`, and StatePool resolves it at
-runtime. Descriptor bindings are required only for host policy that metadata
-cannot determine, such as vertical orientation, a literal, or an intentional
-field-name override.
+runtime. Overrides are restricted to host policy that metadata cannot
+determine, such as lifecycle state policy, vertical orientation, or a
+literal. Sources, entrypoints, providers, and ABI arguments remain
+source-derived and cannot be replaced by the override.
 
 ## Build pipeline
 
 Run:
 
 ```bash
-uv run pycam-sima build-device devices/kessler/device.yaml
+uv run pycam-sima generate-devices --clean
+uv run pycam-sima build-device devices/generated/kessler/device.yaml
 ```
 
 The builder:
@@ -199,9 +181,9 @@ must not be reused as a WACCM-X pressure-coordinate implementation.
 ## Add a new scheme
 
 1. Keep the upstream `.F90` and `.meta` files unchanged.
-2. Prefer regenerating `devices/generated/<name>/device.yaml` from the suite
-   catalog; maintain a hand descriptor only for an intentional policy
-   override.
+2. Regenerate `devices/generated/<name>/device.yaml` from the suite catalog;
+   put an intentional policy exception in `devices/overrides.yaml` rather
+   than creating a second descriptor directory.
 3. Add portable support modules under `native/devices/support/` only when they
    do not import the CAM runtime.
 4. Add CCPP standard-name providers to `FieldContract` or zero-copy

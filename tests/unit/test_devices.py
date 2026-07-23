@@ -192,7 +192,7 @@ def test_generated_registry_discovers_both_source_devices() -> None:
     )
 
 
-def test_composite_registry_discovers_catalog_and_prefers_validated_kessler():
+def test_composite_registry_discovers_catalog_and_core_kessler_build():
     catalog_registry = DeviceRegistry(ROOT / "build/catalog_devices")
     assert len(catalog_registry.devices) == 100
     for device in catalog_registry.devices.values():
@@ -242,6 +242,40 @@ def test_device_state_policies_control_initialize_calls(monkeypatch) -> None:
     device.invoke_process("kessler", object())
     assert calls == ["run"]
 
+    calls.clear()
+    device.state_policy = "reinitialize_each_run"
+    device.processes["kessler:initialize"] = "initialize"
+    device.invoke_process("kessler:initialize", object())
+    assert calls == ["initialize"]
+
+    calls.clear()
+    device.state_policy = "initialize_once"
+    device._initialized = False
+    device.invoke_process("kessler:initialize", object())
+    device.invoke_process("kessler", object())
+    assert calls == ["initialize", "run"]
+
+
+def test_reinitialize_policy_does_not_wrap_lifecycle_processes(
+    monkeypatch,
+) -> None:
+    device = DeviceRegistry(DEVICE_ROOT).devices["kessler_update"]
+    calls: list[str] = []
+    monkeypatch.setattr(
+        device, "call", lambda entrypoint, pool: calls.append(entrypoint)
+    )
+
+    device.invoke_process("kessler_update:initialize", object())
+    device.invoke_process("kessler_update:timestep_initial", object())
+    device.invoke_process("kessler_update", object())
+
+    assert calls == [
+        "initialize",
+        "timestep_initial",
+        "initialize",
+        "run",
+    ]
+
 
 def test_original_error_message_reaches_python() -> None:
     registry = DeviceRegistry(DEVICE_ROOT)
@@ -269,7 +303,8 @@ def test_device_contract_rejects_wrong_host_units() -> None:
 
 def test_ccpp_parser_verifies_original_source_and_metadata() -> None:
     description = DeviceDescription.from_yaml(
-        ROOT / "devices/kessler/device.yaml", project_root=ROOT
+        ROOT / "devices/generated/kessler/device.yaml",
+        project_root=ROOT,
     )
     entrypoints = _load_ccpp_entrypoints(description)
     assert tuple(entrypoints) == ("kessler_init", "kessler_run")

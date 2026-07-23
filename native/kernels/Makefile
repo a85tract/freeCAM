@@ -13,10 +13,12 @@ ABI_SYMBOLS := .build/abi-v2.symbols
 ABI_MANIFEST := abi-v2.json
 DEVICE_OUTPUT := $(PROJECT_ROOT)/build/devices
 DEVICE_DESCRIPTORS := \
-	$(PROJECT_ROOT)/devices/kessler/device.yaml \
-	$(PROJECT_ROOT)/devices/kessler_update/device.yaml
+	$(PROJECT_ROOT)/devices/generated/kessler/device.yaml \
+	$(PROJECT_ROOT)/devices/generated/kessler_update/device.yaml
 DEVICE_INPUTS := \
 	$(DEVICE_DESCRIPTORS) \
+	$(PROJECT_ROOT)/devices/overrides.yaml \
+	$(PROJECT_ROOT)/src/pycam_sima/model/device_catalog.py \
 	$(PROJECT_ROOT)/src/pycam_sima/model/device_codegen.py \
 	$(PROJECT_ROOT)/native/devices/support/ccpp_kinds.F90 \
 	$(PROJECT_ROOT)/external/CAM-SIMA/src/physics/ncar_ccpp/schemes/kessler/kessler.F90 \

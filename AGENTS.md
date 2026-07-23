@@ -21,8 +21,9 @@ repository root.
 - `uv sync --extra test --extra notebook`: install the Python 3.11/Jupyter environment.
 - `uv run pycam-sima build-kernels`: build the main kernel library and all
   generated source-preserving devices.
-- `uv run pycam-sima build-device devices/kessler/device.yaml`: regenerate one
-  original-Fortran device from its CCPP metadata and descriptor.
+- `uv run pycam-sima build-device devices/generated/kessler/device.yaml`:
+  regenerate one original-Fortran device from its CCPP metadata and
+  descriptor.
 - `uv run python tools/validate_kessler_kernel.py`: compare the Kessler kernel
   bit-for-bit with pinned CAM-SIMA source.
 - `uv run pytest`: run the complete local test suite.

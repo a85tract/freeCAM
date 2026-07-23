@@ -114,11 +114,18 @@ class DeviceCatalog:
         cam_root: Path,
         suites: tuple[Path, ...],
         entries: Mapping[str, SchemeCatalogEntry],
+        descriptor_overrides: Mapping[str, Mapping[str, Any]],
+        descriptor_override_source: Path | None,
     ):
         self.project_root = project_root
         self.cam_root = cam_root
         self.suites = suites
         self.entries = dict(entries)
+        self.descriptor_overrides = {
+            name: dict(payload)
+            for name, payload in descriptor_overrides.items()
+        }
+        self.descriptor_override_source = descriptor_override_source
 
     @classmethod
     def discover(
@@ -140,6 +147,10 @@ class DeviceCatalog:
 
         occurrences = _suite_occurrences(suite_files, root)
         active_names = frozenset(occurrences)
+        override_source = root / "devices/overrides.yaml"
+        descriptor_overrides = _load_descriptor_overrides(
+            override_source, active_names
+        )
         scheme_root = physics / "schemes"
         metadata_map = _metadata_map(scheme_root)
         missing = sorted(active_names - set(metadata_map))
@@ -262,6 +273,10 @@ class DeviceCatalog:
             cam_root=cam,
             suites=suite_files,
             entries=entries,
+            descriptor_overrides=descriptor_overrides,
+            descriptor_override_source=(
+                override_source if override_source.is_file() else None
+            ),
         )
 
     def summary(self) -> dict[str, Any]:
@@ -277,6 +292,14 @@ class DeviceCatalog:
                 path.stem.removeprefix("suite_") for path in self.suites
             ),
             "active_scheme_count": len(self.entries),
+            "descriptor_override_count": len(self.descriptor_overrides),
+            "descriptor_override_source": (
+                None
+                if self.descriptor_override_source is None
+                else _relative(
+                    self.descriptor_override_source, self.project_root
+                )
+            ),
             "occurrence_count": sum(
                 len(entry.occurrences) for entry in self.entries.values()
             ),
@@ -385,7 +408,7 @@ class DeviceCatalog:
         # Recursive dependencies may introduce one of these modules even when
         # the primary scheme source does not import it directly.
         providers = dict(_PORTABLE_PROVIDERS)
-        return {
+        payload = {
             "schema_version": 1,
             "generated": {
                 "catalog_schema_version": CATALOG_SCHEMA_VERSION,
@@ -419,6 +442,14 @@ class DeviceCatalog:
             },
             "processes": processes,
         }
+        override = self.descriptor_overrides.get(entry.name)
+        if override is None:
+            return payload
+        assert self.descriptor_override_source is not None
+        payload["generated"]["override_source"] = _relative(
+            self.descriptor_override_source, self.project_root
+        )
+        return _apply_descriptor_override(payload, override)
 
     def write_descriptors(
         self, output_root: str | Path, *, clean: bool = False
@@ -487,6 +518,91 @@ _POOL_DIMENSIONS = {
     "vertical_layer_dimension": "pver",
     "vertical_interface_dimension": "pverp",
 }
+
+_DESCRIPTOR_OVERRIDE_KEYS = frozenset(
+    {
+        "state_policy",
+        "initialize_entrypoint",
+        "bindings",
+        "dimension_bindings",
+    }
+)
+_DESCRIPTOR_OVERRIDE_MAPPING_KEYS = frozenset(
+    {"bindings", "dimension_bindings"}
+)
+
+
+def _load_descriptor_overrides(
+    path: Path, active_names: frozenset[str]
+) -> dict[str, dict[str, Any]]:
+    """Load small host-policy exceptions that metadata cannot represent."""
+
+    if not path.is_file():
+        return {}
+    payload = yaml.safe_load(path.read_text())
+    if not isinstance(payload, Mapping):
+        raise DeviceBuildError(f"{path}: override document must be a mapping")
+    if payload.get("schema_version") != 1:
+        raise DeviceBuildError(
+            f"{path}: unsupported override schema_version "
+            f"{payload.get('schema_version')!r}"
+        )
+    schemes = payload.get("schemes", {})
+    if not isinstance(schemes, Mapping):
+        raise DeviceBuildError(f"{path}: schemes must be a mapping")
+
+    unknown_schemes = sorted(
+        str(name).lower()
+        for name in schemes
+        if str(name).lower() not in active_names
+    )
+    if unknown_schemes:
+        raise DeviceBuildError(
+            f"{path}: overrides reference inactive schemes {unknown_schemes}"
+        )
+
+    result: dict[str, dict[str, Any]] = {}
+    for raw_name, raw_override in schemes.items():
+        name = str(raw_name).lower()
+        if not isinstance(raw_override, Mapping):
+            raise DeviceBuildError(
+                f"{path}: override for {name!r} must be a mapping"
+            )
+        unknown_keys = sorted(
+            str(key)
+            for key in raw_override
+            if str(key) not in _DESCRIPTOR_OVERRIDE_KEYS
+        )
+        if unknown_keys:
+            raise DeviceBuildError(
+                f"{path}: override for {name!r} has unsupported keys "
+                f"{unknown_keys}"
+            )
+        override = dict(raw_override)
+        for key in _DESCRIPTOR_OVERRIDE_MAPPING_KEYS:
+            if key in override and not isinstance(override[key], Mapping):
+                raise DeviceBuildError(
+                    f"{path}: {name}.{key} must be a mapping"
+                )
+        result[name] = override
+    return result
+
+
+def _apply_descriptor_override(
+    payload: dict[str, Any], override: Mapping[str, Any]
+) -> dict[str, Any]:
+    """Merge validated policy fields without replacing source-derived ABI."""
+
+    result = dict(payload)
+    for key, value in override.items():
+        if key in _DESCRIPTOR_OVERRIDE_MAPPING_KEYS:
+            merged = dict(result.get(key, {}))
+            merged.update(dict(value))
+            result[key] = merged
+        else:
+            result[key] = value
+    return result
+
 
 _PORTABLE_PROVIDERS = {
     "cam_abortutils": "native/devices/support/cam_abortutils.F90",
