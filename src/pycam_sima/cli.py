@@ -21,7 +21,14 @@ from .model import (
     restore_driver,
 )
 from .model.checkpoint import CHECKPOINT_SCHEMA_VERSION
-from .model.device_codegen import build_device
+from .model.device_codegen import (
+    DeviceDescription,
+    build_device,
+    resolve_source_closure,
+)
+from .model.device_catalog import DeviceCatalog
+from .model.device_support import DeviceSupportMatrix
+from .model.errors import DeviceBuildError
 from .model.validation import compare_history_directories
 
 
@@ -188,6 +195,149 @@ def command_build_device(args: argparse.Namespace) -> int:
     return 0
 
 
+def command_audit_devices(args: argparse.Namespace) -> int:
+    catalog = DeviceCatalog.discover(_repo_root())
+    payload = catalog.machine_record()
+    encoded = json.dumps(payload, indent=2, sort_keys=True)
+    if args.output:
+        output = Path(args.output).resolve()
+        output.parent.mkdir(parents=True, exist_ok=True)
+        output.write_text(encoded + "\n")
+    print(json.dumps(catalog.summary(), indent=2, sort_keys=True))
+    return 0
+
+
+def command_generate_devices(args: argparse.Namespace) -> int:
+    catalog = DeviceCatalog.discover(_repo_root())
+    output = Path(
+        args.output_root or _repo_root() / "devices/generated"
+    )
+    descriptors = catalog.write_descriptors(output, clean=args.clean)
+    print(
+        json.dumps(
+            {
+                "suite_count": len(catalog.suites),
+                "scheme_count": len(descriptors),
+                "output_root": str(output.resolve()),
+            },
+            indent=2,
+            sort_keys=True,
+        )
+    )
+    return 0
+
+
+def command_build_catalog_devices(args: argparse.Namespace) -> int:
+    """Build every framework-free connector using portable host providers."""
+
+    root = _repo_root()
+    catalog = DeviceCatalog.discover(root)
+    descriptor_root = Path(
+        args.descriptor_root or root / "devices/generated"
+    ).resolve()
+    catalog.write_descriptors(descriptor_root, clean=True)
+    output_root = Path(
+        args.output_root or root / "build/catalog_devices"
+    ).resolve()
+    candidates = [
+        entry
+        for entry in catalog.entries.values()
+        if not entry.blockers
+        and not entry.unresolved_modules
+    ]
+    selected = []
+    dependency_blocked: list[dict[str, str]] = []
+    for entry in sorted(candidates, key=lambda item: item.name):
+        descriptor = descriptor_root / entry.name / "device.yaml"
+        try:
+            resolve_source_closure(
+                DeviceDescription.from_yaml(
+                    descriptor, project_root=root
+                )
+            )
+            selected.append(entry)
+        except DeviceBuildError as exc:
+            dependency_blocked.append(
+                {"name": entry.name, "reason": str(exc)}
+            )
+    results: list[dict[str, object]] = []
+    for entry in sorted(selected, key=lambda item: item.name):
+        try:
+            manifest = build_device(
+                descriptor_root / entry.name / "device.yaml",
+                project_root=root,
+                output_root=output_root,
+                compiler=args.compiler,
+                fflags=shlex.split(args.fflags),
+                ldflags=shlex.split(args.ldflags),
+            )
+            results.append(
+                {
+                    "name": entry.name,
+                    "status": "built",
+                    "manifest": str(manifest.relative_to(root)),
+                }
+            )
+        except DeviceBuildError as exc:
+            results.append(
+                {
+                    "name": entry.name,
+                    "status": "failed",
+                    "error": str(exc),
+                }
+            )
+    report = {
+        "schema_version": 1,
+        "source_revision": catalog.source_revision,
+        "selection": (
+            "ABI-compatible schemes with a recursively source-resolved, "
+            "framework-free dependency closure"
+        ),
+        "abi_compatible_considered": len(candidates),
+        "dependency_blocked": len(dependency_blocked),
+        "dependency_blockers": dependency_blocked,
+        "attempted": len(results),
+        "built": sum(item["status"] == "built" for item in results),
+        "failed": sum(item["status"] == "failed" for item in results),
+        "results": results,
+    }
+    report_path = Path(
+        args.report
+        or root / "validation/portable_catalog_device_build.json"
+    ).resolve()
+    report_path.parent.mkdir(parents=True, exist_ok=True)
+    report_path.write_text(
+        json.dumps(report, indent=2, sort_keys=True) + "\n"
+    )
+    print(
+        json.dumps(
+            {
+                key: value
+                for key, value in report.items()
+                if key != "results"
+            },
+            indent=2,
+            sort_keys=True,
+        )
+    )
+    if args.strict and report["failed"]:
+        return 1
+    return 0
+
+
+def command_scheme_status(args: argparse.Namespace) -> int:
+    matrix = DeviceSupportMatrix.discover(_repo_root())
+    payload = matrix.machine_record()
+    if args.output:
+        output = Path(args.output).resolve()
+        output.parent.mkdir(parents=True, exist_ok=True)
+        output.write_text(
+            json.dumps(payload, indent=2, sort_keys=True) + "\n"
+        )
+    print(json.dumps(matrix.summary(), indent=2, sort_keys=True))
+    return 0
+
+
 def command_compare_history(args: argparse.Namespace) -> int:
     compare_history_directories(
         args.reference_dir,
@@ -247,13 +397,60 @@ def main() -> int:
         "--fflags",
         default=(
             "-O2 -march=znver3 -fPIC -ffp-contract=off -fno-fast-math "
-            "-ffree-line-length-none -cpp"
+            "-ffree-line-length-none -cpp "
+            "-DUSE_CONTIGUOUS=contiguous,"
         ),
     )
     device.add_argument(
         "--ldflags", default="-Wl,--as-needed -Wl,--no-undefined"
     )
     device.set_defaults(func=command_build_device)
+
+    audit = sub.add_parser(
+        "audit-devices",
+        help="inventory every CCPP scheme referenced by pinned suite XML",
+    )
+    audit.add_argument("--output")
+    audit.set_defaults(func=command_audit_devices)
+
+    generate = sub.add_parser(
+        "generate-devices",
+        help="generate one source-preserving connector YAML per suite scheme",
+    )
+    generate.add_argument("--output-root")
+    generate.add_argument("--clean", action="store_true")
+    generate.set_defaults(func=command_generate_devices)
+
+    catalog_build = sub.add_parser(
+        "build-catalog-devices",
+        help="build the automatically portable subset of catalog devices",
+    )
+    catalog_build.add_argument("--descriptor-root")
+    catalog_build.add_argument("--output-root")
+    catalog_build.add_argument("--report")
+    catalog_build.add_argument("--strict", action="store_true")
+    catalog_build.add_argument(
+        "--compiler", default="/opt/cray/pe/gcc/12.2.0/bin/gfortran"
+    )
+    catalog_build.add_argument(
+        "--fflags",
+        default=(
+            "-O2 -march=znver3 -fPIC -ffp-contract=off -fno-fast-math "
+            "-ffree-line-length-none -cpp "
+            "-DUSE_CONTIGUOUS=contiguous,"
+        ),
+    )
+    catalog_build.add_argument(
+        "--ldflags", default="-Wl,--as-needed -Wl,--no-undefined"
+    )
+    catalog_build.set_defaults(func=command_build_catalog_devices)
+
+    status = sub.add_parser(
+        "scheme-status",
+        help="report connector/build status for every active suite scheme",
+    )
+    status.add_argument("--output")
+    status.set_defaults(func=command_scheme_status)
 
     compare = sub.add_parser("compare-history", help="run the fixed BFB gate")
     compare.add_argument("reference_dir")

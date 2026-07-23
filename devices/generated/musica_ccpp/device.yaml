@@ -1,0 +1,97 @@
+# Generated from pinned CAM-SIMA CCPP metadata. Do not edit by hand.
+schema_version: 1
+generated:
+  catalog_schema_version: 1
+  source_revision: f8daa568eae2696b7c4ebff7768f02f5d097d9df
+  audit_blockers:
+  - allocatable_argument:musica_ccpp_register.constituent_props
+  - 'dimension_expression:musica_ccpp_register.constituent_props::'
+  external_cam_dependencies:
+  - ccpp_const_utils
+  - ccpp_constituent_prop_mod
+  - ccpp_kinds
+  - ccpp_tuvx_utils
+  - musica_ccpp_namelist
+  unresolved_modules:
+  - musica_micm
+  - musica_state
+  - musica_tuvx
+  - musica_tuvx_grid
+  - musica_tuvx_profile
+  - musica_tuvx_radiator
+  - musica_util
+name: musica_ccpp
+fortran_module: musica_ccpp
+sources:
+- external/CAM-SIMA/src/physics/ncar_ccpp/schemes/musica/musica_ccpp.F90
+- external/CAM-SIMA/src/physics/ncar_ccpp/schemes/musica/micm/musica_ccpp_micm_util.F90
+- external/CAM-SIMA/src/physics/ncar_ccpp/schemes/musica/micm/musica_ccpp_micm.F90
+- external/CAM-SIMA/src/physics/ncar_ccpp/schemes/musica/tuvx/musica_ccpp_tuvx_aerosol_optics.F90
+- external/CAM-SIMA/src/physics/ncar_ccpp/schemes/musica/tuvx/musica_ccpp_tuvx_cloud_optics.F90
+- external/CAM-SIMA/src/physics/ncar_ccpp/schemes/musica/tuvx/musica_ccpp_tuvx_extraterrestrial_flux.F90
+- external/CAM-SIMA/src/physics/ncar_ccpp/schemes/musica/tuvx/musica_ccpp_tuvx_gas_species.F90
+- external/CAM-SIMA/src/physics/ncar_ccpp/schemes/musica/tuvx/musica_ccpp_tuvx_height_grid.F90
+- external/CAM-SIMA/src/physics/ncar_ccpp/schemes/musica/tuvx/musica_ccpp_tuvx_load_species.F90
+- external/CAM-SIMA/src/physics/ncar_ccpp/schemes/musica/tuvx/musica_ccpp_tuvx_surface_albedo.F90
+- external/CAM-SIMA/src/physics/ncar_ccpp/schemes/musica/tuvx/musica_ccpp_tuvx_temperature.F90
+- external/CAM-SIMA/src/physics/ncar_ccpp/schemes/musica/tuvx/musica_ccpp_tuvx_wavelength_grid.F90
+- external/CAM-SIMA/src/physics/ncar_ccpp/schemes/musica/tuvx/musica_ccpp_tuvx.F90
+- external/CAM-SIMA/src/physics/ncar_ccpp/schemes/musica/util/musica_ccpp_grid.F90
+- external/CAM-SIMA/src/physics/ncar_ccpp/schemes/musica/util/musica_ccpp_species.F90
+- external/CAM-SIMA/src/physics/ncar_ccpp/schemes/musica/util/musica_ccpp_util.F90
+metadata:
+- external/CAM-SIMA/src/physics/ncar_ccpp/schemes/musica/musica_ccpp.meta
+source_modules:
+- musica_ccpp
+- musica_ccpp_grid
+- musica_ccpp_micm
+- musica_ccpp_micm_util
+- musica_ccpp_species
+- musica_ccpp_tuvx
+- musica_ccpp_tuvx_aerosol_optics
+- musica_ccpp_tuvx_cloud_optics
+- musica_ccpp_tuvx_extraterrestrial_flux
+- musica_ccpp_tuvx_gas_species
+- musica_ccpp_tuvx_height_grid
+- musica_ccpp_tuvx_load_species
+- musica_ccpp_tuvx_surface_albedo
+- musica_ccpp_tuvx_temperature
+- musica_ccpp_tuvx_wavelength_grid
+- musica_ccpp_util
+providers:
+  cam_abortutils: native/devices/support/cam_abortutils.F90
+  cam_logfile: native/devices/support/cam_logfile.F90
+  ccpp_kinds: native/devices/support/ccpp_kinds.F90
+  error_messages: native/devices/support/error_messages.F90
+  physconst: native/devices/support/physconst.F90
+  ref_pres: native/devices/support/ref_pres.F90
+  shr_kind_mod: native/devices/support/shr_kind_mod.F90
+  shr_log_mod: native/devices/support/shr_log_mod.F90
+  shr_assert_mod: native/devices/support/shr_assert_mod.F90
+  shr_sys_mod: native/devices/support/shr_sys_mod.F90
+  spmd_utils: native/devices/support/spmd_utils.F90
+auto_dependencies: true
+state_policy: stateless
+dimension_bindings:
+  horizontal_dimension: nphys_local
+  horizontal_loop_extent: nphys_local
+  number_of_ccpp_constituents: number_of_ccpp_constituents
+  photolysis_wavelength_grid_interface_dimension: photolysis_wavelength_grid_interface_dimension
+  photolysis_wavelength_grid_section_dimension: photolysis_wavelength_grid_section_dimension
+  vertical_interface_dimension: pverp
+  vertical_layer_dimension: pver
+entrypoints:
+  register:
+    table: musica_ccpp_register
+  initialize:
+    table: musica_ccpp_init
+  run:
+    table: musica_ccpp_run
+  finalize:
+    table: musica_ccpp_final
+processes:
+  musica_ccpp: run
+  musica_ccpp:register: register
+  musica_ccpp:initialize: initialize
+  musica_ccpp:run: run
+  musica_ccpp:finalize: finalize

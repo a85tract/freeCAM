@@ -1,0 +1,55 @@
+# Generated from pinned CAM-SIMA CCPP metadata. Do not edit by hand.
+schema_version: 1
+generated:
+  catalog_schema_version: 1
+  source_revision: f8daa568eae2696b7c4ebff7768f02f5d097d9df
+  audit_blockers:
+  - host_framework_module:mpi
+  external_cam_dependencies:
+  - cam_abortutils
+  - cam_logfile
+  - ccpp_kinds
+  - gmean_mod
+  - perf_mod
+  - physconst
+  - physics_grid
+  - shr_kind_mod
+  - shr_reprosum_mod
+  - shr_strconvert_mod
+  - spmd_utils
+  unresolved_modules:
+  - mpi
+name: check_energy_gmean
+fortran_module: check_energy_gmean
+sources:
+- external/CAM-SIMA/src/physics/ncar_ccpp/schemes/conservation_adjust/check_energy/check_energy_gmean/check_energy_gmean.F90
+- external/CAM-SIMA/src/utils/gmean_mod.F90
+metadata:
+- external/CAM-SIMA/src/physics/ncar_ccpp/schemes/conservation_adjust/check_energy/check_energy_gmean/check_energy_gmean.meta
+source_modules:
+- check_energy_gmean
+- gmean_mod
+providers:
+  cam_abortutils: native/devices/support/cam_abortutils.F90
+  cam_logfile: native/devices/support/cam_logfile.F90
+  ccpp_kinds: native/devices/support/ccpp_kinds.F90
+  error_messages: native/devices/support/error_messages.F90
+  physconst: native/devices/support/physconst.F90
+  ref_pres: native/devices/support/ref_pres.F90
+  shr_kind_mod: native/devices/support/shr_kind_mod.F90
+  shr_log_mod: native/devices/support/shr_log_mod.F90
+  shr_assert_mod: native/devices/support/shr_assert_mod.F90
+  shr_sys_mod: native/devices/support/shr_sys_mod.F90
+  spmd_utils: native/devices/support/spmd_utils.F90
+auto_dependencies: true
+state_policy: stateless
+dimension_bindings:
+  horizontal_loop_extent: nphys_local
+  vertical_interface_dimension: pverp
+  vertical_layer_dimension: pver
+entrypoints:
+  run:
+    table: check_energy_gmean_run
+processes:
+  check_energy_gmean: run
+  check_energy_gmean:run: run

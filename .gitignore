@@ -6,6 +6,8 @@ build/
 dist/
 *.egg-info/
 *.so
+*.mod
+*.o
 reference/
 artifacts/
 native/kernels/*.mod

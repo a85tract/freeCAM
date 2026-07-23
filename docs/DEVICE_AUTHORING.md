@@ -161,27 +161,47 @@ Device ABI v1 supports:
 
 - `real(kind_phys)` mapped to `float64`;
 - default integer/`c_int` mapped to `int32`;
-- `logical(c_bool)`;
+- `logical(c_bool)` and default Fortran logical through a generated bridge;
+- fixed-width character scalars and rank-one arrays;
+- shaped primitive fields marked allocatable by CCPP metadata, with allocation
+  remaining in Python/NumPy;
+- non-allocatable derived-type scalars/arrays as opaque process-state handles;
 - scalar input values;
 - scalar output/inout references;
 - explicit-shape arrays of supported intrinsic types;
 - CCPP error code/message and scheme-name outputs;
 - injected ABI-only dimensions for assumed-shape routines that do not receive
-  the extent as a scheme argument.
+  the extent as a scheme argument;
+- Python-owned legacy physical constants injected through portable setter
+  services.
 
-The generator rejects optional arguments, derived types, unsupported kinds,
-ambiguous dimension expressions, undeclared modules, and host dependencies.
-That rejection is intentional. A new ABI rule or a small portable dependency
-provider must be designed before such a scheme becomes a device.
+The generator rejects optional arguments, allocatable derived objects or
+fields without a concrete shape, unsupported kinds, ambiguous dimensions,
+undeclared modules, and unimplemented host dependencies. That rejection is
+intentional. A new ABI rule or a portable host provider must be designed
+before such a scheme becomes a numerical device.
+
+For an opaque derived type, the generated library exports create/destroy
+symbols in addition to the scheme entrypoints. StatePool owns the lifetime
+record, verifies the Fortran type and shape on every use, and never interprets
+the object layout. Opaque state cannot be checkpointed until that type has an
+explicit serializer.
 
 MPI, ESMF, PIO, NetCDF, CAM history, and full CAM control are outside a
 numerical device. MPI communication remains in the Python host through
 mpi4py.
 
+Portable providers must state their scientific scope. For example,
+`native/devices/support/ref_pres.F90` implements only the low-top
+`ntop_eddy = 1` behavior explicitly documented by the source interstitial; it
+must not be reused as a WACCM-X pressure-coordinate implementation.
+
 ## Add a new scheme
 
 1. Keep the upstream `.F90` and `.meta` files unchanged.
-2. Add `devices/<name>/device.yaml`.
+2. Prefer regenerating `devices/generated/<name>/device.yaml` from the suite
+   catalog; maintain a hand descriptor only for an intentional policy
+   override.
 3. Add portable support modules under `native/devices/support/` only when they
    do not import the CAM runtime.
 4. Add CCPP standard-name providers to `FieldContract` or zero-copy

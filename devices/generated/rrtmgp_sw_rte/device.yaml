@@ -1,0 +1,65 @@
+# Generated from pinned CAM-SIMA CCPP metadata. Do not edit by hand.
+schema_version: 1
+generated:
+  catalog_schema_version: 1
+  source_revision: f8daa568eae2696b7c4ebff7768f02f5d097d9df
+  audit_blockers: []
+  external_cam_dependencies:
+  - ccpp_kinds
+  unresolved_modules: []
+name: rrtmgp_sw_rte
+fortran_module: rrtmgp_sw_rte
+sources:
+- external/CAM-SIMA/src/physics/ncar_ccpp/schemes/rrtmgp/rrtmgp_sw_rte.F90
+- external/CAM-SIMA/src/physics/ncar_ccpp/schemes/rrtmgp/ext/rte-frontend/mo_rte_sw.F90
+- external/CAM-SIMA/src/physics/ncar_ccpp/schemes/rrtmgp/ext/rte-frontend/mo_rte_config.F90
+- external/CAM-SIMA/src/physics/ncar_ccpp/schemes/rrtmgp/ext/rte-kernels/mo_rte_util_array.F90
+- external/CAM-SIMA/src/physics/ncar_ccpp/schemes/rrtmgp/ext/rte-frontend/mo_rte_util_array_validation.F90
+- external/CAM-SIMA/src/physics/ncar_ccpp/schemes/rrtmgp/ext/rte-kernels/mo_rte_solver_kernels.F90
+- external/CAM-SIMA/src/physics/ncar_ccpp/schemes/rrtmgp/ext/rte-kernels/mo_fluxes_broadband_kernels.F90
+- external/CAM-SIMA/src/physics/ncar_ccpp/schemes/rrtmgp/utils/radiation_tools.F90
+- external/CAM-SIMA/src/physics/ncar_ccpp/schemes/rrtmgp/objects/ccpp_source_functions.F90
+- external/CAM-SIMA/src/physics/ncar_ccpp/schemes/rrtmgp/objects/ccpp_gas_optics_rrtmgp.F90
+- external/CAM-SIMA/src/physics/ncar_ccpp/schemes/rrtmgp/objects/ccpp_optical_props.F90
+- external/CAM-SIMA/src/physics/ncar_ccpp/schemes/rrtmgp/objects/ccpp_fluxes.F90
+- external/CAM-SIMA/src/physics/ncar_ccpp/schemes/rrtmgp/objects/ccpp_fluxes_byband.F90
+metadata:
+- external/CAM-SIMA/src/physics/ncar_ccpp/schemes/rrtmgp/rrtmgp_sw_rte.meta
+source_modules:
+- ccpp_fluxes
+- ccpp_fluxes_byband
+- ccpp_gas_optics_rrtmgp
+- ccpp_optical_props
+- ccpp_source_functions
+- mo_fluxes_broadband_kernels
+- mo_rte_config
+- mo_rte_solver_kernels
+- mo_rte_sw
+- mo_rte_util_array
+- mo_rte_util_array_validation
+- radiation_tools
+- rrtmgp_sw_rte
+providers:
+  cam_abortutils: native/devices/support/cam_abortutils.F90
+  cam_logfile: native/devices/support/cam_logfile.F90
+  ccpp_kinds: native/devices/support/ccpp_kinds.F90
+  error_messages: native/devices/support/error_messages.F90
+  physconst: native/devices/support/physconst.F90
+  ref_pres: native/devices/support/ref_pres.F90
+  shr_kind_mod: native/devices/support/shr_kind_mod.F90
+  shr_log_mod: native/devices/support/shr_log_mod.F90
+  shr_assert_mod: native/devices/support/shr_assert_mod.F90
+  shr_sys_mod: native/devices/support/shr_sys_mod.F90
+  spmd_utils: native/devices/support/spmd_utils.F90
+auto_dependencies: true
+state_policy: stateless
+dimension_bindings:
+  daytime_columns_dimension: daytime_columns_dimension
+  number_of_bands_for_shortwave_radiation: number_of_bands_for_shortwave_radiation
+  number_of_shortwave_g_point_intervals: number_of_shortwave_g_point_intervals
+entrypoints:
+  run:
+    table: rrtmgp_sw_rte_run
+processes:
+  rrtmgp_sw_rte: run
+  rrtmgp_sw_rte:run: run

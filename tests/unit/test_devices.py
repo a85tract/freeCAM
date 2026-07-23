@@ -7,12 +7,14 @@ import numpy as np
 import pytest
 import yaml
 
-from pycam_sima import DeviceRegistry
+from pycam_sima import DeviceRegistry, FortranDevice
 from pycam_sima.model.contracts import FieldContract
 from pycam_sima.model.device_codegen import (
     DeviceDescription,
     _load_ccpp_entrypoints,
     _validate_dependencies,
+    build_device,
+    resolve_source_closure,
 )
 from pycam_sima.model.errors import DeviceBuildError, DeviceContractError
 from pycam_sima.model.state import StatePool
@@ -177,9 +179,7 @@ def test_ccpp_standard_names_resolve_zero_copy_state() -> None:
 
 def test_generated_registry_discovers_both_source_devices() -> None:
     registry = DeviceRegistry(DEVICE_ROOT)
-    assert registry.process_names == frozenset(
-        {"kessler", "kessler_update"}
-    )
+    assert {"kessler", "kessler_update"} <= registry.process_names
     descriptions = {item["name"]: item for item in registry.describe()}
     assert descriptions["kessler"]["state_policy"] == (
         "reinitialize_each_run"
@@ -189,6 +189,22 @@ def test_generated_registry_discovers_both_source_devices() -> None:
         "run",
         "timestep_final",
         "timestep_initial",
+    )
+
+
+def test_composite_registry_discovers_catalog_and_prefers_validated_kessler():
+    catalog_registry = DeviceRegistry(ROOT / "build/catalog_devices")
+    assert len(catalog_registry.devices) == 100
+    for device in catalog_registry.devices.values():
+        device._ensure_abi()
+
+    registry = DeviceRegistry(
+        (ROOT / "build/devices", ROOT / "build/catalog_devices")
+    )
+    assert "calculate_net_heating" in registry.process_names
+    assert len(registry.devices) == 100
+    assert registry.devices["kessler"].manifest_path.parent == (
+        ROOT / "build/devices/kessler"
     )
 
 
@@ -325,3 +341,509 @@ def test_generated_manifest_points_to_pinned_original_source() -> None:
     assert "call kessler_run(" in generated
     assert "36.34" not in generated
     assert not (ROOT / "native/kernels/kessler_kernel.F90").exists()
+
+
+def test_default_fortran_logical_is_bridged_from_numpy_bool() -> None:
+    dimensions = {"nphys_local": 3, "pver": 2}
+
+    def contract(name, ccpp_name, dtype, dims, units, intent="in"):
+        return FieldContract(
+            standard_name=name,
+            ccpp_standard_name=ccpp_name,
+            dtype=dtype,
+            dimensions=dims,
+            intent=intent,
+            category="test",
+            units=units,
+        )
+
+    contracts = (
+        contract(
+            "qrl",
+            (
+                "tendency_of_dry_air_enthalpy_at_constant_pressure_due_to_"
+                "longwave_radiation"
+            ),
+            "float64",
+            ("nphys_local", "pver"),
+            "J kg-1 s-1",
+        ),
+        contract(
+            "qrs",
+            (
+                "tendency_of_dry_air_enthalpy_at_constant_pressure_due_to_"
+                "shortwave_radiation"
+            ),
+            "float64",
+            ("nphys_local", "pver"),
+            "J kg-1 s-1",
+        ),
+        contract(
+            "offline",
+            "is_offline_dynamical_core",
+            "bool",
+            (),
+            "flag",
+        ),
+        contract(
+            "fsns",
+            "shortwave_net_upward_flux_at_surface",
+            "float64",
+            ("nphys_local",),
+            "W m-2",
+        ),
+        contract(
+            "fsnt",
+            "shortwave_net_outgoing_flux_at_model_top",
+            "float64",
+            ("nphys_local",),
+            "W m-2",
+        ),
+        contract(
+            "flns",
+            "longwave_net_upward_flux_at_surface",
+            "float64",
+            ("nphys_local",),
+            "W m-2",
+        ),
+        contract(
+            "flnt",
+            "longwave_net_outgoing_flux_at_model_top",
+            "float64",
+            ("nphys_local",),
+            "W m-2",
+        ),
+        contract(
+            "heating",
+            "tendency_of_dry_air_enthalpy_at_constant_pressure",
+            "float64",
+            ("nphys_local", "pver"),
+            "J kg-1 s-1",
+            "inout",
+        ),
+        contract(
+            "net_flux",
+            "total_column_radiative_flux",
+            "float64",
+            ("nphys_local",),
+            "W m-2",
+            "out",
+        ),
+    )
+    pool = StatePool(dimensions, contracts=contracts, alias_rules=())
+    pool.set("qrl", 2.0)
+    pool.set("qrs", 3.0)
+    pool.set("offline", False)
+    pool.set("fsns", [1.0, 2.0, 3.0])
+    pool.set("fsnt", [11.0, 12.0, 13.0])
+    pool.set("flns", [4.0, 5.0, 6.0])
+    pool.set("flnt", [7.0, 8.0, 9.0])
+    device = FortranDevice(
+        ROOT / "build/catalog_devices/calculate_net_heating/device.json"
+    )
+    before = pool.pointer_records()
+    device.invoke_process("calculate_net_heating", pool)
+    pool.assert_pointer_stability(before)
+    np.testing.assert_array_equal(pool.get("heating"), 5.0)
+    np.testing.assert_array_equal(pool.get("net_flux"), 7.0)
+
+
+def test_generated_descriptor_recursively_resolves_source_dependencies():
+    description = DeviceDescription.from_yaml(
+        ROOT
+        / "devices/generated/hb_diff_exchange_coefficients/device.yaml",
+        project_root=ROOT,
+    )
+    resolved = resolve_source_closure(description)
+    modules = set(resolved.source_modules)
+    assert "holtslag_boville_diff" in modules
+    assert "atmos_phys_pbl_utils" in modules
+
+
+def test_character_argument_round_trips_without_modifying_scheme_source(
+    tmp_path: Path,
+):
+    source = tmp_path / "character_echo.F90"
+    source.write_text(
+        "module character_echo\n"
+        "  implicit none\n"
+        "  private\n"
+        "  public :: character_echo_run\n"
+        "contains\n"
+        "  !> \\section arg_table_character_echo_run  Argument Table\n"
+        "  !! \\htmlinclude character_echo_run.html\n"
+        "  subroutine character_echo_run(input,output,errmsg,errflg)\n"
+        "    character(len=*), intent(in) :: input\n"
+        "    character(len=*), intent(out) :: output\n"
+        "    character(len=*), intent(out) :: errmsg\n"
+        "    integer, intent(out) :: errflg\n"
+        "    output=input\n"
+        "    errmsg=''\n"
+        "    errflg=0\n"
+        "  end subroutine character_echo_run\n"
+        "end module character_echo\n"
+    )
+    metadata = tmp_path / "character_echo.meta"
+    metadata.write_text(
+        "[ccpp-table-properties]\n"
+        "  name = character_echo\n"
+        "  type = scheme\n"
+        "[ccpp-arg-table]\n"
+        "  name = character_echo_run\n"
+        "  type = scheme\n"
+        "[ input ]\n"
+        "  standard_name = character_echo_input\n"
+        "  units = none\n"
+        "  type = character | kind = len=*\n"
+        "  dimensions = ()\n"
+        "  intent = in\n"
+        "[ output ]\n"
+        "  standard_name = character_echo_output\n"
+        "  units = none\n"
+        "  type = character | kind = len=*\n"
+        "  dimensions = ()\n"
+        "  intent = out\n"
+        "[ errmsg ]\n"
+        "  standard_name = ccpp_error_message\n"
+        "  units = none\n"
+        "  type = character | kind = len=*\n"
+        "  dimensions = ()\n"
+        "  intent = out\n"
+        "[ errflg ]\n"
+        "  standard_name = ccpp_error_code\n"
+        "  units = 1\n"
+        "  type = integer\n"
+        "  dimensions = ()\n"
+        "  intent = out\n"
+    )
+    descriptor = tmp_path / "device.yaml"
+    descriptor.write_text(
+        yaml.safe_dump(
+            {
+                "schema_version": 1,
+                "name": "character_echo",
+                "fortran_module": "character_echo",
+                "sources": [str(source)],
+                "metadata": [str(metadata)],
+                "source_modules": ["character_echo"],
+                "providers": {},
+                "state_policy": "stateless",
+                "dimension_bindings": {},
+                "entrypoints": {
+                    "run": {"table": "character_echo_run"}
+                },
+                "processes": {"character_echo": "run"},
+            },
+            sort_keys=False,
+        )
+    )
+    manifest = build_device(
+        descriptor,
+        project_root=ROOT,
+        output_root=tmp_path / "build",
+        compiler="/opt/cray/pe/gcc/12.2.0/bin/gfortran",
+        fflags=(
+            "-O0",
+            "-fPIC",
+            "-ffree-line-length-none",
+            "-cpp",
+        ),
+        ldflags=("-Wl,--no-undefined",),
+    )
+    contracts = (
+        FieldContract(
+            "input",
+            "S16",
+            (),
+            "in",
+            "test",
+            "none",
+            ccpp_standard_name="character_echo_input",
+        ),
+        FieldContract(
+            "output",
+            "S16",
+            (),
+            "out",
+            "test",
+            "none",
+            ccpp_standard_name="character_echo_output",
+        ),
+    )
+    pool = StatePool({}, contracts=contracts, alias_rules=())
+    pool.set("input", np.asarray(b"hello", dtype="S16"))
+    FortranDevice(manifest).invoke_process("character_echo", pool)
+    assert pool.get("output").item().rstrip() == b"hello"
+
+
+def test_opaque_derived_state_is_created_reused_and_released(
+    tmp_path: Path,
+):
+    source = tmp_path / "opaque_counter.F90"
+    source.write_text(
+        "module opaque_counter\n"
+        "  implicit none\n"
+        "  type :: counter_t\n"
+        "    integer :: value=0\n"
+        "  end type counter_t\n"
+        "contains\n"
+        "  !> \\section arg_table_opaque_counter_init Argument Table\n"
+        "  !! \\htmlinclude opaque_counter_init.html\n"
+        "  subroutine opaque_counter_init(state,errmsg,errflg)\n"
+        "    type(counter_t), intent(out) :: state\n"
+        "    character(len=*), intent(out) :: errmsg\n"
+        "    integer, intent(out) :: errflg\n"
+        "    state%value=7; errmsg=''; errflg=0\n"
+        "  end subroutine opaque_counter_init\n"
+        "  !> \\section arg_table_opaque_counter_run Argument Table\n"
+        "  !! \\htmlinclude opaque_counter_run.html\n"
+        "  subroutine opaque_counter_run(state,value,errmsg,errflg)\n"
+        "    type(counter_t), intent(inout) :: state\n"
+        "    integer, intent(out) :: value\n"
+        "    character(len=*), intent(out) :: errmsg\n"
+        "    integer, intent(out) :: errflg\n"
+        "    state%value=state%value+1; value=state%value\n"
+        "    errmsg=''; errflg=0\n"
+        "  end subroutine opaque_counter_run\n"
+        "end module opaque_counter\n"
+    )
+    metadata = tmp_path / "opaque_counter.meta"
+    metadata.write_text(
+        "[ccpp-table-properties]\n"
+        "  name = opaque_counter\n"
+        "  type = scheme\n"
+        "[ccpp-arg-table]\n"
+        "  name = opaque_counter_init\n"
+        "  type = scheme\n"
+        "[ state ]\n"
+        "  standard_name = opaque_counter_state\n"
+        "  units = none\n"
+        "  type = counter_t\n"
+        "  dimensions = ()\n"
+        "  intent = out\n"
+        "[ errmsg ]\n"
+        "  standard_name = ccpp_error_message\n"
+        "  units = none\n"
+        "  type = character | kind = len=*\n"
+        "  dimensions = ()\n"
+        "  intent = out\n"
+        "[ errflg ]\n"
+        "  standard_name = ccpp_error_code\n"
+        "  units = 1\n"
+        "  type = integer\n"
+        "  dimensions = ()\n"
+        "  intent = out\n"
+        "[ccpp-arg-table]\n"
+        "  name = opaque_counter_run\n"
+        "  type = scheme\n"
+        "[ state ]\n"
+        "  standard_name = opaque_counter_state\n"
+        "  units = none\n"
+        "  type = counter_t\n"
+        "  dimensions = ()\n"
+        "  intent = inout\n"
+        "[ value ]\n"
+        "  standard_name = opaque_counter_value\n"
+        "  units = count\n"
+        "  type = integer\n"
+        "  dimensions = ()\n"
+        "  intent = out\n"
+        "[ errmsg ]\n"
+        "  standard_name = ccpp_error_message\n"
+        "  units = none\n"
+        "  type = character | kind = len=*\n"
+        "  dimensions = ()\n"
+        "  intent = out\n"
+        "[ errflg ]\n"
+        "  standard_name = ccpp_error_code\n"
+        "  units = 1\n"
+        "  type = integer\n"
+        "  dimensions = ()\n"
+        "  intent = out\n"
+    )
+    descriptor = tmp_path / "device.yaml"
+    descriptor.write_text(
+        yaml.safe_dump(
+            {
+                "schema_version": 1,
+                "name": "opaque_counter",
+                "fortran_module": "opaque_counter",
+                "sources": [str(source)],
+                "metadata": [str(metadata)],
+                "source_modules": ["opaque_counter"],
+                "providers": {},
+                "state_policy": "stateless",
+                "dimension_bindings": {},
+                "entrypoints": {
+                    "initialize": {"table": "opaque_counter_init"},
+                    "run": {
+                        "table": "opaque_counter_run"
+                    },
+                },
+                "processes": {
+                    "opaque_counter:create": "initialize",
+                    "opaque_counter:increment": "run",
+                },
+            },
+            sort_keys=False,
+        )
+    )
+    manifest = build_device(
+        descriptor,
+        project_root=ROOT,
+        output_root=tmp_path / "build",
+        compiler="/opt/cray/pe/gcc/12.2.0/bin/gfortran",
+        fflags=(
+            "-O0",
+            "-fPIC",
+            "-ffree-line-length-none",
+            "-cpp",
+        ),
+        ldflags=("-Wl,--no-undefined",),
+    )
+    pool = StatePool(
+        {},
+        contracts=(
+            FieldContract(
+                "counter_value",
+                "int32",
+                (),
+                "out",
+                "test",
+                "count",
+                ccpp_standard_name="opaque_counter_value",
+            ),
+        ),
+        alias_rules=(),
+    )
+    device = FortranDevice(manifest)
+    device.invoke_process("opaque_counter:create", pool)
+    first_address = pool.get_process_state(
+        "opaque_counter_state"
+    ).address
+    device.invoke_process("opaque_counter:increment", pool)
+    assert pool.get("counter_value").item() == 8
+    assert (
+        pool.get_process_state("opaque_counter_state").address
+        == first_address
+    )
+    with pytest.raises(Exception, match="cannot checkpoint opaque"):
+        pool.snapshot_arrays()
+    pool.release_process_state()
+    assert not pool.process_state_names
+
+
+def test_python_owned_physical_constant_is_injected_into_fortran(
+    tmp_path: Path,
+):
+    source = tmp_path / "constant_probe.F90"
+    source.write_text(
+        "module constant_probe\n"
+        "  use ccpp_kinds, only: kind_phys\n"
+        "  use physconst, only: gravit\n"
+        "  implicit none\n"
+        "contains\n"
+        "  !> \\section arg_table_constant_probe_run Argument Table\n"
+        "  !! \\htmlinclude constant_probe_run.html\n"
+        "  subroutine constant_probe_run(value,errmsg,errflg)\n"
+        "    real(kind_phys), intent(out) :: value\n"
+        "    character(len=*), intent(out) :: errmsg\n"
+        "    integer, intent(out) :: errflg\n"
+        "    value=gravit; errmsg=''; errflg=0\n"
+        "  end subroutine constant_probe_run\n"
+        "end module constant_probe\n"
+    )
+    metadata = tmp_path / "constant_probe.meta"
+    metadata.write_text(
+        "[ccpp-table-properties]\n"
+        "  name = constant_probe\n"
+        "  type = scheme\n"
+        "[ccpp-arg-table]\n"
+        "  name = constant_probe_run\n"
+        "  type = scheme\n"
+        "[ value ]\n"
+        "  standard_name = constant_probe_value\n"
+        "  units = m s-2\n"
+        "  type = real | kind = kind_phys\n"
+        "  dimensions = ()\n"
+        "  intent = out\n"
+        "[ errmsg ]\n"
+        "  standard_name = ccpp_error_message\n"
+        "  units = none\n"
+        "  type = character | kind = len=*\n"
+        "  dimensions = ()\n"
+        "  intent = out\n"
+        "[ errflg ]\n"
+        "  standard_name = ccpp_error_code\n"
+        "  units = 1\n"
+        "  type = integer\n"
+        "  dimensions = ()\n"
+        "  intent = out\n"
+    )
+    descriptor = tmp_path / "device.yaml"
+    descriptor.write_text(
+        yaml.safe_dump(
+            {
+                "schema_version": 1,
+                "name": "constant_probe",
+                "fortran_module": "constant_probe",
+                "sources": [str(source)],
+                "metadata": [str(metadata)],
+                "source_modules": ["constant_probe"],
+                "providers": {
+                    "ccpp_kinds": str(
+                        ROOT / "native/devices/support/ccpp_kinds.F90"
+                    ),
+                    "physconst": str(
+                        ROOT / "native/devices/support/physconst.F90"
+                    )
+                },
+                "state_policy": "stateless",
+                "dimension_bindings": {},
+                "entrypoints": {
+                    "run": {"table": "constant_probe_run"}
+                },
+                "processes": {"constant_probe": "run"},
+            },
+            sort_keys=False,
+        )
+    )
+    manifest = build_device(
+        descriptor,
+        project_root=ROOT,
+        output_root=tmp_path / "build",
+        compiler="/opt/cray/pe/gcc/12.2.0/bin/gfortran",
+        fflags=(
+            "-O0",
+            "-fPIC",
+            "-ffree-line-length-none",
+            "-cpp",
+        ),
+        ldflags=("-Wl,--no-undefined",),
+    )
+    pool = StatePool(
+        {},
+        contracts=(
+            FieldContract(
+                "gravitational_acceleration",
+                "float64",
+                (),
+                "in",
+                "constants",
+                "m s-2",
+            ),
+            FieldContract(
+                "value",
+                "float64",
+                (),
+                "out",
+                "test",
+                "m s-2",
+                ccpp_standard_name="constant_probe_value",
+            ),
+        ),
+        alias_rules=(),
+    )
+    pool.set("gravitational_acceleration", 3.711)
+    FortranDevice(manifest).invoke_process("constant_probe", pool)
+    assert pool.get("value").item() == 3.711

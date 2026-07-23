@@ -1,0 +1,57 @@
+# Generated from pinned CAM-SIMA CCPP metadata. Do not edit by hand.
+schema_version: 1
+generated:
+  catalog_schema_version: 1
+  source_revision: f8daa568eae2696b7c4ebff7768f02f5d097d9df
+  audit_blockers:
+  - host_framework_module:ccpp_io_reader
+  external_cam_dependencies:
+  - ccpp_io_reader
+  - ccpp_kinds
+  - coords_1d
+  - interpolate_data
+  - linear_1d_operators
+  - shr_kind_mod
+  unresolved_modules: []
+name: gravity_wave_drag_moving_mountain
+fortran_module: gravity_wave_drag_moving_mountain
+sources:
+- external/CAM-SIMA/src/physics/ncar_ccpp/schemes/gravity_wave_drag/gravity_wave_drag_moving_mountain.F90
+- external/CAM-SIMA/src/physics/ncar_ccpp/schemes/gravity_wave_drag/gw_utils.F90
+- external/CAM-SIMA/src/physics/ncar_ccpp/schemes/gravity_wave_drag/gw_common.F90
+- external/CAM-SIMA/src/physics/ncar_ccpp/to_be_ccppized/coords_1d.F90
+metadata:
+- external/CAM-SIMA/src/physics/ncar_ccpp/schemes/gravity_wave_drag/gravity_wave_drag_moving_mountain.meta
+source_modules:
+- coords_1d
+- gravity_wave_drag_moving_mountain
+- gw_common
+- gw_utils
+providers:
+  cam_abortutils: native/devices/support/cam_abortutils.F90
+  cam_logfile: native/devices/support/cam_logfile.F90
+  ccpp_kinds: native/devices/support/ccpp_kinds.F90
+  error_messages: native/devices/support/error_messages.F90
+  physconst: native/devices/support/physconst.F90
+  ref_pres: native/devices/support/ref_pres.F90
+  shr_kind_mod: native/devices/support/shr_kind_mod.F90
+  shr_log_mod: native/devices/support/shr_log_mod.F90
+  shr_assert_mod: native/devices/support/shr_assert_mod.F90
+  shr_sys_mod: native/devices/support/shr_sys_mod.F90
+  spmd_utils: native/devices/support/spmd_utils.F90
+auto_dependencies: true
+state_policy: stateless
+dimension_bindings:
+  horizontal_loop_extent: nphys_local
+  number_of_ccpp_constituents: number_of_ccpp_constituents
+  vertical_interface_dimension: pverp
+  vertical_layer_dimension: pver
+entrypoints:
+  initialize:
+    table: gravity_wave_drag_moving_mountain_init
+  run:
+    table: gravity_wave_drag_moving_mountain_run
+processes:
+  gravity_wave_drag_moving_mountain: run
+  gravity_wave_drag_moving_mountain:initialize: initialize
+  gravity_wave_drag_moving_mountain:run: run

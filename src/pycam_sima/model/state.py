@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Iterable, Mapping
+from typing import Any, Callable, Iterable, Mapping
 
 import numpy as np
 
@@ -28,6 +28,23 @@ class PointerRecord:
     dtype: str
 
 
+@dataclass(slots=True)
+class NativeObjectHandle:
+    """Python-owned lifetime record for one opaque Fortran process object."""
+
+    address: int
+    fortran_type: str
+    shape: tuple[int, ...]
+    owner: Any
+    destroy: Callable[[], None]
+    released: bool = False
+
+    def release(self) -> None:
+        if not self.released:
+            self.destroy()
+            self.released = True
+
+
 class StatePool:
     def __init__(
         self,
@@ -42,6 +59,7 @@ class StatePool:
         self._arrays: dict[str, np.ndarray] = {}
         self._aliases: dict[str, tuple[str, int | None, int | None]] = {}
         self._ccpp_fields: dict[str, str] = {}
+        self._process_state: dict[str, NativeObjectHandle] = {}
         self._sealed = False
 
         for item in self.contracts.values():
@@ -174,9 +192,66 @@ class StatePool:
         if changed:
             raise StateOwnershipError(f"kernel replaced or reshaped Python arrays: {changed}")
 
+    def get_process_state(self, standard_name: str) -> NativeObjectHandle:
+        """Return one opaque native object by its CCPP standard name."""
+
+        try:
+            handle = self._process_state[standard_name.lower()]
+        except KeyError as exc:
+            raise KeyError(
+                f"no opaque process state provides CCPP standard name "
+                f"{standard_name!r}"
+            ) from exc
+        if handle.released:
+            raise StateOwnershipError(
+                f"opaque process state {standard_name!r} was released"
+            )
+        return handle
+
+    def set_process_state(
+        self, standard_name: str, handle: NativeObjectHandle
+    ) -> None:
+        """Install a newly allocated opaque object without replacing one."""
+
+        key = standard_name.lower()
+        if key in self._process_state:
+            raise StateOwnershipError(
+                f"opaque process state {standard_name!r} already exists"
+            )
+        if handle.address <= 0:
+            raise StateOwnershipError(
+                f"opaque process state {standard_name!r} has a null address"
+            )
+        self._process_state[key] = handle
+
+    def release_process_state(self) -> None:
+        """Destroy all native objects through the factory that created them."""
+
+        errors: list[str] = []
+        for name, handle in reversed(tuple(self._process_state.items())):
+            try:
+                handle.release()
+            except Exception as exc:  # pragma: no cover - native failure path.
+                errors.append(f"{name}: {exc}")
+        self._process_state.clear()
+        if errors:
+            raise StateOwnershipError(
+                "failed to release opaque process state: " + "; ".join(errors)
+            )
+
+    @property
+    def process_state_names(self) -> frozenset[str]:
+        return frozenset(self._process_state)
+
     def snapshot_arrays(self, *, readonly: bool = True) -> dict[str, np.ndarray]:
         """Copy canonical storage for an isolated model-state snapshot."""
 
+        if self._process_state:
+            raise StateOwnershipError(
+                "cannot checkpoint opaque Fortran process state; complete the "
+                "suite finalize lifecycle before snapshotting or provide a "
+                "type-specific serializer"
+            )
         arrays: dict[str, np.ndarray] = {}
         for name, value in self._arrays.items():
             copied = np.array(value, dtype=value.dtype, order="F", copy=True)

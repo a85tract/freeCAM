@@ -5,11 +5,12 @@ from __future__ import annotations
 import ctypes
 import json
 from pathlib import Path
-from typing import Any, Mapping
+from typing import Any, Iterable, Mapping
 
 import numpy as np
 
 from .errors import DeviceContractError, MissingKernelError
+from .state import NativeObjectHandle
 
 
 DEVICE_ABI_VERSION = 1
@@ -107,10 +108,14 @@ class FortranDevice:
                 f"device {self.name!r} does not export "
                 f"{contract['symbol']!r}"
             ) from exc
-        argtypes = [
-            self._ctypes_argument(argument)
-            for argument in contract["arguments"]
-        ]
+        argtypes = []
+        for argument in contract["arguments"]:
+            if str(argument["dtype"]) == "character":
+                argtypes.extend(
+                    [ctypes.POINTER(ctypes.c_char), ctypes.c_int]
+                )
+            else:
+                argtypes.append(self._ctypes_argument(argument))
         argtypes.extend(
             [ctypes.POINTER(ctypes.c_char), ctypes.c_int]
         )
@@ -121,6 +126,10 @@ class FortranDevice:
 
     @staticmethod
     def _ctypes_argument(argument: Mapping[str, Any]) -> Any:
+        if str(argument["dtype"]) == "character":
+            return ctypes.POINTER(ctypes.c_char)
+        if str(argument["dtype"]) == "opaque":
+            return ctypes.c_void_p
         try:
             numpy_dtype, ctype = _DTYPES[str(argument["dtype"])]
         except KeyError as exc:
@@ -176,7 +185,16 @@ class FortranDevice:
                 f"{self.name}.{argument['abi_name']}: binding source "
                 f"{source!r} is not a StatePool field"
             )
-        expected_dtype = _DTYPES[str(argument["dtype"])][0]
+        if str(argument["dtype"]) == "character":
+            if values.dtype.kind != "S":
+                raise DeviceContractError(
+                    f"{self.name}.{argument['abi_name']} maps to "
+                    f"{field_name!r} with dtype {values.dtype}; character "
+                    "fields require a fixed-width NumPy bytes dtype"
+                )
+            expected_dtype = values.dtype
+        else:
+            expected_dtype = _DTYPES[str(argument["dtype"])][0]
         expected_shape = self._expected_shape(argument, pool)
         if values.dtype != expected_dtype:
             raise DeviceContractError(
@@ -210,11 +228,88 @@ class FortranDevice:
             )
         return values
 
+    def _new_opaque_handle(
+        self,
+        argument: Mapping[str, Any],
+        pool: Any,
+        shape: tuple[int, ...],
+    ) -> NativeObjectHandle:
+        try:
+            contract = argument["opaque"]
+            factory = getattr(self.lib, contract["factory_symbol"])
+            destroy = getattr(self.lib, contract["destroy_symbol"])
+        except (KeyError, AttributeError) as exc:
+            raise DeviceContractError(
+                f"{self.name}.{argument['abi_name']} has no usable opaque "
+                "object factory"
+            ) from exc
+        dimension_types = [ctypes.c_int] * len(shape)
+        factory.argtypes = dimension_types
+        factory.restype = ctypes.c_void_p
+        destroy.argtypes = [ctypes.c_void_p, *dimension_types]
+        destroy.restype = None
+        address = int(factory(*shape) or 0)
+        if not address:
+            raise DeviceContractError(
+                f"{self.name}.{argument['abi_name']} failed to allocate "
+                f"{argument['fortran_type']} with shape {shape}"
+            )
+
+        def release() -> None:
+            destroy(ctypes.c_void_p(address), *shape)
+
+        return NativeObjectHandle(
+            address=address,
+            fortran_type=str(argument["fortran_type"]).lower(),
+            shape=shape,
+            owner=self,
+            destroy=release,
+        )
+
+    def _resolve_opaque(
+        self, argument: Mapping[str, Any], pool: Any
+    ) -> ctypes.c_void_p:
+        binding = argument["binding"]
+        if binding["source"] not in {"standard_name", "field"}:
+            raise DeviceContractError(
+                f"{self.name}.{argument['abi_name']}: opaque arguments must "
+                "bind to persistent process state"
+            )
+        standard_name = str(binding["name"]).lower()
+        shape = self._expected_shape(argument, pool)
+        try:
+            handle = pool.get_process_state(standard_name)
+        except KeyError:
+            if argument["intent"] != "out":
+                raise DeviceContractError(
+                    f"{self.name}.{argument['abi_name']} requires opaque "
+                    f"state {standard_name!r} before its {argument['intent']} "
+                    "call; run the producing register/initialize/scheme first"
+                ) from None
+            handle = self._new_opaque_handle(argument, pool, shape)
+            pool.set_process_state(standard_name, handle)
+        expected_type = str(argument["fortran_type"]).lower()
+        if handle.fortran_type != expected_type or handle.shape != shape:
+            raise DeviceContractError(
+                f"{self.name}.{argument['abi_name']} expects opaque "
+                f"{expected_type}{shape}, got "
+                f"{handle.fortran_type}{handle.shape}"
+            )
+        return ctypes.c_void_p(handle.address)
+
     def _resolve_argument(
         self, argument: Mapping[str, Any], pool: Any
     ) -> Any:
         binding = argument["binding"]
         source = binding["source"]
+        if str(argument["dtype"]) == "opaque":
+            return self._resolve_opaque(argument, pool)
+        if str(argument["dtype"]) == "character":
+            values = self._resolve_field(argument, pool)
+            return (
+                values.ctypes.data_as(ctypes.POINTER(ctypes.c_char)),
+                int(values.dtype.itemsize),
+            )
         dtype, ctype = _DTYPES[str(argument["dtype"])]
         if source == "dimension":
             value: Any = int(pool.dimensions[str(binding["name"])])
@@ -241,10 +336,13 @@ class FortranDevice:
             raise DeviceContractError(
                 f"device {self.name!r} has no entrypoint {entrypoint!r}"
             ) from exc
-        arguments = [
-            self._resolve_argument(argument, pool)
-            for argument in contract["arguments"]
-        ]
+        arguments = []
+        for argument in contract["arguments"]:
+            resolved = self._resolve_argument(argument, pool)
+            if str(argument["dtype"]) == "character":
+                arguments.extend(resolved)
+            else:
+                arguments.append(resolved)
         message = ctypes.create_string_buffer(2048)
         status = self._function(entrypoint)(
             *arguments, message, len(message)
@@ -293,13 +391,27 @@ class FortranDevice:
 class DeviceRegistry:
     """Discover generated devices and route named processes through them."""
 
-    def __init__(self, root: str | Path):
-        self.root = Path(root).resolve()
+    def __init__(self, root: str | Path | Iterable[str | Path]):
+        roots = (
+            (root,)
+            if isinstance(root, (str, Path))
+            else tuple(root)
+        )
+        self.roots = tuple(Path(item).resolve() for item in roots)
+        self.root = self.roots[0] if self.roots else Path(".").resolve()
         self.devices: dict[str, FortranDevice] = {}
         self._processes: dict[str, FortranDevice] = {}
-        if self.root.is_dir():
-            for manifest in sorted(self.root.glob("*/device.json")):
-                self.register(FortranDevice(manifest))
+        for device_root in self.roots:
+            if not device_root.is_dir():
+                continue
+            for manifest in sorted(device_root.glob("*/device.json")):
+                device = FortranDevice(manifest)
+                # Earlier roots have priority.  This lets a validated,
+                # hand-configured policy override its catalog-generated
+                # connector without creating two implementations.
+                if device.name in self.devices:
+                    continue
+                self.register(device)
 
     def register(self, device: FortranDevice) -> None:
         if device.name in self.devices:
@@ -319,6 +431,9 @@ class DeviceRegistry:
     def process_names(self) -> frozenset[str]:
         return frozenset(self._processes)
 
+    def has_process(self, process: str) -> bool:
+        return process in self._processes
+
     def invoke(self, process: str, pool: Any) -> None:
         try:
             device = self._processes[process]
@@ -335,3 +450,7 @@ class DeviceRegistry:
         return tuple(
             self.devices[name].describe() for name in sorted(self.devices)
         )
+
+    @staticmethod
+    def release_pool(pool: Any) -> None:
+        pool.release_process_state()

@@ -83,6 +83,63 @@ is recorded in
 
 ## Source-preserving Fortran devices
 
+The pinned CAM-SIMA tree contains 7 suite XML files, 155 distinct active
+schemes, and 340 scheme occurrences. PyCAM-SIMA audits all of them and
+generates one deterministic connector descriptor per scheme:
+
+```bash
+pycam-sima audit-devices \
+  --output validation/ccpp_device_catalog.json
+pycam-sima generate-devices --clean
+pycam-sima build-catalog-devices --strict
+pycam-sima scheme-status \
+  --output validation/all_scheme_support.json
+```
+
+`devices/generated/<scheme>/device.yaml` is generated from the pinned suite,
+metadata, and unmodified Fortran source; it is not a second numerical
+implementation. The status report distinguishes a built numerical device,
+a Python-owned history service, and schemes that still require MPI, input
+data, external source, or an allocatable-object policy. Thus “connector
+generated” and “scientifically executable” are separate, machine-readable
+claims.
+
+For the pinned revision, the clean full-catalog build produces 100 original
+Fortran numerical devices with zero build failures. Another 29 pure history
+schemes are executable Python host services. The remaining 26 connectors fail
+closed with their exact MPI collective, input-reader, external-source, RNG, or
+derived-object requirement in `validation/all_scheme_support.json`.
+The complete build/load/ELF/50-step evidence is recorded in
+[`validation/all_scheme_connectors.json`](validation/all_scheme_connectors.json).
+
+The same XML-derived plan and standard-name bus are used for every suite:
+
+```python
+from pycam_sima import (
+    CCPPDeviceHost,
+    CCPPSuitePlan,
+    DeviceCatalog,
+    DeviceRegistry,
+    HostServiceRegistry,
+)
+
+catalog = DeviceCatalog.discover("/glade/work/ruitong/pycam-sima")
+plan = CCPPSuitePlan.from_xml(
+    "external/CAM-SIMA/src/physics/ncar_ccpp/suites/suite_kessler.xml"
+)
+devices = DeviceRegistry(("build/devices", "build/catalog_devices"))
+services = HostServiceRegistry.from_catalog(catalog, suite="kessler")
+
+# pool is a Python-owned StatePool satisfying this suite's standard names.
+host = CCPPDeviceHost(pool, devices, plan, host_services=services)
+host.run_lifecycle("initialize")
+host.run_group("physics_before_coupler")
+```
+
+`CCPPStateSchema.from_catalog(catalog, "kessler")` reports the primitive
+arrays, dimensions, conversion points, and opaque process objects that the
+Python host must initialize before executing that suite.
+
 A device is defined by a small YAML description, the original CCPP `.meta`
 file, and the original Fortran sources. `build-kernels` runs CAM-SIMA's own
 CCPP parser to verify that metadata and source signatures agree, scans
@@ -147,6 +204,21 @@ host/framework dependency such as MPI, ESMF, PIO, or `cam_history` stops device
 generation instead of silently linking the complete CAM runtime.
 See [`docs/DEVICE_AUTHORING.md`](docs/DEVICE_AUTHORING.md) for the descriptor,
 ABI-v1 support matrix, state policies, and new-scheme checklist.
+
+The generic ABI additionally handles default Fortran logical values,
+fixed-width character scalars/vectors, Python-owned shaped primitive
+allocatable fields, and non-allocatable derived types.
+Derived process objects are allocated by generated Fortran factory symbols;
+Python stores their opaque handles in `StatePool`, passes the same object to
+later schemes by CCPP standard name, and invokes the matching generated
+destructor at finalize. Checkpointing fails closed while opaque state is live
+because no byte-copy of a Fortran object is restart-safe.
+
+CAM `cam_history`/`outfld` is a host service rather than a numerical kernel.
+`HostServiceRegistry` replaces pure history-only schemes with Python
+observations. Physical constants used by legacy helper modules are injected
+from Python-owned StatePool fields before each native call; they are not
+silently owned by a Fortran global.
 
 ## Python API
 

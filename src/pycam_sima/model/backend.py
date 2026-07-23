@@ -95,9 +95,14 @@ class KernelBackend:
         if not self.path.is_file():
             raise MissingKernelError(f"kernel library does not exist: {self.path}")
         self.lib = ctypes.CDLL(str(self.path), mode=ctypes.RTLD_LOCAL)
-        self.devices = DeviceRegistry(
-            device_root or self.path.parent / "devices"
-        )
+        if device_root is None:
+            roots = (
+                self.path.parent / "devices",
+                self.path.parent / "catalog_devices",
+            )
+        else:
+            roots = (device_root,)
+        self.devices = DeviceRegistry(roots)
         self.call_count = 0
         self.lib.pycam_sima_abi_version.restype = ctypes.c_int
         self._validate_se_dimensions = self.lib.pycam_sima_validate_se_dimensions_v2

@@ -1,0 +1,101 @@
+{
+  "schema_version": 1,
+  "validated_at": "2026-07-23T15:25:42-06:00",
+  "repository": {
+    "root": "/glade/work/ruitong/pycam-sima",
+    "parent_commit": "f4bf174e163f2515e6260c7e307a27c9d48fd5a8",
+    "package_version": "0.11.0"
+  },
+  "cam_sima": {
+    "root": "/glade/work/ruitong/pycam-sima/external/CAM-SIMA",
+    "commit": "f8daa568eae2696b7c4ebff7768f02f5d097d9df"
+  },
+  "catalog": {
+    "suite_count": 7,
+    "active_scheme_count": 155,
+    "scheme_occurrences": 340,
+    "generated_connectors": 155,
+    "descriptor_generation_idempotent": true,
+    "catalog": "validation/ccpp_device_catalog.json",
+    "support_matrix": "validation/all_scheme_support.json"
+  },
+  "execution_support": {
+    "native_device_ready": 100,
+    "python_history_service_ready": 29,
+    "executable_connector_count": 129,
+    "external_service_required": 26,
+    "status_counts": {
+      "ready": 100,
+      "python_host_service_ready": 29,
+      "abi_or_host_service_required": 10,
+      "dependency_provider_required": 14,
+      "external_source_required": 2
+    }
+  },
+  "clean_native_build": {
+    "report": "validation/portable_catalog_device_build.json",
+    "attempted": 100,
+    "built": 100,
+    "failed": 0,
+    "dependency_blocked": 14,
+    "all_built_libraries_loaded": true,
+    "all_built_libraries_returned_abi_version": 1,
+    "forbidden_elf_dependencies_present": false,
+    "forbidden_dependencies": [
+      "MPI",
+      "PMI",
+      "PALS",
+      "ESMF",
+      "PIO",
+      "NetCDF",
+      "HDF5",
+      "LibSci",
+      "RPATH",
+      "RUNPATH"
+    ]
+  },
+  "generic_connection_features": {
+    "xml_groups_and_subcycles_preserved": true,
+    "primitive_arrays_zero_copy": true,
+    "python_owned_shaped_allocatable_arrays": true,
+    "default_fortran_logical_bridge": true,
+    "fixed_width_character_bridge": true,
+    "opaque_derived_object_lifecycle": true,
+    "python_owned_physical_constant_injection": true,
+    "python_history_host_service": true,
+    "source_dependency_closure": true,
+    "original_scheme_sources_modified": false
+  },
+  "local_verification": {
+    "pytest": "80 passed, 1 third-party deprecation warning",
+    "python_compileall": "passed",
+    "notebook_json": "passed",
+    "git_diff_check": "passed"
+  },
+  "fkessler_regression": {
+    "pbs_job_id": "6871984.desched1",
+    "pbs_exit_status": 0,
+    "walltime": "00:07:34",
+    "mpi_ranks": 24,
+    "threads_per_rank": 1,
+    "steps": 50,
+    "history_samples": 51,
+    "native_calls": 14904,
+    "initialized_native_calls": 0,
+    "initialized_abi_checked": false,
+    "run_dir": "/glade/derecho/scratch/ruitong/pycam-sima/all_schemes_20260723-151714/run",
+    "history_dir": "/glade/derecho/scratch/ruitong/pycam-sima/all_schemes_20260723-151714/history",
+    "oracle_dir": "/glade/derecho/scratch/ruitong/pycam_sima_legacy_oracle_f8daa568/run",
+    "comparison": "BFB",
+    "history_file_set_equal": true,
+    "history_files": 51,
+    "diagnostic_numeric_variables": 26,
+    "dtype_shape_timestamp_and_float64_bits_equal": true
+  },
+  "claim_boundary": {
+    "all_active_schemes_have_generated_connectors": true,
+    "all_active_schemes_are_scientifically_executable": false,
+    "reason": "26 connectors require explicit MPI collective, file-input, external-source, RNG, CAM-infrastructure, or allocatable-derived-object services; they fail closed instead of using numerical stubs",
+    "full_model_bfb_claim": "FKESSLER/ne3np4.pg3/L30/24-rank/50-step only"
+  }
+}

@@ -14,6 +14,7 @@ from pycam_sima.model import (
 from pycam_sima.model.driver import (
     INITIAL_PREP_PHASES,
 )
+from pycam_sima.model.contracts import default_contracts
 from pycam_sima.model.grid import local_elements
 
 
@@ -59,7 +60,7 @@ def test_initialize_is_python_owned_and_zero_native_calls(session):
         device._abi_checked is False
         for device in session.backend.devices.devices.values()
     )
-    assert len(session.pool.inventory()) == 214
+    assert len(session.pool.inventory()) == len(default_contracts()) == 222
     assert all(item["owner"] == "python" for item in session.pool.inventory())
     assert np.isfinite(session.get_field("air_temperature")).all()
     assert set(session._scheme_handlers()) == set(session.scheme_names)

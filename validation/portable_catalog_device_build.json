@@ -1,0 +1,570 @@
+{
+  "abi_compatible_considered": 114,
+  "attempted": 100,
+  "built": 100,
+  "dependency_blocked": 14,
+  "dependency_blockers": [
+    {
+      "name": "cloud_particle_sedimentation",
+      "reason": "device 'cloud_particle_sedimentation' recursive source closure is not standalone: host module 'esmf' used by /glade/work/ruitong/pycam-sima/external/CAM-SIMA/cime/CIME/non_py/src/timing/perf_mod.F90; host module 'mpi' used by /glade/work/ruitong/pycam-sima/external/CAM-SIMA/src/dynamics/utils/vert_coord.F90; host module 'pio' used by /glade/work/ruitong/pycam-sima/external/CAM-SIMA/src/utils/cam_grid_support.F90; unresolved module 'f90_unix_proc' used by /glade/work/ruitong/pycam-sima/external/CAM-SIMA/components/cdeps/share/shr_abort_mod.F90; unresolved module 'ifcore' used by /glade/work/ruitong/pycam-sima/external/CAM-SIMA/components/cdeps/share/shr_abort_mod.F90; unresolved module 'netcdf' used by /glade/work/ruitong/pycam-sima/external/CAM-SIMA/share/src/shr_ncread_mod.F90; unresolved module 'omp_lib' used by /glade/work/ruitong/pycam-sima/external/CAM-SIMA/cime/CIME/non_py/src/timing/perf_mod.F90"
+    },
+    {
+      "name": "rk_stratiform_check_qtlcwat",
+      "reason": "device 'rk_stratiform_check_qtlcwat' recursive source closure is not standalone: host module 'esmf' used by /glade/work/ruitong/pycam-sima/external/CAM-SIMA/cime/CIME/non_py/src/timing/perf_mod.F90; host module 'mpi' used by /glade/work/ruitong/pycam-sima/external/CAM-SIMA/src/dynamics/utils/vert_coord.F90; host module 'pio' used by /glade/work/ruitong/pycam-sima/external/CAM-SIMA/src/utils/cam_grid_support.F90; unresolved module 'f90_unix_proc' used by /glade/work/ruitong/pycam-sima/external/CAM-SIMA/components/cdeps/share/shr_abort_mod.F90; unresolved module 'ifcore' used by /glade/work/ruitong/pycam-sima/external/CAM-SIMA/components/cdeps/share/shr_abort_mod.F90; unresolved module 'netcdf' used by /glade/work/ruitong/pycam-sima/external/CAM-SIMA/share/src/shr_ncread_mod.F90; unresolved module 'omp_lib' used by /glade/work/ruitong/pycam-sima/external/CAM-SIMA/cime/CIME/non_py/src/timing/perf_mod.F90"
+    },
+    {
+      "name": "rk_stratiform_cloud_fraction_perturbation",
+      "reason": "device 'rk_stratiform_cloud_fraction_perturbation' recursive source closure is not standalone: host module 'esmf' used by /glade/work/ruitong/pycam-sima/external/CAM-SIMA/cime/CIME/non_py/src/timing/perf_mod.F90; host module 'mpi' used by /glade/work/ruitong/pycam-sima/external/CAM-SIMA/src/dynamics/utils/vert_coord.F90; host module 'pio' used by /glade/work/ruitong/pycam-sima/external/CAM-SIMA/src/utils/cam_grid_support.F90; unresolved module 'f90_unix_proc' used by /glade/work/ruitong/pycam-sima/external/CAM-SIMA/components/cdeps/share/shr_abort_mod.F90; unresolved module 'ifcore' used by /glade/work/ruitong/pycam-sima/external/CAM-SIMA/components/cdeps/share/shr_abort_mod.F90; unresolved module 'netcdf' used by /glade/work/ruitong/pycam-sima/external/CAM-SIMA/share/src/shr_ncread_mod.F90; unresolved module 'omp_lib' used by /glade/work/ruitong/pycam-sima/external/CAM-SIMA/cime/CIME/non_py/src/timing/perf_mod.F90"
+    },
+    {
+      "name": "rk_stratiform_cloud_optical_properties",
+      "reason": "device 'rk_stratiform_cloud_optical_properties' recursive source closure is not standalone: host module 'esmf' used by /glade/work/ruitong/pycam-sima/external/CAM-SIMA/cime/CIME/non_py/src/timing/perf_mod.F90; host module 'mpi' used by /glade/work/ruitong/pycam-sima/external/CAM-SIMA/src/dynamics/utils/vert_coord.F90; host module 'pio' used by /glade/work/ruitong/pycam-sima/external/CAM-SIMA/src/utils/cam_grid_support.F90; unresolved module 'f90_unix_proc' used by /glade/work/ruitong/pycam-sima/external/CAM-SIMA/components/cdeps/share/shr_abort_mod.F90; unresolved module 'ifcore' used by /glade/work/ruitong/pycam-sima/external/CAM-SIMA/components/cdeps/share/shr_abort_mod.F90; unresolved module 'netcdf' used by /glade/work/ruitong/pycam-sima/external/CAM-SIMA/share/src/shr_ncread_mod.F90; unresolved module 'omp_lib' used by /glade/work/ruitong/pycam-sima/external/CAM-SIMA/cime/CIME/non_py/src/timing/perf_mod.F90"
+    },
+    {
+      "name": "rk_stratiform_condensate_repartioning",
+      "reason": "device 'rk_stratiform_condensate_repartioning' recursive source closure is not standalone: host module 'esmf' used by /glade/work/ruitong/pycam-sima/external/CAM-SIMA/cime/CIME/non_py/src/timing/perf_mod.F90; host module 'mpi' used by /glade/work/ruitong/pycam-sima/external/CAM-SIMA/src/dynamics/utils/vert_coord.F90; host module 'pio' used by /glade/work/ruitong/pycam-sima/external/CAM-SIMA/src/utils/cam_grid_support.F90; unresolved module 'f90_unix_proc' used by /glade/work/ruitong/pycam-sima/external/CAM-SIMA/components/cdeps/share/shr_abort_mod.F90; unresolved module 'ifcore' used by /glade/work/ruitong/pycam-sima/external/CAM-SIMA/components/cdeps/share/shr_abort_mod.F90; unresolved module 'netcdf' used by /glade/work/ruitong/pycam-sima/external/CAM-SIMA/share/src/shr_ncread_mod.F90; unresolved module 'omp_lib' used by /glade/work/ruitong/pycam-sima/external/CAM-SIMA/cime/CIME/non_py/src/timing/perf_mod.F90"
+    },
+    {
+      "name": "rk_stratiform_detrain_convective_condensate",
+      "reason": "device 'rk_stratiform_detrain_convective_condensate' recursive source closure is not standalone: host module 'esmf' used by /glade/work/ruitong/pycam-sima/external/CAM-SIMA/cime/CIME/non_py/src/timing/perf_mod.F90; host module 'mpi' used by /glade/work/ruitong/pycam-sima/external/CAM-SIMA/src/dynamics/utils/vert_coord.F90; host module 'pio' used by /glade/work/ruitong/pycam-sima/external/CAM-SIMA/src/utils/cam_grid_support.F90; unresolved module 'f90_unix_proc' used by /glade/work/ruitong/pycam-sima/external/CAM-SIMA/components/cdeps/share/shr_abort_mod.F90; unresolved module 'ifcore' used by /glade/work/ruitong/pycam-sima/external/CAM-SIMA/components/cdeps/share/shr_abort_mod.F90; unresolved module 'netcdf' used by /glade/work/ruitong/pycam-sima/external/CAM-SIMA/share/src/shr_ncread_mod.F90; unresolved module 'omp_lib' used by /glade/work/ruitong/pycam-sima/external/CAM-SIMA/cime/CIME/non_py/src/timing/perf_mod.F90"
+    },
+    {
+      "name": "rk_stratiform_external_forcings",
+      "reason": "device 'rk_stratiform_external_forcings' recursive source closure is not standalone: host module 'esmf' used by /glade/work/ruitong/pycam-sima/external/CAM-SIMA/cime/CIME/non_py/src/timing/perf_mod.F90; host module 'mpi' used by /glade/work/ruitong/pycam-sima/external/CAM-SIMA/src/dynamics/utils/vert_coord.F90; host module 'pio' used by /glade/work/ruitong/pycam-sima/external/CAM-SIMA/src/utils/cam_grid_support.F90; unresolved module 'f90_unix_proc' used by /glade/work/ruitong/pycam-sima/external/CAM-SIMA/components/cdeps/share/shr_abort_mod.F90; unresolved module 'ifcore' used by /glade/work/ruitong/pycam-sima/external/CAM-SIMA/components/cdeps/share/shr_abort_mod.F90; unresolved module 'netcdf' used by /glade/work/ruitong/pycam-sima/external/CAM-SIMA/share/src/shr_ncread_mod.F90; unresolved module 'omp_lib' used by /glade/work/ruitong/pycam-sima/external/CAM-SIMA/cime/CIME/non_py/src/timing/perf_mod.F90"
+    },
+    {
+      "name": "rk_stratiform_prognostic_cloud_water_tendencies",
+      "reason": "device 'rk_stratiform_prognostic_cloud_water_tendencies' recursive source closure is not standalone: host module 'esmf' used by /glade/work/ruitong/pycam-sima/external/CAM-SIMA/cime/CIME/non_py/src/timing/perf_mod.F90; host module 'mpi' used by /glade/work/ruitong/pycam-sima/external/CAM-SIMA/src/dynamics/utils/vert_coord.F90; host module 'pio' used by /glade/work/ruitong/pycam-sima/external/CAM-SIMA/src/utils/cam_grid_support.F90; unresolved module 'f90_unix_proc' used by /glade/work/ruitong/pycam-sima/external/CAM-SIMA/components/cdeps/share/shr_abort_mod.F90; unresolved module 'ifcore' used by /glade/work/ruitong/pycam-sima/external/CAM-SIMA/components/cdeps/share/shr_abort_mod.F90; unresolved module 'netcdf' used by /glade/work/ruitong/pycam-sima/external/CAM-SIMA/share/src/shr_ncread_mod.F90; unresolved module 'omp_lib' used by /glade/work/ruitong/pycam-sima/external/CAM-SIMA/cime/CIME/non_py/src/timing/perf_mod.F90"
+    },
+    {
+      "name": "rk_stratiform_save_qtlcwat",
+      "reason": "device 'rk_stratiform_save_qtlcwat' recursive source closure is not standalone: host module 'esmf' used by /glade/work/ruitong/pycam-sima/external/CAM-SIMA/cime/CIME/non_py/src/timing/perf_mod.F90; host module 'mpi' used by /glade/work/ruitong/pycam-sima/external/CAM-SIMA/src/dynamics/utils/vert_coord.F90; host module 'pio' used by /glade/work/ruitong/pycam-sima/external/CAM-SIMA/src/utils/cam_grid_support.F90; unresolved module 'f90_unix_proc' used by /glade/work/ruitong/pycam-sima/external/CAM-SIMA/components/cdeps/share/shr_abort_mod.F90; unresolved module 'ifcore' used by /glade/work/ruitong/pycam-sima/external/CAM-SIMA/components/cdeps/share/shr_abort_mod.F90; unresolved module 'netcdf' used by /glade/work/ruitong/pycam-sima/external/CAM-SIMA/share/src/shr_ncread_mod.F90; unresolved module 'omp_lib' used by /glade/work/ruitong/pycam-sima/external/CAM-SIMA/cime/CIME/non_py/src/timing/perf_mod.F90"
+    },
+    {
+      "name": "rk_stratiform_sedimentation",
+      "reason": "device 'rk_stratiform_sedimentation' recursive source closure is not standalone: host module 'esmf' used by /glade/work/ruitong/pycam-sima/external/CAM-SIMA/cime/CIME/non_py/src/timing/perf_mod.F90; host module 'mpi' used by /glade/work/ruitong/pycam-sima/external/CAM-SIMA/src/dynamics/utils/vert_coord.F90; host module 'pio' used by /glade/work/ruitong/pycam-sima/external/CAM-SIMA/src/utils/cam_grid_support.F90; unresolved module 'f90_unix_proc' used by /glade/work/ruitong/pycam-sima/external/CAM-SIMA/components/cdeps/share/shr_abort_mod.F90; unresolved module 'ifcore' used by /glade/work/ruitong/pycam-sima/external/CAM-SIMA/components/cdeps/share/shr_abort_mod.F90; unresolved module 'netcdf' used by /glade/work/ruitong/pycam-sima/external/CAM-SIMA/share/src/shr_ncread_mod.F90; unresolved module 'omp_lib' used by /glade/work/ruitong/pycam-sima/external/CAM-SIMA/cime/CIME/non_py/src/timing/perf_mod.F90"
+    },
+    {
+      "name": "rrtmgp_lw_cloud_optics",
+      "reason": "device 'rrtmgp_lw_cloud_optics' recursive source closure is not standalone: host module 'ccpp_io_reader' used by /glade/work/ruitong/pycam-sima/external/CAM-SIMA/src/physics/ncar_ccpp/schemes/rrtmgp/utils/rrtmgp_cloud_optics_setup.F90"
+    },
+    {
+      "name": "rrtmgp_lw_mcica_subcol_gen",
+      "reason": "device 'rrtmgp_lw_mcica_subcol_gen' recursive source closure is not standalone: unresolved module 'mkl_vsl' used by /glade/work/ruitong/pycam-sima/external/CAM-SIMA/share/RandNum/src/shr_RandNum_mod.F90; unresolved module 'mkl_vsl_type' used by /glade/work/ruitong/pycam-sima/external/CAM-SIMA/share/RandNum/src/shr_RandNum_mod.F90"
+    },
+    {
+      "name": "rrtmgp_sw_cloud_optics",
+      "reason": "device 'rrtmgp_sw_cloud_optics' recursive source closure is not standalone: host module 'ccpp_io_reader' used by /glade/work/ruitong/pycam-sima/external/CAM-SIMA/src/physics/ncar_ccpp/schemes/rrtmgp/utils/rrtmgp_cloud_optics_setup.F90"
+    },
+    {
+      "name": "rrtmgp_sw_mcica_subcol_gen",
+      "reason": "device 'rrtmgp_sw_mcica_subcol_gen' recursive source closure is not standalone: unresolved module 'mkl_vsl' used by /glade/work/ruitong/pycam-sima/external/CAM-SIMA/share/RandNum/src/shr_RandNum_mod.F90; unresolved module 'mkl_vsl_type' used by /glade/work/ruitong/pycam-sima/external/CAM-SIMA/share/RandNum/src/shr_RandNum_mod.F90"
+    }
+  ],
+  "failed": 0,
+  "results": [
+    {
+      "manifest": "build/catalog_devices/apply_constituent_tendencies/device.json",
+      "name": "apply_constituent_tendencies",
+      "status": "built"
+    },
+    {
+      "manifest": "build/catalog_devices/apply_heating_rate/device.json",
+      "name": "apply_heating_rate",
+      "status": "built"
+    },
+    {
+      "manifest": "build/catalog_devices/apply_tendency_of_air_temperature/device.json",
+      "name": "apply_tendency_of_air_temperature",
+      "status": "built"
+    },
+    {
+      "manifest": "build/catalog_devices/apply_tendency_of_eastward_wind/device.json",
+      "name": "apply_tendency_of_eastward_wind",
+      "status": "built"
+    },
+    {
+      "manifest": "build/catalog_devices/apply_tendency_of_northward_wind/device.json",
+      "name": "apply_tendency_of_northward_wind",
+      "status": "built"
+    },
+    {
+      "manifest": "build/catalog_devices/calc_dry_air_ideal_gas_density/device.json",
+      "name": "calc_dry_air_ideal_gas_density",
+      "status": "built"
+    },
+    {
+      "manifest": "build/catalog_devices/calc_exner/device.json",
+      "name": "calc_exner",
+      "status": "built"
+    },
+    {
+      "manifest": "build/catalog_devices/calculate_net_heating/device.json",
+      "name": "calculate_net_heating",
+      "status": "built"
+    },
+    {
+      "manifest": "build/catalog_devices/check_energy_fix/device.json",
+      "name": "check_energy_fix",
+      "status": "built"
+    },
+    {
+      "manifest": "build/catalog_devices/check_energy_gmean_diagnostics/device.json",
+      "name": "check_energy_gmean_diagnostics",
+      "status": "built"
+    },
+    {
+      "manifest": "build/catalog_devices/check_energy_save_teout/device.json",
+      "name": "check_energy_save_teout",
+      "status": "built"
+    },
+    {
+      "manifest": "build/catalog_devices/check_energy_scaling/device.json",
+      "name": "check_energy_scaling",
+      "status": "built"
+    },
+    {
+      "manifest": "build/catalog_devices/check_energy_zero_fluxes/device.json",
+      "name": "check_energy_zero_fluxes",
+      "status": "built"
+    },
+    {
+      "manifest": "build/catalog_devices/cloud_fraction_fice/device.json",
+      "name": "cloud_fraction_fice",
+      "status": "built"
+    },
+    {
+      "manifest": "build/catalog_devices/compute_cloud_fraction/device.json",
+      "name": "compute_cloud_fraction",
+      "status": "built"
+    },
+    {
+      "manifest": "build/catalog_devices/convect_shallow_sum_to_deep/device.json",
+      "name": "convect_shallow_sum_to_deep",
+      "status": "built"
+    },
+    {
+      "manifest": "build/catalog_devices/convective_cloud_cover/device.json",
+      "name": "convective_cloud_cover",
+      "status": "built"
+    },
+    {
+      "manifest": "build/catalog_devices/convert_dry_constituent_tendencies_to_dry_air_basis/device.json",
+      "name": "convert_dry_constituent_tendencies_to_dry_air_basis",
+      "status": "built"
+    },
+    {
+      "manifest": "build/catalog_devices/dadadj/device.json",
+      "name": "dadadj",
+      "status": "built"
+    },
+    {
+      "manifest": "build/catalog_devices/dry_to_wet_cloud_liquid_water/device.json",
+      "name": "dry_to_wet_cloud_liquid_water",
+      "status": "built"
+    },
+    {
+      "manifest": "build/catalog_devices/dry_to_wet_rain/device.json",
+      "name": "dry_to_wet_rain",
+      "status": "built"
+    },
+    {
+      "manifest": "build/catalog_devices/dry_to_wet_water_vapor/device.json",
+      "name": "dry_to_wet_water_vapor",
+      "status": "built"
+    },
+    {
+      "manifest": "build/catalog_devices/dycore_energy_consistency_adjust/device.json",
+      "name": "dycore_energy_consistency_adjust",
+      "status": "built"
+    },
+    {
+      "manifest": "build/catalog_devices/geopotential_temp/device.json",
+      "name": "geopotential_temp",
+      "status": "built"
+    },
+    {
+      "manifest": "build/catalog_devices/gravity_wave_drag_common/device.json",
+      "name": "gravity_wave_drag_common",
+      "status": "built"
+    },
+    {
+      "manifest": "build/catalog_devices/gravity_wave_drag_frontogenesis/device.json",
+      "name": "gravity_wave_drag_frontogenesis",
+      "status": "built"
+    },
+    {
+      "manifest": "build/catalog_devices/gravity_wave_drag_orographic/device.json",
+      "name": "gravity_wave_drag_orographic",
+      "status": "built"
+    },
+    {
+      "manifest": "build/catalog_devices/gravity_wave_drag_prepare_profiles/device.json",
+      "name": "gravity_wave_drag_prepare_profiles",
+      "status": "built"
+    },
+    {
+      "manifest": "build/catalog_devices/gravity_wave_drag_ridge/device.json",
+      "name": "gravity_wave_drag_ridge",
+      "status": "built"
+    },
+    {
+      "manifest": "build/catalog_devices/gravity_wave_drag_ridge_beta/device.json",
+      "name": "gravity_wave_drag_ridge_beta",
+      "status": "built"
+    },
+    {
+      "manifest": "build/catalog_devices/gravity_wave_drag_top_taper/device.json",
+      "name": "gravity_wave_drag_top_taper",
+      "status": "built"
+    },
+    {
+      "manifest": "build/catalog_devices/hack_convect_shallow/device.json",
+      "name": "hack_convect_shallow",
+      "status": "built"
+    },
+    {
+      "manifest": "build/catalog_devices/hb_diff_exchange_coefficients/device.json",
+      "name": "hb_diff_exchange_coefficients",
+      "status": "built"
+    },
+    {
+      "manifest": "build/catalog_devices/hb_diff_prepare_vertical_diffusion_inputs/device.json",
+      "name": "hb_diff_prepare_vertical_diffusion_inputs",
+      "status": "built"
+    },
+    {
+      "manifest": "build/catalog_devices/hb_diff_set_total_surface_stress/device.json",
+      "name": "hb_diff_set_total_surface_stress",
+      "status": "built"
+    },
+    {
+      "manifest": "build/catalog_devices/hb_diff_set_vertical_diffusion_top/device.json",
+      "name": "hb_diff_set_vertical_diffusion_top",
+      "status": "built"
+    },
+    {
+      "manifest": "build/catalog_devices/hb_pbl_dependent_coefficients/device.json",
+      "name": "hb_pbl_dependent_coefficients",
+      "status": "built"
+    },
+    {
+      "manifest": "build/catalog_devices/hb_pbl_independent_coefficients/device.json",
+      "name": "hb_pbl_independent_coefficients",
+      "status": "built"
+    },
+    {
+      "manifest": "build/catalog_devices/held_suarez_1994/device.json",
+      "name": "held_suarez_1994",
+      "status": "built"
+    },
+    {
+      "manifest": "build/catalog_devices/holtslag_boville_diff/device.json",
+      "name": "holtslag_boville_diff",
+      "status": "built"
+    },
+    {
+      "manifest": "build/catalog_devices/holtslag_boville_diff_options/device.json",
+      "name": "holtslag_boville_diff_options",
+      "status": "built"
+    },
+    {
+      "manifest": "build/catalog_devices/implicit_surface_stress_add_drag_coefficient/device.json",
+      "name": "implicit_surface_stress_add_drag_coefficient",
+      "status": "built"
+    },
+    {
+      "manifest": "build/catalog_devices/kessler/device.json",
+      "name": "kessler",
+      "status": "built"
+    },
+    {
+      "manifest": "build/catalog_devices/kessler_update/device.json",
+      "name": "kessler_update",
+      "status": "built"
+    },
+    {
+      "manifest": "build/catalog_devices/potential_temp_to_temp/device.json",
+      "name": "potential_temp_to_temp",
+      "status": "built"
+    },
+    {
+      "manifest": "build/catalog_devices/prescribe_radiative_gas_concentrations/device.json",
+      "name": "prescribe_radiative_gas_concentrations",
+      "status": "built"
+    },
+    {
+      "manifest": "build/catalog_devices/prognostic_cloud_water/device.json",
+      "name": "prognostic_cloud_water",
+      "status": "built"
+    },
+    {
+      "manifest": "build/catalog_devices/rrtmgp_dry_static_energy_tendency/device.json",
+      "name": "rrtmgp_dry_static_energy_tendency",
+      "status": "built"
+    },
+    {
+      "manifest": "build/catalog_devices/rrtmgp_inputs/device.json",
+      "name": "rrtmgp_inputs",
+      "status": "built"
+    },
+    {
+      "manifest": "build/catalog_devices/rrtmgp_inputs_setup/device.json",
+      "name": "rrtmgp_inputs_setup",
+      "status": "built"
+    },
+    {
+      "manifest": "build/catalog_devices/rrtmgp_lw_aerosols/device.json",
+      "name": "rrtmgp_lw_aerosols",
+      "status": "built"
+    },
+    {
+      "manifest": "build/catalog_devices/rrtmgp_lw_calculate_fluxes/device.json",
+      "name": "rrtmgp_lw_calculate_fluxes",
+      "status": "built"
+    },
+    {
+      "manifest": "build/catalog_devices/rrtmgp_lw_calculate_heating_rate/device.json",
+      "name": "rrtmgp_lw_calculate_heating_rate",
+      "status": "built"
+    },
+    {
+      "manifest": "build/catalog_devices/rrtmgp_lw_gas_optics_pre/device.json",
+      "name": "rrtmgp_lw_gas_optics_pre",
+      "status": "built"
+    },
+    {
+      "manifest": "build/catalog_devices/rrtmgp_lw_rte/device.json",
+      "name": "rrtmgp_lw_rte",
+      "status": "built"
+    },
+    {
+      "manifest": "build/catalog_devices/rrtmgp_post/device.json",
+      "name": "rrtmgp_post",
+      "status": "built"
+    },
+    {
+      "manifest": "build/catalog_devices/rrtmgp_pre/device.json",
+      "name": "rrtmgp_pre",
+      "status": "built"
+    },
+    {
+      "manifest": "build/catalog_devices/rrtmgp_subcycle/device.json",
+      "name": "rrtmgp_subcycle",
+      "status": "built"
+    },
+    {
+      "manifest": "build/catalog_devices/rrtmgp_sw_aerosols/device.json",
+      "name": "rrtmgp_sw_aerosols",
+      "status": "built"
+    },
+    {
+      "manifest": "build/catalog_devices/rrtmgp_sw_calculate_fluxes/device.json",
+      "name": "rrtmgp_sw_calculate_fluxes",
+      "status": "built"
+    },
+    {
+      "manifest": "build/catalog_devices/rrtmgp_sw_calculate_heating_rate/device.json",
+      "name": "rrtmgp_sw_calculate_heating_rate",
+      "status": "built"
+    },
+    {
+      "manifest": "build/catalog_devices/rrtmgp_sw_gas_optics_pre/device.json",
+      "name": "rrtmgp_sw_gas_optics_pre",
+      "status": "built"
+    },
+    {
+      "manifest": "build/catalog_devices/rrtmgp_sw_rte/device.json",
+      "name": "rrtmgp_sw_rte",
+      "status": "built"
+    },
+    {
+      "manifest": "build/catalog_devices/rrtmgp_sw_solar_var/device.json",
+      "name": "rrtmgp_sw_solar_var",
+      "status": "built"
+    },
+    {
+      "manifest": "build/catalog_devices/rrtmgp_sw_solar_var_setup/device.json",
+      "name": "rrtmgp_sw_solar_var_setup",
+      "status": "built"
+    },
+    {
+      "manifest": "build/catalog_devices/rrtmgp_variables/device.json",
+      "name": "rrtmgp_variables",
+      "status": "built"
+    },
+    {
+      "manifest": "build/catalog_devices/save_ttend_from_convect_deep/device.json",
+      "name": "save_ttend_from_convect_deep",
+      "status": "built"
+    },
+    {
+      "manifest": "build/catalog_devices/set_cloud_fraction_top/device.json",
+      "name": "set_cloud_fraction_top",
+      "status": "built"
+    },
+    {
+      "manifest": "build/catalog_devices/set_deep_conv_fluxes_to_general/device.json",
+      "name": "set_deep_conv_fluxes_to_general",
+      "status": "built"
+    },
+    {
+      "manifest": "build/catalog_devices/set_general_conv_fluxes_to_deep/device.json",
+      "name": "set_general_conv_fluxes_to_deep",
+      "status": "built"
+    },
+    {
+      "manifest": "build/catalog_devices/set_general_conv_fluxes_to_shallow/device.json",
+      "name": "set_general_conv_fluxes_to_shallow",
+      "status": "built"
+    },
+    {
+      "manifest": "build/catalog_devices/set_shallow_conv_fluxes_to_general/device.json",
+      "name": "set_shallow_conv_fluxes_to_general",
+      "status": "built"
+    },
+    {
+      "manifest": "build/catalog_devices/set_surface_coupling_vars/device.json",
+      "name": "set_surface_coupling_vars",
+      "status": "built"
+    },
+    {
+      "manifest": "build/catalog_devices/temp_to_potential_temp/device.json",
+      "name": "temp_to_potential_temp",
+      "status": "built"
+    },
+    {
+      "manifest": "build/catalog_devices/tj2016_precip/device.json",
+      "name": "tj2016_precip",
+      "status": "built"
+    },
+    {
+      "manifest": "build/catalog_devices/tj2016_sfc_pbl_hs/device.json",
+      "name": "tj2016_sfc_pbl_hs",
+      "status": "built"
+    },
+    {
+      "manifest": "build/catalog_devices/tms_beljaars_zero_stub/device.json",
+      "name": "tms_beljaars_zero_stub",
+      "status": "built"
+    },
+    {
+      "manifest": "build/catalog_devices/to_be_ccppized_temporary/device.json",
+      "name": "to_be_ccppized_temporary",
+      "status": "built"
+    },
+    {
+      "manifest": "build/catalog_devices/tropopause_find/device.json",
+      "name": "tropopause_find",
+      "status": "built"
+    },
+    {
+      "manifest": "build/catalog_devices/update_dry_static_energy/device.json",
+      "name": "update_dry_static_energy",
+      "status": "built"
+    },
+    {
+      "manifest": "build/catalog_devices/vertical_diffusion_diffuse_dry_static_energy/device.json",
+      "name": "vertical_diffusion_diffuse_dry_static_energy",
+      "status": "built"
+    },
+    {
+      "manifest": "build/catalog_devices/vertical_diffusion_diffuse_horizontal_momentum/device.json",
+      "name": "vertical_diffusion_diffuse_horizontal_momentum",
+      "status": "built"
+    },
+    {
+      "manifest": "build/catalog_devices/vertical_diffusion_diffuse_tracers/device.json",
+      "name": "vertical_diffusion_diffuse_tracers",
+      "status": "built"
+    },
+    {
+      "manifest": "build/catalog_devices/vertical_diffusion_interpolate_to_interfaces/device.json",
+      "name": "vertical_diffusion_interpolate_to_interfaces",
+      "status": "built"
+    },
+    {
+      "manifest": "build/catalog_devices/vertical_diffusion_not_use_rairv/device.json",
+      "name": "vertical_diffusion_not_use_rairv",
+      "status": "built"
+    },
+    {
+      "manifest": "build/catalog_devices/vertical_diffusion_options/device.json",
+      "name": "vertical_diffusion_options",
+      "status": "built"
+    },
+    {
+      "manifest": "build/catalog_devices/vertical_diffusion_set_dry_static_energy_at_toa_zero/device.json",
+      "name": "vertical_diffusion_set_dry_static_energy_at_toa_zero",
+      "status": "built"
+    },
+    {
+      "manifest": "build/catalog_devices/vertical_diffusion_set_temperature_at_toa_default/device.json",
+      "name": "vertical_diffusion_set_temperature_at_toa_default",
+      "status": "built"
+    },
+    {
+      "manifest": "build/catalog_devices/vertical_diffusion_sponge_layer/device.json",
+      "name": "vertical_diffusion_sponge_layer",
+      "status": "built"
+    },
+    {
+      "manifest": "build/catalog_devices/vertical_diffusion_tendencies/device.json",
+      "name": "vertical_diffusion_tendencies",
+      "status": "built"
+    },
+    {
+      "manifest": "build/catalog_devices/vertical_diffusion_wind_damping_rate/device.json",
+      "name": "vertical_diffusion_wind_damping_rate",
+      "status": "built"
+    },
+    {
+      "manifest": "build/catalog_devices/wet_to_dry_cloud_liquid_water/device.json",
+      "name": "wet_to_dry_cloud_liquid_water",
+      "status": "built"
+    },
+    {
+      "manifest": "build/catalog_devices/wet_to_dry_rain/device.json",
+      "name": "wet_to_dry_rain",
+      "status": "built"
+    },
+    {
+      "manifest": "build/catalog_devices/wet_to_dry_water_vapor/device.json",
+      "name": "wet_to_dry_water_vapor",
+      "status": "built"
+    },
+    {
+      "manifest": "build/catalog_devices/zero_upper_boundary_condition/device.json",
+      "name": "zero_upper_boundary_condition",
+      "status": "built"
+    },
+    {
+      "manifest": "build/catalog_devices/zm_conv_convtran/device.json",
+      "name": "zm_conv_convtran",
+      "status": "built"
+    },
+    {
+      "manifest": "build/catalog_devices/zm_conv_evap/device.json",
+      "name": "zm_conv_evap",
+      "status": "built"
+    },
+    {
+      "manifest": "build/catalog_devices/zm_conv_momtran/device.json",
+      "name": "zm_conv_momtran",
+      "status": "built"
+    },
+    {
+      "manifest": "build/catalog_devices/zm_conv_options/device.json",
+      "name": "zm_conv_options",
+      "status": "built"
+    },
+    {
+      "manifest": "build/catalog_devices/zm_convr/device.json",
+      "name": "zm_convr",
+      "status": "built"
+    }
+  ],
+  "schema_version": 1,
+  "selection": "ABI-compatible schemes with a recursively source-resolved, framework-free dependency closure",
+  "source_revision": "f8daa568eae2696b7c4ebff7768f02f5d097d9df"
+}

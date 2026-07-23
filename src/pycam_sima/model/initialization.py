@@ -119,6 +119,9 @@ class InitializationPlan:
         water_vapor_gas_constant = universal_gas_constant / np.float64(mwh2o)
         values = {
             "gravitational_acceleration": 9.80616,
+            "reciprocal_gravitational_acceleration": (
+                np.float64(1.0) / np.float64(9.80616)
+            ),
             "dry_air_gas_constant": dry_air_gas_constant,
             "water_vapor_gas_constant": water_vapor_gas_constant,
             "virtual_temperature_coefficient": np.float64(water_vapor_gas_constant / dry_air_gas_constant) - np.float64(1.0),
@@ -127,6 +130,13 @@ class InitializationPlan:
             "earth_angular_velocity": 2.0 * np.float64(3.14159265358979323846) / 86164.0,
             "water_to_dry_molecular_weight_ratio": mwh2o / mwdry,
             "latent_heat_of_vaporization": 2.501e6,
+            "latent_heat_of_fusion": 3.337e5,
+            "water_freezing_temperature": 273.15,
+            "water_triple_point_temperature": 273.16,
+            "universal_gas_constant": universal_gas_constant,
+            "avogadro_constant": avogad,
+            "boltzmann_constant": boltzmann,
+            "circle_constant": np.float64(3.14159265358979323846),
             "liquid_water_density": 1000.0,
             "water_vapor_specific_heat": 1.810e3,
             "liquid_water_specific_heat": 4.188e3,

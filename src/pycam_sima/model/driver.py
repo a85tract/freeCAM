@@ -403,6 +403,8 @@ class CAMDriver:
         if self.state == DriverState.FINALIZED:
             return
         self.comm.barrier()
+        if self.pool is not None:
+            self.backend.devices.release_pool(self.pool)
         self.state = DriverState.FINALIZED
 
     def snapshot(self):

@@ -1,0 +1,51 @@
+# Generated from pinned CAM-SIMA CCPP metadata. Do not edit by hand.
+schema_version: 1
+generated:
+  catalog_schema_version: 1
+  source_revision: f8daa568eae2696b7c4ebff7768f02f5d097d9df
+  audit_blockers:
+  - allocatable_argument:rrtmgp_constituents_register.rrtmgp_dyn_consts
+  - 'dimension_expression:rrtmgp_constituents_register.rrtmgp_dyn_consts::'
+  external_cam_dependencies:
+  - ccpp_constituent_prop_mod
+  - ccpp_kinds
+  - ccpp_scheme_utils
+  unresolved_modules: []
+name: rrtmgp_constituents
+fortran_module: rrtmgp_constituents
+sources:
+- external/CAM-SIMA/src/physics/ncar_ccpp/schemes/rrtmgp/rrtmgp_constituents.F90
+metadata:
+- external/CAM-SIMA/src/physics/ncar_ccpp/schemes/rrtmgp/rrtmgp_constituents.meta
+source_modules:
+- rrtmgp_constituents
+providers:
+  cam_abortutils: native/devices/support/cam_abortutils.F90
+  cam_logfile: native/devices/support/cam_logfile.F90
+  ccpp_kinds: native/devices/support/ccpp_kinds.F90
+  error_messages: native/devices/support/error_messages.F90
+  physconst: native/devices/support/physconst.F90
+  ref_pres: native/devices/support/ref_pres.F90
+  shr_kind_mod: native/devices/support/shr_kind_mod.F90
+  shr_log_mod: native/devices/support/shr_log_mod.F90
+  shr_assert_mod: native/devices/support/shr_assert_mod.F90
+  shr_sys_mod: native/devices/support/shr_sys_mod.F90
+  spmd_utils: native/devices/support/spmd_utils.F90
+auto_dependencies: true
+state_policy: stateless
+dimension_bindings:
+  gaslist_dimension: gaslist_dimension
+  horizontal_loop_extent: nphys_local
+  number_of_active_gases_for_rrtmgp: number_of_active_gases_for_rrtmgp
+  number_of_ccpp_constituents: number_of_ccpp_constituents
+  rad_climate_dimension: rad_climate_dimension
+  vertical_layer_dimension: pver
+entrypoints:
+  register:
+    table: rrtmgp_constituents_register
+  run:
+    table: rrtmgp_constituents_run
+processes:
+  rrtmgp_constituents: run
+  rrtmgp_constituents:register: register
+  rrtmgp_constituents:run: run

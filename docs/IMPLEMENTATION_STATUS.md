@@ -11,7 +11,7 @@ boundary and one complete model configuration:
 - DCMIP2016 moist baroclinic-wave initial condition
 - startup, ATM-only, NO_LEAP execution
 
-Python parses `atm_in`, initializes the grid and analytic state, owns all 214
+Python parses `atm_in`, initializes the grid and analytic state, owns all 222
 canonical persistent fields, executes the model phase graph, performs MPI
 communication through mpi4py, advances the clock, and writes history.
 `libpycam_sima_kernels.so` exposes versioned dycore/mapping kernels and retains
@@ -133,10 +133,28 @@ segments and the single-allocation batch-versus-checkpoint-chain comparison.
 
 ## Scope boundary
 
-The framework can ingest additional compatible CCPP schemes, but only Kessler
-and Kessler update are registered and model-validated today. Schemes with
-optional arguments, derived types, non-interoperable kinds, callbacks, or
-undeclared host dependencies are rejected by device ABI v1 until an explicit
-provider/ABI rule is implemented. Other complete suites, grids, vertical
-levels, MPI sizes, timesteps, mediator or surface components, MPAS, GPU
-execution, and FADIAB are not model-validated.
+The all-suite connector layer now inventories all 7 pinned suite XML files,
+155 distinct active schemes, and 340 occurrences. It emits 155 source-derived
+descriptors, preserves XML groups/subcycles, supports all primitive metadata
+arguments, fixed-width character data, default logical bridges, and
+Python-owned shaped allocatable fields plus non-allocatable derived process
+state. Pure CAM-history schemes are routed to an explicit Python history
+service. The current build has 100 native devices and 29 Python host services;
+26 connectors require an external service or dependency. Exact per-scheme
+reasons are generated in `validation/all_scheme_support.json`; they must be
+read instead of treating connector generation as proof that every scientific
+configuration has run. The aggregate build, load, ELF, and 50-step regression
+evidence is in `validation/all_scheme_connectors.json`.
+
+The portable `ref_pres` provider implements the low-top behavior documented
+inside the original Holtslag–Boville interstitial (`ntop_eddy = 1`). It is
+valid for the seven pinned suites and is not a WACCM-X reference-pressure
+implementation.
+
+The remaining non-ready entries are fail-closed boundaries, principally input
+data readers, MPI/global reductions, external MUSICA/physics sources,
+allocatable derived objects, and large CAM infrastructure closures. They are
+not replaced by no-op numerical kernels. Only the FKESSLER 24-rank/50-step
+configuration currently carries a full-model BFB claim. Other complete
+suites, grids, vertical levels, MPI sizes, timesteps, mediator or surface
+components, MPAS, GPU execution, and FADIAB are not model-validated.

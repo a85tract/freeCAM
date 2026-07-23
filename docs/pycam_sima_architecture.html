@@ -716,8 +716,8 @@
     <div class="metrics" aria-label="当前实现关键数字">
       <div class="metric"><b>2</b><span>control modes</span></div>
       <div class="metric"><b>24</b><span>MPI ranks per segment</span></div>
-      <div class="metric"><b>214</b><span>Python-owned fields</span></div>
-      <div class="metric"><b>2</b><span>generated source devices</span></div>
+      <div class="metric"><b>222</b><span>Python-owned fields</span></div>
+      <div class="metric"><b>129 / 155</b><span>ready · 100 native + 29 host</span></div>
       <div class="metric"><b>1 PBS</b><span>allocation-mode fan-out</span></div>
       <div class="metric"><b>BFB</b><span>51 files · 26 variables</span></div>
     </div>
@@ -733,7 +733,7 @@
           <div class="arrow">↘</div>
           <div class="node mpi"><b>Python CAMDriver</b><small>phases · schemes · clock</small></div>
           <div class="arrow">→</div>
-          <div class="node mpi"><b>Python StatePool</b><small>NumPy owns 214 fields</small></div>
+          <div class="node mpi"><b>Python StatePool</b><small>NumPy owns 222 fields</small></div>
           <div class="arrow">→</div>
           <div class="node pbs"><b>DeviceRegistry</b><small>manifest + standard_name</small></div>
         </div>
@@ -769,7 +769,8 @@
         </div>
         <div class="flow-note" style="margin-top:16px">
           末端设备由 <code>device.yaml</code> 描述。构建器使用固定版本的 CCPP parser
-          同时读取 <code>kessler.meta</code> 和原始 <code>kessler.F90</code>，核对 entrypoint、
+          从 7 个 suite XML 中发现 155 个活跃 scheme，并同时读取每个 <code>.meta</code>
+          和原始 <code>.F90</code>，核对 entrypoint、
           intent、rank、dimension、kind 和 units，随后生成 adapter、symbol version map 与
           <code>device.json</code>。
         </div>
@@ -785,14 +786,16 @@
         </article>
         <article class="card panel-pad">
           <h3>3 · 末端计算设备</h3>
-          <p style="color:var(--muted)">当前接入原始 Kessler 与 Kessler update。新增 scheme 的正常工作是增加一个 descriptor；MPI、ESMF、PIO 或未声明 module 依赖会在构建时直接失败。</p>
+          <p style="color:var(--muted)">155 个 scheme 都有自动生成的 connector：100 个原始 Fortran device 已干净构建，29 个纯 history scheme 由 Python host service 执行；另外 26 个仍明确等待 MPI/I/O/外部源码等服务，不把“生成接口”冒充“已经科学验证”。</p>
         </article>
       </div>
       <div class="two-col" style="margin-top:18px">
         <article class="card panel-pad">
           <h3>源文件到 device 的构建链</h3>
-          <pre><code>original scheme.F90 + scheme.meta
-             + device.yaml
+          <pre><code>suite XML → 155 active schemes
+             │ catalog + original metadata
+original scheme.F90 + scheme.meta
+             + generated device.yaml
                     │ pinned CCPP parser
                     ▼
 generated bind(C) adapter + device.json
@@ -802,10 +805,11 @@ libpycam_device_&lt;name&gt;.so</code></pre>
         </article>
         <article class="card panel-pad">
           <h3>显式 native state policy</h3>
-          <pre><code>stateless
-reinitialize_each_run
-initialize_once</code></pre>
-          <p style="margin:14px 0 0;color:var(--muted);font-size:13px">Kessler 使用 <code>reinitialize_each_run</code>：每次计算前用 Python StatePool 中的参数调用原始 <code>kessler_init</code>，避免 Python 分支共享隐藏的 Fortran module state。</p>
+          <pre><code>NumPy primitive arrays → zero-copy pointer
+Fortran derived object → opaque StatePool handle
+legacy physical constants → Python field injection
+cam_history/outfld → Python host service</code></pre>
+          <p style="margin:14px 0 0;color:var(--muted);font-size:13px">derived object 由生成的 Fortran factory 创建，但其生命周期记录属于 Python；后续 scheme 按同一 standard_name 获得同一个地址，finalize 时调用匹配的 destroy。</p>
         </article>
       </div>
     </section>
@@ -1097,7 +1101,7 @@ field = experiments.field(
         <details><summary>串行执行意味着后一个分支读取前一个分支吗？</summary><p>不意味着。control和no-kessler都从base的不可变snapshot创建私有副本；warm从它明确指定的parent创建副本。串行只是资源安排，不是状态依赖。</p></details>
         <details><summary>自定义 server 为什么需要 socket？</summary><p>因为Notebook和24-rank模型是不同进程。模型完成一条命令后要继续存活并等待下一条命令，就必须有socket、pipe、ZeroMQ或MPI intercommunicator之类的持久IPC。当前实现使用带authkey的socket。</p></details>
         <details><summary>为了接入 Kessler，是否改写了原始 Fortran 数值代码？</summary><p>没有。构建器读取固定 CAM-SIMA revision 中的原始 <code>kessler.F90</code> 和 CCPP metadata，生成一个只负责 ABI 转换的 adapter。原始 scheme 直接参与 device <code>.so</code> 编译；旧的手写 <code>kessler_kernel.F90</code> 已删除。</p></details>
-        <details><summary>任意 CCPP scheme 现在都能无条件自动接入吗？</summary><p>还不能无条件接入。当前通用 ABI 支持已验证的 real/integer/logical scalar 与显式形状数组。scheme 如果依赖 MPI、ESMF、PIO、CAM history、复杂 derived type 或未声明 module，生成器会 fail closed，要求先提供明确的 provider 或扩展 ABI，而不是悄悄猜测。</p></details>
+        <details><summary>任意 CCPP scheme 现在都能无条件自动接入吗？</summary><p>所有 155 个活跃 scheme 都会自动得到 connector 与机器可读状态，但这不等于全部都已科学运行。通用 ABI 已覆盖 real/integer/default-logical、fixed-width character、Python-owned shaped allocatable arrays 和 non-allocatable derived state；纯 history scheme 由 Python service 接管。当前 100 个 native device 加 29 个 host service 可执行；仍依赖 MPI reduction、PIO/NetCDF input、外部 MUSICA 源码或 allocatable object 的 26 个 scheme 会 fail closed，并在 <code>all_scheme_support.json</code> 写明原因。</p></details>
       </div>
     </section>
 
@@ -1113,6 +1117,8 @@ field = experiments.field(
         <div class="evidence-card"><small>DASK ALLOCATION</small><b>1 PBS</b><small>base + branches · direct MPI</small></div>
         <div class="evidence-card"><small>GRANULAR ACTIONS</small><b class="yes">BFB</b><small>batch = checkpoint chain</small></div>
         <div class="evidence-card"><small>ORIGINAL KESSLER</small><b class="yes">BFB</b><small>11 fields · source device</small></div>
+        <div class="evidence-card"><small>SUITE CATALOG</small><b>155 / 155</b><small>connectors · 7 suites</small></div>
+        <div class="evidence-card"><small>EXECUTABLE CONNECTORS</small><b>129 / 155</b><small>100 native · 29 host</small></div>
         <div class="evidence-card"><small>DEVICE ELF</small><b class="yes">CLEAN</b><small>no MPI / ESMF / PIO</small></div>
       </div>
     </section>
