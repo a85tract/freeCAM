@@ -15,6 +15,7 @@ from typing import Any, Callable, Mapping
 import numpy as np
 
 from ..model import (
+    CheckpointBundle,
     FieldEdit,
     KesslerSchemePlan,
     ModelOptions,
@@ -57,6 +58,8 @@ class PersistentDaskRequest:
     options: Mapping[str, Any]
     scheme_plan: Mapping[str, Any]
     execution_mode: str
+    parent_name: str | None = None
+    startup_plan: Mapping[str, Any] | None = None
 
     def __post_init__(self) -> None:
         if not _SAFE_NAME.fullmatch(self.name):
@@ -74,6 +77,19 @@ class PersistentDaskRequest:
             raise ValueError(
                 "persistent allocation execution requires launch_mode='local'"
             )
+        if self.parent_name is not None and not _SAFE_NAME.fullmatch(
+            self.parent_name
+        ):
+            raise ValueError(
+                "persistent parent name may contain only letters, digits, "
+                "dot, dash, and underscore"
+            )
+        if self.startup_plan is not None:
+            plan = SegmentPlan.from_mapping(self.startup_plan)
+            if plan.name != self.name:
+                raise ValueError(
+                    "persistent startup plan name must match session name"
+                )
 
 
 class PersistentCAMActor:
@@ -86,6 +102,7 @@ class PersistentCAMActor:
     def __init__(
         self,
         request: PersistentDaskRequest,
+        snapshot: CheckpointBundle | None = None,
         session_factory: Callable[..., Any] | None = None,
     ) -> None:
         self._request = request
@@ -94,6 +111,8 @@ class PersistentCAMActor:
         self._mpi_launch_count = 0
         self._allocation_lock: Any = None
         self._session: Any = None
+        self._restored_from_memory = False
+        self._source_snapshot_nbytes = 0
         self._branch_root = Path(request.run_root) / request.name
         self._run_dir = self._branch_root / "run"
         self._history_dir = self._branch_root / "history"
@@ -128,7 +147,20 @@ class PersistentCAMActor:
             )
             self._session.start()
             self._mpi_launch_count = 1
+            if snapshot is not None:
+                if not isinstance(snapshot, CheckpointBundle):
+                    raise TypeError("persistent parent snapshot must be CheckpointBundle")
+                self._session.restore_memory_checkpoint(snapshot)
+                self._restored_from_memory = True
+                self._source_snapshot_nbytes = snapshot.nbytes
+            if request.startup_plan is not None:
+                self.run_plan(request.startup_plan)
         except BaseException:
+            if self._session is not None:
+                try:
+                    self._session.close()
+                except BaseException:
+                    pass
             self._release_allocation()
             raise
 
@@ -137,6 +169,7 @@ class PersistentCAMActor:
             self._ensure_open()
             return {
                 "name": self._request.name,
+                "parent_name": self._request.parent_name,
                 "running": bool(self._session.running),
                 "worker_host": socket.gethostname(),
                 "worker_pid": os.getpid(),
@@ -144,6 +177,15 @@ class PersistentCAMActor:
                 "step": int(self._session.current_step),
                 "native_calls": int(self._session.native_calls),
                 "mpi_launch_count": self._mpi_launch_count,
+                "snapshot_transport": (
+                    "memory" if self._restored_from_memory else "initialization"
+                ),
+                "source_snapshot_nbytes": self._source_snapshot_nbytes,
+                "startup_plan": (
+                    None
+                    if self._request.startup_plan is None
+                    else dict(self._request.startup_plan)
+                ),
                 "launch_mode": self._session.launch_mode_used,
                 "pbs_job_id": self._session.job_id,
                 "outer_pbs_job_id": os.environ.get("PBS_JOBID"),
@@ -374,6 +416,13 @@ class PersistentCAMActor:
                 "native_calls": int(self._session.native_calls),
                 "mpi_launch_count": self._mpi_launch_count,
             }
+
+    def memory_checkpoint(self) -> CheckpointBundle:
+        """Return a bit-preserving snapshot without writing checkpoint files."""
+
+        with self._guard:
+            self._ensure_open()
+            return self._session.memory_checkpoint()
 
     def close(self) -> dict[str, Any]:
         with self._guard:
@@ -700,6 +749,13 @@ class PersistentDaskSession:
             "checkpoint",
             None if path is None else str(Path(path).resolve()),
         )
+
+    def memory_checkpoint(self) -> Any:
+        """Return an ActorFuture containing the immutable in-memory snapshot."""
+
+        return self._call("memory_checkpoint")
+
+    snapshot = memory_checkpoint
 
     def close(self) -> Any:
         if self._closed:

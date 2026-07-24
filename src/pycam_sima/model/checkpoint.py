@@ -3,10 +3,11 @@
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass
+from io import BytesIO
 import json
 import os
 from pathlib import Path
-from typing import Any, Mapping, TYPE_CHECKING
+from typing import Any, Mapping, Sequence, TYPE_CHECKING
 
 import numpy as np
 
@@ -146,6 +147,44 @@ class CheckpointBundle:
         )
         return cls(tuple((name, (root / name).read_bytes()) for name in names))
 
+    @classmethod
+    def from_rank_payloads(
+        cls,
+        payloads: Sequence[tuple[Mapping[str, Any], bytes]],
+    ) -> "CheckpointBundle":
+        """Build a complete checkpoint in memory without filesystem staging."""
+
+        ordered = sorted(payloads, key=lambda item: int(item[0]["rank"]))
+        if not ordered:
+            raise ConfigurationError(
+                "in-memory checkpoint requires at least one rank"
+            )
+        ranks = [int(metadata["rank"]) for metadata, _content in ordered]
+        if ranks != list(range(len(ordered))):
+            raise ConfigurationError(
+                "in-memory checkpoint rank inventory is incomplete"
+            )
+        if any(int(metadata["size"]) != len(ordered) for metadata, _ in ordered):
+            raise ConfigurationError(
+                "in-memory checkpoint communicator sizes are inconsistent"
+            )
+        manifest = {
+            "schema_version": CHECKPOINT_SCHEMA_VERSION,
+            "mpi_size": len(ordered),
+            "ranks": [dict(metadata) for metadata, _content in ordered],
+        }
+        files: list[tuple[str, bytes]] = [
+            (
+                "manifest.json",
+                json.dumps(manifest, indent=2, sort_keys=True).encode("utf-8"),
+            )
+        ]
+        files.extend(
+            (f"rank-{rank:03d}.npz", bytes(content))
+            for rank, (_metadata, content) in enumerate(ordered)
+        )
+        return cls(tuple(files))
+
     @property
     def nbytes(self) -> int:
         return sum(len(content) for _name, content in self.files)
@@ -158,6 +197,64 @@ class CheckpointBundle:
         for name, content in self.files:
             (root / name).write_bytes(content)
         return root
+
+    def rank_payloads(self) -> tuple[tuple[Mapping[str, Any], bytes], ...]:
+        """Return rank-local metadata and arrays without touching the filesystem."""
+
+        files = dict(self.files)
+        try:
+            manifest = json.loads(files["manifest.json"])
+        except (KeyError, json.JSONDecodeError, UnicodeDecodeError) as exc:
+            raise ConfigurationError(
+                "in-memory checkpoint manifest is invalid"
+            ) from exc
+        if manifest.get("schema_version") != CHECKPOINT_SCHEMA_VERSION:
+            raise ConfigurationError(
+                "unsupported in-memory checkpoint schema "
+                f"{manifest.get('schema_version')!r}"
+            )
+        mpi_size = int(manifest.get("mpi_size", -1))
+        if mpi_size <= 0:
+            raise ConfigurationError(
+                "in-memory checkpoint MPI size must be positive"
+            )
+        records = {
+            int(record["rank"]): record for record in manifest.get("ranks", ())
+        }
+        if set(records) != set(range(mpi_size)):
+            raise ConfigurationError(
+                "in-memory checkpoint rank inventory is incomplete"
+            )
+        payloads: list[tuple[Mapping[str, Any], bytes]] = []
+        for rank in range(mpi_size):
+            filename = f"rank-{rank:03d}.npz"
+            try:
+                content = files[filename]
+            except KeyError as exc:
+                raise ConfigurationError(
+                    f"in-memory checkpoint lacks {filename}"
+                ) from exc
+            payloads.append((records[rank], content))
+        return tuple(payloads)
+
+
+def serialize_snapshot(snapshot: ModelSnapshot) -> tuple[Mapping[str, Any], bytes]:
+    """Serialize one rank's snapshot into an immutable in-memory payload."""
+
+    stream = BytesIO()
+    np.savez(stream, **snapshot.arrays)
+    return snapshot.metadata(), stream.getvalue()
+
+
+def deserialize_snapshot(
+    metadata: Mapping[str, Any],
+    content: bytes,
+) -> ModelSnapshot:
+    """Restore one rank's snapshot from an in-memory payload."""
+
+    with np.load(BytesIO(content), allow_pickle=False) as stored:
+        arrays = {name: stored[name] for name in stored.files}
+    return ModelSnapshot.from_storage(metadata, arrays)
 
 
 def restore_driver(

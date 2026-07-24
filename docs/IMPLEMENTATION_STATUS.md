@@ -108,8 +108,14 @@ Persistent Dask execution is a separate Actor path. One worker-pinned Actor
 owns a live `NotebookSession`, holds the full-node MPI allocation lock, and
 launches 24 ranks once. Subsequent Actor futures call phase, scheme, complete
 step, field, plan, and checkpoint operations against the same in-memory
-StatePool. It is an interactive optimization, not an automatic memory fork;
-durable fan-out still uses checkpoint segments.
+StatePool. In PBS mode, `fork_persistent()` captures the base's 24 rank-local
+snapshots into one immutable in-memory `CheckpointBundle`, keeps it as a Dask
+Future, and supplies it to multiple child Actors. Every child launches an
+independent 24-rank MPI model, restores private NumPy arrays through the
+socket/MPI bridge, applies a `BranchSpec` or `SegmentPlan`, and stays alive.
+This path creates no checkpoint files. It requires a distinct Dask worker and
+PBS job per concurrent child; single-node allocation mode rejects persistent
+fan-out. Disk checkpoint segments remain the durable, restartable alternative.
 
 ## Verification contract
 
@@ -133,14 +139,22 @@ durable fan-out still uses checkpoint segments.
   segments must produce bitwise-identical StatePool arrays on all 24 ranks.
 - A persistent Dask Actor must retain its model clock and StatePool across
   multiple Actor calls while reporting one MPI launch until explicit close.
+- Persistent memory fork must restore every child at the exact parent clock,
+  keep branch arrays independent, apply branch edits bit-for-bit, use one MPI
+  launch per child, and create no checkpoint manifest, NPZ file, or checkpoint
+  directory.
 
 Machine-readable evidence is stored in
 `validation/fkessler_model_bfb.json` and
 `validation/source_preserving_devices.json`; Dask action evidence is stored in
 `validation/dask_granular_actions.json`, and persistent Actor evidence is
-stored in `validation/dask_persistent.json`. The granular record contains both
-real PBS segments and the single-allocation batch-versus-checkpoint-chain
-comparison.
+stored in `validation/dask_persistent.json` and
+`validation/dask_persistent_fork.json`. The granular record contains both real
+PBS segments and the single-allocation batch-versus-checkpoint-chain
+comparison. The persistent-fork record contains one 10-step base and three
+independent 24-rank children restored from the same 37,660,986-byte Dask
+snapshot, with exact comparison of all 5,328 rank-local arrays per branch and
+zero checkpoint artifacts.
 
 ## Scope boundary
 

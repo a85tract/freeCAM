@@ -4,6 +4,7 @@ import pytest
 
 import pycam_sima
 from pycam_sima.model import (
+    CheckpointBundle,
     ModelConfig,
     ModelOptions,
     PHYSICS_BEFORE_COUPLER,
@@ -208,6 +209,48 @@ def test_typed_model_parameter_facade(
     description = session.parameters.describe()
     assert description["runtime"]["runtime"] == "model"
     assert "air_temperature" in description["key_fields"]
+
+
+def test_memory_checkpoint_uses_socket_bytes_without_paths(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    session = _session(tmp_path, monkeypatch)
+    payloads = tuple(
+        (
+            {
+                "rank": rank,
+                "size": 24,
+            },
+            f"rank-{rank}".encode(),
+        )
+        for rank in range(24)
+    )
+    snapshot = CheckpointBundle.from_rank_payloads(payloads)
+    requests = []
+    monkeypatch.setattr(session, "_validate_started_options", lambda: None)
+
+    def request(payload):
+        requests.append(payload)
+        if payload["op"] == "capture_memory_checkpoint":
+            return snapshot
+        return {
+            "step": 7,
+            "native_calls": 19,
+            "phase_status": {"step": 7, "last_phase": "phase"},
+            "scheme_status": session._scheme_status,
+            "restored_from_memory": True,
+        }
+
+    monkeypatch.setattr(session, "_request", request)
+
+    assert session.memory_checkpoint() is snapshot
+    restored = session.restore_memory_checkpoint(snapshot)
+    assert restored["restored_from_memory"] is True
+    assert session.current_step == 7
+    assert requests[0] == {"op": "capture_memory_checkpoint"}
+    assert requests[1]["op"] == "restore_memory_checkpoint"
+    assert requests[1]["snapshot"] is snapshot
 
 
 def test_model_controller_configuration(tmp_path: Path) -> None:

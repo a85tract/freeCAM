@@ -1,0 +1,92 @@
+{
+  "base": {
+    "mpi_launch_count": 1,
+    "native_calls": 2984,
+    "pbs_job_id": "6876528.desched1",
+    "step": 10
+  },
+  "base_steps": 10,
+  "branch_steps": 1,
+  "checkpoint_artifacts": [],
+  "children_after_restore": {
+    "control": {
+      "mpi_launch_count": 1,
+      "native_calls": 2984,
+      "parent_name": "base",
+      "pbs_job_id": "6876537.desched1",
+      "snapshot_transport": "memory",
+      "source_snapshot_nbytes": 37660986,
+      "step": 10
+    },
+    "no-kessler": {
+      "mpi_launch_count": 1,
+      "native_calls": 2984,
+      "parent_name": "base",
+      "pbs_job_id": "6876538.desched1",
+      "snapshot_transport": "memory",
+      "source_snapshot_nbytes": 37660986,
+      "step": 10
+    },
+    "warm": {
+      "mpi_launch_count": 1,
+      "native_calls": 2984,
+      "parent_name": "base",
+      "pbs_job_id": "6876539.desched1",
+      "snapshot_transport": "memory",
+      "source_snapshot_nbytes": 37660986,
+      "step": 10
+    }
+  },
+  "children_after_step": {
+    "control": {
+      "kessler_enabled": true,
+      "mpi_launch_count": 1,
+      "native_calls": 3282,
+      "native_calls_delta": 298,
+      "step": 11
+    },
+    "no-kessler": {
+      "kessler_enabled": false,
+      "mpi_launch_count": 1,
+      "native_calls": 3281,
+      "native_calls_delta": 297,
+      "step": 11
+    },
+    "warm": {
+      "kessler_enabled": true,
+      "mpi_launch_count": 1,
+      "native_calls": 3282,
+      "native_calls_delta": 298,
+      "step": 11
+    }
+  },
+  "dask_workers": 3,
+  "field_stats_rank_0_after_step": {
+    "control_mean": 237.24646471201794,
+    "no_kessler_mean": 237.24646471201794,
+    "warm_mean": 238.24646225907512
+  },
+  "inheritance": {
+    "control_all_fields_bitwise_equal": true,
+    "control_bitwise_equal": true,
+    "no_kessler_all_fields_bitwise_equal": true,
+    "no_kessler_bitwise_equal": true,
+    "rank_local_arrays_compared_per_branch": 5328,
+    "warm_exact_numpy_add_1K": true,
+    "warm_only_air_temperature_changed": true
+  },
+  "mpi_ranks_per_model": 24,
+  "parent_closed_before_child_launch": true,
+  "repository": {
+    "parent_commit": "60aa2ca2fa2c0e232234155f5118fab9ea1f9aa8",
+    "working_tree_dirty": true
+  },
+  "schema_version": 1,
+  "snapshot_transport": "memory",
+  "software": {
+    "dask": "2026.7.1",
+    "distributed": "2026.7.1",
+    "pycam_sima": "0.12.0"
+  },
+  "validated_at": "2026-07-24T04:30:26.800354+00:00"
+}

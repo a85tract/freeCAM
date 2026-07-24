@@ -23,6 +23,7 @@ import yaml
 
 from ..core.runtime_env import mpi_loader_environment
 from ..model import (
+    CheckpointBundle,
     KesslerSchemePlan,
     ModelConfig,
     ModelOptions,
@@ -546,6 +547,45 @@ class NotebookSession:
         checkpoint = Path(path).resolve()
         result = self._request({"op": "write_checkpoint", "path": str(checkpoint)})
         return Path(result)
+
+    def memory_checkpoint(self) -> CheckpointBundle:
+        """Capture every rank into immutable bytes without filesystem staging."""
+
+        self._validate_started_options()
+        result = self._request({"op": "capture_memory_checkpoint"})
+        if not isinstance(result, CheckpointBundle):
+            raise NotebookWorkerError(
+                "MPI worker returned an invalid in-memory checkpoint"
+            )
+        if len(result.rank_payloads()) != self.ranks:
+            raise NotebookWorkerError(
+                "MPI worker returned an incomplete in-memory checkpoint"
+            )
+        return result
+
+    def restore_memory_checkpoint(
+        self,
+        snapshot: CheckpointBundle,
+    ) -> Mapping[str, Any]:
+        """Replace every rank's live StatePool from immutable checkpoint bytes."""
+
+        self._validate_started_options()
+        if not isinstance(snapshot, CheckpointBundle):
+            raise TypeError("snapshot must be CheckpointBundle")
+        snapshot_ranks = len(snapshot.rank_payloads())
+        if snapshot_ranks != self.ranks:
+            raise ValueError(
+                f"snapshot requires {snapshot_ranks} ranks, "
+                f"session has {self.ranks}"
+            )
+        result = self._request(
+            {
+                "op": "restore_memory_checkpoint",
+                "snapshot": snapshot,
+            }
+        )
+        self._update_runtime_status(result)
+        return result
 
     def close(self) -> None:
         if self._connection is None and self._process is None and self._job_id is None:

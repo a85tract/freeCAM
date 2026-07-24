@@ -12,7 +12,11 @@ from pycam_sima.model import (
     SchemeMove,
     read_checkpoint,
 )
-from pycam_sima.model.checkpoint import write_checkpoint
+from pycam_sima.model.checkpoint import (
+    deserialize_snapshot,
+    serialize_snapshot,
+    write_checkpoint,
+)
 from pycam_sima.model.clock import NoLeapClock
 from pycam_sima.model.config import ModelConfig
 from pycam_sima.model.driver import DriverState
@@ -104,6 +108,34 @@ def test_checkpoint_bundle_round_trip(tmp_path: Path) -> None:
         source / "manifest.json"
     ).read_bytes()
     assert (restored / "rank-001.npz").read_bytes() == b"rank one"
+
+
+def test_checkpoint_bundle_rank_payload_round_trip_without_disk() -> None:
+    pool = StatePool(dimensions_for_rank(0, 24))
+    pool.set("air_temperature", 240.0)
+    pool.seal_static()
+    driver = SimpleNamespace(
+        pool=pool,
+        clock=NoLeapClock(nstep=6, seconds=10800),
+        state=DriverState.RUNNING,
+        comm=SimpleNamespace(rank=0, size=1),
+        config=ModelConfig(),
+        scheme_plan=KesslerSchemePlan.default(),
+        _last_phase="physics_timestep_initial",
+        _last_scheme=None,
+        _last_scheme_group=None,
+        backend=SimpleNamespace(call_count=31),
+    )
+
+    snapshot = ModelSnapshot.capture(driver)
+    payload = serialize_snapshot(snapshot)
+    bundle = CheckpointBundle.from_rank_payloads((payload,))
+    restored = deserialize_snapshot(*bundle.rank_payloads()[0])
+
+    assert bundle.nbytes > 0
+    assert restored.metadata() == snapshot.metadata()
+    for name in snapshot.arrays:
+        assert np.array_equal(restored.arrays[name], snapshot.arrays[name])
 
 
 def test_collective_checkpoint_round_trip_preserves_bits(tmp_path: Path) -> None:

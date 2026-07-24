@@ -7,11 +7,17 @@ import base64
 import json
 import traceback
 from multiprocessing.connection import Client, Connection
-from typing import Any
+from typing import Any, Mapping
 
 import numpy as np
 
 from ..model import CAMDriver, KesslerSchemePlan, ModelConfig, ModelOptions
+from ..model.checkpoint import (
+    CheckpointBundle,
+    deserialize_snapshot,
+    restore_driver,
+    serialize_snapshot,
+)
 from ..model.control import model_field_metadata
 
 
@@ -55,6 +61,8 @@ def _local_command(request: dict[str, Any], driver: CAMDriver, comm: Any) -> Any
         return _runtime_status(driver)
     if operation == "write_checkpoint":
         return str(driver.write_checkpoint(str(request["path"])))
+    if operation == "capture_memory_checkpoint":
+        return serialize_snapshot(driver.snapshot())
     if operation == "edit_field":
         name = str(request["field"])
         current = driver.pool.get(name, unsafe=bool(request.get("unsafe", False)))
@@ -128,7 +136,11 @@ def _collect_response(
 
     operation = request["op"]
     selector = request.get("rank")
-    if operation in {"get_field", "get_field_stats"}:
+    if operation == "capture_memory_checkpoint":
+        result = CheckpointBundle.from_rank_payloads(
+            [item[1] for item in gathered]
+        )
+    elif operation in {"get_field", "get_field_stats"}:
         if selector == "all":
             result = [item[1] for item in gathered]
         else:
@@ -144,6 +156,66 @@ def _send(connection: Connection, payload: dict[str, Any]) -> bool:
         return True
     except (BrokenPipeError, EOFError, OSError):
         return False
+
+
+def _restore_memory_checkpoint(
+    payload: tuple[Mapping[str, Any], bytes] | None,
+    driver: CAMDriver,
+    comm: Any,
+    *,
+    config: ModelConfig,
+    run_dir: str,
+    library: str,
+    history_dir: str,
+) -> tuple[CAMDriver, dict[str, Any] | None]:
+    """Collectively replace a live driver from rank-local in-memory bytes."""
+
+    candidate: CAMDriver | None = None
+    failure: str | None = None
+    try:
+        if payload is None:
+            raise RuntimeError("rank-local in-memory checkpoint payload is absent")
+        metadata, content = payload
+        snapshot = deserialize_snapshot(metadata, content)
+        candidate = restore_driver(
+            snapshot,
+            run_dir=run_dir,
+            comm=comm,
+            kernel_library=library,
+            history_dir=history_dir,
+            expected_config=config,
+        )
+    except BaseException:
+        failure = _error()
+
+    failures = comm.allgather(failure)
+    messages = [
+        f"rank {rank}:\n{message}"
+        for rank, message in enumerate(failures)
+        if message
+    ]
+    if messages:
+        response = (
+            {"status": "error", "error": "\n".join(messages)}
+            if comm.rank == 0
+            else None
+        )
+        return driver, response
+
+    assert candidate is not None
+    driver.finalize()
+    status = _runtime_status(candidate)
+    statuses = comm.gather(status, root=0)
+    response = None
+    if comm.rank == 0:
+        response = {
+            "status": "ok",
+            "result": {
+                **statuses[0],
+                "restored_from_memory": True,
+            },
+        }
+    return candidate, response
 
 
 def main() -> int:
@@ -255,6 +327,10 @@ def main() -> int:
 
         while True:
             abandoned = False
+            rank_payloads: tuple[
+                tuple[Mapping[str, Any], bytes], ...
+            ] | None = None
+            snapshot_error: str | None = None
             if comm.rank == 0:
                 assert connection is not None
                 try:
@@ -262,12 +338,48 @@ def main() -> int:
                 except (EOFError, OSError):
                     request = {"op": "close"}
                     abandoned = True
+                if request.get("op") == "restore_memory_checkpoint":
+                    try:
+                        snapshot = request.pop("snapshot")
+                        if not isinstance(snapshot, CheckpointBundle):
+                            raise TypeError(
+                                "restore_memory_checkpoint requires "
+                                "CheckpointBundle"
+                            )
+                        rank_payloads = snapshot.rank_payloads()
+                        if len(rank_payloads) != comm.size:
+                            raise ValueError(
+                                "in-memory checkpoint requires "
+                                f"{len(rank_payloads)} ranks, got {comm.size}"
+                            )
+                    except BaseException:
+                        snapshot_error = _error()
             else:
                 request = None
             request = comm.bcast(request, root=0)
             abandoned = comm.bcast(abandoned, root=0)
+            snapshot_error = comm.bcast(snapshot_error, root=0)
             assert driver is not None
-            response = _collect_response(request, driver, comm)
+            if request.get("op") == "restore_memory_checkpoint":
+                if snapshot_error is not None:
+                    response = (
+                        {"status": "error", "error": snapshot_error}
+                        if comm.rank == 0
+                        else None
+                    )
+                else:
+                    local_payload = comm.scatter(rank_payloads, root=0)
+                    driver, response = _restore_memory_checkpoint(
+                        local_payload,
+                        driver,
+                        comm,
+                        config=config,
+                        run_dir=args.run_dir,
+                        library=args.library,
+                        history_dir=args.history_dir,
+                    )
+            else:
+                response = _collect_response(request, driver, comm)
             if request.get("op") == "close":
                 initialized = False
             delivered = True

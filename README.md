@@ -412,11 +412,62 @@ MPI rank 0, which broadcasts them to the other ranks. Dask replaces direct
 Notebook-to-session ownership; it does not replace MPI or the IPC required to
 control processes that remain alive.
 
-Choose the persistent Actor for interactive scheme/phase/step work. Choose the
-checkpoint segment API (`submit_base`, `submit_plan`, `fork`) when a boundary
-must be durable, restartable, or an independent branch. A persistent Actor
-does not automatically fork its live process memory; call `checkpoint()` to
-create a durable handoff.
+Choose the persistent Actor for interactive scheme/phase/step work. Use
+`fork_persistent()` when a live base should become several independent,
+long-lived MPI models without checkpoint files:
+
+```python
+base = experiments.start_persistent("base")
+base.step(10).result()
+
+children = experiments.fork_persistent(
+    base,
+    (
+        BranchSpec("control", steps=0),
+        BranchSpec(
+            "no-kessler",
+            steps=0,
+            disable_schemes=("kessler",),
+        ),
+        BranchSpec(
+            "warm",
+            steps=0,
+            field_edits=(
+                FieldEdit("air_temperature", "add", 1.0),
+            ),
+        ),
+    ),
+    close_parent=True,
+)
+
+step_futures = {
+    name: child.step(1) for name, child in children.items()
+}
+stepped = {
+    name: future.result() for name, future in step_futures.items()
+}
+```
+
+The base MPI ranks serialize their rank-local StatePools into one immutable
+`CheckpointBundle`. A Dask Future retains that bundle in distributed memory
+and supplies the same bytes to every child Actor. Each child starts its own
+24-rank MPI job, restores new private NumPy arrays through the socket/MPI
+bridge, applies its `BranchSpec` or `SegmentPlan`, and remains alive. No
+`rank-*.npz`, `manifest.json`, or checkpoint directory is created. This is
+bit-preserving memory transport, not zero-copy shared memory: separate PBS
+jobs still deserialize and copy the arrays.
+
+Persistent memory fork currently requires `execution_mode="pbs"` and one
+distinct Dask worker per child so blocking Actor calls can proceed
+concurrently. Every child consumes its own 24-rank PBS job. Set
+`close_parent=True` to release the base PBS job after the distributed snapshot
+is ready. The single-node allocation mode intentionally rejects this API
+because one node cannot host several independent 24-rank MPI worlds.
+
+Choose the checkpoint segment API (`submit_base`, `submit_plan`, `fork`) when
+a boundary must survive worker/job failure or be resumed later. Choose
+`fork_persistent()` for fast in-memory fan-out while the Dask cluster remains
+alive. `model.checkpoint()` remains the explicit durable handoff.
 
 The default `execution_mode="pbs"` submits a PBS job for every segment. The
 single-allocation mode reserves one node once, starts the Dask scheduler and
@@ -460,6 +511,22 @@ Reproduce that gate with:
 
 ```bash
 qsub jobs/dask_persistent_24.pbs
+```
+
+`validation/dask_persistent_fork.json` records the diskless persistent-fork
+gate. A 24-rank base ran 10 steps, then three separate 24-rank PBS models
+restored the same 37,660,986-byte Dask snapshot. Control and no-Kessler were
+bitwise equal to the base across all 5,328 rank-local arrays, warm changed only
+`air_temperature` and was exactly `numpy.add(base, 1.0)`, all children
+advanced independently to step 11 with one MPI launch each, and the validation
+root contained no checkpoint manifest, NPZ file, or checkpoint directory.
+Reproduce it with:
+
+```bash
+python tools/dask_persistent_fork_smoke.py \
+  --run-root /path/to/new/run-root \
+  --initial-run-dir reference/cases/FKESSLER_ne3pg3_gnu_24x50/CaseDocs \
+  --output /path/to/result.json
 ```
 
 All persistent fields have `owner="python"`. Prognostic, tendency, and process

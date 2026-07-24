@@ -102,7 +102,7 @@ class DaskRunResult:
 
 
 TaskRunner = Callable[[SegmentRequest, DaskRunResult | None], DaskRunResult]
-PersistentActorFactory = Callable[[PersistentDaskRequest], Any]
+PersistentActorFactory = Callable[..., Any]
 
 
 class DaskExperimentClient:
@@ -271,6 +271,206 @@ class DaskExperimentClient:
         returned proxy are asynchronous and return Dask ``ActorFuture`` values.
         """
 
+        request, selected_worker = self._persistent_request(
+            name,
+            worker=worker,
+            launch_mode=launch_mode,
+            options=options,
+            scheme_plan=scheme_plan,
+            startup_timeout=startup_timeout,
+            request_timeout=request_timeout,
+        )
+        actor_future = self._submit_persistent_actor(
+            request,
+            selected_worker,
+        )
+        actor = actor_future.result()
+        return PersistentDaskSession(
+            self.client,
+            actor,
+            actor_future,
+            worker=selected_worker,
+            name=name,
+        )
+
+    def submit_persistent(
+        self,
+        name: str,
+        **kwargs: Any,
+    ) -> PersistentDaskSession:
+        """Alias for :meth:`start_persistent` matching Dask submit vocabulary."""
+
+        return self.start_persistent(name, **kwargs)
+
+    def fork_persistent(
+        self,
+        parent: PersistentDaskSession,
+        branches: Sequence[BranchSpec | SegmentPlan],
+        *,
+        workers: Mapping[str, str] | None = None,
+        launch_mode: str | None = None,
+        startup_timeout: float = 900.0,
+        request_timeout: float = 600.0,
+        close_parent: bool = False,
+    ) -> dict[str, PersistentDaskSession]:
+        """Fork independent live MPI models from one immutable memory snapshot.
+
+        The parent snapshot remains in Dask distributed memory. Each child
+        receives the same bytes, restores private rank-local arrays, applies
+        its branch plan, and keeps its MPI ranks alive for later Actor calls.
+        ``close_parent=True`` releases the parent MPI job after Dask has
+        retained the snapshot and before child Actors are launched.
+        """
+
+        if not isinstance(parent, PersistentDaskSession):
+            raise TypeError("persistent parent must be PersistentDaskSession")
+        if parent.client is not self.client:
+            raise ValueError("persistent parent belongs to a different Dask client")
+        if self.execution_mode != "pbs":
+            raise RuntimeError(
+                "persistent in-memory fork currently requires execution_mode='pbs'; "
+                "allocation mode reserves one full-node MPI world"
+            )
+        plans = tuple(
+            branch.to_segment_plan() if isinstance(branch, BranchSpec) else branch
+            for branch in branches
+        )
+        if not plans:
+            raise ValueError("persistent fork requires at least one branch")
+        if not all(isinstance(plan, SegmentPlan) for plan in plans):
+            raise TypeError("persistent branches must be BranchSpec or SegmentPlan")
+        names = [plan.name for plan in plans]
+        if len(names) != len(set(names)):
+            raise ValueError("persistent branch names must be unique")
+        if parent.name in names:
+            raise ValueError("persistent child name must differ from parent name")
+
+        available_workers = self._persistent_workers()
+        if workers is not None:
+            unknown = set(workers) - set(names)
+            if unknown:
+                raise ValueError(
+                    f"worker assignments contain unknown branches: {sorted(unknown)}"
+                )
+            missing = set(names) - set(workers)
+            if missing:
+                raise ValueError(
+                    f"worker assignments omit branches: {sorted(missing)}"
+                )
+            selected_workers = {
+                name: self._persistent_worker(workers[name]) for name in names
+            }
+        else:
+            if len(available_workers) < len(names):
+                raise RuntimeError(
+                    "persistent in-memory fork requires at least one Dask worker "
+                    f"per child; need {len(names)}, found {len(available_workers)}"
+                )
+            selected_workers = dict(zip(names, available_workers))
+        if len(set(selected_workers.values())) != len(names):
+            raise ValueError(
+                "persistent children require distinct Dask workers so their "
+                "blocking Actor calls can run concurrently"
+            )
+
+        snapshot_future = self.client.submit(
+            _capture_persistent_checkpoint,
+            parent.actor,
+            pure=False,
+            workers=[parent.worker],
+            allow_other_workers=False,
+        )
+        if close_parent:
+            snapshot_size = self.client.submit(
+                _checkpoint_nbytes,
+                snapshot_future,
+                pure=False,
+                workers=[parent.worker],
+                allow_other_workers=False,
+            )
+            snapshot_size.result()
+            parent.close().result()
+        actor_futures: dict[str, Any] = {}
+        for plan in plans:
+            request, _selected = self._persistent_request(
+                plan.name,
+                worker=selected_workers[plan.name],
+                launch_mode=launch_mode,
+                options=None,
+                scheme_plan=None,
+                startup_timeout=startup_timeout,
+                request_timeout=request_timeout,
+                parent_name=parent.name,
+                startup_plan=plan,
+            )
+            actor_futures[plan.name] = self._submit_persistent_actor(
+                request,
+                selected_workers[plan.name],
+                snapshot=snapshot_future,
+            )
+
+        children: dict[str, PersistentDaskSession] = {}
+        try:
+            for name in names:
+                actor_future = actor_futures[name]
+                actor = actor_future.result()
+                children[name] = PersistentDaskSession(
+                    self.client,
+                    actor,
+                    actor_future,
+                    worker=selected_workers[name],
+                    name=name,
+                )
+        except BaseException:
+            for child in children.values():
+                try:
+                    child.close().result()
+                except BaseException:
+                    pass
+            for name, actor_future in actor_futures.items():
+                if name in children:
+                    continue
+                try:
+                    actor = actor_future.result()
+                    actor.close().result()
+                except BaseException:
+                    pass
+            raise
+        return children
+
+    def _persistent_worker(self, worker: str | None) -> str:
+        workers = self._persistent_workers()
+        if worker is not None:
+            if worker not in workers:
+                raise ValueError(
+                    f"Dask worker {worker!r} is unavailable; choose one of "
+                    f"{workers}"
+                )
+            return worker
+        return workers[0]
+
+    def _persistent_workers(self) -> tuple[str, ...]:
+        scheduler_info = getattr(self.client, "scheduler_info", None)
+        if not callable(scheduler_info):
+            raise TypeError("persistent Dask execution requires Client.scheduler_info")
+        workers = tuple(sorted(scheduler_info().get("workers", {})))
+        if not workers:
+            raise RuntimeError("Dask has no workers for the persistent CAM Actor")
+        return workers
+
+    def _persistent_request(
+        self,
+        name: str,
+        *,
+        worker: str | None,
+        launch_mode: str | None,
+        options: ModelOptions | None,
+        scheme_plan: KesslerSchemePlan | None,
+        startup_timeout: float,
+        request_timeout: float,
+        parent_name: str | None = None,
+        startup_plan: SegmentPlan | None = None,
+    ) -> tuple[PersistentDaskRequest, str]:
         selected_worker = self._persistent_worker(worker)
         selected_launch_mode = launch_mode or (
             "local" if self.execution_mode == "allocation" else "pbs"
@@ -302,48 +502,32 @@ class DaskExperimentClient:
             },
             scheme_plan=selected_scheme_plan.to_payload(),
             execution_mode=self.execution_mode,
+            parent_name=parent_name,
+            startup_plan=(
+                None if startup_plan is None else startup_plan.as_dict()
+            ),
         )
-        actor_future = self.client.submit(
-            self.persistent_actor_factory,
-            request,
+        return request, selected_worker
+
+    def _submit_persistent_actor(
+        self,
+        request: PersistentDaskRequest,
+        worker: str,
+        *,
+        snapshot: Any | None = None,
+    ) -> Any:
+        arguments = (
+            (self.persistent_actor_factory, request)
+            if snapshot is None
+            else (self.persistent_actor_factory, request, snapshot)
+        )
+        return self.client.submit(
+            *arguments,
             actor=True,
-            workers=[selected_worker],
+            workers=[worker],
             allow_other_workers=False,
             pure=False,
         )
-        actor = actor_future.result()
-        return PersistentDaskSession(
-            self.client,
-            actor,
-            actor_future,
-            worker=selected_worker,
-            name=name,
-        )
-
-    def submit_persistent(
-        self,
-        name: str,
-        **kwargs: Any,
-    ) -> PersistentDaskSession:
-        """Alias for :meth:`start_persistent` matching Dask submit vocabulary."""
-
-        return self.start_persistent(name, **kwargs)
-
-    def _persistent_worker(self, worker: str | None) -> str:
-        scheduler_info = getattr(self.client, "scheduler_info", None)
-        if not callable(scheduler_info):
-            raise TypeError("persistent Dask execution requires Client.scheduler_info")
-        workers = tuple(sorted(scheduler_info().get("workers", {})))
-        if not workers:
-            raise RuntimeError("Dask has no workers for the persistent CAM Actor")
-        if worker is not None:
-            if worker not in workers:
-                raise ValueError(
-                    f"Dask worker {worker!r} is unavailable; choose one of "
-                    f"{workers}"
-                )
-            return worker
-        return workers[0]
 
     def _request(self, branch: BranchSpec | SegmentPlan) -> SegmentRequest:
         plan = branch.to_segment_plan() if isinstance(branch, BranchSpec) else branch
@@ -689,6 +873,21 @@ def _log_tail(path: Path, lines: int = 60) -> str:
 
 def _describe_result(result: DaskRunResult) -> dict[str, Any]:
     return result.describe()
+
+
+def _capture_persistent_checkpoint(actor: Any) -> CheckpointBundle:
+    """Keep an Actor snapshot in Dask memory instead of the notebook process."""
+
+    snapshot = actor.memory_checkpoint().result()
+    if not isinstance(snapshot, CheckpointBundle):
+        raise TypeError("persistent actor returned an invalid memory checkpoint")
+    return snapshot
+
+
+def _checkpoint_nbytes(snapshot: CheckpointBundle) -> int:
+    """Wait for a distributed snapshot without downloading its contents."""
+
+    return snapshot.nbytes
 
 
 def _extract_checkpoint_field(

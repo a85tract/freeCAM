@@ -16,6 +16,9 @@ There are three control surfaces:
 - `DaskExperimentClient.start_persistent()` pins an Actor to one Dask worker.
   The Actor owns a `NotebookSession`, starts MPI once, and exposes the same
   live StatePool through asynchronous Dask method calls.
+- `DaskExperimentClient.fork_persistent()` keeps a base snapshot in Dask
+  distributed memory and restores multiple independent, long-lived child MPI
+  models without checkpoint files.
 - `DaskExperimentClient` submits restartable MPI tasks. A common base `Future`
   retains an immutable checkpoint bundle and can fan out into independent
   model branches without a persistent socket worker. It can either submit one
@@ -84,6 +87,79 @@ The Actor owns the full-node allocation lock for its lifetime. Always call
 `model.close().result()` before launching checkpoint segments in the same
 allocation. Actor loss also loses uncheckpointed memory, so use
 `model.checkpoint()` at important boundaries.
+
+## Fork independent persistent models from memory
+
+This path uses separate PBS jobs, not the one-node allocation mode. Create at
+least one Dask worker per child:
+
+```python
+from dask.distributed import Client
+from pycam_sima import BranchSpec, FieldEdit
+
+client = Client(
+    processes=True,
+    n_workers=3,
+    threads_per_worker=1,
+)
+experiments = DaskExperimentClient(
+    client,
+    config=repo / "configs/fkessler_model.yaml",
+    initial_run_dir=reference_run,
+    run_root=scratch / "pycam-sima/persistent-fork",
+    python_executable=repo / ".venv/bin/python",
+    execution_mode="pbs",
+)
+
+base = experiments.start_persistent("base")
+base.step(10).result()
+children = experiments.fork_persistent(
+    base,
+    (
+        BranchSpec("control", steps=0),
+        BranchSpec(
+            "no-kessler",
+            steps=0,
+            disable_schemes=("kessler",),
+        ),
+        BranchSpec(
+            "warm",
+            steps=0,
+            field_edits=(
+                FieldEdit("air_temperature", "add", 1.0),
+            ),
+        ),
+    ),
+    close_parent=True,
+)
+
+futures = {name: child.step(1) for name, child in children.items()}
+results = {name: future.result() for name, future in futures.items()}
+for child in children.values():
+    child.close().result()
+```
+
+The data path is:
+
+```text
+base MPI ranks
+    -> rank-local serialized StatePools
+    -> base Actor
+    -> one immutable Dask Future
+    -> child Actors
+    -> child MPI rank-local restores
+```
+
+The child receives new arrays with the exact parent bit patterns; it does not
+share writable pointers with the parent or siblings. The transfer does not
+write `rank-*.npz` or a checkpoint manifest, but it is not zero-copy: bytes
+move over the socket/Dask network and are deserialized inside every child.
+`close_parent=True` waits until Dask owns the snapshot, then closes the base
+MPI job before launching children.
+
+Use `fork_persistent()` when all branches should remain interactive and the
+Dask cluster will stay alive. Use ordinary `fork()` when checkpoint durability,
+later restart, or allocation-mode execution matters.
 
 ## Start a session
 

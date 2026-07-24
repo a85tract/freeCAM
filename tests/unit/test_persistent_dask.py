@@ -1,3 +1,4 @@
+import json
 from pathlib import Path
 from typing import Any
 
@@ -6,6 +7,8 @@ import numpy as np
 import pytest
 
 from pycam_sima import (
+    BranchSpec,
+    CheckpointBundle,
     DaskExperimentClient,
     FieldEdit,
     KesslerSchemePlan,
@@ -144,6 +147,35 @@ class _FakeSession:
         (target / "manifest.json").write_text("{}")
         return target
 
+    def memory_checkpoint(self) -> CheckpointBundle:
+        payload = {
+            "step": self.current_step,
+            "native_calls": self.native_calls,
+            "values": [value.tolist() for value in self.values],
+        }
+        return CheckpointBundle(
+            (("fake-state.json", json.dumps(payload).encode("utf-8")),)
+        )
+
+    def restore_memory_checkpoint(
+        self,
+        snapshot: CheckpointBundle,
+    ) -> dict[str, Any]:
+        payload = json.loads(dict(snapshot.files)["fake-state.json"])
+        self.current_step = int(payload["step"])
+        self.native_calls = int(payload["native_calls"])
+        self.values = [
+            np.array(value, dtype=np.float64, order="F")
+            for value in payload["values"]
+        ]
+        return {
+            "step": self.current_step,
+            "native_calls": self.native_calls,
+            "phase_status": self.phase_status,
+            "scheme_status": self.scheme_status,
+            "restored_from_memory": True,
+        }
+
 
 class _FakeSchemeEditor:
     def __init__(self, session: _FakeSession, plan: KesslerSchemePlan) -> None:
@@ -253,6 +285,7 @@ def test_persistent_actor_reuses_one_live_session_for_all_actions(
     )
     stats = actor.get_field_stats("air_temperature", rank=0)
     checkpoint = actor.checkpoint()
+    memory_checkpoint = actor.memory_checkpoint()
     closed = actor.close()
 
     assert result["step"] == 2
@@ -265,6 +298,7 @@ def test_persistent_actor_reuses_one_live_session_for_all_actions(
     ]
     assert stats["mean"] == 241.0
     assert Path(checkpoint["checkpoint_dir"]).is_dir()
+    assert memory_checkpoint.nbytes > 0
     assert closed["mpi_launch_count"] == 1
 
 
@@ -294,15 +328,31 @@ def test_persistent_actor_validates_full_plan_before_mutation(
 
 
 class _EchoPersistentActor:
-    def __init__(self, request: PersistentDaskRequest) -> None:
+    def __init__(
+        self,
+        request: PersistentDaskRequest,
+        snapshot: CheckpointBundle | None = None,
+    ) -> None:
         self.name = request.name
-        self.step_count = 0
+        self.parent_name = request.parent_name
+        self.snapshot_transport = "initialization"
+        if snapshot is None:
+            self.step_count = 0
+        else:
+            payload = json.loads(dict(snapshot.files)["echo.json"])
+            self.step_count = int(payload["step"])
+            self.snapshot_transport = "memory"
+        if request.startup_plan is not None:
+            plan = SegmentPlan.from_mapping(request.startup_plan)
+            self.step_count += plan.step_count
 
     def describe(self) -> dict[str, Any]:
         return {
             "name": self.name,
+            "parent_name": self.parent_name,
             "step": self.step_count,
             "mpi_launch_count": 1,
+            "snapshot_transport": self.snapshot_transport,
         }
 
     def step(self, count: int = 1) -> dict[str, Any]:
@@ -314,6 +364,16 @@ class _EchoPersistentActor:
 
     def close(self) -> dict[str, Any]:
         return {"closed": True, "mpi_launch_count": 1}
+
+    def memory_checkpoint(self) -> CheckpointBundle:
+        return CheckpointBundle(
+            (
+                (
+                    "echo.json",
+                    json.dumps({"step": self.step_count}).encode("utf-8"),
+                ),
+            )
+        )
 
 
 def test_dask_client_pins_persistent_actor_and_returns_actor_futures(
@@ -340,3 +400,51 @@ def test_dask_client_pins_persistent_actor_and_returns_actor_futures(
         }
         assert model.describe().result()["step"] == 3
         assert model.close().result()["closed"] is True
+
+
+def test_dask_client_forks_independent_persistent_actors_from_memory(
+    tmp_path: Path,
+) -> None:
+    with Client(
+        processes=False,
+        n_workers=3,
+        threads_per_worker=1,
+        dashboard_address=None,
+    ) as client:
+        experiments = DaskExperimentClient(
+            client,
+            persistent_actor_factory=_EchoPersistentActor,
+            **_inputs(tmp_path),
+        )
+        base = experiments.start_persistent("base")
+        assert base.step(10).result()["step"] == 10
+        assert base.describe().result()["step"] == 10
+        worker_names = tuple(sorted(client.scheduler_info()["workers"]))
+        children = experiments.fork_persistent(
+            base,
+            (
+                BranchSpec("control", steps=2),
+                BranchSpec("experiment", steps=3),
+            ),
+            workers={
+                "control": worker_names[1],
+                "experiment": worker_names[2],
+            },
+            close_parent=True,
+        )
+        statuses = {
+            name: child.describe().result()
+            for name, child in children.items()
+        }
+
+        assert statuses["control"]["step"] == 12
+        assert statuses["experiment"]["step"] == 13
+        assert statuses["control"]["parent_name"] == "base"
+        assert statuses["experiment"]["parent_name"] == "base"
+        assert statuses["control"]["snapshot_transport"] == "memory"
+        with pytest.raises(RuntimeError, match="closed"):
+            base.describe()
+        assert not tuple((tmp_path / "runs").glob("**/checkpoints"))
+
+        for child in children.values():
+            child.close().result()
