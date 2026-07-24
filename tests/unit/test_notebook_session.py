@@ -8,6 +8,9 @@ from pycam_sima.model import (
     ModelConfig,
     ModelOptions,
     PHYSICS_BEFORE_COUPLER,
+    PhysicsPluginSpec,
+    SchemePlacement,
+    VariableSpec,
 )
 from pycam_sima.notebook.session import NotebookSession, NotebookWorkerError
 
@@ -184,6 +187,70 @@ def test_scheme_plan_is_editable_and_scheme_calls_are_collective(
             "scheme": "physics_before_coupler.kessler",
         }
     ]
+
+
+def test_dynamic_variable_and_plugin_requests_are_collective(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    session = _session(tmp_path, monkeypatch)
+    monkeypatch.setattr(session, "_validate_started_options", lambda: None)
+    requests = []
+    variable = VariableSpec(
+        "runtime_control",
+        "float64",
+        ("nphys_local",),
+        standard_name="runtime_control",
+    )
+    plugin = PhysicsPluginSpec(
+        "/shared/runtime_probe/device.json",
+        placements=(SchemePlacement("runtime_probe"),),
+        name="runtime_probe",
+    )
+
+    def request(payload):
+        requests.append(payload)
+        fields = dict(session._fields)
+        if payload["op"] == "define_variable":
+            fields[variable.name] = {
+                "standard_name": variable.name,
+                "ccpp_standard_name": variable.standard_name,
+                "shape": (27,),
+                "dtype": "<f8",
+                "dimensions": variable.dimensions,
+                "intent": variable.intent,
+                "owner": "python",
+                "lifetime": "persistent",
+                "category": variable.category,
+                "units": variable.units,
+                "writable": True,
+                "alias": False,
+            }
+        plugins = (
+            {
+                "name": "runtime_probe",
+                "active": True,
+                "pending": False,
+            },
+        ) if payload["op"] == "install_physics" else ()
+        result = {
+            "step": 0,
+            "phase_status": {"step": 0, "last_phase": None},
+            "scheme_status": session._scheme_status,
+            "fields": fields,
+            "plugins": plugins,
+        }
+        if payload["op"] == "install_physics":
+            result["installed_plugin"] = plugins[0]
+        return result
+
+    monkeypatch.setattr(session, "_request", request)
+    metadata = session.define_variable(variable, initial=2.0)
+    installed = session.install_physics(plugin, unsafe=True)
+
+    assert metadata["ccpp_standard_name"] == "runtime_control"
+    assert installed["name"] == "runtime_probe"
+    assert requests[0]["op"] == "define_variable"
+    assert requests[1]["op"] == "install_physics"
 
 
 def test_typed_model_parameter_facade(

@@ -354,6 +354,20 @@ class FortranDevice:
                 f"device {self.name!r} entrypoint {entrypoint!r} failed "
                 f"with code {status}{suffix}"
             )
+        for argument in contract["arguments"]:
+            if argument["intent"] not in {"out", "inout"}:
+                continue
+            if argument["dtype"] == "opaque":
+                # Opaque derived-type state lives in StatePool's native
+                # handle registry, not in its NumPy field schema.
+                continue
+            binding = argument["binding"]
+            if binding["source"] == "field":
+                pool.mark_initialized(str(binding["name"]))
+            elif binding["source"] == "standard_name":
+                pool.mark_initialized(
+                    pool.ccpp_field_name(str(binding["name"]))
+                )
 
     def invoke_process(self, process: str, pool: Any) -> None:
         try:
@@ -416,6 +430,7 @@ class DeviceRegistry:
         self.root = self.roots[0] if self.roots else Path(".").resolve()
         self.devices: dict[str, FortranDevice] = {}
         self._processes: dict[str, FortranDevice] = {}
+        self._retired_devices: list[FortranDevice] = []
         for device_root in self.roots:
             if not device_root.is_dir():
                 continue
@@ -440,6 +455,25 @@ class DeviceRegistry:
         self.devices[device.name] = device
         for process in device.processes:
             self._processes[process] = device
+
+    def unregister(self, name: str) -> FortranDevice:
+        """Stop routing a device while keeping its shared library mapped."""
+
+        try:
+            device = self.devices.pop(name)
+        except KeyError as exc:
+            raise DeviceContractError(
+                f"unknown device name {name!r}"
+            ) from exc
+        self._processes = {
+            process: owner
+            for process, owner in self._processes.items()
+            if owner is not device
+        }
+        # ctypes has no portable, safe hot-unload contract for Fortran module
+        # code. Keep the object alive until the registry itself is finalized.
+        self._retired_devices.append(device)
+        return device
 
     @property
     def process_names(self) -> frozenset[str]:

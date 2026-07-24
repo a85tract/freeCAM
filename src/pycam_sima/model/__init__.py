@@ -27,8 +27,12 @@ from .errors import DeviceBuildError, DeviceContractError
 from .driver import CAMDriver, DriverState
 from .experiment import (
     Action,
+    ActivatePhysics,
     BranchSpec,
+    DeactivatePhysics,
+    DefineVariable,
     FieldEdit,
+    InstallPhysics,
     MoveScheme,
     ObserveFields,
     PrepareInitialStep,
@@ -54,9 +58,17 @@ from .host_services import (
     HistoryObservation,
     PythonHistoryService,
 )
+from .plugins import (
+    InstalledPhysicsPlugin,
+    PhysicsPluginManager,
+    PhysicsPluginSpec,
+    SchemePlacement,
+    VariableSpec,
+)
 
 __all__ = [
     "Action",
+    "ActivatePhysics",
     "BranchSpec",
     "CheckpointBundle",
     "CCPPDeviceHost",
@@ -73,7 +85,10 @@ __all__ = [
     "FortranDevice",
     "CAMDriver",
     "DriverState",
+    "DeactivatePhysics",
+    "DefineVariable",
     "FieldEdit",
+    "InstallPhysics",
     "KesslerSchemePlan",
     "PHYSICS_AFTER_COUPLER",
     "PHYSICS_BEFORE_COUPLER",
@@ -101,6 +116,11 @@ __all__ = [
     "HostServiceEvent",
     "HostServiceRegistry",
     "HistoryObservation",
+    "InstalledPhysicsPlugin",
+    "PhysicsPluginManager",
+    "PhysicsPluginSpec",
+    "SchemePlacement",
+    "VariableSpec",
     "PythonHistoryService",
     "SuiteNode",
     "SuiteScheme",

@@ -15,8 +15,12 @@ from typing import Any, Callable, Mapping
 import numpy as np
 
 from ..model import (
+    ActivatePhysics,
     CheckpointBundle,
+    DeactivatePhysics,
+    DefineVariable,
     FieldEdit,
+    InstallPhysics,
     KesslerSchemePlan,
     ModelOptions,
     MoveScheme,
@@ -28,6 +32,8 @@ from ..model import (
     RunSteps,
     SegmentPlan,
     SetSchemeEnabled,
+    PhysicsPluginSpec,
+    VariableSpec,
 )
 from ..model.scheme_plan import SCHEME_GROUPS
 from .session import NotebookSession
@@ -197,6 +203,9 @@ class PersistentCAMActor:
                 "phase_status": dict(self._session.phase_status),
                 "scheme_names": tuple(self._session.scheme_names),
                 "scheme_status": dict(self._session.scheme_status),
+                "plugins": tuple(
+                    getattr(self._session, "physics_plugins", ())
+                ),
             }
 
     def prepare_initial_step(self) -> Mapping[str, Any]:
@@ -230,6 +239,54 @@ class PersistentCAMActor:
             self._ensure_open()
             self._session.run_scheme_group(group)
             return self._command_status()
+
+    def define_variable(
+        self, payload: Mapping[str, Any], initial: Any = 0.0
+    ) -> Mapping[str, Any]:
+        with self._guard:
+            self._ensure_open()
+            spec = VariableSpec.from_mapping(payload)
+            metadata = self._session.define_variable(spec, initial=initial)
+            return {
+                **self._command_status(),
+                "variable": dict(metadata),
+            }
+
+    def install_physics(
+        self,
+        payload: Mapping[str, Any],
+        initial_values: Mapping[str, Any] | None = None,
+        effective: str = "now",
+        unsafe: bool = False,
+    ) -> Mapping[str, Any]:
+        with self._guard:
+            self._ensure_open()
+            plugin = self._session.install_physics(
+                PhysicsPluginSpec.from_mapping(payload),
+                initial_values=initial_values,
+                effective=effective,
+                unsafe=unsafe,
+            )
+            return {
+                **self._command_status(),
+                "plugin": dict(plugin),
+            }
+
+    def activate_physics(
+        self, name: str, unsafe: bool = False
+    ) -> Mapping[str, Any]:
+        with self._guard:
+            self._ensure_open()
+            plugin = self._session.activate_physics(name, unsafe=unsafe)
+            return {**self._command_status(), "plugin": dict(plugin)}
+
+    def deactivate_physics(
+        self, name: str, unsafe: bool = False
+    ) -> Mapping[str, Any]:
+        with self._guard:
+            self._ensure_open()
+            plugin = self._session.deactivate_physics(name, unsafe=unsafe)
+            return {**self._command_status(), "plugin": dict(plugin)}
 
     def get_field(self, name: str, rank: int | str = 0) -> Any:
         with self._guard:
@@ -366,6 +423,25 @@ class PersistentCAMActor:
                     )
                 elif isinstance(action, ObserveFields):
                     observations = self._observe_fields(action)
+                elif isinstance(action, DefineVariable):
+                    self._session.define_variable(
+                        action.spec, initial=action.initial_value
+                    )
+                elif isinstance(action, InstallPhysics):
+                    self._session.install_physics(
+                        action.plugin,
+                        initial_values=action.initial_values,
+                        effective=action.effective,
+                        unsafe=True,
+                    )
+                elif isinstance(action, ActivatePhysics):
+                    self._session.activate_physics(
+                        action.name, unsafe=True
+                    )
+                elif isinstance(action, DeactivatePhysics):
+                    self._session.deactivate_physics(
+                        action.name, unsafe=True
+                    )
                 else:  # pragma: no cover - SegmentPlan validates construction.
                     raise TypeError(
                         f"unsupported persistent action {type(action).__name__}"
@@ -450,6 +526,12 @@ class PersistentCAMActor:
 
     def _validate_plan(self, plan: SegmentPlan) -> None:
         candidate = KesslerSchemePlan.from_payload(self._session.scheme_status["plan"])
+        planned_processes: set[str] = set()
+        planned_plugins = {
+            str(item["name"])
+            for item in getattr(self._session, "physics_plugins", ())
+        }
+        planned_fields = set(self._session.field_names)
         for action in plan.actions:
             if isinstance(action, RunPhase):
                 if action.name not in self._session.phase_names:
@@ -462,7 +544,8 @@ class PersistentCAMActor:
                         "run_phase actions require SegmentPlan(unsafe=True)"
                     )
             elif isinstance(action, RunScheme):
-                candidate.scheme(action.name, group=action.group)
+                if action.name not in planned_processes:
+                    candidate.scheme(action.name, group=action.group)
                 if not plan.unsafe:
                     raise ValueError(
                         "run_scheme actions require SegmentPlan(unsafe=True)"
@@ -514,18 +597,55 @@ class PersistentCAMActor:
                     unsafe=True,
                 )
             elif isinstance(action, FieldEdit):
+                if action.name not in planned_fields:
+                    raise KeyError(f"unknown CAM-SIMA field: {action.name}")
                 info = self._session.field_info(action.name)
                 if action.unsafe and not plan.unsafe:
                     raise ValueError(
                         "unsafe field edits require SegmentPlan(unsafe=True)"
                     )
-                if not bool(info.get("writable", True)) and not action.unsafe:
+                if (
+                    not bool(info.get("writable", True))
+                    and not action.unsafe
+                ):
                     raise ValueError(
                         f"field {action.name!r} is read-only after initialization"
                     )
+            elif isinstance(action, DefineVariable):
+                if action.spec.name in planned_fields:
+                    raise ValueError(
+                        f"duplicate state field {action.spec.name!r}"
+                    )
+                planned_fields.add(action.spec.name)
+                planned_fields.update(action.spec.aliases)
+            elif isinstance(action, InstallPhysics):
+                if not plan.unsafe:
+                    raise ValueError(
+                        "install_physics actions require "
+                        "SegmentPlan(unsafe=True)"
+                    )
+                for variable in action.plugin.variables:
+                    planned_fields.add(variable.name)
+                    planned_fields.update(variable.aliases)
+                planned_processes.update(
+                    item.process for item in action.plugin.placements
+                )
+                if action.plugin.name is not None:
+                    planned_plugins.add(action.plugin.name)
+            elif isinstance(action, (ActivatePhysics, DeactivatePhysics)):
+                if not plan.unsafe:
+                    raise ValueError(
+                        f"{type(action).__name__} requires "
+                        "SegmentPlan(unsafe=True)"
+                    )
+                if action.name not in planned_plugins:
+                    raise ValueError(
+                        f"unknown planned physics plugin {action.name!r}"
+                    )
             elif isinstance(action, ObserveFields):
                 for name in action.fields:
-                    self._session.field_info(name)
+                    if name not in planned_fields:
+                        self._session.field_info(name)
 
     def _observe_fields(self, action: ObserveFields) -> list[dict[str, Any]]:
         observations: list[dict[str, Any]] = []
@@ -606,6 +726,10 @@ class PersistentCAMActor:
             "mpi_launch_count": self._mpi_launch_count,
             "phase_status": dict(self._session.phase_status),
             "scheme_status": dict(self._session.scheme_status),
+            "field_count": len(self._session.field_names),
+            "plugins": tuple(
+                getattr(self._session, "physics_plugins", ())
+            ),
         }
 
     def __del__(self) -> None:
@@ -661,6 +785,41 @@ class PersistentDaskSession:
 
     def run_scheme_group(self, group: str) -> Any:
         return self._call("run_scheme_group", str(group))
+
+    def define_variable(
+        self, spec: VariableSpec, *, initial: Any = 0.0
+    ) -> Any:
+        if not isinstance(spec, VariableSpec):
+            raise TypeError("spec must be VariableSpec")
+        return self._call("define_variable", spec.as_dict(), initial)
+
+    def install_physics(
+        self,
+        spec: PhysicsPluginSpec,
+        *,
+        initial_values: Mapping[str, Any] | None = None,
+        effective: str = "now",
+        unsafe: bool = False,
+    ) -> Any:
+        if not isinstance(spec, PhysicsPluginSpec):
+            raise TypeError("spec must be PhysicsPluginSpec")
+        return self._call(
+            "install_physics",
+            spec.as_dict(),
+            dict(initial_values or {}),
+            effective,
+            bool(unsafe),
+        )
+
+    def activate_physics(
+        self, name: str, *, unsafe: bool = False
+    ) -> Any:
+        return self._call("activate_physics", str(name), bool(unsafe))
+
+    def deactivate_physics(
+        self, name: str, *, unsafe: bool = False
+    ) -> Any:
+        return self._call("deactivate_physics", str(name), bool(unsafe))
 
     def field(self, name: str, *, rank: int | str = 0) -> Any:
         return self._call("get_field", str(name), rank)

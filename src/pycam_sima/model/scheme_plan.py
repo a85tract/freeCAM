@@ -113,10 +113,30 @@ class KesslerSchemePlan:
             source_group = str(row.get("source_group", group))
             cls._validate_group(group)
             key = f"{source_group}.{name}"
-            try:
-                template = _DEFAULT_BY_KEY[key]
-            except KeyError as exc:
-                raise ValueError(f"unknown FKESSLER scheme {key!r}") from exc
+            template = _DEFAULT_BY_KEY.get(key)
+            if template is None:
+                required_values = {
+                    "category", "description", "implementation", "required"
+                }
+                missing = sorted(required_values - set(row))
+                if missing:
+                    raise ValueError(
+                        f"dynamic scheme {key!r} lacks metadata {missing}"
+                    )
+                required = row["required"]
+                if not isinstance(required, bool):
+                    raise TypeError(
+                        f"required for {key!r} must be bool"
+                    )
+                template = PhysicsScheme(
+                    name=name,
+                    group=group,
+                    source_group=source_group,
+                    category=str(row["category"]),
+                    description=str(row["description"]),
+                    implementation=str(row["implementation"]),
+                    required=required,
+                )
             enabled = row.get("enabled")
             if not isinstance(enabled, bool):
                 raise TypeError(f"enabled for {key!r} must be bool")
@@ -155,7 +175,7 @@ class KesslerSchemePlan:
     ) -> PhysicsScheme:
         if group is not None:
             self._validate_group(group)
-        if name in _DEFAULT_BY_KEY:
+        if name in self.keys:
             matches = [
                 scheme for scheme in self._schemes
                 if scheme.key == name
@@ -253,6 +273,56 @@ class KesslerSchemePlan:
         self._schemes = list(DEFAULT_KESSLER_SCHEMES)
         self._sequence_safe = True
 
+    def add(
+        self,
+        scheme: PhysicsScheme,
+        *,
+        before: str | None = None,
+        after: str | None = None,
+        unsafe: bool = False,
+    ) -> None:
+        """Insert one runtime-discovered physics process."""
+
+        if not unsafe:
+            raise ValueError(
+                "adding a physics scheme requires unsafe=True"
+            )
+        self._validate_group(scheme.group)
+        if scheme.key in self.keys:
+            raise ValueError(f"duplicate scheme identity {scheme.key!r}")
+        if before is not None and after is not None:
+            raise ValueError("provide at most one of before= or after=")
+        anchor_name = before if before is not None else after
+        if anchor_name is None:
+            group_indices = [
+                index for index, item in enumerate(self._schemes)
+                if item.group == scheme.group
+            ]
+            insert_at = (
+                group_indices[-1] + 1 if group_indices else len(self._schemes)
+            )
+        else:
+            anchor = self.scheme(anchor_name, group=scheme.group)
+            insert_at = self._schemes.index(anchor)
+            if after is not None:
+                insert_at += 1
+        self._schemes.insert(insert_at, scheme)
+        self._sequence_safe = False
+
+    def remove(self, name: str, *, unsafe: bool = False) -> PhysicsScheme:
+        if not unsafe:
+            raise ValueError(
+                "removing a physics scheme requires unsafe=True"
+            )
+        scheme = self.scheme(name)
+        if scheme.key in _DEFAULT_BY_KEY:
+            raise ValueError(
+                f"built-in scheme {scheme.key!r} may be disabled but not removed"
+            )
+        self._schemes.remove(scheme)
+        self._sequence_safe = False
+        return scheme
+
     def describe(self, group: str | None = None) -> list[dict[str, object]]:
         if group is not None:
             self._validate_group(group)
@@ -290,6 +360,10 @@ class KesslerSchemePlan:
                     "source_group": scheme.source_group,
                     "name": scheme.name,
                     "enabled": scheme.enabled,
+                    "category": scheme.category,
+                    "description": scheme.description,
+                    "implementation": scheme.implementation,
+                    "required": scheme.required,
                 }
                 for scheme in self._schemes
             ],
@@ -308,8 +382,12 @@ class KesslerSchemePlan:
     def _validate(self) -> None:
         if len(self.keys) != len(set(self.keys)):
             raise ValueError("scheme source identities must be unique")
-        if set(self.keys) != set(_DEFAULT_BY_KEY):
-            raise ValueError("a scheme plan must contain every FKESSLER scheme exactly once")
+        missing = set(_DEFAULT_BY_KEY) - set(self.keys)
+        if missing:
+            raise ValueError(
+                "a scheme plan must contain every FKESSLER scheme; "
+                f"missing {sorted(missing)}"
+            )
         for scheme in self._schemes:
             self._validate_group(scheme.group)
 

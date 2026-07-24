@@ -274,6 +274,51 @@ scheme moved out of `physics_before_coupler` no longer runs during nstep=0 or
 end-of-step preparation; it instead runs when the next step enters
 `physics_after_coupler`.
 
+## Add variables and physics at runtime
+
+Every command below is broadcast to all MPI ranks and commits only after their
+execution cursor and schema hashes agree:
+
+```python
+from pycam_sima import PhysicsPluginSpec, SchemePlacement, VariableSpec
+
+model.define_variable(
+    VariableSpec(
+        name="experiment_tracer",
+        standard_name="experiment_tracer",
+        dtype="float64",
+        dimensions=("nphys_local", "pver"),
+        units="kg kg-1",
+    ),
+    initial=0.0,
+)
+
+plugin = model.install_physics(
+    PhysicsPluginSpec(
+        "/shared/plugin/device.json",
+        placements=(
+            SchemePlacement(
+                "experiment_microphysics",
+                group="physics_before_coupler",
+                after="kessler",
+            ),
+        ),
+    ),
+    initial_values={"required_plugin_input": 1.0},
+    unsafe=True,
+)
+
+model.run_scheme("experiment_microphysics")
+field = model.get_field("experiment_tracer", rank=0)
+```
+
+Pass a source `device.yaml` instead of `device.json` to build its adapter and
+`.so` in the shared plugin cache. `effective="next_step"` defers activation;
+`activate_physics()` and `deactivate_physics()` are explicit collective
+controls. For Dask, the same operations are available as `DefineVariable`,
+`InstallPhysics`, `ActivatePhysics`, and `DeactivatePhysics` actions inside a
+`SegmentPlan`.
+
 `unsafe=True` is required because disabling or moving a required scheme makes
 the sequence scientifically different from the validated default. It does not
 bypass array shape, pointer-stability, MPI, or ABI checks.

@@ -199,6 +199,75 @@ routes that process through the registry. Adding a compatible CCPP scheme does
 not require adding a hard-coded ctypes signature or StatePool argument list to
 `backend.py`.
 
+### Runtime plugins and variables
+
+Version 0.13 adds a collective runtime extension API. A plugin may be an
+original-source `device.yaml` or a prebuilt `device.json` beside its `.so`.
+Source plugins are built once in a hash-addressed shared cache; prebuilt
+plugins pass the same ABI, source-hash, exported-symbol, ELF-dependency, and
+RPATH checks. Explicit paths, `PYCAM_SIMA_PLUGIN_PATH`, and Python entry points
+in the `pycam_sima.physics` group are discoverable.
+
+```python
+from pycam_sima import PhysicsPluginSpec, SchemePlacement, VariableSpec
+
+model.define_variable(
+    VariableSpec(
+        name="droplet_number",
+        standard_name="cloud_droplet_number_concentration",
+        dtype="float64",
+        dimensions=("nphys_local", "pver"),
+        units="kg-1",
+    ),
+    initial=0.0,
+)
+
+installed = model.install_physics(
+    PhysicsPluginSpec(
+        "/shared/my_microphysics/device.yaml",
+        project_root="/shared/my_microphysics",
+        placements=(
+            SchemePlacement(
+                "my_microphysics",
+                group="physics_before_coupler",
+                after="kessler",
+            ),
+        ),
+    ),
+    initial_values={"my_required_input": 1.0},
+    effective="now",
+    unsafe=True,
+)
+```
+
+CCPP argument metadata supplies missing primitive-variable contracts. Existing
+standard names are reused zero-copy only when dtype, shape, and units match;
+new `intent(in)`/`intent(inout)` fields require an initial value. Runtime
+additions may use existing named dimensions or literal sizes but cannot resize
+or replace an existing array.
+
+Installation, activation, and deactivation are MPI-collective transactions at
+phase/scheme boundaries. Every rank verifies the same cursor, plugin bytes,
+and StatePool schema. `effective="next_step"` loads immediately but enables
+the placement at the next complete step.
+
+Dynamic fields default to checkpointed and not written to history. Checkpoint
+schema v2 records complete contracts, plugin hashes, placements, and activation
+state; restore fails closed if the exact shared artifact is unavailable.
+
+A runnable source plugin is included at
+`examples/plugins/runtime_temperature_offset/device.yaml`. The 24-rank gate
+builds it from the original Fortran source, executes it, checkpoints all
+dynamic fields, reloads the generated prebuilt artifact, and executes it
+again:
+
+```bash
+qsub jobs/dynamic_runtime_24.pbs
+```
+
+The all-rank hashes, artifact identities, and PBS result are recorded in
+`validation/dynamic_plugins_and_variables.json`.
+
 Fortran module state is explicit in the device policy. Kessler is
 `reinitialize_each_run`: Python passes `lv`, `pref`, and `rhoqr` through the
 generated initialize adapter immediately before each original run, so Python

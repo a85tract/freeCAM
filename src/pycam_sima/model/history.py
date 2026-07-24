@@ -53,6 +53,31 @@ class HistoryWriter:
         for output_name, state_name in HISTORY_FIELDS:
             value = pool.get(state_name)
             payload[output_name] = np.ascontiguousarray(value)
+        dynamic_history: dict[str, tuple[str, str]] = {}
+        for state_name in sorted(pool.dynamic_fields):
+            contract = pool.contracts[state_name]
+            if not contract.history:
+                continue
+            if contract.dimensions not in {
+                ("nphys_local",),
+                ("nphys_local", "pver"),
+                ("nphys_local", "pverp"),
+            }:
+                raise ValueError(
+                    f"history field {state_name!r} has unsupported dimensions "
+                    f"{contract.dimensions}"
+                )
+            values = pool.get(state_name)
+            if values.dtype.kind not in {"b", "i", "u", "f"}:
+                raise TypeError(
+                    f"history field {state_name!r} has non-numeric dtype "
+                    f"{values.dtype}"
+                )
+            payload[state_name] = np.ascontiguousarray(values)
+            dynamic_history[state_name] = (
+                contract.units,
+                contract.ccpp_standard_name or contract.standard_name,
+            )
         gathered = self.comm.gather(payload, root=0)
         if self.comm.rank != 0: return None
         self.output_dir.mkdir(parents=True, exist_ok=True)
@@ -107,6 +132,14 @@ class HistoryWriter:
                 variable = ds.createVariable(name, "f8", dims)
                 variable[:] = output
                 variable.setncattr("cell_methods", "time: point")
+                if name in dynamic_history:
+                    units, standard_name = dynamic_history[name]
+                    variable.setncatts(
+                        {
+                            "units": units,
+                            "standard_name": standard_name,
+                        }
+                    )
             ds.setncatts({"ne": 3, "fv_nphys": 3, "Conventions": "CF-1.0", "source": "CAM-SIMA Python-owned runtime", "case": self.case_name, "time_period_freq": "step_1"})
         pool.get("history_sample_count")[...] += 1
         return path

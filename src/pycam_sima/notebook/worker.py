@@ -11,7 +11,14 @@ from typing import Any, Mapping
 
 import numpy as np
 
-from ..model import CAMDriver, KesslerSchemePlan, ModelConfig, ModelOptions
+from ..model import (
+    CAMDriver,
+    KesslerSchemePlan,
+    ModelConfig,
+    ModelOptions,
+    PhysicsPluginSpec,
+    VariableSpec,
+)
 from ..model.checkpoint import (
     CheckpointBundle,
     deserialize_snapshot,
@@ -32,6 +39,7 @@ def _runtime_status(driver: CAMDriver) -> dict[str, Any]:
         "native_calls": driver.backend.call_count,
         "phase_status": driver.phase_status,
         "scheme_status": driver.scheme_status,
+        "plugins": driver.plugins.inventory(),
     }
 
 
@@ -58,6 +66,39 @@ def _local_command(request: dict[str, Any], driver: CAMDriver, comm: Any) -> Any
         return _runtime_status(driver)
     if operation == "configure_scheme_plan":
         driver.scheme_plan = KesslerSchemePlan.from_payload(request["plan"])
+        return _runtime_status(driver)
+    if operation == "define_variable":
+        driver.define_variable(
+            VariableSpec.from_mapping(request["spec"]),
+            initial=request.get("initial_value", 0.0),
+        )
+        return {
+            **_runtime_status(driver),
+            "fields": model_field_metadata(driver.pool),
+        }
+    if operation == "install_physics":
+        installed = driver.install_physics(
+            PhysicsPluginSpec.from_mapping(request["plugin"]),
+            initial_values=request.get("initial_values"),
+            effective=str(request.get("effective", "now")),
+            unsafe=bool(request.get("unsafe", False)),
+        )
+        return {
+            **_runtime_status(driver),
+            "fields": model_field_metadata(driver.pool),
+            "installed_plugin": installed.as_dict(),
+        }
+    if operation == "activate_physics":
+        driver.activate_physics(
+            str(request["name"]),
+            unsafe=bool(request.get("unsafe", False)),
+        )
+        return _runtime_status(driver)
+    if operation == "deactivate_physics":
+        driver.deactivate_physics(
+            str(request["name"]),
+            unsafe=bool(request.get("unsafe", False)),
+        )
         return _runtime_status(driver)
     if operation == "write_checkpoint":
         return str(driver.write_checkpoint(str(request["path"])))
@@ -213,6 +254,7 @@ def _restore_memory_checkpoint(
             "result": {
                 **statuses[0],
                 "restored_from_memory": True,
+                "fields": model_field_metadata(candidate.pool),
             },
         }
     return candidate, response

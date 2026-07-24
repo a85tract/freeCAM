@@ -19,6 +19,7 @@ _STATIC_CATEGORIES = {
     "topology",
     "communication",
 }
+_UNSET = object()
 
 
 @dataclass(frozen=True, slots=True)
@@ -60,17 +61,14 @@ class StatePool:
         self._aliases: dict[str, tuple[str, int | None, int | None]] = {}
         self._ccpp_fields: dict[str, str] = {}
         self._process_state: dict[str, NativeObjectHandle] = {}
+        self._initialized_fields: set[str] = set()
+        self._dynamic_fields: set[str] = set()
         self._sealed = False
 
-        for item in self.contracts.values():
-            shape = item.shape(self.dimensions)
-            self._arrays[item.standard_name] = np.zeros(shape, dtype=item.dtype, order="F")
-            if item.ccpp_standard_name is not None:
-                self._register_ccpp_name(
-                    item.ccpp_standard_name, item.standard_name
-                )
-            for alias in item.aliases:
-                self._register_alias(alias, item.standard_name, None, None)
+        initial_contracts = tuple(self.contracts.values())
+        self.contracts.clear()
+        for item in initial_contracts:
+            self.register_field(item, initialized=True, dynamic=False)
         rules = default_alias_rules() if alias_rules is None else alias_rules
         for rule in rules:
             self._register_alias(rule.alias, rule.target, rule.axis, rule.index)
@@ -165,6 +163,141 @@ class StatePool:
         if unsafe and not target.flags.writeable:
             target.flags.writeable = True
         np.copyto(target, value, casting="same_kind")
+        self._initialized_fields.add(self.canonical_name(name))
+
+    def register_field(
+        self,
+        contract: FieldContract,
+        *,
+        initial: Any = _UNSET,
+        initialized: bool | None = None,
+        dynamic: bool = True,
+    ) -> np.ndarray:
+        """Add Python-owned canonical storage without moving existing arrays."""
+
+        name = contract.standard_name
+        if name in self.contracts or name in self._aliases:
+            raise StateOwnershipError(f"duplicate state field {name!r}")
+        if contract.owner != "python":
+            raise StateOwnershipError(
+                f"dynamic field {name!r} must be owned by Python"
+            )
+        missing_dimensions = [
+            item for item in contract.dimensions
+            if not str(item).isdigit() and item not in self.dimensions
+        ]
+        if missing_dimensions:
+            raise StateOwnershipError(
+                f"field {name!r} uses unknown dimensions "
+                f"{missing_dimensions}"
+            )
+        aliases = tuple(contract.aliases)
+        conflicts = [
+            alias for alias in aliases
+            if alias in self.contracts or alias in self._aliases
+        ]
+        if conflicts:
+            raise StateOwnershipError(
+                f"field {name!r} has duplicate aliases {conflicts}"
+            )
+        ccpp_key = (
+            None
+            if contract.ccpp_standard_name is None
+            else contract.ccpp_standard_name.lower()
+        )
+        if ccpp_key is not None and ccpp_key in self._ccpp_fields:
+            raise StateOwnershipError(
+                f"duplicate CCPP standard name "
+                f"{contract.ccpp_standard_name!r}"
+            )
+
+        try:
+            values = np.zeros(
+                contract.shape(self.dimensions),
+                dtype=contract.dtype,
+                order="F",
+            )
+        except (KeyError, TypeError, ValueError) as exc:
+            raise StateOwnershipError(
+                f"cannot allocate dynamic field {name!r}: {exc}"
+            ) from exc
+        if initial is not _UNSET:
+            np.copyto(values, initial, casting="same_kind")
+
+        self.contracts[name] = contract
+        self._arrays[name] = values
+        if ccpp_key is not None:
+            self._ccpp_fields[ccpp_key] = name
+        for alias in aliases:
+            self._aliases[alias] = (name, None, None)
+        if dynamic:
+            self._dynamic_fields.add(name)
+        is_initialized = initial is not _UNSET if initialized is None else initialized
+        if is_initialized:
+            self._initialized_fields.add(name)
+        if self._sealed and (
+            contract.category in _STATIC_CATEGORIES
+            or not contract.writable
+        ):
+            values.flags.writeable = False
+        return values
+
+    def unregister_field(self, name: str) -> None:
+        """Roll back a newly registered field before it becomes persistent."""
+
+        canonical = self.canonical_name(name)
+        if canonical not in self._dynamic_fields:
+            raise StateOwnershipError(
+                f"field {canonical!r} is not a removable dynamic field"
+            )
+        if any(target == canonical for target, _axis, _index in self._aliases.values()):
+            self._aliases = {
+                alias: record
+                for alias, record in self._aliases.items()
+                if record[0] != canonical
+            }
+        self._ccpp_fields = {
+            standard_name: field_name
+            for standard_name, field_name in self._ccpp_fields.items()
+            if self.canonical_name(field_name) != canonical
+        }
+        self._arrays.pop(canonical)
+        self.contracts.pop(canonical)
+        self._initialized_fields.discard(canonical)
+        self._dynamic_fields.discard(canonical)
+
+    def mark_initialized(self, name: str) -> None:
+        self._initialized_fields.add(self.canonical_name(name))
+
+    def is_initialized(self, name: str) -> bool:
+        return self.canonical_name(name) in self._initialized_fields
+
+    @property
+    def initialized_fields(self) -> frozenset[str]:
+        return frozenset(self._initialized_fields)
+
+    @property
+    def dynamic_fields(self) -> frozenset[str]:
+        return frozenset(self._dynamic_fields)
+
+    def restore_registration_state(
+        self,
+        *,
+        initialized_fields: Iterable[str],
+        dynamic_fields: Iterable[str],
+    ) -> None:
+        """Restore schema bookkeeping after allocating checkpoint contracts."""
+
+        initialized = {self.canonical_name(name) for name in initialized_fields}
+        dynamic = {self.canonical_name(name) for name in dynamic_fields}
+        unknown = (initialized | dynamic) - set(self.contracts)
+        if unknown:
+            raise StateOwnershipError(
+                f"checkpoint registration state names unknown fields "
+                f"{sorted(unknown)}"
+            )
+        self._initialized_fields = initialized
+        self._dynamic_fields = dynamic
 
     def seal_static(self) -> None:
         for name, contract in self.contracts.items():
@@ -279,7 +412,15 @@ class StatePool:
                     f"{source.shape}/{source.dtype}, expected "
                     f"{target.shape}/{target.dtype}"
                 )
-            np.copyto(target, source, casting="no")
+            was_writeable = bool(target.flags.writeable)
+            if not was_writeable:
+                target.flags.writeable = True
+            try:
+                np.copyto(target, source, casting="no")
+            finally:
+                if not was_writeable:
+                    target.flags.writeable = False
+            self._initialized_fields.add(name)
 
     def validate(self, *, finite: bool = True) -> None:
         errors: list[str] = []

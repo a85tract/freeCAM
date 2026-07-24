@@ -408,16 +408,24 @@ class MetadataEntrypoint:
     arguments: tuple[MetadataArgument, ...]
 
 
+def _ccpp_parser_scripts(project_root: Path) -> Path:
+    """Use a plugin-local parser when present, otherwise the pinned package one."""
+
+    candidates = (
+        project_root / "external/CAM-SIMA/ccpp_framework/scripts",
+        Path(__file__).resolve().parents[3]
+        / "external/CAM-SIMA/ccpp_framework/scripts",
+    )
+    for scripts in candidates:
+        if scripts.is_dir():
+            return scripts
+    return candidates[0]
+
+
 def _load_ccpp_entrypoints(
     description: DeviceDescription,
 ) -> Mapping[str, MetadataEntrypoint]:
-    scripts = (
-        description.project_root
-        / "external"
-        / "CAM-SIMA"
-        / "ccpp_framework"
-        / "scripts"
-    )
+    scripts = _ccpp_parser_scripts(description.project_root)
     if not scripts.is_dir():
         raise DeviceBuildError(
             f"CCPP Framework parser is missing: {scripts}"
@@ -520,13 +528,7 @@ def _logical_fortran_lines(source: Path) -> Iterable[str]:
 
 
 def _validate_dependencies(description: DeviceDescription) -> tuple[str, ...]:
-    scripts = (
-        description.project_root
-        / "external"
-        / "CAM-SIMA"
-        / "ccpp_framework"
-        / "scripts"
-    )
+    scripts = _ccpp_parser_scripts(description.project_root)
     scripts_text = str(scripts)
     if scripts_text not in sys.path:
         sys.path.insert(0, scripts_text)

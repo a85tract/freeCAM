@@ -1,0 +1,20 @@
+schema_version: 1
+name: runtime_temperature_offset
+fortran_module: runtime_temperature_offset
+sources:
+  - examples/plugins/runtime_temperature_offset/runtime_temperature_offset.F90
+metadata:
+  - examples/plugins/runtime_temperature_offset/runtime_temperature_offset.meta
+source_modules:
+  - runtime_temperature_offset
+providers:
+  ccpp_kinds: native/devices/support/ccpp_kinds.F90
+state_policy: stateless
+dimension_bindings:
+  horizontal_loop_extent: nphys_local
+  vertical_layer_dimension: pver
+entrypoints:
+  run:
+    table: runtime_temperature_offset_run
+processes:
+  runtime_temperature_offset: run

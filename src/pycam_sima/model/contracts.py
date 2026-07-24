@@ -30,7 +30,10 @@ class FieldContract:
         return "(" + ", ".join(self.dimensions) + ")"
 
     def shape(self, dimensions: Mapping[str, int]) -> tuple[int, ...]:
-        return tuple(int(dimensions[name]) for name in self.dimensions)
+        return tuple(
+            int(name) if str(name).isdigit() else int(dimensions[name])
+            for name in self.dimensions
+        )
 
     def machine_record(self) -> dict[str, Any]:
         result = asdict(self)
@@ -38,6 +41,30 @@ class FieldContract:
         result["aliases"] = list(self.aliases)
         result["shape_expression"] = self.shape_expression
         return result
+
+    @classmethod
+    def from_mapping(cls, values: Mapping[str, Any]) -> "FieldContract":
+        """Restore one contract from a checkpoint or public variable spec."""
+
+        return cls(
+            standard_name=str(values["standard_name"]),
+            dtype=str(values["dtype"]),
+            dimensions=tuple(str(item) for item in values.get("dimensions", ())),
+            intent=str(values["intent"]),
+            category=str(values["category"]),
+            units=str(values.get("units", "1")),
+            aliases=tuple(str(item) for item in values.get("aliases", ())),
+            ccpp_standard_name=(
+                None
+                if values.get("ccpp_standard_name") is None
+                else str(values["ccpp_standard_name"])
+            ),
+            owner=str(values.get("owner", "python")),
+            lifetime=str(values.get("lifetime", "persistent")),
+            history=bool(values.get("history", False)),
+            restart=bool(values.get("restart", False)),
+            writable=bool(values.get("writable", True)),
+        )
 
 
 @dataclass(frozen=True, slots=True)

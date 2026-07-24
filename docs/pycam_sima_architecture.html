@@ -842,6 +842,28 @@
           Kessler 维护平行目录。
         </div>
       </div>
+      <div class="card panel-pad" style="margin-top:18px">
+        <h3>运行时扩展：新 physics + 新变量</h3>
+        <pre><code>device.yaml + original Fortran + .meta
+              或 device.json + prebuilt .so
+                         │ shared hash cache / ABI audit
+                         ▼
+              PhysicsPluginManager
+                    ┌────┴────┐
+                    ▼         ▼
+          dynamic StateSchema  dynamic scheme placement
+          NumPy owns new field before / after / cross-group
+                    └────┬────┘
+                         ▼
+              collective MPI commit</code></pre>
+        <p style="margin:14px 0 0;color:var(--muted)">
+          每个 phase 或 scheme 返回后都是可扩展边界。所有 rank 必须具有相同的
+          execution cursor、plugin hash 和 schema hash 才会提交；任何 rank 失败都会
+          整体回滚。运行中只追加使用已有 named dimensions 的 NumPy 字段，不替换旧数组，
+          因此已有 Fortran 指针保持稳定。checkpoint v2 同时保存动态 contract、placement
+          和 plugin identity，Dask memory fork 也继承同一份逻辑状态。
+        </p>
+      </div>
       <div class="three-col" style="margin-top:18px">
         <article class="card panel-pad">
           <h3>1 · 数据总线</h3>
@@ -1300,6 +1322,8 @@ field = experiments.field(
         <div class="evidence-card"><small>PERSISTENT FORK</small><b class="yes">0 FILES</b><small>10-step base → 3 live MPI children</small></div>
         <div class="evidence-card"><small>GRANULAR ACTIONS</small><b class="yes">BFB</b><small>batch = checkpoint chain</small></div>
         <div class="evidence-card"><small>ORIGINAL KESSLER</small><b class="yes">BFB</b><small>11 fields · source device</small></div>
+        <div class="evidence-card"><small>RUNTIME PLUGIN</small><b class="yes">24 RANKS</b><small>source → checkpoint → prebuilt</small></div>
+        <div class="evidence-card"><small>DYNAMIC STATE</small><b class="yes">POINTER SAFE</b><small>schema v2 · all ranks</small></div>
         <div class="evidence-card"><small>SUITE CATALOG</small><b>155 / 155</b><small>connectors · 7 suites</small></div>
         <div class="evidence-card"><small>EXECUTABLE CONNECTORS</small><b>129 / 155</b><small>100 native · 29 host</small></div>
         <div class="evidence-card"><small>DEVICE ELF</small><b class="yes">CLEAN</b><small>no MPI / ESMF / PIO</small></div>

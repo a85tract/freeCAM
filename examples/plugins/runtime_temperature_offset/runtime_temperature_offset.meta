@@ -1,0 +1,30 @@
+[ccpp-table-properties]
+  name = runtime_temperature_offset
+  type = scheme
+[ccpp-arg-table]
+  name = runtime_temperature_offset_run
+  type = scheme
+[ field ]
+  standard_name = runtime_plugin_temperature
+  units = K
+  type = real | kind = kind_phys
+  dimensions = (horizontal_loop_extent,vertical_layer_dimension)
+  intent = inout
+[ increment ]
+  standard_name = runtime_plugin_temperature_increment
+  units = K
+  type = real | kind = kind_phys
+  dimensions = ()
+  intent = in
+[ errmsg ]
+  standard_name = ccpp_error_message
+  units = none
+  type = character | kind = len=*
+  dimensions = ()
+  intent = out
+[ errflg ]
+  standard_name = ccpp_error_code
+  units = 1
+  type = integer
+  dimensions = ()
+  intent = out

@@ -17,6 +17,21 @@ body. Source-derived descriptors belong under `devices/generated/`; adapters,
 manifests, and libraries belong under `build/devices/` and are reproducible
 from those descriptors.
 
+The same descriptor can be an external runtime plugin source.
+`model.install_physics(...)` uses the pinned CCPP parser, generates the adapter
+in `PYCAM_SIMA_PLUGIN_CACHE`, and loads it collectively. A production plugin
+may instead ship only its generated `device.json` and matching `.so`.
+
+An installed Python package can advertise a device through:
+
+```toml
+[project.entry-points."pycam_sima.physics"]
+my_microphysics = "my_package:device_path"
+```
+
+The entry point must resolve to a descriptor, manifest, or directory
+containing one. Runtime loading never edits `devices/generated/`.
+
 ## Generated descriptor and policy overrides
 
 Every active suite scheme has exactly one descriptor under

@@ -98,6 +98,7 @@ class DaskRunResult:
             "action_count": len(self.action_trace),
             "action_trace": [dict(record) for record in self.action_trace],
             "segment_plan": dict(self.segment_plan),
+            "plugins": tuple(self.stats.get("plugins", ())),
         }
 
 
@@ -914,6 +915,25 @@ def _extract_checkpoint_field(
         for contract in default_contracts()
         for alias in contract.aliases
     }
+    try:
+        manifest_bytes = next(
+            content
+            for stored_name, content in result.snapshot.files
+            if stored_name == "manifest.json"
+        )
+        manifest = json.loads(manifest_bytes)
+        rank_record = next(
+            item for item in manifest["ranks"]
+            if int(item["rank"]) == rank
+        )
+        for contract in rank_record.get("contracts", ()):
+            for alias in contract.get("aliases", ()):
+                direct_aliases[str(alias)] = str(
+                    contract["standard_name"]
+                )
+    except (StopIteration, KeyError, TypeError, ValueError):
+        # Schema-v1 snapshots have only the built-in alias catalog.
+        pass
     alias_rules = {rule.alias: rule for rule in default_alias_rules()}
     with np.load(BytesIO(content), allow_pickle=False) as stored:
         if name in stored.files:

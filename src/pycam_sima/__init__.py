@@ -2,6 +2,7 @@
 
 from .model import (
     Action,
+    ActivatePhysics,
     BranchSpec,
     CAMDriver,
     CCPPDeviceHost,
@@ -15,7 +16,10 @@ from .model import (
     DeviceRegistry,
     DeviceSupportMatrix,
     DriverState,
+    DeactivatePhysics,
+    DefineVariable,
     FieldEdit,
+    InstallPhysics,
     FieldVariant,
     FortranDevice,
     HostServiceRegistry,
@@ -29,6 +33,8 @@ from .model import (
     PHYSICS_AFTER_COUPLER,
     PHYSICS_BEFORE_COUPLER,
     PhysicsScheme,
+    PhysicsPluginManager,
+    PhysicsPluginSpec,
     PrepareInitialStep,
     RunPhase,
     RunScheme,
@@ -37,11 +43,13 @@ from .model import (
     SchemeMove,
     SchemeCatalogEntry,
     SchemeSupport,
+    SchemePlacement,
     SegmentPlan,
     SetSchemeEnabled,
     StatePool,
     SuiteNode,
     SuiteScheme,
+    VariableSpec,
 )
 from .notebook import (
     DaskExperimentClient,
@@ -56,6 +64,7 @@ from .notebook import (
 
 __all__ = [
     "Action",
+    "ActivatePhysics",
     "BranchSpec",
     "CAMDriver",
     "CCPPDeviceHost",
@@ -69,10 +78,13 @@ __all__ = [
     "DeviceRegistry",
     "DeviceSupportMatrix",
     "DriverState",
+    "DeactivatePhysics",
+    "DefineVariable",
     "DaskExperimentClient",
     "DaskPBSOptions",
     "DaskRunResult",
     "FieldEdit",
+    "InstallPhysics",
     "FieldVariant",
     "FortranDevice",
     "HostServiceRegistry",
@@ -86,6 +98,8 @@ __all__ = [
     "PHYSICS_AFTER_COUPLER",
     "PHYSICS_BEFORE_COUPLER",
     "PhysicsScheme",
+    "PhysicsPluginManager",
+    "PhysicsPluginSpec",
     "PrepareInitialStep",
     "RunPhase",
     "RunScheme",
@@ -94,6 +108,7 @@ __all__ = [
     "SchemeMove",
     "SchemeCatalogEntry",
     "SchemeSupport",
+    "SchemePlacement",
     "SegmentPlan",
     "SetSchemeEnabled",
     "NotebookSession",
@@ -104,5 +119,6 @@ __all__ = [
     "StatePool",
     "SuiteNode",
     "SuiteScheme",
+    "VariableSpec",
 ]
-__version__ = "0.12.0"
+__version__ = "0.13.0"

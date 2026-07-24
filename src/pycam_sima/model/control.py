@@ -121,6 +121,7 @@ def model_field_metadata(pool: Any) -> dict[str, dict[str, Any]]:
         contract = pool.contract(name)
         result[name] = {
             "standard_name": contract.standard_name,
+            "ccpp_standard_name": contract.ccpp_standard_name,
             "shape": tuple(array.shape),
             "dtype": array.dtype.str,
             "dimensions": contract.dimensions,

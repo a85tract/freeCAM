@@ -15,6 +15,20 @@ _OBSERVATION_STATISTICS = frozenset(("min", "max", "mean"))
 SEGMENT_PLAN_SCHEMA_VERSION = 1
 
 
+def _json_value(value: Any) -> Any:
+    if isinstance(value, np.ndarray):
+        return value.tolist()
+    if isinstance(value, np.generic):
+        return value.item()
+    if isinstance(value, Mapping):
+        return {
+            str(key): _json_value(item) for key, item in value.items()
+        }
+    if isinstance(value, (tuple, list)):
+        return [_json_value(item) for item in value]
+    return value
+
+
 @dataclass(frozen=True, slots=True)
 class FieldEdit:
     name: str
@@ -157,6 +171,54 @@ class ObserveFields:
             raise ValueError("observe action statistics must be unique")
 
 
+@dataclass(frozen=True, slots=True)
+class DefineVariable:
+    spec: Any
+    initial_value: Any = 0.0
+
+    def __post_init__(self) -> None:
+        from .plugins import VariableSpec
+
+        if isinstance(self.spec, Mapping):
+            object.__setattr__(
+                self, "spec", VariableSpec.from_mapping(self.spec)
+            )
+        elif not isinstance(self.spec, VariableSpec):
+            raise TypeError("define_variable requires a VariableSpec")
+
+
+@dataclass(frozen=True, slots=True)
+class InstallPhysics:
+    plugin: Any
+    initial_values: Mapping[str, Any] | None = None
+    effective: str = "now"
+
+    def __post_init__(self) -> None:
+        from .plugins import PhysicsPluginSpec
+
+        if isinstance(self.plugin, Mapping):
+            object.__setattr__(
+                self, "plugin", PhysicsPluginSpec.from_mapping(self.plugin)
+            )
+        elif not isinstance(self.plugin, PhysicsPluginSpec):
+            raise TypeError("install_physics requires a PhysicsPluginSpec")
+        if self.effective not in {"now", "next_step"}:
+            raise ValueError("effective must be 'now' or 'next_step'")
+        object.__setattr__(
+            self, "initial_values", dict(self.initial_values or {})
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class ActivatePhysics:
+    name: str
+
+
+@dataclass(frozen=True, slots=True)
+class DeactivatePhysics:
+    name: str
+
+
 Action = Union[
     PrepareInitialStep,
     RunPhase,
@@ -167,6 +229,10 @@ Action = Union[
     MoveScheme,
     FieldEdit,
     ObserveFields,
+    DefineVariable,
+    InstallPhysics,
+    ActivatePhysics,
+    DeactivatePhysics,
 ]
 
 
@@ -208,6 +274,23 @@ def _action_as_dict(action: Action) -> dict[str, Any]:
             "fields": list(action.fields),
             "statistics": list(action.statistics),
         }
+    if isinstance(action, DefineVariable):
+        return {
+            "type": "define_variable",
+            "spec": action.spec.as_dict(),
+            "initial_value": _json_value(action.initial_value),
+        }
+    if isinstance(action, InstallPhysics):
+        return {
+            "type": "install_physics",
+            "plugin": action.plugin.as_dict(),
+            "initial_values": _json_value(action.initial_values or {}),
+            "effective": action.effective,
+        }
+    if isinstance(action, ActivatePhysics):
+        return {"type": "activate_physics", "name": action.name}
+    if isinstance(action, DeactivatePhysics):
+        return {"type": "deactivate_physics", "name": action.name}
     raise TypeError(f"unsupported segment action {type(action).__name__}")
 
 
@@ -259,6 +342,21 @@ def _action_from_mapping(values: Mapping[str, Any]) -> Action:
                 )
             ),
         )
+    if action_type == "define_variable":
+        return DefineVariable(
+            values["spec"],
+            initial_value=values.get("initial_value", 0.0),
+        )
+    if action_type == "install_physics":
+        return InstallPhysics(
+            values["plugin"],
+            initial_values=values.get("initial_values"),
+            effective=str(values.get("effective", "now")),
+        )
+    if action_type == "activate_physics":
+        return ActivatePhysics(str(values["name"]))
+    if action_type == "deactivate_physics":
+        return DeactivatePhysics(str(values["name"]))
     raise ValueError(f"unknown segment action type {action_type!r}")
 
 
@@ -433,6 +531,14 @@ def validate_segment_plan(driver: Any, plan: SegmentPlan) -> None:
     from .scheme_plan import SCHEME_GROUPS
 
     scheme_plan = driver.scheme_plan.copy()
+    planned_plugins: set[str] = set(
+        getattr(getattr(driver, "plugins", None), "installed", {})
+    )
+    planned_processes: set[str] = set()
+    planned_fields: set[str] = (
+        set(driver.pool.contracts)
+        | set(getattr(driver.pool, "_aliases", {}))
+    )
     for action in plan.actions:
         if isinstance(action, RunPhase):
             if action.name not in driver.phase_names:
@@ -443,7 +549,8 @@ def validate_segment_plan(driver: Any, plan: SegmentPlan) -> None:
             if not plan.unsafe:
                 raise ValueError("run_phase actions require SegmentPlan(unsafe=True)")
         elif isinstance(action, RunScheme):
-            scheme_plan.scheme(action.name, group=action.group)
+            if action.name not in planned_processes:
+                scheme_plan.scheme(action.name, group=action.group)
             if not plan.unsafe:
                 raise ValueError("run_scheme actions require SegmentPlan(unsafe=True)")
         elif isinstance(action, RunSchemeGroup):
@@ -489,18 +596,78 @@ def validate_segment_plan(driver: Any, plan: SegmentPlan) -> None:
                 unsafe=True,
             )
         elif isinstance(action, FieldEdit):
-            contract = driver.pool.contract(action.name)
+            if action.name not in planned_fields:
+                raise ValueError(f"unknown state field {action.name!r}")
+            contract = (
+                driver.pool.contract(action.name)
+                if action.name in driver.pool.contracts
+                or action.name in getattr(driver.pool, "_aliases", {})
+                else None
+            )
             if action.unsafe and not plan.unsafe:
                 raise ValueError(
                     "unsafe field edits require SegmentPlan(unsafe=True)"
                 )
-            if driver.pool.sealed and not contract.writable and not action.unsafe:
+            if (
+                contract is not None
+                and driver.pool.sealed
+                and not contract.writable
+                and not action.unsafe
+            ):
                 raise ValueError(
                     f"field {action.name!r} is read-only after initialization"
                 )
         elif isinstance(action, ObserveFields):
             for name in action.fields:
-                driver.pool.contract(name)
+                if name not in planned_fields:
+                    driver.pool.contract(name)
+        elif isinstance(action, DefineVariable):
+            contract = action.spec.contract()
+            contract.shape(driver.pool.dimensions)
+            np.dtype(contract.dtype)
+            if contract.standard_name in planned_fields:
+                raise ValueError(
+                    f"duplicate state field {contract.standard_name!r}"
+                )
+            planned_fields.add(contract.standard_name)
+            planned_fields.update(contract.aliases)
+        elif isinstance(action, InstallPhysics):
+            if not plan.unsafe:
+                raise ValueError(
+                    "install_physics actions require SegmentPlan(unsafe=True)"
+                )
+            for variable in action.plugin.variables:
+                variable.contract().shape(driver.pool.dimensions)
+                np.dtype(variable.dtype)
+                planned_fields.add(variable.name)
+                planned_fields.update(variable.aliases)
+            plugin_name = action.plugin.name
+            if plugin_name is not None:
+                if plugin_name in planned_plugins:
+                    raise ValueError(
+                        f"physics plugin {plugin_name!r} is already planned"
+                    )
+                planned_plugins.add(plugin_name)
+            planned_processes.update(
+                placement.process
+                for placement in action.plugin.placements
+            )
+        elif isinstance(action, (ActivatePhysics, DeactivatePhysics)):
+            if not plan.unsafe:
+                raise ValueError(
+                    f"{_action_as_dict(action)['type']} actions require "
+                    "SegmentPlan(unsafe=True)"
+                )
+            if (
+                action.name not in planned_plugins
+                and action.name
+                not in getattr(
+                    getattr(driver, "plugins", None), "installed", {}
+                )
+            ):
+                raise ValueError(
+                    f"unknown planned physics plugin {action.name!r}"
+                )
 
 
 def _observe_fields(driver: Any, action: ObserveFields) -> list[dict[str, Any]]:
@@ -587,6 +754,21 @@ def execute_segment_plan(
             _apply_field_edit(driver, action)
         elif isinstance(action, ObserveFields):
             observations = _observe_fields(driver, action)
+        elif isinstance(action, DefineVariable):
+            driver.define_variable(
+                action.spec, initial=action.initial_value
+            )
+        elif isinstance(action, InstallPhysics):
+            driver.install_physics(
+                action.plugin,
+                initial_values=action.initial_values,
+                effective=action.effective,
+                unsafe=True,
+            )
+        elif isinstance(action, ActivatePhysics):
+            driver.activate_physics(action.name, unsafe=True)
+        elif isinstance(action, DeactivatePhysics):
+            driver.deactivate_physics(action.name, unsafe=True)
         else:  # pragma: no cover - SegmentPlan validates this at construction.
             raise TypeError(f"unsupported segment action {type(action).__name__}")
         driver.comm.barrier()

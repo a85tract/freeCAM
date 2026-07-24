@@ -28,6 +28,8 @@ from ..model import (
     ModelConfig,
     ModelOptions,
     ModelParameters,
+    PhysicsPluginSpec,
+    VariableSpec,
 )
 
 
@@ -214,6 +216,7 @@ class NotebookSession:
         self._listener: Listener | None = None
         self._log_handle: Any = None
         self._fields: dict[str, dict[str, Any]] = {}
+        self._plugins: tuple[Mapping[str, Any], ...] = ()
         self._current_step = 0
         self._phase_names: tuple[str, ...] = ()
         self._phase_status: dict[str, Any] = {}
@@ -480,6 +483,82 @@ class NotebookSession:
     ) -> tuple[Mapping[str, Any], ...]:
         return tuple(self.run_scheme(scheme) for scheme in schemes)
 
+    def define_variable(
+        self,
+        spec: VariableSpec,
+        *,
+        initial: Any = 0.0,
+    ) -> Mapping[str, Any]:
+        """Collectively allocate a new Python-owned field on every rank."""
+
+        self._validate_started_options()
+        if not isinstance(spec, VariableSpec):
+            raise TypeError("spec must be VariableSpec")
+        result = self._request(
+            {
+                "op": "define_variable",
+                "spec": spec.as_dict(),
+                "initial_value": np.asarray(initial),
+            }
+        )
+        self._update_runtime_status(result)
+        return self.field_info(spec.name)
+
+    def install_physics(
+        self,
+        spec: PhysicsPluginSpec | str | Path,
+        *,
+        initial_values: Mapping[str, Any] | None = None,
+        effective: str = "now",
+        unsafe: bool = False,
+    ) -> Mapping[str, Any]:
+        """Collectively build/load and schedule one runtime physics device."""
+
+        self._validate_started_options()
+        if not isinstance(spec, PhysicsPluginSpec):
+            spec = PhysicsPluginSpec(str(spec))
+        result = self._request(
+            {
+                "op": "install_physics",
+                "plugin": spec.as_dict(),
+                "initial_values": dict(initial_values or {}),
+                "effective": effective,
+                "unsafe": bool(unsafe),
+            }
+        )
+        self._update_runtime_status(result)
+        return dict(result["installed_plugin"])
+
+    def activate_physics(
+        self, name: str, *, unsafe: bool = False
+    ) -> Mapping[str, Any]:
+        result = self._request(
+            {
+                "op": "activate_physics",
+                "name": name,
+                "unsafe": bool(unsafe),
+            }
+        )
+        self._update_runtime_status(result)
+        return next(item for item in self._plugins if item["name"] == name)
+
+    def deactivate_physics(
+        self, name: str, *, unsafe: bool = False
+    ) -> Mapping[str, Any]:
+        result = self._request(
+            {
+                "op": "deactivate_physics",
+                "name": name,
+                "unsafe": bool(unsafe),
+            }
+        )
+        self._update_runtime_status(result)
+        return next(item for item in self._plugins if item["name"] == name)
+
+    @property
+    def physics_plugins(self) -> tuple[Mapping[str, Any], ...]:
+        return tuple(dict(item) for item in self._plugins)
+
     def get_field(
         self, name: str, *, rank: int | str = 0
     ) -> np.ndarray | list[np.ndarray]:
@@ -648,6 +727,10 @@ class NotebookSession:
             self._native_calls = int(result["native_calls"])
         self._update_phase_status(result["phase_status"])
         self._update_scheme_status(result["scheme_status"])
+        if "fields" in result:
+            self._fields = dict(result["fields"])
+        if "plugins" in result:
+            self._plugins = tuple(dict(item) for item in result["plugins"])
 
     def _install_scheme_plan(self, candidate: KesslerSchemePlan) -> None:
         if self.running:

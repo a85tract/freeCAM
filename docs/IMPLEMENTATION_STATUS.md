@@ -95,6 +95,25 @@ The previous `cam_init`/`cam_run*` wrapper backend has been removed. The
 upstream CAM-SIMA executable remains external to this package and is used only
 to create immutable BFB oracle output.
 
+The initial 222-field schema is now extensible. `VariableSpec` collectively
+appends Python-owned Fortran-contiguous arrays without moving existing
+addresses, while device manifests synthesize missing primitive contracts by
+CCPP standard name. Live fields use existing named dimensions; redefinition,
+resizing, and removal are rejected.
+
+`PhysicsPluginManager` accepts source descriptors and prebuilt manifests,
+validates every MPI rank against the same artifact and schema hashes, and
+inserts new processes into the editable before/after-coupler plan. Loading may
+occur after initialization or between completed phase/scheme actions.
+Checkpoint schema v2 carries dynamic contracts and exact plugin identities
+through disk restart and Dask in-memory fork.
+
+`examples/plugins/runtime_temperature_offset` is the executable authoring
+example. `jobs/dynamic_runtime_24.pbs` validates source compilation, prebuilt
+reload, native execution, pointer stability, rank-local dynamic state, and
+checkpoint recovery on all 24 ranks; the machine-readable record is
+`validation/dynamic_plugins_and_variables.json`.
+
 Dask execution supports both legacy edit-then-step `BranchSpec` segments and
 versioned `SegmentPlan` action sequences. One plan may run phase, scheme,
 scheme-group, observation, field-edit, and complete-step actions against one

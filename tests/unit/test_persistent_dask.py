@@ -7,15 +7,22 @@ import numpy as np
 import pytest
 
 from pycam_sima import (
+    ActivatePhysics,
     BranchSpec,
     CheckpointBundle,
     DaskExperimentClient,
+    DeactivatePhysics,
+    DefineVariable,
     FieldEdit,
+    InstallPhysics,
     KesslerSchemePlan,
     ObserveFields,
     PersistentDaskSession,
+    PhysicsPluginSpec,
     RunSteps,
     SegmentPlan,
+    SchemePlacement,
+    VariableSpec,
 )
 from pycam_sima.notebook.persistent_dask import (
     PersistentCAMActor,
@@ -33,6 +40,7 @@ class _FakeSession:
         self.launch_mode_used = kwargs["launch_mode"]
         self.job_id = None
         self.field_names = ("air_temperature",)
+        self.physics_plugins: list[dict[str, Any]] = []
         self.phase_names = ("dynamics_to_physics",)
         self.phase_status = {"last_phase": None, "next_phase": None}
         plan = kwargs["scheme_plan"]
@@ -116,6 +124,54 @@ class _FakeSession:
                 self.values[index][...] = value
         else:
             self.values[int(rank)][...] = value
+
+    def define_variable(
+        self, spec: VariableSpec, *, initial: Any = 0.0
+    ) -> dict[str, Any]:
+        self.field_names = (*self.field_names, spec.name)
+        return {
+            "standard_name": spec.name,
+            "shape": (2, 2),
+            "dtype": np.dtype(spec.dtype).str,
+            "writable": spec.writable,
+        }
+
+    def install_physics(
+        self,
+        spec: PhysicsPluginSpec,
+        *,
+        initial_values: Any = None,
+        effective: str = "now",
+        unsafe: bool = False,
+    ) -> dict[str, Any]:
+        del initial_values, unsafe
+        record = {
+            "name": spec.name,
+            "active": effective == "now",
+            "pending": effective == "next_step",
+        }
+        self.physics_plugins.append(record)
+        return record
+
+    def activate_physics(
+        self, name: str, *, unsafe: bool = False
+    ) -> dict[str, Any]:
+        del unsafe
+        record = next(
+            item for item in self.physics_plugins if item["name"] == name
+        )
+        record.update(active=True, pending=False)
+        return record
+
+    def deactivate_physics(
+        self, name: str, *, unsafe: bool = False
+    ) -> dict[str, Any]:
+        del unsafe
+        record = next(
+            item for item in self.physics_plugins if item["name"] == name
+        )
+        record.update(active=False, pending=False)
+        return record
 
     def edit_field(
         self,
@@ -324,6 +380,45 @@ def test_persistent_actor_validates_full_plan_before_mutation(
             }
         )
     assert actor.get_field_stats("air_temperature", rank=0)["mean"] == 240.0
+    actor.close()
+
+
+def test_persistent_actor_runs_dynamic_extension_actions(
+    tmp_path: Path,
+) -> None:
+    actor = PersistentCAMActor(_request(tmp_path), session_factory=_FakeSession)
+    variable = VariableSpec(
+        "runtime_control",
+        "float64",
+        ("nphys_local",),
+        standard_name="runtime_control",
+    )
+    plugin = PhysicsPluginSpec(
+        "/shared/runtime_probe/device.json",
+        placements=(SchemePlacement("runtime_probe"),),
+        name="runtime_probe",
+    )
+
+    result = actor.run_plan(
+        SegmentPlan(
+            "dynamic",
+            (
+                DefineVariable(variable, 2.0),
+                InstallPhysics(plugin),
+                DeactivatePhysics("runtime_probe"),
+                ActivatePhysics("runtime_probe"),
+            ),
+            unsafe=True,
+        ).as_dict()
+    )
+
+    assert [item["type"] for item in result["action_trace"]] == [
+        "define_variable",
+        "install_physics",
+        "deactivate_physics",
+        "activate_physics",
+    ]
+    assert actor.describe()["plugins"][0]["active"] is True
     actor.close()
 
 

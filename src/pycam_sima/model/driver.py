@@ -62,6 +62,12 @@ from .se_runtime import (
     vertical_remap_fvm,
     vertical_remap_se,
 )
+from .plugins import (
+    PhysicsPluginManager,
+    PhysicsPluginSpec,
+    VariableSpec,
+    _UNSET as _PLUGIN_UNSET,
+)
 
 
 class DriverState(str, Enum):
@@ -127,6 +133,8 @@ class CAMDriver:
         self._last_phase: str | None = None
         self._last_scheme: str | None = None
         self._last_scheme_group: str | None = None
+        self._native_call_depth = 0
+        self._boundary_index = 0
         self.scheme_plan = (
             KesslerSchemePlan.default()
             if scheme_plan is None
@@ -139,6 +147,7 @@ class CAMDriver:
             / "libpycam_sima_kernels.so"
         )
         self.backend = KernelBackend(kernel_library or default_library)
+        self.plugins = PhysicsPluginManager(self)
         self.history = HistoryWriter(
             history_dir or self.run_dir / "history",
             self.config.case_name,
@@ -197,6 +206,55 @@ class CAMDriver:
             "native_nstep": None if self.clock is None else self.clock.nstep,
         }
 
+    @property
+    def execution_cursor(self) -> tuple[object, ...]:
+        """Collectively comparable boundary occupied by this MPI rank."""
+
+        return (
+            self.state.value,
+            None if self.clock is None else int(self.clock.nstep),
+            self._last_phase,
+            self._last_scheme,
+            self._last_scheme_group,
+            int(self._boundary_index),
+            int(self._native_call_depth),
+        )
+
+    def define_variable(
+        self,
+        spec: VariableSpec,
+        *,
+        initial: Any = _PLUGIN_UNSET,
+    ) -> Any:
+        if initial is _PLUGIN_UNSET:
+            return self.plugins.define_variable(spec)
+        return self.plugins.define_variable(spec, initial=initial)
+
+    def install_physics(
+        self,
+        spec: PhysicsPluginSpec | str | Path,
+        *,
+        initial_values: dict[str, Any] | None = None,
+        effective: str = "now",
+        unsafe: bool = False,
+    ) -> Any:
+        return self.plugins.install(
+            spec,
+            initial_values=initial_values,
+            effective=effective,
+            unsafe=unsafe,
+        )
+
+    def deactivate_physics(
+        self, name: str, *, unsafe: bool = False
+    ) -> None:
+        self.plugins.deactivate(name, unsafe=unsafe)
+
+    def activate_physics(
+        self, name: str, *, unsafe: bool = False
+    ) -> None:
+        self.plugins.activate(name, unsafe=unsafe)
+
     def get_field(
         self, name: str, *, rank: int | None = None, unsafe: bool = False
     ) -> Any:
@@ -236,13 +294,18 @@ class CAMDriver:
             )
 
         before = self.pool.pointer_records()
-        handler = self._phase_handlers().get(name)
-        if handler is None:
-            self.backend.run_phase(name, self.pool)
-        else:
-            handler(self.pool)
-        self.pool.assert_pointer_stability(before)
+        self._native_call_depth += 1
+        try:
+            handler = self._phase_handlers().get(name)
+            if handler is None:
+                self.backend.run_phase(name, self.pool)
+            else:
+                handler(self.pool)
+            self.pool.assert_pointer_stability(before)
+        finally:
+            self._native_call_depth -= 1
         self._last_phase = name
+        self._boundary_index += 1
         return self
 
     def run_scheme(
@@ -259,10 +322,19 @@ class CAMDriver:
             raise StateTransitionError(f"run_scheme() from {self.state.value}")
         scheme = self.scheme_plan.scheme(name, group=group)
         before = self.pool.pointer_records()
-        self._scheme_handlers()[scheme.key](self.pool)
-        self.pool.assert_pointer_stability(before)
+        self._native_call_depth += 1
+        try:
+            handler = self._scheme_handlers().get(scheme.key)
+            if handler is None:
+                self.backend.run_phase(scheme.name, self.pool)
+            else:
+                handler(self.pool)
+            self.pool.assert_pointer_stability(before)
+        finally:
+            self._native_call_depth -= 1
         self._last_scheme = scheme.key
         self._last_scheme_group = scheme.group
+        self._boundary_index += 1
         return self
 
     def run_scheme_group(
@@ -309,6 +381,7 @@ class CAMDriver:
     ) -> CAMDriver:
         if self.state == DriverState.CREATED:
             self.start()
+        self.plugins.activate_pending()
         if self.state == DriverState.INITIALIZED:
             self.prepare_initial_step(
                 phase_callback=phase_callback,
@@ -397,6 +470,8 @@ class CAMDriver:
             "last_scheme_group": self._last_scheme_group,
             "scheme_sequence_safe": self.scheme_plan.sequence_safe,
             "devices": self.backend.devices.describe(),
+            "plugins": self.plugins.inventory(),
+            "execution_cursor": self.execution_cursor,
         }
 
     def finalize(self) -> None:
@@ -404,6 +479,7 @@ class CAMDriver:
             return
         self.comm.barrier()
         if self.pool is not None:
+            self.plugins.finalize_all()
             self.backend.devices.release_pool(self.pool)
         self.state = DriverState.FINALIZED
 

@@ -13,6 +13,7 @@ import numpy as np
 
 from .clock import NoLeapClock
 from .config import ModelConfig
+from .contracts import FieldContract
 from .errors import ConfigurationError, StateTransitionError
 from .scheme_plan import KesslerSchemePlan
 from .state import StatePool
@@ -21,7 +22,7 @@ if TYPE_CHECKING:
     from .driver import CAMDriver
 
 
-CHECKPOINT_SCHEMA_VERSION = 1
+CHECKPOINT_SCHEMA_VERSION = 2
 
 
 @dataclass(frozen=True, slots=True)
@@ -32,6 +33,9 @@ class ModelSnapshot:
     size: int
     config: Mapping[str, Any]
     dimensions: Mapping[str, int]
+    contracts: tuple[Mapping[str, Any], ...]
+    initialized_fields: tuple[str, ...]
+    dynamic_fields: tuple[str, ...]
     arrays: Mapping[str, np.ndarray]
     pool_sealed: bool
     clock: Mapping[str, int]
@@ -41,6 +45,8 @@ class ModelSnapshot:
     last_scheme: str | None
     last_scheme_group: str | None
     native_calls: int
+    plugin_inventory: tuple[Mapping[str, Any], ...]
+    boundary_index: int
 
     @classmethod
     def capture(cls, driver: CAMDriver) -> "ModelSnapshot":
@@ -48,11 +54,21 @@ class ModelSnapshot:
             raise StateTransitionError("cannot snapshot an uninitialized model")
         if driver.state.value == "FINALIZED":
             raise StateTransitionError("cannot snapshot a finalized model")
+        if hasattr(driver, "plugins"):
+            driver.plugins.assert_checkpointable()
         return cls(
             rank=int(driver.comm.rank),
             size=int(driver.comm.size),
             config=driver.config.as_dict(),
             dimensions=dict(driver.pool.dimensions),
+            contracts=tuple(
+                driver.pool.contracts[name].machine_record()
+                for name in sorted(driver.pool.contracts)
+            ),
+            initialized_fields=tuple(
+                sorted(driver.pool.initialized_fields)
+            ),
+            dynamic_fields=tuple(sorted(driver.pool.dynamic_fields)),
             arrays=driver.pool.snapshot_arrays(readonly=True),
             pool_sealed=driver.pool.sealed,
             clock=asdict(driver.clock),
@@ -62,6 +78,12 @@ class ModelSnapshot:
             last_scheme=driver._last_scheme,
             last_scheme_group=driver._last_scheme_group,
             native_calls=int(driver.backend.call_count),
+            plugin_inventory=(
+                ()
+                if not hasattr(driver, "plugins")
+                else driver.plugins.inventory()
+            ),
+            boundary_index=int(getattr(driver, "_boundary_index", 0)),
         )
 
     def metadata(self) -> dict[str, Any]:
@@ -70,6 +92,9 @@ class ModelSnapshot:
             "size": self.size,
             "config": dict(self.config),
             "dimensions": dict(self.dimensions),
+            "contracts": [dict(item) for item in self.contracts],
+            "initialized_fields": list(self.initialized_fields),
+            "dynamic_fields": list(self.dynamic_fields),
             "pool_sealed": self.pool_sealed,
             "clock": dict(self.clock),
             "driver_state": self.driver_state,
@@ -78,6 +103,10 @@ class ModelSnapshot:
             "last_scheme": self.last_scheme,
             "last_scheme_group": self.last_scheme_group,
             "native_calls": self.native_calls,
+            "plugin_inventory": [
+                dict(item) for item in self.plugin_inventory
+            ],
+            "boundary_index": self.boundary_index,
             "array_names": sorted(self.arrays),
         }
 
@@ -105,6 +134,18 @@ class ModelSnapshot:
                 name: int(value)
                 for name, value in metadata["dimensions"].items()
             },
+            contracts=tuple(
+                dict(item) for item in metadata.get("contracts", ())
+            ),
+            initialized_fields=tuple(
+                str(item)
+                for item in metadata.get(
+                    "initialized_fields", metadata["array_names"]
+                )
+            ),
+            dynamic_fields=tuple(
+                str(item) for item in metadata.get("dynamic_fields", ())
+            ),
             arrays=immutable,
             pool_sealed=bool(metadata["pool_sealed"]),
             clock={name: int(value) for name, value in metadata["clock"].items()},
@@ -114,13 +155,30 @@ class ModelSnapshot:
             last_scheme=metadata.get("last_scheme"),
             last_scheme_group=metadata.get("last_scheme_group"),
             native_calls=int(metadata.get("native_calls", 0)),
+            plugin_inventory=tuple(
+                dict(item)
+                for item in metadata.get("plugin_inventory", ())
+            ),
+            boundary_index=int(metadata.get("boundary_index", 0)),
         )
 
     def new_pool(self) -> StatePool:
         """Create branch-private arrays with the same bit patterns."""
 
-        pool = StatePool(self.dimensions)
+        contracts = (
+            None
+            if not self.contracts
+            else tuple(
+                FieldContract.from_mapping(item)
+                for item in self.contracts
+            )
+        )
+        pool = StatePool(self.dimensions, contracts=contracts)
         pool.restore_arrays(self.arrays)
+        pool.restore_registration_state(
+            initialized_fields=self.initialized_fields,
+            dynamic_fields=self.dynamic_fields,
+        )
         if self.pool_sealed:
             pool.seal_static()
         pool.validate(finite=True)
@@ -208,7 +266,9 @@ class CheckpointBundle:
             raise ConfigurationError(
                 "in-memory checkpoint manifest is invalid"
             ) from exc
-        if manifest.get("schema_version") != CHECKPOINT_SCHEMA_VERSION:
+        if manifest.get("schema_version") not in {
+            1, CHECKPOINT_SCHEMA_VERSION
+        }:
             raise ConfigurationError(
                 "unsupported in-memory checkpoint schema "
                 f"{manifest.get('schema_version')!r}"
@@ -294,6 +354,8 @@ def restore_driver(
     driver._last_scheme = snapshot.last_scheme
     driver._last_scheme_group = snapshot.last_scheme_group
     driver.backend.call_count = snapshot.native_calls
+    driver._boundary_index = snapshot.boundary_index
+    driver.plugins.restore_inventory(snapshot.plugin_inventory)
     return driver
 
 
@@ -368,7 +430,7 @@ def read_checkpoint(path: str | Path, comm: Any) -> ModelSnapshot:
         raise ConfigurationError(f"cannot read checkpoint {root}: {error}")
     payload = comm.bcast(payload, root=0)
     assert payload is not None
-    if payload.get("schema_version") != CHECKPOINT_SCHEMA_VERSION:
+    if payload.get("schema_version") not in {1, CHECKPOINT_SCHEMA_VERSION}:
         raise ConfigurationError(
             f"unsupported checkpoint schema {payload.get('schema_version')!r}"
         )
