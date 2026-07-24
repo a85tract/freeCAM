@@ -386,6 +386,55 @@
       color: var(--muted);
       font-size: 13px;
     }
+    .dask-pipeline {
+      display: grid;
+      gap: 10px;
+      margin-top: 18px;
+    }
+    .pipeline-down {
+      color: var(--muted);
+      text-align: center;
+      font-size: 22px;
+      line-height: 1;
+    }
+    .pipeline-split {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 10px;
+    }
+    .pipeline-lane {
+      padding: 12px;
+      border: 1px solid var(--line);
+      border-radius: 15px;
+      background: rgba(127, 154, 190, .05);
+    }
+    .pipeline-lane > b {
+      display: block;
+      margin-bottom: 9px;
+      color: var(--text);
+      font-size: 12px;
+      text-align: center;
+    }
+    .lane-row {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 28px minmax(0, 1fr);
+      gap: 6px;
+      align-items: center;
+    }
+    .lane-row .node {
+      min-height: 70px;
+      padding: 9px;
+    }
+    .lane-row .arrow { font-size: 17px; }
+    .pipeline-merge {
+      padding: 8px 12px;
+      border: 1px dashed color-mix(in srgb, var(--mpi) 55%, var(--line));
+      border-radius: 999px;
+      background: var(--mpi-soft);
+      color: var(--muted);
+      text-align: center;
+      font-size: 12px;
+    }
 
     .mode-card { position: relative; overflow: hidden; }
     .mode-card::before {
@@ -665,6 +714,9 @@
       .metric { border-right: 0; border-bottom: 1px solid var(--line); }
       .metric:last-child { border-bottom: 0; }
       .role-grid { grid-template-columns: 1fr; }
+      .pipeline-split { grid-template-columns: 1fr; }
+      .lane-row { grid-template-columns: 1fr; }
+      .lane-row .arrow { transform: rotate(90deg); }
       .state-diagram { grid-template-columns: 1fr; }
       .state-arrow b { transform: rotate(90deg); }
       .pool { grid-template-columns: repeat(2, 1fr); }
@@ -856,17 +908,49 @@ cam_history/outfld → Python host service</code></pre>
           <div class="mode-copy">
             <span class="mode-label">MODE B · RESTARTABLE TASKS</span>
             <h3>每个 task 是一个新的 MPI segment</h3>
-            <p>Dask Client 把依赖交给 Scheduler；Worker 收到可运行的 segment 后直接调用 <code>mpiexec -n 24</code>。segment 从父 checkpoint 创建私有 StatePool，可在同一次 MPI 启动中按 <code>SegmentPlan</code> 连续运行多个 phase、scheme 或 step，最后写出新的 checkpoint 并退出。</p>
-            <div class="flow">
+            <p>Dask Client 通过 <code>submit()</code> 增量提交任务和 Future 依赖；Scheduler 把依赖已满足的 task 分配给 Dask Worker。Worker 只负责启动并等待一个模型 segment：PBS 模式先 <code>qsub</code>，allocation 模式在已有 allocation 中直接调用 <code>mpiexec</code>。真正的模型计算由随后启动的24个 MPI Python ranks 完成。</p>
+            <div class="dask-pipeline" aria-label="Dask 从 Notebook 到 Fortran device 的完整执行流程">
               <div class="flow-row">
-                <div class="node dask"><b>Dask Client</b><small>submit Future</small></div>
+                <div class="node dask"><b>Jupyter Notebook</b><small>experiment intent</small></div>
                 <div class="arrow">→</div>
-                <div class="node dask"><b>Scheduler</b><small>DAG + dependencies</small></div>
+                <div class="node dask"><b>Dask Client</b><small>client.submit(...)</small></div>
                 <div class="arrow">→</div>
-                <div class="node dask"><b>Worker</b><small>run task</small></div>
+                <div class="node dask"><b>Scheduler</b><small>DAG · dependencies · placement</small></div>
                 <div class="arrow">→</div>
-                <div class="node mpi"><b>mpiexec -n 24</b><small>new COMM_WORLD</small></div>
+                <div class="node dask"><b>Dask Worker</b><small>run_pbs/allocation_segment</small></div>
               </div>
+              <div class="pipeline-down">↓</div>
+              <div class="pipeline-split">
+                <div class="pipeline-lane">
+                  <b>PBS 模式 · 每个 segment 申请资源</b>
+                  <div class="lane-row">
+                    <div class="node pbs"><b>qsub</b><small>blocking PBS submission</small></div>
+                    <div class="arrow">→</div>
+                    <div class="node pbs"><b>PBS job</b><small>allocated compute node</small></div>
+                  </div>
+                </div>
+                <div class="pipeline-lane">
+                  <b>allocation 模式 · 复用当前 PBS 资源</b>
+                  <div class="lane-row">
+                    <div class="node pbs"><b>Outer allocation</b><small>one shared PBS_JOBID</small></div>
+                    <div class="arrow">→</div>
+                    <div class="node mpi"><b>Direct launch</b><small>no nested qsub</small></div>
+                  </div>
+                </div>
+              </div>
+              <div class="pipeline-down">↓</div>
+              <div class="pipeline-merge">两条路径最终都执行 <code>mpiexec -n 24</code>，为这个 segment 创建新的 <code>MPI.COMM_WORLD</code></div>
+              <div class="pipeline-down">↓</div>
+              <div class="flow-row">
+                <div class="node mpi"><b>24 MPI Python ranks</b><small>rank-local model workers</small></div>
+                <div class="arrow">→</div>
+                <div class="node mpi"><b>CAMDriver</b><small>phase · scheme · step plan</small></div>
+                <div class="arrow">→</div>
+                <div class="node mpi"><b>StatePool</b><small>private NumPy checkpoint state</small></div>
+                <div class="arrow">→</div>
+                <div class="node mpi"><b>Fortran device .so</b><small>DeviceRegistry → bind(C) → scheme</small></div>
+              </div>
+              <div class="flow-note"><strong>Dask Worker ≠ MPI rank。</strong>前者执行任务调度函数并等待子进程；后者才创建 StatePool、运行 CAMDriver，并把 NumPy 指针交给原始 Fortran scheme。segment 结束后写 checkpoint，MPI 进程退出，Future 保存可供下游分支恢复的快照。</div>
             </div>
           </div>
           <div class="mode-facts">
