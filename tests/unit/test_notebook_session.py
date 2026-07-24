@@ -99,11 +99,16 @@ def test_phase_api_tracks_worker_status(
     def request(payload):
         requests.append(payload)
         return {
-            "last_phase": payload["phase"],
-            "next_phase": None,
             "sequence_safe": True,
             "step": 0,
             "native_nstep": 0,
+            "native_calls": 3,
+            "phase_status": {
+                "last_phase": payload["phase"],
+                "next_phase": None,
+                "step": 0,
+            },
+            "scheme_status": session._scheme_status,
         }
 
     monkeypatch.setattr(session, "_request", request)
@@ -162,9 +167,7 @@ def test_scheme_plan_is_editable_and_scheme_calls_are_collective(
             "phase_status": {"step": 0, "last_phase": None},
             "scheme_status": {
                 "last_scheme": (
-                    payload["scheme"]
-                    if payload["op"] == "run_scheme"
-                    else None
+                    payload["scheme"] if payload["op"] == "run_scheme" else None
                 ),
                 "sequence_safe": True,
                 "plan": plan,
@@ -172,12 +175,8 @@ def test_scheme_plan_is_editable_and_scheme_calls_are_collective(
         }
 
     monkeypatch.setattr(session, "_request", request)
-    status = session.run_scheme(
-        "kessler", group=PHYSICS_BEFORE_COUPLER
-    )
-    assert status["last_scheme"] == (
-        "physics_before_coupler.kessler"
-    )
+    status = session.run_scheme("kessler", group=PHYSICS_BEFORE_COUPLER)
+    assert status["last_scheme"] == ("physics_before_coupler.kessler")
     assert requests == [
         {
             "op": "run_scheme",

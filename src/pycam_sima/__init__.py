@@ -49,6 +49,9 @@ from .notebook import (
     DaskRunResult,
     NotebookSession,
     NotebookWorkerError,
+    PersistentCAMActor,
+    PersistentDaskRequest,
+    PersistentDaskSession,
 )
 
 __all__ = [
@@ -95,6 +98,9 @@ __all__ = [
     "SetSchemeEnabled",
     "NotebookSession",
     "NotebookWorkerError",
+    "PersistentCAMActor",
+    "PersistentDaskRequest",
+    "PersistentDaskSession",
     "StatePool",
     "SuiteNode",
     "SuiteScheme",

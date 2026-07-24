@@ -104,6 +104,13 @@ without gathering the complete checkpoint bundle. Granular model actions are
 explicitly unsafe experiments; only the unchanged complete-step order carries
 the model BFB contract.
 
+Persistent Dask execution is a separate Actor path. One worker-pinned Actor
+owns a live `NotebookSession`, holds the full-node MPI allocation lock, and
+launches 24 ranks once. Subsequent Actor futures call phase, scheme, complete
+step, field, plan, and checkpoint operations against the same in-memory
+StatePool. It is an interactive optimization, not an automatic memory fork;
+durable fan-out still uses checkpoint segments.
+
 ## Verification contract
 
 - Initialization must execute zero native calls and must not probe the kernel
@@ -124,12 +131,16 @@ the model BFB contract.
   numeric history variables must match the oracle.
 - A batched granular plan and the equivalent chain of single-action checkpoint
   segments must produce bitwise-identical StatePool arrays on all 24 ranks.
+- A persistent Dask Actor must retain its model clock and StatePool across
+  multiple Actor calls while reporting one MPI launch until explicit close.
 
 Machine-readable evidence is stored in
 `validation/fkessler_model_bfb.json` and
 `validation/source_preserving_devices.json`; Dask action evidence is stored in
-`validation/dask_granular_actions.json`. The latter records both real PBS
-segments and the single-allocation batch-versus-checkpoint-chain comparison.
+`validation/dask_granular_actions.json`, and persistent Actor evidence is
+stored in `validation/dask_persistent.json`. The granular record contains both
+real PBS segments and the single-allocation batch-versus-checkpoint-chain
+comparison.
 
 ## Scope boundary
 

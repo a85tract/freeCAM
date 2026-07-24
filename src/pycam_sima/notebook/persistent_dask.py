@@ -1,0 +1,728 @@
+"""Dask Actor control of one persistent 24-rank CAM model."""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+import fcntl
+import os
+from pathlib import Path
+import re
+import shutil
+import socket
+import threading
+from typing import Any, Callable, Mapping
+
+import numpy as np
+
+from ..model import (
+    FieldEdit,
+    KesslerSchemePlan,
+    ModelOptions,
+    MoveScheme,
+    ObserveFields,
+    PrepareInitialStep,
+    RunPhase,
+    RunScheme,
+    RunSchemeGroup,
+    RunSteps,
+    SegmentPlan,
+    SetSchemeEnabled,
+)
+from ..model.scheme_plan import SCHEME_GROUPS
+from .session import NotebookSession
+
+
+_SAFE_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]*$")
+
+
+@dataclass(frozen=True, slots=True)
+class PersistentDaskRequest:
+    """Serializable configuration used to construct a worker-local Actor."""
+
+    name: str
+    config: str
+    initial_run_dir: str
+    run_root: str
+    library: str
+    environment_script: str
+    python_executable: str
+    log_dir: str
+    ranks: int
+    launch_mode: str
+    pbs_account: str
+    pbs_queue: str
+    pbs_walltime: str
+    startup_timeout: float
+    request_timeout: float
+    options: Mapping[str, Any]
+    scheme_plan: Mapping[str, Any]
+    execution_mode: str
+
+    def __post_init__(self) -> None:
+        if not _SAFE_NAME.fullmatch(self.name):
+            raise ValueError(
+                "persistent session name may contain only letters, digits, "
+                "dot, dash, and underscore"
+            )
+        if self.ranks != 24:
+            raise ValueError("the validated persistent target requires 24 ranks")
+        if self.launch_mode not in {"auto", "local", "pbs"}:
+            raise ValueError("launch_mode must be auto, local, or pbs")
+        if self.execution_mode not in {"pbs", "allocation"}:
+            raise ValueError("execution_mode must be pbs or allocation")
+        if self.execution_mode == "allocation" and self.launch_mode != "local":
+            raise ValueError(
+                "persistent allocation execution requires launch_mode='local'"
+            )
+
+
+class PersistentCAMActor:
+    """Worker-side Dask Actor that owns one live :class:`NotebookSession`.
+
+    Construction launches MPI exactly once. Every later method reuses the same
+    MPI ranks, Python-owned StatePool, model clock, and loaded Fortran devices.
+    """
+
+    def __init__(
+        self,
+        request: PersistentDaskRequest,
+        session_factory: Callable[..., Any] | None = None,
+    ) -> None:
+        self._request = request
+        self._guard = threading.RLock()
+        self._closed = False
+        self._mpi_launch_count = 0
+        self._allocation_lock: Any = None
+        self._session: Any = None
+        self._branch_root = Path(request.run_root) / request.name
+        self._run_dir = self._branch_root / "run"
+        self._history_dir = self._branch_root / "history"
+        self._checkpoint_root = self._branch_root / "checkpoints"
+        self._log_path = Path(request.log_dir) / (
+            f"pycam_dask_persistent_{request.name}.log"
+        )
+
+        try:
+            self._acquire_allocation()
+            self._prepare_run_directory()
+            factory = session_factory or NotebookSession
+            options = ModelOptions(**dict(request.options))
+            scheme_plan = KesslerSchemePlan.from_payload(request.scheme_plan)
+            self._session = factory(
+                request.config,
+                run_dir=self._run_dir,
+                library=request.library,
+                history_dir=self._history_dir,
+                ranks=request.ranks,
+                env_script=request.environment_script,
+                launch_mode=request.launch_mode,
+                pbs_account=request.pbs_account,
+                pbs_queue=request.pbs_queue,
+                pbs_walltime=request.pbs_walltime,
+                python_executable=request.python_executable,
+                startup_timeout=request.startup_timeout,
+                request_timeout=request.request_timeout,
+                log_path=self._log_path,
+                options=options,
+                scheme_plan=scheme_plan,
+            )
+            self._session.start()
+            self._mpi_launch_count = 1
+        except BaseException:
+            self._release_allocation()
+            raise
+
+    def describe(self) -> dict[str, Any]:
+        with self._guard:
+            self._ensure_open()
+            return {
+                "name": self._request.name,
+                "running": bool(self._session.running),
+                "worker_host": socket.gethostname(),
+                "worker_pid": os.getpid(),
+                "ranks": int(self._session.ranks),
+                "step": int(self._session.current_step),
+                "native_calls": int(self._session.native_calls),
+                "mpi_launch_count": self._mpi_launch_count,
+                "launch_mode": self._session.launch_mode_used,
+                "pbs_job_id": self._session.job_id,
+                "outer_pbs_job_id": os.environ.get("PBS_JOBID"),
+                "run_dir": str(self._run_dir),
+                "history_dir": str(self._history_dir),
+                "log_path": str(self._log_path),
+                "field_count": len(self._session.field_names),
+                "phase_names": tuple(self._session.phase_names),
+                "phase_status": dict(self._session.phase_status),
+                "scheme_names": tuple(self._session.scheme_names),
+                "scheme_status": dict(self._session.scheme_status),
+            }
+
+    def prepare_initial_step(self) -> Mapping[str, Any]:
+        with self._guard:
+            self._ensure_open()
+            self._session.prepare_initial_step()
+            return self._command_status()
+
+    def step(self, count: int = 1) -> dict[str, Any]:
+        with self._guard:
+            self._ensure_open()
+            current = self._session.step(count)
+            status = self._command_status()
+            status["step"] = int(current)
+            return status
+
+    def run_phase(self, name: str) -> Mapping[str, Any]:
+        with self._guard:
+            self._ensure_open()
+            self._session.run_phase(name)
+            return self._command_status()
+
+    def run_scheme(self, name: str, group: str | None = None) -> Mapping[str, Any]:
+        with self._guard:
+            self._ensure_open()
+            self._session.run_scheme(name, group=group)
+            return self._command_status()
+
+    def run_scheme_group(self, group: str) -> Mapping[str, Any]:
+        with self._guard:
+            self._ensure_open()
+            self._session.run_scheme_group(group)
+            return self._command_status()
+
+    def get_field(self, name: str, rank: int | str = 0) -> Any:
+        with self._guard:
+            self._ensure_open()
+            return self._session.get_field(name, rank=rank)
+
+    def get_field_stats(self, name: str, rank: int | str = 0) -> Any:
+        with self._guard:
+            self._ensure_open()
+            return self._session.get_field_stats(name, rank=rank)
+
+    def set_field(
+        self,
+        name: str,
+        value: Any,
+        rank: int | str = 0,
+        unsafe: bool = False,
+    ) -> dict[str, Any]:
+        with self._guard:
+            self._ensure_open()
+            self._session.set_field(
+                name,
+                value,
+                rank=rank,
+                unsafe=unsafe,
+            )
+            return {
+                "field": name,
+                "rank": rank,
+                "step": int(self._session.current_step),
+                "mpi_launch_count": self._mpi_launch_count,
+            }
+
+    def set_scheme_enabled(
+        self,
+        name: str,
+        enabled: bool,
+        group: str | None = None,
+        unsafe: bool = False,
+    ) -> Mapping[str, Any]:
+        with self._guard:
+            self._ensure_open()
+            if enabled:
+                self._session.scheme_plan.enable(name, group=group)
+            else:
+                self._session.scheme_plan.disable(
+                    name,
+                    group=group,
+                    unsafe=unsafe,
+                )
+            return self._command_status()
+
+    def move_scheme(
+        self,
+        name: str,
+        before: str | None = None,
+        after: str | None = None,
+        group: str | None = None,
+        to_group: str | None = None,
+        unsafe: bool = False,
+    ) -> Mapping[str, Any]:
+        with self._guard:
+            self._ensure_open()
+            self._session.scheme_plan.move(
+                name,
+                before=before,
+                after=after,
+                group=group,
+                to_group=to_group,
+                unsafe=unsafe,
+            )
+            return self._command_status()
+
+    def reset_scheme_plan(self) -> Mapping[str, Any]:
+        with self._guard:
+            self._ensure_open()
+            self._session.scheme_plan.reset()
+            return self._command_status()
+
+    def describe_scheme_plan(self, group: str | None = None) -> list[dict[str, object]]:
+        with self._guard:
+            self._ensure_open()
+            return self._session.scheme_plan.describe(group)
+
+    def run_plan(self, payload: Mapping[str, Any]) -> dict[str, Any]:
+        """Execute many granular actions without restarting MPI between them."""
+
+        with self._guard:
+            self._ensure_open()
+            plan = SegmentPlan.from_mapping(payload)
+            self._validate_plan(plan)
+            trace: list[dict[str, Any]] = []
+            encoded_actions = plan.as_dict()["actions"]
+            for index, action in enumerate(plan.actions):
+                step_before = int(self._session.current_step)
+                calls_before = int(self._session.native_calls)
+                observations: list[dict[str, Any]] = []
+                if isinstance(action, PrepareInitialStep):
+                    self._session.prepare_initial_step()
+                elif isinstance(action, RunPhase):
+                    self._session.run_phase(action.name)
+                elif isinstance(action, RunScheme):
+                    self._session.run_scheme(action.name, group=action.group)
+                elif isinstance(action, RunSchemeGroup):
+                    self._session.run_scheme_group(action.group)
+                elif isinstance(action, RunSteps):
+                    if action.count:
+                        self._session.step(action.count)
+                elif isinstance(action, SetSchemeEnabled):
+                    if action.enabled:
+                        self._session.scheme_plan.enable(
+                            action.name, group=action.group
+                        )
+                    else:
+                        self._session.scheme_plan.disable(
+                            action.name,
+                            group=action.group,
+                            unsafe=True,
+                        )
+                elif isinstance(action, MoveScheme):
+                    self._session.scheme_plan.move(
+                        action.name,
+                        before=action.before,
+                        after=action.after,
+                        to_group=action.to_group,
+                        unsafe=True,
+                    )
+                elif isinstance(action, FieldEdit):
+                    self._session.edit_field(
+                        action.name,
+                        action.operation,
+                        action.value,
+                        unsafe=action.unsafe,
+                    )
+                elif isinstance(action, ObserveFields):
+                    observations = self._observe_fields(action)
+                else:  # pragma: no cover - SegmentPlan validates construction.
+                    raise TypeError(
+                        f"unsupported persistent action {type(action).__name__}"
+                    )
+
+                record: dict[str, Any] = {
+                    "index": index,
+                    "type": encoded_actions[index]["type"],
+                    "action": encoded_actions[index],
+                    "step_before": step_before,
+                    "step_after": int(self._session.current_step),
+                    "last_phase": self._session.phase_status.get("last_phase"),
+                    "last_scheme": self._session.scheme_status.get("last_scheme"),
+                    "last_scheme_group": self._session.scheme_status.get(
+                        "last_scheme_group"
+                    ),
+                    "native_calls_delta": (
+                        int(self._session.native_calls) - calls_before
+                    ),
+                }
+                if observations:
+                    record["observations"] = observations
+                trace.append(record)
+            return {
+                "name": plan.name,
+                "step": int(self._session.current_step),
+                "native_calls": int(self._session.native_calls),
+                "mpi_launch_count": self._mpi_launch_count,
+                "action_trace": trace,
+                "segment_plan": plan.as_dict(),
+            }
+
+    def checkpoint(self, path: str | None = None) -> dict[str, Any]:
+        """Persist the current live state without stopping the Actor."""
+
+        with self._guard:
+            self._ensure_open()
+            if path is None:
+                target = (
+                    self._checkpoint_root / f"step-{self._session.current_step:06d}"
+                )
+            else:
+                target = Path(path).resolve()
+            checkpoint = self._session.write_checkpoint(target)
+            return {
+                "checkpoint_dir": str(checkpoint),
+                "step": int(self._session.current_step),
+                "native_calls": int(self._session.native_calls),
+                "mpi_launch_count": self._mpi_launch_count,
+            }
+
+    def close(self) -> dict[str, Any]:
+        with self._guard:
+            if self._closed:
+                return {
+                    "closed": True,
+                    "mpi_launch_count": self._mpi_launch_count,
+                }
+            error: BaseException | None = None
+            try:
+                if self._session is not None:
+                    self._session.close()
+            except BaseException as exc:
+                error = exc
+            finally:
+                self._closed = True
+                self._release_allocation()
+            if error is not None:
+                raise error
+            return {
+                "closed": True,
+                "mpi_launch_count": self._mpi_launch_count,
+                "run_dir": str(self._run_dir),
+            }
+
+    def _validate_plan(self, plan: SegmentPlan) -> None:
+        candidate = KesslerSchemePlan.from_payload(self._session.scheme_status["plan"])
+        for action in plan.actions:
+            if isinstance(action, RunPhase):
+                if action.name not in self._session.phase_names:
+                    raise ValueError(
+                        f"unknown model phase {action.name!r}; choose one of "
+                        f"{self._session.phase_names}"
+                    )
+                if not plan.unsafe:
+                    raise ValueError(
+                        "run_phase actions require SegmentPlan(unsafe=True)"
+                    )
+            elif isinstance(action, RunScheme):
+                candidate.scheme(action.name, group=action.group)
+                if not plan.unsafe:
+                    raise ValueError(
+                        "run_scheme actions require SegmentPlan(unsafe=True)"
+                    )
+            elif isinstance(action, RunSchemeGroup):
+                if action.group not in SCHEME_GROUPS:
+                    raise ValueError(
+                        f"unknown scheme group {action.group!r}; choose one of "
+                        f"{SCHEME_GROUPS}"
+                    )
+                if not plan.unsafe:
+                    raise ValueError(
+                        "run_scheme_group actions require SegmentPlan(unsafe=True)"
+                    )
+            elif isinstance(action, SetSchemeEnabled):
+                candidate.scheme(action.name, group=action.group)
+                if not action.enabled and not plan.unsafe:
+                    raise ValueError(
+                        "disabling a scheme requires SegmentPlan(unsafe=True)"
+                    )
+                if action.enabled:
+                    candidate.enable(action.name, group=action.group)
+                else:
+                    candidate.disable(
+                        action.name,
+                        group=action.group,
+                        unsafe=True,
+                    )
+            elif isinstance(action, MoveScheme):
+                candidate.scheme(action.name)
+                if action.before is not None:
+                    candidate.scheme(action.before)
+                if action.after is not None:
+                    candidate.scheme(action.after)
+                if action.to_group is not None and action.to_group not in SCHEME_GROUPS:
+                    raise ValueError(
+                        f"unknown destination group {action.to_group!r}; "
+                        f"choose one of {SCHEME_GROUPS}"
+                    )
+                if not plan.unsafe:
+                    raise ValueError(
+                        "moving a scheme requires SegmentPlan(unsafe=True)"
+                    )
+                candidate.move(
+                    action.name,
+                    before=action.before,
+                    after=action.after,
+                    to_group=action.to_group,
+                    unsafe=True,
+                )
+            elif isinstance(action, FieldEdit):
+                info = self._session.field_info(action.name)
+                if action.unsafe and not plan.unsafe:
+                    raise ValueError(
+                        "unsafe field edits require SegmentPlan(unsafe=True)"
+                    )
+                if not bool(info.get("writable", True)) and not action.unsafe:
+                    raise ValueError(
+                        f"field {action.name!r} is read-only after initialization"
+                    )
+            elif isinstance(action, ObserveFields):
+                for name in action.fields:
+                    self._session.field_info(name)
+
+    def _observe_fields(self, action: ObserveFields) -> list[dict[str, Any]]:
+        observations: list[dict[str, Any]] = []
+        for name in action.fields:
+            ranks = [
+                dict(row) for row in self._session.get_field_stats(name, rank="all")
+            ]
+            counts = [int(np.prod(row["shape"], dtype=np.int64)) for row in ranks]
+            total = sum(counts)
+            global_statistics: dict[str, float] = {}
+            if "min" in action.statistics:
+                global_statistics["min"] = min(float(row["min"]) for row in ranks)
+            if "max" in action.statistics:
+                global_statistics["max"] = max(float(row["max"]) for row in ranks)
+            if "mean" in action.statistics:
+                global_statistics["mean"] = (
+                    sum(float(row["mean"]) * count for row, count in zip(ranks, counts))
+                    / total
+                )
+            observations.append(
+                {
+                    "field": name,
+                    "global": global_statistics,
+                    "ranks": ranks,
+                }
+            )
+        return observations
+
+    def _prepare_run_directory(self) -> None:
+        if self._branch_root.exists():
+            raise FileExistsError(
+                f"refusing to replace persistent Dask session: {self._branch_root}"
+            )
+        self._run_dir.mkdir(parents=True)
+        shutil.copy2(
+            Path(self._request.initial_run_dir) / "atm_in",
+            self._run_dir / "atm_in",
+        )
+        self._log_path.parent.mkdir(parents=True, exist_ok=True)
+
+    def _acquire_allocation(self) -> None:
+        if self._request.execution_mode != "allocation":
+            return
+        if not os.environ.get("PBS_JOBID"):
+            raise RuntimeError(
+                "persistent allocation mode requires an active PBS allocation"
+            )
+        root = Path(self._request.run_root)
+        root.mkdir(parents=True, exist_ok=True)
+        handle = (root / ".allocation-mpi.lock").open("w")
+        try:
+            fcntl.flock(handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError as exc:
+            handle.close()
+            raise RuntimeError(
+                "the allocation already has an active full-node MPI segment "
+                "or persistent session"
+            ) from exc
+        self._allocation_lock = handle
+
+    def _release_allocation(self) -> None:
+        if self._allocation_lock is None:
+            return
+        try:
+            fcntl.flock(self._allocation_lock, fcntl.LOCK_UN)
+        finally:
+            self._allocation_lock.close()
+            self._allocation_lock = None
+
+    def _ensure_open(self) -> None:
+        if self._closed or self._session is None:
+            raise RuntimeError("persistent Dask CAM session is closed")
+
+    def _command_status(self) -> dict[str, Any]:
+        return {
+            "step": int(self._session.current_step),
+            "native_calls": int(self._session.native_calls),
+            "mpi_launch_count": self._mpi_launch_count,
+            "phase_status": dict(self._session.phase_status),
+            "scheme_status": dict(self._session.scheme_status),
+        }
+
+    def __del__(self) -> None:
+        """Best-effort cleanup if a Dask client drops its Actor reference."""
+
+        try:
+            if not self._closed and self._session is not None:
+                self._session.close()
+        except BaseException:
+            pass
+        finally:
+            try:
+                self._release_allocation()
+            except BaseException:
+                pass
+
+
+class PersistentDaskSession:
+    """Notebook-side proxy whose methods return Dask ``ActorFuture`` values."""
+
+    def __init__(
+        self,
+        client: Any,
+        actor: Any,
+        actor_future: Any,
+        *,
+        worker: str,
+        name: str,
+    ) -> None:
+        self.client = client
+        self.actor = actor
+        self.actor_future = actor_future
+        self.worker = worker
+        self.name = name
+        self._closed = False
+
+    def describe(self) -> Any:
+        return self._call("describe")
+
+    status = describe
+
+    def prepare_initial_step(self) -> Any:
+        return self._call("prepare_initial_step")
+
+    def step(self, count: int = 1) -> Any:
+        return self._call("step", int(count))
+
+    def run_phase(self, name: str) -> Any:
+        return self._call("run_phase", str(name))
+
+    def run_scheme(self, name: str, *, group: str | None = None) -> Any:
+        return self._call("run_scheme", str(name), group)
+
+    def run_scheme_group(self, group: str) -> Any:
+        return self._call("run_scheme_group", str(group))
+
+    def field(self, name: str, *, rank: int | str = 0) -> Any:
+        return self._call("get_field", str(name), rank)
+
+    get_field = field
+
+    def field_stats(self, name: str, *, rank: int | str = 0) -> Any:
+        return self._call("get_field_stats", str(name), rank)
+
+    get_field_stats = field_stats
+
+    def set_field(
+        self,
+        name: str,
+        value: Any,
+        *,
+        rank: int | str = 0,
+        unsafe: bool = False,
+    ) -> Any:
+        return self._call(
+            "set_field",
+            str(name),
+            value,
+            rank,
+            bool(unsafe),
+        )
+
+    def set_scheme_enabled(
+        self,
+        name: str,
+        enabled: bool,
+        *,
+        group: str | None = None,
+        unsafe: bool = False,
+    ) -> Any:
+        return self._call(
+            "set_scheme_enabled",
+            str(name),
+            bool(enabled),
+            group,
+            bool(unsafe),
+        )
+
+    def move_scheme(
+        self,
+        name: str,
+        *,
+        before: str | None = None,
+        after: str | None = None,
+        group: str | None = None,
+        to_group: str | None = None,
+        unsafe: bool = False,
+    ) -> Any:
+        return self._call(
+            "move_scheme",
+            str(name),
+            before,
+            after,
+            group,
+            to_group,
+            bool(unsafe),
+        )
+
+    def reset_scheme_plan(self) -> Any:
+        return self._call("reset_scheme_plan")
+
+    def describe_scheme_plan(self, group: str | None = None) -> Any:
+        return self._call("describe_scheme_plan", group)
+
+    def run_plan(self, plan: SegmentPlan) -> Any:
+        if not isinstance(plan, SegmentPlan):
+            raise TypeError("plan must be SegmentPlan")
+        return self._call("run_plan", plan.as_dict())
+
+    def run_action(
+        self,
+        *,
+        name: str,
+        action: Any,
+        unsafe: bool = True,
+    ) -> Any:
+        return self.run_plan(SegmentPlan(name=name, actions=(action,), unsafe=unsafe))
+
+    def checkpoint(self, path: str | Path | None = None) -> Any:
+        return self._call(
+            "checkpoint",
+            None if path is None else str(Path(path).resolve()),
+        )
+
+    def close(self) -> Any:
+        if self._closed:
+            raise RuntimeError("persistent Dask CAM session is already closed")
+        self._closed = True
+        return self.actor.close()
+
+    def __enter__(self) -> "PersistentDaskSession":
+        return self
+
+    def __exit__(self, exc_type: Any, exc: Any, traceback: Any) -> None:
+        if not self._closed:
+            future = self.close()
+            future.result()
+
+    def _call(self, method: str, *args: Any) -> Any:
+        if self._closed:
+            raise RuntimeError("persistent Dask CAM session is closed")
+        return getattr(self.actor, method)(*args)
+
+
+__all__ = [
+    "PersistentCAMActor",
+    "PersistentDaskRequest",
+    "PersistentDaskSession",
+]

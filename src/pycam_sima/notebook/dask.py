@@ -19,8 +19,14 @@ from typing import Any, Callable, Iterator, Literal, Mapping, Sequence
 
 import numpy as np
 
+from ..model import KesslerSchemePlan, ModelConfig, ModelOptions
 from ..model.checkpoint import CheckpointBundle
 from ..model.experiment import Action, BranchSpec, SegmentPlan
+from .persistent_dask import (
+    PersistentCAMActor,
+    PersistentDaskRequest,
+    PersistentDaskSession,
+)
 
 
 ExecutionMode = Literal["pbs", "allocation"]
@@ -96,6 +102,7 @@ class DaskRunResult:
 
 
 TaskRunner = Callable[[SegmentRequest, DaskRunResult | None], DaskRunResult]
+PersistentActorFactory = Callable[[PersistentDaskRequest], Any]
 
 
 class DaskExperimentClient:
@@ -115,6 +122,7 @@ class DaskExperimentClient:
         pbs: DaskPBSOptions | None = None,
         execution_mode: ExecutionMode = "pbs",
         task_runner: TaskRunner | None = None,
+        persistent_actor_factory: PersistentActorFactory | None = None,
     ) -> None:
         if not callable(getattr(client, "submit", None)):
             raise TypeError("client must provide dask.distributed.Client.submit")
@@ -144,6 +152,7 @@ class DaskExperimentClient:
             "allocation": run_allocation_segment,
         }
         self.task_runner = task_runner or runners[execution_mode]
+        self.persistent_actor_factory = persistent_actor_factory or PersistentCAMActor
 
         required = (
             self.config,
@@ -169,9 +178,7 @@ class DaskExperimentClient:
             pure=False,
         )
 
-    def submit_branch(
-        self, parent: Any, branch: BranchSpec | SegmentPlan
-    ) -> Any:
+    def submit_branch(self, parent: Any, branch: BranchSpec | SegmentPlan) -> Any:
         """Submit one branch that depends on a parent Dask Future."""
 
         request = self._request(branch)
@@ -214,10 +221,7 @@ class DaskExperimentClient:
         names = [branch.name for branch in branches]
         if len(names) != len(set(names)):
             raise ValueError("branch names must be unique")
-        return {
-            branch.name: self.submit_branch(parent, branch)
-            for branch in branches
-        }
+        return {branch.name: self.submit_branch(parent, branch) for branch in branches}
 
     def gather(self, branches: Mapping[str, Any]) -> dict[str, DaskRunResult]:
         """Download complete results, including all in-memory snapshots."""
@@ -250,12 +254,99 @@ class DaskExperimentClient:
             pure=False,
         )
 
-    def _request(self, branch: BranchSpec | SegmentPlan) -> SegmentRequest:
-        plan = (
-            branch.to_segment_plan()
-            if isinstance(branch, BranchSpec)
-            else branch
+    def start_persistent(
+        self,
+        name: str,
+        *,
+        worker: str | None = None,
+        launch_mode: str | None = None,
+        options: ModelOptions | None = None,
+        scheme_plan: KesslerSchemePlan | None = None,
+        startup_timeout: float = 900.0,
+        request_timeout: float = 600.0,
+    ) -> PersistentDaskSession:
+        """Create one worker-pinned Actor and launch its MPI model once.
+
+        The call waits only for Actor/MPI initialization. Methods on the
+        returned proxy are asynchronous and return Dask ``ActorFuture`` values.
+        """
+
+        selected_worker = self._persistent_worker(worker)
+        selected_launch_mode = launch_mode or (
+            "local" if self.execution_mode == "allocation" else "pbs"
         )
+        config = ModelConfig.from_yaml(self.config)
+        selected_options = options or ModelOptions.from_config(config)
+        selected_options.validate(config)
+        selected_scheme_plan = scheme_plan or KesslerSchemePlan.default()
+        request = PersistentDaskRequest(
+            name=name,
+            config=str(self.config),
+            initial_run_dir=str(self.initial_run_dir),
+            run_root=str(self.run_root),
+            library=str(self.library),
+            environment_script=str(self.environment_script),
+            python_executable=str(self.python_executable),
+            log_dir=str(self.log_dir),
+            ranks=self.pbs.ranks,
+            launch_mode=selected_launch_mode,
+            pbs_account=self.pbs.account,
+            pbs_queue=self.pbs.queue,
+            pbs_walltime=self.pbs.walltime,
+            startup_timeout=float(startup_timeout),
+            request_timeout=float(request_timeout),
+            options={
+                "timestep_seconds": selected_options.timestep_seconds,
+                "physics_profile": selected_options.physics_profile,
+                "mediator_present": selected_options.mediator_present,
+            },
+            scheme_plan=selected_scheme_plan.to_payload(),
+            execution_mode=self.execution_mode,
+        )
+        actor_future = self.client.submit(
+            self.persistent_actor_factory,
+            request,
+            actor=True,
+            workers=[selected_worker],
+            allow_other_workers=False,
+            pure=False,
+        )
+        actor = actor_future.result()
+        return PersistentDaskSession(
+            self.client,
+            actor,
+            actor_future,
+            worker=selected_worker,
+            name=name,
+        )
+
+    def submit_persistent(
+        self,
+        name: str,
+        **kwargs: Any,
+    ) -> PersistentDaskSession:
+        """Alias for :meth:`start_persistent` matching Dask submit vocabulary."""
+
+        return self.start_persistent(name, **kwargs)
+
+    def _persistent_worker(self, worker: str | None) -> str:
+        scheduler_info = getattr(self.client, "scheduler_info", None)
+        if not callable(scheduler_info):
+            raise TypeError("persistent Dask execution requires Client.scheduler_info")
+        workers = tuple(sorted(scheduler_info().get("workers", {})))
+        if not workers:
+            raise RuntimeError("Dask has no workers for the persistent CAM Actor")
+        if worker is not None:
+            if worker not in workers:
+                raise ValueError(
+                    f"Dask worker {worker!r} is unavailable; choose one of "
+                    f"{workers}"
+                )
+            return worker
+        return workers[0]
+
+    def _request(self, branch: BranchSpec | SegmentPlan) -> SegmentRequest:
+        plan = branch.to_segment_plan() if isinstance(branch, BranchSpec) else branch
         if not isinstance(plan, SegmentPlan):
             raise TypeError("Dask branches must be BranchSpec or SegmentPlan")
         return SegmentRequest(
@@ -335,9 +426,7 @@ def run_allocation_segment(
     """Run one MPI segment directly inside the Dask controller's PBS allocation."""
 
     if request.execution_mode != "allocation":
-        raise ValueError(
-            "run_allocation_segment requires execution_mode='allocation'"
-        )
+        raise ValueError("run_allocation_segment requires execution_mode='allocation'")
     outer_job_id = os.environ.get("PBS_JOBID")
     if not outer_job_id:
         raise RuntimeError(
@@ -402,19 +491,12 @@ def _prepare_segment(
     shutil.copy2(Path(request.initial_run_dir) / "atm_in", run_dir / "atm_in")
 
     if parent is not None:
-        input_checkpoint = parent.snapshot.materialize(
-            branch_root / "input-checkpoint"
-        )
+        input_checkpoint = parent.snapshot.materialize(branch_root / "input-checkpoint")
         _inherit_history(Path(parent.history_dir), history_dir)
-    plan_json.write_text(
-        json.dumps(request.plan.as_dict(), indent=2, sort_keys=True)
-    )
-    log_path = (
-        Path(request.log_dir)
-        / (
-            f"pycam_dask_{request.execution_mode}_{request.plan.name}_"
-            f"{request.task_id}.log"
-        )
+    plan_json.write_text(json.dumps(request.plan.as_dict(), indent=2, sort_keys=True))
+    log_path = Path(request.log_dir) / (
+        f"pycam_dask_{request.execution_mode}_{request.plan.name}_"
+        f"{request.task_id}.log"
     )
     return _SegmentPaths(
         branch_root=branch_root,

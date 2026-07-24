@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="description" content="pycam-sima 的 Python-owned 数据总线、自动生成的 Fortran scheme 连接器，以及常驻 socket 与 Dask checkpoint 两种控制模式。">
+  <meta name="description" content="pycam-sima 的 Python-owned 数据总线、自动生成的 Fortran scheme 连接器，以及直接常驻、persistent Dask Actor 与 checkpoint Dask 三种控制面。">
   <title>pycam-sima · Python 数据总线与 Fortran devices</title>
   <style>
     :root {
@@ -320,6 +320,10 @@
       color: #fff;
       background: var(--dask);
     }
+    .mode-button[aria-pressed="true"][data-mode="persistent"] {
+      color: #07101e;
+      background: var(--server);
+    }
     .mode-stage { padding: 24px; overflow: hidden; }
     .mode-summary {
       display: none;
@@ -328,13 +332,19 @@
       align-items: stretch;
     }
     body[data-mode="server"] .mode-summary[data-mode="server"],
-    body[data-mode="dask"] .mode-summary[data-mode="dask"] { display: grid; }
+    body[data-mode="dask"] .mode-summary[data-mode="dask"],
+    body[data-mode="persistent"] .mode-summary[data-mode="persistent"] {
+      display: grid;
+    }
     .mode-copy {
       padding: 22px;
       border-radius: 17px;
       background: var(--server-soft);
     }
     .mode-summary[data-mode="dask"] .mode-copy { background: var(--dask-soft); }
+    .mode-summary[data-mode="persistent"] .mode-copy {
+      background: linear-gradient(135deg, var(--dask-soft), var(--server-soft));
+    }
     .mode-copy p { color: var(--muted); }
     .mode-facts {
       display: grid;
@@ -732,7 +742,7 @@
       <nav aria-label="页面导航">
         <a href="#overview">总览</a>
         <a href="#devices">Fortran devices</a>
-        <a href="#two-modes">两种模式</a>
+        <a href="#two-modes">三种控制面</a>
         <a href="#roles">职责边界</a>
         <a href="#state">状态如何流动</a>
         <a href="#compare">如何选择</a>
@@ -748,15 +758,17 @@
         <p class="lead">
           <strong>StatePool</strong> 是由 Python 拥有的通用数据总线，<strong>DeviceRegistry</strong>
           按 CCPP standard_name 自动接线，生成的薄 adapter 调用未经改写的原始 Fortran scheme。
-          <strong>常驻 server</strong> 让同一批 MPI 进程和 StatePool 一直活着，适合逐步观察与修改；
-          <strong>Dask</strong> 把 checkpoint 组织成任务图，适合从公共状态分叉独立实验。
-          两种控制模式共用同一个数据层和 device 层。
+          <strong>NotebookSession</strong> 直接控制常驻 MPI；
+          <strong>persistent Dask Actor</strong> 把同一个常驻模型交给 Scheduler 调度；
+          <strong>Dask segment</strong> 把 checkpoint 组织成可恢复、可分叉的任务图。
+          三种控制面共用同一个数据层和 device 层。
         </p>
       </div>
       <aside class="hero-card">
         <small>一句话分工</small>
         <div class="formula">
           <div class="formula-row"><b class="server-color">SERVER</b><span>控制正在存活的模型</span></div>
+          <div class="formula-row"><b class="dask-color">ACTOR</b><span>调度一个持续存活的模型</span></div>
           <div class="formula-row"><b class="dask-color">DASK</b><span>组织可重启的模型任务</span></div>
           <div class="formula-row"><b class="mpi-color">DEVICE</b><span>连接 StatePool 与原始 scheme</span></div>
           <div class="formula-row"><b class="pbs-color">PBS</b><span>分配计算节点和时间</span></div>
@@ -766,7 +778,7 @@
     </header>
 
     <div class="metrics" aria-label="当前实现关键数字">
-      <div class="metric"><b>2</b><span>control modes</span></div>
+      <div class="metric"><b>3</b><span>control surfaces</span></div>
       <div class="metric"><b>24</b><span>MPI ranks per segment</span></div>
       <div class="metric"><b>222</b><span>Python-owned fields</span></div>
       <div class="metric"><b>129 / 155</b><span>ready · 100 native + 29 host</span></div>
@@ -776,8 +788,8 @@
 
     <section id="overview">
       <div class="section-head">
-        <div><span class="kicker">Shared model core</span><h2>底层模型没有两套</h2></div>
-        <p>两种模式只改变“谁在什么时候发出控制命令、状态如何跨执行边界保存”。真正的模型仍然是同一套 Python CAMDriver、StatePool、DeviceRegistry、mpi4py 通信和原始 Fortran schemes。</p>
+        <div><span class="kicker">Shared model core</span><h2>底层模型没有三套</h2></div>
+        <p>三种控制面只改变“谁在什么时候发出命令、MPI 是否继续存活、状态如何跨边界保存”。真正的模型仍然是同一套 Python CAMDriver、StatePool、DeviceRegistry、mpi4py 通信和原始 Fortran schemes。</p>
       </div>
       <div class="card mode-stage">
         <div class="flow-row">
@@ -790,7 +802,7 @@
           <div class="node pbs"><b>DeviceRegistry</b><small>manifest + standard_name</small></div>
         </div>
         <div class="flow-row" style="margin-top:8px">
-          <div class="node dask"><b>DaskExperimentClient</b><small>task graph + checkpoints</small></div>
+          <div class="node dask"><b>DaskExperimentClient</b><small>persistent Actor or checkpoints</small></div>
           <div class="arrow">↗</div>
           <div class="node mpi"><b>mpi4py COMM_WORLD</b><small>halo · collective · barrier</small></div>
           <div class="arrow">→</div>
@@ -876,6 +888,7 @@ cam_history/outfld → Python host service</code></pre>
       </div>
       <div class="mode-picker" role="group" aria-label="选择控制模式">
         <button class="mode-button" data-mode="server" aria-pressed="true">常驻 Server</button>
+        <button class="mode-button" data-mode="persistent" aria-pressed="false">Persistent Dask</button>
         <button class="mode-button" data-mode="dask" aria-pressed="false">Dask 分支</button>
       </div>
       <div class="card mode-stage">
@@ -904,9 +917,35 @@ cam_history/outfld → Python host service</code></pre>
           </div>
         </div>
 
+        <div class="mode-summary" data-mode="persistent">
+          <div class="mode-copy">
+            <span class="mode-label">MODE B · WORKER-PINNED ACTOR</span>
+            <h3>Dask 调度同一个常驻24-rank模型</h3>
+            <p><code>start_persistent()</code> 把 Actor 固定到一个 Dask Worker。Actor 构造时只启动一次 <code>mpiexec -n 24</code>，内部拥有一个 NotebookSession；后续 <code>step/phase/scheme/field</code> Actor 方法只发送 socket command，不再初始化 MPI、网格或 StatePool。</p>
+            <div class="flow">
+              <div class="flow-row">
+                <div class="node dask"><b>Jupyter</b><small>ActorFuture.result()</small></div>
+                <div class="arrow">→</div>
+                <div class="node dask"><b>Scheduler</b><small>route to owner worker</small></div>
+                <div class="arrow">→</div>
+                <div class="node dask"><b>Pinned Actor</b><small>owns NotebookSession</small></div>
+                <div class="arrow">→</div>
+                <div class="node server"><b>socket → rank 0</b><small>bcast to ranks 0…23</small></div>
+              </div>
+            </div>
+            <div class="flow-note"><strong>关键区别：</strong>Dask Worker 这次不为每条命令执行新的 <code>run-segment</code>。它一直保存 Actor；Actor 一直保存 socket 和 live model。只有 Actor 创建时发生一次 MPI launch，直到显式 <code>close()</code>。</div>
+          </div>
+          <div class="mode-facts">
+            <div class="fact"><b>状态</b><span>Actor-owned live StatePool</span></div>
+            <div class="fact"><b>MPI进程</b><span>Actor 生命周期内只启动一次</span></div>
+            <div class="fact"><b>等待点</b><span>每个 ActorFuture.result()</span></div>
+            <div class="fact"><b>最适合</b><span>Dask 下的低延迟交互</span></div>
+          </div>
+        </div>
+
         <div class="mode-summary" data-mode="dask">
           <div class="mode-copy">
-            <span class="mode-label">MODE B · RESTARTABLE TASKS</span>
+            <span class="mode-label">MODE C · RESTARTABLE TASKS</span>
             <h3>每个 task 是一个新的 MPI segment</h3>
             <p>Dask Client 通过 <code>submit()</code> 增量提交任务和 Future 依赖；Scheduler 把依赖已满足的 task 分配给 Dask Worker。Worker 只负责启动并等待一个模型 segment：PBS 模式先 <code>qsub</code>，allocation 模式在已有 allocation 中直接调用 <code>mpiexec</code>。真正的模型计算由随后启动的24个 MPI Python ranks 完成。</p>
             <div class="dask-pipeline" aria-label="Dask 从 Notebook 到 Fortran device 的完整执行流程">
@@ -975,7 +1014,7 @@ cam_history/outfld → Python host service</code></pre>
           </div>
         </article>
         <article class="card panel-pad mode-card dask-mode">
-          <span class="mode-label">MODE B</span>
+          <span class="mode-label">MODE C</span>
           <h3>Dask fan-out 的任务图</h3>
           <div class="dag">
             <div class="dag-node"><b>base task</b><br>run → checkpoint</div>
@@ -1037,7 +1076,7 @@ cam_history/outfld → Python host service</code></pre>
     <section id="state">
       <div class="section-head">
         <div><span class="kicker">State semantics</span><h2>StatePool 到底在哪里？</h2></div>
-        <p>两种模式的根本差异不是字段名字或 kernel，而是“下一条命令是否还面对同一块内存”。</p>
+        <p>三种控制面的根本差异不是字段名字或 kernel，而是“下一条命令是否还面对同一块内存”。直接 server 与 persistent Actor 都面对 live StatePool；checkpoint 分支面对恢复出的私有副本。</p>
       </div>
       <div class="card state-diagram">
         <div class="state-box">
@@ -1068,20 +1107,20 @@ cam_history/outfld → Python host service</code></pre>
     <section id="compare">
       <div class="section-head">
         <div><span class="kicker">Decision table</span><h2>什么时候用哪一个？</h2></div>
-        <p>两种模式是互补关系。常驻 server 优化交互延迟；Dask 优化实验结构、隔离和可恢复性。</p>
+        <p>三种控制面是互补关系：直接 server 最简单，persistent Actor 把低延迟交互纳入 Dask，checkpoint segment 提供隔离、分支和恢复。</p>
       </div>
       <div class="card" style="overflow:hidden">
         <table>
-          <thead><tr><th>维度</th><th class="server-color">常驻 Server</th><th class="dask-color">Dask 分支</th></tr></thead>
+          <thead><tr><th>维度</th><th class="server-color">常驻 Server</th><th class="dask-color">Persistent Dask</th><th class="dask-color">Dask 分支</th></tr></thead>
           <tbody>
-            <tr><td>MPI生命周期</td><td>同一批24 ranks持续存活</td><td>每个segment新建24 ranks，结束后退出</td></tr>
-            <tr><td>状态位置</td><td>原进程中的live StatePool</td><td>父checkpoint → 分支私有StatePool</td></tr>
-            <tr><td>控制粒度</td><td>scheme、phase、step边界</td><td>segment内为scheme/phase/step；跨task为checkpoint</td></tr>
-            <tr><td>单次交互延迟</td><td class="yes">低：无需重启MPI和恢复checkpoint</td><td>较高：需要mpiexec、restore、write</td></tr>
-            <tr><td>分支隔离</td><td>需要显式snapshot/restore</td><td class="yes">Future依赖天然表达独立分支</td></tr>
-            <tr><td>进程故障后状态</td><td class="no">live内存可能丢失</td><td class="yes">durable checkpoint可重启</td></tr>
-            <tr><td>当前PBS策略</td><td>一个持久worker job</td><td>allocation模式：一个outer job，segments串行</td></tr>
-            <tr><td>最佳用途</td><td>调试、教学、逐步观察和改变量</td><td>control/warm/on-off/参数扫描实验</td></tr>
+            <tr><td>MPI生命周期</td><td>同一批24 ranks持续存活</td><td>Actor 内同一批24 ranks持续存活</td><td>每个segment新建24 ranks，结束后退出</td></tr>
+            <tr><td>状态位置</td><td>NotebookSession 的live StatePool</td><td>Dask Worker Actor 的live StatePool</td><td>父checkpoint → 分支私有StatePool</td></tr>
+            <tr><td>控制粒度</td><td>scheme、phase、step边界</td><td>ActorFuture 对应scheme、phase、step、field、plan</td><td>segment内细粒度；跨task为checkpoint</td></tr>
+            <tr><td>单次交互延迟</td><td class="yes">低</td><td class="yes">低：无重复mpiexec/restore</td><td>较高：需要mpiexec、restore、write</td></tr>
+            <tr><td>分支隔离</td><td>需要显式checkpoint</td><td>需要显式checkpoint</td><td class="yes">Future依赖天然表达独立分支</td></tr>
+            <tr><td>进程故障后状态</td><td class="no">未保存live内存会丢失</td><td class="no">Actor丢失时未保存内存会丢失</td><td class="yes">durable checkpoint可重启</td></tr>
+            <tr><td>当前PBS策略</td><td>一个持久worker job</td><td>一个outer allocation + 一个常驻Actor</td><td>一个outer allocation，segments串行</td></tr>
+            <tr><td>最佳用途</td><td>直接调试、教学</td><td>Dask下逐步观察和改变量</td><td>control/warm/on-off/参数扫描</td></tr>
           </tbody>
         </table>
       </div>
@@ -1090,7 +1129,7 @@ cam_history/outfld → Python host service</code></pre>
     <section id="usage">
       <div class="section-head">
         <div><span class="kicker">Concrete usage</span><h2>代码如何对应架构？</h2></div>
-        <p>两个 Notebook 各自只维护一种职责：<code>try_notebook_session.ipynb</code> 展示常驻交互；<code>try_dask_fanout.ipynb</code> 展示 checkpoint 分支。</p>
+        <p><code>try_notebook_session.ipynb</code> 展示直接常驻交互；<code>try_dask_fanout.ipynb</code> 同时展示 persistent Actor 与 checkpoint 分支。</p>
       </div>
       <div class="two-col">
         <article class="card panel-pad">
@@ -1105,6 +1144,25 @@ cam_history/outfld → Python host service</code></pre>
     model.run_scheme("kessler")
     after = model.parameters.air_temperature.get(rank=0)
     model.step()</code></pre>
+        </article>
+        <article class="card panel-pad">
+          <span class="mode-label" style="color:var(--dask);background:var(--dask-soft)">Persistent Dask</span>
+          <h3>只启动一次 MPI，连续提交 Actor 方法</h3>
+          <pre><button class="copy">复制</button><code>model = experiments.start_persistent(
+    "interactive"
+)
+started = model.describe().result()
+assert started["mpi_launch_count"] == 1
+
+model.step().result()
+stats = model.field_stats(
+    "air_temperature", rank=0
+).result()
+values = model.field(
+    "air_temperature", rank=0
+).result()
+checkpoint = model.checkpoint().result()
+model.close().result()</code></pre>
         </article>
         <article class="card panel-pad">
           <span class="mode-label" style="color:var(--dask);background:var(--dask-soft)">Dask allocation</span>
@@ -1182,11 +1240,12 @@ field = experiments.field(
         <p>这些问题都来自“任务、进程、状态和资源”四个层次被放在同一句话里。展开即可看到清晰边界。</p>
       </div>
       <div class="card" style="overflow:hidden">
-        <details open><summary>Dask 可以让同一批 MPI ranks 一直活着吗？</summary><p>当前 task/checkpoint 模式不可以。Dask Worker 只启动并等待一个 MPI segment；segment结束后进程退出。要控制同一批live ranks，仍需常驻 server 或等价的持久IPC。</p></details>
+        <details open><summary>Dask 可以让同一批 MPI ranks 一直活着吗？</summary><p>可以，使用 <code>start_persistent()</code> 创建 worker-pinned Actor。Actor 内部拥有 NotebookSession 和 authenticated socket：构造时只启动一次 MPI，后续 Actor 方法面对同一个 live StatePool。原来的 task/checkpoint 模式仍会在每个 segment 后退出 MPI。</p></details>
         <details><summary>细粒度 action 是否每次都重新启动 MPI？</summary><p>不一定。一个 <code>SegmentPlan</code> 内的所有 action 共用同一次24-rank MPI启动和同一个live StatePool；只有使用 <code>submit_action()</code> 把边界变成新的Future时，才会结束当前segment、写checkpoint并为下一个task重新启动MPI。</p></details>
         <details><summary>为什么单-allocation模式仍然需要几分钟？</summary><p>它只去掉了每个分支重新排PBS队列的时间。模型step、MPI进程启动、24-rank checkpoint恢复与写入仍然真实发生；一个worker还会让占满24 ranks的segments串行执行。</p></details>
         <details><summary>串行执行意味着后一个分支读取前一个分支吗？</summary><p>不意味着。control和no-kessler都从base的不可变snapshot创建私有副本；warm从它明确指定的parent创建副本。串行只是资源安排，不是状态依赖。</p></details>
         <details><summary>自定义 server 为什么需要 socket？</summary><p>因为Notebook和24-rank模型是不同进程。模型完成一条命令后要继续存活并等待下一条命令，就必须有socket、pipe、ZeroMQ或MPI intercommunicator之类的持久IPC。当前实现使用带authkey的socket。</p></details>
+        <details><summary>Persistent Dask 是否已经不需要 socket？</summary><p>仍然需要。Dask 把 Notebook 命令路由到拥有模型的 Actor，但 Actor 和24-rank MPI模型仍是不同进程；Actor 复用 NotebookSession 的 authenticated socket。Dask 替代的是直接控制者和任务路由，不是跨进程通信本身。</p></details>
         <details><summary>为了接入 Kessler，是否改写了原始 Fortran 数值代码？</summary><p>没有。构建器读取固定 CAM-SIMA revision 中的原始 <code>kessler.F90</code> 和 CCPP metadata，生成一个只负责 ABI 转换的 adapter。原始 scheme 直接参与 device <code>.so</code> 编译；旧的手写 <code>kessler_kernel.F90</code> 已删除。</p></details>
         <details><summary>为什么 Kessler 不再有单独的 descriptor 目录？</summary><p>所有 155 个 scheme 现在都只有 <code>devices/generated/&lt;scheme&gt;/device.yaml</code> 这一份生成结果。Kessler 特有的每次运行前初始化和垂直索引约定来自 <code>devices/overrides.yaml</code>；它只补充 metadata 无法表达的 host policy，不允许替换原始源码、entrypoint 或 ABI。</p></details>
         <details><summary>任意 CCPP scheme 现在都能无条件自动接入吗？</summary><p>所有 155 个活跃 scheme 都会自动得到 connector 与机器可读状态，但这不等于全部都已科学运行。通用 ABI 已覆盖 real/integer/default-logical、fixed-width character、Python-owned shaped allocatable arrays 和 non-allocatable derived state；纯 history scheme 由 Python service 接管。当前 100 个 native device 加 29 个 host service 可执行；仍依赖 MPI reduction、PIO/NetCDF input、外部 MUSICA 源码或 allocatable object 的 26 个 scheme 会 fail closed，并在 <code>all_scheme_support.json</code> 写明原因。</p></details>
@@ -1203,6 +1262,7 @@ field = experiments.field(
         <div class="evidence-card"><small>HISTORY</small><b>51 / 51</b><small>timestamps</small></div>
         <div class="evidence-card"><small>NUMERIC</small><b>26 / 26</b><small>variables</small></div>
         <div class="evidence-card"><small>DASK ALLOCATION</small><b>1 PBS</b><small>base + branches · direct MPI</small></div>
+        <div class="evidence-card"><small>PERSISTENT DASK</small><b class="yes">1 MPI</b><small>many Actor commands · live state</small></div>
         <div class="evidence-card"><small>GRANULAR ACTIONS</small><b class="yes">BFB</b><small>batch = checkpoint chain</small></div>
         <div class="evidence-card"><small>ORIGINAL KESSLER</small><b class="yes">BFB</b><small>11 fields · source device</small></div>
         <div class="evidence-card"><small>SUITE CATALOG</small><b>155 / 155</b><small>connectors · 7 suites</small></div>

@@ -9,15 +9,81 @@ The maintained Notebooks are `examples/try_notebook_session.ipynb` for a
 persistent interactive worker and `examples/try_dask_fanout.ipynb` for
 checkpoint/restart experiments.
 
-There are now two control modes:
+There are three control surfaces:
 
 - `NotebookSession` keeps one 24-rank model alive for low-latency phase,
   scheme, field, and step interaction.
+- `DaskExperimentClient.start_persistent()` pins an Actor to one Dask worker.
+  The Actor owns a `NotebookSession`, starts MPI once, and exposes the same
+  live StatePool through asynchronous Dask method calls.
 - `DaskExperimentClient` submits restartable MPI tasks. A common base `Future`
   retains an immutable checkpoint bundle and can fan out into independent
   model branches without a persistent socket worker. It can either submit one
   PBS job per segment or launch segments directly inside one existing PBS
   allocation.
+
+## Control a persistent model through Dask
+
+Inside a one-node allocation, create one Dask worker and one persistent Actor:
+
+```python
+from dask.distributed import Client
+from pycam_sima import (
+    DaskExperimentClient,
+    ObserveFields,
+    RunSteps,
+    SegmentPlan,
+)
+
+client = Client(processes=False, n_workers=1, threads_per_worker=1)
+experiments = DaskExperimentClient(
+    client,
+    config=repo / "configs/fkessler_model.yaml",
+    initial_run_dir=reference_run,
+    run_root=scratch / "pycam-sima/persistent-dask",
+    python_executable=repo / ".venv/bin/python",
+    execution_mode="allocation",
+)
+
+model = experiments.start_persistent("live")
+started = model.describe().result()
+assert started["mpi_launch_count"] == 1
+
+model.step().result()
+stats = model.field_stats("air_temperature", rank=0).result()
+values = model.field("air_temperature", rank=0).result()
+checkpoint = model.checkpoint().result()
+
+final_status = model.describe().result()
+assert final_status["step"] == 1
+assert final_status["mpi_launch_count"] == 1
+model.close().result()
+```
+
+Every model method returns a Dask `ActorFuture`. The scheduler always routes
+the call to the worker that owns the Actor; the worker then uses the existing
+authenticated socket to command the same MPI rank 0, and rank 0 broadcasts
+the command. No method after `start_persistent()` invokes `mpiexec`.
+
+A serializable `SegmentPlan` can also run against that same live StatePool:
+
+```python
+future = model.run_plan(
+    SegmentPlan(
+        "inspect-and-step",
+        (
+            ObserveFields(("air_temperature",)),
+            RunSteps(1),
+        ),
+    )
+)
+trace = future.result()["action_trace"]
+```
+
+The Actor owns the full-node allocation lock for its lifetime. Always call
+`model.close().result()` before launching checkpoint segments in the same
+allocation. Actor loss also loses uncheckpointed memory, so use
+`model.checkpoint()` at important boundaries.
 
 ## Start a session
 
@@ -146,8 +212,9 @@ with NotebookSession(repo / "configs/fkessler_model.yaml", run_dir=run_dir) as m
 ## Fork independent Dask tasks
 
 Install the optional scheduler dependencies with
-`uv sync --extra test --extra notebook`. The Dask client runs only orchestration
-tasks; every CAM segment still creates a new 24-rank MPI world.
+`uv sync --extra test --extra notebook`. The checkpoint/restart API below is
+different from the persistent Actor: every CAM segment creates a new 24-rank
+MPI world.
 
 ```python
 from dask.distributed import Client

@@ -140,14 +140,10 @@ class NotebookSession:
         self.options = options or ModelOptions.from_config(self.config)
         self.options.validate(self.config)
         self.parameters = ModelParameters(self)
-        if scheme_plan is not None and not isinstance(
-            scheme_plan, KesslerSchemePlan
-        ):
+        if scheme_plan is not None and not isinstance(scheme_plan, KesslerSchemePlan):
             raise TypeError("scheme_plan must be KesslerSchemePlan")
         self._scheme_plan = (
-            KesslerSchemePlan.default()
-            if scheme_plan is None
-            else scheme_plan.copy()
+            KesslerSchemePlan.default() if scheme_plan is None else scheme_plan.copy()
         )
         self.scheme_plan = NotebookSchemePlan(self)
         default_library = project_root / "build" / "libpycam_sima_kernels.so"
@@ -170,14 +166,19 @@ class NotebookSession:
                 f"got {self.ranks}"
             )
         if not (self.run_dir / "atm_in").is_file():
-            raise FileNotFoundError(f"NotebookSession run directory lacks atm_in: {self.run_dir}")
+            raise FileNotFoundError(
+                f"NotebookSession run directory lacks atm_in: {self.run_dir}"
+            )
         if not self.library.is_file():
-            raise FileNotFoundError(f"CAM-SIMA runtime library not found: {self.library}")
-
+            raise FileNotFoundError(
+                f"CAM-SIMA runtime library not found: {self.library}"
+            )
         self.env_script = Path(env_script).resolve() if env_script else None
         if self.env_script is not None and not self.env_script.is_file():
             raise FileNotFoundError(f"environment script not found: {self.env_script}")
-        self.launcher = tuple(shlex.split(launcher) if isinstance(launcher, str) else launcher)
+        self.launcher = tuple(
+            shlex.split(launcher) if isinstance(launcher, str) else launcher
+        )
         if not self.launcher:
             raise ValueError("launcher cannot be empty")
         if isinstance(hosts, str):
@@ -225,6 +226,7 @@ class NotebookSession:
         self._started_options_fingerprint: tuple[int, str, bool] | None = None
         self.initialized_native_calls: int | None = None
         self.initialized_abi_checked: bool | None = None
+        self._native_calls = 0
         self._ephemeral_config_path: Path | None = None
 
     @property
@@ -244,6 +246,10 @@ class NotebookSession:
     @property
     def current_step(self) -> int:
         return self._current_step
+
+    @property
+    def native_calls(self) -> int:
+        return self._native_calls
 
     @property
     def phase_names(self) -> tuple[str, ...]:
@@ -340,7 +346,6 @@ class NotebookSession:
             "--scheme-plan-json",
             json.dumps(self._scheme_plan.to_payload(), separators=(",", ":")),
         ]
-
         self.log_path.parent.mkdir(parents=True, exist_ok=True)
         try:
             if launch_mode == "pbs":
@@ -359,7 +364,9 @@ class NotebookSession:
             ready = self._receive(self.startup_timeout)
             result = self._unwrap(ready)
             if result.get("event") != "ready":
-                raise NotebookWorkerError(f"unexpected worker startup response: {result!r}")
+                raise NotebookWorkerError(
+                    f"unexpected worker startup response: {result!r}"
+                )
             if result.get("runtime") != self.runtime:
                 raise NotebookWorkerError(
                     f"worker runtime differs from controller: {result.get('runtime')!r}"
@@ -381,14 +388,13 @@ class NotebookSession:
                 )
             self.initialized_native_calls = result.get("initialized_native_calls")
             self.initialized_abi_checked = result.get("initialized_abi_checked")
+            self._native_calls = int(self.initialized_native_calls or 0)
             if self.initialized_native_calls != 0:
                 raise NotebookWorkerError(
                     "model initialization executed a native kernel"
                 )
             if self.initialized_abi_checked is not False:
-                raise NotebookWorkerError(
-                    "model initialization touched the kernel ABI"
-                )
+                raise NotebookWorkerError("model initialization touched the kernel ABI")
             self._started_options_fingerprint = self.options.fingerprint()
             return self
         except BaseException:
@@ -430,8 +436,7 @@ class NotebookSession:
                 "phase": phase,
             }
         )
-        self._current_step = int(result["step"])
-        self._update_phase_status(result)
+        self._update_runtime_status(result)
         return self.phase_status
 
     def run_sequence(
@@ -474,7 +479,9 @@ class NotebookSession:
     ) -> tuple[Mapping[str, Any], ...]:
         return tuple(self.run_scheme(scheme) for scheme in schemes)
 
-    def get_field(self, name: str, *, rank: int | str = 0) -> np.ndarray | list[np.ndarray]:
+    def get_field(
+        self, name: str, *, rank: int | str = 0
+    ) -> np.ndarray | list[np.ndarray]:
         self._validate_field(name)
         selector = self._validate_rank(rank)
         value = self._request({"op": "get_field", "field": name, "rank": selector})
@@ -506,6 +513,39 @@ class NotebookSession:
                 "unsafe": bool(unsafe),
             }
         )
+
+    def edit_field(
+        self,
+        name: str,
+        operation: str,
+        value: float,
+        *,
+        unsafe: bool = False,
+    ) -> Mapping[str, Any]:
+        """Apply one scalar edit collectively without copying arrays over IPC."""
+
+        self._validate_field(name)
+        if operation not in {"set", "add", "multiply"}:
+            raise ValueError("field edit operation must be set, add, or multiply")
+        result = self._request(
+            {
+                "op": "edit_field",
+                "field": name,
+                "operation": operation,
+                "value": float(value),
+                "unsafe": bool(unsafe),
+            }
+        )
+        self._update_runtime_status(result)
+        return result
+
+    def write_checkpoint(self, path: str | Path) -> Path:
+        """Collectively save the live StatePool without stopping MPI ranks."""
+
+        self._validate_started_options()
+        checkpoint = Path(path).resolve()
+        result = self._request({"op": "write_checkpoint", "path": str(checkpoint)})
+        return Path(result)
 
     def close(self) -> None:
         if self._connection is None and self._process is None and self._job_id is None:
@@ -564,6 +604,8 @@ class NotebookSession:
 
     def _update_runtime_status(self, result: Mapping[str, Any]) -> None:
         self._current_step = int(result["step"])
+        if "native_calls" in result:
+            self._native_calls = int(result["native_calls"])
         self._update_phase_status(result["phase_status"])
         self._update_scheme_status(result["scheme_status"])
 
@@ -618,10 +660,15 @@ class NotebookSession:
 
     @staticmethod
     def _unwrap(response: Any) -> Any:
-        if not isinstance(response, dict) or response.get("status") not in {"ok", "error"}:
+        if not isinstance(response, dict) or response.get("status") not in {
+            "ok",
+            "error",
+        }:
             raise NotebookWorkerError(f"invalid worker response: {response!r}")
         if response["status"] == "error":
-            raise NotebookWorkerError(str(response.get("error", "unknown worker error")))
+            raise NotebookWorkerError(
+                str(response.get("error", "unknown worker error"))
+            )
         return response.get("result")
 
     def _ensure_running(self) -> None:
@@ -632,7 +679,9 @@ class NotebookSession:
     def _worker_environment(self) -> dict[str, str]:
         if self.env_script is None:
             return mpi_loader_environment()
-        command = f"source {shlex.quote(str(self.env_script))} >/dev/null 2>&1 && env -0"
+        command = (
+            f"source {shlex.quote(str(self.env_script))} >/dev/null 2>&1 && env -0"
+        )
         raw = subprocess.check_output(["bash", "-c", command], env=os.environ)
         environment: dict[str, str] = {}
         for entry in raw.split(b"\0"):
@@ -748,7 +797,9 @@ class NotebookSession:
                     )
                 continue
             if not ok:
-                raise NotebookWorkerError(f"cannot accept MPI worker connection: {result}")
+                raise NotebookWorkerError(
+                    f"cannot accept MPI worker connection: {result}"
+                )
             return result
 
     def _abort(self) -> None:
@@ -804,6 +855,7 @@ class NotebookSession:
         self._started_options_fingerprint = None
         self.initialized_native_calls = None
         self.initialized_abi_checked = None
+        self._native_calls = 0
         if self._ephemeral_config_path is not None:
             self._ephemeral_config_path.unlink(missing_ok=True)
             self.config_path = None

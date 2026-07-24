@@ -37,8 +37,8 @@ Runnable examples are split by execution mode:
   keeps a 24-rank MPI worker alive for interactive phase, scheme, step, and
   field control through the authenticated socket bridge.
 - [`examples/try_dask_fanout.ipynb`](examples/try_dask_fanout.ipynb) submits a
-  restartable base PBS/MPI task, fans out independent Dask branches, and reads
-  their final checkpoints and per-step history fields.
+  persistent Dask Actor for low-latency commands or restartable Dask segments
+  for independent checkpoint branches.
 
 ```text
 pycam_sima/
@@ -371,6 +371,53 @@ The version-1 action vocabulary is `PrepareInitialStep`, `RunPhase`,
 `FieldEdit`, and `ObserveFields`. A plan is completely validated before its
 first action mutates model state.
 
+### Persistent Dask Actor
+
+Use a persistent Actor when many Notebook commands should operate on the same
+live StatePool. Actor construction is the only operation that starts
+`mpiexec`; every later method call is scheduled by Dask onto the same pinned
+worker and forwarded to the already-running 24 MPI ranks:
+
+```python
+experiments = DaskExperimentClient(
+    client,
+    config=repo / "configs/fkessler_model.yaml",
+    initial_run_dir=reference_run,
+    run_root=scratch / "pycam-sima/persistent-experiments",
+    python_executable=repo / ".venv/bin/python",
+    execution_mode="allocation",
+)
+
+model = experiments.start_persistent("interactive")
+print(model.describe().result())       # mpi_launch_count == 1
+model.step().result()
+model.run_scheme(
+    "kessler",
+    group="physics_before_coupler",
+).result()
+temperature = model.field("air_temperature", rank=0).result()
+checkpoint = model.checkpoint().result()
+model.close().result()
+```
+
+`step()`, `run_phase()`, `run_scheme()`, `run_plan()`, field reads/writes, and
+checkpoint creation return Dask `ActorFuture` objects. Calling `.result()` is
+the synchronization point. The Actor holds the allocation-wide MPI lock until
+`close()`, so a full-node checkpoint segment cannot oversubscribe the same
+node while the persistent model is alive.
+
+This mode still uses the authenticated `NotebookSession` socket internally:
+the Dask Actor is the long-lived controller and the socket carries commands to
+MPI rank 0, which broadcasts them to the other ranks. Dask replaces direct
+Notebook-to-session ownership; it does not replace MPI or the IPC required to
+control processes that remain alive.
+
+Choose the persistent Actor for interactive scheme/phase/step work. Choose the
+checkpoint segment API (`submit_base`, `submit_plan`, `fork`) when a boundary
+must be durable, restartable, or an independent branch. A persistent Actor
+does not automatically fork its live process memory; call `checkpoint()` to
+create a durable handoff.
+
 The default `execution_mode="pbs"` submits a PBS job for every segment. The
 single-allocation mode reserves one node once, starts the Dask scheduler and
 worker inside it, and lets every Dask task call `mpiexec` directly:
@@ -405,6 +452,15 @@ PBS-mode parent and phase segments, one-allocation batch and chained action
 execution, all-rank StatePool bitwise comparison, direct
 `CAMDriver.run_phase()` comparison, one-call Kessler proof, field extraction,
 and the unchanged 24-rank/50-step history BFB result.
+
+`validation/dask_persistent.json` records a real one-allocation Actor run in
+which seven Actor calls advanced the same model from step 0 to step 2, read a
+field, wrote a checkpoint, closed cleanly, and reported exactly one MPI launch.
+Reproduce that gate with:
+
+```bash
+qsub jobs/dask_persistent_24.pbs
+```
 
 All persistent fields have `owner="python"`. Prognostic, tendency, and process
 arrays are writable at phase boundaries. Static grid/topology arrays require

@@ -23,6 +23,7 @@ def _runtime_status(driver: CAMDriver) -> dict[str, Any]:
     return {
         "step": driver.clock.nstep,
         "native_nstep": driver.clock.nstep,
+        "native_calls": driver.backend.call_count,
         "phase_status": driver.phase_status,
         "scheme_status": driver.scheme_status,
     }
@@ -39,15 +40,11 @@ def _local_command(request: dict[str, Any], driver: CAMDriver, comm: Any) -> Any
         return _runtime_status(driver)
     if operation == "run_phase":
         driver.run_phase(str(request["phase"]))
-        return driver.phase_status
+        return _runtime_status(driver)
     if operation == "run_scheme":
         driver.run_scheme(
             str(request["scheme"]),
-            group=(
-                None
-                if request.get("group") is None
-                else str(request["group"])
-            ),
+            group=(None if request.get("group") is None else str(request["group"])),
         )
         return _runtime_status(driver)
     if operation == "run_scheme_group":
@@ -55,6 +52,27 @@ def _local_command(request: dict[str, Any], driver: CAMDriver, comm: Any) -> Any
         return _runtime_status(driver)
     if operation == "configure_scheme_plan":
         driver.scheme_plan = KesslerSchemePlan.from_payload(request["plan"])
+        return _runtime_status(driver)
+    if operation == "write_checkpoint":
+        return str(driver.write_checkpoint(str(request["path"])))
+    if operation == "edit_field":
+        name = str(request["field"])
+        current = driver.pool.get(name, unsafe=bool(request.get("unsafe", False)))
+        value = float(request["value"])
+        edit = str(request["operation"])
+        if edit == "set":
+            updated = np.full_like(current, value)
+        elif edit == "add":
+            updated = np.add(current, value)
+        elif edit == "multiply":
+            updated = np.multiply(current, value)
+        else:
+            raise ValueError(f"unknown field edit operation: {edit!r}")
+        driver.pool.set(
+            name,
+            updated,
+            unsafe=bool(request.get("unsafe", False)),
+        )
         return _runtime_status(driver)
     if operation in {"get_field", "get_field_stats", "set_field"}:
         name = str(request["field"])
@@ -103,9 +121,7 @@ def _collect_response(
     if comm.rank != 0:
         return None
     failures = [
-        f"rank {rank}:\n{item[0]}"
-        for rank, item in enumerate(gathered)
-        if item[0]
+        f"rank {rank}:\n{item[0]}" for rank, item in enumerate(gathered) if item[0]
     ]
     if failures:
         return {"status": "error", "error": "\n".join(failures)}
@@ -185,9 +201,7 @@ def main() -> int:
             mediator_present=False,
         )
         options.validate(config)
-        scheme_plan = KesslerSchemePlan.from_payload(
-            json.loads(args.scheme_plan_json)
-        )
+        scheme_plan = KesslerSchemePlan.from_payload(json.loads(args.scheme_plan_json))
         driver = CAMDriver(
             config,
             run_dir=args.run_dir,
@@ -207,9 +221,7 @@ def main() -> int:
         if comm.rank == 0:
             assert connection is not None
             messages = [
-                f"rank {rank}:\n{value}"
-                for rank, value in enumerate(failures)
-                if value
+                f"rank {rank}:\n{value}" for rank, value in enumerate(failures) if value
             ]
             if messages:
                 _send(connection, {"status": "error", "error": "\n".join(messages)})
