@@ -16,12 +16,14 @@ import numpy as np
 
 from ..model import (
     ActivatePhysics,
+    BlockingModel,
     CheckpointBundle,
+    CCPPSuitePlan,
     DeactivatePhysics,
     DefineVariable,
     FieldEdit,
+    FieldCollection,
     InstallPhysics,
-    KesslerSchemePlan,
     ModelOptions,
     MoveScheme,
     ObserveFields,
@@ -32,10 +34,11 @@ from ..model import (
     RunSteps,
     SegmentPlan,
     SetSchemeEnabled,
+    PhaseCollection,
     PhysicsPluginSpec,
+    PhysicsCollection,
     VariableSpec,
 )
-from ..model.scheme_plan import SCHEME_GROUPS
 from .session import NotebookSession
 
 
@@ -132,7 +135,7 @@ class PersistentCAMActor:
             self._prepare_run_directory()
             factory = session_factory or NotebookSession
             options = ModelOptions(**dict(request.options))
-            scheme_plan = KesslerSchemePlan.from_payload(request.scheme_plan)
+            scheme_plan = CCPPSuitePlan.from_payload(request.scheme_plan)
             self._session = factory(
                 request.config,
                 run_dir=self._run_dir,
@@ -525,7 +528,8 @@ class PersistentCAMActor:
             }
 
     def _validate_plan(self, plan: SegmentPlan) -> None:
-        candidate = KesslerSchemePlan.from_payload(self._session.scheme_status["plan"])
+        candidate = CCPPSuitePlan.from_payload(self._session.scheme_status["plan"])
+        scheme_groups = candidate.group_names
         planned_processes: set[str] = set()
         planned_plugins = {
             str(item["name"])
@@ -551,10 +555,10 @@ class PersistentCAMActor:
                         "run_scheme actions require SegmentPlan(unsafe=True)"
                     )
             elif isinstance(action, RunSchemeGroup):
-                if action.group not in SCHEME_GROUPS:
+                if action.group not in scheme_groups:
                     raise ValueError(
                         f"unknown scheme group {action.group!r}; choose one of "
-                        f"{SCHEME_GROUPS}"
+                        f"{scheme_groups}"
                     )
                 if not plan.unsafe:
                     raise ValueError(
@@ -580,10 +584,13 @@ class PersistentCAMActor:
                     candidate.scheme(action.before)
                 if action.after is not None:
                     candidate.scheme(action.after)
-                if action.to_group is not None and action.to_group not in SCHEME_GROUPS:
+                if (
+                    action.to_group is not None
+                    and action.to_group not in scheme_groups
+                ):
                     raise ValueError(
                         f"unknown destination group {action.to_group!r}; "
-                        f"choose one of {SCHEME_GROUPS}"
+                        f"choose one of {scheme_groups}"
                     )
                 if not plan.unsafe:
                     raise ValueError(
@@ -765,6 +772,22 @@ class PersistentDaskSession:
         self.worker = worker
         self.name = name
         self._closed = False
+        self.fields = FieldCollection(self)
+        self.phases = PhaseCollection(self)
+        self.physics = PhysicsCollection(self)
+        self._sync = BlockingModel(self)
+
+    @property
+    def sync(self) -> BlockingModel:
+        """Blocking, Notebook-friendly view of this persistent model."""
+
+        return self._sync
+
+    @property
+    def submit(self) -> "PersistentDaskSession":
+        """Asynchronous Dask-native view whose calls return ActorFuture."""
+
+        return self
 
     def describe(self) -> Any:
         return self._call("describe")

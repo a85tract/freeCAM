@@ -166,13 +166,35 @@ def test_submit_plan_and_single_action_keep_parent_future(
             name="single-phase",
             action=RunPhase("dynamics_to_physics"),
         )
-        batch_result, single_result = client.gather((batch, single))
+        pythonic_plan = experiments.plan(
+            "pythonic", experimental=True
+        )
+        pythonic_plan.physics.scheme(
+            "kessler", group="before"
+        ).run()
+        pythonic_plan.observe("air_temperature")
+        pythonic = experiments.submit_plan(base, pythonic_plan)
+        batch_result, single_result, pythonic_result = client.gather(
+            (batch, single, pythonic)
+        )
 
     assert batch_result.parent_branch == "base"
     assert single_result.parent_branch == "batch"
     assert batch_result.segment_plan["unsafe"] is True
     assert single_result.segment_plan["actions"] == [
         {"type": "run_phase", "name": "dynamics_to_physics"}
+    ]
+    assert pythonic_result.segment_plan["actions"] == [
+        {
+            "type": "run_scheme",
+            "name": "kessler",
+            "group": "physics_before_coupler",
+        },
+        {
+            "type": "observe_fields",
+            "fields": ["air_temperature"],
+            "statistics": ["min", "max", "mean"],
+        },
     ]
 
 

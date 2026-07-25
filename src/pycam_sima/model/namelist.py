@@ -1,4 +1,4 @@
-"""Read and validate the fixed CAM namelist without invoking CAM code."""
+"""Read a CAM namelist and verify it against the selected case configuration."""
 
 from __future__ import annotations
 
@@ -9,18 +9,18 @@ import f90nml
 from .errors import ConfigurationError
 
 
-def read_atm_in(path: str | Path) -> dict:
+def read_atm_in(path: str | Path, config) -> dict:
     path = Path(path)
     if not path.is_file():
         raise ConfigurationError(f"atm_in does not exist: {path}")
     nml = f90nml.read(path)
     checks = {
-        ("analytic_ic_nl", "analytic_ic_type"): "moist_baroclinic_wave_dcmip2016",
-        ("cam_initfiles_nl", "pertlim"): 0.0,
-        ("dyn_se_nl", "se_ne"): 3,
-        ("dyn_se_nl", "se_fv_nphys"): 3,
-        ("physics_nl", "physics_suite"): "kessler",
-        ("vert_coord_nl", "pver"): 30,
+        ("analytic_ic_nl", "analytic_ic_type"): config.analytic_ic_type,
+        ("cam_initfiles_nl", "pertlim"): config.pertlim,
+        ("dyn_se_nl", "se_ne"): config.ne,
+        ("dyn_se_nl", "se_fv_nphys"): config.fv_nphys,
+        ("physics_nl", "physics_suite"): config.physics_suite,
+        ("vert_coord_nl", "pver"): config.pver,
     }
     errors = []
     for (section, key), expected in checks.items():
@@ -31,5 +31,7 @@ def read_atm_in(path: str | Path) -> dict:
     if not ncdata or not Path(ncdata).is_file():
         errors.append(f"cam_initfiles_nl.ncdata is not readable: {ncdata!r}")
     if errors:
-        raise ConfigurationError("unsupported atm_in: " + "; ".join(errors))
+        raise ConfigurationError(
+            "atm_in differs from ModelConfig: " + "; ".join(errors)
+        )
     return {"namelist": nml, "ncdata": str(ncdata)}

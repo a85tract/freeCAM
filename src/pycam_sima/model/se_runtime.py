@@ -1,4 +1,4 @@
-"""Spectral-element timestep implementation for the fixed FKESSLER case."""
+"""Spectral-element timestep implementation for the CAM SE/FVM capability."""
 
 from __future__ import annotations
 
@@ -357,7 +357,7 @@ def scale_physics_forcing(pool) -> None:
 
 
 def apply_cam_forcing(pool, *, nsubstep: int = 1) -> None:
-    """Port fixed-case ``prim_advance_mod:ApplyCAMForcing`` exactly."""
+    """Port the SE/FVM v1 ``prim_advance_mod:ApplyCAMForcing`` path exactly."""
 
     if int(pool.get("dynamics_forcing_type")) != 2:
         raise RuntimeError("the fixed model requires se_ftype=2")
@@ -1016,7 +1016,7 @@ def _hypervis_dss_update(
 
 
 def advance_hyperviscosity(pool, comm, backend) -> None:
-    """Port fixed-case biharmonic diffusion and the three-level sponge."""
+    """Port SE/FVM v1 biharmonic diffusion and its three-level sponge."""
 
     nlev = pool.dimensions["pver"]
     nelem = pool.dimensions["nelem_local"]

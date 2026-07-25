@@ -242,7 +242,7 @@ def physgrid_to_gll(pool, comm, local_field: np.ndarray, *, vector_start: int | 
 
 
 def physics_to_dynamics_forcing(pool, comm) -> None:
-    """Port the fixed FKESSLER ``p_d_coupling`` forcing boundary."""
+    """Port the CAM SE/FVM ``p_d_coupling`` forcing boundary."""
 
     nlev = pool.dimensions["pver"]
     nconst = pool.dimensions["nconst"]

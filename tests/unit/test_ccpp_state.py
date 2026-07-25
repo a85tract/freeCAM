@@ -2,9 +2,12 @@ from pathlib import Path
 
 import pytest
 
-from pycam_sima import CCPPStateSchema, DeviceCatalog
+from pycam_sima import CCPPStateSchema, CCPPSuitePlan, DeviceCatalog
 from pycam_sima.model.contracts import default_contracts
+from pycam_sima.model.devices import DeviceRegistry
 from pycam_sima.model.errors import DeviceContractError
+from pycam_sima.model.grid import dimensions_for_rank
+from pycam_sima.model.state import StatePool
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -41,6 +44,69 @@ def test_kessler_schema_extends_existing_python_state_without_conflicts(
     assert "air_pressure" in names
     assert "air_temperature" not in names
     assert not schema.conversion_fields
+
+
+def test_pool_schema_selects_process_fields_from_the_active_suite(catalog):
+    kessler = CCPPStateSchema.from_catalog(catalog, "kessler")
+    held_suarez = CCPPStateSchema.from_catalog(
+        catalog, "held_suarez_1994"
+    )
+    kessler_names = {
+        contract.standard_name for contract in kessler.pool_contracts()
+    }
+    held_suarez_names = {
+        contract.standard_name
+        for contract in held_suarez.pool_contracts()
+    }
+
+    assert "air_temperature_previous_timestep" in kessler_names
+    assert "large_scale_precipitation_rate" in kessler_names
+    assert "air_temperature_previous_timestep" not in held_suarez_names
+    assert "large_scale_precipitation_rate" not in held_suarez_names
+
+
+def test_custom_suite_schema_uses_process_names_not_a_pinned_suite_name(
+    catalog,
+):
+    plan = CCPPSuitePlan.from_xml(
+        ROOT
+        / "external/CAM-SIMA/src/physics/ncar_ccpp/suites/"
+        "suite_kessler.xml"
+    )
+    custom = CCPPStateSchema.from_scheme_names(
+        catalog,
+        "my_experiment",
+        (scheme.name for scheme in plan.schemes),
+    )
+    pinned = CCPPStateSchema.from_catalog(catalog, "kessler")
+    assert custom.requirements == pinned.requirements
+    assert not custom.unresolved_schemes
+
+    unresolved = CCPPStateSchema.from_scheme_names(
+        catalog,
+        "runtime_plugin_suite",
+        ("kessler", "not_installed_yet"),
+    )
+    assert unresolved.unresolved_schemes == ("not_installed_yet",)
+
+
+def test_metadata_generated_inputs_fail_closed_until_initialized(catalog):
+    schema = CCPPStateSchema.from_catalog(catalog, "kessler")
+    initialized, generated = schema.pool_contract_groups()
+    pool = StatePool(dimensions_for_rank(0), contracts=initialized)
+    for contract in generated:
+        pool.register_field(
+            contract,
+            initialized=False,
+            dynamic=False,
+        )
+
+    assert not pool.is_initialized("ccpp_air_pressure")
+    registry = DeviceRegistry(ROOT / "build/catalog_devices")
+    with pytest.raises(DeviceContractError, match="uninitialized"):
+        registry.invoke("calc_exner", pool)
+    pool.set("ccpp_air_pressure", 90000.0)
+    assert pool.is_initialized("ccpp_air_pressure")
 
 
 def test_cam4_schema_marks_real_conversion_and_opaque_boundaries(catalog):

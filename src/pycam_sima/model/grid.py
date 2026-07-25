@@ -77,18 +77,35 @@ def local_elements(rank: int, size: int = 24) -> tuple[Element, ...]:
     return tuple(sorted((item for item in global_elements(size) if item.owner == rank), key=lambda item: item.global_id))
 
 
-def dimensions_for_rank(rank: int, size: int = 24) -> dict[str, int]:
+def dimensions_for_rank(
+    rank: int,
+    size: int = 24,
+    *,
+    pver: int = 30,
+    np_value: int = 4,
+    fv_nphys: int = 3,
+    constituent_count: int = 3,
+) -> dict[str, int]:
     nelem = len(local_elements(rank, size))
     # Halo sizes are finalized before allocation from the global topology.
     peers, shared = _halo_inventory(rank, size)
     return {
-        "pver": 30, "pverp": 31, "np": 4, "fv_nphys": 3,
-        "nelem_local": nelem, "nphys_local": nelem * 9,
-        # HOMME keeps a fixed ten-slot Qdp buffer even though this suite only
-        # registers three advected constituents.  Preserve that ABI-sized
-        # Python-owned state; active constituent aliases still use nconst.
-        "ntime": 3, "ntracer_time": 3, "nconst": 3, "qsize": 3,
-        "qsize_storage": 10,
+        "pver": pver,
+        "pverp": pver + 1,
+        "np": np_value,
+        "fv_nphys": fv_nphys,
+        "nelem_local": nelem,
+        "nphys_local": nelem * fv_nphys * fv_nphys,
+        # HOMME keeps at least a ten-slot Qdp buffer. Preserve that ABI-sized
+        # Python-owned state; active constituent aliases use nconst.
+        "ntime": 3,
+        "ntracer_time": 3,
+        "nconst": constituent_count,
+        "number_of_ccpp_constituents": constituent_count,
+        "qsize": constituent_count,
+        "qsize_storage": max(10, constituent_count),
+        "ccpp_constant_one": 1,
+        "ccpp_constant_two": 2,
         "nhypervis": 3,
         "edge_count": 4,
         "fvm_halo": 9,

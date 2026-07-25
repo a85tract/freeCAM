@@ -10,6 +10,15 @@ import xml.etree.ElementTree as ET
 from .errors import MissingKernelError
 
 
+PHYSICS_BEFORE_COUPLER = "physics_before_coupler"
+PHYSICS_AFTER_COUPLER = "physics_after_coupler"
+DEFAULT_PHYSICS_GROUPS = (
+    PHYSICS_BEFORE_COUPLER,
+    PHYSICS_AFTER_COUPLER,
+)
+SUITE_PLAN_SCHEMA_VERSION = 2
+
+
 @dataclass(slots=True)
 class SuiteScheme:
     """One source-qualified occurrence of a scheme in a CCPP suite."""
@@ -18,10 +27,57 @@ class SuiteScheme:
     source_group: str
     occurrence: int
     enabled: bool = True
+    group: str | None = None
+    category: str = "physics"
+    description: str = ""
+    implementation: str = "device-or-host-service"
+    required: bool = True
+
+    def __post_init__(self) -> None:
+        self.name = str(self.name).lower()
+        self.source_group = str(self.source_group).lower()
+        self.occurrence = int(self.occurrence)
+        if self.group is None:
+            self.group = self.source_group
+        else:
+            self.group = str(self.group).lower()
+        if not self.description:
+            self.description = f"CCPP process {self.name}"
 
     @property
     def key(self) -> str:
         return f"{self.source_group}.{self.name}@{self.occurrence}"
+
+    def machine_record(self) -> dict[str, Any]:
+        return {
+            "name": self.name,
+            "source_group": self.source_group,
+            "occurrence": self.occurrence,
+            "enabled": self.enabled,
+            "group": self.group,
+            "category": self.category,
+            "description": self.description,
+            "implementation": self.implementation,
+            "required": self.required,
+        }
+
+    @classmethod
+    def from_mapping(cls, values: Mapping[str, Any]) -> "SuiteScheme":
+        return cls(
+            name=str(values["name"]),
+            source_group=str(values["source_group"]),
+            occurrence=int(values["occurrence"]),
+            enabled=bool(values.get("enabled", True)),
+            group=(
+                None if values.get("group") is None else str(values["group"])
+            ),
+            category=str(values.get("category", "physics")),
+            description=str(values.get("description", "")),
+            implementation=str(
+                values.get("implementation", "device-or-host-service")
+            ),
+            required=bool(values.get("required", True)),
+        )
 
 
 @dataclass(slots=True)
@@ -46,6 +102,11 @@ class SuiteNode:
                     self.scheme.source_group,
                     self.scheme.occurrence,
                     self.scheme.enabled,
+                    self.scheme.group,
+                    self.scheme.category,
+                    self.scheme.description,
+                    self.scheme.implementation,
+                    self.scheme.required,
                 )
             ),
         )
@@ -61,11 +122,18 @@ class CCPPSuitePlan:
         *,
         source: str | Path | None = None,
         sequence_safe: bool = True,
+        baseline_groups: Mapping[str, SuiteNode] | None = None,
     ) -> None:
         self.name = str(name)
         self.source = None if source is None else Path(source).resolve()
         self._groups = {
             group: node.clone() for group, node in groups.items()
+        }
+        self._baseline_groups = {
+            group: node.clone()
+            for group, node in (
+                self._groups if baseline_groups is None else baseline_groups
+            ).items()
         }
         self._sequence_safe = bool(sequence_safe)
         self._reindex()
@@ -87,7 +155,12 @@ class CCPPSuitePlan:
                 if not scheme_name:
                     raise ValueError(f"{source}: empty <scheme> element")
                 occurrence += 1
-                scheme = SuiteScheme(scheme_name, group, occurrence)
+                scheme = SuiteScheme(
+                    scheme_name,
+                    group,
+                    occurrence,
+                    group=group,
+                )
                 return SuiteNode("scheme", scheme_name, scheme=scheme)
             if tag == "subcycle":
                 loop = element.attrib.get("loop", "").strip().lower()
@@ -118,6 +191,111 @@ class CCPPSuitePlan:
             groups[group] = convert(element, group)
         return cls(suite_name, groups, source=source)
 
+    @staticmethod
+    def _node_payload(node: SuiteNode) -> dict[str, Any]:
+        payload: dict[str, Any] = {
+            "kind": node.kind,
+            "name": node.name,
+            "children": [
+                CCPPSuitePlan._node_payload(child) for child in node.children
+            ],
+        }
+        if node.scheme is not None:
+            payload["scheme"] = node.scheme.machine_record()
+        return payload
+
+    @staticmethod
+    def _node_from_payload(values: Mapping[str, Any]) -> SuiteNode:
+        scheme_values = values.get("scheme")
+        return SuiteNode(
+            kind=str(values["kind"]),
+            name=str(values["name"]),
+            children=[
+                CCPPSuitePlan._node_from_payload(child)
+                for child in values.get("children", ())
+            ],
+            scheme=(
+                None
+                if scheme_values is None
+                else SuiteScheme.from_mapping(scheme_values)
+            ),
+        )
+
+    def to_payload(self) -> dict[str, Any]:
+        """Serialize the complete editable XML control tree."""
+
+        return {
+            "schema_version": SUITE_PLAN_SCHEMA_VERSION,
+            "name": self.name,
+            "source": None if self.source is None else str(self.source),
+            "sequence_safe": self.sequence_safe,
+            "groups": {
+                name: self._node_payload(node)
+                for name, node in self._groups.items()
+            },
+            "baseline_groups": {
+                name: self._node_payload(node)
+                for name, node in self._baseline_groups.items()
+            },
+        }
+
+    @classmethod
+    def from_payload(cls, values: Mapping[str, Any]) -> "CCPPSuitePlan":
+        """Restore schema-v2 plans and legacy flat FKESSLER payloads."""
+
+        version = values.get("schema_version")
+        if version in {None, 1} and "schemes" in values:
+            groups: dict[str, SuiteNode] = {}
+            for row in values["schemes"]:
+                group = str(row["group"])
+                source_group = str(row.get("source_group", group))
+                root = groups.setdefault(group, SuiteNode("group", group))
+                occurrence = len(
+                    [
+                        node
+                        for candidate in groups.values()
+                        for node in candidate.children
+                    ]
+                ) + 1
+                scheme = SuiteScheme(
+                    name=str(row["name"]),
+                    source_group=source_group,
+                    occurrence=occurrence,
+                    enabled=bool(row.get("enabled", True)),
+                    group=group,
+                    category=str(row.get("category", "physics")),
+                    description=str(row.get("description", "")),
+                    implementation=str(
+                        row.get("implementation", "device-or-host-service")
+                    ),
+                    required=bool(row.get("required", True)),
+                )
+                root.children.append(
+                    SuiteNode("scheme", scheme.name, scheme=scheme)
+                )
+            return cls(
+                str(values.get("name", "kessler")),
+                groups,
+                sequence_safe=bool(values.get("sequence_safe", False)),
+            )
+        if version != SUITE_PLAN_SCHEMA_VERSION:
+            raise ValueError(f"unsupported suite-plan schema {version!r}")
+        groups = {
+            str(name): cls._node_from_payload(node)
+            for name, node in values["groups"].items()
+        }
+        baseline = {
+            str(name): cls._node_from_payload(node)
+            for name, node in values.get("baseline_groups", values["groups"]).items()
+        }
+        return cls(
+            str(values["name"]),
+            groups,
+            source=values.get("source"),
+            sequence_safe=bool(values.get("sequence_safe", False)),
+            baseline_groups=baseline,
+        )
+
     @property
     def group_names(self) -> tuple[str, ...]:
         return tuple(self._groups)
@@ -140,6 +318,7 @@ class CCPPSuitePlan:
             self._groups,
             source=self.source,
             sequence_safe=self.sequence_safe,
+            baseline_groups=self._baseline_groups,
         )
 
     def scheme(
@@ -234,12 +413,14 @@ class CCPPSuitePlan:
             if to_group not in self._groups:
                 raise ValueError(f"unknown suite group {to_group!r}")
             destination = self._groups[to_group]
+            destination_group = to_group
             insert_at = len(destination.children)
         else:
             anchor = self.scheme(anchor_selector, group=to_group)
             anchor_group, destination, anchor_node = self._locations[
                 anchor.key
             ]
+            destination_group = anchor_group
             if anchor.key == moving.key:
                 raise ValueError("a scheme cannot move relative to itself")
             if to_group is not None and anchor_group != to_group:
@@ -254,7 +435,95 @@ class CCPPSuitePlan:
         if destination is parent and old_index < insert_at:
             insert_at -= 1
         destination.children.insert(insert_at, node)
+        moving.group = destination_group
         self._sequence_safe = False
+        self._reindex()
+
+    def active(self, group: str) -> tuple[SuiteScheme, ...]:
+        """Return enabled source occurrences in control-tree order.
+
+        Subcycles are not repeated here. Runtime group execution uses
+        :meth:`expanded` with StatePool dimensions.
+        """
+
+        if group not in self._groups:
+            raise ValueError(f"unknown suite group {group!r}")
+        return tuple(
+            self._schemes[row["key"]]
+            for row in self.describe(group)
+            if row["enabled"]
+        )
+
+    def add(
+        self,
+        scheme: SuiteScheme,
+        *,
+        before: str | None = None,
+        after: str | None = None,
+        unsafe: bool = False,
+    ) -> SuiteScheme:
+        """Insert one runtime process without modifying the source XML."""
+
+        if not unsafe:
+            raise ValueError("adding a physics scheme requires unsafe=True")
+        if before is not None and after is not None:
+            raise ValueError("provide at most one of before= or after=")
+        group = str(scheme.group or scheme.source_group)
+        if group not in self._groups:
+            raise ValueError(
+                f"unknown suite group {group!r}; choose from {self.group_names}"
+            )
+        if scheme.occurrence <= 0:
+            scheme.occurrence = max(
+                (item.occurrence for item in self.schemes),
+                default=0,
+            ) + 1
+        if scheme.key in self._schemes:
+            raise ValueError(f"duplicate scheme identity {scheme.key!r}")
+        scheme.group = group
+        node = SuiteNode("scheme", scheme.name, scheme=scheme)
+        root = self._groups[group]
+        anchor_selector = before if before is not None else after
+        if anchor_selector is None:
+            insert_at = len(root.children)
+        else:
+            anchor = self.scheme(anchor_selector, group=group)
+            _anchor_group, parent, anchor_node = self._locations[anchor.key]
+            if parent is not root:
+                raise ValueError(
+                    "runtime plugins can only anchor to top-level suite "
+                    "schemes, not inside a subcycle"
+                )
+            insert_at = parent.children.index(anchor_node)
+            if after is not None:
+                insert_at += 1
+        root.children.insert(insert_at, node)
+        self._sequence_safe = False
+        self._reindex()
+        return scheme
+
+    def remove(self, selector: str, *, unsafe: bool = False) -> SuiteScheme:
+        if not unsafe:
+            raise ValueError("removing a physics scheme requires unsafe=True")
+        scheme = self.scheme(selector)
+        if scheme.required:
+            raise ValueError(
+                f"source-suite scheme {scheme.key!r} may be disabled but not removed"
+            )
+        _group, parent, node = self._locations[scheme.key]
+        parent.children.remove(node)
+        self._sequence_safe = False
+        self._reindex()
+        return scheme
+
+    def reset(self) -> None:
+        """Restore the exact source-XML plan and remove runtime additions."""
+
+        self._groups = {
+            group: node.clone()
+            for group, node in self._baseline_groups.items()
+        }
+        self._sequence_safe = True
         self._reindex()
 
     def expanded(
@@ -312,6 +581,10 @@ class CCPPSuitePlan:
                         "source_group": node.scheme.source_group,
                         "execution_group": execution_group,
                         "enabled": node.scheme.enabled,
+                        "category": node.scheme.category,
+                        "description": node.scheme.description,
+                        "implementation": node.scheme.implementation,
+                        "required": node.scheme.required,
                         "controls": controls,
                     }
                 )
@@ -339,6 +612,7 @@ class CCPPSuitePlan:
                         raise ValueError(
                             f"duplicate scheme identity {child.scheme.key!r}"
                         )
+                    child.scheme.group = group
                     schemes[child.scheme.key] = child.scheme
                     locations[child.scheme.key] = (group, parent, child)
                 else:
@@ -350,8 +624,15 @@ class CCPPSuitePlan:
         self._locations = locations
 
     def _refresh_safety(self) -> None:
-        if not all(item.enabled for item in self._schemes.values()):
-            self._sequence_safe = False
+        current = {
+            name: self._node_payload(node)
+            for name, node in self._groups.items()
+        }
+        baseline = {
+            name: self._node_payload(node)
+            for name, node in self._baseline_groups.items()
+        }
+        self._sequence_safe = current == baseline
 
 
 class CCPPDeviceHost:

@@ -1,0 +1,125 @@
+{
+  "schema_version": 1,
+  "validated_at": "2026-07-24T15:33:43-06:00",
+  "repository": {
+    "root": "/glade/work/ruitong/pycam-sima",
+    "parent_commit": "7ca7af92c9e6cb5236afb21105e5d0d6b100e5de",
+    "package_version": "0.14.0",
+    "working_tree": "uncommitted implementation under validation"
+  },
+  "generic_model": {
+    "ordering_source": "selected CCPP suite XML",
+    "execution_plan": "CCPPSuitePlan schema version 2",
+    "process_router_precedence": [
+      "CAM component host process",
+      "generated Fortran device",
+      "Python host service",
+      "fail closed"
+    ],
+    "state_schema": "compiled from active suite process metadata",
+    "removed_runtime_type": "KesslerSchemePlan",
+    "suite_xml_files": 7,
+    "suite_xml_parse_result": "7 passed, 0 failed",
+    "parsed_suites": {
+      "adiabatic": 12,
+      "cam4": 201,
+      "cam7": 76,
+      "held_suarez_1994": 7,
+      "kessler": 24,
+      "musica": 3,
+      "tj2016": 17
+    },
+    "custom_suite_xml": "accepted when its suite name and process providers are valid"
+  },
+  "configuration": {
+    "generic_validation": [
+      "non-empty identifiers and paths",
+      "positive dimensions and run controls",
+      "valid run_type",
+      "suite XML exists"
+    ],
+    "not_fixed_by_model_config": [
+      "physics_suite",
+      "suite_xml",
+      "dt_seconds",
+      "stop_n",
+      "case_name",
+      "calendar",
+      "grid",
+      "dimensions"
+    ],
+    "selected_runtime_capability": "cam-se-fvm-v1",
+    "runtime_constraints": {
+      "source_revision": "f8daa568eae2696b7c4ebff7768f02f5d097d9df",
+      "grid": "ne3np4.pg3",
+      "ne": 3,
+      "np": 4,
+      "fv_nphys": 3,
+      "pver": 30,
+      "constituent_count": 3,
+      "mpi_size": 24,
+      "threads_per_rank": 1,
+      "calendar": "NO_LEAP",
+      "run_type": "startup",
+      "analytic_ic_type": "moist_baroclinic_wave_dcmip2016"
+    },
+    "reason_for_runtime_constraints": "honest capability boundary, separate from the reusable ModelConfig data model"
+  },
+  "suite_aware_state": {
+    "kessler": {
+      "scheme_occurrences": 24,
+      "state_pool_fields": 284,
+      "unresolved_schemes": 0
+    },
+    "held_suarez_1994": {
+      "scheme_occurrences": 7,
+      "state_pool_fields": 251,
+      "unresolved_schemes": 0,
+      "kessler_only_fields_allocated": false
+    }
+  },
+  "runtime_gate": {
+    "pbs_job_id": "6889053.desched1",
+    "node": "dec2433",
+    "resources": "select=1:ncpus=24:mpiprocs=24:ompthreads=1:mem=80GB",
+    "walltime_used": "00:07:35",
+    "run_root": "/glade/derecho/scratch/ruitong/pycam-sima/generic_runtime_20260724-152405",
+    "log_path": "/glade/work/ruitong/pycam-sima/logs/6889053.desched1.OU",
+    "completion_evidence": "rank-0 JSON emitted and PBS live query reports job finished",
+    "runtime": "model",
+    "suite": "kessler",
+    "mpi_ranks": 24,
+    "steps": 50,
+    "history_samples": 51,
+    "scheme_sequence_safe": true,
+    "initialized_native_calls": 0,
+    "native_calls": 14904,
+    "process_providers": {
+      "fortran-device": 2,
+      "python-host-process": 22
+    },
+    "state_pool_fields": 284,
+    "unresolved_schemes": 0
+  },
+  "bitwise_validation": {
+    "command": "uv run pycam-sima compare-history /glade/derecho/scratch/ruitong/pycam_sima_legacy_oracle_f8daa568/run /glade/derecho/scratch/ruitong/pycam-sima/generic_runtime_20260724-152405/history --files 51 --numeric-variables 26",
+    "oracle": "/glade/derecho/scratch/ruitong/pycam_sima_legacy_oracle_f8daa568/run",
+    "candidate": "/glade/derecho/scratch/ruitong/pycam-sima/generic_runtime_20260724-152405/history",
+    "files": 51,
+    "numeric_variables": 26,
+    "result": "BFB"
+  },
+  "verification": {
+    "pytest": "110 passed, 1 third-party deprecation warning",
+    "notebook_json": "valid",
+    "architecture_html": "parsed",
+    "git_diff_check": "passed",
+    "stale_kessler_plan_references": 0
+  },
+  "validation_boundary": {
+    "generic_suite_plan": "validated for all seven pinned suite XML files",
+    "generic_state_selection": "validated for Kessler, Held-Suarez, and custom suite naming",
+    "end_to_end_bfb": "validated only for the 24-rank 50-step FKESSLER reference profile",
+    "other_suites": "must still satisfy provider, initialization, and scientific validation gates before being claimed runnable"
+  }
+}

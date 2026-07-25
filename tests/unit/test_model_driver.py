@@ -5,8 +5,8 @@ import pytest
 
 from pycam_sima.model import (
     CAMDriver,
+    CCPPSuitePlan,
     DriverState,
-    KesslerSchemePlan,
     ModelConfig,
     PHYSICS_AFTER_COUPLER,
     PHYSICS_BEFORE_COUPLER,
@@ -60,10 +60,15 @@ def test_initialize_is_python_owned_and_zero_native_calls(session):
         device._abi_checked is False
         for device in session.backend.devices.devices.values()
     )
-    assert len(session.pool.inventory()) == len(default_contracts()) == 222
+    assert len(session.pool.inventory()) == len(
+        session.state_schema.pool_contracts()
+    )
+    assert len(session.pool.inventory()) > len(default_contracts())
     assert all(item["owner"] == "python" for item in session.pool.inventory())
     assert np.isfinite(session.get_field("air_temperature")).all()
-    assert set(session._scheme_handlers()) == set(session.scheme_names)
+    assert {
+        item.name for item in session.scheme_plan.schemes
+    } <= set(session.processes.process_names)
 
 
 def test_original_kessler_device_preserves_addresses(session):
@@ -75,17 +80,97 @@ def test_original_kessler_device_preserves_addresses(session):
 
 
 def test_group_execution_follows_a_cross_group_move() -> None:
-    plan = KesslerSchemePlan.default()
+    plan = CCPPSuitePlan.from_xml(
+        PROJECT
+        / "external/CAM-SIMA/src/physics/ncar_ccpp/suites/suite_kessler.xml"
+    )
+    kessler_key = plan.scheme("kessler").key
     plan.move("kessler", to_group=PHYSICS_AFTER_COUPLER, unsafe=True)
     driver = object.__new__(CAMDriver)
     driver.scheme_plan = plan
+    driver.pool = type("Pool", (), {"dimensions": {}})()
     calls = []
     driver.run_scheme = calls.append
 
     CAMDriver.run_scheme_group(driver, PHYSICS_BEFORE_COUPLER)
-    assert "physics_before_coupler.kessler" not in calls
+    assert kessler_key not in calls
     CAMDriver.run_scheme_group(driver, PHYSICS_AFTER_COUPLER)
-    assert calls[-1] == "physics_before_coupler.kessler"
+    assert calls[-1] == kessler_key
+
+
+def test_driver_compiles_plan_and_state_from_selected_non_kessler_suite() -> None:
+    config = ModelConfig.from_yaml(
+        PROJECT / "configs/fkessler_model.yaml"
+    ).with_overrides(
+        physics_suite="held_suarez_1994",
+        dt_seconds=900,
+        stop_n=4,
+        case_name="held-suarez-control",
+        history_enabled=False,
+    )
+    driver = CAMDriver(config, run_dir=PROJECT, comm=FixedCaseComm())
+
+    assert driver.scheme_plan.name == "held_suarez_1994"
+    assert "held_suarez_1994" in {
+        scheme.name for scheme in driver.scheme_plan.schemes
+    }
+    field_names = {
+        contract.standard_name
+        for contract in driver.state_schema.pool_contracts()
+    }
+    assert "air_temperature_previous_timestep" not in field_names
+    assert "large_scale_precipitation_rate" not in field_names
+
+
+def test_driver_accepts_a_custom_suite_xml_not_named_in_catalog(
+    tmp_path: Path,
+) -> None:
+    suite_xml = tmp_path / "suite_my_experiment.xml"
+    suite_xml.write_text(
+        '<?xml version="1.0"?>\n'
+        '<suite name="my_experiment" version="1.0">\n'
+        '  <group name="physics_before_coupler">\n'
+        '    <scheme>held_suarez_1994</scheme>\n'
+        '  </group>\n'
+        '  <group name="physics_after_coupler"/>\n'
+        '</suite>\n'
+    )
+    config = ModelConfig.from_yaml(
+        PROJECT / "configs/fkessler_model.yaml"
+    ).with_overrides(
+        physics_suite="my_experiment",
+        suite_xml=str(suite_xml),
+        case_name="custom-suite",
+        history_enabled=False,
+    )
+    driver = CAMDriver(config, run_dir=PROJECT, comm=FixedCaseComm())
+
+    assert driver.scheme_plan.name == "my_experiment"
+    assert [scheme.name for scheme in driver.scheme_plan.schemes] == [
+        "held_suarez_1994"
+    ]
+    assert not driver.state_schema.unresolved_schemes
+    assert driver.processes.provider_for(
+        driver.scheme_plan.scheme("held_suarez_1994")
+    ) == "fortran-device"
+
+
+def test_missing_optional_coupler_group_is_skipped() -> None:
+    plan = CCPPSuitePlan.from_xml(
+        PROJECT
+        / "external/CAM-SIMA/src/physics/ncar_ccpp/suites/suite_musica.xml"
+    )
+    assert PHYSICS_BEFORE_COUPLER not in plan.group_names
+    driver = object.__new__(CAMDriver)
+    driver.scheme_plan = plan
+    calls = []
+    driver.run_scheme_group = (
+        lambda group, callback=None: calls.append(group)
+    )
+
+    CAMDriver._run_optional_scheme_group(driver, PHYSICS_BEFORE_COUPLER)
+    CAMDriver._run_optional_scheme_group(driver, PHYSICS_AFTER_COUPLER)
+    assert calls == [PHYSICS_AFTER_COUPLER]
 
 
 def test_step_uses_complete_python_orchestrator(session, monkeypatch):

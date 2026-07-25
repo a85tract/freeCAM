@@ -15,7 +15,7 @@ from pycam_sima import (
     SegmentPlan,
     VariableSpec,
 )
-from pycam_sima.model import KesslerSchemePlan, ModelConfig, ModelSnapshot
+from pycam_sima.model import CCPPSuitePlan, ModelConfig, ModelSnapshot
 from pycam_sima.model.checkpoint import deserialize_snapshot, serialize_snapshot
 from pycam_sima.model.clock import NoLeapClock
 from pycam_sima.model.comm import SerialComm
@@ -27,6 +27,10 @@ from pycam_sima.model.state import StatePool
 
 
 ROOT = Path(__file__).resolve().parents[2]
+KESSLER_SUITE = (
+    ROOT
+    / "external/CAM-SIMA/src/physics/ncar_ccpp/suites/suite_kessler.xml"
+)
 
 
 class _Driver:
@@ -41,7 +45,7 @@ class _Driver:
         self._last_scheme_group = None
         self._native_call_depth = 0
         self._boundary_index = 0
-        self.scheme_plan = KesslerSchemePlan.default()
+        self.scheme_plan = CCPPSuitePlan.from_xml(KESSLER_SUITE)
         empty = tmp_path / "empty-devices"
         empty.mkdir(exist_ok=True)
         self.backend = SimpleNamespace(

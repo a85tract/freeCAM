@@ -101,7 +101,11 @@ class PythonHistoryService:
                 continue
             seen.add(standard_name)
             try:
-                values = np.asarray(pool.get_ccpp(standard_name))
+                field_name = pool.ccpp_field_name(standard_name)
+                if not pool.is_initialized(field_name):
+                    unavailable.append(standard_name)
+                    continue
+                values = np.asarray(pool.get(field_name))
             except KeyError:
                 # Dimension controls and opaque metadata are recorded as
                 # unavailable rather than silently invented.
@@ -148,9 +152,20 @@ class HostServiceRegistry:
         catalog: DeviceCatalog,
         *,
         suite: str | None = None,
+        processes: Iterable[str] | None = None,
     ) -> "HostServiceRegistry":
+        selected_processes = (
+            None
+            if processes is None
+            else {str(name).lower() for name in processes}
+        )
         services = []
         for entry in catalog.entries.values():
+            if (
+                selected_processes is not None
+                and entry.name not in selected_processes
+            ):
+                continue
             if suite is not None and not any(
                 item.suite == suite for item in entry.occurrences
             ):

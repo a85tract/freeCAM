@@ -13,7 +13,7 @@ import numpy as np
 
 from ..model import (
     CAMDriver,
-    KesslerSchemePlan,
+    CCPPSuitePlan,
     ModelConfig,
     ModelOptions,
     PhysicsPluginSpec,
@@ -65,7 +65,7 @@ def _local_command(request: dict[str, Any], driver: CAMDriver, comm: Any) -> Any
         driver.run_scheme_group(str(request["group"]))
         return _runtime_status(driver)
     if operation == "configure_scheme_plan":
-        driver.scheme_plan = KesslerSchemePlan.from_payload(request["plan"])
+        driver.scheme_plan = CCPPSuitePlan.from_payload(request["plan"])
         return _runtime_status(driver)
     if operation == "define_variable":
         driver.define_variable(
@@ -315,7 +315,7 @@ def main() -> int:
             mediator_present=False,
         )
         options.validate(config)
-        scheme_plan = KesslerSchemePlan.from_payload(json.loads(args.scheme_plan_json))
+        scheme_plan = CCPPSuitePlan.from_payload(json.loads(args.scheme_plan_json))
         driver = CAMDriver(
             config,
             run_dir=args.run_dir,

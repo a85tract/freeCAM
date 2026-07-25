@@ -12,6 +12,7 @@ from taskflow.patterns import linear_flow
 
 from .clock import NoLeapClock
 from .config import ModelConfig
+from .contracts import FieldContract
 from .errors import ConfigurationError, ValidationError
 from .fvm_geometry import generate_fvm_geometry
 from .grid import dimensions_for_rank, populate_grid
@@ -26,6 +27,8 @@ class InitializationContext:
     config: ModelConfig
     run_dir: Path
     comm: object
+    configured_contracts: tuple[FieldContract, ...] | None = None
+    generated_contracts: tuple[FieldContract, ...] = ()
     atm: dict | None = None
     pool: StatePool | None = None
     clock: NoLeapClock | None = None
@@ -50,8 +53,22 @@ class InitializationPlan:
         "validate_python_owned_state",
     )
 
-    def __init__(self, config: ModelConfig, run_dir: str | Path, comm):
-        self.context = InitializationContext(config, Path(run_dir).resolve(), comm)
+    def __init__(
+        self,
+        config: ModelConfig,
+        run_dir: str | Path,
+        comm,
+        *,
+        contracts: tuple[FieldContract, ...] | None = None,
+        generated_contracts: tuple[FieldContract, ...] = (),
+    ):
+        self.context = InitializationContext(
+            config,
+            Path(run_dir).resolve(),
+            comm,
+            configured_contracts=contracts,
+            generated_contracts=generated_contracts,
+        )
         callbacks = (
             self._parse, self._mpi, self._allocate, self._vertical, self._constants,
             self._grid, self._constituents, self._initial_state, self._buffers, self._validate,
@@ -78,7 +95,10 @@ class InitializationPlan:
     def _parse(ctx):
         ctx.config.validate()
         ctx.config.verify_source_revision()
-        ctx.atm = read_atm_in(ctx.config.resolve_atm_in(ctx.run_dir))
+        ctx.atm = read_atm_in(
+            ctx.config.resolve_atm_in(ctx.run_dir),
+            ctx.config,
+        )
 
     @staticmethod
     def _mpi(ctx):
@@ -91,10 +111,27 @@ class InitializationPlan:
 
     @staticmethod
     def _allocate(ctx):
-        ctx.pool = StatePool(dimensions_for_rank(ctx.comm.rank, ctx.comm.size))
+        ctx.pool = StatePool(
+            dimensions_for_rank(
+                ctx.comm.rank,
+                ctx.comm.size,
+                pver=ctx.config.pver,
+                np_value=ctx.config.np,
+                fv_nphys=ctx.config.fv_nphys,
+                constituent_count=ctx.config.constituent_count,
+            ),
+            contracts=ctx.configured_contracts,
+        )
+        for contract in ctx.generated_contracts:
+            ctx.pool.register_field(
+                contract,
+                initialized=False,
+                dynamic=False,
+            )
         pool = ctx.pool
         pool.set("mpi_rank", ctx.comm.rank); pool.set("mpi_size", ctx.comm.size)
-        pool.set("spectral_element_count", 54); pool.set("vertical_level_count", 30)
+        pool.set("spectral_element_count", 6 * ctx.config.ne * ctx.config.ne)
+        pool.set("vertical_level_count", ctx.config.pver)
         pool.set("physics_column_count", pool.dimensions["nphys_local"])
         pool.set("model_timestep", ctx.config.dt_seconds)
         pool.set("dynamics_timestep", np.float64(ctx.config.dt_seconds) / np.float64(6.0))
@@ -148,7 +185,14 @@ class InitializationPlan:
         for name, value in values.items(): pool.set(name, value)
         exponent = np.float64(1.0) / np.log10(np.float64(2.0))
         nu_factor = np.float64(1.0e15) / np.float64(np.float64(110000.0) ** exponent)
-        nu_p = nu_factor * np.float64((np.float64(30.0) / np.float64(3.0) * np.float64(110000.0)) ** exponent)
+        nu_p = nu_factor * np.float64(
+            (
+                np.float64(ctx.config.pver)
+                / np.float64(ctx.config.fv_nphys)
+                * np.float64(110000.0)
+            )
+            ** exponent
+        )
         pool.set("pressure_hyperviscosity", nu_p)
         pool.set("velocity_hyperviscosity", np.float64(0.5) * nu_p)
         pool.set("divergence_hyperviscosity", np.float64(2.5) * nu_p)

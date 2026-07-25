@@ -244,10 +244,14 @@ def _update_geopotential_and_static_energy(
             midpoint_height=zm,
             static_energy=pool.get("static_energy"),
         )
+        pool.mark_initialized("physics_interface_geopotential_height")
+        pool.mark_initialized("thermodynamic_level_height")
+        if update_static_energy:
+            pool.mark_initialized("static_energy")
         return
     for i in range(ncol):
         zi[i, nlev] = np.float64(0.0)
-    # This fixed case has lagrangian_vertical=.false.; use the Eulerian
+    # The current SE/FVM capability has lagrangian_vertical=.false.; use the Eulerian
     # hydrostatic elements from geopotential_temp_run, bottom upward.
     for k in range(nlev - 1, -1, -1):
         for i in range(ncol):
@@ -273,6 +277,10 @@ def _update_geopotential_and_static_energy(
         for k in range(nlev):
             for i in range(ncol):
                 dse[i, k] = np.float64(temp[i, k] * cpair[i, k]) + np.float64(gravity * zm[i, k]) + phis[i]
+    pool.mark_initialized("physics_interface_geopotential_height")
+    pool.mark_initialized("thermodynamic_level_height")
+    if update_static_energy:
+        pool.mark_initialized("static_energy")
 
 
 def calc_exner(pool) -> None:
@@ -355,7 +363,7 @@ def dry_to_wet_rain(pool) -> None:
 
 
 def qneg(pool) -> None:
-    """Apply the FKESSLER constituent lower bounds."""
+    """Apply the configured constituent lower bounds."""
 
     ncol, nlev = pool.dimensions["nphys_local"], pool.dimensions["pver"]
     q = pool.get("physics_constituent_mixing_ratio")
@@ -447,14 +455,25 @@ def dynamics_to_physics(pool, time_level: int | None = None) -> None:
 
 def physics_timestep_initial(pool, backend=None) -> None:
     _derive_pressure_and_geopotential(pool, backend=backend)
-    pool.set("temperature_before_kessler", pool.get("physics_air_temperature"))
+    if "air_temperature_previous_timestep" in pool.contracts:
+        pool.set(
+            "air_temperature_previous_timestep",
+            pool.get("physics_air_temperature"),
+        )
     for name in ("physics_air_temperature_tendency", "physics_zonal_wind_tendency", "physics_meridional_wind_tendency", "physics_constituent_tendency"):
         pool.get(name)[...] = 0.0
 
 
 def physics_timestep_final(pool) -> None:
     pool.get("physics_air_temperature")[:] += float(pool.get("model_timestep")) * pool.get("physics_air_temperature_tendency")
-    pool.set("static_energy", pool.get("physics_air_temperature") * pool.get("column_dry_air_specific_heat") + float(pool.get("gravitational_acceleration")) * pool.get("thermodynamic_level_height"))
+    if "static_energy" in pool.contracts:
+        pool.set(
+            "static_energy",
+            pool.get("physics_air_temperature")
+            * pool.get("column_dry_air_specific_heat")
+            + float(pool.get("gravitational_acceleration"))
+            * pool.get("thermodynamic_level_height"),
+        )
 
 
 def thermo_water_update(pool) -> None:
@@ -539,7 +558,7 @@ def apply_tendency_of_air_temperature(pool) -> None:
 def check_energy_zero_fluxes(pool) -> None:
     """Represent the zero-flux energy-check scheme for this closed ATM case.
 
-    The fixed case has no surface/coupler energy fluxes and does not retain
+    The current ATM-only capability has no surface/coupler energy fluxes and does not retain
     CAM's message-only conservation bookkeeping in model state.  The scheme is
     still an explicit control boundary so it can be enabled, disabled, moved,
     and observed independently.
@@ -547,7 +566,7 @@ def check_energy_zero_fluxes(pool) -> None:
 
 
 def check_energy_scaling_before_coupler(pool) -> None:
-    """Represent the pre-coupler energy-check boundary for this fixed case.
+    """Represent the pre-coupler energy-check boundary for this capability.
 
     This occurrence of ``check_energy_scaling`` in the CCPP suite performs
     conservation bookkeeping.  It is distinct from the after-coupler scheme
@@ -556,7 +575,7 @@ def check_energy_scaling_before_coupler(pool) -> None:
 
 
 def check_energy_chng(pool) -> None:
-    """Represent CAM's message-only conservation check for this fixed case."""
+    """Represent CAM's message-only conservation check for this capability."""
 
 
 def sima_state_diagnostics(pool) -> None:

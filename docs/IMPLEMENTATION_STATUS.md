@@ -11,18 +11,21 @@ boundary and one complete model configuration:
 - DCMIP2016 moist baroclinic-wave initial condition
 - startup, ATM-only, NO_LEAP execution
 
-Python parses `atm_in`, initializes the grid and analytic state, owns all 222
-canonical persistent fields, executes the model phase graph, performs MPI
-communication through mpi4py, advances the clock, and writes history.
+Python parses `atm_in`, initializes the grid and analytic state, compiles the
+selected suite metadata into a Python-owned StatePool schema, executes the
+model phase graph, performs MPI communication through mpi4py, advances the
+clock, and writes history. The current FKESSLER profile allocates 284
+canonical fields; other suites select a different schema.
 `libpycam_sima_kernels.so` exposes versioned dycore/mapping kernels and retains
 no array pointer or mutable model state between calls. CCPP schemes are
 separate source-preserving devices under `build/devices/`.
 
-The Python scheme plan mirrors every active entry in the pinned Kessler CCPP
-suite. Its default 19 before-coupler and 5 after-coupler schemes are
-independently callable, observable, enabled/disabled, reorderable, and movable
-between groups. Required-scheme changes demand `unsafe=True`; the untouched
-XML order is the BFB contract.
+The Python scheme plan is compiled from the suite XML selected by
+`ModelConfig`; groups, repeated occurrences, and subcycles are retained. Each
+scheme is independently callable, observable, enabled/disabled, reorderable,
+and movable between groups. Required-scheme changes demand `unsafe=True`;
+the untouched XML order reports `sequence_safe=True`. The FKESSLER validation
+profile contains 19 before-coupler and 5 after-coupler occurrences.
 The Kessler and Kessler-update boundaries are supplied by generated devices.
 Their adapters call the pinned, unmodified `kessler.F90` and
 `kessler_update.F90`; no second copy of either numerical algorithm is
@@ -95,11 +98,12 @@ The previous `cam_init`/`cam_run*` wrapper backend has been removed. The
 upstream CAM-SIMA executable remains external to this package and is used only
 to create immutable BFB oracle output.
 
-The initial 222-field schema is now extensible. `VariableSpec` collectively
+The initial schema is suite-dependent and extensible. `CCPPStateSchema`
+combines suite-independent CAM component fields, metadata-selected process
+templates, and generated primitive contracts. `VariableSpec` collectively
 appends Python-owned Fortran-contiguous arrays without moving existing
-addresses, while device manifests synthesize missing primitive contracts by
-CCPP standard name. Live fields use existing named dimensions; redefinition,
-resizing, and removal are rejected.
+addresses. Live fields use existing named dimensions; redefinition, resizing,
+and removal are rejected.
 
 `PhysicsPluginManager` accepts source descriptors and prebuilt manifests,
 validates every MPI rank against the same artifact and schema hashes, and
@@ -107,6 +111,13 @@ inserts new processes into the editable before/after-coupler plan. Loading may
 occur after initialization or between completed phase/scheme actions.
 Checkpoint schema v2 carries dynamic contracts and exact plugin identities
 through disk restart and Dask in-memory fork.
+
+The user-facing layer exposes the same mechanisms as `model.fields` and
+`model.physics`. Friendly dimension names are translated into checked runtime
+dimensions, and source-device placement is inferred when one run process is
+unambiguous. The underlying `VariableSpec`, `PhysicsPluginSpec`, and
+`SchemePlacement` objects remain the serialization boundary; the façade is a
+lossless convenience layer, not a second runtime.
 
 `examples/plugins/runtime_temperature_offset` is the executable authoring
 example. `jobs/dynamic_runtime_24.pbs` validates source compilation, prebuilt
@@ -127,7 +138,11 @@ Persistent Dask execution is a separate Actor path. One worker-pinned Actor
 owns a live `NotebookSession`, holds the full-node MPI allocation lock, and
 launches 24 ranks once. Subsequent Actor futures call phase, scheme, complete
 step, field, plan, and checkpoint operations against the same in-memory
-StatePool. In PBS mode, `fork_persistent()` captures the base's 24 rank-local
+StatePool. `model()` presents those calls synchronously through a context
+manager with typed status/checkpoint objects, attribute-style field access,
+and `advance()`/`save()` operations. `start_persistent()` and `model.submit`
+retain explicit ActorFuture submission. In PBS mode, `fork_models()` captures the base's
+24 rank-local
 snapshots into one immutable in-memory `CheckpointBundle`, keeps it as a Dask
 Future, and supplies it to multiple child Actors. Every child launches an
 independent 24-rank MPI model, restores private NumPy arrays through the
@@ -149,9 +164,10 @@ fan-out. Disk checkpoint segments remain the durable, restartable alternative.
 - Device errors must carry the original Fortran error message into Python.
 - Every persistent field must report `owner="python"`.
 - Every public phase checks NumPy pointer stability.
-- Every scheme call checks NumPy pointer stability, and the default 24-scheme
-  plan exactly matches `suite_kessler.xml`.
-- The fixed 24-rank run must produce nstep=0 plus 50 steps.
+- Every scheme call checks NumPy pointer stability, and the selected execution
+  tree is compiled from its suite XML. The FKESSLER gate has 24 occurrences
+  and exactly matches `suite_kessler.xml`.
+- The FKESSLER 24-rank gate must produce nstep=0 plus 50 steps.
 - All 51 filenames, timestamps, shapes, dtypes, and bit patterns for the 26
   numeric history variables must match the oracle.
 - A batched granular plan and the equivalent chain of single-action checkpoint

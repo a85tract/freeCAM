@@ -780,7 +780,7 @@
     <div class="metrics" aria-label="当前实现关键数字">
       <div class="metric"><b>3</b><span>control surfaces</span></div>
       <div class="metric"><b>24</b><span>MPI ranks per segment</span></div>
-      <div class="metric"><b>222</b><span>Python-owned fields</span></div>
+      <div class="metric"><b>XML</b><span>suite-selected fields</span></div>
       <div class="metric"><b>129 / 155</b><span>ready · 100 native + 29 host</span></div>
       <div class="metric"><b>1 PBS</b><span>allocation-mode fan-out</span></div>
       <div class="metric"><b>BFB</b><span>51 files · 26 variables</span></div>
@@ -797,7 +797,7 @@
           <div class="arrow">↘</div>
           <div class="node mpi"><b>Python CAMDriver</b><small>phases · schemes · clock</small></div>
           <div class="arrow">→</div>
-          <div class="node mpi"><b>Python StatePool</b><small>NumPy owns 222 fields</small></div>
+          <div class="node mpi"><b>Python StatePool</b><small>suite-selected NumPy fields</small></div>
           <div class="arrow">→</div>
           <div class="node pbs"><b>DeviceRegistry</b><small>manifest + standard_name</small></div>
         </div>
@@ -812,6 +812,32 @@
         </div>
         <div class="flow-note" style="margin-top:16px">
           Device `.so` 不保存 StatePool 指针，也不拥有模型生命周期；Python 临时把 Fortran-contiguous NumPy 地址交给生成的 adapter，adapter 调用原始 scheme，计算完成后立即返回。
+        </div>
+      </div>
+      <div class="card mode-stage" style="margin-top:18px">
+        <div class="flow-row">
+          <div class="node server"><b>ModelConfig</b><small>case values, no Kessler gate</small></div>
+          <div class="arrow">→</div>
+          <div class="node mpi"><b>suite XML</b><small>groups · subcycles · schemes</small></div>
+          <div class="arrow">→</div>
+          <div class="node dask"><b>CCPPSuitePlan</b><small>generic execution order</small></div>
+          <div class="arrow">→</div>
+          <div class="node pbs"><b>ProcessRouter</b><small>device or host provider</small></div>
+        </div>
+        <div class="flow-row" style="margin-top:8px">
+          <div class="node server"><b>RuntimeCapabilities</b><small>grid · dycore · MPI constraints</small></div>
+          <div class="arrow">→</div>
+          <div class="node mpi"><b>CCPPStateSchema</b><small>metadata-required variables</small></div>
+          <div class="arrow">→</div>
+          <div class="node dask"><b>StatePool allocation</b><small>component + selected process fields</small></div>
+          <div class="arrow">→</div>
+          <div class="node pbs"><b>zero-copy ABI</b><small>original Fortran scheme</small></div>
+        </div>
+        <div class="flow-note" style="margin-top:16px">
+          FKESSLER 现在只是一个经过 50-step BFB 验证的配置 profile。主 driver
+          不再保存 Kessler 的 24 个 scheme 顺序表；切换 suite 会重新编译执行树和
+          StatePool schema。当前 SE/FVM v1 仍只验证 ne3/L30/24-rank，这个限制由
+          capability 明确报告，不再写进通用 ModelConfig 的合法性规则。
         </div>
       </div>
     </section>
@@ -1139,7 +1165,7 @@ cam_history/outfld → Python host service</code></pre>
             <tr><td>状态位置</td><td>NotebookSession 的live StatePool</td><td>Dask Worker Actor 的live StatePool</td><td>父checkpoint → 分支私有StatePool</td></tr>
             <tr><td>控制粒度</td><td>scheme、phase、step边界</td><td>ActorFuture 对应scheme、phase、step、field、plan</td><td>segment内细粒度；跨task为checkpoint</td></tr>
             <tr><td>单次交互延迟</td><td class="yes">低</td><td class="yes">低：无重复mpiexec/restore</td><td>较高：需要mpiexec、restore、write</td></tr>
-            <tr><td>分支隔离</td><td>需要显式checkpoint</td><td class="yes"><code>fork_persistent()</code> 内存恢复私有StatePool</td><td class="yes">Future依赖天然表达独立分支</td></tr>
+            <tr><td>分支隔离</td><td>需要显式checkpoint</td><td class="yes"><code>fork_models()</code> 内存恢复私有StatePool</td><td class="yes">Future依赖天然表达独立分支</td></tr>
             <tr><td>进程故障后状态</td><td class="no">未保存live内存会丢失</td><td class="no">Actor丢失时未保存内存会丢失</td><td class="yes">durable checkpoint可重启</td></tr>
             <tr><td>当前PBS策略</td><td>一个持久worker job</td><td>单模型可用allocation；并行子模型各用一个PBS job</td><td>一个outer allocation，segments串行</td></tr>
             <tr><td>最佳用途</td><td>直接调试、教学</td><td>逐步观察、改变量、长期control/warm分支</td><td>可重启参数扫描、durable fan-out</td></tr>
@@ -1151,7 +1177,7 @@ cam_history/outfld → Python host service</code></pre>
     <section id="usage">
       <div class="section-head">
         <div><span class="kicker">Concrete usage</span><h2>代码如何对应架构？</h2></div>
-        <p><code>try_notebook_session.ipynb</code> 展示直接常驻交互；<code>try_dask_fanout.ipynb</code> 同时展示 persistent Actor 与 checkpoint 分支。</p>
+        <p><code>try_notebook_session.ipynb</code> 展示直接常驻交互；<code>try_dask_fanout.ipynb</code> 只展示 checkpoint 分支；<code>try_persistent_dask.ipynb</code> 专门展示 persistent Actor。</p>
       </div>
       <div class="two-col">
         <article class="card panel-pad">
@@ -1162,62 +1188,43 @@ cam_history/outfld → Python host service</code></pre>
     run_dir=run_dir,
 ) as model:
     model.prepare_initial_step()
-    before = model.parameters.air_temperature.get(rank=0)
-    model.run_scheme("kessler")
-    after = model.parameters.air_temperature.get(rank=0)
+    before = model.fields.air_temperature.get(rank=0)
+    model.physics.kessler.run()
+    after = model.fields.air_temperature.get(rank=0)
     model.step()</code></pre>
         </article>
         <article class="card panel-pad">
           <span class="mode-label" style="color:var(--dask);background:var(--dask-soft)">Persistent Dask</span>
           <h3>只启动一次 MPI，连续提交 Actor 方法</h3>
-          <pre><button class="copy">复制</button><code>model = experiments.start_persistent(
-    "interactive"
-)
-started = model.describe().result()
-assert started["mpi_launch_count"] == 1
+          <pre><button class="copy">复制</button><code>with experiments.model("interactive") as model:
+    started = model.status
+    model.advance(steps=2)
+    stats = model.fields.air_temperature.stats(
+        rank=0
+    )
+    checkpoint = model.save()
+    finished = model.status
 
-model.step().result()
-stats = model.field_stats(
-    "air_temperature", rank=0
-).result()
-values = model.field(
-    "air_temperature", rank=0
-).result()
-checkpoint = model.checkpoint().result()
-model.close().result()</code></pre>
+assert finished.step == started.step + 2
+assert finished.mpi_launch_count == 1</code></pre>
         </article>
         <article class="card panel-pad">
           <span class="mode-label" style="color:var(--dask);background:var(--dask-soft)">Persistent memory fork</span>
           <h3>base 10步后生成三个长期子模型</h3>
-          <pre><button class="copy">复制</button><code>base = experiments.start_persistent("base")
-base.step(10).result()
-
-children = experiments.fork_persistent(
-    base,
-    (
-        BranchSpec("control", steps=0),
-        BranchSpec(
-            "no-kessler",
-            steps=0,
-            disable_schemes=("kessler",),
-        ),
-        BranchSpec(
-            "warm",
-            steps=0,
-            field_edits=(
-                FieldEdit(
-                    "air_temperature", "add", 1.0
-                ),
-            ),
-        ),
-    ),
-    close_parent=True,
+          <pre><button class="copy">复制</button><code>control = experiments.plan("control")
+warm = experiments.plan("warm")
+warm.fields.edit(
+    "air_temperature", "add", 1.0
 )
 
-futures = {
-    name: child.step(1)
-    for name, child in children.items()
-}</code></pre>
+with experiments.model("base") as base:
+    base.advance(steps=10)
+    children = experiments.fork_models(
+        base, (control, warm), close_parent=True
+    )
+    with children:
+        children.advance(steps=1)
+        statuses = children.statuses</code></pre>
         </article>
         <article class="card panel-pad">
           <span class="mode-label" style="color:var(--dask);background:var(--dask-soft)">Dask allocation</span>
@@ -1295,13 +1302,16 @@ field = experiments.field(
         <p>这些问题都来自“任务、进程、状态和资源”四个层次被放在同一句话里。展开即可看到清晰边界。</p>
       </div>
       <div class="card" style="overflow:hidden">
-        <details open><summary>Dask 可以让同一批 MPI ranks 一直活着吗？</summary><p>可以，使用 <code>start_persistent()</code> 创建 worker-pinned Actor。Actor 内部拥有 NotebookSession 和 authenticated socket：构造时只启动一次 MPI，后续 Actor 方法面对同一个 live StatePool。原来的 task/checkpoint 模式仍会在每个 segment 后退出 MPI。</p></details>
+        <details open><summary>Dask 可以让同一批 MPI ranks 一直活着吗？</summary><p>可以。<code>experiments.model()</code> 提供阻塞、可放进 <code>with</code> 的 Notebook 接口；<code>start_persistent()</code> 保留返回 ActorFuture 的 Dask-native 接口。二者都创建 worker-pinned Actor，内部拥有 NotebookSession 和 authenticated socket：构造时只启动一次 MPI，后续命令面对同一个 live StatePool。Pythonic 对象提供 <code>advance()</code>、类型化 <code>status</code>、属性式 <code>fields</code> 和 <code>save()</code>。</p></details>
         <details><summary>细粒度 action 是否每次都重新启动 MPI？</summary><p>不一定。一个 <code>SegmentPlan</code> 内的所有 action 共用同一次24-rank MPI启动和同一个live StatePool；只有使用 <code>submit_action()</code> 把边界变成新的Future时，才会结束当前segment、写checkpoint并为下一个task重新启动MPI。</p></details>
         <details><summary>为什么单-allocation模式仍然需要几分钟？</summary><p>它只去掉了每个分支重新排PBS队列的时间。模型step、MPI进程启动、24-rank checkpoint恢复与写入仍然真实发生；一个worker还会让占满24 ranks的segments串行执行。</p></details>
         <details><summary>串行执行意味着后一个分支读取前一个分支吗？</summary><p>不意味着。control和no-kessler都从base的不可变snapshot创建私有副本；warm从它明确指定的parent创建副本。串行只是资源安排，不是状态依赖。</p></details>
         <details><summary>自定义 server 为什么需要 socket？</summary><p>因为Notebook和24-rank模型是不同进程。模型完成一条命令后要继续存活并等待下一条命令，就必须有socket、pipe、ZeroMQ或MPI intercommunicator之类的持久IPC。当前实现使用带authkey的socket。</p></details>
         <details><summary>Persistent Dask 是否已经不需要 socket？</summary><p>仍然需要。Dask 把 Notebook 命令路由到拥有模型的 Actor，但 Actor 和24-rank MPI模型仍是不同进程；Actor 复用 NotebookSession 的 authenticated socket。Dask 替代的是直接控制者和任务路由，不是跨进程通信本身。</p></details>
-        <details><summary>base 跑10步以后，可以不写磁盘直接 fork 三个长期模型吗？</summary><p>可以，使用 <code>fork_persistent()</code>。base 的24个rank在内存中序列化各自StatePool，Actor把37,660,986-byte不可变bundle留在Dask Future中；control、no-kessler和warm三个子Actor分别启动自己的24-rank PBS job，经socket/MPI scatter恢复私有数组。它不是共享指针或OS fork，仍有网络传输和内存复制；但不会创建NPZ、manifest或checkpoint目录。三个并发子模型需要三个不同Dask workers和三套PBS资源，单节点allocation会显式拒绝。</p></details>
+        <details><summary>base 跑10步以后，可以不写磁盘直接 fork 三个长期模型吗？</summary><p>可以，使用 <code>fork_models()</code>。base 的24个rank在内存中序列化各自StatePool，Actor把不可变bundle留在Dask Future中；子Actor分别启动自己的24-rank PBS job，经socket/MPI scatter恢复私有数组。返回的 <code>ModelGroup</code> 是 context manager，可以统一推进和关闭全部子模型。它不是共享指针或OS fork，仍有网络传输和内存复制；但不会创建NPZ、manifest或checkpoint目录。</p></details>
+        <details><summary>主模型现在是否仍然写死 Kessler？</summary><p>不再写死 scheme 顺序。<code>CAMDriver</code> 从 <code>ModelConfig</code> 选择的 suite XML 创建 <code>CCPPSuitePlan</code>，保留 group、重复 scheme 和 subcycle，再由 <code>ProcessRouter</code> 逐个选择 generated Fortran device、Python component provider 或 host service。自定义 suite 名称也可以按其中的 scheme 名称组合 catalog metadata；尚未安装的 plugin process 会显式标记 unresolved。Kessler 只是当前完整 BFB 证据所用的 profile。</p></details>
+        <details><summary>ModelConfig 和 RuntimeCapabilities 有什么区别？</summary><p><code>ModelConfig</code> 是用户描述 case 的数据：suite、timestep、步数、网格、层数、constituent 数、MPI 数、输入文件等。它不再判断“是不是唯一 FKESSLER case”。<code>RuntimeCapabilities</code> 描述某个具体组件实现目前能执行哪些组合；例如当前 <code>CAM_SE_FVM_V1</code> 仍要求 ne3/L30/24 ranks。这样新 case 可以被正常表达，但不受支持的组合会以明确 capability mismatch 失败。</p></details>
+        <details><summary>用户是否必须直接构造 VariableSpec 和 PhysicsPluginSpec？</summary><p>不需要。Notebook 推荐使用 <code>model.fields.create(...)</code>、<code>model.fields["air_temperature"].get()</code>、<code>model.physics.install(...)</code> 和 <code>model.physics["kessler"].run()</code>。其中 <code>column/level/interface_level</code> 会自动翻译成内部维度。原来的 Spec 和 Placement 类型继续作为可序列化、可验证的底层协议，供 SegmentPlan、checkpoint 和高级工具使用。</p></details>
         <details><summary>为了接入 Kessler，是否改写了原始 Fortran 数值代码？</summary><p>没有。构建器读取固定 CAM-SIMA revision 中的原始 <code>kessler.F90</code> 和 CCPP metadata，生成一个只负责 ABI 转换的 adapter。原始 scheme 直接参与 device <code>.so</code> 编译；旧的手写 <code>kessler_kernel.F90</code> 已删除。</p></details>
         <details><summary>为什么 Kessler 不再有单独的 descriptor 目录？</summary><p>所有 155 个 scheme 现在都只有 <code>devices/generated/&lt;scheme&gt;/device.yaml</code> 这一份生成结果。Kessler 特有的每次运行前初始化和垂直索引约定来自 <code>devices/overrides.yaml</code>；它只补充 metadata 无法表达的 host policy，不允许替换原始源码、entrypoint 或 ABI。</p></details>
         <details><summary>任意 CCPP scheme 现在都能无条件自动接入吗？</summary><p>所有 155 个活跃 scheme 都会自动得到 connector 与机器可读状态，但这不等于全部都已科学运行。通用 ABI 已覆盖 real/integer/default-logical、fixed-width character、Python-owned shaped allocatable arrays 和 non-allocatable derived state；纯 history scheme 由 Python service 接管。当前 100 个 native device 加 29 个 host service 可执行；仍依赖 MPI reduction、PIO/NetCDF input、外部 MUSICA 源码或 allocatable object 的 26 个 scheme 会 fail closed，并在 <code>all_scheme_support.json</code> 写明原因。</p></details>

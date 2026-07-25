@@ -42,6 +42,14 @@ def test_cam4_subcycles_expand_as_complete_blocks():
         {"number_of_diagnostic_subcycles": 3},
     )
     assert len(expanded) == plain + 3 * looped
+    restored = CCPPSuitePlan.from_payload(plan.to_payload())
+    assert [
+        item.key
+        for item in restored.expanded(
+            "physics_before_coupler",
+            {"number_of_diagnostic_subcycles": 3},
+        )
+    ] == [item.key for item in expanded]
 
 
 def test_generic_plan_supports_cross_group_move_and_disable():

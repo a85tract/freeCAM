@@ -106,7 +106,12 @@ def _field(
 
 
 def default_contracts() -> tuple[FieldContract, ...]:
-    """Return the canonical persistent arrays allocated by every worker."""
+    """Return the complete legacy reference schema.
+
+    New model workers use :func:`component_contracts` plus the contracts
+    selected by ``CCPPStateSchema``.  Keeping this complete schema as the
+    StatePool default preserves the standalone low-level API.
+    """
 
     static = False
     return (
@@ -456,13 +461,13 @@ def default_contracts() -> tuple[FieldContract, ...]:
         _field("physics_meridional_wind_tendency", "float64", ("nphys_local", "pver"), "inout", "physics_tendency", "m s-2"),
         _field("physics_constituent_tendency", "float64", ("nphys_local", "pver", "nconst"), "inout", "physics_tendency", "kg kg-1 s-1"),
         _field("physics_constituent_previous", "float64", ("nphys_local", "pver", "nconst"), "inout", "coupling", "kg kg-1"),
-        # Kessler process state. Values formerly stored by *_init are explicit here.
+        # Metadata-selected physics process state.
         _field(
             "potential_temperature",
             "float64",
             ("nphys_local", "pver"),
             "inout",
-            "kessler_process",
+            "physics_process",
             "K",
             aliases=("theta",),
             ccpp_standard_name="air_potential_temperature",
@@ -472,7 +477,7 @@ def default_contracts() -> tuple[FieldContract, ...]:
             "float64",
             ("nphys_local", "pver"),
             "inout",
-            "kessler_process",
+            "physics_process",
             aliases=("exner",),
             ccpp_standard_name="dimensionless_exner_function",
         ),
@@ -481,7 +486,7 @@ def default_contracts() -> tuple[FieldContract, ...]:
             "float64",
             ("nphys_local", "pver"),
             "inout",
-            "kessler_process",
+            "physics_process",
             "kg m-3",
             aliases=("rho",),
             ccpp_standard_name="dry_air_density",
@@ -491,7 +496,7 @@ def default_contracts() -> tuple[FieldContract, ...]:
             "float64",
             ("nphys_local", "pver"),
             "inout",
-            "kessler_process",
+            "physics_process",
             "m",
             aliases=("z",),
             ccpp_standard_name="geopotential_height_wrt_surface",
@@ -501,7 +506,7 @@ def default_contracts() -> tuple[FieldContract, ...]:
             "float64",
             ("nphys_local", "pver"),
             "inout",
-            "kessler_process",
+            "physics_process",
             "J kg-1 K-1",
             aliases=("cpair_column",),
             ccpp_standard_name=(
@@ -514,19 +519,19 @@ def default_contracts() -> tuple[FieldContract, ...]:
             "float64",
             ("nphys_local", "pver"),
             "inout",
-            "kessler_process",
+            "physics_process",
             "J kg-1 K-1",
             aliases=("rair_column",),
             ccpp_standard_name="composition_dependent_gas_constant_of_dry_air",
         ),
         _field(
-            "temperature_before_kessler",
+            "air_temperature_previous_timestep",
             "float64",
             ("nphys_local", "pver"),
             "inout",
-            "kessler_process",
+            "physics_process",
             "K",
-            aliases=("temp_prev",),
+            aliases=("temp_prev", "temperature_before_kessler"),
             ccpp_standard_name="air_temperature_on_previous_timestep",
         ),
         _field("dycore_heat_capacity", "float64", ("nphys_local", "pver"), "inout", "coupling", "J kg-1 K-1", aliases=("cp_or_cv_dycore",)),
@@ -537,7 +542,7 @@ def default_contracts() -> tuple[FieldContract, ...]:
             "float64",
             ("nphys_local",),
             "inout",
-            "kessler_process",
+            "physics_process",
             "m s-1",
             aliases=("PRECL",),
             ccpp_standard_name="total_precipitation_rate_at_surface",
@@ -548,7 +553,7 @@ def default_contracts() -> tuple[FieldContract, ...]:
             "float64",
             ("nphys_local", "pver"),
             "inout",
-            "kessler_process",
+            "physics_process",
             "%",
             aliases=("RELHUM",),
             ccpp_standard_name="relative_humidity",
@@ -559,7 +564,7 @@ def default_contracts() -> tuple[FieldContract, ...]:
             "float64",
             ("nphys_local", "pver"),
             "inout",
-            "kessler_process",
+            "physics_process",
             "J kg-1",
             ccpp_standard_name="dry_static_energy",
         ),
@@ -576,6 +581,26 @@ def default_contracts() -> tuple[FieldContract, ...]:
         _field("history_precipitation_accumulator", "float64", ("nphys_local",), "inout", "history", "m"),
         _field("coupler_import_buffer", "float64", ("nphys_local", "coupler_fields"), "inout", "coupling"),
         _field("coupler_export_buffer", "float64", ("nphys_local", "coupler_fields"), "inout", "coupling"),
+    )
+
+
+def component_contracts() -> tuple[FieldContract, ...]:
+    """Return suite-independent CAM SE/FVM state."""
+
+    return tuple(
+        contract
+        for contract in default_contracts()
+        if contract.category != "physics_process"
+    )
+
+
+def process_contract_templates() -> tuple[FieldContract, ...]:
+    """Return named process fields selected only when metadata requires them."""
+
+    return tuple(
+        contract
+        for contract in default_contracts()
+        if contract.category == "physics_process"
     )
 
 

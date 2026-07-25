@@ -8,14 +8,15 @@ import pytest
 
 from pycam_sima import (
     ActivatePhysics,
+    BlockingModel,
     BranchSpec,
+    CCPPSuitePlan,
     CheckpointBundle,
     DaskExperimentClient,
     DeactivatePhysics,
     DefineVariable,
     FieldEdit,
     InstallPhysics,
-    KesslerSchemePlan,
     ObserveFields,
     PersistentDaskSession,
     PhysicsPluginSpec,
@@ -28,6 +29,17 @@ from pycam_sima.notebook.persistent_dask import (
     PersistentCAMActor,
     PersistentDaskRequest,
 )
+
+
+ROOT = Path(__file__).resolve().parents[2]
+KESSLER_SUITE = (
+    ROOT
+    / "external/CAM-SIMA/src/physics/ncar_ccpp/suites/suite_kessler.xml"
+)
+
+
+def _scheme_plan() -> CCPPSuitePlan:
+    return CCPPSuitePlan.from_xml(KESSLER_SUITE)
 
 
 class _FakeSession:
@@ -234,7 +246,7 @@ class _FakeSession:
 
 
 class _FakeSchemeEditor:
-    def __init__(self, session: _FakeSession, plan: KesslerSchemePlan) -> None:
+    def __init__(self, session: _FakeSession, plan: CCPPSuitePlan) -> None:
         self.session = session
         self.plan = plan
 
@@ -261,7 +273,7 @@ class _FakeSchemeEditor:
         self._sync()
 
     def reset(self) -> None:
-        self.plan = KesslerSchemePlan.default()
+        self.plan = _scheme_plan()
         self._sync()
 
     def describe(self, group: str | None = None) -> list[dict[str, object]]:
@@ -316,7 +328,7 @@ def _request(tmp_path: Path) -> PersistentDaskRequest:
             "physics_profile": "kessler",
             "mediator_present": False,
         },
-        scheme_plan=KesslerSchemePlan.default().to_payload(),
+        scheme_plan=_scheme_plan().to_payload(),
         execution_mode="pbs",
     )
 
@@ -445,9 +457,21 @@ class _EchoPersistentActor:
         return {
             "name": self.name,
             "parent_name": self.parent_name,
+            "running": True,
+            "ranks": 24,
             "step": self.step_count,
+            "native_calls": self.step_count,
             "mpi_launch_count": 1,
+            "worker_host": "test-worker",
+            "worker_pid": 123,
+            "launch_mode": "pbs",
+            "pbs_job_id": "123.server",
+            "outer_pbs_job_id": None,
+            "field_count": 1,
             "snapshot_transport": self.snapshot_transport,
+            "run_dir": "/tmp/run",
+            "history_dir": "/tmp/history",
+            "log_path": "/tmp/model.log",
         }
 
     def step(self, count: int = 1) -> dict[str, Any]:
@@ -497,6 +521,29 @@ def test_dask_client_pins_persistent_actor_and_returns_actor_futures(
         assert model.close().result()["closed"] is True
 
 
+def test_dask_client_opens_blocking_pythonic_persistent_model(
+    tmp_path: Path,
+) -> None:
+    with Client(
+        processes=False,
+        n_workers=1,
+        threads_per_worker=1,
+        dashboard_address=None,
+    ) as client:
+        experiments = DaskExperimentClient(
+            client,
+            persistent_actor_factory=_EchoPersistentActor,
+            **_inputs(tmp_path),
+        )
+        with experiments.model("blocking") as model:
+            assert isinstance(model, BlockingModel)
+            assert model.status.mpi_launch_count == 1
+            assert model.advance(steps=2) is model
+            asynchronous = model.submit.step(3)
+            assert asynchronous.result()["step"] == 5
+            assert model.step_count == 5
+
+
 def test_dask_client_forks_independent_persistent_actors_from_memory(
     tmp_path: Path,
 ) -> None:
@@ -511,16 +558,15 @@ def test_dask_client_forks_independent_persistent_actors_from_memory(
             persistent_actor_factory=_EchoPersistentActor,
             **_inputs(tmp_path),
         )
-        base = experiments.start_persistent("base")
-        assert base.step(10).result()["step"] == 10
-        assert base.describe().result()["step"] == 10
+        base = experiments.open_persistent("base")
+        assert base.step(10)["step"] == 10
+        assert base.describe()["step"] == 10
         worker_names = tuple(sorted(client.scheduler_info()["workers"]))
-        children = experiments.fork_persistent(
+        control = experiments.plan("control").step(2)
+        experiment = experiments.plan("experiment").step(3)
+        children = experiments.fork_models(
             base,
-            (
-                BranchSpec("control", steps=2),
-                BranchSpec("experiment", steps=3),
-            ),
+            (control, experiment),
             workers={
                 "control": worker_names[1],
                 "experiment": worker_names[2],
@@ -528,7 +574,7 @@ def test_dask_client_forks_independent_persistent_actors_from_memory(
             close_parent=True,
         )
         statuses = {
-            name: child.describe().result()
+            name: child.describe()
             for name, child in children.items()
         }
 
@@ -542,4 +588,4 @@ def test_dask_client_forks_independent_persistent_actors_from_memory(
         assert not tuple((tmp_path / "runs").glob("**/checkpoints"))
 
         for child in children.values():
-            child.close().result()
+            child.close()

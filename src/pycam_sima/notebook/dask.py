@@ -19,7 +19,14 @@ from typing import Any, Callable, Iterator, Literal, Mapping, Sequence
 
 import numpy as np
 
-from ..model import KesslerSchemePlan, ModelConfig, ModelOptions
+from ..model import (
+    BlockingModel,
+    CCPPSuitePlan,
+    ModelConfig,
+    ModelGroup,
+    ModelOptions,
+    PlanBuilder,
+)
 from ..model.checkpoint import CheckpointBundle
 from ..model.experiment import Action, BranchSpec, SegmentPlan
 from .persistent_dask import (
@@ -106,6 +113,14 @@ TaskRunner = Callable[[SegmentRequest, DaskRunResult | None], DaskRunResult]
 PersistentActorFactory = Callable[..., Any]
 
 
+def _coerce_plan(value: SegmentPlan | PlanBuilder) -> SegmentPlan:
+    if isinstance(value, PlanBuilder):
+        return value.build()
+    if isinstance(value, SegmentPlan):
+        return value
+    raise TypeError("plan must be SegmentPlan or PlanBuilder")
+
+
 class DaskExperimentClient:
     """Submit a common CAM state and independent restart branches to Dask."""
 
@@ -168,7 +183,16 @@ class DaskExperimentClient:
         self.run_root.mkdir(parents=True, exist_ok=True)
         self.log_dir.mkdir(parents=True, exist_ok=True)
 
-    def submit_base(self, branch: BranchSpec | SegmentPlan) -> Any:
+    def plan(
+        self, name: str, *, experimental: bool = False
+    ) -> PlanBuilder:
+        """Create a Pythonic, serializable action-plan builder."""
+
+        return PlanBuilder(name, experimental=experimental)
+
+    def submit_base(
+        self, branch: BranchSpec | SegmentPlan | PlanBuilder
+    ) -> Any:
         """Submit the one task whose snapshot becomes the fan-out parent."""
 
         request = self._request(branch)
@@ -179,7 +203,11 @@ class DaskExperimentClient:
             pure=False,
         )
 
-    def submit_branch(self, parent: Any, branch: BranchSpec | SegmentPlan) -> Any:
+    def submit_branch(
+        self,
+        parent: Any,
+        branch: BranchSpec | SegmentPlan | PlanBuilder,
+    ) -> Any:
         """Submit one branch that depends on a parent Dask Future."""
 
         request = self._request(branch)
@@ -190,12 +218,12 @@ class DaskExperimentClient:
             pure=False,
         )
 
-    def submit_plan(self, parent: Any, plan: SegmentPlan) -> Any:
+    def submit_plan(
+        self, parent: Any, plan: SegmentPlan | PlanBuilder
+    ) -> Any:
         """Submit one multi-action MPI segment from a parent snapshot."""
 
-        if not isinstance(plan, SegmentPlan):
-            raise TypeError("plan must be SegmentPlan")
-        return self.submit_branch(parent, plan)
+        return self.submit_branch(parent, _coerce_plan(plan))
 
     def submit_action(
         self,
@@ -215,14 +243,23 @@ class DaskExperimentClient:
     def fork(
         self,
         parent: Any,
-        branches: Sequence[BranchSpec | SegmentPlan],
+        branches: Sequence[BranchSpec | SegmentPlan | PlanBuilder],
     ) -> dict[str, Any]:
         """Fan out independent tasks from one common snapshot Future."""
 
-        names = [branch.name for branch in branches]
+        normalized = tuple(
+            branch
+            if isinstance(branch, BranchSpec)
+            else _coerce_plan(branch)
+            for branch in branches
+        )
+        names = [branch.name for branch in normalized]
         if len(names) != len(set(names)):
             raise ValueError("branch names must be unique")
-        return {branch.name: self.submit_branch(parent, branch) for branch in branches}
+        return {
+            branch.name: self.submit_branch(parent, branch)
+            for branch in normalized
+        }
 
     def gather(self, branches: Mapping[str, Any]) -> dict[str, DaskRunResult]:
         """Download complete results, including all in-memory snapshots."""
@@ -262,7 +299,7 @@ class DaskExperimentClient:
         worker: str | None = None,
         launch_mode: str | None = None,
         options: ModelOptions | None = None,
-        scheme_plan: KesslerSchemePlan | None = None,
+        scheme_plan: CCPPSuitePlan | None = None,
         startup_timeout: float = 900.0,
         request_timeout: float = 600.0,
     ) -> PersistentDaskSession:
@@ -303,10 +340,28 @@ class DaskExperimentClient:
 
         return self.start_persistent(name, **kwargs)
 
+    def open_persistent(
+        self,
+        name: str,
+        **kwargs: Any,
+    ) -> BlockingModel:
+        """Open a blocking, context-manager-friendly persistent model.
+
+        Use :meth:`start_persistent` or ``model.submit`` when ActorFuture
+        control is wanted explicitly.
+        """
+
+        return self.start_persistent(name, **kwargs).sync
+
+    def model(self, name: str, **kwargs: Any) -> BlockingModel:
+        """Open one persistent MPI model as a blocking context manager."""
+
+        return self.open_persistent(name, **kwargs)
+
     def fork_persistent(
         self,
-        parent: PersistentDaskSession,
-        branches: Sequence[BranchSpec | SegmentPlan],
+        parent: PersistentDaskSession | BlockingModel,
+        branches: Sequence[BranchSpec | SegmentPlan | PlanBuilder],
         *,
         workers: Mapping[str, str] | None = None,
         launch_mode: str | None = None,
@@ -323,6 +378,8 @@ class DaskExperimentClient:
         retained the snapshot and before child Actors are launched.
         """
 
+        if isinstance(parent, BlockingModel):
+            parent = parent.submit
         if not isinstance(parent, PersistentDaskSession):
             raise TypeError("persistent parent must be PersistentDaskSession")
         if parent.client is not self.client:
@@ -333,7 +390,9 @@ class DaskExperimentClient:
                 "allocation mode reserves one full-node MPI world"
             )
         plans = tuple(
-            branch.to_segment_plan() if isinstance(branch, BranchSpec) else branch
+            branch.to_segment_plan()
+            if isinstance(branch, BranchSpec)
+            else _coerce_plan(branch)
             for branch in branches
         )
         if not plans:
@@ -439,6 +498,19 @@ class DaskExperimentClient:
             raise
         return children
 
+    def fork_models(
+        self,
+        parent: PersistentDaskSession | BlockingModel,
+        branches: Sequence[BranchSpec | SegmentPlan | PlanBuilder],
+        **kwargs: Any,
+    ) -> ModelGroup:
+        """Fork live models and return blocking Pythonic controllers."""
+
+        children = self.fork_persistent(parent, branches, **kwargs)
+        return ModelGroup(
+            {name: child.sync for name, child in children.items()}
+        )
+
     def _persistent_worker(self, worker: str | None) -> str:
         workers = self._persistent_workers()
         if worker is not None:
@@ -466,7 +538,7 @@ class DaskExperimentClient:
         worker: str | None,
         launch_mode: str | None,
         options: ModelOptions | None,
-        scheme_plan: KesslerSchemePlan | None,
+        scheme_plan: CCPPSuitePlan | None,
         startup_timeout: float,
         request_timeout: float,
         parent_name: str | None = None,
@@ -479,7 +551,10 @@ class DaskExperimentClient:
         config = ModelConfig.from_yaml(self.config)
         selected_options = options or ModelOptions.from_config(config)
         selected_options.validate(config)
-        selected_scheme_plan = scheme_plan or KesslerSchemePlan.default()
+        selected_scheme_plan = (
+            scheme_plan
+            or CCPPSuitePlan.from_xml(config.verify_suite())
+        )
         request = PersistentDaskRequest(
             name=name,
             config=str(self.config),
@@ -530,8 +605,14 @@ class DaskExperimentClient:
             pure=False,
         )
 
-    def _request(self, branch: BranchSpec | SegmentPlan) -> SegmentRequest:
-        plan = branch.to_segment_plan() if isinstance(branch, BranchSpec) else branch
+    def _request(
+        self, branch: BranchSpec | SegmentPlan | PlanBuilder
+    ) -> SegmentRequest:
+        plan = (
+            branch.to_segment_plan()
+            if isinstance(branch, BranchSpec)
+            else _coerce_plan(branch)
+        )
         if not isinstance(plan, SegmentPlan):
             raise TypeError("Dask branches must be BranchSpec or SegmentPlan")
         return SegmentRequest(

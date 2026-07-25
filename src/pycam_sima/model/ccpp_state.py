@@ -5,10 +5,17 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Iterable, Mapping
 
-from .contracts import FieldContract, default_contracts
+from .contracts import (
+    FieldContract,
+    component_contracts,
+    default_alias_rules,
+    default_contracts,
+    process_contract_templates,
+)
 from .device_catalog import (
     CatalogArgument,
     DeviceCatalog,
+    SchemeCatalogEntry,
     _dimension_standard,
 )
 from .errors import DeviceContractError
@@ -167,10 +174,12 @@ class CCPPStateSchema:
         suite: str,
         requirements: Mapping[str, CCPPFieldRequirement],
         dimension_names: Iterable[str],
+        unresolved_schemes: Iterable[str] = (),
     ) -> None:
         self.suite = suite
         self.requirements = dict(requirements)
         self.dimension_names = frozenset(dimension_names)
+        self.unresolved_schemes = tuple(sorted(set(unresolved_schemes)))
 
     @classmethod
     def from_catalog(
@@ -183,6 +192,42 @@ class CCPPStateSchema:
         }:
             raise ValueError(f"unknown CCPP suite {suite!r}")
 
+        active_entries = [
+            entry
+            for entry in catalog.entries.values()
+            if any(item.suite == suite for item in entry.occurrences)
+        ]
+        return cls._from_entries(suite, active_entries)
+
+    @classmethod
+    def from_scheme_names(
+        cls,
+        catalog: DeviceCatalog,
+        suite: str,
+        schemes: Iterable[str],
+    ) -> "CCPPStateSchema":
+        """Compile a custom suite from cataloged process names."""
+
+        names = {str(name).lower() for name in schemes}
+        active_entries = [
+            entry
+            for name, entry in catalog.entries.items()
+            if name in names
+        ]
+        return cls._from_entries(
+            suite,
+            active_entries,
+            unresolved_schemes=names - set(catalog.entries),
+        )
+
+    @classmethod
+    def _from_entries(
+        cls,
+        suite: str,
+        active_entries: Iterable[SchemeCatalogEntry],
+        *,
+        unresolved_schemes: Iterable[str] = (),
+    ) -> "CCPPStateSchema":
         arguments: dict[str, list[tuple[str, CatalogArgument]]] = {}
         dimension_names: set[str] = {
             "nphys_local",
@@ -191,11 +236,6 @@ class CCPPStateSchema:
             "ccpp_constant_one",
             "ccpp_constant_two",
         }
-        active_entries = [
-            entry
-            for entry in catalog.entries.values()
-            if any(item.suite == suite for item in entry.occurrences)
-        ]
         for entry in active_entries:
             for endpoint in entry.entrypoints:
                 for argument in endpoint.arguments:
@@ -253,7 +293,12 @@ class CCPPStateSchema:
                 ),
                 schemes=tuple(sorted(schemes)),
             )
-        return cls(suite, requirements, dimension_names)
+        return cls(
+            suite,
+            requirements,
+            dimension_names,
+            unresolved_schemes,
+        )
 
     @property
     def primitive_fields(self) -> tuple[str, ...]:
@@ -310,7 +355,58 @@ class CCPPStateSchema:
             )
         return tuple(contracts)
 
+    def pool_contract_groups(
+        self,
+    ) -> tuple[tuple[FieldContract, ...], tuple[FieldContract, ...]]:
+        """Compile initialized templates and metadata-generated fields.
+
+        Component fields are always present. Process-specific templates are
+        included only when the active suite metadata names them. Both selected
+        process fields and generated primitive metadata fields begin
+        uninitialized; a producer or explicit Python initializer must populate
+        them before a device may consume them.
+        """
+
+        initialized = list(component_contracts())
+        process_fields: list[FieldContract] = []
+        for contract in process_contract_templates():
+            standard_name = contract.ccpp_standard_name
+            if (
+                standard_name is not None
+                and standard_name.lower() in self.requirements
+            ):
+                process_fields.append(contract)
+        available = [*initialized, *process_fields]
+        alias_standard_names = {
+            rule.ccpp_standard_name.lower()
+            for rule in default_alias_rules()
+            if rule.ccpp_standard_name is not None
+        }
+        generated = tuple(
+            contract
+            for contract in self.additional_contracts(available)
+            if (
+                contract.ccpp_standard_name is None
+                or contract.ccpp_standard_name.lower()
+                not in alias_standard_names
+            )
+        )
+        return tuple(initialized), (*process_fields, *generated)
+
+    def pool_contracts(self) -> tuple[FieldContract, ...]:
+        """Return the complete selected schema in allocation order."""
+
+        initialized, generated = self.pool_contract_groups()
+        return (*initialized, *generated)
+
     def report(self) -> dict[str, Any]:
+        try:
+            contracts = self.pool_contracts()
+            state_pool_field_count: int | None = len(contracts)
+            state_pool_error: str | None = None
+        except DeviceContractError as exc:
+            state_pool_field_count = None
+            state_pool_error = str(exc)
         return {
             "suite": self.suite,
             "field_count": len(self.requirements),
@@ -320,4 +416,12 @@ class CCPPStateSchema:
             "required_dimensions": sorted(self.dimension_names),
             "opaque_fields": list(self.opaque_fields),
             "conversion_fields": list(self.conversion_fields),
+            "unresolved_schemes": list(self.unresolved_schemes),
+            "state_pool_field_count": state_pool_field_count,
+            "suite_selected_field_count": (
+                None
+                if state_pool_field_count is None
+                else state_pool_field_count - len(component_contracts())
+            ),
+            "state_pool_error": state_pool_error,
         }

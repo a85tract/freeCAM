@@ -14,12 +14,7 @@ from distributed import Client
 import distributed
 
 import pycam_sima
-from pycam_sima import (
-    DaskExperimentClient,
-    ObserveFields,
-    RunSteps,
-    SegmentPlan,
-)
+from pycam_sima import DaskExperimentClient
 
 
 def _compact_status(status: dict) -> dict:
@@ -109,32 +104,37 @@ def main() -> int:
             python_executable=project / ".venv/bin/python",
             execution_mode="allocation",
         )
-        model = experiments.start_persistent("live")
-        try:
-            started = model.describe().result()
-            first = model.step().result()
-            observed = model.run_plan(
-                SegmentPlan(
-                    "second-command",
-                    (
-                        ObserveFields(("air_temperature",)),
-                        RunSteps(1),
-                    ),
-                )
-            ).result()
-            field_stats = model.field_stats("air_temperature", rank=0).result()
-            checkpoint = model.checkpoint().result()
-            final_status = model.describe().result()
-        finally:
-            closed = model.close().result()
+        with experiments.model("live") as model:
+            started_status = model.status
+            model.advance()
+            first_status = model.status
+            plan = experiments.plan("second-command")
+            plan.observe("air_temperature")
+            plan.step()
+            observed = model.execute(plan)
+            field_stats = model.fields.air_temperature.stats(rank=0)
+            checkpoint_info = model.save()
+            asynchronous_status = model.submit.describe().result()
+            final_model_status = model.status
+            actor_worker = model.worker
+
+        started = started_status.details
+        first = first_status.details
+        final_status = final_model_status.details
+        checkpoint = {
+            "checkpoint_dir": str(checkpoint_info.path),
+            "step": checkpoint_info.step,
+            "native_calls": checkpoint_info.native_calls,
+            "mpi_launch_count": checkpoint_info.mpi_launch_count,
+        }
 
     launch_counts = {
         started["mpi_launch_count"],
         first["mpi_launch_count"],
         observed["mpi_launch_count"],
         checkpoint["mpi_launch_count"],
+        asynchronous_status["mpi_launch_count"],
         final_status["mpi_launch_count"],
-        closed["mpi_launch_count"],
     }
     if launch_counts != {1}:
         raise RuntimeError(f"persistent Actor relaunched MPI: {launch_counts}")
@@ -180,15 +180,23 @@ def main() -> int:
         "dask_workers": 1,
         "mpi_ranks": 24,
         "mpi_launches": 1,
-        "actor_method_calls": 7,
-        "actor_worker": model.worker,
+        "actor_method_calls": 9,
+        "pythonic_api": {
+            "controller": "experiments.model",
+            "field_access": "model.fields.name.stats",
+            "model_advance": "model.advance",
+            "typed_status": "model.status",
+            "checkpoint": "model.save",
+            "async_access": "model.submit.describe",
+        },
+        "actor_worker": actor_worker,
         "started": _compact_status(started),
         "first_step": _compact_status(first),
         "second_command": _compact_plan_result(observed),
         "field_stats_rank_0": field_stats,
         "checkpoint": checkpoint,
         "final_status": _compact_status(final_status),
-        "closed": closed,
+        "closed": True,
     }
     output = Path(args.output).resolve()
     output.parent.mkdir(parents=True, exist_ok=True)
@@ -196,7 +204,8 @@ def main() -> int:
     print(json.dumps(payload, indent=2, sort_keys=True))
     print(
         "PYCAM_SIMA_DASK_PERSISTENT_OK "
-        f"job={outer_job_id} mpi_launches=1 actor_calls=7 step=2"
+        f"job={outer_job_id} mpi_launches=1 "
+        f"actor_calls={payload['actor_method_calls']} step=2"
     )
     return 0
 

@@ -23,12 +23,14 @@ class ModelOptions:
         )
 
     def validate(self, config: Any | None = None) -> None:
-        if self.timestep_seconds != 1800:
-            raise ValueError("the model requires a 1800 second timestep")
-        if self.physics_profile != "kessler":
-            raise ValueError("the model requires the FKESSLER suite")
+        if self.timestep_seconds <= 0:
+            raise ValueError("the model timestep must be positive")
+        if not self.physics_profile.strip():
+            raise ValueError("the physics suite name must be non-empty")
         if self.mediator_present:
-            raise ValueError("the model is ATM-only and has no mediator")
+            raise ValueError(
+                "the current CAM component runtime is ATM-only and has no mediator"
+            )
         if config is not None:
             if int(config.dt_seconds) != self.timestep_seconds:
                 raise ValueError("runtime timestep differs from the model config")

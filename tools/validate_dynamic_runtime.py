@@ -16,9 +16,6 @@ from pycam_sima.core.runtime_env import mpi_loader_environment
 from pycam_sima.model import (
     CAMDriver,
     ModelConfig,
-    PhysicsPluginSpec,
-    SchemePlacement,
-    VariableSpec,
     read_checkpoint,
     restore_driver,
 )
@@ -80,16 +77,14 @@ def main() -> int:
     ).start()
     pointers_before = driver.pool.pointer_records()
 
-    control = VariableSpec(
-        name="runtime_control",
+    control_initial = np.float64(comm.rank) + np.float64(0.25)
+    control_values = driver.fields.create(
+        "runtime_control",
         standard_name="runtime_control",
         dtype="float64",
-        dimensions=("nphys_local",),
+        dims=("column",),
         units="1",
-    )
-    control_initial = np.float64(comm.rank) + np.float64(0.25)
-    control_values = driver.define_variable(
-        control, initial=control_initial
+        initial=control_initial,
     )
     if not np.all(control_values == control_initial):
         raise AssertionError("rank-local runtime_control initialization failed")
@@ -98,31 +93,21 @@ def main() -> int:
         project_root
         / "examples/plugins/runtime_temperature_offset/device.yaml"
     )
-    plugin = driver.install_physics(
-        PhysicsPluginSpec(
-            source=str(descriptor),
-            project_root=str(project_root),
-            placements=(
-                SchemePlacement(
-                    "runtime_temperature_offset",
-                    group="physics_before_coupler",
-                    after="kessler",
-                ),
-            ),
-        ),
-        initial_values={
+    plugin = driver.physics.install(
+        descriptor,
+        project_root=project_root,
+        after="kessler",
+        inputs={
             "runtime_plugin_temperature": np.float64(240.0),
             "runtime_plugin_temperature_increment": np.float64(1.5),
         },
-        unsafe=True,
     )
     driver.pool.assert_pointer_stability(pointers_before)
 
     native_calls_before = driver.backend.call_count
-    driver.run_scheme(
-        "runtime_temperature_offset",
-        group="physics_before_coupler",
-    )
+    driver.physics.scheme(
+        "runtime_temperature_offset", group="before"
+    ).run()
     native_calls_delta = driver.backend.call_count - native_calls_before
     temperature_name = driver.pool.ccpp_field_name(
         "runtime_plugin_temperature"
@@ -165,10 +150,9 @@ def main() -> int:
     if restored.plugins.inventory() != (plugin_checkpoint_record,):
         raise AssertionError("plugin inventory changed across restore")
 
-    restored.run_scheme(
-        "runtime_temperature_offset",
-        group="physics_before_coupler",
-    )
+    restored.physics.scheme(
+        "runtime_temperature_offset", group="before"
+    ).run()
     final_temperature = restored.pool.get_ccpp(
         "runtime_plugin_temperature"
     )

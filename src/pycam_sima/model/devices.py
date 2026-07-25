@@ -185,6 +185,15 @@ class FortranDevice:
                 f"{self.name}.{argument['abi_name']}: binding source "
                 f"{source!r} is not a StatePool field"
             )
+        if (
+            argument["intent"] in {"in", "inout"}
+            and not pool.is_initialized(field_name)
+        ):
+            raise DeviceContractError(
+                f"{self.name}.{argument['abi_name']} reads uninitialized "
+                f"StatePool field {field_name!r}; initialize CCPP standard "
+                f"name {argument['standard_name']!r} first"
+            )
         if str(argument["dtype"]) == "character":
             if values.dtype.kind != "S":
                 raise DeviceContractError(

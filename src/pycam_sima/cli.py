@@ -37,7 +37,7 @@ def _repo_root() -> Path:
 
 
 def command_run(args: argparse.Namespace) -> int:
-    """Run the complete fixed-case CAM model."""
+    """Run the complete CAM model described by a configuration profile."""
 
     config = ModelConfig.from_yaml(args.config)
     ensure_mpi_loader_environment()
@@ -62,7 +62,10 @@ def command_run(args: argparse.Namespace) -> int:
     ).start()
     initialized_native_calls = driver.backend.call_count
     initialized_abi_checked = driver.backend._abi_checked
-    for _ in range(args.steps):
+    steps = config.stop_n if args.steps is None else int(args.steps)
+    if steps <= 0:
+        raise SystemExit("steps must be positive")
+    for _ in range(steps):
         driver.step()
     result = driver.stats()
     result.update(
@@ -362,7 +365,11 @@ def main() -> int:
     run.add_argument("--run-dir", required=True)
     run.add_argument("--history-dir", required=True)
     run.add_argument("--library")
-    run.add_argument("--steps", type=int, default=50)
+    run.add_argument(
+        "--steps",
+        type=int,
+        help="override ModelConfig.stop_n",
+    )
     run.set_defaults(func=command_run)
 
     segment = sub.add_parser(

@@ -23,11 +23,14 @@ import yaml
 
 from ..core.runtime_env import mpi_loader_environment
 from ..model import (
+    CCPPSuitePlan,
     CheckpointBundle,
-    KesslerSchemePlan,
     ModelConfig,
     ModelOptions,
     ModelParameters,
+    FieldCollection,
+    PhaseCollection,
+    PhysicsCollection,
     PhysicsPluginSpec,
     VariableSpec,
 )
@@ -87,7 +90,8 @@ class NotebookSchemePlan:
         )
 
     def reset(self) -> None:
-        candidate = KesslerSchemePlan.default()
+        candidate = self._session._scheme_plan.copy()
+        candidate.reset()
         self._session._install_scheme_plan(candidate)
 
     def _mutate(self, method: str, *args: Any, **kwargs: Any) -> None:
@@ -127,7 +131,7 @@ class NotebookSession:
         request_timeout: float = 600.0,
         log_path: str | Path | None = None,
         options: ModelOptions | None = None,
-        scheme_plan: KesslerSchemePlan | None = None,
+        scheme_plan: CCPPSuitePlan | None = None,
     ) -> None:
         self.runtime = "model"
         self.run_dir = Path(run_dir).resolve()
@@ -143,12 +147,17 @@ class NotebookSession:
         self.options = options or ModelOptions.from_config(self.config)
         self.options.validate(self.config)
         self.parameters = ModelParameters(self)
-        if scheme_plan is not None and not isinstance(scheme_plan, KesslerSchemePlan):
-            raise TypeError("scheme_plan must be KesslerSchemePlan")
+        if scheme_plan is not None and not isinstance(scheme_plan, CCPPSuitePlan):
+            raise TypeError("scheme_plan must be CCPPSuitePlan")
         self._scheme_plan = (
-            KesslerSchemePlan.default() if scheme_plan is None else scheme_plan.copy()
+            CCPPSuitePlan.from_xml(self.config.verify_suite())
+            if scheme_plan is None
+            else scheme_plan.copy()
         )
         self.scheme_plan = NotebookSchemePlan(self)
+        self.fields = FieldCollection(self)
+        self.phases = PhaseCollection(self)
+        self.physics = PhysicsCollection(self)
         default_library = project_root / "build" / "libpycam_sima_kernels.so"
         required_ranks = self.config.mpi_size
         if env_script is None:
@@ -718,7 +727,7 @@ class NotebookSession:
         self._scheme_status = dict(status)
         payload = status.get("plan")
         if payload is not None:
-            self._scheme_plan = KesslerSchemePlan.from_payload(payload)
+            self._scheme_plan = CCPPSuitePlan.from_payload(payload)
             self._scheme_names = self._scheme_plan.keys
 
     def _update_runtime_status(self, result: Mapping[str, Any]) -> None:
@@ -732,7 +741,7 @@ class NotebookSession:
         if "plugins" in result:
             self._plugins = tuple(dict(item) for item in result["plugins"])
 
-    def _install_scheme_plan(self, candidate: KesslerSchemePlan) -> None:
+    def _install_scheme_plan(self, candidate: CCPPSuitePlan) -> None:
         if self.running:
             self._validate_started_options()
             result = self._request(

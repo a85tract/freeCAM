@@ -8,45 +8,27 @@ from pathlib import Path
 from typing import Any
 
 from .backend import KernelBackend
+from .capabilities import CAM_SE_FVM_V1, RuntimeCapabilities
+from .ccpp_suite import (
+    CCPPSuitePlan,
+    PHYSICS_AFTER_COUPLER,
+    PHYSICS_BEFORE_COUPLER,
+)
+from .ccpp_state import CCPPStateSchema
 from .comm import world_comm
 from .config import ModelConfig
+from .device_catalog import DeviceCatalog
 from .errors import RemoteRankAccessError, StateTransitionError
 from .fvm_mapping import physics_to_dynamics_forcing
 from .history import HistoryWriter
 from .initialization import InitializationPlan
+from .host_services import HostServiceRegistry
 from .phases import (
-    apply_tendency_of_air_temperature,
-    calc_dry_air_ideal_gas_density,
-    calc_exner,
-    check_energy_chng,
-    check_energy_scaling,
-    check_energy_scaling_before_coupler,
-    check_energy_zero_fluxes,
-    dry_to_wet_cloud_liquid_water,
-    dry_to_wet_rain,
-    dry_to_wet_water_vapor,
     dynamics_to_physics,
-    dycore_energy_consistency_adjust,
-    geopotential_temp,
-    kessler_diagnostics,
     physics_timestep_final,
     physics_timestep_initial,
-    potential_temperature_to_temperature,
-    qneg,
-    sima_state_diagnostics,
-    sima_tend_diagnostics,
-    temp_to_potential_temp,
-    thermo_water_update,
-    wet_to_dry_cloud_liquid_water,
-    wet_to_dry_rain,
-    wet_to_dry_water_vapor,
 )
-from .scheme_plan import (
-    KesslerSchemePlan,
-    PHYSICS_AFTER_COUPLER,
-    PHYSICS_BEFORE_COUPLER,
-    SCHEME_GROUPS,
-)
+from .processes import ProcessRouter, cam_se_fvm_host_processes
 from .se_runtime import (
     advance_fvm_tracers,
     advance_hyperviscosity,
@@ -68,6 +50,7 @@ from .plugins import (
     VariableSpec,
     _UNSET as _PLUGIN_UNSET,
 )
+from .user_api import FieldCollection, PhaseCollection, PhysicsCollection
 
 
 class DriverState(str, Enum):
@@ -116,7 +99,8 @@ class CAMDriver:
         comm: Any | None = None,
         kernel_library: str | Path | None = None,
         history_dir: str | Path | None = None,
-        scheme_plan: KesslerSchemePlan | None = None,
+        scheme_plan: CCPPSuitePlan | None = None,
+        capabilities: RuntimeCapabilities = CAM_SE_FVM_V1,
     ) -> None:
         self.config = (
             ModelConfig.from_yaml(config)
@@ -124,6 +108,9 @@ class CAMDriver:
             else config
         )
         self.config.validate()
+        self.capabilities = capabilities
+        self.capabilities.validate(self.config)
+        suite_xml = self.config.verify_suite()
         self.run_dir = Path(run_dir).resolve()
         self.runtime = "model"
         self.comm = comm or world_comm()
@@ -136,10 +123,15 @@ class CAMDriver:
         self._native_call_depth = 0
         self._boundary_index = 0
         self.scheme_plan = (
-            KesslerSchemePlan.default()
+            CCPPSuitePlan.from_xml(suite_xml)
             if scheme_plan is None
             else scheme_plan.copy()
         )
+        if self.scheme_plan.name.lower() != self.config.physics_suite.lower():
+            raise ValueError(
+                f"suite plan {self.scheme_plan.name!r} does not match "
+                f"physics_suite={self.config.physics_suite!r}"
+            )
 
         default_library = (
             Path(__file__).resolve().parents[3]
@@ -147,14 +139,44 @@ class CAMDriver:
             / "libpycam_sima_kernels.so"
         )
         self.backend = KernelBackend(kernel_library or default_library)
+        project_root = Path(__file__).resolve().parents[3]
+        self.device_catalog = DeviceCatalog.discover(project_root)
+        suite_processes = {
+            scheme.name for scheme in self.scheme_plan.schemes
+        }
+        self.state_schema = CCPPStateSchema.from_scheme_names(
+            self.device_catalog,
+            self.config.physics_suite,
+            suite_processes,
+        )
+        self.host_services = HostServiceRegistry.from_catalog(
+            self.device_catalog,
+            processes=suite_processes,
+        )
+        self.processes = ProcessRouter(
+            devices=self.backend.devices,
+            native_invoke=self.backend.run_phase,
+            host_services=self.host_services,
+            host_handlers=cam_se_fvm_host_processes(self.backend),
+        )
+        initialized_contracts, generated_contracts = (
+            self.state_schema.pool_contract_groups()
+        )
         self.plugins = PhysicsPluginManager(self)
+        self.fields = FieldCollection(self)
+        self.phases = PhaseCollection(self)
+        self.physics = PhysicsCollection(self)
         self.history = HistoryWriter(
             history_dir or self.run_dir / "history",
             self.config.case_name,
             self.comm,
         )
         self.initialization_plan = InitializationPlan(
-            self.config, self.run_dir, self.comm
+            self.config,
+            self.run_dir,
+            self.comm,
+            contracts=initialized_contracts,
+            generated_contracts=generated_contracts,
         )
 
     def initialize(self) -> CAMDriver:
@@ -188,8 +210,9 @@ class CAMDriver:
             "last_scheme": self._last_scheme,
             "last_scheme_group": self._last_scheme_group,
             "sequence_safe": self.scheme_plan.sequence_safe,
-            "groups": SCHEME_GROUPS,
+            "groups": self.scheme_plan.group_names,
             "plan": self.scheme_plan.to_payload(),
+            "suite": self.scheme_plan.name,
         }
 
     @property
@@ -321,19 +344,16 @@ class CAMDriver:
         if self.state not in valid_states:
             raise StateTransitionError(f"run_scheme() from {self.state.value}")
         scheme = self.scheme_plan.scheme(name, group=group)
+        execution_group = self.scheme_plan.execution_group(scheme.key)
         before = self.pool.pointer_records()
         self._native_call_depth += 1
         try:
-            handler = self._scheme_handlers().get(scheme.key)
-            if handler is None:
-                self.backend.run_phase(scheme.name, self.pool)
-            else:
-                handler(self.pool)
+            self.processes.invoke(scheme, self.pool)
             self.pool.assert_pointer_stability(before)
         finally:
             self._native_call_depth -= 1
         self._last_scheme = scheme.key
-        self._last_scheme_group = scheme.group
+        self._last_scheme_group = execution_group
         self._boundary_index += 1
         return self
 
@@ -345,9 +365,9 @@ class CAMDriver:
     ) -> CAMDriver:
         """Run all enabled schemes in one coupler group in plan order."""
 
-        for scheme in self.scheme_plan.active(group):
-            # Use the stable source identity: a scheme may execute in a group
-            # different from the one where suite_kessler.xml defined it.
+        for scheme in self.scheme_plan.expanded(group, self.pool.dimensions):
+            # Use stable source identity: a scheme may execute in a group
+            # different from the one where its suite XML defined it.
             self.run_scheme(scheme.key)
             if callback is not None:
                 callback(scheme.key, self)
@@ -365,7 +385,7 @@ class CAMDriver:
                 f"prepare_initial_step() from {self.state.value}"
             )
         self._run_phases(INITIAL_PREP_PHASES, callback=phase_callback)
-        self.run_scheme_group(
+        self._run_optional_scheme_group(
             PHYSICS_BEFORE_COUPLER, callback=scheme_callback
         )
         if self.config.history_enabled:
@@ -393,7 +413,7 @@ class CAMDriver:
         ):
             raise StateTransitionError(f"step() from {self.state.value}")
 
-        self.run_scheme_group(
+        self._run_optional_scheme_group(
             PHYSICS_AFTER_COUPLER, callback=scheme_callback
         )
         self._run_phases(
@@ -444,7 +464,7 @@ class CAMDriver:
         self.pool.set("current_date", self.clock.yyyymmdd)
         self.pool.set("current_seconds_of_day", self.clock.seconds)
         self._run_phases(INITIAL_PREP_PHASES, callback=phase_callback)
-        self.run_scheme_group(
+        self._run_optional_scheme_group(
             PHYSICS_BEFORE_COUPLER, callback=scheme_callback
         )
         if self.config.history_enabled:
@@ -469,7 +489,14 @@ class CAMDriver:
             "last_scheme": self._last_scheme,
             "last_scheme_group": self._last_scheme_group,
             "scheme_sequence_safe": self.scheme_plan.sequence_safe,
+            "suite": self.scheme_plan.name,
+            "capabilities": self.capabilities.describe(),
+            "state_schema": self.state_schema.report(),
+            "process_coverage": self.processes.describe(
+                self.scheme_plan.schemes
+            ),
             "devices": self.backend.devices.describe(),
+            "host_service_events": self.host_services.events(),
             "plugins": self.plugins.inventory(),
             "execution_cursor": self.execution_cursor,
         }
@@ -508,6 +535,17 @@ class CAMDriver:
             if callback is not None:
                 callback(phase, self)
 
+    def _run_optional_scheme_group(
+        self,
+        group: str,
+        *,
+        callback: Callable[[str, CAMDriver], None] | None = None,
+    ) -> None:
+        """Execute a CAM coupling group when the selected suite defines it."""
+
+        if group in self.scheme_plan.group_names:
+            self.run_scheme_group(group, callback=callback)
+
     def _phase_handlers(self) -> dict[str, Callable[[Any], None]]:
         return {
             "dynamics_to_physics": dynamics_to_physics,
@@ -544,54 +582,4 @@ class CAMDriver:
             "se_first_rhs": lambda pool: prim_advance_first_rhs(
                 pool, self.comm, self.backend
             ),
-        }
-
-    def _scheme_handlers(self) -> dict[str, Callable[[Any], None]]:
-        before = PHYSICS_BEFORE_COUPLER
-        after = PHYSICS_AFTER_COUPLER
-        return {
-            f"{before}.calc_exner": calc_exner,
-            f"{before}.temp_to_potential_temp": temp_to_potential_temp,
-            f"{before}.calc_dry_air_ideal_gas_density": (
-                calc_dry_air_ideal_gas_density
-            ),
-            f"{before}.wet_to_dry_water_vapor": wet_to_dry_water_vapor,
-            f"{before}.wet_to_dry_cloud_liquid_water": (
-                wet_to_dry_cloud_liquid_water
-            ),
-            f"{before}.wet_to_dry_rain": wet_to_dry_rain,
-            f"{before}.kessler": lambda pool: self.backend.run_phase(
-                "kessler", pool
-            ),
-            f"{before}.potential_temp_to_temp": (
-                potential_temperature_to_temperature
-            ),
-            f"{before}.dry_to_wet_water_vapor": dry_to_wet_water_vapor,
-            f"{before}.dry_to_wet_cloud_liquid_water": (
-                dry_to_wet_cloud_liquid_water
-            ),
-            f"{before}.dry_to_wet_rain": dry_to_wet_rain,
-            f"{before}.kessler_update": lambda pool: self.backend.run_phase(
-                "kessler_update", pool
-            ),
-            f"{before}.qneg": qneg,
-            f"{before}.geopotential_temp": lambda pool: geopotential_temp(
-                pool, self.backend
-            ),
-            f"{before}.check_energy_zero_fluxes": check_energy_zero_fluxes,
-            f"{before}.check_energy_scaling": (
-                check_energy_scaling_before_coupler
-            ),
-            f"{before}.check_energy_chng": check_energy_chng,
-            f"{before}.sima_state_diagnostics": sima_state_diagnostics,
-            f"{before}.kessler_diagnostics": kessler_diagnostics,
-            f"{after}.thermo_water_update": thermo_water_update,
-            f"{after}.check_energy_scaling": check_energy_scaling,
-            f"{after}.dycore_energy_consistency_adjust": (
-                dycore_energy_consistency_adjust
-            ),
-            f"{after}.apply_tendency_of_air_temperature": (
-                apply_tendency_of_air_temperature
-            ),
-            f"{after}.sima_tend_diagnostics": sima_tend_diagnostics,
         }

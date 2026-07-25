@@ -57,3 +57,16 @@ def test_python_history_service_replaces_cam_history_sink(
     assert observation["minimum"] == 1.0
     assert observation["maximum"] == 4.0
     assert observation["mean"] == 7.0 / 3.0
+
+
+def test_history_services_can_be_selected_for_a_custom_suite_by_process():
+    catalog = DeviceCatalog.discover(ROOT)
+    services = HostServiceRegistry.from_catalog(
+        catalog,
+        processes=("kessler_diagnostics",),
+    )
+    assert "kessler_diagnostics" in services.process_names
+    assert all(
+        process.startswith("kessler_diagnostics")
+        for process in services.process_names
+    )

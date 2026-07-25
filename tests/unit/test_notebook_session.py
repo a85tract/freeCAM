@@ -146,7 +146,7 @@ def test_step_uses_fixed_model_sequence_and_options_lock_after_start(
     assert requests == [{"op": "step", "count": 1}]
 
     session.options.timestep_seconds = 900
-    with pytest.raises(ValueError, match="1800 second"):
+    with pytest.raises(ValueError, match="differs from the model config"):
         session.step()
 
 
@@ -179,12 +179,13 @@ def test_scheme_plan_is_editable_and_scheme_calls_are_collective(
         }
 
     monkeypatch.setattr(session, "_request", request)
+    expected_key = session._scheme_plan.scheme("kessler").key
     status = session.run_scheme("kessler", group=PHYSICS_BEFORE_COUPLER)
-    assert status["last_scheme"] == ("physics_before_coupler.kessler")
+    assert status["last_scheme"] == expected_key
     assert requests == [
         {
             "op": "run_scheme",
-            "scheme": "physics_before_coupler.kessler",
+            "scheme": expected_key,
         }
     ]
 

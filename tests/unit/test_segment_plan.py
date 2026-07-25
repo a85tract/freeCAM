@@ -1,3 +1,4 @@
+from pathlib import Path
 from types import SimpleNamespace
 
 import numpy as np
@@ -16,9 +17,16 @@ from pycam_sima import (
     SegmentPlan,
     SetSchemeEnabled,
 )
-from pycam_sima.model import KesslerSchemePlan, StatePool, execute_segment_plan
+from pycam_sima.model import CCPPSuitePlan, StatePool, execute_segment_plan
 from pycam_sima.model.comm import SerialComm
 from pycam_sima.model.grid import dimensions_for_rank
+
+
+ROOT = Path(__file__).resolve().parents[2]
+KESSLER_SUITE = (
+    ROOT
+    / "external/CAM-SIMA/src/physics/ncar_ccpp/suites/suite_kessler.xml"
+)
 
 
 class _RecordingDriver:
@@ -27,7 +35,7 @@ class _RecordingDriver:
     def __init__(self) -> None:
         self.pool = StatePool(dimensions_for_rank(0, 24))
         self.pool.set("air_temperature", 240.0)
-        self.scheme_plan = KesslerSchemePlan.default()
+        self.scheme_plan = CCPPSuitePlan.from_xml(KESSLER_SUITE)
         self.comm = SerialComm()
         self.clock = SimpleNamespace(nstep=0)
         self.backend = SimpleNamespace(call_count=0)
@@ -120,7 +128,7 @@ def test_segment_executor_preserves_order_and_observes_fields() -> None:
     trace = execute_segment_plan(driver, plan)
 
     assert driver.calls == [
-        ("scheme", "physics_before_coupler.kessler"),
+        ("scheme", driver.scheme_plan.scheme("kessler").key),
         ("phase", "dynamics_to_physics"),
         ("step",),
         ("step",),
@@ -181,7 +189,7 @@ def test_segment_plan_rejects_unknown_json_action_type() -> None:
         (
             RunScheme("not-a-scheme"),
             ValueError,
-            "unknown FKESSLER scheme",
+            "unknown scheme",
         ),
         (RunSchemeGroup("not-a-group"), ValueError, "unknown scheme group"),
         (ObserveFields(("not-a-field",)), KeyError, "unknown state field"),

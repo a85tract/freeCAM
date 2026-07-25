@@ -12,10 +12,10 @@ from typing import Any, Mapping, Sequence, TYPE_CHECKING
 import numpy as np
 
 from .clock import NoLeapClock
+from .ccpp_suite import CCPPSuitePlan
 from .config import ModelConfig
 from .contracts import FieldContract
 from .errors import ConfigurationError, StateTransitionError
-from .scheme_plan import KesslerSchemePlan
 from .state import StatePool
 
 if TYPE_CHECKING:
@@ -345,7 +345,7 @@ def restore_driver(
         comm=comm,
         kernel_library=kernel_library,
         history_dir=history_dir,
-        scheme_plan=KesslerSchemePlan.from_payload(snapshot.scheme_plan),
+        scheme_plan=CCPPSuitePlan.from_payload(snapshot.scheme_plan),
     )
     driver.pool = snapshot.new_pool()
     driver.clock = NoLeapClock(**snapshot.clock)

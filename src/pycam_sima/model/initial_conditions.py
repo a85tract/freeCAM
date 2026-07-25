@@ -237,12 +237,32 @@ def populate_initial_state(pool, comm=None) -> None:
         le, within = divmod(col, 9)
         pi, pj = within % 3, within // 3
         pool.get("fvm_tracer")[3 + pi,3 + pj,:,le,2] = q
-        pool.get("thermodynamic_level_height")[col,:] = z
+        if "thermodynamic_level_height" in pool.contracts:
+            pool.get("thermodynamic_level_height")[col,:] = z
+    if "thermodynamic_level_height" in pool.contracts:
+        pool.mark_initialized("thermodynamic_level_height")
     pressure = pool.get("hybrid_a_midpoint")[None,:] * ps0 + pool.get("hybrid_b_midpoint")[None,:] * pool.get("physics_surface_pressure")[:,None]
     exner = (pressure / ps0) ** (float(pool.get("dry_air_gas_constant")) / float(pool.get("dry_air_specific_heat")))
-    pool.set("exner_function", exner)
-    pool.set("potential_temperature", pool.get("physics_air_temperature") / exner)
-    pool.set("dry_air_density", pressure / (pool.get("physics_air_temperature") * float(pool.get("dry_air_gas_constant"))))
-    pool.get("column_dry_air_specific_heat")[:] = float(pool.get("dry_air_specific_heat"))
-    pool.get("column_dry_air_gas_constant")[:] = float(pool.get("dry_air_gas_constant"))
-    pool.set("temperature_before_kessler", pool.get("physics_air_temperature"))
+    optional_values = {
+        "exner_function": exner,
+        "potential_temperature": pool.get("physics_air_temperature") / exner,
+        "dry_air_density": (
+            pressure
+            / (
+                pool.get("physics_air_temperature")
+                * float(pool.get("dry_air_gas_constant"))
+            )
+        ),
+        "column_dry_air_specific_heat": float(
+            pool.get("dry_air_specific_heat")
+        ),
+        "column_dry_air_gas_constant": float(
+            pool.get("dry_air_gas_constant")
+        ),
+        "air_temperature_previous_timestep": pool.get(
+            "physics_air_temperature"
+        ),
+    }
+    for name, values in optional_values.items():
+        if name in pool.contracts:
+            pool.set(name, values)

@@ -16,10 +16,10 @@ import numpy as np
 import yaml
 
 from .contracts import FieldContract
+from .ccpp_suite import PHYSICS_BEFORE_COUPLER, SuiteScheme
 from .device_codegen import DeviceDescription, _validate_elf, build_device
 from .devices import FortranDevice
 from .errors import DeviceContractError, StateOwnershipError
-from .scheme_plan import PHYSICS_BEFORE_COUPLER, PhysicsScheme, SCHEME_GROUPS
 
 
 PLUGIN_SCHEMA_VERSION = 1
@@ -148,11 +148,8 @@ class SchemePlacement:
 
     def __post_init__(self) -> None:
         _safe_name(self.process.replace(":", "."), "plugin process")
-        if self.group not in SCHEME_GROUPS:
-            raise ValueError(
-                f"unknown scheme group {self.group!r}; choose from "
-                f"{SCHEME_GROUPS}"
-            )
+        if not str(self.group).strip():
+            raise ValueError("plugin placement group must be non-empty")
         if self.before is not None and self.after is not None:
             raise ValueError("placement accepts at most one of before or after")
 
@@ -255,6 +252,7 @@ class InstalledPhysicsPlugin:
     state_policy: str
     placements: tuple[SchemePlacement, ...]
     variables: tuple[VariableSpec, ...]
+    scheme_keys: tuple[str, ...] = ()
     active: bool = True
     pending: bool = False
 
@@ -268,6 +266,7 @@ class InstalledPhysicsPlugin:
             "state_policy": self.state_policy,
             "placements": [item.as_dict() for item in self.placements],
             "variables": [item.as_dict() for item in self.variables],
+            "scheme_keys": list(self.scheme_keys),
             "active": self.active,
             "pending": self.pending,
         }
@@ -290,6 +289,9 @@ class InstalledPhysicsPlugin:
             variables=tuple(
                 VariableSpec.from_mapping(item)
                 for item in values.get("variables", ())
+            ),
+            scheme_keys=tuple(
+                str(item) for item in values.get("scheme_keys", ())
             ),
             active=bool(values.get("active", True)),
             pending=bool(values.get("pending", False)),
@@ -530,23 +532,24 @@ class PhysicsPluginManager:
             self._run_lifecycle(device, placements, "initialize")
             enabled = effective == "now"
             for placement in placements:
-                scheme = PhysicsScheme(
+                scheme = SuiteScheme(
                     name=placement.process,
-                    group=placement.group,
                     source_group=f"plugin:{plugin_name}",
+                    occurrence=0,
+                    group=placement.group,
                     category="plugin",
                     description=f"runtime physics plugin {plugin_name}",
                     implementation="fortran-device",
                     required=False,
                     enabled=enabled and placement.enabled,
                 )
-                self.driver.scheme_plan.add(
+                installed_scheme = self.driver.scheme_plan.add(
                     scheme,
                     before=placement.before,
                     after=placement.after,
                     unsafe=True,
                 )
-                added_schemes.append(scheme.key)
+                added_schemes.append(installed_scheme.key)
             record = InstalledPhysicsPlugin(
                 name=plugin_name,
                 manifest_path=str(device.manifest_path),
@@ -556,6 +559,7 @@ class PhysicsPluginManager:
                 state_policy=device.state_policy,
                 placements=placements,
                 variables=variables,
+                scheme_keys=tuple(added_schemes),
                 active=enabled,
                 pending=effective == "next_step",
             )
@@ -590,8 +594,9 @@ class PhysicsPluginManager:
         for record in self.installed.values():
             if not record.pending:
                 continue
-            for placement in record.placements:
-                key = f"plugin:{record.name}.{placement.process}"
+            for placement, key in zip(
+                record.placements, self._record_scheme_keys(record)
+            ):
                 if placement.enabled:
                     self.driver.scheme_plan.enable(key)
             record.pending = False
@@ -624,8 +629,9 @@ class PhysicsPluginManager:
                 self._run_lifecycle(
                     device, record.placements, "initialize"
                 )
-            for placement in record.placements:
-                key = f"plugin:{record.name}.{placement.process}"
+            for placement, key in zip(
+                record.placements, self._record_scheme_keys(record)
+            ):
                 if placement.enabled:
                     self.driver.scheme_plan.enable(key)
                     changed.append(key)
@@ -671,8 +677,7 @@ class PhysicsPluginManager:
             raise DeviceContractError(
                 f"plugin deactivation rolled back collectively: {errors}"
             )
-        for placement in record.placements:
-            key = f"plugin:{record.name}.{placement.process}"
+        for key in self._record_scheme_keys(record):
             self.driver.scheme_plan.disable(key, unsafe=True)
         record.active = False
         record.pending = False
@@ -707,6 +712,34 @@ class PhysicsPluginManager:
             self.installed[name].as_dict()
             for name in sorted(self.installed)
         )
+
+    def _record_scheme_keys(
+        self, record: InstalledPhysicsPlugin
+    ) -> tuple[str, ...]:
+        if record.scheme_keys:
+            if len(record.scheme_keys) != len(record.placements):
+                raise DeviceContractError(
+                    f"plugin {record.name!r} has "
+                    f"{len(record.scheme_keys)} scheme keys for "
+                    f"{len(record.placements)} placements"
+                )
+            return record.scheme_keys
+        keys: list[str] = []
+        for placement in record.placements:
+            matches = [
+                scheme.key
+                for scheme in self.driver.scheme_plan.schemes
+                if scheme.source_group == f"plugin:{record.name}"
+                and scheme.name == placement.process
+            ]
+            if len(matches) != 1:
+                raise DeviceContractError(
+                    f"plugin {record.name!r} cannot resolve placement "
+                    f"{placement.process!r}: {matches}"
+                )
+            keys.append(matches[0])
+        record.scheme_keys = tuple(keys)
+        return record.scheme_keys
 
     def assert_checkpointable(self) -> None:
         unsupported = [
@@ -900,6 +933,12 @@ class PhysicsPluginManager:
                     f"device processes already exist: {sorted(duplicates)}"
                 )
             for placement in placements:
+                if placement.group not in self.driver.scheme_plan.group_names:
+                    raise DeviceContractError(
+                        f"suite {self.driver.scheme_plan.name!r} has no group "
+                        f"{placement.group!r}; choose from "
+                        f"{self.driver.scheme_plan.group_names}"
+                    )
                 if placement.process not in device.processes:
                     raise DeviceContractError(
                         f"device {device.name!r} has no process "

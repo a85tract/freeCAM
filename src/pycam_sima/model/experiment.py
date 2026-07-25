@@ -528,9 +528,8 @@ def _apply_field_edit(driver: Any, edit: FieldEdit) -> None:
 def validate_segment_plan(driver: Any, plan: SegmentPlan) -> None:
     """Validate a complete plan before mutating the driver."""
 
-    from .scheme_plan import SCHEME_GROUPS
-
     scheme_plan = driver.scheme_plan.copy()
+    scheme_groups = scheme_plan.group_names
     planned_plugins: set[str] = set(
         getattr(getattr(driver, "plugins", None), "installed", {})
     )
@@ -554,10 +553,10 @@ def validate_segment_plan(driver: Any, plan: SegmentPlan) -> None:
             if not plan.unsafe:
                 raise ValueError("run_scheme actions require SegmentPlan(unsafe=True)")
         elif isinstance(action, RunSchemeGroup):
-            if action.group not in SCHEME_GROUPS:
+            if action.group not in scheme_groups:
                 raise ValueError(
                     f"unknown scheme group {action.group!r}; "
-                    f"choose one of {SCHEME_GROUPS}"
+                    f"choose one of {scheme_groups}"
                 )
             if not plan.unsafe:
                 raise ValueError(
@@ -581,10 +580,10 @@ def validate_segment_plan(driver: Any, plan: SegmentPlan) -> None:
                 scheme_plan.scheme(action.before)
             if action.after is not None:
                 scheme_plan.scheme(action.after)
-            if action.to_group is not None and action.to_group not in SCHEME_GROUPS:
+            if action.to_group is not None and action.to_group not in scheme_groups:
                 raise ValueError(
                     f"unknown destination group {action.to_group!r}; "
-                    f"choose one of {SCHEME_GROUPS}"
+                    f"choose one of {scheme_groups}"
                 )
             if not plan.unsafe:
                 raise ValueError("moving a scheme requires SegmentPlan(unsafe=True)")

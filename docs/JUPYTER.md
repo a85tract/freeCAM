@@ -5,18 +5,21 @@ MPI model over an authenticated socket. On a Derecho login node `start()`
 submits the worker through PBS; inside an allocation it uses `mpiexec`
 directly.
 
-The maintained Notebooks are `examples/try_notebook_session.ipynb` for a
-persistent interactive worker and `examples/try_dask_fanout.ipynb` for
-checkpoint/restart experiments.
+The maintained Notebooks are:
+
+- `examples/try_notebook_session.ipynb` for direct socket control;
+- `examples/try_dask_fanout.ipynb` for checkpoint/restart Dask tasks;
+- `examples/try_persistent_dask.ipynb` for a Dask-managed live MPI model.
 
 There are three control surfaces:
 
 - `NotebookSession` keeps one 24-rank model alive for low-latency phase,
   scheme, field, and step interaction.
-- `DaskExperimentClient.start_persistent()` pins an Actor to one Dask worker.
+- `DaskExperimentClient.model()` pins an Actor to one Dask worker and returns
+  a blocking context-managed model.
   The Actor owns a `NotebookSession`, starts MPI once, and exposes the same
   live StatePool through asynchronous Dask method calls.
-- `DaskExperimentClient.fork_persistent()` keeps a base snapshot in Dask
+- `DaskExperimentClient.fork_models()` keeps a base snapshot in Dask
   distributed memory and restores multiple independent, long-lived child MPI
   models without checkpoint files.
 - `DaskExperimentClient` submits restartable MPI tasks. A common base `Future`
@@ -31,12 +34,7 @@ Inside a one-node allocation, create one Dask worker and one persistent Actor:
 
 ```python
 from dask.distributed import Client
-from pycam_sima import (
-    DaskExperimentClient,
-    ObserveFields,
-    RunSteps,
-    SegmentPlan,
-)
+from pycam_sima import DaskExperimentClient
 
 client = Client(processes=False, n_workers=1, threads_per_worker=1)
 experiments = DaskExperimentClient(
@@ -48,45 +46,27 @@ experiments = DaskExperimentClient(
     execution_mode="allocation",
 )
 
-model = experiments.start_persistent("live")
-started = model.describe().result()
-assert started["mpi_launch_count"] == 1
+with experiments.model("live") as model:
+    started = model.status
+    model.advance(steps=1)
+    stats = model.fields.air_temperature.stats(rank=0)
+    values = model.fields.air_temperature.get(rank=0)
+    checkpoint = model.save()
+    finished = model.status
 
-model.step().result()
-stats = model.field_stats("air_temperature", rank=0).result()
-values = model.field("air_temperature", rank=0).result()
-checkpoint = model.checkpoint().result()
-
-final_status = model.describe().result()
-assert final_status["step"] == 1
-assert final_status["mpi_launch_count"] == 1
-model.close().result()
+assert finished.step == started.step + 1
+assert finished.mpi_launch_count == 1
 ```
 
-Every model method returns a Dask `ActorFuture`. The scheduler always routes
-the call to the worker that owns the Actor; the worker then uses the existing
-authenticated socket to command the same MPI rank 0, and rank 0 broadcasts
-the command. No method after `start_persistent()` invokes `mpiexec`.
-
-A serializable `SegmentPlan` can also run against that same live StatePool:
-
-```python
-future = model.run_plan(
-    SegmentPlan(
-        "inspect-and-step",
-        (
-            ObserveFields(("air_temperature",)),
-            RunSteps(1),
-        ),
-    )
-)
-trace = future.result()["action_trace"]
-```
+`model()` returns the blocking Notebook façade. `status` and `save()` return
+typed objects, and fields with valid Python identifiers support attribute
+access. Use `start_persistent()` for the Dask-native Future interface, or use
+`model.submit` when asynchronous scheduling is explicitly required.
 
 The Actor owns the full-node allocation lock for its lifetime. Always call
-`model.close().result()` before launching checkpoint segments in the same
-allocation. Actor loss also loses uncheckpointed memory, so use
-`model.checkpoint()` at important boundaries.
+`model.close()` (or leave its `with` block) before launching checkpoint
+segments in the same allocation. Actor loss also loses uncheckpointed memory,
+so use `model.save()` at important boundaries.
 
 ## Fork independent persistent models from memory
 
@@ -95,8 +75,6 @@ least one Dask worker per child:
 
 ```python
 from dask.distributed import Client
-from pycam_sima import BranchSpec, FieldEdit
-
 client = Client(
     processes=True,
     n_workers=3,
@@ -111,32 +89,18 @@ experiments = DaskExperimentClient(
     execution_mode="pbs",
 )
 
-base = experiments.start_persistent("base")
-base.step(10).result()
-children = experiments.fork_persistent(
-    base,
-    (
-        BranchSpec("control", steps=0),
-        BranchSpec(
-            "no-kessler",
-            steps=0,
-            disable_schemes=("kessler",),
-        ),
-        BranchSpec(
-            "warm",
-            steps=0,
-            field_edits=(
-                FieldEdit("air_temperature", "add", 1.0),
-            ),
-        ),
-    ),
-    close_parent=True,
-)
+control = experiments.plan("control")
+warm = experiments.plan("warm")
+warm.fields.edit("air_temperature", "add", 1.0)
 
-futures = {name: child.step(1) for name, child in children.items()}
-results = {name: future.result() for name, future in futures.items()}
-for child in children.values():
-    child.close().result()
+with experiments.model("base") as base:
+    base.advance(steps=10)
+    children = experiments.fork_models(
+        base, (control, warm), close_parent=True
+    )
+    with children:
+        children.advance(steps=1)
+        statuses = children.statuses
 ```
 
 The data path is:
@@ -157,7 +121,7 @@ move over the socket/Dask network and are deserialized inside every child.
 `close_parent=True` waits until Dask owns the snapshot, then closes the base
 MPI job before launching children.
 
-Use `fork_persistent()` when all branches should remain interactive and the
+Use `fork_models()` when all branches should remain interactive and the
 Dask cluster will stay alive. Use ordinary `fork()` when checkpoint durability,
 later restart, or allocation-mode execution matters.
 
@@ -233,9 +197,10 @@ coupler groups.
 
 ## Inspect, disable, or reorder schemes
 
-The default plan exactly follows the pinned `suite_kessler.xml`: 19 schemes in
-`physics_before_coupler` and 5 in `physics_after_coupler`. The same plan is
-installed on every MPI rank at worker startup.
+The default plan is compiled from the suite XML selected by `ModelConfig` and
+the same serialized tree is installed on every MPI rank at worker startup.
+For the maintained FKESSLER profile this is 19 schemes in
+`physics_before_coupler` and 5 in `physics_after_coupler`.
 
 ```python
 before = model.scheme_plan.describe("physics_before_coupler")
@@ -280,36 +245,21 @@ Every command below is broadcast to all MPI ranks and commits only after their
 execution cursor and schema hashes agree:
 
 ```python
-from pycam_sima import PhysicsPluginSpec, SchemePlacement, VariableSpec
-
-model.define_variable(
-    VariableSpec(
-        name="experiment_tracer",
-        standard_name="experiment_tracer",
-        dtype="float64",
-        dimensions=("nphys_local", "pver"),
-        units="kg kg-1",
-    ),
+model.fields.create(
+    "experiment_tracer",
+    dims=("column", "level"),
+    units="kg kg-1",
     initial=0.0,
 )
 
-plugin = model.install_physics(
-    PhysicsPluginSpec(
-        "/shared/plugin/device.json",
-        placements=(
-            SchemePlacement(
-                "experiment_microphysics",
-                group="physics_before_coupler",
-                after="kessler",
-            ),
-        ),
-    ),
-    initial_values={"required_plugin_input": 1.0},
-    unsafe=True,
+plugin = model.physics.install(
+    "/shared/plugin/device.json",
+    after="kessler",
+    inputs={"required_plugin_input": 1.0},
 )
 
-model.run_scheme("experiment_microphysics")
-field = model.get_field("experiment_tracer", rank=0)
+model.physics["experiment_microphysics"].run()
+field = model.fields["experiment_tracer"].get(rank=0)
 ```
 
 Pass a source `device.yaml` instead of `device.json` to build its adapter and
@@ -319,9 +269,10 @@ controls. For Dask, the same operations are available as `DefineVariable`,
 `InstallPhysics`, `ActivatePhysics`, and `DeactivatePhysics` actions inside a
 `SegmentPlan`.
 
-`unsafe=True` is required because disabling or moving a required scheme makes
-the sequence scientifically different from the validated default. It does not
-bypass array shape, pointer-stability, MPI, or ABI checks.
+The explicit `model.physics.install()` call opts into adding an experimental
+process. The serializable low-level `install_physics()` and `SegmentPlan`
+interfaces retain their `unsafe=True` guard. Neither interface bypasses array
+shape, pointer-stability, MPI, or ABI checks.
 
 Always close the worker, or use a context manager:
 

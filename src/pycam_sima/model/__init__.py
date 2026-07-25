@@ -1,17 +1,25 @@
-"""Fixed-case CAM model controlled and owned by Python.
+"""Python-owned CAM model and generic CCPP device runtime.
 
 The public Notebook controller lives in :mod:`pycam_sima.notebook.session`.
-This package contains the rank-local implementation used by its 24 MPI
-workers.
+This package contains the rank-local implementation used by MPI workers.
 """
 
+from .capabilities import CAM_SE_FVM_V1, RuntimeCapabilities
 from .checkpoint import (
     CheckpointBundle,
     ModelSnapshot,
     read_checkpoint,
     restore_driver,
 )
-from .ccpp_suite import CCPPDeviceHost, CCPPSuitePlan, SuiteNode, SuiteScheme
+from .ccpp_suite import (
+    CCPPDeviceHost,
+    CCPPSuitePlan,
+    DEFAULT_PHYSICS_GROUPS,
+    PHYSICS_AFTER_COUPLER,
+    PHYSICS_BEFORE_COUPLER,
+    SuiteNode,
+    SuiteScheme,
+)
 from .ccpp_state import (
     CCPPFieldRequirement,
     CCPPStateSchema,
@@ -45,12 +53,6 @@ from .experiment import (
     SetSchemeEnabled,
     execute_segment_plan,
 )
-from .scheme_plan import (
-    KesslerSchemePlan,
-    PHYSICS_AFTER_COUPLER,
-    PHYSICS_BEFORE_COUPLER,
-    PhysicsScheme,
-)
 from .state import NativeObjectHandle, StatePool
 from .host_services import (
     HostServiceEvent,
@@ -65,22 +67,46 @@ from .plugins import (
     SchemePlacement,
     VariableSpec,
 )
+from .processes import ProcessRouter
+from .user_api import (
+    BlockingModel,
+    FieldCollection,
+    FieldReference,
+    ModelGroup,
+    ModelStatus,
+    PhaseCollection,
+    PhaseReference,
+    PlanBuilder,
+    PhysicsCollection,
+    SavedCheckpoint,
+    SchemeReference,
+)
 
 __all__ = [
     "Action",
     "ActivatePhysics",
     "BranchSpec",
+    "BlockingModel",
     "CheckpointBundle",
     "CCPPDeviceHost",
     "CCPPFieldRequirement",
     "CCPPStateSchema",
     "CCPPSuitePlan",
+    "CAM_SE_FVM_V1",
+    "DEFAULT_PHYSICS_GROUPS",
     "DeviceRegistry",
     "DeviceSupportMatrix",
     "DeviceBuildError",
     "DeviceCatalog",
     "DeviceContractError",
     "FieldContract",
+    "FieldCollection",
+    "FieldReference",
+    "ModelGroup",
+    "ModelStatus",
+    "PhaseCollection",
+    "PhaseReference",
+    "PlanBuilder",
     "FieldVariant",
     "FortranDevice",
     "CAMDriver",
@@ -89,10 +115,9 @@ __all__ = [
     "DefineVariable",
     "FieldEdit",
     "InstallPhysics",
-    "KesslerSchemePlan",
     "PHYSICS_AFTER_COUPLER",
     "PHYSICS_BEFORE_COUPLER",
-    "PhysicsScheme",
+    "RuntimeCapabilities",
     "SchemeMove",
     "SchemeCatalogEntry",
     "SchemeSupport",
@@ -119,7 +144,11 @@ __all__ = [
     "InstalledPhysicsPlugin",
     "PhysicsPluginManager",
     "PhysicsPluginSpec",
+    "PhysicsCollection",
+    "SavedCheckpoint",
+    "ProcessRouter",
     "SchemePlacement",
+    "SchemeReference",
     "VariableSpec",
     "PythonHistoryService",
     "SuiteNode",

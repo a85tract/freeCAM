@@ -9,6 +9,14 @@ The first fully validated model target is CAM-SIMA FKESSLER,
 `ne3np4.pg3`, L30, 24 MPI ranks, a 1800-second timestep, and the DCMIP2016
 moist baroclinic-wave initial condition.
 
+That reference profile is a validation target, not the model definition.
+`ModelConfig` accepts a selected suite, timestep, run length, case name,
+source tree, dimensions, and input path. `CAM_SE_FVM_V1` separately declares
+the grid, dycore, calendar, initial-condition, and MPI layouts that the current
+component implementation can execute. Unsupported combinations therefore
+fail as a runtime-capability mismatch rather than being rejected as “not the
+Kessler case.”
+
 Python owns the model lifecycle, clock, grid/decomposition metadata, persistent
 NumPy state, mpi4py communication, phase and CCPP-scheme ordering, and NetCDF
 history output.
@@ -37,8 +45,9 @@ Runnable examples are split by execution mode:
   keeps a 24-rank MPI worker alive for interactive phase, scheme, step, and
   field control through the authenticated socket bridge.
 - [`examples/try_dask_fanout.ipynb`](examples/try_dask_fanout.ipynb) submits a
-  persistent Dask Actor for low-latency commands or restartable Dask segments
-  for independent checkpoint branches.
+  restartable Dask task graph for independent checkpoint branches.
+- [`examples/try_persistent_dask.ipynb`](examples/try_persistent_dask.ipynb)
+  keeps a Dask-managed MPI model alive and demonstrates in-memory model forks.
 
 ```text
 pycam_sima/
@@ -121,7 +130,8 @@ derived-object requirement in `validation/all_scheme_support.json`.
 The complete build/load/ELF/50-step evidence is recorded in
 [`validation/all_scheme_connectors.json`](validation/all_scheme_connectors.json).
 
-The same XML-derived plan and standard-name bus are used for every suite:
+The main `CAMDriver` uses the same XML-derived plan and standard-name bus as
+the standalone host. It contains no Kessler scheme-order table:
 
 ```python
 from pycam_sima import (
@@ -130,14 +140,16 @@ from pycam_sima import (
     DeviceCatalog,
     DeviceRegistry,
     HostServiceRegistry,
+    ModelConfig,
 )
 
+config = ModelConfig.from_yaml("configs/fkessler_model.yaml")
 catalog = DeviceCatalog.discover("/glade/work/ruitong/pycam-sima")
-plan = CCPPSuitePlan.from_xml(
-    "external/CAM-SIMA/src/physics/ncar_ccpp/suites/suite_kessler.xml"
-)
+plan = CCPPSuitePlan.from_xml(config.resolve_suite_xml())
 devices = DeviceRegistry(("build/devices", "build/catalog_devices"))
-services = HostServiceRegistry.from_catalog(catalog, suite="kessler")
+services = HostServiceRegistry.from_catalog(
+    catalog, suite=config.physics_suite
+)
 
 # pool is a Python-owned StatePool satisfying this suite's standard names.
 host = CCPPDeviceHost(pool, devices, plan, host_services=services)
@@ -145,9 +157,16 @@ host.run_lifecycle("initialize")
 host.run_group("physics_before_coupler")
 ```
 
-`CCPPStateSchema.from_catalog(catalog, "kessler")` reports the primitive
-arrays, dimensions, conversion points, and opaque process objects that the
-Python host must initialize before executing that suite.
+`CAMDriver` also compiles `CCPPStateSchema` for the selected suite during
+construction. Suite-independent CAM component fields are combined with only
+the process-field templates named by that suite, and missing primitive fields
+are generated from CCPP metadata. For example, the Kessler profile includes
+the previous-timestep temperature and precipitation fields, while the
+Held-Suarez profile does not. `state_schema.report()` exposes dimensions,
+conversion points, opaque objects, and the resulting StatePool field count.
+`ModelConfig.suite_xml` may point to a custom suite name not present in the
+pinned seven-suite catalog: its known scheme names still contribute metadata,
+while unknown plugin processes are reported as unresolved until installed.
 
 A device is defined by a small YAML description, the original CCPP `.meta`
 file, and the original Fortran sources. `build-kernels` runs CAM-SIMA's own
@@ -209,35 +228,22 @@ RPATH checks. Explicit paths, `PYCAM_SIMA_PLUGIN_PATH`, and Python entry points
 in the `pycam_sima.physics` group are discoverable.
 
 ```python
-from pycam_sima import PhysicsPluginSpec, SchemePlacement, VariableSpec
-
-model.define_variable(
-    VariableSpec(
-        name="droplet_number",
-        standard_name="cloud_droplet_number_concentration",
-        dtype="float64",
-        dimensions=("nphys_local", "pver"),
-        units="kg-1",
-    ),
+model.fields.create(
+    "droplet_number",
+    standard_name="cloud_droplet_number_concentration",
+    dims=("column", "level"),
+    units="kg-1",
     initial=0.0,
 )
 
-installed = model.install_physics(
-    PhysicsPluginSpec(
-        "/shared/my_microphysics/device.yaml",
-        project_root="/shared/my_microphysics",
-        placements=(
-            SchemePlacement(
-                "my_microphysics",
-                group="physics_before_coupler",
-                after="kessler",
-            ),
-        ),
-    ),
-    initial_values={"my_required_input": 1.0},
+installed = model.physics.install(
+    "/shared/my_microphysics/device.yaml",
+    after="kessler",
+    inputs={"my_required_input": 1.0},
     effective="now",
-    unsafe=True,
 )
+
+model.physics["my_microphysics"].run()
 ```
 
 CCPP argument metadata supplies missing primitive-variable contracts. Existing
@@ -249,7 +255,14 @@ or replace an existing array.
 Installation, activation, and deactivation are MPI-collective transactions at
 phase/scheme boundaries. Every rank verifies the same cursor, plugin bytes,
 and StatePool schema. `effective="next_step"` loads immediately but enables
-the placement at the next complete step.
+the placement at the next complete step. Friendly dimensions such as
+`column`, `level`, and `interface_level` map to the runtime dimensions
+`nphys_local`, `pver`, and `pverp`.
+
+`VariableSpec`, `PhysicsPluginSpec`, and `SchemePlacement` remain the
+serializable low-level protocol for Dask action plans and advanced tooling.
+The `model.fields` and `model.physics` façades compile to those same checked
+objects; they do not bypass ABI, MPI, pointer-stability, or schema validation.
 
 Dynamic fields default to checkpointed and not written to history. Checkpoint
 schema v2 records complete contracts, plugin hashes, placements, and activation
@@ -318,9 +331,11 @@ model.step()
 model.finalize()
 ```
 
-The fixed Kessler suite exposes all 19 `physics_before_coupler` schemes and all
-5 `physics_after_coupler` schemes individually. `model.scheme_plan.describe()`
-shows their exact pinned-XML order, and `run_scheme()` pauses after one scheme:
+The selected suite exposes every scheme occurrence individually.
+`model.scheme_plan.describe()` shows its exact XML order, including subcycles,
+and `run_scheme()` pauses after one scheme. In the validated Kessler profile
+this is 19 `physics_before_coupler` schemes and 5
+`physics_after_coupler` schemes:
 
 ```python
 model.run_scheme("kessler", group="physics_before_coupler")
@@ -340,8 +355,9 @@ model.scheme_plan.reset()
 `step()` executes only enabled schemes, in the editable plan order and current
 execution group. Schemes may move within a group or between the before/after
 groups. Their source-qualified identity remains stable because
-`check_energy_scaling` occurs in both groups. The default unmodified plan is
-the only scientifically validated order.
+`check_energy_scaling` occurs in both groups. Only an unmodified source-XML
+plan can report `sequence_safe=True`; the FKESSLER source order is the
+complete-step BFB gate currently validated.
 
 A cross-group move changes the execution stage: moving a scheme from before to
 after removes it from nstep=0/end-of-step preparation and places it at the
@@ -457,23 +473,25 @@ experiments = DaskExperimentClient(
     execution_mode="allocation",
 )
 
-model = experiments.start_persistent("interactive")
-print(model.describe().result())       # mpi_launch_count == 1
-model.step().result()
-model.run_scheme(
-    "kessler",
-    group="physics_before_coupler",
-).result()
-temperature = model.field("air_temperature", rank=0).result()
-checkpoint = model.checkpoint().result()
-model.close().result()
+with experiments.model("interactive") as model:
+    started = model.status
+    model.advance(steps=2)
+    temperature = model.fields.air_temperature.get(rank=0)
+    checkpoint = model.save()
+    finished = model.status
+
+assert started.mpi_launch_count == finished.mpi_launch_count == 1
+assert finished.step == started.step + 2
 ```
 
-`step()`, `run_phase()`, `run_scheme()`, `run_plan()`, field reads/writes, and
-checkpoint creation return Dask `ActorFuture` objects. Calling `.result()` is
-the synchronization point. The Actor holds the allocation-wide MPI lock until
-`close()`, so a full-node checkpoint segment cannot oversubscribe the same
-node while the persistent model is alive.
+`model()` is the blocking, context-manager-friendly Notebook API.
+`model.status` returns a typed `ModelStatus`; `advance()` runs complete steps;
+attribute-style `fields`, `phases`, and `physics` handles expose the live
+StatePool and control graph; and `save()` returns typed checkpoint metadata.
+`start_persistent()` preserves the Dask-native API where every method returns
+an `ActorFuture`, and `model.submit` explicitly exposes that asynchronous
+controller. The Actor holds the allocation-wide MPI lock until the `with`
+block exits.
 
 This mode still uses the authenticated `NotebookSession` socket internally:
 the Dask Actor is the long-lived controller and the socket carries commands to
@@ -482,46 +500,29 @@ Notebook-to-session ownership; it does not replace MPI or the IPC required to
 control processes that remain alive.
 
 Choose the persistent Actor for interactive scheme/phase/step work. Use
-`fork_persistent()` when a live base should become several independent,
+`fork_models()` when a live base should become several independent,
 long-lived MPI models without checkpoint files:
 
 ```python
-base = experiments.start_persistent("base")
-base.step(10).result()
+control = experiments.plan("control")
+warm = experiments.plan("warm")
+warm.fields.edit("air_temperature", "add", 1.0)
 
-children = experiments.fork_persistent(
-    base,
-    (
-        BranchSpec("control", steps=0),
-        BranchSpec(
-            "no-kessler",
-            steps=0,
-            disable_schemes=("kessler",),
-        ),
-        BranchSpec(
-            "warm",
-            steps=0,
-            field_edits=(
-                FieldEdit("air_temperature", "add", 1.0),
-            ),
-        ),
-    ),
-    close_parent=True,
-)
-
-step_futures = {
-    name: child.step(1) for name, child in children.items()
-}
-stepped = {
-    name: future.result() for name, future in step_futures.items()
-}
+with experiments.model("base") as base:
+    base.advance(steps=10)
+    children = experiments.fork_models(
+        base, (control, warm), close_parent=True
+    )
+    with children:
+        children.advance(steps=1)
+        statuses = children.statuses
 ```
 
 The base MPI ranks serialize their rank-local StatePools into one immutable
 `CheckpointBundle`. A Dask Future retains that bundle in distributed memory
 and supplies the same bytes to every child Actor. Each child starts its own
 24-rank MPI job, restores new private NumPy arrays through the socket/MPI
-bridge, applies its `BranchSpec` or `SegmentPlan`, and remains alive. No
+bridge, applies its plan, and remains alive. No
 `rank-*.npz`, `manifest.json`, or checkpoint directory is created. This is
 bit-preserving memory transport, not zero-copy shared memory: separate PBS
 jobs still deserialize and copy the arrays.
@@ -535,8 +536,8 @@ because one node cannot host several independent 24-rank MPI worlds.
 
 Choose the checkpoint segment API (`submit_base`, `submit_plan`, `fork`) when
 a boundary must survive worker/job failure or be resumed later. Choose
-`fork_persistent()` for fast in-memory fan-out while the Dask cluster remains
-alive. `model.checkpoint()` remains the explicit durable handoff.
+`fork_models()` for fast in-memory fan-out while the Dask cluster remains
+alive. `model.save()` remains the explicit durable handoff.
 
 The default `execution_mode="pbs"` submits a PBS job for every segment. The
 single-allocation mode reserves one node once, starts the Dask scheduler and
@@ -608,11 +609,13 @@ level range, and the large-Courant switch in Python. The resulting C-compatible
 configuration is supplied to both FVM kernel calls; the Fortran wrappers do not
 define case dimensions or timestep controls.
 
-To preserve CAM's BFB floating-point instruction order, `build-kernels` also
+To preserve CAM's BFB floating-point instruction order for a concrete
+capability, `build-kernels` also
 generates a compile-time specialization module from
 `configs/fkessler_model.yaml`. ABI v2 checks the Python values against that
-specialization on every FVM call. A different shape therefore requires a new
-Python configuration and rebuild; it never silently reuses the wrong layout.
+specialization on every FVM call. `ModelConfig` may describe a different
+shape, but the current `CAM_SE_FVM_V1` capability rejects it until a matching
+specialization is built; it never silently reuses the wrong layout.
 
 ## Jupyter
 

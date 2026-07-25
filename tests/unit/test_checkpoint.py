@@ -5,9 +5,9 @@ import numpy as np
 
 from pycam_sima.model import (
     BranchSpec,
+    CCPPSuitePlan,
     CheckpointBundle,
     FieldEdit,
-    KesslerSchemePlan,
     ModelSnapshot,
     SchemeMove,
     read_checkpoint,
@@ -22,6 +22,17 @@ from pycam_sima.model.config import ModelConfig
 from pycam_sima.model.driver import DriverState
 from pycam_sima.model.grid import dimensions_for_rank
 from pycam_sima.model.state import StatePool
+
+
+ROOT = Path(__file__).resolve().parents[2]
+KESSLER_SUITE = (
+    ROOT
+    / "external/CAM-SIMA/src/physics/ncar_ccpp/suites/suite_kessler.xml"
+)
+
+
+def _scheme_plan() -> CCPPSuitePlan:
+    return CCPPSuitePlan.from_xml(KESSLER_SUITE)
 
 
 class _LocalCheckpointComm:
@@ -74,7 +85,7 @@ def test_driver_snapshot_recreates_private_pool() -> None:
         state=DriverState.RUNNING,
         comm=SimpleNamespace(rank=0, size=24),
         config=ModelConfig(),
-        scheme_plan=KesslerSchemePlan.default(),
+        scheme_plan=_scheme_plan(),
         _last_phase="physics_timestep_initial",
         _last_scheme="physics_before_coupler.kessler_diagnostics",
         _last_scheme_group="physics_before_coupler",
@@ -120,7 +131,7 @@ def test_checkpoint_bundle_rank_payload_round_trip_without_disk() -> None:
         state=DriverState.RUNNING,
         comm=SimpleNamespace(rank=0, size=1),
         config=ModelConfig(),
-        scheme_plan=KesslerSchemePlan.default(),
+        scheme_plan=_scheme_plan(),
         _last_phase="physics_timestep_initial",
         _last_scheme=None,
         _last_scheme_group=None,
@@ -153,7 +164,7 @@ def test_collective_checkpoint_round_trip_preserves_bits(tmp_path: Path) -> None
         state=DriverState.RUNNING,
         comm=comm,
         config=ModelConfig(),
-        scheme_plan=KesslerSchemePlan.default(),
+        scheme_plan=_scheme_plan(),
         _last_phase="physics_timestep_initial",
         _last_scheme=None,
         _last_scheme_group=None,
@@ -177,7 +188,7 @@ def test_branch_spec_round_trip_and_isolated_edits() -> None:
     pool.seal_static()
     driver = SimpleNamespace(
         pool=pool,
-        scheme_plan=KesslerSchemePlan.default(),
+        scheme_plan=_scheme_plan(),
     )
     spec = BranchSpec(
         name="warm-no-kessler",
