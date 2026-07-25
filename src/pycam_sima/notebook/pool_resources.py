@@ -80,6 +80,16 @@ def format_memory(value: int) -> str:
     return f"{value}B"
 
 
+def format_pbs_memory(value: int) -> str:
+    """Format bytes using memory suffixes accepted by Derecho PBS."""
+
+    gib = 1024**3
+    if value % gib == 0:
+        return f"{value // gib}GB"
+    mib = 1024**2
+    return f"{math.ceil(value / mib)}MB"
+
+
 def _parse_dynamic_budget(value: int | str) -> int:
     if value == 0:
         return 0
@@ -215,7 +225,7 @@ class ResourcePlan:
             f"select={nodes}:ncpus={self.cpus_per_node}:"
             f"mpiprocs={ranks_per_node}:"
             f"ompthreads={self.threads_per_rank}:"
-            f"mem={format_memory(self.memory_per_node_bytes)}"
+            f"mem={format_pbs_memory(self.memory_per_node_bytes)}"
         )
 
 
@@ -564,6 +574,7 @@ __all__ = [
     "discover_pbs_resources",
     "estimate_state_pool_bytes",
     "format_memory",
+    "format_pbs_memory",
     "parse_memory",
     "plan_pool_resources",
 ]

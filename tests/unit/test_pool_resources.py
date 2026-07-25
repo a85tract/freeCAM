@@ -16,6 +16,7 @@ from pycam_sima.notebook.pool_resources import (
     discover_pbs_resources,
     estimate_state_pool_bytes,
     format_memory,
+    format_pbs_memory,
     parse_memory,
 )
 
@@ -24,6 +25,8 @@ def test_memory_values_use_binary_pbs_units() -> None:
     assert parse_memory("80GB") == 80 * 1024**3
     assert parse_memory("1.5 GiB") == int(1.5 * 1024**3)
     assert format_memory(80 * 1024**3) == "80GiB"
+    assert format_pbs_memory(80 * 1024**3) == "80GB"
+    assert format_pbs_memory(1024**3 + 1) == "1025MB"
     with pytest.raises(ValueError, match="invalid memory"):
         parse_memory("lots")
 
@@ -110,6 +113,8 @@ def test_resource_plan_uses_config_rank_count_without_fixed_values() -> None:
     assert plan.reserve_bytes == int(160 * 1024**3 * 0.15)
     assert plan.describe()["resource_source"] == "override"
     assert plan.pbs_select.startswith("select=")
+    assert plan.pbs_select.endswith("mem=80GB")
+    assert "GiB" not in plan.pbs_select
 
 
 def test_auto_ranks_respect_requested_concurrency_and_sfc_elements() -> None:
