@@ -128,6 +128,24 @@ class FieldReference:
             )
         return getter(self.name)
 
+    def _edit(self, operation: str, value: Any) -> "FieldReference":
+        editor = getattr(self._fields.owner, "edit_field", None)
+        if editor is None:
+            raise TypeError(
+                "this model does not support in-place field arithmetic"
+            )
+        editor(self.name, operation, value, unsafe=True)
+        return self
+
+    def __iadd__(self, value: Any) -> "FieldReference":
+        return self._edit("add", value)
+
+    def __isub__(self, value: Any) -> "FieldReference":
+        return self._edit("add", -value)
+
+    def __imul__(self, value: Any) -> "FieldReference":
+        return self._edit("multiply", value)
+
     def __repr__(self) -> str:
         return f"FieldReference({self.name!r})"
 
@@ -136,7 +154,17 @@ class FieldCollection:
     """Dictionary-like access to Python-owned StatePool fields."""
 
     def __init__(self, owner: Any) -> None:
-        self.owner = owner
+        object.__setattr__(self, "owner", owner)
+
+    def __setattr__(self, name: str, value: Any) -> None:
+        if name == "owner" or name.startswith("_"):
+            object.__setattr__(self, name, value)
+            return
+        # ``fields.temperature += 1`` writes the FieldReference returned by
+        # __iadd__ back to this attribute. The numerical edit already happened.
+        if isinstance(value, FieldReference) and value.name == name:
+            return
+        self[name].set(value)
 
     def __getitem__(self, name: str) -> FieldReference:
         return FieldReference(self, name)
@@ -272,6 +300,26 @@ class SchemeReference:
     def disable(self) -> Any:
         return self._physics._set_scheme_enabled(
             self.name, False, group=self.group
+        )
+
+    @property
+    def enabled(self) -> bool:
+        rows = self._physics.describe(self.group)
+        matches = [
+            row for row in rows
+            if row.get("name") == self.name or row.get("key") == self.name
+        ]
+        if len(matches) != 1:
+            raise KeyError(
+                f"scheme {self.name!r} is absent or ambiguous; "
+                "select it with physics.scheme(name, group=...)"
+            )
+        return bool(matches[0]["enabled"])
+
+    @enabled.setter
+    def enabled(self, value: bool) -> None:
+        self._physics._set_scheme_enabled(
+            self.name, bool(value), group=self.group
         )
 
     def move(

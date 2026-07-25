@@ -356,6 +356,15 @@ def command_compare_history(args: argparse.Namespace) -> int:
     return 0
 
 
+def command_pool_worker(args: argparse.Namespace) -> int:
+    """Serve one configurable MPI world partitioned into persistent slots."""
+
+    from .notebook.pool_worker import serve_pool
+
+    ensure_mpi_loader_environment()
+    return serve_pool(args)
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(prog="pycam-sima")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -469,6 +478,15 @@ def main() -> int:
     compare.add_argument("--files", type=int, default=51)
     compare.add_argument("--numeric-variables", type=int, default=26)
     compare.set_defaults(func=command_compare_history)
+
+    pool_worker = sub.add_parser(
+        "pool-worker",
+        help="serve multiple persistent CAM models in one partitioned MPI world",
+    )
+    from .notebook.pool_worker import add_arguments as add_pool_worker_arguments
+
+    add_pool_worker_arguments(pool_worker)
+    pool_worker.set_defaults(func=command_pool_worker)
 
     args = parser.parse_args()
     return int(args.func(args))

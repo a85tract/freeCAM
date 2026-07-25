@@ -9,9 +9,15 @@ The maintained Notebooks are:
 
 - `examples/try_notebook_session.ipynb` for direct socket control;
 - `examples/try_dask_fanout.ipynb` for checkpoint/restart Dask tasks;
-- `examples/try_persistent_dask.ipynb` for a Dask-managed live MPI model.
+- `examples/try_persistent_dask.ipynb` for the dynamic, single-MPI-world model
+  pool.
 
-There are three control surfaces:
+The primary Dask control surface is `DaskExperimentClient.pool()`. It starts
+one dynamically sized MPI world and divides it into reusable model slots.
+`base.fork(...)` copies rank-local StatePool data directly to child slots
+inside that world.
+
+The older control surfaces remain available:
 
 - `NotebookSession` keeps one 24-rank model alive for low-latency phase,
   scheme, field, and step interaction.
@@ -28,7 +34,34 @@ There are three control surfaces:
   PBS job per segment or launch segments directly inside one existing PBS
   allocation.
 
-## Control a persistent model through Dask
+## Use the dynamic persistent pool
+
+Run the Notebook inside a PBS allocation, then let the resource planner use
+the allocation limits:
+
+```python
+resource_plan = experiments.plan_pool(
+    max_concurrent_models=4,
+    ranks_per_model=None,
+    memory_per_model="auto",
+)
+
+with experiments.pool("cam-pool", resource_plan=resource_plan) as pool:
+    with pool.model("base") as base:
+        base.advance(steps=2)
+        with base.fork("control", "no_kessler", "warm") as branches:
+            branches.no_kessler.physics.kessler.enabled = False
+            branches.warm.fields.air_temperature += 1.0
+            branches.advance(steps=1)
+```
+
+This launches MPI once. All models report the same outer PBS job and pool
+launch. The socket carries commands and small results only; fork state moves
+directly between corresponding MPI ranks. If there are not enough idle slots
+for all requested live children, the current API reports the required and
+available capacity so the pool can be planned larger.
+
+## Control one legacy persistent model through Dask
 
 Inside a one-node allocation, create one Dask worker and one persistent Actor:
 

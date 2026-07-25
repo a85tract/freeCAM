@@ -34,6 +34,12 @@ from .persistent_dask import (
     PersistentDaskRequest,
     PersistentDaskSession,
 )
+from .pool_resources import ResourcePlan, plan_pool_resources
+from .pooled_dask import (
+    PersistentModelPool,
+    PersistentPoolActor,
+    PooledDaskRequest,
+)
 
 
 ExecutionMode = Literal["pbs", "allocation"]
@@ -111,6 +117,7 @@ class DaskRunResult:
 
 TaskRunner = Callable[[SegmentRequest, DaskRunResult | None], DaskRunResult]
 PersistentActorFactory = Callable[..., Any]
+PoolActorFactory = Callable[..., Any]
 
 
 def _coerce_plan(value: SegmentPlan | PlanBuilder) -> SegmentPlan:
@@ -139,6 +146,7 @@ class DaskExperimentClient:
         execution_mode: ExecutionMode = "pbs",
         task_runner: TaskRunner | None = None,
         persistent_actor_factory: PersistentActorFactory | None = None,
+        pool_actor_factory: PoolActorFactory | None = None,
     ) -> None:
         if not callable(getattr(client, "submit", None)):
             raise TypeError("client must provide dask.distributed.Client.submit")
@@ -175,6 +183,7 @@ class DaskExperimentClient:
         }
         self.task_runner = task_runner or runners[execution_mode]
         self.persistent_actor_factory = persistent_actor_factory or PersistentCAMActor
+        self.pool_actor_factory = pool_actor_factory or PersistentPoolActor
 
         required = (
             self.config,
@@ -363,6 +372,130 @@ class DaskExperimentClient:
         """Open one persistent MPI model as a blocking context manager."""
 
         return self.open_persistent(name, **kwargs)
+
+    def plan_pool(
+        self,
+        *,
+        max_concurrent_models: int | None = None,
+        ranks_per_model: int | str | None = None,
+        memory_per_model: int | str = "auto",
+        placement: str = "auto",
+        dynamic_field_budget: int | str = "auto",
+        available_nodes: int | None = None,
+        cpus_per_node: int | None = None,
+        memory_per_node: int | str | None = None,
+        reserve_fraction: float = 0.15,
+        environ: Mapping[str, str] | None = None,
+        qstat_runner: Callable[..., Any] | None = None,
+    ) -> ResourcePlan:
+        """Resolve a model-pool layout from config and available resources."""
+
+        return plan_pool_resources(
+            ModelConfig.from_yaml(self.config),
+            max_concurrent_models=max_concurrent_models,
+            ranks_per_model=ranks_per_model,
+            memory_per_model=memory_per_model,
+            placement=placement,
+            dynamic_field_budget=dynamic_field_budget,
+            available_nodes=available_nodes,
+            cpus_per_node=cpus_per_node,
+            memory_per_node=memory_per_node,
+            reserve_fraction=reserve_fraction,
+            environ=environ,
+            qstat_runner=qstat_runner,
+        )
+
+    def pool(
+        self,
+        name: str,
+        *,
+        max_concurrent_models: int | None = None,
+        ranks_per_model: int | str | None = None,
+        memory_per_model: int | str = "auto",
+        placement: str = "auto",
+        dynamic_field_budget: int | str = "auto",
+        resource_plan: ResourcePlan | None = None,
+        available_nodes: int | None = None,
+        cpus_per_node: int | None = None,
+        memory_per_node: int | str | None = None,
+        reserve_fraction: float = 0.15,
+        worker: str | None = None,
+        launch_mode: str | None = None,
+        options: ModelOptions | None = None,
+        scheme_plan: CCPPSuitePlan | None = None,
+        startup_timeout: float = 900.0,
+        request_timeout: float = 600.0,
+        environ: Mapping[str, str] | None = None,
+        qstat_runner: Callable[..., Any] | None = None,
+    ) -> PersistentModelPool:
+        """Launch one persistent MPI world and return its Pythonic slot pool."""
+
+        selected_plan = resource_plan or self.plan_pool(
+            max_concurrent_models=max_concurrent_models,
+            ranks_per_model=ranks_per_model,
+            memory_per_model=memory_per_model,
+            placement=placement,
+            dynamic_field_budget=dynamic_field_budget,
+            available_nodes=available_nodes,
+            cpus_per_node=cpus_per_node,
+            memory_per_node=memory_per_node,
+            reserve_fraction=reserve_fraction,
+            environ=environ,
+            qstat_runner=qstat_runner,
+        )
+        if not isinstance(selected_plan, ResourcePlan):
+            raise TypeError("resource_plan must be ResourcePlan")
+        selected_worker = self._persistent_worker(worker)
+        selected_launch_mode = launch_mode or (
+            "local" if self.execution_mode == "allocation" else "pbs"
+        )
+        config = ModelConfig.from_yaml(self.config)
+        selected_options = options or ModelOptions.from_config(config)
+        selected_options.validate(config)
+        selected_scheme_plan = (
+            scheme_plan or CCPPSuitePlan.from_xml(config.verify_suite())
+        )
+        request = PooledDaskRequest(
+            name=str(name),
+            config=str(self.config),
+            initial_run_dir=str(self.initial_run_dir),
+            run_root=str(self.run_root),
+            library=str(self.library),
+            environment_script=str(self.environment_script),
+            python_executable=str(self.python_executable),
+            log_dir=str(self.log_dir),
+            resource_plan=selected_plan.describe(),
+            launch_mode=selected_launch_mode,
+            pbs_account=self.pbs.account,
+            pbs_queue=self.pbs.queue,
+            pbs_walltime=self.pbs.walltime,
+            startup_timeout=float(startup_timeout),
+            request_timeout=float(request_timeout),
+            options={
+                "timestep_seconds": selected_options.timestep_seconds,
+                "physics_profile": selected_options.physics_profile,
+                "mediator_present": selected_options.mediator_present,
+            },
+            scheme_plan=selected_scheme_plan.to_payload(),
+            execution_mode=self.execution_mode,
+        )
+        actor_future = self.client.submit(
+            self.pool_actor_factory,
+            request,
+            actor=True,
+            workers=[selected_worker],
+            allow_other_workers=False,
+            pure=False,
+        )
+        actor = actor_future.result()
+        return PersistentModelPool(
+            self.client,
+            actor,
+            actor_future,
+            worker=selected_worker,
+            name=str(name),
+            resource_plan=selected_plan,
+        )
 
     def fork_persistent(
         self,

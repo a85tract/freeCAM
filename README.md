@@ -479,7 +479,42 @@ The version-1 action vocabulary is `PrepareInitialStep`, `RunPhase`,
 `FieldEdit`, and `ObserveFields`. A plan is completely validated before its
 first action mutates model state.
 
-### Persistent Dask Actor
+### Dynamic persistent model pool
+
+The primary interactive path is a dynamically planned pool: one Dask Actor
+starts one MPI world, then partitions it into reusable model slots. Neither
+the ranks per model nor the number of slots is fixed in the implementation.
+
+```python
+plan = experiments.plan_pool(
+    max_concurrent_models=4,
+    ranks_per_model=None,  # inherit ModelConfig.mpi_size
+    memory_per_model="auto",
+)
+
+with experiments.pool("cam-pool", resource_plan=plan) as pool:
+    with pool.model("base") as base:
+        base.advance(steps=10)
+        with base.fork("control", "no_kessler", "warm") as children:
+            children.no_kessler.physics.kessler.enabled = False
+            children.warm.fields.air_temperature += 1.0
+            children.advance(steps=5)
+```
+
+The pool performs one `mpiexec` with
+`plan.model_slots * plan.ranks_per_model` ranks and uses
+`MPI.COMM_WORLD.Split` to form the model communicators. During `fork`, each
+parent rank sends its rank-local serialized StatePool directly to the matching
+rank in each child slot. Large state never passes through the controller
+socket, Dask `CheckpointBundle`, or a checkpoint directory. Closing a model
+returns its slot; closing the pool stops the MPI world.
+
+`plan_pool()` discovers an active PBS allocation through `PBS_NODEFILE` and
+`qstat`, or accepts explicit node/CPU/memory values to produce a PBS request
+before allocation. It reserves 15 percent of memory by default and includes
+Python StatePool plus a dynamic-field budget in its capacity calculation.
+
+### Legacy single-model Persistent Dask Actor
 
 Use a persistent Actor when many Notebook commands should operate on the same
 live StatePool. Actor construction is the only operation that starts
@@ -522,7 +557,8 @@ MPI rank 0, which broadcasts them to the other ranks. Dask replaces direct
 Notebook-to-session ownership; it does not replace MPI or the IPC required to
 control processes that remain alive.
 
-Choose the persistent Actor for interactive scheme/phase/step work. Use
+This compatibility path remains available for existing code. Prefer the
+dynamic pool for new interactive and forked experiments. Use
 `fork_models()` when a live base should become several independent,
 long-lived MPI models without checkpoint files:
 

@@ -3,29 +3,29 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="description" content="pycam-sima 的 Python-owned 数据总线、自动生成的 Fortran scheme 连接器，以及直接常驻、persistent Dask Actor 与 checkpoint Dask 三种控制面。">
-  <title>pycam-sima · Python 数据总线与 Fortran devices</title>
+  <meta name="description" content="pycam-sima persistent Dask 主线：动态资源规划、单一 MPI world、多个可复用模型 slot 和 MPI 内存 fork。">
+  <title>pycam-sima · Dynamic Persistent Model Pool</title>
   <style>
     :root {
       color-scheme: dark;
-      --bg: #07101e;
-      --bg-2: #0b1628;
-      --panel: rgba(14, 28, 49, .86);
-      --panel-strong: #10233d;
-      --line: rgba(167, 191, 225, .18);
-      --line-strong: rgba(167, 191, 225, .32);
-      --text: #f3f8ff;
-      --muted: #9fb1ca;
-      --server: #55dfb9;
-      --server-soft: rgba(85, 223, 185, .12);
-      --dask: #a88cff;
-      --dask-soft: rgba(168, 140, 255, .12);
+      --bg: #07111d;
+      --bg-2: #0b1727;
+      --panel: rgba(15, 29, 48, .86);
+      --panel-strong: #11243c;
+      --line: rgba(171, 196, 229, .18);
+      --line-strong: rgba(171, 196, 229, .34);
+      --text: #f4f8ff;
+      --muted: #9eb1ca;
+      --python: #55dfb9;
+      --python-soft: rgba(85, 223, 185, .12);
+      --dask: #a98cff;
+      --dask-soft: rgba(169, 140, 255, .13);
       --mpi: #69a8ff;
-      --mpi-soft: rgba(105, 168, 255, .12);
-      --pbs: #ffb667;
-      --pbs-soft: rgba(255, 182, 103, .12);
-      --danger: #ff7f8c;
-      --ok: #74e8aa;
+      --mpi-soft: rgba(105, 168, 255, .13);
+      --fortran: #ffb667;
+      --fortran-soft: rgba(255, 182, 103, .13);
+      --ok: #76e8ab;
+      --danger: #ff8291;
       --shadow: 0 28px 90px rgba(0, 0, 0, .32);
       --radius: 22px;
     }
@@ -36,20 +36,20 @@
       --bg-2: #f8fbff;
       --panel: rgba(255, 255, 255, .9);
       --panel-strong: #fff;
-      --line: rgba(33, 58, 91, .15);
-      --line-strong: rgba(33, 58, 91, .28);
+      --line: rgba(34, 59, 92, .15);
+      --line-strong: rgba(34, 59, 92, .28);
       --text: #10233b;
-      --muted: #5e718a;
-      --server: #0c8f70;
-      --server-soft: rgba(12, 143, 112, .09);
-      --dask: #684ac8;
-      --dask-soft: rgba(104, 74, 200, .09);
+      --muted: #5d718a;
+      --python: #0b8e70;
+      --python-soft: rgba(11, 142, 112, .09);
+      --dask: #694bc8;
+      --dask-soft: rgba(105, 75, 200, .09);
       --mpi: #2865c7;
       --mpi-soft: rgba(40, 101, 199, .09);
-      --pbs: #bd650d;
-      --pbs-soft: rgba(189, 101, 13, .09);
-      --danger: #c43d50;
+      --fortran: #b85f09;
+      --fortran-soft: rgba(184, 95, 9, .09);
       --ok: #14834d;
+      --danger: #c43d50;
       --shadow: 0 25px 70px rgba(59, 86, 116, .15);
     }
 
@@ -58,25 +58,25 @@
     body {
       margin: 0;
       min-height: 100vh;
+      color: var(--text);
       background:
         radial-gradient(circle at 4% 1%, rgba(85, 223, 185, .12), transparent 30rem),
-        radial-gradient(circle at 96% 5%, rgba(168, 140, 255, .13), transparent 32rem),
+        radial-gradient(circle at 96% 5%, rgba(169, 140, 255, .14), transparent 32rem),
         linear-gradient(180deg, var(--bg), var(--bg-2));
-      color: var(--text);
       font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-      line-height: 1.65;
+      line-height: 1.62;
     }
 
-    button, input { font: inherit; }
-    button { color: inherit; }
+    a { color: inherit; }
+    button { color: inherit; font: inherit; }
     code, pre { font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace; }
     code {
-      padding: .12em .35em;
+      padding: .12em .36em;
       border-radius: 6px;
+      color: var(--python);
       background: rgba(127, 154, 190, .11);
-      color: var(--server);
     }
-    a { color: inherit; }
+
     .page {
       width: min(1220px, calc(100% - 32px));
       margin: 0 auto;
@@ -94,29 +94,31 @@
       padding: 10px 12px 10px 18px;
       border: 1px solid var(--line);
       border-radius: 16px;
-      background: color-mix(in srgb, var(--bg) 78%, transparent);
+      background: color-mix(in srgb, var(--bg) 80%, transparent);
       box-shadow: 0 12px 38px rgba(0, 0, 0, .16);
       backdrop-filter: blur(18px);
     }
+
     .brand {
       display: flex;
       align-items: center;
       gap: 10px;
-      font-weight: 760;
-      letter-spacing: -.02em;
+      font-weight: 780;
       white-space: nowrap;
     }
+
     .brand-mark {
-      width: 28px;
-      height: 28px;
+      width: 29px;
+      height: 29px;
       display: grid;
       place-items: center;
       border-radius: 9px;
-      color: #07101e;
-      background: linear-gradient(135deg, var(--server), var(--dask));
-      font-size: 13px;
+      color: #07111d;
+      background: linear-gradient(135deg, var(--python), var(--dask));
+      font-size: 12px;
       font-weight: 900;
     }
+
     nav {
       display: flex;
       gap: 4px;
@@ -133,6 +135,7 @@
       white-space: nowrap;
     }
     nav a:hover { color: var(--text); background: rgba(127, 154, 190, .1); }
+
     .theme {
       width: 38px;
       height: 38px;
@@ -145,19 +148,22 @@
     .hero {
       display: grid;
       grid-template-columns: minmax(0, 1.35fr) minmax(300px, .65fr);
-      gap: 36px;
+      gap: 34px;
       align-items: center;
-      padding: 78px 22px 56px;
+      padding: 78px 22px 52px;
+    }
+
+    .eyebrow, .kicker {
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 780;
+      letter-spacing: .13em;
+      text-transform: uppercase;
     }
     .eyebrow {
       display: inline-flex;
       align-items: center;
       gap: 9px;
-      color: var(--muted);
-      font-size: 13px;
-      font-weight: 760;
-      letter-spacing: .12em;
-      text-transform: uppercase;
     }
     .eyebrow i {
       width: 8px;
@@ -166,121 +172,98 @@
       background: var(--ok);
       box-shadow: 0 0 0 6px color-mix(in srgb, var(--ok) 16%, transparent);
     }
+
     h1 {
-      margin: 18px 0 18px;
+      margin: 18px 0;
       font-size: clamp(42px, 7vw, 82px);
       line-height: 1.02;
       letter-spacing: -.055em;
     }
+    h2 {
+      margin: 7px 0 0;
+      font-size: clamp(28px, 4vw, 44px);
+      line-height: 1.12;
+      letter-spacing: -.035em;
+    }
+    h3 { margin: 0 0 10px; letter-spacing: -.018em; }
+    p { margin: 0; }
+
     .gradient {
       color: transparent;
-      background: linear-gradient(105deg, var(--server) 0%, var(--mpi) 48%, var(--dask) 100%);
+      background: linear-gradient(105deg, var(--python), var(--mpi) 48%, var(--dask));
       background-clip: text;
       -webkit-background-clip: text;
     }
+
     .lead {
-      max-width: 780px;
-      margin: 0;
+      max-width: 790px;
       color: var(--muted);
       font-size: clamp(17px, 2vw, 21px);
     }
     .lead strong { color: var(--text); }
-    .hero-card {
-      position: relative;
-      padding: 22px;
-      overflow: hidden;
+
+    .hero-card, .card {
       border: 1px solid var(--line);
       border-radius: var(--radius);
       background: linear-gradient(150deg, var(--panel-strong), var(--panel));
       box-shadow: var(--shadow);
     }
-    .hero-card::after {
-      content: "";
-      position: absolute;
-      width: 180px;
-      height: 180px;
-      right: -80px;
-      bottom: -90px;
-      border-radius: 50%;
-      background: color-mix(in srgb, var(--dask) 18%, transparent);
-      filter: blur(8px);
-    }
+    .hero-card { padding: 22px; }
     .hero-card small { color: var(--muted); }
+
     .formula {
-      position: relative;
-      z-index: 1;
       display: grid;
-      gap: 13px;
-      margin-top: 18px;
+      gap: 11px;
+      margin-top: 17px;
     }
     .formula-row {
       display: grid;
-      grid-template-columns: 64px 1fr;
+      grid-template-columns: 70px 1fr;
       gap: 12px;
       align-items: center;
-      padding: 13px;
+      padding: 12px 13px;
       border: 1px solid var(--line);
-      border-radius: 14px;
+      border-radius: 13px;
       background: rgba(127, 154, 190, .06);
     }
-    .formula-row b { font-size: 13px; letter-spacing: .05em; }
+    .formula-row b { font-size: 12px; letter-spacing: .05em; }
     .formula-row span { font-size: 14px; }
-    .server-color { color: var(--server); }
-    .dask-color { color: var(--dask); }
-    .mpi-color { color: var(--mpi); }
-    .pbs-color { color: var(--pbs); }
+
+    .python { color: var(--python); }
+    .dask { color: var(--dask); }
+    .mpi { color: var(--mpi); }
+    .fortran { color: var(--fortran); }
 
     .metrics {
       display: grid;
-      grid-template-columns: repeat(6, 1fr);
+      grid-template-columns: repeat(5, 1fr);
+      overflow: hidden;
       border: 1px solid var(--line);
       border-radius: 18px;
       background: var(--panel);
-      overflow: hidden;
     }
     .metric {
-      padding: 18px;
+      min-height: 106px;
+      display: grid;
+      place-content: center;
       text-align: center;
       border-right: 1px solid var(--line);
     }
     .metric:last-child { border-right: 0; }
-    .metric b { display: block; font-size: 23px; letter-spacing: -.03em; }
-    .metric span { color: var(--muted); font-size: 12px; }
+    .metric b { font-size: 26px; line-height: 1.1; }
+    .metric span { margin-top: 8px; color: var(--muted); font-size: 12px; }
 
-    section { scroll-margin-top: 88px; padding: 70px 0 0; }
+    section { padding: 82px 0 8px; scroll-margin-top: 72px; }
     .section-head {
       display: grid;
-      grid-template-columns: minmax(0, .72fr) minmax(320px, 1.28fr);
+      grid-template-columns: 1fr minmax(280px, .72fr);
       gap: 30px;
       align-items: end;
-      margin-bottom: 24px;
+      margin-bottom: 26px;
     }
-    .kicker {
-      display: block;
-      margin-bottom: 8px;
-      color: var(--mpi);
-      font-size: 12px;
-      font-weight: 800;
-      letter-spacing: .14em;
-      text-transform: uppercase;
-    }
-    h2 {
-      margin: 0;
-      font-size: clamp(30px, 4vw, 46px);
-      line-height: 1.08;
-      letter-spacing: -.04em;
-    }
-    .section-head p { margin: 0; color: var(--muted); }
-    h3 { margin: 0 0 10px; letter-spacing: -.025em; }
-    p { margin-top: 0; }
+    .section-head > p { color: var(--muted); }
 
-    .card {
-      border: 1px solid var(--line);
-      border-radius: var(--radius);
-      background: var(--panel);
-      box-shadow: 0 15px 55px rgba(0, 0, 0, .12);
-    }
-    .panel-pad { padding: 22px; }
+    .panel-pad { padding: 24px; }
     .two-col {
       display: grid;
       grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -289,1066 +272,599 @@
     .three-col {
       display: grid;
       grid-template-columns: repeat(3, minmax(0, 1fr));
-      gap: 16px;
-    }
-
-    .mode-picker {
-      display: flex;
-      gap: 8px;
-      width: max-content;
-      max-width: 100%;
-      margin: 0 auto 20px;
-      padding: 6px;
-      border: 1px solid var(--line);
-      border-radius: 15px;
-      background: var(--panel);
-    }
-    .mode-button {
-      padding: 10px 16px;
-      border: 0;
-      border-radius: 11px;
-      background: transparent;
-      color: var(--muted);
-      cursor: pointer;
-      font-weight: 720;
-    }
-    .mode-button[aria-pressed="true"][data-mode="server"] {
-      color: #07101e;
-      background: var(--server);
-    }
-    .mode-button[aria-pressed="true"][data-mode="dask"] {
-      color: #fff;
-      background: var(--dask);
-    }
-    .mode-button[aria-pressed="true"][data-mode="persistent"] {
-      color: #07101e;
-      background: var(--server);
-    }
-    .mode-stage { padding: 24px; overflow: hidden; }
-    .mode-summary {
-      display: none;
-      grid-template-columns: minmax(0, 1fr) 260px;
       gap: 18px;
-      align-items: stretch;
     }
-    body[data-mode="server"] .mode-summary[data-mode="server"],
-    body[data-mode="dask"] .mode-summary[data-mode="dask"],
-    body[data-mode="persistent"] .mode-summary[data-mode="persistent"] {
-      display: grid;
-    }
-    .mode-copy {
-      padding: 22px;
-      border-radius: 17px;
-      background: var(--server-soft);
-    }
-    .mode-summary[data-mode="dask"] .mode-copy { background: var(--dask-soft); }
-    .mode-summary[data-mode="persistent"] .mode-copy {
-      background: linear-gradient(135deg, var(--dask-soft), var(--server-soft));
-    }
-    .mode-copy p { color: var(--muted); }
-    .mode-facts {
-      display: grid;
-      gap: 8px;
-    }
-    .fact {
-      padding: 11px 13px;
-      border: 1px solid var(--line);
-      border-radius: 12px;
-      background: rgba(127, 154, 190, .06);
-    }
-    .fact b { display: block; font-size: 13px; }
-    .fact span { color: var(--muted); font-size: 12px; }
+    .card p { color: var(--muted); font-size: 14px; }
 
     .flow {
-      display: grid;
-      gap: 10px;
-      margin-top: 18px;
-    }
-    .flow-row {
-      display: grid;
-      grid-template-columns: repeat(7, minmax(80px, 1fr));
-      gap: 8px;
-      align-items: center;
-    }
-    .node {
-      min-height: 86px;
-      display: grid;
-      place-items: center;
-      align-content: center;
-      padding: 12px;
-      border: 1px solid var(--line-strong);
-      border-radius: 14px;
-      background: var(--panel-strong);
-      text-align: center;
-    }
-    .node b { display: block; font-size: 14px; }
-    .node small { display: block; margin-top: 3px; color: var(--muted); font-size: 11px; }
-    .node.server { border-color: color-mix(in srgb, var(--server) 52%, var(--line)); background: var(--server-soft); }
-    .node.dask { border-color: color-mix(in srgb, var(--dask) 52%, var(--line)); background: var(--dask-soft); }
-    .node.mpi { border-color: color-mix(in srgb, var(--mpi) 52%, var(--line)); background: var(--mpi-soft); }
-    .node.pbs { border-color: color-mix(in srgb, var(--pbs) 52%, var(--line)); background: var(--pbs-soft); }
-    .arrow { color: var(--muted); text-align: center; font-size: 20px; }
-    .flow-note {
-      padding: 12px 14px;
-      border-left: 3px solid var(--mpi);
-      border-radius: 0 11px 11px 0;
-      background: var(--mpi-soft);
-      color: var(--muted);
-      font-size: 13px;
-    }
-    .dask-pipeline {
-      display: grid;
-      gap: 10px;
-      margin-top: 18px;
-    }
-    .pipeline-down {
-      color: var(--muted);
-      text-align: center;
-      font-size: 22px;
-      line-height: 1;
-    }
-    .pipeline-split {
-      display: grid;
-      grid-template-columns: repeat(2, minmax(0, 1fr));
-      gap: 10px;
-    }
-    .pipeline-lane {
-      padding: 12px;
-      border: 1px solid var(--line);
-      border-radius: 15px;
-      background: rgba(127, 154, 190, .05);
-    }
-    .pipeline-lane > b {
-      display: block;
-      margin-bottom: 9px;
-      color: var(--text);
-      font-size: 12px;
-      text-align: center;
-    }
-    .lane-row {
-      display: grid;
-      grid-template-columns: minmax(0, 1fr) 28px minmax(0, 1fr);
-      gap: 6px;
-      align-items: center;
-    }
-    .lane-row .node {
-      min-height: 70px;
-      padding: 9px;
-    }
-    .lane-row .arrow { font-size: 17px; }
-    .pipeline-merge {
-      padding: 8px 12px;
-      border: 1px dashed color-mix(in srgb, var(--mpi) 55%, var(--line));
-      border-radius: 999px;
-      background: var(--mpi-soft);
-      color: var(--muted);
-      text-align: center;
-      font-size: 12px;
-    }
-
-    .mode-card { position: relative; overflow: hidden; }
-    .mode-card::before {
-      content: "";
-      position: absolute;
-      inset: 0 auto 0 0;
-      width: 4px;
-      background: var(--server);
-    }
-    .mode-card.dask-mode::before { background: var(--dask); }
-    .mode-label {
-      display: inline-flex;
-      align-items: center;
-      gap: 7px;
-      margin-bottom: 14px;
-      padding: 5px 9px;
-      border-radius: 999px;
-      background: var(--server-soft);
-      color: var(--server);
-      font-size: 11px;
-      font-weight: 800;
-      letter-spacing: .07em;
-    }
-    .dask-mode .mode-label { color: var(--dask); background: var(--dask-soft); }
-    .mode-card p { color: var(--muted); }
-    .lifeline {
-      position: relative;
-      display: grid;
-      gap: 10px;
-      margin-top: 18px;
-      padding-left: 24px;
-    }
-    .lifeline::before {
-      content: "";
-      position: absolute;
-      left: 7px;
-      top: 8px;
-      bottom: 8px;
-      width: 2px;
-      background: linear-gradient(var(--server), var(--mpi));
-    }
-    .dask-mode .lifeline::before { background: linear-gradient(var(--dask), var(--mpi)); }
-    .life-step {
-      position: relative;
-      padding: 10px 12px;
-      border: 1px solid var(--line);
-      border-radius: 11px;
-      background: rgba(127, 154, 190, .06);
-      font-size: 13px;
-    }
-    .life-step::before {
-      content: "";
-      position: absolute;
-      left: -22px;
-      top: 16px;
-      width: 8px;
-      height: 8px;
-      border-radius: 50%;
-      background: var(--server);
-      box-shadow: 0 0 0 4px var(--server-soft);
-    }
-    .dask-mode .life-step::before { background: var(--dask); box-shadow: 0 0 0 4px var(--dask-soft); }
-    .life-step strong { color: var(--text); }
-
-    .dag {
-      display: grid;
-      grid-template-columns: 1fr 50px 1.2fr;
-      gap: 10px;
-      align-items: center;
-      margin-top: 18px;
-    }
-    .branch-stack { display: grid; gap: 8px; }
-    .dag-node {
-      padding: 11px;
-      border: 1px solid color-mix(in srgb, var(--dask) 48%, var(--line));
-      border-radius: 12px;
-      background: var(--dask-soft);
-      text-align: center;
-      font-size: 13px;
-    }
-    .dag-arrow { color: var(--dask); font-size: 26px; text-align: center; }
-
-    table {
-      width: 100%;
-      border-collapse: collapse;
+      padding: 26px;
       overflow: hidden;
+    }
+    .flow-track {
+      display: grid;
+      grid-template-columns: repeat(7, minmax(120px, 1fr));
+      gap: 25px;
+      align-items: stretch;
+    }
+    .flow-node {
+      position: relative;
+      min-height: 118px;
+      display: grid;
+      place-content: center;
+      padding: 16px 13px;
+      border: 1px solid var(--line);
       border-radius: 16px;
+      text-align: center;
+      background: rgba(127, 154, 190, .06);
+    }
+    .flow-node:not(:last-child)::after {
+      content: "→";
+      position: absolute;
+      right: -20px;
+      top: 50%;
+      color: var(--muted);
+      transform: translateY(-50%);
+      font-size: 21px;
+    }
+    .flow-node b { font-size: 14px; }
+    .flow-node small {
+      display: block;
+      margin-top: 6px;
+      color: var(--muted);
+      font-size: 11px;
+    }
+    .flow-node.python-node { border-color: color-mix(in srgb, var(--python) 48%, var(--line)); background: var(--python-soft); }
+    .flow-node.dask-node { border-color: color-mix(in srgb, var(--dask) 48%, var(--line)); background: var(--dask-soft); }
+    .flow-node.mpi-node { border-color: color-mix(in srgb, var(--mpi) 48%, var(--line)); background: var(--mpi-soft); }
+    .flow-node.fortran-node { border-color: color-mix(in srgb, var(--fortran) 48%, var(--line)); background: var(--fortran-soft); }
+
+    .flow-note, .notice {
+      margin-top: 18px;
+      padding: 16px 18px;
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      color: var(--muted);
+      background: rgba(127, 154, 190, .055);
+      font-size: 14px;
+    }
+    .flow-note strong, .notice strong { color: var(--text); }
+
+    .timeline {
+      display: grid;
+      grid-template-columns: repeat(5, minmax(0, 1fr));
+      gap: 14px;
+    }
+    .timeline article {
+      position: relative;
+      min-height: 188px;
+      padding: 19px;
+      border: 1px solid var(--line);
+      border-radius: 18px;
       background: var(--panel);
     }
-    th, td {
+    .timeline .number {
+      width: 34px;
+      height: 34px;
+      display: grid;
+      place-items: center;
+      margin-bottom: 18px;
+      border-radius: 11px;
+      color: #07111d;
+      background: linear-gradient(135deg, var(--python), var(--dask));
+      font-size: 13px;
+      font-weight: 900;
+    }
+    .timeline p { color: var(--muted); font-size: 13px; }
+
+    .state-map {
+      display: grid;
+      grid-template-columns: .8fr 1.2fr;
+      gap: 20px;
+    }
+    .pool {
+      padding: 24px;
+    }
+    .pool-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 10px;
+      margin-top: 17px;
+    }
+    .field {
+      padding: 12px;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: var(--python-soft);
+      font-family: "SFMono-Regular", Consolas, monospace;
+      font-size: 12px;
+    }
+
+    .steps {
+      display: grid;
+      gap: 12px;
+    }
+    .step {
+      display: grid;
+      grid-template-columns: 34px 1fr;
+      gap: 13px;
+      align-items: start;
+      padding: 14px;
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      background: rgba(127, 154, 190, .055);
+    }
+    .step b:first-child {
+      width: 30px;
+      height: 30px;
+      display: grid;
+      place-items: center;
+      border-radius: 9px;
+      color: #07111d;
+      background: var(--fortran);
+      font-size: 12px;
+    }
+    .step p { margin-top: 3px; color: var(--muted); font-size: 13px; }
+
+    .control-table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+    .control-table th, .control-table td {
       padding: 15px 16px;
       border-bottom: 1px solid var(--line);
       text-align: left;
       vertical-align: top;
     }
-    th {
-      color: var(--muted);
-      background: rgba(127, 154, 190, .07);
-      font-size: 12px;
-      letter-spacing: .05em;
-      text-transform: uppercase;
-    }
-    tr:last-child td { border-bottom: 0; }
-    td:first-child { width: 22%; color: var(--muted); font-size: 13px; }
-    .yes { color: var(--ok); }
-    .no { color: var(--danger); }
-
-    .role-grid {
-      display: grid;
-      grid-template-columns: repeat(4, minmax(0, 1fr));
-      gap: 12px;
-    }
-    .role {
-      min-height: 180px;
-      padding: 18px;
-      border: 1px solid var(--line);
-      border-radius: 17px;
-      background: var(--panel);
-    }
-    .role-icon {
-      width: 36px;
-      height: 36px;
-      display: grid;
-      place-items: center;
-      margin-bottom: 14px;
-      border-radius: 11px;
-      background: var(--mpi-soft);
-      color: var(--mpi);
-      font-weight: 900;
-    }
-    .role p { color: var(--muted); font-size: 13px; }
-    .role ul { margin: 12px 0 0; padding-left: 18px; color: var(--muted); font-size: 12px; }
-
-    .state-diagram {
-      display: grid;
-      grid-template-columns: 1fr 72px 1fr;
-      gap: 12px;
-      align-items: center;
-      padding: 24px;
-    }
-    .state-box {
-      min-height: 240px;
-      padding: 20px;
-      border: 1px solid var(--line);
-      border-radius: 16px;
-      background: rgba(127, 154, 190, .05);
-    }
-    .pool {
-      display: grid;
-      grid-template-columns: repeat(3, 1fr);
-      gap: 7px;
-      margin-top: 14px;
-    }
-    .field {
-      padding: 7px;
-      border-radius: 8px;
-      background: var(--server-soft);
-      color: var(--server);
-      font-size: 11px;
-      text-align: center;
-    }
-    .checkpoint-stack {
-      display: grid;
-      gap: 8px;
-      margin-top: 14px;
-    }
-    .checkpoint {
-      padding: 8px 10px;
-      border: 1px solid color-mix(in srgb, var(--dask) 42%, var(--line));
-      border-radius: 9px;
-      background: var(--dask-soft);
-      color: var(--dask);
-      font-size: 11px;
-    }
-    .state-arrow { text-align: center; color: var(--muted); font-size: 12px; }
-    .state-arrow b { display: block; color: var(--mpi); font-size: 25px; }
+    .control-table th { color: var(--muted); font-size: 12px; letter-spacing: .05em; text-transform: uppercase; }
+    .control-table td { font-size: 14px; }
+    .control-table tr:last-child td { border-bottom: 0; }
 
     pre {
       position: relative;
-      margin: 14px 0 0;
-      padding: 18px;
-      overflow: auto;
+      margin: 0;
+      padding: 22px;
+      overflow-x: auto;
       border: 1px solid var(--line);
-      border-radius: 14px;
+      border-radius: 17px;
+      color: #dfeaff;
       background: #07101b;
-      color: #d9e8fb;
-      font-size: 12px;
+      font-size: 13px;
       line-height: 1.65;
+      tab-size: 4;
     }
-    [data-theme="light"] pre { background: #132238; color: #edf6ff; }
-    pre code { padding: 0; color: inherit; background: none; }
+    [data-theme="light"] pre { color: #18304f; background: #f5f8fc; }
+    pre code { padding: 0; color: inherit; background: transparent; }
     .copy {
       position: absolute;
-      top: 9px;
-      right: 9px;
-      padding: 5px 8px;
-      border: 1px solid rgba(255, 255, 255, .15);
+      top: 10px;
+      right: 10px;
+      padding: 5px 9px;
+      border: 1px solid var(--line);
       border-radius: 8px;
-      background: rgba(255, 255, 255, .08);
-      color: #c7d6e9;
+      background: var(--panel-strong);
       cursor: pointer;
       font-size: 11px;
     }
 
-    details {
-      border-bottom: 1px solid var(--line);
+    .pbs-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 18px;
+    }
+    .pbs-card {
+      padding: 23px;
+      border: 1px solid var(--line);
+      border-radius: 20px;
       background: var(--panel);
     }
-    details:first-child { border-radius: 16px 16px 0 0; }
-    details:last-child { border-bottom: 0; border-radius: 0 0 16px 16px; }
-    summary {
-      padding: 17px 18px;
-      cursor: pointer;
-      font-weight: 720;
+    .pbs-card .tag {
+      display: inline-block;
+      margin-bottom: 13px;
+      padding: 4px 8px;
+      border-radius: 8px;
+      color: var(--fortran);
+      background: var(--fortran-soft);
+      font-size: 11px;
+      font-weight: 800;
+      letter-spacing: .08em;
     }
-    details p { padding: 0 18px 17px; color: var(--muted); }
+    .pbs-card p { color: var(--muted); font-size: 14px; }
+
+    .fork {
+      display: grid;
+      grid-template-columns: 1fr 70px 1.6fr;
+      gap: 18px;
+      align-items: center;
+      padding: 26px;
+    }
+    .fork-base, .fork-child {
+      padding: 17px;
+      border: 1px solid var(--line);
+      border-radius: 15px;
+      text-align: center;
+    }
+    .fork-base { background: var(--python-soft); }
+    .fork-children { display: grid; gap: 10px; }
+    .fork-child { background: var(--dask-soft); }
+    .fork-arrow { color: var(--muted); text-align: center; font-size: 25px; }
+
+    details { border-bottom: 1px solid var(--line); }
+    details:last-child { border-bottom: 0; }
+    summary {
+      padding: 18px 21px;
+      cursor: pointer;
+      font-weight: 740;
+    }
+    details p { padding: 0 21px 20px; color: var(--muted); font-size: 14px; }
 
     .evidence {
       display: grid;
       grid-template-columns: repeat(4, minmax(0, 1fr));
-      gap: 12px;
+      gap: 14px;
     }
     .evidence-card {
-      padding: 17px;
+      min-height: 128px;
+      display: grid;
+      place-content: center;
+      padding: 15px;
       border: 1px solid var(--line);
-      border-radius: 16px;
+      border-radius: 17px;
       background: var(--panel);
+      text-align: center;
     }
     .evidence-card small { color: var(--muted); }
-    .evidence-card b {
-      display: block;
-      margin: 4px 0;
-      font-size: 24px;
-      letter-spacing: -.03em;
-    }
-
-    .notice {
-      display: flex;
-      gap: 13px;
-      align-items: flex-start;
-      margin-top: 16px;
-      padding: 15px 17px;
-      border: 1px solid color-mix(in srgb, var(--pbs) 40%, var(--line));
-      border-radius: 14px;
-      background: var(--pbs-soft);
-    }
-    .notice span { color: var(--pbs); font-weight: 900; }
-    .notice p { margin: 2px 0 0; color: var(--muted); font-size: 13px; }
+    .evidence-card b { margin: 5px 0; font-size: 24px; }
 
     footer {
       display: flex;
       justify-content: space-between;
-      gap: 18px;
-      margin-top: 70px;
-      padding-top: 22px;
+      gap: 20px;
+      margin-top: 78px;
+      padding: 24px 0 4px;
       border-top: 1px solid var(--line);
       color: var(--muted);
       font-size: 12px;
     }
 
-    @media (max-width: 980px) {
-      .hero, .section-head { grid-template-columns: 1fr; }
-      .hero { padding-top: 55px; }
+    @media (max-width: 1050px) {
+      .hero, .section-head, .state-map { grid-template-columns: 1fr; }
+      .flow-track { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .flow-node:not(:last-child)::after { display: none; }
+      .timeline { grid-template-columns: repeat(2, minmax(0, 1fr)); }
       .metrics { grid-template-columns: repeat(3, 1fr); }
       .metric:nth-child(3) { border-right: 0; }
-      .metric:nth-child(-n+3) { border-bottom: 1px solid var(--line); }
-      .flow-row { grid-template-columns: 1fr; }
-      .arrow { transform: rotate(90deg); }
-      .role-grid { grid-template-columns: repeat(2, 1fr); }
-      .mode-summary { grid-template-columns: 1fr; }
+      .evidence { grid-template-columns: repeat(2, minmax(0, 1fr)); }
     }
+
     @media (max-width: 720px) {
       .page { width: min(100% - 20px, 1220px); }
-      nav { display: none; }
-      .hero { padding-inline: 8px; }
-      .metrics, .two-col, .three-col, .evidence { grid-template-columns: 1fr; }
+      .topbar { top: 7px; }
+      .brand span:last-child, nav { display: none; }
+      .hero { padding: 56px 8px 38px; }
+      .metrics, .two-col, .three-col, .pbs-grid, .timeline, .evidence { grid-template-columns: 1fr; }
       .metric { border-right: 0; border-bottom: 1px solid var(--line); }
       .metric:last-child { border-bottom: 0; }
-      .role-grid { grid-template-columns: 1fr; }
-      .pipeline-split { grid-template-columns: 1fr; }
-      .lane-row { grid-template-columns: 1fr; }
-      .lane-row .arrow { transform: rotate(90deg); }
-      .state-diagram { grid-template-columns: 1fr; }
-      .state-arrow b { transform: rotate(90deg); }
-      .pool { grid-template-columns: repeat(2, 1fr); }
-      table { display: block; overflow-x: auto; white-space: nowrap; }
+      .flow-track { grid-template-columns: 1fr; }
+      .fork { grid-template-columns: 1fr; }
+      .fork-arrow { transform: rotate(90deg); }
       footer { flex-direction: column; }
     }
   </style>
 </head>
-<body data-mode="server">
+<body>
   <main class="page">
-    <div class="topbar">
-      <div class="brand"><span class="brand-mark">Py</span> pycam-sima control map</div>
+    <header class="topbar">
+      <div class="brand">
+        <span class="brand-mark">Py</span>
+        <span>pycam-sima · Dynamic Persistent Pool</span>
+      </div>
       <nav aria-label="页面导航">
-        <a href="#overview">总览</a>
-        <a href="#devices">Fortran devices</a>
-        <a href="#two-modes">三种控制面</a>
-        <a href="#roles">职责边界</a>
-        <a href="#state">状态如何流动</a>
-        <a href="#compare">如何选择</a>
-        <a href="#usage">使用方式</a>
+        <a href="#flow">主流程</a>
+        <a href="#lifetime">常驻机制</a>
+        <a href="#state">变量池</a>
+        <a href="#plugin">动态函数</a>
+        <a href="#control">控制粒度</a>
+        <a href="#pbs">PBS</a>
+        <a href="#code">代码</a>
       </nav>
-      <button class="theme" id="theme" aria-label="切换深浅色主题">◐</button>
-    </div>
+      <button class="theme" id="theme" aria-label="切换明暗主题">◐</button>
+    </header>
 
-    <header class="hero">
+    <section class="hero">
       <div>
-        <span class="eyebrow"><i></i>Python-owned field bus · original Fortran schemes</span>
-        <h1>一条通用数据线<br><span class="gradient">连接原始计算内核</span></h1>
+        <span class="eyebrow"><i></i> One supported control path</span>
+        <h1>一次 MPI 启动，<br><span class="gradient">多个常驻 CAM slot</span></h1>
         <p class="lead">
-          <strong>StatePool</strong> 是由 Python 拥有的通用数据总线，<strong>DeviceRegistry</strong>
-          按 CCPP standard_name 自动接线，生成的薄 adapter 调用未经改写的原始 Fortran scheme。
-          <strong>NotebookSession</strong> 直接控制常驻 MPI；
-          <strong>persistent Dask Actor</strong> 把同一个常驻模型交给 Scheduler 调度；
-          <strong>Dask segment</strong> 把 checkpoint 组织成可恢复、可分叉的任务图。
-          三种控制面共用同一个数据层和 device 层。
+          pycam-sima 的主线只有一条：
+          <strong>Jupyter 通过 Persistent Pool Actor 控制一个动态大小的 MPI world</strong>。
+          MPI world 按运行时资源计划切分为多个模型 slot；rank 数和 slot 数都不是常量。
+          Python 拥有 StatePool 和调用顺序，Fortran device <code>.so</code> 只负责计算。
         </p>
       </div>
       <aside class="hero-card">
-        <small>一句话分工</small>
+        <small>核心关系</small>
         <div class="formula">
-          <div class="formula-row"><b class="server-color">SERVER</b><span>控制正在存活的模型</span></div>
-          <div class="formula-row"><b class="dask-color">ACTOR</b><span>调度一个持续存活的模型</span></div>
-          <div class="formula-row"><b class="dask-color">DASK</b><span>组织可重启的模型任务</span></div>
-          <div class="formula-row"><b class="mpi-color">DEVICE</b><span>连接 StatePool 与原始 scheme</span></div>
-          <div class="formula-row"><b class="pbs-color">PBS</b><span>分配计算节点和时间</span></div>
-          <div class="formula-row"><b class="mpi-color">MPI</b><span>完成模型内部通信</span></div>
+          <div class="formula-row"><b class="dask">CONTROL</b><span>Dask Actor 管理模型生命周期</span></div>
+          <div class="formula-row"><b class="python">STATE</b><span>每个 rank 的 NumPy StatePool</span></div>
+          <div class="formula-row"><b class="mpi">SYNC</b><span>mpi4py 广播紧耦合命令</span></div>
+          <div class="formula-row"><b class="fortran">KERNEL</b><span>原始 Fortran scheme devices</span></div>
         </div>
       </aside>
-    </header>
+    </section>
 
-    <div class="metrics" aria-label="当前实现关键数字">
-      <div class="metric"><b>3</b><span>control surfaces</span></div>
-      <div class="metric"><b>24</b><span>MPI ranks per segment</span></div>
-      <div class="metric"><b>XML</b><span>suite-selected fields</span></div>
-      <div class="metric"><b>129 / 155</b><span>ready · 100 native + 29 host</span></div>
-      <div class="metric"><b>1 PBS</b><span>allocation-mode fan-out</span></div>
-      <div class="metric"><b>BFB</b><span>51 files · 26 variables</span></div>
+    <div class="metrics" aria-label="主线关键指标">
+      <div class="metric"><b>1</b><span>persistent base model</span></div>
+      <div class="metric"><b>1×</b><span>MPI launch during model lifetime</span></div>
+      <div class="metric"><b>1×</b><span>mpiexec per pool</span></div>
+      <div class="metric"><b>0-copy</b><span>NumPy → Fortran arguments</span></div>
+      <div class="metric"><b>scheme</b><span>phase · step · field control</span></div>
     </div>
 
-    <section id="overview">
+    <section id="flow">
       <div class="section-head">
-        <div><span class="kicker">Shared model core</span><h2>底层模型没有三套</h2></div>
-        <p>三种控制面只改变“谁在什么时候发出命令、MPI 是否继续存活、状态如何跨边界保存”。真正的模型仍然是同一套 Python CAMDriver、StatePool、DeviceRegistry、mpi4py 通信和原始 Fortran schemes。</p>
+        <div><span class="kicker">Main path</span><h2>从 Notebook 到 Fortran kernel</h2></div>
+        <p>Dask负责把pool控制器放在稳定worker上；ResourcePlanner根据PBS的CPU和内存决定world大小；MPI负责slot内部计算和slot之间的状态复制；Fortran只接收当前kernel所需的数组指针。</p>
       </div>
-      <div class="card mode-stage">
-        <div class="flow-row">
-          <div class="node server"><b>NotebookSession</b><small>live commands</small></div>
-          <div class="arrow">↘</div>
-          <div class="node mpi"><b>Python CAMDriver</b><small>phases · schemes · clock</small></div>
-          <div class="arrow">→</div>
-          <div class="node mpi"><b>Python StatePool</b><small>suite-selected NumPy fields</small></div>
-          <div class="arrow">→</div>
-          <div class="node pbs"><b>DeviceRegistry</b><small>manifest + standard_name</small></div>
+      <div class="card flow">
+        <div class="flow-track">
+          <div class="flow-node python-node"><b>Jupyter</b><small>with experiments.model(...)</small></div>
+          <div class="flow-node dask-node"><b>Dask Client</b><small>提交 Actor 方法</small></div>
+          <div class="flow-node dask-node"><b>PersistentPoolActor</b><small>slot租约与生命周期</small></div>
+          <div class="flow-node python-node"><b>PooledWorkerSession</b><small>一个socket / 一次MPI启动</small></div>
+          <div class="flow-node mpi-node"><b>Dynamic MPI world</b><small>N slots × R ranks</small></div>
+          <div class="flow-node python-node"><b>DeviceRegistry</b><small>字段 → ABI 参数</small></div>
+          <div class="flow-node fortran-node"><b>Fortran .so</b><small>原始数值 kernel</small></div>
         </div>
-        <div class="flow-row" style="margin-top:8px">
-          <div class="node dask"><b>DaskExperimentClient</b><small>persistent Actor or checkpoints</small></div>
-          <div class="arrow">↗</div>
-          <div class="node mpi"><b>mpi4py COMM_WORLD</b><small>halo · collective · barrier</small></div>
-          <div class="arrow">→</div>
-          <div class="node mpi"><b>History / Checkpoint</b><small>Python-controlled output</small></div>
-          <div class="arrow">→</div>
-          <div class="node pbs"><b>NetCDF / NPZ</b><small>durable artifacts</small></div>
-        </div>
-        <div class="flow-note" style="margin-top:16px">
-          Device `.so` 不保存 StatePool 指针，也不拥有模型生命周期；Python 临时把 Fortran-contiguous NumPy 地址交给生成的 adapter，adapter 调用原始 scheme，计算完成后立即返回。
-        </div>
-      </div>
-      <div class="card mode-stage" style="margin-top:18px">
-        <div class="flow-row">
-          <div class="node server"><b>ModelConfig</b><small>case values, no Kessler gate</small></div>
-          <div class="arrow">→</div>
-          <div class="node mpi"><b>suite XML</b><small>groups · subcycles · schemes</small></div>
-          <div class="arrow">→</div>
-          <div class="node dask"><b>CCPPSuitePlan</b><small>generic execution order</small></div>
-          <div class="arrow">→</div>
-          <div class="node pbs"><b>ProcessRouter</b><small>device or host provider</small></div>
-        </div>
-        <div class="flow-row" style="margin-top:8px">
-          <div class="node server"><b>RuntimeCapabilities</b><small>grid · dycore · MPI constraints</small></div>
-          <div class="arrow">→</div>
-          <div class="node mpi"><b>CCPPStateSchema</b><small>metadata-required variables</small></div>
-          <div class="arrow">→</div>
-          <div class="node dask"><b>StatePool allocation</b><small>component + selected process fields</small></div>
-          <div class="arrow">→</div>
-          <div class="node pbs"><b>zero-copy ABI</b><small>original Fortran scheme</small></div>
-        </div>
-        <div class="flow-note" style="margin-top:16px">
-          FKESSLER 现在只是一个经过 50-step BFB 验证的配置 profile。主 driver
-          不再保存 Kessler 的 24 个 scheme 顺序表；切换 suite 会重新编译执行树和
-          StatePool schema。当前 SE/FVM v1 仍只验证 ne3/L30/24-rank，这个限制由
-          capability 明确报告，不再写进通用 ModelConfig 的合法性规则。
+        <div class="flow-note">
+          <strong>Dask worker 不是 MPI rank。</strong>
+          Dask worker内的Actor管理整个模型池；真正创建SFC分块、持有StatePool、调用Fortran的是一次启动的Python MPI进程。
+          每个slot拥有独立的communicator、CAMDriver、StatePool和时钟。
         </div>
       </div>
     </section>
 
-    <section id="devices">
+    <section id="lifetime">
       <div class="section-head">
-        <div><span class="kicker">Universal device interface</span><h2>原始 Fortran 如何接上 Python？</h2></div>
-        <p>PyCAM-SIMA 不再维护一份手写的 Kessler 数值副本。CCPP metadata 是接口真相，生成器只产生机械性的 <code>bind(C)</code> 连接器和机器可读 manifest。</p>
+        <div><span class="kicker">Persistent lifetime</span><h2>为什么一步以后还能继续？</h2></div>
+        <p><code>model.advance()</code> 返回时计算已经完成，但 MPI 进程没有退出。它们只是进入阻塞等待，因此下一条命令仍然面对原来的 NumPy 数组和已加载的 device。</p>
       </div>
-      <div class="card mode-stage">
-        <div class="flow-row">
-          <div class="node mpi"><b>Python StatePool</b><small>owns NumPy memory</small></div>
-          <div class="arrow">→</div>
-          <div class="node server"><b>standard_name</b><small>field contract</small></div>
-          <div class="arrow">→</div>
-          <div class="node dask"><b>DeviceRegistry</b><small>validate + route</small></div>
-          <div class="arrow">→</div>
-          <div class="node pbs"><b>original scheme</b><small>generated adapter · zero-copy</small></div>
-        </div>
-        <div class="flow-note" style="margin-top:16px">
-          末端设备由 <code>device.yaml</code> 描述。构建器使用固定版本的 CCPP parser
-          从 7 个 suite XML 中发现 155 个活跃 scheme，并同时读取每个 <code>.meta</code>
-          和原始 <code>.F90</code>，核对 entrypoint、
-          intent、rank、dimension、kind 和 units，随后生成 adapter、symbol version map 与
-          <code>device.json</code>。全部 descriptor 只保存在
-          <code>devices/generated/&lt;scheme&gt;/</code>；metadata 无法表达的少量
-          host policy 从统一的 <code>devices/overrides.yaml</code> 合并，不再为
-          Kessler 维护平行目录。
-        </div>
-      </div>
-      <div class="card panel-pad" style="margin-top:18px">
-        <h3>运行时扩展：新 physics + 新变量</h3>
-        <pre><code>device.yaml + original Fortran + .meta
-              或 device.json + prebuilt .so
-                         │ shared hash cache / ABI audit
-                         ▼
-              PhysicsPluginManager
-                    ┌────┴────┐
-                    ▼         ▼
-          dynamic StateSchema  dynamic scheme placement
-          NumPy owns new field before / after / cross-group
-                    └────┬────┘
-                         ▼
-              collective MPI commit</code></pre>
-        <p style="margin:14px 0 0;color:var(--muted)">
-          每个 phase 或 scheme 返回后都是可扩展边界。所有 rank 必须具有相同的
-          execution cursor、plugin hash 和 schema hash 才会提交；任何 rank 失败都会
-          整体回滚。运行中只追加使用已有 named dimensions 的 NumPy 字段，不替换旧数组，
-          因此已有 Fortran 指针保持稳定。checkpoint v2 同时保存动态 contract、placement
-          和 plugin identity，Dask memory fork 也继承同一份逻辑状态。
-        </p>
-      </div>
-      <div class="three-col" style="margin-top:18px">
-        <article class="card panel-pad">
-          <h3>1 · 数据总线</h3>
-          <p style="color:var(--muted)">StatePool 为字段保存内部名称、CCPP standard_name、dtype、shape、units、intent 和所有权。device 不需要知道某个数组在 Python 中叫 T 还是 air_temperature。</p>
-        </article>
-        <article class="card panel-pad">
-          <h3>2 · 自动连接器</h3>
-          <p style="color:var(--muted)">生成的 adapter 只处理 C ABI、错误字符串和原始 subroutine 调用，不包含 Kessler 方程。Python 通过 manifest 动态构造 ctypes 签名。</p>
-        </article>
-        <article class="card panel-pad">
-          <h3>3 · 末端计算设备</h3>
-          <p style="color:var(--muted)">155 个 scheme 都有自动生成的 connector：100 个原始 Fortran device 已干净构建，29 个纯 history scheme 由 Python host service 执行；另外 26 个仍明确等待 MPI/I/O/外部源码等服务，不把“生成接口”冒充“已经科学验证”。</p>
-        </article>
-      </div>
-      <div class="two-col" style="margin-top:18px">
-        <article class="card panel-pad">
-          <h3>源文件到 device 的构建链</h3>
-          <pre><code>suite XML → 155 active schemes
-             │ catalog + original metadata
-original scheme.F90 + scheme.meta
-             + generated device.yaml
-                    │ pinned CCPP parser
-                    ▼
-generated bind(C) adapter + device.json
-                    │ clean compiler environment
-                    ▼
-libpycam_device_&lt;name&gt;.so</code></pre>
-        </article>
-        <article class="card panel-pad">
-          <h3>显式 native state policy</h3>
-          <pre><code>NumPy primitive arrays → zero-copy pointer
-Fortran derived object → opaque StatePool handle
-legacy physical constants → Python field injection
-cam_history/outfld → Python host service</code></pre>
-          <p style="margin:14px 0 0;color:var(--muted);font-size:13px">derived object 由生成的 Fortran factory 创建，但其生命周期记录属于 Python；后续 scheme 按同一 standard_name 获得同一个地址，finalize 时调用匹配的 destroy。</p>
-        </article>
-      </div>
-    </section>
-
-    <section id="two-modes">
-      <div class="section-head">
-        <div><span class="kicker">Control modes</span><h2>切换视角看完整流程</h2></div>
-        <p>选择一种模式查看它保持什么、重建什么，以及 Notebook 为什么能在边界上重新获得控制权。</p>
-      </div>
-      <div class="mode-picker" role="group" aria-label="选择控制模式">
-        <button class="mode-button" data-mode="server" aria-pressed="true">常驻 Server</button>
-        <button class="mode-button" data-mode="persistent" aria-pressed="false">Persistent Dask</button>
-        <button class="mode-button" data-mode="dask" aria-pressed="false">Dask 分支</button>
-      </div>
-      <div class="card mode-stage">
-        <div class="mode-summary" data-mode="server">
-          <div class="mode-copy">
-            <span class="mode-label">MODE A · LIVE PROCESS</span>
-            <h3>同一批24个 MPI ranks 一直活着</h3>
-            <p>初始化只做一次。rank 0 在 authenticated socket 上等待 Notebook 命令，再用 <code>comm.bcast</code> 把同一命令广播给其他 ranks。命令完成后，所有 ranks 回到等待循环，StatePool 仍在原进程内存里。</p>
-            <div class="flow">
-              <div class="flow-row">
-                <div class="node server"><b>Jupyter</b><small>step / get / set</small></div>
-                <div class="arrow">→</div>
-                <div class="node server"><b>Listener socket</b><small>authkey</small></div>
-                <div class="arrow">→</div>
-                <div class="node mpi"><b>MPI rank 0</b><small>receive + bcast</small></div>
-                <div class="arrow">→</div>
-                <div class="node mpi"><b>ranks 0…23</b><small>same command</small></div>
-              </div>
-            </div>
-          </div>
-          <div class="mode-facts">
-            <div class="fact"><b>状态</b><span>live NumPy arrays</span></div>
-            <div class="fact"><b>MPI进程</b><span>持续存活</span></div>
-            <div class="fact"><b>观察点</b><span>scheme / phase / step 边界</span></div>
-            <div class="fact"><b>最适合</b><span>交互调试、变量读写</span></div>
-          </div>
-        </div>
-
-        <div class="mode-summary" data-mode="persistent">
-          <div class="mode-copy">
-            <span class="mode-label">MODE B · WORKER-PINNED ACTOR</span>
-            <h3>Dask 调度同一个常驻24-rank模型</h3>
-            <p><code>start_persistent()</code> 把 Actor 固定到一个 Dask Worker。Actor 构造时只启动一次 <code>mpiexec -n 24</code>，内部拥有一个 NotebookSession；后续 <code>step/phase/scheme/field</code> Actor 方法只发送 socket command，不再初始化 MPI、网格或 StatePool。<code>fork_persistent()</code> 还可以把 base 的不可变内存 snapshot 交给多个子 Actor，每个子 Actor 恢复一套独立、长期存活的24-rank模型。</p>
-            <div class="flow">
-              <div class="flow-row">
-                <div class="node dask"><b>Jupyter</b><small>ActorFuture.result()</small></div>
-                <div class="arrow">→</div>
-                <div class="node dask"><b>Scheduler</b><small>route to owner worker</small></div>
-                <div class="arrow">→</div>
-                <div class="node dask"><b>Pinned Actor</b><small>owns NotebookSession</small></div>
-                <div class="arrow">→</div>
-                <div class="node server"><b>socket → rank 0</b><small>bcast to ranks 0…23</small></div>
-              </div>
-            </div>
-            <div class="flow-note"><strong>关键区别：</strong>Dask Worker 不为每条命令执行新的 <code>run-segment</code>。它一直保存 Actor；Actor 一直保存 socket 和 live model。内存 fork 时，base ranks 通过 socket 导出37,660,986-byte bundle，Dask Future 把同一份不可变 bytes 送给子 Actors，子 ranks 在内存中恢复私有 NumPy arrays，不生成 checkpoint 文件。</div>
-          </div>
-          <div class="mode-facts">
-            <div class="fact"><b>状态</b><span>Actor-owned live StatePool</span></div>
-            <div class="fact"><b>MPI进程</b><span>Actor 生命周期内只启动一次</span></div>
-            <div class="fact"><b>等待点</b><span>每个 ActorFuture.result()</span></div>
-            <div class="fact"><b>最适合</b><span>低延迟交互、长期分支模型</span></div>
-          </div>
-        </div>
-
-        <div class="mode-summary" data-mode="dask">
-          <div class="mode-copy">
-            <span class="mode-label">MODE C · RESTARTABLE TASKS</span>
-            <h3>每个 task 是一个新的 MPI segment</h3>
-            <p>Dask Client 通过 <code>submit()</code> 增量提交任务和 Future 依赖；Scheduler 把依赖已满足的 task 分配给 Dask Worker。Worker 只负责启动并等待一个模型 segment：PBS 模式先 <code>qsub</code>，allocation 模式在已有 allocation 中直接调用 <code>mpiexec</code>。真正的模型计算由随后启动的24个 MPI Python ranks 完成。</p>
-            <div class="dask-pipeline" aria-label="Dask 从 Notebook 到 Fortran device 的完整执行流程">
-              <div class="flow-row">
-                <div class="node dask"><b>Jupyter Notebook</b><small>experiment intent</small></div>
-                <div class="arrow">→</div>
-                <div class="node dask"><b>Dask Client</b><small>client.submit(...)</small></div>
-                <div class="arrow">→</div>
-                <div class="node dask"><b>Scheduler</b><small>DAG · dependencies · placement</small></div>
-                <div class="arrow">→</div>
-                <div class="node dask"><b>Dask Worker</b><small>run_pbs/allocation_segment</small></div>
-              </div>
-              <div class="pipeline-down">↓</div>
-              <div class="pipeline-split">
-                <div class="pipeline-lane">
-                  <b>PBS 模式 · 每个 segment 申请资源</b>
-                  <div class="lane-row">
-                    <div class="node pbs"><b>qsub</b><small>blocking PBS submission</small></div>
-                    <div class="arrow">→</div>
-                    <div class="node pbs"><b>PBS job</b><small>allocated compute node</small></div>
-                  </div>
-                </div>
-                <div class="pipeline-lane">
-                  <b>allocation 模式 · 复用当前 PBS 资源</b>
-                  <div class="lane-row">
-                    <div class="node pbs"><b>Outer allocation</b><small>one shared PBS_JOBID</small></div>
-                    <div class="arrow">→</div>
-                    <div class="node mpi"><b>Direct launch</b><small>no nested qsub</small></div>
-                  </div>
-                </div>
-              </div>
-              <div class="pipeline-down">↓</div>
-              <div class="pipeline-merge">两条路径最终都执行 <code>mpiexec -n 24</code>，为这个 segment 创建新的 <code>MPI.COMM_WORLD</code></div>
-              <div class="pipeline-down">↓</div>
-              <div class="flow-row">
-                <div class="node mpi"><b>24 MPI Python ranks</b><small>rank-local model workers</small></div>
-                <div class="arrow">→</div>
-                <div class="node mpi"><b>CAMDriver</b><small>phase · scheme · step plan</small></div>
-                <div class="arrow">→</div>
-                <div class="node mpi"><b>StatePool</b><small>private NumPy checkpoint state</small></div>
-                <div class="arrow">→</div>
-                <div class="node mpi"><b>Fortran device .so</b><small>DeviceRegistry → bind(C) → scheme</small></div>
-              </div>
-              <div class="flow-note"><strong>Dask Worker ≠ MPI rank。</strong>前者执行任务调度函数并等待子进程；后者才创建 StatePool、运行 CAMDriver，并把 NumPy 指针交给原始 Fortran scheme。segment 结束后写 checkpoint，MPI 进程退出，Future 保存可供下游分支恢复的快照。</div>
-            </div>
-          </div>
-          <div class="mode-facts">
-            <div class="fact"><b>状态</b><span>immutable checkpoint Future</span></div>
-            <div class="fact"><b>MPI进程</b><span>每个 segment 新建</span></div>
-            <div class="fact"><b>观察点</b><span>action trace + task checkpoint</span></div>
-            <div class="fact"><b>最适合</b><span>分支实验、批量参数探索</span></div>
-          </div>
-        </div>
-      </div>
-
-      <div class="two-col" style="margin-top:18px">
-        <article class="card panel-pad mode-card">
-          <span class="mode-label">MODE A</span>
-          <h3>常驻 server 的生命周期</h3>
-          <div class="lifeline">
-            <div class="life-step"><strong>1. start</strong>：申请/使用 PBS allocation，启动24 ranks并完整初始化</div>
-            <div class="life-step"><strong>2. wait</strong>：所有 ranks 阻塞在 worker loop，StatePool 留在内存</div>
-            <div class="life-step"><strong>3. command</strong>：rank 0 收 socket message，再向 COMM_WORLD 广播</div>
-            <div class="life-step"><strong>4. compute</strong>：24 ranks 执行相同 phase、scheme 或 step</div>
-            <div class="life-step"><strong>5. wait again</strong>：结果返回 Notebook，进程继续存活</div>
-          </div>
-        </article>
-        <article class="card panel-pad mode-card dask-mode">
-          <span class="mode-label">MODE C</span>
-          <h3>Dask fan-out 的任务图</h3>
-          <div class="dag">
-            <div class="dag-node"><b>base task</b><br>run → checkpoint</div>
-            <div class="dag-arrow">⇒</div>
-            <div class="branch-stack">
-              <div class="dag-node">control<br><small>restore base</small></div>
-              <div class="dag-node">no-kessler<br><small>restore base + disable</small></div>
-              <div class="dag-node">action plan<br><small>scheme → observe → phase</small></div>
-            </div>
-          </div>
-          <p style="margin:16px 0 0;color:var(--muted);font-size:13px">串行只表示它们复用同一组24-rank资源；control 的计算结果不会流入 no-kessler，分支状态仍彼此隔离。</p>
-        </article>
-      </div>
-    </section>
-
-    <section id="roles">
-      <div class="section-head">
-        <div><span class="kicker">Responsibility map</span><h2>谁在和谁交互？</h2></div>
-        <p>“server”不是模型计算器，“Dask Scheduler”也不是 MPI rank。把控制面、资源面和数据面分开后，整个架构就很清楚。</p>
-      </div>
-      <div class="role-grid">
-        <article class="role">
-          <div class="role-icon server-color">S</div>
-          <h3>自定义 Server</h3>
-          <p>连接 Notebook 与一个已经存活的24-rank模型。</p>
-          <ul><li>定义 step/get/set 消息</li><li>rank 0 socket 接收</li><li>保持 live StatePool</li></ul>
-        </article>
-        <article class="role">
-          <div class="role-icon dask-color">D</div>
-          <h3>Dask</h3>
-          <p>连接 Notebook 中的实验意图与可重启任务。</p>
-          <ul><li>Client 提交 Future</li><li>Scheduler 管依赖</li><li>Worker 执行 action plan</li></ul>
-        </article>
-        <article class="role">
-          <div class="role-icon pbs-color">P</div>
-          <h3>PBS</h3>
-          <p>提供节点、CPU、内存和 walltime，不理解模型状态。</p>
-          <ul><li>一个 outer allocation</li><li>提供 PBS_NODEFILE</li><li>到期回收资源</li></ul>
-        </article>
-        <article class="role">
-          <div class="role-icon mpi-color">M</div>
-          <h3>MPI / mpi4py</h3>
-          <p>负责一次模型运行内部24个 ranks 之间的数据通信。</p>
-          <ul><li>halo exchange</li><li>bcast / gather / allreduce</li><li>barrier 与一致性</li></ul>
-        </article>
-        <article class="role">
-          <div class="role-icon server-color">R</div>
-          <h3>DeviceRegistry</h3>
-          <p>把通用 StatePool 字段连接到生成的 scheme device。</p>
-          <ul><li>按 standard_name 接线</li><li>验证 dtype/shape/units</li><li>检查零拷贝地址稳定</li></ul>
-        </article>
+      <div class="timeline">
+        <article><div class="number">1</div><h3>规划资源</h3><p><code>plan_pool()</code>发现PBS资源并计算ranks、slots和内存余量。</p></article>
+        <article><div class="number">2</div><h3>启动一次MPI</h3><p><code>experiments.pool()</code>执行一次 <code>mpiexec -n slots×ranks</code>。</p></article>
+        <article><div class="number">3</div><h3>切分slot</h3><p><code>COMM_WORLD.Split</code>为每个模型建立独立communicator。</p></article>
+        <article><div class="number">4</div><h3>执行或fork</h3><p>命令只发给目标slot；fork由对应parent/child rank直接复制状态。</p></article>
+        <article><div class="number">5</div><h3>回收资源</h3><p>关闭model归还slot；关闭pool才finalize整个MPI world。</p></article>
       </div>
       <div class="notice">
-        <span>!</span>
-        <div><strong>Dask 不替代 MPI</strong><p>Dask 可以替代我们自己编写的“实验任务提交与依赖管理”，但每个 CAM segment 内部仍然由 mpi4py 完成紧耦合通信。</p></div>
+        <strong>“暂停”不是保存后退出。</strong>
+        MPI进程、各slot的StatePool、Fortran共享库和模型时钟都留在内存中。空闲时几乎不消耗计算CPU，但pool关闭前仍占用PBS资源。
       </div>
     </section>
 
     <section id="state">
       <div class="section-head">
-        <div><span class="kicker">State semantics</span><h2>StatePool 到底在哪里？</h2></div>
-        <p>三种控制面的根本差异不是字段名字或 kernel，而是“下一条命令是否还面对同一块内存”。直接 server 与 persistent Actor 都面对 live StatePool；persistent memory fork 和 checkpoint 分支都会恢复新的私有副本，区别是 snapshot 留在 Dask 内存还是写入磁盘。</p>
+        <div><span class="kicker">Python-owned state</span><h2>变量如何存在 StatePool 中？</h2></div>
+        <p>每个 MPI rank 拥有自己的 rank-local StatePool。字段不是塞进一个会扩容的大数组，而是独立 NumPy 数组加一份字段 contract；已有数组的地址不会因为增加新字段而改变。</p>
       </div>
-      <div class="card state-diagram">
-        <div class="state-box">
-          <span class="mode-label">SERVER · LIVE</span>
-          <h3>同一块进程内存</h3>
-          <p style="color:var(--muted);font-size:13px">一次初始化后，Notebook 每次命令仍然面对原来的数组地址。</p>
-          <div class="pool">
-            <div class="field">T</div><div class="field">U</div><div class="field">V</div>
-            <div class="field">Q</div><div class="field">PS</div><div class="field">tendencies</div>
-            <div class="field">grid</div><div class="field">clock</div><div class="field">process state</div>
+      <div class="state-map">
+        <article class="card pool">
+          <h3>每个 rank 的 StatePool</h3>
+          <p>概念上是一张由标准名称索引的注册表：</p>
+          <div class="pool-grid">
+            <div class="field">air_temperature → ndarray</div>
+            <div class="field">eastward_wind → ndarray</div>
+            <div class="field">water_vapor → ndarray</div>
+            <div class="field">surface_pressure → ndarray</div>
+            <div class="field">tendencies → ndarray</div>
+            <div class="field">experiment_tracer → ndarray</div>
           </div>
-        </div>
-        <div class="state-arrow"><b>⇄</b>同一模型核心<br>不同状态边界</div>
-        <div class="state-box">
-          <span class="mode-label" style="color:var(--dask);background:var(--dask-soft)">DASK · SNAPSHOT</span>
-          <h3>每个分支一份私有副本</h3>
-          <p style="color:var(--muted);font-size:13px">父 snapshot 是不可变输入；可以保留为 Dask memory bundle，也可以持久化为 checkpoint。每个分支都恢复新的 Fortran-contiguous NumPy arrays。</p>
-          <div class="checkpoint-stack">
-            <div class="checkpoint">base / Dask memory bundle 或 rank-000…023.npz</div>
-            <div class="checkpoint">control / private StatePool</div>
-            <div class="checkpoint">no-kessler / private StatePool</div>
-            <div class="checkpoint">warm / private StatePool</div>
+        </article>
+        <article class="card panel-pad">
+          <h3><code>model.fields.create(...)</code> 内部发生什么？</h3>
+          <div class="steps">
+            <div class="step"><b>1</b><div><strong>建立 VariableSpec</strong><p>记录名称、dtype、维度、units、intent、restart policy。</p></div></div>
+            <div class="step"><b>2</b><div><strong>广播到24个rank</strong><p>所有rank验证相同的字段定义和当前 schema。</p></div></div>
+            <div class="step"><b>3</b><div><strong>分别申请 NumPy 数组</strong><p>每个rank按自己的本地分块创建 Fortran-contiguous 数组。</p></div></div>
+            <div class="step"><b>4</b><div><strong>注册进 StatePool</strong><p>字段名称指向新数组；已有数组不移动、不复制。</p></div></div>
           </div>
-        </div>
+        </article>
       </div>
     </section>
 
-    <section id="compare">
+    <section id="plugin">
       <div class="section-head">
-        <div><span class="kicker">Decision table</span><h2>什么时候用哪一个？</h2></div>
-        <p>三种控制面是互补关系：直接 server 最简单，persistent Actor 把低延迟交互和纯内存长期分支纳入 Dask，checkpoint segment 提供可跨故障、跨作业恢复的持久化分支。</p>
+        <div><span class="kicker">Runtime physics</span><h2>新 Fortran 函数如何接入？</h2></div>
+        <p>用户提供原始 <code>scheme.F90</code>、CCPP metadata 和 <code>device.yaml</code>。系统生成的 adapter 只做 ABI 转换，不复制或重写原始数值算法。</p>
+      </div>
+      <div class="card flow">
+        <div class="flow-track" style="grid-template-columns:repeat(6,minmax(130px,1fr))">
+          <div class="flow-node fortran-node"><b>scheme.F90</b><small>原始 Fortran</small></div>
+          <div class="flow-node python-node"><b>metadata</b><small>参数、维度、intent</small></div>
+          <div class="flow-node python-node"><b>生成 adapter</b><small>bind(C) ABI</small></div>
+          <div class="flow-node fortran-node"><b>编译 .so</b><small>rank 0 + cache</small></div>
+          <div class="flow-node mpi-node"><b>24× dlopen</b><small>每个rank独立加载</small></div>
+          <div class="flow-node dask-node"><b>插入 plan</b><small>before / after / group</small></div>
+        </div>
+      </div>
+      <div class="two-col" style="margin-top:18px">
+        <article class="card panel-pad">
+          <h3>共享库如何分发？</h3>
+          <p>只有rank 0生成 adapter 并编译到 GLADE 共享缓存。rank 0广播 <code>device.json</code> 路径和哈希；每个rank验证同一文件，然后分别执行 <code>ctypes.CDLL(...)</code>。不是rank 0把已加载内存复制给其他rank。</p>
+        </article>
+        <article class="card panel-pad">
+          <h3>字段如何连接？</h3>
+          <p>DeviceRegistry按 metadata 中的 standard name 从 StatePool 找数组，检查dtype、shape和units，再把NumPy内存地址传给 adapter。Fortran直接读写这些数组，调用结束后Python立刻看到结果。</p>
+        </article>
+      </div>
+      <pre style="margin-top:18px"><button class="copy">复制</button><code>installed = model.physics.install(
+    source=repo / "my_device/device.yaml",
+    after="kessler",
+    inputs={
+        "new_field": 0.0,
+        "new_parameter": 1.5,
+    },
+)
+
+model.physics["my_process"].run()</code></pre>
+    </section>
+
+    <section id="control">
+      <div class="section-head">
+        <div><span class="kicker">Control surface</span><h2>同一个 live model 的控制粒度</h2></div>
+        <p>所有调用都通过同一个 Actor、同一个 socket 和同一套 MPI ranks。区别只在于Python告诉driver执行完整step，还是只执行一个边界清晰的部分。</p>
       </div>
       <div class="card" style="overflow:hidden">
-        <table>
-          <thead><tr><th>维度</th><th class="server-color">常驻 Server</th><th class="dask-color">Persistent Dask</th><th class="dask-color">Dask 分支</th></tr></thead>
+        <table class="control-table">
+          <thead><tr><th>用户调用</th><th>执行内容</th><th>模型时间</th><th>适用场景</th></tr></thead>
           <tbody>
-            <tr><td>MPI生命周期</td><td>同一批24 ranks持续存活</td><td>Actor 内同一批24 ranks持续存活</td><td>每个segment新建24 ranks，结束后退出</td></tr>
-            <tr><td>状态位置</td><td>NotebookSession 的live StatePool</td><td>Dask Worker Actor 的live StatePool</td><td>父checkpoint → 分支私有StatePool</td></tr>
-            <tr><td>控制粒度</td><td>scheme、phase、step边界</td><td>ActorFuture 对应scheme、phase、step、field、plan</td><td>segment内细粒度；跨task为checkpoint</td></tr>
-            <tr><td>单次交互延迟</td><td class="yes">低</td><td class="yes">低：无重复mpiexec/restore</td><td>较高：需要mpiexec、restore、write</td></tr>
-            <tr><td>分支隔离</td><td>需要显式checkpoint</td><td class="yes"><code>fork_models()</code> 内存恢复私有StatePool</td><td class="yes">Future依赖天然表达独立分支</td></tr>
-            <tr><td>进程故障后状态</td><td class="no">未保存live内存会丢失</td><td class="no">Actor丢失时未保存内存会丢失</td><td class="yes">durable checkpoint可重启</td></tr>
-            <tr><td>当前PBS策略</td><td>一个持久worker job</td><td>单模型可用allocation；并行子模型各用一个PBS job</td><td>一个outer allocation，segments串行</td></tr>
-            <tr><td>最佳用途</td><td>直接调试、教学</td><td>逐步观察、改变量、长期control/warm分支</td><td>可重启参数扫描、durable fan-out</td></tr>
+            <tr><td><code>model.advance(steps=1)</code></td><td>完整、已验证的CAM step顺序</td><td>推进一个timestep</td><td>正常科学运行</td></tr>
+            <tr><td><code>model.physics.kessler.run()</code></td><td>只运行指定scheme</td><td>不推进</td><td>物理过程实验与字段检查</td></tr>
+            <tr><td><code>model.phases.physics_to_dynamics.run()</code></td><td>只运行指定phase</td><td>不推进</td><td>控制层和数据转换实验</td></tr>
+            <tr><td><code>model.fields.air_temperature.stats()</code></td><td>读取指定rank字段统计</td><td>不推进</td><td>Notebook观察</td></tr>
+            <tr><td><code>model.fields.air_temperature.set(...)</code></td><td>修改Python-owned数组</td><td>不推进</td><td>扰动与敏感性实验</td></tr>
           </tbody>
         </table>
       </div>
+      <div class="notice">
+        <strong>单独调用 scheme 或 phase 不会自动补齐前置过程。</strong>
+        它们是显式控制实验；日常运行仍应使用完整 <code>advance()</code> 路径。
+      </div>
     </section>
 
-    <section id="usage">
+    <section id="pbs">
       <div class="section-head">
-        <div><span class="kicker">Concrete usage</span><h2>代码如何对应架构？</h2></div>
-        <p><code>try_notebook_session.ipynb</code> 展示直接常驻交互；<code>try_dask_fanout.ipynb</code> 只展示 checkpoint 分支；<code>try_persistent_dask.ipynb</code> 专门展示 persistent Actor。</p>
+        <div><span class="kicker">Resource lifetime</span><h2>一个 persistent model 对应多少 PBS？</h2></div>
+        <p><code>experiments.pool(...)</code>创建一个动态MPI world。<code>pool.model(...)</code>只租用其中一个slot，不会再次执行qsub或mpiexec。</p>
       </div>
-      <div class="two-col">
-        <article class="card panel-pad">
-          <span class="mode-label">NotebookSession</span>
-          <h3>直接观察 live StatePool</h3>
-          <pre><button class="copy">复制</button><code>with NotebookSession(
-    config,
-    run_dir=run_dir,
-) as model:
-    model.prepare_initial_step()
-    before = model.fields.air_temperature.get(rank=0)
-    model.physics.kessler.run()
-    after = model.fields.air_temperature.get(rank=0)
-    model.step()</code></pre>
+      <div class="pbs-grid">
+        <article class="pbs-card">
+          <span class="tag">ALLOCATION MODE</span>
+          <h3>Notebook 已在计算节点 allocation 中</h3>
+          <p><code>execution_mode="allocation"</code>时，Actor直接在当前PBS资源中启动一次大MPI world。可并发模型数由CPU、内存、placement和每模型rank数共同决定。</p>
         </article>
-        <article class="card panel-pad">
-          <span class="mode-label" style="color:var(--dask);background:var(--dask-soft)">Persistent Dask</span>
-          <h3>只启动一次 MPI，连续提交 Actor 方法</h3>
-          <pre><button class="copy">复制</button><code>with experiments.model("interactive") as model:
-    started = model.status
-    model.advance(steps=2)
-    stats = model.fields.air_temperature.stats(
-        rank=0
-    )
-    checkpoint = model.save()
-    finished = model.status
+        <article class="pbs-card">
+          <span class="tag">PBS MODE</span>
+          <h3>Notebook 不在 allocation 中</h3>
+          <p><code>execution_mode="pbs"</code>时，创建pool只qsub一次，PBS select来自ResourcePlan。创建base和所有child都在这个job内部完成。</p>
+        </article>
+      </div>
+      <div class="notice">
+        <strong>判断标准：</strong>
+        同一个 <code>model</code> 上连续调用一百次方法仍然只有一次MPI启动；创建一百个新的 <code>model</code> 则是100套独立模型。
+      </div>
+    </section>
 
-assert finished.step == started.step + 2
-assert finished.mpi_launch_count == 1</code></pre>
-        </article>
-        <article class="card panel-pad">
-          <span class="mode-label" style="color:var(--dask);background:var(--dask-soft)">Persistent memory fork</span>
-          <h3>base 10步后生成三个长期子模型</h3>
-          <pre><button class="copy">复制</button><code>control = experiments.plan("control")
-warm = experiments.plan("warm")
-warm.fields.edit(
-    "air_temperature", "add", 1.0
-)
+    <section id="fork">
+      <div class="section-head">
+        <div><span class="kicker">In-world memory fork</span><h2>从当前内存状态分出长期子模型</h2></div>
+        <p>fork不是共享指针或操作系统fork。parent slot在action边界同步，然后每个parent rank把自己的StatePool发送给child slot中local-rank相同的进程；child恢复成私有NumPy数组。</p>
+      </div>
+      <div class="card fork">
+        <div class="fork-base"><strong>slot 0 · base</strong><br><small>live rank-local StatePool</small></div>
+        <div class="fork-arrow">→</div>
+        <div class="fork-children">
+          <div class="fork-child"><strong>slot 1 · control</strong> · private StatePool</div>
+          <div class="fork-child"><strong>slot 2 · no-kessler</strong> · private StatePool</div>
+          <div class="fork-child"><strong>slot 3 · warm +1K</strong> · private StatePool</div>
+        </div>
+      </div>
+      <div class="notice">
+        每个长期子模型仍需要自己的Dask worker、MPI启动和PBS资源。默认Notebook关闭此功能，避免仅演示动态变量或函数时额外申请三个PBS job。
+      </div>
+    </section>
 
-with experiments.model("base") as base:
-    base.advance(steps=10)
-    children = experiments.fork_models(
-        base, (control, warm), close_parent=True
-    )
-    with children:
-        children.advance(steps=1)
-        statuses = children.statuses</code></pre>
-        </article>
-        <article class="card panel-pad">
-          <span class="mode-label" style="color:var(--dask);background:var(--dask-soft)">Dask allocation</span>
-          <h3>从公共 checkpoint 运行 action plan</h3>
-          <pre><button class="copy">复制</button><code>client = Client(
+    <section id="code">
+      <div class="section-head">
+        <div><span class="kicker">Notebook entrypoint</span><h2>唯一推荐的使用方式</h2></div>
+        <p>parent和children都在同一个pool生命周期中。关闭child只归还slot，关闭pool才停止唯一的MPI world。</p>
+      </div>
+      <pre><button class="copy">复制</button><code>client = Client(
     processes=False,
     n_workers=1,
     threads_per_worker=1,
 )
 experiments = DaskExperimentClient(
     client,
-    ...,
-    execution_mode="allocation",
+    config=config_path,
+    initial_run_dir=initial_run_dir,
+    run_root=run_root,
+    execution_mode=execution_mode,
 )
-base = experiments.submit_base(
-    BranchSpec("base", steps=10)
-)
-granular = experiments.submit_plan(
-    base,
-    SegmentPlan(
-        "kessler-then-map",
-        (
-            RunScheme("kessler",
-                group="physics_before_coupler"),
-            ObserveFields(("potential_temperature",)),
-            RunPhase("physics_to_dynamics"),
-        ),
-        unsafe=True,
-    ),
-)
-summary = experiments.summary(granular).result()
-field = experiments.field(
-    granular, "potential_temperature", rank=0
-).result()</code></pre>
-        </article>
-      </div>
-      <div class="notice">
-        <span>i</span>
-        <div><strong><code>summaries()</code> 是等待点</strong><p><code>submit_plan()</code> 和 <code>fork()</code> 很快返回 Future；<code>summaries()</code> 会等待 segment 完成，并取回路径、step、action trace 和 PBS job ID 等小型 metadata。<code>field()</code> 只提取一个 rank 的指定数组，不下载完整 checkpoint bundle。</p></div>
-      </div>
-    </section>
 
-    <section id="pbs">
-      <div class="section-head">
-        <div><span class="kicker">PBS behavior</span><h2>“一个job”到底指什么？</h2></div>
-        <p>一个 PBS job 可以包含多个 Dask task 和多次 <code>mpiexec</code>。task 数量、MPI segment 数量和 PBS job 数量不是同一个概念。</p>
-      </div>
-      <div class="two-col">
-        <article class="card panel-pad">
-          <h3 class="server-color">allocation 模式</h3>
-          <pre><code>qsub -I ... ncpus=25:mpiprocs=24
-  └─ Jupyter + Dask scheduler/worker
-       ├─ base task        → mpiexec -n 24
-       ├─ control task     → mpiexec -n 24
-       ├─ no-kessler task  → mpiexec -n 24
-       └─ warm task        → mpiexec -n 24</code></pre>
-          <p style="margin:14px 0 0;color:var(--muted);font-size:13px">所有 summary 的 <code>pbs_job_id</code> 相同；分支目录里没有 <code>job.pbs</code>，也不调用嵌套 <code>qsub</code>。</p>
-        </article>
-        <article class="card panel-pad">
-          <h3 class="pbs-color">保留的 PBS-per-segment 模式</h3>
-          <pre><code>Jupyter on login node
-  └─ Dask scheduler/workers
-       ├─ base task        → qsub job A
-       ├─ control task     → qsub job B
-       ├─ no-kessler task  → qsub job C
-       └─ warm task        → qsub job D</code></pre>
-          <p style="margin:14px 0 0;color:var(--muted);font-size:13px">此时 summary 会显示 <code>execution_mode="pbs"</code> 和不同 PBS job IDs；它是兼容模式，不是当前推荐的单-allocation演示。</p>
-        </article>
-      </div>
+try:
+    with experiments.model("persistent-base") as model:
+        # 完整 step：推进模型时间
+        model.advance(steps=2)
+
+        # 新变量：每个rank申请并注册自己的NumPy数组
+        model.fields.create(
+            "experiment_tracer",
+            dims=("column", "level"),
+            units="kg kg-1",
+            initial=0.0,
+        )
+
+        # 新函数：编译、加载并插入当前live plan
+        model.physics.install(
+            source=repo / "examples/plugins/"
+                          "runtime_temperature_offset/device.yaml",
+            project_root=repo,
+            after="kessler",
+            inputs={
+                "runtime_plugin_temperature": 240.0,
+                "runtime_plugin_temperature_increment": 1.5,
+            },
+        )
+
+        # 细粒度控制：仍然复用同一套MPI ranks和StatePool
+        model.physics["runtime_temperature_offset"].run()
+        model.phases.physics_to_dynamics.run()
+
+        print(model.fields.experiment_tracer.stats(rank=0))
+        print(model.status)
+finally:
+    client.close()</code></pre>
     </section>
 
     <section id="faq">
       <div class="section-head">
-        <div><span class="kicker">Common questions</span><h2>容易混淆的关键边界</h2></div>
-        <p>这些问题都来自“任务、进程、状态和资源”四个层次被放在同一句话里。展开即可看到清晰边界。</p>
+        <div><span class="kicker">Boundaries</span><h2>最容易混淆的几点</h2></div>
+        <p>主线很简单：ResourcePlanner决定容量，Actor管理slot，socket传命令，MPI同步并复制状态，StatePool持有数组，device执行计算。</p>
       </div>
       <div class="card" style="overflow:hidden">
-        <details open><summary>Dask 可以让同一批 MPI ranks 一直活着吗？</summary><p>可以。<code>experiments.model()</code> 提供阻塞、可放进 <code>with</code> 的 Notebook 接口；<code>start_persistent()</code> 保留返回 ActorFuture 的 Dask-native 接口。二者都创建 worker-pinned Actor，内部拥有 NotebookSession 和 authenticated socket：构造时只启动一次 MPI，后续命令面对同一个 live StatePool。Pythonic 对象提供 <code>advance()</code>、类型化 <code>status</code>、属性式 <code>fields</code> 和 <code>save()</code>。</p></details>
-        <details><summary>细粒度 action 是否每次都重新启动 MPI？</summary><p>不一定。一个 <code>SegmentPlan</code> 内的所有 action 共用同一次24-rank MPI启动和同一个live StatePool；只有使用 <code>submit_action()</code> 把边界变成新的Future时，才会结束当前segment、写checkpoint并为下一个task重新启动MPI。</p></details>
-        <details><summary>为什么单-allocation模式仍然需要几分钟？</summary><p>它只去掉了每个分支重新排PBS队列的时间。模型step、MPI进程启动、24-rank checkpoint恢复与写入仍然真实发生；一个worker还会让占满24 ranks的segments串行执行。</p></details>
-        <details><summary>串行执行意味着后一个分支读取前一个分支吗？</summary><p>不意味着。control和no-kessler都从base的不可变snapshot创建私有副本；warm从它明确指定的parent创建副本。串行只是资源安排，不是状态依赖。</p></details>
-        <details><summary>自定义 server 为什么需要 socket？</summary><p>因为Notebook和24-rank模型是不同进程。模型完成一条命令后要继续存活并等待下一条命令，就必须有socket、pipe、ZeroMQ或MPI intercommunicator之类的持久IPC。当前实现使用带authkey的socket。</p></details>
-        <details><summary>Persistent Dask 是否已经不需要 socket？</summary><p>仍然需要。Dask 把 Notebook 命令路由到拥有模型的 Actor，但 Actor 和24-rank MPI模型仍是不同进程；Actor 复用 NotebookSession 的 authenticated socket。Dask 替代的是直接控制者和任务路由，不是跨进程通信本身。</p></details>
-        <details><summary>base 跑10步以后，可以不写磁盘直接 fork 三个长期模型吗？</summary><p>可以，使用 <code>fork_models()</code>。base 的24个rank在内存中序列化各自StatePool，Actor把不可变bundle留在Dask Future中；子Actor分别启动自己的24-rank PBS job，经socket/MPI scatter恢复私有数组。返回的 <code>ModelGroup</code> 是 context manager，可以统一推进和关闭全部子模型。它不是共享指针或OS fork，仍有网络传输和内存复制；但不会创建NPZ、manifest或checkpoint目录。</p></details>
-        <details><summary>主模型现在是否仍然写死 Kessler？</summary><p>不再写死 scheme 顺序。<code>CAMDriver</code> 从 <code>ModelConfig</code> 选择的 suite XML 创建 <code>CCPPSuitePlan</code>，保留 group、重复 scheme 和 subcycle，再由 <code>ProcessRouter</code> 逐个选择 generated Fortran device、Python component provider 或 host service。自定义 suite 名称也可以按其中的 scheme 名称组合 catalog metadata；尚未安装的 plugin process 会显式标记 unresolved。Kessler 只是当前完整 BFB 证据所用的 profile。</p></details>
-        <details><summary>ModelConfig 和 RuntimeCapabilities 有什么区别？</summary><p><code>ModelConfig</code> 是用户描述 case 的数据：suite、timestep、步数、网格、层数、constituent 数、MPI 数、输入文件等。它不再判断“是不是唯一 FKESSLER case”。<code>RuntimeCapabilities</code> 描述某个具体组件实现目前能执行哪些组合；例如当前 <code>CAM_SE_FVM_V1</code> 仍要求 ne3/L30/24 ranks。这样新 case 可以被正常表达，但不受支持的组合会以明确 capability mismatch 失败。</p></details>
-        <details><summary>用户是否必须直接构造 VariableSpec 和 PhysicsPluginSpec？</summary><p>不需要。Notebook 推荐使用 <code>model.fields.create(...)</code>、<code>model.fields["air_temperature"].get()</code>、<code>model.physics.install(...)</code> 和 <code>model.physics["kessler"].run()</code>。其中 <code>column/level/interface_level</code> 会自动翻译成内部维度。原来的 Spec 和 Placement 类型继续作为可序列化、可验证的底层协议，供 SegmentPlan、checkpoint 和高级工具使用。</p></details>
-        <details><summary>为了接入 Kessler，是否改写了原始 Fortran 数值代码？</summary><p>没有。构建器读取固定 CAM-SIMA revision 中的原始 <code>kessler.F90</code> 和 CCPP metadata，生成一个只负责 ABI 转换的 adapter。原始 scheme 直接参与 device <code>.so</code> 编译；旧的手写 <code>kessler_kernel.F90</code> 已删除。</p></details>
-        <details><summary>为什么 Kessler 不再有单独的 descriptor 目录？</summary><p>所有 155 个 scheme 现在都只有 <code>devices/generated/&lt;scheme&gt;/device.yaml</code> 这一份生成结果。Kessler 特有的每次运行前初始化和垂直索引约定来自 <code>devices/overrides.yaml</code>；它只补充 metadata 无法表达的 host policy，不允许替换原始源码、entrypoint 或 ABI。</p></details>
-        <details><summary>任意 CCPP scheme 现在都能无条件自动接入吗？</summary><p>所有 155 个活跃 scheme 都会自动得到 connector 与机器可读状态，但这不等于全部都已科学运行。通用 ABI 已覆盖 real/integer/default-logical、fixed-width character、Python-owned shaped allocatable arrays 和 non-allocatable derived state；纯 history scheme 由 Python service 接管。当前 100 个 native device 加 29 个 host service 可执行；仍依赖 MPI reduction、PIO/NetCDF input、外部 MUSICA 源码或 allocatable object 的 26 个 scheme 会 fail closed，并在 <code>all_scheme_support.json</code> 写明原因。</p></details>
+        <details open><summary>Persistent pool为什么还需要socket？</summary><p>Dask Actor和MPI模型进程不是同一个进程。socket只把下一条控制命令交给world rank 0并返回小结果；fork的大型StatePool数据不经过socket。</p></details>
+        <details><summary>一步结束以后，MPI真的暂停了吗？</summary><p>不是操作系统暂停。rank 0阻塞等待socket命令，其他rank阻塞等待MPI广播；进程、数组和共享库都仍然在内存中。</p></details>
+        <details><summary>新增变量是不是向StatePool大数组append？</summary><p>不是。每个字段是独立NumPy数组。create会申请新数组并在StatePool映射表中增加名称到数组的注册，不移动现有数组。</p></details>
+        <details><summary>所有rank如何加载同一个.so？</summary><p>rank 0在GLADE共享缓存中编译文件并广播路径和哈希；每个rank独立调用ctypes.CDLL，也就是各自在自己的进程中dlopen同一文件。</p></details>
+        <details><summary>Dask能替代MPI吗？</summary><p>不能。Dask管理Actor、任务依赖和实验生命周期；MPI仍负责每个slot内部的紧耦合通信以及slot之间的rank-to-rank fork复制。</p></details>
       </div>
     </section>
 
     <section id="evidence">
       <div class="section-head">
-        <div><span class="kicker">Validated boundary</span><h2>当前已经验证什么？</h2></div>
-        <p>证据针对固定 FKESSLER / ne3np4.pg3 / L30 / 24-rank target，不应外推为所有 CAM suites 和 grids 已完成。</p>
+        <div><span class="kicker">Validated boundary</span><h2>当前验证证据</h2></div>
+        <p>数值证据针对固定FKESSLER、ne3np4.pg3、L30、24-rank目标；它证明当前主线有效，不代表所有CAM suites都已完成科学验证。</p>
       </div>
       <div class="evidence">
-        <div class="evidence-card"><small>MODEL</small><b class="yes">BFB</b><small>50 steps</small></div>
+        <div class="evidence-card"><small>MODEL</small><b style="color:var(--ok)">BFB</b><small>50 steps</small></div>
         <div class="evidence-card"><small>HISTORY</small><b>51 / 51</b><small>timestamps</small></div>
         <div class="evidence-card"><small>NUMERIC</small><b>26 / 26</b><small>variables</small></div>
-        <div class="evidence-card"><small>DASK ALLOCATION</small><b>1 PBS</b><small>base + branches · direct MPI</small></div>
-        <div class="evidence-card"><small>PERSISTENT DASK</small><b class="yes">1 MPI</b><small>many Actor commands · live state</small></div>
-        <div class="evidence-card"><small>PERSISTENT FORK</small><b class="yes">0 FILES</b><small>10-step base → 3 live MPI children</small></div>
-        <div class="evidence-card"><small>GRANULAR ACTIONS</small><b class="yes">BFB</b><small>batch = checkpoint chain</small></div>
-        <div class="evidence-card"><small>ORIGINAL KESSLER</small><b class="yes">BFB</b><small>11 fields · source device</small></div>
-        <div class="evidence-card"><small>RUNTIME PLUGIN</small><b class="yes">24 RANKS</b><small>source → checkpoint → prebuilt</small></div>
-        <div class="evidence-card"><small>DYNAMIC STATE</small><b class="yes">POINTER SAFE</b><small>schema v2 · all ranks</small></div>
-        <div class="evidence-card"><small>SUITE CATALOG</small><b>155 / 155</b><small>connectors · 7 suites</small></div>
-        <div class="evidence-card"><small>EXECUTABLE CONNECTORS</small><b>129 / 155</b><small>100 native · 29 host</small></div>
-        <div class="evidence-card"><small>DEVICE ELF</small><b class="yes">CLEAN</b><small>no MPI / ESMF / PIO</small></div>
+        <div class="evidence-card"><small>PERSISTENT</small><b style="color:var(--ok)">1 MPI</b><small>many live commands</small></div>
+        <div class="evidence-card"><small>RUNTIME PLUGIN</small><b>24 ranks</b><small>collective load</small></div>
+        <div class="evidence-card"><small>DYNAMIC STATE</small><b style="color:var(--ok)">safe</b><small>stable pointers</small></div>
+        <div class="evidence-card"><small>FORTRAN DEVICE</small><b style="color:var(--ok)">clean</b><small>no MPI / ESMF / PIO link</small></div>
+        <div class="evidence-card"><small>MEMORY FORK</small><b>0 files</b><small>private child states</small></div>
       </div>
     </section>
 
     <footer>
-      <span>pycam-sima · Python field bus + generated Fortran devices · source-aligned July 2026</span>
-      <span>Python owns state · DeviceRegistry owns connection · original Fortran owns computation</span>
+      <span>pycam-sima · Persistent Dask mainline · July 2026</span>
+      <span>Python owns state · Dask owns lifetime · MPI owns rank synchronization · Fortran owns computation</span>
     </footer>
   </main>
 
   <script>
     const root = document.documentElement;
-    const body = document.body;
     const themeButton = document.getElementById("theme");
     const storedTheme = localStorage.getItem("pycam-theme");
     if (storedTheme === "light" || storedTheme === "dark") {
@@ -1358,16 +874,6 @@ field = experiments.field(
       const next = root.dataset.theme === "dark" ? "light" : "dark";
       root.dataset.theme = next;
       localStorage.setItem("pycam-theme", next);
-    });
-
-    document.querySelectorAll(".mode-button").forEach(button => {
-      button.addEventListener("click", () => {
-        const mode = button.dataset.mode;
-        body.dataset.mode = mode;
-        document.querySelectorAll(".mode-button").forEach(candidate => {
-          candidate.setAttribute("aria-pressed", String(candidate === button));
-        });
-      });
     });
 
     document.querySelectorAll(".copy").forEach(button => {

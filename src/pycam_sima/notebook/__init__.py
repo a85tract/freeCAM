@@ -7,6 +7,21 @@ from .persistent_dask import (
     PersistentDaskRequest,
     PersistentDaskSession,
 )
+from .pool_resources import (
+    ModelSlotStatus,
+    PoolRequest,
+    PoolResourcePlanner,
+    ResourcePlan,
+    plan_pool_resources,
+)
+from .pooled_dask import (
+    PersistentModelPool,
+    PersistentPoolActor,
+    PooledDaskRequest,
+    PooledModel,
+    PooledModelGroup,
+    PooledModelSession,
+)
 from .session import NotebookSchemePlan, NotebookSession, NotebookWorkerError
 
 __all__ = [
@@ -19,5 +34,16 @@ __all__ = [
     "PersistentCAMActor",
     "PersistentDaskRequest",
     "PersistentDaskSession",
+    "PersistentModelPool",
+    "PersistentPoolActor",
+    "PooledDaskRequest",
+    "PooledModel",
+    "PooledModelGroup",
+    "PooledModelSession",
+    "ModelSlotStatus",
+    "PoolRequest",
+    "PoolResourcePlanner",
+    "ResourcePlan",
+    "plan_pool_resources",
     "RemoteCAMField",
 ]
