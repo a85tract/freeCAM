@@ -32,6 +32,7 @@ from .model import (
     FieldVariant,
     FortranDevice,
     HostServiceRegistry,
+    homme_space_curve,
     ModelConfig,
     ModelOptions,
     ModelSnapshot,
@@ -56,6 +57,8 @@ from .model import (
     SchemeSupport,
     SchemePlacement,
     SchemeReference,
+    sfc_partition_counts,
+    sfc_partition_owner,
     SegmentPlan,
     SetSchemeEnabled,
     StatePool,
@@ -109,6 +112,7 @@ __all__ = [
     "FieldVariant",
     "FortranDevice",
     "HostServiceRegistry",
+    "homme_space_curve",
     "ModelConfig",
     "ModelOptions",
     "ModelSnapshot",
@@ -133,6 +137,8 @@ __all__ = [
     "SchemeSupport",
     "SchemePlacement",
     "SchemeReference",
+    "sfc_partition_counts",
+    "sfc_partition_owner",
     "SegmentPlan",
     "SetSchemeEnabled",
     "NotebookSession",
@@ -145,4 +151,4 @@ __all__ = [
     "SuiteScheme",
     "VariableSpec",
 ]
-__version__ = "0.15.0"
+__version__ = "0.16.0"

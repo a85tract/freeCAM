@@ -443,7 +443,8 @@ def _reconstruction_geometry(centroid: np.ndarray, vertices: np.ndarray, dalpha:
 def generate_fvm_geometry(hyai: np.ndarray, hybi: np.ndarray, reference_pressure: float) -> dict[str, np.ndarray]:
     """Generate every persistent FVM geometry field without native code or files."""
 
-    elements = tuple(sorted(global_elements(24), key=lambda item: item.global_id))
+    # Geometry is global and independent of the runtime MPI decomposition.
+    elements = tuple(sorted(global_elements(1), key=lambda item: item.global_id))
     count = len(elements)
     result: dict[str, np.ndarray] = {
         "global_element_id": np.arange(1, count + 1, dtype=np.int32),

@@ -1,4 +1,4 @@
-"""Dask Actor control of one persistent 24-rank CAM model."""
+"""Dask Actor control of one persistent configured-rank CAM model."""
 
 from __future__ import annotations
 
@@ -76,8 +76,8 @@ class PersistentDaskRequest:
                 "persistent session name may contain only letters, digits, "
                 "dot, dash, and underscore"
             )
-        if self.ranks != 24:
-            raise ValueError("the validated persistent target requires 24 ranks")
+        if self.ranks <= 0:
+            raise ValueError("ranks must be positive")
         if self.launch_mode not in {"auto", "local", "pbs"}:
             raise ValueError("launch_mode must be auto, local, or pbs")
         if self.execution_mode not in {"pbs", "allocation"}:

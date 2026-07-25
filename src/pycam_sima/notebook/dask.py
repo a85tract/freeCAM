@@ -1,4 +1,4 @@
-"""Dask task fan-out over restartable 24-rank CAM segments."""
+"""Dask task fan-out over restartable configured-rank CAM segments."""
 
 from __future__ import annotations
 
@@ -48,8 +48,8 @@ class DaskPBSOptions:
     memory: str = "80GB"
 
     def __post_init__(self) -> None:
-        if self.ranks != 24:
-            raise ValueError("the validated pycam-sima target requires 24 MPI ranks")
+        if self.ranks <= 0:
+            raise ValueError("ranks must be positive")
 
 
 @dataclass(frozen=True, slots=True)
@@ -159,7 +159,13 @@ class DaskExperimentClient:
             os.path.abspath(os.fspath(python_executable or sys.executable))
         )
         self.log_dir = Path(log_dir or project / "logs").resolve()
-        self.pbs = pbs or DaskPBSOptions()
+        model_config = ModelConfig.from_yaml(self.config)
+        self.pbs = pbs or DaskPBSOptions(ranks=model_config.mpi_size)
+        if self.pbs.ranks != model_config.mpi_size:
+            raise ValueError(
+                f"PBS ranks={self.pbs.ranks} does not match "
+                f"config mpi_size={model_config.mpi_size}"
+            )
         if execution_mode not in ("pbs", "allocation"):
             raise ValueError("execution_mode must be 'pbs' or 'allocation'")
         self.execution_mode: ExecutionMode = execution_mode

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, Mapping
 
 from .config import ModelConfig, REFERENCE_SOURCE_REVISION
@@ -16,6 +16,9 @@ class RuntimeCapabilities:
     name: str
     source_revisions: tuple[str, ...]
     constraints: Mapping[str, Any]
+    bounds: Mapping[str, tuple[int | None, int | None]] = field(
+        default_factory=dict
+    )
 
     def validate(self, config: ModelConfig) -> None:
         errors: list[str] = []
@@ -31,6 +34,16 @@ class RuntimeCapabilities:
             actual = getattr(config, name)
             if actual != wanted:
                 errors.append(f"{name}={actual!r}, available {wanted!r}")
+        for name, (minimum, maximum) in self.bounds.items():
+            actual = getattr(config, name)
+            if minimum is not None and actual < minimum:
+                errors.append(
+                    f"{name}={actual!r}, minimum available {minimum!r}"
+                )
+            if maximum is not None and actual > maximum:
+                errors.append(
+                    f"{name}={actual!r}, maximum available {maximum!r}"
+                )
         if errors:
             raise ConfigurationError(
                 f"runtime {self.name!r} cannot execute this case: "
@@ -42,6 +55,10 @@ class RuntimeCapabilities:
             "name": self.name,
             "source_revisions": self.source_revisions,
             "constraints": dict(self.constraints),
+            "bounds": {
+                name: {"minimum": values[0], "maximum": values[1]}
+                for name, values in self.bounds.items()
+            },
         }
 
 
@@ -55,10 +72,10 @@ CAM_SE_FVM_V1 = RuntimeCapabilities(
         "fv_nphys": 3,
         "pver": 30,
         "constituent_count": 3,
-        "mpi_size": 24,
         "threads_per_rank": 1,
         "calendar": "NO_LEAP",
         "run_type": "startup",
         "analytic_ic_type": "moist_baroclinic_wave_dcmip2016",
     },
+    bounds={"mpi_size": (1, 54)},
 )

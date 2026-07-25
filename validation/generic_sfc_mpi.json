@@ -1,0 +1,96 @@
+{
+  "schema_version": 1,
+  "validated_at": "2026-07-25T20:40:23Z",
+  "repository": {
+    "root": "/glade/work/ruitong/pycam-sima",
+    "parent_commit": "e50912cae94ee5e1196d6834b4d0cc47940f56b8",
+    "package_version": "0.16.0"
+  },
+  "implementation": {
+    "algorithm": "Python port of HOMME GenSpaceCurve plus contiguous rank partition with remainder assigned to the lowest ranks",
+    "supported_ne": "every positive integer; 2/3/5 recursion plus HOMME enclosing-power-of-two fallback",
+    "reference_element_count": 54,
+    "supported_mpi_ranks": {
+      "minimum": 1,
+      "maximum": 54
+    },
+    "unit_test_rank_counts": [
+      1,
+      7,
+      12,
+      18,
+      24,
+      27,
+      53,
+      54
+    ],
+    "configuration_source": "ModelConfig.mpi_size",
+    "dask_rank_source": "ModelConfig.mpi_size"
+  },
+  "fortran_algorithm_comparison": {
+    "source": "external/CAM-SIMA/src/dynamics/se/dycore/spacecurve_mod.F90 and cube_mod.F90",
+    "comparison": "exact SFC integer matrix equality",
+    "tested_ne": [
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8,
+      9,
+      10,
+      11,
+      12,
+      13,
+      14,
+      15,
+      16,
+      17,
+      20,
+      25,
+      30,
+      31
+    ],
+    "factorable_and_fallback_paths_tested": true,
+    "result": "all equal"
+  },
+  "local_verification": {
+    "command": "env -u BASH_ENV .venv/bin/python -m pytest -q",
+    "result": "151 passed, 1 third-party deprecation warning",
+    "git_diff_check": "passed"
+  },
+  "variable_rank_gate": {
+    "job_id": "6906934.desched1",
+    "mpi_ranks": 18,
+    "resources": "select=1:ncpus=18:mpiprocs=18:ompthreads=1:mem=20GB",
+    "exit_status": 0,
+    "walltime_used": "00:07:50",
+    "memory_used": "2130108kb",
+    "steps": 50,
+    "history_files": 51,
+    "native_calls": 14904,
+    "run_root": "/glade/derecho/scratch/ruitong/pycam-sima/sfc-dynamic-20260725-142147"
+  },
+  "reference_rank_bfb_gate": {
+    "job_id": "6907008.desched1",
+    "mpi_ranks": 24,
+    "resources": "select=1:ncpus=24:mpiprocs=24:ompthreads=1:mem=80GB",
+    "exit_status": 0,
+    "walltime_used": "00:08:12",
+    "memory_used": "2757876kb",
+    "steps": 50,
+    "history_files": 51,
+    "numeric_variables": 26,
+    "native_calls": 14904,
+    "oracle": "/glade/derecho/scratch/ruitong/pycam_sima_legacy_oracle_f8daa568/run",
+    "candidate": "/glade/derecho/scratch/ruitong/pycam-sima/sfc-generic-final-20260725-144600/history",
+    "compare_command": "env -u BASH_ENV .venv/bin/python -m pycam_sima.cli compare-history /glade/derecho/scratch/ruitong/pycam_sima_legacy_oracle_f8daa568/run /glade/derecho/scratch/ruitong/pycam-sima/sfc-generic-final-20260725-144600/history",
+    "result": "BFB"
+  },
+  "scope": {
+    "grid": "ne3np4.pg3",
+    "checkpoint_restore_requires_same_mpi_size": true,
+    "native_18_rank_oracle_comparison": "not run"
+  }
+}

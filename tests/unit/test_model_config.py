@@ -30,6 +30,11 @@ def test_runtime_capabilities_are_separate_from_generic_config() -> None:
         stop_n=3,
     )
     CAM_SE_FVM_V1.validate(config)
+    CAM_SE_FVM_V1.validate(config.with_overrides(mpi_size=18))
+    with pytest.raises(
+        ConfigurationError, match="mpi_size=55.*maximum available 54"
+    ):
+        CAM_SE_FVM_V1.validate(config.with_overrides(mpi_size=55))
 
     config.with_overrides(calendar="GREGORIAN").validate()
     with pytest.raises(ConfigurationError, match="calendar='GREGORIAN'"):

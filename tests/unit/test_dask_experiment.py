@@ -17,6 +17,7 @@ from pycam_sima import (
 from pycam_sima.notebook.dask import (
     _allocation_launcher,
     DaskExperimentClient,
+    DaskPBSOptions,
     DaskRunResult,
     run_allocation_segment,
 )
@@ -131,6 +132,33 @@ def test_dask_future_fans_out_independent_branches(tmp_path: Path) -> None:
     assert results["plus-one"].parent_branch == "base"
     assert results["plus-two"].parent_branch == "base"
     assert results["plus-one"].snapshot is not results["plus-two"].snapshot
+
+
+def test_dask_pbs_rank_count_defaults_to_model_configuration(
+    tmp_path: Path,
+) -> None:
+    inputs = _inputs(tmp_path)
+    inputs["config"].write_text("mpi_size: 18\n")
+    with Client(
+        processes=False,
+        n_workers=1,
+        threads_per_worker=1,
+        dashboard_address=None,
+    ) as client:
+        experiments = DaskExperimentClient(
+            client,
+            task_runner=_fake_segment,
+            **inputs,
+        )
+        assert experiments.pbs.ranks == 18
+
+        with pytest.raises(ValueError, match="does not match"):
+            DaskExperimentClient(
+                client,
+                task_runner=_fake_segment,
+                pbs=DaskPBSOptions(ranks=24),
+                **inputs,
+            )
 
 
 def test_submit_plan_and_single_action_keep_parent_future(

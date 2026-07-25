@@ -321,8 +321,14 @@ class InitializationPlan:
         if np.any(pool.get("physics_water_vapor") < pool.get("constituent_minimum")[2]):
             raise ValidationError("water vapor is below its registered minimum")
         inventory = ctx.comm.allgather(pool.get("global_element_id").tolist())
-        if len(inventory) == 24:
-            flat = sorted(item for rank_items in inventory for item in rank_items)
-            if flat != list(range(1, 55)):
-                raise ValidationError("24-rank element ownership does not cover each global element once")
+        if len(inventory) == ctx.comm.size:
+            flat = sorted(
+                item for rank_items in inventory for item in rank_items
+            )
+            expected = list(range(1, 6 * ctx.config.ne * ctx.config.ne + 1))
+            if flat != expected:
+                raise ValidationError(
+                    f"{ctx.comm.size}-rank element ownership does not cover "
+                    "each global element once"
+                )
         pool.seal_static()

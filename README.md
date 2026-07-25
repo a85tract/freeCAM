@@ -83,6 +83,29 @@ uv run pycam-sima compare-history \
 The maintained PBS jobs merge standard output and error and write their job
 logs under `logs/`, rather than into the repository root.
 
+MPI rank count is read from `ModelConfig.mpi_size`; Dask and PBS launchers use
+the same value and reject a launcher/config mismatch. Python reproduces
+HOMME's 2/3/5 recursive space-filling curve, its non-factorable-grid fallback,
+and its contiguous remainder-first rank partition. The current executable
+`ne3` profile therefore supports 1 through 54 nonempty SE ranks instead of
+being locked to 24:
+
+```bash
+RANKS=18 \
+CONFIG=/path/to/model-with-mpi_size-18.yaml \
+RUN_DIR=/path/containing/atm_in \
+HISTORY_DIR=/new/history/directory \
+qsub -V -l select=1:ncpus=18:mpiprocs=18:ompthreads=1:mem=20GB \
+  jobs/fkessler_model_variable_mpi.pbs
+```
+
+The SFC generator itself accepts any positive `ne`; expanding the complete
+model beyond the currently validated `ne3np4.pg3` capability remains a
+separate grid/dycore validation task. Checkpoints are rank-local and must be
+restored with the same MPI size with which they were written. Validation
+evidence is in
+[`validation/generic_sfc_mpi.json`](validation/generic_sfc_mpi.json).
+
 The history gate compares filenames, timestamps, dtype, shape, and float64 bit
 patterns for all 51 output times and 26 diagnostic variables. The upstream
 CAM-SIMA executable is used only to produce an external test oracle; it is not

@@ -53,6 +53,11 @@ from .experiment import (
     SetSchemeEnabled,
     execute_segment_plan,
 )
+from .grid import (
+    homme_space_curve,
+    sfc_partition_counts,
+    sfc_partition_owner,
+)
 from .state import NativeObjectHandle, StatePool
 from .host_services import (
     HostServiceEvent,
@@ -141,6 +146,7 @@ __all__ = [
     "HostServiceEvent",
     "HostServiceRegistry",
     "HistoryObservation",
+    "homme_space_curve",
     "InstalledPhysicsPlugin",
     "PhysicsPluginManager",
     "PhysicsPluginSpec",
@@ -149,6 +155,8 @@ __all__ = [
     "ProcessRouter",
     "SchemePlacement",
     "SchemeReference",
+    "sfc_partition_counts",
+    "sfc_partition_owner",
     "VariableSpec",
     "PythonHistoryService",
     "SuiteNode",

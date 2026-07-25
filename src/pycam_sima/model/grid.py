@@ -3,13 +3,11 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from functools import cache
 import math
 
 import numpy as np
 
-
-_PEANO3 = ((0, 0), (0, 1), (0, 2), (1, 2), (2, 2), (2, 1), (1, 1), (1, 0), (2, 0))
-_MESH3 = {ij: number for number, ij in enumerate(_PEANO3)}
 
 # (source face, source edge) -> (neighbor face, neighbor edge, reverse along edge)
 # for the equiangular HOMME cubed sphere.  Edge names use W/E/S/N.
@@ -39,42 +37,303 @@ class Element:
     owner: int
 
 
+def _sfc_factors(side: int) -> tuple[int, ...] | None:
+    """Return HOMME's ordered 2/3/5 factorization, or ``None``."""
+
+    remaining = side
+    factors: list[int] = []
+    for factor in (2, 3, 5):
+        while remaining % factor == 0:
+            factors.append(factor)
+            remaining //= factor
+    return tuple(factors) if remaining == 1 else None
+
+
+def _factorable_space_curve(side: int) -> tuple[tuple[int, ...], ...]:
+    """Port ``spacecurve_mod::GenSpaceCurve`` for a 2/3/5 grid."""
+
+    factors = _sfc_factors(side)
+    if not factors:
+        raise ValueError(f"side={side} is not factorable by 2, 3, and 5")
+
+    ordered = [[-1 for _ in range(side)] for _ in range(side)]
+    position = [0, 0]
+    visitation_count = 0
+
+    def increment(join_axis: int, join_direction: int) -> None:
+        nonlocal visitation_count
+        ordered[position[0]][position[1]] = visitation_count
+        visitation_count += 1
+        position[join_axis] += join_direction
+
+    def curve(
+        level: int,
+        curve_type: int,
+        main_axis: int,
+        main_direction: int,
+        join_axis: int,
+        join_direction: int,
+    ) -> None:
+        other_axis = (main_axis + 1) % 2
+        if curve_type == 2:
+            sections = (
+                (other_axis, main_direction, other_axis, main_direction),
+                (main_axis, main_direction, main_axis, main_direction),
+                (main_axis, main_direction, other_axis, -main_direction),
+                (
+                    other_axis,
+                    -main_direction,
+                    join_axis,
+                    join_direction,
+                ),
+            )
+        elif curve_type == 3:
+            sections = (
+                (other_axis, main_direction, other_axis, main_direction),
+                (other_axis, main_direction, other_axis, main_direction),
+                (main_axis, main_direction, main_axis, main_direction),
+                (main_axis, main_direction, main_axis, main_direction),
+                (main_axis, main_direction, other_axis, -main_direction),
+                (main_axis, -main_direction, main_axis, -main_direction),
+                (other_axis, -main_direction, other_axis, -main_direction),
+                (other_axis, -main_direction, main_axis, main_direction),
+                (
+                    main_axis,
+                    main_direction,
+                    join_axis,
+                    join_direction,
+                ),
+            )
+        elif curve_type == 5:
+            sections = (
+                (main_axis, main_direction, main_axis, main_direction),
+                (main_axis, main_direction, main_axis, main_direction),
+                (other_axis, main_direction, other_axis, main_direction),
+                (other_axis, main_direction, other_axis, main_direction),
+                (other_axis, main_direction, main_axis, -main_direction),
+                (other_axis, -main_direction, other_axis, -main_direction),
+                (main_axis, -main_direction, main_axis, -main_direction),
+                (main_axis, -main_direction, other_axis, main_direction),
+                (other_axis, main_direction, other_axis, main_direction),
+                (other_axis, main_direction, other_axis, main_direction),
+                (main_axis, main_direction, main_axis, main_direction),
+                (main_axis, main_direction, other_axis, -main_direction),
+                (other_axis, -main_direction, main_axis, main_direction),
+                (other_axis, main_direction, other_axis, main_direction),
+                (main_axis, main_direction, main_axis, main_direction),
+                (main_axis, main_direction, main_axis, main_direction),
+                (main_axis, main_direction, other_axis, -main_direction),
+                (main_axis, -main_direction, main_axis, -main_direction),
+                (other_axis, -main_direction, other_axis, -main_direction),
+                (other_axis, -main_direction, main_axis, main_direction),
+                (main_axis, main_direction, other_axis, -main_direction),
+                (main_axis, -main_direction, main_axis, -main_direction),
+                (other_axis, -main_direction, other_axis, -main_direction),
+                (other_axis, -main_direction, main_axis, main_direction),
+                (
+                    main_axis,
+                    main_direction,
+                    join_axis,
+                    join_direction,
+                ),
+            )
+        else:
+            raise ValueError(f"unsupported HOMME SFC factor {curve_type}")
+
+        if level == 1:
+            for _, _, next_join_axis, next_join_direction in sections:
+                increment(next_join_axis, next_join_direction)
+            return
+
+        next_type = factors[level - 2]
+        for (
+            next_main_axis,
+            next_main_direction,
+            next_join_axis,
+            next_join_direction,
+        ) in sections:
+            curve(
+                level - 1,
+                next_type,
+                next_main_axis,
+                next_main_direction,
+                next_join_axis,
+                next_join_direction,
+            )
+
+    curve(len(factors), factors[-1], 0, 1, 0, 1)
+    if visitation_count != side * side:
+        raise RuntimeError(
+            f"HOMME SFC visited {visitation_count} of {side * side} cells"
+        )
+    return tuple(tuple(column) for column in ordered)
+
+
+@cache
+def homme_space_curve(side: int) -> tuple[tuple[int, ...], ...]:
+    """Return HOMME's zero-based SFC index as ``mesh[i][j]``.
+
+    This is a Python port of ``spacecurve_mod::GenSpaceCurve`` and the
+    non-factorable fallback in ``cube_mod::CubeTopology``.  It therefore
+    supports every positive element count per cubed-sphere edge, not only
+    the reference case's ``ne=3``.
+    """
+
+    side = int(side)
+    if side <= 0:
+        raise ValueError("side must be positive")
+    if side == 1:
+        return ((0,),)
+
+    factors = _sfc_factors(side)
+    if factors is not None:
+        return _factorable_space_curve(side)
+
+    enclosing_side = 1 << (side - 1).bit_length()
+    enclosing = _factorable_space_curve(enclosing_side)
+
+    def enclosing_index(index: int) -> int:
+        # This is Fortran NINT for a positive, one-based CubeTopology index.
+        coordinate = (
+            ((index + 0.5) / side) * enclosing_side + 0.5
+        )
+        one_based = math.floor(coordinate + 0.5)
+        return min(max(one_based - 1, 0), enclosing_side - 1)
+
+    mapped: dict[int, tuple[int, int]] = {}
+    for j in range(side):
+        for i in range(side):
+            enclosing_i = enclosing_index(i)
+            enclosing_j = enclosing_index(j)
+            mapped[enclosing[enclosing_i][enclosing_j]] = (i, j)
+
+    ordered = [[-1 for _ in range(side)] for _ in range(side)]
+    for sfc_index, (_, (i, j)) in enumerate(sorted(mapped.items())):
+        ordered[i][j] = sfc_index
+    if len(mapped) != side * side:
+        raise RuntimeError(
+            f"HOMME fallback mapped {len(mapped)} of {side * side} cells"
+        )
+    return tuple(tuple(column) for column in ordered)
+
+
 def _face_sfc(face: int, i: int, j: int, ne: int = 3) -> int:
-    if ne != 3:
-        raise ValueError("the first release only supports ne=3")
+    if not 0 <= i < ne or not 0 <= j < ne:
+        raise ValueError(f"element indices ({i}, {j}) are outside ne={ne}")
+    mesh = homme_space_curve(ne)
     if face in (1, 2):
-        key, face_offset = (i, ne - 1 - j), (face - 1) * 9
+        key, face_offset = (i, ne - 1 - j), (face - 1) * ne * ne
     elif face == 6:
-        key, face_offset = (ne - 1 - i, ne - 1 - j), 18
+        key, face_offset = (ne - 1 - i, ne - 1 - j), 2 * ne * ne
     elif face == 4:
-        key, face_offset = (ne - 1 - j, i), 27
+        key, face_offset = (ne - 1 - j, i), 3 * ne * ne
     elif face == 5:
-        key, face_offset = (i, j), 36
+        key, face_offset = (i, j), 4 * ne * ne
     elif face == 3:
-        key, face_offset = (i, j), 45
+        key, face_offset = (i, j), 5 * ne * ne
     else:
         raise ValueError(f"invalid cube face {face}")
-    return face_offset + _MESH3[key]
+    return face_offset + mesh[key[0]][key[1]]
+
+
+def _validate_sfc_partition(
+    element_count: int,
+    partition_count: int,
+) -> tuple[int, int]:
+    element_count = int(element_count)
+    partition_count = int(partition_count)
+    if element_count <= 0:
+        raise ValueError("element_count must be positive")
+    if partition_count <= 0:
+        raise ValueError("partition_count must be positive")
+    if partition_count > element_count:
+        raise ValueError(
+            "partition_count cannot exceed element_count because HOMME "
+            "does not support empty SE partitions"
+        )
+    return element_count, partition_count
+
+
+def sfc_partition_counts(
+    element_count: int,
+    partition_count: int,
+) -> tuple[int, ...]:
+    """Return HOMME's contiguous SFC element count for every partition."""
+
+    element_count, partition_count = _validate_sfc_partition(
+        element_count,
+        partition_count,
+    )
+    elements_per_partition, extra = divmod(
+        element_count, partition_count
+    )
+    return tuple(
+        elements_per_partition + int(rank < extra)
+        for rank in range(partition_count)
+    )
+
+
+def sfc_partition_owner(
+    sfc_index: int,
+    element_count: int,
+    partition_count: int,
+) -> int:
+    """Return the zero-based owner of one zero-based SFC element index."""
+
+    sfc_index = int(sfc_index)
+    element_count, partition_count = _validate_sfc_partition(
+        element_count,
+        partition_count,
+    )
+    if not 0 <= sfc_index < element_count:
+        raise ValueError(
+            f"sfc_index must be between 0 and {element_count - 1}"
+        )
+    elements_per_partition, extra = divmod(
+        element_count, partition_count
+    )
+    larger_partition = elements_per_partition + 1
+    larger_span = extra * larger_partition
+    if sfc_index < larger_span:
+        return sfc_index // larger_partition
+    return extra + (sfc_index - larger_span) // elements_per_partition
 
 
 def global_elements(size: int, ne: int = 3) -> tuple[Element, ...]:
-    if size != 24:
-        raise ValueError("the first release requires 24 MPI ranks")
+    element_count = 6 * ne * ne
+    sfc_partition_counts(element_count, size)
     elements: list[Element] = []
     for face in range(1, 7):
         for j in range(ne):
             for i in range(ne):
                 sfc = _face_sfc(face, i, j, ne)
-                # CAM's contiguous partition: first remainder ranks get one extra.
-                owner = sfc // 3 if sfc < 18 else 6 + (sfc - 18) // 2
-                elements.append(Element(1 + i + ne * j + ne * ne * (face - 1), face, i, j, sfc, owner))
+                owner = sfc_partition_owner(sfc, element_count, size)
+                global_id = 1 + i + ne * j + ne * ne * (face - 1)
+                elements.append(
+                    Element(global_id, face, i, j, sfc, owner)
+                )
     return tuple(sorted(elements, key=lambda item: item.sfc))
 
 
-def local_elements(rank: int, size: int = 24) -> tuple[Element, ...]:
+def local_elements(
+    rank: int,
+    size: int = 24,
+    ne: int = 3,
+) -> tuple[Element, ...]:
+    if not 0 <= rank < size:
+        raise ValueError(f"rank must be between 0 and {size - 1}")
     # HOMME stores each rank's contiguous SFC assignment in ascending global
     # element id, not traversal order within the SFC segment.
-    return tuple(sorted((item for item in global_elements(size) if item.owner == rank), key=lambda item: item.global_id))
+    return tuple(
+        sorted(
+            (
+                item
+                for item in global_elements(size, ne)
+                if item.owner == rank
+            ),
+            key=lambda item: item.global_id,
+        )
+    )
 
 
 def dimensions_for_rank(
@@ -245,12 +504,19 @@ def _fvm_cube_boundary(element: Element, ne: int = 3) -> int:
     return 0
 
 
-def _initialize_physgrid_halo(pool, elements: tuple[Element, ...], ne: int = 3) -> None:
+def _initialize_physgrid_halo(
+    pool,
+    elements: tuple[Element, ...],
+    size: int,
+    ne: int = 3,
+) -> None:
     """Build the persistent PG3 ghost schedule and mapping metric in Python."""
 
     nc, nhc = 3, 3
     panel_width = ne * nc
-    by_id = {element.global_id: element for element in global_elements(24, ne)}
+    by_id = {
+        element.global_id: element for element in global_elements(size, ne)
+    }
     schedule = pool.get("pg3_halo_global_column", unsafe=True)
     norm = pool.get("fvm_normalized_element_coordinate", unsafe=True)
     dinv = pool.get("fvm_inverse_metric_physgrid", unsafe=True)
@@ -780,4 +1046,4 @@ def populate_grid(pool, rank: int, size: int) -> None:
     pool.set("mapping_subcell_integration", _subcell_integration_weights(nodes, weights))
     pool.set("mapping_boundary_interpolation", _subcell_boundary_weights(nodes))
     pool.set("mapping_interpolation_matrix", _interpolation_matrix(nodes, weights))
-    _initialize_physgrid_halo(pool, elements)
+    _initialize_physgrid_halo(pool, elements, size)
