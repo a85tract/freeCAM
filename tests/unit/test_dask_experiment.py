@@ -161,6 +161,37 @@ def test_dask_pbs_rank_count_defaults_to_model_configuration(
             )
 
 
+def test_pool_planning_outside_allocation_uses_pbs_model_resources(
+    tmp_path: Path,
+) -> None:
+    with Client(
+        processes=False,
+        n_workers=1,
+        threads_per_worker=1,
+        dashboard_address=None,
+    ) as client:
+        experiments = DaskExperimentClient(
+            client,
+            task_runner=_fake_segment,
+            pbs=DaskPBSOptions(ranks=24, memory="80GB"),
+            execution_mode="pbs",
+            **_inputs(tmp_path),
+        )
+        plan = experiments.plan_pool(
+            max_concurrent_models=4,
+            ranks_per_model=None,
+            environ={},
+        )
+
+    assert plan.available_nodes == 4
+    assert plan.cpus_per_node == 24
+    assert plan.model_slots == 4
+    assert plan.world_size == 96
+    assert plan.pbs_select == (
+        "select=4:ncpus=24:mpiprocs=24:ompthreads=1:mem=80GB"
+    )
+
+
 def test_submit_plan_and_single_action_keep_parent_future(
     tmp_path: Path,
 ) -> None:

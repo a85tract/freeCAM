@@ -390,6 +390,25 @@ class DaskExperimentClient:
     ) -> ResourcePlan:
         """Resolve a model-pool layout from config and available resources."""
 
+        discovery_environment = os.environ if environ is None else environ
+        outside_allocation = not (
+            discovery_environment.get("PBS_JOBID")
+            or discovery_environment.get("PBS_NODEFILE")
+        )
+        if (
+            self.execution_mode == "pbs"
+            and outside_allocation
+            and available_nodes is None
+            and cpus_per_node is None
+            and memory_per_node is None
+        ):
+            # Login-node hardware is not a PBS execution target. Before an
+            # allocation exists, use one configured model node per requested
+            # concurrently live model.
+            available_nodes = max_concurrent_models or 1
+            cpus_per_node = self.pbs.ranks
+            memory_per_node = self.pbs.memory
+
         return plan_pool_resources(
             ModelConfig.from_yaml(self.config),
             max_concurrent_models=max_concurrent_models,
