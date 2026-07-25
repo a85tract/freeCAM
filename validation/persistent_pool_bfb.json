@@ -1,0 +1,31 @@
+{
+  "schema_version": 1,
+  "validated_at": "2026-07-25T21:40:28.780303+00:00",
+  "git_commit": "e0e3becf7699e503a26370ed92554524533694c2",
+  "pbs_job_id": "6907164.desched1",
+  "allocation": {
+    "nodes": 2,
+    "world_size": 48,
+    "model_slots": 2,
+    "ranks_per_model": 24,
+    "mpi_launch_count": 1,
+    "nested_qsub": 0,
+    "walltime": "00:08:08",
+    "maximum_memory_kb": 10425568
+  },
+  "base": {
+    "steps": 50,
+    "history_files": 51,
+    "history_bfb": true
+  },
+  "fork": {
+    "transport": "mpi",
+    "all_fields_bitwise_equal": true,
+    "rank_local_arrays_compared": 6816,
+    "child_exact_add_1K": true,
+    "parent_unchanged_after_child_edit": true,
+    "child_final_step": 51,
+    "slot_released_after_child_close": true
+  },
+  "completion_marker": "PYCAM_SIMA_PERSISTENT_POOL_BFB job=6907164.desched1 world=2x24 arrays=6816 history=51"
+}
