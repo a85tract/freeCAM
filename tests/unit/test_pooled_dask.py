@@ -11,6 +11,7 @@ import pytest
 from pycam_sima import (
     DaskExperimentClient,
     PersistentPoolActor,
+    PhysicsPluginSpec,
     PooledDaskRequest,
     PooledModelGroup,
 )
@@ -135,6 +136,14 @@ class _FakePooledSession:
                 if item["name"] == "kessler"
             )
             return self._status(name)
+        if op == "install_physics":
+            return {
+                **self._status(name),
+                "installed_plugin": {
+                    "name": "runtime_temperature_offset",
+                    "source": kwargs["plugin"]["source"],
+                },
+            }
         raise NotImplementedError(op)
 
     def fork_model(
@@ -268,6 +277,14 @@ def test_pool_reuses_one_launch_and_forks_private_slot_memory(
         with experiments.pool("science", resource_plan=plan) as pool:
             with pool.model("base") as base:
                 base.advance(2)
+                installed = base.install_physics(
+                    PhysicsPluginSpec("runtime-device.yaml"),
+                    unsafe=True,
+                )
+                assert installed == {
+                    "name": "runtime_temperature_offset",
+                    "source": "runtime-device.yaml",
+                }
                 branches = base.fork("control", "warm")
                 assert isinstance(branches, PooledModelGroup)
                 branches.warm.fields.air_temperature += 1.0

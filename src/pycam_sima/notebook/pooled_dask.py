@@ -316,6 +316,18 @@ class PersistentPoolActor:
             result = self._session.call(name, wire_operation, **payload)
             if isinstance(result, Mapping):
                 self._model_details.setdefault(name, {}).update(result)
+            if operation == "install_physics":
+                if not isinstance(result, Mapping):
+                    raise TypeError(
+                        "pooled install_physics returned a non-mapping result"
+                    )
+                try:
+                    return dict(result["installed_plugin"])
+                except (KeyError, TypeError) as exc:
+                    raise RuntimeError(
+                        "pooled install_physics response lacks "
+                        "installed_plugin metadata"
+                    ) from exc
             return result
 
     def advance_models(
