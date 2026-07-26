@@ -1,0 +1,22 @@
+#!/bin/bash
+#PBS -N pycam_pool_plug
+#PBS -A UCUB0188
+#PBS -q develop
+#PBS -l select=1:ncpus=24:mpiprocs=24:ompthreads=1:mem=80GB
+#PBS -l walltime=00:10:00
+#PBS -j oe
+#PBS -o /glade/work/ruitong/pycam-sima/logs/
+
+set -euo pipefail
+
+PROJECT=/glade/work/ruitong/pycam-sima
+CASE=$PROJECT/reference/cases/FKESSLER_ne3pg3_gnu_24x50
+VALIDATION_ROOT=/glade/derecho/scratch/ruitong/pycam-sima/pool-plugin-api/${PBS_JOBID}
+
+source "$CASE/.env_mach_specific.sh" >/dev/null 2>&1
+cd "$PROJECT"
+
+"$PROJECT/.venv/bin/python" tools/validate_pool_plugin_api.py \
+  --run-root "$VALIDATION_ROOT" \
+  --initial-run-dir "$CASE/CaseDocs" \
+  --output "$VALIDATION_ROOT/result.json"

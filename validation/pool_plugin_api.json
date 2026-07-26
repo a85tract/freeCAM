@@ -1,0 +1,16 @@
+{
+  "installed_result": {
+    "active": true,
+    "name": "runtime_temperature_offset",
+    "pending": false,
+    "scheme_keys": [
+      "plugin:runtime_temperature_offset.runtime_temperature_offset@25"
+    ],
+    "state_policy": "stateless"
+  },
+  "mpi_launch_count": 1,
+  "mpi_ranks": 24,
+  "passed": true,
+  "pbs_job_id": "6908322.desched1",
+  "plugin_delta": 1.5
+}
