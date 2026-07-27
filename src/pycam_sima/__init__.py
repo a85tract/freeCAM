@@ -67,6 +67,8 @@ from .model import (
     VariableSpec,
 )
 from .notebook import (
+    ModelActor,
+    PoolLauncherActor,
     DaskExperimentClient,
     DaskPBSOptions,
     DaskRunResult,
@@ -162,6 +164,8 @@ __all__ = [
     "PersistentDaskSession",
     "PersistentModelPool",
     "PersistentPoolActor",
+    "PoolLauncherActor",
+    "ModelActor",
     "PooledDaskRequest",
     "PooledModel",
     "PooledModelGroup",
@@ -173,4 +177,4 @@ __all__ = [
     "SuiteScheme",
     "VariableSpec",
 ]
-__version__ = "0.16.0"
+__version__ = "0.17.0"

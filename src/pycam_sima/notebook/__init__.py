@@ -15,6 +15,8 @@ from .pool_resources import (
     plan_pool_resources,
 )
 from .pooled_dask import (
+    ModelActor,
+    PoolLauncherActor,
     PersistentModelPool,
     PersistentPoolActor,
     PooledDaskRequest,
@@ -36,6 +38,8 @@ __all__ = [
     "PersistentDaskSession",
     "PersistentModelPool",
     "PersistentPoolActor",
+    "PoolLauncherActor",
+    "ModelActor",
     "PooledDaskRequest",
     "PooledModel",
     "PooledModelGroup",

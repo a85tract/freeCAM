@@ -36,6 +36,7 @@ from .persistent_dask import (
 )
 from .pool_resources import ResourcePlan, plan_pool_resources
 from .pooled_dask import (
+    ModelActor,
     PersistentModelPool,
     PersistentPoolActor,
     PooledDaskRequest,
@@ -118,6 +119,7 @@ class DaskRunResult:
 TaskRunner = Callable[[SegmentRequest, DaskRunResult | None], DaskRunResult]
 PersistentActorFactory = Callable[..., Any]
 PoolActorFactory = Callable[..., Any]
+ModelActorFactory = Callable[..., Any]
 
 
 def _coerce_plan(value: SegmentPlan | PlanBuilder) -> SegmentPlan:
@@ -147,6 +149,7 @@ class DaskExperimentClient:
         task_runner: TaskRunner | None = None,
         persistent_actor_factory: PersistentActorFactory | None = None,
         pool_actor_factory: PoolActorFactory | None = None,
+        model_actor_factory: ModelActorFactory | None = None,
     ) -> None:
         if not callable(getattr(client, "submit", None)):
             raise TypeError("client must provide dask.distributed.Client.submit")
@@ -184,6 +187,7 @@ class DaskExperimentClient:
         self.task_runner = task_runner or runners[execution_mode]
         self.persistent_actor_factory = persistent_actor_factory or PersistentCAMActor
         self.pool_actor_factory = pool_actor_factory or PersistentPoolActor
+        self.model_actor_factory = model_actor_factory or ModelActor
 
         required = (
             self.config,
@@ -446,6 +450,8 @@ class DaskExperimentClient:
         request_timeout: float = 600.0,
         environ: Mapping[str, str] | None = None,
         qstat_runner: Callable[..., Any] | None = None,
+        actor_layout: str = "model-per-worker",
+        worker_policy: str = "exclusive",
     ) -> PersistentModelPool:
         """Launch one persistent MPI world and return its Pythonic slot pool."""
 
@@ -464,7 +470,33 @@ class DaskExperimentClient:
         )
         if not isinstance(selected_plan, ResourcePlan):
             raise TypeError("resource_plan must be ResourcePlan")
+        if actor_layout not in {"model-per-worker", "legacy-single-worker"}:
+            raise ValueError(
+                "actor_layout must be model-per-worker or legacy-single-worker"
+            )
+        if worker_policy not in {"exclusive", "shared"}:
+            raise ValueError("worker_policy must be exclusive or shared")
+        available_workers = self._persistent_workers()
         selected_worker = self._persistent_worker(worker)
+        model_workers: tuple[str, ...]
+        if actor_layout == "legacy-single-worker":
+            model_workers = (selected_worker,)
+        else:
+            candidates = tuple(
+                value for value in available_workers if value != selected_worker
+            )
+            required = int(selected_plan.model_slots)
+            if worker_policy == "exclusive" and len(candidates) < required:
+                raise RuntimeError(
+                    "model-per-worker pool requires one launcher worker plus "
+                    "one distinct Dask worker per model slot: "
+                    f"need {required + 1}, found {len(available_workers)}. "
+                    "Start more Dask workers or use worker_policy='shared'."
+                )
+            if worker_policy == "exclusive":
+                model_workers = candidates[:required]
+            else:
+                model_workers = candidates or (selected_worker,)
         selected_launch_mode = launch_mode or (
             "local" if self.execution_mode == "allocation" else "pbs"
         )
@@ -514,6 +546,10 @@ class DaskExperimentClient:
             worker=selected_worker,
             name=str(name),
             resource_plan=selected_plan,
+            actor_layout=actor_layout,
+            worker_policy=worker_policy,
+            model_workers=model_workers,
+            model_actor_factory=self.model_actor_factory,
         )
 
     def fork_persistent(

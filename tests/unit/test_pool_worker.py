@@ -98,6 +98,64 @@ def test_advance_models_emits_one_concurrent_pool_command(
     ]
 
 
+def test_call_models_batches_different_operations_by_slot(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    session = _session(tmp_path)
+    session._models = {"control": 1, "warm": 3}
+    requests = []
+
+    def request(payload):
+        requests.append(payload)
+        return {
+            "1": {"step": 3, "model_name": "control"},
+            "3": {"model_name": "warm", "mean": 241.0},
+        }
+
+    monkeypatch.setattr(session, "_request", request)
+    result = session.call_models(
+        (
+            ("control", "run_scheme", ("kessler",), {"group": "before"}),
+            (
+                "warm",
+                "get_field_stats",
+                ("air_temperature",),
+                {"rank": 0},
+            ),
+        )
+    )
+
+    assert result["control"]["step"] == 3
+    assert result["warm"]["mean"] == 241.0
+    assert requests == [
+        {
+            "op": "model_commands",
+            "commands": [
+                {
+                    "slot": 1,
+                    "name": "control",
+                    "command": {
+                        "op": "run_scheme",
+                        "scheme": "kessler",
+                        "group": "before",
+                        "model_name": "control",
+                    },
+                },
+                {
+                    "slot": 3,
+                    "name": "warm",
+                    "command": {
+                        "op": "get_field_stats",
+                        "field": "air_temperature",
+                        "rank": 0,
+                        "model_name": "warm",
+                    },
+                },
+            ],
+        }
+    ]
+
+
 def test_pool_model_call_never_uses_checkpoint_transport(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

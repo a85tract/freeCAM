@@ -338,6 +338,37 @@ class PooledWorkerSession(NotebookSession):
             for name in selected
         }
 
+    def call_models(
+        self,
+        calls: Sequence[
+            tuple[str, str, Sequence[Any], Mapping[str, Any]]
+        ],
+    ) -> dict[str, Any]:
+        """Execute one command per distinct model in one MPI-world broadcast."""
+
+        selected = tuple(calls)
+        names = tuple(str(item[0]) for item in selected)
+        if len(names) != len(set(names)):
+            raise ValueError("call_models accepts at most one command per model")
+        commands = [
+            {
+                "slot": self._model_slot(name),
+                "name": name,
+                "command": self._model_command(
+                    name,
+                    str(operation),
+                    tuple(args),
+                    dict(kwargs),
+                ),
+            }
+            for name, operation, args, kwargs in selected
+        ]
+        by_slot = self._request({"op": "model_commands", "commands": commands})
+        return {
+            name: by_slot[str(self._model_slot(name))]
+            for name in names
+        }
+
     def fork_model(
         self,
         parent: str,

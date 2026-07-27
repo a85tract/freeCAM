@@ -488,11 +488,17 @@ first action mutates model state.
 
 ### Dynamic persistent model pool
 
-The primary interactive path is a dynamically planned pool: one Dask Actor
-starts one MPI world, then partitions it into reusable model slots. Neither
-the ranks per model nor the number of slots is fixed in the implementation.
+The primary interactive path uses one launcher Actor plus one ModelActor per
+model. The launcher starts one MPI world and partitions it into reusable
+slots; each ModelActor lives on a distinct Dask worker and controls one slot.
+Neither the ranks per model nor the number of slots is fixed.
 
 ```python
+client = Client(
+    processes=False,
+    n_workers=5,  # one launcher plus four possible live models
+    threads_per_worker=1,
+)
 plan = experiments.plan_pool(
     max_concurrent_models=4,
     ranks_per_model=None,  # inherit ModelConfig.mpi_size
@@ -515,6 +521,29 @@ parent rank sends its rank-local serialized StatePool directly to the matching
 rank in each child slot. Large state never passes through the controller
 socket, Dask `CheckpointBundle`, or a checkpoint directory. Closing a model
 returns its slot; closing the pool stops the MPI world.
+
+The asynchronous API creates ordinary Dask Future dependencies without
+moving model arrays into Dask:
+
+```python
+base = pool.model("base")
+advanced = base.submit.advance(steps=10)
+observed = base.submit.fields.air_temperature.stats(
+    rank=0,
+    depends_on=advanced,
+)
+with base.fork("control", "warm", depends_on=observed) as children:
+    control = children.control.submit.advance(steps=5)
+    warm = children.warm.submit.advance(steps=5)
+    client.gather((control, warm))
+```
+
+The Scheduler sees the model-level task graph, while StatePool arrays remain
+inside MPI. Ready commands for different slots are routed through the launcher
+as one `model_commands` broadcast. The default `worker_policy="exclusive"`
+requires one launcher worker plus one worker per slot. Use
+`worker_policy="shared"` only for small local tests. The old one-Actor layout
+is available with `actor_layout="legacy-single-worker"`.
 
 `plan_pool()` discovers an active PBS allocation through `PBS_NODEFILE` and
 `qstat`, or accepts explicit node/CPU/memory values to produce a PBS request

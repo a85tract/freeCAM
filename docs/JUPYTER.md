@@ -12,10 +12,11 @@ The maintained Notebooks are:
 - `examples/try_persistent_dask.ipynb` for the dynamic, single-MPI-world model
   pool.
 
-The primary Dask control surface is `DaskExperimentClient.pool()`. It starts
-one dynamically sized MPI world and divides it into reusable model slots.
-`base.fork(...)` copies rank-local StatePool data directly to child slots
-inside that world.
+The primary Dask control surface is `DaskExperimentClient.pool()`. A launcher
+Actor starts one dynamically sized MPI world and divides it into reusable
+model slots. Each live model has a separate ModelActor on a separate Dask
+worker. `base.fork(...)` copies rank-local StatePool data directly to child
+slots inside that world.
 
 The older control surfaces remain available:
 
@@ -40,6 +41,13 @@ Run the Notebook inside a PBS allocation, then let the resource planner use
 the allocation limits:
 
 ```python
+from dask.distributed import Client
+
+client = Client(
+    processes=False,
+    n_workers=5,  # launcher plus four model workers
+    threads_per_worker=1,
+)
 resource_plan = experiments.plan_pool(
     max_concurrent_models=4,
     ranks_per_model=None,
@@ -60,6 +68,24 @@ launch. The socket carries commands and small results only; fork state moves
 directly between corresponding MPI ranks. If there are not enough idle slots
 for all requested live children, the current API reports the required and
 available capacity so the pool can be planned larger.
+
+Use `model.submit` to build a Scheduler-visible Future graph:
+
+```python
+advanced = base.submit.advance(steps=10)
+stats = base.submit.fields.air_temperature.stats(
+    rank=0,
+    depends_on=advanced,
+)
+branches = base.fork("control", "warm", depends_on=stats)
+control = branches.control.submit.advance(steps=5)
+warm = branches.warm.submit.advance(steps=5)
+client.gather((control, warm))
+```
+
+Commands for one model are automatically chained in submission order.
+Commands ready on distinct model workers are batched by the launcher and
+executed concurrently by their MPI slot communicators.
 
 ## Control one legacy persistent model through Dask
 

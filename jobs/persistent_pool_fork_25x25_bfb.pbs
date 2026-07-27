@@ -1,8 +1,8 @@
 #!/bin/bash
-#PBS -N pycam_fork_bfb
+#PBS -N pycam_actor_bfb
 #PBS -A UCUB0188
 #PBS -q develop
-#PBS -l select=2:ncpus=24:mpiprocs=24:ompthreads=1:mem=80GB
+#PBS -l select=4:ncpus=24:mpiprocs=24:ompthreads=1:mem=80GB
 #PBS -l walltime=00:30:00
 #PBS -j oe
 #PBS -o /glade/work/ruitong/pycam-sima/logs/

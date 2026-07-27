@@ -134,7 +134,18 @@ without gathering the complete checkpoint bundle. Granular model actions are
 explicitly unsafe experiments; only the unchanged complete-step order carries
 the model BFB contract.
 
-Persistent Dask execution is a separate Actor path. One worker-pinned Actor
+The primary persistent pool uses one `PoolLauncherActor` and one
+worker-pinned `ModelActor` for every live model. The launcher performs one PBS
+allocation and one large `mpiexec`, owns the socket and slot leases, and
+routes Scheduler-visible model Future operations into MPI-world command
+batches. Each ModelActor is fixed to a distinct Dask worker and one MPI slot;
+the large StatePool stays in that slot. Fork copies corresponding rank-local
+arrays directly between MPI slots and creates only lightweight child
+ModelActors. The default exclusive worker policy requires one launcher worker
+plus one worker per slot. The legacy single-Actor pool layout remains
+selectable for compatibility.
+
+Legacy persistent Dask execution is a separate Actor path. One worker-pinned Actor
 owns a live `NotebookSession`, holds the full-node MPI allocation lock, and
 launches 24 ranks once. Subsequent Actor futures call phase, scheme, complete
 step, field, plan, and checkpoint operations against the same in-memory

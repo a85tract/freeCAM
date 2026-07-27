@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Iterator, Mapping, Sequence
+from collections import deque
 from dataclasses import dataclass
 import os
 from pathlib import Path
@@ -113,8 +114,8 @@ def _default_pool_session_factory() -> PoolSessionFactory:
     return PooledWorkerSession
 
 
-class PersistentPoolActor:
-    """Worker-pinned Actor owning one MPI world split into reusable slots."""
+class PoolLauncherActor:
+    """Worker-pinned launcher for one MPI world split into reusable slots."""
 
     def __init__(
         self,
@@ -125,8 +126,18 @@ class PersistentPoolActor:
         self._guard = threading.RLock()
         self._closed = False
         self._mpi_launch_count = 0
+        self._mpi_launch_id = (
+            f"{request.name}-{socket.gethostname()}-{os.getpid()}-"
+            f"{time.time_ns()}"
+        )
         self._model_plans: dict[str, CCPPSuitePlan] = {}
         self._model_details: dict[str, dict[str, Any]] = {}
+        self._command_condition = threading.Condition(self._guard)
+        self._command_queue: deque[
+            tuple[int, str, str, tuple[Any, ...], dict[str, Any]]
+        ] = deque()
+        self._command_results: dict[int, tuple[str, Any]] = {}
+        self._next_command_id = 1
         plan = dict(request.resource_plan)
         options = ModelOptions(**dict(request.options))
         scheme_plan = CCPPSuitePlan.from_payload(request.scheme_plan)
@@ -155,6 +166,12 @@ class PersistentPoolActor:
         try:
             self._session.start()
             self._mpi_launch_count = 1
+            self._dispatcher = threading.Thread(
+                target=self._dispatch_commands,
+                name=f"pycam-pool-{request.name}",
+                daemon=True,
+            )
+            self._dispatcher.start()
         except BaseException:
             try:
                 self._session.close()
@@ -169,6 +186,7 @@ class PersistentPoolActor:
             result.setdefault("name", self._request.name)
             result.setdefault("running", True)
             result["mpi_launch_count"] = self._mpi_launch_count
+            result["pool_mpi_launch_id"] = self._mpi_launch_id
             result["resource_plan"] = dict(self._request.resource_plan)
             return result
 
@@ -342,6 +360,149 @@ class PersistentPoolActor:
                     ) from exc
             return result
 
+    def submit_model_call(
+        self,
+        name: str,
+        operation: str,
+        args: Sequence[Any] = (),
+        kwargs: Mapping[str, Any] | None = None,
+    ) -> int:
+        """Queue a model command without blocking the launcher's Actor thread."""
+
+        with self._command_condition:
+            self._ensure_open()
+            self._validate_model_name(name)
+            token = self._next_command_id
+            self._next_command_id += 1
+            self._command_results[token] = ("pending", None)
+            self._command_queue.append(
+                (
+                    token,
+                    str(name),
+                    str(operation),
+                    tuple(args),
+                    dict(kwargs or {}),
+                )
+            )
+            self._command_condition.notify()
+            return token
+
+    def poll_model_call(self, token: int) -> Mapping[str, Any]:
+        """Return a non-blocking command result so Actor RPC stays re-entrant."""
+
+        with self._guard:
+            try:
+                state, value = self._command_results[int(token)]
+            except KeyError as exc:
+                raise KeyError(f"unknown pooled command token {token}") from exc
+            if state == "pending":
+                return {"state": "pending"}
+            self._command_results.pop(int(token), None)
+            return {"state": state, "value": value}
+
+    def _dispatch_commands(self) -> None:
+        while True:
+            with self._command_condition:
+                while not self._command_queue and not self._closed:
+                    self._command_condition.wait()
+                if self._closed and not self._command_queue:
+                    return
+                batch = self._next_command_batch()
+            self._execute_command_batch(batch)
+
+    def _next_command_batch(
+        self,
+    ) -> list[tuple[int, str, str, tuple[Any, ...], dict[str, Any]]]:
+        first = self._command_queue.popleft()
+        if first[2] not in self._batchable_operations():
+            return [first]
+        selected = [first]
+        names = {first[1]}
+        retained: deque[
+            tuple[int, str, str, tuple[Any, ...], dict[str, Any]]
+        ] = deque()
+        while self._command_queue:
+            item = self._command_queue.popleft()
+            if item[2] not in self._batchable_operations():
+                retained.append(item)
+                retained.extend(self._command_queue)
+                self._command_queue.clear()
+                break
+            if item[1] in names:
+                retained.append(item)
+                continue
+            names.add(item[1])
+            selected.append(item)
+        self._command_queue.extendleft(reversed(retained))
+        return selected
+
+    @staticmethod
+    def _batchable_operations() -> frozenset[str]:
+        return frozenset(
+            {
+                "step",
+                "describe",
+                "prepare_initial_step",
+                "run_phase",
+                "run_scheme",
+                "run_scheme_group",
+                "get_field",
+                "get_field_stats",
+                "set_field",
+                "edit_field",
+            }
+        )
+
+    def _execute_command_batch(
+        self,
+        batch: Sequence[
+            tuple[int, str, str, tuple[Any, ...], dict[str, Any]]
+        ],
+    ) -> None:
+        outcomes: dict[int, tuple[str, Any]] = {}
+        try:
+            with self._guard:
+                calls = [
+                    (name, operation, args, kwargs)
+                    for _token, name, operation, args, kwargs in batch
+                ]
+                call_models = getattr(self._session, "call_models", None)
+                if len(batch) > 1 and callable(call_models):
+                    results = call_models(calls)
+                    for token, name, _operation, _args, _kwargs in batch:
+                        value = results[name]
+                        if isinstance(value, Mapping):
+                            self._model_details.setdefault(name, {}).update(
+                                value
+                            )
+                        outcomes[token] = ("done", value)
+                else:
+                    for token, name, operation, args, kwargs in batch:
+                        try:
+                            outcomes[token] = (
+                                "done",
+                                self.model_call(
+                                    name,
+                                    operation,
+                                    *args,
+                                    **kwargs,
+                                ),
+                            )
+                        except BaseException as exc:
+                            outcomes[token] = (
+                                "error",
+                                f"{type(exc).__name__}: {exc}",
+                            )
+        except BaseException as exc:
+            message = f"{type(exc).__name__}: {exc}"
+            outcomes.update(
+                (token, ("error", message))
+                for token, *_rest in batch
+            )
+        with self._command_condition:
+            self._command_results.update(outcomes)
+            self._command_condition.notify_all()
+
     def advance_models(
         self,
         names: Sequence[str],
@@ -379,14 +540,22 @@ class PersistentPoolActor:
             return result
 
     def close(self) -> dict[str, Any]:
-        with self._guard:
+        with self._command_condition:
             if self._closed:
                 return {
                     "closed": True,
                     "mpi_launch_count": self._mpi_launch_count,
                 }
-            self._session.close()
             self._closed = True
+            self._command_condition.notify_all()
+            pending = tuple(self._command_queue)
+            self._command_queue.clear()
+            for token, *_rest in pending:
+                self._command_results[token] = (
+                    "error",
+                    "RuntimeError: persistent model pool is closed",
+                )
+            self._session.close()
             return {
                 "closed": True,
                 "mpi_launch_count": self._mpi_launch_count,
@@ -440,6 +609,7 @@ class PersistentPoolActor:
                 slot.get("native_calls", details.get("native_calls", 0))
             ),
             "mpi_launch_count": self._mpi_launch_count,
+            "pool_mpi_launch_id": self._mpi_launch_id,
             "worker_host": socket.gethostname(),
             "worker_pid": os.getpid(),
             "launch_mode": getattr(self._session, "launch_mode_used", None),
@@ -707,6 +877,147 @@ class PersistentPoolActor:
         raise ValueError(f"unsupported pooled model operation: {operation!r}")
 
 
+# Compatibility name for notebooks created before the model-per-worker layout.
+PersistentPoolActor = PoolLauncherActor
+
+
+class ModelActor:
+    """Worker-resident controller for exactly one model in one MPI slot."""
+
+    def __init__(
+        self,
+        launcher: Any,
+        *,
+        pool_name: str,
+        model_name: str,
+        slot_id: int,
+    ) -> None:
+        self._launcher = launcher
+        self.pool_name = str(pool_name)
+        self.model_name = str(model_name)
+        self.slot_id = int(slot_id)
+        self._closed = False
+        self.worker = self._worker_address()
+
+    @staticmethod
+    def _worker_address() -> str:
+        try:
+            from distributed import get_worker
+
+            return str(get_worker().address)
+        except (ImportError, ValueError):
+            return f"local://{socket.gethostname()}-{os.getpid()}"
+
+    def describe(self) -> dict[str, Any]:
+        self._ensure_open()
+        return dict(self.execute("describe"))
+
+    def execute(
+        self,
+        operation: str,
+        args: Sequence[Any] = (),
+        kwargs: Mapping[str, Any] | None = None,
+    ) -> Any:
+        self._ensure_open()
+        submit = getattr(self._launcher, "submit_model_call", None)
+        poll = getattr(self._launcher, "poll_model_call", None)
+        if callable(submit) and callable(poll):
+            token = int(
+                _wait(
+                    submit(
+                        self.model_name,
+                        str(operation),
+                        tuple(args),
+                        dict(kwargs or {}),
+                    )
+                )
+            )
+            while True:
+                outcome = dict(_wait(poll(token)))
+                if outcome["state"] == "pending":
+                    time.sleep(0.001)
+                    continue
+                if outcome["state"] == "error":
+                    raise RuntimeError(str(outcome["value"]))
+                value = outcome.get("value")
+                return (
+                    self._decorate_status(value)
+                    if str(operation) == "describe"
+                    else value
+                )
+        value = _wait(
+            self._launcher.model_call(
+                self.model_name,
+                str(operation),
+                *tuple(args),
+                **dict(kwargs or {}),
+            )
+        )
+        return (
+            self._decorate_status(value)
+            if str(operation) == "describe"
+            else value
+        )
+
+    def _decorate_status(self, value: Any) -> dict[str, Any]:
+        result = dict(value)
+        result.update(
+            {
+                "dask_worker": self.worker,
+                "slot_id": self.slot_id,
+                "pool_name": self.pool_name,
+                "actor_layout": "model-per-worker",
+            }
+        )
+        return result
+
+    def close(self) -> Mapping[str, Any]:
+        if self._closed:
+            return {
+                "closed": True,
+                "name": self.model_name,
+                "slot_id": self.slot_id,
+            }
+        result = _wait(self._launcher.close_model(self.model_name))
+        self._closed = True
+        return result
+
+    def detach(self) -> Mapping[str, Any]:
+        """Close only this Dask Actor after the launcher released its slot."""
+
+        self._closed = True
+        return {
+            "closed": True,
+            "name": self.model_name,
+            "slot_id": self.slot_id,
+        }
+
+    def _ensure_open(self) -> None:
+        if self._closed:
+            raise RuntimeError(f"model actor {self.model_name!r} is closed")
+
+
+def execute_model_action(
+    model_actor: Any,
+    operation: str,
+    args: Sequence[Any] = (),
+    kwargs: Mapping[str, Any] | None = None,
+    dependency: Any = None,
+) -> Any:
+    """Dask task node for one ordered operation on a persistent ModelActor."""
+
+    # Dask resolves Future dependencies before calling this function.  Keeping
+    # the argument makes the dependency visible in the scheduler task graph.
+    del dependency
+    return _wait(
+        model_actor.execute(
+            str(operation),
+            tuple(args),
+            dict(kwargs or {}),
+        )
+    )
+
+
 class _PooledSchemePlan:
     def __init__(self, model: "PooledModelSession") -> None:
         self._model = model
@@ -724,15 +1035,74 @@ class _PooledSchemePlan:
         return _wait(self._model.reset_scheme_plan())
 
 
-class PooledModelSession:
-    """Future-returning proxy for one named slot in a pool Actor."""
+class _AsyncFieldReference:
+    def __init__(self, model: "PooledModelSession", name: str) -> None:
+        self._model = model
+        self.name = str(name)
 
-    def __init__(self, pool: "PersistentModelPool", name: str) -> None:
+    def get(
+        self,
+        *,
+        rank: int | str = 0,
+        depends_on: Any = None,
+    ) -> Any:
+        return self._model._call(
+            "get_field",
+            self.name,
+            rank=rank,
+            depends_on=depends_on,
+        )
+
+    def stats(
+        self,
+        *,
+        rank: int | str = 0,
+        depends_on: Any = None,
+    ) -> Any:
+        return self._model._call(
+            "get_field_stats",
+            self.name,
+            rank=rank,
+            depends_on=depends_on,
+        )
+
+
+class _AsyncFieldCollection:
+    def __init__(self, model: "PooledModelSession") -> None:
+        self._model = model
+
+    def __getitem__(self, name: str) -> _AsyncFieldReference:
+        return _AsyncFieldReference(self._model, str(name))
+
+    def __getattr__(self, name: str) -> _AsyncFieldReference:
+        if name.startswith("_"):
+            raise AttributeError(name)
+        return self[name]
+
+
+class PooledModelSession:
+    """Future-returning proxy for one worker-resident ModelActor."""
+
+    def __init__(
+        self,
+        pool: "PersistentModelPool",
+        name: str,
+        *,
+        actor: Any | None = None,
+        actor_future: Any | None = None,
+        worker: str | None = None,
+        slot_id: int | None = None,
+    ) -> None:
         self.pool = pool
-        self.actor = pool.actor
+        self.actor = actor or pool.actor
+        self.actor_future = actor_future
+        self.worker = worker or pool.worker
+        self.slot_id = slot_id
         self.name = str(name)
         self._closed = False
+        self._tail: Any = None
         self.scheme_plan = _PooledSchemePlan(self)
+        self.fields = _AsyncFieldCollection(self)
 
     @property
     def sync(self) -> "PooledModel":
@@ -746,23 +1116,64 @@ class PooledModelSession:
     def scheme_names(self) -> tuple[str, ...]:
         return tuple(_wait(self.describe()).get("scheme_names", ()))
 
-    def describe(self) -> Any:
-        return self._call("describe")
+    def describe(self, *, depends_on: Any = None) -> Any:
+        if self.pool.actor_layout == "legacy-single-worker":
+            return self._call("describe", depends_on=depends_on)
+        return self._submit("describe", depends_on=depends_on)
 
-    def step(self, count: int = 1) -> Any:
-        return self._call("step", int(count))
+    def initialize(self, *, depends_on: Any = None) -> Any:
+        return self.prepare_initial_step(depends_on=depends_on)
 
-    def prepare_initial_step(self) -> Any:
-        return self._call("prepare_initial_step")
+    def step(self, count: int = 1, *, depends_on: Any = None) -> Any:
+        return self._call("step", int(count), depends_on=depends_on)
 
-    def run_phase(self, name: str) -> Any:
-        return self._call("run_phase", str(name))
+    def advance(self, steps: int = 1, *, depends_on: Any = None) -> Any:
+        if steps < 0:
+            raise ValueError("steps must be non-negative")
+        return self.step(int(steps), depends_on=depends_on)
 
-    def run_scheme(self, name: str, *, group: str | None = None) -> Any:
-        return self._call("run_scheme", str(name), group=group)
+    def prepare_initial_step(self, *, depends_on: Any = None) -> Any:
+        return self._call("prepare_initial_step", depends_on=depends_on)
 
-    def run_scheme_group(self, group: str) -> Any:
-        return self._call("run_scheme_group", str(group))
+    def run_phase(
+        self,
+        name: str,
+        *,
+        unsafe: bool = False,
+        depends_on: Any = None,
+    ) -> Any:
+        del unsafe
+        return self._call("run_phase", str(name), depends_on=depends_on)
+
+    def run_scheme(
+        self,
+        name: str,
+        *,
+        group: str | None = None,
+        unsafe: bool = False,
+        depends_on: Any = None,
+    ) -> Any:
+        del unsafe
+        return self._call(
+            "run_scheme",
+            str(name),
+            group=group,
+            depends_on=depends_on,
+        )
+
+    def run_scheme_group(
+        self,
+        group: str,
+        *,
+        unsafe: bool = False,
+        depends_on: Any = None,
+    ) -> Any:
+        del unsafe
+        return self._call(
+            "run_scheme_group",
+            str(group),
+            depends_on=depends_on,
+        )
 
     def get_field(self, name: str, *, rank: int | str = 0) -> Any:
         return self._call("get_field", str(name), rank=rank)
@@ -900,23 +1311,83 @@ class PooledModelSession:
         self,
         *names: str,
         require_concurrent: bool = False,
+        depends_on: Any = None,
     ) -> "PooledModelGroup":
+        dependencies = tuple(
+            value
+            for value in (self._tail, depends_on)
+            if value is not None
+        )
         return self.pool._fork(
             self.name,
             names,
             require_concurrent=require_concurrent,
+            depends_on=dependencies,
         )
 
     def close(self) -> Any:
         if self._closed:
             raise RuntimeError("pooled model is already closed")
+        if self._tail is not None:
+            _wait(self._tail)
         self._closed = True
-        return self.actor.close_model(self.name)
+        if self.pool.actor_layout == "legacy-single-worker":
+            return self.actor.close_model(self.name)
+        result = self.actor.close()
+        self.pool._release_model_actor(self.name)
+        self.actor = None
+        self.actor_future = None
+        return result
 
     def _call(self, operation: str, *args: Any, **kwargs: Any) -> Any:
         if self._closed:
             raise RuntimeError("pooled model is closed")
-        return self.actor.model_call(self.name, operation, *args, **kwargs)
+        depends_on = kwargs.pop("depends_on", None)
+        if self.pool.actor_layout == "legacy-single-worker":
+            if depends_on is not None:
+                _wait(depends_on)
+            return self.actor.model_call(self.name, operation, *args, **kwargs)
+        return self._submit(
+            operation,
+            *args,
+            depends_on=depends_on,
+            **kwargs,
+        )
+
+    def _submit(
+        self,
+        operation: str,
+        *args: Any,
+        depends_on: Any = None,
+        **kwargs: Any,
+    ) -> Any:
+        if self._closed:
+            raise RuntimeError("pooled model is closed")
+        dependencies = tuple(
+            value
+            for value in (self._tail, depends_on)
+            if value is not None
+        )
+        dependency = (
+            None
+            if not dependencies
+            else dependencies[0]
+            if len(dependencies) == 1
+            else dependencies
+        )
+        future = self.pool.client.submit(
+            execute_model_action,
+            self.actor,
+            str(operation),
+            tuple(args),
+            dict(kwargs),
+            dependency,
+            pure=False,
+            workers=[self.worker],
+            allow_other_workers=False,
+        )
+        self._tail = future
+        return future
 
 
 class PooledModel(BlockingModel):
@@ -930,14 +1401,24 @@ class PooledModel(BlockingModel):
     def name(self) -> str:
         return self.submit.name
 
+    @property
+    def worker(self) -> str:
+        return self.submit.worker
+
+    @property
+    def slot_id(self) -> int | None:
+        return self.submit.slot_id
+
     def fork(
         self,
         *names: str,
         require_concurrent: bool = False,
+        depends_on: Any = None,
     ) -> "PooledModelGroup":
         return self.submit.fork(
             *names,
             require_concurrent=require_concurrent,
+            depends_on=depends_on,
         )
 
 
@@ -977,7 +1458,15 @@ class PooledModelGroup(Mapping[str, PooledModel]):
     def advance(self, steps: int = 1) -> "PooledModelGroup":
         if steps < 0:
             raise ValueError("steps must be non-negative")
-        _wait(self.pool.actor.advance_models(tuple(self), int(steps)))
+        for model in self._models.values():
+            if model.submit._tail is not None:
+                _wait(model.submit._tail)
+        _wait(
+            self.pool.launcher.advance_models(
+                tuple(self._models),
+                int(steps),
+            )
+        )
         return self
 
     def close(self) -> None:
@@ -1003,7 +1492,7 @@ class PooledModelGroup(Mapping[str, PooledModel]):
 
 
 class PersistentModelPool:
-    """Blocking context manager for a worker-pinned persistent pool Actor."""
+    """Client-side coordinator for one launcher and per-model Dask Actors."""
 
     def __init__(
         self,
@@ -1014,14 +1503,24 @@ class PersistentModelPool:
         worker: str,
         name: str,
         resource_plan: Any,
+        actor_layout: str = "legacy-single-worker",
+        worker_policy: str = "shared",
+        model_workers: Sequence[str] = (),
+        model_actor_factory: Any = ModelActor,
     ) -> None:
         self.client = client
+        self.launcher = actor
         self.actor = actor
         self.actor_future = actor_future
         self.worker = worker
         self.name = str(name)
         self.resource_plan = resource_plan
+        self.actor_layout = str(actor_layout)
+        self.worker_policy = str(worker_policy)
+        self._model_workers = tuple(str(value) for value in model_workers)
+        self._model_actor_factory = model_actor_factory
         self._models: dict[str, PooledModel] = {}
+        self._actor_futures: dict[str, Any] = {}
         self._closed = False
 
     @property
@@ -1032,14 +1531,38 @@ class PersistentModelPool:
     @property
     def slots(self) -> tuple[Mapping[str, Any], ...]:
         self._ensure_open()
-        return tuple(_wait(self.actor.slots()))
+        return tuple(_wait(self.launcher.slots()))
+
+    @property
+    def models(self) -> Mapping[str, PooledModel]:
+        return {
+            name: model
+            for name, model in self._models.items()
+            if not model.submit._closed
+        }
+
+    @property
+    def scheduler_status(self) -> Mapping[str, Any]:
+        info = self.client.scheduler_info()
+        return {
+            "launcher_worker": self.worker,
+            "model_workers": {
+                name: model.worker for name, model in self.models.items()
+            },
+            "available_workers": tuple(sorted(info.get("workers", {}))),
+            "actor_layout": self.actor_layout,
+            "worker_policy": self.worker_policy,
+        }
 
     def model(self, name: str, *, slot: int | None = None) -> PooledModel:
         self._ensure_open()
         if name in self._models and not self._models[name].submit._closed:
             raise ValueError(f"model {name!r} already exists in this pool")
-        _wait(self.actor.create_model(str(name), slot))
-        model = PooledModel(PooledModelSession(self, str(name)))
+        descriptor = dict(_wait(self.launcher.create_model(str(name), slot)))
+        model = self._attach_model(
+            str(name),
+            int(descriptor["slot_id"]),
+        )
         self._models[str(name)] = model
         return model
 
@@ -1049,30 +1572,120 @@ class PersistentModelPool:
         names: Sequence[str],
         *,
         require_concurrent: bool,
+        depends_on: Any = None,
     ) -> PooledModelGroup:
         self._ensure_open()
+        if depends_on is not None:
+            if isinstance(depends_on, tuple):
+                self.client.gather(depends_on)
+            else:
+                _wait(depends_on)
         normalized = tuple(str(name) for name in names)
-        _wait(
-            self.actor.fork_model(
-                str(parent),
-                normalized,
-                require_concurrent=require_concurrent,
+        descriptors = dict(
+            _wait(
+                self.launcher.fork_model(
+                    str(parent),
+                    normalized,
+                    require_concurrent=require_concurrent,
+                )
             )
         )
-        models = {
-            name: PooledModel(PooledModelSession(self, name))
-            for name in normalized
-        }
+        models: dict[str, PooledModel] = {}
+        try:
+            for name in normalized:
+                descriptor = dict(descriptors[name])
+                models[name] = self._attach_model(
+                    name,
+                    int(descriptor["slot_id"]),
+                )
+        except BaseException:
+            for model in models.values():
+                try:
+                    _wait(model.submit.close())
+                except BaseException:
+                    pass
+            for name in normalized:
+                if name in models:
+                    continue
+                try:
+                    _wait(self.launcher.close_model(name))
+                except BaseException:
+                    pass
+            raise
         self._models.update(models)
         return PooledModelGroup(self, models)
+
+    def _attach_model(self, name: str, slot_id: int) -> PooledModel:
+        if self.actor_layout == "legacy-single-worker":
+            return PooledModel(
+                PooledModelSession(
+                    self,
+                    name,
+                    worker=self.worker,
+                    slot_id=slot_id,
+                )
+            )
+        worker = self._worker_for_slot(slot_id)
+        actor_future = self.client.submit(
+            self._model_actor_factory,
+            self.launcher,
+            pool_name=self.name,
+            model_name=name,
+            slot_id=int(slot_id),
+            actor=True,
+            workers=[worker],
+            allow_other_workers=False,
+            pure=False,
+        )
+        try:
+            actor = actor_future.result()
+        except BaseException:
+            _wait(self.launcher.close_model(name))
+            raise
+        self._actor_futures[name] = actor_future
+        return PooledModel(
+            PooledModelSession(
+                self,
+                name,
+                actor=actor,
+                actor_future=actor_future,
+                worker=worker,
+                slot_id=int(slot_id),
+            )
+        )
+
+    def _worker_for_slot(self, slot_id: int) -> str:
+        if not self._model_workers:
+            return self.worker
+        if self.worker_policy == "exclusive":
+            return self._model_workers[int(slot_id)]
+        return self._model_workers[int(slot_id) % len(self._model_workers)]
+
+    def _release_model_actor(self, name: str) -> None:
+        self._actor_futures.pop(str(name), None)
 
     def close(self) -> Mapping[str, Any]:
         if self._closed:
             return {"closed": True}
-        result = _wait(self.actor.close())
-        self._closed = True
-        for model in self._models.values():
-            model.submit._closed = True
+        failures: list[BaseException] = []
+        if self.actor_layout != "legacy-single-worker":
+            for model in tuple(self._models.values()):
+                if model.submit._closed:
+                    continue
+                try:
+                    _wait(model.submit.close())
+                except BaseException as exc:
+                    failures.append(exc)
+        try:
+            result = _wait(self.launcher.close())
+        finally:
+            self._closed = True
+            for model in self._models.values():
+                model.submit._closed = True
+        if failures:
+            raise RuntimeError(
+                f"failed to close {len(failures)} pooled model actor(s)"
+            ) from failures[0]
         return result
 
     def _ensure_open(self) -> None:

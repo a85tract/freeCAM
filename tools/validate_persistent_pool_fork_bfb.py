@@ -1,4 +1,4 @@
-"""Validate 25-step parent + MPI-memory fork + 25-step child BFB."""
+"""Validate model-per-worker Dask control over one 4-slot MPI world."""
 
 from __future__ import annotations
 
@@ -83,7 +83,7 @@ def main() -> int:
 
     with Client(
         processes=False,
-        n_workers=1,
+        n_workers=5,
         threads_per_worker=1,
         dashboard_address=None,
         local_directory=str(run_root / "dask-worker-space"),
@@ -103,10 +103,10 @@ def main() -> int:
             execution_mode="allocation",
         )
         resource_plan = experiments.plan_pool(
-            max_concurrent_models=2,
+            max_concurrent_models=4,
             ranks_per_model=24,
             memory_per_model="auto",
-            available_nodes=2,
+            available_nodes=4,
             cpus_per_node=24,
             memory_per_node="80GB",
         )
@@ -119,7 +119,7 @@ def main() -> int:
                 base_at_fork = base.status
 
                 with base.fork(
-                    "control",
+                    "control", "no_kessler", "warm",
                     require_concurrent=True,
                 ) as children:
                     control = children.control
@@ -129,7 +129,23 @@ def main() -> int:
                             "child did not inherit parent fork step"
                         )
 
-                    control.advance(steps=continuation_steps)
+                    children.no_kessler.physics.kessler.disable()
+                    no_kessler_enabled = (
+                        children.no_kessler.physics.kessler.enabled
+                    )
+                    control_temperature = (
+                        control.fields.air_temperature.get(rank=0)
+                    )
+                    children.warm.fields.air_temperature += 1.0
+                    warm_temperature = (
+                        children.warm.fields.air_temperature.get(rank=0)
+                    )
+                    warm_exact_add = np.array_equal(
+                        warm_temperature,
+                        np.add(control_temperature, 1.0),
+                    )
+
+                    children.advance(steps=continuation_steps)
                     base.advance(steps=continuation_steps)
 
                     child_final = control.status
@@ -139,6 +155,25 @@ def main() -> int:
                     exact, arrays_compared, first_difference = (
                         _snapshots_equal(base_snapshot, child_snapshot)
                     )
+                    branch_statuses = children.statuses
+                    model_workers = {
+                        "base": base.worker,
+                        **{
+                            name: model.worker
+                            for name, model in children.items()
+                        },
+                    }
+                    model_slots = {
+                        "base": base.slot_id,
+                        **{
+                            name: model.slot_id
+                            for name, model in children.items()
+                        },
+                    }
+                    final_statuses = {
+                        "base": base_final,
+                        **dict(branch_statuses),
+                    }
 
                 pool_status = pool.status
 
@@ -170,6 +205,33 @@ def main() -> int:
         raise RuntimeError(
             f"unexpected fork transport {child_at_fork.snapshot_transport!r}"
         )
+    if not warm_exact_add:
+        raise RuntimeError("warm branch did not receive the exact NumPy +1 K edit")
+    if no_kessler_enabled:
+        raise RuntimeError("no_kessler branch did not disable Kessler")
+    if len(set(model_workers.values())) != 4:
+        raise RuntimeError(
+            f"models did not use distinct Dask workers: {model_workers}"
+        )
+    if pool.worker in set(model_workers.values()):
+        raise RuntimeError("launcher worker was reused by a model Actor")
+    if pool_status["pool_mpi_launch_id"] is None:
+        raise RuntimeError("pool did not report a shared MPI launch id")
+    reported_launch_ids = {
+        status.details.get("pool_mpi_launch_id")
+        for status in final_statuses.values()
+    }
+    if reported_launch_ids != {pool_status["pool_mpi_launch_id"]}:
+        raise RuntimeError(
+            f"models reported different MPI launches: {reported_launch_ids}"
+        )
+    outer_job_ids = {
+        status.outer_pbs_job_id for status in final_statuses.values()
+    }
+    if outer_job_ids != {os.environ["PBS_JOBID"]}:
+        raise RuntimeError(
+            f"models reported different outer PBS jobs: {outer_job_ids}"
+        )
 
     payload = {
         "schema_version": 1,
@@ -187,6 +249,16 @@ def main() -> int:
             "ranks_per_model": resource_plan.ranks_per_model,
             "mpi_launch_count": pool_status["mpi_launch_count"],
             "nested_qsub": 0,
+            "pool_mpi_launch_id": pool_status["pool_mpi_launch_id"],
+        },
+        "dask": {
+            "actor_layout": "model-per-worker",
+            "launcher_worker": pool.worker,
+            "model_workers": model_workers,
+            "distinct_model_workers": len(set(model_workers.values())),
+            "model_slots": model_slots,
+            "reported_launch_ids": sorted(reported_launch_ids),
+            "outer_pbs_job_ids": sorted(outer_job_ids),
         },
         "path": {
             "base_start_step": 0,
@@ -196,6 +268,10 @@ def main() -> int:
             "base_final_step": base_final.step,
             "child_final_step": child_final.step,
             "fork_transport": child_at_fork.snapshot_transport,
+            "branch_final_steps": {
+                name: status.step
+                for name, status in branch_statuses.items()
+            },
         },
         "validation": {
             "all_statepool_arrays_bitwise_identical": exact,
@@ -204,10 +280,13 @@ def main() -> int:
             "continuous_base_history_bfb": True,
             "history_files": args.final_step + 1,
             "numeric_variables": 26,
+            "warm_exact_add_1K": warm_exact_add,
+            "no_kessler_enabled": no_kessler_enabled,
         },
         "completion_marker": (
-            "PYCAM_SIMA_POOL_FORK_25X25_BFB "
-            f"job={os.environ['PBS_JOBID']} arrays={arrays_compared}"
+            "PYCAM_SIMA_MODEL_ACTOR_POOL_25X25_BFB "
+            f"job={os.environ['PBS_JOBID']} world=4x24 "
+            f"workers=1+4 arrays={arrays_compared}"
         ),
     }
     output = Path(args.output).resolve()
