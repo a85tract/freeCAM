@@ -255,6 +255,15 @@ class PersistentCAMActor:
                 "variable": dict(metadata),
             }
 
+    def delete_variable(self, name: str) -> Mapping[str, Any]:
+        with self._guard:
+            self._ensure_open()
+            metadata = self._session.delete_variable(str(name))
+            return {
+                **self._command_status(),
+                "deleted_variable": dict(metadata),
+            }
+
     def install_physics(
         self,
         payload: Mapping[str, Any],
@@ -815,6 +824,9 @@ class PersistentDaskSession:
         if not isinstance(spec, VariableSpec):
             raise TypeError("spec must be VariableSpec")
         return self._call("define_variable", spec.as_dict(), initial)
+
+    def delete_variable(self, name: str) -> Any:
+        return self._call("delete_variable", str(name))
 
     def install_physics(
         self,

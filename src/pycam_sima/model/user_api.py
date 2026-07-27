@@ -209,6 +209,13 @@ class FieldCollection:
 
     define = create
 
+    def delete(self, name: str) -> Any:
+        """Delete an unused dynamic field collectively on every MPI rank."""
+
+        return self.owner.delete_variable(str(name))
+
+    remove = delete
+
     def get(
         self, name: str, *, rank: int | str | None = None
     ) -> Any:

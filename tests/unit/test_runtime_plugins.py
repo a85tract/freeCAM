@@ -2,6 +2,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import numpy as np
+import pytest
 import yaml
 
 from pycam_sima import (
@@ -24,6 +25,7 @@ from pycam_sima.model.experiment import validate_segment_plan
 from pycam_sima.model.grid import dimensions_for_rank
 from pycam_sima.model.plugins import PhysicsPluginManager
 from pycam_sima.model.state import StatePool
+from pycam_sima.model.errors import DeviceContractError
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -259,6 +261,64 @@ def test_dynamic_variable_keeps_old_addresses_and_round_trips_snapshot(
     assert restored.contract("plugin_diagnostic") == spec.contract()
     assert np.array_equal(restored.get("plugin_diagnostic"), values)
     assert "plugin_diagnostic" in restored.dynamic_fields
+
+
+def test_dynamic_variable_can_be_deleted_without_moving_other_fields(
+    tmp_path: Path,
+):
+    driver = _Driver(tmp_path)
+    before = driver.pool.pointer_records()
+    spec = VariableSpec(
+        name="unused_tracer",
+        standard_name="unused_tracer",
+        dtype="float64",
+        dimensions=("nphys_local", "pver"),
+        units="1",
+    )
+    driver.plugins.define_variable(spec, initial=3.0)
+
+    metadata = driver.plugins.delete_variable("unused_tracer")
+
+    assert metadata["standard_name"] == "unused_tracer"
+    assert "unused_tracer" not in driver.pool.contracts
+    assert "unused_tracer" not in driver.pool.dynamic_fields
+    driver.pool.assert_pointer_stability(before)
+
+
+def test_static_or_device_required_variable_cannot_be_deleted(
+    tmp_path: Path,
+):
+    driver = _Driver(tmp_path)
+    with pytest.raises(DeviceContractError, match="model schema"):
+        driver.plugins.delete_variable("air_temperature")
+
+    spec = VariableSpec(
+        name="device_input",
+        standard_name="device_input",
+        dtype="float64",
+        dimensions=("nphys_local",),
+        units="1",
+    )
+    driver.plugins.define_variable(spec, initial=0.0)
+    driver.backend.devices.devices["probe"] = SimpleNamespace(
+        name="probe",
+        entrypoints={
+            "run": {
+                "arguments": (
+                    {
+                        "binding": {
+                            "source": "field",
+                            "name": "device_input",
+                        }
+                    },
+                )
+            }
+        },
+    )
+
+    with pytest.raises(DeviceContractError, match="device 'probe'"):
+        driver.plugins.delete_variable("device_input")
+    assert "device_input" in driver.pool.dynamic_fields
 
 
 def test_source_and_prebuilt_plugins_share_the_same_runtime_contract(

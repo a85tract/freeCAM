@@ -293,6 +293,9 @@ plugin = model.physics.install(
 
 model.physics["experiment_microphysics"].run()
 field = model.fields["experiment_tracer"].get(rank=0)
+
+# Only succeeds when no installed plugin/device still references this field.
+model.fields.delete("experiment_tracer")
 ```
 
 Pass a source `device.yaml` instead of `device.json` to build its adapter and
@@ -301,6 +304,11 @@ Pass a source `device.yaml` instead of `device.json` to build its adapter and
 controls. For Dask, the same operations are available as `DefineVariable`,
 `InstallPhysics`, `ActivatePhysics`, and `DeactivatePhysics` actions inside a
 `SegmentPlan`.
+
+Deletion is collective and intentionally conservative: only a Python-owned
+dynamic field can be removed, all ranks must be at the same action boundary,
+and the operation is rejected for history fields or live device/plugin
+dependencies. A failure rolls back the schema on every rank.
 
 The explicit `model.physics.install()` call opts into adding an experimental
 process. The serializable low-level `install_physics()` and `SegmentPlan`

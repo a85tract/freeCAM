@@ -76,6 +76,13 @@ def _local_command(request: dict[str, Any], driver: CAMDriver, comm: Any) -> Any
             **_runtime_status(driver),
             "fields": model_field_metadata(driver.pool),
         }
+    if operation == "delete_variable":
+        removed = driver.delete_variable(str(request["name"]))
+        return {
+            **_runtime_status(driver),
+            "fields": model_field_metadata(driver.pool),
+            "deleted_variable": removed,
+        }
     if operation == "install_physics":
         installed = driver.install_physics(
             PhysicsPluginSpec.from_mapping(request["plugin"]),

@@ -420,6 +420,110 @@ class PhysicsPluginManager:
         self._assert_schema_consistent()
         return value
 
+    def delete_variable(self, name: str) -> dict[str, Any]:
+        """Collectively remove one unused Python-owned dynamic field."""
+
+        self._require_boundary()
+        pool = self.driver.pool
+        canonical: str | None = None
+        contract = None
+        validation_error: str | None = None
+        try:
+            canonical = pool.canonical_name(str(name))
+            contract = pool.contract(canonical)
+            if canonical not in pool.dynamic_fields:
+                raise StateOwnershipError(
+                    f"field {canonical!r} is part of the model schema and "
+                    "cannot be deleted"
+                )
+            if contract.history:
+                raise StateOwnershipError(
+                    f"field {canonical!r} is history-enabled; changing the "
+                    "history schema of a live model is not supported"
+                )
+            dependencies = self._variable_dependencies(canonical)
+            if dependencies:
+                raise StateOwnershipError(
+                    f"field {canonical!r} is still required by "
+                    + ", ".join(dependencies)
+                )
+        except BaseException as exc:
+            validation_error = f"{type(exc).__name__}: {exc}"
+        self._collective_error(validation_error, "dynamic variable deletion")
+        assert canonical is not None and contract is not None
+
+        saved = np.array(pool.get(canonical, unsafe=True), copy=True, order="F")
+        was_initialized = pool.is_initialized(canonical)
+        removed = False
+        local_error: str | None = None
+        try:
+            pool.unregister_field(canonical)
+            removed = True
+        except BaseException as exc:
+            local_error = f"{type(exc).__name__}: {exc}"
+        errors = self.driver.comm.allgather(local_error)
+        if any(error is not None for error in errors):
+            if removed:
+                pool.register_field(
+                    contract,
+                    initial=saved,
+                    initialized=was_initialized,
+                    dynamic=True,
+                )
+            failures = [
+                f"rank {rank}: {error}"
+                for rank, error in enumerate(errors)
+                if error is not None
+            ]
+            raise StateOwnershipError(
+                "dynamic variable deletion rolled back collectively: "
+                + "; ".join(failures)
+            )
+        self._assert_schema_consistent()
+        return contract.machine_record()
+
+    def _variable_dependencies(self, canonical: str) -> tuple[str, ...]:
+        """Return conservative live device/plugin references to one field."""
+
+        pool = self.driver.pool
+        contract = pool.contract(canonical)
+        field_tokens = {
+            canonical.lower(),
+            *(str(alias).lower() for alias in contract.aliases),
+        }
+        standard_tokens = set(field_tokens)
+        if contract.ccpp_standard_name is not None:
+            standard_tokens.add(contract.ccpp_standard_name.lower())
+        dependencies: set[str] = set()
+
+        for plugin in self.installed.values():
+            for variable in plugin.variables:
+                tokens = {
+                    variable.name.lower(),
+                    variable.standard_name.lower(),
+                    *(str(alias).lower() for alias in variable.aliases),
+                }
+                if tokens & standard_tokens:
+                    dependencies.add(f"plugin {plugin.name!r}")
+
+        for device in self.driver.backend.devices.devices.values():
+            for entrypoint_name, endpoint in device.entrypoints.items():
+                for argument in endpoint.get("arguments", ()):
+                    binding = argument.get("binding", {})
+                    source = str(binding.get("source", ""))
+                    token = str(binding.get("name", "")).lower()
+                    if (
+                        source == "field" and token in field_tokens
+                    ) or (
+                        source == "standard_name"
+                        and token in standard_tokens
+                    ):
+                        dependencies.add(
+                            f"device {device.name!r} entrypoint "
+                            f"{entrypoint_name!r}"
+                        )
+        return tuple(sorted(dependencies))
+
     def install(
         self,
         spec: PhysicsPluginSpec | str | Path,

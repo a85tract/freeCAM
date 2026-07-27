@@ -150,6 +150,12 @@ def main() -> int:
     if restored.plugins.inventory() != (plugin_checkpoint_record,):
         raise AssertionError("plugin inventory changed across restore")
 
+    deleted = restored.fields.delete("runtime_control")
+    if deleted["standard_name"] != "runtime_control":
+        raise AssertionError("dynamic deletion returned the wrong contract")
+    if "runtime_control" in restored.pool.contracts:
+        raise AssertionError("deleted dynamic field remains in the StatePool")
+
     restored.physics.scheme(
         "runtime_temperature_offset", group="before"
     ).run()
@@ -190,6 +196,7 @@ def main() -> int:
             "mpi_ranks": int(comm.size),
             "source_plugin_built": True,
             "prebuilt_plugin_restored": True,
+            "dynamic_variable_deleted_collectively": True,
             "old_pointer_stability": True,
             "checkpoint_schema": 2,
             "checkpoint": str(checkpoint),

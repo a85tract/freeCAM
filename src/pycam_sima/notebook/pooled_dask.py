@@ -667,6 +667,8 @@ class PersistentPoolActor:
                 ),
                 "initial_value": values.get("initial", 0.0),
             }
+        if operation == "delete_variable":
+            return operation, {"name": str(args[0])}
         if operation == "install_physics":
             spec = args[0]
             return operation, {
@@ -798,6 +800,9 @@ class PooledModelSession:
         initial: Any = 0.0,
     ) -> Any:
         return self._call("define_variable", spec, initial=initial)
+
+    def delete_variable(self, name: str) -> Any:
+        return self._call("delete_variable", str(name))
 
     def install_physics(
         self,

@@ -452,6 +452,7 @@ class PooledWorkerSession(NotebookSession):
             "run_scheme_group",
             "configure_scheme_plan",
             "define_variable",
+            "delete_variable",
             "install_physics",
             "activate_physics",
             "deactivate_physics",
@@ -519,6 +520,11 @@ class PooledWorkerSession(NotebookSession):
                 "op": operation,
                 "spec": spec.as_dict(),
                 "initial_value": values.pop("initial", 0.0),
+            }
+        elif operation == "delete_variable":
+            command = {
+                "op": operation,
+                "name": str(args[0]),
             }
         elif operation == "install_physics":
             spec = args[0]

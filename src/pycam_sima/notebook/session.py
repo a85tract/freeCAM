@@ -513,6 +513,16 @@ class NotebookSession:
         self._update_runtime_status(result)
         return self.field_info(spec.name)
 
+    def delete_variable(self, name: str) -> Mapping[str, Any]:
+        """Collectively delete an unused dynamic field on every rank."""
+
+        self._validate_started_options()
+        result = self._request(
+            {"op": "delete_variable", "name": str(name)}
+        )
+        self._update_runtime_status(result)
+        return dict(result["deleted_variable"])
+
     def install_physics(
         self,
         spec: PhysicsPluginSpec | str | Path,

@@ -253,6 +253,11 @@ class CAMDriver:
             return self.plugins.define_variable(spec)
         return self.plugins.define_variable(spec, initial=initial)
 
+    def delete_variable(self, name: str) -> dict[str, Any]:
+        """Collectively delete an unused dynamic StatePool variable."""
+
+        return self.plugins.delete_variable(name)
+
     def install_physics(
         self,
         spec: PhysicsPluginSpec | str | Path,

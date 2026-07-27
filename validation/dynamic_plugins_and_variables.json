@@ -1,15 +1,16 @@
 {
-  "checkpoint": "/glade/derecho/scratch/ruitong/pycam-sima/dynamic_runtime/6894528.desched1/checkpoint",
+  "checkpoint": "/glade/derecho/scratch/ruitong/pycam-sima/dynamic_runtime/6915903.desched1/checkpoint",
   "checkpoint_schema": 2,
-  "commit": "7ca7af92c9e6cb5236afb21105e5d0d6b100e5de",
+  "commit": "b9dc4eae5ed19a81d31f7fb2e54ae96a14630712",
+  "dynamic_variable_deleted_collectively": true,
   "mpi_ranks": 24,
   "old_pointer_stability": true,
-  "pbs_job_id": "6894528.desched1",
+  "pbs_job_id": "6915903.desched1",
   "plugin": {
     "active": true,
     "library_hash": "67f5108ecc739b8aeaef87c2392b153922c5ff1e65ae54b72f1614ab995a1d79",
     "manifest_hash": "2ad279f100f904e26c50e7a1e5b976d45e36064380cc96d53316019c0d2a537d",
-    "manifest_path": "/glade/derecho/scratch/ruitong/pycam-sima/dynamic_runtime/6894528.desched1/plugin-cache/de816be1e143e096a519ddc75be1db69e150447aadfe7086836c0596bf2ac53f/runtime_temperature_offset/device.json",
+    "manifest_path": "/glade/derecho/scratch/ruitong/pycam-sima/dynamic_runtime/6915903.desched1/plugin-cache/de816be1e143e096a519ddc75be1db69e150447aadfe7086836c0596bf2ac53f/runtime_temperature_offset/device.json",
     "name": "runtime_temperature_offset",
     "pending": false,
     "placements": [
@@ -63,13 +64,12 @@
     {
       "dynamic_fields": [
         "ccpp_runtime_plugin_temperature",
-        "ccpp_runtime_plugin_temperature_increment",
-        "runtime_control"
+        "ccpp_runtime_plugin_temperature_increment"
       ],
       "final_temperature_hash": "6690d137b70a01cda899d5f05e75f598844fda70067ebbf0c54ff1d096b0c491",
       "library_hash": "67f5108ecc739b8aeaef87c2392b153922c5ff1e65ae54b72f1614ab995a1d79",
       "manifest_hash": "2ad279f100f904e26c50e7a1e5b976d45e36064380cc96d53316019c0d2a537d",
-      "manifest_path": "/glade/derecho/scratch/ruitong/pycam-sima/dynamic_runtime/6894528.desched1/plugin-cache/de816be1e143e096a519ddc75be1db69e150447aadfe7086836c0596bf2ac53f/runtime_temperature_offset/device.json",
+      "manifest_path": "/glade/derecho/scratch/ruitong/pycam-sima/dynamic_runtime/6915903.desched1/plugin-cache/de816be1e143e096a519ddc75be1db69e150447aadfe7086836c0596bf2ac53f/runtime_temperature_offset/device.json",
       "native_calls_delta": 1,
       "rank": 0,
       "runtime_control_hash": "23c52cafc222455527dc58e9787bddc7bd76dd4efd07ac4290b8b5546cb2e9c5",
@@ -82,13 +82,12 @@
     {
       "dynamic_fields": [
         "ccpp_runtime_plugin_temperature",
-        "ccpp_runtime_plugin_temperature_increment",
-        "runtime_control"
+        "ccpp_runtime_plugin_temperature_increment"
       ],
       "final_temperature_hash": "6690d137b70a01cda899d5f05e75f598844fda70067ebbf0c54ff1d096b0c491",
       "library_hash": "67f5108ecc739b8aeaef87c2392b153922c5ff1e65ae54b72f1614ab995a1d79",
       "manifest_hash": "2ad279f100f904e26c50e7a1e5b976d45e36064380cc96d53316019c0d2a537d",
-      "manifest_path": "/glade/derecho/scratch/ruitong/pycam-sima/dynamic_runtime/6894528.desched1/plugin-cache/de816be1e143e096a519ddc75be1db69e150447aadfe7086836c0596bf2ac53f/runtime_temperature_offset/device.json",
+      "manifest_path": "/glade/derecho/scratch/ruitong/pycam-sima/dynamic_runtime/6915903.desched1/plugin-cache/de816be1e143e096a519ddc75be1db69e150447aadfe7086836c0596bf2ac53f/runtime_temperature_offset/device.json",
       "native_calls_delta": 1,
       "rank": 1,
       "runtime_control_hash": "4a4f7784a7a51ec8e4ce583c1eeb868e9e67b55a957b2143f1902348cadc7f40",
@@ -101,13 +100,12 @@
     {
       "dynamic_fields": [
         "ccpp_runtime_plugin_temperature",
-        "ccpp_runtime_plugin_temperature_increment",
-        "runtime_control"
+        "ccpp_runtime_plugin_temperature_increment"
       ],
       "final_temperature_hash": "6690d137b70a01cda899d5f05e75f598844fda70067ebbf0c54ff1d096b0c491",
       "library_hash": "67f5108ecc739b8aeaef87c2392b153922c5ff1e65ae54b72f1614ab995a1d79",
       "manifest_hash": "2ad279f100f904e26c50e7a1e5b976d45e36064380cc96d53316019c0d2a537d",
-      "manifest_path": "/glade/derecho/scratch/ruitong/pycam-sima/dynamic_runtime/6894528.desched1/plugin-cache/de816be1e143e096a519ddc75be1db69e150447aadfe7086836c0596bf2ac53f/runtime_temperature_offset/device.json",
+      "manifest_path": "/glade/derecho/scratch/ruitong/pycam-sima/dynamic_runtime/6915903.desched1/plugin-cache/de816be1e143e096a519ddc75be1db69e150447aadfe7086836c0596bf2ac53f/runtime_temperature_offset/device.json",
       "native_calls_delta": 1,
       "rank": 2,
       "runtime_control_hash": "60dd2d34416d3a81d2152aeaafb7ce0bd50463bc399371bd1b0f456bae90bf3b",
@@ -120,13 +118,12 @@
     {
       "dynamic_fields": [
         "ccpp_runtime_plugin_temperature",
-        "ccpp_runtime_plugin_temperature_increment",
-        "runtime_control"
+        "ccpp_runtime_plugin_temperature_increment"
       ],
       "final_temperature_hash": "6690d137b70a01cda899d5f05e75f598844fda70067ebbf0c54ff1d096b0c491",
       "library_hash": "67f5108ecc739b8aeaef87c2392b153922c5ff1e65ae54b72f1614ab995a1d79",
       "manifest_hash": "2ad279f100f904e26c50e7a1e5b976d45e36064380cc96d53316019c0d2a537d",
-      "manifest_path": "/glade/derecho/scratch/ruitong/pycam-sima/dynamic_runtime/6894528.desched1/plugin-cache/de816be1e143e096a519ddc75be1db69e150447aadfe7086836c0596bf2ac53f/runtime_temperature_offset/device.json",
+      "manifest_path": "/glade/derecho/scratch/ruitong/pycam-sima/dynamic_runtime/6915903.desched1/plugin-cache/de816be1e143e096a519ddc75be1db69e150447aadfe7086836c0596bf2ac53f/runtime_temperature_offset/device.json",
       "native_calls_delta": 1,
       "rank": 3,
       "runtime_control_hash": "6d085749bbf514562461ed1aa7563d3f2132642876dd2949f206598a07d9dc67",
@@ -139,13 +136,12 @@
     {
       "dynamic_fields": [
         "ccpp_runtime_plugin_temperature",
-        "ccpp_runtime_plugin_temperature_increment",
-        "runtime_control"
+        "ccpp_runtime_plugin_temperature_increment"
       ],
       "final_temperature_hash": "6690d137b70a01cda899d5f05e75f598844fda70067ebbf0c54ff1d096b0c491",
       "library_hash": "67f5108ecc739b8aeaef87c2392b153922c5ff1e65ae54b72f1614ab995a1d79",
       "manifest_hash": "2ad279f100f904e26c50e7a1e5b976d45e36064380cc96d53316019c0d2a537d",
-      "manifest_path": "/glade/derecho/scratch/ruitong/pycam-sima/dynamic_runtime/6894528.desched1/plugin-cache/de816be1e143e096a519ddc75be1db69e150447aadfe7086836c0596bf2ac53f/runtime_temperature_offset/device.json",
+      "manifest_path": "/glade/derecho/scratch/ruitong/pycam-sima/dynamic_runtime/6915903.desched1/plugin-cache/de816be1e143e096a519ddc75be1db69e150447aadfe7086836c0596bf2ac53f/runtime_temperature_offset/device.json",
       "native_calls_delta": 1,
       "rank": 4,
       "runtime_control_hash": "85ec38e3e28f2863b5fc64b3960ea4c081fc7a12b20516dacb167ab7ea7853c8",
@@ -158,13 +154,12 @@
     {
       "dynamic_fields": [
         "ccpp_runtime_plugin_temperature",
-        "ccpp_runtime_plugin_temperature_increment",
-        "runtime_control"
+        "ccpp_runtime_plugin_temperature_increment"
       ],
       "final_temperature_hash": "6690d137b70a01cda899d5f05e75f598844fda70067ebbf0c54ff1d096b0c491",
       "library_hash": "67f5108ecc739b8aeaef87c2392b153922c5ff1e65ae54b72f1614ab995a1d79",
       "manifest_hash": "2ad279f100f904e26c50e7a1e5b976d45e36064380cc96d53316019c0d2a537d",
-      "manifest_path": "/glade/derecho/scratch/ruitong/pycam-sima/dynamic_runtime/6894528.desched1/plugin-cache/de816be1e143e096a519ddc75be1db69e150447aadfe7086836c0596bf2ac53f/runtime_temperature_offset/device.json",
+      "manifest_path": "/glade/derecho/scratch/ruitong/pycam-sima/dynamic_runtime/6915903.desched1/plugin-cache/de816be1e143e096a519ddc75be1db69e150447aadfe7086836c0596bf2ac53f/runtime_temperature_offset/device.json",
       "native_calls_delta": 1,
       "rank": 5,
       "runtime_control_hash": "42eb708c759bd3d944e6116f067441692cd79b45f7c6c8f639af954e5d984bf3",
@@ -177,13 +172,12 @@
     {
       "dynamic_fields": [
         "ccpp_runtime_plugin_temperature",
-        "ccpp_runtime_plugin_temperature_increment",
-        "runtime_control"
+        "ccpp_runtime_plugin_temperature_increment"
       ],
       "final_temperature_hash": "126dadc83a8f4c112e601378b30bbef8a45c826bb613cb8e77e89ab95884bc68",
       "library_hash": "67f5108ecc739b8aeaef87c2392b153922c5ff1e65ae54b72f1614ab995a1d79",
       "manifest_hash": "2ad279f100f904e26c50e7a1e5b976d45e36064380cc96d53316019c0d2a537d",
-      "manifest_path": "/glade/derecho/scratch/ruitong/pycam-sima/dynamic_runtime/6894528.desched1/plugin-cache/de816be1e143e096a519ddc75be1db69e150447aadfe7086836c0596bf2ac53f/runtime_temperature_offset/device.json",
+      "manifest_path": "/glade/derecho/scratch/ruitong/pycam-sima/dynamic_runtime/6915903.desched1/plugin-cache/de816be1e143e096a519ddc75be1db69e150447aadfe7086836c0596bf2ac53f/runtime_temperature_offset/device.json",
       "native_calls_delta": 1,
       "rank": 6,
       "runtime_control_hash": "5e5af13e4b3fcaee1073a1d38f0a78893fbee47fd04d4238c8df38d8b089a088",
@@ -196,13 +190,12 @@
     {
       "dynamic_fields": [
         "ccpp_runtime_plugin_temperature",
-        "ccpp_runtime_plugin_temperature_increment",
-        "runtime_control"
+        "ccpp_runtime_plugin_temperature_increment"
       ],
       "final_temperature_hash": "126dadc83a8f4c112e601378b30bbef8a45c826bb613cb8e77e89ab95884bc68",
       "library_hash": "67f5108ecc739b8aeaef87c2392b153922c5ff1e65ae54b72f1614ab995a1d79",
       "manifest_hash": "2ad279f100f904e26c50e7a1e5b976d45e36064380cc96d53316019c0d2a537d",
-      "manifest_path": "/glade/derecho/scratch/ruitong/pycam-sima/dynamic_runtime/6894528.desched1/plugin-cache/de816be1e143e096a519ddc75be1db69e150447aadfe7086836c0596bf2ac53f/runtime_temperature_offset/device.json",
+      "manifest_path": "/glade/derecho/scratch/ruitong/pycam-sima/dynamic_runtime/6915903.desched1/plugin-cache/de816be1e143e096a519ddc75be1db69e150447aadfe7086836c0596bf2ac53f/runtime_temperature_offset/device.json",
       "native_calls_delta": 1,
       "rank": 7,
       "runtime_control_hash": "6d20b08c3cc669381edcba59a9e8cd3848b0b16a1da8384682e4886a8d7e128e",
@@ -215,13 +208,12 @@
     {
       "dynamic_fields": [
         "ccpp_runtime_plugin_temperature",
-        "ccpp_runtime_plugin_temperature_increment",
-        "runtime_control"
+        "ccpp_runtime_plugin_temperature_increment"
       ],
       "final_temperature_hash": "126dadc83a8f4c112e601378b30bbef8a45c826bb613cb8e77e89ab95884bc68",
       "library_hash": "67f5108ecc739b8aeaef87c2392b153922c5ff1e65ae54b72f1614ab995a1d79",
       "manifest_hash": "2ad279f100f904e26c50e7a1e5b976d45e36064380cc96d53316019c0d2a537d",
-      "manifest_path": "/glade/derecho/scratch/ruitong/pycam-sima/dynamic_runtime/6894528.desched1/plugin-cache/de816be1e143e096a519ddc75be1db69e150447aadfe7086836c0596bf2ac53f/runtime_temperature_offset/device.json",
+      "manifest_path": "/glade/derecho/scratch/ruitong/pycam-sima/dynamic_runtime/6915903.desched1/plugin-cache/de816be1e143e096a519ddc75be1db69e150447aadfe7086836c0596bf2ac53f/runtime_temperature_offset/device.json",
       "native_calls_delta": 1,
       "rank": 8,
       "runtime_control_hash": "f2085b2d66b0592fba6791c31f3c947fc9e9f97675cc2bb6564a2b10067efcc8",
@@ -234,13 +226,12 @@
     {
       "dynamic_fields": [
         "ccpp_runtime_plugin_temperature",
-        "ccpp_runtime_plugin_temperature_increment",
-        "runtime_control"
+        "ccpp_runtime_plugin_temperature_increment"
       ],
       "final_temperature_hash": "126dadc83a8f4c112e601378b30bbef8a45c826bb613cb8e77e89ab95884bc68",
       "library_hash": "67f5108ecc739b8aeaef87c2392b153922c5ff1e65ae54b72f1614ab995a1d79",
       "manifest_hash": "2ad279f100f904e26c50e7a1e5b976d45e36064380cc96d53316019c0d2a537d",
-      "manifest_path": "/glade/derecho/scratch/ruitong/pycam-sima/dynamic_runtime/6894528.desched1/plugin-cache/de816be1e143e096a519ddc75be1db69e150447aadfe7086836c0596bf2ac53f/runtime_temperature_offset/device.json",
+      "manifest_path": "/glade/derecho/scratch/ruitong/pycam-sima/dynamic_runtime/6915903.desched1/plugin-cache/de816be1e143e096a519ddc75be1db69e150447aadfe7086836c0596bf2ac53f/runtime_temperature_offset/device.json",
       "native_calls_delta": 1,
       "rank": 9,
       "runtime_control_hash": "60c0bd0f5d0909f697c314e1ca67b10b0391530f3f558a733f34fedd2ca7660a",
@@ -253,13 +244,12 @@
     {
       "dynamic_fields": [
         "ccpp_runtime_plugin_temperature",
-        "ccpp_runtime_plugin_temperature_increment",
-        "runtime_control"
+        "ccpp_runtime_plugin_temperature_increment"
       ],
       "final_temperature_hash": "126dadc83a8f4c112e601378b30bbef8a45c826bb613cb8e77e89ab95884bc68",
       "library_hash": "67f5108ecc739b8aeaef87c2392b153922c5ff1e65ae54b72f1614ab995a1d79",
       "manifest_hash": "2ad279f100f904e26c50e7a1e5b976d45e36064380cc96d53316019c0d2a537d",
-      "manifest_path": "/glade/derecho/scratch/ruitong/pycam-sima/dynamic_runtime/6894528.desched1/plugin-cache/de816be1e143e096a519ddc75be1db69e150447aadfe7086836c0596bf2ac53f/runtime_temperature_offset/device.json",
+      "manifest_path": "/glade/derecho/scratch/ruitong/pycam-sima/dynamic_runtime/6915903.desched1/plugin-cache/de816be1e143e096a519ddc75be1db69e150447aadfe7086836c0596bf2ac53f/runtime_temperature_offset/device.json",
       "native_calls_delta": 1,
       "rank": 10,
       "runtime_control_hash": "58ca22bac70c2dbf030c7934d1423c0fb0f57013c40df7dd0da7e9fba3638c2f",
@@ -272,13 +262,12 @@
     {
       "dynamic_fields": [
         "ccpp_runtime_plugin_temperature",
-        "ccpp_runtime_plugin_temperature_increment",
-        "runtime_control"
+        "ccpp_runtime_plugin_temperature_increment"
       ],
       "final_temperature_hash": "126dadc83a8f4c112e601378b30bbef8a45c826bb613cb8e77e89ab95884bc68",
       "library_hash": "67f5108ecc739b8aeaef87c2392b153922c5ff1e65ae54b72f1614ab995a1d79",
       "manifest_hash": "2ad279f100f904e26c50e7a1e5b976d45e36064380cc96d53316019c0d2a537d",
-      "manifest_path": "/glade/derecho/scratch/ruitong/pycam-sima/dynamic_runtime/6894528.desched1/plugin-cache/de816be1e143e096a519ddc75be1db69e150447aadfe7086836c0596bf2ac53f/runtime_temperature_offset/device.json",
+      "manifest_path": "/glade/derecho/scratch/ruitong/pycam-sima/dynamic_runtime/6915903.desched1/plugin-cache/de816be1e143e096a519ddc75be1db69e150447aadfe7086836c0596bf2ac53f/runtime_temperature_offset/device.json",
       "native_calls_delta": 1,
       "rank": 11,
       "runtime_control_hash": "d0085b5646dae8f00aba46b892ee74115e3b34d7b9063d5cc32af656e1bf3d3e",
@@ -291,13 +280,12 @@
     {
       "dynamic_fields": [
         "ccpp_runtime_plugin_temperature",
-        "ccpp_runtime_plugin_temperature_increment",
-        "runtime_control"
+        "ccpp_runtime_plugin_temperature_increment"
       ],
       "final_temperature_hash": "126dadc83a8f4c112e601378b30bbef8a45c826bb613cb8e77e89ab95884bc68",
       "library_hash": "67f5108ecc739b8aeaef87c2392b153922c5ff1e65ae54b72f1614ab995a1d79",
       "manifest_hash": "2ad279f100f904e26c50e7a1e5b976d45e36064380cc96d53316019c0d2a537d",
-      "manifest_path": "/glade/derecho/scratch/ruitong/pycam-sima/dynamic_runtime/6894528.desched1/plugin-cache/de816be1e143e096a519ddc75be1db69e150447aadfe7086836c0596bf2ac53f/runtime_temperature_offset/device.json",
+      "manifest_path": "/glade/derecho/scratch/ruitong/pycam-sima/dynamic_runtime/6915903.desched1/plugin-cache/de816be1e143e096a519ddc75be1db69e150447aadfe7086836c0596bf2ac53f/runtime_temperature_offset/device.json",
       "native_calls_delta": 1,
       "rank": 12,
       "runtime_control_hash": "dbadc0d1fb20cdcb7b3b766fccbd2dc6ca4db95c994e91806fc458d9757d1fa3",
@@ -310,13 +298,12 @@
     {
       "dynamic_fields": [
         "ccpp_runtime_plugin_temperature",
-        "ccpp_runtime_plugin_temperature_increment",
-        "runtime_control"
+        "ccpp_runtime_plugin_temperature_increment"
       ],
       "final_temperature_hash": "126dadc83a8f4c112e601378b30bbef8a45c826bb613cb8e77e89ab95884bc68",
       "library_hash": "67f5108ecc739b8aeaef87c2392b153922c5ff1e65ae54b72f1614ab995a1d79",
       "manifest_hash": "2ad279f100f904e26c50e7a1e5b976d45e36064380cc96d53316019c0d2a537d",
-      "manifest_path": "/glade/derecho/scratch/ruitong/pycam-sima/dynamic_runtime/6894528.desched1/plugin-cache/de816be1e143e096a519ddc75be1db69e150447aadfe7086836c0596bf2ac53f/runtime_temperature_offset/device.json",
+      "manifest_path": "/glade/derecho/scratch/ruitong/pycam-sima/dynamic_runtime/6915903.desched1/plugin-cache/de816be1e143e096a519ddc75be1db69e150447aadfe7086836c0596bf2ac53f/runtime_temperature_offset/device.json",
       "native_calls_delta": 1,
       "rank": 13,
       "runtime_control_hash": "97f0fb92ca245ad10a22953a1edc70c6077a9d555e5bb3e25739778361a0810b",
@@ -329,13 +316,12 @@
     {
       "dynamic_fields": [
         "ccpp_runtime_plugin_temperature",
-        "ccpp_runtime_plugin_temperature_increment",
-        "runtime_control"
+        "ccpp_runtime_plugin_temperature_increment"
       ],
       "final_temperature_hash": "126dadc83a8f4c112e601378b30bbef8a45c826bb613cb8e77e89ab95884bc68",
       "library_hash": "67f5108ecc739b8aeaef87c2392b153922c5ff1e65ae54b72f1614ab995a1d79",
       "manifest_hash": "2ad279f100f904e26c50e7a1e5b976d45e36064380cc96d53316019c0d2a537d",
-      "manifest_path": "/glade/derecho/scratch/ruitong/pycam-sima/dynamic_runtime/6894528.desched1/plugin-cache/de816be1e143e096a519ddc75be1db69e150447aadfe7086836c0596bf2ac53f/runtime_temperature_offset/device.json",
+      "manifest_path": "/glade/derecho/scratch/ruitong/pycam-sima/dynamic_runtime/6915903.desched1/plugin-cache/de816be1e143e096a519ddc75be1db69e150447aadfe7086836c0596bf2ac53f/runtime_temperature_offset/device.json",
       "native_calls_delta": 1,
       "rank": 14,
       "runtime_control_hash": "a6e43f2f61fe3e744e18ee993d638fa36d1adc9f22f57858aff98c985099fd1e",
@@ -348,13 +334,12 @@
     {
       "dynamic_fields": [
         "ccpp_runtime_plugin_temperature",
-        "ccpp_runtime_plugin_temperature_increment",
-        "runtime_control"
+        "ccpp_runtime_plugin_temperature_increment"
       ],
       "final_temperature_hash": "126dadc83a8f4c112e601378b30bbef8a45c826bb613cb8e77e89ab95884bc68",
       "library_hash": "67f5108ecc739b8aeaef87c2392b153922c5ff1e65ae54b72f1614ab995a1d79",
       "manifest_hash": "2ad279f100f904e26c50e7a1e5b976d45e36064380cc96d53316019c0d2a537d",
-      "manifest_path": "/glade/derecho/scratch/ruitong/pycam-sima/dynamic_runtime/6894528.desched1/plugin-cache/de816be1e143e096a519ddc75be1db69e150447aadfe7086836c0596bf2ac53f/runtime_temperature_offset/device.json",
+      "manifest_path": "/glade/derecho/scratch/ruitong/pycam-sima/dynamic_runtime/6915903.desched1/plugin-cache/de816be1e143e096a519ddc75be1db69e150447aadfe7086836c0596bf2ac53f/runtime_temperature_offset/device.json",
       "native_calls_delta": 1,
       "rank": 15,
       "runtime_control_hash": "add010fa2f1c821fae17cd3c466c5d56f45cb61c1bb1970acbd9f79d28bd2a86",
@@ -367,13 +352,12 @@
     {
       "dynamic_fields": [
         "ccpp_runtime_plugin_temperature",
-        "ccpp_runtime_plugin_temperature_increment",
-        "runtime_control"
+        "ccpp_runtime_plugin_temperature_increment"
       ],
       "final_temperature_hash": "126dadc83a8f4c112e601378b30bbef8a45c826bb613cb8e77e89ab95884bc68",
       "library_hash": "67f5108ecc739b8aeaef87c2392b153922c5ff1e65ae54b72f1614ab995a1d79",
       "manifest_hash": "2ad279f100f904e26c50e7a1e5b976d45e36064380cc96d53316019c0d2a537d",
-      "manifest_path": "/glade/derecho/scratch/ruitong/pycam-sima/dynamic_runtime/6894528.desched1/plugin-cache/de816be1e143e096a519ddc75be1db69e150447aadfe7086836c0596bf2ac53f/runtime_temperature_offset/device.json",
+      "manifest_path": "/glade/derecho/scratch/ruitong/pycam-sima/dynamic_runtime/6915903.desched1/plugin-cache/de816be1e143e096a519ddc75be1db69e150447aadfe7086836c0596bf2ac53f/runtime_temperature_offset/device.json",
       "native_calls_delta": 1,
       "rank": 16,
       "runtime_control_hash": "61dea41faff37ce486ea8abc8c37bfb9bc10745750d65dbd42280099e12ae9d0",
@@ -386,13 +370,12 @@
     {
       "dynamic_fields": [
         "ccpp_runtime_plugin_temperature",
-        "ccpp_runtime_plugin_temperature_increment",
-        "runtime_control"
+        "ccpp_runtime_plugin_temperature_increment"
       ],
       "final_temperature_hash": "126dadc83a8f4c112e601378b30bbef8a45c826bb613cb8e77e89ab95884bc68",
       "library_hash": "67f5108ecc739b8aeaef87c2392b153922c5ff1e65ae54b72f1614ab995a1d79",
       "manifest_hash": "2ad279f100f904e26c50e7a1e5b976d45e36064380cc96d53316019c0d2a537d",
-      "manifest_path": "/glade/derecho/scratch/ruitong/pycam-sima/dynamic_runtime/6894528.desched1/plugin-cache/de816be1e143e096a519ddc75be1db69e150447aadfe7086836c0596bf2ac53f/runtime_temperature_offset/device.json",
+      "manifest_path": "/glade/derecho/scratch/ruitong/pycam-sima/dynamic_runtime/6915903.desched1/plugin-cache/de816be1e143e096a519ddc75be1db69e150447aadfe7086836c0596bf2ac53f/runtime_temperature_offset/device.json",
       "native_calls_delta": 1,
       "rank": 17,
       "runtime_control_hash": "7d35a19219c80f08d1e9299e5095a19b9cbbc1e978cb3ebab2d775fc8085512f",
@@ -405,13 +388,12 @@
     {
       "dynamic_fields": [
         "ccpp_runtime_plugin_temperature",
-        "ccpp_runtime_plugin_temperature_increment",
-        "runtime_control"
+        "ccpp_runtime_plugin_temperature_increment"
       ],
       "final_temperature_hash": "126dadc83a8f4c112e601378b30bbef8a45c826bb613cb8e77e89ab95884bc68",
       "library_hash": "67f5108ecc739b8aeaef87c2392b153922c5ff1e65ae54b72f1614ab995a1d79",
       "manifest_hash": "2ad279f100f904e26c50e7a1e5b976d45e36064380cc96d53316019c0d2a537d",
-      "manifest_path": "/glade/derecho/scratch/ruitong/pycam-sima/dynamic_runtime/6894528.desched1/plugin-cache/de816be1e143e096a519ddc75be1db69e150447aadfe7086836c0596bf2ac53f/runtime_temperature_offset/device.json",
+      "manifest_path": "/glade/derecho/scratch/ruitong/pycam-sima/dynamic_runtime/6915903.desched1/plugin-cache/de816be1e143e096a519ddc75be1db69e150447aadfe7086836c0596bf2ac53f/runtime_temperature_offset/device.json",
       "native_calls_delta": 1,
       "rank": 18,
       "runtime_control_hash": "7ea1f2ec319634bba1de21fb57bf95e22d82ce1bbaae5f6fccf999f8530bd13f",
@@ -424,13 +406,12 @@
     {
       "dynamic_fields": [
         "ccpp_runtime_plugin_temperature",
-        "ccpp_runtime_plugin_temperature_increment",
-        "runtime_control"
+        "ccpp_runtime_plugin_temperature_increment"
       ],
       "final_temperature_hash": "126dadc83a8f4c112e601378b30bbef8a45c826bb613cb8e77e89ab95884bc68",
       "library_hash": "67f5108ecc739b8aeaef87c2392b153922c5ff1e65ae54b72f1614ab995a1d79",
       "manifest_hash": "2ad279f100f904e26c50e7a1e5b976d45e36064380cc96d53316019c0d2a537d",
-      "manifest_path": "/glade/derecho/scratch/ruitong/pycam-sima/dynamic_runtime/6894528.desched1/plugin-cache/de816be1e143e096a519ddc75be1db69e150447aadfe7086836c0596bf2ac53f/runtime_temperature_offset/device.json",
+      "manifest_path": "/glade/derecho/scratch/ruitong/pycam-sima/dynamic_runtime/6915903.desched1/plugin-cache/de816be1e143e096a519ddc75be1db69e150447aadfe7086836c0596bf2ac53f/runtime_temperature_offset/device.json",
       "native_calls_delta": 1,
       "rank": 19,
       "runtime_control_hash": "408a3ca223d46aa3216b4da7541936994f70468feb075eb6fe90af8b4f6c6b93",
@@ -443,13 +424,12 @@
     {
       "dynamic_fields": [
         "ccpp_runtime_plugin_temperature",
-        "ccpp_runtime_plugin_temperature_increment",
-        "runtime_control"
+        "ccpp_runtime_plugin_temperature_increment"
       ],
       "final_temperature_hash": "126dadc83a8f4c112e601378b30bbef8a45c826bb613cb8e77e89ab95884bc68",
       "library_hash": "67f5108ecc739b8aeaef87c2392b153922c5ff1e65ae54b72f1614ab995a1d79",
       "manifest_hash": "2ad279f100f904e26c50e7a1e5b976d45e36064380cc96d53316019c0d2a537d",
-      "manifest_path": "/glade/derecho/scratch/ruitong/pycam-sima/dynamic_runtime/6894528.desched1/plugin-cache/de816be1e143e096a519ddc75be1db69e150447aadfe7086836c0596bf2ac53f/runtime_temperature_offset/device.json",
+      "manifest_path": "/glade/derecho/scratch/ruitong/pycam-sima/dynamic_runtime/6915903.desched1/plugin-cache/de816be1e143e096a519ddc75be1db69e150447aadfe7086836c0596bf2ac53f/runtime_temperature_offset/device.json",
       "native_calls_delta": 1,
       "rank": 20,
       "runtime_control_hash": "0a4f7ce6ec3f6ff7cc6d8702f5ba8e0f48bacd77c4c01047d11b668af37d830f",
@@ -462,13 +442,12 @@
     {
       "dynamic_fields": [
         "ccpp_runtime_plugin_temperature",
-        "ccpp_runtime_plugin_temperature_increment",
-        "runtime_control"
+        "ccpp_runtime_plugin_temperature_increment"
       ],
       "final_temperature_hash": "126dadc83a8f4c112e601378b30bbef8a45c826bb613cb8e77e89ab95884bc68",
       "library_hash": "67f5108ecc739b8aeaef87c2392b153922c5ff1e65ae54b72f1614ab995a1d79",
       "manifest_hash": "2ad279f100f904e26c50e7a1e5b976d45e36064380cc96d53316019c0d2a537d",
-      "manifest_path": "/glade/derecho/scratch/ruitong/pycam-sima/dynamic_runtime/6894528.desched1/plugin-cache/de816be1e143e096a519ddc75be1db69e150447aadfe7086836c0596bf2ac53f/runtime_temperature_offset/device.json",
+      "manifest_path": "/glade/derecho/scratch/ruitong/pycam-sima/dynamic_runtime/6915903.desched1/plugin-cache/de816be1e143e096a519ddc75be1db69e150447aadfe7086836c0596bf2ac53f/runtime_temperature_offset/device.json",
       "native_calls_delta": 1,
       "rank": 21,
       "runtime_control_hash": "6fe4ce0c88ae2bcfc8933e678364ed3cef53775a125cadb8c6a614165275f3d4",
@@ -481,13 +460,12 @@
     {
       "dynamic_fields": [
         "ccpp_runtime_plugin_temperature",
-        "ccpp_runtime_plugin_temperature_increment",
-        "runtime_control"
+        "ccpp_runtime_plugin_temperature_increment"
       ],
       "final_temperature_hash": "126dadc83a8f4c112e601378b30bbef8a45c826bb613cb8e77e89ab95884bc68",
       "library_hash": "67f5108ecc739b8aeaef87c2392b153922c5ff1e65ae54b72f1614ab995a1d79",
       "manifest_hash": "2ad279f100f904e26c50e7a1e5b976d45e36064380cc96d53316019c0d2a537d",
-      "manifest_path": "/glade/derecho/scratch/ruitong/pycam-sima/dynamic_runtime/6894528.desched1/plugin-cache/de816be1e143e096a519ddc75be1db69e150447aadfe7086836c0596bf2ac53f/runtime_temperature_offset/device.json",
+      "manifest_path": "/glade/derecho/scratch/ruitong/pycam-sima/dynamic_runtime/6915903.desched1/plugin-cache/de816be1e143e096a519ddc75be1db69e150447aadfe7086836c0596bf2ac53f/runtime_temperature_offset/device.json",
       "native_calls_delta": 1,
       "rank": 22,
       "runtime_control_hash": "3203901976e08bea25aee9279022d854242f9a8dec543d76836fc41536abad4b",
@@ -500,13 +478,12 @@
     {
       "dynamic_fields": [
         "ccpp_runtime_plugin_temperature",
-        "ccpp_runtime_plugin_temperature_increment",
-        "runtime_control"
+        "ccpp_runtime_plugin_temperature_increment"
       ],
       "final_temperature_hash": "126dadc83a8f4c112e601378b30bbef8a45c826bb613cb8e77e89ab95884bc68",
       "library_hash": "67f5108ecc739b8aeaef87c2392b153922c5ff1e65ae54b72f1614ab995a1d79",
       "manifest_hash": "2ad279f100f904e26c50e7a1e5b976d45e36064380cc96d53316019c0d2a537d",
-      "manifest_path": "/glade/derecho/scratch/ruitong/pycam-sima/dynamic_runtime/6894528.desched1/plugin-cache/de816be1e143e096a519ddc75be1db69e150447aadfe7086836c0596bf2ac53f/runtime_temperature_offset/device.json",
+      "manifest_path": "/glade/derecho/scratch/ruitong/pycam-sima/dynamic_runtime/6915903.desched1/plugin-cache/de816be1e143e096a519ddc75be1db69e150447aadfe7086836c0596bf2ac53f/runtime_temperature_offset/device.json",
       "native_calls_delta": 1,
       "rank": 23,
       "runtime_control_hash": "0a8c6b591601bf0958b7df3f86d02d2ede6cba12cbf6caae4ba5abb4fea758af",

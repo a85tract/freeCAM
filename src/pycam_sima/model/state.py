@@ -243,7 +243,7 @@ class StatePool:
         return values
 
     def unregister_field(self, name: str) -> None:
-        """Roll back a newly registered field before it becomes persistent."""
+        """Remove dynamic canonical storage without moving other arrays."""
 
         canonical = self.canonical_name(name)
         if canonical not in self._dynamic_fields:

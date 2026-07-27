@@ -267,12 +267,19 @@ installed = model.physics.install(
 )
 
 model.physics["my_microphysics"].run()
+
+# Safe collective deletion after the field is no longer used by a device.
+model.fields.delete("droplet_number")
 ```
 
 CCPP argument metadata supplies missing primitive-variable contracts. Existing
 standard names are reused zero-copy only when dtype, shape, and units match;
 new `intent(in)`/`intent(inout)` fields require an initial value. Runtime
 additions may use existing named dimensions or literal sizes but cannot resize
+existing storage. `fields.delete()` only removes Python-owned dynamic fields
+at an MPI action boundary. It rejects model-schema fields, history fields, and
+fields still referenced by an installed plugin or loaded device; `remove()` is
+an alias.
 or replace an existing array.
 
 Installation, activation, and deactivation are MPI-collective transactions at

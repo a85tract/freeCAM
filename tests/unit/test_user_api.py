@@ -42,6 +42,10 @@ class _Owner:
         self.calls.append(("define_variable", spec, initial))
         return self._return({"name": spec.name})
 
+    def delete_variable(self, name: str) -> Any:
+        self.calls.append(("delete_variable", name))
+        return self._return({"name": name})
+
     def get_field(self, name: str, *, rank: int = 0) -> Any:
         self.calls.append(("get_field", name, rank))
         return self._return(self.values[name].copy())
@@ -189,6 +193,20 @@ def test_fields_create_translates_friendly_dimensions() -> None:
     assert spec.dimensions == ("nphys_local", "pver")
     assert spec.dtype == "float64"
     assert initial == 2.0
+
+
+def test_fields_delete_and_remove_use_collective_owner_operation() -> None:
+    owner = _Owner()
+    fields = FieldCollection(owner)
+
+    assert fields.delete("experiment_tracer") == {
+        "name": "experiment_tracer"
+    }
+    assert fields.remove("second_tracer") == {"name": "second_tracer"}
+    assert owner.calls[-2:] == [
+        ("delete_variable", "experiment_tracer"),
+        ("delete_variable", "second_tracer"),
+    ]
 
 
 def test_field_reference_reads_writes_and_computes_local_stats() -> None:
