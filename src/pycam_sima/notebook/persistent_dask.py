@@ -259,10 +259,7 @@ class PersistentCAMActor:
         with self._guard:
             self._ensure_open()
             metadata = self._session.delete_variable(str(name))
-            return {
-                **self._command_status(),
-                "deleted_variable": dict(metadata),
-            }
+            return dict(metadata)
 
     def install_physics(
         self,

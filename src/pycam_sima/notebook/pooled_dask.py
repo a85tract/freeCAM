@@ -328,6 +328,18 @@ class PersistentPoolActor:
                         "pooled install_physics response lacks "
                         "installed_plugin metadata"
                     ) from exc
+            if operation == "delete_variable":
+                if not isinstance(result, Mapping):
+                    raise TypeError(
+                        "pooled delete_variable returned a non-mapping result"
+                    )
+                try:
+                    return dict(result["deleted_variable"])
+                except (KeyError, TypeError) as exc:
+                    raise RuntimeError(
+                        "pooled delete_variable response lacks "
+                        "deleted_variable metadata"
+                    ) from exc
             return result
 
     def advance_models(

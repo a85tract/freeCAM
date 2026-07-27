@@ -92,7 +92,8 @@ class _FakePooledSession:
         }
         return self._status(name)
 
-    def call(self, name: str, op: str, **kwargs: Any) -> Any:
+    def call(self, model_name: str, op: str, **kwargs: Any) -> Any:
+        name = model_name
         model = self.models[name]
         if op == "step":
             count = int(kwargs["count"])
@@ -142,6 +143,14 @@ class _FakePooledSession:
                 "installed_plugin": {
                     "name": "runtime_temperature_offset",
                     "source": kwargs["plugin"]["source"],
+                },
+            }
+        if op == "delete_variable":
+            return {
+                **self._status(name),
+                "deleted_variable": {
+                    "standard_name": kwargs["name"],
+                    "owner": "python",
                 },
             }
         raise NotImplementedError(op)
@@ -284,6 +293,10 @@ def test_pool_reuses_one_launch_and_forks_private_slot_memory(
                 assert installed == {
                     "name": "runtime_temperature_offset",
                     "source": "runtime-device.yaml",
+                }
+                assert base.fields.delete("temporary_probe") == {
+                    "standard_name": "temporary_probe",
+                    "owner": "python",
                 }
                 branches = base.fork("control", "warm")
                 assert isinstance(branches, PooledModelGroup)

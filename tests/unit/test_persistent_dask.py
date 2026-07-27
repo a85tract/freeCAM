@@ -148,6 +148,12 @@ class _FakeSession:
             "writable": spec.writable,
         }
 
+    def delete_variable(self, name: str) -> dict[str, Any]:
+        self.field_names = tuple(
+            item for item in self.field_names if item != name
+        )
+        return {"standard_name": name, "owner": "python"}
+
     def install_physics(
         self,
         spec: PhysicsPluginSpec,
@@ -340,6 +346,10 @@ def test_persistent_actor_reuses_one_live_session_for_all_actions(
     started = actor.describe()
     assert started["mpi_launch_count"] == 1
     assert started["step"] == 0
+    assert actor.delete_variable("temporary_probe") == {
+        "standard_name": "temporary_probe",
+        "owner": "python",
+    }
 
     result = actor.run_plan(
         SegmentPlan(

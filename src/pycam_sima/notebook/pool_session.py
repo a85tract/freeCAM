@@ -286,16 +286,18 @@ class PooledWorkerSession(NotebookSession):
         self.describe()
         return dict(result)
 
-    def call(self, name: str, op: str, *args: Any, **payload: Any) -> Any:
-        slot = self._model_slot(name)
+    def call(
+        self, model_name: str, op: str, *args: Any, **payload: Any
+    ) -> Any:
+        slot = self._model_slot(model_name)
         if op in {"close", "close_pool", "restore_memory_checkpoint"}:
             raise ValueError(f"{op!r} is not a model command in pooled mode")
-        command = self._model_command(name, op, args, payload)
+        command = self._model_command(model_name, op, args, payload)
         return self._request(
             {
                 "op": "model_command",
                 "slot": slot,
-                "name": name,
+                "name": model_name,
                 "command": command,
             }
         )
