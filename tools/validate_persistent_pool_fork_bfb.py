@@ -145,8 +145,10 @@ def main() -> int:
                         np.add(control_temperature, 1.0),
                     )
 
-                    children.advance(steps=continuation_steps)
-                    base.advance(steps=continuation_steps)
+                    pool.advance(
+                        (base, *children.values()),
+                        steps=continuation_steps,
+                    )
 
                     child_final = control.status
                     base_final = base.status

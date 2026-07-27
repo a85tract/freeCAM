@@ -1458,15 +1458,7 @@ class PooledModelGroup(Mapping[str, PooledModel]):
     def advance(self, steps: int = 1) -> "PooledModelGroup":
         if steps < 0:
             raise ValueError("steps must be non-negative")
-        for model in self._models.values():
-            if model.submit._tail is not None:
-                _wait(model.submit._tail)
-        _wait(
-            self.pool.launcher.advance_models(
-                tuple(self._models),
-                int(steps),
-            )
-        )
+        self.pool.advance(tuple(self._models.values()), steps=int(steps))
         return self
 
     def close(self) -> None:
@@ -1565,6 +1557,35 @@ class PersistentModelPool:
         )
         self._models[str(name)] = model
         return model
+
+    def advance(
+        self,
+        models: Sequence[PooledModel | str],
+        *,
+        steps: int = 1,
+    ) -> Mapping[str, Any]:
+        """Advance distinct live slots concurrently in one MPI broadcast."""
+
+        self._ensure_open()
+        if steps < 0:
+            raise ValueError("steps must be non-negative")
+        names: list[str] = []
+        for value in models:
+            name = value.name if isinstance(value, PooledModel) else str(value)
+            try:
+                model = self._models[name]
+            except KeyError as exc:
+                raise KeyError(f"unknown pooled model: {name!r}") from exc
+            if model.submit._closed:
+                raise RuntimeError(f"pooled model {name!r} is closed")
+            if model.submit._tail is not None:
+                _wait(model.submit._tail)
+            names.append(name)
+        if len(names) != len(set(names)):
+            raise ValueError("advance models must be distinct")
+        return dict(
+            _wait(self.launcher.advance_models(tuple(names), int(steps)))
+        )
 
     def _fork(
         self,

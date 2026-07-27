@@ -435,6 +435,11 @@ def test_model_per_worker_pool_exposes_dask_future_dependencies(
             control = branches.control.submit.advance(steps=3)
             warm = branches.warm.submit.advance(steps=3)
             client.gather((control, warm))
+            combined = pool.advance(
+                (base, branches.control, branches.warm),
+                steps=1,
+            )
+            assert set(combined) == {"base", "control", "warm"}
 
             assert base.worker != branches.control.worker
             assert base.worker != branches.warm.worker
@@ -443,8 +448,8 @@ def test_model_per_worker_pool_exposes_dask_future_dependencies(
             assert branches.control.slot_id == 1
             assert branches.warm.slot_id == 2
             assert base.status.details["dask_worker"] == base.worker
-            assert base.step_count == 2
-            assert branches.control.step_count == 5
+            assert base.step_count == 3
+            assert branches.control.step_count == 6
             assert branches.warm.fields.air_temperature.stats(rank=0)[
                 "mean"
             ] == 241.0
