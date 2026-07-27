@@ -25,9 +25,10 @@ def _matmul_source(left: np.ndarray, right: np.ndarray) -> np.ndarray:
 
 def _subcell_integrate(pool, sampled: np.ndarray, metdet: np.ndarray) -> np.ndarray:
     weights = pool.get("mapping_subcell_integration")
-    weighted = np.empty((4, 4), dtype=np.float64, order="F")
-    for j in range(4):
-        for i in range(4):
+    np_value = sampled.shape[0]
+    weighted = np.empty((np_value, np_value), dtype=np.float64, order="F")
+    for j in range(np_value):
+        for i in range(np_value):
             weighted[i, j] = np.float64(sampled[i, j] * metdet[i, j])
     return _matmul_source(weights, _matmul_source(weighted, weights.T))
 
@@ -37,9 +38,11 @@ def _subcell_div_fluxes(pool, contravariant: np.ndarray, metdet: np.ndarray) -> 
     boundary = pool.get("mapping_boundary_interpolation")
     inverse_radius = np.float64(1.0) / np.float64(pool.get("earth_radius"))
     vector = np.empty_like(contravariant, order="F")
+    np_value = contravariant.shape[0]
+    nc = weights.shape[0]
     for component in range(2):
-        for j in range(4):
-            for i in range(4):
+        for j in range(np_value):
+            for i in range(np_value):
                 vector[i, j, component] = np.float64(
                     contravariant[i, j, component] * metdet[i, j]
                 )
@@ -49,9 +52,9 @@ def _subcell_div_fluxes(pool, contravariant: np.ndarray, metdet: np.ndarray) -> 
     left_right = _matmul_source(vector[:, :, 0], weights.T)
     flux_left = _matmul_source(boundary[:, 0, :], left_right)
     flux_right = _matmul_source(boundary[:, 1, :], left_right)
-    result = np.empty((3, 3, 4), dtype=np.float64, order="F")
-    for j in range(3):
-        for i in range(3):
+    result = np.empty((nc, nc, 4), dtype=np.float64, order="F")
+    for j in range(nc):
+        for i in range(nc):
             result[i, j, 0] = np.float64(-flux_bottom[i, j] * inverse_radius)
             result[i, j, 1] = np.float64(flux_right[i, j] * inverse_radius)
             result[i, j, 2] = np.float64(flux_top[i, j] * inverse_radius)
@@ -61,12 +64,23 @@ def _subcell_div_fluxes(pool, contravariant: np.ndarray, metdet: np.ndarray) -> 
 
 def _distribute_corner_flux(corners: np.ndarray, has_diagonal: tuple[bool, bool, bool, bool]) -> np.ndarray:
     result = np.zeros((2, 2, 2), dtype=np.float64, order="F")
+    outside = corners.shape[0] - 1
+    inside = outside - 1
     # southwest, southeast, northwest, northeast in HOMME getmapP order.
     definitions = (
         (0, 0, 1, 1, 0, 1, 1, 0),
-        (5, 0, 4, 1, 5, 1, 4, 0),
-        (0, 5, 1, 4, 0, 4, 1, 5),
-        (5, 5, 4, 4, 5, 4, 4, 5),
+        (outside, 0, inside, 1, outside, 1, inside, 0),
+        (0, outside, 1, inside, 0, inside, 1, outside),
+        (
+            outside,
+            outside,
+            inside,
+            inside,
+            outside,
+            inside,
+            inside,
+            outside,
+        ),
     )
     for corner, (ox, oy, ix, iy, ax, ay, bx, by) in enumerate(definitions):
         ci, cj = (corner % 2, corner // 2)
@@ -92,40 +106,46 @@ def _distribute_corner_flux(corners: np.ndarray, has_diagonal: tuple[bool, bool,
 
 
 def _subcell_dss_fluxes(pool, dss: np.ndarray, metdet: np.ndarray, corner_flux: np.ndarray) -> np.ndarray:
-    bottom_p = np.zeros((4, 4), dtype=np.float64, order="F")
-    top_p = np.zeros((4, 4), dtype=np.float64, order="F")
-    left_p = np.zeros((4, 4), dtype=np.float64, order="F")
-    right_p = np.zeros((4, 4), dtype=np.float64, order="F")
+    np_value = dss.shape[0]
+    nc = pool.get("mapping_subcell_integration").shape[0]
+    last = np_value - 1
+    bottom_p = np.zeros((np_value, np_value), dtype=np.float64, order="F")
+    top_p = np.zeros((np_value, np_value), dtype=np.float64, order="F")
+    left_p = np.zeros((np_value, np_value), dtype=np.float64, order="F")
+    right_p = np.zeros((np_value, np_value), dtype=np.float64, order="F")
     bottom_p[:, 0] = dss[:, 0]
-    top_p[:, 3] = dss[:, 3]
-    right_p[3, :] = dss[3, :]
+    top_p[:, last] = dss[:, last]
+    right_p[last, :] = dss[last, :]
     left_p[0, :] = dss[0, :]
     bottom_p[0, 0], left_p[0, 0] = corner_flux[0, 0, 1], corner_flux[0, 0, 0]
-    bottom_p[3, 0], right_p[3, 0] = corner_flux[1, 0, 1], corner_flux[1, 0, 0]
-    top_p[0, 3], left_p[0, 3] = corner_flux[0, 1, 1], corner_flux[0, 1, 0]
-    top_p[3, 3], right_p[3, 3] = corner_flux[1, 1, 1], corner_flux[1, 1, 0]
+    bottom_p[last, 0], right_p[last, 0] = corner_flux[1, 0, 1], corner_flux[1, 0, 0]
+    top_p[0, last], left_p[0, last] = corner_flux[0, 1, 1], corner_flux[0, 1, 0]
+    top_p[last, last], right_p[last, last] = (
+        corner_flux[1, 1, 1],
+        corner_flux[1, 1, 0],
+    )
     bottom = _subcell_integrate(pool, bottom_p, metdet)
     top = _subcell_integrate(pool, top_p, metdet)
     left = _subcell_integrate(pool, left_p, metdet)
     right = _subcell_integrate(pool, right_p, metdet)
-    for i in range(3):
-        for j in range(3):
+    for i in range(nc):
+        for j in range(nc):
             if j > 0:
                 top[i, j] = np.float64(top[i, j] + top[i, j - 1])
             if i > 0:
                 right[i, j] = np.float64(right[i, j] + right[i - 1, j])
-    for i in range(2, -1, -1):
-        for j in range(2, -1, -1):
-            if j < 2:
+    for i in range(nc - 1, -1, -1):
+        for j in range(nc - 1, -1, -1):
+            if j < nc - 1:
                 bottom[i, j] = np.float64(bottom[i, j] + bottom[i, j + 1])
-            if i < 2:
+            if i < nc - 1:
                 left[i, j] = np.float64(left[i, j] + left[i + 1, j])
-    result = np.zeros((3, 3, 4), dtype=np.float64, order="F")
-    for i in range(3):
-        for j in range(3):
+    result = np.zeros((nc, nc, 4), dtype=np.float64, order="F")
+    for i in range(nc):
+        for j in range(nc):
             result[i, j, 0] = bottom[i, j] if j == 0 else np.float64(bottom[i, j] - top[i, j - 1])
-            result[i, j, 1] = right[i, j] if i == 2 else np.float64(right[i, j] - left[i + 1, j])
-            result[i, j, 2] = top[i, j] if j == 2 else np.float64(top[i, j] - bottom[i, j + 1])
+            result[i, j, 1] = right[i, j] if i == nc - 1 else np.float64(right[i, j] - left[i + 1, j])
+            result[i, j, 2] = top[i, j] if j == nc - 1 else np.float64(top[i, j] - bottom[i, j + 1])
             result[i, j, 3] = left[i, j] if i == 0 else np.float64(left[i, j] - right[i - 1, j])
     return result
 
@@ -139,10 +159,12 @@ def _subcell_laplace_fluxes(pool, scalar: np.ndarray, le: int) -> np.ndarray:
     metdet = pool.get("metric_jacobian")[:, :, le]
     inverse_radius = np.float64(1.0) / np.float64(pool.get("earth_radius"))
     gradient = _gradient_sphere(scalar, dvv, dinv, inverse_radius)
-    vector = np.empty((4, 4, 2), dtype=np.float64, order="F")
+    np_value = scalar.shape[0]
+    nc = pool.get("mapping_subcell_integration").shape[0]
+    vector = np.empty((np_value, np_value, 2), dtype=np.float64, order="F")
     divergence = np.empty_like(vector, order="F")
-    for j in range(4):
-        for i in range(4):
+    for j in range(np_value):
+        for i in range(np_value):
             vector[i, j, 0] = np.float64(
                 np.float64(dinv[0, 0, i, j] * gradient[i, j, 0])
                 + np.float64(dinv[0, 1, i, j] * gradient[i, j, 1])
@@ -151,11 +173,11 @@ def _subcell_laplace_fluxes(pool, scalar: np.ndarray, le: int) -> np.ndarray:
                 np.float64(dinv[1, 0, i, j] * gradient[i, j, 0])
                 + np.float64(dinv[1, 1, i, j] * gradient[i, j, 1])
             )
-    for j in range(4):
-        for i in range(4):
+    for j in range(np_value):
+        for i in range(np_value):
             first = np.float64(0.0)
             second = np.float64(0.0)
-            for l in range(4):
+            for l in range(np_value):
                 first = np.float64(
                     first
                     - np.float64(
@@ -172,25 +194,25 @@ def _subcell_laplace_fluxes(pool, scalar: np.ndarray, le: int) -> np.ndarray:
             divergence[i, j, 1] = np.float64(second * inverse_radius)
             divergence[i, j, 0] = np.float64(divergence[i, j, 0] / mass[i, j])
             divergence[i, j, 1] = np.float64(divergence[i, j, 1] / mass[i, j])
-    integrated = np.empty((3, 3, 2), dtype=np.float64, order="F")
+    integrated = np.empty((nc, nc, 2), dtype=np.float64, order="F")
     integrated[:, :, 0] = _subcell_integrate(pool, divergence[:, :, 0], metdet)
     integrated[:, :, 1] = _subcell_integrate(pool, divergence[:, :, 1], metdet)
-    for i in range(3):
-        for j in range(1, 3):
+    for i in range(nc):
+        for j in range(1, nc):
             integrated[j, i, 0] = np.float64(
                 integrated[j, i, 0] + integrated[j - 1, i, 0]
             )
             integrated[i, j, 1] = np.float64(
                 integrated[i, j, 1] + integrated[i, j - 1, 1]
             )
-    flux = np.zeros((3, 3, 4), dtype=np.float64, order="F")
-    for i in range(3):
-        for j in range(3):
+    flux = np.zeros((nc, nc, 4), dtype=np.float64, order="F")
+    for i in range(nc):
+        for j in range(nc):
             if j > 0:
                 flux[i, j, 0] = np.float64(-integrated[i, j - 1, 1])
-            if i < 2:
+            if i < nc - 1:
                 flux[i, j, 1] = integrated[i, j, 0]
-            if j < 2:
+            if j < nc - 1:
                 flux[i, j, 2] = integrated[i, j, 1]
             if i > 0:
                 flux[i, j, 3] = np.float64(-integrated[i - 1, j, 0])
@@ -203,6 +225,9 @@ def _dg_halo(pool, comm, field: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
     ids = np.asarray(pool.get("global_element_id"), dtype=np.int32)
     dofs = np.asarray(pool.get("gll_global_dof"), dtype=np.int64)
     gathered = comm.allgather((ids, dofs, np.asarray(field)))
+    np_value = field.shape[0]
+    halo_width = np_value + 2
+    last = np_value - 1
     global_dofs: dict[int, np.ndarray] = {}
     global_values: dict[int, np.ndarray] = {}
     for rank_ids, rank_dofs, rank_values in gathered:
@@ -210,17 +235,21 @@ def _dg_halo(pool, comm, field: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
             gid = int(gid_value)
             global_dofs[gid] = np.asarray(rank_dofs)[:, :, le]
             global_values[gid] = np.asarray(rank_values)[..., le]
-    halo = np.zeros((6, 6, field.shape[2], len(ids)), dtype=np.float64, order="F")
+    halo = np.zeros(
+        (halo_width, halo_width, field.shape[2], len(ids)),
+        dtype=np.float64,
+        order="F",
+    )
     diagonal = np.zeros((4, len(ids)), dtype=bool, order="F")
     side_points = {
-        "east": tuple((3, j) for j in range(4)),
-        "south": tuple((i, 0) for i in range(4)),
-        "north": tuple((i, 3) for i in range(4)),
-        "west": tuple((0, j) for j in range(4)),
+        "east": tuple((last, j) for j in range(np_value)),
+        "south": tuple((i, 0) for i in range(np_value)),
+        "north": tuple((i, last) for i in range(np_value)),
+        "west": tuple((0, j) for j in range(np_value)),
     }
     for le, gid_value in enumerate(ids):
         gid = int(gid_value)
-        halo[1:5, 1:5, :, le] = field[..., le]
+        halo[1 : np_value + 1, 1 : np_value + 1, :, le] = field[..., le]
         neighbors: dict[str, int] = {}
         for side, points in side_points.items():
             edge = frozenset(int(global_dofs[gid][i, j]) for i, j in points)
@@ -238,10 +267,10 @@ def _dg_halo(pool, comm, field: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
                 raise RuntimeError(f"element {gid} {side} DG edge has {len(matches)} neighbors")
             neighbors[side] = matches[0]
         destinations = {
-            "east": tuple((5, j + 1) for j in range(4)),
-            "south": tuple((i + 1, 0) for i in range(4)),
-            "north": tuple((i + 1, 5) for i in range(4)),
-            "west": tuple((0, j + 1) for j in range(4)),
+            "east": tuple((halo_width - 1, j + 1) for j in range(np_value)),
+            "south": tuple((i + 1, 0) for i in range(np_value)),
+            "north": tuple((i + 1, halo_width - 1) for i in range(np_value)),
+            "west": tuple((0, j + 1) for j in range(np_value)),
         }
         for side, points in side_points.items():
             neighbor = neighbors[side]
@@ -249,8 +278,12 @@ def _dg_halo(pool, comm, field: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
                 dof = int(global_dofs[gid][i, j])
                 location = np.argwhere(global_dofs[neighbor] == dof)[0]
                 halo[di, dj, :, le] = global_values[neighbor][int(location[0]), int(location[1]), :]
-        corners = ((0, 0, ("west", "south")), (3, 0, ("east", "south")),
-                   (0, 3, ("west", "north")), (3, 3, ("east", "north")))
+        corners = (
+            (0, 0, ("west", "south")),
+            (last, 0, ("east", "south")),
+            (0, last, ("west", "north")),
+            (last, last, ("east", "north")),
+        )
         for corner, (i, j, sides) in enumerate(corners):
             dof = int(global_dofs[gid][i, j])
             excluded = {gid, neighbors[sides[0]], neighbors[sides[1]]}
@@ -261,7 +294,10 @@ def _dg_halo(pool, comm, field: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
             if remaining:
                 neighbor = sorted(remaining)[0]
                 location = np.argwhere(global_dofs[neighbor] == dof)[0]
-                di, dj = (0 if i == 0 else 5, 0 if j == 0 else 5)
+                di, dj = (
+                    0 if i == 0 else halo_width - 1,
+                    0 if j == 0 else halo_width - 1,
+                )
                 halo[di, dj, :, le] = global_values[neighbor][int(location[0]), int(location[1]), :]
                 diagonal[corner, le] = True
     return halo, diagonal
@@ -300,6 +336,8 @@ def scale_physics_forcing(pool) -> None:
     nlev = pool.dimensions["pver"]
     nelem = pool.dimensions["nelem_local"]
     nconst = pool.dimensions["nconst"]
+    np_value = pool.dimensions["np"]
+    nc = pool.dimensions["nc"]
     n0 = int(pool.get("dynamics_time_level_n0"))
     qn0, _ = tracer_time_levels(pool)
     dtime = np.float64(pool.get("model_timestep"))
@@ -312,8 +350,8 @@ def scale_physics_forcing(pool) -> None:
     for le in range(nelem):
         for constituent in range(nconst):
             for level in range(nlev):
-                for j in range(4):
-                    for i in range(4):
+                for j in range(np_value):
+                    for i in range(np_value):
                         fq[i, j, level, le, constituent] = np.float64(
                             np.float64(
                                 fq[i, j, level, le, constituent]
@@ -322,15 +360,14 @@ def scale_physics_forcing(pool) -> None:
                             * dp[i, j, level, le, n0]
                         )
 
-    # The generated fixed-suite dycore registry has the same active-species
-    # order as its Qdp storage: cloud liquid, rain, water vapor.
-    active_species_order = (0, 1, 2)
+    # The registry and Qdp storage use the same configured constituent order.
+    active_species_order = range(nconst)
     qdp = pool.get("constituent_mass")
     fdp = pool.get("forcing_full_layer_pressure_thickness")
     for le in range(nelem):
         for level in range(nlev):
-            for j in range(4):
-                for i in range(4):
+            for j in range(np_value):
+                for i in range(np_value):
                     pdel = np.float64(dp[i, j, level, le, n0])
                     for constituent in active_species_order:
                         pdel = np.float64(
@@ -348,8 +385,8 @@ def scale_physics_forcing(pool) -> None:
     for le in range(nelem):
         for constituent in range(nconst):
             for level in range(nlev):
-                for j in range(3):
-                    for i in range(3):
+                for j in range(nc):
+                    for i in range(nc):
                         fc[i, j, level, le, constituent] = np.float64(
                             fc[i, j, level, le, constituent]
                             * reciprocal_timestep
@@ -364,6 +401,9 @@ def apply_cam_forcing(pool, *, nsubstep: int = 1) -> None:
     nlev = pool.dimensions["pver"]
     nelem = pool.dimensions["nelem_local"]
     nconst = pool.dimensions["nconst"]
+    np_value = pool.dimensions["np"]
+    nc = pool.dimensions["nc"]
+    nhc = pool.dimensions["nhc"]
     n0 = int(pool.get("dynamics_time_level_n0"))
     qn0, _ = tracer_time_levels(pool)
     dt_local = np.float64(pool.get("vertical_remap_timestep"))
@@ -392,8 +432,8 @@ def apply_cam_forcing(pool, *, nsubstep: int = 1) -> None:
         # qsize tracer update, preserving q,k,j,i source order.
         for constituent in range(nconst):
             for level in range(nlev):
-                for j in range(4):
-                    for i in range(4):
+                for j in range(np_value):
+                    for i in range(np_value):
                         v1 = np.float64(
                             dt_local_tracer
                             * fq[i, j, level, le, constituent]
@@ -411,9 +451,9 @@ def apply_cam_forcing(pool, *, nsubstep: int = 1) -> None:
         if dt_local_tracer_fvm > 0.0:
             for constituent in range(nconst):
                 for level in range(nlev):
-                    for j in range(3):
-                        for i in range(3):
-                            hi, hj = i + 3, j + 3
+                    for j in range(nc):
+                        for i in range(nc):
+                            hi, hj = i + nhc, j + nhc
                             tmp = np.float64(
                                 np.float64(
                                     dt_local_tracer_fvm
@@ -434,10 +474,10 @@ def apply_cam_forcing(pool, *, nsubstep: int = 1) -> None:
 
         # ftype_conserve=1 is the HOMME default in this fixed configuration.
         for level in range(nlev):
-            for j in range(4):
-                for i in range(4):
+            for j in range(np_value):
+                for i in range(np_value):
                     pdel = np.float64(dry_dp[i, j, level, le, n0])
-                    for constituent in (0, 1, 2):
+                    for constituent in range(nconst):
                         pdel = np.float64(
                             pdel + qdp[i, j, level, le, constituent, qn0]
                         )
@@ -489,30 +529,32 @@ def _thermodynamic_coefficients(pool, n0: int, qn0: int):
     cpair = np.float64(pool.get("dry_air_specific_heat"))
     cpwv = np.float64(pool.get("water_vapor_specific_heat"))
     cpliq = np.float64(pool.get("liquid_water_specific_heat"))
+    np_value = pool.dimensions["np"]
+    nconst = pool.dimensions["nconst"]
     for le in range(pool.dimensions["nelem_local"]):
         for k in range(pool.dimensions["pver"]):
-            for j in range(4):
-                for i in range(4):
-                    for constituent in range(pool.dimensions["nconst"]):
+            for j in range(np_value):
+                for i in range(np_value):
+                    for constituent in range(nconst):
                         qwater[i, j, k, le, constituent] = np.float64(
                             qdp[i, j, k, le, constituent] / dp_dry[i, j, k, le]
                         )
                     species_sum = np.float64(1.0)
-                    for constituent in range(pool.dimensions["nconst"]):
+                    for constituent in range(nconst):
                         species_sum = np.float64(
                             species_sum + qwater[i, j, k, le, constituent]
                         )
                     sum_water[i, j, k, le] = species_sum
                     heat_sum = cpair
-                    heat_sum = np.float64(
-                        heat_sum + np.float64(cpliq * qwater[i, j, k, le, 0])
-                    )
-                    heat_sum = np.float64(
-                        heat_sum + np.float64(cpliq * qwater[i, j, k, le, 1])
-                    )
-                    heat_sum = np.float64(
-                        heat_sum + np.float64(cpwv * qwater[i, j, k, le, 2])
-                    )
+                    for constituent in range(nconst):
+                        specific_heat = cpwv if constituent == 2 else cpliq
+                        heat_sum = np.float64(
+                            heat_sum
+                            + np.float64(
+                                specific_heat
+                                * qwater[i, j, k, le, constituent]
+                            )
+                        )
                     inv_cp[i, j, k, le] = np.float64(species_sum / heat_sum)
     kappa[...] = np.float64(rair / cpair)
     return qwater, sum_water, inv_cp, kappa, rair, rh2o, cpair
@@ -532,6 +574,8 @@ def _hydrostatic_state(
     dp_dry = pool.get("layer_pressure_thickness")[..., n0]
     nlev = pool.dimensions["pver"]
     nelem = pool.dimensions["nelem_local"]
+    np_value = pool.dimensions["np"]
+    nconst = pool.dimensions["nconst"]
     virtual_temperature = np.empty_like(dp_dry, order="F")
     pressure = np.empty_like(dp_dry, order="F")
     geopotential = np.empty_like(dp_dry, order="F")
@@ -541,12 +585,14 @@ def _hydrostatic_state(
     )
     for le in range(nelem):
         for k in range(nlev):
-            for j in range(4):
-                for i in range(4):
-                    qv = qwater[i, j, k, le, 2]
+            for j in range(np_value):
+                for i in range(np_value):
+                    qv = (
+                        qwater[i, j, k, le, 2]
+                        if nconst > 2
+                        else np.float64(0.0)
+                    )
                     gas_sum = rair
-                    gas_sum = np.float64(gas_sum + np.float64(0.0 * qwater[i, j, k, le, 0]))
-                    gas_sum = np.float64(gas_sum + np.float64(0.0 * qwater[i, j, k, le, 1]))
                     gas_sum = np.float64(gas_sum + np.float64(rh2o * qv))
                     virtual_temperature[i, j, k, le] = np.float64(
                         np.float64(gas_sum * temperature[i, j, k, le])
@@ -555,8 +601,8 @@ def _hydrostatic_state(
                     dp_full[i, j, k, le] = np.float64(
                         sum_water[i, j, k, le] * dp_dry[i, j, k, le]
                     )
-        for j in range(4):
-            for i in range(4):
+        for j in range(np_value):
+            for i in range(np_value):
                 interfaces = np.empty(nlev + 1, dtype=np.float64)
                 interfaces[0] = ptop
                 for k in range(1, nlev + 1):
@@ -615,10 +661,11 @@ def compute_and_apply_rhs(
     rh2o: np.float64,
     cpair: np.float64,
 ) -> None:
-    """Port ``prim_advance_mod:compute_and_apply_rhs`` for ne3pg3 L30."""
+    """Port ``prim_advance_mod:compute_and_apply_rhs`` for configured dimensions."""
 
     nlev = pool.dimensions["pver"]
     nelem = pool.dimensions["nelem_local"]
+    np_value = pool.dimensions["np"]
     dvv = pool.get("gll_derivative")
     inverse_radius = np.float64(1.0) / np.float64(pool.get("earth_radius"))
     ps0 = np.float64(pool.get("reference_pressure"))
@@ -633,7 +680,9 @@ def compute_and_apply_rhs(
     pool.get("pressure_midpoint_gll")[...] = pressure
     pool.get("rk_geopotential")[...] = geopotential
 
-    mass_temperature = np.empty((4, 4, nlev, nelem), dtype=np.float64, order="F")
+    mass_temperature = np.empty(
+        (np_value, np_value, nlev, nelem), dtype=np.float64, order="F"
+    )
     mass_zonal = np.empty_like(mass_temperature, order="F")
     mass_meridional = np.empty_like(mass_temperature, order="F")
     mass_dp = np.empty_like(mass_temperature, order="F")
@@ -644,7 +693,9 @@ def compute_and_apply_rhs(
         rmetdet = pool.get("inverse_metric_jacobian")[:, :, le]
         spectral_mass = pool.get("spectral_mass_matrix")[:, :, le]
         fcor = pool.get("coriolis_parameter")[:, :, le]
-        div_dry = np.empty((4, 4, nlev), dtype=np.float64, order="F")
+        div_dry = np.empty(
+            (np_value, np_value, nlev), dtype=np.float64, order="F"
+        )
         div_full = np.empty_like(div_dry, order="F")
         vgrad_pressure = np.empty_like(div_dry, order="F")
         vorticity = np.empty_like(div_dry, order="F")
@@ -652,11 +703,13 @@ def compute_and_apply_rhs(
             pressure_gradient = _gradient_sphere(
                 pressure[:, :, k, le], dvv, dinv, inverse_radius
             )
-            dry_flux = np.empty((4, 4, 2), dtype=np.float64, order="F")
+            dry_flux = np.empty(
+                (np_value, np_value, 2), dtype=np.float64, order="F"
+            )
             full_flux = np.empty_like(dry_flux, order="F")
             velocity = np.empty_like(dry_flux, order="F")
-            for j in range(4):
-                for i in range(4):
+            for j in range(np_value):
+                for i in range(np_value):
                     u = zonal[i, j, k, le, rhs_level]
                     v = meridional[i, j, k, le, rhs_level]
                     velocity[i, j, 0] = u
@@ -695,7 +748,9 @@ def compute_and_apply_rhs(
         pool.get("rk_full_mass_flux_divergence")[:, :, :, le] = div_full
         pool.get("rk_horizontal_pressure_advection")[:, :, :, le] = vgrad_pressure
 
-        native_zonal_tendency = np.empty((4, 4, nlev, 1), dtype=np.float64, order="F")
+        native_zonal_tendency = np.empty(
+            (np_value, np_value, nlev, 1), dtype=np.float64, order="F"
+        )
         native_meridional_tendency = np.empty_like(native_zonal_tendency, order="F")
         backend.wind_tendency(
             inverse_radius=inverse_radius,
@@ -716,10 +771,12 @@ def compute_and_apply_rhs(
         )
 
         omega_full = np.empty_like(div_full, order="F")
-        cumulative = np.zeros((4, 4), dtype=np.float64, order="F")
+        cumulative = np.zeros(
+            (np_value, np_value), dtype=np.float64, order="F"
+        )
         for k in range(nlev):
-            for j in range(4):
-                for i in range(4):
+            for j in range(np_value):
+                for i in range(np_value):
                     term = np.float64(-div_full[i, j, k])
                     omega_full[i, j, k] = np.float64(
                         cumulative[i, j]
@@ -737,8 +794,8 @@ def compute_and_apply_rhs(
             grad_temperature = _gradient_sphere(
                 temperature[:, :, k, le, rhs_level], dvv, dinv, inverse_radius
             )
-            for j in range(4):
-                for i in range(4):
+            for j in range(np_value):
+                for i in range(np_value):
                     u = zonal[i, j, k, le, rhs_level]
                     v = meridional[i, j, k, le, rhs_level]
                     zonal_tendency = native_zonal_tendency[i, j, k, 0]
@@ -791,10 +848,13 @@ def compute_and_apply_rhs(
 
         if eta_average_weight != 0.0:
             subflux = pool.get("subelement_mass_flux")
+            nc = pool.dimensions["nc"]
             for k in range(nlev):
-                contravariant = np.empty((4, 4, 2), dtype=np.float64, order="F")
-                for j in range(4):
-                    for i in range(4):
+                contravariant = np.empty(
+                    (np_value, np_value, 2), dtype=np.float64, order="F"
+                )
+                for j in range(np_value):
+                    for i in range(np_value):
                         dry_u = np.float64(
                             zonal[i, j, k, le, rhs_level]
                             * dp[i, j, k, le, rhs_level]
@@ -813,8 +873,8 @@ def compute_and_apply_rhs(
                         )
                 flux = _subcell_div_fluxes(pool, contravariant, metdet)
                 for edge in range(4):
-                    for j in range(3):
-                        for i in range(3):
+                    for j in range(nc):
+                        for i in range(nc):
                             subflux[i, j, edge, k, le] = np.float64(
                                 subflux[i, j, edge, k, le]
                                 - np.float64(eta_average_weight * flux[i, j, edge])
@@ -828,8 +888,8 @@ def compute_and_apply_rhs(
     for le in range(nelem):
         inverse_mass = pool.get("inverse_spectral_mass_matrix")[:, :, le]
         for k in range(nlev):
-            for j in range(4):
-                for i in range(4):
+            for j in range(np_value):
+                for i in range(np_value):
                     scale = inverse_mass[i, j]
                     temperature[i, j, k, le, output_level] = np.float64(
                         scale * assembled[i, j, k, le]
@@ -846,24 +906,31 @@ def compute_and_apply_rhs(
 
     if eta_average_weight != 0.0:
         subflux = pool.get("subelement_mass_flux")
+        nc = pool.dimensions["nc"]
+        halo_width = np_value + 2
+        last = np_value - 1
         for le in range(nelem):
             spectral_mass = pool.get("spectral_mass_matrix")[:, :, le]
             inverse_mass = pool.get("inverse_spectral_mass_matrix")[:, :, le]
             metdet = pool.get("metric_jacobian")[:, :, le]
             flags = tuple(bool(diagonal_corner[corner, le]) for corner in range(4))
             for k in range(nlev):
-                corners = np.empty((6, 6), dtype=np.float64, order="F")
-                for j in range(6):
-                    for i in range(6):
+                corners = np.empty(
+                    (halo_width, halo_width), dtype=np.float64, order="F"
+                )
+                for j in range(halo_width):
+                    for i in range(halo_width):
                         corners[i, j] = np.float64(dg_halo[i, j, k, le] / dt2)
                 corner_flux = _distribute_corner_flux(corners, flags)
                 corner_flux[0, 0, :] = np.float64(inverse_mass[0, 0]) * corner_flux[0, 0, :]
-                corner_flux[1, 0, :] = np.float64(inverse_mass[3, 0]) * corner_flux[1, 0, :]
-                corner_flux[0, 1, :] = np.float64(inverse_mass[0, 3]) * corner_flux[0, 1, :]
-                corner_flux[1, 1, :] = np.float64(inverse_mass[3, 3]) * corner_flux[1, 1, :]
-                dss = np.empty((4, 4), dtype=np.float64, order="F")
-                for j in range(4):
-                    for i in range(4):
+                corner_flux[1, 0, :] = np.float64(inverse_mass[last, 0]) * corner_flux[1, 0, :]
+                corner_flux[0, 1, :] = np.float64(inverse_mass[0, last]) * corner_flux[0, 1, :]
+                corner_flux[1, 1, :] = np.float64(inverse_mass[last, last]) * corner_flux[1, 1, :]
+                dss = np.empty(
+                    (np_value, np_value), dtype=np.float64, order="F"
+                )
+                for j in range(np_value):
+                    for i in range(np_value):
                         stash = np.float64(mass_dp[i, j, k, le] / spectral_mass[i, j])
                         dss[i, j] = np.float64(
                             dp[i, j, k, le, output_level] - stash
@@ -871,8 +938,8 @@ def compute_and_apply_rhs(
                         dss[i, j] = np.float64(dss[i, j] / dt2)
                 flux = _subcell_dss_fluxes(pool, dss, metdet, corner_flux)
                 for edge in range(4):
-                    for j in range(3):
-                        for i in range(3):
+                    for j in range(nc):
+                        for i in range(nc):
                             subflux[i, j, edge, k, le] = np.float64(
                                 subflux[i, j, edge, k, le]
                                 + np.float64(eta_average_weight * flux[i, j, edge])
@@ -897,19 +964,25 @@ def _hypervis_dss_update(
     """DSS hyperviscosity fields, update state, and close CSLAM fluxes."""
 
     nelem = pool.dimensions["nelem_local"]
+    np_value = pool.dimensions["np"]
+    nc = pool.dimensions["nc"]
+    halo_width = np_value + 2
+    last = np_value - 1
     temperature = pool.get("air_temperature")
     zonal = pool.get("zonal_wind")
     meridional = pool.get("meridional_wind")
     pressure = pool.get("layer_pressure_thickness")
     mass_pressure = np.empty(
-        (4, 4, level_count, nelem), dtype=np.float64, order="F"
+        (np_value, np_value, level_count, nelem),
+        dtype=np.float64,
+        order="F",
     )
     for le in range(nelem):
         mass = pool.get("spectral_mass_matrix")[:, :, le]
         for local_k in range(level_count):
             k = level_offset + local_k
-            for j in range(4):
-                for i in range(4):
+            for j in range(np_value):
+                for i in range(np_value):
                     mass_pressure[i, j, local_k, le] = np.float64(
                         np.float64(pressure[i, j, k, le, time_level] * mass[i, j])
                         + np.float64(dt * pressure_tendency[i, j, local_k, le])
@@ -930,8 +1003,8 @@ def _hypervis_dss_update(
         inverse_mass = pool.get("inverse_spectral_mass_matrix")[:, :, le]
         for local_k in range(level_count):
             k = level_offset + local_k
-            for j in range(4):
-                for i in range(4):
+            for j in range(np_value):
+                for i in range(np_value):
                     scale = inverse_mass[i, j]
                     temperature_tendency[i, j, local_k, le] = np.float64(
                         np.float64(dt * assembled[i, j, local_k, le]) * scale
@@ -956,18 +1029,22 @@ def _hypervis_dss_update(
         flags = tuple(bool(diagonal_corner[corner, le]) for corner in range(4))
         for local_k in range(level_count):
             k = level_offset + local_k
-            corners = np.empty((6, 6), dtype=np.float64, order="F")
-            for j in range(6):
-                for i in range(6):
+            corners = np.empty(
+                (halo_width, halo_width), dtype=np.float64, order="F"
+            )
+            for j in range(halo_width):
+                for i in range(halo_width):
                     corners[i, j] = np.float64(dg_halo[i, j, local_k, le] / dt)
             corner_flux = _distribute_corner_flux(corners, flags)
             corner_flux[0, 0, :] = np.float64(inverse_mass[0, 0]) * corner_flux[0, 0, :]
-            corner_flux[1, 0, :] = np.float64(inverse_mass[3, 0]) * corner_flux[1, 0, :]
-            corner_flux[0, 1, :] = np.float64(inverse_mass[0, 3]) * corner_flux[0, 1, :]
-            corner_flux[1, 1, :] = np.float64(inverse_mass[3, 3]) * corner_flux[1, 1, :]
-            dss = np.empty((4, 4), dtype=np.float64, order="F")
-            for j in range(4):
-                for i in range(4):
+            corner_flux[1, 0, :] = np.float64(inverse_mass[last, 0]) * corner_flux[1, 0, :]
+            corner_flux[0, 1, :] = np.float64(inverse_mass[0, last]) * corner_flux[0, 1, :]
+            corner_flux[1, 1, :] = np.float64(inverse_mass[last, last]) * corner_flux[1, 1, :]
+            dss = np.empty(
+                (np_value, np_value), dtype=np.float64, order="F"
+            )
+            for j in range(np_value):
+                for i in range(np_value):
                     before_dss = np.float64(
                         mass_pressure[i, j, local_k, le] / mass[i, j]
                     )
@@ -977,8 +1054,8 @@ def _hypervis_dss_update(
                     dss[i, j] = np.float64(dss[i, j] / dt)
             flux = _subcell_dss_fluxes(pool, dss, metdet, corner_flux)
             for edge in range(4):
-                for j in range(3):
-                    for i in range(3):
+                for j in range(nc):
+                    for i in range(nc):
                         subflux[i, j, edge, k, le] = np.float64(
                             subflux[i, j, edge, k, le]
                             + np.float64(eta_weight * flux[i, j, edge])
@@ -987,8 +1064,8 @@ def _hypervis_dss_update(
     for le in range(nelem):
         for local_k in range(level_count):
             k = level_offset + local_k
-            for j in range(4):
-                for i in range(4):
+            for j in range(np_value):
+                for i in range(np_value):
                     old_u = zonal[i, j, k, le, time_level]
                     old_v = meridional[i, j, k, le, time_level]
                     new_u = np.float64(old_u + zonal_tendency[i, j, local_k, le])
@@ -1020,6 +1097,8 @@ def advance_hyperviscosity(pool, comm, backend) -> None:
 
     nlev = pool.dimensions["pver"]
     nelem = pool.dimensions["nelem_local"]
+    np_value = pool.dimensions["np"]
+    nc = pool.dimensions["nc"]
     np1 = int(pool.get("dynamics_time_level_np1"))
     n0 = int(pool.get("dynamics_time_level_n0"))
     qn0, _ = tracer_time_levels(pool)
@@ -1035,14 +1114,20 @@ def advance_hyperviscosity(pool, comm, backend) -> None:
     rmetdet = pool.get("inverse_metric_jacobian")
     mass = pool.get("spectral_mass_matrix")
     weights = pool.get("gll_weight")
-    reference_mass = np.empty((4, 4), dtype=np.float64, order="F")
-    for j in range(4):
-        for i in range(4):
+    reference_mass = np.empty(
+        (np_value, np_value), dtype=np.float64, order="F"
+    )
+    for j in range(np_value):
+        for i in range(np_value):
             reference_mass[i, j] = np.float64(weights[i] * weights[j])
 
-    reference_dp = np.empty((4, 4, nlev, nelem), dtype=np.float64, order="F")
+    reference_dp = np.empty(
+        (np_value, np_value, nlev, nelem), dtype=np.float64, order="F"
+    )
     reference_temperature = np.empty_like(reference_dp, order="F")
-    reference_surface_pressure = np.empty((4, 4, nelem), dtype=np.float64, order="F")
+    reference_surface_pressure = np.empty(
+        (np_value, np_value, nelem), dtype=np.float64, order="F"
+    )
     native_sponge_scale = np.empty(nlev, dtype=np.float64, order="F")
     backend.hypervis_reference(
         reference_pressure=pool.get("reference_pressure"),
@@ -1087,11 +1172,15 @@ def advance_hyperviscosity(pool, comm, backend) -> None:
     for _subcycle in range(subcycles):
         scalar_temperature = np.empty_like(reference_temperature, order="F")
         scalar_pressure = np.empty_like(reference_dp, order="F")
-        vector = np.empty((4, 4, 2, nlev, nelem), dtype=np.float64, order="F")
+        vector = np.empty(
+            (np_value, np_value, 2, nlev, nelem),
+            dtype=np.float64,
+            order="F",
+        )
         for le in range(nelem):
             for k in range(nlev):
-                for j in range(4):
-                    for i in range(4):
+                for j in range(np_value):
+                    for i in range(np_value):
                         scalar_temperature[i, j, k, le] = np.float64(
                             temperature_state[i, j, k, le, np1]
                             - reference_temperature[i, j, k, le]
@@ -1143,12 +1232,14 @@ def advance_hyperviscosity(pool, comm, backend) -> None:
         normalized_temperature = np.empty_like(first_temperature, order="F")
         normalized_pressure = np.empty_like(first_pressure, order="F")
         normalized_vector = np.empty_like(first_vector, order="F")
-        dpflux = np.empty((3, 3, 4, nlev, nelem), dtype=np.float64, order="F")
+        dpflux = np.empty(
+            (nc, nc, 4, nlev, nelem), dtype=np.float64, order="F"
+        )
         for le in range(nelem):
             inverse_mass = pool.get("inverse_spectral_mass_matrix")[:, :, le]
             for k in range(nlev):
-                for j in range(4):
-                    for i in range(4):
+                for j in range(np_value):
+                    for i in range(np_value):
                         normalized_temperature[i, j, k, le] = np.float64(
                             inverse_mass[i, j] * first_temperature[i, j, k, le]
                         )
@@ -1201,8 +1292,8 @@ def advance_hyperviscosity(pool, comm, backend) -> None:
 
         for le in range(nelem):
             for k in range(nlev):
-                for j in range(4):
-                    for i in range(4):
+                for j in range(np_value):
+                    for i in range(np_value):
                         pool.get("pressure_dissipation_average")[i, j, k, le] = np.float64(
                             pool.get("pressure_dissipation_average")[i, j, k, le]
                             + np.float64(
@@ -1230,8 +1321,8 @@ def advance_hyperviscosity(pool, comm, backend) -> None:
                             -velocity_hyper * second_vector[i, j, 1, k, le]
                         )
                 for edge in range(4):
-                    for j in range(3):
-                        for i in range(3):
+                    for j in range(nc):
+                        for i in range(nc):
                             pool.get("subelement_mass_flux")[i, j, edge, k, le] = np.float64(
                                 pool.get("subelement_mass_flux")[i, j, edge, k, le]
                                 - np.float64(
@@ -1259,13 +1350,21 @@ def advance_hyperviscosity(pool, comm, backend) -> None:
         )
 
     sponge_levels = int(pool.get("sponge_level_count"))
-    sponge_temperature = np.empty((4, 4, sponge_levels, nelem), dtype=np.float64, order="F")
+    sponge_temperature = np.empty(
+        (np_value, np_value, sponge_levels, nelem),
+        dtype=np.float64,
+        order="F",
+    )
     sponge_pressure = np.empty_like(sponge_temperature, order="F")
-    sponge_vector = np.empty((4, 4, 2, sponge_levels, nelem), dtype=np.float64, order="F")
+    sponge_vector = np.empty(
+        (np_value, np_value, 2, sponge_levels, nelem),
+        dtype=np.float64,
+        order="F",
+    )
     for le in range(nelem):
         for k in range(sponge_levels):
-            for j in range(4):
-                for i in range(4):
+            for j in range(np_value):
+                for i in range(np_value):
                     sponge_temperature[i, j, k, le] = temperature_state[i, j, k, le, np1]
                     sponge_pressure[i, j, k, le] = pressure_state[i, j, k, le, np1]
                     sponge_vector[i, j, 0, k, le] = zonal_state[i, j, k, le, np1]
@@ -1311,8 +1410,8 @@ def advance_hyperviscosity(pool, comm, backend) -> None:
             laplace_flux = _subcell_laplace_fluxes(
                 pool, pressure_state[:, :, k, le, np1], le
             )
-            for j in range(4):
-                for i in range(4):
+            for j in range(np_value):
+                for i in range(np_value):
                     sponge_temperature_tendency[i, j, k, le] = np.float64(
                         coefficient * sponge_temperature_tendency[i, j, k, le]
                     )
@@ -1326,8 +1425,8 @@ def advance_hyperviscosity(pool, comm, backend) -> None:
                         coefficient * sponge_vector_tendency[i, j, 1, k, le]
                     )
             for edge in range(4):
-                for j in range(3):
-                    for i in range(3):
+                for j in range(nc):
+                    for i in range(nc):
                         pool.get("subelement_mass_flux")[i, j, edge, k, le] = np.float64(
                             pool.get("subelement_mass_flux")[i, j, edge, k, le]
                             + np.float64(
@@ -1360,9 +1459,10 @@ def update_surface_dry_air_pressure(pool) -> None:
     )
     pressure = pool.get("layer_pressure_thickness")
     surface = pool.get("surface_dry_air_pressure")
+    np_value = pool.dimensions["np"]
     for le in range(pool.dimensions["nelem_local"]):
-        for j in range(4):
-            for i in range(4):
+        for j in range(np_value):
+            for i in range(np_value):
                 value = ptop
                 for k in range(pool.dimensions["pver"]):
                     value = np.float64(value + pressure[i, j, k, le, np1])
@@ -1408,7 +1508,12 @@ def _tracer_biharmonic(pool, comm, backend, scalar: np.ndarray) -> np.ndarray:
     nlev = pool.dimensions["pver"]
     nq = pool.dimensions["nconst"]
     nelem = pool.dimensions["nelem_local"]
-    packed = np.empty((4, 4, nlev * nq, nelem), dtype=np.float64, order="F")
+    np_value = pool.dimensions["np"]
+    packed = np.empty(
+        (np_value, np_value, nlev * nq, nelem),
+        dtype=np.float64,
+        order="F",
+    )
     for le in range(nelem):
         for q in range(nq):
             for k in range(nlev):
@@ -1426,8 +1531,8 @@ def _tracer_biharmonic(pool, comm, backend, scalar: np.ndarray) -> np.ndarray:
     for le in range(nelem):
         inverse_mass = pool.get("inverse_spectral_mass_matrix")[:, :, le]
         for level in range(nlev * nq):
-            for j in range(4):
-                for i in range(4):
+            for j in range(np_value):
+                for i in range(np_value):
                     normalized[i, j, level, le] = np.float64(
                         inverse_mass[i, j] * first[i, j, level, le]
                     )
@@ -1447,6 +1552,7 @@ def _euler_tracer_stage(pool, comm, backend, *, source_level, output_level, dt, 
     nlev = pool.dimensions["pver"]
     nq = pool.dimensions["nconst"]
     nelem = pool.dimensions["nelem_local"]
+    np_value = pool.dimensions["np"]
     pressure_start = pool.get("pressure_at_step_start")
     divdp = pool.get("mass_flux_divergence")
     divdp_projected = pool.get("projected_mass_flux_divergence")
@@ -1455,11 +1561,15 @@ def _euler_tracer_stage(pool, comm, backend, *, source_level, output_level, dt, 
     minimum = pool.get("tracer_stage_minimum")
     maximum = pool.get("tracer_stage_maximum")
     stage_dp = np.empty_like(pressure_start, order="F")
-    mixing = np.empty((4, 4, nlev, nq, nelem), dtype=np.float64, order="F")
+    mixing = np.empty(
+        (np_value, np_value, nlev, nq, nelem),
+        dtype=np.float64,
+        order="F",
+    )
     for le in range(nelem):
         for k in range(nlev):
-            for j in range(4):
-                for i in range(4):
+            for j in range(np_value):
+                for i in range(np_value):
                     stage_dp[i, j, k, le] = np.float64(
                         pressure_start[i, j, k, le]
                         - np.float64(
@@ -1477,8 +1587,8 @@ def _euler_tracer_stage(pool, comm, backend, *, source_level, output_level, dt, 
             for k in range(nlev):
                 local_minimum = mixing[0, 0, k, q, le]
                 local_maximum = local_minimum
-                for j in range(4):
-                    for i in range(4):
+                for j in range(np_value):
+                    for i in range(np_value):
                         local_minimum = min(local_minimum, mixing[i, j, k, q, le])
                         local_maximum = max(local_maximum, mixing[i, j, k, q, le])
                 if rhs_multiplier == 1:
@@ -1506,8 +1616,8 @@ def _euler_tracer_stage(pool, comm, backend, *, source_level, output_level, dt, 
         for le in range(nelem):
             for q in range(nq):
                 for k in range(nlev):
-                    for j in range(4):
-                        for i in range(4):
+                    for j in range(np_value):
+                        for i in range(np_value):
                             scaled[i, j, k, q, le] = np.float64(
                                 mixing[i, j, k, q, le]
                                 * np.float64(average[i, j, k, le] / dp0[k])
@@ -1518,8 +1628,8 @@ def _euler_tracer_stage(pool, comm, backend, *, source_level, output_level, dt, 
         for le in range(nelem):
             for q in range(nq):
                 for k in range(nlev):
-                    for j in range(4):
-                        for i in range(4):
+                    for j in range(np_value):
+                        for i in range(np_value):
                             biharmonic[i, j, k, q, le] = np.float64(
                                 np.float64(
                                     -np.float64(3.0) * np.float64(dt) * nuq * dp0[k]
@@ -1538,8 +1648,8 @@ def _euler_tracer_stage(pool, comm, backend, *, source_level, output_level, dt, 
         rmetdet = pool.get("inverse_metric_jacobian")[:, :, le]
         for k in range(nlev):
             dry_mass[:, :, k, le] = np.float64(0.0)
-            for j in range(4):
-                for i in range(4):
+            for j in range(np_value):
+                for i in range(np_value):
                     dry_mass[i, j, k, le] = np.float64(
                         stage_dp[i, j, k, le]
                         - np.float64(dt * divdp[i, j, k, le])
@@ -1553,9 +1663,11 @@ def _euler_tracer_stage(pool, comm, backend, *, source_level, output_level, dt, 
                         stage_dp[i, j, k, le] - np.float64(dt * divdp[i, j, k, le])
                     )
             for q in range(nq):
-                flux = np.empty((4, 4, 2), dtype=np.float64, order="F")
-                for j in range(4):
-                    for i in range(4):
+                flux = np.empty(
+                    (np_value, np_value, 2), dtype=np.float64, order="F"
+                )
+                for j in range(np_value):
+                    for i in range(np_value):
                         flux[i, j, 0] = np.float64(
                             np.float64(vn0[i, j, 0, k, le] / stage_dp[i, j, k, le])
                             * qdp[i, j, k, le, q, source_level]
@@ -1567,8 +1679,8 @@ def _euler_tracer_stage(pool, comm, backend, *, source_level, output_level, dt, 
                 divergence = _divergence_sphere(
                     flux, dvv, dinv, metdet, rmetdet, inverse_radius
                 )
-                for j in range(4):
-                    for i in range(4):
+                for j in range(np_value):
+                    for i in range(np_value):
                         qtens[i, j, k, q, le] = np.float64(
                             qdp[i, j, k, le, q, source_level]
                             - np.float64(dt * divergence[i, j])
@@ -1588,20 +1700,24 @@ def _euler_tracer_stage(pool, comm, backend, *, source_level, output_level, dt, 
     )
 
     extra = 1 if dss_field is not None else 0
-    packed = np.empty((4, 4, nlev, nq + extra, nelem), dtype=np.float64, order="F")
+    packed = np.empty(
+        (np_value, np_value, nlev, nq + extra, nelem),
+        dtype=np.float64,
+        order="F",
+    )
     for le in range(nelem):
         mass = pool.get("spectral_mass_matrix")[:, :, le]
         for q in range(nq):
             for k in range(nlev):
-                for j in range(4):
-                    for i in range(4):
+                for j in range(np_value):
+                    for i in range(np_value):
                         packed[i, j, k, q, le] = np.float64(
                             mass[i, j] * qtens[i, j, k, q, le]
                         )
         if dss_field is not None:
             for k in range(nlev):
-                for j in range(4):
-                    for i in range(4):
+                for j in range(np_value):
+                    for i in range(np_value):
                         packed[i, j, k, nq, le] = np.float64(
                             mass[i, j] * dss_field[i, j, k, le]
                         )
@@ -1609,8 +1725,8 @@ def _euler_tracer_stage(pool, comm, backend, *, source_level, output_level, dt, 
     for le in range(nelem):
         inverse_mass = pool.get("inverse_spectral_mass_matrix")[:, :, le]
         for k in range(nlev):
-            for j in range(4):
-                for i in range(4):
+            for j in range(np_value):
+                for i in range(np_value):
                     for q in range(nq):
                         qdp[i, j, k, le, q, output_level] = np.float64(
                             inverse_mass[i, j] * assembled[i, j, k, q, le]
@@ -1622,10 +1738,11 @@ def _euler_tracer_stage(pool, comm, backend, *, source_level, output_level, dt, 
 
 
 def advance_se_tracers(pool, comm, backend) -> None:
-    """Run the fixed limiter-8 three-stage SE tracer advection."""
+    """Run the configured limiter-8 three-stage SE tracer advection."""
 
     nlev = pool.dimensions["pver"]
     nelem = pool.dimensions["nelem_local"]
+    np_value = pool.dimensions["np"]
     dvv = pool.get("gll_derivative")
     inverse_radius = np.float64(1.0) / np.float64(pool.get("earth_radius"))
     vn0 = pool.get("mean_horizontal_mass_flux")
@@ -1649,8 +1766,8 @@ def advance_se_tracers(pool, comm, backend) -> None:
     for le in range(nelem):
         for q in range(pool.dimensions["nconst"]):
             for k in range(nlev):
-                for j in range(4):
-                    for i in range(4):
+                for j in range(np_value):
+                    for i in range(np_value):
                         qdp[i, j, k, le, q, np1_qdp] = np.float64(
                             reciprocal_stage
                             * np.float64(
@@ -1664,10 +1781,11 @@ def advance_se_tracers(pool, comm, backend) -> None:
 
 
 def vertical_remap_se(pool, backend) -> None:
-    """Remap the Python-owned SE state back to fixed hybrid eta levels."""
+    """Remap the Python-owned SE state back to configured hybrid eta levels."""
 
     nlev = pool.dimensions["pver"]
     nconst = pool.dimensions["nconst"]
+    np_value = pool.dimensions["np"]
     np1 = int(pool.get("dynamics_time_level_np1"))
     _n0_qdp, np1_qdp = tracer_time_levels(pool)
     ptop = np.float64(pool.get("hybrid_a_interface")[0]) * np.float64(
@@ -1676,10 +1794,11 @@ def vertical_remap_se(pool, backend) -> None:
     hyai = pool.get("hybrid_a_interface")
     hybi = pool.get("hybrid_b_interface")
     ps0 = np.float64(pool.get("reference_pressure"))
-    cp = (
-        np.float64(pool.get("liquid_water_specific_heat")),
-        np.float64(pool.get("liquid_water_specific_heat")),
-        np.float64(pool.get("water_vapor_specific_heat")),
+    cp_liquid = np.float64(pool.get("liquid_water_specific_heat"))
+    cp_vapor = np.float64(pool.get("water_vapor_specific_heat"))
+    cp = tuple(
+        cp_vapor if constituent == 2 else cp_liquid
+        for constituent in range(nconst)
     )
     cpair = np.float64(pool.get("dry_air_specific_heat"))
     pressure = pool.get("layer_pressure_thickness")
@@ -1696,16 +1815,24 @@ def vertical_remap_se(pool, backend) -> None:
         target_dry = np.empty_like(source_dry, order="F")
         source_moist = np.empty_like(source_dry, order="F")
         target_moist = np.empty_like(source_dry, order="F")
-        tracer = np.empty((4, 4, nlev, nconst), dtype=np.float64, order="F")
-        enthalpy = np.empty((4, 4, nlev, 1), dtype=np.float64, order="F")
+        tracer = np.empty(
+            (np_value, np_value, nlev, nconst),
+            dtype=np.float64,
+            order="F",
+        )
+        enthalpy = np.empty(
+            (np_value, np_value, nlev, 1), dtype=np.float64, order="F"
+        )
         heat_mass = np.empty_like(source_dry, order="F")
-        wind = np.empty((4, 4, nlev, 1), dtype=np.float64, order="F")
+        wind = np.empty(
+            (np_value, np_value, nlev, 1), dtype=np.float64, order="F"
+        )
 
         for k in range(nlev):
             delta_a = np.float64(hyai[k + 1] - hyai[k])
             delta_b = np.float64(hybi[k + 1] - hybi[k])
-            for j in range(4):
-                for i in range(4):
+            for j in range(np_value):
+                for i in range(np_value):
                     target_dry[i, j, k] = np.float64(
                         np.float64(delta_a * ps0)
                         + np.float64(delta_b * psdry[i, j, le])
@@ -1732,8 +1859,8 @@ def vertical_remap_se(pool, backend) -> None:
             mass_field=True,
         )
         for k in range(nlev):
-            for j in range(4):
-                for i in range(4):
+            for j in range(np_value):
+                for i in range(np_value):
                     pressure[i, j, k, le, np1] = target_dry[i, j, k]
                     target_moist[i, j, k] = target_dry[i, j, k]
                     heat = np.float64(cpair * target_dry[i, j, k])
@@ -1755,8 +1882,8 @@ def vertical_remap_se(pool, backend) -> None:
             mass_field=True,
         )
         for k in range(nlev):
-            for j in range(4):
-                for i in range(4):
+            for j in range(np_value):
+                for i in range(np_value):
                     temperature[i, j, k, le, np1] = np.float64(
                         enthalpy[i, j, k, 0] / heat_mass[i, j, k]
                     )
@@ -1784,10 +1911,13 @@ def vertical_remap_se(pool, backend) -> None:
 
 
 def vertical_remap_fvm(pool, backend) -> None:
-    """Remap Python-owned PG3 tracers to the fixed hybrid eta levels."""
+    """Remap Python-owned FVM tracers to configured hybrid eta levels."""
 
     nlev = pool.dimensions["pver"]
     ntrac = pool.dimensions["nconst"]
+    nc = pool.dimensions["nc"]
+    nhc = pool.dimensions["nhc"]
+    interior = slice(nhc, nhc + nc)
     ptop = np.float64(pool.get("hybrid_a_interface")[0]) * np.float64(
         pool.get("reference_pressure")
     )
@@ -1801,14 +1931,14 @@ def vertical_remap_fvm(pool, backend) -> None:
 
     for le in range(pool.dimensions["nelem_local"]):
         source = np.array(
-            pressure[3:6, 3:6, :, le],
+            pressure[interior, interior, :, le],
             dtype=np.float64,
             order="F",
             copy=True,
         )
         target = np.empty_like(source, order="F")
         tracer = np.array(
-            tracer_state[3:6, 3:6, :, le, :],
+            tracer_state[interior, interior, :, le, :],
             dtype=np.float64,
             order="F",
             copy=True,
@@ -1816,8 +1946,8 @@ def vertical_remap_fvm(pool, backend) -> None:
         for k in range(nlev):
             delta_a = np.float64(hyai[k + 1] - hyai[k])
             delta_b = np.float64(hybi[k + 1] - hybi[k])
-            for j in range(3):
-                for i in range(3):
+            for j in range(nc):
+                for i in range(nc):
                     target[i, j, k] = np.float64(
                         np.float64(delta_a * ps0)
                         + np.float64(delta_b * surface_pressure[i, j, le])
@@ -1831,33 +1961,46 @@ def vertical_remap_fvm(pool, backend) -> None:
             mass_field=False,
             method=-9,
         )
-        pressure[3:6, 3:6, :, le] = target
-        tracer_state[3:6, 3:6, :, le, :ntrac] = tracer
+        pressure[interior, interior, :, le] = target
+        tracer_state[interior, interior, :, le, :ntrac] = tracer
 
     pool.assert_pointer_stability(before)
 
 
 def advance_fvm_tracers(pool, comm, backend) -> None:
-    """Run the fixed three-tracer CSLAM transport with mpi4py-owned halos."""
+    """Run configured CSLAM transport with mpi4py-owned halos."""
 
     from .backend import FVMKernelConfig
     from .fvm_mapping import gather_physgrid_halo
 
     nelem = pool.dimensions["nelem_local"]
     nlev = pool.dimensions["pver"]
+    ntrac = pool.dimensions["nconst"]
+    nc = pool.dimensions["nc"]
+    halo_width = pool.dimensions["fvm_halo"]
+    internal_width = pool.dimensions["fvm_internal"]
     kernel_config = FVMKernelConfig.from_pool(pool)
-    local = np.empty((3, 3, nlev, 4, nelem), dtype=np.float64, order="F")
+    nhc = kernel_config.nhc
+    nhe = kernel_config.nhe
+    interior = slice(nhc, nhc + nc)
+    local = np.empty(
+        (nc, nc, nlev, ntrac + 1, nelem),
+        dtype=np.float64,
+        order="F",
+    )
     dp_state = pool.get("fvm_layer_pressure_thickness")
     tracer_state = pool.get("fvm_tracer")
     for le in range(nelem):
-        local[:, :, :, 0, le] = dp_state[3:6, 3:6, :, le]
-        for q in range(3):
-            local[:, :, :, q + 1, le] = tracer_state[3:6, 3:6, :, le, q]
+        local[:, :, :, 0, le] = dp_state[interior, interior, :, le]
+        for q in range(ntrac):
+            local[:, :, :, q + 1, le] = tracer_state[
+                interior, interior, :, le, q
+            ]
     halo = gather_physgrid_halo(pool, comm, local)
     schedule = pool.get("pg3_halo_global_column")
     for le in range(nelem):
-        for j in range(9):
-            for i in range(9):
+        for j in range(halo_width):
+            for i in range(halo_width):
                 if schedule[i, j, le] <= 0:
                     halo[i, j, :, :, le] = np.float64(1.11e100)
 
@@ -1866,12 +2009,18 @@ def advance_fvm_tracers(pool, comm, backend) -> None:
         pool.get("reference_pressure")
     )
     before = pool.pointer_records()
-    prepared_dp = np.empty((9, 9, nlev, nelem), dtype=np.float64, order="F")
+    prepared_dp = np.empty(
+        (halo_width, halo_width, nlev, nelem),
+        dtype=np.float64,
+        order="F",
+    )
     prepared_tracer = np.empty(
-        (9, 9, nlev, 3, nelem), dtype=np.float64, order="F"
+        (halo_width, halo_width, nlev, ntrac, nelem),
+        dtype=np.float64,
+        order="F",
     )
     transformed_flux = np.empty(
-        (3, 3, nlev, 4, nelem), dtype=np.float64, order="F"
+        (nc, nc, nlev, 4, nelem), dtype=np.float64, order="F"
     )
 
     # CAM converts the local mass flux to geometric swept displacement before
@@ -1882,13 +2031,17 @@ def advance_fvm_tracers(pool, comm, backend) -> None:
         dp = np.array(halo[:, :, :, 0, le], dtype=np.float64, order="F", copy=True)
         for k in range(nlev):
             dp[:, :, k] = np.float64(dp[:, :, k] * inverse_reference[k])
-        prepared_tracer[:, :, :, :, le] = halo[:, :, :, 1:4, le]
+        prepared_tracer[:, :, :, :, le] = halo[
+            :, :, :, 1 : ntrac + 1, le
+        ]
 
-        swept_local = np.empty((3, 3, 4, nlev), dtype=np.float64, order="F")
+        swept_local = np.empty(
+            (nc, nc, 4, nlev), dtype=np.float64, order="F"
+        )
         for k in range(nlev):
             for edge in range(4):
-                for j in range(3):
-                    for i in range(3):
+                for j in range(nc):
+                    for i in range(nc):
                         swept_local[i, j, edge, k] = np.float64(
                             np.float64(
                                 dt
@@ -1908,7 +2061,7 @@ def advance_fvm_tracers(pool, comm, backend) -> None:
         # The transport kernel repeats CAM's interior normalization.  Give it
         # the original dimensional interior while retaining the already
         # exchanged, normalized halo used by the displacement calculation.
-        dp[3:6, 3:6, :] = local[:, :, :, 0, le]
+        dp[interior, interior, :] = local[:, :, :, 0, le]
         prepared_dp[:, :, :, le] = dp
         for k in range(nlev):
             for edge in range(4):
@@ -1927,10 +2080,22 @@ def advance_fvm_tracers(pool, comm, backend) -> None:
             order="F",
             copy=True,
         )
-        swept = np.empty((5, 5, 4, nlev), dtype=np.float64, order="F")
+        swept = np.empty(
+            (internal_width, internal_width, 4, nlev),
+            dtype=np.float64,
+            order="F",
+        )
+        flux_start = nhc - nhe
+        flux_end = flux_start + internal_width
         for k in range(nlev):
             for edge in range(4):
-                swept[:, :, edge, k] = flux_halo[2:7, 2:7, k, edge, le]
+                swept[:, :, edge, k] = flux_halo[
+                    flux_start:flux_end,
+                    flux_start:flux_end,
+                    k,
+                    edge,
+                    le,
+                ]
         subflux = np.array(
             pool.get("subelement_mass_flux")[:, :, :, :, le],
             dtype=np.float64,
@@ -1978,11 +2143,11 @@ def advance_fvm_tracers(pool, comm, backend) -> None:
         dp_state[:, :, :, le] = dp
         tracer_state[:, :, :, le, :] = tracer
         pool.get("fvm_swept_flux")[:, :, :, :, le] = swept
-        for j in range(3):
-            for i in range(3):
+        for j in range(nc):
+            for i in range(nc):
                 value = ptop
                 for k in range(nlev):
-                    value = np.float64(value + dp[i + 3, j + 3, k])
+                    value = np.float64(value + dp[i + nhc, j + nhc, k])
                 pool.get("fvm_surface_dry_air_pressure")[i, j, le] = value
     pool.assert_pointer_stability(before)
 
@@ -2011,6 +2176,7 @@ def prim_advance_type4_rk(pool, comm, backend) -> None:
     n0 = int(pool.get("dynamics_time_level_n0"))
     np1 = int(pool.get("dynamics_time_level_np1"))
     qn0, _ = tracer_time_levels(pool)
+    np_value = pool.dimensions["np"]
     qwater, sum_water, inv_cp, kappa, rair, rh2o, cpair = _thermodynamic_coefficients(
         pool, n0, qn0
     )
@@ -2033,8 +2199,8 @@ def prim_advance_type4_rk(pool, comm, backend) -> None:
     compute_and_apply_rhs(output_level=np1, base_level=n0, rhs_level=np1, dt2=np.float64(np.float64(2.0) * dt / np.float64(3.0)), eta_average_weight=np.float64(0.0), **common)
     for le in range(pool.dimensions["nelem_local"]):
         for k in range(pool.dimensions["pver"]):
-            for j in range(4):
-                for i in range(4):
+            for j in range(np_value):
+                for i in range(np_value):
                     pool.get("zonal_wind")[i, j, k, le, nm1] = np.float64(
                         np.float64(np.float64(5.0) * pool.get("zonal_wind")[i, j, k, le, nm1])
                         - pool.get("zonal_wind")[i, j, k, le, n0]

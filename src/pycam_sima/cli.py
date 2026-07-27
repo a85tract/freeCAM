@@ -7,6 +7,7 @@ import json
 import os
 import shlex
 import subprocess
+import sys
 from pathlib import Path
 
 from .core.mpi import world_comm
@@ -175,14 +176,44 @@ def _read_json_collective(path: Path, comm) -> dict:
     return payload
 
 
-def command_build_kernels(_args: argparse.Namespace) -> int:
+def command_build_kernels(args: argparse.Namespace) -> int:
     root = _repo_root()
+    config_path = Path(
+        getattr(args, "config", None)
+        or root / "configs" / "fkessler_model.yaml"
+    ).resolve()
+    config = ModelConfig.from_yaml(config_path)
+    target = Path(
+        getattr(args, "target", None)
+        or config.default_kernel_library(root)
+    ).resolve()
+    target.parent.mkdir(parents=True, exist_ok=True)
     DeviceCatalog.discover(root).write_descriptors(
         root / "devices/generated", clean=True
     )
     subprocess.run(
-        ["make", "-C", str(root / "native" / "kernels"), "clean", "all"],
+        [
+            "make",
+            "-C",
+            str(root / "native" / "kernels"),
+            f"MODEL_CONFIG={config_path}",
+            f"TARGET={target}",
+            f"PYTHON={sys.executable}",
+            "clean",
+            "all",
+        ],
         check=True,
+    )
+    print(
+        json.dumps(
+            {
+                "config": str(config_path),
+                "kernel_specialization": config.kernel_specialization,
+                "kernel_specialization_id": config.kernel_specialization_id,
+                "library": str(target),
+            },
+            sort_keys=True,
+        )
     )
     return 0
 
@@ -401,6 +432,14 @@ def main() -> int:
     build = sub.add_parser(
         "build-kernels",
         help="build main model kernels and generated Fortran devices",
+    )
+    build.add_argument(
+        "--config",
+        help="ModelConfig YAML used to specialize np/nc/pver/nconst",
+    )
+    build.add_argument(
+        "--target",
+        help="explicit output .so (defaults to the specialization cache)",
     )
     build.set_defaults(func=command_build_kernels)
 

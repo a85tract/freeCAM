@@ -25,11 +25,13 @@ def _edge_sum(pool, comm, field: np.ndarray) -> np.ndarray:
             global_dofs[gid] = np.asarray(rank_dofs)[:, :, le]
             global_fields[gid] = np.asarray(rank_field)[..., le]
 
+    np_value = local_dofs.shape[0]
+    last = np_value - 1
     side_indices = {
-        "east": ((3, j) for j in range(4)),
-        "south": ((i, 0) for i in range(4)),
-        "north": ((i, 3) for i in range(4)),
-        "west": ((0, j) for j in range(4)),
+        "east": ((last, j) for j in range(np_value)),
+        "south": ((i, 0) for i in range(np_value)),
+        "north": ((i, last) for i in range(np_value)),
+        "west": ((0, j) for j in range(np_value)),
     }
     # Materialize the generators because each element needs all four lists.
     side_indices = {name: tuple(indices) for name, indices in side_indices.items()}
@@ -60,16 +62,16 @@ def _edge_sum(pool, comm, field: np.ndarray) -> np.ndarray:
                 )
             neighbors[name] = matches[0]
 
-        for j in range(4):
-            for i in range(4):
+        for j in range(np_value):
+            for i in range(np_value):
                 dof = int(dofs[i, j])
                 value = result[i, j, ..., le]
                 added_gids = {gid}
                 for name in side_order:
                     on_side = (
-                        (name == "east" and i == 3)
+                        (name == "east" and i == last)
                         or (name == "south" and j == 0)
-                        or (name == "north" and j == 3)
+                        or (name == "north" and j == last)
                         or (name == "west" and i == 0)
                     )
                     if not on_side:
@@ -88,7 +90,7 @@ def _edge_sum(pool, comm, field: np.ndarray) -> np.ndarray:
                     added_gids.add(neighbor_gid)
 
                 # edgeVunpack adds corner buffers after all four edge buffers.
-                if i in (0, 3) and j in (0, 3):
+                if i in (0, last) and j in (0, last):
                     for corner_gid in sorted(global_dofs):
                         if corner_gid in added_gids:
                             continue
@@ -108,21 +110,23 @@ def assemble_inverse_spectral_mass(pool, comm) -> None:
     mass = pool.get("spectral_mass_matrix")
     assembled = _edge_sum(pool, comm, mass[:, :, np.newaxis, :])[:, :, 0, :]
     inverse = pool.get("inverse_spectral_mass_matrix")
+    np_value = pool.dimensions["np"]
     for le in range(pool.dimensions["nelem_local"]):
-        for j in range(4):
-            for i in range(4):
+        for j in range(np_value):
+            for i in range(np_value):
                 inverse[i, j, le] = np.float64(1.0) / assembled[i, j, le]
 
 
 def _source_dvv(nodes: np.ndarray) -> np.ndarray:
-    """Reproduce ``derivative_mod:dvvinit`` for the fixed four GLL nodes."""
+    """Reproduce ``derivative_mod:dvvinit`` for configured GLL nodes."""
 
-    leg = np.empty(4, dtype=np.float64)
-    for i in range(4):
+    count = len(nodes)
+    leg = np.empty(count, dtype=np.float64)
+    for i in range(count):
         x = np.float64(nodes[i])
         p_2 = np.float64(1.0)
         p_3 = x
-        for k in range(2, 4):
+        for k in range(2, count):
             p_1 = p_2
             p_2 = p_3
             p_3 = np.float64(
@@ -130,15 +134,16 @@ def _source_dvv(nodes: np.ndarray) -> np.ndarray:
                 - np.float64(np.float64(k - 1) * p_1)
             ) / np.float64(k)
         leg[i] = p_3
-    dvv = np.zeros((4, 4), dtype=np.float64, order="F")
-    for j in range(4):
-        for i in range(4):
+    dvv = np.zeros((count, count), dtype=np.float64, order="F")
+    for j in range(count):
+        for i in range(count):
             if i != j:
                 dvv[j, i] = (
                     np.float64(1.0) / np.float64(nodes[i] - nodes[j])
                 ) * np.float64(leg[i] / leg[j])
-    dvv[3, 3] = np.float64(3.0)
-    dvv[0, 0] = np.float64(-3.0)
+    endpoint = np.float64(count * (count - 1)) / np.float64(4.0)
+    dvv[count - 1, count - 1] = endpoint
+    dvv[0, 0] = -endpoint
     return dvv
 
 
@@ -148,20 +153,21 @@ def _gradient_sphere(
     inverse_metric: np.ndarray,
     inverse_radius: np.float64,
 ) -> np.ndarray:
-    v1 = np.empty((4, 4), dtype=np.float64, order="F")
-    v2 = np.empty((4, 4), dtype=np.float64, order="F")
-    result = np.empty((4, 4, 2), dtype=np.float64, order="F")
-    for j in range(4):
-        for l in range(4):
+    count = scalar.shape[0]
+    v1 = np.empty((count, count), dtype=np.float64, order="F")
+    v2 = np.empty((count, count), dtype=np.float64, order="F")
+    result = np.empty((count, count, 2), dtype=np.float64, order="F")
+    for j in range(count):
+        for l in range(count):
             dsdx = np.float64(0.0)
             dsdy = np.float64(0.0)
-            for i in range(4):
+            for i in range(count):
                 dsdx = np.float64(dsdx + np.float64(dvv[i, l] * scalar[i, j]))
                 dsdy = np.float64(dsdy + np.float64(dvv[i, l] * scalar[j, i]))
             v1[l, j] = np.float64(dsdx * inverse_radius)
             v2[j, l] = np.float64(dsdy * inverse_radius)
-    for j in range(4):
-        for i in range(4):
+    for j in range(count):
+        for i in range(count):
             result[i, j, 0] = np.float64(
                 np.float64(inverse_metric[0, 0, i, j] * v1[i, j])
                 + np.float64(inverse_metric[1, 0, i, j] * v2[i, j])
@@ -181,11 +187,12 @@ def _divergence_sphere(
     inverse_metdet: np.ndarray,
     inverse_radius: np.float64,
 ) -> np.ndarray:
-    gv = np.empty((4, 4, 2), dtype=np.float64, order="F")
-    temp = np.empty((4, 4), dtype=np.float64, order="F")
-    result = np.empty((4, 4), dtype=np.float64, order="F")
-    for j in range(4):
-        for i in range(4):
+    count = vector.shape[0]
+    gv = np.empty((count, count, 2), dtype=np.float64, order="F")
+    temp = np.empty((count, count), dtype=np.float64, order="F")
+    result = np.empty((count, count), dtype=np.float64, order="F")
+    for j in range(count):
+        for i in range(count):
             gv[i, j, 0] = np.float64(metdet[i, j] * np.float64(
                 np.float64(inverse_metric[0, 0, i, j] * vector[i, j, 0])
                 + np.float64(inverse_metric[0, 1, i, j] * vector[i, j, 1])
@@ -194,17 +201,17 @@ def _divergence_sphere(
                 np.float64(inverse_metric[1, 0, i, j] * vector[i, j, 0])
                 + np.float64(inverse_metric[1, 1, i, j] * vector[i, j, 1])
             ))
-    for j in range(4):
-        for l in range(4):
+    for j in range(count):
+        for l in range(count):
             dudx = np.float64(0.0)
             dvdy = np.float64(0.0)
-            for i in range(4):
+            for i in range(count):
                 dudx = np.float64(dudx + np.float64(dvv[i, l] * gv[i, j, 0]))
                 dvdy = np.float64(dvdy + np.float64(dvv[i, l] * gv[j, i, 1]))
             result[l, j] = dudx
             temp[j, l] = dvdy
-    for j in range(4):
-        for i in range(4):
+    for j in range(count):
+        for i in range(count):
             result[i, j] = np.float64(
                 np.float64(result[i, j] + temp[i, j])
                 * np.float64(inverse_metdet[i, j] * inverse_radius)
@@ -221,12 +228,13 @@ def _vorticity_sphere(
 ) -> np.ndarray:
     """Scalar-order equivalent of ``derivative_mod:vorticity_sphere``."""
 
-    covariant_1 = np.empty((4, 4), dtype=np.float64, order="F")
-    covariant_2 = np.empty((4, 4), dtype=np.float64, order="F")
-    temporary = np.empty((4, 4), dtype=np.float64, order="F")
-    result = np.empty((4, 4), dtype=np.float64, order="F")
-    for j in range(4):
-        for i in range(4):
+    count = vector.shape[0]
+    covariant_1 = np.empty((count, count), dtype=np.float64, order="F")
+    covariant_2 = np.empty((count, count), dtype=np.float64, order="F")
+    temporary = np.empty((count, count), dtype=np.float64, order="F")
+    result = np.empty((count, count), dtype=np.float64, order="F")
+    for j in range(count):
+        for i in range(count):
             v1 = vector[i, j, 0]
             v2 = vector[i, j, 1]
             covariant_1[i, j] = np.float64(
@@ -237,17 +245,17 @@ def _vorticity_sphere(
                 np.float64(metric[0, 1, i, j] * v1)
                 + np.float64(metric[1, 1, i, j] * v2)
             )
-    for j in range(4):
-        for l in range(4):
+    for j in range(count):
+        for l in range(count):
             dvdx = np.float64(0.0)
             dudy = np.float64(0.0)
-            for i in range(4):
+            for i in range(count):
                 dvdx = np.float64(dvdx + np.float64(dvv[i, l] * covariant_2[i, j]))
                 dudy = np.float64(dudy + np.float64(dvv[i, l] * covariant_1[j, i]))
             result[l, j] = dvdx
             temporary[j, l] = dudy
-    for j in range(4):
-        for i in range(4):
+    for j in range(count):
+        for i in range(count):
             result[i, j] = np.float64(
                 np.float64(result[i, j] - temporary[i, j])
                 * np.float64(inverse_metdet[i, j] * inverse_radius)
@@ -262,10 +270,11 @@ def _divergence_sphere_weak(
     mass: np.ndarray,
     inverse_radius: np.float64,
 ) -> np.ndarray:
-    contra = np.empty((4, 4, 2), dtype=np.float64, order="F")
-    result = np.empty((4, 4), dtype=np.float64, order="F")
-    for j in range(4):
-        for i in range(4):
+    count = vector.shape[0]
+    contra = np.empty((count, count, 2), dtype=np.float64, order="F")
+    result = np.empty((count, count), dtype=np.float64, order="F")
+    for j in range(count):
+        for i in range(count):
             contra[i, j, 0] = np.float64(
                 np.float64(inverse_metric[0, 0, i, j] * vector[i, j, 0])
                 + np.float64(inverse_metric[0, 1, i, j] * vector[i, j, 1])
@@ -274,10 +283,10 @@ def _divergence_sphere_weak(
                 np.float64(inverse_metric[1, 0, i, j] * vector[i, j, 0])
                 + np.float64(inverse_metric[1, 1, i, j] * vector[i, j, 1])
             )
-    for n in range(4):
-        for m in range(4):
+    for n in range(count):
+        for m in range(count):
             value = np.float64(0.0)
-            for j in range(4):
+            for j in range(count):
                 term = np.float64(
                     np.float64(mass[j, n] * contra[j, n, 0] * dvv[m, j])
                     + np.float64(mass[m, j] * contra[m, j, 1] * dvv[n, j])
@@ -304,10 +313,11 @@ def _dss(pool, comm, field: np.ndarray, *, multiply_mass: bool, divide_mass: boo
     mass = pool.get("spectral_mass_matrix")
     inverse_mass = pool.get("inverse_spectral_mass_matrix")
     packed = np.empty_like(field, order="F")
+    np_value = field.shape[0]
     for le in range(field.shape[3]):
         for k in range(field.shape[2]):
-            for j in range(4):
-                for i in range(4):
+            for j in range(np_value):
+                for i in range(np_value):
                     value = field[i, j, k, le]
                     packed[i, j, k, le] = (
                         np.float64(mass[i, j, le] * value)
@@ -318,8 +328,8 @@ def _dss(pool, comm, field: np.ndarray, *, multiply_mass: bool, divide_mass: boo
     if divide_mass:
         for le in range(field.shape[3]):
             for k in range(field.shape[2]):
-                for j in range(4):
-                    for i in range(4):
+                for j in range(np_value):
+                    for i in range(np_value):
                         result[i, j, k, le] = np.float64(
                             inverse_mass[i, j, le] * result[i, j, k, le]
                         )
@@ -341,6 +351,7 @@ def initialize_vertical_pressure_velocity(
     ptop = np.float64(pool.get("hybrid_a_interface")[0] * pool.get("reference_pressure"))
     nelem = pool.dimensions["nelem_local"]
     nlev = pool.dimensions["pver"]
+    np_value = pool.dimensions["np"]
     dpdry = pool.get("layer_pressure_thickness")[..., time_level]
     if q_time_level is None:
         q_time_level = time_level
@@ -352,13 +363,17 @@ def initialize_vertical_pressure_velocity(
         dinv = pool.get("inverse_metric")[:, :, :, :, le]
         metdet = pool.get("metric_jacobian")[:, :, le]
         inverse_metdet = pool.get("inverse_metric_jacobian")[:, :, le]
-        pressure = np.empty((4, 4), dtype=np.float64, order="F")
-        cumulative = np.zeros((4, 4), dtype=np.float64, order="F")
+        pressure = np.empty(
+            (np_value, np_value),
+            dtype=np.float64,
+            order="F",
+        )
+        cumulative = np.zeros_like(pressure, order="F")
         previous_dp = None
         for k in range(nlev):
-            dp = np.empty((4, 4), dtype=np.float64, order="F")
-            for j in range(4):
-                for i in range(4):
+            dp = np.empty_like(pressure, order="F")
+            for j in range(np_value):
+                for i in range(np_value):
                     value = dpdry[i, j, k, le]
                     for constituent in range(pool.dimensions["nconst"]):
                         value = np.float64(value + qdp[i, j, k, le, constituent])
@@ -372,10 +387,14 @@ def initialize_vertical_pressure_velocity(
                             + np.float64(value / np.float64(2.0))
                         )
             gradient = _gradient_sphere(pressure, dvv, dinv, inverse_radius)
-            mass_flux = np.empty((4, 4, 2), dtype=np.float64, order="F")
-            vgrad = np.empty((4, 4), dtype=np.float64, order="F")
-            for j in range(4):
-                for i in range(4):
+            mass_flux = np.empty(
+                (np_value, np_value, 2),
+                dtype=np.float64,
+                order="F",
+            )
+            vgrad = np.empty_like(pressure, order="F")
+            for j in range(np_value):
+                for i in range(np_value):
                     u = velocity_u[i, j, k, le]
                     v = velocity_v[i, j, k, le]
                     mass_flux[i, j, 0] = np.float64(dp[i, j] * u)
@@ -387,8 +406,8 @@ def initialize_vertical_pressure_velocity(
             divergence = _divergence_sphere(
                 mass_flux, dvv, dinv, metdet, inverse_metdet, inverse_radius
             )
-            for j in range(4):
-                for i in range(4):
+            for j in range(np_value):
+                for i in range(np_value):
                     term = np.float64(-divergence[i, j])
                     omega[i, j, k, le] = np.float64(
                         cumulative[i, j]
@@ -429,16 +448,16 @@ def initialize_vertical_pressure_velocity(
         pool.get("omega_biharmonic_stage")[..., subcycle] = biharmonic
         for le in range(nelem):
             for k in range(nlev):
-                for j in range(4):
-                    for i in range(4):
+                for j in range(np_value):
+                    for i in range(np_value):
                         biharmonic[i, j, k, le] = np.float64(
                             np.float64(-dt_hyper * nu_p) * biharmonic[i, j, k, le]
                         )
         correction = _dss(pool, comm, biharmonic, multiply_mass=False, divide_mass=True)
         for le in range(nelem):
             for k in range(nlev):
-                for j in range(4):
-                    for i in range(4):
+                for j in range(np_value):
+                    for i in range(np_value):
                         omega[i, j, k, le] = np.float64(
                             omega[i, j, k, le] + correction[i, j, k, le]
                         )

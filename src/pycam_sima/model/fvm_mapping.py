@@ -44,35 +44,50 @@ def _lagrange_1d(
 
 
 def gather_physgrid_halo(pool, comm, local_field: np.ndarray) -> np.ndarray:
-    """Fill three PG3 halo cells through an explicit mpi4py exchange."""
+    """Fill finite-volume halo cells through an explicit mpi4py exchange."""
 
     nlev, nfields = local_field.shape[2:4]
     nelem = pool.dimensions["nelem_local"]
-    ids = np.empty(nelem * 9, dtype=np.int64)
-    values = np.empty((nelem * 9, nlev, nfields), dtype=np.float64, order="F")
+    nc = pool.dimensions["fv_nphys"]
+    halo_width = pool.dimensions["fvm_halo"]
+    local_columns = nc * nc
+    ids = np.empty(nelem * local_columns, dtype=np.int64)
+    values = np.empty(
+        (nelem * local_columns, nlev, nfields),
+        dtype=np.float64,
+        order="F",
+    )
     offset = 0
     for le in range(nelem):
-        for j in range(3):
-            for i in range(3):
+        for j in range(nc):
+            for i in range(nc):
                 ids[offset] = pool.get("physics_global_column")[i, j, le]
                 values[offset, :, :] = local_field[i, j, :, :, le]
                 offset += 1
     gathered = comm.allgather((ids, values))
-    global_values = np.empty((6 * 9 * 9, nlev, nfields), dtype=np.float64, order="F")
+    global_values = np.empty(
+        (
+            int(pool.get("spectral_element_count")) * local_columns,
+            nlev,
+            nfields,
+        ),
+        dtype=np.float64,
+        order="F",
+    )
     for rank_ids, rank_values in gathered:
         for row, column in enumerate(np.asarray(rank_ids, dtype=np.int64)):
             global_values[int(column) - 1, :, :] = np.asarray(rank_values)[row, :, :]
 
     halo = np.full(
-        (9, 9, nlev, nfields, nelem),
+        (halo_width, halo_width, nlev, nfields, nelem),
         np.float64(-9.99e99),
         dtype=np.float64,
         order="F",
     )
     schedule = pool.get("pg3_halo_global_column")
     for le in range(nelem):
-        for j in range(9):
-            for i in range(9):
+        for j in range(halo_width):
+            for i in range(halo_width):
                 column = int(schedule[i, j, le])
                 if column > 0:
                     halo[i, j, :, :, le] = global_values[column - 1, :, :]
@@ -145,8 +160,21 @@ def tensor_lagrange_interp(
     boundary: int,
     psi: np.ndarray,
     coordinates: np.ndarray,
+    target_nodes: np.ndarray | None = None,
 ) -> np.ndarray:
-    """Port the un-limited nc=3, np=4 tensor interpolation path."""
+    """Map one finite-volume halo to configured GLL nodes."""
+
+    if target_nodes is None:
+        target_nodes = np.array(
+            (-1.0, -math.sqrt(1.0 / 5.0), math.sqrt(1.0 / 5.0), 1.0),
+            dtype=np.float64,
+        )
+    if psi.shape[:2] != (9, 9) or len(target_nodes) != 4:
+        return _generic_tensor_lagrange_interp(
+            psi,
+            coordinates,
+            target_nodes,
+        )
 
     psi = np.array(psi, dtype=np.float64, order="F", copy=True)
     nlev, nfields = psi.shape[2:4]
@@ -190,17 +218,82 @@ def tensor_lagrange_interp(
     return output
 
 
+def _generic_tensor_lagrange_interp(
+    psi: np.ndarray,
+    coordinates: np.ndarray,
+    target_nodes: np.ndarray,
+) -> np.ndarray:
+    """Dimension-independent tensor interpolation for non-reference grids."""
+
+    psi = np.asarray(psi)
+    nlev, nfields = psi.shape[2:4]
+    np_value = len(target_nodes)
+    output = np.empty(
+        (np_value, np_value, nlev, nfields),
+        dtype=np.float64,
+        order="F",
+    )
+    valid = (
+        np.isfinite(coordinates[0])
+        & np.isfinite(coordinates[1])
+        & (np.abs(coordinates[0]) < 100.0)
+        & (np.abs(coordinates[1]) < 100.0)
+    )
+    for field in range(nfields):
+        for level in range(nlev):
+            for igll, target_x in enumerate(target_nodes):
+                row_values: list[float] = []
+                row_coordinates: list[float] = []
+                for jrow in range(psi.shape[1]):
+                    indexes = np.flatnonzero(valid[:, jrow])
+                    if indexes.size < 4:
+                        continue
+                    x = coordinates[0, indexes, jrow]
+                    if np.unique(x).size != x.size:
+                        continue
+                    row_values.append(
+                        _lagrange_1d(
+                            x,
+                            psi[indexes, jrow, level, field],
+                            np.float64(target_x),
+                        )
+                    )
+                    row_coordinates.append(
+                        float(np.median(coordinates[1, indexes, jrow]))
+                    )
+                row_coordinates_array = np.asarray(row_coordinates)
+                row_values_array = np.asarray(row_values)
+                unique, unique_indexes = np.unique(
+                    row_coordinates_array,
+                    return_index=True,
+                )
+                if unique.size < 4:
+                    raise ValueError(
+                        "finite-volume halo does not provide enough "
+                        "coordinates for tensor interpolation"
+                    )
+                for jgll, target_y in enumerate(target_nodes):
+                    output[igll, jgll, level, field] = _lagrange_1d(
+                        unique,
+                        row_values_array[unique_indexes],
+                        np.float64(target_y),
+                    )
+    return output
+
+
 def physgrid_to_gll(pool, comm, local_field: np.ndarray, *, vector_start: int | None = None) -> np.ndarray:
     """Fill halos, map scalars/vectors, and return rank-local GLL fields."""
 
     halo = gather_physgrid_halo(pool, comm, local_field)
     nelem = pool.dimensions["nelem_local"]
+    np_value = pool.dimensions["np"]
+    halo_width = pool.dimensions["fvm_halo"]
     if vector_start is not None:
         inverse_metric = pool.get("fvm_inverse_metric_physgrid")
         for le in range(nelem):
             for level in range(local_field.shape[2]):
-                for j in range(9):
-                    for i in range(9):
+                for j in range(halo_width):
+                    for i in range(halo_width):
                         v1 = halo[i, j, level, vector_start, le]
                         v2 = halo[i, j, level, vector_start + 1, le]
                         halo[i, j, level, vector_start, le] = np.float64(
@@ -212,7 +305,13 @@ def physgrid_to_gll(pool, comm, local_field: np.ndarray, *, vector_start: int | 
                             + np.float64(inverse_metric[1, 1, i, j, le] * v2)
                         )
     mapped = np.empty(
-        (4, 4, local_field.shape[2], local_field.shape[3], nelem),
+        (
+            np_value,
+            np_value,
+            local_field.shape[2],
+            local_field.shape[3],
+            nelem,
+        ),
         dtype=np.float64,
         order="F",
     )
@@ -221,13 +320,14 @@ def physgrid_to_gll(pool, comm, local_field: np.ndarray, *, vector_start: int | 
             int(pool.get("fvm_cube_boundary")[le]),
             halo[..., le],
             pool.get("fvm_normalized_element_coordinate")[..., le],
+            pool.get("gll_node"),
         )
     if vector_start is not None:
         metric = pool.get("metric_derivative")
         for le in range(nelem):
             for level in range(local_field.shape[2]):
-                for j in range(4):
-                    for i in range(4):
+                for j in range(np_value):
+                    for i in range(np_value):
                         v1 = mapped[i, j, level, vector_start, le]
                         v2 = mapped[i, j, level, vector_start + 1, le]
                         mapped[i, j, level, vector_start, le] = np.float64(
@@ -247,6 +347,10 @@ def physics_to_dynamics_forcing(pool, comm) -> None:
     nlev = pool.dimensions["pver"]
     nconst = pool.dimensions["nconst"]
     nelem = pool.dimensions["nelem_local"]
+    nc = pool.dimensions["fv_nphys"]
+    np_value = pool.dimensions["np"]
+    nhc = (pool.dimensions["fvm_halo"] - nc) // 2
+    columns_per_element = nc * nc
     current_q = pool.get("physics_constituent_mixing_ratio")
     wet_to_dry = pool.get("physics_layer_pressure_thickness") / pool.get(
         "physics_dry_layer_pressure_thickness"
@@ -259,60 +363,89 @@ def physics_to_dynamics_forcing(pool, comm) -> None:
                     * current_q[column, level, constituent]
                 )
     adjustment = current_q - pool.get("physics_constituent_previous")
-    local = np.empty((3, 3, nlev, 3 + nconst, nelem), dtype=np.float64, order="F")
+    local = np.empty(
+        (nc, nc, nlev, 3 + nconst, nelem),
+        dtype=np.float64,
+        order="F",
+    )
     for le in range(nelem):
-        columns = slice(le * 9, (le + 1) * 9)
+        columns = slice(
+            le * columns_per_element,
+            (le + 1) * columns_per_element,
+        )
         local[:, :, :, 0, le] = pool.get("physics_air_temperature_tendency")[columns, :].reshape(
-            (3, 3, nlev), order="F"
+            (nc, nc, nlev), order="F"
         )
         local[:, :, :, 1, le] = pool.get("physics_zonal_wind_tendency")[columns, :].reshape(
-            (3, 3, nlev), order="F"
+            (nc, nc, nlev), order="F"
         )
         local[:, :, :, 2, le] = pool.get("physics_meridional_wind_tendency")[columns, :].reshape(
-            (3, 3, nlev), order="F"
+            (nc, nc, nlev), order="F"
         )
         local[:, :, :, 3:, le] = (
-            pool.get("fvm_tracer")[3:6, 3:6, :, le, :] +
-            adjustment[columns, :, :].reshape((3, 3, nlev, nconst), order="F")
+            pool.get("fvm_tracer")[
+                nhc : nhc + nc,
+                nhc : nhc + nc,
+                :,
+                le,
+                :,
+            ]
+            + adjustment[columns, :, :].reshape(
+                (nc, nc, nlev, nconst),
+                order="F",
+            )
         )
         pool.get("fvm_temperature_forcing")[:, :, :, le] = local[:, :, :, 0, le]
         pool.get("fvm_momentum_forcing")[:, :, 0, :, le] = local[:, :, :, 1, le]
         pool.get("fvm_momentum_forcing")[:, :, 1, :, le] = local[:, :, :, 2, le]
         pool.get("fvm_constituent_adjustment")[:, :, :, le, :] = adjustment[
             columns, :, :
-        ].reshape((3, 3, nlev, nconst), order="F")
+        ].reshape((nc, nc, nlev, nconst), order="F")
         pool.get("fvm_constituent_mass_forcing")[:, :, :, le, :] = np.float64(0.0)
         for constituent in range(nconst):
             pool.get("fvm_constituent_mass_forcing")[:, :, :, le, constituent] = (
                 pool.get("fvm_constituent_adjustment")[:, :, :, le, constituent]
-                * pool.get("fvm_layer_pressure_thickness")[3:6, 3:6, :, le]
+                * pool.get("fvm_layer_pressure_thickness")[
+                    nhc : nhc + nc,
+                    nhc : nhc + nc,
+                    :,
+                    le,
+                ]
             )
         pool.get("fvm_dry_pressure_from_physics")[:, :, :, le] = pool.get(
             "physics_dry_layer_pressure_thickness"
-        )[columns, :].reshape((3, 3, nlev), order="F")
+        )[columns, :].reshape((nc, nc, nlev), order="F")
 
     mapped = physgrid_to_gll(pool, comm, local, vector_start=1)
     n0 = int(pool.get("dynamics_time_level_n0"))
     qn0 = 0 if int(pool.get("dynamics_internal_step")) % 2 == 0 else 1
-    qold = np.empty((4, 4, nlev, nconst, nelem), dtype=np.float64, order="F")
+    qold = np.empty(
+        (np_value, np_value, nlev, nconst, nelem),
+        dtype=np.float64,
+        order="F",
+    )
     for le in range(nelem):
         for constituent in range(nconst):
             for level in range(nlev):
-                for j in range(4):
-                    for i in range(4):
+                for j in range(np_value):
+                    for i in range(np_value):
                         qold[i, j, level, constituent, le] = np.float64(
                             pool.get("constituent_mass")[i, j, level, le, constituent, qn0]
                             / pool.get("layer_pressure_thickness")[i, j, level, le, n0]
                         )
 
-    forcing = np.empty((4, 4, nlev, 3 + nconst, nelem), dtype=np.float64, order="F")
+    forcing = np.empty(
+        (np_value, np_value, nlev, 3 + nconst, nelem),
+        dtype=np.float64,
+        order="F",
+    )
     forcing[:, :, :, 0:3, :] = mapped[:, :, :, 0:3, :]
     for constituent in range(nconst):
         forcing[:, :, :, 3 + constituent, :] = np.float64(0.0)
         for le in range(nelem):
             for level in range(nlev):
-                for j in range(4):
-                    for i in range(4):
+                for j in range(np_value):
+                    for i in range(np_value):
                         forcing[i, j, level, 3 + constituent, le] = np.float64(
                             mapped[i, j, level, 3 + constituent, le]
                             - qold[i, j, level, constituent, le]
@@ -323,8 +456,8 @@ def physics_to_dynamics_forcing(pool, comm) -> None:
     for le in range(nelem):
         for field in range(3 + nconst):
             for level in range(nlev):
-                for j in range(4):
-                    for i in range(4):
+                for j in range(np_value):
+                    for i in range(np_value):
                         packed[i, j, level, field, le] = np.float64(
                             forcing[i, j, level, field, le] * mass[i, j, le]
                         )
@@ -333,8 +466,8 @@ def physics_to_dynamics_forcing(pool, comm) -> None:
     for le in range(nelem):
         for field in range(3 + nconst):
             for level in range(nlev):
-                for j in range(4):
-                    for i in range(4):
+                for j in range(np_value):
+                    for i in range(np_value):
                         forcing[i, j, level, field, le] = np.float64(
                             assembled[i, j, level, field, le]
                             * inverse_mass[i, j, le]

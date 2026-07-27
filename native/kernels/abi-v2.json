@@ -5,6 +5,7 @@
   "persistent_native_state": false,
   "exports": {
     "pycam_sima_abi_version": [],
+    "pycam_sima_kernel_specialization_v1": ["np", "nc", "nlev", "ntrac"],
     "pycam_sima_physics_diagnostics_v1": ["ncol", "nlev", "nconst", "update_dse", "gravity", "zvir", "temp", "q", "pdel", "pmid", "rair", "cpair", "phis", "zi", "zm", "dse"],
     "pycam_sima_validate_se_dimensions_v2": ["np", "ngp", "errflg"],
     "pycam_sima_laplace_weak_v2": ["nelem", "nlev", "np", "ra", "dvv", "dinv", "spheremp", "scalar", "laplace"],

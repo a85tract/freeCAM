@@ -44,6 +44,12 @@ class RuntimeCapabilities:
                 errors.append(
                     f"{name}={actual!r}, maximum available {maximum!r}"
                 )
+        element_count = 6 * int(config.ne) * int(config.ne)
+        if config.mpi_size > element_count:
+            errors.append(
+                f"mpi_size={config.mpi_size!r}, maximum available "
+                f"{element_count} nonempty SE partitions for ne={config.ne}"
+            )
         if errors:
             raise ConfigurationError(
                 f"runtime {self.name!r} cannot execute this case: "
@@ -63,19 +69,17 @@ class RuntimeCapabilities:
 
 
 CAM_SE_FVM_V1 = RuntimeCapabilities(
-    name="cam-se-fvm-v1",
+    name="cam-se-fvm-v2-configurable",
     source_revisions=(REFERENCE_SOURCE_REVISION,),
     constraints={
-        "grid": "ne3np4.pg3",
-        "ne": 3,
-        "np": 4,
-        "fv_nphys": 3,
-        "pver": 30,
-        "constituent_count": 3,
         "threads_per_rank": 1,
-        "calendar": "NO_LEAP",
-        "run_type": "startup",
-        "analytic_ic_type": "moist_baroclinic_wave_dcmip2016",
     },
-    bounds={"mpi_size": (1, 54)},
+    bounds={
+        "ne": (1, None),
+        "np": (2, None),
+        "fv_nphys": (1, None),
+        "pver": (1, None),
+        "constituent_count": (1, None),
+        "mpi_size": (1, None),
+    },
 )

@@ -10,12 +10,14 @@ The first fully validated model target is CAM-SIMA FKESSLER,
 moist baroclinic-wave initial condition.
 
 That reference profile is a validation target, not the model definition.
-`ModelConfig` accepts a selected suite, timestep, run length, case name,
-source tree, dimensions, and input path. `CAM_SE_FVM_V1` separately declares
-the grid, dycore, calendar, initial-condition, and MPI layouts that the current
-component implementation can execute. Unsupported combinations therefore
-fail as a runtime-capability mismatch rather than being rejected as “not the
-Kessler case.”
+`ModelConfig` accepts the selected suite, `ne`, spectral order, FVM cell
+count, vertical levels, constituent registry, timestep, run length, calendar,
+start date, startup provider or restart checkpoint, case name, source tree,
+and input path. The same Python runtime generates the corresponding SFC
+decomposition, grid, FVM geometry, StatePool, clock, and history metadata.
+`CAM_SE_FVM_V1` now rejects only real implementation bounds such as empty
+partitions or unsupported threading; it no longer treats the reference values
+as capability constraints.
 
 Python owns the model lifecycle, clock, grid/decomposition metadata, persistent
 NumPy state, mpi4py communication, phase and CCPP-scheme ordering, and NetCDF
@@ -99,12 +101,32 @@ qsub -V -l select=1:ncpus=18:mpiprocs=18:ompthreads=1:mem=20GB \
   jobs/fkessler_model_variable_mpi.pbs
 ```
 
-The SFC generator itself accepts any positive `ne`; expanding the complete
-model beyond the currently validated `ne3np4.pg3` capability remains a
-separate grid/dycore validation task. Checkpoints are rank-local and must be
-restored with the same MPI size with which they were written. Validation
-evidence is in
-[`validation/generic_sfc_mpi.json`](validation/generic_sfc_mpi.json).
+The complete runtime accepts any positive `ne`, `pver`, and constituent count,
+`np >= 2`, and a positive FVM cell count. A non-reference
+`ne2np5.pg4`/L12/five-constituent/360-day profile is provided in
+[`configs/configurable_ne2np5_pg4_l12.yaml`](configs/configurable_ne2np5_pg4_l12.yaml).
+Its vertical-coordinate NetCDF file and matching `atm_in` remain case inputs.
+Checkpoints are rank-local and must be restored with the same MPI size with
+which they were written. The reference scientific/BFB gate remains
+`ne3np4.pg3`; non-reference configurations require their own scientific
+validation rather than inheriting that claim.
+
+Startup cases choose a Python initial-state provider with
+`analytic_ic_type`; the built-in providers are
+`moist_baroclinic_wave_dcmip2016` and `resting_isothermal`. A durable restart
+uses the same model-defining values and changes only the lifecycle fields:
+
+```yaml
+run_type: continue       # or branch
+restart_path: /path/to/checkpoint
+stop_n: 50
+```
+
+The checkpoint restores the calendar-aware clock, suite plan, registered
+fields, plugin inventory, and every rank-local array without executing the
+startup provider again. Suites with fewer than three moist constituents write
+only the history diagnostics present in their StatePool; the FKESSLER
+reference continues to write its exact 26-variable inventory.
 
 The history gate compares filenames, timestamps, dtype, shape, and float64 bit
 patterns for all 51 output times and 26 diagnostic variables. The upstream
@@ -704,13 +726,20 @@ level range, and the large-Courant switch in Python. The resulting C-compatible
 configuration is supplied to both FVM kernel calls; the Fortran wrappers do not
 define case dimensions or timestep controls.
 
-To preserve CAM's BFB floating-point instruction order for a concrete
-capability, `build-kernels` also
-generates a compile-time specialization module from
-`configs/fkessler_model.yaml`. ABI v2 checks the Python values against that
-specialization on every FVM call. `ModelConfig` may describe a different
-shape, but the current `CAM_SE_FVM_V1` capability rejects it until a matching
-specialization is built; it never silently reuses the wrong layout.
+To preserve CAM's BFB floating-point instruction order for each concrete
+shape, `build-kernels` generates a compile-time specialization module from the
+selected model YAML. ABI v2 exposes that specialization and Python checks all
+four values before initialization; it never silently reuses a library with
+the wrong layout:
+
+```bash
+uv run pycam-sima build-kernels \
+  --config configs/configurable_ne2np5_pg4_l12.yaml
+```
+
+The default reference library remains `build/libpycam_sima_kernels.so`.
+Non-reference builds are cached under
+`build/kernels/<specialization-id>/libpycam_sima_kernels.so`.
 
 ## Jupyter
 

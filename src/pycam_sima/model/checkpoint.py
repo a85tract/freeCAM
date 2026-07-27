@@ -38,7 +38,7 @@ class ModelSnapshot:
     dynamic_fields: tuple[str, ...]
     arrays: Mapping[str, np.ndarray]
     pool_sealed: bool
-    clock: Mapping[str, int]
+    clock: Mapping[str, Any]
     driver_state: str
     scheme_plan: Mapping[str, Any]
     last_phase: str | None
@@ -129,7 +129,7 @@ class ModelSnapshot:
         return cls(
             rank=int(metadata["rank"]),
             size=int(metadata["size"]),
-            config=dict(metadata["config"]),
+            config=ModelConfig.from_mapping(metadata["config"]).as_dict(),
             dimensions={
                 name: int(value)
                 for name, value in metadata["dimensions"].items()
@@ -148,7 +148,16 @@ class ModelSnapshot:
             ),
             arrays=immutable,
             pool_sealed=bool(metadata["pool_sealed"]),
-            clock={name: int(value) for name, value in metadata["clock"].items()},
+            clock={
+                name: (
+                    str(value)
+                    if name == "calendar"
+                    else None
+                    if value is None
+                    else int(value)
+                )
+                for name, value in metadata["clock"].items()
+            },
             driver_state=str(metadata["driver_state"]),
             scheme_plan=dict(metadata["scheme_plan"]),
             last_phase=metadata.get("last_phase"),

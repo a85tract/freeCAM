@@ -1,0 +1,160 @@
+{
+  "schema_version": 1,
+  "validated_at": "2026-07-27T15:43:00-06:00",
+  "repository": {
+    "root": "/glade/work/ruitong/pycam-sima",
+    "parent_commit": "1734b7a64ad1f75486e762ebbab47eb94b80362e",
+    "package_version": "0.18.0"
+  },
+  "cam_sima": {
+    "root": "/glade/work/ruitong/pycam-sima/external/CAM-SIMA",
+    "commit": "f8daa568eae2696b7c4ebff7768f02f5d097d9df"
+  },
+  "configuration_surface": {
+    "runtime": "cam-se-fvm-v2-configurable",
+    "configurable_dimensions": [
+      "ne",
+      "np",
+      "fv_nphys",
+      "pver",
+      "constituent_count",
+      "mpi_size"
+    ],
+    "supported_calendars": [
+      "NO_LEAP",
+      "GREGORIAN",
+      "PROLEPTIC_GREGORIAN",
+      "JULIAN",
+      "ALL_LEAP",
+      "360_DAY"
+    ],
+    "run_types": [
+      "startup",
+      "continue",
+      "branch"
+    ],
+    "startup_providers": [
+      "moist_baroclinic_wave_dcmip2016",
+      "resting_isothermal"
+    ],
+    "constituent_metadata": [
+      "name",
+      "minimum",
+      "molecular_weight"
+    ],
+    "restart_restores": [
+      "calendar-aware clock",
+      "StatePool arrays and registration state",
+      "suite plan",
+      "plugin inventory",
+      "execution cursor"
+    ],
+    "restart_reruns_startup_provider": false,
+    "checkpoint_requires_same_mpi_size": true
+  },
+  "native_specialization": {
+    "dimensions": [
+      "np",
+      "fv_nphys",
+      "pver",
+      "constituent_count"
+    ],
+    "generated_from_model_yaml": true,
+    "runtime_abi_self_reports_specialization": true,
+    "python_rejects_mismatched_library": true,
+    "reference_library": {
+      "path": "/glade/work/ruitong/pycam-sima/build/libpycam_sima_kernels.so",
+      "sha256": "a877843de8dedc609b7a1d8f4880dedb5ab396c406705d7642d0f443a861c1de",
+      "size_bytes": 216064,
+      "specialization": {
+        "np": 4,
+        "fv_nphys": 3,
+        "pver": 30,
+        "constituent_count": 3
+      }
+    },
+    "nonreference_library": {
+      "path": "/glade/work/ruitong/pycam-sima/build/kernels/2269c3c98f0ca154/libpycam_sima_kernels.so",
+      "sha256": "18032a15644e9fbaedbd095a5a8b508993eb5a8834ee34f908f7aae5a4ee20b7",
+      "size_bytes": 216120,
+      "specialization_id": "2269c3c98f0ca154",
+      "specialization": {
+        "np": 5,
+        "fv_nphys": 4,
+        "pver": 12,
+        "constituent_count": 5
+      }
+    },
+    "build_environment": "env -i with direct GCC 12.2 gfortran",
+    "forbidden_mpi_esmf_pio_netcdf_hdf5_dependencies_present": false,
+    "rpath_or_runpath_present": false
+  },
+  "nonreference_50step_gate": {
+    "config": "configs/configurable_ne2np5_pg4_l12.yaml",
+    "pbs_job_id": "6924876.desched1",
+    "resources": "select=1:ncpus=8:mpiprocs=8:ompthreads=1:mem=40GB",
+    "walltime_used": "00:04:07",
+    "memory_used": "853600kb",
+    "run_root": "/glade/derecho/scratch/ruitong/pycam-sima/configurable_p0_20260727-152333",
+    "history_dir": "/glade/derecho/scratch/ruitong/pycam-sima/configurable_p0_20260727-152333/alternative-history-dt60-v4",
+    "configuration": {
+      "grid": "ne2np5.pg4",
+      "ne": 2,
+      "np": 5,
+      "fv_nphys": 4,
+      "pver": 12,
+      "constituent_count": 5,
+      "mpi_ranks": 8,
+      "timestep_seconds": 60,
+      "steps": 50,
+      "calendar": "360_DAY",
+      "start_date": "2000-02-30",
+      "run_type": "startup",
+      "analytic_initial_condition": "resting_isothermal"
+    },
+    "result": {
+      "history_files": 51,
+      "first_file": "configurable_ne2np5_pg4_l12.cam.h0.2000-02-30-00000i.nc",
+      "last_file": "configurable_ne2np5_pg4_l12.cam.h0.2000-02-30-03000i.nc",
+      "ncol": 384,
+      "lev": 12,
+      "ilev": 13,
+      "float_variables_checked": 37,
+      "all_float_values_finite": true,
+      "runtime_warnings_or_errors": 0,
+      "final_min_layer_pressure_thickness": 7333.333333340657,
+      "final_temperature_min": 299.9999999999993,
+      "final_temperature_max": 300.0000000000006,
+      "final_maximum_absolute_wind": 9.944108088192441e-12,
+      "native_calls": 14904
+    }
+  },
+  "reference_bfb_gate": {
+    "pbs_job_id": "6924890.desched1",
+    "resources": "select=1:ncpus=24:mpiprocs=24:ompthreads=1:mem=80GB",
+    "walltime_used": "00:06:55",
+    "memory_used": "2669112kb",
+    "steps": 50,
+    "history_files": 51,
+    "numeric_variables": 26,
+    "native_calls": 14904,
+    "runtime_warnings_or_errors": 0,
+    "oracle": "/glade/derecho/scratch/ruitong/pycam_sima_legacy_oracle_f8daa568/run",
+    "candidate": "/glade/derecho/scratch/ruitong/pycam-sima/configurable_p0_20260727-152333/reference-history-final",
+    "compare_command": ".venv/bin/python -m pycam_sima.cli compare-history /glade/derecho/scratch/ruitong/pycam_sima_legacy_oracle_f8daa568/run /glade/derecho/scratch/ruitong/pycam-sima/configurable_p0_20260727-152333/reference-history-final --files 51 --numeric-variables 26",
+    "result": "BFB"
+  },
+  "regression_coverage": {
+    "pytest": "185 passed, 1 third-party deprecation warning",
+    "generic_gll_derivative": "constant derivative zero and linear derivative one for np=3,5,6",
+    "reduced_constituent_history": "one-constituent StatePool omits unavailable water and rain diagnostics",
+    "restart": "360_DAY clock and StatePool restored through CAMDriver continue without startup",
+    "package_build": "pycam_sima-0.18.0 sdist and wheel built",
+    "git_diff_check": "passed"
+  },
+  "validation_boundary": {
+    "reference_profile": "50-step output is bitwise identical to the pinned CAM-SIMA oracle",
+    "nonreference_profile": "50-step configuration, execution, calendar, shape, and finite-state gate passed",
+    "nonreference_scientific_oracle": "not available; no BFB or climate-validity claim is made for the synthetic resting-isothermal profile"
+  }
+}

@@ -1,15 +1,36 @@
 # Implementation status
 
-## Implemented target
+## Implemented runtime and reference target
 
 The repository implements a general, manifest-driven Python/Fortran device
-boundary and one complete model configuration:
+boundary and a configuration-driven CAM SE/FVM runtime. The runtime accepts
+configured cubed-sphere resolution, spectral order, FVM cell count, vertical
+level count, constituent registry, MPI decomposition, calendar, start time,
+startup provider, and restart mode.
+
+The scientific and BFB reference configuration remains:
 
 - CAM-SIMA `f8daa568eae2696b7c4ebff7768f02f5d097d9df`
 - FKESSLER, `ne3np4.pg3`, L30, 24 ranks, one thread per rank
 - 1800-second timestep and 50 requested steps
 - DCMIP2016 moist baroclinic-wave initial condition
 - startup, ATM-only, NO_LEAP execution
+
+A second integration profile,
+`configs/configurable_ne2np5_pg4_l12.yaml`, exercises `ne2np5.pg4`, L12, five
+constituents, an 8-rank SFC decomposition, the 360-day calendar, and the
+Python-owned resting-isothermal initial state. Continue and branch runs restore
+the same configuration and rank-local StatePool from checkpoint instead of
+calling startup initialization.
+
+The non-reference profile completed 50 steps and 51 history writes with all
+floating-point values finite; its resting state remained at machine-roundoff
+wind magnitude. The reference profile was rerun for 50 steps after the
+generalization and remains BFB for all 51 times and 26 diagnostic variables.
+The complete machine-readable record is
+`validation/configurable_model_runtime.json`. This is an execution and
+stability gate for the synthetic non-reference profile, not a claim that it
+has an external scientific oracle.
 
 Python parses `atm_in`, initializes the grid and analytic state, compiles the
 selected suite metadata into a Python-owned StatePool schema, executes the
@@ -84,11 +105,13 @@ FP-sensitive limiter call. Keeping `ngp` out of the limiter's numerical
 signature preserves CAM's original floating-point instruction order.
 
 GCC emits a different floating-point loop body when these small dimensions are
-fully dynamic. The build therefore generates a specialization module from the
-Python YAML configuration. The ABI values are still mandatory and are checked
-against that module; unsupported dimensions fail instead of selecting an
-implicit Fortran default. This keeps the case values out of handwritten
-Fortran while retaining the fixed instruction shape required for BFB.
+fully dynamic. The build therefore generates one specialization module from
+the selected Python YAML configuration and caches non-reference libraries by
+specialization hash. The ABI exports its `np`, FVM cell count, vertical level
+count, and constituent count; Python checks all four before initialization.
+This keeps case values out of handwritten Fortran, supports multiple model
+shapes, and retains the fixed instruction shape required for BFB within each
+compiled specialization.
 
 The library build invokes GCC 12.2 in an empty environment. Its build gate
 rejects MPI/PMI/PALS, ESMF, PIO, NetCDF, HDF5, LibSci, RPATH, and RUNPATH ELF

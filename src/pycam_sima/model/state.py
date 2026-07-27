@@ -71,6 +71,18 @@ class StatePool:
             self.register_field(item, initialized=True, dynamic=False)
         rules = default_alias_rules() if alias_rules is None else alias_rules
         for rule in rules:
+            if rule.axis is not None and rule.index is not None:
+                target_shape = self.contracts[rule.target].shape(
+                    self.dimensions
+                )
+                index = int(rule.index)
+                if index < -target_shape[rule.axis] or index >= target_shape[
+                    rule.axis
+                ]:
+                    # Optional constituent aliases are present only when that
+                    # configured constituent exists.  A dry or reduced-tracer
+                    # suite therefore does not expose invalid zero-copy views.
+                    continue
             self._register_alias(rule.alias, rule.target, rule.axis, rule.index)
             if rule.ccpp_standard_name is not None:
                 self._register_ccpp_name(

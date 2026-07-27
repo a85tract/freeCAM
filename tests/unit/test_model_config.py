@@ -22,7 +22,7 @@ def test_model_config_is_not_locked_to_fkessler_or_one_timestep() -> None:
     assert config.verify_suite().is_file()
 
 
-def test_runtime_capabilities_are_separate_from_generic_config() -> None:
+def test_runtime_capabilities_accept_configurable_model_dimensions() -> None:
     config = ModelConfig(
         source_root=str(ROOT / "external/CAM-SIMA"),
         physics_suite="held_suarez_1994",
@@ -36,24 +36,36 @@ def test_runtime_capabilities_are_separate_from_generic_config() -> None:
     ):
         CAM_SE_FVM_V1.validate(config.with_overrides(mpi_size=55))
 
-    config.with_overrides(calendar="GREGORIAN").validate()
-    with pytest.raises(ConfigurationError, match="calendar='GREGORIAN'"):
-        CAM_SE_FVM_V1.validate(
-            config.with_overrides(calendar="GREGORIAN")
-        )
+    gregorian = config.with_overrides(calendar="GREGORIAN")
+    gregorian.validate()
+    CAM_SE_FVM_V1.validate(gregorian)
     seven_constituents = config.with_overrides(constituent_count=7)
     seven_constituents.validate()
-    with pytest.raises(ConfigurationError, match="constituent_count=7"):
-        CAM_SE_FVM_V1.validate(seven_constituents)
+    CAM_SE_FVM_V1.validate(seven_constituents)
 
-    unsupported_grid = config.with_overrides(
-        grid="ne4np4.pg3",
+    configurable_grid = config.with_overrides(
+        grid="ne4np5.pg4",
         ne=4,
+        np=5,
+        fv_nphys=4,
+        pver=72,
+        mpi_size=96,
     )
-    with pytest.raises(ConfigurationError, match="runtime 'cam-se-fvm-v1'"):
-        CAM_SE_FVM_V1.validate(unsupported_grid)
+    configurable_grid.validate()
+    CAM_SE_FVM_V1.validate(configurable_grid)
 
 
 def test_generic_configuration_still_rejects_invalid_values() -> None:
     with pytest.raises(ConfigurationError, match="dt_seconds must be positive"):
         ModelConfig(dt_seconds=0).validate()
+
+
+def test_restart_modes_require_a_checkpoint_but_not_an_analytic_ic() -> None:
+    continued = ModelConfig(
+        run_type="continue",
+        restart_path="restart",
+        analytic_ic_type="not-used-for-restart",
+    )
+    continued.validate()
+    with pytest.raises(ConfigurationError, match="restart_path is required"):
+        ModelConfig(run_type="branch").validate()

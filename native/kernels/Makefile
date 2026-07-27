@@ -5,6 +5,7 @@ FC := /opt/cray/pe/gcc/12.2.0/bin/gfortran
 FFLAGS ?= -O2 -march=znver3 -fPIC -ffp-contract=off -fno-fast-math -ffree-line-length-none -cpp
 LDFLAGS ?= -Wl,--as-needed -Wl,--no-undefined
 TARGET ?= $(PROJECT_ROOT)/build/libpycam_sima_kernels.so
+MODEL_CONFIG ?= $(PROJECT_ROOT)/configs/fkessler_model.yaml
 CAM_SE := $(PROJECT_ROOT)/external/CAM-SIMA/src/dynamics/se/dycore
 FVM_SOURCE := .build/fvm_consistent_se_cslam.F90
 KERNEL_CONFIG := .build/kernel_config.F90
@@ -34,8 +35,8 @@ all: $(TARGET) devices check-symbols
 $(FVM_SOURCE): prepare_fvm_source.py $(CAM_SE)/fvm_consistent_se_cslam.F90
 	$(PYTHON) prepare_fvm_source.py $(CAM_SE)/fvm_consistent_se_cslam.F90 $@
 
-$(KERNEL_CONFIG): prepare_kernel_config.py $(PROJECT_ROOT)/configs/fkessler_model.yaml
-	$(PYTHON) prepare_kernel_config.py $(PROJECT_ROOT)/configs/fkessler_model.yaml $@
+$(KERNEL_CONFIG): prepare_kernel_config.py $(MODEL_CONFIG)
+	$(PYTHON) prepare_kernel_config.py $(MODEL_CONFIG) $@
 
 $(ABI_MAP) $(ABI_SYMBOLS): $(ABI_MANIFEST) prepare_abi_exports.py
 	@mkdir -p .build

@@ -4,48 +4,53 @@ from __future__ import annotations
 
 import numpy as np
 
-from .grid import _pg3_reference_nodes
+from .grid import _physics_reference_nodes
 
 
 def _integrate_subcells(sample: np.ndarray, metdet: np.ndarray, weights: np.ndarray) -> np.ndarray:
     """Scalar-order equivalent of derivative_mod:subcell_integration."""
-    val = np.empty((4, 4), dtype=np.float64, order="F")
-    tmp = np.empty((4, 3), dtype=np.float64, order="F")
-    result = np.empty((3, 3), dtype=np.float64, order="F")
-    for j in range(4):
-        for i in range(4):
+    np_value = sample.shape[0]
+    nc = weights.shape[0]
+    val = np.empty((np_value, np_value), dtype=np.float64, order="F")
+    tmp = np.empty((np_value, nc), dtype=np.float64, order="F")
+    result = np.empty((nc, nc), dtype=np.float64, order="F")
+    for j in range(np_value):
+        for i in range(np_value):
             val[i, j] = np.float64(sample[i, j] * metdet[i, j])
     # MATMUL(val, TRANSPOSE(weights))
-    for j in range(3):
-        for i in range(4):
+    for j in range(nc):
+        for i in range(np_value):
             value = np.float64(0.0)
-            for k in range(4):
+            for k in range(np_value):
                 value = np.float64(value + np.float64(val[i, k] * weights[j, k]))
             tmp[i, j] = value
     # MATMUL(weights, tmp)
-    for j in range(3):
-        for i in range(3):
+    for j in range(nc):
+        for i in range(nc):
             value = np.float64(0.0)
-            for k in range(4):
+            for k in range(np_value):
                 value = np.float64(value + np.float64(weights[i, k] * tmp[k, j]))
             result[i, j] = value
     return result
 
 
 def _interpolate_tensor_point(field: np.ndarray, wx: np.ndarray, wy: np.ndarray) -> np.float64:
-    intermediate = np.empty(4, dtype=np.float64)
-    for j in range(4):
+    np_value = field.shape[0]
+    intermediate = np.empty(np_value, dtype=np.float64)
+    for j in range(np_value):
         value = np.float64(0.0)
-        for i in range(4):
+        for i in range(np_value):
             value = np.float64(value + np.float64(wx[i] * field[i, j]))
         intermediate[j] = value
     value = np.float64(0.0)
-    for j in range(4):
+    for j in range(np_value):
         value = np.float64(value + np.float64(wy[j] * intermediate[j]))
     return value
 
 
 def _interpolate_legendre_2d(field: np.ndarray, x: float, y: float, matrix: np.ndarray) -> np.float64:
+    if field.shape[0] != 4:
+        return _interpolate_legendre_2d_generic(field, x, y, matrix)
     vtemp = np.empty(4, dtype=np.float64)
     for l in range(0, 4, 2):
         pk = np.float64(1.0)
@@ -98,11 +103,42 @@ def _interpolate_legendre_2d(field: np.ndarray, x: float, y: float, matrix: np.n
     return value
 
 
+def _interpolate_legendre_2d_generic(
+    field: np.ndarray,
+    x: float,
+    y: float,
+    matrix: np.ndarray,
+) -> np.float64:
+    """Dimension-independent Legendre interpolation."""
+
+    count = field.shape[0]
+
+    def polynomials(value: float) -> np.ndarray:
+        result = np.empty(count, dtype=np.float64)
+        result[0] = 1.0
+        if count > 1:
+            result[1] = value
+        for degree in range(2, count):
+            result[degree] = (
+                (2 * degree - 1) * value * result[degree - 1]
+                - (degree - 1) * result[degree - 2]
+            ) / degree
+        return result
+
+    px = polynomials(x)
+    py = polynomials(y)
+    coefficients = matrix.T @ field @ matrix
+    return np.float64(px @ coefficients @ py)
+
+
 def initialize_fvm_state(pool, time_level: int = 0) -> None:
     """Port dyn2fvm_mass_vars for the startup GLL state."""
     weights = pool.get("mapping_subcell_integration")
     nlev, nconst = pool.dimensions["pver"], pool.dimensions["nconst"]
-    ones = np.ones((4, 4), dtype=np.float64, order="F")
+    np_value = pool.dimensions["np"]
+    nc = pool.dimensions["fv_nphys"]
+    nhc = (pool.dimensions["fvm_halo"] - nc) // 2
+    ones = np.ones((np_value, np_value), dtype=np.float64, order="F")
     for le in range(pool.dimensions["nelem_local"]):
         metdet = pool.get("metric_jacobian")[:, :, le]
         area = _integrate_subcells(ones, metdet, weights)
@@ -112,17 +148,28 @@ def initialize_fvm_state(pool, time_level: int = 0) -> None:
         for lev in range(nlev):
             dp_gll = pool.get("layer_pressure_thickness")[:, :, lev, le, time_level]
             dp_fvm = _integrate_subcells(dp_gll, metdet, weights) * inv_area
-            pool.get("fvm_layer_pressure_thickness")[3:6, 3:6, lev, le] = dp_fvm
+            pool.get("fvm_layer_pressure_thickness")[
+                nhc : nhc + nc,
+                nhc : nhc + nc,
+                lev,
+                le,
+            ] = dp_fvm
             inv_darea_dp = inv_area / dp_fvm
             for constituent in range(nconst):
                 q_gll = pool.get("constituent_mixing_ratio")[:, :, lev, le, constituent, time_level]
                 q_fvm = _integrate_subcells(q_gll * dp_gll, metdet, weights) * inv_darea_dp
                 minimum = np.min(q_gll)
                 maximum = np.max(q_gll)
-                for j in range(3):
-                    for i in range(3):
+                for j in range(nc):
+                    for i in range(nc):
                         q_fvm[i, j] = max(minimum, min(maximum, q_fvm[i, j]))
-                pool.get("fvm_tracer")[3:6, 3:6, lev, le, constituent] = q_fvm
+                pool.get("fvm_tracer")[
+                    nhc : nhc + nc,
+                    nhc : nhc + nc,
+                    lev,
+                    le,
+                    constituent,
+                ] = q_fvm
 
 
 def _derive_pressure_and_geopotential(pool, backend=None) -> None:
@@ -392,39 +439,56 @@ def dynamics_to_physics(pool, time_level: int | None = None) -> None:
     integration = pool.get("mapping_subcell_integration")
     interpolation_matrix = pool.get("mapping_interpolation_matrix")
     nlev, nconst = pool.dimensions["pver"], pool.dimensions["nconst"]
+    np_value = pool.dimensions["np"]
+    nc = pool.dimensions["fv_nphys"]
+    nhc = (pool.dimensions["fvm_halo"] - nc) // 2
+    columns_per_element = nc * nc
     ptop = np.float64(pool.get("hybrid_a_interface")[0]) * np.float64(pool.get("reference_pressure"))
-    pg3_nodes = _pg3_reference_nodes()
-    ones = np.ones((4, 4), dtype=np.float64, order="F")
+    physics_nodes = _physics_reference_nodes(nc)
+    ones = np.ones((np_value, np_value), dtype=np.float64, order="F")
     for le in range(pool.dimensions["nelem_local"]):
-        columns = slice(le * 9, (le + 1) * 9)
+        columns = slice(
+            le * columns_per_element,
+            (le + 1) * columns_per_element,
+        )
         metdet = pool.get("metric_jacobian")[:, :, le]
         area = _integrate_subcells(ones, metdet, integration)
         inv_area = np.float64(1.0) / area
-        psdry = np.full((3, 3), ptop, dtype=np.float64, order="F")
+        psdry = np.full((nc, nc), ptop, dtype=np.float64, order="F")
         dinv = pool.get("inverse_metric")[:, :, :, :, le]
         dphys = pool.get("mapping_derivative_pg3")[:, :, columns]
         for lev in range(nlev):
             u = pool.get("zonal_wind")[:, :, lev, le, time_level]
             v = pool.get("meridional_wind")[:, :, lev, le, time_level]
-            contra1 = np.empty((4, 4), dtype=np.float64, order="F")
-            contra2 = np.empty((4, 4), dtype=np.float64, order="F")
-            for j in range(4):
-                for i in range(4):
+            contra1 = np.empty(
+                (np_value, np_value),
+                dtype=np.float64,
+                order="F",
+            )
+            contra2 = np.empty_like(contra1, order="F")
+            for j in range(np_value):
+                for i in range(np_value):
                     contra1[i, j] = np.float64(dinv[0, 0, i, j] * u[i, j]) + np.float64(dinv[0, 1, i, j] * v[i, j])
                     contra2[i, j] = np.float64(dinv[1, 0, i, j] * u[i, j]) + np.float64(dinv[1, 1, i, j] * v[i, j])
-            for pj in range(3):
-                for pi in range(3):
-                    local_col = pi + 3 * pj
-                    x = pg3_nodes[pi]
-                    y = pg3_nodes[pj]
+            for pj in range(nc):
+                for pi in range(nc):
+                    local_col = pi + nc * pj
+                    x = physics_nodes[pi]
+                    y = physics_nodes[pj]
                     v1 = _interpolate_legendre_2d(contra1, x, y, interpolation_matrix)
                     v2 = _interpolate_legendre_2d(contra2, x, y, interpolation_matrix)
-                    pool.get("physics_zonal_wind")[le * 9 + local_col, lev] = np.float64(dphys[0, 0, local_col] * v1) + np.float64(dphys[0, 1, local_col] * v2)
-                    pool.get("physics_meridional_wind")[le * 9 + local_col, lev] = np.float64(dphys[1, 0, local_col] * v1) + np.float64(dphys[1, 1, local_col] * v2)
+                    target_column = le * columns_per_element + local_col
+                    pool.get("physics_zonal_wind")[target_column, lev] = np.float64(dphys[0, 0, local_col] * v1) + np.float64(dphys[0, 1, local_col] * v2)
+                    pool.get("physics_meridional_wind")[target_column, lev] = np.float64(dphys[1, 0, local_col] * v1) + np.float64(dphys[1, 1, local_col] * v2)
         for lev in range(nlev):
-            dp_fvm = pool.get("fvm_layer_pressure_thickness")[3:6, 3:6, lev, le]
+            dp_fvm = pool.get("fvm_layer_pressure_thickness")[
+                nhc : nhc + nc,
+                nhc : nhc + nc,
+                lev,
+                le,
+            ]
             psdry = psdry + dp_fvm
-            pool.get("physics_layer_pressure_thickness")[columns, lev] = dp_fvm.reshape(9, order="F")
+            pool.get("physics_layer_pressure_thickness")[columns, lev] = dp_fvm.reshape(columns_per_element, order="F")
             t_gll = pool.get("air_temperature")[:, :, lev, le, time_level]
             dp_gll = pool.get("layer_pressure_thickness")[:, :, lev, le, time_level]
             # dyn2phys_all_vars derives the temperature denominator from an
@@ -436,15 +500,21 @@ def dynamics_to_physics(pool, time_level: int | None = None) -> None:
             t_phys = _integrate_subcells(
                 t_gll * dp_gll, metdet, integration
             ) * inv_darea_dp_phys
-            pool.get("physics_air_temperature")[columns, lev] = t_phys.reshape(9, order="F")
+            pool.get("physics_air_temperature")[columns, lev] = t_phys.reshape(columns_per_element, order="F")
             omega = _integrate_subcells(pool.get("vertical_pressure_velocity")[:, :, lev, le], metdet, integration) * inv_area
-            pool.get("physics_vertical_pressure_velocity")[columns, lev] = omega.reshape(9, order="F")
+            pool.get("physics_vertical_pressure_velocity")[columns, lev] = omega.reshape(columns_per_element, order="F")
             for constituent in range(nconst):
-                q_fvm = pool.get("fvm_tracer")[3:6, 3:6, lev, le, constituent]
-                pool.get("physics_constituent_mixing_ratio")[columns, lev, constituent] = q_fvm.reshape(9, order="F")
+                q_fvm = pool.get("fvm_tracer")[
+                    nhc : nhc + nc,
+                    nhc : nhc + nc,
+                    lev,
+                    le,
+                    constituent,
+                ]
+                pool.get("physics_constituent_mixing_ratio")[columns, lev, constituent] = q_fvm.reshape(columns_per_element, order="F")
         # d_p_coupling writes dry surface pressure.  Moist PS is formed later
         # by derived_phys_dry in physics_timestep_initial.
-        pool.get("physics_surface_dry_air_pressure")[columns] = psdry.reshape(9, order="F")
+        pool.get("physics_surface_dry_air_pressure")[columns] = psdry.reshape(columns_per_element, order="F")
         pool.get("physics_surface_geopotential")[columns] = 0.0
     # d_p_coupling saves the dry tracer state before derived_phys_dry converts
     # water to the moist physics convention.
@@ -597,13 +667,18 @@ def potential_temperature_to_temperature(pool) -> None:
 def physics_to_dynamics(pool, time_level: int = 0) -> None:
     w = pool.get("mapping_weights_pg3_to_gll")
     nlev, nconst = pool.dimensions["pver"], pool.dimensions["nconst"]
+    nc = pool.dimensions["fv_nphys"]
+    columns_per_element = nc * nc
     for le in range(pool.dimensions["nelem_local"]):
-        columns = slice(le * 9, (le + 1) * 9)
+        columns = slice(
+            le * columns_per_element,
+            (le + 1) * columns_per_element,
+        )
         for source, target in (("physics_zonal_wind", "zonal_wind"), ("physics_meridional_wind", "meridional_wind"), ("physics_air_temperature", "air_temperature"), ("physics_layer_pressure_thickness", "layer_pressure_thickness")):
             src, dst = pool.get(source), pool.get(target)
             for lev in range(nlev):
-                dst[:,:,lev,le,time_level] = w @ src[columns,lev].reshape((3,3), order="F") @ w.T
-        pool.get("surface_pressure")[:,:,le,time_level] = w @ pool.get("physics_surface_pressure")[columns].reshape((3,3), order="F") @ w.T
+                dst[:,:,lev,le,time_level] = w @ src[columns,lev].reshape((nc,nc), order="F") @ w.T
+        pool.get("surface_pressure")[:,:,le,time_level] = w @ pool.get("physics_surface_pressure")[columns].reshape((nc,nc), order="F") @ w.T
         for constituent in range(nconst):
             for lev in range(nlev):
-                pool.get("constituent_mixing_ratio")[:,:,lev,le,constituent,time_level] = w @ pool.get("physics_constituent_mixing_ratio")[columns,lev,constituent].reshape((3,3), order="F") @ w.T
+                pool.get("constituent_mixing_ratio")[:,:,lev,le,constituent,time_level] = w @ pool.get("physics_constituent_mixing_ratio")[columns,lev,constituent].reshape((nc,nc), order="F") @ w.T

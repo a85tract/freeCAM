@@ -39,8 +39,16 @@ HISTORY_FIELDS = (
 
 
 class HistoryWriter:
-    def __init__(self, output_dir: str | Path, case_name: str, comm):
+    def __init__(
+        self,
+        output_dir: str | Path,
+        case_name: str,
+        comm,
+        *,
+        config=None,
+    ):
         self.output_dir, self.case_name, self.comm = Path(output_dir), case_name, comm
+        self.config = config
 
     def write(self, pool, clock) -> Path | None:
         ids = pool.get("physics_global_column").reshape(-1, order="F").copy()
@@ -51,7 +59,15 @@ class HistoryWriter:
             "area": pool.get("physics_cell_area").copy(),
         }
         for output_name, state_name in HISTORY_FIELDS:
-            value = pool.get(state_name)
+            try:
+                value = pool.get(state_name)
+            except KeyError:
+                # Reduced-constituent and non-Kessler suites do not
+                # necessarily expose all three moist-species aliases.  The
+                # FKESSLER reference still resolves the complete 26-field
+                # inventory, while a generic suite writes only fields that
+                # actually exist in its StatePool.
+                continue
             payload[output_name] = np.ascontiguousarray(value)
         dynamic_history: dict[str, tuple[str, str]] = {}
         for state_name in sorted(pool.dynamic_fields):
@@ -109,12 +125,33 @@ class HistoryWriter:
                 variable = ds.createVariable(name, "f8", dims); variable[:] = values
             days = np.float64(clock.nstep * clock.dt_seconds) / np.float64(86400.0)
             time = ds.createVariable("time", "f8", ("time",)); time[:] = (days,)
-            time.setncatts({"long_name": "time", "units": "days since 0001-01-01 00:00:00", "calendar": "noleap", "bounds": "time_bounds"})
+            time.setncatts(
+                {
+                    "long_name": "time",
+                    "units": getattr(
+                        clock,
+                        "time_units",
+                        "days since 0001-01-01 00:00:00",
+                    ),
+                    "calendar": getattr(
+                        clock,
+                        "netcdf_calendar",
+                        "noleap",
+                    ),
+                    "bounds": "time_bounds",
+                }
+            )
             date = ds.createVariable("date", "i4", ("time",)); date[:] = (clock.yyyymmdd,)
             datesec = ds.createVariable("datesec", "i4", ("time",)); datesec[:] = (clock.seconds,)
             bounds = ds.createVariable("time_bounds", "f8", ("time", "nbnd"))
             bounds[:] = ((np.float64(max(clock.nstep - 1, 0) * clock.dt_seconds) / np.float64(86400.0), days),)
-            for name, value in (("ndbase", 0), ("nsbase", 0), ("nbdate", 10101), ("nbsec", 0), ("mdt", clock.dt_seconds)):
+            for name, value in (
+                ("ndbase", 0),
+                ("nsbase", 0),
+                ("nbdate", getattr(clock, "base_yyyymmdd", 10101)),
+                ("nbsec", getattr(clock, "base_seconds", 0)),
+                ("mdt", clock.dt_seconds),
+            ):
                 scalar = ds.createVariable(name, "i4"); scalar.assignValue(value)
             ndcur = ds.createVariable("ndcur", "i4", ("time",)); ndcur[:] = (clock.nstep * clock.dt_seconds // 86400,)
             nscur = ds.createVariable("nscur", "i4", ("time",)); nscur[:] = (clock.seconds,)
@@ -140,6 +177,22 @@ class HistoryWriter:
                             "standard_name": standard_name,
                         }
                     )
-            ds.setncatts({"ne": 3, "fv_nphys": 3, "Conventions": "CF-1.0", "source": "CAM-SIMA Python-owned runtime", "case": self.case_name, "time_period_freq": "step_1"})
+            ds.setncatts(
+                {
+                    "ne": (
+                        int(self.config.ne)
+                        if self.config is not None
+                        else int(pool.dimensions.get("ne", 3))
+                    ),
+                    "np": pool.dimensions.get("np", 4),
+                    "fv_nphys": pool.dimensions.get("fv_nphys", 3),
+                    "pver": pool.dimensions["pver"],
+                    "constituent_count": pool.dimensions.get("nconst", 3),
+                    "Conventions": "CF-1.0",
+                    "source": "CAM-SIMA Python-owned runtime",
+                    "case": self.case_name,
+                    "time_period_freq": "step_1",
+                }
+            )
         pool.get("history_sample_count")[...] += 1
         return path

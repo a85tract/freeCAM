@@ -7,7 +7,8 @@ import numpy as np
 import pytest
 
 from pycam_sima.model.backend import FVMKernelConfig, KernelBackend
-from pycam_sima.model.errors import StateOwnershipError
+from pycam_sima.model.config import ModelConfig
+from pycam_sima.model.errors import MissingKernelError, StateOwnershipError
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -59,6 +60,20 @@ def test_limiter_flattened_grid_dimension_is_validated_separately() -> None:
     runtime._require_se_dimensions(4, 16)
     with pytest.raises(StateOwnershipError, match="np=4, ngp=4"):
         runtime._require_se_dimensions(4, 4)
+
+
+def test_kernel_reports_and_checks_its_model_specialization() -> None:
+    runtime = KernelBackend(ROOT / "build/libpycam_sima_kernels.so")
+    reference = ModelConfig()
+    assert runtime.specialization == reference.kernel_specialization
+    runtime.validate_specialization(reference)
+    with pytest.raises(MissingKernelError, match="specialized for"):
+        runtime.validate_specialization(
+            reference.with_overrides(
+                grid="ne3np5.pg3",
+                np=5,
+            )
+        )
 
 
 def test_kernel_library_has_no_model_framework_dependency() -> None:

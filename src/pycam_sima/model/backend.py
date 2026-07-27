@@ -96,15 +96,39 @@ class KernelBackend:
             raise MissingKernelError(f"kernel library does not exist: {self.path}")
         self.lib = ctypes.CDLL(str(self.path), mode=ctypes.RTLD_LOCAL)
         if device_root is None:
-            roots = (
-                self.path.parent / "devices",
-                self.path.parent / "catalog_devices",
+            build_root = next(
+                (
+                    parent
+                    for parent in self.path.parents
+                    if parent.name == "build"
+                ),
+                self.path.parent,
+            )
+            roots = tuple(
+                dict.fromkeys(
+                    (
+                        self.path.parent / "devices",
+                        self.path.parent / "catalog_devices",
+                        build_root / "devices",
+                        build_root / "catalog_devices",
+                    )
+                )
             )
         else:
             roots = (device_root,)
         self.devices = DeviceRegistry(roots)
         self.call_count = 0
         self.lib.pycam_sima_abi_version.restype = ctypes.c_int
+        self._kernel_specialization = (
+            self.lib.pycam_sima_kernel_specialization_v1
+        )
+        self._kernel_specialization.argtypes = [
+            ctypes.POINTER(ctypes.c_int),
+            ctypes.POINTER(ctypes.c_int),
+            ctypes.POINTER(ctypes.c_int),
+            ctypes.POINTER(ctypes.c_int),
+        ]
+        self._kernel_specialization.restype = None
         self._validate_se_dimensions = self.lib.pycam_sima_validate_se_dimensions_v2
         self._validate_se_dimensions.argtypes = [
             ctypes.c_int, ctypes.c_int, ctypes.POINTER(ctypes.c_int)
@@ -189,6 +213,29 @@ class KernelBackend:
     @property
     def available_phases(self) -> frozenset[str]:
         return self.devices.process_names
+
+    @property
+    def specialization(self) -> dict[str, int]:
+        values = [ctypes.c_int() for _ in range(4)]
+        self._kernel_specialization(
+            *(ctypes.byref(value) for value in values)
+        )
+        return dict(
+            zip(
+                ("np", "fv_nphys", "pver", "constituent_count"),
+                (int(value.value) for value in values),
+            )
+        )
+
+    def validate_specialization(self, config) -> None:
+        expected = config.kernel_specialization
+        actual = self.specialization
+        if actual != expected:
+            raise MissingKernelError(
+                f"kernel library {self.path} is specialized for {actual}, "
+                f"but the model requires {expected}; build it with "
+                f"`pycam-sima build-kernels --config <config.yaml>`"
+            )
 
     def run_phase(self, phase: str, pool) -> None:
         if phase not in self.available_phases:

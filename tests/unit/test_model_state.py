@@ -5,6 +5,8 @@ import pytest
 
 from pycam_sima.model.errors import StateOwnershipError
 from pycam_sima.model.grid import (
+    _derivative_matrix,
+    _gll_nodes_weights,
     _global_dof_map,
     dimensions_for_rank,
     global_elements,
@@ -144,3 +146,65 @@ def test_constituent_aliases_are_zero_copy_and_static_fields_seal():
     with pytest.raises(StateOwnershipError):
         pool.set("gll_node", 0.0)
     pool.set("gll_node", 0.0, unsafe=True)
+
+
+def test_nonreference_grid_and_constituent_dimensions_are_allocated() -> None:
+    dimensions = dimensions_for_rank(
+        0,
+        8,
+        ne=2,
+        np_value=5,
+        fv_nphys=4,
+        pver=12,
+        constituent_count=5,
+    )
+    pool = StatePool(dimensions)
+    populate_grid(pool, 0, 8, ne=2)
+
+    assert pool.get("gll_cartesian").shape == (3, 5, 5, 3)
+    assert pool.get("physics_latitude").shape == (3 * 4 * 4,)
+    assert pool.get("constituent_mixing_ratio").shape == (
+        5,
+        5,
+        12,
+        3,
+        5,
+        3,
+    )
+    assert np.isfinite(pool.get("metric_jacobian")).all()
+
+
+@pytest.mark.parametrize("node_count", (3, 5, 6))
+def test_generic_gll_derivative_uses_homme_input_output_layout(
+    node_count: int,
+) -> None:
+    nodes, _weights = _gll_nodes_weights(node_count)
+    derivative = _derivative_matrix(nodes)
+
+    assert np.allclose(
+        np.sum(derivative, axis=0),
+        0.0,
+        rtol=0.0,
+        atol=3.0e-14,
+    )
+    assert np.allclose(
+        nodes @ derivative,
+        1.0,
+        rtol=0.0,
+        atol=3.0e-14,
+    )
+
+
+def test_reduced_constituent_pool_omits_unavailable_water_aliases() -> None:
+    pool = StatePool(
+        dimensions_for_rank(
+            0,
+            1,
+            ne=1,
+            pver=4,
+            constituent_count=1,
+        )
+    )
+    assert pool.get("cloud_liquid_water").shape[-1] == 3
+    with pytest.raises(KeyError, match="water_vapor"):
+        pool.get("water_vapor")

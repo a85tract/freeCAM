@@ -149,16 +149,27 @@ def _synchronize_gll_initial_state(pool, comm) -> None:
 
     nlev, nconst = pool.dimensions["pver"], pool.dimensions["nconst"]
     width = 1 + nlev * (3 + nconst)
-    send = np.zeros((54 * 16, width), dtype=np.float64, order="F")
+    np_value = pool.dimensions["np"]
+    global_element_count = int(pool.get("spectral_element_count"))
+    send = np.zeros(
+        (global_element_count * np_value * np_value, width),
+        dtype=np.float64,
+        order="F",
+    )
     receive = np.empty_like(send, order="F")
     dofs = pool.get("gll_global_dof")
     gids = pool.get("global_element_id")
     for le in range(pool.dimensions["nelem_local"]):
         gid = int(gids[le])
-        for j in range(4):
-            for i in range(4):
+        for j in range(np_value):
+            for i in range(np_value):
                 dof = int(dofs[i, j, le])
-                local_dof = (gid - 1) * 16 + j * 4 + i + 1
+                local_dof = (
+                    (gid - 1) * np_value * np_value
+                    + j * np_value
+                    + i
+                    + 1
+                )
                 if dof != local_dof:
                     continue
                 offset = 0
@@ -172,8 +183,8 @@ def _synchronize_gll_initial_state(pool, comm) -> None:
                     offset += nlev
     comm.Allreduce(send, receive)
     for le in range(pool.dimensions["nelem_local"]):
-        for j in range(4):
-            for i in range(4):
+        for j in range(np_value):
+            for i in range(np_value):
                 row = receive[int(dofs[i, j, le]) - 1]
                 offset = 0
                 pool.get("surface_pressure")[i, j, le, 0] = row[offset]
@@ -186,7 +197,12 @@ def _synchronize_gll_initial_state(pool, comm) -> None:
                     offset += nlev
 
 
-def populate_initial_state(pool, comm=None) -> None:
+def populate_dcmip2016_initial_state(pool, comm=None) -> None:
+    if pool.dimensions["nconst"] < 3:
+        raise ValueError(
+            "moist_baroclinic_wave_dcmip2016 requires at least three "
+            "constituents ordered as cloud liquid, rain, and water vapor"
+        )
     model = Dcmip2016(
         rair=float(pool.get("dry_air_gas_constant")), gravity=float(pool.get("gravitational_acceleration")),
         rearth=float(pool.get("earth_radius")), omega=float(pool.get("earth_angular_velocity")),
@@ -217,7 +233,7 @@ def populate_initial_state(pool, comm=None) -> None:
                     dp = np.float64(hyai[k+1] - hyai[k]) * ps0 + np.float64(hybi[k+1] - hybi[k]) * ps
                     pool.get("layer_pressure_thickness")[i, j, k, le, 0] = dp
                     pool.get("constituent_mass")[i, j, k, le, 2, 0] = np.float64(pool.get("water_vapor")[i, j, k, le, 0] * dp)
-                for time in range(1, 3):
+                for time in range(1, pool.dimensions["ntime"]):
                     pool.get("zonal_wind")[i,j,:,le,time] = pool.get("zonal_wind")[i,j,:,le,0]
                     pool.get("meridional_wind")[i,j,:,le,time] = pool.get("meridional_wind")[i,j,:,le,0]
                     pool.get("air_temperature")[i,j,:,le,time] = pool.get("air_temperature")[i,j,:,le,0]
@@ -234,9 +250,11 @@ def populate_initial_state(pool, comm=None) -> None:
         pool.get("physics_surface_pressure")[col] = ps
         pool.get("physics_layer_pressure_thickness")[col,:] = dp
         pool.get("physics_water_vapor")[col,:] = q
-        le, within = divmod(col, 9)
-        pi, pj = within % 3, within // 3
-        pool.get("fvm_tracer")[3 + pi,3 + pj,:,le,2] = q
+        nc = pool.dimensions["fv_nphys"]
+        nhc = (pool.dimensions["fvm_halo"] - nc) // 2
+        le, within = divmod(col, nc * nc)
+        pi, pj = within % nc, within // nc
+        pool.get("fvm_tracer")[nhc + pi, nhc + pj, :, le, 2] = q
         if "thermodynamic_level_height" in pool.contracts:
             pool.get("thermodynamic_level_height")[col,:] = z
     if "thermodynamic_level_height" in pool.contracts:
@@ -266,3 +284,103 @@ def populate_initial_state(pool, comm=None) -> None:
     for name, values in optional_values.items():
         if name in pool.contracts:
             pool.set(name, values)
+
+
+def populate_resting_isothermal_initial_state(
+    pool,
+    comm=None,
+    *,
+    temperature: float = 300.0,
+    surface_pressure: float = 100000.0,
+) -> None:
+    """Create a dry, motionless hydrostatic startup state."""
+
+    del comm
+    temperature = np.float64(temperature)
+    surface_pressure = np.float64(surface_pressure)
+    ps0 = np.float64(pool.get("reference_pressure"))
+    hyai = pool.get("hybrid_a_interface")
+    hybi = pool.get("hybrid_b_interface")
+    hyam = pool.get("hybrid_a_midpoint")
+    hybm = pool.get("hybrid_b_midpoint")
+    dp = np.diff(hyai) * ps0 + np.diff(hybi) * surface_pressure
+    pressure = hyam * ps0 + hybm * surface_pressure
+    minima = np.asarray(pool.get("constituent_minimum"), dtype=np.float64)
+    exner = (pressure / ps0) ** (
+        np.float64(pool.get("dry_air_gas_constant"))
+        / np.float64(pool.get("dry_air_specific_heat"))
+    )
+
+    for time_level in range(pool.dimensions["ntime"]):
+        pool.get("zonal_wind")[..., time_level] = 0.0
+        pool.get("meridional_wind")[..., time_level] = 0.0
+        pool.get("air_temperature")[..., time_level] = temperature
+        pool.get("surface_pressure")[..., time_level] = surface_pressure
+        pool.get("layer_pressure_thickness")[..., time_level] = (
+            dp[None, None, :, None]
+        )
+        pool.get("constituent_mixing_ratio")[..., time_level] = (
+            minima[None, None, None, None, :]
+        )
+    pool.get("constituent_mass")[...] = 0.0
+    pool.get("constituent_mass")[
+        ..., : pool.dimensions["nconst"], :
+    ] = (
+        dp[None, None, :, None, None, None]
+        * minima[None, None, None, None, :, None]
+    )
+    pool.get("physics_zonal_wind")[...] = 0.0
+    pool.get("physics_meridional_wind")[...] = 0.0
+    pool.get("physics_air_temperature")[...] = temperature
+    pool.get("physics_surface_pressure")[...] = surface_pressure
+    pool.get("physics_layer_pressure_thickness")[...] = dp[None, :]
+    pool.get("physics_constituent_mixing_ratio")[...] = (
+        minima[None, None, :]
+    )
+    pool.get("fvm_tracer")[...] = minima[None, None, None, None, :]
+    if "thermodynamic_level_height" in pool.contracts:
+        pool.get("thermodynamic_level_height")[...] = 0.0
+        pool.mark_initialized("thermodynamic_level_height")
+
+    optional_values = {
+        "exner_function": exner[None, :],
+        "potential_temperature": temperature / exner[None, :],
+        "dry_air_density": pressure[None, :] / (
+            temperature * np.float64(pool.get("dry_air_gas_constant"))
+        ),
+        "column_dry_air_specific_heat": float(
+            pool.get("dry_air_specific_heat")
+        ),
+        "column_dry_air_gas_constant": float(
+            pool.get("dry_air_gas_constant")
+        ),
+        "air_temperature_previous_timestep": temperature,
+    }
+    for name, values in optional_values.items():
+        if name in pool.contracts:
+            pool.set(name, values)
+
+
+def populate_initial_state(
+    pool,
+    comm=None,
+    *,
+    kind: str = "moist_baroclinic_wave_dcmip2016",
+    temperature: float = 300.0,
+    surface_pressure: float = 100000.0,
+) -> None:
+    """Dispatch one Python-owned analytic initial-state provider."""
+
+    normalized = str(kind).strip().lower()
+    if normalized == "moist_baroclinic_wave_dcmip2016":
+        populate_dcmip2016_initial_state(pool, comm)
+        return
+    if normalized == "resting_isothermal":
+        populate_resting_isothermal_initial_state(
+            pool,
+            comm,
+            temperature=temperature,
+            surface_pressure=surface_pressure,
+        )
+        return
+    raise ValueError(f"unknown analytic initial state {kind!r}")

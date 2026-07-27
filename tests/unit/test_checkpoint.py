@@ -5,6 +5,7 @@ import numpy as np
 
 from pycam_sima.model import (
     BranchSpec,
+    CAMDriver,
     CCPPSuitePlan,
     CheckpointBundle,
     FieldEdit,
@@ -180,6 +181,66 @@ def test_collective_checkpoint_round_trip_preserves_bits(tmp_path: Path) -> None
         restored.arrays["physics_air_temperature"],
         pool.get("physics_air_temperature"),
     )
+
+
+def test_continue_run_restores_clock_and_state_without_startup(
+    tmp_path: Path,
+) -> None:
+    comm = _LocalCheckpointComm()
+    config = ModelConfig(
+        mpi_size=1,
+        calendar="360_DAY",
+        start_date="2000-02-30",
+        analytic_ic_type="resting_isothermal",
+        dt_seconds=60,
+        history_enabled=False,
+    )
+    pool = StatePool(dimensions_for_rank(0, 1))
+    pool.set("air_temperature", 271.25)
+    pool.seal_static()
+    source = SimpleNamespace(
+        pool=pool,
+        clock=NoLeapClock(
+            year=2000,
+            month=2,
+            day=30,
+            seconds=120,
+            nstep=2,
+            dt_seconds=60,
+            calendar="360_DAY",
+        ),
+        state=DriverState.RUNNING,
+        comm=comm,
+        config=config,
+        scheme_plan=_scheme_plan(),
+        _last_phase="physics_timestep_initial",
+        _last_scheme=None,
+        _last_scheme_group=None,
+        backend=SimpleNamespace(call_count=9),
+    )
+    checkpoint = write_checkpoint(source, tmp_path / "restart")
+    continued = config.with_overrides(
+        run_type="continue",
+        restart_path=str(checkpoint),
+        stop_n=3,
+    )
+
+    driver = CAMDriver(
+        continued,
+        run_dir=tmp_path,
+        comm=comm,
+        history_dir=tmp_path / "continued-history",
+    ).start()
+
+    assert driver.config.run_type == "continue"
+    assert driver.clock.calendar == "360_DAY"
+    assert driver.clock.iso_stamp == "2000-02-30-00120"
+    assert driver.clock.nstep == 2
+    assert np.array_equal(
+        driver.pool.get("air_temperature"),
+        pool.get("air_temperature"),
+    )
+    assert driver.backend.call_count == 9
 
 
 def test_branch_spec_round_trip_and_isolated_edits() -> None:

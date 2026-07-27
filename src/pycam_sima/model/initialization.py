@@ -10,7 +10,7 @@ import numpy as np
 from taskflow import engines, task
 from taskflow.patterns import linear_flow
 
-from .clock import NoLeapClock
+from .clock import ModelClock
 from .config import ModelConfig
 from .contracts import FieldContract
 from .errors import ConfigurationError, ValidationError
@@ -31,7 +31,7 @@ class InitializationContext:
     generated_contracts: tuple[FieldContract, ...] = ()
     atm: dict | None = None
     pool: StatePool | None = None
-    clock: NoLeapClock | None = None
+    clock: ModelClock | None = None
     completed: list[str] = field(default_factory=list)
 
 
@@ -49,7 +49,7 @@ class InitializationPlan:
     STEP_NAMES = (
         "parse_configuration", "establish_mpi_layout", "allocate_state_pool",
         "load_vertical_coordinate", "initialize_constants_and_clock", "build_grid_and_topology",
-        "register_constituents", "generate_dcmip2016_initial_state", "initialize_derived_buffers",
+        "register_constituents", "generate_initial_state", "initialize_derived_buffers",
         "validate_python_owned_state",
     )
 
@@ -119,6 +119,7 @@ class InitializationPlan:
                 np_value=ctx.config.np,
                 fv_nphys=ctx.config.fv_nphys,
                 constituent_count=ctx.config.constituent_count,
+                ne=ctx.config.ne,
             ),
             contracts=ctx.configured_contracts,
         )
@@ -145,7 +146,12 @@ class InitializationPlan:
 
     @staticmethod
     def _vertical(ctx):
-        load_vertical_coordinate(ctx.pool, ctx.atm["ncdata"], ctx.comm)
+        load_vertical_coordinate(
+            ctx.pool,
+            ctx.atm["ncdata"],
+            ctx.comm,
+            expected_levels=ctx.config.pver,
+        )
 
     @staticmethod
     def _constants(ctx):
@@ -199,7 +205,7 @@ class InitializationPlan:
         pool.set("temperature_hyperviscosity", nu_p)
         pool.set("tracer_hyperviscosity", nu_p)
         pool.set("sponge_top_viscosity", np.float64(5.0e5))
-        pool.set("sponge_level_count", 3)
+        pool.set("sponge_level_count", pool.dimensions["nhypervis"])
         sponge_scale = np.empty(pool.dimensions["pver"], dtype=np.float64)
         ptop = np.float64(pool.get("hybrid_a_interface")[0]) * np.float64(
             pool.get("reference_pressure")
@@ -214,8 +220,20 @@ class InitializationPlan:
             )
             sponge_scale[level] = value if value >= np.float64(0.15) else 0.0
         pool.set("sponge_viscosity_scale", sponge_scale)
-        ctx.clock = NoLeapClock(dt_seconds=ctx.config.dt_seconds)
-        pool.set("model_step", 0); pool.set("current_date", ctx.clock.yyyymmdd); pool.set("current_seconds_of_day", 0)
+        start_year, start_month, start_day = (
+            int(part) for part in ctx.config.start_date.split("-")
+        )
+        ctx.clock = ModelClock(
+            year=start_year,
+            month=start_month,
+            day=start_day,
+            seconds=ctx.config.start_seconds,
+            dt_seconds=ctx.config.dt_seconds,
+            calendar=ctx.config.calendar,
+        )
+        pool.set("model_step", 0)
+        pool.set("current_date", ctx.clock.yyyymmdd)
+        pool.set("current_seconds_of_day", ctx.clock.seconds)
         pool.set("dynamics_time_level_nm1", 0)
         pool.set("dynamics_time_level_n0", 1)
         pool.set("dynamics_time_level_np1", 2)
@@ -223,7 +241,12 @@ class InitializationPlan:
 
     @staticmethod
     def _grid(ctx):
-        populate_grid(ctx.pool, ctx.comm.rank, ctx.comm.size)
+        populate_grid(
+            ctx.pool,
+            ctx.comm.rank,
+            ctx.comm.size,
+            ne=ctx.config.ne,
+        )
         InitializationPlan._generate_fvm_geometry(ctx)
         omega = np.float64(ctx.pool.get("earth_angular_velocity"))
         latitude = ctx.pool.get("gll_latitude")
@@ -239,6 +262,8 @@ class InitializationPlan:
             ctx.pool.get("hybrid_a_interface"),
             ctx.pool.get("hybrid_b_interface"),
             ctx.pool.get("reference_pressure"),
+            ne=ctx.config.ne,
+            nc=ctx.config.fv_nphys,
         )
         gids = np.asarray(payload["global_element_id"], dtype=np.int32)
         wanted = ctx.pool.get("global_element_id")
@@ -272,13 +297,32 @@ class InitializationPlan:
 
     @staticmethod
     def _constituents(ctx):
-        ctx.pool.set("constituent_index", np.array((1, 2, 3), dtype=np.int32))
-        ctx.pool.set("constituent_minimum", np.array((0.0, 0.0, QV_MIN := 1.0e-12)))
-        ctx.pool.set("constituent_molecular_weight", np.array((18.016, 18.016, 18.016)))
+        count = ctx.config.constituent_count
+        ctx.pool.set(
+            "constituent_index",
+            np.arange(1, count + 1, dtype=np.int32),
+        )
+        ctx.pool.set(
+            "constituent_minimum",
+            np.asarray(ctx.config.constituent_minima, dtype=np.float64),
+        )
+        ctx.pool.set(
+            "constituent_molecular_weight",
+            np.asarray(
+                ctx.config.constituent_molecular_weights,
+                dtype=np.float64,
+            ),
+        )
 
     @staticmethod
     def _initial_state(ctx):
-        populate_initial_state(ctx.pool, ctx.comm)
+        populate_initial_state(
+            ctx.pool,
+            ctx.comm,
+            kind=ctx.config.analytic_ic_type,
+            temperature=ctx.config.initial_temperature,
+            surface_pressure=ctx.config.initial_surface_pressure,
+        )
 
     @staticmethod
     def _buffers(ctx):
@@ -318,7 +362,13 @@ class InitializationPlan:
             raise ValidationError("rank owns duplicate elements")
         if np.any(pool.get("physics_layer_pressure_thickness") <= 0.0):
             raise ValidationError("initial state contains non-positive layer pressure thickness")
-        if np.any(pool.get("physics_water_vapor") < pool.get("constituent_minimum")[2]):
+        if (
+            ctx.config.constituent_count >= 3
+            and np.any(
+                pool.get("physics_water_vapor")
+                < pool.get("constituent_minimum")[2]
+            )
+        ):
             raise ValidationError("water vapor is below its registered minimum")
         inventory = ctx.comm.allgather(pool.get("global_element_id").tolist())
         if len(inventory) == ctx.comm.size:

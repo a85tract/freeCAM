@@ -1,0 +1,35 @@
+# Non-reference profile used to exercise every formerly fixed model dimension.
+source_revision: f8daa568eae2696b7c4ebff7768f02f5d097d9df
+source_root: /glade/work/ruitong/pycam-sima/external/CAM-SIMA
+physics_suite: kessler
+grid: ne2np5.pg4
+ne: 2
+np: 5
+fv_nphys: 4
+pver: 12
+constituent_count: 5
+constituent_names:
+  - cloud_liquid_water
+  - rain_water
+  - water_vapor
+  - passive_tracer_1
+  - passive_tracer_2
+constituent_minima: [0.0, 0.0, 1.0e-12, 0.0, 0.0]
+constituent_molecular_weights: [18.016, 18.016, 18.016, 28.966, 28.966]
+mpi_size: 8
+threads_per_rank: 1
+# This is an execution/shape validation profile rather than a tuned CAM case.
+# Keep the step below the unvalidated ne2/np5/L12 stability limit.
+dt_seconds: 60
+stop_n: 50
+calendar: 360_DAY
+run_type: startup
+analytic_ic_type: resting_isothermal
+initial_temperature: 300.0
+initial_surface_pressure: 100000.0
+start_date: "2000-02-30"
+start_seconds: 0
+pertlim: 0.0
+case_name: configurable_ne2np5_pg4_l12
+atm_in: atm_in
+history_enabled: true

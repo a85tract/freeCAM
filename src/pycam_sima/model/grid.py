@@ -344,14 +344,21 @@ def dimensions_for_rank(
     np_value: int = 4,
     fv_nphys: int = 3,
     constituent_count: int = 3,
+    ne: int = 3,
 ) -> dict[str, int]:
-    nelem = len(local_elements(rank, size))
+    nelem = len(local_elements(rank, size, ne))
     # Halo sizes are finalized before allocation from the global topology.
-    peers, shared = _halo_inventory(rank, size)
+    peers, shared = _halo_inventory(
+        rank,
+        size,
+        ne=ne,
+        np_value=np_value,
+    )
     return {
         "pver": pver,
         "pverp": pver + 1,
         "np": np_value,
+        "nc": fv_nphys,
         "fv_nphys": fv_nphys,
         "nelem_local": nelem,
         "nphys_local": nelem * fv_nphys * fv_nphys,
@@ -365,11 +372,18 @@ def dimensions_for_rank(
         "qsize_storage": max(10, constituent_count),
         "ccpp_constant_one": 1,
         "ccpp_constant_two": 2,
-        "nhypervis": 3,
+        "nhypervis": min(3, pver),
         "edge_count": 4,
-        "fvm_halo": 9,
-        "fvm_internal": 5, "fvm_interp_span": 7,
-        "fvm_reconstruction": 5, "fvm_stretch": 7,
+        # CSLAM reconstruction controls remain explicit, while their array
+        # extents follow the configured number of finite-volume cells.
+        "fvm_halo": fv_nphys + 6,
+        "nhc": 3,
+        "fvm_internal": fv_nphys + 2,
+        "fvm_interp_span": fv_nphys + 4,
+        "fvm_reconstruction": 5,
+        "fvm_reconstruction_terms": 3,
+        "fvm_halo_range": 3,
+        "fvm_stretch": fv_nphys + 4,
         "cartesian": 3, "metric_i": 2, "metric_j": 2,
         "nhalo_peer": max(1, len(peers)), "nhalo_peerp": max(1, len(peers)) + 1,
         "nhalo_dof": max(1, sum(len(value) for value in shared.values())),
@@ -510,9 +524,10 @@ def _initialize_physgrid_halo(
     size: int,
     ne: int = 3,
 ) -> None:
-    """Build the persistent PG3 ghost schedule and mapping metric in Python."""
+    """Build the persistent finite-volume ghost schedule and mapping metric."""
 
-    nc, nhc = 3, 3
+    nc = pool.dimensions["fv_nphys"]
+    nhc = (pool.dimensions["fvm_halo"] - nc) // 2
     panel_width = ne * nc
     by_id = {
         element.global_id: element for element in global_elements(size, ne)
@@ -531,7 +546,11 @@ def _initialize_physgrid_halo(
             / np.float64(nc)
         )
         denominator = np.float64(0.5) * np.float64(nc) * source_dx
-        u2q = _u2qmap(element, pool.get("gll_node", unsafe=True))
+        u2q = _u2qmap(
+            element,
+            pool.get("gll_node", unsafe=True),
+            ne=ne,
+        )
         for hj in range(nc + 2 * nhc):
             local_j = hj - nhc
             gy = element.j * nc + local_j
@@ -582,7 +601,7 @@ def _initialize_physgrid_halo(
                     )
                 norm[0, hi, hj, le] = x1
                 norm[1, hi, hj, le] = x2
-                d = _raw_d_at(element, x1, x2, u2q)
+                d = _raw_d_at(element, x1, x2, u2q, ne=ne)
                 determinant = np.float64(
                     np.float64(d[0, 0] * d[1, 1])
                     - np.float64(d[0, 1] * d[1, 0])
@@ -628,31 +647,50 @@ def _bilinear(corners, a: float, b: float) -> tuple[float, float]:
     return x, y
 
 
-def _pg3_reference_nodes() -> np.ndarray:
-    """Return the three PG3 cell centers in HOMME's operation order.
+def _physics_reference_nodes(count: int) -> np.ndarray:
+    """Return finite-volume cell centers in HOMME's operation order.
 
-    The endpoint values are *not* the nearest binary representations of
-    ``+/-2/3``.  ``dmap`` forms them as ``-1 + (i-.5)*(2/3)``; using Python
-    literals changes both endpoints by one ulp and propagates into Dphys.
+    Values are formed from the same scalar expression as ``dmap`` rather than
+    from pre-rounded fractions, preserving the existing PG3 BFB path.
     """
-    dx = np.float64(2.0) / np.float64(3.0)
-    result = np.empty(3, dtype=np.float64)
-    for i in range(3):
+    dx = np.float64(2.0) / np.float64(count)
+    result = np.empty(count, dtype=np.float64)
+    for i in range(count):
         result[i] = np.float64(-1.0) + (
             np.float64(i + 1) - np.float64(0.5)
         ) * dx
     return result
 
 
-def _reference_point(element: Element, a: float, b: float):
-    x, y = _bilinear(_element_corners(element), a, b)
+def _pg3_reference_nodes() -> np.ndarray:
+    """Backward-compatible name for the BFB reference PG3 nodes."""
+
+    return _physics_reference_nodes(3)
+
+
+def _reference_point(
+    element: Element,
+    a: float,
+    b: float,
+    *,
+    ne: int = 3,
+):
+    x, y = _bilinear(_element_corners(element, ne), a, b)
     return _unit_sphere(element.face, math.tan(x), math.tan(y))
 
 
-def _u2qmap(element: Element, nodes: np.ndarray) -> np.ndarray:
-    corners = _element_corners(element)
-    cart = [[_bilinear(corners, float(nodes[i]), float(nodes[j])) for j in range(4)] for i in range(4)]
-    c11, c41, c44, c14 = cart[0][0], cart[3][0], cart[3][3], cart[0][3]
+def _u2qmap(
+    element: Element,
+    nodes: np.ndarray,
+    *,
+    ne: int = 3,
+) -> np.ndarray:
+    corners = _element_corners(element, ne)
+    last = len(nodes) - 1
+    c11 = _bilinear(corners, float(nodes[0]), float(nodes[0]))
+    c41 = _bilinear(corners, float(nodes[last]), float(nodes[0]))
+    c44 = _bilinear(corners, float(nodes[last]), float(nodes[last]))
+    c14 = _bilinear(corners, float(nodes[0]), float(nodes[last]))
     result = np.empty((4, 2), dtype=np.float64, order="F")
     for component in range(2):
         result[0, component] = (c11[component] + c41[component] + c44[component] + c14[component]) / 4.0
@@ -683,11 +721,18 @@ def _vmap(face: int, x1: float, x2: float) -> np.ndarray:
     return result
 
 
-def _raw_d_at(element: Element, a: float, b: float, u2q: np.ndarray | None = None) -> np.ndarray:
-    corners = _element_corners(element)
+def _raw_d_at(
+    element: Element,
+    a: float,
+    b: float,
+    u2q: np.ndarray | None = None,
+    *,
+    ne: int = 3,
+) -> np.ndarray:
+    corners = _element_corners(element, ne)
     if u2q is None:
-        nodes = np.array((-1.0, -math.sqrt(0.2), math.sqrt(0.2), 1.0), dtype=np.float64)
-        u2q = _u2qmap(element, nodes)
+        nodes, _weights = _gll_nodes_weights(4)
+        u2q = _u2qmap(element, nodes, ne=ne)
     jp11 = u2q[1, 0] + u2q[3, 0] * b
     jp12 = u2q[2, 0] + u2q[3, 0] * a
     jp21 = u2q[1, 1] + u2q[3, 1] * b
@@ -702,108 +747,159 @@ def _raw_d_at(element: Element, a: float, b: float, u2q: np.ndarray | None = Non
     return d
 
 
-def _raw_metric(element: Element, nodes: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
-    u2q = _u2qmap(element, nodes)
-    d = np.empty((2, 2, 4, 4), dtype=np.float64, order="F")
-    metdet = np.empty((4, 4), dtype=np.float64, order="F")
-    for j in range(4):
+def _raw_metric(
+    element: Element,
+    nodes: np.ndarray,
+    *,
+    ne: int = 3,
+) -> tuple[np.ndarray, np.ndarray]:
+    np_value = len(nodes)
+    u2q = _u2qmap(element, nodes, ne=ne)
+    d = np.empty(
+        (2, 2, np_value, np_value),
+        dtype=np.float64,
+        order="F",
+    )
+    metdet = np.empty((np_value, np_value), dtype=np.float64, order="F")
+    for j in range(np_value):
         b = float(nodes[j])
-        for i in range(4):
+        for i in range(np_value):
             a = float(nodes[i])
-            d[:, :, i, j] = _raw_d_at(element, a, b, u2q)
+            d[:, :, i, j] = _raw_d_at(
+                element,
+                a,
+                b,
+                u2q,
+                ne=ne,
+            )
             det = d[0, 0, i, j] * d[1, 1, i, j] - d[0, 1, i, j] * d[1, 0, i, j]
             metdet[i, j] = abs(det)
     return d, metdet
 
 
-def _subcell_integration_weights(nodes: np.ndarray, weights: np.ndarray, intervals: int = 3) -> np.ndarray:
-    lagrange = np.empty((intervals, 4, 4), dtype=np.float64, order="F")
-    denominator = np.empty(4, dtype=np.float64)
-    for j in range(4):
+def _subcell_integration_weights(
+    nodes: np.ndarray,
+    weights: np.ndarray,
+    intervals: int = 3,
+) -> np.ndarray:
+    np_value = len(nodes)
+    lagrange = np.empty(
+        (intervals, np_value, np_value),
+        dtype=np.float64,
+        order="F",
+    )
+    denominator = np.empty(np_value, dtype=np.float64)
+    for j in range(np_value):
         value = 1.0
-        for m in range(4):
+        for m in range(np_value):
             if m != j:
                 value = value * (nodes[j] - nodes[m])
         denominator[j] = value
     for cell in range(intervals):
         a = -1.0 + cell * 2.0 / intervals
         b = -1.0 + (cell + 1) * 2.0 / intervals
-        for n in range(4):
+        for n in range(np_value):
             x = (a + b) / 2.0 + nodes[n] / intervals
-            for j in range(4):
+            for j in range(np_value):
                 value = 1.0
-                for m in range(4):
+                for m in range(np_value):
                     if m != j:
                         value = value * (x - nodes[m])
                 lagrange[cell, n, j] = value / denominator[j]
-    result = np.empty((intervals, 4), dtype=np.float64, order="F")
+    result = np.empty((intervals, np_value), dtype=np.float64, order="F")
     for cell in range(intervals):
-        for j in range(4):
+        for j in range(np_value):
             value = 0.0
-            for n in range(4):
+            for n in range(np_value):
                 value = value + weights[n] * lagrange[cell, n, j]
             result[cell, j] = value / intervals
     return result
 
 
-def _subcell_boundary_weights(nodes: np.ndarray, intervals: int = 3) -> np.ndarray:
+def _subcell_boundary_weights(
+    nodes: np.ndarray,
+    intervals: int = 3,
+) -> np.ndarray:
     """Return HOMME's cached ``boundary_interp_matrix`` in source order."""
 
-    lagrange = np.empty((intervals, 4, 4), dtype=np.float64, order="F")
-    denominator = np.empty(4, dtype=np.float64)
-    for j in range(4):
+    np_value = len(nodes)
+    lagrange = np.empty(
+        (intervals, np_value, np_value),
+        dtype=np.float64,
+        order="F",
+    )
+    denominator = np.empty(np_value, dtype=np.float64)
+    for j in range(np_value):
         value = np.float64(1.0)
-        for m in range(4):
+        for m in range(np_value):
             if m != j:
                 value = np.float64(value * np.float64(nodes[j] - nodes[m]))
         denominator[j] = value
     for cell in range(intervals):
         a = np.float64(-1.0 + cell * 2.0 / intervals)
         b = np.float64(-1.0 + (cell + 1) * 2.0 / intervals)
-        for n in range(4):
+        for n in range(np_value):
             x = np.float64(np.float64(a + b) / np.float64(2.0) + np.float64(nodes[n] / intervals))
-            for j in range(4):
+            for j in range(np_value):
                 value = np.float64(1.0)
-                for m in range(4):
+                for m in range(np_value):
                     if m != j:
                         value = np.float64(value * np.float64(x - nodes[m]))
                 lagrange[cell, n, j] = np.float64(value / denominator[j])
-    result = np.empty((intervals, 2, 4), dtype=np.float64, order="F")
+    result = np.empty(
+        (intervals, 2, np_value),
+        dtype=np.float64,
+        order="F",
+    )
     result[:, 0, :] = lagrange[:, 0, :]
-    result[:, 1, :] = lagrange[:, 3, :]
+    result[:, 1, :] = lagrange[:, np_value - 1, :]
     return result
 
 
 def _interpolation_matrix(nodes: np.ndarray, weights: np.ndarray) -> np.ndarray:
+    np_value = len(nodes)
+
     def legendre(x: float) -> np.ndarray:
-        values = np.empty(4, dtype=np.float64)
+        values = np.empty(np_value, dtype=np.float64)
         p3 = 1.0
         values[0] = p3
+        if np_value == 1:
+            return values
         p2 = p3
         p3 = x
         values[1] = p3
-        for k in range(2, 4):
+        for k in range(2, np_value):
             p1 = p2
             p2 = p3
             p3 = ((2 * k - 1) * x * p2 - (k - 1) * p1) / k
             values[k] = p3
         return values
 
-    gamma = np.zeros(4, dtype=np.float64)
+    gamma = np.zeros(np_value, dtype=np.float64)
     legs: list[np.ndarray] = []
-    for i in range(4):
+    for i in range(np_value):
         values = legendre(float(nodes[i]))
         legs.append(values)
-        for k in range(4):
+        for k in range(np_value):
             gamma[k] = gamma[k] + values[k] * values[k] * weights[i]
-    result = np.empty((4, 4), dtype=np.float64, order="F")
-    for j in range(4):
-        for k in range(4):
+    result = np.empty(
+        (np_value, np_value),
+        dtype=np.float64,
+        order="F",
+    )
+    for j in range(np_value):
+        for k in range(np_value):
             result[j, k] = legs[j][k] * weights[j] / gamma[k]
     return result
 
 
-def _physics_point(element: Element, pi: int, pj: int, ne: int = 3):
+def _physics_point(
+    element: Element,
+    pi: int,
+    pj: int,
+    ne: int = 3,
+    fv_nphys: int = 3,
+):
     """Reproduce compute_basic_coordinate_vars in its scalar FP order."""
     cube_start = -0.25 * math.pi
     cube_end = 0.25 * math.pi
@@ -812,33 +908,82 @@ def _physics_point(element: Element, pi: int, pj: int, ne: int = 3):
     start_beta = cube_start + element.j * delta
     corner2_alpha = start_alpha + delta
     corner4_beta = start_beta + delta
-    dalpha = abs(start_alpha - corner2_alpha) / 3
-    dbeta = abs(start_beta - corner4_beta) / 3
+    dalpha = abs(start_alpha - corner2_alpha) / fv_nphys
+    dbeta = abs(start_beta - corner4_beta) / fv_nphys
     alpha = start_alpha + ((pi + 1) - 0.5) * dalpha
     beta = start_beta + ((pj + 1) - 0.5) * dbeta
     return _unit_sphere(element.face, math.tan(alpha), math.tan(beta))
 
 
-def _global_dof_map(size: int = 24):
-    nodes = (-1.0, -math.sqrt(0.2), math.sqrt(0.2), 1.0)
+@cache
+def _gll_nodes_weights(
+    np_value: int,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Return Gauss-Lobatto-Legendre nodes and weights.
+
+    The np=4 constants retain HOMME's existing BFB representation. Other
+    orders use roots of the derivative of ``P_(np-1)``.
+    """
+
+    np_value = int(np_value)
+    if np_value < 2:
+        raise ValueError("np must be at least 2")
+    if np_value == 4:
+        nodes = np.array(
+            (-1.0, -math.sqrt(0.2), math.sqrt(0.2), 1.0),
+            dtype=np.float64,
+        )
+        weights = np.array(
+            (1.0 / 6.0, 5.0 / 6.0, 5.0 / 6.0, 1.0 / 6.0),
+            dtype=np.float64,
+        )
+        return nodes, weights
+
+    polynomial = np.polynomial.legendre.Legendre.basis(np_value - 1)
+    interior = np.sort(polynomial.deriv().roots())
+    nodes = np.concatenate(([-1.0], interior, [1.0])).astype(np.float64)
+    values = polynomial(nodes)
+    weights = (
+        np.float64(2.0)
+        / np.float64(np_value * (np_value - 1))
+        / (values * values)
+    )
+    return nodes, weights.astype(np.float64)
+
+
+def _global_dof_map(
+    size: int = 24,
+    ne: int = 3,
+    np_value: int = 4,
+):
+    nodes, _weights = _gll_nodes_weights(np_value)
     key_to_dof: dict[tuple[int, int, int], int] = {}
     owners: dict[int, set[int]] = {}
     element_dofs: dict[int, np.ndarray] = {}
     # global_dof starts with (global_element-1)*np*np+local_node and
     # performs an edge MIN reduction.  These deliberately sparse IDs are
     # also how CreateUniqueIndex decides which occurrence initializes ICs.
-    for element in global_elements(size):
+    for element in global_elements(size, ne):
         for j, eta in enumerate(nodes):
             for i, xi in enumerate(nodes):
-                _lon, _lat, xyz = _element_point(element, xi, eta)
+                _lon, _lat, xyz = _element_point(element, xi, eta, ne)
                 key = tuple(int(round(value * 10**13)) for value in xyz)
-                local_dof = (element.global_id - 1) * 16 + j * 4 + i + 1
+                local_dof = (
+                    (element.global_id - 1) * np_value * np_value
+                    + j * np_value
+                    + i
+                    + 1
+                )
                 key_to_dof[key] = min(key_to_dof.get(key, local_dof), local_dof)
-    for element in global_elements(size):
-        dofs = np.empty((4, 4), dtype=np.int64, order="F")
+    for element in global_elements(size, ne):
+        dofs = np.empty(
+            (np_value, np_value),
+            dtype=np.int64,
+            order="F",
+        )
         for j, eta in enumerate(nodes):
             for i, xi in enumerate(nodes):
-                _lon, _lat, xyz = _element_point(element, xi, eta)
+                _lon, _lat, xyz = _element_point(element, xi, eta, ne)
                 key = tuple(int(round(value * 10**13)) for value in xyz)
                 dof = key_to_dof[key]
                 owners.setdefault(dof, set()).add(element.owner)
@@ -847,9 +992,19 @@ def _global_dof_map(size: int = 24):
     return element_dofs, owners
 
 
-def _halo_inventory(rank: int, size: int = 24):
-    element_dofs, dof_owners = _global_dof_map(size)
-    local = {int(dof) for elem in local_elements(rank, size) for dof in element_dofs[elem.global_id].flat}
+def _halo_inventory(
+    rank: int,
+    size: int = 24,
+    *,
+    ne: int = 3,
+    np_value: int = 4,
+):
+    element_dofs, dof_owners = _global_dof_map(size, ne, np_value)
+    local = {
+        int(dof)
+        for elem in local_elements(rank, size, ne)
+        for dof in element_dofs[elem.global_id].flat
+    }
     shared: dict[int, list[int]] = {}
     for dof in sorted(local):
         for peer in sorted(dof_owners[dof] - {rank}):
@@ -858,25 +1013,47 @@ def _halo_inventory(rank: int, size: int = 24):
 
 
 def _derivative_matrix(nodes: np.ndarray) -> np.ndarray:
-    """Return HOMME ``deriv%Dvv`` for the fixed np=4 GLL grid.
+    """Return HOMME ``deriv%Dvv`` for the configured GLL grid.
 
     HOMME obtains the interior quadrature nodes through Newton iteration.
     Replacing those nodes with analytical ``sqrt(0.2)`` changes four Dvv
-    coefficients by one bit, so retain the exact fixed-grid coefficients.
+    coefficients by one bit, so retain the exact np=4 coefficients.
     """
 
-    del nodes
-    h = float.fromhex
-    return np.array(
-        (
-            (h("-0x1.8000000000000p+1"), h("-0x1.9e3779b97f4a7p-1"), h("0x1.3c6ef372fe950p-2"), h("-0x1.0000000000000p-1")),
-            (h("0x1.02e2ac13ef8e8p+2"), 0.0, h("-0x1.1e3779b97f4a8p+0"), h("0x1.8b8ab04fbe3a4p+0")),
-            (h("-0x1.8b8ab04fbe3a4p+0"), h("0x1.1e3779b97f4a8p+0"), 0.0, h("-0x1.02e2ac13ef8e8p+2")),
-            (h("0x1.0000000000000p-1"), h("-0x1.3c6ef372fe950p-2"), h("0x1.9e3779b97f4a7p-1"), h("0x1.8000000000000p+1")),
-        ),
-        dtype=np.float64,
-        order="F",
-    )
+    if len(nodes) == 4:
+        h = float.fromhex
+        return np.array(
+            (
+                (h("-0x1.8000000000000p+1"), h("-0x1.9e3779b97f4a7p-1"), h("0x1.3c6ef372fe950p-2"), h("-0x1.0000000000000p-1")),
+                (h("0x1.02e2ac13ef8e8p+2"), 0.0, h("-0x1.1e3779b97f4a8p+0"), h("0x1.8b8ab04fbe3a4p+0")),
+                (h("-0x1.8b8ab04fbe3a4p+0"), h("0x1.1e3779b97f4a8p+0"), 0.0, h("-0x1.02e2ac13ef8e8p+2")),
+                (h("0x1.0000000000000p-1"), h("-0x1.3c6ef372fe950p-2"), h("0x1.9e3779b97f4a7p-1"), h("0x1.8000000000000p+1")),
+            ),
+            dtype=np.float64,
+            order="F",
+        )
+
+    count = len(nodes)
+    barycentric = np.ones(count, dtype=np.float64)
+    for j in range(count):
+        for k in range(count):
+            if j != k:
+                barycentric[j] /= nodes[j] - nodes[k]
+    result = np.empty((count, count), dtype=np.float64, order="F")
+    for i in range(count):
+        for j in range(count):
+            if i != j:
+                result[i, j] = barycentric[j] / (
+                    barycentric[i] * (nodes[i] - nodes[j])
+                )
+        result[i, i] = -sum(
+            result[i, j] for j in range(count) if j != i
+        )
+    # The construction above is the conventional D[output, input] layout.
+    # HOMME stores Dvv(input, output), and every scalar-order Python port
+    # follows that Fortran indexing.  The np=4 table above is already in Dvv
+    # layout, so transpose only the generic construction.
+    return np.asfortranarray(result.T)
 
 
 def _dmap(face: int, alpha: float, beta: float, ne: int = 3) -> np.ndarray:
@@ -898,15 +1075,22 @@ def _dmap(face: int, alpha: float, beta: float, ne: int = 3) -> np.ndarray:
     return matrix * (math.pi / (4.0 * ne))
 
 
-def _cell_area(element: Element, pi: int, pj: int) -> float:
+def _cell_area(
+    element: Element,
+    pi: int,
+    pj: int,
+    *,
+    ne: int = 3,
+    fv_nphys: int = 3,
+) -> float:
     """Reproduce the irecons=6 analytic I_00 area expression."""
     cube_start = -0.25 * math.pi
     cube_end = 0.25 * math.pi
-    delta = (cube_end - cube_start) / 3
+    delta = (cube_end - cube_start) / ne
     start_alpha = cube_start + element.i * delta
     start_beta = cube_start + element.j * delta
-    dalpha = abs(start_alpha - (start_alpha + delta)) / 3
-    dbeta = abs(start_beta - (start_beta + delta)) / 3
+    dalpha = abs(start_alpha - (start_alpha + delta)) / fv_nphys
+    dbeta = abs(start_beta - (start_beta + delta)) / fv_nphys
     x0 = math.tan(start_alpha + pi * dalpha)
     x1 = math.tan(start_alpha + (pi + 1) * dalpha)
     y0 = math.tan(start_beta + pj * dbeta)
@@ -918,29 +1102,36 @@ def _cell_area(element: Element, pi: int, pj: int) -> float:
     return i00(x1, y1) - i00(x0, y1) + i00(x0, y0) - i00(x1, y0)
 
 
-def populate_grid(pool, rank: int, size: int) -> None:
-    elements = local_elements(rank, size)
-    all_dofs, _owners = _global_dof_map(size)
-    nodes = np.array((-1.0, -math.sqrt(0.2), math.sqrt(0.2), 1.0), dtype=np.float64)
-    weights = np.array((1.0 / 6.0, 5.0 / 6.0, 5.0 / 6.0, 1.0 / 6.0), dtype=np.float64)
+def populate_grid(
+    pool,
+    rank: int,
+    size: int,
+    *,
+    ne: int = 3,
+) -> None:
+    np_value = pool.dimensions["np"]
+    fv_nphys = pool.dimensions["fv_nphys"]
+    elements = local_elements(rank, size, ne)
+    all_dofs, _owners = _global_dof_map(size, ne, np_value)
+    nodes, weights = _gll_nodes_weights(np_value)
     pool.set("gll_node", nodes)
     pool.set("gll_weight", weights)
     pool.set("gll_derivative", _derivative_matrix(nodes))
     raw_metrics: dict[int, tuple[np.ndarray, np.ndarray]] = {}
     element_areas: list[float] = []
-    for global_element in global_elements(size):
-        d, metdet = _raw_metric(global_element, nodes)
+    for global_element in global_elements(size, ne):
+        d, metdet = _raw_metric(global_element, nodes, ne=ne)
         raw_metrics[global_element.global_id] = d, metdet
         area = 0.0
-        for j in range(4):
-            for i in range(4):
+        for j in range(np_value):
+            for i in range(np_value):
                 area = area + weights[i] * weights[j] * metdet[i, j]
         element_areas.append(area)
     metric_normalization = 4.0 * math.pi / math.fsum(element_areas)
     metric_scale = math.sqrt(metric_normalization)
     for le, element in enumerate(elements):
-        corners = _element_corners(element)
-        u2q = _u2qmap(element, nodes)
+        corners = _element_corners(element, ne)
+        u2q = _u2qmap(element, nodes, ne=ne)
         pool.get("global_element_id")[le] = element.global_id
         pool.get("cube_face")[le] = element.face
         pool.get("cube_element_i")[le] = element.i + 1
@@ -952,7 +1143,12 @@ def populate_grid(pool, rank: int, size: int) -> None:
         pool.get("gll_global_dof")[:, :, le] = all_dofs[element.global_id]
         for j, eta in enumerate(nodes):
             for i, xi in enumerate(nodes):
-                lon, lat, xyz = _reference_point(element, float(xi), float(eta))
+                lon, lat, xyz = _reference_point(
+                    element,
+                    float(xi),
+                    float(eta),
+                    ne=ne,
+                )
                 pool.get("gll_longitude")[i, j, le] = lon
                 pool.get("gll_latitude")[i, j, le] = lat
                 pool.get("gll_cartesian")[:, i, j, le] = xyz
@@ -1005,20 +1201,48 @@ def populate_grid(pool, rank: int, size: int) -> None:
                 metinv[1, 1, i, j, le] = np.float64(
                     np.float64(met11 / det_squared) / metric_normalization
                 )
-        pg3_nodes = _pg3_reference_nodes()
-        for pj, eta in enumerate(pg3_nodes):
-            for pi, xi in enumerate(pg3_nodes):
-                col = le * 9 + pi + 3 * pj
-                lon, lat, _xyz = _physics_point(element, pi, pj)
+        physics_nodes = _physics_reference_nodes(fv_nphys)
+        for pj, eta in enumerate(physics_nodes):
+            for pi, xi in enumerate(physics_nodes):
+                col = le * fv_nphys * fv_nphys + pi + fv_nphys * pj
+                lon, lat, _xyz = _physics_point(
+                    element,
+                    pi,
+                    pj,
+                    ne,
+                    fv_nphys,
+                )
                 pool.get("physics_longitude")[col] = lon
                 pool.get("physics_latitude")[col] = lat
                 # The rank decomposition follows the SFC, while CAM history
                 # and physics-grid global indices follow face-major element
                 # numbering. Do not conflate these two orderings.
-                pool.get("physics_global_column")[pi, pj, le] = (element.global_id - 1) * 9 + pi + 3 * pj + 1
-                pool.get("physics_cell_area")[col] = _cell_area(element, pi, pj)
-                pool.get("mapping_derivative_pg3")[:, :, col] = _raw_d_at(element, float(xi), float(eta), u2q)
-    peers, shared = _halo_inventory(rank, size)
+                pool.get("physics_global_column")[pi, pj, le] = (
+                    (element.global_id - 1) * fv_nphys * fv_nphys
+                    + pi
+                    + fv_nphys * pj
+                    + 1
+                )
+                pool.get("physics_cell_area")[col] = _cell_area(
+                    element,
+                    pi,
+                    pj,
+                    ne=ne,
+                    fv_nphys=fv_nphys,
+                )
+                pool.get("mapping_derivative_pg3")[:, :, col] = _raw_d_at(
+                    element,
+                    float(xi),
+                    float(eta),
+                    u2q,
+                    ne=ne,
+                )
+    peers, shared = _halo_inventory(
+        rank,
+        size,
+        ne=ne,
+        np_value=np_value,
+    )
     if not peers:
         pool.get("halo_peer_rank")[0] = -1
     offset = 0
@@ -1032,18 +1256,32 @@ def populate_grid(pool, rank: int, size: int) -> None:
         pool.get("halo_shared_dof_offset")[ip+1] = offset
     # Point interpolation is used for vectors; conservative scalar mapping
     # uses the separately stored subcell integration matrix.
-    src, dst = nodes, _pg3_reference_nodes()
-    w = np.empty((3, 4), dtype=np.float64, order="F")
+    src, dst = nodes, _physics_reference_nodes(fv_nphys)
+    w = np.empty(
+        (fv_nphys, np_value),
+        dtype=np.float64,
+        order="F",
+    )
     for i, x in enumerate(dst):
-        for j in range(4):
+        for j in range(np_value):
             value = 1.0
-            for k in range(4):
+            for k in range(np_value):
                 if k != j:
                     value *= (x - src[k]) / (src[j] - src[k])
             w[i, j] = value
     pool.set("mapping_weights_gll_to_pg3", w)
     pool.set("mapping_weights_pg3_to_gll", np.linalg.pinv(w))
-    pool.set("mapping_subcell_integration", _subcell_integration_weights(nodes, weights))
-    pool.set("mapping_boundary_interpolation", _subcell_boundary_weights(nodes))
+    pool.set(
+        "mapping_subcell_integration",
+        _subcell_integration_weights(
+            nodes,
+            weights,
+            intervals=fv_nphys,
+        ),
+    )
+    pool.set(
+        "mapping_boundary_interpolation",
+        _subcell_boundary_weights(nodes, intervals=fv_nphys),
+    )
     pool.set("mapping_interpolation_matrix", _interpolation_matrix(nodes, weights))
-    _initialize_physgrid_halo(pool, elements, size)
+    _initialize_physgrid_halo(pool, elements, size, ne)

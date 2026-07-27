@@ -133,13 +133,10 @@ class CAMDriver:
                 f"physics_suite={self.config.physics_suite!r}"
             )
 
-        default_library = (
-            Path(__file__).resolve().parents[3]
-            / "build"
-            / "libpycam_sima_kernels.so"
-        )
-        self.backend = KernelBackend(kernel_library or default_library)
         project_root = Path(__file__).resolve().parents[3]
+        default_library = self.config.default_kernel_library(project_root)
+        self.backend = KernelBackend(kernel_library or default_library)
+        self.backend.validate_specialization(self.config)
         self.device_catalog = DeviceCatalog.discover(project_root)
         suite_processes = {
             scheme.name for scheme in self.scheme_plan.schemes
@@ -170,6 +167,7 @@ class CAMDriver:
             history_dir or self.run_dir / "history",
             self.config.case_name,
             self.comm,
+            config=self.config,
         )
         self.initialization_plan = InitializationPlan(
             self.config,
@@ -182,6 +180,8 @@ class CAMDriver:
     def initialize(self) -> CAMDriver:
         if self.state != DriverState.CREATED:
             raise StateTransitionError(f"initialize() from {self.state.value}")
+        if self.config.run_type.lower() != "startup":
+            return self._initialize_from_restart()
         calls_before = self.backend.call_count
         context = self.initialization_plan.run()
         if self.backend.call_count != calls_before:
@@ -189,6 +189,59 @@ class CAMDriver:
         self.pool = context.pool
         self.clock = context.clock
         self.state = DriverState.INITIALIZED
+        return self
+
+    def _initialize_from_restart(self) -> CAMDriver:
+        """Restore continue/branch cases from a Python-owned checkpoint."""
+
+        from .checkpoint import read_checkpoint, restore_driver
+
+        requested_config = self.config
+        restart_path = requested_config.resolve_restart_path(self.run_dir)
+        if restart_path is None:
+            raise StateTransitionError(
+                f"run_type={requested_config.run_type!r} requires restart_path"
+            )
+        snapshot = read_checkpoint(restart_path, self.comm)
+        restored_config = ModelConfig.from_mapping(snapshot.config)
+        ignored = {
+            "run_type",
+            "restart_path",
+            "stop_n",
+            "case_name",
+            "history_enabled",
+        }
+        requested = requested_config.as_dict()
+        previous = restored_config.as_dict()
+        differences = {
+            name: (previous[name], requested[name])
+            for name in sorted(set(previous) | set(requested))
+            if name not in ignored and previous.get(name) != requested.get(name)
+        }
+        if differences:
+            raise StateTransitionError(
+                "restart configuration changes model-defining values: "
+                f"{differences}"
+            )
+        restored = restore_driver(
+            snapshot,
+            run_dir=self.run_dir,
+            comm=self.comm,
+            kernel_library=self.backend.path,
+            history_dir=self.history.output_dir,
+        )
+        self.__dict__.update(restored.__dict__)
+        self.config = ModelConfig.from_mapping(
+            {
+                **restored_config.as_dict(),
+                "run_type": requested_config.run_type,
+                "restart_path": requested_config.restart_path,
+                "stop_n": requested_config.stop_n,
+                "case_name": requested_config.case_name,
+                "history_enabled": requested_config.history_enabled,
+            }
+        )
+        self.history.config = self.config
         return self
 
     def start(self) -> CAMDriver:
