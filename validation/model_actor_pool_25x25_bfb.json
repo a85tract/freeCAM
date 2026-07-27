@@ -1,0 +1,63 @@
+{
+  "allocation": {
+    "model_slots": 4,
+    "mpi_launch_count": 1,
+    "nested_qsub": 0,
+    "pool_mpi_launch_id": "fork-25x25-bfb-dec2425-124965-1785176524457101993",
+    "ranks_per_model": 24,
+    "world_size": 96
+  },
+  "completion_marker": "PYCAM_SIMA_MODEL_ACTOR_POOL_25X25_BFB job=6921798.desched1 world=4x24 workers=1+4 arrays=6816",
+  "dask": {
+    "actor_layout": "model-per-worker",
+    "distinct_model_workers": 4,
+    "launcher_worker": "inproc://10.14.5.64/124965/10",
+    "model_slots": {
+      "base": 0,
+      "control": 1,
+      "no_kessler": 2,
+      "warm": 3
+    },
+    "model_workers": {
+      "base": "inproc://10.14.5.64/124965/12",
+      "control": "inproc://10.14.5.64/124965/4",
+      "no_kessler": "inproc://10.14.5.64/124965/6",
+      "warm": "inproc://10.14.5.64/124965/8"
+    },
+    "outer_pbs_job_ids": [
+      "6921798.desched1"
+    ],
+    "reported_launch_ids": [
+      "fork-25x25-bfb-dec2425-124965-1785176524457101993"
+    ]
+  },
+  "git_commit": "26de3a575a52352a05f30623552e593305c1bbdb",
+  "path": {
+    "base_final_step": 50,
+    "base_start_step": 0,
+    "branch_final_steps": {
+      "control": 50,
+      "no_kessler": 50,
+      "warm": 50
+    },
+    "child_final_step": 50,
+    "child_inherited_step": 25,
+    "continuation_steps": 25,
+    "fork_step": 25,
+    "fork_transport": "mpi"
+  },
+  "pbs_job_id": "6921798.desched1",
+  "pycam_sima": "0.17.0",
+  "schema_version": 1,
+  "validated_at": "2026-07-27T18:30:25.972712+00:00",
+  "validation": {
+    "all_statepool_arrays_bitwise_identical": true,
+    "continuous_base_history_bfb": true,
+    "first_difference": null,
+    "history_files": 51,
+    "no_kessler_enabled": false,
+    "numeric_variables": 26,
+    "rank_local_arrays_compared": 6816,
+    "warm_exact_add_1K": true
+  }
+}

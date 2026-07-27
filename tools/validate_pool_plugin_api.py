@@ -28,7 +28,7 @@ def main() -> int:
 
     with Client(
         processes=False,
-        n_workers=1,
+        n_workers=2,
         threads_per_worker=1,
         dashboard_address=None,
         local_directory=str(run_root / "dask-worker-space"),
