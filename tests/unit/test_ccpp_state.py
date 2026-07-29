@@ -3,7 +3,10 @@ from pathlib import Path
 import pytest
 
 from pycam_sima import CCPPStateSchema, CCPPSuitePlan, DeviceCatalog
-from pycam_sima.model.contracts import default_contracts
+from pycam_sima.model.contracts import (
+    default_contracts,
+    model_ccpp_field_aliases,
+)
 from pycam_sima.model.devices import DeviceRegistry
 from pycam_sima.model.errors import DeviceContractError
 from pycam_sima.model.grid import dimensions_for_rank
@@ -33,6 +36,21 @@ def test_every_suite_has_a_complete_machine_readable_state_schema(catalog):
         )
 
 
+def test_original_namelist_xml_generates_state_bindings(catalog):
+    schema = CCPPStateSchema.from_catalog(catalog, "musica")
+
+    assert {
+        "micm_solver_type",
+        "filename_of_micm_configuration",
+        "filename_of_tuvx_configuration",
+        "filename_of_tuvx_micm_mapping_configuration",
+    } <= set(schema.namelist_bindings)
+    binding = schema.namelist_bindings["micm_solver_type"][0]
+    assert binding.group == "musica_ccpp"
+    assert binding.local_name == "micm_solver_type"
+    assert binding.default_value == "Rosenbrock"
+
+
 def test_kessler_schema_extends_existing_python_state_without_conflicts(
     catalog,
 ):
@@ -44,6 +62,27 @@ def test_kessler_schema_extends_existing_python_state_without_conflicts(
     assert "air_pressure" in names
     assert "air_temperature" not in names
     assert not schema.conversion_fields
+
+
+def test_ccpp_constituent_minima_are_not_component_registry_aliases(catalog):
+    aliases = model_ccpp_field_aliases(
+        ("cloud_liquid_water", "rain", "water_vapor")
+    )
+    assert "ccpp_constituent_minimum_values" not in aliases
+
+    schema = CCPPStateSchema.from_catalog(catalog, "cam4")
+    generated = schema.additional_contracts(
+        default_contracts(),
+        provided_standard_names=aliases,
+    )
+    minima = next(
+        contract
+        for contract in generated
+        if contract.ccpp_standard_name
+        == "ccpp_constituent_minimum_values"
+    )
+    assert minima.standard_name == "ccpp_ccpp_constituent_minimum_values"
+    assert minima.dimensions == ("number_of_ccpp_constituents",)
 
 
 def test_pool_schema_selects_process_fields_from_the_active_suite(catalog):
@@ -63,6 +102,20 @@ def test_pool_schema_selects_process_fields_from_the_active_suite(catalog):
     assert "large_scale_precipitation_rate" in kessler_names
     assert "air_temperature_previous_timestep" not in held_suarez_names
     assert "large_scale_precipitation_rate" not in held_suarez_names
+
+
+def test_pool_schema_always_contains_python_host_phase_work_fields(catalog):
+    schema = CCPPStateSchema.from_catalog(catalog, "musica")
+    names = {
+        contract.standard_name for contract in schema.pool_contracts()
+    }
+
+    assert {
+        "column_dry_air_specific_heat",
+        "column_dry_air_gas_constant",
+        "static_energy",
+        "thermodynamic_level_height",
+    } <= names
 
 
 def test_custom_suite_schema_uses_process_names_not_a_pinned_suite_name(

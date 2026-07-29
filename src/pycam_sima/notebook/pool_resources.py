@@ -373,6 +373,7 @@ def estimate_state_pool_bytes(
             np_value=config.np,
             fv_nphys=config.fv_nphys,
             constituent_count=config.constituent_count,
+            extra_dimensions=config.dimension_overrides,
         )
         for contract in contracts:
             item_count = math.prod(contract.shape(dimensions))

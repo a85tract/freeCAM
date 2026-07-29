@@ -84,3 +84,22 @@ def test_router_fails_closed_for_an_unprovided_suite_process() -> None:
     )
     with pytest.raises(MissingKernelError, match="no generated device"):
         router.invoke(_scheme("kessler"), object())
+
+
+def test_router_noops_run_node_with_host_only_lifecycle_provider() -> None:
+    services = _Services(("convect_shallow_diagnostics:initialize",))
+    router = ProcessRouter(
+        devices=_Devices(),
+        native_invoke=lambda _name, _pool: None,
+        host_services=services,
+    )
+
+    assert (
+        router.invoke_process("convect_shallow_diagnostics", object())
+        == "lifecycle-only-noop"
+    )
+    assert (
+        router.provider_for_process("convect_shallow_diagnostics")
+        == "lifecycle-only-noop"
+    )
+    assert services.calls == []

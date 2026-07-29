@@ -14,8 +14,10 @@ from pycam_sima.model import (
 from pycam_sima.model.driver import (
     INITIAL_PREP_PHASES,
 )
+from pycam_sima.model.clock import ModelClock
 from pycam_sima.model.contracts import default_contracts
 from pycam_sima.model.grid import local_elements
+import pycam_sima.model.driver as driver_module
 
 
 PROJECT = Path(__file__).resolve().parents[2]
@@ -173,6 +175,79 @@ def test_missing_optional_coupler_group_is_skipped() -> None:
     assert calls == [PHYSICS_AFTER_COUPLER]
 
 
+def test_physics_timestep_initial_synchronizes_ccpp_step(
+    monkeypatch,
+) -> None:
+    class Pool:
+        def __init__(self):
+            self.values = {
+                "is_first_timestep": np.array(True),
+                "current_timestep_number": np.array(0, dtype=np.int32),
+                "fractional_calendar_days_on_end_of_current_timestep": (
+                    np.array(0.0)
+                ),
+                "fractional_calendar_days_on_end_of_next_timestep": (
+                    np.array(0.0)
+                ),
+                (
+                    "next_calendar_day_to_perform_shortwave_radiation_for_"
+                    "surface_models"
+                ): np.array(0.0),
+                (
+                    "number_of_seconds_until_next_shortwave_radiation_"
+                    "timestep"
+                ): np.array(0, dtype=np.int32),
+            }
+
+        def ccpp_field_name(self, standard_name):
+            if standard_name not in self.values:
+                raise KeyError(standard_name)
+            return standard_name
+
+        def set(self, name, value):
+            self.values[name][...] = value
+
+        def get(self, name):
+            return self.values[name]
+
+    driver = object.__new__(CAMDriver)
+    driver.clock = ModelClock(nstep=4, seconds=7200, dt_seconds=1800)
+    driver.config = type("Config", (), {"physics_suite": "cam4"})()
+    driver.backend = object()
+    driver.orbital_service = type(
+        "OrbitalService",
+        (),
+        {"update": lambda self, pool, clock, orbital_year=None: None},
+    )()
+    driver.config.orbital_year = 2000
+    def run_suite_lifecycle(phase):
+        assert phase == "timestep_initial"
+        pool.values[
+            "number_of_seconds_until_next_shortwave_radiation_timestep"
+        ][...] = 3600
+        return ()
+
+    driver.run_suite_lifecycle = run_suite_lifecycle
+    monkeypatch.setattr(
+        driver_module,
+        "physics_timestep_initial",
+        lambda pool, backend: None,
+    )
+    pool = Pool()
+
+    driver._physics_timestep_initial(pool)
+
+    assert pool.get("current_timestep_number").item() == 4
+    assert pool.get("is_first_timestep").item() is False
+    assert (
+        pool.get(
+            "next_calendar_day_to_perform_shortwave_radiation_for_"
+            "surface_models"
+        ).item()
+        == driver.clock.fractional_calendar_day(3600)
+    )
+
+
 def test_step_uses_complete_python_orchestrator(session, monkeypatch):
     session.run_scheme("kessler_update", group=PHYSICS_BEFORE_COUPLER)
     session.state = DriverState.PRIMED
@@ -226,6 +301,10 @@ def test_step_uses_complete_python_orchestrator(session, monkeypatch):
     expected.extend(
         f"scheme:{scheme.key}"
         for scheme in session.scheme_plan.active(PHYSICS_BEFORE_COUPLER)
+    )
+    expected.extend(
+        f"scheme:{scheme.key}"
+        for scheme in session.scheme_plan.active(PHYSICS_AFTER_COUPLER)
     )
     assert calls == expected
     assert calls.count("phase:se_type4_rk") == 6

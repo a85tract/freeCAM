@@ -12,7 +12,8 @@ module pycam_sima_fvm_transport_kernel
   use time_mod, only: timelevel_t
   use hybvcoord_mod, only: hvcoord_t
   use edgetype_mod, only: edgebuffer_t
-  use fvm_consistent_se_cslam, only: run_consistent_se_cslam
+  use fvm_consistent_se_cslam, only: run_consistent_se_cslam, &
+       large_courant_number_increment,pycam_transport_stage
   implicit none
 contains
   subroutine pycam_sima_fvm_transport_v2(config,irecons_levels,dt, &
@@ -121,8 +122,10 @@ contains
          1-build_nhe:build_nc+build_nhe,1-build_nhe:build_nc+build_nhe)); &
          fvm(1)%vertex_recons_weights=vertex_weights
 
+    pycam_transport_stage=1
     call run_consistent_se_cslam(elem,fvm,hybrid,dt,tl,1,1,hvcoord, &
          q_buffer,q1_buffer,flux_buffer,config%level_begin,config%level_end)
+    pycam_transport_stage=0
     subflux=elem(1)%sub_elem_mass_flux
     tracer=fvm(1)%c
     dp=fvm(1)%dp_fvm
@@ -130,4 +133,81 @@ contains
     se_flux=fvm(1)%se_flux
     call release_fvm_dimensions()
   end subroutine pycam_sima_fvm_transport_v2
+
+  subroutine pycam_sima_fvm_large_courant_finalize_v1(config, &
+       irecons_levels,tracer,dp,se_flux,dp_ref,inverse_area,psc, &
+       pressure_top,errflg) &
+       bind(C, name="pycam_sima_fvm_large_courant_finalize_v1")
+    type(fvm_dimensions_c), intent(in) :: config
+    integer(c_int), intent(in) :: irecons_levels(build_nlev)
+    real(c_double), intent(inout) :: tracer(build_nc+2*build_nhc, &
+         build_nc+2*build_nhc,build_nlev,build_ntrac)
+    real(c_double), intent(inout) :: dp(build_nc+2*build_nhc, &
+         build_nc+2*build_nhc,build_nlev)
+    real(c_double), intent(inout) :: se_flux(build_nc+2, &
+         build_nc+2,4,build_nlev)
+    real(c_double), intent(in) :: dp_ref(build_nlev)
+    real(c_double), intent(in) :: inverse_area(build_nc,build_nc)
+    real(c_double), intent(out) :: psc(build_nc,build_nc)
+    real(c_double), value, intent(in) :: pressure_top
+    integer(c_int), intent(out) :: errflg
+    type(fvm_struct) :: fvm
+    real(c_double) :: inv_dp_area(build_nc,build_nc)
+    integer :: ierr,i,j,k,itr
+
+    call configure_fvm_dimensions(config%nc,config%nlev,config%ntrac, &
+         config%np,config%ngpc,config%irecons,config%nhe,config%nhr, &
+         config%nht,config%ns,config%nhc,config%kmin_jet, &
+         config%kmax_jet,config%large_courant/=0,irecons_levels,ierr)
+    errflg=ierr
+    if (ierr/=0) return
+
+    allocate(fvm%c(1-build_nhc:build_nc+build_nhc, &
+         1-build_nhc:build_nc+build_nhc,build_nlev,build_ntrac))
+    fvm%c=tracer
+    allocate(fvm%dp_fvm(1-build_nhc:build_nc+build_nhc, &
+         1-build_nhc:build_nc+build_nhc,build_nlev))
+    fvm%dp_fvm=dp
+    allocate(fvm%se_flux(0:build_nc+1,0:build_nc+1,4,build_nlev))
+    fvm%se_flux=se_flux
+    allocate(fvm%dp_ref(build_nlev))
+    fvm%dp_ref=dp_ref
+    allocate(fvm%inv_area_sphere(build_nc,build_nc))
+    fvm%inv_area_sphere=inverse_area
+
+    if (config%large_courant/=0) then
+      do k=config%kmin_jet,config%kmax_jet
+        call large_courant_number_increment(fvm,k)
+      enddo
+    endif
+
+    do k=config%level_begin,config%level_end
+      do j=1,build_nc
+        do i=1,build_nc
+          inv_dp_area(i,j)=1.0_c_double/fvm%dp_fvm(i,j,k)
+        enddo
+      enddo
+      do itr=1,build_ntrac
+        do j=1,build_nc
+          do i=1,build_nc
+            fvm%c(i,j,k,itr)=fvm%c(i,j,k,itr)*inv_dp_area(i,j)
+            fvm%c(i,j,k,itr)=max(fvm%c(i,j,k,itr),0.0_c_double)
+          enddo
+        enddo
+      enddo
+      fvm%dp_fvm(1:build_nc,1:build_nc,k)= &
+           fvm%dp_fvm(1:build_nc,1:build_nc,k)*fvm%dp_ref(k)* &
+           fvm%inv_area_sphere
+    enddo
+    do j=1,build_nc
+      do i=1,build_nc
+        psc(i,j)=sum(fvm%dp_fvm(i,j,:))+pressure_top
+      enddo
+    enddo
+
+    tracer=fvm%c
+    dp=fvm%dp_fvm
+    se_flux=fvm%se_flux
+    call release_fvm_dimensions()
+  end subroutine pycam_sima_fvm_large_courant_finalize_v1
 end module pycam_sima_fvm_transport_kernel

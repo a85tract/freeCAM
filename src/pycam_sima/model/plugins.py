@@ -27,15 +27,12 @@ _NAME = re.compile(r"^[A-Za-z][A-Za-z0-9_.-]*$")
 _DEFAULT_COMPILER = "/opt/cray/pe/gcc/12.2.0/bin/gfortran"
 _DEFAULT_FFLAGS = (
     "-O2",
+    "-march=znver3",
     "-fPIC",
-    "-fno-fast-math",
     "-ffp-contract=off",
-    "-fno-reciprocal-math",
-    "-fno-associative-math",
-    "-fno-unsafe-math-optimizations",
     "-ffree-line-length-none",
     "-cpp",
-    "-DUSE_CONTIGUOUS=contiguous,",
+    "-DUSE_CONTIGUOUS=",
 )
 _DEFAULT_LDFLAGS = ("-Wl,--as-needed", "-Wl,--no-undefined")
 _UNSET = object()

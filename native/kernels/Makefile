@@ -2,13 +2,15 @@
 SHELL := /bin/bash
 PROJECT_ROOT := $(abspath ../..)
 FC := /opt/cray/pe/gcc/12.2.0/bin/gfortran
-FFLAGS ?= -O2 -march=znver3 -fPIC -ffp-contract=off -fno-fast-math -ffree-line-length-none -cpp
+FFLAGS ?= -O2 -march=znver3 -fPIC -ffp-contract=off -ffree-line-length-none -cpp
 LDFLAGS ?= -Wl,--as-needed -Wl,--no-undefined
 TARGET ?= $(PROJECT_ROOT)/build/libpycam_sima_kernels.so
 MODEL_CONFIG ?= $(PROJECT_ROOT)/configs/fkessler_model.yaml
 CAM_SE := $(PROJECT_ROOT)/external/CAM-SIMA/src/dynamics/se/dycore
 FVM_SOURCE := .build/fvm_consistent_se_cslam.F90
 KERNEL_CONFIG := .build/kernel_config.F90
+KERNEL_CONFIG_OBJ := .build/kernel_config.o
+SE_LIMITER_OBJ := .build/se_limiter_reference.o
 ABI_MAP := .build/abi-v2.map
 ABI_SYMBOLS := .build/abi-v2.symbols
 ABI_MANIFEST := abi-v2.json
@@ -29,22 +31,31 @@ DEVICE_INPUTS := \
 DEVICE_STAMP := $(DEVICE_OUTPUT)/.built
 PYTHON ?= python3
 
-.PHONY: all clean check-symbols devices
+.PHONY: all clean check-symbols devices FORCE
 all: $(TARGET) devices check-symbols
 
 $(FVM_SOURCE): prepare_fvm_source.py $(CAM_SE)/fvm_consistent_se_cslam.F90
 	$(PYTHON) prepare_fvm_source.py $(CAM_SE)/fvm_consistent_se_cslam.F90 $@
 
-$(KERNEL_CONFIG): prepare_kernel_config.py $(MODEL_CONFIG)
+$(KERNEL_CONFIG): prepare_kernel_config.py $(MODEL_CONFIG) FORCE
 	$(PYTHON) prepare_kernel_config.py $(MODEL_CONFIG) $@
+
+$(KERNEL_CONFIG_OBJ): $(KERNEL_CONFIG)
+	env -i PATH=/usr/bin:/bin HOME=$$HOME $(FC) $(FFLAGS) -J.build -c $< -o $@
+
+# CAM compiles derivative_mod without -fPIC.  Preserve that exact numerical
+# compilation boundary: PIC register allocation changes limiter reductions by
+# a few ulps for nonuniform tracers such as MUSICA.
+$(SE_LIMITER_OBJ): se_limiter_reference.F90 $(KERNEL_CONFIG_OBJ)
+	env -i PATH=/usr/bin:/bin HOME=$$HOME $(FC) $(filter-out -fPIC,$(FFLAGS)) -I.build -J.build -c $< -o $@
 
 $(ABI_MAP) $(ABI_SYMBOLS): $(ABI_MANIFEST) prepare_abi_exports.py
 	@mkdir -p .build
 	$(PYTHON) prepare_abi_exports.py $(ABI_MANIFEST) $(ABI_MAP) $(ABI_SYMBOLS)
 
-$(TARGET): abi_version.F90 physics_diagnostics_kernel.F90 se_startup_kernel.F90 remap_stubs.F90 remap_support.F90 fvm_kernel_stubs.F90 fvm_transport_kernel.F90 fvm_displacement_kernel.F90 $(CAM_SE)/fv_mapz.F90 $(CAM_SE)/fvm_reconstruction_mod.F90 $(CAM_SE)/fvm_analytic_mod.F90 $(FVM_SOURCE) $(KERNEL_CONFIG) $(ABI_MAP)
+$(TARGET): abi_version.F90 hydrostatic_energy_reference.F90 physics_diagnostics_kernel.F90 hypervis_reference_support.F90 se_startup_kernel.F90 remap_stubs.F90 remap_support.F90 fvm_kernel_stubs.F90 fvm_transport_kernel.F90 fvm_displacement_kernel.F90 $(CAM_SE)/fv_mapz.F90 $(CAM_SE)/fvm_reconstruction_mod.F90 $(CAM_SE)/fvm_analytic_mod.F90 $(FVM_SOURCE) $(KERNEL_CONFIG_OBJ) $(SE_LIMITER_OBJ) $(ABI_MAP)
 	@mkdir -p $(dir $@)
-	env -i PATH=/usr/bin:/bin HOME=$$HOME $(FC) $(FFLAGS) -shared $(LDFLAGS) -Wl,--version-script=$(ABI_MAP) -o $@ $(KERNEL_CONFIG) abi_version.F90 physics_diagnostics_kernel.F90 se_startup_kernel.F90 remap_stubs.F90 $(CAM_SE)/fv_mapz.F90 remap_support.F90 fvm_kernel_stubs.F90 $(CAM_SE)/fvm_reconstruction_mod.F90 $(CAM_SE)/fvm_analytic_mod.F90 $(FVM_SOURCE) fvm_transport_kernel.F90 fvm_displacement_kernel.F90
+	env -i PATH=/usr/bin:/bin HOME=$$HOME $(FC) $(FFLAGS) -I.build -shared $(LDFLAGS) -Wl,--version-script=$(ABI_MAP) -o $@ $(KERNEL_CONFIG_OBJ) $(SE_LIMITER_OBJ) abi_version.F90 hydrostatic_energy_reference.F90 physics_diagnostics_kernel.F90 hypervis_reference_support.F90 se_startup_kernel.F90 remap_stubs.F90 $(CAM_SE)/fv_mapz.F90 remap_support.F90 fvm_kernel_stubs.F90 $(CAM_SE)/fvm_reconstruction_mod.F90 $(CAM_SE)/fvm_analytic_mod.F90 $(FVM_SOURCE) fvm_transport_kernel.F90 fvm_displacement_kernel.F90
 
 $(DEVICE_STAMP): $(DEVICE_INPUTS)
 	rm -rf $(DEVICE_OUTPUT)

@@ -81,6 +81,31 @@ _PHYS_CONST_BINDINGS: Mapping[str, tuple[str, str]] = {
 }
 
 
+def _source_provider_priority(path: Path) -> tuple[int, str]:
+    """Prefer the serial CPU implementation of duplicate Fortran modules.
+
+    RRTMGP ships three files with several identical module names: an ``api``
+    interface, an accelerator implementation, and the serial CPU
+    implementation used by CAM-SIMA's Derecho GNU build.  Lexicographic
+    ``setdefault`` selected ``accel`` before the CPU source even though no
+    accelerator backend was enabled.  Keep the selection deterministic while
+    matching the source variant used by the reference model.
+    """
+
+    parts = {part.lower() for part in path.parts}
+    variant = 2 if "api" in parts else 1 if "accel" in parts else 0
+    return variant, str(path)
+
+
+def _preferred_module_provider(current: Path, candidate: Path) -> Path:
+    """Return the deterministic CPU-preferred provider for one module."""
+
+    return min(
+        (current.resolve(), candidate.resolve()),
+        key=_source_provider_priority,
+    )
+
+
 def _require_mapping(value: Any, label: str) -> Mapping[str, Any]:
     if not isinstance(value, Mapping):
         raise DeviceBuildError(f"{label} must be a mapping")
@@ -102,6 +127,34 @@ def _resolve_path(project_root: Path, value: Any, label: str) -> Path:
     if not path.is_file():
         raise DeviceBuildError(f"{label} does not exist: {path}")
     return path
+
+
+def _resolve_directory(project_root: Path, value: Any, label: str) -> Path:
+    text = _require_string(value, label)
+    path = Path(text)
+    if not path.is_absolute():
+        path = project_root / path
+    path = path.resolve()
+    if not path.is_dir():
+        raise DeviceBuildError(f"{label} does not exist: {path}")
+    return path
+
+
+def _external_library(project_root: Path, value: Any, label: str) -> str:
+    text = _require_string(value, label)
+    if "/" not in text:
+        if not re.fullmatch(r"[A-Za-z0-9_+.-]+", text):
+            raise DeviceBuildError(
+                f"{label} must be a safe linker library name, got {text!r}"
+            )
+        return text
+    path = Path(text)
+    if not path.is_absolute():
+        path = project_root / path
+    path = path.resolve()
+    if not path.is_file():
+        raise DeviceBuildError(f"{label} does not exist: {path}")
+    return str(path)
 
 
 def _safe_name(value: str, label: str) -> str:
@@ -153,6 +206,14 @@ class DeviceDescription:
     entrypoints: tuple[EntrypointDescription, ...]
     processes: Mapping[str, str]
     auto_dependencies: bool
+    host_entrypoints: Mapping[str, Mapping[str, Any]]
+    external_modules: frozenset[str]
+    external_include_dirs: tuple[Path, ...]
+    external_libraries: tuple[str, ...]
+    extra_sources: tuple[Path, ...]
+    extra_exports: tuple[str, ...]
+    preprocessor_definitions: tuple[str, ...]
+    allowed_elf_dependencies: frozenset[str]
 
     @classmethod
     def from_yaml(
@@ -289,6 +350,67 @@ class DeviceDescription:
         auto_dependencies = data.get("auto_dependencies", False)
         if not isinstance(auto_dependencies, bool):
             raise DeviceBuildError("auto_dependencies must be bool")
+        host_entrypoints = {
+            _safe_name(str(name), "host entrypoint"): dict(
+                _require_mapping(value, f"host_entrypoints.{name}")
+            )
+            for name, value in _require_mapping(
+                data.get("host_entrypoints", {}), "host_entrypoints"
+            ).items()
+        }
+        external_modules_data = data.get("external_modules", [])
+        if not isinstance(external_modules_data, list):
+            raise DeviceBuildError("external_modules must be a list")
+        external_modules = frozenset(
+            _safe_name(str(value), "external module")
+            for value in external_modules_data
+        )
+        include_values = data.get("external_include_dirs", [])
+        if not isinstance(include_values, list):
+            raise DeviceBuildError("external_include_dirs must be a list")
+        external_include_dirs = tuple(
+            _resolve_directory(root, value, f"external_include_dirs[{index}]")
+            for index, value in enumerate(include_values)
+        )
+        library_values = data.get("external_libraries", [])
+        if not isinstance(library_values, list):
+            raise DeviceBuildError("external_libraries must be a list")
+        external_libraries = tuple(
+            _external_library(root, value, f"external_libraries[{index}]")
+            for index, value in enumerate(library_values)
+        )
+        extra_source_values = data.get("extra_sources", [])
+        if not isinstance(extra_source_values, list):
+            raise DeviceBuildError("extra_sources must be a list")
+        extra_sources = tuple(
+            _resolve_path(root, value, f"extra_sources[{index}]")
+            for index, value in enumerate(extra_source_values)
+        )
+        export_values = data.get("extra_exports", [])
+        if not isinstance(export_values, list):
+            raise DeviceBuildError("extra_exports must be a list")
+        extra_exports = tuple(
+            _safe_name(str(value), f"extra_exports[{index}]")
+            for index, value in enumerate(export_values)
+        )
+        definition_values = data.get("preprocessor_definitions", [])
+        if not isinstance(definition_values, list):
+            raise DeviceBuildError(
+                "preprocessor_definitions must be a list"
+            )
+        preprocessor_definitions = tuple(
+            _safe_name(
+                str(value), f"preprocessor_definitions[{index}]"
+            ).upper()
+            for index, value in enumerate(definition_values)
+        )
+        allowed_values = data.get("allowed_elf_dependencies", [])
+        if not isinstance(allowed_values, list):
+            raise DeviceBuildError("allowed_elf_dependencies must be a list")
+        allowed_elf_dependencies = frozenset(
+            _require_string(value, f"allowed_elf_dependencies[{index}]").lower()
+            for index, value in enumerate(allowed_values)
+        )
 
         return cls(
             path=descriptor_path,
@@ -306,6 +428,14 @@ class DeviceDescription:
             entrypoints=tuple(entrypoints),
             processes=processes,
             auto_dependencies=auto_dependencies,
+            host_entrypoints=host_entrypoints,
+            external_modules=external_modules,
+            external_include_dirs=external_include_dirs,
+            external_libraries=external_libraries,
+            extra_sources=extra_sources,
+            extra_exports=extra_exports,
+            preprocessor_definitions=preprocessor_definitions,
+            allowed_elf_dependencies=allowed_elf_dependencies,
         )
 
 
@@ -508,8 +638,47 @@ def _load_ccpp_entrypoints(
 
 
 def _logical_fortran_lines(source: Path) -> Iterable[str]:
+    # Device builds deliberately do not define INTEL_MKL.  Ignore that
+    # inactive source branch while discovering module dependencies, just as
+    # the compiler preprocessor does.  Unknown conditionals remain
+    # conservative: both branches are scanned.
+    conditional_stack: list[tuple[bool, bool | None]] = []
+    active = True
     pending = ""
     for raw in source.read_text().splitlines():
+        directive = raw.strip()
+        match = re.fullmatch(r"#\s*ifdef\s+([A-Za-z_]\w*)", directive)
+        if match:
+            condition = (
+                False if match.group(1).upper() == "INTEL_MKL" else None
+            )
+            conditional_stack.append((active, condition))
+            active = active and (condition if condition is not None else True)
+            continue
+        match = re.fullmatch(r"#\s*ifndef\s+([A-Za-z_]\w*)", directive)
+        if match:
+            condition = (
+                True if match.group(1).upper() == "INTEL_MKL" else None
+            )
+            conditional_stack.append((active, condition))
+            active = active and (condition if condition is not None else True)
+            continue
+        if re.fullmatch(r"#\s*else\b.*", directive):
+            if conditional_stack:
+                parent, condition = conditional_stack[-1]
+                active = parent and (
+                    not condition if condition is not None else True
+                )
+            continue
+        if re.fullmatch(r"#\s*endif\b.*", directive):
+            if conditional_stack:
+                parent, _condition = conditional_stack.pop()
+                active = parent
+            continue
+        if directive.startswith("#"):
+            continue
+        if not active:
+            continue
         code = raw.split("!", 1)[0].strip()
         if not code:
             continue
@@ -541,9 +710,10 @@ def _validate_dependencies(description: DeviceDescription) -> tuple[str, ...]:
     allowed = (
         set(description.providers)
         | set(description.source_modules)
+        | set(description.external_modules)
         | _INTRINSIC_MODULES
     )
-    for source in description.sources:
+    for source in (*description.sources, *description.extra_sources):
         for line in _logical_fortran_lines(source):
             match = _USE_STATEMENT.match(line)
             if match is None:
@@ -554,7 +724,10 @@ def _validate_dependencies(description: DeviceDescription) -> tuple[str, ...]:
             else:
                 module = match.group(1).lower()
             for pattern in _FORBIDDEN_MODULE_PATTERNS:
-                if pattern.search(module):
+                if (
+                    module not in description.providers
+                    and pattern.search(module)
+                ):
                     raise DeviceBuildError(
                         f"{source}: host/framework dependency {module!r} "
                         "cannot be packaged as a numerical device"
@@ -588,8 +761,13 @@ def _project_module_index(project_root: Path) -> Mapping[str, Path]:
                     flags=re.IGNORECASE,
                 )
                 if match:
-                    result.setdefault(
-                        match.group(1).lower(), source.resolve()
+                    module = match.group(1).lower()
+                    resolved = source.resolve()
+                    previous = result.get(module)
+                    result[module] = (
+                        resolved
+                        if previous is None
+                        else _preferred_module_provider(previous, resolved)
                     )
         except UnicodeDecodeError:
             continue
@@ -697,7 +875,11 @@ def resolve_source_closure(
         return description
     index = dict(_project_module_index(description.project_root))
     providers = set(description.providers)
-    initial = tuple(path.resolve() for path in description.sources)
+    external_modules = set(description.external_modules)
+    initial = tuple(
+        path.resolve()
+        for path in (*description.sources, *description.extra_sources)
+    )
     for source in initial:
         for module in _defined_modules(source):
             index[module] = source
@@ -720,6 +902,7 @@ def resolve_source_closure(
             if (
                 module in _INTRINSIC_MODULES
                 or module in providers
+                or module in external_modules
                 or module in local_modules
             ):
                 continue
@@ -743,6 +926,20 @@ def resolve_source_closure(
             implementation = source.parent.parent / source.name
             if implementation.is_file():
                 visit(implementation)
+        # The pinned share/RandNum Fortran modules are thin ISO-C bindings.
+        # Their numerical implementations live beside them as C sources and
+        # therefore are not visible in the Fortran module-use graph.
+        companion_sources: tuple[Path, ...] = ()
+        if source.name == "dSFMT_interface.F90":
+            companion_sources = (
+                source.with_name("dSFMT.c"),
+                source.with_name("dSFMT_utils.c"),
+            )
+        elif source.name == "kissvec_mod.F90":
+            companion_sources = (source.with_name("kissvec.c"),)
+        for companion in companion_sources:
+            if companion.is_file():
+                visit(companion)
         visiting.remove(source)
         visited.add(source)
         ordered.append(source)
@@ -772,6 +969,7 @@ def resolve_source_closure(
     return replace(
         description,
         sources=tuple(ordered),
+        extra_sources=(),
         source_modules=source_modules,
     )
 
@@ -955,6 +1153,64 @@ def _native_opaque_declaration(argument: MetadataArgument) -> str:
     )
 
 
+def _native_allocatable_declaration(argument: MetadataArgument) -> str:
+    """Declare a primitive scheme-owned allocatable behind a fixed C buffer."""
+
+    if argument.dtype == "float64":
+        declaration = "real(c_double)"
+    elif argument.dtype == "int32":
+        declaration = "integer(c_int)"
+    elif argument.dtype == "bool":
+        declaration = "logical"
+    else:
+        raise DeviceBuildError(
+            f"{argument.local_name}: source-declared allocatable "
+            f"{argument.dtype!r} is not supported by device ABI v1"
+        )
+    dimensions = "(" + ",".join(":" for _ in argument.dimensions) + ")"
+    return (
+        f"    {declaration}, allocatable :: "
+        f"{argument.local_name}{dimensions}"
+    )
+
+
+def _declared_allocatable_arguments(
+    sources: Iterable[Path],
+    table: str,
+) -> frozenset[str]:
+    """Find dummy names declared ALLOCATABLE in the original subroutine."""
+
+    wanted = table.lower()
+    result: set[str] = set()
+    for source in sources:
+        active = False
+        for line in _logical_fortran_lines(source):
+            lowered = line.lower()
+            if not active:
+                match = re.match(
+                    r"^\s*(?:pure\s+|elemental\s+|recursive\s+)*"
+                    r"subroutine\s+([a-z][a-z0-9_]*)\b",
+                    lowered,
+                )
+                active = bool(match and match.group(1) == wanted)
+                continue
+            if re.match(
+                rf"^\s*end\s+subroutine(?:\s+{re.escape(wanted)})?\s*$",
+                lowered,
+            ):
+                break
+            if "::" not in lowered or "allocatable" not in lowered:
+                continue
+            declaration = lowered.split("::", 1)[1]
+            for item in declaration.split(","):
+                name = item.strip().split("(", 1)[0].strip()
+                if _IDENTIFIER.fullmatch(name):
+                    result.add(name)
+        if result:
+            break
+    return frozenset(result)
+
+
 def _opaque_pointer_line(
     argument: MetadataArgument,
     dimension_symbols: Mapping[str, str],
@@ -979,13 +1235,27 @@ def _opaque_factory_functions(
     symbol_stem: str,
     fortran_type: str,
     rank: int,
-) -> tuple[str, str, str]:
+    constituent_diagnostic_name: bool = False,
+) -> tuple[str, str, str | None, str]:
     """Return factory symbol, destroy symbol, and Fortran implementations."""
 
     factory_symbol = f"{symbol_stem}_create_v{DEVICE_ABI_VERSION}"
     destroy_symbol = f"{symbol_stem}_destroy_v{DEVICE_ABI_VERSION}"
     factory_local = _fortran_identifier(factory_symbol)
     destroy_local = _fortran_identifier(destroy_symbol)
+    is_constituent_registry = (
+        fortran_type == "ccpp_constituent_prop_ptr_t" and rank == 1
+    )
+    configure_symbol = (
+        f"{symbol_stem}_configure_v{DEVICE_ABI_VERSION}"
+        if is_constituent_registry
+        else None
+    )
+    configure_local = (
+        _fortran_identifier(configure_symbol)
+        if configure_symbol is not None
+        else None
+    )
     dimensions = [f"extent_{index + 1}" for index in range(rank)]
     dimension_signature = (
         ("," + ",".join(dimensions)) if dimensions else ""
@@ -1035,12 +1305,100 @@ def _opaque_factory_functions(
     lines.extend(
         [
             f"    type({fortran_type}), pointer :: object{pointer_shape}",
+            *(["    integer :: index"] if is_constituent_registry else []),
             f"    call c_f_pointer(address,object{shape_vector})",
             "    if (associated(object)) deallocate(object)",
             f"  end subroutine {destroy_local}",
         ]
     )
-    return factory_symbol, destroy_symbol, "\n".join(lines)
+    if is_constituent_registry:
+        lines.extend(
+            [
+                "",
+                f"  integer(c_int) function {configure_local}("
+                "address,extent_1,constituent_index,abi_name,name_length,"
+                "minimum_value,molar_mass,water_species,advected,"
+                "thermo_active,error_message,error_capacity) "
+                f'result(status) bind(C,name="{configure_symbol}")',
+                "    type(c_ptr), value, intent(in) :: address",
+                "    integer(c_int), value, intent(in) :: extent_1",
+                "    integer(c_int), value, intent(in) :: constituent_index",
+                "    character(kind=c_char), intent(in) :: abi_name(*)",
+                "    integer(c_int), value, intent(in) :: name_length",
+                "    real(c_double), value, intent(in) :: minimum_value",
+                "    real(c_double), value, intent(in) :: molar_mass",
+                "    logical(c_bool), value, intent(in) :: water_species",
+                "    logical(c_bool), value, intent(in) :: advected",
+                "    logical(c_bool), value, intent(in) :: thermo_active",
+                "    character(kind=c_char), intent(out) :: error_message(*)",
+                "    integer(c_int), value, intent(in) :: error_capacity",
+                "    type(ccpp_constituent_prop_ptr_t), pointer :: object(:)",
+                "    type(ccpp_constituent_properties_t), pointer :: property",
+                "    character(len=512) :: standard_name,errmsg",
+                "    integer :: errflg,index",
+                "    standard_name = ''",
+                "    errmsg = ''",
+                "    errflg = 0",
+                "    status = 0_c_int",
+                "    if (constituent_index < 1_c_int .or. "
+                "constituent_index > extent_1) then",
+                "      call copy_error_to_c('constituent index is outside "
+                "the registry',error_message,error_capacity)",
+                "      status = 1_c_int",
+                "      return",
+                "    end if",
+                "    do index=1,min(int(name_length),len(standard_name))",
+                "      if (abi_name(index) == c_null_char) exit",
+                "      standard_name(index:index)=achar("
+                "iachar(abi_name(index)),kind=kind(standard_name))",
+                "    end do",
+                "    call c_f_pointer(address,object,[extent_1])",
+                "    allocate(property,stat=errflg,errmsg=errmsg)",
+                "    if (errflg == 0) call property%instantiate("
+                "trim(standard_name),trim(standard_name),"
+                + (
+                    "trim(standard_name),"
+                    if constituent_diagnostic_name
+                    else ""
+                )
+                + "'kg kg-1',"
+                "'vertical_layer_dimension',advected=logical(advected),"
+                "default_value=minimum_value,min_value=minimum_value,"
+                "molar_mass=molar_mass,water_species=logical(water_species),"
+                "mixing_ratio_type='wet',errcode=errflg,errmsg=errmsg)",
+                "    if (errflg == 0) call property%set_const_index("
+                "int(constituent_index),errflg,errmsg)",
+                "    if (errflg == 0) call property%set_thermo_active("
+                "logical(thermo_active),errflg,errmsg)",
+                "    if (errflg == 0) call object(constituent_index)%set("
+                "property,errflg,errmsg)",
+                "    if (errflg /= 0 .and. associated(property)) then",
+                "      call property%deallocate()",
+                "      deallocate(property)",
+                "    end if",
+                "    status = int(errflg,c_int)",
+                "    call copy_error_to_c(errmsg,error_message,error_capacity)",
+                f"  end function {configure_local}",
+            ]
+        )
+        # Each pointer owns the property allocated by the configure routine.
+        destroy_start = lines.index(
+            f"    if (associated(object)) deallocate(object)"
+        )
+        lines[destroy_start:destroy_start + 1] = [
+            "    if (associated(object)) then",
+            "      do index=1,extent_1",
+            "        call object(index)%deallocate()",
+            "      end do",
+            "      deallocate(object)",
+            "    end if",
+        ]
+    return (
+        factory_symbol,
+        destroy_symbol,
+        configure_symbol,
+        "\n".join(lines),
+    )
 
 
 def _character_copy_lines(
@@ -1116,6 +1474,8 @@ def _generate_adapter_and_manifest(
     metadata_entrypoints: Mapping[str, MetadataEntrypoint],
     dependencies: tuple[str, ...],
     output_dir: Path,
+    *,
+    include_abi_symbol: bool = True,
 ) -> tuple[Path, Path, dict[str, Any]]:
     output_dir.mkdir(parents=True, exist_ok=True)
     requested: list[
@@ -1141,7 +1501,10 @@ def _generate_adapter_and_manifest(
     module_name = _fortran_identifier(
         f"pycam_device_{description.name}_adapter"
     )
-    symbols: list[str] = ["pycam_device_abi_version"]
+    symbols: list[str] = [
+        *(["pycam_device_abi_version"] if include_abi_symbol else []),
+        *description.extra_exports,
+    ]
     manifest_entrypoints: dict[str, Any] = {}
     functions: list[str] = []
     type_index = dict(_project_type_index(description.project_root))
@@ -1150,6 +1513,24 @@ def _generate_adapter_and_manifest(
     opaque_modules: dict[str, str] = {}
     opaque_contracts: dict[tuple[str, int], dict[str, Any]] = {}
     opaque_factory_bodies: list[str] = []
+    constituent_diagnostic_name = any(
+        re.search(
+            r"subroutine\s+ccp_instantiate\s*\([^)]*\bdiag_name\b",
+            source.read_text(encoding="utf-8", errors="replace"),
+            flags=re.IGNORECASE | re.DOTALL,
+        )
+        is not None
+        for source in (
+            *description.providers.values(),
+            *description.extra_sources,
+            *description.sources,
+        )
+        if source.is_file()
+    )
+    uses_ppgrid_provider = "ppgrid" in dependencies
+    uses_netcdf_reader = "ccpp_io_reader" in dependencies
+    if uses_netcdf_reader:
+        symbols.append("pycam_register_netcdf_reader_callbacks")
     physconst_names = _module_only_names(description.sources, "physconst")
     unsupported_physconst = sorted(
         set(physconst_names) - set(_PHYS_CONST_BINDINGS)
@@ -1205,19 +1586,37 @@ def _generate_adapter_and_manifest(
                         f"pycam_device_{description.name}_"
                         f"{item.fortran_type}_rank{item.rank}"
                     )
-                    factory, destroy, body = _opaque_factory_functions(
+                    (
+                        factory,
+                        destroy,
+                        configure,
+                        body,
+                    ) = _opaque_factory_functions(
                         symbol_stem=stem,
                         fortran_type=item.fortran_type,
                         rank=item.rank,
+                        constituent_diagnostic_name=(
+                            constituent_diagnostic_name
+                        ),
                     )
                     opaque_contracts[signature] = {
                         "type": item.fortran_type,
                         "module": type_module,
                         "factory_symbol": factory,
                         "destroy_symbol": destroy,
+                        **(
+                            {"configure_symbol": configure}
+                            if configure is not None
+                            else {}
+                        ),
                     }
                     opaque_factory_bodies.append(body)
                     symbols.extend((factory, destroy))
+                    if configure is not None:
+                        symbols.append(configure)
+                        opaque_modules[
+                            "ccpp_constituent_properties_t"
+                        ] = type_module
 
         scalar_dimensions = {
             item.standard_name: item.local_name
@@ -1232,6 +1631,14 @@ def _generate_adapter_and_manifest(
                 dimension = _dimension_standard(expression)
                 if dimension.isdigit():
                     continue
+                if dimension not in required_dimensions:
+                    required_dimensions.append(dimension)
+        if uses_ppgrid_provider:
+            for dimension in (
+                "horizontal_loop_extent",
+                "vertical_layer_dimension",
+                "vertical_interface_dimension",
+            ):
                 if dimension not in required_dimensions:
                     required_dimensions.append(dimension)
         injected: list[MetadataArgument] = []
@@ -1298,7 +1705,36 @@ def _generate_adapter_and_manifest(
         opaque_bridges = {
             item.local_name for item in public if item.dtype == "opaque"
         }
-        bridges = logical_bridges | character_bridges | opaque_bridges
+        source_allocatable_names = _declared_allocatable_arguments(
+            description.sources,
+            metadata.table,
+        )
+        allocatable_bridges = {
+            item.local_name
+            for item in public
+            if item.local_name in source_allocatable_names
+        }
+        unsupported_allocatables = {
+            item.local_name
+            for item in public
+            if item.local_name in allocatable_bridges
+            and (
+                item.rank == 0
+                or item.dtype not in {"float64", "int32", "bool"}
+            )
+        }
+        if unsupported_allocatables:
+            raise DeviceBuildError(
+                f"{metadata.table}: source-declared allocatable arguments "
+                f"require a type-specific bridge: "
+                f"{sorted(unsupported_allocatables)}"
+            )
+        bridges = (
+            logical_bridges
+            | character_bridges
+            | opaque_bridges
+            | allocatable_bridges
+        )
         argument_names: list[str] = []
         for item in exposed:
             name = (
@@ -1341,7 +1777,9 @@ def _generate_adapter_and_manifest(
         for item in internal:
             lines.append(_internal_declaration(item))
         for item in public:
-            if item.local_name in logical_bridges:
+            if item.local_name in allocatable_bridges:
+                lines.append(_native_allocatable_declaration(item))
+            elif item.local_name in logical_bridges:
                 lines.append(
                     _native_logical_declaration(item, scalar_dimensions)
                 )
@@ -1378,8 +1816,32 @@ def _generate_adapter_and_manifest(
             lines.append(
                 f"    call pycam_physconst_set_{constant}({local_name})"
             )
+        if uses_ppgrid_provider:
+            lines.append(
+                "    call pycam_ppgrid_set_dimensions("
+                f"{scalar_dimensions['horizontal_loop_extent']},"
+                f"{scalar_dimensions['vertical_layer_dimension']},"
+                f"{scalar_dimensions['vertical_interface_dimension']})"
+            )
         for item in public:
-            if item.local_name in opaque_bridges:
+            if (
+                item.local_name in allocatable_bridges
+                and item.intent in {"in", "inout"}
+            ):
+                shape = ",".join(
+                    scalar_dimensions.get(
+                        _dimension_standard(expression),
+                        _dimension_standard(expression),
+                    )
+                    for expression in item.dimensions
+                )
+                lines.append(
+                    f"    allocate({item.local_name}({shape}))"
+                )
+                lines.append(
+                    f"    {item.local_name} = abi_{item.local_name}"
+                )
+            elif item.local_name in opaque_bridges:
                 lines.append(_opaque_pointer_line(item, scalar_dimensions))
             elif (
                 item.local_name in logical_bridges
@@ -1404,6 +1866,18 @@ def _generate_adapter_and_manifest(
         lines.append(f"    call {metadata.table}({call_arguments})")
         for item in public:
             if (
+                item.local_name in allocatable_bridges
+                and item.intent in {"out", "inout"}
+            ):
+                lines.append(
+                    f"    if (allocated({item.local_name})) "
+                    f"abi_{item.local_name} = {item.local_name}"
+                )
+                lines.append(
+                    f"    if (allocated({item.local_name})) "
+                    f"deallocate({item.local_name})"
+                )
+            elif (
                 item.local_name in logical_bridges
                 and item.intent in {"out", "inout"}
             ):
@@ -1421,6 +1895,21 @@ def _generate_adapter_and_manifest(
                 )
         if error_code is None:
             lines.append("    status = 0_c_int")
+        elif error_message is not None:
+            # Several original CAM-SIMA schemes declare errflg/errmsg as
+            # intent(out) but leave both untouched on success.  CCPP treats
+            # an empty message as success; normalize that host convention at
+            # the ABI boundary while preserving every reported error.
+            lines.extend(
+                [
+                    f"    if (len_trim({error_message}) == 0) then",
+                    "      status = 0_c_int",
+                    "    else",
+                    f"      status = int({error_code},c_int)",
+                    "      if (status == 0_c_int) status = 1_c_int",
+                    "    end if",
+                ]
+            )
         else:
             lines.append(f"    status = int({error_code},c_int)")
         if error_message is None:
@@ -1493,6 +1982,21 @@ def _generate_adapter_and_manifest(
         if physconst_names
         else []
     )
+    ppgrid_use_lines = (
+        [
+            "  use ppgrid, only: pycam_ppgrid_set_dimensions"
+        ]
+        if uses_ppgrid_provider
+        else []
+    )
+    netcdf_use_lines = (
+        [
+            "  use pycam_netcdf_callback_reader, only: "
+            "pycam_register_netcdf_reader_callbacks"
+        ]
+        if uses_netcdf_reader
+        else []
+    )
     adapter = [
         "! Generated by pycam_sima.model.device_codegen; do not edit.",
         f"module {module_name}",
@@ -1502,22 +2006,36 @@ def _generate_adapter_and_manifest(
         + ",".join(metadata.table for _, metadata in requested),
         *type_use_lines,
         *physconst_use_lines,
+        *ppgrid_use_lines,
+        *netcdf_use_lines,
         "  implicit none",
         "  private",
-        "  public :: pycam_device_abi_version",
+        *(
+            ["  public :: pycam_device_abi_version"]
+            if include_abi_symbol
+            else []
+        ),
     ]
     adapter.extend(
         f"  public :: {_fortran_identifier(symbol)}"
-        for symbol in symbols[1:]
+        for symbol in symbols
+        if symbol != "pycam_device_abi_version"
+        if symbol not in description.extra_exports
     )
     adapter.extend(
         [
             "contains",
-            '  integer(c_int) function pycam_device_abi_version() '
-            'result(version) bind(C,name="pycam_device_abi_version")',
-            f"    version = {DEVICE_ABI_VERSION}_c_int",
-            "  end function pycam_device_abi_version",
-            "",
+            *(
+                [
+                    '  integer(c_int) function pycam_device_abi_version() '
+                    'result(version) bind(C,name="pycam_device_abi_version")',
+                    f"    version = {DEVICE_ABI_VERSION}_c_int",
+                    "  end function pycam_device_abi_version",
+                    "",
+                ]
+                if include_abi_symbol
+                else []
+            ),
             "  subroutine copy_error_to_c(message,buffer,capacity)",
             "    character(len=*), intent(in) :: message",
             "    character(kind=c_char), intent(out) :: buffer(*)",
@@ -1574,6 +2092,10 @@ def _generate_adapter_and_manifest(
         "dimension_bindings": dict(description.dimension_bindings),
         "entrypoints": manifest_entrypoints,
         "processes": dict(description.processes),
+        "host_entrypoints": {
+            name: dict(contract)
+            for name, contract in description.host_entrypoints.items()
+        },
         "source": {
             "descriptor": portable_path(description.path),
             "files": [portable_path(path) for path in description.sources],
@@ -1581,14 +2103,31 @@ def _generate_adapter_and_manifest(
             "sha256": digest.hexdigest(),
         },
         "fortran_dependencies": list(dependencies),
+        "host_services": (
+            ["netcdf_reader"] if uses_netcdf_reader else []
+        ),
         "persistent_native_state": (
             description.state_policy == "initialize_once"
         ),
+        "external": {
+            "modules": sorted(description.external_modules),
+            "include_directories": [
+                portable_path(path)
+                for path in description.external_include_dirs
+            ],
+            "libraries": list(description.external_libraries),
+            "allowed_elf_dependencies": sorted(
+                description.allowed_elf_dependencies
+            ),
+        },
     }
     return adapter_path, version_map_path, manifest
 
 
-def _validate_elf(library: Path) -> None:
+def _validate_elf(
+    library: Path, *, allowed_dependencies: Iterable[str] = ()
+) -> None:
+    allowed = {str(value).lower() for value in allowed_dependencies}
     dynamic = subprocess.run(
         ("/usr/bin/readelf", "-d", str(library)),
         check=True,
@@ -1597,7 +2136,7 @@ def _validate_elf(library: Path) -> None:
         text=True,
     ).stdout.lower()
     for forbidden in _FORBIDDEN_ELF_DEPENDENCIES:
-        if forbidden in dynamic:
+        if forbidden not in allowed and forbidden in dynamic:
             raise DeviceBuildError(
                 f"{library} has forbidden runtime dependency {forbidden!r}"
             )
@@ -1611,10 +2150,261 @@ def _validate_elf(library: Path) -> None:
         text=True,
     ).stdout.lower()
     for forbidden in (*_FORBIDDEN_ELF_DEPENDENCIES, "cam_init", "cam_run"):
-        if forbidden in undefined:
+        if forbidden not in allowed and forbidden in undefined:
             raise DeviceBuildError(
                 f"{library} references forbidden symbol {forbidden!r}"
             )
+
+
+def _bundle_source_order(sources: Iterable[Path]) -> tuple[Path, ...]:
+    """Topologically order one deduplicated multi-device source closure."""
+
+    unique = tuple(dict.fromkeys(Path(path).resolve() for path in sources))
+    module_sources: dict[str, Path] = {}
+    superseded_interfaces: set[Path] = set()
+    for source in unique:
+        for module in _defined_modules(source):
+            previous = module_sources.setdefault(module, source)
+            if previous != source:
+                if (
+                    previous.parent.name == "api"
+                    and source.name == previous.name
+                    and source.parent != previous.parent
+                ):
+                    module_sources[module] = source
+                    superseded_interfaces.add(previous)
+                    continue
+                if (
+                    source.parent.name == "api"
+                    and source.name == previous.name
+                    and source.parent != previous.parent
+                ):
+                    superseded_interfaces.add(source)
+                    continue
+                if (
+                    previous.parent.name == "accel"
+                    and source.name == previous.name
+                    and source.parent != previous.parent
+                ):
+                    module_sources[module] = source
+                    superseded_interfaces.add(previous)
+                    continue
+                if (
+                    source.parent.name == "accel"
+                    and source.name == previous.name
+                    and source.parent != previous.parent
+                ):
+                    superseded_interfaces.add(source)
+                    continue
+                raise DeviceBuildError(
+                    f"bundle has two definitions of Fortran module {module!r}: "
+                    f"{previous} and {source}"
+                )
+    unique = tuple(
+        source for source in unique if source not in superseded_interfaces
+    )
+    visiting: set[Path] = set()
+    visited: set[Path] = set()
+    ordered: list[Path] = []
+
+    def visit(source: Path) -> None:
+        if source in visited:
+            return
+        if source in visiting:
+            # Existing CAM source contains a few intentional module cycles
+            # mediated by interfaces.  The per-device closure already proved
+            # these sources compile; keep deterministic input order here.
+            return
+        visiting.add(source)
+        for module in sorted(_source_uses(source)):
+            dependency = module_sources.get(module)
+            if dependency is not None and dependency != source:
+                visit(dependency)
+        visiting.remove(source)
+        visited.add(source)
+        ordered.append(source)
+
+    for source in unique:
+        visit(source)
+    return tuple(ordered)
+
+
+def build_device_bundle(
+    descriptors: Iterable[str | Path],
+    *,
+    project_root: str | Path,
+    output_root: str | Path,
+    compiler: str,
+    fflags: Iterable[str],
+    ldflags: Iterable[str] = (),
+    bundle_name: str = "catalog",
+) -> tuple[Path, ...]:
+    """Build many connectors into one shared Fortran module namespace.
+
+    Original CAM schemes communicate through Fortran module state.  Loading
+    one independently linked copy per connector would duplicate that state
+    (for example the saturation-vapor lookup table).  A bundle keeps every
+    generated bind(C) adapter modular while linking their original sources
+    exactly once into one ``.so``.
+    """
+
+    root = Path(project_root).resolve()
+    output = Path(output_root).resolve()
+    descriptions = tuple(
+        resolve_source_closure(
+            DeviceDescription.from_yaml(path, project_root=root)
+        )
+        for path in descriptors
+    )
+    if not descriptions:
+        raise DeviceBuildError("device bundle requires at least one descriptor")
+
+    generated: list[
+        tuple[DeviceDescription, Path, dict[str, Any], tuple[str, ...]]
+    ] = []
+    all_sources: list[Path] = []
+    all_external_libraries: list[str] = []
+    all_include_directories: set[Path] = set()
+    allowed_dependencies: set[str] = set()
+    preprocessor_definitions: set[str] = set()
+    exported_symbols: set[str] = {"pycam_device_abi_version"}
+    for index, description in enumerate(descriptions):
+        dependencies = _validate_dependencies(description)
+        entrypoints = _load_ccpp_entrypoints(description)
+        device_dir = output / description.name
+        adapter, _version_map, manifest = _generate_adapter_and_manifest(
+            description,
+            entrypoints,
+            dependencies,
+            device_dir / "generated",
+            include_abi_symbol=index == 0,
+        )
+        generated.append((description, adapter, manifest, dependencies))
+        all_sources.extend(description.providers.values())
+        all_sources.extend(description.sources)
+        all_sources.append(adapter)
+        all_include_directories.update(
+            source.parent
+            for source in (
+                *description.providers.values(),
+                *description.sources,
+                adapter,
+            )
+        )
+        all_include_directories.update(description.external_include_dirs)
+        for library in description.external_libraries:
+            if library not in all_external_libraries:
+                all_external_libraries.append(library)
+        allowed_dependencies.update(description.allowed_elf_dependencies)
+        preprocessor_definitions.update(
+            description.preprocessor_definitions
+        )
+        exported_symbols.update(description.extra_exports)
+        exported_symbols.update(
+            entrypoint["symbol"]
+            for entrypoint in manifest["entrypoints"].values()
+        )
+        if "netcdf_reader" in manifest.get("host_services", ()):
+            exported_symbols.add(
+                "pycam_register_netcdf_reader_callbacks"
+            )
+        for entrypoint in manifest["entrypoints"].values():
+            for argument in entrypoint["arguments"]:
+                opaque = argument.get("opaque")
+                if not opaque:
+                    continue
+                exported_symbols.add(opaque["factory_symbol"])
+                exported_symbols.add(opaque["destroy_symbol"])
+                configure = opaque.get("configure_symbol")
+                if configure:
+                    exported_symbols.add(configure)
+
+    randnum_include = root / "external/CAM-SIMA/share/RandNum/include"
+    if randnum_include.is_dir():
+        all_include_directories.add(randnum_include)
+    bundle_dir = output / "_bundle"
+    module_dir = bundle_dir / "mod"
+    bundle_dir.mkdir(parents=True, exist_ok=True)
+    module_dir.mkdir(parents=True, exist_ok=True)
+    library = bundle_dir / f"libpycam_device_bundle_{bundle_name}.so"
+    version_map = bundle_dir / f"{bundle_name}.map"
+    version_map.write_text(
+        f"PYCAM_DEVICE_{DEVICE_ABI_VERSION}.0 {{\n"
+        "  global:\n"
+        + "".join(
+            f"    {symbol};\n" for symbol in sorted(exported_symbols)
+        )
+        + "  local: *;\n};\n"
+    )
+    ordered_sources = _bundle_source_order(all_sources)
+    command = [
+        str(Path(compiler).absolute()),
+        *fflags,
+        *(
+            f"-D{definition}"
+            for definition in sorted(preprocessor_definitions)
+        ),
+        "-shared",
+        *ldflags,
+        "-J",
+        str(module_dir),
+        "-I",
+        str(module_dir),
+        *(
+            flag
+            for directory in sorted(all_include_directories)
+            for flag in ("-I", str(directory))
+        ),
+        f"-Wl,--version-script={version_map}",
+        "-o",
+        str(library),
+        *(str(path) for path in ordered_sources),
+        *(
+            library_name
+            if "/" in library_name
+            else f"-l{library_name}"
+            for library_name in all_external_libraries
+        ),
+    ]
+    environment = {
+        "PATH": "/usr/bin:/bin",
+        "HOME": os.environ.get("HOME", ""),
+        "LC_ALL": "C",
+    }
+    try:
+        # Compile from the bundle's private build directory.  Fortran
+        # compilers search the current working directory for ``.mod`` files
+        # before explicit include paths; using the project root would allow
+        # stale modules from an unrelated model build to contaminate this
+        # otherwise clean device build.
+        subprocess.run(
+            command,
+            check=True,
+            env=environment,
+            cwd=bundle_dir,
+        )
+        _validate_elf(
+            library,
+            allowed_dependencies=allowed_dependencies,
+        )
+    except (OSError, subprocess.CalledProcessError) as exc:
+        raise DeviceBuildError(
+            f"failed to compile device bundle {bundle_name}: {exc}"
+        ) from exc
+
+    manifest_paths: list[Path] = []
+    relative_library = f"../_bundle/{library.name}"
+    for description, _adapter, manifest, _dependencies in generated:
+        manifest["library"] = relative_library
+        manifest["bundle"] = {
+            "name": bundle_name,
+            "shared_fortran_module_state": True,
+            "device_count": len(generated),
+        }
+        path = output / description.name / "device.json"
+        path.write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n")
+        manifest_paths.append(path)
+    return tuple(manifest_paths)
 
 
 def build_device(
@@ -1642,24 +2432,60 @@ def build_device(
     module_dir = output_dir / "mod"
     module_dir.mkdir(parents=True, exist_ok=True)
     library = output_dir / manifest["library"]
-    sources = [
-        *description.providers.values(),
-        *description.sources,
-        adapter,
-    ]
+    # Providers can themselves depend on modules supplied by the resolved
+    # source closure.  Do not assume that the descriptor's providers-first
+    # presentation is a valid compiler order; use the same module dependency
+    # ordering as multi-device bundles.
+    sources = list(
+        _bundle_source_order(
+            (
+                *description.providers.values(),
+                *description.sources,
+                adapter,
+            )
+        )
+    )
+    include_directories = {
+        source.parent
+        for source in sources
+    }
+    include_directories.update(description.external_include_dirs)
+    randnum_include = (
+        description.project_root
+        / "external/CAM-SIMA/share/RandNum/include"
+    )
+    if randnum_include.is_dir():
+        include_directories.add(randnum_include)
     command = [
         str(Path(compiler).absolute()),
         *fflags,
+        *(
+            f"-D{definition}"
+            for definition in description.preprocessor_definitions
+        ),
         "-shared",
         *ldflags,
         "-J",
         str(module_dir),
         "-I",
         str(module_dir),
+        *(
+            flag
+            for directory in sorted(include_directories)
+            for flag in ("-I", str(directory))
+        ),
         f"-Wl,--version-script={version_map}",
         "-o",
         str(library),
         *(str(path) for path in sources),
+        *(
+            (
+                library_name
+                if "/" in library_name
+                else f"-l{library_name}"
+            )
+            for library_name in description.external_libraries
+        ),
     ]
     environment = {
         "PATH": "/usr/bin:/bin",
@@ -1671,9 +2497,15 @@ def build_device(
             command,
             check=True,
             env=environment,
-            cwd=description.project_root,
+            # Keep implicit Fortran module lookup inside this device build.
+            # All source and include paths above are absolute, so the project
+            # root is not needed as the compiler working directory.
+            cwd=output_dir,
         )
-        _validate_elf(library)
+        _validate_elf(
+            library,
+            allowed_dependencies=description.allowed_elf_dependencies,
+        )
     except (OSError, subprocess.CalledProcessError) as exc:
         raise DeviceBuildError(
             f"failed to compile device {description.name}: {exc}"
@@ -1694,9 +2526,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--fflags",
         default=(
-            "-O2 -march=znver3 -fPIC -ffp-contract=off -fno-fast-math "
-            "-ffree-line-length-none -cpp "
-            "-DUSE_CONTIGUOUS=contiguous,"
+            "-O2 -march=znver3 -fPIC -ffp-contract=off "
+            "-ffree-line-length-none -cpp -DUSE_CONTIGUOUS="
         ),
     )
     parser.add_argument(

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import re
 from typing import Any, Iterable, Mapping
 
 from .contracts import (
@@ -14,6 +15,7 @@ from .contracts import (
 )
 from .device_catalog import (
     CatalogArgument,
+    CatalogNamelistVariable,
     DeviceCatalog,
     SchemeCatalogEntry,
     _dimension_standard,
@@ -33,6 +35,14 @@ _PRIMITIVE_DTYPES = {
     "integer": "int32",
     "logical": "bool",
 }
+_HOST_PHASE_PROCESS_FIELDS = frozenset(
+    {
+        "column_dry_air_specific_heat",
+        "column_dry_air_gas_constant",
+        "static_energy",
+        "thermodynamic_level_height",
+    }
+)
 
 
 def _canonical_dimension(expression: str) -> str:
@@ -76,7 +86,10 @@ class CCPPFieldRequirement:
         signatures = {
             (
                 item.fortran_type,
-                item.kind,
+                # A fixed-width Python byte field can satisfy both len=N and
+                # assumed-length CCPP character arguments.  The generated
+                # adapter passes the actual element width explicitly.
+                "" if item.fortran_type == "character" else item.kind,
                 item.dimensions,
                 _normalized_units(item.units),
             )
@@ -166,6 +179,13 @@ class CCPPFieldRequirement:
         )
 
 
+@dataclass(frozen=True, slots=True)
+class NamelistBinding:
+    group: str
+    local_name: str
+    default_value: str | None = None
+
+
 class CCPPStateSchema:
     """All standard-name fields and opaque process objects for one suite."""
 
@@ -175,11 +195,27 @@ class CCPPStateSchema:
         requirements: Mapping[str, CCPPFieldRequirement],
         dimension_names: Iterable[str],
         unresolved_schemes: Iterable[str] = (),
+        provided_standard_names: Iterable[str] = (),
+        fixed_dimensions: Mapping[str, int] | None = None,
+        namelist_bindings: Mapping[
+            str, Iterable[NamelistBinding]
+        ] | None = None,
     ) -> None:
         self.suite = suite
         self.requirements = dict(requirements)
         self.dimension_names = frozenset(dimension_names)
         self.unresolved_schemes = tuple(sorted(set(unresolved_schemes)))
+        self.provided_standard_names = frozenset(
+            str(name).lower() for name in provided_standard_names
+        )
+        self.fixed_dimensions = {
+            str(name).lower(): int(value)
+            for name, value in (fixed_dimensions or {}).items()
+        }
+        self.namelist_bindings = {
+            str(name).lower(): tuple(bindings)
+            for name, bindings in (namelist_bindings or {}).items()
+        }
 
     @classmethod
     def from_catalog(
@@ -205,6 +241,8 @@ class CCPPStateSchema:
         catalog: DeviceCatalog,
         suite: str,
         schemes: Iterable[str],
+        *,
+        provided_standard_names: Iterable[str] = (),
     ) -> "CCPPStateSchema":
         """Compile a custom suite from cataloged process names."""
 
@@ -218,6 +256,7 @@ class CCPPStateSchema:
             suite,
             active_entries,
             unresolved_schemes=names - set(catalog.entries),
+            provided_standard_names=provided_standard_names,
         )
 
     @classmethod
@@ -227,8 +266,12 @@ class CCPPStateSchema:
         active_entries: Iterable[SchemeCatalogEntry],
         *,
         unresolved_schemes: Iterable[str] = (),
+        provided_standard_names: Iterable[str] = (),
     ) -> "CCPPStateSchema":
+        active_entries = tuple(active_entries)
         arguments: dict[str, list[tuple[str, CatalogArgument]]] = {}
+        namelist_bindings: dict[str, list[NamelistBinding]] = {}
+        namelist_dimension_hints: dict[str, tuple[str, ...]] = {}
         dimension_names: set[str] = {
             "nphys_local",
             "pver",
@@ -241,19 +284,86 @@ class CCPPStateSchema:
                 for argument in endpoint.arguments:
                     if argument.standard_name in _INTERNAL:
                         continue
-                    for expression in argument.dimensions:
-                        dimension = _canonical_dimension(expression)
-                        if (
-                            not dimension.isdigit()
-                            and dimension != "__allocatable__"
-                        ):
-                            dimension_names.add(dimension)
                     arguments.setdefault(
                         argument.standard_name, []
                     ).append((entry.name, argument))
+            for variable in entry.namelist_variables:
+                argument = _namelist_argument(variable)
+                if argument.dimensions and all(
+                    item.isdigit() for item in argument.dimensions
+                ):
+                    namelist_dimension_hints.setdefault(
+                        argument.standard_name, argument.dimensions
+                    )
+                arguments.setdefault(
+                    argument.standard_name, []
+                ).append((entry.name, argument))
+                binding = NamelistBinding(
+                    variable.group,
+                    variable.local_name,
+                    variable.default_value,
+                )
+                bindings = namelist_bindings.setdefault(
+                    variable.standard_name, []
+                )
+                if binding not in bindings:
+                    bindings.append(binding)
 
-        # Dimension standard names are scalar controls supplied directly from
-        # StatePool.dimensions, not separately allocated arrays.
+        # CAM namelist XML gives fixed array extents while scheme metadata
+        # refers to the same extent by a CCPP dimension standard name. Infer
+        # that equivalence from the shared field standard name instead of
+        # maintaining case-specific constants such as gaslist=8.
+        dimension_aliases: dict[str, str] = {}
+        for standard_name, fixed_shape in namelist_dimension_hints.items():
+            for _scheme, argument in arguments.get(standard_name, ()):
+                if len(argument.dimensions) != len(fixed_shape):
+                    continue
+                for expression, fixed in zip(
+                    argument.dimensions, fixed_shape
+                ):
+                    dimension = _canonical_dimension(expression)
+                    if not dimension.isdigit():
+                        previous = dimension_aliases.setdefault(
+                            dimension, fixed
+                        )
+                        if previous != fixed:
+                            raise DeviceContractError(
+                                f"dimension {dimension!r} has conflicting "
+                                f"namelist extents {previous} and {fixed}"
+                            )
+
+        def canonical_dimension(expression: str) -> str:
+            dimension = _canonical_dimension(expression)
+            return dimension_aliases.get(dimension, dimension)
+
+        for values in arguments.values():
+            for _scheme, argument in values:
+                for expression in argument.dimensions:
+                    dimension = canonical_dimension(expression)
+                    if (
+                        not dimension.isdigit()
+                        and dimension != "__allocatable__"
+                    ):
+                        dimension_names.add(dimension)
+
+        # Fixed dimension standard names are scalar controls supplied directly
+        # from StatePool.dimensions.  A dimension that is produced by a scheme
+        # (for example RRTMGP's daytime column count) is different: its
+        # allocated capacity is fixed, but its active extent changes at
+        # runtime, so it must also have a persistent scalar StatePool field.
+        runtime_dimension_standards = {
+            argument.standard_name
+            for values in arguments.values()
+            for _, argument in values
+            if (
+                not argument.dimensions
+                and argument.intent in {"out", "inout"}
+                and _DIMENSION_ALIASES.get(
+                    argument.standard_name, argument.standard_name
+                )
+                in dimension_names
+            )
+        }
         dimension_standards = {
             argument.standard_name
             for values in arguments.values()
@@ -263,7 +373,7 @@ class CCPPStateSchema:
                 argument.standard_name, argument.standard_name
             )
             in dimension_names
-        }
+        } - runtime_dimension_standards
         requirements: dict[str, CCPPFieldRequirement] = {}
         for standard_name, values in arguments.items():
             if standard_name in dimension_standards:
@@ -278,7 +388,7 @@ class CCPPStateSchema:
                     argument.fortran_type,
                     argument.kind,
                     tuple(
-                        _canonical_dimension(item)
+                        canonical_dimension(item)
                         for item in argument.dimensions
                     ),
                     argument.units or "1",
@@ -294,10 +404,16 @@ class CCPPStateSchema:
                 schemes=tuple(sorted(schemes)),
             )
         return cls(
-            suite,
-            requirements,
-            dimension_names,
-            unresolved_schemes,
+            suite=suite,
+            requirements=requirements,
+            dimension_names=dimension_names | set(dimension_aliases),
+            unresolved_schemes=unresolved_schemes,
+            provided_standard_names=provided_standard_names,
+            fixed_dimensions={
+                name: int(value)
+                for name, value in dimension_aliases.items()
+            },
+            namelist_bindings=namelist_bindings,
         )
 
     @property
@@ -329,6 +445,7 @@ class CCPPStateSchema:
         existing: Iterable[FieldContract] | None = None,
         *,
         allow_conversions: bool = False,
+        provided_standard_names: Iterable[str] = (),
     ) -> tuple[FieldContract, ...]:
         existing_contracts = tuple(existing or default_contracts())
         provided = {
@@ -336,6 +453,9 @@ class CCPPStateSchema:
             for item in existing_contracts
             if item.ccpp_standard_name
         }
+        provided.update(
+            str(name).lower() for name in provided_standard_names
+        )
         contracts: list[FieldContract] = []
         errors: list[str] = []
         for name, requirement in sorted(self.requirements.items()):
@@ -357,6 +477,8 @@ class CCPPStateSchema:
 
     def pool_contract_groups(
         self,
+        *,
+        provided_standard_names: Iterable[str] | None = None,
     ) -> tuple[tuple[FieldContract, ...], tuple[FieldContract, ...]]:
         """Compile initialized templates and metadata-generated fields.
 
@@ -372,8 +494,11 @@ class CCPPStateSchema:
         for contract in process_contract_templates():
             standard_name = contract.ccpp_standard_name
             if (
-                standard_name is not None
-                and standard_name.lower() in self.requirements
+                contract.standard_name in _HOST_PHASE_PROCESS_FIELDS
+                or (
+                    standard_name is not None
+                    and standard_name.lower() in self.requirements
+                )
             ):
                 process_fields.append(contract)
         available = [*initialized, *process_fields]
@@ -382,9 +507,17 @@ class CCPPStateSchema:
             for rule in default_alias_rules()
             if rule.ccpp_standard_name is not None
         }
+        alias_standard_names.update(
+            self.provided_standard_names
+            if provided_standard_names is None
+            else (str(name).lower() for name in provided_standard_names)
+        )
         generated = tuple(
             contract
-            for contract in self.additional_contracts(available)
+            for contract in self.additional_contracts(
+                available,
+                provided_standard_names=alias_standard_names,
+            )
             if (
                 contract.ccpp_standard_name is None
                 or contract.ccpp_standard_name.lower()
@@ -414,8 +547,17 @@ class CCPPStateSchema:
             "opaque_field_count": len(self.opaque_fields),
             "conversion_field_count": len(self.conversion_fields),
             "required_dimensions": sorted(self.dimension_names),
+            "fixed_dimensions": dict(sorted(self.fixed_dimensions.items())),
             "opaque_fields": list(self.opaque_fields),
             "conversion_fields": list(self.conversion_fields),
+            "namelist_field_count": len(self.namelist_bindings),
+            "namelist_bindings": {
+                name: [
+                    {"group": item.group, "local_name": item.local_name}
+                    for item in bindings
+                ]
+                for name, bindings in sorted(self.namelist_bindings.items())
+            },
             "unresolved_schemes": list(self.unresolved_schemes),
             "state_pool_field_count": state_pool_field_count,
             "suite_selected_field_count": (
@@ -425,3 +567,40 @@ class CCPPStateSchema:
             ),
             "state_pool_error": state_pool_error,
         }
+
+
+def _namelist_argument(variable: CatalogNamelistVariable) -> CatalogArgument:
+    match = re.fullmatch(
+        r"(char\*([0-9]+)|real|integer|logical)"
+        r"(?:\(([0-9, ]+)\))?",
+        variable.type_spec,
+    )
+    if match is None:
+        raise DeviceContractError(
+            f"unsupported namelist type {variable.type_spec!r} for "
+            f"{variable.local_name!r}"
+        )
+    base = match.group(1)
+    dimensions = tuple(
+        item.strip()
+        for item in (match.group(3) or "").split(",")
+        if item.strip()
+    )
+    if base.startswith("char*"):
+        fortran_type = "character"
+        kind = f"len={match.group(2)}"
+    else:
+        fortran_type = base
+        kind = "kind_phys" if base == "real" else ""
+    return CatalogArgument(
+        local_name=variable.local_name,
+        standard_name=variable.standard_name,
+        fortran_type=fortran_type,
+        kind=kind,
+        dimensions=dimensions,
+        intent="in",
+        units=variable.units,
+        optional=False,
+        allocatable=False,
+        constituent=False,
+    )

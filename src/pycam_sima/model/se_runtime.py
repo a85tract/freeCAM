@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import numpy as np
 
+from .constituents import is_water_vapor, water_constituent_indices
 from .dynamics import (
     _divergence_sphere,
     _edge_sum,
@@ -62,7 +63,10 @@ def _subcell_div_fluxes(pool, contravariant: np.ndarray, metdet: np.ndarray) -> 
     return result
 
 
-def _distribute_corner_flux(corners: np.ndarray, has_diagonal: tuple[bool, bool, bool, bool]) -> np.ndarray:
+def _distribute_corner_flux(
+    corners: np.ndarray,
+    has_diagonal: tuple[bool, bool, bool, bool],
+) -> np.ndarray:
     result = np.zeros((2, 2, 2), dtype=np.float64, order="F")
     outside = corners.shape[0] - 1
     inside = outside - 1
@@ -105,7 +109,12 @@ def _distribute_corner_flux(corners: np.ndarray, has_diagonal: tuple[bool, bool,
     return result
 
 
-def _subcell_dss_fluxes(pool, dss: np.ndarray, metdet: np.ndarray, corner_flux: np.ndarray) -> np.ndarray:
+def _subcell_dss_fluxes(
+    pool,
+    dss: np.ndarray,
+    metdet: np.ndarray,
+    corner_flux: np.ndarray,
+) -> np.ndarray:
     np_value = dss.shape[0]
     nc = pool.get("mapping_subcell_integration").shape[0]
     last = np_value - 1
@@ -324,7 +333,7 @@ def update_time_levels(pool) -> None:
     pool.set("dynamics_internal_step", int(pool.get("dynamics_internal_step")) + 1)
 
 
-def scale_physics_forcing(pool) -> None:
+def scale_physics_forcing(pool, backend=None) -> None:
     """Port the forcing normalization at the start of ``dyn_comp:stepon``.
 
     The PG3-to-GLL coupling boundary stores tracer mixing-ratio adjustments.
@@ -335,7 +344,8 @@ def scale_physics_forcing(pool) -> None:
 
     nlev = pool.dimensions["pver"]
     nelem = pool.dimensions["nelem_local"]
-    nconst = pool.dimensions["nconst"]
+    qsize = pool.dimensions["qsize"]
+    ntrac = pool.dimensions["ntrac"]
     np_value = pool.dimensions["np"]
     nc = pool.dimensions["nc"]
     n0 = int(pool.get("dynamics_time_level_n0"))
@@ -345,23 +355,51 @@ def scale_physics_forcing(pool) -> None:
     fq = pool.get("constituent_forcing")
     dp = pool.get("layer_pressure_thickness")
 
-    # Preserve dyn_comp.F90 loop and expression order: ie,m,k,j,i and
-    # (FQ*rec2dt)*dp.
-    for le in range(nelem):
-        for constituent in range(nconst):
-            for level in range(nlev):
-                for j in range(np_value):
-                    for i in range(np_value):
-                        fq[i, j, level, le, constituent] = np.float64(
-                            np.float64(
-                                fq[i, j, level, le, constituent]
-                                * reciprocal_timestep
+    if backend is not None:
+        packed_forcing = np.empty(
+            (np_value, np_value, nlev, qsize, nelem),
+            dtype=np.float64,
+            order="F",
+        )
+        packed_pressure = np.empty(
+            (np_value, np_value, nlev, nelem),
+            dtype=np.float64,
+            order="F",
+        )
+        for le in range(nelem):
+            packed_pressure[..., le] = dp[..., le, n0]
+            for constituent in range(qsize):
+                packed_forcing[:, :, :, constituent, le] = fq[
+                    :, :, :, le, constituent
+                ]
+        backend.scale_tracer_forcing(
+            reciprocal_timestep=reciprocal_timestep,
+            forcing=packed_forcing,
+            pressure_thickness=packed_pressure,
+        )
+        for le in range(nelem):
+            for constituent in range(qsize):
+                fq[:, :, :, le, constituent] = packed_forcing[
+                    :, :, :, constituent, le
+                ]
+    else:
+        # Preserve dyn_comp.F90 loop and expression order: ie,m,k,j,i and
+        # (FQ*rec2dt)*dp.
+        for le in range(nelem):
+            for constituent in range(qsize):
+                for level in range(nlev):
+                    for j in range(np_value):
+                        for i in range(np_value):
+                            fq[i, j, level, le, constituent] = np.float64(
+                                np.float64(
+                                    fq[i, j, level, le, constituent]
+                                    * reciprocal_timestep
+                                )
+                                * dp[i, j, level, le, n0]
                             )
-                            * dp[i, j, level, le, n0]
-                        )
 
     # The registry and Qdp storage use the same configured constituent order.
-    active_species_order = range(nconst)
+    active_species_order = range(qsize)
     qdp = pool.get("constituent_mass")
     fdp = pool.get("forcing_full_layer_pressure_thickness")
     for le in range(nelem):
@@ -383,7 +421,7 @@ def scale_physics_forcing(pool) -> None:
 
     fc = pool.get("fvm_constituent_mass_forcing")
     for le in range(nelem):
-        for constituent in range(nconst):
+        for constituent in range(ntrac):
             for level in range(nlev):
                 for j in range(nc):
                     for i in range(nc):
@@ -393,14 +431,15 @@ def scale_physics_forcing(pool) -> None:
                         )
 
 
-def apply_cam_forcing(pool, *, nsubstep: int = 1) -> None:
+def apply_cam_forcing(pool, backend=None, *, nsubstep: int = 1) -> None:
     """Port the SE/FVM v1 ``prim_advance_mod:ApplyCAMForcing`` path exactly."""
 
     if int(pool.get("dynamics_forcing_type")) != 2:
         raise RuntimeError("the fixed model requires se_ftype=2")
     nlev = pool.dimensions["pver"]
     nelem = pool.dimensions["nelem_local"]
-    nconst = pool.dimensions["nconst"]
+    qsize = pool.dimensions["qsize"]
+    ntrac = pool.dimensions["ntrac"]
     np_value = pool.dimensions["np"]
     nc = pool.dimensions["nc"]
     nhc = pool.dimensions["nhc"]
@@ -428,28 +467,58 @@ def apply_cam_forcing(pool, *, nsubstep: int = 1) -> None:
     dry_dp = pool.get("layer_pressure_thickness")
     post_physics_dp = pool.get("forcing_full_layer_pressure_thickness")
 
-    for le in range(nelem):
-        # qsize tracer update, preserving q,k,j,i source order.
-        for constituent in range(nconst):
-            for level in range(nlev):
-                for j in range(np_value):
-                    for i in range(np_value):
-                        v1 = np.float64(
-                            dt_local_tracer
-                            * fq[i, j, level, le, constituent]
-                        )
-                        old = qdp[i, j, level, le, constituent, qn0]
-                        if old + v1 < 0.0 and v1 < 0.0:
-                            if old < 0.0:
-                                v1 = np.float64(0.0)
-                            else:
-                                v1 = np.float64(-old)
-                        qdp[i, j, level, le, constituent, qn0] = np.float64(
-                            old + v1
-                        )
+    if backend is not None:
+        packed_qdp = np.empty(
+            (np_value, np_value, nlev, qsize, nelem),
+            dtype=np.float64,
+            order="F",
+        )
+        packed_forcing = np.empty_like(packed_qdp, order="F")
+        for le in range(nelem):
+            for constituent in range(qsize):
+                packed_qdp[:, :, :, constituent, le] = qdp[
+                    :, :, :, le, constituent, qn0
+                ]
+                packed_forcing[:, :, :, constituent, le] = fq[
+                    :, :, :, le, constituent
+                ]
+        backend.apply_tracer_forcing(
+            timestep=dt_local_tracer,
+            qdp=packed_qdp,
+            forcing=packed_forcing,
+        )
+        for le in range(nelem):
+            for constituent in range(qsize):
+                qdp[:, :, :, le, constituent, qn0] = packed_qdp[
+                    :, :, :, constituent, le
+                ]
+    else:
+        for le in range(nelem):
+            # qsize tracer update, preserving q,k,j,i source order.
+            for constituent in range(qsize):
+                for level in range(nlev):
+                    for j in range(np_value):
+                        for i in range(np_value):
+                            v1 = np.float64(
+                                dt_local_tracer
+                                * fq[i, j, level, le, constituent]
+                            )
+                            old = qdp[i, j, level, le, constituent, qn0]
+                            if old + v1 < 0.0 and v1 < 0.0:
+                                if old < 0.0:
+                                    v1 = np.float64(0.0)
+                                else:
+                                    v1 = np.float64(-old)
+                            qdp[
+                                i, j, level, le, constituent, qn0
+                            ] = np.float64(old + v1)
 
+    # Only the compact GLL Qdp update above is delegated to the native
+    # kernel.  CSLAM state and T/U/V remain Python-owned and must be updated
+    # for both paths.
+    for le in range(nelem):
         if dt_local_tracer_fvm > 0.0:
-            for constituent in range(nconst):
+            for constituent in range(ntrac):
                 for level in range(nlev):
                     for j in range(nc):
                         for i in range(nc):
@@ -477,7 +546,7 @@ def apply_cam_forcing(pool, *, nsubstep: int = 1) -> None:
             for j in range(np_value):
                 for i in range(np_value):
                     pdel = np.float64(dry_dp[i, j, level, le, n0])
-                    for constituent in range(nconst):
+                    for constituent in range(qsize):
                         pdel = np.float64(
                             pdel + qdp[i, j, level, le, constituent, qn0]
                         )
@@ -515,11 +584,12 @@ def initialize_prim_step(pool) -> None:
     pool.get("pressure_at_step_start")[...] = pool.get("layer_pressure_thickness")[..., n0]
 
 
-def _thermodynamic_coefficients(pool, n0: int, qn0: int):
+def _thermodynamic_coefficients(pool, n0: int, qn0: int, backend=None):
     """Port the active-water subset of CAM's thermodynamic helper calls."""
 
     dp_dry = pool.get("layer_pressure_thickness")[..., n0]
-    qdp = pool.get("constituent_mass")[..., : pool.dimensions["nconst"], qn0]
+    constituent_mass = pool.get("constituent_mass")[..., qn0]
+    qdp = constituent_mass[..., : pool.dimensions["qsize"]]
     qwater = pool.get("rk_water_mixing_ratio")
     sum_water = np.empty_like(dp_dry, order="F")
     inv_cp = pool.get("rk_inverse_heat_capacity")
@@ -530,24 +600,49 @@ def _thermodynamic_coefficients(pool, n0: int, qn0: int):
     cpwv = np.float64(pool.get("water_vapor_specific_heat"))
     cpliq = np.float64(pool.get("liquid_water_specific_heat"))
     np_value = pool.dimensions["np"]
-    nconst = pool.dimensions["nconst"]
+    thermodynamic_indices = water_constituent_indices(
+        pool.constituent_names
+    )
+    qsize = pool.dimensions["qsize"]
+    if backend is not None:
+        backend.prepare_qwater(
+            constituent_mass=constituent_mass,
+            pressure_thickness=dp_dry,
+            qwater=qwater,
+            qsize=qsize,
+        )
+    else:
+        qwater[...] = np.float64(0.0)
+        for le in range(pool.dimensions["nelem_local"]):
+            for k in range(pool.dimensions["pver"]):
+                for j in range(np_value):
+                    for i in range(np_value):
+                        for constituent in range(qsize):
+                            qwater[i, j, k, le, constituent] = np.float64(
+                                qdp[i, j, k, le, constituent]
+                                / dp_dry[i, j, k, le]
+                            )
     for le in range(pool.dimensions["nelem_local"]):
         for k in range(pool.dimensions["pver"]):
             for j in range(np_value):
                 for i in range(np_value):
-                    for constituent in range(nconst):
-                        qwater[i, j, k, le, constituent] = np.float64(
-                            qdp[i, j, k, le, constituent] / dp_dry[i, j, k, le]
-                        )
                     species_sum = np.float64(1.0)
-                    for constituent in range(nconst):
+                    for constituent in range(qsize):
                         species_sum = np.float64(
                             species_sum + qwater[i, j, k, le, constituent]
                         )
                     sum_water[i, j, k, le] = species_sum
                     heat_sum = cpair
-                    for constituent in range(nconst):
-                        specific_heat = cpwv if constituent == 2 else cpliq
+                    for constituent in range(qsize):
+                        specific_heat = (
+                            cpwv
+                            if is_water_vapor(
+                                pool.constituent_names[
+                                    thermodynamic_indices[constituent]
+                                ]
+                            )
+                            else cpliq
+                        )
                         heat_sum = np.float64(
                             heat_sum
                             + np.float64(
@@ -575,7 +670,21 @@ def _hydrostatic_state(
     nlev = pool.dimensions["pver"]
     nelem = pool.dimensions["nelem_local"]
     np_value = pool.dimensions["np"]
-    nconst = pool.dimensions["nconst"]
+    thermodynamic_indices = water_constituent_indices(
+        pool.constituent_names
+    )
+    vapor_indexes = tuple(
+        packed_index
+        for packed_index, constituent_index in enumerate(
+            thermodynamic_indices
+        )
+        if is_water_vapor(
+            pool.constituent_names[constituent_index]
+        )
+    )
+    if len(vapor_indexes) > 1:
+        raise ValueError("constituent registry contains multiple water vapors")
+    vapor_index = vapor_indexes[0] if vapor_indexes else None
     virtual_temperature = np.empty_like(dp_dry, order="F")
     pressure = np.empty_like(dp_dry, order="F")
     geopotential = np.empty_like(dp_dry, order="F")
@@ -588,8 +697,8 @@ def _hydrostatic_state(
             for j in range(np_value):
                 for i in range(np_value):
                     qv = (
-                        qwater[i, j, k, le, 2]
-                        if nconst > 2
+                        qwater[i, j, k, le, vapor_index]
+                        if vapor_index is not None
                         else np.float64(0.0)
                     )
                     gas_sum = rair
@@ -851,7 +960,9 @@ def compute_and_apply_rhs(
             nc = pool.dimensions["nc"]
             for k in range(nlev):
                 contravariant = np.empty(
-                    (np_value, np_value, 2), dtype=np.float64, order="F"
+                    (np_value, np_value, 2),
+                    dtype=np.float64,
+                    order="F",
                 )
                 for j in range(np_value):
                     for i in range(np_value):
@@ -871,7 +982,9 @@ def compute_and_apply_rhs(
                             np.float64(dinv[1, 0, i, j] * dry_u)
                             + np.float64(dinv[1, 1, i, j] * dry_v)
                         )
-                flux = _subcell_div_fluxes(pool, contravariant, metdet)
+                flux = _subcell_div_fluxes(
+                    pool, contravariant, metdet
+                )
                 for edge in range(4):
                     for j in range(nc):
                         for i in range(nc):
@@ -936,7 +1049,9 @@ def compute_and_apply_rhs(
                             dp[i, j, k, le, output_level] - stash
                         )
                         dss[i, j] = np.float64(dss[i, j] / dt2)
-                flux = _subcell_dss_fluxes(pool, dss, metdet, corner_flux)
+                flux = _subcell_dss_fluxes(
+                    pool, dss, metdet, corner_flux
+                )
                 for edge in range(4):
                     for j in range(nc):
                         for i in range(nc):
@@ -1052,7 +1167,9 @@ def _hypervis_dss_update(
                         pressure[i, j, k, le, time_level] - before_dss
                     )
                     dss[i, j] = np.float64(dss[i, j] / dt)
-            flux = _subcell_dss_fluxes(pool, dss, metdet, corner_flux)
+            flux = _subcell_dss_fluxes(
+                pool, dss, metdet, corner_flux
+            )
             for edge in range(4):
                 for j in range(nc):
                     for i in range(nc):
@@ -1066,15 +1183,28 @@ def _hypervis_dss_update(
             k = level_offset + local_k
             for j in range(np_value):
                 for i in range(np_value):
-                    old_u = zonal[i, j, k, le, time_level]
-                    old_v = meridional[i, j, k, le, time_level]
-                    new_u = np.float64(old_u + zonal_tendency[i, j, local_k, le])
-                    new_v = np.float64(old_v + meridional_tendency[i, j, local_k, le])
+                    new_u = np.float64(
+                        zonal[i, j, k, le, time_level]
+                        + zonal_tendency[i, j, local_k, le]
+                    )
+                    new_v = np.float64(
+                        meridional[i, j, k, le, time_level]
+                        + meridional_tendency[i, j, local_k, le]
+                    )
                     zonal[i, j, k, le, time_level] = new_u
                     meridional[i, j, k, le, time_level] = new_v
                     temperature[i, j, k, le, time_level] = np.float64(
                         temperature[i, j, k, le, time_level]
                         + temperature_tendency[i, j, local_k, le]
+                    )
+                    # Preserve CAM's source order: the pre-update velocity is
+                    # reconstructed from the rounded updated velocity, rather
+                    # than retained in a Python temporary.
+                    old_u = np.float64(
+                        new_u - zonal_tendency[i, j, local_k, le]
+                    )
+                    old_v = np.float64(
+                        new_v - meridional_tendency[i, j, local_k, le]
                     )
                     heating = np.float64(
                         np.float64(0.5)
@@ -1103,7 +1233,7 @@ def advance_hyperviscosity(pool, comm, backend) -> None:
     n0 = int(pool.get("dynamics_time_level_n0"))
     qn0, _ = tracer_time_levels(pool)
     _qwater, _sum_water, inverse_cp, _kappa, rair, _rh2o, cpair = (
-        _thermodynamic_coefficients(pool, n0, qn0)
+        _thermodynamic_coefficients(pool, n0, qn0, backend)
     )
     inverse_radius = np.float64(1.0) / np.float64(pool.get("earth_radius"))
     dvv = pool.get("gll_derivative")
@@ -1289,7 +1419,6 @@ def advance_hyperviscosity(pool, comm, backend) -> None:
             vector=normalized_vector,
             output=second_vector,
         )
-
         for le in range(nelem):
             for k in range(nlev):
                 for j in range(np_value):
@@ -1506,7 +1635,7 @@ def _tracer_biharmonic(pool, comm, backend, scalar: np.ndarray) -> np.ndarray:
     """Return the weak biharmonic of all tracer fields."""
 
     nlev = pool.dimensions["pver"]
-    nq = pool.dimensions["nconst"]
+    nq = pool.dimensions["qsize"]
     nelem = pool.dimensions["nelem_local"]
     np_value = pool.dimensions["np"]
     packed = np.empty(
@@ -1550,7 +1679,7 @@ def _euler_tracer_stage(pool, comm, backend, *, source_level, output_level, dt, 
     """Port one limiter-8 ``euler_step`` from SE tracer advection."""
 
     nlev = pool.dimensions["pver"]
-    nq = pool.dimensions["nconst"]
+    nq = pool.dimensions["qsize"]
     nelem = pool.dimensions["nelem_local"]
     np_value = pool.dimensions["np"]
     pressure_start = pool.get("pressure_at_step_start")
@@ -1581,7 +1710,7 @@ def _euler_tracer_stage(pool, comm, backend, *, source_level, output_level, dt, 
                         mixing[i, j, k, q, le] = np.float64(
                             qdp[i, j, k, le, q, source_level]
                             / stage_dp[i, j, k, le]
-                        )
+    )
     for le in range(nelem):
         for q in range(nq):
             for k in range(nlev):
@@ -1660,24 +1789,39 @@ def _euler_tracer_stage(pool, comm, backend, *, source_level, output_level, dt, 
                             / pool.get("spectral_mass_matrix")[i, j, le]
                         )
                     ) if rhs_multiplier == 2 else np.float64(
-                        stage_dp[i, j, k, le] - np.float64(dt * divdp[i, j, k, le])
+                        stage_dp[i, j, k, le] - np.float64(
+                            dt * divdp[i, j, k, le]
+                        )
                     )
             for q in range(nq):
                 flux = np.empty(
-                    (np_value, np_value, 2), dtype=np.float64, order="F"
+                    (np_value, np_value, 2),
+                    dtype=np.float64,
+                    order="F",
                 )
                 for j in range(np_value):
                     for i in range(np_value):
                         flux[i, j, 0] = np.float64(
-                            np.float64(vn0[i, j, 0, k, le] / stage_dp[i, j, k, le])
+                            np.float64(
+                                vn0[i, j, 0, k, le]
+                                / stage_dp[i, j, k, le]
+                            )
                             * qdp[i, j, k, le, q, source_level]
                         )
                         flux[i, j, 1] = np.float64(
-                            np.float64(vn0[i, j, 1, k, le] / stage_dp[i, j, k, le])
+                            np.float64(
+                                vn0[i, j, 1, k, le]
+                                / stage_dp[i, j, k, le]
+                            )
                             * qdp[i, j, k, le, q, source_level]
                         )
                 divergence = _divergence_sphere(
-                    flux, dvv, dinv, metdet, rmetdet, inverse_radius
+                    flux,
+                    dvv,
+                    dinv,
+                    metdet,
+                    rmetdet,
+                    inverse_radius,
                 )
                 for j in range(np_value):
                     for i in range(np_value):
@@ -1735,8 +1879,6 @@ def _euler_tracer_stage(pool, comm, backend, *, source_level, output_level, dt, 
                         dss_field[i, j, k, le] = np.float64(
                             inverse_mass[i, j] * assembled[i, j, k, nq, le]
                         )
-
-
 def advance_se_tracers(pool, comm, backend) -> None:
     """Run the configured limiter-8 three-stage SE tracer advection."""
 
@@ -1764,7 +1906,7 @@ def advance_se_tracers(pool, comm, backend) -> None:
     qdp = pool.get("constituent_mass")
     reciprocal_stage = np.float64(1.0) / np.float64(3.0)
     for le in range(nelem):
-        for q in range(pool.dimensions["nconst"]):
+        for q in range(pool.dimensions["qsize"]):
             for k in range(nlev):
                 for j in range(np_value):
                     for i in range(np_value):
@@ -1784,7 +1926,10 @@ def vertical_remap_se(pool, backend) -> None:
     """Remap the Python-owned SE state back to configured hybrid eta levels."""
 
     nlev = pool.dimensions["pver"]
-    nconst = pool.dimensions["nconst"]
+    qsize = pool.dimensions["qsize"]
+    thermodynamic_indices = water_constituent_indices(
+        pool.constituent_names
+    )
     np_value = pool.dimensions["np"]
     np1 = int(pool.get("dynamics_time_level_np1"))
     _n0_qdp, np1_qdp = tracer_time_levels(pool)
@@ -1797,8 +1942,16 @@ def vertical_remap_se(pool, backend) -> None:
     cp_liquid = np.float64(pool.get("liquid_water_specific_heat"))
     cp_vapor = np.float64(pool.get("water_vapor_specific_heat"))
     cp = tuple(
-        cp_vapor if constituent == 2 else cp_liquid
-        for constituent in range(nconst)
+        (
+            cp_vapor
+            if is_water_vapor(
+                pool.constituent_names[
+                    thermodynamic_indices[constituent]
+                ]
+            )
+            else cp_liquid
+        )
+        for constituent in range(qsize)
     )
     cpair = np.float64(pool.get("dry_air_specific_heat"))
     pressure = pool.get("layer_pressure_thickness")
@@ -1807,6 +1960,24 @@ def vertical_remap_se(pool, backend) -> None:
     meridional = pool.get("meridional_wind")
     qdp = pool.get("constituent_mass")
     psdry = pool.get("surface_dry_air_pressure")
+    reference_pressure = np.empty(
+        (
+            np_value,
+            np_value,
+            nlev,
+            pool.dimensions["nelem_local"],
+        ),
+        dtype=np.float64,
+        order="F",
+    )
+    backend.reference_pressure_thickness(
+        hybrid_a_interface=hyai,
+        hybrid_b_interface=hybi,
+        reference_pressure=ps0,
+        source_pressure_thickness=pressure[:, :, :, :, np1],
+        surface_dry_air_pressure=psdry,
+        pressure_thickness=reference_pressure,
+    )
 
     for le in range(pool.dimensions["nelem_local"]):
         source_dry = np.array(
@@ -1816,7 +1987,7 @@ def vertical_remap_se(pool, backend) -> None:
         source_moist = np.empty_like(source_dry, order="F")
         target_moist = np.empty_like(source_dry, order="F")
         tracer = np.empty(
-            (np_value, np_value, nlev, nconst),
+            (np_value, np_value, nlev, qsize),
             dtype=np.float64,
             order="F",
         )
@@ -1828,18 +1999,13 @@ def vertical_remap_se(pool, backend) -> None:
             (np_value, np_value, nlev, 1), dtype=np.float64, order="F"
         )
 
+        target_dry[...] = reference_pressure[..., le]
         for k in range(nlev):
-            delta_a = np.float64(hyai[k + 1] - hyai[k])
-            delta_b = np.float64(hybi[k + 1] - hybi[k])
             for j in range(np_value):
                 for i in range(np_value):
-                    target_dry[i, j, k] = np.float64(
-                        np.float64(delta_a * ps0)
-                        + np.float64(delta_b * psdry[i, j, le])
-                    )
                     source_moist[i, j, k] = source_dry[i, j, k]
                     heat = np.float64(cpair * source_dry[i, j, k])
-                    for q in range(nconst):
+                    for q in range(qsize):
                         value = qdp[i, j, k, le, q, np1_qdp]
                         tracer[i, j, k, q] = value
                         source_moist[i, j, k] = np.float64(
@@ -1864,7 +2030,7 @@ def vertical_remap_se(pool, backend) -> None:
                     pressure[i, j, k, le, np1] = target_dry[i, j, k]
                     target_moist[i, j, k] = target_dry[i, j, k]
                     heat = np.float64(cpair * target_dry[i, j, k])
-                    for q in range(nconst):
+                    for q in range(qsize):
                         value = tracer[i, j, k, q]
                         qdp[i, j, k, le, q, np1_qdp] = value
                         target_moist[i, j, k] = np.float64(
@@ -1914,7 +2080,7 @@ def vertical_remap_fvm(pool, backend) -> None:
     """Remap Python-owned FVM tracers to configured hybrid eta levels."""
 
     nlev = pool.dimensions["pver"]
-    ntrac = pool.dimensions["nconst"]
+    ntrac = pool.dimensions["ntrac"]
     nc = pool.dimensions["nc"]
     nhc = pool.dimensions["nhc"]
     interior = slice(nhc, nhc + nc)
@@ -1938,7 +2104,7 @@ def vertical_remap_fvm(pool, backend) -> None:
         )
         target = np.empty_like(source, order="F")
         tracer = np.array(
-            tracer_state[interior, interior, :, le, :],
+            tracer_state[interior, interior, :, le, :ntrac],
             dtype=np.float64,
             order="F",
             copy=True,
@@ -1975,7 +2141,7 @@ def advance_fvm_tracers(pool, comm, backend) -> None:
 
     nelem = pool.dimensions["nelem_local"]
     nlev = pool.dimensions["pver"]
-    ntrac = pool.dimensions["nconst"]
+    ntrac = pool.dimensions["ntrac"]
     nc = pool.dimensions["nc"]
     halo_width = pool.dimensions["fvm_halo"]
     internal_width = pool.dimensions["fvm_internal"]
@@ -2031,6 +2197,14 @@ def advance_fvm_tracers(pool, comm, backend) -> None:
         dp = np.array(halo[:, :, :, 0, le], dtype=np.float64, order="F", copy=True)
         for k in range(nlev):
             dp[:, :, k] = np.float64(dp[:, :, k] * inverse_reference[k])
+        # CAM's ghost exchange leaves the nonexistent cubed-sphere corner
+        # cells at the fixed sentinel value.  They must not be normalized:
+        # reconstruction uses their exact sentinel to recognize that the
+        # corresponding cross-panel stencil does not exist.
+        for j in range(halo_width):
+            for i in range(halo_width):
+                if schedule[i, j, le] <= 0:
+                    dp[i, j, :] = np.float64(1.11e100)
         prepared_tracer[:, :, :, :, le] = halo[
             :, :, :, 1 : ntrac + 1, le
         ]
@@ -2068,7 +2242,14 @@ def advance_fvm_tracers(pool, comm, backend) -> None:
                 transformed_flux[:, :, k, edge, le] = swept_local[:, :, edge, k]
 
     flux_halo = gather_physgrid_halo(pool, comm, transformed_flux)
-
+    # The original ``se_flux`` allocation retains the edge-buffer sentinel in
+    # nonexistent corner cells; ``ghost_flux_unpack`` subsequently zeros the
+    # same cells inside the native kernel.
+    for le in range(nelem):
+        for j in range(halo_width):
+            for i in range(halo_width):
+                if schedule[i, j, le] <= 0:
+                    flux_halo[i, j, :, :, le] = np.float64(1.11e100)
     for le in range(nelem):
         inverse_reference = pool.get("fvm_inverse_reference_pressure_thickness")[:, le]
         dp = np.array(
@@ -2141,14 +2322,77 @@ def advance_fvm_tracers(pool, comm, backend) -> None:
         )
         pool.get("subelement_mass_flux")[:, :, :, :, le] = subflux
         dp_state[:, :, :, le] = dp
-        tracer_state[:, :, :, le, :] = tracer
+        tracer_state[:, :, :, le, :ntrac] = tracer
         pool.get("fvm_swept_flux")[:, :, :, :, le] = swept
-        for j in range(nc):
-            for i in range(nc):
-                value = ptop
-                for k in range(nlev):
-                    value = np.float64(value + dp[i + nhc, j + nhc, k])
-                pool.get("fvm_surface_dry_air_pressure")[i, j, le] = value
+
+    # ``run_consistent_se_cslam`` performs a second ``fill_halo_fvm`` after
+    # swept-flux reconstruction and immediately before its large-Courant
+    # correction.  The native device is deliberately MPI-free, so its first
+    # stage stops at that exact boundary.  Exchange the newly updated mass
+    # fields here, then let the second native stage preserve the original
+    # Fortran arithmetic for the correction and mixing-ratio conversion.
+    post_swept_local = np.empty(
+        (nc, nc, nlev, ntrac + 1, nelem),
+        dtype=np.float64,
+        order="F",
+    )
+    for le in range(nelem):
+        post_swept_local[:, :, :, 0, le] = dp_state[
+            interior, interior, :, le
+        ]
+        for q in range(ntrac):
+            post_swept_local[:, :, :, q + 1, le] = tracer_state[
+                interior, interior, :, le, q
+            ]
+    post_swept_halo = gather_physgrid_halo(pool, comm, post_swept_local)
+    for le in range(nelem):
+        for j in range(halo_width):
+            for i in range(halo_width):
+                if schedule[i, j, le] <= 0:
+                    post_swept_halo[i, j, :, :, le] = np.float64(
+                        1.11e100
+                    )
+    for le in range(nelem):
+        dp = np.array(
+            dp_state[:, :, :, le],
+            dtype=np.float64,
+            order="F",
+            copy=True,
+        )
+        tracer = np.array(
+            tracer_state[:, :, :, le, :ntrac],
+            dtype=np.float64,
+            order="F",
+            copy=True,
+        )
+        dp[...] = post_swept_halo[:, :, :, 0, le]
+        tracer[...] = post_swept_halo[
+            :, :, :, 1 : ntrac + 1, le
+        ]
+        swept = np.array(
+            pool.get("fvm_swept_flux")[:, :, :, :, le],
+            dtype=np.float64,
+            order="F",
+            copy=True,
+        )
+        surface = np.empty((nc, nc), dtype=np.float64, order="F")
+        backend.fvm_large_courant_finalize(
+            config=kernel_config,
+            tracer=tracer,
+            pressure_thickness=dp,
+            swept_flux=swept,
+            reference_pressure_thickness=pool.get(
+                "fvm_reference_pressure_thickness"
+            )[:, le],
+            inverse_cell_area=pool.get("fvm_inverse_cell_area")[:, :, le],
+            surface_pressure=surface,
+            pressure_top=ptop,
+        )
+        dp_state[:, :, :, le] = dp
+        tracer_state[:, :, :, le, :ntrac] = tracer
+        pool.get("fvm_swept_flux")[:, :, :, :, le] = swept
+        pool.get("subelement_mass_flux")[:, :, :, :, le] = 0.0
+        pool.get("fvm_surface_dry_air_pressure")[:, :, le] = surface
     pool.assert_pointer_stability(before)
 
 
@@ -2178,7 +2422,7 @@ def prim_advance_type4_rk(pool, comm, backend) -> None:
     qn0, _ = tracer_time_levels(pool)
     np_value = pool.dimensions["np"]
     qwater, sum_water, inv_cp, kappa, rair, rh2o, cpair = _thermodynamic_coefficients(
-        pool, n0, qn0
+        pool, n0, qn0, backend
     )
     dt = np.float64(pool.get("dynamics_timestep"))
     common = dict(
@@ -2229,7 +2473,7 @@ def prim_advance_first_rhs(pool, comm, backend) -> None:
     n0 = int(pool.get("dynamics_time_level_n0"))
     qn0, _ = tracer_time_levels(pool)
     qwater, sum_water, inv_cp, kappa, rair, rh2o, cpair = _thermodynamic_coefficients(
-        pool, n0, qn0
+        pool, n0, qn0, backend
     )
     compute_and_apply_rhs(
         pool,

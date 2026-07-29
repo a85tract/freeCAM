@@ -35,6 +35,9 @@ HISTORY_FIELDS = (
     ("Q", "physics_water_vapor"),
     ("CLDLIQ", "physics_cloud_liquid_water"),
     ("RAINQM", "physics_rain_water"),
+    ("TTEND", "physics_air_temperature_tendency"),
+    ("UTEND", "physics_zonal_wind_tendency"),
+    ("VTEND", "physics_meridional_wind_tendency"),
 )
 
 
@@ -49,6 +52,28 @@ class HistoryWriter:
     ):
         self.output_dir, self.case_name, self.comm = Path(output_dir), case_name, comm
         self.config = config
+        self._captured_fields: dict[str, np.ndarray] = {}
+
+    def capture(
+        self,
+        pool,
+        fields: tuple[tuple[str, str], ...],
+        *,
+        reset: bool = False,
+    ) -> None:
+        """Retain rank-local diagnostics until the next history write."""
+
+        captured: dict[str, np.ndarray] = {}
+        for output_name, state_name in fields:
+            try:
+                values = pool.get(state_name)
+            except KeyError:
+                continue
+            captured[output_name] = np.ascontiguousarray(values).copy()
+        if reset:
+            self._captured_fields = captured
+        else:
+            self._captured_fields.update(captured)
 
     def write(self, pool, clock) -> Path | None:
         ids = pool.get("physics_global_column").reshape(-1, order="F").copy()
@@ -60,7 +85,9 @@ class HistoryWriter:
         }
         for output_name, state_name in HISTORY_FIELDS:
             try:
-                value = pool.get(state_name)
+                value = self._captured_fields.get(
+                    output_name, pool.get(state_name)
+                )
             except KeyError:
                 # Reduced-constituent and non-Kessler suites do not
                 # necessarily expose all three moist-species aliases.  The
@@ -195,4 +222,5 @@ class HistoryWriter:
                 }
             )
         pool.get("history_sample_count")[...] += 1
+        self._captured_fields.clear()
         return path

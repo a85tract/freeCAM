@@ -25,11 +25,14 @@ from .model.checkpoint import CHECKPOINT_SCHEMA_VERSION
 from .model.device_codegen import (
     DeviceDescription,
     build_device,
+    build_device_bundle,
     resolve_source_closure,
 )
 from .model.device_catalog import DeviceCatalog
 from .model.device_support import DeviceSupportMatrix
 from .model.errors import DeviceBuildError
+from .model.host_services import is_python_host_service_scheme
+from .model.orbital_service import build_orbital_host_library
 from .model.validation import compare_history_directories
 
 
@@ -233,6 +236,32 @@ def command_build_device(args: argparse.Namespace) -> int:
     return 0
 
 
+def command_build_device_bundle(args: argparse.Namespace) -> int:
+    output_root = Path(
+        args.output_root or _repo_root() / "build/catalog_devices"
+    )
+    manifests = build_device_bundle(
+        args.descriptors,
+        project_root=_repo_root(),
+        output_root=output_root,
+        compiler=args.compiler,
+        fflags=shlex.split(args.fflags),
+        ldflags=shlex.split(args.ldflags),
+        bundle_name=args.name,
+    )
+    print(
+        json.dumps(
+            {
+                "bundle": args.name,
+                "device_count": len(manifests),
+                "output_root": str(output_root.resolve()),
+            },
+            sort_keys=True,
+        )
+    )
+    return 0
+
+
 def command_audit_devices(args: argparse.Namespace) -> int:
     catalog = DeviceCatalog.discover(_repo_root())
     payload = catalog.machine_record()
@@ -277,29 +306,91 @@ def command_build_catalog_devices(args: argparse.Namespace) -> int:
     output_root = Path(
         args.output_root or root / "build/catalog_devices"
     ).resolve()
-    candidates = [
-        entry
-        for entry in catalog.entries.values()
-        if not entry.blockers
-        and not entry.unresolved_modules
-    ]
-    selected = []
+    selected: list[tuple[object, DeviceDescription]] = []
     dependency_blocked: list[dict[str, str]] = []
-    for entry in sorted(candidates, key=lambda item: item.name):
+    candidates = []
+    for entry in sorted(catalog.entries.values(), key=lambda item: item.name):
+        if is_python_host_service_scheme(entry):
+            continue
         descriptor = descriptor_root / entry.name / "device.yaml"
         try:
-            resolve_source_closure(
-                DeviceDescription.from_yaml(
-                    descriptor, project_root=root
-                )
+            description = DeviceDescription.from_yaml(
+                descriptor, project_root=root
             )
-            selected.append(entry)
+            blockers = list(entry.blockers)
+            if description.host_entrypoints:
+                host_tables = {
+                    endpoint.table
+                    for endpoint in entry.entrypoints
+                    if endpoint.phase in description.host_entrypoints
+                }
+                blockers = [
+                    blocker
+                    for blocker in blockers
+                    if not any(
+                        f"{table}." in blocker for table in host_tables
+                    )
+                ]
+            unresolved = set(entry.unresolved_modules)
+            unresolved -= set(description.external_modules)
+            if blockers or unresolved:
+                continue
+            candidates.append(entry)
+            resolve_source_closure(description)
+            selected.append((entry, description))
         except DeviceBuildError as exc:
             dependency_blocked.append(
                 {"name": entry.name, "reason": str(exc)}
             )
     results: list[dict[str, object]] = []
-    for entry in sorted(selected, key=lambda item: item.name):
+    core = [
+        (entry, description)
+        for entry, description in selected
+        if not description.external_modules
+    ]
+    external = [
+        (entry, description)
+        for entry, description in selected
+        if description.external_modules
+    ]
+    try:
+        core_manifests = build_device_bundle(
+            [
+                descriptor_root / entry.name / "device.yaml"
+                for entry, _description in core
+            ],
+            project_root=root,
+            output_root=output_root,
+            compiler=args.compiler,
+            fflags=shlex.split(args.fflags),
+            ldflags=shlex.split(args.ldflags),
+            bundle_name="cam-sima-core",
+        )
+        manifest_by_name = {
+            manifest.parent.name: manifest for manifest in core_manifests
+        }
+        for entry, _description in core:
+            manifest = manifest_by_name[entry.name]
+            results.append(
+                {
+                    "name": entry.name,
+                    "status": "built",
+                    "build_mode": "shared-module-state-bundle",
+                    "manifest": str(manifest.relative_to(root)),
+                }
+            )
+    except DeviceBuildError as exc:
+        for entry, _description in core:
+            results.append(
+                {
+                    "name": entry.name,
+                    "status": "failed",
+                    "build_mode": "shared-module-state-bundle",
+                    "error": str(exc),
+                }
+            )
+
+    for entry, _description in external:
         try:
             manifest = build_device(
                 descriptor_root / entry.name / "device.yaml",
@@ -313,6 +404,7 @@ def command_build_catalog_devices(args: argparse.Namespace) -> int:
                 {
                     "name": entry.name,
                     "status": "built",
+                    "build_mode": "external-library-device",
                     "manifest": str(manifest.relative_to(root)),
                 }
             )
@@ -321,9 +413,16 @@ def command_build_catalog_devices(args: argparse.Namespace) -> int:
                 {
                     "name": entry.name,
                     "status": "failed",
+                    "build_mode": "external-library-device",
                     "error": str(exc),
                 }
             )
+    orbital_library = build_orbital_host_library(
+        root,
+        compiler=args.compiler,
+        fflags=shlex.split(args.fflags),
+        ldflags=shlex.split(args.ldflags),
+    )
     report = {
         "schema_version": 1,
         "source_revision": catalog.source_revision,
@@ -335,8 +434,11 @@ def command_build_catalog_devices(args: argparse.Namespace) -> int:
         "dependency_blocked": len(dependency_blocked),
         "dependency_blockers": dependency_blocked,
         "attempted": len(results),
+        "bundled": len(core),
+        "external_library_devices": len(external),
         "built": sum(item["status"] == "built" for item in results),
         "failed": sum(item["status"] == "failed" for item in results),
+        "orbital_host_library": str(orbital_library.relative_to(root)),
         "results": results,
     }
     report_path = Path(
@@ -377,11 +479,21 @@ def command_scheme_status(args: argparse.Namespace) -> int:
 
 
 def command_compare_history(args: argparse.Namespace) -> int:
+    fields = (
+        tuple(item.strip() for item in args.fields.split(",") if item.strip())
+        if args.fields
+        else None
+    )
     compare_history_directories(
         args.reference_dir,
         args.candidate_dir,
         expected_files=args.files,
-        expected_numeric_variables=args.numeric_variables,
+        expected_numeric_variables=(
+            args.numeric_variables
+            if args.numeric_variables is not None
+            else (None if fields is not None else 26)
+        ),
+        **({"fields": fields} if fields is not None else {}),
     )
     print("BFB")
     return 0
@@ -455,15 +567,39 @@ def main() -> int:
     device.add_argument(
         "--fflags",
         default=(
-            "-O2 -march=znver3 -fPIC -ffp-contract=off -fno-fast-math "
-            "-ffree-line-length-none -cpp "
-            "-DUSE_CONTIGUOUS=contiguous,"
+            "-O2 -march=znver3 -fPIC -ffp-contract=off "
+            "-ffree-line-length-none -cpp -DUSE_CONTIGUOUS="
         ),
     )
     device.add_argument(
         "--ldflags", default="-Wl,--as-needed -Wl,--no-undefined"
     )
     device.set_defaults(func=command_build_device)
+
+    bundle = sub.add_parser(
+        "build-device-bundle",
+        help=(
+            "link multiple generated connectors into one shared Fortran "
+            "module namespace"
+        ),
+    )
+    bundle.add_argument("descriptors", nargs="+")
+    bundle.add_argument("--output-root")
+    bundle.add_argument("--name", default="catalog")
+    bundle.add_argument(
+        "--compiler", default="/opt/cray/pe/gcc/12.2.0/bin/gfortran"
+    )
+    bundle.add_argument(
+        "--fflags",
+        default=(
+            "-O2 -march=znver3 -fPIC -ffp-contract=off "
+            "-ffree-line-length-none -cpp -DUSE_CONTIGUOUS="
+        ),
+    )
+    bundle.add_argument(
+        "--ldflags", default="-Wl,--as-needed -Wl,--no-undefined"
+    )
+    bundle.set_defaults(func=command_build_device_bundle)
 
     audit = sub.add_parser(
         "audit-devices",
@@ -494,9 +630,8 @@ def main() -> int:
     catalog_build.add_argument(
         "--fflags",
         default=(
-            "-O2 -march=znver3 -fPIC -ffp-contract=off -fno-fast-math "
-            "-ffree-line-length-none -cpp "
-            "-DUSE_CONTIGUOUS=contiguous,"
+            "-O2 -march=znver3 -fPIC -ffp-contract=off "
+            "-ffree-line-length-none -cpp -DUSE_CONTIGUOUS="
         ),
     )
     catalog_build.add_argument(
@@ -515,7 +650,14 @@ def main() -> int:
     compare.add_argument("reference_dir")
     compare.add_argument("candidate_dir")
     compare.add_argument("--files", type=int, default=51)
-    compare.add_argument("--numeric-variables", type=int, default=26)
+    compare.add_argument("--numeric-variables", type=int)
+    compare.add_argument(
+        "--fields",
+        help=(
+            "comma-separated scientific history fields; omitted keeps the "
+            "fixed 26-field FKESSLER gate"
+        ),
+    )
     compare.set_defaults(func=command_compare_history)
 
     pool_worker = sub.add_parser(

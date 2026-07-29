@@ -35,14 +35,20 @@ providers:
   cam_abortutils: native/devices/support/cam_abortutils.F90
   cam_logfile: native/devices/support/cam_logfile.F90
   ccpp_kinds: native/devices/support/ccpp_kinds.F90
+  ccpp_io_reader: native/devices/support/ccpp_io_reader.F90
+  ccpp_scheme_utils: native/devices/support/ccpp_scheme_utils.F90
+  cam_time_coord: native/devices/support/cam_time_coord.F90
   error_messages: native/devices/support/error_messages.F90
   physconst: native/devices/support/physconst.F90
+  ppgrid: native/devices/support/ppgrid.F90
   ref_pres: native/devices/support/ref_pres.F90
   shr_kind_mod: native/devices/support/shr_kind_mod.F90
   shr_log_mod: native/devices/support/shr_log_mod.F90
   shr_assert_mod: native/devices/support/shr_assert_mod.F90
   shr_sys_mod: native/devices/support/shr_sys_mod.F90
   spmd_utils: native/devices/support/spmd_utils.F90
+extra_exports:
+- pycam_ccpp_scheme_registry_initialize_v1
 auto_dependencies: true
 state_policy: stateless
 dimension_bindings:

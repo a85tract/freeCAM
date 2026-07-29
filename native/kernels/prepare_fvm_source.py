@@ -20,7 +20,32 @@ def main() -> None:
         raise RuntimeError("unexpected FVM source export declaration")
     generated = source.replace(
         marker,
-        marker + "  public :: compute_displacements_for_swept_areas\n",
+        (
+            marker
+            + "  public :: compute_displacements_for_swept_areas\n"
+            + "  public :: large_courant_number_increment\n"
+            + "  integer, public :: pycam_transport_stage = 0\n"
+        ),
+        1,
+    )
+    large_courant_marker = """    !
+    !***************************************
+    !
+    ! Large Courant number increment
+"""
+    if generated.count(large_courant_marker) != 1:
+        raise RuntimeError("unexpected FVM large-Courant section")
+    generated = generated.replace(
+        large_courant_marker,
+        "    if (pycam_transport_stage /= 1) then\n\n" + large_courant_marker,
+        1,
+    )
+    parallel_end_marker = "    !$OMP END PARALLEL\n"
+    if generated.count(parallel_end_marker) != 1:
+        raise RuntimeError("unexpected FVM OpenMP section")
+    generated = generated.replace(
+        parallel_end_marker,
+        "    endif\n" + parallel_end_marker,
         1,
     )
     args.output.parent.mkdir(parents=True, exist_ok=True)

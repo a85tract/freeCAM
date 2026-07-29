@@ -1,17 +1,42 @@
 ! Stateless spectral-element kernels for the Python model.
 module pycam_sima_se_startup_kernel
   use iso_c_binding, only: c_double, c_int
-  use pycam_sima_build_config, only: build_np,build_ngp
+  use pycam_sima_build_config, only: build_np,build_ngp,build_nlev
+  use pycam_sima_hypervis_reference_support, only: pycam_get_dp_ref
+  use pycam_sima_se_limiter_reference, only: pycam_limiter_optim_iter_full
   implicit none
   private
   public :: pycam_sima_laplace_weak_v2
+  public :: pycam_sima_divergence_sphere_v2
+  public :: pycam_sima_tracer_flux_v2
+  public :: pycam_sima_apply_tracer_forcing_v2
+  public :: pycam_sima_scale_tracer_forcing_v2
   public :: pycam_sima_wind_tendency_v2
   public :: pycam_sima_vector_laplace_weak_v2
   public :: pycam_sima_hypervis_reference_v2
   public :: pycam_sima_limiter_optim_v2
+  public :: pycam_sima_prepare_qwater_v1
   public :: pycam_sima_validate_se_dimensions_v2
 
 contains
+
+  subroutine pycam_sima_prepare_qwater_v1(np,nlev,nelem,nmass,nwater,qsize, &
+       constituent_mass,pressure_thickness,qwater) &
+       bind(C,name="pycam_sima_prepare_qwater_v1")
+    integer(c_int), value, intent(in) :: np,nlev,nelem,nmass,nwater,qsize
+    real(c_double), intent(in) :: constituent_mass(np,np,nlev,nelem,nmass)
+    real(c_double), intent(in) :: pressure_thickness(np,np,nlev,nelem)
+    real(c_double), intent(out) :: qwater(np,np,nlev,nelem,nwater)
+    integer :: ie,nq
+
+    qwater=0.0_c_double
+    do ie=1,nelem
+      do nq=1,qsize
+        qwater(:,:,:,ie,nq)=constituent_mass(:,:,:,ie,nq) / &
+             pressure_thickness(:,:,:,ie)
+      end do
+    end do
+  end subroutine pycam_sima_prepare_qwater_v1
 
   subroutine pycam_sima_validate_se_dimensions_v2(np,ngp,errflg) &
        bind(C,name="pycam_sima_validate_se_dimensions_v2")
@@ -119,6 +144,124 @@ contains
       end do
     end do
   end subroutine divergence_sphere_rmet
+
+  subroutine pycam_sima_divergence_sphere_v2( &
+       nelem,nfield,np,ra,dvv,dinv,metdet,rmetdet,vector,divergence) &
+       bind(C,name="pycam_sima_divergence_sphere_v2")
+    integer(c_int), value, intent(in) :: nelem,nfield,np
+    real(c_double), value, intent(in) :: ra
+    real(c_double), intent(in) :: dvv(build_np,build_np)
+    real(c_double), intent(in) :: dinv(2,2,build_np,build_np,nelem)
+    real(c_double), intent(in) :: metdet(build_np,build_np,nelem)
+    real(c_double), intent(in) :: rmetdet(build_np,build_np,nelem)
+    real(c_double), intent(in) :: vector(build_np,build_np,2,nfield,nelem)
+    real(c_double), intent(out) :: divergence(build_np,build_np,nfield,nelem)
+    integer :: ie,field
+    if (np/=build_np) return
+    do ie=1,nelem
+      do field=1,nfield
+        call divergence_sphere_rmet( &
+             vector(:,:,:,field,ie),dvv,dinv(:,:,:,:,ie), &
+             metdet(:,:,ie),rmetdet(:,:,ie),ra,divergence(:,:,field,ie))
+      end do
+    end do
+  end subroutine pycam_sima_divergence_sphere_v2
+
+  subroutine pycam_sima_tracer_flux_v2( &
+       nelem,nlev,nq,np,dt,rhs_multiplier,pressure_start, &
+       projected_divergence,mean_mass_flux,source_qdp,tracer_flux) &
+       bind(C,name="pycam_sima_tracer_flux_v2")
+    integer(c_int), value, intent(in) :: nelem,nlev,nq,np,rhs_multiplier
+    real(c_double), value, intent(in) :: dt
+    real(c_double), intent(in) :: pressure_start(build_np,build_np,nlev,nelem)
+    real(c_double), intent(in) :: projected_divergence(build_np,build_np,nlev,nelem)
+    real(c_double), intent(in) :: mean_mass_flux(build_np,build_np,2,nlev,nelem)
+    real(c_double), intent(in) :: source_qdp(build_np,build_np,nlev,nq,nelem)
+    real(c_double), intent(out) :: tracer_flux(build_np,build_np,2,nlev,nq,nelem)
+    real(c_double) :: dp(build_np,build_np,nlev)
+    real(c_double) :: vstar(build_np,build_np,2,nlev)
+    integer :: ie,q,k,i,j
+    if (np/=build_np) return
+    do ie=1,nelem
+      do k=1,nlev
+        do j=1,build_np
+          do i=1,build_np
+            dp(i,j,k)=pressure_start(i,j,k,ie)- &
+                 rhs_multiplier*dt*projected_divergence(i,j,k,ie)
+            vstar(i,j,1,k)=mean_mass_flux(i,j,1,k,ie)/dp(i,j,k)
+            vstar(i,j,2,k)=mean_mass_flux(i,j,2,k,ie)/dp(i,j,k)
+          end do
+        end do
+      end do
+      do q=1,nq
+        do k=1,nlev
+          do j=1,build_np
+            do i=1,build_np
+              tracer_flux(i,j,1,k,q,ie)= &
+                   vstar(i,j,1,k)*source_qdp(i,j,k,q,ie)
+              tracer_flux(i,j,2,k,q,ie)= &
+                   vstar(i,j,2,k)*source_qdp(i,j,k,q,ie)
+            end do
+          end do
+        end do
+      end do
+    end do
+  end subroutine pycam_sima_tracer_flux_v2
+
+  subroutine pycam_sima_apply_tracer_forcing_v2( &
+       nelem,nlev,nq,np,dt,qdp,forcing) &
+       bind(C,name="pycam_sima_apply_tracer_forcing_v2")
+    integer(c_int), value, intent(in) :: nelem,nlev,nq,np
+    real(c_double), value, intent(in) :: dt
+    real(c_double), intent(inout) :: qdp(build_np,build_np,nlev,nq,nelem)
+    real(c_double), intent(in) :: forcing(build_np,build_np,nlev,nq,nelem)
+    real(c_double) :: v1
+    integer :: ie,q,k,i,j
+    if (np/=build_np) return
+    do ie=1,nelem
+      do q=1,nq
+        do k=1,nlev
+          do j=1,build_np
+            do i=1,build_np
+              v1=dt*forcing(i,j,k,q,ie)
+              if (qdp(i,j,k,q,ie)+v1<0.0_c_double .and. &
+                  v1<0.0_c_double) then
+                if (qdp(i,j,k,q,ie)<0.0_c_double) then
+                  v1=0.0_c_double
+                else
+                  v1=-qdp(i,j,k,q,ie)
+                end if
+              end if
+              qdp(i,j,k,q,ie)=qdp(i,j,k,q,ie)+v1
+            end do
+          end do
+        end do
+      end do
+    end do
+  end subroutine pycam_sima_apply_tracer_forcing_v2
+
+  subroutine pycam_sima_scale_tracer_forcing_v2( &
+       nelem,nlev,nq,np,reciprocal_timestep,forcing,pressure_thickness) &
+       bind(C,name="pycam_sima_scale_tracer_forcing_v2")
+    integer(c_int), value, intent(in) :: nelem,nlev,nq,np
+    real(c_double), value, intent(in) :: reciprocal_timestep
+    real(c_double), intent(inout) :: forcing(build_np,build_np,nlev,nq,nelem)
+    real(c_double), intent(in) :: pressure_thickness(build_np,build_np,nlev,nelem)
+    integer :: ie,q,k,i,j
+    if (np/=build_np) return
+    do ie=1,nelem
+      do q=1,nq
+        do k=1,nlev
+          do j=1,build_np
+            do i=1,build_np
+              forcing(i,j,k,q,ie)=forcing(i,j,k,q,ie)* &
+                   reciprocal_timestep*pressure_thickness(i,j,k,ie)
+            end do
+          end do
+        end do
+      end do
+    end do
+  end subroutine pycam_sima_scale_tracer_forcing_v2
 
   subroutine vorticity_sphere_local(v,dvv,dmat,rmetdet,ra,vort)
     real(c_double), intent(in) :: v(build_np,build_np,2),dvv(build_np,build_np)
@@ -264,7 +407,10 @@ contains
     t0=tref-t1
     ptop=hyai(1)*ps0
     do ie=1,nelem
-      ps_ref(:,:,ie)=ps0*exp(-phis(:,:,ie)/(rair*tref))
+      ! CAM computes this through get_dp_ref_2hd -> get_dp_ref_1hd.  Preserve
+      ! that assumed-shape call boundary so GNU uses the identical EXP path.
+      call pycam_get_dp_ref( &
+           hyai,hybi,ps0,phis(:,:,ie),rair,tref,dp_ref(:,:,:,ie),ps_ref(:,:,ie))
       do k=1,nlev
         dp_ref(:,:,k,ie)=(hyai(k+1)-hyai(k))*ps0+(hybi(k+1)-hybi(k))*ps_ref(:,:,ie)
         tmp=hyam(k)*ps0+hybm(k)*ps_ref(:,:,ie)
@@ -285,54 +431,16 @@ contains
     real(c_double), intent(inout) :: ptens(build_ngp,nlev,nq,nelem)
     real(c_double), intent(in) :: sphweights(build_ngp,nelem),dpmass(build_ngp,nlev,nelem)
     real(c_double), intent(inout) :: minp(nlev,nq,nelem),maxp(nlev,nq,nelem)
-    real(c_double) :: x(build_ngp),c(build_ngp),addmass,weightssum,mass,sumc
-    integer :: ie,q,k,k1,iter
+    integer :: ie,q
+    if (nlev/=build_nlev) return
     do ie=1,nelem
       do q=1,nq
-        do k=1,nlev
-          do k1=1,build_ngp
-            c(k1)=sphweights(k1,ie)*dpmass(k1,k,ie)
-            x(k1)=ptens(k1,k,q,ie)/dpmass(k1,k,ie)
-          end do
-          sumc=sum(c)
-          if (sumc<=0.0_c_double) cycle
-          mass=sum(c*x)
-          if (mass<minp(k,q,ie)*sumc) minp(k,q,ie)=mass/sumc
-          if (mass>maxp(k,q,ie)*sumc) maxp(k,q,ie)=mass/sumc
-          do iter=1,build_ngp-1
-            addmass=0.0_c_double
-            do k1=1,build_ngp
-              if (x(k1)>maxp(k,q,ie)) then
-                addmass=addmass+(x(k1)-maxp(k,q,ie))*c(k1)
-                x(k1)=maxp(k,q,ie)
-              end if
-              if (x(k1)<minp(k,q,ie)) then
-                addmass=addmass-(minp(k,q,ie)-x(k1))*c(k1)
-                x(k1)=minp(k,q,ie)
-              end if
-            end do
-            if (abs(addmass)<=5.0e-14_c_double*abs(mass)) exit
-            weightssum=0.0_c_double
-            if (addmass>0.0_c_double) then
-              do k1=1,build_ngp
-                if (x(k1)<maxp(k,q,ie)) weightssum=weightssum+c(k1)
-              end do
-              do k1=1,build_ngp
-                if (x(k1)<maxp(k,q,ie)) x(k1)=x(k1)+addmass/weightssum
-              end do
-            else
-              do k1=1,build_ngp
-                if (x(k1)>minp(k,q,ie)) weightssum=weightssum+c(k1)
-              end do
-              do k1=1,build_ngp
-                if (x(k1)>minp(k,q,ie)) x(k1)=x(k1)+addmass/weightssum
-              end do
-            end if
-          end do
-          do k1=1,build_ngp
-            ptens(k1,k,q,ie)=x(k1)*dpmass(k1,k,ie)
-          end do
-        end do
+        ! Preserve CAM's limiter call boundary as well as its operation order.
+        ! GNU can otherwise optimize the inlined divide/multiply path
+        ! differently and change Qdp in the least-significant bits.
+        call pycam_limiter_optim_iter_full( &
+             ptens(:,:,q,ie),sphweights(:,ie),minp(:,q,ie), &
+             maxp(:,q,ie),dpmass(:,:,ie),1,build_nlev)
       end do
     end do
   end subroutine pycam_sima_limiter_optim_v2

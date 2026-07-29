@@ -5,8 +5,15 @@ import pytest
 
 from pycam_sima import DeviceBuildError, DeviceCatalog
 from pycam_sima import cli
-from pycam_sima.model.device_codegen import DeviceDescription
-from pycam_sima.model.device_catalog import _load_descriptor_overrides
+from pycam_sima.model.ccpp_suite import CCPPSuitePlan
+from pycam_sima.model.device_codegen import (
+    DeviceDescription,
+    _project_module_index,
+)
+from pycam_sima.model.device_catalog import (
+    _load_descriptor_overrides,
+    _module_source_index,
+)
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -30,7 +37,7 @@ def test_catalog_covers_every_pinned_suite_scheme(catalog: DeviceCatalog):
         "tj2016",
     }
     assert summary["active_scheme_count"] > 100
-    assert summary["descriptor_override_count"] == 2
+    assert summary["descriptor_override_count"] == 3
     assert summary["descriptor_override_source"] == "devices/overrides.yaml"
     assert all(
         entry.metadata and entry.source
@@ -48,6 +55,31 @@ def test_descriptor_source_tree_has_no_parallel_scheme_directories() -> None:
     assert (ROOT / "devices/overrides.yaml").is_file()
 
 
+def test_module_indexes_prefer_serial_cpu_source_over_api_and_accel(
+    tmp_path: Path,
+) -> None:
+    cam_root = tmp_path / "external/CAM-SIMA"
+    for variant in ("api", "accel", "serial"):
+        source = cam_root / "kernels" / variant / "duplicate.F90"
+        source.parent.mkdir(parents=True, exist_ok=True)
+        source.write_text(
+            "module duplicate_provider\n"
+            "  implicit none\n"
+            "end module duplicate_provider\n"
+        )
+
+    expected = (cam_root / "kernels/serial/duplicate.F90").resolve()
+    assert _module_source_index(cam_root)["duplicate_provider"] == expected
+
+    _project_module_index.cache_clear()
+    try:
+        assert (
+            _project_module_index(tmp_path)["duplicate_provider"] == expected
+        )
+    finally:
+        _project_module_index.cache_clear()
+
+
 def test_catalog_records_lifecycle_and_suite_occurrences(
     catalog: DeviceCatalog,
 ):
@@ -56,6 +88,44 @@ def test_catalog_records_lifecycle_and_suite_occurrences(
     assert kessler.lifecycle == ("initialize", "run")
     assert {item.suite for item in kessler.occurrences} == {"kessler"}
     assert kessler.device_abi_v1_compatible
+
+
+@pytest.mark.parametrize(
+    ("suite", "expected"),
+    (
+        (
+            "cam7",
+            (
+                "water_vapor_mixing_ratio_wrt_moist_air_and_"
+                "condensed_water",
+            ),
+        ),
+        (
+            "cam4",
+            (
+                "water_vapor_mixing_ratio_wrt_moist_air_and_"
+                "condensed_water",
+                "cloud_ice_mixing_ratio_wrt_moist_air_and_"
+                "condensed_water",
+                "cloud_liquid_water_mixing_ratio_wrt_moist_air_and_"
+                "condensed_water",
+            ),
+        ),
+    ),
+)
+def test_catalog_reconstructs_generated_suite_constituent_registry(
+    catalog: DeviceCatalog,
+    suite: str,
+    expected: tuple[str, ...],
+) -> None:
+    plan = CCPPSuitePlan.from_xml(
+        ROOT
+        / "external/CAM-SIMA/src/physics/ncar_ccpp/suites"
+        / f"suite_{suite}.xml"
+    )
+    assert catalog.suite_constituent_standard_names(
+        scheme.name for scheme in plan.schemes
+    ) == expected
 
 
 def test_catalog_fail_closed_blockers_are_machine_readable(

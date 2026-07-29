@@ -118,8 +118,8 @@
   },
   "validation_boundary": {
     "generic_suite_plan": "validated for all seven pinned suite XML files",
-    "generic_state_selection": "validated for Kessler, Held-Suarez, and custom suite naming",
-    "end_to_end_bfb": "validated only for the 24-rank 50-step FKESSLER reference profile",
-    "other_suites": "must still satisfy provider, initialization, and scientific validation gates before being claimed runnable"
+    "generic_state_selection": "historical evidence in this record; superseded by validation/seven_suite_24x50_bfb.json",
+    "end_to_end_bfb": "all seven pinned suites now pass the independent 24-rank 50-step core-prognostic BFB gate",
+    "current_evidence": "validation/seven_suite_24x50_bfb.json"
   }
 }

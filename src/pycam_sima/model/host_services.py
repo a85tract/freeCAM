@@ -13,6 +13,7 @@ from .errors import DeviceContractError, MissingKernelError
 
 _INTERNAL = {"ccpp_error_code", "ccpp_error_message", "scheme_name"}
 _HISTORY_MODULES = {"cam_history", "cam_history_support"}
+_PYTHON_REGISTRY_SCHEMES = {"rrtmgp_constituents"}
 
 
 def is_python_history_scheme(entry: SchemeCatalogEntry) -> bool:
@@ -35,6 +36,15 @@ def is_python_history_scheme(entry: SchemeCatalogEntry) -> bool:
         for endpoint in entry.entrypoints
         for argument in endpoint.arguments
         if argument.standard_name not in _INTERNAL
+    )
+
+
+def is_python_host_service_scheme(entry: SchemeCatalogEntry) -> bool:
+    """Return whether Python intentionally owns this non-kernel service."""
+
+    return (
+        is_python_history_scheme(entry)
+        or entry.name in _PYTHON_REGISTRY_SCHEMES
     )
 
 
@@ -137,6 +147,117 @@ class PythonHistoryService:
         )
 
 
+class PythonRRTMGPConstituentService:
+    """Implement CCPP constituent registration/index routing in Python."""
+
+    process_names = frozenset(
+        {
+            "rrtmgp_constituents",
+            "rrtmgp_constituents:register",
+            "rrtmgp_constituents:run",
+        }
+    )
+
+    @staticmethod
+    def _strings(pool: Any, standard_name: str) -> tuple[str, ...]:
+        field = pool.ccpp_field_name(standard_name)
+        values = np.asarray(pool.get(field))
+        return tuple(
+            bytes(value).decode("utf-8", errors="strict").strip().strip("\0")
+            if isinstance(value, (bytes, np.bytes_))
+            else str(value).strip()
+            for value in values.reshape(-1)
+        )
+
+    @staticmethod
+    def _configured_constituents(pool: Any) -> dict[str, int]:
+        return {
+            str(name).strip().lower(): index
+            for index, name in enumerate(pool.constituent_names)
+        }
+
+    def _register(self, pool: Any) -> None:
+        entries = self._strings(
+            pool,
+            "sources_of_radiatively_active_gases_for_climate_calculation",
+        )
+        configured = self._configured_constituents(pool)
+        for text in entries:
+            if not text:
+                continue
+            parts = tuple(part.strip() for part in text.split(":"))
+            if len(parts) != 3 or parts[0] not in {"A", "N", "Z"}:
+                raise DeviceContractError(
+                    "rad_climate entries must use "
+                    "'flag:long_name:standard_name'; got "
+                    f"{text!r}"
+                )
+            standard_name = parts[2].lower()
+            if standard_name not in configured:
+                raise DeviceContractError(
+                    f"rad_climate registers {parts[2]!r}, but ModelConfig."
+                    "constituent_names does not contain it; constituents "
+                    "must be known before StatePool allocation"
+                )
+
+    def _run(self, pool: Any) -> None:
+        gases = self._strings(
+            pool,
+            "list_of_active_gases_for_RRTMGP",
+        )
+        configured = self._configured_constituents(pool)
+        source = np.asarray(
+            pool.get(pool.ccpp_field_name("ccpp_constituents"))
+        )
+        target = pool.get(
+            pool.ccpp_field_name(
+                "radiatively_active_gas_mass_mixing_ratios_wrt_dry_air"
+            )
+        )
+        target[...] = np.float64(0.0)
+        for gas_index, gas in enumerate(gases):
+            key = (
+                "water_vapor"
+                if gas.strip().upper() == "H2O"
+                else gas.strip().lower()
+            )
+            constituent_index = configured.get(key)
+            if constituent_index is not None:
+                target[:, :, gas_index] = source[:, :, constituent_index]
+
+    def invoke(self, process: str, pool: Any) -> None:
+        if process == "rrtmgp_constituents:register":
+            self._register(pool)
+            return
+        if process in {
+            "rrtmgp_constituents",
+            "rrtmgp_constituents:run",
+        }:
+            self._run(pool)
+            return
+        raise MissingKernelError(
+            f"RRTMGP constituent service does not provide {process!r}"
+        )
+
+
+class PythonMUSICARegisterService:
+    """Orchestrate MUSICA's dynamic registry into StatePool process state."""
+
+    process_names = frozenset({"musica_ccpp:register"})
+
+    def __init__(self, devices: Any):
+        self.devices = devices
+
+    def invoke(self, process: str, pool: Any) -> None:
+        if process != "musica_ccpp:register":
+            raise MissingKernelError(
+                f"MUSICA register service does not provide {process!r}"
+            )
+        self.devices.invoke_host_entrypoint(
+            "musica_ccpp", "register", pool
+        )
+
+
 class HostServiceRegistry:
     """Route non-numerical suite processes to explicit Python services."""
 
@@ -153,6 +274,7 @@ class HostServiceRegistry:
         *,
         suite: str | None = None,
         processes: Iterable[str] | None = None,
+        devices: Any | None = None,
     ) -> "HostServiceRegistry":
         selected_processes = (
             None
@@ -172,6 +294,14 @@ class HostServiceRegistry:
                 continue
             if is_python_history_scheme(entry):
                 services.append(PythonHistoryService(entry))
+            elif entry.name == "rrtmgp_constituents":
+                services.append(PythonRRTMGPConstituentService())
+            elif entry.name == "musica_ccpp":
+                if devices is None:
+                    raise DeviceContractError(
+                        "MUSICA host registration requires DeviceRegistry"
+                    )
+                services.append(PythonMUSICARegisterService(devices))
         return cls(services)
 
     def register(self, service: Any) -> None:

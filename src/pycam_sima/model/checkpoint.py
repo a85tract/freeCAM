@@ -14,7 +14,11 @@ import numpy as np
 from .clock import NoLeapClock
 from .ccpp_suite import CCPPSuitePlan
 from .config import ModelConfig
-from .contracts import FieldContract
+from .contracts import (
+    FieldContract,
+    model_alias_rules,
+    model_ccpp_field_aliases,
+)
 from .errors import ConfigurationError, StateTransitionError
 from .state import StatePool
 
@@ -47,6 +51,7 @@ class ModelSnapshot:
     native_calls: int
     plugin_inventory: tuple[Mapping[str, Any], ...]
     boundary_index: int
+    after_coupler_prepared: bool
 
     @classmethod
     def capture(cls, driver: CAMDriver) -> "ModelSnapshot":
@@ -84,6 +89,9 @@ class ModelSnapshot:
                 else driver.plugins.inventory()
             ),
             boundary_index=int(getattr(driver, "_boundary_index", 0)),
+            after_coupler_prepared=bool(
+                getattr(driver, "_after_coupler_prepared", False)
+            ),
         )
 
     def metadata(self) -> dict[str, Any]:
@@ -107,6 +115,7 @@ class ModelSnapshot:
                 dict(item) for item in self.plugin_inventory
             ],
             "boundary_index": self.boundary_index,
+            "after_coupler_prepared": self.after_coupler_prepared,
             "array_names": sorted(self.arrays),
         }
 
@@ -169,6 +178,9 @@ class ModelSnapshot:
                 for item in metadata.get("plugin_inventory", ())
             ),
             boundary_index=int(metadata.get("boundary_index", 0)),
+            after_coupler_prepared=bool(
+                metadata.get("after_coupler_prepared", False)
+            ),
         )
 
     def new_pool(self) -> StatePool:
@@ -182,7 +194,19 @@ class ModelSnapshot:
                 for item in self.contracts
             )
         )
-        pool = StatePool(self.dimensions, contracts=contracts)
+        config = ModelConfig.from_mapping(self.config)
+        pool = StatePool(
+            self.dimensions,
+            contracts=contracts,
+            alias_rules=model_alias_rules(config.constituent_names),
+            ccpp_aliases=model_ccpp_field_aliases(
+                config.constituent_names
+            ),
+            constituent_names=config.constituent_names,
+            advected_constituent_indices=(
+                config.advected_constituent_indices
+            ),
+        )
         pool.restore_arrays(self.arrays)
         pool.restore_registration_state(
             initialized_fields=self.initialized_fields,
@@ -364,6 +388,10 @@ def restore_driver(
     driver._last_scheme_group = snapshot.last_scheme_group
     driver.backend.call_count = snapshot.native_calls
     driver._boundary_index = snapshot.boundary_index
+    driver._after_coupler_prepared = snapshot.after_coupler_prepared
+    driver._suite_lifecycle_initialized = (
+        driver.state is not DriverState.INITIALIZED
+    )
     driver.plugins.restore_inventory(snapshot.plugin_inventory)
     return driver
 

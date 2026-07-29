@@ -6,6 +6,8 @@ import math
 
 import numpy as np
 
+from .constituents import water_constituent_indices
+
 
 T0E, T0P, B, KK, LAPSE = 310.0, 240.0, 2.0, 3.0, 0.005
 PSURF_MOIST, MVAP = 100000.0, 0.608
@@ -198,11 +200,18 @@ def _synchronize_gll_initial_state(pool, comm) -> None:
 
 
 def populate_dcmip2016_initial_state(pool, comm=None) -> None:
-    if pool.dimensions["nconst"] < 3:
-        raise ValueError(
-            "moist_baroclinic_wave_dcmip2016 requires at least three "
-            "constituents ordered as cloud liquid, rain, and water vapor"
+    try:
+        water_index = pool.constituent_names.index("water_vapor")
+        thermodynamic_indices = water_constituent_indices(
+            pool.constituent_names
         )
+        water_qslot = thermodynamic_indices.index(water_index)
+        water_advected_slot = pool.advected_slot(water_index)
+    except ValueError:
+        raise ValueError(
+            "moist_baroclinic_wave_dcmip2016 requires a water_vapor "
+            "constituent"
+        ) from None
     model = Dcmip2016(
         rair=float(pool.get("dry_air_gas_constant")), gravity=float(pool.get("gravitational_acceleration")),
         rearth=float(pool.get("earth_radius")), omega=float(pool.get("earth_angular_velocity")),
@@ -232,7 +241,11 @@ def populate_dcmip2016_initial_state(pool, comm=None) -> None:
                 for k in range(pool.dimensions["pver"]):
                     dp = np.float64(hyai[k+1] - hyai[k]) * ps0 + np.float64(hybi[k+1] - hybi[k]) * ps
                     pool.get("layer_pressure_thickness")[i, j, k, le, 0] = dp
-                    pool.get("constituent_mass")[i, j, k, le, 2, 0] = np.float64(pool.get("water_vapor")[i, j, k, le, 0] * dp)
+                    pool.get("constituent_mass")[
+                        i, j, k, le, water_qslot, 0
+                    ] = np.float64(
+                        pool.get("water_vapor")[i, j, k, le, 0] * dp
+                    )
                 for time in range(1, pool.dimensions["ntime"]):
                     pool.get("zonal_wind")[i,j,:,le,time] = pool.get("zonal_wind")[i,j,:,le,0]
                     pool.get("meridional_wind")[i,j,:,le,time] = pool.get("meridional_wind")[i,j,:,le,0]
@@ -254,7 +267,9 @@ def populate_dcmip2016_initial_state(pool, comm=None) -> None:
         nhc = (pool.dimensions["fvm_halo"] - nc) // 2
         le, within = divmod(col, nc * nc)
         pi, pj = within % nc, within // nc
-        pool.get("fvm_tracer")[nhc + pi, nhc + pj, :, le, 2] = q
+        pool.get("fvm_tracer")[
+            nhc + pi, nhc + pj, :, le, water_advected_slot
+        ] = q
         if "thermodynamic_level_height" in pool.contracts:
             pool.get("thermodynamic_level_height")[col,:] = z
     if "thermodynamic_level_height" in pool.contracts:
@@ -323,11 +338,20 @@ def populate_resting_isothermal_initial_state(
             minima[None, None, None, None, :]
         )
     pool.get("constituent_mass")[...] = 0.0
+    # HOMME's Qdp packs only thermodynamically active water species in
+    # thermodynamic-species order.  It is not the FVM advected-constituent
+    # array, whose independent registry order is initialized below.
+    thermodynamic_indices = water_constituent_indices(
+        pool.constituent_names
+    )
+    thermodynamic_minima = minima[
+        np.asarray(thermodynamic_indices, dtype=np.intp)
+    ]
     pool.get("constituent_mass")[
-        ..., : pool.dimensions["nconst"], :
+        ..., : len(thermodynamic_indices), :
     ] = (
         dp[None, None, :, None, None, None]
-        * minima[None, None, None, None, :, None]
+        * thermodynamic_minima[None, None, None, None, :, None]
     )
     pool.get("physics_zonal_wind")[...] = 0.0
     pool.get("physics_meridional_wind")[...] = 0.0
@@ -337,7 +361,15 @@ def populate_resting_isothermal_initial_state(
     pool.get("physics_constituent_mixing_ratio")[...] = (
         minima[None, None, :]
     )
-    pool.get("fvm_tracer")[...] = minima[None, None, None, None, :]
+    advected_minima = minima[
+        np.asarray(pool.advected_constituent_indices, dtype=np.intp)
+    ]
+    pool.get("fvm_tracer")[...] = np.float64(0.0)
+    pool.get("fvm_tracer")[
+        ..., : len(pool.advected_constituent_indices)
+    ] = (
+        advected_minima[None, None, None, None, :]
+    )
     if "thermodynamic_level_height" in pool.contracts:
         pool.get("thermodynamic_level_height")[...] = 0.0
         pool.mark_initialized("thermodynamic_level_height")
@@ -361,6 +393,47 @@ def populate_resting_isothermal_initial_state(
             pool.set(name, values)
 
 
+def populate_held_suarez_1994_initial_state(
+    pool,
+    comm=None,
+    *,
+    constituent_names=(),
+) -> None:
+    """Reproduce ``hs94_set_ic`` using Python-owned arrays.
+
+    The pinned source sets wind to zero, temperature to exactly 250 K,
+    surface pressure to exactly 100000 Pa, and water vapor to zero.  Other
+    registered constituents retain their configured minimum/default value.
+    """
+
+    populate_resting_isothermal_initial_state(
+        pool,
+        comm,
+        temperature=250.0,
+        surface_pressure=100000.0,
+    )
+    normalized = tuple(
+        str(name).strip().lower() for name in constituent_names
+    )
+    if "water_vapor" not in normalized:
+        return
+    vapor = normalized.index("water_vapor")
+    pool.get("constituent_mixing_ratio")[
+        ..., vapor, :
+    ] = np.float64(0.0)
+    thermodynamic = water_constituent_indices(pool.constituent_names)
+    pool.get("constituent_mass")[
+        ..., thermodynamic.index(vapor), :
+    ] = np.float64(0.0)
+    pool.get("physics_constituent_mixing_ratio")[
+        ..., vapor
+    ] = np.float64(0.0)
+    if vapor in pool.advected_constituent_indices:
+        pool.get("fvm_tracer")[
+            ..., pool.advected_slot(vapor)
+        ] = np.float64(0.0)
+
+
 def populate_initial_state(
     pool,
     comm=None,
@@ -368,6 +441,7 @@ def populate_initial_state(
     kind: str = "moist_baroclinic_wave_dcmip2016",
     temperature: float = 300.0,
     surface_pressure: float = 100000.0,
+    constituent_names=(),
 ) -> None:
     """Dispatch one Python-owned analytic initial-state provider."""
 
@@ -381,6 +455,13 @@ def populate_initial_state(
             comm,
             temperature=temperature,
             surface_pressure=surface_pressure,
+        )
+        return
+    if normalized == "held_suarez_1994":
+        populate_held_suarez_1994_initial_state(
+            pool,
+            comm,
+            constituent_names=constituent_names,
         )
         return
     raise ValueError(f"unknown analytic initial state {kind!r}")

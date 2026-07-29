@@ -4,9 +4,11 @@ from pathlib import Path
 
 import numpy as np
 from netCDF4 import Dataset
+import pytest
 
 from pycam_sima.model.clock import ModelClock
 from pycam_sima.model.config import ModelConfig
+from pycam_sima.model.dimension_service import infer_suite_dimensions
 from pycam_sima.model.grid import dimensions_for_rank
 from pycam_sima.model.history import HistoryWriter
 from pycam_sima.model.initialization import InitializationPlan
@@ -33,6 +35,164 @@ class _SingleRankComm:
     def gather(value, root=0):
         del root
         return [value]
+
+
+@pytest.mark.parametrize(
+    ("filename", "suite"),
+    (
+        ("adiabatic_model.yaml", "adiabatic"),
+        ("held_suarez_1994_model.yaml", "held_suarez_1994"),
+        ("tj2016_model.yaml", "tj2016"),
+    ),
+)
+def test_idealized_oracle_profiles_are_generic_model_configs(
+    filename: str,
+    suite: str,
+) -> None:
+    config = ModelConfig.from_yaml(ROOT / "configs" / filename)
+
+    assert config.physics_suite == suite
+    expected_initial_state = (
+        "moist_baroclinic_wave_dcmip2016"
+        if suite == "tj2016"
+        else "held_suarez_1994"
+    )
+    assert config.analytic_ic_type == expected_initial_state
+    assert config.constituent_names == ("water_vapor",)
+    assert config.stop_n == 50
+    assert config.mpi_size == 24
+
+
+def test_suite_specific_dimensions_remain_runtime_configuration() -> None:
+    config = ModelConfig.from_mapping(
+        {
+            **ModelConfig().as_dict(),
+            "dimension_overrides": {
+                "number_of_bands_for_longwave_radiation": 16,
+                "number_of_bands_for_shortwave_radiation": 14,
+            },
+        }
+    )
+    dimensions = dimensions_for_rank(
+        0,
+        config.mpi_size,
+        pver=config.pver,
+        np_value=config.np,
+        fv_nphys=config.fv_nphys,
+        constituent_count=config.constituent_count,
+        ne=config.ne,
+        extra_dimensions=config.dimension_overrides,
+    )
+
+    assert dimensions["number_of_bands_for_longwave_radiation"] == 16
+    assert dimensions["number_of_bands_for_shortwave_radiation"] == 14
+
+
+def test_suite_dimensions_are_inferred_from_namelist_files_and_source(
+    tmp_path: Path,
+) -> None:
+    solar = tmp_path / "solar.nc"
+    lw = tmp_path / "lw.nc"
+    sw = tmp_path / "sw.nc"
+    tropopause = tmp_path / "tropopause.nc"
+    for path, dimension, extent in (
+        (solar, "wlen", 17),
+        (lw, "gpt", 11),
+        (sw, "gpt", 13),
+        (tropopause, "time", 12),
+    ):
+        with Dataset(path, "w") as dataset:
+            dataset.createDimension(dimension, extent)
+    source = tmp_path / "source"
+    utilities = source / "src/physics/utils"
+    utilities.mkdir(parents=True)
+    (utilities / "gravity_wave_drag_ridge_read.F90").write_text(
+        "integer, parameter :: prdg = 16\n"
+    )
+    (utilities / "musica_ccpp_dependencies.F90").write_text(
+        "integer :: photolysis_wavelength_grid_section_dimension = 102\n"
+        "integer :: photolysis_wavelength_grid_interface_dimension = 103\n"
+    )
+    namelist = {
+        "rrtmgp": {
+            "nradgas": 8,
+            "nlwbands": 16,
+            "nswbands": 14,
+        },
+        "rrtmgp_constituents": {"ndiags": 1},
+        "rrtmgp_lw_gas_optics": {
+            "rrtmgp_coefs_lw_file": str(lw)
+        },
+        "rrtmgp_sw_gas_optics": {
+            "rrtmgp_coefs_sw_file": str(sw)
+        },
+        "solar_data": {"solar_irrad_data_file": str(solar)},
+        "tropopause_nl": {
+            "tropopause_climo_file": str(tropopause)
+        },
+    }
+    binding = type("Binding", (), {})
+
+    def bound(group: str, local_name: str):
+        value = binding()
+        value.group = group
+        value.local_name = local_name
+        return (value,)
+
+    bindings = {
+        "number_of_active_gases_for_rrtmgp": bound(
+            "rrtmgp", "nradgas"
+        ),
+        "number_of_bands_for_longwave_radiation": bound(
+            "rrtmgp", "nlwbands"
+        ),
+        "number_of_bands_for_shortwave_radiation": bound(
+            "rrtmgp", "nswbands"
+        ),
+        "number_of_diagnostic_subcycles": bound(
+            "rrtmgp_constituents", "ndiags"
+        ),
+    }
+    required = {
+        *bindings,
+        "daytime_columns_dimension",
+        "number_of_vertical_layers_in_rrtmgp",
+        "number_of_vertical_interfaces_in_rrtmgp",
+        "number_of_longwave_g_point_intervals",
+        "number_of_shortwave_g_point_intervals",
+        "number_of_wavelength_samples_of_spectrum",
+        "number_of_wavelength_samples_of_spectrum_plus_one",
+        "number_of_time_slices_in_tropopause_climatology_dataset",
+        "number_of_ridges_in_ridge_gravity_wave_drag",
+        "photolysis_wavelength_grid_section_dimension",
+        "photolysis_wavelength_grid_interface_dimension",
+    }
+
+    inferred = infer_suite_dimensions(
+        required=required,
+        existing={"nphys_local": 27, "pver": 30, "pverp": 31},
+        namelist=namelist,
+        namelist_bindings=bindings,
+        source_root=source,
+    )
+
+    assert inferred == {
+        "daytime_columns_dimension": 27,
+        "number_of_active_gases_for_rrtmgp": 8,
+        "number_of_bands_for_longwave_radiation": 16,
+        "number_of_bands_for_shortwave_radiation": 14,
+        "number_of_diagnostic_subcycles": 1,
+        "number_of_longwave_g_point_intervals": 11,
+        "number_of_ridges_in_ridge_gravity_wave_drag": 16,
+        "number_of_shortwave_g_point_intervals": 13,
+        "number_of_time_slices_in_tropopause_climatology_dataset": 12,
+        "number_of_vertical_interfaces_in_rrtmgp": 32,
+        "number_of_vertical_layers_in_rrtmgp": 31,
+        "number_of_wavelength_samples_of_spectrum": 17,
+        "number_of_wavelength_samples_of_spectrum_plus_one": 18,
+        "photolysis_wavelength_grid_interface_dimension": 103,
+        "photolysis_wavelength_grid_section_dimension": 102,
+    }
 
 
 def _write_vertical_coordinate(path: Path, level_count: int) -> None:
@@ -75,6 +235,24 @@ def test_calendar_progression_is_not_locked_to_no_leap() -> None:
     )
     model_360.advance()
     assert (model_360.year, model_360.month, model_360.day) == (2001, 3, 1)
+
+
+def test_fractional_calendar_day_matches_esmf_operation_order() -> None:
+    clock = ModelClock(
+        year=1,
+        month=1,
+        day=2,
+        seconds=0,
+        dt_seconds=1800,
+        calendar="NO_LEAP",
+    )
+
+    assert np.float64(clock.fractional_calendar_day(1800)).view(
+        np.uint64
+    ) == np.uint64(0x40002AAAAAAAAAAA)
+    assert np.float64(clock.fractional_calendar_day(3600)).view(
+        np.uint64
+    ) == np.uint64(0x4000555555555556)
 
 
 def test_full_python_initialization_uses_nonreference_configuration(

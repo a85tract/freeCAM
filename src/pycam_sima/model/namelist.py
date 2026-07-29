@@ -14,6 +14,15 @@ def read_atm_in(path: str | Path, config) -> dict:
     if not path.is_file():
         raise ConfigurationError(f"atm_in does not exist: {path}")
     nml = f90nml.read(path)
+    for group, entries in config.namelist_overrides.items():
+        if group not in nml:
+            # f90nml.Namelist.setdefault() returns a detached plain dict for a
+            # new group, so mutating that return value silently loses every
+            # override.  Assign the complete group first.
+            nml[group] = dict(entries)
+        else:
+            for name, value in entries.items():
+                nml[group][name] = value
     checks = {
         ("analytic_ic_nl", "analytic_ic_type"): config.analytic_ic_type,
         ("cam_initfiles_nl", "pertlim"): config.pertlim,

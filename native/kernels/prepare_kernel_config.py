@@ -17,7 +17,12 @@ def main() -> None:
     values = yaml.safe_load(args.config.read_text())
     nc = int(values["fv_nphys"])
     nlev = int(values["pver"])
-    ntrac = int(values["constituent_count"])
+    ntrac = int(
+        values.get(
+            "advected_constituent_count",
+            values["constituent_count"],
+        )
+    )
     np_ = int(values["np"])
     generated = f"""! Generated from {args.config}; do not edit.
 module pycam_sima_build_config

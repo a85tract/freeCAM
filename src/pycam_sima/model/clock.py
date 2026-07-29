@@ -150,6 +150,39 @@ class ModelClock:
     def elapsed_seconds(self) -> int:
         return self.nstep * self.dt_seconds
 
+    def fractional_calendar_day(self, offset_seconds: int = 0) -> float:
+        """Return CAM's one-based day-of-year including fractional day."""
+
+        year = self.year
+        month = self.month
+        day = self.day
+        seconds = self.seconds + int(offset_seconds)
+        while seconds >= 86400:
+            seconds -= 86400
+            day += 1
+            lengths = month_lengths(year, self.calendar)
+            if day > lengths[month - 1]:
+                day = 1
+                month += 1
+                if month > 12:
+                    month = 1
+                    year += 1
+        while seconds < 0:
+            month -= 1
+            if month < 1:
+                month = 12
+                year -= 1
+            day = month_lengths(year, self.calendar)[month - 1]
+            seconds += 86400
+        day_of_year = sum(month_lengths(year, self.calendar)[: month - 1]) + day
+        # ESMF_TimeGet(dayOfYear_r8=...) forms the fractional day from
+        # elapsed seconds since the start of the year, then adds the one-based
+        # day origin.  Keeping that operation order is scientifically
+        # observable: after day one it can differ by one ULP from
+        # ``day_of_year + seconds / 86400`` and therefore alter solar geometry.
+        elapsed_since_year_start = (day_of_year - 1) * 86400 + seconds
+        return 1.0 + float(elapsed_since_year_start) / 86400.0
+
     @property
     def iso_stamp(self) -> str:
         return (

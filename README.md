@@ -5,9 +5,12 @@ model components. Python supplies the lifecycle, process scheduler, common
 field bus, MPI communication, and checkpoint semantics; independently built
 Fortran devices supply numerical schemes through a generated C ABI.
 
-The first fully validated model target is CAM-SIMA FKESSLER,
-`ne3np4.pg3`, L30, 24 MPI ranks, a 1800-second timestep, and the DCMIP2016
-moist baroclinic-wave initial condition.
+The scientific gate covers all seven pinned CAM-SIMA suites at
+`ne3np4.pg3`, 24 MPI ranks, 50 model steps, and a 1800-second timestep.
+CAM4 uses its native L26 coordinate; the other six suites use L30. Each suite
+is compared bit-for-bit with an independent CAM-SIMA executable oracle for
+the complete `h1i` numerical payload (`T`, `Q`, `U`, `V`, and `PS`) at all
+51 output times.
 
 That reference profile is a validation target, not the model definition.
 `ModelConfig` accepts the selected suite, `ne`, spectral order, FVM cell
@@ -29,9 +32,13 @@ FP-sensitive SE layout values are validated in a separate ABI call immediately
 before the numerical call, so a control argument cannot change the kernel's
 floating-point instruction order.
 The main shared library contains numerical dycore/mapping kernels only.
-CCPP schemes such as Kessler are compiled from the pinned, unmodified upstream
-Fortran source into separate device libraries. A generated adapter translates
-explicit NumPy pointers and scalar values to the scheme's original interface.
+CCPP schemes such as Kessler are compiled from the pinned upstream Fortran
+source into separate device libraries. A generated adapter translates explicit
+NumPy pointers and scalar values to the scheme's original interface. Small,
+reviewable CAM-SIMA fixes required for deterministic analytic initialization
+and shared-library/executable floating-point parity live in
+`validation/patches/` and are applied idempotently by
+`tools/apply_cam_sima_patches.py`.
 No device exports or calls `cam_init`, `cam_run*`, ESMF, PIO, or CAM's native
 control loop. Clean builds do not load the CAM machine environment and reject
 MPI, ESMF, PIO, NetCDF, HDF5, and RPATH dependencies.
@@ -167,13 +174,20 @@ second hand-written descriptor directory. The clean rebuild, lifecycle, and
 50-step BFB evidence for this consolidation is recorded in
 [`validation/descriptor_unification.json`](validation/descriptor_unification.json).
 
-For the pinned revision, the clean full-catalog build produces 100 original
-Fortran numerical devices with zero build failures. Another 29 pure history
-schemes are executable Python host services. The remaining 26 connectors fail
-closed with their exact MPI collective, input-reader, external-source, RNG, or
-derived-object requirement in `validation/all_scheme_support.json`.
-The complete build/load/ELF/50-step evidence is recorded in
-[`validation/all_scheme_connectors.json`](validation/all_scheme_connectors.json).
+For the pinned revision, all 155 active schemes and all 340 suite occurrences
+are runtime executable: 121 schemes use native Fortran devices, 30 use
+Python-owned host services, and four are explicit external services. No
+connector remains unresolved. A clean standalone catalog build compiles all
+121 ABI-compatible device targets with zero failures (120 in the shared core
+bundle and MUSICA in its dependency-linked device library). The machine-readable
+coverage is recorded in
+[`validation/all_scheme_support.json`](validation/all_scheme_support.json)
+and the clean-build result in
+[`validation/portable_catalog_device_build.json`](validation/portable_catalog_device_build.json).
+The independent 24-rank, 50-step, seven-suite BFB comparison covers the core
+prognostic history fields `T`, `Q`, `U`, `V`, and `PS` at all 51 output
+timestamps. Its machine-readable evidence is recorded in
+[`validation/seven_suite_24x50_bfb.json`](validation/seven_suite_24x50_bfb.json).
 
 The main `CAMDriver` uses the same XML-derived plan and standard-name bus as
 the standalone host. It contains no Kessler scheme-order table:

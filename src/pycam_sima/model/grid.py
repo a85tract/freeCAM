@@ -344,7 +344,10 @@ def dimensions_for_rank(
     np_value: int = 4,
     fv_nphys: int = 3,
     constituent_count: int = 3,
+    advected_constituent_count: int | None = None,
+    thermodynamic_constituent_count: int | None = None,
     ne: int = 3,
+    extra_dimensions: dict[str, int] | None = None,
 ) -> dict[str, int]:
     nelem = len(local_elements(rank, size, ne))
     # Halo sizes are finalized before allocation from the global topology.
@@ -354,7 +357,17 @@ def dimensions_for_rank(
         ne=ne,
         np_value=np_value,
     )
-    return {
+    ntrac = (
+        constituent_count
+        if advected_constituent_count is None
+        else int(advected_constituent_count)
+    )
+    qsize = (
+        constituent_count
+        if thermodynamic_constituent_count is None
+        else int(thermodynamic_constituent_count)
+    )
+    dimensions = {
         "pver": pver,
         "pverp": pver + 1,
         "np": np_value,
@@ -367,8 +380,9 @@ def dimensions_for_rank(
         "ntime": 3,
         "ntracer_time": 3,
         "nconst": constituent_count,
+        "ntrac": ntrac,
         "number_of_ccpp_constituents": constituent_count,
-        "qsize": constituent_count,
+        "qsize": qsize,
         "qsize_storage": max(10, constituent_count),
         "ccpp_constant_one": 1,
         "ccpp_constant_two": 2,
@@ -389,6 +403,14 @@ def dimensions_for_rank(
         "nhalo_dof": max(1, sum(len(value) for value in shared.values())),
         "mapping_fields": 7, "coupler_fields": 8,
     }
+    for name, value in (extra_dimensions or {}).items():
+        if name in dimensions and dimensions[name] != int(value):
+            raise ValueError(
+                f"extra dimension {name!r}={value} conflicts with "
+                f"the grid-derived value {dimensions[name]}"
+            )
+        dimensions[str(name)] = int(value)
+    return dimensions
 
 
 def _unit_sphere(face: int, x: float, y: float) -> tuple[float, float, tuple[float, float, float]]:

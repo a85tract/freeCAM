@@ -1,0 +1,16 @@
+#!/bin/bash
+#PBS -N camsima_build
+#PBS -A UCUB0188
+#PBS -q develop
+#PBS -l select=1:ncpus=32:mpiprocs=1:ompthreads=1:mem=80GB
+#PBS -l walltime=00:30:00
+#PBS -j oe
+#PBS -o /glade/work/ruitong/pycam-sima/logs/
+
+set -euo pipefail
+
+: "${CASE_ROOT:?set CASE_ROOT to a configured CIME case}"
+
+cd "$CASE_ROOT"
+source .env_mach_specific.sh >/dev/null 2>&1 || true
+./case.build

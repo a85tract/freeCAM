@@ -375,7 +375,7 @@ def initialize_vertical_pressure_velocity(
             for j in range(np_value):
                 for i in range(np_value):
                     value = dpdry[i, j, k, le]
-                    for constituent in range(pool.dimensions["nconst"]):
+                    for constituent in range(pool.dimensions["qsize"]):
                         value = np.float64(value + qdp[i, j, k, le, constituent])
                     dp[i, j] = value
                     if k == 0:

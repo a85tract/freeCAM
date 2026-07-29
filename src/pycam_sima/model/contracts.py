@@ -190,6 +190,7 @@ def default_contracts() -> tuple[FieldContract, ...]:
         _field("water_vapor_gas_constant", "float64", (), "in", "constants", "J kg-1 K-1", aliases=("rh2o",), writable=static),
         _field("virtual_temperature_coefficient", "float64", (), "in", "constants", aliases=("zvir",), writable=static),
         _field("dry_air_specific_heat", "float64", (), "in", "constants", "J kg-1 K-1", aliases=("cpair",), writable=static),
+        _field("dry_air_kappa", "float64", (), "in", "constants", writable=static),
         _field("earth_radius", "float64", (), "in", "constants", "m", aliases=("rearth",), writable=static),
         _field("earth_angular_velocity", "float64", (), "in", "constants", "s-1", aliases=("omega_earth",), writable=static),
         _field("orbital_eccentricity", "float64", (), "in", "constants", writable=static),
@@ -378,8 +379,8 @@ def default_contracts() -> tuple[FieldContract, ...]:
         _field("projected_mass_flux_divergence", "float64", ("np", "np", "pver", "nelem_local"), "inout", "dynamics_derived", "Pa s-1", aliases=("divdp_proj",)),
         _field("pressure_dissipation_average", "float64", ("np", "np", "pver", "nelem_local"), "inout", "dynamics_derived", "Pa s-1", aliases=("dpdiss_ave",)),
         _field("pressure_dissipation_biharmonic", "float64", ("np", "np", "pver", "nelem_local"), "inout", "dynamics_derived", "Pa s-1", aliases=("dpdiss_biharmonic",)),
-        _field("tracer_stage_minimum", "float64", ("pver", "nconst", "nelem_local"), "inout", "tracer_process", "kg kg-1", aliases=("qmin",)),
-        _field("tracer_stage_maximum", "float64", ("pver", "nconst", "nelem_local"), "inout", "tracer_process", "kg kg-1", aliases=("qmax",)),
+        _field("tracer_stage_minimum", "float64", ("pver", "qsize", "nelem_local"), "inout", "tracer_process", "kg kg-1", aliases=("qmin",)),
+        _field("tracer_stage_maximum", "float64", ("pver", "qsize", "nelem_local"), "inout", "tracer_process", "kg kg-1", aliases=("qmax",)),
         _field("subelement_mass_flux", "float64", ("fv_nphys", "fv_nphys", "edge_count", "pver", "nelem_local"), "inout", "dynamics_derived", "Pa s-1"),
         _field("rk_water_mixing_ratio", "float64", ("np", "np", "pver", "nelem_local", "nconst"), "inout", "dynamics_derived", "kg kg-1"),
         _field("rk_inverse_heat_capacity", "float64", ("np", "np", "pver", "nelem_local"), "inout", "dynamics_derived", "kg K J-1"),
@@ -525,6 +526,17 @@ def default_contracts() -> tuple[FieldContract, ...]:
             ccpp_standard_name="composition_dependent_gas_constant_of_dry_air",
         ),
         _field(
+            "column_dry_air_kappa",
+            "float64",
+            ("nphys_local", "pver"),
+            "inout",
+            "physics_process",
+            ccpp_standard_name=(
+                "composition_dependent_ratio_of_dry_air_gas_constant_to_"
+                "specific_heat_of_dry_air_at_constant_pressure"
+            ),
+        ),
+        _field(
             "air_temperature_previous_timestep",
             "float64",
             ("nphys_local", "pver"),
@@ -605,33 +617,182 @@ def process_contract_templates() -> tuple[FieldContract, ...]:
 
 
 def default_alias_rules() -> tuple[AliasRule, ...]:
-    return (
-        # Generated CAM Kessler cap order: cloud liquid, rain, water vapor.
-        AliasRule("cloud_liquid_water", "constituent_mixing_ratio", -2, 0),
-        AliasRule("rain_water", "constituent_mixing_ratio", -2, 1),
-        AliasRule("water_vapor", "constituent_mixing_ratio", -2, 2),
-        AliasRule(
-            "physics_cloud_liquid_water",
-            "physics_constituent_mixing_ratio",
-            -1,
-            0,
-            "cloud_liquid_water_mixing_ratio_wrt_dry_air",
-        ),
-        AliasRule(
-            "physics_rain_water",
-            "physics_constituent_mixing_ratio",
-            -1,
-            1,
-            "rain_mixing_ratio_wrt_dry_air",
-        ),
-        AliasRule(
-            "physics_water_vapor",
-            "physics_constituent_mixing_ratio",
-            -1,
-            2,
-            "water_vapor_mixing_ratio_wrt_dry_air",
-        ),
+    """Return aliases for the historical three-constituent Kessler layout."""
+
+    return model_alias_rules(
+        ("cloud_liquid_water", "rain_water", "water_vapor")
     )
+
+
+def model_alias_rules(
+    constituent_names: Iterable[str],
+) -> tuple[AliasRule, ...]:
+    """Build zero-copy species views from the configured constituent order.
+
+    CAM suites do not all use the Kessler ``cloud, rain, vapor`` layout.  In
+    particular, the dry idealized suites carry only water vapor.  The alias
+    index must therefore come from ``ModelConfig.constituent_names`` instead
+    of being embedded in the host model.
+    """
+
+    normalized = tuple(
+        str(name).strip().lower() for name in constituent_names
+    )
+    aliases: list[AliasRule] = []
+    species = {
+        "cloud_ice": "physics_cloud_ice",
+        "cloud_liquid_water": "physics_cloud_liquid_water",
+        "rain_water": "physics_rain_water",
+        "water_vapor": "physics_water_vapor",
+    }
+    for constituent, physics_alias in species.items():
+        if constituent not in normalized:
+            continue
+        index = normalized.index(constituent)
+        aliases.append(
+            AliasRule(
+                constituent,
+                "constituent_mixing_ratio",
+                -2,
+                index,
+            )
+        )
+        aliases.append(
+            AliasRule(
+                physics_alias,
+                "physics_constituent_mixing_ratio",
+                -1,
+                index,
+            )
+        )
+    return tuple(aliases)
+
+
+def model_ccpp_field_aliases(
+    constituent_names: Iterable[str],
+) -> dict[str, str]:
+    """Map CCPP standard names onto the Python-owned component arrays.
+
+    Values are canonical StatePool fields or zero-copy aliases created by
+    :func:`model_alias_rules`.  These are host-model bindings: they prevent
+    the metadata compiler from allocating a second, disconnected copy of a
+    field that CAM already owns.
+    """
+
+    aliases = {
+        # Prognostic/diagnostic physics state.
+        "eastward_wind": "physics_zonal_wind",
+        "northward_wind": "physics_meridional_wind",
+        "surface_air_pressure": "physics_surface_pressure",
+        "surface_pressure_of_dry_air": "physics_surface_dry_air_pressure",
+        "air_pressure": "physics_midpoint_pressure",
+        "air_pressure_at_interface": "physics_interface_pressure",
+        "air_pressure_of_dry_air": "physics_dry_midpoint_pressure",
+        "air_pressure_of_dry_air_at_interface": (
+            "physics_dry_interface_pressure"
+        ),
+        "air_pressure_thickness": "physics_layer_pressure_thickness",
+        "air_pressure_thickness_of_dry_air": (
+            "physics_dry_layer_pressure_thickness"
+        ),
+        "reciprocal_of_air_pressure_thickness": (
+            "physics_reciprocal_layer_pressure_thickness"
+        ),
+        "reciprocal_of_air_pressure_thickness_of_dry_air": (
+            "physics_reciprocal_dry_layer_pressure_thickness"
+        ),
+        "ln_air_pressure": "physics_log_midpoint_pressure",
+        "ln_air_pressure_at_interface": "physics_log_interface_pressure",
+        "ln_air_pressure_of_dry_air": "physics_log_dry_midpoint_pressure",
+        "ln_air_pressure_of_dry_air_at_interface": (
+            "physics_log_dry_interface_pressure"
+        ),
+        "reciprocal_of_dimensionless_exner_function_wrt_surface_air_pressure": (
+            "physics_inverse_surface_exner"
+        ),
+        "lagrangian_tendency_of_air_pressure": (
+            "physics_vertical_pressure_velocity"
+        ),
+        "geopotential_height_wrt_surface_at_interface": (
+            "physics_interface_geopotential_height"
+        ),
+        "latitude": "physics_latitude",
+        "longitude": "physics_longitude",
+        "latitude_degrees_north": "physics_latitude",
+        "longitude_degrees_east": "physics_longitude",
+        "cell_area": "physics_cell_area",
+        # Accumulated model-physics tendencies.
+        "tendency_of_air_temperature_due_to_model_physics": (
+            "physics_air_temperature_tendency"
+        ),
+        "tendency_of_eastward_wind_due_to_model_physics": (
+            "physics_zonal_wind_tendency"
+        ),
+        "tendency_of_northward_wind_due_to_model_physics": (
+            "physics_meridional_wind_tendency"
+        ),
+        # Constituent registry and shared component work arrays.
+        "ccpp_constituents": "physics_constituent_mixing_ratio",
+        "specific_heat_of_air_used_in_dycore": "dycore_heat_capacity",
+        "ratio_of_specific_heat_of_air_used_in_physics_energy_formula_to_"
+        "specific_heat_of_air_used_in_dycore_energy_formula": (
+            "dycore_energy_scaling"
+        ),
+        # Constants already owned and initialized by Python.
+        "gas_constant_of_water_vapor": "water_vapor_gas_constant",
+        "gas_constant_of_dry_air": "dry_air_gas_constant",
+        "ratio_of_water_vapor_to_dry_air_molecular_weights": (
+            "water_to_dry_molecular_weight_ratio"
+        ),
+        "latent_heat_of_fusion": "latent_heat_of_fusion",
+        "latent_heat_of_fusion_of_water_at_0c": "latent_heat_of_fusion",
+        "latent_heat_of_vaporization": "latent_heat_of_vaporization",
+        "pi_constant": "circle_constant",
+        "specific_heat_of_dry_air_at_constant_pressure": (
+            "dry_air_specific_heat"
+        ),
+        "specific_heat_of_liquid_water_at_constant_pressure": (
+            "liquid_water_specific_heat"
+        ),
+        "specific_heat_of_water_vapor_at_constant_pressure": (
+            "water_vapor_specific_heat"
+        ),
+        "ratio_of_dry_air_gas_constant_to_specific_heat_of_dry_air_at_"
+        "constant_pressure": "dry_air_kappa",
+        "freezing_point_of_water": "water_freezing_temperature",
+        "water_freezing_temperature": "water_freezing_temperature",
+        "water_triple_point_temperature": (
+            "water_triple_point_temperature"
+        ),
+    }
+    normalized = tuple(
+        str(name).strip().lower() for name in constituent_names
+    )
+    species_standards = {
+        "cloud_ice": (
+            "cloud_ice_mixing_ratio_wrt_dry_air",
+            "cloud_ice_mixing_ratio_wrt_moist_air_and_condensed_water",
+        ),
+        "cloud_liquid_water": (
+            "cloud_liquid_water_mixing_ratio_wrt_dry_air",
+            "cloud_liquid_water_mixing_ratio_wrt_moist_air_and_condensed_water",
+        ),
+        "rain_water": (
+            "rain_mixing_ratio_wrt_dry_air",
+            "rain_mixing_ratio_wrt_moist_air_and_condensed_water",
+        ),
+        "water_vapor": (
+            "water_vapor_mixing_ratio_wrt_dry_air",
+            "water_vapor_mixing_ratio_wrt_moist_air_and_condensed_water",
+        ),
+    }
+    for species, standards in species_standards.items():
+        if species not in normalized:
+            continue
+        target = f"physics_{species}"
+        for standard_name in standards:
+            aliases[standard_name] = target
+    return aliases
 
 
 def export_contract(path: str | Path, contracts: Iterable[FieldContract] | None = None) -> None:

@@ -13,6 +13,7 @@ threads_per_rank: 1
 dt_seconds: 1800
 stop_n: 50
 calendar: NO_LEAP
+orbital_year: 2000
 run_type: startup
 analytic_ic_type: moist_baroclinic_wave_dcmip2016
 pertlim: 0.0

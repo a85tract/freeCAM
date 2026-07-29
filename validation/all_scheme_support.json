@@ -1,10 +1,20 @@
 {
   "connectors_generated": 155,
-  "executable_connector_count": 129,
-  "external_service_required": 26,
-  "native_device_ready": 100,
-  "python_host_service_ready": 29,
-  "schema_version": 1,
+  "executable_connector_count": 151,
+  "external_service_required": 4,
+  "native_device_ready": 121,
+  "python_host_service_ready": 30,
+  "runtime_executable_scheme_count": 155,
+  "runtime_occurrence_count": 340,
+  "runtime_provider_counts": {
+    "fortran-device": 256,
+    "python-host-process": 47,
+    "python-host-service": 37
+  },
+  "runtime_ready_occurrence_count": 340,
+  "runtime_unresolved_occurrence_count": 0,
+  "runtime_unresolved_scheme_count": 0,
+  "schema_version": 2,
   "scheme_count": 155,
   "schemes": [
     {
@@ -13,6 +23,131 @@
       "descriptor": "devices/generated/apply_constituent_tendencies/device.yaml",
       "manifest": "build/catalog_devices/apply_constituent_tendencies/device.json",
       "name": "apply_constituent_tendencies",
+      "runtime_occurrences": [
+        {
+          "group": "physics_before_coupler",
+          "order": 13,
+          "provider": "fortran-device",
+          "ready": true,
+          "suite": "cam4"
+        },
+        {
+          "group": "physics_before_coupler",
+          "order": 21,
+          "provider": "fortran-device",
+          "ready": true,
+          "suite": "cam4"
+        },
+        {
+          "group": "physics_before_coupler",
+          "order": 30,
+          "provider": "fortran-device",
+          "ready": true,
+          "suite": "cam4"
+        },
+        {
+          "group": "physics_before_coupler",
+          "order": 42,
+          "provider": "fortran-device",
+          "ready": true,
+          "suite": "cam4"
+        },
+        {
+          "group": "physics_before_coupler",
+          "order": 53,
+          "provider": "fortran-device",
+          "ready": true,
+          "suite": "cam4"
+        },
+        {
+          "group": "physics_before_coupler",
+          "order": 62,
+          "provider": "fortran-device",
+          "ready": true,
+          "suite": "cam4"
+        },
+        {
+          "group": "physics_before_coupler",
+          "order": 74,
+          "provider": "fortran-device",
+          "ready": true,
+          "suite": "cam4"
+        },
+        {
+          "group": "physics_before_coupler",
+          "order": 80,
+          "provider": "fortran-device",
+          "ready": true,
+          "suite": "cam4"
+        },
+        {
+          "group": "physics_before_coupler",
+          "order": 93,
+          "provider": "fortran-device",
+          "ready": true,
+          "suite": "cam4"
+        },
+        {
+          "group": "physics_before_coupler",
+          "order": 98,
+          "provider": "fortran-device",
+          "ready": true,
+          "suite": "cam4"
+        },
+        {
+          "group": "physics_after_coupler",
+          "order": 176,
+          "provider": "fortran-device",
+          "ready": true,
+          "suite": "cam4"
+        },
+        {
+          "group": "physics_after_coupler",
+          "order": 190,
+          "provider": "fortran-device",
+          "ready": true,
+          "suite": "cam4"
+        },
+        {
+          "group": "physics_before_coupler",
+          "order": 13,
+          "provider": "fortran-device",
+          "ready": true,
+          "suite": "cam7"
+        },
+        {
+          "group": "physics_before_coupler",
+          "order": 22,
+          "provider": "fortran-device",
+          "ready": true,
+          "suite": "cam7"
+        },
+        {
+          "group": "physics_before_coupler",
+          "order": 32,
+          "provider": "fortran-device",
+          "ready": true,
+          "suite": "cam7"
+        },
+        {
+          "group": "physics_before_coupler",
+          "order": 45,
+          "provider": "fortran-device",
+          "ready": true,
+          "suite": "cam7"
+        },
+        {
+          "group": "physics_after_coupler",
+          "order": 66,
+          "provider": "fortran-device",
+          "ready": true,
+          "suite": "cam7"
+        }
+      ],
+      "runtime_provider_kinds": [
+        "fortran-device"
+      ],
+      "runtime_ready": true,
       "status": "ready",
       "suites": [
         "cam4",
@@ -25,6 +160,166 @@
       "descriptor": "devices/generated/apply_heating_rate/device.yaml",
       "manifest": "build/catalog_devices/apply_heating_rate/device.json",
       "name": "apply_heating_rate",
+      "runtime_occurrences": [
+        {
+          "group": "physics_before_coupler",
+          "order": 5,
+          "provider": "fortran-device",
+          "ready": true,
+          "suite": "adiabatic"
+        },
+        {
+          "group": "physics_before_coupler",
+          "order": 8,
+          "provider": "fortran-device",
+          "ready": true,
+          "suite": "cam4"
+        },
+        {
+          "group": "physics_before_coupler",
+          "order": 14,
+          "provider": "fortran-device",
+          "ready": true,
+          "suite": "cam4"
+        },
+        {
+          "group": "physics_before_coupler",
+          "order": 20,
+          "provider": "fortran-device",
+          "ready": true,
+          "suite": "cam4"
+        },
+        {
+          "group": "physics_before_coupler",
+          "order": 29,
+          "provider": "fortran-device",
+          "ready": true,
+          "suite": "cam4"
+        },
+        {
+          "group": "physics_before_coupler",
+          "order": 36,
+          "provider": "fortran-device",
+          "ready": true,
+          "suite": "cam4"
+        },
+        {
+          "group": "physics_before_coupler",
+          "order": 52,
+          "provider": "fortran-device",
+          "ready": true,
+          "suite": "cam4"
+        },
+        {
+          "group": "physics_before_coupler",
+          "order": 61,
+          "provider": "fortran-device",
+          "ready": true,
+          "suite": "cam4"
+        },
+        {
+          "group": "physics_before_coupler",
+          "order": 75,
+          "provider": "fortran-device",
+          "ready": true,
+          "suite": "cam4"
+        },
+        {
+          "group": "physics_before_coupler",
+          "order": 99,
+          "provider": "fortran-device",
+          "ready": true,
+          "suite": "cam4"
+        },
+        {
+          "group": "physics_before_coupler",
+          "order": 144,
+          "provider": "fortran-device",
+          "ready": true,
+          "suite": "cam4"
+        },
+        {
+          "group": "physics_after_coupler",
+          "order": 177,
+          "provider": "fortran-device",
+          "ready": true,
+          "suite": "cam4"
+        },
+        {
+          "group": "physics_after_coupler",
+          "order": 191,
+          "provider": "fortran-device",
+          "ready": true,
+          "suite": "cam4"
+        },
+        {
+          "group": "physics_before_coupler",
+          "order": 7,
+          "provider": "fortran-device",
+          "ready": true,
+          "suite": "cam7"
+        },
+        {
+          "group": "physics_before_coupler",
+          "order": 14,
+          "provider": "fortran-device",
+          "ready": true,
+          "suite": "cam7"
+        },
+        {
+          "group": "physics_before_coupler",
+          "order": 21,
+          "provider": "fortran-device",
+          "ready": true,
+          "suite": "cam7"
+        },
+        {
+          "group": "physics_before_coupler",
+          "order": 31,
+          "provider": "fortran-device",
+          "ready": true,
+          "suite": "cam7"
+        },
+        {
+          "group": "physics_before_coupler",
+          "order": 39,
+          "provider": "fortran-device",
+          "ready": true,
+          "suite": "cam7"
+        },
+        {
+          "group": "physics_after_coupler",
+          "order": 67,
+          "provider": "fortran-device",
+          "ready": true,
+          "suite": "cam7"
+        },
+        {
+          "group": "physics_before_coupler",
+          "order": 4,
+          "provider": "fortran-device",
+          "ready": true,
+          "suite": "held_suarez_1994"
+        },
+        {
+          "group": "physics_before_coupler",
+          "order": 2,
+          "provider": "fortran-device",
+          "ready": true,
+          "suite": "tj2016"
+        },
+        {
+          "group": "physics_after_coupler",
+          "order": 9,
+          "provider": "fortran-device",
+          "ready": true,
+          "suite": "tj2016"
+        }
+      ],
+      "runtime_provider_kinds": [
+        "fortran-device"
+      ],
+      "runtime_ready": true,
       "status": "ready",
       "suites": [
         "adiabatic",
@@ -40,6 +335,40 @@
       "descriptor": "devices/generated/apply_tendency_of_air_temperature/device.yaml",
       "manifest": "build/catalog_devices/apply_tendency_of_air_temperature/device.json",
       "name": "apply_tendency_of_air_temperature",
+      "runtime_occurrences": [
+        {
+          "group": "physics_after_coupler",
+          "order": 200,
+          "provider": "fortran-device",
+          "ready": true,
+          "suite": "cam4"
+        },
+        {
+          "group": "physics_after_coupler",
+          "order": 75,
+          "provider": "fortran-device",
+          "ready": true,
+          "suite": "cam7"
+        },
+        {
+          "group": "physics_after_coupler",
+          "order": 23,
+          "provider": "fortran-device",
+          "ready": true,
+          "suite": "kessler"
+        },
+        {
+          "group": "physics_after_coupler",
+          "order": 16,
+          "provider": "fortran-device",
+          "ready": true,
+          "suite": "tj2016"
+        }
+      ],
+      "runtime_provider_kinds": [
+        "fortran-device"
+      ],
+      "runtime_ready": true,
       "status": "ready",
       "suites": [
         "cam4",
@@ -54,6 +383,61 @@
       "descriptor": "devices/generated/apply_tendency_of_eastward_wind/device.yaml",
       "manifest": "build/catalog_devices/apply_tendency_of_eastward_wind/device.json",
       "name": "apply_tendency_of_eastward_wind",
+      "runtime_occurrences": [
+        {
+          "group": "physics_before_coupler",
+          "order": 37,
+          "provider": "fortran-device",
+          "ready": true,
+          "suite": "cam4"
+        },
+        {
+          "group": "physics_after_coupler",
+          "order": 175,
+          "provider": "fortran-device",
+          "ready": true,
+          "suite": "cam4"
+        },
+        {
+          "group": "physics_after_coupler",
+          "order": 188,
+          "provider": "fortran-device",
+          "ready": true,
+          "suite": "cam4"
+        },
+        {
+          "group": "physics_before_coupler",
+          "order": 40,
+          "provider": "fortran-device",
+          "ready": true,
+          "suite": "cam7"
+        },
+        {
+          "group": "physics_after_coupler",
+          "order": 64,
+          "provider": "fortran-device",
+          "ready": true,
+          "suite": "cam7"
+        },
+        {
+          "group": "physics_before_coupler",
+          "order": 2,
+          "provider": "fortran-device",
+          "ready": true,
+          "suite": "held_suarez_1994"
+        },
+        {
+          "group": "physics_after_coupler",
+          "order": 10,
+          "provider": "fortran-device",
+          "ready": true,
+          "suite": "tj2016"
+        }
+      ],
+      "runtime_provider_kinds": [
+        "fortran-device"
+      ],
+      "runtime_ready": true,
       "status": "ready",
       "suites": [
         "cam4",
@@ -68,6 +452,61 @@
       "descriptor": "devices/generated/apply_tendency_of_northward_wind/device.yaml",
       "manifest": "build/catalog_devices/apply_tendency_of_northward_wind/device.json",
       "name": "apply_tendency_of_northward_wind",
+      "runtime_occurrences": [
+        {
+          "group": "physics_before_coupler",
+          "order": 38,
+          "provider": "fortran-device",
+          "ready": true,
+          "suite": "cam4"
+        },
+        {
+          "group": "physics_after_coupler",
+          "order": 174,
+          "provider": "fortran-device",
+          "ready": true,
+          "suite": "cam4"
+        },
+        {
+          "group": "physics_after_coupler",
+          "order": 189,
+          "provider": "fortran-device",
+          "ready": true,
+          "suite": "cam4"
+        },
+        {
+          "group": "physics_before_coupler",
+          "order": 41,
+          "provider": "fortran-device",
+          "ready": true,
+          "suite": "cam7"
+        },
+        {
+          "group": "physics_after_coupler",
+          "order": 65,
+          "provider": "fortran-device",
+          "ready": true,
+          "suite": "cam7"
+        },
+        {
+          "group": "physics_before_coupler",
+          "order": 3,
+          "provider": "fortran-device",
+          "ready": true,
+          "suite": "held_suarez_1994"
+        },
+        {
+          "group": "physics_after_coupler",
+          "order": 11,
+          "provider": "fortran-device",
+          "ready": true,
+          "suite": "tj2016"
+        }
+      ],
+      "runtime_provider_kinds": [
+        "fortran-device"
+      ],
+      "runtime_ready": true,
       "status": "ready",
       "suites": [
         "cam4",
@@ -82,6 +521,33 @@
       "descriptor": "devices/generated/calc_dry_air_ideal_gas_density/device.yaml",
       "manifest": "build/catalog_devices/calc_dry_air_ideal_gas_density/device.json",
       "name": "calc_dry_air_ideal_gas_density",
+      "runtime_occurrences": [
+        {
+          "group": "physics_before_coupler",
+          "order": 148,
+          "provider": "fortran-device",
+          "ready": true,
+          "suite": "cam4"
+        },
+        {
+          "group": "physics_before_coupler",
+          "order": 3,
+          "provider": "fortran-device",
+          "ready": true,
+          "suite": "kessler"
+        },
+        {
+          "group": "physics_after_coupler",
+          "order": 1,
+          "provider": "fortran-device",
+          "ready": true,
+          "suite": "musica"
+        }
+      ],
+      "runtime_provider_kinds": [
+        "fortran-device"
+      ],
+      "runtime_ready": true,
       "status": "ready",
       "suites": [
         "cam4",
@@ -95,6 +561,19 @@
       "descriptor": "devices/generated/calc_exner/device.yaml",
       "manifest": "build/catalog_devices/calc_exner/device.json",
       "name": "calc_exner",
+      "runtime_occurrences": [
+        {
+          "group": "physics_before_coupler",
+          "order": 1,
+          "provider": "fortran-device",
+          "ready": true,
+          "suite": "kessler"
+        }
+      ],
+      "runtime_provider_kinds": [
+        "fortran-device"
+      ],
+      "runtime_ready": true,
       "status": "ready",
       "suites": [
         "kessler"
@@ -106,6 +585,19 @@
       "descriptor": "devices/generated/calculate_net_heating/device.yaml",
       "manifest": "build/catalog_devices/calculate_net_heating/device.json",
       "name": "calculate_net_heating",
+      "runtime_occurrences": [
+        {
+          "group": "physics_before_coupler",
+          "order": 141,
+          "provider": "fortran-device",
+          "ready": true,
+          "suite": "cam4"
+        }
+      ],
+      "runtime_provider_kinds": [
+        "fortran-device"
+      ],
+      "runtime_ready": true,
       "status": "ready",
       "suites": [
         "cam4"
@@ -120,6 +612,75 @@
       "descriptor": "devices/generated/check_energy_chng/device.yaml",
       "manifest": null,
       "name": "check_energy_chng",
+      "runtime_occurrences": [
+        {
+          "group": "physics_before_coupler",
+          "order": 8,
+          "provider": "python-host-process",
+          "ready": true,
+          "suite": "adiabatic"
+        },
+        {
+          "group": "physics_before_coupler",
+          "order": 11,
+          "provider": "python-host-process",
+          "ready": true,
+          "suite": "cam4"
+        },
+        {
+          "group": "physics_before_coupler",
+          "order": 47,
+          "provider": "python-host-process",
+          "ready": true,
+          "suite": "cam4"
+        },
+        {
+          "group": "physics_before_coupler",
+          "order": 68,
+          "provider": "python-host-process",
+          "ready": true,
+          "suite": "cam4"
+        },
+        {
+          "group": "physics_after_coupler",
+          "order": 196,
+          "provider": "python-host-process",
+          "ready": true,
+          "suite": "cam4"
+        },
+        {
+          "group": "physics_before_coupler",
+          "order": 10,
+          "provider": "python-host-process",
+          "ready": true,
+          "suite": "cam7"
+        },
+        {
+          "group": "physics_before_coupler",
+          "order": 50,
+          "provider": "python-host-process",
+          "ready": true,
+          "suite": "cam7"
+        },
+        {
+          "group": "physics_before_coupler",
+          "order": 17,
+          "provider": "python-host-process",
+          "ready": true,
+          "suite": "kessler"
+        },
+        {
+          "group": "physics_before_coupler",
+          "order": 6,
+          "provider": "python-host-process",
+          "ready": true,
+          "suite": "tj2016"
+        }
+      ],
+      "runtime_provider_kinds": [
+        "python-host-process"
+      ],
+      "runtime_ready": true,
       "status": "external_source_required",
       "suites": [
         "adiabatic",
@@ -135,6 +696,33 @@
       "descriptor": "devices/generated/check_energy_fix/device.yaml",
       "manifest": "build/catalog_devices/check_energy_fix/device.json",
       "name": "check_energy_fix",
+      "runtime_occurrences": [
+        {
+          "group": "physics_before_coupler",
+          "order": 4,
+          "provider": "fortran-device",
+          "ready": true,
+          "suite": "adiabatic"
+        },
+        {
+          "group": "physics_before_coupler",
+          "order": 7,
+          "provider": "fortran-device",
+          "ready": true,
+          "suite": "cam4"
+        },
+        {
+          "group": "physics_before_coupler",
+          "order": 6,
+          "provider": "fortran-device",
+          "ready": true,
+          "suite": "cam7"
+        }
+      ],
+      "runtime_provider_kinds": [
+        "fortran-device"
+      ],
+      "runtime_ready": true,
       "status": "ready",
       "suites": [
         "adiabatic",
@@ -148,6 +736,26 @@
       "descriptor": "devices/generated/check_energy_fix_diagnostics/device.yaml",
       "manifest": null,
       "name": "check_energy_fix_diagnostics",
+      "runtime_occurrences": [
+        {
+          "group": "physics_before_coupler",
+          "order": 9,
+          "provider": "python-host-service",
+          "ready": true,
+          "suite": "adiabatic"
+        },
+        {
+          "group": "physics_before_coupler",
+          "order": 11,
+          "provider": "python-host-service",
+          "ready": true,
+          "suite": "cam7"
+        }
+      ],
+      "runtime_provider_kinds": [
+        "python-host-service"
+      ],
+      "runtime_ready": true,
       "status": "python_host_service_ready",
       "suites": [
         "adiabatic",
@@ -162,6 +770,33 @@
       "descriptor": "devices/generated/check_energy_gmean/device.yaml",
       "manifest": null,
       "name": "check_energy_gmean",
+      "runtime_occurrences": [
+        {
+          "group": "physics_before_coupler",
+          "order": 1,
+          "provider": "python-host-process",
+          "ready": true,
+          "suite": "adiabatic"
+        },
+        {
+          "group": "physics_before_coupler",
+          "order": 4,
+          "provider": "python-host-process",
+          "ready": true,
+          "suite": "cam4"
+        },
+        {
+          "group": "physics_before_coupler",
+          "order": 3,
+          "provider": "python-host-process",
+          "ready": true,
+          "suite": "cam7"
+        }
+      ],
+      "runtime_provider_kinds": [
+        "python-host-process"
+      ],
+      "runtime_ready": true,
       "status": "abi_or_host_service_required",
       "suites": [
         "adiabatic",
@@ -175,6 +810,33 @@
       "descriptor": "devices/generated/check_energy_gmean_diagnostics/device.yaml",
       "manifest": "build/catalog_devices/check_energy_gmean_diagnostics/device.json",
       "name": "check_energy_gmean_diagnostics",
+      "runtime_occurrences": [
+        {
+          "group": "physics_before_coupler",
+          "order": 2,
+          "provider": "fortran-device",
+          "ready": true,
+          "suite": "adiabatic"
+        },
+        {
+          "group": "physics_before_coupler",
+          "order": 5,
+          "provider": "fortran-device",
+          "ready": true,
+          "suite": "cam4"
+        },
+        {
+          "group": "physics_before_coupler",
+          "order": 4,
+          "provider": "fortran-device",
+          "ready": true,
+          "suite": "cam7"
+        }
+      ],
+      "runtime_provider_kinds": [
+        "fortran-device"
+      ],
+      "runtime_ready": true,
       "status": "ready",
       "suites": [
         "adiabatic",
@@ -188,6 +850,33 @@
       "descriptor": "devices/generated/check_energy_save_teout/device.yaml",
       "manifest": "build/catalog_devices/check_energy_save_teout/device.json",
       "name": "check_energy_save_teout",
+      "runtime_occurrences": [
+        {
+          "group": "physics_before_coupler",
+          "order": 10,
+          "provider": "fortran-device",
+          "ready": true,
+          "suite": "adiabatic"
+        },
+        {
+          "group": "physics_after_coupler",
+          "order": 197,
+          "provider": "fortran-device",
+          "ready": true,
+          "suite": "cam4"
+        },
+        {
+          "group": "physics_after_coupler",
+          "order": 71,
+          "provider": "fortran-device",
+          "ready": true,
+          "suite": "cam7"
+        }
+      ],
+      "runtime_provider_kinds": [
+        "fortran-device"
+      ],
+      "runtime_ready": true,
       "status": "ready",
       "suites": [
         "adiabatic",
@@ -201,6 +890,103 @@
       "descriptor": "devices/generated/check_energy_scaling/device.yaml",
       "manifest": "build/catalog_devices/check_energy_scaling/device.json",
       "name": "check_energy_scaling",
+      "runtime_occurrences": [
+        {
+          "group": "physics_before_coupler",
+          "order": 7,
+          "provider": "fortran-device",
+          "ready": true,
+          "suite": "adiabatic"
+        },
+        {
+          "group": "physics_before_coupler",
+          "order": 10,
+          "provider": "fortran-device",
+          "ready": true,
+          "suite": "cam4"
+        },
+        {
+          "group": "physics_before_coupler",
+          "order": 46,
+          "provider": "fortran-device",
+          "ready": true,
+          "suite": "cam4"
+        },
+        {
+          "group": "physics_before_coupler",
+          "order": 67,
+          "provider": "fortran-device",
+          "ready": true,
+          "suite": "cam4"
+        },
+        {
+          "group": "physics_after_coupler",
+          "order": 195,
+          "provider": "fortran-device",
+          "ready": true,
+          "suite": "cam4"
+        },
+        {
+          "group": "physics_after_coupler",
+          "order": 198,
+          "provider": "fortran-device",
+          "ready": true,
+          "suite": "cam4"
+        },
+        {
+          "group": "physics_before_coupler",
+          "order": 9,
+          "provider": "fortran-device",
+          "ready": true,
+          "suite": "cam7"
+        },
+        {
+          "group": "physics_before_coupler",
+          "order": 49,
+          "provider": "fortran-device",
+          "ready": true,
+          "suite": "cam7"
+        },
+        {
+          "group": "physics_after_coupler",
+          "order": 73,
+          "provider": "fortran-device",
+          "ready": true,
+          "suite": "cam7"
+        },
+        {
+          "group": "physics_before_coupler",
+          "order": 16,
+          "provider": "fortran-device",
+          "ready": true,
+          "suite": "kessler"
+        },
+        {
+          "group": "physics_after_coupler",
+          "order": 21,
+          "provider": "fortran-device",
+          "ready": true,
+          "suite": "kessler"
+        },
+        {
+          "group": "physics_before_coupler",
+          "order": 5,
+          "provider": "fortran-device",
+          "ready": true,
+          "suite": "tj2016"
+        },
+        {
+          "group": "physics_after_coupler",
+          "order": 14,
+          "provider": "fortran-device",
+          "ready": true,
+          "suite": "tj2016"
+        }
+      ],
+      "runtime_provider_kinds": [
+        "fortran-device"
+      ],
+      "runtime_ready": true,
       "status": "ready",
       "suites": [
         "adiabatic",
@@ -216,6 +1002,75 @@
       "descriptor": "devices/generated/check_energy_zero_fluxes/device.yaml",
       "manifest": "build/catalog_devices/check_energy_zero_fluxes/device.json",
       "name": "check_energy_zero_fluxes",
+      "runtime_occurrences": [
+        {
+          "group": "physics_before_coupler",
+          "order": 3,
+          "provider": "fortran-device",
+          "ready": true,
+          "suite": "adiabatic"
+        },
+        {
+          "group": "physics_before_coupler",
+          "order": 6,
+          "provider": "fortran-device",
+          "ready": true,
+          "suite": "cam4"
+        },
+        {
+          "group": "physics_before_coupler",
+          "order": 17,
+          "provider": "fortran-device",
+          "ready": true,
+          "suite": "cam4"
+        },
+        {
+          "group": "physics_before_coupler",
+          "order": 49,
+          "provider": "fortran-device",
+          "ready": true,
+          "suite": "cam4"
+        },
+        {
+          "group": "physics_after_coupler",
+          "order": 182,
+          "provider": "fortran-device",
+          "ready": true,
+          "suite": "cam4"
+        },
+        {
+          "group": "physics_before_coupler",
+          "order": 5,
+          "provider": "fortran-device",
+          "ready": true,
+          "suite": "cam7"
+        },
+        {
+          "group": "physics_after_coupler",
+          "order": 55,
+          "provider": "fortran-device",
+          "ready": true,
+          "suite": "cam7"
+        },
+        {
+          "group": "physics_before_coupler",
+          "order": 15,
+          "provider": "fortran-device",
+          "ready": true,
+          "suite": "kessler"
+        },
+        {
+          "group": "physics_before_coupler",
+          "order": 4,
+          "provider": "fortran-device",
+          "ready": true,
+          "suite": "tj2016"
+        }
+      ],
+      "runtime_provider_kinds": [
+        "fortran-device"
+      ],
+      "runtime_ready": true,
       "status": "ready",
       "suites": [
         "adiabatic",
@@ -231,6 +1086,54 @@
       "descriptor": "devices/generated/cloud_fraction_fice/device.yaml",
       "manifest": "build/catalog_devices/cloud_fraction_fice/device.json",
       "name": "cloud_fraction_fice",
+      "runtime_occurrences": [
+        {
+          "group": "physics_before_coupler",
+          "order": 24,
+          "provider": "fortran-device",
+          "ready": true,
+          "suite": "cam4"
+        },
+        {
+          "group": "physics_before_coupler",
+          "order": 33,
+          "provider": "fortran-device",
+          "ready": true,
+          "suite": "cam4"
+        },
+        {
+          "group": "physics_before_coupler",
+          "order": 56,
+          "provider": "fortran-device",
+          "ready": true,
+          "suite": "cam4"
+        },
+        {
+          "group": "physics_before_coupler",
+          "order": 89,
+          "provider": "fortran-device",
+          "ready": true,
+          "suite": "cam4"
+        },
+        {
+          "group": "physics_before_coupler",
+          "order": 25,
+          "provider": "fortran-device",
+          "ready": true,
+          "suite": "cam7"
+        },
+        {
+          "group": "physics_before_coupler",
+          "order": 35,
+          "provider": "fortran-device",
+          "ready": true,
+          "suite": "cam7"
+        }
+      ],
+      "runtime_provider_kinds": [
+        "fortran-device"
+      ],
+      "runtime_ready": true,
       "status": "ready",
       "suites": [
         "cam4",
@@ -238,14 +1141,25 @@
       ]
     },
     {
-      "blockers": [
-        "dependency_closure:device 'cloud_particle_sedimentation' recursive source closure is not standalone: host module 'esmf' used by /glade/work/ruitong/pycam-sima/external/CAM-SIMA/cime/CIME/non_py/src/timing/perf_mod.F90; host module 'mpi' used by /glade/work/ruitong/pycam-sima/external/CAM-SIMA/src/dynamics/utils/vert_coord.F90; host module 'pio' used by /glade/work/ruitong/pycam-sima/external/CAM-SIMA/src/utils/cam_grid_support.F90; unresolved module 'f90_unix_proc' used by /glade/work/ruitong/pycam-sima/external/CAM-SIMA/components/cdeps/share/shr_abort_mod.F90; unresolved module 'ifcore' used by /glade/work/ruitong/pycam-sima/external/CAM-SIMA/components/cdeps/share/shr_abort_mod.F90; unresolved module 'netcdf' used by /glade/work/ruitong/pycam-sima/external/CAM-SIMA/share/src/shr_ncread_mod.F90; unresolved module 'omp_lib' used by /glade/work/ruitong/pycam-sima/external/CAM-SIMA/cime/CIME/non_py/src/timing/perf_mod.F90"
-      ],
+      "blockers": [],
       "connector_generated": true,
       "descriptor": "devices/generated/cloud_particle_sedimentation/device.yaml",
-      "manifest": null,
+      "manifest": "build/catalog_devices/cloud_particle_sedimentation/device.json",
       "name": "cloud_particle_sedimentation",
-      "status": "dependency_provider_required",
+      "runtime_occurrences": [
+        {
+          "group": "physics_before_coupler",
+          "order": 72,
+          "provider": "fortran-device",
+          "ready": true,
+          "suite": "cam4"
+        }
+      ],
+      "runtime_provider_kinds": [
+        "fortran-device"
+      ],
+      "runtime_ready": true,
+      "status": "ready",
       "suites": [
         "cam4"
       ]
@@ -256,6 +1170,19 @@
       "descriptor": "devices/generated/cloud_particle_sedimentation_diagnostics/device.yaml",
       "manifest": null,
       "name": "cloud_particle_sedimentation_diagnostics",
+      "runtime_occurrences": [
+        {
+          "group": "physics_before_coupler",
+          "order": 73,
+          "provider": "python-host-service",
+          "ready": true,
+          "suite": "cam4"
+        }
+      ],
+      "runtime_provider_kinds": [
+        "python-host-service"
+      ],
+      "runtime_ready": true,
       "status": "python_host_service_ready",
       "suites": [
         "cam4"
@@ -267,6 +1194,26 @@
       "descriptor": "devices/generated/compute_cloud_fraction/device.yaml",
       "manifest": "build/catalog_devices/compute_cloud_fraction/device.json",
       "name": "compute_cloud_fraction",
+      "runtime_occurrences": [
+        {
+          "group": "physics_before_coupler",
+          "order": 85,
+          "provider": "fortran-device",
+          "ready": true,
+          "suite": "cam4"
+        },
+        {
+          "group": "physics_before_coupler",
+          "order": 102,
+          "provider": "fortran-device",
+          "ready": true,
+          "suite": "cam4"
+        }
+      ],
+      "runtime_provider_kinds": [
+        "fortran-device"
+      ],
+      "runtime_ready": true,
       "status": "ready",
       "suites": [
         "cam4"
@@ -278,6 +1225,19 @@
       "descriptor": "devices/generated/compute_cloud_fraction_diagnostics/device.yaml",
       "manifest": null,
       "name": "compute_cloud_fraction_diagnostics",
+      "runtime_occurrences": [
+        {
+          "group": "physics_before_coupler",
+          "order": 103,
+          "provider": "python-host-service",
+          "ready": true,
+          "suite": "cam4"
+        }
+      ],
+      "runtime_provider_kinds": [
+        "python-host-service"
+      ],
+      "runtime_ready": true,
       "status": "python_host_service_ready",
       "suites": [
         "cam4"
@@ -289,6 +1249,19 @@
       "descriptor": "devices/generated/convect_shallow_diagnostics/device.yaml",
       "manifest": null,
       "name": "convect_shallow_diagnostics",
+      "runtime_occurrences": [
+        {
+          "group": "physics_before_coupler",
+          "order": 48,
+          "provider": "python-host-service",
+          "ready": true,
+          "suite": "cam4"
+        }
+      ],
+      "runtime_provider_kinds": [
+        "python-host-service"
+      ],
+      "runtime_ready": true,
       "status": "python_host_service_ready",
       "suites": [
         "cam4"
@@ -300,6 +1273,19 @@
       "descriptor": "devices/generated/convect_shallow_diagnostics_after_convective_evaporation/device.yaml",
       "manifest": null,
       "name": "convect_shallow_diagnostics_after_convective_evaporation",
+      "runtime_occurrences": [
+        {
+          "group": "physics_before_coupler",
+          "order": 60,
+          "provider": "python-host-service",
+          "ready": true,
+          "suite": "cam4"
+        }
+      ],
+      "runtime_provider_kinds": [
+        "python-host-service"
+      ],
+      "runtime_ready": true,
       "status": "python_host_service_ready",
       "suites": [
         "cam4"
@@ -311,6 +1297,19 @@
       "descriptor": "devices/generated/convect_shallow_diagnostics_after_shallow_scheme/device.yaml",
       "manifest": null,
       "name": "convect_shallow_diagnostics_after_shallow_scheme",
+      "runtime_occurrences": [
+        {
+          "group": "physics_before_coupler",
+          "order": 51,
+          "provider": "python-host-service",
+          "ready": true,
+          "suite": "cam4"
+        }
+      ],
+      "runtime_provider_kinds": [
+        "python-host-service"
+      ],
+      "runtime_ready": true,
       "status": "python_host_service_ready",
       "suites": [
         "cam4"
@@ -322,6 +1321,19 @@
       "descriptor": "devices/generated/convect_shallow_diagnostics_after_sum_to_deep/device.yaml",
       "manifest": null,
       "name": "convect_shallow_diagnostics_after_sum_to_deep",
+      "runtime_occurrences": [
+        {
+          "group": "physics_before_coupler",
+          "order": 66,
+          "provider": "python-host-service",
+          "ready": true,
+          "suite": "cam4"
+        }
+      ],
+      "runtime_provider_kinds": [
+        "python-host-service"
+      ],
+      "runtime_ready": true,
       "status": "python_host_service_ready",
       "suites": [
         "cam4"
@@ -333,6 +1345,19 @@
       "descriptor": "devices/generated/convect_shallow_sum_to_deep/device.yaml",
       "manifest": "build/catalog_devices/convect_shallow_sum_to_deep/device.json",
       "name": "convect_shallow_sum_to_deep",
+      "runtime_occurrences": [
+        {
+          "group": "physics_before_coupler",
+          "order": 65,
+          "provider": "fortran-device",
+          "ready": true,
+          "suite": "cam4"
+        }
+      ],
+      "runtime_provider_kinds": [
+        "fortran-device"
+      ],
+      "runtime_ready": true,
       "status": "ready",
       "suites": [
         "cam4"
@@ -344,6 +1369,19 @@
       "descriptor": "devices/generated/convective_cloud_cover/device.yaml",
       "manifest": "build/catalog_devices/convective_cloud_cover/device.json",
       "name": "convective_cloud_cover",
+      "runtime_occurrences": [
+        {
+          "group": "physics_before_coupler",
+          "order": 83,
+          "provider": "fortran-device",
+          "ready": true,
+          "suite": "cam4"
+        }
+      ],
+      "runtime_provider_kinds": [
+        "fortran-device"
+      ],
+      "runtime_ready": true,
       "status": "ready",
       "suites": [
         "cam4"
@@ -355,6 +1393,19 @@
       "descriptor": "devices/generated/convective_cloud_cover_diagnostics/device.yaml",
       "manifest": null,
       "name": "convective_cloud_cover_diagnostics",
+      "runtime_occurrences": [
+        {
+          "group": "physics_before_coupler",
+          "order": 84,
+          "provider": "python-host-service",
+          "ready": true,
+          "suite": "cam4"
+        }
+      ],
+      "runtime_provider_kinds": [
+        "python-host-service"
+      ],
+      "runtime_ready": true,
       "status": "python_host_service_ready",
       "suites": [
         "cam4"
@@ -366,6 +1417,26 @@
       "descriptor": "devices/generated/convert_dry_constituent_tendencies_to_dry_air_basis/device.yaml",
       "manifest": "build/catalog_devices/convert_dry_constituent_tendencies_to_dry_air_basis/device.json",
       "name": "convert_dry_constituent_tendencies_to_dry_air_basis",
+      "runtime_occurrences": [
+        {
+          "group": "physics_after_coupler",
+          "order": 186,
+          "provider": "fortran-device",
+          "ready": true,
+          "suite": "cam4"
+        },
+        {
+          "group": "physics_after_coupler",
+          "order": 63,
+          "provider": "fortran-device",
+          "ready": true,
+          "suite": "cam7"
+        }
+      ],
+      "runtime_provider_kinds": [
+        "fortran-device"
+      ],
+      "runtime_ready": true,
       "status": "ready",
       "suites": [
         "cam4",
@@ -378,6 +1449,26 @@
       "descriptor": "devices/generated/dadadj/device.yaml",
       "manifest": "build/catalog_devices/dadadj/device.json",
       "name": "dadadj",
+      "runtime_occurrences": [
+        {
+          "group": "physics_before_coupler",
+          "order": 12,
+          "provider": "fortran-device",
+          "ready": true,
+          "suite": "cam4"
+        },
+        {
+          "group": "physics_before_coupler",
+          "order": 12,
+          "provider": "fortran-device",
+          "ready": true,
+          "suite": "cam7"
+        }
+      ],
+      "runtime_provider_kinds": [
+        "fortran-device"
+      ],
+      "runtime_ready": true,
       "status": "ready",
       "suites": [
         "cam4",
@@ -390,6 +1481,19 @@
       "descriptor": "devices/generated/dry_to_wet_cloud_liquid_water/device.yaml",
       "manifest": "build/catalog_devices/dry_to_wet_cloud_liquid_water/device.json",
       "name": "dry_to_wet_cloud_liquid_water",
+      "runtime_occurrences": [
+        {
+          "group": "physics_before_coupler",
+          "order": 10,
+          "provider": "fortran-device",
+          "ready": true,
+          "suite": "kessler"
+        }
+      ],
+      "runtime_provider_kinds": [
+        "fortran-device"
+      ],
+      "runtime_ready": true,
       "status": "ready",
       "suites": [
         "kessler"
@@ -401,6 +1505,19 @@
       "descriptor": "devices/generated/dry_to_wet_rain/device.yaml",
       "manifest": "build/catalog_devices/dry_to_wet_rain/device.json",
       "name": "dry_to_wet_rain",
+      "runtime_occurrences": [
+        {
+          "group": "physics_before_coupler",
+          "order": 11,
+          "provider": "fortran-device",
+          "ready": true,
+          "suite": "kessler"
+        }
+      ],
+      "runtime_provider_kinds": [
+        "fortran-device"
+      ],
+      "runtime_ready": true,
       "status": "ready",
       "suites": [
         "kessler"
@@ -412,6 +1529,19 @@
       "descriptor": "devices/generated/dry_to_wet_water_vapor/device.yaml",
       "manifest": "build/catalog_devices/dry_to_wet_water_vapor/device.json",
       "name": "dry_to_wet_water_vapor",
+      "runtime_occurrences": [
+        {
+          "group": "physics_before_coupler",
+          "order": 9,
+          "provider": "fortran-device",
+          "ready": true,
+          "suite": "kessler"
+        }
+      ],
+      "runtime_provider_kinds": [
+        "fortran-device"
+      ],
+      "runtime_ready": true,
       "status": "ready",
       "suites": [
         "kessler"
@@ -423,6 +1553,40 @@
       "descriptor": "devices/generated/dycore_energy_consistency_adjust/device.yaml",
       "manifest": "build/catalog_devices/dycore_energy_consistency_adjust/device.json",
       "name": "dycore_energy_consistency_adjust",
+      "runtime_occurrences": [
+        {
+          "group": "physics_after_coupler",
+          "order": 199,
+          "provider": "fortran-device",
+          "ready": true,
+          "suite": "cam4"
+        },
+        {
+          "group": "physics_after_coupler",
+          "order": 74,
+          "provider": "fortran-device",
+          "ready": true,
+          "suite": "cam7"
+        },
+        {
+          "group": "physics_after_coupler",
+          "order": 22,
+          "provider": "fortran-device",
+          "ready": true,
+          "suite": "kessler"
+        },
+        {
+          "group": "physics_after_coupler",
+          "order": 15,
+          "provider": "fortran-device",
+          "ready": true,
+          "suite": "tj2016"
+        }
+      ],
+      "runtime_provider_kinds": [
+        "fortran-device"
+      ],
+      "runtime_ready": true,
       "status": "ready",
       "suites": [
         "cam4",
@@ -437,6 +1601,187 @@
       "descriptor": "devices/generated/geopotential_temp/device.yaml",
       "manifest": "build/catalog_devices/geopotential_temp/device.json",
       "name": "geopotential_temp",
+      "runtime_occurrences": [
+        {
+          "group": "physics_before_coupler",
+          "order": 6,
+          "provider": "fortran-device",
+          "ready": true,
+          "suite": "adiabatic"
+        },
+        {
+          "group": "physics_before_coupler",
+          "order": 9,
+          "provider": "fortran-device",
+          "ready": true,
+          "suite": "cam4"
+        },
+        {
+          "group": "physics_before_coupler",
+          "order": 16,
+          "provider": "fortran-device",
+          "ready": true,
+          "suite": "cam4"
+        },
+        {
+          "group": "physics_before_coupler",
+          "order": 23,
+          "provider": "fortran-device",
+          "ready": true,
+          "suite": "cam4"
+        },
+        {
+          "group": "physics_before_coupler",
+          "order": 32,
+          "provider": "fortran-device",
+          "ready": true,
+          "suite": "cam4"
+        },
+        {
+          "group": "physics_before_coupler",
+          "order": 39,
+          "provider": "fortran-device",
+          "ready": true,
+          "suite": "cam4"
+        },
+        {
+          "group": "physics_before_coupler",
+          "order": 44,
+          "provider": "fortran-device",
+          "ready": true,
+          "suite": "cam4"
+        },
+        {
+          "group": "physics_before_coupler",
+          "order": 55,
+          "provider": "fortran-device",
+          "ready": true,
+          "suite": "cam4"
+        },
+        {
+          "group": "physics_before_coupler",
+          "order": 64,
+          "provider": "fortran-device",
+          "ready": true,
+          "suite": "cam4"
+        },
+        {
+          "group": "physics_before_coupler",
+          "order": 77,
+          "provider": "fortran-device",
+          "ready": true,
+          "suite": "cam4"
+        },
+        {
+          "group": "physics_before_coupler",
+          "order": 82,
+          "provider": "fortran-device",
+          "ready": true,
+          "suite": "cam4"
+        },
+        {
+          "group": "physics_before_coupler",
+          "order": 95,
+          "provider": "fortran-device",
+          "ready": true,
+          "suite": "cam4"
+        },
+        {
+          "group": "physics_before_coupler",
+          "order": 101,
+          "provider": "fortran-device",
+          "ready": true,
+          "suite": "cam4"
+        },
+        {
+          "group": "physics_before_coupler",
+          "order": 145,
+          "provider": "fortran-device",
+          "ready": true,
+          "suite": "cam4"
+        },
+        {
+          "group": "physics_after_coupler",
+          "order": 179,
+          "provider": "fortran-device",
+          "ready": true,
+          "suite": "cam4"
+        },
+        {
+          "group": "physics_after_coupler",
+          "order": 193,
+          "provider": "fortran-device",
+          "ready": true,
+          "suite": "cam4"
+        },
+        {
+          "group": "physics_before_coupler",
+          "order": 8,
+          "provider": "fortran-device",
+          "ready": true,
+          "suite": "cam7"
+        },
+        {
+          "group": "physics_before_coupler",
+          "order": 16,
+          "provider": "fortran-device",
+          "ready": true,
+          "suite": "cam7"
+        },
+        {
+          "group": "physics_before_coupler",
+          "order": 24,
+          "provider": "fortran-device",
+          "ready": true,
+          "suite": "cam7"
+        },
+        {
+          "group": "physics_before_coupler",
+          "order": 34,
+          "provider": "fortran-device",
+          "ready": true,
+          "suite": "cam7"
+        },
+        {
+          "group": "physics_before_coupler",
+          "order": 42,
+          "provider": "fortran-device",
+          "ready": true,
+          "suite": "cam7"
+        },
+        {
+          "group": "physics_before_coupler",
+          "order": 47,
+          "provider": "fortran-device",
+          "ready": true,
+          "suite": "cam7"
+        },
+        {
+          "group": "physics_after_coupler",
+          "order": 69,
+          "provider": "fortran-device",
+          "ready": true,
+          "suite": "cam7"
+        },
+        {
+          "group": "physics_before_coupler",
+          "order": 5,
+          "provider": "fortran-device",
+          "ready": true,
+          "suite": "held_suarez_1994"
+        },
+        {
+          "group": "physics_before_coupler",
+          "order": 14,
+          "provider": "fortran-device",
+          "ready": true,
+          "suite": "kessler"
+        }
+      ],
+      "runtime_provider_kinds": [
+        "fortran-device"
+      ],
+      "runtime_ready": true,
       "status": "ready",
       "suites": [
         "adiabatic",
@@ -452,6 +1797,26 @@
       "descriptor": "devices/generated/gravity_wave_drag_common/device.yaml",
       "manifest": "build/catalog_devices/gravity_wave_drag_common/device.json",
       "name": "gravity_wave_drag_common",
+      "runtime_occurrences": [
+        {
+          "group": "physics_after_coupler",
+          "order": 181,
+          "provider": "fortran-device",
+          "ready": true,
+          "suite": "cam4"
+        },
+        {
+          "group": "physics_after_coupler",
+          "order": 54,
+          "provider": "fortran-device",
+          "ready": true,
+          "suite": "cam7"
+        }
+      ],
+      "runtime_provider_kinds": [
+        "fortran-device"
+      ],
+      "runtime_ready": true,
       "status": "ready",
       "suites": [
         "cam4",
@@ -464,20 +1829,44 @@
       "descriptor": "devices/generated/gravity_wave_drag_common_diagnostics/device.yaml",
       "manifest": null,
       "name": "gravity_wave_drag_common_diagnostics",
+      "runtime_occurrences": [
+        {
+          "group": "physics_after_coupler",
+          "order": 187,
+          "provider": "python-host-service",
+          "ready": true,
+          "suite": "cam4"
+        }
+      ],
+      "runtime_provider_kinds": [
+        "python-host-service"
+      ],
+      "runtime_ready": true,
       "status": "python_host_service_ready",
       "suites": [
         "cam4"
       ]
     },
     {
-      "blockers": [
-        "host_framework_module:ccpp_io_reader"
-      ],
+      "blockers": [],
       "connector_generated": true,
       "descriptor": "devices/generated/gravity_wave_drag_convection_deep/device.yaml",
-      "manifest": null,
+      "manifest": "build/catalog_devices/gravity_wave_drag_convection_deep/device.json",
       "name": "gravity_wave_drag_convection_deep",
-      "status": "abi_or_host_service_required",
+      "runtime_occurrences": [
+        {
+          "group": "physics_after_coupler",
+          "order": 59,
+          "provider": "fortran-device",
+          "ready": true,
+          "suite": "cam7"
+        }
+      ],
+      "runtime_provider_kinds": [
+        "fortran-device"
+      ],
+      "runtime_ready": true,
+      "status": "ready",
       "suites": [
         "cam7"
       ]
@@ -488,20 +1877,44 @@
       "descriptor": "devices/generated/gravity_wave_drag_frontogenesis/device.yaml",
       "manifest": "build/catalog_devices/gravity_wave_drag_frontogenesis/device.json",
       "name": "gravity_wave_drag_frontogenesis",
+      "runtime_occurrences": [
+        {
+          "group": "physics_after_coupler",
+          "order": 60,
+          "provider": "fortran-device",
+          "ready": true,
+          "suite": "cam7"
+        }
+      ],
+      "runtime_provider_kinds": [
+        "fortran-device"
+      ],
+      "runtime_ready": true,
       "status": "ready",
       "suites": [
         "cam7"
       ]
     },
     {
-      "blockers": [
-        "host_framework_module:ccpp_io_reader"
-      ],
+      "blockers": [],
       "connector_generated": true,
       "descriptor": "devices/generated/gravity_wave_drag_moving_mountain/device.yaml",
-      "manifest": null,
+      "manifest": "build/catalog_devices/gravity_wave_drag_moving_mountain/device.json",
       "name": "gravity_wave_drag_moving_mountain",
-      "status": "abi_or_host_service_required",
+      "runtime_occurrences": [
+        {
+          "group": "physics_after_coupler",
+          "order": 58,
+          "provider": "fortran-device",
+          "ready": true,
+          "suite": "cam7"
+        }
+      ],
+      "runtime_provider_kinds": [
+        "fortran-device"
+      ],
+      "runtime_ready": true,
+      "status": "ready",
       "suites": [
         "cam7"
       ]
@@ -512,6 +1925,19 @@
       "descriptor": "devices/generated/gravity_wave_drag_orographic/device.yaml",
       "manifest": "build/catalog_devices/gravity_wave_drag_orographic/device.json",
       "name": "gravity_wave_drag_orographic",
+      "runtime_occurrences": [
+        {
+          "group": "physics_after_coupler",
+          "order": 185,
+          "provider": "fortran-device",
+          "ready": true,
+          "suite": "cam4"
+        }
+      ],
+      "runtime_provider_kinds": [
+        "fortran-device"
+      ],
+      "runtime_ready": true,
       "status": "ready",
       "suites": [
         "cam4"
@@ -523,6 +1949,26 @@
       "descriptor": "devices/generated/gravity_wave_drag_prepare_profiles/device.yaml",
       "manifest": "build/catalog_devices/gravity_wave_drag_prepare_profiles/device.json",
       "name": "gravity_wave_drag_prepare_profiles",
+      "runtime_occurrences": [
+        {
+          "group": "physics_after_coupler",
+          "order": 183,
+          "provider": "fortran-device",
+          "ready": true,
+          "suite": "cam4"
+        },
+        {
+          "group": "physics_after_coupler",
+          "order": 56,
+          "provider": "fortran-device",
+          "ready": true,
+          "suite": "cam7"
+        }
+      ],
+      "runtime_provider_kinds": [
+        "fortran-device"
+      ],
+      "runtime_ready": true,
       "status": "ready",
       "suites": [
         "cam4",
@@ -535,6 +1981,19 @@
       "descriptor": "devices/generated/gravity_wave_drag_ridge/device.yaml",
       "manifest": "build/catalog_devices/gravity_wave_drag_ridge/device.json",
       "name": "gravity_wave_drag_ridge",
+      "runtime_occurrences": [
+        {
+          "group": "physics_after_coupler",
+          "order": 61,
+          "provider": "fortran-device",
+          "ready": true,
+          "suite": "cam7"
+        }
+      ],
+      "runtime_provider_kinds": [
+        "fortran-device"
+      ],
+      "runtime_ready": true,
       "status": "ready",
       "suites": [
         "cam7"
@@ -546,6 +2005,19 @@
       "descriptor": "devices/generated/gravity_wave_drag_ridge_beta/device.yaml",
       "manifest": "build/catalog_devices/gravity_wave_drag_ridge_beta/device.json",
       "name": "gravity_wave_drag_ridge_beta",
+      "runtime_occurrences": [
+        {
+          "group": "physics_after_coupler",
+          "order": 62,
+          "provider": "fortran-device",
+          "ready": true,
+          "suite": "cam7"
+        }
+      ],
+      "runtime_provider_kinds": [
+        "fortran-device"
+      ],
+      "runtime_ready": true,
       "status": "ready",
       "suites": [
         "cam7"
@@ -557,6 +2029,26 @@
       "descriptor": "devices/generated/gravity_wave_drag_top_taper/device.yaml",
       "manifest": "build/catalog_devices/gravity_wave_drag_top_taper/device.json",
       "name": "gravity_wave_drag_top_taper",
+      "runtime_occurrences": [
+        {
+          "group": "physics_after_coupler",
+          "order": 184,
+          "provider": "fortran-device",
+          "ready": true,
+          "suite": "cam4"
+        },
+        {
+          "group": "physics_after_coupler",
+          "order": 57,
+          "provider": "fortran-device",
+          "ready": true,
+          "suite": "cam7"
+        }
+      ],
+      "runtime_provider_kinds": [
+        "fortran-device"
+      ],
+      "runtime_ready": true,
       "status": "ready",
       "suites": [
         "cam4",
@@ -569,6 +2061,19 @@
       "descriptor": "devices/generated/hack_convect_shallow/device.yaml",
       "manifest": "build/catalog_devices/hack_convect_shallow/device.json",
       "name": "hack_convect_shallow",
+      "runtime_occurrences": [
+        {
+          "group": "physics_before_coupler",
+          "order": 50,
+          "provider": "fortran-device",
+          "ready": true,
+          "suite": "cam4"
+        }
+      ],
+      "runtime_provider_kinds": [
+        "fortran-device"
+      ],
+      "runtime_ready": true,
       "status": "ready",
       "suites": [
         "cam4"
@@ -580,6 +2085,19 @@
       "descriptor": "devices/generated/hb_diff_exchange_coefficients/device.yaml",
       "manifest": "build/catalog_devices/hb_diff_exchange_coefficients/device.json",
       "name": "hb_diff_exchange_coefficients",
+      "runtime_occurrences": [
+        {
+          "group": "physics_after_coupler",
+          "order": 160,
+          "provider": "fortran-device",
+          "ready": true,
+          "suite": "cam4"
+        }
+      ],
+      "runtime_provider_kinds": [
+        "fortran-device"
+      ],
+      "runtime_ready": true,
       "status": "ready",
       "suites": [
         "cam4"
@@ -591,6 +2109,19 @@
       "descriptor": "devices/generated/hb_diff_prepare_vertical_diffusion_inputs/device.yaml",
       "manifest": "build/catalog_devices/hb_diff_prepare_vertical_diffusion_inputs/device.json",
       "name": "hb_diff_prepare_vertical_diffusion_inputs",
+      "runtime_occurrences": [
+        {
+          "group": "physics_after_coupler",
+          "order": 156,
+          "provider": "fortran-device",
+          "ready": true,
+          "suite": "cam4"
+        }
+      ],
+      "runtime_provider_kinds": [
+        "fortran-device"
+      ],
+      "runtime_ready": true,
       "status": "ready",
       "suites": [
         "cam4"
@@ -602,6 +2133,19 @@
       "descriptor": "devices/generated/hb_diff_set_total_surface_stress/device.yaml",
       "manifest": "build/catalog_devices/hb_diff_set_total_surface_stress/device.json",
       "name": "hb_diff_set_total_surface_stress",
+      "runtime_occurrences": [
+        {
+          "group": "physics_after_coupler",
+          "order": 155,
+          "provider": "fortran-device",
+          "ready": true,
+          "suite": "cam4"
+        }
+      ],
+      "runtime_provider_kinds": [
+        "fortran-device"
+      ],
+      "runtime_ready": true,
       "status": "ready",
       "suites": [
         "cam4"
@@ -613,6 +2157,19 @@
       "descriptor": "devices/generated/hb_diff_set_vertical_diffusion_top/device.yaml",
       "manifest": "build/catalog_devices/hb_diff_set_vertical_diffusion_top/device.json",
       "name": "hb_diff_set_vertical_diffusion_top",
+      "runtime_occurrences": [
+        {
+          "group": "physics_after_coupler",
+          "order": 153,
+          "provider": "fortran-device",
+          "ready": true,
+          "suite": "cam4"
+        }
+      ],
+      "runtime_provider_kinds": [
+        "fortran-device"
+      ],
+      "runtime_ready": true,
       "status": "ready",
       "suites": [
         "cam4"
@@ -624,6 +2181,19 @@
       "descriptor": "devices/generated/hb_pbl_dependent_coefficients/device.yaml",
       "manifest": "build/catalog_devices/hb_pbl_dependent_coefficients/device.json",
       "name": "hb_pbl_dependent_coefficients",
+      "runtime_occurrences": [
+        {
+          "group": "physics_after_coupler",
+          "order": 159,
+          "provider": "fortran-device",
+          "ready": true,
+          "suite": "cam4"
+        }
+      ],
+      "runtime_provider_kinds": [
+        "fortran-device"
+      ],
+      "runtime_ready": true,
       "status": "ready",
       "suites": [
         "cam4"
@@ -635,6 +2205,19 @@
       "descriptor": "devices/generated/hb_pbl_independent_coefficients/device.yaml",
       "manifest": "build/catalog_devices/hb_pbl_independent_coefficients/device.json",
       "name": "hb_pbl_independent_coefficients",
+      "runtime_occurrences": [
+        {
+          "group": "physics_after_coupler",
+          "order": 158,
+          "provider": "fortran-device",
+          "ready": true,
+          "suite": "cam4"
+        }
+      ],
+      "runtime_provider_kinds": [
+        "fortran-device"
+      ],
+      "runtime_ready": true,
       "status": "ready",
       "suites": [
         "cam4"
@@ -646,6 +2229,19 @@
       "descriptor": "devices/generated/held_suarez_1994/device.yaml",
       "manifest": "build/catalog_devices/held_suarez_1994/device.json",
       "name": "held_suarez_1994",
+      "runtime_occurrences": [
+        {
+          "group": "physics_before_coupler",
+          "order": 1,
+          "provider": "fortran-device",
+          "ready": true,
+          "suite": "held_suarez_1994"
+        }
+      ],
+      "runtime_provider_kinds": [
+        "fortran-device"
+      ],
+      "runtime_ready": true,
       "status": "ready",
       "suites": [
         "held_suarez_1994"
@@ -657,6 +2253,19 @@
       "descriptor": "devices/generated/holtslag_boville_diff/device.yaml",
       "manifest": "build/catalog_devices/holtslag_boville_diff/device.json",
       "name": "holtslag_boville_diff",
+      "runtime_occurrences": [
+        {
+          "group": "physics_after_coupler",
+          "order": 157,
+          "provider": "fortran-device",
+          "ready": true,
+          "suite": "cam4"
+        }
+      ],
+      "runtime_provider_kinds": [
+        "fortran-device"
+      ],
+      "runtime_ready": true,
       "status": "ready",
       "suites": [
         "cam4"
@@ -668,6 +2277,19 @@
       "descriptor": "devices/generated/holtslag_boville_diff_diagnostics/device.yaml",
       "manifest": null,
       "name": "holtslag_boville_diff_diagnostics",
+      "runtime_occurrences": [
+        {
+          "group": "physics_after_coupler",
+          "order": 162,
+          "provider": "python-host-service",
+          "ready": true,
+          "suite": "cam4"
+        }
+      ],
+      "runtime_provider_kinds": [
+        "python-host-service"
+      ],
+      "runtime_ready": true,
       "status": "python_host_service_ready",
       "suites": [
         "cam4"
@@ -679,6 +2301,19 @@
       "descriptor": "devices/generated/holtslag_boville_diff_options/device.yaml",
       "manifest": "build/catalog_devices/holtslag_boville_diff_options/device.json",
       "name": "holtslag_boville_diff_options",
+      "runtime_occurrences": [
+        {
+          "group": "physics_after_coupler",
+          "order": 150,
+          "provider": "fortran-device",
+          "ready": true,
+          "suite": "cam4"
+        }
+      ],
+      "runtime_provider_kinds": [
+        "fortran-device"
+      ],
+      "runtime_ready": true,
       "status": "ready",
       "suites": [
         "cam4"
@@ -690,6 +2325,19 @@
       "descriptor": "devices/generated/implicit_surface_stress_add_drag_coefficient/device.yaml",
       "manifest": "build/catalog_devices/implicit_surface_stress_add_drag_coefficient/device.json",
       "name": "implicit_surface_stress_add_drag_coefficient",
+      "runtime_occurrences": [
+        {
+          "group": "physics_after_coupler",
+          "order": 166,
+          "provider": "fortran-device",
+          "ready": true,
+          "suite": "cam4"
+        }
+      ],
+      "runtime_provider_kinds": [
+        "fortran-device"
+      ],
+      "runtime_ready": true,
       "status": "ready",
       "suites": [
         "cam4"
@@ -701,6 +2349,19 @@
       "descriptor": "devices/generated/kessler/device.yaml",
       "manifest": "build/catalog_devices/kessler/device.json",
       "name": "kessler",
+      "runtime_occurrences": [
+        {
+          "group": "physics_before_coupler",
+          "order": 7,
+          "provider": "fortran-device",
+          "ready": true,
+          "suite": "kessler"
+        }
+      ],
+      "runtime_provider_kinds": [
+        "fortran-device"
+      ],
+      "runtime_ready": true,
       "status": "ready",
       "suites": [
         "kessler"
@@ -712,6 +2373,19 @@
       "descriptor": "devices/generated/kessler_diagnostics/device.yaml",
       "manifest": null,
       "name": "kessler_diagnostics",
+      "runtime_occurrences": [
+        {
+          "group": "physics_before_coupler",
+          "order": 19,
+          "provider": "python-host-process",
+          "ready": true,
+          "suite": "kessler"
+        }
+      ],
+      "runtime_provider_kinds": [
+        "python-host-process"
+      ],
+      "runtime_ready": true,
       "status": "python_host_service_ready",
       "suites": [
         "kessler"
@@ -723,21 +2397,44 @@
       "descriptor": "devices/generated/kessler_update/device.yaml",
       "manifest": "build/catalog_devices/kessler_update/device.json",
       "name": "kessler_update",
+      "runtime_occurrences": [
+        {
+          "group": "physics_before_coupler",
+          "order": 12,
+          "provider": "fortran-device",
+          "ready": true,
+          "suite": "kessler"
+        }
+      ],
+      "runtime_provider_kinds": [
+        "fortran-device"
+      ],
+      "runtime_ready": true,
       "status": "ready",
       "suites": [
         "kessler"
       ]
     },
     {
-      "blockers": [
-        "allocatable_argument:musica_ccpp_register.constituent_props",
-        "dimension_expression:musica_ccpp_register.constituent_props::"
-      ],
+      "blockers": [],
       "connector_generated": true,
       "descriptor": "devices/generated/musica_ccpp/device.yaml",
-      "manifest": null,
+      "manifest": "build/catalog_devices/musica_ccpp/device.json",
       "name": "musica_ccpp",
-      "status": "abi_or_host_service_required",
+      "runtime_occurrences": [
+        {
+          "group": "physics_after_coupler",
+          "order": 2,
+          "provider": "fortran-device",
+          "ready": true,
+          "suite": "musica"
+        }
+      ],
+      "runtime_provider_kinds": [
+        "fortran-device"
+      ],
+      "runtime_ready": true,
+      "status": "ready",
       "suites": [
         "musica"
       ]
@@ -748,6 +2445,19 @@
       "descriptor": "devices/generated/potential_temp_to_temp/device.yaml",
       "manifest": "build/catalog_devices/potential_temp_to_temp/device.json",
       "name": "potential_temp_to_temp",
+      "runtime_occurrences": [
+        {
+          "group": "physics_before_coupler",
+          "order": 8,
+          "provider": "fortran-device",
+          "ready": true,
+          "suite": "kessler"
+        }
+      ],
+      "runtime_provider_kinds": [
+        "fortran-device"
+      ],
+      "runtime_ready": true,
       "status": "ready",
       "suites": [
         "kessler"
@@ -759,6 +2469,19 @@
       "descriptor": "devices/generated/prescribe_radiative_gas_concentrations/device.yaml",
       "manifest": "build/catalog_devices/prescribe_radiative_gas_concentrations/device.json",
       "name": "prescribe_radiative_gas_concentrations",
+      "runtime_occurrences": [
+        {
+          "group": "physics_before_coupler",
+          "order": 2,
+          "provider": "fortran-device",
+          "ready": true,
+          "suite": "cam4"
+        }
+      ],
+      "runtime_provider_kinds": [
+        "fortran-device"
+      ],
+      "runtime_ready": true,
       "status": "ready",
       "suites": [
         "cam4"
@@ -770,6 +2493,19 @@
       "descriptor": "devices/generated/prognostic_cloud_water/device.yaml",
       "manifest": "build/catalog_devices/prognostic_cloud_water/device.json",
       "name": "prognostic_cloud_water",
+      "runtime_occurrences": [
+        {
+          "group": "physics_before_coupler",
+          "order": 90,
+          "provider": "fortran-device",
+          "ready": true,
+          "suite": "cam4"
+        }
+      ],
+      "runtime_provider_kinds": [
+        "fortran-device"
+      ],
+      "runtime_ready": true,
       "status": "ready",
       "suites": [
         "cam4"
@@ -785,6 +2521,152 @@
       "descriptor": "devices/generated/qneg/device.yaml",
       "manifest": null,
       "name": "qneg",
+      "runtime_occurrences": [
+        {
+          "group": "physics_before_coupler",
+          "order": 15,
+          "provider": "python-host-process",
+          "ready": true,
+          "suite": "cam4"
+        },
+        {
+          "group": "physics_before_coupler",
+          "order": 22,
+          "provider": "python-host-process",
+          "ready": true,
+          "suite": "cam4"
+        },
+        {
+          "group": "physics_before_coupler",
+          "order": 31,
+          "provider": "python-host-process",
+          "ready": true,
+          "suite": "cam4"
+        },
+        {
+          "group": "physics_before_coupler",
+          "order": 43,
+          "provider": "python-host-process",
+          "ready": true,
+          "suite": "cam4"
+        },
+        {
+          "group": "physics_before_coupler",
+          "order": 54,
+          "provider": "python-host-process",
+          "ready": true,
+          "suite": "cam4"
+        },
+        {
+          "group": "physics_before_coupler",
+          "order": 63,
+          "provider": "python-host-process",
+          "ready": true,
+          "suite": "cam4"
+        },
+        {
+          "group": "physics_before_coupler",
+          "order": 76,
+          "provider": "python-host-process",
+          "ready": true,
+          "suite": "cam4"
+        },
+        {
+          "group": "physics_before_coupler",
+          "order": 81,
+          "provider": "python-host-process",
+          "ready": true,
+          "suite": "cam4"
+        },
+        {
+          "group": "physics_before_coupler",
+          "order": 94,
+          "provider": "python-host-process",
+          "ready": true,
+          "suite": "cam4"
+        },
+        {
+          "group": "physics_before_coupler",
+          "order": 100,
+          "provider": "python-host-process",
+          "ready": true,
+          "suite": "cam4"
+        },
+        {
+          "group": "physics_after_coupler",
+          "order": 178,
+          "provider": "python-host-process",
+          "ready": true,
+          "suite": "cam4"
+        },
+        {
+          "group": "physics_after_coupler",
+          "order": 192,
+          "provider": "python-host-process",
+          "ready": true,
+          "suite": "cam4"
+        },
+        {
+          "group": "physics_before_coupler",
+          "order": 15,
+          "provider": "python-host-process",
+          "ready": true,
+          "suite": "cam7"
+        },
+        {
+          "group": "physics_before_coupler",
+          "order": 23,
+          "provider": "python-host-process",
+          "ready": true,
+          "suite": "cam7"
+        },
+        {
+          "group": "physics_before_coupler",
+          "order": 33,
+          "provider": "python-host-process",
+          "ready": true,
+          "suite": "cam7"
+        },
+        {
+          "group": "physics_before_coupler",
+          "order": 46,
+          "provider": "python-host-process",
+          "ready": true,
+          "suite": "cam7"
+        },
+        {
+          "group": "physics_after_coupler",
+          "order": 68,
+          "provider": "python-host-process",
+          "ready": true,
+          "suite": "cam7"
+        },
+        {
+          "group": "physics_before_coupler",
+          "order": 13,
+          "provider": "python-host-process",
+          "ready": true,
+          "suite": "kessler"
+        },
+        {
+          "group": "physics_before_coupler",
+          "order": 3,
+          "provider": "python-host-process",
+          "ready": true,
+          "suite": "tj2016"
+        },
+        {
+          "group": "physics_after_coupler",
+          "order": 12,
+          "provider": "python-host-process",
+          "ready": true,
+          "suite": "tj2016"
+        }
+      ],
+      "runtime_provider_kinds": [
+        "python-host-process"
+      ],
+      "runtime_ready": true,
       "status": "abi_or_host_service_required",
       "suites": [
         "cam4",
@@ -794,27 +2676,49 @@
       ]
     },
     {
-      "blockers": [
-        "dependency_closure:device 'rk_stratiform_check_qtlcwat' recursive source closure is not standalone: host module 'esmf' used by /glade/work/ruitong/pycam-sima/external/CAM-SIMA/cime/CIME/non_py/src/timing/perf_mod.F90; host module 'mpi' used by /glade/work/ruitong/pycam-sima/external/CAM-SIMA/src/dynamics/utils/vert_coord.F90; host module 'pio' used by /glade/work/ruitong/pycam-sima/external/CAM-SIMA/src/utils/cam_grid_support.F90; unresolved module 'f90_unix_proc' used by /glade/work/ruitong/pycam-sima/external/CAM-SIMA/components/cdeps/share/shr_abort_mod.F90; unresolved module 'ifcore' used by /glade/work/ruitong/pycam-sima/external/CAM-SIMA/components/cdeps/share/shr_abort_mod.F90; unresolved module 'netcdf' used by /glade/work/ruitong/pycam-sima/external/CAM-SIMA/share/src/shr_ncread_mod.F90; unresolved module 'omp_lib' used by /glade/work/ruitong/pycam-sima/external/CAM-SIMA/cime/CIME/non_py/src/timing/perf_mod.F90"
-      ],
+      "blockers": [],
       "connector_generated": true,
       "descriptor": "devices/generated/rk_stratiform_check_qtlcwat/device.yaml",
-      "manifest": null,
+      "manifest": "build/catalog_devices/rk_stratiform_check_qtlcwat/device.json",
       "name": "rk_stratiform_check_qtlcwat",
-      "status": "dependency_provider_required",
+      "runtime_occurrences": [
+        {
+          "group": "physics_before_coupler",
+          "order": 71,
+          "provider": "fortran-device",
+          "ready": true,
+          "suite": "cam4"
+        }
+      ],
+      "runtime_provider_kinds": [
+        "fortran-device"
+      ],
+      "runtime_ready": true,
+      "status": "ready",
       "suites": [
         "cam4"
       ]
     },
     {
-      "blockers": [
-        "dependency_closure:device 'rk_stratiform_cloud_fraction_perturbation' recursive source closure is not standalone: host module 'esmf' used by /glade/work/ruitong/pycam-sima/external/CAM-SIMA/cime/CIME/non_py/src/timing/perf_mod.F90; host module 'mpi' used by /glade/work/ruitong/pycam-sima/external/CAM-SIMA/src/dynamics/utils/vert_coord.F90; host module 'pio' used by /glade/work/ruitong/pycam-sima/external/CAM-SIMA/src/utils/cam_grid_support.F90; unresolved module 'f90_unix_proc' used by /glade/work/ruitong/pycam-sima/external/CAM-SIMA/components/cdeps/share/shr_abort_mod.F90; unresolved module 'ifcore' used by /glade/work/ruitong/pycam-sima/external/CAM-SIMA/components/cdeps/share/shr_abort_mod.F90; unresolved module 'netcdf' used by /glade/work/ruitong/pycam-sima/external/CAM-SIMA/share/src/shr_ncread_mod.F90; unresolved module 'omp_lib' used by /glade/work/ruitong/pycam-sima/external/CAM-SIMA/cime/CIME/non_py/src/timing/perf_mod.F90"
-      ],
+      "blockers": [],
       "connector_generated": true,
       "descriptor": "devices/generated/rk_stratiform_cloud_fraction_perturbation/device.yaml",
-      "manifest": null,
+      "manifest": "build/catalog_devices/rk_stratiform_cloud_fraction_perturbation/device.json",
       "name": "rk_stratiform_cloud_fraction_perturbation",
-      "status": "dependency_provider_required",
+      "runtime_occurrences": [
+        {
+          "group": "physics_before_coupler",
+          "order": 86,
+          "provider": "fortran-device",
+          "ready": true,
+          "suite": "cam4"
+        }
+      ],
+      "runtime_provider_kinds": [
+        "fortran-device"
+      ],
+      "runtime_ready": true,
+      "status": "ready",
       "suites": [
         "cam4"
       ]
@@ -825,20 +2729,44 @@
       "descriptor": "devices/generated/rk_stratiform_cloud_fraction_perturbation_diagnostics/device.yaml",
       "manifest": null,
       "name": "rk_stratiform_cloud_fraction_perturbation_diagnostics",
+      "runtime_occurrences": [
+        {
+          "group": "physics_before_coupler",
+          "order": 87,
+          "provider": "python-host-service",
+          "ready": true,
+          "suite": "cam4"
+        }
+      ],
+      "runtime_provider_kinds": [
+        "python-host-service"
+      ],
+      "runtime_ready": true,
       "status": "python_host_service_ready",
       "suites": [
         "cam4"
       ]
     },
     {
-      "blockers": [
-        "dependency_closure:device 'rk_stratiform_cloud_optical_properties' recursive source closure is not standalone: host module 'esmf' used by /glade/work/ruitong/pycam-sima/external/CAM-SIMA/cime/CIME/non_py/src/timing/perf_mod.F90; host module 'mpi' used by /glade/work/ruitong/pycam-sima/external/CAM-SIMA/src/dynamics/utils/vert_coord.F90; host module 'pio' used by /glade/work/ruitong/pycam-sima/external/CAM-SIMA/src/utils/cam_grid_support.F90; unresolved module 'f90_unix_proc' used by /glade/work/ruitong/pycam-sima/external/CAM-SIMA/components/cdeps/share/shr_abort_mod.F90; unresolved module 'ifcore' used by /glade/work/ruitong/pycam-sima/external/CAM-SIMA/components/cdeps/share/shr_abort_mod.F90; unresolved module 'netcdf' used by /glade/work/ruitong/pycam-sima/external/CAM-SIMA/share/src/shr_ncread_mod.F90; unresolved module 'omp_lib' used by /glade/work/ruitong/pycam-sima/external/CAM-SIMA/cime/CIME/non_py/src/timing/perf_mod.F90"
-      ],
+      "blockers": [],
       "connector_generated": true,
       "descriptor": "devices/generated/rk_stratiform_cloud_optical_properties/device.yaml",
-      "manifest": null,
+      "manifest": "build/catalog_devices/rk_stratiform_cloud_optical_properties/device.json",
       "name": "rk_stratiform_cloud_optical_properties",
-      "status": "dependency_provider_required",
+      "runtime_occurrences": [
+        {
+          "group": "physics_before_coupler",
+          "order": 104,
+          "provider": "fortran-device",
+          "ready": true,
+          "suite": "cam4"
+        }
+      ],
+      "runtime_provider_kinds": [
+        "fortran-device"
+      ],
+      "runtime_ready": true,
+      "status": "ready",
       "suites": [
         "cam4"
       ]
@@ -849,20 +2777,44 @@
       "descriptor": "devices/generated/rk_stratiform_cloud_optical_properties_diagnostics/device.yaml",
       "manifest": null,
       "name": "rk_stratiform_cloud_optical_properties_diagnostics",
+      "runtime_occurrences": [
+        {
+          "group": "physics_before_coupler",
+          "order": 105,
+          "provider": "python-host-service",
+          "ready": true,
+          "suite": "cam4"
+        }
+      ],
+      "runtime_provider_kinds": [
+        "python-host-service"
+      ],
+      "runtime_ready": true,
       "status": "python_host_service_ready",
       "suites": [
         "cam4"
       ]
     },
     {
-      "blockers": [
-        "dependency_closure:device 'rk_stratiform_condensate_repartioning' recursive source closure is not standalone: host module 'esmf' used by /glade/work/ruitong/pycam-sima/external/CAM-SIMA/cime/CIME/non_py/src/timing/perf_mod.F90; host module 'mpi' used by /glade/work/ruitong/pycam-sima/external/CAM-SIMA/src/dynamics/utils/vert_coord.F90; host module 'pio' used by /glade/work/ruitong/pycam-sima/external/CAM-SIMA/src/utils/cam_grid_support.F90; unresolved module 'f90_unix_proc' used by /glade/work/ruitong/pycam-sima/external/CAM-SIMA/components/cdeps/share/shr_abort_mod.F90; unresolved module 'ifcore' used by /glade/work/ruitong/pycam-sima/external/CAM-SIMA/components/cdeps/share/shr_abort_mod.F90; unresolved module 'netcdf' used by /glade/work/ruitong/pycam-sima/external/CAM-SIMA/share/src/shr_ncread_mod.F90; unresolved module 'omp_lib' used by /glade/work/ruitong/pycam-sima/external/CAM-SIMA/cime/CIME/non_py/src/timing/perf_mod.F90"
-      ],
+      "blockers": [],
       "connector_generated": true,
       "descriptor": "devices/generated/rk_stratiform_condensate_repartioning/device.yaml",
-      "manifest": null,
+      "manifest": "build/catalog_devices/rk_stratiform_condensate_repartioning/device.json",
       "name": "rk_stratiform_condensate_repartioning",
-      "status": "dependency_provider_required",
+      "runtime_occurrences": [
+        {
+          "group": "physics_before_coupler",
+          "order": 91,
+          "provider": "fortran-device",
+          "ready": true,
+          "suite": "cam4"
+        }
+      ],
+      "runtime_provider_kinds": [
+        "fortran-device"
+      ],
+      "runtime_ready": true,
+      "status": "ready",
       "suites": [
         "cam4"
       ]
@@ -873,20 +2825,44 @@
       "descriptor": "devices/generated/rk_stratiform_condensate_repartioning_diagnostics/device.yaml",
       "manifest": null,
       "name": "rk_stratiform_condensate_repartioning_diagnostics",
+      "runtime_occurrences": [
+        {
+          "group": "physics_before_coupler",
+          "order": 92,
+          "provider": "python-host-service",
+          "ready": true,
+          "suite": "cam4"
+        }
+      ],
+      "runtime_provider_kinds": [
+        "python-host-service"
+      ],
+      "runtime_ready": true,
       "status": "python_host_service_ready",
       "suites": [
         "cam4"
       ]
     },
     {
-      "blockers": [
-        "dependency_closure:device 'rk_stratiform_detrain_convective_condensate' recursive source closure is not standalone: host module 'esmf' used by /glade/work/ruitong/pycam-sima/external/CAM-SIMA/cime/CIME/non_py/src/timing/perf_mod.F90; host module 'mpi' used by /glade/work/ruitong/pycam-sima/external/CAM-SIMA/src/dynamics/utils/vert_coord.F90; host module 'pio' used by /glade/work/ruitong/pycam-sima/external/CAM-SIMA/src/utils/cam_grid_support.F90; unresolved module 'f90_unix_proc' used by /glade/work/ruitong/pycam-sima/external/CAM-SIMA/components/cdeps/share/shr_abort_mod.F90; unresolved module 'ifcore' used by /glade/work/ruitong/pycam-sima/external/CAM-SIMA/components/cdeps/share/shr_abort_mod.F90; unresolved module 'netcdf' used by /glade/work/ruitong/pycam-sima/external/CAM-SIMA/share/src/shr_ncread_mod.F90; unresolved module 'omp_lib' used by /glade/work/ruitong/pycam-sima/external/CAM-SIMA/cime/CIME/non_py/src/timing/perf_mod.F90"
-      ],
+      "blockers": [],
       "connector_generated": true,
       "descriptor": "devices/generated/rk_stratiform_detrain_convective_condensate/device.yaml",
-      "manifest": null,
+      "manifest": "build/catalog_devices/rk_stratiform_detrain_convective_condensate/device.json",
       "name": "rk_stratiform_detrain_convective_condensate",
-      "status": "dependency_provider_required",
+      "runtime_occurrences": [
+        {
+          "group": "physics_before_coupler",
+          "order": 79,
+          "provider": "fortran-device",
+          "ready": true,
+          "suite": "cam4"
+        }
+      ],
+      "runtime_provider_kinds": [
+        "fortran-device"
+      ],
+      "runtime_ready": true,
+      "status": "ready",
       "suites": [
         "cam4"
       ]
@@ -897,33 +2873,68 @@
       "descriptor": "devices/generated/rk_stratiform_diagnostics/device.yaml",
       "manifest": null,
       "name": "rk_stratiform_diagnostics",
+      "runtime_occurrences": [
+        {
+          "group": "physics_before_coupler",
+          "order": 70,
+          "provider": "python-host-service",
+          "ready": true,
+          "suite": "cam4"
+        }
+      ],
+      "runtime_provider_kinds": [
+        "python-host-service"
+      ],
+      "runtime_ready": true,
       "status": "python_host_service_ready",
       "suites": [
         "cam4"
       ]
     },
     {
-      "blockers": [
-        "dependency_closure:device 'rk_stratiform_external_forcings' recursive source closure is not standalone: host module 'esmf' used by /glade/work/ruitong/pycam-sima/external/CAM-SIMA/cime/CIME/non_py/src/timing/perf_mod.F90; host module 'mpi' used by /glade/work/ruitong/pycam-sima/external/CAM-SIMA/src/dynamics/utils/vert_coord.F90; host module 'pio' used by /glade/work/ruitong/pycam-sima/external/CAM-SIMA/src/utils/cam_grid_support.F90; unresolved module 'f90_unix_proc' used by /glade/work/ruitong/pycam-sima/external/CAM-SIMA/components/cdeps/share/shr_abort_mod.F90; unresolved module 'ifcore' used by /glade/work/ruitong/pycam-sima/external/CAM-SIMA/components/cdeps/share/shr_abort_mod.F90; unresolved module 'netcdf' used by /glade/work/ruitong/pycam-sima/external/CAM-SIMA/share/src/shr_ncread_mod.F90; unresolved module 'omp_lib' used by /glade/work/ruitong/pycam-sima/external/CAM-SIMA/cime/CIME/non_py/src/timing/perf_mod.F90"
-      ],
+      "blockers": [],
       "connector_generated": true,
       "descriptor": "devices/generated/rk_stratiform_external_forcings/device.yaml",
-      "manifest": null,
+      "manifest": "build/catalog_devices/rk_stratiform_external_forcings/device.json",
       "name": "rk_stratiform_external_forcings",
-      "status": "dependency_provider_required",
+      "runtime_occurrences": [
+        {
+          "group": "physics_before_coupler",
+          "order": 88,
+          "provider": "fortran-device",
+          "ready": true,
+          "suite": "cam4"
+        }
+      ],
+      "runtime_provider_kinds": [
+        "fortran-device"
+      ],
+      "runtime_ready": true,
+      "status": "ready",
       "suites": [
         "cam4"
       ]
     },
     {
-      "blockers": [
-        "dependency_closure:device 'rk_stratiform_prognostic_cloud_water_tendencies' recursive source closure is not standalone: host module 'esmf' used by /glade/work/ruitong/pycam-sima/external/CAM-SIMA/cime/CIME/non_py/src/timing/perf_mod.F90; host module 'mpi' used by /glade/work/ruitong/pycam-sima/external/CAM-SIMA/src/dynamics/utils/vert_coord.F90; host module 'pio' used by /glade/work/ruitong/pycam-sima/external/CAM-SIMA/src/utils/cam_grid_support.F90; unresolved module 'f90_unix_proc' used by /glade/work/ruitong/pycam-sima/external/CAM-SIMA/components/cdeps/share/shr_abort_mod.F90; unresolved module 'ifcore' used by /glade/work/ruitong/pycam-sima/external/CAM-SIMA/components/cdeps/share/shr_abort_mod.F90; unresolved module 'netcdf' used by /glade/work/ruitong/pycam-sima/external/CAM-SIMA/share/src/shr_ncread_mod.F90; unresolved module 'omp_lib' used by /glade/work/ruitong/pycam-sima/external/CAM-SIMA/cime/CIME/non_py/src/timing/perf_mod.F90"
-      ],
+      "blockers": [],
       "connector_generated": true,
       "descriptor": "devices/generated/rk_stratiform_prognostic_cloud_water_tendencies/device.yaml",
-      "manifest": null,
+      "manifest": "build/catalog_devices/rk_stratiform_prognostic_cloud_water_tendencies/device.json",
       "name": "rk_stratiform_prognostic_cloud_water_tendencies",
-      "status": "dependency_provider_required",
+      "runtime_occurrences": [
+        {
+          "group": "physics_before_coupler",
+          "order": 96,
+          "provider": "fortran-device",
+          "ready": true,
+          "suite": "cam4"
+        }
+      ],
+      "runtime_provider_kinds": [
+        "fortran-device"
+      ],
+      "runtime_ready": true,
+      "status": "ready",
       "suites": [
         "cam4"
       ]
@@ -934,33 +2945,68 @@
       "descriptor": "devices/generated/rk_stratiform_prognostic_cloud_water_tendencies_diagnostics/device.yaml",
       "manifest": null,
       "name": "rk_stratiform_prognostic_cloud_water_tendencies_diagnostics",
+      "runtime_occurrences": [
+        {
+          "group": "physics_before_coupler",
+          "order": 97,
+          "provider": "python-host-service",
+          "ready": true,
+          "suite": "cam4"
+        }
+      ],
+      "runtime_provider_kinds": [
+        "python-host-service"
+      ],
+      "runtime_ready": true,
       "status": "python_host_service_ready",
       "suites": [
         "cam4"
       ]
     },
     {
-      "blockers": [
-        "dependency_closure:device 'rk_stratiform_save_qtlcwat' recursive source closure is not standalone: host module 'esmf' used by /glade/work/ruitong/pycam-sima/external/CAM-SIMA/cime/CIME/non_py/src/timing/perf_mod.F90; host module 'mpi' used by /glade/work/ruitong/pycam-sima/external/CAM-SIMA/src/dynamics/utils/vert_coord.F90; host module 'pio' used by /glade/work/ruitong/pycam-sima/external/CAM-SIMA/src/utils/cam_grid_support.F90; unresolved module 'f90_unix_proc' used by /glade/work/ruitong/pycam-sima/external/CAM-SIMA/components/cdeps/share/shr_abort_mod.F90; unresolved module 'ifcore' used by /glade/work/ruitong/pycam-sima/external/CAM-SIMA/components/cdeps/share/shr_abort_mod.F90; unresolved module 'netcdf' used by /glade/work/ruitong/pycam-sima/external/CAM-SIMA/share/src/shr_ncread_mod.F90; unresolved module 'omp_lib' used by /glade/work/ruitong/pycam-sima/external/CAM-SIMA/cime/CIME/non_py/src/timing/perf_mod.F90"
-      ],
+      "blockers": [],
       "connector_generated": true,
       "descriptor": "devices/generated/rk_stratiform_save_qtlcwat/device.yaml",
-      "manifest": null,
+      "manifest": "build/catalog_devices/rk_stratiform_save_qtlcwat/device.json",
       "name": "rk_stratiform_save_qtlcwat",
-      "status": "dependency_provider_required",
+      "runtime_occurrences": [
+        {
+          "group": "physics_before_coupler",
+          "order": 106,
+          "provider": "fortran-device",
+          "ready": true,
+          "suite": "cam4"
+        }
+      ],
+      "runtime_provider_kinds": [
+        "fortran-device"
+      ],
+      "runtime_ready": true,
+      "status": "ready",
       "suites": [
         "cam4"
       ]
     },
     {
-      "blockers": [
-        "dependency_closure:device 'rk_stratiform_sedimentation' recursive source closure is not standalone: host module 'esmf' used by /glade/work/ruitong/pycam-sima/external/CAM-SIMA/cime/CIME/non_py/src/timing/perf_mod.F90; host module 'mpi' used by /glade/work/ruitong/pycam-sima/external/CAM-SIMA/src/dynamics/utils/vert_coord.F90; host module 'pio' used by /glade/work/ruitong/pycam-sima/external/CAM-SIMA/src/utils/cam_grid_support.F90; unresolved module 'f90_unix_proc' used by /glade/work/ruitong/pycam-sima/external/CAM-SIMA/components/cdeps/share/shr_abort_mod.F90; unresolved module 'ifcore' used by /glade/work/ruitong/pycam-sima/external/CAM-SIMA/components/cdeps/share/shr_abort_mod.F90; unresolved module 'netcdf' used by /glade/work/ruitong/pycam-sima/external/CAM-SIMA/share/src/shr_ncread_mod.F90; unresolved module 'omp_lib' used by /glade/work/ruitong/pycam-sima/external/CAM-SIMA/cime/CIME/non_py/src/timing/perf_mod.F90"
-      ],
+      "blockers": [],
       "connector_generated": true,
       "descriptor": "devices/generated/rk_stratiform_sedimentation/device.yaml",
-      "manifest": null,
+      "manifest": "build/catalog_devices/rk_stratiform_sedimentation/device.json",
       "name": "rk_stratiform_sedimentation",
-      "status": "dependency_provider_required",
+      "runtime_occurrences": [
+        {
+          "group": "physics_before_coupler",
+          "order": 78,
+          "provider": "fortran-device",
+          "ready": true,
+          "suite": "cam4"
+        }
+      ],
+      "runtime_provider_kinds": [
+        "fortran-device"
+      ],
+      "runtime_ready": true,
+      "status": "ready",
       "suites": [
         "cam4"
       ]
@@ -971,34 +3017,75 @@
       "descriptor": "devices/generated/rrtmgp_cloud_diagnostics/device.yaml",
       "manifest": null,
       "name": "rrtmgp_cloud_diagnostics",
+      "runtime_occurrences": [
+        {
+          "group": "physics_before_coupler",
+          "order": 115,
+          "provider": "python-host-service",
+          "ready": true,
+          "suite": "cam4"
+        }
+      ],
+      "runtime_provider_kinds": [
+        "python-host-service"
+      ],
+      "runtime_ready": true,
       "status": "python_host_service_ready",
       "suites": [
         "cam4"
       ]
     },
     {
-      "blockers": [
-        "host_framework_module:ccpp_io_reader"
-      ],
+      "blockers": [],
       "connector_generated": true,
       "descriptor": "devices/generated/rrtmgp_cloud_optics_setup/device.yaml",
-      "manifest": null,
+      "manifest": "build/catalog_devices/rrtmgp_cloud_optics_setup/device.json",
       "name": "rrtmgp_cloud_optics_setup",
-      "status": "abi_or_host_service_required",
+      "runtime_occurrences": [
+        {
+          "group": "physics_before_coupler",
+          "order": 109,
+          "provider": "fortran-device",
+          "ready": true,
+          "suite": "cam4"
+        }
+      ],
+      "runtime_provider_kinds": [
+        "fortran-device"
+      ],
+      "runtime_ready": true,
+      "status": "ready",
       "suites": [
         "cam4"
       ]
     },
     {
-      "blockers": [
-        "allocatable_argument:rrtmgp_constituents_register.rrtmgp_dyn_consts",
-        "dimension_expression:rrtmgp_constituents_register.rrtmgp_dyn_consts::"
-      ],
+      "blockers": [],
       "connector_generated": true,
       "descriptor": "devices/generated/rrtmgp_constituents/device.yaml",
       "manifest": null,
       "name": "rrtmgp_constituents",
-      "status": "abi_or_host_service_required",
+      "runtime_occurrences": [
+        {
+          "group": "physics_before_coupler",
+          "order": 116,
+          "provider": "python-host-service",
+          "ready": true,
+          "suite": "cam4"
+        },
+        {
+          "group": "physics_before_coupler",
+          "order": 129,
+          "provider": "python-host-service",
+          "ready": true,
+          "suite": "cam4"
+        }
+      ],
+      "runtime_provider_kinds": [
+        "python-host-service"
+      ],
+      "runtime_ready": true,
+      "status": "python_host_service_ready",
       "suites": [
         "cam4"
       ]
@@ -1009,6 +3096,19 @@
       "descriptor": "devices/generated/rrtmgp_diagnostics/device.yaml",
       "manifest": null,
       "name": "rrtmgp_diagnostics",
+      "runtime_occurrences": [
+        {
+          "group": "physics_before_coupler",
+          "order": 143,
+          "provider": "python-host-service",
+          "ready": true,
+          "suite": "cam4"
+        }
+      ],
+      "runtime_provider_kinds": [
+        "python-host-service"
+      ],
+      "runtime_ready": true,
       "status": "python_host_service_ready",
       "suites": [
         "cam4"
@@ -1020,6 +3120,19 @@
       "descriptor": "devices/generated/rrtmgp_dry_static_energy_tendency/device.yaml",
       "manifest": "build/catalog_devices/rrtmgp_dry_static_energy_tendency/device.json",
       "name": "rrtmgp_dry_static_energy_tendency",
+      "runtime_occurrences": [
+        {
+          "group": "physics_before_coupler",
+          "order": 140,
+          "provider": "fortran-device",
+          "ready": true,
+          "suite": "cam4"
+        }
+      ],
+      "runtime_provider_kinds": [
+        "fortran-device"
+      ],
+      "runtime_ready": true,
       "status": "ready",
       "suites": [
         "cam4"
@@ -1031,6 +3144,19 @@
       "descriptor": "devices/generated/rrtmgp_inputs/device.yaml",
       "manifest": "build/catalog_devices/rrtmgp_inputs/device.json",
       "name": "rrtmgp_inputs",
+      "runtime_occurrences": [
+        {
+          "group": "physics_before_coupler",
+          "order": 112,
+          "provider": "fortran-device",
+          "ready": true,
+          "suite": "cam4"
+        }
+      ],
+      "runtime_provider_kinds": [
+        "fortran-device"
+      ],
+      "runtime_ready": true,
       "status": "ready",
       "suites": [
         "cam4"
@@ -1042,6 +3168,19 @@
       "descriptor": "devices/generated/rrtmgp_inputs_setup/device.yaml",
       "manifest": "build/catalog_devices/rrtmgp_inputs_setup/device.json",
       "name": "rrtmgp_inputs_setup",
+      "runtime_occurrences": [
+        {
+          "group": "physics_before_coupler",
+          "order": 138,
+          "provider": "fortran-device",
+          "ready": true,
+          "suite": "cam4"
+        }
+      ],
+      "runtime_provider_kinds": [
+        "fortran-device"
+      ],
+      "runtime_ready": true,
       "status": "ready",
       "suites": [
         "cam4"
@@ -1053,6 +3192,19 @@
       "descriptor": "devices/generated/rrtmgp_lw_aerosols/device.yaml",
       "manifest": "build/catalog_devices/rrtmgp_lw_aerosols/device.json",
       "name": "rrtmgp_lw_aerosols",
+      "runtime_occurrences": [
+        {
+          "group": "physics_before_coupler",
+          "order": 132,
+          "provider": "fortran-device",
+          "ready": true,
+          "suite": "cam4"
+        }
+      ],
+      "runtime_provider_kinds": [
+        "fortran-device"
+      ],
+      "runtime_ready": true,
       "status": "ready",
       "suites": [
         "cam4"
@@ -1064,6 +3216,19 @@
       "descriptor": "devices/generated/rrtmgp_lw_calculate_fluxes/device.yaml",
       "manifest": "build/catalog_devices/rrtmgp_lw_calculate_fluxes/device.json",
       "name": "rrtmgp_lw_calculate_fluxes",
+      "runtime_occurrences": [
+        {
+          "group": "physics_before_coupler",
+          "order": 134,
+          "provider": "fortran-device",
+          "ready": true,
+          "suite": "cam4"
+        }
+      ],
+      "runtime_provider_kinds": [
+        "fortran-device"
+      ],
+      "runtime_ready": true,
       "status": "ready",
       "suites": [
         "cam4"
@@ -1075,20 +3240,44 @@
       "descriptor": "devices/generated/rrtmgp_lw_calculate_heating_rate/device.yaml",
       "manifest": "build/catalog_devices/rrtmgp_lw_calculate_heating_rate/device.json",
       "name": "rrtmgp_lw_calculate_heating_rate",
+      "runtime_occurrences": [
+        {
+          "group": "physics_before_coupler",
+          "order": 135,
+          "provider": "fortran-device",
+          "ready": true,
+          "suite": "cam4"
+        }
+      ],
+      "runtime_provider_kinds": [
+        "fortran-device"
+      ],
+      "runtime_ready": true,
       "status": "ready",
       "suites": [
         "cam4"
       ]
     },
     {
-      "blockers": [
-        "dependency_closure:device 'rrtmgp_lw_cloud_optics' recursive source closure is not standalone: host module 'ccpp_io_reader' used by /glade/work/ruitong/pycam-sima/external/CAM-SIMA/src/physics/ncar_ccpp/schemes/rrtmgp/utils/rrtmgp_cloud_optics_setup.F90"
-      ],
+      "blockers": [],
       "connector_generated": true,
       "descriptor": "devices/generated/rrtmgp_lw_cloud_optics/device.yaml",
-      "manifest": null,
+      "manifest": "build/catalog_devices/rrtmgp_lw_cloud_optics/device.json",
       "name": "rrtmgp_lw_cloud_optics",
-      "status": "dependency_provider_required",
+      "runtime_occurrences": [
+        {
+          "group": "physics_before_coupler",
+          "order": 127,
+          "provider": "fortran-device",
+          "ready": true,
+          "suite": "cam4"
+        }
+      ],
+      "runtime_provider_kinds": [
+        "fortran-device"
+      ],
+      "runtime_ready": true,
+      "status": "ready",
       "suites": [
         "cam4"
       ]
@@ -1099,20 +3288,44 @@
       "descriptor": "devices/generated/rrtmgp_lw_diagnostics/device.yaml",
       "manifest": null,
       "name": "rrtmgp_lw_diagnostics",
+      "runtime_occurrences": [
+        {
+          "group": "physics_before_coupler",
+          "order": 136,
+          "provider": "python-host-service",
+          "ready": true,
+          "suite": "cam4"
+        }
+      ],
+      "runtime_provider_kinds": [
+        "python-host-service"
+      ],
+      "runtime_ready": true,
       "status": "python_host_service_ready",
       "suites": [
         "cam4"
       ]
     },
     {
-      "blockers": [
-        "host_framework_module:ccpp_io_reader"
-      ],
+      "blockers": [],
       "connector_generated": true,
       "descriptor": "devices/generated/rrtmgp_lw_gas_optics/device.yaml",
-      "manifest": null,
+      "manifest": "build/catalog_devices/rrtmgp_lw_gas_optics/device.json",
       "name": "rrtmgp_lw_gas_optics",
-      "status": "abi_or_host_service_required",
+      "runtime_occurrences": [
+        {
+          "group": "physics_before_coupler",
+          "order": 131,
+          "provider": "fortran-device",
+          "ready": true,
+          "suite": "cam4"
+        }
+      ],
+      "runtime_provider_kinds": [
+        "fortran-device"
+      ],
+      "runtime_ready": true,
+      "status": "ready",
       "suites": [
         "cam4"
       ]
@@ -1123,20 +3336,44 @@
       "descriptor": "devices/generated/rrtmgp_lw_gas_optics_pre/device.yaml",
       "manifest": "build/catalog_devices/rrtmgp_lw_gas_optics_pre/device.json",
       "name": "rrtmgp_lw_gas_optics_pre",
+      "runtime_occurrences": [
+        {
+          "group": "physics_before_coupler",
+          "order": 130,
+          "provider": "fortran-device",
+          "ready": true,
+          "suite": "cam4"
+        }
+      ],
+      "runtime_provider_kinds": [
+        "fortran-device"
+      ],
+      "runtime_ready": true,
       "status": "ready",
       "suites": [
         "cam4"
       ]
     },
     {
-      "blockers": [
-        "dependency_closure:device 'rrtmgp_lw_mcica_subcol_gen' recursive source closure is not standalone: unresolved module 'mkl_vsl' used by /glade/work/ruitong/pycam-sima/external/CAM-SIMA/share/RandNum/src/shr_RandNum_mod.F90; unresolved module 'mkl_vsl_type' used by /glade/work/ruitong/pycam-sima/external/CAM-SIMA/share/RandNum/src/shr_RandNum_mod.F90"
-      ],
+      "blockers": [],
       "connector_generated": true,
       "descriptor": "devices/generated/rrtmgp_lw_mcica_subcol_gen/device.yaml",
-      "manifest": null,
+      "manifest": "build/catalog_devices/rrtmgp_lw_mcica_subcol_gen/device.json",
       "name": "rrtmgp_lw_mcica_subcol_gen",
-      "status": "dependency_provider_required",
+      "runtime_occurrences": [
+        {
+          "group": "physics_before_coupler",
+          "order": 128,
+          "provider": "fortran-device",
+          "ready": true,
+          "suite": "cam4"
+        }
+      ],
+      "runtime_provider_kinds": [
+        "fortran-device"
+      ],
+      "runtime_ready": true,
+      "status": "ready",
       "suites": [
         "cam4"
       ]
@@ -1147,6 +3384,19 @@
       "descriptor": "devices/generated/rrtmgp_lw_rte/device.yaml",
       "manifest": "build/catalog_devices/rrtmgp_lw_rte/device.json",
       "name": "rrtmgp_lw_rte",
+      "runtime_occurrences": [
+        {
+          "group": "physics_before_coupler",
+          "order": 133,
+          "provider": "fortran-device",
+          "ready": true,
+          "suite": "cam4"
+        }
+      ],
+      "runtime_provider_kinds": [
+        "fortran-device"
+      ],
+      "runtime_ready": true,
       "status": "ready",
       "suites": [
         "cam4"
@@ -1158,6 +3408,19 @@
       "descriptor": "devices/generated/rrtmgp_post/device.yaml",
       "manifest": "build/catalog_devices/rrtmgp_post/device.json",
       "name": "rrtmgp_post",
+      "runtime_occurrences": [
+        {
+          "group": "physics_before_coupler",
+          "order": 142,
+          "provider": "fortran-device",
+          "ready": true,
+          "suite": "cam4"
+        }
+      ],
+      "runtime_provider_kinds": [
+        "fortran-device"
+      ],
+      "runtime_ready": true,
       "status": "ready",
       "suites": [
         "cam4"
@@ -1169,6 +3432,19 @@
       "descriptor": "devices/generated/rrtmgp_pre/device.yaml",
       "manifest": "build/catalog_devices/rrtmgp_pre/device.json",
       "name": "rrtmgp_pre",
+      "runtime_occurrences": [
+        {
+          "group": "physics_before_coupler",
+          "order": 108,
+          "provider": "fortran-device",
+          "ready": true,
+          "suite": "cam4"
+        }
+      ],
+      "runtime_provider_kinds": [
+        "fortran-device"
+      ],
+      "runtime_ready": true,
       "status": "ready",
       "suites": [
         "cam4"
@@ -1180,6 +3456,26 @@
       "descriptor": "devices/generated/rrtmgp_subcycle/device.yaml",
       "manifest": "build/catalog_devices/rrtmgp_subcycle/device.json",
       "name": "rrtmgp_subcycle",
+      "runtime_occurrences": [
+        {
+          "group": "physics_before_coupler",
+          "order": 126,
+          "provider": "fortran-device",
+          "ready": true,
+          "suite": "cam4"
+        },
+        {
+          "group": "physics_before_coupler",
+          "order": 137,
+          "provider": "fortran-device",
+          "ready": true,
+          "suite": "cam4"
+        }
+      ],
+      "runtime_provider_kinds": [
+        "fortran-device"
+      ],
+      "runtime_ready": true,
       "status": "ready",
       "suites": [
         "cam4"
@@ -1191,6 +3487,19 @@
       "descriptor": "devices/generated/rrtmgp_sw_aerosols/device.yaml",
       "manifest": "build/catalog_devices/rrtmgp_sw_aerosols/device.json",
       "name": "rrtmgp_sw_aerosols",
+      "runtime_occurrences": [
+        {
+          "group": "physics_before_coupler",
+          "order": 121,
+          "provider": "fortran-device",
+          "ready": true,
+          "suite": "cam4"
+        }
+      ],
+      "runtime_provider_kinds": [
+        "fortran-device"
+      ],
+      "runtime_ready": true,
       "status": "ready",
       "suites": [
         "cam4"
@@ -1202,6 +3511,19 @@
       "descriptor": "devices/generated/rrtmgp_sw_calculate_fluxes/device.yaml",
       "manifest": "build/catalog_devices/rrtmgp_sw_calculate_fluxes/device.json",
       "name": "rrtmgp_sw_calculate_fluxes",
+      "runtime_occurrences": [
+        {
+          "group": "physics_before_coupler",
+          "order": 123,
+          "provider": "fortran-device",
+          "ready": true,
+          "suite": "cam4"
+        }
+      ],
+      "runtime_provider_kinds": [
+        "fortran-device"
+      ],
+      "runtime_ready": true,
       "status": "ready",
       "suites": [
         "cam4"
@@ -1213,20 +3535,44 @@
       "descriptor": "devices/generated/rrtmgp_sw_calculate_heating_rate/device.yaml",
       "manifest": "build/catalog_devices/rrtmgp_sw_calculate_heating_rate/device.json",
       "name": "rrtmgp_sw_calculate_heating_rate",
+      "runtime_occurrences": [
+        {
+          "group": "physics_before_coupler",
+          "order": 124,
+          "provider": "fortran-device",
+          "ready": true,
+          "suite": "cam4"
+        }
+      ],
+      "runtime_provider_kinds": [
+        "fortran-device"
+      ],
+      "runtime_ready": true,
       "status": "ready",
       "suites": [
         "cam4"
       ]
     },
     {
-      "blockers": [
-        "dependency_closure:device 'rrtmgp_sw_cloud_optics' recursive source closure is not standalone: host module 'ccpp_io_reader' used by /glade/work/ruitong/pycam-sima/external/CAM-SIMA/src/physics/ncar_ccpp/schemes/rrtmgp/utils/rrtmgp_cloud_optics_setup.F90"
-      ],
+      "blockers": [],
       "connector_generated": true,
       "descriptor": "devices/generated/rrtmgp_sw_cloud_optics/device.yaml",
-      "manifest": null,
+      "manifest": "build/catalog_devices/rrtmgp_sw_cloud_optics/device.json",
       "name": "rrtmgp_sw_cloud_optics",
-      "status": "dependency_provider_required",
+      "runtime_occurrences": [
+        {
+          "group": "physics_before_coupler",
+          "order": 113,
+          "provider": "fortran-device",
+          "ready": true,
+          "suite": "cam4"
+        }
+      ],
+      "runtime_provider_kinds": [
+        "fortran-device"
+      ],
+      "runtime_ready": true,
+      "status": "ready",
       "suites": [
         "cam4"
       ]
@@ -1237,20 +3583,44 @@
       "descriptor": "devices/generated/rrtmgp_sw_diagnostics/device.yaml",
       "manifest": null,
       "name": "rrtmgp_sw_diagnostics",
+      "runtime_occurrences": [
+        {
+          "group": "physics_before_coupler",
+          "order": 125,
+          "provider": "python-host-service",
+          "ready": true,
+          "suite": "cam4"
+        }
+      ],
+      "runtime_provider_kinds": [
+        "python-host-service"
+      ],
+      "runtime_ready": true,
       "status": "python_host_service_ready",
       "suites": [
         "cam4"
       ]
     },
     {
-      "blockers": [
-        "host_framework_module:ccpp_io_reader"
-      ],
+      "blockers": [],
       "connector_generated": true,
       "descriptor": "devices/generated/rrtmgp_sw_gas_optics/device.yaml",
-      "manifest": null,
+      "manifest": "build/catalog_devices/rrtmgp_sw_gas_optics/device.json",
       "name": "rrtmgp_sw_gas_optics",
-      "status": "abi_or_host_service_required",
+      "runtime_occurrences": [
+        {
+          "group": "physics_before_coupler",
+          "order": 118,
+          "provider": "fortran-device",
+          "ready": true,
+          "suite": "cam4"
+        }
+      ],
+      "runtime_provider_kinds": [
+        "fortran-device"
+      ],
+      "runtime_ready": true,
+      "status": "ready",
       "suites": [
         "cam4"
       ]
@@ -1261,20 +3631,44 @@
       "descriptor": "devices/generated/rrtmgp_sw_gas_optics_pre/device.yaml",
       "manifest": "build/catalog_devices/rrtmgp_sw_gas_optics_pre/device.json",
       "name": "rrtmgp_sw_gas_optics_pre",
+      "runtime_occurrences": [
+        {
+          "group": "physics_before_coupler",
+          "order": 117,
+          "provider": "fortran-device",
+          "ready": true,
+          "suite": "cam4"
+        }
+      ],
+      "runtime_provider_kinds": [
+        "fortran-device"
+      ],
+      "runtime_ready": true,
       "status": "ready",
       "suites": [
         "cam4"
       ]
     },
     {
-      "blockers": [
-        "dependency_closure:device 'rrtmgp_sw_mcica_subcol_gen' recursive source closure is not standalone: unresolved module 'mkl_vsl' used by /glade/work/ruitong/pycam-sima/external/CAM-SIMA/share/RandNum/src/shr_RandNum_mod.F90; unresolved module 'mkl_vsl_type' used by /glade/work/ruitong/pycam-sima/external/CAM-SIMA/share/RandNum/src/shr_RandNum_mod.F90"
-      ],
+      "blockers": [],
       "connector_generated": true,
       "descriptor": "devices/generated/rrtmgp_sw_mcica_subcol_gen/device.yaml",
-      "manifest": null,
+      "manifest": "build/catalog_devices/rrtmgp_sw_mcica_subcol_gen/device.json",
       "name": "rrtmgp_sw_mcica_subcol_gen",
-      "status": "dependency_provider_required",
+      "runtime_occurrences": [
+        {
+          "group": "physics_before_coupler",
+          "order": 114,
+          "provider": "fortran-device",
+          "ready": true,
+          "suite": "cam4"
+        }
+      ],
+      "runtime_provider_kinds": [
+        "fortran-device"
+      ],
+      "runtime_ready": true,
+      "status": "ready",
       "suites": [
         "cam4"
       ]
@@ -1285,6 +3679,19 @@
       "descriptor": "devices/generated/rrtmgp_sw_rte/device.yaml",
       "manifest": "build/catalog_devices/rrtmgp_sw_rte/device.json",
       "name": "rrtmgp_sw_rte",
+      "runtime_occurrences": [
+        {
+          "group": "physics_before_coupler",
+          "order": 122,
+          "provider": "fortran-device",
+          "ready": true,
+          "suite": "cam4"
+        }
+      ],
+      "runtime_provider_kinds": [
+        "fortran-device"
+      ],
+      "runtime_ready": true,
       "status": "ready",
       "suites": [
         "cam4"
@@ -1296,6 +3703,19 @@
       "descriptor": "devices/generated/rrtmgp_sw_solar_var/device.yaml",
       "manifest": "build/catalog_devices/rrtmgp_sw_solar_var/device.json",
       "name": "rrtmgp_sw_solar_var",
+      "runtime_occurrences": [
+        {
+          "group": "physics_before_coupler",
+          "order": 120,
+          "provider": "fortran-device",
+          "ready": true,
+          "suite": "cam4"
+        }
+      ],
+      "runtime_provider_kinds": [
+        "fortran-device"
+      ],
+      "runtime_ready": true,
       "status": "ready",
       "suites": [
         "cam4"
@@ -1307,6 +3727,19 @@
       "descriptor": "devices/generated/rrtmgp_sw_solar_var_setup/device.yaml",
       "manifest": "build/catalog_devices/rrtmgp_sw_solar_var_setup/device.json",
       "name": "rrtmgp_sw_solar_var_setup",
+      "runtime_occurrences": [
+        {
+          "group": "physics_before_coupler",
+          "order": 139,
+          "provider": "fortran-device",
+          "ready": true,
+          "suite": "cam4"
+        }
+      ],
+      "runtime_provider_kinds": [
+        "fortran-device"
+      ],
+      "runtime_ready": true,
       "status": "ready",
       "suites": [
         "cam4"
@@ -1318,6 +3751,19 @@
       "descriptor": "devices/generated/rrtmgp_variables/device.yaml",
       "manifest": "build/catalog_devices/rrtmgp_variables/device.json",
       "name": "rrtmgp_variables",
+      "runtime_occurrences": [
+        {
+          "group": "physics_before_coupler",
+          "order": 111,
+          "provider": "fortran-device",
+          "ready": true,
+          "suite": "cam4"
+        }
+      ],
+      "runtime_provider_kinds": [
+        "fortran-device"
+      ],
+      "runtime_ready": true,
       "status": "ready",
       "suites": [
         "cam4"
@@ -1329,6 +3775,33 @@
       "descriptor": "devices/generated/save_ttend_from_convect_deep/device.yaml",
       "manifest": "build/catalog_devices/save_ttend_from_convect_deep/device.json",
       "name": "save_ttend_from_convect_deep",
+      "runtime_occurrences": [
+        {
+          "group": "physics_before_coupler",
+          "order": 20,
+          "provider": "fortran-device",
+          "ready": true,
+          "suite": "cam7"
+        },
+        {
+          "group": "physics_before_coupler",
+          "order": 30,
+          "provider": "fortran-device",
+          "ready": true,
+          "suite": "cam7"
+        },
+        {
+          "group": "physics_before_coupler",
+          "order": 38,
+          "provider": "fortran-device",
+          "ready": true,
+          "suite": "cam7"
+        }
+      ],
+      "runtime_provider_kinds": [
+        "fortran-device"
+      ],
+      "runtime_ready": true,
       "status": "ready",
       "suites": [
         "cam7"
@@ -1340,6 +3813,19 @@
       "descriptor": "devices/generated/set_cloud_fraction_top/device.yaml",
       "manifest": "build/catalog_devices/set_cloud_fraction_top/device.json",
       "name": "set_cloud_fraction_top",
+      "runtime_occurrences": [
+        {
+          "group": "physics_before_coupler",
+          "order": 2,
+          "provider": "fortran-device",
+          "ready": true,
+          "suite": "cam7"
+        }
+      ],
+      "runtime_provider_kinds": [
+        "fortran-device"
+      ],
+      "runtime_ready": true,
       "status": "ready",
       "suites": [
         "cam7"
@@ -1351,6 +3837,26 @@
       "descriptor": "devices/generated/set_deep_conv_fluxes_to_general/device.yaml",
       "manifest": "build/catalog_devices/set_deep_conv_fluxes_to_general/device.json",
       "name": "set_deep_conv_fluxes_to_general",
+      "runtime_occurrences": [
+        {
+          "group": "physics_before_coupler",
+          "order": 25,
+          "provider": "fortran-device",
+          "ready": true,
+          "suite": "cam4"
+        },
+        {
+          "group": "physics_before_coupler",
+          "order": 26,
+          "provider": "fortran-device",
+          "ready": true,
+          "suite": "cam7"
+        }
+      ],
+      "runtime_provider_kinds": [
+        "fortran-device"
+      ],
+      "runtime_ready": true,
       "status": "ready",
       "suites": [
         "cam4",
@@ -1363,6 +3869,26 @@
       "descriptor": "devices/generated/set_general_conv_fluxes_to_deep/device.yaml",
       "manifest": "build/catalog_devices/set_general_conv_fluxes_to_deep/device.json",
       "name": "set_general_conv_fluxes_to_deep",
+      "runtime_occurrences": [
+        {
+          "group": "physics_before_coupler",
+          "order": 27,
+          "provider": "fortran-device",
+          "ready": true,
+          "suite": "cam4"
+        },
+        {
+          "group": "physics_before_coupler",
+          "order": 28,
+          "provider": "fortran-device",
+          "ready": true,
+          "suite": "cam7"
+        }
+      ],
+      "runtime_provider_kinds": [
+        "fortran-device"
+      ],
+      "runtime_ready": true,
       "status": "ready",
       "suites": [
         "cam4",
@@ -1375,6 +3901,19 @@
       "descriptor": "devices/generated/set_general_conv_fluxes_to_shallow/device.yaml",
       "manifest": "build/catalog_devices/set_general_conv_fluxes_to_shallow/device.json",
       "name": "set_general_conv_fluxes_to_shallow",
+      "runtime_occurrences": [
+        {
+          "group": "physics_before_coupler",
+          "order": 59,
+          "provider": "fortran-device",
+          "ready": true,
+          "suite": "cam4"
+        }
+      ],
+      "runtime_provider_kinds": [
+        "fortran-device"
+      ],
+      "runtime_ready": true,
       "status": "ready",
       "suites": [
         "cam4"
@@ -1386,6 +3925,19 @@
       "descriptor": "devices/generated/set_shallow_conv_fluxes_to_general/device.yaml",
       "manifest": "build/catalog_devices/set_shallow_conv_fluxes_to_general/device.json",
       "name": "set_shallow_conv_fluxes_to_general",
+      "runtime_occurrences": [
+        {
+          "group": "physics_before_coupler",
+          "order": 57,
+          "provider": "fortran-device",
+          "ready": true,
+          "suite": "cam4"
+        }
+      ],
+      "runtime_provider_kinds": [
+        "fortran-device"
+      ],
+      "runtime_ready": true,
       "status": "ready",
       "suites": [
         "cam4"
@@ -1397,6 +3949,19 @@
       "descriptor": "devices/generated/set_surface_coupling_vars/device.yaml",
       "manifest": "build/catalog_devices/set_surface_coupling_vars/device.json",
       "name": "set_surface_coupling_vars",
+      "runtime_occurrences": [
+        {
+          "group": "physics_before_coupler",
+          "order": 149,
+          "provider": "fortran-device",
+          "ready": true,
+          "suite": "cam4"
+        }
+      ],
+      "runtime_provider_kinds": [
+        "fortran-device"
+      ],
+      "runtime_ready": true,
       "status": "ready",
       "suites": [
         "cam4"
@@ -1408,6 +3973,62 @@
       "descriptor": "devices/generated/sima_state_diagnostics/device.yaml",
       "manifest": null,
       "name": "sima_state_diagnostics",
+      "runtime_occurrences": [
+        {
+          "group": "physics_before_coupler",
+          "order": 11,
+          "provider": "python-host-process",
+          "ready": true,
+          "suite": "adiabatic"
+        },
+        {
+          "group": "physics_before_coupler",
+          "order": 107,
+          "provider": "python-host-process",
+          "ready": true,
+          "suite": "cam4"
+        },
+        {
+          "group": "physics_after_coupler",
+          "order": 51,
+          "provider": "python-host-service",
+          "ready": true,
+          "suite": "cam7"
+        },
+        {
+          "group": "physics_before_coupler",
+          "order": 6,
+          "provider": "python-host-process",
+          "ready": true,
+          "suite": "held_suarez_1994"
+        },
+        {
+          "group": "physics_before_coupler",
+          "order": 18,
+          "provider": "python-host-process",
+          "ready": true,
+          "suite": "kessler"
+        },
+        {
+          "group": "physics_after_coupler",
+          "order": 3,
+          "provider": "python-host-service",
+          "ready": true,
+          "suite": "musica"
+        },
+        {
+          "group": "physics_before_coupler",
+          "order": 7,
+          "provider": "python-host-process",
+          "ready": true,
+          "suite": "tj2016"
+        }
+      ],
+      "runtime_provider_kinds": [
+        "python-host-process",
+        "python-host-service"
+      ],
+      "runtime_ready": true,
       "status": "python_host_service_ready",
       "suites": [
         "adiabatic",
@@ -1425,6 +4046,54 @@
       "descriptor": "devices/generated/sima_tend_diagnostics/device.yaml",
       "manifest": null,
       "name": "sima_tend_diagnostics",
+      "runtime_occurrences": [
+        {
+          "group": "physics_after_coupler",
+          "order": 12,
+          "provider": "python-host-process",
+          "ready": true,
+          "suite": "adiabatic"
+        },
+        {
+          "group": "physics_after_coupler",
+          "order": 201,
+          "provider": "python-host-process",
+          "ready": true,
+          "suite": "cam4"
+        },
+        {
+          "group": "physics_after_coupler",
+          "order": 76,
+          "provider": "python-host-process",
+          "ready": true,
+          "suite": "cam7"
+        },
+        {
+          "group": "physics_after_coupler",
+          "order": 7,
+          "provider": "python-host-process",
+          "ready": true,
+          "suite": "held_suarez_1994"
+        },
+        {
+          "group": "physics_after_coupler",
+          "order": 24,
+          "provider": "python-host-process",
+          "ready": true,
+          "suite": "kessler"
+        },
+        {
+          "group": "physics_after_coupler",
+          "order": 17,
+          "provider": "python-host-process",
+          "ready": true,
+          "suite": "tj2016"
+        }
+      ],
+      "runtime_provider_kinds": [
+        "python-host-process"
+      ],
+      "runtime_ready": true,
       "status": "python_host_service_ready",
       "suites": [
         "adiabatic",
@@ -1436,14 +4105,25 @@
       ]
     },
     {
-      "blockers": [
-        "host_framework_module:ccpp_io_reader"
-      ],
+      "blockers": [],
       "connector_generated": true,
       "descriptor": "devices/generated/solar_irradiance_data/device.yaml",
-      "manifest": null,
+      "manifest": "build/catalog_devices/solar_irradiance_data/device.json",
       "name": "solar_irradiance_data",
-      "status": "abi_or_host_service_required",
+      "runtime_occurrences": [
+        {
+          "group": "physics_before_coupler",
+          "order": 119,
+          "provider": "fortran-device",
+          "ready": true,
+          "suite": "cam4"
+        }
+      ],
+      "runtime_provider_kinds": [
+        "fortran-device"
+      ],
+      "runtime_ready": true,
+      "status": "ready",
       "suites": [
         "cam4"
       ]
@@ -1454,6 +4134,19 @@
       "descriptor": "devices/generated/temp_to_potential_temp/device.yaml",
       "manifest": "build/catalog_devices/temp_to_potential_temp/device.json",
       "name": "temp_to_potential_temp",
+      "runtime_occurrences": [
+        {
+          "group": "physics_before_coupler",
+          "order": 2,
+          "provider": "fortran-device",
+          "ready": true,
+          "suite": "kessler"
+        }
+      ],
+      "runtime_provider_kinds": [
+        "fortran-device"
+      ],
+      "runtime_ready": true,
       "status": "ready",
       "suites": [
         "kessler"
@@ -1468,6 +4161,33 @@
       "descriptor": "devices/generated/thermo_water_update/device.yaml",
       "manifest": null,
       "name": "thermo_water_update",
+      "runtime_occurrences": [
+        {
+          "group": "physics_after_coupler",
+          "order": 72,
+          "provider": "python-host-process",
+          "ready": true,
+          "suite": "cam7"
+        },
+        {
+          "group": "physics_after_coupler",
+          "order": 20,
+          "provider": "python-host-process",
+          "ready": true,
+          "suite": "kessler"
+        },
+        {
+          "group": "physics_after_coupler",
+          "order": 13,
+          "provider": "python-host-process",
+          "ready": true,
+          "suite": "tj2016"
+        }
+      ],
+      "runtime_provider_kinds": [
+        "python-host-process"
+      ],
+      "runtime_ready": true,
       "status": "external_source_required",
       "suites": [
         "cam7",
@@ -1481,6 +4201,19 @@
       "descriptor": "devices/generated/tj2016_precip/device.yaml",
       "manifest": "build/catalog_devices/tj2016_precip/device.json",
       "name": "tj2016_precip",
+      "runtime_occurrences": [
+        {
+          "group": "physics_before_coupler",
+          "order": 1,
+          "provider": "fortran-device",
+          "ready": true,
+          "suite": "tj2016"
+        }
+      ],
+      "runtime_provider_kinds": [
+        "fortran-device"
+      ],
+      "runtime_ready": true,
       "status": "ready",
       "suites": [
         "tj2016"
@@ -1492,6 +4225,19 @@
       "descriptor": "devices/generated/tj2016_sfc_pbl_hs/device.yaml",
       "manifest": "build/catalog_devices/tj2016_sfc_pbl_hs/device.json",
       "name": "tj2016_sfc_pbl_hs",
+      "runtime_occurrences": [
+        {
+          "group": "physics_after_coupler",
+          "order": 8,
+          "provider": "fortran-device",
+          "ready": true,
+          "suite": "tj2016"
+        }
+      ],
+      "runtime_provider_kinds": [
+        "fortran-device"
+      ],
+      "runtime_ready": true,
       "status": "ready",
       "suites": [
         "tj2016"
@@ -1503,6 +4249,19 @@
       "descriptor": "devices/generated/tms_beljaars_zero_stub/device.yaml",
       "manifest": "build/catalog_devices/tms_beljaars_zero_stub/device.json",
       "name": "tms_beljaars_zero_stub",
+      "runtime_occurrences": [
+        {
+          "group": "physics_after_coupler",
+          "order": 154,
+          "provider": "fortran-device",
+          "ready": true,
+          "suite": "cam4"
+        }
+      ],
+      "runtime_provider_kinds": [
+        "fortran-device"
+      ],
+      "runtime_ready": true,
       "status": "ready",
       "suites": [
         "cam4"
@@ -1514,6 +4273,26 @@
       "descriptor": "devices/generated/to_be_ccppized_temporary/device.yaml",
       "manifest": "build/catalog_devices/to_be_ccppized_temporary/device.json",
       "name": "to_be_ccppized_temporary",
+      "runtime_occurrences": [
+        {
+          "group": "physics_before_coupler",
+          "order": 1,
+          "provider": "fortran-device",
+          "ready": true,
+          "suite": "cam4"
+        },
+        {
+          "group": "physics_before_coupler",
+          "order": 1,
+          "provider": "fortran-device",
+          "ready": true,
+          "suite": "cam7"
+        }
+      ],
+      "runtime_provider_kinds": [
+        "fortran-device"
+      ],
+      "runtime_ready": true,
       "status": "ready",
       "suites": [
         "cam4",
@@ -1526,6 +4305,26 @@
       "descriptor": "devices/generated/tropopause_diagnostics/device.yaml",
       "manifest": null,
       "name": "tropopause_diagnostics",
+      "runtime_occurrences": [
+        {
+          "group": "physics_before_coupler",
+          "order": 147,
+          "provider": "python-host-service",
+          "ready": true,
+          "suite": "cam4"
+        },
+        {
+          "group": "physics_after_coupler",
+          "order": 53,
+          "provider": "python-host-service",
+          "ready": true,
+          "suite": "cam7"
+        }
+      ],
+      "runtime_provider_kinds": [
+        "python-host-service"
+      ],
+      "runtime_ready": true,
       "status": "python_host_service_ready",
       "suites": [
         "cam4",
@@ -1538,6 +4337,40 @@
       "descriptor": "devices/generated/tropopause_find/device.yaml",
       "manifest": "build/catalog_devices/tropopause_find/device.json",
       "name": "tropopause_find",
+      "runtime_occurrences": [
+        {
+          "group": "physics_before_coupler",
+          "order": 69,
+          "provider": "fortran-device",
+          "ready": true,
+          "suite": "cam4"
+        },
+        {
+          "group": "physics_before_coupler",
+          "order": 110,
+          "provider": "fortran-device",
+          "ready": true,
+          "suite": "cam4"
+        },
+        {
+          "group": "physics_before_coupler",
+          "order": 146,
+          "provider": "fortran-device",
+          "ready": true,
+          "suite": "cam4"
+        },
+        {
+          "group": "physics_after_coupler",
+          "order": 52,
+          "provider": "fortran-device",
+          "ready": true,
+          "suite": "cam7"
+        }
+      ],
+      "runtime_provider_kinds": [
+        "fortran-device"
+      ],
+      "runtime_ready": true,
       "status": "ready",
       "suites": [
         "cam4",
@@ -1550,6 +4383,33 @@
       "descriptor": "devices/generated/update_dry_static_energy/device.yaml",
       "manifest": "build/catalog_devices/update_dry_static_energy/device.json",
       "name": "update_dry_static_energy",
+      "runtime_occurrences": [
+        {
+          "group": "physics_after_coupler",
+          "order": 180,
+          "provider": "fortran-device",
+          "ready": true,
+          "suite": "cam4"
+        },
+        {
+          "group": "physics_after_coupler",
+          "order": 194,
+          "provider": "fortran-device",
+          "ready": true,
+          "suite": "cam4"
+        },
+        {
+          "group": "physics_after_coupler",
+          "order": 70,
+          "provider": "fortran-device",
+          "ready": true,
+          "suite": "cam7"
+        }
+      ],
+      "runtime_provider_kinds": [
+        "fortran-device"
+      ],
+      "runtime_ready": true,
       "status": "ready",
       "suites": [
         "cam4",
@@ -1562,6 +4422,19 @@
       "descriptor": "devices/generated/vertical_diffusion_diffuse_dry_static_energy/device.yaml",
       "manifest": "build/catalog_devices/vertical_diffusion_diffuse_dry_static_energy/device.json",
       "name": "vertical_diffusion_diffuse_dry_static_energy",
+      "runtime_occurrences": [
+        {
+          "group": "physics_after_coupler",
+          "order": 170,
+          "provider": "fortran-device",
+          "ready": true,
+          "suite": "cam4"
+        }
+      ],
+      "runtime_provider_kinds": [
+        "fortran-device"
+      ],
+      "runtime_ready": true,
       "status": "ready",
       "suites": [
         "cam4"
@@ -1573,6 +4446,19 @@
       "descriptor": "devices/generated/vertical_diffusion_diffuse_horizontal_momentum/device.yaml",
       "manifest": "build/catalog_devices/vertical_diffusion_diffuse_horizontal_momentum/device.json",
       "name": "vertical_diffusion_diffuse_horizontal_momentum",
+      "runtime_occurrences": [
+        {
+          "group": "physics_after_coupler",
+          "order": 168,
+          "provider": "fortran-device",
+          "ready": true,
+          "suite": "cam4"
+        }
+      ],
+      "runtime_provider_kinds": [
+        "fortran-device"
+      ],
+      "runtime_ready": true,
       "status": "ready",
       "suites": [
         "cam4"
@@ -1584,6 +4470,19 @@
       "descriptor": "devices/generated/vertical_diffusion_diffuse_tracers/device.yaml",
       "manifest": "build/catalog_devices/vertical_diffusion_diffuse_tracers/device.json",
       "name": "vertical_diffusion_diffuse_tracers",
+      "runtime_occurrences": [
+        {
+          "group": "physics_after_coupler",
+          "order": 171,
+          "provider": "fortran-device",
+          "ready": true,
+          "suite": "cam4"
+        }
+      ],
+      "runtime_provider_kinds": [
+        "fortran-device"
+      ],
+      "runtime_ready": true,
       "status": "ready",
       "suites": [
         "cam4"
@@ -1595,6 +4494,19 @@
       "descriptor": "devices/generated/vertical_diffusion_interpolate_to_interfaces/device.yaml",
       "manifest": "build/catalog_devices/vertical_diffusion_interpolate_to_interfaces/device.json",
       "name": "vertical_diffusion_interpolate_to_interfaces",
+      "runtime_occurrences": [
+        {
+          "group": "physics_after_coupler",
+          "order": 165,
+          "provider": "fortran-device",
+          "ready": true,
+          "suite": "cam4"
+        }
+      ],
+      "runtime_provider_kinds": [
+        "fortran-device"
+      ],
+      "runtime_ready": true,
       "status": "ready",
       "suites": [
         "cam4"
@@ -1606,6 +4518,19 @@
       "descriptor": "devices/generated/vertical_diffusion_not_use_rairv/device.yaml",
       "manifest": "build/catalog_devices/vertical_diffusion_not_use_rairv/device.json",
       "name": "vertical_diffusion_not_use_rairv",
+      "runtime_occurrences": [
+        {
+          "group": "physics_after_coupler",
+          "order": 163,
+          "provider": "fortran-device",
+          "ready": true,
+          "suite": "cam4"
+        }
+      ],
+      "runtime_provider_kinds": [
+        "fortran-device"
+      ],
+      "runtime_ready": true,
       "status": "ready",
       "suites": [
         "cam4"
@@ -1617,6 +4542,19 @@
       "descriptor": "devices/generated/vertical_diffusion_options/device.yaml",
       "manifest": "build/catalog_devices/vertical_diffusion_options/device.json",
       "name": "vertical_diffusion_options",
+      "runtime_occurrences": [
+        {
+          "group": "physics_after_coupler",
+          "order": 151,
+          "provider": "fortran-device",
+          "ready": true,
+          "suite": "cam4"
+        }
+      ],
+      "runtime_provider_kinds": [
+        "fortran-device"
+      ],
+      "runtime_ready": true,
       "status": "ready",
       "suites": [
         "cam4"
@@ -1628,6 +4566,19 @@
       "descriptor": "devices/generated/vertical_diffusion_set_dry_static_energy_at_toa_zero/device.yaml",
       "manifest": "build/catalog_devices/vertical_diffusion_set_dry_static_energy_at_toa_zero/device.json",
       "name": "vertical_diffusion_set_dry_static_energy_at_toa_zero",
+      "runtime_occurrences": [
+        {
+          "group": "physics_after_coupler",
+          "order": 169,
+          "provider": "fortran-device",
+          "ready": true,
+          "suite": "cam4"
+        }
+      ],
+      "runtime_provider_kinds": [
+        "fortran-device"
+      ],
+      "runtime_ready": true,
       "status": "ready",
       "suites": [
         "cam4"
@@ -1639,6 +4590,19 @@
       "descriptor": "devices/generated/vertical_diffusion_set_temperature_at_toa_default/device.yaml",
       "manifest": "build/catalog_devices/vertical_diffusion_set_temperature_at_toa_default/device.json",
       "name": "vertical_diffusion_set_temperature_at_toa_default",
+      "runtime_occurrences": [
+        {
+          "group": "physics_after_coupler",
+          "order": 164,
+          "provider": "fortran-device",
+          "ready": true,
+          "suite": "cam4"
+        }
+      ],
+      "runtime_provider_kinds": [
+        "fortran-device"
+      ],
+      "runtime_ready": true,
       "status": "ready",
       "suites": [
         "cam4"
@@ -1650,6 +4614,19 @@
       "descriptor": "devices/generated/vertical_diffusion_sponge_layer/device.yaml",
       "manifest": "build/catalog_devices/vertical_diffusion_sponge_layer/device.json",
       "name": "vertical_diffusion_sponge_layer",
+      "runtime_occurrences": [
+        {
+          "group": "physics_after_coupler",
+          "order": 161,
+          "provider": "fortran-device",
+          "ready": true,
+          "suite": "cam4"
+        }
+      ],
+      "runtime_provider_kinds": [
+        "fortran-device"
+      ],
+      "runtime_ready": true,
       "status": "ready",
       "suites": [
         "cam4"
@@ -1661,6 +4638,19 @@
       "descriptor": "devices/generated/vertical_diffusion_tendencies/device.yaml",
       "manifest": "build/catalog_devices/vertical_diffusion_tendencies/device.json",
       "name": "vertical_diffusion_tendencies",
+      "runtime_occurrences": [
+        {
+          "group": "physics_after_coupler",
+          "order": 172,
+          "provider": "fortran-device",
+          "ready": true,
+          "suite": "cam4"
+        }
+      ],
+      "runtime_provider_kinds": [
+        "fortran-device"
+      ],
+      "runtime_ready": true,
       "status": "ready",
       "suites": [
         "cam4"
@@ -1672,6 +4662,19 @@
       "descriptor": "devices/generated/vertical_diffusion_tendencies_diagnostics/device.yaml",
       "manifest": null,
       "name": "vertical_diffusion_tendencies_diagnostics",
+      "runtime_occurrences": [
+        {
+          "group": "physics_after_coupler",
+          "order": 173,
+          "provider": "python-host-service",
+          "ready": true,
+          "suite": "cam4"
+        }
+      ],
+      "runtime_provider_kinds": [
+        "python-host-service"
+      ],
+      "runtime_ready": true,
       "status": "python_host_service_ready",
       "suites": [
         "cam4"
@@ -1683,6 +4686,19 @@
       "descriptor": "devices/generated/vertical_diffusion_wind_damping_rate/device.yaml",
       "manifest": "build/catalog_devices/vertical_diffusion_wind_damping_rate/device.json",
       "name": "vertical_diffusion_wind_damping_rate",
+      "runtime_occurrences": [
+        {
+          "group": "physics_after_coupler",
+          "order": 167,
+          "provider": "fortran-device",
+          "ready": true,
+          "suite": "cam4"
+        }
+      ],
+      "runtime_provider_kinds": [
+        "fortran-device"
+      ],
+      "runtime_ready": true,
       "status": "ready",
       "suites": [
         "cam4"
@@ -1694,6 +4710,19 @@
       "descriptor": "devices/generated/wet_to_dry_cloud_liquid_water/device.yaml",
       "manifest": "build/catalog_devices/wet_to_dry_cloud_liquid_water/device.json",
       "name": "wet_to_dry_cloud_liquid_water",
+      "runtime_occurrences": [
+        {
+          "group": "physics_before_coupler",
+          "order": 5,
+          "provider": "fortran-device",
+          "ready": true,
+          "suite": "kessler"
+        }
+      ],
+      "runtime_provider_kinds": [
+        "fortran-device"
+      ],
+      "runtime_ready": true,
       "status": "ready",
       "suites": [
         "kessler"
@@ -1705,6 +4734,19 @@
       "descriptor": "devices/generated/wet_to_dry_rain/device.yaml",
       "manifest": "build/catalog_devices/wet_to_dry_rain/device.json",
       "name": "wet_to_dry_rain",
+      "runtime_occurrences": [
+        {
+          "group": "physics_before_coupler",
+          "order": 6,
+          "provider": "fortran-device",
+          "ready": true,
+          "suite": "kessler"
+        }
+      ],
+      "runtime_provider_kinds": [
+        "fortran-device"
+      ],
+      "runtime_ready": true,
       "status": "ready",
       "suites": [
         "kessler"
@@ -1716,6 +4758,19 @@
       "descriptor": "devices/generated/wet_to_dry_water_vapor/device.yaml",
       "manifest": "build/catalog_devices/wet_to_dry_water_vapor/device.json",
       "name": "wet_to_dry_water_vapor",
+      "runtime_occurrences": [
+        {
+          "group": "physics_before_coupler",
+          "order": 4,
+          "provider": "fortran-device",
+          "ready": true,
+          "suite": "kessler"
+        }
+      ],
+      "runtime_provider_kinds": [
+        "fortran-device"
+      ],
+      "runtime_ready": true,
       "status": "ready",
       "suites": [
         "kessler"
@@ -1727,6 +4782,19 @@
       "descriptor": "devices/generated/zero_upper_boundary_condition/device.yaml",
       "manifest": "build/catalog_devices/zero_upper_boundary_condition/device.json",
       "name": "zero_upper_boundary_condition",
+      "runtime_occurrences": [
+        {
+          "group": "physics_after_coupler",
+          "order": 152,
+          "provider": "fortran-device",
+          "ready": true,
+          "suite": "cam4"
+        }
+      ],
+      "runtime_provider_kinds": [
+        "fortran-device"
+      ],
+      "runtime_ready": true,
       "status": "ready",
       "suites": [
         "cam4"
@@ -1738,6 +4806,26 @@
       "descriptor": "devices/generated/zm_conv_convtran/device.yaml",
       "manifest": "build/catalog_devices/zm_conv_convtran/device.json",
       "name": "zm_conv_convtran",
+      "runtime_occurrences": [
+        {
+          "group": "physics_before_coupler",
+          "order": 40,
+          "provider": "fortran-device",
+          "ready": true,
+          "suite": "cam4"
+        },
+        {
+          "group": "physics_before_coupler",
+          "order": 43,
+          "provider": "fortran-device",
+          "ready": true,
+          "suite": "cam7"
+        }
+      ],
+      "runtime_provider_kinds": [
+        "fortran-device"
+      ],
+      "runtime_ready": true,
       "status": "ready",
       "suites": [
         "cam4",
@@ -1750,6 +4838,33 @@
       "descriptor": "devices/generated/zm_conv_evap/device.yaml",
       "manifest": "build/catalog_devices/zm_conv_evap/device.json",
       "name": "zm_conv_evap",
+      "runtime_occurrences": [
+        {
+          "group": "physics_before_coupler",
+          "order": 26,
+          "provider": "fortran-device",
+          "ready": true,
+          "suite": "cam4"
+        },
+        {
+          "group": "physics_before_coupler",
+          "order": 58,
+          "provider": "fortran-device",
+          "ready": true,
+          "suite": "cam4"
+        },
+        {
+          "group": "physics_before_coupler",
+          "order": 27,
+          "provider": "fortran-device",
+          "ready": true,
+          "suite": "cam7"
+        }
+      ],
+      "runtime_provider_kinds": [
+        "fortran-device"
+      ],
+      "runtime_ready": true,
       "status": "ready",
       "suites": [
         "cam4",
@@ -1762,6 +4877,26 @@
       "descriptor": "devices/generated/zm_conv_momtran/device.yaml",
       "manifest": "build/catalog_devices/zm_conv_momtran/device.json",
       "name": "zm_conv_momtran",
+      "runtime_occurrences": [
+        {
+          "group": "physics_before_coupler",
+          "order": 34,
+          "provider": "fortran-device",
+          "ready": true,
+          "suite": "cam4"
+        },
+        {
+          "group": "physics_before_coupler",
+          "order": 36,
+          "provider": "fortran-device",
+          "ready": true,
+          "suite": "cam7"
+        }
+      ],
+      "runtime_provider_kinds": [
+        "fortran-device"
+      ],
+      "runtime_ready": true,
       "status": "ready",
       "suites": [
         "cam4",
@@ -1774,6 +4909,26 @@
       "descriptor": "devices/generated/zm_conv_options/device.yaml",
       "manifest": "build/catalog_devices/zm_conv_options/device.json",
       "name": "zm_conv_options",
+      "runtime_occurrences": [
+        {
+          "group": "physics_before_coupler",
+          "order": 3,
+          "provider": "fortran-device",
+          "ready": true,
+          "suite": "cam4"
+        },
+        {
+          "group": "physics_before_coupler",
+          "order": 17,
+          "provider": "fortran-device",
+          "ready": true,
+          "suite": "cam7"
+        }
+      ],
+      "runtime_provider_kinds": [
+        "fortran-device"
+      ],
+      "runtime_ready": true,
       "status": "ready",
       "suites": [
         "cam4",
@@ -1786,6 +4941,26 @@
       "descriptor": "devices/generated/zm_convr/device.yaml",
       "manifest": "build/catalog_devices/zm_convr/device.json",
       "name": "zm_convr",
+      "runtime_occurrences": [
+        {
+          "group": "physics_before_coupler",
+          "order": 18,
+          "provider": "fortran-device",
+          "ready": true,
+          "suite": "cam4"
+        },
+        {
+          "group": "physics_before_coupler",
+          "order": 18,
+          "provider": "fortran-device",
+          "ready": true,
+          "suite": "cam7"
+        }
+      ],
+      "runtime_provider_kinds": [
+        "fortran-device"
+      ],
+      "runtime_ready": true,
       "status": "ready",
       "suites": [
         "cam4",
@@ -1798,6 +4973,26 @@
       "descriptor": "devices/generated/zm_convr_tendency_diagnostics/device.yaml",
       "manifest": null,
       "name": "zm_convr_tendency_diagnostics",
+      "runtime_occurrences": [
+        {
+          "group": "physics_before_coupler",
+          "order": 19,
+          "provider": "python-host-service",
+          "ready": true,
+          "suite": "cam4"
+        },
+        {
+          "group": "physics_before_coupler",
+          "order": 19,
+          "provider": "python-host-service",
+          "ready": true,
+          "suite": "cam7"
+        }
+      ],
+      "runtime_provider_kinds": [
+        "python-host-service"
+      ],
+      "runtime_ready": true,
       "status": "python_host_service_ready",
       "suites": [
         "cam4",
@@ -1810,6 +5005,26 @@
       "descriptor": "devices/generated/zm_diagnostics/device.yaml",
       "manifest": null,
       "name": "zm_diagnostics",
+      "runtime_occurrences": [
+        {
+          "group": "physics_before_coupler",
+          "order": 45,
+          "provider": "python-host-service",
+          "ready": true,
+          "suite": "cam4"
+        },
+        {
+          "group": "physics_before_coupler",
+          "order": 48,
+          "provider": "python-host-service",
+          "ready": true,
+          "suite": "cam7"
+        }
+      ],
+      "runtime_provider_kinds": [
+        "python-host-service"
+      ],
+      "runtime_ready": true,
       "status": "python_host_service_ready",
       "suites": [
         "cam4",
@@ -1822,6 +5037,26 @@
       "descriptor": "devices/generated/zm_evap_tendency_diagnostics/device.yaml",
       "manifest": null,
       "name": "zm_evap_tendency_diagnostics",
+      "runtime_occurrences": [
+        {
+          "group": "physics_before_coupler",
+          "order": 28,
+          "provider": "python-host-service",
+          "ready": true,
+          "suite": "cam4"
+        },
+        {
+          "group": "physics_before_coupler",
+          "order": 29,
+          "provider": "python-host-service",
+          "ready": true,
+          "suite": "cam7"
+        }
+      ],
+      "runtime_provider_kinds": [
+        "python-host-service"
+      ],
+      "runtime_ready": true,
       "status": "python_host_service_ready",
       "suites": [
         "cam4",
@@ -1834,6 +5069,26 @@
       "descriptor": "devices/generated/zm_momtran_tendency_diagnostics/device.yaml",
       "manifest": null,
       "name": "zm_momtran_tendency_diagnostics",
+      "runtime_occurrences": [
+        {
+          "group": "physics_before_coupler",
+          "order": 35,
+          "provider": "python-host-service",
+          "ready": true,
+          "suite": "cam4"
+        },
+        {
+          "group": "physics_before_coupler",
+          "order": 37,
+          "provider": "python-host-service",
+          "ready": true,
+          "suite": "cam7"
+        }
+      ],
+      "runtime_provider_kinds": [
+        "python-host-service"
+      ],
+      "runtime_ready": true,
       "status": "python_host_service_ready",
       "suites": [
         "cam4",
@@ -1846,6 +5101,26 @@
       "descriptor": "devices/generated/zm_tendency_diagnostics/device.yaml",
       "manifest": null,
       "name": "zm_tendency_diagnostics",
+      "runtime_occurrences": [
+        {
+          "group": "physics_before_coupler",
+          "order": 41,
+          "provider": "python-host-service",
+          "ready": true,
+          "suite": "cam4"
+        },
+        {
+          "group": "physics_before_coupler",
+          "order": 44,
+          "provider": "python-host-service",
+          "ready": true,
+          "suite": "cam7"
+        }
+      ],
+      "runtime_provider_kinds": [
+        "python-host-service"
+      ],
+      "runtime_ready": true,
       "status": "python_host_service_ready",
       "suites": [
         "cam4",
@@ -1855,11 +5130,85 @@
   ],
   "source_revision": "f8daa568eae2696b7c4ebff7768f02f5d097d9df",
   "status_counts": {
-    "abi_or_host_service_required": 10,
-    "dependency_provider_required": 14,
+    "abi_or_host_service_required": 2,
     "external_source_required": 2,
-    "python_host_service_ready": 29,
-    "ready": 100
+    "python_host_service_ready": 30,
+    "ready": 121
   },
-  "suite_count": 7
+  "suite_count": 7,
+  "suite_runtime": {
+    "adiabatic": {
+      "occurrence_count": 12,
+      "provider_counts": {
+        "fortran-device": 7,
+        "python-host-process": 4,
+        "python-host-service": 1
+      },
+      "ready": true,
+      "ready_occurrence_count": 12,
+      "unresolved_occurrence_count": 0
+    },
+    "cam4": {
+      "occurrence_count": 201,
+      "provider_counts": {
+        "fortran-device": 155,
+        "python-host-process": 19,
+        "python-host-service": 27
+      },
+      "ready": true,
+      "ready_occurrence_count": 201,
+      "unresolved_occurrence_count": 0
+    },
+    "cam7": {
+      "occurrence_count": 76,
+      "provider_counts": {
+        "fortran-device": 58,
+        "python-host-process": 10,
+        "python-host-service": 8
+      },
+      "ready": true,
+      "ready_occurrence_count": 76,
+      "unresolved_occurrence_count": 0
+    },
+    "held_suarez_1994": {
+      "occurrence_count": 7,
+      "provider_counts": {
+        "fortran-device": 5,
+        "python-host-process": 2
+      },
+      "ready": true,
+      "ready_occurrence_count": 7,
+      "unresolved_occurrence_count": 0
+    },
+    "kessler": {
+      "occurrence_count": 24,
+      "provider_counts": {
+        "fortran-device": 18,
+        "python-host-process": 6
+      },
+      "ready": true,
+      "ready_occurrence_count": 24,
+      "unresolved_occurrence_count": 0
+    },
+    "musica": {
+      "occurrence_count": 3,
+      "provider_counts": {
+        "fortran-device": 2,
+        "python-host-service": 1
+      },
+      "ready": true,
+      "ready_occurrence_count": 3,
+      "unresolved_occurrence_count": 0
+    },
+    "tj2016": {
+      "occurrence_count": 17,
+      "provider_counts": {
+        "fortran-device": 11,
+        "python-host-process": 6
+      },
+      "ready": true,
+      "ready_occurrence_count": 17,
+      "unresolved_occurrence_count": 0
+    }
+  }
 }

@@ -20,6 +20,7 @@ generated:
   - musica_tuvx_profile
   - musica_tuvx_radiator
   - musica_util
+  override_source: devices/overrides.yaml
 name: musica_ccpp
 fortran_module: musica_ccpp
 sources:
@@ -62,14 +63,25 @@ providers:
   cam_abortutils: native/devices/support/cam_abortutils.F90
   cam_logfile: native/devices/support/cam_logfile.F90
   ccpp_kinds: native/devices/support/ccpp_kinds.F90
+  ccpp_io_reader: native/devices/support/ccpp_io_reader.F90
+  ccpp_scheme_utils: native/devices/support/ccpp_scheme_utils.F90
+  cam_time_coord: native/devices/support/cam_time_coord.F90
   error_messages: native/devices/support/error_messages.F90
   physconst: native/devices/support/physconst.F90
+  ppgrid: native/devices/support/ppgrid.F90
   ref_pres: native/devices/support/ref_pres.F90
   shr_kind_mod: native/devices/support/shr_kind_mod.F90
   shr_log_mod: native/devices/support/shr_log_mod.F90
   shr_assert_mod: native/devices/support/shr_assert_mod.F90
   shr_sys_mod: native/devices/support/shr_sys_mod.F90
   spmd_utils: native/devices/support/spmd_utils.F90
+  ccpp_const_utils: native/devices/support/ccpp_const_utils.F90
+  musica_ccpp_namelist: native/devices/support/musica_ccpp_namelist.F90
+extra_exports:
+- pycam_musica_configure_v1
+- pycam_musica_register_v1
+- pycam_musica_metadata_v1
+- pycam_musica_release_v1
 auto_dependencies: true
 state_policy: stateless
 dimension_bindings:
@@ -81,8 +93,6 @@ dimension_bindings:
   vertical_interface_dimension: pverp
   vertical_layer_dimension: pver
 entrypoints:
-  register:
-    table: musica_ccpp_register
   initialize:
     table: musica_ccpp_init
   run:
@@ -91,7 +101,48 @@ entrypoints:
     table: musica_ccpp_final
 processes:
   musica_ccpp: run
-  musica_ccpp:register: register
   musica_ccpp:initialize: initialize
   musica_ccpp:run: run
   musica_ccpp:finalize: finalize
+host_entrypoints:
+  register:
+    kind: musica_constituent_registry
+    process: musica_ccpp:register
+    configure_symbol: pycam_musica_configure_v1
+    register_symbol: pycam_musica_register_v1
+    metadata_symbol: pycam_musica_metadata_v1
+    release_symbol: pycam_musica_release_v1
+    standard_name: ccpp_constituent_properties
+    fortran_type: ccpp_constituent_prop_ptr_t
+    configuration_standard_names:
+    - micm_solver_type
+    - filename_of_micm_configuration
+    - filename_of_tuvx_configuration
+    - filename_of_tuvx_micm_mapping_configuration
+extra_sources:
+- build/dependencies/ccpp-framework-musica/src/ccpp_hashable.F90
+- build/dependencies/ccpp-framework-musica/src/ccpp_hash_table.F90
+- build/dependencies/ccpp-framework-musica/src/ccpp_constituent_prop_mod.F90
+- native/devices/support/musica_constituent_registry.F90
+external_modules:
+- musica_micm
+- musica_state
+- musica_tuvx
+- musica_tuvx_grid
+- musica_tuvx_profile
+- musica_tuvx_radiator
+- musica_util
+external_include_dirs:
+- build/dependencies/musica-install/include/musica/fortran
+external_libraries:
+- build/dependencies/musica-install/lib64/libmusica-fortran.a
+- build/dependencies/musica-install/lib64/libmusica.a
+- build/dependencies/musica-install/lib64/libmechanism_configuration.a
+- build/dependencies/musica-install/lib64/libyaml-cpp.a
+- stdc++
+- /glade/u/apps/derecho/23.09/spack/opt/spack/netcdf/4.9.2/gcc/12.2.0/gjc6/lib/libnetcdff.so
+- /glade/u/apps/derecho/23.09/spack/opt/spack/netcdf/4.9.2/gcc/12.2.0/gjc6/lib/libnetcdf.so
+preprocessor_definitions:
+- PYCAM_CCPP_DIAG_NAME
+allowed_elf_dependencies:
+- netcdf

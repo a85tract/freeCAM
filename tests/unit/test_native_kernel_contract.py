@@ -19,6 +19,7 @@ class _Pool:
         "fv_nphys": 3,
         "pver": 30,
         "nconst": 3,
+        "ntrac": 3,
         "np": 4,
         "fvm_reconstruction": 5,
         "fvm_internal": 5,
@@ -74,6 +75,29 @@ def test_kernel_reports_and_checks_its_model_specialization() -> None:
                 np=5,
             )
         )
+
+
+def test_qwater_preparation_uses_native_array_expression() -> None:
+    runtime = KernelBackend(ROOT / "build/libpycam_sima_kernels.so")
+    constituent_mass = np.asfortranarray(
+        np.full((4, 4, 2, 1, 3), 2.0, dtype=np.float64)
+    )
+    pressure_thickness = np.asfortranarray(
+        np.full((4, 4, 2, 1), 4.0, dtype=np.float64)
+    )
+    qwater = np.asfortranarray(
+        np.full((4, 4, 2, 1, 2), np.nan, dtype=np.float64)
+    )
+
+    runtime.prepare_qwater(
+        constituent_mass=constituent_mass,
+        pressure_thickness=pressure_thickness,
+        qwater=qwater,
+        qsize=1,
+    )
+
+    assert np.array_equal(qwater[..., 0], np.full(qwater[..., 0].shape, 0.5))
+    assert np.array_equal(qwater[..., 1], np.zeros(qwater[..., 1].shape))
 
 
 def test_kernel_library_has_no_model_framework_dependency() -> None:

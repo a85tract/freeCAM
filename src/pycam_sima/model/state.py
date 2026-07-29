@@ -52,8 +52,61 @@ class StatePool:
         dimensions: Mapping[str, int],
         contracts: Iterable[FieldContract] | None = None,
         alias_rules: Iterable[AliasRule] | None = None,
+        ccpp_aliases: Mapping[str, str] | None = None,
+        constituent_names: Iterable[str] | None = None,
+        advected_constituent_indices: Iterable[int] | None = None,
     ) -> None:
         self.dimensions = {name: int(value) for name, value in dimensions.items()}
+        defaults = ("cloud_liquid_water", "rain_water", "water_vapor")
+        count = self.dimensions.get("nconst", 0)
+        source_names = (
+            constituent_names
+            if constituent_names is not None
+            else (
+                defaults[index]
+                if index < len(defaults)
+                else f"tracer_{index + 1}"
+                for index in range(count)
+            )
+        )
+        self.constituent_names = tuple(
+            str(name).strip().lower() for name in source_names
+        )
+        if count and len(self.constituent_names) != count:
+            raise StateOwnershipError(
+                "constituent_names length does not match nconst"
+            )
+        ntrac = self.dimensions.get("ntrac", count)
+        self.advected_constituent_indices = tuple(
+            range(ntrac)
+            if advected_constituent_indices is None
+            else (int(index) for index in advected_constituent_indices)
+        )
+        if len(self.advected_constituent_indices) != ntrac:
+            raise StateOwnershipError(
+                "advected_constituent_indices length does not match ntrac"
+            )
+        if len(set(self.advected_constituent_indices)) != ntrac:
+            raise StateOwnershipError(
+                "advected_constituent_indices must be unique"
+            )
+        if any(
+            index < 0 or index >= count
+            for index in self.advected_constituent_indices
+        ):
+            raise StateOwnershipError(
+                "advected_constituent_indices must index constituent_names"
+            )
+        self.advected_constituent_names = tuple(
+            self.constituent_names[index]
+            for index in self.advected_constituent_indices
+        )
+        self._physics_to_advected_slot = {
+            physics_index: slot
+            for slot, physics_index in enumerate(
+                self.advected_constituent_indices
+            )
+        }
         self.contracts = {
             item.standard_name: item for item in (contracts or default_contracts())
         }
@@ -88,12 +141,30 @@ class StatePool:
                 self._register_ccpp_name(
                     rule.ccpp_standard_name, rule.alias
                 )
+        for standard_name, field_name in (ccpp_aliases or {}).items():
+            self._register_ccpp_name(standard_name, field_name)
+
+    def advected_slot(self, physics_constituent_index: int) -> int:
+        """Return the FVM slot for one physics-registry constituent."""
+
+        try:
+            return self._physics_to_advected_slot[
+                int(physics_constituent_index)
+            ]
+        except KeyError:
+            raise StateOwnershipError(
+                "physics constituent index "
+                f"{physics_constituent_index} is not advected"
+            ) from None
 
     def _register_ccpp_name(self, standard_name: str, field_name: str) -> None:
         key = standard_name.lower()
         if key in self._ccpp_fields:
+            if self._ccpp_fields[key] == field_name:
+                return
             raise StateOwnershipError(
-                f"duplicate CCPP standard name {standard_name!r}"
+                f"duplicate CCPP standard name {standard_name!r}: "
+                f"{self._ccpp_fields[key]!r} and {field_name!r}"
             )
         self._ccpp_fields[key] = field_name
 

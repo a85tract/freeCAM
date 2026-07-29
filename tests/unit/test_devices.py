@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import ctypes
 import json
 from pathlib import Path
 
@@ -194,18 +195,68 @@ def test_generated_registry_discovers_both_source_devices() -> None:
 
 def test_composite_registry_discovers_catalog_and_core_kessler_build():
     catalog_registry = DeviceRegistry(ROOT / "build/catalog_devices")
-    assert len(catalog_registry.devices) == 100
-    for device in catalog_registry.devices.values():
+    assert len(catalog_registry.devices) == 121
+    for name, device in catalog_registry.devices.items():
+        if name == "musica_ccpp":
+            # MUSICA is an optional external stack and is dlopen'ed only for
+            # the MUSICA suite, under the case's configured NetCDF runtime.
+            assert device.library_path.is_file()
+            continue
         device._ensure_abi()
 
     registry = DeviceRegistry(
         (ROOT / "build/devices", ROOT / "build/catalog_devices")
     )
     assert "calculate_net_heating" in registry.process_names
-    assert len(registry.devices) == 100
+    assert len(registry.devices) == 121
     assert registry.devices["kessler"].manifest_path.parent == (
         ROOT / "build/devices/kessler"
     )
+
+
+def test_device_preloads_absolute_shared_dependencies_in_reverse_order(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    consumer = tmp_path / "libconsumer.so"
+    dependency = tmp_path / "libdependency.so"
+    library = tmp_path / "libdevice.so"
+    for path in (consumer, dependency, library):
+        path.touch()
+    manifest = tmp_path / "device.json"
+    manifest.write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "abi_version": 1,
+                "name": "absolute_dependency_probe",
+                "state_policy": "stateless",
+                "initialize_entrypoint": None,
+                "entrypoints": {},
+                "processes": {},
+                "dimension_bindings": {},
+                "library": library.name,
+                "external": {
+                    "libraries": [str(consumer), str(dependency)]
+                },
+            }
+        )
+    )
+    loaded: list[tuple[str, int]] = []
+
+    def fake_cdll(name: str, *, mode: int):
+        loaded.append((name, mode))
+        return object()
+
+    monkeypatch.setattr(
+        "pycam_sima.model.devices.ctypes.CDLL", fake_cdll
+    )
+    device = FortranDevice(manifest)
+    device._preload_external_runtime_libraries()
+
+    assert loaded == [
+        (str(dependency), ctypes.RTLD_GLOBAL),
+        (str(consumer), ctypes.RTLD_GLOBAL),
+    ]
 
 
 def test_registry_runs_original_kessler_without_replacing_arrays() -> None:
@@ -299,6 +350,82 @@ def test_device_contract_rejects_wrong_host_units() -> None:
     )
     with pytest.raises(DeviceContractError, match="with units"):
         registry.invoke("kessler", pool)
+
+
+def test_device_boundary_converts_declared_input_units() -> None:
+    device = FortranDevice(
+        ROOT / "build/catalog_devices/zm_conv_convtran/device.json"
+    )
+    contract = _field(
+        "dry_pressure_thickness",
+        "air_pressure_thickness_of_dry_air",
+        ("nphys_local", "pver"),
+        "Pa",
+        intent="in",
+    )
+    pool = StatePool(
+        {"nphys_local": 2, "pver": 3},
+        contracts=(contract,),
+        alias_rules=(),
+    )
+    values = np.asfortranarray(
+        np.array(
+            [[10000.0, 20000.0, 30000.0], [40000.0, 50000.0, 60000.0]]
+        )
+    )
+    pool.set("dry_pressure_thickness", values)
+    argument = next(
+        item
+        for item in device.entrypoints["run"]["arguments"]
+        if item["standard_name"]
+        == "air_pressure_thickness_of_dry_air"
+    )
+
+    converted = device._resolve_field(argument, pool)
+
+    assert converted.flags.f_contiguous
+    assert np.array_equal(converted, values * np.float64(1.0e-2))
+    assert np.array_equal(pool.get("dry_pressure_thickness"), values)
+
+
+def test_device_boundary_converts_declared_output_units() -> None:
+    device = FortranDevice(
+        ROOT / "build/catalog_devices/tj2016_precip/device.json"
+    )
+    contract = _field(
+        "relative_humidity",
+        "relative_humidity",
+        ("nphys_local", "pver"),
+        "%",
+        intent="out",
+    )
+    pool = StatePool(
+        {"nphys_local": 2, "pver": 3},
+        contracts=(contract,),
+        alias_rules=(),
+    )
+    pool.set(
+        "relative_humidity",
+        np.asfortranarray(np.full((2, 3), -999.0)),
+    )
+    argument = next(
+        item
+        for item in device.entrypoints["run"]["arguments"]
+        if item["standard_name"] == "relative_humidity"
+    )
+    copybacks = []
+
+    converted = device._resolve_field(argument, pool, copybacks)
+    converted[...] = np.float64(0.625)
+    for source, destination, factor in copybacks:
+        np.multiply(source, factor, out=destination)
+
+    assert converted.flags.f_contiguous
+    assert len(copybacks) == 1
+    assert np.array_equal(
+        pool.get("relative_humidity"),
+        np.full((2, 3), 62.5),
+    )
 
 
 def test_ccpp_parser_verifies_original_source_and_metadata() -> None:
@@ -481,6 +608,26 @@ def test_default_fortran_logical_is_bridged_from_numpy_bool() -> None:
     pool.assert_pointer_stability(before)
     np.testing.assert_array_equal(pool.get("heating"), 5.0)
     np.testing.assert_array_equal(pool.get("net_flux"), 7.0)
+
+
+def test_scalar_dimension_standard_name_uses_statepool_dimension() -> None:
+    device = FortranDevice(
+        ROOT / "build/catalog_devices/rrtmgp_inputs_setup/device.json"
+    )
+    argument = next(
+        item
+        for item in device.entrypoints["initialize"]["arguments"]
+        if item["standard_name"]
+        == "number_of_bands_for_longwave_radiation"
+    )
+    assert argument["binding"]["source"] == "standard_name"
+    pool = StatePool(
+        {"number_of_bands_for_longwave_radiation": 16},
+        contracts=(_field("dummy", "dummy", (), "1"),),
+        alias_rules=(),
+    )
+
+    assert device._resolve_argument(argument, pool) == 16
 
 
 def test_generated_descriptor_recursively_resolves_source_dependencies():

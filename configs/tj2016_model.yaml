@@ -1,0 +1,25 @@
+# Pinned CAM-SIMA FTJ16 24-rank/50-step oracle profile.
+source_revision: f8daa568eae2696b7c4ebff7768f02f5d097d9df
+source_root: /glade/work/ruitong/pycam-sima/external/CAM-SIMA
+physics_suite: tj2016
+grid: ne3np4.pg3
+ne: 3
+np: 4
+fv_nphys: 3
+pver: 30
+constituent_count: 1
+constituent_names: [water_vapor]
+constituent_minima: [1.0e-12]
+constituent_molecular_weights: [18.016]
+mpi_size: 24
+threads_per_rank: 1
+dt_seconds: 1800
+stop_n: 50
+calendar: NO_LEAP
+orbital_year: 2000
+run_type: startup
+analytic_ic_type: moist_baroclinic_wave_dcmip2016
+pertlim: 0.0
+case_name: FTJ16_ne3pg3_gnu_24x50
+atm_in: atm_in
+history_enabled: true

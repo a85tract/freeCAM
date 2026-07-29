@@ -19,6 +19,7 @@ from .device_codegen import (
     _INTRINSIC_MODULES,
     _dimension_standard,
     _logical_fortran_lines,
+    _preferred_module_provider,
 )
 from .errors import DeviceBuildError
 
@@ -56,6 +57,7 @@ class CatalogArgument:
     units: str
     optional: bool
     allocatable: bool
+    constituent: bool = False
 
     @property
     def caller_owned_allocatable(self) -> bool:
@@ -78,6 +80,16 @@ class CatalogEntrypoint:
 
 
 @dataclass(frozen=True, slots=True)
+class CatalogNamelistVariable:
+    local_name: str
+    standard_name: str
+    group: str
+    type_spec: str
+    units: str
+    default_value: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
 class SchemeCatalogEntry:
     name: str
     module: str
@@ -86,6 +98,7 @@ class SchemeCatalogEntry:
     metadata_dependencies: tuple[str, ...]
     lifecycle: tuple[str, ...]
     entrypoints: tuple[CatalogEntrypoint, ...]
+    namelist_variables: tuple[CatalogNamelistVariable, ...]
     occurrences: tuple[SuiteOccurrence, ...]
     use_modules: tuple[str, ...]
     source_module_dependencies: tuple[str, ...]
@@ -260,6 +273,11 @@ class DeviceCatalog:
                 ),
                 lifecycle=tuple(item.phase for item in eps),
                 entrypoints=eps,
+                namelist_variables=_namelist_variables(
+                    metadata.with_name(
+                        f"{metadata.stem}_namelist.xml"
+                    )
+                ),
                 occurrences=tuple(occurrences[name]),
                 use_modules=use_modules,
                 source_module_dependencies=tuple(sorted(source_modules)),
@@ -342,6 +360,38 @@ class DeviceCatalog:
     def source_revision(self) -> str:
         return _source_revision(self.cam_root)
 
+    def suite_constituent_standard_names(
+        self,
+        scheme_names: Iterable[str],
+    ) -> tuple[str, ...]:
+        """Return the CCPP constituent registry for one suite in cap order.
+
+        CAM's dynamics may carry more tracers than a CCPP suite declares.
+        The generated suite cap registers only metadata variables marked as
+        constituents, so exposing every StatePool tracer to
+        ``ccpp_constituent_index`` changes the native scheme behavior.
+        """
+
+        names: list[str] = []
+        seen: set[str] = set()
+        for raw_name in scheme_names:
+            name = str(raw_name).lower()
+            entry = self.entries.get(name)
+            if entry is None:
+                continue
+            for endpoint in entry.entrypoints:
+                for argument in endpoint.arguments:
+                    standard_name = argument.standard_name
+                    if (
+                        not argument.constituent
+                        or standard_name.startswith("tendency_of_")
+                        or standard_name in seen
+                    ):
+                        continue
+                    seen.add(standard_name)
+                    names.append(standard_name)
+        return tuple(names)
+
     def descriptor_payload(self, name: str) -> dict[str, Any]:
         """Return a generated device description for one suite scheme.
 
@@ -403,6 +453,19 @@ class DeviceCatalog:
                         continue
                     if not dimension.isdigit():
                         dimensions.add(dimension)
+        if "ppgrid" in entry.external_cam_dependencies:
+            # The legacy cloud_optical_properties helper imports CAM's
+            # run-time ppgrid values even when a particular CCPP entrypoint
+            # does not list all three dimensions.  The portable provider is
+            # initialized by every generated entrypoint, so make those values
+            # explicit ABI inputs owned by Python.
+            dimensions.update(
+                {
+                    "horizontal_loop_extent",
+                    "vertical_layer_dimension",
+                    "vertical_interface_dimension",
+                }
+            )
 
         # Providers are intentionally uniform across generated descriptors.
         # Recursive dependencies may introduce one of these modules even when
@@ -425,6 +488,9 @@ class DeviceCatalog:
             "metadata": [entry.metadata],
             "source_modules": sorted(source_modules),
             "providers": providers,
+            "extra_exports": [
+                "pycam_ccpp_scheme_registry_initialize_v1",
+            ],
             "auto_dependencies": True,
             # Lifecycle actions are explicit processes.  The host, not an
             # implicit native side effect, decides when initialize/finalize
@@ -525,10 +591,30 @@ _DESCRIPTOR_OVERRIDE_KEYS = frozenset(
         "initialize_entrypoint",
         "bindings",
         "dimension_bindings",
+        "providers",
+        "host_entrypoints",
+        "external_modules",
+        "external_include_dirs",
+        "external_libraries",
+        "extra_sources",
+        "extra_exports",
+        "preprocessor_definitions",
+        "allowed_elf_dependencies",
     }
 )
 _DESCRIPTOR_OVERRIDE_MAPPING_KEYS = frozenset(
-    {"bindings", "dimension_bindings"}
+    {"bindings", "dimension_bindings", "providers", "host_entrypoints"}
+)
+_DESCRIPTOR_OVERRIDE_LIST_KEYS = frozenset(
+    {
+        "external_modules",
+        "external_include_dirs",
+        "external_libraries",
+        "extra_sources",
+        "extra_exports",
+        "preprocessor_definitions",
+        "allowed_elf_dependencies",
+    }
 )
 
 
@@ -584,6 +670,11 @@ def _load_descriptor_overrides(
                 raise DeviceBuildError(
                     f"{path}: {name}.{key} must be a mapping"
                 )
+        for key in _DESCRIPTOR_OVERRIDE_LIST_KEYS:
+            if key in override and not isinstance(override[key], list):
+                raise DeviceBuildError(
+                    f"{path}: {name}.{key} must be a list"
+                )
         result[name] = override
     return result
 
@@ -601,6 +692,18 @@ def _apply_descriptor_override(
             result[key] = merged
         else:
             result[key] = value
+    host_entrypoints = set(result.get("host_entrypoints", {}))
+    if host_entrypoints:
+        result["entrypoints"] = {
+            name: contract
+            for name, contract in result["entrypoints"].items()
+            if name not in host_entrypoints
+        }
+        result["processes"] = {
+            process: entrypoint
+            for process, entrypoint in result["processes"].items()
+            if entrypoint not in host_entrypoints
+        }
     return result
 
 
@@ -608,8 +711,12 @@ _PORTABLE_PROVIDERS = {
     "cam_abortutils": "native/devices/support/cam_abortutils.F90",
     "cam_logfile": "native/devices/support/cam_logfile.F90",
     "ccpp_kinds": "native/devices/support/ccpp_kinds.F90",
+    "ccpp_io_reader": "native/devices/support/ccpp_io_reader.F90",
+    "ccpp_scheme_utils": "native/devices/support/ccpp_scheme_utils.F90",
+    "cam_time_coord": "native/devices/support/cam_time_coord.F90",
     "error_messages": "native/devices/support/error_messages.F90",
     "physconst": "native/devices/support/physconst.F90",
+    "ppgrid": "native/devices/support/ppgrid.F90",
     "ref_pres": "native/devices/support/ref_pres.F90",
     "shr_kind_mod": "native/devices/support/shr_kind_mod.F90",
     "shr_log_mod": "native/devices/support/shr_log_mod.F90",
@@ -767,6 +874,7 @@ def _catalog_argument(variable: Any) -> CatalogArgument:
         units=variable.get_prop_value("units") or "",
         optional=_truthy(optional),
         allocatable=_truthy(allocatable),
+        constituent=bool(variable.is_constituent()),
     )
 
 
@@ -815,6 +923,40 @@ def _metadata_dependencies(metadata: Path) -> tuple[tuple[Path, ...], list[str]]
     return tuple(result), missing
 
 
+def _namelist_variables(path: Path) -> tuple[CatalogNamelistVariable, ...]:
+    if not path.is_file():
+        return ()
+    root = ET.parse(path).getroot()
+    result: list[CatalogNamelistVariable] = []
+    for entry in root.findall(".//entry"):
+        local_name = str(entry.attrib.get("id", "")).strip().lower()
+        standard_name = str(
+            entry.findtext("standard_name", "")
+        ).strip().lower()
+        type_spec = str(entry.findtext("type", "")).strip().lower()
+        if not local_name or not standard_name or not type_spec:
+            continue
+        values = [
+            str(item.text or "").strip()
+            for item in entry.findall("./values/value")
+            if str(item.text or "").strip()
+        ]
+        result.append(
+            CatalogNamelistVariable(
+                local_name=local_name,
+                standard_name=standard_name,
+                group=str(entry.findtext("group", "")).strip().lower(),
+                type_spec=type_spec,
+                units=str(entry.findtext("units", "1") or "1").strip(),
+                # A single CAM namelist value is the generated namelist
+                # default.  Multiple values express a selection/constraint
+                # and cannot be resolved without the host configuration.
+                default_value=values[0] if len(values) == 1 else None,
+            )
+        )
+    return tuple(result)
+
+
 def _module_source_index(cam_root: Path) -> dict[str, Path]:
     result: dict[str, Path] = {}
     for source in sorted(cam_root.rglob("*.F90")):
@@ -823,7 +965,14 @@ def _module_source_index(cam_root: Path) -> dict[str, Path]:
             for line in lines:
                 match = _MODULE_DEFINITION.match(line)
                 if match:
-                    result.setdefault(match.group(1).lower(), source.resolve())
+                    module = match.group(1).lower()
+                    resolved = source.resolve()
+                    previous = result.get(module)
+                    result[module] = (
+                        resolved
+                        if previous is None
+                        else _preferred_module_provider(previous, resolved)
+                    )
         except UnicodeDecodeError:
             continue
     return result
@@ -857,7 +1006,13 @@ def _abi_blockers(
 ) -> set[str]:
     blockers: set[str] = set()
     for module in use_modules:
-        if any(pattern.search(module) for pattern in _FORBIDDEN_MODULE_PATTERNS):
+        if (
+            module not in _PORTABLE_PROVIDERS
+            and any(
+                pattern.search(module)
+                for pattern in _FORBIDDEN_MODULE_PATTERNS
+            )
+        ):
             blockers.add(f"host_framework_module:{module}")
     for path in missing_dependency_files:
         blockers.add(f"missing_metadata_dependency:{path}")

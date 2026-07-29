@@ -3,6 +3,10 @@ import hashlib
 import numpy as np
 import pytest
 
+from pycam_sima.model.contracts import (
+    model_alias_rules,
+    model_ccpp_field_aliases,
+)
 from pycam_sima.model.errors import StateOwnershipError
 from pycam_sima.model.grid import (
     _derivative_matrix,
@@ -208,3 +212,98 @@ def test_reduced_constituent_pool_omits_unavailable_water_aliases() -> None:
     assert pool.get("cloud_liquid_water").shape[-1] == 3
     with pytest.raises(KeyError, match="water_vapor"):
         pool.get("water_vapor")
+
+
+def test_constituent_standard_names_follow_configured_species_order():
+    dimensions = dimensions_for_rank(
+        0,
+        constituent_count=1,
+    )
+    pool = StatePool(
+        dimensions,
+        alias_rules=model_alias_rules(("water_vapor",)),
+        ccpp_aliases=model_ccpp_field_aliases(("water_vapor",)),
+    )
+
+    water_name = pool.ccpp_field_name(
+        "water_vapor_mixing_ratio_wrt_moist_air_and_condensed_water"
+    )
+    water = pool.get(water_name)
+    constituents = pool.get("physics_constituent_mixing_ratio")
+
+    assert water.shape == constituents[..., 0].shape
+    assert np.shares_memory(water, constituents)
+    water[...] = 0.25
+    assert np.array_equal(constituents[..., 0], water)
+    with pytest.raises(KeyError):
+        pool.get("physics_cloud_liquid_water")
+
+
+def test_cloud_ice_standard_name_is_a_zero_copy_constituent_view():
+    dimensions = dimensions_for_rank(0, constituent_count=2)
+    pool = StatePool(
+        dimensions,
+        alias_rules=model_alias_rules(("cloud_ice", "water_vapor")),
+        ccpp_aliases=model_ccpp_field_aliases(
+            ("cloud_ice", "water_vapor")
+        ),
+        constituent_names=("cloud_ice", "water_vapor"),
+    )
+
+    ice = pool.get(
+        pool.ccpp_field_name(
+            "cloud_ice_mixing_ratio_wrt_moist_air_and_condensed_water"
+        )
+    )
+    constituents = pool.get("physics_constituent_mixing_ratio")
+
+    assert np.shares_memory(ice, constituents[..., 0])
+
+
+def test_state_pool_tracks_distinct_physics_and_advected_orders():
+    dimensions = dimensions_for_rank(
+        0,
+        constituent_count=7,
+        advected_constituent_count=4,
+        thermodynamic_constituent_count=2,
+    )
+    pool = StatePool(
+        dimensions,
+        constituent_names=(
+            "cloud_liquid_water",
+            "water_vapor",
+            "cl",
+            "cl2",
+            "o3",
+            "air",
+            "o2",
+        ),
+        advected_constituent_indices=(0, 2, 3, 1),
+    )
+
+    assert pool.advected_constituent_names == (
+        "cloud_liquid_water",
+        "cl",
+        "cl2",
+        "water_vapor",
+    )
+    assert pool.advected_slot(1) == 3
+
+
+def test_tracer_limiter_bounds_use_active_qsize_stride():
+    dimensions = dimensions_for_rank(
+        0,
+        1,
+        constituent_count=7,
+        advected_constituent_count=4,
+        thermodynamic_constituent_count=2,
+    )
+    pool = StatePool(dimensions)
+
+    expected = (
+        dimensions["pver"],
+        dimensions["qsize"],
+        dimensions["nelem_local"],
+    )
+    assert pool.get("tracer_stage_minimum").shape == expected
+    assert pool.get("tracer_stage_maximum").shape == expected
