@@ -800,6 +800,7 @@ class FortranDevice:
             shape=shape,
             owner=self,
             destroy=release,
+            recreatable=configure_symbol is not None,
         )
 
     def _resolve_opaque(

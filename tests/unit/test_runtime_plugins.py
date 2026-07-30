@@ -24,7 +24,7 @@ from pycam_sima.model.devices import DeviceRegistry
 from pycam_sima.model.experiment import validate_segment_plan
 from pycam_sima.model.grid import dimensions_for_rank
 from pycam_sima.model.plugins import PhysicsPluginManager
-from pycam_sima.model.state import StatePool
+from pycam_sima.model.state import NativeObjectHandle, StatePool
 from pycam_sima.model.errors import DeviceContractError
 
 
@@ -388,6 +388,43 @@ def test_source_and_prebuilt_plugins_share_the_same_runtime_contract(
     assert np.all(
         source_driver.pool.get_ccpp("runtime_probe_lifecycle") == -100.0
     )
+
+
+def test_plugin_lifecycle_preserves_existing_opaque_process_state(
+    tmp_path: Path,
+):
+    descriptor = _runtime_probe_descriptor(tmp_path)
+    driver = _Driver(tmp_path / "driver")
+    releases: list[str] = []
+    handle = NativeObjectHandle(
+        address=12345,
+        fortran_type="existing_state_t",
+        shape=(),
+        owner=object(),
+        destroy=lambda: releases.append("released"),
+    )
+    driver.pool.set_process_state("existing_process_state", handle)
+
+    record = driver.plugins.install(
+        PhysicsPluginSpec(
+            str(descriptor),
+            placements=(SchemePlacement("runtime_probe"),),
+            project_root=str(tmp_path),
+        ),
+        initial_values={"runtime_probe_input": 4.0},
+        unsafe=True,
+    )
+    driver.plugins.deactivate(record.name, unsafe=True)
+    driver.plugins.activate(record.name, unsafe=True)
+
+    assert (
+        driver.pool.get_process_state("existing_process_state") is handle
+    )
+    assert releases == []
+    with pytest.raises(Exception, match="cannot checkpoint opaque"):
+        driver.pool.snapshot_arrays()
+    driver.pool.release_process_state()
+    assert releases == ["released"]
 
 
 def test_dynamic_actions_are_json_serializable():

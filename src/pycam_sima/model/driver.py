@@ -719,12 +719,19 @@ class CAMDriver:
             self.backend.devices.release_pool(self.pool)
         self.state = DriverState.FINALIZED
 
-    def snapshot(self):
+    def snapshot(
+        self, *, allow_recreatable_process_state: bool = False
+    ):
         """Capture this rank's immutable state for a branch or checkpoint."""
 
         from .checkpoint import ModelSnapshot
 
-        return ModelSnapshot.capture(self)
+        return ModelSnapshot.capture(
+            self,
+            allow_recreatable_process_state=(
+                allow_recreatable_process_state
+            ),
+        )
 
     def write_checkpoint(self, path: str | Path) -> Path:
         """Collectively persist all MPI ranks without finalizing the driver."""

@@ -2,6 +2,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import numpy as np
+import pytest
 
 from pycam_sima.model import (
     BranchSpec,
@@ -22,7 +23,7 @@ from pycam_sima.model.clock import NoLeapClock
 from pycam_sima.model.config import ModelConfig
 from pycam_sima.model.driver import DriverState
 from pycam_sima.model.grid import dimensions_for_rank
-from pycam_sima.model.state import StatePool
+from pycam_sima.model.state import NativeObjectHandle, StatePool
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -101,6 +102,56 @@ def test_driver_snapshot_recreates_private_pool() -> None:
     assert snapshot.native_calls == 17
     assert pool.get("air_temperature")[0, 0, 0, 0, 0] == 231.5
     assert restored.get("air_temperature")[0, 0, 0, 0, 0] == 232.5
+
+
+def test_pool_fork_omits_only_recreatable_opaque_process_state() -> None:
+    pool = StatePool(dimensions_for_rank(0, 24))
+    pool.set("air_temperature", 231.5)
+    handle = NativeObjectHandle(
+        address=12345,
+        fortran_type="ccpp_constituent_prop_ptr_t",
+        shape=(3,),
+        owner=object(),
+        destroy=lambda: None,
+        recreatable=True,
+    )
+    pool.set_process_state("ccpp_constituent_properties", handle)
+    driver = SimpleNamespace(
+        pool=pool,
+        clock=NoLeapClock(nstep=3, seconds=5400),
+        state=DriverState.RUNNING,
+        comm=SimpleNamespace(rank=0, size=24),
+        config=ModelConfig(),
+        scheme_plan=_scheme_plan(),
+        _last_phase="physics_timestep_initial",
+        _last_scheme="physics_before_coupler.geopotential_temp",
+        _last_scheme_group="physics_before_coupler",
+        backend=SimpleNamespace(call_count=17),
+    )
+
+    with pytest.raises(Exception, match="cannot checkpoint opaque"):
+        ModelSnapshot.capture(driver)
+    snapshot = ModelSnapshot.capture(
+        driver, allow_recreatable_process_state=True
+    )
+    restored = deserialize_snapshot(*serialize_snapshot(snapshot))
+    restored_pool = restored.new_pool()
+
+    assert snapshot.omitted_process_states == (
+        "ccpp_constituent_properties",
+    )
+    assert restored.omitted_process_states == snapshot.omitted_process_states
+    assert not restored_pool.process_state_names
+    assert np.array_equal(
+        restored_pool.get("air_temperature"),
+        pool.get("air_temperature"),
+    )
+
+    handle.recreatable = False
+    with pytest.raises(Exception, match="type-specific serializer"):
+        ModelSnapshot.capture(
+            driver, allow_recreatable_process_state=True
+        )
 
 
 def test_checkpoint_bundle_round_trip(tmp_path: Path) -> None:

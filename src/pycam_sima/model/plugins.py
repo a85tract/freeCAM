@@ -594,7 +594,7 @@ class PhysicsPluginManager:
                 f"plugin bytes differ across MPI ranks: {hashes}"
             )
 
-        arrays_before = self.driver.pool.snapshot_arrays(readonly=False)
+        arrays_before = self.driver.pool.snapshot_array_values(readonly=False)
         added_fields: list[str] = []
         added_schemes: list[str] = []
         registered_device = False
@@ -722,7 +722,7 @@ class PhysicsPluginManager:
             "plugin activation",
         )
         assert device is not None
-        arrays_before = self.driver.pool.snapshot_arrays(readonly=False)
+        arrays_before = self.driver.pool.snapshot_array_values(readonly=False)
         changed: list[str] = []
         local_error: str | None = None
         try:
@@ -766,7 +766,7 @@ class PhysicsPluginManager:
         if not record.active and not record.pending:
             self.driver.comm.barrier()
             return
-        arrays_before = self.driver.pool.snapshot_arrays(readonly=False)
+        arrays_before = self.driver.pool.snapshot_array_values(readonly=False)
         local_error: str | None = None
         try:
             self._run_lifecycle(device, record.placements, "finalize")

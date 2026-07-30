@@ -50,17 +50,31 @@ class ModelSnapshot:
     last_scheme_group: str | None
     native_calls: int
     plugin_inventory: tuple[Mapping[str, Any], ...]
+    omitted_process_states: tuple[str, ...]
     boundary_index: int
     after_coupler_prepared: bool
 
     @classmethod
-    def capture(cls, driver: CAMDriver) -> "ModelSnapshot":
+    def capture(
+        cls,
+        driver: CAMDriver,
+        *,
+        allow_recreatable_process_state: bool = False,
+    ) -> "ModelSnapshot":
         if driver.pool is None or driver.clock is None:
             raise StateTransitionError("cannot snapshot an uninitialized model")
         if driver.state.value == "FINALIZED":
             raise StateTransitionError("cannot snapshot a finalized model")
         if hasattr(driver, "plugins"):
             driver.plugins.assert_checkpointable()
+        if allow_recreatable_process_state:
+            omitted_process_states = (
+                driver.pool.recreatable_process_state_names()
+            )
+            arrays = driver.pool.snapshot_array_values(readonly=True)
+        else:
+            omitted_process_states = ()
+            arrays = driver.pool.snapshot_arrays(readonly=True)
         return cls(
             rank=int(driver.comm.rank),
             size=int(driver.comm.size),
@@ -74,7 +88,7 @@ class ModelSnapshot:
                 sorted(driver.pool.initialized_fields)
             ),
             dynamic_fields=tuple(sorted(driver.pool.dynamic_fields)),
-            arrays=driver.pool.snapshot_arrays(readonly=True),
+            arrays=arrays,
             pool_sealed=driver.pool.sealed,
             clock=asdict(driver.clock),
             driver_state=driver.state.value,
@@ -88,6 +102,7 @@ class ModelSnapshot:
                 if not hasattr(driver, "plugins")
                 else driver.plugins.inventory()
             ),
+            omitted_process_states=omitted_process_states,
             boundary_index=int(getattr(driver, "_boundary_index", 0)),
             after_coupler_prepared=bool(
                 getattr(driver, "_after_coupler_prepared", False)
@@ -114,6 +129,7 @@ class ModelSnapshot:
             "plugin_inventory": [
                 dict(item) for item in self.plugin_inventory
             ],
+            "omitted_process_states": list(self.omitted_process_states),
             "boundary_index": self.boundary_index,
             "after_coupler_prepared": self.after_coupler_prepared,
             "array_names": sorted(self.arrays),
@@ -176,6 +192,10 @@ class ModelSnapshot:
             plugin_inventory=tuple(
                 dict(item)
                 for item in metadata.get("plugin_inventory", ())
+            ),
+            omitted_process_states=tuple(
+                str(item)
+                for item in metadata.get("omitted_process_states", ())
             ),
             boundary_index=int(metadata.get("boundary_index", 0)),
             after_coupler_prepared=bool(

@@ -94,10 +94,7 @@ class SlotRuntime:
     def local_state_bytes(self) -> int:
         if self.driver is None or self.driver.pool is None:
             return 0
-        return sum(
-            int(array.nbytes)
-            for array in self.driver.pool.snapshot_arrays(readonly=True).values()
-        )
+        return self.driver.pool.array_nbytes
 
 
 def _traceback() -> str:
@@ -420,7 +417,9 @@ def _fork_models(
         if slot.slot_id == parent_slot:
             driver = slot.require_model(parent_name)
             slot.comm.Barrier()
-            payload = serialize_snapshot(driver.snapshot())
+            payload = serialize_snapshot(
+                driver.snapshot(allow_recreatable_process_state=True)
+            )
         elif slot.slot_id in child_slots and slot.driver is not None:
             raise RuntimeError(f"fork target slot {slot.slot_id} is already occupied")
     except BaseException:

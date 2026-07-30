@@ -38,6 +38,7 @@ class NativeObjectHandle:
     shape: tuple[int, ...]
     owner: Any
     destroy: Callable[[], None]
+    recreatable: bool = False
     released: bool = False
 
     def release(self) -> None:
@@ -459,6 +460,46 @@ class StatePool:
     def process_state_names(self) -> frozenset[str]:
         return frozenset(self._process_state)
 
+    def recreatable_process_state_names(self) -> tuple[str, ...]:
+        """Validate and return native objects safe to recreate after a fork."""
+
+        blocked = sorted(
+            name
+            for name, handle in self._process_state.items()
+            if not handle.recreatable
+        )
+        if blocked:
+            raise StateOwnershipError(
+                "cannot fork opaque Fortran process state without a "
+                f"type-specific serializer: {blocked}"
+            )
+        return tuple(sorted(self._process_state))
+
+    @property
+    def array_nbytes(self) -> int:
+        """Bytes owned by canonical NumPy storage, excluding native objects."""
+
+        return sum(int(value.nbytes) for value in self._arrays.values())
+
+    def snapshot_array_values(
+        self, *, readonly: bool = True
+    ) -> dict[str, np.ndarray]:
+        """Copy NumPy storage for a same-process transaction rollback.
+
+        Opaque Fortran objects remain live in this StatePool and are
+        intentionally not serialized.  This snapshot is therefore suitable
+        for rolling back an in-process schema/lifecycle operation, but not
+        for checkpointing, fork, or migration to another process.
+        """
+
+        arrays: dict[str, np.ndarray] = {}
+        for name, value in self._arrays.items():
+            copied = np.array(value, dtype=value.dtype, order="F", copy=True)
+            if readonly:
+                copied.flags.writeable = False
+            arrays[name] = copied
+        return arrays
+
     def snapshot_arrays(self, *, readonly: bool = True) -> dict[str, np.ndarray]:
         """Copy canonical storage for an isolated model-state snapshot."""
 
@@ -468,13 +509,7 @@ class StatePool:
                 "suite finalize lifecycle before snapshotting or provide a "
                 "type-specific serializer"
             )
-        arrays: dict[str, np.ndarray] = {}
-        for name, value in self._arrays.items():
-            copied = np.array(value, dtype=value.dtype, order="F", copy=True)
-            if readonly:
-                copied.flags.writeable = False
-            arrays[name] = copied
-        return arrays
+        return self.snapshot_array_values(readonly=readonly)
 
     def restore_arrays(self, arrays: Mapping[str, np.ndarray]) -> None:
         """Restore exact canonical values without replacing owned buffers."""
