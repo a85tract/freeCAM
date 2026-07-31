@@ -11,9 +11,10 @@ from __future__ import annotations
 
 import argparse
 import base64
+import hashlib
 import json
 import traceback
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from multiprocessing.connection import Client, Connection
 from pathlib import Path
 from typing import Any, Mapping, Sequence
@@ -62,6 +63,36 @@ def slot_for_world_rank(world_rank: int, ranks_per_model: int) -> tuple[int, int
     return divmod(int(world_rank), int(ranks_per_model))
 
 
+@dataclass(frozen=True, slots=True)
+class RankLocalSnapshotRecord:
+    """One retained immutable snapshot shard owned by one MPI rank."""
+
+    snapshot_id: str
+    label: str
+    source_model: str
+    metadata: Mapping[str, Any]
+    content: bytes
+    total_nbytes: int
+    step: int
+    config_hash: str
+
+    @property
+    def local_nbytes(self) -> int:
+        return len(self.content)
+
+    def descriptor(self, source_slot: int, rank_count: int) -> dict[str, Any]:
+        return {
+            "snapshot_id": self.snapshot_id,
+            "label": self.label,
+            "source_model": self.source_model,
+            "source_slot": int(source_slot),
+            "step": int(self.step),
+            "rank_count": int(rank_count),
+            "nbytes": int(self.total_nbytes),
+            "config_hash": self.config_hash,
+        }
+
+
 @dataclass(slots=True)
 class SlotRuntime:
     """Rank-local part of one fixed model slot."""
@@ -77,6 +108,11 @@ class SlotRuntime:
     run_dir: str | None = None
     history_dir: str | None = None
     state: str = "idle"
+    retained_snapshot_limit: int = 1
+    retained_snapshot_budget_bytes: int = 0
+    retained_states: dict[str, RankLocalSnapshotRecord] = field(
+        default_factory=dict
+    )
 
     def require_model(self, expected_name: str | None = None) -> CAMDriver:
         if self.driver is None or self.model_name is None:
@@ -101,6 +137,11 @@ class SlotRuntime:
         if self.driver is None or self.driver.pool is None:
             return 0
         return self.driver.pool.array_nbytes
+
+    def local_retained_bytes(self) -> int:
+        return sum(
+            record.local_nbytes for record in self.retained_states.values()
+        )
 
 
 def _traceback() -> str:
@@ -128,6 +169,7 @@ def _world_failures(world: Any, failure: str | None) -> list[str]:
 
 def _slot_status(slot: SlotRuntime) -> dict[str, Any] | None:
     state_bytes = slot.comm.reduce(slot.local_state_bytes(), root=0)
+    retained_bytes = slot.comm.reduce(slot.local_retained_bytes(), root=0)
     if slot.slot_rank != 0:
         return None
     result: dict[str, Any] = {
@@ -142,6 +184,8 @@ def _slot_status(slot: SlotRuntime) -> dict[str, Any] | None:
         ),
         "rank_count": int(slot.comm.size),
         "state_bytes": int(state_bytes),
+        "retained_snapshot_count": len(slot.retained_states),
+        "retained_snapshot_bytes": int(retained_bytes),
     }
     if slot.driver is not None:
         result.update(
@@ -416,6 +460,250 @@ def _restore_model(
     return {"status": "ok", "result": result} if world.rank == 0 else None
 
 
+def _config_hash(config: Mapping[str, Any]) -> str:
+    payload = json.dumps(
+        dict(config), sort_keys=True, separators=(",", ":")
+    ).encode("utf-8")
+    return hashlib.sha256(payload).hexdigest()
+
+
+def _retained_pool_usage(
+    world: Any, slot: SlotRuntime
+) -> tuple[int, int]:
+    local_count = len(slot.retained_states) if slot.slot_rank == 0 else 0
+    count = int(world.allreduce(local_count))
+    nbytes = int(world.allreduce(slot.local_retained_bytes()))
+    return count, nbytes
+
+
+def _retain_model(
+    world: Any,
+    slot: SlotRuntime,
+    request: Mapping[str, Any],
+) -> dict[str, Any] | None:
+    """Keep one immutable model snapshot on each source MPI rank."""
+
+    target = int(request["slot"])
+    snapshot_id = str(request["snapshot_id"])
+    label = str(request["label"])
+    source_model = str(request["name"])
+    payload: tuple[Mapping[str, Any], bytes] | None = None
+    failure: str | None = None
+    if slot.slot_id == target:
+        try:
+            driver = slot.require_model(source_model)
+            slot.comm.Barrier()
+            payload = serialize_snapshot(
+                driver.snapshot(allow_recreatable_process_state=True)
+            )
+        except BaseException:
+            failure = _traceback()
+
+    failures = _world_failures(world, failure)
+    if failures:
+        return (
+            {"status": "error", "error": "\n".join(failures)}
+            if world.rank == 0
+            else None
+        )
+
+    existing_count, existing_bytes = _retained_pool_usage(world, slot)
+    local_new_bytes = (
+        len(payload[1])
+        if slot.slot_id == target and payload is not None
+        else 0
+    )
+    total_new_bytes = int(world.allreduce(local_new_bytes))
+    failure = None
+    if slot.slot_id == target:
+        try:
+            if snapshot_id in slot.retained_states:
+                raise ValueError(
+                    f"retained snapshot already exists: {snapshot_id!r}"
+                )
+            if existing_count >= slot.retained_snapshot_limit:
+                raise RuntimeError(
+                    "retained snapshot capacity is exhausted: "
+                    f"{existing_count}/{slot.retained_snapshot_limit}"
+                )
+            if (
+                existing_bytes + total_new_bytes
+                > slot.retained_snapshot_budget_bytes
+            ):
+                raise RuntimeError(
+                    "retained snapshot memory budget would be exceeded: "
+                    f"{existing_bytes + total_new_bytes} > "
+                    f"{slot.retained_snapshot_budget_bytes} bytes"
+                )
+            assert payload is not None
+            metadata, content = payload
+            record = RankLocalSnapshotRecord(
+                snapshot_id=snapshot_id,
+                label=label,
+                source_model=source_model,
+                metadata=dict(metadata),
+                content=content,
+                total_nbytes=total_new_bytes,
+                step=int(driver.clock.nstep),
+                config_hash=_config_hash(driver.config.as_dict()),
+            )
+            slot.retained_states[snapshot_id] = record
+        except BaseException:
+            failure = _traceback()
+    failures = _world_failures(world, failure)
+    if failures:
+        if slot.slot_id == target:
+            slot.retained_states.pop(snapshot_id, None)
+        return (
+            {"status": "error", "error": "\n".join(failures)}
+            if world.rank == 0
+            else None
+        )
+
+    local = None
+    if slot.slot_id == target and slot.slot_rank == 0:
+        local = slot.retained_states[snapshot_id].descriptor(
+            target, int(slot.comm.size)
+        )
+    result = _leader_result(world, slot, local)
+    return {"status": "ok", "result": result} if world.rank == 0 else None
+
+
+def _restore_retained(
+    world: Any,
+    slot: SlotRuntime,
+    request: Mapping[str, Any],
+) -> dict[str, Any] | None:
+    """Restore an idle source slot from bytes retained on its own ranks."""
+
+    target = int(request["slot"])
+    snapshot_id = str(request["snapshot_id"])
+    candidate: CAMDriver | None = None
+    failure: str | None = None
+    if slot.slot_id == target:
+        try:
+            if slot.driver is not None:
+                raise RuntimeError(f"model slot {target} is already occupied")
+            record = slot.retained_states[snapshot_id]
+            slot.state = "initializing"
+            snapshot = deserialize_snapshot(record.metadata, record.content)
+            candidate = restore_driver(
+                snapshot,
+                run_dir=str(Path(request["run_dir"]).resolve()),
+                comm=slot.comm,
+                kernel_library=slot.library,
+                history_dir=str(Path(request["history_dir"]).resolve()),
+                expected_config=slot.config,
+            )
+        except BaseException:
+            slot.state = "idle"
+            failure = _traceback()
+
+    failures = _world_failures(world, failure)
+    if failures:
+        if slot.slot_id == target:
+            slot.state = "idle"
+        if candidate is not None:
+            candidate.finalize()
+        return (
+            {"status": "error", "error": "\n".join(failures)}
+            if world.rank == 0
+            else None
+        )
+
+    if slot.slot_id == target:
+        assert candidate is not None
+        slot.driver = candidate
+        slot.model_name = str(request["name"])
+        slot.run_dir = str(Path(request["run_dir"]).resolve())
+        slot.history_dir = str(Path(request["history_dir"]).resolve())
+        slot.state = "ready"
+
+    local = None
+    if slot.slot_id == target and slot.slot_rank == 0:
+        driver = slot.require_model()
+        local = {
+            **_runtime_status(driver),
+            "slot_id": target,
+            "model_name": slot.model_name,
+            "snapshot_transport": "rank-local-memory",
+            "retained_snapshot_id": snapshot_id,
+            "fields": model_field_metadata(driver.pool),
+            "phase_names": driver.phase_names,
+            "scheme_names": driver.scheme_names,
+        }
+    result = _leader_result(world, slot, local)
+    return {"status": "ok", "result": result} if world.rank == 0 else None
+
+
+def _drop_retained(
+    world: Any,
+    slot: SlotRuntime,
+    request: Mapping[str, Any],
+) -> dict[str, Any] | None:
+    target = int(request["slot"])
+    snapshot_id = str(request["snapshot_id"])
+    failure: str | None = None
+    if slot.slot_id == target and snapshot_id not in slot.retained_states:
+        failure = f"retained snapshot is absent: {snapshot_id!r}"
+    failures = _world_failures(world, failure)
+    if failures:
+        return (
+            {"status": "error", "error": "\n".join(failures)}
+            if world.rank == 0
+            else None
+        )
+    local = None
+    if slot.slot_id == target:
+        record = slot.retained_states.pop(snapshot_id)
+        if slot.slot_rank == 0:
+            local = record.descriptor(target, int(slot.comm.size))
+    result = _leader_result(world, slot, local)
+    return {"status": "ok", "result": result} if world.rank == 0 else None
+
+
+def _handoff_model(
+    world: Any,
+    slot: SlotRuntime,
+    request: Mapping[str, Any],
+) -> dict[str, Any] | None:
+    """Rename one live model without touching its driver or array storage."""
+
+    target = int(request["slot"])
+    old_name = str(request["old_name"])
+    new_name = str(request["new_name"])
+    failure: str | None = None
+    if slot.slot_id == target:
+        try:
+            driver = slot.require_model(old_name)
+            slot.comm.Barrier()
+            slot.model_name = new_name
+        except BaseException:
+            failure = _traceback()
+    failures = _world_failures(world, failure)
+    if failures:
+        if slot.slot_id == target and slot.model_name == new_name:
+            slot.model_name = old_name
+        return (
+            {"status": "error", "error": "\n".join(failures)}
+            if world.rank == 0
+            else None
+        )
+    local = None
+    if slot.slot_id == target and slot.slot_rank == 0:
+        local = {
+            **_runtime_status(driver),
+            "slot_id": target,
+            "model_name": new_name,
+            "snapshot_transport": "zero-copy-handoff",
+            "fields": model_field_metadata(driver.pool),
+            "phase_names": driver.phase_names,
+            "scheme_names": driver.scheme_names,
+        }
+    result = _leader_result(world, slot, local)
+    return {"status": "ok", "result": result} if world.rank == 0 else None
+
+
 def _run_model_commands(
     world: Any,
     slot: SlotRuntime,
@@ -640,6 +928,10 @@ def serve_pool(args: argparse.Namespace, *, world: Any | None = None) -> int:
         config=config,
         library=str(Path(args.library).resolve()),
         scheme_plan=scheme_plan,
+        retained_snapshot_limit=int(getattr(args, "retained_snapshots", 0)),
+        retained_snapshot_budget_bytes=int(
+            getattr(args, "retained_snapshot_budget_bytes", 0)
+        ),
     )
 
     connection: Connection | None = None
@@ -703,6 +995,14 @@ def serve_pool(args: argparse.Namespace, *, world: Any | None = None) -> int:
                 response = _run_model_commands(world, slot, request["commands"])
             elif operation == "fork_model":
                 response = _fork_models(world, slot, request)
+            elif operation == "handoff_model":
+                response = _handoff_model(world, slot, request)
+            elif operation == "retain_model":
+                response = _retain_model(world, slot, request)
+            elif operation == "restore_retained":
+                response = _restore_retained(world, slot, request)
+            elif operation == "drop_retained":
+                response = _drop_retained(world, slot, request)
             elif operation == "close_model":
                 response = _close_model(world, slot, request)
             elif operation == "status":
@@ -725,6 +1025,7 @@ def serve_pool(args: argparse.Namespace, *, world: Any | None = None) -> int:
                 failure = None
                 try:
                     slot.release()
+                    slot.retained_states.clear()
                 except BaseException:
                     failure = _traceback()
                 failures = _world_failures(world, failure)
@@ -760,6 +1061,7 @@ def serve_pool(args: argparse.Namespace, *, world: Any | None = None) -> int:
                 slot.release()
             except BaseException:
                 traceback.print_exc()
+        slot.retained_states.clear()
         slot_comm.Free()
         if connection is not None:
             connection.close()
@@ -772,6 +1074,10 @@ def add_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--authkey", required=True)
     parser.add_argument("--ranks-per-model", required=True, type=int)
     parser.add_argument("--model-slots", required=True, type=int)
+    parser.add_argument("--retained-snapshots", default=1, type=int)
+    parser.add_argument(
+        "--retained-snapshot-budget-bytes", default=0, type=int
+    )
     parser.add_argument("--config", required=True)
     parser.add_argument("--library", required=True)
     parser.add_argument("--timestep-seconds", required=True, type=int)

@@ -93,6 +93,7 @@ from .notebook import (
     PooledModel,
     PooledModelGroup,
     PooledModelSession,
+    RetainedModelState,
     ResourcePlan,
     plan_pool_resources,
 )
@@ -180,6 +181,7 @@ __all__ = [
     "PooledModel",
     "PooledModelGroup",
     "PooledModelSession",
+    "RetainedModelState",
     "ResourcePlan",
     "plan_pool_resources",
     "StatePool",

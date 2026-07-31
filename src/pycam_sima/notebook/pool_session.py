@@ -128,6 +128,7 @@ class PooledWorkerSession(NotebookSession):
         self.ranks = self.world_size
         self._models: dict[str, int] = {}
         self._model_paths: dict[str, tuple[Path, Path]] = {}
+        self._retained_states: dict[str, dict[str, Any]] = {}
         self._slots: tuple[dict[str, Any], ...] = ()
 
     @property
@@ -185,6 +186,16 @@ class PooledWorkerSession(NotebookSession):
             str(self.ranks_per_model),
             "--model-slots",
             str(self.model_slots),
+            "--retained-snapshots",
+            str(int(self.resource_plan.get("retained_snapshots", 0))),
+            "--retained-snapshot-budget-bytes",
+            str(
+                int(
+                    self.resource_plan.get(
+                        "retained_snapshot_budget_bytes", 0
+                    )
+                )
+            ),
             "--config",
             str(self.config_path),
             "--library",
@@ -450,7 +461,10 @@ class PooledWorkerSession(NotebookSession):
         ]
         if len(children) > len(idle):
             raise RuntimeError(
-                f"fork needs {len(children)} idle slots, found {len(idle)}"
+                f"fork needs {len(children)} idle slots, found {len(idle)}; "
+                "for a single-slot pool use model.retain(), close the live "
+                "model, then restore_retained() for each branch, or request "
+                "max_concurrent_models explicitly"
             )
         records = []
         paths: dict[str, tuple[Path, Path]] = {}
@@ -499,6 +513,130 @@ class PooledWorkerSession(NotebookSession):
         self.describe()
         return dict(result)
 
+    def handoff_model(self, old_name: str, new_name: str) -> dict[str, Any]:
+        """Transfer one live slot to a new logical model name without copying."""
+
+        if new_name in self._models:
+            raise ValueError(f"pooled model already exists: {new_name!r}")
+        slot = self._model_slot(old_name)
+        result = self._request(
+            {
+                "op": "handoff_model",
+                "slot": slot,
+                "old_name": str(old_name),
+                "new_name": str(new_name),
+            }
+        )
+        paths = self._model_paths.pop(old_name)
+        self._models.pop(old_name)
+        self._models[new_name] = slot
+        self._model_paths[new_name] = paths
+        self.describe()
+        return dict(result)
+
+    def retain_model(
+        self,
+        name: str,
+        *,
+        snapshot_id: str,
+        label: str,
+    ) -> dict[str, Any]:
+        """Retain one immutable snapshot shard on every model rank."""
+
+        if snapshot_id in self._retained_states:
+            raise ValueError(
+                f"retained snapshot already exists: {snapshot_id!r}"
+            )
+        slot = self._model_slot(name)
+        result = dict(
+            self._request(
+                {
+                    "op": "retain_model",
+                    "slot": slot,
+                    "name": str(name),
+                    "snapshot_id": str(snapshot_id),
+                    "label": str(label),
+                }
+            )
+        )
+        self._retained_states[snapshot_id] = result
+        self.describe()
+        return result
+
+    def restore_retained(
+        self,
+        name: str,
+        snapshot_id: str,
+        *,
+        run_dir: str | Path | None = None,
+        history_dir: str | Path | None = None,
+    ) -> dict[str, Any]:
+        """Restore an idle source slot from its own retained bytes."""
+
+        if name in self._models:
+            raise ValueError(f"pooled model already exists: {name!r}")
+        try:
+            retained = self._retained_states[str(snapshot_id)]
+        except KeyError as exc:
+            raise KeyError(
+                f"unknown retained snapshot: {snapshot_id!r}"
+            ) from exc
+        slot = int(retained["source_slot"])
+        status = self.describe()
+        selected = next(
+            item for item in status["slots"] if int(item["slot_id"]) == slot
+        )
+        if selected["state"] != "idle":
+            raise RuntimeError(
+                f"retained snapshot source slot {slot} is not idle"
+            )
+        selected_run, selected_history = self._prepare_model_paths(
+            name, run_dir=run_dir, history_dir=history_dir
+        )
+        result = dict(
+            self._request(
+                {
+                    "op": "restore_retained",
+                    "slot": slot,
+                    "name": str(name),
+                    "snapshot_id": str(snapshot_id),
+                    "run_dir": str(selected_run),
+                    "history_dir": str(selected_history),
+                }
+            )
+        )
+        self._models[name] = slot
+        self._model_paths[name] = (selected_run, selected_history)
+        self.describe()
+        return result
+
+    def drop_retained(self, snapshot_id: str) -> dict[str, Any]:
+        try:
+            retained = self._retained_states[str(snapshot_id)]
+        except KeyError as exc:
+            raise KeyError(
+                f"unknown retained snapshot: {snapshot_id!r}"
+            ) from exc
+        result = dict(
+            self._request(
+                {
+                    "op": "drop_retained",
+                    "slot": int(retained["source_slot"]),
+                    "snapshot_id": str(snapshot_id),
+                }
+            )
+        )
+        self._retained_states.pop(str(snapshot_id), None)
+        self.describe()
+        return result
+
+    @property
+    def retained_states(self) -> tuple[dict[str, Any], ...]:
+        return tuple(
+            dict(self._retained_states[key])
+            for key in sorted(self._retained_states)
+        )
+
     def close(self) -> None:
         if self._connection is None and self._process is None and self._job_id is None:
             return
@@ -516,6 +654,7 @@ class PooledWorkerSession(NotebookSession):
                 self._terminate_process(process)
         self._models.clear()
         self._model_paths.clear()
+        self._retained_states.clear()
         self._slots = ()
         self._cleanup_handles()
         if error is not None:

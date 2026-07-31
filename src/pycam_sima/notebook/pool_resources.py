@@ -106,6 +106,7 @@ class PoolRequest:
     memory_per_model: int | str = "auto"
     placement: str = "auto"
     dynamic_field_budget: int | str = "auto"
+    retained_snapshots: int = 1
 
     def __post_init__(self) -> None:
         if not _SAFE_NAME.fullmatch(self.name):
@@ -134,6 +135,12 @@ class PoolRequest:
             parse_memory(self.memory_per_model)
         if self.dynamic_field_budget != "auto":
             _parse_dynamic_budget(self.dynamic_field_budget)
+        if (
+            isinstance(self.retained_snapshots, bool)
+            or not isinstance(self.retained_snapshots, int)
+            or self.retained_snapshots < 0
+        ):
+            raise ValueError("retained_snapshots must be a non-negative integer")
         if self.placement not in {"auto", "compact", "scatter"}:
             raise ValueError(
                 "placement must be 'auto', 'compact', or 'scatter'"
@@ -189,6 +196,8 @@ class ResourcePlan:
     threads_per_rank: int
     static_state_bytes: int
     dynamic_field_budget_bytes: int
+    retained_snapshots: int
+    retained_snapshot_budget_bytes: int
     placement: str
     resource_source: str
 
@@ -204,6 +213,9 @@ class ResourcePlan:
             self.memory_per_model_bytes
         )
         result["reserve_memory"] = format_memory(self.reserve_bytes)
+        result["retained_snapshot_memory"] = format_memory(
+            self.retained_snapshot_budget_bytes
+        )
         result["pbs_select"] = self.pbs_select
         return result
 
@@ -215,6 +227,7 @@ class ResourcePlan:
         cpu_nodes = math.ceil(self.world_size / ranks_per_node)
         required_memory = (
             self.model_slots * self.memory_per_model_bytes
+            + self.retained_snapshot_budget_bytes
             + self.reserve_bytes
         )
         memory_nodes = math.ceil(
@@ -443,6 +456,7 @@ def plan_pool_resources(
     memory_per_model: int | str = "auto",
     placement: str = "auto",
     dynamic_field_budget: int | str = "auto",
+    retained_snapshots: int = 1,
     available_nodes: int | None = None,
     cpus_per_node: int | None = None,
     memory_per_node: int | str | None = None,
@@ -459,6 +473,7 @@ def plan_pool_resources(
         memory_per_model=memory_per_model,
         placement=placement,
         dynamic_field_budget=dynamic_field_budget,
+        retained_snapshots=retained_snapshots,
     )
     if not 0.0 <= reserve_fraction < 1.0:
         raise ValueError("reserve_fraction must be in [0, 1)")
@@ -506,10 +521,17 @@ def plan_pool_resources(
     reserve_bytes = math.ceil(
         available.memory_bytes * reserve_fraction
     )
+    retained_snapshot_budget_bytes = (
+        request.retained_snapshots * estimated_bytes
+    )
     cpu_capacity = usable_rank_count // ranks
-    memory_capacity = (
-        available.memory_bytes - reserve_bytes
-    ) // effective_model_bytes
+    usable_model_memory_bytes = max(
+        0,
+        available.memory_bytes
+        - reserve_bytes
+        - retained_snapshot_budget_bytes,
+    )
+    memory_capacity = usable_model_memory_bytes // effective_model_bytes
     capacity = min(cpu_capacity, memory_capacity)
     if capacity < 1:
         raise ValueError(
@@ -517,8 +539,9 @@ def plan_pool_resources(
             f"need {ranks * threads} CPUs and "
             f"{format_memory(effective_model_bytes)} model memory; "
             f"have {available.cpus} CPUs and "
-            f"{format_memory(available.memory_bytes - reserve_bytes)} "
-            "usable memory"
+            f"{format_memory(usable_model_memory_bytes)} "
+            "usable model memory after runtime reserve and retained-snapshot "
+            "budget"
         )
     if (
         request.max_concurrent_models is not None
@@ -527,6 +550,7 @@ def plan_pool_resources(
         requested_cpus = request.max_concurrent_models * ranks * threads
         requested_memory = (
             request.max_concurrent_models * effective_model_bytes
+            + retained_snapshot_budget_bytes
             + reserve_bytes
         )
         raise ValueError(
@@ -537,7 +561,10 @@ def plan_pool_resources(
             f"{available.cpus} CPUs and "
             f"{format_memory(available.memory_bytes)}"
         )
-    slots = request.max_concurrent_models or capacity
+    # A persistent pool now defaults to one live model.  Additional slots are
+    # an explicit concurrency request instead of silently consuming the entire
+    # available allocation.
+    slots = request.max_concurrent_models or 1
     world_size = slots * ranks
     slot_placements = tuple(
         tuple(range(slot * ranks, (slot + 1) * ranks))
@@ -559,6 +586,8 @@ def plan_pool_resources(
         threads_per_rank=threads,
         static_state_bytes=static_bytes,
         dynamic_field_budget_bytes=dynamic_bytes,
+        retained_snapshots=request.retained_snapshots,
+        retained_snapshot_budget_bytes=retained_snapshot_budget_bytes,
         placement=request.placement,
         resource_source=available.source,
     )

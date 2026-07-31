@@ -117,6 +117,36 @@ def test_resource_plan_uses_config_rank_count_without_fixed_values() -> None:
     assert "GiB" not in plan.pbs_select
 
 
+def test_resource_plan_defaults_to_one_slot_and_budgets_retained_state() -> None:
+    config = ModelConfig(mpi_size=7)
+    plan = plan_pool_resources(
+        config,
+        available_nodes=4,
+        cpus_per_node=32,
+        memory_per_node="80GB",
+        retained_snapshots=1,
+        environ={},
+    )
+
+    assert plan.model_slots == 1
+    assert plan.world_size == 7
+    assert plan.retained_snapshots == 1
+    assert plan.retained_snapshot_budget_bytes == plan.estimated_model_bytes
+    assert plan.describe()["retained_snapshot_memory"] == format_memory(
+        plan.estimated_model_bytes
+    )
+
+    without_snapshot = plan_pool_resources(
+        config,
+        available_nodes=4,
+        cpus_per_node=32,
+        memory_per_node="80GB",
+        retained_snapshots=0,
+        environ={},
+    )
+    assert without_snapshot.retained_snapshot_budget_bytes == 0
+
+
 def test_complete_resource_override_does_not_query_pbs() -> None:
     def fail_qstat(_job_id: str) -> str:
         raise AssertionError("qstat must not run for a complete override")
@@ -173,3 +203,8 @@ def test_explicit_model_memory_cannot_understate_state_pool() -> None:
             memory_per_node="80GB",
             environ={},
         )
+
+
+def test_retained_snapshot_count_must_be_non_negative() -> None:
+    with pytest.raises(ValueError, match="retained_snapshots"):
+        PoolRequest("invalid-retain", retained_snapshots=-1)

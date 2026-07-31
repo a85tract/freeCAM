@@ -43,10 +43,8 @@ No device exports or calls `cam_init`, `cam_run*`, ESMF, PIO, or CAM's native
 control loop. Clean builds do not load the CAM machine environment and reject
 MPI, ESMF, PIO, NetCDF, HDF5, and RPATH dependencies.
 
-The current architecture is also available as an interactive
-[online diagram](https://pycam-sima-architecture-2026.bubblehuntr.chatgpt.site)
-and as the repository-local
-[`docs/pycam_sima_architecture.html`](docs/pycam_sima_architecture.html).
+The current architecture is available as an interactive
+[online diagram](https://pycam-statepool-mpi-fork.bubblehuntr.chatgpt.site).
 
 Runnable examples are split by execution mode:
 
@@ -56,7 +54,8 @@ Runnable examples are split by execution mode:
 - [`examples/try_dask_fanout.ipynb`](examples/try_dask_fanout.ipynb) submits a
   restartable Dask task graph for independent checkpoint branches.
 - [`examples/try_persistent_dask.ipynb`](examples/try_persistent_dask.ipynb)
-  keeps a Dask-managed MPI model alive and demonstrates in-memory model forks.
+  keeps one Dask-managed MPI slot alive and demonstrates zero-copy handoff plus
+  reusable rank-local in-memory snapshots for sequential branches.
 
 ```text
 pycam_sima/
@@ -622,64 +621,91 @@ The version-1 action vocabulary is `PrepareInitialStep`, `RunPhase`,
 `FieldEdit`, and `ObserveFields`. A plan is completely validated before its
 first action mutates model state.
 
-### Dynamic persistent model pool
+### Single-slot persistent model pool
 
-The primary interactive path uses one launcher Actor plus one ModelActor per
-model. The launcher starts one MPI world and partitions it into reusable
-slots; each ModelActor lives on a distinct Dask worker and controls one slot.
-Neither the ranks per model nor the number of slots is fixed.
+The primary interactive path now keeps one model alive in one MPI slot. The
+launcher starts MPI once, a ModelActor controls the live slot, and later model
+handles either take ownership of the same StatePool or restore bytes retained
+on those same MPI ranks. The default no longer converts all available PBS
+capacity into idle model slots.
 
 ```python
 client = Client(
     processes=False,
-    n_workers=5,  # one launcher plus four possible live models
+    n_workers=2,  # one launcher plus one live-model controller
     threads_per_worker=1,
 )
 plan = experiments.plan_pool(
-    max_concurrent_models=4,
     ranks_per_model=None,  # inherit ModelConfig.mpi_size
     memory_per_model="auto",
+    retained_snapshots=1,
 )
 
 with experiments.pool("cam-pool", resource_plan=plan) as pool:
-    with pool.model("base") as base:
-        base.advance(steps=10)
-        with base.fork("control", "no_kessler", "warm") as children:
-            children.no_kessler.physics.kessler.enabled = False
-            children.warm.fields.air_temperature += 1.0
-            children.advance(steps=5)
+    base = pool.model("base")
+    base.advance(steps=5)
+
+    # One successor takes over the exact live Driver and arrays: no copy,
+    # serialization, initialization, or second MPI launch.
+    child = base.handoff("child")
+    child.advance(steps=5)
 ```
 
-The pool performs one `mpiexec` with
-`plan.model_slots * plan.ranks_per_model` ranks and uses
-`MPI.COMM_WORLD.Split` to form the model communicators. During `fork`, each
-parent rank sends its rank-local serialized StatePool directly to the matching
-rank in each child slot. Large state never passes through the controller
-socket, Dask `CheckpointBundle`, or a checkpoint directory. Closing a model
-returns its slot; closing the pool stops the MPI world.
+With the default plan, `model_slots == 1` and `world_size ==
+ranks_per_model`. `handoff()` invalidates the old handle but preserves the
+same `CAMDriver`, StatePool arrays, pointer addresses, Fortran process state,
+plugins, Python callbacks, clock, and output path. `close()` retains its
+ordinary destructive meaning and finalizes the model.
 
-The asynchronous API creates ordinary Dask Future dependencies without
-moving model arrays into Dask:
+To run several experiments sequentially from one base, retain an immutable
+snapshot on the MPI ranks themselves:
 
 ```python
 base = pool.model("base")
-advanced = base.submit.advance(steps=10)
-observed = base.submit.fields.air_temperature.stats(
-    rank=0,
-    depends_on=advanced,
-)
-with base.fork("control", "warm", depends_on=observed) as children:
-    control = children.control.submit.advance(steps=5)
-    warm = children.warm.submit.advance(steps=5)
-    client.gather((control, warm))
+base.advance(steps=25)
+state = base.retain("after-step-25")
+base.close()
+
+with pool.restore_retained("control", state) as control:
+    control.advance(steps=25)
+
+with pool.restore_retained("warm", state) as warm:
+    warm.fields.air_temperature += 1.0
+    warm.advance(steps=25)
+
+state.close()
 ```
 
-The Scheduler sees the model-level task graph, while StatePool arrays remain
-inside MPI. Ready commands for different slots are routed through the launcher
-as one `model_commands` broadcast. The default `worker_policy="exclusive"`
-requires one launcher worker plus one worker per slot. Use
-`worker_policy="shared"` only for small local tests. The old one-Actor layout
-is available with `actor_layout="legacy-single-worker"`.
+Each rank stores only its own `np.savez` bytes in its MPI worker process heap.
+The launcher and Dask hold a small `RetainedModelState` containing the snapshot
+ID, source slot, step, rank count, byte count, and config hash. Restore reads
+rank-local bytes on the same rank; model data never passes through the socket,
+world rank 0, Dask, or disk. A retained snapshot is reusable until
+`state.close()` or `pool.close()`.
+
+`plan_pool()` reserves one snapshot by default and includes its estimated bytes
+plus the active StatePool and the 15 percent runtime reserve in memory
+planning. Set `retained_snapshots=0` when only zero-copy handoff is needed.
+
+Multi-model concurrency remains available explicitly:
+
+```python
+plan = experiments.plan_pool(max_concurrent_models=4)
+```
+
+This starts `4 * ranks_per_model` MPI ranks and preserves the existing
+rank-to-rank `fork()` path. The default `worker_policy="exclusive"` requires
+one launcher worker plus one ModelActor worker per live slot; use
+`worker_policy="shared"` only for small local tests.
+
+The maintained 24-rank validation runs a direct 50-step path, a
+25-step + zero-copy handoff + 25-step path, and two sequential restores from
+the same retained step-25 state: one continues to step 50 and one verifies an
+exact NumPy `+1 K` field edit.
+
+```bash
+qsub jobs/single_slot_retained_25x25_bfb.pbs
+```
 
 `plan_pool()` discovers an active PBS allocation through `PBS_NODEFILE` and
 `qstat`, or accepts explicit node/CPU/memory values to produce a PBS request

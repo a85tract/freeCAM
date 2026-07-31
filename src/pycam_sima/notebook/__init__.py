@@ -23,6 +23,7 @@ from .pooled_dask import (
     PooledModel,
     PooledModelGroup,
     PooledModelSession,
+    RetainedModelState,
 )
 from .session import NotebookSchemePlan, NotebookSession, NotebookWorkerError
 
@@ -44,6 +45,7 @@ __all__ = [
     "PooledModel",
     "PooledModelGroup",
     "PooledModelSession",
+    "RetainedModelState",
     "ModelSlotStatus",
     "PoolRequest",
     "PoolResourcePlanner",

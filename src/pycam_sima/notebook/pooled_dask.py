@@ -13,6 +13,7 @@ import threading
 import time
 import traceback
 from typing import Any, Callable
+import uuid
 
 from ..model import (
     ActivatePhysics,
@@ -111,6 +112,62 @@ class PooledDaskRequest:
 PoolSessionFactory = Callable[..., Any]
 
 
+@dataclass(slots=True)
+class RetainedModelState:
+    """Lightweight client handle for rank-local snapshot bytes."""
+
+    _pool: "PersistentModelPool"
+    pool_id: str
+    snapshot_id: str
+    label: str
+    source_model: str
+    source_slot: int
+    step: int
+    rank_count: int
+    nbytes: int
+    config_hash: str
+    closed: bool = False
+
+    @classmethod
+    def from_mapping(
+        cls,
+        pool: "PersistentModelPool",
+        values: Mapping[str, Any],
+    ) -> "RetainedModelState":
+        return cls(
+            _pool=pool,
+            pool_id=pool.pool_id,
+            snapshot_id=str(values["snapshot_id"]),
+            label=str(values["label"]),
+            source_model=str(values["source_model"]),
+            source_slot=int(values["source_slot"]),
+            step=int(values["step"]),
+            rank_count=int(values["rank_count"]),
+            nbytes=int(values["nbytes"]),
+            config_hash=str(values["config_hash"]),
+        )
+
+    def close(self) -> Mapping[str, Any]:
+        """Collectively delete this snapshot from its owner MPI ranks."""
+
+        if self.closed:
+            return {
+                "closed": True,
+                "snapshot_id": self.snapshot_id,
+            }
+        result = self._pool._drop_retained(self)
+        self.closed = True
+        return result
+
+    def __enter__(self) -> "RetainedModelState":
+        if self.closed:
+            raise RuntimeError("retained model state is closed")
+        return self
+
+    def __exit__(self, exc_type: Any, exc: Any, traceback: Any) -> None:
+        self.close()
+
+
 def _default_pool_session_factory() -> PoolSessionFactory:
     # Imported lazily so the public planning API remains usable on systems
     # without mpi4py or a configured launcher.
@@ -137,6 +194,7 @@ class PoolLauncherActor:
         )
         self._model_plans: dict[str, CCPPSuitePlan] = {}
         self._model_details: dict[str, dict[str, Any]] = {}
+        self._retained_states: dict[str, dict[str, Any]] = {}
         self._command_condition = threading.Condition(self._guard)
         self._command_queue: deque[
             tuple[int, str, str, tuple[Any, ...], dict[str, Any]]
@@ -300,6 +358,118 @@ class PoolLauncherActor:
                 )
             self._model_plans[name] = CCPPSuitePlan.from_payload(plan_payload)
             return result
+
+    def handoff_model(
+        self, old_name: str, new_name: str
+    ) -> Mapping[str, Any]:
+        """Atomically transfer a live driver to a new logical model name."""
+
+        with self._guard:
+            self._ensure_open()
+            self._validate_model_name(old_name)
+            self._validate_model_name(new_name)
+            if new_name in self._model_plans:
+                raise ValueError(f"pooled model already exists: {new_name!r}")
+            result = dict(self._session.handoff_model(old_name, new_name))
+            self._model_plans[new_name] = self._model_plans.pop(old_name)
+            details = self._model_details.pop(old_name)
+            self._model_details[new_name] = {
+                **details,
+                **result,
+                "name": new_name,
+                "model_name": new_name,
+                "snapshot_transport": "zero-copy-handoff",
+            }
+            return result
+
+    def retain_model(self, name: str, label: str) -> Mapping[str, Any]:
+        """Retain rank-local snapshot bytes and return only their descriptor."""
+
+        with self._guard:
+            self._ensure_open()
+            self._validate_model_name(name)
+            if not str(label):
+                raise ValueError("retained snapshot label must be non-empty")
+            snapshot_id = uuid.uuid4().hex
+            result = dict(
+                self._session.retain_model(
+                    name,
+                    snapshot_id=snapshot_id,
+                    label=str(label),
+                )
+            )
+            self._retained_states[snapshot_id] = result
+            return result
+
+    def restore_retained(
+        self, name: str, snapshot_id: str
+    ) -> Mapping[str, Any]:
+        """Restore a reusable rank-local snapshot into its original slot."""
+
+        with self._guard:
+            self._ensure_open()
+            self._validate_model_name(name)
+            if name in self._model_plans:
+                raise ValueError(f"pooled model already exists: {name!r}")
+            if str(snapshot_id) not in self._retained_states:
+                raise KeyError(
+                    f"unknown retained snapshot: {snapshot_id!r}"
+                )
+            root = Path(self._request.run_root) / self._request.name / name
+            result = dict(
+                self._session.restore_retained(
+                    name,
+                    str(snapshot_id),
+                    run_dir=root / "run",
+                    history_dir=root / "history",
+                )
+            )
+            details = {
+                **result,
+                "run_dir": str(root / "run"),
+                "history_dir": str(root / "history"),
+                "snapshot_transport": "rank-local-memory",
+                "retained_snapshot_id": str(snapshot_id),
+            }
+            try:
+                plan_payload = details.get("scheme_status", {}).get("plan")
+                if not isinstance(plan_payload, Mapping):
+                    raise RuntimeError(
+                        "retained restore did not report its suite plan"
+                    )
+                plan = CCPPSuitePlan.from_payload(plan_payload)
+            except BaseException:
+                # The MPI restore already occupied the slot.  If its compact
+                # control metadata is invalid, release that model again so a
+                # failed restore never leaks the sole live slot.
+                try:
+                    self._session.close_model(name)
+                finally:
+                    self._model_details.pop(name, None)
+                    self._model_plans.pop(name, None)
+                raise
+            self._model_details[name] = details
+            self._model_plans[name] = plan
+            return result
+
+    def drop_retained(self, snapshot_id: str) -> Mapping[str, Any]:
+        with self._guard:
+            self._ensure_open()
+            if str(snapshot_id) not in self._retained_states:
+                raise KeyError(
+                    f"unknown retained snapshot: {snapshot_id!r}"
+                )
+            result = dict(self._session.drop_retained(str(snapshot_id)))
+            self._retained_states.pop(str(snapshot_id), None)
+            return result
+
+    def retained_states(self) -> tuple[Mapping[str, Any], ...]:
+        with self._guard:
+            self._ensure_open()
+            return tuple(
+                dict(self._retained_states[key])
+                for key in sorted(self._retained_states)
+            )
 
     def model_call(
         self,
@@ -656,6 +826,7 @@ class PoolLauncherActor:
                     "RuntimeError: persistent model pool is closed",
                 )
             self._session.close()
+            self._retained_states.clear()
             return {
                 "closed": True,
                 "mpi_launch_count": self._mpi_launch_count,
@@ -1678,6 +1849,16 @@ class PooledModel(BlockingModel):
             depends_on=depends_on,
         )
 
+    def handoff(self, name: str) -> "PooledModel":
+        """Transfer this live driver and StatePool to a new model handle."""
+
+        return self.pool._handoff(self, str(name))
+
+    def retain(self, label: str) -> RetainedModelState:
+        """Keep an immutable snapshot on the model's own MPI ranks."""
+
+        return self.pool._retain(self, str(label))
+
 
 class PooledModelGroup(Mapping[str, PooledModel]):
     """Independent child slots produced from one in-memory parent state."""
@@ -1770,6 +1951,8 @@ class PersistentModelPool:
         self._model_actor_factory = model_actor_factory
         self._models: dict[str, PooledModel] = {}
         self._actor_futures: dict[str, Any] = {}
+        self._retained_handles: dict[str, RetainedModelState] = {}
+        self.pool_id = uuid.uuid4().hex
         self._closed = False
 
     @property
@@ -1789,6 +1972,14 @@ class PersistentModelPool:
             for name, model in self._models.items()
             if not model.submit._closed
         }
+
+    @property
+    def retained_states(self) -> tuple[RetainedModelState, ...]:
+        return tuple(
+            state
+            for state in self._retained_handles.values()
+            if not state.closed
+        )
 
     @property
     def scheduler_status(self) -> Mapping[str, Any]:
@@ -1839,6 +2030,30 @@ class PersistentModelPool:
         model = self._attach_model(
             str(name),
             int(descriptor["slot_id"]),
+        )
+        self._models[str(name)] = model
+        return model
+
+    def restore_retained(
+        self,
+        name: str,
+        state: RetainedModelState,
+    ) -> PooledModel:
+        """Restore a reusable rank-local snapshot into its original slot."""
+
+        self._ensure_open()
+        self._validate_retained_state(state)
+        if name in self._models and not self._models[name].submit._closed:
+            raise ValueError(f"model {name!r} already exists in this pool")
+        descriptor = dict(
+            _wait(
+                self.launcher.restore_retained(
+                    str(name), state.snapshot_id
+                )
+            )
+        )
+        model = self._attach_model(
+            str(name), int(descriptor["slot_id"])
         )
         self._models[str(name)] = model
         return model
@@ -1921,7 +2136,98 @@ class PersistentModelPool:
         self._models.update(models)
         return PooledModelGroup(self, models)
 
-    def _attach_model(self, name: str, slot_id: int) -> PooledModel:
+    def _handoff(self, model: PooledModel, name: str) -> PooledModel:
+        self._ensure_open()
+        source = model.submit
+        if source._closed:
+            raise RuntimeError(f"pooled model {model.name!r} is closed")
+        if not _SAFE_NAME.fullmatch(name):
+            raise ValueError(
+                "model name may contain only letters, digits, dot, dash, "
+                "and underscore"
+            )
+        if name in self._models and not self._models[name].submit._closed:
+            raise ValueError(f"model {name!r} already exists in this pool")
+        if source._tail is not None:
+            _wait(source._tail)
+        old_name = model.name
+        descriptor = dict(
+            _wait(self.launcher.handoff_model(old_name, name))
+        )
+        try:
+            child = self._attach_model(
+                name,
+                int(descriptor["slot_id"]),
+                close_on_failure=False,
+            )
+        except BaseException:
+            _wait(self.launcher.handoff_model(name, old_name))
+            raise
+        if (
+            self.actor_layout != "legacy-single-worker"
+            and source.actor is not None
+        ):
+            try:
+                _wait(source.actor.detach())
+            except BaseException:
+                # The MPI slot has already been renamed and the replacement
+                # Actor exists.  Detach that replacement first, then restore
+                # the launcher/session mapping so the original handle remains
+                # the sole owner of the unchanged live arrays.
+                if child.submit.actor is not None:
+                    try:
+                        _wait(child.submit.actor.detach())
+                    except BaseException:
+                        pass
+                child.submit._closed = True
+                self._release_model_actor(name)
+                _wait(self.launcher.handoff_model(name, old_name))
+                raise
+        source._closed = True
+        self._release_model_actor(old_name)
+        self._models[name] = child
+        return child
+
+    def _retain(
+        self, model: PooledModel, label: str
+    ) -> RetainedModelState:
+        self._ensure_open()
+        source = model.submit
+        if source._closed:
+            raise RuntimeError(f"pooled model {model.name!r} is closed")
+        if not label:
+            raise ValueError("retained snapshot label must be non-empty")
+        if source._tail is not None:
+            _wait(source._tail)
+        descriptor = dict(_wait(self.launcher.retain_model(model.name, label)))
+        state = RetainedModelState.from_mapping(self, descriptor)
+        self._retained_handles[state.snapshot_id] = state
+        return state
+
+    def _validate_retained_state(self, state: RetainedModelState) -> None:
+        if not isinstance(state, RetainedModelState):
+            raise TypeError("state must be RetainedModelState")
+        if state.pool_id != self.pool_id or state._pool is not self:
+            raise ValueError("retained model state belongs to another pool")
+        if state.closed:
+            raise RuntimeError("retained model state is closed")
+
+    def _drop_retained(
+        self, state: RetainedModelState
+    ) -> Mapping[str, Any]:
+        self._ensure_open()
+        self._validate_retained_state(state)
+        result = dict(_wait(self.launcher.drop_retained(state.snapshot_id)))
+        self._retained_handles.pop(state.snapshot_id, None)
+        return result
+
+    def _attach_model(
+        self,
+        name: str,
+        slot_id: int,
+        *,
+        close_on_failure: bool = True,
+    ) -> PooledModel:
         if self.actor_layout == "legacy-single-worker":
             return PooledModel(
                 PooledModelSession(
@@ -1946,7 +2252,8 @@ class PersistentModelPool:
         try:
             actor = actor_future.result()
         except BaseException:
-            _wait(self.launcher.close_model(name))
+            if close_on_failure:
+                _wait(self.launcher.close_model(name))
             raise
         self._actor_futures[name] = actor_future
         return PooledModel(
@@ -1988,6 +2295,8 @@ class PersistentModelPool:
             self._closed = True
             for model in self._models.values():
                 model.submit._closed = True
+            for state in self._retained_handles.values():
+                state.closed = True
         if failures:
             raise RuntimeError(
                 f"failed to close {len(failures)} pooled model actor(s)"
@@ -2013,4 +2322,5 @@ __all__ = [
     "PooledModel",
     "PooledModelGroup",
     "PooledModelSession",
+    "RetainedModelState",
 ]

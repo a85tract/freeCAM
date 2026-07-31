@@ -33,6 +33,7 @@ class _FakePooledSession:
         self.running = False
         self.models: dict[str, dict[str, Any]] = {}
         self.slot_names: list[str | None] = [None] * self.slot_count
+        self.retained: dict[str, dict[str, Any]] = {}
 
     def start(self) -> None:
         type(self).launches += 1
@@ -263,6 +264,91 @@ class _FakePooledSession:
             },
         }
 
+    def handoff_model(self, old_name: str, new_name: str) -> dict[str, Any]:
+        model = self.models.pop(old_name)
+        slot = int(model["slot"])
+        self.models[new_name] = model
+        self.slot_names[slot] = new_name
+        return {
+            **self._status(new_name),
+            "snapshot_transport": "zero-copy-handoff",
+        }
+
+    def retain_model(
+        self,
+        name: str,
+        *,
+        snapshot_id: str,
+        label: str,
+    ) -> dict[str, Any]:
+        source = self.models[name]
+        temperatures = [value.copy() for value in source["temperature"]]
+        self.retained[snapshot_id] = {
+            **source,
+            "temperature": temperatures,
+            "python_processes": dict(source["python_processes"]),
+        }
+        nbytes = sum(value.nbytes for value in temperatures)
+        return {
+            "snapshot_id": snapshot_id,
+            "label": label,
+            "source_model": name,
+            "source_slot": int(source["slot"]),
+            "step": int(source["step"]),
+            "rank_count": self.ranks,
+            "nbytes": nbytes,
+            "config_hash": "fake-config",
+        }
+
+    def restore_retained(
+        self,
+        name: str,
+        snapshot_id: str,
+        *,
+        run_dir: Path,
+        history_dir: Path,
+    ) -> dict[str, Any]:
+        source = self.retained[snapshot_id]
+        slot = int(source["slot"])
+        if self.slot_names[slot] is not None:
+            raise RuntimeError("retained source slot is occupied")
+        self.slot_names[slot] = name
+        self.models[name] = {
+            **source,
+            "temperature": [
+                value.copy() for value in source["temperature"]
+            ],
+            "python_processes": dict(source["python_processes"]),
+            "run_dir": str(run_dir),
+            "history_dir": str(history_dir),
+        }
+        return {
+            **self._status(name),
+            "snapshot_transport": "rank-local-memory",
+            "retained_snapshot_id": snapshot_id,
+            "scheme_status": {
+                "sequence_safe": True,
+                "plan": self.kwargs["scheme_plan"].to_payload(),
+            },
+        }
+
+    def drop_retained(self, snapshot_id: str) -> dict[str, Any]:
+        source = self.retained.pop(snapshot_id)
+        return {
+            "snapshot_id": snapshot_id,
+            "source_slot": int(source["slot"]),
+        }
+
+    @property
+    def retained_states(self) -> tuple[dict[str, Any], ...]:
+        return tuple(
+            {
+                "snapshot_id": snapshot_id,
+                "source_slot": int(source["slot"]),
+            }
+            for snapshot_id, source in self.retained.items()
+        )
+
     def advance_models(
         self, names: tuple[str, ...], count: int
     ) -> dict[str, Any]:
@@ -298,6 +384,7 @@ class _FakePooledSession:
 
     def close(self) -> None:
         self.models.clear()
+        self.retained.clear()
         self.slot_names[:] = [None] * self.slot_count
         self.running = False
 
@@ -756,3 +843,111 @@ def test_shared_worker_policy_keeps_new_actor_layout_available(
             with pool.model("base") as base:
                 assert base.worker == pool.worker
                 assert base.submit.advance(steps=1).result()["step"] == 1
+
+
+def test_single_slot_handoff_reuses_live_model_without_snapshot(
+    tmp_path: Path,
+) -> None:
+    _FakePooledSession.launches = 0
+    with Client(
+        processes=False,
+        n_workers=2,
+        threads_per_worker=1,
+        dashboard_address=None,
+    ) as client:
+        experiments = DaskExperimentClient(
+            client,
+            pool_actor_factory=_fake_pool_actor,
+            **_inputs(tmp_path),
+        )
+        plan = experiments.plan_pool(
+            ranks_per_model=2,
+            retained_snapshots=1,
+            available_nodes=1,
+            cpus_per_node=8,
+            memory_per_node="128GB",
+        )
+        assert plan.model_slots == 1
+        with experiments.pool("handoff", resource_plan=plan) as pool:
+            base = pool.model("base")
+            base.advance(steps=5)
+            before = base.fields.air_temperature.get(rank=0)
+
+            child = base.handoff("child")
+
+            assert base.submit._closed
+            assert child.slot_id == 0
+            assert child.status.snapshot_transport == "zero-copy-handoff"
+            assert np.array_equal(
+                child.fields.air_temperature.get(rank=0), before
+            )
+            child.advance(steps=1)
+            assert child.status.step == 6
+            assert pool.status["mpi_launch_count"] == 1
+
+        assert _FakePooledSession.launches == 1
+
+
+def test_single_slot_retained_state_restores_reusable_private_branches(
+    tmp_path: Path,
+) -> None:
+    with Client(
+        processes=False,
+        n_workers=2,
+        threads_per_worker=1,
+        dashboard_address=None,
+    ) as client:
+        experiments = DaskExperimentClient(
+            client,
+            pool_actor_factory=_fake_pool_actor,
+            **_inputs(tmp_path),
+        )
+        plan = experiments.plan_pool(
+            ranks_per_model=2,
+            retained_snapshots=1,
+            available_nodes=1,
+            cpus_per_node=8,
+            memory_per_node="128GB",
+        )
+        with experiments.pool("retained", resource_plan=plan) as pool:
+            base = pool.model("base")
+            base.advance(steps=5)
+            installed = base.physics.install_python(
+                _add_rank_local_heating,
+                name="retained_heating",
+                group="physics_before_coupler",
+                after="kessler",
+                writes=("air_temperature",),
+            )
+            assert installed.name == "retained_heating"
+            expected = base.fields.air_temperature.get(rank=0)
+            state = base.retain("after-step-5")
+            assert state.step == 5
+            assert state.rank_count == 2
+            assert state.nbytes > 0
+            assert pool.retained_states == (state,)
+            base.close()
+
+            with pool.restore_retained("control", state) as control:
+                assert control.status.snapshot_transport == "rank-local-memory"
+                assert control.status.details["python_processes"][0]["spec"][
+                    "name"
+                ] == "retained_heating"
+                assert np.array_equal(
+                    control.fields.air_temperature.get(rank=0), expected
+                )
+                control.advance(steps=1)
+
+            with pool.restore_retained("warm", state) as warm:
+                assert np.array_equal(
+                    warm.fields.air_temperature.get(rank=0), expected
+                )
+                warm.fields.air_temperature += 1.0
+                assert not np.array_equal(
+                    warm.fields.air_temperature.get(rank=0), expected
+                )
+
+            state.close()
+            assert pool.retained_states == ()
+            with pytest.raises(RuntimeError, match="closed"):
+                pool.restore_retained("late", state)
