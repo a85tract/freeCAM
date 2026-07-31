@@ -29,6 +29,18 @@ class DeviceBuildError(PyCamSimaError):
     """A source scheme cannot be converted into a standalone device."""
 
 
+class PythonProcessContractError(PyCamSimaError):
+    """A Notebook-defined Python process violates its runtime contract."""
+
+
+class PythonProcessExecutionError(PyCamSimaError):
+    """A transactional Python process failed and its writes were restored."""
+
+
+class PythonProcessTaintedError(PyCamSimaError):
+    """A non-transactional Python process left model state unsafe to reuse."""
+
+
 class NativeInitializationError(PyCamSimaError):
     """A native call occurred while running the pure-Python initializer."""
 

@@ -26,8 +26,14 @@ from ..model import (
     SegmentPlan,
     execute_segment_plan,
 )
-from ..model.checkpoint import deserialize_snapshot, restore_driver, serialize_snapshot
+from ..model.checkpoint import (
+    deserialize_snapshot,
+    read_checkpoint,
+    restore_driver,
+    serialize_snapshot,
+)
 from ..model.control import model_field_metadata
+from ..model.errors import PythonProcessTaintedError
 from .worker import _local_command, _runtime_status, _send
 
 
@@ -164,17 +170,26 @@ def _collect_slot_command(
 
     failure: str | None = None
     payload: Any = None
+    tainted = False
     try:
         if command.get("op") == "close":
             raise ValueError("use close_model to release a pooled model slot")
+        if slot.state == "failed":
+            raise RuntimeError(
+                f"model slot {slot.slot_id} is failed; close it or restore "
+                "from a checkpoint before issuing more commands"
+            )
         slot.state = "running"
         driver = slot.require_model(command.get("model_name"))
         payload = _pooled_local_command(dict(command), driver, slot.comm)
+    except PythonProcessTaintedError:
+        tainted = True
+        failure = _traceback()
     except BaseException:
         failure = _traceback()
     finally:
         if slot.driver is not None:
-            slot.state = "ready"
+            slot.state = "failed" if tainted else "ready"
     gathered = slot.comm.gather((failure, payload), root=0)
     if slot.slot_rank != 0:
         return None
@@ -255,6 +270,7 @@ def _pooled_local_command(
         return _runtime_status(driver)
     if operation == "reset_scheme_plan":
         driver.scheme_plan = CCPPSuitePlan.from_xml(driver.config.verify_suite())
+        driver.python_processes.prune_to_plan()
         return _runtime_status(driver)
     if operation == "describe_scheme_plan":
         return driver.scheme_plan.describe(command.get("group"))
@@ -262,6 +278,13 @@ def _pooled_local_command(
         plan = SegmentPlan.from_mapping(command["plan"])
         trace = execute_segment_plan(driver, plan)
         return {**_runtime_status(driver), "action_trace": trace}
+    if operation == "write_checkpoint":
+        checkpoint = _local_command(command, driver, comm)
+        return {
+            **_runtime_status(driver),
+            "checkpoint_dir": str(checkpoint),
+            "mpi_launch_count": 1,
+        }
     return _local_command(command, driver, comm)
 
 
@@ -316,6 +339,75 @@ def _create_model(
             **_runtime_status(driver),
             "slot_id": target,
             "model_name": slot.model_name,
+            "fields": model_field_metadata(driver.pool),
+            "phase_names": driver.phase_names,
+            "scheme_names": driver.scheme_names,
+        }
+    result = _leader_result(world, slot, local)
+    return {"status": "ok", "result": result} if world.rank == 0 else None
+
+
+def _restore_model(
+    world: Any,
+    slot: SlotRuntime,
+    request: Mapping[str, Any],
+) -> dict[str, Any] | None:
+    """Restore one idle slot from a shared checkpoint directory."""
+
+    target = int(request["slot"])
+    failure: str | None = None
+    candidate: CAMDriver | None = None
+    if slot.slot_id == target:
+        try:
+            if slot.driver is not None:
+                raise RuntimeError(f"model slot {target} is already occupied")
+            slot.state = "initializing"
+            snapshot = read_checkpoint(
+                Path(request["checkpoint"]).resolve(),
+                slot.comm,
+            )
+            candidate = restore_driver(
+                snapshot,
+                run_dir=str(Path(request["run_dir"]).resolve()),
+                comm=slot.comm,
+                kernel_library=slot.library,
+                history_dir=str(Path(request["history_dir"]).resolve()),
+                expected_config=slot.config,
+            )
+        except BaseException:
+            failure = _traceback()
+            slot.state = "failed"
+    if not 0 <= target < int(world.size) // int(slot.comm.size):
+        failure = f"model slot {target} is outside this pool"
+
+    failures = _world_failures(world, failure)
+    if failures:
+        if slot.slot_id == target:
+            slot.state = "failed"
+        if candidate is not None:
+            candidate.finalize()
+        return (
+            {"status": "error", "error": "\n".join(failures)}
+            if world.rank == 0
+            else None
+        )
+
+    if slot.slot_id == target:
+        assert candidate is not None
+        slot.driver = candidate
+        slot.model_name = str(request["name"])
+        slot.run_dir = str(Path(request["run_dir"]).resolve())
+        slot.history_dir = str(Path(request["history_dir"]).resolve())
+        slot.state = "ready"
+
+    local: dict[str, Any] | None = None
+    if slot.slot_id == target and slot.slot_rank == 0:
+        driver = slot.require_model()
+        local = {
+            **_runtime_status(driver),
+            "slot_id": target,
+            "model_name": slot.model_name,
+            "snapshot_transport": "checkpoint",
             "fields": model_field_metadata(driver.pool),
             "phase_names": driver.phase_names,
             "scheme_names": driver.scheme_names,
@@ -601,6 +693,8 @@ def serve_pool(args: argparse.Namespace, *, world: Any | None = None) -> int:
 
             if operation == "create_model":
                 response = _create_model(world, slot, request)
+            elif operation == "restore_model":
+                response = _restore_model(world, slot, request)
             elif operation == "model_command":
                 response = _run_model_commands(world, slot, (request,))
                 if world.rank == 0 and response and response["status"] == "ok":

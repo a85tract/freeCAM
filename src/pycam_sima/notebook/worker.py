@@ -17,6 +17,7 @@ from ..model import (
     ModelConfig,
     ModelOptions,
     PhysicsPluginSpec,
+    PythonProcessSpec,
     VariableSpec,
 )
 from ..model.checkpoint import (
@@ -33,13 +34,20 @@ def _error() -> str:
 
 
 def _runtime_status(driver: CAMDriver) -> dict[str, Any]:
+    communicator = (
+        int(driver.comm.py2f())
+        if hasattr(driver.comm, "py2f")
+        else 0
+    )
     return {
         "step": driver.clock.nstep,
         "native_nstep": driver.clock.nstep,
         "native_calls": driver.backend.call_count,
+        "mpi_communicator_handle": communicator,
         "phase_status": driver.phase_status,
         "scheme_status": driver.scheme_status,
         "plugins": driver.plugins.inventory(),
+        "python_processes": driver.python_processes.inventory(),
     }
 
 
@@ -66,6 +74,7 @@ def _local_command(request: dict[str, Any], driver: CAMDriver, comm: Any) -> Any
         return _runtime_status(driver)
     if operation == "configure_scheme_plan":
         driver.scheme_plan = CCPPSuitePlan.from_payload(request["plan"])
+        driver.python_processes.prune_to_plan()
         return _runtime_status(driver)
     if operation == "define_variable":
         driver.define_variable(
@@ -107,10 +116,32 @@ def _local_command(request: dict[str, Any], driver: CAMDriver, comm: Any) -> Any
             unsafe=bool(request.get("unsafe", False)),
         )
         return _runtime_status(driver)
+    if operation == "install_python_process":
+        installed = driver.install_python_process(
+            PythonProcessSpec.from_mapping(request["process"]),
+            unsafe=bool(request.get("unsafe", False)),
+        )
+        return {
+            **_runtime_status(driver),
+            "installed_python_process": installed.as_dict(),
+        }
+    if operation == "remove_python_process":
+        removed = driver.remove_python_process(str(request["name"]))
+        return {
+            **_runtime_status(driver),
+            "removed_python_process": removed,
+        }
     if operation == "write_checkpoint":
-        return str(driver.write_checkpoint(str(request["path"])))
+        return str(
+            driver.write_checkpoint(
+                str(request["path"]),
+                allow_recreatable_process_state=True,
+            )
+        )
     if operation == "capture_memory_checkpoint":
-        return serialize_snapshot(driver.snapshot())
+        return serialize_snapshot(
+            driver.snapshot(allow_recreatable_process_state=True)
+        )
     if operation == "edit_field":
         name = str(request["field"])
         current = driver.pool.get(name, unsafe=bool(request.get("unsafe", False)))

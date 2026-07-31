@@ -10,7 +10,7 @@ import re
 import shutil
 import socket
 import threading
-from typing import Any, Callable, Mapping
+from typing import Any, Callable, Mapping, Sequence
 
 import numpy as np
 
@@ -24,6 +24,7 @@ from ..model import (
     FieldEdit,
     FieldCollection,
     InstallPhysics,
+    InstallPythonProcess,
     ModelOptions,
     MoveScheme,
     ObserveFields,
@@ -32,11 +33,14 @@ from ..model import (
     RunScheme,
     RunSchemeGroup,
     RunSteps,
+    RemovePythonProcess,
     SegmentPlan,
     SetSchemeEnabled,
+    SuiteScheme,
     PhaseCollection,
     PhysicsPluginSpec,
     PhysicsCollection,
+    PythonProcessSpec,
     VariableSpec,
 )
 from .session import NotebookSession
@@ -297,6 +301,27 @@ class PersistentCAMActor:
             plugin = self._session.deactivate_physics(name, unsafe=unsafe)
             return {**self._command_status(), "plugin": dict(plugin)}
 
+    def install_python_process(
+        self,
+        payload: Mapping[str, Any],
+        unsafe: bool = False,
+    ) -> Mapping[str, Any]:
+        with self._guard:
+            self._ensure_open()
+            process = self._session.install_python_process(
+                PythonProcessSpec.from_mapping(payload),
+                unsafe=unsafe,
+            )
+            return {
+                **self._command_status(),
+                "python_process": dict(process),
+            }
+
+    def remove_python_process(self, name: str) -> Mapping[str, Any]:
+        with self._guard:
+            self._ensure_open()
+            return dict(self._session.remove_python_process(str(name)))
+
     def get_field(self, name: str, rank: int | str = 0) -> Any:
         with self._guard:
             self._ensure_open()
@@ -451,6 +476,12 @@ class PersistentCAMActor:
                     self._session.deactivate_physics(
                         action.name, unsafe=True
                     )
+                elif isinstance(action, InstallPythonProcess):
+                    self._session.install_python_process(
+                        action.process, unsafe=True
+                    )
+                elif isinstance(action, RemovePythonProcess):
+                    self._session.remove_python_process(action.name)
                 else:  # pragma: no cover - SegmentPlan validates construction.
                     raise TypeError(
                         f"unsupported persistent action {type(action).__name__}"
@@ -537,6 +568,10 @@ class PersistentCAMActor:
         candidate = CCPPSuitePlan.from_payload(self._session.scheme_status["plan"])
         scheme_groups = candidate.group_names
         planned_processes: set[str] = set()
+        planned_python_processes: set[str] = {
+            str(item["spec"]["name"])
+            for item in getattr(self._session, "python_processes", ())
+        }
         planned_plugins = {
             str(item["name"])
             for item in getattr(self._session, "physics_plugins", ())
@@ -655,6 +690,73 @@ class PersistentCAMActor:
                     raise ValueError(
                         f"unknown planned physics plugin {action.name!r}"
                     )
+            elif isinstance(action, InstallPythonProcess):
+                if not plan.unsafe:
+                    raise ValueError(
+                        "install_python_process requires "
+                        "SegmentPlan(unsafe=True)"
+                    )
+                if action.process.name in planned_python_processes:
+                    raise ValueError(
+                        f"Python process {action.process.name!r} is already "
+                        "planned"
+                    )
+                for field in (
+                    *action.process.reads,
+                    *action.process.writes,
+                ):
+                    field_rows = getattr(self._session, "_fields", {})
+                    ccpp_fields = {
+                        str(row.get("ccpp_standard_name"))
+                        for row in field_rows.values()
+                        if row.get("ccpp_standard_name") is not None
+                    }
+                    if field.startswith("field:"):
+                        valid = (
+                            field.removeprefix("field:") in planned_fields
+                        )
+                    elif field.startswith("ccpp:"):
+                        valid = (
+                            field.removeprefix("ccpp:") in ccpp_fields
+                        )
+                    else:
+                        valid = (
+                            field in planned_fields or field in ccpp_fields
+                        )
+                    if not valid:
+                        raise KeyError(
+                            f"unknown CAM-SIMA field: {field}"
+                        )
+                planned_python_processes.add(action.process.name)
+                planned_processes.add(action.process.name)
+                candidate.add(
+                    SuiteScheme(
+                        name=action.process.name,
+                        source_group=f"python:{action.process.name}",
+                        occurrence=0,
+                        group=action.process.group,
+                        category="plugin",
+                        implementation="python-runtime-process",
+                        required=False,
+                        enabled=action.process.enabled,
+                    ),
+                    before=action.process.before,
+                    after=action.process.after,
+                    unsafe=True,
+                )
+            elif isinstance(action, RemovePythonProcess):
+                if not plan.unsafe:
+                    raise ValueError(
+                        "remove_python_process requires "
+                        "SegmentPlan(unsafe=True)"
+                    )
+                if action.name not in planned_python_processes:
+                    raise ValueError(
+                        f"unknown planned Python process {action.name!r}"
+                    )
+                planned_python_processes.remove(action.name)
+                planned_processes.discard(action.name)
+                candidate.remove(action.name, unsafe=True)
             elif isinstance(action, ObserveFields):
                 for name in action.fields:
                     if name not in planned_fields:
@@ -852,6 +954,46 @@ class PersistentDaskSession:
         self, name: str, *, unsafe: bool = False
     ) -> Any:
         return self._call("deactivate_physics", str(name), bool(unsafe))
+
+    def install_python_process(
+        self,
+        function: Any,
+        *,
+        name: str | None = None,
+        group: str = "physics_before_coupler",
+        before: str | None = None,
+        after: str | None = None,
+        reads: Sequence[str] = (),
+        writes: Sequence[str] = (),
+        enabled: bool = True,
+        transactional: bool = True,
+        max_payload_bytes: int = 8 * 1024 * 1024,
+        unsafe: bool = False,
+    ) -> Any:
+        spec = (
+            function
+            if isinstance(function, PythonProcessSpec)
+            else PythonProcessSpec.from_callable(
+                function,
+                name=name,
+                group=group,
+                before=before,
+                after=after,
+                reads=reads,
+                writes=writes,
+                enabled=enabled,
+                transactional=transactional,
+                max_payload_bytes=max_payload_bytes,
+            )
+        )
+        return self._call(
+            "install_python_process",
+            spec.as_dict(),
+            bool(unsafe),
+        )
+
+    def remove_python_process(self, name: str) -> Any:
+        return self._call("remove_python_process", str(name))
 
     def field(self, name: str, *, rank: int | str = 0) -> Any:
         return self._call("get_field", str(name), rank)

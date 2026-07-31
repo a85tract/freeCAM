@@ -32,6 +32,7 @@ from ..model import (
     PhaseCollection,
     PhysicsCollection,
     PhysicsPluginSpec,
+    PythonProcessSpec,
     VariableSpec,
 )
 
@@ -226,6 +227,7 @@ class NotebookSession:
         self._log_handle: Any = None
         self._fields: dict[str, dict[str, Any]] = {}
         self._plugins: tuple[Mapping[str, Any], ...] = ()
+        self._python_processes: tuple[Mapping[str, Any], ...] = ()
         self._current_step = 0
         self._phase_names: tuple[str, ...] = ()
         self._phase_status: dict[str, Any] = {}
@@ -574,9 +576,44 @@ class NotebookSession:
         self._update_runtime_status(result)
         return next(item for item in self._plugins if item["name"] == name)
 
+    def install_python_process(
+        self,
+        spec: PythonProcessSpec,
+        *,
+        unsafe: bool = False,
+    ) -> Mapping[str, Any]:
+        """Collectively install a trusted Notebook callback."""
+
+        self._validate_started_options()
+        if not isinstance(spec, PythonProcessSpec):
+            raise TypeError("spec must be PythonProcessSpec")
+        result = self._request(
+            {
+                "op": "install_python_process",
+                "process": spec.as_dict(),
+                "unsafe": bool(unsafe),
+            }
+        )
+        self._update_runtime_status(result)
+        return dict(result["installed_python_process"])
+
+    def remove_python_process(self, name: str) -> Mapping[str, Any]:
+        """Collectively remove a Notebook Python callback."""
+
+        self._validate_started_options()
+        result = self._request(
+            {"op": "remove_python_process", "name": str(name)}
+        )
+        self._update_runtime_status(result)
+        return dict(result["removed_python_process"])
+
     @property
     def physics_plugins(self) -> tuple[Mapping[str, Any], ...]:
         return tuple(dict(item) for item in self._plugins)
+
+    @property
+    def python_processes(self) -> tuple[Mapping[str, Any], ...]:
+        return tuple(dict(item) for item in self._python_processes)
 
     def get_field(
         self, name: str, *, rank: int | str = 0
@@ -750,6 +787,10 @@ class NotebookSession:
             self._fields = dict(result["fields"])
         if "plugins" in result:
             self._plugins = tuple(dict(item) for item in result["plugins"])
+        if "python_processes" in result:
+            self._python_processes = tuple(
+                dict(item) for item in result["python_processes"]
+            )
 
     def _install_scheme_plan(self, candidate: CCPPSuitePlan) -> None:
         if self.running:

@@ -17,6 +17,7 @@ from .experiment import (
     DefineVariable,
     FieldEdit,
     InstallPhysics,
+    InstallPythonProcess,
     MoveScheme,
     ObserveFields,
     PrepareInitialStep,
@@ -24,8 +25,13 @@ from .experiment import (
     RunScheme,
     RunSchemeGroup,
     RunSteps,
+    RemovePythonProcess,
     SegmentPlan,
     SetSchemeEnabled,
+)
+from .python_processes import (
+    DEFAULT_MAX_PAYLOAD_BYTES,
+    PythonProcessSpec,
 )
 from .plugins import (
     PhysicsPluginSpec,
@@ -350,6 +356,43 @@ class SchemeReference:
         )
 
 
+class InstalledPythonProcess(SchemeReference):
+    """User-facing handle for one installed Notebook Python callback."""
+
+    def __init__(
+        self,
+        physics: "PhysicsCollection",
+        spec: PythonProcessSpec,
+    ) -> None:
+        super().__init__(physics, spec.name, group=spec.group)
+        self.spec = spec
+
+    @property
+    def payload_hash(self) -> str:
+        return self.spec.payload_hash
+
+    @property
+    def reads(self) -> tuple[str, ...]:
+        return self.spec.reads
+
+    @property
+    def writes(self) -> tuple[str, ...]:
+        return self.spec.writes
+
+    @property
+    def transactional(self) -> bool:
+        return self.spec.transactional
+
+    def remove(self) -> Any:
+        return self._physics.remove_python(self.name)
+
+    def __repr__(self) -> str:
+        return (
+            f"InstalledPythonProcess({self.name!r}, "
+            f"group={self.group!r})"
+        )
+
+
 class PhysicsCollection:
     """Install, place, and control physics without exposing protocol objects."""
 
@@ -410,6 +453,46 @@ class PhysicsCollection:
         )
 
     add = install
+
+    def install_python(
+        self,
+        function: Any,
+        *,
+        name: str | None = None,
+        group: str = PHYSICS_BEFORE_COUPLER,
+        before: str | None = None,
+        after: str | None = None,
+        reads: Sequence[str] = (),
+        writes: Sequence[str] = (),
+        enabled: bool = True,
+        transactional: bool = True,
+        unsafe: bool = False,
+        max_payload_bytes: int = DEFAULT_MAX_PAYLOAD_BYTES,
+    ) -> InstalledPythonProcess:
+        """Install a trusted Notebook callback into the live suite plan."""
+
+        spec = PythonProcessSpec.from_callable(
+            function,
+            name=name,
+            group=_group(group) or str(group),
+            before=before,
+            after=after,
+            reads=reads,
+            writes=writes,
+            enabled=enabled,
+            transactional=transactional,
+            max_payload_bytes=max_payload_bytes,
+        )
+        self.owner.install_python_process(
+            spec,
+            unsafe=bool(unsafe),
+        )
+        return InstalledPythonProcess(self, spec)
+
+    def remove_python(self, name: str) -> Any:
+        """Remove a previously installed Notebook Python process."""
+
+        return self.owner.remove_python_process(str(name))
 
     def run(
         self,
@@ -673,6 +756,37 @@ class PlanPhysicsCollection:
             )
         )
 
+    def install_python(
+        self,
+        function: Any,
+        *,
+        name: str | None = None,
+        group: str = PHYSICS_BEFORE_COUPLER,
+        before: str | None = None,
+        after: str | None = None,
+        reads: Sequence[str] = (),
+        writes: Sequence[str] = (),
+        enabled: bool = True,
+        transactional: bool = True,
+        max_payload_bytes: int = DEFAULT_MAX_PAYLOAD_BYTES,
+    ) -> "PlanBuilder":
+        spec = PythonProcessSpec.from_callable(
+            function,
+            name=name,
+            group=_group(group) or str(group),
+            before=before,
+            after=after,
+            reads=reads,
+            writes=writes,
+            enabled=enabled,
+            transactional=transactional,
+            max_payload_bytes=max_payload_bytes,
+        )
+        return self._plan._append(InstallPythonProcess(spec))
+
+    def remove_python(self, name: str) -> "PlanBuilder":
+        return self._plan._append(RemovePythonProcess(str(name)))
+
 
 class PlanBuilder:
     """Pythonic builder for one serializable Dask action segment.
@@ -882,7 +996,15 @@ class BlockingModel:
             return value
 
         def blocking_call(*args: Any, **kwargs: Any) -> Any:
-            return _wait(value(*args, **kwargs))
+            try:
+                return _wait(value(*args, **kwargs))
+            except BaseException:
+                clear_failed_tail = getattr(
+                    self._model, "clear_failed_tail", None
+                )
+                if callable(clear_failed_tail):
+                    clear_failed_tail()
+                raise
 
         blocking_call.__name__ = name
         return blocking_call

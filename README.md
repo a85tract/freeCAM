@@ -331,8 +331,9 @@ The `model.fields` and `model.physics` façades compile to those same checked
 objects; they do not bypass ABI, MPI, pointer-stability, or schema validation.
 
 Dynamic fields default to checkpointed and not written to history. Checkpoint
-schema v2 records complete contracts, plugin hashes, placements, and activation
-state; restore fails closed if the exact shared artifact is unavailable.
+schema v3 records complete contracts, plugin hashes, placements, activation
+state, and Notebook Python-process inventories; restore fails closed if an
+exact required artifact or callback hash is unavailable.
 
 A runnable source plugin is included at
 `examples/plugins/runtime_temperature_offset/device.yaml`. The 24-rank gate
@@ -346,6 +347,105 @@ qsub jobs/dynamic_runtime_24.pbs
 
 The all-rank hashes, artifact identities, and PBS result are recorded in
 `validation/dynamic_plugins_and_variables.json`.
+
+### Notebook Python processes
+
+A trusted Notebook function can be inserted directly into the live
+`SuitePlan`. `cloudpickle` freezes the function bytes once; the launcher sends
+the payload and SHA-256 over the authenticated control socket, MPI world rank
+0 broadcasts it, and every rank in the target slot installs the same callback.
+The callback executes against only that rank's StatePool arrays:
+
+```python
+def custom_heating(fields, context):
+    temperature = fields["air_temperature"]
+    temperature[...] += 0.01 * context.timestep_seconds
+
+process = model.physics.install_python(
+    custom_heating,
+    name="custom_heating",
+    group="physics_before_coupler",
+    after="kessler",
+    reads=(),
+    writes=("air_temperature",),
+)
+
+process.run()      # only this process; model time does not advance
+process.disable()  # complete steps now skip it
+process.enable()
+model.advance(steps=1)
+process.move(before="potential_temp_to_temp")
+process.remove()
+```
+
+Unqualified names first resolve as CCPP standard names at the physics
+boundary; use `field:<canonical-or-alias>` or `ccpp:<standard-name>` to make a
+collision explicit. `reads` are non-owning read-only NumPy views. `writes` are
+non-owning writable views, so values can change in place but storage, shape,
+and dtype cannot be replaced. Access to an undeclared name fails immediately.
+The context is immutable and contains rank, slot-communicator size, model
+step, timestep, date, calendar, process name, and group; it intentionally does
+not expose an MPI communicator. Each invocation reconstructs the callable
+from the frozen payload, so mutable closure state is not persistent; durable
+process state belongs in explicitly declared StatePool fields.
+Callbacks must not create or call MPI collectives themselves: framework-owned
+collectives define the safe process boundary, and an unmatched user
+collective can deadlock the complete slot.
+
+By default, every rank copies only the declared `writes` before the call. If
+one rank fails or returns a non-`None` value, all ranks restore those fields
+and report rank-indexed tracebacks. `transactional=False` requires an explicit
+`unsafe=True`; a failure then marks the slot failed. Payloads default to an
+8-MiB limit so large arrays must live in StatePool instead of a closure.
+`cloudpickle` is trusted-code serialization, not a sandbox, and imported
+packages must exist in every MPI rank's Python environment.
+
+The same operation has a Future-returning form:
+
+```python
+installed = model.submit.install_python_process(
+    custom_heating,
+    name="custom_heating",
+    after="kessler",
+    writes=("air_temperature",),
+)
+observed = model.submit.fields.physics_air_temperature.stats(
+    rank=0,
+    depends_on=installed,
+)
+```
+
+`PlanBuilder.physics.install_python()` compiles to the serializable
+`InstallPythonProcess` action, and `remove_python()` compiles to
+`RemovePythonProcess`; use `experimental=True` because these actions alter
+scientific ordering. Memory fork copies the callback inventory inside the
+existing parent-rank to child-rank MPI payload. Disk checkpoints store the
+base64 payload, hash, permissions, placement, enabled state, and rollback
+policy and rebuild the registry without running the callback during restore.
+Inside a persistent pool, a durable checkpoint can be restored into any idle
+pre-launched slot without another `qsub` or `mpiexec`:
+
+```python
+saved = model.save()
+with pool.restore("restarted", saved.path) as restarted:
+    assert restarted.status.snapshot_transport == "checkpoint"
+    assert restarted.status.details["python_processes"]
+    restarted.advance(steps=1)
+```
+
+The real persistent-pool gate uses one PBS allocation and one
+`mpiexec -n 96` for four 24-rank slots. It checks exact `+1 K` execution on
+all ranks, collective rollback, in-memory fork inheritance, disk restart,
+no-op 50-step scientific-state equality, destination-slot communicator
+rebinding, and both no-op and unmodified FKESSLER history against the pinned
+51-file oracle:
+
+```bash
+qsub jobs/python_runtime_process_4x24.pbs
+```
+
+The completed machine-readable evidence is kept in
+`validation/python_runtime_process.json`.
 
 Fortran module state is explicit in the device policy. Kessler is
 `reinitialize_each_run`: Python passes `lv`, `pref`, and `rhoqr` through the

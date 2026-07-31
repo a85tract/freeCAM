@@ -1,0 +1,134 @@
+{
+  "allocation": {
+    "model_slots": 4,
+    "mpi_launch_count": 1,
+    "nested_qsub": 0,
+    "pool_mpi_launch_id": "python-runtime-process-dec1680-139100-1785476879081788665",
+    "ranks_per_model": 24,
+    "world_size": 96
+  },
+  "checkpoint_restart": {
+    "arrays_compared": 6144,
+    "excluded_runtime_local_fields": [
+      "ccpp_mpi_communicator"
+    ],
+    "first_difference": null,
+    "path": "/glade/derecho/scratch/ruitong/pycam-sima/python-runtime-process/6965181.desched1/run/python-process-step-25",
+    "scientific_state_arrays_bitwise_identical": true,
+    "transport": "checkpoint"
+  },
+  "checks": {
+    "checkpoint_restart_scientific_state_bfb": true,
+    "checkpoint_restored_process_inventory": true,
+    "exact_add_one_kelvin_all_ranks": true,
+    "fork_continuation_scientific_state_bfb": true,
+    "fork_inventory_inherited": true,
+    "no_op_50_step_history_bfb": true,
+    "one_mpi_launch": true,
+    "one_pbs_job": true,
+    "parent_unchanged_by_child_callback": true,
+    "runtime_local_communicators_rebound": true,
+    "transactional_failure_kept_slot_ready": true,
+    "transactional_failure_reported_rank_7": true,
+    "transactional_rollback_all_ranks": true,
+    "unmodified_50_step_history_bfb": true,
+    "unmodified_vs_noop_scientific_state_bfb": true
+  },
+  "completion_marker": "PYCAM_SIMA_PYTHON_RUNTIME_PROCESS_OK job=6965181.desched1 world=4x24 fork_arrays=6144 restart_arrays=6144",
+  "dask": {
+    "distinct_model_workers": 4,
+    "launcher_worker": "inproc://10.14.13.47/139100/10",
+    "model_slots": {
+      "base": 0,
+      "control": 1,
+      "rollback": 3,
+      "warm": 2
+    },
+    "model_workers": {
+      "base": "inproc://10.14.13.47/139100/12",
+      "control": "inproc://10.14.13.47/139100/4",
+      "rollback": "inproc://10.14.13.47/139100/8",
+      "warm": "inproc://10.14.13.47/139100/6"
+    }
+  },
+  "fork": {
+    "arrays_compared": 6144,
+    "excluded_runtime_local_fields": [
+      "ccpp_mpi_communicator"
+    ],
+    "first_difference": null,
+    "scientific_state_arrays_bitwise_identical": true,
+    "transport": "mpi"
+  },
+  "git_commit": "3c1198578ca48113615623dfbf541bc4a9b5ab90",
+  "pbs_job_id": "6965181.desched1",
+  "pycam_sima": "0.19.0",
+  "python_process": {
+    "after": "kessler",
+    "group": "physics_before_coupler",
+    "name": "notebook_noop",
+    "payload_hash": "becc415af5363e2d0cc6e7980406efda08d8b3787d6c817ade96c4541587d88c",
+    "transactional": true
+  },
+  "runtime_local_communicators": {
+    "base": {
+      "actual": -2080374782,
+      "expected": -2080374782,
+      "matches": true,
+      "slot_id": 0
+    },
+    "baseline-restarted": {
+      "actual": -2080374783,
+      "expected": -2080374783,
+      "matches": true,
+      "slot_id": 2
+    },
+    "control": {
+      "actual": -2080374783,
+      "expected": -2080374783,
+      "matches": true,
+      "slot_id": 1
+    },
+    "restarted": {
+      "actual": -2080374783,
+      "expected": -2080374783,
+      "matches": true,
+      "slot_id": 1
+    },
+    "rollback": {
+      "actual": -2080374783,
+      "expected": -2080374783,
+      "matches": true,
+      "slot_id": 3
+    },
+    "warm": {
+      "actual": -2080374783,
+      "expected": -2080374783,
+      "matches": true,
+      "slot_id": 2
+    }
+  },
+  "schema_version": 1,
+  "transactional_failure": {
+    "all_write_fields_restored": true,
+    "reported_error_excerpt": "PythonProcessExecutionError: Python process 'notebook_transactional_failure' failed and its declared write fields were restored; rank 7 raised RuntimeError: intentional transactional failure on rank 7",
+    "slot_ready": true
+  },
+  "unmodified_baseline": {
+    "arrays_compared": 6144,
+    "checkpoint_path": "/glade/derecho/scratch/ruitong/pycam-sima/python-runtime-process/6965181.desched1/run/unmodified-step-25",
+    "excluded_runtime_local_fields": [
+      "ccpp_mpi_communicator"
+    ],
+    "first_difference": null,
+    "history_bfb": true,
+    "history_segments": [
+      "/glade/derecho/scratch/ruitong/pycam-sima/python-runtime-process/6965181.desched1/run/models/python-runtime-process/baseline/history",
+      "/glade/derecho/scratch/ruitong/pycam-sima/python-runtime-process/6965181.desched1/run/models/python-runtime-process/baseline-restarted/history"
+    ],
+    "scientific_state_arrays_match_noop_run": true,
+    "step": 50
+  },
+  "validated_at": "2026-07-31T06:00:24.629469+00:00",
+  "working_tree_feature": "notebook-python-runtime-process"
+}

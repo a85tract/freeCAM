@@ -23,6 +23,7 @@ from ..model import (
     ModelConfig,
     ModelOptions,
     PhysicsPluginSpec,
+    PythonProcessSpec,
     SegmentPlan,
     VariableSpec,
 )
@@ -302,6 +303,69 @@ class PooledWorkerSession(NotebookSession):
             }
         )
 
+    def restore_model(
+        self,
+        name: str,
+        checkpoint: str | Path,
+        *,
+        run_dir: str | Path | None = None,
+        history_dir: str | Path | None = None,
+        slot: int | None = None,
+    ) -> dict[str, Any]:
+        """Restore a checkpoint into one idle slot without a new MPI launch."""
+
+        if name in self._models:
+            raise ValueError(f"pooled model already exists: {name!r}")
+        checkpoint_path = Path(checkpoint).resolve()
+        if not (checkpoint_path / "manifest.json").is_file():
+            raise FileNotFoundError(
+                f"checkpoint manifest is absent: {checkpoint_path}"
+            )
+        status = self.describe()
+        idle = [
+            int(item["slot_id"])
+            for item in status["slots"]
+            if item["state"] == "idle"
+        ]
+        if slot is None:
+            if not idle:
+                raise RuntimeError("persistent model pool has no idle slot")
+            slot = idle[0]
+        if int(slot) not in idle:
+            raise RuntimeError(f"persistent model slot {slot} is not idle")
+        selected_run, selected_history = self._prepare_model_paths(
+            name,
+            run_dir=run_dir,
+            history_dir=history_dir,
+        )
+        try:
+            result = self._request(
+                {
+                    "op": "restore_model",
+                    "name": name,
+                    "slot": int(slot),
+                    "checkpoint": str(checkpoint_path),
+                    "run_dir": str(selected_run),
+                    "history_dir": str(selected_history),
+                }
+            )
+        except BaseException:
+            try:
+                self._request(
+                    {
+                        "op": "close_model",
+                        "name": name,
+                        "slot": int(slot),
+                    }
+                )
+            except BaseException:
+                pass
+            raise
+        self._models[name] = int(slot)
+        self._model_paths[name] = (selected_run, selected_history)
+        self.describe()
+        return dict(result)
+
     def step(self, name: str, count: int = 1) -> dict[str, Any]:
         if int(count) <= 0:
             raise ValueError("step count must be positive")
@@ -489,6 +553,8 @@ class PooledWorkerSession(NotebookSession):
             "install_physics",
             "activate_physics",
             "deactivate_physics",
+            "install_python_process",
+            "remove_python_process",
             "write_checkpoint",
             "capture_memory_checkpoint",
             "edit_field",
@@ -575,6 +641,20 @@ class PooledWorkerSession(NotebookSession):
                 "op": operation,
                 "name": str(args[0]),
                 "unsafe": bool(values.pop("unsafe", False)),
+            }
+        elif operation == "install_python_process":
+            spec = args[0]
+            if not isinstance(spec, PythonProcessSpec):
+                spec = PythonProcessSpec.from_mapping(spec)
+            command = {
+                "op": operation,
+                "process": spec.as_dict(),
+                "unsafe": bool(values.pop("unsafe", False)),
+            }
+        elif operation == "remove_python_process":
+            command = {
+                "op": operation,
+                "name": str(args[0]),
             }
         elif operation == "set_scheme_enabled":
             command = {

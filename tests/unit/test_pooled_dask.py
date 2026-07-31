@@ -10,10 +10,12 @@ import pytest
 
 from pycam_sima import (
     DaskExperimentClient,
+    InstalledPythonProcess,
     PersistentPoolActor,
     PhysicsPluginSpec,
     PooledDaskRequest,
     PooledModelGroup,
+    PythonProcessSpec,
 )
 
 
@@ -88,6 +90,7 @@ class _FakePooledSession:
                 np.full((2, 2), 240.0 + rank) for rank in range(self.ranks)
             ],
             "kessler": True,
+            "python_processes": {},
             "run_dir": str(run_dir),
             "history_dir": str(history_dir),
         }
@@ -103,7 +106,18 @@ class _FakePooledSession:
             model["step"] += count
             model["native_calls"] += count
             return self._status(name)
+        if op == "write_checkpoint":
+            return {
+                **self._status(name),
+                "checkpoint_dir": str(kwargs["path"]),
+                "mpi_launch_count": 1,
+            }
         if op in {"run_phase", "run_scheme", "run_scheme_group"}:
+            if (
+                op == "run_scheme"
+                and kwargs.get("scheme") == "transactional_failure"
+            ):
+                raise RuntimeError("transactional callback failed")
             model["native_calls"] += 1
             return {
                 **self._status(name),
@@ -154,6 +168,36 @@ class _FakePooledSession:
                     "source": kwargs["plugin"]["source"],
                 },
             }
+        if op == "install_python_process":
+            spec = PythonProcessSpec.from_mapping(kwargs["process"])
+            model["python_processes"][spec.name] = {
+                "spec": spec.as_dict(),
+                "scheme_key": spec.name,
+                "read_bindings": {},
+                "write_bindings": {
+                    field: field for field in spec.writes
+                },
+            }
+            return {
+                **self._status(name),
+                "installed_python_process": {
+                    "name": spec.name,
+                    "group": spec.group,
+                    "payload_hash": spec.payload_hash,
+                    "reads": spec.reads,
+                    "writes": spec.writes,
+                    "transactional": spec.transactional,
+                },
+            }
+        if op == "remove_python_process":
+            removed = model["python_processes"].pop(str(kwargs["name"]))
+            return {
+                **self._status(name),
+                "removed_python_process": {
+                    "name": removed["spec"]["name"],
+                    "payload_hash": removed["spec"]["payload_hash"],
+                },
+            }
         if op == "delete_variable":
             return {
                 **self._status(name),
@@ -191,8 +235,33 @@ class _FakePooledSession:
                 value.copy() for value in source["temperature"]
             ]
             target["kessler"] = source["kessler"]
+            target["python_processes"] = dict(source["python_processes"])
             results[name] = self._status(name)
         return results
+
+    def restore_model(
+        self,
+        name: str,
+        _checkpoint: Path,
+        *,
+        run_dir: Path,
+        history_dir: Path,
+        slot: int | None,
+    ) -> dict[str, Any]:
+        result = self.create_model(
+            name,
+            run_dir=run_dir,
+            history_dir=history_dir,
+            slot=slot,
+        )
+        return {
+            **result,
+            "snapshot_transport": "checkpoint",
+            "scheme_status": {
+                "sequence_safe": True,
+                "plan": self.kwargs["scheme_plan"].to_payload(),
+            },
+        }
 
     def advance_models(
         self, names: tuple[str, ...], count: int
@@ -254,6 +323,7 @@ class _FakePooledSession:
             "phase_names": ("physics_to_dynamics",),
             "scheme_names": ("kessler",),
             "scheme_status": {"sequence_safe": True},
+            "python_processes": tuple(model["python_processes"].values()),
             "slot_id": model["slot"],
         }
 
@@ -288,6 +358,71 @@ def _inputs(tmp_path: Path) -> dict[str, Path]:
         "python_executable": python,
         "log_dir": tmp_path / "logs",
     }
+
+
+def _add_rank_local_heating(fields: Any, context: Any) -> None:
+    fields["air_temperature"][...] += 0.01 * context.timestep_seconds
+
+
+def test_model_per_worker_installs_python_process_with_blocking_and_future_api(
+    tmp_path: Path,
+) -> None:
+    _FakePooledSession.launches = 0
+    with Client(
+        processes=False,
+        n_workers=3,
+        threads_per_worker=1,
+        dashboard_address=None,
+    ) as client:
+        experiments = DaskExperimentClient(
+            client,
+            pool_actor_factory=_fake_pool_actor,
+            **_inputs(tmp_path),
+        )
+        plan = experiments.plan_pool(
+            max_concurrent_models=2,
+            ranks_per_model=2,
+            available_nodes=1,
+            cpus_per_node=8,
+            memory_per_node="128GB",
+        )
+        with experiments.pool("python-processes", resource_plan=plan) as pool:
+            with pool.model("base") as base:
+                installed = base.physics.install_python(
+                    _add_rank_local_heating,
+                    name="custom_heating",
+                    group="physics_before_coupler",
+                    after="kessler",
+                    writes=("air_temperature",),
+                )
+                assert isinstance(installed, InstalledPythonProcess)
+                assert installed.writes == ("air_temperature",)
+                installed.run()
+                installed.disable()
+                installed.enable()
+
+                child = base.fork("child").child
+                inherited = child.status.details["python_processes"]
+                assert inherited[0]["spec"]["name"] == "custom_heating"
+                child.close()
+
+                assert installed.remove()["name"] == "custom_heating"
+
+                installed_future = base.submit.install_python_process(
+                    _add_rank_local_heating,
+                    name="future_heating",
+                    writes=("air_temperature",),
+                    after="kessler",
+                )
+                installed_metadata = installed_future.result()
+                assert installed_metadata["name"] == "future_heating"
+                removed_future = base.submit.remove_python_process(
+                    "future_heating",
+                    depends_on=installed_future,
+                )
+                assert removed_future.result()["name"] == "future_heating"
+
+        assert _FakePooledSession.launches == 1
 
 
 def test_pool_reuses_one_launch_and_forks_private_slot_memory(
@@ -386,6 +521,108 @@ def test_pool_rejects_concurrent_fork_larger_than_free_slots(
                         "two",
                         require_concurrent=True,
                     )
+
+
+def test_pool_restores_checkpoint_into_idle_slot_without_new_launch(
+    tmp_path: Path,
+) -> None:
+    _FakePooledSession.launches = 0
+    checkpoint = tmp_path / "checkpoint"
+    checkpoint.mkdir()
+    (checkpoint / "manifest.json").write_text("{}")
+    with Client(
+        processes=False,
+        n_workers=3,
+        threads_per_worker=1,
+        dashboard_address=None,
+    ) as client:
+        experiments = DaskExperimentClient(
+            client,
+            pool_actor_factory=_fake_pool_actor,
+            **_inputs(tmp_path),
+        )
+        plan = experiments.plan_pool(
+            max_concurrent_models=2,
+            ranks_per_model=2,
+            available_nodes=1,
+            cpus_per_node=8,
+            memory_per_node="128GB",
+        )
+        with experiments.pool("restore", resource_plan=plan) as pool:
+            with pool.model("base") as base:
+                base.advance(2)
+            with pool.restore("restarted", checkpoint) as restarted:
+                assert restarted.slot_id == 0
+                assert restarted.status.snapshot_transport == "checkpoint"
+                assert pool.status["mpi_launch_count"] == 1
+
+        assert _FakePooledSession.launches == 1
+
+
+def test_pooled_model_save_returns_typed_checkpoint_metadata(
+    tmp_path: Path,
+) -> None:
+    _FakePooledSession.launches = 0
+    with Client(
+        processes=False,
+        n_workers=2,
+        threads_per_worker=1,
+        dashboard_address=None,
+    ) as client:
+        experiments = DaskExperimentClient(
+            client,
+            pool_actor_factory=_fake_pool_actor,
+            **_inputs(tmp_path),
+        )
+        plan = experiments.plan_pool(
+            max_concurrent_models=1,
+            ranks_per_model=2,
+            available_nodes=1,
+            cpus_per_node=8,
+            memory_per_node="128GB",
+        )
+        with experiments.pool("save", resource_plan=plan) as pool:
+            with pool.model("base") as base:
+                base.advance(steps=3)
+                checkpoint = base.save(tmp_path / "saved")
+
+                assert checkpoint.path == (tmp_path / "saved")
+                assert checkpoint.step == 3
+                assert checkpoint.native_calls == 3
+                assert checkpoint.mpi_launch_count == 1
+
+
+def test_blocking_model_can_continue_after_observed_command_failure(
+    tmp_path: Path,
+) -> None:
+    with Client(
+        processes=False,
+        n_workers=2,
+        threads_per_worker=1,
+        dashboard_address=None,
+    ) as client:
+        experiments = DaskExperimentClient(
+            client,
+            pool_actor_factory=_fake_pool_actor,
+            **_inputs(tmp_path),
+        )
+        plan = experiments.plan_pool(
+            max_concurrent_models=1,
+            ranks_per_model=2,
+            available_nodes=1,
+            cpus_per_node=8,
+            memory_per_node="128GB",
+        )
+        with experiments.pool("recover", resource_plan=plan) as pool:
+            with pool.model("base") as base:
+                with pytest.raises(
+                    RuntimeError, match="transactional callback failed"
+                ):
+                    base.physics.scheme("transactional_failure").run()
+
+                assert base.status.step == 0
+                base.advance(steps=1)
+                assert base.status.step == 1
 
 
 def test_model_per_worker_pool_exposes_dask_future_dependencies(

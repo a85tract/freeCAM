@@ -117,6 +117,24 @@ def test_resource_plan_uses_config_rank_count_without_fixed_values() -> None:
     assert "GiB" not in plan.pbs_select
 
 
+def test_complete_resource_override_does_not_query_pbs() -> None:
+    def fail_qstat(_job_id: str) -> str:
+        raise AssertionError("qstat must not run for a complete override")
+
+    plan = plan_pool_resources(
+        ModelConfig(mpi_size=24),
+        max_concurrent_models=4,
+        available_nodes=1,
+        cpus_per_node=128,
+        memory_per_node="80GB",
+        environ={"PBS_JOBID": "transient.server"},
+        qstat_runner=fail_qstat,
+    )
+
+    assert plan.world_size == 96
+    assert plan.describe()["resource_source"] == "override"
+
+
 def test_auto_ranks_respect_requested_concurrency_and_sfc_elements() -> None:
     config = ModelConfig(mpi_size=7)
     plan = PoolResourcePlanner(config).plan(

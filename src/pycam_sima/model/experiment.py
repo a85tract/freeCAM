@@ -219,6 +219,28 @@ class DeactivatePhysics:
     name: str
 
 
+@dataclass(frozen=True, slots=True)
+class InstallPythonProcess:
+    process: Any
+
+    def __post_init__(self) -> None:
+        from .python_processes import PythonProcessSpec
+
+        if isinstance(self.process, Mapping):
+            object.__setattr__(
+                self, "process", PythonProcessSpec.from_mapping(self.process)
+            )
+        elif not isinstance(self.process, PythonProcessSpec):
+            raise TypeError(
+                "install_python_process requires a PythonProcessSpec"
+            )
+
+
+@dataclass(frozen=True, slots=True)
+class RemovePythonProcess:
+    name: str
+
+
 Action = Union[
     PrepareInitialStep,
     RunPhase,
@@ -233,6 +255,8 @@ Action = Union[
     InstallPhysics,
     ActivatePhysics,
     DeactivatePhysics,
+    InstallPythonProcess,
+    RemovePythonProcess,
 ]
 
 
@@ -291,6 +315,13 @@ def _action_as_dict(action: Action) -> dict[str, Any]:
         return {"type": "activate_physics", "name": action.name}
     if isinstance(action, DeactivatePhysics):
         return {"type": "deactivate_physics", "name": action.name}
+    if isinstance(action, InstallPythonProcess):
+        return {
+            "type": "install_python_process",
+            "process": action.process.as_dict(),
+        }
+    if isinstance(action, RemovePythonProcess):
+        return {"type": "remove_python_process", "name": action.name}
     raise TypeError(f"unsupported segment action {type(action).__name__}")
 
 
@@ -357,6 +388,10 @@ def _action_from_mapping(values: Mapping[str, Any]) -> Action:
         return ActivatePhysics(str(values["name"]))
     if action_type == "deactivate_physics":
         return DeactivatePhysics(str(values["name"]))
+    if action_type == "install_python_process":
+        return InstallPythonProcess(values["process"])
+    if action_type == "remove_python_process":
+        return RemovePythonProcess(str(values["name"]))
     raise ValueError(f"unknown segment action type {action_type!r}")
 
 
@@ -534,6 +569,9 @@ def validate_segment_plan(driver: Any, plan: SegmentPlan) -> None:
         getattr(getattr(driver, "plugins", None), "installed", {})
     )
     planned_processes: set[str] = set()
+    planned_python_processes: set[str] = set(
+        getattr(getattr(driver, "python_processes", None), "installed", {})
+    )
     planned_fields: set[str] = (
         set(driver.pool.contracts)
         | set(getattr(driver.pool, "_aliases", {}))
@@ -667,6 +705,68 @@ def validate_segment_plan(driver: Any, plan: SegmentPlan) -> None:
                 raise ValueError(
                     f"unknown planned physics plugin {action.name!r}"
                 )
+        elif isinstance(action, InstallPythonProcess):
+            if not plan.unsafe:
+                raise ValueError(
+                    "install_python_process actions require "
+                    "SegmentPlan(unsafe=True)"
+                )
+            spec = action.process
+            if spec.name in planned_python_processes:
+                raise ValueError(
+                    f"Python process {spec.name!r} is already planned"
+                )
+            if spec.group not in scheme_groups:
+                raise ValueError(
+                    f"unknown scheme group {spec.group!r}; "
+                    f"choose one of {scheme_groups}"
+                )
+            if spec.before is not None:
+                scheme_plan.scheme(spec.before, group=spec.group)
+            if spec.after is not None:
+                scheme_plan.scheme(spec.after, group=spec.group)
+            for name in (*spec.reads, *spec.writes):
+                if name.startswith("field:"):
+                    driver.pool.get(name.removeprefix("field:"))
+                elif name.startswith("ccpp:"):
+                    driver.pool.get_ccpp(name.removeprefix("ccpp:"))
+                else:
+                    try:
+                        driver.pool.get_ccpp(name)
+                    except KeyError:
+                        driver.pool.get(name)
+            from .ccpp_suite import SuiteScheme
+
+            scheme_plan.add(
+                SuiteScheme(
+                    name=spec.name,
+                    source_group=f"python:{spec.name}",
+                    occurrence=0,
+                    group=spec.group,
+                    category="plugin",
+                    implementation="python-runtime-process",
+                    required=False,
+                    enabled=spec.enabled,
+                ),
+                before=spec.before,
+                after=spec.after,
+                unsafe=True,
+            )
+            planned_python_processes.add(spec.name)
+            planned_processes.add(spec.name)
+        elif isinstance(action, RemovePythonProcess):
+            if not plan.unsafe:
+                raise ValueError(
+                    "remove_python_process actions require "
+                    "SegmentPlan(unsafe=True)"
+                )
+            if action.name not in planned_python_processes:
+                raise ValueError(
+                    f"unknown planned Python process {action.name!r}"
+                )
+            scheme_plan.remove(action.name, unsafe=True)
+            planned_python_processes.remove(action.name)
+            planned_processes.discard(action.name)
 
 
 def _observe_fields(driver: Any, action: ObserveFields) -> list[dict[str, Any]]:
@@ -768,6 +868,10 @@ def execute_segment_plan(
             driver.activate_physics(action.name, unsafe=True)
         elif isinstance(action, DeactivatePhysics):
             driver.deactivate_physics(action.name, unsafe=True)
+        elif isinstance(action, InstallPythonProcess):
+            driver.install_python_process(action.process, unsafe=True)
+        elif isinstance(action, RemovePythonProcess):
+            driver.remove_python_process(action.name)
         else:  # pragma: no cover - SegmentPlan validates this at construction.
             raise TypeError(f"unsupported segment action {type(action).__name__}")
         driver.comm.barrier()

@@ -4,11 +4,12 @@ build-backend = "hatchling.build"
 
 [project]
 name = "pycam-sima"
-version = "0.18.0"
+version = "0.19.0"
 description = "Python-owned CAM-SIMA model driver and observable state pool"
 readme = "README.md"
 requires-python = ">=3.11,<3.12"
 dependencies = [
+  "cloudpickle>=3.1,<4",
   "f90nml>=1.4",
   "mpi4py>=4.0",
   "netCDF4>=1.7",

@@ -393,9 +393,17 @@ def _resolve_available_resources(
     environ: Mapping[str, str] | None,
     qstat_runner: Callable[[str], Any] | None,
 ) -> _AvailableResources:
-    discovered = discover_pbs_resources(
-        environ=environ,
-        qstat_runner=qstat_runner,
+    complete_override = all(
+        item is not None
+        for item in (available_nodes, cpus_per_node, memory_per_node)
+    )
+    discovered = (
+        None
+        if complete_override
+        else discover_pbs_resources(
+            environ=environ,
+            qstat_runner=qstat_runner,
+        )
     )
     baseline = discovered or _local_resources()
     nodes = baseline.nodes if available_nodes is None else int(available_nodes)

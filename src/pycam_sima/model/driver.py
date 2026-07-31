@@ -37,6 +37,7 @@ from .phases import (
     physics_timestep_initial,
 )
 from .processes import ProcessRouter, cam_se_fvm_host_processes
+from .python_processes import PythonProcessRegistry, PythonProcessSpec
 from .se_runtime import (
     advance_fvm_tracers,
     advance_hyperviscosity,
@@ -187,6 +188,7 @@ class CAMDriver:
             processes=suite_processes,
             devices=self.backend.devices,
         )
+        self.python_processes = PythonProcessRegistry(self)
         self.processes = ProcessRouter(
             devices=self.backend.devices,
             native_invoke=self.backend.run_phase,
@@ -194,6 +196,7 @@ class CAMDriver:
             host_handlers=cam_se_fvm_host_processes(
                 self.backend, self.comm
             ),
+            runtime_processes=self.python_processes,
         )
         initialized_contracts, generated_contracts = (
             self.state_schema.pool_contract_groups(
@@ -372,6 +375,21 @@ class CAMDriver:
             effective=effective,
             unsafe=unsafe,
         )
+
+    def install_python_process(
+        self,
+        spec: PythonProcessSpec | dict[str, Any],
+        *,
+        unsafe: bool = False,
+    ) -> Any:
+        """Collectively install a trusted Notebook Python callback."""
+
+        return self.python_processes.install(spec, unsafe=unsafe)
+
+    def remove_python_process(self, name: str) -> dict[str, Any]:
+        """Collectively remove a runtime Python callback and suite node."""
+
+        return self.python_processes.remove(name)
 
     def deactivate_physics(
         self, name: str, *, unsafe: bool = False
@@ -705,6 +723,7 @@ class CAMDriver:
             "devices": self.backend.devices.describe(),
             "host_service_events": self.host_services.events(),
             "plugins": self.plugins.inventory(),
+            "python_processes": self.python_processes.inventory(),
             "execution_cursor": self.execution_cursor,
         }
 
@@ -733,12 +752,23 @@ class CAMDriver:
             ),
         )
 
-    def write_checkpoint(self, path: str | Path) -> Path:
+    def write_checkpoint(
+        self,
+        path: str | Path,
+        *,
+        allow_recreatable_process_state: bool = False,
+    ) -> Path:
         """Collectively persist all MPI ranks without finalizing the driver."""
 
         from .checkpoint import write_checkpoint
 
-        return write_checkpoint(self, path)
+        return write_checkpoint(
+            self,
+            path,
+            allow_recreatable_process_state=(
+                allow_recreatable_process_state
+            ),
+        )
 
     def _run_phases(
         self,

@@ -87,11 +87,13 @@ class ProcessRouter:
         native_invoke: Callable[[str, Any], None],
         host_services: Any | None = None,
         host_handlers: Mapping[str, Callable[[Any], None]] | None = None,
+        runtime_processes: Any | None = None,
     ) -> None:
         self.devices = devices
         self.native_invoke = native_invoke
         self.host_services = host_services
         self.host_handlers = dict(host_handlers or {})
+        self.runtime_processes = runtime_processes
 
     @property
     def process_names(self) -> frozenset[str]:
@@ -101,11 +103,21 @@ class ProcessRouter:
         )
         if self.host_services is not None:
             names.update(self.host_services.process_names)
+        if self.runtime_processes is not None:
+            names.update(self.runtime_processes.process_names)
         return frozenset(names)
 
     def invoke(self, scheme: SuiteScheme, pool: Any) -> str:
         """Invoke the best declared provider and report its provider kind."""
 
+        if (
+            self.runtime_processes is not None
+            and self.runtime_processes.has_process(
+                scheme.name, source_group=scheme.source_group
+            )
+        ):
+            self.runtime_processes.invoke(scheme, pool)
+            return "python-runtime-process"
         return self.invoke_process(
             scheme.name,
             pool,
@@ -151,6 +163,16 @@ class ProcessRouter:
         if handler is not None:
             handler(pool)
             return completed("python-host-process")
+        if (
+            self.runtime_processes is not None
+            and self.runtime_processes.has_process(
+                process, source_group=source_group
+            )
+        ):
+            raise MissingKernelError(
+                "runtime Python processes must be invoked through their "
+                "SuiteScheme so the execution group is available"
+            )
         if self.devices.has_process(process):
             self.native_invoke(process, pool)
             return completed("fortran-device")
@@ -196,6 +218,13 @@ class ProcessRouter:
         )
         if qualified in self.host_handlers or process in self.host_handlers:
             return "python-host-process"
+        if (
+            self.runtime_processes is not None
+            and self.runtime_processes.has_process(
+                process, source_group=source_group
+            )
+        ):
+            return "python-runtime-process"
         if self.devices.has_process(process):
             return "fortran-device"
         if (
@@ -217,6 +246,13 @@ class ProcessRouter:
     def provider_for(self, scheme: SuiteScheme) -> str | None:
         """Return the provider selected for one source-qualified occurrence."""
 
+        if (
+            self.runtime_processes is not None
+            and self.runtime_processes.has_process(
+                scheme.name, source_group=scheme.source_group
+            )
+        ):
+            return "python-runtime-process"
         return self.provider_for_process(
             scheme.name,
             source_group=scheme.source_group,

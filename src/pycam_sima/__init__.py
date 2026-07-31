@@ -29,6 +29,8 @@ from .model import (
     PhaseReference,
     PlanBuilder,
     InstallPhysics,
+    InstallPythonProcess,
+    InstalledPythonProcess,
     FieldVariant,
     FortranDevice,
     HostServiceRegistry,
@@ -52,6 +54,7 @@ from .model import (
     RunScheme,
     RunSchemeGroup,
     RunSteps,
+    RemovePythonProcess,
     SchemeMove,
     SchemeCatalogEntry,
     SchemeSupport,
@@ -65,6 +68,10 @@ from .model import (
     SuiteNode,
     SuiteScheme,
     VariableSpec,
+    PythonFieldView,
+    PythonProcessContext,
+    PythonProcessRegistry,
+    PythonProcessSpec,
 )
 from .notebook import (
     ModelActor,
@@ -122,6 +129,8 @@ __all__ = [
     "PhaseReference",
     "PlanBuilder",
     "InstallPhysics",
+    "InstallPythonProcess",
+    "InstalledPythonProcess",
     "FieldVariant",
     "FortranDevice",
     "HostServiceRegistry",
@@ -145,6 +154,7 @@ __all__ = [
     "RunScheme",
     "RunSchemeGroup",
     "RunSteps",
+    "RemovePythonProcess",
     "SchemeMove",
     "SchemeCatalogEntry",
     "SchemeSupport",
@@ -176,5 +186,9 @@ __all__ = [
     "SuiteNode",
     "SuiteScheme",
     "VariableSpec",
+    "PythonFieldView",
+    "PythonProcessContext",
+    "PythonProcessRegistry",
+    "PythonProcessSpec",
 ]
-__version__ = "0.18.0"
+__version__ = "0.19.0"

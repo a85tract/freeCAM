@@ -788,9 +788,10 @@ wheels = [
 
 [[package]]
 name = "pycam-sima"
-version = "0.18.0"
+version = "0.19.0"
 source = { editable = "." }
 dependencies = [
+    { name = "cloudpickle" },
     { name = "f90nml" },
     { name = "mpi4py" },
     { name = "netcdf4" },
@@ -816,6 +817,7 @@ test = [
 
 [package.metadata]
 requires-dist = [
+    { name = "cloudpickle", specifier = ">=3.1,<4" },
     { name = "dask", extras = ["distributed"], marker = "extra == 'dask'", specifier = ">=2025.1" },
     { name = "dask", extras = ["distributed"], marker = "extra == 'notebook'", specifier = ">=2025.1" },
     { name = "dask", extras = ["distributed"], marker = "extra == 'test'", specifier = ">=2025.1" },

@@ -26,7 +26,7 @@ if TYPE_CHECKING:
     from .driver import CAMDriver
 
 
-CHECKPOINT_SCHEMA_VERSION = 2
+CHECKPOINT_SCHEMA_VERSION = 3
 
 
 @dataclass(frozen=True, slots=True)
@@ -50,6 +50,7 @@ class ModelSnapshot:
     last_scheme_group: str | None
     native_calls: int
     plugin_inventory: tuple[Mapping[str, Any], ...]
+    python_process_inventory: tuple[Mapping[str, Any], ...]
     omitted_process_states: tuple[str, ...]
     boundary_index: int
     after_coupler_prepared: bool
@@ -102,6 +103,11 @@ class ModelSnapshot:
                 if not hasattr(driver, "plugins")
                 else driver.plugins.inventory()
             ),
+            python_process_inventory=(
+                ()
+                if not hasattr(driver, "python_processes")
+                else driver.python_processes.inventory()
+            ),
             omitted_process_states=omitted_process_states,
             boundary_index=int(getattr(driver, "_boundary_index", 0)),
             after_coupler_prepared=bool(
@@ -128,6 +134,9 @@ class ModelSnapshot:
             "native_calls": self.native_calls,
             "plugin_inventory": [
                 dict(item) for item in self.plugin_inventory
+            ],
+            "python_process_inventory": [
+                dict(item) for item in self.python_process_inventory
             ],
             "omitted_process_states": list(self.omitted_process_states),
             "boundary_index": self.boundary_index,
@@ -192,6 +201,10 @@ class ModelSnapshot:
             plugin_inventory=tuple(
                 dict(item)
                 for item in metadata.get("plugin_inventory", ())
+            ),
+            python_process_inventory=tuple(
+                dict(item)
+                for item in metadata.get("python_process_inventory", ())
             ),
             omitted_process_states=tuple(
                 str(item)
@@ -320,7 +333,7 @@ class CheckpointBundle:
                 "in-memory checkpoint manifest is invalid"
             ) from exc
         if manifest.get("schema_version") not in {
-            1, CHECKPOINT_SCHEMA_VERSION
+            1, 2, CHECKPOINT_SCHEMA_VERSION
         }:
             raise ConfigurationError(
                 "unsupported in-memory checkpoint schema "
@@ -401,6 +414,7 @@ def restore_driver(
         scheme_plan=CCPPSuitePlan.from_payload(snapshot.scheme_plan),
     )
     driver.pool = snapshot.new_pool()
+    _rebind_runtime_local_fields(driver)
     driver.clock = NoLeapClock(**snapshot.clock)
     driver.state = DriverState(snapshot.driver_state)
     driver._last_phase = snapshot.last_phase
@@ -413,10 +427,39 @@ def restore_driver(
         driver.state is not DriverState.INITIALIZED
     )
     driver.plugins.restore_inventory(snapshot.plugin_inventory)
+    driver.python_processes.restore_inventory(
+        snapshot.python_process_inventory
+    )
     return driver
 
 
-def write_checkpoint(driver: CAMDriver, path: str | Path) -> Path:
+def _rebind_runtime_local_fields(driver: CAMDriver) -> None:
+    """Replace serialized process-local handles with this runtime's values."""
+
+    communicator = (
+        int(driver.comm.py2f())
+        if hasattr(driver.comm, "py2f")
+        else 0
+    )
+    values = {
+        "mpi_communicator": communicator,
+        "mpi_root": 0,
+        "flag_for_mpi_root": int(driver.comm.rank) == 0,
+    }
+    for standard_name, value in values.items():
+        try:
+            field_name = driver.pool.ccpp_field_name(standard_name)
+        except KeyError:
+            continue
+        driver.pool.set(field_name, value)
+
+
+def write_checkpoint(
+    driver: CAMDriver,
+    path: str | Path,
+    *,
+    allow_recreatable_process_state: bool = False,
+) -> Path:
     """Collectively save all rank-local state into one checkpoint directory."""
 
     root = Path(path).resolve()
@@ -434,7 +477,10 @@ def write_checkpoint(driver: CAMDriver, path: str | Path) -> Path:
     if setup_failure:
         raise OSError(f"cannot create checkpoint {root}: {setup_failure}")
 
-    snapshot = ModelSnapshot.capture(driver)
+    snapshot = ModelSnapshot.capture(
+        driver,
+        allow_recreatable_process_state=allow_recreatable_process_state,
+    )
     filename = root / f"rank-{comm.rank:03d}.npz"
     temporary = root / f".rank-{comm.rank:03d}.npz.tmp"
     failure: str | None = None
@@ -487,7 +533,9 @@ def read_checkpoint(path: str | Path, comm: Any) -> ModelSnapshot:
         raise ConfigurationError(f"cannot read checkpoint {root}: {error}")
     payload = comm.bcast(payload, root=0)
     assert payload is not None
-    if payload.get("schema_version") not in {1, CHECKPOINT_SCHEMA_VERSION}:
+    if payload.get("schema_version") not in {
+        1, 2, CHECKPOINT_SCHEMA_VERSION
+    }:
         raise ConfigurationError(
             f"unsupported checkpoint schema {payload.get('schema_version')!r}"
         )

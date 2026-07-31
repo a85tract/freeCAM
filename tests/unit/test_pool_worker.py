@@ -2,7 +2,7 @@ from pathlib import Path
 
 import pytest
 
-from pycam_sima.model import ModelConfig
+from pycam_sima.model import ModelConfig, PythonProcessSpec
 from pycam_sima.notebook.pool_session import PooledWorkerSession
 from pycam_sima.notebook.pool_worker import (
     slot_for_world_rank,
@@ -184,3 +184,97 @@ def test_pool_model_call_never_uses_checkpoint_transport(
     ]
     with pytest.raises(ValueError, match="not a model command"):
         session.call("base", "restore_memory_checkpoint")
+
+
+def test_pool_accepts_prebuilt_python_process_wire_commands(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def no_op(fields, context):
+        del fields, context
+
+    session = _session(tmp_path)
+    session._models = {"base": 2}
+    requests = []
+    monkeypatch.setattr(
+        session,
+        "_request",
+        lambda payload: requests.append(payload)
+        or {"installed_python_process": {"name": "notebook_noop"}},
+    )
+    spec = PythonProcessSpec.from_callable(no_op, name="notebook_noop")
+
+    session.call(
+        "base",
+        "install_python_process",
+        process=spec.as_dict(),
+        unsafe=False,
+    )
+    session.call(
+        "base",
+        "remove_python_process",
+        name="notebook_noop",
+    )
+
+    assert requests == [
+        {
+            "op": "model_command",
+            "slot": 2,
+            "name": "base",
+            "command": {
+                "op": "install_python_process",
+                "process": spec.as_dict(),
+                "unsafe": False,
+                "model_name": "base",
+            },
+        },
+        {
+            "op": "model_command",
+            "slot": 2,
+            "name": "base",
+            "command": {
+                "op": "remove_python_process",
+                "name": "notebook_noop",
+                "model_name": "base",
+            },
+        },
+    ]
+
+
+def test_failed_checkpoint_restore_releases_reserved_slot(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    session = _session(tmp_path)
+    checkpoint = tmp_path / "checkpoint"
+    checkpoint.mkdir()
+    (checkpoint / "manifest.json").write_text("{}")
+    monkeypatch.setattr(
+        session,
+        "describe",
+        lambda: {
+            "slots": (
+                {
+                    "slot_id": 0,
+                    "state": "idle",
+                    "model_name": None,
+                },
+            )
+        },
+    )
+    requests = []
+
+    def request(payload):
+        requests.append(payload)
+        if payload["op"] == "restore_model":
+            raise RuntimeError("restore failed")
+        return {"state": "idle"}
+
+    monkeypatch.setattr(session, "_request", request)
+
+    with pytest.raises(RuntimeError, match="restore failed"):
+        session.restore_model("broken", checkpoint)
+
+    assert tuple(payload["op"] for payload in requests) == (
+        "restore_model",
+        "close_model",
+    )
+    assert "broken" not in session._models

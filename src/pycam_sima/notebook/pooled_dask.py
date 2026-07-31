@@ -11,6 +11,7 @@ import re
 import socket
 import threading
 import time
+import traceback
 from typing import Any, Callable
 
 from ..model import (
@@ -21,17 +22,21 @@ from ..model import (
     DefineVariable,
     FieldEdit,
     InstallPhysics,
+    InstallPythonProcess,
     ModelOptions,
     MoveScheme,
     ObserveFields,
     PhysicsPluginSpec,
+    PythonProcessSpec,
     PrepareInitialStep,
     RunPhase,
     RunScheme,
     RunSchemeGroup,
     RunSteps,
+    RemovePythonProcess,
     SegmentPlan,
     SetSchemeEnabled,
+    SuiteScheme,
     VariableSpec,
 )
 
@@ -264,6 +269,38 @@ class PoolLauncherActor:
                 }
             return result
 
+    def restore_model(
+        self,
+        name: str,
+        checkpoint: str,
+        slot: int | None = None,
+    ) -> Mapping[str, Any]:
+        with self._guard:
+            self._ensure_open()
+            self._validate_model_name(name)
+            root = Path(self._request.run_root) / self._request.name / name
+            result = self._session.restore_model(
+                name,
+                checkpoint,
+                run_dir=root / "run",
+                history_dir=root / "history",
+                slot=slot,
+            )
+            details = {
+                **dict(result),
+                "run_dir": str(root / "run"),
+                "history_dir": str(root / "history"),
+                "snapshot_transport": "checkpoint",
+            }
+            self._model_details[name] = details
+            plan_payload = details.get("scheme_status", {}).get("plan")
+            if not isinstance(plan_payload, Mapping):
+                raise RuntimeError(
+                    "restored model did not report its suite plan"
+                )
+            self._model_plans[name] = CCPPSuitePlan.from_payload(plan_payload)
+            return result
+
     def model_call(
         self,
         name: str,
@@ -334,6 +371,43 @@ class PoolLauncherActor:
             result = self._session.call(name, wire_operation, **payload)
             if isinstance(result, Mapping):
                 self._model_details.setdefault(name, {}).update(result)
+                plan_payload = (
+                    result.get("scheme_status", {}).get("plan")
+                    if isinstance(result.get("scheme_status"), Mapping)
+                    else None
+                )
+                if isinstance(plan_payload, Mapping):
+                    self._model_plans[name] = CCPPSuitePlan.from_payload(
+                        plan_payload
+                    )
+                elif operation == "install_python_process":
+                    spec = args[0]
+                    if not isinstance(spec, PythonProcessSpec):
+                        spec = PythonProcessSpec.from_mapping(spec)
+                    candidate = self._model_plans[name].copy()
+                    candidate.add(
+                        SuiteScheme(
+                            name=spec.name,
+                            source_group=f"python:{spec.name}",
+                            occurrence=0,
+                            group=spec.group,
+                            category="plugin",
+                            description=(
+                                f"Notebook Python process {spec.name}"
+                            ),
+                            implementation="python-runtime-process",
+                            required=False,
+                            enabled=spec.enabled,
+                        ),
+                        before=spec.before,
+                        after=spec.after,
+                        unsafe=True,
+                    )
+                    self._model_plans[name] = candidate
+                elif operation == "remove_python_process":
+                    candidate = self._model_plans[name].copy()
+                    candidate.remove(str(args[0]), unsafe=True)
+                    self._model_plans[name] = candidate
             if operation == "install_physics":
                 if not isinstance(result, Mapping):
                     raise TypeError(
@@ -357,6 +431,32 @@ class PoolLauncherActor:
                     raise RuntimeError(
                         "pooled delete_variable response lacks "
                         "deleted_variable metadata"
+                    ) from exc
+            if operation == "install_python_process":
+                if not isinstance(result, Mapping):
+                    raise TypeError(
+                        "pooled install_python_process returned a "
+                        "non-mapping result"
+                    )
+                try:
+                    return dict(result["installed_python_process"])
+                except (KeyError, TypeError) as exc:
+                    raise RuntimeError(
+                        "pooled install_python_process response lacks "
+                        "installed_python_process metadata"
+                    ) from exc
+            if operation == "remove_python_process":
+                if not isinstance(result, Mapping):
+                    raise TypeError(
+                        "pooled remove_python_process returned a "
+                        "non-mapping result"
+                    )
+                try:
+                    return dict(result["removed_python_process"])
+                except (KeyError, TypeError) as exc:
+                    raise RuntimeError(
+                        "pooled remove_python_process response lacks "
+                        "removed_python_process metadata"
                     ) from exc
             return result
 
@@ -488,13 +588,13 @@ class PoolLauncherActor:
                                     **kwargs,
                                 ),
                             )
-                        except BaseException as exc:
+                        except BaseException:
                             outcomes[token] = (
                                 "error",
-                                f"{type(exc).__name__}: {exc}",
+                                traceback.format_exc(),
                             )
-        except BaseException as exc:
-            message = f"{type(exc).__name__}: {exc}"
+        except BaseException:
+            message = traceback.format_exc()
             outcomes.update(
                 (token, ("error", message))
                 for token, *_rest in batch
@@ -576,11 +676,13 @@ class PoolLauncherActor:
     def _install_model_plan(
         self, name: str, candidate: CCPPSuitePlan
     ) -> None:
-        self._session.call(
+        result = self._session.call(
             name,
             "configure_scheme_plan",
             plan=candidate.to_payload(),
         )
+        if isinstance(result, Mapping):
+            self._model_details.setdefault(name, {}).update(result)
         self._model_plans[name] = candidate
 
     def _describe_model(self, name: str) -> dict[str, Any]:
@@ -718,6 +820,19 @@ class PoolLauncherActor:
                     action.name,
                     unsafe=plan.unsafe,
                 )
+            elif isinstance(action, InstallPythonProcess):
+                result = self.model_call(
+                    name,
+                    "install_python_process",
+                    action.process,
+                    unsafe=plan.unsafe,
+                )
+            elif isinstance(action, RemovePythonProcess):
+                result = self.model_call(
+                    name,
+                    "remove_python_process",
+                    action.name,
+                )
             elif isinstance(action, ObserveFields):
                 result = {
                     field: self.model_call(
@@ -801,6 +916,72 @@ class PoolLauncherActor:
                         f"state field already exists: {action.spec.name!r}"
                     )
                 fields.add(action.spec.name)
+            elif isinstance(action, InstallPythonProcess):
+                if not plan.unsafe:
+                    raise ValueError(
+                        "install_python_process actions require "
+                        "SegmentPlan(unsafe=True)"
+                    )
+                spec = action.process
+                if spec.group not in scheme_plan.group_names:
+                    raise ValueError(
+                        f"unknown scheme group {spec.group!r}"
+                    )
+                if spec.before is not None:
+                    scheme_plan.scheme(spec.before, group=spec.group)
+                if spec.after is not None:
+                    scheme_plan.scheme(spec.after, group=spec.group)
+                field_rows = (
+                    self._model_details.get(name, {}).get("fields", {})
+                )
+                available_ccpp = {
+                    str(row.get("ccpp_standard_name"))
+                    for row in field_rows.values()
+                    if row.get("ccpp_standard_name") is not None
+                }
+                unresolved: list[str] = []
+                for requested in (*spec.reads, *spec.writes):
+                    if requested.startswith("field:"):
+                        valid = requested.removeprefix("field:") in fields
+                    elif requested.startswith("ccpp:"):
+                        valid = (
+                            requested.removeprefix("ccpp:")
+                            in available_ccpp
+                        )
+                    else:
+                        valid = (
+                            requested in fields
+                            or requested in available_ccpp
+                        )
+                    if not valid:
+                        unresolved.append(requested)
+                if unresolved:
+                    raise ValueError(
+                        f"unknown Python process fields: "
+                        f"{sorted(unresolved)}"
+                    )
+                scheme_plan.add(
+                    SuiteScheme(
+                        name=spec.name,
+                        source_group=f"python:{spec.name}",
+                        occurrence=0,
+                        group=spec.group,
+                        category="plugin",
+                        implementation="python-runtime-process",
+                        required=False,
+                        enabled=spec.enabled,
+                    ),
+                    before=spec.before,
+                    after=spec.after,
+                    unsafe=True,
+                )
+            elif isinstance(action, RemovePythonProcess):
+                if not plan.unsafe:
+                    raise ValueError(
+                        "remove_python_process actions require "
+                        "SegmentPlan(unsafe=True)"
+                    )
+                scheme_plan.remove(action.name, unsafe=True)
 
     @staticmethod
     def _wire_payload(
@@ -868,6 +1049,16 @@ class PoolLauncherActor:
                 "name": str(args[0]),
                 "unsafe": bool(values.get("unsafe", False)),
             }
+        if operation == "install_python_process":
+            spec = args[0]
+            if not isinstance(spec, PythonProcessSpec):
+                spec = PythonProcessSpec.from_mapping(spec)
+            return operation, {
+                "process": spec.as_dict(),
+                "unsafe": bool(values.get("unsafe", False)),
+            }
+        if operation == "remove_python_process":
+            return operation, {"name": str(args[0])}
         if operation == "checkpoint":
             return "write_checkpoint", {"path": str(args[0])}
         if operation == "memory_checkpoint":
@@ -1249,6 +1440,57 @@ class PooledModelSession:
     def deactivate_physics(self, name: str, *, unsafe: bool = False) -> Any:
         return self._call("deactivate_physics", str(name), unsafe=bool(unsafe))
 
+    def install_python_process(
+        self,
+        function: Any,
+        *,
+        name: str | None = None,
+        group: str = "physics_before_coupler",
+        before: str | None = None,
+        after: str | None = None,
+        reads: Sequence[str] = (),
+        writes: Sequence[str] = (),
+        enabled: bool = True,
+        transactional: bool = True,
+        max_payload_bytes: int = 8 * 1024 * 1024,
+        unsafe: bool = False,
+        depends_on: Any = None,
+    ) -> Any:
+        spec = (
+            function
+            if isinstance(function, PythonProcessSpec)
+            else PythonProcessSpec.from_callable(
+                function,
+                name=name,
+                group=group,
+                before=before,
+                after=after,
+                reads=reads,
+                writes=writes,
+                enabled=enabled,
+                transactional=transactional,
+                max_payload_bytes=max_payload_bytes,
+            )
+        )
+        return self._call(
+            "install_python_process",
+            spec,
+            unsafe=bool(unsafe),
+            depends_on=depends_on,
+        )
+
+    def remove_python_process(
+        self,
+        name: str,
+        *,
+        depends_on: Any = None,
+    ) -> Any:
+        return self._call(
+            "remove_python_process",
+            str(name),
+            depends_on=depends_on,
+        )
+
     def set_scheme_enabled(
         self,
         name: str,
@@ -1339,6 +1581,18 @@ class PooledModelSession:
         self.actor_future = None
         return result
 
+    def clear_failed_tail(self, future: Any = None) -> None:
+        """Allow a new command after the caller has observed a failed Future."""
+
+        current = self._tail
+        if current is None:
+            return
+        if future is not None and current is not future:
+            return
+        status = str(getattr(current, "status", ""))
+        if future is None or status in {"error", "cancelled"}:
+            self._tail = None
+
     def _call(self, operation: str, *args: Any, **kwargs: Any) -> Any:
         if self._closed:
             raise RuntimeError("pooled model is closed")
@@ -1387,6 +1641,9 @@ class PooledModelSession:
             allow_other_workers=False,
         )
         self._tail = future
+        add_done_callback = getattr(future, "add_done_callback", None)
+        if callable(add_done_callback):
+            add_done_callback(self.clear_failed_tail)
         return future
 
 
@@ -1551,6 +1808,34 @@ class PersistentModelPool:
         if name in self._models and not self._models[name].submit._closed:
             raise ValueError(f"model {name!r} already exists in this pool")
         descriptor = dict(_wait(self.launcher.create_model(str(name), slot)))
+        model = self._attach_model(
+            str(name),
+            int(descriptor["slot_id"]),
+        )
+        self._models[str(name)] = model
+        return model
+
+    def restore(
+        self,
+        name: str,
+        checkpoint: str | Path,
+        *,
+        slot: int | None = None,
+    ) -> PooledModel:
+        """Restore a durable checkpoint into an idle pre-launched slot."""
+
+        self._ensure_open()
+        if name in self._models and not self._models[name].submit._closed:
+            raise ValueError(f"model {name!r} already exists in this pool")
+        descriptor = dict(
+            _wait(
+                self.launcher.restore_model(
+                    str(name),
+                    str(Path(checkpoint).resolve()),
+                    slot,
+                )
+            )
+        )
         model = self._attach_model(
             str(name),
             int(descriptor["slot_id"]),
