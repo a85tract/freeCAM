@@ -1,0 +1,81 @@
+schema_version: 1
+case_name: f.e13.F1850C5.ne16_g16.icesm131_ihesp.PI-atm.pycesm
+source_root: /glade/work/ruitong/iCESM1.3.1_PI_atm_pycesm
+compset: 1850_CAM50_CLM40%SP_CICE%PRES_DOCN%DOM_RTM_SGLC_SWAV
+resolution: ne16_g16
+world_size: 512
+calendar: NO_LEAP
+start_date: "0001-01-01"
+start_seconds: 0
+coupling_seconds: 1800
+stop_n: 50
+start_type: startup
+cpl_seq_option: CESM1_MOD_TIGHT
+aoflux_grid: ocn
+do_budgets: false
+orb_mode: fixed_year
+orbital_year: 1850
+run_dir: null
+
+components:
+  cpl:
+    kind: mct_driver
+    layout: {ntasks: 512, rootpe: 0, nthrds: 1, pstrid: 1}
+    coupling_seconds: 1800
+    library: /glade/work/ruitong/pycam-sima/build/cesm/pi_atm/libpycesm_cpl.so
+  atm:
+    kind: cam5_icesm
+    layout: {ntasks: 512, rootpe: 0, nthrds: 1, pstrid: 1}
+    coupling_seconds: 1800
+    library: /glade/work/ruitong/pycam-sima/build/cesm/pi_atm/libpycesm_atm.so
+  lnd:
+    kind: clm4_sp
+    layout: {ntasks: 256, rootpe: 0, nthrds: 1, pstrid: 1}
+    coupling_seconds: 1800
+    library: /glade/work/ruitong/pycam-sima/build/cesm/pi_atm/libpycesm_lnd.so
+  ice:
+    kind: cice4_prescribed
+    layout: {ntasks: 128, rootpe: 256, nthrds: 1, pstrid: 1}
+    coupling_seconds: 1800
+    library: /glade/work/ruitong/pycam-sima/build/cesm/pi_atm/libpycesm_ice.so
+  ocn:
+    kind: docn_dom
+    layout: {ntasks: 32, rootpe: 384, nthrds: 1, pstrid: 1}
+    coupling_seconds: 1800
+    library: /glade/work/ruitong/pycam-sima/build/cesm/pi_atm/libpycesm_ocn.so
+  rof:
+    kind: rtm
+    layout: {ntasks: 128, rootpe: 0, nthrds: 1, pstrid: 1}
+    coupling_seconds: 10800
+    library: /glade/work/ruitong/pycam-sima/build/cesm/pi_atm/libpycesm_rof.so
+  glc:
+    kind: stub_glc
+    layout: {ntasks: 1, rootpe: 0, nthrds: 1, pstrid: 1}
+    coupling_seconds: 1800
+    enabled: false
+    prognostic: false
+  wav:
+    kind: stub_wav
+    layout: {ntasks: 1, rootpe: 0, nthrds: 1, pstrid: 1}
+    coupling_seconds: 1800
+    enabled: false
+    prognostic: false
+
+mappings:
+  atm_domain_path: /glade/work/fengzhu/Projects/pyCESM/test_cases/PI/mappings
+  lnd_domain_path: /glade/work/fengzhu/Projects/pyCESM/test_cases/PI/mappings
+  ice_domain_path: /glade/work/fengzhu/Projects/pyCESM/test_cases/PI/mappings
+  ocn_domain_path: /glade/work/fengzhu/Projects/pyCESM/test_cases/PI/mappings
+  atm_domain_file: domain.lnd.ne16np4_gx1v6.231103.nc
+  lnd_domain_file: domain.lnd.ne16np4_gx1v6.231103.nc
+  ice_domain_file: domain.ocn.gx1v6.231103.nc
+  ocn_domain_file: domain.ocn.gx1v6.231103.nc
+  atm2ocn_fmapname: /glade/work/fengzhu/Projects/pyCESM/test_cases/PI/mappings/map_ne16np4_TO_gx1v6_aave.231103.nc
+  atm2ocn_smapname: /glade/work/fengzhu/Projects/pyCESM/test_cases/PI/mappings/map_ne16np4_TO_gx1v6_blin.231103.nc
+  atm2ocn_vmapname: /glade/work/fengzhu/Projects/pyCESM/test_cases/PI/mappings/map_ne16np4_TO_gx1v6_patc.231103.nc
+  ocn2atm_fmapname: /glade/work/fengzhu/Projects/pyCESM/test_cases/PI/mappings/map_gx1v6_TO_ne16np4_aave.231103.nc
+  ocn2atm_smapname: /glade/work/fengzhu/Projects/pyCESM/test_cases/PI/mappings/map_gx1v6_TO_ne16np4_aave.231103.nc
+  lnd2rof_fmapname: /glade/work/fengzhu/Projects/pyCESM/test_cases/PI/mappings/map_ne16np4_TO_r05_nomask_aave.231103.nc
+  rof2lnd_fmapname: /glade/work/fengzhu/Projects/pyCESM/test_cases/PI/mappings/map_r05_nomask_TO_ne16np4_aave.231103.nc
+  rof2ocn_fmapname: /glade/work/fengzhu/Projects/pyCESM/test_cases/PI/mappings/map_r05_nomask_TO_gx1v6_aave.231103.nc
+  rof2ocn_rmapname: /glade/work/fengzhu/Projects/pyCESM/test_cases/PI/mappings/map_r05_nomask_to_gx1v6_nnsm_e1000r300.231103.nc

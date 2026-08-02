@@ -1,0 +1,76 @@
+{
+  "mapping_root": "/glade/work/fengzhu/Projects/pyCESM/test_cases/PI/mappings",
+  "mapping_sha256": {
+    "/glade/work/fengzhu/Projects/pyCESM/test_cases/PI/mappings/domain.lnd.ne16np4_gx1v6.231103.nc": "79d27d6760534f9132e3ff6f263afd6feac29a5d83e56423c28fd9476a3a0701",
+    "/glade/work/fengzhu/Projects/pyCESM/test_cases/PI/mappings/domain.ocn.gx1v6.231103.nc": "96dc9d5848b3e4ea80ef71717817bb5bd18544795145dec9cf2962de2dcd5076",
+    "/glade/work/fengzhu/Projects/pyCESM/test_cases/PI/mappings/map_gx1v6_TO_ne16np4_aave.231103.nc": "1695d6393275530b6660f4c24da0d00a9721ef32ad1b9ee7e4bfabc5058d6eca",
+    "/glade/work/fengzhu/Projects/pyCESM/test_cases/PI/mappings/map_ne16np4_TO_gx1v6_aave.231103.nc": "c2bedfbabf6c25f1e76f8c7a7cb5241368cf6144be035ada47f54bf60ee2654c",
+    "/glade/work/fengzhu/Projects/pyCESM/test_cases/PI/mappings/map_ne16np4_TO_gx1v6_blin.231103.nc": "92d814b1bafd8b9f58af88d88e01f65c7a90207349f690936e728590bc86635d",
+    "/glade/work/fengzhu/Projects/pyCESM/test_cases/PI/mappings/map_ne16np4_TO_gx1v6_patc.231103.nc": "11cc368cf015f2373804bdf2c79c1f23661ac8329b0f57a0e24d555330ba3656",
+    "/glade/work/fengzhu/Projects/pyCESM/test_cases/PI/mappings/map_ne16np4_TO_r05_nomask_aave.231103.nc": "50fcb4940401618aaf364ab31ddf0bd78f95da285ebf4f0eaf3a899c9ecd670d",
+    "/glade/work/fengzhu/Projects/pyCESM/test_cases/PI/mappings/map_r05_nomask_TO_gx1v6_aave.231103.nc": "06789b8999ddfff812e95b4642385e5f03fedb66259154178c8db50d7ac795b0",
+    "/glade/work/fengzhu/Projects/pyCESM/test_cases/PI/mappings/map_r05_nomask_TO_ne16np4_aave.231103.nc": "59ca0c03043950d83f323d1793860a7cdb0ae7018a47a8c8e00374b2e08d629a",
+    "/glade/work/fengzhu/Projects/pyCESM/test_cases/PI/mappings/map_r05_nomask_to_gx1v6_nnsm_e1000r300.231103.nc": "bda1d41d130acc336fa20ca98dd014e585002a389aebce50ff3fb4cc274b7f4b"
+  },
+  "platform": "Linux-6.4.0-150600.23.53-default-x86_64-with-glibc2.38",
+  "python": "3.11.13",
+  "repositories": {
+    ".": {
+      "commit": "556ad1c112af6606299f8270ad6f8b9b16540332",
+      "tracked_changes": [],
+      "tracked_diff_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "cime": {
+      "commit": "5efeaca49e17a715a338b2d29fb16665c8175cc7",
+      "tracked_changes": [
+        "M config/cesm/machines/config_batch.xml",
+        " M config/cesm/machines/template.st_archive"
+      ],
+      "tracked_diff_sha256": "3dc0a49d713c5cfc2a1a36616f6c78a9a7de459d823fe9024fb73398fecde19e"
+    },
+    "components/cam": {
+      "commit": "09c8a19c463122fad488e6fd1bbc0fcd0f410130",
+      "tracked_changes": [],
+      "tracked_diff_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "components/cice": {
+      "commit": "8609c71127dba2e25ded6cf4f1eed6e6cd9c77e4",
+      "tracked_changes": [],
+      "tracked_diff_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "components/clm": {
+      "commit": "5cc5a9838a05739dc4b97e2fce247a30967b9527",
+      "tracked_changes": [
+        "M tools/clm4_0/interpinic/src/Depends",
+        " M tools/clm4_0/interpinic/src/Makefile.common",
+        " M tools/clm4_0/interpinic/src/fmain.o",
+        " M tools/clm4_0/interpinic/src/interpinic.mod",
+        " M tools/clm4_0/interpinic/src/interpinic.o",
+        " M tools/clm4_0/interpinic/src/shr_const_mod.mod",
+        " M tools/clm4_0/interpinic/src/shr_const_mod.o",
+        " M tools/clm4_0/interpinic/src/shr_kind_mod.mod",
+        " M tools/clm4_0/interpinic/src/shr_kind_mod.o",
+        " M tools/clm4_0/interpinic/src/shr_log_mod.mod",
+        " M tools/clm4_0/interpinic/src/shr_log_mod.o",
+        " M tools/clm4_0/interpinic/src/shr_sys_mod.mod",
+        " M tools/clm4_0/interpinic/src/shr_sys_mod.o"
+      ],
+      "tracked_diff_sha256": "638af57e3633f7454a01909b34d7c597a11dd5031097c2b9952bcd7ec4d330c1"
+    },
+    "components/pop": {
+      "commit": "dc1c67eb2bdbbcd4d54273a28c98e107316ee865",
+      "tracked_changes": [
+        "M bld/namelist_files/namelist_definition_pop.xml",
+        " M source/wiso_mod.F90"
+      ],
+      "tracked_diff_sha256": "cab59ef2cf53d6869d7519f261a3b0d5a00b7cf8c5df1b7d5a6d31405211e7d7"
+    },
+    "components/rtm": {
+      "commit": "6ea2553cbaaee27aa5f01cd8e673da97ff8e032b",
+      "tracked_changes": [],
+      "tracked_diff_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    }
+  },
+  "schema_version": 1,
+  "source_root": "/glade/work/ruitong/iCESM1.3.1_PI_atm_pycesm"
+}
