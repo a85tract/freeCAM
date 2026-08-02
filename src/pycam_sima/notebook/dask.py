@@ -40,6 +40,7 @@ from .pooled_dask import (
     PersistentModelPool,
     PersistentPoolActor,
     PooledDaskRequest,
+    PooledModel,
 )
 
 
@@ -128,6 +129,23 @@ def _coerce_plan(value: SegmentPlan | PlanBuilder) -> SegmentPlan:
     if isinstance(value, SegmentPlan):
         return value
     raise TypeError("plan must be SegmentPlan or PlanBuilder")
+
+
+class _ManagedSingleModel(PooledModel):
+    """One model handle that owns its hidden single-slot runtime."""
+
+    def __init__(
+        self,
+        model: PooledModel,
+        runtime: PersistentModelPool,
+    ) -> None:
+        super().__init__(model.submit)
+        self.runtime = runtime
+
+    def close(self) -> Any:
+        """Close the model and the single MPI runtime that owns it."""
+
+        return self.runtime.close()
 
 
 class DaskExperimentClient:
@@ -372,10 +390,90 @@ class DaskExperimentClient:
 
         return self.start_persistent(name, **kwargs).sync
 
-    def model(self, name: str, **kwargs: Any) -> BlockingModel:
-        """Open one persistent MPI model as a blocking context manager."""
+    def model(
+        self,
+        name: str,
+        *,
+        runtime_name: str | None = None,
+        **kwargs: Any,
+    ) -> PooledModel:
+        """Open one model in an automatically planned single-slot runtime.
 
-        return self.open_persistent(name, **kwargs)
+        This is the primary blocking Notebook API.  Resource planning, the
+        one-slot launcher, and its default retained-snapshot budget stay
+        internal.  Closing the returned handle also closes that runtime.
+        Use :meth:`open_persistent` for the legacy single-Actor path or
+        :meth:`pool` for explicit multi-model concurrency.
+        """
+
+        runtime = self.runtime(runtime_name or f"{name}-runtime", **kwargs)
+        try:
+            opened = runtime.model(str(name))
+        except BaseException:
+            runtime.close()
+            raise
+        return _ManagedSingleModel(opened, runtime)
+
+    def runtime(
+        self,
+        name: str = "cam-runtime",
+        *,
+        ranks_per_model: int | str | None = None,
+        memory_per_model: int | str = "auto",
+        placement: str = "auto",
+        dynamic_field_budget: int | str = "auto",
+        retained_snapshots: int = 1,
+        resource_plan: ResourcePlan | None = None,
+        available_nodes: int | None = None,
+        cpus_per_node: int | None = None,
+        memory_per_node: int | str | None = None,
+        reserve_fraction: float = 0.15,
+        worker: str | None = None,
+        launch_mode: str | None = None,
+        options: ModelOptions | None = None,
+        scheme_plan: CCPPSuitePlan | None = None,
+        startup_timeout: float = 900.0,
+        request_timeout: float = 600.0,
+        environ: Mapping[str, str] | None = None,
+        qstat_runner: Callable[..., Any] | None = None,
+        actor_layout: str = "model-per-worker",
+        worker_policy: str = "exclusive",
+    ) -> PersistentModelPool:
+        """Launch one persistent MPI runtime that permits one live model.
+
+        The returned coordinator supports sequential retained-state restores,
+        but it never preallocates extra live-model slots.  ``plan_pool()`` and
+        ``pool()`` remain available as advanced compatibility APIs.
+        """
+
+        if resource_plan is not None and resource_plan.model_slots != 1:
+            raise ValueError(
+                "single-model runtime requires resource_plan.model_slots == 1"
+            )
+        return self.pool(
+            str(name),
+            max_concurrent_models=1,
+            ranks_per_model=ranks_per_model,
+            memory_per_model=memory_per_model,
+            placement=placement,
+            dynamic_field_budget=dynamic_field_budget,
+            retained_snapshots=retained_snapshots,
+            resource_plan=resource_plan,
+            available_nodes=available_nodes,
+            cpus_per_node=cpus_per_node,
+            memory_per_node=memory_per_node,
+            reserve_fraction=reserve_fraction,
+            worker=worker,
+            launch_mode=launch_mode,
+            options=options,
+            scheme_plan=scheme_plan,
+            startup_timeout=startup_timeout,
+            request_timeout=request_timeout,
+            environ=environ,
+            qstat_runner=qstat_runner,
+            actor_layout=actor_layout,
+            worker_policy=worker_policy,
+        )
 
     def plan_pool(
         self,

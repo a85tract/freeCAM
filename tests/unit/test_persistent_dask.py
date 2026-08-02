@@ -531,7 +531,7 @@ def test_dask_client_pins_persistent_actor_and_returns_actor_futures(
         assert model.close().result()["closed"] is True
 
 
-def test_dask_client_opens_blocking_pythonic_persistent_model(
+def test_dask_client_keeps_legacy_blocking_persistent_model(
     tmp_path: Path,
 ) -> None:
     with Client(
@@ -545,7 +545,7 @@ def test_dask_client_opens_blocking_pythonic_persistent_model(
             persistent_actor_factory=_EchoPersistentActor,
             **_inputs(tmp_path),
         )
-        with experiments.model("blocking") as model:
+        with experiments.open_persistent("blocking") as model:
             assert isinstance(model, BlockingModel)
             assert model.status.mpi_launch_count == 1
             assert model.advance(steps=2) is model

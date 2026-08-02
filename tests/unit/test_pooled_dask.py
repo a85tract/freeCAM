@@ -888,6 +888,64 @@ def test_single_slot_handoff_reuses_live_model_without_snapshot(
         assert _FakePooledSession.launches == 1
 
 
+def test_model_hides_default_single_slot_runtime_planning(
+    tmp_path: Path,
+) -> None:
+    _FakePooledSession.launches = 0
+    with Client(
+        processes=False,
+        n_workers=2,
+        threads_per_worker=1,
+        dashboard_address=None,
+    ) as client:
+        experiments = DaskExperimentClient(
+            client,
+            pool_actor_factory=_fake_pool_actor,
+            **_inputs(tmp_path),
+        )
+
+        with experiments.model("base") as base:
+            assert base.runtime.resource_plan.model_slots == 1
+            assert base.runtime.resource_plan.retained_snapshots == 1
+            assert base.runtime.resource_plan.world_size == 2
+            assert base.advance(steps=2) is base
+            assert base.status.step == 2
+            assert base.runtime.status["mpi_launch_count"] == 1
+
+        assert base.runtime._closed
+        assert _FakePooledSession.launches == 1
+
+
+def test_single_model_runtime_rejects_multi_slot_resource_plan(
+    tmp_path: Path,
+) -> None:
+    with Client(
+        processes=False,
+        n_workers=3,
+        threads_per_worker=1,
+        dashboard_address=None,
+    ) as client:
+        experiments = DaskExperimentClient(
+            client,
+            pool_actor_factory=_fake_pool_actor,
+            **_inputs(tmp_path),
+        )
+        plan = experiments.plan_pool(
+            max_concurrent_models=2,
+            ranks_per_model=2,
+            retained_snapshots=1,
+            available_nodes=1,
+            cpus_per_node=8,
+            memory_per_node="128GB",
+        )
+
+        with pytest.raises(
+            ValueError,
+            match="resource_plan.model_slots == 1",
+        ):
+            experiments.runtime(resource_plan=plan)
+
+
 def test_single_slot_retained_state_restores_reusable_private_branches(
     tmp_path: Path,
 ) -> None:

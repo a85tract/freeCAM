@@ -621,59 +621,44 @@ The version-1 action vocabulary is `PrepareInitialStep`, `RunPhase`,
 `FieldEdit`, and `ObserveFields`. A plan is completely validated before its
 first action mutates model state.
 
-### Single-slot persistent model pool
+### Single-model persistent runtime
 
-The primary interactive path now keeps one model alive in one MPI slot. The
-launcher starts MPI once, a ModelActor controls the live slot, and later model
-handles either take ownership of the same StatePool or restore bytes retained
-on those same MPI ranks. The default no longer converts all available PBS
-capacity into idle model slots.
+The primary interactive path keeps one model alive in one MPI world. Resource
+planning is internal: `model()` inherits the configured MPI size, estimates
+memory, budgets one retained snapshot by default, starts MPI once, and closes
+the hidden runtime with the model context. Users do not need to call
+`plan_pool()` or specify `retained_snapshots=1` for the normal path.
 
 ```python
-client = Client(
-    processes=False,
-    n_workers=2,  # one launcher plus one live-model controller
-    threads_per_worker=1,
-)
-plan = experiments.plan_pool(
-    ranks_per_model=None,  # inherit ModelConfig.mpi_size
-    memory_per_model="auto",
-    retained_snapshots=1,
-)
-
-with experiments.pool("cam-pool", resource_plan=plan) as pool:
-    base = pool.model("base")
+with experiments.model("base") as base:
     base.advance(steps=5)
-
-    # One successor takes over the exact live Driver and arrays: no copy,
-    # serialization, initialization, or second MPI launch.
-    child = base.handoff("child")
-    child.advance(steps=5)
+    temperature = base.fields.air_temperature.stats(rank=0)
 ```
 
-With the default plan, `model_slots == 1` and `world_size ==
-ranks_per_model`. `handoff()` invalidates the old handle but preserves the
-same `CAMDriver`, StatePool arrays, pointer addresses, Fortran process state,
-plugins, Python callbacks, clock, and output path. `close()` retains its
-ordinary destructive meaning and finalizes the model.
+Internally, `model_slots == 1`, `world_size == ranks_per_model`, and
+`retained_snapshots == 1`. Pass `retained_snapshots=0` only when the runtime
+will never retain an in-memory continuation, or a larger value when several
+rank-local snapshots must coexist.
 
 To run several experiments sequentially from one base, retain an immutable
-snapshot on the MPI ranks themselves:
+snapshot on the MPI ranks themselves. This advanced lifecycle exposes the
+single-model runtime coordinator, but still performs no explicit planning:
 
 ```python
-base = pool.model("base")
-base.advance(steps=25)
-state = base.retain("after-step-25")
-base.close()
+with experiments.runtime("cam-runtime") as runtime:
+    base = runtime.model("base")
+    base.advance(steps=25)
+    state = base.retain("after-step-25")
+    base.close()
 
-with pool.restore_retained("control", state) as control:
-    control.advance(steps=25)
+    with runtime.restore_retained("control", state) as control:
+        control.advance(steps=25)
 
-with pool.restore_retained("warm", state) as warm:
-    warm.fields.air_temperature += 1.0
-    warm.advance(steps=25)
+    with runtime.restore_retained("warm", state) as warm:
+        warm.fields.air_temperature += 1.0
+        warm.advance(steps=25)
 
-state.close()
+    state.close()
 ```
 
 Each rank stores only its own `np.savez` bytes in its MPI worker process heap.
@@ -681,16 +666,17 @@ The launcher and Dask hold a small `RetainedModelState` containing the snapshot
 ID, source slot, step, rank count, byte count, and config hash. Restore reads
 rank-local bytes on the same rank; model data never passes through the socket,
 world rank 0, Dask, or disk. A retained snapshot is reusable until
-`state.close()` or `pool.close()`.
+`state.close()` or `runtime.close()`.
 
-`plan_pool()` reserves one snapshot by default and includes its estimated bytes
-plus the active StatePool and the 15 percent runtime reserve in memory
-planning. Set `retained_snapshots=0` when only zero-copy handoff is needed.
+The hidden planner includes the estimated snapshot bytes, active StatePool,
+dynamic-field budget, and 15 percent runtime reserve in its PBS memory request.
 
 Multi-model concurrency remains available explicitly:
 
 ```python
 plan = experiments.plan_pool(max_concurrent_models=4)
+with experiments.pool("parallel-models", resource_plan=plan) as pool:
+    ...
 ```
 
 This starts `4 * ranks_per_model` MPI ranks and preserves the existing
@@ -729,7 +715,7 @@ experiments = DaskExperimentClient(
     execution_mode="allocation",
 )
 
-with experiments.model("interactive") as model:
+with experiments.open_persistent("interactive") as model:
     started = model.status
     model.advance(steps=2)
     temperature = model.fields.air_temperature.get(rank=0)
@@ -740,7 +726,7 @@ assert started.mpi_launch_count == finished.mpi_launch_count == 1
 assert finished.step == started.step + 2
 ```
 
-`model()` is the blocking, context-manager-friendly Notebook API.
+`open_persistent()` is the blocking compatibility API for the legacy Actor.
 `model.status` returns a typed `ModelStatus`; `advance()` runs complete steps;
 attribute-style `fields`, `phases`, and `physics` handles expose the live
 StatePool and control graph; and `save()` returns typed checkpoint metadata.
@@ -756,7 +742,7 @@ Notebook-to-session ownership; it does not replace MPI or the IPC required to
 control processes that remain alive.
 
 This compatibility path remains available for existing code. Prefer the
-dynamic pool for new interactive and forked experiments. Use
+single-model runtime for new interactive work. Use
 `fork_models()` when a live base should become several independent,
 long-lived MPI models without checkpoint files:
 
@@ -765,7 +751,7 @@ control = experiments.plan("control")
 warm = experiments.plan("warm")
 warm.fields.edit("air_temperature", "add", 1.0)
 
-with experiments.model("base") as base:
+with experiments.open_persistent("base") as base:
     base.advance(steps=10)
     children = experiments.fork_models(
         base, (control, warm), close_parent=True
