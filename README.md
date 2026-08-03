@@ -54,8 +54,8 @@ Runnable examples are split by execution mode:
 - [`examples/try_dask_fanout.ipynb`](examples/try_dask_fanout.ipynb) submits a
   restartable Dask task graph for independent checkpoint branches.
 - [`examples/try_persistent_dask.ipynb`](examples/try_persistent_dask.ipynb)
-  keeps one Dask-managed MPI slot alive and demonstrates zero-copy handoff plus
-  reusable rank-local in-memory snapshots for sequential branches.
+  keeps one Dask-managed MPI model alive and demonstrates reusable rank-local
+  in-memory snapshots for sequential branches.
 
 ```text
 pycam_sima/
@@ -352,7 +352,8 @@ The all-rank hashes, artifact identities, and PBS result are recorded in
 A trusted Notebook function can be inserted directly into the live
 `SuitePlan`. `cloudpickle` freezes the function bytes once; the launcher sends
 the payload and SHA-256 over the authenticated control socket, MPI world rank
-0 broadcasts it, and every rank in the target slot installs the same callback.
+0 broadcasts it, and every rank in the persistent model installs the same
+callback.
 The callback executes against only that rank's StatePool arrays:
 
 ```python
@@ -684,10 +685,9 @@ rank-to-rank `fork()` path. The default `worker_policy="exclusive"` requires
 one launcher worker plus one ModelActor worker per live slot; use
 `worker_policy="shared"` only for small local tests.
 
-The maintained 24-rank validation runs a direct 50-step path, a
-25-step + zero-copy handoff + 25-step path, and two sequential restores from
-the same retained step-25 state: one continues to step 50 and one verifies an
-exact NumPy `+1 K` field edit.
+The maintained 24-rank validation runs a direct 50-step path and two
+sequential restores from the same retained step-25 state: one continues to
+step 50 and one verifies an exact NumPy `+1 K` field edit.
 
 ```bash
 qsub jobs/single_slot_retained_25x25_bfb.pbs
@@ -780,7 +780,7 @@ because one node cannot host several independent 24-rank MPI worlds.
 Choose the checkpoint segment API (`submit_base`, `submit_plan`, `fork`) when
 a boundary must survive worker/job failure or be resumed later. Choose
 `fork_models()` for fast in-memory fan-out while the Dask cluster remains
-alive. `model.save()` remains the explicit durable handoff.
+alive. `model.save()` remains the explicit durable checkpoint boundary.
 
 The default `execution_mode="pbs"` submits a PBS job for every segment. The
 single-allocation mode reserves one node once, starts the Dask scheduler and

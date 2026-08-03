@@ -513,27 +513,6 @@ class PooledWorkerSession(NotebookSession):
         self.describe()
         return dict(result)
 
-    def handoff_model(self, old_name: str, new_name: str) -> dict[str, Any]:
-        """Transfer one live slot to a new logical model name without copying."""
-
-        if new_name in self._models:
-            raise ValueError(f"pooled model already exists: {new_name!r}")
-        slot = self._model_slot(old_name)
-        result = self._request(
-            {
-                "op": "handoff_model",
-                "slot": slot,
-                "old_name": str(old_name),
-                "new_name": str(new_name),
-            }
-        )
-        paths = self._model_paths.pop(old_name)
-        self._models.pop(old_name)
-        self._models[new_name] = slot
-        self._model_paths[new_name] = paths
-        self.describe()
-        return dict(result)
-
     def retain_model(
         self,
         name: str,

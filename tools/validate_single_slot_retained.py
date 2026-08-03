@@ -1,4 +1,4 @@
-"""Validate one-slot handoff and rank-local retained-state continuation."""
+"""Validate single-model rank-local retained-state continuation."""
 
 from __future__ import annotations
 
@@ -147,23 +147,6 @@ def main() -> int:
                 continuous_status = continuous.status
                 continuous_snapshot = continuous.snapshot()
 
-            base_handoff = pool.model("handoff-base")
-            print(
-                "handoff path: "
-                f"{args.split_step} + {continuation} steps",
-                flush=True,
-            )
-            base_handoff.advance(steps=args.split_step)
-            handoff_state_bytes = pool.slots[0]["state_bytes"]
-            handoff_child = base_handoff.handoff("handoff-child")
-            handoff_status = handoff_child.status
-            if handoff_status.snapshot_transport != "zero-copy-handoff":
-                raise RuntimeError("handoff did not report zero-copy transport")
-            handoff_child.advance(steps=continuation)
-            handoff_snapshot = handoff_child.snapshot()
-            handoff_final = handoff_child.status
-            handoff_child.close()
-
             retained_base = pool.model("retained-base")
             print(
                 "retained path: "
@@ -204,14 +187,9 @@ def main() -> int:
             retained_after_drop = pool.retained_states
 
     print("comparing complete rank-local snapshots", flush=True)
-    handoff_equal, handoff_arrays, handoff_difference = _snapshots_equal(
-        continuous_snapshot, handoff_snapshot
-    )
     retained_equal, retained_arrays, retained_difference = _snapshots_equal(
         continuous_snapshot, retained_snapshot
     )
-    if not handoff_equal:
-        raise RuntimeError(f"handoff continuation differs: {handoff_difference}")
     if not retained_equal:
         raise RuntimeError(
             f"retained continuation differs: {retained_difference}"
@@ -225,7 +203,7 @@ def main() -> int:
 
     oracle = Path(args.oracle_history).resolve()
     history_results = {}
-    for name in ("continuous", "handoff-base", "retained-control"):
+    for name in ("continuous", "retained-control"):
         history = (
             run_root
             / "models"
@@ -233,16 +211,12 @@ def main() -> int:
             / name
             / "history"
         )
-        # Handoff preserves the base output path.
-        if name == "handoff-base":
-            expected = args.final_step + 1
-        else:
-            expected = (
-                args.final_step + 1
-                if name == "continuous"
-                else continuation + 1
-            )
-        if name in {"continuous", "handoff-base"}:
+        expected = (
+            args.final_step + 1
+            if name == "continuous"
+            else continuation + 1
+        )
+        if name == "continuous":
             compare_history_directories(
                 oracle,
                 history,
@@ -268,15 +242,6 @@ def main() -> int:
             "nested_qsub": 0,
             "pool_mpi_launch_id": pool_status["pool_mpi_launch_id"],
         },
-        "handoff": {
-            "split_step": args.split_step,
-            "final_step": handoff_final.step,
-            "transport": handoff_status.snapshot_transport,
-            "state_bytes": handoff_state_bytes,
-            "bitwise_identical": handoff_equal,
-            "arrays_compared": handoff_arrays,
-            "first_difference": handoff_difference,
-        },
         "retained": {
             **retained_descriptor,
             "idle_slot_state_bytes": idle_with_snapshot["state_bytes"],
@@ -298,7 +263,6 @@ def main() -> int:
         "completion_marker": (
             "PYCAM_SIMA_SINGLE_SLOT_RETAINED_BFB "
             f"job={os.environ['PBS_JOBID']} world=1x24 "
-            f"handoff_arrays={handoff_arrays} "
             f"retained_arrays={retained_arrays}"
         ),
     }

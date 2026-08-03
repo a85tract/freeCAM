@@ -264,16 +264,6 @@ class _FakePooledSession:
             },
         }
 
-    def handoff_model(self, old_name: str, new_name: str) -> dict[str, Any]:
-        model = self.models.pop(old_name)
-        slot = int(model["slot"])
-        self.models[new_name] = model
-        self.slot_names[slot] = new_name
-        return {
-            **self._status(new_name),
-            "snapshot_transport": "zero-copy-handoff",
-        }
-
     def retain_model(
         self,
         name: str,
@@ -843,49 +833,6 @@ def test_shared_worker_policy_keeps_new_actor_layout_available(
             with pool.model("base") as base:
                 assert base.worker == pool.worker
                 assert base.submit.advance(steps=1).result()["step"] == 1
-
-
-def test_single_slot_handoff_reuses_live_model_without_snapshot(
-    tmp_path: Path,
-) -> None:
-    _FakePooledSession.launches = 0
-    with Client(
-        processes=False,
-        n_workers=2,
-        threads_per_worker=1,
-        dashboard_address=None,
-    ) as client:
-        experiments = DaskExperimentClient(
-            client,
-            pool_actor_factory=_fake_pool_actor,
-            **_inputs(tmp_path),
-        )
-        plan = experiments.plan_pool(
-            ranks_per_model=2,
-            retained_snapshots=1,
-            available_nodes=1,
-            cpus_per_node=8,
-            memory_per_node="128GB",
-        )
-        assert plan.model_slots == 1
-        with experiments.pool("handoff", resource_plan=plan) as pool:
-            base = pool.model("base")
-            base.advance(steps=5)
-            before = base.fields.air_temperature.get(rank=0)
-
-            child = base.handoff("child")
-
-            assert base.submit._closed
-            assert child.slot_id == 0
-            assert child.status.snapshot_transport == "zero-copy-handoff"
-            assert np.array_equal(
-                child.fields.air_temperature.get(rank=0), before
-            )
-            child.advance(steps=1)
-            assert child.status.step == 6
-            assert pool.status["mpi_launch_count"] == 1
-
-        assert _FakePooledSession.launches == 1
 
 
 def test_model_hides_default_single_slot_runtime_planning(

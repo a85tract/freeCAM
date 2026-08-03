@@ -240,7 +240,7 @@ def test_pool_accepts_prebuilt_python_process_wire_commands(
     ]
 
 
-def test_pool_session_handoff_and_retention_use_control_only_messages(
+def test_pool_session_retention_uses_control_only_messages(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     session = _session(tmp_path)
@@ -252,17 +252,11 @@ def test_pool_session_handoff_and_retention_use_control_only_messages(
 
     def request(payload):
         requests.append(payload)
-        if payload["op"] == "handoff_model":
-            return {
-                "slot_id": 2,
-                "model_name": "continued",
-                "snapshot_transport": "zero-copy-handoff",
-            }
         if payload["op"] == "retain_model":
             return {
                 "snapshot_id": "snapshot-1",
                 "label": "step-five",
-                "source_model": "continued",
+                "source_model": "base",
                 "source_slot": 2,
                 "step": 5,
                 "rank_count": 3,
@@ -279,30 +273,22 @@ def test_pool_session_handoff_and_retention_use_control_only_messages(
     monkeypatch.setattr(session, "_request", request)
     monkeypatch.setattr(session, "describe", lambda: {"slots": ()})
 
-    handoff = session.handoff_model("base", "continued")
     retained = session.retain_model(
-        "continued",
+        "base",
         snapshot_id="snapshot-1",
         label="step-five",
     )
     dropped = session.drop_retained("snapshot-1")
 
-    assert handoff["snapshot_transport"] == "zero-copy-handoff"
     assert retained["nbytes"] == 4096
     assert dropped["snapshot_id"] == "snapshot-1"
-    assert session._models == {"continued": 2}
+    assert session._models == {"base": 2}
     assert session.retained_states == ()
     assert requests == [
         {
-            "op": "handoff_model",
-            "slot": 2,
-            "old_name": "base",
-            "new_name": "continued",
-        },
-        {
             "op": "retain_model",
             "slot": 2,
-            "name": "continued",
+            "name": "base",
             "snapshot_id": "snapshot-1",
             "label": "step-five",
         },

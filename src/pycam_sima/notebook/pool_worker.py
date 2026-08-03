@@ -662,48 +662,6 @@ def _drop_retained(
     return {"status": "ok", "result": result} if world.rank == 0 else None
 
 
-def _handoff_model(
-    world: Any,
-    slot: SlotRuntime,
-    request: Mapping[str, Any],
-) -> dict[str, Any] | None:
-    """Rename one live model without touching its driver or array storage."""
-
-    target = int(request["slot"])
-    old_name = str(request["old_name"])
-    new_name = str(request["new_name"])
-    failure: str | None = None
-    if slot.slot_id == target:
-        try:
-            driver = slot.require_model(old_name)
-            slot.comm.Barrier()
-            slot.model_name = new_name
-        except BaseException:
-            failure = _traceback()
-    failures = _world_failures(world, failure)
-    if failures:
-        if slot.slot_id == target and slot.model_name == new_name:
-            slot.model_name = old_name
-        return (
-            {"status": "error", "error": "\n".join(failures)}
-            if world.rank == 0
-            else None
-        )
-    local = None
-    if slot.slot_id == target and slot.slot_rank == 0:
-        local = {
-            **_runtime_status(driver),
-            "slot_id": target,
-            "model_name": new_name,
-            "snapshot_transport": "zero-copy-handoff",
-            "fields": model_field_metadata(driver.pool),
-            "phase_names": driver.phase_names,
-            "scheme_names": driver.scheme_names,
-        }
-    result = _leader_result(world, slot, local)
-    return {"status": "ok", "result": result} if world.rank == 0 else None
-
-
 def _run_model_commands(
     world: Any,
     slot: SlotRuntime,
@@ -995,8 +953,6 @@ def serve_pool(args: argparse.Namespace, *, world: Any | None = None) -> int:
                 response = _run_model_commands(world, slot, request["commands"])
             elif operation == "fork_model":
                 response = _fork_models(world, slot, request)
-            elif operation == "handoff_model":
-                response = _handoff_model(world, slot, request)
             elif operation == "retain_model":
                 response = _retain_model(world, slot, request)
             elif operation == "restore_retained":

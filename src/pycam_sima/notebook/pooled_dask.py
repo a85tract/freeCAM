@@ -359,29 +359,6 @@ class PoolLauncherActor:
             self._model_plans[name] = CCPPSuitePlan.from_payload(plan_payload)
             return result
 
-    def handoff_model(
-        self, old_name: str, new_name: str
-    ) -> Mapping[str, Any]:
-        """Atomically transfer a live driver to a new logical model name."""
-
-        with self._guard:
-            self._ensure_open()
-            self._validate_model_name(old_name)
-            self._validate_model_name(new_name)
-            if new_name in self._model_plans:
-                raise ValueError(f"pooled model already exists: {new_name!r}")
-            result = dict(self._session.handoff_model(old_name, new_name))
-            self._model_plans[new_name] = self._model_plans.pop(old_name)
-            details = self._model_details.pop(old_name)
-            self._model_details[new_name] = {
-                **details,
-                **result,
-                "name": new_name,
-                "model_name": new_name,
-                "snapshot_transport": "zero-copy-handoff",
-            }
-            return result
-
     def retain_model(self, name: str, label: str) -> Mapping[str, Any]:
         """Retain rank-local snapshot bytes and return only their descriptor."""
 
@@ -1849,11 +1826,6 @@ class PooledModel(BlockingModel):
             depends_on=depends_on,
         )
 
-    def handoff(self, name: str) -> "PooledModel":
-        """Transfer this live driver and StatePool to a new model handle."""
-
-        return self.pool._handoff(self, str(name))
-
     def retain(self, label: str) -> RetainedModelState:
         """Keep an immutable snapshot on the model's own MPI ranks."""
 
@@ -2135,58 +2107,6 @@ class PersistentModelPool:
             raise
         self._models.update(models)
         return PooledModelGroup(self, models)
-
-    def _handoff(self, model: PooledModel, name: str) -> PooledModel:
-        self._ensure_open()
-        source = model.submit
-        if source._closed:
-            raise RuntimeError(f"pooled model {model.name!r} is closed")
-        if not _SAFE_NAME.fullmatch(name):
-            raise ValueError(
-                "model name may contain only letters, digits, dot, dash, "
-                "and underscore"
-            )
-        if name in self._models and not self._models[name].submit._closed:
-            raise ValueError(f"model {name!r} already exists in this pool")
-        if source._tail is not None:
-            _wait(source._tail)
-        old_name = model.name
-        descriptor = dict(
-            _wait(self.launcher.handoff_model(old_name, name))
-        )
-        try:
-            child = self._attach_model(
-                name,
-                int(descriptor["slot_id"]),
-                close_on_failure=False,
-            )
-        except BaseException:
-            _wait(self.launcher.handoff_model(name, old_name))
-            raise
-        if (
-            self.actor_layout != "legacy-single-worker"
-            and source.actor is not None
-        ):
-            try:
-                _wait(source.actor.detach())
-            except BaseException:
-                # The MPI slot has already been renamed and the replacement
-                # Actor exists.  Detach that replacement first, then restore
-                # the launcher/session mapping so the original handle remains
-                # the sole owner of the unchanged live arrays.
-                if child.submit.actor is not None:
-                    try:
-                        _wait(child.submit.actor.detach())
-                    except BaseException:
-                        pass
-                child.submit._closed = True
-                self._release_model_actor(name)
-                _wait(self.launcher.handoff_model(name, old_name))
-                raise
-        source._closed = True
-        self._release_model_actor(old_name)
-        self._models[name] = child
-        return child
 
     def _retain(
         self, model: PooledModel, label: str
