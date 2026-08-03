@@ -357,9 +357,9 @@ callback.
 The callback executes against only that rank's StatePool arrays:
 
 ```python
-def custom_heating(fields, context):
+def custom_heating(fields, context, *, increment):
     temperature = fields["air_temperature"]
-    temperature[...] += 0.01 * context.timestep_seconds
+    temperature[...] += increment
 
 process = model.physics.install_python(
     custom_heating,
@@ -368,9 +368,12 @@ process = model.physics.install_python(
     after="kessler",
     reads=(),
     writes=("air_temperature",),
+    parameters={"increment": 1.0},
 )
 
-process.run()      # only this process; model time does not advance
+process.run()                # uses the persistent increment=1.0
+process.run(increment=2.0)   # one-call override; the default stays 1.0
+process.parameters["increment"] = 0.5  # persistent update
 process.disable()  # complete steps now skip it
 process.enable()
 model.advance(steps=1)
@@ -383,19 +386,25 @@ boundary; use `field:<canonical-or-alias>` or `ccpp:<standard-name>` to make a
 collision explicit. `reads` are non-owning read-only NumPy views. `writes` are
 non-owning writable views, so values can change in place but storage, shape,
 and dtype cannot be replaced. Access to an undeclared name fails immediately.
-The context is immutable and contains rank, slot-communicator size, model
+Custom parameters are keyword-only function arguments. Their defaults are
+declared with `parameters={...}`, must be small JSON-compatible values, and
+are validated collectively on all ranks. Persistent updates made through
+`process.parameters` are included in retain/fork and checkpoint/restart;
+per-call values passed to `process.run(...)` are not persisted. Large arrays
+belong in StatePool fields rather than parameters.
+The context is immutable and contains rank, model-communicator size, model
 step, timestep, date, calendar, process name, and group; it intentionally does
 not expose an MPI communicator. Each invocation reconstructs the callable
 from the frozen payload, so mutable closure state is not persistent; durable
 process state belongs in explicitly declared StatePool fields.
 Callbacks must not create or call MPI collectives themselves: framework-owned
 collectives define the safe process boundary, and an unmatched user
-collective can deadlock the complete slot.
+collective can deadlock the complete model.
 
 By default, every rank copies only the declared `writes` before the call. If
 one rank fails or returns a non-`None` value, all ranks restore those fields
 and report rank-indexed tracebacks. `transactional=False` requires an explicit
-`unsafe=True`; a failure then marks the slot failed. Payloads default to an
+`unsafe=True`; a failure then marks the model failed. Payloads default to an
 8-MiB limit so large arrays must live in StatePool instead of a closure.
 `cloudpickle` is trusted-code serialization, not a sandbox, and imported
 packages must exist in every MPI rank's Python environment.
@@ -408,10 +417,16 @@ installed = model.submit.install_python_process(
     name="custom_heating",
     after="kessler",
     writes=("air_temperature",),
+    parameters={"increment": 1.0},
+)
+updated = model.submit.set_python_process_parameters(
+    "custom_heating",
+    {"increment": 0.5},
+    depends_on=installed,
 )
 observed = model.submit.fields.physics_air_temperature.stats(
     rank=0,
-    depends_on=installed,
+    depends_on=updated,
 )
 ```
 

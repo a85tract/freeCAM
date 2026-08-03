@@ -13,6 +13,7 @@ from pycam_sima import (
     PlanBuilder,
     PhysicsCollection,
     PhysicsPluginSpec,
+    SegmentPlan,
 )
 
 
@@ -103,9 +104,7 @@ class _Owner:
         group: str | None,
         unsafe: bool,
     ) -> Any:
-        self.calls.append(
-            ("set_scheme_enabled", name, enabled, group, unsafe)
-        )
+        self.calls.append(("set_scheme_enabled", name, enabled, group, unsafe))
         return self._return({"enabled": enabled})
 
     def move_scheme(self, name: str, **kwargs: Any) -> Any:
@@ -199,9 +198,7 @@ def test_fields_delete_and_remove_use_collective_owner_operation() -> None:
     owner = _Owner()
     fields = FieldCollection(owner)
 
-    assert fields.delete("experiment_tracer") == {
-        "name": "experiment_tracer"
-    }
+    assert fields.delete("experiment_tracer") == {"name": "experiment_tracer"}
     assert fields.remove("second_tracer") == {"name": "second_tracer"}
     assert owner.calls[-2:] == [
         ("delete_variable", "experiment_tracer"),
@@ -217,9 +214,7 @@ def test_field_reference_reads_writes_and_computes_local_stats() -> None:
     fields["air_temperature"].set(values + 1.0, rank=0)
     stats = fields["air_temperature"].stats(rank=0)
 
-    assert np.array_equal(
-        owner.values["air_temperature"], values + 1.0
-    )
+    assert np.array_equal(owner.values["air_temperature"], values + 1.0)
     assert stats["shape"] == (2, 3)
     assert stats["mean"] == 3.5
     assert np.array_equal(
@@ -263,9 +258,7 @@ def test_physics_install_infers_process_and_hides_protocol_objects(
 
 def test_scheme_reference_uses_short_group_names() -> None:
     owner = _Owner()
-    scheme = PhysicsCollection(owner).scheme(
-        "my_microphysics", group="before"
-    )
+    scheme = PhysicsCollection(owner).scheme("my_microphysics", group="before")
 
     scheme.run()
     scheme.disable()
@@ -310,9 +303,7 @@ def test_phase_reference_runs_named_phase_and_prepare_boundary() -> None:
     owner = _Owner()
     phases = PhaseCollection(owner)
 
-    assert phases["dynamics_to_physics"].run() == {
-        "last_phase": "dynamics_to_physics"
-    }
+    assert phases["dynamics_to_physics"].run() == {"last_phase": "dynamics_to_physics"}
     assert phases.prepare() == {"prepared": True}
     assert owner.calls == [
         ("run_phase", "dynamics_to_physics"),
@@ -361,6 +352,25 @@ def test_plan_builder_compiles_pythonic_calls_to_serializable_actions(
         "pver",
     ]
     assert payload["actions"][2]["group"] == "physics_before_coupler"
+
+
+def test_plan_builder_serializes_python_process_parameters() -> None:
+    def heating(fields, context, *, increment):
+        del fields, context, increment
+
+    plan = PlanBuilder("parameterized", experimental=True)
+    plan.physics.install_python(
+        heating,
+        name="heating",
+        writes=("air_temperature",),
+        parameters={"increment": 1.0},
+    )
+    plan.physics.scheme("heating", group="before").run(increment=2.0)
+
+    payload = plan.as_dict()
+    assert payload["actions"][0]["process"]["parameters"] == {"increment": 1.0}
+    assert payload["actions"][1]["parameters"] == {"increment": 2.0}
+    assert SegmentPlan.from_mapping(payload).as_dict() == payload
 
 
 def test_blocking_model_waits_while_submit_keeps_futures() -> None:

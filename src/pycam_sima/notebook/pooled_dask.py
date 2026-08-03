@@ -100,8 +100,7 @@ class PooledDaskRequest:
             raise ValueError("resource plan must contain positive ranks and slots")
         if world != ranks * slots:
             raise ValueError(
-                "resource plan world_size must equal "
-                "ranks_per_model * model_slots"
+                "resource plan world_size must equal " "ranks_per_model * model_slots"
             )
         if self.launch_mode not in {"auto", "local", "pbs"}:
             raise ValueError("launch_mode must be auto, local, or pbs")
@@ -189,8 +188,7 @@ class PoolLauncherActor:
         self._closed = False
         self._mpi_launch_count = 0
         self._mpi_launch_id = (
-            f"{request.name}-{socket.gethostname()}-{os.getpid()}-"
-            f"{time.time_ns()}"
+            f"{request.name}-{socket.gethostname()}-{os.getpid()}-" f"{time.time_ns()}"
         )
         self._model_plans: dict[str, CCPPSuitePlan] = {}
         self._model_details: dict[str, dict[str, Any]] = {}
@@ -353,9 +351,7 @@ class PoolLauncherActor:
             self._model_details[name] = details
             plan_payload = details.get("scheme_status", {}).get("plan")
             if not isinstance(plan_payload, Mapping):
-                raise RuntimeError(
-                    "restored model did not report its suite plan"
-                )
+                raise RuntimeError("restored model did not report its suite plan")
             self._model_plans[name] = CCPPSuitePlan.from_payload(plan_payload)
             return result
 
@@ -378,9 +374,7 @@ class PoolLauncherActor:
             self._retained_states[snapshot_id] = result
             return result
 
-    def restore_retained(
-        self, name: str, snapshot_id: str
-    ) -> Mapping[str, Any]:
+    def restore_retained(self, name: str, snapshot_id: str) -> Mapping[str, Any]:
         """Restore a reusable rank-local snapshot into its original slot."""
 
         with self._guard:
@@ -389,9 +383,7 @@ class PoolLauncherActor:
             if name in self._model_plans:
                 raise ValueError(f"pooled model already exists: {name!r}")
             if str(snapshot_id) not in self._retained_states:
-                raise KeyError(
-                    f"unknown retained snapshot: {snapshot_id!r}"
-                )
+                raise KeyError(f"unknown retained snapshot: {snapshot_id!r}")
             root = Path(self._request.run_root) / self._request.name / name
             result = dict(
                 self._session.restore_retained(
@@ -411,9 +403,7 @@ class PoolLauncherActor:
             try:
                 plan_payload = details.get("scheme_status", {}).get("plan")
                 if not isinstance(plan_payload, Mapping):
-                    raise RuntimeError(
-                        "retained restore did not report its suite plan"
-                    )
+                    raise RuntimeError("retained restore did not report its suite plan")
                 plan = CCPPSuitePlan.from_payload(plan_payload)
             except BaseException:
                 # The MPI restore already occupied the slot.  If its compact
@@ -433,9 +423,7 @@ class PoolLauncherActor:
         with self._guard:
             self._ensure_open()
             if str(snapshot_id) not in self._retained_states:
-                raise KeyError(
-                    f"unknown retained snapshot: {snapshot_id!r}"
-                )
+                raise KeyError(f"unknown retained snapshot: {snapshot_id!r}")
             result = dict(self._session.drop_retained(str(snapshot_id)))
             self._retained_states.pop(str(snapshot_id), None)
             return result
@@ -470,9 +458,7 @@ class PoolLauncherActor:
                 group = args[0] if args else None
                 return self._model_plans[name].describe(group)
             if operation == "reset_scheme_plan":
-                candidate = CCPPSuitePlan.from_payload(
-                    self._request.scheme_plan
-                )
+                candidate = CCPPSuitePlan.from_payload(self._request.scheme_plan)
                 self._install_model_plan(name, candidate)
                 return candidate.describe()
             if operation == "set_scheme_enabled":
@@ -512,9 +498,7 @@ class PoolLauncherActor:
                     / f"checkpoint-{time.time_ns()}"
                 )
                 args = (target,)
-            wire_operation, payload = self._wire_payload(
-                operation, args, kwargs
-            )
+            wire_operation, payload = self._wire_payload(operation, args, kwargs)
             result = self._session.call(name, wire_operation, **payload)
             if isinstance(result, Mapping):
                 self._model_details.setdefault(name, {}).update(result)
@@ -524,9 +508,7 @@ class PoolLauncherActor:
                     else None
                 )
                 if isinstance(plan_payload, Mapping):
-                    self._model_plans[name] = CCPPSuitePlan.from_payload(
-                        plan_payload
-                    )
+                    self._model_plans[name] = CCPPSuitePlan.from_payload(plan_payload)
                 elif operation == "install_python_process":
                     spec = args[0]
                     if not isinstance(spec, PythonProcessSpec):
@@ -539,9 +521,7 @@ class PoolLauncherActor:
                             occurrence=0,
                             group=spec.group,
                             category="plugin",
-                            description=(
-                                f"Notebook Python process {spec.name}"
-                            ),
+                            description=(f"Notebook Python process {spec.name}"),
                             implementation="python-runtime-process",
                             required=False,
                             enabled=spec.enabled,
@@ -582,8 +562,7 @@ class PoolLauncherActor:
             if operation == "install_python_process":
                 if not isinstance(result, Mapping):
                     raise TypeError(
-                        "pooled install_python_process returned a "
-                        "non-mapping result"
+                        "pooled install_python_process returned a " "non-mapping result"
                     )
                 try:
                     return dict(result["installed_python_process"])
@@ -595,8 +574,7 @@ class PoolLauncherActor:
             if operation == "remove_python_process":
                 if not isinstance(result, Mapping):
                     raise TypeError(
-                        "pooled remove_python_process returned a "
-                        "non-mapping result"
+                        "pooled remove_python_process returned a " "non-mapping result"
                     )
                 try:
                     return dict(result["removed_python_process"])
@@ -604,6 +582,19 @@ class PoolLauncherActor:
                     raise RuntimeError(
                         "pooled remove_python_process response lacks "
                         "removed_python_process metadata"
+                    ) from exc
+            if operation == "set_python_process_parameters":
+                if not isinstance(result, Mapping):
+                    raise TypeError(
+                        "pooled set_python_process_parameters returned a "
+                        "non-mapping result"
+                    )
+                try:
+                    return dict(result["updated_python_process"])
+                except (KeyError, TypeError) as exc:
+                    raise RuntimeError(
+                        "pooled set_python_process_parameters response lacks "
+                        "updated_python_process metadata"
                     ) from exc
             return result
 
@@ -665,9 +656,7 @@ class PoolLauncherActor:
             return [first]
         selected = [first]
         names = {first[1]}
-        retained: deque[
-            tuple[int, str, str, tuple[Any, ...], dict[str, Any]]
-        ] = deque()
+        retained: deque[tuple[int, str, str, tuple[Any, ...], dict[str, Any]]] = deque()
         while self._command_queue:
             item = self._command_queue.popleft()
             if item[2] not in self._batchable_operations():
@@ -702,9 +691,7 @@ class PoolLauncherActor:
 
     def _execute_command_batch(
         self,
-        batch: Sequence[
-            tuple[int, str, str, tuple[Any, ...], dict[str, Any]]
-        ],
+        batch: Sequence[tuple[int, str, str, tuple[Any, ...], dict[str, Any]]],
     ) -> None:
         outcomes: dict[int, tuple[str, Any]] = {}
         try:
@@ -719,9 +706,7 @@ class PoolLauncherActor:
                     for token, name, _operation, _args, _kwargs in batch:
                         value = results[name]
                         if isinstance(value, Mapping):
-                            self._model_details.setdefault(name, {}).update(
-                                value
-                            )
+                            self._model_details.setdefault(name, {}).update(value)
                         outcomes[token] = ("done", value)
                 else:
                     for token, name, operation, args, kwargs in batch:
@@ -742,10 +727,7 @@ class PoolLauncherActor:
                             )
         except BaseException:
             message = traceback.format_exc()
-            outcomes.update(
-                (token, ("error", message))
-                for token, *_rest in batch
-            )
+            outcomes.update((token, ("error", message)) for token, *_rest in batch)
         with self._command_condition:
             self._command_results.update(outcomes)
             self._command_condition.notify_all()
@@ -821,9 +803,7 @@ class PoolLauncherActor:
                 "and underscore"
             )
 
-    def _install_model_plan(
-        self, name: str, candidate: CCPPSuitePlan
-    ) -> None:
+    def _install_model_plan(self, name: str, candidate: CCPPSuitePlan) -> None:
         result = self._session.call(
             name,
             "configure_scheme_plan",
@@ -837,11 +817,7 @@ class PoolLauncherActor:
         pool_status = dict(self._session.describe())
         slots = tuple(pool_status.get("slots", self._session.slots))
         slot = next(
-            (
-                dict(item)
-                for item in slots
-                if item.get("model_name") == name
-            ),
+            (dict(item) for item in slots if item.get("model_name") == name),
             None,
         )
         if slot is None:
@@ -866,22 +842,15 @@ class PoolLauncherActor:
             "pbs_job_id": getattr(self._session, "job_id", None),
             "outer_pbs_job_id": os.environ.get("PBS_JOBID"),
             "field_count": len(fields),
-            "snapshot_transport": details.get(
-                "snapshot_transport", "initialization"
-            ),
+            "snapshot_transport": details.get("snapshot_transport", "initialization"),
             "log_path": str(
-                Path(self._request.log_dir)
-                / f"pycam_pool_{self._request.name}.log"
+                Path(self._request.log_dir) / f"pycam_pool_{self._request.name}.log"
             ),
             "phase_names": tuple(details.get("phase_names", ())),
             "scheme_names": tuple(details.get("scheme_names", ())),
             "scheme_status": details.get(
                 "scheme_status",
-                {
-                    "sequence_safe": self._model_plans[
-                        name
-                    ].sequence_safe
-                },
+                {"sequence_safe": self._model_plans[name].sequence_safe},
             ),
         }
 
@@ -891,9 +860,7 @@ class PoolLauncherActor:
         value: SegmentPlan | Mapping[str, Any],
     ) -> dict[str, Any]:
         plan = (
-            value
-            if isinstance(value, SegmentPlan)
-            else SegmentPlan.from_mapping(value)
+            value if isinstance(value, SegmentPlan) else SegmentPlan.from_mapping(value)
         )
         self._validate_plan(name, plan)
         trace: list[dict[str, Any]] = []
@@ -903,9 +870,10 @@ class PoolLauncherActor:
             elif isinstance(action, RunPhase):
                 result = self.model_call(name, "run_phase", action.name)
             elif isinstance(action, RunScheme):
-                result = self.model_call(
-                    name, "run_scheme", action.name, group=action.group
-                )
+                run_kwargs: dict[str, Any] = {"group": action.group}
+                if action.parameters is not None:
+                    run_kwargs["parameters"] = action.parameters
+                result = self.model_call(name, "run_scheme", action.name, **run_kwargs)
             elif isinstance(action, RunSchemeGroup):
                 result = self.model_call(name, "run_scheme_group", action.group)
             elif isinstance(action, RunSteps):
@@ -983,15 +951,11 @@ class PoolLauncherActor:
                 )
             elif isinstance(action, ObserveFields):
                 result = {
-                    field: self.model_call(
-                        name, "get_field_stats", field, rank="all"
-                    )
+                    field: self.model_call(name, "get_field_stats", field, rank="all")
                     for field in action.fields
                 }
             else:
-                raise TypeError(
-                    f"unsupported pooled action {type(action).__name__}"
-                )
+                raise TypeError(f"unsupported pooled action {type(action).__name__}")
             trace.append(
                 {
                     "index": index,
@@ -1030,8 +994,7 @@ class PoolLauncherActor:
                     raise ValueError(f"unknown scheme group {action.group!r}")
                 if not plan.unsafe:
                     raise ValueError(
-                        "run_scheme_group actions require "
-                        "SegmentPlan(unsafe=True)"
+                        "run_scheme_group actions require " "SegmentPlan(unsafe=True)"
                     )
             elif isinstance(action, SetSchemeEnabled):
                 scheme_plan.scheme(action.name, group=action.group)
@@ -1055,9 +1018,7 @@ class PoolLauncherActor:
             elif isinstance(action, ObserveFields):
                 unknown = set(action.fields) - fields
                 if unknown:
-                    raise ValueError(
-                        f"unknown state fields: {sorted(unknown)}"
-                    )
+                    raise ValueError(f"unknown state fields: {sorted(unknown)}")
             elif isinstance(action, DefineVariable):
                 if action.spec.name in fields:
                     raise ValueError(
@@ -1072,16 +1033,12 @@ class PoolLauncherActor:
                     )
                 spec = action.process
                 if spec.group not in scheme_plan.group_names:
-                    raise ValueError(
-                        f"unknown scheme group {spec.group!r}"
-                    )
+                    raise ValueError(f"unknown scheme group {spec.group!r}")
                 if spec.before is not None:
                     scheme_plan.scheme(spec.before, group=spec.group)
                 if spec.after is not None:
                     scheme_plan.scheme(spec.after, group=spec.group)
-                field_rows = (
-                    self._model_details.get(name, {}).get("fields", {})
-                )
+                field_rows = self._model_details.get(name, {}).get("fields", {})
                 available_ccpp = {
                     str(row.get("ccpp_standard_name"))
                     for row in field_rows.values()
@@ -1092,21 +1049,14 @@ class PoolLauncherActor:
                     if requested.startswith("field:"):
                         valid = requested.removeprefix("field:") in fields
                     elif requested.startswith("ccpp:"):
-                        valid = (
-                            requested.removeprefix("ccpp:")
-                            in available_ccpp
-                        )
+                        valid = requested.removeprefix("ccpp:") in available_ccpp
                     else:
-                        valid = (
-                            requested in fields
-                            or requested in available_ccpp
-                        )
+                        valid = requested in fields or requested in available_ccpp
                     if not valid:
                         unresolved.append(requested)
                 if unresolved:
                     raise ValueError(
-                        f"unknown Python process fields: "
-                        f"{sorted(unresolved)}"
+                        f"unknown Python process fields: " f"{sorted(unresolved)}"
                     )
                 scheme_plan.add(
                     SuiteScheme(
@@ -1143,10 +1093,13 @@ class PoolLauncherActor:
         if operation == "run_phase":
             return operation, {"phase": str(args[0])}
         if operation == "run_scheme":
-            return operation, {
+            payload = {
                 "scheme": str(args[0]),
                 "group": values.get("group"),
             }
+            if values.get("parameters") is not None:
+                payload["parameters"] = dict(values["parameters"])
+            return operation, payload
         if operation == "run_scheme_group":
             return operation, {"group": str(args[0])}
         if operation in {"get_field", "get_field_stats"}:
@@ -1172,9 +1125,7 @@ class PoolLauncherActor:
             spec = args[0]
             return operation, {
                 "spec": (
-                    spec.as_dict()
-                    if isinstance(spec, VariableSpec)
-                    else dict(spec)
+                    spec.as_dict() if isinstance(spec, VariableSpec) else dict(spec)
                 ),
                 "initial_value": values.get("initial", 0.0),
             }
@@ -1207,6 +1158,11 @@ class PoolLauncherActor:
             }
         if operation == "remove_python_process":
             return operation, {"name": str(args[0])}
+        if operation == "set_python_process_parameters":
+            return operation, {
+                "name": str(args[0]),
+                "parameters": dict(args[1]),
+            }
         if operation == "checkpoint":
             return "write_checkpoint", {"path": str(args[0])}
         if operation == "memory_checkpoint":
@@ -1292,11 +1248,7 @@ class ModelActor:
                 **dict(kwargs or {}),
             )
         )
-        return (
-            self._decorate_status(value)
-            if str(operation) == "describe"
-            else value
-        )
+        return self._decorate_status(value) if str(operation) == "describe" else value
 
     def _decorate_status(self, value: Any) -> dict[str, Any]:
         result = dict(value)
@@ -1489,6 +1441,7 @@ class PooledModelSession:
         name: str,
         *,
         group: str | None = None,
+        parameters: Mapping[str, Any] | None = None,
         unsafe: bool = False,
         depends_on: Any = None,
     ) -> Any:
@@ -1497,6 +1450,7 @@ class PooledModelSession:
             "run_scheme",
             str(name),
             group=group,
+            parameters=(None if parameters is None else dict(parameters)),
             depends_on=depends_on,
         )
 
@@ -1535,9 +1489,7 @@ class PooledModelSession:
         rank: int | str = 0,
         unsafe: bool = False,
     ) -> Any:
-        return self._call(
-            "set_field", str(name), value, rank=rank, unsafe=bool(unsafe)
-        )
+        return self._call("set_field", str(name), value, rank=rank, unsafe=bool(unsafe))
 
     def edit_field(
         self,
@@ -1598,9 +1550,11 @@ class PooledModelSession:
         after: str | None = None,
         reads: Sequence[str] = (),
         writes: Sequence[str] = (),
+        parameters: Mapping[str, Any] | None = None,
         enabled: bool = True,
         transactional: bool = True,
         max_payload_bytes: int = 8 * 1024 * 1024,
+        max_parameter_bytes: int = 64 * 1024,
         unsafe: bool = False,
         depends_on: Any = None,
     ) -> Any:
@@ -1615,9 +1569,11 @@ class PooledModelSession:
                 after=after,
                 reads=reads,
                 writes=writes,
+                parameters=parameters,
                 enabled=enabled,
                 transactional=transactional,
                 max_payload_bytes=max_payload_bytes,
+                max_parameter_bytes=max_parameter_bytes,
             )
         )
         return self._call(
@@ -1636,6 +1592,20 @@ class PooledModelSession:
         return self._call(
             "remove_python_process",
             str(name),
+            depends_on=depends_on,
+        )
+
+    def set_python_process_parameters(
+        self,
+        name: str,
+        parameters: Mapping[str, Any],
+        *,
+        depends_on: Any = None,
+    ) -> Any:
+        return self._call(
+            "set_python_process_parameters",
+            str(name),
+            dict(parameters),
             depends_on=depends_on,
         )
 
@@ -1704,9 +1674,7 @@ class PooledModelSession:
         depends_on: Any = None,
     ) -> "PooledModelGroup":
         dependencies = tuple(
-            value
-            for value in (self._tail, depends_on)
-            if value is not None
+            value for value in (self._tail, depends_on) if value is not None
         )
         return self.pool._fork(
             self.name,
@@ -1766,9 +1734,7 @@ class PooledModelSession:
         if self._closed:
             raise RuntimeError("pooled model is closed")
         dependencies = tuple(
-            value
-            for value in (self._tail, depends_on)
-            if value is not None
+            value for value in (self._tail, depends_on) if value is not None
         )
         dependency = (
             None
@@ -1948,9 +1914,7 @@ class PersistentModelPool:
     @property
     def retained_states(self) -> tuple[RetainedModelState, ...]:
         return tuple(
-            state
-            for state in self._retained_handles.values()
-            if not state.closed
+            state for state in self._retained_handles.values() if not state.closed
         )
 
     @property
@@ -2018,15 +1982,9 @@ class PersistentModelPool:
         if name in self._models and not self._models[name].submit._closed:
             raise ValueError(f"model {name!r} already exists in this pool")
         descriptor = dict(
-            _wait(
-                self.launcher.restore_retained(
-                    str(name), state.snapshot_id
-                )
-            )
+            _wait(self.launcher.restore_retained(str(name), state.snapshot_id))
         )
-        model = self._attach_model(
-            str(name), int(descriptor["slot_id"])
-        )
+        model = self._attach_model(str(name), int(descriptor["slot_id"]))
         self._models[str(name)] = model
         return model
 
@@ -2055,9 +2013,7 @@ class PersistentModelPool:
             names.append(name)
         if len(names) != len(set(names)):
             raise ValueError("advance models must be distinct")
-        return dict(
-            _wait(self.launcher.advance_models(tuple(names), int(steps)))
-        )
+        return dict(_wait(self.launcher.advance_models(tuple(names), int(steps))))
 
     def _fork(
         self,
@@ -2108,9 +2064,7 @@ class PersistentModelPool:
         self._models.update(models)
         return PooledModelGroup(self, models)
 
-    def _retain(
-        self, model: PooledModel, label: str
-    ) -> RetainedModelState:
+    def _retain(self, model: PooledModel, label: str) -> RetainedModelState:
         self._ensure_open()
         source = model.submit
         if source._closed:
@@ -2132,9 +2086,7 @@ class PersistentModelPool:
         if state.closed:
             raise RuntimeError("retained model state is closed")
 
-    def _drop_retained(
-        self, state: RetainedModelState
-    ) -> Mapping[str, Any]:
+    def _drop_retained(self, state: RetainedModelState) -> Mapping[str, Any]:
         self._ensure_open()
         self._validate_retained_state(state)
         result = dict(_wait(self.launcher.drop_retained(state.snapshot_id)))

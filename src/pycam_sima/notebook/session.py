@@ -465,17 +465,19 @@ class NotebookSession:
         scheme: str,
         *,
         group: str | None = None,
+        parameters: Mapping[str, Any] | None = None,
     ) -> Mapping[str, Any]:
         """Collectively run one scheme on all MPI ranks."""
 
         self._validate_started_options()
         selected = self._scheme_plan.scheme(scheme, group=group)
-        result = self._request(
-            {
-                "op": "run_scheme",
-                "scheme": selected.key,
-            }
-        )
+        request: dict[str, Any] = {
+            "op": "run_scheme",
+            "scheme": selected.key,
+        }
+        if parameters is not None:
+            request["parameters"] = dict(parameters)
+        result = self._request(request)
         self._update_runtime_status(result)
         return self.scheme_status
 
@@ -519,9 +521,7 @@ class NotebookSession:
         """Collectively delete an unused dynamic field on every rank."""
 
         self._validate_started_options()
-        result = self._request(
-            {"op": "delete_variable", "name": str(name)}
-        )
+        result = self._request({"op": "delete_variable", "name": str(name)})
         self._update_runtime_status(result)
         return dict(result["deleted_variable"])
 
@@ -550,9 +550,7 @@ class NotebookSession:
         self._update_runtime_status(result)
         return dict(result["installed_plugin"])
 
-    def activate_physics(
-        self, name: str, *, unsafe: bool = False
-    ) -> Mapping[str, Any]:
+    def activate_physics(self, name: str, *, unsafe: bool = False) -> Mapping[str, Any]:
         result = self._request(
             {
                 "op": "activate_physics",
@@ -601,11 +599,27 @@ class NotebookSession:
         """Collectively remove a Notebook Python callback."""
 
         self._validate_started_options()
-        result = self._request(
-            {"op": "remove_python_process", "name": str(name)}
-        )
+        result = self._request({"op": "remove_python_process", "name": str(name)})
         self._update_runtime_status(result)
         return dict(result["removed_python_process"])
+
+    def set_python_process_parameters(
+        self,
+        name: str,
+        parameters: Mapping[str, Any],
+    ) -> Mapping[str, Any]:
+        """Collectively update persistent callback keyword parameters."""
+
+        self._validate_started_options()
+        result = self._request(
+            {
+                "op": "set_python_process_parameters",
+                "name": str(name),
+                "parameters": dict(parameters),
+            }
+        )
+        self._update_runtime_status(result)
+        return dict(result["updated_python_process"])
 
     @property
     def physics_plugins(self) -> tuple[Mapping[str, Any], ...]:

@@ -113,9 +113,7 @@ class CAMDriver:
         capabilities: RuntimeCapabilities = CAM_SE_FVM_V1,
     ) -> None:
         self.config = (
-            ModelConfig.from_yaml(config)
-            if isinstance(config, (str, Path))
-            else config
+            ModelConfig.from_yaml(config) if isinstance(config, (str, Path)) else config
         )
         self.config.validate()
         self.capabilities = capabilities
@@ -170,13 +168,9 @@ class CAMDriver:
         self.backend = KernelBackend(kernel_library or default_library)
         self.backend.validate_specialization(self.config)
         self.device_catalog = DeviceCatalog.discover(project_root)
-        suite_processes = {
-            scheme.name for scheme in self.scheme_plan.schemes
-        }
+        suite_processes = {scheme.name for scheme in self.scheme_plan.schemes}
         self.alias_rules = model_alias_rules(self.config.constituent_names)
-        self.ccpp_aliases = model_ccpp_field_aliases(
-            self.config.constituent_names
-        )
+        self.ccpp_aliases = model_ccpp_field_aliases(self.config.constituent_names)
         self.state_schema = CCPPStateSchema.from_scheme_names(
             self.device_catalog,
             self.config.physics_suite,
@@ -193,15 +187,14 @@ class CAMDriver:
             devices=self.backend.devices,
             native_invoke=self.backend.run_phase,
             host_services=self.host_services,
-            host_handlers=cam_se_fvm_host_processes(
-                self.backend, self.comm
-            ),
+            host_handlers=cam_se_fvm_host_processes(self.backend, self.comm),
             runtime_processes=self.python_processes,
         )
-        initialized_contracts, generated_contracts = (
-            self.state_schema.pool_contract_groups(
-                provided_standard_names=self.ccpp_aliases
-            )
+        (
+            initialized_contracts,
+            generated_contracts,
+        ) = self.state_schema.pool_contract_groups(
+            provided_standard_names=self.ccpp_aliases
         )
         self.plugins = PhysicsPluginManager(self)
         self.fields = FieldCollection(self)
@@ -270,8 +263,7 @@ class CAMDriver:
         }
         if differences:
             raise StateTransitionError(
-                "restart configuration changes model-defining values: "
-                f"{differences}"
+                "restart configuration changes model-defining values: " f"{differences}"
             )
         restored = restore_driver(
             snapshot,
@@ -391,14 +383,19 @@ class CAMDriver:
 
         return self.python_processes.remove(name)
 
-    def deactivate_physics(
-        self, name: str, *, unsafe: bool = False
-    ) -> None:
+    def set_python_process_parameters(
+        self,
+        name: str,
+        parameters: dict[str, Any],
+    ) -> dict[str, Any]:
+        """Collectively update persistent callback keyword parameters."""
+
+        return self.python_processes.set_parameters(name, parameters)
+
+    def deactivate_physics(self, name: str, *, unsafe: bool = False) -> None:
         self.plugins.deactivate(name, unsafe=unsafe)
 
-    def activate_physics(
-        self, name: str, *, unsafe: bool = False
-    ) -> None:
+    def activate_physics(self, name: str, *, unsafe: bool = False) -> None:
         self.plugins.activate(name, unsafe=unsafe)
 
     def get_field(
@@ -466,7 +463,11 @@ class CAMDriver:
         return self
 
     def run_scheme(
-        self, name: str, *, group: str | None = None
+        self,
+        name: str,
+        *,
+        group: str | None = None,
+        parameters: dict[str, Any] | None = None,
     ) -> CAMDriver:
         """Run one CCPP scheme boundary against this rank's Python state."""
 
@@ -482,7 +483,22 @@ class CAMDriver:
         before = self.pool.pointer_records()
         self._native_call_depth += 1
         try:
-            self.processes.invoke(scheme, self.pool)
+            if parameters is None:
+                self.processes.invoke(scheme, self.pool)
+            elif self.python_processes.has_process(
+                scheme.name,
+                source_group=scheme.source_group,
+            ):
+                self.python_processes.invoke(
+                    scheme,
+                    self.pool,
+                    parameters=parameters,
+                )
+            else:
+                raise ValueError(
+                    "per-call parameters are supported only for installed "
+                    f"Python processes, not {scheme.name!r}"
+                )
             self.pool.assert_pointer_stability(before)
         finally:
             self._native_call_depth -= 1
@@ -492,8 +508,7 @@ class CAMDriver:
         if (
             self.config.history_core_boundary == "after_scheme"
             and execution_group == PHYSICS_BEFORE_COUPLER
-            and scheme.name
-            == str(self.config.history_core_scheme).strip().lower()
+            and scheme.name == str(self.config.history_core_scheme).strip().lower()
         ):
             self._capture_history_core()
         return self
@@ -526,8 +541,7 @@ class CAMDriver:
         }
         if phase not in valid:
             raise ValueError(
-                f"unknown CCPP lifecycle {phase!r}; choose from "
-                f"{sorted(valid)}"
+                f"unknown CCPP lifecycle {phase!r}; choose from " f"{sorted(valid)}"
             )
         if self.pool is None:
             raise StateTransitionError("model has not been initialized")
@@ -584,9 +598,7 @@ class CAMDriver:
         )
         self.backend.devices.initialize_constituent_registry(
             self.pool,
-            device_names=(
-                scheme.name for scheme in self.scheme_plan.schemes
-            ),
+            device_names=(scheme.name for scheme in self.scheme_plan.schemes),
             constituent_standard_names=suite_constituents,
         )
         self.run_suite_lifecycle("initialize")
@@ -634,18 +646,14 @@ class CAMDriver:
         ):
             raise StateTransitionError(f"step() from {self.state.value}")
 
-        self._prepare_after_coupler_boundary(
-            scheme_callback=scheme_callback
-        )
+        self._prepare_after_coupler_boundary(scheme_callback=scheme_callback)
         self._run_phases(
             ("physics_to_dynamics", "scale_physics_forcing"),
             callback=phase_callback,
         )
         for nsubstep in (1, 2):
             forcing_phase = (
-                "apply_cam_forcing_substep_2"
-                if nsubstep == 2
-                else "apply_cam_forcing"
+                "apply_cam_forcing_substep_2" if nsubstep == 2 else "apply_cam_forcing"
             )
             self.run_phase(forcing_phase)
             if phase_callback is not None:
@@ -691,9 +699,7 @@ class CAMDriver:
             PHYSICS_BEFORE_COUPLER, callback=scheme_callback
         )
         self._after_coupler_prepared = False
-        self._prepare_after_coupler_boundary(
-            scheme_callback=scheme_callback
-        )
+        self._prepare_after_coupler_boundary(scheme_callback=scheme_callback)
         self.state = DriverState.RUNNING
         return self
 
@@ -717,9 +723,7 @@ class CAMDriver:
             "suite": self.scheme_plan.name,
             "capabilities": self.capabilities.describe(),
             "state_schema": self.state_schema.report(),
-            "process_coverage": self.processes.describe(
-                self.scheme_plan.schemes
-            ),
+            "process_coverage": self.processes.describe(self.scheme_plan.schemes),
             "devices": self.backend.devices.describe(),
             "host_service_events": self.host_services.events(),
             "plugins": self.plugins.inventory(),
@@ -738,18 +742,14 @@ class CAMDriver:
             self.backend.devices.release_pool(self.pool)
         self.state = DriverState.FINALIZED
 
-    def snapshot(
-        self, *, allow_recreatable_process_state: bool = False
-    ):
+    def snapshot(self, *, allow_recreatable_process_state: bool = False):
         """Capture this rank's immutable state for a branch or checkpoint."""
 
         from .checkpoint import ModelSnapshot
 
         return ModelSnapshot.capture(
             self,
-            allow_recreatable_process_state=(
-                allow_recreatable_process_state
-            ),
+            allow_recreatable_process_state=(allow_recreatable_process_state),
         )
 
     def write_checkpoint(
@@ -765,9 +765,7 @@ class CAMDriver:
         return write_checkpoint(
             self,
             path,
-            allow_recreatable_process_state=(
-                allow_recreatable_process_state
-            ),
+            allow_recreatable_process_state=(allow_recreatable_process_state),
         )
 
     def _run_phases(
@@ -810,9 +808,7 @@ class CAMDriver:
         if self._after_coupler_prepared:
             return
         self._capture_history_core()
-        self._run_optional_scheme_group(
-            PHYSICS_AFTER_COUPLER, callback=scheme_callback
-        )
+        self._run_optional_scheme_group(PHYSICS_AFTER_COUPLER, callback=scheme_callback)
         if self.config.history_enabled:
             self.history.capture(
                 self.pool,
@@ -832,8 +828,7 @@ class CAMDriver:
         if not self.config.history_enabled or self._history_core_captured:
             return
         initial_musica = (
-            self.config.physics_suite.lower() == "musica"
-            and self.clock.nstep == 0
+            self.config.physics_suite.lower() == "musica" and self.clock.nstep == 0
         )
         self.history.capture(
             self.pool,
@@ -871,9 +866,7 @@ class CAMDriver:
             "scale_physics_forcing": lambda pool: scale_physics_forcing(
                 pool, self.backend
             ),
-            "apply_cam_forcing": lambda pool: apply_cam_forcing(
-                pool, self.backend
-            ),
+            "apply_cam_forcing": lambda pool: apply_cam_forcing(pool, self.backend),
             "apply_cam_forcing_substep_2": lambda pool: apply_cam_forcing(
                 pool, self.backend, nsubstep=2
             ),
@@ -909,9 +902,7 @@ class CAMDriver:
         except KeyError:
             pass
         current_calday = self.clock.fractional_calendar_day()
-        next_calday = self.clock.fractional_calendar_day(
-            self.clock.dt_seconds
-        )
+        next_calday = self.clock.fractional_calendar_day(self.clock.dt_seconds)
         for standard_name, value in (
             ("current_timestep_number", self.clock.nstep),
             (
@@ -945,9 +936,7 @@ class CAMDriver:
                 "musica_ccpp", {}
             ).get("filename_of_micm_configuration")
             if raw_configuration is None:
-                raise ValueError(
-                    "MUSICA requires filename_of_micm_configuration"
-                )
+                raise ValueError("MUSICA requires filename_of_micm_configuration")
             configuration = (
                 str(raw_configuration)
                 .replace("${PROJECT_ROOT}", str(project_root))
@@ -994,8 +983,7 @@ class CAMDriver:
             radiation_offset = int(
                 pool.get(
                     pool.ccpp_field_name(
-                        "number_of_seconds_until_next_shortwave_radiation_"
-                        "timestep"
+                        "number_of_seconds_until_next_shortwave_radiation_" "timestep"
                     )
                 ).item()
             )

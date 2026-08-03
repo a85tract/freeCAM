@@ -44,8 +44,7 @@ from pycam_sima.model.user_api import PhysicsCollection
 
 ROOT = Path(__file__).resolve().parents[2]
 KESSLER_SUITE = (
-    ROOT
-    / "external/CAM-SIMA/src/physics/ncar_ccpp/suites/suite_kessler.xml"
+    ROOT / "external/CAM-SIMA/src/physics/ncar_ccpp/suites/suite_kessler.xml"
 )
 
 
@@ -96,9 +95,15 @@ class _Driver:
     def remove_python_process(self, name):
         return self.python_processes.remove(name)
 
-    def run_scheme(self, name, *, group=None):
+    def set_python_process_parameters(self, name, parameters):
+        return self.python_processes.set_parameters(name, parameters)
+
+    def run_scheme(self, name, *, group=None, parameters=None):
         scheme = self.scheme_plan.scheme(name, group=group)
-        self.processes.invoke(scheme, self.pool)
+        if parameters is None:
+            self.processes.invoke(scheme, self.pool)
+        else:
+            self.python_processes.invoke(scheme, self.pool, parameters=parameters)
         self._last_scheme = scheme.key
         self._last_scheme_group = self.scheme_plan.execution_group(scheme.key)
         self._boundary_index += 1
@@ -172,9 +177,7 @@ def test_segment_plan_installs_runs_observes_and_removes_python_process(
         driver.pool.get("physics_air_temperature"),
         np.add(before, 1.0),
     )
-    assert trace[2]["observations"][0]["field"] == (
-        "physics_air_temperature"
-    )
+    assert trace[2]["observations"][0]["field"] == ("physics_air_temperature")
     assert not driver.python_processes.installed
 
 
@@ -182,11 +185,11 @@ def test_spec_rejects_bad_signature_and_large_capture() -> None:
     with pytest.raises(PythonProcessContractError, match="exactly"):
         PythonProcessSpec.from_callable(lambda fields: None, name="bad")
 
-    def extra_option(fields, context, *, scale=1.0):
+    def extra_positional(fields, context, scale=1.0):
         del fields, context, scale
 
     with pytest.raises(PythonProcessContractError, match="exactly"):
-        PythonProcessSpec.from_callable(extra_option, name="extra-option")
+        PythonProcessSpec.from_callable(extra_positional, name="extra-option")
 
     captured = b"x" * 2048
 
@@ -199,6 +202,72 @@ def test_spec_rejects_bad_signature_and_large_capture() -> None:
             oversized,
             name="oversized",
             max_payload_bytes=256,
+        )
+
+
+def test_keyword_parameters_support_defaults_updates_and_call_overrides(
+    tmp_path: Path,
+) -> None:
+    driver = _Driver(tmp_path)
+    values = driver.pool.get("physics_air_temperature")
+    values[...] = 240.0
+
+    def parameter_heating(fields, context, *, increment, scale=1.0):
+        del context
+        fields["air_temperature"][...] += increment * scale
+
+    process = driver.physics.install_python(
+        parameter_heating,
+        name="parameter_heating",
+        writes=("air_temperature",),
+        parameters={"increment": 1.0, "scale": 2.0},
+    )
+
+    assert dict(process.parameters) == {"increment": 1.0, "scale": 2.0}
+    process.run()
+    assert np.array_equal(values, np.full_like(values, 242.0))
+
+    process.run(increment=3.0)
+    assert np.array_equal(values, np.full_like(values, 248.0))
+    assert process.parameters["increment"] == 1.0
+
+    process.parameters["increment"] = 0.5
+    process.parameters.update(scale=4.0)
+    assert dict(process.parameters) == {"increment": 0.5, "scale": 4.0}
+    assert driver.python_processes.installed["parameter_heating"].spec.parameters == {
+        "increment": 0.5,
+        "scale": 4.0,
+    }
+    process.run()
+    assert np.array_equal(values, np.full_like(values, 250.0))
+
+    with pytest.raises(PythonProcessContractError, match="exactly"):
+        process.run(unknown=1.0)
+    with pytest.raises(TypeError, match="cannot be deleted"):
+        del process.parameters["increment"]
+
+
+def test_parameter_contract_rejects_missing_large_and_non_json_values() -> None:
+    def parameter_heating(fields, context, *, increment):
+        del fields, context, increment
+
+    with pytest.raises(PythonProcessContractError, match="exactly"):
+        PythonProcessSpec.from_callable(
+            parameter_heating,
+            name="missing-parameter",
+        )
+    with pytest.raises(PythonProcessContractError, match="unsupported type"):
+        PythonProcessSpec.from_callable(
+            parameter_heating,
+            name="array-parameter",
+            parameters={"increment": np.ones(2)},
+        )
+    with pytest.raises(PythonProcessContractError, match="limit"):
+        PythonProcessSpec.from_callable(
+            parameter_heating,
+            name="large-parameter",
+            parameters={"increment": "x" * 256},
+            max_parameter_bytes=64,
         )
 
 
@@ -253,8 +322,7 @@ def test_install_run_control_and_remove_python_process(tmp_path: Path) -> None:
     assert driver.scheme_plan.scheme("custom_heating").enabled
     process.move(before="kessler")
     names = tuple(
-        row["name"]
-        for row in driver.scheme_plan.describe("physics_before_coupler")
+        row["name"] for row in driver.scheme_plan.describe("physics_before_coupler")
     )
     assert names.index("custom_heating") < names.index("kessler")
     removed = driver.physics.remove_python("custom_heating")
@@ -333,9 +401,7 @@ def test_read_fields_are_read_only_and_undeclared_fields_are_hidden(
         name="undeclared",
         reads=("air_temperature",),
     )
-    with pytest.raises(
-        PythonProcessExecutionError, match="was not declared"
-    ):
+    with pytest.raises(PythonProcessExecutionError, match="was not declared"):
         hidden.run()
 
     def returns_value(fields, context):
@@ -367,9 +433,7 @@ def test_transactional_failure_restores_declared_writes(
         name="transactional_failure",
         writes=("air_temperature",),
     )
-    with pytest.raises(
-        PythonProcessExecutionError, match="were restored"
-    ):
+    with pytest.raises(PythonProcessExecutionError, match="were restored"):
         process.run()
     assert np.array_equal(values, np.full_like(values, 240.0))
 
@@ -407,21 +471,29 @@ def test_nontransactional_failure_taints_state(tmp_path: Path) -> None:
 
 def test_snapshot_preserves_python_process_inventory(tmp_path: Path) -> None:
     driver = _Driver(tmp_path)
+
+    def parameter_heating(fields, context, *, increment):
+        del context
+        fields["air_temperature"][...] += increment
+
     process = driver.physics.install_python(
-        _add_one,
+        parameter_heating,
         name="checkpoint_heating",
         after="kessler",
         writes=("air_temperature",),
+        parameters={"increment": 1.25},
     )
+    process.parameters["increment"] = 0.5
     process.disable()
 
-    snapshot = deserialize_snapshot(
-        *serialize_snapshot(ModelSnapshot.capture(driver))
-    )
+    snapshot = deserialize_snapshot(*serialize_snapshot(ModelSnapshot.capture(driver)))
     assert snapshot.python_process_inventory[0]["spec"]["name"] == (
         "checkpoint_heating"
     )
     assert snapshot.python_process_inventory[0]["spec"]["enabled"] is False
+    assert snapshot.python_process_inventory[0]["spec"]["parameters"] == {
+        "increment": 0.5
+    }
     assert snapshot.python_process_inventory[0]["placement"]["group"] == (
         "physics_before_coupler"
     )
@@ -429,16 +501,14 @@ def test_snapshot_preserves_python_process_inventory(tmp_path: Path) -> None:
     restored = _Driver(tmp_path / "restored")
     restored.pool = snapshot.new_pool()
     restored.scheme_plan = CCPPSuitePlan.from_payload(snapshot.scheme_plan)
-    restored.python_processes.restore_inventory(
-        snapshot.python_process_inventory
-    )
+    restored.python_processes.restore_inventory(snapshot.python_process_inventory)
     assert not restored.scheme_plan.scheme("checkpoint_heating").enabled
     restored.scheme_plan.enable("checkpoint_heating")
     before = restored.pool.get("physics_air_temperature").copy()
     restored.run_scheme("checkpoint_heating")
     assert np.array_equal(
         restored.pool.get("physics_air_temperature"),
-        np.add(before, 1.0),
+        np.add(before, 0.5),
     )
 
     checkpoint = write_checkpoint(driver, tmp_path / "disk-checkpoint")
@@ -451,6 +521,7 @@ def test_snapshot_preserves_python_process_inventory(tmp_path: Path) -> None:
     assert disk_spec["payload_hash"] == (
         snapshot.python_process_inventory[0]["spec"]["payload_hash"]
     )
+    assert disk_spec["parameters"] == {"increment": 0.5}
 
 
 def test_restore_rebinds_process_local_mpi_fields(tmp_path: Path) -> None:

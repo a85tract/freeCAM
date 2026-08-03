@@ -78,9 +78,7 @@ class PooledWorkerSession(NotebookSession):
         self.resource_plan = dict(resource_plan or {})
         if self.resource_plan:
             if int(self.resource_plan["world_size"]) != self.world_size:
-                raise ValueError(
-                    "resource plan world_size differs from pooled session"
-                )
+                raise ValueError("resource plan world_size differs from pooled session")
             if int(self.resource_plan["ranks_per_model"]) != self.ranks_per_model:
                 raise ValueError(
                     "resource plan ranks_per_model differs from pooled session"
@@ -90,13 +88,9 @@ class PooledWorkerSession(NotebookSession):
                     "resource plan model_slots differs from pooled session"
                 )
         source_config = (
-            config
-            if isinstance(config, ModelConfig)
-            else ModelConfig.from_yaml(config)
+            config if isinstance(config, ModelConfig) else ModelConfig.from_yaml(config)
         )
-        pooled_config = source_config.with_overrides(
-            mpi_size=self.ranks_per_model
-        )
+        pooled_config = source_config.with_overrides(mpi_size=self.ranks_per_model)
         control_dir = self.run_root / f".pool-control-{self.pool_name}"
         control_dir.mkdir(parents=True, exist_ok=True)
         placeholder = control_dir / "atm_in"
@@ -189,13 +183,7 @@ class PooledWorkerSession(NotebookSession):
             "--retained-snapshots",
             str(int(self.resource_plan.get("retained_snapshots", 0))),
             "--retained-snapshot-budget-bytes",
-            str(
-                int(
-                    self.resource_plan.get(
-                        "retained_snapshot_budget_bytes", 0
-                    )
-                )
-            ),
+            str(int(self.resource_plan.get("retained_snapshot_budget_bytes", 0))),
             "--config",
             str(self.config_path),
             "--library",
@@ -271,9 +259,7 @@ class PooledWorkerSession(NotebookSession):
             raise ValueError(f"pooled model already exists: {name!r}")
         status = self.describe()
         idle = [
-            int(item["slot_id"])
-            for item in status["slots"]
-            if item["state"] == "idle"
+            int(item["slot_id"]) for item in status["slots"] if item["state"] == "idle"
         ]
         if slot is None:
             if not idle:
@@ -298,9 +284,7 @@ class PooledWorkerSession(NotebookSession):
         self.describe()
         return dict(result)
 
-    def call(
-        self, model_name: str, op: str, *args: Any, **payload: Any
-    ) -> Any:
+    def call(self, model_name: str, op: str, *args: Any, **payload: Any) -> Any:
         slot = self._model_slot(model_name)
         if op in {"close", "close_pool", "restore_memory_checkpoint"}:
             raise ValueError(f"{op!r} is not a model command in pooled mode")
@@ -329,14 +313,10 @@ class PooledWorkerSession(NotebookSession):
             raise ValueError(f"pooled model already exists: {name!r}")
         checkpoint_path = Path(checkpoint).resolve()
         if not (checkpoint_path / "manifest.json").is_file():
-            raise FileNotFoundError(
-                f"checkpoint manifest is absent: {checkpoint_path}"
-            )
+            raise FileNotFoundError(f"checkpoint manifest is absent: {checkpoint_path}")
         status = self.describe()
         idle = [
-            int(item["slot_id"])
-            for item in status["slots"]
-            if item["state"] == "idle"
+            int(item["slot_id"]) for item in status["slots"] if item["state"] == "idle"
         ]
         if slot is None:
             if not idle:
@@ -382,9 +362,7 @@ class PooledWorkerSession(NotebookSession):
             raise ValueError("step count must be positive")
         return dict(self.call(name, "step", count=int(count)))
 
-    def advance_models(
-        self, names: Sequence[str], count: int = 1
-    ) -> dict[str, Any]:
+    def advance_models(self, names: Sequence[str], count: int = 1) -> dict[str, Any]:
         """Advance distinct slots concurrently with one controller command."""
 
         if int(count) < 0:
@@ -408,16 +386,11 @@ class PooledWorkerSession(NotebookSession):
             for name in selected
         ]
         by_slot = self._request({"op": "model_commands", "commands": commands})
-        return {
-            name: by_slot[str(self._model_slot(name))]
-            for name in selected
-        }
+        return {name: by_slot[str(self._model_slot(name))] for name in selected}
 
     def call_models(
         self,
-        calls: Sequence[
-            tuple[str, str, Sequence[Any], Mapping[str, Any]]
-        ],
+        calls: Sequence[tuple[str, str, Sequence[Any], Mapping[str, Any]]],
     ) -> dict[str, Any]:
         """Execute one command per distinct model in one MPI-world broadcast."""
 
@@ -439,10 +412,7 @@ class PooledWorkerSession(NotebookSession):
             for name, operation, args, kwargs in selected
         ]
         by_slot = self._request({"op": "model_commands", "commands": commands})
-        return {
-            name: by_slot[str(self._model_slot(name))]
-            for name in names
-        }
+        return {name: by_slot[str(self._model_slot(name))] for name in names}
 
     def fork_model(
         self,
@@ -455,9 +425,7 @@ class PooledWorkerSession(NotebookSession):
         parent_slot = self._model_slot(parent)
         status = self.describe()
         idle = [
-            int(item["slot_id"])
-            for item in status["slots"]
-            if item["state"] == "idle"
+            int(item["slot_id"]) for item in status["slots"] if item["state"] == "idle"
         ]
         if len(children) > len(idle):
             raise RuntimeError(
@@ -472,7 +440,9 @@ class PooledWorkerSession(NotebookSession):
         for value, slot in zip(children, idle):
             item = {"name": value} if isinstance(value, str) else dict(value)
             name = str(item["name"])
-            if name in self._models or any(record["name"] == name for record in records):
+            if name in self._models or any(
+                record["name"] == name for record in records
+            ):
                 raise ValueError(f"duplicate pooled model name: {name!r}")
             run_dir, history_dir = self._prepare_model_paths(
                 name,
@@ -505,9 +475,7 @@ class PooledWorkerSession(NotebookSession):
 
     def close_model(self, name: str) -> dict[str, Any]:
         slot = self._model_slot(name)
-        result = self._request(
-            {"op": "close_model", "slot": slot, "name": name}
-        )
+        result = self._request({"op": "close_model", "slot": slot, "name": name})
         self._models.pop(name, None)
         self._model_paths.pop(name, None)
         self.describe()
@@ -523,9 +491,7 @@ class PooledWorkerSession(NotebookSession):
         """Retain one immutable snapshot shard on every model rank."""
 
         if snapshot_id in self._retained_states:
-            raise ValueError(
-                f"retained snapshot already exists: {snapshot_id!r}"
-            )
+            raise ValueError(f"retained snapshot already exists: {snapshot_id!r}")
         slot = self._model_slot(name)
         result = dict(
             self._request(
@@ -557,18 +523,14 @@ class PooledWorkerSession(NotebookSession):
         try:
             retained = self._retained_states[str(snapshot_id)]
         except KeyError as exc:
-            raise KeyError(
-                f"unknown retained snapshot: {snapshot_id!r}"
-            ) from exc
+            raise KeyError(f"unknown retained snapshot: {snapshot_id!r}") from exc
         slot = int(retained["source_slot"])
         status = self.describe()
         selected = next(
             item for item in status["slots"] if int(item["slot_id"]) == slot
         )
         if selected["state"] != "idle":
-            raise RuntimeError(
-                f"retained snapshot source slot {slot} is not idle"
-            )
+            raise RuntimeError(f"retained snapshot source slot {slot} is not idle")
         selected_run, selected_history = self._prepare_model_paths(
             name, run_dir=run_dir, history_dir=history_dir
         )
@@ -593,9 +555,7 @@ class PooledWorkerSession(NotebookSession):
         try:
             retained = self._retained_states[str(snapshot_id)]
         except KeyError as exc:
-            raise KeyError(
-                f"unknown retained snapshot: {snapshot_id!r}"
-            ) from exc
+            raise KeyError(f"unknown retained snapshot: {snapshot_id!r}") from exc
         result = dict(
             self._request(
                 {
@@ -612,8 +572,7 @@ class PooledWorkerSession(NotebookSession):
     @property
     def retained_states(self) -> tuple[dict[str, Any], ...]:
         return tuple(
-            dict(self._retained_states[key])
-            for key in sorted(self._retained_states)
+            dict(self._retained_states[key]) for key in sorted(self._retained_states)
         )
 
     def close(self) -> None:
@@ -673,6 +632,7 @@ class PooledWorkerSession(NotebookSession):
             "deactivate_physics",
             "install_python_process",
             "remove_python_process",
+            "set_python_process_parameters",
             "write_checkpoint",
             "capture_memory_checkpoint",
             "edit_field",
@@ -703,6 +663,9 @@ class PooledWorkerSession(NotebookSession):
                 "scheme": str(args[0]),
                 "group": values.pop("group", None),
             }
+            parameters = values.pop("parameters", None)
+            if parameters is not None:
+                command["parameters"] = dict(parameters)
         elif operation == "run_scheme_group":
             command = {"op": operation, "group": str(args[0])}
         elif operation in {"get_field", "get_field_stats"}:
@@ -774,6 +737,12 @@ class PooledWorkerSession(NotebookSession):
                 "op": operation,
                 "name": str(args[0]),
             }
+        elif operation == "set_python_process_parameters":
+            command = {
+                "op": operation,
+                "name": str(args[0]),
+                "parameters": dict(args[1]),
+            }
         elif operation == "set_scheme_enabled":
             command = {
                 "op": operation,
@@ -817,9 +786,7 @@ class PooledWorkerSession(NotebookSession):
         else:
             raise ValueError(f"unknown pooled model operation: {operation!r}")
         if values:
-            raise TypeError(
-                f"unexpected arguments for {operation}: {sorted(values)}"
-            )
+            raise TypeError(f"unexpected arguments for {operation}: {sorted(values)}")
         command["model_name"] = model_name
         return command
 
@@ -847,7 +814,11 @@ class PooledWorkerSession(NotebookSession):
                 self.run_root / "atm_in",
             ]
             source = next(
-                (candidate for candidate in candidates if candidate and candidate.is_file()),
+                (
+                    candidate
+                    for candidate in candidates
+                    if candidate and candidate.is_file()
+                ),
                 None,
             )
             if source is None:

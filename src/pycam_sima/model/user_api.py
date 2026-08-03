@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-from collections.abc import Iterator, Mapping, Sequence
+from collections.abc import Iterator, Mapping, MutableMapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -30,6 +30,7 @@ from .experiment import (
     SetSchemeEnabled,
 )
 from .python_processes import (
+    DEFAULT_MAX_PARAMETER_BYTES,
     DEFAULT_MAX_PAYLOAD_BYTES,
     PythonProcessSpec,
 )
@@ -63,10 +64,7 @@ _GROUP_ALIASES = {
 def _dimensions(values: Sequence[str | int]) -> tuple[str, ...]:
     if isinstance(values, (str, bytes)):
         raise TypeError("dims must be a sequence, not one string")
-    return tuple(
-        _DIMENSION_ALIASES.get(str(value), str(value))
-        for value in values
-    )
+    return tuple(_DIMENSION_ALIASES.get(str(value), str(value)) for value in values)
 
 
 def _group(value: str | None) -> str | None:
@@ -137,9 +135,7 @@ class FieldReference:
     def _edit(self, operation: str, value: Any) -> "FieldReference":
         editor = getattr(self._fields.owner, "edit_field", None)
         if editor is None:
-            raise TypeError(
-                "this model does not support in-place field arithmetic"
-            )
+            raise TypeError("this model does not support in-place field arithmetic")
         editor(self.name, operation, value, unsafe=True)
         return self
 
@@ -222,9 +218,7 @@ class FieldCollection:
 
     remove = delete
 
-    def get(
-        self, name: str, *, rank: int | str | None = None
-    ) -> Any:
+    def get(self, name: str, *, rank: int | str | None = None) -> Any:
         return self[name].get(rank=rank)
 
     def set(
@@ -237,9 +231,7 @@ class FieldCollection:
     ) -> Any:
         return self[name].set(value, rank=rank, unsafe=unsafe)
 
-    def stats(
-        self, name: str, *, rank: int | str | None = None
-    ) -> Any:
+    def stats(self, name: str, *, rank: int | str | None = None) -> Any:
         return self[name].stats(rank=rank)
 
 
@@ -306,20 +298,17 @@ class SchemeReference:
     __call__ = run
 
     def enable(self) -> Any:
-        return self._physics._set_scheme_enabled(
-            self.name, True, group=self.group
-        )
+        return self._physics._set_scheme_enabled(self.name, True, group=self.group)
 
     def disable(self) -> Any:
-        return self._physics._set_scheme_enabled(
-            self.name, False, group=self.group
-        )
+        return self._physics._set_scheme_enabled(self.name, False, group=self.group)
 
     @property
     def enabled(self) -> bool:
         rows = self._physics.describe(self.group)
         matches = [
-            row for row in rows
+            row
+            for row in rows
             if row.get("name") == self.name or row.get("key") == self.name
         ]
         if len(matches) != 1:
@@ -331,9 +320,7 @@ class SchemeReference:
 
     @enabled.setter
     def enabled(self, value: bool) -> None:
-        self._physics._set_scheme_enabled(
-            self.name, bool(value), group=self.group
-        )
+        self._physics._set_scheme_enabled(self.name, bool(value), group=self.group)
 
     def move(
         self,
@@ -351,9 +338,7 @@ class SchemeReference:
         )
 
     def __repr__(self) -> str:
-        return (
-            f"SchemeReference({self.name!r}, group={self.group!r})"
-        )
+        return f"SchemeReference({self.name!r}, group={self.group!r})"
 
 
 class InstalledPythonProcess(SchemeReference):
@@ -366,6 +351,18 @@ class InstalledPythonProcess(SchemeReference):
     ) -> None:
         super().__init__(physics, spec.name, group=spec.group)
         self.spec = spec
+        self.parameters = PythonProcessParameterView(self)
+
+    def run(self, **parameters: Any) -> Any:
+        """Run once, optionally overriding parameters for this call only."""
+
+        return self._physics.run(
+            self.name,
+            group=self.group,
+            parameters=parameters or None,
+        )
+
+    __call__ = run
 
     @property
     def payload_hash(self) -> str:
@@ -383,14 +380,59 @@ class InstalledPythonProcess(SchemeReference):
     def transactional(self) -> bool:
         return self.spec.transactional
 
+    def set_parameters(self, **updates: Any) -> Any:
+        """Persistently update parameters used by later runs and full steps."""
+
+        if not updates:
+            return dict(self.spec.parameters or {})
+        result = self._physics.owner.set_python_process_parameters(
+            self.name,
+            updates,
+        )
+        self.spec = self.spec.with_parameters(updates)
+        return result
+
     def remove(self) -> Any:
         return self._physics.remove_python(self.name)
 
     def __repr__(self) -> str:
-        return (
-            f"InstalledPythonProcess({self.name!r}, "
-            f"group={self.group!r})"
+        return f"InstalledPythonProcess({self.name!r}, " f"group={self.group!r})"
+
+
+class PythonProcessParameterView(MutableMapping[str, Any]):
+    """Dict-like live view over an installed process's persistent parameters."""
+
+    def __init__(self, process: InstalledPythonProcess) -> None:
+        self._process = process
+
+    def __getitem__(self, key: str) -> Any:
+        try:
+            return dict(self._process.spec.parameters or {})[str(key)]
+        except KeyError:
+            raise KeyError(str(key)) from None
+
+    def __setitem__(self, key: str, value: Any) -> None:
+        self._process.set_parameters(**{str(key): value})
+
+    def __delitem__(self, key: str) -> None:
+        raise TypeError(
+            "Python process parameters cannot be deleted; reinstall the "
+            "process with the desired signature"
         )
+
+    def __iter__(self) -> Iterator[str]:
+        return iter(dict(self._process.spec.parameters or {}))
+
+    def __len__(self) -> int:
+        return len(dict(self._process.spec.parameters or {}))
+
+    def update(self, *args: Any, **kwargs: Any) -> None:
+        values = dict(*args, **kwargs)
+        if values:
+            self._process.set_parameters(**values)
+
+    def __repr__(self) -> str:
+        return repr(dict(self._process.spec.parameters or {}))
 
 
 class PhysicsCollection:
@@ -407,9 +449,7 @@ class PhysicsCollection:
             raise AttributeError(name)
         return self[name]
 
-    def scheme(
-        self, name: str, *, group: str | None = None
-    ) -> SchemeReference:
+    def scheme(self, name: str, *, group: str | None = None) -> SchemeReference:
         return SchemeReference(self, name, group=group)
 
     def install(
@@ -464,10 +504,12 @@ class PhysicsCollection:
         after: str | None = None,
         reads: Sequence[str] = (),
         writes: Sequence[str] = (),
+        parameters: Mapping[str, Any] | None = None,
         enabled: bool = True,
         transactional: bool = True,
         unsafe: bool = False,
         max_payload_bytes: int = DEFAULT_MAX_PAYLOAD_BYTES,
+        max_parameter_bytes: int = DEFAULT_MAX_PARAMETER_BYTES,
     ) -> InstalledPythonProcess:
         """Install a trusted Notebook callback into the live suite plan."""
 
@@ -479,9 +521,11 @@ class PhysicsCollection:
             after=after,
             reads=reads,
             writes=writes,
+            parameters=parameters,
             enabled=enabled,
             transactional=transactional,
             max_payload_bytes=max_payload_bytes,
+            max_parameter_bytes=max_parameter_bytes,
         )
         self.owner.install_python_process(
             spec,
@@ -499,8 +543,12 @@ class PhysicsCollection:
         name: str,
         *,
         group: str | None = None,
+        parameters: Mapping[str, Any] | None = None,
     ) -> Any:
-        return self.owner.run_scheme(str(name), group=_group(group))
+        kwargs: dict[str, Any] = {"group": _group(group)}
+        if parameters is not None:
+            kwargs["parameters"] = dict(parameters)
+        return self.owner.run_scheme(str(name), **kwargs)
 
     def activate(self, name: str) -> Any:
         return self.owner.activate_physics(str(name), unsafe=True)
@@ -541,9 +589,7 @@ class PhysicsCollection:
         plan = self.owner.scheme_plan
         if enabled:
             return plan.enable(str(name), group=_group(group))
-        return plan.disable(
-            str(name), group=_group(group), unsafe=True
-        )
+        return plan.disable(str(name), group=_group(group), unsafe=True)
 
     def _move_scheme(
         self,
@@ -639,9 +685,7 @@ class PlanFieldCollection:
             history=bool(history),
             writable=bool(writable),
         )
-        return self._plan._append(
-            DefineVariable(spec, initial_value=initial)
-        )
+        return self._plan._append(DefineVariable(spec, initial_value=initial))
 
     define = create
 
@@ -670,20 +714,18 @@ class PlanSchemeReference:
         self.name = str(name)
         self.group = _group(group)
 
-    def run(self) -> "PlanBuilder":
-        return self._plan._append(RunScheme(self.name, self.group))
+    def run(self, **parameters: Any) -> "PlanBuilder":
+        return self._plan._append(
+            RunScheme(self.name, self.group, parameters=parameters or None)
+        )
 
     __call__ = run
 
     def enable(self) -> "PlanBuilder":
-        return self._plan._append(
-            SetSchemeEnabled(self.name, True, self.group)
-        )
+        return self._plan._append(SetSchemeEnabled(self.name, True, self.group))
 
     def disable(self) -> "PlanBuilder":
-        return self._plan._append(
-            SetSchemeEnabled(self.name, False, self.group)
-        )
+        return self._plan._append(SetSchemeEnabled(self.name, False, self.group))
 
     def move(
         self,
@@ -714,9 +756,7 @@ class PlanPhysicsCollection:
             raise AttributeError(name)
         return self[name]
 
-    def scheme(
-        self, name: str, *, group: str | None = None
-    ) -> PlanSchemeReference:
+    def scheme(self, name: str, *, group: str | None = None) -> PlanSchemeReference:
         return PlanSchemeReference(self._plan, name, group=group)
 
     def group(self, name: str) -> "PlanBuilder":
@@ -766,9 +806,11 @@ class PlanPhysicsCollection:
         after: str | None = None,
         reads: Sequence[str] = (),
         writes: Sequence[str] = (),
+        parameters: Mapping[str, Any] | None = None,
         enabled: bool = True,
         transactional: bool = True,
         max_payload_bytes: int = DEFAULT_MAX_PAYLOAD_BYTES,
+        max_parameter_bytes: int = DEFAULT_MAX_PARAMETER_BYTES,
     ) -> "PlanBuilder":
         spec = PythonProcessSpec.from_callable(
             function,
@@ -778,9 +820,11 @@ class PlanPhysicsCollection:
             after=after,
             reads=reads,
             writes=writes,
+            parameters=parameters,
             enabled=enabled,
             transactional=transactional,
             max_payload_bytes=max_payload_bytes,
+            max_parameter_bytes=max_parameter_bytes,
         )
         return self._plan._append(InstallPythonProcess(spec))
 
@@ -970,9 +1014,7 @@ class BlockingModel:
 
         return _wait(self._model.memory_checkpoint())
 
-    def execute(
-        self, plan: SegmentPlan | PlanBuilder
-    ) -> Mapping[str, Any]:
+    def execute(self, plan: SegmentPlan | PlanBuilder) -> Mapping[str, Any]:
         """Execute a Pythonic plan against the same live StatePool."""
 
         compiled = plan.build() if isinstance(plan, PlanBuilder) else plan
@@ -999,9 +1041,7 @@ class BlockingModel:
             try:
                 return _wait(value(*args, **kwargs))
             except BaseException:
-                clear_failed_tail = getattr(
-                    self._model, "clear_failed_tail", None
-                )
+                clear_failed_tail = getattr(self._model, "clear_failed_tail", None)
                 if callable(clear_failed_tail):
                     clear_failed_tail()
                 raise
@@ -1086,17 +1126,20 @@ def _physics_plugin_spec(
     enabled: bool,
 ) -> PhysicsPluginSpec:
     if isinstance(source, PhysicsPluginSpec):
-        if any(
-            value is not None
-            for value in (
-                process,
-                name,
-                group,
-                before,
-                after,
-                project_root,
+        if (
+            any(
+                value is not None
+                for value in (
+                    process,
+                    name,
+                    group,
+                    before,
+                    after,
+                    project_root,
+                )
             )
-        ) or variables:
+            or variables
+        ):
             raise ValueError(
                 "a PhysicsPluginSpec cannot be combined with façade "
                 "installation options"
@@ -1104,10 +1147,10 @@ def _physics_plugin_spec(
         return source
 
     normalized_group = _group(group)
-    placement_requested = any(
-        value is not None
-        for value in (process, group, before, after)
-    ) or not enabled
+    placement_requested = (
+        any(value is not None for value in (process, group, before, after))
+        or not enabled
+    )
     placements: tuple[SchemePlacement, ...] = ()
     if placement_requested:
         selected_process = process or _infer_process(source, name)
@@ -1121,16 +1164,12 @@ def _physics_plugin_spec(
             ),
         )
     specs = tuple(
-        item
-        if isinstance(item, VariableSpec)
-        else VariableSpec.from_mapping(item)
+        item if isinstance(item, VariableSpec) else VariableSpec.from_mapping(item)
         for item in variables
     )
     return PhysicsPluginSpec(
         str(source),
-        project_root=(
-            None if project_root is None else str(Path(project_root))
-        ),
+        project_root=(None if project_root is None else str(Path(project_root))),
         name=name,
         placements=placements,
         variables=specs,
@@ -1146,8 +1185,7 @@ def _infer_process(
         if requested_name is not None:
             return requested_name
         raise ValueError(
-            "process= is required when the plugin descriptor is not "
-            "locally readable"
+            "process= is required when the plugin descriptor is not " "locally readable"
         )
     payload = (
         json.loads(path.read_text())

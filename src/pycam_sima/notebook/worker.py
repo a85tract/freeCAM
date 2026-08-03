@@ -34,11 +34,7 @@ def _error() -> str:
 
 
 def _runtime_status(driver: CAMDriver) -> dict[str, Any]:
-    communicator = (
-        int(driver.comm.py2f())
-        if hasattr(driver.comm, "py2f")
-        else 0
-    )
+    communicator = int(driver.comm.py2f()) if hasattr(driver.comm, "py2f") else 0
     return {
         "step": driver.clock.nstep,
         "native_nstep": driver.clock.nstep,
@@ -67,6 +63,7 @@ def _local_command(request: dict[str, Any], driver: CAMDriver, comm: Any) -> Any
         driver.run_scheme(
             str(request["scheme"]),
             group=(None if request.get("group") is None else str(request["group"])),
+            parameters=request.get("parameters"),
         )
         return _runtime_status(driver)
     if operation == "run_scheme_group":
@@ -131,6 +128,15 @@ def _local_command(request: dict[str, Any], driver: CAMDriver, comm: Any) -> Any
             **_runtime_status(driver),
             "removed_python_process": removed,
         }
+    if operation == "set_python_process_parameters":
+        updated = driver.set_python_process_parameters(
+            str(request["name"]),
+            dict(request.get("parameters", {})),
+        )
+        return {
+            **_runtime_status(driver),
+            "updated_python_process": updated,
+        }
     if operation == "write_checkpoint":
         return str(
             driver.write_checkpoint(
@@ -139,9 +145,7 @@ def _local_command(request: dict[str, Any], driver: CAMDriver, comm: Any) -> Any
             )
         )
     if operation == "capture_memory_checkpoint":
-        return serialize_snapshot(
-            driver.snapshot(allow_recreatable_process_state=True)
-        )
+        return serialize_snapshot(driver.snapshot(allow_recreatable_process_state=True))
     if operation == "edit_field":
         name = str(request["field"])
         current = driver.pool.get(name, unsafe=bool(request.get("unsafe", False)))
@@ -216,9 +220,7 @@ def _collect_response(
     operation = request["op"]
     selector = request.get("rank")
     if operation == "capture_memory_checkpoint":
-        result = CheckpointBundle.from_rank_payloads(
-            [item[1] for item in gathered]
-        )
+        result = CheckpointBundle.from_rank_payloads([item[1] for item in gathered])
     elif operation in {"get_field", "get_field_stats"}:
         if selector == "all":
             result = [item[1] for item in gathered]
@@ -269,9 +271,7 @@ def _restore_memory_checkpoint(
 
     failures = comm.allgather(failure)
     messages = [
-        f"rank {rank}:\n{message}"
-        for rank, message in enumerate(failures)
-        if message
+        f"rank {rank}:\n{message}" for rank, message in enumerate(failures) if message
     ]
     if messages:
         response = (
@@ -407,9 +407,7 @@ def main() -> int:
 
         while True:
             abandoned = False
-            rank_payloads: tuple[
-                tuple[Mapping[str, Any], bytes], ...
-            ] | None = None
+            rank_payloads: tuple[tuple[Mapping[str, Any], bytes], ...] | None = None
             snapshot_error: str | None = None
             if comm.rank == 0:
                 assert connection is not None
@@ -423,8 +421,7 @@ def main() -> int:
                         snapshot = request.pop("snapshot")
                         if not isinstance(snapshot, CheckpointBundle):
                             raise TypeError(
-                                "restore_memory_checkpoint requires "
-                                "CheckpointBundle"
+                                "restore_memory_checkpoint requires " "CheckpointBundle"
                             )
                         rank_payloads = snapshot.rank_payloads()
                         if len(rank_payloads) != comm.size:

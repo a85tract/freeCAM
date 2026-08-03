@@ -21,9 +21,7 @@ def _json_value(value: Any) -> Any:
     if isinstance(value, np.generic):
         return value.item()
     if isinstance(value, Mapping):
-        return {
-            str(key): _json_value(item) for key, item in value.items()
-        }
+        return {str(key): _json_value(item) for key, item in value.items()}
     if isinstance(value, (tuple, list)):
         return [_json_value(item) for item in value]
     return value
@@ -88,9 +86,7 @@ class SchemeMove:
             before=(None if values.get("before") is None else str(values["before"])),
             after=(None if values.get("after") is None else str(values["after"])),
             to_group=(
-                None
-                if values.get("to_group") is None
-                else str(values["to_group"])
+                None if values.get("to_group") is None else str(values["to_group"])
             ),
         )
 
@@ -109,6 +105,11 @@ class RunPhase:
 class RunScheme:
     name: str
     group: str | None = None
+    parameters: Mapping[str, Any] | None = None
+
+    def __post_init__(self) -> None:
+        if self.parameters is not None:
+            object.__setattr__(self, "parameters", dict(self.parameters))
 
 
 @dataclass(frozen=True, slots=True)
@@ -164,9 +165,7 @@ class ObserveFields:
             raise ValueError("observe action requires at least one statistic")
         unknown = set(self.statistics) - _OBSERVATION_STATISTICS
         if unknown:
-            raise ValueError(
-                f"unknown observation statistics: {sorted(unknown)}"
-            )
+            raise ValueError(f"unknown observation statistics: {sorted(unknown)}")
         if len(set(self.statistics)) != len(self.statistics):
             raise ValueError("observe action statistics must be unique")
 
@@ -180,9 +179,7 @@ class DefineVariable:
         from .plugins import VariableSpec
 
         if isinstance(self.spec, Mapping):
-            object.__setattr__(
-                self, "spec", VariableSpec.from_mapping(self.spec)
-            )
+            object.__setattr__(self, "spec", VariableSpec.from_mapping(self.spec))
         elif not isinstance(self.spec, VariableSpec):
             raise TypeError("define_variable requires a VariableSpec")
 
@@ -204,9 +201,7 @@ class InstallPhysics:
             raise TypeError("install_physics requires a PhysicsPluginSpec")
         if self.effective not in {"now", "next_step"}:
             raise ValueError("effective must be 'now' or 'next_step'")
-        object.__setattr__(
-            self, "initial_values", dict(self.initial_values or {})
-        )
+        object.__setattr__(self, "initial_values", dict(self.initial_values or {}))
 
 
 @dataclass(frozen=True, slots=True)
@@ -231,9 +226,7 @@ class InstallPythonProcess:
                 self, "process", PythonProcessSpec.from_mapping(self.process)
             )
         elif not isinstance(self.process, PythonProcessSpec):
-            raise TypeError(
-                "install_python_process requires a PythonProcessSpec"
-            )
+            raise TypeError("install_python_process requires a PythonProcessSpec")
 
 
 @dataclass(frozen=True, slots=True)
@@ -266,11 +259,14 @@ def _action_as_dict(action: Action) -> dict[str, Any]:
     if isinstance(action, RunPhase):
         return {"type": "run_phase", "name": action.name}
     if isinstance(action, RunScheme):
-        return {
+        values = {
             "type": "run_scheme",
             "name": action.name,
             "group": action.group,
         }
+        if action.parameters is not None:
+            values["parameters"] = _json_value(action.parameters)
+        return values
     if isinstance(action, RunSchemeGroup):
         return {"type": "run_scheme_group", "group": action.group}
     if isinstance(action, RunSteps):
@@ -340,6 +336,9 @@ def _action_from_mapping(values: Mapping[str, Any]) -> Action:
         return RunScheme(
             str(values["name"]),
             group=_optional_string(values, "group"),
+            parameters=(
+                None if values.get("parameters") is None else dict(values["parameters"])
+            ),
         )
     if action_type == "run_scheme_group":
         return RunSchemeGroup(str(values["group"]))
@@ -367,10 +366,7 @@ def _action_from_mapping(values: Mapping[str, Any]) -> Action:
         return ObserveFields(
             tuple(str(value) for value in values.get("fields", ())),
             tuple(
-                str(value)
-                for value in values.get(
-                    "statistics", ("min", "max", "mean")
-                )
+                str(value) for value in values.get("statistics", ("min", "max", "mean"))
             ),
         )
     if action_type == "define_variable":
@@ -415,9 +411,7 @@ class SegmentPlan:
     @property
     def step_count(self) -> int:
         return sum(
-            action.count
-            for action in self.actions
-            if isinstance(action, RunSteps)
+            action.count for action in self.actions if isinstance(action, RunSteps)
         )
 
     def as_dict(self) -> dict[str, Any]:
@@ -494,8 +488,7 @@ class BranchSpec:
                 for value in values.get("scheme_moves", ())
             ),
             field_edits=tuple(
-                FieldEdit.from_mapping(value)
-                for value in values.get("field_edits", ())
+                FieldEdit.from_mapping(value) for value in values.get("field_edits", ())
             ),
         )
 
@@ -521,12 +514,8 @@ class BranchSpec:
         """Preserve the legacy edit-then-step ordering as an action plan."""
 
         actions: list[Action] = []
-        actions.extend(
-            SetSchemeEnabled(name, False) for name in self.disable_schemes
-        )
-        actions.extend(
-            SetSchemeEnabled(name, True) for name in self.enable_schemes
-        )
+        actions.extend(SetSchemeEnabled(name, False) for name in self.disable_schemes)
+        actions.extend(SetSchemeEnabled(name, True) for name in self.enable_schemes)
         actions.extend(
             MoveScheme(
                 move.name,
@@ -572,9 +561,8 @@ def validate_segment_plan(driver: Any, plan: SegmentPlan) -> None:
     planned_python_processes: set[str] = set(
         getattr(getattr(driver, "python_processes", None), "installed", {})
     )
-    planned_fields: set[str] = (
-        set(driver.pool.contracts)
-        | set(getattr(driver.pool, "_aliases", {}))
+    planned_fields: set[str] = set(driver.pool.contracts) | set(
+        getattr(driver.pool, "_aliases", {})
     )
     for action in plan.actions:
         if isinstance(action, RunPhase):
@@ -603,15 +591,11 @@ def validate_segment_plan(driver: Any, plan: SegmentPlan) -> None:
         elif isinstance(action, SetSchemeEnabled):
             scheme_plan.scheme(action.name, group=action.group)
             if not action.enabled and not plan.unsafe:
-                raise ValueError(
-                    "disabling a scheme requires SegmentPlan(unsafe=True)"
-                )
+                raise ValueError("disabling a scheme requires SegmentPlan(unsafe=True)")
             if action.enabled:
                 scheme_plan.enable(action.name, group=action.group)
             else:
-                scheme_plan.disable(
-                    action.name, group=action.group, unsafe=True
-                )
+                scheme_plan.disable(action.name, group=action.group, unsafe=True)
         elif isinstance(action, MoveScheme):
             scheme_plan.scheme(action.name)
             if action.before is not None:
@@ -642,9 +626,7 @@ def validate_segment_plan(driver: Any, plan: SegmentPlan) -> None:
                 else None
             )
             if action.unsafe and not plan.unsafe:
-                raise ValueError(
-                    "unsafe field edits require SegmentPlan(unsafe=True)"
-                )
+                raise ValueError("unsafe field edits require SegmentPlan(unsafe=True)")
             if (
                 contract is not None
                 and driver.pool.sealed
@@ -663,9 +645,7 @@ def validate_segment_plan(driver: Any, plan: SegmentPlan) -> None:
             contract.shape(driver.pool.dimensions)
             np.dtype(contract.dtype)
             if contract.standard_name in planned_fields:
-                raise ValueError(
-                    f"duplicate state field {contract.standard_name!r}"
-                )
+                raise ValueError(f"duplicate state field {contract.standard_name!r}")
             planned_fields.add(contract.standard_name)
             planned_fields.update(contract.aliases)
         elif isinstance(action, InstallPhysics):
@@ -686,8 +666,7 @@ def validate_segment_plan(driver: Any, plan: SegmentPlan) -> None:
                     )
                 planned_plugins.add(plugin_name)
             planned_processes.update(
-                placement.process
-                for placement in action.plugin.placements
+                placement.process for placement in action.plugin.placements
             )
         elif isinstance(action, (ActivatePhysics, DeactivatePhysics)):
             if not plan.unsafe:
@@ -695,27 +674,18 @@ def validate_segment_plan(driver: Any, plan: SegmentPlan) -> None:
                     f"{_action_as_dict(action)['type']} actions require "
                     "SegmentPlan(unsafe=True)"
                 )
-            if (
-                action.name not in planned_plugins
-                and action.name
-                not in getattr(
-                    getattr(driver, "plugins", None), "installed", {}
-                )
+            if action.name not in planned_plugins and action.name not in getattr(
+                getattr(driver, "plugins", None), "installed", {}
             ):
-                raise ValueError(
-                    f"unknown planned physics plugin {action.name!r}"
-                )
+                raise ValueError(f"unknown planned physics plugin {action.name!r}")
         elif isinstance(action, InstallPythonProcess):
             if not plan.unsafe:
                 raise ValueError(
-                    "install_python_process actions require "
-                    "SegmentPlan(unsafe=True)"
+                    "install_python_process actions require " "SegmentPlan(unsafe=True)"
                 )
             spec = action.process
             if spec.name in planned_python_processes:
-                raise ValueError(
-                    f"Python process {spec.name!r} is already planned"
-                )
+                raise ValueError(f"Python process {spec.name!r} is already planned")
             if spec.group not in scheme_groups:
                 raise ValueError(
                     f"unknown scheme group {spec.group!r}; "
@@ -757,13 +727,10 @@ def validate_segment_plan(driver: Any, plan: SegmentPlan) -> None:
         elif isinstance(action, RemovePythonProcess):
             if not plan.unsafe:
                 raise ValueError(
-                    "remove_python_process actions require "
-                    "SegmentPlan(unsafe=True)"
+                    "remove_python_process actions require " "SegmentPlan(unsafe=True)"
                 )
             if action.name not in planned_python_processes:
-                raise ValueError(
-                    f"unknown planned Python process {action.name!r}"
-                )
+                raise ValueError(f"unknown planned Python process {action.name!r}")
             scheme_plan.remove(action.name, unsafe=True)
             planned_python_processes.remove(action.name)
             planned_processes.discard(action.name)
@@ -812,9 +779,7 @@ def _observe_fields(driver: Any, action: ObserveFields) -> list[dict[str, Any]]:
     return observations
 
 
-def execute_segment_plan(
-    driver: Any, plan: SegmentPlan
-) -> tuple[dict[str, Any], ...]:
+def execute_segment_plan(driver: Any, plan: SegmentPlan) -> tuple[dict[str, Any], ...]:
     """Execute one validated plan collectively on all model ranks."""
 
     validate_segment_plan(driver, plan)
@@ -828,7 +793,10 @@ def execute_segment_plan(
         elif isinstance(action, RunPhase):
             driver.run_phase(action.name)
         elif isinstance(action, RunScheme):
-            driver.run_scheme(action.name, group=action.group)
+            run_kwargs: dict[str, Any] = {"group": action.group}
+            if action.parameters is not None:
+                run_kwargs["parameters"] = action.parameters
+            driver.run_scheme(action.name, **run_kwargs)
         elif isinstance(action, RunSchemeGroup):
             driver.run_scheme_group(action.group)
         elif isinstance(action, RunSteps):
@@ -838,9 +806,7 @@ def execute_segment_plan(
             if action.enabled:
                 driver.scheme_plan.enable(action.name, group=action.group)
             else:
-                driver.scheme_plan.disable(
-                    action.name, group=action.group, unsafe=True
-                )
+                driver.scheme_plan.disable(action.name, group=action.group, unsafe=True)
         elif isinstance(action, MoveScheme):
             driver.scheme_plan.move(
                 action.name,
@@ -854,9 +820,7 @@ def execute_segment_plan(
         elif isinstance(action, ObserveFields):
             observations = _observe_fields(driver, action)
         elif isinstance(action, DefineVariable):
-            driver.define_variable(
-                action.spec, initial=action.initial_value
-            )
+            driver.define_variable(action.spec, initial=action.initial_value)
         elif isinstance(action, InstallPhysics):
             driver.install_physics(
                 action.plugin,

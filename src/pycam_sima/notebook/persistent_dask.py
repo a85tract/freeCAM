@@ -90,9 +90,7 @@ class PersistentDaskRequest:
             raise ValueError(
                 "persistent allocation execution requires launch_mode='local'"
             )
-        if self.parent_name is not None and not _SAFE_NAME.fullmatch(
-            self.parent_name
-        ):
+        if self.parent_name is not None and not _SAFE_NAME.fullmatch(self.parent_name):
             raise ValueError(
                 "persistent parent name may contain only letters, digits, "
                 "dot, dash, and underscore"
@@ -100,9 +98,7 @@ class PersistentDaskRequest:
         if self.startup_plan is not None:
             plan = SegmentPlan.from_mapping(self.startup_plan)
             if plan.name != self.name:
-                raise ValueError(
-                    "persistent startup plan name must match session name"
-                )
+                raise ValueError("persistent startup plan name must match session name")
 
 
 class PersistentCAMActor:
@@ -162,7 +158,9 @@ class PersistentCAMActor:
             self._mpi_launch_count = 1
             if snapshot is not None:
                 if not isinstance(snapshot, CheckpointBundle):
-                    raise TypeError("persistent parent snapshot must be CheckpointBundle")
+                    raise TypeError(
+                        "persistent parent snapshot must be CheckpointBundle"
+                    )
                 self._session.restore_memory_checkpoint(snapshot)
                 self._restored_from_memory = True
                 self._source_snapshot_nbytes = snapshot.nbytes
@@ -210,9 +208,7 @@ class PersistentCAMActor:
                 "phase_status": dict(self._session.phase_status),
                 "scheme_names": tuple(self._session.scheme_names),
                 "scheme_status": dict(self._session.scheme_status),
-                "plugins": tuple(
-                    getattr(self._session, "physics_plugins", ())
-                ),
+                "plugins": tuple(getattr(self._session, "physics_plugins", ())),
             }
 
     def prepare_initial_step(self) -> Mapping[str, Any]:
@@ -235,10 +231,19 @@ class PersistentCAMActor:
             self._session.run_phase(name)
             return self._command_status()
 
-    def run_scheme(self, name: str, group: str | None = None) -> Mapping[str, Any]:
+    def run_scheme(
+        self,
+        name: str,
+        group: str | None = None,
+        parameters: Mapping[str, Any] | None = None,
+    ) -> Mapping[str, Any]:
         with self._guard:
             self._ensure_open()
-            self._session.run_scheme(name, group=group)
+            self._session.run_scheme(
+                name,
+                group=group,
+                parameters=parameters,
+            )
             return self._command_status()
 
     def run_scheme_group(self, group: str) -> Mapping[str, Any]:
@@ -285,17 +290,13 @@ class PersistentCAMActor:
                 "plugin": dict(plugin),
             }
 
-    def activate_physics(
-        self, name: str, unsafe: bool = False
-    ) -> Mapping[str, Any]:
+    def activate_physics(self, name: str, unsafe: bool = False) -> Mapping[str, Any]:
         with self._guard:
             self._ensure_open()
             plugin = self._session.activate_physics(name, unsafe=unsafe)
             return {**self._command_status(), "plugin": dict(plugin)}
 
-    def deactivate_physics(
-        self, name: str, unsafe: bool = False
-    ) -> Mapping[str, Any]:
+    def deactivate_physics(self, name: str, unsafe: bool = False) -> Mapping[str, Any]:
         with self._guard:
             self._ensure_open()
             plugin = self._session.deactivate_physics(name, unsafe=unsafe)
@@ -321,6 +322,15 @@ class PersistentCAMActor:
         with self._guard:
             self._ensure_open()
             return dict(self._session.remove_python_process(str(name)))
+
+    def set_python_process_parameters(
+        self,
+        name: str,
+        parameters: Mapping[str, Any],
+    ) -> Mapping[str, Any]:
+        with self._guard:
+            self._ensure_open()
+            return dict(self._session.set_python_process_parameters(name, parameters))
 
     def get_field(self, name: str, rank: int | str = 0) -> Any:
         with self._guard:
@@ -423,7 +433,11 @@ class PersistentCAMActor:
                 elif isinstance(action, RunPhase):
                     self._session.run_phase(action.name)
                 elif isinstance(action, RunScheme):
-                    self._session.run_scheme(action.name, group=action.group)
+                    self._session.run_scheme(
+                        action.name,
+                        group=action.group,
+                        parameters=action.parameters,
+                    )
                 elif isinstance(action, RunSchemeGroup):
                     self._session.run_scheme_group(action.group)
                 elif isinstance(action, RunSteps):
@@ -469,17 +483,11 @@ class PersistentCAMActor:
                         unsafe=True,
                     )
                 elif isinstance(action, ActivatePhysics):
-                    self._session.activate_physics(
-                        action.name, unsafe=True
-                    )
+                    self._session.activate_physics(action.name, unsafe=True)
                 elif isinstance(action, DeactivatePhysics):
-                    self._session.deactivate_physics(
-                        action.name, unsafe=True
-                    )
+                    self._session.deactivate_physics(action.name, unsafe=True)
                 elif isinstance(action, InstallPythonProcess):
-                    self._session.install_python_process(
-                        action.process, unsafe=True
-                    )
+                    self._session.install_python_process(action.process, unsafe=True)
                 elif isinstance(action, RemovePythonProcess):
                     self._session.remove_python_process(action.name)
                 else:  # pragma: no cover - SegmentPlan validates construction.
@@ -573,8 +581,7 @@ class PersistentCAMActor:
             for item in getattr(self._session, "python_processes", ())
         }
         planned_plugins = {
-            str(item["name"])
-            for item in getattr(self._session, "physics_plugins", ())
+            str(item["name"]) for item in getattr(self._session, "physics_plugins", ())
         }
         planned_fields = set(self._session.field_names)
         for action in plan.actions:
@@ -625,10 +632,7 @@ class PersistentCAMActor:
                     candidate.scheme(action.before)
                 if action.after is not None:
                     candidate.scheme(action.after)
-                if (
-                    action.to_group is not None
-                    and action.to_group not in scheme_groups
-                ):
+                if action.to_group is not None and action.to_group not in scheme_groups:
                     raise ValueError(
                         f"unknown destination group {action.to_group!r}; "
                         f"choose one of {scheme_groups}"
@@ -652,25 +656,19 @@ class PersistentCAMActor:
                     raise ValueError(
                         "unsafe field edits require SegmentPlan(unsafe=True)"
                     )
-                if (
-                    not bool(info.get("writable", True))
-                    and not action.unsafe
-                ):
+                if not bool(info.get("writable", True)) and not action.unsafe:
                     raise ValueError(
                         f"field {action.name!r} is read-only after initialization"
                     )
             elif isinstance(action, DefineVariable):
                 if action.spec.name in planned_fields:
-                    raise ValueError(
-                        f"duplicate state field {action.spec.name!r}"
-                    )
+                    raise ValueError(f"duplicate state field {action.spec.name!r}")
                 planned_fields.add(action.spec.name)
                 planned_fields.update(action.spec.aliases)
             elif isinstance(action, InstallPhysics):
                 if not plan.unsafe:
                     raise ValueError(
-                        "install_physics actions require "
-                        "SegmentPlan(unsafe=True)"
+                        "install_physics actions require " "SegmentPlan(unsafe=True)"
                     )
                 for variable in action.plugin.variables:
                     planned_fields.add(variable.name)
@@ -683,23 +681,18 @@ class PersistentCAMActor:
             elif isinstance(action, (ActivatePhysics, DeactivatePhysics)):
                 if not plan.unsafe:
                     raise ValueError(
-                        f"{type(action).__name__} requires "
-                        "SegmentPlan(unsafe=True)"
+                        f"{type(action).__name__} requires " "SegmentPlan(unsafe=True)"
                     )
                 if action.name not in planned_plugins:
-                    raise ValueError(
-                        f"unknown planned physics plugin {action.name!r}"
-                    )
+                    raise ValueError(f"unknown planned physics plugin {action.name!r}")
             elif isinstance(action, InstallPythonProcess):
                 if not plan.unsafe:
                     raise ValueError(
-                        "install_python_process requires "
-                        "SegmentPlan(unsafe=True)"
+                        "install_python_process requires " "SegmentPlan(unsafe=True)"
                     )
                 if action.process.name in planned_python_processes:
                     raise ValueError(
-                        f"Python process {action.process.name!r} is already "
-                        "planned"
+                        f"Python process {action.process.name!r} is already " "planned"
                     )
                 for field in (
                     *action.process.reads,
@@ -712,21 +705,13 @@ class PersistentCAMActor:
                         if row.get("ccpp_standard_name") is not None
                     }
                     if field.startswith("field:"):
-                        valid = (
-                            field.removeprefix("field:") in planned_fields
-                        )
+                        valid = field.removeprefix("field:") in planned_fields
                     elif field.startswith("ccpp:"):
-                        valid = (
-                            field.removeprefix("ccpp:") in ccpp_fields
-                        )
+                        valid = field.removeprefix("ccpp:") in ccpp_fields
                     else:
-                        valid = (
-                            field in planned_fields or field in ccpp_fields
-                        )
+                        valid = field in planned_fields or field in ccpp_fields
                     if not valid:
-                        raise KeyError(
-                            f"unknown CAM-SIMA field: {field}"
-                        )
+                        raise KeyError(f"unknown CAM-SIMA field: {field}")
                 planned_python_processes.add(action.process.name)
                 planned_processes.add(action.process.name)
                 candidate.add(
@@ -747,13 +732,10 @@ class PersistentCAMActor:
             elif isinstance(action, RemovePythonProcess):
                 if not plan.unsafe:
                     raise ValueError(
-                        "remove_python_process requires "
-                        "SegmentPlan(unsafe=True)"
+                        "remove_python_process requires " "SegmentPlan(unsafe=True)"
                     )
                 if action.name not in planned_python_processes:
-                    raise ValueError(
-                        f"unknown planned Python process {action.name!r}"
-                    )
+                    raise ValueError(f"unknown planned Python process {action.name!r}")
                 planned_python_processes.remove(action.name)
                 planned_processes.discard(action.name)
                 candidate.remove(action.name, unsafe=True)
@@ -842,9 +824,7 @@ class PersistentCAMActor:
             "phase_status": dict(self._session.phase_status),
             "scheme_status": dict(self._session.scheme_status),
             "field_count": len(self._session.field_names),
-            "plugins": tuple(
-                getattr(self._session, "physics_plugins", ())
-            ),
+            "plugins": tuple(getattr(self._session, "physics_plugins", ())),
         }
 
     def __del__(self) -> None:
@@ -911,15 +891,19 @@ class PersistentDaskSession:
     def run_phase(self, name: str) -> Any:
         return self._call("run_phase", str(name))
 
-    def run_scheme(self, name: str, *, group: str | None = None) -> Any:
-        return self._call("run_scheme", str(name), group)
+    def run_scheme(
+        self,
+        name: str,
+        *,
+        group: str | None = None,
+        parameters: Mapping[str, Any] | None = None,
+    ) -> Any:
+        return self._call("run_scheme", str(name), group, parameters)
 
     def run_scheme_group(self, group: str) -> Any:
         return self._call("run_scheme_group", str(group))
 
-    def define_variable(
-        self, spec: VariableSpec, *, initial: Any = 0.0
-    ) -> Any:
+    def define_variable(self, spec: VariableSpec, *, initial: Any = 0.0) -> Any:
         if not isinstance(spec, VariableSpec):
             raise TypeError("spec must be VariableSpec")
         return self._call("define_variable", spec.as_dict(), initial)
@@ -945,14 +929,10 @@ class PersistentDaskSession:
             bool(unsafe),
         )
 
-    def activate_physics(
-        self, name: str, *, unsafe: bool = False
-    ) -> Any:
+    def activate_physics(self, name: str, *, unsafe: bool = False) -> Any:
         return self._call("activate_physics", str(name), bool(unsafe))
 
-    def deactivate_physics(
-        self, name: str, *, unsafe: bool = False
-    ) -> Any:
+    def deactivate_physics(self, name: str, *, unsafe: bool = False) -> Any:
         return self._call("deactivate_physics", str(name), bool(unsafe))
 
     def install_python_process(
@@ -965,9 +945,11 @@ class PersistentDaskSession:
         after: str | None = None,
         reads: Sequence[str] = (),
         writes: Sequence[str] = (),
+        parameters: Mapping[str, Any] | None = None,
         enabled: bool = True,
         transactional: bool = True,
         max_payload_bytes: int = 8 * 1024 * 1024,
+        max_parameter_bytes: int = 64 * 1024,
         unsafe: bool = False,
     ) -> Any:
         spec = (
@@ -981,9 +963,11 @@ class PersistentDaskSession:
                 after=after,
                 reads=reads,
                 writes=writes,
+                parameters=parameters,
                 enabled=enabled,
                 transactional=transactional,
                 max_payload_bytes=max_payload_bytes,
+                max_parameter_bytes=max_parameter_bytes,
             )
         )
         return self._call(
@@ -994,6 +978,17 @@ class PersistentDaskSession:
 
     def remove_python_process(self, name: str) -> Any:
         return self._call("remove_python_process", str(name))
+
+    def set_python_process_parameters(
+        self,
+        name: str,
+        parameters: Mapping[str, Any],
+    ) -> Any:
+        return self._call(
+            "set_python_process_parameters",
+            str(name),
+            dict(parameters),
+        )
 
     def field(self, name: str, *, rank: int | str = 0) -> Any:
         return self._call("get_field", str(name), rank)

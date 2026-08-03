@@ -54,9 +54,7 @@ class _FakePooledSession:
                 "slot_id": index,
                 "state": "idle" if name is None else "ready",
                 "model_name": name,
-                "ranks": tuple(
-                    range(index * self.ranks, (index + 1) * self.ranks)
-                ),
+                "ranks": tuple(range(index * self.ranks, (index + 1) * self.ranks)),
                 "state_bytes": 0 if name is None else self.ranks * 32,
             }
             if name is not None:
@@ -77,9 +75,7 @@ class _FakePooledSession:
     ) -> dict[str, Any]:
         if name in self.models:
             raise ValueError(name)
-        selected = (
-            self.slot_names.index(None) if slot is None else int(slot)
-        )
+        selected = self.slot_names.index(None) if slot is None else int(slot)
         if self.slot_names[selected] is not None:
             raise RuntimeError("occupied")
         self.slot_names[selected] = name
@@ -114,10 +110,7 @@ class _FakePooledSession:
                 "mpi_launch_count": 1,
             }
         if op in {"run_phase", "run_scheme", "run_scheme_group"}:
-            if (
-                op == "run_scheme"
-                and kwargs.get("scheme") == "transactional_failure"
-            ):
+            if op == "run_scheme" and kwargs.get("scheme") == "transactional_failure":
                 raise RuntimeError("transactional callback failed")
             model["native_calls"] += 1
             return {
@@ -152,13 +145,9 @@ class _FakePooledSession:
                     values[...] = value
             return self._status(name)
         if op == "configure_scheme_plan":
-            rows = kwargs["plan"]["groups"]["physics_before_coupler"][
-                "children"
-            ]
+            rows = kwargs["plan"]["groups"]["physics_before_coupler"]["children"]
             model["kessler"] = next(
-                item["scheme"]["enabled"]
-                for item in rows
-                if item["name"] == "kessler"
+                item["scheme"]["enabled"] for item in rows if item["name"] == "kessler"
             )
             return self._status(name)
         if op == "install_physics":
@@ -175,9 +164,7 @@ class _FakePooledSession:
                 "spec": spec.as_dict(),
                 "scheme_key": spec.name,
                 "read_bindings": {},
-                "write_bindings": {
-                    field: field for field in spec.writes
-                },
+                "write_bindings": {field: field for field in spec.writes},
             }
             return {
                 **self._status(name),
@@ -197,6 +184,19 @@ class _FakePooledSession:
                 "removed_python_process": {
                     "name": removed["spec"]["name"],
                     "payload_hash": removed["spec"]["payload_hash"],
+                },
+            }
+        if op == "set_python_process_parameters":
+            record = model["python_processes"][str(kwargs["name"])]
+            spec = PythonProcessSpec.from_mapping(record["spec"])
+            spec = spec.with_parameters(kwargs["parameters"])
+            record["spec"] = spec.as_dict()
+            return {
+                **self._status(name),
+                "updated_python_process": {
+                    "name": spec.name,
+                    "parameters": dict(spec.parameters or {}),
+                    "payload_hash": spec.payload_hash,
                 },
             }
         if op == "delete_variable":
@@ -232,9 +232,7 @@ class _FakePooledSession:
             target = self.models[name]
             target["step"] = source["step"]
             target["native_calls"] = source["native_calls"]
-            target["temperature"] = [
-                value.copy() for value in source["temperature"]
-            ]
+            target["temperature"] = [value.copy() for value in source["temperature"]]
             target["kessler"] = source["kessler"]
             target["python_processes"] = dict(source["python_processes"])
             results[name] = self._status(name)
@@ -305,9 +303,7 @@ class _FakePooledSession:
         self.slot_names[slot] = name
         self.models[name] = {
             **source,
-            "temperature": [
-                value.copy() for value in source["temperature"]
-            ],
+            "temperature": [value.copy() for value in source["temperature"]],
             "python_processes": dict(source["python_processes"]),
             "run_dir": str(run_dir),
             "history_dir": str(history_dir),
@@ -339,19 +335,12 @@ class _FakePooledSession:
             for snapshot_id, source in self.retained.items()
         )
 
-    def advance_models(
-        self, names: tuple[str, ...], count: int
-    ) -> dict[str, Any]:
-        return {
-            name: self.call(name, "step", count=count)
-            for name in names
-        }
+    def advance_models(self, names: tuple[str, ...], count: int) -> dict[str, Any]:
+        return {name: self.call(name, "step", count=count) for name in names}
 
     def call_models(
         self,
-        calls: tuple[
-            tuple[str, str, tuple[Any, ...], dict[str, Any]], ...
-        ]
+        calls: tuple[tuple[str, str, tuple[Any, ...], dict[str, Any]], ...]
         | list[tuple[str, str, tuple[Any, ...], dict[str, Any]]],
     ) -> dict[str, Any]:
         type(self).batches.append(tuple(item[0] for item in calls))
@@ -411,10 +400,7 @@ def _fake_pool_actor(request: PooledDaskRequest) -> PersistentPoolActor:
 
 def _inputs(tmp_path: Path) -> dict[str, Path]:
     config = tmp_path / "config.yaml"
-    config.write_text(
-        "mpi_size: 2\n"
-        f"source_root: {ROOT / 'external/CAM-SIMA'}\n"
-    )
+    config.write_text("mpi_size: 2\n" f"source_root: {ROOT / 'external/CAM-SIMA'}\n")
     initial = tmp_path / "initial"
     initial.mkdir()
     (initial / "atm_in").write_text("&cam_initfiles_nl /\n")
@@ -439,6 +425,16 @@ def _inputs(tmp_path: Path) -> dict[str, Path]:
 
 def _add_rank_local_heating(fields: Any, context: Any) -> None:
     fields["air_temperature"][...] += 0.01 * context.timestep_seconds
+
+
+def _parameter_heating(
+    fields: Any,
+    context: Any,
+    *,
+    increment: float,
+) -> None:
+    del context
+    fields["air_temperature"][...] += increment
 
 
 def test_model_per_worker_installs_python_process_with_blocking_and_future_api(
@@ -466,21 +462,26 @@ def test_model_per_worker_installs_python_process_with_blocking_and_future_api(
         with experiments.pool("python-processes", resource_plan=plan) as pool:
             with pool.model("base") as base:
                 installed = base.physics.install_python(
-                    _add_rank_local_heating,
+                    _parameter_heating,
                     name="custom_heating",
                     group="physics_before_coupler",
                     after="kessler",
                     writes=("air_temperature",),
+                    parameters={"increment": 1.0},
                 )
                 assert isinstance(installed, InstalledPythonProcess)
                 assert installed.writes == ("air_temperature",)
-                installed.run()
+                installed.run(increment=2.0)
+                assert installed.parameters["increment"] == 1.0
+                installed.parameters["increment"] = 0.5
+                assert installed.parameters["increment"] == 0.5
                 installed.disable()
                 installed.enable()
 
                 child = base.fork("child").child
                 inherited = child.status.details["python_processes"]
                 assert inherited[0]["spec"]["name"] == "custom_heating"
+                assert inherited[0]["spec"]["parameters"] == {"increment": 0.5}
                 child.close()
 
                 assert installed.remove()["name"] == "custom_heating"
@@ -551,9 +552,9 @@ def test_pool_reuses_one_launch_and_forks_private_slot_memory(
                 branches.advance(3)
 
                 assert base.fields.air_temperature.stats(rank=0)["mean"] == 240.0
-                assert branches.warm.fields.air_temperature.stats(rank=0)[
-                    "mean"
-                ] == 241.0
+                assert (
+                    branches.warm.fields.air_temperature.stats(rank=0)["mean"] == 241.0
+                )
                 assert branches.control.physics.kessler.enabled is False
                 assert branches.warm.physics.kessler.enabled is True
                 assert base.step_count == 2
@@ -692,9 +693,7 @@ def test_blocking_model_can_continue_after_observed_command_failure(
         )
         with experiments.pool("recover", resource_plan=plan) as pool:
             with pool.model("base") as base:
-                with pytest.raises(
-                    RuntimeError, match="transactional callback failed"
-                ):
+                with pytest.raises(RuntimeError, match="transactional callback failed"):
                     base.physics.scheme("transactional_failure").run()
 
                 assert base.status.step == 0
@@ -764,9 +763,7 @@ def test_model_per_worker_pool_exposes_dask_future_dependencies(
             assert base.status.details["dask_worker"] == base.worker
             assert base.step_count == 3
             assert branches.control.step_count == 6
-            assert branches.warm.fields.air_temperature.stats(rank=0)[
-                "mean"
-            ] == 241.0
+            assert branches.warm.fields.air_temperature.stats(rank=0)["mean"] == 241.0
             assert pool.status["mpi_launch_count"] == 1
             assert pool.scheduler_status["actor_layout"] == "model-per-worker"
             branches.close()
@@ -935,18 +932,17 @@ def test_single_slot_retained_state_restores_reusable_private_branches(
 
             with pool.restore_retained("control", state) as control:
                 assert control.status.snapshot_transport == "rank-local-memory"
-                assert control.status.details["python_processes"][0]["spec"][
-                    "name"
-                ] == "retained_heating"
+                assert (
+                    control.status.details["python_processes"][0]["spec"]["name"]
+                    == "retained_heating"
+                )
                 assert np.array_equal(
                     control.fields.air_temperature.get(rank=0), expected
                 )
                 control.advance(steps=1)
 
             with pool.restore_retained("warm", state) as warm:
-                assert np.array_equal(
-                    warm.fields.air_temperature.get(rank=0), expected
-                )
+                assert np.array_equal(warm.fields.air_temperature.get(rank=0), expected)
                 warm.fields.air_temperature += 1.0
                 assert not np.array_equal(
                     warm.fields.air_temperature.get(rank=0), expected

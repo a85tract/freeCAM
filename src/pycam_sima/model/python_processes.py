@@ -3,10 +3,11 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Iterator, Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 import base64
 import hashlib
 import inspect
+import json
 import platform
 import traceback
 from typing import Any
@@ -23,8 +24,9 @@ from .errors import (
 )
 
 
-PYTHON_PROCESS_SCHEMA_VERSION = 1
+PYTHON_PROCESS_SCHEMA_VERSION = 2
 DEFAULT_MAX_PAYLOAD_BYTES = 8 * 1024 * 1024
+DEFAULT_MAX_PARAMETER_BYTES = 64 * 1024
 
 
 def _safe_name(value: str, label: str) -> str:
@@ -42,38 +44,124 @@ def _payload_hash(payload: bytes) -> str:
     return hashlib.sha256(payload).hexdigest()
 
 
-def _validate_signature(function: Callable[..., Any]) -> None:
+def _normalize_parameter_value(value: Any, path: str) -> Any:
+    if isinstance(value, np.generic):
+        value = value.item()
+    if value is None or isinstance(value, (bool, int, str)):
+        return value
+    if isinstance(value, float):
+        if not np.isfinite(value):
+            raise PythonProcessContractError(
+                f"Python process parameter {path} must be finite"
+            )
+        return value
+    if isinstance(value, Mapping):
+        normalized: dict[str, Any] = {}
+        for key, item in value.items():
+            if not isinstance(key, str):
+                raise PythonProcessContractError(
+                    f"Python process parameter {path} contains a non-string key"
+                )
+            normalized[key] = _normalize_parameter_value(item, f"{path}.{key}")
+        return normalized
+    if isinstance(value, (tuple, list)):
+        return [
+            _normalize_parameter_value(item, f"{path}[{index}]")
+            for index, item in enumerate(value)
+        ]
+    raise PythonProcessContractError(
+        f"Python process parameter {path} has unsupported type "
+        f"{type(value).__name__}; use JSON-compatible scalar values or put "
+        "large arrays in StatePool fields"
+    )
+
+
+def normalize_python_parameters(
+    values: Mapping[str, Any] | None,
+    *,
+    max_parameter_bytes: int = DEFAULT_MAX_PARAMETER_BYTES,
+) -> dict[str, Any]:
+    """Validate and copy a small keyword-parameter mapping."""
+
+    if values is None:
+        return {}
+    if not isinstance(values, Mapping):
+        raise TypeError("Python process parameters must be a mapping")
+    normalized: dict[str, Any] = {}
+    for key, value in values.items():
+        if not isinstance(key, str) or not key.isidentifier():
+            raise PythonProcessContractError(
+                f"Python process parameter name {key!r} must be a valid "
+                "Python identifier"
+            )
+        normalized[key] = _normalize_parameter_value(value, key)
+    encoded = json.dumps(
+        normalized,
+        sort_keys=True,
+        separators=(",", ":"),
+        allow_nan=False,
+    ).encode("utf-8")
+    if len(encoded) > int(max_parameter_bytes):
+        raise PythonProcessContractError(
+            f"serialized Python process parameters are {len(encoded)} bytes; "
+            f"limit is {int(max_parameter_bytes)} bytes. Store large data in "
+            "StatePool fields instead"
+        )
+    return normalized
+
+
+def _parameter_hash(values: Mapping[str, Any]) -> str:
+    encoded = json.dumps(
+        values,
+        sort_keys=True,
+        separators=(",", ":"),
+        allow_nan=False,
+    ).encode("utf-8")
+    return hashlib.sha256(encoded).hexdigest()
+
+
+def _validate_signature(
+    function: Callable[..., Any],
+    parameters: Mapping[str, Any] | None = None,
+) -> None:
+    values = dict(parameters or {})
     try:
         signature = inspect.signature(function)
-        signature.bind(object(), object())
+        signature.bind(object(), object(), **values)
     except (TypeError, ValueError) as exc:
         raise PythonProcessContractError(
-            "Python process must accept exactly (fields, context)"
+            "Python process must accept exactly two positional parameters "
+            "(fields, context); custom parameters must be declared as "
+            "keyword-only arguments and supplied by parameters={...}"
         ) from exc
-    parameters = tuple(signature.parameters.values())
+    declared = tuple(signature.parameters.values())
     if any(
         parameter.kind
         in {
             inspect.Parameter.VAR_POSITIONAL,
             inspect.Parameter.VAR_KEYWORD,
         }
-        for parameter in parameters
+        for parameter in declared
     ):
-        raise PythonProcessContractError(
-            "Python process may not use *args or **kwargs"
-        )
-    required_or_positional = tuple(
+        raise PythonProcessContractError("Python process may not use *args or **kwargs")
+    positional = tuple(
         parameter
-        for parameter in parameters
+        for parameter in declared
         if parameter.kind
         in {
             inspect.Parameter.POSITIONAL_ONLY,
             inspect.Parameter.POSITIONAL_OR_KEYWORD,
         }
     )
-    if len(parameters) != 2 or len(required_or_positional) != 2:
+    keyword_only = tuple(
+        parameter
+        for parameter in declared
+        if parameter.kind == inspect.Parameter.KEYWORD_ONLY
+    )
+    if len(positional) != 2 or len(declared) != 2 + len(keyword_only):
         raise PythonProcessContractError(
-            "Python process must accept exactly (fields, context)"
+            "Python process must accept exactly two positional parameters "
+            "(fields, context); custom parameters must be keyword-only"
         )
 
 
@@ -89,6 +177,8 @@ class PythonProcessSpec:
     after: str | None = None
     reads: tuple[str, ...] = ()
     writes: tuple[str, ...] = ()
+    parameters: Mapping[str, Any] | None = None
+    max_parameter_bytes: int = DEFAULT_MAX_PARAMETER_BYTES
     enabled: bool = True
     transactional: bool = True
     source: str | None = None
@@ -104,6 +194,17 @@ class PythonProcessSpec:
         )
         object.__setattr__(
             self, "writes", tuple(str(item).strip() for item in self.writes)
+        )
+        object.__setattr__(self, "max_parameter_bytes", int(self.max_parameter_bytes))
+        if self.max_parameter_bytes <= 0:
+            raise ValueError("max_parameter_bytes must be positive")
+        object.__setattr__(
+            self,
+            "parameters",
+            normalize_python_parameters(
+                self.parameters,
+                max_parameter_bytes=self.max_parameter_bytes,
+            ),
         )
         if not self.group:
             raise ValueError("Python process group must be non-empty")
@@ -135,13 +236,19 @@ class PythonProcessSpec:
         after: str | None = None,
         reads: Sequence[str] = (),
         writes: Sequence[str] = (),
+        parameters: Mapping[str, Any] | None = None,
         enabled: bool = True,
         transactional: bool = True,
         max_payload_bytes: int = DEFAULT_MAX_PAYLOAD_BYTES,
+        max_parameter_bytes: int = DEFAULT_MAX_PARAMETER_BYTES,
     ) -> "PythonProcessSpec":
         if not callable(function):
             raise TypeError("Python process must be callable")
-        _validate_signature(function)
+        parameter_values = normalize_python_parameters(
+            parameters,
+            max_parameter_bytes=max_parameter_bytes,
+        )
+        _validate_signature(function, parameter_values)
         payload = cloudpickle.dumps(function)
         if len(payload) > int(max_payload_bytes):
             raise PythonProcessContractError(
@@ -159,7 +266,7 @@ class PythonProcessSpec:
             raise PythonProcessContractError(
                 "serialized Python process did not restore as a callable"
             )
-        _validate_signature(restored)
+        _validate_signature(restored, parameter_values)
         try:
             source = inspect.getsource(function)
         except (OSError, TypeError):
@@ -173,6 +280,8 @@ class PythonProcessSpec:
             after=after,
             reads=tuple(reads),
             writes=tuple(writes),
+            parameters=parameter_values,
+            max_parameter_bytes=max_parameter_bytes,
             enabled=enabled,
             transactional=transactional,
             source=source,
@@ -189,6 +298,8 @@ class PythonProcessSpec:
             "after": self.after,
             "reads": list(self.reads),
             "writes": list(self.writes),
+            "parameters": dict(self.parameters or {}),
+            "max_parameter_bytes": self.max_parameter_bytes,
             "enabled": self.enabled,
             "transactional": self.transactional,
             "source": self.source,
@@ -198,13 +309,9 @@ class PythonProcessSpec:
 
     @classmethod
     def from_mapping(cls, values: Mapping[str, Any]) -> "PythonProcessSpec":
-        version = int(
-            values.get("schema_version", PYTHON_PROCESS_SCHEMA_VERSION)
-        )
-        if version != PYTHON_PROCESS_SCHEMA_VERSION:
-            raise ValueError(
-                f"unsupported Python process schema version {version}"
-            )
+        version = int(values.get("schema_version", PYTHON_PROCESS_SCHEMA_VERSION))
+        if version not in {1, PYTHON_PROCESS_SCHEMA_VERSION}:
+            raise ValueError(f"unsupported Python process schema version {version}")
         try:
             payload = base64.b64decode(
                 str(values["payload_base64"]).encode("ascii"), validate=True
@@ -218,26 +325,38 @@ class PythonProcessSpec:
             payload=payload,
             payload_hash=str(values["payload_hash"]),
             group=str(values.get("group", PHYSICS_BEFORE_COUPLER)),
-            before=(
-                None if values.get("before") is None else str(values["before"])
-            ),
-            after=(
-                None if values.get("after") is None else str(values["after"])
-            ),
+            before=(None if values.get("before") is None else str(values["before"])),
+            after=(None if values.get("after") is None else str(values["after"])),
             reads=tuple(str(item) for item in values.get("reads", ())),
             writes=tuple(str(item) for item in values.get("writes", ())),
+            parameters=({} if version == 1 else dict(values.get("parameters", {}))),
+            max_parameter_bytes=int(
+                values.get("max_parameter_bytes", DEFAULT_MAX_PARAMETER_BYTES)
+            ),
             enabled=bool(values.get("enabled", True)),
             transactional=bool(values.get("transactional", True)),
-            source=(
-                None if values.get("source") is None else str(values["source"])
-            ),
-            python_version=str(
-                values.get("python_version", platform.python_version())
-            ),
+            source=(None if values.get("source") is None else str(values["source"])),
+            python_version=str(values.get("python_version", platform.python_version())),
             cloudpickle_version=str(
                 values.get("cloudpickle_version", cloudpickle.__version__)
             ),
         )
+
+    def with_parameters(self, updates: Mapping[str, Any]) -> "PythonProcessSpec":
+        values = dict(self.parameters or {})
+        values.update(
+            normalize_python_parameters(
+                updates,
+                max_parameter_bytes=self.max_parameter_bytes,
+            )
+        )
+        values = normalize_python_parameters(
+            values,
+            max_parameter_bytes=self.max_parameter_bytes,
+        )
+        function = cloudpickle.loads(self.payload)
+        _validate_signature(function, values)
+        return replace(self, parameters=values)
 
 
 @dataclass(frozen=True, slots=True)
@@ -335,9 +454,7 @@ class PythonProcessRegistry:
     def process_names(self) -> frozenset[str]:
         return frozenset(self.installed)
 
-    def has_process(
-        self, process: str, *, source_group: str | None = None
-    ) -> bool:
+    def has_process(self, process: str, *, source_group: str | None = None) -> bool:
         record = self.installed.get(str(process).lower())
         if record is None:
             return False
@@ -370,24 +487,16 @@ class PythonProcessRegistry:
                     f"process name {spec.name!r} already has a provider"
                 )
             if spec.group not in self.driver.scheme_plan.group_names:
-                raise PythonProcessContractError(
-                    f"suite has no group {spec.group!r}"
-                )
+                raise PythonProcessContractError(f"suite has no group {spec.group!r}")
             if spec.before is not None:
                 self.driver.scheme_plan.scheme(spec.before, group=spec.group)
             if spec.after is not None:
                 self.driver.scheme_plan.scheme(spec.after, group=spec.group)
             function = cloudpickle.loads(spec.payload)
-            _validate_signature(function)
-            read_bindings = {
-                name: self._resolve_field(name) for name in spec.reads
-            }
-            write_bindings = {
-                name: self._resolve_field(name) for name in spec.writes
-            }
-            overlap = set(read_bindings.values()) & set(
-                write_bindings.values()
-            )
+            _validate_signature(function, spec.parameters)
+            read_bindings = {name: self._resolve_field(name) for name in spec.reads}
+            write_bindings = {name: self._resolve_field(name) for name in spec.writes}
+            overlap = set(read_bindings.values()) & set(write_bindings.values())
             if overlap:
                 raise PythonProcessContractError(
                     "Python process read and write declarations resolve to "
@@ -443,12 +552,9 @@ class PythonProcessRegistry:
         if any(error is not None for error in errors):
             self.installed.pop(spec.name, None)
             if installed_scheme is not None:
-                self.driver.scheme_plan.remove(
-                    installed_scheme.key, unsafe=True
-                )
+                self.driver.scheme_plan.remove(installed_scheme.key, unsafe=True)
             raise PythonProcessContractError(
-                f"Python process installation rolled back collectively: "
-                f"{errors}"
+                f"Python process installation rolled back collectively: " f"{errors}"
             )
         self.driver.comm.barrier()
         return self.installed[spec.name]
@@ -462,9 +568,7 @@ class PythonProcessRegistry:
             "Python process removal",
         )
         assert record is not None
-        removed = self.driver.scheme_plan.remove(
-            record.scheme_key, unsafe=True
-        )
+        removed = self.driver.scheme_plan.remove(record.scheme_key, unsafe=True)
         self.installed.pop(key)
         self.driver.comm.barrier()
         return {
@@ -473,25 +577,90 @@ class PythonProcessRegistry:
             "payload_hash": record.spec.payload_hash,
         }
 
-    def invoke(self, scheme: SuiteScheme, pool: Any) -> None:
+    def set_parameters(self, name: str, updates: Mapping[str, Any]) -> dict[str, Any]:
+        """Collectively update persistent keyword parameters for one callback."""
+
+        self._require_boundary()
+        key = str(name).lower()
+        record = self.installed.get(key)
+        local_error: str | None = None
+        candidate: PythonProcessSpec | None = None
+        try:
+            if record is None:
+                raise PythonProcessContractError(f"unknown Python process {key!r}")
+            candidate = record.spec.with_parameters(updates)
+        except BaseException as exc:
+            local_error = f"{type(exc).__name__}: {exc}"
+        self._collective_error(local_error, "Python process parameter update")
+        assert record is not None and candidate is not None
+        hashes = self.driver.comm.allgather(_parameter_hash(candidate.parameters or {}))
+        if len(set(hashes)) != 1:
+            raise PythonProcessContractError(
+                f"Python process parameters differ across MPI ranks: {hashes}"
+            )
+        record.spec = candidate
+        self.driver.comm.barrier()
+        return {
+            "name": record.name,
+            "parameters": dict(record.spec.parameters or {}),
+            "payload_hash": record.spec.payload_hash,
+        }
+
+    def invoke(
+        self,
+        scheme: SuiteScheme,
+        pool: Any,
+        *,
+        parameters: Mapping[str, Any] | None = None,
+    ) -> None:
         try:
             record = self.installed[scheme.name]
         except KeyError as exc:
             raise PythonProcessContractError(
                 f"Python process {scheme.name!r} is not installed"
             ) from exc
-        snapshots = {
-            name: np.array(
-                pool.get(resolved), copy=True, order="F"
+        local_error: str | None = None
+        effective_parameters: dict[str, Any] = {}
+        try:
+            effective_parameters = dict(record.spec.parameters or {})
+            effective_parameters.update(
+                normalize_python_parameters(
+                    parameters,
+                    max_parameter_bytes=record.spec.max_parameter_bytes,
+                )
             )
-            for name, resolved in record.write_bindings.items()
-        } if record.spec.transactional else {}
+            effective_parameters = normalize_python_parameters(
+                effective_parameters,
+                max_parameter_bytes=record.spec.max_parameter_bytes,
+            )
+            function = cloudpickle.loads(record.spec.payload)
+            _validate_signature(function, effective_parameters)
+        except BaseException as exc:
+            local_error = f"{type(exc).__name__}: {exc}"
+        self._collective_error(local_error, "Python process parameter preflight")
+        parameter_hashes = self.driver.comm.allgather(
+            _parameter_hash(effective_parameters)
+        )
+        if len(set(parameter_hashes)) != 1:
+            raise PythonProcessContractError(
+                "Python process effective parameters differ across MPI ranks: "
+                f"{parameter_hashes}"
+            )
+
+        snapshots = (
+            {
+                name: np.array(pool.get(resolved), copy=True, order="F")
+                for name, resolved in record.write_bindings.items()
+            }
+            if record.spec.transactional
+            else {}
+        )
         before = pool.pointer_records()
         read_writeability = {
             resolved: bool(pool.get(resolved).flags.writeable)
             for resolved in set(record.read_bindings.values())
         }
-        local_error: str | None = None
+        local_error = None
         try:
             for resolved in read_writeability:
                 pool.get(resolved).flags.writeable = False
@@ -515,7 +684,7 @@ class PythonProcessRegistry:
                 seconds=int(clock.seconds),
                 calendar=str(clock.calendar),
             )
-            result = function(fields, context)
+            result = function(fields, context, **effective_parameters)
             if result is not None:
                 raise PythonProcessContractError(
                     f"Python process {record.name!r} must return None, got "
@@ -570,13 +739,9 @@ class PythonProcessRegistry:
             }
             values["placement"] = {
                 "group": str(scheme.group),
-                "previous": (
-                    None if index == 0 else str(rows[index - 1]["key"])
-                ),
+                "previous": (None if index == 0 else str(rows[index - 1]["key"])),
                 "next": (
-                    None
-                    if index + 1 == len(rows)
-                    else str(rows[index + 1]["key"])
+                    None if index + 1 == len(rows) else str(rows[index + 1]["key"])
                 ),
             }
             records.append(values)
@@ -594,9 +759,7 @@ class PythonProcessRegistry:
             if record.scheme_key not in live_keys:
                 self.installed.pop(name)
 
-    def restore_inventory(
-        self, records: Sequence[Mapping[str, Any]]
-    ) -> None:
+    def restore_inventory(self, records: Sequence[Mapping[str, Any]]) -> None:
         """Restore exact callback bytes without executing callback code."""
 
         local_identity = tuple(
@@ -614,10 +777,15 @@ class PythonProcessRegistry:
         restored_records: dict[str, RegisteredPythonProcess] = {}
         for values in records:
             spec = PythonProcessSpec.from_mapping(values["spec"])
-            if (
-                spec.name in self.installed
-                or spec.name in restored_records
-            ):
+            try:
+                function = cloudpickle.loads(spec.payload)
+                _validate_signature(function, spec.parameters)
+            except BaseException as exc:
+                raise PythonProcessContractError(
+                    f"cannot restore Python process {spec.name!r}: "
+                    f"{type(exc).__name__}: {exc}"
+                ) from exc
+            if spec.name in self.installed or spec.name in restored_records:
                 raise PythonProcessContractError(
                     f"Python process {spec.name!r} is already restored"
                 )
@@ -627,15 +795,9 @@ class PythonProcessRegistry:
                 raise PythonProcessContractError(
                     f"scheme {scheme_key!r} is not a Python runtime process"
                 )
-            read_bindings = {
-                name: self._resolve_field(name) for name in spec.reads
-            }
-            write_bindings = {
-                name: self._resolve_field(name) for name in spec.writes
-            }
-            overlap = set(read_bindings.values()) & set(
-                write_bindings.values()
-            )
+            read_bindings = {name: self._resolve_field(name) for name in spec.reads}
+            write_bindings = {name: self._resolve_field(name) for name in spec.writes}
+            overlap = set(read_bindings.values()) & set(write_bindings.values())
             if overlap:
                 raise PythonProcessContractError(
                     "restored Python process read/write fields overlap: "
@@ -662,9 +824,7 @@ class PythonProcessRegistry:
             self.driver.pool.get(resolved)
             return resolved
         if token.startswith("ccpp:"):
-            return self.driver.pool.ccpp_field_name(
-                token.removeprefix("ccpp:")
-            )
+            return self.driver.pool.ccpp_field_name(token.removeprefix("ccpp:"))
         try:
             # Unqualified CCPP standard names take precedence because runtime
             # physics callbacks operate at CCPP scheme boundaries.  Use the
@@ -690,9 +850,7 @@ class PythonProcessRegistry:
                 f"MPI ranks are at different execution boundaries: {cursors}"
             )
 
-    def _collective_error(
-        self, error: str | None, operation: str
-    ) -> None:
+    def _collective_error(self, error: str | None, operation: str) -> None:
         errors = self.driver.comm.allgather(error)
         failures = [
             f"rank {rank}: {message}"
