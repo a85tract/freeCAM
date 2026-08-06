@@ -493,7 +493,7 @@ def main() -> int:
     parser.add_argument(
         "--source-root",
         type=Path,
-        default=Path("/glade/work/ruitong/iCESM1.3.1_PI_cam_only"),
+        default=REPO / "build/iCESM1.3.1_PI_cam_only",
     )
     parser.add_argument(
         "--description",

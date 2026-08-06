@@ -103,10 +103,18 @@ class PICAMConfig:
             payload[name] = None if value is None else str(value)
         return payload
 
+    def fingerprint_payload(self) -> dict[str, Any]:
+        """Return scientific settings without checkout- or build-local paths."""
+
+        payload = self.to_payload()
+        payload.pop("source_root")
+        payload.pop("native_manifest")
+        return payload
+
     @property
     def fingerprint(self) -> str:
         encoded = json.dumps(
-            self.to_payload(), sort_keys=True, separators=(",", ":")
+            self.fingerprint_payload(), sort_keys=True, separators=(",", ":")
         ).encode()
         return sha256(encoded).hexdigest()
 

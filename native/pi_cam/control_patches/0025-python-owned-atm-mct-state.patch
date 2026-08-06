@@ -1,4 +1,3 @@
-diff --git a/src/cpl/atm_comp_mct.F90 b/src/cpl/atm_comp_mct.F90
 --- a/src/cpl/atm_comp_mct.F90
 +++ b/src/cpl/atm_comp_mct.F90
 @@ -66,3 +66,5 @@ module atm_comp_mct

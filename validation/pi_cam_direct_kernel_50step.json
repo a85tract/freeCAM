@@ -3,10 +3,10 @@
   "all_readonly_inputs_unchanged": true,
   "generated_symbol": "pycam_pi_cam_dadadj_v1",
   "kernel": "dadadj",
-  "library_sha256": "33028a4328396b7df7a76b2a008e064090b3e82d982f330c0419c5782c2cdbdb",
+  "library_sha256": "00eb0a98f0638ab298be14410605bfb4b59aa77e52a1ca21b8c1ab61f073d58b",
   "mpi_ranks": 512,
   "original_call_proof": "31caaef4:\te8 07 ec 10 ff       \tcall   30db9b00 <dadadj_>",
-  "pbs_job_id": "7032880.desched1",
+  "pbs_job_id": "7033488.desched1",
   "probe": "one mild synthetic dry instability per local chunk",
   "probe_unstable_columns": 13826,
   "rank0_shapes": {

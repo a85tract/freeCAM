@@ -11,7 +11,7 @@
 set -euo pipefail
 
 repo=/glade/work/ruitong/pycam-sima-pi-cam-only
-python=/glade/work/ruitong/pycam-sima/.venv/bin/python
+python=${repo}/.venv/bin/python
 case_root=/glade/work/ruitong/CESM_cases/f.e13.F1850C5.ne16_g16.icesm131_ihesp.PI-cam-python-state
 oracle_run=/glade/derecho/scratch/ruitong/pyCAM/PI-cam/f.e13.F1850C5.ne16_g16.icesm131_ihesp.PI-cam-oracle.50step/run
 run_dir=/glade/derecho/scratch/ruitong/pyCAM/PI-cam/direct-kernel-${PBS_JOBID}/run

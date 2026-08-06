@@ -37,11 +37,31 @@ def _apply_to(cam_root: Path) -> tuple[Path, ...]:
     applied: list[Path] = []
     for relative in PATCHES:
         patch = REPO / relative
-        subprocess.run(
-            ["git", "apply", "--unidiff-zero", str(patch)],
+        command = ["git", "apply", "--unidiff-zero", "--verbose", str(patch)]
+        checked = subprocess.run(
+            [*command[:2], "--check", *command[2:]],
             cwd=cam_root,
             check=True,
+            capture_output=True,
+            text=True,
         )
+        diagnostic = checked.stdout + checked.stderr
+        if "Skipped patch" in diagnostic:
+            raise RuntimeError(
+                f"git skipped PI-CAM patch instead of applying it: {patch}"
+            )
+        applied_result = subprocess.run(
+            command,
+            cwd=cam_root,
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        diagnostic = applied_result.stdout + applied_result.stderr
+        if "Skipped patch" in diagnostic:
+            raise RuntimeError(
+                f"git skipped PI-CAM patch instead of applying it: {patch}"
+            )
         applied.append(patch)
     return tuple(applied)
 

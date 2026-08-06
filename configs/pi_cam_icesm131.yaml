@@ -1,6 +1,6 @@
 schema_version: 1
 case_name: f.e13.F1850C5.ne16_g16.icesm131_ihesp.PI-cam-oracle.50step
-source_root: /glade/work/ruitong/iCESM1.3.1_PI_cam_only
+source_root: external/iCESM1.3.1_fzhu
 resolution: ne16
 mpi_size: 512
 calendar: NO_LEAP

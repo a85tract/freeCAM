@@ -56,6 +56,24 @@ CAM action order, public clock, state contracts and boundary-provider API;
 the original non-PIC Fortran numerical machine code is loaded as a fixed
 address `.so`.
 
+The exact upstream source is part of the repository contract rather than a
+user-specific `/glade/work/...` path. `external/iCESM1.3.1_fzhu` pins
+`NCAR/iCESM1.3_iHESP_hires` tag `iCESM1.3.1`; its `Externals.cfg` pins CAM to
+`iCAM5_iHESP` commit `09c8a19c463122fad488e6fd1bbc0fcd0f410130` and likewise
+pins CIME, CICE, CLM, POP, and RTM. The existing `external/CAM-SIMA` submodule
+remains independent for the CAM-SIMA runtimes. Prepare a writable patched tree
+without modifying either external checkout:
+
+```bash
+git submodule update --init external/iCESM1.3.1_fzhu
+uv run python tools/prepare_pi_cam_source.py
+```
+
+The preparation command runs iCESM's own `checkout_externals`, verifies every
+pinned revision, copies the source to the ignored
+`build/iCESM1.3.1_PI_cam_only`, applies the eight maintained PI-CAM control
+patches there, and writes `build/iCESM1.3.1_PI_cam_only/.pycam-source.json`.
+
 ```text
 captured PI-atm x2a fields
           ↓
@@ -198,12 +216,12 @@ or advance model time.
 Build and validate with the reproducible cpudev jobs:
 
 ```bash
+git submodule update --init external/iCESM1.3.1_fzhu
+uv run python tools/prepare_pi_cam_source.py
 source /path/to/oracle-case/.env_mach_specific.sh
-python tools/apply_pi_cam_source_patches.py --source-root /path/to/iCESM1.3.1
-python tools/generate_pi_cam_python_state_source.py \
-  --source-root /path/to/iCESM1.3.1 \
+uv run python tools/generate_pi_cam_python_state_source.py \
   --output-dir /path/to/python-state-case/SourceMods/src.cam
-python tools/build_pi_cam_devices.py \
+uv run python tools/build_pi_cam_devices.py \
   --case /path/to/python-state-case \
   --zero-copy-state \
   --numerical-build /path/to/oracle-build
@@ -219,10 +237,11 @@ links a fixed-address executable image, and changes its ELF type to ET_DYN for
 main, the adapter also restores CAM's original `-ftz` MXCSR setting before the
 first numerical call. Validation is fail-closed and compares every numeric
 variable in all CAM history and restart files; wall-clock strings are excluded.
-`tools/apply_pi_cam_source_patches.py` is the reproducible source-preparation
-entry point: it applies only the eight production patches, in dependency order,
-to a clean `components/cam` checkout. Historical exploratory patches remain as
-an audit trail but are not part of the build.
+`tools/prepare_pi_cam_source.py` is the normal reproducible source-preparation
+entry point. Its lower-level `tools/apply_pi_cam_source_patches.py` helper
+applies only the eight production patches, in dependency order, to the copied
+`components/cam` checkout. Historical exploratory patches remain as an audit
+trail but are not part of the build.
 The complete Python-owned state gate is recorded in
 [`validation/pi_cam_python_zero_copy_state_50step.json`](validation/pi_cam_python_zero_copy_state_50step.json)
 and

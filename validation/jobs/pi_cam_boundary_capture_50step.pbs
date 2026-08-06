@@ -41,14 +41,14 @@ mpiexec --label -n 512 \
   "${executable}" > cesm.log.pi-cam-boundary-capture 2>&1
 
 cd "${repo}"
-PYTHONPATH=${repo}/src /glade/work/ruitong/pycam-sima/.venv/bin/python \
+PYTHONPATH=${repo}/src ${repo}/.venv/bin/python \
   tools/convert_pi_cam_boundary.py \
   --capture-prefix "${capture_prefix}" \
   --output "${replay_root}" \
   --config configs/pi_cam_icesm131.yaml \
   --summary validation/pi_cam_boundary_capture.json
 
-PYTHONPATH=${repo}/src /glade/work/ruitong/pycam-sima/.venv/bin/python \
+PYTHONPATH=${repo}/src ${repo}/.venv/bin/python \
   tools/verify_pi_cam.py \
   --reference "${oracle_run}" \
   --candidate "${run_dir}" \
