@@ -7,7 +7,9 @@ module pycam_pi_cam_adapter
        cam_phys_run1_prepare, cam_phys_run1_scheme_action, &
        cam_phys_run2_prepare, cam_phys_run2_scheme_action, &
        cam_phys_run2_finish, cam_run2_dynamics, &
-       cam_run4_history, cam_run4_restart, cam_run4_finish
+       cam_run4_history, cam_run4_restart, cam_run4_finish, &
+       cam_python_state_count, cam_python_state_metadata, &
+       cam_python_state_transfer
   use camsrfexch, only: cam_in_t, cam_out_t
   use atm_import_export, only: atm_import, atm_export
   use atm_comp_mct, only: atm_python_post_cam_init_mct
@@ -33,6 +35,9 @@ module pycam_pi_cam_adapter
   public :: pycam_pi_cam_initialize_v1
   public :: pycam_pi_cam_action_v1
   public :: pycam_pi_cam_finalize_v1
+  public :: pycam_pi_cam_state_count_v1
+  public :: pycam_pi_cam_state_metadata_v1
+  public :: pycam_pi_cam_state_transfer_v1
 
   type(cam_in_t), pointer, save :: cam_in(:) => null()
   type(cam_out_t), pointer, save :: cam_out(:) => null()
@@ -176,6 +181,79 @@ contains
     call atm_python_post_cam_init_mct(atm_comm, 1, local_surface_columns)
     initialized = .true.
   end function pycam_pi_cam_initialize_v1
+
+  integer(c_int) function pycam_pi_cam_state_count_v1() &
+       bind(C, name='pycam_pi_cam_state_count_v1') result(count)
+    if (.not. initialized .or. finalized) then
+       count = -1_c_int
+    else
+       count = int(cam_python_state_count(), c_int)
+    endif
+  end function pycam_pi_cam_state_count_v1
+
+  integer(c_int) function pycam_pi_cam_state_metadata_v1(field_id, &
+       dtype_code, field_rank, extents, max_rank, active) &
+       bind(C, name='pycam_pi_cam_state_metadata_v1') result(status)
+    integer(c_int), value, intent(in) :: field_id, max_rank
+    integer(c_int), intent(out) :: dtype_code, field_rank, active
+    integer(c_int64_t), intent(out) :: extents(*)
+    integer :: local_dtype, local_rank, local_extents(8), local_status, index
+    logical :: local_active
+    character(len=128) :: field_name
+
+    status = 0_c_int
+    dtype_code = 0_c_int
+    field_rank = 0_c_int
+    active = 0_c_int
+    if (.not. initialized .or. finalized) then
+       status = 30_c_int
+       return
+    endif
+    if (max_rank < 1 .or. max_rank > size(local_extents)) then
+       status = 31_c_int
+       return
+    endif
+    call cam_python_state_metadata(int(field_id), cam_in, cam_out, &
+         field_name, local_dtype, local_rank, local_extents, &
+         size(local_extents), local_active, local_status)
+    if (local_status /= 0) then
+       status = int(31 + local_status, c_int)
+       return
+    endif
+    if (local_rank > max_rank) then
+       status = 35_c_int
+       return
+    endif
+    dtype_code = int(local_dtype, c_int)
+    field_rank = int(local_rank, c_int)
+    if (local_active) active = 1_c_int
+    do index = 1, int(max_rank)
+       extents(index) = int(local_extents(index), c_int64_t)
+    enddo
+  end function pycam_pi_cam_state_metadata_v1
+
+  integer(c_int) function pycam_pi_cam_state_transfer_v1(field_id, &
+       direction, data, nvalues) &
+       bind(C, name='pycam_pi_cam_state_transfer_v1') result(status)
+    integer(c_int), value, intent(in) :: field_id, direction
+    type(c_ptr), value, intent(in) :: data
+    integer(c_int64_t), value, intent(in) :: nvalues
+    integer :: local_status
+
+    call pycam_pi_cam_set_fp_environment_v1()
+    status = 0_c_int
+    if (.not. initialized .or. finalized) then
+       status = 40_c_int
+       return
+    endif
+    if (nvalues < 1_c_int64_t .or. nvalues > huge(local_status)) then
+       status = 41_c_int
+       return
+    endif
+    call cam_python_state_transfer(int(field_id), int(direction), data, &
+         int(nvalues), cam_in, cam_out, local_status)
+    if (local_status /= 0) status = int(41 + local_status, c_int)
+  end function pycam_pi_cam_state_transfer_v1
 
   integer(c_int) function pycam_pi_cam_action_v1(action_id, nfields, &
        pointers, ndims, shapes, max_rank, fortran_comm, errmsg, errmsg_len) &

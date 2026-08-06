@@ -1,0 +1,22 @@
+schema_version: 1
+
+# The generator reads these original derived-type declarations and exposes
+# every numeric component through one stable pointer-table state ABI.  Python
+# is authoritative between native calls; the old derived types remain a
+# temporary mirror until every numerical kernel consumes StatePool arrays
+# directly.
+owners:
+  - name: cam_in
+    type: cam_in_t
+    source: components/cam/src/control/camsrfexch.F90
+  - name: cam_out
+    type: cam_out_t
+    source: components/cam/src/control/camsrfexch.F90
+  - name: phys_state
+    type: physics_state
+    source: components/cam/src/physics/cam/physics_types.F90
+  - name: phys_tend
+    type: physics_tend
+    source: components/cam/src/physics/cam/physics_types.F90
+
+exclude: []

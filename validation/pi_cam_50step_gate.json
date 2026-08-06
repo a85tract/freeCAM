@@ -7,15 +7,21 @@
   "cpudev_jobs": {
     "nonpic_source_capture": "7029021.desched1",
     "python_driver": "7029054.desched1",
-    "persistent_notebook_session": "7029067.desched1"
+    "persistent_notebook_session": "7029067.desched1",
+    "python_state_bridge": "7030195.desched1",
+    "persistent_state_bridge": "7030208.desched1"
   },
   "results": {
     "nonpic_source_capture_bfb": true,
     "python_driver_bfb": true,
     "persistent_notebook_session_bfb": true,
+    "python_state_bridge_bfb": true,
+    "persistent_state_bridge_bfb": true,
+    "generated_native_state_fields": 136,
+    "active_python_owned_native_state_fields": 134,
     "compared_cam_files": 4,
     "first_difference": null,
     "persistent_mpi_launch_count": 1,
-    "unit_tests_passed": 279
+    "unit_tests_passed": 283
   }
 }

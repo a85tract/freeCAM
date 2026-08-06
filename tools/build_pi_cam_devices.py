@@ -20,6 +20,16 @@ import re
 import shlex
 import shutil
 import subprocess
+import sys
+
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
+
+from pycam_sima.pi_cam.state_codegen import (  # noqa: E402
+    generate_fortran_include,
+    instrument_cam_comp,
+    load_state_bridge,
+)
 
 
 REPO = Path(__file__).resolve().parents[1]
@@ -29,6 +39,9 @@ ABI_SYMBOLS = (
     "pycam_pi_cam_initialize_v1",
     "pycam_pi_cam_action_v1",
     "pycam_pi_cam_finalize_v1",
+    "pycam_pi_cam_state_count_v1",
+    "pycam_pi_cam_state_metadata_v1",
+    "pycam_pi_cam_state_transfer_v1",
 )
 
 
@@ -203,33 +216,50 @@ def _operations() -> dict[str, dict[str, object]]:
         "initialize": {
             "symbol": ABI_SYMBOLS[0],
             "action_id": 0,
-            "fields": ["configured_stop_n", "case_name_utf8", "orbital_year"],
+            "arguments": [
+                {"field": "configured_stop_n", "dtype": "int64", "rank": 0, "intent": "in"},
+                {"field": "case_name_utf8", "dtype": "uint8", "rank": 1, "intent": "in"},
+                {"field": "orbital_year", "dtype": "int32", "rank": 0, "intent": "in"},
+            ],
         },
-        "finalize": {"symbol": ABI_SYMBOLS[2], "action_id": 0, "fields": []},
+        "finalize": {"symbol": ABI_SYMBOLS[2], "action_id": 0, "arguments": []},
         "initial_priming": {
             "symbol": ABI_SYMBOLS[1],
             "action_id": 200,
-            "fields": ["cam_in.x2a_rattr", "cam_out.a2x_rattr"],
+            "arguments": [
+                {"field": "cam_in.x2a_rattr", "dtype": "float64", "rank": 2, "intent": "in"},
+                {"field": "cam_out.a2x_rattr", "dtype": "float64", "rank": 2, "intent": "out"},
+            ],
         },
         "source_step": {
             "symbol": ABI_SYMBOLS[1],
             "action_id": 500,
-            "fields": ["cam_in.x2a_rattr", "cam_out.a2x_rattr"],
+            "arguments": [
+                {"field": "cam_in.x2a_rattr", "dtype": "float64", "rank": 2, "intent": "in"},
+                {"field": "cam_out.a2x_rattr", "dtype": "float64", "rank": 2, "intent": "out"},
+            ],
         },
         "source_step_held_import": {
             "symbol": ABI_SYMBOLS[1],
             "action_id": 501,
-            "fields": ["cam_in.x2a_rattr", "cam_out.a2x_rattr"],
+            "arguments": [
+                {"field": "cam_in.x2a_rattr", "dtype": "float64", "rank": 2, "intent": "in"},
+                {"field": "cam_out.a2x_rattr", "dtype": "float64", "rank": 2, "intent": "out"},
+            ],
         },
         "boundary_import": {
             "symbol": ABI_SYMBOLS[1],
             "action_id": 202,
-            "fields": ["cam_in.x2a_rattr"],
+            "arguments": [
+                {"field": "cam_in.x2a_rattr", "dtype": "float64", "rank": 2, "intent": "in"},
+            ],
         },
         "boundary_export": {
             "symbol": ABI_SYMBOLS[1],
             "action_id": 432,
-            "fields": ["cam_out.a2x_rattr"],
+            "arguments": [
+                {"field": "cam_out.a2x_rattr", "dtype": "float64", "rank": 2, "intent": "out"},
+            ],
         },
     }
     names = (
@@ -246,7 +276,7 @@ def _operations() -> dict[str, dict[str, object]]:
     )
     for action_id, name in zip(range(401, 432), names):
         operations[name] = {
-            "symbol": ABI_SYMBOLS[1], "action_id": action_id, "fields": []
+            "symbol": ABI_SYMBOLS[1], "action_id": action_id, "arguments": []
         }
     return operations
 
@@ -265,6 +295,10 @@ def main() -> int:
     parser.add_argument(
         "--floating-environment", type=Path,
         default=REPO / "native/pi_cam/floating_environment.c",
+    )
+    parser.add_argument(
+        "--state-bridge", type=Path,
+        default=REPO / "native/pi_cam/state_bridge.yaml",
     )
     parser.add_argument(
         "--output", type=Path,
@@ -288,9 +322,18 @@ def main() -> int:
     for directory in (output.parent, work):
         directory.mkdir(parents=True, exist_ok=True)
 
+    state_bridge = load_state_bridge(args.state_bridge.resolve(), source_root)
+    state_include = work / "pycam_pi_cam_state_bridge.inc"
+    state_include.write_text(generate_fortran_include(state_bridge))
+    generated_cam_comp = work / "cam_comp.F90"
+    original_cam_comp = source_root / "components/cam/src/control/cam_comp.F90"
+    generated_cam_comp.write_text(
+        instrument_cam_comp(original_cam_comp.read_text(), state_include.name)
+    )
+
     sources = {
         "physpkg.F90": source_root / "components/cam/src/physics/cam/physpkg.F90",
-        "cam_comp.F90": source_root / "components/cam/src/control/cam_comp.F90",
+        "cam_comp.F90": generated_cam_comp,
         "atm_comp_mct.F90": source_root / "components/cam/src/cpl/atm_comp_mct.F90",
     }
     compile_logs: dict[str, str] = {}
@@ -421,6 +464,9 @@ def main() -> int:
         "floating_environment_compile_command": floating_environment_compile,
         "intel_math_library": str(imf_shared),
         "operations": _operations(),
+        "state_bridge": state_bridge.manifest(),
+        "state_bridge_description": str(args.state_bridge.resolve()),
+        "state_bridge_include": str(state_include),
         "compile_commands": compile_commands,
         "adapter_compile_command": adapter_compile,
         "capture_executable": str(capture_executable),

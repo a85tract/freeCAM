@@ -1,0 +1,5247 @@
+{
+  "bfb": {
+    "bfb": true,
+    "candidate_files": 4,
+    "compared_files": 4,
+    "extra_in_candidate": [],
+    "first_difference": null,
+    "missing_in_candidate": [],
+    "reference_files": 4
+  },
+  "completed": {
+    "actions": 1687,
+    "coupling_step": 51,
+    "date": 10102,
+    "fields": {
+      "cam_in.aldif": {
+        "aliases": [],
+        "category": "native_cam_state",
+        "dimensions": [
+          "cam_in.aldif__dim0",
+          "cam_in.aldif__dim1"
+        ],
+        "dtype": "<f8",
+        "name": "cam_in.aldif",
+        "nbytes": 256,
+        "restart": true,
+        "shape": [
+          16,
+          2
+        ],
+        "units": "1",
+        "writable": true
+      },
+      "cam_in.aldir": {
+        "aliases": [],
+        "category": "native_cam_state",
+        "dimensions": [
+          "cam_in.aldir__dim0",
+          "cam_in.aldir__dim1"
+        ],
+        "dtype": "<f8",
+        "name": "cam_in.aldir",
+        "nbytes": 256,
+        "restart": true,
+        "shape": [
+          16,
+          2
+        ],
+        "units": "1",
+        "writable": true
+      },
+      "cam_in.asdif": {
+        "aliases": [],
+        "category": "native_cam_state",
+        "dimensions": [
+          "cam_in.asdif__dim0",
+          "cam_in.asdif__dim1"
+        ],
+        "dtype": "<f8",
+        "name": "cam_in.asdif",
+        "nbytes": 256,
+        "restart": true,
+        "shape": [
+          16,
+          2
+        ],
+        "units": "1",
+        "writable": true
+      },
+      "cam_in.asdir": {
+        "aliases": [],
+        "category": "native_cam_state",
+        "dimensions": [
+          "cam_in.asdir__dim0",
+          "cam_in.asdir__dim1"
+        ],
+        "dtype": "<f8",
+        "name": "cam_in.asdir",
+        "nbytes": 256,
+        "restart": true,
+        "shape": [
+          16,
+          2
+        ],
+        "units": "1",
+        "writable": true
+      },
+      "cam_in.buck16": {
+        "aliases": [],
+        "category": "native_cam_state",
+        "dimensions": [
+          "cam_in.buck16__dim0",
+          "cam_in.buck16__dim1"
+        ],
+        "dtype": "<f8",
+        "name": "cam_in.buck16",
+        "nbytes": 256,
+        "restart": true,
+        "shape": [
+          16,
+          2
+        ],
+        "units": "1",
+        "writable": true
+      },
+      "cam_in.buck18": {
+        "aliases": [],
+        "category": "native_cam_state",
+        "dimensions": [
+          "cam_in.buck18__dim0",
+          "cam_in.buck18__dim1"
+        ],
+        "dtype": "<f8",
+        "name": "cam_in.buck18",
+        "nbytes": 256,
+        "restart": true,
+        "shape": [
+          16,
+          2
+        ],
+        "units": "1",
+        "writable": true
+      },
+      "cam_in.buckD": {
+        "aliases": [],
+        "category": "native_cam_state",
+        "dimensions": [
+          "cam_in.buckD__dim0",
+          "cam_in.buckD__dim1"
+        ],
+        "dtype": "<f8",
+        "name": "cam_in.buckD",
+        "nbytes": 256,
+        "restart": true,
+        "shape": [
+          16,
+          2
+        ],
+        "units": "1",
+        "writable": true
+      },
+      "cam_in.buckH": {
+        "aliases": [],
+        "category": "native_cam_state",
+        "dimensions": [
+          "cam_in.buckH__dim0",
+          "cam_in.buckH__dim1"
+        ],
+        "dtype": "<f8",
+        "name": "cam_in.buckH",
+        "nbytes": 256,
+        "restart": true,
+        "shape": [
+          16,
+          2
+        ],
+        "units": "1",
+        "writable": true
+      },
+      "cam_in.cflx": {
+        "aliases": [],
+        "category": "native_cam_state",
+        "dimensions": [
+          "cam_in.cflx__dim0",
+          "cam_in.cflx__dim1",
+          "cam_in.cflx__dim2"
+        ],
+        "dtype": "<f8",
+        "name": "cam_in.cflx",
+        "nbytes": 14592,
+        "restart": true,
+        "shape": [
+          16,
+          57,
+          2
+        ],
+        "units": "1",
+        "writable": true
+      },
+      "cam_in.depvel": {
+        "aliases": [],
+        "category": "native_cam_state",
+        "dimensions": [
+          "cam_in.depvel__dim0",
+          "cam_in.depvel__dim1",
+          "cam_in.depvel__dim2"
+        ],
+        "dtype": "<f8",
+        "name": "cam_in.depvel",
+        "nbytes": 768,
+        "restart": true,
+        "shape": [
+          16,
+          3,
+          2
+        ],
+        "units": "1",
+        "writable": true
+      },
+      "cam_in.dstflx": {
+        "aliases": [],
+        "category": "native_cam_state",
+        "dimensions": [
+          "cam_in.dstflx__dim0",
+          "cam_in.dstflx__dim1",
+          "cam_in.dstflx__dim2"
+        ],
+        "dtype": "<f8",
+        "name": "cam_in.dstflx",
+        "nbytes": 1024,
+        "restart": true,
+        "shape": [
+          16,
+          4,
+          2
+        ],
+        "units": "1",
+        "writable": true
+      },
+      "cam_in.fco2_lnd": {
+        "aliases": [],
+        "category": "native_cam_state",
+        "dimensions": [
+          "cam_in.fco2_lnd__dim0",
+          "cam_in.fco2_lnd__dim1"
+        ],
+        "dtype": "<f8",
+        "name": "cam_in.fco2_lnd",
+        "nbytes": 256,
+        "restart": true,
+        "shape": [
+          16,
+          2
+        ],
+        "units": "1",
+        "writable": true
+      },
+      "cam_in.fco2_ocn": {
+        "aliases": [],
+        "category": "native_cam_state",
+        "dimensions": [
+          "cam_in.fco2_ocn__dim0",
+          "cam_in.fco2_ocn__dim1"
+        ],
+        "dtype": "<f8",
+        "name": "cam_in.fco2_ocn",
+        "nbytes": 256,
+        "restart": true,
+        "shape": [
+          16,
+          2
+        ],
+        "units": "1",
+        "writable": true
+      },
+      "cam_in.fdms": {
+        "aliases": [],
+        "category": "native_cam_state",
+        "dimensions": [
+          "cam_in.fdms__dim0",
+          "cam_in.fdms__dim1"
+        ],
+        "dtype": "<f8",
+        "name": "cam_in.fdms",
+        "nbytes": 256,
+        "restart": true,
+        "shape": [
+          16,
+          2
+        ],
+        "units": "1",
+        "writable": true
+      },
+      "cam_in.fv": {
+        "aliases": [],
+        "category": "native_cam_state",
+        "dimensions": [
+          "cam_in.fv__dim0",
+          "cam_in.fv__dim1"
+        ],
+        "dtype": "<f8",
+        "name": "cam_in.fv",
+        "nbytes": 256,
+        "restart": true,
+        "shape": [
+          16,
+          2
+        ],
+        "units": "1",
+        "writable": true
+      },
+      "cam_in.icefrac": {
+        "aliases": [],
+        "category": "native_cam_state",
+        "dimensions": [
+          "cam_in.icefrac__dim0",
+          "cam_in.icefrac__dim1"
+        ],
+        "dtype": "<f8",
+        "name": "cam_in.icefrac",
+        "nbytes": 256,
+        "restart": true,
+        "shape": [
+          16,
+          2
+        ],
+        "units": "1",
+        "writable": true
+      },
+      "cam_in.landfrac": {
+        "aliases": [],
+        "category": "native_cam_state",
+        "dimensions": [
+          "cam_in.landfrac__dim0",
+          "cam_in.landfrac__dim1"
+        ],
+        "dtype": "<f8",
+        "name": "cam_in.landfrac",
+        "nbytes": 256,
+        "restart": true,
+        "shape": [
+          16,
+          2
+        ],
+        "units": "1",
+        "writable": true
+      },
+      "cam_in.lchnk": {
+        "aliases": [],
+        "category": "native_cam_state",
+        "dimensions": [
+          "cam_in.lchnk__dim0"
+        ],
+        "dtype": "<i4",
+        "name": "cam_in.lchnk",
+        "nbytes": 8,
+        "restart": true,
+        "shape": [
+          2
+        ],
+        "units": "1",
+        "writable": true
+      },
+      "cam_in.lhf": {
+        "aliases": [],
+        "category": "native_cam_state",
+        "dimensions": [
+          "cam_in.lhf__dim0",
+          "cam_in.lhf__dim1"
+        ],
+        "dtype": "<f8",
+        "name": "cam_in.lhf",
+        "nbytes": 256,
+        "restart": true,
+        "shape": [
+          16,
+          2
+        ],
+        "units": "1",
+        "writable": true
+      },
+      "cam_in.lwup": {
+        "aliases": [],
+        "category": "native_cam_state",
+        "dimensions": [
+          "cam_in.lwup__dim0",
+          "cam_in.lwup__dim1"
+        ],
+        "dtype": "<f8",
+        "name": "cam_in.lwup",
+        "nbytes": 256,
+        "restart": true,
+        "shape": [
+          16,
+          2
+        ],
+        "units": "1",
+        "writable": true
+      },
+      "cam_in.ncol": {
+        "aliases": [],
+        "category": "native_cam_state",
+        "dimensions": [
+          "cam_in.ncol__dim0"
+        ],
+        "dtype": "<i4",
+        "name": "cam_in.ncol",
+        "nbytes": 8,
+        "restart": true,
+        "shape": [
+          2
+        ],
+        "units": "1",
+        "writable": true
+      },
+      "cam_in.ocnfrac": {
+        "aliases": [],
+        "category": "native_cam_state",
+        "dimensions": [
+          "cam_in.ocnfrac__dim0",
+          "cam_in.ocnfrac__dim1"
+        ],
+        "dtype": "<f8",
+        "name": "cam_in.ocnfrac",
+        "nbytes": 256,
+        "restart": true,
+        "shape": [
+          16,
+          2
+        ],
+        "units": "1",
+        "writable": true
+      },
+      "cam_in.qref": {
+        "aliases": [],
+        "category": "native_cam_state",
+        "dimensions": [
+          "cam_in.qref__dim0",
+          "cam_in.qref__dim1"
+        ],
+        "dtype": "<f8",
+        "name": "cam_in.qref",
+        "nbytes": 256,
+        "restart": true,
+        "shape": [
+          16,
+          2
+        ],
+        "units": "1",
+        "writable": true
+      },
+      "cam_in.ram1": {
+        "aliases": [],
+        "category": "native_cam_state",
+        "dimensions": [
+          "cam_in.ram1__dim0",
+          "cam_in.ram1__dim1"
+        ],
+        "dtype": "<f8",
+        "name": "cam_in.ram1",
+        "nbytes": 256,
+        "restart": true,
+        "shape": [
+          16,
+          2
+        ],
+        "units": "1",
+        "writable": true
+      },
+      "cam_in.re": {
+        "aliases": [],
+        "category": "native_cam_state",
+        "dimensions": [
+          "cam_in.re__dim0",
+          "cam_in.re__dim1"
+        ],
+        "dtype": "<f8",
+        "name": "cam_in.re",
+        "nbytes": 256,
+        "restart": true,
+        "shape": [
+          16,
+          2
+        ],
+        "units": "1",
+        "writable": true
+      },
+      "cam_in.shf": {
+        "aliases": [],
+        "category": "native_cam_state",
+        "dimensions": [
+          "cam_in.shf__dim0",
+          "cam_in.shf__dim1"
+        ],
+        "dtype": "<f8",
+        "name": "cam_in.shf",
+        "nbytes": 256,
+        "restart": true,
+        "shape": [
+          16,
+          2
+        ],
+        "units": "1",
+        "writable": true
+      },
+      "cam_in.snowhice": {
+        "aliases": [],
+        "category": "native_cam_state",
+        "dimensions": [
+          "cam_in.snowhice__dim0",
+          "cam_in.snowhice__dim1"
+        ],
+        "dtype": "<f8",
+        "name": "cam_in.snowhice",
+        "nbytes": 256,
+        "restart": true,
+        "shape": [
+          16,
+          2
+        ],
+        "units": "1",
+        "writable": true
+      },
+      "cam_in.snowhland": {
+        "aliases": [],
+        "category": "native_cam_state",
+        "dimensions": [
+          "cam_in.snowhland__dim0",
+          "cam_in.snowhland__dim1"
+        ],
+        "dtype": "<f8",
+        "name": "cam_in.snowhland",
+        "nbytes": 256,
+        "restart": true,
+        "shape": [
+          16,
+          2
+        ],
+        "units": "1",
+        "writable": true
+      },
+      "cam_in.ssq": {
+        "aliases": [],
+        "category": "native_cam_state",
+        "dimensions": [
+          "cam_in.ssq__dim0",
+          "cam_in.ssq__dim1"
+        ],
+        "dtype": "<f8",
+        "name": "cam_in.ssq",
+        "nbytes": 256,
+        "restart": true,
+        "shape": [
+          16,
+          2
+        ],
+        "units": "1",
+        "writable": true
+      },
+      "cam_in.sst": {
+        "aliases": [],
+        "category": "native_cam_state",
+        "dimensions": [
+          "cam_in.sst__dim0",
+          "cam_in.sst__dim1"
+        ],
+        "dtype": "<f8",
+        "name": "cam_in.sst",
+        "nbytes": 256,
+        "restart": true,
+        "shape": [
+          16,
+          2
+        ],
+        "units": "1",
+        "writable": true
+      },
+      "cam_in.tref": {
+        "aliases": [],
+        "category": "native_cam_state",
+        "dimensions": [
+          "cam_in.tref__dim0",
+          "cam_in.tref__dim1"
+        ],
+        "dtype": "<f8",
+        "name": "cam_in.tref",
+        "nbytes": 256,
+        "restart": true,
+        "shape": [
+          16,
+          2
+        ],
+        "units": "1",
+        "writable": true
+      },
+      "cam_in.ts": {
+        "aliases": [],
+        "category": "native_cam_state",
+        "dimensions": [
+          "cam_in.ts__dim0",
+          "cam_in.ts__dim1"
+        ],
+        "dtype": "<f8",
+        "name": "cam_in.ts",
+        "nbytes": 256,
+        "restart": true,
+        "shape": [
+          16,
+          2
+        ],
+        "units": "1",
+        "writable": true
+      },
+      "cam_in.u10": {
+        "aliases": [],
+        "category": "native_cam_state",
+        "dimensions": [
+          "cam_in.u10__dim0",
+          "cam_in.u10__dim1"
+        ],
+        "dtype": "<f8",
+        "name": "cam_in.u10",
+        "nbytes": 256,
+        "restart": true,
+        "shape": [
+          16,
+          2
+        ],
+        "units": "1",
+        "writable": true
+      },
+      "cam_in.ustar": {
+        "aliases": [],
+        "category": "native_cam_state",
+        "dimensions": [
+          "cam_in.ustar__dim0",
+          "cam_in.ustar__dim1"
+        ],
+        "dtype": "<f8",
+        "name": "cam_in.ustar",
+        "nbytes": 256,
+        "restart": true,
+        "shape": [
+          16,
+          2
+        ],
+        "units": "1",
+        "writable": true
+      },
+      "cam_in.wsx": {
+        "aliases": [],
+        "category": "native_cam_state",
+        "dimensions": [
+          "cam_in.wsx__dim0",
+          "cam_in.wsx__dim1"
+        ],
+        "dtype": "<f8",
+        "name": "cam_in.wsx",
+        "nbytes": 256,
+        "restart": true,
+        "shape": [
+          16,
+          2
+        ],
+        "units": "1",
+        "writable": true
+      },
+      "cam_in.wsy": {
+        "aliases": [],
+        "category": "native_cam_state",
+        "dimensions": [
+          "cam_in.wsy__dim0",
+          "cam_in.wsy__dim1"
+        ],
+        "dtype": "<f8",
+        "name": "cam_in.wsy",
+        "nbytes": 256,
+        "restart": true,
+        "shape": [
+          16,
+          2
+        ],
+        "units": "1",
+        "writable": true
+      },
+      "cam_in.x2a_rattr": {
+        "aliases": [],
+        "category": "boundary_import",
+        "dimensions": [
+          "cam_in.x2a_rattr__dim0",
+          "cam_in.x2a_rattr__dim1"
+        ],
+        "dtype": "<f8",
+        "name": "cam_in.x2a_rattr",
+        "nbytes": 9184,
+        "restart": true,
+        "shape": [
+          41,
+          28
+        ],
+        "units": "1",
+        "writable": true
+      },
+      "cam_out.a2x_rattr": {
+        "aliases": [],
+        "category": "boundary_export",
+        "dimensions": [
+          "cam_out.a2x_rattr__dim0",
+          "cam_out.a2x_rattr__dim1"
+        ],
+        "dtype": "<f8",
+        "name": "cam_out.a2x_rattr",
+        "nbytes": 11200,
+        "restart": true,
+        "shape": [
+          50,
+          28
+        ],
+        "units": "1",
+        "writable": true
+      },
+      "cam_out.bcphidry": {
+        "aliases": [],
+        "category": "native_cam_state",
+        "dimensions": [
+          "cam_out.bcphidry__dim0",
+          "cam_out.bcphidry__dim1"
+        ],
+        "dtype": "<f8",
+        "name": "cam_out.bcphidry",
+        "nbytes": 256,
+        "restart": true,
+        "shape": [
+          16,
+          2
+        ],
+        "units": "1",
+        "writable": true
+      },
+      "cam_out.bcphiwet": {
+        "aliases": [],
+        "category": "native_cam_state",
+        "dimensions": [
+          "cam_out.bcphiwet__dim0",
+          "cam_out.bcphiwet__dim1"
+        ],
+        "dtype": "<f8",
+        "name": "cam_out.bcphiwet",
+        "nbytes": 256,
+        "restart": true,
+        "shape": [
+          16,
+          2
+        ],
+        "units": "1",
+        "writable": true
+      },
+      "cam_out.bcphodry": {
+        "aliases": [],
+        "category": "native_cam_state",
+        "dimensions": [
+          "cam_out.bcphodry__dim0",
+          "cam_out.bcphodry__dim1"
+        ],
+        "dtype": "<f8",
+        "name": "cam_out.bcphodry",
+        "nbytes": 256,
+        "restart": true,
+        "shape": [
+          16,
+          2
+        ],
+        "units": "1",
+        "writable": true
+      },
+      "cam_out.co2diag": {
+        "aliases": [],
+        "category": "native_cam_state",
+        "dimensions": [
+          "cam_out.co2diag__dim0",
+          "cam_out.co2diag__dim1"
+        ],
+        "dtype": "<f8",
+        "name": "cam_out.co2diag",
+        "nbytes": 256,
+        "restart": true,
+        "shape": [
+          16,
+          2
+        ],
+        "units": "1",
+        "writable": true
+      },
+      "cam_out.co2prog": {
+        "aliases": [],
+        "category": "native_cam_state",
+        "dimensions": [
+          "cam_out.co2prog__dim0",
+          "cam_out.co2prog__dim1"
+        ],
+        "dtype": "<f8",
+        "name": "cam_out.co2prog",
+        "nbytes": 256,
+        "restart": true,
+        "shape": [
+          16,
+          2
+        ],
+        "units": "1",
+        "writable": true
+      },
+      "cam_out.dstdry1": {
+        "aliases": [],
+        "category": "native_cam_state",
+        "dimensions": [
+          "cam_out.dstdry1__dim0",
+          "cam_out.dstdry1__dim1"
+        ],
+        "dtype": "<f8",
+        "name": "cam_out.dstdry1",
+        "nbytes": 256,
+        "restart": true,
+        "shape": [
+          16,
+          2
+        ],
+        "units": "1",
+        "writable": true
+      },
+      "cam_out.dstdry2": {
+        "aliases": [],
+        "category": "native_cam_state",
+        "dimensions": [
+          "cam_out.dstdry2__dim0",
+          "cam_out.dstdry2__dim1"
+        ],
+        "dtype": "<f8",
+        "name": "cam_out.dstdry2",
+        "nbytes": 256,
+        "restart": true,
+        "shape": [
+          16,
+          2
+        ],
+        "units": "1",
+        "writable": true
+      },
+      "cam_out.dstdry3": {
+        "aliases": [],
+        "category": "native_cam_state",
+        "dimensions": [
+          "cam_out.dstdry3__dim0",
+          "cam_out.dstdry3__dim1"
+        ],
+        "dtype": "<f8",
+        "name": "cam_out.dstdry3",
+        "nbytes": 256,
+        "restart": true,
+        "shape": [
+          16,
+          2
+        ],
+        "units": "1",
+        "writable": true
+      },
+      "cam_out.dstdry4": {
+        "aliases": [],
+        "category": "native_cam_state",
+        "dimensions": [
+          "cam_out.dstdry4__dim0",
+          "cam_out.dstdry4__dim1"
+        ],
+        "dtype": "<f8",
+        "name": "cam_out.dstdry4",
+        "nbytes": 256,
+        "restart": true,
+        "shape": [
+          16,
+          2
+        ],
+        "units": "1",
+        "writable": true
+      },
+      "cam_out.dstwet1": {
+        "aliases": [],
+        "category": "native_cam_state",
+        "dimensions": [
+          "cam_out.dstwet1__dim0",
+          "cam_out.dstwet1__dim1"
+        ],
+        "dtype": "<f8",
+        "name": "cam_out.dstwet1",
+        "nbytes": 256,
+        "restart": true,
+        "shape": [
+          16,
+          2
+        ],
+        "units": "1",
+        "writable": true
+      },
+      "cam_out.dstwet2": {
+        "aliases": [],
+        "category": "native_cam_state",
+        "dimensions": [
+          "cam_out.dstwet2__dim0",
+          "cam_out.dstwet2__dim1"
+        ],
+        "dtype": "<f8",
+        "name": "cam_out.dstwet2",
+        "nbytes": 256,
+        "restart": true,
+        "shape": [
+          16,
+          2
+        ],
+        "units": "1",
+        "writable": true
+      },
+      "cam_out.dstwet3": {
+        "aliases": [],
+        "category": "native_cam_state",
+        "dimensions": [
+          "cam_out.dstwet3__dim0",
+          "cam_out.dstwet3__dim1"
+        ],
+        "dtype": "<f8",
+        "name": "cam_out.dstwet3",
+        "nbytes": 256,
+        "restart": true,
+        "shape": [
+          16,
+          2
+        ],
+        "units": "1",
+        "writable": true
+      },
+      "cam_out.dstwet4": {
+        "aliases": [],
+        "category": "native_cam_state",
+        "dimensions": [
+          "cam_out.dstwet4__dim0",
+          "cam_out.dstwet4__dim1"
+        ],
+        "dtype": "<f8",
+        "name": "cam_out.dstwet4",
+        "nbytes": 256,
+        "restart": true,
+        "shape": [
+          16,
+          2
+        ],
+        "units": "1",
+        "writable": true
+      },
+      "cam_out.flwds": {
+        "aliases": [],
+        "category": "native_cam_state",
+        "dimensions": [
+          "cam_out.flwds__dim0",
+          "cam_out.flwds__dim1"
+        ],
+        "dtype": "<f8",
+        "name": "cam_out.flwds",
+        "nbytes": 256,
+        "restart": true,
+        "shape": [
+          16,
+          2
+        ],
+        "units": "1",
+        "writable": true
+      },
+      "cam_out.lchnk": {
+        "aliases": [],
+        "category": "native_cam_state",
+        "dimensions": [
+          "cam_out.lchnk__dim0"
+        ],
+        "dtype": "<i4",
+        "name": "cam_out.lchnk",
+        "nbytes": 8,
+        "restart": true,
+        "shape": [
+          2
+        ],
+        "units": "1",
+        "writable": true
+      },
+      "cam_out.ncol": {
+        "aliases": [],
+        "category": "native_cam_state",
+        "dimensions": [
+          "cam_out.ncol__dim0"
+        ],
+        "dtype": "<i4",
+        "name": "cam_out.ncol",
+        "nbytes": 8,
+        "restart": true,
+        "shape": [
+          2
+        ],
+        "units": "1",
+        "writable": true
+      },
+      "cam_out.netsw": {
+        "aliases": [],
+        "category": "native_cam_state",
+        "dimensions": [
+          "cam_out.netsw__dim0",
+          "cam_out.netsw__dim1"
+        ],
+        "dtype": "<f8",
+        "name": "cam_out.netsw",
+        "nbytes": 256,
+        "restart": true,
+        "shape": [
+          16,
+          2
+        ],
+        "units": "1",
+        "writable": true
+      },
+      "cam_out.ocphidry": {
+        "aliases": [],
+        "category": "native_cam_state",
+        "dimensions": [
+          "cam_out.ocphidry__dim0",
+          "cam_out.ocphidry__dim1"
+        ],
+        "dtype": "<f8",
+        "name": "cam_out.ocphidry",
+        "nbytes": 256,
+        "restart": true,
+        "shape": [
+          16,
+          2
+        ],
+        "units": "1",
+        "writable": true
+      },
+      "cam_out.ocphiwet": {
+        "aliases": [],
+        "category": "native_cam_state",
+        "dimensions": [
+          "cam_out.ocphiwet__dim0",
+          "cam_out.ocphiwet__dim1"
+        ],
+        "dtype": "<f8",
+        "name": "cam_out.ocphiwet",
+        "nbytes": 256,
+        "restart": true,
+        "shape": [
+          16,
+          2
+        ],
+        "units": "1",
+        "writable": true
+      },
+      "cam_out.ocphodry": {
+        "aliases": [],
+        "category": "native_cam_state",
+        "dimensions": [
+          "cam_out.ocphodry__dim0",
+          "cam_out.ocphodry__dim1"
+        ],
+        "dtype": "<f8",
+        "name": "cam_out.ocphodry",
+        "nbytes": 256,
+        "restart": true,
+        "shape": [
+          16,
+          2
+        ],
+        "units": "1",
+        "writable": true
+      },
+      "cam_out.pbot": {
+        "aliases": [],
+        "category": "native_cam_state",
+        "dimensions": [
+          "cam_out.pbot__dim0",
+          "cam_out.pbot__dim1"
+        ],
+        "dtype": "<f8",
+        "name": "cam_out.pbot",
+        "nbytes": 256,
+        "restart": true,
+        "shape": [
+          16,
+          2
+        ],
+        "units": "1",
+        "writable": true
+      },
+      "cam_out.precc": {
+        "aliases": [],
+        "category": "native_cam_state",
+        "dimensions": [
+          "cam_out.precc__dim0",
+          "cam_out.precc__dim1"
+        ],
+        "dtype": "<f8",
+        "name": "cam_out.precc",
+        "nbytes": 256,
+        "restart": true,
+        "shape": [
+          16,
+          2
+        ],
+        "units": "1",
+        "writable": true
+      },
+      "cam_out.precl": {
+        "aliases": [],
+        "category": "native_cam_state",
+        "dimensions": [
+          "cam_out.precl__dim0",
+          "cam_out.precl__dim1"
+        ],
+        "dtype": "<f8",
+        "name": "cam_out.precl",
+        "nbytes": 256,
+        "restart": true,
+        "shape": [
+          16,
+          2
+        ],
+        "units": "1",
+        "writable": true
+      },
+      "cam_out.precrc_16O": {
+        "aliases": [],
+        "category": "native_cam_state",
+        "dimensions": [
+          "cam_out.precrc_16O__dim0",
+          "cam_out.precrc_16O__dim1"
+        ],
+        "dtype": "<f8",
+        "name": "cam_out.precrc_16O",
+        "nbytes": 256,
+        "restart": true,
+        "shape": [
+          16,
+          2
+        ],
+        "units": "1",
+        "writable": true
+      },
+      "cam_out.precrc_18O": {
+        "aliases": [],
+        "category": "native_cam_state",
+        "dimensions": [
+          "cam_out.precrc_18O__dim0",
+          "cam_out.precrc_18O__dim1"
+        ],
+        "dtype": "<f8",
+        "name": "cam_out.precrc_18O",
+        "nbytes": 256,
+        "restart": true,
+        "shape": [
+          16,
+          2
+        ],
+        "units": "1",
+        "writable": true
+      },
+      "cam_out.precrc_HDO": {
+        "aliases": [],
+        "category": "native_cam_state",
+        "dimensions": [
+          "cam_out.precrc_HDO__dim0",
+          "cam_out.precrc_HDO__dim1"
+        ],
+        "dtype": "<f8",
+        "name": "cam_out.precrc_HDO",
+        "nbytes": 256,
+        "restart": true,
+        "shape": [
+          16,
+          2
+        ],
+        "units": "1",
+        "writable": true
+      },
+      "cam_out.precrl_16O": {
+        "aliases": [],
+        "category": "native_cam_state",
+        "dimensions": [
+          "cam_out.precrl_16O__dim0",
+          "cam_out.precrl_16O__dim1"
+        ],
+        "dtype": "<f8",
+        "name": "cam_out.precrl_16O",
+        "nbytes": 256,
+        "restart": true,
+        "shape": [
+          16,
+          2
+        ],
+        "units": "1",
+        "writable": true
+      },
+      "cam_out.precrl_18O": {
+        "aliases": [],
+        "category": "native_cam_state",
+        "dimensions": [
+          "cam_out.precrl_18O__dim0",
+          "cam_out.precrl_18O__dim1"
+        ],
+        "dtype": "<f8",
+        "name": "cam_out.precrl_18O",
+        "nbytes": 256,
+        "restart": true,
+        "shape": [
+          16,
+          2
+        ],
+        "units": "1",
+        "writable": true
+      },
+      "cam_out.precrl_HDO": {
+        "aliases": [],
+        "category": "native_cam_state",
+        "dimensions": [
+          "cam_out.precrl_HDO__dim0",
+          "cam_out.precrl_HDO__dim1"
+        ],
+        "dtype": "<f8",
+        "name": "cam_out.precrl_HDO",
+        "nbytes": 256,
+        "restart": true,
+        "shape": [
+          16,
+          2
+        ],
+        "units": "1",
+        "writable": true
+      },
+      "cam_out.precsc": {
+        "aliases": [],
+        "category": "native_cam_state",
+        "dimensions": [
+          "cam_out.precsc__dim0",
+          "cam_out.precsc__dim1"
+        ],
+        "dtype": "<f8",
+        "name": "cam_out.precsc",
+        "nbytes": 256,
+        "restart": true,
+        "shape": [
+          16,
+          2
+        ],
+        "units": "1",
+        "writable": true
+      },
+      "cam_out.precsc_16O": {
+        "aliases": [],
+        "category": "native_cam_state",
+        "dimensions": [
+          "cam_out.precsc_16O__dim0",
+          "cam_out.precsc_16O__dim1"
+        ],
+        "dtype": "<f8",
+        "name": "cam_out.precsc_16O",
+        "nbytes": 256,
+        "restart": true,
+        "shape": [
+          16,
+          2
+        ],
+        "units": "1",
+        "writable": true
+      },
+      "cam_out.precsc_18O": {
+        "aliases": [],
+        "category": "native_cam_state",
+        "dimensions": [
+          "cam_out.precsc_18O__dim0",
+          "cam_out.precsc_18O__dim1"
+        ],
+        "dtype": "<f8",
+        "name": "cam_out.precsc_18O",
+        "nbytes": 256,
+        "restart": true,
+        "shape": [
+          16,
+          2
+        ],
+        "units": "1",
+        "writable": true
+      },
+      "cam_out.precsc_HDO": {
+        "aliases": [],
+        "category": "native_cam_state",
+        "dimensions": [
+          "cam_out.precsc_HDO__dim0",
+          "cam_out.precsc_HDO__dim1"
+        ],
+        "dtype": "<f8",
+        "name": "cam_out.precsc_HDO",
+        "nbytes": 256,
+        "restart": true,
+        "shape": [
+          16,
+          2
+        ],
+        "units": "1",
+        "writable": true
+      },
+      "cam_out.precsl": {
+        "aliases": [],
+        "category": "native_cam_state",
+        "dimensions": [
+          "cam_out.precsl__dim0",
+          "cam_out.precsl__dim1"
+        ],
+        "dtype": "<f8",
+        "name": "cam_out.precsl",
+        "nbytes": 256,
+        "restart": true,
+        "shape": [
+          16,
+          2
+        ],
+        "units": "1",
+        "writable": true
+      },
+      "cam_out.precsl_16O": {
+        "aliases": [],
+        "category": "native_cam_state",
+        "dimensions": [
+          "cam_out.precsl_16O__dim0",
+          "cam_out.precsl_16O__dim1"
+        ],
+        "dtype": "<f8",
+        "name": "cam_out.precsl_16O",
+        "nbytes": 256,
+        "restart": true,
+        "shape": [
+          16,
+          2
+        ],
+        "units": "1",
+        "writable": true
+      },
+      "cam_out.precsl_18O": {
+        "aliases": [],
+        "category": "native_cam_state",
+        "dimensions": [
+          "cam_out.precsl_18O__dim0",
+          "cam_out.precsl_18O__dim1"
+        ],
+        "dtype": "<f8",
+        "name": "cam_out.precsl_18O",
+        "nbytes": 256,
+        "restart": true,
+        "shape": [
+          16,
+          2
+        ],
+        "units": "1",
+        "writable": true
+      },
+      "cam_out.precsl_HDO": {
+        "aliases": [],
+        "category": "native_cam_state",
+        "dimensions": [
+          "cam_out.precsl_HDO__dim0",
+          "cam_out.precsl_HDO__dim1"
+        ],
+        "dtype": "<f8",
+        "name": "cam_out.precsl_HDO",
+        "nbytes": 256,
+        "restart": true,
+        "shape": [
+          16,
+          2
+        ],
+        "units": "1",
+        "writable": true
+      },
+      "cam_out.psl": {
+        "aliases": [],
+        "category": "native_cam_state",
+        "dimensions": [
+          "cam_out.psl__dim0",
+          "cam_out.psl__dim1"
+        ],
+        "dtype": "<f8",
+        "name": "cam_out.psl",
+        "nbytes": 256,
+        "restart": true,
+        "shape": [
+          16,
+          2
+        ],
+        "units": "1",
+        "writable": true
+      },
+      "cam_out.qbot": {
+        "aliases": [],
+        "category": "native_cam_state",
+        "dimensions": [
+          "cam_out.qbot__dim0",
+          "cam_out.qbot__dim1",
+          "cam_out.qbot__dim2"
+        ],
+        "dtype": "<f8",
+        "name": "cam_out.qbot",
+        "nbytes": 14592,
+        "restart": true,
+        "shape": [
+          16,
+          57,
+          2
+        ],
+        "units": "1",
+        "writable": true
+      },
+      "cam_out.rho": {
+        "aliases": [],
+        "category": "native_cam_state",
+        "dimensions": [
+          "cam_out.rho__dim0",
+          "cam_out.rho__dim1"
+        ],
+        "dtype": "<f8",
+        "name": "cam_out.rho",
+        "nbytes": 256,
+        "restart": true,
+        "shape": [
+          16,
+          2
+        ],
+        "units": "1",
+        "writable": true
+      },
+      "cam_out.soll": {
+        "aliases": [],
+        "category": "native_cam_state",
+        "dimensions": [
+          "cam_out.soll__dim0",
+          "cam_out.soll__dim1"
+        ],
+        "dtype": "<f8",
+        "name": "cam_out.soll",
+        "nbytes": 256,
+        "restart": true,
+        "shape": [
+          16,
+          2
+        ],
+        "units": "1",
+        "writable": true
+      },
+      "cam_out.solld": {
+        "aliases": [],
+        "category": "native_cam_state",
+        "dimensions": [
+          "cam_out.solld__dim0",
+          "cam_out.solld__dim1"
+        ],
+        "dtype": "<f8",
+        "name": "cam_out.solld",
+        "nbytes": 256,
+        "restart": true,
+        "shape": [
+          16,
+          2
+        ],
+        "units": "1",
+        "writable": true
+      },
+      "cam_out.sols": {
+        "aliases": [],
+        "category": "native_cam_state",
+        "dimensions": [
+          "cam_out.sols__dim0",
+          "cam_out.sols__dim1"
+        ],
+        "dtype": "<f8",
+        "name": "cam_out.sols",
+        "nbytes": 256,
+        "restart": true,
+        "shape": [
+          16,
+          2
+        ],
+        "units": "1",
+        "writable": true
+      },
+      "cam_out.solsd": {
+        "aliases": [],
+        "category": "native_cam_state",
+        "dimensions": [
+          "cam_out.solsd__dim0",
+          "cam_out.solsd__dim1"
+        ],
+        "dtype": "<f8",
+        "name": "cam_out.solsd",
+        "nbytes": 256,
+        "restart": true,
+        "shape": [
+          16,
+          2
+        ],
+        "units": "1",
+        "writable": true
+      },
+      "cam_out.tbot": {
+        "aliases": [],
+        "category": "native_cam_state",
+        "dimensions": [
+          "cam_out.tbot__dim0",
+          "cam_out.tbot__dim1"
+        ],
+        "dtype": "<f8",
+        "name": "cam_out.tbot",
+        "nbytes": 256,
+        "restart": true,
+        "shape": [
+          16,
+          2
+        ],
+        "units": "1",
+        "writable": true
+      },
+      "cam_out.thbot": {
+        "aliases": [],
+        "category": "native_cam_state",
+        "dimensions": [
+          "cam_out.thbot__dim0",
+          "cam_out.thbot__dim1"
+        ],
+        "dtype": "<f8",
+        "name": "cam_out.thbot",
+        "nbytes": 256,
+        "restart": true,
+        "shape": [
+          16,
+          2
+        ],
+        "units": "1",
+        "writable": true
+      },
+      "cam_out.ubot": {
+        "aliases": [],
+        "category": "native_cam_state",
+        "dimensions": [
+          "cam_out.ubot__dim0",
+          "cam_out.ubot__dim1"
+        ],
+        "dtype": "<f8",
+        "name": "cam_out.ubot",
+        "nbytes": 256,
+        "restart": true,
+        "shape": [
+          16,
+          2
+        ],
+        "units": "1",
+        "writable": true
+      },
+      "cam_out.vbot": {
+        "aliases": [],
+        "category": "native_cam_state",
+        "dimensions": [
+          "cam_out.vbot__dim0",
+          "cam_out.vbot__dim1"
+        ],
+        "dtype": "<f8",
+        "name": "cam_out.vbot",
+        "nbytes": 256,
+        "restart": true,
+        "shape": [
+          16,
+          2
+        ],
+        "units": "1",
+        "writable": true
+      },
+      "cam_out.zbot": {
+        "aliases": [],
+        "category": "native_cam_state",
+        "dimensions": [
+          "cam_out.zbot__dim0",
+          "cam_out.zbot__dim1"
+        ],
+        "dtype": "<f8",
+        "name": "cam_out.zbot",
+        "nbytes": 256,
+        "restart": true,
+        "shape": [
+          16,
+          2
+        ],
+        "units": "1",
+        "writable": true
+      },
+      "case_name_utf8": {
+        "aliases": [],
+        "category": "configuration",
+        "dimensions": [
+          "case_name_length"
+        ],
+        "dtype": "|u1",
+        "name": "case_name_utf8",
+        "nbytes": 256,
+        "restart": true,
+        "shape": [
+          256
+        ],
+        "units": "1",
+        "writable": false
+      },
+      "configured_stop_n": {
+        "aliases": [],
+        "category": "configuration",
+        "dimensions": [],
+        "dtype": "<i8",
+        "name": "configured_stop_n",
+        "nbytes": 8,
+        "restart": true,
+        "shape": [],
+        "units": "1",
+        "writable": false
+      },
+      "current_date": {
+        "aliases": [],
+        "category": "time",
+        "dimensions": [],
+        "dtype": "<i4",
+        "name": "current_date",
+        "nbytes": 4,
+        "restart": true,
+        "shape": [],
+        "units": "1",
+        "writable": true
+      },
+      "current_seconds_of_day": {
+        "aliases": [],
+        "category": "time",
+        "dimensions": [],
+        "dtype": "<i4",
+        "name": "current_seconds_of_day",
+        "nbytes": 4,
+        "restart": true,
+        "shape": [],
+        "units": "s",
+        "writable": true
+      },
+      "model_step": {
+        "aliases": [],
+        "category": "time",
+        "dimensions": [],
+        "dtype": "<i8",
+        "name": "model_step",
+        "nbytes": 8,
+        "restart": true,
+        "shape": [],
+        "units": "1",
+        "writable": true
+      },
+      "model_timestep": {
+        "aliases": [],
+        "category": "configuration",
+        "dimensions": [],
+        "dtype": "<f8",
+        "name": "model_timestep",
+        "nbytes": 8,
+        "restart": true,
+        "shape": [],
+        "units": "s",
+        "writable": false
+      },
+      "mpi_rank": {
+        "aliases": [],
+        "category": "configuration",
+        "dimensions": [],
+        "dtype": "<i4",
+        "name": "mpi_rank",
+        "nbytes": 4,
+        "restart": true,
+        "shape": [],
+        "units": "1",
+        "writable": false
+      },
+      "mpi_size": {
+        "aliases": [],
+        "category": "configuration",
+        "dimensions": [],
+        "dtype": "<i4",
+        "name": "mpi_size",
+        "nbytes": 4,
+        "restart": true,
+        "shape": [],
+        "units": "1",
+        "writable": false
+      },
+      "orbital_year": {
+        "aliases": [],
+        "category": "configuration",
+        "dimensions": [],
+        "dtype": "<i4",
+        "name": "orbital_year",
+        "nbytes": 4,
+        "restart": true,
+        "shape": [],
+        "units": "1",
+        "writable": false
+      },
+      "phys_state.cid": {
+        "aliases": [],
+        "category": "native_cam_state",
+        "dimensions": [
+          "phys_state.cid__dim0",
+          "phys_state.cid__dim1"
+        ],
+        "dtype": "<i4",
+        "name": "phys_state.cid",
+        "nbytes": 128,
+        "restart": true,
+        "shape": [
+          16,
+          2
+        ],
+        "units": "1",
+        "writable": true
+      },
+      "phys_state.count": {
+        "aliases": [],
+        "category": "native_cam_state",
+        "dimensions": [
+          "phys_state.count__dim0"
+        ],
+        "dtype": "<i4",
+        "name": "phys_state.count",
+        "nbytes": 8,
+        "restart": true,
+        "shape": [
+          2
+        ],
+        "units": "1",
+        "writable": true
+      },
+      "phys_state.exner": {
+        "aliases": [],
+        "category": "native_cam_state",
+        "dimensions": [
+          "phys_state.exner__dim0",
+          "phys_state.exner__dim1",
+          "phys_state.exner__dim2"
+        ],
+        "dtype": "<f8",
+        "name": "phys_state.exner",
+        "nbytes": 7680,
+        "restart": true,
+        "shape": [
+          16,
+          30,
+          2
+        ],
+        "units": "1",
+        "writable": true
+      },
+      "phys_state.lat": {
+        "aliases": [],
+        "category": "native_cam_state",
+        "dimensions": [
+          "phys_state.lat__dim0",
+          "phys_state.lat__dim1"
+        ],
+        "dtype": "<f8",
+        "name": "phys_state.lat",
+        "nbytes": 256,
+        "restart": true,
+        "shape": [
+          16,
+          2
+        ],
+        "units": "1",
+        "writable": true
+      },
+      "phys_state.latmapback": {
+        "aliases": [],
+        "category": "native_cam_state",
+        "dimensions": [
+          "phys_state.latmapback__dim0",
+          "phys_state.latmapback__dim1"
+        ],
+        "dtype": "<i4",
+        "name": "phys_state.latmapback",
+        "nbytes": 128,
+        "restart": true,
+        "shape": [
+          16,
+          2
+        ],
+        "units": "1",
+        "writable": true
+      },
+      "phys_state.lchnk": {
+        "aliases": [],
+        "category": "native_cam_state",
+        "dimensions": [
+          "phys_state.lchnk__dim0"
+        ],
+        "dtype": "<i4",
+        "name": "phys_state.lchnk",
+        "nbytes": 8,
+        "restart": true,
+        "shape": [
+          2
+        ],
+        "units": "1",
+        "writable": true
+      },
+      "phys_state.lnpint": {
+        "aliases": [],
+        "category": "native_cam_state",
+        "dimensions": [
+          "phys_state.lnpint__dim0",
+          "phys_state.lnpint__dim1",
+          "phys_state.lnpint__dim2"
+        ],
+        "dtype": "<f8",
+        "name": "phys_state.lnpint",
+        "nbytes": 7936,
+        "restart": true,
+        "shape": [
+          16,
+          31,
+          2
+        ],
+        "units": "1",
+        "writable": true
+      },
+      "phys_state.lnpintdry": {
+        "aliases": [],
+        "category": "native_cam_state",
+        "dimensions": [
+          "phys_state.lnpintdry__dim0",
+          "phys_state.lnpintdry__dim1",
+          "phys_state.lnpintdry__dim2"
+        ],
+        "dtype": "<f8",
+        "name": "phys_state.lnpintdry",
+        "nbytes": 7936,
+        "restart": true,
+        "shape": [
+          16,
+          31,
+          2
+        ],
+        "units": "1",
+        "writable": true
+      },
+      "phys_state.lnpmid": {
+        "aliases": [],
+        "category": "native_cam_state",
+        "dimensions": [
+          "phys_state.lnpmid__dim0",
+          "phys_state.lnpmid__dim1",
+          "phys_state.lnpmid__dim2"
+        ],
+        "dtype": "<f8",
+        "name": "phys_state.lnpmid",
+        "nbytes": 7680,
+        "restart": true,
+        "shape": [
+          16,
+          30,
+          2
+        ],
+        "units": "1",
+        "writable": true
+      },
+      "phys_state.lnpmiddry": {
+        "aliases": [],
+        "category": "native_cam_state",
+        "dimensions": [
+          "phys_state.lnpmiddry__dim0",
+          "phys_state.lnpmiddry__dim1",
+          "phys_state.lnpmiddry__dim2"
+        ],
+        "dtype": "<f8",
+        "name": "phys_state.lnpmiddry",
+        "nbytes": 7680,
+        "restart": true,
+        "shape": [
+          16,
+          30,
+          2
+        ],
+        "units": "1",
+        "writable": true
+      },
+      "phys_state.lon": {
+        "aliases": [],
+        "category": "native_cam_state",
+        "dimensions": [
+          "phys_state.lon__dim0",
+          "phys_state.lon__dim1"
+        ],
+        "dtype": "<f8",
+        "name": "phys_state.lon",
+        "nbytes": 256,
+        "restart": true,
+        "shape": [
+          16,
+          2
+        ],
+        "units": "1",
+        "writable": true
+      },
+      "phys_state.lonmapback": {
+        "aliases": [],
+        "category": "native_cam_state",
+        "dimensions": [
+          "phys_state.lonmapback__dim0",
+          "phys_state.lonmapback__dim1"
+        ],
+        "dtype": "<i4",
+        "name": "phys_state.lonmapback",
+        "nbytes": 128,
+        "restart": true,
+        "shape": [
+          16,
+          2
+        ],
+        "units": "1",
+        "writable": true
+      },
+      "phys_state.ncol": {
+        "aliases": [],
+        "category": "native_cam_state",
+        "dimensions": [
+          "phys_state.ncol__dim0"
+        ],
+        "dtype": "<i4",
+        "name": "phys_state.ncol",
+        "nbytes": 8,
+        "restart": true,
+        "shape": [
+          2
+        ],
+        "units": "1",
+        "writable": true
+      },
+      "phys_state.ngrdcol": {
+        "aliases": [],
+        "category": "native_cam_state",
+        "dimensions": [
+          "phys_state.ngrdcol__dim0"
+        ],
+        "dtype": "<i4",
+        "name": "phys_state.ngrdcol",
+        "nbytes": 8,
+        "restart": true,
+        "shape": [
+          2
+        ],
+        "units": "1",
+        "writable": true
+      },
+      "phys_state.omega": {
+        "aliases": [],
+        "category": "native_cam_state",
+        "dimensions": [
+          "phys_state.omega__dim0",
+          "phys_state.omega__dim1",
+          "phys_state.omega__dim2"
+        ],
+        "dtype": "<f8",
+        "name": "phys_state.omega",
+        "nbytes": 7680,
+        "restart": true,
+        "shape": [
+          16,
+          30,
+          2
+        ],
+        "units": "1",
+        "writable": true
+      },
+      "phys_state.pdel": {
+        "aliases": [],
+        "category": "native_cam_state",
+        "dimensions": [
+          "phys_state.pdel__dim0",
+          "phys_state.pdel__dim1",
+          "phys_state.pdel__dim2"
+        ],
+        "dtype": "<f8",
+        "name": "phys_state.pdel",
+        "nbytes": 7680,
+        "restart": true,
+        "shape": [
+          16,
+          30,
+          2
+        ],
+        "units": "1",
+        "writable": true
+      },
+      "phys_state.pdeldry": {
+        "aliases": [],
+        "category": "native_cam_state",
+        "dimensions": [
+          "phys_state.pdeldry__dim0",
+          "phys_state.pdeldry__dim1",
+          "phys_state.pdeldry__dim2"
+        ],
+        "dtype": "<f8",
+        "name": "phys_state.pdeldry",
+        "nbytes": 7680,
+        "restart": true,
+        "shape": [
+          16,
+          30,
+          2
+        ],
+        "units": "1",
+        "writable": true
+      },
+      "phys_state.phis": {
+        "aliases": [],
+        "category": "native_cam_state",
+        "dimensions": [
+          "phys_state.phis__dim0",
+          "phys_state.phis__dim1"
+        ],
+        "dtype": "<f8",
+        "name": "phys_state.phis",
+        "nbytes": 256,
+        "restart": true,
+        "shape": [
+          16,
+          2
+        ],
+        "units": "1",
+        "writable": true
+      },
+      "phys_state.pint": {
+        "aliases": [],
+        "category": "native_cam_state",
+        "dimensions": [
+          "phys_state.pint__dim0",
+          "phys_state.pint__dim1",
+          "phys_state.pint__dim2"
+        ],
+        "dtype": "<f8",
+        "name": "phys_state.pint",
+        "nbytes": 7936,
+        "restart": true,
+        "shape": [
+          16,
+          31,
+          2
+        ],
+        "units": "1",
+        "writable": true
+      },
+      "phys_state.pintdry": {
+        "aliases": [],
+        "category": "native_cam_state",
+        "dimensions": [
+          "phys_state.pintdry__dim0",
+          "phys_state.pintdry__dim1",
+          "phys_state.pintdry__dim2"
+        ],
+        "dtype": "<f8",
+        "name": "phys_state.pintdry",
+        "nbytes": 7936,
+        "restart": true,
+        "shape": [
+          16,
+          31,
+          2
+        ],
+        "units": "1",
+        "writable": true
+      },
+      "phys_state.pmid": {
+        "aliases": [],
+        "category": "native_cam_state",
+        "dimensions": [
+          "phys_state.pmid__dim0",
+          "phys_state.pmid__dim1",
+          "phys_state.pmid__dim2"
+        ],
+        "dtype": "<f8",
+        "name": "phys_state.pmid",
+        "nbytes": 7680,
+        "restart": true,
+        "shape": [
+          16,
+          30,
+          2
+        ],
+        "units": "1",
+        "writable": true
+      },
+      "phys_state.pmiddry": {
+        "aliases": [],
+        "category": "native_cam_state",
+        "dimensions": [
+          "phys_state.pmiddry__dim0",
+          "phys_state.pmiddry__dim1",
+          "phys_state.pmiddry__dim2"
+        ],
+        "dtype": "<f8",
+        "name": "phys_state.pmiddry",
+        "nbytes": 7680,
+        "restart": true,
+        "shape": [
+          16,
+          30,
+          2
+        ],
+        "units": "1",
+        "writable": true
+      },
+      "phys_state.ps": {
+        "aliases": [],
+        "category": "native_cam_state",
+        "dimensions": [
+          "phys_state.ps__dim0",
+          "phys_state.ps__dim1"
+        ],
+        "dtype": "<f8",
+        "name": "phys_state.ps",
+        "nbytes": 256,
+        "restart": true,
+        "shape": [
+          16,
+          2
+        ],
+        "units": "1",
+        "writable": true
+      },
+      "phys_state.psdry": {
+        "aliases": [],
+        "category": "native_cam_state",
+        "dimensions": [
+          "phys_state.psdry__dim0",
+          "phys_state.psdry__dim1"
+        ],
+        "dtype": "<f8",
+        "name": "phys_state.psdry",
+        "nbytes": 256,
+        "restart": true,
+        "shape": [
+          16,
+          2
+        ],
+        "units": "1",
+        "writable": true
+      },
+      "phys_state.psetcols": {
+        "aliases": [],
+        "category": "native_cam_state",
+        "dimensions": [
+          "phys_state.psetcols__dim0"
+        ],
+        "dtype": "<i4",
+        "name": "phys_state.psetcols",
+        "nbytes": 8,
+        "restart": true,
+        "shape": [
+          2
+        ],
+        "units": "1",
+        "writable": true
+      },
+      "phys_state.q": {
+        "aliases": [],
+        "category": "native_cam_state",
+        "dimensions": [
+          "phys_state.q__dim0",
+          "phys_state.q__dim1",
+          "phys_state.q__dim2",
+          "phys_state.q__dim3"
+        ],
+        "dtype": "<f8",
+        "name": "phys_state.q",
+        "nbytes": 437760,
+        "restart": true,
+        "shape": [
+          16,
+          30,
+          57,
+          2
+        ],
+        "units": "1",
+        "writable": true
+      },
+      "phys_state.rpdel": {
+        "aliases": [],
+        "category": "native_cam_state",
+        "dimensions": [
+          "phys_state.rpdel__dim0",
+          "phys_state.rpdel__dim1",
+          "phys_state.rpdel__dim2"
+        ],
+        "dtype": "<f8",
+        "name": "phys_state.rpdel",
+        "nbytes": 7680,
+        "restart": true,
+        "shape": [
+          16,
+          30,
+          2
+        ],
+        "units": "1",
+        "writable": true
+      },
+      "phys_state.rpdeldry": {
+        "aliases": [],
+        "category": "native_cam_state",
+        "dimensions": [
+          "phys_state.rpdeldry__dim0",
+          "phys_state.rpdeldry__dim1",
+          "phys_state.rpdeldry__dim2"
+        ],
+        "dtype": "<f8",
+        "name": "phys_state.rpdeldry",
+        "nbytes": 7680,
+        "restart": true,
+        "shape": [
+          16,
+          30,
+          2
+        ],
+        "units": "1",
+        "writable": true
+      },
+      "phys_state.s": {
+        "aliases": [],
+        "category": "native_cam_state",
+        "dimensions": [
+          "phys_state.s__dim0",
+          "phys_state.s__dim1",
+          "phys_state.s__dim2"
+        ],
+        "dtype": "<f8",
+        "name": "phys_state.s",
+        "nbytes": 7680,
+        "restart": true,
+        "shape": [
+          16,
+          30,
+          2
+        ],
+        "units": "1",
+        "writable": true
+      },
+      "phys_state.t": {
+        "aliases": [],
+        "category": "native_cam_state",
+        "dimensions": [
+          "phys_state.t__dim0",
+          "phys_state.t__dim1",
+          "phys_state.t__dim2"
+        ],
+        "dtype": "<f8",
+        "name": "phys_state.t",
+        "nbytes": 7680,
+        "restart": true,
+        "shape": [
+          16,
+          30,
+          2
+        ],
+        "units": "1",
+        "writable": true
+      },
+      "phys_state.te_cur": {
+        "aliases": [],
+        "category": "native_cam_state",
+        "dimensions": [
+          "phys_state.te_cur__dim0",
+          "phys_state.te_cur__dim1"
+        ],
+        "dtype": "<f8",
+        "name": "phys_state.te_cur",
+        "nbytes": 256,
+        "restart": true,
+        "shape": [
+          16,
+          2
+        ],
+        "units": "1",
+        "writable": true
+      },
+      "phys_state.te_ini": {
+        "aliases": [],
+        "category": "native_cam_state",
+        "dimensions": [
+          "phys_state.te_ini__dim0",
+          "phys_state.te_ini__dim1"
+        ],
+        "dtype": "<f8",
+        "name": "phys_state.te_ini",
+        "nbytes": 256,
+        "restart": true,
+        "shape": [
+          16,
+          2
+        ],
+        "units": "1",
+        "writable": true
+      },
+      "phys_state.tw_cur": {
+        "aliases": [],
+        "category": "native_cam_state",
+        "dimensions": [
+          "phys_state.tw_cur__dim0",
+          "phys_state.tw_cur__dim1"
+        ],
+        "dtype": "<f8",
+        "name": "phys_state.tw_cur",
+        "nbytes": 256,
+        "restart": true,
+        "shape": [
+          16,
+          2
+        ],
+        "units": "1",
+        "writable": true
+      },
+      "phys_state.tw_ini": {
+        "aliases": [],
+        "category": "native_cam_state",
+        "dimensions": [
+          "phys_state.tw_ini__dim0",
+          "phys_state.tw_ini__dim1"
+        ],
+        "dtype": "<f8",
+        "name": "phys_state.tw_ini",
+        "nbytes": 256,
+        "restart": true,
+        "shape": [
+          16,
+          2
+        ],
+        "units": "1",
+        "writable": true
+      },
+      "phys_state.u": {
+        "aliases": [],
+        "category": "native_cam_state",
+        "dimensions": [
+          "phys_state.u__dim0",
+          "phys_state.u__dim1",
+          "phys_state.u__dim2"
+        ],
+        "dtype": "<f8",
+        "name": "phys_state.u",
+        "nbytes": 7680,
+        "restart": true,
+        "shape": [
+          16,
+          30,
+          2
+        ],
+        "units": "1",
+        "writable": true
+      },
+      "phys_state.ulat": {
+        "aliases": [],
+        "category": "native_cam_state",
+        "dimensions": [
+          "phys_state.ulat__dim0",
+          "phys_state.ulat__dim1"
+        ],
+        "dtype": "<f8",
+        "name": "phys_state.ulat",
+        "nbytes": 256,
+        "restart": true,
+        "shape": [
+          16,
+          2
+        ],
+        "units": "1",
+        "writable": true
+      },
+      "phys_state.ulatcnt": {
+        "aliases": [],
+        "category": "native_cam_state",
+        "dimensions": [
+          "phys_state.ulatcnt__dim0"
+        ],
+        "dtype": "<i4",
+        "name": "phys_state.ulatcnt",
+        "nbytes": 8,
+        "restart": true,
+        "shape": [
+          2
+        ],
+        "units": "1",
+        "writable": true
+      },
+      "phys_state.ulon": {
+        "aliases": [],
+        "category": "native_cam_state",
+        "dimensions": [
+          "phys_state.ulon__dim0",
+          "phys_state.ulon__dim1"
+        ],
+        "dtype": "<f8",
+        "name": "phys_state.ulon",
+        "nbytes": 256,
+        "restart": true,
+        "shape": [
+          16,
+          2
+        ],
+        "units": "1",
+        "writable": true
+      },
+      "phys_state.uloncnt": {
+        "aliases": [],
+        "category": "native_cam_state",
+        "dimensions": [
+          "phys_state.uloncnt__dim0"
+        ],
+        "dtype": "<i4",
+        "name": "phys_state.uloncnt",
+        "nbytes": 8,
+        "restart": true,
+        "shape": [
+          2
+        ],
+        "units": "1",
+        "writable": true
+      },
+      "phys_state.v": {
+        "aliases": [],
+        "category": "native_cam_state",
+        "dimensions": [
+          "phys_state.v__dim0",
+          "phys_state.v__dim1",
+          "phys_state.v__dim2"
+        ],
+        "dtype": "<f8",
+        "name": "phys_state.v",
+        "nbytes": 7680,
+        "restart": true,
+        "shape": [
+          16,
+          30,
+          2
+        ],
+        "units": "1",
+        "writable": true
+      },
+      "phys_state.zi": {
+        "aliases": [],
+        "category": "native_cam_state",
+        "dimensions": [
+          "phys_state.zi__dim0",
+          "phys_state.zi__dim1",
+          "phys_state.zi__dim2"
+        ],
+        "dtype": "<f8",
+        "name": "phys_state.zi",
+        "nbytes": 7936,
+        "restart": true,
+        "shape": [
+          16,
+          31,
+          2
+        ],
+        "units": "1",
+        "writable": true
+      },
+      "phys_state.zm": {
+        "aliases": [],
+        "category": "native_cam_state",
+        "dimensions": [
+          "phys_state.zm__dim0",
+          "phys_state.zm__dim1",
+          "phys_state.zm__dim2"
+        ],
+        "dtype": "<f8",
+        "name": "phys_state.zm",
+        "nbytes": 7680,
+        "restart": true,
+        "shape": [
+          16,
+          30,
+          2
+        ],
+        "units": "1",
+        "writable": true
+      },
+      "phys_tend.dtdt": {
+        "aliases": [],
+        "category": "native_cam_state",
+        "dimensions": [
+          "phys_tend.dtdt__dim0",
+          "phys_tend.dtdt__dim1",
+          "phys_tend.dtdt__dim2"
+        ],
+        "dtype": "<f8",
+        "name": "phys_tend.dtdt",
+        "nbytes": 7680,
+        "restart": true,
+        "shape": [
+          16,
+          30,
+          2
+        ],
+        "units": "1",
+        "writable": true
+      },
+      "phys_tend.dudt": {
+        "aliases": [],
+        "category": "native_cam_state",
+        "dimensions": [
+          "phys_tend.dudt__dim0",
+          "phys_tend.dudt__dim1",
+          "phys_tend.dudt__dim2"
+        ],
+        "dtype": "<f8",
+        "name": "phys_tend.dudt",
+        "nbytes": 7680,
+        "restart": true,
+        "shape": [
+          16,
+          30,
+          2
+        ],
+        "units": "1",
+        "writable": true
+      },
+      "phys_tend.dvdt": {
+        "aliases": [],
+        "category": "native_cam_state",
+        "dimensions": [
+          "phys_tend.dvdt__dim0",
+          "phys_tend.dvdt__dim1",
+          "phys_tend.dvdt__dim2"
+        ],
+        "dtype": "<f8",
+        "name": "phys_tend.dvdt",
+        "nbytes": 7680,
+        "restart": true,
+        "shape": [
+          16,
+          30,
+          2
+        ],
+        "units": "1",
+        "writable": true
+      },
+      "phys_tend.flx_net": {
+        "aliases": [],
+        "category": "native_cam_state",
+        "dimensions": [
+          "phys_tend.flx_net__dim0",
+          "phys_tend.flx_net__dim1"
+        ],
+        "dtype": "<f8",
+        "name": "phys_tend.flx_net",
+        "nbytes": 256,
+        "restart": true,
+        "shape": [
+          16,
+          2
+        ],
+        "units": "1",
+        "writable": true
+      },
+      "phys_tend.psetcols": {
+        "aliases": [],
+        "category": "native_cam_state",
+        "dimensions": [
+          "phys_tend.psetcols__dim0"
+        ],
+        "dtype": "<i4",
+        "name": "phys_tend.psetcols",
+        "nbytes": 8,
+        "restart": true,
+        "shape": [
+          2
+        ],
+        "units": "1",
+        "writable": true
+      },
+      "phys_tend.te_tnd": {
+        "aliases": [],
+        "category": "native_cam_state",
+        "dimensions": [
+          "phys_tend.te_tnd__dim0",
+          "phys_tend.te_tnd__dim1"
+        ],
+        "dtype": "<f8",
+        "name": "phys_tend.te_tnd",
+        "nbytes": 256,
+        "restart": true,
+        "shape": [
+          16,
+          2
+        ],
+        "units": "1",
+        "writable": true
+      },
+      "phys_tend.tw_tnd": {
+        "aliases": [],
+        "category": "native_cam_state",
+        "dimensions": [
+          "phys_tend.tw_tnd__dim0",
+          "phys_tend.tw_tnd__dim1"
+        ],
+        "dtype": "<f8",
+        "name": "phys_tend.tw_tnd",
+        "nbytes": 256,
+        "restart": true,
+        "shape": [
+          16,
+          2
+        ],
+        "units": "1",
+        "writable": true
+      }
+    },
+    "lifecycle": "running",
+    "seconds": 3600,
+    "state_bytes": 691116,
+    "step": 50
+  },
+  "execution": "persistent_notebook_session",
+  "final_rank0_active_physics_temperature_statistics": {
+    "count": 840,
+    "max": 298.9376153297877,
+    "mean": 245.06866618014055,
+    "min": 187.5702519896432,
+    "rank": 0
+  },
+  "initial_rank0_active_physics_temperature_statistics": {
+    "count": 840,
+    "max": 299.60509133107786,
+    "mean": 245.12012258924798,
+    "min": 187.2118305289767,
+    "rank": 0
+  },
+  "mpi_launch_count": 1,
+  "python_owned_native_state_fields": 134,
+  "rank_global_export_statistics": {
+    "count": 691300,
+    "max": 105546.17073404705,
+    "mean": 4013.6282962704367,
+    "min": -25.003344327119972,
+    "rank": "global"
+  },
+  "schema_version": 1,
+  "started": {
+    "actions": 37,
+    "coupling_step": 1,
+    "date": 10101,
+    "fields": {
+      "cam_in.aldif": {
+        "aliases": [],
+        "category": "native_cam_state",
+        "dimensions": [
+          "cam_in.aldif__dim0",
+          "cam_in.aldif__dim1"
+        ],
+        "dtype": "<f8",
+        "name": "cam_in.aldif",
+        "nbytes": 256,
+        "restart": true,
+        "shape": [
+          16,
+          2
+        ],
+        "units": "1",
+        "writable": true
+      },
+      "cam_in.aldir": {
+        "aliases": [],
+        "category": "native_cam_state",
+        "dimensions": [
+          "cam_in.aldir__dim0",
+          "cam_in.aldir__dim1"
+        ],
+        "dtype": "<f8",
+        "name": "cam_in.aldir",
+        "nbytes": 256,
+        "restart": true,
+        "shape": [
+          16,
+          2
+        ],
+        "units": "1",
+        "writable": true
+      },
+      "cam_in.asdif": {
+        "aliases": [],
+        "category": "native_cam_state",
+        "dimensions": [
+          "cam_in.asdif__dim0",
+          "cam_in.asdif__dim1"
+        ],
+        "dtype": "<f8",
+        "name": "cam_in.asdif",
+        "nbytes": 256,
+        "restart": true,
+        "shape": [
+          16,
+          2
+        ],
+        "units": "1",
+        "writable": true
+      },
+      "cam_in.asdir": {
+        "aliases": [],
+        "category": "native_cam_state",
+        "dimensions": [
+          "cam_in.asdir__dim0",
+          "cam_in.asdir__dim1"
+        ],
+        "dtype": "<f8",
+        "name": "cam_in.asdir",
+        "nbytes": 256,
+        "restart": true,
+        "shape": [
+          16,
+          2
+        ],
+        "units": "1",
+        "writable": true
+      },
+      "cam_in.buck16": {
+        "aliases": [],
+        "category": "native_cam_state",
+        "dimensions": [
+          "cam_in.buck16__dim0",
+          "cam_in.buck16__dim1"
+        ],
+        "dtype": "<f8",
+        "name": "cam_in.buck16",
+        "nbytes": 256,
+        "restart": true,
+        "shape": [
+          16,
+          2
+        ],
+        "units": "1",
+        "writable": true
+      },
+      "cam_in.buck18": {
+        "aliases": [],
+        "category": "native_cam_state",
+        "dimensions": [
+          "cam_in.buck18__dim0",
+          "cam_in.buck18__dim1"
+        ],
+        "dtype": "<f8",
+        "name": "cam_in.buck18",
+        "nbytes": 256,
+        "restart": true,
+        "shape": [
+          16,
+          2
+        ],
+        "units": "1",
+        "writable": true
+      },
+      "cam_in.buckD": {
+        "aliases": [],
+        "category": "native_cam_state",
+        "dimensions": [
+          "cam_in.buckD__dim0",
+          "cam_in.buckD__dim1"
+        ],
+        "dtype": "<f8",
+        "name": "cam_in.buckD",
+        "nbytes": 256,
+        "restart": true,
+        "shape": [
+          16,
+          2
+        ],
+        "units": "1",
+        "writable": true
+      },
+      "cam_in.buckH": {
+        "aliases": [],
+        "category": "native_cam_state",
+        "dimensions": [
+          "cam_in.buckH__dim0",
+          "cam_in.buckH__dim1"
+        ],
+        "dtype": "<f8",
+        "name": "cam_in.buckH",
+        "nbytes": 256,
+        "restart": true,
+        "shape": [
+          16,
+          2
+        ],
+        "units": "1",
+        "writable": true
+      },
+      "cam_in.cflx": {
+        "aliases": [],
+        "category": "native_cam_state",
+        "dimensions": [
+          "cam_in.cflx__dim0",
+          "cam_in.cflx__dim1",
+          "cam_in.cflx__dim2"
+        ],
+        "dtype": "<f8",
+        "name": "cam_in.cflx",
+        "nbytes": 14592,
+        "restart": true,
+        "shape": [
+          16,
+          57,
+          2
+        ],
+        "units": "1",
+        "writable": true
+      },
+      "cam_in.depvel": {
+        "aliases": [],
+        "category": "native_cam_state",
+        "dimensions": [
+          "cam_in.depvel__dim0",
+          "cam_in.depvel__dim1",
+          "cam_in.depvel__dim2"
+        ],
+        "dtype": "<f8",
+        "name": "cam_in.depvel",
+        "nbytes": 768,
+        "restart": true,
+        "shape": [
+          16,
+          3,
+          2
+        ],
+        "units": "1",
+        "writable": true
+      },
+      "cam_in.dstflx": {
+        "aliases": [],
+        "category": "native_cam_state",
+        "dimensions": [
+          "cam_in.dstflx__dim0",
+          "cam_in.dstflx__dim1",
+          "cam_in.dstflx__dim2"
+        ],
+        "dtype": "<f8",
+        "name": "cam_in.dstflx",
+        "nbytes": 1024,
+        "restart": true,
+        "shape": [
+          16,
+          4,
+          2
+        ],
+        "units": "1",
+        "writable": true
+      },
+      "cam_in.fco2_lnd": {
+        "aliases": [],
+        "category": "native_cam_state",
+        "dimensions": [
+          "cam_in.fco2_lnd__dim0",
+          "cam_in.fco2_lnd__dim1"
+        ],
+        "dtype": "<f8",
+        "name": "cam_in.fco2_lnd",
+        "nbytes": 256,
+        "restart": true,
+        "shape": [
+          16,
+          2
+        ],
+        "units": "1",
+        "writable": true
+      },
+      "cam_in.fco2_ocn": {
+        "aliases": [],
+        "category": "native_cam_state",
+        "dimensions": [
+          "cam_in.fco2_ocn__dim0",
+          "cam_in.fco2_ocn__dim1"
+        ],
+        "dtype": "<f8",
+        "name": "cam_in.fco2_ocn",
+        "nbytes": 256,
+        "restart": true,
+        "shape": [
+          16,
+          2
+        ],
+        "units": "1",
+        "writable": true
+      },
+      "cam_in.fdms": {
+        "aliases": [],
+        "category": "native_cam_state",
+        "dimensions": [
+          "cam_in.fdms__dim0",
+          "cam_in.fdms__dim1"
+        ],
+        "dtype": "<f8",
+        "name": "cam_in.fdms",
+        "nbytes": 256,
+        "restart": true,
+        "shape": [
+          16,
+          2
+        ],
+        "units": "1",
+        "writable": true
+      },
+      "cam_in.fv": {
+        "aliases": [],
+        "category": "native_cam_state",
+        "dimensions": [
+          "cam_in.fv__dim0",
+          "cam_in.fv__dim1"
+        ],
+        "dtype": "<f8",
+        "name": "cam_in.fv",
+        "nbytes": 256,
+        "restart": true,
+        "shape": [
+          16,
+          2
+        ],
+        "units": "1",
+        "writable": true
+      },
+      "cam_in.icefrac": {
+        "aliases": [],
+        "category": "native_cam_state",
+        "dimensions": [
+          "cam_in.icefrac__dim0",
+          "cam_in.icefrac__dim1"
+        ],
+        "dtype": "<f8",
+        "name": "cam_in.icefrac",
+        "nbytes": 256,
+        "restart": true,
+        "shape": [
+          16,
+          2
+        ],
+        "units": "1",
+        "writable": true
+      },
+      "cam_in.landfrac": {
+        "aliases": [],
+        "category": "native_cam_state",
+        "dimensions": [
+          "cam_in.landfrac__dim0",
+          "cam_in.landfrac__dim1"
+        ],
+        "dtype": "<f8",
+        "name": "cam_in.landfrac",
+        "nbytes": 256,
+        "restart": true,
+        "shape": [
+          16,
+          2
+        ],
+        "units": "1",
+        "writable": true
+      },
+      "cam_in.lchnk": {
+        "aliases": [],
+        "category": "native_cam_state",
+        "dimensions": [
+          "cam_in.lchnk__dim0"
+        ],
+        "dtype": "<i4",
+        "name": "cam_in.lchnk",
+        "nbytes": 8,
+        "restart": true,
+        "shape": [
+          2
+        ],
+        "units": "1",
+        "writable": true
+      },
+      "cam_in.lhf": {
+        "aliases": [],
+        "category": "native_cam_state",
+        "dimensions": [
+          "cam_in.lhf__dim0",
+          "cam_in.lhf__dim1"
+        ],
+        "dtype": "<f8",
+        "name": "cam_in.lhf",
+        "nbytes": 256,
+        "restart": true,
+        "shape": [
+          16,
+          2
+        ],
+        "units": "1",
+        "writable": true
+      },
+      "cam_in.lwup": {
+        "aliases": [],
+        "category": "native_cam_state",
+        "dimensions": [
+          "cam_in.lwup__dim0",
+          "cam_in.lwup__dim1"
+        ],
+        "dtype": "<f8",
+        "name": "cam_in.lwup",
+        "nbytes": 256,
+        "restart": true,
+        "shape": [
+          16,
+          2
+        ],
+        "units": "1",
+        "writable": true
+      },
+      "cam_in.ncol": {
+        "aliases": [],
+        "category": "native_cam_state",
+        "dimensions": [
+          "cam_in.ncol__dim0"
+        ],
+        "dtype": "<i4",
+        "name": "cam_in.ncol",
+        "nbytes": 8,
+        "restart": true,
+        "shape": [
+          2
+        ],
+        "units": "1",
+        "writable": true
+      },
+      "cam_in.ocnfrac": {
+        "aliases": [],
+        "category": "native_cam_state",
+        "dimensions": [
+          "cam_in.ocnfrac__dim0",
+          "cam_in.ocnfrac__dim1"
+        ],
+        "dtype": "<f8",
+        "name": "cam_in.ocnfrac",
+        "nbytes": 256,
+        "restart": true,
+        "shape": [
+          16,
+          2
+        ],
+        "units": "1",
+        "writable": true
+      },
+      "cam_in.qref": {
+        "aliases": [],
+        "category": "native_cam_state",
+        "dimensions": [
+          "cam_in.qref__dim0",
+          "cam_in.qref__dim1"
+        ],
+        "dtype": "<f8",
+        "name": "cam_in.qref",
+        "nbytes": 256,
+        "restart": true,
+        "shape": [
+          16,
+          2
+        ],
+        "units": "1",
+        "writable": true
+      },
+      "cam_in.ram1": {
+        "aliases": [],
+        "category": "native_cam_state",
+        "dimensions": [
+          "cam_in.ram1__dim0",
+          "cam_in.ram1__dim1"
+        ],
+        "dtype": "<f8",
+        "name": "cam_in.ram1",
+        "nbytes": 256,
+        "restart": true,
+        "shape": [
+          16,
+          2
+        ],
+        "units": "1",
+        "writable": true
+      },
+      "cam_in.re": {
+        "aliases": [],
+        "category": "native_cam_state",
+        "dimensions": [
+          "cam_in.re__dim0",
+          "cam_in.re__dim1"
+        ],
+        "dtype": "<f8",
+        "name": "cam_in.re",
+        "nbytes": 256,
+        "restart": true,
+        "shape": [
+          16,
+          2
+        ],
+        "units": "1",
+        "writable": true
+      },
+      "cam_in.shf": {
+        "aliases": [],
+        "category": "native_cam_state",
+        "dimensions": [
+          "cam_in.shf__dim0",
+          "cam_in.shf__dim1"
+        ],
+        "dtype": "<f8",
+        "name": "cam_in.shf",
+        "nbytes": 256,
+        "restart": true,
+        "shape": [
+          16,
+          2
+        ],
+        "units": "1",
+        "writable": true
+      },
+      "cam_in.snowhice": {
+        "aliases": [],
+        "category": "native_cam_state",
+        "dimensions": [
+          "cam_in.snowhice__dim0",
+          "cam_in.snowhice__dim1"
+        ],
+        "dtype": "<f8",
+        "name": "cam_in.snowhice",
+        "nbytes": 256,
+        "restart": true,
+        "shape": [
+          16,
+          2
+        ],
+        "units": "1",
+        "writable": true
+      },
+      "cam_in.snowhland": {
+        "aliases": [],
+        "category": "native_cam_state",
+        "dimensions": [
+          "cam_in.snowhland__dim0",
+          "cam_in.snowhland__dim1"
+        ],
+        "dtype": "<f8",
+        "name": "cam_in.snowhland",
+        "nbytes": 256,
+        "restart": true,
+        "shape": [
+          16,
+          2
+        ],
+        "units": "1",
+        "writable": true
+      },
+      "cam_in.ssq": {
+        "aliases": [],
+        "category": "native_cam_state",
+        "dimensions": [
+          "cam_in.ssq__dim0",
+          "cam_in.ssq__dim1"
+        ],
+        "dtype": "<f8",
+        "name": "cam_in.ssq",
+        "nbytes": 256,
+        "restart": true,
+        "shape": [
+          16,
+          2
+        ],
+        "units": "1",
+        "writable": true
+      },
+      "cam_in.sst": {
+        "aliases": [],
+        "category": "native_cam_state",
+        "dimensions": [
+          "cam_in.sst__dim0",
+          "cam_in.sst__dim1"
+        ],
+        "dtype": "<f8",
+        "name": "cam_in.sst",
+        "nbytes": 256,
+        "restart": true,
+        "shape": [
+          16,
+          2
+        ],
+        "units": "1",
+        "writable": true
+      },
+      "cam_in.tref": {
+        "aliases": [],
+        "category": "native_cam_state",
+        "dimensions": [
+          "cam_in.tref__dim0",
+          "cam_in.tref__dim1"
+        ],
+        "dtype": "<f8",
+        "name": "cam_in.tref",
+        "nbytes": 256,
+        "restart": true,
+        "shape": [
+          16,
+          2
+        ],
+        "units": "1",
+        "writable": true
+      },
+      "cam_in.ts": {
+        "aliases": [],
+        "category": "native_cam_state",
+        "dimensions": [
+          "cam_in.ts__dim0",
+          "cam_in.ts__dim1"
+        ],
+        "dtype": "<f8",
+        "name": "cam_in.ts",
+        "nbytes": 256,
+        "restart": true,
+        "shape": [
+          16,
+          2
+        ],
+        "units": "1",
+        "writable": true
+      },
+      "cam_in.u10": {
+        "aliases": [],
+        "category": "native_cam_state",
+        "dimensions": [
+          "cam_in.u10__dim0",
+          "cam_in.u10__dim1"
+        ],
+        "dtype": "<f8",
+        "name": "cam_in.u10",
+        "nbytes": 256,
+        "restart": true,
+        "shape": [
+          16,
+          2
+        ],
+        "units": "1",
+        "writable": true
+      },
+      "cam_in.ustar": {
+        "aliases": [],
+        "category": "native_cam_state",
+        "dimensions": [
+          "cam_in.ustar__dim0",
+          "cam_in.ustar__dim1"
+        ],
+        "dtype": "<f8",
+        "name": "cam_in.ustar",
+        "nbytes": 256,
+        "restart": true,
+        "shape": [
+          16,
+          2
+        ],
+        "units": "1",
+        "writable": true
+      },
+      "cam_in.wsx": {
+        "aliases": [],
+        "category": "native_cam_state",
+        "dimensions": [
+          "cam_in.wsx__dim0",
+          "cam_in.wsx__dim1"
+        ],
+        "dtype": "<f8",
+        "name": "cam_in.wsx",
+        "nbytes": 256,
+        "restart": true,
+        "shape": [
+          16,
+          2
+        ],
+        "units": "1",
+        "writable": true
+      },
+      "cam_in.wsy": {
+        "aliases": [],
+        "category": "native_cam_state",
+        "dimensions": [
+          "cam_in.wsy__dim0",
+          "cam_in.wsy__dim1"
+        ],
+        "dtype": "<f8",
+        "name": "cam_in.wsy",
+        "nbytes": 256,
+        "restart": true,
+        "shape": [
+          16,
+          2
+        ],
+        "units": "1",
+        "writable": true
+      },
+      "cam_in.x2a_rattr": {
+        "aliases": [],
+        "category": "boundary_import",
+        "dimensions": [
+          "cam_in.x2a_rattr__dim0",
+          "cam_in.x2a_rattr__dim1"
+        ],
+        "dtype": "<f8",
+        "name": "cam_in.x2a_rattr",
+        "nbytes": 9184,
+        "restart": true,
+        "shape": [
+          41,
+          28
+        ],
+        "units": "1",
+        "writable": true
+      },
+      "cam_out.a2x_rattr": {
+        "aliases": [],
+        "category": "boundary_export",
+        "dimensions": [
+          "cam_out.a2x_rattr__dim0",
+          "cam_out.a2x_rattr__dim1"
+        ],
+        "dtype": "<f8",
+        "name": "cam_out.a2x_rattr",
+        "nbytes": 11200,
+        "restart": true,
+        "shape": [
+          50,
+          28
+        ],
+        "units": "1",
+        "writable": true
+      },
+      "cam_out.bcphidry": {
+        "aliases": [],
+        "category": "native_cam_state",
+        "dimensions": [
+          "cam_out.bcphidry__dim0",
+          "cam_out.bcphidry__dim1"
+        ],
+        "dtype": "<f8",
+        "name": "cam_out.bcphidry",
+        "nbytes": 256,
+        "restart": true,
+        "shape": [
+          16,
+          2
+        ],
+        "units": "1",
+        "writable": true
+      },
+      "cam_out.bcphiwet": {
+        "aliases": [],
+        "category": "native_cam_state",
+        "dimensions": [
+          "cam_out.bcphiwet__dim0",
+          "cam_out.bcphiwet__dim1"
+        ],
+        "dtype": "<f8",
+        "name": "cam_out.bcphiwet",
+        "nbytes": 256,
+        "restart": true,
+        "shape": [
+          16,
+          2
+        ],
+        "units": "1",
+        "writable": true
+      },
+      "cam_out.bcphodry": {
+        "aliases": [],
+        "category": "native_cam_state",
+        "dimensions": [
+          "cam_out.bcphodry__dim0",
+          "cam_out.bcphodry__dim1"
+        ],
+        "dtype": "<f8",
+        "name": "cam_out.bcphodry",
+        "nbytes": 256,
+        "restart": true,
+        "shape": [
+          16,
+          2
+        ],
+        "units": "1",
+        "writable": true
+      },
+      "cam_out.co2diag": {
+        "aliases": [],
+        "category": "native_cam_state",
+        "dimensions": [
+          "cam_out.co2diag__dim0",
+          "cam_out.co2diag__dim1"
+        ],
+        "dtype": "<f8",
+        "name": "cam_out.co2diag",
+        "nbytes": 256,
+        "restart": true,
+        "shape": [
+          16,
+          2
+        ],
+        "units": "1",
+        "writable": true
+      },
+      "cam_out.co2prog": {
+        "aliases": [],
+        "category": "native_cam_state",
+        "dimensions": [
+          "cam_out.co2prog__dim0",
+          "cam_out.co2prog__dim1"
+        ],
+        "dtype": "<f8",
+        "name": "cam_out.co2prog",
+        "nbytes": 256,
+        "restart": true,
+        "shape": [
+          16,
+          2
+        ],
+        "units": "1",
+        "writable": true
+      },
+      "cam_out.dstdry1": {
+        "aliases": [],
+        "category": "native_cam_state",
+        "dimensions": [
+          "cam_out.dstdry1__dim0",
+          "cam_out.dstdry1__dim1"
+        ],
+        "dtype": "<f8",
+        "name": "cam_out.dstdry1",
+        "nbytes": 256,
+        "restart": true,
+        "shape": [
+          16,
+          2
+        ],
+        "units": "1",
+        "writable": true
+      },
+      "cam_out.dstdry2": {
+        "aliases": [],
+        "category": "native_cam_state",
+        "dimensions": [
+          "cam_out.dstdry2__dim0",
+          "cam_out.dstdry2__dim1"
+        ],
+        "dtype": "<f8",
+        "name": "cam_out.dstdry2",
+        "nbytes": 256,
+        "restart": true,
+        "shape": [
+          16,
+          2
+        ],
+        "units": "1",
+        "writable": true
+      },
+      "cam_out.dstdry3": {
+        "aliases": [],
+        "category": "native_cam_state",
+        "dimensions": [
+          "cam_out.dstdry3__dim0",
+          "cam_out.dstdry3__dim1"
+        ],
+        "dtype": "<f8",
+        "name": "cam_out.dstdry3",
+        "nbytes": 256,
+        "restart": true,
+        "shape": [
+          16,
+          2
+        ],
+        "units": "1",
+        "writable": true
+      },
+      "cam_out.dstdry4": {
+        "aliases": [],
+        "category": "native_cam_state",
+        "dimensions": [
+          "cam_out.dstdry4__dim0",
+          "cam_out.dstdry4__dim1"
+        ],
+        "dtype": "<f8",
+        "name": "cam_out.dstdry4",
+        "nbytes": 256,
+        "restart": true,
+        "shape": [
+          16,
+          2
+        ],
+        "units": "1",
+        "writable": true
+      },
+      "cam_out.dstwet1": {
+        "aliases": [],
+        "category": "native_cam_state",
+        "dimensions": [
+          "cam_out.dstwet1__dim0",
+          "cam_out.dstwet1__dim1"
+        ],
+        "dtype": "<f8",
+        "name": "cam_out.dstwet1",
+        "nbytes": 256,
+        "restart": true,
+        "shape": [
+          16,
+          2
+        ],
+        "units": "1",
+        "writable": true
+      },
+      "cam_out.dstwet2": {
+        "aliases": [],
+        "category": "native_cam_state",
+        "dimensions": [
+          "cam_out.dstwet2__dim0",
+          "cam_out.dstwet2__dim1"
+        ],
+        "dtype": "<f8",
+        "name": "cam_out.dstwet2",
+        "nbytes": 256,
+        "restart": true,
+        "shape": [
+          16,
+          2
+        ],
+        "units": "1",
+        "writable": true
+      },
+      "cam_out.dstwet3": {
+        "aliases": [],
+        "category": "native_cam_state",
+        "dimensions": [
+          "cam_out.dstwet3__dim0",
+          "cam_out.dstwet3__dim1"
+        ],
+        "dtype": "<f8",
+        "name": "cam_out.dstwet3",
+        "nbytes": 256,
+        "restart": true,
+        "shape": [
+          16,
+          2
+        ],
+        "units": "1",
+        "writable": true
+      },
+      "cam_out.dstwet4": {
+        "aliases": [],
+        "category": "native_cam_state",
+        "dimensions": [
+          "cam_out.dstwet4__dim0",
+          "cam_out.dstwet4__dim1"
+        ],
+        "dtype": "<f8",
+        "name": "cam_out.dstwet4",
+        "nbytes": 256,
+        "restart": true,
+        "shape": [
+          16,
+          2
+        ],
+        "units": "1",
+        "writable": true
+      },
+      "cam_out.flwds": {
+        "aliases": [],
+        "category": "native_cam_state",
+        "dimensions": [
+          "cam_out.flwds__dim0",
+          "cam_out.flwds__dim1"
+        ],
+        "dtype": "<f8",
+        "name": "cam_out.flwds",
+        "nbytes": 256,
+        "restart": true,
+        "shape": [
+          16,
+          2
+        ],
+        "units": "1",
+        "writable": true
+      },
+      "cam_out.lchnk": {
+        "aliases": [],
+        "category": "native_cam_state",
+        "dimensions": [
+          "cam_out.lchnk__dim0"
+        ],
+        "dtype": "<i4",
+        "name": "cam_out.lchnk",
+        "nbytes": 8,
+        "restart": true,
+        "shape": [
+          2
+        ],
+        "units": "1",
+        "writable": true
+      },
+      "cam_out.ncol": {
+        "aliases": [],
+        "category": "native_cam_state",
+        "dimensions": [
+          "cam_out.ncol__dim0"
+        ],
+        "dtype": "<i4",
+        "name": "cam_out.ncol",
+        "nbytes": 8,
+        "restart": true,
+        "shape": [
+          2
+        ],
+        "units": "1",
+        "writable": true
+      },
+      "cam_out.netsw": {
+        "aliases": [],
+        "category": "native_cam_state",
+        "dimensions": [
+          "cam_out.netsw__dim0",
+          "cam_out.netsw__dim1"
+        ],
+        "dtype": "<f8",
+        "name": "cam_out.netsw",
+        "nbytes": 256,
+        "restart": true,
+        "shape": [
+          16,
+          2
+        ],
+        "units": "1",
+        "writable": true
+      },
+      "cam_out.ocphidry": {
+        "aliases": [],
+        "category": "native_cam_state",
+        "dimensions": [
+          "cam_out.ocphidry__dim0",
+          "cam_out.ocphidry__dim1"
+        ],
+        "dtype": "<f8",
+        "name": "cam_out.ocphidry",
+        "nbytes": 256,
+        "restart": true,
+        "shape": [
+          16,
+          2
+        ],
+        "units": "1",
+        "writable": true
+      },
+      "cam_out.ocphiwet": {
+        "aliases": [],
+        "category": "native_cam_state",
+        "dimensions": [
+          "cam_out.ocphiwet__dim0",
+          "cam_out.ocphiwet__dim1"
+        ],
+        "dtype": "<f8",
+        "name": "cam_out.ocphiwet",
+        "nbytes": 256,
+        "restart": true,
+        "shape": [
+          16,
+          2
+        ],
+        "units": "1",
+        "writable": true
+      },
+      "cam_out.ocphodry": {
+        "aliases": [],
+        "category": "native_cam_state",
+        "dimensions": [
+          "cam_out.ocphodry__dim0",
+          "cam_out.ocphodry__dim1"
+        ],
+        "dtype": "<f8",
+        "name": "cam_out.ocphodry",
+        "nbytes": 256,
+        "restart": true,
+        "shape": [
+          16,
+          2
+        ],
+        "units": "1",
+        "writable": true
+      },
+      "cam_out.pbot": {
+        "aliases": [],
+        "category": "native_cam_state",
+        "dimensions": [
+          "cam_out.pbot__dim0",
+          "cam_out.pbot__dim1"
+        ],
+        "dtype": "<f8",
+        "name": "cam_out.pbot",
+        "nbytes": 256,
+        "restart": true,
+        "shape": [
+          16,
+          2
+        ],
+        "units": "1",
+        "writable": true
+      },
+      "cam_out.precc": {
+        "aliases": [],
+        "category": "native_cam_state",
+        "dimensions": [
+          "cam_out.precc__dim0",
+          "cam_out.precc__dim1"
+        ],
+        "dtype": "<f8",
+        "name": "cam_out.precc",
+        "nbytes": 256,
+        "restart": true,
+        "shape": [
+          16,
+          2
+        ],
+        "units": "1",
+        "writable": true
+      },
+      "cam_out.precl": {
+        "aliases": [],
+        "category": "native_cam_state",
+        "dimensions": [
+          "cam_out.precl__dim0",
+          "cam_out.precl__dim1"
+        ],
+        "dtype": "<f8",
+        "name": "cam_out.precl",
+        "nbytes": 256,
+        "restart": true,
+        "shape": [
+          16,
+          2
+        ],
+        "units": "1",
+        "writable": true
+      },
+      "cam_out.precrc_16O": {
+        "aliases": [],
+        "category": "native_cam_state",
+        "dimensions": [
+          "cam_out.precrc_16O__dim0",
+          "cam_out.precrc_16O__dim1"
+        ],
+        "dtype": "<f8",
+        "name": "cam_out.precrc_16O",
+        "nbytes": 256,
+        "restart": true,
+        "shape": [
+          16,
+          2
+        ],
+        "units": "1",
+        "writable": true
+      },
+      "cam_out.precrc_18O": {
+        "aliases": [],
+        "category": "native_cam_state",
+        "dimensions": [
+          "cam_out.precrc_18O__dim0",
+          "cam_out.precrc_18O__dim1"
+        ],
+        "dtype": "<f8",
+        "name": "cam_out.precrc_18O",
+        "nbytes": 256,
+        "restart": true,
+        "shape": [
+          16,
+          2
+        ],
+        "units": "1",
+        "writable": true
+      },
+      "cam_out.precrc_HDO": {
+        "aliases": [],
+        "category": "native_cam_state",
+        "dimensions": [
+          "cam_out.precrc_HDO__dim0",
+          "cam_out.precrc_HDO__dim1"
+        ],
+        "dtype": "<f8",
+        "name": "cam_out.precrc_HDO",
+        "nbytes": 256,
+        "restart": true,
+        "shape": [
+          16,
+          2
+        ],
+        "units": "1",
+        "writable": true
+      },
+      "cam_out.precrl_16O": {
+        "aliases": [],
+        "category": "native_cam_state",
+        "dimensions": [
+          "cam_out.precrl_16O__dim0",
+          "cam_out.precrl_16O__dim1"
+        ],
+        "dtype": "<f8",
+        "name": "cam_out.precrl_16O",
+        "nbytes": 256,
+        "restart": true,
+        "shape": [
+          16,
+          2
+        ],
+        "units": "1",
+        "writable": true
+      },
+      "cam_out.precrl_18O": {
+        "aliases": [],
+        "category": "native_cam_state",
+        "dimensions": [
+          "cam_out.precrl_18O__dim0",
+          "cam_out.precrl_18O__dim1"
+        ],
+        "dtype": "<f8",
+        "name": "cam_out.precrl_18O",
+        "nbytes": 256,
+        "restart": true,
+        "shape": [
+          16,
+          2
+        ],
+        "units": "1",
+        "writable": true
+      },
+      "cam_out.precrl_HDO": {
+        "aliases": [],
+        "category": "native_cam_state",
+        "dimensions": [
+          "cam_out.precrl_HDO__dim0",
+          "cam_out.precrl_HDO__dim1"
+        ],
+        "dtype": "<f8",
+        "name": "cam_out.precrl_HDO",
+        "nbytes": 256,
+        "restart": true,
+        "shape": [
+          16,
+          2
+        ],
+        "units": "1",
+        "writable": true
+      },
+      "cam_out.precsc": {
+        "aliases": [],
+        "category": "native_cam_state",
+        "dimensions": [
+          "cam_out.precsc__dim0",
+          "cam_out.precsc__dim1"
+        ],
+        "dtype": "<f8",
+        "name": "cam_out.precsc",
+        "nbytes": 256,
+        "restart": true,
+        "shape": [
+          16,
+          2
+        ],
+        "units": "1",
+        "writable": true
+      },
+      "cam_out.precsc_16O": {
+        "aliases": [],
+        "category": "native_cam_state",
+        "dimensions": [
+          "cam_out.precsc_16O__dim0",
+          "cam_out.precsc_16O__dim1"
+        ],
+        "dtype": "<f8",
+        "name": "cam_out.precsc_16O",
+        "nbytes": 256,
+        "restart": true,
+        "shape": [
+          16,
+          2
+        ],
+        "units": "1",
+        "writable": true
+      },
+      "cam_out.precsc_18O": {
+        "aliases": [],
+        "category": "native_cam_state",
+        "dimensions": [
+          "cam_out.precsc_18O__dim0",
+          "cam_out.precsc_18O__dim1"
+        ],
+        "dtype": "<f8",
+        "name": "cam_out.precsc_18O",
+        "nbytes": 256,
+        "restart": true,
+        "shape": [
+          16,
+          2
+        ],
+        "units": "1",
+        "writable": true
+      },
+      "cam_out.precsc_HDO": {
+        "aliases": [],
+        "category": "native_cam_state",
+        "dimensions": [
+          "cam_out.precsc_HDO__dim0",
+          "cam_out.precsc_HDO__dim1"
+        ],
+        "dtype": "<f8",
+        "name": "cam_out.precsc_HDO",
+        "nbytes": 256,
+        "restart": true,
+        "shape": [
+          16,
+          2
+        ],
+        "units": "1",
+        "writable": true
+      },
+      "cam_out.precsl": {
+        "aliases": [],
+        "category": "native_cam_state",
+        "dimensions": [
+          "cam_out.precsl__dim0",
+          "cam_out.precsl__dim1"
+        ],
+        "dtype": "<f8",
+        "name": "cam_out.precsl",
+        "nbytes": 256,
+        "restart": true,
+        "shape": [
+          16,
+          2
+        ],
+        "units": "1",
+        "writable": true
+      },
+      "cam_out.precsl_16O": {
+        "aliases": [],
+        "category": "native_cam_state",
+        "dimensions": [
+          "cam_out.precsl_16O__dim0",
+          "cam_out.precsl_16O__dim1"
+        ],
+        "dtype": "<f8",
+        "name": "cam_out.precsl_16O",
+        "nbytes": 256,
+        "restart": true,
+        "shape": [
+          16,
+          2
+        ],
+        "units": "1",
+        "writable": true
+      },
+      "cam_out.precsl_18O": {
+        "aliases": [],
+        "category": "native_cam_state",
+        "dimensions": [
+          "cam_out.precsl_18O__dim0",
+          "cam_out.precsl_18O__dim1"
+        ],
+        "dtype": "<f8",
+        "name": "cam_out.precsl_18O",
+        "nbytes": 256,
+        "restart": true,
+        "shape": [
+          16,
+          2
+        ],
+        "units": "1",
+        "writable": true
+      },
+      "cam_out.precsl_HDO": {
+        "aliases": [],
+        "category": "native_cam_state",
+        "dimensions": [
+          "cam_out.precsl_HDO__dim0",
+          "cam_out.precsl_HDO__dim1"
+        ],
+        "dtype": "<f8",
+        "name": "cam_out.precsl_HDO",
+        "nbytes": 256,
+        "restart": true,
+        "shape": [
+          16,
+          2
+        ],
+        "units": "1",
+        "writable": true
+      },
+      "cam_out.psl": {
+        "aliases": [],
+        "category": "native_cam_state",
+        "dimensions": [
+          "cam_out.psl__dim0",
+          "cam_out.psl__dim1"
+        ],
+        "dtype": "<f8",
+        "name": "cam_out.psl",
+        "nbytes": 256,
+        "restart": true,
+        "shape": [
+          16,
+          2
+        ],
+        "units": "1",
+        "writable": true
+      },
+      "cam_out.qbot": {
+        "aliases": [],
+        "category": "native_cam_state",
+        "dimensions": [
+          "cam_out.qbot__dim0",
+          "cam_out.qbot__dim1",
+          "cam_out.qbot__dim2"
+        ],
+        "dtype": "<f8",
+        "name": "cam_out.qbot",
+        "nbytes": 14592,
+        "restart": true,
+        "shape": [
+          16,
+          57,
+          2
+        ],
+        "units": "1",
+        "writable": true
+      },
+      "cam_out.rho": {
+        "aliases": [],
+        "category": "native_cam_state",
+        "dimensions": [
+          "cam_out.rho__dim0",
+          "cam_out.rho__dim1"
+        ],
+        "dtype": "<f8",
+        "name": "cam_out.rho",
+        "nbytes": 256,
+        "restart": true,
+        "shape": [
+          16,
+          2
+        ],
+        "units": "1",
+        "writable": true
+      },
+      "cam_out.soll": {
+        "aliases": [],
+        "category": "native_cam_state",
+        "dimensions": [
+          "cam_out.soll__dim0",
+          "cam_out.soll__dim1"
+        ],
+        "dtype": "<f8",
+        "name": "cam_out.soll",
+        "nbytes": 256,
+        "restart": true,
+        "shape": [
+          16,
+          2
+        ],
+        "units": "1",
+        "writable": true
+      },
+      "cam_out.solld": {
+        "aliases": [],
+        "category": "native_cam_state",
+        "dimensions": [
+          "cam_out.solld__dim0",
+          "cam_out.solld__dim1"
+        ],
+        "dtype": "<f8",
+        "name": "cam_out.solld",
+        "nbytes": 256,
+        "restart": true,
+        "shape": [
+          16,
+          2
+        ],
+        "units": "1",
+        "writable": true
+      },
+      "cam_out.sols": {
+        "aliases": [],
+        "category": "native_cam_state",
+        "dimensions": [
+          "cam_out.sols__dim0",
+          "cam_out.sols__dim1"
+        ],
+        "dtype": "<f8",
+        "name": "cam_out.sols",
+        "nbytes": 256,
+        "restart": true,
+        "shape": [
+          16,
+          2
+        ],
+        "units": "1",
+        "writable": true
+      },
+      "cam_out.solsd": {
+        "aliases": [],
+        "category": "native_cam_state",
+        "dimensions": [
+          "cam_out.solsd__dim0",
+          "cam_out.solsd__dim1"
+        ],
+        "dtype": "<f8",
+        "name": "cam_out.solsd",
+        "nbytes": 256,
+        "restart": true,
+        "shape": [
+          16,
+          2
+        ],
+        "units": "1",
+        "writable": true
+      },
+      "cam_out.tbot": {
+        "aliases": [],
+        "category": "native_cam_state",
+        "dimensions": [
+          "cam_out.tbot__dim0",
+          "cam_out.tbot__dim1"
+        ],
+        "dtype": "<f8",
+        "name": "cam_out.tbot",
+        "nbytes": 256,
+        "restart": true,
+        "shape": [
+          16,
+          2
+        ],
+        "units": "1",
+        "writable": true
+      },
+      "cam_out.thbot": {
+        "aliases": [],
+        "category": "native_cam_state",
+        "dimensions": [
+          "cam_out.thbot__dim0",
+          "cam_out.thbot__dim1"
+        ],
+        "dtype": "<f8",
+        "name": "cam_out.thbot",
+        "nbytes": 256,
+        "restart": true,
+        "shape": [
+          16,
+          2
+        ],
+        "units": "1",
+        "writable": true
+      },
+      "cam_out.ubot": {
+        "aliases": [],
+        "category": "native_cam_state",
+        "dimensions": [
+          "cam_out.ubot__dim0",
+          "cam_out.ubot__dim1"
+        ],
+        "dtype": "<f8",
+        "name": "cam_out.ubot",
+        "nbytes": 256,
+        "restart": true,
+        "shape": [
+          16,
+          2
+        ],
+        "units": "1",
+        "writable": true
+      },
+      "cam_out.vbot": {
+        "aliases": [],
+        "category": "native_cam_state",
+        "dimensions": [
+          "cam_out.vbot__dim0",
+          "cam_out.vbot__dim1"
+        ],
+        "dtype": "<f8",
+        "name": "cam_out.vbot",
+        "nbytes": 256,
+        "restart": true,
+        "shape": [
+          16,
+          2
+        ],
+        "units": "1",
+        "writable": true
+      },
+      "cam_out.zbot": {
+        "aliases": [],
+        "category": "native_cam_state",
+        "dimensions": [
+          "cam_out.zbot__dim0",
+          "cam_out.zbot__dim1"
+        ],
+        "dtype": "<f8",
+        "name": "cam_out.zbot",
+        "nbytes": 256,
+        "restart": true,
+        "shape": [
+          16,
+          2
+        ],
+        "units": "1",
+        "writable": true
+      },
+      "case_name_utf8": {
+        "aliases": [],
+        "category": "configuration",
+        "dimensions": [
+          "case_name_length"
+        ],
+        "dtype": "|u1",
+        "name": "case_name_utf8",
+        "nbytes": 256,
+        "restart": true,
+        "shape": [
+          256
+        ],
+        "units": "1",
+        "writable": false
+      },
+      "configured_stop_n": {
+        "aliases": [],
+        "category": "configuration",
+        "dimensions": [],
+        "dtype": "<i8",
+        "name": "configured_stop_n",
+        "nbytes": 8,
+        "restart": true,
+        "shape": [],
+        "units": "1",
+        "writable": false
+      },
+      "current_date": {
+        "aliases": [],
+        "category": "time",
+        "dimensions": [],
+        "dtype": "<i4",
+        "name": "current_date",
+        "nbytes": 4,
+        "restart": true,
+        "shape": [],
+        "units": "1",
+        "writable": true
+      },
+      "current_seconds_of_day": {
+        "aliases": [],
+        "category": "time",
+        "dimensions": [],
+        "dtype": "<i4",
+        "name": "current_seconds_of_day",
+        "nbytes": 4,
+        "restart": true,
+        "shape": [],
+        "units": "s",
+        "writable": true
+      },
+      "model_step": {
+        "aliases": [],
+        "category": "time",
+        "dimensions": [],
+        "dtype": "<i8",
+        "name": "model_step",
+        "nbytes": 8,
+        "restart": true,
+        "shape": [],
+        "units": "1",
+        "writable": true
+      },
+      "model_timestep": {
+        "aliases": [],
+        "category": "configuration",
+        "dimensions": [],
+        "dtype": "<f8",
+        "name": "model_timestep",
+        "nbytes": 8,
+        "restart": true,
+        "shape": [],
+        "units": "s",
+        "writable": false
+      },
+      "mpi_rank": {
+        "aliases": [],
+        "category": "configuration",
+        "dimensions": [],
+        "dtype": "<i4",
+        "name": "mpi_rank",
+        "nbytes": 4,
+        "restart": true,
+        "shape": [],
+        "units": "1",
+        "writable": false
+      },
+      "mpi_size": {
+        "aliases": [],
+        "category": "configuration",
+        "dimensions": [],
+        "dtype": "<i4",
+        "name": "mpi_size",
+        "nbytes": 4,
+        "restart": true,
+        "shape": [],
+        "units": "1",
+        "writable": false
+      },
+      "orbital_year": {
+        "aliases": [],
+        "category": "configuration",
+        "dimensions": [],
+        "dtype": "<i4",
+        "name": "orbital_year",
+        "nbytes": 4,
+        "restart": true,
+        "shape": [],
+        "units": "1",
+        "writable": false
+      },
+      "phys_state.cid": {
+        "aliases": [],
+        "category": "native_cam_state",
+        "dimensions": [
+          "phys_state.cid__dim0",
+          "phys_state.cid__dim1"
+        ],
+        "dtype": "<i4",
+        "name": "phys_state.cid",
+        "nbytes": 128,
+        "restart": true,
+        "shape": [
+          16,
+          2
+        ],
+        "units": "1",
+        "writable": true
+      },
+      "phys_state.count": {
+        "aliases": [],
+        "category": "native_cam_state",
+        "dimensions": [
+          "phys_state.count__dim0"
+        ],
+        "dtype": "<i4",
+        "name": "phys_state.count",
+        "nbytes": 8,
+        "restart": true,
+        "shape": [
+          2
+        ],
+        "units": "1",
+        "writable": true
+      },
+      "phys_state.exner": {
+        "aliases": [],
+        "category": "native_cam_state",
+        "dimensions": [
+          "phys_state.exner__dim0",
+          "phys_state.exner__dim1",
+          "phys_state.exner__dim2"
+        ],
+        "dtype": "<f8",
+        "name": "phys_state.exner",
+        "nbytes": 7680,
+        "restart": true,
+        "shape": [
+          16,
+          30,
+          2
+        ],
+        "units": "1",
+        "writable": true
+      },
+      "phys_state.lat": {
+        "aliases": [],
+        "category": "native_cam_state",
+        "dimensions": [
+          "phys_state.lat__dim0",
+          "phys_state.lat__dim1"
+        ],
+        "dtype": "<f8",
+        "name": "phys_state.lat",
+        "nbytes": 256,
+        "restart": true,
+        "shape": [
+          16,
+          2
+        ],
+        "units": "1",
+        "writable": true
+      },
+      "phys_state.latmapback": {
+        "aliases": [],
+        "category": "native_cam_state",
+        "dimensions": [
+          "phys_state.latmapback__dim0",
+          "phys_state.latmapback__dim1"
+        ],
+        "dtype": "<i4",
+        "name": "phys_state.latmapback",
+        "nbytes": 128,
+        "restart": true,
+        "shape": [
+          16,
+          2
+        ],
+        "units": "1",
+        "writable": true
+      },
+      "phys_state.lchnk": {
+        "aliases": [],
+        "category": "native_cam_state",
+        "dimensions": [
+          "phys_state.lchnk__dim0"
+        ],
+        "dtype": "<i4",
+        "name": "phys_state.lchnk",
+        "nbytes": 8,
+        "restart": true,
+        "shape": [
+          2
+        ],
+        "units": "1",
+        "writable": true
+      },
+      "phys_state.lnpint": {
+        "aliases": [],
+        "category": "native_cam_state",
+        "dimensions": [
+          "phys_state.lnpint__dim0",
+          "phys_state.lnpint__dim1",
+          "phys_state.lnpint__dim2"
+        ],
+        "dtype": "<f8",
+        "name": "phys_state.lnpint",
+        "nbytes": 7936,
+        "restart": true,
+        "shape": [
+          16,
+          31,
+          2
+        ],
+        "units": "1",
+        "writable": true
+      },
+      "phys_state.lnpintdry": {
+        "aliases": [],
+        "category": "native_cam_state",
+        "dimensions": [
+          "phys_state.lnpintdry__dim0",
+          "phys_state.lnpintdry__dim1",
+          "phys_state.lnpintdry__dim2"
+        ],
+        "dtype": "<f8",
+        "name": "phys_state.lnpintdry",
+        "nbytes": 7936,
+        "restart": true,
+        "shape": [
+          16,
+          31,
+          2
+        ],
+        "units": "1",
+        "writable": true
+      },
+      "phys_state.lnpmid": {
+        "aliases": [],
+        "category": "native_cam_state",
+        "dimensions": [
+          "phys_state.lnpmid__dim0",
+          "phys_state.lnpmid__dim1",
+          "phys_state.lnpmid__dim2"
+        ],
+        "dtype": "<f8",
+        "name": "phys_state.lnpmid",
+        "nbytes": 7680,
+        "restart": true,
+        "shape": [
+          16,
+          30,
+          2
+        ],
+        "units": "1",
+        "writable": true
+      },
+      "phys_state.lnpmiddry": {
+        "aliases": [],
+        "category": "native_cam_state",
+        "dimensions": [
+          "phys_state.lnpmiddry__dim0",
+          "phys_state.lnpmiddry__dim1",
+          "phys_state.lnpmiddry__dim2"
+        ],
+        "dtype": "<f8",
+        "name": "phys_state.lnpmiddry",
+        "nbytes": 7680,
+        "restart": true,
+        "shape": [
+          16,
+          30,
+          2
+        ],
+        "units": "1",
+        "writable": true
+      },
+      "phys_state.lon": {
+        "aliases": [],
+        "category": "native_cam_state",
+        "dimensions": [
+          "phys_state.lon__dim0",
+          "phys_state.lon__dim1"
+        ],
+        "dtype": "<f8",
+        "name": "phys_state.lon",
+        "nbytes": 256,
+        "restart": true,
+        "shape": [
+          16,
+          2
+        ],
+        "units": "1",
+        "writable": true
+      },
+      "phys_state.lonmapback": {
+        "aliases": [],
+        "category": "native_cam_state",
+        "dimensions": [
+          "phys_state.lonmapback__dim0",
+          "phys_state.lonmapback__dim1"
+        ],
+        "dtype": "<i4",
+        "name": "phys_state.lonmapback",
+        "nbytes": 128,
+        "restart": true,
+        "shape": [
+          16,
+          2
+        ],
+        "units": "1",
+        "writable": true
+      },
+      "phys_state.ncol": {
+        "aliases": [],
+        "category": "native_cam_state",
+        "dimensions": [
+          "phys_state.ncol__dim0"
+        ],
+        "dtype": "<i4",
+        "name": "phys_state.ncol",
+        "nbytes": 8,
+        "restart": true,
+        "shape": [
+          2
+        ],
+        "units": "1",
+        "writable": true
+      },
+      "phys_state.ngrdcol": {
+        "aliases": [],
+        "category": "native_cam_state",
+        "dimensions": [
+          "phys_state.ngrdcol__dim0"
+        ],
+        "dtype": "<i4",
+        "name": "phys_state.ngrdcol",
+        "nbytes": 8,
+        "restart": true,
+        "shape": [
+          2
+        ],
+        "units": "1",
+        "writable": true
+      },
+      "phys_state.omega": {
+        "aliases": [],
+        "category": "native_cam_state",
+        "dimensions": [
+          "phys_state.omega__dim0",
+          "phys_state.omega__dim1",
+          "phys_state.omega__dim2"
+        ],
+        "dtype": "<f8",
+        "name": "phys_state.omega",
+        "nbytes": 7680,
+        "restart": true,
+        "shape": [
+          16,
+          30,
+          2
+        ],
+        "units": "1",
+        "writable": true
+      },
+      "phys_state.pdel": {
+        "aliases": [],
+        "category": "native_cam_state",
+        "dimensions": [
+          "phys_state.pdel__dim0",
+          "phys_state.pdel__dim1",
+          "phys_state.pdel__dim2"
+        ],
+        "dtype": "<f8",
+        "name": "phys_state.pdel",
+        "nbytes": 7680,
+        "restart": true,
+        "shape": [
+          16,
+          30,
+          2
+        ],
+        "units": "1",
+        "writable": true
+      },
+      "phys_state.pdeldry": {
+        "aliases": [],
+        "category": "native_cam_state",
+        "dimensions": [
+          "phys_state.pdeldry__dim0",
+          "phys_state.pdeldry__dim1",
+          "phys_state.pdeldry__dim2"
+        ],
+        "dtype": "<f8",
+        "name": "phys_state.pdeldry",
+        "nbytes": 7680,
+        "restart": true,
+        "shape": [
+          16,
+          30,
+          2
+        ],
+        "units": "1",
+        "writable": true
+      },
+      "phys_state.phis": {
+        "aliases": [],
+        "category": "native_cam_state",
+        "dimensions": [
+          "phys_state.phis__dim0",
+          "phys_state.phis__dim1"
+        ],
+        "dtype": "<f8",
+        "name": "phys_state.phis",
+        "nbytes": 256,
+        "restart": true,
+        "shape": [
+          16,
+          2
+        ],
+        "units": "1",
+        "writable": true
+      },
+      "phys_state.pint": {
+        "aliases": [],
+        "category": "native_cam_state",
+        "dimensions": [
+          "phys_state.pint__dim0",
+          "phys_state.pint__dim1",
+          "phys_state.pint__dim2"
+        ],
+        "dtype": "<f8",
+        "name": "phys_state.pint",
+        "nbytes": 7936,
+        "restart": true,
+        "shape": [
+          16,
+          31,
+          2
+        ],
+        "units": "1",
+        "writable": true
+      },
+      "phys_state.pintdry": {
+        "aliases": [],
+        "category": "native_cam_state",
+        "dimensions": [
+          "phys_state.pintdry__dim0",
+          "phys_state.pintdry__dim1",
+          "phys_state.pintdry__dim2"
+        ],
+        "dtype": "<f8",
+        "name": "phys_state.pintdry",
+        "nbytes": 7936,
+        "restart": true,
+        "shape": [
+          16,
+          31,
+          2
+        ],
+        "units": "1",
+        "writable": true
+      },
+      "phys_state.pmid": {
+        "aliases": [],
+        "category": "native_cam_state",
+        "dimensions": [
+          "phys_state.pmid__dim0",
+          "phys_state.pmid__dim1",
+          "phys_state.pmid__dim2"
+        ],
+        "dtype": "<f8",
+        "name": "phys_state.pmid",
+        "nbytes": 7680,
+        "restart": true,
+        "shape": [
+          16,
+          30,
+          2
+        ],
+        "units": "1",
+        "writable": true
+      },
+      "phys_state.pmiddry": {
+        "aliases": [],
+        "category": "native_cam_state",
+        "dimensions": [
+          "phys_state.pmiddry__dim0",
+          "phys_state.pmiddry__dim1",
+          "phys_state.pmiddry__dim2"
+        ],
+        "dtype": "<f8",
+        "name": "phys_state.pmiddry",
+        "nbytes": 7680,
+        "restart": true,
+        "shape": [
+          16,
+          30,
+          2
+        ],
+        "units": "1",
+        "writable": true
+      },
+      "phys_state.ps": {
+        "aliases": [],
+        "category": "native_cam_state",
+        "dimensions": [
+          "phys_state.ps__dim0",
+          "phys_state.ps__dim1"
+        ],
+        "dtype": "<f8",
+        "name": "phys_state.ps",
+        "nbytes": 256,
+        "restart": true,
+        "shape": [
+          16,
+          2
+        ],
+        "units": "1",
+        "writable": true
+      },
+      "phys_state.psdry": {
+        "aliases": [],
+        "category": "native_cam_state",
+        "dimensions": [
+          "phys_state.psdry__dim0",
+          "phys_state.psdry__dim1"
+        ],
+        "dtype": "<f8",
+        "name": "phys_state.psdry",
+        "nbytes": 256,
+        "restart": true,
+        "shape": [
+          16,
+          2
+        ],
+        "units": "1",
+        "writable": true
+      },
+      "phys_state.psetcols": {
+        "aliases": [],
+        "category": "native_cam_state",
+        "dimensions": [
+          "phys_state.psetcols__dim0"
+        ],
+        "dtype": "<i4",
+        "name": "phys_state.psetcols",
+        "nbytes": 8,
+        "restart": true,
+        "shape": [
+          2
+        ],
+        "units": "1",
+        "writable": true
+      },
+      "phys_state.q": {
+        "aliases": [],
+        "category": "native_cam_state",
+        "dimensions": [
+          "phys_state.q__dim0",
+          "phys_state.q__dim1",
+          "phys_state.q__dim2",
+          "phys_state.q__dim3"
+        ],
+        "dtype": "<f8",
+        "name": "phys_state.q",
+        "nbytes": 437760,
+        "restart": true,
+        "shape": [
+          16,
+          30,
+          57,
+          2
+        ],
+        "units": "1",
+        "writable": true
+      },
+      "phys_state.rpdel": {
+        "aliases": [],
+        "category": "native_cam_state",
+        "dimensions": [
+          "phys_state.rpdel__dim0",
+          "phys_state.rpdel__dim1",
+          "phys_state.rpdel__dim2"
+        ],
+        "dtype": "<f8",
+        "name": "phys_state.rpdel",
+        "nbytes": 7680,
+        "restart": true,
+        "shape": [
+          16,
+          30,
+          2
+        ],
+        "units": "1",
+        "writable": true
+      },
+      "phys_state.rpdeldry": {
+        "aliases": [],
+        "category": "native_cam_state",
+        "dimensions": [
+          "phys_state.rpdeldry__dim0",
+          "phys_state.rpdeldry__dim1",
+          "phys_state.rpdeldry__dim2"
+        ],
+        "dtype": "<f8",
+        "name": "phys_state.rpdeldry",
+        "nbytes": 7680,
+        "restart": true,
+        "shape": [
+          16,
+          30,
+          2
+        ],
+        "units": "1",
+        "writable": true
+      },
+      "phys_state.s": {
+        "aliases": [],
+        "category": "native_cam_state",
+        "dimensions": [
+          "phys_state.s__dim0",
+          "phys_state.s__dim1",
+          "phys_state.s__dim2"
+        ],
+        "dtype": "<f8",
+        "name": "phys_state.s",
+        "nbytes": 7680,
+        "restart": true,
+        "shape": [
+          16,
+          30,
+          2
+        ],
+        "units": "1",
+        "writable": true
+      },
+      "phys_state.t": {
+        "aliases": [],
+        "category": "native_cam_state",
+        "dimensions": [
+          "phys_state.t__dim0",
+          "phys_state.t__dim1",
+          "phys_state.t__dim2"
+        ],
+        "dtype": "<f8",
+        "name": "phys_state.t",
+        "nbytes": 7680,
+        "restart": true,
+        "shape": [
+          16,
+          30,
+          2
+        ],
+        "units": "1",
+        "writable": true
+      },
+      "phys_state.te_cur": {
+        "aliases": [],
+        "category": "native_cam_state",
+        "dimensions": [
+          "phys_state.te_cur__dim0",
+          "phys_state.te_cur__dim1"
+        ],
+        "dtype": "<f8",
+        "name": "phys_state.te_cur",
+        "nbytes": 256,
+        "restart": true,
+        "shape": [
+          16,
+          2
+        ],
+        "units": "1",
+        "writable": true
+      },
+      "phys_state.te_ini": {
+        "aliases": [],
+        "category": "native_cam_state",
+        "dimensions": [
+          "phys_state.te_ini__dim0",
+          "phys_state.te_ini__dim1"
+        ],
+        "dtype": "<f8",
+        "name": "phys_state.te_ini",
+        "nbytes": 256,
+        "restart": true,
+        "shape": [
+          16,
+          2
+        ],
+        "units": "1",
+        "writable": true
+      },
+      "phys_state.tw_cur": {
+        "aliases": [],
+        "category": "native_cam_state",
+        "dimensions": [
+          "phys_state.tw_cur__dim0",
+          "phys_state.tw_cur__dim1"
+        ],
+        "dtype": "<f8",
+        "name": "phys_state.tw_cur",
+        "nbytes": 256,
+        "restart": true,
+        "shape": [
+          16,
+          2
+        ],
+        "units": "1",
+        "writable": true
+      },
+      "phys_state.tw_ini": {
+        "aliases": [],
+        "category": "native_cam_state",
+        "dimensions": [
+          "phys_state.tw_ini__dim0",
+          "phys_state.tw_ini__dim1"
+        ],
+        "dtype": "<f8",
+        "name": "phys_state.tw_ini",
+        "nbytes": 256,
+        "restart": true,
+        "shape": [
+          16,
+          2
+        ],
+        "units": "1",
+        "writable": true
+      },
+      "phys_state.u": {
+        "aliases": [],
+        "category": "native_cam_state",
+        "dimensions": [
+          "phys_state.u__dim0",
+          "phys_state.u__dim1",
+          "phys_state.u__dim2"
+        ],
+        "dtype": "<f8",
+        "name": "phys_state.u",
+        "nbytes": 7680,
+        "restart": true,
+        "shape": [
+          16,
+          30,
+          2
+        ],
+        "units": "1",
+        "writable": true
+      },
+      "phys_state.ulat": {
+        "aliases": [],
+        "category": "native_cam_state",
+        "dimensions": [
+          "phys_state.ulat__dim0",
+          "phys_state.ulat__dim1"
+        ],
+        "dtype": "<f8",
+        "name": "phys_state.ulat",
+        "nbytes": 256,
+        "restart": true,
+        "shape": [
+          16,
+          2
+        ],
+        "units": "1",
+        "writable": true
+      },
+      "phys_state.ulatcnt": {
+        "aliases": [],
+        "category": "native_cam_state",
+        "dimensions": [
+          "phys_state.ulatcnt__dim0"
+        ],
+        "dtype": "<i4",
+        "name": "phys_state.ulatcnt",
+        "nbytes": 8,
+        "restart": true,
+        "shape": [
+          2
+        ],
+        "units": "1",
+        "writable": true
+      },
+      "phys_state.ulon": {
+        "aliases": [],
+        "category": "native_cam_state",
+        "dimensions": [
+          "phys_state.ulon__dim0",
+          "phys_state.ulon__dim1"
+        ],
+        "dtype": "<f8",
+        "name": "phys_state.ulon",
+        "nbytes": 256,
+        "restart": true,
+        "shape": [
+          16,
+          2
+        ],
+        "units": "1",
+        "writable": true
+      },
+      "phys_state.uloncnt": {
+        "aliases": [],
+        "category": "native_cam_state",
+        "dimensions": [
+          "phys_state.uloncnt__dim0"
+        ],
+        "dtype": "<i4",
+        "name": "phys_state.uloncnt",
+        "nbytes": 8,
+        "restart": true,
+        "shape": [
+          2
+        ],
+        "units": "1",
+        "writable": true
+      },
+      "phys_state.v": {
+        "aliases": [],
+        "category": "native_cam_state",
+        "dimensions": [
+          "phys_state.v__dim0",
+          "phys_state.v__dim1",
+          "phys_state.v__dim2"
+        ],
+        "dtype": "<f8",
+        "name": "phys_state.v",
+        "nbytes": 7680,
+        "restart": true,
+        "shape": [
+          16,
+          30,
+          2
+        ],
+        "units": "1",
+        "writable": true
+      },
+      "phys_state.zi": {
+        "aliases": [],
+        "category": "native_cam_state",
+        "dimensions": [
+          "phys_state.zi__dim0",
+          "phys_state.zi__dim1",
+          "phys_state.zi__dim2"
+        ],
+        "dtype": "<f8",
+        "name": "phys_state.zi",
+        "nbytes": 7936,
+        "restart": true,
+        "shape": [
+          16,
+          31,
+          2
+        ],
+        "units": "1",
+        "writable": true
+      },
+      "phys_state.zm": {
+        "aliases": [],
+        "category": "native_cam_state",
+        "dimensions": [
+          "phys_state.zm__dim0",
+          "phys_state.zm__dim1",
+          "phys_state.zm__dim2"
+        ],
+        "dtype": "<f8",
+        "name": "phys_state.zm",
+        "nbytes": 7680,
+        "restart": true,
+        "shape": [
+          16,
+          30,
+          2
+        ],
+        "units": "1",
+        "writable": true
+      },
+      "phys_tend.dtdt": {
+        "aliases": [],
+        "category": "native_cam_state",
+        "dimensions": [
+          "phys_tend.dtdt__dim0",
+          "phys_tend.dtdt__dim1",
+          "phys_tend.dtdt__dim2"
+        ],
+        "dtype": "<f8",
+        "name": "phys_tend.dtdt",
+        "nbytes": 7680,
+        "restart": true,
+        "shape": [
+          16,
+          30,
+          2
+        ],
+        "units": "1",
+        "writable": true
+      },
+      "phys_tend.dudt": {
+        "aliases": [],
+        "category": "native_cam_state",
+        "dimensions": [
+          "phys_tend.dudt__dim0",
+          "phys_tend.dudt__dim1",
+          "phys_tend.dudt__dim2"
+        ],
+        "dtype": "<f8",
+        "name": "phys_tend.dudt",
+        "nbytes": 7680,
+        "restart": true,
+        "shape": [
+          16,
+          30,
+          2
+        ],
+        "units": "1",
+        "writable": true
+      },
+      "phys_tend.dvdt": {
+        "aliases": [],
+        "category": "native_cam_state",
+        "dimensions": [
+          "phys_tend.dvdt__dim0",
+          "phys_tend.dvdt__dim1",
+          "phys_tend.dvdt__dim2"
+        ],
+        "dtype": "<f8",
+        "name": "phys_tend.dvdt",
+        "nbytes": 7680,
+        "restart": true,
+        "shape": [
+          16,
+          30,
+          2
+        ],
+        "units": "1",
+        "writable": true
+      },
+      "phys_tend.flx_net": {
+        "aliases": [],
+        "category": "native_cam_state",
+        "dimensions": [
+          "phys_tend.flx_net__dim0",
+          "phys_tend.flx_net__dim1"
+        ],
+        "dtype": "<f8",
+        "name": "phys_tend.flx_net",
+        "nbytes": 256,
+        "restart": true,
+        "shape": [
+          16,
+          2
+        ],
+        "units": "1",
+        "writable": true
+      },
+      "phys_tend.psetcols": {
+        "aliases": [],
+        "category": "native_cam_state",
+        "dimensions": [
+          "phys_tend.psetcols__dim0"
+        ],
+        "dtype": "<i4",
+        "name": "phys_tend.psetcols",
+        "nbytes": 8,
+        "restart": true,
+        "shape": [
+          2
+        ],
+        "units": "1",
+        "writable": true
+      },
+      "phys_tend.te_tnd": {
+        "aliases": [],
+        "category": "native_cam_state",
+        "dimensions": [
+          "phys_tend.te_tnd__dim0",
+          "phys_tend.te_tnd__dim1"
+        ],
+        "dtype": "<f8",
+        "name": "phys_tend.te_tnd",
+        "nbytes": 256,
+        "restart": true,
+        "shape": [
+          16,
+          2
+        ],
+        "units": "1",
+        "writable": true
+      },
+      "phys_tend.tw_tnd": {
+        "aliases": [],
+        "category": "native_cam_state",
+        "dimensions": [
+          "phys_tend.tw_tnd__dim0",
+          "phys_tend.tw_tnd__dim1"
+        ],
+        "dtype": "<f8",
+        "name": "phys_tend.tw_tnd",
+        "nbytes": 256,
+        "restart": true,
+        "shape": [
+          16,
+          2
+        ],
+        "units": "1",
+        "writable": true
+      }
+    },
+    "lifecycle": "running",
+    "seconds": 0,
+    "state_bytes": 691116,
+    "step": 0
+  },
+  "steps_requested": 50
+}

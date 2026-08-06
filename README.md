@@ -93,7 +93,37 @@ with case.runtime(
     cam.phases.cam_run3.run()      # experimental isolated phase call
     cam.step()                     # one complete source-ordered CAM step
     print(cam.pool["cam_out.a2x_rattr"])
+    print(cam.pool["phys_state.t"])       # Python-owned rank-local CAM state
+    print(cam.pool["cam_in.ts"])
 ```
+
+The PI-CAM build now generates a state bridge directly from the original
+`cam_in_t`, `cam_out_t`, `physics_state`, and `physics_tend` declarations.
+For this source configuration it discovers 136 numeric fields; 134 are active
+on each rank after `cam_init` and are registered as Fortran-contiguous NumPy
+arrays in the rank-local `PICAMStatePool`.  The two inactive entries are
+configuration-dependent pointer components and are deliberately not invented
+by Python.
+
+This is the first migration boundary, not the final zero-copy kernel layout.
+`cam_init` still creates the legacy derived types and supplies their initial
+scientific values.  The generated bridge then copies those values into the
+Python arrays.  Before a native CAM call Python writes its authoritative state
+to the temporary legacy mirror, and after the call it reads the results back.
+As individual numerical kernels acquire flat generated ABIs, they consume the
+same StatePool arrays directly and their corresponding mirror copies can be
+removed.  Opaque `pbuf`, SE dycore, and process-private module state remain
+Fortran-owned until they receive explicit serializers or field contracts.
+
+All ordinary numerical entry points use one reusable Python adapter.  Its JSON
+manifest declares the symbol, action id, field name, dtype, rank, intent, and
+contiguity.  The adapter validates the NumPy arrays and constructs the generic
+pointer/rank/shape table.  Generated device shims convert that table to normal
+Fortran arguments; the current PI-CAM legacy image uses the same table through
+one stable `bind(C)` action module while its state-transfer bodies are generated
+from the original type declarations.  Compiler-specific module symbol mangling,
+assumed-shape descriptors, and derived-type layouts therefore never leak into
+the Python API.
 
 For a Jupyter Notebook, `PICAMNotebookSession` submits one cpudev job and
 starts the 512-rank CAM worker once. All later calls reuse those live MPI
@@ -112,6 +142,7 @@ with PICAMNotebookSession(
 ) as cam:
     cam.step()
     print(cam.stats("cam_out.a2x_rattr", rank="global"))
+    print(cam.stats("phys_state.t", rank="global"))
     cam.run_scheme("dadadj", phase="cam_run2")  # experimental isolated call
 ```
 
@@ -125,10 +156,14 @@ Build and validate with the reproducible cpudev jobs:
 ```bash
 source /path/to/oracle-case/.env_mach_specific.sh
 python tools/apply_pi_cam_source_patches.py --source-root /path/to/iCESM1.3.1
+python tools/generate_pi_cam_state_bridge.py \
+  --source-root /path/to/iCESM1.3.1 \
+  --fortran /tmp/pycam_pi_cam_state_bridge.inc \
+  --manifest /tmp/pycam_pi_cam_state_bridge.json
 python tools/build_pi_cam_devices.py --case /path/to/oracle-case
 qsub validation/jobs/pi_cam_boundary_capture_50step.pbs
-qsub validation/jobs/pi_cam_python_50step.pbs
-qsub validation/jobs/pi_cam_session_50step.pbs
+qsub validation/jobs/pi_cam_python_state_bridge_50step.pbs
+qsub validation/jobs/pi_cam_session_state_bridge_50step.pbs
 ```
 
 `tools/build_pi_cam_devices.py` intentionally does not rebuild all of CAM with
@@ -149,6 +184,13 @@ The current 512-rank gate is recorded in
 [`validation/pi_cam_50step_gate.json`](validation/pi_cam_50step_gate.json):
 both the direct Python driver and the persistent Notebook session are BFB for
 all four CAM history/restart files after 50 completed steps.
+The generated state bridge direct-driver gate is additionally recorded in
+[`validation/pi_cam_python_state_bridge_vs_oracle_50step_bfb.json`](validation/pi_cam_python_state_bridge_vs_oracle_50step_bfb.json):
+job `7030195.desched1` ran on `cpudev`, exposed 134 active legacy CAM fields to
+Python on every rank, and remained BFB for all four files.
+Persistent-session job `7030208.desched1` repeated the same 50-step BFB gate
+with one MPI launch and retrieved active-column `phys_state.t` values directly
+in Python before and after the run.
 
 Runnable examples are split by execution mode:
 

@@ -1,0 +1,46 @@
+{
+  "schema_version": 1,
+  "source_base_commit": "2fca9a8",
+  "case": "f.e13.F1850C5.ne16_g16.icesm131_ihesp.PI-cam-oracle.50step",
+  "mpi_ranks": 512,
+  "steps": 50,
+  "generated_fields": {
+    "cam_in": 38,
+    "cam_out": 49,
+    "phys_state": 42,
+    "phys_tend": 7,
+    "total": 136,
+    "active_per_rank": 134
+  },
+  "ownership": "python-authoritative-with-legacy-fortran-mirror",
+  "state_bytes_per_rank": {
+    "minimum": 689660,
+    "maximum": 691116
+  },
+  "native_library_sha256": "400b08462ad7cdcecc5e3bf81f86820ed8fd2d9824df845da61b394f3718c6f2",
+  "jobs": {
+    "direct_driver": {
+      "id": "7030195.desched1",
+      "queue": "cpudev",
+      "walltime": "00:02:03",
+      "exit_status": 0,
+      "bfb": true,
+      "compared_files": 4,
+      "first_difference": null
+    },
+    "persistent_session": {
+      "id": "7030208.desched1",
+      "queue": "cpudev",
+      "walltime": "00:02:00",
+      "exit_status": 0,
+      "mpi_launch_count": 1,
+      "bfb": true,
+      "compared_files": 4,
+      "first_difference": null
+    }
+  },
+  "tests": {
+    "unit_passed": 283,
+    "unit_warning_count": 1
+  }
+}
