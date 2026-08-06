@@ -90,6 +90,9 @@ with case.runtime(
 ) as cam:
     cam.initialize()
     cam.physics.dadadj.run()       # experimental isolated scheme call
+    cam.kernels.dadadj.run(        # only the original leaf routine;
+        experimental=True,         # StatePool arrays go directly through ABI
+    )
     cam.phases.cam_run3.run()      # experimental isolated phase call
     cam.step()                     # one complete source-ordered CAM step
     print(cam.pool["cam_out.a2x_rattr"])
@@ -125,6 +128,30 @@ from the original type declarations.  Compiler-specific module symbol mangling,
 assumed-shape descriptors, and derived-type layouts therefore never leak into
 the Python API.
 
+Leaf routines whose original signatures already contain normal scalars and
+arrays can now skip the legacy derived-type mirror entirely.  A compact YAML
+descriptor supplies field names, dtypes, ranks, intents, chunk axes, and fixed
+indices.  `kernel_codegen.py` generates a `bind(C)` pointer-table wrapper that
+loops over this rank's CAM chunks and calls the unchanged original symbol.  It
+does not copy or regenerate the numerical body.  The first admitted kernel is
+`dadadj`:
+
+```text
+PICAMStatePool NumPy arrays
+  phys_state.lchnk / ncol / pmid / pint / pdel / t / q
+                         ↓ addresses + shapes, no copy
+              generated pycam_pi_cam_dadadj_v1
+                         ↓ one call per local chunk
+                    original dadadj_
+```
+
+`cam.kernels.dadadj.run(experimental=True)` invokes only this leaf kernel.
+It is intentionally different from `cam.physics.dadadj.run()`, which invokes
+the complete CAM host stage around dry adjustment.  The direct leaf API does
+not create tendencies, apply the host update, satisfy neighboring process
+dependencies, or advance time, so it is restricted to explicit experiments
+until the complete stage has a raw-array ABI.
+
 For a Jupyter Notebook, `PICAMNotebookSession` submits one cpudev job and
 starts the 512-rank CAM worker once. All later calls reuse those live MPI
 ranks and their rank-local Python StatePools; the authenticated socket carries
@@ -143,7 +170,8 @@ with PICAMNotebookSession(
     cam.step()
     print(cam.stats("cam_out.a2x_rattr", rank="global"))
     print(cam.stats("phys_state.t", rank="global"))
-    cam.run_scheme("dadadj", phase="cam_run2")  # experimental isolated call
+    cam.run_scheme("dadadj", phase="cam_run1")  # experimental host-stage call
+    cam.run_kernel("dadadj")                     # raw-array leaf call
 ```
 
 `cam.step()` follows the source order and advances the public CAM clock.
@@ -164,6 +192,7 @@ python tools/build_pi_cam_devices.py --case /path/to/oracle-case
 qsub validation/jobs/pi_cam_boundary_capture_50step.pbs
 qsub validation/jobs/pi_cam_python_state_bridge_50step.pbs
 qsub validation/jobs/pi_cam_session_state_bridge_50step.pbs
+qsub validation/jobs/pi_cam_direct_kernel_50step.pbs
 ```
 
 `tools/build_pi_cam_devices.py` intentionally does not rebuild all of CAM with
@@ -191,6 +220,14 @@ Python on every rank, and remained BFB for all four files.
 Persistent-session job `7030208.desched1` repeated the same 50-step BFB gate
 with one MPI launch and retrieved active-column `phys_state.t` values directly
 in Python before and after the run.
+Direct-kernel job `7030781.desched1` then ran the final generated image on 512
+cpudev ranks.  Its 50-step default CAM outputs remained BFB for all four files;
+the disposable `dadadj` probe constructed 13,826 unstable columns and changed
+`t` and `q` on all 512 ranks while preserving every NumPy address and every
+declared read-only input byte.  The machine-readable records are
+[`validation/pi_cam_direct_kernel_50step.json`](validation/pi_cam_direct_kernel_50step.json)
+and
+[`validation/pi_cam_direct_kernel_vs_oracle_50step_bfb.json`](validation/pi_cam_direct_kernel_vs_oracle_50step_bfb.json).
 
 Runnable examples are split by execution mode:
 

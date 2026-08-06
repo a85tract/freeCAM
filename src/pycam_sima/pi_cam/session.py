@@ -175,6 +175,11 @@ class PICAMNotebookSession:
     def run_phase(self, name: str) -> tuple[Mapping[str, Any], ...]:
         return tuple(self._request({"op": "run_phase", "phase": name}))
 
+    def run_kernel(self, name: str) -> Mapping[str, Any]:
+        """Run one experimental raw-array kernel on all live MPI ranks."""
+
+        return dict(self._request({"op": "run_kernel", "name": name}))
+
     def field(self, name: str, *, rank: int = 0) -> Any:
         return self._request({"op": "field", "name": name, "rank": int(rank)})
 

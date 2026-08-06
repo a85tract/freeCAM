@@ -66,3 +66,26 @@ def test_session_environment_preloads_manifest_math_runtime(
         str(math_library),
         "/other.so",
     ]
+
+
+def test_session_run_kernel_sends_explicit_worker_command(
+    tmp_path: Path, monkeypatch
+) -> None:
+    config, boundary, run_dir, env_script, _ = _session_files(tmp_path)
+    session = PICAMNotebookSession(
+        config,
+        boundary=boundary,
+        run_dir=run_dir,
+        env_script=env_script,
+    )
+    commands = []
+    monkeypatch.setattr(
+        session,
+        "_request",
+        lambda command: commands.append(command) or {"operation": "dadadj"},
+    )
+
+    result = session.run_kernel("dadadj")
+
+    assert commands == [{"op": "run_kernel", "name": "dadadj"}]
+    assert result["operation"] == "dadadj"

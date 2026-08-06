@@ -1,0 +1,50 @@
+{
+  "all_addresses_stable": true,
+  "all_readonly_inputs_unchanged": true,
+  "generated_symbol": "pycam_pi_cam_dadadj_v1",
+  "kernel": "dadadj",
+  "library_sha256": "0526b2a5a5057325a5115daf6206795391e5e78a96eeea418b0775246a928807",
+  "mpi_ranks": 512,
+  "original_call_proof": "31d60ad4:\te8 b7 82 fe fe       \tcall   30d48d90 <dadadj_>",
+  "pbs_job_id": "7030781.desched1",
+  "probe": "one mild synthetic dry instability per local chunk",
+  "probe_unstable_columns": 13826,
+  "rank0_shapes": {
+    "phys_state.lchnk": [
+      2
+    ],
+    "phys_state.ncol": [
+      2
+    ],
+    "phys_state.pdel": [
+      16,
+      30,
+      2
+    ],
+    "phys_state.pint": [
+      16,
+      31,
+      2
+    ],
+    "phys_state.pmid": [
+      16,
+      30,
+      2
+    ],
+    "phys_state.q": [
+      16,
+      30,
+      57,
+      2
+    ],
+    "phys_state.t": [
+      16,
+      30,
+      2
+    ]
+  },
+  "ranks_with_temperature_change": 512,
+  "ranks_with_water_vapor_change": 512,
+  "schema_version": 1,
+  "steps_before_probe": 50
+}

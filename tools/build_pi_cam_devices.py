@@ -30,6 +30,10 @@ from pycam_sima.pi_cam.state_codegen import (  # noqa: E402
     instrument_cam_comp,
     load_state_bridge,
 )
+from pycam_sima.pi_cam.kernel_codegen import (  # noqa: E402
+    generate_direct_kernel_module,
+    load_direct_kernels,
+)
 
 
 REPO = Path(__file__).resolve().parents[1]
@@ -194,6 +198,22 @@ def _zero_calls(path: Path) -> tuple[str, ...]:
     )
 
 
+def _direct_kernel_call_proof(path: Path, symbol: str, routine: str) -> str:
+    """Prove that a generated wrapper calls, rather than copies, its routine."""
+
+    output = subprocess.run(
+        ["objdump", "-d", f"--disassemble={symbol}", str(path)],
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout
+    target = f"<{routine.lower()}_>"
+    for line in output.splitlines():
+        if "call" in line and target in line.lower():
+            return line.strip()
+    raise RuntimeError(f"{symbol} does not call original routine {routine}_")
+
+
 def _runtime_library(executable: Path, name: str) -> Path:
     """Return the concrete library selected by the production link."""
 
@@ -211,7 +231,7 @@ def _runtime_library(executable: Path, name: str) -> Path:
     raise RuntimeError(f"cannot resolve {name} from {executable}")
 
 
-def _operations() -> dict[str, dict[str, object]]:
+def _operations(direct_kernels=()) -> dict[str, dict[str, object]]:
     operations: dict[str, dict[str, object]] = {
         "initialize": {
             "symbol": ABI_SYMBOLS[0],
@@ -278,6 +298,12 @@ def _operations() -> dict[str, dict[str, object]]:
         operations[name] = {
             "symbol": ABI_SYMBOLS[1], "action_id": action_id, "arguments": []
         }
+    for kernel in direct_kernels:
+        if kernel.operation_name in operations:
+            raise RuntimeError(
+                f"direct kernel operation {kernel.operation_name!r} is duplicated"
+            )
+        operations[kernel.operation_name] = kernel.operation_payload()
     return operations
 
 
@@ -299,6 +325,10 @@ def main() -> int:
     parser.add_argument(
         "--state-bridge", type=Path,
         default=REPO / "native/pi_cam/state_bridge.yaml",
+    )
+    parser.add_argument(
+        "--direct-kernels", type=Path,
+        default=REPO / "native/pi_cam/direct_kernels.yaml",
     )
     parser.add_argument(
         "--output", type=Path,
@@ -323,6 +353,8 @@ def main() -> int:
         directory.mkdir(parents=True, exist_ok=True)
 
     state_bridge = load_state_bridge(args.state_bridge.resolve(), source_root)
+    direct_kernels = load_direct_kernels(args.direct_kernels.resolve())
+    all_abi_symbols = (*ABI_SYMBOLS, *(kernel.symbol for kernel in direct_kernels))
     state_include = work / "pycam_pi_cam_state_bridge.inc"
     state_include.write_text(generate_fortran_include(state_bridge))
     generated_cam_comp = work / "cam_comp.F90"
@@ -330,6 +362,8 @@ def main() -> int:
     generated_cam_comp.write_text(
         instrument_cam_comp(original_cam_comp.read_text(), state_include.name)
     )
+    generated_direct_kernels = work / "pi_cam_direct_kernels.F90"
+    generated_direct_kernels.write_text(generate_direct_kernel_module(direct_kernels))
 
     sources = {
         "physpkg.F90": source_root / "components/cam/src/physics/cam/physpkg.F90",
@@ -362,6 +396,15 @@ def main() -> int:
         "cam_comp.F90",
         args.adapter.resolve(),
         adapter_object,
+        work,
+        build / "atm/obj",
+    )
+    direct_kernel_object = work / "pi_cam_direct_kernels.o"
+    direct_kernel_compile = _compile_to(
+        adapter_command,
+        "cam_comp.F90",
+        generated_direct_kernels,
+        direct_kernel_object,
         work,
         build / "atm/obj",
     )
@@ -415,13 +458,14 @@ def main() -> int:
             f"-Wl,-e,0,-Ttext-segment=0x{IMAGE_BASE:x},--export-dynamic,"
             f"--allow-multiple-definition,-Bsymbolic-functions,-soname,{output.name}"
         ),
-        *(f"-Wl,-u,{symbol}" for symbol in ABI_SYMBOLS),
+        *(f"-Wl,-u,{symbol}" for symbol in all_abi_symbols),
         *driver_objects,
         *libraries,
         # Keep the original executable object/library order intact.  The ABI
         # objects come last and resolve against symbols already selected by
         # that link, without changing the source archive boundary.
         str(adapter_object),
+        str(direct_kernel_object),
         str(floating_environment_object),
         "-Wl,--unresolved-symbols=ignore-all",
         "-o", str(fixed_executable),
@@ -436,7 +480,7 @@ def main() -> int:
         capture_output=True,
         text=True,
     ).stdout
-    missing = tuple(symbol for symbol in ABI_SYMBOLS if symbol not in symbols)
+    missing = tuple(symbol for symbol in all_abi_symbols if symbol not in symbols)
     if missing:
         raise RuntimeError(f"CAM image lacks ABI symbols: {missing}")
     zero_calls = _zero_calls(output)
@@ -445,6 +489,10 @@ def main() -> int:
     start, end = _load_range(output)
     if start != IMAGE_BASE or end > IMAGE_BASE + IMAGE_WINDOW_BYTES:
         raise RuntimeError(f"CAM image load range 0x{start:x}-0x{end:x} is invalid")
+    direct_call_proof = {
+        kernel.name: _direct_kernel_call_proof(output, kernel.symbol, kernel.routine)
+        for kernel in direct_kernels
+    }
 
     manifest = {
         "schema_version": 1,
@@ -463,12 +511,30 @@ def main() -> int:
         "floating_environment": str(args.floating_environment.resolve()),
         "floating_environment_compile_command": floating_environment_compile,
         "intel_math_library": str(imf_shared),
-        "operations": _operations(),
+        "operations": _operations(direct_kernels),
+        "direct_kernels": {
+            "schema_version": 1,
+            "description": str(args.direct_kernels.resolve()),
+            "generated_source": str(generated_direct_kernels),
+            "kernels": [
+                {
+                    "name": kernel.name,
+                    "routine": kernel.routine,
+                    "symbol": kernel.symbol,
+                    "original_call_proof": direct_call_proof[kernel.name],
+                    "arguments": [
+                        argument.operation_payload() for argument in kernel.arguments
+                    ],
+                }
+                for kernel in direct_kernels
+            ],
+        },
         "state_bridge": state_bridge.manifest(),
         "state_bridge_description": str(args.state_bridge.resolve()),
         "state_bridge_include": str(state_include),
         "compile_commands": compile_commands,
         "adapter_compile_command": adapter_compile,
+        "direct_kernel_compile_command": direct_kernel_compile,
         "capture_executable": str(capture_executable),
         "capture_executable_sha256": _sha256(capture_executable),
         "capture_link_command": capture_link,

@@ -1,6 +1,7 @@
 from pathlib import Path
 
 import numpy as np
+import pytest
 
 from pycam_sima.pi_cam import (
     InMemoryBoundaryProvider,
@@ -8,6 +9,7 @@ from pycam_sima.pi_cam import (
     PICAMDriver,
     RecordingCAMBackend,
 )
+from pycam_sima.pi_cam.errors import PICAMConfigurationError
 
 
 def _driver() -> tuple[PICAMDriver, RecordingCAMBackend, InMemoryBoundaryProvider]:
@@ -123,3 +125,26 @@ def test_native_backend_can_fuse_only_the_unchanged_default_step() -> None:
     driver.step()
     assert backend.calls.count("source_step") == 1
     assert "stepon_run2" in backend.calls
+
+
+def test_direct_kernel_is_explicit_and_does_not_advance_model_time() -> None:
+    class DirectRecordingCAMBackend(RecordingCAMBackend):
+        direct_kernels = ("sample",)
+
+        def execute_kernel(self, name, pool, *, fcomm):
+            del pool, fcomm
+            self.calls.append(f"kernel:{name}")
+
+    driver, _, boundary = _driver()
+    backend = DirectRecordingCAMBackend()
+    driver = PICAMDriver(driver.config, boundary, backend, rank=0, size=1)
+    driver.initialize()
+
+    with pytest.raises(PICAMConfigurationError, match="experimental=True"):
+        driver.kernels.sample.run()
+    trace = driver.kernels.sample.run(experimental=True)
+
+    assert trace.phase == "direct_kernel"
+    assert trace.operation == "sample"
+    assert backend.calls[-1] == "kernel:sample"
+    assert driver.clock.nstep == 0

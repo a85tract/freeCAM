@@ -86,6 +86,17 @@ class NativeCAMDevice:
         _prepare_fortran_runtime()
         self._library = ctypes.CDLL(str(library), mode=ctypes.RTLD_LOCAL)
         self._operations = dict(payload.get("operations", {}))
+        direct_kernels = payload.get("direct_kernels", {})
+        kernel_records = (
+            direct_kernels.get("kernels", ())
+            if isinstance(direct_kernels, Mapping)
+            else ()
+        )
+        self.direct_kernels = tuple(
+            str(record["name"])
+            for record in kernel_records
+            if isinstance(record, Mapping) and "name" in record
+        )
         self._abi = PointerTableAdapter(
             self._library,
             self._operations,
@@ -128,6 +139,30 @@ class NativeCAMDevice:
         self._call(operation, pool, fcomm)
         if self._state_bridge is not None:
             self._state_bridge.copy_from_native(pool)
+
+    def execute_kernel(
+        self, name: str, pool: Mapping[str, np.ndarray], *, fcomm: int
+    ) -> None:
+        """Run one original leaf routine directly on Python StatePool arrays.
+
+        Unlike a legacy CAM action, this path deliberately does not copy the
+        aggregate pool into the derived-type mirror.  The generated adapter
+        passes the selected NumPy addresses straight to the unchanged
+        Fortran routine.  The next legacy action will synchronize these
+        authoritative Python values into its temporary mirror.
+        """
+
+        if name not in self.direct_kernels:
+            raise NativeCAMError(f"unknown direct CAM kernel {name!r}")
+        self._call(f"direct_kernel.{name}", pool, fcomm)
+
+    def kernel_fields(self, name: str) -> tuple[str, ...]:
+        """Return the ordered StatePool contract for one direct kernel."""
+
+        if name not in self.direct_kernels:
+            raise NativeCAMError(f"unknown direct CAM kernel {name!r}")
+        call = self._abi.operations[f"direct_kernel.{name}"]
+        return tuple(argument.field for argument in call.arguments)
 
     def finalize(self, pool: PICAMStatePool, *, fcomm: int) -> None:
         if self._state_bridge is not None:

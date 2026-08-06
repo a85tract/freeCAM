@@ -138,6 +138,36 @@ class _PhaseCollection:
         return _PhaseReference(self.driver, name)
 
 
+class _KernelReference:
+    def __init__(self, driver: "PICAMDriver", name: str) -> None:
+        self.driver = driver
+        self.name = name
+
+    def run(self, *, experimental: bool = False) -> PICAMActionTrace:
+        return self.driver.run_kernel(self.name, experimental=experimental)
+
+
+class _KernelCollection:
+    """Original leaf routines with generated raw-array adapters."""
+
+    def __init__(self, driver: "PICAMDriver") -> None:
+        self.driver = driver
+
+    @property
+    def names(self) -> tuple[str, ...]:
+        return tuple(getattr(self.driver.backend, "direct_kernels", ()))
+
+    def __getattr__(self, name: str) -> _KernelReference:
+        if name not in self.names:
+            raise AttributeError(name)
+        return _KernelReference(self.driver, name)
+
+    def __getitem__(self, name: str) -> _KernelReference:
+        if name not in self.names:
+            raise KeyError(name)
+        return _KernelReference(self.driver, name)
+
+
 class PICAMDriver:
     """Own CAM orchestration while delegating leaf numerics to native devices."""
 
@@ -192,6 +222,7 @@ class PICAMDriver:
         self._advance_public_clock = True
         self.physics = _PhysicsCollection(self)
         self.phases = _PhaseCollection(self)
+        self.kernels = _KernelCollection(self)
 
     @property
     def trace(self) -> tuple[PICAMActionTrace, ...]:
@@ -357,6 +388,31 @@ class PICAMDriver:
                 f"phase {phase!r} contains step-controlled boundary, clock, or I/O"
             )
         return tuple(self._execute(action) for action in actions)
+
+    def run_kernel(
+        self, name: str, *, experimental: bool = False
+    ) -> PICAMActionTrace:
+        """Run one raw-array numerical routine without its CAM host stage."""
+
+        if self.lifecycle not in {PICAMLifecycle.INITIALIZED, PICAMLifecycle.RUNNING}:
+            raise PICAMStateError(f"run kernel from {self.lifecycle.value}")
+        if not experimental:
+            raise PICAMConfigurationError(
+                "isolated raw CAM kernels require experimental=True"
+            )
+        execute = getattr(self.backend, "execute_kernel", None)
+        if not callable(execute):
+            raise PICAMConfigurationError("the selected backend has no direct kernels")
+        execute(name, self.pool, fcomm=self.fcomm)
+        return self._record(
+            PICAMAction(
+                name=name,
+                phase="direct_kernel",
+                operation=name,
+                kind="kernel",
+                native_id=None,
+            )
+        )
 
     def step(self) -> tuple[PICAMActionTrace, ...]:
         if self.lifecycle not in {PICAMLifecycle.INITIALIZED, PICAMLifecycle.RUNNING}:

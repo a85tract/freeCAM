@@ -59,6 +59,9 @@ def _command(command: dict[str, Any], driver: Any, comm: Any) -> object:
     if operation == "run_phase":
         traces = driver.run_phase(str(command["phase"]), experimental=True)
         return [asdict(trace) for trace in traces] if comm.rank == 0 else None
+    if operation == "run_kernel":
+        trace = driver.run_kernel(str(command["name"]), experimental=True)
+        return asdict(trace) if comm.rank == 0 else None
     if operation == "field":
         selected = int(command["rank"])
         if not 0 <= selected < comm.size:

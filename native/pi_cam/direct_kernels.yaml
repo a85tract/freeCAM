@@ -1,0 +1,58 @@
+schema_version: 1
+
+# Each record maps aggregate, rank-local StatePool arrays to one unchanged
+# original Fortran routine.  The last axis is the local CAM chunk axis.  The
+# generated adapter loops over it without copying any array.
+kernels:
+  - name: dadadj
+    routine: dadadj
+    symbol: pycam_pi_cam_dadadj_v1
+    action_id: 0
+    modules:
+      ppgrid: [pcols, pver, pverp]
+      constituents: [pcnst]
+    arguments:
+      - field: phys_state.lchnk
+        dtype: int32
+        rank: 1
+        intent: in
+        chunk_axis: 1
+        extents: [chunks]
+      - field: phys_state.ncol
+        dtype: int32
+        rank: 1
+        intent: in
+        chunk_axis: 1
+        extents: [chunks]
+      - field: phys_state.pmid
+        dtype: float64
+        rank: 3
+        intent: in
+        chunk_axis: 3
+        extents: [pcols, pver, chunks]
+      - field: phys_state.pint
+        dtype: float64
+        rank: 3
+        intent: in
+        chunk_axis: 3
+        extents: [pcols, pverp, chunks]
+      - field: phys_state.pdel
+        dtype: float64
+        rank: 3
+        intent: in
+        chunk_axis: 3
+        extents: [pcols, pver, chunks]
+      - field: phys_state.t
+        dtype: float64
+        rank: 3
+        intent: inout
+        chunk_axis: 3
+        extents: [pcols, pver, chunks]
+      - field: phys_state.q
+        dtype: float64
+        rank: 4
+        intent: inout
+        chunk_axis: 4
+        extents: [pcols, pver, pcnst, chunks]
+        fixed_indices:
+          3: 1
