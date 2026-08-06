@@ -20,6 +20,7 @@ class PICAMFieldContract:
     writable: bool = True
     restart: bool = True
     aliases: tuple[str, ...] = ()
+    requires_contiguous: bool = True
 
     def __post_init__(self) -> None:
         name = self.name.strip()
@@ -101,7 +102,11 @@ class PICAMStatePool(Mapping[str, np.ndarray]):
                 f"field {contract.name!r} has {array.shape}/{array.dtype}; "
                 f"expected {expected}/{np.dtype(contract.dtype)}"
             )
-        if array.ndim > 1 and not array.flags.f_contiguous:
+        if (
+            contract.requires_contiguous
+            and array.ndim > 1
+            and not array.flags.f_contiguous
+        ):
             raise PICAMStateError(f"field {contract.name!r} must be Fortran contiguous")
         self._contracts[contract.name] = contract
         self._arrays[contract.name] = array
@@ -162,7 +167,14 @@ class PICAMStatePool(Mapping[str, np.ndarray]):
         }
 
     def restore(self, arrays: Mapping[str, np.ndarray]) -> None:
-        missing = set(self._arrays) - set(arrays)
+        # Raw owner buffers and native grid context are reconstructed locally
+        # and deliberately omitted from restart snapshots.  Inline fields in
+        # ``arrays`` are copied through their strided views into those buffers.
+        missing = {
+            name
+            for name, contract in self._contracts.items()
+            if contract.restart and name not in arrays
+        }
         if missing:
             raise PICAMStateError(
                 "snapshot is missing fields: " + ", ".join(sorted(missing))
@@ -175,7 +187,13 @@ class PICAMStatePool(Mapping[str, np.ndarray]):
 
     @property
     def nbytes(self) -> int:
-        return sum(array.nbytes for array in self._arrays.values())
+        # Inline native fields are strided views into the corresponding raw
+        # derived-type owner buffer and therefore must not be counted twice.
+        return sum(
+            array.nbytes
+            for name, array in self._arrays.items()
+            if self._contracts[name].category != "native_cam_inline_state"
+        )
 
 
 @dataclass(frozen=True, slots=True)

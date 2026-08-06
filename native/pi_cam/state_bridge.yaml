@@ -2,9 +2,9 @@ schema_version: 1
 
 # The generator reads these original derived-type declarations and exposes
 # every numeric component through one stable pointer-table state ABI.  Python
-# is authoritative between native calls; the old derived types remain a
-# temporary mirror until every numerical kernel consumes StatePool arrays
-# directly.
+# owns the raw derived-record buffers, deferred arrays, and their initial
+# values; generated Fortran shells only associate the original numerical code
+# with those addresses.
 owners:
   - name: cam_in
     type: cam_in_t
@@ -20,3 +20,128 @@ owners:
     source: components/cam/src/physics/cam/physics_types.F90
 
 exclude: []
+
+dimension_defaults:
+  pcnst: 57
+  n_drydep: 3
+  dust_bins: 4
+  n_megan: 0
+  physics_columns_per_element: 9
+
+# Deferred-shape components do not expose their extents in the type
+# declaration.  These names are the Python allocation contract for the
+# admitted PI-CAM configuration; the final ``chunks`` axis is added by the
+# generator because every owner is an array over this rank's CAM chunks.
+dimension_bindings:
+  cam_in.ram1: [pcols]
+  cam_in.fv: [pcols]
+  cam_in.soilw: [pcols]
+  cam_in.depvel: [pcols, n_drydep]
+  cam_in.dstflx: [pcols, dust_bins]
+  cam_in.meganflx: [pcols, n_megan]
+  phys_state.lat: [pcols]
+  phys_state.lon: [pcols]
+  phys_state.ps: [pcols]
+  phys_state.psdry: [pcols]
+  phys_state.phis: [pcols]
+  phys_state.ulat: [pcols]
+  phys_state.ulon: [pcols]
+  phys_state.t: [pcols, pver]
+  phys_state.u: [pcols, pver]
+  phys_state.v: [pcols, pver]
+  phys_state.s: [pcols, pver]
+  phys_state.omega: [pcols, pver]
+  phys_state.pmid: [pcols, pver]
+  phys_state.pmiddry: [pcols, pver]
+  phys_state.pdel: [pcols, pver]
+  phys_state.pdeldry: [pcols, pver]
+  phys_state.rpdel: [pcols, pver]
+  phys_state.rpdeldry: [pcols, pver]
+  phys_state.lnpmid: [pcols, pver]
+  phys_state.lnpmiddry: [pcols, pver]
+  phys_state.exner: [pcols, pver]
+  phys_state.zm: [pcols, pver]
+  phys_state.q: [pcols, pver, pcnst]
+  phys_state.pint: [pcols, pverp]
+  phys_state.pintdry: [pcols, pverp]
+  phys_state.lnpint: [pcols, pverp]
+  phys_state.lnpintdry: [pcols, pverp]
+  phys_state.zi: [pcols, pverp]
+  phys_state.te_ini: [pcols]
+  phys_state.te_cur: [pcols]
+  phys_state.tw_ini: [pcols]
+  phys_state.tw_cur: [pcols]
+  phys_state.latmapback: [pcols]
+  phys_state.lonmapback: [pcols]
+  phys_state.cid: [pcols]
+  phys_tend.dtdt: [pcols, pver]
+  phys_tend.dudt: [pcols, pver]
+  phys_tend.dvdt: [pcols, pver]
+  phys_tend.flx_net: [pcols]
+  phys_tend.te_tnd: [pcols]
+  phys_tend.tw_tnd: [pcols]
+
+# These pointer components are disabled by the pinned PI-CAM namelist and
+# coupler field table.  They remain in the generated catalog but Python does
+# not allocate them unless a future admitted configuration enables them.
+inactive_fields:
+  - cam_in.soilw
+  - cam_in.meganflx
+
+# Python writes these values after the native grid-preparation boundary and
+# before CAM receives any state pointer.  Every admitted field not listed here
+# keeps the zero bytes created by NumPy.  Symbolic values come from the native
+# context ABI so Python uses the exact chunk identifiers and sentinel bits
+# selected by this compiler/build.
+initializers:
+  cam_in.lchnk: chunk_id
+  cam_in.ncol: chunk_ncols
+  cam_in.landfrac: posinf
+  cam_in.icefrac: posinf
+  cam_in.ocnfrac: posinf
+  cam_in.ram1: 0.1
+  cam_in.fv: 0.1
+  cam_out.lchnk: chunk_id
+  cam_out.ncol: chunk_ncols
+  phys_state.lchnk: chunk_id
+  phys_state.ngrdcol: chunk_ncols
+  phys_state.psetcols: pcols
+  phys_state.lat: inf
+  phys_state.lon: inf
+  phys_state.ps: inf
+  phys_state.psdry: inf
+  phys_state.phis: inf
+  phys_state.ulat: inf
+  phys_state.ulon: inf
+  phys_state.t: inf
+  phys_state.u: inf
+  phys_state.v: inf
+  phys_state.s: inf
+  phys_state.omega: inf
+  phys_state.pmid: inf
+  phys_state.pmiddry: inf
+  phys_state.pdel: inf
+  phys_state.pdeldry: inf
+  phys_state.rpdel: inf
+  phys_state.rpdeldry: inf
+  phys_state.lnpmid: inf
+  phys_state.lnpmiddry: inf
+  phys_state.exner: inf
+  phys_state.zm: inf
+  phys_state.q: inf
+  phys_state.pint: inf
+  phys_state.pintdry: inf
+  phys_state.lnpint: inf
+  phys_state.lnpintdry: inf
+  phys_state.zi: inf
+  phys_state.te_ini: inf
+  phys_state.te_cur: inf
+  phys_state.tw_ini: inf
+  phys_state.tw_cur: inf
+  phys_tend.psetcols: pcols
+  phys_tend.dtdt: inf
+  phys_tend.dudt: inf
+  phys_tend.dvdt: inf
+  phys_tend.flx_net: inf
+  phys_tend.te_tnd: inf
+  phys_tend.tw_tnd: inf

@@ -74,6 +74,33 @@ def test_initialize_primes_run1_before_the_first_normal_run2() -> None:
     assert (0, 0) in boundary.exports
 
 
+def test_backend_preallocates_python_state_before_native_initialize() -> None:
+    class PreparingBackend(RecordingCAMBackend):
+        def prepare_state(self, pool, config, *, rank, size):
+            del config, rank, size
+            pool.ensure_from_array(
+                "phys_state.t",
+                np.zeros((16, 30, 1), order="F"),
+                category="native_cam_state",
+            )
+            self.calls.append("prepare_state")
+
+        def initialize(self, pool, *, fcomm):
+            assert "phys_state.t" in pool
+            super().initialize(pool, fcomm=fcomm)
+
+    driver, _, boundary = _driver()
+    backend = PreparingBackend()
+    driver = PICAMDriver(driver.config, boundary, backend, rank=0, size=1)
+
+    assert backend.calls == []
+    driver.initialize()
+
+    assert backend.calls[:2] == ["prepare_state", "initialize"]
+    address = driver.python_initialized_addresses["phys_state.t"]
+    assert driver.pool["phys_state.t"].ctypes.data == address
+
+
 def test_individual_phase_and_scheme_are_exposed_without_advancing_time() -> None:
     driver, backend, _ = _driver()
     driver.initialize()

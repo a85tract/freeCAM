@@ -102,11 +102,11 @@ class PointerTableAdapter:
                 f"field {argument.field!r} has rank {array.ndim}; "
                 f"expected {argument.rank}"
             )
-        if argument.contiguous == "F" and array.ndim > 1 and not array.flags.f_contiguous:
+        if argument.contiguous == "F" and not array.flags.f_contiguous:
             raise FortranAdapterError(
                 f"field {argument.field!r} must be Fortran contiguous"
             )
-        if argument.contiguous == "C" and array.ndim > 1 and not array.flags.c_contiguous:
+        if argument.contiguous == "C" and not array.flags.c_contiguous:
             raise FortranAdapterError(
                 f"field {argument.field!r} must be C contiguous"
             )

@@ -12,13 +12,13 @@ kernels:
       ppgrid: [pcols, pver, pverp]
       constituents: [pcnst]
     arguments:
-      - field: phys_state.lchnk
+      - field: grid.chunk_id
         dtype: int32
         rank: 1
         intent: in
         chunk_axis: 1
         extents: [chunks]
-      - field: phys_state.ncol
+      - field: grid.chunk_ncols
         dtype: int32
         rank: 1
         intent: in

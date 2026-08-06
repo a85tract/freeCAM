@@ -47,6 +47,9 @@ ABI_SYMBOLS = (
     "pycam_pi_cam_state_metadata_v1",
     "pycam_pi_cam_state_transfer_v1",
 )
+PREPARE_INITIALIZE_SYMBOL = "pycam_pi_cam_prepare_initialize_v1"
+STATE_CONTEXT_SYMBOL = "pycam_pi_cam_state_context_v1"
+STATE_BIND_SYMBOL = "pycam_pi_cam_bind_state_v1"
 
 
 def _run(command: list[str] | tuple[str, ...], *, cwd: Path) -> None:
@@ -137,7 +140,13 @@ def _compile_to(
     return result
 
 
-def _replace_archive(source: Path, destination: Path, objects: tuple[Path, ...]) -> None:
+def _replace_archive(
+    source: Path,
+    destination: Path,
+    objects: tuple[Path, ...],
+    *,
+    additions: tuple[str, ...] = (),
+) -> None:
     shutil.copy2(source, destination)
     members = set(
         subprocess.run(
@@ -148,10 +157,94 @@ def _replace_archive(source: Path, destination: Path, objects: tuple[Path, ...])
         ).stdout.splitlines()
     )
     for replacement in objects:
-        if replacement.name not in members:
+        if replacement.name not in members and replacement.name not in additions:
             raise RuntimeError(f"{source} lacks {replacement.name}")
         _run(["ar", "r", str(destination), str(replacement)], cwd=destination.parent)
     _run(["ranlib", str(destination)], cwd=destination.parent)
+
+
+def _global_text_symbols(path: Path) -> tuple[str, ...]:
+    output = subprocess.run(
+        ["nm", "-g", "--defined-only", str(path)],
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout
+    result: list[str] = []
+    for line in output.splitlines():
+        fields = line.split()
+        if len(fields) >= 3 and fields[-2].upper() in {"T", "W"}:
+            result.append(fields[-1])
+    return tuple(result)
+
+
+def _renamed_object(
+    source: Path,
+    destination: Path,
+    symbols: tuple[str, ...],
+    prefix: str,
+) -> None:
+    shutil.copy2(source, destination)
+    command = ["objcopy"]
+    for symbol in symbols:
+        command.extend(("--redefine-sym", f"{symbol}={prefix}{symbol}"))
+    command.append(str(destination))
+    _run(command, cwd=destination.parent)
+
+
+def _hybrid_module_object(
+    generated: Path,
+    numerical: Path,
+    destination: Path,
+    shell_symbols: tuple[str, ...],
+) -> None:
+    """Keep generated storage lifecycle code and original numerical code.
+
+    Recompiling a large CAM module after changing only its storage descriptors
+    can alter floating-point instruction selection in unrelated procedures.
+    This merger retains the generated allocation/binding entry points while
+    resolving every numerical module procedure to the production object.
+    """
+
+    generated_symbols = _global_text_symbols(generated)
+    numerical_symbols = set(_global_text_symbols(numerical))
+    absent = sorted(set(shell_symbols) - set(generated_symbols))
+    if absent:
+        raise RuntimeError(f"generated state shell lacks symbols {absent}")
+    generated_numerics = tuple(
+        symbol
+        for symbol in generated_symbols
+        if symbol in numerical_symbols and symbol not in shell_symbols
+    )
+    original_shells = tuple(
+        symbol for symbol in shell_symbols if symbol in numerical_symbols
+    )
+    generated_copy = destination.with_name(destination.stem + "_storage.o")
+    numerical_copy = destination.with_name(destination.stem + "_numerical.o")
+    _renamed_object(
+        generated,
+        generated_copy,
+        generated_numerics,
+        "__pycam_generated_unused_",
+    )
+    _renamed_object(
+        numerical,
+        numerical_copy,
+        original_shells,
+        "__pycam_original_unused_",
+    )
+    _run(
+        [
+            "ld",
+            "-r",
+            "--allow-multiple-definition",
+            str(generated_copy),
+            str(numerical_copy),
+            "-o",
+            str(destination),
+        ],
+        cwd=destination.parent,
+    )
 
 
 def _replace_library(command: list[str], archive: Path) -> list[str]:
@@ -231,16 +324,21 @@ def _runtime_library(executable: Path, name: str) -> Path:
     raise RuntimeError(f"cannot resolve {name} from {executable}")
 
 
-def _operations(direct_kernels=()) -> dict[str, dict[str, object]]:
+def _operations(state_bridge, direct_kernels=(), *, zero_copy_state: bool = False) -> dict[str, dict[str, object]]:
     operations: dict[str, dict[str, object]] = {
-        "initialize": {
-            "symbol": ABI_SYMBOLS[0],
+        "prepare_initialize": {
+            "symbol": PREPARE_INITIALIZE_SYMBOL,
             "action_id": 0,
             "arguments": [
                 {"field": "configured_stop_n", "dtype": "int64", "rank": 0, "intent": "in"},
                 {"field": "case_name_utf8", "dtype": "uint8", "rank": 1, "intent": "in"},
                 {"field": "orbital_year", "dtype": "int32", "rank": 0, "intent": "in"},
             ],
+        },
+        "initialize": {
+            "symbol": ABI_SYMBOLS[0],
+            "action_id": 0,
+            "arguments": [],
         },
         "finalize": {"symbol": ABI_SYMBOLS[2], "action_id": 0, "arguments": []},
         "initial_priming": {
@@ -282,6 +380,33 @@ def _operations(direct_kernels=()) -> dict[str, dict[str, object]]:
             ],
         },
     }
+    if zero_copy_state:
+        operations["bind_state"] = {
+            "symbol": STATE_BIND_SYMBOL,
+            "action_id": 0,
+            "arguments": [
+                *[
+                    {
+                        "field": f"__native_owner.{owner.name}",
+                        "dtype": "uint8",
+                        "rank": 1,
+                        "intent": "inout",
+                    }
+                    for owner in state_bridge.owners
+                ],
+                *[
+                    {
+                        "field": field.name,
+                        "dtype": "float64" if field.dtype == "real" else "int32",
+                        "rank": field.python_rank,
+                        "intent": "inout",
+                    }
+                    for field in state_bridge.fields
+                    if field.active_by_default
+                    and (field.allocatable or field.pointer)
+                ],
+            ],
+        }
     names = (
         "prepare", "chem_emissions", "tracers_chemistry",
         "vertical_diffusion_tend", "rayleigh_friction_tend",
@@ -331,6 +456,19 @@ def main() -> int:
         default=REPO / "native/pi_cam/direct_kernels.yaml",
     )
     parser.add_argument(
+        "--zero-copy-state",
+        action="store_true",
+        help="require pointer-shell CAM objects and bind Python state in place",
+    )
+    parser.add_argument(
+        "--numerical-build",
+        type=Path,
+        help=(
+            "production BFB build root supplying unchanged physics_types.o "
+            "and camsrfexch.o when --zero-copy-state is used"
+        ),
+    )
+    parser.add_argument(
         "--output", type=Path,
         default=REPO / "build/pi_cam/libpycam_pi_cam.so",
     )
@@ -354,19 +492,49 @@ def main() -> int:
 
     state_bridge = load_state_bridge(args.state_bridge.resolve(), source_root)
     direct_kernels = load_direct_kernels(args.direct_kernels.resolve())
-    all_abi_symbols = (*ABI_SYMBOLS, *(kernel.symbol for kernel in direct_kernels))
+    all_abi_symbols = (
+        PREPARE_INITIALIZE_SYMBOL,
+        STATE_CONTEXT_SYMBOL,
+        *ABI_SYMBOLS,
+        *((STATE_BIND_SYMBOL,) if args.zero_copy_state else ()),
+        *(
+            (
+                f"pycam_pi_cam_layout_{owner.name}_v1"
+                for owner in state_bridge.owners
+            )
+            if args.zero_copy_state
+            else ()
+        ),
+        *(kernel.symbol for kernel in direct_kernels),
+    )
     state_include = work / "pycam_pi_cam_state_bridge.inc"
-    state_include.write_text(generate_fortran_include(state_bridge))
+    generated_state_include = generate_fortran_include(state_bridge)
+    if args.zero_copy_state:
+        # The generated SourceMods change persistent numerical components from
+        # allocatable storage to pointers associated with Python arrays.
+        generated_state_include = generated_state_include.replace(
+            "allocated(", "associated("
+        )
+    state_include.write_text(generated_state_include)
     generated_cam_comp = work / "cam_comp.F90"
     original_cam_comp = source_root / "components/cam/src/control/cam_comp.F90"
     generated_cam_comp.write_text(
-        instrument_cam_comp(original_cam_comp.read_text(), state_include.name)
+        instrument_cam_comp(
+            original_cam_comp.read_text(),
+            state_include.name,
+            split_initialization=args.zero_copy_state,
+        )
     )
     generated_direct_kernels = work / "pi_cam_direct_kernels.F90"
     generated_direct_kernels.write_text(generate_direct_kernel_module(direct_kernels))
 
+    generated_physpkg = case / "SourceMods/src.cam/physpkg.F90"
     sources = {
-        "physpkg.F90": source_root / "components/cam/src/physics/cam/physpkg.F90",
+        "physpkg.F90": (
+            generated_physpkg
+            if args.zero_copy_state and generated_physpkg.is_file()
+            else source_root / "components/cam/src/physics/cam/physpkg.F90"
+        ),
         "cam_comp.F90": generated_cam_comp,
         "atm_comp_mct.F90": source_root / "components/cam/src/cpl/atm_comp_mct.F90",
     }
@@ -388,6 +556,82 @@ def main() -> int:
         )
         compile_logs[source_name] = str(log)
         objects[source_name] = destination
+
+    if args.zero_copy_state:
+        if args.numerical_build is None:
+            raise RuntimeError("--zero-copy-state requires --numerical-build")
+        numerical_build = args.numerical_build.resolve()
+        generated_objects = build / "atm/obj"
+        numerical_objects = numerical_build / "atm/obj"
+        generated_sources = case / "SourceMods/src.cam"
+        freshly_generated: dict[str, Path] = {}
+        for source_name in ("physics_types.F90", "camsrfexch.F90"):
+            source = generated_sources / source_name
+            if not source.is_file():
+                raise RuntimeError(f"Python state SourceMod is absent: {source}")
+            log, command = _compile_command(build, source_name)
+            destination = work / f"{Path(source_name).stem}_generated.o"
+            compile_commands[f"generated/{source_name}"] = _compile_to(
+                command,
+                source_name,
+                source,
+                destination,
+                work,
+                build / "atm/obj",
+            )
+            compile_logs[f"generated/{source_name}"] = str(log)
+            freshly_generated[source_name] = destination
+        physics_shells = (
+            "physics_types_mp_physics_type_alloc_",
+            "physics_types_mp_physics_state_alloc_",
+            "physics_types_mp_physics_state_dealloc_",
+            "physics_types_mp_physics_tend_alloc_",
+            "physics_types_mp_physics_tend_dealloc_",
+            "physics_types_mp_pycam_bind_phys_state_",
+            "physics_types_mp_pycam_bind_phys_tend_",
+        )
+        surface_shells = (
+            "camsrfexch_mp_hub2atm_alloc_",
+            "camsrfexch_mp_atm2hub_alloc_",
+            "camsrfexch_mp_hub2atm_deallocate_",
+            "camsrfexch_mp_atm2hub_deallocate_",
+            "camsrfexch_mp_pycam_bind_cam_in_",
+            "camsrfexch_mp_pycam_bind_cam_out_",
+        )
+        physpkg_shells = (
+            "physpkg_mp_phys_run1_prepare_",
+            "physpkg_mp_phys_run1_schemes_",
+            "physpkg_mp_phys_run1_scheme_action_",
+            "physpkg_mp_phys_run2_prepare_",
+            "physpkg_mp_phys_run2_schemes_",
+            "physpkg_mp_phys_run2_scheme_action_",
+            "physpkg_mp_phys_run2_finish_",
+            "physpkg_mp_phys_final_",
+        )
+        hybrid_physics = work / "physics_types.o"
+        hybrid_surface = work / "camsrfexch.o"
+        hybrid_physpkg = work / "physpkg.o"
+        _hybrid_module_object(
+            freshly_generated["physics_types.F90"],
+            numerical_objects / "physics_types.o",
+            hybrid_physics,
+            physics_shells,
+        )
+        _hybrid_module_object(
+            freshly_generated["camsrfexch.F90"],
+            numerical_objects / "camsrfexch.o",
+            hybrid_surface,
+            surface_shells,
+        )
+        _hybrid_module_object(
+            generated_objects / "physpkg.o",
+            numerical_objects / "physpkg.o",
+            hybrid_physpkg,
+            physpkg_shells,
+        )
+        objects["physics_types.F90"] = hybrid_physics
+        objects["camsrfexch.F90"] = hybrid_surface
+        objects["physpkg.F90"] = hybrid_physpkg
 
     _, adapter_command = _compile_command(build, "cam_comp.F90")
     adapter_object = work / "pi_cam_adapter.o"
@@ -416,13 +660,32 @@ def main() -> int:
     _run(floating_environment_compile, cwd=work)
 
     atm_archive = output.parent / "libatm_nonpic_python_control.a"
-    _replace_archive(
-        build / "lib/libatm.a",
-        atm_archive,
-        (
-            objects["physpkg.F90"], objects["cam_comp.F90"],
+    base_atm_archive = build / "lib/libatm.a"
+    replacement_objects: tuple[Path, ...] = (
+        objects["physpkg.F90"],
+        objects["cam_comp.F90"],
+        objects["atm_comp_mct.F90"],
+    )
+    if args.zero_copy_state:
+        # Every production numerical object must come from the oracle build.
+        # Merely recompiling an unchanged consumer against a pointer-shell
+        # .mod can change Intel alias/vectorization decisions and produce ULP
+        # differences.  Replace only control/ABI/storage objects; all physics
+        # and dynamics machine code remains byte-for-byte production code.
+        base_atm_archive = numerical_build / "lib/libatm.a"
+        replacement_objects = (
+            objects["physpkg.F90"],
+            objects["cam_comp.F90"],
             objects["atm_comp_mct.F90"],
-        ),
+            objects["physics_types.F90"],
+            objects["camsrfexch.F90"],
+            generated_objects / "pycam_python_state_registry.o",
+        )
+    _replace_archive(
+        base_atm_archive,
+        atm_archive,
+        replacement_objects,
+        additions=("pycam_python_state_registry.o",) if args.zero_copy_state else (),
     )
 
     link_log, original_link = _link_command(build)
@@ -494,6 +757,10 @@ def main() -> int:
         for kernel in direct_kernels
     }
 
+    state_manifest = state_bridge.manifest()
+    if args.zero_copy_state:
+        state_manifest["ownership"] = "python-owned-zero-copy-derived-shell"
+        state_manifest["symbols"]["context"] = STATE_CONTEXT_SYMBOL
     manifest = {
         "schema_version": 1,
         "execution_model": "fixed-address-nonpic-cam-image",
@@ -504,6 +771,15 @@ def main() -> int:
         "load_end": end,
         "case": str(case),
         "build_root": str(build),
+        "numerical_archive": (
+            {
+                "path": str(base_atm_archive),
+                "sha256": _sha256(base_atm_archive),
+                "policy": "oracle-production-objects-with-generated-control-and-storage",
+            }
+            if args.zero_copy_state
+            else None
+        ),
         "source_root": str(source_root),
         "link_log": str(link_log),
         "compile_logs": compile_logs,
@@ -511,7 +787,11 @@ def main() -> int:
         "floating_environment": str(args.floating_environment.resolve()),
         "floating_environment_compile_command": floating_environment_compile,
         "intel_math_library": str(imf_shared),
-        "operations": _operations(direct_kernels),
+        "operations": _operations(
+            state_bridge,
+            direct_kernels,
+            zero_copy_state=args.zero_copy_state,
+        ),
         "direct_kernels": {
             "schema_version": 1,
             "description": str(args.direct_kernels.resolve()),
@@ -529,7 +809,7 @@ def main() -> int:
                 for kernel in direct_kernels
             ],
         },
-        "state_bridge": state_bridge.manifest(),
+        "state_bridge": state_manifest,
         "state_bridge_description": str(args.state_bridge.resolve()),
         "state_bridge_include": str(state_include),
         "compile_commands": compile_commands,

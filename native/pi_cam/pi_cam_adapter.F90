@@ -2,7 +2,8 @@ module pycam_pi_cam_adapter
   use, intrinsic :: iso_c_binding, only: c_char, c_f_pointer, c_int, &
        c_int8_t, c_int32_t, c_int64_t, c_null_char, c_ptr
   use shr_kind_mod, only: r8 => shr_kind_r8, cs => shr_kind_cs
-  use cam_comp, only: cam_init, cam_final, cam_run1, cam_run2, cam_run3, &
+  use cam_comp, only: cam_init_prepare, cam_init_finish, cam_final, &
+       cam_run1, cam_run2, cam_run3, &
        cam_run4, cam_run1_dynamics, &
        cam_phys_run1_prepare, cam_phys_run1_scheme_action, &
        cam_phys_run2_prepare, cam_phys_run2_scheme_action, &
@@ -28,11 +29,15 @@ module pycam_pi_cam_adapter
   use seq_flds_mod, only: seq_flds_set
   use shr_orb_mod, only: shr_orb_params, SHR_ORB_UNDEF_REAL
   use ESMF, only: ESMF_Initialize
-  use water_tracer_vars, only: wtrc_srf_bucket_mode
+  use ppgrid, only: begchunk, endchunk, pcols
+  use phys_grid, only: get_ncols_p
+  use infnan, only: inf, posinf, assignment(=)
   implicit none
   private
 
+  public :: pycam_pi_cam_prepare_initialize_v1
   public :: pycam_pi_cam_initialize_v1
+  public :: pycam_pi_cam_state_context_v1
   public :: pycam_pi_cam_action_v1
   public :: pycam_pi_cam_finalize_v1
   public :: pycam_pi_cam_state_count_v1
@@ -42,8 +47,10 @@ module pycam_pi_cam_adapter
   type(cam_in_t), pointer, save :: cam_in(:) => null()
   type(cam_out_t), pointer, save :: cam_out(:) => null()
   logical, save :: initialized = .false.
+  logical, save :: prepared = .false.
   logical, save :: finalized = .false.
   integer, save :: configured_stop_n = 0
+  integer, save :: prepared_atm_comm = 0
 
   interface
      subroutine pycam_pi_cam_set_fp_environment_v1() bind(C, &
@@ -62,16 +69,16 @@ contains
     end do
   end subroutine clear_error
 
-  integer(c_int) function pycam_pi_cam_initialize_v1(action_id, nfields, &
+  integer(c_int) function pycam_pi_cam_prepare_initialize_v1(action_id, nfields, &
        pointers, ndims, shapes, max_rank, fortran_comm, errmsg, errmsg_len) &
-       bind(C, name='pycam_pi_cam_initialize_v1') result(status)
+       bind(C, name='pycam_pi_cam_prepare_initialize_v1') result(status)
     integer(c_int), value, intent(in) :: action_id, nfields, max_rank
     integer(c_int), value, intent(in) :: fortran_comm, errmsg_len
     type(c_ptr), intent(in) :: pointers(*)
     integer(c_int32_t), intent(in) :: ndims(*)
     integer(c_int64_t), intent(in) :: shapes(*)
     character(kind=c_char), intent(out) :: errmsg(*)
-    integer :: global_comm, atm_comm, rank, ierr, local_surface_columns, chunk
+    integer :: global_comm, atm_comm, rank, ierr
     integer :: comp_id(1), comp_comm(1), comp_comm_iam(1)
     logical :: comp_iamin(1)
     character(len=8) :: comp_name(1)
@@ -85,7 +92,7 @@ contains
     call pycam_pi_cam_set_fp_environment_v1()
     call clear_error(errmsg, errmsg_len)
     status = 0_c_int
-    if (initialized .or. finalized) then
+    if (prepared .or. initialized .or. finalized) then
        status = 1_c_int
        return
     endif
@@ -162,25 +169,77 @@ contains
     call timemgr_init(calendar_in=calendar, start_ymd=10101, start_tod=0, &
          ref_ymd=10101, ref_tod=0, stop_ymd=10102, stop_tod=3600, &
          perpetual_run=.false., perpetual_ymd=0)
-    call cam_init(cam_out, cam_in, atm_comm, 10101, 0, 10101, 0, &
+    call cam_init_prepare(cam_out, cam_in, atm_comm, 10101, 0, 10101, 0, &
          10102, 3600, .false., 0, calendar)
-    ! hub2atm_alloc initializes the simple-land bucket arrays only when the
-    ! bucket mode is enabled.  In this PI configuration it is disabled, and
-    ! the coupled executable happens to receive zero-filled fresh pages while
-    ! a Python-main process reuses nonzero heap pages.  The fields are still
-    ! read by legacy diagnostics/run1 code, so remove that undefined-memory
-    ! dependence at the Python ownership boundary.
-    if (.not. wtrc_srf_bucket_mode) then
-       do chunk = lbound(cam_in, 1), ubound(cam_in, 1)
-          cam_in(chunk)%buckH = 0.0_r8
-          cam_in(chunk)%buck16 = 0.0_r8
-          cam_in(chunk)%buckD = 0.0_r8
-          cam_in(chunk)%buck18 = 0.0_r8
-       end do
+    prepared_atm_comm = atm_comm
+    prepared = .true.
+  end function pycam_pi_cam_prepare_initialize_v1
+
+  integer(c_int) function pycam_pi_cam_initialize_v1(action_id, nfields, &
+       pointers, ndims, shapes, max_rank, fortran_comm, errmsg, errmsg_len) &
+       bind(C, name='pycam_pi_cam_initialize_v1') result(status)
+    integer(c_int), value, intent(in) :: action_id, nfields, max_rank
+    integer(c_int), value, intent(in) :: fortran_comm, errmsg_len
+    type(c_ptr), intent(in) :: pointers(*)
+    integer(c_int32_t), intent(in) :: ndims(*)
+    integer(c_int64_t), intent(in) :: shapes(*)
+    character(kind=c_char), intent(out) :: errmsg(*)
+    integer :: local_surface_columns
+    character(len=cs) :: calendar
+
+    call pycam_pi_cam_set_fp_environment_v1()
+    call clear_error(errmsg, errmsg_len)
+    status = 0_c_int
+    if (.not. prepared .or. initialized .or. finalized) then
+       status = 1_c_int
+       return
     endif
-    call atm_python_post_cam_init_mct(atm_comm, 1, local_surface_columns)
+    if (action_id /= 0 .or. nfields /= 0 .or. fortran_comm == 0) then
+       status = 2_c_int
+       return
+    endif
+    calendar = 'NO_LEAP'
+    call cam_init_finish(cam_out, cam_in, prepared_atm_comm, 10101, 0, &
+         10101, 0, 10102, 3600, .false., 0, calendar)
+    call atm_python_post_cam_init_mct(prepared_atm_comm, 1, &
+         local_surface_columns)
     initialized = .true.
   end function pycam_pi_cam_initialize_v1
+
+  integer(c_int) function pycam_pi_cam_state_context_v1(max_chunks, &
+       chunk_begin, chunk_end, chunk_ncols, inf_bits, posinf_bits) &
+       bind(C, name='pycam_pi_cam_state_context_v1') result(status)
+    integer(c_int), value, intent(in) :: max_chunks
+    integer(c_int), intent(out) :: chunk_begin, chunk_end
+    integer(c_int), intent(out) :: chunk_ncols(*)
+    integer(c_int64_t), intent(out) :: inf_bits, posinf_bits
+    integer :: chunk, local_chunk
+    real(r8) :: inf_value, posinf_value
+
+    status = 0_c_int
+    chunk_begin = 0_c_int
+    chunk_end = -1_c_int
+    inf_bits = 0_c_int64_t
+    posinf_bits = 0_c_int64_t
+    if (.not. prepared .or. initialized .or. finalized) then
+       status = 1_c_int
+       return
+    endif
+    if (max_chunks < endchunk - begchunk + 1) then
+       status = 2_c_int
+       return
+    endif
+    chunk_begin = int(begchunk, c_int)
+    chunk_end = int(endchunk, c_int)
+    do chunk = begchunk, endchunk
+       local_chunk = chunk - begchunk + 1
+       chunk_ncols(local_chunk) = int(get_ncols_p(chunk), c_int)
+    enddo
+    inf_value = inf
+    posinf_value = posinf
+    inf_bits = transfer(inf_value, inf_bits)
+    posinf_bits = transfer(posinf_value, posinf_bits)
+  end function pycam_pi_cam_state_context_v1
 
   integer(c_int) function pycam_pi_cam_state_count_v1() &
        bind(C, name='pycam_pi_cam_state_count_v1') result(count)

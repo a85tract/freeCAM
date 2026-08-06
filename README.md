@@ -100,23 +100,39 @@ with case.runtime(
     print(cam.pool["cam_in.ts"])
 ```
 
-The PI-CAM build now generates a state bridge directly from the original
+The PI-CAM build generates a state bridge directly from the original
 `cam_in_t`, `cam_out_t`, `physics_state`, and `physics_tend` declarations.
 For this source configuration it discovers 136 numeric fields; 134 are active
-on each rank after `cam_init` and are registered as Fortran-contiguous NumPy
-arrays in the rank-local `PICAMStatePool`.  The two inactive entries are
-configuration-dependent pointer components and are deliberately not invented
-by Python.
+and are created in each rank's Python `PICAMStatePool`.  The two inactive
+entries are configuration-dependent pointer components and are deliberately
+not invented by Python.
 
-This is the first migration boundary, not the final zero-copy kernel layout.
-`cam_init` still creates the legacy derived types and supplies their initial
-scientific values.  The generated bridge then copies those values into the
-Python arrays.  Before a native CAM call Python writes its authoritative state
-to the temporary legacy mirror, and after the call it reads the results back.
-As individual numerical kernels acquire flat generated ABIs, they consume the
-same StatePool arrays directly and their corresponding mirror copies can be
-removed.  Opaque `pbuf`, SE dycore, and process-private module state remain
-Fortran-owned until they receive explicit serializers or field contracts.
+Initialization is split at one explicit boundary. Native CAM first builds the
+grid and chunk map, then returns `begchunk`, `endchunk`, every chunk's valid
+column count, and the compiler's exact `inf`/`posinf` bit patterns. Python uses
+the generated YAML contract to allocate aligned raw record buffers plus
+Fortran-contiguous deferred arrays and writes all initial values. Only then
+does the generated `bind(C)` table associate the Fortran derived-type shells
+with those addresses and resume CAM initialization:
+
+```text
+native grid/chunk prepare
+          ↓ exact rank-local context
+Python np.zeros + generated initializer contract
+          ↓ raw owner buffers + deferred NumPy arrays
+generated pointer-table bind(C) adapter
+          ↓ same addresses, no copy
+original CAM numerical objects
+```
+
+Fixed-size members are strided NumPy views into Python-owned raw record
+buffers, preserving the Intel compiler's exact derived-type layout. Deferred
+members such as `phys_state.t` and `phys_state.q` are ordinary independent
+Fortran-contiguous NumPy arrays. The generated lifecycle routines neither
+allocate, initialize, copy, nor free this storage. Opaque `pbuf`, SE dycore,
+and process-private module state remain Fortran-owned; a StatePool-only `.npz`
+is therefore a field snapshot, not a complete CAM restart. Scientific restart
+continues to use the original CAM restart files.
 
 All ordinary numerical entry points use one reusable Python adapter.  Its JSON
 manifest declares the symbol, action id, field name, dtype, rank, intent, and
@@ -138,7 +154,7 @@ does not copy or regenerate the numerical body.  The first admitted kernel is
 
 ```text
 PICAMStatePool NumPy arrays
-  phys_state.lchnk / ncol / pmid / pint / pdel / t / q
+  grid.chunk_id / chunk_ncols + phys_state.pmid / pint / pdel / t / q
                          ↓ addresses + shapes, no copy
               generated pycam_pi_cam_dadadj_v1
                          ↓ one call per local chunk
@@ -184,15 +200,15 @@ Build and validate with the reproducible cpudev jobs:
 ```bash
 source /path/to/oracle-case/.env_mach_specific.sh
 python tools/apply_pi_cam_source_patches.py --source-root /path/to/iCESM1.3.1
-python tools/generate_pi_cam_state_bridge.py \
+python tools/generate_pi_cam_python_state_source.py \
   --source-root /path/to/iCESM1.3.1 \
-  --fortran /tmp/pycam_pi_cam_state_bridge.inc \
-  --manifest /tmp/pycam_pi_cam_state_bridge.json
-python tools/build_pi_cam_devices.py --case /path/to/oracle-case
+  --output-dir /path/to/python-state-case/SourceMods/src.cam
+python tools/build_pi_cam_devices.py \
+  --case /path/to/python-state-case \
+  --zero-copy-state \
+  --numerical-build /path/to/oracle-build
 qsub validation/jobs/pi_cam_boundary_capture_50step.pbs
-qsub validation/jobs/pi_cam_python_state_bridge_50step.pbs
-qsub validation/jobs/pi_cam_session_state_bridge_50step.pbs
-qsub validation/jobs/pi_cam_direct_kernel_50step.pbs
+qsub validation/jobs/pi_cam_python_zero_copy_state_50step.pbs
 ```
 
 `tools/build_pi_cam_devices.py` intentionally does not rebuild all of CAM with
@@ -201,15 +217,22 @@ keeps the original non-PIC objects, replaces only the Python control surfaces,
 links a fixed-address executable image, and changes its ELF type to ET_DYN for
 `dlopen`.  Because Python rather than an Intel Fortran program is the process
 main, the adapter also restores CAM's original `-ftz` MXCSR setting before the
-first numerical call.  Validation is fail-closed and compares every numeric variable in
-all CAM history and restart files; wall-clock strings are excluded.
-The third job drives the same 50-step gate through one long-lived
-`PICAMNotebookSession`, proving that later Notebook cells do not relaunch MPI.
+first numerical call. Validation is fail-closed and compares every numeric
+variable in all CAM history and restart files; wall-clock strings are excluded.
 `tools/apply_pi_cam_source_patches.py` is the reproducible source-preparation
 entry point: it applies only the eight production patches, in dependency order,
 to a clean `components/cam` checkout. Historical exploratory patches remain as
 an audit trail but are not part of the build.
-The current 512-rank gate is recorded in
+The complete Python-owned state gate is recorded in
+[`validation/pi_cam_python_zero_copy_state_50step.json`](validation/pi_cam_python_zero_copy_state_50step.json)
+and
+[`validation/pi_cam_python_zero_copy_state_vs_oracle_50step_bfb.json`](validation/pi_cam_python_zero_copy_state_vs_oracle_50step_bfb.json):
+cpudev job `7032798.desched1` ran 512 MPI ranks for 50 completed steps,
+preinitialized 151 rank-local arrays/views before native CAM resumed, retained
+every address through finalize, and matched all four oracle history/restart
+files bit for bit.
+
+Earlier control/state milestones are recorded in
 [`validation/pi_cam_50step_gate.json`](validation/pi_cam_50step_gate.json):
 both the direct Python driver and the persistent Notebook session are BFB for
 all four CAM history/restart files after 50 completed steps.
@@ -220,7 +243,7 @@ Python on every rank, and remained BFB for all four files.
 Persistent-session job `7030208.desched1` repeated the same 50-step BFB gate
 with one MPI launch and retrieved active-column `phys_state.t` values directly
 in Python before and after the run.
-Direct-kernel job `7030781.desched1` then ran the final generated image on 512
+Direct-kernel job `7032880.desched1` then ran the final zero-copy generated image on 512
 cpudev ranks.  Its 50-step default CAM outputs remained BFB for all four files;
 the disposable `dadadj` probe constructed 13,826 unstable columns and changed
 `t` and `q` on all 512 ranks while preserving every NumPy address and every

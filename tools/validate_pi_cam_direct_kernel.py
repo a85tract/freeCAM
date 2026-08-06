@@ -28,13 +28,20 @@ def main() -> int:
     parser.add_argument("--kernel", default="dadadj")
     parser.add_argument("--steps", type=int, default=50)
     parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument("--native-manifest", type=Path)
     args = parser.parse_args()
 
     world = MPI.COMM_WORLD
     case = PICAMCase.from_yaml(args.config)
     boundary = ReplayBoundaryProvider(args.boundary)
+    backend = (
+        None
+        if args.native_manifest is None
+        else NativeCAMDevice(args.native_manifest)
+    )
     with case.runtime(
         boundary=boundary,
+        backend=backend,
         communicator=world,
         run_dir=args.run_dir,
     ) as cam:
@@ -52,7 +59,7 @@ def main() -> int:
             # in the disposable probe arrays.  This proves the inout path even
             # when the evolved 50-step atmosphere is already dry stable.
             cappa = 0.28571658640413355
-            ncols = arrays["phys_state.ncol"]
+            ncols = arrays["grid.chunk_ncols"]
             pmid = arrays["phys_state.pmid"]
             pint = arrays["phys_state.pint"]
             temperature = arrays["phys_state.t"]
@@ -113,7 +120,10 @@ def main() -> int:
 
     records = world.gather(local, root=0)
     if world.Get_rank() == 0:
-        manifest = json.loads(case.config.native_manifest.read_text())
+        manifest_path = args.native_manifest or case.config.native_manifest
+        if manifest_path is None:
+            raise RuntimeError("native manifest is unavailable")
+        manifest = json.loads(Path(manifest_path).read_text())
         kernel_record = next(
             record
             for record in manifest["direct_kernels"]["kernels"]

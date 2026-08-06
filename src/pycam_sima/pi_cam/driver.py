@@ -220,6 +220,8 @@ class PICAMDriver:
         self.run_dir = None if run_dir is None else Path(run_dir).resolve()
         self._previous_directory: Path | None = None
         self._advance_public_clock = True
+        self._backend_initialized = False
+        self._python_initialized_addresses: dict[str, int] = {}
         self.physics = _PhysicsCollection(self)
         self.phases = _PhaseCollection(self)
         self.kernels = _KernelCollection(self)
@@ -227,6 +229,12 @@ class PICAMDriver:
     @property
     def trace(self) -> tuple[PICAMActionTrace, ...]:
         return tuple(self._trace)
+
+    @property
+    def python_initialized_addresses(self) -> dict[str, int]:
+        """Addresses captured after Python filled state and before native finish."""
+
+        return dict(self._python_initialized_addresses)
 
     def _set_scalar(self, name: str, value: int | float) -> None:
         self.pool[name][()] = value
@@ -278,7 +286,32 @@ class PICAMDriver:
             # orchestration in Python so native CAM never observes an
             # unprimed phys_state.
             self.boundary.import_fields(0, self.rank, self.pool)
+            prepare_initialize = getattr(self.backend, "prepare_initialize", None)
+            if callable(prepare_initialize):
+                prepare_initialize(self.pool, fcomm=self.fcomm)
+            prepare_state = getattr(self.backend, "prepare_state", None)
+            if callable(prepare_state):
+                prepare_state(
+                    self.pool,
+                    self.config,
+                    rank=self.rank,
+                    size=self.size,
+                )
+            self._python_initialized_addresses = {
+                name: int(values.ctypes.data) for name, values in self.pool.items()
+            }
             self.backend.initialize(self.pool, fcomm=self.fcomm)
+            changed = tuple(
+                name
+                for name, address in self._python_initialized_addresses.items()
+                if int(self.pool[name].ctypes.data) != address
+            )
+            if changed:
+                raise PICAMStateError(
+                    "native initialization changed Python StatePool addresses: "
+                    + ", ".join(changed[:8])
+                )
+            self._backend_initialized = True
             self._validate_initial_cam_export()
             self._prime_initial_cam_state()
         except Exception:
@@ -482,6 +515,8 @@ class PICAMDriver:
         np.savez(rank_file, **self.pool.snapshot(restart_only=True))
         metadata = {
             "schema_version": 1,
+            "scope": "python-statepool-only",
+            "native_restart_complete": False,
             "config_fingerprint": self.config.fingerprint,
             "rank": self.rank,
             "size": self.size,
@@ -509,8 +544,15 @@ class PICAMDriver:
             PICAMLifecycle.FAILED,
         }:
             raise PICAMStateError(f"finalize from {self.lifecycle.value}")
+        failed = self.lifecycle == PICAMLifecycle.FAILED
         try:
-            self.backend.finalize(self.pool, fcomm=self.fcomm)
+            # A failed native action can leave opaque CAM state between
+            # lifecycle boundaries.  Calling cam_final from that state can
+            # mask the original error (and, for Python-owned pointer shells,
+            # can attempt to release memory that Fortran does not own).
+            if self._backend_initialized and not failed:
+                self.backend.finalize(self.pool, fcomm=self.fcomm)
+                self._backend_initialized = False
             self.boundary.finalize()
         finally:
             self.lifecycle = PICAMLifecycle.FINALIZED
