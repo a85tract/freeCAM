@@ -1,0 +1,59 @@
+--- a/src/cpl/atm_comp_mct.F90
++++ b/src/cpl/atm_comp_mct.F90
+@@ -91,1 +91,2 @@
+   logical :: ocn_present ! if true => ocean is present
++  integer :: pycam_boundary_capture_step = 0
+@@ -97,2 +98,42 @@
+ CONTAINS
+ !================================================================================
++  ! When PYCAM_BOUNDARY_CAPTURE is set, write the exact rank-local MCT arrays
++  ! immediately at CAM import/export boundaries. No numerical expression is
++  ! changed when capture is disabled.
++  subroutine pycam_capture_boundary(direction, step, values)
++    character(len=*), intent(in) :: direction
++    integer, intent(in) :: step
++    real(r8), intent(in) :: values(:,:)
++    character(len=1024) :: prefix, filename
++    character(len=16), parameter :: magic = 'PYCAM_BOUNDARY1 '
++    integer :: environment_status, environment_length
++    integer :: rank, nranks, ierr, unit, direction_id
++    integer :: header(7)
++    call get_environment_variable('PYCAM_BOUNDARY_CAPTURE', prefix, &
++         length=environment_length, status=environment_status)
++    if (environment_status /= 0 .or. environment_length < 1) return
++    call MPI_Comm_rank(mpicom, rank, ierr)
++    if (ierr /= 0) call shr_sys_abort('PI-CAM capture MPI_Comm_rank failed')
++    call MPI_Comm_size(mpicom, nranks, ierr)
++    if (ierr /= 0) call shr_sys_abort('PI-CAM capture MPI_Comm_size failed')
++    if (trim(direction) == 'import') then
++       direction_id = 1
++    else if (trim(direction) == 'export') then
++       direction_id = 2
++    else
++       call shr_sys_abort('PI-CAM capture direction is invalid')
++    endif
++    write(filename, '(a,".step-",i6.6,".rank-",i6.6,".",a,".bin")') &
++         trim(prefix), step, rank, trim(direction)
++    open(newunit=unit, file=trim(filename), access='stream', &
++         form='unformatted', status='replace', action='write', iostat=ierr)
++    if (ierr /= 0) call shr_sys_abort('cannot open PI-CAM boundary capture')
++    header = (/ 1, step, rank, nranks, direction_id, size(values,1), &
++         size(values,2) /)
++    write(unit) magic
++    write(unit) header
++    write(unit) values
++    close(unit)
++  end subroutine pycam_capture_boundary
++
++!================================================================================
+@@ -472,2 +510,4 @@
+     call atm_import( x2a_a%rattr, cam_in, cam_out )
+     call t_stopf  ('CAM_import')
++    call pycam_capture_boundary('import', pycam_boundary_capture_step, &
++         x2a_a%rattr)
+@@ -532,2 +572,5 @@
+        call atm_export( cam_out, a2x_a%rattr )
+        call t_stopf ('CAM_export')
++       call pycam_capture_boundary('export', pycam_boundary_capture_step, &
++            a2x_a%rattr)
++       pycam_boundary_capture_step = pycam_boundary_capture_step + 1

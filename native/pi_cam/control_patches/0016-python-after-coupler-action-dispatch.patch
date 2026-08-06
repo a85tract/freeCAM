@@ -1,0 +1,17 @@
+/glade/campaign/cesm/tutorial/tutorial_2025_env/tutorial_2025_profile: line 7: module: command not found
+/glade/campaign/cesm/tutorial/tutorial_2025_env/tutorial_2025_profile: line 8: module: command not found
+/glade/campaign/cesm/tutorial/tutorial_2025_env/tutorial_2025_profile: line 9: module: command not found
+/glade/campaign/cesm/tutorial/tutorial_2025_env/tutorial_2025_profile: line 10: module: command not found
+/glade/campaign/cesm/tutorial/tutorial_2025_env/tutorial_2025_profile: line 11: module: command not found
+/glade/campaign/cesm/tutorial/tutorial_2025_env/tutorial_2025_profile: line 12: module: command not found
+--- a/src/drivers/mct/main/cesm_comp_mod.F90
++++ b/src/drivers/mct/main/cesm_comp_mod.F90
+@@ -4011,7 +4011,7 @@
+       return
+    endif
+ 
+-   if (action_id == 413 .and. .not. atm_loop_complete) then
++   if (action_id == 422 .and. .not. atm_loop_complete) then
+       pycesm_physics_expected_action = 400
+    else
+       pycesm_physics_expected_action = action_id

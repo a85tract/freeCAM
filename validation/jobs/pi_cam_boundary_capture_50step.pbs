@@ -1,0 +1,55 @@
+#!/bin/bash
+#PBS -N pycam-boundary-50
+#PBS -A UCUB0188
+#PBS -q develop
+#PBS -l select=4:ncpus=64:mpiprocs=128:ompthreads=1:mem=64GB
+#PBS -l walltime=00:20:00
+#PBS -j oe
+#PBS -o /glade/work/ruitong/pycam-sima-pi-cam-only/logs/
+#PBS -V
+
+set -euo pipefail
+
+repo=/glade/work/ruitong/pycam-sima-pi-cam-only
+case_root=/glade/work/ruitong/CESM_cases/f.e13.F1850C5.ne16_g16.icesm131_ihesp.PI-cam-oracle.50step
+oracle_run=/glade/derecho/scratch/ruitong/pyCAM/PI-cam/f.e13.F1850C5.ne16_g16.icesm131_ihesp.PI-cam-oracle.50step/run
+run_dir=/glade/derecho/scratch/ruitong/pyCAM/PI-cam/nonpic-boundary-capture-50step/run
+capture_root=/glade/derecho/scratch/ruitong/pyCAM/PI-cam/nonpic-boundary-capture-50step/boundary
+capture_prefix=${capture_root}/raw/pi_cam
+replay_root=${capture_root}/replay
+executable=${repo}/build/pi_cam/pi_cam_capture.exe
+
+source "${case_root}/.env_mach_specific.sh" >/dev/null 2>&1
+rm -rf "${capture_root}/raw"
+mkdir -p "${capture_root}/raw"
+rm -rf "${replay_root}"
+rm -rf "${run_dir}"
+mkdir -p "${run_dir}"
+rsync -a \
+  --exclude 'f.e13.F1850C5.ne16_g16.icesm131_ihesp.PI-cam-oracle.50step.*' \
+  --exclude '*.log.*' --exclude 'rpointer.*' --exclude 'timing/' \
+  "${oracle_run}/" "${run_dir}/"
+mkdir -p "${run_dir}/timing/checkpoints"
+export PYCAM_BOUNDARY_CAPTURE=${capture_prefix}
+export OMP_NUM_THREADS=1
+export OMP_STACKSIZE=64M
+export FI_CXI_RX_MATCH_MODE=hybrid
+export FI_MR_CACHE_MONITOR=memhooks
+
+cd "${run_dir}"
+mpiexec --label -n 512 \
+  "${executable}" > cesm.log.pi-cam-boundary-capture 2>&1
+
+cd "${repo}"
+PYTHONPATH=${repo}/src /glade/work/ruitong/pycam-sima/.venv/bin/python \
+  tools/convert_pi_cam_boundary.py \
+  --capture-prefix "${capture_prefix}" \
+  --output "${replay_root}" \
+  --config configs/pi_cam_icesm131.yaml \
+  --summary validation/pi_cam_boundary_capture.json
+
+PYTHONPATH=${repo}/src /glade/work/ruitong/pycam-sima/.venv/bin/python \
+  tools/verify_pi_cam.py \
+  --reference "${oracle_run}" \
+  --candidate "${run_dir}" \
+  --output validation/pi_cam_nonpic_capture_vs_oracle_50step_bfb.json

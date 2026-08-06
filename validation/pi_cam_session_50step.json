@@ -1,0 +1,340 @@
+{
+  "bfb": {
+    "bfb": true,
+    "candidate_files": 4,
+    "compared_files": 4,
+    "extra_in_candidate": [],
+    "first_difference": null,
+    "missing_in_candidate": [],
+    "reference_files": 4
+  },
+  "completed": {
+    "actions": 1687,
+    "coupling_step": 51,
+    "date": 10102,
+    "fields": {
+      "cam_in.x2a_rattr": {
+        "aliases": [],
+        "category": "boundary_import",
+        "dimensions": [
+          "cam_in.x2a_rattr__dim0",
+          "cam_in.x2a_rattr__dim1"
+        ],
+        "dtype": "<f8",
+        "name": "cam_in.x2a_rattr",
+        "nbytes": 9184,
+        "restart": true,
+        "shape": [
+          41,
+          28
+        ],
+        "units": "1",
+        "writable": true
+      },
+      "cam_out.a2x_rattr": {
+        "aliases": [],
+        "category": "boundary_export",
+        "dimensions": [
+          "cam_out.a2x_rattr__dim0",
+          "cam_out.a2x_rattr__dim1"
+        ],
+        "dtype": "<f8",
+        "name": "cam_out.a2x_rattr",
+        "nbytes": 11200,
+        "restart": true,
+        "shape": [
+          50,
+          28
+        ],
+        "units": "1",
+        "writable": true
+      },
+      "case_name_utf8": {
+        "aliases": [],
+        "category": "configuration",
+        "dimensions": [
+          "case_name_length"
+        ],
+        "dtype": "|u1",
+        "name": "case_name_utf8",
+        "nbytes": 256,
+        "restart": true,
+        "shape": [
+          256
+        ],
+        "units": "1",
+        "writable": false
+      },
+      "configured_stop_n": {
+        "aliases": [],
+        "category": "configuration",
+        "dimensions": [],
+        "dtype": "<i8",
+        "name": "configured_stop_n",
+        "nbytes": 8,
+        "restart": true,
+        "shape": [],
+        "units": "1",
+        "writable": false
+      },
+      "current_date": {
+        "aliases": [],
+        "category": "time",
+        "dimensions": [],
+        "dtype": "<i4",
+        "name": "current_date",
+        "nbytes": 4,
+        "restart": true,
+        "shape": [],
+        "units": "1",
+        "writable": true
+      },
+      "current_seconds_of_day": {
+        "aliases": [],
+        "category": "time",
+        "dimensions": [],
+        "dtype": "<i4",
+        "name": "current_seconds_of_day",
+        "nbytes": 4,
+        "restart": true,
+        "shape": [],
+        "units": "s",
+        "writable": true
+      },
+      "model_step": {
+        "aliases": [],
+        "category": "time",
+        "dimensions": [],
+        "dtype": "<i8",
+        "name": "model_step",
+        "nbytes": 8,
+        "restart": true,
+        "shape": [],
+        "units": "1",
+        "writable": true
+      },
+      "model_timestep": {
+        "aliases": [],
+        "category": "configuration",
+        "dimensions": [],
+        "dtype": "<f8",
+        "name": "model_timestep",
+        "nbytes": 8,
+        "restart": true,
+        "shape": [],
+        "units": "s",
+        "writable": false
+      },
+      "mpi_rank": {
+        "aliases": [],
+        "category": "configuration",
+        "dimensions": [],
+        "dtype": "<i4",
+        "name": "mpi_rank",
+        "nbytes": 4,
+        "restart": true,
+        "shape": [],
+        "units": "1",
+        "writable": false
+      },
+      "mpi_size": {
+        "aliases": [],
+        "category": "configuration",
+        "dimensions": [],
+        "dtype": "<i4",
+        "name": "mpi_size",
+        "nbytes": 4,
+        "restart": true,
+        "shape": [],
+        "units": "1",
+        "writable": false
+      },
+      "orbital_year": {
+        "aliases": [],
+        "category": "configuration",
+        "dimensions": [],
+        "dtype": "<i4",
+        "name": "orbital_year",
+        "nbytes": 4,
+        "restart": true,
+        "shape": [],
+        "units": "1",
+        "writable": false
+      }
+    },
+    "lifecycle": "running",
+    "seconds": 3600,
+    "state_bytes": 20684,
+    "step": 50
+  },
+  "execution": "persistent_notebook_session",
+  "mpi_launch_count": 1,
+  "rank_global_export_statistics": {
+    "count": 691300,
+    "max": 105546.17073404705,
+    "mean": 4013.6282962704367,
+    "min": -25.003344327119972,
+    "rank": "global"
+  },
+  "schema_version": 1,
+  "started": {
+    "actions": 37,
+    "coupling_step": 1,
+    "date": 10101,
+    "fields": {
+      "cam_in.x2a_rattr": {
+        "aliases": [],
+        "category": "boundary_import",
+        "dimensions": [
+          "cam_in.x2a_rattr__dim0",
+          "cam_in.x2a_rattr__dim1"
+        ],
+        "dtype": "<f8",
+        "name": "cam_in.x2a_rattr",
+        "nbytes": 9184,
+        "restart": true,
+        "shape": [
+          41,
+          28
+        ],
+        "units": "1",
+        "writable": true
+      },
+      "cam_out.a2x_rattr": {
+        "aliases": [],
+        "category": "boundary_export",
+        "dimensions": [
+          "cam_out.a2x_rattr__dim0",
+          "cam_out.a2x_rattr__dim1"
+        ],
+        "dtype": "<f8",
+        "name": "cam_out.a2x_rattr",
+        "nbytes": 11200,
+        "restart": true,
+        "shape": [
+          50,
+          28
+        ],
+        "units": "1",
+        "writable": true
+      },
+      "case_name_utf8": {
+        "aliases": [],
+        "category": "configuration",
+        "dimensions": [
+          "case_name_length"
+        ],
+        "dtype": "|u1",
+        "name": "case_name_utf8",
+        "nbytes": 256,
+        "restart": true,
+        "shape": [
+          256
+        ],
+        "units": "1",
+        "writable": false
+      },
+      "configured_stop_n": {
+        "aliases": [],
+        "category": "configuration",
+        "dimensions": [],
+        "dtype": "<i8",
+        "name": "configured_stop_n",
+        "nbytes": 8,
+        "restart": true,
+        "shape": [],
+        "units": "1",
+        "writable": false
+      },
+      "current_date": {
+        "aliases": [],
+        "category": "time",
+        "dimensions": [],
+        "dtype": "<i4",
+        "name": "current_date",
+        "nbytes": 4,
+        "restart": true,
+        "shape": [],
+        "units": "1",
+        "writable": true
+      },
+      "current_seconds_of_day": {
+        "aliases": [],
+        "category": "time",
+        "dimensions": [],
+        "dtype": "<i4",
+        "name": "current_seconds_of_day",
+        "nbytes": 4,
+        "restart": true,
+        "shape": [],
+        "units": "s",
+        "writable": true
+      },
+      "model_step": {
+        "aliases": [],
+        "category": "time",
+        "dimensions": [],
+        "dtype": "<i8",
+        "name": "model_step",
+        "nbytes": 8,
+        "restart": true,
+        "shape": [],
+        "units": "1",
+        "writable": true
+      },
+      "model_timestep": {
+        "aliases": [],
+        "category": "configuration",
+        "dimensions": [],
+        "dtype": "<f8",
+        "name": "model_timestep",
+        "nbytes": 8,
+        "restart": true,
+        "shape": [],
+        "units": "s",
+        "writable": false
+      },
+      "mpi_rank": {
+        "aliases": [],
+        "category": "configuration",
+        "dimensions": [],
+        "dtype": "<i4",
+        "name": "mpi_rank",
+        "nbytes": 4,
+        "restart": true,
+        "shape": [],
+        "units": "1",
+        "writable": false
+      },
+      "mpi_size": {
+        "aliases": [],
+        "category": "configuration",
+        "dimensions": [],
+        "dtype": "<i4",
+        "name": "mpi_size",
+        "nbytes": 4,
+        "restart": true,
+        "shape": [],
+        "units": "1",
+        "writable": false
+      },
+      "orbital_year": {
+        "aliases": [],
+        "category": "configuration",
+        "dimensions": [],
+        "dtype": "<i4",
+        "name": "orbital_year",
+        "nbytes": 4,
+        "restart": true,
+        "shape": [],
+        "units": "1",
+        "writable": false
+      }
+    },
+    "lifecycle": "running",
+    "seconds": 0,
+    "state_bytes": 20684,
+    "step": 0
+  },
+  "steps_requested": 50
+}

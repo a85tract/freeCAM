@@ -1,0 +1,219 @@
+--- a/src/drivers/mct/main/cesm_comp_mod.F90
++++ b/src/drivers/mct/main/cesm_comp_mod.F90
+@@ -173,6 +173,7 @@
+    public cesm_action_call, cesm_nested_action_call, cesm_cam_action_call
+    public cesm_physics_action_call
+    public cesm_step_begin, cesm_step_end, cesm_run_finish
++   public cesm_final_action_call
+ #ifdef USE_ESMF_LIB
+    public cesm_comp_register
+ #endif
+@@ -533,6 +534,8 @@
+    integer :: pycesm_nested_expected_action = 0
+    integer :: pycesm_cam_expected_action = 0
+    integer :: pycesm_physics_expected_action = 0
++   logical :: pycesm_final_active = .false.
++   integer :: pycesm_final_expected_action = 0
+    integer :: pycesm_hashint(7) = 0
+ 
+    !----------------------------------------------------------------------------
+@@ -4523,74 +4526,144 @@
+ !===============================================================================
+ 
+  subroutine cesm_final()
++   implicit none
++   integer :: action_id
++   integer :: status
++
++   do action_id = 601, 610
++      call cesm_final_action_call(action_id, status)
++      if (status /= 0) then
++         call shr_sys_abort(subname//' Python finalization action rejected')
++      endif
++   enddo
++
++ end subroutine cesm_final
++
++!===============================================================================
++
++ subroutine cesm_final_action_call(action_id, status)
+ 
+    use shr_pio_mod, only : shr_pio_finalize
+    implicit none
++   integer, intent(in) :: action_id
++   integer, intent(out) :: status
++
++   status = 0
++   if (action_id == 601) then
++      if (pycesm_final_active .or. pycesm_step_active .or. &
++          pycesm_atm_nested_active) then
++         status = 1
++         return
++      endif
++      pycesm_final_active = .true.
++      pycesm_final_expected_action = 600
++   endif
++
++   if (.not. pycesm_final_active) then
++      status = 1
++      return
++   endif
++   if (action_id /= pycesm_final_expected_action + 1) then
++      status = 2
++      return
++   endif
+ 
+    !------------------------------------------------------------------------
+    ! Finalization of all models
+    !------------------------------------------------------------------------
+ 
+-   call t_barrierf ('CPL:FINAL_BARRIER', mpicom_GLOID)
+-   call t_startf ('CPL:FINAL')
+-
+-   call seq_timemgr_EClockGetData( EClock_d, stepno=endstep)
+-   call shr_mem_getusage(msize,mrss)
+-
++   select case (action_id)
++   case (601)
++      call t_barrierf ('CPL:FINAL_BARRIER', mpicom_GLOID)
++      call t_startf ('CPL:FINAL')
++      call seq_timemgr_EClockGetData( EClock_d, stepno=endstep)
++      call shr_mem_getusage(msize,mrss)
++   case (602)
+ #ifdef ESMF_INTERFACE
+-   call component_final(EClock_a, atm)
+-   call component_final(EClock_l, lnd)
+-   call component_final(EClock_r, rof)
+-   call component_final(EClock_i, ice)
+-   call component_final(EClock_o, ocn)
+-   call component_final(EClock_g, glc)
+-   call component_final(EClock_w, wav)
++      call component_final(EClock_a, atm)
+ #else
+-   call component_final(EClock_a, atm, atm_final)
+-   call component_final(EClock_l, lnd, lnd_final)
+-   call component_final(EClock_r, rof, rof_final)
+-   call component_final(EClock_i, ice, ice_final)
+-   call component_final(EClock_o, ocn, ocn_final)
+-   call component_final(EClock_g, glc, glc_final)
+-   call component_final(EClock_w, wav, wav_final)
++      call component_final(EClock_a, atm, atm_final)
+ #endif
++   case (603)
++#ifdef ESMF_INTERFACE
++      call component_final(EClock_l, lnd)
++#else
++      call component_final(EClock_l, lnd, lnd_final)
++#endif
++   case (604)
++#ifdef ESMF_INTERFACE
++      call component_final(EClock_r, rof)
++#else
++      call component_final(EClock_r, rof, rof_final)
++#endif
++   case (605)
++#ifdef ESMF_INTERFACE
++      call component_final(EClock_i, ice)
++#else
++      call component_final(EClock_i, ice, ice_final)
++#endif
++   case (606)
++#ifdef ESMF_INTERFACE
++      call component_final(EClock_o, ocn)
++#else
++      call component_final(EClock_o, ocn, ocn_final)
++#endif
++   case (607)
++#ifdef ESMF_INTERFACE
++      call component_final(EClock_g, glc)
++#else
++      call component_final(EClock_g, glc, glc_final)
++#endif
++   case (608)
++#ifdef ESMF_INTERFACE
++      call component_final(EClock_w, wav)
++#else
++      call component_final(EClock_w, wav, wav_final)
++#endif
++   case (609)
++      ! End the component run cleanly while preserving the original reduction
++      ! and log order.
++      call shr_pio_finalize( )
++      call shr_mpi_min(msize ,msize0,mpicom_GLOID,' driver msize0', all=.true.)
++      call shr_mpi_max(msize ,msize1,mpicom_GLOID,' driver msize1', all=.true.)
++      call shr_mpi_min(mrss  ,mrss0,mpicom_GLOID,'  driver mrss0',  all=.true.)
++      call shr_mpi_max(mrss  ,mrss1,mpicom_GLOID,'  driver mrss1',  all=.true.)
++
++      if (iamroot_CPLID )then
++         call seq_timemgr_EClockGetData( EClock_d, curr_ymd=ymd, curr_tod=tod, dtime=dtime)
++         simDays = (endStep-begStep)*dtime/(24._r8*3600._r8)
++         write(logunit,'(//)')
++         write(logunit,FormatA) subname, 'SUCCESSFUL TERMINATION OF CPL7-CESM'
++         write(logunit,FormatD) subname, '  at YMD,TOD = ',ymd,tod
++         write(logunit,FormatR) subname, '# simulated days (this run) = ', simDays
++         write(logunit,FormatR) subname, 'compute time (hrs)          = ', (Time_end-Time_begin)/3600._r8
++         if ( (Time_end /= Time_begin) .and. (simDays /= 0.0_r8) )then
++            SYPD = shr_const_cday*simDays/(days_per_year*(Time_end-Time_begin))
++            write(logunit,FormatR) subname, '# simulated years / cmp-day = ', SYPD
++         endif
++         write(logunit,FormatR) subname,' pes min memory highwater  (MB)  = ',mrss0
++         write(logunit,FormatR) subname,' pes max memory highwater  (MB)  = ',mrss1
++         write(logunit,FormatR) subname,' pes min memory last usage (MB)  = ',msize0
++         write(logunit,FormatR) subname,' pes max memory last usage (MB)  = ',msize1
++         write(logunit,'(//)')
++         close(logunit)
++      endif
++   case (610)
++      call t_stopf  ('CPL:FINAL')
++      call t_prf(trim(timing_dir)//'/cesm_timing', mpicom_GLOID)
++      call t_finalizef()
++   case default
++      status = 3
++      return
++   end select
+ 
+-   !------------------------------------------------------------------------
+-   ! End the run cleanly
+-   !------------------------------------------------------------------------
+-
+-   call shr_pio_finalize( )
+-
+-   call shr_mpi_min(msize ,msize0,mpicom_GLOID,' driver msize0', all=.true.)
+-   call shr_mpi_max(msize ,msize1,mpicom_GLOID,' driver msize1', all=.true.)
+-   call shr_mpi_min(mrss  ,mrss0,mpicom_GLOID,'  driver mrss0',  all=.true.)
+-   call shr_mpi_max(mrss  ,mrss1,mpicom_GLOID,'  driver mrss1',  all=.true.)
+-
+-   if (iamroot_CPLID )then
+-      call seq_timemgr_EClockGetData( EClock_d, curr_ymd=ymd, curr_tod=tod, dtime=dtime)
+-      simDays = (endStep-begStep)*dtime/(24._r8*3600._r8)
+-      write(logunit,'(//)')
+-      write(logunit,FormatA) subname, 'SUCCESSFUL TERMINATION OF CPL7-CESM'
+-      write(logunit,FormatD) subname, '  at YMD,TOD = ',ymd,tod
+-      write(logunit,FormatR) subname, '# simulated days (this run) = ', simDays
+-      write(logunit,FormatR) subname, 'compute time (hrs)          = ', (Time_end-Time_begin)/3600._r8
+-      if ( (Time_end /= Time_begin) .and. (simDays /= 0.0_r8) )then
+-         SYPD = shr_const_cday*simDays/(days_per_year*(Time_end-Time_begin))
+-         write(logunit,FormatR) subname, '# simulated years / cmp-day = ', SYPD
+-      endif
+-      write(logunit,FormatR) subname,' pes min memory highwater  (MB)  = ',mrss0
+-      write(logunit,FormatR) subname,' pes max memory highwater  (MB)  = ',mrss1
+-      write(logunit,FormatR) subname,' pes min memory last usage (MB)  = ',msize0
+-      write(logunit,FormatR) subname,' pes max memory last usage (MB)  = ',msize1
+-      write(logunit,'(//)')
+-      close(logunit)
+-   endif
+-
+-   call t_stopf  ('CPL:FINAL')
+-   call t_prf(trim(timing_dir)//'/cesm_timing', mpicom_GLOID)
+-   call t_finalizef()
++   pycesm_final_expected_action = action_id
++   if (action_id == 610) then
++      pycesm_final_active = .false.
++      pycesm_final_expected_action = 0
++   endif
+ 
+-end subroutine cesm_final
++ end subroutine cesm_final_action_call
+ 
+ !===============================================================================
+ !*******************************************************************************

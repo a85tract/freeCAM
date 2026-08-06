@@ -1,0 +1,102 @@
+--- a/src/drivers/mct/main/cesm_comp_mod.F90
++++ b/src/drivers/mct/main/cesm_comp_mod.F90
+@@ -55,6 +55,7 @@
+    use atm_comp_mct  , only: atm_run_begin=>atm_run_begin_mct
+    use atm_comp_mct  , only: atm_run_action=>atm_run_action_mct
+    use atm_comp_mct  , only: atm_run_granular_action=>atm_run_granular_action_mct
++   use atm_comp_mct  , only: atm_run_physics_action=>atm_run_physics_action_mct
+    use atm_comp_mct  , only: atm_run_end=>atm_run_end_mct
+    use lnd_comp_mct  , only: lnd_init=>lnd_init_mct, lnd_run=>lnd_run_mct, lnd_final=>lnd_final_mct
+    use ocn_comp_mct  , only: ocn_init=>ocn_init_mct, ocn_run=>ocn_run_mct, ocn_final=>ocn_final_mct
+@@ -170,6 +171,7 @@
+ 
+    public cesm_pre_init1, cesm_pre_init2, cesm_init, cesm_run, cesm_final
+    public cesm_action_call, cesm_nested_action_call, cesm_cam_action_call
++   public cesm_physics_action_call
+    public cesm_step_begin, cesm_step_end, cesm_run_finish
+ #ifdef USE_ESMF_LIB
+    public cesm_comp_register
+@@ -530,6 +532,7 @@
+    integer :: pycesm_expected_action = 0
+    integer :: pycesm_nested_expected_action = 0
+    integer :: pycesm_cam_expected_action = 0
++   integer :: pycesm_physics_expected_action = 0
+    integer :: pycesm_hashint(7) = 0
+ 
+    !----------------------------------------------------------------------------
+@@ -3706,6 +3709,7 @@
+    pycesm_expected_action = 100
+    pycesm_nested_expected_action = 0
+    pycesm_cam_expected_action = 0
++   pycesm_physics_expected_action = 0
+    pycesm_atm_nested_active = .false.
+    pycesm_step_active = .true.
+  end subroutine cesm_step_begin
+@@ -3817,6 +3821,7 @@
+    pycesm_expected_action = 0
+    pycesm_nested_expected_action = 0
+    pycesm_cam_expected_action = 0
++   pycesm_physics_expected_action = 0
+    pycesm_atm_nested_active = .false.
+  end subroutine cesm_step_end
+ 
+@@ -3896,6 +3901,7 @@
+       call atm_run_begin(Eclock_a,atm(ens1)%cdata_cc, &
+            atm(ens1)%x2c_cc,atm(ens1)%c2x_cc,action_status)
+       pycesm_cam_expected_action = 300
++      pycesm_physics_expected_action = 400
+    case (203:208)
+       call atm_run_action(action_id,Eclock_a,atm(ens1)%cdata_cc, &
+            atm(ens1)%x2c_cc,atm(ens1)%c2x_cc,atm_loop_complete,action_status)
+@@ -3973,6 +3979,51 @@
+ 
+ !===============================================================================
+ 
++ subroutine cesm_physics_action_call(action_id, loop_complete, status)
++   implicit none
++   integer, intent(in) :: action_id
++   integer, intent(out) :: loop_complete
++   integer, intent(out) :: status
++   integer :: action_status
++   logical :: atm_loop_complete
++
++   status = 0
++   loop_complete = 0
++   action_status = 0
++   atm_loop_complete = .false.
++   if (.not. pycesm_step_active .or. .not. pycesm_atm_nested_active) then
++      status = 3
++      return
++   endif
++   if (.not. atmrun_alarm .or. pycesm_nested_expected_action /= 202) then
++      status = 5
++      return
++   endif
++   if (action_id /= pycesm_physics_expected_action + 1) then
++      status = 4
++      return
++   endif
++
++   call atm_run_physics_action(action_id,Eclock_a,atm(ens1)%cdata_cc, &
++        atm(ens1)%x2c_cc,atm(ens1)%c2x_cc,atm_loop_complete,action_status)
++   if (action_status /= 0) then
++      status = action_status
++      return
++   endif
++
++   if (action_id == 413 .and. .not. atm_loop_complete) then
++      pycesm_physics_expected_action = 400
++   else
++      pycesm_physics_expected_action = action_id
++   endif
++   if (atm_loop_complete) then
++      loop_complete = 1
++      pycesm_nested_expected_action = 208
++   endif
++ end subroutine cesm_physics_action_call
++
++!===============================================================================
++
+  subroutine cesm_action_call(action_id, status)
+    use seq_comm_mct, only : atm_layout, lnd_layout, ice_layout, rof_layout, ocn_layout
+    implicit none

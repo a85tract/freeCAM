@@ -1,0 +1,60 @@
+--- a/src/drivers/mct/main/cesm_comp_mod.F90
++++ b/src/drivers/mct/main/cesm_comp_mod.F90
+@@ -1030,7 +1030,7 @@
+   integer :: action_id
+   integer :: status
+ 
+-  do action_id = 504, 527
++  do action_id = 504, 532
+ #ifdef USE_ESMF_LIB
+      call cesm_init_action_call(action_id, status, drvcomp)
+ #else
+@@ -1774,6 +1774,7 @@
+       endif
+    endif
+ 
++   case (528)
+    !----------------------------------------------------------
+    !| ATM PREP for recalculation of initial solar
+    !  Note that ocean albedos are ALWAYS CALCULATED on the ocean grid
+@@ -1827,6 +1828,7 @@
+ 
+    endif  ! atm_prognostic
+ 
++   case (529)
+    !----------------------------------------------------------
+    !| Second phase of atmosphere component initialization
+    !  Recalculate solar based on input albedo's from surface components.
+@@ -1874,6 +1876,7 @@
+ 
+    endif   ! atm present
+ 
++   case (530)
+    !----------------------------------------------------------
+    !| Read driver restart file, overwrite anything previously sent or computed
+    !----------------------------------------------------------
+@@ -1888,6 +1891,7 @@
+    endif
+    call t_stopf  ('CPL:init_readrestart')
+ 
++   case (531)
+    !----------------------------------------------------------
+    !| Map initial r2x_rx and g2x_gx to _ox, _ix and _lx
+    !----------------------------------------------------------
+@@ -1913,6 +1917,7 @@
+       endif
+    endif
+ 
++   case (532)
+    !----------------------------------------------------------
+    !| Write histinit output file
+    !----------------------------------------------------------
+@@ -1948,7 +1953,7 @@
+    end select
+ 
+    pycesm_init_expected_action = action_id
+-   if (action_id == 527) then
++   if (action_id == 532) then
+       pycesm_init_active = .false.
+       pycesm_init_expected_action = 0
+    endif

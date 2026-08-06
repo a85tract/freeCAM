@@ -1,0 +1,73 @@
+--- a/cime/src/drivers/mct/main/cesm_comp_mod.F90
++++ b/cime/src/drivers/mct/main/cesm_comp_mod.F90
+@@ -3671,13 +3671,20 @@
+ ! part of the bind(C) adapter contract.
+ !===============================================================================
+ 
+- subroutine cesm_step_begin(stepno, current_ymd, current_tod, alarm_mask, status)
++ subroutine cesm_step_begin(stepno, current_ymd, current_tod, alarm_mask, status, &
++      python_step, python_ymd, python_tod, python_alarm_mask)
+    implicit none
+    integer, intent(out) :: stepno
+    integer, intent(out) :: current_ymd
+    integer, intent(out) :: current_tod
+    integer, intent(out) :: alarm_mask
+    integer, intent(out) :: status
++   integer, intent(in), optional :: python_step
++   integer, intent(in), optional :: python_ymd
++   integer, intent(in), optional :: python_tod
++   integer, intent(in), optional :: python_alarm_mask
++   integer :: native_control_mask
++   logical :: python_controls_alarms
+ 
+ 103 format( 5A )
+ 
+@@ -3792,6 +3799,48 @@
+       ocnnext_alarm = .false.
+    endif
+ 
++   ! Python is authoritative for the scientific run/restart/stop decisions in
++   ! the admitted PI-atm path.  The native time manager is still advanced so
++   ! component ESMF clocks remain intact, and its result is retained as a
++   ! fail-closed BFB oracle.  Diagnostic history-average and profiling alarms
++   ! remain native because they do not select a scientific component action.
++   python_controls_alarms = present(python_step) .or. present(python_ymd) .or. &
++        present(python_tod) .or. present(python_alarm_mask)
++   if (python_controls_alarms) then
++      if (.not. present(python_step) .or. .not. present(python_ymd) .or. &
++          .not. present(python_tod) .or. .not. present(python_alarm_mask)) then
++         status = 9
++         return
++      endif
++      if (python_step /= stepno .or. python_ymd /= ymd .or. python_tod /= tod) then
++         status = 10
++         return
++      endif
++
++      native_control_mask = 0
++      if (atmrun_alarm)  native_control_mask = ibset(native_control_mask,0)
++      if (lndrun_alarm)  native_control_mask = ibset(native_control_mask,1)
++      if (icerun_alarm)  native_control_mask = ibset(native_control_mask,2)
++      if (rofrun_alarm)  native_control_mask = ibset(native_control_mask,3)
++      if (ocnrun_alarm)  native_control_mask = ibset(native_control_mask,4)
++      if (ocnnext_alarm) native_control_mask = ibset(native_control_mask,5)
++      if (restart_alarm) native_control_mask = ibset(native_control_mask,6)
++      if (stop_alarm)    native_control_mask = ibset(native_control_mask,8)
++      if (iand(python_alarm_mask,383) /= native_control_mask) then
++         status = 11
++         return
++      endif
++
++      atmrun_alarm  = btest(python_alarm_mask,0)
++      lndrun_alarm  = btest(python_alarm_mask,1)
++      icerun_alarm  = btest(python_alarm_mask,2)
++      rofrun_alarm  = btest(python_alarm_mask,3)
++      ocnrun_alarm  = btest(python_alarm_mask,4)
++      ocnnext_alarm = btest(python_alarm_mask,5)
++      restart_alarm = btest(python_alarm_mask,6)
++      stop_alarm    = btest(python_alarm_mask,8)
++   endif
++
+    call t_drvstopf('CPL:CLOCK_ADVANCE',cplrun=.true.,hashint=pycesm_hashint(2))
+ 
+    if (atmrun_alarm)  alarm_mask = ibset(alarm_mask,0)

@@ -1,0 +1,78 @@
+diff --git a/src/drivers/mct/main/t_driver_timers_mod.F90 b/src/drivers/mct/main/t_driver_timers_mod.F90
+index d779976..7244925 100644
+--- a/src/drivers/mct/main/t_driver_timers_mod.F90
++++ b/src/drivers/mct/main/t_driver_timers_mod.F90
+@@ -5,6 +5,10 @@ module t_drv_timers_mod
+   character(len=*),parameter :: strcpl = 'CPL:RUN'
+   character(len=*),parameter :: strcom = 'CPL:COMM'
+   character(len=*),parameter :: strbud = 'CPL:BUDGET'
++  logical, private, save :: pycesm_trace_checked = .false.
++  logical, private, save :: pycesm_trace_enabled = .false.
++  integer, private, save :: pycesm_trace_unit = -1
++  integer, private, save :: pycesm_trace_sequence = 0
+ 
+ contains
+ 
+@@ -56,6 +60,7 @@ contains
+        call t_startf   (trim(strbud), cpl_budget_hash)
+     endif
+ 
++    call pycesm_trace_event('start', trim(string))
+     call t_startf   (trim(string),hashint)
+ 
+   end subroutine t_drvstartf
+@@ -90,6 +95,7 @@ contains
+     endif
+ 
+     call t_stopf   (trim(string), hashint)
++    call pycesm_trace_event('stop', trim(string))
+ 
+     if (lbudget) then
+        call t_stopf   (trim(strbud), cpl_budget_hash)
+@@ -105,4 +111,46 @@ contains
+ 
+   end subroutine t_drvstopf
+ 
++  !===============================================================================
++
++  subroutine pycesm_trace_event(event, timer_name)
++
++    implicit none
++
++#include <mpif.h>
++
++    character(len=*), intent(in) :: event
++    character(len=*), intent(in) :: timer_name
++    character(len=1024) :: trace_path, rank_trace_path
++    integer :: env_status, ierr, world_rank
++
++    if (.not. pycesm_trace_checked) then
++       pycesm_trace_checked = .true.
++       trace_path = ''
++       call get_environment_variable('PYCESM_ACTION_TRACE', trace_path, &
++            status=env_status)
++       if (env_status == 0 .and. len_trim(trace_path) > 0) then
++          call mpi_comm_rank(MPI_COMM_WORLD, world_rank, ierr)
++          ! PI-atm component roots cover CPL/ATM/LND/ROF, ICE, and OCN.
++          if (ierr == MPI_SUCCESS .and. &
++               (world_rank == 0 .or. world_rank == 256 .or. world_rank == 384)) then
++             write(rank_trace_path, '(A,".rank-",I6.6,".jsonl")') &
++                  trim(trace_path), world_rank
++             open(newunit=pycesm_trace_unit, file=trim(rank_trace_path), &
++                  status='replace', action='write', form='formatted', &
++                  iostat=env_status)
++             pycesm_trace_enabled = env_status == 0
++          endif
++       endif
++    endif
++
++    if (.not. pycesm_trace_enabled) return
++    pycesm_trace_sequence = pycesm_trace_sequence + 1
++    write(pycesm_trace_unit, '(A,I0,A,A,A,A,A)') &
++         '{"sequence":', pycesm_trace_sequence, ',"event":"', &
++         trim(event), '","timer":"', trim(timer_name), '"}'
++    flush(pycesm_trace_unit)
++
++  end subroutine pycesm_trace_event
++
+ end module t_drv_timers_mod

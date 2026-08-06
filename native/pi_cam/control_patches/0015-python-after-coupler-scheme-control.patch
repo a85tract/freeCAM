@@ -1,0 +1,417 @@
+/glade/campaign/cesm/tutorial/tutorial_2025_env/tutorial_2025_profile: line 7: module: command not found
+/glade/campaign/cesm/tutorial/tutorial_2025_env/tutorial_2025_profile: line 8: module: command not found
+/glade/campaign/cesm/tutorial/tutorial_2025_env/tutorial_2025_profile: line 9: module: command not found
+/glade/campaign/cesm/tutorial/tutorial_2025_env/tutorial_2025_profile: line 10: module: command not found
+/glade/campaign/cesm/tutorial/tutorial_2025_env/tutorial_2025_profile: line 11: module: command not found
+/glade/campaign/cesm/tutorial/tutorial_2025_env/tutorial_2025_profile: line 12: module: command not found
+--- a/src/physics/cam/physpkg.F90
++++ b/src/physics/cam/physpkg.F90
+@@ -26,6 +26,7 @@
+   use ppgrid,           only: begchunk, endchunk, pcols, pver, pverp, psubcols
+   use constituents,     only: pcnst, cnst_name, cnst_get_ind
+   use camsrfexch,       only: cam_out_t, cam_in_t
++  use check_energy,     only: check_tracers_data
+ 
+   use cam_control_mod,  only: ideal_phys, adiabatic
+   use phys_control,     only: phys_do_flux_avg, phys_getopts, waccmx_is
+@@ -52,7 +53,8 @@
+   public phys_run1   ! First phase of the public run method
+   public phys_run2   ! Second phase of the public run method
+   public phys_run1_prepare, phys_run1_schemes
+-  public phys_run2_prepare, phys_run2_schemes, phys_run2_finish
++  public phys_run2_prepare, phys_run2_schemes, phys_run2_scheme_action, &
++       phys_run2_finish
+   public phys_final  ! Public finalization method
+ 
+   ! Private module data
+@@ -88,6 +90,15 @@
+   integer ::  prec_sh_idx        = 0
+   integer ::  snow_sh_idx        = 0
+ 
++  ! State that must survive between Python-dispatched tphysac actions.  The
++  ! original monolithic routine kept these values in automatic local storage.
++  ! A separate entry for each local physics chunk preserves that ownership
++  ! when Python invokes one process boundary at a time.
++  type(check_tracers_data), allocatable :: pycesm_ac_tracerint(:)
++  real(r8), allocatable :: pycesm_ac_surfric(:,:)
++  real(r8), allocatable :: pycesm_ac_obklen(:,:)
++  integer :: pycesm_ac_expected_action = 1
++
+ !======================================================================= 
+ contains
+ !======================================================================= 
+@@ -1051,6 +1062,79 @@
+ #endif
+ end subroutine phys_run2_schemes
+ 
++subroutine phys_run2_scheme_action(action_id, phys_state, ztodt, phys_tend, &
++     pbuf2d, cam_out, cam_in, status)
++    ! Execute one ordered tphysac boundary while retaining only the small
++    ! amount of rank-local state that the original stack frame carried from
++    ! one parameterization to the next.
++    use physics_buffer, only: physics_buffer_desc, pbuf_get_chunk
++    use cam_diagnostics, only: diag_surf
++    use comsrf, only: trefmxav, trefmnav, sgh, sgh30, fsds
++    integer, intent(in) :: action_id
++    real(r8), intent(in) :: ztodt
++    type(physics_state), intent(inout) :: phys_state(begchunk:endchunk)
++    type(physics_tend), intent(inout) :: phys_tend(begchunk:endchunk)
++    type(physics_buffer_desc), pointer :: pbuf2d(:,:)
++    type(cam_out_t), intent(inout) :: cam_out(begchunk:endchunk)
++    type(cam_in_t), intent(inout) :: cam_in(begchunk:endchunk)
++    integer, intent(out) :: status
++    integer :: c
++#if (! defined SPMD)
++    integer :: mpicom = 0
++#endif
++    type(physics_buffer_desc), pointer :: phys_buffer_chunk(:)
++
++    status = 0
++    if ((single_column .and. scm_crm_mode) .or. adiabatic .or. ideal_phys) then
++       status = 2
++       return
++    endif
++    if (action_id < 1 .or. action_id > 10) then
++       status = 1
++       return
++    endif
++    if (action_id /= pycesm_ac_expected_action) then
++       status = 4
++       return
++    endif
++
++    if (action_id == 1) then
++       if (.not. allocated(pycesm_ac_tracerint)) then
++          allocate(pycesm_ac_tracerint(begchunk:endchunk))
++          allocate(pycesm_ac_surfric(pcols,begchunk:endchunk))
++          allocate(pycesm_ac_obklen(pcols,begchunk:endchunk))
++       endif
++       call t_barrierf('sync_ac_physics', mpicom)
++       call t_startf('ac_physics')
++       call t_adj_detailf(+1)
++    endif
++
++!$OMP PARALLEL DO PRIVATE (C, phys_buffer_chunk)
++    do c=begchunk,endchunk
++       phys_buffer_chunk => pbuf_get_chunk(pbuf2d, c)
++       if (action_id == 1) then
++          call t_startf('diag_surf')
++          call diag_surf(cam_in(c), cam_out(c), phys_state(c)%ps, &
++               trefmxav(1,c), trefmnav(1,c))
++          call t_stopf('diag_surf')
++       endif
++       call tphysac(ztodt, cam_in(c), sgh(1,c), sgh30(1,c), cam_out(c), &
++            phys_state(c), phys_tend(c), phys_buffer_chunk, fsds(1,c), &
++            action_id)
++    end do
++
++    if (action_id == 10) then
++       call t_adj_detailf(-1)
++       call t_stopf('ac_physics')
++#ifdef TRACER_CHECK
++       call gmean_mass('after tphysac FV:WET)', phys_state)
++#endif
++       pycesm_ac_expected_action = 1
++    else
++       pycesm_ac_expected_action = action_id + 1
++    endif
++end subroutine phys_run2_scheme_action
++
+ subroutine phys_run2_finish(pbuf2d)
+     use physics_buffer, only: physics_buffer_desc, pbuf_deallocate, &
+          pbuf_update_tim_idx
+@@ -1430,7 +1514,7 @@
+ subroutine tphysac (ztodt,   cam_in,  &
+        sgh,     sgh30,                                     &
+        cam_out,  state,   tend,    pbuf,            &
+-       fsds    )
++       fsds, action_id)
+     !----------------------------------------------------------------------- 
+     ! 
+     ! Tendency physics after coupling to land, sea, and ice models.
+@@ -1495,6 +1579,7 @@
+     real(r8), intent(in) :: fsds(pcols)            ! down solar flux
+     real(r8), intent(in) :: sgh(pcols)             ! Std. deviation of orography for gwd
+     real(r8), intent(in) :: sgh30(pcols)           ! Std. deviation of 30s orography for tms
++    integer, intent(in), optional :: action_id     ! Python-dispatched process boundary
+ 
+     type(cam_in_t),      intent(inout) :: cam_in
+     type(cam_out_t),     intent(inout) :: cam_out
+@@ -1511,6 +1596,7 @@
+     type(physics_ptend)     :: ptend               ! indivdual parameterization tendencies
+ 
+     integer  :: nstep                              ! current timestep number
++    integer  :: stage                              ! 0 is the original monolithic path
+     real(r8) :: zero(pcols)                        ! array of zeros
+ 
+     integer :: lchnk                                ! chunk identifier
+@@ -1547,10 +1633,38 @@
+     real(r8), pointer, dimension(:,:) :: ast     ! relative humidity cloud fraction 
+ 
+     !-----------------------------------------------------------------------
++    stage = 0
++    if (present(action_id)) stage = action_id
+     lchnk = state%lchnk
+     ncol  = state%ncol
+ 
+     nstep = get_nstep()
++    zero = 0._r8
++
++    select case (stage)
++    case (0, 1)
++       continue
++    case (2)
++       go to 200
++    case (3)
++       go to 300
++    case (4)
++       go to 400
++    case (5)
++       go to 500
++    case (6)
++       go to 600
++    case (7)
++       go to 700
++    case (8)
++       go to 800
++    case (9)
++       go to 900
++    case (10)
++       go to 1000
++    case default
++       call endrun('TPHYSAC: invalid Python action id')
++    end select
+     
+     ! Adjust the surface fluxes to reduce instabilities in near sfc layer
+     if (phys_do_flux_avg()) then 
+@@ -1612,9 +1726,15 @@
+          cam_in%lhf , cam_in%cflx )
+ 
+     call t_stopf('tphysac_init')
++    if (stage == 1) then
++       pycesm_ac_tracerint(lchnk) = tracerint
++       return
++    endif
+     !===================================================
+     ! Source/sink terms for advected tracers.
+     !===================================================
++200 continue
++    if (stage == 2) tracerint = pycesm_ac_tracerint(lchnk)
+     call t_startf('adv_tracer_src_snk')
+     ! Test tracers
+ 
+@@ -1651,11 +1771,21 @@
+      if(trace_water) then
+        isOK = wtrc_check_h2o("after-tracer source/sink", state, state%q, ztodt)
+      end if
++    if (stage == 2) then
++       pycesm_ac_tracerint(lchnk) = tracerint
++       return
++    endif
+ 
+     !===================================================
+     ! Vertical diffusion/pbl calculation
+     ! Call vertical diffusion code (pbl, free atmosphere and molecular)
+     !===================================================
++300 continue
++    if (stage == 3) then
++       ifld = pbuf_get_index('AST')
++       call pbuf_get_field(pbuf, ifld, ast, start=(/1,1,pbuf_old_tim_idx()/), &
++            kount=(/pcols,pver,1/))
++    endif
+ 
+     ! If CLUBB is called, do not call vertical diffusion, but obukov length and
+     !   surface friction velocity still need to be computed.  In addition, 
+@@ -1693,10 +1823,17 @@
+    if(trace_water) then
+      isOk = wtrc_check_h2o("after-pbl", state, state%q, ztodt) !<-Will always lose mass until CLM is up and running.
+    end if
++    if (stage == 3) then
++       pycesm_ac_surfric(:,lchnk) = surfric
++       pycesm_ac_obklen(:,lchnk) = obklen
++       return
++    endif
+ 
+     !===================================================
+     ! Rayleigh friction calculation
+     !===================================================
++400 continue
++    if (stage == 4) tracerint = pycesm_ac_tracerint(lchnk)
+     call t_startf('rayleigh_friction')
+     call rayleigh_friction_tend( ztodt, state, ptend)
+     call physics_update(state, ptend, ztodt, tend)
+@@ -1710,8 +1847,14 @@
+     endif
+     
+     call check_tracers_chng(state, tracerint, "vdiff", nstep, ztodt, cam_in%cflx)
++    if (stage == 4) return
+ 
+     !  aerosol dry deposition processes
++500 continue
++    if (stage == 5) then
++       surfric = pycesm_ac_surfric(:,lchnk)
++       obklen = pycesm_ac_obklen(:,lchnk)
++    endif
+     call t_startf('aero_drydep')
+     call aero_model_drydep( state, pbuf, obklen, surfric, cam_in, ztodt, cam_out, ptend )
+     call physics_update(state, ptend, ztodt, tend)
+@@ -1732,16 +1875,20 @@
+      call check_energy_chng(state, tend, "carma_tend", nstep, ztodt, zero, zero, zero, zero)
+      call t_stopf('carma_timestep_tend')
+    end if
++    if (stage == 5) return
+ 
+ 
+     !---------------------------------------------------------------------------------
+     !   ... enforce charge neutrality
+     !---------------------------------------------------------------------------------
++600 continue
+     call charge_fix(state, pbuf)
++    if (stage == 6) return
+      
+     !===================================================
+     ! Gravity wave drag
+     !===================================================
++700 continue
+     call t_startf('gw_tend')
+ 
+     call gw_tend(state, sgh, pbuf, ztodt, ptend, cam_in, flx_heat)
+@@ -1751,14 +1898,18 @@
+     call check_energy_chng(state, tend, "gwdrag", nstep, ztodt, zero, &
+          zero, zero, flx_heat)
+     call t_stopf('gw_tend')
++    if (stage == 7) return
+ 
+     ! QBO relaxation
++800 continue
+     call qbo_relax(state, pbuf, ptend)
+     call physics_update(state, ptend, ztodt, tend)
+     ! Check energy integrals
+     call check_energy_chng(state, tend, "qborelax", nstep, ztodt, zero, zero, zero, zero)
++    if (stage == 8) return
+ 
+     ! Ion drag calculation
++900 continue
+     call t_startf ( 'iondrag' )
+ 
+     if ( do_waccm_ions ) then
+@@ -1786,8 +1937,20 @@
+     call check_energy_chng(state, tend, "iondrag", nstep, ztodt, zero, zero, zero, zero)
+ 
+     call t_stopf  ( 'iondrag' )
++    if (stage == 9) return
+ 
+     !-------------- Energy budget checks vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv
++1000 continue
++    if (stage == 10) then
++       itim_old = pbuf_old_tim_idx()
++       ifld = pbuf_get_index('DTCORE')
++       call pbuf_get_field(pbuf, ifld, dtcore, start=(/1,1,itim_old/), &
++            kount=(/pcols,pver,1/))
++       call pbuf_get_field(pbuf, tini_idx, tini)
++       call pbuf_get_field(pbuf, qini_idx, qini)
++       call pbuf_get_field(pbuf, cldliqini_idx, cldliqini)
++       call pbuf_get_field(pbuf, cldiceini_idx, cldiceini)
++    endif
+ 
+     ! Save total energy for global fixer in next timestep (FV and SE dycores)
+     call pbuf_set_field(pbuf, teout_idx, state%te_cur, (/1,itim_old/),(/pcols,1/))       
+--- a/src/control/cam_comp.F90
++++ b/src/control/cam_comp.F90
+@@ -38,7 +38,8 @@
+    public cam_run3_dynamics
+    public cam_run4_history, cam_run4_restart, cam_run4_finish
+    public cam_phys_run1_prepare, cam_phys_run1_schemes
+-   public cam_phys_run2_prepare, cam_phys_run2_schemes, cam_phys_run2_finish
++   public cam_phys_run2_prepare, cam_phys_run2_schemes, &
++        cam_phys_run2_scheme_action, cam_phys_run2_finish
+    public cam_final     ! CAM Finalization
+    !
+    ! Private module data
+@@ -302,6 +303,17 @@
+         cam_out, cam_in, status)
+ end subroutine cam_phys_run2_schemes
+ 
++subroutine cam_phys_run2_scheme_action(action_id, cam_out, cam_in, status)
++   use physpkg, only: phys_run2_scheme_action
++   integer, intent(in) :: action_id
++   type(cam_out_t), intent(inout) :: cam_out(begchunk:endchunk)
++   type(cam_in_t),  intent(inout) :: cam_in(begchunk:endchunk)
++   integer, intent(out) :: status
++
++   call phys_run2_scheme_action(action_id, phys_state, dtime, phys_tend, &
++        pbuf2d, cam_out, cam_in, status)
++end subroutine cam_phys_run2_scheme_action
++
+ subroutine cam_phys_run2_finish()
+    use physpkg, only: phys_run2_finish
+ 
+--- a/src/cpl/atm_comp_mct.F90
++++ b/src/cpl/atm_comp_mct.F90
+@@ -674,43 +674,44 @@
+        call t_barrierf('sync_phys_run2', mpicom)
+        call t_startf('phys_run2')
+        call cam_phys_run2_prepare(cam_in, phase_status)
+-    case (402)
+-       call cam_phys_run2_schemes(cam_out, cam_in, phase_status)
+-    case (403)
++    case (402:411)
++       call cam_phys_run2_scheme_action(action_id-401, cam_out, cam_in, &
++            phase_status)
++    case (412)
+        call cam_phys_run2_finish()
+        call t_stopf('phys_run2')
+-    case (404)
++    case (413)
+        call cam_run2_dynamics()
+        call t_stopf('CAM_run2')
+-    case (405)
++    case (414)
+        call t_startf('CAM_run3')
+        call cam_run3_dynamics(cam_out)
+        call t_stopf('CAM_run3')
+-    case (406)
++    case (415)
+        call t_startf('CAM_run4')
+        call cam_run4_history()
+-    case (407)
++    case (416)
+        call cam_run4_restart(cam_out, cam_in, pycam_rstwr, &
+             pycam_yr_sync, pycam_mon_sync, pycam_day_sync, pycam_tod_sync)
+-    case (408)
++    case (417)
+        call cam_run4_finish(pycam_rstwr, pycam_nlend)
+        call t_stopf('CAM_run4')
+-    case (409)
++    case (418)
+        call t_startf('CAM_adv_timestep')
+        call advance_timestep()
+        call t_stopf('CAM_adv_timestep')
+-    case (410)
++    case (419)
+        call t_startf('CAM_run1')
+        call cam_run1_dynamics(cam_in, cam_out, phase_status)
+-    case (411)
++    case (420)
+        call t_barrierf('sync_phys_run1', mpicom)
+        call t_startf('phys_run1')
+        call cam_phys_run1_prepare(cam_in, cam_out, phase_status)
+-    case (412)
++    case (421)
+        call cam_phys_run1_schemes(cam_in, cam_out, phase_status)
+        call t_stopf('phys_run1')
+        call t_stopf('CAM_run1')
+-    case (413)
++    case (422)
+        call t_startf('CAM_export')
+        call atm_export(cam_out, a2x_a%rattr)
+        call t_stopf('CAM_export')
+@@ -756,7 +757,7 @@
+        return
+     endif
+     if (pycam_expected_action /= 208 .and. pycam_expected_action /= 310 .and. &
+-        pycam_expected_action /= 413) then
++        pycam_expected_action /= 422) then
+        status = 4
+        return
+     endif

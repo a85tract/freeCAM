@@ -1,7 +1,9 @@
 #!/bin/zsh
 set -euo pipefail
 
-# Reproducible 50-coupling-step oracle for the iCESM1.3.1 PI-atm path.
+# Reproducible 50-coupling-step oracle used to extract the PI-CAM boundary.
+# The reference itself remains fully coupled: its only purpose is to provide
+# scientifically correct CAM imports/exports for the later CAM-only replay.
 # This is intentionally self-contained and does not source personal helpers.
 
 info() { print -r -- "[PI-atm] $*"; }
@@ -13,11 +15,11 @@ account=${PYCESM_PROJECT:-UCUB0188}
 priority=${PRIORITY:-regular}
 queue=${QUEUE:-develop}
 walltime=${WALLTIME:-02:00:00}
-source_root=${ICESM_SOURCE_ROOT:-/glade/work/ruitong/iCESM1.3.1_PI_atm_pycesm}
+source_root=${ICESM_SOURCE_ROOT:-/glade/work/ruitong/iCESM1.3.1_PI_cam_only}
 case_root=${CESM_CASE_ROOT:-/glade/work/ruitong/CESM_cases}
-output_root=${CESM_OUTPUT_ROOT:-/glade/derecho/scratch/ruitong/pyCESM/PI-atm}
+output_root=${CESM_OUTPUT_ROOT:-/glade/derecho/scratch/ruitong/pyCAM/PI-cam}
 mapping_root=${PI_ATM_MAPPING_ROOT:-/glade/work/fengzhu/Projects/pyCESM/test_cases/PI/mappings}
-casetag=${CASE_TAG:-PI-atm.pycesm-ref.50step}
+casetag=${CASE_TAG:-PI-cam-oracle.50step}
 resolution=ne16_g16
 compset=1850_CAM50_CLM40%SP_CICE%PRES_DOCN%DOM_RTM_SGLC_SWAV
 casename=f.e13.F1850C5.${resolution}.icesm131_ihesp.${casetag}
@@ -60,6 +62,9 @@ cd ${case_dir}
 ./xmlchange RUN_TYPE=startup,GET_REFCASE=FALSE,CLM_FORCE_COLDSTART=on
 ./xmlchange CLM_BLDNML_OPTS=-ignore_warnings --append
 ./xmlchange CIME_OUTPUT_ROOT=${output_root}
+./xmlchange JOB_QUEUE=${queue} --force
+./xmlchange JOB_WALLCLOCK_TIME=${walltime}
+./xmlchange PROJECT=${account}
 
 # Preserve the original PI-atm PE layout. Component PE sets overlap inside
 # one 512-rank global MPI world.
@@ -116,9 +121,7 @@ EOF
 ./xmlchange STOP_OPTION=nsteps,STOP_N=50
 ./xmlchange REST_OPTION=nsteps,REST_N=50
 ./xmlchange RESUBMIT=0,DOUT_S=FALSE
-./xmlchange JOB_QUEUE=${queue} --force
-./xmlchange JOB_WALLCLOCK_TIME=${walltime}
-./xmlchange DOUT_S_ROOT=${archive_dir},PROJECT=${account}
+./xmlchange DOUT_S_ROOT=${archive_dir}
 
 info "configured 50-step reference case"
 info "run directory: ${run_dir}"
@@ -131,12 +134,17 @@ fi
 if [[ ${queue} == develop ]]; then
   # cpudev is capped at 256 allocated CPUs, while the scientific PE layout
   # requires 512 MPI ranks. Keep the layout and place two ranks per CPU.
+  qsub_variables="ARGS_FOR_SCRIPT=--resubmit"
+  if [[ -n ${PYCAM_BOUNDARY_CAPTURE:-} ]]; then
+    mkdir -p -- ${PYCAM_BOUNDARY_CAPTURE:h}
+    qsub_variables="${qsub_variables},PYCAM_BOUNDARY_CAPTURE=${PYCAM_BOUNDARY_CAPTURE}"
+  fi
   job_id=$(qsub \
     -q develop \
     -l select=4:ncpus=64:mpiprocs=128:ompthreads=1:mem=64GB \
     -l walltime=${walltime} \
     -A ${account} \
-    -v ARGS_FOR_SCRIPT='--resubmit' \
+    -v ${qsub_variables} \
     .case.run)
   info "submitted ${casename} to cpudev as ${job_id}"
 else

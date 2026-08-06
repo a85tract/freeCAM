@@ -1,0 +1,241 @@
+--- a/src/cpl/atm_comp_mct.F90
++++ b/src/cpl/atm_comp_mct.F90
+@@ -61,6 +61,9 @@
+ 
+   public :: atm_init_mct
+   public :: atm_run_mct
++  public :: atm_run_begin_mct
++  public :: atm_run_action_mct
++  public :: atm_run_end_mct
+   public :: atm_final_mct
+ 
+ !--------------------------------------------------------------------------
+@@ -92,6 +95,23 @@
+ 
+   integer,                 pointer :: dof(:) ! needed for pio_init decomp for restarts
+   type(seq_infodata_type), pointer :: infodata
++
++  ! State retained only while Python drives one admitted ATM coupling call.
++  ! Numerical CAM state remains in the original CAM modules and arrays.
++  logical :: pycam_run_active = .false.
++  logical :: pycam_dosend = .false.
++  logical :: pycam_rstwr = .false.
++  logical :: pycam_nlend = .false.
++  logical :: pycam_rstwr_sync = .false.
++  logical :: pycam_nlend_sync = .false.
++  integer :: pycam_expected_action = 0
++  integer :: pycam_ymd_sync = 0
++  integer :: pycam_yr_sync = 0
++  integer :: pycam_mon_sync = 0
++  integer :: pycam_day_sync = 0
++  integer :: pycam_tod_sync = 0
++  integer :: pycam_shrlogunit = 0
++  integer :: pycam_shrloglev = 0
+ !
+ !================================================================================
+ CONTAINS
+@@ -389,6 +409,203 @@
+ 
+  !================================================================================
+ 
++ subroutine atm_run_begin_mct(EClock, cdata_a, x2a_a, a2x_a, status)
++
++    ! Begin the ATM component call and perform its import boundary.  Python
++    ! invokes the subsequent CAM phases one at a time through
++    ! atm_run_action_mct.
++    type(ESMF_Clock), intent(inout) :: EClock
++    type(seq_cdata) , intent(inout) :: cdata_a
++    type(mct_aVect) , intent(inout) :: x2a_a
++    type(mct_aVect) , intent(inout) :: a2x_a
++    integer         , intent(out)   :: status
++    integer :: atm_cpl_dt
++    integer :: dtime
++    integer :: yr, mon, day, tod, ymd
++
++    status = 0
++    if (pycam_run_active) then
++       status = 3
++       return
++    endif
++
++    ! The current PI-atm contract has exactly one CAM step in each coupling
++    ! call.  A different ratio needs an explicit Python loop contract.
++    call seq_timemgr_EClockGetData(EClock, dtime=atm_cpl_dt)
++    dtime = get_step_size()
++    if (dtime /= atm_cpl_dt) then
++       status = 8
++       return
++    endif
++
++#if (defined _MEMTRACE)
++    if (masterproc) call memmon_dump_fort('memmon.out','atm_run_mct:start::',1)
++#endif
++
++    call shr_file_getLogUnit(pycam_shrlogunit)
++    call shr_file_getLogLevel(pycam_shrloglev)
++    call shr_file_setLogUnit(iulog)
++
++    call seq_timemgr_EClockGetData(EClock, curr_ymd=pycam_ymd_sync, &
++         curr_tod=pycam_tod_sync, curr_yr=pycam_yr_sync, &
++         curr_mon=pycam_mon_sync, curr_day=pycam_day_sync)
++    call seq_infodata_GetData(infodata, orb_eccen=eccen, &
++         orb_mvelpp=mvelpp, orb_lambm0=lambm0, orb_obliqr=obliqr)
++    pycam_nlend_sync = seq_timemgr_StopAlarmIsOn(EClock)
++    pycam_rstwr_sync = seq_timemgr_RestartAlarmIsOn(EClock)
++
++    call t_startf('CAM_import')
++    call atm_import(x2a_a%rattr, cam_in, cam_out)
++    call t_stopf('CAM_import')
++
++    call get_curr_date(yr, mon, day, tod)
++    ymd = yr*10000 + mon*100 + day
++    pycam_dosend = seq_timemgr_EClockDateInSync(EClock, ymd, tod)
++    pycam_rstwr = pycam_rstwr_sync .and. pycam_dosend
++    pycam_nlend = pycam_nlend_sync .and. pycam_dosend
++    pycam_expected_action = 202
++    pycam_run_active = .true.
++ end subroutine atm_run_begin_mct
++
++ !================================================================================
++
++ subroutine atm_run_action_mct(action_id, EClock, cdata_a, x2a_a, a2x_a, &
++      loop_complete, status)
++
++    integer         , intent(in)    :: action_id
++    type(ESMF_Clock), intent(inout) :: EClock
++    type(seq_cdata) , intent(inout) :: cdata_a
++    type(mct_aVect) , intent(inout) :: x2a_a
++    type(mct_aVect) , intent(inout) :: a2x_a
++    logical         , intent(out)   :: loop_complete
++    integer         , intent(out)   :: status
++    integer :: yr, mon, day, tod, ymd
++
++    status = 0
++    loop_complete = .false.
++    if (.not. pycam_run_active) then
++       status = 3
++       return
++    endif
++    if (action_id /= pycam_expected_action + 1) then
++       status = 4
++       return
++    endif
++
++    select case (action_id)
++    case (203)
++       if (single_column) call scam_use_iop_srf(cam_in)
++       call t_startf('CAM_run2')
++       call cam_run2(cam_out, cam_in)
++       call t_stopf('CAM_run2')
++    case (204)
++       call t_startf('CAM_run3')
++       call cam_run3(cam_out)
++       call t_stopf('CAM_run3')
++    case (205)
++       call t_startf('CAM_run4')
++       call cam_run4(cam_out, cam_in, pycam_rstwr, pycam_nlend, &
++            yr_spec=pycam_yr_sync, mon_spec=pycam_mon_sync, &
++            day_spec=pycam_day_sync, sec_spec=pycam_tod_sync)
++       call t_stopf('CAM_run4')
++    case (206)
++       call t_startf('CAM_adv_timestep')
++       call advance_timestep()
++       call t_stopf('CAM_adv_timestep')
++    case (207)
++       call t_startf('CAM_run1')
++       call cam_run1(cam_in, cam_out)
++       call t_stopf('CAM_run1')
++    case (208)
++       call t_startf('CAM_export')
++       call atm_export(cam_out, a2x_a%rattr)
++       call t_stopf('CAM_export')
++       loop_complete = pycam_dosend
++       if (.not. loop_complete) then
++          ! This is the original do-while loop boundary.  Re-evaluate dosend
++          ! before Python dispatches the next cam_run2 boundary.
++          call get_curr_date(yr, mon, day, tod)
++          ymd = yr*10000 + mon*100 + day
++          pycam_dosend = seq_timemgr_EClockDateInSync(EClock, ymd, tod)
++          pycam_rstwr = pycam_rstwr_sync .and. pycam_dosend
++          pycam_nlend = pycam_nlend_sync .and. pycam_dosend
++          pycam_expected_action = 202
++          return
++       endif
++    case default
++       status = 1
++       return
++    end select
++    pycam_expected_action = action_id
++ end subroutine atm_run_action_mct
++
++ !================================================================================
++
++ subroutine atm_run_end_mct(EClock, cdata_a, x2a_a, a2x_a, status)
++
++    type(ESMF_Clock), intent(inout) :: EClock
++    type(seq_cdata) , intent(inout) :: cdata_a
++    type(mct_aVect) , intent(inout) :: x2a_a
++    type(mct_aVect) , intent(inout) :: a2x_a
++    integer         , intent(out)   :: status
++    integer :: atm_cpl_dt, dtime
++    integer :: yr, mon, day, tod, ymd
++    real(r8) :: caldayp1, nextsw_cday
++    character(len=*), parameter :: subname = 'atm_run_end_mct'
++
++    status = 0
++    if (.not. pycam_run_active) then
++       status = 3
++       return
++    endif
++    if (pycam_expected_action /= 208) then
++       status = 4
++       return
++    endif
++
++    call seq_timemgr_EClockGetData(EClock, dtime=atm_cpl_dt)
++    dtime = get_step_size()
++    if (dtime < atm_cpl_dt) then
++       nextsw_cday = radiation_nextsw_cday()
++    else if (dtime == atm_cpl_dt) then
++       caldayp1 = get_curr_calday(offset=int(dtime))
++       nextsw_cday = radiation_nextsw_cday()
++       if (caldayp1 /= nextsw_cday) nextsw_cday = -1._r8
++    else
++       status = 8
++       return
++    endif
++    call seq_infodata_PutData(infodata, nextsw_cday=nextsw_cday)
++
++    if (pycam_rstwr_sync) then
++       call atm_write_srfrest_mct(x2a_a, a2x_a, &
++            yr_spec=pycam_yr_sync, mon_spec=pycam_mon_sync, &
++            day_spec=pycam_day_sync, sec_spec=pycam_tod_sync)
++    endif
++
++    dtime = get_step_size()
++    call get_curr_date(yr, mon, day, tod, offset=-dtime)
++    ymd = yr*10000 + mon*100 + day
++    if (.not. seq_timemgr_EClockDateInSync(EClock, ymd, tod)) then
++       write(iulog,*) ' cam ymd=',ymd,'  cam tod= ',tod
++       write(iulog,*) 'sync ymd=',pycam_ymd_sync,' sync tod= ',pycam_tod_sync
++       call shr_sys_abort(subname//': CAM clock is not in sync with master Sync Clock')
++    endif
++
++    call shr_file_setLogUnit(pycam_shrlogunit)
++    call shr_file_setLogLevel(pycam_shrloglev)
++#if (defined _MEMTRACE)
++    if (masterproc) then
++       call memmon_dump_fort('memmon.out','atm_run_mct:end::',1)
++       call memmon_reset_addr()
++    endif
++#endif
++    pycam_run_active = .false.
++    pycam_expected_action = 209
++ end subroutine atm_run_end_mct
++
++ !================================================================================
++
+  subroutine atm_run_mct( EClock, cdata_a, x2a_a, a2x_a)
+ 
+     !-----------------------------------------------------------------------
+

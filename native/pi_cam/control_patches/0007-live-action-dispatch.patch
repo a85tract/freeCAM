@@ -1,0 +1,68 @@
+diff --git a/src/drivers/mct/main/cesm_comp_mod.F90 b/src/drivers/mct/main/cesm_comp_mod.F90
+--- a/src/drivers/mct/main/cesm_comp_mod.F90
++++ b/src/drivers/mct/main/cesm_comp_mod.F90
+@@ -164,6 +164,7 @@ module cesm_comp_mod
+    private
+ 
+    public cesm_pre_init1, cesm_pre_init2, cesm_init, cesm_run, cesm_final
++   public cesm_action_call
+ #ifdef USE_ESMF_LIB
+    public cesm_comp_register
+ #endif
+@@ -3523,6 +3524,56 @@ end subroutine cesm_init
+ 
+  end subroutine cesm_run
+ 
++!===============================================================================
++! Execute one already-validated PI-atm coupling kernel against the live module
++! state.  This is intentionally fail-closed: actions are added only after an
++! independent capture/replay gate proves the original kernel bit-for-bit.
++! No numerical expression is duplicated here; each branch calls the original
++! CESM routine with the same MCT objects used by cesm_run.
++!===============================================================================
++
++ subroutine cesm_action_call(action_id, status)
++   implicit none
++   integer, intent(in) :: action_id
++   integer, intent(out) :: status
++
++   status = 0
++   if (.not. iamin_CPLID) return
++
++   if (drv_threading) call seq_comm_setnthreads(nthreads_CPLID)
++
++   select case (action_id)
++   case (1) ! atm_ocn_flux
++      if (trim(aoflux_grid) /= 'ocn' .or. .not. ocn_present) then
++         status = 2
++      else
++         do exi = 1,num_inst_xao
++            eai = mod((exi-1),num_inst_atm) + 1
++            eoi = mod((exi-1),num_inst_ocn) + 1
++            a2x_ox => prep_ocn_get_a2x_ox()
++            o2x_ox => component_get_c2x_cx(ocn(eoi))
++            xao_ox => prep_aoflux_get_xao_ox()
++            call seq_flux_atmocn_mct(infodata, a2x_ox(eai), o2x_ox, xao_ox(exi))
++         enddo
++      endif
++   case (2) ! ocn_albedo
++      if (.not. ocn_present) then
++         status = 2
++      else
++         do exi = 1,num_inst_xao
++            eoi = mod((exi-1),num_inst_ocn) + 1
++            efi = mod((exi-1),num_inst_frc) + 1
++            xao_ox => prep_aoflux_get_xao_ox()
++            call seq_flux_ocnalb_mct(infodata, ocn(1), fractions_ox(efi), xao_ox(exi))
++         enddo
++      endif
++   case default
++      status = 1
++   end select
++
++   if (drv_threading) call seq_comm_setnthreads(nthreads_GLOID)
++ end subroutine cesm_action_call
++
+ !===============================================================================
+ !*******************************************************************************
+ !===============================================================================

@@ -1,0 +1,296 @@
+--- a/src/control/cam_comp.F90
++++ b/src/control/cam_comp.F90
+@@ -33,6 +33,10 @@
+    public cam_run2      ! CAM run method phase 2
+    public cam_run3      ! CAM run method phase 3
+    public cam_run4      ! CAM run method phase 4
++   public cam_run1_dynamics, cam_run1_physics
++   public cam_run2_physics, cam_run2_dynamics
++   public cam_run3_dynamics
++   public cam_run4_history, cam_run4_restart, cam_run4_finish
+    public cam_final     ! CAM Finalization
+    !
+    ! Private module data
+@@ -193,6 +197,163 @@
+ 
+ !
+ !-----------------------------------------------------------------------
++!
++subroutine cam_run1_dynamics(cam_in, cam_out, status)
++   use stepon, only: stepon_run1
++   use time_manager, only: get_nstep
++#if ( defined SPMD )
++   use mpishorthand, only: mpicom
++#endif
++   type(cam_in_t)  :: cam_in(begchunk:endchunk)
++   type(cam_out_t) :: cam_out(begchunk:endchunk)
++   integer, intent(out) :: status
++#if ( defined SPMD )
++   real(r8) :: mpi_wtime
++#endif
++
++   status = 0
++#if ( defined SPMD )
++   if (stepon_time_beg == -1.0_r8) stepon_time_beg = mpi_wtime()
++   if (nstep_beg == -1) nstep_beg = get_nstep()
++#endif
++   if (masterproc .and. print_step_cost) then
++      call t_stampf(wcstart, usrstart, sysstart)
++   endif
++   if (offline_driver_dorun) then
++      status = 2
++      return
++   endif
++   call t_barrierf('sync_stepon_run1', mpicom)
++   call t_startf('stepon_run1')
++   call stepon_run1(dtime, phys_state, phys_tend, pbuf2d, dyn_in, dyn_out)
++   call t_stopf('stepon_run1')
++end subroutine cam_run1_dynamics
++
++subroutine cam_run1_physics(cam_in, cam_out)
++   use physpkg, only: phys_run1
++#if ( defined SPMD )
++   use mpishorthand, only: mpicom
++#endif
++   type(cam_in_t)  :: cam_in(begchunk:endchunk)
++   type(cam_out_t) :: cam_out(begchunk:endchunk)
++
++   call t_barrierf('sync_phys_run1', mpicom)
++   call t_startf('phys_run1')
++   call phys_run1(phys_state, dtime, phys_tend, pbuf2d, cam_in, cam_out)
++   call t_stopf('phys_run1')
++end subroutine cam_run1_physics
++
++subroutine cam_run2_physics(cam_out, cam_in, status)
++   use physpkg, only: phys_run2
++#if ( defined SPMD )
++   use mpishorthand, only: mpicom
++#endif
++   type(cam_out_t), intent(inout) :: cam_out(begchunk:endchunk)
++   type(cam_in_t),  intent(inout) :: cam_in(begchunk:endchunk)
++   integer, intent(out) :: status
++
++   status = 0
++   if (offline_driver_dorun) then
++      status = 2
++      return
++   endif
++   call t_barrierf('sync_phys_run2', mpicom)
++   call t_startf('phys_run2')
++   call phys_run2(phys_state, dtime, phys_tend, pbuf2d, cam_out, cam_in)
++   call t_stopf('phys_run2')
++end subroutine cam_run2_physics
++
++subroutine cam_run2_dynamics()
++   use stepon, only: stepon_run2
++   use time_manager, only: is_first_step, is_first_restart_step
++#if ( defined SPMD )
++   use mpishorthand, only: mpicom
++#endif
++
++   call t_barrierf('sync_stepon_run2', mpicom)
++   call t_startf('stepon_run2')
++   call stepon_run2(phys_state, phys_tend, dyn_in, dyn_out)
++   call t_stopf('stepon_run2')
++   if (is_first_step() .or. is_first_restart_step()) then
++      call t_startf('cam_run2_memusage')
++      call t_stopf('cam_run2_memusage')
++   endif
++end subroutine cam_run2_dynamics
++
++subroutine cam_run3_dynamics(cam_out)
++   use stepon, only: stepon_run3
++   use time_manager, only: is_first_step, is_first_restart_step
++#if ( defined SPMD )
++   use mpishorthand, only: mpicom
++#endif
++   type(cam_out_t), intent(inout) :: cam_out(begchunk:endchunk)
++
++   call t_barrierf('sync_stepon_run3', mpicom)
++   call t_startf('stepon_run3')
++   call stepon_run3(dtime, etamid, cam_out, phys_state, dyn_in, dyn_out)
++   call t_stopf('stepon_run3')
++   if (is_first_step() .or. is_first_restart_step()) then
++      call t_startf('cam_run3_memusage')
++      call t_stopf('cam_run3_memusage')
++   endif
++end subroutine cam_run3_dynamics
++
++subroutine cam_run4_history()
++   use cam_history, only: wshist
++#if ( defined SPMD )
++   use mpishorthand, only: mpicom
++   real(r8) :: mpi_wtime
++#endif
++
++   call t_barrierf('sync_wshist', mpicom)
++   call t_startf('wshist')
++   call wshist()
++   call t_stopf('wshist')
++#if ( defined SPMD )
++   stepon_time_end = mpi_wtime()
++#endif
++end subroutine cam_run4_history
++
++subroutine cam_run4_restart(cam_out, cam_in, rstwr, &
++     yr_spec, mon_spec, day_spec, sec_spec)
++   use cam_restart, only: cam_write_restart
++   type(cam_out_t), intent(inout) :: cam_out(begchunk:endchunk)
++   type(cam_in_t),  intent(inout) :: cam_in(begchunk:endchunk)
++   logical, intent(in) :: rstwr
++   integer, intent(in) :: yr_spec, mon_spec, day_spec, sec_spec
++
++   if (rstwr) then
++      call t_startf('cam_write_restart')
++      call cam_write_restart(cam_in, cam_out, dyn_out, pbuf2d, &
++           yr_spec=yr_spec, mon_spec=mon_spec, day_spec=day_spec, &
++           sec_spec=sec_spec)
++      call t_stopf('cam_write_restart')
++   endif
++end subroutine cam_run4_restart
++
++subroutine cam_run4_finish(rstwr, nlend)
++   use cam_history, only: wrapup
++   logical, intent(in) :: rstwr, nlend
++
++   call t_startf('cam_run4_wrapup')
++   call wrapup(rstwr, nlend)
++   call t_stopf('cam_run4_wrapup')
++   if (masterproc .and. print_step_cost) then
++      call t_startf('cam_run4_print')
++      call t_stampf(wcend, usrend, sysend)
++      write(iulog,'(a,3f8.3,a)') 'Prv timestep wallclock, usr, sys=', &
++           wcend-wcstart, usrend-usrstart, sysend-sysstart, ' seconds'
++      call t_stopf('cam_run4_print')
++   endif
++#ifndef UNICOSMP
++   call t_startf('cam_run4_flush')
++   call shr_sys_flush(iulog)
++   call t_stopf('cam_run4_flush')
++#endif
++end subroutine cam_run4_finish
++
++!
++!-----------------------------------------------------------------------
+ !
+ subroutine cam_run1(cam_in, cam_out)
+ !-----------------------------------------------------------------------
+--- a/src/cpl/atm_comp_mct.F90
++++ b/src/cpl/atm_comp_mct.F90
+@@ -63,6 +63,7 @@
+   public :: atm_run_mct
+   public :: atm_run_begin_mct
+   public :: atm_run_action_mct
++  public :: atm_run_granular_action_mct
+   public :: atm_run_end_mct
+   public :: atm_final_mct
+ 
+@@ -541,6 +542,99 @@
+ 
+  !================================================================================
+ 
++ subroutine atm_run_granular_action_mct(action_id, EClock, cdata_a, x2a_a, &
++      a2x_a, loop_complete, status)
++
++    ! Execute the admitted PI-atm CAM call one original phase at a time.  The
++    ! routines below contain orchestration only; the numerical implementations
++    ! remain in phys_run*, stepon_run*, history, restart, and import/export.
++    integer         , intent(in)    :: action_id
++    type(ESMF_Clock), intent(inout) :: EClock
++    type(seq_cdata) , intent(inout) :: cdata_a
++    type(mct_aVect) , intent(inout) :: x2a_a
++    type(mct_aVect) , intent(inout) :: a2x_a
++    logical         , intent(out)   :: loop_complete
++    integer         , intent(out)   :: status
++    integer :: phase_status
++    integer :: yr, mon, day, tod, ymd
++
++    status = 0
++    phase_status = 0
++    loop_complete = .false.
++    if (.not. pycam_run_active) then
++       status = 3
++       return
++    endif
++    if (action_id == 301) then
++       if (pycam_expected_action /= 202 .and. &
++           pycam_expected_action /= 300) then
++          status = 4
++          return
++       endif
++    else if (action_id /= pycam_expected_action + 1) then
++       status = 4
++       return
++    endif
++
++    select case (action_id)
++    case (301)
++       if (single_column) call scam_use_iop_srf(cam_in)
++       call t_startf('CAM_run2')
++       call cam_run2_physics(cam_out, cam_in, phase_status)
++    case (302)
++       call cam_run2_dynamics()
++       call t_stopf('CAM_run2')
++    case (303)
++       call t_startf('CAM_run3')
++       call cam_run3_dynamics(cam_out)
++       call t_stopf('CAM_run3')
++    case (304)
++       call t_startf('CAM_run4')
++       call cam_run4_history()
++    case (305)
++       call cam_run4_restart(cam_out, cam_in, pycam_rstwr, &
++            pycam_yr_sync, pycam_mon_sync, pycam_day_sync, pycam_tod_sync)
++    case (306)
++       call cam_run4_finish(pycam_rstwr, pycam_nlend)
++       call t_stopf('CAM_run4')
++    case (307)
++       call t_startf('CAM_adv_timestep')
++       call advance_timestep()
++       call t_stopf('CAM_adv_timestep')
++    case (308)
++       call t_startf('CAM_run1')
++       call cam_run1_dynamics(cam_in, cam_out, phase_status)
++    case (309)
++       call cam_run1_physics(cam_in, cam_out)
++       call t_stopf('CAM_run1')
++    case (310)
++       call t_startf('CAM_export')
++       call atm_export(cam_out, a2x_a%rattr)
++       call t_stopf('CAM_export')
++       loop_complete = pycam_dosend
++       if (.not. loop_complete) then
++          call get_curr_date(yr, mon, day, tod)
++          ymd = yr*10000 + mon*100 + day
++          pycam_dosend = seq_timemgr_EClockDateInSync(EClock, ymd, tod)
++          pycam_rstwr = pycam_rstwr_sync .and. pycam_dosend
++          pycam_nlend = pycam_nlend_sync .and. pycam_dosend
++          pycam_expected_action = 300
++          return
++       endif
++    case default
++       status = 1
++       return
++    end select
++
++    if (phase_status /= 0) then
++       status = phase_status
++       return
++    endif
++    pycam_expected_action = action_id
++ end subroutine atm_run_granular_action_mct
++
++ !================================================================================
++
+  subroutine atm_run_end_mct(EClock, cdata_a, x2a_a, a2x_a, status)
+ 
+     type(ESMF_Clock), intent(inout) :: EClock
+@@ -558,7 +652,7 @@
+        status = 3
+        return
+     endif
+-    if (pycam_expected_action /= 208) then
++    if (pycam_expected_action /= 208 .and. pycam_expected_action /= 310) then
+        status = 4
+        return
+     endif

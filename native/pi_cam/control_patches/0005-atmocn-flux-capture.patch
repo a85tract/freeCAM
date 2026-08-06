@@ -1,0 +1,82 @@
+diff --git a/src/drivers/mct/main/seq_flux_mct.F90 b/src/drivers/mct/main/seq_flux_mct.F90
+index f41640f..690f97a 100644
+--- a/src/drivers/mct/main/seq_flux_mct.F90
++++ b/src/drivers/mct/main/seq_flux_mct.F90
+@@ -118,6 +118,7 @@ module seq_flux_mct
+   character(len=16) :: fluxsetting = 'unknown'
+   character(len=*),parameter  :: fluxsetting_atmocn = 'atmocn'
+   character(len=*),parameter  :: fluxsetting_exchange = 'exchange'
++  logical,save :: pycesm_flux_capture_done = .false.
+ 
+   !--- for exchange grid ---
+   type(mct_rearr) :: Re_a2e, Re_e2a, Re_o2e, Re_e2o  ! atm/ocn/exch rearrangers
+@@ -781,6 +782,8 @@ contains
+                           evap , evap_16O, evap_HDO, evap_18O, taux, tauy, tref, qref , &
+                           duu10n,ustar, re  , ssq , missval = 0.0_r8 )
+ 
++    call pycesm_capture_atmocn_flux(nloc_a2o, emask, .true.)
++
+     !--- create temporary aVects on exchange, atm, or ocn decomp as needed
+ 
+     fldlist = trim(seq_flds_xao_states)//":"//trim(seq_flds_xao_fluxes)//":sumwt"
+@@ -1078,6 +1081,8 @@ contains
+                           !duu10n,ustar, re  , ssq, missval = 0.0_r8 )
+                           duu10n,ustar, re  , ssq)
+ 
++    call pycesm_capture_atmocn_flux(nloc, emask, .false.)
++
+     do n = 1,nloc
+        if (mask(n) /= 0) then	
+           xao%rAttr(index_xao_Faox_sen ,n) = sen(n)
+@@ -1101,6 +1106,51 @@ contains
+ 
+   end subroutine seq_flux_atmocn_mct
+ 
++!===============================================================================
++
++  subroutine pycesm_capture_atmocn_flux(nloc, capture_mask, use_zero_missval)
++
++    integer(in), intent(in) :: nloc
++    integer(in), intent(in) :: capture_mask(nloc)
++    logical, intent(in) :: use_zero_missval
++    character(len=1024) :: prefix, filename
++    character(len=16), parameter :: magic = 'PYCESM_FLUX_V1  '
++    integer :: environment_status, environment_length
++    integer :: unit, ierr
++    integer :: header(6)
++
++    if (pycesm_flux_capture_done) return
++    call get_environment_variable('PYCESM_FLUX_CAPTURE', prefix, &
++         length=environment_length, status=environment_status)
++    if (environment_status /= 0 .or. environment_length < 1) return
++
++    write(filename, '(a,".rank-",i6.6,".bin")') trim(prefix), global_mype
++    open(newunit=unit, file=trim(filename), access='stream', form='unformatted', &
++         status='replace', action='write', iostat=ierr)
++    if (ierr /= 0) then
++       call shr_sys_abort('pycesm flux capture: cannot open '//trim(filename))
++    endif
++
++    header = (/ 1, global_mype, nloc, 16, 15, &
++         merge(1, 0, use_zero_missval) /)
++    write(unit) magic
++    write(unit) header
++    if (nloc > 0) then
++       write(unit) capture_mask
++       write(unit) zbot, ubot, vbot, thbot
++       write(unit) shum, shum_16O, shum_HDO, shum_18O
++       write(unit) dens, tbot, uocn, vocn, tocn
++       write(unit) roce_16O, roce_HDO, roce_18O
++       write(unit) sen, lat, lwup, evap
++       write(unit) evap_16O, evap_HDO, evap_18O
++       write(unit) taux, tauy, tref, qref, duu10n
++       write(unit) ustar, re, ssq
++    endif
++    close(unit)
++    pycesm_flux_capture_done = .true.
++
++  end subroutine pycesm_capture_atmocn_flux
++
+ !===============================================================================
+ 
+ end module seq_flux_mct

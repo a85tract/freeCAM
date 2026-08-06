@@ -1,0 +1,77 @@
+diff --git a/src/drivers/mct/main/cesm_comp_mod.F90 b/src/drivers/mct/main/cesm_comp_mod.F90
+index d4926be..0fa6b67 100644
+--- a/src/drivers/mct/main/cesm_comp_mod.F90
++++ b/src/drivers/mct/main/cesm_comp_mod.F90
+@@ -535,10 +535,12 @@ contains
+ !*******************************************************************************
+ !===============================================================================
+ 
+-subroutine cesm_pre_init1()
++subroutine cesm_pre_init1(Global_Comm_in)
+    use shr_pio_mod, only : shr_pio_init1, shr_pio_init2
+    implicit none
+ 
++   integer, intent(in), optional :: Global_Comm_in
++
+    !----------------------------------------------------------
+    !| Initialize MCT and MPI communicators and IO
+    !----------------------------------------------------------
+@@ -547,11 +549,20 @@ subroutine cesm_pre_init1()
+    logical :: comp_iamin(num_inst_total)
+    character(len=seq_comm_namelen) :: comp_name(num_inst_total)
+    integer :: i, it
++   logical :: mpi_was_initialized
+ 
+-   call mpi_init(ierr)
+-   call shr_mpi_chkerr(ierr,subname//' mpi_init')
++   call mpi_initialized(mpi_was_initialized, ierr)
++   call shr_mpi_chkerr(ierr,subname//' mpi_initialized')
++   if (.not. mpi_was_initialized) then
++      call mpi_init(ierr)
++      call shr_mpi_chkerr(ierr,subname//' mpi_init')
++   endif
+ 
+-   Global_Comm=MPI_COMM_WORLD
++   if (present(Global_Comm_in)) then
++      Global_Comm=Global_Comm_in
++   else
++      Global_Comm=MPI_COMM_WORLD
++   endif
+    comp_comm = MPI_COMM_NULL
+    time_brun = mpi_wtime()
+ 
+@@ -1830,11 +1841,13 @@ end subroutine cesm_init
+  !*******************************************************************************
+  !===============================================================================
+ 
+- subroutine cesm_run()
++ subroutine cesm_run(max_steps)
+    use seq_comm_mct, only : atm_layout, lnd_layout, ice_layout, glc_layout, rof_layout, &
+          ocn_layout, wav_layout
+ 
+    implicit none
++   integer, intent(in), optional :: max_steps
++   integer :: steps_this_call
+    ! gptl timer lookup variables
+    integer, parameter :: hashcnt=7
+    integer :: hashint(hashcnt)
+@@ -1851,6 +1864,7 @@ end subroutine cesm_init
+ 
+ 
+    hashint = 0
++   steps_this_call = 0
+ 
+ 
+    call seq_infodata_putData(infodata,atm_phase=1,lnd_phase=1,ocn_phase=1,ice_phase=1)
+@@ -3508,6 +3522,11 @@ end subroutine cesm_init
+       endif
+       call t_drvstopf  ('CPL:TPROF_WRITE',cplrun=.true.)
+ 
++      steps_this_call = steps_this_call + 1
++      if (present(max_steps)) then
++         if (steps_this_call >= max_steps) exit
++      endif
++
+    enddo   ! driver run loop
+ 
+    !|----------------------------------------------------------

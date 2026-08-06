@@ -1,0 +1,21 @@
+{
+  "schema_version": 1,
+  "case": "f.e13.F1850C5.ne16_g16.icesm131_ihesp.PI-cam-oracle.50step",
+  "execution_scope": "CAM-only",
+  "mpi_ranks": 512,
+  "steps": 50,
+  "cpudev_jobs": {
+    "nonpic_source_capture": "7029021.desched1",
+    "python_driver": "7029054.desched1",
+    "persistent_notebook_session": "7029067.desched1"
+  },
+  "results": {
+    "nonpic_source_capture_bfb": true,
+    "python_driver_bfb": true,
+    "persistent_notebook_session_bfb": true,
+    "compared_cam_files": 4,
+    "first_difference": null,
+    "persistent_mpi_launch_count": 1,
+    "unit_tests_passed": 279
+  }
+}

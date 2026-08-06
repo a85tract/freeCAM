@@ -1,0 +1,337 @@
+diff --git a/src/externals/mct/mct/m_AttrVect.F90 b/src/externals/mct/mct/m_AttrVect.F90
+index d186fb8..c23e288 100644
+--- a/src/externals/mct/mct/m_AttrVect.F90
++++ b/src/externals/mct/mct/m_AttrVect.F90
+@@ -70,6 +70,11 @@
+ !
+       use m_realkinds,only : SP,DP,FP          ! Real types definitions
+ 
++      use, intrinsic :: iso_c_binding, only : c_associated, c_char, &
++           c_f_pointer, c_funptr, c_int32_t, c_int64_t, c_loc, &
++           c_null_char, c_null_funptr, c_null_ptr, c_ptr, &
++           c_f_procpointer
++
+       use m_List, only : List   ! Support for rList and iList components.
+ 
+       implicit none
+@@ -150,6 +155,40 @@
+                                      ! AVSharedIndicesOneType structure for a single type
+       public :: cleanSharedIndices   ! clean a AVSharedIndices structure
+       public :: cleanSharedIndicesOneType  ! clean a AVSharedIndicesOneType structure
++      public :: pycesm_mct_set_allocator_v1
++      public :: pycesm_mct_clear_allocator_v1
++
++    abstract interface
++      function pycesm_allocator_callback_v1(kind_code, allocation_id, &
++           item_bytes, attribute_count, point_count, field_names, status) &
++           result(address) bind(C)
++        import :: c_char, c_int32_t, c_int64_t, c_ptr
++        integer(c_int32_t), value, intent(in) :: kind_code
++        integer(c_int64_t), value, intent(in) :: allocation_id
++        integer(c_int32_t), value, intent(in) :: item_bytes
++        integer(c_int32_t), value, intent(in) :: attribute_count
++        integer(c_int64_t), value, intent(in) :: point_count
++        character(kind=c_char), intent(in) :: field_names(*)
++        integer(c_int32_t), intent(out) :: status
++        type(c_ptr) :: address
++      end function pycesm_allocator_callback_v1
++
++      subroutine pycesm_release_callback_v1(address, status) bind(C)
++        import :: c_int32_t, c_ptr
++        type(c_ptr), value, intent(in) :: address
++        integer(c_int32_t), intent(out) :: status
++      end subroutine pycesm_release_callback_v1
++    end interface
++
++    procedure(pycesm_allocator_callback_v1), pointer, save :: &
++         pycesm_allocator => null()
++    procedure(pycesm_release_callback_v1), pointer, save :: &
++         pycesm_releaser => null()
++    type(c_funptr), save :: pycesm_allocator_pointer = c_null_funptr
++    type(c_funptr), save :: pycesm_releaser_pointer = c_null_funptr
++    type(c_ptr), allocatable, save :: pycesm_owned_buffers(:)
++    integer(c_int64_t), save :: pycesm_allocation_sequence = 0_c_int64_t
++    integer, save :: pycesm_owned_buffer_count = 0
+ 
+ 
+     interface init   ; module procedure	&
+@@ -251,6 +290,142 @@
+ 
+  contains
+ 
++ subroutine pycesm_mct_set_allocator_v1(callback, release_callback, status) &
++      bind(C, name='pycesm_mct_set_allocator_v1')
++      type(c_funptr), value, intent(in) :: callback
++      type(c_funptr), value, intent(in) :: release_callback
++      integer(c_int32_t), intent(out) :: status
++
++      status = 0_c_int32_t
++      if (.not. c_associated(callback) .or. &
++           .not. c_associated(release_callback)) then
++         status = 1_c_int32_t
++         return
++      endif
++      if (pycesm_owned_buffer_count /= 0) then
++         status = 2_c_int32_t
++         return
++      endif
++      pycesm_allocator_pointer = callback
++      call c_f_procpointer(pycesm_allocator_pointer, pycesm_allocator)
++      pycesm_releaser_pointer = release_callback
++      call c_f_procpointer(pycesm_releaser_pointer, pycesm_releaser)
++      pycesm_allocation_sequence = 0_c_int64_t
++      if (allocated(pycesm_owned_buffers)) deallocate(pycesm_owned_buffers)
++ end subroutine pycesm_mct_set_allocator_v1
++
++ subroutine pycesm_mct_clear_allocator_v1(status) &
++      bind(C, name='pycesm_mct_clear_allocator_v1')
++      integer(c_int32_t), intent(out) :: status
++      integer(c_int32_t) :: release_status
++
++      status = 0_c_int32_t
++      ! Some long-lived CESM/MCT AttrVects deliberately survive their
++      ! component finalize routine and therefore never call clean_().  The
++      ! Python driver invokes this entry point only after the complete CESM
++      ! finalize plan has returned, which is the collective lifetime boundary
++      ! at which those remaining rank-local NumPy buffers are safe to release.
++      do while (pycesm_owned_buffer_count > 0)
++         release_status = 0_c_int32_t
++         if (associated(pycesm_releaser)) then
++            call pycesm_releaser(&
++                 pycesm_owned_buffers(pycesm_owned_buffer_count), &
++                 release_status)
++         endif
++         if (release_status /= 0_c_int32_t) then
++            status = 1_c_int32_t
++            return
++         endif
++         pycesm_owned_buffers(pycesm_owned_buffer_count) = c_null_ptr
++         pycesm_owned_buffer_count = pycesm_owned_buffer_count - 1
++      enddo
++      nullify(pycesm_allocator)
++      nullify(pycesm_releaser)
++      pycesm_allocator_pointer = c_null_funptr
++      pycesm_releaser_pointer = c_null_funptr
++      pycesm_allocation_sequence = 0_c_int64_t
++      if (allocated(pycesm_owned_buffers)) deallocate(pycesm_owned_buffers)
++ end subroutine pycesm_mct_clear_allocator_v1
++
++ subroutine pycesm_remember_buffer(address)
++      type(c_ptr), intent(in) :: address
++      type(c_ptr), allocatable :: grown(:)
++      integer :: capacity
++
++      if (.not. allocated(pycesm_owned_buffers)) then
++         allocate(pycesm_owned_buffers(128))
++         pycesm_owned_buffers = c_null_ptr
++      elseif (pycesm_owned_buffer_count == size(pycesm_owned_buffers)) then
++         capacity = 2 * size(pycesm_owned_buffers)
++         allocate(grown(capacity))
++         grown = c_null_ptr
++         grown(1:pycesm_owned_buffer_count) = &
++              pycesm_owned_buffers(1:pycesm_owned_buffer_count)
++         call move_alloc(grown, pycesm_owned_buffers)
++      endif
++      pycesm_owned_buffer_count = pycesm_owned_buffer_count + 1
++      pycesm_owned_buffers(pycesm_owned_buffer_count) = address
++ end subroutine pycesm_remember_buffer
++
++ logical function pycesm_forget_buffer(address)
++      type(c_ptr), intent(in) :: address
++      integer :: index
++      integer(c_int32_t) :: release_status
++
++      pycesm_forget_buffer = .false.
++      do index = 1, pycesm_owned_buffer_count
++         if (c_associated(address, pycesm_owned_buffers(index))) then
++            release_status = 0_c_int32_t
++            if (associated(pycesm_releaser)) then
++               call pycesm_releaser(address, release_status)
++            endif
++            pycesm_owned_buffers(index) = &
++                 pycesm_owned_buffers(pycesm_owned_buffer_count)
++            pycesm_owned_buffers(pycesm_owned_buffer_count) = c_null_ptr
++            pycesm_owned_buffer_count = pycesm_owned_buffer_count - 1
++            pycesm_forget_buffer = .true.
++            return
++         endif
++      enddo
++ end function pycesm_forget_buffer
++
++ subroutine pycesm_request_buffer(kind_code, item_bytes, attribute_count, &
++      point_count, names, address, status)
++      integer(c_int32_t), intent(in) :: kind_code
++      integer(c_int32_t), intent(in) :: item_bytes
++      integer, intent(in) :: attribute_count
++      integer, intent(in) :: point_count
++      character(len=*), intent(in) :: names
++      type(c_ptr), intent(out) :: address
++      integer(c_int32_t), intent(out) :: status
++      character(kind=c_char), allocatable :: c_names(:)
++      integer :: index, name_length
++
++      address = c_null_ptr
++      status = 0_c_int32_t
++      if (.not. associated(pycesm_allocator)) then
++         status = 1_c_int32_t
++         return
++      endif
++      name_length = len_trim(names)
++      allocate(c_names(name_length + 1))
++      do index = 1, name_length
++         c_names(index) = names(index:index)
++      enddo
++      c_names(name_length + 1) = c_null_char
++      pycesm_allocation_sequence = pycesm_allocation_sequence + 1_c_int64_t
++      address = pycesm_allocator(&
++           kind_code, pycesm_allocation_sequence, item_bytes, &
++           int(attribute_count, c_int32_t), int(point_count, c_int64_t), &
++           c_names, status)
++      deallocate(c_names)
++      if (status == 0_c_int32_t .and. c_associated(address)) then
++         call pycesm_remember_buffer(address)
++      elseif (status == 0_c_int32_t) then
++         status = 2_c_int32_t
++      endif
++ end subroutine pycesm_request_buffer
++
+ !~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+ !     Math and Computer Science Division, Argonne National Laboratory  !
+ !BOP -------------------------------------------------------------------
+@@ -316,6 +475,9 @@
+ !
+   character(len=*),parameter :: myname_=myname//'::init_'
+   integer :: nIA,nRA,n,ier
++  integer(c_int32_t) :: pycesm_status
++  type(c_ptr) :: pycesm_address
++  logical :: python_integer_storage, python_real_storage
+ 
+        ! Initially, nullify all pointers in the AttrVect aV:
+ 
+@@ -342,12 +504,42 @@
+   n=0
+   if(present(lsize)) n=lsize
+ 
+-  allocate( aV%iAttr(nIA,n),aV%rAttr(nRA,n),	stat=ier)
+-  if(ier /= 0) call die(myname_,'allocate()',ier)
++  python_integer_storage = .false.
++  python_real_storage = .false.
++
++  if (associated(pycesm_allocator) .and. nIA > 0 .and. n > 0) then
++     call pycesm_request_buffer(1_c_int32_t, &
++          int(storage_size(0) / 8, c_int32_t), nIA, n, iList, &
++          pycesm_address, pycesm_status)
++     if (pycesm_status /= 0_c_int32_t) then
++        call die(myname_,'Python integer allocation',int(pycesm_status))
++     endif
++     call c_f_pointer(pycesm_address, aV%iAttr, (/nIA,n/))
++     python_integer_storage = .true.
++  else
++     allocate(aV%iAttr(nIA,n), stat=ier)
++     if(ier /= 0) call die(myname_,'allocate(iAttr)',ier)
++  endif
++
++  if (associated(pycesm_allocator) .and. nRA > 0 .and. n > 0) then
++     call pycesm_request_buffer(2_c_int32_t, &
++          int(storage_size(0.0_FP) / 8, c_int32_t), nRA, n, rList, &
++          pycesm_address, pycesm_status)
++     if (pycesm_status /= 0_c_int32_t) then
++        call die(myname_,'Python real allocation',int(pycesm_status))
++     endif
++     call c_f_pointer(pycesm_address, aV%rAttr, (/nRA,n/))
++     python_real_storage = .true.
++  else
++     allocate(aV%rAttr(nRA,n), stat=ier)
++     if(ier /= 0) call die(myname_,'allocate(rAttr)',ier)
++  endif
+ 
+ #ifdef MALL_ON
+-	call mall_ci(size(transfer(aV%iAttr,(/1/)),myname_)
+-	call mall_ci(size(transfer(aV%rAttr,(/1/)),myname_)
++	if (.not. python_integer_storage) &
++	     call mall_ci(size(transfer(aV%iAttr,(/1/)),myname_)
++	if (.not. python_real_storage) &
++	     call mall_ci(size(transfer(aV%rAttr,(/1/)),myname_)
+ #endif
+ 
+  end subroutine init_
+@@ -603,4 +795,5 @@
+ 
+   character(len=*),parameter :: myname_=myname//'::clean_'
+   integer :: ier
++  logical :: python_storage
+ 
+@@ -641,18 +834,28 @@
+ 
+   if(associated(aV%iAttr)) then
+ 
++     python_storage = .false.
++     if (size(aV%iAttr) > 0) then
++        python_storage = pycesm_forget_buffer(c_loc(aV%iAttr(1,1)))
++     endif
++
++     if (python_storage) then
++        nullify(aV%iAttr)
++     else
++
+ #ifdef MALL_ON
+-     call mall_co(size(transfer(aV%iAttr,(/1/)),myname_)
++        call mall_co(size(transfer(aV%iAttr,(/1/)),myname_)
+ #endif
+ 
+-     deallocate(aV%iAttr,stat=ier)
++        deallocate(aV%iAttr,stat=ier)
+ 
+-     if(ier /= 0) then
+-	if(present(stat)) then
+-	   stat=ier
+-	else
+-	   call warn(myname_,'deallocate(aV%iAttr)',ier)
+-	endif
++        if(ier /= 0) then
++	   if(present(stat)) then
++	      stat=ier
++	   else
++	      call warn(myname_,'deallocate(aV%iAttr)',ier)
++	   endif
++        endif
+      endif
+ 
+   endif ! if(associated(aV%iAttr))...
+@@ -661,18 +864,28 @@
+ 
+   if(associated(aV%rAttr)) then
+ 
++     python_storage = .false.
++     if (size(aV%rAttr) > 0) then
++        python_storage = pycesm_forget_buffer(c_loc(aV%rAttr(1,1)))
++     endif
++
++     if (python_storage) then
++        nullify(aV%rAttr)
++     else
++
+ #ifdef MALL_ON
+-     call mall_co(size(transfer(aV%rAttr,(/1/)),myname_)
++        call mall_co(size(transfer(aV%rAttr,(/1/)),myname_)
+ #endif
+ 
+-     deallocate(aV%rAttr,stat=ier)
++        deallocate(aV%rAttr,stat=ier)
+ 
+-     if(ier /= 0) then
+-	if(present(stat)) then
+-	   stat=ier
+-	else
+-	   call warn(myname_,'deallocate(aV%rAttr)',ier)
+-	endif
++        if(ier /= 0) then
++	   if(present(stat)) then
++	      stat=ier
++	   else
++	      call warn(myname_,'deallocate(aV%rAttr)',ier)
++	   endif
++        endif
+      endif
+ 
+   endif ! if(associated(aV%rAttr))...

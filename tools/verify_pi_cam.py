@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Fail-closed bitwise comparison for PI-atm history and restart files."""
+"""Compare every stored CAM variable without numerical tolerance."""
 
 from __future__ import annotations
 
@@ -7,7 +7,7 @@ import argparse
 import json
 from pathlib import Path
 
-from pycam_sima.cesm.validation import compare_cesm_directories
+from pycam_sima.pi_cam.validation import compare_pi_cam_directories
 
 
 def main() -> int:
@@ -16,9 +16,8 @@ def main() -> int:
     parser.add_argument("--candidate", type=Path, required=True)
     parser.add_argument("--output", type=Path)
     args = parser.parse_args()
-    result = compare_cesm_directories(args.reference, args.candidate)
-    payload = result.to_mapping()
-    text = json.dumps(payload, indent=2, default=str) + "\n"
+    result = compare_pi_cam_directories(args.reference, args.candidate)
+    text = json.dumps(result.to_payload(), indent=2, default=str) + "\n"
     if args.output is None:
         print(text, end="")
     else:

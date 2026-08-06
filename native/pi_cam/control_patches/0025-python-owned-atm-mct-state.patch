@@ -1,0 +1,63 @@
+diff --git a/src/cpl/atm_comp_mct.F90 b/src/cpl/atm_comp_mct.F90
+--- a/src/cpl/atm_comp_mct.F90
++++ b/src/cpl/atm_comp_mct.F90
+@@ -66,3 +66,5 @@ module atm_comp_mct
+   public :: atm_run_physics_action_mct
+   public :: atm_run_end_mct
++  public :: atm_python_post_cam_init_mct
++  public :: atm_python_write_srfrest_mct
+   public :: atm_final_mct
+@@ -100,2 +102,10 @@ module atm_comp_mct
+   integer,                 pointer :: dof(:) ! needed for pio_init decomp for restarts
+   type(seq_infodata_type), pointer :: infodata
++
++  ! Python replaces the outer MCT coupler, but source CAM initialization
++  ! constructs these ATM-side objects between cam_init and the initial run1.
++  type(mct_gsMap), save :: pycam_gsmap_atm
++  type(mct_gGrid), save :: pycam_dom_atm
++  type(mct_aVect), save :: pycam_a2x_atm
++  type(mct_aVect), save :: pycam_x2a_atm
++  logical, save :: pycam_post_cam_init_done = .false.
+@@ -129,2 +140,42 @@ module atm_comp_mct
+ CONTAINS
+ !================================================================================
++  subroutine atm_python_post_cam_init_mct(mpicom_atm, component_id, lsize)
++    integer, intent(in) :: mpicom_atm, component_id
++    integer, intent(out) :: lsize
++
++    if (pycam_post_cam_init_done) then
++       call shr_sys_abort('atm_python_post_cam_init_mct called twice')
++    endif
++    call atm_SetgsMap_mct(mpicom_atm, component_id, pycam_gsmap_atm)
++    lsize = mct_gsMap_lsize(pycam_gsmap_atm, mpicom_atm)
++    call mct_gsmap_orderedpoints(pycam_gsmap_atm, iam, dof)
++    call atm_domain_mct(lsize, pycam_gsmap_atm, pycam_dom_atm)
++    call mct_aVect_init(pycam_a2x_atm, rList=seq_flds_a2x_fields, lsize=lsize)
++    call mct_aVect_zero(pycam_a2x_atm)
++    call mct_aVect_init(pycam_x2a_atm, rList=seq_flds_x2a_fields, lsize=lsize)
++    call mct_aVect_zero(pycam_x2a_atm)
++    rsfilename_spec_cam = '%c.cam' // trim(inst_suffix) // '.rs.%y-%m-%d-%s.nc'
++    pycam_post_cam_init_done = .true.
++  end subroutine atm_python_post_cam_init_mct
++
++!================================================================================
++  subroutine atm_python_write_srfrest_mct(x2a_rattr, a2x_rattr, &
++       yr_spec, mon_spec, day_spec, sec_spec)
++    real(r8), intent(in) :: x2a_rattr(:,:), a2x_rattr(:,:)
++    integer, intent(in) :: yr_spec, mon_spec, day_spec, sec_spec
++
++    if (.not. pycam_post_cam_init_done) then
++       call shr_sys_abort('atm_python_write_srfrest_mct before MCT initialization')
++    endif
++    if (any(shape(x2a_rattr) /= shape(pycam_x2a_atm%rattr)) .or. &
++        any(shape(a2x_rattr) /= shape(pycam_a2x_atm%rattr))) then
++       call shr_sys_abort('atm_python_write_srfrest_mct shape mismatch')
++    endif
++    pycam_x2a_atm%rattr = x2a_rattr
++    pycam_a2x_atm%rattr = a2x_rattr
++    call atm_write_srfrest_mct(pycam_x2a_atm, pycam_a2x_atm, &
++         yr_spec=yr_spec, mon_spec=mon_spec, day_spec=day_spec, &
++         sec_spec=sec_spec)
++  end subroutine atm_python_write_srfrest_mct
++
++!================================================================================

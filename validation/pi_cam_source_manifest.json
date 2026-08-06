@@ -24,14 +24,19 @@
       "commit": "5efeaca49e17a715a338b2d29fb16665c8175cc7",
       "tracked_changes": [
         "M config/cesm/machines/config_batch.xml",
+        " M config/cesm/machines/config_compilers.xml",
         " M config/cesm/machines/template.st_archive"
       ],
-      "tracked_diff_sha256": "3dc0a49d713c5cfc2a1a36616f6c78a9a7de459d823fe9024fb73398fecde19e"
+      "tracked_diff_sha256": "ce13e29ea2ae2af99d60a95423976566404a19ddc43af74af22862aa85663a4c"
     },
     "components/cam": {
       "commit": "09c8a19c463122fad488e6fd1bbc0fcd0f410130",
-      "tracked_changes": [],
-      "tracked_diff_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      "tracked_changes": [
+        "M src/control/cam_comp.F90",
+        " M src/cpl/atm_comp_mct.F90",
+        " M src/physics/cam/physpkg.F90"
+      ],
+      "tracked_diff_sha256": "d1ef74fa0b070b509f04e0299d55d4486380e507310b06f8b9aab215b93f5b2b"
     },
     "components/cice": {
       "commit": "8609c71127dba2e25ded6cf4f1eed6e6cd9c77e4",
@@ -72,5 +77,5 @@
     }
   },
   "schema_version": 1,
-  "source_root": "/glade/work/ruitong/iCESM1.3.1_PI_atm_pycesm"
+  "source_root": "/glade/work/ruitong/iCESM1.3.1_PI_cam_only"
 }

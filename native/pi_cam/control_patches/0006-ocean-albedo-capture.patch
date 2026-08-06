@@ -1,0 +1,83 @@
+diff --git a/src/drivers/mct/main/seq_flux_mct.F90 b/src/drivers/mct/main/seq_flux_mct.F90
+--- a/src/drivers/mct/main/seq_flux_mct.F90
++++ b/src/drivers/mct/main/seq_flux_mct.F90
+@@ -119,6 +119,7 @@ module seq_flux_mct
+   character(len=*),parameter  :: fluxsetting_atmocn = 'atmocn'
+   character(len=*),parameter  :: fluxsetting_exchange = 'exchange'
+   logical,save :: pycesm_flux_capture_done = .false.
++  logical,save :: pycesm_ocnalb_capture_done = .false.
+ 
+   !--- for exchange grid ---
+   type(mct_rearr) :: Re_a2e, Re_e2a, Re_o2e, Re_e2o  ! atm/ocn/exch rearrangers
+@@ -634,5 +635,8 @@ contains
+        fractions_o%rAttr(kr,:) = fractions_o%rAttr(kx,:)
+     endif
++
++    call pycesm_capture_ocnalb(flux_albav, update_alb, nextsw_cday, &
++         eccen, mvelpp, lambm0, obliqr, fractions_o, xao_o)
+        
+     end subroutine seq_flux_ocnalb_mct
+ 
+@@ -1151,6 +1155,62 @@ contains
+ 
+   end subroutine pycesm_capture_atmocn_flux
+ 
++!===============================================================================
++
++  subroutine pycesm_capture_ocnalb(flux_albav, update_alb, nextsw_cday, &
++       eccen, mvelpp, lambm0, obliqr, fractions_o, xao_o)
++
++    logical, intent(in) :: flux_albav, update_alb
++    real(r8), intent(in) :: nextsw_cday, eccen, mvelpp, lambm0, obliqr
++    type(mct_aVect), intent(in) :: fractions_o, xao_o
++    character(len=1024) :: prefix, filename
++    character(len=16), parameter :: magic = 'PYCESM_ALBEDO_V1'
++    integer :: environment_status, environment_length
++    integer :: unit, ierr, nloc
++    integer :: header(6)
++    integer :: kifrac, kofrac, kifrad, kofrad
++    integer :: kanidr, kanidf, kavsdr, kavsdf
++    real(r8) :: orbit(5)
++
++    if (pycesm_ocnalb_capture_done .or. .not. update_alb) return
++    call get_environment_variable('PYCESM_OCNALB_CAPTURE', prefix, &
++         length=environment_length, status=environment_status)
++    if (environment_status /= 0 .or. environment_length < 1) return
++
++    nloc = mct_aVect_lsize(xao_o)
++    kifrac = mct_aVect_indexRA(fractions_o, 'ifrac')
++    kofrac = mct_aVect_indexRA(fractions_o, 'ofrac')
++    kifrad = mct_aVect_indexRA(fractions_o, 'ifrad')
++    kofrad = mct_aVect_indexRA(fractions_o, 'ofrad')
++    kanidr = mct_aVect_indexRA(xao_o, 'So_anidr')
++    kanidf = mct_aVect_indexRA(xao_o, 'So_anidf')
++    kavsdr = mct_aVect_indexRA(xao_o, 'So_avsdr')
++    kavsdf = mct_aVect_indexRA(xao_o, 'So_avsdf')
++
++    write(filename, '(a,".rank-",i6.6,".bin")') trim(prefix), global_mype
++    open(newunit=unit, file=trim(filename), access='stream', form='unformatted', &
++         status='replace', action='write', iostat=ierr)
++    if (ierr /= 0) then
++       call shr_sys_abort('pycesm ocean albedo capture: cannot open '//trim(filename))
++    endif
++
++    header = (/ 1, global_mype, nloc, 4, 6, merge(1, 0, flux_albav) /)
++    orbit = (/ nextsw_cday, eccen, mvelpp, lambm0, obliqr /)
++    write(unit) magic
++    write(unit) header
++    write(unit) orbit
++    if (nloc > 0) then
++       write(unit) lats, lons
++       write(unit) fractions_o%rAttr(kifrac,:), fractions_o%rAttr(kofrac,:)
++       write(unit) xao_o%rAttr(kanidr,:), xao_o%rAttr(kanidf,:)
++       write(unit) xao_o%rAttr(kavsdr,:), xao_o%rAttr(kavsdf,:)
++       write(unit) fractions_o%rAttr(kifrad,:), fractions_o%rAttr(kofrad,:)
++    endif
++    close(unit)
++    pycesm_ocnalb_capture_done = .true.
++
++  end subroutine pycesm_capture_ocnalb
++
+ !===============================================================================
+ 
+ end module seq_flux_mct

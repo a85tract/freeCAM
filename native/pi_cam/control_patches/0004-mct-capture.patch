@@ -1,0 +1,94 @@
+diff --git a/src/drivers/mct/main/cplcomp_exchange_mod.F90 b/src/drivers/mct/main/cplcomp_exchange_mod.F90
+index ef90f20..75a245b 100644
+--- a/src/drivers/mct/main/cplcomp_exchange_mod.F90
++++ b/src/drivers/mct/main/cplcomp_exchange_mod.F90
+@@ -53,2 +53,3 @@ module cplcomp_exchange_mod
+   real(r8),parameter :: c1 = 1.0_r8
++  logical,save :: pycesm_mct_capture_done = .false.
+ 
+@@ -274,2 +275,5 @@ contains
+                ALLTOALL=mct_usealltoall)
++          if (trim(comp%ntype) == 'atm') then
++             call pycesm_capture_mct_rearrangement(mapper, dom_s%data, dom_d%data)
++          endif
+        else
+@@ -282,2 +286,79 @@ contains
+ 
++  !===============================================================================
++
++  subroutine pycesm_capture_mct_rearrangement(mapper, source_av, destination_av)
++
++    type(seq_map), intent(in) :: mapper
++    type(mct_aVect), intent(in) :: source_av
++    type(mct_aVect), intent(in) :: destination_av
++    character(len=1024) :: prefix, filename
++    character(len=16), parameter :: magic = 'PYCESM_MCT_V1   '
++    integer :: environment_status, environment_length
++    integer :: local_rank, local_size, ierr, unit
++    integer :: index, source_nseg, destination_nseg
++    integer :: source_lsize, destination_lsize
++    integer :: source_nattr, destination_nattr
++    integer, allocatable :: source_starts(:), source_lengths(:)
++    integer, allocatable :: destination_starts(:), destination_lengths(:)
++    integer :: header(11)
++
++    if (pycesm_mct_capture_done) return
++    call get_environment_variable('PYCESM_MCT_CAPTURE', prefix, &
++         length=environment_length, status=environment_status)
++    if (environment_status /= 0 .or. environment_length < 1) return
++
++    call MPI_Comm_rank(mapper%mpicom, local_rank, ierr)
++    if (ierr /= 0) call shr_sys_abort('pycesm capture: MPI_Comm_rank failed')
++    call MPI_Comm_size(mapper%mpicom, local_size, ierr)
++    if (ierr /= 0) call shr_sys_abort('pycesm capture: MPI_Comm_size failed')
++
++    source_nseg = count(mapper%gsmap_s%pe_loc == local_rank)
++    destination_nseg = count(mapper%gsmap_d%pe_loc == local_rank)
++    allocate(source_starts(source_nseg), source_lengths(source_nseg))
++    allocate(destination_starts(destination_nseg), destination_lengths(destination_nseg))
++    source_nseg = 0
++    do index = 1, mapper%gsmap_s%ngseg
++       if (mapper%gsmap_s%pe_loc(index) == local_rank) then
++          source_nseg = source_nseg + 1
++          source_starts(source_nseg) = mapper%gsmap_s%start(index)
++          source_lengths(source_nseg) = mapper%gsmap_s%length(index)
++       endif
++    enddo
++    destination_nseg = 0
++    do index = 1, mapper%gsmap_d%ngseg
++       if (mapper%gsmap_d%pe_loc(index) == local_rank) then
++          destination_nseg = destination_nseg + 1
++          destination_starts(destination_nseg) = mapper%gsmap_d%start(index)
++          destination_lengths(destination_nseg) = mapper%gsmap_d%length(index)
++       endif
++    enddo
++
++    source_lsize = size(source_av%rAttr, 2)
++    destination_lsize = size(destination_av%rAttr, 2)
++    source_nattr = size(source_av%rAttr, 1)
++    destination_nattr = size(destination_av%rAttr, 1)
++    if (sum(source_lengths) /= source_lsize) then
++       call shr_sys_abort('pycesm capture: source GSMap/AttrVect size mismatch')
++    endif
++    if (sum(destination_lengths) /= destination_lsize) then
++       call shr_sys_abort('pycesm capture: destination GSMap/AttrVect size mismatch')
++    endif
++
++    write(filename, '(a,".rank-",i6.6,".bin")') trim(prefix), local_rank
++    open(newunit=unit, file=trim(filename), access='stream', form='unformatted', &
++         status='replace', action='write', iostat=ierr)
++    if (ierr /= 0) call shr_sys_abort('pycesm capture: cannot open '//trim(filename))
++    header = (/ 1, local_rank, local_size, mapper%gsmap_s%gsize, &
++         mapper%gsmap_d%gsize, source_nseg, destination_nseg, source_lsize, &
++         destination_lsize, source_nattr, destination_nattr /)
++    write(unit) magic
++    write(unit) header
++    if (source_nseg > 0) write(unit) source_starts, source_lengths
++    if (destination_nseg > 0) write(unit) destination_starts, destination_lengths
++    if (source_nattr > 0 .and. source_lsize > 0) write(unit) source_av%rAttr
++    if (destination_nattr > 0 .and. destination_lsize > 0) write(unit) destination_av%rAttr
++    close(unit)
++    pycesm_mct_capture_done = .true.
++  end subroutine pycesm_capture_mct_rearrangement
++
+   !=======================================================================

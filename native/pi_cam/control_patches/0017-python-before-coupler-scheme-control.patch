@@ -1,0 +1,454 @@
+--- a/src/physics/cam/physpkg.F90
++++ b/src/physics/cam/physpkg.F90
+@@ -52,7 +52,7 @@
+   public phys_init   ! Public initialization method
+   public phys_run1   ! First phase of the public run method
+   public phys_run2   ! Second phase of the public run method
+-  public phys_run1_prepare, phys_run1_schemes
++  public phys_run1_prepare, phys_run1_schemes, phys_run1_scheme_action
+   public phys_run2_prepare, phys_run2_schemes, phys_run2_scheme_action, &
+        phys_run2_finish
+   public phys_final  ! Public finalization method
+@@ -99,6 +99,17 @@
+   real(r8), allocatable :: pycesm_ac_obklen(:,:)
+   integer :: pycesm_ac_expected_action = 1
+ 
++  ! Rank-local state carried across Python-dispatched tphysbc actions.
++  type(check_tracers_data), allocatable :: pycesm_bc_tracerint(:)
++  real(r8), allocatable :: pycesm_bc_zdu(:,:,:)
++  real(r8), allocatable :: pycesm_bc_cmfmc(:,:,:)
++  real(r8), allocatable :: pycesm_bc_cmfmc2(:,:,:)
++  real(r8), allocatable :: pycesm_bc_dlf(:,:,:)
++  real(r8), allocatable :: pycesm_bc_dlf2(:,:,:)
++  real(r8), allocatable :: pycesm_bc_rliq(:,:)
++  real(r8), allocatable :: pycesm_bc_wtdlf(:,:,:,:)
++  integer :: pycesm_bc_expected_action = 1
++
+ !======================================================================= 
+ contains
+ !======================================================================= 
+@@ -994,6 +1005,93 @@
+ #endif
+ end subroutine phys_run1_schemes
+ 
++subroutine phys_run1_scheme_action(action_id, phys_state, ztodt, phys_tend, &
++     pbuf2d, cam_in, cam_out, status)
++    use cam_diagnostics, only: diag_physvar_ic
++    use physics_buffer, only: physics_buffer_desc, pbuf_get_chunk
++    use comsrf, only: fsns, fsnt, flns, sgh30, flnt, landm, fsds
++    use water_tracer_vars, only: wtrc_nwset
++#if (defined BFB_CAM_SCAM_IOP)
++    use cam_history, only: outfld
++#endif
++    integer, intent(in) :: action_id
++    real(r8), intent(in) :: ztodt
++    type(physics_state), intent(inout) :: phys_state(begchunk:endchunk)
++    type(physics_tend), intent(inout) :: phys_tend(begchunk:endchunk)
++    type(physics_buffer_desc), pointer :: pbuf2d(:,:)
++    type(cam_in_t), intent(inout) :: cam_in(begchunk:endchunk)
++    type(cam_out_t), intent(inout) :: cam_out(begchunk:endchunk)
++    integer, intent(out) :: status
++    integer :: c
++#if (! defined SPMD)
++    integer :: mpicom = 0
++#endif
++    type(physics_buffer_desc), pointer :: phys_buffer_chunk(:)
++
++    status = 0
++    if (adiabatic .or. ideal_phys .or. &
++        (single_column .and. scm_crm_mode)) then
++       status = 2
++       return
++    endif
++    if (action_id < 1 .or. action_id > 11) then
++       status = 1
++       return
++    endif
++    if (action_id /= pycesm_bc_expected_action) then
++       status = 4
++       return
++    endif
++
++    if (action_id == 1) then
++       if (.not. allocated(pycesm_bc_tracerint)) then
++          allocate(pycesm_bc_tracerint(begchunk:endchunk))
++          allocate(pycesm_bc_zdu(pcols,pver,begchunk:endchunk))
++          allocate(pycesm_bc_cmfmc(pcols,pverp,begchunk:endchunk))
++          allocate(pycesm_bc_cmfmc2(pcols,pverp,begchunk:endchunk))
++          allocate(pycesm_bc_dlf(pcols,pver,begchunk:endchunk))
++          allocate(pycesm_bc_dlf2(pcols,pver,begchunk:endchunk))
++          allocate(pycesm_bc_rliq(pcols,begchunk:endchunk))
++          allocate(pycesm_bc_wtdlf(pcols,pver,wtrc_nwset,begchunk:endchunk))
++       endif
++#ifdef TRACER_CHECK
++       call gmean_mass('before tphysbc DRY', phys_state)
++#endif
++#if (defined BFB_CAM_SCAM_IOP)
++       do c=begchunk,endchunk
++          call outfld('Tg', cam_in(c)%ts, pcols, c)
++       end do
++#endif
++       call t_barrierf('sync_bc_physics', mpicom)
++       call t_startf('bc_physics')
++       call t_adj_detailf(+1)
++    endif
++
++!$OMP PARALLEL DO PRIVATE (C, phys_buffer_chunk)
++    do c=begchunk,endchunk
++       phys_buffer_chunk => pbuf_get_chunk(pbuf2d, c)
++       if (action_id == 1) then
++          call t_startf('diag_physvar_ic')
++          call diag_physvar_ic(c, phys_buffer_chunk, cam_out(c), cam_in(c))
++          call t_stopf('diag_physvar_ic')
++       endif
++       call tphysbc(ztodt, fsns(1,c), fsnt(1,c), flns(1,c), flnt(1,c), &
++            phys_state(c), phys_tend(c), phys_buffer_chunk, fsds(1,c), &
++            landm(1,c), sgh30(1,c), cam_out(c), cam_in(c), action_id)
++    end do
++
++    if (action_id == 11) then
++       call t_adj_detailf(-1)
++       call t_stopf('bc_physics')
++#ifdef TRACER_CHECK
++       call gmean_mass('between DRY', phys_state)
++#endif
++       pycesm_bc_expected_action = 1
++    else
++       pycesm_bc_expected_action = action_id + 1
++    endif
++end subroutine phys_run1_scheme_action
++
+ subroutine phys_run2_prepare(phys_state, pbuf2d, cam_in, status)
+     use physics_buffer, only: physics_buffer_desc
+     use mo_lightning, only: lightning_no_prod
+@@ -2019,7 +2117,7 @@
+ subroutine tphysbc (ztodt,               &
+        fsns,    fsnt,    flns,    flnt,    state,   &
+        tend,    pbuf,     fsds,    landm,            &
+-       sgh30, cam_out, cam_in )
++       sgh30, cam_out, cam_in, action_id)
+     !----------------------------------------------------------------------- 
+     ! 
+     ! Purpose: 
+@@ -2105,6 +2203,7 @@
+     real(r8), intent(inout) :: fsds(pcols)                   ! Surface solar down flux
+     real(r8), intent(in) :: landm(pcols)                   ! land fraction ramp
+     real(r8), intent(in) :: sgh30(pcols)                   ! Std. deviation of 30 s orography for tms
++    integer, intent(in), optional :: action_id             ! Python-dispatched process boundary
+ 
+     type(physics_state), intent(inout) :: state
+     type(physics_tend ), intent(inout) :: tend
+@@ -2126,6 +2225,7 @@
+     type(physics_tend)    :: tend_sc          ! tend for sub-columns
+ 
+     integer :: nstep                          ! current timestep number
++    integer :: stage                          ! 0 is the original monolithic path
+ 
+     real(r8) :: net_flx(pcols)
+ 
+@@ -2218,6 +2318,43 @@
+     logical :: state_debug_checks
+     !-----------------------------------------------------------------------
+ 
++    stage = 0
++    if (present(action_id)) stage = action_id
++    zero = 0._r8
++    zero_tracers(:,:) = 0._r8
++    zero_sc(:) = 0._r8
++    lchnk = state%lchnk
++    ncol = state%ncol
++    rtdt = 1._r8/ztodt
++    nstep = get_nstep()
++
++    select case (stage)
++    case (0, 1)
++       continue
++    case (2)
++       go to 200
++    case (3)
++       go to 300
++    case (4)
++       go to 400
++    case (5)
++       go to 500
++    case (6)
++       go to 600
++    case (7)
++       go to 700
++    case (8)
++       go to 800
++    case (9)
++       go to 900
++    case (10)
++       go to 1000
++    case (11)
++       go to 1100
++    case default
++       call endrun('TPHYSBC: invalid Python action id')
++    end select
++
+     call t_startf('bc_init')
+ 
+     call phys_getopts( microp_scheme_out      = microp_scheme, &
+@@ -2348,10 +2485,26 @@
+     call check_tracers_init(state, tracerint)
+ 
+     call t_stopf('bc_init')
++    if (stage == 1) then
++       pycesm_bc_tracerint(lchnk) = tracerint
++       return
++    endif
+ 
+     !===================================================
+     ! Global mean total energy fixer
+     !===================================================
++200 continue
++    if (stage == 2) then
++       itim_old = pbuf_old_tim_idx()
++       call pbuf_get_field(pbuf, teout_idx, teout, (/1,itim_old/), (/pcols,1/))
++       call pbuf_get_field(pbuf, tini_idx, tini)
++       call pbuf_get_field(pbuf, qini_idx, qini)
++       call pbuf_get_field(pbuf, cldliqini_idx, cldliqini)
++       call pbuf_get_field(pbuf, cldiceini_idx, cldiceini)
++       ifld = pbuf_get_index('DTCORE')
++       call pbuf_get_field(pbuf, ifld, dtcore, start=(/1,1,itim_old/), &
++            kount=(/pcols,pver,1/))
++    endif
+     call t_startf('energy_fixer')
+ 
+     !*** BAB's FV heating kludge *** save the initial temperature
+@@ -2383,11 +2536,13 @@
+     end if
+ 
+     call t_stopf('energy_fixer')
++    if (stage == 2) return
+     !
+     !===================================================
+     ! Dry adjustment
+     ! This code block is not a good example of interfacing a parameterization
+     !===================================================
++300 continue
+     call t_startf('dry_adjustment')
+ 
+     ! Copy state info for input to dadadj
+@@ -2406,10 +2561,12 @@
+     call physics_update(state, ptend, ztodt, tend)
+ 
+     call t_stopf('dry_adjustment')
++    if (stage == 3) return
+     !
+     !===================================================
+     ! Moist convection
+     !===================================================
++400 continue
+     call t_startf('moist_convection')
+     !
+     ! Since the PBL doesn't pass constituent perturbations, they
+@@ -2462,9 +2619,31 @@
+     flx_cnd(:ncol) = prec_dp(:ncol) + rliq(:ncol)
+     call check_energy_chng(state, tend, "convect_deep", nstep, ztodt, zero, flx_cnd, snow_dp, zero)
+ 
++    if (stage == 4) then
++       pycesm_bc_zdu(:,:,lchnk) = zdu
++       pycesm_bc_cmfmc(:,:,lchnk) = cmfmc
++       pycesm_bc_dlf(:,:,lchnk) = dlf
++       pycesm_bc_rliq(:,lchnk) = rliq
++       pycesm_bc_wtdlf(:,:,:,lchnk) = wtdlf
++       call t_stopf('moist_convection')
++       return
++    endif
++
+     !
+     ! Call Hack (1994) convection scheme to deal with shallow/mid-level convection
+     !
++500 continue
++    if (stage == 5) then
++       zdu = pycesm_bc_zdu(:,:,lchnk)
++       cmfmc = pycesm_bc_cmfmc(:,:,lchnk)
++       dlf = pycesm_bc_dlf(:,:,lchnk)
++       rliq = pycesm_bc_rliq(:,lchnk)
++       wtdlf = pycesm_bc_wtdlf(:,:,:,lchnk)
++       tracerint = pycesm_bc_tracerint(lchnk)
++       call pbuf_get_field(pbuf, prec_sh_idx, prec_sh)
++       call pbuf_get_field(pbuf, snow_sh_idx, snow_sh)
++       call t_startf('moist_convection')
++    endif
+     call t_startf ('convect_shallow_tend')
+ 
+     call convect_shallow_tend (ztodt   , cmfmc,  cmfmc2  ,&
+@@ -2495,13 +2674,26 @@
+     call check_tracers_chng(state, tracerint, "convect_shallow", nstep, ztodt, zero_tracers)
+ 
+     call t_stopf('moist_convection')
++    if (stage == 5) then
++       pycesm_bc_zdu(:,:,lchnk) = zdu
++       pycesm_bc_cmfmc(:,:,lchnk) = cmfmc
++       pycesm_bc_cmfmc2(:,:,lchnk) = cmfmc2
++       pycesm_bc_dlf(:,:,lchnk) = dlf
++       pycesm_bc_dlf2(:,:,lchnk) = dlf2
++       pycesm_bc_rliq(:,lchnk) = rliq
++       pycesm_bc_wtdlf(:,:,:,lchnk) = wtdlf
++       pycesm_bc_tracerint(lchnk) = tracerint
++       return
++    endif
+ 
+     ! Rebin the 4-bin version of sea salt into bins for coarse and accumulation
+     ! modes that correspond to the available optics data.  This is only necessary
+     ! for CAM-RT.  But it's done here so that the microphysics code which is called
+     ! from the stratiform interface has access to the same aerosols as the radiation
+     ! code.
++600 continue
+     call sslt_rebin_adv(pbuf,  state)
++    if (stage == 6) return
+     
+     !===================================================
+     ! Calculate tendencies from CARMA bin microphysics.
+@@ -2512,6 +2704,31 @@
+     ! snow are stored in the physics buffer and will be incorporated by the MG microphysics.
+     !
+     ! Currently CARMA cloud microphysics is only supported with the MG microphysics.
++700 continue
++    if (stage == 7) then
++       call phys_getopts(microp_scheme_out=microp_scheme, &
++            macrop_scheme_out=macrop_scheme, &
++            state_debug_checks_out=state_debug_checks)
++       zdu = pycesm_bc_zdu(:,:,lchnk)
++       cmfmc = pycesm_bc_cmfmc(:,:,lchnk)
++       cmfmc2 = pycesm_bc_cmfmc2(:,:,lchnk)
++       dlf = pycesm_bc_dlf(:,:,lchnk)
++       dlf2 = pycesm_bc_dlf2(:,:,lchnk)
++       rliq = pycesm_bc_rliq(:,lchnk)
++       wtdlf = pycesm_bc_wtdlf(:,:,:,lchnk)
++       call pbuf_get_field(pbuf, prec_str_idx, prec_str)
++       call pbuf_get_field(pbuf, snow_str_idx, snow_str)
++       call pbuf_get_field(pbuf, prec_sed_idx, prec_sed)
++       call pbuf_get_field(pbuf, snow_sed_idx, snow_sed)
++       call pbuf_get_field(pbuf, prec_pcw_idx, prec_pcw)
++       call pbuf_get_field(pbuf, snow_pcw_idx, snow_pcw)
++       if (use_subcol_microp) then
++          call pbuf_get_field(pbuf, prec_str_idx, prec_str_sc, &
++               col_type=col_type_subcol)
++          call pbuf_get_field(pbuf, snow_str_idx, snow_str_sc, &
++               col_type=col_type_subcol)
++       endif
++    endif
+     call t_startf('carma_timestep_tend')
+ 
+     if (carma_do_cldice .or. carma_do_cldliq) then
+@@ -2737,6 +2954,16 @@
+      call wtrc_mass_fixer(state)
+    end if
+ 
++    if (stage == 7) then
++       pycesm_bc_dlf(:,:,lchnk) = dlf
++       return
++    endif
++
++800 continue
++    if (stage == 8) then
++       dlf = pycesm_bc_dlf(:,:,lchnk)
++       tracerint = pycesm_bc_tracerint(lchnk)
++    endif
+     if ( .not. deep_scheme_does_scav_trans() ) then
+ 
+        ! -------------------------------------------------------------------------------
+@@ -2786,12 +3013,14 @@
+    if(trace_water) then
+      call wtrc_mass_fixer(state)
+    end if
++    if (stage == 8) return
+ 
+     !===================================================
+     ! Moist physical parameteriztions complete: 
+     ! send dynamical variables, and derived variables to history file
+     !===================================================
+ 
++900 continue
+     call t_startf('bc_history_write')
+     call diag_phys_writeout(state, cam_out%psl)
+     call diag_conv(state, ztodt, pbuf)
+@@ -2807,10 +3036,12 @@
+     call cloud_diagnostics_calc(state, pbuf)
+ 
+     call t_stopf('bc_cld_diag_history_write')
++    if (stage == 9) return
+ 
+     !===================================================
+     ! Radiation computations
+     !===================================================
++1000 continue
+     call t_startf('radiation')
+ 
+ 
+@@ -2828,8 +3059,10 @@
+     call check_energy_chng(state, tend, "radheat", nstep, ztodt, zero, zero, zero, net_flx)
+ 
+     call t_stopf('radiation')
++    if (stage == 10) return
+ 
+     ! Diagnose the location of the tropopause and its location to the history file(s).
++1100 continue
+     call t_startf('tropopause')
+     call tropopause_output(state)
+     call t_stopf('tropopause')
+--- a/src/control/cam_comp.F90
++++ b/src/control/cam_comp.F90
+@@ -37,7 +37,8 @@
+    public cam_run2_physics, cam_run2_dynamics
+    public cam_run3_dynamics
+    public cam_run4_history, cam_run4_restart, cam_run4_finish
+-   public cam_phys_run1_prepare, cam_phys_run1_schemes
++   public cam_phys_run1_prepare, cam_phys_run1_schemes, &
++        cam_phys_run1_scheme_action
+    public cam_phys_run2_prepare, cam_phys_run2_schemes, &
+         cam_phys_run2_scheme_action, cam_phys_run2_finish
+    public cam_final     ! CAM Finalization
+@@ -265,6 +266,17 @@
+         cam_in, cam_out, status)
+ end subroutine cam_phys_run1_schemes
+ 
++subroutine cam_phys_run1_scheme_action(action_id, cam_in, cam_out, status)
++   use physpkg, only: phys_run1_scheme_action
++   integer, intent(in) :: action_id
++   type(cam_in_t), intent(inout) :: cam_in(begchunk:endchunk)
++   type(cam_out_t), intent(inout) :: cam_out(begchunk:endchunk)
++   integer, intent(out) :: status
++
++   call phys_run1_scheme_action(action_id, phys_state, dtime, phys_tend, &
++        pbuf2d, cam_in, cam_out, status)
++end subroutine cam_phys_run1_scheme_action
++
+ subroutine cam_run2_physics(cam_out, cam_in, status)
+    use physpkg, only: phys_run2
+ #if ( defined SPMD )
+--- a/src/cpl/atm_comp_mct.F90
++++ b/src/cpl/atm_comp_mct.F90
+@@ -707,11 +707,14 @@
+        call t_barrierf('sync_phys_run1', mpicom)
+        call t_startf('phys_run1')
+        call cam_phys_run1_prepare(cam_in, cam_out, phase_status)
+-    case (421)
+-       call cam_phys_run1_schemes(cam_in, cam_out, phase_status)
+-       call t_stopf('phys_run1')
+-       call t_stopf('CAM_run1')
+-    case (422)
++    case (421:431)
++       call cam_phys_run1_scheme_action(action_id-420, cam_in, cam_out, &
++            phase_status)
++       if (action_id == 431) then
++          call t_stopf('phys_run1')
++          call t_stopf('CAM_run1')
++       endif
++    case (432)
+        call t_startf('CAM_export')
+        call atm_export(cam_out, a2x_a%rattr)
+        call t_stopf('CAM_export')
+@@ -757,7 +760,7 @@
+        return
+     endif
+     if (pycam_expected_action /= 208 .and. pycam_expected_action /= 310 .and. &
+-        pycam_expected_action /= 422) then
++        pycam_expected_action /= 432) then
+        status = 4
+        return
+     endif

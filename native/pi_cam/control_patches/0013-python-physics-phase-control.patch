@@ -1,0 +1,395 @@
+--- a/src/physics/cam/physpkg.F90
++++ b/src/physics/cam/physpkg.F90
+@@ -51,6 +51,8 @@
+   public phys_init   ! Public initialization method
+   public phys_run1   ! First phase of the public run method
+   public phys_run2   ! Second phase of the public run method
++  public phys_run1_prepare, phys_run1_schemes
++  public phys_run2_prepare, phys_run2_schemes, phys_run2_finish
+   public phys_final  ! Public finalization method
+ 
+   ! Private module data
+@@ -886,6 +888,186 @@
+   !-----------------------------------------------------------------------
+   !
+ 
++subroutine phys_run1_prepare(phys_state, ztodt, pbuf2d, cam_in, cam_out, status)
++    use time_manager, only: get_nstep
++    use cam_diagnostics, only: diag_allocate
++    use check_energy, only: check_energy_gmean
++    use physics_buffer, only: physics_buffer_desc, pbuf_allocate
++#if ( defined OFFLINE_DYN )
++    use metdata, only: get_met_srf1
++#endif
++    real(r8), intent(in) :: ztodt
++    type(physics_state), intent(inout) :: phys_state(begchunk:endchunk)
++    type(physics_buffer_desc), pointer :: pbuf2d(:,:)
++    type(cam_in_t) :: cam_in(begchunk:endchunk)
++    type(cam_out_t) :: cam_out(begchunk:endchunk)
++    integer, intent(out) :: status
++    integer :: nstep
++
++    status = 0
++    call t_startf('physpkg_st1')
++    nstep = get_nstep()
++#if ( defined OFFLINE_DYN )
++    call get_met_srf1(cam_in)
++#endif
++    if (nstep == 0 .and. phys_do_flux_avg()) call flux_avg_init(cam_in, pbuf2d)
++    call t_startf('chk_en_gmean')
++    call check_energy_gmean(phys_state, pbuf2d, ztodt, nstep)
++    call t_stopf('chk_en_gmean')
++    call t_stopf('physpkg_st1')
++
++    if (adiabatic .or. ideal_phys .or. &
++        (single_column .and. scm_crm_mode)) then
++       status = 2
++       return
++    endif
++    call t_startf('physpkg_st1')
++    call pbuf_allocate(pbuf2d, 'physpkg')
++    call diag_allocate()
++    call phys_timestep_init(phys_state, cam_out, pbuf2d)
++    call t_stopf('physpkg_st1')
++end subroutine phys_run1_prepare
++
++subroutine phys_run1_schemes(phys_state, ztodt, phys_tend, pbuf2d, &
++     cam_in, cam_out, status)
++    use cam_diagnostics, only: diag_physvar_ic
++    use physics_buffer, only: physics_buffer_desc, pbuf_get_chunk
++    use comsrf, only: fsns, fsnt, flns, sgh30, flnt, landm, fsds
++#if (defined BFB_CAM_SCAM_IOP )
++    use cam_history, only: outfld
++#endif
++    real(r8), intent(in) :: ztodt
++    type(physics_state), intent(inout) :: phys_state(begchunk:endchunk)
++    type(physics_tend), intent(inout) :: phys_tend(begchunk:endchunk)
++    type(physics_buffer_desc), pointer :: pbuf2d(:,:)
++    type(cam_in_t) :: cam_in(begchunk:endchunk)
++    type(cam_out_t) :: cam_out(begchunk:endchunk)
++    integer, intent(out) :: status
++    integer :: c
++#if (! defined SPMD)
++    integer :: mpicom = 0
++#endif
++    type(physics_buffer_desc), pointer :: phys_buffer_chunk(:)
++
++    status = 0
++    if (adiabatic .or. ideal_phys .or. &
++        (single_column .and. scm_crm_mode)) then
++       status = 2
++       return
++    endif
++#ifdef TRACER_CHECK
++    call gmean_mass('before tphysbc DRY', phys_state)
++#endif
++#if (defined BFB_CAM_SCAM_IOP )
++    do c=begchunk, endchunk
++       call outfld('Tg', cam_in(c)%ts, pcols, c)
++    end do
++#endif
++    call t_barrierf('sync_bc_physics', mpicom)
++    call t_startf('bc_physics')
++    call t_adj_detailf(+1)
++!$OMP PARALLEL DO PRIVATE (C, phys_buffer_chunk)
++    do c=begchunk, endchunk
++       phys_buffer_chunk => pbuf_get_chunk(pbuf2d, c)
++       call t_startf('diag_physvar_ic')
++       call diag_physvar_ic(c, phys_buffer_chunk, cam_out(c), cam_in(c))
++       call t_stopf('diag_physvar_ic')
++       call tphysbc(ztodt, fsns(1,c), fsnt(1,c), flns(1,c), flnt(1,c), &
++            phys_state(c), phys_tend(c), phys_buffer_chunk, fsds(1,c), &
++            landm(1,c), sgh30(1,c), cam_out(c), cam_in(c))
++    end do
++    call t_adj_detailf(-1)
++    call t_stopf('bc_physics')
++#ifdef TRACER_CHECK
++    call gmean_mass('between DRY', phys_state)
++#endif
++end subroutine phys_run1_schemes
++
++subroutine phys_run2_prepare(phys_state, pbuf2d, cam_in, status)
++    use physics_buffer, only: physics_buffer_desc
++    use mo_lightning, only: lightning_no_prod
++#if ( defined OFFLINE_DYN )
++    use metdata, only: get_met_srf2
++#endif
++    type(physics_state), intent(inout) :: phys_state(begchunk:endchunk)
++    type(physics_buffer_desc), pointer :: pbuf2d(:,:)
++    type(cam_in_t), intent(inout) :: cam_in(begchunk:endchunk)
++    integer, intent(out) :: status
++
++    status = 0
++    if ((single_column .and. scm_crm_mode) .or. adiabatic .or. ideal_phys) then
++       status = 2
++       return
++    endif
++#if ( defined OFFLINE_DYN )
++    call get_met_srf2(cam_in)
++#endif
++    call t_startf('lightning_no_prod')
++    call lightning_no_prod(phys_state, pbuf2d, cam_in)
++    call t_stopf('lightning_no_prod')
++end subroutine phys_run2_prepare
++
++subroutine phys_run2_schemes(phys_state, ztodt, phys_tend, pbuf2d, &
++     cam_out, cam_in, status)
++    use physics_buffer, only: physics_buffer_desc, pbuf_get_chunk
++    use cam_diagnostics, only: diag_surf
++    use comsrf, only: trefmxav, trefmnav, sgh, sgh30, fsds
++    real(r8), intent(in) :: ztodt
++    type(physics_state), intent(inout) :: phys_state(begchunk:endchunk)
++    type(physics_tend), intent(inout) :: phys_tend(begchunk:endchunk)
++    type(physics_buffer_desc), pointer :: pbuf2d(:,:)
++    type(cam_out_t), intent(inout) :: cam_out(begchunk:endchunk)
++    type(cam_in_t), intent(inout) :: cam_in(begchunk:endchunk)
++    integer, intent(out) :: status
++    integer :: c, ncol
++#if (! defined SPMD)
++    integer :: mpicom = 0
++#endif
++    type(physics_buffer_desc), pointer :: phys_buffer_chunk(:)
++
++    status = 0
++    if ((single_column .and. scm_crm_mode) .or. adiabatic .or. ideal_phys) then
++       status = 2
++       return
++    endif
++    call t_barrierf('sync_ac_physics', mpicom)
++    call t_startf('ac_physics')
++    call t_adj_detailf(+1)
++!$OMP PARALLEL DO PRIVATE (C, NCOL, phys_buffer_chunk)
++    do c=begchunk,endchunk
++       ncol = get_ncols_p(c)
++       phys_buffer_chunk => pbuf_get_chunk(pbuf2d, c)
++       call t_startf('diag_surf')
++       call diag_surf(cam_in(c), cam_out(c), phys_state(c)%ps, &
++            trefmxav(1,c), trefmnav(1,c))
++       call t_stopf('diag_surf')
++       call tphysac(ztodt, cam_in(c), sgh(1,c), sgh30(1,c), cam_out(c), &
++            phys_state(c), phys_tend(c), phys_buffer_chunk, fsds(1,c))
++    end do
++    call t_adj_detailf(-1)
++    call t_stopf('ac_physics')
++#ifdef TRACER_CHECK
++    call gmean_mass('after tphysac FV:WET)', phys_state)
++#endif
++end subroutine phys_run2_schemes
++
++subroutine phys_run2_finish(pbuf2d)
++    use physics_buffer, only: physics_buffer_desc, pbuf_deallocate, &
++         pbuf_update_tim_idx
++    use cam_diagnostics, only: diag_deallocate
++    use carma_intr, only: carma_accumulate_stats
++    type(physics_buffer_desc), pointer :: pbuf2d(:,:)
++
++    call t_startf('carma_accumulate_stats')
++    call carma_accumulate_stats()
++    call t_stopf('carma_accumulate_stats')
++    call t_startf('physpkg_st2')
++    call pbuf_deallocate(pbuf2d, 'physpkg')
++    call pbuf_update_tim_idx()
++    call diag_deallocate()
++    call t_stopf('physpkg_st2')
++end subroutine phys_run2_finish
++
+ subroutine phys_run1(phys_state, ztodt, phys_tend, pbuf2d,  cam_in, cam_out)
+     !----------------------------------------------------------------------- 
+     ! 
+--- a/src/control/cam_comp.F90
++++ b/src/control/cam_comp.F90
+@@ -37,6 +37,8 @@
+    public cam_run2_physics, cam_run2_dynamics
+    public cam_run3_dynamics
+    public cam_run4_history, cam_run4_restart, cam_run4_finish
++   public cam_phys_run1_prepare, cam_phys_run1_schemes
++   public cam_phys_run2_prepare, cam_phys_run2_schemes, cam_phys_run2_finish
+    public cam_final     ! CAM Finalization
+    !
+    ! Private module data
+@@ -243,6 +245,25 @@
+    call t_stopf('phys_run1')
+ end subroutine cam_run1_physics
+ 
++subroutine cam_phys_run1_prepare(cam_in, cam_out, status)
++   use physpkg, only: phys_run1_prepare
++   type(cam_in_t)  :: cam_in(begchunk:endchunk)
++   type(cam_out_t) :: cam_out(begchunk:endchunk)
++   integer, intent(out) :: status
++
++   call phys_run1_prepare(phys_state, dtime, pbuf2d, cam_in, cam_out, status)
++end subroutine cam_phys_run1_prepare
++
++subroutine cam_phys_run1_schemes(cam_in, cam_out, status)
++   use physpkg, only: phys_run1_schemes
++   type(cam_in_t)  :: cam_in(begchunk:endchunk)
++   type(cam_out_t) :: cam_out(begchunk:endchunk)
++   integer, intent(out) :: status
++
++   call phys_run1_schemes(phys_state, dtime, phys_tend, pbuf2d, &
++        cam_in, cam_out, status)
++end subroutine cam_phys_run1_schemes
++
+ subroutine cam_run2_physics(cam_out, cam_in, status)
+    use physpkg, only: phys_run2
+ #if ( defined SPMD )
+@@ -263,6 +284,30 @@
+    call t_stopf('phys_run2')
+ end subroutine cam_run2_physics
+ 
++subroutine cam_phys_run2_prepare(cam_in, status)
++   use physpkg, only: phys_run2_prepare
++   type(cam_in_t), intent(inout) :: cam_in(begchunk:endchunk)
++   integer, intent(out) :: status
++
++   call phys_run2_prepare(phys_state, pbuf2d, cam_in, status)
++end subroutine cam_phys_run2_prepare
++
++subroutine cam_phys_run2_schemes(cam_out, cam_in, status)
++   use physpkg, only: phys_run2_schemes
++   type(cam_out_t), intent(inout) :: cam_out(begchunk:endchunk)
++   type(cam_in_t),  intent(inout) :: cam_in(begchunk:endchunk)
++   integer, intent(out) :: status
++
++   call phys_run2_schemes(phys_state, dtime, phys_tend, pbuf2d, &
++        cam_out, cam_in, status)
++end subroutine cam_phys_run2_schemes
++
++subroutine cam_phys_run2_finish()
++   use physpkg, only: phys_run2_finish
++
++   call phys_run2_finish(pbuf2d)
++end subroutine cam_phys_run2_finish
++
+ subroutine cam_run2_dynamics()
+    use stepon, only: stepon_run2
+    use time_manager, only: is_first_step, is_first_restart_step
+--- a/src/cpl/atm_comp_mct.F90
++++ b/src/cpl/atm_comp_mct.F90
+@@ -64,6 +64,7 @@
+   public :: atm_run_begin_mct
+   public :: atm_run_action_mct
+   public :: atm_run_granular_action_mct
++  public :: atm_run_physics_action_mct
+   public :: atm_run_end_mct
+   public :: atm_final_mct
+ 
+@@ -635,6 +636,108 @@
+ 
+  !================================================================================
+ 
++ subroutine atm_run_physics_action_mct(action_id, EClock, cdata_a, x2a_a, &
++      a2x_a, loop_complete, status)
++
++    integer         , intent(in)    :: action_id
++    type(ESMF_Clock), intent(inout) :: EClock
++    type(seq_cdata) , intent(inout) :: cdata_a
++    type(mct_aVect) , intent(inout) :: x2a_a
++    type(mct_aVect) , intent(inout) :: a2x_a
++    logical         , intent(out)   :: loop_complete
++    integer         , intent(out)   :: status
++    integer :: phase_status
++    integer :: yr, mon, day, tod, ymd
++
++    status = 0
++    phase_status = 0
++    loop_complete = .false.
++    if (.not. pycam_run_active) then
++       status = 3
++       return
++    endif
++    if (action_id == 401) then
++       if (pycam_expected_action /= 202 .and. &
++           pycam_expected_action /= 400) then
++          status = 4
++          return
++       endif
++    else if (action_id /= pycam_expected_action + 1) then
++       status = 4
++       return
++    endif
++
++    select case (action_id)
++    case (401)
++       if (single_column) call scam_use_iop_srf(cam_in)
++       call t_startf('CAM_run2')
++       call t_barrierf('sync_phys_run2', mpicom)
++       call t_startf('phys_run2')
++       call cam_phys_run2_prepare(cam_in, phase_status)
++    case (402)
++       call cam_phys_run2_schemes(cam_out, cam_in, phase_status)
++    case (403)
++       call cam_phys_run2_finish()
++       call t_stopf('phys_run2')
++    case (404)
++       call cam_run2_dynamics()
++       call t_stopf('CAM_run2')
++    case (405)
++       call t_startf('CAM_run3')
++       call cam_run3_dynamics(cam_out)
++       call t_stopf('CAM_run3')
++    case (406)
++       call t_startf('CAM_run4')
++       call cam_run4_history()
++    case (407)
++       call cam_run4_restart(cam_out, cam_in, pycam_rstwr, &
++            pycam_yr_sync, pycam_mon_sync, pycam_day_sync, pycam_tod_sync)
++    case (408)
++       call cam_run4_finish(pycam_rstwr, pycam_nlend)
++       call t_stopf('CAM_run4')
++    case (409)
++       call t_startf('CAM_adv_timestep')
++       call advance_timestep()
++       call t_stopf('CAM_adv_timestep')
++    case (410)
++       call t_startf('CAM_run1')
++       call cam_run1_dynamics(cam_in, cam_out, phase_status)
++    case (411)
++       call t_barrierf('sync_phys_run1', mpicom)
++       call t_startf('phys_run1')
++       call cam_phys_run1_prepare(cam_in, cam_out, phase_status)
++    case (412)
++       call cam_phys_run1_schemes(cam_in, cam_out, phase_status)
++       call t_stopf('phys_run1')
++       call t_stopf('CAM_run1')
++    case (413)
++       call t_startf('CAM_export')
++       call atm_export(cam_out, a2x_a%rattr)
++       call t_stopf('CAM_export')
++       loop_complete = pycam_dosend
++       if (.not. loop_complete) then
++          call get_curr_date(yr, mon, day, tod)
++          ymd = yr*10000 + mon*100 + day
++          pycam_dosend = seq_timemgr_EClockDateInSync(EClock, ymd, tod)
++          pycam_rstwr = pycam_rstwr_sync .and. pycam_dosend
++          pycam_nlend = pycam_nlend_sync .and. pycam_dosend
++          pycam_expected_action = 400
++          return
++       endif
++    case default
++       status = 1
++       return
++    end select
++
++    if (phase_status /= 0) then
++       status = phase_status
++       return
++    endif
++    pycam_expected_action = action_id
++ end subroutine atm_run_physics_action_mct
++
++ !================================================================================
++
+  subroutine atm_run_end_mct(EClock, cdata_a, x2a_a, a2x_a, status)
+ 
+     type(ESMF_Clock), intent(inout) :: EClock
+@@ -652,7 +755,8 @@
+        status = 3
+        return
+     endif
+-    if (pycam_expected_action /= 208 .and. pycam_expected_action /= 310) then
++    if (pycam_expected_action /= 208 .and. pycam_expected_action /= 310 .and. &
++        pycam_expected_action /= 413) then
+        status = 4
+        return
+     endif

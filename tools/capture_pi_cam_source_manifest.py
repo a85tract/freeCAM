@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Capture the exact external iCESM source and PI-atm input revisions."""
+"""Capture the exact external iCESM source and PI-CAM oracle input revisions."""
 
 from __future__ import annotations
 

@@ -97,6 +97,18 @@ from .notebook import (
     ResourcePlan,
     plan_pool_resources,
 )
+from .pi_cam import (
+    CAMBoundaryProvider,
+    InMemoryBoundaryProvider,
+    NativeCAMDevice,
+    PICAMCase,
+    PICAMConfig,
+    PICAMDriver,
+    PICAMNotebookError,
+    PICAMNotebookSession,
+    PICAMStepPlan,
+    ReplayBoundaryProvider,
+)
 
 __all__ = [
     "Action",
@@ -188,6 +200,16 @@ __all__ = [
     "SuiteNode",
     "SuiteScheme",
     "VariableSpec",
+    "CAMBoundaryProvider",
+    "InMemoryBoundaryProvider",
+    "NativeCAMDevice",
+    "PICAMCase",
+    "PICAMConfig",
+    "PICAMDriver",
+    "PICAMNotebookError",
+    "PICAMNotebookSession",
+    "PICAMStepPlan",
+    "ReplayBoundaryProvider",
     "PythonFieldView",
     "PythonProcessContext",
     "PythonProcessRegistry",

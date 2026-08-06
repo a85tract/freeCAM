@@ -1,0 +1,23 @@
+diff --git a/config/cesm/machines/config_compilers.xml b/config/cesm/machines/config_compilers.xml
+index dc81a31..13426af 100644
+--- a/config/cesm/machines/config_compilers.xml
++++ b/config/cesm/machines/config_compilers.xml
+@@ -248,7 +248,8 @@ using a fortran linker.
+     <append DEBUG="FALSE"> -O2 -debug minimal </append>
+   </FFLAGS>
+   <FFLAGS_NOOPT>
+-    <base> -O0 </base>
++    <!-- This isolated Python-driver tree links CESM objects into a .so. -->
++    <base> -O0 -fPIC </base>
+     <append compile_threaded="TRUE"> -qopenmp </append>
+   </FFLAGS_NOOPT>
+   <FIXEDFLAGS>
+@@ -703,2 +704,8 @@ using a fortran linker.
+ <compiler MACH="derecho">
++  <CFLAGS>
++    <append> -fPIC </append>
++  </CFLAGS>
++  <FFLAGS>
++    <append> -fPIC </append>
++  </FFLAGS>
+   <CPPDEFS>

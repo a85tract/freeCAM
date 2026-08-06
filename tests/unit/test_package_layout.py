@@ -29,7 +29,7 @@ def test_top_level_package_contains_only_public_entrypoints() -> None:
         for path in package.iterdir()
         if path.is_dir() and path.name != "__pycache__"
     }
-    assert packages == {"core", "model", "notebook"}
+    assert packages == {"core", "model", "notebook", "pi_cam"}
 
 
 def test_root_api_delegates_to_responsibility_packages() -> None:

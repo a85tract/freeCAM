@@ -1,0 +1,181 @@
+--- a/src/drivers/mct/main/cesm_comp_mod.F90
++++ b/src/drivers/mct/main/cesm_comp_mod.F90
+@@ -170,6 +170,7 @@
+    private
+ 
+    public cesm_pre_init1, cesm_pre_init2, cesm_init, cesm_run, cesm_final
++   public cesm_init_action_call
+    public cesm_action_call, cesm_nested_action_call, cesm_cam_action_call
+    public cesm_physics_action_call
+    public cesm_step_begin, cesm_step_end, cesm_run_finish
+@@ -534,6 +535,8 @@
+    integer :: pycesm_nested_expected_action = 0
+    integer :: pycesm_cam_expected_action = 0
+    integer :: pycesm_physics_expected_action = 0
++   logical :: pycesm_init_active = .false.
++   integer :: pycesm_init_expected_action = 0
+    logical :: pycesm_final_active = .false.
+    integer :: pycesm_final_expected_action = 0
+    integer :: pycesm_hashint(7) = 0
+@@ -1024,6 +1027,54 @@
+ #ifdef USE_ESMF_LIB
+   type(ESMF_CplComp) :: drvcomp
+ #endif
++  integer :: action_id
++  integer :: status
++
++  do action_id = 504, 527
++#ifdef USE_ESMF_LIB
++     call cesm_init_action_call(action_id, status, drvcomp)
++#else
++     call cesm_init_action_call(action_id, status)
++#endif
++     if (status /= 0) then
++        call shr_sys_abort(subname//' Python initialization action rejected')
++     endif
++  enddo
++
++end subroutine cesm_init
++
++!===============================================================================
++
++#ifdef USE_ESMF_LIB
++subroutine cesm_init_action_call(action_id, status, drvcomp)
++#else
++subroutine cesm_init_action_call(action_id, status)
++#endif
++
++  implicit none
++  integer, intent(in) :: action_id
++  integer, intent(out) :: status
++#ifdef USE_ESMF_LIB
++  type(ESMF_CplComp) :: drvcomp
++#endif
++
++  status = 0
++  if (action_id == 504) then
++     if (pycesm_init_active) then
++        status = 1
++        return
++     endif
++     pycesm_init_active = .true.
++     pycesm_init_expected_action = 503
++  endif
++  if (.not. pycesm_init_active) then
++     status = 1
++     return
++  endif
++  if (action_id /= pycesm_init_expected_action + 1) then
++     status = 2
++     return
++  endif
+ 
+  101  format( A, 2i8, 12A, A, F8.2, A, F8.2 )
+  102  format( A, 2i8, A, 8L3 )
+@@ -1043,6 +1094,8 @@
+    !  components will set them to true for the purposes of symmetry
+    !-----------------------------------------------------------------------------
+ 
++   select case (action_id)
++   case (504)
+    call t_startf('CPL:init_comps')
+    if (iamroot_CPLID )then
+       write(logunit,*) ' '
+@@ -1052,40 +1105,69 @@
+ 
+    call t_adj_detailf(+2)
+ 
++   case (505)
+    call component_init_pre(atm, ATMID, CPLATMID, CPLALLATMID, infodata, ntype='atm')
++   case (506)
+    call component_init_pre(lnd, LNDID, CPLLNDID, CPLALLLNDID, infodata, ntype='lnd')
++   case (507)
+    call component_init_pre(rof, ROFID, CPLROFID, CPLALLROFID, infodata, ntype='rof')
++   case (508)
+    call component_init_pre(ocn, OCNID, CPLOCNID, CPLALLOCNID, infodata, ntype='ocn')
++   case (509)
+    call component_init_pre(ice, ICEID, CPLICEID, CPLALLICEID, infodata, ntype='ice')
++   case (510)
+    call component_init_pre(glc, GLCID, CPLGLCID, CPLALLGLCID, infodata, ntype='glc')
++   case (511)
+    call component_init_pre(wav, WAVID, CPLWAVID, CPLALLWAVID, infodata, ntype='wav')
+ 
+ #ifdef ESMF_INTERFACE
++   case (512)
+    call component_init_cc(Eclock_a, drvcomp, atm, atm_register_esmf, infodata, NLFilename)
++   case (513)
+    call component_init_cc(Eclock_l, drvcomp, lnd, lnd_register_esmf, infodata, NLFilename)
++   case (514)
+    call component_init_cc(Eclock_r, drvcomp, rof, rof_register_esmf, infodata, NLFilename)
++   case (515)
+    call component_init_cc(Eclock_o, drvcomp, ocn, ocn_register_esmf, infodata, NLFilename)
++   case (516)
+    call component_init_cc(Eclock_i, drvcomp, ice, ice_register_esmf, infodata, NLFilename)
++   case (517)
+    call component_init_cc(Eclock_g, drvcomp, glc, glc_register_esmf, infodata, NLFilename)
++   case (518)
+    call component_init_cc(Eclock_w, drvcomp, wav, wav_register_esmf, infodata, NLFilename)
+ #else
++   case (512)
+    call component_init_cc(Eclock_a, atm, atm_init, infodata, NLFilename)
++   case (513)
+    call component_init_cc(Eclock_l, lnd, lnd_init, infodata, NLFilename)
++   case (514)
+    call component_init_cc(Eclock_r, rof, rof_init, infodata, NLFilename)
++   case (515)
+    call component_init_cc(Eclock_o, ocn, ocn_init, infodata, NLFilename)
++   case (516)
+    call component_init_cc(Eclock_i, ice, ice_init, infodata, NLFilename)
++   case (517)
+    call component_init_cc(Eclock_g, glc, glc_init, infodata, NLFilename)
++   case (518)
+    call component_init_cc(Eclock_w, wav, wav_init, infodata, NLFilename)
+ #endif
+ 
++   case (519)
+    call component_init_cx(atm, infodata)
++   case (520)
+    call component_init_cx(lnd, infodata)
++   case (521)
+    call component_init_cx(rof, infodata)
++   case (522)
+    call component_init_cx(ocn, infodata)
++   case (523)
+    call component_init_cx(ice, infodata)
++   case (524)
+    call component_init_cx(glc, infodata)
++   case (525)
+    call component_init_cx(wav, infodata)
+ 
++   case (526)
+ #ifdef ESMF_INTERFACE
+    if (iamin_CPLID) then
+       call ESMF_GridCompInitialize(cplgc, importState=c2x_cx_state, exportState=x2c_cx_state, &
+@@ -1146,6 +1228,7 @@
+ 
+    call t_stopf('CPL:init_comps')
+ 
++   case (527)
+    !----------------------------------------------------------
+    !| Determine coupling interactions based on present and prognostic flags
+    !----------------------------------------------------------
+@@ -1859,7 +1942,18 @@
+ 
+    call t_stopf  ('CPL:INIT')
+ 
+-end subroutine cesm_init
++   case default
++      status = 3
++      return
++   end select
++
++   pycesm_init_expected_action = action_id
++   if (action_id == 527) then
++      pycesm_init_active = .false.
++      pycesm_init_expected_action = 0
++   endif
++
++end subroutine cesm_init_action_call
+ 
+  !===============================================================================
+  !*******************************************************************************

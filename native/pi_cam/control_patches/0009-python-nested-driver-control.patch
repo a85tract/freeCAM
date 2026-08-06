@@ -1,0 +1,265 @@
+--- a/src/drivers/mct/main/component_mod.F90
++++ b/src/drivers/mct/main/component_mod.F90
+@@ -56,6 +56,8 @@
+   public :: component_init_update_petlist !esmf only
+ #endif
+   public :: component_run                 ! mct and esmf versions
++  public :: component_run_begin           ! Python-owned PI-atm boundary
++  public :: component_run_end             ! Python-owned PI-atm boundary
+   public :: component_final               ! mct and esmf versions 
+   public :: component_exch
+   public :: component_diag
+@@ -928,6 +930,73 @@
+   !===============================================================================
+ 
+ #ifndef ESMF_INTERFACE
++  subroutine component_run_begin(comp, infodata, seq_flds_x2c_fluxes, &
++       comp_prognostic, timer_barrier, timer_comp_run, run_barriers, status)
++
++    ! Split the non-numerical prologue from component_run so Python can own
++    ! the ordering of the component's internal entry points.  The admitted
++    ! PI-atm path has one ATM instance and one phase; fail closed otherwise.
++    type(component_type)      , intent(inout) :: comp(:)
++    type(seq_infodata_type)   , intent(inout) :: infodata
++    character(len=*)          , intent(in)    :: seq_flds_x2c_fluxes
++    logical                   , intent(in)    :: comp_prognostic
++    character(len=*)          , intent(in)    :: timer_barrier
++    character(len=*)          , intent(in)    :: timer_comp_run
++    logical                   , intent(in)    :: run_barriers
++    integer                   , intent(out)   :: status
++    integer :: ierr
++
++    status = 0
++    if (size(comp) /= 1) then
++       status = 2
++       return
++    endif
++
++    if (comp(1)%oneletterid == 'a') then
++       call seq_infodata_putData(infodata, atm_phase=1)
++    else
++       status = 2
++       return
++    endif
++
++    if (.not. comp(1)%iamin_compid) return
++    if (run_barriers) then
++       call t_drvstartf(trim(timer_barrier))
++       call mpi_barrier(comp(1)%mpicom_compid, ierr)
++       call t_drvstopf(trim(timer_barrier))
++    endif
++    call t_drvstartf(trim(timer_comp_run), barrier=comp(1)%mpicom_compid)
++    if (drv_threading) call seq_comm_setnthreads(comp(1)%nthreads_compid)
++    if (comp_prognostic) then
++       call mct_avect_vecmult(comp(1)%x2c_cc, comp(1)%drv2mdl, &
++            seq_flds_x2c_fluxes, mask_spval=.true.)
++    endif
++  end subroutine component_run_begin
++
++  !===============================================================================
++
++  subroutine component_run_end(comp, seq_flds_c2x_fluxes, timer_comp_run, status)
++
++    ! Complete the exact epilogue paired with component_run_begin.
++    type(component_type), intent(inout) :: comp(:)
++    character(len=*)     , intent(in)   :: seq_flds_c2x_fluxes
++    character(len=*)     , intent(in)   :: timer_comp_run
++    integer              , intent(out)  :: status
++
++    status = 0
++    if (size(comp) /= 1 .or. comp(1)%oneletterid /= 'a') then
++       status = 2
++       return
++    endif
++    if (.not. comp(1)%iamin_compid) return
++    call mct_avect_vecmult(comp(1)%c2x_cc, comp(1)%mdl2drv, &
++         seq_flds_c2x_fluxes, mask_spval=.true.)
++    if (drv_threading) call seq_comm_setnthreads(nthreads_GLOID)
++    call t_drvstopf(trim(timer_comp_run))
++  end subroutine component_run_end
++
++  !===============================================================================
++
+   subroutine component_run(Eclock, comp, comp_run, infodata,  &
+        seq_flds_x2c_fluxes, seq_flds_c2x_fluxes, &
+        comp_prognostic, comp_num, timer_barrier, timer_comp_run, &
+@@ -1386,4 +1455,3 @@
+ 
+ end module component_mod
+ 
+-
+--- a/src/drivers/mct/main/cesm_comp_mod.F90
++++ b/src/drivers/mct/main/cesm_comp_mod.F90
+@@ -52,6 +52,9 @@
+    use rof_comp_esmf , only: rof_register_esmf
+ #else
+    use atm_comp_mct  , only: atm_init=>atm_init_mct, atm_run=>atm_run_mct, atm_final=>atm_final_mct
++   use atm_comp_mct  , only: atm_run_begin=>atm_run_begin_mct
++   use atm_comp_mct  , only: atm_run_action=>atm_run_action_mct
++   use atm_comp_mct  , only: atm_run_end=>atm_run_end_mct
+    use lnd_comp_mct  , only: lnd_init=>lnd_init_mct, lnd_run=>lnd_run_mct, lnd_final=>lnd_final_mct
+    use ocn_comp_mct  , only: ocn_init=>ocn_init_mct, ocn_run=>ocn_run_mct, ocn_final=>ocn_final_mct
+    use ice_comp_mct  , only: ice_init=>ice_init_mct, ice_run=>ice_run_mct, ice_final=>ice_final_mct
+@@ -135,6 +138,7 @@
+    use component_type_mod , only: atm, lnd, ice, ocn, rof, glc, wav
+    use component_mod      , only: component_init_pre
+    use component_mod      , only: component_init_cc, component_init_cx, component_run, component_final
++   use component_mod      , only: component_run_begin, component_run_end
+    use component_mod      , only: component_init_areacor, component_init_aream
+    use component_mod      , only: component_exch, component_diag
+ #ifdef ESMF_INTERFACE
+@@ -164,7 +168,8 @@
+    private
+ 
+    public cesm_pre_init1, cesm_pre_init2, cesm_init, cesm_run, cesm_final
+-   public cesm_action_call, cesm_step_begin, cesm_step_end, cesm_run_finish
++   public cesm_action_call, cesm_nested_action_call
++   public cesm_step_begin, cesm_step_end, cesm_run_finish
+ #ifdef USE_ESMF_LIB
+    public cesm_comp_register
+ #endif
+@@ -520,7 +525,9 @@
+    ! which already-existing orchestration action runs next.
+    logical :: pycesm_run_started = .false.
+    logical :: pycesm_step_active = .false.
++   logical :: pycesm_atm_nested_active = .false.
+    integer :: pycesm_expected_action = 0
++   integer :: pycesm_nested_expected_action = 0
+    integer :: pycesm_hashint(7) = 0
+ 
+    !----------------------------------------------------------------------------
+@@ -3573,7 +3580,7 @@
+    alarm_mask = 0
+    status = 0
+ 
+-   if (pycesm_step_active) then
++   if (pycesm_step_active .or. pycesm_atm_nested_active) then
+       status = 3
+       return
+    endif
+@@ -3695,6 +3702,8 @@
+    current_ymd = ymd
+    current_tod = tod
+    pycesm_expected_action = 100
++   pycesm_nested_expected_action = 0
++   pycesm_atm_nested_active = .false.
+    pycesm_step_active = .true.
+  end subroutine cesm_step_begin
+ 
+@@ -3722,6 +3731,10 @@
+       status = 6
+       return
+    endif
++   if (pycesm_atm_nested_active) then
++      status = 7
++      return
++   endif
+ 
+    call t_drvstartf('CPL:TSTAMP_WRITE',cplrun=.true.)
+    if (tod == 0 .or. info_debug > 1) then
+@@ -3799,6 +3812,8 @@
+ 
+    pycesm_step_active = .false.
+    pycesm_expected_action = 0
++   pycesm_nested_expected_action = 0
++   pycesm_atm_nested_active = .false.
+  end subroutine cesm_step_end
+ 
+ !===============================================================================
+@@ -3808,7 +3823,7 @@
+    integer, intent(out) :: status
+ 
+    status = 0
+-   if (pycesm_step_active) then
++   if (pycesm_step_active .or. pycesm_atm_nested_active) then
+       status = 3
+       return
+    endif
+@@ -3828,6 +3843,86 @@
+ ! CESM routine with the same MCT objects used by cesm_run.
+ !===============================================================================
+ 
++ subroutine cesm_nested_action_call(action_id, loop_complete, status)
++   implicit none
++   integer, intent(in) :: action_id
++   integer, intent(out) :: loop_complete
++   integer, intent(out) :: status
++   integer :: action_status
++   logical :: atm_loop_complete
++
++   status = 0
++   loop_complete = 0
++   action_status = 0
++   atm_loop_complete = .false.
++   if (.not. pycesm_step_active) then
++      status = 3
++      return
++   endif
++   if (.not. atmrun_alarm) then
++      status = 5
++      return
++   endif
++
++   if (action_id == 201) then
++      if (pycesm_expected_action /= 124 .or. pycesm_atm_nested_active) then
++         status = 4
++         return
++      endif
++      call component_run_begin(atm,infodata,seq_flds_x2a_fluxes, &
++           atm_prognostic,'CPL:ATM_RUN_BARRIER','CPL:ATM_RUN', &
++           run_barriers,action_status)
++      if (action_status /= 0) then
++         status = action_status
++         return
++      endif
++      pycesm_atm_nested_active = .true.
++      pycesm_nested_expected_action = 201
++      return
++   endif
++
++   if (.not. pycesm_atm_nested_active .or. &
++       action_id /= pycesm_nested_expected_action + 1) then
++      status = 4
++      return
++   endif
++
++   select case (action_id)
++   case (202)
++      call atm_run_begin(Eclock_a,atm(ens1)%cdata_cc, &
++           atm(ens1)%x2c_cc,atm(ens1)%c2x_cc,action_status)
++   case (203:208)
++      call atm_run_action(action_id,Eclock_a,atm(ens1)%cdata_cc, &
++           atm(ens1)%x2c_cc,atm(ens1)%c2x_cc,atm_loop_complete,action_status)
++   case (209)
++      call atm_run_end(Eclock_a,atm(ens1)%cdata_cc, &
++           atm(ens1)%x2c_cc,atm(ens1)%c2x_cc,action_status)
++   case (210)
++      call component_run_end(atm,seq_flds_a2x_fluxes, &
++           'CPL:ATM_RUN',action_status)
++   case default
++      status = 1
++      return
++   end select
++
++   if (action_status /= 0) then
++      status = action_status
++      return
++   endif
++   if (action_id == 208 .and. .not. atm_loop_complete) then
++      pycesm_nested_expected_action = 202
++   else
++      pycesm_nested_expected_action = action_id
++   endif
++   if (atm_loop_complete) loop_complete = 1
++   if (action_id == 210) then
++      pycesm_atm_nested_active = .false.
++      pycesm_expected_action = 125
++   endif
++ end subroutine cesm_nested_action_call
++
++!===============================================================================
++
+  subroutine cesm_action_call(action_id, status)
+    use seq_comm_mct, only : atm_layout, lnd_layout, ice_layout, rof_layout, ocn_layout
+    implicit none
+

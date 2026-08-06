@@ -1,0 +1,789 @@
+/glade/campaign/cesm/tutorial/tutorial_2025_env/tutorial_2025_profile: line 7: module: command not found
+/glade/campaign/cesm/tutorial/tutorial_2025_env/tutorial_2025_profile: line 8: module: command not found
+/glade/campaign/cesm/tutorial/tutorial_2025_env/tutorial_2025_profile: line 9: module: command not found
+/glade/campaign/cesm/tutorial/tutorial_2025_env/tutorial_2025_profile: line 10: module: command not found
+/glade/campaign/cesm/tutorial/tutorial_2025_env/tutorial_2025_profile: line 11: module: command not found
+/glade/campaign/cesm/tutorial/tutorial_2025_env/tutorial_2025_profile: line 12: module: command not found
+diff --git a/src/drivers/mct/main/cesm_comp_mod.F90 b/src/drivers/mct/main/cesm_comp_mod.F90
+index c1a41b6..6caff8c 100644
+--- a/src/drivers/mct/main/cesm_comp_mod.F90
++++ b/src/drivers/mct/main/cesm_comp_mod.F90
+@@ -164,7 +164,7 @@ module cesm_comp_mod
+    private
+ 
+    public cesm_pre_init1, cesm_pre_init2, cesm_init, cesm_run, cesm_final
+-   public cesm_action_call
++   public cesm_action_call, cesm_step_begin, cesm_step_end, cesm_run_finish
+ #ifdef USE_ESMF_LIB
+    public cesm_comp_register
+ #endif
+@@ -515,6 +515,14 @@ module cesm_comp_mod
+    integer, parameter :: fix1=1         ! temporary hard-coding to first ensemble, needs to be fixed
+    integer :: eai, eli, eoi, eii, egi, eri, ewi, exi, efi  ! component instance counters
+ 
++   ! Python-owned PI-atm control lifecycle.  The native component objects,
++   ! MCT vectors, clocks, and alarms remain module state; Python only chooses
++   ! which already-existing orchestration action runs next.
++   logical :: pycesm_run_started = .false.
++   logical :: pycesm_step_active = .false.
++   integer :: pycesm_expected_action = 0
++   integer :: pycesm_hashint(7) = 0
++
+    !----------------------------------------------------------------------------
+    ! formats
+    !----------------------------------------------------------------------------
+@@ -3542,6 +3550,276 @@ end subroutine cesm_init
+ 
+  end subroutine cesm_run
+ 
++!===============================================================================
++! Begin one Python-owned PI-atm coupling step.  This routine performs exactly
++! the clock/alarm work that precedes the first action in cesm_run and returns
++! the resulting native state to Python.  Bit assignments in alarm_mask are
++! part of the bind(C) adapter contract.
++!===============================================================================
++
++ subroutine cesm_step_begin(stepno, current_ymd, current_tod, alarm_mask, status)
++   implicit none
++   integer, intent(out) :: stepno
++   integer, intent(out) :: current_ymd
++   integer, intent(out) :: current_tod
++   integer, intent(out) :: alarm_mask
++   integer, intent(out) :: status
++
++103 format( 5A )
++
++   stepno = 0
++   current_ymd = 0
++   current_tod = 0
++   alarm_mask = 0
++   status = 0
++
++   if (pycesm_step_active) then
++      status = 3
++      return
++   endif
++
++   ! Fail closed outside the one configuration whose native trace and kernels
++   ! have been admitted.  Supporting another sequence requires a separate
++   ! source trace and BFB gate, not a guessed branch through this routine.
++   if (trim(cpl_seq_option) /= 'CESM1_MOD_TIGHT' .or. &
++       trim(aoflux_grid) /= 'ocn' .or. do_budgets .or. &
++       .not. atm_present .or. .not. lnd_present .or. &
++       .not. ice_present .or. .not. ocn_present .or. &
++       .not. rof_present .or. glc_present .or. wav_present .or. &
++       .not. atm_prognostic .or. .not. lnd_prognostic .or. &
++       .not. ice_prognostic .or. ocn_prognostic .or. &
++       .not. rof_prognostic) then
++      status = 2
++      return
++   endif
++
++   if (.not. pycesm_run_started) then
++      pycesm_hashint = 0
++      call seq_infodata_putData(infodata,atm_phase=1,lnd_phase=1,ocn_phase=1,ice_phase=1)
++      call seq_timemgr_EClockGetData(EClock_d, stepno=begstep)
++      call seq_timemgr_EClockGetData(EClock_d, dtime=dtime)
++      call seq_timemgr_EClockGetData(EClock_d, calendar=calendar)
++      ncpl = 86400/dtime
++      cktime_acc = 0._r8
++      cktime_cnt = 0
++      stop_alarm = seq_timemgr_alarmIsOn(EClock_d,seq_timemgr_alarm_stop)
++      if (seq_timemgr_alarmIsOn(EClock_d,seq_timemgr_alarm_datestop)) then
++         stop_alarm = .true.
++      endif
++      force_stop = .false.
++      force_stop_ymd = -1
++      force_stop_tod = -1
++      call t_startf('CPL:RUN_LOOP_BSTART')
++      call mpi_barrier(mpicom_GLOID,ierr)
++      call t_stopf('CPL:RUN_LOOP_BSTART')
++      Time_begin = mpi_wtime()
++      Time_bstep = mpi_wtime()
++      pycesm_run_started = .true.
++   endif
++
++   if (stop_alarm) then
++      status = 4
++      return
++   endif
++
++   call t_startf('CPL:RUN_LOOP', pycesm_hashint(1))
++   call t_drvstartf('CPL:CLOCK_ADVANCE',cplrun=.true.,hashint=pycesm_hashint(2))
++
++   call seq_timemgr_clockAdvance(seq_SyncClock, force_stop, force_stop_ymd, force_stop_tod)
++   call seq_timemgr_EClockGetData(EClock_d, stepno=stepno, curr_ymd=ymd, curr_tod=tod)
++   call shr_cal_date2ymd(ymd,year,month,day)
++   stop_alarm    = seq_timemgr_alarmIsOn(EClock_d,seq_timemgr_alarm_stop)
++   atmrun_alarm  = seq_timemgr_alarmIsOn(EClock_d,seq_timemgr_alarm_atmrun)
++   lndrun_alarm  = seq_timemgr_alarmIsOn(EClock_d,seq_timemgr_alarm_lndrun)
++   rofrun_alarm  = seq_timemgr_alarmIsOn(EClock_d,seq_timemgr_alarm_rofrun)
++   icerun_alarm  = seq_timemgr_alarmIsOn(EClock_d,seq_timemgr_alarm_icerun)
++   glcrun_alarm  = seq_timemgr_alarmIsOn(EClock_d,seq_timemgr_alarm_glcrun)
++   wavrun_alarm  = seq_timemgr_alarmIsOn(EClock_d,seq_timemgr_alarm_wavrun)
++   ocnrun_alarm  = seq_timemgr_alarmIsOn(EClock_d,seq_timemgr_alarm_ocnrun)
++   ocnnext_alarm = seq_timemgr_alarmIsOn(EClock_d,seq_timemgr_alarm_ocnnext)
++   restart_alarm = seq_timemgr_alarmIsOn(EClock_d,seq_timemgr_alarm_restart)
++   history_alarm = seq_timemgr_alarmIsOn(EClock_d,seq_timemgr_alarm_history)
++   histavg_alarm = seq_timemgr_alarmIsOn(EClock_d,seq_timemgr_alarm_histavg)
++   tprof_alarm   = seq_timemgr_alarmIsOn(EClock_d,seq_timemgr_alarm_tprof)
++
++   t1hr_alarm = mod(tod, 3600) == 0
++   t2hr_alarm = mod(tod, 7200) == 0
++   t3hr_alarm = mod(tod,10800) == 0
++   t6hr_alarm = mod(tod,21600) == 0
++   t12hr_alarm = mod(tod,43200) == 0
++   t24hr_alarm = tod == 0
++   t1yr_alarm = month==1 .and. day==1 .and. tod==0
++   call seq_infodata_putData(infodata, glcrun_alarm=glcrun_alarm)
++
++   if (seq_timemgr_alarmIsOn(EClock_d,seq_timemgr_alarm_datestop)) then
++      if (iamroot_CPLID) then
++         write(logunit,*) ' '
++         write(logunit,103) subname,' NOTE: Stopping from alarm STOP DATE'
++         write(logunit,*) ' '
++      endif
++      stop_alarm = .true.
++   endif
++
++   if (trim(orb_mode) == trim(seq_infodata_orb_variable_year)) then
++      orb_nyear = orb_iyear + (year - orb_iyear_align)
++      if (orb_nyear /= orb_cyear) then
++         orb_cyear = orb_nyear
++         call shr_orb_params(orb_cyear, orb_eccen, orb_obliq, orb_mvelp, &
++              orb_obliqr, orb_lambm0, orb_mvelpp, iamroot_CPLID)
++         call seq_infodata_putData(infodata,orb_eccen=orb_eccen,orb_obliqr=orb_obliqr, &
++              orb_lambm0=orb_lambm0,orb_mvelpp=orb_mvelpp)
++      endif
++   endif
++
++   if (ocnrun_alarm) ocnrun_count = ocnrun_count + 1
++   if (ocnrun_count > 1) skip_ocean_run = .false.
++   if (skip_ocean_run) then
++      ocnrun_alarm = .false.
++      ocnnext_alarm = .false.
++   endif
++
++   call t_drvstopf('CPL:CLOCK_ADVANCE',cplrun=.true.,hashint=pycesm_hashint(2))
++
++   if (atmrun_alarm)  alarm_mask = ibset(alarm_mask,0)
++   if (lndrun_alarm)  alarm_mask = ibset(alarm_mask,1)
++   if (icerun_alarm)  alarm_mask = ibset(alarm_mask,2)
++   if (rofrun_alarm)  alarm_mask = ibset(alarm_mask,3)
++   if (ocnrun_alarm)  alarm_mask = ibset(alarm_mask,4)
++   if (ocnnext_alarm) alarm_mask = ibset(alarm_mask,5)
++   if (restart_alarm) alarm_mask = ibset(alarm_mask,6)
++   if (history_alarm) alarm_mask = ibset(alarm_mask,7)
++   if (stop_alarm)    alarm_mask = ibset(alarm_mask,8)
++   if (histavg_alarm) alarm_mask = ibset(alarm_mask,9)
++   if (tprof_alarm)   alarm_mask = ibset(alarm_mask,10)
++
++   current_ymd = ymd
++   current_tod = tod
++   pycesm_expected_action = 100
++   pycesm_step_active = .true.
++ end subroutine cesm_step_begin
++
++!===============================================================================
++! Finish one Python-owned step after the HISTORY action.  Timing and wall-clock
++! policy stay in the original Fortran control module because they use native
++! timers and do not belong to a scientific kernel.
++!===============================================================================
++
++ subroutine cesm_step_end(status)
++   implicit none
++   integer, intent(out) :: status
++
++101 format( A, 2i8, 12A, A, F8.2, A, F8.2 )
++105 format( A, 2i8, A, f10.2, A, f10.2, A, A, i5, A, A)
++108 format( A, f10.2, A, i8.8)
++109 format( A, 2f10.3)
++
++   status = 0
++   if (.not. pycesm_step_active) then
++      status = 3
++      return
++   endif
++   if (pycesm_expected_action /= 129) then
++      status = 6
++      return
++   endif
++
++   call t_drvstartf('CPL:TSTAMP_WRITE',cplrun=.true.)
++   if (tod == 0 .or. info_debug > 1) then
++      if (iamroot_CPLID) then
++         call date_and_time(dstr,tstr)
++         Time_estep = mpi_wtime()
++         cktime = time_estep-time_bstep
++         cktime_acc(1) = cktime_acc(1) + cktime
++         cktime_cnt(1) = cktime_cnt(1) + 1
++         write(logunit,101) ' tStamp_write: model date = ',ymd,tod, &
++              ' wall clock = ',dstr(1:4),'-',dstr(5:6),'-',dstr(7:8),' ', &
++              tstr(1:2),':',tstr(3:4),':',tstr(5:6), &
++              ' avg dt = ',cktime_acc(1)/cktime_cnt(1),' dt = ',cktime
++         Time_bstep = mpi_wtime()
++         call shr_sys_flush(logunit)
++         if (cktime > max_cplstep_time .and. max_cplstep_time > 0.0) then
++            call shr_sys_abort(subname//'Wall clock time exceeds max_cplstep_time')
++         else if (max_cplstep_time < -0.05) then
++            max_cplstep_time = -(max_cplstep_time)*cktime
++         endif
++      endif
++   endif
++   if (tod == 0 .and. wall_time_limit > 0.0_r8 .and. .not. force_stop) then
++      time_erun = mpi_wtime()
++      wall_time = (time_erun - time_brun) / 3600._r8
++      write(logunit,109) subname//' check wall_time_limit: ',wall_time, wall_time_limit
++      if (wall_time > wall_time_limit) then
++         force_stop = .true.
++         force_stop_tod = 0
++         if (trim(force_stop_at) == 'month') then
++            call shr_cal_date2ymd(ymd,year,month,day)
++            month = month + 1
++            do while (month > 12)
++               month = month - 12
++               year = year + 1
++            enddo
++            call shr_cal_ymd2date(year,month,1,force_stop_ymd)
++         elseif (trim(force_stop_at) == 'year') then
++            call shr_cal_date2ymd(ymd,year,month,day)
++            call shr_cal_ymd2date(year+1,1,1,force_stop_ymd)
++         else
++            ymdtmp = ymd
++            call shr_cal_advDateInt(1,'days',ymdtmp,0,force_stop_ymd,todtmp,calendar)
++         endif
++         write(logunit,108) subname//' reached wall_time_limit (hours) =',wall_time_limit, &
++              ' :stop at ',force_stop_ymd
++      endif
++   endif
++   if (tod == 0 .or. info_debug > 1) then
++      if (iamroot_CPLID .or. ocn(ens1)%iamroot_compid .or. &
++          atm(ens1)%iamroot_compid .or. lnd(ens1)%iamroot_compid .or. &
++          ice(ens1)%iamroot_compid .or. glc(ens1)%iamroot_compid .or. &
++          wav(ens1)%iamroot_compid) then
++         call shr_mem_getusage(msize,mrss)
++         write(logunit,105) ' memory_write: model date = ',ymd,tod, &
++              ' memory = ',mrss,' MB (highwater)    ',msize,' MB (usage)', &
++              '  (pe=',iam_GLOID,' comps=',trim(complist)//')'
++      endif
++   endif
++   call t_drvstopf('CPL:TSTAMP_WRITE',cplrun=.true.)
++
++   call t_stopf('CPL:RUN_LOOP',pycesm_hashint(1))
++   call t_drvstartf('CPL:TPROF_WRITE',cplrun=.true.)
++   if (tprof_alarm) then
++      call t_startf('sync1_tprof')
++      call mpi_barrier(mpicom_GLOID,ierr)
++      call t_stopf('sync1_tprof')
++      write(timing_file,'(a,i8.8,a1,i5.5)') trim(tchkpt_dir)//'/model_timing_',ymd,'_',tod
++      call t_prf(filename=trim(timing_file),mpicom=mpicom_GLOID,num_outpe=1)
++      call t_startf('sync2_tprof')
++      call mpi_barrier(mpicom_GLOID,ierr)
++      call t_stopf('sync2_tprof')
++   endif
++   call t_drvstopf('CPL:TPROF_WRITE',cplrun=.true.)
++
++   pycesm_step_active = .false.
++   pycesm_expected_action = 0
++ end subroutine cesm_step_end
++
++!===============================================================================
++
++ subroutine cesm_run_finish(status)
++   implicit none
++   integer, intent(out) :: status
++
++   status = 0
++   if (pycesm_step_active) then
++      status = 3
++      return
++   endif
++   if (.not. pycesm_run_started) return
++   call t_startf('CPL:RUN_LOOP_BSTOP')
++   call mpi_barrier(mpicom_GLOID,ierr)
++   call t_stopf('CPL:RUN_LOOP_BSTOP')
++   Time_end = mpi_wtime()
++   pycesm_run_started = .false.
++ end subroutine cesm_run_finish
++
+ !===============================================================================
+ ! Execute one already-validated PI-atm coupling kernel against the live module
+ ! state.  This is intentionally fail-closed: actions are added only after an
+@@ -3551,12 +3829,23 @@ end subroutine cesm_init
+ !===============================================================================
+ 
+  subroutine cesm_action_call(action_id, status)
++   use seq_comm_mct, only : atm_layout, lnd_layout, ice_layout, rof_layout, ocn_layout
+    implicit none
+    integer, intent(in) :: action_id
+    integer, intent(out) :: status
+ 
+    status = 0
+-   if (.not. iamin_CPLID) return
++
++   if (action_id >= 101 .and. action_id <= 129) then
++      if (.not. pycesm_step_active) then
++         status = 3
++         return
++      endif
++      if (action_id <= pycesm_expected_action) then
++         status = 4
++         return
++      endif
++   endif
+ 
+    if (drv_threading) call seq_comm_setnthreads(nthreads_CPLID)
+ 
+@@ -3585,11 +3874,452 @@ end subroutine cesm_init
+             call seq_flux_ocnalb_mct(infodata, ocn(1), fractions_ox(efi), xao_ox(exi))
+          enddo
+       endif
++   case (101) ! atm_to_ocn_map
++      if (iamin_CPLID .and. (atm_c2_ocn .or. atm_c2_ice)) then
++         call cesm_comp_barriers(mpicom=mpicom_CPLID,timer='CPL:OCNPRE1_BARRIER')
++         call t_drvstartf('CPL:OCNPRE1',cplrun=.true.,barrier=mpicom_CPLID,hashint=pycesm_hashint(3))
++         call prep_ocn_calc_a2x_ox(timer='CPL:ocnpre1_atm2ocn')
++         call t_drvstopf('CPL:OCNPRE1',cplrun=.true.,hashint=pycesm_hashint(3))
++      endif
++   case (102) ! lnd_prepare
++      if (.not. lndrun_alarm) then
++         status = 5
++      elseif (iamin_CPLID) then
++         call cesm_comp_barriers(mpicom=mpicom_CPLID,timer='CPL:LNDPREP_BARRIER')
++         call t_drvstartf('CPL:LNDPREP',cplrun=.true.,barrier=mpicom_CPLID)
++         if (atm_c2_lnd) call prep_lnd_calc_a2x_lx(timer='CPL:lndprep_atm2lnd')
++         if (lnd_prognostic) then
++            call prep_lnd_mrg(infodata,timer_mrg='CPL:lndprep_mrgx2l')
++            call component_diag(infodata,lnd,flow='x2c',comment='send lnd', &
++                 info_debug=info_debug,timer_diag='CPL:lndprep_diagav')
++         endif
++         call t_drvstopf('CPL:LNDPREP',cplrun=.true.)
++      endif
++   case (103) ! cpl_to_lnd
++      if (.not. lndrun_alarm) then
++         status = 5
++      elseif (iamin_CPLALLLNDID) then
++         call component_exch(lnd,flow='x2c',infodata=infodata, &
++              infodata_string='cpl2lnd_run',mpicom_barrier=mpicom_CPLALLLNDID, &
++              run_barriers=run_barriers,timer_barrier='CPL:C2L_BARRIER', &
++              timer_comp_exch='CPL:C2L',timer_map_exch='CPL:c2l_lndx2lndl', &
++              timer_infodata_exch='CPL:c2l_infoexch')
++      endif
++   case (104) ! ice_prepare
++      if (.not. icerun_alarm) then
++         status = 5
++      elseif (iamin_CPLID .and. ice_prognostic) then
++         call cesm_comp_barriers(mpicom=mpicom_CPLID,timer='CPL:ICEPREP_BARRIER')
++         call t_drvstartf('CPL:ICEPREP',cplrun=.true.,barrier=mpicom_CPLID)
++         if (ocn_c2_ice) call prep_ice_calc_o2x_ix(timer='CPL:iceprep_ocn2ice')
++         if (atm_c2_ice) then
++            a2x_ox => prep_ocn_get_a2x_ox()
++            call prep_ice_calc_a2x_ix(a2x_ox,timer='CPL:iceprep_atm2ice')
++         endif
++         call prep_ice_mrg(infodata,timer_mrg='CPL:iceprep_mrgx2i')
++         call component_diag(infodata,ice,flow='x2c',comment='send ice', &
++              info_debug=info_debug,timer_diag='CPL:iceprep_diagav')
++         call t_drvstopf('CPL:ICEPREP',cplrun=.true.)
++      endif
++   case (105) ! cpl_to_ice
++      if (.not. icerun_alarm) then
++         status = 5
++      elseif (iamin_CPLALLICEID .and. ice_prognostic) then
++         call component_exch(ice,flow='x2c',infodata=infodata, &
++              infodata_string='cpl2ice_run',mpicom_barrier=mpicom_CPLALLICEID, &
++              run_barriers=run_barriers,timer_barrier='CPL:C2I_BARRIER', &
++              timer_comp_exch='CPL:C2I',timer_map_exch='CPL:c2i_icex2icei', &
++              timer_infodata_exch='CPL:ice_infoexch')
++      endif
++   case (106) ! rof_prepare
++      if (.not. rofrun_alarm) then
++         status = 5
++      elseif (iamin_CPLID .and. rof_prognostic) then
++         call cesm_comp_barriers(mpicom=mpicom_CPLID,timer='CPL:ROFPREP_BARRIER')
++         call t_drvstartf('CPL:ROFPREP',cplrun=.true.,barrier=mpicom_CPLID)
++         call prep_rof_accum_avg(timer='CPL:rofprep_l2xavg')
++         if (lnd_c2_rof) call prep_rof_calc_l2r_rx(fractions_lx,timer='CPL:rofprep_lnd2rof')
++         call prep_rof_mrg(infodata,fractions_rx,timer_mrg='CPL:rofprep_mrgx2r')
++         call component_diag(infodata,rof,flow='x2c',comment='send rof', &
++              info_debug=info_debug,timer_diag='CPL:rofprep_diagav')
++         call t_drvstopf('CPL:ROFPREP',cplrun=.true.)
++      endif
++   case (107) ! cpl_to_rof
++      if (.not. rofrun_alarm) then
++         status = 5
++      elseif (iamin_CPLALLROFID .and. rof_prognostic) then
++         call component_exch(rof,flow='x2c',infodata=infodata, &
++              infodata_string='cpl2rof_run',mpicom_barrier=mpicom_CPLALLLNDID, &
++              run_barriers=run_barriers,timer_barrier='CPL:C2R_BARRIER', &
++              timer_comp_exch='CPL:C2R',timer_map_exch='CPL:c2r_rofx2rofr', &
++              timer_infodata_exch='CPL:c2r_infoexch')
++      endif
++   case (108) ! ice_run
++      if (.not. icerun_alarm) then
++         status = 5
++      else
++#ifdef ESMF_INTERFACE
++         call component_run(Eclock_i,ice,infodata, &
++#else
++         call component_run(Eclock_i,ice,ice_run,infodata, &
++#endif
++              seq_flds_x2c_fluxes=seq_flds_x2i_fluxes, &
++              seq_flds_c2x_fluxes=seq_flds_i2x_fluxes, &
++              comp_prognostic=ice_prognostic,comp_num=4, &
++              timer_barrier='CPL:ICE_RUN_BARRIER',timer_comp_run='CPL:ICE_RUN', &
++              run_barriers=run_barriers,ymd=ymd,tod=tod,comp_layout=ice_layout)
++      endif
++   case (109) ! lnd_run
++      if (.not. lndrun_alarm) then
++         status = 5
++      else
++#ifdef ESMF_INTERFACE
++         call component_run(Eclock_l,lnd,infodata, &
++#else
++         call component_run(Eclock_l,lnd,lnd_run,infodata, &
++#endif
++              seq_flds_x2c_fluxes=seq_flds_x2l_fluxes, &
++              seq_flds_c2x_fluxes=seq_flds_l2x_fluxes, &
++              comp_prognostic=lnd_prognostic,comp_num=3, &
++              timer_barrier='CPL:LND_RUN_BARRIER',timer_comp_run='CPL:LND_RUN', &
++              run_barriers=run_barriers,ymd=ymd,tod=tod,comp_layout=lnd_layout)
++      endif
++   case (110) ! rof_run
++      if (.not. rofrun_alarm) then
++         status = 5
++      else
++#ifdef ESMF_INTERFACE
++         call component_run(Eclock_r,rof,infodata, &
++#else
++         call component_run(Eclock_r,rof,rof_run,infodata, &
++#endif
++              seq_flds_x2c_fluxes=seq_flds_x2r_fluxes, &
++              seq_flds_c2x_fluxes=seq_flds_r2x_fluxes, &
++              comp_prognostic=rof_prognostic,comp_num=8, &
++              timer_barrier='CPL:ROF_RUN_BARRIER',timer_comp_run='CPL:ROF_RUN', &
++              run_barriers=run_barriers,ymd=ymd,tod=tod,comp_layout=rof_layout)
++      endif
++   case (111) ! ocn_run
++      if (.not. ocnrun_alarm) then
++         status = 5
++      else
++#ifdef ESMF_INTERFACE
++         call component_run(Eclock_o,ocn,infodata, &
++#else
++         call component_run(Eclock_o,ocn,ocn_run,infodata, &
++#endif
++              seq_flds_x2c_fluxes=seq_flds_x2o_fluxes, &
++              seq_flds_c2x_fluxes=seq_flds_o2x_fluxes, &
++              comp_prognostic=ocn_prognostic,comp_num=5, &
++              timer_barrier='CPL:OCNT_RUN_BARRIER',timer_comp_run='CPL:OCNT_RUN', &
++              run_barriers=run_barriers,ymd=ymd,tod=tod,comp_layout=ocn_layout)
++      endif
++   case (112) ! ocn_to_cpl
++      if (.not. ocnnext_alarm) then
++         status = 5
++      elseif (iamin_CPLALLOCNID) then
++         call component_exch(ocn,flow='c2x',infodata=infodata, &
++              infodata_string='ocn2cpl_run',mpicom_barrier=mpicom_CPLALLOCNID, &
++              run_barriers=run_barriers,timer_barrier='CPL:O2CT_BARRIER', &
++              timer_comp_exch='CPL:O2CT',timer_map_exch='CPL:o2c_ocno2ocnx', &
++              timer_infodata_exch='CPL:o2c_infoexch')
++      endif
++   case (113) ! ocn_post
++      if (.not. ocnnext_alarm) then
++         status = 5
++      elseif (iamin_CPLID) then
++         call cesm_comp_barriers(mpicom=mpicom_CPLID,timer='CPL:OCNPOSTT_BARRIER')
++         call t_drvstartf('CPL:OCNPOSTT',cplrun=.true.,barrier=mpicom_CPLID)
++         call component_diag(infodata,ocn,flow='c2x',comment='recv ocn', &
++              info_debug=info_debug,timer_diag='CPL:ocnpost_diagav')
++         call t_drvstopf('CPL:OCNPOSTT',cplrun=.true.)
++      endif
++   case (114) ! atm_ocn_flux in the active CESM1_MOD_TIGHT block
++      if (iamin_CPLID) then
++         call cesm_comp_barriers(mpicom=mpicom_CPLID,timer='CPL:ATMOCNP_BARRIER')
++         call t_drvstartf('CPL:ATMOCNP',cplrun=.true.,barrier=mpicom_CPLID, &
++              hashint=pycesm_hashint(7))
++         call t_drvstartf('CPL:atmocnp_fluxo',barrier=mpicom_CPLID)
++         do exi = 1,num_inst_xao
++            eai = mod((exi-1),num_inst_atm) + 1
++            eoi = mod((exi-1),num_inst_ocn) + 1
++            a2x_ox => prep_ocn_get_a2x_ox()
++            o2x_ox => component_get_c2x_cx(ocn(eoi))
++            xao_ox => prep_aoflux_get_xao_ox()
++            call seq_flux_atmocn_mct(infodata,a2x_ox(eai),o2x_ox,xao_ox(exi))
++         enddo
++         call t_drvstopf('CPL:atmocnp_fluxo')
++      endif
++   case (115) ! ocn_albedo and close the active ATMOCNP block
++      if (iamin_CPLID) then
++         call t_drvstartf('CPL:atmocnp_ocnalb',barrier=mpicom_CPLID)
++         do exi = 1,num_inst_xao
++            efi = mod((exi-1),num_inst_frc) + 1
++            xao_ox => prep_aoflux_get_xao_ox()
++            call seq_flux_ocnalb_mct(infodata,ocn(1),fractions_ox(efi),xao_ox(exi))
++         enddo
++         call t_drvstopf('CPL:atmocnp_ocnalb')
++         call t_drvstopf('CPL:ATMOCNP',cplrun=.true.,hashint=pycesm_hashint(7))
++      endif
++   case (116) ! lnd_to_cpl
++      if (.not. lndrun_alarm) then
++         status = 5
++      elseif (iamin_CPLALLLNDID) then
++         call component_exch(lnd,flow='c2x',infodata=infodata, &
++              infodata_string='lnd2cpl_run',mpicom_barrier=mpicom_CPLALLLNDID, &
++              run_barriers=run_barriers,timer_barrier='CPL:L2C_BARRIER', &
++              timer_comp_exch='CPL:L2C',timer_map_exch='CPL:l2c_lndl2lndx', &
++              timer_infodata_exch='lnd2cpl_run')
++      endif
++   case (117) ! lnd_post
++      if (.not. lndrun_alarm) then
++         status = 5
++      elseif (iamin_CPLID) then
++         call cesm_comp_barriers(mpicom=mpicom_CPLID,timer='CPL:LNDPOST_BARRIER')
++         call t_drvstartf('CPL:LNDPOST',cplrun=.true.,barrier=mpicom_CPLID)
++         call component_diag(infodata,lnd,flow='c2x',comment='recv lnd', &
++              info_debug=info_debug,timer_diag='CPL:lndpost_diagav')
++         if (lnd_c2_rof) call prep_rof_accum(timer='CPL:lndpost_accl2r')
++         if (lnd_c2_glc) call prep_glc_accum(timer='CPL:lndpost_accl2g')
++         call t_drvstopf('CPL:LNDPOST',cplrun=.true.)
++      endif
++   case (118) ! rof_to_cpl
++      if (.not. rofrun_alarm) then
++         status = 5
++      elseif (iamin_CPLALLROFID) then
++         call component_exch(rof,flow='c2x',infodata=infodata, &
++              infodata_string='rof2cpl_run',mpicom_barrier=mpicom_CPLALLROFID, &
++              run_barriers=run_barriers,timer_barrier='CPL:R2C_BARRIER', &
++              timer_comp_exch='CPL:R2C',timer_map_exch='CPL:r2c_rofr2rofx', &
++              timer_infodata_exch='CPL:r2c_infoexch')
++      endif
++   case (119) ! rof_post
++      if (.not. rofrun_alarm) then
++         status = 5
++      elseif (iamin_CPLID) then
++         call cesm_comp_barriers(mpicom=mpicom_CPLID,timer='CPL:ROFPOST_BARRIER')
++         call t_drvstartf('CPL:ROFPOST',cplrun=.true.,barrier=mpicom_CPLID)
++         call component_diag(infodata,rof,flow='c2x',comment='recv rof', &
++              info_debug=info_debug,timer_diag='CPL:rofpost_diagav')
++         if (do_hist_r2x) then
++            call t_drvstartf('CPL:rofpost_histaux',barrier=mpicom_CPLID)
++            do eri = 1,num_inst_rof
++               suffix = component_get_suffix(rof(eri))
++               call seq_hist_writeaux(infodata,EClock_d,rof(eri),flow='c2x', &
++                    aname='r2x'//trim(suffix),dname='domrb',nx=rof_nx,ny=rof_ny,nt=1)
++            enddo
++            call t_drvstopf('CPL:rofpost_histaux')
++         endif
++         if (rof_c2_lnd) call prep_lnd_calc_r2x_lx(timer='CPL:rofpost_rof2lnd')
++         if (rof_c2_ice) call prep_ice_calc_r2x_ix(timer='CPL:rofpost_rof2ice')
++         if (rof_c2_ocn) call prep_ocn_calc_r2x_ox(timer='CPL:rofpost_rof2ocn')
++         call t_drvstopf('CPL:ROFPOST',cplrun=.true.)
++      endif
++   case (120) ! ice_to_cpl
++      if (.not. icerun_alarm) then
++         status = 5
++      elseif (iamin_CPLALLICEID) then
++         call component_exch(ice,flow='c2x',infodata=infodata, &
++              infodata_string='ice2cpl_run',mpicom_barrier=mpicom_CPLALLICEID, &
++              run_barriers=run_barriers,timer_barrier='CPL:I2C_BARRIER', &
++              timer_comp_exch='CPL:I2C',timer_map_exch='CPL:i2c_icei2icex', &
++              timer_infodata_exch='CPL:r2c_infoexch')
++      endif
++   case (121) ! ice_post
++      if (.not. icerun_alarm) then
++         status = 5
++      elseif (iamin_CPLID) then
++         call cesm_comp_barriers(mpicom=mpicom_CPLID,timer='CPL:ICEPOST_BARRIER')
++         call t_drvstartf('CPL:ICEPOST',cplrun=.true.,barrier=mpicom_CPLID)
++         call component_diag(infodata,ice,flow='c2x',comment='recv ice', &
++              info_debug=info_debug,timer_diag='CPL:icepost_diagav')
++         call t_drvstopf('CPL:ICEPOST',cplrun=.true.)
++      endif
++   case (122) ! fraction_update
++      if (iamin_CPLID) then
++         call cesm_comp_barriers(mpicom=mpicom_CPLID,timer='CPL:FRACSET_BARRIER')
++         call t_drvstartf('CPL:FRACSET',cplrun=.true.,barrier=mpicom_CPLID)
++         call t_drvstartf('CPL:fracset_fracset',barrier=mpicom_CPLID)
++         do efi = 1,num_inst_frc
++            eii = mod((efi-1),num_inst_ice) + 1
++            call seq_frac_set(infodata,ice(eii),fractions_ax(efi), &
++                 fractions_ix(efi),fractions_ox(efi))
++         enddo
++         call t_drvstopf('CPL:fracset_fracset')
++         call t_drvstopf('CPL:FRACSET',cplrun=.true.)
++      endif
++   case (123) ! atm_prepare
++      if (.not. atmrun_alarm) then
++         status = 5
++      elseif (iamin_CPLID .and. atm_prognostic) then
++         call cesm_comp_barriers(mpicom=mpicom_CPLID,timer='CPL:ATMPREP_BARRIER')
++         call t_drvstartf('CPL:ATMPREP',cplrun=.true.,barrier=mpicom_CPLID)
++         if (ocn_c2_atm) then
++            call prep_aoflux_calc_xao_ax(fractions_ox,flds='states_and_fluxes', &
++                 timer='CPL:atmprep_xao2atm')
++            call prep_atm_calc_o2x_ax(fractions_ox,timer='CPL:atmprep_ocn2atm')
++            call prep_aoflux_calc_xao_ax(fractions_ox,flds='albedos', &
++                 timer='CPL:atmprep_alb2atm')
++         endif
++         if (ice_c2_atm) call prep_atm_calc_i2x_ax(fractions_ix,timer='CPL:atmprep_ice2atm')
++         if (lnd_c2_atm) call prep_atm_calc_l2x_ax(fractions_lx,timer='CPL:atmprep_lnd2atm')
++         if (associated(xao_ax)) then
++            call prep_atm_mrg(infodata,fractions_ax,xao_ax=xao_ax,timer_mrg='CPL:atmprep_mrgx2a')
++         endif
++         call component_diag(infodata,atm,flow='x2c',comment='send atm', &
++              info_debug=info_debug,timer_diag='CPL:atmprep_diagav')
++         call t_drvstopf('CPL:ATMPREP',cplrun=.true.)
++      endif
++   case (124) ! cpl_to_atm
++      if (.not. atmrun_alarm) then
++         status = 5
++      elseif (iamin_CPLALLATMID .and. atm_prognostic) then
++         call component_exch(atm,flow='x2c',infodata=infodata, &
++              infodata_string='cpl2atm_run',mpicom_barrier=mpicom_CPLALLATMID, &
++              run_barriers=run_barriers,timer_barrier='CPL:C2A_BARRIER', &
++              timer_comp_exch='CPL:C2A',timer_map_exch='CPL:c2a_atmx2atmg', &
++              timer_infodata_exch='CPL:c2a_infoexch')
++      endif
++   case (125) ! atm_run
++      if (.not. atmrun_alarm) then
++         status = 5
++      else
++#ifdef ESMF_INTERFACE
++         call component_run(Eclock_a,atm,infodata, &
++#else
++         call component_run(Eclock_a,atm,atm_run,infodata, &
++#endif
++              seq_flds_x2c_fluxes=seq_flds_x2a_fluxes, &
++              seq_flds_c2x_fluxes=seq_flds_a2x_fluxes, &
++              comp_prognostic=atm_prognostic,comp_num=2, &
++              timer_barrier='CPL:ATM_RUN_BARRIER',timer_comp_run='CPL:ATM_RUN', &
++              run_barriers=run_barriers,ymd=ymd,tod=tod,comp_layout=atm_layout)
++      endif
++   case (126) ! atm_to_cpl
++      if (.not. atmrun_alarm) then
++         status = 5
++      elseif (iamin_CPLALLATMID) then
++         call component_exch(atm,flow='c2x',infodata=infodata, &
++              infodata_string='atm2cpl_run',mpicom_barrier=mpicom_CPLALLATMID, &
++              run_barriers=run_barriers,timer_barrier='CPL:A2C_BARRIER', &
++              timer_comp_exch='CPL:A2C',timer_map_exch='CPL:a2c_atma2atmx', &
++              timer_infodata_exch='CPL:a2c_infoexch')
++      endif
++   case (127) ! atm_post
++      if (.not. atmrun_alarm) then
++         status = 5
++      elseif (iamin_CPLID) then
++         call cesm_comp_barriers(mpicom=mpicom_CPLID,timer='CPL:ATMPOST_BARRIER')
++         call t_drvstartf('CPL:ATMPOST',cplrun=.true.,barrier=mpicom_CPLID)
++         call component_diag(infodata,atm,flow='c2x',comment='recv atm', &
++              info_debug=info_debug,timer_diag='CPL:atmpost_diagav')
++         call t_drvstopf('CPL:ATMPOST',cplrun=.true.)
++      endif
++   case (128) ! restart
++      if (.not. restart_alarm) then
++         status = 5
++      elseif (iamin_CPLID) then
++         call cesm_comp_barriers(mpicom=mpicom_CPLID,timer='CPL:RESTART_BARRIER')
++         call t_drvstartf('CPL:RESTART',cplrun=.true.,barrier=mpicom_CPLID)
++         if (iamroot_CPLID) then
++            write(logunit,'(A,2I8)') ' Write restart file at ',ymd,tod
++            call shr_sys_flush(logunit)
++         endif
++         call seq_rest_write(EClock_d,seq_SyncClock,infodata,atm,lnd,ice,ocn,rof,glc,wav, &
++              fractions_ax,fractions_lx,fractions_ix,fractions_ox, &
++              fractions_rx,fractions_gx,fractions_wx)
++         call t_drvstopf('CPL:RESTART',cplrun=.true.)
++      endif
++   case (129) ! history
++      if (iamin_CPLID) then
++         call cesm_comp_barriers(mpicom=mpicom_CPLID,timer='CPL:HISTORY_BARRIER')
++         call t_drvstartf('CPL:HISTORY',cplrun=.true.,barrier=mpicom_CPLID)
++         if (history_alarm) then
++            if (iamroot_CPLID) then
++               write(logunit,'(A,2I8)') ' Write history file at ',ymd,tod
++               call shr_sys_flush(logunit)
++            endif
++            call seq_hist_write(infodata,EClock_d,atm,lnd,ice,ocn,rof,glc,wav, &
++                 fractions_ax,fractions_lx,fractions_ix,fractions_ox, &
++                 fractions_rx,fractions_gx,fractions_wx)
++         endif
++         if (do_histavg) then
++            call seq_hist_writeavg(infodata,EClock_d,atm,lnd,ice,ocn,rof,glc,wav,histavg_alarm)
++         endif
++         if (do_hist_a2x) then
++            do eai = 1,num_inst_atm
++               suffix = component_get_suffix(atm(eai))
++               if (trim(hist_a2x_flds) == 'all') then
++                  call seq_hist_writeaux(infodata,EClock_d,atm(eai),flow='c2x', &
++                       aname='a2x'//trim(suffix),dname='doma',nx=atm_nx,ny=atm_ny,nt=ncpl)
++               else
++                  call seq_hist_writeaux(infodata,EClock_d,atm(eai),flow='c2x', &
++                       aname='a2x'//trim(suffix),dname='doma',nx=atm_nx,ny=atm_ny, &
++                       nt=ncpl,flds=hist_a2x_flds)
++               endif
++            enddo
++         endif
++         if (do_hist_a2x3hr) then
++            do eai = 1,num_inst_atm
++               suffix = component_get_suffix(atm(eai))
++               if (trim(hist_a2x3hr_flds) == 'all') then
++                  call seq_hist_writeaux(infodata,EClock_d,atm(eai),flow='c2x', &
++                       aname='a2x3h'//trim(suffix),dname='doma',nx=atm_nx,ny=atm_ny, &
++                       nt=8,write_now=t3hr_alarm)
++               else
++                  call seq_hist_writeaux(infodata,EClock_d,atm(eai),flow='c2x', &
++                       aname='a2x3h'//trim(suffix),dname='doma',nx=atm_nx,ny=atm_ny, &
++                       nt=8,write_now=t3hr_alarm,flds=hist_a2x3hr_flds)
++               endif
++            enddo
++         endif
++         if (do_hist_a2x3hrp) then
++            do eai = 1,num_inst_atm
++               suffix = component_get_suffix(atm(eai))
++               if (trim(hist_a2x3hrp_flds) == 'all') then
++                  call seq_hist_writeaux(infodata,EClock_d,atm(eai),flow='c2x', &
++                       aname='a2x3h_prec'//trim(suffix),dname='doma',nx=atm_nx,ny=atm_ny, &
++                       nt=8,write_now=t3hr_alarm)
++               else
++                  call seq_hist_writeaux(infodata,EClock_d,atm(eai),flow='c2x', &
++                       aname='a2x3h_prec'//trim(suffix),dname='doma',nx=atm_nx,ny=atm_ny, &
++                       nt=8,write_now=t3hr_alarm,flds=hist_a2x3hrp_flds)
++               endif
++            enddo
++         endif
++         if (do_hist_a2x24hr) then
++            do eai = 1,num_inst_atm
++               suffix = component_get_suffix(atm(eai))
++               call seq_hist_writeaux(infodata,EClock_d,atm(eai),flow='c2x', &
++                    aname='a2x1d'//trim(suffix),dname='doma',nx=atm_nx,ny=atm_ny, &
++                    nt=1,write_now=t24hr_alarm)
++            enddo
++         endif
++         if (do_hist_l2x1yr .and. glcrun_alarm) then
++            do eli = 1,num_inst_lnd
++               suffix = component_get_suffix(lnd(eli))
++               call seq_hist_writeaux(infodata,EClock_d,lnd(eli),flow='c2x', &
++                    aname='l2x'//trim(suffix),dname='doml',nx=lnd_nx,ny=lnd_ny, &
++                    nt=1,write_now=t1yr_alarm,yr_offset=-1)
++            enddo
++         endif
++         if (do_hist_l2x) then
++            do eli = 1,num_inst_lnd
++               suffix = component_get_suffix(lnd(eli))
++               call seq_hist_writeaux(infodata,EClock_d,lnd(eli),flow='c2x', &
++                    aname='l2x'//trim(suffix),dname='doml',nx=lnd_nx,ny=lnd_ny,nt=ncpl)
++            enddo
++         endif
++         call t_drvstopf('CPL:HISTORY',cplrun=.true.)
++      endif
+    case default
+       status = 1
+    end select
+ 
+    if (drv_threading) call seq_comm_setnthreads(nthreads_GLOID)
++   if (status == 0 .and. action_id >= 101 .and. action_id <= 129) then
++      pycesm_expected_action = action_id
++   endif
+  end subroutine cesm_action_call
+ 
+ !===============================================================================

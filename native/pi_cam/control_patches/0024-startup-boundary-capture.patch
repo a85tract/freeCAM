@@ -1,0 +1,21 @@
+diff --git a/src/cpl/atm_comp_mct.F90 b/src/cpl/atm_comp_mct.F90
+--- a/src/cpl/atm_comp_mct.F90
++++ b/src/cpl/atm_comp_mct.F90
+@@ -95,3 +95,5 @@ module atm_comp_mct
+   logical :: lnd_present ! if true => land is present
+   logical :: ocn_present ! if true => ocean is present
+-  integer :: pycam_boundary_capture_step = 0
++  ! Step zero is cam_init's first export; step one is the initial-only
++  ! atm_import/cam_run1/atm_export priming pass. Normal captures begin at two.
++  integer :: pycam_boundary_capture_step = 2
+@@ -361,2 +363,4 @@ contains
+        !
+        call atm_export( cam_out, a2x_a%rattr )
++       call pycam_capture_boundary('import', 0, x2a_a%rattr)
++       call pycam_capture_boundary('export', 0, a2x_a%rattr)
+@@ -407,1 +411,2 @@ contains
+           call atm_import( x2a_a%rattr, cam_in, cam_out )
++          call pycam_capture_boundary('import', 1, x2a_a%rattr)
+@@ -409,1 +414,2 @@ contains
+           call atm_export( cam_out, a2x_a%rattr )
++          call pycam_capture_boundary('export', 1, a2x_a%rattr)

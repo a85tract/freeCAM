@@ -1,5 +1,5 @@
 #!/bin/bash
-#PBS -N pycesm-pi-atm-oracle-50
+#PBS -N pycam-pi-cam-oracle-50
 #PBS -A UCUB0188
 #PBS -q develop
 #PBS -l select=4:ncpus=64:mpiprocs=128:ompthreads=1:mem=64GB
@@ -9,9 +9,9 @@
 
 set -euo pipefail
 
-case_root=/glade/work/ruitong/CESM_cases/f.e13.F1850C5.ne16_g16.icesm131_ihesp.PI-atm.pycesm-ref.50step
-run_dir=/glade/derecho/scratch/ruitong/pyCESM/PI-atm/f.e13.F1850C5.ne16_g16.icesm131_ihesp.PI-atm.pycesm-ref.50step/run
-executable=/glade/derecho/scratch/ruitong/pyCESM/PI-atm/f.e13.F1850C5.ne16_g16.icesm131_ihesp.PI-atm.pycesm-ref.50step/bld/cesm.exe
+case_root=/glade/work/ruitong/CESM_cases/f.e13.F1850C5.ne16_g16.icesm131_ihesp.PI-cam-oracle.50step
+run_dir=/glade/derecho/scratch/ruitong/pyCAM/PI-cam/f.e13.F1850C5.ne16_g16.icesm131_ihesp.PI-cam-oracle.50step/run
+executable=/glade/derecho/scratch/ruitong/pyCAM/PI-cam/f.e13.F1850C5.ne16_g16.icesm131_ihesp.PI-cam-oracle.50step/bld/cesm.exe
 
 source "${case_root}/.env_mach_specific.sh" >/dev/null 2>&1
 export OMP_NUM_THREADS=1

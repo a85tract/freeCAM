@@ -46,6 +46,110 @@ MPI, ESMF, PIO, NetCDF, HDF5, and RPATH dependencies.
 The current architecture is available as an interactive
 [online diagram](https://pycam-statepool-mpi-fork.bubblehuntr.chatgpt.site).
 
+## iCESM1.3.1 PI-CAM-only runtime
+
+The `pi-cam-only` branch also contains a deliberately separate port of the
+CAM component used by Feng Zhu's iCESM1.3.1 PI-atm case.  The coupled PI-atm
+executable is used only once to capture authoritative rank-local `x2a` inputs
+and `a2x` outputs.  The production runtime starts only CAM: Python owns the
+CAM action order, public clock, state contracts and boundary-provider API;
+the original non-PIC Fortran numerical machine code is loaded as a fixed
+address `.so`.
+
+```text
+captured PI-atm x2a fields
+          ↓
+ReplayBoundaryProvider → Python PICAMDriver
+                              ├── cam_run2 schemes
+                              ├── cam_run2 / cam_run3 dynamics
+                              ├── cam_run4 history and restart
+                              ├── Python completed-step clock
+                              └── cam_run1 schemes
+                                         ↓
+                         fixed-address non-PIC CAM .so
+                                         ↓
+                              captured a2x BFB check
+```
+
+The source CAM lifecycle first exports the state created by `cam_init`, then
+performs an initial-only, monolithic `atm_import -> cam_run1 -> atm_export`
+priming pass, followed by one complete fine-grained startup look-ahead pass.
+The replay therefore contains 53 boundary states: one initial state, one
+priming state, one look-ahead state, and 50 public steps.  All startup
+passes are preserved internally, while `cam.advance(50)` still means 50
+completed public steps and ends at 0001-01-02 01:00:00.  Individual actions
+remain visible:
+
+```python
+from pycam_sima.pi_cam import PICAMCase
+
+case = PICAMCase.from_yaml("configs/pi_cam_icesm131.yaml")
+with case.runtime(
+    boundary="/path/to/replay",
+    run_dir="/path/to/cam/run",
+) as cam:
+    cam.initialize()
+    cam.physics.dadadj.run()       # experimental isolated scheme call
+    cam.phases.cam_run3.run()      # experimental isolated phase call
+    cam.step()                     # one complete source-ordered CAM step
+    print(cam.pool["cam_out.a2x_rattr"])
+```
+
+For a Jupyter Notebook, `PICAMNotebookSession` submits one cpudev job and
+starts the 512-rank CAM worker once. All later calls reuse those live MPI
+ranks and their rank-local Python StatePools; the authenticated socket carries
+only commands and selected field results:
+
+```python
+from pycam_sima.pi_cam import PICAMNotebookSession
+
+with PICAMNotebookSession(
+    "configs/pi_cam_icesm131.yaml",
+    boundary="/path/to/replay",
+    run_dir="/path/to/cam/run",
+    env_script="/path/to/oracle-case/.env_mach_specific.sh",
+    launch_mode="pbs",
+) as cam:
+    cam.step()
+    print(cam.stats("cam_out.a2x_rattr", rank="global"))
+    cam.run_scheme("dadadj", phase="cam_run2")  # experimental isolated call
+```
+
+`cam.step()` follows the source order and advances the public CAM clock.
+`run_scheme()` and `run_phase()` are deliberately experimental: they execute
+only the requested action and do not supply missing scientific preconditions
+or advance model time.
+
+Build and validate with the reproducible cpudev jobs:
+
+```bash
+source /path/to/oracle-case/.env_mach_specific.sh
+python tools/apply_pi_cam_source_patches.py --source-root /path/to/iCESM1.3.1
+python tools/build_pi_cam_devices.py --case /path/to/oracle-case
+qsub validation/jobs/pi_cam_boundary_capture_50step.pbs
+qsub validation/jobs/pi_cam_python_50step.pbs
+qsub validation/jobs/pi_cam_session_50step.pbs
+```
+
+`tools/build_pi_cam_devices.py` intentionally does not rebuild all of CAM with
+`-fPIC`: that changes Intel floating-point code generation and fails BFB.  It
+keeps the original non-PIC objects, replaces only the Python control surfaces,
+links a fixed-address executable image, and changes its ELF type to ET_DYN for
+`dlopen`.  Because Python rather than an Intel Fortran program is the process
+main, the adapter also restores CAM's original `-ftz` MXCSR setting before the
+first numerical call.  Validation is fail-closed and compares every numeric variable in
+all CAM history and restart files; wall-clock strings are excluded.
+The third job drives the same 50-step gate through one long-lived
+`PICAMNotebookSession`, proving that later Notebook cells do not relaunch MPI.
+`tools/apply_pi_cam_source_patches.py` is the reproducible source-preparation
+entry point: it applies only the eight production patches, in dependency order,
+to a clean `components/cam` checkout. Historical exploratory patches remain as
+an audit trail but are not part of the build.
+The current 512-rank gate is recorded in
+[`validation/pi_cam_50step_gate.json`](validation/pi_cam_50step_gate.json):
+both the direct Python driver and the persistent Notebook session are BFB for
+all four CAM history/restart files after 50 completed steps.
+
 Runnable examples are split by execution mode:
 
 - [`examples/try_notebook_session.ipynb`](examples/try_notebook_session.ipynb)
@@ -56,6 +160,9 @@ Runnable examples are split by execution mode:
 - [`examples/try_persistent_dask.ipynb`](examples/try_persistent_dask.ipynb)
   keeps one Dask-managed MPI model alive and demonstrates reusable rank-local
   in-memory snapshots for sequential branches.
+- [`examples/try_pi_cam.ipynb`](examples/try_pi_cam.ipynb) is the independent
+  PI-CAM-only walkthrough; it does not import or run CLM, CICE, DOCN, RTM, or
+  the CESM coupler.
 
 ```text
 pycam_sima/

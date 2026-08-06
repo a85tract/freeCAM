@@ -1,0 +1,68 @@
+import json
+from pathlib import Path
+
+from pycam_sima.pi_cam import session as session_module
+from pycam_sima.pi_cam.session import PICAMNotebookSession, _authkey_argument
+
+
+def _session_files(tmp_path: Path) -> tuple[Path, Path, Path, Path, Path]:
+    math_library = tmp_path / "libimf.so"
+    math_library.touch()
+    manifest = tmp_path / "native.json"
+    manifest.write_text(json.dumps({"intel_math_library": str(math_library)}))
+    config = tmp_path / "pi_cam.yaml"
+    config.write_text(
+        "\n".join(
+            (
+                "case_name: test",
+                f"source_root: {tmp_path}",
+                "mpi_size: 1",
+                f"native_manifest: {manifest}",
+            )
+        )
+        + "\n"
+    )
+    boundary = tmp_path / "boundary"
+    boundary.mkdir()
+    (boundary / "manifest.json").write_text("{}\n")
+    run_dir = tmp_path / "run"
+    run_dir.mkdir()
+    (run_dir / "atm_in").write_text("\n")
+    env_script = tmp_path / "env.sh"
+    env_script.write_text("true\n")
+    return config, boundary, run_dir, env_script, math_library
+
+
+def test_authkey_argument_is_unambiguous_when_base64_starts_with_dash() -> None:
+    argument = _authkey_argument(bytes([248]) * 32)
+
+    assert argument.startswith("--authkey=-")
+
+
+def test_session_environment_preloads_manifest_math_runtime(
+    tmp_path: Path, monkeypatch
+) -> None:
+    config, boundary, run_dir, env_script, math_library = _session_files(tmp_path)
+    session = PICAMNotebookSession(
+        config,
+        boundary=boundary,
+        run_dir=run_dir,
+        env_script=env_script,
+    )
+    monkeypatch.setattr(
+        session_module.subprocess,
+        "check_output",
+        lambda *args, **kwargs: b"LD_LIBRARY_PATH=/mpi\0LD_PRELOAD=/other.so\0",
+    )
+    monkeypatch.setattr(
+        session_module,
+        "mpi_loader_environment",
+        lambda environment: environment,
+    )
+
+    environment = session._environment()
+
+    assert environment["LD_PRELOAD"].split(":") == [
+        str(math_library),
+        "/other.so",
+    ]

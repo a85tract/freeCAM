@@ -1,0 +1,33 @@
+schema_version: 1
+case_name: f.e13.F1850C5.ne16_g16.icesm131_ihesp.PI-cam-oracle.50step
+source_root: /glade/work/ruitong/iCESM1.3.1_PI_cam_only
+resolution: ne16
+mpi_size: 512
+calendar: NO_LEAP
+start_date: "0001-01-01"
+start_seconds: 0
+orbital_year: 1850
+timestep_seconds: 1800
+coupling_seconds: 1800
+stop_n: 50
+# After cam_init's initial export and the import/run1 priming pass, the source
+# split timestep executes one complete look-ahead pass. It advances native
+# state, but is not counted as a completed user step.
+initialization_lookahead_steps: 1
+pver: 30
+pcols: 16
+physics_package: cam5
+dynamics: se
+
+# Strict BFB runs replay the rank-local CAM imports captured from the full
+# PI-atm oracle.  A future coupler can instead provide the same interface in
+# memory; PI-CAM never imports CLM/CICE/DOCN/RTM Python packages.
+boundary_mode: replay
+
+# Filled by tools/build_pi_cam_devices.py after the original numerical
+# routines have been compiled with generated bind(C) adapters.
+native_manifest: build/pi_cam/native_cam_manifest.json
+
+# These are copied from the oracle case into an isolated run directory.
+initial_conditions: null
+namelist: null
