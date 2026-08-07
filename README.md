@@ -1,9 +1,22 @@
-# pycam-sima
+# freeCAM
 
-`pycam-sima` is a Python-owned, CCPP-like coupling framework for numerical
-model components. Python supplies the lifecycle, process scheduler, common
-field bus, MPI communication, and checkpoint semantics; independently built
-Fortran devices supply numerical schemes through a generated C ABI.
+`freeCAM` is a Python-owned CAM runtime that exposes model control, MPI-aware
+state, coupling boundaries, phases, and numerical kernels through a Python
+API. Its primary target is the CAM component from Feng Zhu's iCESM1.3.1
+PI-atm configuration: Python owns the CAM control path while the original
+Fortran machine code supplies the numerical calculations through generated
+`bind(C)` adapters.
+
+The installable distribution, command-line program, and import namespace
+remain `pycam-sima`, `pycam-sima`, and `pycam_sima` for API compatibility.
+The source repository is `git@github.com:a85tract/freeCAM.git`.
+
+## CAM-SIMA reference runtime
+
+The repository also retains the earlier CCPP-like CAM-SIMA runtime. Python
+supplies its lifecycle, process scheduler, common field bus, MPI communication,
+and checkpoint semantics; independently built Fortran devices supply numerical
+schemes through a generated C ABI.
 
 The scientific gate covers all seven pinned CAM-SIMA suites at
 `ne3np4.pg3`, 24 MPI ranks, 50 model steps, and a 1800-second timestep.
@@ -46,10 +59,10 @@ MPI, ESMF, PIO, NetCDF, HDF5, and RPATH dependencies.
 The current architecture is available as an interactive
 [online diagram](https://pycam-statepool-mpi-fork.bubblehuntr.chatgpt.site).
 
-## iCESM1.3.1 PI-CAM-only runtime
+## Primary runtime: iCESM1.3.1 PI-CAM-only
 
-The `pi-cam-only` branch also contains a deliberately separate port of the
-CAM component used by Feng Zhu's iCESM1.3.1 PI-atm case.  The coupled PI-atm
+freeCAM contains a deliberately isolated port of the CAM component used by
+Feng Zhu's iCESM1.3.1 PI-atm case. The coupled PI-atm
 executable is used only once to capture authoritative rank-local `x2a` inputs
 and `a2x` outputs.  The production runtime starts only CAM: Python owns the
 CAM action order, public clock, state contracts and boundary-provider API;
@@ -246,7 +259,7 @@ The complete Python-owned state gate is recorded in
 [`validation/pi_cam_python_zero_copy_state_50step.json`](validation/pi_cam_python_zero_copy_state_50step.json)
 and
 [`validation/pi_cam_python_zero_copy_state_vs_oracle_50step_bfb.json`](validation/pi_cam_python_zero_copy_state_vs_oracle_50step_bfb.json):
-cpudev job `7032798.desched1` ran 512 MPI ranks for 50 completed steps,
+cpudev job `7033487.desched1` ran 512 MPI ranks for 50 completed steps,
 preinitialized 151 rank-local arrays/views before native CAM resumed, retained
 every address through finalize, and matched all four oracle history/restart
 files bit for bit.
@@ -262,8 +275,9 @@ Python on every rank, and remained BFB for all four files.
 Persistent-session job `7030208.desched1` repeated the same 50-step BFB gate
 with one MPI launch and retrieved active-column `phys_state.t` values directly
 in Python before and after the run.
-Direct-kernel job `7032880.desched1` then ran the final zero-copy generated image on 512
-cpudev ranks.  Its 50-step default CAM outputs remained BFB for all four files;
+Direct-kernel job `7033488.desched1` then ran the final zero-copy generated
+image on 512 cpudev ranks. Its 50-step default CAM outputs remained BFB for all
+four files;
 the disposable `dadadj` probe constructed 13,826 unstable columns and changed
 `t` and `q` on all 512 ranks while preserving every NumPy address and every
 declared read-only input byte.  The machine-readable records are
@@ -372,7 +386,7 @@ is recorded in
 ## Source-preserving Fortran devices
 
 The pinned CAM-SIMA tree contains 7 suite XML files, 155 distinct active
-schemes, and 340 scheme occurrences. PyCAM-SIMA audits all of them and
+schemes, and 340 scheme occurrences. freeCAM audits all of them and
 generates one deterministic connector descriptor per scheme:
 
 ```bash
@@ -430,7 +444,7 @@ from pycam_sima import (
 )
 
 config = ModelConfig.from_yaml("configs/fkessler_model.yaml")
-catalog = DeviceCatalog.discover("/glade/work/ruitong/pycam-sima")
+catalog = DeviceCatalog.discover("/path/to/freeCAM")
 plan = CCPPSuitePlan.from_xml(config.resolve_suite_xml())
 devices = DeviceRegistry(("build/devices", "build/catalog_devices"))
 services = HostServiceRegistry.from_catalog(
@@ -794,7 +808,7 @@ experiments = DaskExperimentClient(
     client,
     config=repo / "configs/fkessler_model.yaml",
     initial_run_dir=reference_run,
-    run_root=scratch / "pycam-sima/dask-experiments",
+    run_root=scratch / "freeCAM/dask-experiments",
     python_executable=repo / ".venv/bin/python",
 )
 
@@ -953,7 +967,7 @@ experiments = DaskExperimentClient(
     client,
     config=repo / "configs/fkessler_model.yaml",
     initial_run_dir=reference_run,
-    run_root=scratch / "pycam-sima/persistent-experiments",
+    run_root=scratch / "freeCAM/persistent-experiments",
     python_executable=repo / ".venv/bin/python",
     execution_mode="allocation",
 )
