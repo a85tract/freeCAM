@@ -4,20 +4,20 @@
 #PBS -l select=1:ncpus=24:mpiprocs=24:ompthreads=1:mem=80GB
 #PBS -l walltime=00:30:00
 #PBS -j oe
-#PBS -o /glade/work/ruitong/pycam-sima/logs/
+#PBS -o /glade/work/ruitong/freeCAM/logs/
 #PBS -N pycam_dynamic
 
 set -euo pipefail
 
-PROJECT=/glade/work/ruitong/pycam-sima
+PROJECT=/glade/work/ruitong/freeCAM
 CASE=$PROJECT/reference/cases/FKESSLER_ne3pg3_gnu_24x50
 REFERENCE_RUN=/glade/derecho/scratch/ruitong/pycam-sima/FKESSLER_ne3pg3_gnu_24x50/FKESSLER_ne3pg3_gnu_24x50/run
-ROOT=/glade/derecho/scratch/ruitong/pycam-sima/dynamic_runtime/${PBS_JOBID}
+ROOT=/glade/derecho/scratch/ruitong/freecam/dynamic_runtime/${PBS_JOBID}
 RUN_DIR=$ROOT/run
 
 mkdir -p "$RUN_DIR"
 cp "$REFERENCE_RUN/atm_in" "$RUN_DIR/atm_in"
-export PYCAM_SIMA_PLUGIN_CACHE=$ROOT/plugin-cache
+export FREECAM_PLUGIN_CACHE=$ROOT/plugin-cache
 export OMP_NUM_THREADS=1
 export PYTHONUNBUFFERED=1
 export PYTHONFAULTHANDLER=1
@@ -35,4 +35,4 @@ mpiexec -n 24 "$PROJECT/.venv/bin/python" \
   --result-json "$ROOT/result.json"
 
 cp "$ROOT/result.json" "$PROJECT/validation/dynamic_plugins_and_variables.json"
-echo "PYCAM_SIMA_DYNAMIC_RUNTIME_PASS root=$ROOT"
+echo "FREECAM_DYNAMIC_RUNTIME_PASS root=$ROOT"

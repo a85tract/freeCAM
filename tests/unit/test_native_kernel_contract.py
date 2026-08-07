@@ -6,9 +6,9 @@ import subprocess
 import numpy as np
 import pytest
 
-from pycam_sima.model.backend import FVMKernelConfig, KernelBackend
-from pycam_sima.model.config import ModelConfig
-from pycam_sima.model.errors import MissingKernelError, StateOwnershipError
+from freecam.model.backend import FVMKernelConfig, KernelBackend
+from freecam.model.config import ModelConfig
+from freecam.model.errors import MissingKernelError, StateOwnershipError
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -49,7 +49,7 @@ def test_fvm_dimensions_and_controls_are_python_owned() -> None:
 
 
 def test_limiter_flattened_grid_dimension_is_validated_separately() -> None:
-    backend = (ROOT / "src/pycam_sima/model/backend.py").read_text()
+    backend = (ROOT / "src/freecam/model/backend.py").read_text()
     native = (ROOT / "native/kernels/se_startup_kernel.F90").read_text()
     manifest = (ROOT / "native/kernels/abi-v2.json").read_text()
     assert "ngp_value = tracer_mass.shape[0] * tracer_mass.shape[1]" in backend

@@ -4,8 +4,8 @@ from netCDF4 import Dataset
 import numpy as np
 import pytest
 
-from pycam_sima.model.errors import ValidationError
-from pycam_sima.model.validation import compare_history_directories
+from freecam.model.errors import ValidationError
+from freecam.model.validation import compare_history_directories
 
 
 def _write_history(path: Path, temperature: float) -> None:

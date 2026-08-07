@@ -5,7 +5,7 @@
 #PBS -l select=1:ncpus=32:mpiprocs=1:ompthreads=1:mem=80GB
 #PBS -l walltime=00:30:00
 #PBS -j oe
-#PBS -o /glade/work/ruitong/pycam-sima/logs/
+#PBS -o /glade/work/ruitong/freeCAM/logs/
 
 set -euo pipefail
 

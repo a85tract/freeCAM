@@ -1,8 +1,8 @@
 import json
 from pathlib import Path
 
-from pycam_sima.pi_cam import session as session_module
-from pycam_sima.pi_cam.session import PICAMNotebookSession, _authkey_argument
+from freecam.pi_cam import session as session_module
+from freecam.pi_cam.session import PICAMNotebookSession, _authkey_argument
 
 
 def _session_files(tmp_path: Path) -> tuple[Path, Path, Path, Path, Path]:

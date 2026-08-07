@@ -4,11 +4,11 @@ import json
 from netCDF4 import Dataset
 import numpy as np
 
-from pycam_sima.model.phases import (
+from freecam.model.phases import (
     check_energy_gmean,
     check_energy_timestep_initial,
 )
-from pycam_sima.model.scientific_data import (
+from freecam.model.scientific_data import (
     _linear_weights,
     read_musica_initial_concentrations,
     read_musica_placeholder_data,
@@ -172,7 +172,7 @@ def test_energy_timestep_initial_refreshes_temperature_before_integrating(
         return np.ones(2), np.full(2, 2.0), np.full(2, 3.0)
 
     monkeypatch.setattr(
-        "pycam_sima.model.phases._hydrostatic_energy",
+        "freecam.model.phases._hydrostatic_energy",
         hydrostatic_energy,
     )
     check_energy_timestep_initial(pool)

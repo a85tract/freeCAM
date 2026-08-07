@@ -10,7 +10,7 @@ from pathlib import Path
 from distributed import Client
 import numpy as np
 
-from pycam_sima import DaskExperimentClient
+from freecam import DaskExperimentClient
 
 
 def main() -> int:
@@ -96,7 +96,7 @@ def main() -> int:
     output.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n")
     print(json.dumps(payload, indent=2, sort_keys=True))
     print(
-        "PYCAM_SIMA_POOL_PLUGIN_API_OK "
+        "FREECAM_POOL_PLUGIN_API_OK "
         f"job={payload['pbs_job_id']} name={installed['name']} delta={delta}"
     )
     return 0

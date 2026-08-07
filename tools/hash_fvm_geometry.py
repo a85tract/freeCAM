@@ -10,7 +10,7 @@ from pathlib import Path
 import numpy as np
 from netCDF4 import Dataset
 
-from pycam_sima.model.fvm_geometry import generate_fvm_geometry
+from freecam.model.fvm_geometry import generate_fvm_geometry
 
 
 def main() -> None:
@@ -19,7 +19,7 @@ def main() -> None:
     parser.add_argument("--load-library", type=Path)
     args = parser.parse_args()
     if args.load_library is not None:
-        from pycam_sima.model.backend import KernelBackend
+        from freecam.model.backend import KernelBackend
 
         KernelBackend(args.load_library)
     if args.vertical_coordinate is None:

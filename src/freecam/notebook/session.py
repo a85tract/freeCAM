@@ -211,7 +211,7 @@ class NotebookSession:
             raise ValueError("session timeouts must be positive")
 
         if log_path is None:
-            log_root = Path(tempfile.gettempdir()) / "pycam-sima"
+            log_root = Path(tempfile.gettempdir()) / "freecam"
             log_root.mkdir(parents=True, exist_ok=True)
             stamp = f"{os.getpid()}-{time.time_ns()}"
             self.log_path = log_root / f"notebook-session-{stamp}.log"
@@ -337,7 +337,7 @@ class NotebookSession:
             str(self.ranks),
             self.python_executable,
             "-m",
-            "pycam_sima.notebook.worker",
+            "freecam.notebook.worker",
             "--host",
             str(host),
             "--port",
@@ -965,7 +965,7 @@ class NotebookSession:
             ) from exc
         self._job_id = result.stdout.strip().splitlines()[-1]
         print(
-            f"PyCAM-SIMA PBS worker submitted as {self._job_id}; "
+            f"freeCAM PBS worker submitted as {self._job_id}; "
             f"waiting for {self.ranks} MPI ranks ...",
             flush=True,
         )

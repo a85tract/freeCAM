@@ -2,8 +2,8 @@ from pathlib import Path
 
 import pytest
 
-import pycam_sima
-from pycam_sima.model import (
+import freecam
+from freecam.model import (
     CheckpointBundle,
     ModelConfig,
     ModelOptions,
@@ -12,7 +12,7 @@ from pycam_sima.model import (
     SchemePlacement,
     VariableSpec,
 )
-from pycam_sima.notebook.session import NotebookSession, NotebookWorkerError
+from freecam.notebook.session import NotebookSession, NotebookWorkerError
 
 
 def _session(
@@ -29,7 +29,7 @@ def _session(
     library.touch()
     if env_script is None:
         env_script = tmp_path / "machine-env.sh"
-        env_script.write_text("export PYCAM_SIMA_NOTEBOOK_TEST=ready\n")
+        env_script.write_text("export FREECAM_NOTEBOOK_TEST=ready\n")
     return NotebookSession(
         ModelConfig(),
         run_dir=run_dir,
@@ -42,7 +42,7 @@ def test_notebook_session_is_public_and_requires_start(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     session = _session(tmp_path, monkeypatch)
-    assert pycam_sima.NotebookSession is NotebookSession
+    assert freecam.NotebookSession is NotebookSession
     assert session.runtime == "model"
     assert session.ranks == 24
     assert not session.running
@@ -54,10 +54,10 @@ def test_worker_response_and_environment_script(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     environment_script = tmp_path / "machine-env.sh"
-    environment_script.write_text("export PYCAM_SIMA_NOTEBOOK_TEST=ready\n")
+    environment_script.write_text("export FREECAM_NOTEBOOK_TEST=ready\n")
     session = _session(tmp_path, monkeypatch, env_script=environment_script)
     environment = session._worker_environment()
-    assert environment["PYCAM_SIMA_NOTEBOOK_TEST"] == "ready"
+    assert environment["FREECAM_NOTEBOOK_TEST"] == "ready"
     assert "lib-abi-mpich" in environment["LD_LIBRARY_PATH"]
     assert session._unwrap({"status": "ok", "result": 7}) == 7
     with pytest.raises(NotebookWorkerError, match="remote failure"):
@@ -69,7 +69,7 @@ def test_jupyter_without_pbs_uses_local_compute_host(
 ) -> None:
     session = _session(tmp_path, monkeypatch)
     monkeypatch.setattr(
-        "pycam_sima.notebook.session.socket.gethostname", lambda: "dec9999"
+        "freecam.notebook.session.socket.gethostname", lambda: "dec9999"
     )
     assert session._launcher_command({}) == [
         "mpiexec",
@@ -85,7 +85,7 @@ def test_auto_mode_uses_pbs_on_login_and_forced_local_mode_refuses(
 ) -> None:
     session = _session(tmp_path, monkeypatch)
     monkeypatch.setattr(
-        "pycam_sima.notebook.session.socket.gethostname", lambda: "derecho6"
+        "freecam.notebook.session.socket.gethostname", lambda: "derecho6"
     )
     assert session._resolve_launch_mode({}) == "pbs"
     with pytest.raises(RuntimeError, match="login node"):

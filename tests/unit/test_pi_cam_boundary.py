@@ -3,7 +3,7 @@ import json
 import numpy as np
 import pytest
 
-from pycam_sima.pi_cam import (
+from freecam.pi_cam import (
     BoundaryReplayError,
     PICAMStatePool,
     ReplayBoundaryProvider,

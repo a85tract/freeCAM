@@ -14,9 +14,9 @@ from typing import Any, Mapping
 from distributed import Client
 import numpy as np
 
-import pycam_sima
-from pycam_sima import DaskExperimentClient
-from pycam_sima.model.validation import (
+import freecam
+from freecam import DaskExperimentClient
+from freecam.model.validation import (
     HISTORY_FIELD_NAMES,
     compare_history_directories,
 )
@@ -233,7 +233,7 @@ def main() -> int:
             ("git", "rev-parse", "HEAD"), cwd=project, text=True
         ).strip(),
         "pbs_job_id": os.environ["PBS_JOBID"],
-        "pycam_sima": pycam_sima.__version__,
+        "freecam": freecam.__version__,
         "allocation": {
             "model_slots": resource_plan.model_slots,
             "ranks_per_model": resource_plan.ranks_per_model,
@@ -261,7 +261,7 @@ def main() -> int:
             "history": history_results,
         },
         "completion_marker": (
-            "PYCAM_SIMA_SINGLE_SLOT_RETAINED_BFB "
+            "FREECAM_SINGLE_SLOT_RETAINED_BFB "
             f"job={os.environ['PBS_JOBID']} world=1x24 "
             f"retained_arrays={retained_arrays}"
         ),

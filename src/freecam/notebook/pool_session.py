@@ -168,7 +168,7 @@ class PooledWorkerSession(NotebookSession):
             str(self.world_size),
             self.python_executable,
             "-m",
-            "pycam_sima.cli",
+            "freecam.cli",
             "pool-worker",
             "--host",
             host,
@@ -883,7 +883,7 @@ class PooledWorkerSession(NotebookSession):
             ) from exc
         self._job_id = result.stdout.strip().splitlines()[-1]
         print(
-            f"PyCAM-SIMA pool submitted as {self._job_id}; waiting for "
+            f"freeCAM pool submitted as {self._job_id}; waiting for "
             f"{self.model_slots} x {self.ranks_per_model} MPI ranks ...",
             flush=True,
         )

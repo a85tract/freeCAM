@@ -19,7 +19,7 @@ from multiprocessing.connection import Connection, Listener
 from pathlib import Path
 from typing import Any
 
-from pycam_sima.core.runtime_env import mpi_loader_environment
+from freecam.core.runtime_env import mpi_loader_environment
 
 from .config import PICAMConfig
 
@@ -120,7 +120,7 @@ class PICAMNotebookSession:
             str(self.config.mpi_size),
             self.python_executable,
             "-m",
-            "pycam_sima.pi_cam.session_worker",
+            "freecam.pi_cam.session_worker",
             "--host",
             host,
             "--port",

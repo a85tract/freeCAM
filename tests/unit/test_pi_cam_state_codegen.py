@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from pycam_sima.pi_cam.state_codegen import (
+from freecam.pi_cam.state_codegen import (
     generate_fortran_include,
     generate_owner_binder,
     instrument_cam_comp,

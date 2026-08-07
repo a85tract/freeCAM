@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import numpy as np
 
-from pycam_sima.model.initial_conditions import (
+from freecam.model.initial_conditions import (
     populate_held_suarez_1994_initial_state,
     populate_resting_isothermal_initial_state,
 )

@@ -12,7 +12,7 @@ import struct
 
 import numpy as np
 
-from pycam_sima.pi_cam import PICAMConfig
+from freecam.pi_cam import PICAMConfig
 
 
 MAGIC = b"PYCAM_BOUNDARY1 "

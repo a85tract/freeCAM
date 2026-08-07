@@ -9,8 +9,8 @@ from pathlib import Path
 
 from distributed import Client
 
-import pycam_sima
-from pycam_sima import (
+import freecam
+from freecam import (
     BranchSpec,
     DaskExperimentClient,
     DaskPBSOptions,
@@ -81,7 +81,7 @@ def main() -> int:
     result = {
         "schema_version": 1,
         "validated_at": datetime.now(timezone.utc).isoformat(),
-        "package_version": pycam_sima.__version__,
+        "package_version": freecam.__version__,
         "plan": plan.as_dict(),
         "segments": summaries,
         "job_ids": sorted(job_ids),
@@ -99,7 +99,7 @@ def main() -> int:
     output.write_text(json.dumps(result, indent=2, sort_keys=True))
     print(json.dumps(result, indent=2, sort_keys=True))
     print(
-        "PYCAM_SIMA_DASK_GRANULAR_PBS_OK "
+        "FREECAM_DASK_GRANULAR_PBS_OK "
         f"jobs={','.join(sorted(job_ids))}"
     )
     return 0

@@ -4,7 +4,7 @@ from types import SimpleNamespace
 import numpy as np
 import pytest
 
-from pycam_sima.model import (
+from freecam.model import (
     BranchSpec,
     CAMDriver,
     CCPPSuitePlan,
@@ -14,16 +14,16 @@ from pycam_sima.model import (
     SchemeMove,
     read_checkpoint,
 )
-from pycam_sima.model.checkpoint import (
+from freecam.model.checkpoint import (
     deserialize_snapshot,
     serialize_snapshot,
     write_checkpoint,
 )
-from pycam_sima.model.clock import NoLeapClock
-from pycam_sima.model.config import ModelConfig
-from pycam_sima.model.driver import DriverState
-from pycam_sima.model.grid import dimensions_for_rank
-from pycam_sima.model.state import NativeObjectHandle, StatePool
+from freecam.model.clock import NoLeapClock
+from freecam.model.config import ModelConfig
+from freecam.model.driver import DriverState
+from freecam.model.grid import dimensions_for_rank
+from freecam.model.state import NativeObjectHandle, StatePool
 
 
 ROOT = Path(__file__).resolve().parents[2]

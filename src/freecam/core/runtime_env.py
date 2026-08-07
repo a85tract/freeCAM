@@ -7,7 +7,7 @@ import sys
 from pathlib import Path
 
 
-_REEXEC_MARKER = "PYCAM_SIMA_MPI_ENV_READY"
+_REEXEC_MARKER = "FREECAM_MPI_ENV_READY"
 
 
 def mpi_loader_environment(environment: dict[str, str] | None = None) -> dict[str, str]:
@@ -49,6 +49,6 @@ def ensure_mpi_loader_environment() -> None:
     env[_REEXEC_MARKER] = "1"
     os.execve(
         sys.executable,
-        [sys.executable, "-m", "pycam_sima.cli", *sys.argv[1:]],
+        [sys.executable, "-m", "freecam.cli", *sys.argv[1:]],
         env,
     )

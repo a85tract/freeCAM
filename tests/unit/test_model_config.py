@@ -2,9 +2,9 @@ from pathlib import Path
 
 import pytest
 
-from pycam_sima import CAM_SE_FVM_V1, ModelConfig
-from pycam_sima.model.errors import ConfigurationError
-from pycam_sima.model.namelist import read_atm_in
+from freecam import CAM_SE_FVM_V1, ModelConfig
+from freecam.model.errors import ConfigurationError
+from freecam.model.namelist import read_atm_in
 
 
 ROOT = Path(__file__).resolve().parents[2]

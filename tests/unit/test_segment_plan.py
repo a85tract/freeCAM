@@ -4,7 +4,7 @@ from types import SimpleNamespace
 import numpy as np
 import pytest
 
-from pycam_sima import (
+from freecam import (
     BranchSpec,
     FieldEdit,
     MoveScheme,
@@ -17,9 +17,9 @@ from pycam_sima import (
     SegmentPlan,
     SetSchemeEnabled,
 )
-from pycam_sima.model import CCPPSuitePlan, StatePool, execute_segment_plan
-from pycam_sima.model.comm import SerialComm
-from pycam_sima.model.grid import dimensions_for_rank
+from freecam.model import CCPPSuitePlan, StatePool, execute_segment_plan
+from freecam.model.comm import SerialComm
+from freecam.model.grid import dimensions_for_rank
 
 
 ROOT = Path(__file__).resolve().parents[2]

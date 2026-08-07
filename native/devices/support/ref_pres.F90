@@ -1,6 +1,6 @@
 ! Minimal low-top CAM reference-pressure service for standalone devices.
 !
-! Every suite pinned by pycam-sima is a low-top configuration.  The original
+! Every suite pinned by freecam is a low-top configuration.  The original
 ! holtslag_boville interstitial explicitly documents that press_lim_idx at
 ! 1.e-7 Pa is level 1 in such configurations and that its host dependency may
 ! be replaced by ntop_eddy = 1.  Keeping that policy in a named provider lets

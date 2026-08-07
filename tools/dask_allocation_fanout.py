@@ -9,7 +9,7 @@ from pathlib import Path
 
 from distributed import Client
 
-from pycam_sima import BranchSpec, DaskExperimentClient, FieldEdit
+from freecam import BranchSpec, DaskExperimentClient, FieldEdit
 
 
 def main() -> int:
@@ -93,7 +93,7 @@ def main() -> int:
     )
     print(json.dumps(all_summaries, indent=2, sort_keys=True))
     print(
-        "PYCAM_SIMA_DASK_ALLOCATION_OK "
+        "FREECAM_DASK_ALLOCATION_OK "
         f"job={outer_job_id} segments={len(all_summaries)} nested_qsub=0"
     )
     return 0

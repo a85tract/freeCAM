@@ -3,14 +3,14 @@ from types import SimpleNamespace
 
 import pytest
 
-from pycam_sima import DeviceBuildError, DeviceCatalog
-from pycam_sima import cli
-from pycam_sima.model.ccpp_suite import CCPPSuitePlan
-from pycam_sima.model.device_codegen import (
+from freecam import DeviceBuildError, DeviceCatalog
+from freecam import cli
+from freecam.model.ccpp_suite import CCPPSuitePlan
+from freecam.model.device_codegen import (
     DeviceDescription,
     _project_module_index,
 )
-from pycam_sima.model.device_catalog import (
+from freecam.model.device_catalog import (
     _load_descriptor_overrides,
     _module_source_index,
 )

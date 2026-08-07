@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import numpy as np
 
-from pycam_sima.model.backend import FVMKernelConfig
-from pycam_sima.model.fvm_mapping import (
+from freecam.model.backend import FVMKernelConfig
+from freecam.model.fvm_mapping import (
     synchronize_min_owned_gll,
     tensor_lagrange_interp,
 )

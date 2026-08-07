@@ -5,14 +5,14 @@
 #PBS -l select=1:ncpus=128:mpiprocs=96:ompthreads=1:mem=80GB
 #PBS -l walltime=00:30:00
 #PBS -j oe
-#PBS -o /glade/work/ruitong/pycam-sima/logs/
+#PBS -o /glade/work/ruitong/freeCAM/logs/
 
 set -euo pipefail
 
-PROJECT=/glade/work/ruitong/pycam-sima
+PROJECT=/glade/work/ruitong/freeCAM
 CASE=$PROJECT/reference/cases/FKESSLER_ne3pg3_gnu_24x50
 ORACLE=/glade/derecho/scratch/ruitong/pycam_sima_legacy_oracle_f8daa568/run
-ROOT=/glade/derecho/scratch/ruitong/pycam-sima/python-runtime-process/${PBS_JOBID}
+ROOT=/glade/derecho/scratch/ruitong/freecam/python-runtime-process/${PBS_JOBID}
 OUTPUT=$ROOT/python_runtime_process.json
 
 source "$CASE/.env_mach_specific.sh" >/dev/null 2>&1

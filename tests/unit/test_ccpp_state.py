@@ -2,15 +2,15 @@ from pathlib import Path
 
 import pytest
 
-from pycam_sima import CCPPStateSchema, CCPPSuitePlan, DeviceCatalog
-from pycam_sima.model.contracts import (
+from freecam import CCPPStateSchema, CCPPSuitePlan, DeviceCatalog
+from freecam.model.contracts import (
     default_contracts,
     model_ccpp_field_aliases,
 )
-from pycam_sima.model.devices import DeviceRegistry
-from pycam_sima.model.errors import DeviceContractError
-from pycam_sima.model.grid import dimensions_for_rank
-from pycam_sima.model.state import StatePool
+from freecam.model.devices import DeviceRegistry
+from freecam.model.errors import DeviceContractError
+from freecam.model.grid import dimensions_for_rank
+from freecam.model.state import StatePool
 
 
 ROOT = Path(__file__).resolve().parents[2]

@@ -61,7 +61,7 @@ def main() -> int:
     case = (args.case_root or repo / "reference/cases" / case_name).resolve()
     output_root = (
         args.output_root
-        or Path("/glade/derecho/scratch/ruitong/pycam-sima") / case_name
+        or Path("/glade/derecho/scratch/ruitong/freecam") / case_name
     ).resolve()
     if case.exists():
         raise SystemExit(f"case already exists: {case}")

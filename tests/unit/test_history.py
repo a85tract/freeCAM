@@ -4,9 +4,9 @@ from types import SimpleNamespace
 from netCDF4 import Dataset
 import numpy as np
 
-from pycam_sima.model.comm import SerialComm
-from pycam_sima.model.contracts import FieldContract
-from pycam_sima.model.history import HISTORY_FIELDS, HistoryWriter
+from freecam.model.comm import SerialComm
+from freecam.model.contracts import FieldContract
+from freecam.model.history import HISTORY_FIELDS, HistoryWriter
 
 
 class _HistoryPool:

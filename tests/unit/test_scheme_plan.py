@@ -3,7 +3,7 @@ from xml.etree import ElementTree
 
 import pytest
 
-from pycam_sima.model import (
+from freecam.model import (
     CCPPSuitePlan,
     PHYSICS_AFTER_COUPLER,
     PHYSICS_BEFORE_COUPLER,

@@ -3,9 +3,9 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "pycam-sima"
+name = "freecam"
 version = "0.19.0"
-description = "Python-owned CAM-SIMA model driver and observable state pool"
+description = "Python-owned CAM runtime with observable state and Fortran kernel adapters"
 readme = "README.md"
 requires-python = ">=3.11,<3.12"
 dependencies = [
@@ -28,10 +28,10 @@ notebook = [
 test = ["pytest>=8.0", "dask[distributed]>=2025.1"]
 
 [project.scripts]
-pycam-sima = "pycam_sima.cli:main"
+freecam = "freecam.cli:main"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/pycam_sima"]
+packages = ["src/freecam"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

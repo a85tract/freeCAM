@@ -2,8 +2,8 @@ from pathlib import Path
 
 import pytest
 
-from pycam_sima import CCPPDeviceHost, CCPPSuitePlan, DeviceCatalog
-from pycam_sima.model.errors import MissingKernelError
+from freecam import CCPPDeviceHost, CCPPSuitePlan, DeviceCatalog
+from freecam.model.errors import MissingKernelError
 
 
 ROOT = Path(__file__).resolve().parents[2]

@@ -1,4 +1,4 @@
-"""MPI worker controlled by :class:`pycam_sima.NotebookSession`."""
+"""MPI worker controlled by :class:`freecam.NotebookSession`."""
 
 from __future__ import annotations
 

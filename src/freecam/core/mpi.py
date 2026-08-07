@@ -11,6 +11,6 @@ def world_comm() -> Any:
     except ImportError as exc:
         raise RuntimeError(
             "mpi4py is installed but its MPI runtime is unavailable; run through "
-            "the pycam-sima CLI or configure LD_LIBRARY_PATH for the site MPI"
+            "the freecam CLI or configure LD_LIBRARY_PATH for the site MPI"
         ) from exc
     return MPI.COMM_WORLD

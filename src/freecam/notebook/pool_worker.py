@@ -1046,7 +1046,7 @@ def command_pool_worker(args: argparse.Namespace) -> int:
 
 
 def main(argv: Sequence[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(prog="pycam-sima-pool-worker")
+    parser = argparse.ArgumentParser(prog="freecam-pool-worker")
     add_arguments(parser)
     return serve_pool(parser.parse_args(argv))
 

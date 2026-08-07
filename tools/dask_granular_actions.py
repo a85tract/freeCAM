@@ -13,8 +13,8 @@ import subprocess
 from distributed import Client
 import numpy as np
 
-import pycam_sima
-from pycam_sima import (
+import freecam
+from freecam import (
     BranchSpec,
     DaskExperimentClient,
     ObserveFields,
@@ -22,7 +22,7 @@ from pycam_sima import (
     RunScheme,
     SegmentPlan,
 )
-from pycam_sima.notebook.dask import _allocation_launcher
+from freecam.notebook.dask import _allocation_launcher
 
 
 def _action_name(index: int, action: object) -> str:
@@ -262,7 +262,7 @@ def main() -> int:
         "repository": {
             "root": str(project),
             "parent_commit": repository_commit,
-            "package_version": pycam_sima.__version__,
+            "package_version": freecam.__version__,
         },
         "pbs_allocation": {
             "job_id": outer_job_id,
@@ -297,7 +297,7 @@ def main() -> int:
     summary_path.write_text(json.dumps(summary, indent=2, sort_keys=True))
     print(json.dumps(summary, indent=2, sort_keys=True))
     print(
-        "PYCAM_SIMA_DASK_GRANULAR_OK "
+        "FREECAM_DASK_GRANULAR_OK "
         f"job={outer_job_id} actions={len(actions)} "
         f"ranks={comparison['ranks']} nested_qsub=0"
     )

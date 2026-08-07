@@ -6,7 +6,7 @@ from types import SimpleNamespace
 import numpy as np
 import pytest
 
-from pycam_sima.core import FortranAdapterError, PointerTableAdapter
+from freecam.core import FortranAdapterError, PointerTableAdapter
 
 
 _CALLBACK = ctypes.CFUNCTYPE(

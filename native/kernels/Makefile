@@ -21,8 +21,8 @@ DEVICE_DESCRIPTORS := \
 DEVICE_INPUTS := \
 	$(DEVICE_DESCRIPTORS) \
 	$(PROJECT_ROOT)/devices/overrides.yaml \
-	$(PROJECT_ROOT)/src/pycam_sima/model/device_catalog.py \
-	$(PROJECT_ROOT)/src/pycam_sima/model/device_codegen.py \
+	$(PROJECT_ROOT)/src/freecam/model/device_catalog.py \
+	$(PROJECT_ROOT)/src/freecam/model/device_codegen.py \
 	$(PROJECT_ROOT)/native/devices/support/ccpp_kinds.F90 \
 	$(PROJECT_ROOT)/external/CAM-SIMA/src/physics/ncar_ccpp/schemes/kessler/kessler.F90 \
 	$(PROJECT_ROOT)/external/CAM-SIMA/src/physics/ncar_ccpp/schemes/kessler/kessler.meta \
@@ -59,7 +59,7 @@ $(TARGET): abi_version.F90 hydrostatic_energy_reference.F90 physics_diagnostics_
 
 $(DEVICE_STAMP): $(DEVICE_INPUTS)
 	rm -rf $(DEVICE_OUTPUT)
-	$(PYTHON) $(PROJECT_ROOT)/src/pycam_sima/model/device_codegen.py \
+	$(PYTHON) $(PROJECT_ROOT)/src/freecam/model/device_codegen.py \
 		--project-root $(PROJECT_ROOT) \
 		--output-root $(DEVICE_OUTPUT) \
 		--compiler $(FC) \

@@ -8,17 +8,17 @@ import numpy as np
 import pytest
 import yaml
 
-from pycam_sima import DeviceRegistry, FortranDevice
-from pycam_sima.model.contracts import FieldContract
-from pycam_sima.model.device_codegen import (
+from freecam import DeviceRegistry, FortranDevice
+from freecam.model.contracts import FieldContract
+from freecam.model.device_codegen import (
     DeviceDescription,
     _load_ccpp_entrypoints,
     _validate_dependencies,
     build_device,
     resolve_source_closure,
 )
-from pycam_sima.model.errors import DeviceBuildError, DeviceContractError
-from pycam_sima.model.state import StatePool
+from freecam.model.errors import DeviceBuildError, DeviceContractError
+from freecam.model.state import StatePool
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -248,7 +248,7 @@ def test_device_preloads_absolute_shared_dependencies_in_reverse_order(
         return object()
 
     monkeypatch.setattr(
-        "pycam_sima.model.devices.ctypes.CDLL", fake_cdll
+        "freecam.model.devices.ctypes.CDLL", fake_cdll
     )
     device = FortranDevice(manifest)
     device._preload_external_runtime_libraries()

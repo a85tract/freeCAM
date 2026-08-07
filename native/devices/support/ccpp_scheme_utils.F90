@@ -2,7 +2,7 @@ module ccpp_scheme_utils
    ! Python-owned CCPP constituent-name registry.
    !
    ! CAM's generated cap normally constructs ccpp_model_constituents_t and
-   ! gives ccpp_scheme_utils a pointer to that object.  PyCAM-SIMA owns the
+   ! gives ccpp_scheme_utils a pointer to that object.  freeCAM owns the
    ! constituent axis in StatePool instead, so this portable provider stores
    ! the exact Python axis order.  Original schemes continue to call the
    ! unmodified ccpp_constituent_index interface.

@@ -1,7 +1,7 @@
 from netCDF4 import Dataset
 import numpy as np
 
-from pycam_sima.pi_cam import compare_pi_cam_directories
+from freecam.pi_cam import compare_pi_cam_directories
 
 
 def _write(path, value, *, timestamp="12:00:00", run_path="/first/run"):

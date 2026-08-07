@@ -12,8 +12,8 @@ from pathlib import Path
 from mpi4py import MPI
 import numpy as np
 
-from pycam_sima.pi_cam import PICAMCase, ReplayBoundaryProvider
-from pycam_sima.pi_cam.native import NativeCAMDevice
+from freecam.pi_cam import PICAMCase, ReplayBoundaryProvider
+from freecam.pi_cam.native import NativeCAMDevice
 
 
 def _hash(array: np.ndarray) -> str:

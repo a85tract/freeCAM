@@ -4,7 +4,7 @@ from types import SimpleNamespace
 import numpy as np
 import pytest
 
-from pycam_sima import (
+from freecam import (
     InstalledPythonProcess,
     InstallPythonProcess,
     ObserveFields,
@@ -14,32 +14,32 @@ from pycam_sima import (
     RunScheme,
     SegmentPlan,
 )
-from pycam_sima.model import (
+from freecam.model import (
     CCPPSuitePlan,
     ModelConfig,
     ModelSnapshot,
     execute_segment_plan,
 )
-from pycam_sima.model.checkpoint import (
+from freecam.model.checkpoint import (
     _rebind_runtime_local_fields,
     deserialize_snapshot,
     read_checkpoint,
     serialize_snapshot,
     write_checkpoint,
 )
-from pycam_sima.model.clock import ModelClock
-from pycam_sima.model.comm import SerialComm
-from pycam_sima.model.devices import DeviceRegistry
-from pycam_sima.model.errors import (
+from freecam.model.clock import ModelClock
+from freecam.model.comm import SerialComm
+from freecam.model.devices import DeviceRegistry
+from freecam.model.errors import (
     PythonProcessContractError,
     PythonProcessExecutionError,
     PythonProcessTaintedError,
 )
-from pycam_sima.model.grid import dimensions_for_rank
-from pycam_sima.model.processes import ProcessRouter
-from pycam_sima.model.python_processes import PythonProcessRegistry
-from pycam_sima.model.state import StatePool
-from pycam_sima.model.user_api import PhysicsCollection
+from freecam.model.grid import dimensions_for_rank
+from freecam.model.processes import ProcessRouter
+from freecam.model.python_processes import PythonProcessRegistry
+from freecam.model.state import StatePool
+from freecam.model.user_api import PhysicsCollection
 
 
 ROOT = Path(__file__).resolve().parents[2]

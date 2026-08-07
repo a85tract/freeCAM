@@ -3,7 +3,7 @@ from pathlib import Path
 
 import pytest
 
-from pycam_sima.pi_cam import PICAMConfig, PICAMConfigurationError
+from freecam.pi_cam import PICAMConfig, PICAMConfigurationError
 
 
 def test_repository_pi_cam_config_is_cam_only() -> None:

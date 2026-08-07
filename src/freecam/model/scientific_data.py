@@ -71,7 +71,7 @@ def read_musica_placeholder_data(
 
     CAM-SIMA explicitly labels these values as placeholder data.  Reading the
     original source keeps Python's host-service contract aligned with the
-    pinned revision without copying a second numerical table into PyCAM-SIMA.
+    pinned revision without copying a second numerical table into freeCAM.
     """
 
     path = (

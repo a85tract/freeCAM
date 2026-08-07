@@ -7,8 +7,8 @@ PI-atm configuration: Python owns the CAM control path while the original
 Fortran machine code supplies the numerical calculations through generated
 `bind(C)` adapters.
 
-The installable distribution, command-line program, and import namespace
-remain `pycam-sima`, `pycam-sima`, and `pycam_sima` for API compatibility.
+The installable distribution, command-line program, and import namespace are
+all named `freecam`.
 The source repository is `git@github.com:a85tract/freeCAM.git`.
 
 ## CAM-SIMA reference runtime
@@ -112,7 +112,7 @@ completed public steps and ends at 0001-01-02 01:00:00.  Individual actions
 remain visible:
 
 ```python
-from pycam_sima.pi_cam import PICAMCase
+from freecam.pi_cam import PICAMCase
 
 case = PICAMCase.from_yaml("configs/pi_cam_icesm131.yaml")
 with case.runtime(
@@ -205,7 +205,7 @@ ranks and their rank-local Python StatePools; the authenticated socket carries
 only commands and selected field results:
 
 ```python
-from pycam_sima.pi_cam import PICAMNotebookSession
+from freecam.pi_cam import PICAMNotebookSession
 
 with PICAMNotebookSession(
     "configs/pi_cam_icesm131.yaml",
@@ -300,7 +300,7 @@ Runnable examples are split by execution mode:
   the CESM coupler.
 
 ```text
-pycam_sima/
+freecam/
   core/       MPI loader and remote-field utilities
   model/      Python driver, StatePool, DeviceRegistry, device runtime
   notebook/   Jupyter/PBS controller and MPI worker
@@ -316,7 +316,7 @@ build/devices/
 
 ```bash
 uv sync --extra test --extra notebook
-uv run pycam-sima build-kernels
+uv run freecam build-kernels
 uv run python tools/validate_kessler_kernel.py
 readelf -d build/libpycam_sima_kernels.so
 readelf -d build/devices/kessler/libpycam_device_kessler.so
@@ -325,7 +325,7 @@ RUN_DIR=/path/containing/atm_in \
 HISTORY_DIR=/new/history/directory \
 STEPS=50 qsub -V jobs/fkessler_model_24x50.pbs
 
-uv run pycam-sima compare-history \
+uv run freecam compare-history \
   /path/to/oracle/history /new/history/directory \
   --files 51 --numeric-variables 26
 ```
@@ -379,7 +379,7 @@ reference continues to write its exact 26-variable inventory.
 The history gate compares filenames, timestamps, dtype, shape, and float64 bit
 patterns for all 51 output times and 26 diagnostic variables. The upstream
 CAM-SIMA executable is used only to produce an external test oracle; it is not
-a selectable pycam-sima backend. The source-device build and full-run evidence
+a selectable freecam backend. The source-device build and full-run evidence
 is recorded in
 [`validation/source_preserving_devices.json`](validation/source_preserving_devices.json).
 
@@ -390,11 +390,11 @@ schemes, and 340 scheme occurrences. freeCAM audits all of them and
 generates one deterministic connector descriptor per scheme:
 
 ```bash
-pycam-sima audit-devices \
+freecam audit-devices \
   --output validation/ccpp_device_catalog.json
-pycam-sima generate-devices --clean
-pycam-sima build-catalog-devices --strict
-pycam-sima scheme-status \
+freecam generate-devices --clean
+freecam build-catalog-devices --strict
+freecam scheme-status \
   --output validation/all_scheme_support.json
 ```
 
@@ -434,7 +434,7 @@ The main `CAMDriver` uses the same XML-derived plan and standard-name bus as
 the standalone host. It contains no Kessler scheme-order table:
 
 ```python
-from pycam_sima import (
+from freecam import (
     CCPPDeviceHost,
     CCPPSuitePlan,
     DeviceCatalog,
@@ -495,7 +495,7 @@ does not contain Kessler's formulas or loops. The former handwritten
 Build one descriptor independently with:
 
 ```bash
-uv run pycam-sima build-device devices/generated/kessler/device.yaml
+uv run freecam build-device devices/generated/kessler/device.yaml
 ```
 
 At runtime, `DeviceRegistry` reads `device.json`. Every ABI argument declares
@@ -505,7 +505,7 @@ constituent slice, verifies the complete contract, and passes the existing
 Fortran-contiguous NumPy address:
 
 ```python
-from pycam_sima import DeviceRegistry
+from freecam import DeviceRegistry
 
 registry = DeviceRegistry("build/devices")
 assert registry.process_names == {"kessler", "kessler_update"}
@@ -524,8 +524,8 @@ Version 0.13 adds a collective runtime extension API. A plugin may be an
 original-source `device.yaml` or a prebuilt `device.json` beside its `.so`.
 Source plugins are built once in a hash-addressed shared cache; prebuilt
 plugins pass the same ABI, source-hash, exported-symbol, ELF-dependency, and
-RPATH checks. Explicit paths, `PYCAM_SIMA_PLUGIN_PATH`, and Python entry points
-in the `pycam_sima.physics` group are discoverable.
+RPATH checks. Explicit paths, `FREECAM_PLUGIN_PATH`, and Python entry points
+in the `freecam.physics` group are discoverable.
 
 ```python
 model.fields.create(
@@ -737,7 +737,7 @@ silently owned by a Fortran global.
 ## Python API
 
 ```python
-from pycam_sima import (
+from freecam import (
     CAMDriver,
     ModelConfig,
     PHYSICS_AFTER_COUPLER,
@@ -797,7 +797,7 @@ applies its edits, and continues independently without a persistent socket.
 
 ```python
 from dask.distributed import Client
-from pycam_sima import (
+from freecam import (
     BranchSpec,
     DaskExperimentClient,
     FieldEdit,
@@ -832,7 +832,7 @@ summaries = experiments.summaries(branches)
 For phase/scheme boundaries, submit a serializable `SegmentPlan`:
 
 ```python
-from pycam_sima import (
+from freecam import (
     ObserveFields,
     RunPhase,
     RunScheme,
@@ -1116,7 +1116,7 @@ four values before initialization; it never silently reuses a library with
 the wrong layout:
 
 ```bash
-uv run pycam-sima build-kernels \
+uv run freecam build-kernels \
   --config configs/configurable_ne2np5_pg4_l12.yaml
 ```
 
@@ -1129,7 +1129,7 @@ Non-reference builds are cached under
 `NotebookSession` controls 24 MPI workers from a normal one-process Notebook:
 
 ```python
-from pycam_sima import NotebookSession
+from freecam import NotebookSession
 
 with NotebookSession(
     "configs/fkessler_model.yaml",

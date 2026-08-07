@@ -17,7 +17,7 @@ from .native import NativeCAMDevice
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(prog="python -m pycam_sima.pi_cam.cli")
+    parser = argparse.ArgumentParser(prog="python -m freecam.pi_cam.cli")
     parser.add_argument("--config", type=Path, required=True)
     parser.add_argument("--boundary", type=Path, required=True)
     parser.add_argument("--run-dir", type=Path, required=True)

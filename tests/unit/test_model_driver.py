@@ -3,7 +3,7 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from pycam_sima.model import (
+from freecam.model import (
     CAMDriver,
     CCPPSuitePlan,
     DriverState,
@@ -11,13 +11,13 @@ from pycam_sima.model import (
     PHYSICS_AFTER_COUPLER,
     PHYSICS_BEFORE_COUPLER,
 )
-from pycam_sima.model.driver import (
+from freecam.model.driver import (
     INITIAL_PREP_PHASES,
 )
-from pycam_sima.model.clock import ModelClock
-from pycam_sima.model.contracts import default_contracts
-from pycam_sima.model.grid import local_elements
-import pycam_sima.model.driver as driver_module
+from freecam.model.clock import ModelClock
+from freecam.model.contracts import default_contracts
+from freecam.model.grid import local_elements
+import freecam.model.driver as driver_module
 
 
 PROJECT = Path(__file__).resolve().parents[2]

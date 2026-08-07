@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import numpy as np
 
-from pycam_sima.model.se_runtime import apply_cam_forcing
+from freecam.model.se_runtime import apply_cam_forcing
 
 
 def test_native_tracer_update_does_not_skip_python_owned_forcing() -> None:

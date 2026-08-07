@@ -12,7 +12,7 @@ import sys
 REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO / "src"))
 
-from pycam_sima.pi_cam.state_codegen import (  # noqa: E402
+from freecam.pi_cam.state_codegen import (  # noqa: E402
     generate_fortran_include,
     load_state_bridge,
 )

@@ -2,9 +2,9 @@ from pathlib import Path
 
 import pytest
 
-from pycam_sima.model import ModelConfig, PythonProcessSpec
-from pycam_sima.notebook.pool_session import PooledWorkerSession
-from pycam_sima.notebook.pool_worker import (
+from freecam.model import ModelConfig, PythonProcessSpec
+from freecam.notebook.pool_session import PooledWorkerSession
+from freecam.notebook.pool_worker import (
     slot_for_world_rank,
     validate_pool_layout,
 )

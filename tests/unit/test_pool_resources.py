@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from pycam_sima import (
+from freecam import (
     ModelConfig,
     ModelSlotStatus,
     PoolRequest,
@@ -12,7 +12,7 @@ from pycam_sima import (
     ResourcePlan,
     plan_pool_resources,
 )
-from pycam_sima.notebook.pool_resources import (
+from freecam.notebook.pool_resources import (
     discover_pbs_resources,
     estimate_state_pool_bytes,
     format_memory,

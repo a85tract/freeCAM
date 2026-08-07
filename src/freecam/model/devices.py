@@ -1140,7 +1140,7 @@ class DeviceRegistry:
         """Give active original schemes the Python-owned constituent order.
 
         The generated CAM cap normally creates this module-global lookup
-        table.  PyCAM-SIMA replaces only that host-owned registry boundary;
+        table.  freeCAM replaces only that host-owned registry boundary;
         the numerical schemes and their calls to ``ccpp_constituent_index``
         remain unchanged.
         """

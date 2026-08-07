@@ -5,14 +5,14 @@
 #PBS -l select=1:ncpus=25:mpiprocs=24:mem=45GB
 #PBS -l walltime=00:20:00
 #PBS -j oe
-#PBS -o /glade/work/ruitong/pycam-sima/logs/
+#PBS -o /glade/work/ruitong/freeCAM/logs/
 
 set -euo pipefail
 
-REPO=/glade/work/ruitong/pycam-sima
+REPO=/glade/work/ruitong/freeCAM
 CASE=$REPO/reference/cases/FKESSLER_ne3pg3_gnu_24x50
 REFERENCE=/glade/derecho/scratch/ruitong/pycam-sima/FKESSLER_ne3pg3_gnu_24x50/FKESSLER_ne3pg3_gnu_24x50/run
-RUN_DIR=/glade/derecho/scratch/ruitong/pycam-sima/notebook_session_smoke/${PBS_JOBID}/run
+RUN_DIR=/glade/derecho/scratch/ruitong/freecam/notebook_session_smoke/${PBS_JOBID}/run
 
 mkdir -p "$RUN_DIR"
 cp "$REFERENCE/atm_in" "$RUN_DIR/atm_in"

@@ -8,7 +8,7 @@ from distributed import Client
 import numpy as np
 import pytest
 
-from pycam_sima import (
+from freecam import (
     DaskExperimentClient,
     InstalledPythonProcess,
     PersistentPoolActor,

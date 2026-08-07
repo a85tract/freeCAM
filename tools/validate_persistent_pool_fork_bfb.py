@@ -14,9 +14,9 @@ from typing import Any, Mapping
 from distributed import Client
 import numpy as np
 
-import pycam_sima
-from pycam_sima import DaskExperimentClient
-from pycam_sima.model.validation import compare_history_directories
+import freecam
+from freecam import DaskExperimentClient
+from freecam.model.validation import compare_history_directories
 
 
 def _snapshots_equal(
@@ -244,7 +244,7 @@ def main() -> int:
             text=True,
         ).strip(),
         "pbs_job_id": os.environ["PBS_JOBID"],
-        "pycam_sima": pycam_sima.__version__,
+        "freecam": freecam.__version__,
         "allocation": {
             "world_size": resource_plan.world_size,
             "model_slots": resource_plan.model_slots,
@@ -286,7 +286,7 @@ def main() -> int:
             "no_kessler_enabled": no_kessler_enabled,
         },
         "completion_marker": (
-            "PYCAM_SIMA_MODEL_ACTOR_POOL_25X25_BFB "
+            "FREECAM_MODEL_ACTOR_POOL_25X25_BFB "
             f"job={os.environ['PBS_JOBID']} world=4x24 "
             f"workers=1+4 arrays={arrays_compared}"
         ),

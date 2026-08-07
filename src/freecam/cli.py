@@ -509,7 +509,7 @@ def command_pool_worker(args: argparse.Namespace) -> int:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(prog="pycam-sima")
+    parser = argparse.ArgumentParser(prog="freecam")
     sub = parser.add_subparsers(dest="command", required=True)
 
     run = sub.add_parser("run", help="run the complete Python-owned CAM model")

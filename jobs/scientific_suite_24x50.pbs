@@ -5,11 +5,11 @@
 #PBS -l select=1:ncpus=24:mpiprocs=24:ompthreads=1:mem=80GB
 #PBS -l walltime=00:30:00
 #PBS -j oe
-#PBS -o /glade/work/ruitong/pycam-sima/logs/
+#PBS -o /glade/work/ruitong/freeCAM/logs/
 
 set -euo pipefail
 
-REPO=${REPO:-/glade/work/ruitong/pycam-sima}
+REPO=${REPO:-/glade/work/ruitong/freeCAM}
 : "${SUITE_CONFIG:?set SUITE_CONFIG to a ModelConfig YAML}"
 : "${CASE_ENV:?set CASE_ENV to the suite reference case environment script}"
 : "${ORACLE_RUN:?set ORACLE_RUN to the immutable CAM-SIMA run directory}"
@@ -35,7 +35,7 @@ if [[ -n "${STEPS:-}" ]]; then
   RUN_ARGS+=(--steps "$STEPS")
 fi
 mpiexec --hosts "$(hostname -s)" --no-vni -n 24 \
-  "$REPO/.venv/bin/python" -m pycam_sima.cli run \
+  "$REPO/.venv/bin/python" -m freecam.cli run \
   "${RUN_ARGS[@]}" \
   >"$RUN_STDOUT"
 tail -n 1 "$RUN_STDOUT" >"$RESULT_JSON"
@@ -50,5 +50,5 @@ COMPARE_ARGS=(
 )
 VALIDATION_FIELDS=${VALIDATION_FIELDS:-T,Q,U,V,PS}
 COMPARE_ARGS+=(--fields "$VALIDATION_FIELDS")
-"$REPO/.venv/bin/python" -m pycam_sima.cli compare-history \
+"$REPO/.venv/bin/python" -m freecam.cli compare-history \
   "${COMPARE_ARGS[@]}"

@@ -5,12 +5,12 @@
 #PBS -l select=4:ncpus=64:mpiprocs=128:ompthreads=1:mem=64GB
 #PBS -l walltime=00:15:00
 #PBS -j oe
-#PBS -o /glade/work/ruitong/pycam-sima-pi-cam-only/logs/
+#PBS -o /glade/work/ruitong/freeCAM/logs/
 #PBS -V
 
 set -euo pipefail
 
-repo=/glade/work/ruitong/pycam-sima-pi-cam-only
+repo=/glade/work/ruitong/freeCAM
 python=${repo}/.venv/bin/python
 case_root=/glade/work/ruitong/CESM_cases/f.e13.F1850C5.ne16_g16.icesm131_ihesp.PI-cam-oracle.50step
 oracle_run=/glade/derecho/scratch/ruitong/pyCAM/PI-cam/f.e13.F1850C5.ne16_g16.icesm131_ihesp.PI-cam-oracle.50step/run

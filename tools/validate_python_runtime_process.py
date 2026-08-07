@@ -15,10 +15,10 @@ from typing import Any, Mapping, Sequence
 from distributed import Client
 import numpy as np
 
-import pycam_sima
-from pycam_sima import DaskExperimentClient
-from pycam_sima.model.history import HISTORY_FIELDS
-from pycam_sima.model.validation import (
+import freecam
+from freecam import DaskExperimentClient
+from freecam.model.history import HISTORY_FIELDS
+from freecam.model.validation import (
     compare_history_directories,
     compare_history_files,
 )
@@ -520,7 +520,7 @@ def main() -> int:
         ).strip(),
         "working_tree_feature": "notebook-python-runtime-process",
         "pbs_job_id": os.environ["PBS_JOBID"],
-        "pycam_sima": pycam_sima.__version__,
+        "freecam": freecam.__version__,
         "python_process": {
             "name": "notebook_noop",
             "payload_hash": no_op_hash,
@@ -578,7 +578,7 @@ def main() -> int:
         },
         "checks": checks,
         "completion_marker": (
-            "PYCAM_SIMA_PYTHON_RUNTIME_PROCESS_OK "
+            "FREECAM_PYTHON_RUNTIME_PROCESS_OK "
             f"job={os.environ['PBS_JOBID']} world=4x24 "
             f"fork_arrays={fork_arrays_compared} "
             f"restart_arrays={restart_arrays_compared}"

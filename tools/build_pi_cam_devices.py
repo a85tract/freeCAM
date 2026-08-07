@@ -25,12 +25,12 @@ import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from pycam_sima.pi_cam.state_codegen import (  # noqa: E402
+from freecam.pi_cam.state_codegen import (  # noqa: E402
     generate_fortran_include,
     instrument_cam_comp,
     load_state_bridge,
 )
-from pycam_sima.pi_cam.kernel_codegen import (  # noqa: E402
+from freecam.pi_cam.kernel_codegen import (  # noqa: E402
     generate_direct_kernel_module,
     load_direct_kernels,
 )

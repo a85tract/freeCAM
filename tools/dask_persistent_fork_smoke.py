@@ -15,8 +15,8 @@ from distributed import Client
 import distributed
 import numpy as np
 
-import pycam_sima
-from pycam_sima import (
+import freecam
+from freecam import (
     BranchSpec,
     CheckpointBundle,
     DaskExperimentClient,
@@ -305,7 +305,7 @@ def main() -> int:
             ),
         },
         "software": {
-            "pycam_sima": pycam_sima.__version__,
+            "freecam": freecam.__version__,
             "dask": dask.__version__,
             "distributed": distributed.__version__,
         },
@@ -339,7 +339,7 @@ def main() -> int:
     output.write_text(json.dumps(payload, indent=2, sort_keys=True))
     print(json.dumps(payload, indent=2, sort_keys=True))
     print(
-        "PYCAM_SIMA_DASK_PERSISTENT_FORK_OK "
+        "FREECAM_DASK_PERSISTENT_FORK_OK "
         f"base_steps={args.base_steps} children=3 "
         "transport=memory checkpoint_artifacts=0"
     )

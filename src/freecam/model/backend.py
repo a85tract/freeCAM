@@ -327,7 +327,7 @@ class KernelBackend:
             raise MissingKernelError(
                 f"kernel library {self.path} is specialized for {actual}, "
                 f"but the model requires {expected}; build it with "
-                f"`pycam-sima build-kernels --config <config.yaml>`"
+                f"`freecam build-kernels --config <config.yaml>`"
             )
 
     def run_phase(self, phase: str, pool) -> None:
@@ -343,7 +343,7 @@ class KernelBackend:
     def _ensure_abi(self) -> None:
         if not self._abi_checked:
             if self.lib.pycam_sima_abi_version() != 2:
-                raise MissingKernelError("unsupported pycam_sima kernel ABI")
+                raise MissingKernelError("unsupported freecam kernel ABI")
             self._abi_checked = True
 
     def _require_arrays(self, label: str, arrays) -> None:

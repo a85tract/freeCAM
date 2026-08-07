@@ -1,6 +1,6 @@
 import pytest
 
-from pycam_sima.pi_cam import PICAMConfigurationError, PICAMStepPlan
+from freecam.pi_cam import PICAMConfigurationError, PICAMStepPlan
 
 
 def test_pi_cam_default_plan_matches_cesm_cam_source_order() -> None:

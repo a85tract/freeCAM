@@ -270,6 +270,54 @@ wheels = [
 ]
 
 [[package]]
+name = "freecam"
+version = "0.19.0"
+source = { editable = "." }
+dependencies = [
+    { name = "cloudpickle" },
+    { name = "f90nml" },
+    { name = "mpi4py" },
+    { name = "netcdf4" },
+    { name = "numpy" },
+    { name = "pyyaml" },
+    { name = "taskflow" },
+]
+
+[package.optional-dependencies]
+dask = [
+    { name = "dask", extra = ["distributed"] },
+    { name = "dask-jobqueue" },
+]
+notebook = [
+    { name = "dask", extra = ["distributed"] },
+    { name = "dask-jobqueue" },
+    { name = "ipykernel" },
+]
+test = [
+    { name = "dask", extra = ["distributed"] },
+    { name = "pytest" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "cloudpickle", specifier = ">=3.1,<4" },
+    { name = "dask", extras = ["distributed"], marker = "extra == 'dask'", specifier = ">=2025.1" },
+    { name = "dask", extras = ["distributed"], marker = "extra == 'notebook'", specifier = ">=2025.1" },
+    { name = "dask", extras = ["distributed"], marker = "extra == 'test'", specifier = ">=2025.1" },
+    { name = "dask-jobqueue", marker = "extra == 'dask'", specifier = ">=0.9" },
+    { name = "dask-jobqueue", marker = "extra == 'notebook'", specifier = ">=0.9" },
+    { name = "f90nml", specifier = ">=1.4" },
+    { name = "ipykernel", marker = "extra == 'notebook'", specifier = ">=7.0" },
+    { name = "mpi4py", specifier = ">=4.0" },
+    { name = "netcdf4", specifier = ">=1.7" },
+    { name = "numpy", specifier = ">=2.0" },
+    { name = "pytest", marker = "extra == 'test'", specifier = ">=8.0" },
+    { name = "pyyaml", specifier = ">=6.0" },
+    { name = "taskflow", specifier = ">=5.10" },
+]
+provides-extras = ["dask", "notebook", "test"]
+
+[[package]]
 name = "fsspec"
 version = "2026.6.0"
 source = { registry = "https://pypi.org/simple" }
@@ -785,54 +833,6 @@ sdist = { url = "https://files.pythonhosted.org/packages/cd/05/0a34433a064256a57
 wheels = [
     { url = "https://files.pythonhosted.org/packages/8e/37/efad0257dc6e593a18957422533ff0f87ede7c9c6ea010a2177d738fb82f/pure_eval-0.2.3-py3-none-any.whl", hash = "sha256:1db8e35b67b3d218d818ae653e27f06c3aa420901fa7b081ca98cbedc874e0d0", size = 11842, upload-time = "2024-07-21T12:58:20.04Z" },
 ]
-
-[[package]]
-name = "pycam-sima"
-version = "0.19.0"
-source = { editable = "." }
-dependencies = [
-    { name = "cloudpickle" },
-    { name = "f90nml" },
-    { name = "mpi4py" },
-    { name = "netcdf4" },
-    { name = "numpy" },
-    { name = "pyyaml" },
-    { name = "taskflow" },
-]
-
-[package.optional-dependencies]
-dask = [
-    { name = "dask", extra = ["distributed"] },
-    { name = "dask-jobqueue" },
-]
-notebook = [
-    { name = "dask", extra = ["distributed"] },
-    { name = "dask-jobqueue" },
-    { name = "ipykernel" },
-]
-test = [
-    { name = "dask", extra = ["distributed"] },
-    { name = "pytest" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "cloudpickle", specifier = ">=3.1,<4" },
-    { name = "dask", extras = ["distributed"], marker = "extra == 'dask'", specifier = ">=2025.1" },
-    { name = "dask", extras = ["distributed"], marker = "extra == 'notebook'", specifier = ">=2025.1" },
-    { name = "dask", extras = ["distributed"], marker = "extra == 'test'", specifier = ">=2025.1" },
-    { name = "dask-jobqueue", marker = "extra == 'dask'", specifier = ">=0.9" },
-    { name = "dask-jobqueue", marker = "extra == 'notebook'", specifier = ">=0.9" },
-    { name = "f90nml", specifier = ">=1.4" },
-    { name = "ipykernel", marker = "extra == 'notebook'", specifier = ">=7.0" },
-    { name = "mpi4py", specifier = ">=4.0" },
-    { name = "netcdf4", specifier = ">=1.7" },
-    { name = "numpy", specifier = ">=2.0" },
-    { name = "pytest", marker = "extra == 'test'", specifier = ">=8.0" },
-    { name = "pyyaml", specifier = ">=6.0" },
-    { name = "taskflow", specifier = ">=5.10" },
-]
-provides-extras = ["dask", "notebook", "test"]
 
 [[package]]
 name = "pycparser"

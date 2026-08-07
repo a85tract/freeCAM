@@ -93,14 +93,14 @@ Inside a one-node allocation, create one Dask worker and one persistent Actor:
 
 ```python
 from dask.distributed import Client
-from pycam_sima import DaskExperimentClient
+from freecam import DaskExperimentClient
 
 client = Client(processes=False, n_workers=1, threads_per_worker=1)
 experiments = DaskExperimentClient(
     client,
     config=repo / "configs/fkessler_model.yaml",
     initial_run_dir=reference_run,
-    run_root=scratch / "pycam-sima/persistent-dask",
+    run_root=scratch / "freecam/persistent-dask",
     python_executable=repo / ".venv/bin/python",
     execution_mode="allocation",
 )
@@ -143,7 +143,7 @@ experiments = DaskExperimentClient(
     client,
     config=repo / "configs/fkessler_model.yaml",
     initial_run_dir=reference_run,
-    run_root=scratch / "pycam-sima/persistent-fork",
+    run_root=scratch / "freecam/persistent-fork",
     python_executable=repo / ".venv/bin/python",
     execution_mode="pbs",
 )
@@ -192,9 +192,9 @@ Create a fresh run directory containing `atm_in`, then construct the model:
 from pathlib import Path
 import shutil
 
-from pycam_sima import NotebookSession
+from freecam import NotebookSession
 
-repo = Path("/glade/work/ruitong/pycam-sima")
+repo = Path("/glade/work/ruitong/freeCAM")
 run_dir = Path("/path/to/fresh/run")
 run_dir.mkdir(parents=True)
 shutil.copy2(oracle_dir / "atm_in", run_dir / "atm_in")
@@ -357,14 +357,14 @@ MPI world.
 
 ```python
 from dask.distributed import Client
-from pycam_sima import BranchSpec, DaskExperimentClient, FieldEdit
+from freecam import BranchSpec, DaskExperimentClient, FieldEdit
 
 client = Client(processes=False, n_workers=3, threads_per_worker=1)
 experiments = DaskExperimentClient(
     client,
     config=repo / "configs/fkessler_model.yaml",
     initial_run_dir=reference_run,
-    run_root=scratch / "pycam-sima/dask-branches",
+    run_root=scratch / "freecam/dask-branches",
     python_executable=repo / ".venv/bin/python",
 )
 
@@ -388,7 +388,7 @@ For finer control, submit a serializable action plan. All actions in one plan
 share the same in-memory `StatePool` and one 24-rank MPI launch:
 
 ```python
-from pycam_sima import ObserveFields, RunPhase, RunScheme, SegmentPlan
+from freecam import ObserveFields, RunPhase, RunScheme, SegmentPlan
 
 plan = SegmentPlan(
     name="custom-kessler-path",

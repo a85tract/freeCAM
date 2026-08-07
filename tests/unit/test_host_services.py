@@ -2,12 +2,12 @@ from pathlib import Path
 
 import numpy as np
 
-from pycam_sima.model.ccpp_suite import CCPPDeviceHost, CCPPSuitePlan
-from pycam_sima.model.contracts import FieldContract
-from pycam_sima.model.device_catalog import DeviceCatalog
-from pycam_sima.model.devices import DeviceRegistry
-from pycam_sima.model.host_services import HostServiceRegistry
-from pycam_sima.model.state import StatePool
+from freecam.model.ccpp_suite import CCPPDeviceHost, CCPPSuitePlan
+from freecam.model.contracts import FieldContract
+from freecam.model.device_catalog import DeviceCatalog
+from freecam.model.devices import DeviceRegistry
+from freecam.model.host_services import HostServiceRegistry
+from freecam.model.state import StatePool
 
 
 ROOT = Path(__file__).resolve().parents[2]

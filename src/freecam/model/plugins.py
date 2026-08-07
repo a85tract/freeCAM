@@ -311,12 +311,12 @@ class PhysicsPluginManager:
         self.cache_dir = Path(
             cache_dir
             or os.environ.get(
-                "PYCAM_SIMA_PLUGIN_CACHE",
-                Path.home() / ".cache/pycam-sima/plugins",
+                "FREECAM_PLUGIN_CACHE",
+                Path.home() / ".cache/freecam/plugins",
             )
         ).expanduser().resolve()
         self.compiler = str(
-            compiler or os.environ.get("PYCAM_SIMA_PLUGIN_COMPILER", _DEFAULT_COMPILER)
+            compiler or os.environ.get("FREECAM_PLUGIN_COMPILER", _DEFAULT_COMPILER)
         )
         self.fflags = tuple(fflags)
         self.ldflags = tuple(ldflags)
@@ -330,7 +330,7 @@ class PhysicsPluginManager:
         candidates = [Path(item).expanduser() for item in roots]
         candidates.extend(
             Path(item)
-            for item in os.environ.get("PYCAM_SIMA_PLUGIN_PATH", "").split(
+            for item in os.environ.get("FREECAM_PLUGIN_PATH", "").split(
                 os.pathsep
             )
             if item.strip()
@@ -361,7 +361,7 @@ class PhysicsPluginManager:
                     ),
                 }
         for entrypoint in importlib_metadata.entry_points(
-            group="pycam_sima.physics"
+            group="freecam.physics"
         ):
             records.setdefault(
                 entrypoint.name,
@@ -968,7 +968,7 @@ class PhysicsPluginManager:
             return candidate.resolve()
         roots = [
             Path(item)
-            for value in os.environ.get("PYCAM_SIMA_PLUGIN_PATH", "").split(
+            for value in os.environ.get("FREECAM_PLUGIN_PATH", "").split(
                 os.pathsep
             )
             if (item := value.strip())
@@ -982,7 +982,7 @@ class PhysicsPluginManager:
                 if path.is_file():
                     return path.resolve()
         for entrypoint in importlib_metadata.entry_points(
-            group="pycam_sima.physics"
+            group="freecam.physics"
         ):
             if entrypoint.name != source:
                 continue

@@ -6,7 +6,7 @@ from distributed import Client
 import numpy as np
 import pytest
 
-from pycam_sima import (
+from freecam import (
     ActivatePhysics,
     BlockingModel,
     BranchSpec,
@@ -25,7 +25,7 @@ from pycam_sima import (
     SchemePlacement,
     VariableSpec,
 )
-from pycam_sima.notebook.persistent_dask import (
+from freecam.notebook.persistent_dask import (
     PersistentCAMActor,
     PersistentDaskRequest,
 )

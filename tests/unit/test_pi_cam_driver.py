@@ -3,13 +3,13 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from pycam_sima.pi_cam import (
+from freecam.pi_cam import (
     InMemoryBoundaryProvider,
     PICAMConfig,
     PICAMDriver,
     RecordingCAMBackend,
 )
-from pycam_sima.pi_cam.errors import PICAMConfigurationError
+from freecam.pi_cam.errors import PICAMConfigurationError
 
 
 def _driver() -> tuple[PICAMDriver, RecordingCAMBackend, InMemoryBoundaryProvider]:

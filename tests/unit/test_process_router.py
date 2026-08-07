@@ -2,8 +2,8 @@ from pathlib import Path
 
 import pytest
 
-from pycam_sima.model import CCPPSuitePlan, ProcessRouter
-from pycam_sima.model.errors import MissingKernelError
+from freecam.model import CCPPSuitePlan, ProcessRouter
+from freecam.model.errors import MissingKernelError
 
 
 ROOT = Path(__file__).resolve().parents[2]

@@ -2,12 +2,12 @@ import numpy as np
 import pytest
 from types import SimpleNamespace
 
-from pycam_sima.pi_cam import (
+from freecam.pi_cam import (
     PICAMFieldContract,
     PICAMStateError,
     PICAMStatePool,
 )
-from pycam_sima.pi_cam.native import _NativeStateBridge
+from freecam.pi_cam.native import _NativeStateBridge
 
 
 def test_pi_cam_state_is_rank_local_python_owned_fortran_storage() -> None:

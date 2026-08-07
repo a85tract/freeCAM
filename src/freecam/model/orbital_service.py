@@ -110,7 +110,7 @@ class OrbitalHostService:
         if not self.library_path.is_file():
             raise DeviceContractError(
                 "orbital host library is missing; run "
-                "`python -m pycam_sima.cli build-catalog-devices --strict`"
+                "`python -m freecam.cli build-catalog-devices --strict`"
             )
         self._library = ctypes.CDLL(
             str(self.library_path),

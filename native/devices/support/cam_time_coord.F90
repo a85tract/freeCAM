@@ -56,13 +56,13 @@ contains
     if (present(force_time_interp)) this%time_interp = force_time_interp
     if (present(set_weights)) this%time_interp = this%time_interp .or. set_weights
     if (present(try_dates)) this%time_interp = this%time_interp .or. try_dates
-    error stop "pycam-sima cam_time_coord: file-backed solar time coordinates require a Python host provider"
+    error stop "freecam cam_time_coord: file-backed solar time coordinates require a Python host provider"
   end subroutine initialize
 
   subroutine advance(this)
     class(time_coordinate), intent(inout) :: this
     if (allocated(this%filename)) then
-      error stop "pycam-sima cam_time_coord: advance is unavailable for file-backed solar data"
+      error stop "freecam cam_time_coord: advance is unavailable for file-backed solar data"
     end if
   end subroutine advance
 
@@ -70,7 +70,7 @@ contains
     class(time_coordinate), intent(in) :: this
     check = .false.
     if (allocated(this%filename)) then
-      error stop "pycam-sima cam_time_coord: read_more is unavailable for file-backed solar data"
+      error stop "freecam cam_time_coord: read_more is unavailable for file-backed solar data"
     end if
   end function read_more
 

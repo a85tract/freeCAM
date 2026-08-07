@@ -1,6 +1,6 @@
 # Fortran device authoring
 
-PyCAM-SIMA treats a numerical scheme as a source-preserving device:
+freeCAM treats a numerical scheme as a source-preserving device:
 
 ```text
 unmodified Fortran + CCPP metadata + device.yaml
@@ -19,13 +19,13 @@ from those descriptors.
 
 The same descriptor can be an external runtime plugin source.
 `model.install_physics(...)` uses the pinned CCPP parser, generates the adapter
-in `PYCAM_SIMA_PLUGIN_CACHE`, and loads it collectively. A production plugin
+in `FREECAM_PLUGIN_CACHE`, and loads it collectively. A production plugin
 may instead ship only its generated `device.json` and matching `.so`.
 
 An installed Python package can advertise a device through:
 
 ```toml
-[project.entry-points."pycam_sima.physics"]
+[project.entry-points."freecam.physics"]
 my_microphysics = "my_package:device_path"
 ```
 
@@ -66,8 +66,8 @@ source-derived and cannot be replaced by the override.
 Run:
 
 ```bash
-uv run pycam-sima generate-devices --clean
-uv run pycam-sima build-device devices/generated/kessler/device.yaml
+uv run freecam generate-devices --clean
+uv run freecam build-device devices/generated/kessler/device.yaml
 ```
 
 The builder:

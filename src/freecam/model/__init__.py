@@ -1,6 +1,6 @@
 """Python-owned CAM model and generic CCPP device runtime.
 
-The public Notebook controller lives in :mod:`pycam_sima.notebook.session`.
+The public Notebook controller lives in :mod:`freecam.notebook.session`.
 This package contains the rank-local implementation used by MPI workers.
 """
 

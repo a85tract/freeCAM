@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from pycam_sima import DeviceSupportMatrix
+from freecam import DeviceSupportMatrix
 
 
 ROOT = Path(__file__).resolve().parents[2]

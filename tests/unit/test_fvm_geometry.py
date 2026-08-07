@@ -5,7 +5,7 @@ from pathlib import Path
 
 import numpy as np
 
-from pycam_sima.model.fvm_geometry import generate_fvm_geometry
+from freecam.model.fvm_geometry import generate_fvm_geometry
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -14,7 +14,7 @@ ROOT = Path(__file__).resolve().parents[2]
 def test_fvm_geometry_is_generated_without_a_packaged_grid_file() -> None:
     assert not (
         ROOT
-        / "src/pycam_sima/model/data/fkessler_ne3pg3_l30_fvm_grid.nc"
+        / "src/freecam/model/data/fkessler_ne3pg3_l30_fvm_grid.nc"
     ).exists()
 
     interfaces = np.linspace(0.0, 1.0, 31, dtype=np.float64)

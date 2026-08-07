@@ -10,7 +10,7 @@ from typing import Mapping, Protocol
 
 import numpy as np
 
-from pycam_sima.core.fortran_adapter import (
+from freecam.core.fortran_adapter import (
     FortranAdapterError,
     PointerTableAdapter,
 )

@@ -9,8 +9,8 @@ from pathlib import Path
 
 import numpy as np
 
-from pycam_sima.pi_cam import PICAMNotebookSession
-from pycam_sima.pi_cam.validation import compare_pi_cam_directories
+from freecam.pi_cam import PICAMNotebookSession
+from freecam.pi_cam.validation import compare_pi_cam_directories
 
 
 def main() -> int:

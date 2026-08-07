@@ -5,7 +5,7 @@ import numpy as np
 import pytest
 import yaml
 
-from pycam_sima import (
+from freecam import (
     ActivatePhysics,
     DefineVariable,
     InstallPhysics,
@@ -16,16 +16,16 @@ from pycam_sima import (
     SegmentPlan,
     VariableSpec,
 )
-from pycam_sima.model import CCPPSuitePlan, ModelConfig, ModelSnapshot
-from pycam_sima.model.checkpoint import deserialize_snapshot, serialize_snapshot
-from pycam_sima.model.clock import NoLeapClock
-from pycam_sima.model.comm import SerialComm
-from pycam_sima.model.devices import DeviceRegistry
-from pycam_sima.model.experiment import validate_segment_plan
-from pycam_sima.model.grid import dimensions_for_rank
-from pycam_sima.model.plugins import PhysicsPluginManager
-from pycam_sima.model.state import NativeObjectHandle, StatePool
-from pycam_sima.model.errors import DeviceContractError
+from freecam.model import CCPPSuitePlan, ModelConfig, ModelSnapshot
+from freecam.model.checkpoint import deserialize_snapshot, serialize_snapshot
+from freecam.model.clock import NoLeapClock
+from freecam.model.comm import SerialComm
+from freecam.model.devices import DeviceRegistry
+from freecam.model.experiment import validate_segment_plan
+from freecam.model.grid import dimensions_for_rank
+from freecam.model.plugins import PhysicsPluginManager
+from freecam.model.state import NativeObjectHandle, StatePool
+from freecam.model.errors import DeviceContractError
 
 
 ROOT = Path(__file__).resolve().parents[2]

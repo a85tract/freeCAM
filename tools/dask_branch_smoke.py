@@ -7,7 +7,7 @@ from pathlib import Path
 
 from distributed import Client
 
-from pycam_sima import BranchSpec, DaskExperimentClient, FieldEdit
+from freecam import BranchSpec, DaskExperimentClient, FieldEdit
 
 
 def main() -> int:
@@ -55,7 +55,7 @@ def main() -> int:
     print("base", base_summary)
     for name, summary in summaries.items():
         print(name, summary)
-    print("PYCAM_SIMA_DASK_BRANCH_OK branches=2")
+    print("FREECAM_DASK_BRANCH_OK branches=2")
     return 0
 
 

@@ -6,7 +6,7 @@ from pathlib import Path
 
 import numpy as np
 
-from pycam_sima import NotebookSession
+from freecam import NotebookSession
 
 
 def main() -> int:
@@ -59,7 +59,7 @@ def main() -> int:
         if len(statistics) != 24:
             raise RuntimeError(f"expected 24 rank statistics, got {len(statistics)}")
         print(
-            "PYCAM_SIMA_NOTEBOOK_SESSION_OK "
+            "FREECAM_NOTEBOOK_SESSION_OK "
             f"steps={model.current_step} fields={len(model.field_names)} "
             f"schemes={len(model.scheme_names)} "
             f"shape={final.shape} min={final.min():.17g} max={final.max():.17g}"

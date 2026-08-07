@@ -1079,7 +1079,7 @@ def _segment_arguments(
     arguments = [
         request.python_executable,
         "-m",
-        "pycam_sima.cli",
+        "freecam.cli",
         "run-segment",
         request.config,
         "--run-dir",
@@ -1140,7 +1140,7 @@ def _sourced_environment(script: Path) -> dict[str, str]:
                 "bash",
                 "-c",
                 'source "$1" >/dev/null 2>&1 && env -0',
-                "pycam-sima-environment",
+                "freecam-environment",
                 str(script),
             ),
             check=True,

@@ -4,8 +4,8 @@ from pathlib import Path
 
 import pytest
 
-from pycam_sima.pi_cam.errors import PICAMConfigurationError
-from pycam_sima.pi_cam.kernel_codegen import (
+from freecam.pi_cam.errors import PICAMConfigurationError
+from freecam.pi_cam.kernel_codegen import (
     generate_direct_kernel_module,
     load_direct_kernels,
 )

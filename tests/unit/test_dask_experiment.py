@@ -5,7 +5,7 @@ from distributed import Client
 import numpy as np
 import pytest
 
-from pycam_sima import (
+from freecam import (
     BranchSpec,
     CheckpointBundle,
     FieldEdit,
@@ -14,7 +14,7 @@ from pycam_sima import (
     RunScheme,
     SegmentPlan,
 )
-from pycam_sima.notebook.dask import (
+from freecam.notebook.dask import (
     _allocation_launcher,
     DaskExperimentClient,
     DaskPBSOptions,

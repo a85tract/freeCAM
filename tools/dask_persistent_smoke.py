@@ -13,8 +13,8 @@ import dask
 from distributed import Client
 import distributed
 
-import pycam_sima
-from pycam_sima import DaskExperimentClient
+import freecam
+from freecam import DaskExperimentClient
 
 
 def _compact_status(status: dict) -> dict:
@@ -172,7 +172,7 @@ def main() -> int:
             ),
         },
         "software": {
-            "pycam_sima": pycam_sima.__version__,
+            "freecam": freecam.__version__,
             "dask": dask.__version__,
             "distributed": distributed.__version__,
         },
@@ -203,7 +203,7 @@ def main() -> int:
     output.write_text(json.dumps(payload, indent=2, sort_keys=True))
     print(json.dumps(payload, indent=2, sort_keys=True))
     print(
-        "PYCAM_SIMA_DASK_PERSISTENT_OK "
+        "FREECAM_DASK_PERSISTENT_OK "
         f"job={outer_job_id} mpi_launches=1 "
         f"actor_calls={payload['actor_method_calls']} step=2"
     )

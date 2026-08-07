@@ -5,7 +5,7 @@ from typing import Any
 
 import numpy as np
 
-from pycam_sima import (
+from freecam import (
     BlockingModel,
     FieldCollection,
     ModelGroup,

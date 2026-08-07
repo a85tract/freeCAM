@@ -2,7 +2,7 @@
 
 ## Project Structure & Module Organization
 
-Python sources live in `src/pycam_sima/`. The complete Python-owned CAM driver,
+Python sources live in `src/freecam/`. The complete Python-owned CAM driver,
 branch edits, and bit-preserving checkpoints are in `model/`; shared MPI-loader
 and remote-field utilities are in `core/`; and `notebook/` contains the
 Jupyter/PBS controller, Dask experiment client, and MPI worker. Main support
@@ -19,9 +19,9 @@ repository root.
 ## Build, Test, and Development Commands
 
 - `uv sync --extra test --extra notebook`: install the Python 3.11/Jupyter environment.
-- `uv run pycam-sima build-kernels`: build the main kernel library and all
+- `uv run freecam build-kernels`: build the main kernel library and all
   generated source-preserving devices.
-- `uv run pycam-sima build-device devices/generated/kessler/device.yaml`:
+- `uv run freecam build-device devices/generated/kessler/device.yaml`:
   regenerate one original-Fortran device from its CCPP metadata and
   descriptor.
 - `uv run python tools/validate_kessler_kernel.py`: compare the Kessler kernel
@@ -33,7 +33,7 @@ repository root.
   isolation and the exact requested field edit.
 - `RUN_DIR=... HISTORY_DIR=... STEPS=50 qsub -V jobs/fkessler_model_24x50.pbs`:
   run the required 24-rank model gate.
-- `uv run pycam-sima compare-history ORACLE CANDIDATE`: verify 51 files and 26
+- `uv run freecam compare-history ORACLE CANDIDATE`: verify 51 files and 26
   numeric variables.
 
 ## Coding Style & Naming Conventions

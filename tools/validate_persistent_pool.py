@@ -14,9 +14,9 @@ from typing import Any
 from distributed import Client
 import numpy as np
 
-import pycam_sima
-from pycam_sima import DaskExperimentClient
-from pycam_sima.model.validation import compare_history_directories
+import freecam
+from freecam import DaskExperimentClient
+from freecam.model.validation import compare_history_directories
 
 
 def _snapshots_equal(left: Any, right: Any) -> tuple[bool, int]:
@@ -158,7 +158,7 @@ def main() -> int:
             text=True,
         ).strip(),
         "pbs_job_id": os.environ["PBS_JOBID"],
-        "pycam_sima": pycam_sima.__version__,
+        "freecam": freecam.__version__,
         "resource_plan": resource_plan.describe(),
         "mpi_launch_count": pool_status["mpi_launch_count"],
         "base_steps": base_status.step,
@@ -177,7 +177,7 @@ def main() -> int:
     output.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n")
     print(json.dumps(payload, indent=2, sort_keys=True))
     print(
-        "PYCAM_SIMA_PERSISTENT_POOL_BFB "
+        "FREECAM_PERSISTENT_POOL_BFB "
         f"job={payload['pbs_job_id']} world=2x24 "
         f"arrays={arrays_compared} history={args.steps + 1}"
     )

@@ -1,6 +1,6 @@
 import numpy as np
 
-from pycam_sima.model.constituents import (
+from freecam.model.constituents import (
     constituent_lookup_keys,
     constituent_standard_name,
     water_constituent_indices,

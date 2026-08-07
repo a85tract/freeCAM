@@ -6,13 +6,13 @@ import numpy as np
 from netCDF4 import Dataset
 import pytest
 
-from pycam_sima.model.clock import ModelClock
-from pycam_sima.model.config import ModelConfig
-from pycam_sima.model.dimension_service import infer_suite_dimensions
-from pycam_sima.model.grid import dimensions_for_rank
-from pycam_sima.model.history import HistoryWriter
-from pycam_sima.model.initialization import InitializationPlan
-from pycam_sima.model.state import StatePool
+from freecam.model.clock import ModelClock
+from freecam.model.config import ModelConfig
+from freecam.model.dimension_service import infer_suite_dimensions
+from freecam.model.grid import dimensions_for_rank
+from freecam.model.history import HistoryWriter
+from freecam.model.initialization import InitializationPlan
+from freecam.model.state import StatePool
 
 
 ROOT = Path(__file__).resolve().parents[2]

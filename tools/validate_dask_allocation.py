@@ -81,7 +81,7 @@ def main() -> int:
     if not delta_exact:
         raise RuntimeError(f"{args.field} does not have the exact requested delta")
     print(
-        "PYCAM_SIMA_DASK_ALLOCATION_VALID "
+        "FREECAM_DASK_ALLOCATION_VALID "
         f"job={outer_job_id} ranks=24 nested_qsub=0 "
         f"changed_field={args.field} delta={args.delta}"
     )

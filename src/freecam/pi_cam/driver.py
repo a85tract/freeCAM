@@ -11,7 +11,7 @@ from typing import Any, Callable, Iterator, Mapping
 
 import numpy as np
 
-from pycam_sima.model.clock import ModelClock
+from freecam.model.clock import ModelClock
 
 from .boundary import CAMBoundaryProvider
 from .config import PICAMConfig

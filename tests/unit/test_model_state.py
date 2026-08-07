@@ -3,12 +3,12 @@ import hashlib
 import numpy as np
 import pytest
 
-from pycam_sima.model.contracts import (
+from freecam.model.contracts import (
     model_alias_rules,
     model_ccpp_field_aliases,
 )
-from pycam_sima.model.errors import StateOwnershipError
-from pycam_sima.model.grid import (
+from freecam.model.errors import StateOwnershipError
+from freecam.model.grid import (
     _derivative_matrix,
     _gll_nodes_weights,
     _global_dof_map,
@@ -20,7 +20,7 @@ from pycam_sima.model.grid import (
     sfc_partition_counts,
     sfc_partition_owner,
 )
-from pycam_sima.model.state import StatePool
+from freecam.model.state import StatePool
 
 
 def test_ne3_sfc_partition_and_global_dofs_are_complete():

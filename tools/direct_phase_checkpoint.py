@@ -9,9 +9,9 @@ from pathlib import Path
 import shutil
 import sys
 
-from pycam_sima.core.runtime_env import mpi_loader_environment
-from pycam_sima.model import ModelConfig, read_checkpoint, restore_driver
-from pycam_sima.model.comm import world_comm
+from freecam.core.runtime_env import mpi_loader_environment
+from freecam.model import ModelConfig, read_checkpoint, restore_driver
+from freecam.model.comm import world_comm
 
 
 def _ensure_direct_mpi_loader_environment() -> None:
@@ -22,14 +22,14 @@ def _ensure_direct_mpi_loader_environment() -> None:
     except (ImportError, RuntimeError) as exc:
         if (
             "libmpi.so" not in str(exc)
-            or os.environ.get("PYCAM_SIMA_MPI_ENV_READY")
+            or os.environ.get("FREECAM_MPI_ENV_READY")
         ):
             raise RuntimeError(f"mpi4py cannot load the MPI runtime: {exc}") from exc
     else:
         return
 
     environment = mpi_loader_environment()
-    environment["PYCAM_SIMA_MPI_ENV_READY"] = "1"
+    environment["FREECAM_MPI_ENV_READY"] = "1"
     os.execve(
         sys.executable,
         [
