@@ -37,6 +37,11 @@ from freecam.pi_cam.kernel_codegen import (  # noqa: E402
 
 
 REPO = Path(__file__).resolve().parents[1]
+LEAF_PATCHES = (
+    REPO
+    / "native/pi_cam/control_patches/0026-python-before-coupler-leaf-control.patch",
+    REPO / "native/pi_cam/control_patches/0027-python-leaf-dispatch.patch",
+)
 IMAGE_BASE = 0x30000000
 IMAGE_WINDOW_BYTES = 0x20000000
 ABI_SYMBOLS = (
@@ -50,6 +55,18 @@ ABI_SYMBOLS = (
 PREPARE_INITIALIZE_SYMBOL = "pycam_pi_cam_prepare_initialize_v1"
 STATE_CONTEXT_SYMBOL = "pycam_pi_cam_state_context_v1"
 STATE_BIND_SYMBOL = "pycam_pi_cam_bind_state_v1"
+LEAF_ACTION_SYMBOL = "pycam_pi_cam_leaf_action_v1"
+LEAF_OPERATION_NAMES = (
+    "leaf_modal_aero_prepare",
+    "leaf_aero_model_wetdep",
+    "leaf_carma_wetdep_tend",
+    "leaf_convect_deep_tend_2",
+    "leaf_diag_phys_writeout",
+    "leaf_cloud_diagnostics_calc",
+    "leaf_tropopause_output",
+    "leaf_cam_export",
+    "leaf_diag_export",
+)
 
 
 def _run(command: list[str] | tuple[str, ...], *, cwd: Path) -> None:
@@ -122,6 +139,8 @@ def _compile_to(
     output: Path,
     cwd: Path,
     module_include: Path,
+    *,
+    pic: bool = False,
 ) -> list[str]:
     result = _without_output(command)
     source_index = next(
@@ -135,6 +154,8 @@ def _compile_to(
     result.insert(local_include + 1, f"-I{module_include}")
     # Preserve the production non-PIC numerical code-generation boundary.
     result = [value for value in result if value != "-fPIC"]
+    if pic:
+        result.append("-fPIC")
     result.extend(("-o", str(output)))
     _run(result, cwd=cwd)
     return result
@@ -176,6 +197,50 @@ def _global_text_symbols(path: Path) -> tuple[str, ...]:
         if len(fields) >= 3 and fields[-2].upper() in {"T", "W"}:
             result.append(fields[-1])
     return tuple(result)
+
+
+def _global_defined_symbols(path: Path) -> dict[str, str]:
+    output = subprocess.run(
+        ["nm", "-g", "--defined-only", str(path)],
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout
+    result: dict[str, str] = {}
+    for line in output.splitlines():
+        fields = line.split()
+        if len(fields) >= 3:
+            result[fields[-1]] = fields[-2].upper()
+    return result
+
+
+def _addon_module_object(
+    generated: Path,
+    production: Path,
+    destination: Path,
+) -> None:
+    """Retain only new strong procedures beside a production CAM object.
+
+    Existing procedures are renamed so the add-on cannot replace production
+    machine code.  Existing module storage is weak, so all references from
+    the new procedures resolve to the already-linked production storage.
+    The add-on is linked into a separate lazy-loaded device, so it cannot move
+    production code or change the default archive extraction order.
+    """
+
+    generated_symbols = _global_defined_symbols(generated)
+    production_symbols = _global_defined_symbols(production)
+    shared = set(generated_symbols) & set(production_symbols)
+    command = ["objcopy"]
+    for symbol in sorted(shared):
+        if generated_symbols[symbol] in {"T", "W"}:
+            command.extend(
+                ("--redefine-sym", f"{symbol}=__pycam_leaf_unused_{symbol}")
+            )
+        else:
+            command.extend(("--weaken-symbol", symbol))
+    command.extend((str(generated), str(destination)))
+    _run(command, cwd=destination.parent)
 
 
 def _renamed_object(
@@ -427,6 +492,13 @@ def _operations(state_bridge, direct_kernels=(), *, zero_copy_state: bool = Fals
         operations[name] = {
             "symbol": ABI_SYMBOLS[1], "action_id": action_id, "arguments": []
         }
+    if zero_copy_state:
+        for action_id, name in zip(range(450, 459), LEAF_OPERATION_NAMES):
+            operations[name] = {
+                "symbol": LEAF_ACTION_SYMBOL,
+                "action_id": action_id,
+                "arguments": [],
+            }
     for kernel in direct_kernels:
         if kernel.operation_name in operations:
             raise RuntimeError(
@@ -491,8 +563,10 @@ def main() -> int:
     build = Path(_xml(case, "EXEROOT")).resolve()
     output = args.output.resolve()
     work = output.parent / "nonpic_objects"
-    for directory in (output.parent, work):
-        directory.mkdir(parents=True, exist_ok=True)
+    output.parent.mkdir(parents=True, exist_ok=True)
+    if work.exists():
+        shutil.rmtree(work)
+    work.mkdir(parents=True)
 
     state_bridge = load_state_bridge(args.state_bridge.resolve(), source_root)
     direct_kernels = load_direct_kernels(args.direct_kernels.resolve())
@@ -545,6 +619,7 @@ def main() -> int:
     compile_logs: dict[str, str] = {}
     compile_commands: dict[str, list[str]] = {}
     objects: dict[str, Path] = {}
+    leaf_addon_objects: tuple[Path, ...] = ()
     for source_name in (
         "physpkg.F90", "cam_comp.F90", "atm_comp_mct.F90",
     ):
@@ -637,6 +712,62 @@ def main() -> int:
         objects["camsrfexch.F90"] = hybrid_surface
         objects["physpkg.F90"] = hybrid_physpkg
 
+        # Compile the deeper cam_run1 controls as an after-library add-on.
+        # They are intentionally absent from the default source/archive so
+        # enabling the API cannot move any BFB production code or storage.
+        leaf_root = work / "leaf_sources"
+        if leaf_root.exists():
+            shutil.rmtree(leaf_root)
+        leaf_physpkg = leaf_root / "src/physics/cam/physpkg.F90"
+        leaf_cam_comp = leaf_root / "src/control/cam_comp.F90"
+        leaf_physpkg.parent.mkdir(parents=True, exist_ok=True)
+        leaf_cam_comp.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(sources["physpkg.F90"], leaf_physpkg)
+        shutil.copy2(original_cam_comp, leaf_cam_comp)
+        for patch in LEAF_PATCHES:
+            _run(
+                ["git", "apply", "--unidiff-zero", "--verbose", str(patch)],
+                cwd=leaf_root,
+            )
+        leaf_cam_comp.write_text(
+            instrument_cam_comp(
+                leaf_cam_comp.read_text(),
+                state_include.name,
+                split_initialization=True,
+            )
+        )
+        leaf_physpkg_full = work / "physpkg_leaf_full.o"
+        leaf_cam_comp_full = work / "cam_comp_leaf_full.o"
+        for source_name, source, destination in (
+            ("physpkg.F90", leaf_physpkg, leaf_physpkg_full),
+            ("cam_comp.F90", leaf_cam_comp, leaf_cam_comp_full),
+        ):
+            log, command = _compile_command(build, source_name)
+            key = f"leaf/{source_name}"
+            compile_commands[key] = _compile_to(
+                command,
+                source_name,
+                source,
+                destination,
+                work,
+                build / "atm/obj",
+                pic=True,
+            )
+            compile_logs[key] = str(log)
+        leaf_physpkg_addon = work / "physpkg_leaf_addon.o"
+        leaf_cam_comp_addon = work / "cam_comp_leaf_addon.o"
+        _addon_module_object(
+            leaf_physpkg_full,
+            objects["physpkg.F90"],
+            leaf_physpkg_addon,
+        )
+        _addon_module_object(
+            leaf_cam_comp_full,
+            objects["cam_comp.F90"],
+            leaf_cam_comp_addon,
+        )
+        leaf_addon_objects = (leaf_cam_comp_addon, leaf_physpkg_addon)
+
     _, adapter_command = _compile_command(build, "cam_comp.F90")
     adapter_object = work / "pi_cam_adapter.o"
     adapter_compile = _compile_to(
@@ -647,6 +778,39 @@ def main() -> int:
         work,
         build / "atm/obj",
     )
+    leaf_adapter_object: Path | None = None
+    leaf_adapter_compile: list[str] | None = None
+    public_adapter_compile: list[str] | None = None
+    if leaf_addon_objects:
+        public_adapter_source = work / "pi_cam_adapter_public.F90"
+        public_marker = "  public :: pycam_pi_cam_state_transfer_v1\n"
+        public_source = args.adapter.resolve().read_text()
+        if public_source.count(public_marker) != 1:
+            raise RuntimeError("cannot expose PI-CAM adapter leaf context")
+        public_adapter_source.write_text(
+            public_source.replace(
+                public_marker,
+                public_marker + "  public :: cam_in, cam_out\n",
+            )
+        )
+        public_adapter_compile = _compile_to(
+            adapter_command,
+            "cam_comp.F90",
+            public_adapter_source,
+            work / "pi_cam_adapter_public.o",
+            work,
+            build / "atm/obj",
+        )
+        leaf_adapter_object = work / "pi_cam_leaf_adapter.o"
+        leaf_adapter_compile = _compile_to(
+            adapter_command,
+            "cam_comp.F90",
+            REPO / "native/pi_cam/pi_cam_leaf_adapter.F90",
+            leaf_adapter_object,
+            work,
+            build / "atm/obj",
+            pic=True,
+        )
     direct_kernel_object = work / "pi_cam_direct_kernels.o"
     direct_kernel_compile = _compile_to(
         adapter_command,
@@ -756,6 +920,28 @@ def main() -> int:
     start, end = _load_range(output)
     if start != IMAGE_BASE or end > IMAGE_BASE + IMAGE_WINDOW_BYTES:
         raise RuntimeError(f"CAM image load range 0x{start:x}-0x{end:x} is invalid")
+    leaf_library: Path | None = None
+    leaf_link: list[str] | None = None
+    if leaf_adapter_object is not None:
+        leaf_library = output.with_name(output.stem + "_leaf.so")
+        leaf_link = [
+            "ftn",
+            "-shared",
+            "-Wl,-z,notext,--allow-multiple-definition,--allow-shlib-undefined",
+            str(leaf_adapter_object),
+            *(str(path) for path in leaf_addon_objects),
+            "-o",
+            str(leaf_library),
+        ]
+        _run(leaf_link, cwd=output.parent)
+        leaf_symbols = subprocess.run(
+            ["nm", "-D", "--defined-only", str(leaf_library)],
+            check=True,
+            capture_output=True,
+            text=True,
+        ).stdout
+        if LEAF_ACTION_SYMBOL not in leaf_symbols:
+            raise RuntimeError("PI-CAM leaf add-on lacks its action ABI")
     direct_call_proof = {
         kernel.name: _direct_kernel_call_proof(output, kernel.symbol, kernel.routine)
         for kernel in direct_kernels
@@ -785,6 +971,26 @@ def main() -> int:
             else None
         ),
         "source_root": str(source_root),
+        "control_source": str(sources["physpkg.F90"].resolve()),
+        "control_source_sha256": _sha256(sources["physpkg.F90"].resolve()),
+        "hybrid_control_object_sha256": _sha256(objects["physpkg.F90"]),
+        "leaf_addon_objects": [
+            {
+                "path": str(path),
+                "sha256": _sha256(path),
+            }
+            for path in leaf_addon_objects
+        ],
+        "leaf_device": (
+            {
+                "library": str(leaf_library),
+                "library_sha256": _sha256(leaf_library),
+                "operations": list(LEAF_OPERATION_NAMES),
+                "load_policy": "lazy-after-initialize",
+            }
+            if leaf_library is not None
+            else None
+        ),
         "link_log": str(link_log),
         "compile_logs": compile_logs,
         "adapter": str(args.adapter.resolve()),
@@ -818,6 +1024,9 @@ def main() -> int:
         "state_bridge_include": str(state_include),
         "compile_commands": compile_commands,
         "adapter_compile_command": adapter_compile,
+        "public_adapter_compile_command": public_adapter_compile,
+        "leaf_adapter_compile_command": leaf_adapter_compile,
+        "leaf_link_command": leaf_link,
         "direct_kernel_compile_command": direct_kernel_compile,
         "capture_executable": str(capture_executable),
         "capture_executable_sha256": _sha256(capture_executable),

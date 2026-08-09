@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+from collections import Counter
 import json
 import os
 from pathlib import Path
@@ -33,6 +34,13 @@ def main(argv: list[str] | None = None) -> int:
         choices=("fine_grained", "source_compat"),
         help="override the YAML control-path mode for validation",
     )
+    parser.add_argument(
+        "--expand-cam-run1-leaves",
+        action="store_true",
+        help=(
+            "replace three cam_run1 composites with ordered native leaf actions"
+        ),
+    )
     parser.add_argument("--summary", type=Path)
     args = parser.parse_args(argv)
     world = MPI.COMM_WORLD
@@ -51,6 +59,8 @@ def main(argv: list[str] | None = None) -> int:
         communicator=world,
         run_dir=args.run_dir,
     )
+    if args.expand_cam_run1_leaves:
+        cam.step_plan.expand_cam_run1_leaves(experimental=True)
     created_addresses = {
         name: int(values.ctypes.data) for name, values in cam.pool.items()
     }
@@ -82,6 +92,12 @@ def main(argv: list[str] | None = None) -> int:
                 "Python-owned PI-CAM arrays changed address: "
                 + ", ".join(changed_addresses[:8])
             )
+        operation_counts = Counter(trace.operation for trace in cam.trace)
+        leaf_operations = tuple(
+            action.operation
+            for action in cam.step_plan.actions
+            if action.native_id is not None and 450 <= action.native_id <= 458
+        )
         local = {
             "rank": world.Get_rank(),
             "step": cam.clock.nstep,
@@ -90,6 +106,19 @@ def main(argv: list[str] | None = None) -> int:
             "fields": len(cam.pool),
             "state_bytes": cam.pool.nbytes,
             "actions": len(cam.trace),
+            "step_plan_actions": len(tuple(cam.step_plan)),
+            "action_catalog_size": len(cam.step_plan.actions),
+            "cam_run1_actions": len(cam.step_plan.in_phase("cam_run1")),
+            "cam_run1_catalog_size": sum(
+                action.phase == "cam_run1" for action in cam.step_plan.actions
+            ),
+            "expanded_cam_run1_leaves": args.expand_cam_run1_leaves,
+            "leaf_operation_counts": {
+                name: operation_counts[name] for name in leaf_operations
+            },
+            "native_leaf_loaded": bool(
+                getattr(cam.backend, "leaf_loaded", False)
+            ),
             "created_fields": len(created_addresses),
             "python_initialized_fields": len(python_initialized_addresses),
             "stable_preinitialized_addresses": len(stable_names),
@@ -115,12 +144,18 @@ def main(argv: list[str] | None = None) -> int:
             manifest_path = Path(manifest_path).resolve()
             manifest_payload = json.loads(manifest_path.read_text())
             state_bridge = manifest_payload.get("state_bridge", {})
+            leaf_device = manifest_payload.get("leaf_device", {})
             native_evidence = {
                 "native_manifest": str(manifest_path),
                 "native_library_sha256": manifest_payload.get("library_sha256"),
                 "native_state_ownership": (
                     state_bridge.get("ownership")
                     if isinstance(state_bridge, dict)
+                    else None
+                ),
+                "native_leaf_library_sha256": (
+                    leaf_device.get("library_sha256")
+                    if isinstance(leaf_device, dict)
                     else None
                 ),
             }
@@ -130,6 +165,22 @@ def main(argv: list[str] | None = None) -> int:
             "pbs_job_id": os.environ.get("PBS_JOBID"),
             "mpi_ranks": world.Get_size(),
             "steps": args.steps if args.steps is not None else case.config.stop_n,
+            "execution_mode": case.config.execution_mode,
+            "step_plan_actions": records[0]["step_plan_actions"],
+            "action_catalog_size": records[0]["action_catalog_size"],
+            "cam_run1_actions": records[0]["cam_run1_actions"],
+            "cam_run1_catalog_size": records[0]["cam_run1_catalog_size"],
+            "expanded_cam_run1_leaves": records[0][
+                "expanded_cam_run1_leaves"
+            ],
+            "leaf_operation_counts": records[0]["leaf_operation_counts"],
+            "all_ranks_loaded_leaf_device": all(
+                record["native_leaf_loaded"] for record in records
+            ),
+            "ranks_loaded_leaf_device": sum(
+                bool(record["native_leaf_loaded"]) for record in records
+            ),
+            "rank_trace_actions": [record["actions"] for record in records],
             "rank_state_bytes": [record["state_bytes"] for record in records],
             "rank_fields": [record["fields"] for record in records],
             "rank_created_fields": [record["created_fields"] for record in records],

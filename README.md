@@ -227,12 +227,35 @@ only the requested action and do not supply missing scientific preconditions
 or advance model time.
 
 The default PI-CAM step is no longer one opaque `execute_source_step` call.
-Python executes 33 named actions covering the coupling boundary, `cam_run2`,
-`cam_run3`, `cam_run4`, the CAM clock, and `cam_run1`.  The replay manifest
+Python exposes a 42-action catalog covering the coupling boundary, `cam_run2`,
+`cam_run3`, `cam_run4`, the CAM clock, and `cam_run1`. The BFB-safe default
+executes the original 33 actions; nine additional `cam_run1` leaf actions are
+present but disabled until an experimental plan explicitly enables or calls
+them. Thus `cam_run1` has 22 addressable actions: 13 source-default actions and
+9 optional leaf actions for modal-aerosol preparation, wet deposition, tracer
+transport, diagnostics, tropopause output, and the two export calls. CARMA,
+macrophysics, microphysics, and their precipitation reduction remain one
+atomic `cloud_macro_microphysics` action: splitting that floating-point chain
+across host calls changes the PI case by one ULP, so the BFB-safe default
+deliberately preserves its original compilation boundary. The replay manifest
 also records CESM coupling intervals that hold their previous import; Python
 updates the boundary buffer at every recorded boundary but calls native
 `atm_import` only when `has_fresh_import()` is true.  This distinction is
 required for source-identical multi-substep coupling.
+
+The default remains unchanged. To replace the three composite `cam_run1`
+stages with nine ordered leaf actions in one operation, opt in explicitly:
+
+```python
+cam.expand_cam_run1_leaves(experimental=True)
+cam.step()
+```
+
+That expanded step executes 39 actions overall and 19 within `cam_run1`.
+It disables the composite wet-deposition, diagnostics, and export stages before
+enabling their leaves, so no numerical routine runs twice. The leaf `.so` is
+loaded lazily only when the first leaf is requested; an unchanged default run
+never loads it and retains the validated production image boundary.
 
 The live PI-CAM runtime can add rank-local fields and insert trusted Notebook
 Python functions between existing CAM processes:
@@ -293,6 +316,10 @@ uv run python tools/build_pi_cam_devices.py \
   --numerical-build /path/to/oracle-build
 qsub validation/jobs/pi_cam_boundary_capture_50step.pbs
 qsub validation/jobs/pi_cam_python_zero_copy_state_50step.pbs
+qsub -v PYCAM_EXPAND_CAM_RUN1_LEAVES=1,\
+PYCAM_SUMMARY=validation/pi_cam_run1_leaves_50step.json,\
+PYCAM_BFB_OUTPUT=validation/pi_cam_run1_leaves_vs_oracle_50step_bfb.json \
+  validation/jobs/pi_cam_python_zero_copy_state_50step.pbs
 qsub validation/jobs/pi_cam_runtime_extensions_50step.pbs
 ```
 
@@ -306,18 +333,32 @@ ABI entry. Validation is fail-closed and compares every numeric
 variable in all CAM history and restart files; wall-clock strings are excluded.
 `tools/prepare_pi_cam_source.py` is the normal reproducible source-preparation
 entry point. Its lower-level `tools/apply_pi_cam_source_patches.py` helper
-applies only the eight production patches, in dependency order, to the copied
-`components/cam` checkout. Historical exploratory patches remain as an audit
-trail but are not part of the build.
+applies eight production patches, in dependency order, to the copied
+`components/cam` checkout. Two additional leaf-control patches are applied
+only inside the builder's private add-on tree and compiled into a separate,
+lazy-loaded `.so`; they never replace the production CAM objects used by the
+default path. Historical exploratory patches remain as an audit trail but are
+not part of the build.
 The complete Python-owned state gate is recorded in
 [`validation/pi_cam_python_zero_copy_state_50step.json`](validation/pi_cam_python_zero_copy_state_50step.json)
 and
 [`validation/pi_cam_python_zero_copy_state_vs_oracle_50step_bfb.json`](validation/pi_cam_python_zero_copy_state_vs_oracle_50step_bfb.json):
-cpudev job `7055155.desched1` ran the default 33-action fine-grained path on
+cpudev job `7056409.desched1` rebuilt from the oracle numerical object tree and
+ran the default 33-action fine-grained path on
 512 MPI ranks for 50 completed steps,
 preinitialized 151 rank-local arrays/views before native CAM resumed, retained
 every address through finalize, and matched all four oracle history/restart
 files bit for bit.
+
+The deeper `cam_run1` replacement gate is recorded in
+[`validation/pi_cam_run1_leaves_50step.json`](validation/pi_cam_run1_leaves_50step.json)
+and
+[`validation/pi_cam_run1_leaves_vs_oracle_50step_bfb.json`](validation/pi_cam_run1_leaves_vs_oracle_50step_bfb.json).
+Cpudev job `7056410.desched1` replaced three composites with all nine ordered
+leaf actions on every one of the 512 ranks. Each leaf executed 51 times per
+rank (the initialization lookahead plus 50 public steps), all ranks loaded the
+same leaf-device hash, every Python-owned address remained stable, and all four
+oracle history/restart files matched bit for bit.
 
 The runtime-extension gate is recorded in
 [`validation/pi_cam_runtime_extensions_50step.json`](validation/pi_cam_runtime_extensions_50step.json)

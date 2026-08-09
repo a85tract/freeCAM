@@ -52,9 +52,18 @@ _DEFAULT_ACTIONS = (
     PICAMAction("sea_salt_rebin", "cam_run1", "sslt_rebin_adv", "scheme", 426),
     PICAMAction("cloud_macro_microphysics", "cam_run1", "macro_microphysics", "scheme", 427),
     PICAMAction("wet_deposition", "cam_run1", "aero_model_wetdep", "scheme", 428),
+    PICAMAction("modal_aerosol_preparation_leaf", "cam_run1", "leaf_modal_aero_prepare", "scheme", 450, False),
+    PICAMAction("aerosol_wet_deposition_leaf", "cam_run1", "leaf_aero_model_wetdep", "scheme", 451, False),
+    PICAMAction("carma_wet_deposition_leaf", "cam_run1", "leaf_carma_wetdep_tend", "scheme", 452, False),
+    PICAMAction("convective_tracer_transport_leaf", "cam_run1", "leaf_convect_deep_tend_2", "scheme", 453, False),
     PICAMAction("diagnostics", "cam_run1", "physics_diagnostics", "scheme", 429),
+    PICAMAction("state_and_convection_diagnostics_leaf", "cam_run1", "leaf_diag_phys_writeout", "scheme", 454, False),
+    PICAMAction("cloud_diagnostics_leaf", "cam_run1", "leaf_cloud_diagnostics_calc", "scheme", 455, False),
     PICAMAction("radiation", "cam_run1", "radiation_tend", "scheme", 430),
     PICAMAction("state_export", "cam_run1", "cam_export", "scheme", 431),
+    PICAMAction("tropopause_leaf", "cam_run1", "leaf_tropopause_output", "scheme", 456, False),
+    PICAMAction("state_export_leaf", "cam_run1", "leaf_cam_export", "scheme", 457, False),
+    PICAMAction("export_diagnostics_leaf", "cam_run1", "leaf_diag_export", "scheme", 458, False),
     PICAMAction("boundary_export", "coupling", "boundary_export", "boundary", 432),
 )
 
@@ -124,6 +133,38 @@ class PICAMStepPlan:
         selected = self.select(name, phase=phase)
         index = self._actions.index(selected)
         self._actions[index] = replace(selected, enabled=bool(enabled))
+
+    def expand_cam_run1_leaves(self, *, experimental: bool = False) -> None:
+        """Replace three composite ``cam_run1`` stages with leaf actions."""
+
+        if not experimental:
+            raise PICAMConfigurationError(
+                "expanding cam_run1 leaf routines requires experimental=True"
+            )
+        for name in ("wet_deposition", "diagnostics", "state_export"):
+            self.set_enabled(
+                name,
+                False,
+                phase="cam_run1",
+                experimental=True,
+            )
+        for name in (
+            "modal_aerosol_preparation_leaf",
+            "aerosol_wet_deposition_leaf",
+            "carma_wet_deposition_leaf",
+            "convective_tracer_transport_leaf",
+            "state_and_convection_diagnostics_leaf",
+            "cloud_diagnostics_leaf",
+            "tropopause_leaf",
+            "state_export_leaf",
+            "export_diagnostics_leaf",
+        ):
+            self.set_enabled(
+                name,
+                True,
+                phase="cam_run1",
+                experimental=True,
+            )
 
     def move(
         self,

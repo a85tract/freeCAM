@@ -1,0 +1,29 @@
+--- a/src/control/cam_comp.F90
++++ b/src/control/cam_comp.F90
+@@ -38,7 +38,7 @@
+    public cam_run3_dynamics
+    public cam_run4_history, cam_run4_restart, cam_run4_finish
+    public cam_phys_run1_prepare, cam_phys_run1_schemes, &
+-        cam_phys_run1_scheme_action
++        cam_phys_run1_scheme_action, cam_phys_run1_leaf_action
+    public cam_phys_run2_prepare, cam_phys_run2_schemes, &
+         cam_phys_run2_scheme_action, cam_phys_run2_finish
+    public cam_final     ! CAM Finalization
+@@ -277,6 +277,17 @@
+         pbuf2d, cam_in, cam_out, status)
+ end subroutine cam_phys_run1_scheme_action
+
++subroutine cam_phys_run1_leaf_action(action_id, cam_in, cam_out, status)
++   use physpkg, only: phys_run1_leaf_action
++   integer, intent(in) :: action_id
++   type(cam_in_t), intent(inout) :: cam_in(begchunk:endchunk)
++   type(cam_out_t), intent(inout) :: cam_out(begchunk:endchunk)
++   integer, intent(out) :: status
++
++   call phys_run1_leaf_action(action_id, phys_state, dtime, phys_tend, &
++        pbuf2d, cam_in, cam_out, status)
++end subroutine cam_phys_run1_leaf_action
++
+ subroutine cam_run2_physics(cam_out, cam_in, status)
+    use physpkg, only: phys_run2
+ #if ( defined SPMD )

@@ -189,6 +189,11 @@ class PICAMNotebookSession:
 
         return dict(self._request({"op": "run_kernel", "name": name}))
 
+    def expand_cam_run1_leaves(self) -> tuple[Mapping[str, Any], ...]:
+        """Replace three composite stages with ordered native leaf actions."""
+
+        return tuple(self._request({"op": "expand_cam_run1_leaves"}))
+
     def create_field(
         self,
         name: str,

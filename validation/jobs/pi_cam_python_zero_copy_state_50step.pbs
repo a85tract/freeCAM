@@ -17,9 +17,10 @@ oracle_run=/glade/derecho/scratch/ruitong/pyCAM/PI-cam/f.e13.F1850C5.ne16_g16.ic
 mode=${PYCAM_EXECUTION_MODE:-fine_grained}
 run_dir=/glade/derecho/scratch/ruitong/pyCAM/PI-cam/python-owned-state-${mode}-${PBS_JOBID}/run
 boundary=/glade/derecho/scratch/ruitong/pyCAM/PI-cam/nonpic-boundary-capture-50step/boundary/replay
-manifest=${repo}/build/pi_cam_zero_copy/native_cam_manifest.json
+manifest=${PYCAM_NATIVE_MANIFEST:-${repo}/build/pi_cam_zero_copy/native_cam_manifest.json}
 summary=${PYCAM_SUMMARY:-validation/pi_cam_python_zero_copy_state_50step.json}
 bfb_output=${PYCAM_BFB_OUTPUT:-validation/pi_cam_python_zero_copy_state_vs_oracle_50step_bfb.json}
+expand_cam_run1_leaves=${PYCAM_EXPAND_CAM_RUN1_LEAVES:-0}
 
 source "${case_root}/.env_mach_specific.sh" >/dev/null 2>&1
 mpi_root=${CRAY_MPICH_DIR:-/opt/cray/pe/mpich/8.1.25/ofi/intel/19.0}
@@ -40,12 +41,17 @@ rsync -a \
 mkdir -p "${run_dir}/timing/checkpoints"
 
 cd "${repo}"
+leaf_args=()
+if [[ "${expand_cam_run1_leaves}" == 1 ]]; then
+  leaf_args+=(--expand-cam-run1-leaves)
+fi
 mpiexec --label -n 512 "${python}" -m freecam.pi_cam.cli \
   --config configs/pi_cam_icesm131.yaml \
   --native-manifest "${manifest}" \
   --boundary "${boundary}" \
   --run-dir "${run_dir}" \
   --execution-mode "${mode}" \
+  "${leaf_args[@]}" \
   --steps 50 \
   --summary "${summary}" \
   > "${run_dir}/pi_cam_python.log" 2>&1

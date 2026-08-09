@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import ctypes
 import json
+import os
 from pathlib import Path
 import sys
 from typing import Mapping, Protocol
@@ -98,6 +99,22 @@ class NativeCAMDevice:
         _prepare_fortran_runtime()
         self._library = ctypes.CDLL(str(library), mode=ctypes.RTLD_LOCAL)
         self._operations = dict(payload.get("operations", {}))
+        leaf_device = payload.get("leaf_device")
+        self._leaf_library_path: Path | None = None
+        self._leaf_operation_names: frozenset[str] = frozenset()
+        if isinstance(leaf_device, Mapping):
+            raw_leaf_library = Path(str(leaf_device["library"]))
+            if not raw_leaf_library.is_absolute():
+                raw_leaf_library = self.manifest_path.parent / raw_leaf_library
+            self._leaf_library_path = raw_leaf_library
+            self._leaf_operation_names = frozenset(
+                str(name) for name in leaf_device.get("operations", ())
+            )
+        main_operations = {
+            name: record
+            for name, record in self._operations.items()
+            if name not in self._leaf_operation_names
+        }
         direct_kernels = payload.get("direct_kernels", {})
         kernel_records = (
             direct_kernels.get("kernels", ())
@@ -111,9 +128,13 @@ class NativeCAMDevice:
         )
         self._abi = PointerTableAdapter(
             self._library,
-            self._operations,
+            main_operations,
             library_name=str(self.library_path),
         )
+        self._leaf_library: ctypes.CDLL | None = None
+        self._global_library: ctypes.CDLL | None = None
+        self._leaf_abi: PointerTableAdapter | None = None
+        self._native_initialized = False
         state_bridge = payload.get("state_bridge")
         self._state_bridge = (
             None
@@ -122,9 +143,50 @@ class NativeCAMDevice:
         )
         self.python_initialized_addresses: dict[str, int] = {}
 
+    @property
+    def leaf_loaded(self) -> bool:
+        """Whether this rank has explicitly loaded the optional leaf device."""
+
+        return self._leaf_abi is not None
+
     def _call(self, operation: str, pool: PICAMStatePool, fcomm: int) -> None:
         try:
-            self._abi.call(operation, pool, fcomm=fcomm)
+            if operation in self._leaf_operation_names:
+                if not self._native_initialized:
+                    raise NativeCAMError(
+                        "cam_run1 leaf actions require an initialized CAM model"
+                    )
+                if self._leaf_abi is None:
+                    if (
+                        self._leaf_library_path is None
+                        or not self._leaf_library_path.is_file()
+                    ):
+                        raise NativeCAMError(
+                            f"native CAM leaf library does not exist: {self._leaf_library_path}"
+                        )
+                    # Promote the already-loaded CAM image only now, after
+                    # initialization and only for an explicitly requested
+                    # leaf action.  Default BFB runs retain RTLD_LOCAL for
+                    # their entire lifecycle.
+                    self._global_library = ctypes.CDLL(
+                        str(self.library_path),
+                        mode=os.RTLD_NOLOAD | ctypes.RTLD_GLOBAL,
+                    )
+                    self._leaf_library = ctypes.CDLL(
+                        str(self._leaf_library_path), mode=ctypes.RTLD_LOCAL
+                    )
+                    leaf_operations = {
+                        name: self._operations[name]
+                        for name in self._leaf_operation_names
+                    }
+                    self._leaf_abi = PointerTableAdapter(
+                        self._leaf_library,
+                        leaf_operations,
+                        library_name=str(self._leaf_library_path),
+                    )
+                self._leaf_abi.call(operation, pool, fcomm=fcomm)
+            else:
+                self._abi.call(operation, pool, fcomm=fcomm)
         except FortranAdapterError as exc:
             raise NativeCAMError(str(exc)) from exc
 
@@ -159,6 +221,7 @@ class NativeCAMDevice:
             self._call("initialize", pool, fcomm)
         if self._state_bridge is not None:
             self._state_bridge.attach(pool)
+        self._native_initialized = True
 
     def execute(self, action: PICAMAction, pool: PICAMStatePool, *, fcomm: int) -> None:
         if self._state_bridge is not None and not self._state_bridge.zero_copy:

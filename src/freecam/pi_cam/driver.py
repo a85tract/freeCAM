@@ -625,6 +625,14 @@ class PICAMDriver:
             )
         return self._execute(action)
 
+    def expand_cam_run1_leaves(
+        self, *, experimental: bool = False
+    ) -> tuple[PICAMAction, ...]:
+        """Replace three composite stages with ordered native leaf actions."""
+
+        self.step_plan.expand_cam_run1_leaves(experimental=experimental)
+        return self.step_plan.in_phase("cam_run1")
+
     def run_phase(
         self, phase: str, *, experimental: bool = False
     ) -> tuple[PICAMActionTrace, ...]:

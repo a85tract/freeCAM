@@ -66,6 +66,21 @@ def _command(command: dict[str, Any], driver: Any, comm: Any) -> object:
     if operation == "run_kernel":
         trace = driver.run_kernel(str(command["name"]), experimental=True)
         return asdict(trace) if comm.rank == 0 else None
+    if operation == "expand_cam_run1_leaves":
+        actions = driver.expand_cam_run1_leaves(experimental=True)
+        return (
+            [
+                {
+                    "phase": action.phase,
+                    "name": action.name,
+                    "operation": action.operation,
+                    "native_id": action.native_id,
+                }
+                for action in actions
+            ]
+            if comm.rank == 0
+            else None
+        )
     if operation == "create_field":
         values = driver.define_variable(command["spec"])
         if comm.rank == 0:

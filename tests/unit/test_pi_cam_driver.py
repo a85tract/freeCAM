@@ -142,6 +142,30 @@ def test_individual_phase_and_scheme_are_exposed_without_advancing_time() -> Non
     assert backend.calls[-2:] == ["dadadj", "stepon_run3"]
 
 
+def test_driver_can_replace_cam_run1_composites_with_ordered_leaf_calls() -> None:
+    driver, backend, _ = _driver()
+    driver.expand_cam_run1_leaves(experimental=True)
+    driver.initialize()
+
+    driver.step()
+
+    assert "aero_model_wetdep" not in backend.calls
+    assert "physics_diagnostics" not in backend.calls
+    assert "cam_export" not in backend.calls
+    for operation in (
+        "leaf_modal_aero_prepare",
+        "leaf_aero_model_wetdep",
+        "leaf_carma_wetdep_tend",
+        "leaf_convect_deep_tend_2",
+        "leaf_diag_phys_writeout",
+        "leaf_cloud_diagnostics_calc",
+        "leaf_tropopause_output",
+        "leaf_cam_export",
+        "leaf_diag_export",
+    ):
+        assert operation in backend.calls
+
+
 def test_native_backend_can_fuse_only_the_unchanged_default_step() -> None:
     class FusedRecordingCAMBackend(RecordingCAMBackend):
         def execute_source_step(self, pool, *, fcomm, apply_import=True):

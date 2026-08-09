@@ -116,6 +116,29 @@ def test_session_run_action_sends_scheme_or_runtime_process_command(
     assert result["operation"] == "heating"
 
 
+def test_session_can_request_ordered_cam_run1_leaf_expansion(
+    tmp_path: Path, monkeypatch
+) -> None:
+    config, boundary, run_dir, env_script, _ = _session_files(tmp_path)
+    session = PICAMNotebookSession(
+        config,
+        boundary=boundary,
+        run_dir=run_dir,
+        env_script=env_script,
+    )
+    commands = []
+    monkeypatch.setattr(
+        session,
+        "_request",
+        lambda command: commands.append(command) or ({"name": "leaf"},),
+    )
+
+    result = session.expand_cam_run1_leaves()
+
+    assert commands == [{"op": "expand_cam_run1_leaves"}]
+    assert result == ({"name": "leaf"},)
+
+
 def test_session_dynamic_field_and_python_process_commands(
     tmp_path: Path, monkeypatch
 ) -> None:
