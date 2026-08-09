@@ -376,7 +376,11 @@ def _operations(state_bridge, direct_kernels=(), *, zero_copy_state: bool = Fals
             "symbol": ABI_SYMBOLS[1],
             "action_id": 432,
             "arguments": [
+                {"field": "cam_in.x2a_rattr", "dtype": "float64", "rank": 2, "intent": "in"},
                 {"field": "cam_out.a2x_rattr", "dtype": "float64", "rank": 2, "intent": "out"},
+                {"field": "model_step", "dtype": "int64", "rank": 0, "intent": "in"},
+                {"field": "current_date", "dtype": "int32", "rank": 0, "intent": "in"},
+                {"field": "current_seconds_of_day", "dtype": "int32", "rank": 0, "intent": "in"},
             ],
         },
     }

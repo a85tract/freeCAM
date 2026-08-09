@@ -6,6 +6,7 @@ from freecam.pi_cam import (
     PICAMFieldContract,
     PICAMStateError,
     PICAMStatePool,
+    PICAMVariableSpec,
 )
 from freecam.pi_cam.native import _NativeStateBridge
 
@@ -23,6 +24,25 @@ def test_pi_cam_state_is_rank_local_python_owned_fortran_storage() -> None:
     assert values.shape == (27, 30)
     assert values.flags.f_contiguous
     assert pool["T"].ctypes.data == values.ctypes.data
+
+
+def test_dynamic_variable_contract_round_trip_and_safe_removal() -> None:
+    spec = PICAMVariableSpec(
+        "experiment_tracer",
+        ("column", "level"),
+        units="kg kg-1",
+        initial=1.5,
+        aliases=("tracer",),
+    )
+    restored = PICAMVariableSpec.from_payload(spec.to_payload())
+    pool = PICAMStatePool({"column": 2, "level": 3})
+    values = pool.create(restored.contract(), initial=restored.initial)
+
+    assert np.array_equal(values, np.full((2, 3), 1.5))
+    assert pool["tracer"].ctypes.data == values.ctypes.data
+    assert pool.dynamic_fields == {"experiment_tracer"}
+    pool.remove_dynamic("tracer")
+    assert "experiment_tracer" not in pool
 
 
 def test_replay_field_cannot_change_shape_between_steps() -> None:

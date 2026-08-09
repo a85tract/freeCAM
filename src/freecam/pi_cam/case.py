@@ -59,6 +59,7 @@ class PICAMCase:
             rank=rank,
             size=size,
             fcomm=fcomm,
+            communicator=communicator,
             step_plan=step_plan,
             run_dir=run_dir,
         )

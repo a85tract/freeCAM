@@ -1,0 +1,46 @@
+{
+  "schema_version": 1,
+  "pbs_job_id": "7055189.desched1",
+  "mpi_ranks": 512,
+  "steps": 50,
+  "fine_grained_actions_per_step": 33,
+  "python_process": "runtime_tracer_source",
+  "python_payload_hash": "529c359e741e4fd6e5941a0c822db70bbabde2d32e78f5d72ae499a08c7d36ac",
+  "fortran_process": "runtime_temperature_offset",
+  "runtime_extensions_passed": true,
+  "rank_count": 512,
+  "tracer_shapes": [
+    [
+      16,
+      30,
+      2
+    ]
+  ],
+  "temperature_shapes": [
+    [
+      26,
+      30
+    ],
+    [
+      27,
+      30
+    ],
+    [
+      28,
+      30
+    ]
+  ],
+  "tracer_hashes": [
+    "84c4225dd85af0766be067cadd762fc04fcabe03db4bf64afb0f0ab692c9e5d3"
+  ],
+  "temperature_hashes": [
+    "68210c06d2674c98c9cb048c0b1050a4fa28bd7554f6dbe32c3ea72bfa05f221",
+    "805ce2ccffe5e2375848ce9e5acdc8936eb0240c411bdcb0467ac74b98e4df1e",
+    "bcd5ef063f79c89db77f0478ea23a750698c74b28fcb52fc0d630814b582d92a"
+  ],
+  "tracer_min": 0.08999999999999998,
+  "tracer_max": 0.08999999999999998,
+  "temperature_min": 315.0,
+  "temperature_max": 315.0,
+  "all_addresses_unchanged": true
+}

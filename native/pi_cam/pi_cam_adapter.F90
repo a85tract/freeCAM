@@ -325,13 +325,14 @@ contains
     character(kind=c_char), intent(out) :: errmsg(*)
     real(r8), pointer :: exchange(:,:)
     real(r8), pointer :: initial_import(:,:), initial_export(:,:)
+    integer(c_int64_t), pointer :: public_step
+    integer(c_int32_t), pointer :: public_date, public_seconds
     integer :: local_status, year, month, day, seconds, native_step
     logical :: write_restart, end_run
 
-    ! Python is the process main, so every Python -> Fortran transition must
-    ! restore the floating-point control word installed by Intel Fortran's
-    ! executable startup.  Setting it only during initialize is insufficient:
-    ! Python/NumPy code may run before the next numerical action.
+    ! Python, rather than an Intel Fortran executable, is the process main.
+    ! Re-establish the source executable's FTZ/DAZ mode on every ABI entry so
+    ! an intervening Python extension cannot change CAM's numerical mode.
     call pycam_pi_cam_set_fp_environment_v1()
     call clear_error(errmsg, errmsg_len)
     status = 0_c_int
@@ -366,12 +367,9 @@ contains
             (/ int(shapes(1)), int(shapes(2)) /))
        call atm_import(exchange, cam_in, cam_out)
     case (500:501)
-       ! BFB-safe complete CAM timestep.  The experimental 401:431 ABI
-       ! exposes individual phases and schemes, but returning through Python
-       ! between those calls changes the lifetime of hidden HOMME module
-       ! state.  Keep the source numerical call boundary intact for the
-       ! default scientific path while Python still owns step orchestration,
-       ! boundary arrays, clocks, and the public action trace.
+       ! Explicit source-compatible fallback used only for validation and
+       ! migration diagnostics.  The production path is the fine-grained
+       ! 401:432 action sequence owned by Python.
        if (nfields /= 2 .or. ndims(1) /= 2 .or. ndims(2) /= 2) then
           status = 15_c_int
           return
@@ -437,13 +435,27 @@ contains
             local_status)
        status = int(local_status, c_int)
     case (432)
-       if (nfields /= 1 .or. ndims(1) /= 2) then
+       if (nfields /= 5 .or. ndims(1) /= 2 .or. ndims(2) /= 2 .or. &
+            ndims(3) /= 0 .or. ndims(4) /= 0 .or. ndims(5) /= 0) then
           status = 12_c_int
           return
        endif
-       call c_f_pointer(pointers(1), exchange, &
+       call c_f_pointer(pointers(1), initial_import, &
             (/ int(shapes(1)), int(shapes(2)) /))
-       call atm_export(cam_out, exchange)
+       call c_f_pointer(pointers(2), initial_export, &
+            (/ int(shapes(3)), int(shapes(4)) /))
+       call c_f_pointer(pointers(3), public_step)
+       call c_f_pointer(pointers(4), public_date)
+       call c_f_pointer(pointers(5), public_seconds)
+       call atm_export(cam_out, initial_export)
+       if (public_step >= int(configured_stop_n, c_int64_t)) then
+          year = int(public_date) / 10000
+          month = mod(int(public_date) / 100, 100)
+          day = mod(int(public_date), 100)
+          seconds = int(public_seconds)
+          call atm_python_write_srfrest_mct(initial_import, initial_export, &
+               year, month, day, seconds)
+       endif
     case default
        status = 13_c_int
     end select

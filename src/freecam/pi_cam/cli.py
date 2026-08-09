@@ -8,6 +8,7 @@ import os
 from pathlib import Path
 import sys
 import traceback
+from dataclasses import replace
 
 from mpi4py import MPI
 
@@ -27,10 +28,17 @@ def main(argv: list[str] | None = None) -> int:
         help="override native_manifest from the case YAML",
     )
     parser.add_argument("--steps", type=int)
+    parser.add_argument(
+        "--execution-mode",
+        choices=("fine_grained", "source_compat"),
+        help="override the YAML control-path mode for validation",
+    )
     parser.add_argument("--summary", type=Path)
     args = parser.parse_args(argv)
     world = MPI.COMM_WORLD
     case = PICAMCase.from_yaml(args.config)
+    if args.execution_mode is not None:
+        case = PICAMCase(replace(case.config, execution_mode=args.execution_mode))
     boundary = ReplayBoundaryProvider(args.boundary)
     backend = (
         None

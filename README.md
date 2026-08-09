@@ -226,6 +226,59 @@ with PICAMNotebookSession(
 only the requested action and do not supply missing scientific preconditions
 or advance model time.
 
+The default PI-CAM step is no longer one opaque `execute_source_step` call.
+Python executes 33 named actions covering the coupling boundary, `cam_run2`,
+`cam_run3`, `cam_run4`, the CAM clock, and `cam_run1`.  The replay manifest
+also records CESM coupling intervals that hold their previous import; Python
+updates the boundary buffer at every recorded boundary but calls native
+`atm_import` only when `has_fresh_import()` is true.  This distinction is
+required for source-identical multi-substep coupling.
+
+The live PI-CAM runtime can add rank-local fields and insert trusted Notebook
+Python functions between existing CAM processes:
+
+```python
+cam.create_field(
+    "experiment_tracer",
+    dimensions=("pcols", "pver", "chunks"),
+    aliases=("tracer",),
+    standard_name="experiment_tracer",
+)
+
+def tracer_source(fields, context, *, rate):
+    fields["tracer"][...] += rate * context.timestep_seconds
+
+cam.install_python(
+    tracer_source,
+    name="tracer_source",
+    phase="cam_run1",
+    after="dadadj",
+    writes=("tracer",),
+    parameters={"rate": 1.0e-6},
+)
+cam.run_action("tracer_source", phase="cam_run1")
+cam.move_action("tracer_source", phase="cam_run1", before="deep_convection")
+cam.set_action_enabled("tracer_source", False, phase="cam_run1")
+cam.remove_python("tracer_source")
+cam.delete_field("experiment_tracer")
+```
+
+`cloudpickle` carries the callback through the authenticated control socket;
+every target MPI rank reconstructs it and operates on that rank's StatePool.
+Read fields are exposed as read-only views.  Declared writes are copied before
+the call and restored collectively if any rank fails.  This is trusted-code
+execution, not a sandbox.
+
+Original Fortran plus CCPP metadata can be installed into the same action
+plan with `cam.install_fortran(device_yaml, process=..., phase=...,
+before=.../after=..., unsafe=True)`. Rank 0 generates and compiles the
+`bind(C)` adapter into a cached device `.so`; all ranks verify the same
+manifest and library hashes, load it with `ctypes.CDLL(..., RTLD_LOCAL)`, and
+bind arguments by StatePool field or CCPP standard name. The process supports
+the same isolated run, move, enable, disable, and safe remove operations.
+See [`examples/try_pi_cam.ipynb`](examples/try_pi_cam.ipynb) for executable
+examples of both runtime process types.
+
 Build and validate with the reproducible cpudev jobs:
 
 ```bash
@@ -240,6 +293,7 @@ uv run python tools/build_pi_cam_devices.py \
   --numerical-build /path/to/oracle-build
 qsub validation/jobs/pi_cam_boundary_capture_50step.pbs
 qsub validation/jobs/pi_cam_python_zero_copy_state_50step.pbs
+qsub validation/jobs/pi_cam_runtime_extensions_50step.pbs
 ```
 
 `tools/build_pi_cam_devices.py` intentionally does not rebuild all of CAM with
@@ -247,8 +301,8 @@ qsub validation/jobs/pi_cam_python_zero_copy_state_50step.pbs
 keeps the original non-PIC objects, replaces only the Python control surfaces,
 links a fixed-address executable image, and changes its ELF type to ET_DYN for
 `dlopen`.  Because Python rather than an Intel Fortran program is the process
-main, the adapter also restores CAM's original `-ftz` MXCSR setting before the
-first numerical call. Validation is fail-closed and compares every numeric
+main, the adapter restores CAM's original `-ftz` MXCSR setting at every native
+ABI entry. Validation is fail-closed and compares every numeric
 variable in all CAM history and restart files; wall-clock strings are excluded.
 `tools/prepare_pi_cam_source.py` is the normal reproducible source-preparation
 entry point. Its lower-level `tools/apply_pi_cam_source_patches.py` helper
@@ -259,10 +313,21 @@ The complete Python-owned state gate is recorded in
 [`validation/pi_cam_python_zero_copy_state_50step.json`](validation/pi_cam_python_zero_copy_state_50step.json)
 and
 [`validation/pi_cam_python_zero_copy_state_vs_oracle_50step_bfb.json`](validation/pi_cam_python_zero_copy_state_vs_oracle_50step_bfb.json):
-cpudev job `7033487.desched1` ran 512 MPI ranks for 50 completed steps,
+cpudev job `7055155.desched1` ran the default 33-action fine-grained path on
+512 MPI ranks for 50 completed steps,
 preinitialized 151 rank-local arrays/views before native CAM resumed, retained
 every address through finalize, and matched all four oracle history/restart
 files bit for bit.
+
+The runtime-extension gate is recorded in
+[`validation/pi_cam_runtime_extensions_50step.json`](validation/pi_cam_runtime_extensions_50step.json)
+and
+[`validation/pi_cam_runtime_extensions_vs_oracle_50step_bfb.json`](validation/pi_cam_runtime_extensions_vs_oracle_50step_bfb.json).
+Cpudev job `7055189.desched1` collectively added and removed three fields,
+installed a Notebook Python process and a generated Fortran device, exercised
+run/move/disable/enable/remove, and then completed the same 512-rank, 50-step
+path. All dynamic values and pointers passed their exact checks, while the four
+CAM history/restart files remained bitwise identical to the oracle.
 
 Earlier control/state milestones are recorded in
 [`validation/pi_cam_50step_gate.json`](validation/pi_cam_50step_gate.json):

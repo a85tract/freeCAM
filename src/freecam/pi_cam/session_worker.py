@@ -37,6 +37,10 @@ def _status(driver: Any) -> dict[str, object]:
         "seconds": driver.clock.seconds,
         "actions": len(driver.trace),
         "fields": _field_catalog(driver),
+        "dynamic_fields": tuple(sorted(driver.pool.dynamic_fields)),
+        "python_processes": tuple(sorted(driver.python_processes.process_names)),
+        "fortran_processes": tuple(sorted(driver.fortran_processes.installed)),
+        "step_plan": driver.step_plan.describe(),
         "state_bytes": driver.pool.nbytes,
     }
 
@@ -62,6 +66,83 @@ def _command(command: dict[str, Any], driver: Any, comm: Any) -> object:
     if operation == "run_kernel":
         trace = driver.run_kernel(str(command["name"]), experimental=True)
         return asdict(trace) if comm.rank == 0 else None
+    if operation == "create_field":
+        values = driver.define_variable(command["spec"])
+        if comm.rank == 0:
+            return {
+                "name": driver.pool.canonical_name(str(command["spec"]["name"])),
+                "shape": tuple(values.shape),
+                "dtype": values.dtype.str,
+                "nbytes": int(values.nbytes),
+            }
+        return None
+    if operation == "delete_field":
+        name = driver.pool.canonical_name(str(command["name"]))
+        driver.delete_variable(name)
+        return {"name": name, "deleted": True} if comm.rank == 0 else None
+    if operation == "install_python":
+        record = driver.python_processes.install(
+            command["spec"], unsafe=bool(command.get("unsafe", False))
+        )
+        if comm.rank == 0:
+            return {
+                "name": record.spec.name,
+                "phase": record.spec.group,
+                "payload_hash": record.spec.payload_hash,
+                "reads": tuple(record.read_bindings),
+                "writes": tuple(record.write_bindings),
+            }
+        return None
+    if operation == "remove_python":
+        result = driver.python_processes.remove(str(command["name"]))
+        return result if comm.rank == 0 else None
+    if operation == "install_fortran":
+        record = driver.fortran_processes.install(
+            command["spec"], unsafe=bool(command.get("unsafe", False))
+        )
+        if comm.rank == 0:
+            return {
+                "name": record.spec.process,
+                "phase": record.spec.phase,
+                "device": record.device.name,
+                "manifest": str(record.device.manifest_path),
+                "library": str(record.device.library_path),
+            }
+        return None
+    if operation == "remove_fortran":
+        result = driver.fortran_processes.remove(str(command["name"]))
+        return result if comm.rank == 0 else None
+    if operation == "set_action_enabled":
+        driver.step_plan.set_enabled(
+            str(command["name"]),
+            bool(command["enabled"]),
+            phase=command.get("phase"),
+            experimental=True,
+        )
+        action = driver.step_plan.select(
+            str(command["name"]), phase=command.get("phase")
+        )
+        return (
+            {"name": action.name, "phase": action.phase, "enabled": action.enabled}
+            if comm.rank == 0
+            else None
+        )
+    if operation == "move_action":
+        driver.step_plan.move(
+            str(command["name"]),
+            phase=command.get("phase"),
+            before=command.get("before"),
+            after=command.get("after"),
+            experimental=True,
+        )
+        action = driver.step_plan.select(
+            str(command["name"]), phase=command.get("phase")
+        )
+        return (
+            {"name": action.name, "phase": action.phase, "plan": driver.step_plan.describe()}
+            if comm.rank == 0
+            else None
+        )
     if operation == "field":
         selected = int(command["rank"])
         if not 0 <= selected < comm.size:

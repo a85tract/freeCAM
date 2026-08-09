@@ -1,5 +1,5 @@
 #!/bin/bash
-#PBS -N pycam-python-state-50
+#PBS -N freecam-runtime-50
 #PBS -A UCUB0188
 #PBS -q develop
 #PBS -l select=4:ncpus=64:mpiprocs=128:ompthreads=1:mem=64GB
@@ -14,12 +14,8 @@ repo=/glade/work/ruitong/freeCAM
 python=${repo}/.venv/bin/python
 case_root=/glade/work/ruitong/CESM_cases/f.e13.F1850C5.ne16_g16.icesm131_ihesp.PI-cam-python-state
 oracle_run=/glade/derecho/scratch/ruitong/pyCAM/PI-cam/f.e13.F1850C5.ne16_g16.icesm131_ihesp.PI-cam-oracle.50step/run
-mode=${PYCAM_EXECUTION_MODE:-fine_grained}
-run_dir=/glade/derecho/scratch/ruitong/pyCAM/PI-cam/python-owned-state-${mode}-${PBS_JOBID}/run
 boundary=/glade/derecho/scratch/ruitong/pyCAM/PI-cam/nonpic-boundary-capture-50step/boundary/replay
-manifest=${repo}/build/pi_cam_zero_copy/native_cam_manifest.json
-summary=${PYCAM_SUMMARY:-validation/pi_cam_python_zero_copy_state_50step.json}
-bfb_output=${PYCAM_BFB_OUTPUT:-validation/pi_cam_python_zero_copy_state_vs_oracle_50step_bfb.json}
+run_dir=/glade/derecho/scratch/ruitong/pyCAM/PI-cam/runtime-extensions-${PBS_JOBID}/run
 
 source "${case_root}/.env_mach_specific.sh" >/dev/null 2>&1
 mpi_root=${CRAY_MPICH_DIR:-/opt/cray/pe/mpich/8.1.25/ofi/intel/19.0}
@@ -40,17 +36,18 @@ rsync -a \
 mkdir -p "${run_dir}/timing/checkpoints"
 
 cd "${repo}"
-mpiexec --label -n 512 "${python}" -m freecam.pi_cam.cli \
+mpiexec --label -n 512 "${python}" tools/validate_pi_cam_runtime_extensions.py \
   --config configs/pi_cam_icesm131.yaml \
-  --native-manifest "${manifest}" \
+  --native-manifest build/pi_cam_zero_copy/native_cam_manifest.json \
   --boundary "${boundary}" \
   --run-dir "${run_dir}" \
-  --execution-mode "${mode}" \
+  --device "${repo}/examples/plugins/runtime_temperature_offset/device.yaml" \
+  --project-root "${repo}" \
   --steps 50 \
-  --summary "${summary}" \
-  > "${run_dir}/pi_cam_python.log" 2>&1
+  --output validation/pi_cam_runtime_extensions_50step.json \
+  > "${run_dir}/pi_cam_runtime_extensions.log" 2>&1
 
 "${python}" tools/verify_pi_cam.py \
   --reference "${oracle_run}" \
   --candidate "${run_dir}" \
-  --output "${bfb_output}"
+  --output validation/pi_cam_runtime_extensions_vs_oracle_50step_bfb.json

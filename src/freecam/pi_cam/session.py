@@ -20,8 +20,10 @@ from pathlib import Path
 from typing import Any
 
 from freecam.core.runtime_env import mpi_loader_environment
+from freecam.model.python_processes import PythonProcessSpec
 
 from .config import PICAMConfig
+from .state import PICAMVariableSpec
 
 
 class PICAMNotebookError(RuntimeError):
@@ -167,10 +169,17 @@ class PICAMNotebookSession:
         self._status = dict(self._request({"op": "step", "count": int(count)}))
         return dict(self._status)
 
-    def run_scheme(self, name: str, *, phase: str | None = None) -> Mapping[str, Any]:
+    def run_action(self, name: str, *, phase: str | None = None) -> Mapping[str, Any]:
+        """Run one scheme or installed runtime process without advancing time."""
+
         return dict(
             self._request({"op": "run_action", "name": name, "phase": phase})
         )
+
+    def run_scheme(self, name: str, *, phase: str | None = None) -> Mapping[str, Any]:
+        """Compatibility alias for :meth:`run_action`."""
+
+        return self.run_action(name, phase=phase)
 
     def run_phase(self, name: str) -> tuple[Mapping[str, Any], ...]:
         return tuple(self._request({"op": "run_phase", "phase": name}))
@@ -179,6 +188,151 @@ class PICAMNotebookSession:
         """Run one experimental raw-array kernel on all live MPI ranks."""
 
         return dict(self._request({"op": "run_kernel", "name": name}))
+
+    def create_field(
+        self,
+        name: str,
+        *,
+        dimensions: Sequence[str],
+        dtype: str = "float64",
+        units: str = "1",
+        initial: float | int = 0.0,
+        writable: bool = True,
+        restart: bool = True,
+        aliases: Sequence[str] = (),
+        standard_name: str | None = None,
+    ) -> Mapping[str, Any]:
+        spec = PICAMVariableSpec(
+            name=name,
+            dimensions=tuple(dimensions),
+            dtype=dtype,
+            units=units,
+            initial=initial,
+            writable=writable,
+            restart=restart,
+            aliases=tuple(aliases),
+            standard_name=standard_name,
+        )
+        return dict(self._request({"op": "create_field", "spec": spec.to_payload()}))
+
+    def delete_field(self, name: str) -> Mapping[str, Any]:
+        return dict(self._request({"op": "delete_field", "name": name}))
+
+    def install_python(
+        self,
+        function: Any,
+        *,
+        name: str,
+        phase: str,
+        before: str | None = None,
+        after: str | None = None,
+        reads: Sequence[str] = (),
+        writes: Sequence[str] = (),
+        parameters: Mapping[str, Any] | None = None,
+        enabled: bool = True,
+        transactional: bool = True,
+        unsafe: bool = False,
+    ) -> Mapping[str, Any]:
+        spec = PythonProcessSpec.from_callable(
+            function,
+            name=name,
+            group=phase,
+            before=before,
+            after=after,
+            reads=reads,
+            writes=writes,
+            parameters=parameters,
+            enabled=enabled,
+            transactional=transactional,
+        )
+        return dict(
+            self._request(
+                {
+                    "op": "install_python",
+                    "spec": spec.as_dict(),
+                    "unsafe": bool(unsafe),
+                }
+            )
+        )
+
+    def remove_python(self, name: str) -> Mapping[str, Any]:
+        return dict(self._request({"op": "remove_python", "name": name}))
+
+    def install_fortran(
+        self,
+        source: str | Path,
+        *,
+        process: str,
+        phase: str,
+        before: str | None = None,
+        after: str | None = None,
+        project_root: str | Path | None = None,
+        enabled: bool = True,
+        unsafe: bool = False,
+    ) -> Mapping[str, Any]:
+        return dict(
+            self._request(
+                {
+                    "op": "install_fortran",
+                    "spec": {
+                        "schema_version": 1,
+                        "source": str(Path(source).expanduser().resolve()),
+                        "process": process,
+                        "phase": phase,
+                        "before": before,
+                        "after": after,
+                        "project_root": (
+                            None
+                            if project_root is None
+                            else str(Path(project_root).expanduser().resolve())
+                        ),
+                        "enabled": bool(enabled),
+                    },
+                    "unsafe": bool(unsafe),
+                }
+            )
+        )
+
+    def remove_fortran(self, name: str) -> Mapping[str, Any]:
+        return dict(self._request({"op": "remove_fortran", "name": name}))
+
+    def set_action_enabled(
+        self,
+        name: str,
+        enabled: bool,
+        *,
+        phase: str | None = None,
+    ) -> Mapping[str, Any]:
+        return dict(
+            self._request(
+                {
+                    "op": "set_action_enabled",
+                    "name": name,
+                    "phase": phase,
+                    "enabled": bool(enabled),
+                }
+            )
+        )
+
+    def move_action(
+        self,
+        name: str,
+        *,
+        phase: str | None = None,
+        before: str | None = None,
+        after: str | None = None,
+    ) -> Mapping[str, Any]:
+        return dict(
+            self._request(
+                {
+                    "op": "move_action",
+                    "name": name,
+                    "phase": phase,
+                    "before": before,
+                    "after": after,
+                }
+            )
+        )
 
     def field(self, name: str, *, rank: int = 0) -> Any:
         return self._request({"op": "field", "name": name, "rank": int(rank)})

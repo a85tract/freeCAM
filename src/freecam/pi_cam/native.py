@@ -553,7 +553,15 @@ class _NativeStateBridge:
             "pver": pver,
             "pverp": pver + 1,
             "chunks": chunks,
+            "nphys_local": (
+                local_elements * columns_per_element
+                if context is None
+                else sum(int(value) for value in context["chunk_ncols"])
+            ),
         }
+        dimensions["column"] = dimensions["nphys_local"]
+        dimensions["level"] = pver
+        dimensions["interface_level"] = pver + 1
         for name, value in dimensions.items():
             existing = pool.dimensions.setdefault(name, int(value))
             if existing != int(value):

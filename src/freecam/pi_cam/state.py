@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass
-from typing import Iterable, Iterator, Mapping
+from typing import Any, Iterable, Iterator, Mapping
 
 import numpy as np
 
@@ -20,7 +20,10 @@ class PICAMFieldContract:
     writable: bool = True
     restart: bool = True
     aliases: tuple[str, ...] = ()
+    standard_name: str | None = None
     requires_contiguous: bool = True
+    owner: str = "python"
+    dynamic: bool = False
 
     def __post_init__(self) -> None:
         name = self.name.strip()
@@ -30,6 +33,12 @@ class PICAMFieldContract:
         object.__setattr__(self, "dimensions", tuple(self.dimensions))
         object.__setattr__(self, "dtype", np.dtype(self.dtype).str)
         object.__setattr__(self, "aliases", tuple(self.aliases))
+        if self.standard_name is not None:
+            object.__setattr__(
+                self, "standard_name", str(self.standard_name).strip().lower()
+            )
+        if self.owner not in {"python", "native"}:
+            raise PICAMStateError("field owner must be 'python' or 'native'")
 
     def shape(self, dimensions: Mapping[str, int]) -> tuple[int, ...]:
         try:
@@ -45,6 +54,92 @@ class PICAMFieldContract:
         result["aliases"] = list(self.aliases)
         return result
 
+    @classmethod
+    def from_payload(cls, values: Mapping[str, Any]) -> "PICAMFieldContract":
+        return cls(
+            name=str(values["name"]),
+            dimensions=tuple(str(item) for item in values.get("dimensions", ())),
+            dtype=str(values.get("dtype", "float64")),
+            units=str(values.get("units", "1")),
+            category=str(values.get("category", "prognostic")),
+            writable=bool(values.get("writable", True)),
+            restart=bool(values.get("restart", True)),
+            aliases=tuple(str(item) for item in values.get("aliases", ())),
+            standard_name=(
+                None
+                if values.get("standard_name") is None
+                else str(values["standard_name"])
+            ),
+            requires_contiguous=bool(values.get("requires_contiguous", True)),
+            owner=str(values.get("owner", "python")),
+            dynamic=bool(values.get("dynamic", False)),
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class PICAMVariableSpec:
+    """Serializable definition for one Python-owned runtime field."""
+
+    name: str
+    dimensions: tuple[str, ...]
+    dtype: str = "float64"
+    units: str = "1"
+    initial: float | int = 0.0
+    writable: bool = True
+    restart: bool = True
+    aliases: tuple[str, ...] = ()
+    standard_name: str | None = None
+
+    def __post_init__(self) -> None:
+        contract = self.contract()
+        object.__setattr__(self, "name", contract.name)
+        object.__setattr__(self, "dimensions", contract.dimensions)
+        object.__setattr__(self, "dtype", contract.dtype)
+        object.__setattr__(self, "aliases", contract.aliases)
+        object.__setattr__(self, "standard_name", contract.standard_name)
+
+    def contract(self) -> PICAMFieldContract:
+        return PICAMFieldContract(
+            name=self.name,
+            dimensions=tuple(self.dimensions),
+            dtype=self.dtype,
+            units=self.units,
+            category="dynamic",
+            writable=self.writable,
+            restart=self.restart,
+            aliases=tuple(self.aliases),
+            standard_name=self.standard_name,
+            owner="python",
+            dynamic=True,
+        )
+
+    def to_payload(self) -> dict[str, object]:
+        return {
+            "schema_version": 1,
+            **self.contract().to_payload(),
+            "initial": self.initial,
+        }
+
+    @classmethod
+    def from_payload(cls, values: Mapping[str, Any]) -> "PICAMVariableSpec":
+        if int(values.get("schema_version", 1)) != 1:
+            raise PICAMStateError("unsupported PI-CAM variable schema version")
+        return cls(
+            name=str(values["name"]),
+            dimensions=tuple(str(item) for item in values.get("dimensions", ())),
+            dtype=str(values.get("dtype", "float64")),
+            units=str(values.get("units", "1")),
+            initial=values.get("initial", 0.0),
+            writable=bool(values.get("writable", True)),
+            restart=bool(values.get("restart", True)),
+            aliases=tuple(str(item) for item in values.get("aliases", ())),
+            standard_name=(
+                None
+                if values.get("standard_name") is None
+                else str(values["standard_name"])
+            ),
+        )
+
 
 class PICAMStatePool(Mapping[str, np.ndarray]):
     """One MPI rank's arrays; no array is implicitly shared across ranks."""
@@ -54,6 +149,9 @@ class PICAMStatePool(Mapping[str, np.ndarray]):
         self._contracts: dict[str, PICAMFieldContract] = {}
         self._arrays: dict[str, np.ndarray] = {}
         self._aliases: dict[str, str] = {}
+        self._standard_names: dict[str, str] = {}
+        self._dynamic_fields: set[str] = set()
+        self._initialized_fields: set[str] = set()
 
     def __getitem__(self, name: str) -> np.ndarray:
         return self._arrays[self.canonical_name(name)]
@@ -74,6 +172,42 @@ class PICAMStatePool(Mapping[str, np.ndarray]):
 
     def contract(self, name: str) -> PICAMFieldContract:
         return self._contracts[self.canonical_name(name)]
+
+    def ccpp_field_name(self, standard_name: str) -> str:
+        token = str(standard_name).strip().lower()
+        try:
+            return self._standard_names[token]
+        except KeyError as exc:
+            raise KeyError(f"unknown PI-CAM standard name {standard_name!r}") from exc
+
+    def is_initialized(self, name: str) -> bool:
+        return self.canonical_name(name) in self._initialized_fields
+
+    def mark_initialized(self, name: str) -> None:
+        self._initialized_fields.add(self.canonical_name(name))
+
+    @property
+    def process_state_names(self) -> frozenset[str]:
+        return frozenset()
+
+    @property
+    def contracts(self) -> Mapping[str, PICAMFieldContract]:
+        return dict(self._contracts)
+
+    def get(self, name: str, default: object = None) -> np.ndarray:
+        """Return one canonical or aliased field.
+
+        ``default`` is accepted for Mapping compatibility, but a missing field
+        still raises unless the caller supplied a non-``None`` default.  Model
+        contracts should fail closed rather than silently substitute arrays.
+        """
+
+        try:
+            return self[name]
+        except KeyError:
+            if default is not None:
+                return default  # type: ignore[return-value]
+            raise
 
     def create(
         self,
@@ -108,11 +242,25 @@ class PICAMStatePool(Mapping[str, np.ndarray]):
             and not array.flags.f_contiguous
         ):
             raise PICAMStateError(f"field {contract.name!r} must be Fortran contiguous")
-        self._contracts[contract.name] = contract
-        self._arrays[contract.name] = array
         for alias in contract.aliases:
             if alias in self._arrays or alias in self._aliases:
                 raise PICAMStateError(f"duplicate field alias {alias!r}")
+        if (
+            contract.standard_name is not None
+            and contract.standard_name.lower() in self._standard_names
+        ):
+            raise PICAMStateError(
+                f"duplicate CCPP standard name {contract.standard_name!r}"
+            )
+        self._contracts[contract.name] = contract
+        self._arrays[contract.name] = array
+        self._initialized_fields.add(contract.name)
+        if contract.dynamic:
+            self._dynamic_fields.add(contract.name)
+        if contract.standard_name is not None:
+            key = contract.standard_name.lower()
+            self._standard_names[key] = contract.name
+        for alias in contract.aliases:
             self._aliases[alias] = contract.name
 
     def ensure_from_array(
@@ -157,7 +305,47 @@ class PICAMStatePool(Mapping[str, np.ndarray]):
             if target == canonical:
                 del self._aliases[alias]
         del self._contracts[canonical]
+        self._dynamic_fields.discard(canonical)
+        self._initialized_fields.discard(canonical)
+        self._standard_names = {
+            standard_name: target
+            for standard_name, target in self._standard_names.items()
+            if target != canonical
+        }
         return self._arrays.pop(canonical)
+
+    def remove_dynamic(self, name: str) -> np.ndarray:
+        canonical = self.canonical_name(name)
+        if canonical not in self._dynamic_fields:
+            raise PICAMStateError(
+                f"field {canonical!r} is model-owned and cannot be removed dynamically"
+            )
+        return self.remove(canonical)
+
+    @property
+    def dynamic_fields(self) -> frozenset[str]:
+        return frozenset(self._dynamic_fields)
+
+    def pointer_records(self) -> dict[str, tuple[int, tuple[int, ...], str]]:
+        return {
+            name: (int(values.ctypes.data), tuple(values.shape), values.dtype.str)
+            for name, values in self._arrays.items()
+        }
+
+    def assert_pointer_stability(
+        self, before: Mapping[str, tuple[int, tuple[int, ...], str]]
+    ) -> None:
+        after = self.pointer_records()
+        changed = [
+            name
+            for name, record in before.items()
+            if name not in after or after[name] != record
+        ]
+        if changed:
+            raise PICAMStateError(
+                "runtime process changed StatePool storage: "
+                + ", ".join(changed[:8])
+            )
 
     def snapshot(self, *, restart_only: bool = False) -> dict[str, np.ndarray]:
         return {

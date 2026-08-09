@@ -60,3 +60,6 @@ def test_pi_cam_fingerprint_ignores_checkout_and_build_paths() -> None:
     )
 
     assert original.fingerprint == relocated.fingerprint
+    assert original.fingerprint == replace(
+        original, execution_mode="source_compat"
+    ).fingerprint

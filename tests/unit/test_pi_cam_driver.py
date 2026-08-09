@@ -7,9 +7,11 @@ from freecam.pi_cam import (
     InMemoryBoundaryProvider,
     PICAMConfig,
     PICAMDriver,
+    PICAMVariableSpec,
     RecordingCAMBackend,
 )
 from freecam.pi_cam.errors import PICAMConfigurationError
+from freecam.pi_cam import runtime_fortran as runtime_fortran_module
 
 
 def _driver() -> tuple[PICAMDriver, RecordingCAMBackend, InMemoryBoundaryProvider]:
@@ -51,6 +53,32 @@ def test_complete_step_is_ordered_by_python_and_advances_1800_seconds() -> None:
         "initial_priming",
     ]
     assert "advance_timestep" in backend.calls
+    assert (0, 0) in boundary.exports
+
+
+def test_fine_grained_step_holds_native_import_when_coupling_input_is_held() -> None:
+    class HeldBoundary(InMemoryBoundaryProvider):
+        def has_fresh_import(self, step: int, rank: int) -> bool:
+            del rank
+            return step != 2
+
+    template, _, _ = _driver()
+    boundary = HeldBoundary(
+        {
+            (0, 0): {"sst": np.full((2,), 280.0)},
+            (1, 0): {"sst": np.full((2,), 281.0)},
+            (2, 0): {"sst": np.full((2,), 282.0)},
+        }
+    )
+    backend = RecordingCAMBackend()
+    driver = PICAMDriver(template.config, boundary, backend, rank=0, size=1)
+    driver.initialize()
+
+    trace = driver.step()
+
+    assert trace[0].operation == "boundary_import"
+    assert "boundary_import" not in backend.calls
+    assert "stepon_run2" in backend.calls
     assert (0, 0) in boundary.exports
 
 
@@ -125,6 +153,7 @@ def test_native_backend_can_fuse_only_the_unchanged_default_step() -> None:
         source_root=Path("/tmp/source"),
         mpi_size=1,
         stop_n=2,
+        execution_mode="source_compat",
     )
     boundary = InMemoryBoundaryProvider(
         {
@@ -175,3 +204,122 @@ def test_direct_kernel_is_explicit_and_does_not_advance_model_time() -> None:
     assert trace.operation == "sample"
     assert backend.calls[-1] == "kernel:sample"
     assert driver.clock.nstep == 0
+
+
+def test_dynamic_field_and_python_process_are_part_of_the_step_plan() -> None:
+    driver, backend, _ = _driver()
+    driver.initialize()
+    tracer = driver.define_variable(
+        PICAMVariableSpec(
+            "experiment_tracer",
+            ("pcols", "pver"),
+            initial=2.0,
+            aliases=("tracer",),
+        )
+    )
+
+    def add_timestep(fields, context, *, scale):
+        fields["tracer"][...] += scale * context.timestep_seconds
+
+    process = driver.physics.install_python(
+        add_timestep,
+        name="notebook_heating",
+        phase="cam_run1",
+        after="dadadj",
+        writes=("tracer",),
+        parameters={"scale": 1.0e-3},
+    )
+    address = tracer.ctypes.data
+
+    process.run()
+    assert np.array_equal(tracer, np.full(tracer.shape, 3.8))
+    driver.step()
+
+    assert np.array_equal(tracer, np.full(tracer.shape, 5.6))
+    assert tracer.ctypes.data == address
+    assert "notebook_heating" not in backend.calls
+    with pytest.raises(Exception, match="used by runtime processes"):
+        driver.delete_variable("tracer")
+    process.remove()
+    driver.delete_variable("tracer")
+    assert "experiment_tracer" not in driver.pool
+
+
+def test_failed_python_process_restores_declared_writes() -> None:
+    driver, _, _ = _driver()
+    driver.initialize()
+    values = driver.define_variable(
+        PICAMVariableSpec("runtime_value", ("pver",), initial=7.0)
+    )
+
+    def fail_after_write(fields, context):
+        del context
+        fields["runtime_value"][...] = -1.0
+        raise RuntimeError("intentional callback failure")
+
+    process = driver.physics.install_python(
+        fail_after_write,
+        name="failure_probe",
+        phase="cam_run1",
+        after="dadadj",
+        writes=("runtime_value",),
+    )
+    with pytest.raises(Exception, match="were restored"):
+        process.run()
+
+    assert np.array_equal(values, np.full(values.shape, 7.0))
+
+
+def test_runtime_fortran_process_uses_the_same_mutable_step_plan(
+    tmp_path: Path, monkeypatch
+) -> None:
+    manifest = tmp_path / "device.json"
+    library = tmp_path / "device.so"
+    manifest.write_text("{}")
+    library.write_bytes(b"device")
+
+    class FakeDevice:
+        name = "runtime_offset"
+        source_hash = "source"
+        processes = {"runtime_offset": "run"}
+        entrypoints = {"run": {"arguments": []}}
+
+        def __init__(self, path):
+            self.manifest_path = Path(path)
+            self.library_path = library
+
+        def _ensure_abi(self):
+            return None
+
+        def invoke_process(self, name, pool):
+            assert name == "runtime_offset"
+            pool["runtime_value"][...] += 2.0
+
+    driver, _, _ = _driver()
+    driver.initialize()
+    values = driver.define_variable(
+        PICAMVariableSpec("runtime_value", ("pver",), initial=1.0)
+    )
+    monkeypatch.setattr(runtime_fortran_module, "FortranDevice", FakeDevice)
+    monkeypatch.setattr(
+        driver.fortran_processes,
+        "_prepare_manifest",
+        lambda spec: manifest,
+    )
+
+    process = driver.physics.install_fortran(
+        manifest,
+        process="runtime_offset",
+        phase="cam_run1",
+        after="dadadj",
+        unsafe=True,
+    )
+    process.run()
+
+    assert np.array_equal(values, np.full(values.shape, 3.0))
+    process.disable()
+    assert not process.enabled
+    process.enable()
+    process.move(before="deep_convection")
+    process.remove()
+    driver.delete_variable("runtime_value")

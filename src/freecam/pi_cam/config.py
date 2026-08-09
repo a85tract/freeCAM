@@ -34,6 +34,7 @@ class PICAMConfig:
     physics_package: str = "cam5"
     dynamics: str = "se"
     boundary_mode: str = "replay"
+    execution_mode: str = "fine_grained"
     native_manifest: Path | None = None
     initial_conditions: Path | None = None
     namelist: Path | None = None
@@ -79,6 +80,13 @@ class PICAMConfig:
             raise PICAMConfigurationError(
                 "boundary_mode must be either 'replay' or 'memory'"
             )
+        if self.execution_mode not in {
+            "fine_grained",
+            "source_compat",
+        }:
+            raise PICAMConfigurationError(
+                "execution_mode must be 'fine_grained' or 'source_compat'"
+            )
         try:
             year, month, day = (int(item) for item in self.start_date.split("-"))
         except (TypeError, ValueError) as exc:
@@ -109,6 +117,10 @@ class PICAMConfig:
         payload = self.to_payload()
         payload.pop("source_root")
         payload.pop("native_manifest")
+        # Runtime orchestration does not change the captured atmosphere
+        # boundary contract.  Keeping it out lets the same oracle payload
+        # compare the fine-grained and source-compatible control paths.
+        payload.pop("execution_mode")
         return payload
 
     @property
@@ -139,6 +151,7 @@ class PICAMConfig:
             "physics_package",
             "dynamics",
             "boundary_mode",
+            "execution_mode",
             "native_manifest",
             "initial_conditions",
             "namelist",

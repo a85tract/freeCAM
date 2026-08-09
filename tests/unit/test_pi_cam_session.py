@@ -89,3 +89,69 @@ def test_session_run_kernel_sends_explicit_worker_command(
 
     assert commands == [{"op": "run_kernel", "name": "dadadj"}]
     assert result["operation"] == "dadadj"
+
+
+def test_session_run_action_sends_scheme_or_runtime_process_command(
+    tmp_path: Path, monkeypatch
+) -> None:
+    config, boundary, run_dir, env_script, _ = _session_files(tmp_path)
+    session = PICAMNotebookSession(
+        config,
+        boundary=boundary,
+        run_dir=run_dir,
+        env_script=env_script,
+    )
+    commands = []
+    monkeypatch.setattr(
+        session,
+        "_request",
+        lambda command: commands.append(command) or {"operation": "heating"},
+    )
+
+    result = session.run_action("heating", phase="cam_run1")
+
+    assert commands == [
+        {"op": "run_action", "name": "heating", "phase": "cam_run1"}
+    ]
+    assert result["operation"] == "heating"
+
+
+def test_session_dynamic_field_and_python_process_commands(
+    tmp_path: Path, monkeypatch
+) -> None:
+    config, boundary, run_dir, env_script, _ = _session_files(tmp_path)
+    session = PICAMNotebookSession(
+        config,
+        boundary=boundary,
+        run_dir=run_dir,
+        env_script=env_script,
+    )
+    commands = []
+    monkeypatch.setattr(
+        session,
+        "_request",
+        lambda command: commands.append(command) or {"name": command.get("name", "p")},
+    )
+
+    session.create_field(
+        "experiment_tracer",
+        dimensions=("pcols", "pver"),
+        aliases=("tracer",),
+    )
+
+    def callback(fields, context):
+        fields["tracer"][...] += context.timestep_seconds
+
+    session.install_python(
+        callback,
+        name="heating",
+        phase="cam_run1",
+        after="dadadj",
+        writes=("tracer",),
+    )
+
+    assert commands[0]["op"] == "create_field"
+    assert commands[0]["spec"]["dynamic"] is True
+    assert commands[1]["op"] == "install_python"
+    assert commands[1]["spec"]["group"] == "cam_run1"
+    assert commands[1]["spec"]["after"] == "dadadj"

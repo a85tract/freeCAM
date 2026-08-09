@@ -7,18 +7,42 @@ from enum import Enum
 import json
 import os
 from pathlib import Path
-from typing import Any, Callable, Iterator, Mapping
+from typing import Any, Callable, Iterator, Mapping, Sequence
 
 import numpy as np
 
 from freecam.model.clock import ModelClock
+from freecam.model.python_processes import PythonProcessSpec
 
 from .boundary import CAMBoundaryProvider
 from .config import PICAMConfig
 from .errors import PICAMConfigurationError, PICAMStateError
 from .native import CAMNumericalBackend
 from .plan import PICAMAction, PICAMStepPlan
-from .state import PICAMStatePool, PICAMStateSchema
+from .runtime_processes import PICAMPythonProcessRegistry
+from .runtime_fortran import (
+    PICAMFortranProcessRegistry,
+    PICAMFortranProcessSpec,
+)
+from .state import PICAMStatePool, PICAMStateSchema, PICAMVariableSpec
+
+
+class _SerialComm:
+    rank = 0
+    size = 1
+
+    @staticmethod
+    def allgather(value: Any) -> list[Any]:
+        return [value]
+
+    @staticmethod
+    def barrier() -> None:
+        return None
+
+    @staticmethod
+    def bcast(value: Any, root: int = 0) -> Any:
+        del root
+        return value
 
 
 class PICAMLifecycle(str, Enum):
@@ -92,6 +116,16 @@ class _ActionReference:
         )
 
 
+class _PythonProcessReference(_ActionReference):
+    def remove(self) -> Mapping[str, Any]:
+        return self.driver.python_processes.remove(self.action.name)
+
+
+class _FortranProcessReference(_ActionReference):
+    def remove(self) -> Mapping[str, Any]:
+        return self.driver.fortran_processes.remove(self.action.name)
+
+
 class _PhysicsCollection:
     def __init__(self, driver: "PICAMDriver") -> None:
         self.driver = driver
@@ -100,18 +134,85 @@ class _PhysicsCollection:
         matches = [
             action
             for action in self.driver.step_plan.actions
-            if action.kind == "scheme"
+            if action.kind in {"scheme", "python_process", "runtime_fortran_process"}
             and (action.name == name or action.operation == name)
         ]
         if len(matches) != 1:
             raise AttributeError(name)
-        return _ActionReference(self.driver, matches[0])
+        action = matches[0]
+        if action.kind == "python_process":
+            return _PythonProcessReference(self.driver, action)
+        if action.kind == "runtime_fortran_process":
+            return _FortranProcessReference(self.driver, action)
+        return _ActionReference(self.driver, action)
 
     def scheme(self, name: str, *, phase: str | None = None) -> _ActionReference:
         action = self.driver.step_plan.select(name, phase=phase)
         if action.kind != "scheme":
             raise PICAMConfigurationError(f"{name!r} is not a physics scheme")
         return _ActionReference(self.driver, action)
+
+    def install_python(
+        self,
+        function: Callable[..., None],
+        *,
+        name: str,
+        phase: str,
+        before: str | None = None,
+        after: str | None = None,
+        reads: Sequence[str] = (),
+        writes: Sequence[str] = (),
+        parameters: Mapping[str, Any] | None = None,
+        enabled: bool = True,
+        transactional: bool = True,
+        unsafe: bool = False,
+    ) -> _PythonProcessReference:
+        spec = PythonProcessSpec.from_callable(
+            function,
+            name=name,
+            group=phase,
+            before=before,
+            after=after,
+            reads=reads,
+            writes=writes,
+            parameters=parameters,
+            enabled=enabled,
+            transactional=transactional,
+        )
+        self.driver.python_processes.install(spec, unsafe=unsafe)
+        action = self.driver.step_plan.select(spec.name, phase=spec.group)
+        return _PythonProcessReference(self.driver, action)
+
+    def remove_python(self, name: str) -> Mapping[str, Any]:
+        return self.driver.python_processes.remove(name)
+
+    def install_fortran(
+        self,
+        source: str | Path,
+        *,
+        process: str,
+        phase: str,
+        before: str | None = None,
+        after: str | None = None,
+        project_root: str | Path | None = None,
+        enabled: bool = True,
+        unsafe: bool = False,
+    ) -> _FortranProcessReference:
+        spec = PICAMFortranProcessSpec(
+            source=str(source),
+            process=process,
+            phase=phase,
+            before=before,
+            after=after,
+            project_root=None if project_root is None else str(project_root),
+            enabled=enabled,
+        )
+        self.driver.fortran_processes.install(spec, unsafe=unsafe)
+        action = self.driver.step_plan.select(process, phase=phase)
+        return _FortranProcessReference(self.driver, action)
+
+    def remove_fortran(self, name: str) -> Mapping[str, Any]:
+        return self.driver.fortran_processes.remove(name)
 
 
 class _PhaseReference:
@@ -180,6 +281,7 @@ class PICAMDriver:
         rank: int,
         size: int,
         fcomm: int = 0,
+        communicator: Any | None = None,
         step_plan: PICAMStepPlan | None = None,
         state_schema: PICAMStateSchema | None = None,
         history_callback: Callable[[PICAMAction, "PICAMDriver"], None] | None = None,
@@ -193,6 +295,11 @@ class PICAMDriver:
         self.rank = int(rank)
         self.size = int(size)
         self.fcomm = int(fcomm)
+        self.comm = communicator if communicator is not None else _SerialComm()
+        if int(self.comm.rank) != self.rank or int(self.comm.size) != self.size:
+            raise PICAMConfigurationError(
+                "communicator rank/size do not match PICAMDriver rank/size"
+            )
         self.step_plan = step_plan or PICAMStepPlan.default()
         self.pool = (state_schema or PICAMStateSchema.core()).allocate(
             {
@@ -221,10 +328,13 @@ class PICAMDriver:
         self._previous_directory: Path | None = None
         self._advance_public_clock = True
         self._backend_initialized = False
+        self._native_call_depth = 0
         self._python_initialized_addresses: dict[str, int] = {}
         self.physics = _PhysicsCollection(self)
         self.phases = _PhaseCollection(self)
         self.kernels = _KernelCollection(self)
+        self.python_processes = PICAMPythonProcessRegistry(self)
+        self.fortran_processes = PICAMFortranProcessRegistry(self)
 
     @property
     def trace(self) -> tuple[PICAMActionTrace, ...]:
@@ -375,22 +485,129 @@ class PICAMDriver:
         return trace
 
     def _execute(self, action: PICAMAction) -> PICAMActionTrace:
-        if action.operation == "boundary_import":
+        if action.kind == "python_process":
+            self.python_processes.invoke(action)
+        elif action.kind == "runtime_fortran_process":
+            self.fortran_processes.invoke(action)
+        elif action.operation == "boundary_import":
             self.boundary.import_fields(self._boundary_step, self.rank, self.pool)
-            self.backend.execute(action, self.pool, fcomm=self.fcomm)
+            # A coupled atmosphere interval can contain more than one CAM
+            # substep.  CESM calls atm_import only at the beginning of that
+            # interval and holds cam_in for the remaining substeps.  The
+            # replay manifest records those held boundaries explicitly.
+            if self.boundary.has_fresh_import(self._boundary_step, self.rank):
+                self._execute_native(action)
         elif action.operation == "boundary_export":
-            self.backend.execute(action, self.pool, fcomm=self.fcomm)
+            self._execute_native(action)
             self.boundary.export_fields(self._boundary_step, self.rank, self.pool)
         elif action.operation == "advance_timestep":
-            self.backend.execute(action, self.pool, fcomm=self.fcomm)
+            self._execute_native(action)
             if self._advance_public_clock:
                 self.clock.advance()
                 self._sync_clock_fields()
         elif action.kind == "io" and self.history_callback is not None:
             self.history_callback(action, self)
         else:
-            self.backend.execute(action, self.pool, fcomm=self.fcomm)
+            self._execute_native(action)
         return self._record(action)
+
+    def _execute_native(self, action: PICAMAction) -> None:
+        self._native_call_depth += 1
+        try:
+            self.backend.execute(action, self.pool, fcomm=self.fcomm)
+        finally:
+            self._native_call_depth -= 1
+
+    def define_variable(
+        self, spec: PICAMVariableSpec | Mapping[str, Any]
+    ) -> np.ndarray:
+        """Collectively allocate one rank-local Python-owned StatePool field."""
+
+        if not isinstance(spec, PICAMVariableSpec):
+            spec = PICAMVariableSpec.from_payload(spec)
+        self._require_collective_boundary("define a variable")
+        payload = json.dumps(spec.to_payload(), sort_keys=True, separators=(",", ":"))
+        payloads = self.comm.allgather(payload)
+        if len(set(payloads)) != 1:
+            raise PICAMStateError("dynamic variable definition differs across MPI ranks")
+        local_error: str | None = None
+        try:
+            spec.contract().shape(self.pool.dimensions)
+            if spec.name in self.pool:
+                raise PICAMStateError(f"field {spec.name!r} already exists")
+            for alias in spec.aliases:
+                try:
+                    self.pool.canonical_name(alias)
+                except KeyError:
+                    continue
+                raise PICAMStateError(f"field alias {alias!r} already exists")
+        except BaseException as exc:
+            local_error = f"{type(exc).__name__}: {exc}"
+        self._collective_state_error(local_error, "dynamic variable preflight")
+        created = False
+        local_error = None
+        try:
+            values = self.pool.create(spec.contract(), initial=spec.initial)
+            created = True
+        except BaseException as exc:
+            local_error = f"{type(exc).__name__}: {exc}"
+            values = np.empty(0)
+        errors = self.comm.allgather(local_error)
+        if any(error is not None for error in errors):
+            if created:
+                self.pool.remove(spec.name)
+            self.comm.barrier()
+            raise PICAMStateError(
+                f"dynamic variable creation rolled back collectively: {errors}"
+            )
+        self.comm.barrier()
+        return values
+
+    def delete_variable(self, name: str) -> None:
+        """Collectively remove an unused dynamic field."""
+
+        self._require_collective_boundary("delete a variable")
+        local_error: str | None = None
+        canonical = str(name)
+        try:
+            canonical = self.pool.canonical_name(name)
+            if canonical not in self.pool.dynamic_fields:
+                raise PICAMStateError(
+                    f"field {canonical!r} is not a removable dynamic field"
+                )
+            dependencies = self.python_processes.dependencies(canonical)
+            dependencies += self.fortran_processes.dependencies(canonical)
+            if dependencies:
+                raise PICAMStateError(
+                    f"field {canonical!r} is used by runtime processes: "
+                    + ", ".join(dependencies)
+                )
+        except BaseException as exc:
+            local_error = f"{type(exc).__name__}: {exc}"
+        self._collective_state_error(local_error, "dynamic variable deletion")
+        self.pool.remove_dynamic(canonical)
+        self.comm.barrier()
+
+    def _require_collective_boundary(self, operation: str) -> None:
+        if self.lifecycle not in {PICAMLifecycle.INITIALIZED, PICAMLifecycle.RUNNING}:
+            raise PICAMStateError(f"cannot {operation} from {self.lifecycle.value}")
+        if self._native_call_depth:
+            raise PICAMStateError(f"cannot {operation} inside a native call")
+        cursors = self.comm.allgather((self.coupling_step, len(self.trace)))
+        if len(set(cursors)) != 1:
+            raise PICAMStateError(f"MPI ranks are at different boundaries: {cursors}")
+
+    def _collective_state_error(self, error: str | None, operation: str) -> None:
+        errors = self.comm.allgather(error)
+        failures = [
+            f"rank {rank}: {message}"
+            for rank, message in enumerate(errors)
+            if message is not None
+        ]
+        if failures:
+            raise PICAMStateError(
+                f"{operation} failed collectively: " + "; ".join(failures)
+            )
 
     def run_action(
         self, name: str, *, phase: str | None = None, experimental: bool = False
@@ -461,7 +678,8 @@ class PICAMDriver:
         try:
             source_step = getattr(self.backend, "execute_source_step", None)
             use_source_boundary = (
-                callable(source_step)
+                self.config.execution_mode == "source_compat"
+                and callable(source_step)
                 and self.step_plan.is_source_default
                 and self.config.substeps_per_coupling == 1
             )

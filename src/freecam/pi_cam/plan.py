@@ -58,7 +58,6 @@ _DEFAULT_ACTIONS = (
     PICAMAction("boundary_export", "coupling", "boundary_export", "boundary", 432),
 )
 
-
 class PICAMStepPlan:
     """Mutable ordering facade with a source-faithful safe default."""
 
@@ -147,6 +146,54 @@ class PICAMStepPlan:
         target_index = self._actions.index(target)
         self._actions.insert(target_index + (after is not None), selected)
         self._validate()
+
+    def add(
+        self,
+        action: PICAMAction,
+        *,
+        before: str | None = None,
+        after: str | None = None,
+        experimental: bool = False,
+    ) -> PICAMAction:
+        if not experimental:
+            raise PICAMConfigurationError(
+                "adding a PI-CAM process requires experimental=True"
+            )
+        if (before is None) == (after is None):
+            raise PICAMConfigurationError("provide exactly one of before or after")
+        if any(item.qualified_name == action.qualified_name for item in self._actions):
+            raise PICAMConfigurationError(
+                f"action {action.qualified_name!r} already exists"
+            )
+        target = self.select(before or after or "", phase=action.phase)
+        target_index = self._actions.index(target)
+        self._actions.insert(target_index + (after is not None), action)
+        try:
+            self._validate()
+        except BaseException:
+            self._actions.remove(action)
+            raise
+        return action
+
+    def remove(
+        self,
+        name: str,
+        *,
+        phase: str | None = None,
+        experimental: bool = False,
+    ) -> PICAMAction:
+        if not experimental:
+            raise PICAMConfigurationError(
+                "removing a PI-CAM process requires experimental=True"
+            )
+        selected = self.select(name, phase=phase)
+        if selected.kind not in {"python_process", "runtime_fortran_process"}:
+            raise PICAMConfigurationError(
+                f"source action {selected.qualified_name!r} cannot be removed"
+            )
+        self._actions.remove(selected)
+        self._validate()
+        return selected
 
     def describe(self) -> tuple[dict[str, object], ...]:
         return tuple(

@@ -1,0 +1,295 @@
+"""Notebook-defined Python processes for the PI-CAM execution plan."""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+import traceback
+from typing import Any, Mapping
+
+import cloudpickle
+import numpy as np
+
+from freecam.model.errors import (
+    PythonProcessContractError,
+    PythonProcessExecutionError,
+    PythonProcessTaintedError,
+)
+from freecam.model.python_processes import (
+    PythonFieldView,
+    PythonProcessContext,
+    PythonProcessSpec,
+    _validate_signature,
+)
+
+from .errors import PICAMConfigurationError, PICAMStateError
+from .plan import PICAMAction
+
+
+@dataclass(slots=True)
+class RegisteredPICAMPythonProcess:
+    spec: PythonProcessSpec
+    action_name: str
+    read_bindings: Mapping[str, str]
+    write_bindings: Mapping[str, str]
+
+
+class PICAMPythonProcessRegistry:
+    """Collectively install callbacks into one live PI-CAM model."""
+
+    def __init__(self, driver: Any) -> None:
+        self.driver = driver
+        self.installed: dict[str, RegisteredPICAMPythonProcess] = {}
+
+    @property
+    def process_names(self) -> frozenset[str]:
+        return frozenset(self.installed)
+
+    def install(
+        self,
+        spec: PythonProcessSpec | Mapping[str, Any],
+        *,
+        unsafe: bool = False,
+    ) -> RegisteredPICAMPythonProcess:
+        if not isinstance(spec, PythonProcessSpec):
+            spec = PythonProcessSpec.from_mapping(spec)
+        if not spec.transactional and not unsafe:
+            raise PICAMConfigurationError(
+                "transactional=False requires unsafe=True"
+            )
+        self._require_boundary()
+        local_error: str | None = None
+        read_bindings: dict[str, str] = {}
+        write_bindings: dict[str, str] = {}
+        try:
+            if spec.name in self.installed:
+                raise PythonProcessContractError(
+                    f"Python process {spec.name!r} is already installed"
+                )
+            if spec.group not in self.driver.step_plan.phases:
+                raise PythonProcessContractError(
+                    f"PI-CAM plan has no phase {spec.group!r}"
+                )
+            try:
+                self.driver.step_plan.select(spec.name, phase=spec.group)
+            except PICAMConfigurationError:
+                pass
+            else:
+                raise PythonProcessContractError(
+                    f"action name {spec.name!r} already exists in {spec.group!r}"
+                )
+            function = cloudpickle.loads(spec.payload)
+            _validate_signature(function, spec.parameters)
+            read_bindings = {
+                name: self.driver.pool.canonical_name(name) for name in spec.reads
+            }
+            write_bindings = {
+                name: self.driver.pool.canonical_name(name) for name in spec.writes
+            }
+            overlap = set(read_bindings.values()) & set(write_bindings.values())
+            if overlap:
+                raise PythonProcessContractError(
+                    "fields resolving to the same storage must appear only in writes: "
+                    + ", ".join(sorted(overlap))
+                )
+            for exposed, resolved in write_bindings.items():
+                if not self.driver.pool.contract(resolved).writable:
+                    raise PythonProcessContractError(
+                        f"write field {exposed!r} resolves to read-only field "
+                        f"{resolved!r}"
+                    )
+            if spec.before is not None:
+                self.driver.step_plan.select(spec.before, phase=spec.group)
+            if spec.after is not None:
+                self.driver.step_plan.select(spec.after, phase=spec.group)
+            if spec.before is None and spec.after is None:
+                raise PythonProcessContractError(
+                    "PI-CAM Python process placement requires before= or after="
+                )
+        except BaseException as exc:
+            local_error = f"{type(exc).__name__}: {exc}"
+        self._collective_error(local_error, "Python process preflight")
+        hashes = self.driver.comm.allgather(spec.payload_hash)
+        if len(set(hashes)) != 1:
+            raise PythonProcessContractError(
+                f"Python process payload differs across MPI ranks: {hashes}"
+            )
+
+        action = PICAMAction(
+            name=spec.name,
+            phase=spec.group,
+            operation=spec.name,
+            kind="python_process",
+            native_id=None,
+            enabled=spec.enabled,
+        )
+        local_error = None
+        try:
+            self.driver.step_plan.add(
+                action,
+                before=spec.before,
+                after=spec.after,
+                experimental=True,
+            )
+            self.installed[spec.name] = RegisteredPICAMPythonProcess(
+                spec=spec,
+                action_name=action.name,
+                read_bindings=read_bindings,
+                write_bindings=write_bindings,
+            )
+        except BaseException as exc:
+            local_error = f"{type(exc).__name__}: {exc}"
+        errors = self.driver.comm.allgather(local_error)
+        if any(error is not None for error in errors):
+            self.installed.pop(spec.name, None)
+            try:
+                selected = self.driver.step_plan.select(spec.name, phase=spec.group)
+            except PICAMConfigurationError:
+                selected = None
+            if selected is not None and selected.kind == "python_process":
+                self.driver.step_plan.remove(
+                    spec.name, phase=spec.group, experimental=True
+                )
+            raise PythonProcessContractError(
+                f"Python process installation rolled back collectively: {errors}"
+            )
+        self.driver.comm.barrier()
+        return self.installed[spec.name]
+
+    def remove(self, name: str) -> dict[str, Any]:
+        self._require_boundary()
+        key = str(name).strip().lower()
+        record = self.installed.get(key)
+        self._collective_error(
+            None if record is not None else f"unknown Python process {key!r}",
+            "Python process removal",
+        )
+        assert record is not None
+        self.driver.step_plan.remove(
+            record.action_name, phase=record.spec.group, experimental=True
+        )
+        self.installed.pop(key)
+        self.driver.comm.barrier()
+        return {"name": key, "payload_hash": record.spec.payload_hash}
+
+    def dependencies(self, field: str) -> tuple[str, ...]:
+        canonical = self.driver.pool.canonical_name(field)
+        return tuple(
+            name
+            for name, record in self.installed.items()
+            if canonical
+            in {*record.read_bindings.values(), *record.write_bindings.values()}
+        )
+
+    def invoke(self, action: PICAMAction) -> None:
+        try:
+            record = self.installed[action.name]
+        except KeyError as exc:
+            raise PythonProcessContractError(
+                f"Python process {action.name!r} is not installed"
+            ) from exc
+        snapshots = (
+            {
+                name: np.array(self.driver.pool[resolved], copy=True, order="F")
+                for name, resolved in record.write_bindings.items()
+            }
+            if record.spec.transactional
+            else {}
+        )
+        before = self.driver.pool.pointer_records()
+        read_writeability = {
+            resolved: bool(self.driver.pool[resolved].flags.writeable)
+            for resolved in set(record.read_bindings.values())
+        }
+        local_error: str | None = None
+        try:
+            for resolved in read_writeability:
+                self.driver.pool[resolved].flags.writeable = False
+            fields = PythonFieldView(
+                self.driver.pool,
+                reads=record.read_bindings,
+                writes=record.write_bindings,
+            )
+            context = PythonProcessContext(
+                process_name=record.spec.name,
+                group=record.spec.group,
+                rank=self.driver.rank,
+                size=self.driver.size,
+                step=self.driver.clock.nstep,
+                timestep_seconds=self.driver.clock.dt_seconds,
+                year=self.driver.clock.year,
+                month=self.driver.clock.month,
+                day=self.driver.clock.day,
+                seconds=self.driver.clock.seconds,
+                calendar=self.driver.clock.calendar,
+            )
+            function = cloudpickle.loads(record.spec.payload)
+            result = function(fields, context, **dict(record.spec.parameters or {}))
+            if result is not None:
+                raise PythonProcessContractError(
+                    f"Python process must return None, got {type(result).__name__}"
+                )
+            self.driver.pool.assert_pointer_stability(before)
+        except BaseException:
+            local_error = traceback.format_exc()
+        finally:
+            for resolved, writable in read_writeability.items():
+                self.driver.pool[resolved].flags.writeable = writable
+        errors = self.driver.comm.allgather(local_error)
+        failures = [
+            f"rank {rank}:\n{message}"
+            for rank, message in enumerate(errors)
+            if message is not None
+        ]
+        if failures:
+            if record.spec.transactional:
+                for exposed, values in snapshots.items():
+                    np.copyto(
+                        self.driver.pool[record.write_bindings[exposed]],
+                        values,
+                        casting="no",
+                    )
+                self.driver.comm.barrier()
+                raise PythonProcessExecutionError(
+                    f"Python process {record.spec.name!r} failed; declared writes "
+                    "were restored:\n" + "\n".join(failures)
+                )
+            raise PythonProcessTaintedError(
+                f"Python process {record.spec.name!r} failed without rollback:\n"
+                + "\n".join(failures)
+            )
+
+    def inventory(self) -> tuple[dict[str, Any], ...]:
+        return tuple(
+            {
+                "spec": record.spec.as_dict(),
+                "action": record.action_name,
+                "read_bindings": dict(record.read_bindings),
+                "write_bindings": dict(record.write_bindings),
+            }
+            for _, record in sorted(self.installed.items())
+        )
+
+    def _require_boundary(self) -> None:
+        if self.driver.lifecycle.value not in {"initialized", "running"}:
+            raise PICAMStateError(
+                "runtime processes may change only on an initialized model"
+            )
+        if self.driver._native_call_depth:
+            raise PICAMStateError("cannot change runtime processes inside a kernel")
+        cursors = self.driver.comm.allgather(
+            (self.driver.coupling_step, len(self.driver.trace))
+        )
+        if len(set(cursors)) != 1:
+            raise PICAMStateError(f"MPI ranks are at different boundaries: {cursors}")
+
+    def _collective_error(self, error: str | None, operation: str) -> None:
+        errors = self.driver.comm.allgather(error)
+        failures = [
+            f"rank {rank}: {message}"
+            for rank, message in enumerate(errors)
+            if message is not None
+        ]
+        if failures:
+            raise PythonProcessContractError(
+                f"{operation} failed collectively: " + "; ".join(failures)
+            )

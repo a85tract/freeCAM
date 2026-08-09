@@ -21,6 +21,9 @@ from .native import CAMNumericalBackend, NativeCAMDevice, RecordingCAMBackend
 from .plan import PICAMAction, PICAMStepPlan
 from .session import PICAMNotebookError, PICAMNotebookSession
 from .state import PICAMFieldContract, PICAMStatePool, PICAMStateSchema
+from .state import PICAMVariableSpec
+from .runtime_fortran import PICAMFortranProcessSpec
+from freecam.model.python_processes import PythonProcessContext, PythonProcessSpec
 from .validation import PICAMBFBResult, compare_pi_cam_directories
 
 __all__ = [
@@ -47,6 +50,10 @@ __all__ = [
     "PICAMStatePool",
     "PICAMStateSchema",
     "PICAMStepPlan",
+    "PICAMVariableSpec",
+    "PICAMFortranProcessSpec",
+    "PythonProcessContext",
+    "PythonProcessSpec",
     "RecordingCAMBackend",
     "ReplayBoundaryProvider",
     "write_boundary_payload",
