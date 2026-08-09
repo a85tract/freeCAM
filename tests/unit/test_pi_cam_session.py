@@ -139,6 +139,37 @@ def test_session_can_request_ordered_cam_run1_leaf_expansion(
     assert result == ({"name": "leaf"},)
 
 
+def test_session_can_request_cam_run2_run4_leaf_expansion(
+    tmp_path: Path, monkeypatch
+) -> None:
+    config, boundary, run_dir, env_script, _ = _session_files(tmp_path)
+    session = PICAMNotebookSession(
+        config,
+        boundary=boundary,
+        run_dir=run_dir,
+        env_script=env_script,
+    )
+    commands = []
+    monkeypatch.setattr(
+        session,
+        "_request",
+        lambda command: commands.append(command) or ({"name": "leaf"},),
+    )
+
+    run2 = session.expand_cam_run2_leaves()
+    run4 = session.expand_cam_run4_leaves()
+    combined = session.expand_cam_run2_run4_leaves()
+
+    assert commands == [
+        {"op": "expand_cam_run2_leaves"},
+        {"op": "expand_cam_run4_leaves"},
+        {"op": "expand_cam_run2_run4_leaves"},
+    ]
+    assert run2 == ({"name": "leaf"},)
+    assert run4 == ({"name": "leaf"},)
+    assert combined == ({"name": "leaf"},)
+
+
 def test_session_dynamic_field_and_python_process_commands(
     tmp_path: Path, monkeypatch
 ) -> None:

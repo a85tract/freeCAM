@@ -11,20 +11,32 @@ def test_pi_cam_default_plan_matches_cesm_cam_source_order() -> None:
         "prepare",
         "chem_emissions",
         "tracers_chemistry",
+        "leaf_tracers_timestep_tend",
+        "leaf_aoa_tracers_timestep_tend",
+        "leaf_chem_timestep_tend",
         "vertical_diffusion_tend",
         "rayleigh_friction_tend",
         "aero_model_drydep",
+        "leaf_aero_model_drydep",
+        "leaf_carma_timestep_tend",
         "charge_fix",
         "gw_tend",
         "qbo_relax",
         "iondrag_calc",
         "physics_dme_adjust",
         "finish",
+        "leaf_carma_accumulate_stats",
+        "leaf_pbuf_deallocate",
+        "leaf_pbuf_update_tim_idx",
+        "leaf_diag_deallocate",
         "stepon_run2",
         "stepon_run3",
         "wshist",
         "restart",
         "wrapup",
+        "leaf_cam_run4_wrapup",
+        "leaf_cam_run4_step_cost",
+        "leaf_cam_run4_flush",
         "advance_timestep",
         "stepon_run1",
         "prepare_cam_run1",
@@ -52,7 +64,20 @@ def test_pi_cam_default_plan_matches_cesm_cam_source_order() -> None:
     ]
     assert [item.native_id for item in plan.actions] == [
         202,
-        *range(401, 429),
+        401,
+        402,
+        403,
+        *range(460, 463),
+        404,
+        405,
+        406,
+        463,
+        464,
+        *range(407, 413),
+        *range(465, 469),
+        *range(413, 418),
+        *range(470, 473),
+        *range(418, 429),
         *range(450, 454),
         429,
         454,
@@ -62,8 +87,14 @@ def test_pi_cam_default_plan_matches_cesm_cam_source_order() -> None:
         *range(456, 459),
         432,
     ]
-    assert len(plan.actions) == 42
+    assert len(plan.actions) == 54
     assert len(tuple(plan)) == 33
+    assert len(plan.in_phase("cam_run2")) == 13
+    assert sum(action.phase == "cam_run2" for action in plan.actions) == 22
+    assert len(plan.in_phase("cam_run3")) == 1
+    assert sum(action.phase == "cam_run3" for action in plan.actions) == 1
+    assert len(plan.in_phase("cam_run4")) == 3
+    assert sum(action.phase == "cam_run4" for action in plan.actions) == 6
     assert len(plan.in_phase("cam_run1")) == 13
     assert sum(action.phase == "cam_run1" for action in plan.actions) == 22
 
@@ -131,3 +162,45 @@ def test_cam_run1_leaf_expansion_requires_explicit_experimental_flag() -> None:
 
     with pytest.raises(PICAMConfigurationError, match="experimental=True"):
         plan.expand_cam_run1_leaves()
+
+
+def test_cam_run2_run4_leaf_expansion_replaces_only_composites() -> None:
+    plan = PICAMStepPlan.default()
+
+    plan.expand_cam_run2_run4_leaves(experimental=True)
+
+    run2 = tuple(action.name for action in plan.in_phase("cam_run2"))
+    assert "tracers_and_chemistry" not in run2
+    assert "aerosol_dry_deposition" not in run2
+    assert "finish" not in run2
+    tracer_start = run2.index("surface_fluxes_and_emissions") + 1
+    assert run2[tracer_start : tracer_start + 3] == (
+        "tracer_tendencies_leaf",
+        "age_of_air_tendencies_leaf",
+        "chemistry_tendencies_leaf",
+    )
+    assert run2[-5:] == (
+        "carma_statistics_leaf",
+        "physics_buffer_deallocate_leaf",
+        "physics_buffer_time_advance_leaf",
+        "diagnostics_deallocate_leaf",
+        "dynamics",
+    )
+    assert tuple(action.name for action in plan.in_phase("cam_run3")) == (
+        "dynamics",
+    )
+    assert tuple(action.name for action in plan.in_phase("cam_run4")) == (
+        "history",
+        "restart",
+        "wrapup_leaf",
+        "step_cost_leaf",
+        "flush_leaf",
+    )
+    assert len(tuple(plan)) == 41
+
+
+def test_cam_run2_run4_leaf_expansion_requires_experimental_flag() -> None:
+    plan = PICAMStepPlan.default()
+
+    with pytest.raises(PICAMConfigurationError, match="experimental=True"):
+        plan.expand_cam_run2_run4_leaves()

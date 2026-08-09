@@ -194,6 +194,21 @@ class PICAMNotebookSession:
 
         return tuple(self._request({"op": "expand_cam_run1_leaves"}))
 
+    def expand_cam_run2_leaves(self) -> tuple[Mapping[str, Any], ...]:
+        """Replace admitted ``cam_run2`` composites with native leaves."""
+
+        return tuple(self._request({"op": "expand_cam_run2_leaves"}))
+
+    def expand_cam_run4_leaves(self) -> tuple[Mapping[str, Any], ...]:
+        """Replace the ``cam_run4`` finish composite with native leaves."""
+
+        return tuple(self._request({"op": "expand_cam_run4_leaves"}))
+
+    def expand_cam_run2_run4_leaves(self) -> tuple[Mapping[str, Any], ...]:
+        """Expand admitted leaf actions from ``cam_run2`` through run4."""
+
+        return tuple(self._request({"op": "expand_cam_run2_run4_leaves"}))
+
     def create_field(
         self,
         name: str,

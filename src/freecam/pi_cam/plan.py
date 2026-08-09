@@ -27,20 +27,32 @@ _DEFAULT_ACTIONS = (
     PICAMAction("prepare", "cam_run2", "prepare", "control", 401),
     PICAMAction("surface_fluxes_and_emissions", "cam_run2", "chem_emissions", "scheme", 402),
     PICAMAction("tracers_and_chemistry", "cam_run2", "tracers_chemistry", "scheme", 403),
+    PICAMAction("tracer_tendencies_leaf", "cam_run2", "leaf_tracers_timestep_tend", "scheme", 460, False),
+    PICAMAction("age_of_air_tendencies_leaf", "cam_run2", "leaf_aoa_tracers_timestep_tend", "scheme", 461, False),
+    PICAMAction("chemistry_tendencies_leaf", "cam_run2", "leaf_chem_timestep_tend", "scheme", 462, False),
     PICAMAction("vertical_diffusion", "cam_run2", "vertical_diffusion_tend", "scheme", 404),
     PICAMAction("rayleigh_friction", "cam_run2", "rayleigh_friction_tend", "scheme", 405),
     PICAMAction("aerosol_dry_deposition", "cam_run2", "aero_model_drydep", "scheme", 406),
+    PICAMAction("aerosol_dry_deposition_leaf", "cam_run2", "leaf_aero_model_drydep", "scheme", 463, False),
+    PICAMAction("carma_aerosol_tendencies_leaf", "cam_run2", "leaf_carma_timestep_tend", "scheme", 464, False),
     PICAMAction("charge_neutrality", "cam_run2", "charge_fix", "scheme", 407),
     PICAMAction("gravity_wave_drag", "cam_run2", "gw_tend", "scheme", 408),
     PICAMAction("qbo_relaxation", "cam_run2", "qbo_relax", "scheme", 409),
     PICAMAction("ion_drag", "cam_run2", "iondrag_calc", "scheme", 410),
     PICAMAction("state_finalize", "cam_run2", "physics_dme_adjust", "scheme", 411),
     PICAMAction("finish", "cam_run2", "finish", "control", 412),
+    PICAMAction("carma_statistics_leaf", "cam_run2", "leaf_carma_accumulate_stats", "scheme", 465, False),
+    PICAMAction("physics_buffer_deallocate_leaf", "cam_run2", "leaf_pbuf_deallocate", "control", 466, False),
+    PICAMAction("physics_buffer_time_advance_leaf", "cam_run2", "leaf_pbuf_update_tim_idx", "control", 467, False),
+    PICAMAction("diagnostics_deallocate_leaf", "cam_run2", "leaf_diag_deallocate", "control", 468, False),
     PICAMAction("dynamics", "cam_run2", "stepon_run2", "dynamics", 413),
     PICAMAction("dynamics", "cam_run3", "stepon_run3", "dynamics", 414),
     PICAMAction("history", "cam_run4", "wshist", "io", 415),
     PICAMAction("restart", "cam_run4", "restart", "io", 416),
     PICAMAction("finish", "cam_run4", "wrapup", "control", 417),
+    PICAMAction("wrapup_leaf", "cam_run4", "leaf_cam_run4_wrapup", "io", 470, False),
+    PICAMAction("step_cost_leaf", "cam_run4", "leaf_cam_run4_step_cost", "control", 471, False),
+    PICAMAction("flush_leaf", "cam_run4", "leaf_cam_run4_flush", "io", 472, False),
     PICAMAction("advance_timestep", "clock", "advance_timestep", "clock", 418),
     PICAMAction("dynamics", "cam_run1", "stepon_run1", "dynamics", 419),
     PICAMAction("prepare", "cam_run1", "prepare_cam_run1", "control", 420),
@@ -165,6 +177,75 @@ class PICAMStepPlan:
                 phase="cam_run1",
                 experimental=True,
             )
+
+    def expand_cam_run2_leaves(self, *, experimental: bool = False) -> None:
+        """Replace three composite ``cam_run2`` stages with leaf actions."""
+
+        if not experimental:
+            raise PICAMConfigurationError(
+                "expanding cam_run2 leaf routines requires experimental=True"
+            )
+        for name in (
+            "tracers_and_chemistry",
+            "aerosol_dry_deposition",
+            "finish",
+        ):
+            self.set_enabled(
+                name,
+                False,
+                phase="cam_run2",
+                experimental=True,
+            )
+        for name in (
+            "tracer_tendencies_leaf",
+            "age_of_air_tendencies_leaf",
+            "chemistry_tendencies_leaf",
+            "aerosol_dry_deposition_leaf",
+            "carma_aerosol_tendencies_leaf",
+            "carma_statistics_leaf",
+            "physics_buffer_deallocate_leaf",
+            "physics_buffer_time_advance_leaf",
+            "diagnostics_deallocate_leaf",
+        ):
+            self.set_enabled(
+                name,
+                True,
+                phase="cam_run2",
+                experimental=True,
+            )
+
+    def expand_cam_run4_leaves(self, *, experimental: bool = False) -> None:
+        """Replace the composite ``cam_run4`` finish with leaf actions."""
+
+        if not experimental:
+            raise PICAMConfigurationError(
+                "expanding cam_run4 leaf routines requires experimental=True"
+            )
+        self.set_enabled(
+            "finish",
+            False,
+            phase="cam_run4",
+            experimental=True,
+        )
+        for name in ("wrapup_leaf", "step_cost_leaf", "flush_leaf"):
+            self.set_enabled(
+                name,
+                True,
+                phase="cam_run4",
+                experimental=True,
+            )
+
+    def expand_cam_run2_run4_leaves(
+        self, *, experimental: bool = False
+    ) -> None:
+        """Expand every admitted leaf boundary from ``cam_run2`` to run4."""
+
+        if not experimental:
+            raise PICAMConfigurationError(
+                "expanding cam_run2-run4 leaves requires experimental=True"
+            )
+        self.expand_cam_run2_leaves(experimental=True)
+        self.expand_cam_run4_leaves(experimental=True)
 
     def move(
         self,

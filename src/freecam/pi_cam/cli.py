@@ -41,6 +41,14 @@ def main(argv: list[str] | None = None) -> int:
             "replace three cam_run1 composites with ordered native leaf actions"
         ),
     )
+    parser.add_argument(
+        "--expand-cam-run2-run4-leaves",
+        action="store_true",
+        help=(
+            "replace admitted cam_run2 and cam_run4 composites with ordered "
+            "native leaf actions"
+        ),
+    )
     parser.add_argument("--summary", type=Path)
     args = parser.parse_args(argv)
     world = MPI.COMM_WORLD
@@ -61,6 +69,8 @@ def main(argv: list[str] | None = None) -> int:
     )
     if args.expand_cam_run1_leaves:
         cam.step_plan.expand_cam_run1_leaves(experimental=True)
+    if args.expand_cam_run2_run4_leaves:
+        cam.step_plan.expand_cam_run2_run4_leaves(experimental=True)
     created_addresses = {
         name: int(values.ctypes.data) for name, values in cam.pool.items()
     }
@@ -96,7 +106,7 @@ def main(argv: list[str] | None = None) -> int:
         leaf_operations = tuple(
             action.operation
             for action in cam.step_plan.actions
-            if action.native_id is not None and 450 <= action.native_id <= 458
+            if action.operation.startswith("leaf_")
         )
         local = {
             "rank": world.Get_rank(),
@@ -112,7 +122,22 @@ def main(argv: list[str] | None = None) -> int:
             "cam_run1_catalog_size": sum(
                 action.phase == "cam_run1" for action in cam.step_plan.actions
             ),
+            "cam_run2_actions": len(cam.step_plan.in_phase("cam_run2")),
+            "cam_run2_catalog_size": sum(
+                action.phase == "cam_run2" for action in cam.step_plan.actions
+            ),
+            "cam_run3_actions": len(cam.step_plan.in_phase("cam_run3")),
+            "cam_run3_catalog_size": sum(
+                action.phase == "cam_run3" for action in cam.step_plan.actions
+            ),
+            "cam_run4_actions": len(cam.step_plan.in_phase("cam_run4")),
+            "cam_run4_catalog_size": sum(
+                action.phase == "cam_run4" for action in cam.step_plan.actions
+            ),
             "expanded_cam_run1_leaves": args.expand_cam_run1_leaves,
+            "expanded_cam_run2_run4_leaves": (
+                args.expand_cam_run2_run4_leaves
+            ),
             "leaf_operation_counts": {
                 name: operation_counts[name] for name in leaf_operations
             },
@@ -170,8 +195,17 @@ def main(argv: list[str] | None = None) -> int:
             "action_catalog_size": records[0]["action_catalog_size"],
             "cam_run1_actions": records[0]["cam_run1_actions"],
             "cam_run1_catalog_size": records[0]["cam_run1_catalog_size"],
+            "cam_run2_actions": records[0]["cam_run2_actions"],
+            "cam_run2_catalog_size": records[0]["cam_run2_catalog_size"],
+            "cam_run3_actions": records[0]["cam_run3_actions"],
+            "cam_run3_catalog_size": records[0]["cam_run3_catalog_size"],
+            "cam_run4_actions": records[0]["cam_run4_actions"],
+            "cam_run4_catalog_size": records[0]["cam_run4_catalog_size"],
             "expanded_cam_run1_leaves": records[0][
                 "expanded_cam_run1_leaves"
+            ],
+            "expanded_cam_run2_run4_leaves": records[0][
+                "expanded_cam_run2_run4_leaves"
             ],
             "leaf_operation_counts": records[0]["leaf_operation_counts"],
             "all_ranks_loaded_leaf_device": all(

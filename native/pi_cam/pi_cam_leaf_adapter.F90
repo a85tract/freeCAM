@@ -1,8 +1,10 @@
 module pycam_pi_cam_leaf_adapter
   use, intrinsic :: iso_c_binding, only: c_char, c_int, c_int32_t, &
        c_int64_t, c_null_char, c_ptr
-  use cam_comp, only: cam_phys_run1_leaf_action
-  use pycam_pi_cam_adapter, only: cam_in, cam_out
+  use cam_comp, only: cam_phys_run1_leaf_action, &
+       cam_phys_run2_leaf_action, cam_run4_leaf_action
+  use pycam_pi_cam_adapter, only: cam_in, cam_out, configured_stop_n
+  use time_manager, only: get_nstep
   implicit none
   private
 
@@ -25,7 +27,8 @@ contains
     integer(c_int32_t), intent(in) :: ndims(*)
     integer(c_int64_t), intent(in) :: shapes(*)
     character(kind=c_char), intent(out) :: errmsg(*)
-    integer :: index, local_status
+    integer :: index, local_status, native_step
+    logical :: write_restart, end_run
 
     call pycam_pi_cam_set_fp_environment_v1()
     do index = 1, max(1, int(errmsg_len))
@@ -36,12 +39,27 @@ contains
        status = 1_c_int
        return
     endif
-    if (action_id < 450 .or. action_id > 458 .or. nfields /= 0) then
+    if (nfields /= 0) then
        status = 2_c_int
        return
     endif
-    call cam_phys_run1_leaf_action(action_id - 438, cam_in, cam_out, &
-         local_status)
+    select case (action_id)
+    case (450:458)
+       call cam_phys_run1_leaf_action(action_id - 438, cam_in, cam_out, &
+            local_status)
+    case (460:468)
+       call cam_phys_run2_leaf_action(action_id - 449, cam_out, cam_in, &
+            local_status)
+    case (470:472)
+       native_step = get_nstep()
+       write_restart = native_step >= configured_stop_n
+       end_run = write_restart
+       call cam_run4_leaf_action(action_id - 469, write_restart, end_run, &
+            local_status)
+    case default
+       status = 2_c_int
+       return
+    end select
     status = int(local_status, c_int)
   end function pycam_pi_cam_leaf_action_v1
 

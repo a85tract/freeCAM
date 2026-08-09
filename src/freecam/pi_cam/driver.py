@@ -633,6 +633,36 @@ class PICAMDriver:
         self.step_plan.expand_cam_run1_leaves(experimental=experimental)
         return self.step_plan.in_phase("cam_run1")
 
+    def expand_cam_run2_leaves(
+        self, *, experimental: bool = False
+    ) -> tuple[PICAMAction, ...]:
+        """Replace admitted ``cam_run2`` composites with ordered leaves."""
+
+        self.step_plan.expand_cam_run2_leaves(experimental=experimental)
+        return self.step_plan.in_phase("cam_run2")
+
+    def expand_cam_run4_leaves(
+        self, *, experimental: bool = False
+    ) -> tuple[PICAMAction, ...]:
+        """Replace the ``cam_run4`` finish composite with ordered leaves."""
+
+        self.step_plan.expand_cam_run4_leaves(experimental=experimental)
+        return self.step_plan.in_phase("cam_run4")
+
+    def expand_cam_run2_run4_leaves(
+        self, *, experimental: bool = False
+    ) -> tuple[PICAMAction, ...]:
+        """Expand all admitted leaves from ``cam_run2`` through run4."""
+
+        self.step_plan.expand_cam_run2_run4_leaves(
+            experimental=experimental
+        )
+        return tuple(
+            action
+            for phase in ("cam_run2", "cam_run3", "cam_run4")
+            for action in self.step_plan.in_phase(phase)
+        )
+
     def run_phase(
         self, phase: str, *, experimental: bool = False
     ) -> tuple[PICAMActionTrace, ...]:

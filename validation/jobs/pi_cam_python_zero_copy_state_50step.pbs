@@ -21,6 +21,7 @@ manifest=${PYCAM_NATIVE_MANIFEST:-${repo}/build/pi_cam_zero_copy/native_cam_mani
 summary=${PYCAM_SUMMARY:-validation/pi_cam_python_zero_copy_state_50step.json}
 bfb_output=${PYCAM_BFB_OUTPUT:-validation/pi_cam_python_zero_copy_state_vs_oracle_50step_bfb.json}
 expand_cam_run1_leaves=${PYCAM_EXPAND_CAM_RUN1_LEAVES:-0}
+expand_cam_run2_run4_leaves=${PYCAM_EXPAND_CAM_RUN2_RUN4_LEAVES:-0}
 
 source "${case_root}/.env_mach_specific.sh" >/dev/null 2>&1
 mpi_root=${CRAY_MPICH_DIR:-/opt/cray/pe/mpich/8.1.25/ofi/intel/19.0}
@@ -44,6 +45,9 @@ cd "${repo}"
 leaf_args=()
 if [[ "${expand_cam_run1_leaves}" == 1 ]]; then
   leaf_args+=(--expand-cam-run1-leaves)
+fi
+if [[ "${expand_cam_run2_run4_leaves}" == 1 ]]; then
+  leaf_args+=(--expand-cam-run2-run4-leaves)
 fi
 mpiexec --label -n 512 "${python}" -m freecam.pi_cam.cli \
   --config configs/pi_cam_icesm131.yaml \

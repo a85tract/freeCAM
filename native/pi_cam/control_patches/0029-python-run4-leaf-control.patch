@@ -1,0 +1,87 @@
+--- a/src/control/cam_comp.F90
++++ b/src/control/cam_comp.F90
+@@ -36,11 +36,13 @@
+    public cam_run1_dynamics, cam_run1_physics
+    public cam_run2_physics, cam_run2_dynamics
+    public cam_run3_dynamics
+-   public cam_run4_history, cam_run4_restart, cam_run4_finish
++   public cam_run4_history, cam_run4_restart, cam_run4_finish, &
++        cam_run4_leaf_action
+    public cam_phys_run1_prepare, cam_phys_run1_schemes, &
+         cam_phys_run1_scheme_action, cam_phys_run1_leaf_action
+    public cam_phys_run2_prepare, cam_phys_run2_schemes, &
+-        cam_phys_run2_scheme_action, cam_phys_run2_finish
++        cam_phys_run2_scheme_action, cam_phys_run2_leaf_action, &
++        cam_phys_run2_finish
+    public cam_final     ! CAM Finalization
+    !
+    ! Private module data
+@@ -337,6 +339,17 @@
+         pbuf2d, cam_out, cam_in, status)
+ end subroutine cam_phys_run2_scheme_action
+
++subroutine cam_phys_run2_leaf_action(action_id, cam_out, cam_in, status)
++   use physpkg, only: phys_run2_leaf_action
++   integer, intent(in) :: action_id
++   type(cam_out_t), intent(inout) :: cam_out(begchunk:endchunk)
++   type(cam_in_t), intent(inout) :: cam_in(begchunk:endchunk)
++   integer, intent(out) :: status
++
++   call phys_run2_leaf_action(action_id, phys_state, dtime, phys_tend, &
++        pbuf2d, cam_out, cam_in, status)
++end subroutine cam_phys_run2_leaf_action
++
+ subroutine cam_phys_run2_finish()
+    use physpkg, only: phys_run2_finish
+
+@@ -432,6 +445,50 @@
+ #endif
+ end subroutine cam_run4_finish
+
++subroutine cam_run4_leaf_action(action_id, rstwr, nlend, status)
++   use cam_history, only: wrapup
++   integer, intent(in) :: action_id
++   logical, intent(in) :: rstwr, nlend
++   integer, intent(out) :: status
++   integer, save :: expected_leaf_action = 1
++
++   status = 0
++   if (action_id < 1 .or. action_id > 3) then
++      status = 1
++      return
++   endif
++   if (action_id /= expected_leaf_action) then
++      status = 4
++      return
++   endif
++   select case (action_id)
++   case (1)
++      call t_startf('cam_run4_wrapup')
++      call wrapup(rstwr, nlend)
++      call t_stopf('cam_run4_wrapup')
++   case (2)
++      if (masterproc .and. print_step_cost) then
++         call t_startf('cam_run4_print')
++         call t_stampf(wcend, usrend, sysend)
++         write(iulog,'(a,3f8.3,a)') &
++              'Prv timestep wallclock, usr, sys=', wcend-wcstart, &
++              usrend-usrstart, sysend-sysstart, ' seconds'
++         call t_stopf('cam_run4_print')
++      endif
++   case (3)
++#ifndef UNICOSMP
++      call t_startf('cam_run4_flush')
++      call shr_sys_flush(iulog)
++      call t_stopf('cam_run4_flush')
++#endif
++   end select
++   if (action_id == 3) then
++      expected_leaf_action = 1
++   else
++      expected_leaf_action = action_id + 1
++   endif
++end subroutine cam_run4_leaf_action
++
+ !
+ !-----------------------------------------------------------------------
+ !

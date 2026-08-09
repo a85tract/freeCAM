@@ -41,6 +41,9 @@ LEAF_PATCHES = (
     REPO
     / "native/pi_cam/control_patches/0026-python-before-coupler-leaf-control.patch",
     REPO / "native/pi_cam/control_patches/0027-python-leaf-dispatch.patch",
+    REPO
+    / "native/pi_cam/control_patches/0028-python-after-coupler-leaf-control.patch",
+    REPO / "native/pi_cam/control_patches/0029-python-run4-leaf-control.patch",
 )
 IMAGE_BASE = 0x30000000
 IMAGE_WINDOW_BYTES = 0x20000000
@@ -66,7 +69,20 @@ LEAF_OPERATION_NAMES = (
     "leaf_tropopause_output",
     "leaf_cam_export",
     "leaf_diag_export",
+    "leaf_tracers_timestep_tend",
+    "leaf_aoa_tracers_timestep_tend",
+    "leaf_chem_timestep_tend",
+    "leaf_aero_model_drydep",
+    "leaf_carma_timestep_tend",
+    "leaf_carma_accumulate_stats",
+    "leaf_pbuf_deallocate",
+    "leaf_pbuf_update_tim_idx",
+    "leaf_diag_deallocate",
+    "leaf_cam_run4_wrapup",
+    "leaf_cam_run4_step_cost",
+    "leaf_cam_run4_flush",
 )
+LEAF_OPERATION_IDS = (*range(450, 459), *range(460, 469), *range(470, 473))
 
 
 def _run(command: list[str] | tuple[str, ...], *, cwd: Path) -> None:
@@ -493,7 +509,7 @@ def _operations(state_bridge, direct_kernels=(), *, zero_copy_state: bool = Fals
             "symbol": ABI_SYMBOLS[1], "action_id": action_id, "arguments": []
         }
     if zero_copy_state:
-        for action_id, name in zip(range(450, 459), LEAF_OPERATION_NAMES):
+        for action_id, name in zip(LEAF_OPERATION_IDS, LEAF_OPERATION_NAMES):
             operations[name] = {
                 "symbol": LEAF_ACTION_SYMBOL,
                 "action_id": action_id,
@@ -790,7 +806,8 @@ def main() -> int:
         public_adapter_source.write_text(
             public_source.replace(
                 public_marker,
-                public_marker + "  public :: cam_in, cam_out\n",
+                public_marker
+                + "  public :: cam_in, cam_out, configured_stop_n\n",
             )
         )
         public_adapter_compile = _compile_to(

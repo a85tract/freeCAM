@@ -1,0 +1,186 @@
+--- a/src/physics/cam/physpkg.F90
++++ b/src/physics/cam/physpkg.F90
+@@ -55,7 +55,7 @@
+   public phys_run1_prepare, phys_run1_schemes, phys_run1_scheme_action
+   public phys_run1_leaf_action
+   public phys_run2_prepare, phys_run2_schemes, phys_run2_scheme_action, &
+-       phys_run2_finish
++       phys_run2_leaf_action, phys_run2_finish
+   public phys_final  ! Public finalization method
+
+   ! Private module data
+@@ -1308,6 +1308,84 @@
+     endif
+ end subroutine phys_run2_scheme_action
+
++subroutine phys_run2_leaf_action(action_id, phys_state, ztodt, phys_tend, &
++     pbuf2d, cam_out, cam_in, status)
++    use physics_buffer, only: physics_buffer_desc, pbuf_get_chunk, &
++         pbuf_deallocate, pbuf_update_tim_idx
++    use cam_diagnostics, only: diag_deallocate
++    use carma_intr, only: carma_accumulate_stats
++    integer, intent(in) :: action_id
++    real(r8), intent(in) :: ztodt
++    type(physics_state), intent(inout) :: phys_state(begchunk:endchunk)
++    type(physics_tend), intent(inout) :: phys_tend(begchunk:endchunk)
++    type(physics_buffer_desc), pointer :: pbuf2d(:,:)
++    type(cam_out_t), intent(inout) :: cam_out(begchunk:endchunk)
++    type(cam_in_t), intent(inout) :: cam_in(begchunk:endchunk)
++    integer, intent(out) :: status
++    integer :: c
++    integer, save :: expected_leaf_action = 11
++    type(physics_buffer_desc), pointer :: phys_buffer_chunk(:)
++
++    status = 0
++    if ((single_column .and. scm_crm_mode) .or. adiabatic .or. ideal_phys) then
++       status = 2
++       return
++    endif
++    if (action_id < 11 .or. action_id > 19) then
++       status = 1
++       return
++    endif
++    if (action_id /= expected_leaf_action) then
++       status = 4
++       return
++    endif
++    if ((action_id == 11 .and. pycesm_ac_expected_action /= 2) .or. &
++        (action_id == 14 .and. pycesm_ac_expected_action /= 5) .or. &
++        (action_id == 16 .and. pycesm_ac_expected_action /= 1)) then
++       status = 4
++       return
++    endif
++
++    if (action_id == 11) call t_startf('adv_tracer_src_snk')
++    if (action_id <= 15) then
++!$OMP PARALLEL DO PRIVATE (C, phys_buffer_chunk)
++       do c=begchunk,endchunk
++          phys_buffer_chunk => pbuf_get_chunk(pbuf2d, c)
++          call tphysac_leaf_action(action_id, ztodt, cam_in(c), cam_out(c), &
++               phys_state(c), phys_tend(c), phys_buffer_chunk)
++       end do
++    else
++       select case (action_id)
++       case (16)
++          call t_startf('carma_accumulate_stats')
++          call carma_accumulate_stats()
++          call t_stopf('carma_accumulate_stats')
++       case (17)
++          call t_startf('physpkg_st2')
++          call pbuf_deallocate(pbuf2d, 'physpkg')
++       case (18)
++          call pbuf_update_tim_idx()
++       case (19)
++          call diag_deallocate()
++          call t_stopf('physpkg_st2')
++       end select
++    endif
++    if (action_id == 13) call t_stopf('adv_tracer_src_snk')
++
++    select case (action_id)
++    case (13)
++       pycesm_ac_expected_action = 3
++       expected_leaf_action = 14
++    case (15)
++       pycesm_ac_expected_action = 6
++       expected_leaf_action = 16
++    case (19)
++       expected_leaf_action = 11
++    case default
++       expected_leaf_action = action_id + 1
++    end select
++end subroutine phys_run2_leaf_action
++
+ subroutine phys_run2_finish(pbuf2d)
+     use physics_buffer, only: physics_buffer_desc, pbuf_deallocate, &
+          pbuf_update_tim_idx
+@@ -2189,6 +2267,89 @@
+
+ end subroutine tphysac
+
++subroutine tphysac_leaf_action(action_id, ztodt, cam_in, cam_out, state, &
++     tend, pbuf)
++    use physics_buffer, only: physics_buffer_desc
++    use physics_types, only: physics_state, physics_tend, physics_ptend, &
++         physics_update
++    use chemistry, only: chem_is_active, chem_timestep_tend
++    use tracers, only: tracers_timestep_tend
++    use aoa_tracers, only: aoa_tracers_timestep_tend
++    use check_energy, only: check_energy_chng, check_tracers_chng
++    use time_manager, only: get_nstep
++    use aero_model, only: aero_model_drydep
++    use carma_intr, only: carma_timestep_tend
++    use carma_flags_mod, only: carma_do_aerosol
++    use comsrf, only: fsds
++    use water_tracer_vars, only: trace_water
++    use water_tracers, only: wtrc_check_h2o
++    use cam_abortutils, only: endrun
++
++    integer, intent(in) :: action_id
++    real(r8), intent(in) :: ztodt
++    type(cam_in_t), intent(inout) :: cam_in
++    type(cam_out_t), intent(inout) :: cam_out
++    type(physics_state), intent(inout) :: state
++    type(physics_tend), intent(inout) :: tend
++    type(physics_buffer_desc), pointer :: pbuf(:)
++    type(physics_ptend) :: ptend
++    real(r8) :: zero(pcols), fh2o(pcols)
++    integer :: lchnk, nstep
++    logical :: isOK
++
++    lchnk = state%lchnk
++    nstep = get_nstep()
++    zero = 0._r8
++
++    select case (action_id)
++    case (11)
++       call tracers_timestep_tend(state, ptend, cam_in%cflx, &
++            cam_in%landfrac, ztodt)
++       call physics_update(state, ptend, ztodt, tend)
++       call check_tracers_chng(state, pycesm_ac_tracerint(lchnk), &
++            'tracers_timestep_tend', nstep, ztodt, cam_in%cflx)
++    case (12)
++       call aoa_tracers_timestep_tend(state, ptend, cam_in%cflx, &
++            cam_in%landfrac, ztodt)
++       call physics_update(state, ptend, ztodt, tend)
++       call check_tracers_chng(state, pycesm_ac_tracerint(lchnk), &
++            'aoa_tracers_timestep_tend', nstep, ztodt, cam_in%cflx)
++    case (13)
++       if (chem_is_active()) then
++          call chem_timestep_tend(state, ptend, cam_in, cam_out, ztodt, &
++               pbuf, fh2o, fsds(1,lchnk))
++          call physics_update(state, ptend, ztodt, tend)
++          call check_energy_chng(state, tend, 'chem', nstep, ztodt, &
++               fh2o, zero, zero, zero)
++          call check_tracers_chng(state, pycesm_ac_tracerint(lchnk), &
++               'chem_timestep_tend', nstep, ztodt, cam_in%cflx)
++       endif
++       if (trace_water) then
++          isOK = wtrc_check_h2o('after-tracer source/sink', state, &
++               state%q, ztodt)
++       endif
++    case (14)
++       call t_startf('aero_drydep')
++       call aero_model_drydep(state, pbuf, pycesm_ac_obklen(:,lchnk), &
++            pycesm_ac_surfric(:,lchnk), cam_in, ztodt, cam_out, ptend)
++       call physics_update(state, ptend, ztodt, tend)
++       call t_stopf('aero_drydep')
++    case (15)
++       if (carma_do_aerosol) then
++          call t_startf('carma_timestep_tend')
++          call carma_timestep_tend(state, cam_in, cam_out, ptend, ztodt, &
++               pbuf, obklen=pycesm_ac_obklen(:,lchnk), &
++               ustar=pycesm_ac_surfric(:,lchnk))
++          call physics_update(state, ptend, ztodt, tend)
++          call check_energy_chng(state, tend, 'carma_tend', nstep, &
++               ztodt, zero, zero, zero, zero)
++          call t_stopf('carma_timestep_tend')
++       endif
++    case default
++       call endrun('TPHYSAC_LEAF_ACTION: invalid Python action id')
++    end select
++end subroutine tphysac_leaf_action
++
+ subroutine tphysbc (ztodt,               &
+        fsns,    fsnt,    flns,    flnt,    state,   &
+        tend,    pbuf,     fsds,    landm,            &

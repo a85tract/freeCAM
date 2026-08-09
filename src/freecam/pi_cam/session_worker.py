@@ -66,8 +66,16 @@ def _command(command: dict[str, Any], driver: Any, comm: Any) -> object:
     if operation == "run_kernel":
         trace = driver.run_kernel(str(command["name"]), experimental=True)
         return asdict(trace) if comm.rank == 0 else None
-    if operation == "expand_cam_run1_leaves":
-        actions = driver.expand_cam_run1_leaves(experimental=True)
+    leaf_expansions = {
+        "expand_cam_run1_leaves": driver.expand_cam_run1_leaves,
+        "expand_cam_run2_leaves": driver.expand_cam_run2_leaves,
+        "expand_cam_run4_leaves": driver.expand_cam_run4_leaves,
+        "expand_cam_run2_run4_leaves": (
+            driver.expand_cam_run2_run4_leaves
+        ),
+    }
+    if operation in leaf_expansions:
+        actions = leaf_expansions[operation](experimental=True)
         return (
             [
                 {

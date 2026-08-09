@@ -166,6 +166,38 @@ def test_driver_can_replace_cam_run1_composites_with_ordered_leaf_calls() -> Non
         assert operation in backend.calls
 
 
+def test_driver_can_expand_cam_run2_and_run4_leaf_calls() -> None:
+    driver, backend, _ = _driver()
+    driver.expand_cam_run2_run4_leaves(experimental=True)
+    driver.initialize()
+
+    driver.step()
+
+    for composite in (
+        "tracers_chemistry",
+        "aero_model_drydep",
+        "finish",
+        "wrapup",
+    ):
+        assert composite not in backend.calls
+    for operation in (
+        "leaf_tracers_timestep_tend",
+        "leaf_aoa_tracers_timestep_tend",
+        "leaf_chem_timestep_tend",
+        "leaf_aero_model_drydep",
+        "leaf_carma_timestep_tend",
+        "leaf_carma_accumulate_stats",
+        "leaf_pbuf_deallocate",
+        "leaf_pbuf_update_tim_idx",
+        "leaf_diag_deallocate",
+        "stepon_run3",
+        "leaf_cam_run4_wrapup",
+        "leaf_cam_run4_step_cost",
+        "leaf_cam_run4_flush",
+    ):
+        assert operation in backend.calls
+
+
 def test_native_backend_can_fuse_only_the_unchanged_default_step() -> None:
     class FusedRecordingCAMBackend(RecordingCAMBackend):
         def execute_source_step(self, pool, *, fcomm, apply_import=True):
