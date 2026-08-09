@@ -75,6 +75,15 @@ class _ActionReference:
             self.action.name, phase=self.action.phase
         ).enabled
 
+    @enabled.setter
+    def enabled(self, value: bool) -> None:
+        self.driver.step_plan.set_enabled(
+            self.action.name,
+            bool(value),
+            phase=self.action.phase,
+            experimental=True,
+        )
+
     def run(self, *, experimental: bool = True) -> PICAMActionTrace:
         if not experimental:
             raise PICAMConfigurationError(
@@ -129,6 +138,24 @@ class _FortranProcessReference(_ActionReference):
 class _PhysicsCollection:
     def __init__(self, driver: "PICAMDriver") -> None:
         self.driver = driver
+
+    @property
+    def names(self) -> tuple[str, ...]:
+        return tuple(
+            action.name
+            for action in self.driver.step_plan.actions
+            if action.kind in {
+                "scheme",
+                "python_process",
+                "runtime_fortran_process",
+            }
+        )
+
+    def __dir__(self) -> list[str]:
+        return sorted(
+            set(super().__dir__())
+            | {name for name in self.names if name.isidentifier()}
+        )
 
     def __getattr__(self, name: str) -> _ActionReference:
         matches = [
@@ -223,6 +250,18 @@ class _PhaseReference:
     def run(self, *, experimental: bool = True) -> tuple[PICAMActionTrace, ...]:
         return self.driver.run_phase(self.name, experimental=experimental)
 
+    def expand(self, *, experimental: bool = True) -> tuple[PICAMAction, ...]:
+        expanders = {
+            "cam_run1": self.driver.expand_cam_run1_leaves,
+            "cam_run2": self.driver.expand_cam_run2_leaves,
+            "cam_run4": self.driver.expand_cam_run4_leaves,
+        }
+        if self.name not in expanders:
+            raise PICAMConfigurationError(
+                f"phase {self.name!r} has no finer validated expansion"
+            )
+        return expanders[self.name](experimental=experimental)
+
 
 class _PhaseCollection:
     def __init__(self, driver: "PICAMDriver") -> None:
@@ -237,6 +276,9 @@ class _PhaseCollection:
         if name not in self.driver.step_plan.phases:
             raise KeyError(name)
         return _PhaseReference(self.driver, name)
+
+    def __dir__(self) -> list[str]:
+        return sorted(set(super().__dir__()) | set(self.driver.step_plan.phases))
 
 
 class _KernelReference:
@@ -267,6 +309,9 @@ class _KernelCollection:
         if name not in self.names:
             raise KeyError(name)
         return _KernelReference(self.driver, name)
+
+    def __dir__(self) -> list[str]:
+        return sorted(set(super().__dir__()) | set(self.names))
 
 
 class PICAMDriver:

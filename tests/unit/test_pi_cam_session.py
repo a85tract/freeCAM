@@ -170,6 +170,90 @@ def test_session_can_request_cam_run2_run4_leaf_expansion(
     assert combined == ({"name": "leaf"},)
 
 
+def test_session_exposes_pythonic_fields_physics_phases_and_kernels(
+    tmp_path: Path, monkeypatch
+) -> None:
+    config, boundary, run_dir, env_script, _ = _session_files(tmp_path)
+    session = PICAMNotebookSession(
+        config,
+        boundary=boundary,
+        run_dir=run_dir,
+        env_script=env_script,
+    )
+    session._status = {
+        "fields": {
+            "phys_state.t": {
+                "shape": [4, 3],
+                "dtype": "<f8",
+                "aliases": ["temperature"],
+                "standard_name": "air_temperature",
+            }
+        },
+        "kernels": ("dadadj",),
+        "step_plan": (
+            {
+                "phase": "cam_run1",
+                "name": "dadadj",
+                "operation": "dadadj",
+                "kind": "scheme",
+                "enabled": True,
+            },
+            {
+                "phase": "cam_run2",
+                "name": "rayleigh_friction",
+                "operation": "rayleigh_friction_tend",
+                "kind": "scheme",
+                "enabled": True,
+            },
+        ),
+    }
+    commands = []
+
+    def request(command):
+        commands.append(command)
+        if command["op"] == "field":
+            return "rank-local-values"
+        if command["op"] == "stats":
+            return {"mean": 250.0}
+        if command["op"] == "expand_cam_run2_leaves":
+            return ({"name": "tracer_tendencies_leaf"},)
+        if command["op"] == "step":
+            return {**session._status, "step": command["count"]}
+        return {"name": command.get("name", "dadadj")}
+
+    monkeypatch.setattr(session, "_request", request)
+
+    assert "temperature" in dir(session.fields)
+    assert "dadadj" in dir(session.physics)
+    assert "cam_run2" in dir(session.phases)
+    assert "dadadj" in dir(session.kernels)
+    assert session.fields.temperature.get(rank=2) == "rank-local-values"
+    assert session.fields["air_temperature"].stats(rank="global") == {
+        "mean": 250.0
+    }
+    session.physics.dadadj.run()
+    session.physics.rayleigh_friction.enabled = False
+    assert session.phases.cam_run2.expand() == (
+        {"name": "tracer_tendencies_leaf"},
+    )
+    session.kernels.dadadj.run()
+    assert session.advance(steps=2)["step"] == 2
+    assert commands == [
+        {"op": "field", "name": "phys_state.t", "rank": 2},
+        {"op": "stats", "name": "phys_state.t", "rank": "global"},
+        {"op": "run_action", "name": "dadadj", "phase": "cam_run1"},
+        {
+            "op": "set_action_enabled",
+            "name": "rayleigh_friction",
+            "phase": "cam_run2",
+            "enabled": False,
+        },
+        {"op": "expand_cam_run2_leaves"},
+        {"op": "run_kernel", "name": "dadadj"},
+        {"op": "step", "count": 2},
+    ]
+
+
 def test_session_dynamic_field_and_python_process_commands(
     tmp_path: Path, monkeypatch
 ) -> None:
@@ -181,22 +265,29 @@ def test_session_dynamic_field_and_python_process_commands(
         env_script=env_script,
     )
     commands = []
-    monkeypatch.setattr(
-        session,
-        "_request",
-        lambda command: commands.append(command) or {"name": command.get("name", "p")},
-    )
 
-    session.create_field(
+    def request(command):
+        commands.append(command)
+        result = {"name": command.get("name", "p")}
+        if command["op"] == "install_python":
+            result.update(
+                name=command["spec"]["name"],
+                phase=command["spec"]["group"],
+            )
+        return result
+
+    monkeypatch.setattr(session, "_request", request)
+
+    tracer = session.fields.create(
         "experiment_tracer",
-        dimensions=("pcols", "pver"),
+        dims=("pcols", "pver"),
         aliases=("tracer",),
     )
 
     def callback(fields, context):
         fields["tracer"][...] += context.timestep_seconds
 
-    session.install_python(
+    process = session.physics.install_python(
         callback,
         name="heating",
         phase="cam_run1",
@@ -209,3 +300,6 @@ def test_session_dynamic_field_and_python_process_commands(
     assert commands[1]["op"] == "install_python"
     assert commands[1]["spec"]["group"] == "cam_run1"
     assert commands[1]["spec"]["after"] == "dadadj"
+    assert tracer.name == "experiment_tracer"
+    assert process.name == "heating"
+    assert process.phase == "cam_run1"

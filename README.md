@@ -214,17 +214,19 @@ with PICAMNotebookSession(
     env_script="/path/to/oracle-case/.env_mach_specific.sh",
     launch_mode="pbs",
 ) as cam:
-    cam.step()
-    print(cam.stats("cam_out.a2x_rattr", rank="global"))
-    print(cam.stats("phys_state.t", rank="global"))
-    cam.run_scheme("dadadj", phase="cam_run1")  # experimental host-stage call
-    cam.run_kernel("dadadj")                     # raw-array leaf call
+    cam.advance(steps=1)
+    print(cam.fields["cam_out.a2x_rattr"].stats(rank="global"))
+    print(cam.fields["phys_state.t"].stats(rank="global"))
+    cam.physics.dadadj.run()  # experimental host-stage call
+    cam.kernels.dadadj.run()  # raw-array leaf call
 ```
 
 `cam.step()` follows the source order and advances the public CAM clock.
 `run_scheme()` and `run_phase()` are deliberately experimental: they execute
 only the requested action and do not supply missing scientific preconditions
-or advance model time.
+or advance model time. The preferred `fields`, `physics`, `phases`, and
+`kernels` collections support Notebook tab completion; the string-based
+methods remain as compatibility primitives.
 
 The default PI-CAM step is no longer one opaque `execute_source_step` call.
 Python exposes a 54-action catalog covering the coupling boundary, `cam_run2`,
@@ -243,11 +245,11 @@ updates the boundary buffer at every recorded boundary but calls native
 `atm_import` only when `has_fresh_import()` is true.  This distinction is
 required for source-identical multi-substep coupling.
 
-The default remains unchanged. To replace the three composite `cam_run1`
-stages with nine ordered leaf actions in one operation, opt in explicitly:
+The default remains unchanged. The phase objects expose the validated optional
+expansions without requiring action-name plumbing:
 
 ```python
-cam.expand_cam_run1_leaves(experimental=True)
+cam.phases.cam_run1.expand()
 cam.step()
 ```
 
@@ -261,7 +263,8 @@ The same opt-in mechanism now reaches below the composite portions of
 `cam_run2` and `cam_run4`:
 
 ```python
-cam.expand_cam_run2_run4_leaves(experimental=True)
+cam.phases.cam_run2.expand()
+cam.phases.cam_run4.expand()
 cam.step()
 ```
 
@@ -280,9 +283,9 @@ The live PI-CAM runtime can add rank-local fields and insert trusted Notebook
 Python functions between existing CAM processes:
 
 ```python
-cam.create_field(
+tracer = cam.fields.create(
     "experiment_tracer",
-    dimensions=("pcols", "pver", "chunks"),
+    dims=("pcols", "pver", "chunks"),
     aliases=("tracer",),
     standard_name="experiment_tracer",
 )
@@ -290,7 +293,7 @@ cam.create_field(
 def tracer_source(fields, context, *, rate):
     fields["tracer"][...] += rate * context.timestep_seconds
 
-cam.install_python(
+process = cam.physics.install_python(
     tracer_source,
     name="tracer_source",
     phase="cam_run1",
@@ -298,11 +301,12 @@ cam.install_python(
     writes=("tracer",),
     parameters={"rate": 1.0e-6},
 )
-cam.run_action("tracer_source", phase="cam_run1")
-cam.move_action("tracer_source", phase="cam_run1", before="deep_convection")
-cam.set_action_enabled("tracer_source", False, phase="cam_run1")
-cam.remove_python("tracer_source")
-cam.delete_field("experiment_tracer")
+process.run()
+process.move(before="deep_convection")
+process.disable()
+process.enable()
+process.remove()
+tracer.delete()
 ```
 
 `cloudpickle` carries the callback through the authenticated control socket;
@@ -312,7 +316,7 @@ the call and restored collectively if any rank fails.  This is trusted-code
 execution, not a sandbox.
 
 Original Fortran plus CCPP metadata can be installed into the same action
-plan with `cam.install_fortran(device_yaml, process=..., phase=...,
+plan with `cam.physics.install_fortran(device_yaml, process=..., phase=...,
 before=.../after=..., unsafe=True)`. Rank 0 generates and compiles the
 `bind(C)` adapter into a cached device `.so`; all ranks verify the same
 manifest and library hashes, load it with `ctypes.CDLL(..., RTLD_LOCAL)`, and

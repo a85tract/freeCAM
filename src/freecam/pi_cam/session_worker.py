@@ -40,6 +40,7 @@ def _status(driver: Any) -> dict[str, object]:
         "dynamic_fields": tuple(sorted(driver.pool.dynamic_fields)),
         "python_processes": tuple(sorted(driver.python_processes.process_names)),
         "fortran_processes": tuple(sorted(driver.fortran_processes.installed)),
+        "kernels": tuple(getattr(driver.backend, "direct_kernels", ())),
         "step_plan": driver.step_plan.describe(),
         "state_bytes": driver.pool.nbytes,
     }

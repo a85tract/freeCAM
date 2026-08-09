@@ -36,6 +36,367 @@ def _authkey_argument(authkey: bytes) -> str:
     return "--authkey=" + base64.urlsafe_b64encode(authkey).decode("ascii")
 
 
+class _SessionFieldReference:
+    """One rank-local StatePool field exposed through the live MPI session."""
+
+    def __init__(self, session: "PICAMNotebookSession", name: str) -> None:
+        self.session = session
+        self.name = name
+
+    @property
+    def metadata(self) -> Mapping[str, Any]:
+        fields = self.session.status.get("fields", {})
+        if self.name not in fields:
+            raise KeyError(self.name)
+        return dict(fields[self.name])
+
+    def get(self, *, rank: int = 0) -> Any:
+        return self.session.field(self.name, rank=rank)
+
+    def stats(self, *, rank: int | str = 0) -> Mapping[str, Any]:
+        return self.session.stats(self.name, rank=rank)
+
+    def delete(self) -> Mapping[str, Any]:
+        return self.session.delete_field(self.name)
+
+
+class _SessionFieldCollection:
+    def __init__(self, session: "PICAMNotebookSession") -> None:
+        self.session = session
+
+    @property
+    def names(self) -> tuple[str, ...]:
+        return self.session.field_names
+
+    def __dir__(self) -> list[str]:
+        fields = self.session.status.get("fields", {})
+        candidates = set(fields)
+        for metadata in fields.values():
+            candidates.update(metadata.get("aliases", ()))
+            if metadata.get("standard_name"):
+                candidates.add(str(metadata["standard_name"]))
+        return sorted(
+            set(super().__dir__())
+            | {item for item in candidates if item.isidentifier()}
+        )
+
+    def __getattr__(self, name: str) -> _SessionFieldReference:
+        try:
+            canonical = self._resolve(name)
+        except KeyError as exc:
+            raise AttributeError(name) from exc
+        return _SessionFieldReference(self.session, canonical)
+
+    def __getitem__(self, name: str) -> _SessionFieldReference:
+        return _SessionFieldReference(self.session, self._resolve(name))
+
+    def _resolve(self, name: str) -> str:
+        fields = self.session.status.get("fields", {})
+        if name in fields:
+            return name
+        matches = [
+            canonical
+            for canonical, metadata in fields.items()
+            if name in metadata.get("aliases", ())
+            or name == metadata.get("standard_name")
+        ]
+        if len(matches) != 1:
+            raise KeyError(name)
+        return str(matches[0])
+
+    def create(
+        self,
+        name: str,
+        *,
+        dims: Sequence[str],
+        dtype: str = "float64",
+        units: str = "1",
+        initial: float | int = 0.0,
+        writable: bool = True,
+        restart: bool = True,
+        aliases: Sequence[str] = (),
+        standard_name: str | None = None,
+    ) -> _SessionFieldReference:
+        self.session.create_field(
+            name,
+            dimensions=dims,
+            dtype=dtype,
+            units=units,
+            initial=initial,
+            writable=writable,
+            restart=restart,
+            aliases=aliases,
+            standard_name=standard_name,
+        )
+        return _SessionFieldReference(self.session, name)
+
+    def delete(self, name: str) -> Mapping[str, Any]:
+        return self.session.delete_field(name)
+
+
+class _SessionActionReference:
+    """A physics action that can be run or edited without string plumbing."""
+
+    def __init__(
+        self,
+        session: "PICAMNotebookSession",
+        name: str,
+        phase: str,
+        *,
+        kind: str = "scheme",
+    ) -> None:
+        self.session = session
+        self.name = name
+        self.phase = phase
+        self.kind = kind
+
+    def run(self) -> Mapping[str, Any]:
+        return self.session.run_action(self.name, phase=self.phase)
+
+    @property
+    def enabled(self) -> bool:
+        return bool(self._record()["enabled"])
+
+    @enabled.setter
+    def enabled(self, value: bool) -> None:
+        self.session.set_action_enabled(self.name, bool(value), phase=self.phase)
+
+    def enable(self) -> Mapping[str, Any]:
+        return self.session.set_action_enabled(self.name, True, phase=self.phase)
+
+    def disable(self) -> Mapping[str, Any]:
+        return self.session.set_action_enabled(self.name, False, phase=self.phase)
+
+    def move(
+        self,
+        *,
+        before: str | None = None,
+        after: str | None = None,
+    ) -> Mapping[str, Any]:
+        return self.session.move_action(
+            self.name,
+            phase=self.phase,
+            before=before,
+            after=after,
+        )
+
+    def remove(self) -> Mapping[str, Any]:
+        if self.kind == "python_process":
+            return self.session.remove_python(self.name)
+        if self.kind == "runtime_fortran_process":
+            return self.session.remove_fortran(self.name)
+        raise TypeError(f"source physics action {self.phase}.{self.name} cannot be removed")
+
+    def _record(self) -> Mapping[str, Any]:
+        matches = [
+            row
+            for row in self.session.status.get("step_plan", ())
+            if row["phase"] == self.phase and row["name"] == self.name
+        ]
+        if len(matches) != 1:
+            raise KeyError(f"{self.phase}.{self.name}")
+        return dict(matches[0])
+
+
+class _SessionPhysicsCollection:
+    _KINDS = {"scheme", "python_process", "runtime_fortran_process"}
+
+    def __init__(self, session: "PICAMNotebookSession") -> None:
+        self.session = session
+
+    @property
+    def names(self) -> tuple[str, ...]:
+        return tuple(
+            str(row["name"])
+            for row in self.session.status.get("step_plan", ())
+            if row["kind"] in self._KINDS
+        )
+
+    def __dir__(self) -> list[str]:
+        return sorted(
+            set(super().__dir__())
+            | {name for name in self.names if name.isidentifier()}
+        )
+
+    def __getattr__(self, name: str) -> _SessionActionReference:
+        try:
+            return self.scheme(name)
+        except KeyError as exc:
+            raise AttributeError(name) from exc
+
+    def __getitem__(self, name: str) -> _SessionActionReference:
+        return self.scheme(name)
+
+    def scheme(
+        self, name: str, *, phase: str | None = None
+    ) -> _SessionActionReference:
+        matches = [
+            row
+            for row in self.session.status.get("step_plan", ())
+            if row["kind"] in self._KINDS
+            and (row["name"] == name or row["operation"] == name)
+            and (phase is None or row["phase"] == phase)
+        ]
+        if len(matches) != 1:
+            raise KeyError(f"physics action {name!r} is unknown or ambiguous")
+        row = matches[0]
+        return _SessionActionReference(
+            self.session,
+            str(row["name"]),
+            str(row["phase"]),
+            kind=str(row["kind"]),
+        )
+
+    def install_python(
+        self,
+        function: Any,
+        *,
+        name: str,
+        phase: str,
+        before: str | None = None,
+        after: str | None = None,
+        reads: Sequence[str] = (),
+        writes: Sequence[str] = (),
+        parameters: Mapping[str, Any] | None = None,
+        enabled: bool = True,
+        transactional: bool = True,
+        unsafe: bool = False,
+    ) -> _SessionActionReference:
+        result = self.session.install_python(
+            function,
+            name=name,
+            phase=phase,
+            before=before,
+            after=after,
+            reads=reads,
+            writes=writes,
+            parameters=parameters,
+            enabled=enabled,
+            transactional=transactional,
+            unsafe=unsafe,
+        )
+        return _SessionActionReference(
+            self.session,
+            str(result["name"]),
+            str(result["phase"]),
+            kind="python_process",
+        )
+
+    def install_fortran(
+        self,
+        source: str | Path,
+        *,
+        process: str,
+        phase: str,
+        before: str | None = None,
+        after: str | None = None,
+        project_root: str | Path | None = None,
+        enabled: bool = True,
+        unsafe: bool = False,
+    ) -> _SessionActionReference:
+        result = self.session.install_fortran(
+            source,
+            process=process,
+            phase=phase,
+            before=before,
+            after=after,
+            project_root=project_root,
+            enabled=enabled,
+            unsafe=unsafe,
+        )
+        return _SessionActionReference(
+            self.session,
+            str(result["name"]),
+            str(result["phase"]),
+            kind="runtime_fortran_process",
+        )
+
+
+class _SessionPhaseReference:
+    def __init__(self, session: "PICAMNotebookSession", name: str) -> None:
+        self.session = session
+        self.name = name
+
+    @property
+    def actions(self) -> tuple[Mapping[str, Any], ...]:
+        return tuple(
+            dict(row)
+            for row in self.session.status.get("step_plan", ())
+            if row["phase"] == self.name
+        )
+
+    def run(self) -> tuple[Mapping[str, Any], ...]:
+        return self.session.run_phase(self.name)
+
+    def expand(self) -> tuple[Mapping[str, Any], ...]:
+        expanders = {
+            "cam_run1": self.session.expand_cam_run1_leaves,
+            "cam_run2": self.session.expand_cam_run2_leaves,
+            "cam_run4": self.session.expand_cam_run4_leaves,
+        }
+        if self.name not in expanders:
+            raise TypeError(f"phase {self.name!r} has no finer validated expansion")
+        return expanders[self.name]()
+
+
+class _SessionPhaseCollection:
+    def __init__(self, session: "PICAMNotebookSession") -> None:
+        self.session = session
+
+    @property
+    def names(self) -> tuple[str, ...]:
+        return tuple(
+            dict.fromkeys(
+                str(row["phase"])
+                for row in self.session.status.get("step_plan", ())
+            )
+        )
+
+    def __getattr__(self, name: str) -> _SessionPhaseReference:
+        if name not in self.names:
+            raise AttributeError(name)
+        return _SessionPhaseReference(self.session, name)
+
+    def __dir__(self) -> list[str]:
+        return sorted(set(super().__dir__()) | set(self.names))
+
+    def __getitem__(self, name: str) -> _SessionPhaseReference:
+        if name not in self.names:
+            raise KeyError(name)
+        return _SessionPhaseReference(self.session, name)
+
+
+class _SessionKernelReference:
+    def __init__(self, session: "PICAMNotebookSession", name: str) -> None:
+        self.session = session
+        self.name = name
+
+    def run(self) -> Mapping[str, Any]:
+        return self.session.run_kernel(self.name)
+
+
+class _SessionKernelCollection:
+    def __init__(self, session: "PICAMNotebookSession") -> None:
+        self.session = session
+
+    @property
+    def names(self) -> tuple[str, ...]:
+        return tuple(self.session.status.get("kernels", ()))
+
+    def __getattr__(self, name: str) -> _SessionKernelReference:
+        if name not in self.names:
+            raise AttributeError(name)
+        return _SessionKernelReference(self.session, name)
+
+    def __dir__(self) -> list[str]:
+        return sorted(set(super().__dir__()) | set(self.names))
+
+    def __getitem__(self, name: str) -> _SessionKernelReference:
+        if name not in self.names:
+            raise KeyError(name)
+        return _SessionKernelReference(self.session, name)
+
+
 class PICAMNotebookSession:
     """Keep 512 CAM ranks alive and execute one Python-controlled action at a time."""
 
@@ -88,6 +449,10 @@ class PICAMNotebookSession:
         self._log_handle: Any = None
         self._pbs_script: Path | None = None
         self._status: dict[str, Any] = {}
+        self.fields = _SessionFieldCollection(self)
+        self.physics = _SessionPhysicsCollection(self)
+        self.phases = _SessionPhaseCollection(self)
+        self.kernels = _SessionKernelCollection(self)
 
     @property
     def running(self) -> bool:
@@ -168,6 +533,11 @@ class PICAMNotebookSession:
             raise ValueError("count must be positive")
         self._status = dict(self._request({"op": "step", "count": int(count)}))
         return dict(self._status)
+
+    def advance(self, steps: int = 1) -> Mapping[str, Any]:
+        """Advance complete CAM steps while keeping ``step`` compatible."""
+
+        return self.step(steps)
 
     def run_action(self, name: str, *, phase: str | None = None) -> Mapping[str, Any]:
         """Run one scheme or installed runtime process without advancing time."""

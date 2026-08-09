@@ -142,6 +142,21 @@ def test_individual_phase_and_scheme_are_exposed_without_advancing_time() -> Non
     assert backend.calls[-2:] == ["dadadj", "stepon_run3"]
 
 
+def test_pythonic_phase_and_action_handles_edit_the_same_step_plan() -> None:
+    driver, _, _ = _driver()
+
+    assert "rayleigh_friction" in dir(driver.physics)
+    assert "cam_run2" in dir(driver.phases)
+    expanded = driver.phases.cam_run2.expand()
+    driver.physics.rayleigh_friction.enabled = False
+
+    assert len(expanded) == 19
+    assert driver.physics.rayleigh_friction.enabled is False
+    assert "tracers_and_chemistry" not in {
+        action.name for action in driver.step_plan.in_phase("cam_run2")
+    }
+
+
 def test_driver_can_replace_cam_run1_composites_with_ordered_leaf_calls() -> None:
     driver, backend, _ = _driver()
     driver.expand_cam_run1_leaves(experimental=True)
