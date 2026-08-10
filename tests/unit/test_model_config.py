@@ -160,6 +160,21 @@ def test_namelist_overrides_create_a_missing_group() -> None:
     ] == "/tmp/config.json"
 
 
+def test_atm_in_path_expands_environment_variables(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("FREECAM_TEST_ROOT", str(ROOT))
+    config = ModelConfig.from_yaml(ROOT / "configs/adiabatic_model.yaml")
+
+    result = read_atm_in(
+        "$FREECAM_TEST_ROOT/reference/cases/"
+        "FADIAB_ne3pg3_gnu_24x50/CaseDocs/atm_in",
+        config,
+    )
+
+    assert Path(result["ncdata"]).is_file()
+
+
 def test_restart_modes_require_a_checkpoint_but_not_an_analytic_ic() -> None:
     continued = ModelConfig(
         run_type="continue",
