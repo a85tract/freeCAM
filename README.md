@@ -350,6 +350,35 @@ with PICAMNotebookSession(
     cam.kernels.dadadj.run()  # raw-array leaf call
 ```
 
+The PI-CAM Notebook facade also provides FreeCESM-style state and workflow
+views without moving the full StatePool into Jupyter:
+
+```python
+print(cam.state.summary(rank=0))
+fig, axes = cam.state.plot(rank=0, label="initial")
+
+# Jupyter renders the live action order as a table. Disabled experimental
+# leaves remain visible but dimmed.
+cam.workflow
+
+cam.advance(steps=1)
+for axis, variable in zip(axes.flat, ("T", "u", "v", "q")):
+    cam.state.plot_profile(
+        variable,
+        rank=0,
+        ax=axis,
+        color="tab:orange",
+        label="step 1",
+    )
+```
+
+`state.plot()` retrieves only four selected rank-local fields and
+`phys_state.ncol`; it removes padded `pcols` entries before calculating the
+horizontal-mean vertical profiles. It does not gather all 512 rank-local
+arrays. `cam.workflow` reads only the compact `PICAMStepPlan` metadata and is
+updated immediately after a process is installed, moved, enabled, or disabled.
+Plotting is installed by `uv sync --extra notebook`.
+
 `cam.step()` follows the source order and advances the public CAM clock.
 `run_scheme()` and `run_phase()` are deliberately experimental: they execute
 only the requested action and do not supply missing scientific preconditions

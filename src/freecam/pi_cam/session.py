@@ -24,6 +24,7 @@ from freecam.model.python_processes import PythonProcessSpec
 
 from .config import PICAMConfig
 from .state import PICAMVariableSpec
+from .ui import PICAMStateView, PICAMWorkflowView
 
 
 class PICAMNotebookError(RuntimeError):
@@ -453,6 +454,8 @@ class PICAMNotebookSession:
         self.physics = _SessionPhysicsCollection(self)
         self.phases = _SessionPhaseCollection(self)
         self.kernels = _SessionKernelCollection(self)
+        self.state = PICAMStateView(self)
+        self.workflow = PICAMWorkflowView(self)
 
     @property
     def running(self) -> bool:

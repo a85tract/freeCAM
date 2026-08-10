@@ -27,6 +27,7 @@ notebook = [
   "dask[distributed]>=2025.1",
   "dask-jobqueue>=0.9",
   "ipykernel>=7.0",
+  "matplotlib>=3.9",
 ]
 test = ["pytest>=8.0", "dask[distributed]>=2025.1"]
 

@@ -106,7 +106,10 @@ from .pi_cam import (
     PICAMDriver,
     PICAMNotebookError,
     PICAMNotebookSession,
+    PICAMStateView,
     PICAMStepPlan,
+    PICAMWorkflowAction,
+    PICAMWorkflowView,
     ReplayBoundaryProvider,
 )
 
@@ -208,7 +211,10 @@ __all__ = [
     "PICAMDriver",
     "PICAMNotebookError",
     "PICAMNotebookSession",
+    "PICAMStateView",
     "PICAMStepPlan",
+    "PICAMWorkflowAction",
+    "PICAMWorkflowView",
     "ReplayBoundaryProvider",
     "PythonFieldView",
     "PythonProcessContext",

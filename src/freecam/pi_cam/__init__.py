@@ -20,6 +20,7 @@ from .errors import (
 from .native import CAMNumericalBackend, NativeCAMDevice, RecordingCAMBackend
 from .plan import PICAMAction, PICAMStepPlan
 from .session import PICAMNotebookError, PICAMNotebookSession
+from .ui import PICAMStateView, PICAMWorkflowAction, PICAMWorkflowView
 from .state import PICAMFieldContract, PICAMStatePool, PICAMStateSchema
 from .state import PICAMVariableSpec
 from .runtime_fortran import PICAMFortranProcessSpec
@@ -75,6 +76,9 @@ __all__ = [
     "PICAMStateSchema",
     "PICAMSourceCatalog",
     "PICAMStepPlan",
+    "PICAMStateView",
+    "PICAMWorkflowAction",
+    "PICAMWorkflowView",
     "PICAMVariableSpec",
     "PICAMFortranProcessSpec",
     "PythonProcessContext",
