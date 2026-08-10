@@ -22,7 +22,7 @@ import freecam.model.driver as driver_module
 
 PROJECT = Path(__file__).resolve().parents[2]
 ATM_IN = (
-    Path("/glade/derecho/scratch/ruitong/pycam-sima/")
+    Path("/glade/derecho/scratch/$USER/pycam-sima/")
     / "FKESSLER_ne3pg3_gnu_24x50/FKESSLER_ne3pg3_gnu_24x50/run/atm_in"
 )
 

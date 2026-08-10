@@ -25,8 +25,8 @@
     "steps": 50,
     "history_files": 51,
     "numeric_variables": 26,
-    "candidate_dir": "/glade/derecho/scratch/ruitong/pycam-sima/dynamic_feature_bfb/20260724-004810/history",
-    "oracle_dir": "/glade/derecho/scratch/ruitong/pycam_sima_legacy_oracle_f8daa568/run",
+    "candidate_dir": "/glade/derecho/scratch/$USER/pycam-sima/dynamic_feature_bfb/20260724-004810/history",
+    "oracle_dir": "/glade/derecho/scratch/$USER/pycam_sima_legacy_oracle_f8daa568/run",
     "result": "BFB"
   },
   "local_verification": {

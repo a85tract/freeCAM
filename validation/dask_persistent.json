@@ -2,7 +2,7 @@
   "actor_method_calls": 7,
   "actor_worker": "inproc://10.14.4.236/59516/4",
   "checkpoint": {
-    "checkpoint_dir": "/glade/derecho/scratch/ruitong/pycam-sima/persistent-validation/6876168.desched1/live/checkpoints/step-000002",
+    "checkpoint_dir": "/glade/derecho/scratch/$USER/pycam-sima/persistent-validation/6876168.desched1/live/checkpoints/step-000002",
     "mpi_launch_count": 1,
     "native_calls": 600,
     "step": 2
@@ -10,7 +10,7 @@
   "closed": {
     "closed": true,
     "mpi_launch_count": 1,
-    "run_dir": "/glade/derecho/scratch/ruitong/pycam-sima/persistent-validation/6876168.desched1/live/run"
+    "run_dir": "/glade/derecho/scratch/$USER/pycam-sima/persistent-validation/6876168.desched1/live/run"
   },
   "dask_workers": 1,
   "field_stats_rank_0": {
@@ -29,16 +29,16 @@
   },
   "final_status": {
     "field_count": 324,
-    "history_dir": "/glade/derecho/scratch/ruitong/pycam-sima/persistent-validation/6876168.desched1/live/history",
+    "history_dir": "/glade/derecho/scratch/$USER/pycam-sima/persistent-validation/6876168.desched1/live/history",
     "launch_mode": "local",
-    "log_path": "/glade/work/ruitong/pycam-sima/logs/pycam_dask_persistent_live.log",
+    "log_path": "/glade/work/$USER/pycam-sima/logs/pycam_dask_persistent_live.log",
     "mpi_launch_count": 1,
     "name": "live",
     "native_calls": 600,
     "outer_pbs_job_id": "6876168.desched1",
     "pbs_job_id": null,
     "ranks": 24,
-    "run_dir": "/glade/derecho/scratch/ruitong/pycam-sima/persistent-validation/6876168.desched1/live/run",
+    "run_dir": "/glade/derecho/scratch/$USER/pycam-sima/persistent-validation/6876168.desched1/live/run",
     "running": true,
     "step": 2,
     "worker_host": "dec2447",
@@ -54,7 +54,7 @@
   "outer_pbs_job_id": "6876168.desched1",
   "repository": {
     "parent_commit": "7eb6aed66fe7625dd527152daa278da0ac25e66c",
-    "root": "/glade/work/ruitong/pycam-sima",
+    "root": "/glade/work/$USER/pycam-sima",
     "working_tree_dirty": true
   },
   "schema_version": 1,
@@ -103,16 +103,16 @@
   },
   "started": {
     "field_count": 324,
-    "history_dir": "/glade/derecho/scratch/ruitong/pycam-sima/persistent-validation/6876168.desched1/live/history",
+    "history_dir": "/glade/derecho/scratch/$USER/pycam-sima/persistent-validation/6876168.desched1/live/history",
     "launch_mode": "local",
-    "log_path": "/glade/work/ruitong/pycam-sima/logs/pycam_dask_persistent_live.log",
+    "log_path": "/glade/work/$USER/pycam-sima/logs/pycam_dask_persistent_live.log",
     "mpi_launch_count": 1,
     "name": "live",
     "native_calls": 0,
     "outer_pbs_job_id": "6876168.desched1",
     "pbs_job_id": null,
     "ranks": 24,
-    "run_dir": "/glade/derecho/scratch/ruitong/pycam-sima/persistent-validation/6876168.desched1/live/run",
+    "run_dir": "/glade/derecho/scratch/$USER/pycam-sima/persistent-validation/6876168.desched1/live/run",
     "running": true,
     "step": 0,
     "worker_host": "dec2447",

@@ -1,16 +1,16 @@
 {
-  "mapping_root": "/glade/work/fengzhu/Projects/pyCESM/test_cases/PI/mappings",
+  "mapping_root": "/glade/work/$PI_ATM_SHARE/Projects/pyCESM/test_cases/PI/mappings",
   "mapping_sha256": {
-    "/glade/work/fengzhu/Projects/pyCESM/test_cases/PI/mappings/domain.lnd.ne16np4_gx1v6.231103.nc": "79d27d6760534f9132e3ff6f263afd6feac29a5d83e56423c28fd9476a3a0701",
-    "/glade/work/fengzhu/Projects/pyCESM/test_cases/PI/mappings/domain.ocn.gx1v6.231103.nc": "96dc9d5848b3e4ea80ef71717817bb5bd18544795145dec9cf2962de2dcd5076",
-    "/glade/work/fengzhu/Projects/pyCESM/test_cases/PI/mappings/map_gx1v6_TO_ne16np4_aave.231103.nc": "1695d6393275530b6660f4c24da0d00a9721ef32ad1b9ee7e4bfabc5058d6eca",
-    "/glade/work/fengzhu/Projects/pyCESM/test_cases/PI/mappings/map_ne16np4_TO_gx1v6_aave.231103.nc": "c2bedfbabf6c25f1e76f8c7a7cb5241368cf6144be035ada47f54bf60ee2654c",
-    "/glade/work/fengzhu/Projects/pyCESM/test_cases/PI/mappings/map_ne16np4_TO_gx1v6_blin.231103.nc": "92d814b1bafd8b9f58af88d88e01f65c7a90207349f690936e728590bc86635d",
-    "/glade/work/fengzhu/Projects/pyCESM/test_cases/PI/mappings/map_ne16np4_TO_gx1v6_patc.231103.nc": "11cc368cf015f2373804bdf2c79c1f23661ac8329b0f57a0e24d555330ba3656",
-    "/glade/work/fengzhu/Projects/pyCESM/test_cases/PI/mappings/map_ne16np4_TO_r05_nomask_aave.231103.nc": "50fcb4940401618aaf364ab31ddf0bd78f95da285ebf4f0eaf3a899c9ecd670d",
-    "/glade/work/fengzhu/Projects/pyCESM/test_cases/PI/mappings/map_r05_nomask_TO_gx1v6_aave.231103.nc": "06789b8999ddfff812e95b4642385e5f03fedb66259154178c8db50d7ac795b0",
-    "/glade/work/fengzhu/Projects/pyCESM/test_cases/PI/mappings/map_r05_nomask_TO_ne16np4_aave.231103.nc": "59ca0c03043950d83f323d1793860a7cdb0ae7018a47a8c8e00374b2e08d629a",
-    "/glade/work/fengzhu/Projects/pyCESM/test_cases/PI/mappings/map_r05_nomask_to_gx1v6_nnsm_e1000r300.231103.nc": "bda1d41d130acc336fa20ca98dd014e585002a389aebce50ff3fb4cc274b7f4b"
+    "/glade/work/$PI_ATM_SHARE/Projects/pyCESM/test_cases/PI/mappings/domain.lnd.ne16np4_gx1v6.231103.nc": "79d27d6760534f9132e3ff6f263afd6feac29a5d83e56423c28fd9476a3a0701",
+    "/glade/work/$PI_ATM_SHARE/Projects/pyCESM/test_cases/PI/mappings/domain.ocn.gx1v6.231103.nc": "96dc9d5848b3e4ea80ef71717817bb5bd18544795145dec9cf2962de2dcd5076",
+    "/glade/work/$PI_ATM_SHARE/Projects/pyCESM/test_cases/PI/mappings/map_gx1v6_TO_ne16np4_aave.231103.nc": "1695d6393275530b6660f4c24da0d00a9721ef32ad1b9ee7e4bfabc5058d6eca",
+    "/glade/work/$PI_ATM_SHARE/Projects/pyCESM/test_cases/PI/mappings/map_ne16np4_TO_gx1v6_aave.231103.nc": "c2bedfbabf6c25f1e76f8c7a7cb5241368cf6144be035ada47f54bf60ee2654c",
+    "/glade/work/$PI_ATM_SHARE/Projects/pyCESM/test_cases/PI/mappings/map_ne16np4_TO_gx1v6_blin.231103.nc": "92d814b1bafd8b9f58af88d88e01f65c7a90207349f690936e728590bc86635d",
+    "/glade/work/$PI_ATM_SHARE/Projects/pyCESM/test_cases/PI/mappings/map_ne16np4_TO_gx1v6_patc.231103.nc": "11cc368cf015f2373804bdf2c79c1f23661ac8329b0f57a0e24d555330ba3656",
+    "/glade/work/$PI_ATM_SHARE/Projects/pyCESM/test_cases/PI/mappings/map_ne16np4_TO_r05_nomask_aave.231103.nc": "50fcb4940401618aaf364ab31ddf0bd78f95da285ebf4f0eaf3a899c9ecd670d",
+    "/glade/work/$PI_ATM_SHARE/Projects/pyCESM/test_cases/PI/mappings/map_r05_nomask_TO_gx1v6_aave.231103.nc": "06789b8999ddfff812e95b4642385e5f03fedb66259154178c8db50d7ac795b0",
+    "/glade/work/$PI_ATM_SHARE/Projects/pyCESM/test_cases/PI/mappings/map_r05_nomask_TO_ne16np4_aave.231103.nc": "59ca0c03043950d83f323d1793860a7cdb0ae7018a47a8c8e00374b2e08d629a",
+    "/glade/work/$PI_ATM_SHARE/Projects/pyCESM/test_cases/PI/mappings/map_r05_nomask_to_gx1v6_nnsm_e1000r300.231103.nc": "bda1d41d130acc336fa20ca98dd014e585002a389aebce50ff3fb4cc274b7f4b"
   },
   "platform": "Linux-6.4.0-150600.23.53-default-x86_64-with-glibc2.38",
   "python": "3.11.13",
@@ -77,5 +77,5 @@
     }
   },
   "schema_version": 1,
-  "source_root": "/glade/work/ruitong/iCESM1.3.1_PI_cam_only"
+  "source_root": "/glade/work/$USER/iCESM1.3.1_PI_cam_only"
 }

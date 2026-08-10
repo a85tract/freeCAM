@@ -194,7 +194,7 @@ import shutil
 
 from freecam import NotebookSession
 
-repo = Path("/glade/work/ruitong/freeCAM")
+repo = Path("/glade/work/$USER/freeCAM")
 run_dir = Path("/path/to/fresh/run")
 run_dir.mkdir(parents=True)
 shutil.copy2(oracle_dir / "atm_in", run_dir / "atm_in")

@@ -2,12 +2,12 @@
   "schema_version": 1,
   "validated_at": "2026-07-27T15:43:00-06:00",
   "repository": {
-    "root": "/glade/work/ruitong/pycam-sima",
+    "root": "/glade/work/$USER/pycam-sima",
     "parent_commit": "1734b7a64ad1f75486e762ebbab47eb94b80362e",
     "package_version": "0.18.0"
   },
   "cam_sima": {
-    "root": "/glade/work/ruitong/pycam-sima/external/CAM-SIMA",
+    "root": "/glade/work/$USER/pycam-sima/external/CAM-SIMA",
     "commit": "f8daa568eae2696b7c4ebff7768f02f5d097d9df"
   },
   "configuration_surface": {
@@ -63,7 +63,7 @@
     "runtime_abi_self_reports_specialization": true,
     "python_rejects_mismatched_library": true,
     "reference_library": {
-      "path": "/glade/work/ruitong/pycam-sima/build/libpycam_sima_kernels.so",
+      "path": "/glade/work/$USER/pycam-sima/build/libpycam_sima_kernels.so",
       "sha256": "a877843de8dedc609b7a1d8f4880dedb5ab396c406705d7642d0f443a861c1de",
       "size_bytes": 216064,
       "specialization": {
@@ -74,7 +74,7 @@
       }
     },
     "nonreference_library": {
-      "path": "/glade/work/ruitong/pycam-sima/build/kernels/2269c3c98f0ca154/libpycam_sima_kernels.so",
+      "path": "/glade/work/$USER/pycam-sima/build/kernels/2269c3c98f0ca154/libpycam_sima_kernels.so",
       "sha256": "18032a15644e9fbaedbd095a5a8b508993eb5a8834ee34f908f7aae5a4ee20b7",
       "size_bytes": 216120,
       "specialization_id": "2269c3c98f0ca154",
@@ -95,8 +95,8 @@
     "resources": "select=1:ncpus=8:mpiprocs=8:ompthreads=1:mem=40GB",
     "walltime_used": "00:04:07",
     "memory_used": "853600kb",
-    "run_root": "/glade/derecho/scratch/ruitong/pycam-sima/configurable_p0_20260727-152333",
-    "history_dir": "/glade/derecho/scratch/ruitong/pycam-sima/configurable_p0_20260727-152333/alternative-history-dt60-v4",
+    "run_root": "/glade/derecho/scratch/$USER/pycam-sima/configurable_p0_20260727-152333",
+    "history_dir": "/glade/derecho/scratch/$USER/pycam-sima/configurable_p0_20260727-152333/alternative-history-dt60-v4",
     "configuration": {
       "grid": "ne2np5.pg4",
       "ne": 2,
@@ -139,9 +139,9 @@
     "numeric_variables": 26,
     "native_calls": 14904,
     "runtime_warnings_or_errors": 0,
-    "oracle": "/glade/derecho/scratch/ruitong/pycam_sima_legacy_oracle_f8daa568/run",
-    "candidate": "/glade/derecho/scratch/ruitong/pycam-sima/configurable_p0_20260727-152333/reference-history-final",
-    "compare_command": ".venv/bin/python -m pycam_sima.cli compare-history /glade/derecho/scratch/ruitong/pycam_sima_legacy_oracle_f8daa568/run /glade/derecho/scratch/ruitong/pycam-sima/configurable_p0_20260727-152333/reference-history-final --files 51 --numeric-variables 26",
+    "oracle": "/glade/derecho/scratch/$USER/pycam_sima_legacy_oracle_f8daa568/run",
+    "candidate": "/glade/derecho/scratch/$USER/pycam-sima/configurable_p0_20260727-152333/reference-history-final",
+    "compare_command": ".venv/bin/python -m pycam_sima.cli compare-history /glade/derecho/scratch/$USER/pycam_sima_legacy_oracle_f8daa568/run /glade/derecho/scratch/$USER/pycam-sima/configurable_p0_20260727-152333/reference-history-final --files 51 --numeric-variables 26",
     "result": "BFB"
   },
   "regression_coverage": {

@@ -2,7 +2,7 @@
   "schema_version": 1,
   "validated_at": "2026-07-21T16:33:40-06:00",
   "repository": {
-    "root": "/glade/work/ruitong/pycam-sima",
+    "root": "/glade/work/$USER/pycam-sima",
     "parent_commit": "45e742ea46558c73a4a08fadad63c269246a35f9",
     "package_version": "0.8.0"
   },
@@ -12,8 +12,8 @@
     "checkpoint_schema": 1
   },
   "dask_fanout_smoke": {
-    "command": "uv run python tools/dask_branch_smoke.py --run-root /glade/derecho/scratch/ruitong/pycam-sima/dask_branch_smoke/20260721-1630 --initial-run-dir /glade/derecho/scratch/ruitong/pycam-sima/FKESSLER_ne3pg3_gnu_24x50/FKESSLER_ne3pg3_gnu_24x50/run",
-    "run_root": "/glade/derecho/scratch/ruitong/pycam-sima/dask_branch_smoke/20260721-1630",
+    "command": "uv run python tools/dask_branch_smoke.py --run-root /glade/derecho/scratch/$USER/pycam-sima/dask_branch_smoke/20260721-1630 --initial-run-dir /glade/derecho/scratch/$USER/pycam-sima/FKESSLER_ne3pg3_gnu_24x50/FKESSLER_ne3pg3_gnu_24x50/run",
+    "run_root": "/glade/derecho/scratch/$USER/pycam-sima/dask_branch_smoke/20260721-1630",
     "completion_marker": "PYCAM_SIMA_DASK_BRANCH_OK branches=2",
     "base": {
       "pbs_job_id": "6835577.desched1",
@@ -38,14 +38,14 @@
       }
     },
     "state_isolation_validation": {
-      "command": "uv run python tools/validate_dask_branch.py /glade/derecho/scratch/ruitong/pycam-sima/dask_branch_smoke/20260721-1630",
+      "command": "uv run python tools/validate_dask_branch.py /glade/derecho/scratch/$USER/pycam-sima/dask_branch_smoke/20260721-1630",
       "result": "PYCAM_SIMA_DASK_BRANCH_BFB ranks=24 control_changed=0 changed_field=air_temperature delta=1.0"
     }
   },
   "checkpoint_restart_gate": {
     "pbs_job_id": "6835553.desched1",
     "command": "qsub jobs/checkpoint_restart_24x50.pbs",
-    "run_root": "/glade/derecho/scratch/ruitong/pycam-sima/checkpoint_restart/6835553.desched1",
+    "run_root": "/glade/derecho/scratch/$USER/pycam-sima/checkpoint_restart/6835553.desched1",
     "segments": [
       {
         "name": "first-25",
@@ -66,7 +66,7 @@
         "rank_file_hash_list_sha256": "61d23204244c606ee50c4132f98228de844f55401120326b304cfc6264c89017"
       }
     ],
-    "oracle": "/glade/derecho/scratch/ruitong/pycam_sima_legacy_oracle_f8daa568/run",
+    "oracle": "/glade/derecho/scratch/$USER/pycam_sima_legacy_oracle_f8daa568/run",
     "history_files": 51,
     "numeric_variables": 26,
     "result": "BFB",

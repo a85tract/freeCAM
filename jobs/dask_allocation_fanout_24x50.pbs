@@ -1,19 +1,19 @@
 #!/bin/bash
 #PBS -N pycam_dask_one
-#PBS -A UCUB0188
+#PBS -A $PBS_ACCOUNT
 #PBS -q develop
 #PBS -l select=1:ncpus=25:mpiprocs=24:ompthreads=1:mem=80GB
 #PBS -l walltime=00:30:00
 #PBS -j oe
-#PBS -o /glade/work/ruitong/freeCAM/logs/
+#PBS -o /glade/work/$USER/freeCAM/logs/
 
 set -euo pipefail
 
-PROJECT=/glade/work/ruitong/freeCAM
+PROJECT=/glade/work/$USER/freeCAM
 CASE=$PROJECT/reference/cases/FKESSLER_ne3pg3_gnu_24x50
-REFERENCE_RUN=/glade/derecho/scratch/ruitong/pycam-sima/FKESSLER_ne3pg3_gnu_24x50/FKESSLER_ne3pg3_gnu_24x50/run
-ORACLE_DIR=${ORACLE_DIR:-/glade/derecho/scratch/ruitong/pycam_sima_legacy_oracle_f8daa568/run}
-VALIDATION_ROOT=${VALIDATION_ROOT:-/glade/derecho/scratch/ruitong/freecam/dask_allocation/${PBS_JOBID}}
+REFERENCE_RUN=/glade/derecho/scratch/$USER/pycam-sima/FKESSLER_ne3pg3_gnu_24x50/FKESSLER_ne3pg3_gnu_24x50/run
+ORACLE_DIR=${ORACLE_DIR:-/glade/derecho/scratch/$USER/pycam_sima_legacy_oracle_f8daa568/run}
+VALIDATION_ROOT=${VALIDATION_ROOT:-/glade/derecho/scratch/$USER/freecam/dask_allocation/${PBS_JOBID}}
 
 mkdir -p "$VALIDATION_ROOT"
 source "$CASE/.env_mach_specific.sh" >/dev/null 2>&1

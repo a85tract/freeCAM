@@ -2,7 +2,7 @@
   "schema_version": 1,
   "validated_at": "2026-07-29T12:32:50-06:00",
   "repository": {
-    "root": "/glade/work/ruitong/pycam-sima",
+    "root": "/glade/work/$USER/pycam-sima",
     "parent_commit": "d51d6eccb01c0f4e38851858bbd1aed46b31d23c",
     "package_version": "0.18.0",
     "working_tree": "all-suite implementation under final validation"
@@ -32,8 +32,8 @@
       "walltime": "00:07:03",
       "exit_status": 0,
       "native_calls": 16462,
-      "oracle": "/glade/derecho/scratch/ruitong/pycam-sima/FADIAB_ne3pg3_gnu_24x50/FADIAB_ne3pg3_gnu_24x50/run",
-      "candidate": "/glade/derecho/scratch/ruitong/pycam-sima/seven_suite_validation/20260729-seven-suite-final/FADIAB/history",
+      "oracle": "/glade/derecho/scratch/$USER/pycam-sima/FADIAB_ne3pg3_gnu_24x50/FADIAB_ne3pg3_gnu_24x50/run",
+      "candidate": "/glade/derecho/scratch/$USER/pycam-sima/seven_suite_validation/20260729-seven-suite-final/FADIAB/history",
       "log": "logs/6949197.desched1.OU",
       "result": "BFB"
     },
@@ -45,8 +45,8 @@
       "walltime": "00:09:05",
       "exit_status": 0,
       "native_calls": 23732,
-      "oracle": "/glade/derecho/scratch/ruitong/pycam-sima/FCAM4_ne3pg3_gnu_24x50/FCAM4_ne3pg3_gnu_24x50/run",
-      "candidate": "/glade/derecho/scratch/ruitong/pycam-sima/seven_suite_validation/20260729-fcam4-esmf-calday-fix/history",
+      "oracle": "/glade/derecho/scratch/$USER/pycam-sima/FCAM4_ne3pg3_gnu_24x50/FCAM4_ne3pg3_gnu_24x50/run",
+      "candidate": "/glade/derecho/scratch/$USER/pycam-sima/seven_suite_validation/20260729-fcam4-esmf-calday-fix/history",
       "log": "logs/6949141.desched1.OU",
       "result": "BFB"
     },
@@ -58,8 +58,8 @@
       "walltime": "00:07:36",
       "exit_status": 0,
       "native_calls": 18923,
-      "oracle": "/glade/derecho/scratch/ruitong/pycam-sima/FCAM7_ne3pg3_gnu_24x50/FCAM7_ne3pg3_gnu_24x50/run",
-      "candidate": "/glade/derecho/scratch/ruitong/pycam-sima/seven_suite_validation/20260729-seven-suite-final/FCAM7/history",
+      "oracle": "/glade/derecho/scratch/$USER/pycam-sima/FCAM7_ne3pg3_gnu_24x50/FCAM7_ne3pg3_gnu_24x50/run",
+      "candidate": "/glade/derecho/scratch/$USER/pycam-sima/seven_suite_validation/20260729-seven-suite-final/FCAM7/history",
       "log": "logs/6949196.desched1.OU",
       "result": "BFB"
     },
@@ -71,8 +71,8 @@
       "walltime": "00:06:40",
       "exit_status": 0,
       "native_calls": 16258,
-      "oracle": "/glade/derecho/scratch/ruitong/pycam-sima/FHS94_ne3pg3_gnu_24x50/FHS94_ne3pg3_gnu_24x50/run",
-      "candidate": "/glade/derecho/scratch/ruitong/pycam-sima/seven_suite_validation/20260729-seven-suite-final/FHS94/history",
+      "oracle": "/glade/derecho/scratch/$USER/pycam-sima/FHS94_ne3pg3_gnu_24x50/FHS94_ne3pg3_gnu_24x50/run",
+      "candidate": "/glade/derecho/scratch/$USER/pycam-sima/seven_suite_validation/20260729-seven-suite-final/FHS94/history",
       "log": "logs/6949193.desched1.OU",
       "result": "BFB"
     },
@@ -84,8 +84,8 @@
       "walltime": "00:08:02",
       "exit_status": 0,
       "native_calls": 17125,
-      "oracle": "/glade/derecho/scratch/ruitong/pycam-sima/FKESSLER_ne3pg3_gnu_24x50/FKESSLER_ne3pg3_gnu_24x50/run",
-      "candidate": "/glade/derecho/scratch/ruitong/pycam-sima/seven_suite_validation/20260729-seven-suite-final/FKESSLER/history",
+      "oracle": "/glade/derecho/scratch/$USER/pycam-sima/FKESSLER_ne3pg3_gnu_24x50/FKESSLER_ne3pg3_gnu_24x50/run",
+      "candidate": "/glade/derecho/scratch/$USER/pycam-sima/seven_suite_validation/20260729-seven-suite-final/FKESSLER/history",
       "log": "logs/6949195.desched1.OU",
       "result": "BFB"
     },
@@ -97,8 +97,8 @@
       "walltime": "00:07:06",
       "exit_status": 0,
       "native_calls": 16105,
-      "oracle": "/glade/derecho/scratch/ruitong/pycam-sima/scientific_oracles/FMUSICA_deterministic_20260728/run",
-      "candidate": "/glade/derecho/scratch/ruitong/pycam-sima/seven_suite_validation/20260729-seven-suite-final/FMUSICA/history",
+      "oracle": "/glade/derecho/scratch/$USER/pycam-sima/scientific_oracles/FMUSICA_deterministic_20260728/run",
+      "candidate": "/glade/derecho/scratch/$USER/pycam-sima/seven_suite_validation/20260729-seven-suite-final/FMUSICA/history",
       "log": "logs/6949198.desched1.OU",
       "result": "BFB"
     },
@@ -110,8 +110,8 @@
       "walltime": "00:07:03",
       "exit_status": 0,
       "native_calls": 16665,
-      "oracle": "/glade/derecho/scratch/ruitong/pycam-sima/FTJ16_ne3pg3_gnu_24x50/FTJ16_ne3pg3_gnu_24x50/run",
-      "candidate": "/glade/derecho/scratch/ruitong/pycam-sima/seven_suite_validation/20260729-seven-suite-final/FTJ16/history",
+      "oracle": "/glade/derecho/scratch/$USER/pycam-sima/FTJ16_ne3pg3_gnu_24x50/FTJ16_ne3pg3_gnu_24x50/run",
+      "candidate": "/glade/derecho/scratch/$USER/pycam-sima/seven_suite_validation/20260729-seven-suite-final/FTJ16/history",
       "log": "logs/6949194.desched1.OU",
       "result": "BFB"
     }

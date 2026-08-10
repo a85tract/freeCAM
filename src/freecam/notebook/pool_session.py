@@ -51,7 +51,7 @@ class PooledWorkerSession(NotebookSession):
         launcher: str | Sequence[str] = "mpiexec",
         hosts: str | Sequence[str] | None = None,
         launch_mode: str = "auto",
-        pbs_account: str = "UCUB0188",
+        pbs_account: str = "$PBS_ACCOUNT",
         pbs_queue: str = "develop",
         pbs_walltime: str = "00:30:00",
         python_executable: str | Path | None = None,

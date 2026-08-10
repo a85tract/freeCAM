@@ -2,7 +2,7 @@
   "schema_version": 1,
   "validated_at": "2026-07-25T20:40:23Z",
   "repository": {
-    "root": "/glade/work/ruitong/pycam-sima",
+    "root": "/glade/work/$USER/pycam-sima",
     "parent_commit": "e50912cae94ee5e1196d6834b4d0cc47940f56b8",
     "package_version": "0.16.0"
   },
@@ -70,7 +70,7 @@
     "steps": 50,
     "history_files": 51,
     "native_calls": 14904,
-    "run_root": "/glade/derecho/scratch/ruitong/pycam-sima/sfc-dynamic-20260725-142147"
+    "run_root": "/glade/derecho/scratch/$USER/pycam-sima/sfc-dynamic-20260725-142147"
   },
   "reference_rank_bfb_gate": {
     "job_id": "6907008.desched1",
@@ -83,9 +83,9 @@
     "history_files": 51,
     "numeric_variables": 26,
     "native_calls": 14904,
-    "oracle": "/glade/derecho/scratch/ruitong/pycam_sima_legacy_oracle_f8daa568/run",
-    "candidate": "/glade/derecho/scratch/ruitong/pycam-sima/sfc-generic-final-20260725-144600/history",
-    "compare_command": "env -u BASH_ENV .venv/bin/python -m pycam_sima.cli compare-history /glade/derecho/scratch/ruitong/pycam_sima_legacy_oracle_f8daa568/run /glade/derecho/scratch/ruitong/pycam-sima/sfc-generic-final-20260725-144600/history",
+    "oracle": "/glade/derecho/scratch/$USER/pycam_sima_legacy_oracle_f8daa568/run",
+    "candidate": "/glade/derecho/scratch/$USER/pycam-sima/sfc-generic-final-20260725-144600/history",
+    "compare_command": "env -u BASH_ENV .venv/bin/python -m pycam_sima.cli compare-history /glade/derecho/scratch/$USER/pycam_sima_legacy_oracle_f8daa568/run /glade/derecho/scratch/$USER/pycam-sima/sfc-generic-final-20260725-144600/history",
     "result": "BFB"
   },
   "scope": {

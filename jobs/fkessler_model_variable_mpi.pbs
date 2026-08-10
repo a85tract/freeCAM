@@ -1,15 +1,15 @@
 #!/bin/bash
-#PBS -A UCUB0188
+#PBS -A $PBS_ACCOUNT
 #PBS -q develop
 #PBS -l select=1:ncpus=24:mpiprocs=24:ompthreads=1:mem=80GB
 #PBS -l walltime=00:30:00
 #PBS -j oe
-#PBS -o /glade/work/ruitong/freeCAM/logs/
+#PBS -o /glade/work/$USER/freeCAM/logs/
 #PBS -N pycam_sfc
 
 set -euo pipefail
 
-PROJECT=/glade/work/ruitong/freeCAM
+PROJECT=/glade/work/$USER/freeCAM
 CONFIG=${CONFIG:-$PROJECT/configs/fkessler_model.yaml}
 RANKS=${RANKS:-24}
 RUN_DIR=${RUN_DIR:?set RUN_DIR to a directory containing atm_in}

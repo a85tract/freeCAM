@@ -1364,6 +1364,22 @@ git diff --check
 The CAM-SIMA source is pinned at commit
 `f8daa568eae2696b7c4ebff7768f02f5d097d9df`.
 
+## Site placeholders
+
+Job scripts, notebooks, and the recorded evidence under `validation/` refer to
+HPC locations through placeholders rather than one person's account:
+
+| Placeholder | Meaning |
+|---|---|
+| `$USER` | your own `/glade` home, work, and scratch directories |
+| `$PBS_ACCOUNT` | the PBS allocation to charge |
+| `$PI_ATM_SHARE` | the shared tree holding the PI-atm mapping files |
+
+`#PBS` directives are read by the scheduler before any shell expansion, so
+substitute these literally in `jobs/*.pbs` and `validation/jobs/*.pbs` before
+submitting. `/glade/campaign/cesm` paths are shared CESM community data and are
+written out in full.
+
 ## Licensing and redistribution
 
 freeCAM is licensed under the Apache License, Version 2.0 (`LICENSE.txt`).

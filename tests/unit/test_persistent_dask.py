@@ -324,7 +324,7 @@ def _request(tmp_path: Path) -> PersistentDaskRequest:
         log_dir=str(inputs["log_dir"]),
         ranks=24,
         launch_mode="pbs",
-        pbs_account="UCUB0188",
+        pbs_account="$PBS_ACCOUNT",
         pbs_queue="develop",
         pbs_walltime="00:10:00",
         startup_timeout=60.0,

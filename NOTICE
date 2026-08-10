@@ -1,6 +1,8 @@
 freeCAM
 Copyright (c) 2026 The Abstract Lab
 
+Individual contributor: Ruitong <cnitlrt@gmail.com>
+
 freeCAM is a Python-owned CAM runtime. Python owns the model control path,
 clock, decomposition, state, and coupling boundaries; the original Fortran
 numerical code supplies the calculations through generated bind(C) adapters.

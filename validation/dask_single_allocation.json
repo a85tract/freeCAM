@@ -2,7 +2,7 @@
   "schema_version": 1,
   "validated_at": "2026-07-22T17:15:08-06:00",
   "repository": {
-    "root": "/glade/work/ruitong/pycam-sima",
+    "root": "/glade/work/$USER/pycam-sima",
     "parent_commit": "5ad15704ba36fe23f6f975ebeae88eb4141f9716",
     "package_version": "0.8.0"
   },
@@ -16,7 +16,7 @@
     "command": "qsub jobs/dask_allocation_fanout_24x50.pbs",
     "resources": "select=1:ncpus=25:mpiprocs=24:ompthreads=1:mem=80GB",
     "walltime_used": "00:06:03",
-    "run_root": "/glade/derecho/scratch/ruitong/pycam-sima/dask_allocation/6852327.desched1",
+    "run_root": "/glade/derecho/scratch/$USER/pycam-sima/dask_allocation/6852327.desched1",
     "dask_workers": 1,
     "nested_qsub": 0
   },
@@ -59,7 +59,7 @@
   "validation": {
     "allocation_marker": "PYCAM_SIMA_DASK_ALLOCATION_OK job=6852327.desched1 segments=3 nested_qsub=0",
     "branch_marker": "PYCAM_SIMA_DASK_ALLOCATION_VALID job=6852327.desched1 ranks=24 nested_qsub=0 changed_field=air_temperature delta=1.0",
-    "oracle": "/glade/derecho/scratch/ruitong/pycam_sima_legacy_oracle_f8daa568/run",
+    "oracle": "/glade/derecho/scratch/$USER/pycam_sima_legacy_oracle_f8daa568/run",
     "history_files": 51,
     "numeric_variables": 26,
     "history_result": "BFB",

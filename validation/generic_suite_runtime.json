@@ -2,7 +2,7 @@
   "schema_version": 1,
   "validated_at": "2026-07-24T15:33:43-06:00",
   "repository": {
-    "root": "/glade/work/ruitong/pycam-sima",
+    "root": "/glade/work/$USER/pycam-sima",
     "parent_commit": "7ca7af92c9e6cb5236afb21105e5d0d6b100e5de",
     "package_version": "0.14.0",
     "working_tree": "uncommitted implementation under validation"
@@ -83,8 +83,8 @@
     "node": "dec2433",
     "resources": "select=1:ncpus=24:mpiprocs=24:ompthreads=1:mem=80GB",
     "walltime_used": "00:07:35",
-    "run_root": "/glade/derecho/scratch/ruitong/pycam-sima/generic_runtime_20260724-152405",
-    "log_path": "/glade/work/ruitong/pycam-sima/logs/6889053.desched1.OU",
+    "run_root": "/glade/derecho/scratch/$USER/pycam-sima/generic_runtime_20260724-152405",
+    "log_path": "/glade/work/$USER/pycam-sima/logs/6889053.desched1.OU",
     "completion_evidence": "rank-0 JSON emitted and PBS live query reports job finished",
     "runtime": "model",
     "suite": "kessler",
@@ -102,9 +102,9 @@
     "unresolved_schemes": 0
   },
   "bitwise_validation": {
-    "command": "uv run pycam-sima compare-history /glade/derecho/scratch/ruitong/pycam_sima_legacy_oracle_f8daa568/run /glade/derecho/scratch/ruitong/pycam-sima/generic_runtime_20260724-152405/history --files 51 --numeric-variables 26",
-    "oracle": "/glade/derecho/scratch/ruitong/pycam_sima_legacy_oracle_f8daa568/run",
-    "candidate": "/glade/derecho/scratch/ruitong/pycam-sima/generic_runtime_20260724-152405/history",
+    "command": "uv run pycam-sima compare-history /glade/derecho/scratch/$USER/pycam_sima_legacy_oracle_f8daa568/run /glade/derecho/scratch/$USER/pycam-sima/generic_runtime_20260724-152405/history --files 51 --numeric-variables 26",
+    "oracle": "/glade/derecho/scratch/$USER/pycam_sima_legacy_oracle_f8daa568/run",
+    "candidate": "/glade/derecho/scratch/$USER/pycam-sima/generic_runtime_20260724-152405/history",
     "files": 51,
     "numeric_variables": 26,
     "result": "BFB"

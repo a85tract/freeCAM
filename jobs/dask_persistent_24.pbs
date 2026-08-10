@@ -1,18 +1,18 @@
 #!/bin/bash
 #PBS -N pycam_pdask
-#PBS -A UCUB0188
+#PBS -A $PBS_ACCOUNT
 #PBS -q develop
 #PBS -l select=1:ncpus=25:mpiprocs=24:ompthreads=1:mem=80GB
 #PBS -l walltime=00:30:00
 #PBS -j oe
-#PBS -o /glade/work/ruitong/freeCAM/logs/
+#PBS -o /glade/work/$USER/freeCAM/logs/
 
 set -euo pipefail
 
-PROJECT=/glade/work/ruitong/freeCAM
+PROJECT=/glade/work/$USER/freeCAM
 CASE=$PROJECT/reference/cases/FKESSLER_ne3pg3_gnu_24x50
 INITIAL_RUN_DIR=${INITIAL_RUN_DIR:-$CASE/CaseDocs}
-VALIDATION_ROOT=${VALIDATION_ROOT:-/glade/derecho/scratch/ruitong/freecam/persistent-validation/${PBS_JOBID}}
+VALIDATION_ROOT=${VALIDATION_ROOT:-/glade/derecho/scratch/$USER/freecam/persistent-validation/${PBS_JOBID}}
 OUTPUT=${OUTPUT:-$VALIDATION_ROOT/dask_persistent.json}
 
 source "$CASE/.env_mach_specific.sh" >/dev/null 2>&1

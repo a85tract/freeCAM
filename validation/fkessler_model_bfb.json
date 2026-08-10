@@ -2,7 +2,7 @@
   "schema_version": 4,
   "validated_at": "2026-07-21T05:21:05-06:00",
   "repository": {
-    "root": "/glade/work/ruitong/pycam-sima",
+    "root": "/glade/work/$USER/pycam-sima",
     "git_head_before_changes": "82b9eab5bf6bf14c5d78eb62ff4f55fc7b7d820c",
     "cross_group_parent_commit": "db56591288d8635b61d745a9c9af81ad92a06cdf",
     "package_version": "0.7.1"
@@ -39,7 +39,7 @@
     "analytic_initial_condition": "moist_baroclinic_wave_dcmip2016"
   },
   "cam_sima": {
-    "root": "/glade/work/ruitong/pycam-sima/external/CAM-SIMA",
+    "root": "/glade/work/$USER/pycam-sima/external/CAM-SIMA",
     "commit": "f8daa568eae2696b7c4ebff7768f02f5d097d9df"
   },
   "python_owned_state": {
@@ -99,7 +99,7 @@
     }
   },
   "kernel_library": {
-    "path": "/glade/work/ruitong/pycam-sima/build/libpycam_sima_kernels.so",
+    "path": "/glade/work/$USER/pycam-sima/build/libpycam_sima_kernels.so",
     "sha256": "44dc0a9e1d491ca1e1ae58de547ff433e3256c968ebbb1325e471598b8fcad6f",
     "size_bytes": 220312,
     "abi_version": 2,
@@ -128,8 +128,8 @@
     "pbs_job_id": "6829430.desched1",
     "pbs_exit_status": 0,
     "walltime": "00:07:16",
-    "run_dir": "/glade/derecho/scratch/ruitong/pycam-sima/cross_group_20260721-051232/run",
-    "history_dir": "/glade/derecho/scratch/ruitong/pycam-sima/cross_group_20260721-051232/history",
+    "run_dir": "/glade/derecho/scratch/$USER/pycam-sima/cross_group_20260721-051232/run",
+    "history_dir": "/glade/derecho/scratch/$USER/pycam-sima/cross_group_20260721-051232/history",
     "result": {
       "runtime": "model",
       "mpi_ranks": 24,
@@ -146,7 +146,7 @@
   },
   "oracle_comparison": {
     "oracle_kind": "external pinned CAM-SIMA executable output; not a pycam-sima backend",
-    "oracle_dir": "/glade/derecho/scratch/ruitong/pycam_sima_legacy_oracle_f8daa568/run",
+    "oracle_dir": "/glade/derecho/scratch/$USER/pycam_sima_legacy_oracle_f8daa568/run",
     "result": "BFB",
     "history_file_set_equal": true,
     "history_files": 51,

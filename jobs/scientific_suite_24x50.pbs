@@ -1,15 +1,15 @@
 #!/bin/bash
 #PBS -N pycam_suite_24x50
-#PBS -A UCUB0188
+#PBS -A $PBS_ACCOUNT
 #PBS -q develop
 #PBS -l select=1:ncpus=24:mpiprocs=24:ompthreads=1:mem=80GB
 #PBS -l walltime=00:30:00
 #PBS -j oe
-#PBS -o /glade/work/ruitong/freeCAM/logs/
+#PBS -o /glade/work/$USER/freeCAM/logs/
 
 set -euo pipefail
 
-REPO=${REPO:-/glade/work/ruitong/freeCAM}
+REPO=${REPO:-/glade/work/$USER/freeCAM}
 : "${SUITE_CONFIG:?set SUITE_CONFIG to a ModelConfig YAML}"
 : "${CASE_ENV:?set CASE_ENV to the suite reference case environment script}"
 : "${ORACLE_RUN:?set ORACLE_RUN to the immutable CAM-SIMA run directory}"

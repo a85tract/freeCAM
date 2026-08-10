@@ -1,18 +1,18 @@
 #!/bin/bash
-#PBS -A UCUB0188
+#PBS -A $PBS_ACCOUNT
 #PBS -q develop
 #PBS -l select=1:ncpus=24:mpiprocs=24:ompthreads=1:mem=80GB
 #PBS -l walltime=00:30:00
 #PBS -j oe
-#PBS -o /glade/work/ruitong/freeCAM/logs/
+#PBS -o /glade/work/$USER/freeCAM/logs/
 #PBS -N pycam_dynamic
 
 set -euo pipefail
 
-PROJECT=/glade/work/ruitong/freeCAM
+PROJECT=/glade/work/$USER/freeCAM
 CASE=$PROJECT/reference/cases/FKESSLER_ne3pg3_gnu_24x50
-REFERENCE_RUN=/glade/derecho/scratch/ruitong/pycam-sima/FKESSLER_ne3pg3_gnu_24x50/FKESSLER_ne3pg3_gnu_24x50/run
-ROOT=/glade/derecho/scratch/ruitong/freecam/dynamic_runtime/${PBS_JOBID}
+REFERENCE_RUN=/glade/derecho/scratch/$USER/pycam-sima/FKESSLER_ne3pg3_gnu_24x50/FKESSLER_ne3pg3_gnu_24x50/run
+ROOT=/glade/derecho/scratch/$USER/freecam/dynamic_runtime/${PBS_JOBID}
 RUN_DIR=$ROOT/run
 
 mkdir -p "$RUN_DIR"

@@ -2,7 +2,7 @@
   "schema_version": 1,
   "validated_at": "2026-07-23T06:40:42.745556+00:00",
   "repository": {
-    "root": "/glade/work/ruitong/pycam-sima",
+    "root": "/glade/work/$USER/pycam-sima",
     "parent_commit": "ccfe5fdd1522fce3a986b494cbe37fab099f694b",
     "package_version": "0.9.0"
   },
@@ -16,7 +16,7 @@
   },
   "pbs_mode": {
     "controller_command": ".venv/bin/python tools/dask_granular_pbs_smoke.py",
-    "run_root": "/glade/derecho/scratch/ruitong/pycam-sima/dask_granular_pbs/20260723-000905",
+    "run_root": "/glade/derecho/scratch/$USER/pycam-sima/dask_granular_pbs/20260723-000905",
     "root_segment": {
       "pbs_job_id": "6859162.desched1",
       "exit_status": 0,
@@ -74,7 +74,7 @@
     "exit_status": 0,
     "resources": "select=1:ncpus=25:mpiprocs=24:ompthreads=1:mem=80GB",
     "walltime_used": "00:10:45",
-    "run_root": "/glade/derecho/scratch/ruitong/pycam-sima/dask_granular/6859342.desched1",
+    "run_root": "/glade/derecho/scratch/$USER/pycam-sima/dask_granular/6859342.desched1",
     "execution_mode": "allocation",
     "dask_workers": 1,
     "nested_qsub": 0,
@@ -155,7 +155,7 @@
       "bytes_compared": 35841016,
       "native_calls_delta": 0,
       "pbs_job_id": "6859342.desched1",
-      "log_path": "/glade/work/ruitong/pycam-sima/logs/pycam_direct_phase_6859342.log"
+      "log_path": "/glade/work/$USER/pycam-sima/logs/pycam_direct_phase_6859342.log"
     },
     "kessler_native_call": {
       "action_index": 8,
@@ -181,7 +181,7 @@
       "history_samples": 51,
       "history_files": 51,
       "numeric_variables": 26,
-      "oracle": "/glade/derecho/scratch/ruitong/pycam_sima_legacy_oracle_f8daa568/run",
+      "oracle": "/glade/derecho/scratch/$USER/pycam_sima_legacy_oracle_f8daa568/run",
       "result": "BFB"
     },
     "granular_marker": "PYCAM_SIMA_DASK_GRANULAR_OK job=6859342.desched1 actions=10 ranks=24 nested_qsub=0",

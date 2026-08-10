@@ -5,7 +5,7 @@
     "dimension_expression": 2,
     "host_framework_module": 65
   },
-  "cam_root": "/glade/work/ruitong/pycam-sima/external/CAM-SIMA",
+  "cam_root": "/glade/work/$USER/pycam-sima/external/CAM-SIMA",
   "descriptor_override_count": 2,
   "descriptor_override_source": "devices/overrides.yaml",
   "device_abi_v1_compatible": 116,

@@ -13,7 +13,7 @@
       "ccpp_mpi_communicator"
     ],
     "first_difference": null,
-    "path": "/glade/derecho/scratch/ruitong/pycam-sima/python-runtime-process/6965181.desched1/run/python-process-step-25",
+    "path": "/glade/derecho/scratch/$USER/pycam-sima/python-runtime-process/6965181.desched1/run/python-process-step-25",
     "scientific_state_arrays_bitwise_identical": true,
     "transport": "checkpoint"
   },
@@ -116,15 +116,15 @@
   },
   "unmodified_baseline": {
     "arrays_compared": 6144,
-    "checkpoint_path": "/glade/derecho/scratch/ruitong/pycam-sima/python-runtime-process/6965181.desched1/run/unmodified-step-25",
+    "checkpoint_path": "/glade/derecho/scratch/$USER/pycam-sima/python-runtime-process/6965181.desched1/run/unmodified-step-25",
     "excluded_runtime_local_fields": [
       "ccpp_mpi_communicator"
     ],
     "first_difference": null,
     "history_bfb": true,
     "history_segments": [
-      "/glade/derecho/scratch/ruitong/pycam-sima/python-runtime-process/6965181.desched1/run/models/python-runtime-process/baseline/history",
-      "/glade/derecho/scratch/ruitong/pycam-sima/python-runtime-process/6965181.desched1/run/models/python-runtime-process/baseline-restarted/history"
+      "/glade/derecho/scratch/$USER/pycam-sima/python-runtime-process/6965181.desched1/run/models/python-runtime-process/baseline/history",
+      "/glade/derecho/scratch/$USER/pycam-sima/python-runtime-process/6965181.desched1/run/models/python-runtime-process/baseline-restarted/history"
     ],
     "scientific_state_arrays_match_noop_run": true,
     "step": 50

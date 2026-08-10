@@ -11,14 +11,14 @@ die() { print -ru2 -- "[PI-atm] ERROR: $*"; exit 1; }
 
 repo_root=${0:A:h:h:h:h}
 # Do not inherit an unrelated interactive-shell PROJECT value implicitly.
-account=${PYCESM_PROJECT:-UCUB0188}
+account=${PYCESM_PROJECT:-$PBS_ACCOUNT}
 priority=${PRIORITY:-regular}
 queue=${QUEUE:-develop}
 walltime=${WALLTIME:-02:00:00}
 source_root=${ICESM_SOURCE_ROOT:-${repo_root}/external/iCESM1.3.1_fzhu}
-case_root=${CESM_CASE_ROOT:-/glade/work/ruitong/CESM_cases}
-output_root=${CESM_OUTPUT_ROOT:-/glade/derecho/scratch/ruitong/pyCAM/PI-cam}
-mapping_root=${PI_ATM_MAPPING_ROOT:-/glade/work/fengzhu/Projects/pyCESM/test_cases/PI/mappings}
+case_root=${CESM_CASE_ROOT:-/glade/work/$USER/CESM_cases}
+output_root=${CESM_OUTPUT_ROOT:-/glade/derecho/scratch/$USER/pyCAM/PI-cam}
+mapping_root=${PI_ATM_MAPPING_ROOT:-/glade/work/$PI_ATM_SHARE/Projects/pyCESM/test_cases/PI/mappings}
 casetag=${CASE_TAG:-PI-cam-oracle.50step}
 resolution=ne16_g16
 compset=1850_CAM50_CLM40%SP_CICE%PRES_DOCN%DOM_RTM_SGLC_SWAV

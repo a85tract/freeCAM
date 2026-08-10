@@ -410,7 +410,7 @@ class PICAMNotebookSession:
         python_executable: str | Path | None = None,
         launcher: str | Sequence[str] = "mpiexec",
         launch_mode: str = "auto",
-        pbs_account: str = "UCUB0188",
+        pbs_account: str = "$PBS_ACCOUNT",
         pbs_queue: str = "develop",
         pbs_walltime: str = "02:00:00",
         startup_timeout: float = 1200.0,

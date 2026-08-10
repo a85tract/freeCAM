@@ -42,7 +42,7 @@
   "mpi_ranks": 512,
   "native_leaf_library_sha256": "9cf3c6f43c8958e7b2a350fbff867d5a8b35bc3036c0152fb2e058f6c8677357",
   "native_library_sha256": "0e061f2b6c122088e5c1355e0bbf96de5ce4dbae759b14ad2750fcd16ec68969",
-  "native_manifest": "/glade/work/ruitong/pycam-sima-pi-cam-only/build/pi_cam_zero_copy/native_cam_manifest.json",
+  "native_manifest": "/glade/work/$USER/pycam-sima-pi-cam-only/build/pi_cam_zero_copy/native_cam_manifest.json",
   "native_state_ownership": "python-owned-zero-copy-derived-shell",
   "pbs_job_id": "7061542.desched1",
   "rank_created_fields": [

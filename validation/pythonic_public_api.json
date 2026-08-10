@@ -2,7 +2,7 @@
   "schema_version": 1,
   "validated_at": "2026-07-24T20:03:15-06:00",
   "repository": {
-    "root": "/glade/work/ruitong/pycam-sima",
+    "root": "/glade/work/$USER/pycam-sima",
     "parent_commit": "7ca7af92c9e6cb5236afb21105e5d0d6b100e5de",
     "package_version": "0.15.0",
     "working_tree": "uncommitted implementation under validation"
@@ -87,20 +87,20 @@
     ],
     "nested_pbs_jobs": 0,
     "result": "PASS",
-    "record": "/glade/derecho/scratch/ruitong/pycam-sima/persistent-validation/6895931.desched1/dask_persistent.json"
+    "record": "/glade/derecho/scratch/$USER/pycam-sima/persistent-validation/6895931.desched1/dask_persistent.json"
   },
   "default_numeric_gate": {
     "pbs_job_id": "6894529.desched1",
     "walltime_used": "00:07:15",
     "completion_evidence": "rank-0 step-50 JSON emitted and PBS live query reports job finished",
-    "run_root": "/glade/derecho/scratch/ruitong/pycam-sima/pythonic_api_20260724-183824",
+    "run_root": "/glade/derecho/scratch/$USER/pycam-sima/pythonic_api_20260724-183824",
     "mpi_ranks": 24,
     "steps": 50,
     "history_files": 51,
     "numeric_variables": 26,
     "initialized_native_calls": 0,
     "native_calls": 14904,
-    "oracle": "/glade/derecho/scratch/ruitong/pycam_sima_legacy_oracle_f8daa568/run",
+    "oracle": "/glade/derecho/scratch/$USER/pycam_sima_legacy_oracle_f8daa568/run",
     "result": "BFB"
   },
   "local_verification": {

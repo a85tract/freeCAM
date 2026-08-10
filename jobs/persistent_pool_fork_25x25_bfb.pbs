@@ -1,18 +1,18 @@
 #!/bin/bash
 #PBS -N pycam_actor_bfb
-#PBS -A UCUB0188
+#PBS -A $PBS_ACCOUNT
 #PBS -q develop
 #PBS -l select=4:ncpus=24:mpiprocs=24:ompthreads=1:mem=80GB
 #PBS -l walltime=00:30:00
 #PBS -j oe
-#PBS -o /glade/work/ruitong/freeCAM/logs/
+#PBS -o /glade/work/$USER/freeCAM/logs/
 
 set -euo pipefail
 
-PROJECT=/glade/work/ruitong/freeCAM
+PROJECT=/glade/work/$USER/freeCAM
 CASE=$PROJECT/reference/cases/FKESSLER_ne3pg3_gnu_24x50
-ORACLE=/glade/derecho/scratch/ruitong/pycam_sima_legacy_oracle_f8daa568/run
-ROOT=/glade/derecho/scratch/ruitong/freecam/persistent-pool-fork-25x25/${PBS_JOBID}
+ORACLE=/glade/derecho/scratch/$USER/pycam_sima_legacy_oracle_f8daa568/run
+ROOT=/glade/derecho/scratch/$USER/freecam/persistent-pool-fork-25x25/${PBS_JOBID}
 OUTPUT=$ROOT/persistent_pool_fork_25x25_bfb.json
 
 source "$CASE/.env_mach_specific.sh" >/dev/null 2>&1

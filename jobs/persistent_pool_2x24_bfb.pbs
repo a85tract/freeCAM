@@ -1,19 +1,19 @@
 #!/bin/bash
 #PBS -N pycam_pool_bfb
-#PBS -A UCUB0188
+#PBS -A $PBS_ACCOUNT
 #PBS -q develop
 #PBS -l select=2:ncpus=24:mpiprocs=24:ompthreads=1:mem=80GB
 #PBS -l walltime=00:30:00
 #PBS -j oe
-#PBS -o /glade/work/ruitong/freeCAM/logs/
+#PBS -o /glade/work/$USER/freeCAM/logs/
 
 set -euo pipefail
 
-PROJECT=/glade/work/ruitong/freeCAM
+PROJECT=/glade/work/$USER/freeCAM
 CASE=$PROJECT/reference/cases/FKESSLER_ne3pg3_gnu_24x50
 INITIAL_RUN_DIR=${INITIAL_RUN_DIR:-$CASE/CaseDocs}
-ORACLE_HISTORY=${ORACLE_HISTORY:-/glade/derecho/scratch/ruitong/pycam_sima_legacy_oracle_f8daa568/run}
-VALIDATION_ROOT=${VALIDATION_ROOT:-/glade/derecho/scratch/ruitong/freecam/persistent-pool-validation/${PBS_JOBID}}
+ORACLE_HISTORY=${ORACLE_HISTORY:-/glade/derecho/scratch/$USER/pycam_sima_legacy_oracle_f8daa568/run}
+VALIDATION_ROOT=${VALIDATION_ROOT:-/glade/derecho/scratch/$USER/freecam/persistent-pool-validation/${PBS_JOBID}}
 OUTPUT=${OUTPUT:-$VALIDATION_ROOT/persistent_pool_bfb.json}
 
 export OMP_NUM_THREADS=1

@@ -49,7 +49,7 @@ ExecutionMode = Literal["pbs", "allocation"]
 
 @dataclass(frozen=True, slots=True)
 class DaskPBSOptions:
-    account: str = "UCUB0188"
+    account: str = "$PBS_ACCOUNT"
     queue: str = "develop"
     walltime: str = "00:30:00"
     ranks: int = 24

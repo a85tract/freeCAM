@@ -60,7 +60,7 @@ def test_root_api_delegates_to_responsibility_packages() -> None:
 
 def test_maintained_pbs_jobs_write_to_the_shared_log_directory() -> None:
     repository = Path(__file__).resolve().parents[2]
-    output_directive = "#PBS -o /glade/work/ruitong/freeCAM/logs/"
+    output_directive = "#PBS -o /glade/work/$USER/freeCAM/logs/"
 
     jobs = tuple((repository / "jobs").glob("*.pbs"))
     assert jobs

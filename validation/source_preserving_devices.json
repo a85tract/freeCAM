@@ -2,12 +2,12 @@
   "schema_version": 1,
   "validated_at": "2026-07-23T13:59:15-06:00",
   "repository": {
-    "root": "/glade/work/ruitong/pycam-sima",
+    "root": "/glade/work/$USER/pycam-sima",
     "parent_commit": "44f3954a8e7dd5d2bfde2f6da84923921a7c5828",
     "package_version": "0.10.0"
   },
   "cam_sima": {
-    "root": "/glade/work/ruitong/pycam-sima/external/CAM-SIMA",
+    "root": "/glade/work/$USER/pycam-sima/external/CAM-SIMA",
     "commit": "f8daa568eae2696b7c4ebff7768f02f5d097d9df"
   },
   "architecture": {
@@ -103,8 +103,8 @@
     "mpi_ranks": 24,
     "threads_per_rank": 1,
     "walltime": "00:07:34",
-    "run_dir": "/glade/derecho/scratch/ruitong/pycam-sima/source_devices_20260723-135026/run",
-    "history_dir": "/glade/derecho/scratch/ruitong/pycam-sima/source_devices_20260723-135026/history",
+    "run_dir": "/glade/derecho/scratch/$USER/pycam-sima/source_devices_20260723-135026/run",
+    "history_dir": "/glade/derecho/scratch/$USER/pycam-sima/source_devices_20260723-135026/history",
     "steps": 50,
     "history_samples": 51,
     "native_calls": 14904,
@@ -117,7 +117,7 @@
   },
   "oracle_comparison": {
     "oracle_kind": "external pinned CAM-SIMA executable output",
-    "oracle_dir": "/glade/derecho/scratch/ruitong/pycam_sima_legacy_oracle_f8daa568/run",
+    "oracle_dir": "/glade/derecho/scratch/$USER/pycam_sima_legacy_oracle_f8daa568/run",
     "result": "BFB",
     "history_file_set_equal": true,
     "history_files": 51,
