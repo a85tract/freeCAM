@@ -8,11 +8,17 @@ import numpy as np
 import pytest
 import yaml
 
+import freecam.pi_cam.adapter_validation as adapter_validation
 from freecam.core.fortran_adapter import PointerTableAdapter
 from freecam.pi_cam.errors import PICAMConfigurationError
 from freecam.pi_cam.source_catalog import (
     PICAMKernelRules,
     PICAMSourceCatalog,
+)
+from freecam.pi_cam.adapter_validation import (
+    AdapterBuildContext,
+    PICAMAdapterValidator,
+    load_adapter_build_contexts,
 )
 
 
@@ -82,6 +88,98 @@ def test_source_catalog_scans_every_procedure_and_resolves_calls(tmp_path: Path)
     assert procedures["heat"].arguments[0].dimensions == ("local_columns",)
     assert procedures["heat"].resolved_calls == ("toy_physics::limiter",)
     assert procedures["limiter"].qualified_name == "toy_physics::limiter"
+
+
+def test_private_module_procedure_does_not_generate_external_adapter(
+    tmp_path: Path,
+) -> None:
+    source_root = tmp_path / "source"
+    physics = source_root / "components/cam/src/physics"
+    physics.mkdir(parents=True)
+    (physics / "visibility.F90").write_text(
+        """module visibility
+  implicit none
+  private
+  public :: public_kernel
+contains
+  subroutine public_kernel(value)
+    real, intent(inout) :: value
+    value = value + 1.0
+  end subroutine public_kernel
+  subroutine private_kernel(value)
+    real, intent(inout) :: value
+    value = value - 1.0
+  end subroutine private_kernel
+end module visibility
+"""
+    )
+    rules = _write_rules(tmp_path / "rules.yaml")
+    catalog = PICAMSourceCatalog.discover(
+        tmp_path,
+        source_root=source_root,
+        rules_path=rules,
+        scan_roots=(physics,),
+    )
+
+    public = catalog.procedure("visibility::public_kernel")
+    private = catalog.procedure("visibility::private_kernel")
+    assert public.adapter_status == "candidate"
+    assert "private_module_procedure" not in public.blockers
+    assert private.adapter_status == "blocked"
+    assert "private_module_procedure" in private.blockers
+
+    output = tmp_path / "catalog"
+    catalog.write_descriptors(output)
+    assert (output / "visibility__public_kernel/adapter.F90").is_file()
+    assert not (output / "visibility__private_kernel/adapter.F90").exists()
+
+
+def test_rules_apply_build_default_real_and_ast_dimension_shape(
+    tmp_path: Path,
+) -> None:
+    source_root = tmp_path / "source"
+    physics = source_root / "components/cam/src/physics/cosp"
+    physics.mkdir(parents=True)
+    (physics / "promoted.F90").write_text(
+        """module promoted
+contains
+  subroutine update(values)
+    real, dimension(:, :), intent(inout) :: values
+    values = values + 1.0
+  end subroutine update
+end module promoted
+"""
+    )
+    rules = tmp_path / "rules.yaml"
+    rules.write_text(
+        """schema_version: 1
+kind_map: {}
+dimension_aliases: {}
+rules:
+  - id: promoted-default-real
+    match:
+      source_regex: /cosp/promoted\\.F90$
+    set:
+      default_real_dtype: float64
+overrides: {}
+"""
+    )
+
+    catalog = PICAMSourceCatalog.discover(
+        tmp_path,
+        source_root=source_root,
+        rules_path=rules,
+        scan_roots=(physics,),
+    )
+    argument = catalog.procedure("promoted::update").arguments[0]
+    assert argument.dtype == "float64"
+    assert argument.rank == 2
+    assert argument.dimensions == (":", ":")
+    output = tmp_path / "catalog"
+    catalog.write_descriptors(output)
+    assert "real(c_double), pointer :: arg_values(:,:)" in (
+        output / "promoted__update/adapter.F90"
+    ).read_text()
 
 
 def test_catalog_writes_one_descriptor_per_parsed_procedure(tmp_path: Path) -> None:
@@ -228,6 +326,311 @@ end subroutine scale
         "scale", {"values": values, "count": count}, fcomm=0
     )
     assert np.array_equal(values, np.array([2.0, 4.0, 6.0]))
+
+
+def test_generated_adapter_validator_compiles_resolves_and_smokes_abi_families(
+    tmp_path: Path,
+) -> None:
+    compiler = Path("/opt/cray/pe/gcc/12.2.0/bin/gfortran")
+    executable = str(compiler) if compiler.is_file() else shutil.which("gfortran")
+    if executable is None:
+        pytest.skip("gfortran is unavailable")
+    source_root = tmp_path / "source"
+    physics = source_root / "components/cam/src/physics"
+    original = _write_source(physics / "toy_physics.F90")
+    rules = _write_rules(tmp_path / "rules.yaml")
+    catalog = PICAMSourceCatalog.discover(
+        tmp_path,
+        source_root=source_root,
+        rules_path=rules,
+        scan_roots=(physics,),
+    )
+    descriptors = tmp_path / "catalog"
+    catalog.write_descriptors(descriptors)
+    heat_descriptor_path = descriptors / "toy_physics__heat/kernel.yaml"
+    heat_descriptor = yaml.safe_load(heat_descriptor_path.read_text())
+    heat_descriptor["active_plan_actions"] = ["test.heat"]
+    heat_descriptor_path.write_text(yaml.safe_dump(heat_descriptor, sort_keys=False))
+
+    module_dir = tmp_path / "modules"
+    module_dir.mkdir()
+    original_object = module_dir / "toy_physics.o"
+    subprocess.run(
+        [
+            executable,
+            "-c",
+            "-fPIC",
+            "-J",
+            str(module_dir),
+            str(original),
+            "-o",
+            str(original_object),
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    archive = tmp_path / "libtoy.a"
+    subprocess.run(
+        ["ar", "rcs", str(archive), str(original_object)],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+
+    report = PICAMAdapterValidator(
+        descriptors,
+        compiler=executable,
+        module_dirs=(module_dir,),
+        original_library=archive,
+        work_root=tmp_path / "validation-build",
+        workers=2,
+    ).validate()
+
+    assert report["generated_adapters"] == 2
+    assert report["parse_status_counts"] == {"passed": 2}
+    assert report["compile_status_counts"] == {"passed": 2}
+    assert report["archive_symbol_status_counts"] == {"passed": 2}
+    assert report["case_build_gate"]["passed"] is True
+    assert report["case_build_gate"]["compiled_and_symbol_resolved"] == 2
+    assert report["abi_signature_families"] == 2
+    assert report["abi_smoke_status_counts"] == {"passed": 2}
+    assert report["active_plan"]["procedures"] == 1
+    assert report["active_plan"]["reachable_procedures"] == 2
+    assert report["active_plan"]["reachable_generated_adapter_count"] == 2
+    assert report["active_plan"]["reachable_generated_build"][
+        "compile_status_counts"
+    ] == {"passed": 2}
+    assert report["scientific_bfb_scope"]["status_counts"] == {
+        "required_pending_runtime_trace": 2
+    }
+
+
+def test_generated_adapter_validator_classifies_missing_case_module(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    compiler = Path("/opt/cray/pe/gcc/12.2.0/bin/gfortran")
+    executable = str(compiler) if compiler.is_file() else shutil.which("gfortran")
+    if executable is None:
+        pytest.skip("gfortran is unavailable")
+    source_root = tmp_path / "source"
+    physics = source_root / "components/cam/src/physics"
+    _write_source(physics / "toy_physics.F90")
+    rules = _write_rules(tmp_path / "rules.yaml")
+    catalog = PICAMSourceCatalog.discover(
+        tmp_path,
+        source_root=source_root,
+        rules_path=rules,
+        scan_roots=(physics,),
+    )
+    descriptors = tmp_path / "catalog"
+    catalog.write_descriptors(descriptors)
+
+    def fail_parser(path: Path) -> None:
+        raise RuntimeError(f"parser tool failed for {path.name}")
+
+    monkeypatch.setattr(adapter_validation, "_parse_fortran", fail_parser)
+
+    report = PICAMAdapterValidator(
+        descriptors,
+        compiler=executable,
+        work_root=tmp_path / "validation-build",
+    ).validate()
+
+    assert report["parse_status_counts"] == {"parser_tool_error": 2}
+    assert report["compile_status_counts"] == {"failed": 2}
+    assert report["failure_kind_counts"] == {"module_not_in_case_build": 2}
+    assert report["full_compile_gate"]["passed"] is False
+    assert report["full_compile_gate"]["compile_failures"] == 2
+    assert report["case_build_gate"]["passed"] is False
+
+
+def test_generated_adapters_select_matching_real_build_context(
+    tmp_path: Path,
+) -> None:
+    compiler = Path("/opt/cray/pe/gcc/12.2.0/bin/gfortran")
+    executable = str(compiler) if compiler.is_file() else shutil.which("gfortran")
+    if executable is None:
+        pytest.skip("gfortran is unavailable")
+    source_root = tmp_path / "source"
+    physics = source_root / "components/cam/src/physics"
+    physics.mkdir(parents=True)
+    sources = []
+    for suffix in ("a", "b"):
+        source = physics / f"kernel_{suffix}.F90"
+        source.write_text(
+            f"""module kernel_{suffix}
+  use iso_fortran_env, only: real64
+contains
+  subroutine run_{suffix}(value)
+    real(kind=real64), intent(inout) :: value(:)
+    value = value + 1.0_real64
+  end subroutine run_{suffix}
+end module kernel_{suffix}
+"""
+        )
+        sources.append(source)
+    catalog = PICAMSourceCatalog.discover(
+        tmp_path,
+        source_root=source_root,
+        rules_path=_write_rules(tmp_path / "rules.yaml"),
+        scan_roots=(physics,),
+    )
+    descriptors = tmp_path / "catalog"
+    catalog.write_descriptors(descriptors)
+
+    contexts = []
+    for suffix, source in zip(("a", "b"), sources):
+        module_dir = tmp_path / f"modules-{suffix}"
+        module_dir.mkdir()
+        object_path = module_dir / f"kernel_{suffix}.o"
+        subprocess.run(
+            [
+                executable,
+                "-c",
+                "-fPIC",
+                "-J",
+                str(module_dir),
+                str(source),
+                "-o",
+                str(object_path),
+            ],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        archive = module_dir / f"libkernel_{suffix}.a"
+        subprocess.run(
+            ["ar", "rcs", str(archive), str(object_path)],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        contexts.append(
+            AdapterBuildContext(
+                name=f"context-{suffix}",
+                module_dirs=(module_dir,),
+                original_libraries=(archive,),
+                selected_sources=frozenset(
+                    {f"components/cam/src/physics/kernel_{suffix}.F90"}
+                ),
+            )
+        )
+
+    report = PICAMAdapterValidator(
+        descriptors,
+        compiler=executable,
+        build_contexts=contexts,
+        work_root=tmp_path / "validation-build",
+        workers=2,
+    ).validate()
+
+    assert report["compile_status_counts"] == {"passed": 2}
+    assert report["archive_symbol_status_counts"] == {"passed": 2}
+    assert report["full_compile_gate"] == {
+        "archive_symbol_failures": 0,
+        "compile_failures": 0,
+        "compiled_and_symbol_resolved": 2,
+        "passed": True,
+    }
+    selected = {item["name"]: item["selected_context"] for item in report["adapters"]}
+    assert selected == {
+        "kernel_a::run_a": "context-a",
+        "kernel_b::run_b": "context-b",
+    }
+    assert report["scientific_bfb_scope"]["status_counts"] == {
+        "not_exercised": 2
+    }
+
+
+def test_build_context_file_resolves_selected_cam_sources(tmp_path: Path) -> None:
+    source_dir = tmp_path / "source/components/cam/src/physics/cam"
+    source_dir.mkdir(parents=True)
+    (source_dir / "kernel.F90").write_text("module kernel\nend module kernel\n")
+    cosp_dir = tmp_path / "source/components/cam/src/physics/cosp"
+    llnl_dir = cosp_dir / "llnl"
+    llnl_dir.mkdir(parents=True)
+    (llnl_dir / "llnl_stats.F90").write_text(
+        "module llnl_stats\nend module llnl_stats\n"
+    )
+    case_root = tmp_path / "case"
+    camconf = case_root / "Buildconf/camconf"
+    camconf.mkdir(parents=True)
+    (camconf / "Filepath").write_text(str(source_dir) + "\n")
+    build_root = tmp_path / "build"
+    object_dir = build_root / "atm/obj"
+    object_dir.mkdir(parents=True)
+    (object_dir / "Srcfiles").write_text("kernel.F90\n")
+    (object_dir / "kernel.mod").write_bytes(b"module-placeholder")
+    (build_root / "lib").mkdir()
+    (build_root / "lib/libatm.a").write_bytes(b"archive-placeholder")
+    cosp_build = object_dir / "cosp"
+    cosp_build.mkdir()
+    (cosp_build / "Makefile").write_text(
+        f"COSP_PATH := {cosp_dir}\nLLNL_PATH := {llnl_dir}\n"
+    )
+    member = cosp_build / "llnl_stats.o"
+    member.write_bytes(b"object-placeholder")
+    subprocess.run(
+        ["ar", "rcs", str(cosp_build / "libcosp.a"), str(member)],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    matrix = tmp_path / "contexts.yaml"
+    matrix.write_text(
+        yaml.safe_dump(
+            {
+                "schema_version": 1,
+                "contexts": [
+                    {
+                        "name": "test",
+                        "case_root": str(case_root),
+                        "build_root": str(build_root),
+                    }
+                ],
+            },
+            sort_keys=False,
+        )
+    )
+
+    (context,) = load_adapter_build_contexts(matrix)
+    assert context.selected_sources == frozenset(
+        {
+            "components/cam/src/physics/cam/kernel.F90",
+            "components/cam/src/physics/cosp/llnl/llnl_stats.F90",
+        }
+    )
+    assert context.module_dirs == (object_dir.resolve(),)
+    assert context.original_libraries == (
+        cosp_build / "libcosp.a",
+        (build_root / "lib/libatm.a").resolve(),
+    )
+
+
+def test_build_context_report_hides_personal_glade_path(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("USER", "example_user")
+    context = AdapterBuildContext(
+        name="portable",
+        module_dirs=(Path("/glade/work/example_user/case/bld/atm/obj"),),
+        original_libraries=(
+            Path("/glade/derecho/scratch/example_user/case/bld/lib/libatm.a"),
+        ),
+        build_root=Path("/glade/derecho/scratch/example_user/case/bld"),
+        case_root=Path("/glade/work/example_user/case"),
+    )
+
+    record = context.as_dict()
+
+    assert record["case_root"] == "/glade/work/$USER/case"
+    assert record["build_root"] == "/glade/derecho/scratch/$USER/case/bld"
+    assert record["module_dirs"] == ["/glade/work/$USER/case/bld/atm/obj"]
+    assert record["original_libraries"] == [
+        "/glade/derecho/scratch/$USER/case/bld/lib/libatm.a"
+    ]
 
 
 def test_complex_kind_maps_to_c_interoperable_complex_dtype(tmp_path: Path) -> None:

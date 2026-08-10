@@ -1,0 +1,36 @@
+schema_version: 1
+
+# Each context is an original iCESM CAM build with a distinct source selection.
+# The validator resolves Filepath + Srcfiles, so an adapter is never compiled
+# against a same-named module produced from a different source variant.
+contexts:
+  - name: pi-cam-cam5
+    # Original PI-CAM oracle build (CAM5, ne16np4).
+    case_root: /glade/work/$USER/CESM_cases/f.e13.F1850C5.ne16_g16.icesm131_ihesp.PI-cam-oracle.50step
+    build_root: /glade/derecho/scratch/$USER/pyCAM/PI-cam/f.e13.F1850C5.ne16_g16.icesm131_ihesp.PI-cam-oracle.50step/bld
+
+  - name: cam5-clubb-cosp
+    # cpudev PBS 7081958.desched1; CAM_CONFIG_OPTS:
+    # -phys cam5 -water_tracer h2o_h216o_hdo_h218o -clubb_sgs -cosp
+    case_root: /glade/work/$USER/CESM_cases/freecam-adapter-clubb-cosp-20260810
+    build_root: /glade/derecho/scratch/$USER/freeCAM/adapter-contexts/freecam-adapter-clubb-cosp-20260810/bld
+
+  - name: cam4-legacy-radiation
+    # cpudev PBS 7081959.desched1; CAM_CONFIG_OPTS:
+    # -phys cam4 -water_tracer h2o_h216o_hdo_h218o
+    case_root: /glade/work/$USER/CESM_cases/freecam-adapter-cam4-20260810
+    build_root: /glade/derecho/scratch/$USER/freeCAM/adapter-contexts/freecam-adapter-cam4-20260810/bld
+
+  - name: cam5-waccmx
+    # cpudev PBS 7081965.desched1; FV 1.9x2.5; CAM_CONFIG_OPTS:
+    # -phys cam5 -chem waccmx_mozart -waccmx
+    case_root: /glade/work/$USER/CESM_cases/freecam-adapter-waccmx-20260810
+    build_root: /glade/derecho/scratch/$USER/freeCAM/adapter-contexts/freecam-adapter-waccmx-20260810/bld
+
+  - name: cam5-carma-test-passive-fv
+    # CARMA must be built with FV here: the SE preprocessor macro NP collides
+    # with a legacy CARMA dummy argument named NP before Fortran compilation.
+    # cpudev PBS 7082164.desched1; CAM_CONFIG_OPTS:
+    # -phys cam5 -water_tracer h2o_h216o_hdo_h218o -carma test_passive
+    case_root: /glade/work/$USER/CESM_cases/freecam-adapter-carma-fv-20260810
+    build_root: /glade/derecho/scratch/$USER/freeCAM/adapter-contexts/freecam-adapter-carma-fv-20260810/bld

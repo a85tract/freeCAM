@@ -13,6 +13,13 @@ kind_map:
   shr_kind_i4: int32
   int32: int32
   int64: int64
+  # CLUBB precision parameters in this pinned source/configuration.
+  dp: float64
+  core_rknd: float64
+  stat_rknd: float64
+  time_precision: float64
+  genrand_real: float64
+  stat_nknd: int32
 
 dimension_aliases:
   pcols: pcols
@@ -53,6 +60,39 @@ rules:
       has_blockers: [legacy_shared_storage, wildcard_module_import]
     set:
       adapter_status: context_required
+
+  - id: private-module-procedure-context
+    match:
+      has_blockers: [private_module_procedure]
+    set:
+      adapter_status: context_required
+
+  - id: unselected-nonmcica-rrtmg-driver
+    match:
+      source_regex: '/rrtmg/ext/rrtmg_(lw|sw)/rrtmg_(lw|sw)_rad\.f90$'
+    set:
+      adapter_status: context_required
+      add_blockers: [not_selected_by_cam_build]
+
+  - id: clubb-mkl-only-source
+    match:
+      source_regex: '/clubb/(gmres_cache|gmres_wrap)\.F90$'
+    set:
+      adapter_status: context_required
+      add_blockers: [requires_cpp_macro_mkl]
+
+  - id: silhs-latin-hypercube-only-source
+    match:
+      source_regex: '/silhs/latin_hypercube_driver_module\.F90$'
+    set:
+      adapter_status: context_required
+      add_blockers: [requires_cpp_macro_latin_hypercube]
+
+  - id: cosp-auto-r8-source
+    match:
+      source_regex: '/cosp/(cosp_utils|llnl/llnl_stats|MODIS_simulator/modis_simulator)\.F90$'
+    set:
+      default_real_dtype: float64
 
   - id: io-host-service
     match:

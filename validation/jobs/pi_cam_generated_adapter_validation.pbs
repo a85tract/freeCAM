@@ -1,0 +1,29 @@
+#!/bin/bash
+#PBS -N freecam-adapter-gate
+#PBS -A $PBS_ACCOUNT
+#PBS -q develop
+#PBS -l select=1:ncpus=32:mpiprocs=1:ompthreads=1:mem=80GB
+#PBS -l walltime=00:30:00
+#PBS -j oe
+#PBS -o /glade/work/$USER/freeCAM/logs/
+#PBS -V
+
+set -euo pipefail
+
+repo=/glade/work/$USER/freeCAM
+case_root=/glade/work/$USER/CESM_cases/f.e13.F1850C5.ne16_g16.icesm131_ihesp.PI-cam-python-state
+work_root=/glade/derecho/scratch/$USER/pyCAM/PI-cam/adapter-validation-${PBS_JOBID}
+
+source "${case_root}/.env_mach_specific.sh" >/dev/null 2>&1
+export PYTHONPATH=${repo}/src
+
+cd "${repo}"
+"${repo}/.venv/bin/python" -m freecam.cli validate-pi-cam-adapters \
+  --descriptor-root "${repo}/build/pi_cam_kernel_catalog" \
+  --compiler "$(command -v ftn)" \
+  --context-file "${repo}/validation/pi_cam_adapter_build_contexts.yaml" \
+  --work-root "${work_root}" \
+  --workers 32 \
+  --require-all-compile \
+  --require-all-abi-smoke \
+  --output "${repo}/validation/pi_cam_generated_adapter_validation.json"

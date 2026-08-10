@@ -558,6 +558,68 @@ def command_audit_pi_cam_kernels(args: argparse.Namespace) -> int:
     return 0
 
 
+def command_validate_pi_cam_adapters(args: argparse.Namespace) -> int:
+    """Compile generated PI-CAM adapters and exercise every ABI family."""
+
+    from .pi_cam.adapter_validation import PICAMAdapterValidator
+
+    root = _repo_root()
+    validator_kwargs = {
+        "compiler": args.compiler,
+        "work_root": args.work_root or root / "build/pi_cam_adapter_validation",
+        "workers": max(1, int(args.workers)),
+    }
+    descriptor_root = args.descriptor_root or root / "build/pi_cam_kernel_catalog"
+    if args.context_file:
+        if args.module_dir or args.original_library:
+            raise ValueError(
+                "--context-file cannot be combined with --module-dir or "
+                "--original-library"
+            )
+        validator = PICAMAdapterValidator.from_context_file(
+            descriptor_root,
+            context_file=args.context_file,
+            **validator_kwargs,
+        )
+    else:
+        validator = PICAMAdapterValidator(
+            descriptor_root,
+            module_dirs=args.module_dir or (),
+            original_library=args.original_library,
+            **validator_kwargs,
+        )
+    output = Path(
+        args.output or root / "validation/pi_cam_generated_adapter_validation.json"
+    ).resolve()
+    report = validator.validate()
+    output.parent.mkdir(parents=True, exist_ok=True)
+    output.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n")
+    summary = {
+        key: report[key]
+        for key in (
+            "generated_adapters",
+            "parse_status_counts",
+            "compile_status_counts",
+            "archive_symbol_status_counts",
+            "failure_kind_counts",
+            "full_compile_gate",
+            "case_build_gate",
+            "abi_signature_families",
+            "abi_smoke_status_counts",
+            "active_plan",
+        )
+    }
+    summary["output"] = str(output)
+    print(json.dumps(summary, sort_keys=True))
+    if args.require_all_compile and not report["full_compile_gate"]["passed"]:
+        return 4
+    if args.require_all_abi_smoke and report["abi_smoke_status_counts"] != {
+        "passed": report["abi_signature_families"]
+    }:
+        return 5
+    return 0
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(prog="freecam")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -738,6 +800,37 @@ def main() -> int:
         help="exit with status 3 if any procedure only has a regex fallback",
     )
     pi_cam_audit.set_defaults(func=command_audit_pi_cam_kernels)
+
+    pi_cam_validate = sub.add_parser(
+        "validate-pi-cam-adapters",
+        help=(
+            "parse and compile generated PI-CAM adapters, resolve their CAM "
+            "archive symbols, and run synthetic pointer-ABI smoke tests"
+        ),
+    )
+    pi_cam_validate.add_argument("--descriptor-root")
+    pi_cam_validate.add_argument("--compiler", default="ftn")
+    pi_cam_validate.add_argument(
+        "--module-dir",
+        action="append",
+        help="directory containing real CAM .mod files; repeat as needed",
+    )
+    pi_cam_validate.add_argument("--original-library")
+    pi_cam_validate.add_argument(
+        "--context-file",
+        help=(
+            "YAML matrix of real CAM builds; every generated adapter must "
+            "compile in a context that selected its original source"
+        ),
+    )
+    pi_cam_validate.add_argument("--work-root")
+    pi_cam_validate.add_argument("--output")
+    pi_cam_validate.add_argument(
+        "--workers", type=int, default=min(16, os.cpu_count() or 1)
+    )
+    pi_cam_validate.add_argument("--require-all-compile", action="store_true")
+    pi_cam_validate.add_argument("--require-all-abi-smoke", action="store_true")
+    pi_cam_validate.set_defaults(func=command_validate_pi_cam_adapters)
 
     pool_worker = sub.add_parser(
         "pool-worker",

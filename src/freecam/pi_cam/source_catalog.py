@@ -225,7 +225,12 @@ class PICAMKernelRules:
                 matched.append(f"override:{key}")
                 values.update(self.overrides[key])
                 break
-        allowed = {"role", "signature_status", "adapter_status"}
+        allowed = {
+            "role",
+            "signature_status",
+            "adapter_status",
+            "default_real_dtype",
+        }
         unknown = set(values).difference(allowed | {"remove_blockers", "add_blockers"})
         if unknown:
             raise PICAMConfigurationError(
@@ -235,8 +240,36 @@ class PICAMKernelRules:
         blockers = set(procedure.blockers)
         blockers.difference_update(str(item) for item in values.get("remove_blockers", ()))
         blockers.update(str(item) for item in values.get("add_blockers", ()))
+        arguments = procedure.arguments
+        default_real_dtype = values.get("default_real_dtype")
+        if default_real_dtype is not None:
+            real_dtype = str(default_real_dtype)
+            if real_dtype not in {"float32", "float64"}:
+                raise PICAMConfigurationError(
+                    f"rules for {procedure.qualified_name} use invalid "
+                    f"default_real_dtype: {real_dtype}"
+                )
+            complex_dtype = {
+                "float32": "complex64",
+                "float64": "complex128",
+            }[real_dtype]
+            arguments = tuple(
+                replace(
+                    argument,
+                    dtype=(
+                        real_dtype
+                        if argument.fortran_type == "real"
+                        else complex_dtype
+                    ),
+                )
+                if argument.kind is None
+                and argument.fortran_type in {"real", "complex"}
+                else argument
+                for argument in arguments
+            )
         return replace(
             procedure,
+            arguments=arguments,
             role=str(values.get("role", procedure.role)),
             signature_status=str(
                 values.get("signature_status", procedure.signature_status)
@@ -685,6 +718,7 @@ def _records_from_tree(
     parser_name: str,
 ) -> list[dict[str, Any]]:
     from fparser.two.Fortran2003 import (
+        Access_Stmt,
         Call_Stmt,
         Function_Stmt,
         Function_Subprogram,
@@ -756,6 +790,14 @@ def _records_from_tree(
         body = "\n".join(text.splitlines()[line_start - 1 : line_end])
         if wildcard_uses:
             blockers.add("wildcard_module_import")
+        if not _module_procedure_is_public(
+            node,
+            name=name,
+            module_class=Module,
+            access_class=Access_Stmt,
+            procedure_classes=classes,
+        ):
+            blockers.add("private_module_procedure")
         if re.search(r"\b(common|equivalence)\b", body, re.IGNORECASE):
             blockers.add("legacy_shared_storage")
         if re.search(
@@ -861,6 +903,52 @@ def _module_name(node: Any, module_class: type, statement_class: type) -> str | 
     return None
 
 
+def _module_procedure_is_public(
+    node: Any,
+    *,
+    name: str,
+    module_class: type,
+    access_class: type,
+    procedure_classes: tuple[type, ...],
+) -> bool:
+    """Return the Fortran accessibility of one module procedure.
+
+    A private specific routine may be reachable through an in-module generic,
+    but an independently compiled adapter cannot name it in a USE ONLY list.
+    Such routines therefore need an in-module connector and must not receive a
+    generic external adapter.
+    """
+
+    from fparser.two.utils import walk
+
+    current = getattr(node, "parent", None)
+    module = None
+    while current is not None:
+        if isinstance(current, module_class):
+            module = current
+            break
+        current = getattr(current, "parent", None)
+    if module is None:
+        return True
+    default_public = True
+    explicit: bool | None = None
+    for statement in walk(module, access_class):
+        if _nearest_procedure(statement, procedure_classes) is not None:
+            continue
+        access = str(statement.items[0]).strip().lower()
+        identifiers = statement.items[1]
+        if identifiers is None:
+            default_public = access == "public"
+            continue
+        names = {
+            str(item).strip().lower()
+            for item in getattr(identifiers, "items", ())
+        }
+        if name.lower() in names:
+            explicit = access == "public"
+    return default_public if explicit is None else explicit
+
+
 def _declaration_arguments(
     declaration: Any, kind_map: Mapping[str, str]
 ) -> tuple[FortranArgument, ...]:
@@ -869,12 +957,18 @@ def _declaration_arguments(
     upper_attributes = attributes.upper()
     intent_match = re.search(r"INTENT\s*\(\s*(INOUT|IN|OUT)\s*\)", upper_attributes)
     intent = None if intent_match is None else intent_match.group(1).lower()
-    dimension_match = re.search(r"DIMENSION\s*\((.*)\)", attributes, re.IGNORECASE)
-    attr_dimensions = (
-        ()
-        if dimension_match is None
-        else tuple(_split_top_level(dimension_match.group(1)))
-    )
+    attr_dimensions: tuple[str, ...] = ()
+    for attribute in getattr(declaration.items[1], "items", ()):
+        attribute_text = str(attribute).strip()
+        if not attribute_text.lower().startswith("dimension("):
+            continue
+        attr_dimensions = tuple(
+            item.lower()
+            for item in _split_top_level(
+                attribute_text[attribute_text.find("(") + 1 : -1]
+            )
+        )
+        break
     kind_match = re.search(r"kind\s*=\s*([a-zA-Z0-9_]+)", type_text)
     kind = None if kind_match is None else kind_match.group(1).lower()
     base = type_text.split("(", 1)[0].strip()
@@ -888,7 +982,9 @@ def _declaration_arguments(
         name = str(entity.items[0]).lower()
         shape = entity.items[1]
         dimensions = (
-            tuple(_split_top_level(str(shape))) if shape is not None else attr_dimensions
+            tuple(item.lower() for item in _split_top_level(str(shape)))
+            if shape is not None
+            else attr_dimensions
         )
         results.append(
             FortranArgument(

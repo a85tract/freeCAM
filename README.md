@@ -232,14 +232,79 @@ build/pi_cam_kernel_catalog/<procedure>/kernel.yaml
 For the pinned iCESM revision, the committed audit covers 451 Fortran files
 and 2,094 procedures.  It classifies 1,758 as numerical kernels or physics
 processes, recovers full AST/CPP signatures for 2,080 procedures, and generates
-503 pointer-table adapters.  Fourteen procedures remain conservative fallback
-records rather than fabricated ABIs.
+300 pointer-table adapters for externally accessible procedures.  Another 663
+module procedures are intentionally marked `context_required` because their
+Fortran accessibility is `private`; an independently compiled `use ... only`
+adapter cannot legally call them.  Fourteen procedures remain conservative
+fallback records rather than fabricated ABIs.  Five procedures in the legacy
+non-MCICA RRTMG driver are also marked `not_selected_by_cam_build`: CAM's
+`Filepath` always selects the MCICA implementation first, and the shadowed
+source does not compile as an independent CAM variant.  Eighteen procedures
+inside disabled `#ifdef MKL` or `#ifdef LATIN_HYPERCUBE` regions are likewise
+kept as `context_required` until a real build enabling those macros is added.
+No adapter is emitted for a routine absent from every supported CAM build.
 
 Each generated `adapter.F90` is a real `bind(C)` pointer-table shim.  It
 reconstructs typed scalar or array views with `c_f_pointer` and calls the
 unchanged original procedure; it never copies the numerical algorithm into a
 new source file.  The generator has a compile test against an original Fortran
 module.
+
+Generation is followed by a separate real-build validation gate:
+
+```bash
+qsub validation/jobs/pi_cam_generated_adapter_validation.pbs
+```
+
+`validate-pi-cam-adapters` attempts an independent fparser check and compiles
+every generated adapter against a source-matched matrix of real CAM builds,
+then checks that its unresolved original-procedure symbol is provided by the
+matching build's `libatm.a` or `libcosp.a`.  The matrix is recorded in
+[`validation/pi_cam_adapter_build_contexts.yaml`](validation/pi_cam_adapter_build_contexts.yaml)
+and covers the PI CAM5 configuration plus CLUBB/COSP, CAM4 legacy radiation,
+WACCMX, and FV+CARMA variants.  The exact source selected by each context is
+derived from CIME's generated `Filepath` and `Srcfiles`; this prevents an
+adapter from being accepted against a same-named module built from another
+source variant.  It also
+builds and executes a synthetic `.so` for every generated `(dtype, rank)` ABI
+family, so scalar and multidimensional `c_f_pointer` reconstruction is tested
+with real NumPy memory.  Results are written to
+[`validation/pi_cam_generated_adapter_validation.json`](validation/pi_cam_generated_adapter_validation.json).
+An fparser symbol-table exception is recorded as `parser_tool_error` but does
+not suppress the authoritative compiler gate.
+
+These gates are deliberately separate:
+
+```text
+generated source
+    → Fortran parse
+    → compile against real CAM modules
+    → resolve original symbol in libatm.a
+    → synthetic NumPy/ctypes ABI execution
+    → explicit StatePool/context binding
+    → native capture/replay
+    → 512-rank, 50-step BFB
+```
+
+A compile or synthetic-ABI pass is not scientific validation.  The command
+uses `--require-all-compile`, so one failed or source-unmatched emitted adapter
+makes the PBS job fail; there is no inactive-package compile exemption.  The
+validator does not call an unbound real physics routine with fabricated arrays; doing so
+could violate hidden preconditions or corrupt memory.  The active PI-CAM plan
+is reported separately so its context-bound processes can be migrated and
+validated before inactive packages.
+
+The current cpudev gate (PBS `7082427.desched1`) parses, compiles, and resolves
+the original archive symbol for all 300 emitted adapters.  All 12 generated
+dtype/rank ABI families also compile, load, execute, and update NumPy memory
+correctly.  These counts and their per-adapter evidence live in the JSON
+report rather than being silently inferred from catalog generation.
+Scientific status is separate: a process actually exercised by the PI case
+still requires native capture/replay and the 512-rank, 50-step BFB gate.  A
+process not exercised by that case is explicitly recorded as
+`BFB: not_exercised`; skipping that BFB run does not waive its compile gate.
+The current report has 22 statically PI-reachable adapters awaiting runtime
+trace/BFB and 278 case-inactive adapters marked `not_exercised`.
 
 The generated status is intentionally fail-closed:
 

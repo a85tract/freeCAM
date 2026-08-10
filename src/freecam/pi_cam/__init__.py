@@ -32,6 +32,14 @@ from .source_catalog import (
     PICAMKernelRules,
     PICAMSourceCatalog,
 )
+from .adapter_validation import (
+    ABISmokeResult,
+    AdapterBuildContext,
+    AdapterCompileAttempt,
+    AdapterCompileResult,
+    PICAMAdapterValidator,
+    load_adapter_build_contexts,
+)
 
 __all__ = [
     "BoundaryManifest",
@@ -42,10 +50,15 @@ __all__ = [
     "FortranArgument",
     "FortranParseFailure",
     "FortranProcedure",
+    "ABISmokeResult",
+    "AdapterBuildContext",
+    "AdapterCompileAttempt",
+    "AdapterCompileResult",
     "NativeCAMDevice",
     "NativeCAMError",
     "PICAMAction",
     "PICAMActionTrace",
+    "PICAMAdapterValidator",
     "PICAMBFBResult",
     "PICAMCase",
     "PICAMConfig",
@@ -70,4 +83,5 @@ __all__ = [
     "ReplayBoundaryProvider",
     "write_boundary_payload",
     "compare_pi_cam_directories",
+    "load_adapter_build_contexts",
 ]
