@@ -1,0 +1,71 @@
+schema_version: 1
+
+# Syntax facts come from fparser.  These rules add legacy-CAM semantics that
+# cannot be inferred from Fortran syntax alone.  AI may propose additions, but
+# every accepted rule is deterministic, reviewed, and covered by tests.
+kind_map:
+  r8: float64
+  shr_kind_r8: float64
+  kind_phys: float64
+  r4: float32
+  shr_kind_r4: float32
+  i4: int32
+  shr_kind_i4: int32
+  int32: int32
+  int64: int64
+
+dimension_aliases:
+  pcols: pcols
+  pver: pver
+  pverp: pverp
+  pcnst: pcnst
+  ncol: ncol
+  begchunk:endchunk: chunks
+
+rules:
+  - id: lifecycle-by-name
+    match:
+      name_regex: '(^|_)(init|initialize|register|final|finalize|readnl|restart)($|_)'
+    set:
+      role: lifecycle
+
+  - id: explicit-mpi-pio-mct-host-service
+    match:
+      uses_regex: '^(mpi|pio|mct|spmd)'
+    set:
+      role: host_service
+      adapter_status: host_service
+
+  - id: model-process-name
+    match:
+      name_regex: '(_tend|_run|_calc|_driver|_update)$'
+    set:
+      role: process
+
+  - id: derived-state-context
+    match:
+      has_blockers: [derived_or_unknown_type]
+    set:
+      adapter_status: context_required
+
+  - id: legacy-shared-state-context
+    match:
+      has_blockers: [legacy_shared_storage, wildcard_module_import]
+    set:
+      adapter_status: context_required
+
+  - id: io-host-service
+    match:
+      has_blockers: [fortran_io]
+      name_regex: '(^|_)(read|write|open|close|history|restart|output|input)($|_)'
+    set:
+      role: host_service
+      adapter_status: host_service
+
+overrides:
+  dadadj:
+    role: process
+    signature_status: explicit
+    adapter_status: validated
+    remove_blockers:
+      - wildcard_module_import

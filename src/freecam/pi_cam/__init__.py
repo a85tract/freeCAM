@@ -25,6 +25,13 @@ from .state import PICAMVariableSpec
 from .runtime_fortran import PICAMFortranProcessSpec
 from freecam.model.python_processes import PythonProcessContext, PythonProcessSpec
 from .validation import PICAMBFBResult, compare_pi_cam_directories
+from .source_catalog import (
+    FortranArgument,
+    FortranParseFailure,
+    FortranProcedure,
+    PICAMKernelRules,
+    PICAMSourceCatalog,
+)
 
 __all__ = [
     "BoundaryManifest",
@@ -32,6 +39,9 @@ __all__ = [
     "CAMBoundaryProvider",
     "CAMNumericalBackend",
     "InMemoryBoundaryProvider",
+    "FortranArgument",
+    "FortranParseFailure",
+    "FortranProcedure",
     "NativeCAMDevice",
     "NativeCAMError",
     "PICAMAction",
@@ -44,11 +54,13 @@ __all__ = [
     "PICAMError",
     "PICAMFieldContract",
     "PICAMLifecycle",
+    "PICAMKernelRules",
     "PICAMNotebookError",
     "PICAMNotebookSession",
     "PICAMStateError",
     "PICAMStatePool",
     "PICAMStateSchema",
+    "PICAMSourceCatalog",
     "PICAMStepPlan",
     "PICAMVariableSpec",
     "PICAMFortranProcessSpec",

@@ -199,6 +199,70 @@ not create tendencies, apply the host update, satisfy neighboring process
 dependencies, or advance time, so it is restricted to explicit experiments
 until the complete stage has a raw-array ABI.
 
+### Whole-tree legacy physics catalog
+
+The direct-kernel target is the complete pinned iCESM CAM physics tree, not
+the 36 process-level actions currently visible in the PI-CAM step plan.  The
+step plan describes the active case control path; the source catalog describes
+every subroutine and function below that path, including inactive packages,
+helpers, lifecycle routines, and host services.
+
+Legacy iCESM CAM has no CCPP `.meta` files, so freeCAM generates its metadata
+from the original Fortran instead of maintaining one handwritten YAML file per
+routine:
+
+```bash
+uv run freecam audit-pi-cam-kernels --workers 16 --clean
+```
+
+The deterministic pipeline is:
+
+```text
+pinned components/cam/src/physics Fortran
+        ↓ fparser AST; CPP recovery for legacy macro files
+module / procedure / argument / intent / dtype / rank / calls
+        ↓ native/pi_cam/kernel_rules.yaml
+role + blockers + adapter readiness
+        ↓
+build/pi_cam_kernel_catalog/<procedure>/kernel.yaml
+        ├── adapter.F90   when the numeric ABI is mechanically safe
+        └── adapter.json  explicit bindings still required before runtime use
+```
+
+For the pinned iCESM revision, the committed audit covers 451 Fortran files
+and 2,094 procedures.  It classifies 1,758 as numerical kernels or physics
+processes, recovers full AST/CPP signatures for 2,080 procedures, and generates
+503 pointer-table adapters.  Fourteen procedures remain conservative fallback
+records rather than fabricated ABIs.
+
+Each generated `adapter.F90` is a real `bind(C)` pointer-table shim.  It
+reconstructs typed scalar or array views with `c_f_pointer` and calls the
+unchanged original procedure; it never copies the numerical algorithm into a
+new source file.  The generator has a compile test against an original Fortran
+module.
+
+The generated status is intentionally fail-closed:
+
+- `validated` means a binding, build, runtime execution, and BFB proof exist.
+- `candidate` means the pointer adapter source is generated, but StatePool
+  fields or scalar/dimension bindings must still be resolved and tested.
+- `context_required` means hidden module state or derived types must first be
+  made explicit.
+- `host_service` means Python orchestration or an MPI/PIO service boundary is
+  required rather than treating the routine as a standalone numerical kernel.
+- `parse_blocked` means only a conservative fallback name/span was recovered;
+  no ABI is invented.
+
+The versioned audit is
+[`validation/pi_cam_kernel_inventory.json`](validation/pi_cam_kernel_inventory.json).
+It pins the upstream revision, hashes the complete scanned source tree and rule
+file, records every call edge and blocker, and distinguishes full discovery
+from executable adapter coverage.  AI can propose new entries in
+`kernel_rules.yaml`, but the accepted rules and all generated artifacts are
+deterministic and tested.  A procedure is added to `cam.kernels` only after its
+bindings compile, execute, and pass the required capture/replay and 50-step BFB
+gates; catalog membership alone never makes it runnable.
+
 For a Jupyter Notebook, `PICAMNotebookSession` submits one cpudev job and
 starts the 512-rank CAM worker once. All later calls reuse those live MPI
 ranks and their rank-local Python StatePools; the authenticated socket carries

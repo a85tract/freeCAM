@@ -508,6 +508,56 @@ def command_pool_worker(args: argparse.Namespace) -> int:
     return serve_pool(args)
 
 
+def command_audit_pi_cam_kernels(args: argparse.Namespace) -> int:
+    """Build the deterministic whole-tree legacy PI-CAM procedure catalog."""
+
+    from .pi_cam.source_catalog import PICAMSourceCatalog
+
+    root = _repo_root()
+    source_root = Path(
+        args.source_root or root / "external/iCESM1.3.1_fzhu"
+    ).resolve()
+    scan_roots = (
+        tuple(Path(path).resolve() for path in args.scan_root)
+        if args.scan_root
+        else None
+    )
+    catalog = PICAMSourceCatalog.discover(
+        root,
+        source_root=source_root,
+        rules_path=args.rules,
+        scan_roots=scan_roots,
+        workers=max(1, int(args.workers)),
+    )
+    report = Path(
+        args.output or root / "validation/pi_cam_kernel_inventory.json"
+    ).resolve()
+    descriptor_root = Path(
+        args.descriptor_root or root / "build/pi_cam_kernel_catalog"
+    ).resolve()
+    catalog.write_report(report)
+    catalog.write_descriptors(descriptor_root, clean=args.clean)
+    summary = catalog.summary()
+    print(
+        json.dumps(
+            {
+                **summary,
+                "report": str(report),
+                "descriptor_root": str(descriptor_root),
+            },
+            sort_keys=True,
+        )
+    )
+    if args.strict_parse and catalog.failures:
+        return 2
+    if args.strict_signatures and any(
+        procedure.parser == "fallback-regex"
+        for procedure in catalog.procedures
+    ):
+        return 3
+    return 0
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(prog="freecam")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -659,6 +709,35 @@ def main() -> int:
         ),
     )
     compare.set_defaults(func=command_compare_history)
+
+    pi_cam_audit = sub.add_parser(
+        "audit-pi-cam-kernels",
+        help="inventory every procedure in the pinned legacy iCESM CAM physics tree",
+    )
+    pi_cam_audit.add_argument("--source-root")
+    pi_cam_audit.add_argument("--rules")
+    pi_cam_audit.add_argument(
+        "--scan-root",
+        action="append",
+        help="Fortran subtree to scan; repeat to include multiple roots",
+    )
+    pi_cam_audit.add_argument(
+        "--workers", type=int, default=min(16, os.cpu_count() or 1)
+    )
+    pi_cam_audit.add_argument("--output")
+    pi_cam_audit.add_argument("--descriptor-root")
+    pi_cam_audit.add_argument("--clean", action="store_true")
+    pi_cam_audit.add_argument(
+        "--strict-parse",
+        action="store_true",
+        help="exit with status 2 if any source file cannot be parsed",
+    )
+    pi_cam_audit.add_argument(
+        "--strict-signatures",
+        action="store_true",
+        help="exit with status 3 if any procedure only has a regex fallback",
+    )
+    pi_cam_audit.set_defaults(func=command_audit_pi_cam_kernels)
 
     pool_worker = sub.add_parser(
         "pool-worker",

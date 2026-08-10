@@ -270,12 +270,22 @@ wheels = [
 ]
 
 [[package]]
+name = "fparser"
+version = "0.2.4"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/01/bf/3a2601ac8f426812bca2446af86735a85e2df7e088430322a1665578253e/fparser-0.2.4.tar.gz", hash = "sha256:1bdcfd757b739e0435e249a5b2735d672b45c39b3defa6f1065336b69e77ae0f", size = 449635, upload-time = "2026-06-26T09:14:30.79Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/31/1e/4c11c71d4a80e680ede45a2493cb1248e52da776e6f3cca841cc57a8f69c/fparser-0.2.4-py3-none-any.whl", hash = "sha256:a1bd198c07fdff55570b80a7b119aeafb588e9097c11e0a74ea67744a9a1a478", size = 661104, upload-time = "2026-06-26T09:14:28.899Z" },
+]
+
+[[package]]
 name = "freecam"
 version = "0.19.0"
 source = { editable = "." }
 dependencies = [
     { name = "cloudpickle" },
     { name = "f90nml" },
+    { name = "fparser" },
     { name = "mpi4py" },
     { name = "netcdf4" },
     { name = "numpy" },
@@ -307,6 +317,7 @@ requires-dist = [
     { name = "dask-jobqueue", marker = "extra == 'dask'", specifier = ">=0.9" },
     { name = "dask-jobqueue", marker = "extra == 'notebook'", specifier = ">=0.9" },
     { name = "f90nml", specifier = ">=1.4" },
+    { name = "fparser", specifier = ">=0.2.1,<0.3" },
     { name = "ipykernel", marker = "extra == 'notebook'", specifier = ">=7.0" },
     { name = "mpi4py", specifier = ">=4.0" },
     { name = "netcdf4", specifier = ">=1.7" },
