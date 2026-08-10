@@ -241,7 +241,7 @@ class CCPPSuitePlan:
 
     @classmethod
     def from_payload(cls, values: Mapping[str, Any]) -> "CCPPSuitePlan":
-        """Restore schema-v2 plans and legacy flat FKESSLER payloads."""
+        """Restore schema-v2 plans and older flat process payloads."""
 
         version = values.get("schema_version")
         if version in {None, 1} and "schemes" in values:
@@ -274,7 +274,7 @@ class CCPPSuitePlan:
                     SuiteNode("scheme", scheme.name, scheme=scheme)
                 )
             return cls(
-                str(values.get("name", "kessler")),
+                str(values.get("name", "legacy-suite")),
                 groups,
                 sequence_safe=bool(values.get("sequence_safe", False)),
             )

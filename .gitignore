@@ -8,11 +8,9 @@ dist/
 *.so
 *.mod
 *.o
+native/kernels/
 reference/
 artifacts/
-native/kernels/*.mod
-native/kernels/.build/
-native/kernels/.defined-symbols
 /pycam_*.o*
 /logs/*
 !/logs/.gitkeep

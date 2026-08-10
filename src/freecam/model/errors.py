@@ -1,53 +1,53 @@
 """Typed errors for the fail-closed Python model."""
 
 
-class PyCamSimaError(RuntimeError):
+class FreeCAMRuntimeError(RuntimeError):
     """Base runtime error."""
 
 
-class ConfigurationError(PyCamSimaError):
+class ConfigurationError(FreeCAMRuntimeError):
     """The requested case is outside the fixed first-release contract."""
 
 
-class StateTransitionError(PyCamSimaError):
+class StateTransitionError(FreeCAMRuntimeError):
     """A public operation was requested from an invalid lifecycle state."""
 
 
-class StateOwnershipError(PyCamSimaError):
+class StateOwnershipError(FreeCAMRuntimeError):
     """An array violates the Python ownership or pointer stability contract."""
 
 
-class MissingKernelError(PyCamSimaError):
+class MissingKernelError(FreeCAMRuntimeError):
     """A required main kernel or generated device is not present."""
 
 
-class DeviceContractError(PyCamSimaError):
+class DeviceContractError(FreeCAMRuntimeError):
     """A device manifest cannot be connected safely to the Python StatePool."""
 
 
-class DeviceBuildError(PyCamSimaError):
+class DeviceBuildError(FreeCAMRuntimeError):
     """A source scheme cannot be converted into a standalone device."""
 
 
-class PythonProcessContractError(PyCamSimaError):
+class PythonProcessContractError(FreeCAMRuntimeError):
     """A Notebook-defined Python process violates its runtime contract."""
 
 
-class PythonProcessExecutionError(PyCamSimaError):
+class PythonProcessExecutionError(FreeCAMRuntimeError):
     """A transactional Python process failed and its writes were restored."""
 
 
-class PythonProcessTaintedError(PyCamSimaError):
+class PythonProcessTaintedError(FreeCAMRuntimeError):
     """A non-transactional Python process left model state unsafe to reuse."""
 
 
-class NativeInitializationError(PyCamSimaError):
+class NativeInitializationError(FreeCAMRuntimeError):
     """A native call occurred while running the pure-Python initializer."""
 
 
-class RemoteRankAccessError(PyCamSimaError):
+class RemoteRankAccessError(FreeCAMRuntimeError):
     """A worker was asked for a field owned by another rank."""
 
 
-class ValidationError(PyCamSimaError):
+class ValidationError(FreeCAMRuntimeError):
     """A bitwise or structural validation gate failed."""

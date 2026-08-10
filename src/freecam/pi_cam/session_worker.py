@@ -54,6 +54,15 @@ def _command(command: dict[str, Any], driver: Any, comm: Any) -> object:
         for _ in range(int(command.get("count", 1))):
             driver.step()
         return _status(driver) if comm.rank == 0 else None
+    if operation == "trace":
+        since = int(command.get("since", 0))
+        if not 0 <= since <= len(driver.trace):
+            raise ValueError(f"trace cursor must be in 0..{len(driver.trace)}")
+        return (
+            [asdict(record) for record in driver.trace[since:]]
+            if comm.rank == 0
+            else None
+        )
     if operation == "run_action":
         trace = driver.run_action(
             str(command["name"]),

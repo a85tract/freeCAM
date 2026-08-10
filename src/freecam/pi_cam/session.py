@@ -562,6 +562,13 @@ class PICAMNotebookSession:
 
         return dict(self._request({"op": "run_kernel", "name": name}))
 
+    def trace(self, *, since: int = 0) -> tuple[Mapping[str, Any], ...]:
+        """Return actual worker-side action records from ``since`` onward."""
+
+        if int(since) < 0:
+            raise ValueError("since cannot be negative")
+        return tuple(self._request({"op": "trace", "since": int(since)}))
+
     def expand_cam_run1_leaves(self) -> tuple[Mapping[str, Any], ...]:
         """Replace three composite stages with ordered native leaf actions."""
 

@@ -1,70 +1,71 @@
 # Repository Guidelines
 
-## Project Structure & Module Organization
+## Scope
 
-Python sources live in `src/freecam/`. The complete Python-owned CAM driver,
-branch edits, and bit-preserving checkpoints are in `model/`; shared MPI-loader
-and remote-field utilities are in `core/`; and `notebook/` contains the
-Jupyter/PBS controller, Dask experiment client, and MPI worker. Main support
-kernels live in `native/kernels/`; source-preserving scheme descriptors live in
-`devices/`, generated adapters and manifests in `build/devices/`, and portable
-provider modules in `native/devices/`. Tests are in `tests/unit/`, with Fortran source adapters in
-`tests/fortran/`. Configuration, PBS scripts, tools, documentation, and durable
-evidence belong in `configs/`, `jobs/`, `tools/`, `docs/`, and `validation/`.
-Maintain `examples/try_notebook_session.ipynb` for interactive socket control
-and `examples/try_dask_fanout.ipynb` for restartable Dask task fan-out. Route
-PBS standard output and error to `logs/`; do not leave scheduler logs in the
-repository root.
+freeCAM currently supports the iCESM1.3.1 PI-atm CAM configuration described
+by `configs/pi_cam_icesm131.yaml`. Python owns the observable rank-local state
+and CAM workflow. Original iCESM Fortran routines remain the numerical source
+of truth and are called through generated C-interoperable adapters.
 
-## Build, Test, and Development Commands
+Do not reintroduce retired generic runtimes into the public API. New cases
+should be added deliberately with their own configuration and validation
+evidence.
 
-- `uv sync --extra test --extra notebook`: install the Python 3.11/Jupyter environment.
-- `uv run freecam build-kernels`: build the main kernel library and all
-  generated source-preserving devices.
-- `uv run freecam build-device devices/generated/kessler/device.yaml`:
-  regenerate one original-Fortran device from its CCPP metadata and
-  descriptor.
-- `uv run python tools/validate_kessler_kernel.py`: compare the Kessler kernel
-  bit-for-bit with pinned CAM-SIMA source.
-- `uv run pytest`: run the complete local test suite.
-- `uv run python tools/dask_branch_smoke.py --run-root ... --initial-run-dir ...`:
-  submit a common checkpoint and two Dask-controlled PBS branches.
-- `uv run python tools/validate_dask_branch.py RUN_ROOT`: verify branch-state
-  isolation and the exact requested field edit.
-- `RUN_DIR=... HISTORY_DIR=... STEPS=50 qsub -V jobs/fkessler_model_24x50.pbs`:
-  run the required 24-rank model gate.
-- `uv run freecam compare-history ORACLE CANDIDATE`: verify 51 files and 26
-  numeric variables.
+## Repository layout
 
-## Coding Style & Naming Conventions
+- `src/freecam/pi_cam/`: PI-CAM driver, StatePool, workflow, runtime processes,
+  persistent session, and public facade.
+- `src/freecam/core/` and `src/freecam/model/`: internal ABI and runtime helpers.
+- `native/pi_cam/`: source patches, adapter rules, and native support code.
+- `external/iCESM1.3.1_fzhu/`: pinned upstream iCESM source submodule.
+- `examples/try_pi_cam.ipynb`: maintained user-facing Notebook.
+- `tests/unit/`: local Python tests.
+- `tools/`: PI-CAM preparation, build, capture, and validation tools.
+- `validation/`: PI-CAM PBS jobs and machine-readable evidence.
+
+Generated libraries and compiler products belong under `build/` and must not
+be committed. Scheduler output belongs under `logs/`.
+
+## Development
+
+```bash
+uv sync --extra notebook --extra test
+uv run pytest -q
+uv run freecam --help
+```
 
 Use four-space indentation, type hints, concise docstrings, `snake_case` for
-functions/modules, `PascalCase` for classes, and `UPPER_CASE` for constants.
-Keep arrays Fortran-contiguous where the ABI requires it. Native code must not
-retain StatePool pointers. Any persistent Fortran module state must declare a
-device state policy; do not hide it behind the ABI. Run `git diff --check`; no
-formatter is currently enforced.
+functions and modules, and `PascalCase` for classes. Keep ABI arrays
+Fortran-contiguous. Native code must not retain Python-owned pointers beyond a
+declared call boundary.
 
-## Testing Guidelines
+Run `git diff --check` before committing. Stage only files related to the
+current task and preserve unrelated work in a dirty tree.
 
-Name pytest files and functions `test_*.py` and `test_*`. Add focused tests for
-contracts and state transitions, plus PBS smoke evidence for MPI changes.
-Runtime work is incomplete until the fixed 24-rank, 50-step run produces 51
-timestamps and all 26 numeric variables are BFB. Record evidence in
-`validation/`.
+## Scientific validation
 
-## Commit & Pull Request Guidelines
+Local tests check API and control semantics. Numeric runtime changes also need
+the 512-rank, 50-step PI-atm gate:
 
-Use concise imperative subjects such as `Add ...`, `Implement ...`, or
-`Remove ...`. Keep commits focused. Pull requests must describe the affected
-model phases, list commands run, include PBS job IDs and BFB evidence for
-numeric changes, and identify any intentional unsafe state edits.
+```bash
+qsub validation/jobs/pi_cam_python_zero_copy_state_50step.pbs
+```
 
-## Configuration & Safety
+The result must compare bit-for-bit with the pinned iCESM reference and be
+recorded under `validation/`. Never overwrite oracle output. A wrapper or
+adapter is not considered validated merely because it compiles; prove that the
+intended routine executed and that its outputs match.
 
-Keep `external/CAM-SIMA` pinned to
-`f8daa568eae2696b7c4ebff7768f02f5d097d9df`. Never overwrite oracle output.
-The package has one model backend: do not reintroduce `cam_init`/`cam_run*`
-wrappers or silently fall back to native CAM control. Do not copy numerical
-scheme bodies into handwritten ABI wrappers; connect the pinned original source
-through generated adapters and fail closed on undeclared host dependencies.
+## Native interfaces
+
+Keep floating-point algorithms in the original iCESM source. Generated
+adapters may convert pointers, shapes, scalar values, and communicator handles,
+but must not copy numerical scheme bodies. Fail closed when a type, dependency,
+or process state cannot be represented safely.
+
+## Commits
+
+Use a concise imperative subject such as `Remove retired runtime code` or `Add
+PI-CAM process control`. Include the tests and PBS evidence relevant to
+the change. Do not commit `error.json`, runtime output, or unrelated validation
+records.

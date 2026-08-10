@@ -13,14 +13,22 @@ from typing import Any, Mapping
 from freecam.model.device_codegen import DeviceDescription, build_device
 from freecam.model.devices import FortranDevice
 from freecam.model.errors import DeviceContractError
-from freecam.model.plugins import (
-    _DEFAULT_COMPILER,
-    _DEFAULT_FFLAGS,
-    _DEFAULT_LDFLAGS,
-)
 
 from .errors import PICAMConfigurationError, PICAMStateError
 from .plan import PICAMAction
+
+
+_DEFAULT_COMPILER = "/opt/cray/pe/gcc/12.2.0/bin/gfortran"
+_DEFAULT_FFLAGS = (
+    "-O2",
+    "-march=znver3",
+    "-fPIC",
+    "-ffp-contract=off",
+    "-ffree-line-length-none",
+    "-cpp",
+    "-DUSE_CONTIGUOUS=",
+)
+_DEFAULT_LDFLAGS = ("-Wl,--as-needed", "-Wl,--no-undefined")
 
 
 def _file_hash(path: Path) -> str:

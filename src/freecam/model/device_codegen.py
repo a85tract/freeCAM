@@ -86,7 +86,7 @@ def _source_provider_priority(path: Path) -> tuple[int, str]:
 
     RRTMGP ships three files with several identical module names: an ``api``
     interface, an accelerator implementation, and the serial CPU
-    implementation used by CAM-SIMA's Derecho GNU build.  Lexicographic
+    implementation used by the reference CAM build. Lexicographic
     ``setdefault`` selected ``accel`` before the CPU source even though no
     accelerator backend was enabled.  Keep the selection deterministic while
     matching the source variant used by the reference model.
@@ -538,28 +538,123 @@ class MetadataEntrypoint:
     arguments: tuple[MetadataArgument, ...]
 
 
-def _ccpp_parser_scripts(project_root: Path) -> Path:
-    """Use a plugin-local parser when present, otherwise the pinned package one."""
+def _ccpp_parser_scripts(project_root: Path) -> Path | None:
+    """Return an optional externally supplied CCPP parser directory."""
 
-    candidates = (
-        project_root / "external/CAM-SIMA/ccpp_framework/scripts",
-        Path(__file__).resolve().parents[3]
-        / "external/CAM-SIMA/ccpp_framework/scripts",
-    )
+    configured = os.environ.get("FREECAM_CCPP_SCRIPTS")
+    candidates = [project_root / "ccpp_framework" / "scripts"]
+    if configured:
+        candidates.insert(0, Path(configured).expanduser().resolve())
     for scripts in candidates:
         if scripts.is_dir():
             return scripts
-    return candidates[0]
+    return None
+
+
+def _metadata_boolean(value: str | None) -> bool:
+    return str(value or "").strip().lower() in {
+        "true", ".true.", "t", "1", "yes"
+    }
+
+
+def _metadata_dimensions(value: str | None) -> tuple[str, ...]:
+    text = str(value or "").strip()
+    if text in {"", "()"}:
+        return ()
+    if not (text.startswith("(") and text.endswith(")")):
+        raise DeviceBuildError(f"invalid metadata dimensions {text!r}")
+    return tuple(
+        item.strip().lower()
+        for item in text[1:-1].split(",")
+        if item.strip()
+    )
+
+
+def _metadata_line_properties(line: str) -> dict[str, str]:
+    result: dict[str, str] = {}
+    for item in line.split("|"):
+        if "=" not in item:
+            continue
+        key, value = item.split("=", 1)
+        result[key.strip().lower()] = value.strip()
+    return result
+
+
+def _load_metadata_without_ccpp(
+    description: DeviceDescription,
+) -> Mapping[str, MetadataEntrypoint]:
+    """Parse the small, declarative subset of CCPP metadata used by devices."""
+
+    result: dict[str, MetadataEntrypoint] = {}
+    for path in description.metadata:
+        section: str | None = None
+        properties: dict[str, str] = {}
+        current_table: str | None = None
+        arguments: dict[str, list[MetadataArgument]] = {}
+
+        def commit() -> None:
+            nonlocal current_table
+            if section is None:
+                return
+            if section == "ccpp-arg-table":
+                table = properties.get("name", "").strip().lower()
+                if not table:
+                    raise DeviceBuildError(f"{path}: argument table lacks name")
+                current_table = table
+                arguments.setdefault(table, [])
+                return
+            if section == "ccpp-table-properties":
+                return
+            if current_table is None:
+                raise DeviceBuildError(
+                    f"{path}: field {section!r} appears before an argument table"
+                )
+            for required in ("standard_name", "type", "dimensions", "intent"):
+                if required not in properties:
+                    raise DeviceBuildError(
+                        f"{path}: field {section!r} lacks {required}"
+                    )
+            arguments[current_table].append(
+                MetadataArgument(
+                    local_name=section.lower(),
+                    standard_name=properties["standard_name"].lower(),
+                    fortran_type=properties["type"].lower(),
+                    kind=properties.get("kind", "").lower(),
+                    dimensions=_metadata_dimensions(properties["dimensions"]),
+                    intent=properties["intent"].lower(),
+                    units=properties.get("units", "1"),
+                    optional=_metadata_boolean(properties.get("optional")),
+                    allocatable=_metadata_boolean(properties.get("allocatable")),
+                )
+            )
+
+        for raw in path.read_text().splitlines():
+            line = raw.split("#", 1)[0].strip()
+            if not line:
+                continue
+            match = re.fullmatch(r"\[\s*([^]]+?)\s*\]", line)
+            if match:
+                commit()
+                section = match.group(1).strip().lower()
+                properties = {}
+            else:
+                properties.update(_metadata_line_properties(line))
+        commit()
+        for table, table_arguments in arguments.items():
+            result[table] = MetadataEntrypoint(
+                table=table,
+                module=description.module,
+                arguments=tuple(table_arguments),
+            )
+    return result
 
 
 def _load_ccpp_entrypoints(
     description: DeviceDescription,
 ) -> Mapping[str, MetadataEntrypoint]:
     scripts = _ccpp_parser_scripts(description.project_root)
-    if not scripts.is_dir():
-        raise DeviceBuildError(
-            f"CCPP Framework parser is missing: {scripts}"
-        )
+    if scripts is None:
+        return _load_metadata_without_ccpp(description)
     scripts_text = str(scripts)
     if scripts_text not in sys.path:
         sys.path.insert(0, scripts_text)
@@ -697,15 +792,6 @@ def _logical_fortran_lines(source: Path) -> Iterable[str]:
 
 
 def _validate_dependencies(description: DeviceDescription) -> tuple[str, ...]:
-    scripts = _ccpp_parser_scripts(description.project_root)
-    scripts_text = str(scripts)
-    if scripts_text not in sys.path:
-        sys.path.insert(0, scripts_text)
-    try:
-        from fortran_tools.parse_fortran import UseStatement
-    except ImportError as exc:  # pragma: no cover
-        raise DeviceBuildError("cannot import CCPP UseStatement parser") from exc
-
     dependencies: set[str] = set()
     allowed = (
         set(description.providers)
@@ -718,11 +804,7 @@ def _validate_dependencies(description: DeviceDescription) -> tuple[str, ...]:
             match = _USE_STATEMENT.match(line)
             if match is None:
                 continue
-            statement = UseStatement(line)
-            if statement.valid:
-                module = statement.module.lower()
-            else:
-                module = match.group(1).lower()
+            module = match.group(1).lower()
             for pattern in _FORBIDDEN_MODULE_PATTERNS:
                 if (
                     module not in description.providers
@@ -747,9 +829,16 @@ def _project_module_index(project_root: Path) -> Mapping[str, Path]:
     """Index module providers once for recursive, source-only packaging."""
 
     candidates: list[Path] = []
-    cam_root = project_root / "external/CAM-SIMA"
-    for pattern in ("*.F90", "*.f90", "*.F", "*.f"):
-        candidates.extend(cam_root.rglob(pattern))
+    source_roots = (
+        project_root / "external" / "iCESM1.3.1_fzhu" / "components" / "cam",
+        project_root / "external" / "iCESM1.3.1_fzhu" / "cime" / "src" / "share",
+        project_root / "native" / "pi_cam",
+    )
+    for source_root in source_roots:
+        if not source_root.is_dir():
+            continue
+        for pattern in ("*.F90", "*.f90", "*.F", "*.f"):
+            candidates.extend(source_root.rglob(pattern))
     result: dict[str, Path] = {}
     for source in sorted(set(candidates)):
         try:
@@ -1896,7 +1985,7 @@ def _generate_adapter_and_manifest(
         if error_code is None:
             lines.append("    status = 0_c_int")
         elif error_message is not None:
-            # Several original CAM-SIMA schemes declare errflg/errmsg as
+            # Several original CAM schemes declare errflg/errmsg as
             # intent(out) but leave both untouched on success.  CCPP treats
             # an empty message as success; normalize that host convention at
             # the ABI boundary while preserving every reported error.
@@ -2319,7 +2408,16 @@ def build_device_bundle(
                 if configure:
                     exported_symbols.add(configure)
 
-    randnum_include = root / "external/CAM-SIMA/share/RandNum/include"
+    randnum_include = (
+        root
+        / "external"
+        / "iCESM1.3.1_fzhu"
+        / "cime"
+        / "src"
+        / "share"
+        / "RandNum"
+        / "include"
+    )
     if randnum_include.is_dir():
         all_include_directories.add(randnum_include)
     bundle_dir = output / "_bundle"
@@ -2452,7 +2550,13 @@ def build_device(
     include_directories.update(description.external_include_dirs)
     randnum_include = (
         description.project_root
-        / "external/CAM-SIMA/share/RandNum/include"
+        / "external"
+        / "iCESM1.3.1_fzhu"
+        / "cime"
+        / "src"
+        / "share"
+        / "RandNum"
+        / "include"
     )
     if randnum_include.is_dir():
         include_directories.add(randnum_include)

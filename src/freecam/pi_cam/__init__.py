@@ -9,6 +9,7 @@ from .boundary import (
 )
 from .case import PICAMCase
 from .config import PICAMConfig
+from .facade import Driver, Physics, PICAMCaseInfo, Variable
 from .driver import PICAMActionTrace, PICAMDriver, PICAMLifecycle
 from .errors import (
     BoundaryReplayError,
@@ -47,6 +48,7 @@ __all__ = [
     "BoundaryReplayError",
     "CAMBoundaryProvider",
     "CAMNumericalBackend",
+    "Driver",
     "InMemoryBoundaryProvider",
     "FortranArgument",
     "FortranParseFailure",
@@ -62,6 +64,7 @@ __all__ = [
     "PICAMAdapterValidator",
     "PICAMBFBResult",
     "PICAMCase",
+    "PICAMCaseInfo",
     "PICAMConfig",
     "PICAMConfigurationError",
     "PICAMDriver",
@@ -79,6 +82,7 @@ __all__ = [
     "PICAMStateView",
     "PICAMWorkflowAction",
     "PICAMWorkflowView",
+    "Physics",
     "PICAMVariableSpec",
     "PICAMFortranProcessSpec",
     "PythonProcessContext",
@@ -86,6 +90,7 @@ __all__ = [
     "RecordingCAMBackend",
     "ReplayBoundaryProvider",
     "write_boundary_payload",
+    "Variable",
     "compare_pi_cam_directories",
     "load_adapter_build_contexts",
 ]

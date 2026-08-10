@@ -12,24 +12,19 @@ license-files = ["LICENSE.txt", "NOTICE", "LICENSES/*"]
 requires-python = ">=3.11,<3.12"
 dependencies = [
   "cloudpickle>=3.1,<4",
-  "f90nml>=1.4",
   "fparser>=0.2.1,<0.3",
   "mpi4py>=4.0",
   "netCDF4>=1.7",
   "numpy>=2.0",
   "PyYAML>=6.0",
-  "taskflow>=5.10",
 ]
 
 [project.optional-dependencies]
-dask = ["dask[distributed]>=2025.1", "dask-jobqueue>=0.9"]
 notebook = [
-  "dask[distributed]>=2025.1",
-  "dask-jobqueue>=0.9",
   "ipykernel>=7.0",
   "matplotlib>=3.9",
 ]
-test = ["pytest>=8.0", "dask[distributed]>=2025.1"]
+test = ["pytest>=8.0"]
 
 [project.scripts]
 freecam = "freecam.cli:main"

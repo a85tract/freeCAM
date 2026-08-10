@@ -1,4 +1,4 @@
-"""Shared Python infrastructure."""
+"""Internal C/Fortran adapter support used by PI-CAM."""
 
 from .fortran_adapter import (
     FortranAdapterError,
@@ -6,14 +6,9 @@ from .fortran_adapter import (
     FortranCall,
     PointerTableAdapter,
 )
-from .mpi import world_comm
-from .remote import RemoteCAMField
-
 __all__ = [
     "FortranAdapterError",
     "FortranArgument",
     "FortranCall",
     "PointerTableAdapter",
-    "RemoteCAMField",
-    "world_comm",
 ]

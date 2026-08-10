@@ -8,7 +8,7 @@ metadata:
 source_modules:
   - runtime_temperature_offset
 providers:
-  ccpp_kinds: native/devices/support/ccpp_kinds.F90
+  ccpp_kinds: native/pi_cam/support/ccpp_kinds.F90
 state_policy: stateless
 dimension_bindings:
   horizontal_loop_extent: nphys_local

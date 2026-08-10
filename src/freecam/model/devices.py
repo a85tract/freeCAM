@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import ctypes
 import ctypes.util
+from dataclasses import dataclass
 import json
 import os
 from pathlib import Path
@@ -14,7 +15,24 @@ from typing import Any, Iterable, Mapping
 import numpy as np
 
 from .errors import DeviceContractError, MissingKernelError
-from .state import NativeObjectHandle
+
+
+@dataclass(slots=True)
+class NativeObjectHandle:
+    """Lifetime record for an opaque Fortran process object."""
+
+    address: int
+    fortran_type: str
+    shape: tuple[int, ...]
+    owner: Any
+    destroy: Any
+    recreatable: bool = False
+    released: bool = False
+
+    def release(self) -> None:
+        if not self.released:
+            self.destroy()
+            self.released = True
 
 
 DEVICE_ABI_VERSION = 1
@@ -174,7 +192,7 @@ class FortranDevice:
         """Load the numerical device only when this model first uses it.
 
         A catalog may contain optional external stacks such as MUSICA even
-        when the active suite is Kessler.  Eagerly dlopen'ing every catalog
+        when the active process needs it. Eagerly dlopen'ing every catalog
         library would make an unrelated model depend on every optional
         runtime library.
         """

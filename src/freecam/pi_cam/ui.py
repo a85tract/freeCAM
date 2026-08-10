@@ -84,6 +84,57 @@ class PICAMWorkflowView:
     def __len__(self) -> int:
         return len(self.actions())
 
+    def insert(
+        self,
+        process_or_index: Any,
+        process: Any | None = None,
+        *,
+        phase: str | None = None,
+        before: str | None = None,
+        after: str | None = None,
+    ) -> Any:
+        """Install a ``Physics`` object into the live workflow.
+
+        ``workflow.insert(process)`` uses placement declared on the process.
+        The FreeCESM-style ``workflow.insert(index, process)`` form is also
+        supported: the new process is inserted before the action currently at
+        that index, and its phase is inferred from that action.
+        """
+
+        if process is None:
+            candidate = process_or_index
+        else:
+            index = int(process_or_index)
+            rows = self.actions()
+            if not 0 <= index <= len(rows):
+                raise IndexError(index)
+            candidate = process
+            if before is not None or after is not None:
+                raise ValueError(
+                    "index placement cannot be combined with before= or after="
+                )
+            if index == len(rows):
+                if not rows:
+                    raise ValueError("cannot infer a phase from an empty workflow")
+                target = rows[-1]
+                phase = phase or target.phase
+                after = target.name
+            else:
+                target = rows[index]
+                phase = phase or target.phase
+                before = target.name
+        installer = getattr(candidate, "_install", None)
+        if not callable(installer):
+            raise TypeError(
+                "workflow.insert expects a freecam.Physics instance"
+            )
+        return installer(
+            self._session,
+            phase=phase,
+            before=before,
+            after=after,
+        )
+
     def _repr_html_(self) -> str:
         rows = self.actions(include_disabled=True)
         body = "".join(
@@ -142,7 +193,57 @@ class PICAMStateView:
     default_variables = ("T", "u", "v", "q")
 
     def __init__(self, session: "PICAMNotebookSession") -> None:
-        self._session = session
+        object.__setattr__(self, "_session", session)
+
+    def __getattr__(self, name: str) -> Any:
+        aliases = {
+            "T": "phys_state.t",
+            "u": "phys_state.u",
+            "v": "phys_state.v",
+            "q": "phys_state.q",
+        }
+        try:
+            return self._session.fields[aliases.get(name, name)]
+        except KeyError as exc:
+            raise AttributeError(name) from exc
+
+    def __setattr__(self, name: str, value: Any) -> None:
+        if name.startswith("_"):
+            object.__setattr__(self, name, value)
+            return
+        # Delayed import avoids a facade -> session -> ui -> facade cycle.
+        from .facade import Variable
+
+        if not isinstance(value, Variable):
+            raise TypeError(
+                "real MPI fields require a distributed definition; assign "
+                "freecam.Variable(dims=(...), initial=...)"
+            )
+        self._session.fields.create(
+            name,
+            dims=value.dims,
+            dtype=value.dtype,
+            units=value.units,
+            initial=value.initial,
+            writable=value.writable,
+            restart=value.restart,
+            aliases=value.aliases,
+            standard_name=value.standard_name,
+        )
+
+    def __delattr__(self, name: str) -> None:
+        if name.startswith("_"):
+            raise AttributeError(name)
+        self._session.fields[name].delete()
+
+    def __dir__(self) -> list[str]:
+        fields = self._session.status.get("fields", {})
+        names = {
+            alias
+            for alias in ("T", "u", "v", "q", *fields)
+            if str(alias).isidentifier()
+        }
+        return sorted(set(super().__dir__()) | names)
 
     def profile(
         self,

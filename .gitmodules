@@ -1,6 +1,3 @@
-[submodule "external/CAM-SIMA"]
-	path = external/CAM-SIMA
-	url = https://github.com/ESCOMP/CAM-SIMA
 [submodule "external/iCESM1.3.1_fzhu"]
 	path = external/iCESM1.3.1_fzhu
 	url = https://github.com/NCAR/iCESM1.3_iHESP_hires.git

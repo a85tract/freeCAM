@@ -91,6 +91,25 @@ def test_session_run_kernel_sends_explicit_worker_command(
     assert result["operation"] == "dadadj"
 
 
+def test_session_trace_sends_worker_cursor(tmp_path: Path, monkeypatch) -> None:
+    config, boundary, run_dir, env_script, _ = _session_files(tmp_path)
+    session = PICAMNotebookSession(
+        config,
+        boundary=boundary,
+        run_dir=run_dir,
+        env_script=env_script,
+    )
+    commands = []
+    monkeypatch.setattr(
+        session,
+        "_request",
+        lambda command: commands.append(command) or ({"name": "dadadj"},),
+    )
+
+    assert session.trace(since=3) == ({"name": "dadadj"},)
+    assert commands == [{"op": "trace", "since": 3}]
+
+
 def test_session_run_action_sends_scheme_or_runtime_process_command(
     tmp_path: Path, monkeypatch
 ) -> None:

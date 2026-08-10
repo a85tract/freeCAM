@@ -11,15 +11,13 @@ import sys
 import traceback
 from dataclasses import replace
 
-from mpi4py import MPI
-
 from .boundary import ReplayBoundaryProvider
 from .case import PICAMCase
 from .native import NativeCAMDevice
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(prog="python -m freecam.pi_cam.cli")
+    parser = argparse.ArgumentParser(prog="freecam")
     parser.add_argument("--config", type=Path, required=True)
     parser.add_argument("--boundary", type=Path, required=True)
     parser.add_argument("--run-dir", type=Path, required=True)
@@ -51,6 +49,8 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument("--summary", type=Path)
     args = parser.parse_args(argv)
+    from mpi4py import MPI
+
     world = MPI.COMM_WORLD
     case = PICAMCase.from_yaml(args.config)
     if args.execution_mode is not None:
@@ -250,5 +250,9 @@ if __name__ == "__main__":
         # complete validation communicator.
         traceback.print_exc()
         sys.stderr.flush()
+        try:
+            from mpi4py import MPI
+        except ImportError:
+            raise
         MPI.COMM_WORLD.Abort(1)
         raise

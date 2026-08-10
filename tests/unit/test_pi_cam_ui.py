@@ -3,6 +3,7 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
+from freecam.pi_cam import Physics, Variable
 from freecam.pi_cam.ui import PICAMStateView, PICAMWorkflowView
 
 
@@ -111,3 +112,79 @@ def test_state_view_plot_supports_before_after_overlay() -> None:
     assert axes[0, 0].yaxis_inverted()
     assert len(axes[0, 0].lines) == 2
     assert "step 7" in figure._suptitle.get_text()
+
+
+def test_state_attribute_assignment_creates_and_deletes_distributed_variable() -> None:
+    calls = []
+
+    class Field:
+        def delete(self):
+            calls.append(("delete", "experiment_tracer"))
+
+    class Fields:
+        def create(self, name, **kwargs):
+            calls.append(("create", name, kwargs))
+
+        def __getitem__(self, name):
+            assert name == "experiment_tracer"
+            return Field()
+
+    session = FakeSession()
+    session.fields = Fields()
+    state = PICAMStateView(session)
+
+    state.experiment_tracer = Variable(
+        ("pcols", "pver", "chunks"),
+        units="kg kg-1",
+        initial=0.0,
+        aliases=("tracer",),
+    )
+    del state.experiment_tracer
+
+    assert calls[0][0:2] == ("create", "experiment_tracer")
+    assert calls[0][2]["dims"] == ("pcols", "pver", "chunks")
+    assert calls[0][2]["aliases"] == ("tracer",)
+    assert calls[1] == ("delete", "experiment_tracer")
+
+
+def test_workflow_insert_installs_physics_object_with_declared_placement() -> None:
+    calls = []
+
+    class PhysicsCollection:
+        def install_python(self, function, **kwargs):
+            calls.append((function, kwargs))
+            return "installed"
+
+    class Heating(Physics):
+        name = "notebook_heating"
+        phase = "cam_run1"
+        after = "dadadj"
+        reads = ("phys_state.q",)
+        writes = ("phys_state.t",)
+
+        def tendency(self, fields, context):
+            fields["phys_state.t"][...] += context.timestep_seconds
+
+    session = FakeSession()
+    session.physics = PhysicsCollection()
+
+    result = PICAMWorkflowView(session).insert(Heating())
+
+    assert result == "installed"
+    assert calls[0][1] == {
+        "name": "notebook_heating",
+        "phase": "cam_run1",
+        "before": None,
+        "after": "dadadj",
+        "reads": ("phys_state.q",),
+        "writes": ("phys_state.t",),
+        "enabled": True,
+        "transactional": True,
+    }
+
+    session._status["step_plan"][1]["enabled"] = True
+    result = PICAMWorkflowView(session).insert(1, Heating())
+    assert result == "installed"
+    assert calls[1][1]["phase"] == "cam_run1"
+    assert calls[1][1]["before"] == "dry_adjustment"
+    assert calls[1][1]["after"] is None
