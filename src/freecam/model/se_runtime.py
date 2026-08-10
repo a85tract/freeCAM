@@ -1,4 +1,12 @@
-"""Spectral-element timestep implementation for the CAM SE/FVM capability."""
+"""Spectral-element timestep implementation for the CAM SE/FVM capability.
+
+Some routines in this module are transcribed from CESM/CAM Fortran sources
+and preserve their upstream expression order; each is marked with a ``Port
+...`` docstring naming its upstream routine.  Those routines are
+Copyright (c) 2017, University Corporation for Atmospheric Research (UCAR)
+and are redistributed under the BSD 3-Clause license in
+LICENSES/UCAR-CESM-BSD-3-Clause.txt.  See NOTICE section 2.
+"""
 
 from __future__ import annotations
 

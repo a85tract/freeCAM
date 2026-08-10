@@ -1,4 +1,9 @@
 ! Source-shaped hydrostatic energy service used by the clean kernel ABI.
+!
+! Transcribed from the CAM routine cam_thermo:get_hydrostatic_energy_1hd.
+! Copyright (c) 2017, University Corporation for Atmospheric Research (UCAR).
+! Redistributed under the BSD 3-Clause license in
+! LICENSES/UCAR-CESM-BSD-3-Clause.txt.  See NOTICE section 2.
 module pycam_sima_hydrostatic_energy_reference
   use iso_c_binding, only: c_double, c_int
   implicit none

@@ -1,5 +1,10 @@
 ! The CAM spectral-element tracer limiter, kept in its own compilation unit.
 !
+! Transcribed from the CAM SE dycore routine limiter_optim_iter_full.
+! Copyright (c) 2017, University Corporation for Atmospheric Research (UCAR).
+! Redistributed under the BSD 3-Clause license in
+! LICENSES/UCAR-CESM-BSD-3-Clause.txt.  See NOTICE section 2.
+!
 ! CAM compiles limiter_optim_iter_full separately from its advection caller.
 ! Keeping that call boundary is numerically significant: inlining the routine
 ! into the compact C ABI wrapper changes compiler reductions and can move Qdp

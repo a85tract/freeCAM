@@ -1363,3 +1363,30 @@ git diff --check
 
 The CAM-SIMA source is pinned at commit
 `f8daa568eae2696b7c4ebff7768f02f5d097d9df`.
+
+## Licensing and redistribution
+
+freeCAM is licensed under the Apache License, Version 2.0 (`LICENSE.txt`).
+
+`NOTICE` is the authoritative account of what in this repository is original
+work and what is derived from upstream. Read it before redistributing anything.
+In short:
+
+- The Python runtime architecture and the decomposable device/kernel model are
+  original work under Apache-2.0.
+- A number of numerical routines are transcribed from CESM/CAM/HOMME to
+  preserve bit-for-bit behavior. They are derivative works of UCAR sources
+  under a BSD 3-Clause license, and each is marked at its point of definition.
+- The patch files under `native/pi_cam/control_patches/`,
+  `native/pi_cam/patches/`, and `validation/patches/` carry the license of the
+  files they modify — UCAR (BSD-3), MCT/UChicago Argonne (BSD-3), and
+  RTE-RRTMGP/AER (BSD-3).
+- Verbatim copies of every upstream license are in `LICENSES/`.
+
+**Do not redistribute compiled CAM libraries built from the pinned tree.** A
+CAM shared library links segregable CESM components that keep their own terms,
+including CISM (LGPL v3), MCT, AER RRTMG, ESMF, and Lahey's
+`Inf_NaN_Detection` module, whose terms forbid selling standalone compiled
+files derived from it without permission from Lahey Computer Systems. See
+`LICENSES/CESM-Copyright-Notice.txt`. freeCAM builds from pinned upstream
+sources on the target machine; keep it that way.

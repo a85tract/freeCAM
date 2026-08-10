@@ -1,0 +1,197 @@
+freeCAM
+Copyright (c) 2026 The Abstract Lab
+
+freeCAM is a Python-owned CAM runtime. Python owns the model control path,
+clock, decomposition, state, and coupling boundaries; the original Fortran
+numerical code supplies the calculations through generated bind(C) adapters.
+
+This product is licensed under the Apache License, Version 2.0 (see LICENSE.txt).
+
+The following describes the origin of the material in this repository and the
+terms that apply to the parts that are not original to The Abstract Lab.
+Verbatim copies of every third-party license referenced below are in LICENSES/.
+
+
+================================================================================
+1. Original work by The Abstract Lab
+================================================================================
+
+Developed by The Abstract Lab and licensed under Apache-2.0:
+
+  - The Python runtime architecture: model lifecycle, StatePool, process and
+    phase scheduler, MPI communication, checkpoint semantics, history output,
+    plugin API, and the Python-owned control path over the original CAM.
+  - The decomposable device/kernel model: device descriptors, the device and
+    kernel code generators, the generic pointer/rank/shape ABI, the state
+    bridge generator, and the generated bind(C) adapters.
+  - The build, validation, and tooling layers under tools/, jobs/, tests/,
+    and validation/ (excluding the patch files listed in section 3).
+  - The configuration files under configs/ and devices/overrides.yaml.
+
+  - The reference case script under reference/, which drives an unmodified
+    upstream case and contains no upstream source.
+
+Except where section 2, 3, or 4 says otherwise, everything in src/freecam/,
+native/, tools/, tests/, jobs/, configs/, docs/, examples/, reference/, and
+validation/ is original work.
+
+
+================================================================================
+2. Algorithms transcribed from CESM / CAM / HOMME
+================================================================================
+
+Copyright (c) 2017, University Corporation for Atmospheric Research (UCAR)
+Licensed under a BSD 3-Clause license: LICENSES/UCAR-CESM-BSD-3-Clause.txt
+
+freeCAM reproduces the numerical behavior of specific CESM/CAM routines
+bit-for-bit. To do that, the routines below were transcribed from the pinned
+CESM sources into Fortran compilation units or into Python. They preserve the
+upstream expression order and are derivative works of the UCAR sources; they
+are not new numerical formulations. Each transcription names its upstream
+routine in a comment or docstring at the point of definition.
+
+Fortran transcriptions:
+
+  native/kernels/se_limiter_reference.F90
+      from CAM SE dycore: limiter_optim_iter_full
+  native/kernels/hydrostatic_energy_reference.F90
+      from CAM cam_thermo: get_hydrostatic_energy_1hd
+  native/kernels/hypervis_reference_support.F90
+      from CAM SE dycore: get_dp_ref
+
+Python transcriptions (23 routines; see the "Port ..." docstrings):
+
+  src/freecam/model/se_runtime.py
+      subcell_Laplace_fluxes, dyn_comp:stepon forcing normalization,
+      prim_advance_mod:ApplyCAMForcing, prim_advance_mod:compute_and_apply_rhs,
+      SE/FVM v1 biharmonic diffusion and sponge, euler_step limiter-8,
+      and CAM's active-water thermodynamic helper calls
+  src/freecam/model/phases.py
+      dyn2fvm_mass_vars, SE derived_phys_dry (FKESSLER subset),
+      gws_src_vort, gws_src_fnct,
+      gravity_waves_sources::compute_vertical_derivative,
+      cam_thermo:get_hydrostatic_energy_1hd (active loop)
+  src/freecam/model/grid.py
+      spacecurve_mod::GenSpaceCurve, cart2cubedsphere, cubedsphere2cart
+  src/freecam/model/fvm_mapping.py
+      fvm_mapping:lagrange_1d, fvm_mapping:tensor_lagrange_interp limiter,
+      SE/FVM p_d_coupling forcing boundary
+  src/freecam/model/scientific_data.py
+      interpolate_data::lininterp_init, lininterp2d1d
+  src/freecam/model/initialization.py
+      CAM-SE prim_set_dry_mass
+  src/freecam/model/dynamics.py
+      compute_omega including DSS and the startup biharmonic filter
+
+Interface-level derivation: the bind(C) wrappers in
+native/kernels/fvm_transport_kernel.F90, native/kernels/fvm_displacement_kernel.F90,
+native/kernels/remap_support.F90, and native/kernels/se_startup_kernel.F90 call
+upstream modules (fvm_consistent_se_cslam, dimensions_mod, fv_mapz, and others)
+and therefore reproduce their argument contracts. The upstream numerical bodies
+themselves are NOT contained in this repository; they are compiled at build time
+from the pinned upstream checkout.
+
+
+================================================================================
+3. Patches against upstream sources
+================================================================================
+
+The files under native/pi_cam/control_patches/, native/pi_cam/patches/, and
+validation/patches/ are diffs against upstream sources. A diff embeds context
+lines from the file it modifies, so each patch is a derivative work of its
+target and carries that target's license. The patches modify, by owner:
+
+  University Corporation for Atmospheric Research (UCAR) -- BSD 3-Clause,
+  LICENSES/UCAR-CESM-BSD-3-Clause.txt:
+      cime/src/drivers/mct/main/cesm_comp_mod.F90
+      config/cesm/machines/config_compilers.xml
+      src/control/cam_comp.F90
+      src/cpl/atm_comp_mct.F90
+      src/data/cam_thermo.F90
+      src/data/registry.xml
+      src/drivers/mct/main/cesm_comp_mod.F90
+      src/drivers/mct/main/component_mod.F90
+      src/drivers/mct/main/cplcomp_exchange_mod.F90
+      src/drivers/mct/main/seq_flux_mct.F90
+      src/drivers/mct/main/t_driver_timers_mod.F90
+      src/dynamics/se/dycore/fvm_consistent_se_cslam.F90
+      src/dynamics/se/dyn_comp.F90
+      src/physics/cam/physpkg.F90
+      src/physics/ncar_ccpp/schemes/conservation_adjust/check_energy/
+          check_energy_gmean/check_energy_gmean.F90
+      src/physics/ncar_ccpp/schemes/musica/micm/musica_ccpp_micm.F90
+      src/physics/ncar_ccpp/schemes/musica/tuvx/musica_ccpp_tuvx_load_species.F90
+
+  UChicago Argonne, LLC -- Model Coupling Toolkit (MCT), BSD 3-Clause,
+  LICENSES/MCT-BSD-3-Clause.txt:
+      src/externals/mct/mct/m_AttrVect.F90
+      (modified by native/pi_cam/control_patches/0023-python-owned-mct-storage.patch)
+
+  Atmospheric and Environmental Research, Regents of the University of
+  Colorado, and Trustees of Columbia University -- RTE-RRTMGP, BSD 3-Clause,
+  LICENSES/RTE-RRTMGP-BSD-3-Clause.txt:
+      src/physics/ncar_ccpp/schemes/rrtmgp/ext/rrtmgp-kernels/accel/
+          mo_gas_optics_rrtmgp_kernels.F90
+      (modified by validation/patches/cam_sima_rrtmgp_pressure_reciprocal.patch)
+
+The CCPP schemes under src/physics/ncar_ccpp/ are additionally covered by the
+Apache-2.0 license of ESCOMP/atmospheric_physics
+(LICENSES/CCPP-Atmospheric-Physics-Apache-2.0.txt).
+
+
+================================================================================
+4. Generated descriptors derived from upstream metadata
+================================================================================
+
+The files under devices/generated/ are generated by freeCAM's own tooling from
+the CCPP metadata (.meta) of the pinned CAM-SIMA checkout. They record argument
+names, standard names, dtypes, ranks, intents, and lifecycle entry points that
+originate in upstream metadata authored by UCAR/NCAR and the CCPP community
+(LICENSES/CCPP-Atmospheric-Physics-Apache-2.0.txt,
+LICENSES/CCPP-Framework-Apache-2.0.txt). They contain no upstream source code.
+
+
+================================================================================
+5. Interface providers that are NOT upstream copies
+================================================================================
+
+The modules under native/devices/support/ and the stub modules in
+native/kernels/fvm_kernel_stubs.F90 and native/kernels/remap_stubs.F90 reuse
+upstream module names, symbol names, and public parameter names (shr_kind_mod,
+ccpp_kinds, physconst, ppgrid, ref_pres, cam_logfile, cam_abortutils,
+shr_sys_mod, shr_log_mod, shr_assert_mod, spmd_utils, control_mod, perf_mod,
+cam_time_coord, error_messages, musica_ccpp_namelist, and others) so that
+unmodified upstream schemes link against them.
+
+These are new implementations written for this project. They are not copies of,
+and were not derived from, the upstream module bodies. They exist only to
+satisfy the link-time interface while keeping the corresponding services
+Python-owned.
+
+
+================================================================================
+6. Upstream code that is pinned but NOT redistributed
+================================================================================
+
+freeCAM references upstream trees as git submodules and builds against them; it
+does not vendor their sources and does not ship their build products:
+
+  external/CAM-SIMA           ESCOMP/CAM-SIMA @ f8daa568eae2696b7c4ebff7768f02f5d097d9df
+  external/iCESM1.3.1_fzhu    NCAR/iCESM1.3_iHESP_hires @ 556ad1c112af6606299f8270ad6f8b9b16540332
+                              (tag iCESM1.3.1; CAM pinned to iCAM5_iHESP
+                              commit 09c8a19c463122fad488e6fd1bbc0fcd0f410130)
+
+This distinction matters. The CESM copyright notice
+(LICENSES/CESM-Copyright-Notice.txt) places most of CESM in the public domain
+but carves out segregable components that keep their own, in some cases more
+restrictive, terms -- among them ESMF (University of Illinois/NCSA), POP, SCRIP
+and CICE (Los Alamos National Security), CISM (LGPL v3), AER RRTMG, MCT
+(UChicago Argonne), the ISCCP simulator, XML/Lite, and Lahey's
+Inf_NaN_Detection module, whose terms forbid selling copies or standalone
+compiled files derived from it without permission from Lahey Computer Systems.
+
+Building a CAM shared library from the pinned tree links several of these
+components. Redistributing such a binary would redistribute them, and the terms
+above -- not this NOTICE -- would govern. freeCAM therefore builds from pinned
+upstream sources on the target machine and does not distribute compiled model
+libraries. See the "Licensing and redistribution" section of README.md.

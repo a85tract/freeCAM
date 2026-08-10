@@ -1,4 +1,9 @@
 ! Source-order-compatible static reference pressure used by the SE dycore.
+!
+! Transcribed from the CAM SE dycore routine get_dp_ref.
+! Copyright (c) 2017, University Corporation for Atmospheric Research (UCAR).
+! Redistributed under the BSD 3-Clause license in
+! LICENSES/UCAR-CESM-BSD-3-Clause.txt.  See NOTICE section 2.
 module pycam_sima_hypervis_reference_support
   use iso_c_binding, only: c_double
   implicit none

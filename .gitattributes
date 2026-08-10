@@ -1,0 +1,7 @@
+# Verbatim upstream license texts. They must be byte-identical to the source
+# they were copied from, so exempt them from the `git diff --check` whitespace
+# gate rather than reformatting them.
+LICENSES/** -whitespace
+
+# Patches carry upstream context lines verbatim; reformatting breaks `git apply`.
+*.patch -whitespace
