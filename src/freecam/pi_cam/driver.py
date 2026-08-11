@@ -149,6 +149,12 @@ class _ActionReference:
             raise PICAMConfigurationError(
                 "running an isolated CAM action requires experimental=True"
             )
+        # A source workflow action may only be entered at its native sequence
+        # cursor.  When the same operation has a generated StatePool adapter,
+        # an isolated Python call must use that adapter instead of jumping into
+        # the middle of CAM's timestep state machine.
+        if self.operation in self.driver.kernels.names:
+            return self.driver.run_kernel(self.operation, experimental=True)
         return self.driver.run_action(
             self.action.name, phase=self.action.phase, experimental=True
         )

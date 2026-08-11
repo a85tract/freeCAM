@@ -142,6 +142,26 @@ def test_individual_phase_and_scheme_are_exposed_without_advancing_time() -> Non
     assert backend.calls[-2:] == ["dadadj", "stepon_run3"]
 
 
+def test_isolated_physics_call_prefers_direct_statepool_kernel() -> None:
+    class DirectKernelBackend(RecordingCAMBackend):
+        direct_kernels = ("dadadj",)
+
+        def execute_kernel(self, name, pool, *, fcomm):
+            del pool, fcomm
+            self.calls.append(f"direct:{name}")
+
+    template, _, boundary = _driver()
+    backend = DirectKernelBackend()
+    driver = PICAMDriver(template.config, boundary, backend, rank=0, size=1)
+    driver.initialize()
+
+    trace = driver.physics.dry_adjustment.run()
+
+    assert trace.phase == "direct_kernel"
+    assert trace.operation == "dadadj"
+    assert backend.calls[-1] == "direct:dadadj"
+
+
 def test_pythonic_phase_and_action_handles_edit_the_same_step_plan() -> None:
     driver, _, _ = _driver()
 

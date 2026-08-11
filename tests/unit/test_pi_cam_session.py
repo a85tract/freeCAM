@@ -444,7 +444,7 @@ def test_session_exposes_pythonic_fields_physics_phases_and_kernels(
     assert commands == [
         {"op": "field", "name": "phys_state.t", "rank": 2},
         {"op": "stats", "name": "phys_state.t", "rank": "global"},
-        {"op": "run_action", "name": "dry_adjustment", "phase": "cam_run1"},
+        {"op": "run_kernel", "name": "dadadj"},
         {
             "op": "set_action_enabled",
             "name": "rayleigh_friction",

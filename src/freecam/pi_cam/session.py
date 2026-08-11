@@ -211,6 +211,11 @@ class _SessionActionReference:
         self._snapshot = None if record is None else dict(record)
 
     def run(self) -> Mapping[str, Any]:
+        # Workflow actions carry native ordering state and cannot be entered
+        # arbitrarily.  Prefer the generated rank-local StatePool adapter when
+        # this operation is available as an independently callable kernel.
+        if self.operation in tuple(self.session.status.get("kernels", ())):
+            return self.session.run_kernel(self.operation)
         return self.session.run_action(self.name, phase=self.phase)
 
     @property
