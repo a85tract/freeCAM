@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import base64
+from html import escape
 import json
 import os
 import queue
@@ -23,6 +24,10 @@ from freecam.core.runtime_env import mpi_loader_environment
 from freecam.model.python_processes import PythonProcessSpec
 
 from .config import PICAMConfig
+from .physics_catalog import (
+    PICAMPhysicsCatalog,
+    merge_runtime_process_records,
+)
 from .state import PICAMVariableSpec
 from .ui import PICAMStateView, PICAMWorkflowView
 
@@ -135,6 +140,58 @@ class _SessionFieldCollection:
         return self.session.delete_field(name)
 
 
+class _SessionProcessCallResult(Mapping[str, _SessionFieldReference]):
+    """Named StatePool outputs returned by one original CAM process call."""
+
+    def __init__(
+        self,
+        session: "PICAMNotebookSession",
+        record: Mapping[str, Any],
+        trace: Mapping[str, Any],
+    ) -> None:
+        self.session = session
+        self.name = str(record["name"])
+        self.trace = dict(trace)
+        self.bindings = tuple(record.get("bindings", ()))
+        self._outputs = {
+            str(binding["argument"]): str(binding["field"])
+            for binding in self.bindings
+            if str(binding.get("intent", "inout")).lower() in {"out", "inout"}
+        }
+
+    @property
+    def fields(self) -> Mapping[str, _SessionFieldReference]:
+        return {
+            name: _SessionFieldReference(self.session, field)
+            for name, field in self._outputs.items()
+        }
+
+    @property
+    def process(self) -> Any:
+        return self.session.physics.process(self.name)
+
+    def remove(self) -> Mapping[str, Any]:
+        return self.session.remove_promoted_process(self.name)
+
+    def __getitem__(self, name: str) -> _SessionFieldReference:
+        return _SessionFieldReference(self.session, self._outputs[str(name)])
+
+    def __iter__(self):
+        return iter(self._outputs)
+
+    def __len__(self) -> int:
+        return len(self._outputs)
+
+    def __getattr__(self, name: str) -> _SessionFieldReference:
+        try:
+            return self[name]
+        except KeyError as exc:
+            raise AttributeError(name) from exc
+
+    def __repr__(self) -> str:
+        return f"ProcessResult(name={self.name!r}, outputs={tuple(self)!r})"
+
+
 class _SessionActionReference:
     """A physics action that can be run or edited without string plumbing."""
 
@@ -145,14 +202,53 @@ class _SessionActionReference:
         phase: str,
         *,
         kind: str = "scheme",
+        record: Mapping[str, Any] | None = None,
     ) -> None:
         self.session = session
         self.name = name
         self.phase = phase
         self.kind = kind
+        self._snapshot = None if record is None else dict(record)
 
     def run(self) -> Mapping[str, Any]:
         return self.session.run_action(self.name, phase=self.phase)
+
+    @property
+    def qualified_name(self) -> str:
+        return f"{self.phase}.{self.name}"
+
+    @property
+    def operation(self) -> str:
+        return str(self._record()["operation"])
+
+    @property
+    def native_id(self) -> int | None:
+        value = self._record().get("native_id")
+        return None if value is None else int(value)
+
+    @property
+    def granularity(self) -> str:
+        record = self._record()
+        return str(
+            record.get(
+                "granularity",
+                "leaf" if str(record["operation"]).startswith("leaf_") else "stage",
+            )
+        )
+
+    @property
+    def metadata(self) -> Mapping[str, Any]:
+        return self._record()
+
+    @property
+    def runnable(self) -> bool:
+        if self._snapshot is None:
+            return True
+        return bool(self._snapshot.get("native_available", True))
+
+    @property
+    def capability(self) -> str:
+        return "runtime"
 
     @property
     def enabled(self) -> bool:
@@ -161,12 +257,20 @@ class _SessionActionReference:
     @enabled.setter
     def enabled(self, value: bool) -> None:
         self.session.set_action_enabled(self.name, bool(value), phase=self.phase)
+        if self._snapshot is not None:
+            self._snapshot["enabled"] = bool(value)
 
     def enable(self) -> Mapping[str, Any]:
-        return self.session.set_action_enabled(self.name, True, phase=self.phase)
+        result = self.session.set_action_enabled(self.name, True, phase=self.phase)
+        if self._snapshot is not None:
+            self._snapshot["enabled"] = True
+        return result
 
     def disable(self) -> Mapping[str, Any]:
-        return self.session.set_action_enabled(self.name, False, phase=self.phase)
+        result = self.session.set_action_enabled(self.name, False, phase=self.phase)
+        if self._snapshot is not None:
+            self._snapshot["enabled"] = False
+        return result
 
     def move(
         self,
@@ -189,6 +293,8 @@ class _SessionActionReference:
         raise TypeError(f"source physics action {self.phase}.{self.name} cannot be removed")
 
     def _record(self) -> Mapping[str, Any]:
+        if self._snapshot is not None:
+            return dict(self._snapshot)
         matches = [
             row
             for row in self.session.status.get("step_plan", ())
@@ -198,25 +304,367 @@ class _SessionActionReference:
             raise KeyError(f"{self.phase}.{self.name}")
         return dict(matches[0])
 
+    def __repr__(self) -> str:
+        return (
+            f"PhysicsProcess(operation={self.operation!r}, phase={self.phase!r}, "
+            f"enabled={self.enabled}, granularity={self.granularity!r})"
+        )
+
+
+class _SessionCatalogPhysicsReference:
+    """A flat source physics entry that is not yet an independent boundary."""
+
+    def __init__(
+        self,
+        session: "PICAMNotebookSession",
+        record: Mapping[str, Any],
+    ) -> None:
+        self.session = session
+        self._snapshot = dict(record)
+        self.name = str(record["api_name"])
+        self.phase = str(record["phase"])
+        self.kind = "catalog_process"
+
+    @property
+    def operation(self) -> str:
+        return str(self._snapshot["operation"])
+
+    @property
+    def qualified_name(self) -> str:
+        return str(self._snapshot["qualified_name"])
+
+    @property
+    def source(self) -> str:
+        return str(self._snapshot["source"])
+
+    @property
+    def level(self) -> str:
+        return str(self._snapshot["level"])
+
+    @property
+    def granularity(self) -> str:
+        return self.level
+
+    @property
+    def enabled(self) -> None:
+        return None
+
+    @property
+    def runnable(self) -> bool:
+        return False
+
+    @property
+    def capability(self) -> str:
+        return str(self._snapshot["capability"])
+
+    @property
+    def blockers(self) -> tuple[str, ...]:
+        return tuple(str(item) for item in self._snapshot.get("blockers", ()))
+
+    @property
+    def parent_processes(self) -> tuple[str, ...]:
+        return tuple(
+            str(item) for item in self._snapshot.get("parent_processes", ())
+        )
+
+    @property
+    def metadata(self) -> Mapping[str, Any]:
+        return dict(self._snapshot)
+
+    def _unavailable(self, operation: str) -> None:
+        reason = ", ".join(self.blockers) or self.capability
+        parents = ", ".join(self.parent_processes) or "its enclosing CAM process"
+        raise PICAMNotebookError(
+            f"{self.name!r} is a cataloged {self.level}, not an independently "
+            f"runnable boundary; cannot {operation}. Run {parents}, or first "
+            f"admit explicit StatePool/context bindings. Current blockers: {reason}"
+        )
+
+    def run(self) -> Mapping[str, Any]:
+        self._unavailable("run it")
+        raise AssertionError("unreachable")
+
+    def __call__(self, **arguments: Any) -> _SessionProcessCallResult:
+        bindings, initials = self.session._process_call_arguments(arguments)
+        promoted_names = {
+            str(record["name"])
+            for record in self.session.status.get("promoted_processes", ())
+        }
+        if self.name not in promoted_names:
+            record = self.session.promote_process(
+                self.name,
+                bindings=bindings,
+                initials=initials,
+            )
+        elif arguments:
+            raise PICAMNotebookError(
+                f"{self.name!r} is already bound; remove its previous result "
+                "before changing call arguments"
+            )
+        else:
+            record = next(
+                item
+                for item in self.session.status.get("promoted_processes", ())
+                if str(item["name"]) == self.name
+            )
+        trace = self.session.run_promoted_process(self.name)
+        return _SessionProcessCallResult(self.session, record, trace)
+
+    def promote(
+        self,
+        *,
+        bindings: Mapping[str, str] | None = None,
+        initials: Mapping[str, Any] | None = None,
+        dimensions: Mapping[str, int] | None = None,
+    ) -> "_SessionPromotedPhysicsReference":
+        self.session.promote_process(
+            self.name,
+            bindings=bindings,
+            initials=initials,
+            dimensions=dimensions,
+        )
+        reference = self.session.physics.process(self.name)
+        assert isinstance(reference, _SessionPromotedPhysicsReference)
+        return reference
+
+    def enable(self) -> Mapping[str, Any]:
+        self._unavailable("enable it")
+        raise AssertionError("unreachable")
+
+    def disable(self) -> Mapping[str, Any]:
+        self._unavailable("disable it")
+        raise AssertionError("unreachable")
+
+    def move(self, *, before: str | None = None, after: str | None = None) -> None:
+        del before, after
+        self._unavailable("move it")
+
+    def __repr__(self) -> str:
+        return (
+            f"PhysicsProcess(name={self.name!r}, source={self.qualified_name!r}, "
+            f"level={self.level!r}, runnable=False, capability={self.capability!r})"
+        )
+
+
+class _SessionPromotedPhysicsReference(_SessionCatalogPhysicsReference):
+    """Notebook handle for one StatePool-bound original CAM routine."""
+
+    @property
+    def runnable(self) -> bool:
+        return bool(self._snapshot.get("native_available"))
+
+    @property
+    def capability(self) -> str:
+        return (
+            "statepool_bound"
+            if self.runnable
+            else "statepool_bound_no_native"
+        )
+
+    @property
+    def bindings(self) -> tuple[Mapping[str, Any], ...]:
+        return tuple(self._snapshot.get("bindings", ()))
+
+    def run(self) -> Mapping[str, Any]:
+        return self.session.run_promoted_process(self.name)
+
+    def __call__(self, **arguments: Any) -> _SessionProcessCallResult:
+        if arguments:
+            raise PICAMNotebookError(
+                f"{self.name!r} is already bound; call it without arguments or "
+                "remove it before rebinding"
+            )
+        trace = self.run()
+        return _SessionProcessCallResult(self.session, self._snapshot, trace)
+
+    def remove(self) -> Mapping[str, Any]:
+        return self.session.remove_promoted_process(self.name)
+
+    def enable(self) -> Mapping[str, Any]:
+        raise PICAMNotebookError(
+            "a promoted process is standalone and is not inserted into the "
+            "complete CAM timestep"
+        )
+
+    disable = enable
+
+    def move(self, *, before: str | None = None, after: str | None = None) -> None:
+        del before, after
+        self.enable()
+
 
 class _SessionPhysicsCollection:
-    _KINDS = {"scheme", "python_process", "runtime_fortran_process"}
+    _RUNTIME_KINDS = {"scheme", "python_process", "runtime_fortran_process"}
 
     def __init__(self, session: "PICAMNotebookSession") -> None:
         self.session = session
+        self.catalog = PICAMPhysicsCatalog.load_default()
 
     @property
     def names(self) -> tuple[str, ...]:
+        """Flat Python names for all case-reachable physics interfaces."""
+
+        return tuple(str(row["api_name"]) for row in self.records)
+
+    @property
+    def operation_names(self) -> tuple[str, ...]:
+        return tuple(str(row["operation"]) for row in self.records)
+
+    @property
+    def action_names(self) -> tuple[str, ...]:
+        """Human-readable aliases used by the Python workflow."""
+
         return tuple(
             str(row["name"])
-            for row in self.session.status.get("step_plan", ())
-            if row["kind"] in self._KINDS
+            for row in self.runtime_records
         )
+
+    @property
+    def runtime_records(self) -> tuple[Mapping[str, Any], ...]:
+        return tuple(
+            dict(row)
+            for row in self.session.status.get("step_plan", ())
+            if row["kind"] in self._RUNTIME_KINDS
+        )
+
+    @property
+    def records(self) -> tuple[Mapping[str, Any], ...]:
+        records = [
+            dict(row)
+            for row in merge_runtime_process_records(
+                self.runtime_records,
+                self.catalog,
+            )
+        ]
+        promoted = {
+            str(record["name"]): dict(record)
+            for record in self.session.status.get("promoted_processes", ())
+        }
+        for row in records:
+            record = promoted.get(str(row["api_name"]))
+            if record is None:
+                continue
+            row.update(
+                {
+                    "phase": "promoted_process",
+                    "kind": "promoted_process",
+                    "runnable": bool(record.get("native_available")),
+                    "enabled": None,
+                    "capability": (
+                        "statepool_bound"
+                        if bool(record.get("native_available"))
+                        else "statepool_bound_no_native"
+                    ),
+                    "bindings": tuple(record.get("bindings", ())),
+                    "created_fields": tuple(record.get("created_fields", ())),
+                    "native_available": bool(record.get("native_available")),
+                }
+            )
+        return tuple(records)
+
+    @property
+    def interfaces(self) -> tuple[Any, ...]:
+        references = []
+        for row in self.records:
+            if str(row["kind"]) == "promoted_process":
+                references.append(_SessionPromotedPhysicsReference(self.session, row))
+            elif bool(row["runnable"]):
+                references.append(_SessionActionReference(
+                    self.session,
+                    str(row["name"]),
+                    str(row["phase"]),
+                    kind=str(row["kind"]),
+                    record=row,
+                ))
+            else:
+                references.append(_SessionCatalogPhysicsReference(self.session, row))
+        return tuple(references)
+
+    @property
+    def runnable(self) -> tuple[Any, ...]:
+        return tuple(reference for reference in self.interfaces if reference.runnable)
+
+    @property
+    def catalog_only(self) -> tuple[Any, ...]:
+        return tuple(
+            reference for reference in self.interfaces if not reference.runnable
+        )
+
+    @property
+    def coverage(self) -> Mapping[str, int]:
+        base = self._coverage(self.records)
+        result = {
+            **base,
+            "source_reachable": self.catalog.reachable_procedures,
+            "source_catalog": len(self.catalog.processes),
+            "physical_processes": len(self.catalog.physics_processes),
+            "helper_routines": len(self.catalog.helpers),
+            "runtime_overlap": (
+                len(self.catalog.physics_processes)
+                - base["catalog_only"]
+            ),
+            "excluded_lifecycle": self.catalog.excluded_lifecycle,
+        }
+        return result
+
+    @staticmethod
+    def _coverage(records: Sequence[Mapping[str, Any]]) -> Mapping[str, int]:
+        runnable = tuple(row for row in records if bool(row["runnable"]))
+        catalog_only = tuple(row for row in records if not bool(row["runnable"]))
+        leaf = sum(
+            str(row.get("granularity", "")) == "leaf"
+            or str(row["operation"]).startswith("leaf_")
+            for row in runnable
+        )
+        planned = tuple(row for row in runnable if row.get("enabled") is not None)
+        enabled = sum(bool(row["enabled"]) for row in planned)
+        result = {
+            "interfaces": len(records),
+            "runnable": len(runnable),
+            "catalog_only": len(catalog_only),
+            "enabled": enabled,
+            "disabled": len(planned) - enabled,
+            "leaf": leaf,
+            "stage": len(runnable) - leaf,
+        }
+        standalone = len(runnable) - len(planned)
+        if standalone:
+            result["standalone"] = standalone
+        return result
+
+    def by_phase(self, phase: str) -> tuple[_SessionActionReference, ...]:
+        selected = tuple(
+            interface
+            for interface in self.interfaces
+            if interface.phase == str(phase)
+            or any(
+                str(action).startswith(f"{phase}.")
+                for action in interface.metadata.get("parent_actions", ())
+            )
+        )
+        if not selected:
+            raise KeyError(f"physics phase {phase!r} is unknown or empty")
+        return selected
+
+    def describe(self) -> tuple[Mapping[str, Any], ...]:
+        """Return the complete process table in source execution order."""
+
+        return self.records
+
+    def __len__(self) -> int:
+        return len(self.records)
+
+    def __iter__(self):
+        return iter(self.interfaces)
 
     def __dir__(self) -> list[str]:
         return sorted(
             set(super().__dir__())
-            | {name for name in self.names if name.isidentifier()}
+            | {
+                name
+                for name in (*self.names, *self.operation_names, *self.action_names)
+                if name.isidentifier()
+            }
         )
 
     def __getattr__(self, name: str) -> _SessionActionReference:
@@ -233,19 +681,104 @@ class _SessionPhysicsCollection:
     ) -> _SessionActionReference:
         matches = [
             row
-            for row in self.session.status.get("step_plan", ())
-            if row["kind"] in self._KINDS
-            and (row["name"] == name or row["operation"] == name)
+            for row in self.records
+            if (
+                row["name"] == name
+                or row["api_name"] == name
+                or row["operation"] == name
+                or name in row.get("aliases", ())
+                or row.get("qualified_name") == name
+            )
             and (phase is None or row["phase"] == phase)
         ]
         if len(matches) != 1:
             raise KeyError(f"physics action {name!r} is unknown or ambiguous")
         row = matches[0]
-        return _SessionActionReference(
-            self.session,
-            str(row["name"]),
-            str(row["phase"]),
-            kind=str(row["kind"]),
+        if str(row["kind"]) == "promoted_process":
+            return _SessionPromotedPhysicsReference(self.session, row)
+        if bool(row["runnable"]):
+            return _SessionActionReference(
+                self.session,
+                str(row["name"]),
+                str(row["phase"]),
+                kind=str(row["kind"]),
+                record=row,
+            )
+        return _SessionCatalogPhysicsReference(self.session, row)
+
+    def process(
+        self, name: str, *, phase: str | None = None
+    ) -> Any:
+        """Resolve one flat physics process; ``scheme`` remains an alias."""
+
+        return self.scheme(name, phase=phase)
+
+    def __repr__(self) -> str:
+        coverage = self.coverage
+        return (
+            "PhysicsProcesses("
+            f"interfaces={coverage['interfaces']}, runnable={coverage['runnable']}, "
+            f"catalog_only={coverage['catalog_only']})"
+        )
+
+    def _repr_html_(self) -> str:
+        records = self.records
+        coverage = self._coverage(records)
+
+        def table(selected: Sequence[Mapping[str, Any]]) -> str:
+            rows = []
+            for record in selected:
+                operation = str(record["operation"])
+                level = str(
+                    record.get(
+                        "granularity",
+                        "leaf" if operation.startswith("leaf_") else "stage",
+                    )
+                )
+                if not bool(record["runnable"]):
+                    state = str(record["capability"])
+                elif record.get("enabled") is None:
+                    state = "standalone"
+                else:
+                    state = "enabled" if bool(record["enabled"]) else "disabled"
+                rows.append(
+                    "<tr>"
+                    f"<td>{escape(str(record['phase']))}</td>"
+                    f"<td><code>{escape(str(record['api_name']))}</code></td>"
+                    f"<td><code>{escape(operation)}</code></td>"
+                    f"<td>{escape(level)}</td>"
+                    f"<td>{escape(state)}</td>"
+                    "</tr>"
+                )
+            return (
+                "<table><thead><tr><th>Phase</th><th>Python API</th>"
+                "<th>Original routine</th><th>Level</th><th>Capability</th>"
+                f"</tr></thead><tbody>{''.join(rows)}</tbody></table>"
+            )
+
+        runnable = tuple(record for record in records if bool(record["runnable"]))
+        catalog_only = tuple(
+            record for record in records if not bool(record["runnable"])
+        )
+        return (
+            "<div class='freecam-physics'>"
+            "<style>"
+            ".freecam-physics table{border-collapse:collapse;font-size:13px}"
+            ".freecam-physics th,.freecam-physics td{padding:4px 9px;"
+            "border-bottom:1px solid #ddd;text-align:left}"
+            ".freecam-physics code{font-size:12px}"
+            ".freecam-physics details{margin-top:10px}"
+            ".freecam-physics summary{cursor:pointer;font-weight:600}"
+            "</style>"
+            f"<p><strong>{coverage['interfaces']} flat physics interfaces</strong>: "
+            f"{coverage['runnable']} independently runnable and "
+            f"{coverage['catalog_only']} source-catalog entries. "
+            "Catalog-only entries fail explicitly until their StatePool/context "
+            "bindings are admitted.</p>"
+            "<h4>Runnable workflow boundaries</h4>"
+            f"{table(runnable)}"
+            "<details><summary>Show all source-catalog entries</summary>"
+            f"{table(catalog_only)}</details></div>"
         )
 
     def install_python(
@@ -411,7 +944,7 @@ class PICAMNotebookSession:
         python_executable: str | Path | None = None,
         launcher: str | Sequence[str] = "mpiexec",
         launch_mode: str = "auto",
-        pbs_account: str = "$PBS_ACCOUNT",
+        pbs_account: str | None = None,
         pbs_queue: str = "develop",
         pbs_walltime: str = "02:00:00",
         startup_timeout: float = 1200.0,
@@ -561,6 +1094,68 @@ class PICAMNotebookSession:
         """Run one experimental raw-array kernel on all live MPI ranks."""
 
         return dict(self._request({"op": "run_kernel", "name": name}))
+
+    def _process_call_arguments(
+        self, arguments: Mapping[str, Any]
+    ) -> tuple[dict[str, str], dict[str, Any]]:
+        """Convert field objects to bindings and literals to initial values."""
+
+        bindings: dict[str, str] = {}
+        initials: dict[str, Any] = {}
+        for raw_name, value in arguments.items():
+            name = str(raw_name)
+            if isinstance(value, _SessionFieldReference):
+                bindings[name] = value.name
+                continue
+            if isinstance(value, str):
+                try:
+                    bindings[name] = self.fields._resolve(value)
+                    continue
+                except KeyError:
+                    pass
+            initials[name] = value
+        return bindings, initials
+
+    def promote_process(
+        self,
+        name: str,
+        *,
+        bindings: Mapping[str, str] | None = None,
+        initials: Mapping[str, Any] | None = None,
+        dimensions: Mapping[str, int] | None = None,
+    ) -> Mapping[str, Any]:
+        """Move one original routine's explicit caller arguments into StatePool."""
+
+        result = dict(
+            self._request(
+                {
+                    "op": "promote_process",
+                    "name": str(name),
+                    "bindings": dict(bindings or {}),
+                    "initials": dict(initials or {}),
+                    "dimensions": {
+                        str(key): int(value)
+                        for key, value in (dimensions or {}).items()
+                    },
+                }
+            )
+        )
+        self._status = dict(self._request({"op": "status"}))
+        return result
+
+    def run_promoted_process(self, name: str) -> Mapping[str, Any]:
+        """Run one StatePool-bound routine without advancing model time."""
+
+        return dict(
+            self._request({"op": "run_promoted_process", "name": str(name)})
+        )
+
+    def remove_promoted_process(self, name: str) -> Mapping[str, Any]:
+        result = dict(
+            self._request({"op": "remove_promoted_process", "name": str(name)})
+        )
+        self._status = dict(self._request({"op": "status"}))
+        return result
 
     def trace(self, *, since: int = 0) -> tuple[Mapping[str, Any], ...]:
         """Return actual worker-side action records from ``since`` onward."""
@@ -812,6 +1407,12 @@ class PICAMNotebookSession:
         return "pbs" if short_host.startswith("derecho") else "local"
 
     def _submit_pbs(self, command: Sequence[str], environment: Mapping[str, str]) -> None:
+        if not self.pbs_account:
+            raise PICAMNotebookError(
+                "no PBS account is configured; pass account=... to freecam.Driver, "
+                "set PBS_ACCOUNT_DERECHO, or provide a CESM reference case whose "
+                "env_batch.xml defines CHARGE_ACCOUNT or PROJECT"
+            )
         script = self.run_dir / f".pi-cam-notebook-{secrets.token_hex(6)}.pbs"
         nodes = (self.config.mpi_size + 127) // 128
         rendered = " ".join(shlex.quote(item) for item in command)
@@ -835,11 +1436,22 @@ class PICAMNotebookSession:
             f"export PYTHONPATH={shlex.quote(str(Path(__file__).resolve().parents[2]))}\n"
             f"exec {rendered}\n"
         )
-        result = subprocess.run(
-            ["qsub", str(script)], check=True, capture_output=True, text=True,
-            env=dict(environment),
-        )
         self._pbs_script = script
+        try:
+            result = subprocess.run(
+                ["qsub", str(script)],
+                check=True,
+                capture_output=True,
+                text=True,
+                env=dict(environment),
+            )
+        except subprocess.CalledProcessError as exc:
+            detail = (exc.stderr or exc.stdout or str(exc)).strip()
+            raise PICAMNotebookError(
+                "cannot submit PI-CAM Notebook worker "
+                f"with PBS account {self.pbs_account!r}: {detail}\n"
+                f"Generated script: {script}"
+            ) from exc
         self._job_id = result.stdout.strip().splitlines()[-1]
         print(
             f"PI-CAM Notebook worker submitted as {self._job_id}; "

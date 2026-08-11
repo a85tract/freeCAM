@@ -146,6 +146,40 @@ def test_pythonic_phase_and_action_handles_edit_the_same_step_plan() -> None:
     driver, _, _ = _driver()
 
     assert "rayleigh_friction" in dir(driver.physics)
+    assert "rayleigh_friction_tend" in dir(driver.physics)
+    assert len(driver.physics) == 298
+    assert driver.physics.coverage == {
+        "interfaces": 298,
+        "runnable": 36,
+        "catalog_only": 262,
+        "source_reachable": 372,
+        "source_catalog": 371,
+        "physical_processes": 276,
+        "helper_routines": 95,
+        "runtime_overlap": 14,
+        "excluded_lifecycle": 1,
+        "enabled": 21,
+        "disabled": 15,
+        "leaf": 15,
+        "stage": 21,
+    }
+    assert driver.physics.names[0] == "surface_fluxes_and_emissions"
+    assert driver.physics.dry_adjustment.operation == "dadadj"
+    assert driver.physics.dadadj.operation == "dadadj"
+    assert driver.physics.deep_convection.metadata["source_procedures"] == (
+        "convect_deep::convect_deep_tend",
+    )
+    assert driver.physics.cloud_fraction_fice.qualified_name == (
+        "cloud_fraction::cldfrc_fice"
+    )
+    assert driver.physics.cldfrc_fice.name == "cloud_fraction_fice"
+    assert driver.physics.cloud_fraction_fice.runnable is False
+    assert driver.physics.cloud_fraction_fice.level == "process"
+    assert driver.physics.zm_conv_evap.name == "zm_conv_evap"
+    assert "gamma" not in driver.physics.names
+    assert driver.physics.catalog.process("math_lib::gamma").level == "helper"
+    with pytest.raises(PICAMConfigurationError, match="not an independently runnable"):
+        driver.physics.zm_conv_evap.run()
     assert "cam_run2" in dir(driver.phases)
     expanded = driver.phases.cam_run2.expand()
     driver.physics.rayleigh_friction.enabled = False

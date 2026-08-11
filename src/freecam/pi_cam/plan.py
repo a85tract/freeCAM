@@ -325,6 +325,9 @@ class PICAMStepPlan:
                 "name": action.name,
                 "operation": action.operation,
                 "kind": action.kind,
+                "granularity": (
+                    "leaf" if action.operation.startswith("leaf_") else "stage"
+                ),
                 "native_id": action.native_id,
                 "enabled": action.enabled,
             }

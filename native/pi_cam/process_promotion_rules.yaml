@@ -1,0 +1,9 @@
+schema_version: 1
+
+# These signatures can be represented by StatePool arrays, but their modules
+# are not compiled into the admitted PI-atm CAM5 build. Keep them visible in
+# the source catalog without forcing unavailable modules into the native image.
+exclude_from_native_image:
+  cosp_lidar_only_cloud: mod_llnl_stats is not built by this case
+  cosp_precip_mxratio: mod_cosp_utils is not built by this case
+  modis_l3_simulator: mod_modis_sim is not built by this case

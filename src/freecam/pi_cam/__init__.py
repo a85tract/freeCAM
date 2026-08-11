@@ -34,6 +34,18 @@ from .source_catalog import (
     PICAMKernelRules,
     PICAMSourceCatalog,
 )
+from .physics_catalog import (
+    PICAMPhysicsCatalog,
+    PICAMPhysicsProcess,
+    PICAMPhysicsRules,
+    build_physics_catalog,
+)
+from .process_context import (
+    PICAMProcessArgumentBinding,
+    PICAMProcessContextRegistry,
+    PICAMPromotedProcess,
+)
+from .process_codegen import generated_promoted_kernels, statepool_promotable
 from .adapter_validation import (
     ABISmokeResult,
     AdapterBuildContext,
@@ -74,6 +86,12 @@ __all__ = [
     "PICAMKernelRules",
     "PICAMNotebookError",
     "PICAMNotebookSession",
+    "PICAMPhysicsCatalog",
+    "PICAMPhysicsProcess",
+    "PICAMPhysicsRules",
+    "PICAMProcessArgumentBinding",
+    "PICAMProcessContextRegistry",
+    "PICAMPromotedProcess",
     "PICAMStateError",
     "PICAMStatePool",
     "PICAMStateSchema",
@@ -92,5 +110,8 @@ __all__ = [
     "write_boundary_payload",
     "Variable",
     "compare_pi_cam_directories",
+    "build_physics_catalog",
+    "generated_promoted_kernels",
     "load_adapter_build_contexts",
+    "statepool_promotable",
 ]

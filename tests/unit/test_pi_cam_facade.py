@@ -70,6 +70,9 @@ def _driver_tree(tmp_path: Path) -> dict[str, Path]:
     reference_case = tmp_path / "case"
     reference_case.mkdir()
     (reference_case / ".env_mach_specific.sh").write_text("true\n")
+    (reference_case / "env_batch.xml").write_text(
+        '<config><entry id="PROJECT" value="TEST_ACCOUNT"/></config>\n'
+    )
     reference_run = tmp_path / "reference-run"
     reference_run.mkdir()
     (reference_run / "atm_in").write_text("&atm_in /\n")
@@ -140,3 +143,66 @@ def test_driver_rejects_unknown_case_and_boundary_overrun(tmp_path) -> None:
         assert "replay boundary" in str(error)
     else:
         raise AssertionError("boundary overrun was accepted")
+
+
+def test_driver_reads_case_account_and_preserves_venv_python_symlink(
+    tmp_path, monkeypatch
+) -> None:
+    paths = _driver_tree(tmp_path)
+    python = paths["repo"] / ".venv/bin/python"
+    python.parent.mkdir(parents=True)
+    python.symlink_to("/usr/bin/python3.11")
+    monkeypatch.setenv("PBS_ACCOUNT", "INVALID_FOR_DERECHO")
+    monkeypatch.delenv("PBS_ACCOUNT_DERECHO", raising=False)
+
+    driver = Driver(
+        nsteps=2,
+        repo=paths["repo"],
+        config=paths["config"],
+        reference_case=paths["reference_case"],
+        reference_run=paths["reference_run"],
+        boundary=paths["boundary"],
+        session_factory=FakeSession,
+    )
+
+    assert driver.account == "TEST_ACCOUNT"
+    assert driver.python_executable == python.absolute()
+
+
+def test_driver_explicit_account_overrides_reference_case(tmp_path) -> None:
+    paths = _driver_tree(tmp_path)
+    driver = Driver(
+        nsteps=2,
+        repo=paths["repo"],
+        config=paths["config"],
+        reference_case=paths["reference_case"],
+        reference_run=paths["reference_run"],
+        boundary=paths["boundary"],
+        account="EXPLICIT_ACCOUNT",
+        session_factory=FakeSession,
+    )
+
+    assert driver.account == "EXPLICIT_ACCOUNT"
+
+
+def test_driver_does_not_use_login_shell_pbs_account_as_fallback(
+    tmp_path, monkeypatch
+) -> None:
+    paths = _driver_tree(tmp_path)
+    (paths["reference_case"] / "env_batch.xml").unlink()
+    monkeypatch.setenv("PBS_ACCOUNT", "UNRELATED_LOGIN_ACCOUNT")
+    monkeypatch.delenv("PBS_ACCOUNT_DERECHO", raising=False)
+    monkeypatch.delenv("PBS_JOBID", raising=False)
+    monkeypatch.delenv("PBS_NODEFILE", raising=False)
+
+    driver = Driver(
+        nsteps=2,
+        repo=paths["repo"],
+        config=paths["config"],
+        reference_case=paths["reference_case"],
+        reference_run=paths["reference_run"],
+        boundary=paths["boundary"],
+        session_factory=FakeSession,
+    )
+
+    assert driver.account is None

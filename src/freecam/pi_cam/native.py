@@ -7,7 +7,7 @@ import json
 import os
 from pathlib import Path
 import sys
-from typing import Mapping, Protocol
+from typing import Iterator, Mapping, Protocol
 
 import numpy as np
 
@@ -82,6 +82,27 @@ class RecordingCAMBackend:
         self.calls.append("finalize")
 
 
+class _BoundStatePool(Mapping[str, np.ndarray]):
+    """Translate generated logical argument names to real StatePool fields."""
+
+    def __init__(
+        self,
+        pool: Mapping[str, np.ndarray],
+        bindings: Mapping[str, str],
+    ) -> None:
+        self.pool = pool
+        self.bindings = dict(bindings)
+
+    def __getitem__(self, name: str) -> np.ndarray:
+        return self.pool[self.bindings.get(name, name)]
+
+    def __iter__(self) -> Iterator[str]:
+        return iter(self.bindings)
+
+    def __len__(self) -> int:
+        return len(self.bindings)
+
+
 class NativeCAMDevice:
     """Load generated bind(C) adapters while Python retains array ownership."""
 
@@ -110,10 +131,23 @@ class NativeCAMDevice:
             self._leaf_operation_names = frozenset(
                 str(name) for name in leaf_device.get("operations", ())
             )
+        promoted_kernel_device = payload.get("promoted_kernel_device")
+        self._promoted_kernel_library_path: Path | None = None
+        self._promoted_kernel_operation_names: frozenset[str] = frozenset()
+        if isinstance(promoted_kernel_device, Mapping):
+            raw_promoted_library = Path(str(promoted_kernel_device["library"]))
+            if not raw_promoted_library.is_absolute():
+                raw_promoted_library = self.manifest_path.parent / raw_promoted_library
+            self._promoted_kernel_library_path = raw_promoted_library
+            self._promoted_kernel_operation_names = frozenset(
+                str(name)
+                for name in promoted_kernel_device.get("operations", ())
+            )
         main_operations = {
             name: record
             for name, record in self._operations.items()
             if name not in self._leaf_operation_names
+            and name not in self._promoted_kernel_operation_names
         }
         direct_kernels = payload.get("direct_kernels", {})
         kernel_records = (
@@ -134,6 +168,8 @@ class NativeCAMDevice:
         self._leaf_library: ctypes.CDLL | None = None
         self._global_library: ctypes.CDLL | None = None
         self._leaf_abi: PointerTableAdapter | None = None
+        self._promoted_kernel_library: ctypes.CDLL | None = None
+        self._promoted_kernel_abi: PointerTableAdapter | None = None
         self._native_initialized = False
         state_bridge = payload.get("state_bridge")
         self._state_bridge = (
@@ -149,7 +185,9 @@ class NativeCAMDevice:
 
         return self._leaf_abi is not None
 
-    def _call(self, operation: str, pool: PICAMStatePool, fcomm: int) -> None:
+    def _call(
+        self, operation: str, pool: Mapping[str, np.ndarray], fcomm: int
+    ) -> None:
         try:
             if operation in self._leaf_operation_names:
                 if not self._native_initialized:
@@ -185,6 +223,43 @@ class NativeCAMDevice:
                         library_name=str(self._leaf_library_path),
                     )
                 self._leaf_abi.call(operation, pool, fcomm=fcomm)
+            elif operation in self._promoted_kernel_operation_names:
+                if not self._native_initialized:
+                    raise NativeCAMError(
+                        "promoted CAM kernels require an initialized CAM model"
+                    )
+                if self._promoted_kernel_abi is None:
+                    if (
+                        self._promoted_kernel_library_path is None
+                        or not self._promoted_kernel_library_path.is_file()
+                    ):
+                        raise NativeCAMError(
+                            "native CAM promoted-kernel library does not exist: "
+                            f"{self._promoted_kernel_library_path}"
+                        )
+                    # Keep the default CAM lifecycle on the exact BFB main
+                    # image.  Only an explicit promoted-process call exposes
+                    # that image's original module procedures and loads the
+                    # generated adapter add-on.
+                    if self._global_library is None:
+                        self._global_library = ctypes.CDLL(
+                            str(self.library_path),
+                            mode=os.RTLD_NOLOAD | ctypes.RTLD_GLOBAL,
+                        )
+                    self._promoted_kernel_library = ctypes.CDLL(
+                        str(self._promoted_kernel_library_path),
+                        mode=ctypes.RTLD_LOCAL,
+                    )
+                    promoted_operations = {
+                        name: self._operations[name]
+                        for name in self._promoted_kernel_operation_names
+                    }
+                    self._promoted_kernel_abi = PointerTableAdapter(
+                        self._promoted_kernel_library,
+                        promoted_operations,
+                        library_name=str(self._promoted_kernel_library_path),
+                    )
+                self._promoted_kernel_abi.call(operation, pool, fcomm=fcomm)
             else:
                 self._abi.call(operation, pool, fcomm=fcomm)
         except FortranAdapterError as exc:
@@ -256,6 +331,24 @@ class NativeCAMDevice:
         if name not in self.direct_kernels:
             raise NativeCAMError(f"unknown direct CAM kernel {name!r}")
         self._call(f"direct_kernel.{name}", pool, fcomm)
+
+    def execute_promoted_process(
+        self,
+        name: str,
+        pool: Mapping[str, np.ndarray],
+        *,
+        bindings: Mapping[str, str],
+        fcomm: int,
+    ) -> None:
+        """Run a generated routine against explicit StatePool argument bindings."""
+
+        if name not in self.direct_kernels:
+            raise NativeCAMError(f"unknown promoted CAM process {name!r}")
+        self._call(
+            f"direct_kernel.{name}",
+            _BoundStatePool(pool, bindings),
+            fcomm,
+        )
 
     def kernel_fields(self, name: str) -> tuple[str, ...]:
         """Return the ordered StatePool contract for one direct kernel."""

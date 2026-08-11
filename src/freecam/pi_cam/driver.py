@@ -18,7 +18,15 @@ from .boundary import CAMBoundaryProvider
 from .config import PICAMConfig
 from .errors import PICAMConfigurationError, PICAMStateError
 from .native import CAMNumericalBackend
+from .physics_catalog import (
+    PICAMPhysicsCatalog,
+    merge_runtime_process_records,
+)
 from .plan import PICAMAction, PICAMStepPlan
+from .process_context import (
+    PICAMProcessContextRegistry,
+    PICAMPromotedProcess,
+)
 from .runtime_processes import PICAMPythonProcessRegistry
 from .runtime_fortran import (
     PICAMFortranProcessRegistry,
@@ -65,9 +73,35 @@ class PICAMActionTrace:
 
 
 class _ActionReference:
-    def __init__(self, driver: "PICAMDriver", action: PICAMAction) -> None:
+    def __init__(
+        self,
+        driver: "PICAMDriver",
+        action: PICAMAction,
+        record: Mapping[str, Any] | None = None,
+    ) -> None:
         self.driver = driver
         self.action = action
+        self._snapshot = None if record is None else dict(record)
+
+    @property
+    def name(self) -> str:
+        return self.action.name
+
+    @property
+    def phase(self) -> str:
+        return self.action.phase
+
+    @property
+    def operation(self) -> str:
+        return self.action.operation
+
+    @property
+    def qualified_name(self) -> str:
+        return self.action.qualified_name
+
+    @property
+    def granularity(self) -> str:
+        return "leaf" if self.operation.startswith("leaf_") else "stage"
 
     @property
     def enabled(self) -> bool:
@@ -83,6 +117,32 @@ class _ActionReference:
             phase=self.action.phase,
             experimental=True,
         )
+
+    @property
+    def runnable(self) -> bool:
+        if self._snapshot is None:
+            return True
+        return bool(self._snapshot.get("native_available", True))
+
+    @property
+    def capability(self) -> str:
+        return "runtime"
+
+    @property
+    def metadata(self) -> Mapping[str, Any]:
+        if self._snapshot is not None:
+            return dict(self._snapshot)
+        result = {
+            "name": self.name,
+            "phase": self.phase,
+            "operation": self.operation,
+            "kind": self.action.kind,
+            "native_id": self.action.native_id,
+            "enabled": self.enabled,
+            "runnable": True,
+            "capability": "runtime",
+        }
+        return result
 
     def run(self, *, experimental: bool = True) -> PICAMActionTrace:
         if not experimental:
@@ -124,6 +184,12 @@ class _ActionReference:
             experimental=experimental,
         )
 
+    def __repr__(self) -> str:
+        return (
+            f"PhysicsProcess(operation={self.operation!r}, phase={self.phase!r}, "
+            f"enabled={self.enabled}, granularity={self.granularity!r})"
+        )
+
 
 class _PythonProcessReference(_ActionReference):
     def remove(self) -> Mapping[str, Any]:
@@ -135,49 +201,468 @@ class _FortranProcessReference(_ActionReference):
         return self.driver.fortran_processes.remove(self.action.name)
 
 
+class _LocalProcessCallResult(Mapping[str, np.ndarray]):
+    """Outputs from one directly called original CAM process."""
+
+    def __init__(
+        self,
+        driver: "PICAMDriver",
+        record: PICAMPromotedProcess,
+        trace: PICAMActionTrace,
+    ) -> None:
+        self.driver = driver
+        self.name = record.name
+        self.trace = trace
+        self.bindings = record.bindings
+        self._outputs = {
+            binding.argument: binding.field
+            for binding in record.bindings
+            if binding.intent.lower() in {"out", "inout"}
+        }
+
+    @property
+    def fields(self) -> Mapping[str, np.ndarray]:
+        return {name: self.driver.pool[field] for name, field in self._outputs.items()}
+
+    @property
+    def process(self) -> Any:
+        return self.driver.physics.process(self.name)
+
+    def remove(self) -> PICAMPromotedProcess:
+        return self.driver.remove_promoted_process(self.name)
+
+    def __getitem__(self, name: str) -> np.ndarray:
+        return self.driver.pool[self._outputs[str(name)]]
+
+    def __iter__(self) -> Iterator[str]:
+        return iter(self._outputs)
+
+    def __len__(self) -> int:
+        return len(self._outputs)
+
+    def __getattr__(self, name: str) -> np.ndarray:
+        try:
+            return self[name]
+        except KeyError as exc:
+            raise AttributeError(name) from exc
+
+    def __repr__(self) -> str:
+        return f"ProcessResult(name={self.name!r}, outputs={tuple(self)!r})"
+
+
+class _CatalogActionReference:
+    def __init__(
+        self,
+        driver: "PICAMDriver",
+        record: Mapping[str, Any],
+    ) -> None:
+        self.driver = driver
+        self._record = dict(record)
+
+    @property
+    def name(self) -> str:
+        return str(self._record["api_name"])
+
+    @property
+    def phase(self) -> str:
+        return str(self._record["phase"])
+
+    @property
+    def operation(self) -> str:
+        return str(self._record["operation"])
+
+    @property
+    def qualified_name(self) -> str:
+        return str(self._record["qualified_name"])
+
+    @property
+    def source(self) -> str:
+        return str(self._record["source"])
+
+    @property
+    def level(self) -> str:
+        return str(self._record["level"])
+
+    @property
+    def granularity(self) -> str:
+        return self.level
+
+    @property
+    def enabled(self) -> None:
+        return None
+
+    @property
+    def runnable(self) -> bool:
+        return False
+
+    @property
+    def capability(self) -> str:
+        return str(self._record["capability"])
+
+    @property
+    def blockers(self) -> tuple[str, ...]:
+        return tuple(str(item) for item in self._record.get("blockers", ()))
+
+    @property
+    def parent_processes(self) -> tuple[str, ...]:
+        return tuple(
+            str(item) for item in self._record.get("parent_processes", ())
+        )
+
+    @property
+    def metadata(self) -> Mapping[str, Any]:
+        return dict(self._record)
+
+    def _unavailable(self, operation: str) -> None:
+        reason = ", ".join(self.blockers) or self.capability
+        parents = ", ".join(self.parent_processes) or "its enclosing CAM process"
+        raise PICAMConfigurationError(
+            f"{self.name!r} is a cataloged {self.level}, not an independently "
+            f"runnable boundary; cannot {operation}. Run {parents}, or first "
+            f"admit explicit StatePool/context bindings. Current blockers: {reason}"
+        )
+
+    def run(self, *, experimental: bool = True) -> PICAMActionTrace:
+        del experimental
+        self._unavailable("run it")
+        raise AssertionError("unreachable")
+
+    def __call__(self, **arguments: Any) -> _LocalProcessCallResult:
+        """Bind inferred StatePool inputs, run once, and return named outputs."""
+
+        bindings, initials = self.driver._process_call_arguments(arguments)
+        if self.name not in self.driver.process_contexts:
+            self.driver.promote_process(
+                self.name,
+                bindings=bindings,
+                initials=initials,
+            )
+        elif arguments:
+            raise PICAMConfigurationError(
+                f"{self.name!r} is already bound; remove its previous result "
+                "before changing call arguments"
+            )
+        record = self.driver.process_contexts.record(self.name)
+        trace = self.driver.run_promoted_process(self.name, experimental=True)
+        return _LocalProcessCallResult(self.driver, record, trace)
+
+    def promote(
+        self,
+        *,
+        bindings: Mapping[str, str] | None = None,
+        initials: Mapping[str, Any] | None = None,
+        dimensions: Mapping[str, int] | None = None,
+    ) -> "_PromotedProcessReference":
+        """Make the routine's caller arguments explicit rank-local state."""
+
+        self.driver.promote_process(
+            self.name,
+            bindings=bindings,
+            initials=initials,
+            dimensions=dimensions,
+        )
+        reference = self.driver.physics.process(self.name)
+        assert isinstance(reference, _PromotedProcessReference)
+        return reference
+
+    def enable(self, *, experimental: bool = True) -> None:
+        del experimental
+        self._unavailable("enable it")
+
+    def disable(self, *, experimental: bool = True) -> None:
+        del experimental
+        self._unavailable("disable it")
+
+    def move(
+        self,
+        *,
+        before: str | None = None,
+        after: str | None = None,
+        experimental: bool = True,
+    ) -> None:
+        del before, after, experimental
+        self._unavailable("move it")
+
+    def __repr__(self) -> str:
+        return (
+            f"PhysicsProcess(name={self.name!r}, source={self.qualified_name!r}, "
+            f"level={self.level!r}, runnable=False, capability={self.capability!r})"
+        )
+
+
+class _PromotedProcessReference(_CatalogActionReference):
+    """One catalog routine whose complete argument list now lives in StatePool."""
+
+    @property
+    def runnable(self) -> bool:
+        return bool(self._record.get("native_available"))
+
+    @property
+    def capability(self) -> str:
+        return (
+            "statepool_bound"
+            if self.runnable
+            else "statepool_bound_no_native"
+        )
+
+    @property
+    def enabled(self) -> None:
+        # Promotion creates an isolated callable boundary; it deliberately
+        # does not insert a second call into the source CAM timestep.
+        return None
+
+    @property
+    def bindings(self) -> tuple[Mapping[str, Any], ...]:
+        return tuple(self._record.get("bindings", ()))
+
+    def run(self, *, experimental: bool = True) -> PICAMActionTrace:
+        if not experimental:
+            raise PICAMConfigurationError(
+                "isolated promoted CAM processes require experimental=True"
+            )
+        return self.driver.run_promoted_process(self.name, experimental=True)
+
+    def __call__(self, **arguments: Any) -> _LocalProcessCallResult:
+        if arguments:
+            raise PICAMConfigurationError(
+                f"{self.name!r} is already bound; call it without arguments or "
+                "remove it before rebinding"
+            )
+        record = self.driver.process_contexts.record(self.name)
+        trace = self.run(experimental=True)
+        return _LocalProcessCallResult(self.driver, record, trace)
+
+    def remove(self) -> PICAMPromotedProcess:
+        return self.driver.remove_promoted_process(self.name)
+
+    def enable(self, *, experimental: bool = True) -> None:
+        del experimental
+        raise PICAMConfigurationError(
+            "a promoted process is standalone; insert a Python/Fortran runtime "
+            "process to modify the complete timestep"
+        )
+
+    disable = enable
+
+    def move(
+        self,
+        *,
+        before: str | None = None,
+        after: str | None = None,
+        experimental: bool = True,
+    ) -> None:
+        del before, after, experimental
+        self.enable()
+
+
 class _PhysicsCollection:
     def __init__(self, driver: "PICAMDriver") -> None:
         self.driver = driver
+        self.catalog = PICAMPhysicsCatalog.load_default()
 
     @property
-    def names(self) -> tuple[str, ...]:
-        return tuple(
-            action.name
-            for action in self.driver.step_plan.actions
-            if action.kind in {
+    def records(self) -> tuple[Mapping[str, Any], ...]:
+        runtime = tuple(
+            row
+            for row in self.driver.step_plan.describe()
+            if row["kind"] in {
                 "scheme",
                 "python_process",
                 "runtime_fortran_process",
             }
         )
+        records = [dict(row) for row in merge_runtime_process_records(runtime, self.catalog)]
+        for row in records:
+            if str(row["api_name"]) not in self.driver.process_contexts:
+                continue
+            promoted = self.driver.process_contexts.record(str(row["api_name"]))
+            row.update(
+                {
+                    "phase": "promoted_process",
+                    "kind": "promoted_process",
+                    "runnable": promoted.native_available,
+                    "enabled": None,
+                    "capability": (
+                        "statepool_bound"
+                        if promoted.native_available
+                        else "statepool_bound_no_native"
+                    ),
+                    "bindings": tuple(
+                        binding.to_payload() for binding in promoted.bindings
+                    ),
+                    "created_fields": promoted.created_fields,
+                    "native_available": promoted.native_available,
+                }
+            )
+        return tuple(records)
+
+    @property
+    def names(self) -> tuple[str, ...]:
+        """Flat Python names for every case-reachable physics interface."""
+
+        return tuple(str(row["api_name"]) for row in self.records)
+
+    @property
+    def operation_names(self) -> tuple[str, ...]:
+        return tuple(str(row["operation"]) for row in self.records)
+
+    @property
+    def action_names(self) -> tuple[str, ...]:
+        return tuple(
+            str(row["name"])
+            for row in self.records
+            if bool(row["runnable"])
+        )
+
+    @property
+    def interfaces(self) -> tuple[Any, ...]:
+        references: list[Any] = []
+        for record in self.records:
+            if record["kind"] == "promoted_process":
+                references.append(_PromotedProcessReference(self.driver, record))
+                continue
+            if not bool(record["runnable"]):
+                references.append(_CatalogActionReference(self.driver, record))
+                continue
+            action = self.driver.step_plan.select(
+                str(record["name"]), phase=str(record["phase"])
+            )
+            if action.kind == "python_process":
+                references.append(_PythonProcessReference(self.driver, action, record))
+            elif action.kind == "runtime_fortran_process":
+                references.append(_FortranProcessReference(self.driver, action, record))
+            else:
+                references.append(_ActionReference(self.driver, action, record))
+        return tuple(references)
+
+    @property
+    def runnable(self) -> tuple[Any, ...]:
+        return tuple(reference for reference in self.interfaces if reference.runnable)
+
+    @property
+    def catalog_only(self) -> tuple[Any, ...]:
+        return tuple(
+            reference for reference in self.interfaces if not reference.runnable
+        )
+
+    @property
+    def coverage(self) -> Mapping[str, int]:
+        records = self.records
+        runnable = tuple(row for row in records if bool(row["runnable"]))
+        catalog_only = tuple(row for row in records if not bool(row["runnable"]))
+        leaf = sum(
+            str(row.get("granularity")) == "leaf"
+            or str(row["operation"]).startswith("leaf_")
+            for row in runnable
+        )
+        planned = tuple(row for row in runnable if row.get("enabled") is not None)
+        enabled = sum(bool(row["enabled"]) for row in planned)
+        result = {
+            "interfaces": len(records),
+            "runnable": len(runnable),
+            "catalog_only": len(catalog_only),
+            "source_reachable": self.catalog.reachable_procedures,
+            "source_catalog": len(self.catalog.processes),
+            "physical_processes": len(self.catalog.physics_processes),
+            "helper_routines": len(self.catalog.helpers),
+            "runtime_overlap": len(self.catalog.physics_processes) - len(catalog_only),
+            "excluded_lifecycle": self.catalog.excluded_lifecycle,
+            "enabled": enabled,
+            "disabled": len(planned) - enabled,
+            "leaf": leaf,
+            "stage": len(runnable) - leaf,
+        }
+        standalone = len(runnable) - len(planned)
+        if standalone:
+            result["standalone"] = standalone
+        return result
+
+    def by_phase(self, phase: str) -> tuple[_ActionReference, ...]:
+        selected = tuple(
+            reference
+            for reference in self.interfaces
+            if reference.phase == str(phase)
+            or any(
+                str(action).startswith(f"{phase}.")
+                for action in reference.metadata.get("parent_actions", ())
+            )
+        )
+        if not selected:
+            raise PICAMConfigurationError(
+                f"physics phase {phase!r} is unknown or empty"
+            )
+        return selected
+
+    def __len__(self) -> int:
+        return len(self.interfaces)
+
+    def __iter__(self) -> Iterator[_ActionReference]:
+        return iter(self.interfaces)
 
     def __dir__(self) -> list[str]:
         return sorted(
             set(super().__dir__())
-            | {name for name in self.names if name.isidentifier()}
+            | {
+                name
+                for name in (*self.names, *self.operation_names, *self.action_names)
+                if name.isidentifier()
+            }
         )
 
     def __getattr__(self, name: str) -> _ActionReference:
         matches = [
-            action
-            for action in self.driver.step_plan.actions
-            if action.kind in {"scheme", "python_process", "runtime_fortran_process"}
-            and (action.name == name or action.operation == name)
+            record
+            for record in self.records
+            if record["name"] == name
+            or record["api_name"] == name
+            or record["operation"] == name
+            or name in record.get("aliases", ())
+            or record.get("qualified_name") == name
         ]
         if len(matches) != 1:
             raise AttributeError(name)
-        action = matches[0]
+        record = matches[0]
+        if record["kind"] == "promoted_process":
+            return _PromotedProcessReference(self.driver, record)
+        if not bool(record["runnable"]):
+            return _CatalogActionReference(self.driver, record)
+        action = self.driver.step_plan.select(
+            str(record["name"]), phase=str(record["phase"])
+        )
         if action.kind == "python_process":
-            return _PythonProcessReference(self.driver, action)
+            return _PythonProcessReference(self.driver, action, record)
         if action.kind == "runtime_fortran_process":
-            return _FortranProcessReference(self.driver, action)
-        return _ActionReference(self.driver, action)
+            return _FortranProcessReference(self.driver, action, record)
+        return _ActionReference(self.driver, action, record)
 
-    def scheme(self, name: str, *, phase: str | None = None) -> _ActionReference:
-        action = self.driver.step_plan.select(name, phase=phase)
-        if action.kind != "scheme":
-            raise PICAMConfigurationError(f"{name!r} is not a physics scheme")
-        return _ActionReference(self.driver, action)
+    def scheme(self, name: str, *, phase: str | None = None) -> Any:
+        matches = tuple(
+            record
+            for record in self.records
+            if (
+                record["name"] == name
+                or record["api_name"] == name
+                or record["operation"] == name
+                or name in record.get("aliases", ())
+                or record.get("qualified_name") == name
+            )
+            and (phase is None or record["phase"] == phase)
+        )
+        if len(matches) != 1:
+            raise PICAMConfigurationError(
+                f"physics process {name!r} is unknown or ambiguous"
+            )
+        record = matches[0]
+        if record["kind"] == "promoted_process":
+            return _PromotedProcessReference(self.driver, record)
+        if not bool(record["runnable"]):
+            return _CatalogActionReference(self.driver, record)
+        return getattr(self, str(record["api_name"]))
+
+    def process(self, name: str, *, phase: str | None = None) -> Any:
+        """Resolve one flat physics process; ``scheme`` remains an alias."""
+
+        return self.scheme(name, phase=phase)
 
     def install_python(
         self,
@@ -375,11 +860,12 @@ class PICAMDriver:
         self._backend_initialized = False
         self._native_call_depth = 0
         self._python_initialized_addresses: dict[str, int] = {}
+        self.python_processes = PICAMPythonProcessRegistry(self)
+        self.fortran_processes = PICAMFortranProcessRegistry(self)
+        self.process_contexts = PICAMProcessContextRegistry(self)
         self.physics = _PhysicsCollection(self)
         self.phases = _PhaseCollection(self)
         self.kernels = _KernelCollection(self)
-        self.python_processes = PICAMPythonProcessRegistry(self)
-        self.fortran_processes = PICAMFortranProcessRegistry(self)
 
     @property
     def trace(self) -> tuple[PICAMActionTrace, ...]:
@@ -622,6 +1108,7 @@ class PICAMDriver:
                 )
             dependencies = self.python_processes.dependencies(canonical)
             dependencies += self.fortran_processes.dependencies(canonical)
+            dependencies += self.process_contexts.dependencies(canonical)
             if dependencies:
                 raise PICAMStateError(
                     f"field {canonical!r} is used by runtime processes: "
@@ -632,6 +1119,155 @@ class PICAMDriver:
         self._collective_state_error(local_error, "dynamic variable deletion")
         self.pool.remove_dynamic(canonical)
         self.comm.barrier()
+
+    @staticmethod
+    def _initial_signature(value: Any) -> Mapping[str, Any]:
+        array = np.asarray(value)
+        return {
+            "shape": tuple(int(extent) for extent in array.shape),
+            "dtype": array.dtype.str,
+        }
+
+    def _process_call_arguments(
+        self, arguments: Mapping[str, Any]
+    ) -> tuple[dict[str, str], dict[str, Any]]:
+        """Separate Python field objects from literal/array initial values."""
+
+        bindings: dict[str, str] = {}
+        initials: dict[str, Any] = {}
+        for raw_name, value in arguments.items():
+            name = str(raw_name)
+            field: str | None = None
+            if isinstance(value, str):
+                field = value
+            elif isinstance(value, np.ndarray):
+                matches = tuple(
+                    field_name
+                    for field_name, array in self.pool.items()
+                    if array is value
+                )
+                if len(matches) == 1:
+                    field = matches[0]
+            else:
+                candidate = getattr(value, "name", None)
+                if isinstance(candidate, str):
+                    try:
+                        field = self.pool.canonical_name(candidate)
+                    except KeyError:
+                        field = None
+            if field is None:
+                initials[name] = value
+            else:
+                bindings[name] = self.pool.canonical_name(field)
+        return bindings, initials
+
+    def promote_process(
+        self,
+        name: str,
+        *,
+        bindings: Mapping[str, str] | None = None,
+        initials: Mapping[str, Any] | None = None,
+        dimensions: Mapping[str, int] | None = None,
+    ) -> PICAMPromotedProcess:
+        """Collectively turn one routine's caller arguments into StatePool fields."""
+
+        self._require_collective_boundary("promote a physics process")
+        requested = dict(bindings or {})
+        values = dict(initials or {})
+        extents = {str(key): int(value) for key, value in (dimensions or {}).items()}
+        signature = json.dumps(
+            {
+                "name": str(name),
+                "bindings": requested,
+                "initials": {
+                    str(key): self._initial_signature(value)
+                    for key, value in values.items()
+                },
+                "dimensions": extents,
+            },
+            sort_keys=True,
+            separators=(",", ":"),
+        )
+        signatures = self.comm.allgather(signature)
+        if len(set(signatures)) != 1:
+            raise PICAMStateError(
+                "promoted process contract differs across MPI ranks"
+            )
+        record: PICAMPromotedProcess | None = None
+        local_error: str | None = None
+        try:
+            record = self.process_contexts.promote(
+                name,
+                bindings=requested,
+                initials=values,
+                dimensions=extents,
+            )
+        except BaseException as exc:
+            local_error = f"{type(exc).__name__}: {exc}"
+        errors = self.comm.allgather(local_error)
+        if any(error is not None for error in errors):
+            if record is not None and record.name in self.process_contexts:
+                self.process_contexts.remove(record.name)
+            self.comm.barrier()
+            raise PICAMStateError(
+                f"physics process promotion rolled back collectively: {errors}"
+            )
+        self.comm.barrier()
+        assert record is not None
+        return record
+
+    def run_promoted_process(
+        self, name: str, *, experimental: bool = False
+    ) -> PICAMActionTrace:
+        """Run one StatePool-bound original routine without advancing time."""
+
+        self._require_collective_boundary("run a promoted physics process")
+        if not experimental:
+            raise PICAMConfigurationError(
+                "isolated promoted CAM processes require experimental=True"
+            )
+        names = self.comm.allgather(str(name))
+        if len(set(names)) != 1:
+            raise PICAMStateError("promoted process name differs across MPI ranks")
+        return self.process_contexts.run(name)
+
+    def _record_promoted_process(self, name: str) -> PICAMActionTrace:
+        return self._record(
+            PICAMAction(
+                name=str(name),
+                phase="promoted_process",
+                operation=str(name),
+                kind="promoted_process",
+                native_id=None,
+            )
+        )
+
+    def remove_promoted_process(self, name: str) -> PICAMPromotedProcess:
+        """Collectively remove a promoted routine and fields it owns."""
+
+        self._require_collective_boundary("remove a promoted physics process")
+        local_error = None
+        try:
+            record = self.process_contexts.record(name)
+            for field in record.created_fields:
+                dependencies = self.python_processes.dependencies(field)
+                dependencies += self.fortran_processes.dependencies(field)
+                dependencies += tuple(
+                    dependency
+                    for dependency in self.process_contexts.dependencies(field)
+                    if dependency != record.name
+                )
+                if dependencies:
+                    raise PICAMStateError(
+                        f"cannot remove promoted process {record.name!r}; field "
+                        f"{field!r} is used by: " + ", ".join(dependencies)
+                    )
+        except BaseException as exc:
+            local_error = f"{type(exc).__name__}: {exc}"
+        self._collective_state_error(local_error, "physics process removal")
+        record = self.process_contexts.remove(name)
+        self.comm.barrier()
+        return record
 
     def _require_collective_boundary(self, operation: str) -> None:
         if self.lifecycle not in {PICAMLifecycle.INITIALIZED, PICAMLifecycle.RUNNING}:

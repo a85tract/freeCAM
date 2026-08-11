@@ -381,9 +381,15 @@ def _direct_kernel_call_proof(path: Path, symbol: str, routine: str) -> str:
         capture_output=True,
         text=True,
     ).stdout
-    target = f"<{routine.lower()}_>"
+    # External procedures use ``routine_`` while an ifort module procedure is
+    # emitted as ``module_mp_routine_``.  Both are the original routine; the
+    # generated adapter must contain a machine-level call to one of those
+    # symbols rather than a copied implementation.
+    target = re.compile(
+        rf"<(?:[^>]*_mp_)?{re.escape(routine.lower())}_(?:@plt)?>"
+    )
     for line in output.splitlines():
-        if "call" in line and target in line.lower():
+        if "call" in line and target.search(line.lower()):
             return line.strip()
     raise RuntimeError(f"{symbol} does not call original routine {routine}_")
 
@@ -545,7 +551,7 @@ def main() -> int:
     )
     parser.add_argument(
         "--direct-kernels", type=Path,
-        default=REPO / "native/pi_cam/direct_kernels.yaml",
+        default=REPO / "native/pi_cam/direct_kernels_promoted.yaml",
     )
     parser.add_argument(
         "--zero-copy-state",
@@ -586,6 +592,14 @@ def main() -> int:
 
     state_bridge = load_state_bridge(args.state_bridge.resolve(), source_root)
     direct_kernels = load_direct_kernels(args.direct_kernels.resolve())
+    promoted_direct_kernels = tuple(
+        kernel
+        for kernel in direct_kernels
+        if kernel.symbol.startswith("freecam_pi_cam_promoted_")
+    )
+    main_direct_kernels = tuple(
+        kernel for kernel in direct_kernels if kernel not in promoted_direct_kernels
+    )
     all_abi_symbols = (
         PREPARE_INITIALIZE_SYMBOL,
         STATE_CONTEXT_SYMBOL,
@@ -599,7 +613,7 @@ def main() -> int:
             if args.zero_copy_state
             else ()
         ),
-        *(kernel.symbol for kernel in direct_kernels),
+        *(kernel.symbol for kernel in main_direct_kernels),
     )
     state_include = work / "pycam_pi_cam_state_bridge.inc"
     generated_state_include = generate_fortran_include(state_bridge)
@@ -620,7 +634,16 @@ def main() -> int:
         )
     )
     generated_direct_kernels = work / "pi_cam_direct_kernels.F90"
-    generated_direct_kernels.write_text(generate_direct_kernel_module(direct_kernels))
+    generated_direct_kernels.write_text(
+        generate_direct_kernel_module(main_direct_kernels)
+    )
+    generated_promoted_kernels = work / "pi_cam_promoted_kernels.F90"
+    generated_promoted_kernels.write_text(
+        generate_direct_kernel_module(
+            promoted_direct_kernels,
+            module_name="freecam_pi_cam_promoted_kernels",
+        )
+    )
 
     generated_physpkg = case / "SourceMods/src.cam/physpkg.F90"
     sources = {
@@ -837,6 +860,19 @@ def main() -> int:
         work,
         build / "atm/obj",
     )
+    promoted_kernel_object: Path | None = None
+    promoted_kernel_compile: list[str] | None = None
+    if promoted_direct_kernels:
+        promoted_kernel_object = work / "pi_cam_promoted_kernels.o"
+        promoted_kernel_compile = _compile_to(
+            adapter_command,
+            "cam_comp.F90",
+            generated_promoted_kernels,
+            promoted_kernel_object,
+            work,
+            build / "atm/obj",
+            pic=True,
+        )
     floating_environment_object = work / "floating_environment.o"
     floating_environment_compile = [
         "cc", "-c", "-O2", str(args.floating_environment.resolve()),
@@ -959,10 +995,49 @@ def main() -> int:
         ).stdout
         if LEAF_ACTION_SYMBOL not in leaf_symbols:
             raise RuntimeError("PI-CAM leaf add-on lacks its action ABI")
+    promoted_kernel_library: Path | None = None
+    promoted_kernel_link: list[str] | None = None
+    if promoted_kernel_object is not None:
+        promoted_kernel_library = output.with_name(
+            output.stem + "_promoted_kernels.so"
+        )
+        promoted_kernel_link = [
+            "ftn",
+            "-shared",
+            "-Wl,-z,notext,--allow-shlib-undefined",
+            str(promoted_kernel_object),
+            "-o",
+            str(promoted_kernel_library),
+        ]
+        _run(promoted_kernel_link, cwd=output.parent)
+        promoted_symbols = subprocess.run(
+            ["nm", "-D", "--defined-only", str(promoted_kernel_library)],
+            check=True,
+            capture_output=True,
+            text=True,
+        ).stdout
+        missing_promoted = tuple(
+            kernel.symbol
+            for kernel in promoted_direct_kernels
+            if kernel.symbol not in promoted_symbols
+        )
+        if missing_promoted:
+            raise RuntimeError(
+                f"promoted-kernel add-on lacks ABI symbols: {missing_promoted}"
+            )
     direct_call_proof = {
         kernel.name: _direct_kernel_call_proof(output, kernel.symbol, kernel.routine)
-        for kernel in direct_kernels
+        for kernel in main_direct_kernels
     }
+    if promoted_kernel_library is not None:
+        direct_call_proof.update(
+            {
+                kernel.name: _direct_kernel_call_proof(
+                    promoted_kernel_library, kernel.symbol, kernel.routine
+                )
+                for kernel in promoted_direct_kernels
+            }
+        )
 
     state_manifest = state_bridge.manifest()
     if args.zero_copy_state:
@@ -1008,6 +1083,18 @@ def main() -> int:
             if leaf_library is not None
             else None
         ),
+        "promoted_kernel_device": (
+            {
+                "library": str(promoted_kernel_library),
+                "library_sha256": _sha256(promoted_kernel_library),
+                "operations": [
+                    kernel.operation_name for kernel in promoted_direct_kernels
+                ],
+                "load_policy": "lazy-after-initialize",
+            }
+            if promoted_kernel_library is not None
+            else None
+        ),
         "link_log": str(link_log),
         "compile_logs": compile_logs,
         "adapter": str(args.adapter.resolve()),
@@ -1023,6 +1110,7 @@ def main() -> int:
             "schema_version": 1,
             "description": str(args.direct_kernels.resolve()),
             "generated_source": str(generated_direct_kernels),
+            "generated_promoted_source": str(generated_promoted_kernels),
             "kernels": [
                 {
                     "name": kernel.name,
@@ -1045,6 +1133,8 @@ def main() -> int:
         "leaf_adapter_compile_command": leaf_adapter_compile,
         "leaf_link_command": leaf_link,
         "direct_kernel_compile_command": direct_kernel_compile,
+        "promoted_kernel_compile_command": promoted_kernel_compile,
+        "promoted_kernel_link_command": promoted_kernel_link,
         "capture_executable": str(capture_executable),
         "capture_executable_sha256": _sha256(capture_executable),
         "capture_link_command": capture_link,

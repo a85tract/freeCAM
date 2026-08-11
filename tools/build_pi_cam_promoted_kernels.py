@@ -1,0 +1,77 @@
+#!/usr/bin/env python3
+"""Regenerate direct-kernel YAML with every safe StatePool-promoted process."""
+
+from __future__ import annotations
+
+import argparse
+from pathlib import Path
+
+import yaml
+
+from freecam.pi_cam.kernel_codegen import load_direct_kernels
+from freecam.pi_cam.process_codegen import (
+    direct_kernel_payload,
+    generated_promoted_kernels,
+)
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--base",
+        type=Path,
+        default=Path("native/pi_cam/direct_kernels.yaml"),
+        help="descriptor containing reviewed hand-bound kernels such as dadadj",
+    )
+    parser.add_argument(
+        "--output",
+        type=Path,
+        default=Path("native/pi_cam/direct_kernels_promoted.yaml"),
+    )
+    parser.add_argument(
+        "--rules",
+        type=Path,
+        default=Path("native/pi_cam/process_promotion_rules.yaml"),
+    )
+    args = parser.parse_args()
+    base = tuple(
+        kernel
+        for kernel in load_direct_kernels(args.base)
+        if not kernel.name.startswith("__generated_")
+    )
+    rules = yaml.safe_load(args.rules.read_text())
+    if not isinstance(rules, dict) or int(rules.get("schema_version", 0)) != 1:
+        raise RuntimeError(f"invalid process promotion rules: {args.rules}")
+    excluded = {
+        str(name): str(reason)
+        for name, reason in dict(
+            rules.get("exclude_from_native_image", {})
+        ).items()
+    }
+    generated = tuple(
+        kernel
+        for kernel in generated_promoted_kernels()
+        if kernel.name not in excluded
+    )
+    duplicates = {kernel.name for kernel in base} & {kernel.name for kernel in generated}
+    if duplicates:
+        raise RuntimeError(
+            "reviewed and generated direct kernels overlap: "
+            + ", ".join(sorted(duplicates))
+        )
+    args.output.parent.mkdir(parents=True, exist_ok=True)
+    args.output.write_text(
+        "# Generated from the flat PI-CAM catalog. Do not edit by hand.\n"
+        + yaml.safe_dump(
+            direct_kernel_payload((*base, *generated)),
+            sort_keys=False,
+        )
+    )
+    print(f"wrote {len(base) + len(generated)} kernels to {args.output}")
+    for name, reason in excluded.items():
+        print(f"skipped {name}: {reason}")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

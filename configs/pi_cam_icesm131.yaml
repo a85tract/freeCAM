@@ -27,7 +27,7 @@ execution_mode: fine_grained
 
 # Filled by tools/build_pi_cam_devices.py after the original numerical
 # routines have been compiled with generated bind(C) adapters.
-native_manifest: build/pi_cam_zero_copy/native_cam_manifest.json
+native_manifest: build/pi_cam_promoted/native_cam_manifest.json
 
 # These are copied from the oracle case into an isolated run directory.
 initial_conditions: null

@@ -1,0 +1,22 @@
+schema_version: 1
+
+# The AST and active PI-atm call graph decide reachability.  This file only
+# supplies scientific naming/level semantics that cannot be recovered safely
+# from Fortran syntax.  Keep it small and reviewable.
+include_roles:
+  - process
+  - numeric_kernel
+
+exclude_roles:
+  - lifecycle
+  - host_service
+
+names:
+  # CAM's abbreviated routine name is not a good public Python spelling.
+  cloud_fraction::cldfrc_fice: cloud_fraction_fice
+
+levels:
+  # These routines are meaningful user-selectable physics subprocesses, not
+  # generic math helpers, even though the legacy source role is numeric_kernel.
+  cloud_fraction::cldfrc_fice: process
+  zm_conv::zm_conv_evap: process

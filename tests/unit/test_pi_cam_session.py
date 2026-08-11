@@ -1,8 +1,16 @@
 import json
 from pathlib import Path
+import subprocess
+
+import pytest
 
 from freecam.pi_cam import session as session_module
-from freecam.pi_cam.session import PICAMNotebookSession, _authkey_argument
+from freecam.pi_cam.plan import PICAMStepPlan
+from freecam.pi_cam.session import (
+    PICAMNotebookError,
+    PICAMNotebookSession,
+    _authkey_argument,
+)
 
 
 def _session_files(tmp_path: Path) -> tuple[Path, Path, Path, Path, Path]:
@@ -68,6 +76,59 @@ def test_session_environment_preloads_manifest_math_runtime(
     ]
 
 
+def test_pbs_submission_reports_qsub_stderr(
+    tmp_path: Path, monkeypatch
+) -> None:
+    config, boundary, run_dir, env_script, _ = _session_files(tmp_path)
+    session = PICAMNotebookSession(
+        config,
+        boundary=boundary,
+        run_dir=run_dir,
+        env_script=env_script,
+        pbs_account="BAD_ACCOUNT",
+    )
+
+    def fail_qsub(*args, **kwargs):
+        del kwargs
+        raise subprocess.CalledProcessError(
+            32,
+            args[0],
+            stderr="qsub: Invalid account for CPU usage",
+        )
+
+    monkeypatch.setattr(session_module.subprocess, "run", fail_qsub)
+
+    with pytest.raises(PICAMNotebookError, match="Invalid account for CPU usage"):
+        session._submit_pbs(
+            ("mpiexec", "python"),
+            {"LD_LIBRARY_PATH": "/mpi"},
+        )
+
+
+def test_pbs_submission_requires_an_account_before_qsub(
+    tmp_path: Path, monkeypatch
+) -> None:
+    config, boundary, run_dir, env_script, _ = _session_files(tmp_path)
+    session = PICAMNotebookSession(
+        config,
+        boundary=boundary,
+        run_dir=run_dir,
+        env_script=env_script,
+    )
+    called = False
+
+    def unexpected_qsub(*args, **kwargs):
+        nonlocal called
+        called = True
+        raise AssertionError("qsub must not run without an account")
+
+    monkeypatch.setattr(session_module.subprocess, "run", unexpected_qsub)
+
+    with pytest.raises(PICAMNotebookError, match="no PBS account is configured"):
+        session._submit_pbs(("mpiexec", "python"), {"LD_LIBRARY_PATH": "/mpi"})
+    assert not called
+
+
 def test_session_run_kernel_sends_explicit_worker_command(
     tmp_path: Path, monkeypatch
 ) -> None:
@@ -89,6 +150,119 @@ def test_session_run_kernel_sends_explicit_worker_command(
 
     assert commands == [{"op": "run_kernel", "name": "dadadj"}]
     assert result["operation"] == "dadadj"
+
+
+def test_session_calls_one_catalog_process_with_automatic_statepool_binding(
+    tmp_path: Path, monkeypatch
+) -> None:
+    config, boundary, run_dir, env_script, _ = _session_files(tmp_path)
+    session = PICAMNotebookSession(
+        config,
+        boundary=boundary,
+        run_dir=run_dir,
+        env_script=env_script,
+    )
+    session._status = {"step_plan": PICAMStepPlan.default().describe()}
+    commands = []
+    promoted = {
+        "name": "cloud_fraction_fice",
+        "qualified_name": "cloud_fraction::cldfrc_fice",
+        "bindings": (
+            {
+                "argument": "t",
+                "field": "phys_state.t",
+                "dtype": "float64",
+                "intent": "in",
+                "local_rank": 2,
+                "aggregate_dimensions": ("pcols", "pver", "chunks"),
+                "source": "inferred",
+            },
+            {
+                "argument": "fice",
+                "field": "process_context.cloud_fraction_fice.fice",
+                "dtype": "float64",
+                "intent": "out",
+                "local_rank": 2,
+                "aggregate_dimensions": ("pcols", "pver", "chunks"),
+                "source": "promoted",
+            },
+            {
+                "argument": "fsnow",
+                "field": "process_context.cloud_fraction_fice.fsnow",
+                "dtype": "float64",
+                "intent": "out",
+                "local_rank": 2,
+                "aggregate_dimensions": ("pcols", "pver", "chunks"),
+                "source": "promoted",
+            },
+        ),
+        "created_fields": (),
+        "created_dimensions": (),
+        "native_available": True,
+    }
+
+    def request(command):
+        commands.append(command)
+        if command["op"] == "promote_process":
+            return promoted
+        if command["op"] == "status":
+            return {
+                "step_plan": PICAMStepPlan.default().describe(),
+                "promoted_processes": (promoted,),
+            }
+        if command["op"] == "run_promoted_process":
+            return {"phase": "promoted_process", "operation": command["name"]}
+        if command["op"] == "remove_promoted_process":
+            return promoted
+        raise AssertionError(command)
+
+    monkeypatch.setattr(session, "_request", request)
+
+    result = session.physics.cloud_fraction_fice()
+
+    assert result.process.runnable is True
+    assert result.trace["operation"] == "cloud_fraction_fice"
+    assert tuple(result) == ("fice", "fsnow")
+    assert result.fice.name == "process_context.cloud_fraction_fice.fice"
+    assert commands[:3] == [
+        {
+            "op": "promote_process",
+            "name": "cloud_fraction_fice",
+            "bindings": {},
+            "initials": {},
+            "dimensions": {},
+        },
+        {"op": "status"},
+        {"op": "run_promoted_process", "name": "cloud_fraction_fice"},
+    ]
+
+
+def test_session_process_call_accepts_a_python_field_object(
+    tmp_path: Path,
+) -> None:
+    config, boundary, run_dir, env_script, _ = _session_files(tmp_path)
+    session = PICAMNotebookSession(
+        config,
+        boundary=boundary,
+        run_dir=run_dir,
+        env_script=env_script,
+    )
+    session._status = {
+        "fields": {
+            "phys_state.t": {
+                "shape": [16, 30, 1],
+                "dtype": "<f8",
+                "aliases": ["T"],
+            }
+        }
+    }
+
+    bindings, initials = session._process_call_arguments(
+        {"t": session.fields.T}
+    )
+
+    assert bindings == {"t": "phys_state.t"}
+    assert initials == {}
 
 
 def test_session_trace_sends_worker_cursor(tmp_path: Path, monkeypatch) -> None:
@@ -212,7 +386,7 @@ def test_session_exposes_pythonic_fields_physics_phases_and_kernels(
         "step_plan": (
             {
                 "phase": "cam_run1",
-                "name": "dadadj",
+                "name": "dry_adjustment",
                 "operation": "dadadj",
                 "kind": "scheme",
                 "enabled": True,
@@ -244,6 +418,16 @@ def test_session_exposes_pythonic_fields_physics_phases_and_kernels(
 
     assert "temperature" in dir(session.fields)
     assert "dadadj" in dir(session.physics)
+    assert session.physics.names[:2] == ("dry_adjustment", "rayleigh_friction")
+    assert session.physics.action_names == ("dry_adjustment", "rayleigh_friction")
+    assert len(session.physics) > 270
+    assert session.physics.coverage["runnable"] == 2
+    assert session.physics.coverage["source_reachable"] == 372
+    assert [
+        process.operation
+        for process in session.physics.by_phase("cam_run1")
+        if process.runnable
+    ] == ["dadadj"]
     assert "cam_run2" in dir(session.phases)
     assert "dadadj" in dir(session.kernels)
     assert session.fields.temperature.get(rank=2) == "rank-local-values"
@@ -260,7 +444,7 @@ def test_session_exposes_pythonic_fields_physics_phases_and_kernels(
     assert commands == [
         {"op": "field", "name": "phys_state.t", "rank": 2},
         {"op": "stats", "name": "phys_state.t", "rank": "global"},
-        {"op": "run_action", "name": "dadadj", "phase": "cam_run1"},
+        {"op": "run_action", "name": "dry_adjustment", "phase": "cam_run1"},
         {
             "op": "set_action_enabled",
             "name": "rayleigh_friction",
@@ -271,6 +455,50 @@ def test_session_exposes_pythonic_fields_physics_phases_and_kernels(
         {"op": "run_kernel", "name": "dadadj"},
         {"op": "step", "count": 2},
     ]
+
+
+def test_session_ui_lists_every_supported_pi_cam_physics_interface(
+    tmp_path: Path,
+) -> None:
+    config, boundary, run_dir, env_script, _ = _session_files(tmp_path)
+    session = PICAMNotebookSession(
+        config,
+        boundary=boundary,
+        run_dir=run_dir,
+        env_script=env_script,
+    )
+    session._status = {"step_plan": PICAMStepPlan.default().describe()}
+
+    assert len(session.physics) == 298
+    assert len(set(session.physics.names)) == 298
+    assert session.physics.coverage == {
+        "interfaces": 298,
+        "runnable": 36,
+        "catalog_only": 262,
+        "source_reachable": 372,
+        "source_catalog": 371,
+        "physical_processes": 276,
+        "helper_routines": 95,
+        "runtime_overlap": 14,
+        "excluded_lifecycle": 1,
+        "enabled": 21,
+        "disabled": 15,
+        "leaf": 15,
+        "stage": 21,
+    }
+    assert session.physics.dadadj.operation == "dadadj"
+    assert session.physics.dry_adjustment.operation == "dadadj"
+    assert session.physics.leaf_cloud_diagnostics_calc.granularity == "leaf"
+    assert sum(
+        process.runnable for process in session.physics.by_phase("cam_run1")
+    ) == 20
+    assert session.physics.cloud_fraction_fice.runnable is False
+    assert session.physics.cldfrc_fice.name == "cloud_fraction_fice"
+    assert session.physics.zm_conv_evap.qualified_name == "zm_conv::zm_conv_evap"
+    html = session.physics._repr_html_()
+    assert "298 flat physics interfaces" in html
+    assert "convect_deep_tend" in html
+    assert "leaf_cloud_diagnostics_calc" in html
 
 
 def test_session_dynamic_field_and_python_process_commands(

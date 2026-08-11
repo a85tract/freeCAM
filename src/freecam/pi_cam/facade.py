@@ -16,9 +16,49 @@ from pathlib import Path
 import shutil
 from typing import Any, Mapping, Sequence
 from uuid import uuid4
+from xml.etree import ElementTree
 
 from .config import PICAMConfig
 from .session import PICAMNotebookSession
+
+
+def _case_pbs_account(case_root: Path) -> str | None:
+    """Read the allocation recorded by a configured CESM reference case."""
+
+    batch_config = case_root / "env_batch.xml"
+    if not batch_config.is_file():
+        return None
+    try:
+        root = ElementTree.parse(batch_config).getroot()
+    except ElementTree.ParseError as exc:
+        raise ValueError(f"invalid CESM batch configuration: {batch_config}") from exc
+    values: dict[str, str] = {}
+    for entry in root.iter("entry"):
+        key = entry.get("id")
+        value = entry.get("value")
+        if key and value and not value.startswith("$"):
+            values[key] = value
+    return values.get("CHARGE_ACCOUNT") or values.get("PROJECT")
+
+
+def _resolve_pbs_account(explicit: str | None, case_root: Path) -> str | None:
+    """Resolve an allocation without embedding a user or project in source."""
+
+    if explicit:
+        return explicit
+    machine_specific = os.environ.get("PBS_ACCOUNT_DERECHO")
+    if machine_specific not in {None, "", "N/A"}:
+        return machine_specific
+    case_account = _case_pbs_account(case_root)
+    if case_account:
+        return case_account
+    # A generic PBS_ACCOUNT is reliable only inside an existing allocation.
+    # Login-shell profiles may export an account for another NCAR machine.
+    if os.environ.get("PBS_JOBID") or os.environ.get("PBS_NODEFILE"):
+        allocation_account = os.environ.get("PBS_ACCOUNT")
+        if allocation_account not in {None, "", "N/A"}:
+            return allocation_account
+    return None
 
 
 @dataclass(frozen=True, slots=True)
@@ -232,12 +272,14 @@ class Driver:
             None if run_dir is None else Path(run_dir).expanduser().resolve()
         )
         self.launch_mode = launch_mode
-        self.account = account or os.environ.get("PBS_ACCOUNT", "UCUB0188")
+        self.account = _resolve_pbs_account(account, self.reference_case)
         self.queue = queue
         self.walltime = walltime
+        # Do not resolve the final ``.venv/bin/python`` symlink: Python uses
+        # that invocation path to select the virtual environment's site-packages.
         self.python_executable = Path(
             python_executable or self.repo / ".venv" / "bin" / "python"
-        ).expanduser().resolve()
+        ).expanduser().absolute()
         self._session_factory = session_factory
         self._session: PICAMNotebookSession | None = None
         self._run_dir: Path | None = None

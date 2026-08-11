@@ -16,7 +16,7 @@ inputs.
 | Python-owned CAM workflow | Available |
 | Python-owned rank-local StatePool | Available |
 | Complete CAM step | Available |
-| Individual phase and process calls | Available for controlled experiments |
+| Individual phase and process calls | 36 workflow boundaries; 21 additional StatePool-promotable processes |
 | Runtime Python process | Available |
 | Runtime Fortran process | Available |
 | PI-atm 50-step comparison | Bitwise identical |
@@ -45,6 +45,10 @@ uv sync --extra notebook --extra test
 The default `Driver` paths expect the existing PI-atm reference case and
 boundary capture under the current user's NCAR work and scratch directories.
 They can be overridden through constructor arguments when needed.
+
+For PBS launches, `Driver` reads `CHARGE_ACCOUNT` or `PROJECT` from the
+reference case's `env_batch.xml`. Pass `account="..."` only when an explicit
+override is needed; freeCAM does not embed a personal allocation in source.
 
 ## Quick start
 
@@ -127,12 +131,99 @@ driver.cam.advance(steps=1)
 Individual phases and processes can be called for controlled experiments:
 
 ```python
+print(driver.cam.physics.coverage)
+driver.cam.physics                 # rich table in Jupyter
+
 driver.cam.physics.dadadj.run()
-driver.cam.phases.cam_run1.run()
+driver.cam.physics.deep_convection.disable()
+driver.cam.physics.deep_convection.enable()
+
+for process in driver.cam.physics.by_phase("cam_run1"):
+    print(process.name, process.runnable, process.capability)
 ```
 
-These fine-grained calls do not automatically execute missing prerequisites
+The main API is deliberately flat. Original module names and caller/callee
+structure are metadata, so a user writes:
+
+```python
+driver.cam.physics.deep_convection
+driver.cam.physics.cloud_fraction_fice
+driver.cam.physics.zm_conv_evap
+```
+
+and never needs a path such as `physics.kernels.zm_conv.zm_conv_evap`.
+
+The admitted PI-atm call graph contains 372 reachable Fortran procedures. They
+are not automatically 372 physical processes: deterministic signature rules
+classify 276 state-updating routines as physical processes, 95 read-only math
+or lookup routines as helpers, and one lifecycle routine as non-physics. The
+36 independently runnable workflow boundaries overlap 14 source processes, so
+`driver.cam.physics` currently contains 298 unique flat handles. Helpers remain
+searchable in `driver.cam.physics.catalog`, but do not pollute the main physics
+API. The `coverage` mapping reports every count separately.
+
+Every handle is honest about its capability:
+
+```python
+deep = driver.cam.physics.deep_convection
+print(deep.runnable)          # True: complete runtime boundary
+
+evap = driver.cam.physics.zm_conv_evap
+print(evap.runnable)          # False: source kernel discovered by the call graph
+print(evap.metadata)          # source, parents, arguments, adapter status, blockers
+```
+
+Calling `.run()`, `.disable()`, or `.move()` on a catalog-only entry fails with
+the missing StatePool/context bindings instead of silently running the wrong
+caller context. Fine-grained calls do not automatically execute prerequisites
 and do not advance model time.
+
+Twenty-one generated-adapter processes can turn caller-local arguments into
+explicit rank-local StatePool fields. The normal interface hides that plumbing:
+it infers unambiguous model inputs such as `phys_state.t`, supplies model values
+such as `ncol`, and allocates output-only arguments automatically.
+
+```python
+result = driver.cam.physics.cloud_fraction_fice()
+
+print(result.fice.stats(rank="global"))
+print(result.fsnow.stats(rank="global"))
+result.remove()
+```
+
+Only an experiment that replaces the model temperature needs an explicit
+keyword argument:
+
+```python
+result = driver.cam.physics.cloud_fraction_fice(t=my_temperature)
+```
+
+Fourteen use named dimensions that can be resolved automatically; seven use
+assumed/expression shapes and therefore require explicit field bindings or an
+aggregate initial array. The current PI-atm native image contains 18 of these;
+three COSP/MODIS processes have no module in this case build and remain
+StatePool-bound but non-runnable. The 18 generated adapters live in a lazy
+add-on `.so`; the validated main CAM image is unchanged and only becomes
+globally visible when the user explicitly runs a promoted process. Promotion
+creates a standalone experimental call; it does not silently insert a
+duplicate call into the validated full timestep. Routines with derived types,
+pointers, allocatables, optional arguments, or missing native symbols remain
+catalog-only with an explicit blocker. Regenerate the combined direct-adapter
+descriptor with:
+
+```bash
+uv run python tools/build_pi_cam_promoted_kernels.py
+```
+
+The catalog is reproducible, not a handwritten Python list. AST reachability
+comes from the committed source inventory, while the small reviewed naming
+layer lives in
+[`native/pi_cam/physics_process_rules.yaml`](native/pi_cam/physics_process_rules.yaml).
+Regenerate the packaged catalog with:
+
+```bash
+uv run python tools/build_pi_cam_physics_catalog.py
+```
 
 ## Python processes
 
@@ -238,6 +329,13 @@ Run the 512-rank PI-atm gate on Derecho:
 
 ```bash
 qsub validation/jobs/pi_cam_python_zero_copy_state_50step.pbs
+```
+
+Build and validate the StatePool-promoted original processes with:
+
+```bash
+qsub validation/jobs/pi_cam_promoted_statepool_build.pbs
+qsub validation/jobs/pi_cam_promoted_statepool_50step.pbs
 ```
 
 The gate compares CAM history output with the original iCESM reference without

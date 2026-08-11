@@ -40,6 +40,10 @@ def _status(driver: Any) -> dict[str, object]:
         "dynamic_fields": tuple(sorted(driver.pool.dynamic_fields)),
         "python_processes": tuple(sorted(driver.python_processes.process_names)),
         "fortran_processes": tuple(sorted(driver.fortran_processes.installed)),
+        "promoted_processes": tuple(
+            driver.process_contexts.record(name).to_payload()
+            for name in driver.process_contexts.names
+        ),
         "kernels": tuple(getattr(driver.backend, "direct_kernels", ())),
         "step_plan": driver.step_plan.describe(),
         "state_bytes": driver.pool.nbytes,
@@ -76,6 +80,22 @@ def _command(command: dict[str, Any], driver: Any, comm: Any) -> object:
     if operation == "run_kernel":
         trace = driver.run_kernel(str(command["name"]), experimental=True)
         return asdict(trace) if comm.rank == 0 else None
+    if operation == "promote_process":
+        record = driver.promote_process(
+            str(command["name"]),
+            bindings=command.get("bindings"),
+            initials=command.get("initials"),
+            dimensions=command.get("dimensions"),
+        )
+        return record.to_payload() if comm.rank == 0 else None
+    if operation == "run_promoted_process":
+        trace = driver.run_promoted_process(
+            str(command["name"]), experimental=True
+        )
+        return asdict(trace) if comm.rank == 0 else None
+    if operation == "remove_promoted_process":
+        record = driver.remove_promoted_process(str(command["name"]))
+        return record.to_payload() if comm.rank == 0 else None
     leaf_expansions = {
         "expand_cam_run1_leaves": driver.expand_cam_run1_leaves,
         "expand_cam_run2_leaves": driver.expand_cam_run2_leaves,
