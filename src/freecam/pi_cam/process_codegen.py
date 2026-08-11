@@ -11,7 +11,7 @@ from .kernel_codegen import DirectKernel, DirectKernelArgument
 from .physics_catalog import PICAMPhysicsCatalog, PICAMPhysicsProcess
 
 
-_DTYPES = frozenset(np.dtype(name).str for name in ("float64", "int32", "int64"))
+_DTYPE_NAMES = frozenset(("float64", "int32", "int64"))
 
 
 def statepool_promotable(process: PICAMPhysicsProcess) -> bool:
@@ -20,10 +20,12 @@ def statepool_promotable(process: PICAMPhysicsProcess) -> bool:
     return bool(
         process.level == "process"
         and process.generated_adapter
+        # This is the legacy external chunk-wrapper path.  Context-required
+        # and private procedures use the newer source-injected device path.
+        and process.adapter_status in {"candidate", "validated"}
         and process.arguments
         and all(
-            str(argument.get("dtype") or "")
-            and np.dtype(str(argument["dtype"])).str in _DTYPES
+            str(argument.get("dtype") or "") in _DTYPE_NAMES
             and not bool(argument.get("optional"))
             and not bool(argument.get("pointer"))
             and not bool(argument.get("allocatable"))

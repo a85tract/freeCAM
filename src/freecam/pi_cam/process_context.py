@@ -19,7 +19,8 @@ _OFFSET_DIMENSION = re.compile(r"([A-Za-z_]\w*)\s*\+\s*([1-9]\d*)")
 class PICAMProcessArgumentBinding:
     argument: str
     field: str
-    dtype: str
+    dtype: str | None
+    fortran_type: str
     intent: str
     local_rank: int
     aggregate_dimensions: tuple[str, ...]
@@ -30,6 +31,7 @@ class PICAMProcessArgumentBinding:
             "argument": self.argument,
             "field": self.field,
             "dtype": self.dtype,
+            "fortran_type": self.fortran_type,
             "intent": self.intent,
             "local_rank": self.local_rank,
             "aggregate_dimensions": list(self.aggregate_dimensions),
@@ -140,22 +142,47 @@ class PICAMProcessContextRegistry:
                     elif initial is not None:
                         target[...] = initial
                 array = np.asarray(pool[field])
-                expected_rank = int(argument["rank"]) + 1
-                if array.ndim != expected_rank:
-                    raise PICAMStateError(
-                        f"binding {argument['name']!r}->{field!r} has rank "
-                        f"{array.ndim}; expected aggregate rank {expected_rank}"
-                    )
-                if array.dtype != np.dtype(str(argument["dtype"])):
-                    raise PICAMStateError(
-                        f"binding {argument['name']!r}->{field!r} has dtype "
-                        f"{array.dtype}; expected {np.dtype(str(argument['dtype']))}"
-                    )
-                if array.shape[-1] != int(pool.dimensions["chunks"]):
-                    raise PICAMStateError(
-                        f"binding {argument['name']!r}->{field!r} does not have "
-                        "the rank-local chunks axis last"
-                    )
+                dtype = argument.get("dtype")
+                if dtype is None:
+                    if array.dtype != np.dtype("uint8") and array.dtype.kind != "V":
+                        raise PICAMStateError(
+                            f"opaque binding {argument['name']!r}->{field!r} "
+                            "must use a uint8 owner buffer or a void-record array"
+                        )
+                    if array.dtype.kind == "V":
+                        expected_rank = int(argument["rank"]) + 1
+                        if array.ndim != expected_rank:
+                            raise PICAMStateError(
+                                f"opaque binding {argument['name']!r}->{field!r} "
+                                f"has aggregate rank {array.ndim}; expected "
+                                f"{expected_rank} including chunks"
+                            )
+                        if array.shape[-1] != int(pool.dimensions["chunks"]):
+                            raise PICAMStateError(
+                                f"opaque binding {argument['name']!r}->{field!r} "
+                                "must have the chunks axis last"
+                            )
+                else:
+                    expected_rank = int(argument["rank"]) + 1
+                    if array.ndim != expected_rank:
+                        raise PICAMStateError(
+                            f"binding {argument['name']!r}->{field!r} has rank "
+                            f"{array.ndim}; expected aggregate rank {expected_rank}"
+                        )
+                    expected_dtype = self._numpy_dtype(argument, initial)
+                    if (
+                        expected_dtype is not None
+                        and array.dtype != expected_dtype
+                    ):
+                        raise PICAMStateError(
+                            f"binding {argument['name']!r}->{field!r} has dtype "
+                            f"{array.dtype}; expected {expected_dtype}"
+                        )
+                    if array.shape[-1] != int(pool.dimensions["chunks"]):
+                        raise PICAMStateError(
+                            f"binding {argument['name']!r}->{field!r} does not have "
+                            "the rank-local chunks axis last"
+                        )
                 intent = str(argument.get("intent") or "inout").lower()
                 if intent in {"out", "inout"} and not pool.contract(field).writable:
                     raise PICAMStateError(
@@ -167,8 +194,12 @@ class PICAMProcessContextRegistry:
                         f"binding {argument['name']!r}->{field!r} must be "
                         "Fortran contiguous"
                     )
+            has_adapter = getattr(self.driver.backend, "has_process_adapter", None)
             native = process.name in tuple(
                 getattr(self.driver.backend, "direct_kernels", ())
+            ) or (
+                callable(has_adapter)
+                and has_adapter(process.qualified_name, process.source)
             )
             record = PICAMPromotedProcess(
                 name=process.name,
@@ -177,7 +208,12 @@ class PICAMProcessContextRegistry:
                     PICAMProcessArgumentBinding(
                         argument=str(argument["name"]),
                         field=field,
-                        dtype=str(argument["dtype"]),
+                        dtype=(
+                            None
+                            if argument.get("dtype") is None
+                            else str(argument["dtype"])
+                        ),
+                        fortran_type=str(argument.get("fortran_type") or "unknown"),
                         intent=str(argument["intent"]),
                         local_rank=int(argument["rank"]),
                         aggregate_dimensions=tuple(pool.contract(field).dimensions),
@@ -211,7 +247,15 @@ class PICAMProcessContextRegistry:
             raise PICAMStateError(
                 "process arguments can be promoted only after CAM grid initialization"
             )
-        arguments = {str(item["name"]): item for item in process.arguments}
+        process_arguments = tuple(
+            item for item in process.arguments if not bool(item.get("procedure", False))
+        )
+        if process.result is not None:
+            process_arguments = (
+                *process_arguments,
+                {**process.result, "intent": "out", "function_result": True},
+            )
+        arguments = {str(item["name"]): item for item in process_arguments}
         unknown = (set(requested) | set(initials)).difference(arguments)
         if unknown:
             raise PICAMConfigurationError(
@@ -221,13 +265,9 @@ class PICAMProcessContextRegistry:
             tuple[Mapping[str, Any], str, PICAMFieldContract | None, Any, str]
         ] = []
         missing_inputs: list[str] = []
-        for argument in process.arguments:
+        for argument in process_arguments:
             argument_name = str(argument["name"])
-            dtype = str(argument.get("dtype") or "")
-            if not dtype:
-                raise PICAMConfigurationError(
-                    f"{process.name}.{argument_name} has no interoperable dtype"
-                )
+            dtype = argument.get("dtype")
             field = requested.get(argument_name)
             source = "explicit"
             if field is not None and argument_name in initials:
@@ -243,6 +283,31 @@ class PICAMProcessContextRegistry:
                         f"binding {argument_name!r} references unknown field {field!r}"
                     ) from exc
                 dimensions = pool.contract(field).dimensions
+            elif dtype is None and argument_name in initials:
+                initial_array = np.asarray(initials[argument_name])
+                if initial_array.dtype.kind != "V":
+                    raise PICAMStateError(
+                        f"opaque initial {process.name}.{argument_name} must be "
+                        "a NumPy void-record array produced by its Fortran "
+                        "subsystem lifecycle"
+                    )
+                dimensions = self._dimensions_from_initial(
+                    process,
+                    argument,
+                    initial_array,
+                )
+                source = "opaque_initial"
+            elif dtype is None:
+                field = self._native_owner_field(str(argument.get("fortran_type") or ""))
+                if field is None:
+                    raise PICAMConfigurationError(
+                        f"{process.name}.{argument_name} uses "
+                        f"{argument.get('fortran_type')!r}; pass bindings={{"
+                        f"{argument_name!r}: <StatePool opaque owner>}} with a "
+                        "valid object created by that subsystem's lifecycle"
+                    )
+                dimensions = pool.contract(field).dimensions
+                source = "native_owner"
             else:
                 try:
                     dimensions = self._aggregate_dimensions(process, argument)
@@ -255,7 +320,7 @@ class PICAMProcessContextRegistry:
                         initials[argument_name],
                     )
             if field is None and argument_name not in initials:
-                field = self._infer_field(argument_name, dimensions, dtype)
+                field = self._infer_field(argument_name, dimensions, str(dtype))
                 source = "inferred" if field is not None else "promoted"
             initial = initials.get(argument_name)
             if field is None:
@@ -272,7 +337,11 @@ class PICAMProcessContextRegistry:
                 contract = PICAMFieldContract(
                     name=field,
                     dimensions=dimensions,
-                    dtype=dtype,
+                    dtype=(
+                        np.asarray(initial).dtype.str
+                        if dtype is None and initial is not None
+                        else self._contract_dtype(argument, initial)
+                    ),
                     category="process_context",
                     # These arrays replace caller-local working storage.  Even
                     # intent(in) values must remain user-editable between
@@ -292,6 +361,43 @@ class PICAMProcessContextRegistry:
                 + ", ".join(missing_inputs)
             )
         return tuple(planned)
+
+    def _contract_dtype(self, argument: Mapping[str, Any], initial: Any) -> str:
+        dtype = str(argument.get("dtype") or "")
+        if dtype != "character":
+            return dtype
+        length = str(argument.get("character_length") or "").strip()
+        if length.isdigit():
+            return f"S{int(length)}"
+        if initial is None:
+            raise PICAMConfigurationError(
+                f"character argument {argument['name']!r} needs a bytes/string "
+                "initial value so its element length is explicit"
+            )
+        values = np.asarray(initial)
+        if values.dtype.kind not in {"S", "a"}:
+            values = np.asarray(initial, dtype=f"S{max(1, len(str(initial)))}")
+        return values.dtype.str
+
+    def _numpy_dtype(
+        self, argument: Mapping[str, Any], initial: Any
+    ) -> np.dtype | None:
+        dtype = argument.get("dtype")
+        if dtype is None:
+            return None
+        return np.dtype(self._contract_dtype(argument, initial))
+
+    def _native_owner_field(self, fortran_type: str) -> str | None:
+        owner = {
+            "type:physics_state": "phys_state",
+            "type:physics_tend": "phys_tend",
+            "type:cam_in_t": "cam_in",
+            "type:cam_out_t": "cam_out",
+        }.get(str(fortran_type).lower())
+        if owner is None:
+            return None
+        field = f"__native_owner.{owner}"
+        return field if field in self.driver.pool else None
 
     def _aggregate_dimensions(
         self,
@@ -365,6 +471,8 @@ class PICAMProcessContextRegistry:
         self, argument: str, dimensions: tuple[str, ...], dtype: str
     ) -> str | None:
         pool = self.driver.pool
+        if dtype == "character":
+            return None
         special = {"ncol": "grid.chunk_ncols", "lchnk": "grid.chunk_id"}
         if argument in special and special[argument] in pool:
             return special[argument]
@@ -394,6 +502,35 @@ class PICAMProcessContextRegistry:
                 f"{record.name!r} arguments are in StatePool, but the currently "
                 "loaded CAM device was built without its direct adapter"
             )
+        execute_catalog = getattr(self.driver.backend, "execute_catalog_process", None)
+        if callable(execute_catalog) and getattr(
+            self.driver.backend,
+            "has_process_adapter",
+            lambda _name, _source=None: False,
+        )(record.qualified_name, self.catalog.process(record.name).source):
+            before = self.driver.pool.pointer_records()
+            process = self.catalog.process(record.name)
+            arguments = tuple(
+                item
+                for item in process.arguments
+                if not bool(item.get("procedure", False))
+            )
+            if process.result is not None:
+                arguments = (*arguments, process.result)
+            execute_catalog(
+                record.name,
+                record.qualified_name,
+                process.source,
+                self.driver.pool,
+                bindings={
+                    f"process_context.{record.name}.{binding.argument}": binding.field
+                    for binding in record.bindings
+                },
+                arguments=arguments,
+                fcomm=self.driver.fcomm,
+            )
+            self.driver.pool.assert_pointer_stability(before)
+            return self.driver._record_promoted_process(record.name)
         execute = getattr(self.driver.backend, "execute_promoted_process", None)
         if not callable(execute):
             raise PICAMConfigurationError(

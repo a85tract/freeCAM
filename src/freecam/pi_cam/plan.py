@@ -263,11 +263,74 @@ class PICAMStepPlan:
         if (before is None) == (after is None):
             raise PICAMConfigurationError("provide exactly one of before or after")
         selected = self.select(name, phase=phase)
-        target = self.select(before or after or "", phase=phase)
-        self._actions.remove(selected)
-        target_index = self._actions.index(target)
-        self._actions.insert(target_index + (after is not None), selected)
-        self._validate()
+        # ``phase`` identifies the action being moved.  It must not also
+        # constrain the target: the Python workflow is one ordered sequence,
+        # and a process may intentionally move across a CAM source phase.
+        target = self.select(before or after or "")
+        if selected is target:
+            raise PICAMConfigurationError(
+                "an action cannot be moved relative to itself"
+            )
+        original = list(self._actions)
+        try:
+            self._actions.remove(selected)
+            target_index = self._actions.index(target)
+            self._actions.insert(target_index + (after is not None), selected)
+            self._validate()
+        except BaseException:
+            self._actions[:] = original
+            raise
+
+    def replace_enabled_order(
+        self,
+        order: Iterable[str],
+        *,
+        experimental: bool = False,
+    ) -> None:
+        """Atomically replace the order of the enabled workflow actions.
+
+        Disabled catalog entries are deliberately kept in their existing
+        slots.  The caller must provide every currently enabled action exactly
+        once: list assignment changes ordering, while ``enable``/``disable``
+        remain the explicit APIs for changing membership.
+        """
+
+        if not experimental:
+            raise PICAMConfigurationError(
+                "changing the scientific PI-CAM order requires experimental=True"
+            )
+        requested = tuple(self.select(str(name)) for name in order)
+        enabled = tuple(action for action in self._actions if action.enabled)
+        requested_names = tuple(action.qualified_name for action in requested)
+        enabled_names = tuple(action.qualified_name for action in enabled)
+        if len(requested_names) != len(set(requested_names)):
+            raise PICAMConfigurationError(
+                "workflow order contains the same enabled action more than once"
+            )
+        if set(requested_names) != set(enabled_names):
+            missing = sorted(set(enabled_names) - set(requested_names))
+            extra = sorted(set(requested_names) - set(enabled_names))
+            details = []
+            if missing:
+                details.append("missing " + ", ".join(missing))
+            if extra:
+                details.append("not enabled " + ", ".join(extra))
+            raise PICAMConfigurationError(
+                "workflow list must contain every enabled action exactly once"
+                + (": " + "; ".join(details) if details else "")
+            )
+
+        original = list(self._actions)
+        replacements = iter(requested)
+        try:
+            self._actions[:] = [
+                next(replacements) if action.enabled else action
+                for action in self._actions
+            ]
+            self._validate()
+        except BaseException:
+            self._actions[:] = original
+            raise
 
     def add(
         self,

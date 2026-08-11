@@ -20,6 +20,7 @@ PATCHES = (
     "native/pi_cam/control_patches/0017-python-before-coupler-scheme-control.patch",
     "native/pi_cam/control_patches/0024-startup-boundary-capture.patch",
     "native/pi_cam/control_patches/0025-python-owned-atm-mct-state.patch",
+    "native/pi_cam/control_patches/0030-order-independent-scheme-actions.patch",
 )
 
 

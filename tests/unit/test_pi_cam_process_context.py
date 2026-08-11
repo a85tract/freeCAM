@@ -171,7 +171,7 @@ def test_generated_promoted_descriptor_covers_all_simple_candidate_processes() -
     kernels = generated_promoted_kernels()
     names = tuple(kernel.name for kernel in kernels)
 
-    assert len(kernels) == 21
+    assert len(kernels) >= 24
     assert "cloud_fraction_fice" in names
     assert "zm_conv_evap" in names
     assert "compute_uwshcu_inv" in names

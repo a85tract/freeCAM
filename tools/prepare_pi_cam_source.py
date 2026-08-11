@@ -144,6 +144,7 @@ def prepare_source(source: Path, output: Path, *, force: bool = False) -> Path:
                 "0017-python-before-coupler-scheme-control.patch",
                 "0024-startup-boundary-capture.patch",
                 "0025-python-owned-atm-mct-state.patch",
+                "0030-order-independent-scheme-actions.patch",
             }
         },
     }

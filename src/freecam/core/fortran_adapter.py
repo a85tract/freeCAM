@@ -22,6 +22,7 @@ class FortranArgument:
     rank: int | None = None
     intent: str = "inout"
     contiguous: str = "F"
+    character: bool = False
 
     @classmethod
     def from_payload(cls, payload: str | Mapping[str, Any]) -> "FortranArgument":
@@ -43,6 +44,7 @@ class FortranArgument:
             rank=None if rank is None else int(rank),
             intent=intent,
             contiguous=contiguous,
+            character=bool(payload.get("character", False)),
         )
 
 
@@ -135,7 +137,13 @@ class PointerTableAdapter:
         invariants = tuple(
             (int(array.ctypes.data), array.shape, array.dtype.str) for array in arrays
         )
-        max_rank = max((array.ndim for array in arrays), default=0)
+        max_rank = max(
+            (
+                array.ndim + (1 if argument.character else 0)
+                for argument, array in zip(call.arguments, arrays)
+            ),
+            default=0,
+        )
         pointers = (ctypes.c_void_p * len(arrays))(
             *(ctypes.c_void_p(int(array.ctypes.data)) for array in arrays)
         )
@@ -144,6 +152,10 @@ class PointerTableAdapter:
         for field_index, array in enumerate(arrays):
             for axis, extent in enumerate(array.shape):
                 shapes[field_index * max(1, max_rank) + axis] = extent
+            if call.arguments[field_index].character:
+                shapes[
+                    field_index * max(1, max_rank) + array.ndim
+                ] = array.dtype.itemsize
 
         error_buffer = ctypes.create_string_buffer(4096)
         function.argtypes = [

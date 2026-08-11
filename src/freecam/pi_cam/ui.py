@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from html import escape
-from typing import Any, Iterator, Mapping, TYPE_CHECKING
+from typing import Any, Iterator, Mapping, Sequence, TYPE_CHECKING
 
 import numpy as np
 
@@ -35,7 +35,7 @@ class PICAMWorkflowAction:
 
     def __str__(self) -> str:
         marker = "" if self.enabled else " [disabled]"
-        return f"{self.qualified_name}{marker}"
+        return f"{self.name}{marker}"
 
 
 class PICAMWorkflowView:
@@ -44,7 +44,9 @@ class PICAMWorkflowView:
     def __init__(self, session: "PICAMNotebookSession") -> None:
         self._session = session
 
-    def actions(self, *, include_disabled: bool = False) -> tuple[PICAMWorkflowAction, ...]:
+    def actions(
+        self, *, include_disabled: bool = False
+    ) -> tuple[PICAMWorkflowAction, ...]:
         rows = self._session.status.get("step_plan", ())
         actions = tuple(
             PICAMWorkflowAction(
@@ -68,7 +70,6 @@ class PICAMWorkflowView:
         return tuple(
             {
                 "index": action.index,
-                "phase": action.phase,
                 "name": action.name,
                 "operation": action.operation,
                 "kind": action.kind,
@@ -78,18 +79,116 @@ class PICAMWorkflowView:
             for action in self.actions(include_disabled=include_disabled)
         )
 
-    def __iter__(self) -> Iterator[PICAMWorkflowAction]:
-        return iter(self.actions())
+    def expand(self) -> tuple[Mapping[str, Any], ...]:
+        """Expose every validated leaf process without naming source phases."""
+
+        results = (
+            *self._session.expand_cam_run1_leaves(),
+            *self._session.expand_cam_run2_run4_leaves(),
+        )
+        return tuple(results)
+
+    def __iter__(self) -> Iterator[Any]:
+        return iter(self[:])
 
     def __len__(self) -> int:
         return len(self.actions())
+
+    def __getitem__(self, name_or_index: str | int | slice) -> Any:
+        """Return one live process handle by workflow index or name."""
+
+        if isinstance(name_or_index, slice):
+            return [self._process(action) for action in self.actions()[name_or_index]]
+        if isinstance(name_or_index, int):
+            return self._process(self.actions()[name_or_index])
+        name = str(name_or_index)
+        matches = tuple(
+            action
+            for action in self.actions(include_disabled=True)
+            if name in {action.name, action.operation, action.qualified_name}
+        )
+        if len(matches) != 1:
+            raise KeyError(f"workflow action {name!r} is unknown or ambiguous")
+        return self._process(matches[0])
+
+    def __setitem__(self, index: int | slice, value: Any) -> None:
+        """Apply normal list assignment as one atomic remote reorder.
+
+        The resulting list must still contain every enabled action exactly
+        once.  This makes ``workflow[:] = new_order`` safe: omission does not
+        silently disable a CAM process.
+        """
+
+        order = self[:]
+        order[index] = value
+        self.replace(order)
+
+    def replace(self, processes: Any) -> Mapping[str, Any]:
+        """Replace the complete enabled process order on every MPI rank."""
+
+        resolved = tuple(self._resolve(process) for process in processes)
+        return self._session.replace_workflow(
+            tuple(process.qualified_name for process in resolved)
+        )
+
+    def move(
+        self,
+        process: str | Any,
+        *,
+        before: str | Any | None = None,
+        after: str | Any | None = None,
+    ) -> Mapping[str, Any]:
+        """Move a process anywhere in the complete Python workflow."""
+
+        if (before is None) == (after is None):
+            raise ValueError("provide exactly one of before= or after=")
+        source = self._resolve(process)
+        target = self._resolve(before if before is not None else after)
+        return self._session.move_action(
+            source.name,
+            phase=source.phase,
+            before=target.qualified_name if before is not None else None,
+            after=target.qualified_name if after is not None else None,
+        )
+
+    def enable(self, process: str | Any) -> Mapping[str, Any]:
+        """Enable one process in subsequent complete steps."""
+
+        return self._resolve(process).enable()
+
+    def disable(self, process: str | Any) -> Mapping[str, Any]:
+        """Disable one process in subsequent complete steps."""
+
+        return self._resolve(process).disable()
+
+    def _resolve(self, process: str | Any | None) -> Any:
+        if process is None:
+            raise ValueError("workflow process cannot be None")
+        if hasattr(process, "name") and hasattr(process, "phase"):
+            return process
+        try:
+            return self[str(process)]
+        except KeyError:
+            return self._session.physics.process(str(process))
+
+    def _process(self, action: PICAMWorkflowAction) -> Any:
+        factory = getattr(self._session, "workflow_action", None)
+        if callable(factory):
+            return factory(
+                action.name,
+                phase=action.phase,
+                kind=action.kind,
+            )
+        physics = getattr(self._session, "physics", None)
+        if physics is None:
+            return action
+        return physics.process(action.name)
 
     def insert(
         self,
         process_or_index: Any,
         process: Any | None = None,
         *,
-        phase: str | None = None,
         before: str | None = None,
         after: str | None = None,
     ) -> Any:
@@ -98,7 +197,7 @@ class PICAMWorkflowView:
         ``workflow.insert(process)`` uses placement declared on the process.
         The FreeCESM-style ``workflow.insert(index, process)`` form is also
         supported: the new process is inserted before the action currently at
-        that index, and its phase is inferred from that action.
+        that index.
         """
 
         if process is None:
@@ -115,13 +214,11 @@ class PICAMWorkflowView:
                 )
             if index == len(rows):
                 if not rows:
-                    raise ValueError("cannot infer a phase from an empty workflow")
+                    raise ValueError("cannot place a process in an empty workflow")
                 target = rows[-1]
-                phase = phase or target.phase
                 after = target.name
             else:
                 target = rows[index]
-                phase = phase or target.phase
                 before = target.name
         installer = getattr(candidate, "_install", None)
         if not callable(installer):
@@ -130,7 +227,6 @@ class PICAMWorkflowView:
             )
         return installer(
             self._session,
-            phase=phase,
             before=before,
             after=after,
         )
@@ -138,11 +234,10 @@ class PICAMWorkflowView:
     def _repr_html_(self) -> str:
         rows = self.actions(include_disabled=True)
         body = "".join(
-            "<tr class='{}'><td>{}</td><td><code>{}</code></td>"
-            "<td>{}</td><td><code>{}</code></td><td>{}</td></tr>".format(
+            "<tr class='{}'><td>{}</td><td>{}</td>"
+            "<td><code>{}</code></td><td>{}</td></tr>".format(
                 "freecam-disabled" if not row.enabled else "",
                 row.index,
-                escape(row.phase),
                 escape(row.name),
                 escape(row.operation),
                 escape(row.kind),
@@ -159,7 +254,7 @@ class PICAMWorkflowView:
             ".freecam-workflow .freecam-disabled{opacity:.45;text-decoration:line-through}"
             "</style>"
             "<table class='freecam-workflow'><thead><tr>"
-            "<th>#</th><th>phase</th><th>process</th><th>native operation</th>"
+            "<th>#</th><th>process</th><th>native operation</th>"
             "<th>kind</th></tr></thead><tbody>"
             f"{body}</tbody></table>"
         )
@@ -369,11 +464,13 @@ class PICAMStateView:
         self,
         *,
         rank: int = 0,
+        variables: Sequence[str] = default_variables,
+        columns: int | None = None,
         figsize: tuple[float, float] = (9.0, 6.5),
         axes: Any = None,
         **plot_kwargs: Any,
     ) -> tuple[Any, Any]:
-        """Plot temperature, winds, and water vapor in a 2x2 panel."""
+        """Plot selected rank-local profiles in an automatically sized grid."""
 
         try:
             import matplotlib.pyplot as plt
@@ -382,15 +479,39 @@ class PICAMStateView:
                 "PI-CAM plotting requires the notebook extra: "
                 "uv sync --extra notebook"
             ) from exc
+        selected = tuple(str(variable) for variable in variables)
+        if not selected:
+            raise ValueError("variables must contain at least one field")
+        if columns is None:
+            columns = min(3, int(np.ceil(np.sqrt(len(selected)))))
+        if int(columns) < 1:
+            raise ValueError("columns must be positive")
+        ncols = min(int(columns), len(selected))
+        nrows = (len(selected) + ncols - 1) // ncols
+        expected_shape = (nrows, ncols)
         if axes is None:
-            fig, axes = plt.subplots(2, 2, figsize=figsize, sharey=True)
+            fig, axes = plt.subplots(
+                nrows,
+                ncols,
+                figsize=figsize,
+                sharey=True,
+                squeeze=False,
+            )
         else:
-            axes = np.asarray(axes)
-            if axes.shape != (2, 2):
-                raise ValueError("axes must have shape (2, 2)")
+            axes = np.asarray(axes, dtype=object)
+            if axes.ndim == 0:
+                axes = axes.reshape(1, 1)
+            elif axes.ndim == 1 and nrows == 1:
+                axes = axes.reshape(1, -1)
+            elif axes.ndim == 1 and ncols == 1:
+                axes = axes.reshape(-1, 1)
+            if axes.shape != expected_shape:
+                raise ValueError(f"axes must have shape {expected_shape}")
             fig = axes.flat[0].figure
-        for axis, variable in zip(axes.flat, self.default_variables):
+        for axis, variable in zip(axes.flat, selected):
             self.plot_profile(variable, rank=rank, ax=axis, **plot_kwargs)
+        for axis in axes.flat[len(selected) :]:
+            axis.set_visible(False)
         status = self._session.status
         fig.suptitle(
             f"PI-CAM rank {rank} mean profiles · step {status.get('step', '?')} · "

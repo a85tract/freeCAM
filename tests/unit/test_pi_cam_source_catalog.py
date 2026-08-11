@@ -182,6 +182,72 @@ overrides: {}
     ).read_text()
 
 
+def test_legacy_star_kind_is_an_intrinsic_abi_type(tmp_path: Path) -> None:
+    source_root = tmp_path / "source"
+    physics = source_root / "components/cam/src/physics"
+    physics.mkdir(parents=True)
+    (physics / "legacy.F90").write_text(
+        """module legacy
+contains
+  subroutine update(value, counter)
+    real*8, intent(inout) :: value
+    integer*8, intent(inout) :: counter
+  end subroutine update
+end module legacy
+"""
+    )
+    catalog = PICAMSourceCatalog.discover(
+        tmp_path,
+        source_root=source_root,
+        rules_path=_write_rules(tmp_path / "rules.yaml"),
+        scan_roots=(physics,),
+    )
+
+    arguments = catalog.procedure("legacy::update").arguments
+    assert tuple(argument.dtype for argument in arguments) == ("float64", "int64")
+    assert all(argument.fortran_type in {"real", "integer"} for argument in arguments)
+    catalog.write_descriptors(tmp_path / "catalog")
+    assert (tmp_path / "catalog/legacy__update/adapter.F90").is_file()
+
+
+def test_semantic_source_blockers_do_not_prevent_pointer_forwarder(
+    tmp_path: Path,
+) -> None:
+    source_root = tmp_path / "source"
+    physics = source_root / "components/cam/src/physics"
+    physics.mkdir(parents=True)
+    (physics / "diagnostic.F90").write_text(
+        """module diagnostic
+  use iso_fortran_env
+contains
+  subroutine update(value, optional_scale)
+    real(kind=real64) :: value
+    real(kind=real64), intent(in), optional :: optional_scale
+    write(*,*) value
+  end subroutine update
+end module diagnostic
+"""
+    )
+    catalog = PICAMSourceCatalog.discover(
+        tmp_path,
+        source_root=source_root,
+        rules_path=_write_rules(tmp_path / "rules.yaml"),
+        scan_roots=(physics,),
+    )
+    procedure = catalog.procedure("diagnostic::update")
+    assert {
+        "fortran_io",
+        "missing_intent",
+        "optional_argument",
+    }.issubset(procedure.blockers)
+
+    catalog.write_descriptors(tmp_path / "catalog")
+    # The adapter always supplies the optional argument.  The semantic
+    # blockers remain in kernel.yaml until runtime bindings are validated,
+    # but they are not C-pointer forwarding blockers.
+    assert (tmp_path / "catalog/diagnostic__update/adapter.F90").is_file()
+
+
 def test_catalog_writes_one_descriptor_per_parsed_procedure(tmp_path: Path) -> None:
     source_root = tmp_path / "source"
     physics = source_root / "components/cam/src/physics"

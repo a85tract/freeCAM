@@ -363,7 +363,7 @@ def test_session_can_request_cam_run2_run4_leaf_expansion(
     assert combined == ({"name": "leaf"},)
 
 
-def test_session_exposes_pythonic_fields_physics_phases_and_kernels(
+def test_session_exposes_pythonic_fields_processes_and_kernels(
     tmp_path: Path, monkeypatch
 ) -> None:
     config, boundary, run_dir, env_script, _ = _session_files(tmp_path)
@@ -423,11 +423,8 @@ def test_session_exposes_pythonic_fields_physics_phases_and_kernels(
     assert len(session.physics) > 270
     assert session.physics.coverage["runnable"] == 2
     assert session.physics.coverage["source_reachable"] == 372
-    assert [
-        process.operation
-        for process in session.physics.by_phase("cam_run1")
-        if process.runnable
-    ] == ["dadadj"]
+    assert session.physics.dry_adjustment.operation == "dadadj"
+    assert not hasattr(session.physics, "by_phase")
     assert "cam_run2" in dir(session.phases)
     assert "dadadj" in dir(session.kernels)
     assert session.fields.temperature.get(rank=2) == "rank-local-values"
@@ -457,6 +454,42 @@ def test_session_exposes_pythonic_fields_physics_phases_and_kernels(
     ]
 
 
+def test_session_replaces_workflow_and_refreshes_the_live_view(
+    tmp_path: Path, monkeypatch
+) -> None:
+    config, boundary, run_dir, env_script, _ = _session_files(tmp_path)
+    session = PICAMNotebookSession(
+        config,
+        boundary=boundary,
+        run_dir=run_dir,
+        env_script=env_script,
+    )
+    session._status = {"step_plan": PICAMStepPlan.default().describe()}
+    order = tuple(
+        reversed(
+            [
+                row["phase"] + "." + row["name"]
+                for row in session._status["step_plan"]
+                if row["enabled"]
+            ]
+        )
+    )
+    replacement = tuple(reversed(session._status["step_plan"]))
+    commands = []
+
+    def request(command):
+        commands.append(command)
+        return {"plan": replacement}
+
+    monkeypatch.setattr(session, "_request", request)
+
+    result = session.replace_workflow(order)
+
+    assert commands == [{"op": "replace_workflow", "order": order}]
+    assert result["plan"] == replacement
+    assert session.status["step_plan"] == tuple(dict(row) for row in replacement)
+
+
 def test_session_ui_lists_every_supported_pi_cam_physics_interface(
     tmp_path: Path,
 ) -> None:
@@ -469,6 +502,14 @@ def test_session_ui_lists_every_supported_pi_cam_physics_interface(
     )
     session._status = {"step_plan": PICAMStepPlan.default().describe()}
 
+    order = session.workflow[:]
+    radiation = session.workflow["radiation"]
+    vertical_diffusion = session.workflow["vertical_diffusion"]
+    assert radiation in order
+    order.remove(radiation)
+    order.insert(order.index(vertical_diffusion), radiation)
+    assert order.index(radiation) < order.index(vertical_diffusion)
+
     assert len(session.physics) == 298
     assert len(set(session.physics.names)) == 298
     assert session.physics.coverage == {
@@ -478,6 +519,12 @@ def test_session_ui_lists_every_supported_pi_cam_physics_interface(
         "source_reachable": 372,
         "source_catalog": 371,
         "physical_processes": 276,
+        "compiled_process_adapters": 276,
+        "formerly_catalog_only_interfaces": 262,
+        "catalog_adapters_compiled": 262,
+        "catalog_current_case_loadable": 0,
+        "current_case_loadable": 0,
+        "configuration_specific": 276,
         "helper_routines": 95,
         "runtime_overlap": 14,
         "excluded_lifecycle": 1,
@@ -489,9 +536,8 @@ def test_session_ui_lists_every_supported_pi_cam_physics_interface(
     assert session.physics.dadadj.operation == "dadadj"
     assert session.physics.dry_adjustment.operation == "dadadj"
     assert session.physics.leaf_cloud_diagnostics_calc.granularity == "leaf"
-    assert sum(
-        process.runnable for process in session.physics.by_phase("cam_run1")
-    ) == 20
+    assert sum(process.runnable for process in session.physics) == 36
+    assert not hasattr(session.physics, "by_phase")
     assert session.physics.cloud_fraction_fice.runnable is False
     assert session.physics.cldfrc_fice.name == "cloud_fraction_fice"
     assert session.physics.zm_conv_evap.qualified_name == "zm_conv::zm_conv_evap"
@@ -524,6 +570,7 @@ def test_session_dynamic_field_and_python_process_commands(
         return result
 
     monkeypatch.setattr(session, "_request", request)
+    session._status = {"step_plan": PICAMStepPlan.default().describe()}
 
     tracer = session.fields.create(
         "experiment_tracer",
@@ -537,7 +584,6 @@ def test_session_dynamic_field_and_python_process_commands(
     process = session.physics.install_python(
         callback,
         name="heating",
-        phase="cam_run1",
         after="dadadj",
         writes=("tracer",),
     )

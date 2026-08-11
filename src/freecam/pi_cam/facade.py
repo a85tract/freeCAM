@@ -105,7 +105,6 @@ class Physics:
     """Base class for one Notebook-defined rank-local Python process."""
 
     name: str | None = None
-    phase: str = "cam_run1"
     before: str | None = None
     after: str | None = None
     reads: tuple[str, ...] = ()
@@ -120,7 +119,6 @@ class Physics:
         self,
         session: PICAMNotebookSession,
         *,
-        phase: str | None = None,
         before: str | None = None,
         after: str | None = None,
     ) -> Any:
@@ -134,7 +132,6 @@ class Physics:
         return session.physics.install_python(
             self.tendency,
             name=process_name,
-            phase=phase or self.phase,
             before=placement_before,
             after=placement_after,
             reads=self.reads,
@@ -173,6 +170,12 @@ class _CAMFacade:
     def workflow(self) -> Any:
         return self._driver._live_session().workflow
 
+    @workflow.setter
+    def workflow(self, processes: Sequence[Any]) -> None:
+        """Replace CAM's enabled process order with a Python sequence."""
+
+        self._driver._live_session().workflow.replace(processes)
+
     @property
     def fields(self) -> Any:
         return self._driver._live_session().fields
@@ -180,10 +183,6 @@ class _CAMFacade:
     @property
     def physics(self) -> Any:
         return self._driver._live_session().physics
-
-    @property
-    def phases(self) -> Any:
-        return self._driver._live_session().phases
 
     @property
     def kernels(self) -> Any:

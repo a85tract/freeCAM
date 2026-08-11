@@ -44,6 +44,7 @@ LEAF_PATCHES = (
     REPO
     / "native/pi_cam/control_patches/0028-python-after-coupler-leaf-control.patch",
     REPO / "native/pi_cam/control_patches/0029-python-run4-leaf-control.patch",
+    REPO / "native/pi_cam/control_patches/0031-order-independent-leaf-actions.patch",
 )
 IMAGE_BASE = 0x30000000
 IMAGE_WINDOW_BYTES = 0x20000000
@@ -728,6 +729,14 @@ def main() -> int:
         )
         hybrid_physics = work / "physics_types.o"
         hybrid_surface = work / "camsrfexch.o"
+        # ``sources['physpkg.F90']`` is regenerated from the current prepared
+        # source immediately above.  Do not silently replace that object with
+        # the stale object left in a previously built case: doing so discards
+        # newly admitted control shells while making the manifest look fresh.
+        generated_physpkg_object = work / "physpkg_generated.o"
+        shutil.copy2(objects["physpkg.F90"], generated_physpkg_object)
+        # Keep the production archive-member name: ``_replace_archive`` uses
+        # it to replace exactly ``physpkg.o`` in libatm.a.
         hybrid_physpkg = work / "physpkg.o"
         _hybrid_module_object(
             freshly_generated["physics_types.F90"],
@@ -742,7 +751,7 @@ def main() -> int:
             surface_shells,
         )
         _hybrid_module_object(
-            generated_objects / "physpkg.o",
+            generated_physpkg_object,
             numerical_objects / "physpkg.o",
             hybrid_physpkg,
             physpkg_shells,
@@ -1063,6 +1072,15 @@ def main() -> int:
             else None
         ),
         "source_root": str(source_root),
+        "process_device_generation": str(
+            (REPO / "validation/pi_cam_in_module_adapter_generation.json").resolve()
+        ),
+        "process_device_validation": str(
+            (REPO / "validation/pi_cam_in_module_adapter_validation.json").resolve()
+        ),
+        "process_device_loading": str(
+            (REPO / "validation/pi_cam_process_device_loading.json").resolve()
+        ),
         "control_source": str(sources["physpkg.F90"].resolve()),
         "control_source_sha256": _sha256(sources["physpkg.F90"].resolve()),
         "hybrid_control_object_sha256": _sha256(objects["physpkg.F90"]),

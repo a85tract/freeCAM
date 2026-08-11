@@ -45,6 +45,9 @@ def _status(driver: Any) -> dict[str, object]:
             for name in driver.process_contexts.names
         ),
         "kernels": tuple(getattr(driver.backend, "direct_kernels", ())),
+        "process_adapters": tuple(
+            getattr(driver.backend, "process_adapters", ())
+        ),
         "step_plan": driver.step_plan.describe(),
         "state_bytes": driver.pool.nbytes,
     }
@@ -176,7 +179,12 @@ def _command(command: dict[str, Any], driver: Any, comm: Any) -> object:
             str(command["name"]), phase=command.get("phase")
         )
         return (
-            {"name": action.name, "phase": action.phase, "enabled": action.enabled}
+            {
+                "name": action.name,
+                "phase": action.phase,
+                "enabled": action.enabled,
+                "plan": driver.step_plan.describe(),
+            }
             if comm.rank == 0
             else None
         )
@@ -193,6 +201,16 @@ def _command(command: dict[str, Any], driver: Any, comm: Any) -> object:
         )
         return (
             {"name": action.name, "phase": action.phase, "plan": driver.step_plan.describe()}
+            if comm.rank == 0
+            else None
+        )
+    if operation == "replace_workflow":
+        driver.step_plan.replace_enabled_order(
+            tuple(str(name) for name in command["order"]),
+            experimental=True,
+        )
+        return (
+            {"plan": driver.step_plan.describe()}
             if comm.rank == 0
             else None
         )

@@ -40,6 +40,9 @@ class FortranArgument:
     pointer: bool = False
     allocatable: bool = False
     value: bool = False
+    character_length: str | None = None
+    procedure: bool = False
+    kind_local: bool = False
 
     def as_dict(self) -> dict[str, object]:
         payload = asdict(self)
@@ -71,10 +74,13 @@ class FortranProcedure:
     resolved_calls: tuple[str, ...] = ()
     unresolved_calls: tuple[str, ...] = ()
     source_sha256: str = ""
+    result: FortranArgument | None = None
+    use_statements: tuple[str, ...] = ()
 
     def as_dict(self) -> dict[str, object]:
         payload = asdict(self)
         payload["arguments"] = [item.as_dict() for item in self.arguments]
+        payload["result"] = None if self.result is None else self.result.as_dict()
         for name in (
             "uses",
             "wildcard_uses",
@@ -85,6 +91,7 @@ class FortranProcedure:
             "active_plan_actions",
             "resolved_calls",
             "unresolved_calls",
+            "use_statements",
         ):
             payload[name] = list(getattr(self, name))
         return payload
@@ -564,6 +571,13 @@ class PICAMSourceCatalog:
     def write_descriptors(
         self, output_root: str | Path, *, clean: bool = False
     ) -> tuple[Path, ...]:
+        # Imported lazily to avoid a module cycle: the in-module generator
+        # consumes the source-catalog dataclasses defined above.
+        from .in_module_adapter import (
+            can_generate_in_module_adapter,
+            generate_in_module_adapter,
+        )
+
         root = Path(output_root).resolve()
         root.mkdir(parents=True, exist_ok=True)
         expected: set[Path] = set()
@@ -607,12 +621,27 @@ class PICAMSourceCatalog:
                     + "\n"
                 )
                 expected.update((adapter, manifest))
+            if can_generate_in_module_adapter(procedure):
+                generated = generate_in_module_adapter(procedure)
+                inline = child / "in_module_adapter.F90.inc"
+                inline.write_text(generated.source)
+                inline_manifest = child / "in_module_adapter.json"
+                inline_manifest.write_text(
+                    json.dumps(generated.manifest(), indent=2, sort_keys=True) + "\n"
+                )
+                expected.update((inline, inline_manifest))
             outputs.append(path)
         index = root / "catalog.json"
         expected.add(index)
         index.write_text(json.dumps(self.summary(), indent=2, sort_keys=True) + "\n")
         if clean:
-            for pattern in ("kernel.yaml", "adapter.F90", "adapter.json"):
+            for pattern in (
+                "kernel.yaml",
+                "adapter.F90",
+                "adapter.json",
+                "in_module_adapter.F90.inc",
+                "in_module_adapter.json",
+            ):
                 for path in root.rglob(pattern):
                     if path not in expected:
                         path.unlink()
@@ -752,33 +781,62 @@ def _records_from_tree(
             for item in (() if argument_list is None else argument_list.items)
         )
         module = _module_name(node, Module, Module_Stmt)
+        node_text = str(node)
+        local_kind_map = _local_kind_parameters(node_text)
+        procedure_kind_map = dict(kind_map)
+        procedure_kind_map.update(local_kind_map)
         declarations: dict[str, FortranArgument] = {}
         for declaration in walk(node, Type_Declaration_Stmt):
             if _nearest_procedure(declaration, classes) is not node:
                 continue
-            for argument in _declaration_arguments(declaration, kind_map):
+            for argument in _declaration_arguments(
+                declaration, procedure_kind_map
+            ):
+                if argument.kind is not None and argument.kind in local_kind_map:
+                    argument = replace(argument, kind_local=True)
                 declarations[argument.name] = argument
         arguments_out: list[FortranArgument] = []
         blockers: set[str] = set()
         for argument_name in argument_names:
             if argument_name not in declarations:
-                blockers.add("undeclared_argument")
-                arguments_out.append(
-                    FortranArgument(
-                        argument_name, "unknown", None, None, None, 0, ()
+                optional_procedure = re.search(
+                    rf"(?im)^\s*optional\s*::[^\n]*\b{re.escape(argument_name)}\b",
+                    node_text,
+                ) is not None
+                if optional_procedure:
+                    argument = FortranArgument(
+                        argument_name,
+                        "procedure",
+                        None,
+                        None,
+                        None,
+                        0,
+                        (),
+                        optional=True,
+                        procedure=True,
                     )
-                )
+                    arguments_out.append(argument)
+                    blockers.add("optional_procedure_argument")
+                else:
+                    blockers.add("undeclared_argument")
+                    arguments_out.append(
+                        FortranArgument(
+                            argument_name, "unknown", None, None, None, 0, ()
+                        )
+                    )
             else:
                 argument = declarations[argument_name]
                 arguments_out.append(argument)
                 blockers.update(_argument_blockers(argument))
         uses: set[str] = set()
+        use_statements: list[str] = []
         wildcard_uses: set[str] = set()
         for use in walk(node, Use_Stmt):
             if _nearest_procedure(use, classes) is not node:
                 continue
             module_name = str(use.items[2]).lower()
             uses.add(module_name)
+            use_statements.append(str(use).strip())
             if "ONLY" not in str(use).upper():
                 wildcard_uses.add(module_name)
         calls = {
@@ -811,8 +869,39 @@ def _records_from_tree(
             for module_name in uses
         ):
             blockers.add("parallel_runtime_dependency")
+        result: FortranArgument | None = None
         if isinstance(node, Function_Subprogram):
             blockers.add("function_result_abi")
+            suffix = "" if statement.items[3] is None else str(statement.items[3])
+            result_match = re.search(r"RESULT\s*\(\s*([A-Za-z_]\w*)", suffix, re.I)
+            result_name = (
+                result_match.group(1).lower() if result_match is not None else name
+            )
+            result = declarations.get(result_name)
+            if result is None and statement.items[0] is not None:
+                # Typed FUNCTION statements declare their result in the
+                # prefix rather than in a separate declaration statement.
+                from fparser.two.Fortran2003 import Type_Declaration_Stmt
+
+                prefix_text = str(statement.items[0]).strip()
+                try:
+                    synthetic = Type_Declaration_Stmt(
+                        f"{prefix_text} :: {result_name}"
+                    )
+                    parsed = _declaration_arguments(
+                        synthetic, procedure_kind_map
+                    )
+                    result = parsed[0] if parsed else None
+                    if (
+                        result is not None
+                        and result.kind is not None
+                        and result.kind in local_kind_map
+                    ):
+                        result = replace(result, kind_local=True)
+                except Exception:
+                    result = None
+            if result is None:
+                blockers.add("unknown_function_result")
         signature_status = "explicit" if not blockers else "needs_rule"
         adapter_status = "candidate" if not blockers else "blocked"
         role = _initial_role(name, body, uses, calls)
@@ -842,6 +931,8 @@ def _records_from_tree(
                 adapter_status=adapter_status,
                 blockers=tuple(sorted(blockers)),
                 source_sha256=digest,
+                result=result,
+                use_statements=tuple(dict.fromkeys(use_statements)),
             ).as_dict()
         )
     return procedures
@@ -861,6 +952,7 @@ def _procedure_from_payload(
         "active_plan_actions",
         "resolved_calls",
         "unresolved_calls",
+        "use_statements",
     }
     values = dict(payload)
     aliases = {
@@ -877,6 +969,17 @@ def _procedure_from_payload(
             FortranArgument(**{**record, "dimensions": dimensions})
         )
     values["arguments"] = tuple(arguments)
+    result_record = payload.get("result")
+    if isinstance(result_record, Mapping):
+        result_dimensions = tuple(
+            aliases.get(str(value).lower(), str(value).lower())
+            for value in result_record.get("dimensions", ())
+        )
+        values["result"] = FortranArgument(
+            **{**result_record, "dimensions": result_dimensions}
+        )
+    else:
+        values["result"] = None
     for name in sequence_fields:
         values[name] = tuple(payload.get(name, ()))
     return FortranProcedure(**values)
@@ -972,10 +1075,38 @@ def _declaration_arguments(
     kind_match = re.search(r"kind\s*=\s*([a-zA-Z0-9_]+)", type_text)
     kind = None if kind_match is None else kind_match.group(1).lower()
     base = type_text.split("(", 1)[0].strip()
+    # fparser preserves the old star-kind spelling used by several legacy
+    # radiation files (for example ``real*8``).  It is an intrinsic scalar,
+    # not a derived/unknown type.  Normalize it before assigning the NumPy/C
+    # ABI dtype so those procedures do not receive a false context blocker.
+    star_kind = re.fullmatch(
+        r"(real|integer|logical|complex|character)\s*\*\s*(\d+)",
+        base,
+    )
+    if star_kind is not None:
+        base = star_kind.group(1)
+        kind = f"star{star_kind.group(2)}"
     derived_match = re.match(r"(?:type|class)\s*\(\s*([a-zA-Z0-9_]+)", type_text)
     if derived_match:
         base = f"type:{derived_match.group(1).lower()}"
     dtype = _dtype_for(base, kind, kind_map)
+    character_length: str | None = None
+    if base == "character" or base.startswith("character*"):
+        length_match = re.search(
+            r"character\s*(?:\*\s*\(?\s*([^\s)]+)\s*\)?|"
+            r"\(\s*(?:len\s*=\s*)?([^,)]+))",
+            type_text,
+            re.IGNORECASE,
+        )
+        if length_match is not None:
+            character_length = next(
+                (
+                    value.strip().lower()
+                    for value in length_match.groups()
+                    if value is not None
+                ),
+                None,
+            )
     results: list[FortranArgument] = []
     entities = declaration.items[2]
     for entity in (() if entities is None else entities.items):
@@ -999,12 +1130,53 @@ def _declaration_arguments(
                 pointer="POINTER" in upper_attributes,
                 allocatable="ALLOCATABLE" in upper_attributes,
                 value="VALUE" in upper_attributes,
+                character_length=character_length,
             )
         )
     return tuple(results)
 
 
+def _local_kind_parameters(body: str) -> dict[str, str]:
+    """Resolve simple procedure-local KIND constants used by legacy kernels."""
+
+    result: dict[str, str] = {}
+    pattern = re.compile(
+        r"(?im)^\s*integer\s*(?:\([^\n]*\))?\s*,\s*parameter\s*::\s*"
+        r"([A-Za-z_]\w*)\s*=\s*selected_real_kind\s*\(\s*(\d+)\s*,\s*(\d+)"
+    )
+    for match in pattern.finditer(body):
+        name, precision, exponent = match.groups()
+        # IEEE binary32 provides roughly 6 decimal digits and exponent 37;
+        # anything beyond that requires the binary64 ABI used by CAM/COSP.
+        result[name.lower()] = (
+            "float32"
+            if int(precision) <= 6 and int(exponent) <= 37
+            else "float64"
+        )
+    return result
+
+
 def _dtype_for(base: str, kind: str | None, kind_map: Mapping[str, str]) -> str | None:
+    if base.startswith("character"):
+        return "character"
+    if kind and kind.startswith("star"):
+        width = kind.removeprefix("star")
+        star_kinds = {
+            ("real", "4"): "float32",
+            ("real", "8"): "float64",
+            ("complex", "8"): "complex64",
+            ("complex", "16"): "complex128",
+            ("integer", "4"): "int32",
+            ("integer", "8"): "int64",
+            # Intel/Cray default LOGICAL occupies four bytes.  StatePool uses
+            # int32 storage so its raw ABI matches Fortran while Python can
+            # still assign 0/1 values explicitly.
+            ("logical", "4"): "int32",
+            ("character", "1"): "character",
+        }
+        mapped = star_kinds.get((base, width))
+        if mapped is not None:
+            return mapped
     if kind and kind.lower() in kind_map:
         mapped = str(kind_map[kind.lower()])
         if base == "complex":
@@ -1012,11 +1184,22 @@ def _dtype_for(base: str, kind: str | None, kind_map: Mapping[str, str]) -> str 
                 mapped, mapped
             )
         return mapped
+    intrinsic_kinds = {
+        "c_float": "float32",
+        "c_double": "float64",
+        "c_float_complex": "complex64",
+        "c_double_complex": "complex128",
+        "c_int": "int32",
+        "c_int32_t": "int32",
+        "c_int64_t": "int64",
+    }
+    if kind and kind.lower() in intrinsic_kinds:
+        return intrinsic_kinds[kind.lower()]
     defaults = {
         "real": "float32",
         "double precision": "float64",
         "integer": "int32",
-        "logical": "logical",
+        "logical": "int32",
         "complex": "complex64",
         "character": "character",
     }
@@ -1025,6 +1208,13 @@ def _dtype_for(base: str, kind: str | None, kind_map: Mapping[str, str]) -> str 
 
 def _argument_blockers(argument: FortranArgument) -> set[str]:
     blockers: set[str] = set()
+    if argument.procedure:
+        blockers.add(
+            "optional_procedure_argument"
+            if argument.optional
+            else "required_procedure_argument"
+        )
+        return blockers
     if argument.intent is None:
         blockers.add("missing_intent")
     if argument.dtype is None or argument.fortran_type.startswith("type:"):
@@ -1283,9 +1473,24 @@ _C_INTEROP_TYPES = {
 
 
 def _can_generate_pointer_adapter(procedure: FortranProcedure) -> bool:
+    # Source semantics such as wildcard USE statements, Fortran I/O, a
+    # missing INTENT, OPTIONAL-present arguments, and POINTER dummies do not
+    # prevent an adapter from forwarding an explicitly supplied object.  They
+    # still remain catalog blockers until StatePool/caller-context bindings
+    # are validated.  Accessibility, function results, allocatable dummies,
+    # and non-interoperable argument representations need different adapter
+    # strategies and are excluded here.
+    unsupported = {
+        "private_module_procedure",
+        "function_result_abi",
+        "allocatable_argument",
+        "derived_or_unknown_type",
+        "nontrivial_c_representation",
+        "unsupported_extent",
+    }
     return (
         procedure.procedure_kind == "subroutine"
-        and procedure.adapter_status == "candidate"
+        and not unsupported.intersection(procedure.blockers)
         and all(argument.dtype in _C_INTEROP_TYPES for argument in procedure.arguments)
     )
 

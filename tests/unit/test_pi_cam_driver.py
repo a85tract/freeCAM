@@ -175,6 +175,12 @@ def test_pythonic_phase_and_action_handles_edit_the_same_step_plan() -> None:
         "source_reachable": 372,
         "source_catalog": 371,
         "physical_processes": 276,
+        "compiled_process_adapters": 276,
+        "formerly_catalog_only_interfaces": 262,
+        "catalog_adapters_compiled": 262,
+        "catalog_current_case_loadable": 0,
+        "current_case_loadable": 0,
+        "configuration_specific": 276,
         "helper_routines": 95,
         "runtime_overlap": 14,
         "excluded_lifecycle": 1,
@@ -267,6 +273,19 @@ def test_driver_can_expand_cam_run2_and_run4_leaf_calls() -> None:
         assert operation in backend.calls
 
 
+def test_isolated_io_leaf_is_an_executable_workflow_action() -> None:
+    driver, backend, _ = _driver()
+    driver.expand_cam_run4_leaves(experimental=True)
+    driver.initialize()
+
+    trace = driver.run_action(
+        "flush_leaf", phase="cam_run4", experimental=True
+    )
+
+    assert trace.operation == "leaf_cam_run4_flush"
+    assert backend.calls[-1] == "leaf_cam_run4_flush"
+
+
 def test_native_backend_can_fuse_only_the_unchanged_default_step() -> None:
     class FusedRecordingCAMBackend(RecordingCAMBackend):
         def execute_source_step(self, pool, *, fcomm, apply_import=True):
@@ -349,7 +368,6 @@ def test_dynamic_field_and_python_process_are_part_of_the_step_plan() -> None:
     process = driver.physics.install_python(
         add_timestep,
         name="notebook_heating",
-        phase="cam_run1",
         after="dadadj",
         writes=("tracer",),
         parameters={"scale": 1.0e-3},
@@ -385,7 +403,6 @@ def test_failed_python_process_restores_declared_writes() -> None:
     process = driver.physics.install_python(
         fail_after_write,
         name="failure_probe",
-        phase="cam_run1",
         after="dadadj",
         writes=("runtime_value",),
     )
@@ -435,7 +452,6 @@ def test_runtime_fortran_process_uses_the_same_mutable_step_plan(
     process = driver.physics.install_fortran(
         manifest,
         process="runtime_offset",
-        phase="cam_run1",
         after="dadadj",
         unsafe=True,
     )

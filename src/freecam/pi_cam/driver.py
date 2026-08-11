@@ -192,7 +192,7 @@ class _ActionReference:
 
     def __repr__(self) -> str:
         return (
-            f"PhysicsProcess(operation={self.operation!r}, phase={self.phase!r}, "
+            f"PhysicsProcess(name={self.name!r}, operation={self.operation!r}, "
             f"enabled={self.enabled}, granularity={self.granularity!r})"
         )
 
@@ -299,7 +299,7 @@ class _CatalogActionReference:
 
     @property
     def runnable(self) -> bool:
-        return False
+        return bool(self._record.get("runnable", False))
 
     @property
     def capability(self) -> str:
@@ -330,8 +330,9 @@ class _CatalogActionReference:
 
     def run(self, *, experimental: bool = True) -> PICAMActionTrace:
         del experimental
-        self._unavailable("run it")
-        raise AssertionError("unreachable")
+        if not self.runnable:
+            self._unavailable("run it")
+        return self().trace
 
     def __call__(self, **arguments: Any) -> _LocalProcessCallResult:
         """Bind inferred StatePool inputs, run once, and return named outputs."""
@@ -478,7 +479,22 @@ class _PhysicsCollection:
             }
         )
         records = [dict(row) for row in merge_runtime_process_records(runtime, self.catalog)]
+        has_adapter = getattr(self.driver.backend, "has_process_adapter", None)
         for row in records:
+            if row["kind"] == "catalog_process" and callable(has_adapter):
+                available = bool(
+                    has_adapter(str(row["qualified_name"]), str(row["source"]))
+                )
+                row.update(
+                    {
+                        "runnable": available,
+                        "capability": (
+                            "compiled_process_device"
+                            if available
+                            else row["capability"]
+                        ),
+                    }
+                )
             if str(row["api_name"]) not in self.driver.process_contexts:
                 continue
             promoted = self.driver.process_contexts.record(str(row["api_name"]))
@@ -527,7 +543,7 @@ class _PhysicsCollection:
             if record["kind"] == "promoted_process":
                 references.append(_PromotedProcessReference(self.driver, record))
                 continue
-            if not bool(record["runnable"]):
+            if record["kind"] == "catalog_process":
                 references.append(_CatalogActionReference(self.driver, record))
                 continue
             action = self.driver.step_plan.select(
@@ -554,6 +570,20 @@ class _PhysicsCollection:
     @property
     def coverage(self) -> Mapping[str, int]:
         records = self.records
+        has_adapter = getattr(self.driver.backend, "has_process_adapter", None)
+        source_only = tuple(
+            row
+            for row in merge_runtime_process_records(
+                tuple(
+                    row
+                    for row in self.driver.step_plan.describe()
+                    if row["kind"]
+                    in {"scheme", "python_process", "runtime_fortran_process"}
+                ),
+                self.catalog,
+            )
+            if row["kind"] == "catalog_process"
+        )
         runnable = tuple(row for row in records if bool(row["runnable"]))
         catalog_only = tuple(row for row in records if not bool(row["runnable"]))
         leaf = sum(
@@ -570,8 +600,27 @@ class _PhysicsCollection:
             "source_reachable": self.catalog.reachable_procedures,
             "source_catalog": len(self.catalog.processes),
             "physical_processes": len(self.catalog.physics_processes),
+            "compiled_process_adapters": sum(
+                process.generated_adapter
+                for process in self.catalog.physics_processes
+            ),
+            "formerly_catalog_only_interfaces": len(source_only),
+            "catalog_adapters_compiled": sum(
+                bool(row.get("generated_adapter")) for row in source_only
+            ),
+            "catalog_current_case_loadable": sum(
+                bool(
+                    callable(has_adapter)
+                    and has_adapter(str(row["qualified_name"]), str(row["source"]))
+                )
+                for row in source_only
+            ),
+            "current_case_loadable": sum(
+                bool(callable(has_adapter) and has_adapter(process.qualified_name, process.source))
+                for process in self.catalog.physics_processes
+            ),
             "helper_routines": len(self.catalog.helpers),
-            "runtime_overlap": len(self.catalog.physics_processes) - len(catalog_only),
+            "runtime_overlap": len(self.catalog.physics_processes) - len(source_only),
             "excluded_lifecycle": self.catalog.excluded_lifecycle,
             "enabled": enabled,
             "disabled": len(planned) - enabled,
@@ -579,25 +628,12 @@ class _PhysicsCollection:
             "stage": len(runnable) - leaf,
         }
         standalone = len(runnable) - len(planned)
+        result["configuration_specific"] = (
+            result["physical_processes"] - result["current_case_loadable"]
+        )
         if standalone:
             result["standalone"] = standalone
         return result
-
-    def by_phase(self, phase: str) -> tuple[_ActionReference, ...]:
-        selected = tuple(
-            reference
-            for reference in self.interfaces
-            if reference.phase == str(phase)
-            or any(
-                str(action).startswith(f"{phase}.")
-                for action in reference.metadata.get("parent_actions", ())
-            )
-        )
-        if not selected:
-            raise PICAMConfigurationError(
-                f"physics phase {phase!r} is unknown or empty"
-            )
-        return selected
 
     def __len__(self) -> int:
         return len(self.interfaces)
@@ -630,7 +666,7 @@ class _PhysicsCollection:
         record = matches[0]
         if record["kind"] == "promoted_process":
             return _PromotedProcessReference(self.driver, record)
-        if not bool(record["runnable"]):
+        if record["kind"] == "catalog_process":
             return _CatalogActionReference(self.driver, record)
         action = self.driver.step_plan.select(
             str(record["name"]), phase=str(record["phase"])
@@ -641,7 +677,7 @@ class _PhysicsCollection:
             return _FortranProcessReference(self.driver, action, record)
         return _ActionReference(self.driver, action, record)
 
-    def scheme(self, name: str, *, phase: str | None = None) -> Any:
+    def scheme(self, name: str) -> Any:
         matches = tuple(
             record
             for record in self.records
@@ -652,7 +688,6 @@ class _PhysicsCollection:
                 or name in record.get("aliases", ())
                 or record.get("qualified_name") == name
             )
-            and (phase is None or record["phase"] == phase)
         )
         if len(matches) != 1:
             raise PICAMConfigurationError(
@@ -661,21 +696,20 @@ class _PhysicsCollection:
         record = matches[0]
         if record["kind"] == "promoted_process":
             return _PromotedProcessReference(self.driver, record)
-        if not bool(record["runnable"]):
+        if record["kind"] == "catalog_process":
             return _CatalogActionReference(self.driver, record)
         return getattr(self, str(record["api_name"]))
 
-    def process(self, name: str, *, phase: str | None = None) -> Any:
+    def process(self, name: str) -> Any:
         """Resolve one flat physics process; ``scheme`` remains an alias."""
 
-        return self.scheme(name, phase=phase)
+        return self.scheme(name)
 
     def install_python(
         self,
         function: Callable[..., None],
         *,
         name: str,
-        phase: str,
         before: str | None = None,
         after: str | None = None,
         reads: Sequence[str] = (),
@@ -685,6 +719,9 @@ class _PhysicsCollection:
         transactional: bool = True,
         unsafe: bool = False,
     ) -> _PythonProcessReference:
+        phase, before, after = self._resolve_placement(
+            phase=None, before=before, after=after
+        )
         spec = PythonProcessSpec.from_callable(
             function,
             name=name,
@@ -709,13 +746,15 @@ class _PhysicsCollection:
         source: str | Path,
         *,
         process: str,
-        phase: str,
         before: str | None = None,
         after: str | None = None,
         project_root: str | Path | None = None,
         enabled: bool = True,
         unsafe: bool = False,
     ) -> _FortranProcessReference:
+        phase, before, after = self._resolve_placement(
+            phase=None, before=before, after=after
+        )
         spec = PICAMFortranProcessSpec(
             source=str(source),
             process=process,
@@ -731,6 +770,27 @@ class _PhysicsCollection:
 
     def remove_fortran(self, name: str) -> Mapping[str, Any]:
         return self.driver.fortran_processes.remove(name)
+
+    def _resolve_placement(
+        self,
+        *,
+        phase: str | None,
+        before: str | None,
+        after: str | None,
+    ) -> tuple[str, str | None, str | None]:
+        """Translate a Pythonic neighbor placement into the internal plan key."""
+
+        if before is None and after is None:
+            before = "state_export"
+        if before is not None and after is not None:
+            raise PICAMConfigurationError("provide only one of before= or after=")
+        target = self.driver.step_plan.select(before or after or "")
+        if phase is not None and str(phase) != target.phase:
+            raise PICAMConfigurationError(
+                f"placement target {target.name!r} belongs to a different "
+                "internal source region"
+            )
+        return target.phase, before, after
 
 
 class _PhaseReference:
@@ -1306,7 +1366,11 @@ class PICAMDriver:
                 "isolated action execution requires experimental=True"
             )
         action = self.step_plan.select(name, phase=phase)
-        if action.kind in {"boundary", "clock", "io"}:
+        # Coupler exchange and the model clock define a complete-step boundary;
+        # they remain explicit driver responsibilities.  History/restart/flush
+        # actions are ordinary admitted native entry points and may be invoked
+        # independently for experimental workflow construction.
+        if action.kind in {"boundary", "clock"}:
             raise PICAMConfigurationError(
                 f"{action.operation!r} is controlled by a complete step"
             )

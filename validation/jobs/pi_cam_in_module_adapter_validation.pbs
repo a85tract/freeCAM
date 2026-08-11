@@ -1,0 +1,37 @@
+#!/bin/bash
+#PBS -N freecam-inline-adapters
+#PBS -q develop
+#PBS -l select=1:ncpus=8:mpiprocs=1:ompthreads=1:mem=40GB
+#PBS -l walltime=00:30:00
+#PBS -j oe
+#PBS -o /glade/work/ruitong/freeCAM/logs/
+#PBS -V
+
+set -euo pipefail
+
+repo=/glade/work/$USER/freeCAM
+python=${repo}/.venv/bin/python
+case_root=/glade/work/$USER/CESM_cases/f.e13.F1850C5.ne16_g16.icesm131_ihesp.PI-cam-python-state
+source_root=${repo}/external/iCESM1.3.1_fzhu
+work_root=/glade/derecho/scratch/$USER/freeCAM/in-module-adapters-${PBS_JOBID}
+patched_sources=${work_root}/sources
+
+source "${case_root}/.env_mach_specific.sh" >/dev/null 2>&1
+export PYTHONPATH=${repo}/src
+
+cd "${repo}"
+"${python}" tools/build_pi_cam_in_module_adapters.py \
+  --project-root "${repo}" \
+  --source-root "${source_root}" \
+  --output-root "${patched_sources}" \
+  --report validation/pi_cam_in_module_adapter_generation.json \
+  --workers 8
+
+"${python}" tools/validate_pi_cam_in_module_adapters.py \
+  --generation-report validation/pi_cam_in_module_adapter_generation.json \
+  --source-root "${patched_sources}" \
+  --contexts validation/pi_cam_adapter_build_contexts.yaml \
+  --work-root "${work_root}/objects" \
+  --library-root "${repo}/build/pi_cam/process_devices" \
+  --output validation/pi_cam_in_module_adapter_validation.json \
+  --workers 8

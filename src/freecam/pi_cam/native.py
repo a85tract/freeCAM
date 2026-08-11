@@ -18,6 +18,10 @@ from freecam.core.fortran_adapter import (
 
 from .errors import NativeCAMError
 from .plan import PICAMAction
+from .process_devices import (
+    PICAMProcessDeviceCatalog,
+    PICAMProcessDeviceRuntime,
+)
 from .state import PICAMFieldContract, PICAMStatePool
 
 
@@ -103,6 +107,83 @@ class _BoundStatePool(Mapping[str, np.ndarray]):
         return len(self.bindings)
 
 
+class _ChunkProcessStatePool(Mapping[str, np.ndarray]):
+    """Expose one CAM chunk from aggregate rank-local StatePool storage."""
+
+    def __init__(
+        self,
+        pool: PICAMStatePool,
+        bindings: Mapping[str, str],
+        arguments: Mapping[str, Mapping[str, object]],
+        chunk: int,
+    ) -> None:
+        self.pool = pool
+        self.bindings = dict(bindings)
+        self.arguments = dict(arguments)
+        self.chunk = int(chunk)
+
+    def __getitem__(self, logical_name: str) -> np.ndarray:
+        field = self.bindings[logical_name]
+        values = np.asarray(self.pool[field])
+        argument = self.arguments[logical_name]
+        rank = int(argument.get("rank", 0))
+        fortran_type = str(argument.get("fortran_type", ""))
+        chunks = int(self.pool.dimensions["chunks"])
+        if fortran_type.startswith("type:"):
+            if values.dtype.kind == "V":
+                if values.ndim != rank + 1 or values.shape[-1] != chunks:
+                    raise NativeCAMError(
+                        f"opaque record binding {field!r} must have rank "
+                        f"{rank + 1} with chunks last"
+                    )
+                return values[(..., self.chunk)]
+            if values.dtype != np.dtype("uint8"):
+                raise NativeCAMError(
+                    f"opaque binding {field!r} must be uint8 owner storage "
+                    "or a void-record array"
+                )
+            if rank != 0:
+                raise NativeCAMError(
+                    f"opaque array {field!r} needs an explicit void-record view"
+                )
+            if values.ndim == 1:
+                if values.size % chunks:
+                    raise NativeCAMError(
+                        f"opaque owner {field!r} cannot be divided into {chunks} chunks"
+                    )
+                record_bytes = values.size // chunks
+                return np.ndarray(
+                    shape=(),
+                    dtype=np.dtype(f"V{record_bytes}"),
+                    buffer=values,
+                    offset=self.chunk * record_bytes,
+                )
+            if values.ndim == 2 and values.shape[-1] == chunks:
+                record = values[:, self.chunk]
+                return np.ndarray(
+                    shape=(), dtype=np.dtype(f"V{record.nbytes}"), buffer=record
+                )
+            raise NativeCAMError(
+                f"opaque binding {field!r} is not rank-local owner storage"
+            )
+        if values.ndim == rank + 1 and values.shape[-1] == chunks:
+            if rank == 0:
+                return values[self.chunk : self.chunk + 1].reshape(())
+            return values[(..., self.chunk)]
+        if values.ndim == rank:
+            return values
+        raise NativeCAMError(
+            f"binding {field!r} has aggregate rank {values.ndim}; expected "
+            f"{rank + 1} with chunks last"
+        )
+
+    def __iter__(self) -> Iterator[str]:
+        return iter(self.bindings)
+
+    def __len__(self) -> int:
+        return len(self.bindings)
+
+
 class NativeCAMDevice:
     """Load generated bind(C) adapters while Python retains array ownership."""
 
@@ -170,6 +251,40 @@ class NativeCAMDevice:
         self._leaf_abi: PointerTableAdapter | None = None
         self._promoted_kernel_library: ctypes.CDLL | None = None
         self._promoted_kernel_abi: PointerTableAdapter | None = None
+        self._process_device_runtime: PICAMProcessDeviceRuntime | None = None
+        generation_path = payload.get("process_device_generation")
+        validation_path = payload.get("process_device_validation")
+        loading_path = payload.get("process_device_loading")
+        if generation_path is None or validation_path is None:
+            for parent in self.manifest_path.resolve().parents:
+                generation = parent / "validation/pi_cam_in_module_adapter_generation.json"
+                validation = parent / "validation/pi_cam_in_module_adapter_validation.json"
+                if generation.is_file() and validation.is_file():
+                    generation_path, validation_path = generation, validation
+                    break
+        if generation_path is not None and validation_path is not None:
+            generation = Path(str(generation_path))
+            validation = Path(str(validation_path))
+            if not generation.is_absolute():
+                generation = self.manifest_path.parent / generation
+            if not validation.is_absolute():
+                validation = self.manifest_path.parent / validation
+            loading = None if loading_path is None else Path(str(loading_path))
+            if loading is not None and not loading.is_absolute():
+                loading = self.manifest_path.parent / loading
+            if loading is None:
+                for parent in self.manifest_path.resolve().parents:
+                    candidate = parent / "validation/pi_cam_process_device_loading.json"
+                    if candidate.is_file():
+                        loading = candidate
+                        break
+            if generation.is_file() and validation.is_file():
+                catalog = PICAMProcessDeviceCatalog.from_reports(
+                    generation, validation, loading
+                )
+                self._process_device_runtime = PICAMProcessDeviceRuntime(
+                    catalog, main_library=self.library_path
+                )
         self._native_initialized = False
         state_bridge = payload.get("state_bridge")
         self._state_bridge = (
@@ -342,13 +457,71 @@ class NativeCAMDevice:
     ) -> None:
         """Run a generated routine against explicit StatePool argument bindings."""
 
-        if name not in self.direct_kernels:
-            raise NativeCAMError(f"unknown promoted CAM process {name!r}")
-        self._call(
-            f"direct_kernel.{name}",
-            _BoundStatePool(pool, bindings),
-            fcomm,
+        if name in self.direct_kernels:
+            self._call(
+                f"direct_kernel.{name}",
+                _BoundStatePool(pool, bindings),
+                fcomm,
+            )
+            return
+        raise NativeCAMError(f"unknown promoted CAM process {name!r}")
+
+    def has_process_adapter(self, qualified_name: str, source: str | None = None) -> bool:
+        runtime = self._process_device_runtime
+        if runtime is None:
+            return False
+        if source is not None:
+            return runtime.catalog.has(qualified_name, source)
+        return any(
+            name.startswith(f"{qualified_name}@")
+            for name in runtime.qualified_names
         )
+
+    @property
+    def process_adapters(self) -> tuple[str, ...]:
+        runtime = self._process_device_runtime
+        return () if runtime is None else runtime.catalog.loadable_names
+
+    @property
+    def generated_process_adapters(self) -> tuple[str, ...]:
+        """All compiled adapters, including entries from inactive configs."""
+
+        runtime = self._process_device_runtime
+        return () if runtime is None else runtime.qualified_names
+
+    def execute_catalog_process(
+        self,
+        name: str,
+        qualified_name: str,
+        source: str,
+        pool: PICAMStatePool,
+        *,
+        bindings: Mapping[str, str],
+        arguments: tuple[Mapping[str, object], ...],
+        fcomm: int,
+    ) -> None:
+        """Run one generated source process once for each local CAM chunk."""
+
+        if not self._native_initialized:
+            raise NativeCAMError("catalog processes require an initialized CAM model")
+        runtime = self._process_device_runtime
+        if runtime is None or not runtime.catalog.has(qualified_name, source):
+            raise NativeCAMError(
+                f"no compiled process device for {qualified_name!r}"
+            )
+        by_logical = {
+            f"process_context.{name}.{argument['name']}": argument
+            for argument in arguments
+            if not bool(argument.get("procedure", False))
+        }
+        for chunk in range(int(pool.dimensions["chunks"])):
+            runtime.call(
+                qualified_name,
+                source,
+                name,
+                _ChunkProcessStatePool(pool, bindings, by_logical, chunk),
+                fcomm=fcomm,
+            )
 
     def kernel_fields(self, name: str) -> tuple[str, ...]:
         """Return the ordered StatePool contract for one direct kernel."""

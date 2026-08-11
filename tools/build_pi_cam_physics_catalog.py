@@ -17,7 +17,7 @@ def main() -> int:
     )
     parser.add_argument(
         "--adapter-validation",
-        default="validation/pi_cam_generated_adapter_validation.json",
+        default="validation/pi_cam_in_module_adapter_generation.json",
     )
     parser.add_argument(
         "--output",
@@ -29,6 +29,21 @@ def main() -> int:
     arguments = parser.parse_args()
     inventory = json.loads(Path(arguments.inventory).read_text())
     adapters = json.loads(Path(arguments.adapter_validation).read_text())
+    generated = {
+        (str(item.get("name")), str(item.get("original_source"))): item
+        for item in adapters.get("generated", ())
+    }
+    # The adapter generator uses the freshest AST record.  Overlay its exact
+    # signature (including function results and kind scope) onto older
+    # committed inventories before producing the user-facing catalog.
+    for procedure in inventory.get("procedures", ()):
+        record = generated.get(
+            (str(procedure.get("qualified_name")), str(procedure.get("source")))
+        )
+        if record is None:
+            continue
+        procedure["arguments"] = record.get("arguments", procedure.get("arguments", ()))
+        procedure["result"] = record.get("result")
     rules = PICAMPhysicsRules.load(arguments.rules)
     catalog = build_physics_catalog(
         inventory,

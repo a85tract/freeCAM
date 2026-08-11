@@ -1,0 +1,168 @@
+--- a/src/physics/cam/physpkg.F90
++++ b/src/physics/cam/physpkg.F90
+@@ -100,6 +100,8 @@
+   real(r8), allocatable :: pycesm_ac_obklen(:,:)
+   integer :: pycesm_ac_expected_action = 1
+   logical :: pycesm_ac_timer_open = .false.
++  logical :: pycesm_ac_adv_tracer_timer_open = .false.
++  logical :: pycesm_ac_finish_timer_open = .false.
+ 
+   ! Rank-local state carried across Python-dispatched tphysbc actions.
+   type(check_tracers_data), allocatable :: pycesm_bc_tracerint(:)
+@@ -1120,7 +1122,6 @@
+     integer, intent(out) :: status
+     integer :: c
+     type(physics_buffer_desc), pointer :: phys_buffer_chunk(:)
+-    integer, save :: expected_leaf_action = 12
+ 
+     status = 0
+     if (adiabatic .or. ideal_phys .or. &
+@@ -1132,16 +1133,6 @@
+        status = 1
+        return
+     endif
+-    if (action_id /= expected_leaf_action) then
+-       status = 4
+-       return
+-    endif
+-    if ((action_id == 12 .and. pycesm_bc_expected_action /= 8) .or. &
+-        (action_id == 16 .and. pycesm_bc_expected_action /= 9) .or. &
+-        (action_id == 18 .and. pycesm_bc_expected_action /= 11)) then
+-       status = 4
+-       return
+-    endif
+     if (.not. allocated(pycesm_bc_tracerint)) then
+        allocate(pycesm_bc_tracerint(begchunk:endchunk))
+        allocate(pycesm_bc_zdu(pcols,pver,begchunk:endchunk))
+@@ -1160,24 +1151,14 @@
+             phys_tend(c), phys_buffer_chunk, cam_out(c), cam_in(c))
+     end do
+ 
+-    select case (action_id)
+-    case (15)
+-       pycesm_bc_expected_action = 9
+-       expected_leaf_action = 16
+-    case (17)
+-       pycesm_bc_expected_action = 10
+-       expected_leaf_action = 18
+-    case (20)
++    if (action_id == 20 .and. pycesm_bc_timer_open) then
+        call t_adj_detailf(-1)
+        call t_stopf('bc_physics')
+ #ifdef TRACER_CHECK
+        call gmean_mass('between DRY', phys_state)
+ #endif
+-       pycesm_bc_expected_action = 1
+-       expected_leaf_action = 12
+-    case default
+-       expected_leaf_action = action_id + 1
+-    end select
++       pycesm_bc_timer_open = .false.
++    endif
+ end subroutine phys_run1_leaf_action
+ 
+ subroutine phys_run2_prepare(phys_state, pbuf2d, cam_in, status)
+@@ -1341,7 +1322,6 @@
+     type(cam_in_t), intent(inout) :: cam_in(begchunk:endchunk)
+     integer, intent(out) :: status
+     integer :: c
+-    integer, save :: expected_leaf_action = 11
+     type(physics_buffer_desc), pointer :: phys_buffer_chunk(:)
+ 
+     status = 0
+@@ -1353,18 +1333,10 @@
+        status = 1
+        return
+     endif
+-    if (action_id /= expected_leaf_action) then
+-       status = 4
+-       return
+-    endif
+-    if ((action_id == 11 .and. pycesm_ac_expected_action /= 2) .or. &
+-        (action_id == 14 .and. pycesm_ac_expected_action /= 5) .or. &
+-        (action_id == 16 .and. pycesm_ac_expected_action /= 1)) then
+-       status = 4
+-       return
++    if (action_id == 11 .and. .not. pycesm_ac_adv_tracer_timer_open) then
++       call t_startf('adv_tracer_src_snk')
++       pycesm_ac_adv_tracer_timer_open = .true.
+     endif
+-
+-    if (action_id == 11) call t_startf('adv_tracer_src_snk')
+     if (action_id <= 15) then
+ !$OMP PARALLEL DO PRIVATE (C, phys_buffer_chunk)
+        do c=begchunk,endchunk
+@@ -1379,29 +1351,25 @@
+           call carma_accumulate_stats()
+           call t_stopf('carma_accumulate_stats')
+        case (17)
+-          call t_startf('physpkg_st2')
++          if (.not. pycesm_ac_finish_timer_open) then
++             call t_startf('physpkg_st2')
++             pycesm_ac_finish_timer_open = .true.
++          endif
+           call pbuf_deallocate(pbuf2d, 'physpkg')
+        case (18)
+           call pbuf_update_tim_idx()
+        case (19)
+           call diag_deallocate()
+-          call t_stopf('physpkg_st2')
++          if (pycesm_ac_finish_timer_open) then
++             call t_stopf('physpkg_st2')
++             pycesm_ac_finish_timer_open = .false.
++          endif
+        end select
+     endif
+-    if (action_id == 13) call t_stopf('adv_tracer_src_snk')
+-
+-    select case (action_id)
+-    case (13)
+-       pycesm_ac_expected_action = 3
+-       expected_leaf_action = 14
+-    case (15)
+-       pycesm_ac_expected_action = 6
+-       expected_leaf_action = 16
+-    case (19)
+-       expected_leaf_action = 11
+-    case default
+-       expected_leaf_action = action_id + 1
+-    end select
++    if (action_id == 13 .and. pycesm_ac_adv_tracer_timer_open) then
++       call t_stopf('adv_tracer_src_snk')
++       pycesm_ac_adv_tracer_timer_open = .false.
++    endif
+ end subroutine phys_run2_leaf_action
+ 
+ subroutine phys_run2_finish(pbuf2d)
+--- a/src/control/cam_comp.F90
++++ b/src/control/cam_comp.F90
+@@ -450,17 +450,12 @@
+    integer, intent(in) :: action_id
+    logical, intent(in) :: rstwr, nlend
+    integer, intent(out) :: status
+-   integer, save :: expected_leaf_action = 1
+ 
+    status = 0
+    if (action_id < 1 .or. action_id > 3) then
+       status = 1
+       return
+    endif
+-   if (action_id /= expected_leaf_action) then
+-      status = 4
+-      return
+-   endif
+    select case (action_id)
+    case (1)
+       call t_startf('cam_run4_wrapup')
+@@ -482,11 +477,6 @@
+       call t_stopf('cam_run4_flush')
+ #endif
+    end select
+-   if (action_id == 3) then
+-      expected_leaf_action = 1
+-   else
+-      expected_leaf_action = action_id + 1
+-   endif
+ end subroutine cam_run4_leaf_action
+ 
+ !

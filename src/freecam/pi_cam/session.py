@@ -211,9 +211,9 @@ class _SessionActionReference:
         self._snapshot = None if record is None else dict(record)
 
     def run(self) -> Mapping[str, Any]:
-        # Workflow actions carry native ordering state and cannot be entered
-        # arbitrarily.  Prefer the generated rank-local StatePool adapter when
-        # this operation is available as an independently callable kernel.
+        # Prefer the generated rank-local StatePool adapter when this process
+        # has a complete explicit field contract.  Other admitted workflow
+        # boundaries use the native action adapter directly.
         if self.operation in tuple(self.session.status.get("kernels", ())):
             return self.session.run_kernel(self.operation)
         return self.session.run_action(self.name, phase=self.phase)
@@ -311,9 +311,19 @@ class _SessionActionReference:
 
     def __repr__(self) -> str:
         return (
-            f"PhysicsProcess(operation={self.operation!r}, phase={self.phase!r}, "
+            f"PhysicsProcess(name={self.name!r}, operation={self.operation!r}, "
             f"enabled={self.enabled}, granularity={self.granularity!r})"
         )
+
+    def __eq__(self, other: object) -> bool:
+        if not isinstance(other, _SessionActionReference):
+            return NotImplemented
+        return (
+            self.session is other.session
+            and self.qualified_name == other.qualified_name
+        )
+
+    __hash__ = None
 
 
 class _SessionCatalogPhysicsReference:
@@ -356,7 +366,7 @@ class _SessionCatalogPhysicsReference:
 
     @property
     def runnable(self) -> bool:
-        return False
+        return bool(self._snapshot.get("runnable", False))
 
     @property
     def capability(self) -> str:
@@ -386,8 +396,9 @@ class _SessionCatalogPhysicsReference:
         )
 
     def run(self) -> Mapping[str, Any]:
-        self._unavailable("run it")
-        raise AssertionError("unreachable")
+        if not self.runnable:
+            self._unavailable("run it")
+        return self().trace
 
     def __call__(self, **arguments: Any) -> _SessionProcessCallResult:
         bindings, initials = self.session._process_call_arguments(arguments)
@@ -545,7 +556,25 @@ class _SessionPhysicsCollection:
             str(record["name"]): dict(record)
             for record in self.session.status.get("promoted_processes", ())
         }
+        process_adapters = {
+            str(name) for name in self.session.status.get("process_adapters", ())
+        }
         for row in records:
+            if str(row["kind"]) == "catalog_process":
+                identity = (
+                    f"{row.get('qualified_name')}@{row.get('source')}"
+                )
+                available = identity in process_adapters
+                row.update(
+                    {
+                        "runnable": available,
+                        "capability": (
+                            "compiled_process_device"
+                            if available
+                            else row["capability"]
+                        ),
+                    }
+                )
             record = promoted.get(str(row["api_name"]))
             if record is None:
                 continue
@@ -573,6 +602,8 @@ class _SessionPhysicsCollection:
         for row in self.records:
             if str(row["kind"]) == "promoted_process":
                 references.append(_SessionPromotedPhysicsReference(self.session, row))
+            elif str(row["kind"]) == "catalog_process":
+                references.append(_SessionCatalogPhysicsReference(self.session, row))
             elif bool(row["runnable"]):
                 references.append(_SessionActionReference(
                     self.session,
@@ -598,18 +629,45 @@ class _SessionPhysicsCollection:
     @property
     def coverage(self) -> Mapping[str, int]:
         base = self._coverage(self.records)
+        source_only = tuple(
+            row
+            for row in merge_runtime_process_records(
+                self.runtime_records,
+                self.catalog,
+            )
+            if row["kind"] == "catalog_process"
+        )
+        process_adapters = {
+            str(name) for name in self.session.status.get("process_adapters", ())
+        }
         result = {
             **base,
             "source_reachable": self.catalog.reachable_procedures,
             "source_catalog": len(self.catalog.processes),
             "physical_processes": len(self.catalog.physics_processes),
-            "helper_routines": len(self.catalog.helpers),
-            "runtime_overlap": (
-                len(self.catalog.physics_processes)
-                - base["catalog_only"]
+            "compiled_process_adapters": sum(
+                process.generated_adapter
+                for process in self.catalog.physics_processes
             ),
+            "formerly_catalog_only_interfaces": len(source_only),
+            "catalog_adapters_compiled": sum(
+                bool(row.get("generated_adapter")) for row in source_only
+            ),
+            "catalog_current_case_loadable": sum(
+                f"{row['qualified_name']}@{row['source']}" in process_adapters
+                for row in source_only
+            ),
+            "current_case_loadable": sum(
+                f"{process.qualified_name}@{process.source}" in process_adapters
+                for process in self.catalog.physics_processes
+            ),
+            "helper_routines": len(self.catalog.helpers),
+            "runtime_overlap": len(self.catalog.physics_processes) - len(source_only),
             "excluded_lifecycle": self.catalog.excluded_lifecycle,
         }
+        result["configuration_specific"] = (
+            result["physical_processes"] - result["current_case_loadable"]
+        )
         return result
 
     @staticmethod
@@ -636,20 +694,6 @@ class _SessionPhysicsCollection:
         if standalone:
             result["standalone"] = standalone
         return result
-
-    def by_phase(self, phase: str) -> tuple[_SessionActionReference, ...]:
-        selected = tuple(
-            interface
-            for interface in self.interfaces
-            if interface.phase == str(phase)
-            or any(
-                str(action).startswith(f"{phase}.")
-                for action in interface.metadata.get("parent_actions", ())
-            )
-        )
-        if not selected:
-            raise KeyError(f"physics phase {phase!r} is unknown or empty")
-        return selected
 
     def describe(self) -> tuple[Mapping[str, Any], ...]:
         """Return the complete process table in source execution order."""
@@ -681,9 +725,7 @@ class _SessionPhysicsCollection:
     def __getitem__(self, name: str) -> _SessionActionReference:
         return self.scheme(name)
 
-    def scheme(
-        self, name: str, *, phase: str | None = None
-    ) -> _SessionActionReference:
+    def scheme(self, name: str) -> _SessionActionReference:
         matches = [
             row
             for row in self.records
@@ -694,13 +736,14 @@ class _SessionPhysicsCollection:
                 or name in row.get("aliases", ())
                 or row.get("qualified_name") == name
             )
-            and (phase is None or row["phase"] == phase)
         ]
         if len(matches) != 1:
             raise KeyError(f"physics action {name!r} is unknown or ambiguous")
         row = matches[0]
         if str(row["kind"]) == "promoted_process":
             return _SessionPromotedPhysicsReference(self.session, row)
+        if str(row["kind"]) == "catalog_process":
+            return _SessionCatalogPhysicsReference(self.session, row)
         if bool(row["runnable"]):
             return _SessionActionReference(
                 self.session,
@@ -711,12 +754,10 @@ class _SessionPhysicsCollection:
             )
         return _SessionCatalogPhysicsReference(self.session, row)
 
-    def process(
-        self, name: str, *, phase: str | None = None
-    ) -> Any:
+    def process(self, name: str) -> Any:
         """Resolve one flat physics process; ``scheme`` remains an alias."""
 
-        return self.scheme(name, phase=phase)
+        return self.scheme(name)
 
     def __repr__(self) -> str:
         coverage = self.coverage
@@ -728,7 +769,7 @@ class _SessionPhysicsCollection:
 
     def _repr_html_(self) -> str:
         records = self.records
-        coverage = self._coverage(records)
+        coverage = self.coverage
 
         def table(selected: Sequence[Mapping[str, Any]]) -> str:
             rows = []
@@ -748,7 +789,6 @@ class _SessionPhysicsCollection:
                     state = "enabled" if bool(record["enabled"]) else "disabled"
                 rows.append(
                     "<tr>"
-                    f"<td>{escape(str(record['phase']))}</td>"
                     f"<td><code>{escape(str(record['api_name']))}</code></td>"
                     f"<td><code>{escape(operation)}</code></td>"
                     f"<td>{escape(level)}</td>"
@@ -756,7 +796,7 @@ class _SessionPhysicsCollection:
                     "</tr>"
                 )
             return (
-                "<table><thead><tr><th>Phase</th><th>Python API</th>"
+                "<table><thead><tr><th>Python API</th>"
                 "<th>Original routine</th><th>Level</th><th>Capability</th>"
                 f"</tr></thead><tbody>{''.join(rows)}</tbody></table>"
             )
@@ -775,11 +815,11 @@ class _SessionPhysicsCollection:
             ".freecam-physics details{margin-top:10px}"
             ".freecam-physics summary{cursor:pointer;font-weight:600}"
             "</style>"
-            f"<p><strong>{coverage['interfaces']} flat physics interfaces</strong>: "
-            f"{coverage['runnable']} independently runnable and "
-            f"{coverage['catalog_only']} source-catalog entries. "
-            "Catalog-only entries fail explicitly until their StatePool/context "
-            "bindings are admitted.</p>"
+            f"<p><strong>{coverage['interfaces']} flat physics interfaces</strong>. "
+            f"All {coverage['formerly_catalog_only_interfaces']} former "
+            "catalog-only interfaces have compiled StatePool pointer adapters; "
+            f"{coverage['catalog_current_case_loadable']} of those devices load "
+            "in this PI-CAM executable.</p>"
             "<h4>Runnable workflow boundaries</h4>"
             f"{table(runnable)}"
             "<details><summary>Show all source-catalog entries</summary>"
@@ -791,7 +831,6 @@ class _SessionPhysicsCollection:
         function: Any,
         *,
         name: str,
-        phase: str,
         before: str | None = None,
         after: str | None = None,
         reads: Sequence[str] = (),
@@ -801,6 +840,9 @@ class _SessionPhysicsCollection:
         transactional: bool = True,
         unsafe: bool = False,
     ) -> _SessionActionReference:
+        phase, before, after = self._resolve_placement(
+            phase=None, before=before, after=after
+        )
         result = self.session.install_python(
             function,
             name=name,
@@ -826,13 +868,15 @@ class _SessionPhysicsCollection:
         source: str | Path,
         *,
         process: str,
-        phase: str,
         before: str | None = None,
         after: str | None = None,
         project_root: str | Path | None = None,
         enabled: bool = True,
         unsafe: bool = False,
     ) -> _SessionActionReference:
+        phase, before, after = self._resolve_placement(
+            phase=None, before=before, after=after
+        )
         result = self.session.install_fortran(
             source,
             process=process,
@@ -849,6 +893,39 @@ class _SessionPhysicsCollection:
             str(result["phase"]),
             kind="runtime_fortran_process",
         )
+
+    def _resolve_placement(
+        self,
+        *,
+        phase: str | None,
+        before: str | None,
+        after: str | None,
+    ) -> tuple[str, str | None, str | None]:
+        """Infer the internal source region from a neighboring process."""
+
+        if before is None and after is None:
+            before = "state_export"
+        if before is not None and after is not None:
+            raise PICAMNotebookError("provide only one of before= or after=")
+        # Explicit internal placement remains accepted for compatibility and
+        # is validated collectively by the live worker.  The normal public
+        # path below infers it from the neighboring process name.
+        if phase is not None:
+            return str(phase), before, after
+        anchor = before or after or ""
+        matches = [
+            row
+            for row in self.runtime_records
+            if row["name"] == anchor
+            or row["operation"] == anchor
+            or row.get("api_name") == anchor
+        ]
+        if len(matches) != 1:
+            raise PICAMNotebookError(
+                f"placement process {anchor!r} is unknown or ambiguous"
+            )
+        inferred = str(matches[0]["phase"])
+        return inferred, before, after
 
 
 class _SessionPhaseReference:
@@ -1080,6 +1157,17 @@ class PICAMNotebookSession:
 
         return self.step(steps)
 
+    def workflow_action(
+        self,
+        name: str,
+        *,
+        phase: str,
+        kind: str,
+    ) -> _SessionActionReference:
+        """Return a live handle for any workflow row, including control rows."""
+
+        return _SessionActionReference(self, name, phase, kind=kind)
+
     def run_action(self, name: str, *, phase: str | None = None) -> Mapping[str, Any]:
         """Run one scheme or installed runtime process without advancing time."""
 
@@ -1303,7 +1391,7 @@ class PICAMNotebookSession:
         *,
         phase: str | None = None,
     ) -> Mapping[str, Any]:
-        return dict(
+        result = dict(
             self._request(
                 {
                     "op": "set_action_enabled",
@@ -1313,6 +1401,8 @@ class PICAMNotebookSession:
                 }
             )
         )
+        self._update_step_plan(result)
+        return result
 
     def move_action(
         self,
@@ -1322,7 +1412,7 @@ class PICAMNotebookSession:
         before: str | None = None,
         after: str | None = None,
     ) -> Mapping[str, Any]:
-        return dict(
+        result = dict(
             self._request(
                 {
                     "op": "move_action",
@@ -1333,6 +1423,27 @@ class PICAMNotebookSession:
                 }
             )
         )
+        self._update_step_plan(result)
+        return result
+
+    def replace_workflow(self, order: Sequence[str]) -> Mapping[str, Any]:
+        """Atomically replace the enabled workflow order on all MPI ranks."""
+
+        result = dict(
+            self._request(
+                {
+                    "op": "replace_workflow",
+                    "order": tuple(str(name) for name in order),
+                }
+            )
+        )
+        self._update_step_plan(result)
+        return result
+
+    def _update_step_plan(self, result: Mapping[str, Any]) -> None:
+        plan = result.get("plan")
+        if plan is not None:
+            self._status["step_plan"] = tuple(dict(row) for row in plan)
 
     def field(self, name: str, *, rank: int = 0) -> Any:
         return self._request({"op": "field", "name": name, "rank": int(rank)})

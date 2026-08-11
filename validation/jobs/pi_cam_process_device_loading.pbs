@@ -1,0 +1,21 @@
+#!/bin/bash
+#PBS -N freecam-device-load
+#PBS -q develop
+#PBS -l select=1:ncpus=1:mpiprocs=1:ompthreads=1:mem=8GB
+#PBS -l walltime=00:10:00
+#PBS -j oe
+#PBS -o /glade/work/ruitong/freeCAM/logs/
+#PBS -V
+
+set -euo pipefail
+
+repo=/glade/work/$USER/freeCAM
+case_root=/glade/work/$USER/CESM_cases/f.e13.F1850C5.ne16_g16.icesm131_ihesp.PI-cam-python-state
+source "${case_root}/.env_mach_specific.sh" >/dev/null 2>&1
+export PYTHONPATH=${repo}/src
+cd "${repo}"
+"${repo}/.venv/bin/python" tools/validate_pi_cam_process_device_loading.py \
+  --native-manifest build/pi_cam_promoted/native_cam_manifest.json \
+  --generation validation/pi_cam_in_module_adapter_generation.json \
+  --validation validation/pi_cam_in_module_adapter_validation.json \
+  --output validation/pi_cam_process_device_loading.json

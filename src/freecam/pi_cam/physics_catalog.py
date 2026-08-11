@@ -113,6 +113,7 @@ class PICAMPhysicsProcess:
     parent_processes: tuple[str, ...]
     aliases: tuple[str, ...]
     arguments: tuple[Mapping[str, Any], ...]
+    result: Mapping[str, Any] | None = None
 
     @property
     def independently_runnable(self) -> bool:
@@ -131,6 +132,7 @@ class PICAMPhysicsProcess:
             "arguments",
         ):
             payload[key] = list(payload[key])
+        payload["result"] = None if self.result is None else dict(self.result)
         return payload
 
     @classmethod
@@ -157,6 +159,11 @@ class PICAMPhysicsProcess:
             ),
             aliases=tuple(str(item) for item in payload.get("aliases", ())),
             arguments=tuple(dict(item) for item in payload.get("arguments", ())),
+            result=(
+                None
+                if not isinstance(payload.get("result"), Mapping)
+                else dict(payload["result"])
+            ),
         )
 
 
@@ -351,6 +358,11 @@ def build_physics_catalog(
                     sorted({_workflow_name((action,)) for action in actions})
                 ),
                 "arguments": tuple(dict(item) for item in procedure.get("arguments", ())),
+                "result": (
+                    None
+                    if not isinstance(procedure.get("result"), Mapping)
+                    else dict(procedure["result"])
+                ),
             }
         )
 
@@ -395,6 +407,7 @@ def build_physics_catalog(
                 parent_processes=tuple(candidate["parent_processes"]),
                 aliases=aliases,
                 arguments=tuple(candidate["arguments"]),
+                result=candidate["result"],
             )
         )
     return PICAMPhysicsCatalog(
@@ -502,6 +515,16 @@ def _generated_adapter_index(
 ) -> frozenset[tuple[str, str]]:
     if payload is None:
         return frozenset()
+    generated = payload.get("generated")
+    if isinstance(generated, list):
+        return frozenset(
+            (
+                str(item.get("name", "")).lower(),
+                str(item.get("original_source", "")),
+            )
+            for item in generated
+            if isinstance(item, Mapping)
+        )
     active = payload.get("active_plan", {})
     records = active.get("reachable_records", ()) if isinstance(active, Mapping) else ()
     return frozenset(

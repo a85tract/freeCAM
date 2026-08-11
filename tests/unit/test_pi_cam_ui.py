@@ -114,6 +114,29 @@ def test_state_view_plot_supports_before_after_overlay() -> None:
     assert "step 7" in figure._suptitle.get_text()
 
 
+def test_state_view_plot_builds_grid_from_requested_variables() -> None:
+    matplotlib = pytest.importorskip("matplotlib")
+    matplotlib.use("Agg")
+    state = PICAMStateView(FakeSession())
+
+    figure, axes = state.plot(
+        variables=("T", "u", "v", "q", "experiment_tracer"),
+    )
+
+    assert axes.shape == (2, 3)
+    assert sum(axis.get_visible() for axis in axes.flat) == 5
+    assert all(len(axis.lines) == 1 for axis in axes.flat[:5])
+    assert axes.flat[5].get_visible() is False
+    assert figure is axes.flat[0].figure
+
+
+def test_state_view_plot_rejects_empty_variables() -> None:
+    state = PICAMStateView(FakeSession())
+
+    with pytest.raises(ValueError, match="at least one"):
+        state.plot(variables=())
+
+
 def test_state_attribute_assignment_creates_and_deletes_distributed_variable() -> None:
     calls = []
 
@@ -157,7 +180,6 @@ def test_workflow_insert_installs_physics_object_with_declared_placement() -> No
 
     class Heating(Physics):
         name = "notebook_heating"
-        phase = "cam_run1"
         after = "dadadj"
         reads = ("phys_state.q",)
         writes = ("phys_state.t",)
@@ -173,7 +195,6 @@ def test_workflow_insert_installs_physics_object_with_declared_placement() -> No
     assert result == "installed"
     assert calls[0][1] == {
         "name": "notebook_heating",
-        "phase": "cam_run1",
         "before": None,
         "after": "dadadj",
         "reads": ("phys_state.q",),
@@ -185,6 +206,125 @@ def test_workflow_insert_installs_physics_object_with_declared_placement() -> No
     session._status["step_plan"][1]["enabled"] = True
     result = PICAMWorkflowView(session).insert(1, Heating())
     assert result == "installed"
-    assert calls[1][1]["phase"] == "cam_run1"
     assert calls[1][1]["before"] == "dry_adjustment"
     assert calls[1][1]["after"] is None
+
+
+def test_workflow_moves_and_toggles_process_objects() -> None:
+    calls = []
+
+    class Process:
+        def __init__(self, name, phase):
+            self.name = name
+            self.phase = phase
+
+        @property
+        def qualified_name(self):
+            return f"{self.phase}.{self.name}"
+
+        def enable(self):
+            calls.append(("enable", self.qualified_name))
+            return {"enabled": True}
+
+        def disable(self):
+            calls.append(("disable", self.qualified_name))
+            return {"enabled": False}
+
+    processes = {
+        "dry_adjustment": Process("dry_adjustment", "cam_run1"),
+        "vertical_diffusion": Process("vertical_diffusion", "cam_run2"),
+    }
+
+    class PhysicsCollection:
+        def process(self, name, phase=None):
+            result = processes[name]
+            assert phase in {None, result.phase}
+            return result
+
+    session = FakeSession()
+    session.physics = PhysicsCollection()
+    session.move_action = lambda name, **kwargs: calls.append(
+        ("move", name, kwargs)
+    ) or {"name": name}
+    workflow = PICAMWorkflowView(session)
+
+    workflow.move("dry_adjustment", before="vertical_diffusion")
+    workflow.disable(processes["dry_adjustment"])
+    workflow.enable("dry_adjustment")
+
+    assert calls == [
+        (
+            "move",
+            "dry_adjustment",
+            {
+                "phase": "cam_run1",
+                "before": "cam_run2.vertical_diffusion",
+                "after": None,
+            },
+        ),
+        ("disable", "cam_run1.dry_adjustment"),
+        ("enable", "cam_run1.dry_adjustment"),
+    ]
+
+
+def test_workflow_slice_assignment_replaces_one_complete_remote_order() -> None:
+    calls = []
+
+    class Process:
+        def __init__(self, name, phase):
+            self.name = name
+            self.phase = phase
+
+        @property
+        def qualified_name(self):
+            return f"{self.phase}.{self.name}"
+
+    session = FakeSession()
+    session._status["step_plan"] = (
+        {
+            "phase": "coupling",
+            "name": "boundary_import",
+            "operation": "boundary_import",
+            "kind": "boundary",
+            "enabled": True,
+        },
+        {
+            "phase": "cam_run1",
+            "name": "radiation",
+            "operation": "radiation_tend",
+            "kind": "scheme",
+            "enabled": True,
+        },
+        {
+            "phase": "cam_run2",
+            "name": "vertical_diffusion",
+            "operation": "vertical_diffusion_tend",
+            "kind": "scheme",
+            "enabled": True,
+        },
+        {
+            "phase": "coupling",
+            "name": "boundary_export",
+            "operation": "boundary_export",
+            "kind": "boundary",
+            "enabled": True,
+        },
+    )
+    session.workflow_action = lambda name, phase, kind: Process(name, phase)
+    session.replace_workflow = lambda order: calls.append(tuple(order)) or {
+        "plan": session._status["step_plan"]
+    }
+    workflow = PICAMWorkflowView(session)
+    order = workflow[:]
+    order[1], order[2] = order[2], order[1]
+
+    workflow[:] = order
+
+    assert calls == [
+        (
+            "coupling.boundary_import",
+            "cam_run2.vertical_diffusion",
+            "cam_run1.radiation",
+            "coupling.boundary_export",
+        )
+    ]

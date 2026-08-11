@@ -14,7 +14,13 @@ class FakeSession:
         self.running = False
         self.closed = False
         self.state = object()
-        self.workflow = object()
+        self.workflow_replacements = []
+
+        class Workflow:
+            def replace(inner_self, processes):
+                self.workflow_replacements.append(tuple(processes))
+
+        self.workflow = Workflow()
         self.fields = object()
         self.physics = object()
         self.phases = object()
@@ -111,6 +117,10 @@ def test_driver_hides_run_preparation_and_lazily_reuses_one_session(tmp_path) ->
     assert driver.cam.state is driver.cam.state
     assert driver.running
     assert len(FakeSession.instances) == 1
+    driver.cam.workflow = ("physics-a", "physics-b")
+    assert FakeSession.instances[0].workflow_replacements == [
+        ("physics-a", "physics-b")
+    ]
     assert (driver.run_dir / "atm_in").is_file()
     assert (driver.run_dir / "keep-me").is_file()
     assert not (driver.run_dir / "test.cam.h0.0001.nc").exists()

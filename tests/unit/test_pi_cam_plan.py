@@ -131,6 +131,72 @@ def test_pi_cam_leaf_processes_can_be_reordered_only_experimentally() -> None:
     assert names.index("cloud_diagnostics_leaf") < names.index("radiation")
 
 
+def test_pi_cam_process_can_move_across_source_phases() -> None:
+    plan = PICAMStepPlan.default()
+
+    plan.move(
+        "dry_adjustment",
+        phase="cam_run1",
+        before="cam_run2.vertical_diffusion",
+        experimental=True,
+    )
+
+    actions = plan.actions
+    assert actions.index(plan.select("dry_adjustment", phase="cam_run1")) < actions.index(
+        plan.select("vertical_diffusion", phase="cam_run2")
+    )
+
+
+def test_failed_cross_phase_move_restores_the_original_plan() -> None:
+    plan = PICAMStepPlan.default()
+    original = plan.actions
+
+    with pytest.raises(PICAMConfigurationError, match="must begin"):
+        plan.move(
+            "dry_adjustment",
+            phase="cam_run1",
+            before="coupling.boundary_import",
+            experimental=True,
+        )
+
+    assert plan.actions == original
+
+
+def test_enabled_workflow_order_can_be_replaced_from_one_python_list() -> None:
+    plan = PICAMStepPlan.default()
+    original_disabled = tuple(
+        (index, action)
+        for index, action in enumerate(plan.actions)
+        if not action.enabled
+    )
+    order = [action.qualified_name for action in plan if action.enabled]
+    radiation = order.pop(order.index("cam_run1.radiation"))
+    order.insert(order.index("cam_run2.vertical_diffusion"), radiation)
+
+    plan.replace_enabled_order(order, experimental=True)
+
+    enabled = [action.qualified_name for action in plan]
+    assert enabled.index("cam_run1.radiation") < enabled.index(
+        "cam_run2.vertical_diffusion"
+    )
+    assert tuple(
+        (index, action)
+        for index, action in enumerate(plan.actions)
+        if not action.enabled
+    ) == original_disabled
+
+
+def test_enabled_workflow_list_must_be_complete_and_is_atomic() -> None:
+    plan = PICAMStepPlan.default()
+    original = plan.actions
+    incomplete = [action.qualified_name for action in plan][:-1]
+
+    with pytest.raises(PICAMConfigurationError, match="every enabled action"):
+        plan.replace_enabled_order(incomplete, experimental=True)
+
+    assert plan.actions == original
+
+
 def test_cam_run1_leaf_expansion_replaces_composites_in_source_order() -> None:
     plan = PICAMStepPlan.default()
 

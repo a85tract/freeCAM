@@ -1,0 +1,62 @@
+{
+  "all_ranks_completed": true,
+  "all_ranks_loaded_leaf_device": true,
+  "model_steps_advanced": 0,
+  "mpi_ranks": 512,
+  "native_operations": [
+    "convect_deep_tend",
+    "dadadj",
+    "gw_tend",
+    "vertical_diffusion_tend",
+    "leaf_cloud_diagnostics_calc",
+    "leaf_diag_phys_writeout",
+    "leaf_carma_accumulate_stats",
+    "leaf_aero_model_drydep",
+    "leaf_cam_run4_flush",
+    "leaf_cam_run4_step_cost"
+  ],
+  "pbs_job_id": "7095452.desched1",
+  "reordered_actions": [
+    {
+      "name": "deep_convection",
+      "phase": "cam_run1"
+    },
+    {
+      "name": "dry_adjustment",
+      "phase": "cam_run1"
+    },
+    {
+      "name": "gravity_wave_drag",
+      "phase": "cam_run2"
+    },
+    {
+      "name": "vertical_diffusion",
+      "phase": "cam_run2"
+    },
+    {
+      "name": "cloud_diagnostics_leaf",
+      "phase": "cam_run1"
+    },
+    {
+      "name": "state_and_convection_diagnostics_leaf",
+      "phase": "cam_run1"
+    },
+    {
+      "name": "carma_statistics_leaf",
+      "phase": "cam_run2"
+    },
+    {
+      "name": "aerosol_dry_deposition_leaf",
+      "phase": "cam_run2"
+    },
+    {
+      "name": "flush_leaf",
+      "phase": "cam_run4"
+    },
+    {
+      "name": "step_cost_leaf",
+      "phase": "cam_run4"
+    }
+  ],
+  "schema_version": 1
+}

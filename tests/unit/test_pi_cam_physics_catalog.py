@@ -30,7 +30,7 @@ def test_default_catalog_is_flat_unique_and_case_reachable() -> None:
         "shallow_convection",
     )
     assert catalog.process("math_lib::gamma").level == "helper"
-    assert sum(process.generated_adapter for process in catalog.processes) == 22
+    assert sum(process.generated_adapter for process in catalog.processes) == 276
 
 
 def test_committed_catalog_is_reproducible_from_validation_evidence() -> None:
@@ -38,7 +38,7 @@ def test_committed_catalog_is_reproducible_from_validation_evidence() -> None:
         (PROJECT / "validation/pi_cam_kernel_inventory.json").read_text()
     )
     adapters = json.loads(
-        (PROJECT / "validation/pi_cam_generated_adapter_validation.json").read_text()
+        (PROJECT / "validation/pi_cam_in_module_adapter_generation.json").read_text()
     )
 
     rules = PICAMPhysicsRules.load(

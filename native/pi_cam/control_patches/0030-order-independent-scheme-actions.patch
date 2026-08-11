@@ -1,0 +1,168 @@
+--- a/src/physics/cam/physpkg.F90
++++ b/src/physics/cam/physpkg.F90
+@@ -98,6 +98,7 @@
+   real(r8), allocatable :: pycesm_ac_surfric(:,:)
+   real(r8), allocatable :: pycesm_ac_obklen(:,:)
+   integer :: pycesm_ac_expected_action = 1
++  logical :: pycesm_ac_timer_open = .false.
+ 
+   ! Rank-local state carried across Python-dispatched tphysbc actions.
+   type(check_tracers_data), allocatable :: pycesm_bc_tracerint(:)
+@@ -109,6 +110,7 @@
+   real(r8), allocatable :: pycesm_bc_rliq(:,:)
+   real(r8), allocatable :: pycesm_bc_wtdlf(:,:,:,:)
+   integer :: pycesm_bc_expected_action = 1
++  logical :: pycesm_bc_timer_open = .false.
+ 
+ !======================================================================= 
+ contains
+@@ -1011,6 +1013,7 @@
+     use physics_buffer, only: physics_buffer_desc, pbuf_get_chunk
+     use comsrf, only: fsns, fsnt, flns, sgh30, flnt, landm, fsds
+     use water_tracer_vars, only: wtrc_nwset
++    use check_energy, only: check_tracers_init
+ #if (defined BFB_CAM_SCAM_IOP)
+     use cam_history, only: outfld
+ #endif
+@@ -1038,22 +1041,31 @@
+        status = 1
+        return
+     endif
+-    if (action_id /= pycesm_bc_expected_action) then
+-       status = 4
+-       return
++    ! The Python workflow owns ordering.  These arrays preserve values that
++    ! were automatic locals in the monolithic source routine; they no longer
++    ! act as an implicit sequence cursor.
++    if (.not. allocated(pycesm_bc_tracerint)) then
++       allocate(pycesm_bc_tracerint(begchunk:endchunk))
++       allocate(pycesm_bc_zdu(pcols,pver,begchunk:endchunk))
++       allocate(pycesm_bc_cmfmc(pcols,pverp,begchunk:endchunk))
++       allocate(pycesm_bc_cmfmc2(pcols,pverp,begchunk:endchunk))
++       allocate(pycesm_bc_dlf(pcols,pver,begchunk:endchunk))
++       allocate(pycesm_bc_dlf2(pcols,pver,begchunk:endchunk))
++       allocate(pycesm_bc_rliq(pcols,begchunk:endchunk))
++       allocate(pycesm_bc_wtdlf(pcols,pver,wtrc_nwset,begchunk:endchunk))
++       pycesm_bc_zdu = 0._r8
++       pycesm_bc_cmfmc = 0._r8
++       pycesm_bc_cmfmc2 = 0._r8
++       pycesm_bc_dlf = 0._r8
++       pycesm_bc_dlf2 = 0._r8
++       pycesm_bc_rliq = 0._r8
++       pycesm_bc_wtdlf = 0._r8
++       do c=begchunk,endchunk
++          call check_tracers_init(phys_state(c), pycesm_bc_tracerint(c))
++       enddo
+     endif
+ 
+     if (action_id == 1) then
+-       if (.not. allocated(pycesm_bc_tracerint)) then
+-          allocate(pycesm_bc_tracerint(begchunk:endchunk))
+-          allocate(pycesm_bc_zdu(pcols,pver,begchunk:endchunk))
+-          allocate(pycesm_bc_cmfmc(pcols,pverp,begchunk:endchunk))
+-          allocate(pycesm_bc_cmfmc2(pcols,pverp,begchunk:endchunk))
+-          allocate(pycesm_bc_dlf(pcols,pver,begchunk:endchunk))
+-          allocate(pycesm_bc_dlf2(pcols,pver,begchunk:endchunk))
+-          allocate(pycesm_bc_rliq(pcols,begchunk:endchunk))
+-          allocate(pycesm_bc_wtdlf(pcols,pver,wtrc_nwset,begchunk:endchunk))
+-       endif
+ #ifdef TRACER_CHECK
+        call gmean_mass('before tphysbc DRY', phys_state)
+ #endif
+@@ -1062,9 +1074,12 @@
+           call outfld('Tg', cam_in(c)%ts, pcols, c)
+        end do
+ #endif
+-       call t_barrierf('sync_bc_physics', mpicom)
+-       call t_startf('bc_physics')
+-       call t_adj_detailf(+1)
++       if (.not. pycesm_bc_timer_open) then
++          call t_barrierf('sync_bc_physics', mpicom)
++          call t_startf('bc_physics')
++          call t_adj_detailf(+1)
++          pycesm_bc_timer_open = .true.
++       endif
+     endif
+ 
+ !$OMP PARALLEL DO PRIVATE (C, phys_buffer_chunk)
+@@ -1080,15 +1095,13 @@
+             landm(1,c), sgh30(1,c), cam_out(c), cam_in(c), action_id)
+     end do
+ 
+-    if (action_id == 11) then
++    if (action_id == 11 .and. pycesm_bc_timer_open) then
+        call t_adj_detailf(-1)
+        call t_stopf('bc_physics')
+ #ifdef TRACER_CHECK
+        call gmean_mass('between DRY', phys_state)
+ #endif
+-       pycesm_bc_expected_action = 1
+-    else
+-       pycesm_bc_expected_action = action_id + 1
++       pycesm_bc_timer_open = .false.
+     endif
+ end subroutine phys_run1_scheme_action
+ 
+@@ -1168,6 +1181,7 @@
+     use physics_buffer, only: physics_buffer_desc, pbuf_get_chunk
+     use cam_diagnostics, only: diag_surf
+     use comsrf, only: trefmxav, trefmnav, sgh, sgh30, fsds
++    use check_energy, only: check_tracers_init
+     integer, intent(in) :: action_id
+     real(r8), intent(in) :: ztodt
+     type(physics_state), intent(inout) :: phys_state(begchunk:endchunk)
+@@ -1191,20 +1205,26 @@
+        status = 1
+        return
+     endif
+-    if (action_id /= pycesm_ac_expected_action) then
+-       status = 4
+-       return
++    ! Keep caller-local scratch deterministic even when Python deliberately
++    ! invokes a process before its source-order producer.
++    if (.not. allocated(pycesm_ac_tracerint)) then
++       allocate(pycesm_ac_tracerint(begchunk:endchunk))
++       allocate(pycesm_ac_surfric(pcols,begchunk:endchunk))
++       allocate(pycesm_ac_obklen(pcols,begchunk:endchunk))
++       pycesm_ac_surfric = 0._r8
++       pycesm_ac_obklen = huge(1._r8)
++       do c=begchunk,endchunk
++          call check_tracers_init(phys_state(c), pycesm_ac_tracerint(c))
++       enddo
+     endif
+ 
+     if (action_id == 1) then
+-       if (.not. allocated(pycesm_ac_tracerint)) then
+-          allocate(pycesm_ac_tracerint(begchunk:endchunk))
+-          allocate(pycesm_ac_surfric(pcols,begchunk:endchunk))
+-          allocate(pycesm_ac_obklen(pcols,begchunk:endchunk))
++       if (.not. pycesm_ac_timer_open) then
++          call t_barrierf('sync_ac_physics', mpicom)
++          call t_startf('ac_physics')
++          call t_adj_detailf(+1)
++          pycesm_ac_timer_open = .true.
+        endif
+-       call t_barrierf('sync_ac_physics', mpicom)
+-       call t_startf('ac_physics')
+-       call t_adj_detailf(+1)
+     endif
+ 
+ !$OMP PARALLEL DO PRIVATE (C, phys_buffer_chunk)
+@@ -1221,15 +1241,13 @@
+             action_id)
+     end do
+ 
+-    if (action_id == 10) then
++    if (action_id == 10 .and. pycesm_ac_timer_open) then
+        call t_adj_detailf(-1)
+        call t_stopf('ac_physics')
+ #ifdef TRACER_CHECK
+        call gmean_mass('after tphysac FV:WET)', phys_state)
+ #endif
+-       pycesm_ac_expected_action = 1
+-    else
+-       pycesm_ac_expected_action = action_id + 1
++       pycesm_ac_timer_open = .false.
+     endif
+ end subroutine phys_run2_scheme_action
+ 
