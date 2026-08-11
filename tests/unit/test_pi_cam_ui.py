@@ -1,10 +1,18 @@
 from __future__ import annotations
 
+import ast
+import json
+from pathlib import Path
+
 import numpy as np
 import pytest
 
 from freecam.pi_cam import Physics, Variable
+from freecam.pi_cam.plan import PICAMStepPlan
 from freecam.pi_cam.ui import PICAMStateView, PICAMWorkflowView
+
+
+PROJECT = Path(__file__).resolve().parents[2]
 
 
 class FakeSession:
@@ -93,6 +101,35 @@ def test_workflow_view_is_iterable_and_has_notebook_html() -> None:
     assert "boundary_import" in html
     assert "dry_adjustment" in html
     assert "freecam-disabled" in html
+
+
+def test_notebook_defines_the_complete_workflow_as_one_explicit_list() -> None:
+    notebook = json.loads((PROJECT / "examples/try_pi_cam.ipynb").read_text())
+    cell = next(cell for cell in notebook["cells"] if cell.get("id") == "7067eaef")
+    tree = ast.parse("".join(cell["source"]))
+    assignment = next(
+        node
+        for node in tree.body
+        if isinstance(node, ast.Assign)
+        and any(
+            isinstance(target, ast.Name) and target.id == "pi_cam_workflow"
+            for target in node.targets
+        )
+    )
+    assert isinstance(assignment.value, ast.List)
+    operations = tuple(
+        element.slice.value
+        for element in assignment.value.elts
+        if isinstance(element, ast.Subscript)
+        and isinstance(element.slice, ast.Constant)
+    )
+    expected = tuple(
+        action.operation
+        for action in PICAMStepPlan.default()
+        if action.enabled
+    )
+
+    assert operations == expected
 
 
 def test_state_view_plot_supports_before_after_overlay() -> None:
