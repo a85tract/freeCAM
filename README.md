@@ -131,20 +131,31 @@ physics.deep_convection.enable()
 ```
 
 The original flat API contained 36 workflow processes plus 262 source-catalog
-interfaces. All 262 former catalog-only interfaces now have compiled pointer
-adapters. A standalone call uses keyword arguments for caller-local inputs and
-returns named output StatePool fields:
+interfaces. All 262 former catalog-only interfaces are runtime-process
+templates with generated pointer adapters. In the admitted PI-CAM executable,
+226 are loadable; the remaining 36 belong to inactive CARMA, COSP, or legacy
+radiation configurations.
+
+Bind caller-local arguments to StatePool fields, then place the process anywhere
+in the complete workflow:
 
 ```python
-result = physics.calc_hltalt(t=250.0)
-print(result.hltalt.stats(rank="global"))
-result.remove()
+process = physics.cloud_fraction_fice.bind()
+driver.cam.workflow.insert(process, after="dry_adjustment")
+
+process.run()                 # run only this process
+process.disable()             # skip it in complete steps
+process.enable()
+process.move(before="radiation")
+process.remove()              # remove the plan node and owned temporary fields
 ```
 
 Common CAM derived state (`physics_state`, `physics_tend`, `cam_in`, and
 `cam_out`) is bound to the live Python-owned StatePool without copying.
-Processes belonging to a disabled physics configuration remain visible with
-metadata but are not presented as runnable in the PI-CAM image.
+Literal values can also be passed to `bind(...)`; rank-local arrays are created
+in StatePool when a caller variable has no existing field. Processes belonging
+to a disabled physics configuration remain visible with metadata, but insertion
+fails explicitly because their `.so` is not loaded by this case.
 
 ## Workflow
 

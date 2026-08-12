@@ -198,7 +198,7 @@ class PICAMWorkflowView:
         before: str | None = None,
         after: str | None = None,
     ) -> Any:
-        """Install a ``Physics`` object into the live workflow.
+        """Install a Python ``Physics`` object or bound CAM process.
 
         ``workflow.insert(process)`` uses placement declared on the process.
         The FreeCESM-style ``workflow.insert(index, process)`` form is also
@@ -229,7 +229,8 @@ class PICAMWorkflowView:
         installer = getattr(candidate, "_install", None)
         if not callable(installer):
             raise TypeError(
-                "workflow.insert expects a freecam.Physics instance"
+                "workflow.insert expects a freecam.Physics instance or a "
+                "StatePool-bound CAM process"
             )
         return installer(
             self._session,

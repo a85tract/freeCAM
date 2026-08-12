@@ -97,6 +97,23 @@ def _command(command: dict[str, Any], driver: Any, comm: Any) -> object:
             str(command["name"]), experimental=True
         )
         return asdict(trace) if comm.rank == 0 else None
+    if operation == "install_promoted_process":
+        action = driver.install_promoted_process(
+            str(command["name"]),
+            before=command.get("before"),
+            after=command.get("after"),
+            enabled=bool(command.get("enabled", True)),
+        )
+        return (
+            {
+                "name": action.name,
+                "phase": action.phase,
+                "enabled": action.enabled,
+                "plan": driver.step_plan.describe(),
+            }
+            if comm.rank == 0
+            else None
+        )
     if operation == "remove_promoted_process":
         record = driver.remove_promoted_process(str(command["name"]))
         return record.to_payload() if comm.rank == 0 else None

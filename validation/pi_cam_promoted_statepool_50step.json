@@ -6,16 +6,20 @@
   "all_outputs_finite": true,
   "all_outputs_removed": true,
   "all_ranks_native_available": true,
+  "all_runtime_call_counts": [
+    50
+  ],
+  "all_runtime_processes_enabled": true,
   "all_temperature_inputs_unchanged": true,
   "generated_symbol": "freecam_pi_cam_promoted_cloud_fraction_fice_6f693ef0d841_v1",
-  "library_sha256": "061dd35d9b80d0754ac974202c4a86b2cf0939a6c6e02a39adad0bc5000b7a32",
+  "library_sha256": "2a9f306b9f5ce6720cdbcbcf01dfa478b316d8feddf1ada6f06ae19cc6e17d20",
   "mpi_ranks": 512,
   "original_call_proof": "3661:\te8 7a e3 ff ff       \tcall   19e0 <cloud_fraction_mp_cldfrc_fice_@plt>",
   "original_routine": "cloud_fraction::cldfrc_fice",
-  "pbs_job_id": "7087969.desched1",
+  "pbs_job_id": "7097297.desched1",
   "process": "cloud_fraction_fice",
   "promoted_library_load_policy": "lazy-after-initialize",
-  "promoted_library_sha256": "4060cf442de734594193a05c7c1bb1525ca699c5097b83b12e3a40fb078dbe86",
+  "promoted_library_sha256": "eb755057c5d540421564881bed77271921742a24cf856774433bbecf12f1968c",
   "rank0_created_fields": [
     "process_context.cloud_fraction_fice.fice",
     "process_context.cloud_fraction_fice.fsnow"
@@ -26,6 +30,9 @@
     "fsnow_max": 1.0,
     "fsnow_min": 0.0
   },
+  "runtime_trace_phases": [
+    "runtime"
+  ],
   "schema_version": 1,
   "steps_after_probe": 50
 }

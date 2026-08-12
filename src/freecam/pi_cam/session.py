@@ -303,6 +303,8 @@ class _SessionActionReference:
             return self.session.remove_python(self.name)
         if self.kind == "runtime_fortran_process":
             return self.session.remove_fortran(self.name)
+        if self.kind == "runtime_catalog_process":
+            return self.session.remove_promoted_process(self.name)
         raise TypeError(f"source physics action {self.phase}.{self.name} cannot be removed")
 
     def _record(self) -> Mapping[str, Any]:
@@ -434,6 +436,12 @@ class _SessionCatalogPhysicsReference:
         trace = self.session.run_promoted_process(self.name)
         return _SessionProcessCallResult(self.session, record, trace)
 
+    def bind(self, **arguments: Any) -> "_SessionPromotedPhysicsReference":
+        """Bind field handles/literals without executing the process."""
+
+        bindings, initials = self.session._process_call_arguments(arguments)
+        return self.promote(bindings=bindings, initials=initials)
+
     def promote(
         self,
         *,
@@ -479,6 +487,8 @@ class _SessionPromotedPhysicsReference(_SessionCatalogPhysicsReference):
 
     @property
     def capability(self) -> str:
+        if self._runtime_row() is not None:
+            return "runtime"
         return (
             "statepool_bound"
             if self.runnable
@@ -488,6 +498,30 @@ class _SessionPromotedPhysicsReference(_SessionCatalogPhysicsReference):
     @property
     def bindings(self) -> tuple[Mapping[str, Any], ...]:
         return tuple(self._snapshot.get("bindings", ()))
+
+    @property
+    def fields(self) -> Mapping[str, _SessionFieldReference]:
+        return {
+            str(binding["argument"]): _SessionFieldReference(
+                self.session, str(binding["field"])
+            )
+            for binding in self.bindings
+            if str(binding.get("intent", "inout")).lower() in {"out", "inout"}
+        }
+
+    def __getitem__(self, name: str) -> _SessionFieldReference:
+        return self.fields[str(name)]
+
+    def __getattr__(self, name: str) -> _SessionFieldReference:
+        try:
+            return self[name]
+        except KeyError as exc:
+            raise AttributeError(name) from exc
+
+    @property
+    def enabled(self) -> bool | None:
+        row = self._runtime_row()
+        return None if row is None else bool(row["enabled"])
 
     def run(self) -> Mapping[str, Any]:
         return self.session.run_promoted_process(self.name)
@@ -505,16 +539,74 @@ class _SessionPromotedPhysicsReference(_SessionCatalogPhysicsReference):
         return self.session.remove_promoted_process(self.name)
 
     def enable(self) -> Mapping[str, Any]:
-        raise PICAMNotebookError(
-            "a promoted process is standalone and is not inserted into the "
-            "complete CAM timestep"
+        row = self._require_runtime_row()
+        return self.session.set_action_enabled(
+            self.name, True, phase=str(row["phase"])
         )
 
-    disable = enable
+    def disable(self) -> Mapping[str, Any]:
+        row = self._require_runtime_row()
+        return self.session.set_action_enabled(
+            self.name, False, phase=str(row["phase"])
+        )
 
-    def move(self, *, before: str | None = None, after: str | None = None) -> None:
-        del before, after
-        self.enable()
+    def move(
+        self, *, before: str | None = None, after: str | None = None
+    ) -> Mapping[str, Any]:
+        row = self._require_runtime_row()
+        return self.session.move_action(
+            self.name,
+            phase=str(row["phase"]),
+            before=before,
+            after=after,
+        )
+
+    def insert(
+        self,
+        *,
+        before: str | None = None,
+        after: str | None = None,
+        enabled: bool = True,
+    ) -> "_SessionPromotedPhysicsReference":
+        self.session.install_promoted_process(
+            self.name,
+            before=before,
+            after=after,
+            enabled=enabled,
+        )
+        return self.session.physics.process(self.name)
+
+    def _install(
+        self,
+        session: "PICAMNotebookSession",
+        *,
+        before: str | None = None,
+        after: str | None = None,
+    ) -> "_SessionPromotedPhysicsReference":
+        if session is not self.session:
+            raise PICAMNotebookError(
+                "a bound process can only be inserted into its originating model"
+            )
+        return self.insert(before=before, after=after)
+
+    def _runtime_row(self) -> Mapping[str, Any] | None:
+        matches = tuple(
+            row
+            for row in self.session.status.get("step_plan", ())
+            if str(row.get("name")) == self.name
+            and str(row.get("kind")) == "runtime_catalog_process"
+        )
+        return matches[0] if len(matches) == 1 else None
+
+    def _require_runtime_row(self) -> Mapping[str, Any]:
+        row = self._runtime_row()
+        if row is None:
+            raise PICAMNotebookError(
+                f"{self.name!r} is bound but not in the complete workflow; "
+                "insert it with driver.cam.workflow.insert(process, before=... "
+                "or after=...)"
+            )
+        return row
 
 
 class _SessionPhysicsCollection:
@@ -586,20 +678,44 @@ class _SessionPhysicsCollection:
             record = promoted.get(str(row["api_name"]))
             if record is None:
                 continue
+            runtime_action = next(
+                (
+                    action
+                    for action in self.session.status.get("step_plan", ())
+                    if str(action.get("name")) == str(record["name"])
+                    and str(action.get("kind")) == "runtime_catalog_process"
+                ),
+                None,
+            )
             row.update(
                 {
-                    "phase": "promoted_process",
-                    "kind": "promoted_process",
+                    "phase": (
+                        "promoted_process"
+                        if runtime_action is None
+                        else str(runtime_action["phase"])
+                    ),
+                    "kind": (
+                        "promoted_process"
+                        if runtime_action is None
+                        else "runtime_catalog_process"
+                    ),
                     "runnable": bool(record.get("native_available")),
-                    "enabled": None,
+                    "enabled": (
+                        None
+                        if runtime_action is None
+                        else bool(runtime_action["enabled"])
+                    ),
                     "capability": (
-                        "statepool_bound"
+                        "runtime"
+                        if runtime_action is not None
+                        else "statepool_bound"
                         if bool(record.get("native_available"))
                         else "statepool_bound_no_native"
                     ),
                     "bindings": tuple(record.get("bindings", ())),
                     "created_fields": tuple(record.get("created_fields", ())),
                     "native_available": bool(record.get("native_available")),
+                    "requires_binding": False,
                 }
             )
         return tuple(records)
@@ -608,7 +724,10 @@ class _SessionPhysicsCollection:
     def interfaces(self) -> tuple[Any, ...]:
         references = []
         for row in self.records:
-            if str(row["kind"]) == "promoted_process":
+            if str(row["kind"]) in {
+                "promoted_process",
+                "runtime_catalog_process",
+            }:
                 references.append(_SessionPromotedPhysicsReference(self.session, row))
             elif str(row["kind"]) == "catalog_process":
                 references.append(_SessionCatalogPhysicsReference(self.session, row))
@@ -665,6 +784,22 @@ class _SessionPhysicsCollection:
                 f"{row['qualified_name']}@{row['source']}" in process_adapters
                 for row in source_only
             ),
+            "runtime_templates": sum(
+                bool(row.get("generated_adapter")) for row in source_only
+            ),
+            "runtime_templates_loadable": sum(
+                f"{row['qualified_name']}@{row['source']}" in process_adapters
+                for row in source_only
+            ),
+            "runtime_bound": sum(
+                str(row["kind"])
+                in {"promoted_process", "runtime_catalog_process"}
+                for row in self.records
+            ),
+            "runtime_inserted": sum(
+                str(row["kind"]) == "runtime_catalog_process"
+                for row in self.records
+            ),
             "current_case_loadable": sum(
                 f"{process.qualified_name}@{process.source}" in process_adapters
                 for process in self.catalog.physics_processes
@@ -698,9 +833,6 @@ class _SessionPhysicsCollection:
             "leaf": leaf,
             "stage": len(runnable) - leaf,
         }
-        standalone = len(runnable) - len(planned)
-        if standalone:
-            result["standalone"] = standalone
         return result
 
     def describe(self) -> tuple[Mapping[str, Any], ...]:
@@ -748,7 +880,7 @@ class _SessionPhysicsCollection:
         if len(matches) != 1:
             raise KeyError(f"physics action {name!r} is unknown or ambiguous")
         row = matches[0]
-        if str(row["kind"]) == "promoted_process":
+        if str(row["kind"]) in {"promoted_process", "runtime_catalog_process"}:
             return _SessionPromotedPhysicsReference(self.session, row)
         if str(row["kind"]) == "catalog_process":
             return _SessionCatalogPhysicsReference(self.session, row)
@@ -792,7 +924,7 @@ class _SessionPhysicsCollection:
                 if not bool(record["runnable"]):
                     state = str(record["capability"])
                 elif record.get("enabled") is None:
-                    state = "standalone"
+                    state = "bindable runtime template"
                 else:
                     state = "enabled" if bool(record["enabled"]) else "disabled"
                 rows.append(
@@ -1171,9 +1303,11 @@ class PICAMNotebookSession:
         *,
         phase: str,
         kind: str,
-    ) -> _SessionActionReference:
+    ) -> Any:
         """Return a live handle for any workflow row, including control rows."""
 
+        if kind == "runtime_catalog_process":
+            return self.physics.process(name)
         return _SessionActionReference(self, name, phase, kind=kind)
 
     def run_action(self, name: str, *, phase: str | None = None) -> Mapping[str, Any]:
@@ -1250,6 +1384,31 @@ class PICAMNotebookSession:
         return dict(
             self._request({"op": "run_promoted_process", "name": str(name)})
         )
+
+    def install_promoted_process(
+        self,
+        name: str,
+        *,
+        before: str | None = None,
+        after: str | None = None,
+        enabled: bool = True,
+    ) -> Mapping[str, Any]:
+        """Insert one bound source routine into the complete live workflow."""
+
+        result = dict(
+            self._request(
+                {
+                    "op": "install_promoted_process",
+                    "name": str(name),
+                    "before": before,
+                    "after": after,
+                    "enabled": bool(enabled),
+                }
+            )
+        )
+        self._update_step_plan(result)
+        self._status = dict(self._request({"op": "status"}))
+        return result
 
     def remove_promoted_process(self, name: str) -> Mapping[str, Any]:
         result = dict(

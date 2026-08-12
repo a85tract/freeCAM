@@ -76,7 +76,8 @@ def test_catalog_process_can_promote_caller_arguments_into_statepool() -> None:
 
     assert process.runnable is True
     assert process.capability == "statepool_bound"
-    assert driver.physics.coverage["standalone"] == 1
+    assert driver.physics.coverage["runtime_templates"] == 262
+    assert driver.physics.coverage["runtime_bound"] == 1
     assert process.metadata["native_available"] is True
     bindings = {item["argument"]: item["field"] for item in process.bindings}
     assert bindings["ncol"] == "grid.chunk_ncols"
@@ -95,6 +96,36 @@ def test_catalog_process_can_promote_caller_arguments_into_statepool() -> None:
     result.remove()
     assert bindings["fice"] not in driver.pool
     assert "phys_state.t" in driver.pool
+
+
+def test_bound_catalog_process_can_join_and_edit_complete_workflow() -> None:
+    driver = _driver()
+
+    process = driver.physics.cloud_fraction_fice.bind()
+    process = process.insert(after="dadadj")
+
+    assert process.enabled is True
+    assert process.capability == "runtime"
+    action = driver.step_plan.select("cloud_fraction_fice")
+    assert action.kind == "runtime_catalog_process"
+    assert action.phase == "runtime"
+
+    trace = driver.run_action(
+        "cloud_fraction_fice", phase="runtime", experimental=True
+    )
+    assert trace.phase == "runtime"
+    assert np.all(driver.pool["process_context.cloud_fraction_fice.fice"] == 0.25)
+
+    process.move(after="vertical_diffusion")
+    process.disable()
+    assert process.enabled is False
+    process.enable()
+    assert process.enabled is True
+
+    created = tuple(driver.process_contexts.record(process.name).created_fields)
+    process.remove()
+    assert "cloud_fraction_fice" not in driver.process_contexts
+    assert all(field not in driver.pool for field in created)
 
 
 def test_assumed_shape_process_uses_explicit_statepool_bindings() -> None:
@@ -182,3 +213,18 @@ def test_generated_promoted_descriptor_covers_all_simple_candidate_processes() -
     assert cloud.arguments[1].rank == 3
     assert "use cloud_fraction, only: cldfrc_fice" in source
     assert "call cldfrc_fice(" in source
+
+
+def test_every_source_catalog_interface_exposes_one_runtime_binding_path() -> None:
+    driver = _driver()
+    templates = tuple(
+        process
+        for process in driver.physics.interfaces
+        if process.metadata.get("kind") == "catalog_process"
+        and process.metadata.get("runtime_template")
+    )
+
+    assert len(templates) == 262
+    assert all(callable(process.bind) for process in templates)
+    assert all(callable(process.promote) for process in templates)
+    assert all(process.metadata["requires_binding"] for process in templates)

@@ -457,6 +457,8 @@ def merge_runtime_process_records(
                 "aliases": aliases,
                 "runnable": True,
                 "capability": "runtime",
+                "runtime_template": False,
+                "requires_binding": False,
                 "level": "process",
                 "source_procedures": tuple(
                     item.qualified_name for item in descriptors
@@ -492,6 +494,8 @@ def merge_runtime_process_records(
                     if process.generated_adapter
                     else process.adapter_status
                 ),
+                "runtime_template": process.generated_adapter,
+                "requires_binding": True,
                 "adapter_status": process.adapter_status,
                 "generated_adapter": process.generated_adapter,
                 "qualified_name": process.qualified_name,

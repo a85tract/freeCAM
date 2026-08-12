@@ -50,10 +50,21 @@ def main() -> int:
             name: int(cam.pool[name].ctypes.data) for name in output_names
         }
         trace = result.trace
+        temperature_unchanged_after_isolated_call = (
+            _hash(temperature) == temperature_hash
+        )
+        runtime_process = result.process.insert(after="dadadj")
+        first_runtime_trace = len(cam.trace)
+        cam.advance(args.steps)
+        runtime_traces = tuple(
+            item
+            for item in cam.trace[first_runtime_trace:]
+            if item.operation == "cloud_fraction_fice"
+        )
         local = {
             "rank": world.Get_rank(),
             "native_available": process.native_available,
-            "temperature_unchanged": _hash(temperature) == temperature_hash,
+            "temperature_unchanged": temperature_unchanged_after_isolated_call,
             "output_addresses_stable": all(
                 int(cam.pool[name].ctypes.data) == output_addresses[name]
                 for name in output_names
@@ -67,11 +78,15 @@ def main() -> int:
             "fsnow_max": float(cam.pool[binding["fsnow"]].max()),
             "trace_phase": trace.phase,
             "trace_operation": trace.operation,
+            "runtime_process_enabled": runtime_process.enabled,
+            "runtime_call_count": len(runtime_traces),
+            "runtime_trace_phases": sorted(
+                {item.phase for item in runtime_traces}
+            ),
             "created_fields": process.created_fields,
         }
         result.remove()
         local["outputs_removed"] = all(name not in cam.pool for name in output_names)
-        cam.advance(args.steps)
         local["final_step"] = cam.clock.nstep
 
     records = world.gather(local, root=0)
@@ -110,6 +125,19 @@ def main() -> int:
             "all_outputs_removed": all(
                 record["outputs_removed"] for record in records
             ),
+            "all_runtime_processes_enabled": all(
+                record["runtime_process_enabled"] for record in records
+            ),
+            "all_runtime_call_counts": sorted(
+                {record["runtime_call_count"] for record in records}
+            ),
+            "runtime_trace_phases": sorted(
+                {
+                    phase
+                    for record in records
+                    for phase in record["runtime_trace_phases"]
+                }
+            ),
             "all_final_steps": sorted({record["final_step"] for record in records}),
             "rank0_output_range": {
                 key: records[0][key]
@@ -123,9 +151,14 @@ def main() -> int:
             "all_output_addresses_stable",
             "all_outputs_finite",
             "all_outputs_removed",
+            "all_runtime_processes_enabled",
         )
         failures = tuple(name for name in required if not summary[name])
-        if failures or summary["all_final_steps"] != [args.steps]:
+        if (
+            failures
+            or summary["all_final_steps"] != [args.steps]
+            or summary["all_runtime_call_counts"] != [args.steps]
+        ):
             raise RuntimeError(f"promoted StatePool validation failed: {failures}")
         args.output.parent.mkdir(parents=True, exist_ok=True)
         args.output.write_text(json.dumps(summary, indent=2, sort_keys=True) + "\n")

@@ -354,6 +354,12 @@ class _CatalogActionReference:
         trace = self.driver.run_promoted_process(self.name, experimental=True)
         return _LocalProcessCallResult(self.driver, record, trace)
 
+    def bind(self, **arguments: Any) -> "_PromotedProcessReference":
+        """Bind normal Python values/StatePool fields without running the process."""
+
+        bindings, initials = self.driver._process_call_arguments(arguments)
+        return self.promote(bindings=bindings, initials=initials)
+
     def promote(
         self,
         *,
@@ -407,6 +413,8 @@ class _PromotedProcessReference(_CatalogActionReference):
 
     @property
     def capability(self) -> str:
+        if self._runtime_action() is not None:
+            return "runtime"
         return (
             "statepool_bound"
             if self.runnable
@@ -414,14 +422,30 @@ class _PromotedProcessReference(_CatalogActionReference):
         )
 
     @property
-    def enabled(self) -> None:
-        # Promotion creates an isolated callable boundary; it deliberately
-        # does not insert a second call into the source CAM timestep.
-        return None
+    def enabled(self) -> bool | None:
+        action = self._runtime_action()
+        return None if action is None else action.enabled
 
     @property
     def bindings(self) -> tuple[Mapping[str, Any], ...]:
         return tuple(self._record.get("bindings", ()))
+
+    @property
+    def fields(self) -> Mapping[str, np.ndarray]:
+        return {
+            str(binding["argument"]): self.driver.pool[str(binding["field"])]
+            for binding in self.bindings
+            if str(binding.get("intent", "inout")).lower() in {"out", "inout"}
+        }
+
+    def __getitem__(self, name: str) -> np.ndarray:
+        return self.fields[str(name)]
+
+    def __getattr__(self, name: str) -> np.ndarray:
+        try:
+            return self[name]
+        except KeyError as exc:
+            raise AttributeError(name) from exc
 
     def run(self, *, experimental: bool = True) -> PICAMActionTrace:
         if not experimental:
@@ -440,17 +464,41 @@ class _PromotedProcessReference(_CatalogActionReference):
         trace = self.run(experimental=True)
         return _LocalProcessCallResult(self.driver, record, trace)
 
+    def insert(
+        self,
+        *,
+        before: str | None = None,
+        after: str | None = None,
+        enabled: bool = True,
+    ) -> "_PromotedProcessReference":
+        self.driver.install_promoted_process(
+            self.name,
+            before=before,
+            after=after,
+            enabled=enabled,
+        )
+        return self.driver.physics.process(self.name)
+
     def remove(self) -> PICAMPromotedProcess:
         return self.driver.remove_promoted_process(self.name)
 
     def enable(self, *, experimental: bool = True) -> None:
-        del experimental
-        raise PICAMConfigurationError(
-            "a promoted process is standalone; insert a Python/Fortran runtime "
-            "process to modify the complete timestep"
+        action = self._require_runtime_action()
+        self.driver.step_plan.set_enabled(
+            action.name,
+            True,
+            phase=action.phase,
+            experimental=experimental,
         )
 
-    disable = enable
+    def disable(self, *, experimental: bool = True) -> None:
+        action = self._require_runtime_action()
+        self.driver.step_plan.set_enabled(
+            action.name,
+            False,
+            phase=action.phase,
+            experimental=experimental,
+        )
 
     def move(
         self,
@@ -459,8 +507,31 @@ class _PromotedProcessReference(_CatalogActionReference):
         after: str | None = None,
         experimental: bool = True,
     ) -> None:
-        del before, after, experimental
-        self.enable()
+        action = self._require_runtime_action()
+        self.driver.step_plan.move(
+            action.name,
+            phase=action.phase,
+            before=before,
+            after=after,
+            experimental=experimental,
+        )
+
+    def _runtime_action(self) -> PICAMAction | None:
+        try:
+            action = self.driver.step_plan.select(self.name)
+        except PICAMConfigurationError:
+            return None
+        return action if action.kind == "runtime_catalog_process" else None
+
+    def _require_runtime_action(self) -> PICAMAction:
+        action = self._runtime_action()
+        if action is None:
+            raise PICAMConfigurationError(
+                f"{self.name!r} is bound but not in the complete workflow; "
+                "insert it with driver.cam.workflow.insert(process, before=... "
+                "or after=...)"
+            )
+        return action
 
 
 class _PhysicsCollection:
@@ -499,14 +570,35 @@ class _PhysicsCollection:
             if str(row["api_name"]) not in self.driver.process_contexts:
                 continue
             promoted = self.driver.process_contexts.record(str(row["api_name"]))
+            try:
+                runtime_action = self.driver.step_plan.select(promoted.name)
+            except PICAMConfigurationError:
+                runtime_action = None
+            if (
+                runtime_action is not None
+                and runtime_action.kind != "runtime_catalog_process"
+            ):
+                runtime_action = None
             row.update(
                 {
-                    "phase": "promoted_process",
-                    "kind": "promoted_process",
+                    "phase": (
+                        "promoted_process"
+                        if runtime_action is None
+                        else runtime_action.phase
+                    ),
+                    "kind": (
+                        "promoted_process"
+                        if runtime_action is None
+                        else "runtime_catalog_process"
+                    ),
                     "runnable": promoted.native_available,
-                    "enabled": None,
+                    "enabled": (
+                        None if runtime_action is None else runtime_action.enabled
+                    ),
                     "capability": (
-                        "statepool_bound"
+                        "runtime"
+                        if runtime_action is not None
+                        else "statepool_bound"
                         if promoted.native_available
                         else "statepool_bound_no_native"
                     ),
@@ -515,6 +607,7 @@ class _PhysicsCollection:
                     ),
                     "created_fields": promoted.created_fields,
                     "native_available": promoted.native_available,
+                    "requires_binding": False,
                 }
             )
         return tuple(records)
@@ -541,7 +634,10 @@ class _PhysicsCollection:
     def interfaces(self) -> tuple[Any, ...]:
         references: list[Any] = []
         for record in self.records:
-            if record["kind"] == "promoted_process":
+            if record["kind"] in {
+                "promoted_process",
+                "runtime_catalog_process",
+            }:
                 references.append(_PromotedProcessReference(self.driver, record))
                 continue
             if record["kind"] == "catalog_process":
@@ -616,6 +712,24 @@ class _PhysicsCollection:
                 )
                 for row in source_only
             ),
+            "runtime_templates": sum(
+                bool(row.get("generated_adapter")) for row in source_only
+            ),
+            "runtime_templates_loadable": sum(
+                bool(
+                    callable(has_adapter)
+                    and has_adapter(str(row["qualified_name"]), str(row["source"]))
+                )
+                for row in source_only
+            ),
+            "runtime_bound": sum(
+                str(row["kind"])
+                in {"promoted_process", "runtime_catalog_process"}
+                for row in records
+            ),
+            "runtime_inserted": sum(
+                str(row["kind"]) == "runtime_catalog_process" for row in records
+            ),
             "current_case_loadable": sum(
                 bool(callable(has_adapter) and has_adapter(process.qualified_name, process.source))
                 for process in self.catalog.physics_processes
@@ -628,12 +742,9 @@ class _PhysicsCollection:
             "leaf": leaf,
             "stage": len(runnable) - leaf,
         }
-        standalone = len(runnable) - len(planned)
         result["configuration_specific"] = (
             result["physical_processes"] - result["current_case_loadable"]
         )
-        if standalone:
-            result["standalone"] = standalone
         return result
 
     def __len__(self) -> int:
@@ -665,7 +776,7 @@ class _PhysicsCollection:
         if len(matches) != 1:
             raise AttributeError(name)
         record = matches[0]
-        if record["kind"] == "promoted_process":
+        if record["kind"] in {"promoted_process", "runtime_catalog_process"}:
             return _PromotedProcessReference(self.driver, record)
         if record["kind"] == "catalog_process":
             return _CatalogActionReference(self.driver, record)
@@ -695,7 +806,7 @@ class _PhysicsCollection:
                 f"physics process {name!r} is unknown or ambiguous"
             )
         record = matches[0]
-        if record["kind"] == "promoted_process":
+        if record["kind"] in {"promoted_process", "runtime_catalog_process"}:
             return _PromotedProcessReference(self.driver, record)
         if record["kind"] == "catalog_process":
             return _CatalogActionReference(self.driver, record)
@@ -1094,6 +1205,8 @@ class PICAMDriver:
             self.python_processes.invoke(action)
         elif action.kind == "runtime_fortran_process":
             self.fortran_processes.invoke(action)
+        elif action.kind == "runtime_catalog_process":
+            self.process_contexts.invoke(action.name)
         elif action.operation == "boundary_import":
             self.boundary.import_fields(self._boundary_step, self.rank, self.pool)
             # A coupled atmosphere interval can contain more than one CAM
@@ -1409,6 +1522,83 @@ class PICAMDriver:
             raise PICAMStateError("promoted process name differs across MPI ranks")
         return self.process_contexts.run(name)
 
+    def install_promoted_process(
+        self,
+        name: str,
+        *,
+        before: str | None = None,
+        after: str | None = None,
+        enabled: bool = True,
+    ) -> PICAMAction:
+        """Insert one StatePool-bound source routine into the complete workflow."""
+
+        self._require_collective_boundary("insert a bound physics process")
+        if (before is None) == (after is None):
+            raise PICAMConfigurationError("provide exactly one of before or after")
+        signature = (str(name), before, after, bool(enabled))
+        if len(set(self.comm.allgather(signature))) != 1:
+            raise PICAMStateError(
+                "runtime process placement differs across MPI ranks"
+            )
+
+        action: PICAMAction | None = None
+        local_error: str | None = None
+        try:
+            record = self.process_contexts.record(name)
+            if not record.native_available:
+                raise PICAMConfigurationError(
+                    f"{record.name!r} is bound, but its adapter is not loaded "
+                    "by the current PI-CAM executable"
+                )
+            try:
+                existing = self.step_plan.select(record.name)
+            except PICAMConfigurationError:
+                existing = None
+            if existing is not None:
+                raise PICAMConfigurationError(
+                    f"runtime process {record.name!r} is already in the workflow"
+                )
+            self.step_plan.select(before or after or "")
+            action = PICAMAction(
+                name=record.name,
+                # Runtime processes are positioned in the one complete list;
+                # they do not acquire a legacy cam_run1/cam_run2 identity from
+                # whichever neighbor happened to be chosen at insertion time.
+                phase="runtime",
+                operation=record.name,
+                kind="runtime_catalog_process",
+                native_id=None,
+                enabled=bool(enabled),
+            )
+            self.step_plan.add(
+                action,
+                before=before,
+                after=after,
+                experimental=True,
+            )
+        except BaseException as exc:
+            local_error = f"{type(exc).__name__}: {exc}"
+        errors = self.comm.allgather(local_error)
+        if any(error is not None for error in errors):
+            if action is not None:
+                try:
+                    selected = self.step_plan.select(action.name, phase=action.phase)
+                except PICAMConfigurationError:
+                    selected = None
+                if selected is not None and selected.kind == "runtime_catalog_process":
+                    self.step_plan.remove(
+                        action.name,
+                        phase=action.phase,
+                        experimental=True,
+                    )
+            self.comm.barrier()
+            raise PICAMStateError(
+                f"runtime process insertion rolled back collectively: {errors}"
+            )
+        self.comm.barrier()
+        assert action is not None
+        return action
+
     def _record_promoted_process(self, name: str) -> PICAMActionTrace:
         return self._record(
             PICAMAction(
@@ -1443,6 +1633,16 @@ class PICAMDriver:
         except BaseException as exc:
             local_error = f"{type(exc).__name__}: {exc}"
         self._collective_state_error(local_error, "physics process removal")
+        try:
+            action = self.step_plan.select(name)
+        except PICAMConfigurationError:
+            action = None
+        if action is not None and action.kind == "runtime_catalog_process":
+            self.step_plan.remove(
+                action.name,
+                phase=action.phase,
+                experimental=True,
+            )
         record = self.process_contexts.remove(name)
         self.comm.barrier()
         return record

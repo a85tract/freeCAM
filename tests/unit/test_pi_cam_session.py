@@ -6,7 +6,7 @@ import numpy as np
 import pytest
 
 from freecam.pi_cam import session as session_module
-from freecam.pi_cam.plan import PICAMStepPlan
+from freecam.pi_cam.plan import PICAMAction, PICAMStepPlan
 from freecam.pi_cam.session import (
     PICAMNotebookError,
     PICAMNotebookSession,
@@ -236,6 +236,72 @@ def test_session_calls_one_catalog_process_with_automatic_statepool_binding(
         {"op": "status"},
         {"op": "run_promoted_process", "name": "cloud_fraction_fice"},
     ]
+
+
+def test_session_bound_catalog_process_inserts_into_live_workflow(
+    tmp_path: Path, monkeypatch
+) -> None:
+    config, boundary, run_dir, env_script, _ = _session_files(tmp_path)
+    session = PICAMNotebookSession(
+        config,
+        boundary=boundary,
+        run_dir=run_dir,
+        env_script=env_script,
+    )
+    promoted = {
+        "name": "cloud_fraction_fice",
+        "qualified_name": "cloud_fraction::cldfrc_fice",
+        "bindings": (),
+        "created_fields": (),
+        "created_dimensions": (),
+        "native_available": True,
+    }
+    plan = PICAMStepPlan.default()
+    session._status = {
+        "step_plan": plan.describe(),
+        "promoted_processes": (promoted,),
+        "process_adapters": (
+            "cloud_fraction::cldfrc_fice@"
+            "components/cam/src/physics/cam/cloud_fraction.F90",
+        ),
+    }
+    commands = []
+
+    def request(command):
+        commands.append(command)
+        if command["op"] == "install_promoted_process":
+            plan.add(
+                PICAMAction(
+                    "cloud_fraction_fice",
+                    "runtime",
+                    "cloud_fraction_fice",
+                    "runtime_catalog_process",
+                ),
+                after=command["after"],
+                experimental=True,
+            )
+            return {"plan": plan.describe()}
+        if command["op"] == "status":
+            return {
+                **session._status,
+                "step_plan": plan.describe(),
+            }
+        raise AssertionError(command)
+
+    monkeypatch.setattr(session, "_request", request)
+    bound = session.physics.cloud_fraction_fice
+    inserted = session.workflow.insert(bound, after="dadadj")
+
+    assert inserted.enabled is True
+    assert inserted.capability == "runtime"
+    assert plan.select("cloud_fraction_fice").kind == "runtime_catalog_process"
+    assert commands[0] == {
+        "op": "install_promoted_process",
+        "name": "cloud_fraction_fice",
+        "before": None,
+        "after": "dadadj",
+        "enabled": True,
+    }
 
 
 def test_session_process_call_accepts_a_python_field_object(
@@ -523,8 +589,12 @@ def test_session_ui_lists_every_supported_pi_cam_physics_interface(
         "compiled_process_adapters": 276,
         "formerly_catalog_only_interfaces": 262,
         "catalog_adapters_compiled": 262,
-        "catalog_current_case_loadable": 0,
-        "current_case_loadable": 0,
+            "catalog_current_case_loadable": 0,
+            "runtime_templates": 262,
+            "runtime_templates_loadable": 0,
+            "runtime_bound": 0,
+            "runtime_inserted": 0,
+            "current_case_loadable": 0,
         "configuration_specific": 276,
         "helper_routines": 95,
         "runtime_overlap": 14,

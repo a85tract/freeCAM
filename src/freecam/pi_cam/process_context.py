@@ -495,7 +495,9 @@ class PICAMProcessContextRegistry:
             return int(self.driver.clock.nstep)
         return None
 
-    def run(self, name: str) -> Any:
+    def invoke(self, name: str) -> None:
+        """Execute one bound catalog process without recording plan metadata."""
+
         record = self.record(name)
         if not record.native_available:
             raise PICAMConfigurationError(
@@ -530,7 +532,7 @@ class PICAMProcessContextRegistry:
                 fcomm=self.driver.fcomm,
             )
             self.driver.pool.assert_pointer_stability(before)
-            return self.driver._record_promoted_process(record.name)
+            return
         execute = getattr(self.driver.backend, "execute_promoted_process", None)
         if not callable(execute):
             raise PICAMConfigurationError(
@@ -547,6 +549,12 @@ class PICAMProcessContextRegistry:
             fcomm=self.driver.fcomm,
         )
         self.driver.pool.assert_pointer_stability(before)
+
+    def run(self, name: str) -> Any:
+        """Execute one bound process as an isolated experimental call."""
+
+        self.invoke(name)
+        record = self.record(name)
         return self.driver._record_promoted_process(record.name)
 
     def dependencies(self, field: str) -> tuple[str, ...]:

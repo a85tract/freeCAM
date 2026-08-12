@@ -37,6 +37,7 @@ class PICAMAction:
             "dynamics": "fortran-numerical-kernel",
             "kernel": "fortran-numerical-kernel",
             "runtime_fortran_process": "fortran-numerical-kernel",
+            "runtime_catalog_process": "fortran-numerical-kernel",
             "python_process": "python",
             "io": "fortran-io-service",
             "service": "fortran-state-service",
@@ -372,7 +373,11 @@ class PICAMStepPlan:
             raise PICAMConfigurationError(
                 f"action {action.qualified_name!r} already exists"
             )
-        target = self.select(before or after or "", phase=action.phase)
+        # Placement is defined by the one complete Python workflow.  ``phase``
+        # remains source provenance for diagnostics; it must not prevent a
+        # runtime process from being inserted beside an action that originated
+        # in another legacy CAM phase.
+        target = self.select(before or after or "")
         target_index = self._actions.index(target)
         self._actions.insert(target_index + (after is not None), action)
         try:
@@ -394,7 +399,11 @@ class PICAMStepPlan:
                 "removing a PI-CAM process requires experimental=True"
             )
         selected = self.select(name, phase=phase)
-        if selected.kind not in {"python_process", "runtime_fortran_process"}:
+        if selected.kind not in {
+            "python_process",
+            "runtime_fortran_process",
+            "runtime_catalog_process",
+        }:
             raise PICAMConfigurationError(
                 f"source action {selected.qualified_name!r} cannot be removed"
             )
