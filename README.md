@@ -297,6 +297,11 @@ The two `VolcanicAerosol()` entries become independent runtime processes named
 process from the returned list disables it. Required boundary, clock, and
 export actions are checked before the new order is applied.
 
+`Driver` replays the captured coupler imports but does not require an
+experiment's exports to match the unmodified oracle. For a strict BFB gate,
+use `verify_boundary_exports=True`; an export difference is then reported
+collectively by all MPI ranks before another CAM step can begin.
+
 ## Add a Python process
 
 ```python

@@ -249,6 +249,34 @@ def test_pbs_submission_requires_an_account_before_qsub(
     assert not called
 
 
+def test_request_timeout_aborts_the_persistent_worker(
+    tmp_path: Path, monkeypatch
+) -> None:
+    config, boundary, run_dir, env_script, _ = _session_files(tmp_path)
+    session = PICAMNotebookSession(
+        config,
+        boundary=boundary,
+        run_dir=run_dir,
+        env_script=env_script,
+    )
+
+    class Connection:
+        def send(self, command):
+            assert command == {"op": "step"}
+
+    def timeout_after(seconds):
+        raise TimeoutError(str(seconds))
+
+    session._connection = Connection()
+    monkeypatch.setattr(session, "_receive", timeout_after)
+    aborted = []
+    monkeypatch.setattr(session, "_abort", lambda: aborted.append(True))
+
+    with pytest.raises(TimeoutError, match="300.0"):
+        session._request({"op": "step"})
+    assert aborted == [True]
+
+
 def test_session_run_kernel_sends_explicit_worker_command(
     tmp_path: Path, monkeypatch
 ) -> None:

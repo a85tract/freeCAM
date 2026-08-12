@@ -201,6 +201,7 @@ def test_driver_hides_run_preparation_and_lazily_reuses_one_session(tmp_path) ->
         "history_every": 1,
         "restart_every": "end",
     }
+    assert FakeSession.instances[0].kwargs["verify_boundary_exports"] is False
     driver.cam.workflow = ("physics-a", "physics-b")
     assert FakeSession.instances[0].workflow_replacements == [
         ("physics-a", "physics-b")

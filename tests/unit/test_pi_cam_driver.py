@@ -10,8 +10,8 @@ from freecam.pi_cam import (
     PICAMVariableSpec,
     RecordingCAMBackend,
 )
-from freecam.pi_cam.errors import PICAMConfigurationError
 from freecam.pi_cam import runtime_fortran as runtime_fortran_module
+from freecam.pi_cam.errors import BoundaryReplayError, PICAMConfigurationError
 
 
 def _driver() -> tuple[PICAMDriver, RecordingCAMBackend, InMemoryBoundaryProvider]:
@@ -35,6 +35,35 @@ def _driver() -> tuple[PICAMDriver, RecordingCAMBackend, InMemoryBoundaryProvide
         backend,
         boundary,
     )
+
+
+def test_rank_local_boundary_failure_is_raised_on_every_rank() -> None:
+    class FailureComm:
+        rank = 1
+        size = 3
+
+        @staticmethod
+        def allgather(value):
+            del value
+            return ["rank zero failed", None, None]
+
+    config = PICAMConfig(
+        case_name="collective-boundary-test",
+        source_root=Path("/tmp/source"),
+        mpi_size=3,
+        stop_n=2,
+    )
+    driver = PICAMDriver(
+        config,
+        InMemoryBoundaryProvider(),
+        RecordingCAMBackend(),
+        rank=1,
+        size=3,
+        communicator=FailureComm(),
+    )
+
+    with pytest.raises(BoundaryReplayError, match="failed collectively; see rank 0"):
+        driver._collective_boundary_call("test boundary", lambda: None)
 
 
 def test_complete_step_is_ordered_by_python_and_advances_1800_seconds() -> None:

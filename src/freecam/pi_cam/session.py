@@ -1345,8 +1345,9 @@ class PICAMNotebookSession:
         pbs_account: str | None = None,
         pbs_queue: str = "develop",
         pbs_walltime: str = "02:00:00",
+        verify_boundary_exports: bool = True,
         startup_timeout: float = 1200.0,
-        request_timeout: float = 1200.0,
+        request_timeout: float = 300.0,
         log_path: str | Path | None = None,
     ) -> None:
         if isinstance(config, PICAMConfig):
@@ -1366,6 +1367,7 @@ class PICAMNotebookSession:
         self.pbs_account = pbs_account
         self.pbs_queue = pbs_queue
         self.pbs_walltime = pbs_walltime
+        self.verify_boundary_exports = bool(verify_boundary_exports)
         self.startup_timeout = float(startup_timeout)
         self.request_timeout = float(request_timeout)
         self.log_path = Path(log_path or self.run_dir / "pi_cam_notebook_worker.log").resolve()
@@ -1439,6 +1441,11 @@ class PICAMNotebookSession:
             "--expected-ranks",
             str(self.config.mpi_size),
         ]
+        command.append(
+            "--verify-exports"
+            if self.verify_boundary_exports
+            else "--no-verify-exports"
+        )
         self.log_path.parent.mkdir(parents=True, exist_ok=True)
         try:
             if mode == "pbs":
@@ -1937,8 +1944,15 @@ class PICAMNotebookSession:
     def _request(self, command: dict[str, Any]) -> Any:
         if self._connection is None:
             raise RuntimeError("PI-CAM Notebook session is not running")
-        self._connection.send(command)
-        return self._unwrap(self._receive(self.request_timeout))
+        try:
+            self._connection.send(command)
+            return self._unwrap(self._receive(self.request_timeout))
+        except (BrokenPipeError, EOFError, OSError, TimeoutError):
+            # A timed-out or disconnected collective cannot be safely reused.
+            # Tear down the MPI/PBS worker now instead of leaving hundreds of
+            # ranks running until the user notices and calls qdel manually.
+            self._abort()
+            raise
 
     def _receive(self, timeout: float) -> Any:
         assert self._connection is not None

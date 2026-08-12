@@ -687,6 +687,7 @@ class Driver:
         walltime: str = "02:00:00",
         history_every: int | None = 1,
         restart_every: int | None | str = "end",
+        verify_boundary_exports: bool = False,
         python_executable: str | Path | None = None,
         session_factory: Any = PICAMNotebookSession,
     ) -> None:
@@ -773,6 +774,7 @@ class Driver:
         self.history_every = (
             None if history_every is None else int(history_every)
         )
+        self.verify_boundary_exports = bool(verify_boundary_exports)
         # Do not resolve the final ``.venv/bin/python`` symlink: Python uses
         # that invocation path to select the virtual environment's site-packages.
         self.python_executable = Path(
@@ -884,6 +886,7 @@ class Driver:
                 pbs_account=self.account,
                 pbs_queue=self.queue,
                 pbs_walltime=self.walltime,
+                verify_boundary_exports=self.verify_boundary_exports,
             )
             try:
                 session.start()

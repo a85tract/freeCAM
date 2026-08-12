@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-from enum import Enum
 import hashlib
 import json
 import os
+import traceback
+from dataclasses import dataclass
+from enum import Enum
 from pathlib import Path
 from typing import Any, Callable, Iterator, Mapping, Sequence
 
@@ -17,7 +18,7 @@ from freecam.model.python_processes import PythonProcessSpec
 
 from .boundary import CAMBoundaryProvider
 from .config import PICAMConfig
-from .errors import PICAMConfigurationError, PICAMStateError
+from .errors import BoundaryReplayError, PICAMConfigurationError, PICAMStateError
 from .native import CAMNumericalBackend
 from .physics_catalog import (
     PICAMPhysicsCatalog,
@@ -28,11 +29,11 @@ from .process_context import (
     PICAMProcessContextRegistry,
     PICAMPromotedProcess,
 )
-from .runtime_processes import PICAMPythonProcessRegistry
 from .runtime_fortran import (
     PICAMFortranProcessRegistry,
     PICAMFortranProcessSpec,
 )
+from .runtime_processes import PICAMPythonProcessRegistry
 from .state import PICAMStatePool, PICAMStateSchema, PICAMVariableSpec
 
 
@@ -1104,17 +1105,23 @@ class PICAMDriver:
             self._set_scalar("mpi_rank", self.rank)
             self._set_scalar("mpi_size", self.size)
             self._sync_clock_fields()
-            self.boundary.initialize(
-                rank=self.rank,
-                size=self.size,
-                config_fingerprint=self.config.fingerprint,
+            self._collective_boundary_call(
+                "boundary initialization",
+                lambda: self.boundary.initialize(
+                    rank=self.rank,
+                    size=self.size,
+                    config_fingerprint=self.config.fingerprint,
+                ),
             )
             # The source initial-run lifecycle invokes atm_init_mct twice.  Its
             # second call imports the first surface state and executes CAM run1
             # before the first normal run2/run3/run4 timestep.  Keep that
             # orchestration in Python so native CAM never observes an
             # unprimed phys_state.
-            self.boundary.import_fields(0, self.rank, self.pool)
+            self._collective_boundary_call(
+                "initial boundary import",
+                lambda: self.boundary.import_fields(0, self.rank, self.pool),
+            )
             prepare_initialize = getattr(self.backend, "prepare_initialize", None)
             if callable(prepare_initialize):
                 prepare_initialize(self.pool, fcomm=self.fcomm)
@@ -1170,7 +1177,10 @@ class PICAMDriver:
             "kernel",
             200,
         )
-        self.boundary.import_fields(1, self.rank, self.pool)
+        self._collective_boundary_call(
+            "priming boundary import",
+            lambda: self.boundary.import_fields(1, self.rank, self.pool),
+        )
         # The source second atm_init_mct call performs import, cam_run1 and
         # export in one Fortran stack frame.  ``initial_priming`` preserves
         # that startup-only numerical boundary while the trace still exposes
@@ -1179,7 +1189,10 @@ class PICAMDriver:
         self.backend.execute(initial_priming, self.pool, fcomm=self.fcomm)
         self._record(initial_priming)
         self._record(boundary_export)
-        self.boundary.export_fields(1, self.rank, self.pool)
+        self._collective_boundary_call(
+            "priming boundary export",
+            lambda: self.boundary.export_fields(1, self.rank, self.pool),
+        )
         self._boundary_step = 2
 
     def _validate_initial_cam_export(self) -> None:
@@ -1188,7 +1201,10 @@ class PICAMDriver:
         boundary_export = self.step_plan.select("boundary_export")
         self._execute_boundary_kernel(boundary_export)
         self._record(boundary_export)
-        self.boundary.export_fields(0, self.rank, self.pool)
+        self._collective_boundary_call(
+            "initial boundary export",
+            lambda: self.boundary.export_fields(0, self.rank, self.pool),
+        )
 
     def _record(self, action: PICAMAction) -> PICAMActionTrace:
         trace = PICAMActionTrace(
@@ -1211,16 +1227,31 @@ class PICAMDriver:
         elif action.kind == "runtime_catalog_process":
             self.process_contexts.invoke(action.name)
         elif action.operation == "boundary_import":
-            self.boundary.import_fields(self._boundary_step, self.rank, self.pool)
+            self._collective_boundary_call(
+                f"step {self._boundary_step} boundary import",
+                lambda: self.boundary.import_fields(
+                    self._boundary_step, self.rank, self.pool
+                ),
+            )
             # A coupled atmosphere interval can contain more than one CAM
             # substep.  CESM calls atm_import only at the beginning of that
             # interval and holds cam_in for the remaining substeps.  The
             # replay manifest records those held boundaries explicitly.
-            if self.boundary.has_fresh_import(self._boundary_step, self.rank):
+            if self._collective_boundary_call(
+                f"step {self._boundary_step} boundary import schedule",
+                lambda: self.boundary.has_fresh_import(
+                    self._boundary_step, self.rank
+                ),
+            ):
                 self._execute_boundary_kernel(action)
         elif action.operation == "boundary_export":
             self._execute_boundary_kernel(action)
-            self.boundary.export_fields(self._boundary_step, self.rank, self.pool)
+            self._collective_boundary_call(
+                f"step {self._boundary_step} boundary export",
+                lambda: self.boundary.export_fields(
+                    self._boundary_step, self.rank, self.pool
+                ),
+            )
         elif action.operation == "advance_timestep":
             clock_state = (
                 self.clock.year,
@@ -1832,13 +1863,21 @@ class PICAMDriver:
                 # scientific plan, pass both arrays through one original CAM
                 # numerical call so hidden HOMME state sees exactly the same
                 # call/stack boundary as the source executable.
-                self.boundary.import_fields(self._boundary_step, self.rank, self.pool)
+                self._collective_boundary_call(
+                    f"step {self._boundary_step} boundary import",
+                    lambda: self.boundary.import_fields(
+                        self._boundary_step, self.rank, self.pool
+                    ),
+                )
                 self._record(imports[0])
                 source_step(
                     self.pool,
                     fcomm=self.fcomm,
-                    apply_import=self.boundary.has_fresh_import(
-                        self._boundary_step, self.rank
+                    apply_import=self._collective_boundary_call(
+                        f"step {self._boundary_step} boundary import schedule",
+                        lambda: self.boundary.has_fresh_import(
+                            self._boundary_step, self.rank
+                        ),
                     ),
                 )
                 for action in body:
@@ -1851,7 +1890,12 @@ class PICAMDriver:
                             self._sync_clock_fields()
                     self._record(action)
                 self._record(exports[0])
-                self.boundary.export_fields(self._boundary_step, self.rank, self.pool)
+                self._collective_boundary_call(
+                    f"step {self._boundary_step} boundary export",
+                    lambda: self.boundary.export_fields(
+                        self._boundary_step, self.rank, self.pool
+                    ),
+                )
             else:
                 self._execute(imports[0])
                 for _ in range(self.config.substeps_per_coupling):
@@ -1930,3 +1974,39 @@ class PICAMDriver:
 
     def __exit__(self, exc_type: object, exc: object, traceback: object) -> None:
         self.finalize()
+
+    def _collective_boundary_call(
+        self,
+        label: str,
+        function: Callable[[], Any],
+    ) -> Any:
+        """Run one rank-local boundary operation and fail all ranks together.
+
+        Boundary replay reads and comparisons are local filesystem/NumPy
+        operations.  A failure may therefore occur on only a subset of ranks.
+        No rank may enter the next native MPI kernel until every rank agrees
+        that the boundary operation succeeded.
+        """
+
+        result: Any = None
+        local_error: str | None = None
+        try:
+            result = function()
+        except BaseException:
+            local_error = traceback.format_exc()
+        errors = self.comm.allgather(local_error)
+        failures = [
+            f"rank {rank}:\n{error}"
+            for rank, error in enumerate(errors)
+            if error is not None
+        ]
+        if failures:
+            if self.rank == 0:
+                message = (
+                    f"{label} failed on {len(failures)} of {self.size} MPI ranks:\n"
+                    + "\n".join(failures[:8])
+                )
+            else:
+                message = f"{label} failed collectively; see rank 0"
+            raise BoundaryReplayError(message)
+        return result

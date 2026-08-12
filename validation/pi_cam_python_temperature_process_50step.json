@@ -1,0 +1,52 @@
+{
+  "schema_version": 1,
+  "date": "2026-08-12",
+  "base_commit": "54e78b6",
+  "mpi_ranks": 512,
+  "queue": "cpudev",
+  "regression": {
+    "pbs_job_id": "7100201.desched1",
+    "steps_requested": 2,
+    "symptom": "510 ranks raised a rank-local boundary export mismatch while ranks 132 and 279 entered the next stepon_run2 MPI exchange",
+    "result": "deadlock reproduced and job terminated"
+  },
+  "nonzero_process": {
+    "pbs_job_id": "7100500.desched1",
+    "steps": 50,
+    "python_processes_per_step": 2,
+    "temperature_increment_per_process_kelvin": 0.0001,
+    "actions": 2450,
+    "model_step": 50,
+    "native_step": 51,
+    "boundary_export_verification": false,
+    "walltime": "00:01:09",
+    "exit_status": 0,
+    "passed": true,
+    "run_dir": "/glade/derecho/scratch/ruitong/freeCAM/PI-cam/notebook-20260812-094015-7335c816/run"
+  },
+  "strict_difference_gate": {
+    "pbs_job_id": "7100489.desched1",
+    "temperature_increment_per_process_kelvin": 0.0001,
+    "boundary_export_verification": true,
+    "collective_failure_ranks": 510,
+    "reported_before_next_step": true,
+    "deadlock": false
+  },
+  "strict_bfb_gate": {
+    "pbs_job_id": "7100508.desched1",
+    "steps": 50,
+    "python_processes_per_step": 2,
+    "temperature_increment_per_process_kelvin": 0.0,
+    "actions": 2450,
+    "model_step": 50,
+    "native_step": 51,
+    "boundary_export_verification": true,
+    "passed": true,
+    "run_dir": "/glade/derecho/scratch/ruitong/freeCAM/PI-cam/notebook-20260812-094153-1149ac6c/run"
+  },
+  "unit_tests": {
+    "command": ".venv/bin/python -m pytest tests/unit -q",
+    "passed": 147,
+    "failed": 0
+  }
+}

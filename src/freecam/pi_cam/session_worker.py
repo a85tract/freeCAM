@@ -4,10 +4,10 @@ from __future__ import annotations
 
 import argparse
 import base64
+import traceback
 from dataclasses import asdict
 from multiprocessing.connection import Client
 from pathlib import Path
-import traceback
 from typing import Any
 
 import numpy as np
@@ -58,6 +58,9 @@ def _status(driver: Any) -> dict[str, object]:
             "restart_every": driver.restart_every,
             "restart_at_end": driver.restart_at_end,
         },
+        "boundary_export_verification": bool(
+            getattr(driver.boundary, "verify_exports", False)
+        ),
     }
 
 
@@ -376,6 +379,12 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--boundary", required=True, type=Path)
     parser.add_argument("--run-dir", required=True, type=Path)
     parser.add_argument("--expected-ranks", required=True, type=int)
+    parser.add_argument(
+        "--verify-exports",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="compare every CAM export with the replay oracle",
+    )
     args = parser.parse_args(argv)
     comm = MPI.COMM_WORLD
     connection = None
@@ -393,7 +402,10 @@ def main(argv: list[str] | None = None) -> int:
                 )
             case = PICAMCase.from_yaml(args.config)
             driver = case.runtime(
-                boundary=ReplayBoundaryProvider(args.boundary),
+                boundary=ReplayBoundaryProvider(
+                    args.boundary,
+                    verify_exports=args.verify_exports,
+                ),
                 communicator=comm,
                 run_dir=args.run_dir,
             )
