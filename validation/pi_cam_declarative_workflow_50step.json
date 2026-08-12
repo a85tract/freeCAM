@@ -1,0 +1,26 @@
+{
+  "schema_version": 1,
+  "date": "2026-08-11",
+  "pbs_job_id": "7097967.desched1",
+  "queue": "cpudev",
+  "mpi_ranks": 512,
+  "steps": 50,
+  "case": "PI-atm-declarative-validation",
+  "configured_processes": [
+    "declarative_noop_1",
+    "declarative_noop_2"
+  ],
+  "workflow_actions_after_initialize": 50,
+  "executed_actions": 2501,
+  "candidate_run": "/glade/derecho/scratch/ruitong/freeCAM/PI-cam/notebook-20260811-212818-90ec3642/run",
+  "reference_run": "/glade/derecho/scratch/ruitong/pyCAM/PI-cam/f.e13.F1850C5.ne16_g16.icesm131_ihesp.PI-cam-oracle.50step/run",
+  "comparison": {
+    "bfb": true,
+    "reference_files": 4,
+    "candidate_files": 4,
+    "compared_files": 4,
+    "missing_in_candidate": [],
+    "extra_in_candidate": [],
+    "first_difference": null
+  }
+}

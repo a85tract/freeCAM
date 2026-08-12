@@ -1,0 +1,28 @@
+{
+  "schema_version": 1,
+  "date": "2026-08-12",
+  "pbs_job_id": "7098886.desched1",
+  "queue": "cpudev",
+  "mpi_ranks": 512,
+  "steps": 50,
+  "case": "PI-atm-pythonic-ui-validation",
+  "preview_actions": 49,
+  "preview_without_launch": true,
+  "configured_processes": [
+    "attribute_noop_1",
+    "attribute_noop_2"
+  ],
+  "initial_global_temperature_mean": 242.86870659185382,
+  "executed_actions": 2501,
+  "candidate_run": "/glade/derecho/scratch/ruitong/freeCAM/PI-cam/notebook-20260812-011403-6f88cda9/run",
+  "reference_run": "/glade/derecho/scratch/ruitong/pyCAM/PI-cam/f.e13.F1850C5.ne16_g16.icesm131_ihesp.PI-cam-oracle.50step/run",
+  "comparison": {
+    "bfb": true,
+    "reference_files": 4,
+    "candidate_files": 4,
+    "compared_files": 4,
+    "missing_in_candidate": [],
+    "extra_in_candidate": [],
+    "first_difference": null
+  }
+}

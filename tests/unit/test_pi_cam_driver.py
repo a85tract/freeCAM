@@ -104,6 +104,30 @@ def test_restart_alarm_is_decided_by_python_before_calling_io_service() -> None:
     assert ("io-service", "restart") in backend.dispatches
 
 
+def test_python_output_cadence_can_skip_history_and_schedule_restart() -> None:
+    driver, backend, _ = _driver()
+    driver.initialize()
+    history = driver.step_plan.select("wshist", phase="cam_run4")
+    restart = driver.step_plan.select("restart", phase="cam_run4")
+    driver.configure_output(
+        history_every=2,
+        restart_every=2,
+        restart_at_end=False,
+    )
+
+    driver._native_step = 0
+    driver._execute(history)
+    driver._execute(restart)
+    assert ("io-service", "wshist") not in backend.dispatches
+    assert ("io-service", "restart") not in backend.dispatches
+
+    driver._native_step = 1
+    driver._execute(history)
+    driver._execute(restart)
+    assert ("io-service", "wshist") in backend.dispatches
+    assert ("io-service", "restart") in backend.dispatches
+
+
 def test_fine_grained_step_holds_native_import_when_coupling_input_is_held() -> None:
     class HeldBoundary(InMemoryBoundaryProvider):
         def has_fresh_import(self, step: int, rank: int) -> bool:
@@ -438,6 +462,32 @@ def test_dynamic_field_and_python_process_are_part_of_the_step_plan() -> None:
     process.remove()
     driver.delete_variable("tracer")
     assert "experiment_tracer" not in driver.pool
+
+
+def test_physics_run_uses_attribute_style_rank_local_state() -> None:
+    from freecam.pi_cam import Physics
+
+    driver, _, _ = _driver()
+    driver.initialize()
+    tracer = driver.define_variable(
+        PICAMVariableSpec("experiment_tracer", ("pcols", "pver"), initial=2.0)
+    )
+
+    class Heating(Physics):
+        writes = ("experiment_tracer",)
+
+        def run(self, state, context):
+            state.experiment_tracer += 1.0e-3 * context.timestep_seconds
+
+    process = driver.physics.install_python(
+        Heating().tendency,
+        name="attribute_heating",
+        after="dadadj",
+        writes=Heating.writes,
+    )
+    process.run()
+
+    assert np.array_equal(tracer, np.full(tracer.shape, 3.8))
 
 
 def test_rank_independent_numpy_array_is_copied_into_statepool() -> None:

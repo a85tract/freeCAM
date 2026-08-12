@@ -1,7 +1,11 @@
 """Public interface for freeCAM."""
 
 from .pi_cam import (
+    CASES,
+    CaseConfig,
+    CaseRegistry,
     Driver,
+    FreeCAM,
     Physics,
     PICAMAction,
     PICAMActionTrace,
@@ -9,15 +13,25 @@ from .pi_cam import (
     PICAMConfig,
     PICAMNotebookError,
     PICAMNotebookSession,
+    PICAMOutputView,
     PICAMStateView,
     PICAMStepPlan,
     PICAMWorkflowAction,
     PICAMWorkflowView,
     Variable,
+    WorkflowFactory,
+    WorkflowPreview,
+    WorkflowPreviewAction,
+    WorkflowTemplate,
+    PythonStateView,
 )
 
 __all__ = [
+    "CASES",
+    "CaseConfig",
+    "CaseRegistry",
     "Driver",
+    "FreeCAM",
     "Physics",
     "PICAMAction",
     "PICAMActionTrace",
@@ -25,11 +39,17 @@ __all__ = [
     "PICAMConfig",
     "PICAMNotebookError",
     "PICAMNotebookSession",
+    "PICAMOutputView",
     "PICAMStateView",
     "PICAMStepPlan",
     "PICAMWorkflowAction",
     "PICAMWorkflowView",
     "Variable",
+    "WorkflowFactory",
+    "WorkflowPreview",
+    "WorkflowPreviewAction",
+    "WorkflowTemplate",
+    "PythonStateView",
 ]
 
 __version__ = "0.19.0"

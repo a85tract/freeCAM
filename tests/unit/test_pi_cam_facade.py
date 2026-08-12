@@ -2,7 +2,9 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from freecam.pi_cam import Driver
+import pytest
+
+from freecam.pi_cam import CASES, CaseConfig, CaseRegistry, Driver, FreeCAM, Physics
 
 
 class FakeSession:
@@ -15,6 +17,7 @@ class FakeSession:
         self.closed = False
         self.state = object()
         self.workflow_replacements = []
+        self.output_config = None
 
         class Workflow:
             def replace(inner_self, processes):
@@ -49,13 +52,90 @@ class FakeSession:
         self._actions += steps
         return self.status
 
+    def configure_output(self, **options):
+        self.output_config = dict(options)
+        return self.status
+
     def trace(self, *, since=0):
-        assert since == 2
+        assert since in {0, 2}
         return tuple(self._trace)
 
     def close(self):
         self.closed = True
         self.running = False
+
+
+class FakeWorkflowAction:
+    def __init__(self, session, name, phase="cam") -> None:
+        self.session = session
+        self.name = name
+        self.operation = name
+        self.phase = phase
+        self.enabled = True
+        self.removed = False
+
+    @property
+    def qualified_name(self):
+        return f"{self.phase}.{self.name}"
+
+    def enable(self):
+        self.enabled = True
+
+    def disable(self):
+        self.enabled = False
+
+    def remove(self):
+        self.removed = True
+
+
+class FakeDeclarativeSession(FakeSession):
+    def __init__(self, config, **kwargs) -> None:
+        super().__init__(config, **kwargs)
+        actions = [
+            FakeWorkflowAction(self, "boundary_import", "boundary"),
+            FakeWorkflowAction(self, "radiation", "physics"),
+            FakeWorkflowAction(self, "advance_timestep", "clock"),
+            FakeWorkflowAction(self, "boundary_export", "boundary"),
+        ]
+        self.original_actions = tuple(actions)
+        self.workflow_replacements = []
+
+        class Workflow:
+            def __init__(inner_self):
+                inner_self.current = list(actions)
+
+            def __getitem__(inner_self, index):
+                return inner_self.current[index]
+
+            def replace(inner_self, processes):
+                inner_self.current = list(processes)
+                self.workflow_replacements.append(tuple(processes))
+
+        class PhysicsCollection:
+            def __init__(inner_self):
+                inner_self.installations = []
+
+            def install_python(
+                inner_self,
+                function,
+                *,
+                name,
+                before,
+                reads,
+                writes,
+                enabled,
+                transactional,
+            ):
+                del function, reads, writes, enabled, transactional
+                phase = before.split(".", 1)[0]
+                handle = FakeWorkflowAction(self, name, phase)
+                inner_self.installations.append(
+                    {"name": name, "before": before, "handle": handle}
+                )
+                return handle
+
+        self.workflow = Workflow()
+        self.physics = PhysicsCollection()
 
 
 def _driver_tree(tmp_path: Path) -> dict[str, Path]:
@@ -117,6 +197,10 @@ def test_driver_hides_run_preparation_and_lazily_reuses_one_session(tmp_path) ->
     assert driver.cam.state is driver.cam.state
     assert driver.running
     assert len(FakeSession.instances) == 1
+    assert FakeSession.instances[0].output_config == {
+        "history_every": 1,
+        "restart_every": "end",
+    }
     driver.cam.workflow = ("physics-a", "physics-b")
     assert FakeSession.instances[0].workflow_replacements == [
         ("physics-a", "physics-b")
@@ -125,9 +209,10 @@ def test_driver_hides_run_preparation_and_lazily_reuses_one_session(tmp_path) ->
     assert (driver.run_dir / "keep-me").is_file()
     assert not (driver.run_dir / "test.cam.h0.0001.nc").exists()
 
-    trace = driver.execute()
+    trace = driver.run()
 
     assert [row["name"] for row in trace] == ["dadadj", "dadadj"]
+    assert driver.trace == trace
     assert len(FakeSession.instances) == 1
     driver.close()
     assert FakeSession.instances[0].closed
@@ -195,6 +280,45 @@ def test_driver_explicit_account_overrides_reference_case(tmp_path) -> None:
     assert driver.account == "EXPLICIT_ACCOUNT"
 
 
+def test_public_case_registry_and_driver_output_options(tmp_path) -> None:
+    paths = _driver_tree(tmp_path)
+    registry = CaseRegistry()
+    custom = registry.register(
+        CaseConfig(
+            name="diagnostic",
+            description="registered test case",
+            forcing="test",
+            base="PI-atm",
+        )
+    )
+
+    assert registry["diagnostic"] is custom
+    assert "PI-atm" in CASES
+    CASES.register(custom)
+    try:
+        driver = Driver(
+            case="diagnostic",
+            nsteps=2,
+            repo=paths["repo"],
+            config=paths["config"],
+            reference_case=paths["reference_case"],
+            reference_run=paths["reference_run"],
+            boundary=paths["boundary"],
+            history_every=5,
+            restart_every=None,
+            session_factory=FakeSession,
+        ).initialize()
+
+        assert driver.case is custom
+        assert FakeSession.instances[-1].output_config == {
+            "history_every": 5,
+            "restart_every": None,
+        }
+        driver.close()
+    finally:
+        CASES.unregister("diagnostic")
+
+
 def test_driver_does_not_use_login_shell_pbs_account_as_fallback(
     tmp_path, monkeypatch
 ) -> None:
@@ -216,3 +340,127 @@ def test_driver_does_not_use_login_shell_pbs_account_as_fallback(
     )
 
     assert driver.account is None
+
+
+class VolcanicAerosol(Physics):
+    name = "volcanic_aerosol"
+    writes = ("air_temperature",)
+
+    def tendency(self, fields, context):
+        del fields, context
+
+
+def test_case_config_installs_repeated_python_processes_in_declared_order(
+    tmp_path,
+) -> None:
+    paths = _driver_tree(tmp_path)
+    FakeSession.instances.clear()
+
+    def volcanic_workflow(default):
+        workflow = default.copy()
+        workflow.insert_after("radiation", VolcanicAerosol())
+        workflow.insert_before("advance_timestep", VolcanicAerosol())
+        return workflow
+
+    case = CaseConfig(
+        name="PI-atm-volcanic",
+        description="two runtime aerosol processes",
+        forcing="fixed PI plus volcanic aerosol",
+        make_atm=lambda: FreeCAM(workflow=volcanic_workflow),
+    )
+    driver = Driver(
+        case=case,
+        nsteps=2,
+        repo=paths["repo"],
+        config=paths["config"],
+        scratch=tmp_path / "scratch",
+        reference_case=paths["reference_case"],
+        reference_run=paths["reference_run"],
+        boundary=paths["boundary"],
+        session_factory=FakeDeclarativeSession,
+    )
+
+    assert not driver.running
+    preview = driver.preview()
+    assert not driver.running
+    assert [item.name for item in preview if item.kind == "python_process"] == [
+        "volcanic_aerosol_1",
+        "volcanic_aerosol_2",
+    ]
+    assert case.workflow.describe() == preview.describe()
+    driver.initialize()
+
+    session = FakeSession.instances[0]
+    assert driver.case is case
+    assert [item.name for item in driver.cam.configured_processes] == [
+        "volcanic_aerosol_1",
+        "volcanic_aerosol_2",
+    ]
+    assert [item.name for item in session.workflow.current] == [
+        "boundary_import",
+        "radiation",
+        "volcanic_aerosol_1",
+        "volcanic_aerosol_2",
+        "advance_timestep",
+        "boundary_export",
+    ]
+    assert [item["before"] for item in session.physics.installations] == [
+        "clock.advance_timestep",
+        "clock.advance_timestep",
+    ]
+
+
+def test_case_workflow_can_omit_optional_process_but_not_control_boundary(
+    tmp_path,
+) -> None:
+    paths = _driver_tree(tmp_path)
+
+    def no_radiation(default):
+        default.remove(default.process("radiation"))
+        return default
+
+    driver = Driver(
+        case=CaseConfig(
+            name="no-radiation",
+            description="test",
+            forcing="test",
+            make_atm=lambda: FreeCAM(no_radiation),
+        ),
+        nsteps=2,
+        repo=paths["repo"],
+        config=paths["config"],
+        reference_case=paths["reference_case"],
+        reference_run=paths["reference_run"],
+        boundary=paths["boundary"],
+        session_factory=FakeDeclarativeSession,
+    )
+    driver.initialize()
+    session = FakeSession.instances[-1]
+    radiation = next(
+        item for item in session.original_actions if item.name == "radiation"
+    )
+    assert not radiation.enabled
+    assert "radiation" not in [item.name for item in session.workflow.current]
+
+    def invalid(default):
+        default.remove(default.process("boundary_export"))
+        return default
+
+    invalid_driver = Driver(
+        case=CaseConfig(
+            name="invalid",
+            description="test",
+            forcing="test",
+            make_atm=lambda: FreeCAM(invalid),
+        ),
+        nsteps=2,
+        repo=paths["repo"],
+        config=paths["config"],
+        reference_case=paths["reference_case"],
+        reference_run=paths["reference_run"],
+        boundary=paths["boundary"],
+        session_factory=FakeDeclarativeSession,
+    )
+    with pytest.raises(ValueError, match="cannot remove required CAM control"):
+        invalid_driver.initialize()
+    assert FakeSession.instances[-1].closed

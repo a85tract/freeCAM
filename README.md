@@ -36,6 +36,14 @@ produced by the 512-rank, 50-step Python-controlled leaf workflow in
 [`pi_cam_python_control_50step.json`](validation/pi_cam_python_control_50step.json).
 The per-process support table is
 [`pi_cam_process_support.json`](validation/pi_cam_process_support.json).
+The declarative `CaseConfig` startup path, including two independently named
+instances of the same Python process, is recorded in
+[`pi_cam_declarative_workflow_50step.json`](validation/pi_cam_declarative_workflow_50step.json).
+The complete Pythonic UI gate—including distributed NumPy expressions,
+StatePool mapping, declarative workflow, and Xarray output access—is
+[`pi_cam_pythonic_ui_complete_50step.json`](validation/pi_cam_pythonic_ui_complete_50step.json).
+It ran 50 steps on 512 ranks and remained BFB for all four CAM
+history/restart files.
 
 ## Install
 
@@ -55,11 +63,18 @@ embedded in the package.
 ```python
 import freecam as fc
 
-with fc.Driver(case="PI-atm", nsteps=2) as driver:
+with fc.Driver(
+    case="PI-atm",
+    nsteps=2,
+    history_every=1,
+    restart_every="end",
+) as driver:
     print(driver.case)
+    print(driver.preview())       # no PBS/MPI launch
     print(driver.cam.state.summary(rank=0))
 
-    driver.cam.advance(steps=2)
+    print(driver.cam.state.T.mean())
+    driver.run(steps=2)
 
     temperature = driver.cam.state.T
     print(temperature.stats(rank="global"))
@@ -80,6 +95,44 @@ request global statistics without copying the complete model to Jupyter:
 ```python
 rank_zero_temperature = driver.cam.state.T.get(rank=0)
 global_temperature = driver.cam.state.T.stats(rank="global")
+global_mean = driver.cam.state.T.mean()
+```
+
+Scalar edits use ordinary augmented assignment. One compact command is sent
+to the persistent model, then every MPI rank edits its own local array:
+
+```python
+driver.cam.state.T += 1.0
+driver.cam.state.q *= 0.95
+driver.cam.state.v.fill(0.0)
+
+# NumPy-style slices are evaluated independently on every MPI rank.
+driver.cam.state.T[:, 0, :] += 0.25
+top_level_mean = driver.cam.state.T[:, 0, :].mean()
+```
+
+Slice edits never copy the full distributed field through Jupyter. The index
+keeps the field's rank-local NumPy axis order, and freeCAM automatically skips
+inactive `pcols` padding.
+
+NumPy expressions are also lazy and distributed. The Notebook sends the small
+expression tree; every MPI rank evaluates it against its own StatePool arrays:
+
+```python
+state = driver.cam.state
+state.T = np.minimum(state.T + state.heating_rate * 1800.0, 320.0)
+state.q[:] = np.maximum(state.q, 0.0)
+
+# Only an explicit compute() copies one selected rank's result to Jupyter.
+rank_zero_celsius = (state.T - 273.15).compute(rank=0)
+```
+
+The StatePool can also be inspected as a mapping:
+
+```python
+print(state.keys())
+print(state.describe())
+temperature = state["phys_state.t"]
 ```
 
 For a small rank-independent array, use ordinary NumPy assignment. The same
@@ -174,7 +227,14 @@ custom_order.insert(custom_order.index(vertical_diffusion), radiation)
 
 workflow[:] = custom_order
 workflow[:] = source_order
+
+# Familiar list operations are also available for a Physics object or handle.
+workflow.append(custom_process)  # inserted before the required final export
+removed = workflow.pop(-2)      # removes runtime processes; disables source ones
 ```
+
+The three required control boundaries (`boundary_import`, `advance_timestep`,
+and `boundary_export`) cannot be popped or removed.
 
 The default workflow already uses every validated leaf boundary. Composite
 Fortran stages such as the old run2 `finish` and run4 `wrapup` remain visible
@@ -195,6 +255,48 @@ No enabled default action has `kind="control"`. In particular, Python decides
 whether an import is fresh, whether restart is due, when the public clock
 advances, and when each service is invoked.
 
+### Define a case with its workflow
+
+A case can declare its complete atmosphere workflow before the model starts.
+The factory receives the validated default order, so it can insert new
+processes without copying dozens of required CAM actions into the notebook:
+
+```python
+class VolcanicAerosol(fc.Physics):
+    name = "volcanic_aerosol"
+    writes = ("phys_state.t",)
+
+    def run(self, state, context):
+        state.T += 1.0e-4
+
+
+def volcanic_workflow(default):
+    workflow = default.copy()
+    workflow.insert_after("dadadj", VolcanicAerosol())
+    workflow.insert_before("radiation_tend", VolcanicAerosol())
+    return workflow
+
+
+volcanic_case = fc.CaseConfig(
+    name="PI-atm-volcanic",
+    description="PI-atm with two volcanic aerosol tendencies",
+    forcing="1850 prescribed SST and sea ice plus volcanic aerosol",
+    make_atm=lambda: fc.FreeCAM(workflow=volcanic_workflow),
+)
+
+volcanic_case.workflow.describe()  # no job submission
+
+fc.CASES.register(volcanic_case)
+
+with fc.Driver(case="PI-atm-volcanic", nsteps=2) as driver:
+    driver.cam.advance(steps=2)
+```
+
+The two `VolcanicAerosol()` entries become independent runtime processes named
+`volcanic_aerosol_1` and `volcanic_aerosol_2`. Omitting an ordinary physics
+process from the returned list disables it. Required boundary, clock, and
+export actions are checked before the new order is applied.
+
 ## Add a Python process
 
 ```python
@@ -203,8 +305,8 @@ class Heating(fc.Physics):
     after = "dry_adjustment"
     writes = ("phys_state.t",)
 
-    def tendency(self, fields, context):
-        fields["phys_state.t"][...] += 0.01
+    def run(self, state, context):
+        state.T += 0.01
 
 process = driver.cam.workflow.insert(Heating())
 process.run()
@@ -215,8 +317,40 @@ process.remove()
 ```
 
 The neighbor name determines placement; users do not specify a CAM phase.
-The callback is serialized with `cloudpickle`, broadcast to every MPI rank,
-and runs against that rank's local StatePool views.
+`state.T` is a direct NumPy view of that MPI rank's StatePool array. The
+callback is serialized with `cloudpickle`, broadcast to every rank, and runs
+locally without a socket round trip. The older `tendency(fields, context)`
+mapping interface remains supported.
+
+## Output cadence
+
+History and restart alarms are ordinary `Driver` options:
+
+```python
+driver = fc.Driver(
+    case="PI-atm",
+    nsteps=50,
+    history_every=5,       # history every five model steps; None disables it
+    restart_every="end",  # "end", a step interval, or None
+)
+```
+
+Python decides whether the corresponding Fortran PIO service is called. The
+defaults, `history_every=1` and `restart_every="end"`, preserve the validated
+PI-CAM execution path.
+
+CAM output is exposed lazily through Xarray after the run:
+
+```python
+print(driver.cam.history.files)
+print(driver.cam.history.streams)
+
+with driver.cam.history.open("h0") as history:
+    history["T"].isel(time=-1).plot()
+
+with driver.cam.restart.open("r") as restart:
+    print(restart)
+```
 
 ## Build and test
 

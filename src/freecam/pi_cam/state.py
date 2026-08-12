@@ -209,6 +209,7 @@ class PICAMStatePool(Mapping[str, np.ndarray]):
                 return default  # type: ignore[return-value]
             raise
 
+
     def create(
         self,
         contract: PICAMFieldContract,
@@ -438,6 +439,159 @@ class PICAMStatePool(Mapping[str, np.ndarray]):
             for name, array in self._arrays.items()
             if self._contracts[name].category != "native_cam_inline_state"
         )
+
+
+def active_field_slices(
+    pool: PICAMStatePool, name: str
+) -> tuple[np.ndarray, ...]:
+    """Return field views excluding inactive CAM ``pcols`` padding."""
+
+    canonical = pool.canonical_name(name)
+    values = pool[canonical]
+    dimensions = tuple(pool.contract(canonical).dimensions)
+    if "pcols" not in dimensions or "chunks" not in dimensions:
+        return (values,)
+    pcols_axis = dimensions.index("pcols")
+    chunks_axis = dimensions.index("chunks")
+    ncols = None
+    for candidate in ("grid.chunk_ncols", "phys_state.ncol"):
+        try:
+            ncols = np.asarray(pool[candidate], dtype=np.int64).reshape(-1)
+        except KeyError:
+            continue
+        break
+    if ncols is None:
+        raise PICAMStateError(
+            f"field {canonical!r} uses pcols/chunks but StatePool has no "
+            "chunk ncol field"
+        )
+    moved = np.moveaxis(values, (pcols_axis, chunks_axis), (0, -1))
+    if ncols.size != moved.shape[-1]:
+        raise PICAMStateError(
+            f"field {canonical!r} chunk dimension does not match chunk ncol metadata"
+        )
+    slices = tuple(
+        moved[: int(count), ..., chunk]
+        for chunk, count in enumerate(ncols)
+        if int(count) > 0
+    )
+    if not slices:
+        raise PICAMStateError(f"field {canonical!r} has no active local columns")
+    return slices
+
+
+def active_field_mask(pool: PICAMStatePool, name: str) -> np.ndarray:
+    """Return a mask selecting scientifically active rank-local entries.
+
+    CAM allocates every physics chunk with ``pcols`` rows even when the final
+    chunk owns fewer columns.  A Notebook slice uses the array's normal NumPy
+    axes, while this mask prevents scalar edits and statistics from touching
+    those inactive padding rows.
+    """
+
+    canonical = pool.canonical_name(name)
+    values = pool[canonical]
+    dimensions = tuple(pool.contract(canonical).dimensions)
+    if "pcols" not in dimensions or "chunks" not in dimensions:
+        return np.ones(values.shape, dtype=np.bool_, order="F")
+    pcols_axis = dimensions.index("pcols")
+    chunks_axis = dimensions.index("chunks")
+    ncols = None
+    for candidate in ("grid.chunk_ncols", "phys_state.ncol"):
+        try:
+            ncols = np.asarray(pool[candidate], dtype=np.int64).reshape(-1)
+        except KeyError:
+            continue
+        break
+    if ncols is None:
+        raise PICAMStateError(
+            f"field {canonical!r} uses pcols/chunks but StatePool has no "
+            "chunk ncol field"
+        )
+    moved_shape = np.moveaxis(values, (pcols_axis, chunks_axis), (0, -1)).shape
+    if ncols.size != moved_shape[-1]:
+        raise PICAMStateError(
+            f"field {canonical!r} chunk dimension does not match chunk ncol metadata"
+        )
+    moved_mask = np.zeros(moved_shape, dtype=np.bool_, order="F")
+    for chunk, count in enumerate(ncols):
+        moved_mask[: int(count), ..., chunk] = True
+    return np.moveaxis(moved_mask, (0, -1), (pcols_axis, chunks_axis))
+
+
+def selected_active_values(
+    pool: PICAMStatePool,
+    name: str,
+    selection: object = Ellipsis,
+) -> np.ndarray:
+    """Flatten active values selected with ordinary rank-local NumPy syntax."""
+
+    values = np.asarray(pool[name][selection])
+    mask = np.asarray(active_field_mask(pool, name)[selection], dtype=np.bool_)
+    if values.ndim == 0:
+        return values.reshape(1) if bool(mask) else np.empty(0, dtype=values.dtype)
+    return values[mask]
+
+
+def edit_active_field(
+    pool: PICAMStatePool,
+    name: str,
+    *,
+    selection: object = Ellipsis,
+    operation: str,
+    value: float | int,
+) -> int:
+    """Apply one scalar operation to active entries of a rank-local slice."""
+
+    values = pool[name]
+    selected = np.asarray(values[selection])
+    active = np.asarray(active_field_mask(pool, name)[selection], dtype=np.bool_)
+    count = int(active.sum())
+    if count == 0:
+        raise PICAMStateError("field selection contains no active CAM values")
+    if selected.ndim == 0:
+        current = selected.item()
+        operations = {
+            "fill": lambda: value,
+            "add": lambda: current + value,
+            "subtract": lambda: current - value,
+            "multiply": lambda: current * value,
+            "divide": lambda: current / value,
+        }
+        try:
+            updated = operations[str(operation)]()
+        except KeyError as exc:
+            raise PICAMStateError(
+                f"unsupported distributed field edit {operation!r}"
+            ) from exc
+        values[selection] = updated
+        return count
+
+    updated = np.array(selected, copy=True, order="K")
+    if operation == "fill":
+        updated[active] = value
+    else:
+        functions = {
+            "add": np.add,
+            "subtract": np.subtract,
+            "multiply": np.multiply,
+            "divide": np.divide,
+        }
+        try:
+            function = functions[str(operation)]
+        except KeyError as exc:
+            raise PICAMStateError(
+                f"unsupported distributed field edit {operation!r}"
+            ) from exc
+        function(
+            updated,
+            value,
+            out=updated,
+            where=active,
+            casting="same_kind",
+        )
+    values[selection] = updated
+    return count
 
 
 @dataclass(frozen=True, slots=True)

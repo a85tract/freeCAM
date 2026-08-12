@@ -421,6 +421,77 @@ class PythonFieldView(Mapping[str, np.ndarray]):
         return len(self._names)
 
 
+class PythonStateView(Mapping[str, np.ndarray]):
+    """Attribute-style view of one callback's declared StatePool fields.
+
+    ``state.T`` is still the rank-local NumPy view owned by StatePool; this
+    class only translates friendly attribute names and enforces the existing
+    read/write declaration.  It never copies a field or performs MPI work.
+    """
+
+    _COMMON_ALIASES = {
+        "T": ("T", "phys_state.t", "air_temperature"),
+        "u": ("u", "phys_state.u", "eastward_wind"),
+        "v": ("v", "phys_state.v", "northward_wind"),
+        "q": ("q", "phys_state.q", "specific_humidity"),
+    }
+
+    def __init__(self, fields: PythonFieldView) -> None:
+        object.__setattr__(self, "_fields", fields)
+
+    def _key(self, name: str) -> str:
+        candidates = self._COMMON_ALIASES.get(str(name), (str(name),))
+        for candidate in candidates:
+            if candidate in self._fields:
+                return candidate
+        leaf_matches = tuple(
+            key for key in self._fields if key.rsplit(".", 1)[-1] == str(name)
+        )
+        if len(leaf_matches) == 1:
+            return leaf_matches[0]
+        raise KeyError(name)
+
+    def __getitem__(self, name: str) -> np.ndarray:
+        return self._fields[self._key(str(name))]
+
+    def __getattr__(self, name: str) -> np.ndarray:
+        try:
+            return self[name]
+        except KeyError as exc:
+            raise AttributeError(name) from exc
+
+    def __setattr__(self, name: str, value: Any) -> None:
+        if name.startswith("_"):
+            object.__setattr__(self, name, value)
+            return
+        target = self[name]
+        if value is target:
+            # ``state.T += value`` mutates the view first, then Python assigns
+            # the same object back to the attribute.
+            return
+        if not target.flags.writeable:
+            raise StateOwnershipError(
+                f"Python process field {name!r} was declared read-only"
+            )
+        np.copyto(target, value, casting="same_kind")
+
+    def __iter__(self) -> Iterator[str]:
+        return iter(self._fields)
+
+    def __len__(self) -> int:
+        return len(self._fields)
+
+    def __dir__(self) -> list[str]:
+        names = {name for name in self._fields if str(name).isidentifier()}
+        for alias in self._COMMON_ALIASES:
+            try:
+                self._key(alias)
+            except KeyError:
+                continue
+            names.add(alias)
+        return sorted(set(super().__dir__()) | names)
+
+
 @dataclass(slots=True)
 class RegisteredPythonProcess:
     """Rank-local registry record for one installed Python process."""

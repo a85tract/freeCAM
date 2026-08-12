@@ -1033,6 +1033,9 @@ class PICAMDriver:
         self._native_step = 0
         self._trace: list[PICAMActionTrace] = []
         self.history_callback = history_callback
+        self.history_every: int | None = 1
+        self.restart_every: int | None = None
+        self.restart_at_end = True
         self.run_dir = None if run_dir is None else Path(run_dir).resolve()
         self._previous_directory: Path | None = None
         self._advance_public_clock = True
@@ -1246,7 +1249,11 @@ class PICAMDriver:
         elif action.kind == "io":
             if self.history_callback is not None:
                 self.history_callback(action, self)
-            elif action.operation != "restart" or self._restart_due():
+            elif action.operation == "wshist" and self._history_due():
+                self._execute_io_service(action)
+            elif action.operation == "restart" and self._restart_due():
+                self._execute_io_service(action)
+            elif action.operation not in {"wshist", "restart"}:
                 self._execute_io_service(action)
         elif action.kind == "service":
             self._execute_state_service(action)
@@ -1257,7 +1264,43 @@ class PICAMDriver:
     def _restart_due(self) -> bool:
         """Return the Python-owned restart alarm for the admitted nstep case."""
 
-        return self._native_step >= self.config.stop_n
+        if self.restart_every is not None:
+            return (self._native_step + 1) % self.restart_every == 0
+        return self.restart_at_end and self._native_step >= self.config.stop_n
+
+    def _history_due(self) -> bool:
+        """Return whether the current output boundary should write history."""
+
+        return self.history_every is not None and (
+            (self._native_step + 1) % self.history_every == 0
+        )
+
+    def configure_output(
+        self,
+        *,
+        history_every: int | None = 1,
+        restart_every: int | None = None,
+        restart_at_end: bool = True,
+    ) -> None:
+        """Configure Python-owned history and restart alarms in model steps."""
+
+        for name, value in (
+            ("history_every", history_every),
+            ("restart_every", restart_every),
+        ):
+            if value is not None and (
+                isinstance(value, bool) or int(value) < 1
+            ):
+                raise PICAMConfigurationError(
+                    f"{name} must be a positive integer or None"
+                )
+        self.history_every = (
+            None if history_every is None else int(history_every)
+        )
+        self.restart_every = (
+            None if restart_every is None else int(restart_every)
+        )
+        self.restart_at_end = bool(restart_at_end)
 
     def _execute_backend_primitive(
         self, method: str, action: PICAMAction

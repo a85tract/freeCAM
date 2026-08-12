@@ -9,7 +9,21 @@ from .boundary import (
 )
 from .case import PICAMCase
 from .config import PICAMConfig
-from .facade import Driver, Physics, PICAMCaseInfo, Variable
+from .facade import (
+    CASES,
+    CaseConfig,
+    CaseRegistry,
+    Driver,
+    FreeCAM,
+    Physics,
+    PICAMCaseInfo,
+    Variable,
+    WorkflowFactory,
+    WorkflowPreview,
+    WorkflowPreviewAction,
+    WorkflowTemplate,
+)
+from .history import PICAMOutputView
 from .driver import PICAMActionTrace, PICAMDriver, PICAMLifecycle
 from .errors import (
     BoundaryReplayError,
@@ -26,6 +40,7 @@ from .state import PICAMFieldContract, PICAMStatePool, PICAMStateSchema
 from .state import PICAMVariableSpec
 from .runtime_fortran import PICAMFortranProcessSpec
 from freecam.model.python_processes import PythonProcessContext, PythonProcessSpec
+from freecam.model.python_processes import PythonStateView
 from .validation import PICAMBFBResult, compare_pi_cam_directories
 from .source_catalog import (
     FortranArgument,
@@ -60,7 +75,11 @@ __all__ = [
     "BoundaryReplayError",
     "CAMBoundaryProvider",
     "CAMNumericalBackend",
+    "CASES",
+    "CaseConfig",
+    "CaseRegistry",
     "Driver",
+    "FreeCAM",
     "InMemoryBoundaryProvider",
     "FortranArgument",
     "FortranParseFailure",
@@ -86,6 +105,7 @@ __all__ = [
     "PICAMKernelRules",
     "PICAMNotebookError",
     "PICAMNotebookSession",
+    "PICAMOutputView",
     "PICAMPhysicsCatalog",
     "PICAMPhysicsProcess",
     "PICAMPhysicsRules",
@@ -105,10 +125,15 @@ __all__ = [
     "PICAMFortranProcessSpec",
     "PythonProcessContext",
     "PythonProcessSpec",
+    "PythonStateView",
     "RecordingCAMBackend",
     "ReplayBoundaryProvider",
     "write_boundary_payload",
     "Variable",
+    "WorkflowFactory",
+    "WorkflowPreview",
+    "WorkflowPreviewAction",
+    "WorkflowTemplate",
     "compare_pi_cam_directories",
     "build_physics_catalog",
     "generated_promoted_kernels",

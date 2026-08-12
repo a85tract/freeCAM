@@ -6,11 +6,21 @@ import numpy as np
 import pytest
 
 from freecam.pi_cam import session as session_module
+from freecam.pi_cam.expressions import assign_expression, evaluate_expression
 from freecam.pi_cam.plan import PICAMAction, PICAMStepPlan
 from freecam.pi_cam.session import (
     PICAMNotebookError,
     PICAMNotebookSession,
+    _SessionFieldReference,
     _authkey_argument,
+)
+from freecam.pi_cam.state import (
+    PICAMFieldContract,
+    PICAMStatePool,
+    active_field_mask,
+    active_field_slices,
+    edit_active_field,
+    selected_active_values,
 )
 
 
@@ -46,6 +56,115 @@ def test_authkey_argument_is_unambiguous_when_base64_starts_with_dash() -> None:
     argument = _authkey_argument(bytes([248]) * 32)
 
     assert argument.startswith("--authkey=-")
+
+
+def test_active_field_slices_exclude_padded_physics_columns() -> None:
+    pool = PICAMStatePool({"pcols": 4, "pver": 2, "chunks": 2})
+    ncols = pool.create(
+        PICAMFieldContract("grid.chunk_ncols", ("chunks",), "int32")
+    )
+    ncols[:] = (2, 3)
+    temperature = pool.create(
+        PICAMFieldContract(
+            "phys_state.t", ("pcols", "pver", "chunks"), "float64"
+        ),
+        initial=np.inf,
+    )
+    temperature[:2, :, 0] = 250.0
+    temperature[:3, :, 1] = 270.0
+
+    active = active_field_slices(pool, "phys_state.t")
+
+    assert [values.shape for values in active] == [(2, 2), (3, 2)]
+    assert sum(values.size for values in active) == 10
+    assert sum(float(values.sum()) for values in active) / 10 == 262.0
+    for values in active:
+        values += 1.0
+    assert np.isinf(temperature[3, :, 1]).all()
+
+
+def test_active_field_selection_keeps_numpy_axes_but_excludes_padding() -> None:
+    pool = PICAMStatePool({"pcols": 4, "pver": 3, "chunks": 2})
+    ncols = pool.create(
+        PICAMFieldContract("grid.chunk_ncols", ("chunks",), "int32")
+    )
+    ncols[:] = (2, 3)
+    temperature = pool.create(
+        PICAMFieldContract(
+            "phys_state.t", ("pcols", "pver", "chunks"), "float64"
+        ),
+        initial=np.inf,
+    )
+    temperature[:2, :, 0] = 250.0
+    temperature[:3, :, 1] = 270.0
+
+    mask = active_field_mask(pool, "phys_state.t")
+    selected = selected_active_values(
+        pool, "phys_state.t", (slice(None), 0, slice(None))
+    )
+
+    assert mask.shape == temperature.shape
+    assert sorted(selected.tolist()) == [250.0, 250.0, 270.0, 270.0, 270.0]
+
+    count = edit_active_field(
+        pool,
+        "phys_state.t",
+        selection=(slice(None), 0, slice(None)),
+        operation="add",
+        value=1.0,
+    )
+    assert count == 5
+    assert temperature[:2, 0, 0].tolist() == [251.0, 251.0]
+    assert temperature[:3, 0, 1].tolist() == [271.0, 271.0, 271.0]
+    assert temperature[2:, 0, 0].tolist() == [np.inf, np.inf]
+    assert temperature[3, 0, 1] == np.inf
+
+
+def test_distributed_numpy_expression_is_evaluated_rank_locally() -> None:
+    pool = PICAMStatePool({"pcols": 4, "pver": 2, "chunks": 2})
+    ncols = pool.create(
+        PICAMFieldContract("grid.chunk_ncols", ("chunks",), "int32")
+    )
+    ncols[:] = (2, 3)
+    temperature = pool.create(
+        PICAMFieldContract(
+            "phys_state.t", ("pcols", "pver", "chunks"), "float64"
+        ),
+        initial=np.inf,
+    )
+    heating = pool.create(
+        PICAMFieldContract(
+            "heating_rate", ("pcols", "pver", "chunks"), "float64"
+        ),
+        initial=0.5,
+    )
+    temperature[:2, :, 0] = 250.0
+    temperature[:3, :, 1] = 270.0
+
+    session = object()
+    remote_temperature = _SessionFieldReference(session, "phys_state.t")
+    remote_heating = _SessionFieldReference(session, "heating_rate")
+    expression = np.minimum(remote_temperature + 2.0 * remote_heating, 300.0)
+
+    evaluated = evaluate_expression(pool, expression.payload)
+    assert evaluated.shape == temperature.shape
+    assert np.all(evaluated[:2, :, 0] == 251.0)
+    assert np.all(evaluated[:3, :, 1] == 271.0)
+
+    count = assign_expression(pool, "phys_state.t", expression.payload)
+    assert count == 10
+    assert np.all(temperature[:2, :, 0] == 251.0)
+    assert np.all(temperature[:3, :, 1] == 271.0)
+    assert np.isinf(temperature[2:, :, 0]).all()
+    assert np.isinf(temperature[3, :, 1]).all()
+
+
+def test_distributed_expression_rejects_fields_from_another_model() -> None:
+    first = _SessionFieldReference(object(), "phys_state.t")
+    second = _SessionFieldReference(object(), "phys_state.t")
+
+    with pytest.raises(ValueError, match="different models"):
+        np.add(first, second)
 
 
 def test_session_environment_preloads_manifest_math_runtime(
@@ -632,6 +751,8 @@ def test_session_dynamic_field_and_python_process_commands(
 
     def request(command):
         commands.append(command)
+        if command["op"] == "stats":
+            return {"mean": 4.5, "min": 1.0, "max": 8.0}
         result = {"name": command.get("name", "p")}
         if command["op"] == "install_python":
             result.update(
@@ -649,6 +770,7 @@ def test_session_dynamic_field_and_python_process_commands(
         aliases=("tracer",),
     )
     relative_humidity = session.fields.create_array("rh", np.zeros(30))
+    tracer += 2.0
 
     def callback(fields, context):
         fields["tracer"][...] += context.timestep_seconds
@@ -659,16 +781,222 @@ def test_session_dynamic_field_and_python_process_commands(
         after="dadadj",
         writes=("tracer",),
     )
-
     assert commands[0]["op"] == "create_field"
     assert commands[0]["spec"]["dynamic"] is True
     assert commands[1]["op"] == "create_array"
     assert commands[1]["name"] == "rh"
     assert np.array_equal(commands[1]["values"], np.zeros(30))
-    assert commands[2]["op"] == "install_python"
-    assert commands[2]["spec"]["group"] == "cam_run1"
-    assert commands[2]["spec"]["after"] == "dadadj"
+    assert commands[2] == {
+        "op": "edit_field",
+        "name": "experiment_tracer",
+        "operation": "add",
+        "value": 2.0,
+    }
+    assert commands[3]["op"] == "install_python"
+    assert commands[3]["spec"]["group"] == "cam_run1"
+    assert commands[3]["spec"]["after"] == "dadadj"
     assert tracer.name == "experiment_tracer"
+    assert tracer.mean() == 4.5
+    assert commands[4] == {
+        "op": "stats",
+        "name": "experiment_tracer",
+        "rank": "global",
+    }
     assert relative_humidity.name == "rh"
     assert process.name == "heating"
     assert process.phase == "cam_run1"
+
+
+def test_session_field_slice_builds_compact_collective_commands(
+    tmp_path: Path, monkeypatch
+) -> None:
+    config, boundary, run_dir, env_script, _ = _session_files(tmp_path)
+    session = PICAMNotebookSession(
+        config,
+        boundary=boundary,
+        run_dir=run_dir,
+        env_script=env_script,
+    )
+    session._status = {
+        "fields": {
+            "phys_state.t": {
+                "shape": [16, 30, 1],
+                "dtype": "<f8",
+                "units": "K",
+            }
+        }
+    }
+    commands: list[dict] = []
+
+    def request(command):
+        commands.append(command)
+        if command["op"] == "stats":
+            return {"mean": 240.0}
+        if command["op"] == "field":
+            return np.full((16, 1), 240.0)
+        return {"name": "phys_state.t"}
+
+    monkeypatch.setattr(session, "_request", request)
+    temperature = session.fields["phys_state.t"]
+
+    temperature[:, 0, :] += 1.0
+    assert temperature[:, 0, :].mean() == 240.0
+    assert temperature[:, 0, :].values(rank=3).shape == (16, 1)
+
+    selection = (slice(None), 0, slice(None))
+    assert commands == [
+        {
+            "op": "edit_field",
+            "name": "phys_state.t",
+            "operation": "add",
+            "value": 1.0,
+            "selection": selection,
+        },
+        {
+            "op": "stats",
+            "name": "phys_state.t",
+            "rank": "global",
+            "selection": selection,
+        },
+        {
+            "op": "field",
+            "name": "phys_state.t",
+            "rank": 3,
+            "selection": selection,
+        },
+    ]
+
+
+def test_state_numpy_expression_builds_one_remote_command(
+    tmp_path: Path, monkeypatch
+) -> None:
+    config, boundary, run_dir, env_script, _ = _session_files(tmp_path)
+    session = PICAMNotebookSession(
+        config,
+        boundary=boundary,
+        run_dir=run_dir,
+        env_script=env_script,
+    )
+    session._status = {
+        "fields": {
+            "phys_state.t": {
+                "shape": [16, 30, 1],
+                "dtype": "<f8",
+                "units": "K",
+                "aliases": ["T"],
+            },
+            "heating_rate": {
+                "shape": [16, 30, 1],
+                "dtype": "<f8",
+                "units": "K s-1",
+            },
+        }
+    }
+    commands: list[dict] = []
+
+    def request(command):
+        commands.append(command)
+        if command["op"] == "evaluate_expression":
+            return np.ones((16, 30, 1))
+        return {"name": command.get("name", "phys_state.t")}
+
+    monkeypatch.setattr(session, "_request", request)
+
+    session.state.T = np.minimum(
+        session.state.T + session.state.heating_rate * 1800.0,
+        300.0,
+    )
+    session.state.T[:, 0, :] = np.maximum(
+        session.state.T[:, 0, :],
+        200.0,
+    )
+    values = (session.state.T - 273.15).compute(rank=3)
+
+    assert values.shape == (16, 30, 1)
+    assert [command["op"] for command in commands] == [
+        "assign_expression",
+        "assign_expression",
+        "evaluate_expression",
+    ]
+    assigned = commands[0]["expression"]
+    assert assigned["type"] == "ufunc"
+    assert assigned["name"] == "minimum"
+    assert commands[1]["selection"] == (slice(None), 0, slice(None))
+    assert commands[2]["rank"] == 3
+
+
+def test_session_configures_output_with_end_or_disabled_restart(
+    tmp_path: Path, monkeypatch
+) -> None:
+    config, boundary, run_dir, env_script, _ = _session_files(tmp_path)
+    session = PICAMNotebookSession(
+        config,
+        boundary=boundary,
+        run_dir=run_dir,
+        env_script=env_script,
+    )
+    commands = []
+
+    def request(command):
+        commands.append(command)
+        return {"output": command}
+
+    monkeypatch.setattr(session, "_request", request)
+
+    session.configure_output(history_every=4, restart_every="end")
+    session.configure_output(history_every=None, restart_every=None)
+
+    assert commands == [
+        {
+            "op": "configure_output",
+            "history_every": 4,
+            "restart_every": None,
+            "restart_at_end": True,
+        },
+        {
+            "op": "configure_output",
+            "history_every": None,
+            "restart_every": None,
+            "restart_at_end": False,
+        },
+    ]
+
+
+def test_runtime_process_can_use_final_boundary_as_append_anchor(tmp_path: Path) -> None:
+    config, boundary, run_dir, env_script, _ = _session_files(tmp_path)
+    session = PICAMNotebookSession(
+        config,
+        boundary=boundary,
+        run_dir=run_dir,
+        env_script=env_script,
+    )
+    session._status = {
+        "step_plan": (
+            {
+                "phase": "cam_run1",
+                "name": "dadadj",
+                "operation": "dadadj",
+                "kind": "scheme",
+                "enabled": True,
+            },
+            {
+                "phase": "coupling",
+                "name": "boundary_export",
+                "operation": "boundary_export",
+                "kind": "boundary",
+                "enabled": True,
+            },
+        )
+    }
+
+    phase, before, after = session.physics._resolve_placement(
+        phase=None,
+        before="boundary_export",
+        after=None,
+    )
+
+    assert (phase, before, after) == (
+        "coupling",
+        "boundary_export",
+        None,
+    )

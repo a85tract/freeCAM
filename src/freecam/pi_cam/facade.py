@@ -7,18 +7,24 @@ session when the user first touches live model state.
 
 from __future__ import annotations
 
+from collections import Counter, defaultdict
 from dataclasses import dataclass
 from datetime import datetime
 from fnmatch import fnmatch
+import inspect
 import json
 import os
 from pathlib import Path
 import shutil
-from typing import Any, Mapping, Sequence
+from typing import Any, Callable, Iterator, Mapping, Sequence
 from uuid import uuid4
 from xml.etree import ElementTree
 
+from freecam.model.python_processes import PythonStateView
+
 from .config import PICAMConfig
+from .history import PICAMOutputView
+from .plan import PICAMStepPlan
 from .session import PICAMNotebookSession
 
 
@@ -112,8 +118,20 @@ class Physics:
     enabled: bool = True
     transactional: bool = True
 
-    def tendency(self, fields: Any, context: Any) -> None:
+    def run(self, state: PythonStateView, context: Any) -> None:
+        """Run against friendly rank-local StatePool attributes."""
+
         raise NotImplementedError
+
+    def tendency(self, fields: Any, context: Any) -> None:
+        """Compatibility callback for the original mapping-style API."""
+
+        if type(self).run is Physics.run:
+            raise NotImplementedError(
+                f"{type(self).__name__} must implement run(state, context) "
+                "or tendency(fields, context)"
+            )
+        return self.run(PythonStateView(fields), context)
 
     def _install(
         self,
@@ -141,6 +159,442 @@ class Physics:
         )
 
 
+class WorkflowTemplate(list[Any]):
+    """Mutable declaration of one complete, live PI-CAM process order.
+
+    The initial contents are the validated default workflow.  A case-level
+    factory receives a private copy and can use normal list operations or the
+    named helpers below.  Items may be existing process handles, their names,
+    or :class:`Physics` instances that should be installed at startup.
+    """
+
+    def copy(self) -> "WorkflowTemplate":
+        return WorkflowTemplate(self)
+
+    def process(self, name: str) -> Any:
+        matches = [item for item in self if _workflow_item_matches(item, name)]
+        if len(matches) != 1:
+            raise KeyError(f"workflow process {name!r} is unknown or ambiguous")
+        return matches[0]
+
+    def insert_before(self, anchor: str, process: Any) -> Any:
+        self.insert(self.index(self.process(anchor)), process)
+        return process
+
+    def insert_after(self, anchor: str, process: Any) -> Any:
+        self.insert(self.index(self.process(anchor)) + 1, process)
+        return process
+
+
+WorkflowFactory = Callable[[WorkflowTemplate], Sequence[Any] | None]
+
+
+@dataclass(frozen=True, slots=True)
+class WorkflowPreviewAction:
+    """One process in a declarative workflow preview."""
+
+    name: str
+    operation: str
+    phase: str
+    kind: str
+    implementation: str
+    enabled: bool = True
+
+    @property
+    def qualified_name(self) -> str:
+        return f"{self.phase}.{self.name}"
+
+    def __str__(self) -> str:
+        return self.name
+
+
+class WorkflowPreview(Sequence[WorkflowPreviewAction]):
+    """Read-only workflow description that never launches PBS or MPI."""
+
+    def __init__(self, actions: Sequence[WorkflowPreviewAction]) -> None:
+        self._actions = tuple(actions)
+
+    def __getitem__(self, index: int | slice) -> Any:
+        return self._actions[index]
+
+    def __len__(self) -> int:
+        return len(self._actions)
+
+    def describe(self) -> tuple[dict[str, Any], ...]:
+        return tuple(
+            {
+                "index": index,
+                "name": action.name,
+                "operation": action.operation,
+                "kind": action.kind,
+                "implementation": action.implementation,
+            }
+            for index, action in enumerate(self._actions)
+        )
+
+    def __repr__(self) -> str:
+        return "WorkflowPreview([" + ", ".join(
+            action.name for action in self._actions
+        ) + "])"
+
+
+class FreeCAM:
+    """Declarative atmosphere configuration used by :class:`CaseConfig`.
+
+    This object is intentionally lightweight: constructing it starts no MPI
+    work.  Its workflow is compiled against the real live process handles only
+    after the persistent CAM session has initialized.
+    """
+
+    def __init__(
+        self,
+        workflow: WorkflowFactory | Sequence[Any] | None = None,
+    ) -> None:
+        if isinstance(workflow, (str, bytes)) or (
+            workflow is not None
+            and not callable(workflow)
+            and not isinstance(workflow, Sequence)
+        ):
+            raise TypeError("FreeCAM workflow must be a factory or sequence")
+        self.workflow = workflow
+
+    def preview(self) -> WorkflowPreview:
+        """Compile the declared workflow without starting the model."""
+
+        original = tuple(PICAMStepPlan.default())
+        if self.workflow is None:
+            resolved = original
+            names: Mapping[int, str] = {}
+        else:
+            resolved, names, _ = _compile_case_workflow(self.workflow, original)
+        preview: list[WorkflowPreviewAction] = []
+        for index, item in enumerate(resolved):
+            if isinstance(item, Physics):
+                anchor = next(
+                    later
+                    for later in resolved[index + 1 :]
+                    if not isinstance(later, Physics)
+                )
+                preview.append(
+                    WorkflowPreviewAction(
+                        name=names[index],
+                        operation=names[index],
+                        phase=str(anchor.phase),
+                        kind="python_process",
+                        implementation="python",
+                    )
+                )
+            else:
+                preview.append(
+                    WorkflowPreviewAction(
+                        name=str(item.name),
+                        operation=str(item.operation),
+                        phase=str(item.phase),
+                        kind=str(item.kind),
+                        implementation=str(item.implementation),
+                        enabled=bool(item.enabled),
+                    )
+                )
+        return WorkflowPreview(preview)
+
+
+@dataclass(frozen=True, slots=True)
+class CaseConfig:
+    """User-defined PI-CAM case and its declarative atmosphere workflow."""
+
+    name: str
+    description: str
+    forcing: str
+    make_atm: Callable[[], FreeCAM] = FreeCAM
+    base: str = "PI-atm"
+    config: str | Path | None = None
+
+    def build_atmosphere(self) -> FreeCAM:
+        atmosphere = self.make_atm()
+        if not isinstance(atmosphere, FreeCAM):
+            raise TypeError("CaseConfig.make_atm must return freecam.FreeCAM")
+        return atmosphere
+
+    @property
+    def workflow(self) -> WorkflowPreview:
+        """Preview this case's complete CAM order without launching MPI."""
+
+        return self.build_atmosphere().preview()
+
+    def preview(self) -> WorkflowPreview:
+        return self.workflow
+
+    @property
+    def key(self) -> str:
+        return self.name
+
+    def __str__(self) -> str:
+        return f"{self.name}: {self.description} [{self.forcing}]"
+
+
+class CaseRegistry(Mapping[str, CaseConfig]):
+    """Small public registry for reusable Notebook case declarations."""
+
+    def __init__(self, cases: Sequence[CaseConfig] = ()) -> None:
+        self._cases: dict[str, CaseConfig] = {}
+        for case in cases:
+            self.register(case)
+
+    def __getitem__(self, name: str) -> CaseConfig:
+        return self._cases[str(name)]
+
+    def __iter__(self) -> Iterator[str]:
+        return iter(self._cases)
+
+    def __len__(self) -> int:
+        return len(self._cases)
+
+    def register(
+        self,
+        case: CaseConfig,
+        *,
+        replace: bool = False,
+    ) -> CaseConfig:
+        if not isinstance(case, CaseConfig):
+            raise TypeError("CASES.register expects a freecam.CaseConfig")
+        if case.name in self._cases and not replace:
+            raise KeyError(f"case {case.name!r} is already registered")
+        self._cases[case.name] = case
+        return case
+
+    def unregister(self, name: str) -> CaseConfig:
+        return self._cases.pop(str(name))
+
+    def __repr__(self) -> str:
+        return "CaseRegistry(" + ", ".join(self._cases) + ")"
+
+
+CASES = CaseRegistry(
+    (
+        CaseConfig(
+            name="PI-atm",
+            description="iCESM1.3.1 preindustrial CAM atmosphere",
+            forcing="1850 fixed preindustrial with replayed coupler boundaries",
+        ),
+    )
+)
+
+
+def _workflow_item_matches(item: Any, token: str) -> bool:
+    name = str(token)
+    return name in {
+        str(getattr(item, "name", "")),
+        str(getattr(item, "operation", "")),
+        str(getattr(item, "qualified_name", "")),
+    }
+
+
+def _workflow_process_name(process: Physics) -> str:
+    raw = process.name or type(process).__name__
+    normalized = "".join(
+        character.lower() if character.isalnum() else "_"
+        for character in str(raw)
+    )
+    normalized = "_".join(part for part in normalized.split("_") if part)
+    if not normalized:
+        raise ValueError("Physics process name cannot be empty")
+    if not normalized[0].isalpha():
+        normalized = "physics_" + normalized
+    return normalized
+
+
+def _materialize_workflow(
+    declaration: WorkflowFactory | Sequence[Any],
+    default: WorkflowTemplate,
+) -> WorkflowTemplate:
+    if not callable(declaration):
+        return WorkflowTemplate(declaration)
+    candidate = default.copy()
+    signature = inspect.signature(declaration)
+    try:
+        signature.bind(candidate)
+    except TypeError as one_argument_error:
+        try:
+            signature.bind()
+        except TypeError:
+            raise TypeError(
+                "a real freeCAM workflow factory must accept one default "
+                "WorkflowTemplate argument (or no arguments); the FreeCESM "
+                "toy (dynamics, history) signature omits required CAM control "
+                "actions"
+            ) from one_argument_error
+        result = declaration()
+    else:
+        result = declaration(candidate)
+    return candidate if result is None else WorkflowTemplate(result)
+
+
+def _resolve_declared_workflow_item(
+    item: Any,
+    original: Sequence[Any],
+) -> Any:
+    if isinstance(item, Physics):
+        return item
+    if isinstance(item, str):
+        matches = tuple(
+            process for process in original if _workflow_item_matches(process, item)
+        )
+    else:
+        qualified = getattr(item, "qualified_name", None)
+        matches = tuple(
+            process
+            for process in original
+            if process is item
+            or (
+                qualified is not None
+                and process.qualified_name == str(qualified)
+            )
+        )
+    if len(matches) != 1:
+        raise ValueError(
+            f"declared workflow item {item!r} is unknown or ambiguous"
+        )
+    return matches[0]
+
+
+def _compile_case_workflow(
+    declaration: WorkflowFactory | Sequence[Any],
+    original: Sequence[Any],
+) -> tuple[tuple[Any, ...], Mapping[int, str], tuple[Any, ...]]:
+    requested = _materialize_workflow(
+        declaration,
+        WorkflowTemplate(original),
+    )
+    resolved = tuple(
+        _resolve_declared_workflow_item(item, original) for item in requested
+    )
+    if not resolved:
+        raise ValueError("case workflow cannot be empty")
+    original_by_key = {item.qualified_name: item for item in original}
+    requested_original_keys = tuple(
+        item.qualified_name for item in resolved if not isinstance(item, Physics)
+    )
+    duplicates = tuple(
+        key
+        for key, count in Counter(requested_original_keys).items()
+        if count != 1
+    )
+    if duplicates:
+        raise ValueError(
+            "an existing CAM process may appear only once in a case workflow: "
+            + ", ".join(duplicates)
+        )
+    required_operations = {"boundary_import", "advance_timestep", "boundary_export"}
+    requested_operations = {
+        item.operation for item in resolved if not isinstance(item, Physics)
+    }
+    missing_required = sorted(required_operations - requested_operations)
+    if missing_required:
+        raise ValueError(
+            "case workflow cannot remove required CAM control actions: "
+            + ", ".join(missing_required)
+        )
+    if isinstance(resolved[0], Physics) or (
+        resolved[0].operation != "boundary_import"
+    ):
+        raise ValueError("case workflow must start with boundary_import")
+    if isinstance(resolved[-1], Physics) or (
+        resolved[-1].operation != "boundary_export"
+    ):
+        raise ValueError("case workflow must end with boundary_export")
+
+    custom = tuple(item for item in resolved if isinstance(item, Physics))
+    if any(not item.enabled for item in custom):
+        raise ValueError(
+            "a Physics object listed in a case workflow must be enabled; omit "
+            "it from the declaration instead"
+        )
+    base_counts = Counter(_workflow_process_name(item) for item in custom)
+    base_seen: defaultdict[str, int] = defaultdict(int)
+    occupied_names = {str(item.name).lower() for item in original}
+    runtime_names: dict[int, str] = {}
+    for index, item in enumerate(resolved):
+        if not isinstance(item, Physics):
+            continue
+        base = _workflow_process_name(item)
+        base_seen[base] += 1
+        candidate = base if base_counts[base] == 1 else f"{base}_{base_seen[base]}"
+        suffix = 2
+        while candidate.lower() in occupied_names:
+            candidate = f"{base}_{suffix}"
+            suffix += 1
+        occupied_names.add(candidate.lower())
+        runtime_names[index] = candidate
+    requested_keys = set(requested_original_keys)
+    omitted = tuple(
+        item for key, item in original_by_key.items() if key not in requested_keys
+    )
+    return resolved, runtime_names, omitted
+
+
+def _apply_case_workflow(
+    session: PICAMNotebookSession,
+    declaration: WorkflowFactory | Sequence[Any],
+) -> tuple[Any, ...]:
+    """Install a case workflow atomically after the live model initializes."""
+
+    original = tuple(session.workflow[:])
+    resolved, runtime_names, omitted = _compile_case_workflow(
+        declaration, original
+    )
+
+    installed: list[Any] = []
+    final: list[Any] = []
+    try:
+        for index, item in enumerate(resolved):
+            if not isinstance(item, Physics):
+                final.append(item)
+                continue
+            anchor = next(
+                (
+                    later
+                    for later in resolved[index + 1 :]
+                    if not isinstance(later, Physics)
+                ),
+                None,
+            )
+            if anchor is None:
+                raise ValueError(
+                    "custom Physics cannot be placed after boundary_export"
+                )
+            handle = session.physics.install_python(
+                item.tendency,
+                name=runtime_names[index],
+                before=anchor.qualified_name,
+                reads=item.reads,
+                writes=item.writes,
+                enabled=True,
+                transactional=item.transactional,
+            )
+            installed.append(handle)
+            final.append(handle)
+        for item in omitted:
+            item.disable()
+        session.workflow.replace(final)
+    except BaseException:
+        for item in reversed(installed):
+            try:
+                item.remove()
+            except BaseException:
+                pass
+        for item in omitted:
+            try:
+                item.enable()
+            except BaseException:
+                pass
+        try:
+            session.workflow.replace(original)
+        except BaseException:
+            pass
+        raise
+    return tuple(installed)
+
+
 @dataclass(frozen=True, slots=True)
 class PICAMCaseInfo:
     """Compact case description displayed by the high-level driver."""
@@ -161,6 +615,8 @@ class _CAMFacade:
 
     def __init__(self, driver: "Driver") -> None:
         self._driver = driver
+        self.history = PICAMOutputView(driver, "history")
+        self.restart = PICAMOutputView(driver, "restart")
 
     @property
     def state(self) -> Any:
@@ -192,6 +648,13 @@ class _CAMFacade:
     def status(self) -> Mapping[str, Any]:
         return self._driver.status
 
+    @property
+    def configured_processes(self) -> tuple[Any, ...]:
+        """Python processes installed by the declarative case workflow."""
+
+        self._driver._live_session()
+        return self._driver._configured_processes
+
     def advance(self, steps: int = 1) -> Mapping[str, Any]:
         return self._driver.advance(steps)
 
@@ -208,7 +671,7 @@ class Driver:
 
     def __init__(
         self,
-        case: str = "PI-atm",
+        case: str | CaseConfig = "PI-atm",
         nsteps: int = 10,
         *,
         repo: str | Path | None = None,
@@ -222,18 +685,35 @@ class Driver:
         account: str | None = None,
         queue: str = "develop",
         walltime: str = "02:00:00",
+        history_every: int | None = 1,
+        restart_every: int | None | str = "end",
         python_executable: str | Path | None = None,
         session_factory: Any = PICAMNotebookSession,
     ) -> None:
         if int(nsteps) < 1:
             raise ValueError("nsteps must be positive")
         self.repo = Path(repo or Path(__file__).resolve().parents[3]).resolve()
+        declared_case: CaseConfig | None
+        if isinstance(case, CaseConfig):
+            declared_case = case
+        elif isinstance(case, str):
+            declared_case = CASES.get(case)
+        else:
+            raise TypeError("case must be a case name or freecam.CaseConfig")
+        if declared_case is not None:
+            case_key = declared_case.base
+            atmosphere = declared_case.build_atmosphere()
+            if config is None and declared_case.config is not None:
+                config = declared_case.config
+        else:
+            case_key = str(case)
+            atmosphere = FreeCAM()
         if config is None:
             try:
-                config = self.repo / self._CASE_CONFIGS[case]
+                config = self.repo / self._CASE_CONFIGS[case_key]
             except KeyError as exc:
                 raise ValueError(
-                    f"unsupported case {case!r}; available cases: "
+                    f"unsupported base case {case_key!r}; available cases: "
                     + ", ".join(self._CASE_CONFIGS)
                 ) from exc
         self.config_path = Path(config).expanduser().resolve()
@@ -242,7 +722,9 @@ class Driver:
             raise ValueError(
                 f"nsteps={nsteps} exceeds the {self.config.stop_n}-step replay boundary"
             )
-        self.case = PICAMCaseInfo(case, self.config)
+        self.case = declared_case or PICAMCaseInfo(case_key, self.config)
+        self._atmosphere = atmosphere
+        self._configured_processes: tuple[Any, ...] = ()
         self.nsteps = int(nsteps)
         self.scratch = Path(
             scratch
@@ -274,6 +756,23 @@ class Driver:
         self.account = _resolve_pbs_account(account, self.reference_case)
         self.queue = queue
         self.walltime = walltime
+        if history_every is not None and (
+            isinstance(history_every, bool) or int(history_every) < 1
+        ):
+            raise ValueError("history_every must be a positive integer or None")
+        if restart_every == "end":
+            self.restart_every: int | None | str = "end"
+        elif restart_every is None:
+            self.restart_every = None
+        elif isinstance(restart_every, bool) or int(restart_every) < 1:
+            raise ValueError(
+                "restart_every must be a positive integer, 'end', or None"
+            )
+        else:
+            self.restart_every = int(restart_every)
+        self.history_every = (
+            None if history_every is None else int(history_every)
+        )
         # Do not resolve the final ``.venv/bin/python`` symlink: Python uses
         # that invocation path to select the virtual environment's site-packages.
         self.python_executable = Path(
@@ -313,6 +812,11 @@ class Driver:
         self._live_session()
         return self
 
+    def preview(self) -> WorkflowPreview:
+        """Return the configured workflow without submitting PBS or MPI."""
+
+        return self._atmosphere.preview()
+
     def advance(self, steps: int = 1) -> Mapping[str, Any]:
         if int(steps) < 1:
             raise ValueError("steps must be positive")
@@ -337,6 +841,24 @@ class Driver:
                     f"{action['phase']}.{action['name']}"
                 )
         return trace
+
+    def run(
+        self,
+        steps: int | None = None,
+        *,
+        verbose: bool = False,
+    ) -> tuple[Mapping[str, Any], ...]:
+        """FreeCESM-style alias for :meth:`execute`."""
+
+        return self.execute(steps=steps, verbose=verbose)
+
+    @property
+    def trace(self) -> tuple[Mapping[str, Any], ...]:
+        """Return the live action trace accumulated by this model."""
+
+        if self._session is None:
+            return ()
+        return self._session.trace(since=0)
 
     def close(self) -> None:
         if self._session is not None:
@@ -363,7 +885,25 @@ class Driver:
                 pbs_queue=self.queue,
                 pbs_walltime=self.walltime,
             )
-            session.start()
+            try:
+                session.start()
+                configure_output = getattr(session, "configure_output", None)
+                if callable(configure_output):
+                    configure_output(
+                        history_every=self.history_every,
+                        restart_every=self.restart_every,
+                    )
+                if self._atmosphere.workflow is not None:
+                    self._configured_processes = _apply_case_workflow(
+                        session,
+                        self._atmosphere.workflow,
+                    )
+            except BaseException:
+                try:
+                    session.close()
+                finally:
+                    self._configured_processes = ()
+                raise
             self._session = session
         return self._session
 
@@ -426,4 +966,17 @@ class Driver:
         return ignored
 
 
-__all__ = ["Driver", "Physics", "PICAMCaseInfo", "Variable"]
+__all__ = [
+    "CASES",
+    "CaseConfig",
+    "CaseRegistry",
+    "Driver",
+    "FreeCAM",
+    "Physics",
+    "PICAMCaseInfo",
+    "Variable",
+    "WorkflowFactory",
+    "WorkflowPreview",
+    "WorkflowPreviewAction",
+    "WorkflowTemplate",
+]

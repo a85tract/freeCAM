@@ -1,0 +1,36 @@
+#!/bin/bash
+#PBS -N freecam-ui-50
+#PBS -q develop
+#PBS -l select=4:ncpus=64:mpiprocs=128:ompthreads=1:mem=64GB
+#PBS -l walltime=00:15:00
+#PBS -j oe
+#PBS -o logs/
+#PBS -V
+
+set -euo pipefail
+
+repo=/glade/work/$USER/freeCAM
+python=${repo}/.venv/bin/python
+case_root=/glade/work/$USER/CESM_cases/f.e13.F1850C5.ne16_g16.icesm131_ihesp.PI-cam-oracle.50step
+reference=/glade/derecho/scratch/$USER/pyCAM/PI-cam/f.e13.F1850C5.ne16_g16.icesm131_ihesp.PI-cam-oracle.50step/run
+run_dir=/glade/derecho/scratch/$USER/freeCAM/PI-cam/ui-validation-${PBS_JOBID}/run
+
+source "${case_root}/.env_mach_specific.sh" >/dev/null 2>&1
+mpi_root=${CRAY_MPICH_DIR:-/opt/cray/pe/mpich/8.1.25/ofi/intel/19.0}
+export LD_LIBRARY_PATH="${mpi_root}/lib-abi-mpich:${mpi_root}/lib:${LD_LIBRARY_PATH:-}"
+export LD_PRELOAD=/glade/u/apps/common/23.04/spack/opt/spack/intel-oneapi-compilers/2023.0.0/compiler/2023.0.0/linux/compiler/lib/intel64_lin/libimf.so${LD_PRELOAD:+:${LD_PRELOAD}}
+export PYTHONPATH=${repo}/src
+export OMP_NUM_THREADS=1
+export OMP_STACKSIZE=64M
+export FI_CXI_RX_MATCH_MODE=hybrid
+export FI_MR_CACHE_MONITOR=memhooks
+export MPICH_MPIIO_HINTS='*:romio_cb_read=enable:romio_cb_write=enable:striping_factor=24'
+
+cd "${repo}"
+rm -rf "${run_dir}"
+"${python}" tools/validate_pi_cam_pythonic_ui.py \
+  --repo "${repo}" \
+  --run-dir "${run_dir}" \
+  --reference "${reference}" \
+  --steps 50 \
+  --output validation/pi_cam_pythonic_ui_complete_50step.json

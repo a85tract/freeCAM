@@ -26,6 +26,7 @@ from freecam.core.runtime_env import mpi_loader_environment
 from freecam.model.python_processes import PythonProcessSpec
 
 from .config import PICAMConfig
+from .expressions import DistributedExpression, DistributedOperand
 from .physics_catalog import (
     PICAMPhysicsCatalog,
     merge_runtime_process_records,
@@ -38,18 +39,74 @@ class PICAMNotebookError(RuntimeError):
     """The persistent PI-CAM MPI worker could not complete a request."""
 
 
+def _normalize_field_selection(index: Any) -> tuple[Any, ...]:
+    """Validate a NumPy-style index before broadcasting it to MPI ranks."""
+
+    items = index if isinstance(index, tuple) else (index,)
+    normalized: list[Any] = []
+    ellipses = 0
+    for item in items:
+        if item is Ellipsis:
+            ellipses += 1
+            if ellipses > 1:
+                raise IndexError("a field selection may contain only one ellipsis")
+            normalized.append(Ellipsis)
+        elif isinstance(item, (int, np.integer)) and not isinstance(
+            item, (bool, np.bool_)
+        ):
+            normalized.append(int(item))
+        elif isinstance(item, slice):
+            values = []
+            for value in (item.start, item.stop, item.step):
+                if value is None:
+                    values.append(None)
+                elif isinstance(value, (int, np.integer)) and not isinstance(
+                    value, (bool, np.bool_)
+                ):
+                    values.append(int(value))
+                else:
+                    raise TypeError("field slice bounds must be integers or None")
+            if values[2] == 0:
+                raise ValueError("field slice step cannot be zero")
+            normalized.append(slice(*values))
+        else:
+            raise TypeError(
+                "distributed fields support integer, slice, and ellipsis indexing"
+            )
+    return tuple(normalized)
+
+
 def _authkey_argument(authkey: bytes) -> str:
     """Encode a secret without letting a leading dash confuse argparse."""
 
     return "--authkey=" + base64.urlsafe_b64encode(authkey).decode("ascii")
 
 
-class _SessionFieldReference:
+class _SessionFieldReference(DistributedOperand):
     """One rank-local StatePool field exposed through the live MPI session."""
 
-    def __init__(self, session: "PICAMNotebookSession", name: str) -> None:
+    def __init__(
+        self,
+        session: "PICAMNotebookSession",
+        name: str,
+        *,
+        selection: tuple[Any, ...] | None = None,
+    ) -> None:
         self.session = session
         self.name = name
+        self.selection = selection
+
+    @property
+    def _expression_session(self) -> Any:
+        return self.session
+
+    @property
+    def _expression_payload(self) -> Mapping[str, Any]:
+        return {
+            "type": "field",
+            "name": self.name,
+            "selection": self.selection,
+        }
 
     @property
     def metadata(self) -> Mapping[str, Any]:
@@ -59,10 +116,119 @@ class _SessionFieldReference:
         return dict(fields[self.name])
 
     def get(self, *, rank: int = 0) -> Any:
-        return self.session.field(self.name, rank=rank)
+        return self.session.field(self.name, rank=rank, selection=self.selection)
+
+    def values(self, *, rank: int = 0) -> Any:
+        """Return a copy of this field from one MPI rank."""
+
+        return self.get(rank=rank)
 
     def stats(self, *, rank: int | str = 0) -> Mapping[str, Any]:
-        return self.session.stats(self.name, rank=rank)
+        return self.session.stats(
+            self.name, rank=rank, selection=self.selection
+        )
+
+    def mean(self, *, rank: int | str = "global") -> float:
+        return float(self.stats(rank=rank)["mean"])
+
+    def min(self, *, rank: int | str = "global") -> float:
+        return float(self.stats(rank=rank)["min"])
+
+    def max(self, *, rank: int | str = "global") -> float:
+        return float(self.stats(rank=rank)["max"])
+
+    def fill(self, value: float | int) -> "_SessionFieldReference":
+        self.session.edit_field(
+            self.name,
+            operation="fill",
+            value=value,
+            selection=self.selection,
+        )
+        return self
+
+    def _inplace(
+        self,
+        operation: str,
+        value: Any,
+    ) -> "_SessionFieldReference":
+        if isinstance(value, (int, float, np.integer, np.floating)) and not isinstance(
+            value, (bool, np.bool_)
+        ):
+            self.session.edit_field(
+                self.name,
+                operation=operation,
+                value=value,
+                selection=self.selection,
+            )
+            return self
+        ufunc = {
+            "add": np.add,
+            "subtract": np.subtract,
+            "multiply": np.multiply,
+            "divide": np.divide,
+        }[operation]
+        expression = ufunc(self, value)
+        self.session.assign_expression(
+            self.name,
+            expression.payload,
+            selection=self.selection,
+        )
+        return self
+
+    def __iadd__(self, value: Any) -> "_SessionFieldReference":
+        return self._inplace("add", value)
+
+    def __isub__(self, value: Any) -> "_SessionFieldReference":
+        return self._inplace("subtract", value)
+
+    def __imul__(self, value: Any) -> "_SessionFieldReference":
+        return self._inplace("multiply", value)
+
+    def __itruediv__(self, value: Any) -> "_SessionFieldReference":
+        return self._inplace("divide", value)
+
+    def __getitem__(self, index: Any) -> "_SessionFieldReference":
+        if self.selection is not None:
+            raise TypeError("combine distributed field indices in one [] expression")
+        return _SessionFieldReference(
+            self.session,
+            self.name,
+            selection=_normalize_field_selection(index),
+        )
+
+    def __setitem__(self, index: Any, value: Any) -> None:
+        selection = _normalize_field_selection(index)
+        if (
+            isinstance(value, _SessionFieldReference)
+            and value.session is self.session
+            and value.name == self.name
+            and value.selection == selection
+        ):
+            # ``field[index] += scalar`` writes the selection proxy back after
+            # its in-place operation has already run on every MPI rank.
+            return
+        target = _SessionFieldReference(
+            self.session, self.name, selection=selection
+        )
+        if isinstance(value, DistributedOperand):
+            if value._expression_session is not self.session:
+                raise ValueError("a distributed expression cannot mix different models")
+            self.session.assign_expression(
+                self.name,
+                value._expression_payload,
+                selection=selection,
+            )
+        else:
+            target.fill(value)
+
+    def __repr__(self) -> str:
+        metadata = self.metadata
+        selected = "" if self.selection is None else f", selection={self.selection!r}"
+        return (
+            f"Field(name={self.name!r}, shape={tuple(metadata.get('shape', ()))}, "
+            f"dtype={metadata.get('dtype')!r}, units={metadata.get('units')!r}"
+            f"{selected})"
+        )
 
     def delete(self) -> Mapping[str, Any]:
         return self.session.delete_field(self.name)
@@ -1053,12 +1219,22 @@ class _SessionPhysicsCollection:
         if phase is not None:
             return str(phase), before, after
         anchor = before or after or ""
+        records = list(self.runtime_records)
+        known = {
+            (str(row["phase"]), str(row["name"])) for row in records
+        }
+        records.extend(
+            row
+            for row in self.session.status.get("step_plan", ())
+            if (str(row["phase"]), str(row["name"])) not in known
+        )
         matches = [
             row
-            for row in self.runtime_records
+            for row in records
             if row["name"] == anchor
             or row["operation"] == anchor
             or row.get("api_name") == anchor
+            or f"{row['phase']}.{row['name']}" == anchor
         ]
         if len(matches) != 1:
             raise PICAMNotebookError(
@@ -1297,6 +1473,32 @@ class PICAMNotebookSession:
 
         return self.step(steps)
 
+    def configure_output(
+        self,
+        *,
+        history_every: int | None = 1,
+        restart_every: int | None | str = "end",
+    ) -> Mapping[str, Any]:
+        """Set history/restart cadence without editing ``atm_in`` by hand."""
+
+        if restart_every == "end":
+            restart_interval = None
+            restart_at_end = True
+        else:
+            restart_interval = restart_every
+            restart_at_end = False
+        self._status = dict(
+            self._request(
+                {
+                    "op": "configure_output",
+                    "history_every": history_every,
+                    "restart_every": restart_interval,
+                    "restart_at_end": restart_at_end,
+                }
+            )
+        )
+        return dict(self._status)
+
     def workflow_action(
         self,
         name: str,
@@ -1485,6 +1687,66 @@ class PICAMNotebookSession:
             )
         )
 
+    def edit_field(
+        self,
+        name: str,
+        *,
+        operation: str,
+        value: float | int,
+        selection: tuple[Any, ...] | None = None,
+    ) -> Mapping[str, Any]:
+        """Apply one scalar edit independently to every rank-local array."""
+
+        if isinstance(value, (bool, np.bool_)) or not isinstance(
+            value, (int, float, np.integer, np.floating)
+        ):
+            raise TypeError("distributed field edits require a numeric scalar")
+        if not np.isfinite(value):
+            raise ValueError("distributed field edit value must be finite")
+        command = {
+            "op": "edit_field",
+            "name": str(name),
+            "operation": str(operation),
+            "value": value.item() if isinstance(value, np.generic) else value,
+        }
+        if selection is not None:
+            command["selection"] = tuple(selection)
+        return dict(self._request(command))
+
+    def assign_expression(
+        self,
+        name: str,
+        expression: Mapping[str, Any],
+        *,
+        selection: tuple[Any, ...] | None = None,
+    ) -> Mapping[str, Any]:
+        """Evaluate an expression independently on every MPI rank and write it."""
+
+        command: dict[str, Any] = {
+            "op": "assign_expression",
+            "name": str(name),
+            "expression": dict(expression),
+        }
+        if selection is not None:
+            command["selection"] = tuple(selection)
+        return dict(self._request(command))
+
+    def evaluate_expression(
+        self,
+        expression: Mapping[str, Any],
+        *,
+        rank: int = 0,
+    ) -> Any:
+        """Evaluate an expression on one selected rank and return a copy."""
+
+        return self._request(
+            {
+                "op": "evaluate_expression",
+                "rank": int(rank),
+                "expression": dict(expression),
+            }
+        )
+
     def delete_field(self, name: str) -> Mapping[str, Any]:
         return dict(self._request({"op": "delete_field", "name": name}))
 
@@ -1627,11 +1889,33 @@ class PICAMNotebookSession:
         if plan is not None:
             self._status["step_plan"] = tuple(dict(row) for row in plan)
 
-    def field(self, name: str, *, rank: int = 0) -> Any:
-        return self._request({"op": "field", "name": name, "rank": int(rank)})
+    def field(
+        self,
+        name: str,
+        *,
+        rank: int = 0,
+        selection: tuple[Any, ...] | None = None,
+    ) -> Any:
+        command: dict[str, Any] = {
+            "op": "field",
+            "name": name,
+            "rank": int(rank),
+        }
+        if selection is not None:
+            command["selection"] = tuple(selection)
+        return self._request(command)
 
-    def stats(self, name: str, *, rank: int | str = 0) -> Mapping[str, Any]:
-        return dict(self._request({"op": "stats", "name": name, "rank": rank}))
+    def stats(
+        self,
+        name: str,
+        *,
+        rank: int | str = 0,
+        selection: tuple[Any, ...] | None = None,
+    ) -> Mapping[str, Any]:
+        command: dict[str, Any] = {"op": "stats", "name": name, "rank": rank}
+        if selection is not None:
+            command["selection"] = tuple(selection)
+        return dict(self._request(command))
 
     def close(self) -> None:
         if self._connection is not None:

@@ -13,6 +13,8 @@ from typing import Any, Iterator, Mapping, Sequence, TYPE_CHECKING
 
 import numpy as np
 
+from .expressions import DistributedOperand
+
 if TYPE_CHECKING:
     from .session import PICAMNotebookSession
 
@@ -129,6 +131,24 @@ class PICAMWorkflowView:
         order[index] = value
         self.replace(order)
 
+    def index(self, process: str | Any) -> int:
+        """Return the current index of one enabled process."""
+
+        target = self._resolve(process)
+        for index, item in enumerate(self[:]):
+            if item.qualified_name == target.qualified_name:
+                return index
+        raise ValueError(f"{target.qualified_name!r} is not enabled in workflow")
+
+    def count(self, process: str | Any) -> int:
+        """Return zero or one; source processes cannot be duplicated."""
+
+        try:
+            self.index(process)
+        except (KeyError, ValueError):
+            return 0
+        return 1
+
     def replace(self, processes: Any) -> Mapping[str, Any]:
         """Replace the complete enabled process order on every MPI rank."""
 
@@ -221,22 +241,69 @@ class PICAMWorkflowView:
             if index == len(rows):
                 if not rows:
                     raise ValueError("cannot place a process in an empty workflow")
+                # boundary_export must remain the final action, so list-style
+                # append means "at the end of the executable model body".
                 target = rows[-1]
-                after = target.name
+                before = target.name
             else:
                 target = rows[index]
                 before = target.name
         installer = getattr(candidate, "_install", None)
-        if not callable(installer):
-            raise TypeError(
-                "workflow.insert expects a freecam.Physics instance or a "
-                "StatePool-bound CAM process"
+        if callable(installer):
+            return installer(
+                self._session,
+                before=before,
+                after=after,
             )
-        return installer(
-            self._session,
-            before=before,
-            after=after,
-        )
+        existing = self._resolve(candidate)
+        if existing.enabled:
+            raise ValueError(
+                f"workflow already contains {existing.qualified_name!r}"
+            )
+        existing.enable()
+        try:
+            self.move(existing, before=before, after=after)
+        except BaseException:
+            existing.disable()
+            raise
+        return existing
+
+    def append(self, process: Any) -> Any:
+        """Append before the required final ``boundary_export`` action."""
+
+        return self.insert(len(self), process)
+
+    def extend(self, processes: Sequence[Any]) -> tuple[Any, ...]:
+        """Append several runtime processes and return their live handles."""
+
+        return tuple(self.append(process) for process in processes)
+
+    def pop(self, index: int = -1) -> Any:
+        """Remove a runtime process or disable an original CAM process."""
+
+        process = self[index]
+        if process.operation in {
+            "boundary_import",
+            "advance_timestep",
+            "boundary_export",
+        }:
+            raise ValueError(
+                f"required CAM control action {process.operation!r} cannot be popped"
+            )
+        if process.kind in {
+            "python_process",
+            "runtime_fortran_process",
+            "runtime_catalog_process",
+        }:
+            process.remove()
+        else:
+            process.disable()
+        return process
+
+    def remove(self, process: str | Any) -> None:
+        """List-style removal with the same safety rules as :meth:`pop`."""
+
+        self.pop(self.index(process))
 
     def _repr_html_(self) -> str:
         rows = self.actions(include_disabled=True)
@@ -312,12 +379,59 @@ class PICAMStateView:
         except KeyError as exc:
             raise AttributeError(name) from exc
 
+    def _field_name(self, name: str) -> str:
+        aliases = {
+            "T": "phys_state.t",
+            "u": "phys_state.u",
+            "v": "phys_state.v",
+            "q": "phys_state.q",
+        }
+        return aliases.get(str(name), str(name))
+
     def __setattr__(self, name: str, value: Any) -> None:
         if name.startswith("_"):
             object.__setattr__(self, name, value)
             return
         # Delayed import avoids a facade -> session -> ui -> facade cycle.
         from .facade import Variable
+
+        # Python writes the result of ``state.T += value`` back through this
+        # method after ``T.__iadd__`` has already changed the remote field.
+        # Accept that exact field handle without issuing the edit twice.
+        if getattr(value, "session", None) is self._session:
+            try:
+                canonical = self._session.fields._resolve(self._field_name(name))
+            except KeyError:
+                canonical = None
+            if (
+                canonical is not None
+                and getattr(value, "name", None) == canonical
+                and getattr(value, "selection", None) is None
+            ):
+                return
+
+        if isinstance(value, DistributedOperand):
+            if value._expression_session is not self._session:
+                raise ValueError("a distributed expression cannot mix different models")
+            try:
+                canonical = self._session.fields._resolve(self._field_name(name))
+            except KeyError:
+                raise TypeError(
+                    "assign a freecam.Variable before writing a distributed "
+                    f"expression into new field {name!r}"
+                ) from None
+            if (
+                getattr(value, "name", None) == canonical
+                and getattr(value, "selection", None) is None
+            ):
+                # Augmented assignment writes the field reference back after
+                # ``__iadd__``/etc. already edited all MPI ranks.
+                return
+            self._session.assign_expression(
+                canonical,
+                value._expression_payload,
+            )
+            return
 
         if isinstance(value, np.ndarray):
             self._session.fields.create_array(name, value)
@@ -337,6 +451,56 @@ class PICAMStateView:
             restart=value.restart,
             aliases=value.aliases,
             standard_name=value.standard_name,
+        )
+
+    def __getitem__(self, name: str) -> Any:
+        return self._session.fields[self._field_name(name)]
+
+    def __setitem__(self, name: str, value: Any) -> None:
+        self.__setattr__(str(name), value)
+
+    def __delitem__(self, name: str) -> None:
+        self._session.fields[self._field_name(name)].delete()
+
+    def __iter__(self) -> Iterator[str]:
+        return iter(self.keys())
+
+    def __len__(self) -> int:
+        return len(self.keys())
+
+    def __contains__(self, name: object) -> bool:
+        if not isinstance(name, str):
+            return False
+        try:
+            self._session.fields._resolve(self._field_name(name))
+        except KeyError:
+            return False
+        return True
+
+    def keys(self) -> tuple[str, ...]:
+        return tuple(self._session.status.get("fields", ()))
+
+    def values(self) -> tuple[Any, ...]:
+        return tuple(self._session.fields[name] for name in self.keys())
+
+    def items(self) -> tuple[tuple[str, Any], ...]:
+        return tuple((name, self._session.fields[name]) for name in self.keys())
+
+    def describe(self) -> tuple[Mapping[str, Any], ...]:
+        """Return one compact metadata row per StatePool field."""
+
+        fields = self._session.status.get("fields", {})
+        return tuple(
+            {
+                "name": name,
+                "shape": tuple(metadata.get("shape", ())),
+                "dtype": metadata.get("dtype"),
+                "units": metadata.get("units", "1"),
+                "dimensions": tuple(metadata.get("dimensions", ())),
+                "writable": bool(metadata.get("writable", True)),
+                "dynamic": bool(metadata.get("dynamic", False)),
+            }
+            for name, metadata in fields.items()
         )
 
     def __delattr__(self, name: str) -> None:

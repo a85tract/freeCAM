@@ -117,12 +117,14 @@ def test_notebook_defines_the_complete_workflow_as_one_explicit_list() -> None:
         )
     )
     assert isinstance(assignment.value, ast.List)
-    operations = tuple(
-        element.slice.value
+    entries = tuple(
+        (element.value.id, element.slice.value)
         for element in assignment.value.elts
         if isinstance(element, ast.Subscript)
+        and isinstance(element.value, ast.Name)
         and isinstance(element.slice, ast.Constant)
     )
+    operations = tuple(value for owner, value in entries if owner == "process")
     expected = tuple(
         action.operation
         for action in PICAMStepPlan.default()
@@ -130,6 +132,16 @@ def test_notebook_defines_the_complete_workflow_as_one_explicit_list() -> None:
     )
 
     assert operations == expected
+    assert tuple(value for owner, value in entries if owner == "configured") == (
+        "volcanic_aerosol_1",
+        "volcanic_aerosol_2",
+    )
+    assert entries.index(("configured", "volcanic_aerosol_1")) == (
+        entries.index(("process", "dadadj")) + 1
+    )
+    assert entries.index(("configured", "volcanic_aerosol_2")) == (
+        entries.index(("process", "radiation_tend")) - 1
+    )
 
 
 def test_state_view_plot_supports_before_after_overlay() -> None:
@@ -225,11 +237,70 @@ def test_state_attribute_assignment_accepts_rank_independent_numpy_array() -> No
     assert np.array_equal(calls[0][1], relative_humidity)
 
 
+def test_state_augmented_assignment_edits_existing_distributed_field() -> None:
+    calls = []
+
+    class Field:
+        name = "phys_state.t"
+
+        def __init__(self, session):
+            self.session = session
+
+        def __iadd__(self, value):
+            calls.append(("add", self.name, value))
+            return self
+
+    class Fields:
+        def __init__(self, session):
+            self.session = session
+
+        def __getitem__(self, name):
+            assert name == "phys_state.t"
+            return Field(self.session)
+
+        def _resolve(self, name):
+            if name != "phys_state.t":
+                raise KeyError(name)
+            return name
+
+    session = FakeSession()
+    session.fields = Fields(session)
+    state = PICAMStateView(session)
+
+    state.T += 1.0
+
+    assert calls == [("add", "phys_state.t", 1.0)]
+
+
 def test_state_attribute_assignment_rejects_ambiguous_python_sequence() -> None:
     state = PICAMStateView(FakeSession())
 
     with pytest.raises(TypeError, match="NumPy array.*distributed field"):
         state.rh = [0.0] * 30
+
+
+def test_state_view_exposes_mapping_and_metadata_interfaces() -> None:
+    session = FakeSession()
+
+    class Fields:
+        def _resolve(self, name):
+            if name not in session._arrays:
+                raise KeyError(name)
+            return name
+
+        def __getitem__(self, name):
+            return session._arrays[name]
+
+    session.fields = Fields()
+    state = PICAMStateView(session)
+
+    assert "phys_state.t" in state
+    assert "missing" not in state
+    assert tuple(state) == tuple(session.status["fields"])
+    assert len(state) == len(session.status["fields"])
+    metadata = {row["name"]: row for row in state.describe()}
+    assert metadata["phys_state.t"]["shape"] == (4, 3, 2)
+    assert metadata["phys_state.t"]["units"] == "1"
 
 
 def test_workflow_insert_installs_physics_object_with_declared_placement() -> None:
@@ -390,3 +461,82 @@ def test_workflow_slice_assignment_replaces_one_complete_remote_order() -> None:
             "coupling.boundary_export",
         )
     ]
+
+
+def test_workflow_list_operations_preserve_required_control_actions() -> None:
+    calls = []
+
+    class Process:
+        def __init__(self, name, phase, operation, kind="scheme", enabled=True):
+            self.name = name
+            self.phase = phase
+            self.operation = operation
+            self.kind = kind
+            self.enabled = enabled
+
+        @property
+        def qualified_name(self):
+            return f"{self.phase}.{self.name}"
+
+        def enable(self):
+            self.enabled = True
+            calls.append(("enable", self.qualified_name))
+
+        def disable(self):
+            self.enabled = False
+            calls.append(("disable", self.qualified_name))
+
+    processes = {
+        "boundary_import": Process(
+            "boundary_import", "coupling", "boundary_import", "boundary"
+        ),
+        "radiation": Process("radiation", "cam_run1", "radiation_tend"),
+        "optional": Process(
+            "optional", "cam_run1", "optional", enabled=False
+        ),
+        "advance_timestep": Process(
+            "advance_timestep", "clock", "advance_timestep", "clock"
+        ),
+        "boundary_export": Process(
+            "boundary_export", "coupling", "boundary_export", "boundary"
+        ),
+    }
+    session = FakeSession()
+    session._status["step_plan"] = tuple(
+        {
+            "phase": item.phase,
+            "name": item.name,
+            "operation": item.operation,
+            "kind": item.kind,
+            "enabled": item.enabled,
+        }
+        for item in processes.values()
+    )
+    session.workflow_action = (
+        lambda name, phase, kind: processes[name]
+    )
+    session.move_action = lambda name, **kwargs: calls.append(
+        ("move", name, kwargs)
+    ) or {"name": name}
+    workflow = PICAMWorkflowView(session)
+
+    removed = workflow.pop(1)
+    appended = workflow.append(processes["optional"])
+
+    assert removed is processes["radiation"]
+    assert appended is processes["optional"]
+    assert calls == [
+        ("disable", "cam_run1.radiation"),
+        ("enable", "cam_run1.optional"),
+        (
+            "move",
+            "optional",
+            {
+                "phase": "cam_run1",
+                "before": "coupling.boundary_export",
+                "after": None,
+            },
+        ),
+    ]
+    with pytest.raises(ValueError, match="cannot be popped"):
+        workflow.pop(0)

@@ -15,6 +15,8 @@ from mpi4py import MPI
 
 from .boundary import ReplayBoundaryProvider
 from .case import PICAMCase
+from .expressions import assign_expression, evaluate_expression
+from .state import edit_active_field, selected_active_values
 
 
 def _field_catalog(driver: Any) -> dict[str, dict[str, object]]:
@@ -51,6 +53,11 @@ def _status(driver: Any) -> dict[str, object]:
         ),
         "step_plan": driver.step_plan.describe(),
         "state_bytes": driver.pool.nbytes,
+        "output": {
+            "history_every": driver.history_every,
+            "restart_every": driver.restart_every,
+            "restart_at_end": driver.restart_at_end,
+        },
     }
 
 
@@ -61,6 +68,13 @@ def _command(command: dict[str, Any], driver: Any, comm: Any) -> object:
     if operation == "step":
         for _ in range(int(command.get("count", 1))):
             driver.step()
+        return _status(driver) if comm.rank == 0 else None
+    if operation == "configure_output":
+        driver.configure_output(
+            history_every=command.get("history_every"),
+            restart_every=command.get("restart_every"),
+            restart_at_end=bool(command.get("restart_at_end", False)),
+        )
         return _status(driver) if comm.rank == 0 else None
     if operation == "trace":
         since = int(command.get("since", 0))
@@ -164,6 +178,57 @@ def _command(command: dict[str, Any], driver: Any, comm: Any) -> object:
         name = driver.pool.canonical_name(str(command["name"]))
         driver.delete_variable(name)
         return {"name": name, "deleted": True} if comm.rank == 0 else None
+    if operation == "edit_field":
+        name = driver.pool.canonical_name(str(command["name"]))
+        contract = driver.pool.contract(name)
+        if not contract.writable:
+            raise ValueError(f"StatePool field {name!r} is read-only")
+        value = command["value"]
+        edit = str(command["operation"])
+        selection = command.get("selection", Ellipsis)
+        edit_active_field(
+            driver.pool,
+            name,
+            selection=selection,
+            operation=edit,
+            value=value,
+        )
+        return (
+            {
+                "name": name,
+                "operation": edit,
+                "value": value,
+                "selection": selection,
+            }
+            if comm.rank == 0
+            else None
+        )
+    if operation == "assign_expression":
+        name = driver.pool.canonical_name(str(command["name"]))
+        selection = command.get("selection", Ellipsis)
+        count = assign_expression(
+            driver.pool,
+            name,
+            command["expression"],
+            selection=selection,
+        )
+        return (
+            {"name": name, "selection": selection, "active_values": count}
+            if comm.rank == 0
+            else None
+        )
+    if operation == "evaluate_expression":
+        selected = int(command["rank"])
+        if not 0 <= selected < comm.size:
+            raise ValueError(f"rank must be in 0..{comm.size - 1}")
+        if comm.rank != selected:
+            return None
+        return np.array(
+            evaluate_expression(driver.pool, command["expression"]),
+            copy=True,
+            order="F",
+            subok=False,
+        )
     if operation == "install_python":
         record = driver.python_processes.install(
             command["spec"], unsafe=bool(command.get("unsafe", False))
@@ -246,17 +311,32 @@ def _command(command: dict[str, Any], driver: Any, comm: Any) -> object:
         selected = int(command["rank"])
         if not 0 <= selected < comm.size:
             raise ValueError(f"rank must be in 0..{comm.size - 1}")
-        return driver.pool[str(command["name"])].copy(order="F") if comm.rank == selected else None
+        if comm.rank != selected:
+            return None
+        selection = command.get("selection", Ellipsis)
+        return np.array(
+            driver.pool[str(command["name"])][selection],
+            copy=True,
+            order="F",
+            subok=False,
+        )
     if operation == "stats":
-        values = driver.pool[str(command["name"])]
+        name = driver.pool.canonical_name(str(command["name"]))
+        values = driver.pool[name]
+        selection = command.get("selection", Ellipsis)
+        active = selected_active_values(driver.pool, name, selection)
+        if active.size == 0:
+            raise ValueError("field selection contains no active CAM values")
         selected = command.get("rank", 0)
         if selected == "global":
-            local_sum = float(np.asarray(values, dtype=np.float64).sum())
-            local_count = int(values.size)
+            local_sum = float(np.asarray(active, dtype=np.float64).sum())
+            local_count = int(active.size)
             total_sum = comm.allreduce(local_sum, op=MPI.SUM)
             total_count = comm.allreduce(local_count, op=MPI.SUM)
-            minimum = comm.allreduce(float(values.min()), op=MPI.MIN)
-            maximum = comm.allreduce(float(values.max()), op=MPI.MAX)
+            local_minimum = float(active.min())
+            local_maximum = float(active.max())
+            minimum = comm.allreduce(local_minimum, op=MPI.MIN)
+            maximum = comm.allreduce(local_maximum, op=MPI.MAX)
             if comm.rank == 0:
                 return {
                     "rank": "global",
@@ -272,11 +352,13 @@ def _command(command: dict[str, Any], driver: Any, comm: Any) -> object:
         if comm.rank == selected:
             return {
                 "rank": selected,
-                "shape": tuple(values.shape),
+                "shape": tuple(np.asarray(values[selection]).shape),
                 "dtype": values.dtype.str,
-                "min": float(values.min()),
-                "max": float(values.max()),
-                "mean": float(values.mean()),
+                "count": int(active.size),
+                "min": float(active.min()),
+                "max": float(active.max()),
+                "mean": float(np.asarray(active, dtype=np.float64).sum())
+                / int(active.size),
             }
         return None
     if operation == "close":
