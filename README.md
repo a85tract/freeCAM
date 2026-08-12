@@ -1,9 +1,10 @@
 # freeCAM
 
 freeCAM runs the CAM atmosphere component from iCESM1.3.1 with a Python
-control layer. Python owns the execution order and rank-local StatePool;
-original Fortran routines remain the numerical kernels and are called through
-generated C-interoperable adapters.
+control layer. Python owns the execution order, boundary/restart decisions,
+clock, and rank-local StatePool. Original Fortran code is retained only as a
+numerical kernel or a low-level state, PIO, or time-manager service called by
+Python through generated C-interoperable adapters.
 
 The current scientific target is the `ne16` PI-atm CAM configuration: CAM5
 physics, SE dynamics, replayed coupler input, and 512 MPI ranks.
@@ -30,7 +31,9 @@ current case.
 
 Validation records are under [`validation/`](validation/). The primary BFB
 record is
-[`pi_cam_python_zero_copy_state_vs_oracle_50step_bfb.json`](validation/pi_cam_python_zero_copy_state_vs_oracle_50step_bfb.json).
+[`pi_cam_python_control_vs_oracle_50step_bfb.json`](validation/pi_cam_python_control_vs_oracle_50step_bfb.json),
+produced by the 512-rank, 50-step Python-controlled leaf workflow in
+[`pi_cam_python_control_50step.json`](validation/pi_cam_python_control_50step.json).
 The per-process support table is
 [`pi_cam_process_support.json`](validation/pi_cam_process_support.json).
 
@@ -79,7 +82,16 @@ rank_zero_temperature = driver.cam.state.T.get(rank=0)
 global_temperature = driver.cam.state.T.stats(rank="global")
 ```
 
-Add a distributed variable with normal attribute assignment:
+For a small rank-independent array, use ordinary NumPy assignment. The same
+values are copied into an independent array on every MPI rank:
+
+```python
+NLEV = driver.cam.state.T.metadata["shape"][1]
+driver.cam.state.rh = np.zeros(NLEV)
+```
+
+For a grid-distributed variable whose local shape depends on each rank, declare
+its CAM dimensions:
 
 ```python
 driver.cam.state.experiment_tracer = fc.Variable(
@@ -91,12 +103,14 @@ driver.cam.state.experiment_tracer = fc.Variable(
 )
 ```
 
-Each rank resolves the named dimensions locally, allocates a
-Fortran-contiguous NumPy array, and registers it in that rank's StatePool.
-Delete an unused dynamic field with:
+Both forms create Fortran-contiguous arrays and register them in each rank's
+StatePool. `np.ndarray` means “copy this same-shaped value to every rank”; a
+`Variable` means “resolve these dimensions against each rank's local CAM
+partition.” Delete unused dynamic fields with:
 
 ```python
 del driver.cam.state.experiment_tracer
+del driver.cam.state.rh
 ```
 
 Deletion is rejected while an installed process still uses the field.
@@ -151,9 +165,24 @@ workflow[:] = custom_order
 workflow[:] = source_order
 ```
 
-`workflow.expand()` exposes the validated leaf boundaries. Reordering or
-disabling scientific processes is an experimental operation; freeCAM keeps
-the safe default in original source order.
+The default workflow already uses every validated leaf boundary. Composite
+Fortran stages such as the old run2 `finish` and run4 `wrapup` remain visible
+as disabled compatibility entries, but they are not executed. Reordering or
+disabling scientific processes is experimental; freeCAM keeps the granular
+default in original source order.
+
+Every workflow row reports both ownership and implementation:
+
+- `control_owner="python"` means Python decides ordering and conditions.
+- `fortran-numerical-kernel` is a scheme, dynamics, boundary mapping, or
+  explicitly admitted numerical kernel.
+- `fortran-state-service`, `fortran-io-service`, and
+  `fortran-clock-mirror` are primitive services. They do not choose the next
+  action or own the workflow.
+
+No enabled default action has `kind="control"`. In particular, Python decides
+whether an import is fresh, whether restart is due, when the public clock
+advances, and when each service is invoked.
 
 ## Add a Python process
 

@@ -28,6 +28,8 @@ class PICAMWorkflowAction:
     kind: str
     enabled: bool
     native_id: int | None = None
+    control_owner: str = "python"
+    implementation: str = "python"
 
     @property
     def qualified_name(self) -> str:
@@ -59,6 +61,8 @@ class PICAMWorkflowView:
                 native_id=(
                     None if row.get("native_id") is None else int(row["native_id"])
                 ),
+                control_owner=str(row.get("control_owner", "python")),
+                implementation=str(row.get("implementation", "python")),
             )
             for index, row in enumerate(rows)
         )
@@ -75,6 +79,8 @@ class PICAMWorkflowView:
                 "kind": action.kind,
                 "native_id": action.native_id,
                 "enabled": action.enabled,
+                "control_owner": action.control_owner,
+                "implementation": action.implementation,
             }
             for action in self.actions(include_disabled=include_disabled)
         )
@@ -235,12 +241,14 @@ class PICAMWorkflowView:
         rows = self.actions(include_disabled=True)
         body = "".join(
             "<tr class='{}'><td>{}</td><td>{}</td>"
-            "<td><code>{}</code></td><td>{}</td></tr>".format(
+            "<td><code>{}</code></td><td>{}</td><td>{}</td><td>{}</td></tr>".format(
                 "freecam-disabled" if not row.enabled else "",
                 row.index,
                 escape(row.name),
                 escape(row.operation),
                 escape(row.kind),
+                escape(row.control_owner),
+                escape(row.implementation),
             )
             for row in rows
         )
@@ -254,8 +262,9 @@ class PICAMWorkflowView:
             ".freecam-workflow .freecam-disabled{opacity:.45;text-decoration:line-through}"
             "</style>"
             "<table class='freecam-workflow'><thead><tr>"
-            "<th>#</th><th>process</th><th>native operation</th>"
-            "<th>kind</th></tr></thead><tbody>"
+            "<th>#</th><th>process</th><th>operation</th>"
+            "<th>kind</th><th>control</th><th>implementation</th>"
+            "</tr></thead><tbody>"
             f"{body}</tbody></table>"
         )
 
@@ -309,10 +318,13 @@ class PICAMStateView:
         # Delayed import avoids a facade -> session -> ui -> facade cycle.
         from .facade import Variable
 
+        if isinstance(value, np.ndarray):
+            self._session.fields.create_array(name, value)
+            return
         if not isinstance(value, Variable):
             raise TypeError(
-                "real MPI fields require a distributed definition; assign "
-                "freecam.Variable(dims=(...), initial=...)"
+                "assign a NumPy array for rank-independent state or "
+                "freecam.Variable(dims=(...), initial=...) for a distributed field"
             )
         self._session.fields.create(
             name,

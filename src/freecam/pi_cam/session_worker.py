@@ -32,6 +32,7 @@ def _status(driver: Any) -> dict[str, object]:
     return {
         "lifecycle": driver.lifecycle.value,
         "step": driver.clock.nstep,
+        "native_step": driver.native_step,
         "coupling_step": driver.coupling_step,
         "date": driver.clock.yyyymmdd,
         "seconds": driver.clock.seconds,
@@ -127,6 +128,16 @@ def _command(command: dict[str, Any], driver: Any, comm: Any) -> object:
         if comm.rank == 0:
             return {
                 "name": driver.pool.canonical_name(str(command["spec"]["name"])),
+                "shape": tuple(values.shape),
+                "dtype": values.dtype.str,
+                "nbytes": int(values.nbytes),
+            }
+        return None
+    if operation == "create_array":
+        values = driver.define_array(str(command["name"]), command["values"])
+        if comm.rank == 0:
+            return {
+                "name": driver.pool.canonical_name(str(command["name"])),
                 "shape": tuple(values.shape),
                 "dtype": values.dtype.str,
                 "nbytes": int(values.nbytes),

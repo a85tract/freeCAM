@@ -1,4 +1,4 @@
-"""Thin ctypes ABI for original iCESM CAM numerical routines."""
+"""Thin ctypes ABI for CAM kernels and Python-gated primitive services."""
 
 from __future__ import annotations
 
@@ -56,6 +56,18 @@ class CAMNumericalBackend(Protocol):
     ) -> None: ...
     def initialize(self, pool: PICAMStatePool, *, fcomm: int) -> None: ...
     def execute(self, action: PICAMAction, pool: PICAMStatePool, *, fcomm: int) -> None: ...
+    def execute_boundary_kernel(
+        self, action: PICAMAction, pool: PICAMStatePool, *, fcomm: int
+    ) -> None: ...
+    def execute_io_service(
+        self, action: PICAMAction, pool: PICAMStatePool, *, fcomm: int
+    ) -> None: ...
+    def execute_state_service(
+        self, action: PICAMAction, pool: PICAMStatePool, *, fcomm: int
+    ) -> None: ...
+    def synchronize_clock(
+        self, action: PICAMAction, pool: PICAMStatePool, *, fcomm: int
+    ) -> None: ...
     def finalize(self, pool: PICAMStatePool, *, fcomm: int) -> None: ...
 
 
@@ -64,6 +76,7 @@ class RecordingCAMBackend:
 
     def __init__(self) -> None:
         self.calls: list[str] = []
+        self.dispatches: list[tuple[str, str]] = []
 
     def prepare_initialize(self, pool: PICAMStatePool, *, fcomm: int) -> None:
         del pool, fcomm
@@ -79,7 +92,46 @@ class RecordingCAMBackend:
 
     def execute(self, action: PICAMAction, pool: PICAMStatePool, *, fcomm: int) -> None:
         del pool, fcomm
+        if action.kind not in {
+            "scheme",
+            "dynamics",
+            "kernel",
+            "runtime_fortran_process",
+        }:
+            raise NativeCAMError(
+                f"generic numerical execution cannot run {action.kind!r} "
+                f"action {action.operation!r}"
+            )
         self.calls.append(action.operation)
+        self.dispatches.append(("numerical-kernel", action.operation))
+
+    def _service(self, channel: str, action: PICAMAction) -> None:
+        self.calls.append(action.operation)
+        self.dispatches.append((channel, action.operation))
+
+    def execute_boundary_kernel(
+        self, action: PICAMAction, pool: PICAMStatePool, *, fcomm: int
+    ) -> None:
+        del pool, fcomm
+        self._service("boundary-kernel", action)
+
+    def execute_io_service(
+        self, action: PICAMAction, pool: PICAMStatePool, *, fcomm: int
+    ) -> None:
+        del pool, fcomm
+        self._service("io-service", action)
+
+    def execute_state_service(
+        self, action: PICAMAction, pool: PICAMStatePool, *, fcomm: int
+    ) -> None:
+        del pool, fcomm
+        self._service("state-service", action)
+
+    def synchronize_clock(
+        self, action: PICAMAction, pool: PICAMStatePool, *, fcomm: int
+    ) -> None:
+        del pool, fcomm
+        self._service("clock-mirror", action)
 
     def finalize(self, pool: PICAMStatePool, *, fcomm: int) -> None:
         del pool, fcomm
@@ -413,12 +465,55 @@ class NativeCAMDevice:
             self._state_bridge.attach(pool)
         self._native_initialized = True
 
-    def execute(self, action: PICAMAction, pool: PICAMStatePool, *, fcomm: int) -> None:
+    def _execute_operation(
+        self, action: PICAMAction, pool: PICAMStatePool, *, fcomm: int
+    ) -> None:
         if self._state_bridge is not None and not self._state_bridge.zero_copy:
             self._state_bridge.copy_to_native(pool)
         self._call(action.operation, pool, fcomm)
         if self._state_bridge is not None and not self._state_bridge.zero_copy:
             self._state_bridge.copy_from_native(pool)
+
+    def execute(self, action: PICAMAction, pool: PICAMStatePool, *, fcomm: int) -> None:
+        if action.kind not in {
+            "scheme",
+            "dynamics",
+            "kernel",
+            "runtime_fortran_process",
+        }:
+            raise NativeCAMError(
+                f"generic numerical execution cannot run {action.kind!r} "
+                f"action {action.operation!r}"
+            )
+        self._execute_operation(action, pool, fcomm=fcomm)
+
+    def execute_boundary_kernel(
+        self, action: PICAMAction, pool: PICAMStatePool, *, fcomm: int
+    ) -> None:
+        if action.kind != "boundary":
+            raise NativeCAMError("boundary kernel received a non-boundary action")
+        self._execute_operation(action, pool, fcomm=fcomm)
+
+    def execute_io_service(
+        self, action: PICAMAction, pool: PICAMStatePool, *, fcomm: int
+    ) -> None:
+        if action.kind != "io":
+            raise NativeCAMError("I/O service received a non-I/O action")
+        self._execute_operation(action, pool, fcomm=fcomm)
+
+    def execute_state_service(
+        self, action: PICAMAction, pool: PICAMStatePool, *, fcomm: int
+    ) -> None:
+        if action.kind != "service":
+            raise NativeCAMError("state service received a non-service action")
+        self._execute_operation(action, pool, fcomm=fcomm)
+
+    def synchronize_clock(
+        self, action: PICAMAction, pool: PICAMStatePool, *, fcomm: int
+    ) -> None:
+        if action.kind != "clock":
+            raise NativeCAMError("clock mirror received a non-clock action")
+        self._execute_operation(action, pool, fcomm=fcomm)
 
     def execute_source_step(
         self, pool: PICAMStatePool, *, fcomm: int, apply_import: bool = True

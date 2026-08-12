@@ -207,6 +207,31 @@ def test_state_attribute_assignment_creates_and_deletes_distributed_variable() -
     assert calls[1] == ("delete", "experiment_tracer")
 
 
+def test_state_attribute_assignment_accepts_rank_independent_numpy_array() -> None:
+    calls = []
+
+    class Fields:
+        def create_array(self, name, values):
+            calls.append((name, values.copy()))
+
+    session = FakeSession()
+    session.fields = Fields()
+    state = PICAMStateView(session)
+    relative_humidity = np.zeros(30)
+
+    state.rh = relative_humidity
+
+    assert calls[0][0] == "rh"
+    assert np.array_equal(calls[0][1], relative_humidity)
+
+
+def test_state_attribute_assignment_rejects_ambiguous_python_sequence() -> None:
+    state = PICAMStateView(FakeSession())
+
+    with pytest.raises(TypeError, match="NumPy array.*distributed field"):
+        state.rh = [0.0] * 30
+
+
 def test_workflow_insert_installs_physics_object_with_declared_placement() -> None:
     calls = []
 

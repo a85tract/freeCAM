@@ -1,11 +1,14 @@
 #!/bin/bash
 #PBS -N pycam-python-state-50
-#PBS -A $PBS_ACCOUNT
 #PBS -q develop
+# Preserve the validated rank placement: 512 MPI ranks on four nodes while
+# charging the cpudev maximum of 256 physical CPUs.
 #PBS -l select=4:ncpus=64:mpiprocs=128:ompthreads=1:mem=64GB
 #PBS -l walltime=00:15:00
 #PBS -j oe
-#PBS -o /glade/work/$USER/freeCAM/logs/
+# PBS directives do not expand shell variables such as $USER.  A relative
+# directory is resolved from the qsub working directory and remains portable.
+#PBS -o logs/
 #PBS -V
 
 set -euo pipefail

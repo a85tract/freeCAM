@@ -226,6 +226,49 @@ class PICAMStatePool(Mapping[str, np.ndarray]):
         self.attach(contract, array)
         return array
 
+    def create_from_array(self, name: str, values: np.ndarray) -> np.ndarray:
+        """Register a copied, rank-independent NumPy array as a dynamic field.
+
+        This backs the concise ``state.name = np.ndarray`` UI.  Synthetic
+        dimensions preserve the supplied shape without pretending that the
+        array follows CAM's rank-dependent grid decomposition.
+        """
+
+        array = np.array(values, copy=True, order="F", subok=False)
+        if array.ndim == 0:
+            raise PICAMStateError(
+                "direct NumPy state assignment requires an array with at least "
+                "one dimension"
+            )
+        if array.dtype.hasobject:
+            raise PICAMStateError("StatePool arrays cannot use object dtype")
+        dimension_names = tuple(f"{name}__dim{axis}" for axis in range(array.ndim))
+        added_dimensions: list[str] = []
+        try:
+            for dimension, extent in zip(dimension_names, array.shape):
+                if dimension not in self.dimensions:
+                    self.dimensions[dimension] = int(extent)
+                    added_dimensions.append(dimension)
+                elif self.dimensions[dimension] != int(extent):
+                    raise PICAMStateError(
+                        f"dynamic array dimension {dimension!r} already has "
+                        f"extent {self.dimensions[dimension]}, not {extent}"
+                    )
+            contract = PICAMFieldContract(
+                name=name,
+                dimensions=dimension_names,
+                dtype=array.dtype.str,
+                category="dynamic",
+                owner="python",
+                dynamic=True,
+            )
+            self.attach(contract, array)
+        except BaseException:
+            for dimension in added_dimensions:
+                self.dimensions.pop(dimension, None)
+            raise
+        return self._arrays[name]
+
     def attach(self, contract: PICAMFieldContract, values: np.ndarray) -> None:
         if contract.name in self._arrays:
             raise PICAMStateError(f"field {contract.name!r} already exists")
@@ -301,6 +344,7 @@ class PICAMStatePool(Mapping[str, np.ndarray]):
 
     def remove(self, name: str) -> np.ndarray:
         canonical = self.canonical_name(name)
+        contract = self._contracts[canonical]
         for alias, target in tuple(self._aliases.items()):
             if target == canonical:
                 del self._aliases[alias]
@@ -312,7 +356,19 @@ class PICAMStatePool(Mapping[str, np.ndarray]):
             for standard_name, target in self._standard_names.items()
             if target != canonical
         }
-        return self._arrays.pop(canonical)
+        values = self._arrays.pop(canonical)
+        remaining_dimensions = {
+            dimension
+            for remaining in self._contracts.values()
+            for dimension in remaining.dimensions
+        }
+        for dimension in contract.dimensions:
+            if (
+                dimension.startswith(f"{canonical}__dim")
+                and dimension not in remaining_dimensions
+            ):
+                self.dimensions.pop(dimension, None)
+        return values
 
     def remove_dynamic(self, name: str) -> np.ndarray:
         canonical = self.canonical_name(name)

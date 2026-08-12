@@ -20,6 +20,8 @@ from multiprocessing.connection import Connection, Listener
 from pathlib import Path
 from typing import Any
 
+import numpy as np
+
 from freecam.core.runtime_env import mpi_loader_environment
 from freecam.model.python_processes import PythonProcessSpec
 
@@ -134,6 +136,12 @@ class _SessionFieldCollection:
             aliases=aliases,
             standard_name=standard_name,
         )
+        return _SessionFieldReference(self.session, name)
+
+    def create_array(
+        self, name: str, values: np.ndarray
+    ) -> _SessionFieldReference:
+        self.session.create_array(name, values)
         return _SessionFieldReference(self.session, name)
 
     def delete(self, name: str) -> Mapping[str, Any]:
@@ -1302,6 +1310,21 @@ class PICAMNotebookSession:
             standard_name=standard_name,
         )
         return dict(self._request({"op": "create_field", "spec": spec.to_payload()}))
+
+    def create_array(self, name: str, values: np.ndarray) -> Mapping[str, Any]:
+        """Copy one rank-independent NumPy array into every MPI rank."""
+
+        if not isinstance(values, np.ndarray):
+            raise TypeError("values must be a NumPy array")
+        return dict(
+            self._request(
+                {
+                    "op": "create_array",
+                    "name": str(name),
+                    "values": np.array(values, copy=True, order="F", subok=False),
+                }
+            )
+        )
 
     def delete_field(self, name: str) -> Mapping[str, Any]:
         return dict(self._request({"op": "delete_field", "name": name}))

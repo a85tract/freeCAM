@@ -1,4 +1,4 @@
-"""Source-ordered PI-CAM phase and scheme plan."""
+"""Python-owned, source-ordered PI-CAM process plan."""
 
 from __future__ import annotations
 
@@ -21,41 +21,63 @@ class PICAMAction:
     def qualified_name(self) -> str:
         return f"{self.phase}.{self.name}"
 
+    @property
+    def control_owner(self) -> str:
+        """The complete workflow is always ordered and gated by Python."""
+
+        return "python"
+
+    @property
+    def implementation(self) -> str:
+        """Describe the primitive used after Python has selected this action."""
+
+        return {
+            "boundary": "fortran-numerical-kernel",
+            "scheme": "fortran-numerical-kernel",
+            "dynamics": "fortran-numerical-kernel",
+            "kernel": "fortran-numerical-kernel",
+            "runtime_fortran_process": "fortran-numerical-kernel",
+            "python_process": "python",
+            "io": "fortran-io-service",
+            "service": "fortran-state-service",
+            "clock": "fortran-clock-mirror",
+        }.get(self.kind, "python")
+
 
 _DEFAULT_ACTIONS = (
     PICAMAction("boundary_import", "coupling", "boundary_import", "boundary", 202),
-    PICAMAction("prepare", "cam_run2", "prepare", "control", 401),
+    PICAMAction("prepare", "cam_run2", "prepare", "kernel", 401),
     PICAMAction("surface_fluxes_and_emissions", "cam_run2", "chem_emissions", "scheme", 402),
-    PICAMAction("tracers_and_chemistry", "cam_run2", "tracers_chemistry", "scheme", 403),
-    PICAMAction("tracer_tendencies_leaf", "cam_run2", "leaf_tracers_timestep_tend", "scheme", 460, False),
-    PICAMAction("age_of_air_tendencies_leaf", "cam_run2", "leaf_aoa_tracers_timestep_tend", "scheme", 461, False),
-    PICAMAction("chemistry_tendencies_leaf", "cam_run2", "leaf_chem_timestep_tend", "scheme", 462, False),
+    PICAMAction("tracers_and_chemistry", "cam_run2", "tracers_chemistry", "scheme", 403, False),
+    PICAMAction("tracer_tendencies_leaf", "cam_run2", "leaf_tracers_timestep_tend", "scheme", 460),
+    PICAMAction("age_of_air_tendencies_leaf", "cam_run2", "leaf_aoa_tracers_timestep_tend", "scheme", 461),
+    PICAMAction("chemistry_tendencies_leaf", "cam_run2", "leaf_chem_timestep_tend", "scheme", 462),
     PICAMAction("vertical_diffusion", "cam_run2", "vertical_diffusion_tend", "scheme", 404),
     PICAMAction("rayleigh_friction", "cam_run2", "rayleigh_friction_tend", "scheme", 405),
-    PICAMAction("aerosol_dry_deposition", "cam_run2", "aero_model_drydep", "scheme", 406),
-    PICAMAction("aerosol_dry_deposition_leaf", "cam_run2", "leaf_aero_model_drydep", "scheme", 463, False),
-    PICAMAction("carma_aerosol_tendencies_leaf", "cam_run2", "leaf_carma_timestep_tend", "scheme", 464, False),
+    PICAMAction("aerosol_dry_deposition", "cam_run2", "aero_model_drydep", "scheme", 406, False),
+    PICAMAction("aerosol_dry_deposition_leaf", "cam_run2", "leaf_aero_model_drydep", "scheme", 463),
+    PICAMAction("carma_aerosol_tendencies_leaf", "cam_run2", "leaf_carma_timestep_tend", "scheme", 464),
     PICAMAction("charge_neutrality", "cam_run2", "charge_fix", "scheme", 407),
     PICAMAction("gravity_wave_drag", "cam_run2", "gw_tend", "scheme", 408),
     PICAMAction("qbo_relaxation", "cam_run2", "qbo_relax", "scheme", 409),
     PICAMAction("ion_drag", "cam_run2", "iondrag_calc", "scheme", 410),
     PICAMAction("state_finalize", "cam_run2", "physics_dme_adjust", "scheme", 411),
-    PICAMAction("finish", "cam_run2", "finish", "control", 412),
-    PICAMAction("carma_statistics_leaf", "cam_run2", "leaf_carma_accumulate_stats", "scheme", 465, False),
-    PICAMAction("physics_buffer_deallocate_leaf", "cam_run2", "leaf_pbuf_deallocate", "control", 466, False),
-    PICAMAction("physics_buffer_time_advance_leaf", "cam_run2", "leaf_pbuf_update_tim_idx", "control", 467, False),
-    PICAMAction("diagnostics_deallocate_leaf", "cam_run2", "leaf_diag_deallocate", "control", 468, False),
+    PICAMAction("finish", "cam_run2", "finish", "kernel", 412, False),
+    PICAMAction("carma_statistics_leaf", "cam_run2", "leaf_carma_accumulate_stats", "scheme", 465),
+    PICAMAction("physics_buffer_deallocate_leaf", "cam_run2", "leaf_pbuf_deallocate", "service", 466),
+    PICAMAction("physics_buffer_time_advance_leaf", "cam_run2", "leaf_pbuf_update_tim_idx", "service", 467),
+    PICAMAction("diagnostics_deallocate_leaf", "cam_run2", "leaf_diag_deallocate", "service", 468),
     PICAMAction("dynamics", "cam_run2", "stepon_run2", "dynamics", 413),
     PICAMAction("dynamics", "cam_run3", "stepon_run3", "dynamics", 414),
     PICAMAction("history", "cam_run4", "wshist", "io", 415),
     PICAMAction("restart", "cam_run4", "restart", "io", 416),
-    PICAMAction("finish", "cam_run4", "wrapup", "control", 417),
-    PICAMAction("wrapup_leaf", "cam_run4", "leaf_cam_run4_wrapup", "io", 470, False),
-    PICAMAction("step_cost_leaf", "cam_run4", "leaf_cam_run4_step_cost", "control", 471, False),
-    PICAMAction("flush_leaf", "cam_run4", "leaf_cam_run4_flush", "io", 472, False),
+    PICAMAction("finish", "cam_run4", "wrapup", "io", 417, False),
+    PICAMAction("wrapup_leaf", "cam_run4", "leaf_cam_run4_wrapup", "io", 470),
+    PICAMAction("step_cost_leaf", "cam_run4", "leaf_cam_run4_step_cost", "io", 471),
+    PICAMAction("flush_leaf", "cam_run4", "leaf_cam_run4_flush", "io", 472),
     PICAMAction("advance_timestep", "clock", "advance_timestep", "clock", 418),
     PICAMAction("dynamics", "cam_run1", "stepon_run1", "dynamics", 419),
-    PICAMAction("prepare", "cam_run1", "prepare_cam_run1", "control", 420),
+    PICAMAction("prepare", "cam_run1", "prepare_cam_run1", "kernel", 420),
     PICAMAction("state_initialize", "cam_run1", "bc_init", "scheme", 421),
     PICAMAction("energy_fixer", "cam_run1", "check_energy_fix", "scheme", 422),
     PICAMAction("dry_adjustment", "cam_run1", "dadadj", "scheme", 423),
@@ -63,19 +85,19 @@ _DEFAULT_ACTIONS = (
     PICAMAction("shallow_convection", "cam_run1", "convect_shallow_tend", "scheme", 425),
     PICAMAction("sea_salt_rebin", "cam_run1", "sslt_rebin_adv", "scheme", 426),
     PICAMAction("cloud_macro_microphysics", "cam_run1", "macro_microphysics", "scheme", 427),
-    PICAMAction("wet_deposition", "cam_run1", "aero_model_wetdep", "scheme", 428),
-    PICAMAction("modal_aerosol_preparation_leaf", "cam_run1", "leaf_modal_aero_prepare", "scheme", 450, False),
-    PICAMAction("aerosol_wet_deposition_leaf", "cam_run1", "leaf_aero_model_wetdep", "scheme", 451, False),
-    PICAMAction("carma_wet_deposition_leaf", "cam_run1", "leaf_carma_wetdep_tend", "scheme", 452, False),
-    PICAMAction("convective_tracer_transport_leaf", "cam_run1", "leaf_convect_deep_tend_2", "scheme", 453, False),
-    PICAMAction("diagnostics", "cam_run1", "physics_diagnostics", "scheme", 429),
-    PICAMAction("state_and_convection_diagnostics_leaf", "cam_run1", "leaf_diag_phys_writeout", "scheme", 454, False),
-    PICAMAction("cloud_diagnostics_leaf", "cam_run1", "leaf_cloud_diagnostics_calc", "scheme", 455, False),
+    PICAMAction("wet_deposition", "cam_run1", "aero_model_wetdep", "scheme", 428, False),
+    PICAMAction("modal_aerosol_preparation_leaf", "cam_run1", "leaf_modal_aero_prepare", "scheme", 450),
+    PICAMAction("aerosol_wet_deposition_leaf", "cam_run1", "leaf_aero_model_wetdep", "scheme", 451),
+    PICAMAction("carma_wet_deposition_leaf", "cam_run1", "leaf_carma_wetdep_tend", "scheme", 452),
+    PICAMAction("convective_tracer_transport_leaf", "cam_run1", "leaf_convect_deep_tend_2", "scheme", 453),
+    PICAMAction("diagnostics", "cam_run1", "physics_diagnostics", "scheme", 429, False),
+    PICAMAction("state_and_convection_diagnostics_leaf", "cam_run1", "leaf_diag_phys_writeout", "scheme", 454),
+    PICAMAction("cloud_diagnostics_leaf", "cam_run1", "leaf_cloud_diagnostics_calc", "scheme", 455),
     PICAMAction("radiation", "cam_run1", "radiation_tend", "scheme", 430),
-    PICAMAction("state_export", "cam_run1", "cam_export", "scheme", 431),
-    PICAMAction("tropopause_leaf", "cam_run1", "leaf_tropopause_output", "scheme", 456, False),
-    PICAMAction("state_export_leaf", "cam_run1", "leaf_cam_export", "scheme", 457, False),
-    PICAMAction("export_diagnostics_leaf", "cam_run1", "leaf_diag_export", "scheme", 458, False),
+    PICAMAction("state_export", "cam_run1", "cam_export", "scheme", 431, False),
+    PICAMAction("tropopause_leaf", "cam_run1", "leaf_tropopause_output", "scheme", 456),
+    PICAMAction("state_export_leaf", "cam_run1", "leaf_cam_export", "scheme", 457),
+    PICAMAction("export_diagnostics_leaf", "cam_run1", "leaf_diag_export", "scheme", 458),
     PICAMAction("boundary_export", "coupling", "boundary_export", "boundary", 432),
 )
 
@@ -388,6 +410,8 @@ class PICAMStepPlan:
                 "name": action.name,
                 "operation": action.operation,
                 "kind": action.kind,
+                "control_owner": action.control_owner,
+                "implementation": action.implementation,
                 "granularity": (
                     "leaf" if action.operation.startswith("leaf_") else "stage"
                 ),

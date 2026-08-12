@@ -2,6 +2,7 @@ import json
 from pathlib import Path
 import subprocess
 
+import numpy as np
 import pytest
 
 from freecam.pi_cam import session as session_module
@@ -528,8 +529,8 @@ def test_session_ui_lists_every_supported_pi_cam_physics_interface(
         "helper_routines": 95,
         "runtime_overlap": 14,
         "excluded_lifecycle": 1,
-        "enabled": 21,
-        "disabled": 15,
+        "enabled": 31,
+        "disabled": 5,
         "leaf": 15,
         "stage": 21,
     }
@@ -577,6 +578,7 @@ def test_session_dynamic_field_and_python_process_commands(
         dims=("pcols", "pver"),
         aliases=("tracer",),
     )
+    relative_humidity = session.fields.create_array("rh", np.zeros(30))
 
     def callback(fields, context):
         fields["tracer"][...] += context.timestep_seconds
@@ -590,9 +592,13 @@ def test_session_dynamic_field_and_python_process_commands(
 
     assert commands[0]["op"] == "create_field"
     assert commands[0]["spec"]["dynamic"] is True
-    assert commands[1]["op"] == "install_python"
-    assert commands[1]["spec"]["group"] == "cam_run1"
-    assert commands[1]["spec"]["after"] == "dadadj"
+    assert commands[1]["op"] == "create_array"
+    assert commands[1]["name"] == "rh"
+    assert np.array_equal(commands[1]["values"], np.zeros(30))
+    assert commands[2]["op"] == "install_python"
+    assert commands[2]["spec"]["group"] == "cam_run1"
+    assert commands[2]["spec"]["after"] == "dadadj"
     assert tracer.name == "experiment_tracer"
+    assert relative_humidity.name == "rh"
     assert process.name == "heating"
     assert process.phase == "cam_run1"

@@ -56,6 +56,54 @@ def test_complete_step_is_ordered_by_python_and_advances_1800_seconds() -> None:
     assert (0, 0) in boundary.exports
 
 
+def test_python_control_routes_only_numerical_actions_through_generic_execute() -> None:
+    driver, backend, _ = _driver()
+    driver.initialize()
+
+    driver.step()
+
+    channels = {channel for channel, _ in backend.dispatches}
+    assert channels == {
+        "boundary-kernel",
+        "clock-mirror",
+        "io-service",
+        "numerical-kernel",
+        "state-service",
+    }
+    assert ("boundary-kernel", "boundary_import") in backend.dispatches
+    assert ("boundary-kernel", "boundary_export") in backend.dispatches
+    assert ("clock-mirror", "advance_timestep") in backend.dispatches
+    assert ("state-service", "leaf_pbuf_deallocate") in backend.dispatches
+    assert ("io-service", "wshist") in backend.dispatches
+    assert not any(
+        channel == "numerical-kernel"
+        and operation in {
+            "boundary_import",
+            "boundary_export",
+            "wshist",
+            "restart",
+            "advance_timestep",
+            "leaf_pbuf_deallocate",
+            "leaf_pbuf_update_tim_idx",
+            "leaf_diag_deallocate",
+        }
+        for channel, operation in backend.dispatches
+    )
+
+
+def test_restart_alarm_is_decided_by_python_before_calling_io_service() -> None:
+    driver, backend, _ = _driver()
+    driver.initialize()
+    restart = driver.step_plan.select("restart", phase="cam_run4")
+
+    driver._execute(restart)
+    assert ("io-service", "restart") not in backend.dispatches
+
+    driver._native_step = driver.config.stop_n
+    driver._execute(restart)
+    assert ("io-service", "restart") in backend.dispatches
+
+
 def test_fine_grained_step_holds_native_import_when_coupling_input_is_held() -> None:
     class HeldBoundary(InMemoryBoundaryProvider):
         def has_fresh_import(self, step: int, rank: int) -> bool:
@@ -184,8 +232,8 @@ def test_pythonic_phase_and_action_handles_edit_the_same_step_plan() -> None:
         "helper_routines": 95,
         "runtime_overlap": 14,
         "excluded_lifecycle": 1,
-        "enabled": 21,
-        "disabled": 15,
+        "enabled": 31,
+        "disabled": 5,
         "leaf": 15,
         "stage": 21,
     }
@@ -386,6 +434,20 @@ def test_dynamic_field_and_python_process_are_part_of_the_step_plan() -> None:
     process.remove()
     driver.delete_variable("tracer")
     assert "experiment_tracer" not in driver.pool
+
+
+def test_rank_independent_numpy_array_is_copied_into_statepool() -> None:
+    driver, _, _ = _driver()
+    driver.initialize()
+    source = np.linspace(0.0, 1.0, 30)
+
+    values = driver.define_array("rh", source)
+
+    assert np.array_equal(values, source)
+    assert values.ctypes.data != source.ctypes.data
+    assert driver.pool.contract("rh").dynamic is True
+    driver.delete_variable("rh")
+    assert "rh" not in driver.pool
 
 
 def test_failed_python_process_restores_declared_writes() -> None:

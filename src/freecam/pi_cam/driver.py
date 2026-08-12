@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import Enum
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -918,6 +919,7 @@ class PICAMDriver:
         self.lifecycle = PICAMLifecycle.CREATED
         self.coupling_step = 0
         self._boundary_step = 0
+        self._native_step = 0
         self._trace: list[PICAMActionTrace] = []
         self.history_callback = history_callback
         self.run_dir = None if run_dir is None else Path(run_dir).resolve()
@@ -936,6 +938,12 @@ class PICAMDriver:
     @property
     def trace(self) -> tuple[PICAMActionTrace, ...]:
         return tuple(self._trace)
+
+    @property
+    def native_step(self) -> int:
+        """Python's mirror of CAM's internal time-manager step."""
+
+        return self._native_step
 
     @property
     def python_initialized_addresses(self) -> dict[str, int]:
@@ -1045,7 +1053,7 @@ class PICAMDriver:
             "initial_priming",
             "initialization",
             "initial_priming",
-            "control",
+            "kernel",
             200,
         )
         self.boundary.import_fields(1, self.rank, self.pool)
@@ -1064,7 +1072,7 @@ class PICAMDriver:
         """Reproduce the first atm_init_mct export immediately after cam_init."""
 
         boundary_export = self.step_plan.select("boundary_export")
-        self.backend.execute(boundary_export, self.pool, fcomm=self.fcomm)
+        self._execute_boundary_kernel(boundary_export)
         self._record(boundary_export)
         self.boundary.export_fields(0, self.rank, self.pool)
 
@@ -1093,22 +1101,88 @@ class PICAMDriver:
             # interval and holds cam_in for the remaining substeps.  The
             # replay manifest records those held boundaries explicitly.
             if self.boundary.has_fresh_import(self._boundary_step, self.rank):
-                self._execute_native(action)
+                self._execute_boundary_kernel(action)
         elif action.operation == "boundary_export":
-            self._execute_native(action)
+            self._execute_boundary_kernel(action)
             self.boundary.export_fields(self._boundary_step, self.rank, self.pool)
         elif action.operation == "advance_timestep":
-            self._execute_native(action)
+            clock_state = (
+                self.clock.year,
+                self.clock.month,
+                self.clock.day,
+                self.clock.seconds,
+                self.clock.nstep,
+            )
             if self._advance_public_clock:
                 self.clock.advance()
                 self._sync_clock_fields()
-        elif action.kind == "io" and self.history_callback is not None:
-            self.history_callback(action, self)
+            self._native_step += 1
+            try:
+                self._synchronize_clock(action)
+            except BaseException:
+                self._native_step -= 1
+                (
+                    self.clock.year,
+                    self.clock.month,
+                    self.clock.day,
+                    self.clock.seconds,
+                    self.clock.nstep,
+                ) = clock_state
+                self._sync_clock_fields()
+                raise
+        elif action.kind == "io":
+            if self.history_callback is not None:
+                self.history_callback(action, self)
+            elif action.operation != "restart" or self._restart_due():
+                self._execute_io_service(action)
+        elif action.kind == "service":
+            self._execute_state_service(action)
         else:
             self._execute_native(action)
         return self._record(action)
 
+    def _restart_due(self) -> bool:
+        """Return the Python-owned restart alarm for the admitted nstep case."""
+
+        return self._native_step >= self.config.stop_n
+
+    def _execute_backend_primitive(
+        self, method: str, action: PICAMAction
+    ) -> None:
+        primitive = getattr(self.backend, method, None)
+        if not callable(primitive):
+            raise PICAMStateError(
+                f"backend does not implement required {method} primitive"
+            )
+        self._native_call_depth += 1
+        try:
+            primitive(action, self.pool, fcomm=self.fcomm)
+        finally:
+            self._native_call_depth -= 1
+
+    def _execute_boundary_kernel(self, action: PICAMAction) -> None:
+        self._execute_backend_primitive("execute_boundary_kernel", action)
+
+    def _execute_io_service(self, action: PICAMAction) -> None:
+        self._execute_backend_primitive("execute_io_service", action)
+
+    def _execute_state_service(self, action: PICAMAction) -> None:
+        self._execute_backend_primitive("execute_state_service", action)
+
+    def _synchronize_clock(self, action: PICAMAction) -> None:
+        self._execute_backend_primitive("synchronize_clock", action)
+
     def _execute_native(self, action: PICAMAction) -> None:
+        if action.kind not in {
+            "scheme",
+            "dynamics",
+            "kernel",
+            "runtime_fortran_process",
+        }:
+            raise PICAMStateError(
+                f"Python control cannot send {action.kind!r} action "
+                f"{action.operation!r} through generic native execution"
+            )
         self._native_call_depth += 1
         try:
             self.backend.execute(action, self.pool, fcomm=self.fcomm)
@@ -1159,6 +1233,44 @@ class PICAMDriver:
             )
         self.comm.barrier()
         return values
+
+    def define_array(self, name: str, values: np.ndarray) -> np.ndarray:
+        """Collectively copy one rank-independent array into every StatePool."""
+
+        self._require_collective_boundary("define an array variable")
+        array = np.asarray(values)
+        signature = {
+            "name": str(name),
+            "shape": tuple(int(extent) for extent in array.shape),
+            "dtype": array.dtype.str,
+            "sha256": hashlib.sha256(array.tobytes(order="F")).hexdigest(),
+        }
+        signatures = self.comm.allgather(
+            json.dumps(signature, sort_keys=True, separators=(",", ":"))
+        )
+        if len(set(signatures)) != 1:
+            raise PICAMStateError(
+                "direct NumPy state assignment differs across MPI ranks"
+            )
+
+        created = False
+        local_error: str | None = None
+        try:
+            result = self.pool.create_from_array(str(name), array)
+            created = True
+        except BaseException as exc:
+            local_error = f"{type(exc).__name__}: {exc}"
+            result = np.empty(0)
+        errors = self.comm.allgather(local_error)
+        if any(error is not None for error in errors):
+            if created:
+                self.pool.remove(str(name))
+            self.comm.barrier()
+            raise PICAMStateError(
+                f"dynamic NumPy array creation rolled back collectively: {errors}"
+            )
+        self.comm.barrier()
+        return result
 
     def delete_variable(self, name: str) -> None:
         """Collectively remove an unused dynamic field."""
@@ -1366,10 +1478,10 @@ class PICAMDriver:
                 "isolated action execution requires experimental=True"
             )
         action = self.step_plan.select(name, phase=phase)
-        # Coupler exchange and the model clock define a complete-step boundary;
-        # they remain explicit driver responsibilities.  History/restart/flush
-        # actions are ordinary admitted native entry points and may be invoked
-        # independently for experimental workflow construction.
+        # Coupler exchange and the model clock define a complete-step boundary
+        # and remain explicit Python-driver responsibilities.  I/O actions are
+        # Python-gated low-level services and may be invoked independently for
+        # experimental workflow construction.
         if action.kind in {"boundary", "clock"}:
             raise PICAMConfigurationError(
                 f"{action.operation!r} is controlled by a complete step"
@@ -1489,9 +1601,11 @@ class PICAMDriver:
                 for action in body:
                     if action.kind == "io" and self.history_callback is not None:
                         self.history_callback(action, self)
-                    if action.operation == "advance_timestep" and self._advance_public_clock:
-                        self.clock.advance()
-                        self._sync_clock_fields()
+                    if action.operation == "advance_timestep":
+                        self._native_step += 1
+                        if self._advance_public_clock:
+                            self.clock.advance()
+                            self._sync_clock_fields()
                     self._record(action)
                 self._record(exports[0])
                 self.boundary.export_fields(self._boundary_step, self.rank, self.pool)
@@ -1529,6 +1643,7 @@ class PICAMDriver:
             "size": self.size,
             "coupling_step": self.coupling_step,
             "boundary_step": self._boundary_step,
+            "native_step": self._native_step,
             "clock": {
                 "year": self.clock.year,
                 "month": self.clock.month,

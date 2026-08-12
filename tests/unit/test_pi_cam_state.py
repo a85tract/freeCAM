@@ -45,6 +45,28 @@ def test_dynamic_variable_contract_round_trip_and_safe_removal() -> None:
     assert "experiment_tracer" not in pool
 
 
+def test_rank_independent_numpy_array_is_copied_and_registered_dynamically() -> None:
+    pool = PICAMStatePool({})
+    source = np.arange(12.0).reshape(3, 4)
+
+    values = pool.create_from_array("diagnostic", source)
+
+    assert np.array_equal(values, source)
+    assert values.flags.f_contiguous
+    assert values.ctypes.data != source.ctypes.data
+    assert pool.contract("diagnostic").dimensions == (
+        "diagnostic__dim0",
+        "diagnostic__dim1",
+    )
+    assert pool.dynamic_fields == {"diagnostic"}
+
+    source[...] = -1.0
+    assert np.array_equal(values, np.arange(12.0).reshape(3, 4))
+    pool.remove_dynamic("diagnostic")
+    assert "diagnostic__dim0" not in pool.dimensions
+    assert "diagnostic__dim1" not in pool.dimensions
+
+
 def test_replay_field_cannot_change_shape_between_steps() -> None:
     pool = PICAMStatePool({})
     pool.ensure_from_array("cam_in.sst", np.ones((2, 3)), category="boundary")

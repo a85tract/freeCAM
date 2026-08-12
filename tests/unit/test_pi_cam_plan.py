@@ -88,15 +88,17 @@ def test_pi_cam_default_plan_matches_cesm_cam_source_order() -> None:
         432,
     ]
     assert len(plan.actions) == 54
-    assert len(tuple(plan)) == 33
-    assert len(plan.in_phase("cam_run2")) == 13
+    assert len(tuple(plan)) == 47
+    assert len(plan.in_phase("cam_run2")) == 19
     assert sum(action.phase == "cam_run2" for action in plan.actions) == 22
     assert len(plan.in_phase("cam_run3")) == 1
     assert sum(action.phase == "cam_run3" for action in plan.actions) == 1
-    assert len(plan.in_phase("cam_run4")) == 3
+    assert len(plan.in_phase("cam_run4")) == 5
     assert sum(action.phase == "cam_run4" for action in plan.actions) == 6
-    assert len(plan.in_phase("cam_run1")) == 13
+    assert len(plan.in_phase("cam_run1")) == 19
     assert sum(action.phase == "cam_run1" for action in plan.actions) == 22
+    assert not any(action.kind == "control" for action in plan.actions)
+    assert all(action.control_owner == "python" for action in plan.actions)
 
 
 def test_pi_cam_plan_changes_are_explicitly_experimental() -> None:
@@ -116,10 +118,7 @@ def test_pi_cam_leaf_processes_can_be_reordered_only_experimentally() -> None:
         plan.move(
             "cloud_diagnostics_leaf", phase="cam_run1", before="radiation"
         )
-    assert not plan.select("cloud_diagnostics_leaf", phase="cam_run1").enabled
-    plan.set_enabled(
-        "cloud_diagnostics_leaf", True, phase="cam_run1", experimental=True
-    )
+    assert plan.select("cloud_diagnostics_leaf", phase="cam_run1").enabled
 
     plan.move(
         "cloud_diagnostics_leaf",
@@ -262,7 +261,7 @@ def test_cam_run2_run4_leaf_expansion_replaces_only_composites() -> None:
         "step_cost_leaf",
         "flush_leaf",
     )
-    assert len(tuple(plan)) == 41
+    assert len(tuple(plan)) == 47
 
 
 def test_cam_run2_run4_leaf_expansion_requires_experimental_flag() -> None:
