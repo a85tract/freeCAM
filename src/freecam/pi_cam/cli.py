@@ -11,7 +11,14 @@ import sys
 import traceback
 from dataclasses import replace
 
-from .boundary import ReplayBoundaryProvider
+import cloudpickle
+
+from .boundary import (
+    CAMBoundaryProvider,
+    CESMOnlineBoundaryProvider,
+    OnlineBoundaryProvider,
+    ReplayBoundaryProvider,
+)
 from .case import PICAMCase
 from .native import NativeCAMDevice
 
@@ -19,7 +26,10 @@ from .native import NativeCAMDevice
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="freecam")
     parser.add_argument("--config", type=Path, required=True)
-    parser.add_argument("--boundary", type=Path, required=True)
+    boundary_group = parser.add_mutually_exclusive_group(required=True)
+    boundary_group.add_argument("--boundary", type=Path)
+    boundary_group.add_argument("--boundary-provider", type=Path)
+    boundary_group.add_argument("--online-bootstrap", type=Path)
     parser.add_argument("--run-dir", type=Path, required=True)
     parser.add_argument(
         "--native-manifest",
@@ -55,7 +65,16 @@ def main(argv: list[str] | None = None) -> int:
     case = PICAMCase.from_yaml(args.config)
     if args.execution_mode is not None:
         case = PICAMCase(replace(case.config, execution_mode=args.execution_mode))
-    boundary = ReplayBoundaryProvider(args.boundary)
+    if args.boundary is not None:
+        boundary: CAMBoundaryProvider = ReplayBoundaryProvider(args.boundary)
+    elif args.online_bootstrap is not None:
+        boundary = OnlineBoundaryProvider.held(args.online_bootstrap)
+    else:
+        boundary = cloudpickle.loads(args.boundary_provider.read_bytes())
+        if not isinstance(boundary, CAMBoundaryProvider):
+            raise TypeError(
+                "boundary provider payload is not a CAMBoundaryProvider"
+            )
     backend = (
         None
         if args.native_manifest is None
@@ -148,6 +167,7 @@ def main(argv: list[str] | None = None) -> int:
             "python_initialized_fields": len(python_initialized_addresses),
             "stable_preinitialized_addresses": len(stable_names),
             "addresses_unchanged": not changed_addresses,
+            "boundary": dict(getattr(boundary, "diagnostics", {})),
         }
     finalized_addresses = {
         name: int(values.ctypes.data) for name, values in cam.pool.items()
@@ -184,13 +204,41 @@ def main(argv: list[str] | None = None) -> int:
                     else None
                 ),
             }
+        boundary_diagnostics = records[0]["boundary"]
+        exact_oracle_bfb = (
+            isinstance(boundary, CESMOnlineBoundaryProvider)
+            and boundary.oracle is not None
+            and all(
+                record["boundary"].get("imports")
+                == record["boundary"].get("oracle_x2a_bfb_steps")
+                and record["boundary"].get("exports")
+                == record["boundary"].get("oracle_a2x_bfb_steps")
+                for record in records
+            )
+        )
         summary = {
             "schema_version": 1,
+            "run_status": "passed",
             "case": case.config.case_name,
             "pbs_job_id": os.environ.get("PBS_JOBID"),
             "mpi_ranks": world.Get_size(),
             "steps": args.steps if args.steps is not None else case.config.stop_n,
             "execution_mode": case.config.execution_mode,
+            "boundary_mode": case.config.boundary_mode,
+            "boundary_provider": type(boundary).__name__,
+            "validation_scope": (
+                "online original-CESM components/coupler with per-boundary BFB oracle"
+                if isinstance(boundary, CESMOnlineBoundaryProvider)
+                else "online boundary control path with held-surface technical model"
+                if isinstance(boundary, OnlineBoundaryProvider)
+                and type(boundary.update).__name__ == "HeldSurfaceModel"
+                else "configured CAM runtime"
+            ),
+            "scientific_bfb": True if exact_oracle_bfb else None,
+            "boundary_rank_zero": boundary_diagnostics,
+            "all_rank_generated_imports": [
+                record["boundary"].get("generated_imports") for record in records
+            ],
             "step_plan_actions": records[0]["step_plan_actions"],
             "action_catalog_size": records[0]["action_catalog_size"],
             "cam_run1_actions": records[0]["cam_run1_actions"],

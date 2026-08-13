@@ -10,9 +10,11 @@ from freecam.pi_cam import (
     CASES,
     CaseConfig,
     CaseRegistry,
+    CESMOnlineBoundaryProvider,
     Driver,
     FreeCAM,
     Physics,
+    OnlineBoundaryProvider,
     ProcessSpec,
     PICAMStepPlan,
     RunResult,
@@ -177,7 +179,10 @@ def _driver_tree(tmp_path: Path) -> dict[str, Path]:
     reference_run.mkdir()
     (reference_run / "atm_in").write_text("&atm_in /\n")
     (reference_run / "keep-me").write_text("input\n")
+    (reference_run / "SEMapping.nc").write_bytes(b"mapping")
     (reference_run / "test.cam.h0.0001.nc").write_text("output\n")
+    (reference_run / "test.clm2.r.0001.nc").write_text("output\n")
+    (reference_run / "test.docn.rs1.bin").write_text("output\n")
     (reference_run / "timing").mkdir()
     boundary = tmp_path / "boundary"
     boundary.mkdir()
@@ -222,7 +227,10 @@ def test_driver_hides_run_preparation_and_lazily_reuses_one_session(tmp_path) ->
     ]
     assert (driver.run_dir / "atm_in").is_file()
     assert (driver.run_dir / "keep-me").is_file()
+    assert (driver.run_dir / "SEMapping.nc").is_file()
     assert not (driver.run_dir / "test.cam.h0.0001.nc").exists()
+    assert not (driver.run_dir / "test.clm2.r.0001.nc").exists()
+    assert not (driver.run_dir / "test.docn.rs1.bin").exists()
 
     result = driver.run()
 
@@ -346,6 +354,86 @@ def test_driver_rejects_unknown_case_and_boundary_overrun(tmp_path) -> None:
         raise AssertionError("boundary overrun was accepted")
 
 
+def test_online_driver_accepts_steps_beyond_configured_default(tmp_path) -> None:
+    paths = _driver_tree(tmp_path)
+    config = paths["config"]
+    config.write_text(config.read_text() + "boundary_mode: online\n")
+    bootstrap = tmp_path / "bootstrap"
+    bootstrap.mkdir()
+    (bootstrap / "manifest.json").write_text(
+        '{"schema_version":1,"storage":"rank_bootstrap_v1",'
+        '"rank_count":1,"file_pattern":"rank-{rank:04d}.npz"}\n'
+    )
+    np.savez(
+        bootstrap / "rank-0000.npz",
+        x2a_rattr=np.zeros((2, 3)),
+        a2x_rattr=np.zeros((4, 3)),
+    )
+    provider = OnlineBoundaryProvider.held(bootstrap)
+    driver = Driver(
+        case="PI-atm",
+        nsteps=6,
+        repo=paths["repo"],
+        config=config,
+        reference_case=paths["reference_case"],
+        reference_run=paths["reference_run"],
+        boundary=provider,
+        python_executable="/usr/bin/python3",
+        session_factory=FakeSession,
+    )
+
+    diagnosis = driver.diagnose()
+
+    assert diagnosis["ready"] is True
+    assert diagnosis["checks"]["boundary_bootstrap"] is True
+    assert diagnosis["boundary"] == "OnlineBoundaryProvider"
+
+
+def test_default_online_driver_prepares_exact_provider_lazily(tmp_path) -> None:
+    paths = _driver_tree(tmp_path)
+    config = paths["config"]
+    config.write_text(config.read_text() + "boundary_mode: online\n")
+    library = tmp_path / "libpycesm_support.so"
+    library.write_bytes(b"test library")
+    seed = tmp_path / "cesm-seed"
+    seed.mkdir()
+    (seed / "drv_in").write_text("driver input\n")
+    (seed / "SEMapping.nc").write_bytes(b"mapping")
+    (seed / "lnd_in").write_text("land input\n")
+    (seed / "history.nc").write_bytes(b"do not copy")
+
+    driver = Driver(
+        case="PI-atm",
+        nsteps=6,
+        repo=paths["repo"],
+        config=config,
+        scratch=tmp_path / "scratch",
+        reference_case=paths["reference_case"],
+        reference_run=paths["reference_run"],
+        online_library=library,
+        online_seed_run=seed,
+        python_executable="/usr/bin/python3",
+        session_factory=FakeSession,
+    )
+
+    diagnosis = driver.diagnose()
+    assert diagnosis["boundary"] == "CESMOnlineBoundaryProvider (automatic)"
+    assert diagnosis["ready"] is True
+    assert driver.boundary is None
+    assert driver.run_dir is None
+
+    _ = driver.cam.state
+
+    assert isinstance(driver.boundary, CESMOnlineBoundaryProvider)
+    assert driver.boundary.oracle is None
+    assert driver.boundary.run_dir == driver.run_dir.parent / "cesm-provider-run"
+    assert (driver.boundary.run_dir / "drv_in").is_file()
+    assert (driver.boundary.run_dir / "SEMapping.nc").is_file()
+    assert not (driver.boundary.run_dir / "history.nc").exists()
+    assert FakeSession.instances[-1].kwargs["boundary"] is driver.boundary
+    driver.close()
+
+
 def test_driver_reads_case_account_and_preserves_venv_python_symlink(
     tmp_path, monkeypatch
 ) -> None:
@@ -400,6 +488,7 @@ def test_public_case_registry_and_driver_output_options(tmp_path) -> None:
 
     assert registry["diagnostic"] is custom
     assert "PI-atm" in CASES
+    assert CASES["PI-atm-1month"].base == "PI-atm-1month"
     CASES.register(custom)
     try:
         driver = Driver(

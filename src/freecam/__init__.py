@@ -2,10 +2,16 @@
 
 from .pi_cam import (
     CASES,
+    CAMBoundaryProvider,
+    CESMOnlineBoundaryProvider,
     CaseConfig,
     CaseRegistry,
     Driver,
     FreeCAM,
+    HeldSurfaceModel,
+    OnlineBoundaryContext,
+    OnlineBoundaryFields,
+    OnlineBoundaryProvider,
     Physics,
     ProcessSpec,
     PICAMAction,
@@ -30,14 +36,21 @@ from .pi_cam import (
     WorkflowPreviewAction,
     WorkflowTemplate,
     process,
+    prepare_cesm_online_run,
 )
 
 __all__ = [
     "CASES",
+    "CAMBoundaryProvider",
+    "CESMOnlineBoundaryProvider",
     "CaseConfig",
     "CaseRegistry",
     "Driver",
     "FreeCAM",
+    "HeldSurfaceModel",
+    "OnlineBoundaryContext",
+    "OnlineBoundaryFields",
+    "OnlineBoundaryProvider",
     "Physics",
     "ProcessSpec",
     "RunHandle",
@@ -61,6 +74,7 @@ __all__ = [
     "WorkflowPreviewAction",
     "WorkflowTemplate",
     "process",
+    "prepare_cesm_online_run",
     "PythonStateView",
 ]
 

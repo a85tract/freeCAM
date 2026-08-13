@@ -1,0 +1,18 @@
+{
+  "boundary_after_launch": "CESMOnlineBoundaryProvider",
+  "boundary_before_launch": "CESMOnlineBoundaryProvider (automatic)",
+  "branch": "pi-cam-only",
+  "completed_steps": 60,
+  "config": "configs/pi_cam_icesm131.yaml",
+  "crossed_old_replay_limit": true,
+  "date": 10102,
+  "default_ui": "fc.Driver(case='PI-atm').run(steps=60)",
+  "library_sha256": "0c44d2d259a3c0c2359b322aef79da230f79e2865ac27f88b4f1171a634cec36",
+  "model_step": 60,
+  "mpi_ranks": 512,
+  "pbs_job_id": "7111687.desched1",
+  "provider_run_dir": "/glade/derecho/scratch/ruitong/freeCAM/PI-cam/notebook-20260813-154403-1bfefae7/cesm-provider-run",
+  "run_dir": "/glade/derecho/scratch/ruitong/freeCAM/PI-cam/notebook-20260813-154403-1bfefae7/run",
+  "unit_tests": "183 passed",
+  "working_tree_base_commit": "0b603d88b5a486bb20e5b5359de37a5fbd5fc664"
+}

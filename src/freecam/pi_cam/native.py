@@ -6,7 +6,6 @@ import ctypes
 import json
 import os
 from pathlib import Path
-import sys
 from typing import Iterator, Mapping, Protocol
 
 import numpy as np
@@ -15,6 +14,7 @@ from freecam.core.fortran_adapter import (
     FortranAdapterError,
     PointerTableAdapter,
 )
+from freecam.core.fortran_runtime import prepare_fortran_runtime
 
 from .errors import NativeCAMError
 from .plan import PICAMAction
@@ -25,28 +25,10 @@ from .process_devices import (
 from .state import PICAMFieldContract, PICAMStatePool
 
 
-_FORTRAN_RUNTIME: ctypes.CDLL | None = None
-_FORTRAN_RUNTIME_READY = False
-
-
 def _prepare_fortran_runtime() -> None:
     """Initialize Intel Fortran when Python, rather than Fortran, is main."""
 
-    global _FORTRAN_RUNTIME, _FORTRAN_RUNTIME_READY
-    if _FORTRAN_RUNTIME_READY:
-        return
-    try:
-        runtime = ctypes.CDLL("libifcore.so.5", mode=ctypes.RTLD_GLOBAL)
-        initialize = runtime.for_rtl_init_
-    except (OSError, AttributeError):
-        _FORTRAN_RUNTIME_READY = True
-        return
-    initialize.argtypes = (ctypes.POINTER(ctypes.c_int),)
-    initialize.restype = None
-    argc = ctypes.c_int(len(sys.argv))
-    initialize(ctypes.byref(argc))
-    _FORTRAN_RUNTIME = runtime
-    _FORTRAN_RUNTIME_READY = True
+    prepare_fortran_runtime()
 
 
 class CAMNumericalBackend(Protocol):

@@ -9,7 +9,9 @@ start_seconds: 0
 orbital_year: 1850
 timestep_seconds: 1800
 coupling_seconds: 1800
-stop_n: 50
+# The default online seed covers one NO_LEAP month (1,488 half-hour steps).
+# The separate exact-online validation config retains the 50-step BFB gate.
+stop_n: 1488
 # After cam_init's initial export and the import/run1 priming pass, the source
 # split timestep executes one complete look-ahead pass. It advances native
 # state, but is not counted as a completed user step.
@@ -19,10 +21,9 @@ pcols: 16
 physics_package: cam5
 dynamics: se
 
-# Strict BFB runs replay the rank-local CAM imports captured from the full
-# PI-atm oracle.  A future coupler can instead provide the same interface in
-# memory; PI-CAM never imports CLM/CICE/DOCN/RTM Python packages.
-boundary_mode: replay
+# The normal UI runs the original CESM surface components and coupler online.
+# Offline replay remains available explicitly through case="PI-atm-replay".
+boundary_mode: online
 execution_mode: fine_grained
 
 # Filled by tools/build_pi_cam_devices.py after the original numerical

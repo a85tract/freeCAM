@@ -27,6 +27,11 @@ from xml.etree import ElementTree
 
 from freecam.model.python_processes import PythonStateView
 
+from .boundary import (
+    CAMBoundaryProvider,
+    CESMOnlineBoundaryProvider,
+    OnlineBoundaryProvider,
+)
 from .config import PICAMConfig
 from .history import PICAMOutputView
 from .plan import PICAMStepPlan
@@ -654,7 +659,25 @@ CASES = CaseRegistry(
         CaseConfig(
             name="PI-atm",
             description="iCESM1.3.1 preindustrial CAM atmosphere",
-            forcing="1850 fixed preindustrial with replayed coupler boundaries",
+            forcing="1850 fixed preindustrial with the online CESM surface system",
+        ),
+        CaseConfig(
+            name="PI-atm-replay",
+            description="PI-atm with captured coupler boundaries",
+            forcing="1850 fixed preindustrial replay validation",
+            base="PI-atm-replay",
+        ),
+        CaseConfig(
+            name="PI-atm-1month",
+            description="iCESM1.3.1 preindustrial CAM atmosphere for one month",
+            forcing="1850 fixed preindustrial with one month of replayed boundaries",
+            base="PI-atm-1month",
+        ),
+        CaseConfig(
+            name="PI-atm-online",
+            description="Compatibility alias for the default online PI-atm case",
+            forcing="1850 fixed preindustrial with the online CESM surface system",
+            base="PI-atm-online",
         ),
     )
 )
@@ -1162,7 +1185,27 @@ class Driver:
     one persistent session; every later operation reuses those MPI ranks.
     """
 
-    _CASE_CONFIGS = {"PI-atm": "configs/pi_cam_icesm131.yaml"}
+    _CASE_CONFIGS = {
+        "PI-atm": "configs/pi_cam_icesm131.yaml",
+        "PI-atm-replay": "configs/pi_cam_icesm131_replay.yaml",
+        "PI-atm-1month": "configs/pi_cam_icesm131_1month.yaml",
+        "PI-atm-online": "configs/pi_cam_icesm131_online.yaml",
+    }
+    _CASE_REFERENCE_NAMES = {
+        "PI-atm-replay": (
+            "f.e13.F1850C5.ne16_g16.icesm131_ihesp.PI-cam-oracle.50step"
+        ),
+        "PI-atm-1month": (
+            "f.e13.F1850C5.ne16_g16.icesm131_ihesp.PI-cam-oracle.50step"
+        ),
+        "PI-atm-online": (
+            "f.e13.F1850C5.ne16_g16.icesm131_ihesp.PI-cam-oracle.50step"
+        ),
+    }
+    _CASE_BOUNDARY_CAPTURES = {
+        "PI-atm-replay": "nonpic-boundary-capture-50step",
+        "PI-atm-1month": "nonpic-boundary-capture-1month",
+    }
 
     def __init__(
         self,
@@ -1174,12 +1217,16 @@ class Driver:
         scratch: str | Path | None = None,
         reference_case: str | Path | None = None,
         reference_run: str | Path | None = None,
-        boundary: str | Path | None = None,
+        boundary: str | Path | CAMBoundaryProvider | None = None,
+        online_library: str | Path | None = None,
+        online_seed_run: str | Path | None = None,
+        online_oracle: str | Path | None = None,
         run_dir: str | Path | None = None,
         launch_mode: str = "auto",
         account: str | None = None,
         queue: str = "develop",
         walltime: str = "02:00:00",
+        memory_per_node: str = "110GB",
         history_every: int | None = 1,
         restart_every: int | None | str = "end",
         verify_boundary_exports: bool = False,
@@ -1214,7 +1261,10 @@ class Driver:
                 ) from exc
         self.config_path = Path(config).expanduser().resolve()
         self.config = PICAMConfig.from_yaml(self.config_path)
-        if int(nsteps) > self.config.stop_n:
+        if (
+            self.config.boundary_mode == "replay"
+            and int(nsteps) > self.config.stop_n
+        ):
             raise ValueError(
                 f"nsteps={nsteps} exceeds the {self.config.stop_n}-step replay boundary"
             )
@@ -1228,23 +1278,57 @@ class Driver:
             or f"/glade/derecho/scratch/{os.environ.get('USER', 'unknown')}"
         ).expanduser().resolve()
         case_name = self.config.case_name
+        reference_name = self._CASE_REFERENCE_NAMES.get(case_key, case_name)
         self.reference_case = Path(
             reference_case
-            or self.repo.parent / "CESM_cases" / case_name
+            or self.repo.parent / "CESM_cases" / reference_name
         ).expanduser().resolve()
         self.reference_run = Path(
             reference_run
-            or self.scratch / "pyCAM" / "PI-cam" / case_name / "run"
+            or self.scratch / "pyCAM" / "PI-cam" / reference_name / "run"
         ).expanduser().resolve()
-        self.boundary = Path(
-            boundary
-            or self.scratch
-            / "pyCAM"
-            / "PI-cam"
-            / "nonpic-boundary-capture-50step"
-            / "boundary"
-            / "replay"
-        ).expanduser().resolve()
+        self._online_library = (
+            None
+            if online_library is None
+            else Path(online_library).expanduser().resolve()
+        )
+        self._online_seed_run = (
+            None
+            if online_seed_run is None
+            else Path(online_seed_run).expanduser().resolve()
+        )
+        self._online_oracle = (
+            None
+            if online_oracle is None
+            else Path(online_oracle).expanduser().resolve()
+        )
+        if isinstance(boundary, CAMBoundaryProvider):
+            self.boundary: Path | CAMBoundaryProvider | None = boundary
+        elif self.config.boundary_mode == "online" and boundary is None:
+            # Exact online CESM is the normal path.  It remains deferred until
+            # the first live model operation so Driver construction/preview is
+            # still free of file copies, PBS submission, and MPI startup.
+            self.boundary = None
+        elif self.config.boundary_mode == "online":
+            # Compatibility for callers that explicitly supplied the old
+            # rank-local bootstrap path.  The default never selects this held
+            # technical-control provider.
+            self.boundary = OnlineBoundaryProvider.held(
+                Path(boundary).expanduser().resolve()
+            )
+        else:
+            boundary_capture = self._CASE_BOUNDARY_CAPTURES.get(
+                case_key, "nonpic-boundary-capture-50step"
+            )
+            self.boundary = Path(
+                boundary
+                or self.scratch
+                / "pyCAM"
+                / "PI-cam"
+                / boundary_capture
+                / "boundary"
+                / "replay"
+            ).expanduser().resolve()
         self._requested_run_dir = (
             None if run_dir is None else Path(run_dir).expanduser().resolve()
         )
@@ -1252,6 +1336,7 @@ class Driver:
         self.account = _resolve_pbs_account(account, self.reference_case)
         self.queue = queue
         self.walltime = walltime
+        self.memory_per_node = memory_per_node
         if history_every is not None and (
             isinstance(history_every, bool) or int(history_every) < 1
         ):
@@ -1315,10 +1400,29 @@ class Driver:
             "config": self.config_path,
             "environment": self.reference_case / ".env_mach_specific.sh",
             "atm_in": self.reference_run / "atm_in",
-            "boundary": self.boundary / "manifest.json",
             "python": self.python_executable,
         }
+        if self.boundary is None:
+            library = self._resolve_online_library()
+            seed_run = self._resolve_online_seed_run()
+            paths["online_library"] = library
+            paths["online_seed_drv_in"] = seed_run / "drv_in"
+            paths["online_seed_mapping"] = seed_run / "SEMapping.nc"
+            boundary_description: object = "CESMOnlineBoundaryProvider (automatic)"
+        elif isinstance(self.boundary, Path):
+            paths["boundary"] = self.boundary / "manifest.json"
+            boundary_description = str(self.boundary)
+        else:
+            boundary_description = type(self.boundary).__name__
         checks = {name: path.is_file() for name, path in paths.items()}
+        if self.boundary is not None and not isinstance(self.boundary, Path):
+            bootstrap = getattr(self.boundary, "bootstrap", None)
+            if bootstrap is None:
+                checks["boundary_provider"] = True
+            else:
+                manifest = Path(bootstrap) / "manifest.json"
+                paths["boundary_bootstrap"] = manifest
+                checks["boundary_bootstrap"] = manifest.is_file()
         return {
             "ready": all(checks.values()) and (
                 self.launch_mode != "pbs" or self.account is not None
@@ -1327,6 +1431,7 @@ class Driver:
             "mpi_ranks": self.config.mpi_size,
             "launch_mode": self.launch_mode,
             "pbs_account": self.account,
+            "boundary": boundary_description,
             "checks": checks,
             "paths": {name: str(path) for name, path in paths.items()},
         }
@@ -1521,9 +1626,10 @@ class Driver:
     def _live_session(self) -> PICAMNotebookSession:
         if self._session is None:
             run_dir = self._prepare_run_dir()
+            boundary = self._prepare_online_boundary(run_dir)
             session = self._session_factory(
                 self.config_path,
-                boundary=self.boundary,
+                boundary=boundary,
                 run_dir=run_dir,
                 env_script=self.reference_case / ".env_mach_specific.sh",
                 python_executable=self.python_executable,
@@ -1531,6 +1637,7 @@ class Driver:
                 pbs_account=self.account,
                 pbs_queue=self.queue,
                 pbs_walltime=self.walltime,
+                pbs_memory_per_node=self.memory_per_node,
                 verify_boundary_exports=self.verify_boundary_exports,
             )
             try:
@@ -1555,6 +1662,51 @@ class Driver:
             self._session = session
         return self._session
 
+    def _resolve_online_library(self) -> Path:
+        if self._online_library is not None:
+            return self._online_library
+        configured = os.environ.get("FREECAM_CESM_PROVIDER_LIBRARY")
+        if configured:
+            return Path(configured).expanduser().resolve()
+        return (
+            self.repo
+            / "build"
+            / "cesm"
+            / "pi_atm"
+            / "production-components"
+            / "libpycesm_support.so"
+        ).resolve()
+
+    def _resolve_online_seed_run(self) -> Path:
+        if self._online_seed_run is not None:
+            return self._online_seed_run
+        configured = os.environ.get("FREECAM_CESM_PROVIDER_SEED")
+        if configured:
+            return Path(configured).expanduser().resolve()
+        return (
+            self.scratch / "pyCESM" / "PI-atm" / "oracle-1month" / "run"
+        ).resolve()
+
+    def _prepare_online_boundary(self, run_dir: Path) -> Path | CAMBoundaryProvider:
+        if self.boundary is not None:
+            return self.boundary
+        library = self._resolve_online_library()
+        if not library.is_file():
+            raise FileNotFoundError(
+                "exact online CESM provider library is missing: "
+                f"{library}. Build it under this repository or set "
+                "FREECAM_CESM_PROVIDER_LIBRARY."
+            )
+        seed_run = self._resolve_online_seed_run()
+        provider_run = run_dir.parent / "cesm-provider-run"
+        self.boundary = CESMOnlineBoundaryProvider.from_seed_run(
+            library=library,
+            seed_run=seed_run,
+            run_dir=provider_run,
+            oracle=self._online_oracle,
+        )
+        return self.boundary
+
     def _prepare_run_dir(self) -> Path:
         if self._run_dir is not None:
             return self._run_dir
@@ -1567,7 +1719,9 @@ class Driver:
                 f"PI-CAM reference case lacks .env_mach_specific.sh: "
                 f"{self.reference_case}"
             )
-        if not (self.boundary / "manifest.json").is_file():
+        if isinstance(self.boundary, Path) and not (
+            self.boundary / "manifest.json"
+        ).is_file():
             raise FileNotFoundError(
                 f"PI-CAM replay boundary lacks manifest.json: {self.boundary}"
             )
@@ -1604,10 +1758,13 @@ class Driver:
         del directory
         ignored: set[str] = set()
         for name in names:
+            if name == "SEMapping.nc":
+                continue
             if (
                 name == "timing"
                 or name.startswith("rpointer.")
-                or fnmatch(name, "*.cam.*.nc")
+                or fnmatch(name, "*.nc")
+                or fnmatch(name, "*.bin")
                 or fnmatch(name, "*.log.*")
             ):
                 ignored.add(name)

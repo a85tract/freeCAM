@@ -76,9 +76,9 @@ class PICAMConfig:
             )
         if self.calendar.upper() not in {"NO_LEAP", "NOLEAP", "365_DAY"}:
             raise PICAMConfigurationError("the PI-CAM oracle uses a NO_LEAP calendar")
-        if self.boundary_mode not in {"replay", "memory"}:
+        if self.boundary_mode not in {"replay", "memory", "online"}:
             raise PICAMConfigurationError(
-                "boundary_mode must be either 'replay' or 'memory'"
+                "boundary_mode must be 'replay', 'memory', or 'online'"
             )
         if self.execution_mode not in {
             "fine_grained",

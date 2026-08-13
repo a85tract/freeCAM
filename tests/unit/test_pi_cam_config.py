@@ -15,6 +15,8 @@ def test_repository_pi_cam_config_is_cam_only() -> None:
     assert config.resolution == "ne16"
     assert config.substeps_per_coupling == 1
     assert config.initialization_lookahead_steps == 1
+    assert config.boundary_mode == "online"
+    assert config.stop_n == 1488
     assert config.native_manifest is not None
     assert config.native_manifest.is_absolute()
     assert config.native_manifest.name == "native_cam_manifest.json"
@@ -22,6 +24,44 @@ def test_repository_pi_cam_config_is_cam_only() -> None:
     payload = config.to_payload()
     assert "components" not in payload
     assert "coupler" not in payload
+
+
+def test_repository_one_month_pi_cam_config() -> None:
+    root = Path(__file__).parents[2]
+    config = PICAMConfig.from_yaml(root / "configs/pi_cam_icesm131_1month.yaml")
+
+    assert config.stop_n == 1488
+    assert config.mpi_size == 512
+    assert config.initialization_lookahead_steps == 1
+
+
+def test_repository_replay_case_is_explicit() -> None:
+    root = Path(__file__).parents[2]
+    config = PICAMConfig.from_yaml(root / "configs/pi_cam_icesm131_replay.yaml")
+
+    assert config.boundary_mode == "replay"
+    assert config.stop_n == 50
+
+
+def test_repository_online_pi_cam_config_has_no_replay_horizon() -> None:
+    root = Path(__file__).parents[2]
+    config = PICAMConfig.from_yaml(root / "configs/pi_cam_icesm131_online.yaml")
+
+    assert config.boundary_mode == "online"
+    assert config.mpi_size == 512
+    assert config.stop_n == 17520
+
+
+def test_repository_exact_online_50step_config_closes_restart_at_step_50() -> None:
+    root = Path(__file__).parents[2]
+    config = PICAMConfig.from_yaml(
+        root / "configs/pi_cam_icesm131_exact_online_50step.yaml"
+    )
+
+    assert config.boundary_mode == "online"
+    assert config.mpi_size == 512
+    assert config.stop_n == 50
+    assert config.case_name == "f.e13.F1850C5.ne16_g16.icesm131_ihesp.PI-cam-oracle.50step"
 
 
 def test_pi_cam_config_rejects_unimplemented_case_keys() -> None:

@@ -20,11 +20,13 @@ from multiprocessing.connection import Connection, Listener
 from pathlib import Path
 from typing import Any
 
+import cloudpickle
 import numpy as np
 
 from freecam.core.runtime_env import mpi_loader_environment
 from freecam.model.python_processes import PythonProcessSpec
 
+from .boundary import CAMBoundaryProvider
 from .config import PICAMConfig
 from .expressions import DistributedOperand
 from .physics_catalog import (
@@ -1472,7 +1474,7 @@ class PICAMNotebookSession:
         self,
         config: str | Path | PICAMConfig,
         *,
-        boundary: str | Path,
+        boundary: str | Path | CAMBoundaryProvider,
         run_dir: str | Path,
         env_script: str | Path,
         python_executable: str | Path | None = None,
@@ -1481,6 +1483,7 @@ class PICAMNotebookSession:
         pbs_account: str | None = None,
         pbs_queue: str = "develop",
         pbs_walltime: str = "02:00:00",
+        pbs_memory_per_node: str = "110GB",
         verify_boundary_exports: bool = True,
         startup_timeout: float = 1200.0,
         request_timeout: float = 300.0,
@@ -1490,7 +1493,11 @@ class PICAMNotebookSession:
             raise TypeError("PICAMNotebookSession currently requires a YAML config path")
         self.config_path = Path(config).resolve()
         self.config = PICAMConfig.from_yaml(self.config_path)
-        self.boundary = Path(boundary).resolve()
+        self.boundary = (
+            Path(boundary).resolve()
+            if isinstance(boundary, (str, Path))
+            else boundary
+        )
         self.run_dir = Path(run_dir).resolve()
         self.env_script = Path(env_script).resolve()
         self.python_executable = str(python_executable or sys.executable)
@@ -1503,6 +1510,12 @@ class PICAMNotebookSession:
         self.pbs_account = pbs_account
         self.pbs_queue = pbs_queue
         self.pbs_walltime = pbs_walltime
+        normalized_memory = str(pbs_memory_per_node).strip().upper()
+        if not normalized_memory[:-2].isdigit() or not normalized_memory.endswith(
+            "GB"
+        ):
+            raise ValueError("pbs_memory_per_node must have form '<integer>GB'")
+        self.pbs_memory_per_node = normalized_memory
         self.verify_boundary_exports = bool(verify_boundary_exports)
         self.startup_timeout = float(startup_timeout)
         self.request_timeout = float(request_timeout)
@@ -1511,8 +1524,16 @@ class PICAMNotebookSession:
             raise FileNotFoundError(self.env_script)
         if not (self.run_dir / "atm_in").is_file():
             raise FileNotFoundError(f"PI-CAM run directory lacks atm_in: {self.run_dir}")
-        if not (self.boundary / "manifest.json").is_file():
-            raise FileNotFoundError(f"PI-CAM boundary replay is incomplete: {self.boundary}")
+        if isinstance(self.boundary, Path) and not (
+            self.boundary / "manifest.json"
+        ).is_file():
+            raise FileNotFoundError(
+                f"PI-CAM boundary replay is incomplete: {self.boundary}"
+            )
+        if not isinstance(self.boundary, (Path, CAMBoundaryProvider)):
+            raise TypeError(
+                "boundary must be a replay path or CAMBoundaryProvider"
+            )
         self._connection: Connection | None = None
         self._process: subprocess.Popen[bytes] | None = None
         self._job_id: str | None = None
@@ -1571,13 +1592,12 @@ class PICAMNotebookSession:
             _authkey_argument(authkey),
             "--config",
             str(self.config_path),
-            "--boundary",
-            str(self.boundary),
             "--run-dir",
             str(self.run_dir),
             "--expected-ranks",
             str(self.config.mpi_size),
         ]
+        command.extend(self._boundary_arguments())
         command.append(
             "--verify-exports"
             if self.verify_boundary_exports
@@ -1606,10 +1626,35 @@ class PICAMNotebookSession:
             listener.close()
         return self
 
+    def _boundary_arguments(self) -> list[str]:
+        if isinstance(self.boundary, Path):
+            return ["--boundary", str(self.boundary)]
+        payload = cloudpickle.dumps(self.boundary, protocol=5)
+        maximum_bytes = 8 * 1024 * 1024
+        if len(payload) > maximum_bytes:
+            raise ValueError(
+                "online boundary provider payload exceeds 8 MiB; do not capture "
+                "large arrays in the update callback"
+            )
+        path = self.run_dir / ".online-boundary-provider.pkl"
+        path.write_bytes(payload)
+        path.chmod(0o600)
+        return ["--boundary-provider", str(path)]
+
     def step(self, count: int = 1) -> Mapping[str, Any]:
         if count < 1:
             raise ValueError("count must be positive")
-        self._status = dict(self._request({"op": "step", "count": int(count)}))
+        # ``request_timeout`` is the bound for one interactive action.  A bulk
+        # run is still one socket request but legitimately performs many
+        # complete CAM/CESM coupling steps before replying.
+        timeout = max(self.request_timeout, 15.0 * int(count))
+        command = {"op": "step", "count": int(count)}
+        response = (
+            self._request(command)
+            if timeout == self.request_timeout
+            else self._request(command, timeout=timeout)
+        )
+        self._status = dict(response)
         return dict(self._status)
 
     def advance(self, steps: int = 1) -> Mapping[str, Any]:
@@ -2114,13 +2159,22 @@ class PICAMNotebookSession:
             if exc_type is None:
                 raise
 
-    def _request(self, command: dict[str, Any]) -> Any:
+    def _request(
+        self,
+        command: dict[str, Any],
+        *,
+        timeout: float | None = None,
+    ) -> Any:
         with self._request_lock:
             if self._connection is None:
                 raise RuntimeError("PI-CAM Notebook session is not running")
             try:
                 self._connection.send(command)
-                return self._unwrap(self._receive(self.request_timeout))
+                return self._unwrap(
+                    self._receive(
+                        self.request_timeout if timeout is None else float(timeout)
+                    )
+                )
             except (BrokenPipeError, EOFError, OSError, TimeoutError):
                 # A timed-out or disconnected collective cannot be safely reused.
                 # Tear down the MPI/PBS worker now instead of leaving hundreds of
@@ -2195,7 +2249,8 @@ class PICAMNotebookSession:
             "#PBS -N pi-cam-nb\n"
             f"#PBS -A {self.pbs_account}\n"
             f"#PBS -q {self.pbs_queue}\n"
-            f"#PBS -l select={nodes}:ncpus=64:mpiprocs=128:ompthreads=1:mem=64GB\n"
+            f"#PBS -l select={nodes}:ncpus=64:mpiprocs=128:ompthreads=1:"
+            f"mem={self.pbs_memory_per_node}\n"
             f"#PBS -l walltime={self.pbs_walltime}\n"
             "#PBS -j oe\n"
             f"#PBS -o {self.log_path}\n"

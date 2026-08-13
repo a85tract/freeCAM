@@ -1,0 +1,13 @@
+{
+  "schema_version": 1,
+  "source": "one-month rank_bundle_v1 boundary replay",
+  "source_bytes": 15007709077,
+  "source_steps": 1491,
+  "rank_count": 512,
+  "bootstrap": "/glade/derecho/scratch/ruitong/pyCAM/PI-cam/online-boundary-bootstrap/boundary",
+  "bootstrap_files": 513,
+  "bootstrap_payload_bytes": 10332592,
+  "bootstrap_directory_bytes": 10370154,
+  "source_step": 0,
+  "purpose": "initial state only; later x2a states are generated in rank-local memory"
+}

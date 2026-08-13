@@ -8,6 +8,7 @@ import numpy as np
 import pytest
 
 from freecam.model.python_processes import PythonProcessSpec
+from freecam.pi_cam.boundary import OnlineBoundaryProvider
 from freecam.pi_cam import session as session_module
 from freecam.pi_cam.expressions import assign_expression, evaluate_expression
 from freecam.pi_cam.plan import PICAMAction, PICAMStepPlan
@@ -199,6 +200,45 @@ def test_session_environment_preloads_manifest_math_runtime(
         str(math_library),
         "/other.so",
     ]
+
+
+def test_session_serializes_small_online_provider_for_all_mpi_ranks(
+    tmp_path: Path,
+) -> None:
+    config, _, run_dir, env_script, _ = _session_files(tmp_path)
+    bootstrap = tmp_path / "bootstrap"
+    bootstrap.mkdir()
+    (bootstrap / "manifest.json").write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "storage": "rank_bootstrap_v1",
+                "rank_count": 1,
+                "file_pattern": "rank-{rank:04d}.npz",
+            }
+        )
+    )
+    np.savez(
+        bootstrap / "rank-0000.npz",
+        x2a_rattr=np.zeros((2, 3)),
+        a2x_rattr=np.zeros((4, 3)),
+    )
+    provider = OnlineBoundaryProvider.held(bootstrap)
+    session = PICAMNotebookSession(
+        config,
+        boundary=provider,
+        run_dir=run_dir,
+        env_script=env_script,
+    )
+
+    arguments = session._boundary_arguments()
+
+    assert arguments[0] == "--boundary-provider"
+    payload_path = Path(arguments[1])
+    assert payload_path.stat().st_size < 8 * 1024 * 1024
+    restored = cloudpickle.loads(payload_path.read_bytes())
+    assert isinstance(restored, OnlineBoundaryProvider)
+    assert restored.bootstrap == bootstrap.resolve()
 
 
 def test_pbs_submission_reports_qsub_stderr(

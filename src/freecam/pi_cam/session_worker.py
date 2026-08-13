@@ -10,12 +10,13 @@ from multiprocessing.connection import Client
 from pathlib import Path
 from typing import Any
 
+import cloudpickle
 import numpy as np
 from mpi4py import MPI
 
 from freecam.model.collective import collective_error_message
 
-from .boundary import ReplayBoundaryProvider
+from .boundary import CAMBoundaryProvider, ReplayBoundaryProvider
 from .case import PICAMCase
 from .expressions import assign_expression, evaluate_expression
 from .state import edit_active_field, selected_active_values
@@ -63,6 +64,7 @@ def _status(driver: Any) -> dict[str, object]:
         "boundary_export_verification": bool(
             getattr(driver.boundary, "verify_exports", False)
         ),
+        "boundary": dict(getattr(driver.boundary, "diagnostics", {})),
     }
 
 
@@ -389,7 +391,9 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--port", required=True, type=int)
     parser.add_argument("--authkey", required=True)
     parser.add_argument("--config", required=True, type=Path)
-    parser.add_argument("--boundary", required=True, type=Path)
+    boundary_group = parser.add_mutually_exclusive_group(required=True)
+    boundary_group.add_argument("--boundary", type=Path)
+    boundary_group.add_argument("--boundary-provider", type=Path)
     parser.add_argument("--run-dir", required=True, type=Path)
     parser.add_argument("--expected-ranks", required=True, type=int)
     parser.add_argument(
@@ -414,11 +418,19 @@ def main(argv: list[str] | None = None) -> int:
                     f"PI-CAM worker expected {args.expected_ranks} ranks, got {comm.size}"
                 )
             case = PICAMCase.from_yaml(args.config)
-            driver = case.runtime(
-                boundary=ReplayBoundaryProvider(
+            if args.boundary_provider is None:
+                boundary = ReplayBoundaryProvider(
                     args.boundary,
                     verify_exports=args.verify_exports,
-                ),
+                )
+            else:
+                boundary = cloudpickle.loads(args.boundary_provider.read_bytes())
+                if not isinstance(boundary, CAMBoundaryProvider):
+                    raise TypeError(
+                        "boundary provider payload is not a CAMBoundaryProvider"
+                    )
+            driver = case.runtime(
+                boundary=boundary,
                 communicator=comm,
                 run_dir=args.run_dir,
             )
