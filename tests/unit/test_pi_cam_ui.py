@@ -8,9 +8,7 @@ import numpy as np
 import pytest
 
 from freecam.pi_cam import Physics, Variable
-from freecam.pi_cam.plan import PICAMStepPlan
 from freecam.pi_cam.ui import PICAMStateView, PICAMWorkflowView
-
 
 PROJECT = Path(__file__).resolve().parents[2]
 
@@ -92,56 +90,36 @@ def test_state_view_profiles_ignore_padded_columns_and_select_water_vapor() -> N
 def test_workflow_view_is_iterable_and_has_notebook_html() -> None:
     workflow = PICAMWorkflowView(FakeSession())
 
-    assert [action.qualified_name for action in workflow] == [
+    assert list(workflow) == []
+    assert [action.qualified_name for action in workflow.debug] == [
         "coupling.boundary_import"
     ]
-    assert len(workflow.actions(include_disabled=True)) == 2
-    assert workflow.describe()[0]["native_id"] == 202
+    assert len(workflow.actions(include_disabled=True)) == 1
+    assert len(workflow.debug.actions(include_disabled=True)) == 2
+    assert workflow.debug.describe()[0]["native_id"] == 202
     html = workflow._repr_html_()
-    assert "boundary_import" in html
     assert "dry_adjustment" in html
     assert "freecam-disabled" in html
+    assert "boundary_import" not in html
+    assert "boundary_import" in workflow.debug._repr_html_()
 
 
-def test_notebook_defines_the_complete_workflow_as_one_explicit_list() -> None:
+def test_notebook_edits_the_scientific_workflow_with_normal_list_operations() -> None:
     notebook = json.loads((PROJECT / "examples/try_pi_cam.ipynb").read_text())
     cell = next(cell for cell in notebook["cells"] if cell.get("id") == "7067eaef")
-    tree = ast.parse("".join(cell["source"]))
-    assignment = next(
-        node
-        for node in tree.body
-        if isinstance(node, ast.Assign)
-        and any(
-            isinstance(target, ast.Name) and target.id == "pi_cam_workflow"
-            for target in node.targets
-        )
-    )
-    assert isinstance(assignment.value, ast.List)
-    entries = tuple(
-        (element.value.id, element.slice.value)
-        for element in assignment.value.elts
-        if isinstance(element, ast.Subscript)
-        and isinstance(element.value, ast.Name)
-        and isinstance(element.slice, ast.Constant)
-    )
-    operations = tuple(value for owner, value in entries if owner == "process")
-    expected = tuple(
-        action.operation
-        for action in PICAMStepPlan.default()
-        if action.enabled
-    )
+    source = "".join(cell["source"])
+    tree = ast.parse(source)
 
-    assert operations == expected
-    assert tuple(value for owner, value in entries if owner == "configured") == (
-        "volcanic_aerosol_1",
-        "volcanic_aerosol_2",
-    )
-    assert entries.index(("configured", "volcanic_aerosol_1")) == (
-        entries.index(("process", "dadadj")) + 1
-    )
-    assert entries.index(("configured", "volcanic_aerosol_2")) == (
-        entries.index(("process", "radiation_tend")) - 1
-    )
+    method_calls = {
+        node.func.attr
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
+    }
+    assert {"copy", "remove", "insert"} <= method_calls
+    assert "workflow[:] = custom_order" in source
+    assert "workflow[:] = source_order" in source
+    assert "boundary_import" not in source
+    assert "leaf_" not in source
 
 
 def test_state_view_plot_supports_before_after_overlay() -> None:
@@ -163,6 +141,43 @@ def test_state_view_plot_supports_before_after_overlay() -> None:
     assert "step 7" in figure._suptitle.get_text()
 
 
+def test_latest_plot_refreshes_in_place_when_displayed() -> None:
+    matplotlib = pytest.importorskip("matplotlib")
+    matplotlib.use("Agg")
+    session = FakeSession()
+    state = PICAMStateView(session)
+    plot = state.plot(variables=("T",), mode="latest")
+
+    original = plot.axes[0, 0].lines[0].get_xdata().copy()
+    session._arrays["phys_state.t"] += 3.0
+    rendered = plot._repr_png_()
+
+    assert rendered.startswith(b"\x89PNG")
+    assert len(plot.axes[0, 0].lines) == 1
+    assert np.array_equal(plot.axes[0, 0].lines[0].get_xdata(), original + 3.0)
+    assert len(plot.snapshots) == 1
+
+
+def test_history_plot_keeps_changed_profiles_without_duplicate_displays() -> None:
+    matplotlib = pytest.importorskip("matplotlib")
+    matplotlib.use("Agg")
+    session = FakeSession()
+    state = PICAMStateView(session)
+    plot = state.plot(variables=("T",), mode="history", label="initial")
+
+    plot._repr_png_()
+    assert len(plot.axes[0, 0].lines) == 1
+    session._arrays["phys_state.t"] += 2.0
+    plot._repr_png_()
+
+    assert len(plot.axes[0, 0].lines) == 2
+    assert len(plot.snapshots) == 2
+    assert np.array_equal(
+        plot.axes[0, 0].lines[1].get_xdata(),
+        plot.axes[0, 0].lines[0].get_xdata() + 2.0,
+    )
+
+
 def test_state_view_plot_builds_grid_from_requested_variables() -> None:
     matplotlib = pytest.importorskip("matplotlib")
     matplotlib.use("Agg")
@@ -176,6 +191,41 @@ def test_state_view_plot_builds_grid_from_requested_variables() -> None:
     assert sum(axis.get_visible() for axis in axes.flat) == 5
     assert all(len(axis.lines) == 1 for axis in axes.flat[:5])
     assert axes.flat[5].get_visible() is False
+    assert figure is axes.flat[0].figure
+
+
+def test_state_view_plot_resolves_unique_statepool_short_names() -> None:
+    matplotlib = pytest.importorskip("matplotlib")
+    matplotlib.use("Agg")
+    session = FakeSession()
+    session._arrays["phys_state.omega"] = session._arrays["phys_state.t"] * 0.01
+    session._arrays["phys_state.pmid"] = session._arrays["phys_state.t"] * 100.0
+    for name in ("phys_state.omega", "phys_state.pmid"):
+        session._status["fields"][name] = {
+            "units": "1",
+            "shape": list(session._arrays[name].shape),
+        }
+
+    class Fields:
+        def _resolve(self, name):
+            matches = [
+                canonical
+                for canonical in session._status["fields"]
+                if canonical.rsplit(".", 1)[-1] == name
+            ]
+            if len(matches) == 1:
+                return matches[0]
+            raise KeyError(name)
+
+    session.fields = Fields()
+    state = PICAMStateView(session)
+
+    figure, axes = state.plot(variables=("omega", "pmid"))
+
+    assert axes.shape == (1, 2)
+    assert all(len(axis.lines) == 1 for axis in axes.flat)
+    assert axes[0, 0].get_xlabel() == "vertical pressure velocity omega (Pa/s)"
+    assert axes[0, 1].get_xlabel() == "midpoint pressure (Pa)"
     assert figure is axes.flat[0].figure
 
 
@@ -323,9 +373,10 @@ def test_workflow_insert_installs_physics_object_with_declared_placement() -> No
     session = FakeSession()
     session.physics = PhysicsCollection()
 
-    result = PICAMWorkflowView(session).insert(Heating())
+    workflow = PICAMWorkflowView(session)
+    result = workflow.insert(Heating())
 
-    assert result == "installed"
+    assert result is None
     assert calls[0][1] == {
         "name": "notebook_heating",
         "before": None,
@@ -337,10 +388,88 @@ def test_workflow_insert_installs_physics_object_with_declared_placement() -> No
     }
 
     session._status["step_plan"][1]["enabled"] = True
-    result = PICAMWorkflowView(session).insert(1, Heating())
-    assert result == "installed"
-    assert calls[1][1]["before"] == "dry_adjustment"
-    assert calls[1][1]["after"] is None
+    result = workflow.insert(1, Heating())
+    assert result is None
+    assert calls[1][1]["before"] is None
+    assert calls[1][1]["after"] == "dry_adjustment"
+
+
+@pytest.mark.parametrize("source_available", (True, False))
+def test_workflow_infers_simple_python_process_field_contract(
+    monkeypatch, source_available
+) -> None:
+    calls = []
+
+    class PhysicsCollection:
+        def install_python(self, function, **kwargs):
+            calls.append((function, kwargs))
+            return "installed"
+
+    class Heating(Physics):
+        name = "automatic_heating"
+        after = "dadadj"
+
+        def run(self, state, context):
+            state.T += 0.01 * context.timestep_seconds
+            state.q[...] = np.maximum(state.q, 0.0)
+
+    session = FakeSession()
+    session.physics = PhysicsCollection()
+    if not source_available:
+        monkeypatch.setattr(
+            "freecam.pi_cam.facade.inspect.getsource",
+            lambda callback: (_ for _ in ()).throw(OSError("not in linecache")),
+        )
+
+    assert PICAMWorkflowView(session).insert(Heating()) is None
+    assert calls[0][1]["reads"] == ()
+    assert calls[0][1]["writes"] == ("T", "q")
+
+
+def test_state_create_like_reuses_distributed_field_dimensions() -> None:
+    calls = []
+
+    class Field:
+        metadata = {
+            "dimensions": ("pcols", "pver", "chunks"),
+            "dtype": "<f8",
+            "units": "K",
+        }
+
+    class Fields:
+        def __getattr__(self, name):
+            if name == "T":
+                return Field()
+            raise AttributeError(name)
+
+        def __getitem__(self, name):
+            return Field()
+
+        def create(self, name, **kwargs):
+            calls.append((name, kwargs))
+
+    session = FakeSession()
+    session.fields = Fields()
+    state = PICAMStateView(session)
+
+    created = state.zeros_like("heating_rate", "T", units="K s-1")
+
+    assert isinstance(created, Field)
+    assert calls == [
+        (
+            "heating_rate",
+            {
+                "dims": ("pcols", "pver", "chunks"),
+                "dtype": "<f8",
+                "units": "K s-1",
+                "initial": 0.0,
+                "writable": True,
+                "restart": True,
+                "aliases": (),
+                "standard_name": None,
+            },
+        )
+    ]
 
 
 def test_workflow_moves_and_toggles_process_objects() -> None:
@@ -449,7 +578,7 @@ def test_workflow_slice_assignment_replaces_one_complete_remote_order() -> None:
     }
     workflow = PICAMWorkflowView(session)
     order = workflow[:]
-    order[1], order[2] = order[2], order[1]
+    order[0], order[1] = order[1], order[0]
 
     workflow[:] = order
 
@@ -520,11 +649,11 @@ def test_workflow_list_operations_preserve_required_control_actions() -> None:
     ) or {"name": name}
     workflow = PICAMWorkflowView(session)
 
-    removed = workflow.pop(1)
+    removed = workflow.pop(0)
     appended = workflow.append(processes["optional"])
 
     assert removed is processes["radiation"]
-    assert appended is processes["optional"]
+    assert appended is None
     assert calls == [
         ("disable", "cam_run1.radiation"),
         ("enable", "cam_run1.optional"),
@@ -533,10 +662,10 @@ def test_workflow_list_operations_preserve_required_control_actions() -> None:
             "optional",
             {
                 "phase": "cam_run1",
-                "before": "coupling.boundary_export",
-                "after": None,
+                "before": None,
+                "after": "cam_run1.radiation",
             },
         ),
     ]
     with pytest.raises(ValueError, match="cannot be popped"):
-        workflow.pop(0)
+        workflow.debug.pop(0)

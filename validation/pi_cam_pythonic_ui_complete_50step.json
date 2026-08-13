@@ -1,5 +1,61 @@
 {
-  "candidate_run": "/glade/derecho/scratch/ruitong/freeCAM/PI-cam/ui-validation-7100148.desched1/run",
+  "background_run": {
+    "completed_steps": 50,
+    "done": true,
+    "progress_updates": [
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8,
+      9,
+      10,
+      11,
+      12,
+      13,
+      14,
+      15,
+      16,
+      17,
+      18,
+      19,
+      20,
+      21,
+      22,
+      23,
+      24,
+      25,
+      26,
+      27,
+      28,
+      29,
+      30,
+      31,
+      32,
+      33,
+      34,
+      35,
+      36,
+      37,
+      38,
+      39,
+      40,
+      41,
+      42,
+      43,
+      44,
+      45,
+      46,
+      47,
+      48,
+      49,
+      50
+    ]
+  },
+  "candidate_run": "/glade/derecho/scratch/ruitong/freeCAM/PI-cam/ui-validation-7103908.desched1/run",
   "case_registry_lookup": true,
   "comparison": {
     "bfb": true,
@@ -11,12 +67,41 @@
     "reference_files": 4
   },
   "date": "2026-08-12",
+  "diagnosis_before_launch": {
+    "case": "PI-atm-ui-validation",
+    "checks": {
+      "atm_in": true,
+      "boundary": true,
+      "config": true,
+      "environment": true,
+      "python": true
+    },
+    "launch_mode": "local",
+    "mpi_ranks": 512,
+    "paths": {
+      "atm_in": "/glade/derecho/scratch/ruitong/pyCAM/PI-cam/f.e13.F1850C5.ne16_g16.icesm131_ihesp.PI-cam-oracle.50step/run/atm_in",
+      "boundary": "/glade/derecho/scratch/ruitong/pyCAM/PI-cam/nonpic-boundary-capture-50step/boundary/replay/manifest.json",
+      "config": "/glade/work/ruitong/pycam-sima-pi-cam-only/configs/pi_cam_icesm131.yaml",
+      "environment": "/glade/work/ruitong/CESM_cases/f.e13.F1850C5.ne16_g16.icesm131_ihesp.PI-cam-oracle.50step/.env_mach_specific.sh",
+      "python": "/glade/work/ruitong/pycam-sima-pi-cam-only/.venv/bin/python"
+    },
+    "pbs_account": "UCUB0188",
+    "ready": true
+  },
   "distributed_numpy_expression": {
     "expression": "sin(ui_expression_probe) + 1",
     "field_removed_before_scientific_run": true,
     "global_max": 1.0,
     "global_mean": 1.0,
     "global_min": 1.0
+  },
+  "distributed_zeros_like": {
+    "field": "ui_distributed_probe",
+    "field_removed_before_scientific_run": true,
+    "global_max": 0.0,
+    "global_mean": 0.0,
+    "global_min": 0.0,
+    "like": "T"
   },
   "executed_actions": 2350,
   "initial_global_temperature_mean": 242.86870659185382,
@@ -26,11 +111,22 @@
     "restart_at_end": true,
     "restart_every": null
   },
-  "pbs_job_id": "7100148.desched1",
-  "preview_actions": 47,
+  "pbs_job_id": "7103908.desched1",
+  "preview_actions": 34,
+  "preview_debug_actions": 47,
   "preview_without_launch": true,
   "queue": "cpudev",
   "reference_run": "/glade/derecho/scratch/ruitong/pyCAM/PI-cam/f.e13.F1850C5.ne16_g16.icesm131_ihesp.PI-cam-oracle.50step/run",
+  "run_result": {
+    "actions": 2350,
+    "cancelled": false,
+    "completed_steps": 50,
+    "date": 10102,
+    "end_step": 50,
+    "requested_steps": 50,
+    "run_dir": "/glade/derecho/scratch/ruitong/freeCAM/PI-cam/ui-validation-7103908.desched1/run",
+    "start_step": 0
+  },
   "schema_version": 1,
   "slice_noop": {
     "mean_after": 236.23542066773427,
@@ -49,7 +145,7 @@
   },
   "xarray_output": {
     "history_files": [
-      "/glade/derecho/scratch/ruitong/freeCAM/PI-cam/ui-validation-7100148.desched1/run/f.e13.F1850C5.ne16_g16.icesm131_ihesp.PI-cam-oracle.50step.cam.h0.0001-01-01-00000.nc"
+      "/glade/derecho/scratch/ruitong/freeCAM/PI-cam/ui-validation-7103908.desched1/run/f.e13.F1850C5.ne16_g16.icesm131_ihesp.PI-cam-oracle.50step.cam.h0.0001-01-01-00000.nc"
     ],
     "history_streams": [
       "h0"

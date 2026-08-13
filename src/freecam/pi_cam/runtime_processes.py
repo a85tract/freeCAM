@@ -2,13 +2,14 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 import traceback
+from dataclasses import dataclass, replace
 from typing import Any, Mapping
 
 import cloudpickle
 import numpy as np
 
+from freecam.model.collective import collective_error_message
 from freecam.model.errors import (
     PythonProcessContractError,
     PythonProcessExecutionError,
@@ -18,6 +19,7 @@ from freecam.model.python_processes import (
     PythonFieldView,
     PythonProcessContext,
     PythonProcessSpec,
+    PythonStateView,
     _validate_signature,
 )
 
@@ -80,10 +82,10 @@ class PICAMPythonProcessRegistry:
             function = cloudpickle.loads(spec.payload)
             _validate_signature(function, spec.parameters)
             read_bindings = {
-                name: self.driver.pool.canonical_name(name) for name in spec.reads
+                name: self._resolve_field(name) for name in spec.reads
             }
             write_bindings = {
-                name: self.driver.pool.canonical_name(name) for name in spec.writes
+                name: self._resolve_field(name) for name in spec.writes
             }
             overlap = set(read_bindings.values()) & set(write_bindings.values())
             if overlap:
@@ -149,11 +151,152 @@ class PICAMPythonProcessRegistry:
                 self.driver.step_plan.remove(
                     spec.name, phase=spec.group, experimental=True
                 )
+            message = collective_error_message(
+                "Python process installation rollback", errors
+            )
             raise PythonProcessContractError(
-                f"Python process installation rolled back collectively: {errors}"
+                message or "Python process installation failed"
             )
         self.driver.comm.barrier()
         return self.installed[spec.name]
+
+    def reload(
+        self,
+        name: str,
+        spec: PythonProcessSpec | Mapping[str, Any],
+        *,
+        preserve_parameters: bool = False,
+        preserve_transactional: bool = False,
+        unsafe: bool = False,
+    ) -> dict[str, Any]:
+        """Atomically replace one callback without moving its plan action."""
+
+        if not isinstance(spec, PythonProcessSpec):
+            spec = PythonProcessSpec.from_mapping(spec)
+        self._require_boundary()
+        key = str(name).strip().lower()
+        record = self.installed.get(key)
+        candidate = spec
+        read_bindings: dict[str, str] = {}
+        write_bindings: dict[str, str] = {}
+        local_error: str | None = None
+        try:
+            if record is None:
+                raise PythonProcessContractError(
+                    f"unknown Python process {key!r}"
+                )
+            if candidate.name != record.spec.name:
+                raise PythonProcessContractError(
+                    "Python process reload cannot rename a process"
+                )
+            if candidate.group != record.spec.group:
+                raise PythonProcessContractError(
+                    "Python process reload cannot change its workflow phase; "
+                    "use move() separately"
+                )
+            if candidate.before is not None or candidate.after is not None:
+                raise PythonProcessContractError(
+                    "Python process reload preserves placement; do not pass "
+                    "before= or after="
+                )
+            action = self.driver.step_plan.select(
+                record.action_name, phase=record.spec.group
+            )
+            candidate = replace(
+                candidate,
+                before=record.spec.before,
+                after=record.spec.after,
+                parameters=(
+                    record.spec.parameters
+                    if preserve_parameters
+                    else candidate.parameters
+                ),
+                enabled=action.enabled,
+                transactional=(
+                    record.spec.transactional
+                    if preserve_transactional
+                    else candidate.transactional
+                ),
+            )
+            if not candidate.transactional and not unsafe:
+                raise PICAMConfigurationError(
+                    "transactional=False requires unsafe=True"
+                )
+            function = cloudpickle.loads(candidate.payload)
+            _validate_signature(function, candidate.parameters)
+            read_bindings = {
+                field: self._resolve_field(field) for field in candidate.reads
+            }
+            write_bindings = {
+                field: self._resolve_field(field) for field in candidate.writes
+            }
+            overlap = set(read_bindings.values()) & set(write_bindings.values())
+            if overlap:
+                raise PythonProcessContractError(
+                    "fields resolving to the same storage must appear only in "
+                    "writes: " + ", ".join(sorted(overlap))
+                )
+            for exposed, resolved in write_bindings.items():
+                if not self.driver.pool.contract(resolved).writable:
+                    raise PythonProcessContractError(
+                        f"write field {exposed!r} resolves to read-only field "
+                        f"{resolved!r}"
+                    )
+        except BaseException as exc:
+            local_error = f"{type(exc).__name__}: {exc}"
+        self._collective_error(local_error, "Python process reload preflight")
+        assert record is not None
+        hashes = self.driver.comm.allgather(candidate.payload_hash)
+        if len(set(hashes)) != 1:
+            raise PythonProcessContractError(
+                f"Python process payload differs across MPI ranks: {hashes}"
+            )
+
+        previous = (
+            record.spec,
+            record.read_bindings,
+            record.write_bindings,
+        )
+        local_error = None
+        try:
+            record.spec = candidate
+            record.read_bindings = read_bindings
+            record.write_bindings = write_bindings
+        except BaseException as exc:
+            local_error = f"{type(exc).__name__}: {exc}"
+        errors = self.driver.comm.allgather(local_error)
+        if any(error is not None for error in errors):
+            record.spec, record.read_bindings, record.write_bindings = previous
+            self.driver.comm.barrier()
+            message = collective_error_message(
+                "Python process reload rollback", errors
+            )
+            raise PythonProcessContractError(
+                message or "Python process reload failed"
+            )
+        self.driver.comm.barrier()
+        return {
+            "name": record.spec.name,
+            "phase": record.spec.group,
+            "old_payload_hash": previous[0].payload_hash,
+            "payload_hash": record.spec.payload_hash,
+            "reads": tuple(record.read_bindings),
+            "writes": tuple(record.write_bindings),
+            "enabled": bool(action.enabled),
+        }
+
+    def _resolve_field(self, name: str) -> str:
+        """Resolve callback names without changing the name exposed to Python."""
+
+        for candidate in PythonStateView.field_candidates(name):
+            try:
+                return self.driver.pool.canonical_name(candidate)
+            except KeyError:
+                try:
+                    return self.driver.pool.ccpp_field_name(candidate)
+                except KeyError:
+                    continue
+        raise KeyError(f"unknown PI-CAM field {name!r}")
 
     def remove(self, name: str) -> dict[str, Any]:
         self._require_boundary()
@@ -235,12 +378,10 @@ class PICAMPythonProcessRegistry:
             for resolved, writable in read_writeability.items():
                 self.driver.pool[resolved].flags.writeable = writable
         errors = self.driver.comm.allgather(local_error)
-        failures = [
-            f"rank {rank}:\n{message}"
-            for rank, message in enumerate(errors)
-            if message is not None
-        ]
-        if failures:
+        failure = collective_error_message(
+            f"Python process {record.spec.name!r}", errors
+        )
+        if failure is not None:
             if record.spec.transactional:
                 for exposed, values in snapshots.items():
                     np.copyto(
@@ -251,11 +392,11 @@ class PICAMPythonProcessRegistry:
                 self.driver.comm.barrier()
                 raise PythonProcessExecutionError(
                     f"Python process {record.spec.name!r} failed; declared writes "
-                    "were restored:\n" + "\n".join(failures)
+                    "were restored:\n" + failure
                 )
             raise PythonProcessTaintedError(
                 f"Python process {record.spec.name!r} failed without rollback:\n"
-                + "\n".join(failures)
+                + failure
             )
 
     def inventory(self) -> tuple[dict[str, Any], ...]:
@@ -284,12 +425,6 @@ class PICAMPythonProcessRegistry:
 
     def _collective_error(self, error: str | None, operation: str) -> None:
         errors = self.driver.comm.allgather(error)
-        failures = [
-            f"rank {rank}: {message}"
-            for rank, message in enumerate(errors)
-            if message is not None
-        ]
-        if failures:
-            raise PythonProcessContractError(
-                f"{operation} failed collectively: " + "; ".join(failures)
-            )
+        message = collective_error_message(operation, errors)
+        if message is not None:
+            raise PythonProcessContractError(message)

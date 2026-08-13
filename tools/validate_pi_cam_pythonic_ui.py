@@ -8,8 +8,9 @@ import json
 import os
 from pathlib import Path
 
-import freecam as fc
 import numpy as np
+
+import freecam as fc
 from freecam.pi_cam.validation import compare_pi_cam_directories
 
 
@@ -17,7 +18,6 @@ class TransientNoop(fc.Physics):
     """Exercise runtime workflow insertion without changing CAM state."""
 
     name = "ui_transient_noop"
-    writes = ("phys_state.t",)
 
     def run(self, state, context):
         del context
@@ -50,6 +50,8 @@ def main() -> int:
     )
     preview = driver.preview()
     preview_without_launch = not driver.running
+    diagnosis = driver.diagnose()
+    progress = []
     try:
         initial_mean = driver.cam.state.T.mean()
         top_level = driver.cam.state.T[:, 0, :]
@@ -64,14 +66,26 @@ def main() -> int:
         expression_stats = driver.cam.state.ui_expression_probe.stats(rank="global")
         del driver.cam.state.ui_expression_probe
 
-        transient = driver.cam.workflow.append(TransientNoop())
+        distributed = driver.cam.state.zeros_like(
+            "ui_distributed_probe",
+            "T",
+            units="K",
+        )
+        distributed_stats = distributed.stats(rank="global")
+        del driver.cam.state.ui_distributed_probe
+
+        transient = driver.cam.workflow.install(TransientNoop())
         transient.move(after="dadadj")
         transient.run()
         popped = driver.cam.workflow.pop(driver.cam.workflow.index(transient))
         transient_removed = transient.name not in {
             item.name for item in driver.cam.workflow
         }
-        trace = driver.run(args.steps)
+        run = driver.run_async(
+            args.steps,
+            progress=lambda status: progress.append(status.completed_steps),
+        )
+        run_result = run.result()
         completed = dict(driver.status)
         run_dir = driver.run_dir
     finally:
@@ -92,8 +106,15 @@ def main() -> int:
         "mpi_ranks": 512,
         "steps": args.steps,
         "case_registry_lookup": True,
+        "diagnosis_before_launch": diagnosis,
         "preview_actions": len(preview),
+        "preview_debug_actions": len(preview.debug),
         "preview_without_launch": preview_without_launch,
+        "background_run": {
+            "completed_steps": run.progress.completed_steps,
+            "done": run.done(),
+            "progress_updates": progress,
+        },
         "slice_noop": {
             "selection": "[:, 0, :]",
             "mean_before": top_level_before,
@@ -105,6 +126,14 @@ def main() -> int:
             "global_min": expression_stats["min"],
             "global_max": expression_stats["max"],
             "global_mean": expression_stats["mean"],
+            "field_removed_before_scientific_run": True,
+        },
+        "distributed_zeros_like": {
+            "field": "ui_distributed_probe",
+            "like": "T",
+            "global_min": distributed_stats["min"],
+            "global_max": distributed_stats["max"],
+            "global_mean": distributed_stats["mean"],
             "field_removed_before_scientific_run": True,
         },
         "state_mapping": {
@@ -122,7 +151,8 @@ def main() -> int:
         },
         "initial_global_temperature_mean": initial_mean,
         "output": completed.get("output"),
-        "executed_actions": len(trace),
+        "executed_actions": run_result.actions,
+        "run_result": run_result.summary(),
         "candidate_run": str(run_dir),
         "reference_run": str(args.reference),
         "comparison": comparison.to_payload(),

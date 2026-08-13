@@ -94,6 +94,7 @@ class RecordingCAMBackend:
         del pool, fcomm
         if action.kind not in {
             "scheme",
+            "coupling",
             "dynamics",
             "kernel",
             "runtime_fortran_process",
@@ -477,6 +478,7 @@ class NativeCAMDevice:
     def execute(self, action: PICAMAction, pool: PICAMStatePool, *, fcomm: int) -> None:
         if action.kind not in {
             "scheme",
+            "coupling",
             "dynamics",
             "kernel",
             "runtime_fortran_process",

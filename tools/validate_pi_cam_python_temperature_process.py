@@ -46,15 +46,15 @@ def main() -> int:
         verify_boundary_exports=args.verify_exports,
     )
     try:
-        trace = driver.run()
+        result = driver.run()
         status = driver.status
         payload = {
             "schema_version": 1,
             "steps": args.steps,
             "increment": args.increment,
-            "actions": len(trace),
-            "first_action": trace[0]["name"],
-            "last_action": trace[-1]["name"],
+            "actions": result.actions,
+            "first_action": result.first_process,
+            "last_action": result.last_process,
             "model_step": int(status["step"]),
             "native_step": int(status["native_step"]),
             "boundary_export_verification": bool(

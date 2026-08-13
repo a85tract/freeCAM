@@ -14,6 +14,7 @@ from typing import Any, Callable, Iterator, Mapping, Sequence
 import numpy as np
 
 from freecam.model.clock import ModelClock
+from freecam.model.collective import collective_error_message
 from freecam.model.python_processes import PythonProcessSpec
 
 from .boundary import CAMBoundaryProvider
@@ -106,6 +107,15 @@ class _ActionReference:
         return "leaf" if self.operation.startswith("leaf_") else "stage"
 
     @property
+    def parent_stage(self) -> str | None:
+        """Return the composite source stage that this leaf expands."""
+
+        if self._snapshot is not None:
+            value = self._snapshot.get("parent_stage")
+            return None if value is None else str(value)
+        return self.action.parent_stage
+
+    @property
     def enabled(self) -> bool:
         return self.driver.step_plan.select(
             self.action.name, phase=self.action.phase
@@ -143,6 +153,7 @@ class _ActionReference:
             "enabled": self.enabled,
             "runnable": True,
             "capability": "runtime",
+            "parent_stage": self.parent_stage,
         }
         return result
 
@@ -1362,6 +1373,7 @@ class PICAMDriver:
     def _execute_native(self, action: PICAMAction) -> None:
         if action.kind not in {
             "scheme",
+            "coupling",
             "dynamics",
             "kernel",
             "runtime_fortran_process",
@@ -1415,9 +1427,10 @@ class PICAMDriver:
             if created:
                 self.pool.remove(spec.name)
             self.comm.barrier()
-            raise PICAMStateError(
-                f"dynamic variable creation rolled back collectively: {errors}"
+            message = collective_error_message(
+                "dynamic variable creation rollback", errors
             )
+            raise PICAMStateError(message or "dynamic variable creation failed")
         self.comm.barrier()
         return values
 
@@ -1453,9 +1466,10 @@ class PICAMDriver:
             if created:
                 self.pool.remove(str(name))
             self.comm.barrier()
-            raise PICAMStateError(
-                f"dynamic NumPy array creation rolled back collectively: {errors}"
+            message = collective_error_message(
+                "dynamic NumPy array creation rollback", errors
             )
+            raise PICAMStateError(message or "dynamic NumPy array creation failed")
         self.comm.barrier()
         return result
 
@@ -1574,9 +1588,10 @@ class PICAMDriver:
             if record is not None and record.name in self.process_contexts:
                 self.process_contexts.remove(record.name)
             self.comm.barrier()
-            raise PICAMStateError(
-                f"physics process promotion rolled back collectively: {errors}"
+            message = collective_error_message(
+                "physics process promotion rollback", errors
             )
+            raise PICAMStateError(message or "physics process promotion failed")
         self.comm.barrier()
         assert record is not None
         return record
@@ -1666,9 +1681,10 @@ class PICAMDriver:
                         experimental=True,
                     )
             self.comm.barrier()
-            raise PICAMStateError(
-                f"runtime process insertion rolled back collectively: {errors}"
+            message = collective_error_message(
+                "runtime process insertion rollback", errors
             )
+            raise PICAMStateError(message or "runtime process insertion failed")
         self.comm.barrier()
         assert action is not None
         return action
@@ -1732,15 +1748,9 @@ class PICAMDriver:
 
     def _collective_state_error(self, error: str | None, operation: str) -> None:
         errors = self.comm.allgather(error)
-        failures = [
-            f"rank {rank}: {message}"
-            for rank, message in enumerate(errors)
-            if message is not None
-        ]
-        if failures:
-            raise PICAMStateError(
-                f"{operation} failed collectively: " + "; ".join(failures)
-            )
+        message = collective_error_message(operation, errors)
+        if message is not None:
+            raise PICAMStateError(message)
 
     def run_action(
         self, name: str, *, phase: str | None = None, experimental: bool = False
@@ -1995,17 +2005,10 @@ class PICAMDriver:
         except BaseException:
             local_error = traceback.format_exc()
         errors = self.comm.allgather(local_error)
-        failures = [
-            f"rank {rank}:\n{error}"
-            for rank, error in enumerate(errors)
-            if error is not None
-        ]
-        if failures:
+        failure = collective_error_message(label, errors)
+        if failure is not None:
             if self.rank == 0:
-                message = (
-                    f"{label} failed on {len(failures)} of {self.size} MPI ranks:\n"
-                    + "\n".join(failures[:8])
-                )
+                message = failure
             else:
                 message = f"{label} failed collectively; see rank 0"
             raise BoundaryReplayError(message)

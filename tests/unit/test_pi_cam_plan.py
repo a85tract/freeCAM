@@ -101,6 +101,42 @@ def test_pi_cam_default_plan_matches_cesm_cam_source_order() -> None:
     assert all(action.control_owner == "python" for action in plan.actions)
 
 
+def test_pi_cam_leaf_actions_name_the_composite_stage_they_expand() -> None:
+    records = PICAMStepPlan.default().describe()
+    leaves = tuple(row for row in records if row["granularity"] == "leaf")
+
+    assert leaves
+    assert all(row["parent_stage"] for row in leaves)
+    assert {
+        row["operation"]: row["parent_stage"] for row in leaves
+    } == {
+        "leaf_tracers_timestep_tend": "cam_run2.tracers_and_chemistry",
+        "leaf_aoa_tracers_timestep_tend": "cam_run2.tracers_and_chemistry",
+        "leaf_chem_timestep_tend": "cam_run2.tracers_and_chemistry",
+        "leaf_aero_model_drydep": "cam_run2.aerosol_dry_deposition",
+        "leaf_carma_timestep_tend": "cam_run2.aerosol_dry_deposition",
+        "leaf_carma_accumulate_stats": "cam_run2.finish",
+        "leaf_pbuf_deallocate": "cam_run2.finish",
+        "leaf_pbuf_update_tim_idx": "cam_run2.finish",
+        "leaf_diag_deallocate": "cam_run2.finish",
+        "leaf_cam_run4_wrapup": "cam_run4.finish",
+        "leaf_cam_run4_step_cost": "cam_run4.finish",
+        "leaf_cam_run4_flush": "cam_run4.finish",
+        "leaf_modal_aero_prepare": "cam_run1.wet_deposition",
+        "leaf_aero_model_wetdep": "cam_run1.wet_deposition",
+        "leaf_carma_wetdep_tend": "cam_run1.wet_deposition",
+        "leaf_convect_deep_tend_2": "cam_run1.wet_deposition",
+        "leaf_diag_phys_writeout": "cam_run1.diagnostics",
+        "leaf_cloud_diagnostics_calc": "cam_run1.diagnostics",
+        "leaf_tropopause_output": "cam_run1.state_export",
+        "leaf_cam_export": "cam_run1.state_export",
+        "leaf_diag_export": "cam_run1.state_export",
+    }
+
+    stages = tuple(row for row in records if row["granularity"] == "stage")
+    assert all(row["parent_stage"] is None for row in stages)
+
+
 def test_pi_cam_plan_changes_are_explicitly_experimental() -> None:
     plan = PICAMStepPlan.default()
 
@@ -249,7 +285,7 @@ def test_cam_run2_run4_leaf_expansion_replaces_only_composites() -> None:
         "physics_buffer_deallocate_leaf",
         "physics_buffer_time_advance_leaf",
         "diagnostics_deallocate_leaf",
-        "dynamics",
+        "physics_to_dynamics",
     )
     assert tuple(action.name for action in plan.in_phase("cam_run3")) == (
         "dynamics",
@@ -262,6 +298,25 @@ def test_cam_run2_run4_leaf_expansion_replaces_only_composites() -> None:
         "flush_leaf",
     )
     assert len(tuple(plan)) == 47
+
+
+def test_enabled_scientific_process_names_are_publicly_unique() -> None:
+    scientific_kinds = {
+        "scheme",
+        "coupling",
+        "dynamics",
+        "python_process",
+        "runtime_fortran_process",
+        "runtime_catalog_process",
+    }
+    names = tuple(
+        action.name
+        for action in PICAMStepPlan.default()
+        if action.kind in scientific_kinds
+    )
+
+    assert len(names) == len(set(names))
+    assert {"dynamics_to_physics", "physics_to_dynamics", "dynamics"} <= set(names)
 
 
 def test_cam_run2_run4_leaf_expansion_requires_experimental_flag() -> None:

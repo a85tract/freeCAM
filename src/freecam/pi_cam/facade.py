@@ -7,15 +7,20 @@ session when the user first touches live model state.
 
 from __future__ import annotations
 
-from collections import Counter, defaultdict
-from dataclasses import dataclass
-from datetime import datetime
-from fnmatch import fnmatch
+import ast
+import dis
 import inspect
 import json
 import os
-from pathlib import Path
 import shutil
+import textwrap
+import threading
+from collections import Counter, defaultdict
+from concurrent.futures import Future
+from dataclasses import dataclass, field
+from datetime import datetime
+from fnmatch import fnmatch
+from pathlib import Path
 from typing import Any, Callable, Iterator, Mapping, Sequence
 from uuid import uuid4
 from xml.etree import ElementTree
@@ -131,7 +136,35 @@ class Physics:
                 f"{type(self).__name__} must implement run(state, context) "
                 "or tendency(fields, context)"
             )
-        return self.run(PythonStateView(fields), context)
+        return _invoke_physics_callback(
+            self.run,
+            PythonStateView(fields),
+            context,
+            owner=type(self).__name__,
+        )
+
+    def _runtime_callback(self) -> Callable[[Any, Any], None]:
+        """Return the fixed two-argument callback required by MPI workers."""
+
+        process = self
+
+        def callback(fields: Any, context: Any) -> None:
+            if type(process).run is not Physics.run:
+                return _invoke_physics_callback(
+                    process.run,
+                    PythonStateView(fields),
+                    context,
+                    owner=type(process).__name__,
+                )
+            return _invoke_physics_callback(
+                process.tendency,
+                fields,
+                context,
+                owner=type(process).__name__,
+            )
+
+        callback.__name__ = _workflow_process_name(self)
+        return callback
 
     def _install(
         self,
@@ -147,16 +180,201 @@ class Physics:
         else:
             placement_before = self.before
             placement_after = self.after
+        reads, writes = _python_process_access(self)
         return session.physics.install_python(
-            self.tendency,
+            self._runtime_callback(),
             name=process_name,
             before=placement_before,
             after=placement_after,
-            reads=self.reads,
-            writes=self.writes,
+            reads=reads,
+            writes=writes,
             enabled=self.enabled,
             transactional=self.transactional,
         )
+
+
+def _invoke_physics_callback(
+    callback: Callable[..., Any],
+    state: Any,
+    context: Any,
+    *,
+    owner: str,
+) -> None:
+    """Invoke either FreeCESM-style ``callback(state)`` or rich two-arg form."""
+
+    signature = inspect.signature(callback)
+    try:
+        signature.bind(state, context)
+    except TypeError as two_argument_error:
+        try:
+            signature.bind(state)
+        except TypeError:
+            raise TypeError(
+                f"{owner} callback must accept (state) or (state, context)"
+            ) from two_argument_error
+        result = callback(state)
+    else:
+        result = callback(state, context)
+    if result is not None:
+        raise TypeError(
+            f"{owner} callback must return None, got {type(result).__name__}"
+        )
+
+
+def _python_process_access(process: Physics) -> tuple[tuple[str, ...], tuple[str, ...]]:
+    """Infer simple ``state.field`` access when no contract was declared.
+
+    Explicit ``reads``/``writes`` always win.  The inference deliberately
+    handles only ordinary attribute/subscript code; dynamic ``getattr`` and
+    helper-side mutation still require an explicit contract.
+    """
+
+    if process.reads or process.writes:
+        return tuple(process.reads), tuple(process.writes)
+    callback = (
+        process.tendency
+        if type(process).run is Physics.run
+        else process.run
+    )
+    return _python_callable_access(callback)
+
+
+def _python_callable_access(
+    callback: Callable[..., Any],
+) -> tuple[tuple[str, ...], tuple[str, ...]]:
+    """Infer direct ``state.field`` reads and writes for one callback."""
+
+    try:
+        tree = ast.parse(textwrap.dedent(inspect.getsource(callback)))
+    except (OSError, TypeError, IndentationError, SyntaxError):
+        return _python_process_access_from_bytecode(callback)
+
+    reads: set[str] = set()
+    writes: set[str] = set()
+
+    def field(node: ast.AST) -> str | None:
+        if isinstance(node, ast.Attribute) and isinstance(node.value, ast.Name):
+            if node.value.id in {"state", "fields"}:
+                return node.attr
+        if isinstance(node, ast.Subscript) and isinstance(node.value, ast.Name):
+            if node.value.id in {"state", "fields"}:
+                key = node.slice
+                if isinstance(key, ast.Constant) and isinstance(key.value, str):
+                    return key.value
+        if isinstance(node, ast.Subscript):
+            return field(node.value)
+        return None
+
+    class AccessVisitor(ast.NodeVisitor):
+        def _write(self, node: ast.AST, *, also_read: bool = False) -> None:
+            name = field(node)
+            if name is not None:
+                writes.add(name)
+                if also_read:
+                    reads.add(name)
+
+        def visit_Assign(self, node: ast.Assign) -> None:
+            for target in node.targets:
+                self._write(target)
+            self.visit(node.value)
+
+        def visit_AnnAssign(self, node: ast.AnnAssign) -> None:
+            self._write(node.target)
+            if node.value is not None:
+                self.visit(node.value)
+
+        def visit_AugAssign(self, node: ast.AugAssign) -> None:
+            self._write(node.target, also_read=True)
+            self.visit(node.value)
+
+        def visit_Call(self, node: ast.Call) -> None:
+            if isinstance(node.func, ast.Attribute) and node.func.attr in {
+                "fill",
+                "put",
+                "resize",
+                "sort",
+            }:
+                self._write(node.func.value, also_read=True)
+            self.generic_visit(node)
+
+        def visit_Attribute(self, node: ast.Attribute) -> None:
+            name = field(node)
+            if name is not None and isinstance(node.ctx, ast.Load):
+                reads.add(name)
+            self.generic_visit(node)
+
+        def visit_Subscript(self, node: ast.Subscript) -> None:
+            name = field(node)
+            if name is not None and isinstance(node.ctx, ast.Load):
+                reads.add(name)
+            self.generic_visit(node)
+
+    AccessVisitor().visit(tree)
+    return tuple(sorted(reads - writes)), tuple(sorted(writes))
+
+
+def _runtime_state_callback(
+    callback: Callable[..., Any],
+    *,
+    owner: str,
+) -> Callable[[Any, Any], None]:
+    """Adapt a friendly ``run(state, context)`` callback to the worker ABI."""
+
+    def runtime_callback(fields: Any, context: Any) -> None:
+        return _invoke_physics_callback(
+            callback,
+            PythonStateView(fields),
+            context,
+            owner=owner,
+        )
+
+    runtime_callback.__name__ = str(owner)
+    return runtime_callback
+
+
+def _python_process_access_from_bytecode(
+    callback: Callable[..., Any],
+) -> tuple[tuple[str, ...], tuple[str, ...]]:
+    """Infer ordinary state access when Notebook source is unavailable."""
+
+    try:
+        instructions = tuple(dis.get_instructions(callback))
+    except TypeError:
+        return (), ()
+
+    reads: set[str] = set()
+    writes: set[str] = set()
+    current_field: str | None = None
+    for index, instruction in enumerate(instructions):
+        if instruction.opname == "LOAD_FAST" and instruction.argval in {
+            "state",
+            "fields",
+        }:
+            current_field = None
+            if index + 1 < len(instructions):
+                following = instructions[index + 1]
+                if following.opname == "LOAD_ATTR":
+                    current_field = str(following.argval)
+                    reads.add(current_field)
+                elif (
+                    index + 2 < len(instructions)
+                    and following.opname == "LOAD_CONST"
+                    and isinstance(following.argval, str)
+                    and instructions[index + 2].opname == "BINARY_SUBSCR"
+                ):
+                    current_field = str(following.argval)
+                    reads.add(current_field)
+        elif instruction.opname == "STORE_ATTR":
+            writes.add(str(instruction.argval))
+        elif instruction.opname == "STORE_SUBSCR" and current_field is not None:
+            writes.add(current_field)
+        elif (
+            instruction.opname in {"LOAD_METHOD", "LOAD_ATTR"}
+            and instruction.argval in {"fill", "put", "resize", "sort"}
+            and current_field is not None
+        ):
+            writes.add(current_field)
+    return tuple(sorted(reads - writes)), tuple(sorted(writes))
 
 
 class WorkflowTemplate(list[Any]):
@@ -186,6 +404,26 @@ class WorkflowTemplate(list[Any]):
         return process
 
 
+@dataclass(frozen=True, slots=True)
+class ProcessSpec:
+    """Lazy reference to an original CAM process used before MPI starts."""
+
+    name: str
+
+    def __post_init__(self) -> None:
+        if not str(self.name).strip():
+            raise ValueError("process name cannot be empty")
+
+    def __str__(self) -> str:
+        return self.name
+
+
+def process(name: str) -> ProcessSpec:
+    """Declare one original CAM process without starting the model."""
+
+    return ProcessSpec(str(name))
+
+
 WorkflowFactory = Callable[[WorkflowTemplate], Sequence[Any] | None]
 
 
@@ -204,37 +442,79 @@ class WorkflowPreviewAction:
     def qualified_name(self) -> str:
         return f"{self.phase}.{self.name}"
 
+    @property
+    def display_name(self) -> str:
+        return self.name.removesuffix("_leaf")
+
     def __str__(self) -> str:
-        return self.name
+        return self.display_name
 
 
 class WorkflowPreview(Sequence[WorkflowPreviewAction]):
     """Read-only workflow description that never launches PBS or MPI."""
 
-    def __init__(self, actions: Sequence[WorkflowPreviewAction]) -> None:
+    _SCIENTIFIC_KINDS = frozenset(
+        {
+            "scheme",
+            "coupling",
+            "dynamics",
+            "python_process",
+            "runtime_fortran_process",
+            "runtime_catalog_process",
+        }
+    )
+
+    def __init__(
+        self,
+        actions: Sequence[WorkflowPreviewAction],
+        *,
+        include_internal: bool = False,
+    ) -> None:
         self._actions = tuple(actions)
+        self._include_internal = bool(include_internal)
+
+    @property
+    def debug(self) -> "WorkflowPreview":
+        """Complete preview including control, clock, and I/O actions."""
+
+        return WorkflowPreview(self._actions, include_internal=True)
+
+    @property
+    def all(self) -> "WorkflowPreview":
+        return self.debug
+
+    def _visible(self) -> tuple[WorkflowPreviewAction, ...]:
+        if self._include_internal:
+            return self._actions
+        return tuple(
+            action
+            for action in self._actions
+            if action.kind in self._SCIENTIFIC_KINDS
+        )
 
     def __getitem__(self, index: int | slice) -> Any:
-        return self._actions[index]
+        return self._visible()[index]
 
     def __len__(self) -> int:
-        return len(self._actions)
+        return len(self._visible())
 
     def describe(self) -> tuple[dict[str, Any], ...]:
         return tuple(
             {
                 "index": index,
-                "name": action.name,
+                "name": (
+                    action.name if self._include_internal else action.display_name
+                ),
                 "operation": action.operation,
                 "kind": action.kind,
                 "implementation": action.implementation,
             }
-            for index, action in enumerate(self._actions)
+            for index, action in enumerate(self._visible())
         )
 
     def __repr__(self) -> str:
         return "WorkflowPreview([" + ", ".join(
-            action.name for action in self._actions
+            action.display_name for action in self._visible()
         ) + "])"
 
 
@@ -435,9 +715,12 @@ def _resolve_declared_workflow_item(
 ) -> Any:
     if isinstance(item, Physics):
         return item
-    if isinstance(item, str):
+    if isinstance(item, (str, ProcessSpec)):
+        token = str(item)
         matches = tuple(
-            process for process in original if _workflow_item_matches(process, item)
+            candidate
+            for candidate in original
+            if _workflow_item_matches(candidate, token)
         )
     else:
         qualified = getattr(item, "qualified_name", None)
@@ -538,7 +821,8 @@ def _apply_case_workflow(
 ) -> tuple[Any, ...]:
     """Install a case workflow atomically after the live model initializes."""
 
-    original = tuple(session.workflow[:])
+    complete_workflow = getattr(session.workflow, "debug", session.workflow)
+    original = tuple(complete_workflow[:])
     resolved, runtime_names, omitted = _compile_case_workflow(
         declaration, original
     )
@@ -562,12 +846,13 @@ def _apply_case_workflow(
                 raise ValueError(
                     "custom Physics cannot be placed after boundary_export"
                 )
+            reads, writes = _python_process_access(item)
             handle = session.physics.install_python(
-                item.tendency,
+                item._runtime_callback(),
                 name=runtime_names[index],
                 before=anchor.qualified_name,
-                reads=item.reads,
-                writes=item.writes,
+                reads=reads,
+                writes=writes,
                 enabled=True,
                 transactional=item.transactional,
             )
@@ -575,7 +860,7 @@ def _apply_case_workflow(
             final.append(handle)
         for item in omitted:
             item.disable()
-        session.workflow.replace(final)
+        complete_workflow.replace(final)
     except BaseException:
         for item in reversed(installed):
             try:
@@ -588,7 +873,7 @@ def _apply_case_workflow(
             except BaseException:
                 pass
         try:
-            session.workflow.replace(original)
+            complete_workflow.replace(original)
         except BaseException:
             pass
         raise
@@ -657,6 +942,216 @@ class _CAMFacade:
 
     def advance(self, steps: int = 1) -> Mapping[str, Any]:
         return self._driver.advance(steps)
+
+
+@dataclass(frozen=True, slots=True)
+class RunProgress:
+    """Local progress snapshot for a synchronous or background CAM run."""
+
+    requested_steps: int
+    completed_steps: int
+    model_step: int
+    date: Any = None
+    cancel_requested: bool = False
+    done: bool = False
+
+    @property
+    def fraction(self) -> float:
+        return self.completed_steps / self.requested_steps
+
+
+@dataclass(frozen=True, slots=True)
+class RunResult(Sequence[Mapping[str, Any]]):
+    """Compact result of one complete CAM run.
+
+    The full per-process trace remains available through :attr:`trace`, while
+    the normal Notebook representation shows only the run-level outcome.
+    Sequence methods are retained for compatibility with code that used the
+    former raw trace return value.
+    """
+
+    requested_steps: int
+    completed_steps: int
+    start_step: int
+    end_step: int
+    date: Any
+    trace: tuple[Mapping[str, Any], ...]
+    run_dir: Path | None
+    cancelled: bool = False
+    final_status: Mapping[str, Any] = field(default_factory=dict, repr=False)
+    _driver: "Driver | None" = field(default=None, repr=False, compare=False)
+
+    @property
+    def actions(self) -> int:
+        return len(self.trace)
+
+    @property
+    def first_process(self) -> str | None:
+        return None if not self.trace else str(self.trace[0].get("name"))
+
+    @property
+    def last_process(self) -> str | None:
+        return None if not self.trace else str(self.trace[-1].get("name"))
+
+    @property
+    def history(self) -> PICAMOutputView:
+        if self._driver is None:
+            raise RuntimeError("this RunResult is detached from its Driver")
+        return self._driver.cam.history
+
+    @property
+    def restart(self) -> PICAMOutputView:
+        if self._driver is None:
+            raise RuntimeError("this RunResult is detached from its Driver")
+        return self._driver.cam.restart
+
+    def summary(self) -> dict[str, Any]:
+        return {
+            "requested_steps": self.requested_steps,
+            "completed_steps": self.completed_steps,
+            "start_step": self.start_step,
+            "end_step": self.end_step,
+            "date": self.date,
+            "actions": self.actions,
+            "cancelled": self.cancelled,
+            "run_dir": None if self.run_dir is None else str(self.run_dir),
+        }
+
+    def __getitem__(self, index: int | slice) -> Any:
+        return self.trace[index]
+
+    def __len__(self) -> int:
+        return len(self.trace)
+
+    def __iter__(self) -> Iterator[Mapping[str, Any]]:
+        return iter(self.trace)
+
+    def __repr__(self) -> str:
+        return (
+            "RunResult("
+            f"steps={self.completed_steps}/{self.requested_steps}, "
+            f"model_step={self.end_step}, actions={self.actions}, "
+            f"date={self.date!r}, cancelled={self.cancelled})"
+        )
+
+    def _repr_html_(self) -> str:
+        status = "cancelled" if self.cancelled else "complete"
+        return (
+            "<div class='freecam-run-result' style='border:1px solid #ddd;"
+            "border-radius:6px;padding:.65rem .8rem;display:inline-block'>"
+            "<strong>freeCAM run " + status + "</strong>"
+            "<table style='margin-top:.35rem'>"
+            f"<tr><td>steps</td><td>{self.completed_steps} / "
+            f"{self.requested_steps}</td></tr>"
+            f"<tr><td>model step</td><td>{self.end_step}</td></tr>"
+            f"<tr><td>date</td><td>{self.date}</td></tr>"
+            f"<tr><td>process calls</td><td>{self.actions}</td></tr>"
+            "</table><small>Full details: <code>result.trace</code>; "
+            "output: <code>result.history</code></small></div>"
+        )
+
+
+class RunHandle:
+    """Future-like handle for one background run of a persistent model."""
+
+    def __init__(
+        self,
+        driver: "Driver",
+        steps: int,
+        *,
+        verbose: bool,
+        progress: bool | Callable[[RunProgress], None],
+    ) -> None:
+        self._driver = driver
+        self._steps = int(steps)
+        self._verbose = bool(verbose)
+        self._reporter = progress
+        self._cancel_event = threading.Event()
+        self._future: Future[RunResult] = Future()
+        self._progress_lock = threading.Lock()
+        self._progress = RunProgress(self._steps, 0, 0)
+        self._thread = threading.Thread(
+            target=self._run,
+            name=f"freecam-run-{id(self):x}",
+            daemon=True,
+        )
+
+    def start(self) -> "RunHandle":
+        self._thread.start()
+        return self
+
+    def _run(self) -> None:
+        if not self._future.set_running_or_notify_cancel():
+            return
+        try:
+            result = self._driver._execute_steps(
+                self._steps,
+                verbose=self._verbose,
+                progress=self._reporter,
+                cancel_event=self._cancel_event,
+                progress_sink=self._update,
+            )
+        except BaseException as exc:
+            self._mark_done()
+            self._driver._finish_background_run(self)
+            self._future.set_exception(exc)
+        else:
+            self._mark_done()
+            self._driver._finish_background_run(self)
+            self._future.set_result(result)
+
+    def _mark_done(self) -> None:
+        with self._progress_lock:
+            current = self._progress
+            self._progress = RunProgress(
+                current.requested_steps,
+                current.completed_steps,
+                current.model_step,
+                current.date,
+                self._cancel_event.is_set(),
+                True,
+            )
+
+    def _update(self, progress: RunProgress) -> None:
+        with self._progress_lock:
+            self._progress = progress
+
+    @property
+    def progress(self) -> RunProgress:
+        with self._progress_lock:
+            return self._progress
+
+    @property
+    def status(self) -> RunProgress:
+        return self.progress
+
+    def cancel(self) -> bool:
+        """Stop after the current complete CAM step; keep the model alive."""
+
+        if self.done():
+            return False
+        self._cancel_event.set()
+        return True
+
+    def cancelled(self) -> bool:
+        return self._cancel_event.is_set() and self.done()
+
+    def done(self) -> bool:
+        return self._future.done()
+
+    def result(self, timeout: float | None = None) -> RunResult:
+        return self._future.result(timeout=timeout)
+
+    def exception(self, timeout: float | None = None) -> BaseException | None:
+        return self._future.exception(timeout=timeout)
+
+    def __repr__(self) -> str:
+        state = self.progress
+        return (
+            "RunHandle("
+            f"completed={state.completed_steps}/{state.requested_steps}, "
+            f"model_step={state.model_step}, done={self.done()})"
+        )
 
 
 class Driver:
@@ -783,6 +1278,9 @@ class Driver:
         self._session_factory = session_factory
         self._session: PICAMNotebookSession | None = None
         self._run_dir: Path | None = None
+        self._execution_lock = threading.Lock()
+        self._active_lock = threading.Lock()
+        self._active_run: RunHandle | None = None
         self.cam = _CAMFacade(self)
 
     @property
@@ -810,6 +1308,29 @@ class Driver:
             return {"available": False, "path": str(path)}
         return {"available": True, "path": str(path), **json.loads(path.read_text())}
 
+    def diagnose(self) -> Mapping[str, Any]:
+        """Check runtime inputs without starting PBS or MPI."""
+
+        paths = {
+            "config": self.config_path,
+            "environment": self.reference_case / ".env_mach_specific.sh",
+            "atm_in": self.reference_run / "atm_in",
+            "boundary": self.boundary / "manifest.json",
+            "python": self.python_executable,
+        }
+        checks = {name: path.is_file() for name, path in paths.items()}
+        return {
+            "ready": all(checks.values()) and (
+                self.launch_mode != "pbs" or self.account is not None
+            ),
+            "case": self.case.name if isinstance(self.case, CaseConfig) else self.case.key,
+            "mpi_ranks": self.config.mpi_size,
+            "launch_mode": self.launch_mode,
+            "pbs_account": self.account,
+            "checks": checks,
+            "paths": {name: str(path) for name, path in paths.items()},
+        }
+
     def initialize(self) -> "Driver":
         self._live_session()
         return self
@@ -829,30 +1350,143 @@ class Driver:
         steps: int | None = None,
         *,
         verbose: bool = False,
-    ) -> tuple[Mapping[str, Any], ...]:
-        """Run complete CAM steps and return the actual worker action trace."""
+        progress: bool | Callable[[RunProgress], None] = False,
+    ) -> RunResult:
+        """Run complete CAM steps and return one compact result object."""
 
-        session = self._live_session()
-        first = int(session.status.get("actions", 0))
-        session.advance(steps=self.nsteps if steps is None else int(steps))
-        trace = session.trace(since=first)
+        return self._execute_steps(
+            self.nsteps if steps is None else int(steps),
+            verbose=verbose,
+            progress=progress,
+        )
+
+    def _execute_steps(
+        self,
+        steps: int,
+        *,
+        verbose: bool,
+        progress: bool | Callable[[RunProgress], None],
+        cancel_event: threading.Event | None = None,
+        progress_sink: Callable[[RunProgress], None] | None = None,
+    ) -> RunResult:
+        if isinstance(steps, bool) or int(steps) < 1:
+            raise ValueError("steps must be a positive integer")
+        if not self._execution_lock.acquire(blocking=False):
+            raise RuntimeError("this model already has a run in progress")
+        try:
+            session = self._live_session()
+            starting_status = dict(session.status)
+            start_step = int(starting_status.get("step", 0))
+            first = int(session.status.get("actions", 0))
+            stepwise = bool(progress) or cancel_event is not None
+            completed = 0
+            if stepwise:
+                for _ in range(int(steps)):
+                    if cancel_event is not None and cancel_event.is_set():
+                        break
+                    latest_status = session.advance(steps=1)
+                    completed += 1
+                    snapshot = RunProgress(
+                        requested_steps=int(steps),
+                        completed_steps=completed,
+                        model_step=int(latest_status.get("step", completed)),
+                        date=latest_status.get("date"),
+                        cancel_requested=(
+                            cancel_event.is_set()
+                            if cancel_event is not None
+                            else False
+                        ),
+                    )
+                    if progress_sink is not None:
+                        progress_sink(snapshot)
+                    if callable(progress):
+                        progress(snapshot)
+                    elif progress:
+                        print(
+                            f"CAM step {snapshot.completed_steps}/{snapshot.requested_steps} "
+                            f"(model step {snapshot.model_step}, date {snapshot.date})",
+                            end="\r" if completed < int(steps) else "\n",
+                            flush=True,
+                        )
+            else:
+                latest_status = session.advance(steps=int(steps))
+                completed = int(steps)
+            trace = session.trace(since=first)
+            final_status = dict(session.status)
+        finally:
+            self._execution_lock.release()
         if verbose:
             for action in trace:
                 print(
                     f"step {action['model_step']:>3}  "
                     f"{action['phase']}.{action['name']}"
                 )
-        return trace
+        return RunResult(
+            requested_steps=int(steps),
+            completed_steps=completed,
+            start_step=start_step,
+            end_step=int(final_status.get("step", start_step + completed)),
+            date=final_status.get("date"),
+            trace=tuple(trace),
+            run_dir=self.run_dir,
+            cancelled=(
+                cancel_event.is_set()
+                if cancel_event is not None
+                else False
+            ),
+            final_status=final_status,
+            _driver=self,
+        )
 
     def run(
         self,
         steps: int | None = None,
         *,
         verbose: bool = False,
-    ) -> tuple[Mapping[str, Any], ...]:
+        progress: bool | Callable[[RunProgress], None] = False,
+    ) -> RunResult:
         """FreeCESM-style alias for :meth:`execute`."""
 
-        return self.execute(steps=steps, verbose=verbose)
+        return self.execute(steps=steps, verbose=verbose, progress=progress)
+
+    def run_async(
+        self,
+        steps: int | None = None,
+        *,
+        verbose: bool = False,
+        progress: bool | Callable[[RunProgress], None] = False,
+    ) -> RunHandle:
+        """Run in a background thread and return a Future-like handle.
+
+        Cancellation is cooperative at complete-step boundaries; a Fortran
+        kernel is never interrupted in the middle of a call.
+        """
+
+        requested = self.nsteps if steps is None else int(steps)
+        if requested < 1:
+            raise ValueError("steps must be positive")
+        with self._active_lock:
+            if self._active_run is not None and not self._active_run.done():
+                raise RuntimeError("this model already has a background run")
+            handle = RunHandle(
+                self,
+                requested,
+                verbose=verbose,
+                progress=progress,
+            )
+            self._active_run = handle
+            return handle.start()
+
+    def cancel(self) -> bool:
+        """Request cancellation of the active background run."""
+
+        with self._active_lock:
+            return self._active_run.cancel() if self._active_run is not None else False
+
+    def _finish_background_run(self, handle: RunHandle) -> None:
+        with self._active_lock:
+            if self._active_run is handle:
+                self._active_run = None
 
     @property
     def trace(self) -> tuple[Mapping[str, Any], ...]:
@@ -863,6 +1497,17 @@ class Driver:
         return self._session.trace(since=0)
 
     def close(self) -> None:
+        with self._active_lock:
+            active = self._active_run
+        if active is not None and not active.done():
+            active.cancel()
+            try:
+                active.result()
+            finally:
+                if self._session is not None:
+                    self._session.close()
+                    self._session = None
+            return
         if self._session is not None:
             self._session.close()
             self._session = None
@@ -976,10 +1621,15 @@ __all__ = [
     "Driver",
     "FreeCAM",
     "Physics",
+    "ProcessSpec",
     "PICAMCaseInfo",
+    "RunHandle",
+    "RunProgress",
+    "RunResult",
     "Variable",
     "WorkflowFactory",
     "WorkflowPreview",
     "WorkflowPreviewAction",
     "WorkflowTemplate",
+    "process",
 ]

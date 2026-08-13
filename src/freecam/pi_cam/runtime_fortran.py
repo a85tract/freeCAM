@@ -12,6 +12,7 @@ from typing import Any, Mapping
 
 from freecam.model.device_codegen import DeviceDescription, build_device
 from freecam.model.devices import FortranDevice
+from freecam.model.collective import collective_error_message
 from freecam.model.errors import DeviceContractError
 
 from .errors import PICAMConfigurationError, PICAMStateError
@@ -189,8 +190,11 @@ class PICAMFortranProcessRegistry:
                 self.driver.step_plan.remove(
                     spec.process, phase=spec.phase, experimental=True
                 )
+            message = collective_error_message(
+                "Fortran process installation rollback", errors
+            )
             raise DeviceContractError(
-                f"Fortran process installation rolled back collectively: {errors}"
+                message or "Fortran process installation failed"
             )
         self.driver.comm.barrier()
         return self.installed[spec.process]
@@ -334,12 +338,6 @@ class PICAMFortranProcessRegistry:
 
     def _collective_error(self, error: str | None, operation: str) -> None:
         errors = self.driver.comm.allgather(error)
-        failures = [
-            f"rank {rank}: {message}"
-            for rank, message in enumerate(errors)
-            if message is not None
-        ]
-        if failures:
-            raise DeviceContractError(
-                f"{operation} failed collectively: " + "; ".join(failures)
-            )
+        message = collective_error_message(operation, errors)
+        if message is not None:
+            raise DeviceContractError(message)

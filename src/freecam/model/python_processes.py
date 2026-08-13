@@ -2,19 +2,20 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable, Iterator, Mapping, Sequence
-from dataclasses import dataclass, replace
 import base64
 import hashlib
 import inspect
 import json
 import platform
 import traceback
+from collections.abc import Callable, Iterator, Mapping, Sequence
+from dataclasses import dataclass, replace
 from typing import Any
 
 import cloudpickle
 import numpy as np
 
+from .collective import collective_error_message
 from .ccpp_suite import PHYSICS_BEFORE_COUPLER, SuiteScheme
 from .errors import (
     PythonProcessContractError,
@@ -22,7 +23,6 @@ from .errors import (
     PythonProcessTaintedError,
     StateOwnershipError,
 )
-
 
 PYTHON_PROCESS_SCHEMA_VERSION = 2
 DEFAULT_MAX_PAYLOAD_BYTES = 8 * 1024 * 1024
@@ -439,9 +439,15 @@ class PythonStateView(Mapping[str, np.ndarray]):
     def __init__(self, fields: PythonFieldView) -> None:
         object.__setattr__(self, "_fields", fields)
 
+    @classmethod
+    def field_candidates(cls, name: str) -> tuple[str, ...]:
+        """Return canonical candidates for one user-facing state name."""
+
+        token = str(name)
+        return cls._COMMON_ALIASES.get(token, (token,))
+
     def _key(self, name: str) -> str:
-        candidates = self._COMMON_ALIASES.get(str(name), (str(name),))
-        for candidate in candidates:
+        for candidate in self.field_candidates(name):
             if candidate in self._fields:
                 return candidate
         leaf_matches = tuple(
@@ -624,8 +630,11 @@ class PythonProcessRegistry:
             self.installed.pop(spec.name, None)
             if installed_scheme is not None:
                 self.driver.scheme_plan.remove(installed_scheme.key, unsafe=True)
+            message = collective_error_message(
+                "Python process installation rollback", errors
+            )
             raise PythonProcessContractError(
-                f"Python process installation rolled back collectively: " f"{errors}"
+                message or "Python process installation failed"
             )
         self.driver.comm.barrier()
         return self.installed[spec.name]
@@ -768,12 +777,10 @@ class PythonProcessRegistry:
             for resolved, writable in read_writeability.items():
                 pool.get(resolved).flags.writeable = writable
         errors = self.driver.comm.allgather(local_error)
-        failures = [
-            f"rank {rank}:\n{message}"
-            for rank, message in enumerate(errors)
-            if message is not None
-        ]
-        if failures:
+        failure = collective_error_message(
+            f"Python process {record.name!r}", errors
+        )
+        if failure is not None:
             if record.spec.transactional:
                 for name, values in snapshots.items():
                     np.copyto(
@@ -784,11 +791,11 @@ class PythonProcessRegistry:
                 self.driver.comm.barrier()
                 raise PythonProcessExecutionError(
                     f"Python process {record.name!r} failed and its declared "
-                    f"write fields were restored:\n" + "\n".join(failures)
+                    f"write fields were restored:\n" + failure
                 )
             raise PythonProcessTaintedError(
                 f"Python process {record.name!r} failed without rollback; "
-                f"the model state is tainted:\n" + "\n".join(failures)
+                f"the model state is tainted:\n" + failure
             )
 
     def inventory(self) -> tuple[dict[str, Any], ...]:
@@ -923,12 +930,6 @@ class PythonProcessRegistry:
 
     def _collective_error(self, error: str | None, operation: str) -> None:
         errors = self.driver.comm.allgather(error)
-        failures = [
-            f"rank {rank}: {message}"
-            for rank, message in enumerate(errors)
-            if message is not None
-        ]
-        if failures:
-            raise PythonProcessContractError(
-                f"{operation} failed collectively: " + "; ".join(failures)
-            )
+        message = collective_error_message(operation, errors)
+        if message is not None:
+            raise PythonProcessContractError(message)

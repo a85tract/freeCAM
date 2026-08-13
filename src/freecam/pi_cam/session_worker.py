@@ -13,6 +13,8 @@ from typing import Any
 import numpy as np
 from mpi4py import MPI
 
+from freecam.model.collective import collective_error_message
+
 from .boundary import ReplayBoundaryProvider
 from .case import PICAMCase
 from .expressions import assign_expression, evaluate_expression
@@ -245,6 +247,17 @@ def _command(command: dict[str, Any], driver: Any, comm: Any) -> object:
                 "writes": tuple(record.write_bindings),
             }
         return None
+    if operation == "reload_python":
+        result = driver.python_processes.reload(
+            str(command["name"]),
+            command["spec"],
+            preserve_parameters=bool(command.get("preserve_parameters", False)),
+            preserve_transactional=bool(
+                command.get("preserve_transactional", False)
+            ),
+            unsafe=bool(command.get("unsafe", False)),
+        )
+        return result if comm.rank == 0 else None
     if operation == "remove_python":
         result = driver.python_processes.remove(str(command["name"]))
         return result if comm.rank == 0 else None
@@ -415,16 +428,14 @@ def main(argv: list[str] | None = None) -> int:
             startup_error = traceback.format_exc()
         startup_errors = comm.gather(startup_error, root=0)
         if comm.rank == 0:
-            failures = [
-                f"rank {rank}:\n{error}"
-                for rank, error in enumerate(startup_errors)
-                if error is not None
-            ]
-            if failures:
-                connection.send({"status": "error", "error": "\n".join(failures[:8])})
+            failure = collective_error_message(
+                "PI-CAM worker startup", startup_errors
+            )
+            if failure is not None:
+                connection.send({"status": "error", "error": failure})
             else:
                 connection.send({"status": "ok", "result": _status(driver)})
-        if startup_error is not None or (comm.rank == 0 and failures):
+        if startup_error is not None or (comm.rank == 0 and failure is not None):
             return 2
 
         while True:
@@ -439,15 +450,12 @@ def main(argv: list[str] | None = None) -> int:
             errors = comm.gather(local_error, root=0)
             results = comm.gather(local_result, root=0)
             if comm.rank == 0:
-                failures = [
-                    f"rank {rank}:\n{error}"
-                    for rank, error in enumerate(errors)
-                    if error is not None
-                ]
-                if failures:
-                    connection.send(
-                        {"status": "error", "error": "\n".join(failures[:8])}
-                    )
+                failure = collective_error_message(
+                    f"PI-CAM command {command.get('op', '<unknown>')!r}",
+                    errors,
+                )
+                if failure is not None:
+                    connection.send({"status": "error", "error": failure})
                 else:
                     result = next((item for item in results if item is not None), None)
                     connection.send({"status": "ok", "result": result})

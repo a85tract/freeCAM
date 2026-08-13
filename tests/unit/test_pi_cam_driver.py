@@ -3,6 +3,7 @@ from pathlib import Path
 import numpy as np
 import pytest
 
+from freecam.model.python_processes import PythonProcessSpec
 from freecam.pi_cam import (
     InMemoryBoundaryProvider,
     PICAMConfig,
@@ -493,6 +494,60 @@ def test_dynamic_field_and_python_process_are_part_of_the_step_plan() -> None:
     assert "experiment_tracer" not in driver.pool
 
 
+def test_python_process_reload_replaces_only_the_callback() -> None:
+    driver, _, _ = _driver()
+    driver.initialize()
+    tracer = driver.define_variable(
+        PICAMVariableSpec("experiment_tracer", ("pcols", "pver"), initial=2.0)
+    )
+
+    def add_one(fields, context):
+        del context
+        fields["experiment_tracer"][...] += 1.0
+
+    process = driver.physics.install_python(
+        add_one,
+        name="reloadable_heating",
+        after="dadadj",
+        writes=("experiment_tracer",),
+    )
+    process.run()
+    process.disable()
+    plan_before = driver.step_plan.describe()
+    old_hash = driver.python_processes.installed[process.name].spec.payload_hash
+
+    def add_two(fields, context):
+        del context
+        fields["experiment_tracer"][...] += 2.0
+
+    replacement = PythonProcessSpec.from_callable(
+        add_two,
+        name=process.name,
+        group=process.phase,
+        writes=("experiment_tracer",),
+    )
+    result = driver.python_processes.reload(process.name, replacement)
+    assert result["enabled"] is False
+    assert driver.step_plan.describe() == plan_before
+    process.enable()
+    process.run()
+
+    assert np.array_equal(tracer, np.full(tracer.shape, 5.0))
+    assert result["old_payload_hash"] == old_hash
+    assert result["payload_hash"] != old_hash
+
+    invalid = PythonProcessSpec.from_callable(
+        add_two,
+        name=process.name,
+        group=process.phase,
+        writes=("missing_field",),
+    )
+    with pytest.raises(Exception, match="unknown PI-CAM field"):
+        driver.python_processes.reload(process.name, invalid)
+    process.run()
+    assert np.array_equal(tracer, np.full(tracer.shape, 7.0))
+
+
 def test_physics_run_uses_attribute_style_rank_local_state() -> None:
     from freecam.pi_cam import Physics
 
@@ -517,6 +572,32 @@ def test_physics_run_uses_attribute_style_rank_local_state() -> None:
     process.run()
 
     assert np.array_equal(tracer, np.full(tracer.shape, 3.8))
+
+
+def test_python_process_contract_resolves_friendly_state_name() -> None:
+    driver, _, _ = _driver()
+    driver.initialize()
+    temperature = driver.define_variable(
+        PICAMVariableSpec("phys_state.t", ("pcols", "pver"), initial=250.0)
+    )
+    before = temperature.copy()
+
+    def noop_temperature(fields, context):
+        del context
+        fields["T"][...] += 0.0
+
+    process = driver.physics.install_python(
+        noop_temperature,
+        name="friendly_temperature",
+        after="dadadj",
+        writes=("T",),
+    )
+    process.run()
+
+    assert driver.python_processes.installed[process.name].write_bindings == {
+        "T": "phys_state.t"
+    }
+    assert np.array_equal(temperature, before)
 
 
 def test_rank_independent_numpy_array_is_copied_into_statepool() -> None:

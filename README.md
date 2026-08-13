@@ -74,7 +74,8 @@ with fc.Driver(
     print(driver.cam.state.summary(rank=0))
 
     print(driver.cam.state.T.mean())
-    driver.run(steps=2)
+    result = driver.run(steps=2, progress=True)
+    print(result)               # compact step/action/date summary
 
     temperature = driver.cam.state.T
     print(temperature.stats(rank="global"))
@@ -96,6 +97,25 @@ request global statistics without copying the complete model to Jupyter:
 rank_zero_temperature = driver.cam.state.T.get(rank=0)
 global_temperature = driver.cam.state.T.stats(rank="global")
 global_mean = driver.cam.state.T.mean()
+```
+
+Every canonical field also receives its unqualified leaf name when that name
+is unique across StatePool. For example:
+
+```python
+driver.cam.state.omega  # phys_state.omega
+driver.cam.state.pmid   # phys_state.pmid
+driver.cam.state.dtdt   # phys_tend.dtdt
+```
+
+Ambiguous names are never guessed. If both `phys_state.t` and another `*.t`
+exist, `state.t` reports all candidates. Choose the field explicitly or give
+it a Notebook alias:
+
+```python
+driver.cam.state.alias("temperature", "phys_state.t")
+driver.cam.state.temperature
+driver.cam.state.aliases  # inspect automatic and explicit mappings
 ```
 
 Scalar edits use ordinary augmented assignment. One compact command is sent
@@ -143,30 +163,52 @@ NLEV = driver.cam.state.T.metadata["shape"][1]
 driver.cam.state.rh = np.zeros(NLEV)
 ```
 
-For a grid-distributed variable whose local shape depends on each rank, declare
-its CAM dimensions:
+For a grid-distributed variable whose local shape depends on each rank, reuse
+the layout of an existing field:
 
 ```python
-driver.cam.state.experiment_tracer = fc.Variable(
-    dims=("pcols", "pver", "chunks"),
-    units="kg kg-1",
-    initial=0.0,
-    aliases=("tracer",),
-    standard_name="experiment_tracer",
-)
+driver.cam.state.create("tracer", like="T", units="kg kg-1")
 ```
 
-Both forms create Fortran-contiguous arrays and register them in each rank's
-StatePool. `np.ndarray` means “copy this same-shaped value to every rank”; a
-`Variable` means “resolve these dimensions against each rank's local CAM
-partition.” Delete unused dynamic fields with:
+This creates a zero-filled, Fortran-contiguous array with `T`'s local shape and
+registers it as `tracer` in every rank's StatePool. `aliases=` and
+`standard_name=` are optional integration metadata for code that must connect
+the field to another Fortran/CCPP name; ordinary Python processes do not need
+them. Delete unused dynamic fields with:
 
 ```python
-del driver.cam.state.experiment_tracer
+del driver.cam.state.tracer
 del driver.cam.state.rh
 ```
 
 Deletion is rejected while an installed process still uses the field.
+
+### Reusable live plots
+
+Use `latest` when one figure should always show the current StatePool. IPython
+refreshes the same object each time it is displayed:
+
+```python
+profiles = driver.cam.state.plot(
+    variables=("T", "u", "v", "q"),
+    mode="latest",
+)
+display(profiles)
+driver.cam.advance(steps=1)
+display(profiles)  # same object, newly fetched values
+```
+
+Use `history` to retain changed profiles as overlays. Repeated display without
+a state change does not add duplicate curves:
+
+```python
+history = driver.cam.state.plot(variables=("T", "q"), mode="history")
+driver.cam.advance(steps=1)
+history.capture(label="experiment", color="tab:orange")
+display(history)
+```
+
+The existing `figure, axes = state.plot(...)` snapshot API remains available.
 
 ## Physics processes
 
@@ -189,12 +231,15 @@ templates with generated pointer adapters. In the admitted PI-CAM executable,
 226 are loadable; the remaining 36 belong to inactive CARMA, COSP, or legacy
 radiation configurations.
 
-Bind caller-local arguments to StatePool fields, then place the process anywhere
-in the complete workflow:
+Loadable source processes bind their caller-local arguments to StatePool fields
+automatically when they run or enter the workflow:
 
 ```python
-process = physics.cloud_fraction_fice.bind()
-driver.cam.workflow.insert(process, after="dry_adjustment")
+driver.cam.workflow.insert(
+    physics.cloud_fraction_fice,
+    after="dry_adjustment",
+)
+process = driver.cam.workflow["cloud_fraction_fice"]
 
 process.run()                 # run only this process
 process.disable()             # skip it in complete steps
@@ -206,14 +251,16 @@ process.remove()              # remove the plan node and owned temporary fields
 Common CAM derived state (`physics_state`, `physics_tend`, `cam_in`, and
 `cam_out`) is bound to the live Python-owned StatePool without copying.
 Literal values can also be passed to `bind(...)`; rank-local arrays are created
-in StatePool when a caller variable has no existing field. Processes belonging
+in StatePool when a caller variable has no existing field. Explicit `bind(...)`
+is therefore only needed to override inferred caller arguments. Processes belonging
 to a disabled physics configuration remain visible with metadata, but insertion
 fails explicitly because their `.so` is not loaded by this case.
 
 ## Workflow
 
-`driver.cam.workflow` is an ordered Python sequence of the processes used by a
-complete model step:
+`driver.cam.workflow` is an ordered Python sequence of the scientific processes
+used by a complete model step. Control, clock, boundary, StatePool housekeeping,
+and I/O actions remain active but are hidden from this normal view:
 
 ```python
 workflow = driver.cam.workflow
@@ -228,13 +275,61 @@ custom_order.insert(custom_order.index(vertical_diffusion), radiation)
 workflow[:] = custom_order
 workflow[:] = source_order
 
+# Inspect the source-faithful internal sequence only when debugging.
+driver.cam.workflow.debug
+
 # Familiar list operations are also available for a Physics object or handle.
 workflow.append(custom_process)  # inserted before the required final export
 removed = workflow.pop(-2)      # removes runtime processes; disables source ones
 ```
 
-The three required control boundaries (`boundary_import`, `advance_timestep`,
-and `boundary_export`) cannot be popped or removed.
+List assignment changes only scientific-process slots; hidden internal actions
+keep their required execution positions. The debug view is read/write for
+advanced diagnosis, but required boundaries cannot be popped or removed.
+
+Simple Python callbacks do not need a handwritten field contract:
+
+```python
+class Heating(fc.Physics):
+    after = "dry_adjustment"
+
+    def run(self, state):
+        state.T += 0.01
+
+driver.cam.workflow.insert(Heating())  # returns None and honors Heating.after
+heating = driver.cam.workflow["notebook_heating"]
+```
+
+freeCAM infers ordinary `state.field` reads and writes. Dynamic access through
+`getattr`, helper-side mutation, or unusual indexing should still declare
+`reads` and `writes` explicitly.
+
+## Long runs
+
+Show step-level progress without exposing PBS commands:
+
+```python
+result = driver.run(steps=10, progress=True)
+print(result)          # compact RunResult
+result.trace           # full per-process trace, only when needed
+result.history["T"]    # lazy Xarray history variable
+```
+
+Or keep the Notebook responsive with a Future-like handle:
+
+```python
+run = driver.run_async(steps=10, progress=True)
+print(run.progress)
+
+# Cooperative cancellation occurs between complete CAM steps.
+run.cancel()
+result = run.result()
+```
+
+A running Fortran kernel is never interrupted halfway through. Cancellation
+waits for that kernel and the current complete CAM step, then leaves the
+persistent model alive. `driver.diagnose()` checks configuration, boundary,
+Python, and reference-case inputs without launching PBS or MPI.
 
 The default workflow already uses every validated leaf boundary. Composite
 Fortran stages such as the old run2 `finish` and run4 `wrapup` remain visible
@@ -267,7 +362,7 @@ class VolcanicAerosol(fc.Physics):
     writes = ("phys_state.t",)
 
     def run(self, state, context):
-        state.T += 1.0e-4
+        state.T -= 1.0e-4 * context.timestep_seconds
 
 
 def volcanic_workflow(default):
@@ -286,10 +381,29 @@ volcanic_case = fc.CaseConfig(
 
 volcanic_case.workflow.describe()  # no job submission
 
-fc.CASES.register(volcanic_case)
-
-with fc.Driver(case="PI-atm-volcanic", nsteps=2) as driver:
+with fc.Driver(case=volcanic_case, nsteps=2) as driver:
     driver.cam.advance(steps=2)
+```
+
+Passing the object directly keeps an experiment local to the notebook.
+`fc.CASES.register(...)` is optional and is only useful when a reusable preset
+must later be selected by its string name.
+
+For a completely literal pre-launch order, refer to original CAM processes
+with lightweight specs; creating these objects does not start MPI:
+
+```python
+workflow = [
+    fc.process(item.qualified_name)
+    for item in fc.FreeCAM().preview().debug
+]
+# Reorder the ProcessSpec objects here before constructing the case.
+case = fc.CaseConfig(
+    name="PI-atm-explicit",
+    description="explicit process order",
+    forcing="1850 prescribed SST and sea ice",
+    make_atm=lambda: fc.FreeCAM(workflow=workflow),
+)
 ```
 
 The two `VolcanicAerosol()` entries become independent runtime processes named
@@ -310,22 +424,44 @@ class Heating(fc.Physics):
     after = "dry_adjustment"
     writes = ("phys_state.t",)
 
-    def run(self, state, context):
+    def run(self, state):
         state.T += 0.01
 
-process = driver.cam.workflow.insert(Heating())
+driver.cam.workflow.insert(Heating())
+process = driver.cam.workflow["notebook_heating"]
 process.run()
+
+def revised_heating(state, context):
+    state.T -= 1.0e-4 * context.timestep_seconds
+
+process.reload(revised_heating)  # same name, position, enabled state, and fields
 process.disable()
 process.enable()
 process.move(after="radiation")
 process.remove()
 ```
 
+`insert()` and `append()` follow Python list return semantics: they mutate the
+workflow and return `None`. If an immediate handle is useful, the explicit
+installation form remains available:
+
+```python
+process = driver.cam.workflow.install(Heating())
+```
+
 The neighbor name determines placement; users do not specify a CAM phase.
 `state.T` is a direct NumPy view of that MPI rank's StatePool array. The
 callback is serialized with `cloudpickle`, broadcast to every rank, and runs
-locally without a socket round trip. The older `tendency(fields, context)`
-mapping interface remains supported.
+locally without a socket round trip. `reload()` serializes the replacement,
+validates its inferred field contract on every rank, and atomically swaps the
+rank-local callback payload; it does not recreate the model or move the
+workflow node. The older `tendency(fields, context)`
+mapping interface remains supported. Use `run(state, context)` only when the
+callback needs rank, model time, or timestep information.
+
+Collective failures are grouped by identical traceback. If all 512 ranks fail
+at the same statement, the Notebook reports one traceback labelled
+`ranks 0-511` instead of printing it 512 times.
 
 ## Output cadence
 

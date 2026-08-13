@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import base64
-from html import escape
 import json
 import os
 import queue
@@ -16,6 +15,7 @@ import sys
 import threading
 import time
 from collections.abc import Mapping, Sequence
+from html import escape
 from multiprocessing.connection import Connection, Listener
 from pathlib import Path
 from typing import Any
@@ -26,7 +26,7 @@ from freecam.core.runtime_env import mpi_loader_environment
 from freecam.model.python_processes import PythonProcessSpec
 
 from .config import PICAMConfig
-from .expressions import DistributedExpression, DistributedOperand
+from .expressions import DistributedOperand
 from .physics_catalog import (
     PICAMPhysicsCatalog,
     merge_runtime_process_records,
@@ -237,14 +237,57 @@ class _SessionFieldReference(DistributedOperand):
 class _SessionFieldCollection:
     def __init__(self, session: "PICAMNotebookSession") -> None:
         self.session = session
+        self._ui_aliases: dict[str, str] = {}
 
     @property
     def names(self) -> tuple[str, ...]:
         return self.session.field_names
 
+    @property
+    def short_names(self) -> Mapping[str, str]:
+        """Unambiguous leaf names derived from canonical StatePool names."""
+
+        candidates: dict[str, list[str]] = {}
+        for canonical in self.session.status.get("fields", {}):
+            leaf = str(canonical).rsplit(".", 1)[-1]
+            candidates.setdefault(leaf, []).append(str(canonical))
+        return {
+            leaf: names[0]
+            for leaf, names in candidates.items()
+            if len(names) == 1
+        }
+
+    @property
+    def aliases(self) -> Mapping[str, str]:
+        """All client-side explicit aliases plus safe automatic short names."""
+
+        return {**self.short_names, **self._ui_aliases}
+
+    def alias(
+        self,
+        alias: str,
+        field: str,
+        *,
+        replace: bool = False,
+    ) -> _SessionFieldReference:
+        """Register one explicit Notebook alias without changing MPI state."""
+
+        short = str(alias)
+        if not short.isidentifier():
+            raise ValueError("field alias must be a valid Python identifier")
+        fields = self.session.status.get("fields", {})
+        if short in fields:
+            raise ValueError(f"field alias {short!r} is already a canonical field")
+        if short in self._ui_aliases and not replace:
+            raise ValueError(f"field alias {short!r} already exists")
+        canonical = self._resolve(str(field))
+        self._ui_aliases[short] = canonical
+        return _SessionFieldReference(self.session, canonical)
+
     def __dir__(self) -> list[str]:
         fields = self.session.status.get("fields", {})
         candidates = set(fields)
+        candidates.update(self.aliases)
         for metadata in fields.values():
             candidates.update(metadata.get("aliases", ()))
             if metadata.get("standard_name"):
@@ -258,7 +301,7 @@ class _SessionFieldCollection:
         try:
             canonical = self._resolve(name)
         except KeyError as exc:
-            raise AttributeError(name) from exc
+            raise AttributeError(str(exc)) from exc
         return _SessionFieldReference(self.session, canonical)
 
     def __getitem__(self, name: str) -> _SessionFieldReference:
@@ -268,15 +311,33 @@ class _SessionFieldCollection:
         fields = self.session.status.get("fields", {})
         if name in fields:
             return name
+        if name in self._ui_aliases:
+            return self._ui_aliases[name]
         matches = [
             canonical
             for canonical, metadata in fields.items()
             if name in metadata.get("aliases", ())
             or name == metadata.get("standard_name")
         ]
-        if len(matches) != 1:
-            raise KeyError(name)
-        return str(matches[0])
+        if len(matches) == 1:
+            return str(matches[0])
+        if len(matches) > 1:
+            raise KeyError(
+                f"field alias {name!r} is ambiguous: " + ", ".join(matches)
+            )
+        leaf_matches = [
+            str(canonical)
+            for canonical in fields
+            if str(canonical).rsplit(".", 1)[-1] == name
+        ]
+        if len(leaf_matches) == 1:
+            return leaf_matches[0]
+        if len(leaf_matches) > 1:
+            raise KeyError(
+                f"field short name {name!r} is ambiguous: "
+                + ", ".join(leaf_matches)
+            )
+        raise KeyError(f"unknown PI-CAM field {name!r}")
 
     def create(
         self,
@@ -416,6 +477,13 @@ class _SessionActionReference:
         )
 
     @property
+    def parent_stage(self) -> str | None:
+        """Return the composite source stage that this leaf expands."""
+
+        value = self._record().get("parent_stage")
+        return None if value is None else str(value)
+
+    @property
     def metadata(self) -> Mapping[str, Any]:
         return self._record()
 
@@ -463,6 +531,37 @@ class _SessionActionReference:
             before=before,
             after=after,
         )
+
+    def reload(
+        self,
+        function: Any,
+        *,
+        reads: Sequence[str] | None = None,
+        writes: Sequence[str] | None = None,
+        parameters: Mapping[str, Any] | None = None,
+        transactional: bool | None = None,
+        unsafe: bool = False,
+    ) -> "_SessionActionReference":
+        """Replace a live Python callback on every MPI rank in place."""
+
+        if self.kind != "python_process":
+            raise TypeError("reload() is available only for Notebook Python processes")
+        # Import lazily: facade imports this module to construct the session.
+        from .facade import _python_callable_access, _runtime_state_callback
+
+        inferred_reads, inferred_writes = _python_callable_access(function)
+        callback = _runtime_state_callback(function, owner=self.name)
+        self.session.reload_python(
+            callback,
+            name=self.name,
+            phase=self.phase,
+            reads=(inferred_reads if reads is None else tuple(reads)),
+            writes=(inferred_writes if writes is None else tuple(writes)),
+            parameters=parameters,
+            transactional=transactional,
+            unsafe=unsafe,
+        )
+        return self
 
     def remove(self) -> Mapping[str, Any]:
         if self.kind == "python_process":
@@ -607,6 +706,36 @@ class _SessionCatalogPhysicsReference:
 
         bindings, initials = self.session._process_call_arguments(arguments)
         return self.promote(bindings=bindings, initials=initials)
+
+    def insert(
+        self,
+        *,
+        before: str | None = None,
+        after: str | None = None,
+        enabled: bool = True,
+    ) -> "_SessionPromotedPhysicsReference":
+        """Auto-bind this process and insert it into the live workflow."""
+
+        if not self.runnable:
+            self._unavailable("insert it")
+        return self.bind().insert(
+            before=before,
+            after=after,
+            enabled=enabled,
+        )
+
+    def _install(
+        self,
+        session: "PICAMNotebookSession",
+        *,
+        before: str | None = None,
+        after: str | None = None,
+    ) -> "_SessionPromotedPhysicsReference":
+        if session is not self.session:
+            raise PICAMNotebookError(
+                "a physics process can only be inserted into its originating model"
+            )
+        return self.insert(before=before, after=after)
 
     def promote(
         self,
@@ -1087,6 +1216,11 @@ class _SessionPhysicsCollection:
                         "leaf" if operation.startswith("leaf_") else "stage",
                     )
                 )
+                parent_stage = (
+                    str(record.get("parent_stage") or "unknown")
+                    if level == "leaf"
+                    else "—"
+                )
                 if not bool(record["runnable"]):
                     state = str(record["capability"])
                 elif record.get("enabled") is None:
@@ -1098,12 +1232,14 @@ class _SessionPhysicsCollection:
                     f"<td><code>{escape(str(record['api_name']))}</code></td>"
                     f"<td><code>{escape(operation)}</code></td>"
                     f"<td>{escape(level)}</td>"
+                    f"<td><code>{escape(parent_stage)}</code></td>"
                     f"<td>{escape(state)}</td>"
                     "</tr>"
                 )
             return (
                 "<table><thead><tr><th>Python API</th>"
-                "<th>Original routine</th><th>Level</th><th>Capability</th>"
+                "<th>Original routine</th><th>Level</th>"
+                "<th>Parent stage</th><th>Capability</th>"
                 f"</tr></thead><tbody>{''.join(rows)}</tbody></table>"
             )
 
@@ -1383,6 +1519,7 @@ class PICAMNotebookSession:
         self._log_handle: Any = None
         self._pbs_script: Path | None = None
         self._status: dict[str, Any] = {}
+        self._request_lock = threading.RLock()
         self.fields = _SessionFieldCollection(self)
         self.physics = _SessionPhysicsCollection(self)
         self.phases = _SessionPhaseCollection(self)
@@ -1797,6 +1934,42 @@ class PICAMNotebookSession:
     def remove_python(self, name: str) -> Mapping[str, Any]:
         return dict(self._request({"op": "remove_python", "name": name}))
 
+    def reload_python(
+        self,
+        function: Any,
+        *,
+        name: str,
+        phase: str,
+        reads: Sequence[str] = (),
+        writes: Sequence[str] = (),
+        parameters: Mapping[str, Any] | None = None,
+        transactional: bool | None = None,
+        unsafe: bool = False,
+    ) -> Mapping[str, Any]:
+        """Serialize and collectively replace an installed Python callback."""
+
+        spec = PythonProcessSpec.from_callable(
+            function,
+            name=name,
+            group=phase,
+            reads=reads,
+            writes=writes,
+            parameters=parameters,
+            transactional=True if transactional is None else transactional,
+        )
+        return dict(
+            self._request(
+                {
+                    "op": "reload_python",
+                    "name": name,
+                    "spec": spec.as_dict(),
+                    "preserve_parameters": parameters is None,
+                    "preserve_transactional": transactional is None,
+                    "unsafe": bool(unsafe),
+                }
+            )
+        )
+
     def install_fortran(
         self,
         source: str | Path,
@@ -1942,17 +2115,18 @@ class PICAMNotebookSession:
                 raise
 
     def _request(self, command: dict[str, Any]) -> Any:
-        if self._connection is None:
-            raise RuntimeError("PI-CAM Notebook session is not running")
-        try:
-            self._connection.send(command)
-            return self._unwrap(self._receive(self.request_timeout))
-        except (BrokenPipeError, EOFError, OSError, TimeoutError):
-            # A timed-out or disconnected collective cannot be safely reused.
-            # Tear down the MPI/PBS worker now instead of leaving hundreds of
-            # ranks running until the user notices and calls qdel manually.
-            self._abort()
-            raise
+        with self._request_lock:
+            if self._connection is None:
+                raise RuntimeError("PI-CAM Notebook session is not running")
+            try:
+                self._connection.send(command)
+                return self._unwrap(self._receive(self.request_timeout))
+            except (BrokenPipeError, EOFError, OSError, TimeoutError):
+                # A timed-out or disconnected collective cannot be safely reused.
+                # Tear down the MPI/PBS worker now instead of leaving hundreds of
+                # ranks running until the user notices and calls qdel manually.
+                self._abort()
+                raise
 
     def _receive(self, timeout: float) -> Any:
         assert self._connection is not None

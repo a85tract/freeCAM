@@ -1,10 +1,23 @@
 from __future__ import annotations
 
+import threading
 from pathlib import Path
 
+import numpy as np
 import pytest
 
-from freecam.pi_cam import CASES, CaseConfig, CaseRegistry, Driver, FreeCAM, Physics
+from freecam.pi_cam import (
+    CASES,
+    CaseConfig,
+    CaseRegistry,
+    Driver,
+    FreeCAM,
+    Physics,
+    ProcessSpec,
+    PICAMStepPlan,
+    RunResult,
+    process,
+)
 
 
 class FakeSession:
@@ -41,10 +54,11 @@ class FakeSession:
         return self
 
     def advance(self, steps=1):
+        first_step = len(self._trace)
         for step in range(steps):
             self._trace.append(
                 {
-                    "model_step": step + 1,
+                    "model_step": first_step + step + 1,
                     "phase": "cam_run1",
                     "name": "dadadj",
                 }
@@ -210,13 +224,104 @@ def test_driver_hides_run_preparation_and_lazily_reuses_one_session(tmp_path) ->
     assert (driver.run_dir / "keep-me").is_file()
     assert not (driver.run_dir / "test.cam.h0.0001.nc").exists()
 
-    trace = driver.run()
+    result = driver.run()
 
-    assert [row["name"] for row in trace] == ["dadadj", "dadadj"]
-    assert driver.trace == trace
+    assert isinstance(result, RunResult)
+    assert [row["name"] for row in result.trace] == ["dadadj", "dadadj"]
+    assert driver.trace == result.trace
+    assert result.summary()["completed_steps"] == 2
+    assert result.actions == 2
+    assert result.history is driver.cam.history
+    assert "actions=2" in repr(result)
     assert len(FakeSession.instances) == 1
     driver.close()
     assert FakeSession.instances[0].closed
+
+
+def test_driver_reports_progress_and_runs_in_background(tmp_path) -> None:
+    paths = _driver_tree(tmp_path)
+    updates = []
+    driver = Driver(
+        nsteps=3,
+        repo=paths["repo"],
+        config=paths["config"],
+        reference_case=paths["reference_case"],
+        reference_run=paths["reference_run"],
+        boundary=paths["boundary"],
+        session_factory=FakeSession,
+    )
+
+    run = driver.run_async(steps=3, progress=updates.append)
+    result = run.result(timeout=5)
+
+    assert run.done()
+    assert not run.cancelled()
+    assert run.progress.completed_steps == 3
+    assert run.progress.model_step == 3
+    assert [update.completed_steps for update in updates] == [1, 2, 3]
+    assert result.completed_steps == 3
+    assert len(result.trace) == 3
+    driver.close()
+
+
+def test_background_run_cancels_between_complete_steps(tmp_path) -> None:
+    paths = _driver_tree(tmp_path)
+
+    class BlockingSession(FakeSession):
+        entered = threading.Event()
+        release = threading.Event()
+
+        def advance(self, steps=1):
+            type(self).entered.set()
+            if not type(self).release.wait(timeout=5):
+                raise TimeoutError("test did not release complete step")
+            return super().advance(steps=steps)
+
+    BlockingSession.entered.clear()
+    BlockingSession.release.clear()
+    driver = Driver(
+        nsteps=3,
+        repo=paths["repo"],
+        config=paths["config"],
+        reference_case=paths["reference_case"],
+        reference_run=paths["reference_run"],
+        boundary=paths["boundary"],
+        session_factory=BlockingSession,
+    )
+
+    run = driver.run_async(steps=3)
+    assert BlockingSession.entered.wait(timeout=5)
+    assert run.cancel()
+    BlockingSession.release.set()
+    result = run.result(timeout=5)
+
+    assert run.cancelled()
+    assert run.progress.completed_steps == 1
+    assert result.cancelled
+    assert result.completed_steps == 1
+    assert len(result.trace) == 1
+    driver.close()
+
+
+def test_driver_diagnose_never_starts_mpi(tmp_path) -> None:
+    paths = _driver_tree(tmp_path)
+    driver = Driver(
+        nsteps=2,
+        repo=paths["repo"],
+        config=paths["config"],
+        reference_case=paths["reference_case"],
+        reference_run=paths["reference_run"],
+        boundary=paths["boundary"],
+        python_executable="/usr/bin/python3",
+        session_factory=FakeSession,
+    )
+
+    diagnosis = driver.diagnose()
+
+    assert diagnosis["ready"] is True
+    assert diagnosis["mpi_ranks"] == 1
+    assert diagnosis["checks"]["boundary"] is True
+    assert not driver.running
 
 
 def test_driver_rejects_unknown_case_and_boundary_overrun(tmp_path) -> None:
@@ -349,6 +454,36 @@ class VolcanicAerosol(Physics):
 
     def tendency(self, fields, context):
         del fields, context
+
+
+def test_one_argument_physics_callback_uses_friendly_state_view() -> None:
+    observed = []
+
+    class Heating(Physics):
+        writes = ("T",)
+
+        def run(self, state):
+            state.T += 1.0
+            observed.append(float(state.T[0]))
+
+    values = {"T": np.zeros(2)}
+
+    result = Heating()._runtime_callback()(values, object())
+
+    assert result is None
+    assert observed == [1.0]
+    assert values["T"].tolist() == [1.0, 1.0]
+
+
+def test_process_spec_declares_complete_workflow_before_launch() -> None:
+    declared = [process(action.qualified_name) for action in PICAMStepPlan.default()]
+
+    preview = FreeCAM(workflow=declared).preview()
+
+    assert isinstance(declared[0], ProcessSpec)
+    assert len(preview.debug) == len(declared)
+    assert preview.debug[0].operation == "boundary_import"
+    assert preview.debug[-1].operation == "boundary_export"
 
 
 def test_case_config_installs_repeated_python_processes_in_declared_order(

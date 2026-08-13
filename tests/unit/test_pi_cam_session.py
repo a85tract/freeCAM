@@ -1,18 +1,22 @@
 import json
-from pathlib import Path
 import subprocess
+from pathlib import Path
+from types import SimpleNamespace
 
+import cloudpickle
 import numpy as np
 import pytest
 
+from freecam.model.python_processes import PythonProcessSpec
 from freecam.pi_cam import session as session_module
 from freecam.pi_cam.expressions import assign_expression, evaluate_expression
 from freecam.pi_cam.plan import PICAMAction, PICAMStepPlan
 from freecam.pi_cam.session import (
     PICAMNotebookError,
     PICAMNotebookSession,
-    _SessionFieldReference,
     _authkey_argument,
+    _SessionFieldCollection,
+    _SessionFieldReference,
 )
 from freecam.pi_cam.state import (
     PICAMFieldContract,
@@ -22,6 +26,7 @@ from freecam.pi_cam.state import (
     edit_active_field,
     selected_active_values,
 )
+from freecam.pi_cam.ui import PICAMStateView
 
 
 def _session_files(tmp_path: Path) -> tuple[Path, Path, Path, Path, Path]:
@@ -132,7 +137,7 @@ def test_distributed_numpy_expression_is_evaluated_rank_locally() -> None:
         ),
         initial=np.inf,
     )
-    heating = pool.create(
+    pool.create(
         PICAMFieldContract(
             "heating_rate", ("pcols", "pver", "chunks"), "float64"
         ),
@@ -437,8 +442,10 @@ def test_session_bound_catalog_process_inserts_into_live_workflow(
 
     monkeypatch.setattr(session, "_request", request)
     bound = session.physics.cloud_fraction_fice
-    inserted = session.workflow.insert(bound, after="dadadj")
+    result = session.workflow.insert(bound, after="dadadj")
+    inserted = session.workflow["cloud_fraction_fice"]
 
+    assert result is None
     assert inserted.enabled is True
     assert inserted.capability == "runtime"
     assert plan.select("cloud_fraction_fice").kind == "runtime_catalog_process"
@@ -449,6 +456,78 @@ def test_session_bound_catalog_process_inserts_into_live_workflow(
         "after": "dadadj",
         "enabled": True,
     }
+
+
+def test_session_workflow_auto_binds_a_loadable_catalog_process(
+    tmp_path: Path, monkeypatch
+) -> None:
+    config, boundary, run_dir, env_script, _ = _session_files(tmp_path)
+    session = PICAMNotebookSession(
+        config,
+        boundary=boundary,
+        run_dir=run_dir,
+        env_script=env_script,
+    )
+    promoted = {
+        "name": "cloud_fraction_fice",
+        "qualified_name": "cloud_fraction::cldfrc_fice",
+        "bindings": (),
+        "created_fields": (),
+        "created_dimensions": (),
+        "native_available": True,
+    }
+    plan = PICAMStepPlan.default()
+    adapter = (
+        "cloud_fraction::cldfrc_fice@"
+        "components/cam/src/physics/cam/cloud_fraction.F90"
+    )
+    session._status = {
+        "step_plan": plan.describe(),
+        "promoted_processes": (),
+        "process_adapters": (adapter,),
+    }
+    commands = []
+
+    def request(command):
+        commands.append(command)
+        if command["op"] == "promote_process":
+            return promoted
+        if command["op"] == "install_promoted_process":
+            plan.add(
+                PICAMAction(
+                    "cloud_fraction_fice",
+                    "runtime",
+                    "cloud_fraction_fice",
+                    "runtime_catalog_process",
+                ),
+                after=command["after"],
+                experimental=True,
+            )
+            return {"plan": plan.describe()}
+        if command["op"] == "status":
+            return {
+                **session._status,
+                "step_plan": plan.describe(),
+                "promoted_processes": (promoted,),
+            }
+        raise AssertionError(command)
+
+    monkeypatch.setattr(session, "_request", request)
+
+    result = session.workflow.insert(
+        session.physics.cloud_fraction_fice,
+        after="dadadj",
+    )
+    inserted = session.workflow["cloud_fraction_fice"]
+
+    assert result is None
+    assert inserted.capability == "runtime"
+    assert [command["op"] for command in commands] == [
+        "promote_process",
+        "status",
+        "install_promoted_process",
+        "status",
+    ]
 
 
 def test_session_process_call_accepts_a_python_field_object(
@@ -754,6 +833,10 @@ def test_session_ui_lists_every_supported_pi_cam_physics_interface(
     assert session.physics.dadadj.operation == "dadadj"
     assert session.physics.dry_adjustment.operation == "dadadj"
     assert session.physics.leaf_cloud_diagnostics_calc.granularity == "leaf"
+    assert (
+        session.physics.leaf_cloud_diagnostics_calc.parent_stage
+        == "cam_run1.diagnostics"
+    )
     assert sum(process.runnable for process in session.physics) == 36
     assert not hasattr(session.physics, "by_phase")
     assert session.physics.cloud_fraction_fice.runnable is False
@@ -763,6 +846,8 @@ def test_session_ui_lists_every_supported_pi_cam_physics_interface(
     assert "298 flat physics interfaces" in html
     assert "convect_deep_tend" in html
     assert "leaf_cloud_diagnostics_calc" in html
+    assert "Parent stage" in html
+    assert "cam_run1.diagnostics" in html
 
 
 def test_session_dynamic_field_and_python_process_commands(
@@ -833,6 +918,52 @@ def test_session_dynamic_field_and_python_process_commands(
     assert relative_humidity.name == "rh"
     assert process.name == "heating"
     assert process.phase == "cam_run1"
+
+    def revised_callback(state, context):
+        state.tracer += 2.0 * context.timestep_seconds
+
+    assert process.reload(revised_callback) is process
+    assert commands[5]["op"] == "reload_python"
+    assert commands[5]["name"] == "heating"
+    replacement = PythonProcessSpec.from_mapping(commands[5]["spec"])
+    assert replacement.writes == ("tracer",)
+    values = np.zeros(3)
+    restored = cloudpickle.loads(replacement.payload)
+    restored({"tracer": values}, SimpleNamespace(timestep_seconds=3.0))
+    assert np.array_equal(values, np.full(3, 6.0))
+
+
+def test_state_fields_use_only_unambiguous_automatic_short_names() -> None:
+    class Session:
+        status = {
+            "fields": {
+                "phys_state.omega": {},
+                "phys_state.pmid": {},
+                "phys_state.t": {},
+                "dyn_state.t": {},
+            }
+        }
+
+    session = Session()
+    session.fields = _SessionFieldCollection(session)
+    state = PICAMStateView(session)
+
+    assert state.omega.name == "phys_state.omega"
+    assert state.pmid.name == "phys_state.pmid"
+    assert state.T.name == "phys_state.t"
+    assert session.fields.short_names == {
+        "omega": "phys_state.omega",
+        "pmid": "phys_state.pmid",
+    }
+    with pytest.raises(AttributeError, match="ambiguous"):
+        state.t
+    with pytest.raises(KeyError, match="phys_state.t, dyn_state.t"):
+        state["t"]
+
+    state.alias("temperature", "phys_state.t")
+    assert state.temperature.name == "phys_state.t"
+    assert state.aliases["temperature"] == "phys_state.t"
+    assert "temperature" in dir(state)
 
 
 def test_session_field_slice_builds_compact_collective_commands(
