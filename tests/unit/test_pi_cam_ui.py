@@ -7,7 +7,7 @@ import numpy as np
 import pytest
 
 from freecam.pi_cam import Physics, Variable
-from freecam.pi_cam.ui import PICAMStateView, PICAMWorkflowView
+from freecam.pi_cam.ui import PICAMStateView, PICAMWorkflowView, plot_steps
 
 PROJECT = Path(__file__).resolve().parents[2]
 
@@ -60,6 +60,49 @@ class FakeSession:
                 },
             ),
         }
+        self._step_plots = []
+
+        class Field:
+            def __init__(inner_self, name, selection=None):
+                inner_self.name = name
+                inner_self.selection = selection
+
+            @property
+            def metadata(inner_self):
+                values = self._arrays[inner_self.name]
+                dimensions = (
+                    ("pcols", "pver", "chunks")
+                    if values.ndim == 3
+                    else ("nphys_local", "pver")
+                )
+                return {"dimensions": dimensions, "units": "1"}
+
+            def __getitem__(inner_self, selection):
+                return Field(inner_self.name, selection)
+
+            def stats(inner_self, *, rank=0):
+                assert rank in {0, "global"}
+                selection = (
+                    Ellipsis
+                    if inner_self.selection is None
+                    else inner_self.selection
+                )
+                values = np.asarray(self._arrays[inner_self.name][selection])
+                return {
+                    "min": float(values.min()),
+                    "max": float(values.max()),
+                    "mean": float(values.mean()),
+                }
+
+        class Fields:
+            def __getitem__(inner_self, name):
+                return Field(name)
+
+            @staticmethod
+            def _resolve(name):
+                return name
+
+        self.fields = Fields()
 
     @property
     def status(self):
@@ -68,6 +111,13 @@ class FakeSession:
     def field(self, name: str, *, rank: int = 0):
         assert rank == 0
         return self._arrays[name].copy(order="F")
+
+    def _register_step_plot(self, plot):
+        self._step_plots.append(plot)
+
+    def capture_step_plots(self):
+        for plot in self._step_plots:
+            plot.capture()
 
 
 def test_state_view_profiles_ignore_padded_columns_and_select_water_vapor() -> None:
@@ -174,6 +224,92 @@ def test_history_plot_keeps_changed_profiles_without_duplicate_displays() -> Non
         plot.axes[0, 0].lines[1].get_xdata(),
         plot.axes[0, 0].lines[0].get_xdata() + 2.0,
     )
+
+
+def test_live_step_plot_records_one_scalar_per_complete_step() -> None:
+    matplotlib = pytest.importorskip("matplotlib")
+    matplotlib.use("Agg")
+    session = FakeSession()
+    state = PICAMStateView(session)
+    plot = state.plot_steps(
+        "experiment_tracer",
+        rank=0,
+        statistic="mean",
+        level=-1,
+        figsize=(8.0, 4.0),
+    )
+
+    session._status["step"] = 8
+    session._arrays["experiment_tracer"] += 3.0
+    session.capture_step_plots()
+    axis = plot.plot(label="tracer")
+
+    assert plot.steps == [7, 8]
+    assert plot.values == [8.0, 11.0]
+    assert np.array_equal(axis.lines[0].get_xdata(), (7, 8))
+    assert np.array_equal(axis.lines[0].get_ydata(), (8.0, 11.0))
+    assert axis.get_xlabel() == "model step"
+    assert np.array_equal(axis.figure.get_size_inches(), (8.0, 4.0))
+
+
+def test_live_step_plot_rejects_invalid_figsize() -> None:
+    state = PICAMStateView(FakeSession())
+
+    with pytest.raises(ValueError, match="two positive numbers"):
+        state.plot_steps("experiment_tracer", figsize=(5.0, 0.0))
+
+
+def test_live_step_plot_accepts_multiple_variables() -> None:
+    matplotlib = pytest.importorskip("matplotlib")
+    matplotlib.use("Agg")
+    session = FakeSession()
+    state = PICAMStateView(session)
+    plot = state.plot_steps(
+        ("phys_state.t", "phys_state.u"),
+        rank="global",
+        statistic="mean",
+        level=-1,
+        figsize=(8.0, 4.0),
+    )
+
+    session._status["step"] = 8
+    session._arrays["phys_state.t"] += 1.0
+    session._arrays["phys_state.u"] -= 1.0
+    session.capture_step_plots()
+    figure, axes = plot.plot()
+
+    assert plot.steps == (7, 8)
+    assert tuple(plot.values) == ("phys_state.t", "phys_state.u")
+    assert axes.shape == (1, 2)
+    assert all(len(axis.lines[0].get_xdata()) == 2 for axis in axes.flat)
+    assert np.array_equal(figure.get_size_inches(), (8.0, 4.0))
+
+
+def test_case_step_plot_overlays_same_variable() -> None:
+    matplotlib = pytest.importorskip("matplotlib")
+    matplotlib.use("Agg")
+    control_session = FakeSession()
+    volcanic_session = FakeSession()
+    control = PICAMStateView(control_session).plot_steps("phys_state.t")
+    volcanic = PICAMStateView(volcanic_session).plot_steps("phys_state.t")
+
+    control_session._status["step"] = 8
+    volcanic_session._status["step"] = 8
+    volcanic_session._arrays["phys_state.t"] -= 2.0
+    control_session.capture_step_plots()
+    volcanic_session.capture_step_plots()
+    comparison = plot_steps(
+        {"PI-atm": control, "PI-atm-volcanic": volcanic},
+        figsize=(7.0, 3.0),
+    )
+    axis = comparison.plot()
+
+    assert len(axis.lines) == 2
+    assert [line.get_label() for line in axis.lines] == [
+        "PI-atm",
+        "PI-atm-volcanic",
+    ]
+    assert np.array_equal(axis.figure.get_size_inches(), (7.0, 3.0))
 
 
 def test_state_view_plot_builds_grid_from_requested_variables() -> None:

@@ -1541,6 +1541,7 @@ class PICAMNotebookSession:
         self._pbs_script: Path | None = None
         self._status: dict[str, Any] = {}
         self._request_lock = threading.RLock()
+        self._step_plots: list[Any] = []
         self.fields = _SessionFieldCollection(self)
         self.physics = _SessionPhysicsCollection(self)
         self.phases = _SessionPhaseCollection(self)
@@ -1565,6 +1566,18 @@ class PICAMNotebookSession:
     @property
     def field_names(self) -> tuple[str, ...]:
         return tuple(self.status.get("fields", ()))
+
+    @property
+    def has_step_plots(self) -> bool:
+        return bool(self._step_plots)
+
+    def _register_step_plot(self, plot: Any) -> None:
+        if plot not in self._step_plots:
+            self._step_plots.append(plot)
+
+    def capture_step_plots(self) -> None:
+        for plot in tuple(self._step_plots):
+            plot.capture()
 
     def start(self) -> "PICAMNotebookSession":
         if self.running:

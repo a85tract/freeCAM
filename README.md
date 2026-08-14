@@ -594,11 +594,51 @@ Python decides whether the corresponding Fortran PIO service is called. The
 defaults, `history_every=1` and `restart_every="end"`, preserve the validated
 PI-CAM execution path.
 
+Live StatePool fields can be sampled at every complete step without waiting
+for NetCDF finalization:
+
+```python
+temperature_steps = driver.cam.state.plot_steps(
+    ("T", "u", "v", "q", "omega", "pmid"),
+    rank="global",
+    statistic="mean",
+    level=-1,
+    figsize=(8, 4),
+    label="PI-atm",
+)
+driver.run(steps=10)
+display(temperature_steps)
+```
+
+Captured series from separate cases can be overlaid without retaining either
+case's distributed StatePool:
+
+```python
+comparison = fc.plot_steps(
+    {
+        "PI-atm": control_temperature,
+        "PI-atm-volcanic": volcanic_temperature,
+    },
+    figsize=(8, 4),
+)
+display(comparison)
+```
+
 CAM output is exposed lazily through Xarray after the run:
 
 ```python
 print(driver.cam.history.files)
 print(driver.cam.history.streams)
+
+# One diagnostic value per model step. For 3-D temperature, level=-1 selects
+# the lowest model level before the area-weighted horizontal mean.
+axis = driver.cam.history.plot_steps(
+    "T",
+    statistic="global_mean",
+    level=-1,
+    marker="o",
+    label="PI-atm",
+)
 
 with driver.cam.history.open("h0") as history:
     history["T"].isel(time=-1).plot()

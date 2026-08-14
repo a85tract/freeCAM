@@ -272,6 +272,38 @@ def test_driver_reports_progress_and_runs_in_background(tmp_path) -> None:
     driver.close()
 
 
+def test_driver_samples_registered_live_plots_at_each_step(tmp_path) -> None:
+    paths = _driver_tree(tmp_path)
+
+    class TrackingSession(FakeSession):
+        def __init__(self, config, **kwargs):
+            super().__init__(config, **kwargs)
+            self.captures = 0
+
+        @property
+        def has_step_plots(self):
+            return True
+
+        def capture_step_plots(self):
+            self.captures += 1
+
+    driver = Driver(
+        nsteps=3,
+        repo=paths["repo"],
+        config=paths["config"],
+        reference_case=paths["reference_case"],
+        reference_run=paths["reference_run"],
+        boundary=paths["boundary"],
+        session_factory=TrackingSession,
+    )
+
+    result = driver.run(steps=3)
+
+    assert result.completed_steps == 3
+    assert TrackingSession.instances[-1].captures == 3
+    driver.close()
+
+
 def test_background_run_cancels_between_complete_steps(tmp_path) -> None:
     paths = _driver_tree(tmp_path)
 

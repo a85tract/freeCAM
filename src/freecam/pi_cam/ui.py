@@ -488,6 +488,319 @@ _PROFILE_SPECS: dict[str, _ProfileSpec] = {
 }
 
 
+class PICAMStepPlot:
+    """Live scalar diagnostic sampled after every complete model step."""
+
+    def __init__(
+        self,
+        state: "PICAMStateView",
+        variable: str,
+        *,
+        rank: int | str,
+        statistic: str,
+        level: int | None,
+        figsize: tuple[float, float],
+        plot_kwargs: Mapping[str, Any],
+        register: bool = True,
+    ) -> None:
+        selected_statistic = str(statistic).strip().lower()
+        if selected_statistic not in {"mean", "min", "max"}:
+            raise ValueError("statistic must be 'mean', 'min', or 'max'")
+        if rank != "global" and (isinstance(rank, bool) or int(rank) < 0):
+            raise ValueError("rank must be 'global' or a non-negative integer")
+        self.state = state
+        self.variable = str(variable)
+        self.rank = rank if rank == "global" else int(rank)
+        self.statistic = selected_statistic
+        self.level = None if level is None else int(level)
+        if len(figsize) != 2 or any(float(value) <= 0.0 for value in figsize):
+            raise ValueError("figsize must contain two positive numbers")
+        self.figsize = tuple(float(value) for value in figsize)
+        self.plot_kwargs = dict(plot_kwargs)
+        self.steps: list[int] = []
+        self.values: list[float] = []
+        self.capture()
+        if register:
+            register_plot = getattr(
+                self.state._session, "_register_step_plot", None
+            )
+            if callable(register_plot):
+                register_plot(self)
+
+    def _field(self) -> Any:
+        field = self.state[self.variable]
+        if self.level is None:
+            return field
+        dimensions = tuple(str(name) for name in field.metadata.get("dimensions", ()))
+        vertical_axis = next(
+            (
+                index
+                for index, name in enumerate(dimensions)
+                if name in {"pver", "pverp", "lev", "ilev", "level"}
+            ),
+            None,
+        )
+        if vertical_axis is None:
+            raise ValueError(
+                f"field {self.variable!r} has no recognized vertical dimension"
+            )
+        selection: list[Any] = [slice(None)] * len(dimensions)
+        selection[vertical_axis] = self.level
+        return field[tuple(selection)]
+
+    def capture(self) -> "PICAMStepPlot":
+        """Record or replace the diagnostic at the current model step."""
+
+        status = self.state._session.status
+        step = int(status.get("step", 0))
+        value = float(self._field().stats(rank=self.rank)[self.statistic])
+        if self.steps and self.steps[-1] == step:
+            self.values[-1] = value
+        else:
+            self.steps.append(step)
+            self.values.append(value)
+        return self
+
+    def plot(self, *, ax: Any = None, **plot_kwargs: Any) -> Any:
+        """Draw all values captured so far against model step."""
+
+        try:
+            import matplotlib.pyplot as plt
+        except ModuleNotFoundError as exc:
+            raise ModuleNotFoundError(
+                "PI-CAM plotting requires the notebook extra: "
+                "uv sync --extra notebook"
+            ) from exc
+        if ax is None:
+            _, ax = plt.subplots(figsize=self.figsize)
+        else:
+            ax.clear()
+        options = {**self.plot_kwargs, **dict(plot_kwargs)}
+        options.setdefault("marker", "o")
+        ax.plot(self.steps, self.values, **options)
+        ax.set_xlabel("model step")
+        units = str(self._field().metadata.get("units", "1"))
+        unit_suffix = "" if units in {"", "1"} else f" ({units})"
+        level_suffix = "" if self.level is None else f" at level {self.level}"
+        ax.set_ylabel(f"{self.statistic} {self.variable}{unit_suffix}")
+        ax.set_title(f"{self.variable}{level_suffix} through the CAM run")
+        ax.spines[["top", "right"]].set_visible(False)
+        if ax.get_legend_handles_labels()[1]:
+            ax.legend(frameon=False)
+        ax.figure.tight_layout()
+        return ax
+
+    def _repr_png_(self) -> bytes:
+        axis = self.plot()
+        output = BytesIO()
+        axis.figure.savefig(output, format="png", bbox_inches="tight")
+        import matplotlib.pyplot as plt
+
+        plt.close(axis.figure)
+        return output.getvalue()
+
+    def __repr__(self) -> str:
+        return (
+            f"PICAMStepPlot(variable={self.variable!r}, statistic={self.statistic!r}, "
+            f"rank={self.rank!r}, records={len(self.steps)})"
+        )
+
+
+class PICAMStepGridPlot:
+    """Several live step diagnostics rendered as one subplot grid."""
+
+    def __init__(
+        self,
+        state: "PICAMStateView",
+        variables: Sequence[str],
+        *,
+        rank: int | str,
+        statistic: str,
+        level: int | None,
+        columns: int | None,
+        figsize: tuple[float, float],
+        plot_kwargs: Mapping[str, Any],
+    ) -> None:
+        self.state = state
+        self.variables = tuple(str(variable) for variable in variables)
+        if not self.variables:
+            raise ValueError("variables must contain at least one field")
+        if columns is None:
+            columns = min(3, int(np.ceil(np.sqrt(len(self.variables)))))
+        if isinstance(columns, bool) or int(columns) < 1:
+            raise ValueError("columns must be positive")
+        self.columns = min(int(columns), len(self.variables))
+        self.figsize = tuple(float(value) for value in figsize)
+        self.plots = tuple(
+            PICAMStepPlot(
+                state,
+                variable,
+                rank=rank,
+                statistic=statistic,
+                level=level,
+                figsize=figsize,
+                plot_kwargs=plot_kwargs,
+                register=False,
+            )
+            for variable in self.variables
+        )
+        register_plot = getattr(self.state._session, "_register_step_plot", None)
+        if callable(register_plot):
+            register_plot(self)
+
+    @property
+    def steps(self) -> tuple[int, ...]:
+        return tuple(self.plots[0].steps)
+
+    @property
+    def values(self) -> Mapping[str, tuple[float, ...]]:
+        return {
+            plot.variable: tuple(plot.values)
+            for plot in self.plots
+        }
+
+    def __getitem__(self, variable: str) -> PICAMStepPlot:
+        matches = [plot for plot in self.plots if plot.variable == str(variable)]
+        if len(matches) != 1:
+            raise KeyError(
+                f"step plot variable {variable!r} is unknown or ambiguous"
+            )
+        return matches[0]
+
+    def capture(self) -> "PICAMStepGridPlot":
+        for plot in self.plots:
+            plot.capture()
+        return self
+
+    def plot(self) -> tuple[Any, Any]:
+        try:
+            import matplotlib.pyplot as plt
+        except ModuleNotFoundError as exc:
+            raise ModuleNotFoundError(
+                "PI-CAM plotting requires the notebook extra: "
+                "uv sync --extra notebook"
+            ) from exc
+        rows = (len(self.plots) + self.columns - 1) // self.columns
+        figure, axes = plt.subplots(
+            rows,
+            self.columns,
+            figsize=self.figsize,
+            squeeze=False,
+        )
+        for axis, plot in zip(axes.flat, self.plots):
+            plot.plot(ax=axis)
+        for axis in axes.flat[len(self.plots) :]:
+            axis.set_visible(False)
+        figure.tight_layout()
+        return figure, axes
+
+    def _repr_png_(self) -> bytes:
+        figure, _ = self.plot()
+        output = BytesIO()
+        figure.savefig(output, format="png", bbox_inches="tight")
+        import matplotlib.pyplot as plt
+
+        plt.close(figure)
+        return output.getvalue()
+
+    def __repr__(self) -> str:
+        return (
+            f"PICAMStepGridPlot(variables={self.variables!r}, "
+            f"records={len(self.steps)})"
+        )
+
+
+class PICAMCaseStepPlot:
+    """Overlay one captured step diagnostic from each model case."""
+
+    def __init__(
+        self,
+        series: Mapping[str, PICAMStepPlot],
+        *,
+        figsize: tuple[float, float] = (8.0, 4.0),
+        title: str | None = None,
+        plot_kwargs: Mapping[str, Any] | None = None,
+    ) -> None:
+        self.series = {str(label): plot for label, plot in series.items()}
+        if len(self.series) < 2:
+            raise ValueError("case comparison requires at least two step plots")
+        if not all(isinstance(plot, PICAMStepPlot) for plot in self.series.values()):
+            raise TypeError("each case comparison value must be a PICAMStepPlot")
+        variables = {plot.variable for plot in self.series.values()}
+        if len(variables) != 1:
+            raise ValueError(
+                "case comparison step plots must track the same variable"
+            )
+        if len(figsize) != 2 or any(float(value) <= 0.0 for value in figsize):
+            raise ValueError("figsize must contain two positive numbers")
+        self.variable = next(iter(variables))
+        self.figsize = tuple(float(value) for value in figsize)
+        self.title = title
+        self.plot_kwargs = dict(plot_kwargs or {})
+
+    def plot(self, *, ax: Any = None, **plot_kwargs: Any) -> Any:
+        try:
+            import matplotlib.pyplot as plt
+        except ModuleNotFoundError as exc:
+            raise ModuleNotFoundError(
+                "PI-CAM plotting requires the notebook extra: "
+                "uv sync --extra notebook"
+            ) from exc
+        if ax is None:
+            _, ax = plt.subplots(figsize=self.figsize)
+        else:
+            ax.clear()
+        shared = {**self.plot_kwargs, **dict(plot_kwargs)}
+        shared.setdefault("marker", "o")
+        for label, plot in self.series.items():
+            options = {**plot.plot_kwargs, **shared, "label": label}
+            ax.plot(plot.steps, plot.values, **options)
+        ax.set_xlabel("model step")
+        first = next(iter(self.series.values()))
+        level_suffix = "" if first.level is None else f" at level {first.level}"
+        ax.set_ylabel(f"{first.statistic} {self.variable}")
+        ax.set_title(
+            self.title
+            or f"{self.variable}{level_suffix} comparison through the CAM run"
+        )
+        ax.spines[["top", "right"]].set_visible(False)
+        ax.legend(frameon=False)
+        ax.figure.tight_layout()
+        return ax
+
+    def _repr_png_(self) -> bytes:
+        axis = self.plot()
+        output = BytesIO()
+        axis.figure.savefig(output, format="png", bbox_inches="tight")
+        import matplotlib.pyplot as plt
+
+        plt.close(axis.figure)
+        return output.getvalue()
+
+    def __repr__(self) -> str:
+        return (
+            f"PICAMCaseStepPlot(variable={self.variable!r}, "
+            f"cases={tuple(self.series)!r})"
+        )
+
+
+def plot_steps(
+    series: Mapping[str, PICAMStepPlot],
+    *,
+    figsize: tuple[float, float] = (8.0, 4.0),
+    title: str | None = None,
+    **plot_kwargs: Any,
+) -> PICAMCaseStepPlot:
+    """Compare the same captured step diagnostic from two or more cases."""
+
+    return PICAMCaseStepPlot(
+        series,
+        figsize=figsize,
+        title=title,
+        plot_kwargs=plot_kwargs,
+    )
+
+
 class PICAMProfilePlot:
     """Reusable latest-value or history plot backed by the live StatePool."""
 
@@ -1025,6 +1338,44 @@ class PICAMStateView:
             plot_kwargs=plot_kwargs,
         )
 
+    def plot_steps(
+        self,
+        variable: str | Sequence[str] = "T",
+        *,
+        rank: int | str = "global",
+        statistic: str = "mean",
+        level: int | None = None,
+        columns: int | None = None,
+        figsize: tuple[float, float] = (5.0, 3.2),
+        **plot_kwargs: Any,
+    ) -> PICAMStepPlot | PICAMStepGridPlot:
+        """Track live StatePool diagnostics after every complete step.
+
+        The initial value is captured immediately. Subsequent calls to
+        ``driver.run()`` are sampled automatically at complete-step boundaries.
+        """
+
+        if not isinstance(variable, str):
+            return PICAMStepGridPlot(
+                self,
+                variable,
+                rank=rank,
+                statistic=statistic,
+                level=level,
+                columns=columns,
+                figsize=figsize,
+                plot_kwargs=plot_kwargs,
+            )
+        return PICAMStepPlot(
+            self,
+            variable,
+            rank=rank,
+            statistic=statistic,
+            level=level,
+            figsize=figsize,
+            plot_kwargs=plot_kwargs,
+        )
+
     def _draw_profile_values(
         self,
         variable: str,
@@ -1171,7 +1522,11 @@ class PICAMStateView:
 
 
 __all__ = [
+    "PICAMCaseStepPlot",
     "PICAMStateView",
+    "PICAMStepGridPlot",
+    "PICAMStepPlot",
     "PICAMWorkflowAction",
     "PICAMWorkflowView",
+    "plot_steps",
 ]

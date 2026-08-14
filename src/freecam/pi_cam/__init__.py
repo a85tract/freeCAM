@@ -87,10 +87,14 @@ from .state import (
     PICAMVariableSpec,
 )
 from .ui import (
+    PICAMCaseStepPlot,
     PICAMProfilePlot,
     PICAMStateView,
+    PICAMStepGridPlot,
+    PICAMStepPlot,
     PICAMWorkflowAction,
     PICAMWorkflowView,
+    plot_steps,
 )
 from .validation import PICAMBFBResult, compare_pi_cam_directories
 
@@ -126,6 +130,7 @@ __all__ = [
     "PICAMBFBResult",
     "PICAMCase",
     "PICAMCaseInfo",
+    "PICAMCaseStepPlot",
     "PICAMConfig",
     "PICAMConfigurationError",
     "PICAMDriver",
@@ -140,6 +145,8 @@ __all__ = [
     "PICAMPhysicsProcess",
     "PICAMPhysicsRules",
     "PICAMProfilePlot",
+    "PICAMStepGridPlot",
+    "PICAMStepPlot",
     "PICAMProcessArgumentBinding",
     "PICAMProcessContextRegistry",
     "PICAMPromotedProcess",
@@ -169,6 +176,7 @@ __all__ = [
     "WorkflowPreview",
     "WorkflowPreviewAction",
     "WorkflowTemplate",
+    "plot_steps",
     "process",
     "compare_pi_cam_directories",
     "build_physics_catalog",

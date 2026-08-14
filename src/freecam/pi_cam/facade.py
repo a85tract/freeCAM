@@ -1483,7 +1483,11 @@ class Driver:
             starting_status = dict(session.status)
             start_step = int(starting_status.get("step", 0))
             first = int(session.status.get("actions", 0))
-            stepwise = bool(progress) or cancel_event is not None
+            stepwise = (
+                bool(progress)
+                or cancel_event is not None
+                or bool(getattr(session, "has_step_plots", False))
+            )
             completed = 0
             if stepwise:
                 for _ in range(int(steps)):
@@ -1491,6 +1495,9 @@ class Driver:
                         break
                     latest_status = session.advance(steps=1)
                     completed += 1
+                    capture_step_plots = getattr(session, "capture_step_plots", None)
+                    if callable(capture_step_plots):
+                        capture_step_plots()
                     snapshot = RunProgress(
                         requested_steps=int(steps),
                         completed_steps=completed,
