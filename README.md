@@ -1,63 +1,47 @@
 # freeCAM
 
-freeCAM runs the CAM atmosphere component from iCESM1.3.1 with a Python
-control layer. Python owns the execution order, boundary/restart decisions,
-clock, and rank-local StatePool. Original Fortran code is retained only as a
-numerical kernel or a low-level state, PIO, or time-manager service called by
-Python through generated C-interoperable adapters.
+freeCAM runs the CAM atmosphere component from iCESM1.3.1 under a Python
+control layer. Python owns the model workflow, clock, coupling decisions, and
+rank-local state. Original Fortran remains the numerical source of truth and
+is called through generated C-interoperable adapters.
 
-The current scientific target is the `ne16` PI-atm CAM configuration: CAM5
-physics, SE dynamics, and 512 MPI ranks. The normal `Driver` path runs the
-original CESM surface components and coupler online; captured boundary replay
-is an explicit validation mode.
+The current scientific target is the `ne16` PI-atm configuration with CAM5
+physics, SE dynamics, and 512 MPI ranks on NCAR Derecho.
 
-## Current status
+## Highlights
 
-| Capability | Status |
-| --- | --- |
-| Complete Python-controlled CAM step | Available |
-| Persistent MPI session | Available |
-| Rank-local NumPy StatePool | Available |
-| Dynamic Python and Fortran processes | Available |
-| Dynamic StatePool variables | Available |
-| Source physics catalog | 276 physical processes and 95 helper routines |
-| Generated process adapters | 276/276 compile in their owning CAM configurations |
-| Former catalog-only interfaces | 262/262 now have compiled StatePool pointer adapters |
-| Loadable in the current PI-CAM image | 240/276 |
-| PI-CAM 50-step reference | Bitwise identical |
-| One-month x2a/a2x capture | 1,491 boundary states; capture run BFB with oracle |
-| Exact online CESM provider | 53/53 x2a and 53/53 a2x boundaries BFB; 4/4 final CAM files BFB |
+- Python-controlled CAM initialization, timestep workflow, and finalization.
+- Persistent MPI execution for interactive Python and Jupyter workflows.
+- Rank-local NumPy StatePool with distributed inspection and mutation.
+- Runtime reordering, enabling, and disabling of physical processes.
+- Dynamic Python processes and StatePool variables.
+- Online execution of the original CESM surface components and coupler.
+- Explicit offline replay mode for captured x2a/a2x boundaries.
+- Generated adapters for all 276 catalogued physical processes; 240 are
+  loadable in the admitted PI-atm executable.
+- Exact 50-step and one-year validation against the original Fortran model.
 
-The 36 remaining configuration-specific devices belong to COSP, CARMA, or
-legacy-radiation builds that are not active in this PI-CAM executable. They
-have compiled adapters, but freeCAM does not label them runnable in the
-current case.
+## Architecture
 
-Validation records are under [`validation/`](validation/). The primary BFB
-record is
-[`pi_cam_python_control_vs_oracle_50step_bfb.json`](validation/pi_cam_python_control_vs_oracle_50step_bfb.json),
-produced by the 512-rank, 50-step Python-controlled leaf workflow in
-[`pi_cam_python_control_50step.json`](validation/pi_cam_python_control_50step.json).
-The per-process support table is
-[`pi_cam_process_support.json`](validation/pi_cam_process_support.json).
-The declarative `CaseConfig` startup path, including two independently named
-instances of the same Python process, is recorded in
-[`pi_cam_declarative_workflow_50step.json`](validation/pi_cam_declarative_workflow_50step.json).
-The complete Pythonic UI gate—including distributed NumPy expressions,
-StatePool mapping, declarative workflow, and Xarray output access—is
-[`pi_cam_pythonic_ui_complete_50step.json`](validation/pi_cam_pythonic_ui_complete_50step.json).
-It ran 50 steps on 512 ranks and remained BFB for all four CAM
-history/restart files.
-The one-month boundary inventory and full coupled-run comparison are recorded
-in [`pi_cam_boundary_capture_1month.json`](validation/pi_cam_boundary_capture_1month.json)
-and
-[`pi_cam_nonpic_capture_vs_oracle_1month_bfb.json`](validation/pi_cam_nonpic_capture_vs_oracle_1month_bfb.json).
-The original-component online provider is validated for 50 coupling steps in
-[`pi_cam_exact_cesm_online_50step.json`](validation/pi_cam_exact_cesm_online_50step.json);
-the independent final-file comparison is
-[`pi_cam_exact_cesm_online_50step_bfb.json`](validation/pi_cam_exact_cesm_online_50step_bfb.json).
+```text
+Python / Jupyter
+    |
+    |  Driver, workflow, clock, StatePool
+    v
+512 persistent MPI Python ranks
+    |
+    +-- CAM numerical kernels ---------> original iCESM Fortran .so
+    |
+    +-- online coupling provider ------> CLM-SP, CICE%PRES, DOCN%DOM, RTM
+                                        and CESM mapping/flux kernels
+```
 
-## Install
+Each MPI rank owns its local NumPy arrays and StatePool. Python chooses which
+operation runs next; Fortran performs the admitted numerical kernels. Online
+coupling exposes the live rank-local MCT x2a/a2x arrays as zero-copy NumPy
+views. There is no shadow CAM and no Fortran-to-Python callback path.
+
+## Installation
 
 ```bash
 git clone git@github.com:a85tract/freeCAM.git
@@ -66,602 +50,161 @@ git submodule update --init external/iCESM1.3.1_fzhu
 uv sync --extra notebook --extra test
 ```
 
-The supplied runtime and PBS jobs target NCAR Derecho. `Driver` reads the PBS
-account from the configured CESM reference case; no personal project is
-embedded in the package.
+The supplied runtime and PBS jobs target NCAR Derecho. A configured iCESM
+reference case, its machine environment, and the required input data must be
+available before launching the 512-rank scientific configuration.
 
 ## Quick start
 
+Online CESM coupling is the default:
+
 ```python
 import freecam as fc
 
+with fc.Driver(case="PI-atm", nsteps=2) as driver:
+    driver.initialize()
+    print(driver.cam.state.T.stats(rank="global"))
+
+    result = driver.run(progress=True)
+    print(result)
+```
+
+Constructing `Driver` does not submit PBS or start MPI. The first live model
+operation starts one persistent MPI model; later calls reuse the same ranks
+and arrays until `driver.close()` or the context manager exits.
+
+The maintained Jupyter walkthrough is
+[`examples/try_pi_cam.ipynb`](examples/try_pi_cam.ipynb).
+
+### Offline replay
+
+Select a replay case when x2a should come from a captured boundary dataset
+instead of live CESM components:
+
+```python
 with fc.Driver(
-    case="PI-atm",
-    nsteps=2,
-    history_every=1,
-    restart_every="end",
+    case="PI-atm-replay",
+    nsteps=50,
+    verify_boundary_exports=True,
 ) as driver:
-    print(driver.case)
-    print(driver.preview())       # no PBS/MPI launch
-    print(driver.cam.state.summary(rank=0))
-
-    print(driver.cam.state.T.mean())
-    result = driver.run(steps=2, progress=True)
-    print(result)               # compact step/action/date summary
-
-    temperature = driver.cam.state.T
-    print(temperature.stats(rank="global"))
-```
-
-Constructing `Driver` does not submit a job. The first operation requiring
-live state starts one persistent MPI model; later notebook cells reuse the
-same ranks and arrays. `case="PI-atm"` automatically prepares a private CESM
-provider run and runs CLM-SP, CICE%PRES, DOCN%DOM, RTM, and the original
-mapping/fraction/flux kernels in memory. The notebook does not construct a
-boundary provider.
-
-See [`examples/try_pi_cam.ipynb`](examples/try_pi_cam.ipynb) for the complete
-walkthrough.
-
-For an explicit offline comparison against captured inputs, select a replay
-case:
-
-```python
-driver = fc.Driver(case="PI-atm-replay", nsteps=50)
-# One-month replay is also available:
-driver = fc.Driver(case="PI-atm-1month", nsteps=1000)
-```
-
-Its replay data is generated by
-[`pi_cam_boundary_capture_1month.pbs`](validation/jobs/pi_cam_boundary_capture_1month.pbs)
-and stored under
-`$SCRATCH/pyCAM/PI-cam/nonpic-boundary-capture-1month/boundary/replay`.
-The capture includes all 512 rank-local x2a inputs and matching a2x exports.
-
-### Online boundary mode
-
-Online CESM is the default, so the complete user interface is simply:
-
-```python
-driver = fc.Driver(case="PI-atm", nsteps=1000)
-driver.run()
-```
-
-The provider library is discovered at
-`build/cesm/pi_atm/production-components/libpycesm_external_atm.so`, and the seed
-run at `$SCRATCH/pyCESM/PI-atm/oracle-1month/run`. Advanced installations can
-override those locations with `FREECAM_CESM_PROVIDER_LIBRARY` and
-`FREECAM_CESM_PROVIDER_SEED`. Preparation happens lazily at the first live
-operation, not when `Driver` is constructed.
-
-The original CLM-SP, CICE%PRES, DOCN%DOM, RTM, and CESM
-mapping/fraction/flux kernels execute on all 512 ranks. At each atmosphere
-boundary, freeCAM writes rank-local a2x directly into the live MCT array and
-receives the next rank-local x2a in memory. No per-step boundary file is read
-or written. Python actively queries the Fortran-owned MCT addresses and builds
-zero-copy NumPy views; Fortran never calls a Python allocator callback. The
-coupled image does not run a shadow CAM: FreeCAM is the only atmosphere.
-
-For a custom technical experiment, an explicit Python surface callback can
-replace the default provider:
-
-Offline replay stores every rank and every coupling time. Online mode reads
-only one rank-local bootstrap state, then calls a Python surface provider after
-each CAM export:
-
-```python
-from pathlib import Path
-import os
-
-import freecam as fc
-
-bootstrap = Path(os.environ["SCRATCH"]) / (
-    "pyCAM/PI-cam/online-boundary-bootstrap/boundary"
-)
-
-def update_surface(fields, context):
-    # fields.a2x is the previous read-only CAM export on this MPI rank.
-    # fields.x2a starts as the previous surface state and is edited in place.
-    # Replace this no-op body with a surface-component/coupler adapter.
-    del fields, context
-
-boundary = fc.OnlineBoundaryProvider(bootstrap, update_surface)
-with fc.Driver(
-    case="PI-atm-online",
-    boundary=boundary,
-    nsteps=1000,
-) as driver:
+    driver.initialize()
     result = driver.run()
 ```
 
-`cloudpickle` sends the small callback definition to the persistent MPI
-worker once. It does not send x2a/a2x arrays through the control socket. Each
-MPI rank runs the callback against its own local arrays, so later steps require
-neither replay files nor repeated startup I/O.
+`PI-atm-replay` contains 50 complete CAM steps. `PI-atm-1month` contains 1,488
+steps. Replay requires the same 512-rank layout used by the capture.
+`verify_boundary_exports=True` checks each generated a2x against the captured
+reference; use `False` for experiments that intentionally change CAM output.
 
-For plumbing tests, `fc.OnlineBoundaryProvider.held(bootstrap)` keeps the
-initial surface state fixed. This is deliberately labelled a technical
-control: it is not a scientific replacement for CLM, CICE, DOCN, or CESM
-coupler flux and merge kernels. Those components can implement the same
-provider contract to supply physically interactive x2a online.
+## Python interface
 
-The low-level exact-provider constructor remains available for validation and
-custom deployment paths:
+State fields behave like distributed NumPy arrays:
 
 ```python
-boundary = fc.CESMOnlineBoundaryProvider(
-    library=coupled_cesm_library,
-    run_dir=private_cesm_run_directory,
-    # Optional fail-closed validation: every x2a and a2x is compared bytewise.
-    oracle=boundary_oracle,
-)
+import numpy as np
 
-with fc.Driver(case="PI-atm", boundary=boundary, nsteps=50) as driver:
-    driver.run()
-```
-
-The optional oracle is validation-only and never supplies model input. The
-50-step gate checks every one of the 53 startup/coupling boundary states and
-all four final CAM history/restart files byte for byte.
-
-## StatePool
-
-Every MPI rank owns the arrays for its local CAM domain. Select one rank or
-request global statistics without copying the complete model to Jupyter:
-
-```python
-rank_zero_temperature = driver.cam.state.T.get(rank=0)
-global_temperature = driver.cam.state.T.stats(rank="global")
-global_mean = driver.cam.state.T.mean()
-```
-
-Every canonical field also receives its unqualified leaf name when that name
-is unique across StatePool. For example:
-
-```python
-driver.cam.state.omega  # phys_state.omega
-driver.cam.state.pmid   # phys_state.pmid
-driver.cam.state.dtdt   # phys_tend.dtdt
-```
-
-Ambiguous names are never guessed. If both `phys_state.t` and another `*.t`
-exist, `state.t` reports all candidates. Choose the field explicitly or give
-it a Notebook alias:
-
-```python
-driver.cam.state.alias("temperature", "phys_state.t")
-driver.cam.state.temperature
-driver.cam.state.aliases  # inspect automatic and explicit mappings
-```
-
-Scalar edits use ordinary augmented assignment. One compact command is sent
-to the persistent model, then every MPI rank edits its own local array:
-
-```python
-driver.cam.state.T += 1.0
-driver.cam.state.q *= 0.95
-driver.cam.state.v.fill(0.0)
-
-# NumPy-style slices are evaluated independently on every MPI rank.
-driver.cam.state.T[:, 0, :] += 0.25
-top_level_mean = driver.cam.state.T[:, 0, :].mean()
-```
-
-Slice edits never copy the full distributed field through Jupyter. The index
-keeps the field's rank-local NumPy axis order, and freeCAM automatically skips
-inactive `pcols` padding.
-
-NumPy expressions are also lazy and distributed. The Notebook sends the small
-expression tree; every MPI rank evaluates it against its own StatePool arrays:
-
-```python
 state = driver.cam.state
-state.T = np.minimum(state.T + state.heating_rate * 1800.0, 320.0)
+
+state.T += 1.0
 state.q[:] = np.maximum(state.q, 0.0)
+state.create("tracer", like="T", units="kg kg-1")
 
-# Only an explicit compute() copies one selected rank's result to Jupyter.
-rank_zero_celsius = (state.T - 273.15).compute(rank=0)
+rank_zero = state.T.get(rank=0)
+global_mean = state.T.mean()
 ```
 
-The StatePool can also be inspected as a mapping:
-
-```python
-print(state.keys())
-print(state.describe())
-temperature = state["phys_state.t"]
-```
-
-For a small rank-independent array, use ordinary NumPy assignment. The same
-values are copied into an independent array on every MPI rank:
-
-```python
-NLEV = driver.cam.state.T.metadata["shape"][1]
-driver.cam.state.rh = np.zeros(NLEV)
-```
-
-For a grid-distributed variable whose local shape depends on each rank, reuse
-the layout of an existing field:
-
-```python
-driver.cam.state.create("tracer", like="T", units="kg kg-1")
-```
-
-This creates a zero-filled, Fortran-contiguous array with `T`'s local shape and
-registers it as `tracer` in every rank's StatePool. `aliases=` and
-`standard_name=` are optional integration metadata for code that must connect
-the field to another Fortran/CCPP name; ordinary Python processes do not need
-them. Delete unused dynamic fields with:
-
-```python
-del driver.cam.state.tracer
-del driver.cam.state.rh
-```
-
-Deletion is rejected while an installed process still uses the field.
-
-### Reusable live plots
-
-Use `latest` when one figure should always show the current StatePool. IPython
-refreshes the same object each time it is displayed:
-
-```python
-profiles = driver.cam.state.plot(
-    variables=("T", "u", "v", "q"),
-    mode="latest",
-)
-display(profiles)
-driver.cam.advance(steps=1)
-display(profiles)  # same object, newly fetched values
-```
-
-Use `history` to retain changed profiles as overlays. Repeated display without
-a state change does not add duplicate curves:
-
-```python
-history = driver.cam.state.plot(variables=("T", "q"), mode="history")
-driver.cam.advance(steps=1)
-history.capture(label="experiment", color="tab:orange")
-display(history)
-```
-
-The existing `figure, axes = state.plot(...)` snapshot API remains available.
-
-## Physics processes
-
-The public interface is flat. Users select processes by scientific or
-original routine name; CAM source phases are an internal implementation
-detail.
-
-```python
-physics = driver.cam.physics
-print(physics.coverage)
-
-physics.dry_adjustment.run()
-physics.deep_convection.disable()
-physics.deep_convection.enable()
-```
-
-The original flat API contained 36 workflow processes plus 262 source-catalog
-interfaces. All 262 former catalog-only interfaces are runtime-process
-templates with generated pointer adapters. In the admitted PI-CAM executable,
-226 are loadable; the remaining 36 belong to inactive CARMA, COSP, or legacy
-radiation configurations.
-
-Loadable source processes bind their caller-local arguments to StatePool fields
-automatically when they run or enter the workflow:
-
-```python
-driver.cam.workflow.insert(
-    physics.cloud_fraction_fice,
-    after="dry_adjustment",
-)
-process = driver.cam.workflow["cloud_fraction_fice"]
-
-process.run()                 # run only this process
-process.disable()             # skip it in complete steps
-process.enable()
-process.move(before="radiation")
-process.remove()              # remove the plan node and owned temporary fields
-```
-
-Common CAM derived state (`physics_state`, `physics_tend`, `cam_in`, and
-`cam_out`) is bound to the live Python-owned StatePool without copying.
-Literal values can also be passed to `bind(...)`; rank-local arrays are created
-in StatePool when a caller variable has no existing field. Explicit `bind(...)`
-is therefore only needed to override inferred caller arguments. Processes belonging
-to a disabled physics configuration remain visible with metadata, but insertion
-fails explicitly because their `.so` is not loaded by this case.
-
-## Workflow
-
-`driver.cam.workflow` is an ordered Python sequence of the scientific processes
-used by a complete model step. Control, clock, boundary, StatePool housekeeping,
-and I/O actions remain active but are hidden from this normal view:
+Scientific processes are exposed through one ordered workflow:
 
 ```python
 workflow = driver.cam.workflow
-source_order = workflow[:]
 
-radiation = workflow["radiation"]
-vertical_diffusion = workflow["vertical_diffusion"]
-custom_order = source_order.copy()
-custom_order.remove(radiation)
-custom_order.insert(custom_order.index(vertical_diffusion), radiation)
-
-workflow[:] = custom_order
-workflow[:] = source_order
-
-# Inspect the source-faithful internal sequence only when debugging.
-driver.cam.workflow.debug
-
-# Familiar list operations are also available for a Physics object or handle.
-workflow.append(custom_process)  # inserted before the required final export
-removed = workflow.pop(-2)      # removes runtime processes; disables source ones
+workflow["radiation"].disable()
+workflow["radiation"].enable()
+workflow["dry_adjustment"].run()
+workflow["radiation"].move(before="vertical_diffusion")
 ```
 
-List assignment changes only scientific-process slots; hidden internal actions
-keep their required execution positions. The debug view is read/write for
-advanced diagnosis, but required boundaries cannot be popped or removed.
-
-Simple Python callbacks do not need a handwritten field contract:
-
-```python
-class Heating(fc.Physics):
-    after = "dry_adjustment"
-
-    def run(self, state):
-        state.T += 0.01
-
-driver.cam.workflow.insert(Heating())  # returns None and honors Heating.after
-heating = driver.cam.workflow["notebook_heating"]
-```
-
-freeCAM infers ordinary `state.field` reads and writes. Dynamic access through
-`getattr`, helper-side mutation, or unusual indexing should still declare
-`reads` and `writes` explicitly.
-
-## Long runs
-
-Show step-level progress without exposing PBS commands:
-
-```python
-result = driver.run(steps=10, progress=True)
-print(result)          # compact RunResult
-result.trace           # full per-process trace, only when needed
-result.history["T"]    # lazy Xarray history variable
-```
-
-Or keep the Notebook responsive with a Future-like handle:
-
-```python
-run = driver.run_async(steps=10, progress=True)
-print(run.progress)
-
-# Cooperative cancellation occurs between complete CAM steps.
-run.cancel()
-result = run.result()
-```
-
-A running Fortran kernel is never interrupted halfway through. Cancellation
-waits for that kernel and the current complete CAM step, then leaves the
-persistent model alive. `driver.diagnose()` checks configuration, boundary,
-Python, and reference-case inputs without launching PBS or MPI.
-
-The default workflow already uses every validated leaf boundary. Composite
-Fortran stages such as the old run2 `finish` and run4 `wrapup` remain visible
-as disabled compatibility entries, but they are not executed. Reordering or
-disabling scientific processes is experimental; freeCAM keeps the granular
-default in original source order.
-
-Every workflow row reports both ownership and implementation:
-
-- `control_owner="python"` means Python decides ordering and conditions.
-- `fortran-numerical-kernel` is a scheme, dynamics, boundary mapping, or
-  explicitly admitted numerical kernel.
-- `fortran-state-service`, `fortran-io-service`, and
-  `fortran-clock-mirror` are primitive services. They do not choose the next
-  action or own the workflow.
-
-No enabled default action has `kind="control"`. In particular, Python decides
-whether an import is fresh, whether restart is due, when the public clock
-advances, and when each service is invoked.
-
-### Define a case with its workflow
-
-A case can declare its complete atmosphere workflow before the model starts.
-The factory receives the validated default order, so it can insert new
-processes without copying dozens of required CAM actions into the notebook:
-
-```python
-class VolcanicAerosol(fc.Physics):
-    name = "volcanic_aerosol"
-    writes = ("phys_state.t",)
-
-    def run(self, state, context):
-        state.T -= 1.0e-4 * context.timestep_seconds
-
-
-def volcanic_workflow(default):
-    workflow = default.copy()
-    workflow.insert_after("dadadj", VolcanicAerosol())
-    workflow.insert_before("radiation_tend", VolcanicAerosol())
-    return workflow
-
-
-volcanic_case = fc.CaseConfig(
-    name="PI-atm-volcanic",
-    description="PI-atm with two volcanic aerosol tendencies",
-    forcing="1850 prescribed SST and sea ice plus volcanic aerosol",
-    make_atm=lambda: fc.FreeCAM(workflow=volcanic_workflow),
-)
-
-volcanic_case.workflow.describe()  # no job submission
-
-with fc.Driver(case=volcanic_case, nsteps=2) as driver:
-    driver.cam.advance(steps=2)
-```
-
-Passing the object directly keeps an experiment local to the notebook.
-`fc.CASES.register(...)` is optional and is only useful when a reusable preset
-must later be selected by its string name.
-
-For a completely literal pre-launch order, refer to original CAM processes
-with lightweight specs; creating these objects does not start MPI:
-
-```python
-workflow = [
-    fc.process(item.qualified_name)
-    for item in fc.FreeCAM().preview().debug
-]
-# Reorder the ProcessSpec objects here before constructing the case.
-case = fc.CaseConfig(
-    name="PI-atm-explicit",
-    description="explicit process order",
-    forcing="1850 prescribed SST and sea ice",
-    make_atm=lambda: fc.FreeCAM(workflow=workflow),
-)
-```
-
-The two `VolcanicAerosol()` entries become independent runtime processes named
-`volcanic_aerosol_1` and `volcanic_aerosol_2`. Omitting an ordinary physics
-process from the returned list disables it. Required boundary, clock, and
-export actions are checked before the new order is applied.
-
-`Driver` replays the captured coupler imports but does not require an
-experiment's exports to match the unmodified oracle. For a strict BFB gate,
-use `verify_boundary_exports=True`; an export difference is then reported
-collectively by all MPI ranks before another CAM step can begin.
-
-## Add a Python process
+Notebook-defined Python physics can be inserted without rebuilding CAM:
 
 ```python
 class Heating(fc.Physics):
     name = "notebook_heating"
     after = "dry_adjustment"
-    writes = ("phys_state.t",)
 
     def run(self, state):
         state.T += 0.01
 
+
 driver.cam.workflow.insert(Heating())
-process = driver.cam.workflow["notebook_heating"]
-process.run()
-
-def revised_heating(state, context):
-    state.T -= 1.0e-4 * context.timestep_seconds
-
-process.reload(revised_heating)  # same name, position, enabled state, and fields
-process.disable()
-process.enable()
-process.move(after="radiation")
-process.remove()
 ```
 
-`insert()` and `append()` follow Python list return semantics: they mutate the
-workflow and return `None`. If an immediate handle is useful, the explicit
-installation form remains available:
+See the Notebook for field aliases, plotting, workflow construction, runtime
+process replacement, asynchronous execution, and Xarray history access.
 
-```python
-process = driver.cam.workflow.install(Heating())
+## Validation
+
+The current validated results are:
+
+| Gate | MPI ranks | Result |
+| --- | ---: | --- |
+| Python-controlled PI-CAM, 50 steps | 512 | BFB with the pinned Fortran reference |
+| Exact online CESM provider, 50 steps | 512 | 53/53 x2a, 53/53 a2x, and 4/4 CAM output files match |
+| Exact online CESM provider, one year | 512 | 180/180 CAM history and restart files match |
+
+The one-year online run completed 17,520 half-hour steps at 15.67 SYPD. Its
+total runtime was 5,549 seconds versus 5,027 seconds for the original Fortran
+CESM lifecycle, an observed overhead of approximately 10.4% from one run of
+each configuration.
+
+Primary evidence:
+
+- [`validation/pi_cam_exact_cesm_online_50step.json`](validation/pi_cam_exact_cesm_online_50step.json)
+- [`validation/pi_cam_exact_cesm_online_1year.json`](validation/pi_cam_exact_cesm_online_1year.json)
+- [`validation/pi_cam_exact_cesm_online_1year_bfb.json`](validation/pi_cam_exact_cesm_online_1year_bfb.json)
+- [`validation/pi_cam_process_support.json`](validation/pi_cam_process_support.json)
+
+The directory comparator requires identical CAM file inventories, numerical
+variable inventories, dtypes, shapes, and exact array values without a
+tolerance. It does not compare NetCDF compression bytes, path strings, or
+non-numerical metadata.
+
+## Repository layout
+
+```text
+src/freecam/pi_cam/       Python driver, StatePool, workflow, and public API
+native/pi_cam/            adapters, support code, and source patches
+external/iCESM1.3.1_fzhu pinned upstream iCESM source
+configs/                  admitted PI-CAM configurations
+examples/                 maintained Jupyter walkthrough
+tools/                    build, capture, audit, and validation utilities
+tests/unit/               local Python test suite
+validation/               PBS jobs and machine-readable scientific evidence
 ```
 
-The neighbor name determines placement; users do not specify a CAM phase.
-`state.T` is a direct NumPy view of that MPI rank's StatePool array. The
-callback is serialized with `cloudpickle`, broadcast to every rank, and runs
-locally without a socket round trip. `reload()` serializes the replacement,
-validates its inferred field contract on every rank, and atomically swaps the
-rank-local callback payload; it does not recreate the model or move the
-workflow node. The older `tendency(fields, context)`
-mapping interface remains supported. Use `run(state, context)` only when the
-callback needs rank, model time, or timestep information.
+Generated libraries and compiler products belong under `build/`. PBS output
+belongs under `logs/`; neither should be committed.
 
-Collective failures are grouped by identical traceback. If all 512 ranks fail
-at the same statement, the Notebook reports one traceback labelled
-`ranks 0-511` instead of printing it 512 times.
-
-## Output cadence
-
-History and restart alarms are ordinary `Driver` options:
-
-```python
-driver = fc.Driver(
-    case="PI-atm",
-    nsteps=50,
-    history_every=5,       # history every five model steps; None disables it
-    restart_every="end",  # "end", a step interval, or None
-)
-```
-
-Python decides whether the corresponding Fortran PIO service is called. The
-defaults, `history_every=1` and `restart_every="end"`, preserve the validated
-PI-CAM execution path.
-
-Live StatePool fields can be sampled at every complete step without waiting
-for NetCDF finalization:
-
-```python
-temperature_steps = driver.cam.state.plot_steps(
-    ("T", "u", "v", "q", "omega", "pmid"),
-    rank="global",
-    statistic="mean",
-    level=-1,
-    figsize=(8, 4),
-    label="PI-atm",
-)
-driver.run(steps=10)
-display(temperature_steps)
-```
-
-Captured series from separate cases can be overlaid without retaining either
-case's distributed StatePool:
-
-```python
-comparison = fc.plot_steps(
-    {
-        "PI-atm": control_temperature,
-        "PI-atm-volcanic": volcanic_temperature,
-    },
-    figsize=(8, 4),
-)
-display(comparison)
-```
-
-CAM output is exposed lazily through Xarray after the run:
-
-```python
-print(driver.cam.history.files)
-print(driver.cam.history.streams)
-
-# One diagnostic value per model step. For 3-D temperature, level=-1 selects
-# the lowest model level before the area-weighted horizontal mean.
-axis = driver.cam.history.plot_steps(
-    "T",
-    statistic="global_mean",
-    level=-1,
-    marker="o",
-    label="PI-atm",
-)
-
-with driver.cam.history.open("h0") as history:
-    history["T"].isel(time=-1).plot()
-
-with driver.cam.restart.open("r") as restart:
-    print(restart)
-```
-
-## Build and test
+## Development
 
 ```bash
-uv run pytest -q tests/unit
+uv sync --extra notebook --extra test
+uv run pytest -q
+uv run freecam --help
+git diff --check
 ```
 
-The source inventory, adapter generation, compile validation, runtime loading,
-and 512-rank BFB jobs are implemented by the scripts in [`tools/`](tools/) and
-[`validation/jobs/`](validation/jobs/).
+The 512-rank 50-step scientific gate is submitted with:
 
-## Scope
+```bash
+qsub validation/jobs/pi_cam_exact_cesm_online_50step.pbs
+```
 
-freeCAM currently supports one admitted PI-CAM configuration. Adding another
-CAM configuration requires its own build context and numerical validation;
-the runtime does not silently reuse incompatible COSP, CARMA, or radiation
-state.
+Adding another CAM configuration requires a compatible native build context,
+field bindings, and independent numerical validation. freeCAM does not
+silently reuse PI-atm adapters for incompatible COSP, CARMA, or radiation
+configurations.
+
+## License
+
+See [`LICENSE.txt`](LICENSE.txt), [`LICENSES/`](LICENSES/), and
+[`NOTICE`](NOTICE) for project and third-party terms.
