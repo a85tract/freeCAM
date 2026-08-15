@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 import ctypes
-from contextlib import contextmanager, nullcontext
+from contextlib import contextmanager
 from dataclasses import dataclass
 from hashlib import sha256
 import json
@@ -13,7 +13,7 @@ from pathlib import Path
 import shutil
 import sys
 import traceback
-from typing import Callable, Mapping
+from typing import BinaryIO, Callable, Mapping
 
 import numpy as np
 
@@ -159,6 +159,64 @@ class BoundaryManifest:
         )
 
 
+@dataclass(slots=True)
+class _NpyStepReader:
+    """Read one contiguous step from a rank-local ``.npy`` archive."""
+
+    path: Path
+    shape: tuple[int, ...]
+    dtype: np.dtype
+    data_offset: int
+    handle: BinaryIO
+
+    @classmethod
+    def open(cls, path: Path) -> "_NpyStepReader":
+        inspected = np.load(path, mmap_mode="r", allow_pickle=False)
+        try:
+            if inspected.ndim < 1:
+                raise BoundaryReplayError(
+                    f"boundary array has no step dimension: {path}"
+                )
+            if not inspected.flags.c_contiguous:
+                raise BoundaryReplayError(
+                    f"boundary array must store contiguous step records: {path}"
+                )
+            shape = tuple(int(value) for value in inspected.shape)
+            dtype = np.dtype(inspected.dtype)
+            data_offset = int(inspected.offset)
+        finally:
+            mapping = getattr(inspected, "_mmap", None)
+            if mapping is not None:
+                mapping.close()
+        return cls(
+            path=path,
+            shape=shape,
+            dtype=dtype,
+            data_offset=data_offset,
+            handle=path.open("rb", buffering=0),
+        )
+
+    def read(self, step: int) -> np.ndarray:
+        step_shape = self.shape[1:]
+        step_nbytes = int(np.prod(step_shape, dtype=np.int64)) * int(
+            self.dtype.itemsize
+        )
+        payload = os.pread(
+            self.handle.fileno(),
+            step_nbytes,
+            self.data_offset + int(step) * step_nbytes,
+        )
+        if len(payload) != step_nbytes:
+            raise BoundaryReplayError(
+                f"short boundary read for {self.path} step {step}: "
+                f"{len(payload)} != {step_nbytes} bytes"
+            )
+        return np.frombuffer(payload, dtype=self.dtype).reshape(step_shape)
+
+    def close(self) -> None:
+        self.handle.close()
+
+
 @dataclass(frozen=True, slots=True)
 class OnlineBoundaryContext:
     """Read-only metadata passed to one rank-local online surface update."""
@@ -245,6 +303,7 @@ class _CESMMCTBuffer:
     scope: str
     field_names: tuple[str, ...]
     values: np.ndarray
+    owner: object | None = None
 
 
 _MCTAllocatorCallback = ctypes.CFUNCTYPE(
@@ -512,16 +571,12 @@ class CESMOnlineBoundaryProvider(CAMBoundaryProvider):
 
     The complete CESM component/coupler image lives in the same 512 MPI
     processes as FreeCAM.  Python executes the original coupling actions up to
-    ``component_run_begin``, exposes the exact component-layout x2a NumPy
-    buffer to CAM, then feeds CAM's a2x output back through
-    ``component_run_end``.  MCT arrays never travel through files or sockets.
-
-    The current native bridge also advances an internal shadow CAM to preserve
-    the original component-run state machine.  Its a2x result is replaced by
-    FreeCAM's oracle-checked a2x before the coupler consumes it; comparing that
-    redundant result is available only as a diagnostic.
-    A future native ``external_atm_end`` entry point can remove that redundant
-    calculation without changing this provider contract.
+    ``component_run_begin``, actively queries the native x2a/a2x addresses,
+    and builds zero-copy NumPy views over those rank-local MCT arrays.  FreeCAM
+    writes a2x through that view, then Python explicitly advances the original
+    ATM loop boundary and, once complete, invokes the remaining coupler
+    kernels.  No shadow CAM is run and no Fortran routine calls back into
+    Python.
     """
 
     def __init__(
@@ -530,13 +585,23 @@ class CESMOnlineBoundaryProvider(CAMBoundaryProvider):
         library: str | Path,
         run_dir: str | Path,
         verify_shadow_atmosphere: bool = False,
-        python_owned_internal: bool = True,
+        python_owned_internal: bool = False,
         oracle: str | Path | None = None,
     ) -> None:
         self.library = Path(library).expanduser().resolve()
         self.run_dir = Path(run_dir).expanduser().resolve()
-        self.verify_shadow_atmosphere = bool(verify_shadow_atmosphere)
-        self.python_owned_internal = bool(python_owned_internal)
+        if verify_shadow_atmosphere:
+            raise BoundaryReplayError(
+                "shadow-atmosphere verification was removed with the shadow CAM"
+            )
+        self.verify_shadow_atmosphere = False
+        if python_owned_internal:
+            raise BoundaryReplayError(
+                "reverse Fortran-to-Python allocation callbacks are no longer "
+                "supported; coupled internal arrays remain native and Python "
+                "actively queries zero-copy exchange views"
+            )
+        self.python_owned_internal = False
         self.oracle = (
             None if oracle is None else Path(oracle).expanduser().resolve()
         )
@@ -573,7 +638,7 @@ class CESMOnlineBoundaryProvider(CAMBoundaryProvider):
         seed_run: str | Path,
         run_dir: str | Path,
         verify_shadow_atmosphere: bool = False,
-        python_owned_internal: bool = True,
+        python_owned_internal: bool = False,
         oracle: str | Path | None = None,
     ) -> "CESMOnlineBoundaryProvider":
         """Prepare a private CESM run directory and return an online provider.
@@ -614,8 +679,8 @@ class CESMOnlineBoundaryProvider(CAMBoundaryProvider):
         try:
             with self._provider_directory():
                 function()
-            assert self._registry is not None
-            self._registry.raise_if_failed()
+            if self._registry is not None:
+                self._registry.raise_if_failed()
             if self._heap_registry is not None:
                 self._heap_registry.raise_if_failed()
         except BaseException:
@@ -659,6 +724,62 @@ class CESMOnlineBoundaryProvider(CAMBoundaryProvider):
         )
         self._check(status, f"ATM nested action {action_id}")
         return bool(complete.value)
+
+    def _call_external_atm_iteration(self) -> bool:
+        assert self._native is not None
+        complete = ctypes.c_int32()
+        status = ctypes.c_int32()
+        self._native.pycesm_full_external_atm_iteration_v1(
+            ctypes.byref(complete), ctypes.byref(status)
+        )
+        self._check(status, "external ATM iteration")
+        return bool(complete.value)
+
+    def _query_exchange_buffer(
+        self,
+        exchange_id: int,
+        *,
+        expected_attributes: int,
+        label: str,
+    ) -> _CESMMCTBuffer:
+        """Actively query one native MCT buffer and expose a zero-copy view."""
+
+        assert self._native is not None
+        address = ctypes.c_void_p()
+        nattr = ctypes.c_int32()
+        npoint = ctypes.c_int32()
+        status = ctypes.c_int32()
+        self._native.pycesm_full_exchange_buffer_v1(
+            ctypes.c_int32(exchange_id),
+            ctypes.byref(address),
+            ctypes.byref(nattr),
+            ctypes.byref(npoint),
+            ctypes.byref(status),
+        )
+        self._check(status, f"query {label} exchange buffer")
+        if not address.value or nattr.value <= 0 or npoint.value <= 0:
+            raise BoundaryReplayError(
+                f"native CESM returned an invalid {label} exchange buffer"
+            )
+        if nattr.value != expected_attributes:
+            raise BoundaryReplayError(
+                f"native CESM {label} has {nattr.value} attributes; "
+                f"expected {expected_attributes}"
+            )
+        storage_type = ctypes.c_double * (nattr.value * npoint.value)
+        storage = storage_type.from_address(int(address.value))
+        values = np.ctypeslib.as_array(storage).reshape(
+            (nattr.value, npoint.value), order="F"
+        )
+        return _CESMMCTBuffer(
+            allocation_id=-int(exchange_id),
+            scope="native:atm_exchange",
+            field_names=tuple(
+                f"{label}_{index}" for index in range(nattr.value)
+            ),
+            values=values,
+            owner=storage,
+        )
 
     @staticmethod
     def _action_enabled(
@@ -730,44 +851,8 @@ class CESMOnlineBoundaryProvider(CAMBoundaryProvider):
         # this historical CESM image also contains MPI symbols, and deep binding
         # would select a second, uninitialized MPI runtime inside this process.
         self._native = ctypes.CDLL(str(self.library), mode=ctypes.RTLD_LOCAL)
-        self._registry = _CESMMCTRegistry()
-        if self.python_owned_internal:
-            try:
-                set_heap_allocator = (
-                    self._native.pycesm_fortran_heap_set_allocator_v1
-                )
-            except AttributeError as exc:
-                raise BoundaryReplayError(
-                    "coupled CESM library lacks the Python-owned Fortran heap ABI"
-                ) from exc
-            self._heap_registry = _CESMFortranHeapRegistry()
-            set_heap_allocator.argtypes = (
-                _FortranHeapAllocatorCallback,
-                _FortranHeapReleaseCallback,
-                ctypes.POINTER(ctypes.c_int32),
-            )
-            set_heap_allocator.restype = None
-            heap_status = ctypes.c_int32()
-            set_heap_allocator(
-                self._heap_registry.callback,
-                self._heap_registry.release_callback,
-                ctypes.byref(heap_status),
-            )
-            self._check(heap_status, "Fortran heap allocator registration")
-        set_allocator = self._native.pycesm_mct_set_allocator_v1
-        set_allocator.argtypes = (
-            _MCTAllocatorCallback,
-            _MCTReleaseCallback,
-            ctypes.POINTER(ctypes.c_int32),
-        )
-        set_allocator.restype = None
-        status = ctypes.c_int32()
-        set_allocator(
-            self._registry.callback,
-            self._registry.release_callback,
-            ctypes.byref(status),
-        )
-        self._check(status, "MCT allocator registration")
+        self._registry = None
+        self._heap_registry = None
         self._native.pycesm_full_initialize_action_v1.argtypes = (
             ctypes.c_int32,
             ctypes.c_int32,
@@ -785,6 +870,28 @@ class CESMOnlineBoundaryProvider(CAMBoundaryProvider):
             ctypes.POINTER(ctypes.c_int32),
         )
         self._native.pycesm_full_nested_action_v1.restype = None
+        try:
+            exchange_buffer = self._native.pycesm_full_exchange_buffer_v1
+            external_iteration = (
+                self._native.pycesm_full_external_atm_iteration_v1
+            )
+        except AttributeError as exc:
+            raise BoundaryReplayError(
+                "coupled CESM library lacks the callback-free external ATM ABI"
+            ) from exc
+        exchange_buffer.argtypes = (
+            ctypes.c_int32,
+            ctypes.POINTER(ctypes.c_void_p),
+            ctypes.POINTER(ctypes.c_int32),
+            ctypes.POINTER(ctypes.c_int32),
+            ctypes.POINTER(ctypes.c_int32),
+        )
+        exchange_buffer.restype = None
+        external_iteration.argtypes = (
+            ctypes.POINTER(ctypes.c_int32),
+            ctypes.POINTER(ctypes.c_int32),
+        )
+        external_iteration.restype = None
         self._native.pycesm_full_step_begin_v1.argtypes = (
             ctypes.POINTER(ctypes.c_int32),
             ctypes.POINTER(ctypes.c_int32),
@@ -804,25 +911,17 @@ class CESMOnlineBoundaryProvider(CAMBoundaryProvider):
         self._native.pycesm_full_finalize_action_v1.restype = None
 
         for action_id in _CESM_INITIALIZATION_ACTIONS:
-            assert self._registry is not None
-            scope = (
-                "initialize:atm_initialize"
-                if action_id == 512
-                else f"initialize:action-{action_id}"
+            self._collective(
+                f"initialization action {action_id}",
+                lambda action_id=action_id: self._call_initialize_action(action_id),
             )
-            heap_scope = (
-                self._heap_registry.in_scope(scope)
-                if self._heap_registry is not None
-                else nullcontext()
-            )
-            with self._registry.in_scope(scope), heap_scope:
-                self._collective(
-                    f"initialization action {action_id}",
-                    lambda action_id=action_id: self._call_initialize_action(action_id),
-                )
             if action_id == 512:
-                self._x2a = self._registry.component_exchange(41)
-                self._a2x = self._registry.component_exchange(50)
+                self._x2a = self._query_exchange_buffer(
+                    1, expected_attributes=41, label="x2a"
+                )
+                self._a2x = self._query_exchange_buffer(
+                    2, expected_attributes=50, label="a2x"
+                )
                 self._initial_x2a = self._x2a.values.copy(order="F")
                 self._initial_a2x = self._a2x.values.copy(order="F")
             elif action_id == 529:
@@ -888,6 +987,12 @@ class CESMOnlineBoundaryProvider(CAMBoundaryProvider):
         else:
             if not self._active_coupling_step:
                 self._begin_coupling_step()
+                self._fresh_import = True
+            else:
+                # The source ATM component imports x2a once, outside its
+                # internal do-while loop.  A continuing loop reuses the same
+                # already-imported CAM boundary state.
+                self._fresh_import = False
             values = self._x2a.values
         self._verify_oracle("import", step, values)
         pool.ensure_from_array(
@@ -911,39 +1016,28 @@ class CESMOnlineBoundaryProvider(CAMBoundaryProvider):
             )
         values = np.asarray(pool["cam_out.a2x_rattr"])
         self._verify_oracle("export", step, values)
-        if step == 0:
-            assert self._initial_a2x is not None
-            shadow = self._initial_a2x
-            complete = True
-        elif step == 1:
-            assert self._primed_a2x is not None
-            shadow = self._primed_a2x
-            complete = True
-        else:
-            if not self._active_coupling_step:
-                raise BoundaryReplayError("CAM exported without an active CESM step")
-            complete = False
-            for action_id in range(203, 209):
-                result: list[bool] = []
-                self._collective(
-                    f"shadow ATM action {action_id}",
-                    lambda action_id=action_id, result=result: result.append(
-                        self._call_nested_action(action_id)
-                    ),
-                )
-                if action_id == 208:
-                    complete = bool(result[0])
-            shadow = self._a2x.values.copy(order="F")
-        if self.verify_shadow_atmosphere:
-            if not np.array_equal(values, shadow):
-                raise BoundaryReplayError(
-                    f"FreeCAM a2x differs from the original shadow CAM at step {step}: "
-                    + _first_difference(values, shadow)
-                )
-            self._shadow_matches += 1
         self._a2x.values[...] = values
-        if step >= 2 and complete:
-            self._collective("ATM finish", lambda: self._call_nested_action(209))
+        if step < 2:
+            self._fresh_import = True
+            self._last_export_step = int(step)
+            return
+        if not self._active_coupling_step:
+            raise BoundaryReplayError("CAM exported without an active CESM step")
+        complete = False
+
+        def iterate() -> None:
+            nonlocal complete
+            complete = self._call_external_atm_iteration()
+
+        self._collective("external ATM iteration", iterate)
+        assert self._world is not None
+        complete_count = int(self._world.allreduce(int(complete)))
+        if complete_count not in (0, self._size):
+            raise BoundaryReplayError(
+                "external ATM loop completion differs across MPI ranks"
+            )
+        complete = complete_count == self._size
+        if complete:
             self._collective("ATM component end", lambda: self._call_nested_action(210))
             for action_id in self._remaining_actions:
                 self._collective(
@@ -961,7 +1055,6 @@ class CESMOnlineBoundaryProvider(CAMBoundaryProvider):
             self._active_coupling_step = False
             self._remaining_actions = []
             self._coupling_steps += 1
-        self._fresh_import = bool(step < 2 or complete)
         self._last_export_step = int(step)
 
     def has_fresh_import(self, step: int, rank: int) -> bool:
@@ -986,28 +1079,6 @@ class CESMOnlineBoundaryProvider(CAMBoundaryProvider):
                 self._check(status, f"finalization action {action_id}")
 
             self._collective(f"finalization action {action_id}", invoke)
-        clear_allocator = self._native.pycesm_mct_clear_allocator_v1
-        status = ctypes.c_int32()
-        clear_allocator(ctypes.byref(status))
-        self._check(status, "MCT allocator cleanup")
-        if self._heap_registry is not None:
-            clear_heap_allocator = (
-                self._native.pycesm_fortran_heap_clear_allocator_v1
-            )
-            clear_heap_allocator.argtypes = (
-                ctypes.POINTER(ctypes.c_int64),
-                ctypes.POINTER(ctypes.c_int64),
-                ctypes.POINTER(ctypes.c_int32),
-            )
-            clear_heap_allocator.restype = None
-            live = ctypes.c_int64()
-            total = ctypes.c_int64()
-            heap_status = ctypes.c_int32()
-            clear_heap_allocator(
-                ctypes.byref(live), ctypes.byref(total), ctypes.byref(heap_status)
-            )
-            self._heap_registry.raise_if_failed()
-            self._check(heap_status, "Fortran heap allocator cleanup")
         self._finalized = True
 
     @property
@@ -1020,6 +1091,7 @@ class CESMOnlineBoundaryProvider(CAMBoundaryProvider):
             "exports": self._last_export_step + 1,
             "coupling_steps": self._coupling_steps,
             "shadow_a2x_bfb_steps": self._shadow_matches,
+            "shadow_atmosphere": False,
             "oracle_x2a_bfb_steps": self._oracle_import_matches,
             "oracle_a2x_bfb_steps": self._oracle_export_matches,
             "active_coupling_step": self._active_coupling_step,
@@ -1027,6 +1099,8 @@ class CESMOnlineBoundaryProvider(CAMBoundaryProvider):
                 0 if self._registry is None else len(self._registry.buffers)
             ),
             "python_owned_internal": self.python_owned_internal,
+            "reverse_allocator_callbacks": False,
+            "exchange_storage": "native-mct-zero-copy-view",
             "fortran_heap_live_allocations": (
                 0
                 if self._heap_registry is None
@@ -1276,7 +1350,7 @@ class ReplayBoundaryProvider(CAMBoundaryProvider):
             raise BoundaryReplayError(f"missing boundary manifest {manifest_path}")
         self.manifest = BoundaryManifest.from_path(manifest_path)
         self._rank: int | None = None
-        self._bundle: dict[str, np.ndarray] | None = None
+        self._bundle: dict[str, np.ndarray | _NpyStepReader] | None = None
 
     def initialize(self, *, rank: int, size: int, config_fingerprint: str) -> None:
         if size != self.manifest.rank_count:
@@ -1288,15 +1362,39 @@ class ReplayBoundaryProvider(CAMBoundaryProvider):
         if not 0 <= rank < size:
             raise BoundaryReplayError(f"invalid runtime rank {rank}")
         self._rank = rank
-        if self.manifest.storage == "rank_bundle_v1":
-            path = self.root / self.manifest.file_pattern.format(rank=rank)
-            if not path.is_file():
-                raise BoundaryReplayError(f"missing boundary rank bundle {path}")
-            self._bundle = self._load(path)
+        if self.manifest.storage in {
+            "rank_bundle_v1",
+            "rank_memmap_v1",
+            "rank_pread_v1",
+        }:
+            if self.manifest.storage == "rank_bundle_v1":
+                path = self.root / self.manifest.file_pattern.format(rank=rank)
+                if not path.is_file():
+                    raise BoundaryReplayError(f"missing boundary rank bundle {path}")
+                self._bundle = self._load(path)
+            else:
+                paths = {
+                    "x2a_rattr": self.root
+                    / self.manifest.file_pattern.format(
+                        rank=rank, direction="import"
+                    ),
+                    "a2x_rattr": self.root
+                    / self.manifest.file_pattern.format(
+                        rank=rank, direction="export"
+                    ),
+                }
+                missing = [path for path in paths.values() if not path.is_file()]
+                if missing:
+                    raise BoundaryReplayError(
+                        f"missing boundary rank memory map {missing[0]}"
+                    )
+                self._bundle = {
+                    name: _NpyStepReader.open(path) for name, path in paths.items()
+                }
             expected = self.manifest.step_count
             if any(values.shape[0] != expected for values in self._bundle.values()):
                 raise BoundaryReplayError(
-                    f"boundary rank bundle {path} does not contain {expected} steps"
+                    f"boundary rank bundle does not contain {expected} steps"
                 )
         elif self.manifest.storage != "per_step_v1":
             raise BoundaryReplayError(
@@ -1325,18 +1423,39 @@ class ReplayBoundaryProvider(CAMBoundaryProvider):
             raise BoundaryReplayError(
                 f"boundary step {step} is outside 0..{self.manifest.step_count - 1}"
             )
-        if self.manifest.storage == "rank_bundle_v1":
+        if self.manifest.storage in {
+            "rank_bundle_v1",
+            "rank_memmap_v1",
+            "rank_pread_v1",
+        }:
             if self._bundle is None or self._rank != rank:
                 raise BoundaryReplayError("boundary rank bundle is not initialized")
             name = "x2a_rattr" if direction == "import" else "a2x_rattr"
             try:
-                values = self._bundle[name][step]
+                stored = self._bundle[name]
             except KeyError as exc:
                 raise BoundaryReplayError(
                     f"boundary rank bundle lacks {name!r}"
                 ) from exc
+            values = (
+                stored.read(step)
+                if isinstance(stored, _NpyStepReader)
+                else stored[step]
+            )
             return {name: values}
         return self._load(self._path(step, rank, direction))
+
+    def finalize(self) -> None:
+        if self._bundle is not None:
+            for values in self._bundle.values():
+                if isinstance(values, _NpyStepReader):
+                    values.close()
+                else:
+                    mapping = getattr(values, "_mmap", None)
+                    if mapping is not None:
+                        mapping.close()
+        self._bundle = None
+        self._rank = None
 
     def import_fields(self, step: int, rank: int, pool: PICAMStatePool) -> None:
         if self._rank != rank:

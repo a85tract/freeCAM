@@ -1681,7 +1681,7 @@ class Driver:
             / "cesm"
             / "pi_atm"
             / "production-components"
-            / "libpycesm_support.so"
+            / "libpycesm_external_atm.so"
         ).resolve()
 
     def _resolve_online_seed_run(self) -> Path:

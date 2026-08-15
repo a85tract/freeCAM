@@ -1,0 +1,210 @@
+
+************ PROCESS      0 (     0) ************
+
+$Id: gptl.c,v 1.157 2011-03-28 20:55:18 rosinski Exp $
+GPTL was built without threading
+HAVE_MPI was true
+  HAVE_COMM_F2C was true
+  ENABLE_PMPI was false
+HAVE_PAPI was false
+Underlying timing routine was MPI_Wtime.
+Per-call utr overhead est: 4.707e-08 sec.
+If overhead stats are printed, roughly half the estimated number is
+embedded in the wallclock stats for each timer.
+Print method was most_frequent.
+If a '%_of' field is present, it is w.r.t. the first timer for thread 0.
+If a 'e6_per_sec' field is present, it is in millions of PAPI counts per sec.
+
+A '*' in column 1 below means the timer had multiple parents, though the
+values printed are for all calls.
+Further down the listing may be more detailed information about multiple
+parents. Look for 'Multiple parent info'
+
+Stats for thread 0:
+                                           On  Called Recurse   Wallclock          max          min     UTR Overhead 
+  "CPL:INIT"                                -       1    -      20.163456    20.163456    20.163456         0.000000 
+    "CPL:init_comps"                        -       1    -      17.030039    17.030039    17.030039         0.000000 
+*     "PIO:PIO_openfile"                    -      60    -       2.128231     0.281603     0.004208         0.000006 
+*     "PIO:pio_get_var_1d_double"           -     176    -       0.024503     0.003212     0.000044         0.000017 
+      "shr_reprosum_int"                    -     591    -       0.030496     0.002888     0.000036         0.000056 
+        "repro_sum_loopa"                   -     591    -       0.000067     0.000005     0.000000         0.000056 
+        "repro_sum_allr_minmax"             -     591    -       0.015399     0.001844     0.000016         0.000056 
+        "repro_sum_loopb"                   -     591    -       0.000124     0.000006     0.000000         0.000056 
+        "repro_sum_allr_i8"                 -     591    -       0.013014     0.000607     0.000016         0.000056 
+      "phys_grid_init"                      -       1    -       0.024228     0.024228     0.024228         0.000000 
+*     "PIO:pio_read_darray"                 -     106    -       1.866065     0.094192     0.000097         0.000010 
+        "PIO:pio_read_nf"                   -      49    -       0.001060     0.001042     0.000000         0.000005 
+        "PIO:pio_rearrange_read"            -      49    -       1.479892     0.094184     0.000159         0.000005 
+*     "PIO:PIO_createfile"                  -       2    -       0.101810     0.074723     0.027087         0.000000 
+*     "PIO:PIO_closefile"                   -      42    -       0.000083     0.000061     0.000000         0.000004 
+      "get_phys_decomp"                     -      17    -       0.013936     0.004768     0.000000         0.000002 
+      "PIO:pio_get_var_0d_text"             -      15    -       0.002753     0.000321     0.000071         0.000001 
+      "PIO:pio_get_var_5d_double"           -      12    -       0.006665     0.001700     0.000218         0.000001 
+*     "PIO:pio_get_var_2d_double"           -      28    -       0.039264     0.011772     0.000082         0.000003 
+      "PIO:pio_get_var_0d_double"           -      49    -       0.003811     0.000257     0.000069         0.000005 
+      "PIO:pio_get_vara_1d_double"          -      12    -       0.014200     0.012635     0.000069         0.000001 
+*     "PIO:pio_get_var_1d_int"              -      26    -       0.473782     0.137923     0.000043         0.000002 
+      "PIO:pio_get_vara_2d_double"          -       1    -       0.000583     0.000583     0.000583         0.000000 
+      "PIO:pio_get_var_3d_double"           -       1    -       0.002266     0.002266     0.002266         0.000000 
+      "PIO:pio_get_vara_3d_double"          -       1    -       0.013447     0.013447     0.013447         0.000000 
+      "clm_init1"                           -       1    -       0.814717     0.814717     0.814717         0.000000 
+*       "PIO:PIO_initdecomp_dof"            -      18    -       0.056849     0.013481     0.000693         0.000002 
+          "PIO:pio_rearrange_create_box"    -       5    -       0.014363     0.009297     0.000865         0.000000 
+        "PIO:pio_get_var_1d_text"           -       1    -       0.000038     0.000038     0.000038         0.000000 
+        "gather_1darray_int_total"          -       4    -       0.007550     0.003076     0.001397         0.000000 
+        "scatter_1darray_int_total"         -       4    -       0.001052     0.000289     0.000240         0.000000 
+      "clm_init2"                           -       1    -       0.527048     0.527048     0.527048         0.000000 
+        "init_ecosys"                       -       1    -       0.000030     0.000030     0.000030         0.000000 
+        "init_dust"                         -       1    -       0.000108     0.000108     0.000108         0.000000 
+        "init_io1"                          -       1    -       0.130405     0.130405     0.130405         0.000000 
+        "init_accflds"                      -       1    -       0.000162     0.000162     0.000162         0.000000 
+        "init_io2"                          -       1    -       0.000375     0.000375     0.000375         0.000000 
+        "init_hist1"                        -       1    -       0.007617     0.007617     0.007617         0.000000 
+        "init_filters"                      -       1    -       0.000111     0.000111     0.000111         0.000000 
+        "init_wlog"                         -       1    -       0.000049     0.000049     0.000049         0.000000 
+        "init_orb"                          -       1    -       0.080849     0.080849     0.080849         0.000000 
+        "init_map2gc"                       -       1    -       0.000616     0.000616     0.000616         0.000000 
+      "rtmi_grid"                           y       0    -       0.000000     0.000000     0.000000         0.000000 
+        "rtmi_decomp"                       -       1    -       0.023123     0.023123     0.023123         0.000000 
+        "rtmi_print"                        -       1    -       0.008359     0.008359     0.008359         0.000000 
+        "rtmi_vars"                         -       1    -       0.011199     0.011199     0.011199         0.000000 
+      "CPL:init_maps"                       -       1    -       1.025082     1.025082     1.025082         0.000000 
+      "CPL:init_atminit"                    -       6    -       0.023135     0.011636     0.000132         0.000001 
+      "stepon_run1"                         -       1    -       0.010338     0.010338     0.010338         0.000000 
+        "d_p_coupling"                      -       1    -       0.010336     0.010336     0.010336         0.000000 
+      "phys_run1"                           -       1    -       1.763705     1.763705     1.763705         0.000000 
+        "physpkg_st1"                       -       2    -       1.626184     1.623912     0.002271         0.000000 
+        "bc_physics"                        -       1    -       0.137422     0.137422     0.137422         0.000000 
+      "CPL:init_readrestart"                -       1    -       0.000102     0.000102     0.000102         0.000000 
+      "CPL:init_rof2lnd"                    -       1    -       0.039543     0.039543     0.039543         0.000000 
+    "CPL:RUN_LOOP_BSTART"                   -       1    -       0.000636     0.000636     0.000636         0.000000 
+    "CPL:RUN_LOOP"                          -    1488    -     451.273163     6.140594     0.241086         0.000140 
+*     "CPL:RUN"                             -   21328    -      21.114746     1.259808     0.000001         0.002008 
+        "CPL:CLOCK_ADVANCE"                 -    1488    -       0.158206     0.005787     0.000090         0.000140 
+        "CPL:OCNPRE1"                       -    1488    -      13.252410     0.233400     0.001037         0.000140 
+        "CPL:LNDPREP"                       -    1488    -       0.072085     0.006116     0.000026         0.000140 
+        "CPL:ICEPREP"                       -    1488    -       0.466979     0.002638     0.000075         0.000140 
+        "CPL:ROFPREP"                       -     248    -       0.147723     0.031710     0.000309         0.000023 
+        "CPL:ATMOCNP"                       -    1488    -       0.152115     0.000520     0.000017         0.000140 
+        "CPL:LNDPOST"                       -    1488    -       0.024377     0.000081     0.000007         0.000140 
+        "CPL:ROFPOST"                       -     248    -       1.197754     0.008236     0.000231         0.000023 
+        "CPL:ICEPOST"                       -    1488    -       0.000776     0.000002     0.000000         0.000140 
+        "CPL:FRACSET"                       -    1488    -       0.351744     0.014663     0.000116         0.000140 
+        "CPL:ATMPREP"                       -    1488    -       3.992732     0.022373     0.002197         0.000140 
+        "CPL:ATMPOST"                       -    1488    -       0.000596     0.000001     0.000000         0.000140 
+        "CPL:HISTORY"                       -    1488    -       0.002763     0.000020     0.000000         0.000140 
+        "CPL:TSTAMP_WRITE"                  -    1488    -       0.006555     0.000316     0.000000         0.000140 
+        "CPL:TPROF_WRITE"                   -    1488    -       0.000260     0.000001     0.000000         0.000140 
+        "CPL:OCNPOSTT"                      -    1487    -       0.000559     0.000002     0.000000         0.000140 
+        "CPL:RESTART"                       -       1    -       1.259805     1.259805     1.259805         0.000000 
+      "CPL:COMM"                            -   10911    -      21.325216     0.231145     0.000040         0.001027 
+        "CPL:C2L"                           -    1488    -       0.167155     0.003714     0.000064         0.000140 
+        "CPL:C2I"                           -    1488    -       2.497454     0.006772     0.000076         0.000140 
+        "CPL:C2R"                           -     248    -       0.171459     0.005914     0.000356         0.000023 
+        "CPL:L2C"                           -    1488    -       0.175951     0.007732     0.000047         0.000140 
+        "CPL:R2C"                           -     248    -       0.252762     0.040105     0.000111         0.000023 
+        "CPL:I2C"                           -    1488    -       2.268598     0.039006     0.000072         0.000140 
+        "CPL:C2A"                           -    1488    -       0.408128     0.003932     0.000090         0.000140 
+        "CPL:A2C"                           -    1488    -      13.707993     0.215667     0.000105         0.000140 
+        "CPL:O2CT"                          -    1487    -       1.660261     0.231143     0.000040         0.000140 
+      "CPL:LND_RUN"                         -    1488    -      18.275091     1.508818     0.006598         0.000140 
+        "lc_lnd_import"                     -    1488    -       0.021288     0.000180     0.000005         0.000140 
+        "clm_run"                           -    1489    -      18.029415     1.508648     0.006410         0.000140 
+        "lc_lnd_export"                     -    1489    -       0.006820     0.000077     0.000002         0.000140 
+        "lc_clm2_adv_timestep"              -    1489    -       0.001194     0.000006     0.000000         0.000140 
+      "CPL:ROF_RUN"                         -     248    -       1.283759     0.187800     0.003242         0.000023 
+        "lc_rof_import"                     -     248    -       0.014766     0.000106     0.000019         0.000023 
+        "RTMrun"                            -     248    -       1.122568     0.187161     0.002726         0.000023 
+        "lc_rof_export"                     -     248    -       0.020806     0.000281     0.000043         0.000023 
+      "CPL:ATM_RUN"                         -    1488    -     388.608612     3.260914     0.211244         0.000140 
+*       "PIO:pio_write_darray"              -      92    -       0.155162     0.004529     0.001403         0.000009 
+          "PIO:pre_pio_write_nf"            -       1    -       0.000910     0.000910     0.000910         0.000000 
+          "PIO:pio_write_nf"                -       1    -       0.000019     0.000019     0.000019         0.000000 
+        "CAM_import"                        -    1488    -       0.027427     0.000115     0.000005         0.000140 
+        "CAM_run2"                          -    1489    -      44.602898     0.257948     0.024590         0.000140 
+        "CAM_run3"                          -    1489    -     162.449265     2.845448     0.101490         0.000140 
+        "CAM_run4"                          -    1489    -      15.122699     2.651567     0.000009         0.000140 
+        "CAM_adv_timestep"                  -    1489    -       0.003526     0.000016     0.000001         0.000140 
+        "CAM_run1"                          -    1489    -     165.940369     1.054021     0.073503         0.000140 
+        "CAM_export"                        -    1489    -       0.008729     0.000025     0.000003         0.000140 
+    "CPL:RUN_LOOP_BSTOP"                    -       1    -       0.047221     0.047221     0.047221         0.000000 
+    "CPL:FINAL"                             -       1    -       0.002536     0.002536     0.002536         0.000000 
+    "t_prf"                                 y       0    -       0.000000     0.000000     0.000000         0.000000 
+
+Overhead sum =   0.00848 wallclock seconds
+Total calls  = 90074
+
+Multiple parent info for thread 0:
+Columns are count and name for the listed child
+Rows are each parent, with their common child being the last entry, which is indented.
+Count next to each parent is the number of times it called the child.
+Count next to child is total number of times it was called by the listed parents.
+
+      52 CPL:init_comps                  
+       5 clm_init1                       
+       1 clm_init2                       
+       2 rtmi_grid                       
+      60   PIO:PIO_openfile                
+
+      97 CPL:init_comps                  
+      79 clm_init1                       
+     176   PIO:pio_get_var_1d_double       
+
+       5 CPL:init_comps                  
+       4 get_phys_decomp                 
+       7 clm_init1                       
+       1 rtmi_grid                       
+       1 CPL:ATM_RUN                     
+      18   PIO:PIO_initdecomp_dof          
+
+      49 CPL:init_comps                  
+      37 clm_init1                       
+      12 clm_init2                       
+       8 rtmi_grid                       
+     106   PIO:pio_read_darray             
+
+       1 CPL:init_comps                  
+       1 CPL:ATM_RUN                     
+       2   PIO:PIO_createfile              
+
+       1 CPL:init_comps                  
+      91 CPL:ATM_RUN                     
+      92   PIO:pio_write_darray            
+
+      31 CPL:init_comps                  
+       5 clm_init1                       
+       1 clm_init2                       
+       2 rtmi_grid                       
+       1 CPL:ATM_RUN                     
+       2 CPL:FINAL                       
+      42   PIO:PIO_closefile               
+
+      25 CPL:init_comps                  
+       3 rtmi_grid                       
+      28   PIO:pio_get_var_2d_double       
+
+      20 CPL:init_comps                  
+       6 clm_init1                       
+      26   PIO:pio_get_var_1d_int          
+
+   19840 CPL:RUN_LOOP                    
+    1488 CPL:INIT                        
+   21328   CPL:RUN                         
+
+
+thread 0 had some hash collisions:
+hashtable[0][603] had 2 entries: repro_sum_loopa CPL:COMM
+hashtable[0][1194] had 2 entries: CPL:init_maps CAM_run1
+Total collisions thread 0 = 2
+Entry information:
+num_zero = 1942 num_one = 104 num_two = 2 num_more = 0
+Most = 2
+
+Thread 0 total memory usage = 65.76 KB
+  Hashmem                   = 32.768 KB
+  Regionmem                 = 31.104 KB (papimem portion = 0 KB)
+  Parent/child arrays       = 1.888 KB
+
+Total memory usage all threads = 65.76 KB
+
+threadid[0] = 0

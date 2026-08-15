@@ -1,0 +1,54 @@
+#!/bin/bash
+#PBS -N freecam-stream-50
+#PBS -q develop
+#PBS -l select=4:ncpus=64:mpiprocs=128:ompthreads=1:mem=64GB
+#PBS -l walltime=00:20:00
+#PBS -j oe
+#PBS -o /glade/work/ruitong/freeCAM/logs/
+#PBS -V
+
+set -euo pipefail
+
+repo=/glade/work/${USER}/freeCAM
+case_root=/glade/work/${USER}/CESM_cases/f.e13.F1850C5.ne16_g16.icesm131_ihesp.PI-cam-oracle.50step
+oracle_run=/glade/derecho/scratch/${USER}/pyCAM/PI-cam/f.e13.F1850C5.ne16_g16.icesm131_ihesp.PI-cam-oracle.50step/run
+output_root=/glade/derecho/scratch/${USER}/freeCAM/PI-cam/stream-boundary-50step
+run_dir=${output_root}/run
+capture_root=${output_root}/boundary
+capture_prefix=${capture_root}/raw/pi_cam
+replay_root=${capture_root}/replay
+executable=${repo}/build/pi_cam_stream/pi_cam_capture.exe
+
+source "${case_root}/.env_mach_specific.sh" >/dev/null 2>&1
+rm -rf "${output_root}"
+mkdir -p "${capture_root}/raw" "${run_dir}"
+rsync -a \
+  --exclude 'f.e13.F1850C5.ne16_g16.icesm131_ihesp.PI-cam-oracle.50step.*' \
+  --exclude '*.log.*' --exclude 'rpointer.*' --exclude 'timing/' \
+  "${oracle_run}/" "${run_dir}/"
+mkdir -p "${run_dir}/timing/checkpoints"
+
+export PYCAM_BOUNDARY_CAPTURE=${capture_prefix}
+export PYCAM_BOUNDARY_CAPTURE_MODE=stream
+export OMP_NUM_THREADS=1
+export OMP_STACKSIZE=64M
+export FI_CXI_RX_MATCH_MODE=hybrid
+export FI_MR_CACHE_MONITOR=memhooks
+
+cd "${run_dir}"
+mpiexec --label -n 512 \
+  "${executable}" > cesm.log.pi-cam-stream-capture-50step 2>&1
+
+cd "${repo}"
+PYTHONPATH=${repo}/src ${repo}/.venv/bin/python \
+  tools/convert_pi_cam_boundary.py \
+  --capture-prefix "${capture_prefix}" \
+  --output "${replay_root}" \
+  --config configs/pi_cam_icesm131_replay.yaml \
+  --summary validation/pi_cam_stream_boundary_50step.json
+
+PYTHONPATH=${repo}/src ${repo}/.venv/bin/python \
+  tools/verify_pi_cam.py \
+  --reference "${oracle_run}" \
+  --candidate "${run_dir}" \
+  --output validation/pi_cam_stream_capture_vs_oracle_50step_bfb.json

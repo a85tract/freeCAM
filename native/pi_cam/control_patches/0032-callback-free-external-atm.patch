@@ -1,0 +1,184 @@
+--- a/components/cam/src/cpl/atm_comp_mct.F90
++++ b/components/cam/src/cpl/atm_comp_mct.F90
+@@ -66,6 +66,7 @@
+   public :: atm_run_granular_action_mct
+   public :: atm_run_physics_action_mct
+   public :: atm_run_end_mct
++  public :: atm_run_external_iteration_mct
+   public :: atm_final_mct
+ 
+ !--------------------------------------------------------------------------
+@@ -808,6 +809,57 @@
+ 
+  !================================================================================
+ 
++  subroutine atm_run_external_iteration_mct(EClock, cdata_a, x2a_a, a2x_a, &
++      loop_complete, status)
++
++    ! FreeCAM has already executed one atmospheric numerical timestep and
++    ! written a2x_a.  Reproduce only the control state at the original
++    ! do-while boundary: advance the private CAM clock once, decide whether
++    ! this ATM component call needs another internal timestep, and run the
++    ! non-numerical end lifecycle only when the loop is complete.  No CAM
++    ! physics, dynamics, import, export, or shadow atmosphere is executed.
++    type(ESMF_Clock), intent(inout) :: EClock
++    type(seq_cdata) , intent(inout) :: cdata_a
++    type(mct_aVect) , intent(inout) :: x2a_a
++    type(mct_aVect) , intent(inout) :: a2x_a
++    logical         , intent(out)   :: loop_complete
++    integer         , intent(out)   :: status
++    integer :: day, mon, tod, yr, ymd
++
++    status = 0
++    loop_complete = .false.
++    if (.not. pycam_run_active) then
++       status = 3
++       return
++    endif
++    if (pycam_expected_action /= 202) then
++       status = 4
++       return
++    endif
++
++    ! In the original atm_run_mct loop, dosend is sampled before the numerical
++    ! timestep, advance_timestep is called once, and a false dosend causes the
++    ! loop to continue without returning to the coupler.  Preserve precisely
++    ! that state transition while Python owns the numerical timestep.
++    loop_complete = pycam_dosend
++    call advance_timestep()
++    if (.not. loop_complete) then
++       ! dosend for the next internal iteration is evaluated at the new CAM
++       ! current time, not at the offset time used by atm_run_end_mct.
++       call get_curr_date(yr, mon, day, tod)
++       ymd = yr*10000 + mon*100 + day
++       pycam_dosend = seq_timemgr_EClockDateInSync(EClock, ymd, tod)
++       pycam_rstwr = pycam_rstwr_sync .and. pycam_dosend
++       pycam_nlend = pycam_nlend_sync .and. pycam_dosend
++       pycam_expected_action = 202
++       return
++    endif
++    pycam_expected_action = 208
++    call atm_run_end_mct(EClock, cdata_a, x2a_a, a2x_a, status)
++ end subroutine atm_run_external_iteration_mct
++
++ !================================================================================
++
+  subroutine atm_run_mct( EClock, cdata_a, x2a_a, a2x_a)
+ 
+     !-----------------------------------------------------------------------
+--- a/cime/src/drivers/mct/main/cesm_comp_mod.F90
++++ b/cime/src/drivers/mct/main/cesm_comp_mod.F90
+@@ -1,5 +1,7 @@
+ module cesm_comp_mod
+ 
++   use, intrinsic :: iso_c_binding, only: c_loc, c_null_ptr, c_ptr
++
+ !-------------------------------------------------------------------------------
+ !
+ ! Purpose: Main program for NCAR CESM4/cpl7. Can have different
+@@ -57,6 +59,7 @@
+    use atm_comp_mct  , only: atm_run_granular_action=>atm_run_granular_action_mct
+    use atm_comp_mct  , only: atm_run_physics_action=>atm_run_physics_action_mct
+    use atm_comp_mct  , only: atm_run_end=>atm_run_end_mct
++   use atm_comp_mct  , only: atm_run_external_iteration=>atm_run_external_iteration_mct
+    use lnd_comp_mct  , only: lnd_init=>lnd_init_mct, lnd_run=>lnd_run_mct, lnd_final=>lnd_final_mct
+    use ocn_comp_mct  , only: ocn_init=>ocn_init_mct, ocn_run=>ocn_run_mct, ocn_final=>ocn_final_mct
+    use ice_comp_mct  , only: ice_init=>ice_init_mct, ice_run=>ice_run_mct, ice_final=>ice_final_mct
+@@ -175,6 +178,7 @@
+    public cesm_physics_action_call
+    public cesm_step_begin, cesm_step_end, cesm_run_finish
+    public cesm_final_action_call
++   public cesm_external_atm_iteration, cesm_exchange_buffer_query
+ #ifdef USE_ESMF_LIB
+    public cesm_comp_register
+ #endif
+@@ -4085,6 +4089,89 @@
+ 
+ !===============================================================================
+ 
++ subroutine cesm_external_atm_iteration(loop_complete, status)
++   implicit none
++   integer, intent(out) :: loop_complete
++   integer, intent(out) :: status
++   integer :: action_status
++   logical :: atm_loop_complete
++
++   loop_complete = 0
++   status = 0
++   action_status = 0
++   atm_loop_complete = .false.
++   if (.not. pycesm_step_active .or. .not. pycesm_atm_nested_active) then
++      status = 3
++      return
++   endif
++   if (.not. atmrun_alarm .or. pycesm_nested_expected_action /= 202) then
++      status = 5
++      return
++   endif
++
++   call atm_run_external_iteration(Eclock_a,atm(ens1)%cdata_cc, &
++        atm(ens1)%x2c_cc,atm(ens1)%c2x_cc,atm_loop_complete, &
++        action_status)
++   if (action_status /= 0) then
++      status = action_status
++      return
++   endif
++   if (atm_loop_complete) then
++      loop_complete = 1
++      pycesm_nested_expected_action = 209
++   else
++      ! The original ATM do-while loop remains inside the same component and
++      ! CESM driver step.  Python will provide the next external CAM timestep
++      ! before any component_end or post-ATM coupler action is allowed.
++      pycesm_nested_expected_action = 202
++   endif
++ end subroutine cesm_external_atm_iteration
++
++!===============================================================================
++
++ subroutine cesm_exchange_buffer_query(exchange_id, address, nattr, npoint, &
++      status)
++   implicit none
++   integer, intent(in) :: exchange_id
++   type(c_ptr), intent(out) :: address
++   integer, intent(out) :: nattr
++   integer, intent(out) :: npoint
++   integer, intent(out) :: status
++
++   address = c_null_ptr
++   nattr = 0
++   npoint = 0
++   status = 0
++   if (num_inst_atm < 1) then
++      status = 3
++      return
++   endif
++   select case (exchange_id)
++   case (1)
++      if (.not. associated(atm(ens1)%x2c_cc%rattr)) then
++         status = 4
++         return
++      endif
++      nattr = size(atm(ens1)%x2c_cc%rattr, 1)
++      npoint = size(atm(ens1)%x2c_cc%rattr, 2)
++      if (nattr > 0 .and. npoint > 0) &
++           address = c_loc(atm(ens1)%x2c_cc%rattr(1,1))
++   case (2)
++      if (.not. associated(atm(ens1)%c2x_cc%rattr)) then
++         status = 4
++         return
++      endif
++      nattr = size(atm(ens1)%c2x_cc%rattr, 1)
++      npoint = size(atm(ens1)%c2x_cc%rattr, 2)
++      if (nattr > 0 .and. npoint > 0) &
++           address = c_loc(atm(ens1)%c2x_cc%rattr(1,1))
++   case default
++      status = 1
++   end select
++ end subroutine cesm_exchange_buffer_query
++
++!===============================================================================
++
+  subroutine cesm_cam_action_call(action_id, loop_complete, status)
+    implicit none
+    integer, intent(in) :: action_id

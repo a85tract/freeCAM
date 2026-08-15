@@ -128,7 +128,7 @@ driver.run()
 ```
 
 The provider library is discovered at
-`build/cesm/pi_atm/production-components/libpycesm_support.so`, and the seed
+`build/cesm/pi_atm/production-components/libpycesm_external_atm.so`, and the seed
 run at `$SCRATCH/pyCESM/PI-atm/oracle-1month/run`. Advanced installations can
 override those locations with `FREECAM_CESM_PROVIDER_LIBRARY` and
 `FREECAM_CESM_PROVIDER_SEED`. Preparation happens lazily at the first live
@@ -138,7 +138,9 @@ The original CLM-SP, CICE%PRES, DOCN%DOM, RTM, and CESM
 mapping/fraction/flux kernels execute on all 512 ranks. At each atmosphere
 boundary, freeCAM writes rank-local a2x directly into the live MCT array and
 receives the next rank-local x2a in memory. No per-step boundary file is read
-or written.
+or written. Python actively queries the Fortran-owned MCT addresses and builds
+zero-copy NumPy views; Fortran never calls a Python allocator callback. The
+coupled image does not run a shadow CAM: FreeCAM is the only atmosphere.
 
 For a custom technical experiment, an explicit Python surface callback can
 replace the default provider:

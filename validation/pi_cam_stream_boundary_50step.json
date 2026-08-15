@@ -1,0 +1,54 @@
+{
+  "case_name": "f.e13.F1850C5.ne16_g16.icesm131_ihesp.PI-cam-oracle.50step",
+  "config_fingerprint": "b83afba46bf7298a4061e2400b55658af61675d039196f5b774eb364affb8faa",
+  "fields": {
+    "export": {
+      "a2x_rattr": "rank-local MCT a2x real attributes"
+    },
+    "import": {
+      "x2a_rattr": "rank-local MCT x2a real attributes"
+    }
+  },
+  "file_pattern": "rank-{rank:04d}.npz",
+  "held_import_steps": [
+    3
+  ],
+  "rank_count": 512,
+  "rank_local_shapes": {
+    "export": [
+      [
+        50,
+        26
+      ],
+      [
+        50,
+        27
+      ],
+      [
+        50,
+        28
+      ]
+    ],
+    "import": [
+      [
+        41,
+        26
+      ],
+      [
+        41,
+        27
+      ],
+      [
+        41,
+        28
+      ]
+    ]
+  },
+  "raw_file_count": 512,
+  "raw_record_count": 53760,
+  "reconstructed_held_imports": 512,
+  "schema_version": 1,
+  "source_storage": "rank_stream_v2",
+  "step_count": 53,
+  "storage": "rank_bundle_v1"
+}

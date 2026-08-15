@@ -13,7 +13,26 @@ from freecam.pi_cam import (
     prepare_cesm_online_run,
     write_boundary_payload,
 )
-from freecam.pi_cam.boundary import _CESMFortranHeapRegistry, _CESMMCTRegistry
+from freecam.pi_cam.boundary import (
+    _CESMMCTBuffer,
+    _CESMFortranHeapRegistry,
+    _CESMMCTRegistry,
+    _NpyStepReader,
+)
+
+
+class _OneRankWorld:
+    def allreduce(self, value):
+        return value
+
+    def allgather(self, value):
+        return [value]
+
+
+class _SuccessfulStepEnd:
+    @staticmethod
+    def pycesm_full_step_end_v1(status) -> None:
+        status._obj.value = 0
 
 
 def test_replay_boundary_loads_import_and_compares_export_bitwise(tmp_path) -> None:
@@ -72,6 +91,36 @@ def test_rank_bundle_replay_keeps_all_steps_in_one_rank_file(tmp_path) -> None:
 
     provider.export_fields(1, 0, pool)
     assert np.array_equal(pool["cam_in.x2a_rattr"], imports[1])
+
+
+def test_rank_pread_replay_reads_only_the_requested_step(tmp_path) -> None:
+    (tmp_path / "manifest.json").write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "rank_count": 1,
+                "step_count": 2,
+                "storage": "rank_pread_v1",
+                "file_pattern": "rank-{rank:04d}-{direction}.npy",
+            }
+        )
+    )
+    imports = np.arange(12.0).reshape((2, 2, 3))
+    exports = np.arange(8.0).reshape((2, 2, 2))
+    np.save(tmp_path / "rank-0000-import.npy", imports)
+    np.save(tmp_path / "rank-0000-export.npy", exports)
+    provider = ReplayBoundaryProvider(tmp_path)
+    pool = PICAMStatePool({})
+
+    provider.initialize(rank=0, size=1, config_fingerprint="unused")
+
+    assert isinstance(provider._bundle["x2a_rattr"], _NpyStepReader)
+    provider.import_fields(1, 0, pool)
+    np.copyto(pool["cam_out.a2x_rattr"], exports[1])
+    provider.export_fields(1, 0, pool)
+    assert np.array_equal(pool["cam_in.x2a_rattr"], imports[1])
+    provider.finalize()
+    assert provider._bundle is None
 
 
 def _online_bootstrap(tmp_path, *, ranks=1):
@@ -231,8 +280,94 @@ def test_exact_cesm_provider_is_pickle_safe_before_mpi_initialization(
     assert restored.library == (tmp_path / "libcesm.so").resolve()
     assert restored.run_dir == (tmp_path / "run").resolve()
     assert restored.oracle == (tmp_path / "oracle").resolve()
-    assert restored.python_owned_internal
+    assert not restored.python_owned_internal
     assert not restored.verify_shadow_atmosphere
+
+
+def test_exact_cesm_provider_rejects_reverse_allocator_callbacks(tmp_path) -> None:
+    with pytest.raises(BoundaryReplayError, match="reverse Fortran-to-Python"):
+        CESMOnlineBoundaryProvider(
+            library=tmp_path / "libcesm.so",
+            run_dir=tmp_path / "run",
+            python_owned_internal=True,
+        )
+
+
+def test_exact_cesm_provider_rejects_shadow_atmosphere(tmp_path) -> None:
+    with pytest.raises(BoundaryReplayError, match="shadow CAM"):
+        CESMOnlineBoundaryProvider(
+            library=tmp_path / "libcesm.so",
+            run_dir=tmp_path / "run",
+            verify_shadow_atmosphere=True,
+        )
+
+
+def test_exact_cesm_provider_preserves_first_atm_internal_loop(tmp_path, monkeypatch) -> None:
+    provider = CESMOnlineBoundaryProvider(
+        library=tmp_path / "libcesm.so",
+        run_dir=tmp_path,
+    )
+    provider._rank = 0
+    provider._size = 1
+    provider._world = _OneRankWorld()
+    provider._native = _SuccessfulStepEnd()
+    provider._initial_x2a = np.zeros((2, 3), order="F")
+    provider._x2a = _CESMMCTBuffer(
+        allocation_id=-1,
+        scope="test",
+        field_names=("x0", "x1"),
+        values=np.ones((2, 3), order="F"),
+    )
+    provider._a2x = _CESMMCTBuffer(
+        allocation_id=-2,
+        scope="test",
+        field_names=("a0", "a1"),
+        values=np.zeros((2, 3), order="F"),
+    )
+    pool = PICAMStatePool({})
+    starts: list[int] = []
+    nested: list[int] = []
+
+    def begin() -> None:
+        starts.append(provider._next_import_step)
+        provider._active_coupling_step = True
+        provider._remaining_actions = []
+
+    completions = iter((False, True))
+    monkeypatch.setattr(provider, "_begin_coupling_step", begin)
+    monkeypatch.setattr(
+        provider, "_call_external_atm_iteration", lambda: next(completions)
+    )
+    monkeypatch.setattr(
+        provider,
+        "_call_nested_action",
+        lambda action_id: nested.append(action_id) or False,
+    )
+
+    # The first two records belong to CAM startup and do not lease a CESM
+    # coupling step.
+    provider.import_fields(0, 0, pool)
+    provider.export_fields(0, 0, pool)
+    provider.import_fields(1, 0, pool)
+    provider.export_fields(1, 0, pool)
+    assert starts == []
+
+    # Boundary 2 starts the first real CESM step.  Its first ATM iteration is
+    # incomplete, so boundary 3 must reuse the same import and same native
+    # component invocation.
+    provider.import_fields(2, 0, pool)
+    assert provider.has_fresh_import(2, 0)
+    provider.export_fields(2, 0, pool)
+    assert provider._active_coupling_step
+
+    provider.import_fields(3, 0, pool)
+    assert not provider.has_fresh_import(3, 0)
+    provider.export_fields(3, 0, pool)
+
+    assert starts == [2]
+    assert nested == [210]
+    assert provider._coupling_steps == 1
+    assert not provider._active_coupling_step
 
 
 def test_exact_cesm_provider_prepares_only_startup_inputs(tmp_path) -> None:

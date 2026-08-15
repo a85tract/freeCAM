@@ -1,0 +1,25 @@
+#!/bin/bash
+#PBS -N freecam-convert-1year
+#PBS -q develop
+#PBS -l select=1:ncpus=1:mpiprocs=1:ompthreads=1:mem=80GB
+#PBS -l walltime=02:00:00
+#PBS -j oe
+#PBS -o /glade/work/ruitong/freeCAM/logs/
+#PBS -V
+
+set -euo pipefail
+
+repo=/glade/work/${USER}/freeCAM
+output_root=/glade/derecho/scratch/${USER}/freeCAM/PI-cam/stream-boundary-1year
+capture_prefix=${output_root}/boundary/raw/pi_cam
+replay_root=${output_root}/boundary/replay
+
+rm -rf "${replay_root}"
+cd "${repo}"
+PYTHONPATH=${repo}/src ${repo}/.venv/bin/python \
+  tools/convert_pi_cam_boundary.py \
+  --capture-prefix "${capture_prefix}" \
+  --output "${replay_root}" \
+  --config configs/pi_cam_icesm131_1year.yaml \
+  --summary validation/pi_cam_stream_boundary_1year.json
+

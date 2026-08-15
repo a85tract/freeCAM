@@ -1,0 +1,27 @@
+#!/bin/bash
+#PBS -N freecam-stream-build
+#PBS -q develop
+#PBS -l select=1:ncpus=1:mpiprocs=1:ompthreads=1:mem=80GB
+#PBS -l walltime=00:30:00
+#PBS -j oe
+#PBS -o /glade/work/ruitong/freeCAM/logs/
+#PBS -V
+
+set -euo pipefail
+
+repo=/glade/work/${USER}/freeCAM
+python=${repo}/.venv/bin/python
+case_root=/glade/work/${USER}/CESM_cases/f.e13.F1850C5.ne16_g16.icesm131_ihesp.PI-cam-oracle.50step
+source_root=${repo}/external/iCESM1.3.1_fzhu
+output_root=${repo}/build/pi_cam_stream
+
+source "${case_root}/.env_mach_specific.sh" >/dev/null 2>&1
+export PYTHONPATH=${repo}/src
+
+cd "${repo}"
+mkdir -p "${output_root}"
+"${python}" tools/build_pi_cam_capture.py \
+  --case "${case_root}" \
+  --source-root "${source_root}" \
+  --output "${output_root}/pi_cam_capture.exe" \
+  --manifest "${output_root}/capture-manifest.json"

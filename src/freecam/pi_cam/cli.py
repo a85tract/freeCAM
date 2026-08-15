@@ -93,13 +93,25 @@ def main(argv: list[str] | None = None) -> int:
     created_addresses = {
         name: int(values.ctypes.data) for name, values in cam.pool.items()
     }
+    # Measure collective lifecycle boundaries, not rank 0's local arrival
+    # time. These barriers do not alter any CAM numerical operation.
+    world.Barrier()
+    total_started = MPI.Wtime()
     with cam:
+        world.Barrier()
+        initialize_started = MPI.Wtime()
         cam.initialize()
+        world.Barrier()
+        initialize_seconds = MPI.Wtime() - initialize_started
         python_initialized_addresses = cam.python_initialized_addresses
         initialized_addresses = {
             name: int(values.ctypes.data) for name, values in cam.pool.items()
         }
+        world.Barrier()
+        advance_started = MPI.Wtime()
         cam.advance(args.steps)
+        world.Barrier()
+        advance_seconds = MPI.Wtime() - advance_started
         final_addresses = {
             name: int(values.ctypes.data) for name, values in cam.pool.items()
         }
@@ -168,7 +180,14 @@ def main(argv: list[str] | None = None) -> int:
             "stable_preinitialized_addresses": len(stable_names),
             "addresses_unchanged": not changed_addresses,
             "boundary": dict(getattr(boundary, "diagnostics", {})),
+            "initialize_seconds": initialize_seconds,
+            "advance_seconds": advance_seconds,
         }
+        world.Barrier()
+        finalize_started = MPI.Wtime()
+    world.Barrier()
+    local["finalize_seconds"] = MPI.Wtime() - finalize_started
+    local["total_seconds"] = MPI.Wtime() - total_started
     finalized_addresses = {
         name: int(values.ctypes.data) for name, values in cam.pool.items()
     }
@@ -216,13 +235,31 @@ def main(argv: list[str] | None = None) -> int:
                 for record in records
             )
         )
+        steps = args.steps if args.steps is not None else case.config.stop_n
+        timing = {
+            "clock": "MPI.Wtime with MPI barriers",
+            "aggregation": "maximum across all MPI ranks",
+            "initialize_seconds": max(
+                record["initialize_seconds"] for record in records
+            ),
+            "advance_seconds": max(record["advance_seconds"] for record in records),
+            "finalize_seconds": max(
+                record["finalize_seconds"] for record in records
+            ),
+            "total_seconds": max(record["total_seconds"] for record in records),
+        }
+        simulated_days = steps * case.config.timestep_seconds / 86400.0
+        timing["simulated_days"] = simulated_days
+        timing["advance_sypd"] = (
+            simulated_days / 365.0 * 86400.0 / timing["advance_seconds"]
+        )
         summary = {
             "schema_version": 1,
             "run_status": "passed",
             "case": case.config.case_name,
             "pbs_job_id": os.environ.get("PBS_JOBID"),
             "mpi_ranks": world.Get_size(),
-            "steps": args.steps if args.steps is not None else case.config.stop_n,
+            "steps": steps,
             "execution_mode": case.config.execution_mode,
             "boundary_mode": case.config.boundary_mode,
             "boundary_provider": type(boundary).__name__,
@@ -277,6 +314,7 @@ def main(argv: list[str] | None = None) -> int:
             ),
             "final_date": records[0]["date"],
             "final_seconds": records[0]["seconds"],
+            "timing": timing,
             **native_evidence,
         }
         text = json.dumps(summary, indent=2, sort_keys=True) + "\n"
