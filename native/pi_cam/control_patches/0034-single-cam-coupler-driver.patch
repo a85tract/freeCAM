@@ -1,0 +1,242 @@
+/glade/campaign/cesm/tutorial/tutorial_2025_env/tutorial_2025_profile: line 7: module: command not found
+/glade/campaign/cesm/tutorial/tutorial_2025_env/tutorial_2025_profile: line 8: module: command not found
+/glade/campaign/cesm/tutorial/tutorial_2025_env/tutorial_2025_profile: line 9: module: command not found
+/glade/campaign/cesm/tutorial/tutorial_2025_env/tutorial_2025_profile: line 10: module: command not found
+/glade/campaign/cesm/tutorial/tutorial_2025_env/tutorial_2025_profile: line 11: module: command not found
+/glade/campaign/cesm/tutorial/tutorial_2025_env/tutorial_2025_profile: line 12: module: command not found
+--- a/cime/src/drivers/mct/main/component_mod.F90
++++ b/cime/src/drivers/mct/main/component_mod.F90
+@@ -49,6 +49,8 @@
+ 
+   public :: component_init_pre
+   public :: component_init_cc            ! mct and esmf versions
++  public :: component_init_external_begin
++  public :: component_init_external_end
+   public :: component_init_cx
+   public :: component_init_aream
+   public :: component_init_areacor
+@@ -288,6 +290,82 @@
+ #endif
+ 
+   !===============================================================================
++
++#ifndef ESMF_INTERFACE
++  subroutine component_init_external_begin(comp, infodata, &
++       seq_flds_x2c_fluxes, status)
++    type(component_type), intent(inout) :: comp(:)
++    type(seq_infodata_type), intent(inout) :: infodata
++    character(len=*), intent(in) :: seq_flds_x2c_fluxes
++    integer, intent(out) :: status
++    integer :: eci
++
++    status = 0
++    if (size(comp) /= 1 .or. comp(1)%oneletterid /= 'a') then
++       status = 2
++       return
++    endif
++    if (comp(1)%iamin_cplallcompid) then
++       call seq_infodata_exchange(infodata, comp(1)%cplallcompid, &
++            'cpl2'//comp(1)%ntype(1:3)//'_init')
++    endif
++    do eci = 1,size(comp)
++       if (.not. associated(comp(eci)%x2c_cc)) allocate(comp(eci)%x2c_cc)
++       if (.not. associated(comp(eci)%c2x_cc)) allocate(comp(eci)%c2x_cc)
++       if (comp(eci)%iamin_compid .and. comp(eci)%present) then
++          if (drv_threading) &
++               call seq_comm_setnthreads(comp(eci)%nthreads_compid)
++          call shr_sys_flush(logunit)
++          call mct_avect_vecmult(comp(eci)%x2c_cc, comp(eci)%drv2mdl, &
++               seq_flds_x2c_fluxes, mask_spval=.true.)
++       endif
++    enddo
++  end subroutine component_init_external_begin
++
++  !===============================================================================
++
++  subroutine component_init_external_end(comp, infodata, &
++       seq_flds_c2x_fluxes, status)
++    type(component_type), intent(inout) :: comp(:)
++    type(seq_infodata_type), intent(inout) :: infodata
++    character(len=*), intent(in) :: seq_flds_c2x_fluxes
++    integer, intent(out) :: status
++    integer :: eci, k1, k2
++
++    status = 0
++    if (size(comp) /= 1 .or. comp(1)%oneletterid /= 'a') then
++       status = 2
++       return
++    endif
++    do eci = 1,size(comp)
++       if (comp(eci)%iamin_compid .and. comp(eci)%present) then
++          call mct_avect_vecmult(comp(eci)%c2x_cc, comp(eci)%mdl2drv, &
++               seq_flds_c2x_fluxes, mask_spval=.true.)
++          if (drv_threading) call seq_comm_setnthreads(nthreads_GLOID)
++       endif
++    enddo
++    if (comp(1)%iamin_cplcompid) then
++       call seq_infodata_exchange(infodata, comp(1)%cplcompid, &
++            comp(1)%ntype(1:3)//'2cpl_init')
++    endif
++    do eci = 1,size(comp)
++       call seq_infodata_getData(infodata, atm_present=comp(eci)%present)
++       if (comp(eci)%iamin_compid .and. comp(eci)%present) then
++          if (drv_threading) &
++               call seq_comm_setnthreads(comp(eci)%nthreads_compid)
++          k1 = mct_aVect_indexRa(comp(eci)%cdata_cc%dom%data, 'area', &
++               perrWith='aa area ')
++          k2 = mct_aVect_indexRa(comp(eci)%cdata_cc%dom%data, 'aream', &
++               perrWith='aa aream')
++          comp(eci)%cdata_cc%dom%data%rAttr(k2,:) = &
++               comp(eci)%cdata_cc%dom%data%rAttr(k1,:)
++          if (drv_threading) call seq_comm_setnthreads(nthreads_GLOID)
++       endif
++    enddo
++  end subroutine component_init_external_end
++#endif
++
++  !===============================================================================
+ 
+ #ifdef ESMF_INTERFACE
+   subroutine component_init_cc(Eclock, drvcomp, comp, gridcomp_register,  &
+--- a/cime/src/drivers/mct/main/cesm_comp_mod.F90
++++ b/cime/src/drivers/mct/main/cesm_comp_mod.F90
+@@ -54,12 +54,15 @@
+    use rof_comp_esmf , only: rof_register_esmf
+ #else
+    use atm_comp_mct  , only: atm_init=>atm_init_mct, atm_run=>atm_run_mct, atm_final=>atm_final_mct
++   use atm_comp_mct  , only: atm_attach_initialized=>atm_attach_initialized_mct
++   use atm_comp_mct  , only: atm_finish_external_init=>atm_finish_external_init_mct
+    use atm_comp_mct  , only: atm_run_begin=>atm_run_begin_mct
+    use atm_comp_mct  , only: atm_run_action=>atm_run_action_mct
+    use atm_comp_mct  , only: atm_run_granular_action=>atm_run_granular_action_mct
+    use atm_comp_mct  , only: atm_run_physics_action=>atm_run_physics_action_mct
+    use atm_comp_mct  , only: atm_run_end=>atm_run_end_mct
+    use atm_comp_mct  , only: atm_run_external_iteration=>atm_run_external_iteration_mct
++   use atm_comp_mct  , only: atm_run_external_begin=>atm_run_external_begin_mct
+    use lnd_comp_mct  , only: lnd_init=>lnd_init_mct, lnd_run=>lnd_run_mct, lnd_final=>lnd_final_mct
+    use ocn_comp_mct  , only: ocn_init=>ocn_init_mct, ocn_run=>ocn_run_mct, ocn_final=>ocn_final_mct
+    use ice_comp_mct  , only: ice_init=>ice_init_mct, ice_run=>ice_run_mct, ice_final=>ice_final_mct
+@@ -143,6 +145,7 @@
+    use component_type_mod , only: atm, lnd, ice, ocn, rof, glc, wav
+    use component_mod      , only: component_init_pre
+    use component_mod      , only: component_init_cc, component_init_cx, component_run, component_final
++   use component_mod      , only: component_init_external_begin, component_init_external_end
+    use component_mod      , only: component_run_begin, component_run_end
+    use component_mod      , only: component_init_areacor, component_init_aream
+    use component_mod      , only: component_exch, component_diag
+@@ -179,6 +182,7 @@
+    public cesm_step_begin, cesm_step_end, cesm_run_finish
+    public cesm_final_action_call
+    public cesm_external_atm_iteration, cesm_exchange_buffer_query
++   public cesm_init_atm_phase2_end
+ #ifdef USE_ESMF_LIB
+    public cesm_comp_register
+ #endif
+@@ -541,6 +545,7 @@
+    integer :: pycesm_physics_expected_action = 0
+    logical :: pycesm_init_active = .false.
+    integer :: pycesm_init_expected_action = 0
++   logical :: pycesm_atm_phase2_active = .false.
+    logical :: pycesm_final_active = .false.
+    integer :: pycesm_final_expected_action = 0
+    integer :: pycesm_hashint(7) = 0
+@@ -1141,7 +1146,8 @@
+    call component_init_cc(Eclock_w, drvcomp, wav, wav_register_esmf, infodata, NLFilename)
+ #else
+    case (512)
+-   call component_init_cc(Eclock_a, atm, atm_init, infodata, NLFilename)
++   call component_init_cc(Eclock_a, atm, atm_attach_initialized, infodata, &
++        NLFilename)
+    case (513)
+    call component_init_cc(Eclock_l, lnd, lnd_init, infodata, NLFilename)
+    case (514)
+@@ -1857,26 +1863,10 @@
+          endif
+       enddo
+ 
+-      ! Run atm_init_mct with init phase of 2
+-#ifdef ESMF_INTERFACE
+-      call component_init_cc(Eclock_a, drvcomp, atm, atm_register_esmf, &
+-#else
+-      call component_init_cc(Eclock_a, atm, atm_init,                   &
+-#endif
+-           infodata, NLFilename,                                        &
+-           seq_flds_x2c_fluxes=seq_flds_x2a_fluxes,                     &
+-           seq_flds_c2x_fluxes=seq_flds_a2x_fluxes)
+-
+-      ! Map atm output data from atm pes to cpl pes
+-      call component_exch(atm, flow='c2x', infodata=infodata, &
+-           infodata_string='atm2cpl_init')
+-
+-      if (iamin_CPLID) then
+-         if (drv_threading) call seq_comm_setnthreads(nthreads_CPLID)
+-         call component_diag(infodata, atm, flow='c2x', comment= 'recv IC2 atm', &
+-              info_debug=info_debug)
+-         if (drv_threading) call seq_comm_setnthreads(nthreads_GLOID)
+-      endif
++      call component_init_external_begin(atm, infodata, &
++           seq_flds_x2a_fluxes, status)
++      if (status /= 0) return
++      pycesm_atm_phase2_active = .true.
+ 
+    endif   ! atm present
+ 
+@@ -1966,6 +1956,34 @@
+ 
+ !===============================================================================
+ 
++subroutine cesm_init_atm_phase2_end(status)
++   implicit none
++   integer, intent(out) :: status
++
++   status = 0
++   if (.not. pycesm_init_active .or. .not. pycesm_atm_phase2_active .or. &
++       pycesm_init_expected_action /= 529) then
++      status = 4
++      return
++   endif
++   if (atm_present) then
++      call atm_finish_external_init(EClock_a, status)
++      if (status /= 0) return
++      call component_init_external_end(atm, infodata, &
++           seq_flds_a2x_fluxes, status)
++      if (status /= 0) return
++      call component_exch(atm, flow='c2x', infodata=infodata, &
++           infodata_string='atm2cpl_init')
++      if (iamin_CPLID) then
++         if (drv_threading) call seq_comm_setnthreads(nthreads_CPLID)
++         call component_diag(infodata, atm, flow='c2x', &
++              comment='recv IC2 atm', info_debug=info_debug)
++         if (drv_threading) call seq_comm_setnthreads(nthreads_GLOID)
++      endif
++   endif
++   pycesm_atm_phase2_active = .false.
++end subroutine cesm_init_atm_phase2_end
++
+  !===============================================================================
+  !*******************************************************************************
+  !===============================================================================
+@@ -4055,7 +4071,7 @@
+ 
+    select case (action_id)
+    case (202)
+-      call atm_run_begin(Eclock_a,atm(ens1)%cdata_cc, &
++      call atm_run_external_begin(Eclock_a,atm(ens1)%cdata_cc, &
+            atm(ens1)%x2c_cc,atm(ens1)%c2x_cc,action_status)
+       pycesm_cam_expected_action = 300
+       pycesm_physics_expected_action = 400
+@@ -4816,11 +4832,9 @@
+       call seq_timemgr_EClockGetData( EClock_d, stepno=endstep)
+       call shr_mem_getusage(msize,mrss)
+    case (602)
+-#ifdef ESMF_INTERFACE
+-      call component_final(EClock_a, atm)
+-#else
+-      call component_final(EClock_a, atm, atm_final)
+-#endif
++      ! The unique CAM instance is finalized explicitly by FreeCAM between
++      ! actions 601 and 602.  The provider owns only coupler/components.
++      continue
+    case (603)
+ #ifdef ESMF_INTERFACE
+       call component_final(EClock_l, lnd)

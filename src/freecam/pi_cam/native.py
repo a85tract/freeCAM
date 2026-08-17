@@ -32,6 +32,7 @@ def _prepare_fortran_runtime() -> None:
 
 
 class CAMNumericalBackend(Protocol):
+    def configure_shared_coupler(self, enabled: bool) -> None: ...
     def prepare_initialize(self, pool: PICAMStatePool, *, fcomm: int) -> None: ...
     def prepare_state(
         self, pool: PICAMStatePool, config: object, *, rank: int, size: int
@@ -59,6 +60,9 @@ class RecordingCAMBackend:
     def __init__(self) -> None:
         self.calls: list[str] = []
         self.dispatches: list[tuple[str, str]] = []
+
+    def configure_shared_coupler(self, enabled: bool) -> None:
+        del enabled
 
     def prepare_initialize(self, pool: PICAMStatePool, *, fcomm: int) -> None:
         del pool, fcomm
@@ -430,6 +434,25 @@ class NativeCAMDevice:
             self.python_initialized_addresses = {
                 name: int(values.ctypes.data) for name, values in pool.items()
             }
+
+    def configure_shared_coupler(self, enabled: bool) -> None:
+        """Select whether CESM already owns the shared MPI/PIO control plane."""
+
+        try:
+            configure = self._library.pycam_pi_cam_set_shared_coupler_v1
+        except AttributeError as exc:
+            if enabled:
+                raise NativeCAMError(
+                    "native CAM library lacks the single-CAM coupler ABI"
+                ) from exc
+            return
+        configure.argtypes = [ctypes.c_int32]
+        configure.restype = ctypes.c_int32
+        status = int(configure(ctypes.c_int32(int(bool(enabled)))))
+        if status:
+            raise NativeCAMError(
+                f"native CAM shared-coupler configuration failed ({status})"
+            )
 
     def prepare_initialize(self, pool: PICAMStatePool, *, fcomm: int) -> None:
         """Run only the native grid/chunk setup needed by Python allocation."""

@@ -63,6 +63,7 @@ mpiexec --label -n 512 "${python}" -m freecam.pi_cam.cli \
   --boundary-provider "${cam_run}/.exact-cesm-provider.pkl" \
   --run-dir "${cam_run}" \
   --steps 50 \
+  --memory-sample-every 10 \
   --summary validation/pi_cam_exact_cesm_online_50step.json \
   > "${cam_run}/freecam.log" 2>&1
 

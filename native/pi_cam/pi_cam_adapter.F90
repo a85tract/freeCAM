@@ -14,6 +14,7 @@ module pycam_pi_cam_adapter
   use camsrfexch, only: cam_in_t, cam_out_t
   use atm_import_export, only: atm_import, atm_export
   use atm_comp_mct, only: atm_python_post_cam_init_mct
+  use atm_comp_mct, only: atm_python_bind_cam_state_mct
   use atm_comp_mct, only: atm_python_write_srfrest_mct
   use cam_cpl_indices, only: cam_cpl_indices_set
   use cam_instance, only: cam_instance_init
@@ -36,6 +37,7 @@ module pycam_pi_cam_adapter
   private
 
   public :: pycam_pi_cam_prepare_initialize_v1
+  public :: pycam_pi_cam_set_shared_coupler_v1
   public :: pycam_pi_cam_initialize_v1
   public :: pycam_pi_cam_state_context_v1
   public :: pycam_pi_cam_action_v1
@@ -51,6 +53,7 @@ module pycam_pi_cam_adapter
   logical, save :: finalized = .false.
   integer, save :: configured_stop_n = 0
   integer, save :: prepared_atm_comm = 0
+  logical, save :: shared_coupler = .false.
 
   interface
      subroutine pycam_pi_cam_set_fp_environment_v1() bind(C, &
@@ -59,6 +62,18 @@ module pycam_pi_cam_adapter
   end interface
 
 contains
+
+  integer(c_int) function pycam_pi_cam_set_shared_coupler_v1(enabled) &
+       bind(C, name='pycam_pi_cam_set_shared_coupler_v1') result(status)
+    integer(c_int), value, intent(in) :: enabled
+
+    status = 0_c_int
+    if (prepared .or. initialized .or. finalized) then
+       status = 1_c_int
+       return
+    endif
+    shared_coupler = enabled /= 0_c_int
+  end function pycam_pi_cam_set_shared_coupler_v1
 
   subroutine clear_error(errmsg, errmsg_len)
     character(kind=c_char), intent(out) :: errmsg(*)
@@ -201,6 +216,10 @@ contains
     calendar = 'NO_LEAP'
     call cam_init_finish(cam_out, cam_in, prepared_atm_comm, 10101, 0, &
          10101, 0, 10102, 3600, .false., 0, calendar)
+    call atm_python_bind_cam_state_mct(cam_in, cam_out)
+    ! Keep the small ATM-side MCT restart vectors even when the live coupler
+    ! shares this CAM instance.  They are required to produce CAM's surface
+    ! restart file, but do not duplicate CAM prognostic or physics state.
     call atm_python_post_cam_init_mct(prepared_atm_comm, 1, &
          local_surface_columns)
     initialized = .true.

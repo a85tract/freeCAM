@@ -71,6 +71,12 @@ class CAMBoundaryProvider(ABC):
         del step, rank
         return True
 
+    @property
+    def shares_cam_instance(self) -> bool:
+        """Whether this provider binds the CAM instance owned by the driver."""
+
+        return False
+
 
 def prepare_cesm_online_run(
     seed_run: str | Path,
@@ -629,6 +635,12 @@ class CESMOnlineBoundaryProvider(CAMBoundaryProvider):
         self._oracle_import_matches = 0
         self._oracle_export_matches = 0
         self._finalized = False
+        self._initialization_stage = "created"
+        self._finalization_started = False
+
+    @property
+    def shares_cam_instance(self) -> bool:
+        return True
 
     @classmethod
     def from_seed_run(
@@ -828,7 +840,9 @@ class CESMOnlineBoundaryProvider(CAMBoundaryProvider):
         else:
             self._oracle_export_matches += 1
 
-    def initialize(self, *, rank: int, size: int, config_fingerprint: str) -> None:
+    def initialize_before_cam(
+        self, *, rank: int, size: int, config_fingerprint: str
+    ) -> None:
         del config_fingerprint
         if size != 512:
             raise BoundaryReplayError(
@@ -909,8 +923,26 @@ class CESMOnlineBoundaryProvider(CAMBoundaryProvider):
             ctypes.POINTER(ctypes.c_int32),
         )
         self._native.pycesm_full_finalize_action_v1.restype = None
+        try:
+            phase2_end = self._native.pycesm_full_initialize_atm_phase2_end_v1
+        except AttributeError as exc:
+            raise BoundaryReplayError(
+                "coupled CESM library lacks the single-CAM initialization ABI"
+            ) from exc
+        phase2_end.argtypes = (ctypes.POINTER(ctypes.c_int32),)
+        phase2_end.restype = None
 
-        for action_id in _CESM_INITIALIZATION_ACTIONS:
+        for action_id in range(501, 512):
+            self._collective(
+                f"initialization action {action_id}",
+                lambda action_id=action_id: self._call_initialize_action(action_id),
+            )
+        self._initialization_stage = "coupler_prepared"
+
+    def initialize_after_cam(self) -> None:
+        if self._initialization_stage != "coupler_prepared":
+            raise BoundaryReplayError("CESM provider pre-CAM initialization is absent")
+        for action_id in range(512, 529):
             self._collective(
                 f"initialization action {action_id}",
                 lambda action_id=action_id: self._call_initialize_action(action_id),
@@ -924,10 +956,44 @@ class CESMOnlineBoundaryProvider(CAMBoundaryProvider):
                 )
                 self._initial_x2a = self._x2a.values.copy(order="F")
                 self._initial_a2x = self._a2x.values.copy(order="F")
-            elif action_id == 529:
-                assert self._a2x is not None
-                self._primed_a2x = self._a2x.values.copy(order="F")
         assert self._x2a is not None and self._a2x is not None
+        self._initialization_stage = "cam_attached"
+
+    def begin_initial_priming(self) -> None:
+        if self._initialization_stage != "cam_attached":
+            raise BoundaryReplayError("CESM provider CAM endpoint is not attached")
+        self._collective(
+            "initialization action 529", lambda: self._call_initialize_action(529)
+        )
+        self._initialization_stage = "priming"
+
+    def finish_initial_priming(self) -> None:
+        if self._initialization_stage != "priming" or self._native is None:
+            raise BoundaryReplayError("CESM provider priming was not started")
+
+        def finish_phase2() -> None:
+            assert self._native is not None
+            status = ctypes.c_int32()
+            self._native.pycesm_full_initialize_atm_phase2_end_v1(
+                ctypes.byref(status)
+            )
+            self._check(status, "ATM initialization phase 2 end")
+
+        self._collective("ATM initialization phase 2 end", finish_phase2)
+        assert self._a2x is not None
+        self._primed_a2x = self._a2x.values.copy(order="F")
+        for action_id in range(530, 533):
+            self._collective(
+                f"initialization action {action_id}",
+                lambda action_id=action_id: self._call_initialize_action(action_id),
+            )
+        self._initialization_stage = "initialized"
+
+    def initialize(self, *, rank: int, size: int, config_fingerprint: str) -> None:
+        raise BoundaryReplayError(
+            "the exact online provider must be initialized around the unique "
+            "CAM lifecycle by PICAMDriver"
+        )
 
     def _begin_coupling_step(self) -> None:
         assert self._native is not None
@@ -1062,14 +1128,33 @@ class CESMOnlineBoundaryProvider(CAMBoundaryProvider):
             raise BoundaryReplayError("CESM online import schedule is inconsistent")
         return self._fresh_import
 
-    def finalize(self) -> None:
+    def finalize_before_cam(self) -> None:
         if self._finalized or self._native is None:
             return
         if self._active_coupling_step:
             raise BoundaryReplayError(
                 "cannot finalize CESM provider in the middle of a coupling step"
             )
-        for action_id in _CESM_FINALIZATION_ACTIONS:
+        if self._finalization_started:
+            return
+        action_id = 601
+        def invoke() -> None:
+            assert self._native is not None
+            status = ctypes.c_int32()
+            self._native.pycesm_full_finalize_action_v1(
+                ctypes.c_int32(action_id), ctypes.byref(status)
+            )
+            self._check(status, f"finalization action {action_id}")
+
+        self._collective(f"finalization action {action_id}", invoke)
+        self._finalization_started = True
+
+    def finalize_after_cam(self) -> None:
+        if self._finalized or self._native is None:
+            return
+        if not self._finalization_started:
+            raise BoundaryReplayError("CESM provider finalization was not started")
+        for action_id in range(602, 611):
             def invoke(action_id: int = action_id) -> None:
                 assert self._native is not None
                 status = ctypes.c_int32()
@@ -1080,6 +1165,14 @@ class CESMOnlineBoundaryProvider(CAMBoundaryProvider):
 
             self._collective(f"finalization action {action_id}", invoke)
         self._finalized = True
+
+    def finalize(self) -> None:
+        if self._native is None or self._finalized:
+            return
+        raise BoundaryReplayError(
+            "the exact online provider must be finalized around the unique "
+            "CAM lifecycle by PICAMDriver"
+        )
 
     @property
     def diagnostics(self) -> Mapping[str, object]:

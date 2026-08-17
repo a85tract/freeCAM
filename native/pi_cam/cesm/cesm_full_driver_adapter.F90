@@ -5,7 +5,7 @@ module pycesm_full_driver_adapter
        cesm_cam_action_call, cesm_physics_action_call, cesm_step_begin, &
        cesm_step_end, cesm_run_finish, cesm_init_action_call, &
        cesm_final_action_call, cesm_external_atm_iteration, &
-       cesm_exchange_buffer_query
+       cesm_exchange_buffer_query, cesm_init_atm_phase2_end
   use esmf, only: ESMF_Initialize
   implicit none
 
@@ -170,6 +170,19 @@ contains
     call cesm_exchange_buffer_query(exchange_id, address, nattr, npoint, &
          status)
   end subroutine pycesm_full_exchange_buffer_v1
+
+  subroutine pycesm_full_initialize_atm_phase2_end_v1(status) &
+       bind(C, name="pycesm_full_initialize_atm_phase2_end_v1")
+    integer(c_int), intent(out) :: status
+
+    status = 0_c_int
+    if (.not. initialization_active .or. initialized .or. finalized .or. &
+        initialization_expected_action /= 529_c_int) then
+      status = 3_c_int
+      return
+    end if
+    call cesm_init_atm_phase2_end(status)
+  end subroutine pycesm_full_initialize_atm_phase2_end_v1
 
   subroutine pycesm_full_cam_action_v1(action_id, loop_complete, status) &
        bind(C, name="pycesm_full_cam_action_v1")

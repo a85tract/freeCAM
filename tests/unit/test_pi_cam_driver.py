@@ -90,6 +90,96 @@ def test_complete_step_is_ordered_by_python_and_advances_1800_seconds() -> None:
     assert (0, 0) in boundary.exports
 
 
+def test_shared_coupler_wraps_the_unique_cam_lifecycle() -> None:
+    events: list[str] = []
+
+    class SharedBoundary(InMemoryBoundaryProvider):
+        @property
+        def shares_cam_instance(self) -> bool:
+            return True
+
+        def initialize_before_cam(self, **kwargs) -> None:
+            del kwargs
+            events.append("coupler-pre")
+
+        def initialize_after_cam(self) -> None:
+            events.append("coupler-attach")
+
+        def begin_initial_priming(self) -> None:
+            events.append("priming-begin")
+
+        def finish_initial_priming(self) -> None:
+            events.append("priming-end")
+
+        def finalize_before_cam(self) -> None:
+            events.append("coupler-finalize-begin")
+
+        def finalize_after_cam(self) -> None:
+            events.append("coupler-finalize-end")
+
+    class SharedBackend(RecordingCAMBackend):
+        def configure_shared_coupler(self, enabled: bool) -> None:
+            events.append(f"shared={enabled}")
+
+        def initialize(self, pool, *, fcomm: int) -> None:
+            events.append("cam-initialize")
+            super().initialize(pool, fcomm=fcomm)
+
+        def finalize(self, pool, *, fcomm: int) -> None:
+            events.append("cam-finalize")
+            super().finalize(pool, fcomm=fcomm)
+
+    template, _, _ = _driver()
+    boundary = SharedBoundary(
+        {
+            (0, 0): {"sst": np.full((2,), 280.0)},
+            (1, 0): {"sst": np.full((2,), 281.0)},
+            (2, 0): {"sst": np.full((2,), 282.0)},
+        }
+    )
+    driver = PICAMDriver(
+        template.config, boundary, SharedBackend(), rank=0, size=1
+    )
+
+    driver.initialize()
+    driver.finalize()
+
+    assert events == [
+        "shared=True",
+        "cam-initialize",
+        "coupler-pre",
+        "coupler-attach",
+        "priming-begin",
+        "priming-end",
+        "coupler-finalize-begin",
+        "cam-finalize",
+        "coupler-finalize-end",
+    ]
+
+
+def test_failed_shared_coupler_does_not_mask_original_error_during_cleanup() -> None:
+    class SharedBoundary(InMemoryBoundaryProvider):
+        @property
+        def shares_cam_instance(self) -> bool:
+            return True
+
+        def finalize(self) -> None:
+            raise AssertionError("failed shared cleanup must not enter direct finalize")
+
+    template, _, _ = _driver()
+    driver = PICAMDriver(
+        template.config,
+        SharedBoundary(),
+        RecordingCAMBackend(),
+        rank=0,
+        size=1,
+    )
+    driver.lifecycle = type(driver.lifecycle).FAILED
+    driver.finalize()
+
+    assert driver.lifecycle == type(driver.lifecycle).FINALIZED
+
+
 def test_python_control_routes_only_numerical_actions_through_generic_execute() -> None:
     driver, backend, _ = _driver()
     driver.initialize()

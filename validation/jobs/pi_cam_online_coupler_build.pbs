@@ -1,0 +1,28 @@
+#!/bin/bash
+#PBS -N freecam-online-build
+#PBS -q develop
+#PBS -A UCUB0188
+#PBS -l select=1:ncpus=1:mpiprocs=1:ompthreads=1:mem=80GB
+#PBS -l walltime=00:30:00
+#PBS -j oe
+#PBS -o /glade/work/ruitong/freeCAM/logs/
+
+set -euo pipefail
+set -x
+
+repo=/glade/work/ruitong/freeCAM
+case_root=/glade/work/ruitong/CESM_cases/f.e13.F1850C5.ne16_g16.icesm131_ihesp.PI-atm.pycesm-ref.50step
+source_root=/glade/work/ruitong/iCESM1.3.1_PI_atm_pycesm
+
+source "${case_root}/.env_mach_specific.sh"
+cd "${repo}"
+
+"${repo}/.venv/bin/python" tools/build_pi_cam_online_coupler.py \
+  --case "${case_root}" \
+  --control-source "${source_root}/cime/src/drivers/mct/main/cesm_comp_mod.F90" \
+  --component-source "${source_root}/cime/src/drivers/mct/main/component_mod.F90" \
+  --cam-library "${repo}/build/pi_cam_promoted/libfreecam_pi_cam.so" \
+  --cam-module-dir "${repo}/build/pi_cam_promoted/nonpic_objects" \
+  --source-patch "${repo}/native/pi_cam/control_patches/0032-callback-free-external-atm.patch" \
+  --source-patch "${repo}/native/pi_cam/control_patches/0033-single-cam-online-coupler.patch" \
+  --source-patch "${repo}/native/pi_cam/control_patches/0034-single-cam-coupler-driver.patch"

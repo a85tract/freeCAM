@@ -1187,23 +1187,31 @@ class PICAMDriver:
             self._set_scalar("mpi_rank", self.rank)
             self._set_scalar("mpi_size", self.size)
             self._sync_clock_fields()
-            self._collective_boundary_call(
-                "boundary initialization",
-                lambda: self.boundary.initialize(
-                    rank=self.rank,
-                    size=self.size,
-                    config_fingerprint=self.config.fingerprint,
-                ),
-            )
+            shared_cam = bool(self.boundary.shares_cam_instance)
+            if not shared_cam:
+                self._collective_boundary_call(
+                    "boundary initialization",
+                    lambda: self.boundary.initialize(
+                        rank=self.rank,
+                        size=self.size,
+                        config_fingerprint=self.config.fingerprint,
+                    ),
+                )
             # The source initial-run lifecycle invokes atm_init_mct twice.  Its
             # second call imports the first surface state and executes CAM run1
             # before the first normal run2/run3/run4 timestep.  Keep that
             # orchestration in Python so native CAM never observes an
             # unprimed phys_state.
-            self._collective_boundary_call(
-                "initial boundary import",
-                lambda: self.boundary.import_fields(0, self.rank, self.pool),
+            if not shared_cam:
+                self._collective_boundary_call(
+                    "initial boundary import",
+                    lambda: self.boundary.import_fields(0, self.rank, self.pool),
+                )
+            configure_shared_coupler = getattr(
+                self.backend, "configure_shared_coupler", None
             )
+            if callable(configure_shared_coupler):
+                configure_shared_coupler(shared_cam)
             prepare_initialize = getattr(self.backend, "prepare_initialize", None)
             if callable(prepare_initialize):
                 prepare_initialize(self.pool, fcomm=self.fcomm)
@@ -1231,6 +1239,29 @@ class PICAMDriver:
                     + ", ".join(changed[:8])
                 )
             self._backend_initialized = True
+            if shared_cam:
+                initialize_before_cam = getattr(
+                    self.boundary, "initialize_before_cam"
+                )
+                self._collective_boundary_call(
+                    "coupler initialization before attachment",
+                    lambda: initialize_before_cam(
+                        rank=self.rank,
+                        size=self.size,
+                        config_fingerprint=self.config.fingerprint,
+                    ),
+                )
+                initialize_after_cam = getattr(
+                    self.boundary, "initialize_after_cam"
+                )
+                self._collective_boundary_call(
+                    "coupler attachment after CAM",
+                    initialize_after_cam,
+                )
+                self._collective_boundary_call(
+                    "initial boundary import",
+                    lambda: self.boundary.import_fields(0, self.rank, self.pool),
+                )
             self._validate_initial_cam_export()
             self._prime_initial_cam_state()
         except Exception:
@@ -1260,6 +1291,11 @@ class PICAMDriver:
             "kernel",
             200,
         )
+        if self.boundary.shares_cam_instance:
+            self._collective_boundary_call(
+                "begin coupled initial priming",
+                getattr(self.boundary, "begin_initial_priming"),
+            )
         self._collective_boundary_call(
             "priming boundary import",
             lambda: self.boundary.import_fields(1, self.rank, self.pool),
@@ -1277,6 +1313,11 @@ class PICAMDriver:
             "priming boundary export",
             lambda: self.boundary.export_fields(1, self.rank, self.pool),
         )
+        if self.boundary.shares_cam_instance:
+            self._collective_boundary_call(
+                "finish coupled initial priming",
+                getattr(self.boundary, "finish_initial_priming"),
+            )
         self._boundary_step = 2
 
     def _validate_initial_cam_export(self) -> None:
@@ -2073,12 +2114,19 @@ class PICAMDriver:
             # lifecycle boundaries.  Calling cam_final from that state can
             # mask the original error (and, for Python-owned pointer shells,
             # can attempt to release memory that Fortran does not own).
+            shared_cam = bool(self.boundary.shares_cam_instance)
+            if shared_cam and not failed:
+                with self.profiler.region("BOUNDARY:FINALIZE_BEGIN"):
+                    getattr(self.boundary, "finalize_before_cam")()
             if self._backend_initialized and not failed:
                 with self.profiler.region("FORTRAN:CAM_FINALIZE"):
                     self.backend.finalize(self.pool, fcomm=self.fcomm)
                 self._backend_initialized = False
             with self.profiler.region("BOUNDARY:FINALIZE"):
-                self.boundary.finalize()
+                if shared_cam and not failed:
+                    getattr(self.boundary, "finalize_after_cam")()
+                elif not shared_cam:
+                    self.boundary.finalize()
         finally:
             self.lifecycle = PICAMLifecycle.FINALIZED
             if self._previous_directory is not None:
