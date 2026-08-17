@@ -533,7 +533,7 @@
     "provider": "CESMOnlineBoundaryProvider",
     "python_owned_internal": false,
     "reverse_allocator_callbacks": false,
-    "run_dir": "/glade/derecho/scratch/ruitong/freeCAM/PI-cam/exact-cesm-online-1year-7119516.desched1/cesm-provider-run",
+    "run_dir": "/glade/derecho/scratch/ruitong/freeCAM/PI-cam/exact-cesm-online-1year-7126710.desched1/cesm-provider-run",
     "shadow_a2x_bfb_steps": 0,
     "shadow_atmosphere": false
   },
@@ -579,7 +579,7 @@
   "native_library_sha256": "2a9f306b9f5ce6720cdbcbcf01dfa478b316d8feddf1ada6f06ae19cc6e17d20",
   "native_manifest": "/glade/work/ruitong/pycam-sima-pi-cam-only/build/pi_cam_promoted/native_cam_manifest.json",
   "native_state_ownership": "python-owned-zero-copy-derived-shell",
-  "pbs_job_id": "7119516.desched1",
+  "pbs_job_id": "7126710.desched1",
   "rank_created_fields": [
     9,
     9,
@@ -3671,14 +3671,14 @@
   "step_plan_actions": 47,
   "steps": 17520,
   "timing": {
-    "advance_seconds": 5514.151767123,
-    "advance_sypd": 15.66877439158318,
+    "advance_seconds": 5511.054205177999,
+    "advance_sypd": 15.677581236421426,
     "aggregation": "maximum across all MPI ranks",
     "clock": "MPI.Wtime with MPI barriers",
-    "finalize_seconds": 0.04101912900023308,
-    "initialize_seconds": 34.73033482000005,
+    "finalize_seconds": 0.41820707700026105,
+    "initialize_seconds": 29.88968248900005,
     "simulated_days": 365.0,
-    "total_seconds": 5549.486027074001
+    "total_seconds": 5541.9283411
   },
   "validation_scope": "online original-CESM components/coupler with per-boundary BFB oracle"
 }

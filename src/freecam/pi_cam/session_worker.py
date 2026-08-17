@@ -34,6 +34,7 @@ def _field_catalog(driver: Any) -> dict[str, dict[str, object]]:
 
 
 def _status(driver: Any) -> dict[str, object]:
+    timing_dir = None if driver.run_dir is None else driver.run_dir / "timing"
     return {
         "lifecycle": driver.lifecycle.value,
         "step": driver.clock.nstep,
@@ -65,6 +66,22 @@ def _status(driver: Any) -> dict[str, object]:
             getattr(driver.boundary, "verify_exports", False)
         ),
         "boundary": dict(getattr(driver.boundary, "diagnostics", {})),
+        "timing": {
+            "enabled": True,
+            "clock": "MPI_Wtime",
+            "recorded_regions": len(driver.profiler.records),
+            "detail": (
+                None
+                if timing_dir is None
+                else str(timing_dir / "freecam_timing.0000")
+            ),
+            "global_stats": (
+                None
+                if timing_dir is None
+                else str(timing_dir / "freecam_timing_stats")
+            ),
+            "written_on": "model.close()",
+        },
     }
 
 

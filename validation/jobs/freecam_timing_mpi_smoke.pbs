@@ -1,0 +1,25 @@
+#!/bin/bash
+#PBS -N freecam-timing
+#PBS -A UCUB0188
+#PBS -q develop
+#PBS -l select=1:ncpus=2:mpiprocs=2:ompthreads=1:mem=8GB
+#PBS -l walltime=00:05:00
+#PBS -j oe
+#PBS -o /glade/work/ruitong/freeCAM/logs/
+#PBS -V
+
+set -euo pipefail
+
+repo=/glade/work/ruitong/freeCAM
+python=${repo}/.venv/bin/python
+run_dir=/glade/derecho/scratch/ruitong/freeCAM/timing-smoke-${PBS_JOBID}
+
+export PYTHONPATH=${repo}/src
+export FREECAM_TIMING_SMOKE_RUN=${run_dir}
+mpi_root=${CRAY_MPICH_DIR:-/opt/cray/pe/mpich/8.1.32/ofi/intel/2022.1}
+export LD_LIBRARY_PATH="${mpi_root}/lib-abi-mpich:${mpi_root}/lib:${LD_LIBRARY_PATH:-}"
+mkdir -p "${run_dir}"
+touch "${run_dir}/atm_in"
+
+cd "${repo}"
+mpiexec -n 2 "${python}" tests/integration/freecam_timing_mpi_smoke.py

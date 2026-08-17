@@ -1,0 +1,15 @@
+{
+  "base_commit": "117f9eab24dc98086663fe0b64db74df6e28000f",
+  "checks": {
+    "all_rank_aggregation": true,
+    "detail_contains_process_timer": true,
+    "global_stats_contains_process_timer": true,
+    "rank_zero_detail_written": true
+  },
+  "driver_sha256": "e7b54980cedbea6e5a5065dce9d29b967c0fde94012a62cfc6c603189fea2aa8",
+  "job_id": "7125650.desched1",
+  "mpi_ranks": 2,
+  "passed": true,
+  "run_directory": "/glade/derecho/scratch/ruitong/freeCAM/timing-smoke-7125650.desched1",
+  "timing_module_sha256": "6a9e45cf096bb5402c003f1bdee04cacc716042c656983685a90ce91ff105dc1"
+}

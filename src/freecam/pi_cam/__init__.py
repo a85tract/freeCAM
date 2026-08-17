@@ -86,6 +86,7 @@ from .state import (
     PICAMStateSchema,
     PICAMVariableSpec,
 )
+from .timing import FreeCAMProfiler
 from .ui import (
     PICAMCaseStepPlot,
     PICAMProfilePlot,
@@ -109,6 +110,7 @@ __all__ = [
     "CaseRegistry",
     "Driver",
     "FreeCAM",
+    "FreeCAMProfiler",
     "HeldSurfaceModel",
     "InMemoryBoundaryProvider",
     "OnlineBoundaryContext",

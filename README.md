@@ -73,6 +73,22 @@ Constructing `Driver` does not submit PBS or start MPI. The first live model
 operation starts one persistent MPI model; later calls reuse the same ranks
 and arrays until `driver.close()` or the context manager exits.
 
+### Timing reports
+
+FreeCAM profiles its Python control regions, boundary operations, complete
+steps, individually dispatched processes, and Fortran calls by default. When
+the model closes it writes two CESM-style text reports under the run directory:
+
+```text
+timing/freecam_timing.0000   rank-0 hierarchical call timing
+timing/freecam_timing_stats  aggregate statistics across all MPI ranks
+```
+
+Timing uses `MPI_Wtime`. Process execution adds no timing barriers; rank-local
+records are gathered only once during finalization. The online surface/coupler
+provider may also write its original `cesm_timing.*` files in its own run
+directory. Those files profile different code and are intentionally retained.
+
 The maintained Jupyter walkthrough is
 [`examples/try_pi_cam.ipynb`](examples/try_pi_cam.ipynb).
 

@@ -36,6 +36,7 @@ from .runtime_fortran import (
 )
 from .runtime_processes import PICAMPythonProcessRegistry
 from .state import PICAMStatePool, PICAMStateSchema, PICAMVariableSpec
+from .timing import FreeCAMProfiler
 
 
 class _SerialComm:
@@ -44,6 +45,11 @@ class _SerialComm:
 
     @staticmethod
     def allgather(value: Any) -> list[Any]:
+        return [value]
+
+    @staticmethod
+    def gather(value: Any, root: int = 0) -> list[Any]:
+        del root
         return [value]
 
     @staticmethod
@@ -1020,6 +1026,7 @@ class PICAMDriver:
             raise PICAMConfigurationError(
                 "communicator rank/size do not match PICAMDriver rank/size"
             )
+        self.profiler = FreeCAMProfiler(rank=self.rank, size=self.size)
         self.step_plan = step_plan or PICAMStepPlan.default()
         self.pool = (state_schema or PICAMStateSchema.core()).allocate(
             {
@@ -1088,6 +1095,13 @@ class PICAMDriver:
     def initialize(self) -> None:
         if self.lifecycle != PICAMLifecycle.CREATED:
             raise PICAMStateError(f"initialize from {self.lifecycle.value}")
+        self.profiler.start_total()
+        with self.profiler.region("FREECAM:INITIALIZE"):
+            self._initialize()
+
+    def _initialize(self) -> None:
+        if self.lifecycle != PICAMLifecycle.CREATED:
+            raise PICAMStateError(f"initialize from {self.lifecycle.value}")
         if self.size != self.config.mpi_size:
             raise PICAMConfigurationError(
                 f"PI-CAM config requires {self.config.mpi_size} ranks, got {self.size}"
@@ -1147,7 +1161,8 @@ class PICAMDriver:
             self._python_initialized_addresses = {
                 name: int(values.ctypes.data) for name, values in self.pool.items()
             }
-            self.backend.initialize(self.pool, fcomm=self.fcomm)
+            with self.profiler.region("FORTRAN:CAM_INITIALIZE"):
+                self.backend.initialize(self.pool, fcomm=self.fcomm)
             changed = tuple(
                 name
                 for name, address in self._python_initialized_addresses.items()
@@ -1197,7 +1212,8 @@ class PICAMDriver:
         # that startup-only numerical boundary while the trace still exposes
         # the three source actions to Python.
         self._record(boundary_import)
-        self.backend.execute(initial_priming, self.pool, fcomm=self.fcomm)
+        with self.profiler.region("FORTRAN:INITIAL_PRIMING"):
+            self.backend.execute(initial_priming, self.pool, fcomm=self.fcomm)
         self._record(initial_priming)
         self._record(boundary_export)
         self._collective_boundary_call(
@@ -1231,6 +1247,10 @@ class PICAMDriver:
         return trace
 
     def _execute(self, action: PICAMAction) -> PICAMActionTrace:
+        with self.profiler.region(f"CAM:{action.operation}"):
+            return self._execute_action(action)
+
+    def _execute_action(self, action: PICAMAction) -> PICAMActionTrace:
         if action.kind == "python_process":
             self.python_processes.invoke(action)
         elif action.kind == "runtime_fortran_process":
@@ -1354,7 +1374,8 @@ class PICAMDriver:
             )
         self._native_call_depth += 1
         try:
-            primitive(action, self.pool, fcomm=self.fcomm)
+            with self.profiler.region(f"FORTRAN:{method.upper()}"):
+                primitive(action, self.pool, fcomm=self.fcomm)
         finally:
             self._native_call_depth -= 1
 
@@ -1384,7 +1405,8 @@ class PICAMDriver:
             )
         self._native_call_depth += 1
         try:
-            self.backend.execute(action, self.pool, fcomm=self.fcomm)
+            with self.profiler.region("FORTRAN:KERNEL"):
+                self.backend.execute(action, self.pool, fcomm=self.fcomm)
         finally:
             self._native_call_depth -= 1
 
@@ -1838,7 +1860,9 @@ class PICAMDriver:
         execute = getattr(self.backend, "execute_kernel", None)
         if not callable(execute):
             raise PICAMConfigurationError("the selected backend has no direct kernels")
-        execute(name, self.pool, fcomm=self.fcomm)
+        with self.profiler.region(f"CAM:{name}"):
+            with self.profiler.region("FORTRAN:DIRECT_KERNEL"):
+                execute(name, self.pool, fcomm=self.fcomm)
         return self._record(
             PICAMAction(
                 name=name,
@@ -1850,6 +1874,10 @@ class PICAMDriver:
         )
 
     def step(self) -> tuple[PICAMActionTrace, ...]:
+        with self.profiler.region("FREECAM:STEP"):
+            return self._step()
+
+    def _step(self) -> tuple[PICAMActionTrace, ...]:
         if self.lifecycle not in {PICAMLifecycle.INITIALIZED, PICAMLifecycle.RUNNING}:
             raise PICAMStateError(f"step from {self.lifecycle.value}")
         self.lifecycle = PICAMLifecycle.RUNNING
@@ -1880,16 +1908,17 @@ class PICAMDriver:
                     ),
                 )
                 self._record(imports[0])
-                source_step(
-                    self.pool,
-                    fcomm=self.fcomm,
-                    apply_import=self._collective_boundary_call(
-                        f"step {self._boundary_step} boundary import schedule",
-                        lambda: self.boundary.has_fresh_import(
-                            self._boundary_step, self.rank
+                with self.profiler.region("FORTRAN:SOURCE_STEP"):
+                    source_step(
+                        self.pool,
+                        fcomm=self.fcomm,
+                        apply_import=self._collective_boundary_call(
+                            f"step {self._boundary_step} boundary import schedule",
+                            lambda: self.boundary.has_fresh_import(
+                                self._boundary_step, self.rank
+                            ),
                         ),
-                    ),
-                )
+                    )
                 for action in body:
                     if action.kind == "io" and self.history_callback is not None:
                         self.history_callback(action, self)
@@ -1957,6 +1986,17 @@ class PICAMDriver:
     def finalize(self) -> None:
         if self.lifecycle == PICAMLifecycle.FINALIZED:
             return
+        try:
+            with self.profiler.region("FREECAM:FINALIZE"):
+                self._finalize()
+        finally:
+            self.profiler.stop_total()
+            if self.run_dir is not None:
+                self.profiler.write(self.run_dir, self.comm)
+
+    def _finalize(self) -> None:
+        if self.lifecycle == PICAMLifecycle.FINALIZED:
+            return
         if self.lifecycle not in {
             PICAMLifecycle.INITIALIZED,
             PICAMLifecycle.RUNNING,
@@ -1970,9 +2010,11 @@ class PICAMDriver:
             # mask the original error (and, for Python-owned pointer shells,
             # can attempt to release memory that Fortran does not own).
             if self._backend_initialized and not failed:
-                self.backend.finalize(self.pool, fcomm=self.fcomm)
+                with self.profiler.region("FORTRAN:CAM_FINALIZE"):
+                    self.backend.finalize(self.pool, fcomm=self.fcomm)
                 self._backend_initialized = False
-            self.boundary.finalize()
+            with self.profiler.region("BOUNDARY:FINALIZE"):
+                self.boundary.finalize()
         finally:
             self.lifecycle = PICAMLifecycle.FINALIZED
             if self._previous_directory is not None:
@@ -1986,6 +2028,28 @@ class PICAMDriver:
         self.finalize()
 
     def _collective_boundary_call(
+        self,
+        label: str,
+        function: Callable[[], Any],
+    ) -> Any:
+        timer = self._boundary_timer_name(label)
+        with self.profiler.region(timer):
+            return self._collective_boundary_call_impl(label, function)
+
+    @staticmethod
+    def _boundary_timer_name(label: str) -> str:
+        lowered = label.lower()
+        if "schedule" in lowered:
+            return "BOUNDARY:HAS_FRESH_IMPORT"
+        if "initialization" in lowered:
+            return "BOUNDARY:INITIALIZE"
+        if "import" in lowered:
+            return "BOUNDARY:IMPORT"
+        if "export" in lowered:
+            return "BOUNDARY:EXPORT"
+        return "BOUNDARY:CALL"
+
+    def _collective_boundary_call_impl(
         self,
         label: str,
         function: Callable[[], Any],
