@@ -1016,6 +1016,7 @@ class PICAMDriver:
         history_callback: Callable[[PICAMAction, "PICAMDriver"], None] | None = None,
         run_dir: str | Path | None = None,
         trace_limit: int | None = DEFAULT_TRACE_LIMIT,
+        default_history_stream: bool = True,
     ) -> None:
         if not 0 <= rank < size:
             raise PICAMConfigurationError("rank must be in the MPI communicator")
@@ -1072,6 +1073,7 @@ class PICAMDriver:
         self._python_initialized_addresses: dict[str, int] = {}
         self.python_processes = PICAMPythonProcessRegistry(self)
         self.history_streams = PICAMHistoryStreamRegistry(self)
+        self.default_history_stream = bool(default_history_stream)
         self.fortran_processes = PICAMFortranProcessRegistry(self)
         self.process_contexts = PICAMProcessContextRegistry(self)
         self.physics = _PhysicsCollection(self)
@@ -1266,6 +1268,7 @@ class PICAMDriver:
                 )
             self._validate_initial_cam_export()
             self._prime_initial_cam_state()
+            self._install_default_history_stream()
         except Exception:
             self.lifecycle = PICAMLifecycle.FAILED
             raise
@@ -1430,7 +1433,7 @@ class PICAMDriver:
         return self._record(action)
 
     def _execute_python_history(self, action: PICAMAction) -> None:
-        """Write one Python-owned history stream at its workflow position."""
+        """Extend CAM history output at this stream's workflow position."""
 
         with self.profiler.region(f"HISTORY:{action.operation}"):
             self.history_streams.step(action.operation)
@@ -1823,20 +1826,72 @@ class PICAMDriver:
         assert action is not None
         return action
 
+    def _install_default_history_stream(self) -> None:
+        """Let Python-owned fields reach CAM's own history files by default.
+
+        The stream mirrors the case's ``nhtfrq`` so its samples line up with
+        the tape CAM writes.  With no Python-owned fields it accumulates
+        nothing and adds nothing, so the run directory stays identical to the
+        original model's.
+        """
+
+        if not self.default_history_stream:
+            return
+        if "phys_state.cid" not in self.pool:
+            # Without CAM's column identifiers there is no way to place
+            # Python-owned columns; leave output to the original writer.
+            return
+        name = "python_fields"
+        if name in self.history_streams:
+            return
+        self.history_streams.install(
+            name,
+            fields=None,
+            stream="h0",
+            nhtfrq=self._history_nhtfrq(),
+        )
+        self.step_plan.add(
+            PICAMAction(
+                name=name,
+                phase="runtime",
+                operation=name,
+                kind="python_history",
+                native_id=None,
+            ),
+            after="wshist",
+            experimental=True,
+        )
+
+    def _history_nhtfrq(self) -> int:
+        """Read CAM's own output frequency from the run directory namelist."""
+
+        if self.run_dir is None:
+            return 0
+        namelist = Path(self.run_dir) / "atm_in"
+        if not namelist.is_file():
+            return 0
+        for line in namelist.read_text().splitlines():
+            name, separator, value = line.partition("=")
+            if separator and name.strip().lower() == "nhtfrq":
+                first = value.split(",")[0].strip()
+                try:
+                    return int(first)
+                except ValueError:
+                    return 0
+        return 0
+
     def install_history_stream(
         self,
-        name: str,
+        name: str = "python_fields",
         *,
-        fields: Sequence[Any],
-        stream: str = "h9",
+        fields: Sequence[Any] | None = None,
+        stream: str = "h0",
         nhtfrq: int = 0,
-        mfilt: int = 1,
         before: str | None = None,
         after: str | None = "wshist",
         enabled: bool = True,
-        template: str | Path | None = None,
-        precision: str = "float32",
         time_period: str = "mean",
+        precision: str = "float32",
     ) -> PICAMAction:
         """Add one Python-owned CAM-format history stream to the workflow."""
 
@@ -1846,9 +1901,8 @@ class PICAMDriver:
         signature = (
             str(name),
             str(stream),
-            tuple(str(item) for item in fields),
+            None if fields is None else tuple(str(item) for item in fields),
             int(nhtfrq),
-            int(mfilt),
             before,
             after,
             bool(enabled),
@@ -1865,8 +1919,6 @@ class PICAMDriver:
                 fields=fields,
                 stream=stream,
                 nhtfrq=nhtfrq,
-                mfilt=mfilt,
-                template=template,
                 precision=precision,
                 time_period=time_period,
             )
@@ -2217,6 +2269,10 @@ class PICAMDriver:
     def _finalize(self) -> None:
         if self.lifecycle == PICAMLifecycle.FINALIZED:
             return
+        if self.lifecycle in {PICAMLifecycle.INITIALIZED, PICAMLifecycle.RUNNING}:
+            # CAM has closed its history files by now, so any window still
+            # queued can reach the tape it belongs to.
+            self.history_streams.drain()
         if self.lifecycle not in {
             PICAMLifecycle.INITIALIZED,
             PICAMLifecycle.RUNNING,

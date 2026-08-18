@@ -168,14 +168,14 @@ def _command(command: dict[str, Any], driver: Any, comm: Any) -> object:
     if operation == "install_history_stream":
         action = driver.install_history_stream(
             str(command["name"]),
-            fields=tuple(command["fields"]),
-            stream=str(command.get("stream", "h9")),
+            fields=(
+                None if command.get("fields") is None else tuple(command["fields"])
+            ),
+            stream=str(command.get("stream", "h0")),
             nhtfrq=int(command.get("nhtfrq", 0)),
-            mfilt=int(command.get("mfilt", 1)),
             before=command.get("before"),
             after=command.get("after", "wshist"),
             enabled=bool(command.get("enabled", True)),
-            template=command.get("template"),
             precision=str(command.get("precision", "float32")),
             time_period=str(command.get("time_period", "mean")),
         )
@@ -206,13 +206,9 @@ def _command(command: dict[str, Any], driver: Any, comm: Any) -> object:
         )
     if operation == "history_streams":
         return driver.history_streams.describe() if comm.rank == 0 else None
-    if operation == "flush_history_stream":
-        path = driver.history_streams.flush(str(command["name"]))
-        return (
-            {"path": None if path is None else str(path)}
-            if comm.rank == 0
-            else None
-        )
+    if operation == "drain_history_streams":
+        written = driver.history_streams.drain()
+        return {"written": int(written)} if comm.rank == 0 else None
     leaf_expansions = {
         "expand_cam_run1_leaves": driver.expand_cam_run1_leaves,
         "expand_cam_run2_leaves": driver.expand_cam_run2_leaves,

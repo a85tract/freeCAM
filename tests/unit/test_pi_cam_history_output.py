@@ -1,3 +1,5 @@
+"""Python-owned fields reach CAM's own history files, not a separate stream."""
+
 from pathlib import Path
 
 import numpy as np
@@ -7,14 +9,14 @@ from freecam.pi_cam import (
     InMemoryBoundaryProvider,
     PICAMConfig,
     PICAMDriver,
-    PICAMHistoryVariable,
+    PICAMVariableSpec,
     RecordingCAMBackend,
 )
+from freecam.pi_cam.state import PICAMFieldContract
 from freecam.pi_cam.errors import PICAMConfigurationError, PICAMStateError
-from freecam.pi_cam.history_output import _elapsed_days
+from freecam.pi_cam.history_output import elapsed_days
 
 netCDF4 = pytest.importorskip("netCDF4")
-
 
 PVER = 30
 PCOLS = 4
@@ -23,388 +25,306 @@ NCOLS = (3, 2)
 TOTAL_COLUMNS = sum(NCOLS)
 
 
-def _driver(tmp_path: Path, *, rank: int = 0, size: int = 1) -> PICAMDriver:
+def _driver(tmp_path: Path, *, nhtfrq: int = 0, **kwargs) -> PICAMDriver:
     config = PICAMConfig(
         case_name="unit-history",
         source_root=Path("/tmp/source"),
-        mpi_size=size,
+        mpi_size=1,
         stop_n=2,
         pver=PVER,
         pcols=PCOLS,
     )
     run_dir = tmp_path / "run"
-    run_dir.mkdir(exist_ok=True)
-    (run_dir / "atm_in").write_text("&atm_in\n/\n")
+    run_dir.mkdir(parents=True, exist_ok=True)
+    (run_dir / "atm_in").write_text(f"&atm_in\n mfilt = 1\n nhtfrq = {nhtfrq}\n/\n")
     boundary = InMemoryBoundaryProvider(
-        {
-            (step, rank): {"sst": np.full((2,), 280.0 + step)}
-            for step in range(4)
-        }
+        {(step, 0): {"sst": np.full((2,), 280.0 + step)} for step in range(6)}
     )
     driver = PICAMDriver(
         config,
         boundary,
         RecordingCAMBackend(),
-        rank=rank,
-        size=size,
+        rank=0,
+        size=1,
         run_dir=run_dir,
+        **kwargs,
     )
     pool = driver.pool
-    pool.create_from_array(
+    pool.dimensions.setdefault("chunks", CHUNKS)
+    _attach_native(
+        pool,
         "phys_state.cid",
+        ("pcols", "chunks"),
         np.asarray([[1, 4], [2, 5], [3, 0], [0, 0]], dtype=np.float64, order="F"),
     )
-    pool.create_from_array(
-        "phys_state.ngrdcol", np.asarray(NCOLS, dtype=np.float64, order="F")
+    _attach_native(
+        pool,
+        "phys_state.ngrdcol",
+        ("chunks",),
+        np.asarray(NCOLS, dtype=np.float64, order="F"),
     )
     return driver
 
 
-def _column_field(driver: PICAMDriver, name: str) -> np.ndarray:
-    values = driver.pool.create_from_array(
-        name, np.zeros((PCOLS, CHUNKS), dtype=np.float64, order="F")
+def _attach_native(pool, name, dimensions, values) -> None:
+    """Attach a CAM-owned field the way the generated state bridge does."""
+
+    pool.attach(
+        PICAMFieldContract(
+            name=name,
+            dimensions=dimensions,
+            category="native_cam_state",
+            owner="native",
+        ),
+        values,
     )
-    # Give each valid column its global column id so ordering is verifiable.
-    values[0, 0], values[1, 0], values[2, 0] = 1.0, 2.0, 3.0
-    values[0, 1], values[1, 1] = 4.0, 5.0
+
+
+def _python_field(driver: PICAMDriver, name: str, *, levels: bool = False,
+                  output: bool = True, units: str = "1") -> np.ndarray:
+    """Create a Python-owned column field the way a notebook user would."""
+
+    dimensions = ("pcols", "pver", "chunks") if levels else ("pcols", "chunks")
+    driver.pool.dimensions.setdefault("chunks", CHUNKS)
+    values = driver.pool.create(
+        PICAMVariableSpec(
+            name=name, dimensions=dimensions, units=units, output=output
+        ).contract()
+    )
+    if levels:
+        for column, value in ((0, 1.0), (1, 2.0), (2, 3.0)):
+            values[column, :, 0] = value
+        for column, value in ((0, 4.0), (1, 5.0)):
+            values[column, :, 1] = value
+    else:
+        values[0, 0], values[1, 0], values[2, 0] = 1.0, 2.0, 3.0
+        values[0, 1], values[1, 1] = 4.0, 5.0
     return values
 
 
-def _set_column_field(values: np.ndarray, factor: float) -> None:
-    """Rewrite the valid columns in place, keeping their global-id pattern."""
+def _cam_history_file(driver: PICAMDriver, samples) -> Path:
+    """Write a CAM-style h0 file the way the original writer would."""
 
-    values[0, 0], values[1, 0], values[2, 0] = 1.0 * factor, 2.0 * factor, 3.0 * factor
-    values[0, 1], values[1, 1] = 4.0 * factor, 5.0 * factor
-
-
-def _level_field(driver: PICAMDriver, name: str) -> np.ndarray:
-    values = driver.pool.create_from_array(
-        name, np.zeros((PCOLS, PVER, CHUNKS), dtype=np.float64, order="F")
+    first = samples[0]
+    path = Path(driver.run_dir) / (
+        f"unit-history.cam.h0.{first[0]:04d}-{first[1]:02d}.nc"
     )
-    for column, identifier in ((0, 1.0), (1, 2.0), (2, 3.0)):
-        values[column, :, 0] = identifier
-    for column, identifier in ((0, 4.0), (1, 5.0)):
-        values[column, :, 1] = identifier
-    return values
-
-
-def _advance_clock(driver: PICAMDriver, steps: int) -> None:
-    for _ in range(steps):
-        driver.clock.advance()
+    with netCDF4.Dataset(path, "w") as dataset:
+        dataset.createDimension("time", None)
+        dataset.createDimension("ncol", TOTAL_COLUMNS)
+        dataset.createDimension("lev", PVER)
+        dataset.createDimension("ilev", PVER + 1)
+        dataset.setncatts({"Conventions": "CF-1.0", "source": "CAM"})
+        time = dataset.createVariable("time", "f8", ("time",))
+        time.units = "days since 0001-01-01 00:00:00"
+        time.calendar = "noleap"
+        date = dataset.createVariable("date", "i4", ("time",))
+        datesec = dataset.createVariable("datesec", "i4", ("time",))
+        native = dataset.createVariable("T", "f4", ("time", "lev", "ncol"))
+        native.units = "K"
+        for index, (year, month, day, seconds) in enumerate(samples):
+            time[index] = elapsed_days(year, month, day, seconds)
+            date[index] = year * 10000 + month * 100 + day
+            datesec[index] = seconds
+            native[index, :, :] = 250.0
+    return path
 
 
 def test_elapsed_days_follows_the_no_leap_calendar() -> None:
-    assert _elapsed_days(1, 1, 1, 0) == 0.0
-    assert _elapsed_days(1, 2, 1, 0) == 31.0
-    assert _elapsed_days(2, 1, 1, 0) == 365.0
-    assert _elapsed_days(1, 1, 1, 43200) == 0.5
-    # The supervisor's reference November mean spans days 6874 to 6904.
-    assert _elapsed_days(19, 11, 1, 0) == 6874.0
-    assert _elapsed_days(19, 12, 1, 0) == 6904.0
+    assert elapsed_days(1, 1, 1, 0) == 0.0
+    assert elapsed_days(1, 2, 1, 0) == 31.0
+    assert elapsed_days(2, 1, 1, 0) == 365.0
+    # The production November mean spans days 6874 to 6904.
+    assert elapsed_days(19, 11, 1, 0) == 6874.0
+    assert elapsed_days(19, 12, 1, 0) == 6904.0
 
 
-def test_monthly_mean_matches_the_original_cam_layout(tmp_path: Path) -> None:
+def test_a_run_without_python_fields_adds_nothing(tmp_path: Path) -> None:
     driver = _driver(tmp_path)
-    values = _column_field(driver, "diag.rain")
-    stream = driver.history_streams.install(
-        "python_history",
-        fields=[
-            PICAMHistoryVariable(field="diag.rain", units="mm", long_name="Rain")
-        ],
-    )
+    driver.initialize()
+    path = _cam_history_file(driver, [(1, 2, 1, 0)])
+    before = path.read_bytes()
 
-    # One NO_LEAP January of half-hour steps, with a changing field so the
-    # written sample must be a real time mean rather than a snapshot.
-    for step in range(31 * 48):
-        _set_column_field(values, 1.0 if step == 0 else 3.0)
-        assert stream.step() is None
-        driver.clock.advance()
-    path = stream.step()
+    # A default stream is installed, but it has nothing to contribute.
+    assert "python_fields" in driver.history_streams
+    stream = driver.history_streams.stream("python_fields")
+    assert stream.fields() == ()
+    driver.clock.month = 2
+    assert stream.step() == 0
+    driver.finalize()
 
-    assert path is not None and path.is_file()
-    # CAM stamps a monthly mean with the month it covers, not the next month.
-    assert path.name == "unit-history.cam.h9.0001-01.nc"
+    assert path.read_bytes() == before
+    assert sorted(p.name for p in Path(driver.run_dir).glob("*.nc")) == [path.name]
+
+
+def test_python_field_lands_in_the_cam_history_file(tmp_path: Path) -> None:
+    driver = _driver(tmp_path)
+    driver.initialize()
+    values = _python_field(driver, "heating_rate", units="K s-1")
+    path = _cam_history_file(driver, [(1, 2, 1, 0)])
+    stream = driver.history_streams.stream("python_fields")
+
+    assert [item.output_name for item in stream.fields()] == ["heating_rate"]
+    stream.accumulate()
+    values[:] = values * 3.0
+    stream.accumulate()
+    driver.clock.month = 2
+    assert stream.step() == 1
+
     with netCDF4.Dataset(path) as dataset:
-        assert dataset.dimensions["ncol"].size == TOTAL_COLUMNS
-        assert dataset.dimensions["time"].isunlimited()
-        assert dataset.dimensions["time"].size == 1
-        assert dataset.dimensions["lev"].size == PVER
-        assert dataset.dimensions["ilev"].size == PVER + 1
-        assert dataset.dimensions["nbnd"].size == 2
-        assert dataset.dimensions["chars"].size == 8
-        assert dataset.getncattr("Conventions") == "CF-1.0"
-        assert dataset.getncattr("source") == "CAM"
-        assert dataset.getncattr("case") == "unit-history"
-        time = dataset.variables["time"]
-        assert time.units == "days since 0001-01-01 00:00:00"
-        assert time.calendar == "noleap"
-        assert time.bounds == "time_bnds"
-        # January mean: window [0, 31), stamped at its end like the original.
-        assert float(time[0]) == pytest.approx(31.0)
-        assert np.allclose(dataset.variables["time_bnds"][0, :], [0.0, 31.0])
-        assert int(dataset.variables["date"][0]) == 10201
-        assert int(dataset.variables["datesec"][0]) == 0
-        assert int(dataset.variables["ndcur"][0]) == 31
-        assert int(dataset.variables["nscur"][0]) == 0
-        assert int(dataset.variables["nsteph"][0]) == 31 * 48
-        assert b"".join(dataset.variables["date_written"][0, :]).strip()
-        rain = dataset.variables["rain"]
-        assert rain.dimensions == ("time", "ncol")
-        assert rain.dtype == np.float32
-        assert rain.units == "mm"
-        assert rain.long_name == "Rain"
-        assert rain.cell_methods == "time: mean"
-        # 1487 steps at 3x and one step at 1x, averaged over 1488 samples.
-        expected = np.asarray([1, 2, 3, 4, 5], dtype=np.float64)
-        expected = expected * (1.0 + 3.0 * (31 * 48 - 1)) / (31 * 48)
-        # Columns land at their CAM global column id, not rank-local order.
-        assert np.allclose(rain[0, :], expected.astype("f4"), rtol=1e-6)
+        # The file keeps its own inventory and gains one variable.
+        assert "T" in dataset.variables
+        added = dataset.variables["heating_rate"]
+        assert added.dimensions == ("time", "ncol")
+        assert added.units == "K s-1"
+        assert added.cell_methods == "time: mean"
+        # Three accumulated samples: one at 1x and two at 3x.
+        expected = np.asarray([1, 2, 3, 4, 5]) * (1.0 + 3.0 + 3.0) / 3.0
+        assert np.allclose(added[0, :], expected.astype("f4"), rtol=1e-6)
+        assert float(dataset.variables["T"][0, 0, 0]) == 250.0
 
 
-def test_step_frequency_writes_instantaneous_samples(tmp_path: Path) -> None:
+def test_level_field_uses_the_files_own_vertical_axis(tmp_path: Path) -> None:
     driver = _driver(tmp_path)
-    _column_field(driver, "diag.rain")
-    stream = driver.history_streams.install(
-        "python_history",
-        fields=["diag.rain"],
-        nhtfrq=2,
-        mfilt=2,
-        time_period="instantaneous",
-    )
+    driver.initialize()
+    _python_field(driver, "heating", levels=True)
+    path = _cam_history_file(driver, [(1, 2, 1, 0)])
+    stream = driver.history_streams.stream("python_fields")
 
-    first = None
-    for _ in range(4):
-        written = stream.step()
-        if written is not None:
-            first = first or written
-        driver.clock.advance()
+    stream.accumulate()
+    driver.clock.month = 2
+    stream.step()
 
-    assert first is not None
-    # Two half-hour steps accumulate, so the sample is stamped at 1800 s.
-    assert first.name == "unit-history.cam.h9.0001-01-01-01800.nc"
-    with netCDF4.Dataset(first) as dataset:
-        assert dataset.dimensions["time"].size == 2
+    with netCDF4.Dataset(path) as dataset:
+        added = dataset.variables["heating"]
+        assert added.dimensions == ("time", "lev", "ncol")
+        assert added.mdims == 1
+        assert np.allclose(added[0, 0, :], np.asarray([1, 2, 3, 4, 5], dtype="f4"))
+
+
+def test_samples_match_their_own_time_index(tmp_path: Path) -> None:
+    driver = _driver(tmp_path, nhtfrq=1)
+    driver.initialize()
+    values = _python_field(driver, "rain")
+    path = _cam_history_file(driver, [(1, 1, 1, 1800), (1, 1, 1, 3600)])
+    stream = driver.history_streams.stream("python_fields")
+
+    driver.clock.advance()
+    assert stream.step() == 1
+    values[:] = values * 10.0
+    driver.clock.advance()
+    assert stream.step() == 1
+
+    with netCDF4.Dataset(path) as dataset:
         rain = dataset.variables["rain"]
-        assert rain.cell_methods == "time: instantaneous"
-        # An instantaneous sample carries a zero-width interval.
-        assert np.allclose(
-            dataset.variables["time_bnds"][0, :], [1.0 / 48, 1.0 / 48]
-        )
         assert np.allclose(rain[0, :], np.asarray([1, 2, 3, 4, 5], dtype="f4"))
+        assert np.allclose(rain[1, :], np.asarray([10, 20, 30, 40, 50], dtype="f4"))
 
 
-def test_hourly_frequency_uses_negative_nhtfrq(tmp_path: Path) -> None:
-    driver = _driver(tmp_path)
-    _column_field(driver, "diag.rain")
-    stream = driver.history_streams.install(
-        "python_history", fields=["diag.rain"], nhtfrq=-3
-    )
+def test_windows_wait_until_cam_writes_their_file(tmp_path: Path) -> None:
+    driver = _driver(tmp_path, nhtfrq=1)
+    driver.initialize()
+    _python_field(driver, "rain")
+    stream = driver.history_streams.stream("python_fields")
 
-    written: list[Path] = []
-    for _ in range(13):
-        sample = stream.step()
-        if sample is not None:
-            written.append(sample)
-        driver.clock.advance()
-
-    # Half-hour steps: a three-hour window closes on the seventh sample, and
-    # the next window opens where the previous one closed.
-    assert [item.name for item in written] == [
-        "unit-history.cam.h9.0001-01-01-10800.nc",
-        "unit-history.cam.h9.0001-01-01-21600.nc",
-    ]
-    assert stream.interval_start == (1, 1, 1, 21600)
-    # Consecutive windows abut, exactly like the original monthly means.
-    with netCDF4.Dataset(written[0]) as dataset:
-        assert np.allclose(dataset.variables["time_bnds"][0, :], [0.0, 0.125])
-    with netCDF4.Dataset(written[1]) as dataset:
-        assert np.allclose(dataset.variables["time_bnds"][0, :], [0.125, 0.25])
-
-
-def test_level_field_uses_the_lev_dimension(tmp_path: Path) -> None:
-    driver = _driver(tmp_path)
-    _level_field(driver, "diag.heating")
-    stream = driver.history_streams.install(
-        "levels", fields=["diag.heating"], stream="h8", nhtfrq=1
-    )
-
+    # CAM has not written anything yet, so the window queues instead of failing.
     driver.clock.advance()
-    path = stream.step()
+    assert stream.step() == 0
+    assert stream.pending == 1
 
+    path = _cam_history_file(driver, [(1, 1, 1, 1800)])
+    assert stream.drain() == 1
+    assert stream.pending == 0
     with netCDF4.Dataset(path) as dataset:
-        heating = dataset.variables["heating"]
-        assert heating.dimensions == ("time", "lev", "ncol")
-        assert heating.mdims == 1
-        assert np.allclose(
-            heating[0, 0, :], np.asarray([1, 2, 3, 4, 5], dtype="f4")
-        )
+        assert "rain" in dataset.variables
 
 
-def test_mfilt_opens_a_new_file_when_the_current_one_is_full(
-    tmp_path: Path,
-) -> None:
-    driver = _driver(tmp_path)
-    _column_field(driver, "diag.rain")
-    stream = driver.history_streams.install(
-        "python_history", fields=["diag.rain"], nhtfrq=1, mfilt=2
-    )
-
-    written: list[Path] = []
-    for _ in range(3):
-        driver.clock.advance()
-        written.append(stream.step())
-
-    assert written[0] == written[1]
-    assert written[2] != written[0]
-    with netCDF4.Dataset(written[0]) as dataset:
-        assert dataset.dimensions["time"].size == 2
-    with netCDF4.Dataset(written[2]) as dataset:
-        assert dataset.dimensions["time"].size == 1
-
-
-def test_static_grid_metadata_comes_from_the_runs_cam_output(
-    tmp_path: Path,
-) -> None:
-    driver = _driver(tmp_path)
-    _column_field(driver, "diag.rain")
-    template = Path(driver.run_dir) / "unit-history.cam.h0.0001-01.nc"
-    with netCDF4.Dataset(template, "w") as dataset:
-        dataset.createDimension("ncol", TOTAL_COLUMNS)
-        dataset.createDimension("lev", PVER)
-        dataset.setncatts({"ne": 16, "np": 4, "title": "oracle"})
-        latitude = dataset.createVariable("lat", "f8", ("ncol",))
-        latitude.units = "degrees_north"
-        latitude[:] = np.linspace(-45.0, 45.0, TOTAL_COLUMNS)
-        area = dataset.createVariable("area", "f8", ("ncol",))
-        area[:] = np.full(TOTAL_COLUMNS, 0.25)
-        coefficient = dataset.createVariable("hyam", "f8", ("lev",))
-        coefficient[:] = np.linspace(0.0, 1.0, PVER)
-
-    stream = driver.history_streams.install(
-        "python_history", fields=["diag.rain"], nhtfrq=1
-    )
+def test_finalize_drains_queued_windows(tmp_path: Path) -> None:
+    driver = _driver(tmp_path, nhtfrq=1)
+    driver.initialize()
+    _python_field(driver, "rain")
+    stream = driver.history_streams.stream("python_fields")
     driver.clock.advance()
-    path = stream.step()
+    stream.step()
+    assert stream.pending == 1
 
+    path = _cam_history_file(driver, [(1, 1, 1, 1800)])
+    driver.finalize()
+
+    assert stream.pending == 0
     with netCDF4.Dataset(path) as dataset:
-        assert int(dataset.getncattr("ne")) == 16
-        assert int(dataset.getncattr("np")) == 4
-        assert dataset.getncattr("title") == "oracle"
-        assert dataset.variables["lat"].units == "degrees_north"
-        assert np.allclose(
-            dataset.variables["lat"][:], np.linspace(-45.0, 45.0, TOTAL_COLUMNS)
-        )
-        assert np.allclose(dataset.variables["area"][:], 0.25)
-        assert np.allclose(
-            dataset.variables["hyam"][:], np.linspace(0.0, 1.0, PVER)
-        )
+        assert "rain" in dataset.variables
 
 
-def test_history_stream_installation_fails_closed(tmp_path: Path) -> None:
+def test_output_false_keeps_a_field_out_of_history(tmp_path: Path) -> None:
     driver = _driver(tmp_path)
-    _column_field(driver, "diag.rain")
+    driver.initialize()
+    _python_field(driver, "kept")
+    _python_field(driver, "scratch", output=False)
+    stream = driver.history_streams.stream("python_fields")
 
-    with pytest.raises(PICAMStateError, match="unknown field"):
-        driver.history_streams.install("bad", fields=["diag.missing"])
-    with pytest.raises(PICAMConfigurationError, match="at least one field"):
-        driver.history_streams.install("empty", fields=[])
-    with pytest.raises(PICAMConfigurationError, match="mfilt"):
-        driver.history_streams.install("zero", fields=["diag.rain"], mfilt=0)
-    with pytest.raises(PICAMConfigurationError, match="float32 or float64"):
-        driver.history_streams.install(
-            "precision", fields=["diag.rain"], precision="float16"
-        )
-    with pytest.raises(PICAMConfigurationError, match="mean.*instantaneous"):
-        driver.history_streams.install(
-            "period", fields=["diag.rain"], time_period="maximum"
-        )
-
-    driver.history_streams.install("python_history", fields=["diag.rain"])
-    with pytest.raises(PICAMConfigurationError, match="already installed"):
-        driver.history_streams.install("python_history", fields=["diag.rain"])
-    with pytest.raises(PICAMConfigurationError, match="identifier"):
-        driver.history_streams.install("other", fields=["diag.rain"], stream="h9")
-    with pytest.raises(PICAMConfigurationError, match="not installed"):
-        driver.history_streams.stream("absent")
+    assert [item.output_name for item in stream.fields()] == ["kept"]
 
 
-def test_flush_without_accumulated_samples_fails_closed(tmp_path: Path) -> None:
-    driver = _driver(tmp_path)
-    _column_field(driver, "diag.rain")
-    stream = driver.history_streams.install("python_history", fields=["diag.rain"])
-
-    with pytest.raises(PICAMStateError, match="nothing accumulated"):
-        stream.flush()
-
-
-def test_unsupported_field_rank_and_missing_grid_fail_closed(
-    tmp_path: Path,
-) -> None:
-    driver = _driver(tmp_path)
-    driver.pool.create_from_array(
-        "diag.scalar", np.zeros((PCOLS,), dtype=np.float64, order="F")
-    )
-    scalar = driver.history_streams.install("scalar", fields=["diag.scalar"])
-    with pytest.raises(PICAMStateError, match="dimensions"):
-        scalar.step()
-
-    _column_field(driver, "diag.rain")
-    rain = driver.history_streams.install(
-        "rain", fields=["diag.rain"], stream="h8"
-    )
-    driver.pool.remove("phys_state.cid")
-    with pytest.raises(PICAMStateError, match="phys_state.cid"):
-        rain.step()
-
-
-def test_history_stream_joins_the_workflow_and_runs_with_each_step(
+def test_non_column_fields_are_skipped_by_automatic_selection(
     tmp_path: Path,
 ) -> None:
     driver = _driver(tmp_path)
     driver.initialize()
-    _column_field(driver, "diag.rain")
+    _python_field(driver, "rain")
+    driver.pool.create_from_array(
+        "tuning", np.zeros((3,), dtype=np.float64, order="F")
+    )
+    stream = driver.history_streams.stream("python_fields")
 
-    action = driver.install_history_stream(
-        "python_history", fields=["diag.rain"], nhtfrq=1, after="wshist"
+    assert [item.output_name for item in stream.fields()] == ["rain"]
+
+
+def test_explicit_fields_fail_closed(tmp_path: Path) -> None:
+    driver = _driver(tmp_path)
+    driver.initialize()
+    _python_field(driver, "rain")
+
+    with pytest.raises(PICAMStateError, match="unknown field"):
+        driver.history_streams.install("bad", fields=["missing"])
+    with pytest.raises(PICAMConfigurationError, match="mean.*instantaneous"):
+        driver.history_streams.install("period", fields=["rain"], time_period="max")
+    with pytest.raises(PICAMConfigurationError, match="already installed"):
+        driver.history_streams.install("python_fields", fields=["rain"])
+    with pytest.raises(PICAMConfigurationError, match="not installed"):
+        driver.history_streams.stream("absent")
+
+
+def test_default_stream_reads_nhtfrq_from_the_case_namelist(
+    tmp_path: Path,
+) -> None:
+    hourly = _driver(tmp_path / "a", nhtfrq=-6)
+    hourly.initialize()
+    assert hourly.history_streams.stream("python_fields").spec.nhtfrq == -6
+
+    stepwise = _driver(tmp_path / "b", nhtfrq=48)
+    stepwise.initialize()
+    assert stepwise.history_streams.stream("python_fields").spec.nhtfrq == 48
+
+
+def test_default_stream_can_be_switched_off(tmp_path: Path) -> None:
+    driver = _driver(tmp_path, default_history_stream=False)
+    driver.initialize()
+
+    assert "python_fields" not in driver.history_streams
+    assert all(
+        item["name"] != "python_fields" for item in driver.step_plan.describe()
     )
 
-    assert action.kind == "python_history"
+
+def test_default_stream_runs_inside_the_workflow(tmp_path: Path) -> None:
+    driver = _driver(tmp_path, nhtfrq=1)
+    driver.initialize()
+    _python_field(driver, "rain")
     names = [item["name"] for item in driver.step_plan.describe()]
-    assert names.index("python_history") == names.index("history") + 1
+    assert names.index("python_fields") == names.index("history") + 1
 
     rows = driver.step()
-    assert any(row.operation == "python_history" for row in rows)
-    stream = driver.history_streams.stream("python_history")
-    assert stream.writes == 1
-    assert len(tuple(Path(driver.run_dir).glob("*.cam.h9.*.nc"))) == 1
 
-    driver.remove_history_stream("python_history")
-    assert "python_history" not in driver.history_streams
-    assert all(
-        item["name"] != "python_history" for item in driver.step_plan.describe()
-    )
-
-
-def test_describe_reports_installed_state(tmp_path: Path) -> None:
-    driver = _driver(tmp_path)
-    _column_field(driver, "diag.rain")
-    stream = driver.history_streams.install(
-        "python_history",
-        fields=[{"field": "diag.rain", "name": "RAIN", "units": "mm"}],
-        nhtfrq=-6,
-        mfilt=4,
-    )
-    stream.accumulate()
-
-    described = driver.history_streams.describe()
-    assert len(described) == 1
-    assert described[0]["name"] == "python_history"
-    assert described[0]["stream"] == "h9"
-    assert described[0]["nhtfrq"] == -6
-    assert described[0]["mfilt"] == 4
-    assert described[0]["time_period"] == "mean"
-    assert described[0]["writes"] == 0
-    assert described[0]["accumulated"] == 1
-    assert described[0]["variables"] == [
-        {"field": "diag.rain", "name": "RAIN", "units": "mm", "long_name": None}
-    ]
+    assert any(row.operation == "python_fields" for row in rows)
+    assert driver.history_streams.stream("python_fields").pending == 1

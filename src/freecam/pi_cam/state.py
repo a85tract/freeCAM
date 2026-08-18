@@ -19,6 +19,9 @@ class PICAMFieldContract:
     category: str = "prognostic"
     writable: bool = True
     restart: bool = True
+    # Python-owned fields join the default history stream unless a caller
+    # opts out, mirroring CAM's registered fields joining the default tape.
+    output: bool = True
     aliases: tuple[str, ...] = ()
     standard_name: str | None = None
     requires_contiguous: bool = True
@@ -87,6 +90,7 @@ class PICAMVariableSpec:
     initial: float | int = 0.0
     writable: bool = True
     restart: bool = True
+    output: bool = True
     aliases: tuple[str, ...] = ()
     standard_name: str | None = None
 
@@ -107,6 +111,7 @@ class PICAMVariableSpec:
             category="dynamic",
             writable=self.writable,
             restart=self.restart,
+            output=self.output,
             aliases=tuple(self.aliases),
             standard_name=self.standard_name,
             owner="python",

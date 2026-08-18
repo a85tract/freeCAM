@@ -1,86 +1,41 @@
-"""Python-owned CAM-format history output for rank-local StatePool fields.
+"""Write Python-owned StatePool fields into CAM's own history files.
 
-The original iCESM history writer only knows the fields CAM registered at
-build time, so Notebook-defined StatePool variables and Python physics results
-never reach a history file.  This module adds one Python-owned output step
-that writes those fields with the layout, naming, and time semantics the
-original model produces:
+The original iCESM writer only knows the fields CAM registered at build time,
+so Notebook-defined StatePool variables and Python physics results never
+appear in any output file.  This module closes that gap the way CAM does for
+a newly registered field: the value lands **in the model's own history file**,
+beside ``T``, ``PS``, and the rest, rather than in a separate stream.
 
-* global ``ncol`` columns ordered by CAM's unique column id;
-* CAM's ``nhtfrq`` accumulation window (``0`` monthly, ``>0`` every N steps,
-  ``<0`` every N hours) and ``mfilt`` samples per file;
-* ``time`` at the end of the accumulation window with ``time_bnds`` spanning
-  it, ``date``/``datesec``/``ndcur``/``nscur``/``nsteph`` on the NO_LEAP
-  calendar, and ``cell_methods = "time: mean"`` for averaged fields;
-* file names ``<case>.cam.<stream>.<YYYY>-<MM>.nc`` for monthly output and
-  ``<case>.cam.<stream>.<YYYY>-<MM>-<DD>-<SSSSS>.nc`` otherwise;
-* the static grid and vertical-coordinate variables carried over from the
-  run's own CAM history stream, so both writers describe one identical grid.
+The invariant is that freeCAM's run directory stays indistinguishable from
+the original model's.  A run with no Python-owned fields writes no extra
+variables and no extra files at all; a run that creates them adds those
+variables to the history files CAM already produced, with the same column
+ordering, the same time samples, and CAM's own metadata conventions.
 
-Numerics stay in the original model.  This writer only reads StatePool arrays
-that CAM already produced.
+Numerics stay in the original source.  This writer only reads StatePool
+arrays CAM already produced and appends them to a closed NetCDF file.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-import socket
-import time as time_module
+import re
 from typing import Any, Iterator, Mapping, Sequence
 
 import numpy as np
 
 from .errors import PICAMConfigurationError, PICAMStateError
 
-
-# Static coordinate and vertical-grid variables the original CAM history file
-# defines.  They describe the grid rather than a timestep, so a Python-owned
-# stream copies them verbatim from the run's own CAM output instead of
-# recomputing values that must agree with the model bit for bit.
-TEMPLATE_VARIABLES: tuple[str, ...] = (
-    "lev",
-    "ilev",
-    "hyam",
-    "hybm",
-    "hyai",
-    "hybi",
-    "P0",
-    "area",
-    "lat",
-    "lon",
-    "gw",
-    "ntrm",
-    "ntrn",
-    "ntrk",
-    "ndbase",
-    "nsbase",
-    "nbdate",
-    "nbsec",
-    "mdt",
-)
-
-TEMPLATE_ATTRIBUTES: tuple[str, ...] = (
-    "np",
-    "ne",
-    "Conventions",
-    "source",
-    "case",
-    "title",
-    "initial_file",
-    "topography_file",
-)
-
 _DAYS_PER_MONTH: tuple[int, ...] = (31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31)
-
 _COLUMN_DIMENSION = "ncol"
 _TIME_DIMENSION = "time"
-_CHARS = 8
+_STREAM_PATTERN = re.compile(r"\.cam\.(h\d+)\.")
 
 
 @dataclass(frozen=True, slots=True)
 class PICAMHistoryVariable:
-    """One StatePool field selected for a Python-owned history stream."""
+    """One StatePool field added to CAM's history output."""
 
     field: str
     name: str | None = None
@@ -94,30 +49,26 @@ class PICAMHistoryVariable:
 
 @dataclass(frozen=True, slots=True)
 class PICAMHistorySpec:
-    """Declarative description of one Python-owned history stream."""
+    """How Python-owned fields join one CAM history stream."""
 
-    name: str
-    stream: str = "h9"
-    variables: tuple[PICAMHistoryVariable, ...] = ()
-    # CAM's ``nhtfrq``: 0 writes monthly means, a positive value writes every
-    # N model steps, a negative value writes every N hours.
+    name: str = "python_fields"
+    # Which CAM tape to extend.  ``h0`` is the model's default history file.
+    stream: str = "h0"
+    # ``None`` selects every Python-owned StatePool field that is marked for
+    # output, mirroring CAM's registered fields joining the default tape.
+    variables: tuple[PICAMHistoryVariable, ...] | None = None
+    # CAM's ``nhtfrq``: 0 accumulates monthly means, a positive value writes
+    # every N steps, a negative value every N hours.
     nhtfrq: int = 0
-    # CAM's ``mfilt``: time samples accumulated in one file.
-    mfilt: int = 1
     time_period: str = "mean"
-    template: str | Path | None = None
     precision: str = "float32"
 
     def __post_init__(self) -> None:
         if not str(self.name).strip():
             raise PICAMConfigurationError("history stream name cannot be empty")
-        if not self.variables:
+        if not _STREAM_PATTERN.search(f".cam.{self.stream}."):
             raise PICAMConfigurationError(
-                f"history stream {self.name!r} needs at least one field"
-            )
-        if int(self.mfilt) < 1:
-            raise PICAMConfigurationError(
-                "mfilt must be a positive number of time samples per file"
+                "stream must name a CAM history tape such as 'h0'"
             )
         if self.time_period not in {"mean", "instantaneous"}:
             raise PICAMConfigurationError(
@@ -127,16 +78,14 @@ class PICAMHistorySpec:
             raise PICAMConfigurationError(
                 "history precision must be float32 or float64"
             )
-        duplicates = sorted(
-            name
-            for name in {item.output_name for item in self.variables}
-            if sum(item.output_name == name for item in self.variables) > 1
-        )
-        if duplicates:
-            raise PICAMConfigurationError(
-                f"history stream {self.name!r} repeats output names: "
-                + ", ".join(duplicates)
-            )
+        if self.variables is not None:
+            names = [item.output_name for item in self.variables]
+            duplicates = sorted({name for name in names if names.count(name) > 1})
+            if duplicates:
+                raise PICAMConfigurationError(
+                    f"history stream {self.name!r} repeats output names: "
+                    + ", ".join(duplicates)
+                )
 
     @property
     def monthly(self) -> bool:
@@ -151,18 +100,21 @@ class PICAMHistorySpec:
             "name": self.name,
             "stream": self.stream,
             "nhtfrq": int(self.nhtfrq),
-            "mfilt": int(self.mfilt),
             "time_period": self.time_period,
             "precision": self.precision,
-            "variables": [
-                {
-                    "field": item.field,
-                    "name": item.output_name,
-                    "units": item.units,
-                    "long_name": item.long_name,
-                }
-                for item in self.variables
-            ],
+            "variables": (
+                None
+                if self.variables is None
+                else [
+                    {
+                        "field": item.field,
+                        "name": item.output_name,
+                        "units": item.units,
+                        "long_name": item.long_name,
+                    }
+                    for item in self.variables
+                ]
+            ),
         }
 
 
@@ -174,6 +126,17 @@ class _ColumnPlan:
     columns: np.ndarray
     global_ids: np.ndarray
     global_count: int
+    shape: tuple[int, int]
+
+
+@dataclass(slots=True)
+class _PendingSample:
+    """One completed window waiting for CAM to finish its history file."""
+
+    date: int
+    datesec: int
+    values: dict[str, np.ndarray]
+    metadata: dict[str, tuple[str | None, str | None]]
 
 
 def _as_variable(item: Any) -> PICAMHistoryVariable:
@@ -203,7 +166,7 @@ def _as_variable(item: Any) -> PICAMHistoryVariable:
     )
 
 
-def _elapsed_days(year: int, month: int, day: int, seconds: int) -> float:
+def elapsed_days(year: int, month: int, day: int, seconds: int) -> float:
     """Days since 0001-01-01 00:00:00 on CAM's NO_LEAP calendar."""
 
     days = (int(year) - 1) * 365
@@ -212,79 +175,80 @@ def _elapsed_days(year: int, month: int, day: int, seconds: int) -> float:
     return float(days) + float(seconds) / 86400.0
 
 
-def _login_name() -> str:
-    import os
-
-    return os.environ.get("USER") or os.environ.get("LOGNAME") or "unknown"
-
-
-def _template_attributes(path: Path) -> dict[str, Any]:
-    from netCDF4 import Dataset
-
-    with Dataset(path) as source:
-        return {
-            name: source.getncattr(name)
-            for name in TEMPLATE_ATTRIBUTES
-            if name in source.ncattrs()
-        }
-
-
 class PICAMHistoryStream:
-    """Accumulate and write StatePool fields as one CAM-format history stream."""
+    """Accumulate Python-owned fields and add them to CAM's history files."""
 
     def __init__(self, driver: Any, spec: PICAMHistorySpec) -> None:
         self.driver = driver
         self.spec = spec
         self._sums: dict[str, np.ndarray] = {}
         self._samples = 0
-        self._writes = 0
         self._interval_start: tuple[int, int, int, int] | None = None
-        self._template: Path | None = None
-        self._active_path: Path | None = None
-        self._records = 0
+        self._pending: list[_PendingSample] = []
+        self._written = 0
+        self._plan: _ColumnPlan | None = None
 
     # -- state -----------------------------------------------------------
 
     @property
-    def writes(self) -> int:
-        """Number of time samples this stream has written."""
+    def written(self) -> int:
+        """Time samples this stream has added to CAM history files."""
 
-        return self._writes
+        return self._written
+
+    @property
+    def pending(self) -> int:
+        """Completed windows still waiting for their CAM history file."""
+
+        return len(self._pending)
 
     @property
     def accumulated(self) -> int:
-        """Steps accumulated into the open averaging window."""
-
         return self._samples
 
-    @property
-    def interval_start(self) -> tuple[int, int, int, int] | None:
-        return self._interval_start
+    def fields(self) -> tuple[PICAMHistoryVariable, ...]:
+        """Resolve the Python-owned fields this stream writes right now."""
+
+        if self.spec.variables is not None:
+            return self.spec.variables
+        pool = self.driver.pool
+        selected: list[PICAMHistoryVariable] = []
+        for name in sorted(pool.dynamic_fields):
+            contract = pool.contract(name)
+            if not getattr(contract, "output", True):
+                continue
+            if not self._is_column_field(np.asarray(pool[name])):
+                continue
+            selected.append(
+                PICAMHistoryVariable(field=name, units=contract.units)
+            )
+        return tuple(selected)
 
     # -- workflow entry point --------------------------------------------
 
-    def step(self) -> Path | None:
-        """Accumulate this step and write once the CAM window completes."""
+    def step(self) -> int:
+        """Accumulate this step and, when a window closes, extend CAM output."""
 
         self.accumulate()
         if not self.window_complete():
-            return None
-        return self.flush()
+            return 0
+        self.close_window()
+        return self.drain()
 
     def accumulate(self) -> None:
         """Add this step's rank-local values to the open averaging window."""
 
+        variables = self.fields()
+        if not variables:
+            return
         clock = self.driver.clock
         if self._interval_start is None:
-            self._interval_start = (
-                int(clock.year),
-                int(clock.month),
-                int(clock.day),
-                int(clock.seconds),
-            )
+            self._interval_start = self._clock_stamp()
         plan = self._column_plan()
-        for variable in self.spec.variables:
+        for variable in variables:
             values = self._local_values(variable, plan)
+            if values is None:
+                continue
             if self.spec.time_period == "instantaneous":
                 self._sums[variable.output_name] = values
             else:
@@ -293,6 +257,7 @@ class PICAMHistoryStream:
                     values if total is None else total + values
                 )
         self._samples += 1
+        del clock
 
     def window_complete(self) -> bool:
         """Return CAM's ``nhtfrq`` alarm for the open averaging window."""
@@ -305,52 +270,192 @@ class PICAMHistoryStream:
         frequency = int(self.spec.nhtfrq)
         if frequency > 0:
             return self._samples >= frequency
-        elapsed = _elapsed_days(
-            int(clock.year), int(clock.month), int(clock.day), int(clock.seconds)
-        ) - _elapsed_days(*self._interval_start)
+        elapsed = elapsed_days(*self._clock_stamp()) - elapsed_days(
+            *self._interval_start
+        )
         return elapsed * 24.0 >= float(-frequency) - 1.0e-9
 
-    def flush(self) -> Path | None:
-        """Write the open window as one CAM-format time sample."""
+    def close_window(self) -> None:
+        """Reduce the open window and queue it for CAM's history file."""
 
         if self._samples == 0 or self._interval_start is None:
             raise PICAMStateError(
                 f"history stream {self.spec.name!r} has nothing accumulated"
             )
-        plan = self._column_plan()
         divisor = 1.0 if self.spec.time_period == "instantaneous" else self._samples
+        variables = {item.output_name: item for item in self.fields()}
         local = {
             name: (values / divisor).astype(self.spec.precision, copy=False)
             for name, values in self._sums.items()
         }
-        gathered = tuple(
-            (variable, self.driver.comm.gather(local[variable.output_name], root=0))
-            for variable in self.spec.variables
-        )
+        plan = self._column_plan()
+        gathered = {
+            name: self.driver.comm.gather(values, root=0)
+            for name, values in local.items()
+        }
         indices = self.driver.comm.gather(plan.global_ids, root=0)
-        bounds = (self._interval_start, self._clock_stamp())
+        year, month, day, seconds = self._clock_stamp()
         self._sums.clear()
         self._samples = 0
-        # CAM's averaging windows abut: the next one starts where this one
-        # ended, so consecutive samples carry contiguous ``time_bnds``.
-        self._interval_start = bounds[1]
-        self._writes += 1
-        path = self._resolve_path(bounds[1])
-        if path != self._active_path:
-            self._active_path = path
-            self._records = 0
-        self._records += 1
+        # CAM's windows abut: the next one opens where this one closed.
+        self._interval_start = (year, month, day, seconds)
         if int(self.driver.comm.rank) != 0:
-            return None
-        self._append(path, plan, indices, gathered, bounds)
-        return path
+            return
+        placement = np.concatenate(
+            [np.asarray(item, dtype=np.int64) for item in indices]
+        )
+        if placement.size != plan.global_count:
+            raise PICAMStateError(
+                "gathered column count does not match the collective total"
+            )
+        if np.unique(placement).size != placement.size:
+            raise PICAMStateError(
+                "CAM global column identifiers repeat across MPI ranks"
+            )
+        values = {
+            name: self._order(np.concatenate(parts, axis=0), placement)
+            for name, parts in gathered.items()
+        }
+        metadata = {
+            name: (
+                variables[name].units,
+                variables[name].long_name,
+            )
+            for name in values
+        }
+        self._pending.append(
+            _PendingSample(
+                date=year * 10000 + month * 100 + day,
+                datesec=seconds,
+                values=values,
+                metadata=metadata,
+            )
+        )
 
-    # -- naming ----------------------------------------------------------
+    def drain(self) -> int:
+        """Add every queued window whose CAM history file is complete."""
 
-    def path(self) -> Path:
-        """Path of the file the next time sample will land in."""
+        if int(self.driver.comm.rank) != 0 or not self._pending:
+            return 0
+        run_dir = self.driver.run_dir
+        if run_dir is None:
+            raise PICAMStateError(
+                "Python-owned history output requires a run directory"
+            )
+        written = 0
+        for path in sorted(Path(run_dir).glob(f"*.cam.{self.spec.stream}.*.nc")):
+            if not self._pending:
+                break
+            written += self._extend(path)
+        self._written += written
+        return written
 
-        return self._resolve_path(self._clock_stamp())
+    # -- CAM history file extension --------------------------------------
+
+    def _extend(self, path: Path) -> int:
+        from netCDF4 import Dataset
+
+        try:
+            with Dataset(path) as dataset:
+                if _COLUMN_DIMENSION not in dataset.dimensions:
+                    return 0
+                stamps = {
+                    (int(date), int(seconds)): index
+                    for index, (date, seconds) in enumerate(
+                        zip(
+                            dataset.variables["date"][:],
+                            dataset.variables["datesec"][:],
+                        )
+                    )
+                }
+                columns = len(dataset.dimensions[_COLUMN_DIMENSION])
+                levels = {
+                    name: len(dimension)
+                    for name, dimension in dataset.dimensions.items()
+                    if name in {"lev", "ilev"}
+                }
+        except OSError:
+            # CAM still owns the file; try again once it closes.
+            return 0
+        matched = [
+            sample
+            for sample in self._pending
+            if (sample.date, sample.datesec) in stamps
+        ]
+        if not matched:
+            return 0
+        with Dataset(path, "a") as dataset:
+            for sample in matched:
+                index = stamps[(sample.date, sample.datesec)]
+                for name, values in sample.values.items():
+                    self._write(
+                        dataset, name, values, index, sample, columns, levels
+                    )
+        for sample in matched:
+            self._pending.remove(sample)
+        return len(matched)
+
+    def _write(
+        self,
+        dataset: Any,
+        name: str,
+        values: np.ndarray,
+        index: int,
+        sample: _PendingSample,
+        columns: int,
+        levels: Mapping[str, int],
+    ) -> None:
+        if values.shape[-1] != columns:
+            raise PICAMStateError(
+                f"history field {name!r} spans {values.shape[-1]} columns; "
+                f"the CAM history file has {columns}"
+            )
+        if values.ndim == 1:
+            dimensions = (_TIME_DIMENSION, _COLUMN_DIMENSION)
+        else:
+            level = self._level_name(values.shape[0], levels)
+            dimensions = (_TIME_DIMENSION, level, _COLUMN_DIMENSION)
+        if name not in dataset.variables:
+            units, long_name = sample.metadata.get(name, (None, None))
+            created = dataset.createVariable(
+                name,
+                "f4" if self.spec.precision == "float32" else "f8",
+                dimensions,
+            )
+            if len(dimensions) == 3:
+                created.mdims = 1
+            created.units = units or "1"
+            created.long_name = long_name or name
+            created.cell_methods = self.spec.cell_methods
+        elif dataset.variables[name].dimensions != dimensions:
+            raise PICAMStateError(
+                f"CAM history file already defines {name!r} with different "
+                "dimensions"
+            )
+        dataset.variables[name][index, ...] = values
+
+    def _level_name(self, size: int, levels: Mapping[str, int]) -> str:
+        for name in ("lev", "ilev"):
+            if levels.get(name) == size:
+                return name
+        raise PICAMStateError(
+            f"history output cannot label a vertical dimension of {size} "
+            "levels; the CAM history file uses lev and ilev"
+        )
+
+    @staticmethod
+    def _order(values: np.ndarray, placement: np.ndarray) -> np.ndarray:
+        if values.ndim == 1:
+            ordered = np.empty(placement.size, dtype=values.dtype)
+            ordered[placement] = values
+            return ordered
+        ordered = np.empty(
+            (values.shape[1], placement.size), dtype=values.dtype
+        )
+        ordered[:, placement] = values.T
+        return ordered
+
+    # -- rank-local collection -------------------------------------------
 
     def _clock_stamp(self) -> tuple[int, int, int, int]:
         clock = self.driver.clock
@@ -361,31 +466,14 @@ class PICAMHistoryStream:
             int(clock.seconds),
         )
 
-    def _resolve_path(self, stamp: tuple[int, int, int, int]) -> Path:
-        if self._active_path is not None and self._records < int(self.spec.mfilt):
-            return self._active_path
-        run_dir = self.driver.run_dir
-        if run_dir is None:
-            raise PICAMStateError(
-                "Python-owned history output requires a run directory"
-            )
-        year, month, day, seconds = stamp
-        if self.spec.monthly:
-            # CAM stamps a completed monthly mean with the month it covers,
-            # not with the first date of the following month.
-            if month == 1:
-                year, month = year - 1, 12
-            else:
-                month -= 1
-            label = f"{year:04d}-{month:02d}"
-        else:
-            label = f"{year:04d}-{month:02d}-{day:02d}-{seconds:05d}"
-        case = str(self.driver.config.case_name)
-        return Path(run_dir) / f"{case}.cam.{self.spec.stream}.{label}.nc"
-
-    # -- rank-local collection -------------------------------------------
-
     def _column_plan(self) -> _ColumnPlan:
+        # CAM's physics decomposition is fixed once the grid exists, so the
+        # column map is built once per stream instead of at every step.
+        if self._plan is None:
+            self._plan = self._build_column_plan()
+        return self._plan
+
+    def _build_column_plan(self) -> _ColumnPlan:
         pool = self.driver.pool
         for name in ("phys_state.cid", "phys_state.ngrdcol"):
             if name not in pool:
@@ -421,11 +509,21 @@ class PICAMHistoryStream:
             columns=np.asarray(column_indices, dtype=np.int64),
             global_ids=local,
             global_count=int(sum(int(item) for item in counts)),
+            shape=(int(identifiers.shape[0]), int(identifiers.shape[1])),
         )
+
+    def _is_column_field(self, values: np.ndarray) -> bool:
+        plan = self._column_plan()
+        pcols, chunks = plan.shape
+        if values.ndim == 2:
+            return values.shape == (pcols, chunks)
+        if values.ndim == 3:
+            return values.shape[0] == pcols and values.shape[2] == chunks
+        return False
 
     def _local_values(
         self, variable: PICAMHistoryVariable, plan: _ColumnPlan
-    ) -> np.ndarray:
+    ) -> np.ndarray | None:
         pool = self.driver.pool
         try:
             canonical = pool.canonical_name(variable.field)
@@ -435,253 +533,25 @@ class PICAMHistoryStream:
                 f"{variable.field!r}"
             ) from exc
         values = np.asarray(pool[canonical])
-        if values.ndim == 2:
-            selected = values[plan.columns, plan.chunks]
-        elif values.ndim == 3:
-            selected = values[plan.columns, :, plan.chunks]
-        else:
+        if not self._is_column_field(values):
+            if self.spec.variables is None:
+                # Automatic selection simply skips fields that do not live on
+                # CAM's physics columns.
+                return None
             raise PICAMStateError(
-                f"history field {variable.field!r} has {values.ndim} dimensions; "
+                f"history field {variable.field!r} has shape {values.shape}; "
                 "CAM history output covers (columns, chunks) and "
                 "(columns, levels, chunks) fields"
             )
-        return np.ascontiguousarray(selected, dtype=np.float64)
-
-    # -- rank-zero writing -----------------------------------------------
-
-    def _append(
-        self,
-        path: Path,
-        plan: _ColumnPlan,
-        indices: Sequence[np.ndarray],
-        gathered: Sequence[tuple[PICAMHistoryVariable, Sequence[np.ndarray]]],
-        bounds: tuple[tuple[int, int, int, int], tuple[int, int, int, int]],
-    ) -> None:
-        from netCDF4 import Dataset
-
-        placement = np.concatenate(
-            [np.asarray(item, dtype=np.int64) for item in indices]
-        )
-        if placement.size != plan.global_count:
-            raise PICAMStateError(
-                "gathered column count does not match the collective total"
-            )
-        if np.unique(placement).size != placement.size:
-            raise PICAMStateError(
-                "CAM global column identifiers repeat across MPI ranks"
-            )
-        created = not path.is_file()
-        with Dataset(path, "w" if created else "a") as dataset:
-            if created:
-                self._define(dataset, plan)
-            record = dataset.dimensions[_TIME_DIMENSION].size
-            self._write_time(dataset, record, bounds)
-            for variable, parts in gathered:
-                values = np.concatenate(
-                    [np.asarray(item) for item in parts], axis=0
-                )
-                self._write_variable(dataset, variable, values, placement, record)
-
-    def _define(self, dataset: Any, plan: _ColumnPlan) -> None:
-        dataset.createDimension(_TIME_DIMENSION, None)
-        dataset.createDimension(_COLUMN_DIMENSION, plan.global_count)
-        dataset.createDimension("nbnd", 2)
-        dataset.createDimension("chars", _CHARS)
-        # CAM history files always carry both vertical axes, so a Python-owned
-        # stream declares them even when this sample holds column-only fields.
-        levels = int(self.driver.config.pver)
-        dataset.createDimension("lev", levels)
-        dataset.createDimension("ilev", levels + 1)
-        dataset.setncatts(self._global_attributes())
-        time = dataset.createVariable("time", "f8", (_TIME_DIMENSION,))
-        time.long_name = "time"
-        time.units = "days since 0001-01-01 00:00:00"
-        time.calendar = "noleap"
-        time.bounds = "time_bnds"
-        bounds = dataset.createVariable(
-            "time_bnds", "f8", (_TIME_DIMENSION, "nbnd")
-        )
-        bounds.long_name = "time interval endpoints"
-        for name, long_name in (
-            ("date", "current date (YYYYMMDD)"),
-            ("datesec", "current seconds of current date"),
-            ("ndcur", "current day (from base day)"),
-            ("nscur", "current seconds of current day"),
-            ("nsteph", "current timestep"),
-        ):
-            created = dataset.createVariable(name, "i4", (_TIME_DIMENSION,))
-            created.long_name = long_name
-        for name, long_name in (
-            ("date_written", "date the sample was written"),
-            ("time_written", "time the sample was written"),
-        ):
-            created = dataset.createVariable(
-                name, "S1", (_TIME_DIMENSION, "chars")
-            )
-            created.long_name = long_name
-        self._copy_template(dataset)
-
-    def _write_time(
-        self,
-        dataset: Any,
-        record: int,
-        bounds: tuple[tuple[int, int, int, int], tuple[int, int, int, int]],
-    ) -> None:
-        start, end = bounds
-        start_days = _elapsed_days(*start)
-        end_days = _elapsed_days(*end)
-        # CAM timestamps an averaged sample at the end of its window and an
-        # instantaneous sample at the moment it was taken.
-        dataset.variables["time"][record] = end_days
-        dataset.variables["time_bnds"][record, :] = (
-            (start_days, end_days)
-            if self.spec.time_period == "mean"
-            else (end_days, end_days)
-        )
-        year, month, day, seconds = end
-        dataset.variables["date"][record] = year * 10000 + month * 100 + day
-        dataset.variables["datesec"][record] = seconds
-        dataset.variables["ndcur"][record] = int(end_days)
-        dataset.variables["nscur"][record] = seconds
-        dataset.variables["nsteph"][record] = int(self.driver.clock.nstep)
-        stamp = time_module.strftime("%m/%d/%y")
-        clock = time_module.strftime("%H:%M:%S")
-        dataset.variables["date_written"][record, :] = _characters(stamp)
-        dataset.variables["time_written"][record, :] = _characters(clock)
-
-    def _write_variable(
-        self,
-        dataset: Any,
-        variable: PICAMHistoryVariable,
-        values: np.ndarray,
-        placement: np.ndarray,
-        record: int,
-    ) -> None:
-        name = variable.output_name
-        if values.ndim == 1:
-            dimensions = (_TIME_DIMENSION, _COLUMN_DIMENSION)
-            ordered = np.empty(placement.size, dtype=values.dtype)
-            ordered[placement] = values
-        elif values.ndim == 2:
-            level = self._level_name(values.shape[1])
-            dimensions = (_TIME_DIMENSION, level, _COLUMN_DIMENSION)
-            ordered = np.empty(
-                (values.shape[1], placement.size), dtype=values.dtype
-            )
-            ordered[:, placement] = values.T
+        if values.ndim == 2:
+            selected = values[plan.columns, plan.chunks]
         else:
-            raise PICAMStateError(
-                f"history field {variable.field!r} gathered {values.ndim} "
-                "dimensions; expected columns or columns and levels"
-            )
-        if name not in dataset.variables:
-            created = dataset.createVariable(
-                name,
-                "f4" if self.spec.precision == "float32" else "f8",
-                dimensions,
-            )
-            contract = self._contract(variable.field)
-            if len(dimensions) == 3:
-                created.mdims = 1
-            created.units = variable.units or (
-                "1" if contract is None else contract.units
-            )
-            created.long_name = variable.long_name or name
-            created.cell_methods = self.spec.cell_methods
-        dataset.variables[name][record, ...] = ordered
-
-    # -- metadata --------------------------------------------------------
-
-    def _level_name(self, size: int) -> str:
-        if size == int(self.driver.config.pver):
-            return "lev"
-        if size == int(self.driver.config.pver) + 1:
-            return "ilev"
-        raise PICAMStateError(
-            f"history output cannot label a vertical dimension of {size} "
-            "levels; CAM history files use lev and ilev"
-        )
-
-    def _contract(self, field: str) -> Any:
-        pool = self.driver.pool
-        try:
-            return pool.contract(pool.canonical_name(field))
-        except (KeyError, PICAMStateError):
-            return None
-
-    def _global_attributes(self) -> dict[str, Any]:
-        attributes: dict[str, Any] = {
-            "Conventions": "CF-1.0",
-            "source": "CAM",
-            "case": str(self.driver.config.case_name),
-            "title": "UNSET",
-            "logname": _login_name(),
-            "host": socket.gethostname(),
-            "freecam_history_stream": self.spec.name,
-            "freecam_control": "python",
-        }
-        template = self._template_path()
-        if template is not None:
-            attributes.update(_template_attributes(template))
-        return attributes
-
-    def _template_path(self) -> Path | None:
-        if self._template is not None:
-            return self._template
-        declared = self.spec.template
-        if declared is not None:
-            path = Path(declared)
-            if not path.is_file():
-                raise PICAMConfigurationError(
-                    f"history template {path} does not exist"
-                )
-            self._template = path
-            return path
-        run_dir = self.driver.run_dir
-        if run_dir is None:
-            return None
-        case = str(self.driver.config.case_name)
-        for candidate in sorted(Path(run_dir).glob(f"{case}.cam.h?.*.nc")):
-            if f".cam.{self.spec.stream}." in candidate.name:
-                continue
-            self._template = candidate
-            return candidate
-        return None
-
-    def _copy_template(self, dataset: Any) -> None:
-        template = self._template_path()
-        if template is None:
-            return
-        from netCDF4 import Dataset
-
-        with Dataset(template) as source:
-            for name in TEMPLATE_VARIABLES:
-                variable = source.variables.get(name)
-                if variable is None or name in dataset.variables:
-                    continue
-                if any(
-                    dimension not in dataset.dimensions
-                    or dataset.dimensions[dimension].size
-                    != source.dimensions[dimension].size
-                    for dimension in variable.dimensions
-                ):
-                    continue
-                created = dataset.createVariable(
-                    name, variable.dtype, variable.dimensions
-                )
-                created.setncatts(
-                    {key: variable.getncattr(key) for key in variable.ncattrs()}
-                )
-                created[...] = variable[...]
-
-
-def _characters(text: str) -> np.ndarray:
-    padded = f"{text:<{_CHARS}}"[:_CHARS]
-    return np.asarray(list(padded), dtype="S1")
+            selected = values[plan.columns, :, plan.chunks]
+        return np.ascontiguousarray(selected, dtype=np.float64)
 
 
 class PICAMHistoryStreamRegistry:
-    """Own the Python-defined history streams of one live model."""
+    """Own the Python-defined history extensions of one live model."""
 
     def __init__(self, driver: Any) -> None:
         self.driver = driver
@@ -710,39 +580,35 @@ class PICAMHistoryStreamRegistry:
 
     def install(
         self,
-        name: str,
+        name: str = "python_fields",
         *,
-        fields: Sequence[Any],
-        stream: str = "h9",
+        fields: Sequence[Any] | None = None,
+        stream: str = "h0",
         nhtfrq: int = 0,
-        mfilt: int = 1,
         time_period: str = "mean",
-        template: str | Path | None = None,
         precision: str = "float32",
     ) -> PICAMHistoryStream:
-        """Install one Python-owned history stream on every MPI rank."""
+        """Add Python-owned fields to one CAM history stream on every rank."""
 
         spec = PICAMHistorySpec(
             name=str(name),
             stream=str(stream),
-            variables=tuple(_as_variable(item) for item in fields),
+            variables=(
+                None
+                if fields is None
+                else tuple(_as_variable(item) for item in fields)
+            ),
             nhtfrq=int(nhtfrq),
-            mfilt=int(mfilt),
             time_period=str(time_period),
-            template=template,
             precision=str(precision),
         )
         if spec.name in self._streams:
             raise PICAMConfigurationError(
                 f"history stream {spec.name!r} is already installed"
             )
-        used = {item.spec.stream for item in self._streams.values()}
-        if spec.stream in used:
-            raise PICAMConfigurationError(
-                f"history stream identifier {spec.stream!r} is already in use"
-            )
-        for variable in spec.variables:
-            self._require_field(variable.field)
+        if spec.variables is not None:
+            for variable in spec.variables:
+                self._require_field(variable.field)
         installed = PICAMHistoryStream(self.driver, spec)
         self._streams[spec.name] = installed
         return installed
@@ -752,17 +618,21 @@ class PICAMHistoryStreamRegistry:
         del self._streams[stream.spec.name]
         return stream.spec
 
-    def step(self, name: str) -> Path | None:
+    def step(self, name: str) -> int:
         return self.stream(name).step()
 
-    def flush(self, name: str) -> Path | None:
-        return self.stream(name).flush()
+    def drain(self) -> int:
+        """Add every queued window across streams, at finalization."""
+
+        return sum(stream.drain() for stream in self._streams.values())
 
     def describe(self) -> tuple[dict[str, Any], ...]:
         return tuple(
             {
                 **stream.spec.to_payload(),
-                "writes": stream.writes,
+                "resolved_fields": [item.output_name for item in stream.fields()],
+                "written": stream.written,
+                "pending": stream.pending,
                 "accumulated": stream.accumulated,
             }
             for stream in self._streams.values()

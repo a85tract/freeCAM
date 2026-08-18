@@ -1835,18 +1835,16 @@ class PICAMNotebookSession:
 
     def install_history_stream(
         self,
-        name: str,
+        name: str = "python_fields",
         *,
-        fields: Sequence[Any],
-        stream: str = "h9",
+        fields: Sequence[Any] | None = None,
+        stream: str = "h0",
         nhtfrq: int = 0,
-        mfilt: int = 1,
         before: str | None = None,
         after: str | None = "wshist",
         enabled: bool = True,
-        template: str | Path | None = None,
-        precision: str = "float32",
         time_period: str = "mean",
+        precision: str = "float32",
     ) -> Mapping[str, Any]:
         """Add one Python-owned CAM-format history stream on every rank."""
 
@@ -1855,14 +1853,12 @@ class PICAMNotebookSession:
                 {
                     "op": "install_history_stream",
                     "name": str(name),
-                    "fields": list(fields),
+                    "fields": None if fields is None else list(fields),
                     "stream": str(stream),
                     "nhtfrq": int(nhtfrq),
-                    "mfilt": int(mfilt),
                     "before": before,
                     "after": after,
                     "enabled": bool(enabled),
-                    "template": None if template is None else str(template),
                     "precision": str(precision),
                     "time_period": str(time_period),
                 }
@@ -1883,14 +1879,10 @@ class PICAMNotebookSession:
 
         return tuple(self._request({"op": "history_streams"}))
 
-    def flush_history_stream(self, name: str) -> str | None:
-        """Write the open averaging window outside the workflow."""
+    def drain_history_streams(self) -> int:
+        """Add every queued window to the CAM history file it belongs to."""
 
-        result = dict(
-            self._request({"op": "flush_history_stream", "name": str(name)})
-        )
-        path = result.get("path")
-        return None if path is None else str(path)
+        return int(self._request({"op": "drain_history_streams"})["written"])
 
     def trace_window(self, *, since: int = 0) -> dict[str, Any]:
         """Return ``{'first_sequence', 'total', 'records'}`` from the worker.

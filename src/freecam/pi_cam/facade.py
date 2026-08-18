@@ -969,18 +969,16 @@ class _CAMFacade:
 
     def install_history_stream(
         self,
-        name: str,
+        name: str = "python_fields",
         *,
-        fields: Sequence[Any],
-        stream: str = "h9",
+        fields: Sequence[Any] | None = None,
+        stream: str = "h0",
         nhtfrq: int = 0,
-        mfilt: int = 1,
         before: str | None = None,
         after: str | None = "wshist",
         enabled: bool = True,
-        template: str | Path | None = None,
-        precision: str = "float32",
         time_period: str = "mean",
+        precision: str = "float32",
     ) -> Mapping[str, Any]:
         """Write Python-owned StatePool fields in the original CAM format."""
 
@@ -989,11 +987,9 @@ class _CAMFacade:
             fields=fields,
             stream=stream,
             nhtfrq=nhtfrq,
-            mfilt=mfilt,
             before=before,
             after=after,
             enabled=enabled,
-            template=template,
             precision=precision,
             time_period=time_period,
         )
@@ -1005,8 +1001,8 @@ class _CAMFacade:
     def history_streams(self) -> tuple[Mapping[str, Any], ...]:
         return self._driver._live_session().history_streams()
 
-    def flush_history_stream(self, name: str) -> str | None:
-        return self._driver._live_session().flush_history_stream(name)
+    def drain_history_streams(self) -> int:
+        return self._driver._live_session().drain_history_streams()
 
 
 @dataclass(frozen=True, slots=True)

@@ -54,6 +54,27 @@ def _process_memory(label: str, step: int) -> dict[str, int | str]:
     return sample
 
 
+def _history_stream_request(text: str) -> dict[str, object]:
+    """Read one history-stream request from JSON text or a JSON file."""
+
+    # Inline JSON is longer than a file name may be, so probing the
+    # filesystem first would raise instead of parsing.
+    try:
+        payload = json.loads(text)
+    except json.JSONDecodeError:
+        candidate = Path(text)
+        if not candidate.is_file():
+            raise ValueError(
+                "a history stream request must be JSON text or a JSON file"
+            ) from None
+        payload = json.loads(candidate.read_text())
+    if not isinstance(payload, dict):
+        raise ValueError("a history stream request must be a JSON object")
+    if "name" not in payload:
+        raise ValueError("history stream request needs 'name'")
+    return payload
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="freecam")
     parser.add_argument("--config", type=Path, required=True)
@@ -86,6 +107,18 @@ def main(argv: list[str] | None = None) -> int:
         help=(
             "replace admitted cam_run2 and cam_run4 composites with ordered "
             "native leaf actions"
+        ),
+    )
+    parser.add_argument(
+        "--history-stream",
+        action="append",
+        default=[],
+        dest="history_streams",
+        metavar="JSON",
+        help=(
+            "add Python-owned fields to a CAM history stream from a JSON "
+            "object or a path to one; Python-owned fields already join the "
+            "model's own h0 output by default, so this only overrides that"
         ),
     )
     parser.add_argument("--summary", type=Path)
@@ -127,6 +160,9 @@ def main(argv: list[str] | None = None) -> int:
         communicator=world,
         run_dir=args.run_dir,
     )
+    history_streams = tuple(
+        _history_stream_request(item) for item in args.history_streams
+    )
     if args.expand_cam_run1_leaves:
         cam.step_plan.expand_cam_run1_leaves(experimental=True)
     if args.expand_cam_run2_run4_leaves:
@@ -143,6 +179,20 @@ def main(argv: list[str] | None = None) -> int:
         world.Barrier()
         initialize_started = MPI.Wtime()
         cam.initialize()
+        for request in history_streams:
+            cam.install_history_stream(
+                str(request["name"]),
+                fields=(
+                    None if request.get("fields") is None
+                    else tuple(request["fields"])
+                ),
+                stream=str(request.get("stream", "h0")),
+                nhtfrq=int(request.get("nhtfrq", 0)),
+                before=request.get("before"),
+                after=request.get("after", "wshist"),
+                time_period=str(request.get("time_period", "mean")),
+                precision=str(request.get("precision", "float32")),
+            )
         memory_samples.append(_process_memory("initialized", cam.clock.nstep))
         world.Barrier()
         initialize_seconds = MPI.Wtime() - initialize_started
@@ -315,6 +365,10 @@ def main(argv: list[str] | None = None) -> int:
                     ),
                     "total_pss_bytes": sum(
                         int(record["memory_samples"][index].get("Pss_bytes", 0))
+                        for record in records
+                    ),
+                    "total_hwm_bytes": sum(
+                        int(record["memory_samples"][index].get("VmHWM_bytes", 0))
                         for record in records
                     ),
                     "maximum_rank_hwm_bytes": max(
