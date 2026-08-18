@@ -15,6 +15,7 @@ import os
 import shutil
 import textwrap
 import threading
+import warnings
 from collections import Counter, defaultdict
 from concurrent.futures import Future
 from dataclasses import dataclass, field
@@ -32,7 +33,7 @@ from .boundary import (
     CESMOnlineBoundaryProvider,
     OnlineBoundaryProvider,
 )
-from .config import PICAMConfig
+from .config import DEFAULT_TRACE_LIMIT, PICAMConfig, validate_trace_limit
 from .history import PICAMOutputView
 from .plan import PICAMStepPlan
 from .session import PICAMNotebookSession
@@ -987,10 +988,12 @@ class RunProgress:
 class RunResult(Sequence[Mapping[str, Any]]):
     """Compact result of one complete CAM run.
 
-    The full per-process trace remains available through :attr:`trace`, while
-    the normal Notebook representation shows only the run-level outcome.
-    Sequence methods are retained for compatibility with code that used the
-    former raw trace return value.
+    :attr:`trace` holds the retained per-process records of this run; the
+    worker keeps only the newest ``trace_limit`` records, so for long runs the
+    oldest rows may have been evicted.  :attr:`actions` always reports the
+    exact number of executed actions, and :attr:`trace_truncated` states
+    whether ``trace`` is complete.  Sequence methods operate on the retained
+    trace: ``len(result) == result.actions`` only when ``not trace_truncated``.
     """
 
     requested_steps: int
@@ -1003,13 +1006,19 @@ class RunResult(Sequence[Mapping[str, Any]]):
     cancelled: bool = False
     final_status: Mapping[str, Any] = field(default_factory=dict, repr=False)
     _driver: "Driver | None" = field(default=None, repr=False, compare=False)
+    action_count: int = field(kw_only=True)
+    trace_truncated: bool = field(kw_only=True)
 
     @property
     def actions(self) -> int:
-        return len(self.trace)
+        """Exact number of actions this run executed, immune to truncation."""
+
+        return self.action_count
 
     @property
     def first_process(self) -> str | None:
+        """Name of the first retained record (first executed if not truncated)."""
+
         return None if not self.trace else str(self.trace[0].get("name"))
 
     @property
@@ -1036,6 +1045,8 @@ class RunResult(Sequence[Mapping[str, Any]]):
             "end_step": self.end_step,
             "date": self.date,
             "actions": self.actions,
+            "trace_records": len(self.trace),
+            "trace_truncated": self.trace_truncated,
             "cancelled": self.cancelled,
             "run_dir": None if self.run_dir is None else str(self.run_dir),
         }
@@ -1050,15 +1061,22 @@ class RunResult(Sequence[Mapping[str, Any]]):
         return iter(self.trace)
 
     def __repr__(self) -> str:
+        truncated = ", trace_truncated=True" if self.trace_truncated else ""
         return (
             "RunResult("
             f"steps={self.completed_steps}/{self.requested_steps}, "
             f"model_step={self.end_step}, actions={self.actions}, "
-            f"date={self.date!r}, cancelled={self.cancelled})"
+            f"date={self.date!r}, cancelled={self.cancelled}{truncated})"
         )
 
     def _repr_html_(self) -> str:
         status = "cancelled" if self.cancelled else "complete"
+        truncation_note = (
+            "<br>trace truncated: showing last "
+            f"{len(self.trace)} of {self.actions} actions"
+            if self.trace_truncated
+            else ""
+        )
         return (
             "<div class='freecam-run-result' style='border:1px solid #ddd;"
             "border-radius:6px;padding:.65rem .8rem;display:inline-block'>"
@@ -1070,7 +1088,7 @@ class RunResult(Sequence[Mapping[str, Any]]):
             f"<tr><td>date</td><td>{self.date}</td></tr>"
             f"<tr><td>process calls</td><td>{self.actions}</td></tr>"
             "</table><small>Full details: <code>result.trace</code>; "
-            "output: <code>result.history</code></small></div>"
+            f"output: <code>result.history</code>{truncation_note}</small></div>"
         )
 
 
@@ -1232,6 +1250,7 @@ class Driver:
         verify_boundary_exports: bool = False,
         python_executable: str | Path | None = None,
         session_factory: Any = PICAMNotebookSession,
+        trace_limit: int | None = DEFAULT_TRACE_LIMIT,
     ) -> None:
         if int(nsteps) < 1:
             raise ValueError("nsteps must be positive")
@@ -1355,6 +1374,7 @@ class Driver:
             None if history_every is None else int(history_every)
         )
         self.verify_boundary_exports = bool(verify_boundary_exports)
+        self.trace_limit = validate_trace_limit(trace_limit)
         # Do not resolve the final ``.venv/bin/python`` symlink: Python uses
         # that invocation path to select the virtual environment's site-packages.
         self.python_executable = Path(
@@ -1482,7 +1502,7 @@ class Driver:
             session = self._live_session()
             starting_status = dict(session.status)
             start_step = int(starting_status.get("step", 0))
-            first = int(session.status.get("actions", 0))
+            first = int(starting_status["actions"])
             stepwise = (
                 bool(progress)
                 or cancel_event is not None
@@ -1523,11 +1543,23 @@ class Driver:
             else:
                 latest_status = session.advance(steps=int(steps))
                 completed = int(steps)
-            trace = session.trace(since=first)
+            window = session.trace_window(since=first)
+            trace = window["records"]
             final_status = dict(session.status)
         finally:
             self._execution_lock.release()
+        action_count = int(window["total"]) - first
+        if action_count < 0:
+            raise RuntimeError(
+                f"worker action counter moved backwards: {window['total']} < {first}"
+            )
+        trace_truncated = int(window["first_sequence"]) > first
         if verbose:
+            if trace_truncated:
+                print(
+                    f"... {action_count - len(trace)} earlier actions "
+                    "not retained (trace_limit)"
+                )
             for action in trace:
                 print(
                     f"step {action['model_step']:>3}  "
@@ -1548,6 +1580,8 @@ class Driver:
             ),
             final_status=final_status,
             _driver=self,
+            action_count=action_count,
+            trace_truncated=trace_truncated,
         )
 
     def run(
@@ -1602,11 +1636,20 @@ class Driver:
 
     @property
     def trace(self) -> tuple[Mapping[str, Any], ...]:
-        """Return the live action trace accumulated by this model."""
+        """Return the retained action trace accumulated by this model."""
 
         if self._session is None:
             return ()
-        return self._session.trace(since=0)
+        window = self._session.trace_window(since=0)
+        if int(window["first_sequence"]) > 0:
+            warnings.warn(
+                "freeCAM trace truncated: showing last "
+                f"{len(window['records'])} of {window['total']} actions; "
+                "pass trace_limit=None for a full debug trace",
+                RuntimeWarning,
+                stacklevel=2,
+            )
+        return window["records"]
 
     def close(self) -> None:
         with self._active_lock:
@@ -1646,6 +1689,7 @@ class Driver:
                 pbs_walltime=self.walltime,
                 pbs_memory_per_node=self.memory_per_node,
                 verify_boundary_exports=self.verify_boundary_exports,
+                trace_limit=self.trace_limit,
             )
             try:
                 session.start()

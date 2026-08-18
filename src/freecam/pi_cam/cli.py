@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import argparse
-from collections import Counter
 import json
 import os
 from pathlib import Path
@@ -133,7 +132,7 @@ def main(argv: list[str] | None = None) -> int:
                 "Python-owned PI-CAM arrays changed address: "
                 + ", ".join(changed_addresses[:8])
             )
-        operation_counts = Counter(trace.operation for trace in cam.trace)
+        operation_counts = cam.operation_counts
         leaf_operations = tuple(
             action.operation
             for action in cam.step_plan.actions
@@ -146,7 +145,7 @@ def main(argv: list[str] | None = None) -> int:
             "seconds": cam.clock.seconds,
             "fields": len(cam.pool),
             "state_bytes": cam.pool.nbytes,
-            "actions": len(cam.trace),
+            "actions": cam.trace_count,
             "step_plan_actions": len(tuple(cam.step_plan)),
             "action_catalog_size": len(cam.step_plan.actions),
             "cam_run1_actions": len(cam.step_plan.in_phase("cam_run1")),

@@ -43,38 +43,66 @@ class FakeSession:
         self.physics = object()
         self.phases = object()
         self.kernels = object()
-        self._actions = 2
-        self._trace = []
+        self.trace_limit = kwargs.get("trace_limit")
+        self._steps = 0
+        # Two records exist before any run, mirroring driver initialization.
+        self._records = [
+            {"sequence": 0, "model_step": 0, "phase": "init", "name": "seed"},
+            {"sequence": 1, "model_step": 0, "phase": "init", "name": "seed"},
+        ]
         type(self).instances.append(self)
+
+    def _retained(self):
+        if self.trace_limit is None:
+            return list(self._records)
+        return self._records[-self.trace_limit :]
 
     @property
     def status(self):
-        return {"step": len(self._trace), "actions": self._actions}
+        retained = self._retained()
+        return {
+            "step": self._steps,
+            "actions": len(self._records),
+            "trace_retained": len(retained),
+            "trace_first_sequence": len(self._records) - len(retained),
+            "trace_limit": self.trace_limit,
+        }
 
     def start(self):
         self.running = True
         return self
 
     def advance(self, steps=1):
-        first_step = len(self._trace)
-        for step in range(steps):
-            self._trace.append(
+        for _ in range(steps):
+            self._steps += 1
+            self._records.append(
                 {
-                    "model_step": first_step + step + 1,
+                    "sequence": len(self._records),
+                    "model_step": self._steps,
                     "phase": "cam_run1",
                     "name": "dadadj",
                 }
             )
-        self._actions += steps
         return self.status
 
     def configure_output(self, **options):
         self.output_config = dict(options)
         return self.status
 
+    def trace_window(self, *, since=0):
+        total = len(self._records)
+        assert 0 <= since <= total
+        records = tuple(
+            record for record in self._retained() if record["sequence"] >= since
+        )
+        return {
+            "first_sequence": records[0]["sequence"] if records else total,
+            "total": total,
+            "records": records,
+        }
+
     def trace(self, *, since=0):
-        assert since in {0, 2}
-        return tuple(self._trace)
+        return self.trace_window(since=since)["records"]
 
     def close(self):
         self.closed = True
@@ -236,9 +264,10 @@ def test_driver_hides_run_preparation_and_lazily_reuses_one_session(tmp_path) ->
 
     assert isinstance(result, RunResult)
     assert [row["name"] for row in result.trace] == ["dadadj", "dadadj"]
-    assert driver.trace == result.trace
+    assert driver.trace[-2:] == result.trace
     assert result.summary()["completed_steps"] == 2
     assert result.actions == 2
+    assert result.trace_truncated is False
     assert result.history is driver.cam.history
     assert "actions=2" in repr(result)
     assert len(FakeSession.instances) == 1
@@ -340,6 +369,87 @@ def test_background_run_cancels_between_complete_steps(tmp_path) -> None:
     assert result.cancelled
     assert result.completed_steps == 1
     assert len(result.trace) == 1
+    driver.close()
+
+
+def _bounded_driver(paths, *, trace_limit, nsteps=5) -> Driver:
+    return Driver(
+        nsteps=nsteps,
+        repo=paths["repo"],
+        config=paths["config"],
+        reference_case=paths["reference_case"],
+        reference_run=paths["reference_run"],
+        boundary=paths["boundary"],
+        session_factory=FakeSession,
+        trace_limit=trace_limit,
+    )
+
+
+def test_run_result_reports_truncation_exactly(tmp_path) -> None:
+    paths = _driver_tree(tmp_path)
+    driver = _bounded_driver(paths, trace_limit=2)
+
+    result = driver.run(steps=5)
+
+    assert result.actions == 5
+    assert len(result.trace) == 2
+    assert result.trace_truncated is True
+    assert result.summary()["actions"] == 5
+    assert result.summary()["trace_records"] == 2
+    assert result.summary()["trace_truncated"] is True
+    assert result.first_process == "dadadj"
+    assert result.last_process == "dadadj"
+    assert "trace_truncated=True" in repr(result)
+    assert "showing last 2 of 5 actions" in result._repr_html_()
+    driver.close()
+
+
+def test_driver_passes_trace_limit_to_session_factory(tmp_path) -> None:
+    paths = _driver_tree(tmp_path)
+    driver = _bounded_driver(paths, trace_limit=99)
+    driver.run(steps=1)
+    assert FakeSession.instances[-1].kwargs["trace_limit"] == 99
+    driver.close()
+
+    default_driver = Driver(
+        nsteps=2,
+        repo=paths["repo"],
+        config=paths["config"],
+        reference_case=paths["reference_case"],
+        reference_run=paths["reference_run"],
+        boundary=paths["boundary"],
+        session_factory=FakeSession,
+    )
+    default_driver.run(steps=1)
+    assert FakeSession.instances[-1].kwargs["trace_limit"] == 4096
+    default_driver.close()
+
+    from freecam.pi_cam.errors import PICAMConfigurationError
+
+    with pytest.raises(PICAMConfigurationError):
+        _bounded_driver(paths, trace_limit=0)
+
+
+def test_driver_trace_property_warns_when_truncated(tmp_path) -> None:
+    paths = _driver_tree(tmp_path)
+    driver = _bounded_driver(paths, trace_limit=2)
+    driver.run(steps=3)
+
+    with pytest.warns(RuntimeWarning, match="showing last 2 of 5 actions"):
+        trace = driver.trace
+
+    assert len(trace) == 2
+    driver.close()
+
+
+def test_verbose_run_notes_unretained_actions(tmp_path, capsys) -> None:
+    paths = _driver_tree(tmp_path)
+    driver = _bounded_driver(paths, trace_limit=2)
+
+    driver.run(steps=5, verbose=True)
+
+    output = capsys.readouterr().out
+    assert "... 3 earlier actions not retained (trace_limit)" in output
     driver.close()
 
 

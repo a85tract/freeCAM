@@ -89,6 +89,13 @@ records are gathered only once during finalization. The online surface/coupler
 provider may also write its original `cesm_timing.*` files in its own run
 directory. Those files profile different code and are intentionally retained.
 
+The in-memory action trace is bounded to the most recent 4,096 records per
+rank by default, so long simulations do not accumulate one Python object per
+process call. Run results always report exact action counts and state whether
+their trace was truncated. Pass `trace_limit=None` to `freecam.Driver` (or
+`PICAMNotebookSession`) only when a complete in-memory debug trace is
+explicitly needed.
+
 The maintained Jupyter walkthrough is
 [`examples/try_pi_cam.ipynb`](examples/try_pi_cam.ipynb).
 

@@ -54,11 +54,11 @@ def main() -> int:
             _hash(temperature) == temperature_hash
         )
         runtime_process = result.process.insert(after="dadadj")
-        first_runtime_trace = len(cam.trace)
+        first_runtime_trace = cam.trace_count
         cam.advance(args.steps)
         runtime_traces = tuple(
             item
-            for item in cam.trace[first_runtime_trace:]
+            for item in cam.trace_since(first_runtime_trace)
             if item.operation == "cloud_fraction_fice"
         )
         local = {

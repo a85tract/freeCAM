@@ -52,8 +52,10 @@ fi
 if [[ "${expand_cam_run2_run4_leaves}" == 1 ]]; then
   leaf_args+=(--expand-cam-run2-run4-leaves)
 fi
+# The base config became online/1488-step in "Make exact online CESM
+# boundaries the default"; this replay gate must match the 50-step capture.
 mpiexec --label -n 512 "${python}" -m freecam.pi_cam.cli \
-  --config configs/pi_cam_icesm131.yaml \
+  --config configs/pi_cam_icesm131_replay.yaml \
   --native-manifest "${manifest}" \
   --boundary "${boundary}" \
   --run-dir "${run_dir}" \

@@ -72,6 +72,10 @@ class FreeCAMProfiler:
             path: record.payload() for path, record in self._records.items()
         }
 
+    @property
+    def region_count(self) -> int:
+        return len(self._records)
+
     def start_total(self) -> None:
         if self._total_active:
             return

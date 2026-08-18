@@ -11,6 +11,7 @@ from freecam.model.python_processes import PythonProcessSpec
 from freecam.pi_cam.boundary import OnlineBoundaryProvider
 from freecam.pi_cam import session as session_module
 from freecam.pi_cam.expressions import assign_expression, evaluate_expression
+from freecam.pi_cam.errors import PICAMConfigurationError
 from freecam.pi_cam.plan import PICAMAction, PICAMStepPlan
 from freecam.pi_cam.session import (
     PICAMNotebookError,
@@ -610,11 +611,84 @@ def test_session_trace_sends_worker_cursor(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.setattr(
         session,
         "_request",
-        lambda command: commands.append(command) or ({"name": "dadadj"},),
+        lambda command: commands.append(command)
+        or {"first_sequence": 3, "total": 4, "records": ({"name": "dadadj"},)},
     )
 
     assert session.trace(since=3) == ({"name": "dadadj"},)
     assert commands == [{"op": "trace", "since": 3}]
+
+
+def test_session_trace_window_normalizes_and_rejects_malformed_replies(
+    tmp_path: Path, monkeypatch
+) -> None:
+    config, boundary, run_dir, env_script, _ = _session_files(tmp_path)
+    session = PICAMNotebookSession(
+        config,
+        boundary=boundary,
+        run_dir=run_dir,
+        env_script=env_script,
+    )
+    monkeypatch.setattr(
+        session,
+        "_request",
+        lambda command: {
+            "first_sequence": 2,
+            "total": 5,
+            "records": [{"name": "dadadj"}],
+        },
+    )
+
+    window = session.trace_window(since=1)
+
+    assert window == {
+        "first_sequence": 2,
+        "total": 5,
+        "records": ({"name": "dadadj"},),
+    }
+    with pytest.raises(ValueError):
+        session.trace_window(since=-1)
+
+    monkeypatch.setattr(session, "_request", lambda command: {"records": ()})
+    with pytest.raises(KeyError):
+        session.trace_window(since=0)
+
+
+def test_session_worker_argv_carries_trace_limit(tmp_path: Path) -> None:
+    config, boundary, run_dir, env_script, _ = _session_files(tmp_path)
+    common = {
+        "boundary": boundary,
+        "run_dir": run_dir,
+        "env_script": env_script,
+    }
+
+    default_argv = PICAMNotebookSession(config, **common)._worker_argv(
+        "127.0.0.1", 1234, b"key"
+    )
+    unbounded_argv = PICAMNotebookSession(
+        config, trace_limit=None, **common
+    )._worker_argv("127.0.0.1", 1234, b"key")
+    custom_argv = PICAMNotebookSession(
+        config, trace_limit=123, **common
+    )._worker_argv("127.0.0.1", 1234, b"key")
+
+    assert default_argv[-2:] == ["--trace-limit", "4096"]
+    assert unbounded_argv[-2:] == ["--trace-limit", "none"]
+    assert custom_argv[-2:] == ["--trace-limit", "123"]
+
+
+def test_session_rejects_invalid_trace_limit_before_launch(
+    tmp_path: Path,
+) -> None:
+    config, boundary, run_dir, env_script, _ = _session_files(tmp_path)
+    with pytest.raises(PICAMConfigurationError):
+        PICAMNotebookSession(
+            config,
+            boundary=boundary,
+            run_dir=run_dir,
+            env_script=env_script,
+            trace_limit=0,
+        )
 
 
 def test_session_run_action_sends_scheme_or_runtime_process_command(

@@ -6,8 +6,10 @@ import hashlib
 import json
 import os
 import traceback
+from collections import Counter, deque
 from dataclasses import dataclass
 from enum import Enum
+from itertools import islice
 from pathlib import Path
 from typing import Any, Callable, Iterator, Mapping, Sequence
 
@@ -18,7 +20,7 @@ from freecam.model.collective import collective_error_message
 from freecam.model.python_processes import PythonProcessSpec
 
 from .boundary import CAMBoundaryProvider
-from .config import PICAMConfig
+from .config import DEFAULT_TRACE_LIMIT, PICAMConfig, validate_trace_limit
 from .errors import BoundaryReplayError, PICAMConfigurationError, PICAMStateError
 from .native import CAMNumericalBackend
 from .physics_catalog import (
@@ -1012,6 +1014,7 @@ class PICAMDriver:
         state_schema: PICAMStateSchema | None = None,
         history_callback: Callable[[PICAMAction, "PICAMDriver"], None] | None = None,
         run_dir: str | Path | None = None,
+        trace_limit: int | None = DEFAULT_TRACE_LIMIT,
     ) -> None:
         if not 0 <= rank < size:
             raise PICAMConfigurationError("rank must be in the MPI communicator")
@@ -1050,7 +1053,12 @@ class PICAMDriver:
         self.coupling_step = 0
         self._boundary_step = 0
         self._native_step = 0
-        self._trace: list[PICAMActionTrace] = []
+        self._trace: deque[PICAMActionTrace] = deque(
+            maxlen=validate_trace_limit(trace_limit)
+        )
+        self._trace_count = 0
+        self._operation_counts: Counter[str] = Counter()
+        self._trace_captures: list[list[PICAMActionTrace]] = []
         self.history_callback = history_callback
         self.history_every: int | None = 1
         self.restart_every: int | None = None
@@ -1070,7 +1078,56 @@ class PICAMDriver:
 
     @property
     def trace(self) -> tuple[PICAMActionTrace, ...]:
+        """Retained tail of the action trace, newest ``trace_limit`` records.
+
+        ``trace_count`` reports the exact lifetime total; construct the driver
+        with ``trace_limit=None`` when a complete in-memory trace is needed.
+        """
+
         return tuple(self._trace)
+
+    @property
+    def trace_limit(self) -> int | None:
+        """Retention limit of the in-memory trace; ``None`` means unbounded."""
+
+        return self._trace.maxlen
+
+    @property
+    def trace_count(self) -> int:
+        """Exact number of actions ever recorded, immune to truncation."""
+
+        return self._trace_count
+
+    @property
+    def trace_retained(self) -> int:
+        """Number of records currently retained in memory."""
+
+        return len(self._trace)
+
+    @property
+    def trace_first_sequence(self) -> int:
+        """Sequence number of the oldest retained record."""
+
+        return self._trace_count - len(self._trace)
+
+    @property
+    def operation_counts(self) -> Counter[str]:
+        """Cumulative per-operation execution counts; missing keys read zero."""
+
+        return Counter(self._operation_counts)
+
+    def trace_since(self, since: int = 0) -> tuple[PICAMActionTrace, ...]:
+        """Return retained records with ``sequence >= since``.
+
+        Records evicted by ``trace_limit`` cannot be returned; callers detect
+        the gap by comparing the first returned sequence against the cursor.
+        """
+
+        cursor = int(since)
+        if not 0 <= cursor <= self._trace_count:
+            raise ValueError(f"trace cursor must be in 0..{self._trace_count}")
+        start = max(0, cursor - self.trace_first_sequence)
+        return tuple(islice(self._trace, start, None))
 
     @property
     def native_step(self) -> int:
@@ -1235,7 +1292,7 @@ class PICAMDriver:
 
     def _record(self, action: PICAMAction) -> PICAMActionTrace:
         trace = PICAMActionTrace(
-            sequence=len(self._trace),
+            sequence=self._trace_count,
             coupling_step=self.coupling_step,
             model_step=self.clock.nstep,
             phase=action.phase,
@@ -1243,7 +1300,11 @@ class PICAMDriver:
             operation=action.operation,
             native_id=action.native_id,
         )
+        self._trace_count += 1
         self._trace.append(trace)
+        self._operation_counts[trace.operation] += 1
+        for frame in self._trace_captures:
+            frame.append(trace)
         return trace
 
     def _execute(self, action: PICAMAction) -> PICAMActionTrace:
@@ -1764,7 +1825,7 @@ class PICAMDriver:
             raise PICAMStateError(f"cannot {operation} from {self.lifecycle.value}")
         if self._native_call_depth:
             raise PICAMStateError(f"cannot {operation} inside a native call")
-        cursors = self.comm.allgather((self.coupling_step, len(self.trace)))
+        cursors = self.comm.allgather((self.coupling_step, self._trace_count))
         if len(set(cursors)) != 1:
             raise PICAMStateError(f"MPI ranks are at different boundaries: {cursors}")
 
@@ -1881,13 +1942,14 @@ class PICAMDriver:
         if self.lifecycle not in {PICAMLifecycle.INITIALIZED, PICAMLifecycle.RUNNING}:
             raise PICAMStateError(f"step from {self.lifecycle.value}")
         self.lifecycle = PICAMLifecycle.RUNNING
-        first_trace = len(self._trace)
         actions = tuple(self.step_plan)
         imports = tuple(action for action in actions if action.operation == "boundary_import")
         exports = tuple(action for action in actions if action.operation == "boundary_export")
         body = tuple(action for action in actions if action.kind != "boundary")
         if len(imports) != 1 or len(exports) != 1:
             raise PICAMStateError("complete PI-CAM step requires one import and one export")
+        capture: list[PICAMActionTrace] = []
+        self._trace_captures.append(capture)
         try:
             source_step = getattr(self.backend, "execute_source_step", None)
             use_source_boundary = (
@@ -1946,7 +2008,9 @@ class PICAMDriver:
         except Exception:
             self.lifecycle = PICAMLifecycle.FAILED
             raise
-        return tuple(self._trace[first_trace:])
+        finally:
+            self._trace_captures.pop()
+        return tuple(capture)
 
     def advance(self, steps: int | None = None) -> None:
         count = self.config.stop_n if steps is None else int(steps)

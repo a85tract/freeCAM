@@ -12,7 +12,11 @@ from freecam.pi_cam import (
     RecordingCAMBackend,
 )
 from freecam.pi_cam import runtime_fortran as runtime_fortran_module
-from freecam.pi_cam.errors import BoundaryReplayError, PICAMConfigurationError
+from freecam.pi_cam.errors import (
+    BoundaryReplayError,
+    PICAMConfigurationError,
+    PICAMStateError,
+)
 
 
 def _driver() -> tuple[PICAMDriver, RecordingCAMBackend, InMemoryBoundaryProvider]:
@@ -690,3 +694,161 @@ def test_runtime_fortran_process_uses_the_same_mutable_step_plan(
     process.move(before="deep_convection")
     process.remove()
     driver.delete_variable("runtime_value")
+
+
+def test_action_trace_defaults_to_bounded_limit() -> None:
+    driver, _, _ = _driver()
+
+    assert driver.trace_limit == 4096
+    with pytest.raises(AttributeError):
+        driver.trace_limit = 10
+
+
+def test_trace_limit_none_retains_every_record() -> None:
+    template, backend, boundary = _driver()
+    driver = PICAMDriver(
+        template.config, boundary, backend, rank=0, size=1, trace_limit=None
+    )
+    driver.initialize()
+    driver.step()
+    driver.step()
+
+    assert driver.trace_limit is None
+    assert driver.trace_count > 0
+    assert len(driver.trace) == driver.trace_count
+    assert driver.trace_first_sequence == 0
+
+
+def test_long_action_trace_is_bounded_with_exact_totals() -> None:
+    template, backend, boundary = _driver()
+    driver = PICAMDriver(
+        template.config, boundary, backend, rank=0, size=1, trace_limit=2
+    )
+    driver.initialize()
+
+    rows = driver.step()
+
+    assert len(rows) == len(tuple(driver.step_plan))
+    assert driver.trace_retained == 2
+    assert len(driver.trace) == 2
+    assert driver.trace[0].sequence == driver.trace_count - 2
+    assert driver.trace[1].sequence == driver.trace_count - 1
+    assert driver.trace_first_sequence == driver.trace_count - 2
+    assert driver.operation_counts["dadadj"] == 1
+    assert driver.operation_counts["never_executed"] == 0
+
+
+def test_trace_since_cursor_edges() -> None:
+    template, backend, boundary = _driver()
+    driver = PICAMDriver(
+        template.config, boundary, backend, rank=0, size=1, trace_limit=3
+    )
+    driver.initialize()
+    driver.step()
+
+    assert driver.trace_since(0) == driver.trace
+    assert driver.trace_since(driver.trace_count) == ()
+    middle = driver.trace_first_sequence + 1
+    partial = driver.trace_since(middle)
+    assert len(partial) == 2
+    assert partial[0].sequence == middle
+    with pytest.raises(ValueError):
+        driver.trace_since(driver.trace_count + 1)
+    with pytest.raises(ValueError):
+        driver.trace_since(-1)
+
+
+def test_trace_limit_rejects_non_positive_and_non_integer() -> None:
+    template, backend, boundary = _driver()
+    for invalid in (0, -3, True, 4096.5, "4096"):
+        with pytest.raises(PICAMConfigurationError):
+            PICAMDriver(
+                template.config,
+                boundary,
+                backend,
+                rank=0,
+                size=1,
+                trace_limit=invalid,
+            )
+
+
+def test_step_trace_includes_nested_records_from_history_callback() -> None:
+    class DirectRecordingCAMBackend(RecordingCAMBackend):
+        direct_kernels = ("sample",)
+
+        def execute_kernel(self, name, pool, *, fcomm):
+            del pool, fcomm
+            self.calls.append(f"kernel:{name}")
+
+    template, _, boundary = _driver()
+    backend = DirectRecordingCAMBackend()
+    driver = PICAMDriver(
+        template.config,
+        boundary,
+        backend,
+        rank=0,
+        size=1,
+        history_callback=lambda action, drv: drv.run_kernel(
+            "sample", experimental=True
+        ),
+        trace_limit=2,
+    )
+    driver.initialize()
+
+    rows = driver.step()
+
+    io_actions = sum(action.kind == "io" for action in driver.step_plan)
+    assert io_actions > 0
+    assert sum(row.operation == "sample" for row in rows) == io_actions
+    assert len(rows) == len(tuple(driver.step_plan)) + io_actions
+    assert [row.sequence for row in rows] == sorted(row.sequence for row in rows)
+
+
+def test_collective_boundary_gathers_lifetime_counter() -> None:
+    class RecordingComm:
+        rank = 0
+        size = 1
+
+        def __init__(self):
+            self.payloads = []
+
+        def allgather(self, value):
+            self.payloads.append(value)
+            return [value]
+
+        @staticmethod
+        def gather(value, root=0):
+            del root
+            return [value]
+
+        @staticmethod
+        def barrier():
+            return None
+
+        @staticmethod
+        def bcast(value, root=0):
+            del root
+            return value
+
+    template, backend, boundary = _driver()
+    driver = PICAMDriver(
+        template.config, boundary, backend, rank=0, size=1, trace_limit=1
+    )
+    driver.initialize()
+    driver.step()
+    assert driver.trace_count > 1
+    assert driver.trace_retained == 1
+
+    recording = RecordingComm()
+    driver.comm = recording
+    driver._require_collective_boundary("synchronize")
+
+    assert recording.payloads[-1] == (driver.coupling_step, driver.trace_count)
+
+    class DivergentComm(RecordingComm):
+        def allgather(self, value):
+            return [value, (value[0], value[1] + 1)]
+
+    driver.comm = DivergentComm()
+    with pytest.raises(PICAMStateError, match="different boundaries"):
+        driver._require_collective_boundary("synchronize")
