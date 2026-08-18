@@ -403,6 +403,7 @@ class PICAMStepPlan:
         selected = self.select(name, phase=phase)
         if selected.kind not in {
             "python_process",
+            "python_history",
             "runtime_fortran_process",
             "runtime_catalog_process",
         }:

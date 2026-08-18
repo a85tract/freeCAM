@@ -967,6 +967,47 @@ class _CAMFacade:
     def advance(self, steps: int = 1) -> Mapping[str, Any]:
         return self._driver.advance(steps)
 
+    def install_history_stream(
+        self,
+        name: str,
+        *,
+        fields: Sequence[Any],
+        stream: str = "h9",
+        nhtfrq: int = 0,
+        mfilt: int = 1,
+        before: str | None = None,
+        after: str | None = "wshist",
+        enabled: bool = True,
+        template: str | Path | None = None,
+        precision: str = "float32",
+        time_period: str = "mean",
+    ) -> Mapping[str, Any]:
+        """Write Python-owned StatePool fields in the original CAM format."""
+
+        return self._driver._live_session().install_history_stream(
+            name,
+            fields=fields,
+            stream=stream,
+            nhtfrq=nhtfrq,
+            mfilt=mfilt,
+            before=before,
+            after=after,
+            enabled=enabled,
+            template=template,
+            precision=precision,
+            time_period=time_period,
+        )
+
+    def remove_history_stream(self, name: str) -> Mapping[str, Any]:
+        return self._driver._live_session().remove_history_stream(name)
+
+    @property
+    def history_streams(self) -> tuple[Mapping[str, Any], ...]:
+        return self._driver._live_session().history_streams()
+
+    def flush_history_stream(self, name: str) -> str | None:
+        return self._driver._live_session().flush_history_stream(name)
+
 
 @dataclass(frozen=True, slots=True)
 class RunProgress:

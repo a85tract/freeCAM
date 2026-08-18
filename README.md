@@ -96,6 +96,38 @@ their trace was truncated. Pass `trace_limit=None` to `freecam.Driver` (or
 `PICAMNotebookSession`) only when a complete in-memory debug trace is
 explicitly needed.
 
+### History output for Python-owned fields
+
+The original CAM writer only knows the fields CAM registered at build time, so
+Notebook-defined StatePool variables never reach a history file. A
+Python-owned history stream writes them with the layout the original iCESM1.3.1
+produces: global `ncol` columns ordered by CAM's unique column id,
+`time`/`time_bnds`/`date`/`datesec` on the NO_LEAP calendar, CF-1.0 attributes,
+and the static grid and vertical-coordinate variables carried over from the
+run's own CAM history stream.
+
+```python
+driver.cam.state.create("heating_rate", like="T", units="K s-1")
+driver.cam.install_history_stream(
+    "python_diagnostics",
+    fields=["heating_rate", {"field": "T", "name": "T_python"}],
+    stream="h9",
+    nhtfrq=0,          # CAM's nhtfrq: 0 monthly, >0 steps, <0 hours
+    mfilt=1,           # CAM's mfilt: time samples per file
+    time_period="mean",
+    after="wshist",    # position in the one complete workflow
+)
+```
+
+`nhtfrq` and `mfilt` carry their original CAM meaning, so the default writes
+monthly means named `<case>.cam.h9.<YYYY>-<MM>.nc` beside the model's own
+`h0` files, with `time` at the end of each window, contiguous `time_bnds`,
+`cell_methods = "time: mean"`, and the grid and vertical-coordinate variables
+copied from the run's own CAM stream. Sub-monthly output uses CAM's
+`<YYYY>-<MM>-<DD>-<SSSSS>` names. The stream is an ordinary workflow action:
+it can be moved, disabled, and removed like any other process, and every rank
+contributes its own columns through one gather when a window closes.
+
 The maintained Jupyter walkthrough is
 [`examples/try_pi_cam.ipynb`](examples/try_pi_cam.ipynb).
 
