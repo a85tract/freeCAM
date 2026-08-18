@@ -18,8 +18,13 @@ from freecam.model.collective import collective_error_message
 
 from .boundary import CAMBoundaryProvider, ReplayBoundaryProvider
 from .case import PICAMCase
+from .config import DEFAULT_TRACE_LIMIT
 from .expressions import assign_expression, evaluate_expression
 from .state import edit_active_field, selected_active_values
+
+
+def _parse_trace_limit(text: str) -> int | None:
+    return None if text.strip().lower() == "none" else int(text)
 
 
 def _field_catalog(driver: Any) -> dict[str, dict[str, object]]:
@@ -42,7 +47,10 @@ def _status(driver: Any) -> dict[str, object]:
         "coupling_step": driver.coupling_step,
         "date": driver.clock.yyyymmdd,
         "seconds": driver.clock.seconds,
-        "actions": len(driver.trace),
+        "actions": driver.trace_count,
+        "trace_retained": driver.trace_retained,
+        "trace_first_sequence": driver.trace_first_sequence,
+        "trace_limit": driver.trace_limit,
         "fields": _field_catalog(driver),
         "dynamic_fields": tuple(sorted(driver.pool.dynamic_fields)),
         "python_processes": tuple(sorted(driver.python_processes.process_names)),
@@ -69,7 +77,7 @@ def _status(driver: Any) -> dict[str, object]:
         "timing": {
             "enabled": True,
             "clock": "MPI_Wtime",
-            "recorded_regions": len(driver.profiler.records),
+            "recorded_regions": driver.profiler.region_count,
             "detail": (
                 None
                 if timing_dir is None
@@ -101,14 +109,16 @@ def _command(command: dict[str, Any], driver: Any, comm: Any) -> object:
         )
         return _status(driver) if comm.rank == 0 else None
     if operation == "trace":
-        since = int(command.get("since", 0))
-        if not 0 <= since <= len(driver.trace):
-            raise ValueError(f"trace cursor must be in 0..{len(driver.trace)}")
-        return (
-            [asdict(record) for record in driver.trace[since:]]
-            if comm.rank == 0
-            else None
-        )
+        if comm.rank != 0:
+            return None
+        records = driver.trace_since(int(command.get("since", 0)))
+        return {
+            "first_sequence": (
+                records[0].sequence if records else driver.trace_count
+            ),
+            "total": driver.trace_count,
+            "records": [asdict(record) for record in records],
+        }
     if operation == "run_action":
         trace = driver.run_action(
             str(command["name"]),
@@ -419,6 +429,12 @@ def main(argv: list[str] | None = None) -> int:
         default=True,
         help="compare every CAM export with the replay oracle",
     )
+    parser.add_argument(
+        "--trace-limit",
+        type=_parse_trace_limit,
+        default=DEFAULT_TRACE_LIMIT,
+        help="retained action-trace records per rank; 'none' for unbounded",
+    )
     args = parser.parse_args(argv)
     comm = MPI.COMM_WORLD
     connection = None
@@ -450,6 +466,7 @@ def main(argv: list[str] | None = None) -> int:
                 boundary=boundary,
                 communicator=comm,
                 run_dir=args.run_dir,
+                trace_limit=args.trace_limit,
             )
             driver.initialize()
             startup_error = None

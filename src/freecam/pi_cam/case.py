@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Any
 
 from .boundary import CAMBoundaryProvider, ReplayBoundaryProvider
-from .config import PICAMConfig
+from .config import DEFAULT_TRACE_LIMIT, PICAMConfig
 from .driver import PICAMDriver
 from .errors import PICAMConfigurationError
 from .native import CAMNumericalBackend, NativeCAMDevice
@@ -29,6 +29,7 @@ class PICAMCase:
         communicator: Any | None = None,
         step_plan: PICAMStepPlan | None = None,
         run_dir: str | Path | None = None,
+        trace_limit: int | None = DEFAULT_TRACE_LIMIT,
     ) -> PICAMDriver:
         if isinstance(boundary, (str, Path)):
             boundary = ReplayBoundaryProvider(boundary)
@@ -62,4 +63,5 @@ class PICAMCase:
             communicator=communicator,
             step_plan=step_plan,
             run_dir=run_dir,
+            trace_limit=trace_limit,
         )

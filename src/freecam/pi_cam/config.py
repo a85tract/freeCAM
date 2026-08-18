@@ -176,3 +176,18 @@ class PICAMConfig:
             if value is not None and not Path(value).is_absolute():
                 values[name] = base / value
         return cls.from_mapping(values)
+
+
+DEFAULT_TRACE_LIMIT: int = 4096
+
+
+def validate_trace_limit(value: int | None) -> int | None:
+    """Validate a per-rank action-trace retention limit; ``None`` is unbounded."""
+
+    if value is None:
+        return None
+    if isinstance(value, bool) or not isinstance(value, int) or value < 1:
+        raise PICAMConfigurationError(
+            "trace_limit must be a positive integer or None"
+        )
+    return value

@@ -1,0 +1,169 @@
+--- a/src/cpl/atm_comp_mct.F90
++++ b/src/cpl/atm_comp_mct.F90
+@@ -68,6 +68,11 @@
+   public :: atm_run_end_mct
+   public :: atm_python_post_cam_init_mct
+   public :: atm_python_write_srfrest_mct
++  public :: atm_python_bind_cam_state_mct
++  public :: atm_attach_initialized_mct
++  public :: atm_finish_external_init_mct
++  public :: atm_run_external_begin_mct
++  public :: atm_run_external_iteration_mct
+   public :: atm_final_mct
+ 
+ !--------------------------------------------------------------------------
+@@ -136,6 +141,154 @@
+ !================================================================================
+ CONTAINS
+ !================================================================================
++  subroutine atm_python_bind_cam_state_mct(primary_cam_in, primary_cam_out)
++    type(cam_in_t), pointer, intent(in) :: primary_cam_in(:)
++    type(cam_out_t), pointer, intent(in) :: primary_cam_out(:)
++
++    cam_in => primary_cam_in
++    cam_out => primary_cam_out
++    rsfilename_spec_cam = '%c.cam' // trim(inst_suffix) // '.rs.%y-%m-%d-%s.nc'
++  end subroutine atm_python_bind_cam_state_mct
++
++!================================================================================
++  subroutine atm_attach_initialized_mct(EClock, cdata_a, x2a_a, a2x_a, &
++       NLFilename)
++    type(ESMF_Clock), intent(inout) :: EClock
++    type(seq_cdata), intent(inout) :: cdata_a
++    type(mct_aVect), intent(inout) :: x2a_a
++    type(mct_aVect), intent(inout) :: a2x_a
++    character(len=*), optional, intent(in) :: NLFilename
++    type(mct_gsMap), pointer :: gsMap_atm
++    type(mct_gGrid), pointer :: dom_a
++    integer :: ATMID, mpicom_atm, lsize, hdim1_d, hdim2_d
++    real(r8) :: nextsw_cday
++
++    if (.not. associated(cam_in) .or. .not. associated(cam_out)) then
++       call shr_sys_abort('atm_attach_initialized_mct before CAM state binding')
++    endif
++    call seq_cdata_setptrs(cdata_a, ID=ATMID, mpicom=mpicom_atm, &
++         gsMap=gsMap_atm, dom=dom_a, infodata=infodata)
++    call atm_SetgsMap_mct(mpicom_atm, ATMID, gsMap_atm)
++    lsize = mct_gsMap_lsize(gsMap_atm, mpicom_atm)
++    call mct_gsmap_orderedpoints(gsmap_atm, iam, dof)
++    call atm_domain_mct(lsize, gsMap_atm, dom_a)
++    call mct_aVect_init(a2x_a, rList=seq_flds_a2x_fields, lsize=lsize)
++    call mct_aVect_zero(a2x_a)
++    call mct_aVect_init(x2a_a, rList=seq_flds_x2a_fields, lsize=lsize)
++    call mct_aVect_zero(x2a_a)
++    call atm_export(cam_out, a2x_a%rattr)
++    call seq_infodata_PutData(infodata, atm_prognostic=.true.)
++    call get_horiz_grid_dim_d(hdim1_d, hdim2_d)
++    call seq_infodata_PutData(infodata, atm_nx=hdim1_d, atm_ny=hdim2_d)
++    call seq_infodata_PutData(infodata, atm_aero=.true.)
++    if (nsrest == 0) then
++       nextsw_cday = get_curr_calday()
++       call seq_infodata_PutData(infodata, nextsw_cday=nextsw_cday)
++    endif
++  end subroutine atm_attach_initialized_mct
++
++!================================================================================
++  subroutine atm_finish_external_init_mct(EClock, status)
++    type(ESMF_Clock), intent(inout) :: EClock
++    integer, intent(out) :: status
++    integer :: atm_cpl_dt, dtime, nstep
++    real(r8) :: caldayp1, nextsw_cday
++
++    status = 0
++    call seq_timemgr_EClockGetData(EClock, dtime=atm_cpl_dt)
++    dtime = get_step_size()
++    nstep = get_nstep()
++    if (nstep < 1 .or. dtime < atm_cpl_dt) then
++       nextsw_cday = radiation_nextsw_cday()
++    else if (dtime == atm_cpl_dt) then
++       caldayp1 = get_curr_calday(offset=int(dtime))
++       nextsw_cday = radiation_nextsw_cday()
++       if (caldayp1 /= nextsw_cday) nextsw_cday = -1._r8
++    else
++       status = 8
++       return
++    endif
++    call seq_infodata_PutData(infodata, nextsw_cday=nextsw_cday)
++  end subroutine atm_finish_external_init_mct
++
++!================================================================================
++  subroutine atm_run_external_begin_mct(EClock, cdata_a, x2a_a, a2x_a, status)
++    type(ESMF_Clock), intent(inout) :: EClock
++    type(seq_cdata), intent(inout) :: cdata_a
++    type(mct_aVect), intent(inout) :: x2a_a
++    type(mct_aVect), intent(inout) :: a2x_a
++    integer, intent(out) :: status
++    integer :: atm_cpl_dt, dtime, yr, mon, day, tod, ymd
++
++    status = 0
++    if (pycam_run_active) then
++       status = 3
++       return
++    endif
++    call seq_timemgr_EClockGetData(EClock, dtime=atm_cpl_dt)
++    dtime = get_step_size()
++    if (dtime /= atm_cpl_dt) then
++       status = 8
++       return
++    endif
++#if (defined _MEMTRACE)
++    if (masterproc) call memmon_dump_fort('memmon.out','atm_run_mct:start::',1)
++#endif
++    call shr_file_getLogUnit(pycam_shrlogunit)
++    call shr_file_getLogLevel(pycam_shrloglev)
++    call shr_file_setLogUnit(iulog)
++    call seq_timemgr_EClockGetData(EClock, curr_ymd=pycam_ymd_sync, &
++         curr_tod=pycam_tod_sync, curr_yr=pycam_yr_sync, &
++         curr_mon=pycam_mon_sync, curr_day=pycam_day_sync)
++    call seq_infodata_GetData(infodata, orb_eccen=eccen, &
++         orb_mvelpp=mvelpp, orb_lambm0=lambm0, orb_obliqr=obliqr)
++    pycam_nlend_sync = seq_timemgr_StopAlarmIsOn(EClock)
++    pycam_rstwr_sync = seq_timemgr_RestartAlarmIsOn(EClock)
++    call get_curr_date(yr, mon, day, tod)
++    ymd = yr*10000 + mon*100 + day
++    pycam_dosend = seq_timemgr_EClockDateInSync(EClock, ymd, tod)
++    pycam_rstwr = pycam_rstwr_sync .and. pycam_dosend
++    pycam_nlend = pycam_nlend_sync .and. pycam_dosend
++    pycam_expected_action = 202
++    pycam_run_active = .true.
++  end subroutine atm_run_external_begin_mct
++
++!================================================================================
++  subroutine atm_run_external_iteration_mct(EClock, cdata_a, x2a_a, a2x_a, &
++       loop_complete, status)
++    type(ESMF_Clock), intent(inout) :: EClock
++    type(seq_cdata), intent(inout) :: cdata_a
++    type(mct_aVect), intent(inout) :: x2a_a
++    type(mct_aVect), intent(inout) :: a2x_a
++    logical, intent(out) :: loop_complete
++    integer, intent(out) :: status
++    integer :: yr, mon, day, tod, ymd
++
++    status = 0
++    loop_complete = .false.
++    if (.not. pycam_run_active) then
++       status = 3
++       return
++    endif
++    if (pycam_expected_action /= 202) then
++       status = 4
++       return
++    endif
++    loop_complete = pycam_dosend
++    if (.not. loop_complete) then
++       call get_curr_date(yr, mon, day, tod)
++       ymd = yr*10000 + mon*100 + day
++       pycam_dosend = seq_timemgr_EClockDateInSync(EClock, ymd, tod)
++       pycam_rstwr = pycam_rstwr_sync .and. pycam_dosend
++       pycam_nlend = pycam_nlend_sync .and. pycam_dosend
++       pycam_expected_action = 202
++       return
++    endif
++    pycam_expected_action = 208
++    call atm_run_end_mct(EClock, cdata_a, x2a_a, a2x_a, status)
++  end subroutine atm_run_external_iteration_mct
++
++!================================================================================
+   subroutine atm_python_post_cam_init_mct(mpicom_atm, component_id, lsize)
+     integer, intent(in) :: mpicom_atm, component_id
+     integer, intent(out) :: lsize

@@ -418,7 +418,7 @@ class PICAMPythonProcessRegistry:
         if self.driver._native_call_depth:
             raise PICAMStateError("cannot change runtime processes inside a kernel")
         cursors = self.driver.comm.allgather(
-            (self.driver.coupling_step, len(self.driver.trace))
+            (self.driver.coupling_step, self.driver.trace_count)
         )
         if len(set(cursors)) != 1:
             raise PICAMStateError(f"MPI ranks are at different boundaries: {cursors}")

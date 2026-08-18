@@ -66,6 +66,7 @@ def _compile_to(
     output: Path,
     cwd: Path,
     module_include: Path,
+    extra_module_includes: tuple[Path, ...] = (),
 ) -> list[str]:
     result = list(command)
     source_index = next(
@@ -77,7 +78,8 @@ def _compile_to(
     # generated cesm_comp_mod.mod.  The original CPL object directory supplies
     # every other module file without recompiling the numerical objects.
     first_local_include = result.index("-I.")
-    result.insert(first_local_include + 1, f"-I{module_include}")
+    for include in reversed((module_include, *extra_module_includes)):
+        result.insert(first_local_include + 1, f"-I{include}")
     result.extend(("-o", str(output)))
     subprocess.run(result, cwd=cwd, check=True)
     return result
@@ -88,9 +90,18 @@ def main() -> None:
     parser.add_argument("--case", required=True, type=Path)
     parser.add_argument("--control-source", required=True, type=Path)
     parser.add_argument("--component-source", type=Path)
-    parser.add_argument("--cam-control-source", type=Path)
-    parser.add_argument("--physics-control-source", type=Path)
-    parser.add_argument("--atm-source", type=Path)
+    parser.add_argument(
+        "--cam-library",
+        type=Path,
+        default=REPOSITORY_ROOT / "build/pi_cam_promoted/libfreecam_pi_cam.so",
+        help="unique FreeCAM CAM image used by the coupled provider",
+    )
+    parser.add_argument(
+        "--cam-module-dir",
+        type=Path,
+        default=REPOSITORY_ROOT / "build/pi_cam_promoted/nonpic_objects",
+        help="Fortran module directory produced with the CAM image",
+    )
     parser.add_argument(
         "--adapter",
         type=Path,
@@ -146,42 +157,25 @@ def main() -> None:
     component_log, component_compile = _compile_command_from_build_logs(
         build_root, "component_mod.F90"
     )
-    atm_log, atm_compile = _component_compile_command(
-        build_root, "atm_comp_mct.F90"
-    )
-    cam_control_log, cam_control_compile = _component_compile_command(
-        build_root, "cam_comp.F90"
-    )
-    physics_control_log, physics_control_compile = _component_compile_command(
-        build_root, "physpkg.F90"
-    )
     mct_log, mct_compile = _component_compile_command(
         build_root, "m_AttrVect.F90"
     )
 
     build_dir = args.build_dir.resolve()
     build_dir.mkdir(parents=True, exist_ok=True)
+    # Older provider builds compiled a second CAM into this directory. Remove
+    # their module files so ``-I.`` cannot shadow the unique CAM image's
+    # freshly generated interfaces.
+    for stale_module in ("atm_comp_mct.mod", "cam_comp.mod", "physpkg.mod"):
+        (build_dir / stale_module).unlink(missing_ok=True)
     control_source = args.control_source.resolve()
     component_source = (
         args.component_source.resolve()
         if args.component_source is not None
         else source_root / "cime/src/drivers/mct/main/component_mod.F90"
     )
-    cam_control_source = (
-        args.cam_control_source.resolve()
-        if args.cam_control_source is not None
-        else source_root / "components/cam/src/control/cam_comp.F90"
-    )
-    physics_control_source = (
-        args.physics_control_source.resolve()
-        if args.physics_control_source is not None
-        else source_root / "components/cam/src/physics/cam/physpkg.F90"
-    )
-    atm_source = (
-        args.atm_source.resolve()
-        if args.atm_source is not None
-        else source_root / "components/cam/src/cpl/atm_comp_mct.F90"
-    )
+    cam_library = args.cam_library.resolve()
+    cam_module_dir = args.cam_module_dir.resolve()
     adapter = args.adapter.resolve()
     main_source = args.main_source.resolve()
     allocator_interposer = args.allocator_interposer.resolve()
@@ -189,9 +183,7 @@ def main() -> None:
     for source in (
         control_source,
         component_source,
-        physics_control_source,
-        cam_control_source,
-        atm_source,
+        cam_library,
         adapter,
         main_source,
         allocator_interposer,
@@ -199,12 +191,11 @@ def main() -> None:
     ):
         if not source.is_file():
             raise FileNotFoundError(source)
+    if not (cam_module_dir / "atm_comp_mct.mod").is_file():
+        raise FileNotFoundError(cam_module_dir / "atm_comp_mct.mod")
 
     control_object = build_dir / "cesm_comp_mod.o"
     component_object = build_dir / "component_mod.o"
-    physics_control_object = build_dir / "physpkg.o"
-    cam_control_object = build_dir / "cam_comp.o"
-    atm_object = build_dir / "atm_comp_mct.o"
     adapter_object = build_dir / "cesm_full_driver_adapter.o"
     main_object = build_dir / "pycesm_embedded_main.o"
     allocator_object = build_dir / "intel_allocator_interposer.o"
@@ -225,37 +216,14 @@ def main() -> None:
         cwd=build_dir,
         module_include=object_root,
     )
-    compiled_physics_control = _compile_to(
-        physics_control_compile,
-        source_suffix="physpkg.F90",
-        source=physics_control_source,
-        output=physics_control_object,
-        cwd=build_dir,
-        module_include=build_root / "atm/obj",
-    )
-    compiled_cam_control = _compile_to(
-        cam_control_compile,
-        source_suffix="cam_comp.F90",
-        source=cam_control_source,
-        output=cam_control_object,
-        cwd=build_dir,
-        module_include=build_root / "atm/obj",
-    )
-    compiled_atm = _compile_to(
-        atm_compile,
-        source_suffix="atm_comp_mct.F90",
-        source=atm_source,
-        output=atm_object,
-        cwd=build_dir,
-        module_include=build_root / "atm/obj",
-    )
     compiled_control = _compile_to(
         control_compile,
         source_suffix="cesm_comp_mod.F90",
         source=control_source,
         output=control_object,
         cwd=build_dir,
-        module_include=object_root,
+        module_include=cam_module_dir,
+        extra_module_includes=(object_root,),
     )
     compiled_adapter = _compile_to(
         driver_compile,
@@ -299,6 +267,7 @@ def main() -> None:
         for value in link_command
         if value not in {"cesm_driver.o", "cesm_comp_mod.o", "component_mod.o"}
     ]
+    link_command = [value for value in link_command if value != "-latm"]
     first_driver_object = next(
         index
         for index, value in enumerate(link_command)
@@ -307,9 +276,6 @@ def main() -> None:
     link_command[first_driver_object:first_driver_object] = [
         str(mct_object),
         str(component_object),
-        str(physics_control_object),
-        str(cam_control_object),
-        str(atm_object),
         str(control_object),
         str(adapter_object),
         str(allocator_object),
@@ -317,8 +283,14 @@ def main() -> None:
     ]
     link_command.extend(
         (
+            # Resolve the provider's CESM control/support modules from its
+            # original static libraries first. Only the still-unresolved CAM
+            # component symbols come from the unique FreeCAM image.
+            str(cam_library),
             "-nofor-main",
             "-Wl,--export-dynamic",
+            "-Wl,-Bsymbolic",
+            f"-Wl,-rpath,{cam_library.parent}",
             "-ldl",
             "-lm",
         )
@@ -347,6 +319,7 @@ def main() -> None:
         "pycesm_full_nested_action_v1",
         "pycesm_full_external_atm_iteration_v1",
         "pycesm_full_exchange_buffer_v1",
+        "pycesm_full_initialize_atm_phase2_end_v1",
         "pycesm_full_cam_action_v1",
         "pycesm_full_physics_action_v1",
         "pycesm_full_step_begin_v1",
@@ -366,6 +339,22 @@ def main() -> None:
     missing = tuple(symbol for symbol in required if symbol not in symbols)
     if missing:
         raise RuntimeError(f"embedded executable is missing exported symbols: {missing}")
+    duplicate_cam_symbols = tuple(
+        symbol
+        for symbol in (
+            "cam_comp_mp_cam_init_",
+            "cam_comp_mp_cam_final_",
+            "cam_comp_mp_cam_run1_",
+            "atm_import_export_mp_atm_import_",
+            "atm_import_export_mp_atm_export_",
+        )
+        if symbol in symbols
+    )
+    if duplicate_cam_symbols:
+        raise RuntimeError(
+            "online provider contains duplicate CAM definitions: "
+            + ", ".join(duplicate_cam_symbols)
+        )
 
     dependencies = subprocess.run(
         ["ldd", str(output)], check=True, capture_output=True, text=True
@@ -398,20 +387,14 @@ def main() -> None:
         "link_log": str(link_log),
         "control_log": str(control_log),
         "component_log": str(component_log),
-        "atm_log": str(atm_log),
-        "cam_control_log": str(cam_control_log),
-        "physics_control_log": str(physics_control_log),
         "mct_log": str(mct_log),
         "control_source": str(control_source),
         "control_source_sha256": _sha256(control_source),
         "component_source": str(component_source),
         "component_source_sha256": _sha256(component_source),
-        "atm_source": str(atm_source),
-        "atm_source_sha256": _sha256(atm_source),
-        "cam_control_source": str(cam_control_source),
-        "cam_control_source_sha256": _sha256(cam_control_source),
-        "physics_control_source": str(physics_control_source),
-        "physics_control_source_sha256": _sha256(physics_control_source),
+        "cam_library": str(cam_library),
+        "cam_library_sha256": _sha256(cam_library),
+        "cam_module_dir": str(cam_module_dir),
         "adapter": str(adapter),
         "adapter_sha256": _sha256(adapter),
         "main_source": str(main_source),
@@ -421,10 +404,11 @@ def main() -> None:
         "output": str(output),
         "output_sha256": _sha256(output),
         "output_bytes": output.stat().st_size,
-        "numerical_object_policy": "original_nonpic_executable_objects",
+        "numerical_object_policy": "original_nonpic_components_with_shared_cam",
         "python_control_policy": "python_calls_bind_c_only",
         "reverse_callback_policy": "disabled_not_registered",
         "shadow_atmosphere": False,
+        "cam_instance_count": 1,
         "symbols": list(required),
         "source_patches": [
             {"path": str(path), "sha256": _sha256(path)}
@@ -433,9 +417,6 @@ def main() -> None:
         "dependencies": [_stable_dependency(line) for line in dependencies],
         "control_compile_command": compiled_control,
         "component_compile_command": compiled_component,
-        "atm_compile_command": compiled_atm,
-        "cam_control_compile_command": compiled_cam_control,
-        "physics_control_compile_command": compiled_physics_control,
         "mct_compile_command": compiled_mct,
         "adapter_compile_command": compiled_adapter,
         "c_compile_command": c_compile,

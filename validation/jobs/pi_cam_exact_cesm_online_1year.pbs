@@ -1,8 +1,11 @@
 #!/bin/bash
 #PBS -N freecam-online-1y
-#PBS -q main
+# develop routes to the shared cpudev execution queue on Derecho.
+#PBS -q develop
 #PBS -l select=4:ncpus=64:mpiprocs=128:ompthreads=1:mem=110GB
-#PBS -l walltime=04:00:00
+# One-year runs have previously taken about 92 minutes; keep three hours
+# of headroom while remaining suitable for the development queue.
+#PBS -l walltime=03:00:00
 #PBS -j oe
 #PBS -o /glade/work/ruitong/freeCAM/logs/
 #PBS -V

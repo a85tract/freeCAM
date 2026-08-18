@@ -3,13 +3,13 @@
 from __future__ import annotations
 
 import argparse
-from collections import Counter
 import json
 import os
 from pathlib import Path
 import sys
 import traceback
 from dataclasses import replace
+import resource
 
 import cloudpickle
 
@@ -21,6 +21,37 @@ from .boundary import (
 )
 from .case import PICAMCase
 from .native import NativeCAMDevice
+
+
+def _process_memory(label: str, step: int) -> dict[str, int | str]:
+    """Return one rank-local Linux memory sample in bytes."""
+
+    sample: dict[str, int | str] = {"label": label, "step": int(step)}
+    for path, names in (
+        (
+            Path("/proc/self/status"),
+            {"VmRSS", "VmHWM", "RssAnon", "RssFile", "RssShmem"},
+        ),
+        (
+            Path("/proc/self/smaps_rollup"),
+            {"Pss", "Private_Clean", "Private_Dirty", "Shared_Clean", "Shared_Dirty"},
+        ),
+    ):
+        if not path.exists():
+            continue
+        for line in path.read_text().splitlines():
+            name, separator, raw = line.partition(":")
+            if not separator or name not in names:
+                continue
+            fields = raw.split()
+            if fields:
+                sample[f"{name}_bytes"] = int(fields[0]) * 1024
+    # Linux reports ru_maxrss in KiB. Keep this independent source beside
+    # VmHWM so long runs can diagnose parser or procfs availability issues.
+    sample["ru_maxrss_bytes"] = int(
+        resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
+    ) * 1024
+    return sample
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -58,6 +89,16 @@ def main(argv: list[str] | None = None) -> int:
         ),
     )
     parser.add_argument("--summary", type=Path)
+    parser.add_argument(
+        "--memory-sample-every",
+        type=int,
+        default=0,
+        metavar="STEPS",
+        help=(
+            "record per-rank procfs memory at initialization, finalization, "
+            "step 1, and every STEPS complete model steps"
+        ),
+    )
     args = parser.parse_args(argv)
     from mpi4py import MPI
 
@@ -97,10 +138,12 @@ def main(argv: list[str] | None = None) -> int:
     # time. These barriers do not alter any CAM numerical operation.
     world.Barrier()
     total_started = MPI.Wtime()
+    memory_samples = [_process_memory("python_ready", cam.clock.nstep)]
     with cam:
         world.Barrier()
         initialize_started = MPI.Wtime()
         cam.initialize()
+        memory_samples.append(_process_memory("initialized", cam.clock.nstep))
         world.Barrier()
         initialize_seconds = MPI.Wtime() - initialize_started
         python_initialized_addresses = cam.python_initialized_addresses
@@ -109,7 +152,20 @@ def main(argv: list[str] | None = None) -> int:
         }
         world.Barrier()
         advance_started = MPI.Wtime()
-        cam.advance(args.steps)
+        steps = args.steps if args.steps is not None else case.config.stop_n
+        if args.memory_sample_every > 0:
+            for completed in range(1, steps + 1):
+                cam.step()
+                if (
+                    completed == 1
+                    or completed == steps
+                    or completed % args.memory_sample_every == 0
+                ):
+                    memory_samples.append(
+                        _process_memory(f"step_{completed}", cam.clock.nstep)
+                    )
+        else:
+            cam.advance(steps)
         world.Barrier()
         advance_seconds = MPI.Wtime() - advance_started
         final_addresses = {
@@ -133,7 +189,7 @@ def main(argv: list[str] | None = None) -> int:
                 "Python-owned PI-CAM arrays changed address: "
                 + ", ".join(changed_addresses[:8])
             )
-        operation_counts = Counter(trace.operation for trace in cam.trace)
+        operation_counts = cam.operation_counts
         leaf_operations = tuple(
             action.operation
             for action in cam.step_plan.actions
@@ -146,7 +202,7 @@ def main(argv: list[str] | None = None) -> int:
             "seconds": cam.clock.seconds,
             "fields": len(cam.pool),
             "state_bytes": cam.pool.nbytes,
-            "actions": len(cam.trace),
+            "actions": cam.trace_count,
             "step_plan_actions": len(tuple(cam.step_plan)),
             "action_catalog_size": len(cam.step_plan.actions),
             "cam_run1_actions": len(cam.step_plan.in_phase("cam_run1")),
@@ -182,12 +238,15 @@ def main(argv: list[str] | None = None) -> int:
             "boundary": dict(getattr(boundary, "diagnostics", {})),
             "initialize_seconds": initialize_seconds,
             "advance_seconds": advance_seconds,
+            "memory_samples": memory_samples,
         }
+        memory_samples.append(_process_memory("pre_finalize", cam.clock.nstep))
         world.Barrier()
         finalize_started = MPI.Wtime()
     world.Barrier()
     local["finalize_seconds"] = MPI.Wtime() - finalize_started
     local["total_seconds"] = MPI.Wtime() - total_started
+    memory_samples.append(_process_memory("finalized", cam.clock.nstep))
     finalized_addresses = {
         name: int(values.ctypes.data) for name, values in cam.pool.items()
     }
@@ -236,6 +295,44 @@ def main(argv: list[str] | None = None) -> int:
             )
         )
         steps = args.steps if args.steps is not None else case.config.stop_n
+        memory_labels = tuple(
+            sample["label"] for sample in records[0]["memory_samples"]
+        )
+        memory = {
+            "sample_every_steps": args.memory_sample_every,
+            "rank_count": world.Get_size(),
+            "samples": [
+                {
+                    "label": label,
+                    "step": records[0]["memory_samples"][index]["step"],
+                    "total_rss_bytes": sum(
+                        int(record["memory_samples"][index].get("VmRSS_bytes", 0))
+                        for record in records
+                    ),
+                    "maximum_rank_rss_bytes": max(
+                        int(record["memory_samples"][index].get("VmRSS_bytes", 0))
+                        for record in records
+                    ),
+                    "total_pss_bytes": sum(
+                        int(record["memory_samples"][index].get("Pss_bytes", 0))
+                        for record in records
+                    ),
+                    "maximum_rank_hwm_bytes": max(
+                        int(record["memory_samples"][index].get("VmHWM_bytes", 0))
+                        for record in records
+                    ),
+                    "maximum_rank_ru_maxrss_bytes": max(
+                        int(
+                            record["memory_samples"][index].get(
+                                "ru_maxrss_bytes", 0
+                            )
+                        )
+                        for record in records
+                    ),
+                }
+                for index, label in enumerate(memory_labels)
+            ],
+        }
         timing = {
             "clock": "MPI.Wtime with MPI barriers",
             "aggregation": "maximum across all MPI ranks",
@@ -315,6 +412,7 @@ def main(argv: list[str] | None = None) -> int:
             "final_date": records[0]["date"],
             "final_seconds": records[0]["seconds"],
             "timing": timing,
+            "memory": memory,
             **native_evidence,
         }
         text = json.dumps(summary, indent=2, sort_keys=True) + "\n"

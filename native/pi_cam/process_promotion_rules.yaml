@@ -6,4 +6,6 @@ schema_version: 1
 exclude_from_native_image:
   cosp_lidar_only_cloud: mod_llnl_stats is not built by this case
   cosp_precip_mxratio: mod_cosp_utils is not built by this case
+  m_ice: optics_lib does not expose a loadable module interface in this case
+  m_wat: optics_lib does not expose a loadable module interface in this case
   modis_l3_simulator: mod_modis_sim is not built by this case

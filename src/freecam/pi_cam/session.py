@@ -27,7 +27,7 @@ from freecam.core.runtime_env import mpi_loader_environment
 from freecam.model.python_processes import PythonProcessSpec
 
 from .boundary import CAMBoundaryProvider
-from .config import PICAMConfig
+from .config import DEFAULT_TRACE_LIMIT, PICAMConfig, validate_trace_limit
 from .expressions import DistributedOperand
 from .physics_catalog import (
     PICAMPhysicsCatalog,
@@ -1488,6 +1488,7 @@ class PICAMNotebookSession:
         startup_timeout: float = 1200.0,
         request_timeout: float = 300.0,
         log_path: str | Path | None = None,
+        trace_limit: int | None = DEFAULT_TRACE_LIMIT,
     ) -> None:
         if isinstance(config, PICAMConfig):
             raise TypeError("PICAMNotebookSession currently requires a YAML config path")
@@ -1517,6 +1518,7 @@ class PICAMNotebookSession:
             raise ValueError("pbs_memory_per_node must have form '<integer>GB'")
         self.pbs_memory_per_node = normalized_memory
         self.verify_boundary_exports = bool(verify_boundary_exports)
+        self.trace_limit = validate_trace_limit(trace_limit)
         self.startup_timeout = float(startup_timeout)
         self.request_timeout = float(request_timeout)
         self.log_path = Path(log_path or self.run_dir / "pi_cam_notebook_worker.log").resolve()
@@ -1588,6 +1590,31 @@ class PICAMNotebookSession:
         listener = Listener(("0.0.0.0" if mode == "pbs" else "127.0.0.1", 0), authkey=authkey)
         host = socket.getfqdn() if mode == "pbs" else "127.0.0.1"
         _, port = listener.address
+        command = self._worker_argv(host, port, authkey)
+        self.log_path.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            if mode == "pbs":
+                self._submit_pbs(command, environment)
+            else:
+                self._log_handle = self.log_path.open("ab", buffering=0)
+                self._process = subprocess.Popen(
+                    command,
+                    stdin=subprocess.DEVNULL,
+                    stdout=self._log_handle,
+                    stderr=subprocess.STDOUT,
+                    env=environment,
+                    start_new_session=True,
+                )
+            self._connection = self._accept(listener)
+            self._status = dict(self._unwrap(self._receive(self.startup_timeout)))
+        except BaseException:
+            self._abort()
+            raise
+        finally:
+            listener.close()
+        return self
+
+    def _worker_argv(self, host: str, port: int, authkey: bytes) -> list[str]:
         command = [
             *self.launcher,
             "-n",
@@ -1616,28 +1643,13 @@ class PICAMNotebookSession:
             if self.verify_boundary_exports
             else "--no-verify-exports"
         )
-        self.log_path.parent.mkdir(parents=True, exist_ok=True)
-        try:
-            if mode == "pbs":
-                self._submit_pbs(command, environment)
-            else:
-                self._log_handle = self.log_path.open("ab", buffering=0)
-                self._process = subprocess.Popen(
-                    command,
-                    stdin=subprocess.DEVNULL,
-                    stdout=self._log_handle,
-                    stderr=subprocess.STDOUT,
-                    env=environment,
-                    start_new_session=True,
-                )
-            self._connection = self._accept(listener)
-            self._status = dict(self._unwrap(self._receive(self.startup_timeout)))
-        except BaseException:
-            self._abort()
-            raise
-        finally:
-            listener.close()
-        return self
+        command.extend(
+            [
+                "--trace-limit",
+                "none" if self.trace_limit is None else str(self.trace_limit),
+            ]
+        )
+        return command
 
     def _boundary_arguments(self) -> list[str]:
         if isinstance(self.boundary, Path):
@@ -1821,12 +1833,26 @@ class PICAMNotebookSession:
         self._status = dict(self._request({"op": "status"}))
         return result
 
-    def trace(self, *, since: int = 0) -> tuple[Mapping[str, Any], ...]:
-        """Return actual worker-side action records from ``since`` onward."""
+    def trace_window(self, *, since: int = 0) -> dict[str, Any]:
+        """Return ``{'first_sequence', 'total', 'records'}`` from the worker.
+
+        ``first_sequence > since`` signals that older records were evicted by
+        the worker-side ``trace_limit``.
+        """
 
         if int(since) < 0:
             raise ValueError("since cannot be negative")
-        return tuple(self._request({"op": "trace", "since": int(since)}))
+        reply = self._request({"op": "trace", "since": int(since)})
+        return {
+            "first_sequence": int(reply["first_sequence"]),
+            "total": int(reply["total"]),
+            "records": tuple(reply["records"]),
+        }
+
+    def trace(self, *, since: int = 0) -> tuple[Mapping[str, Any], ...]:
+        """Return retained worker-side action records from ``since`` onward."""
+
+        return self.trace_window(since=since)["records"]
 
     def expand_cam_run1_leaves(self) -> tuple[Mapping[str, Any], ...]:
         """Replace three composite stages with ordered native leaf actions."""
