@@ -14,7 +14,7 @@ import subprocess
 import sys
 import threading
 import time
-from collections.abc import Mapping, Sequence
+from collections.abc import Mapping, MutableMapping, Sequence
 from html import escape
 from multiprocessing.connection import Connection, Listener
 from pathlib import Path
@@ -429,6 +429,56 @@ class _SessionProcessCallResult(Mapping[str, _SessionFieldReference]):
         return f"ProcessResult(name={self.name!r}, outputs={tuple(self)!r})"
 
 
+class _SessionProcessProperties(MutableMapping):
+    """Live view of one Python process's declared runtime properties.
+
+    Reads come from the rank-side spec, so this is authoritative even after
+    another handle -- or the original ``Physics`` instance -- changed a
+    value.  Writes are collective: the merged property set is shipped to
+    every MPI rank and takes effect at the process's next invocation.
+    """
+
+    def __init__(self, session: "PICAMNotebookSession", name: str) -> None:
+        self._session = session
+        self._name = name
+
+    def _read(self) -> dict[str, Any]:
+        parameters = self._session.get_python_parameters(self._name)
+        return dict(parameters.get("properties") or {})
+
+    def _write(self, properties: Mapping[str, Any]) -> None:
+        self._session.set_python_parameters(
+            self._name, {"properties": dict(properties)}
+        )
+
+    def __getitem__(self, key: str) -> Any:
+        return self._read()[str(key)]
+
+    def __setitem__(self, key: str, value: Any) -> None:
+        merged = self._read()
+        merged[str(key)] = value
+        self._write(merged)
+
+    def __delitem__(self, key: str) -> None:
+        merged = self._read()
+        del merged[str(key)]
+        self._write(merged)
+
+    def update(self, *args: Any, **kwargs: Any) -> None:
+        merged = self._read()
+        merged.update(*args, **kwargs)
+        self._write(merged)
+
+    def __iter__(self) -> Any:
+        return iter(self._read())
+
+    def __len__(self) -> int:
+        return len(self._read())
+
+    def __repr__(self) -> str:
+        return f"<properties of {self._name}: {self._read()!r}>"
+
+
 class _SessionActionReference:
     """A physics action that can be run or edited without string plumbing."""
 
@@ -549,10 +599,33 @@ class _SessionActionReference:
         if self.kind != "python_process":
             raise TypeError("reload() is available only for Notebook Python processes")
         # Import lazily: facade imports this module to construct the session.
-        from .facade import _python_callable_access, _runtime_state_callback
+        from .facade import (
+            Physics,
+            _python_callable_access,
+            _python_process_access,
+            _runtime_state_callback,
+        )
 
-        inferred_reads, inferred_writes = _python_callable_access(function)
-        callback = _runtime_state_callback(function, owner=self.name)
+        if isinstance(function, Physics):
+            # A Physics instance carries its own callback contract and its
+            # current property values replace the live ones wholesale.
+            process = function
+            inferred_reads, inferred_writes = _python_process_access(process)
+            callback = process._runtime_callback()
+            if parameters is None:
+                current = process._current_properties()
+                parameters = {"properties": current} if current else {}
+        else:
+            inferred_reads, inferred_writes = _python_callable_access(function)
+            callback = _runtime_state_callback(function, owner=self.name)
+            if parameters is None and self.session.get_python_parameters(
+                self.name
+            ).get("properties"):
+                raise TypeError(
+                    f"{self.name!r} declares runtime properties; reload it "
+                    "with a Physics instance, or pass parameters={} to drop "
+                    "them explicitly"
+                )
         self.session.reload_python(
             callback,
             name=self.name,
@@ -564,6 +637,16 @@ class _SessionActionReference:
             unsafe=unsafe,
         )
         return self
+
+    @property
+    def properties(self) -> "_SessionProcessProperties":
+        """Runtime-adjustable properties of one Notebook Python process."""
+
+        if self.kind != "python_process":
+            raise TypeError(
+                "properties are available only for Notebook Python processes"
+            )
+        return _SessionProcessProperties(self.session, self.name)
 
     def remove(self) -> Mapping[str, Any]:
         if self.kind == "python_process":
@@ -2102,6 +2185,30 @@ class PICAMNotebookSession:
                     "preserve_transactional": transactional is None,
                     "unsafe": bool(unsafe),
                 }
+            )
+        )
+
+    def set_python_parameters(
+        self, name: str, parameters: Mapping[str, Any]
+    ) -> Mapping[str, Any]:
+        """Collectively replace one process's persistent keyword parameters."""
+
+        return dict(
+            self._request(
+                {
+                    "op": "set_python_parameters",
+                    "name": str(name),
+                    "parameters": dict(parameters),
+                }
+            )
+        )
+
+    def get_python_parameters(self, name: str) -> dict[str, Any]:
+        """Read one process's current persistent keyword parameters."""
+
+        return dict(
+            self._request(
+                {"op": "get_python_parameters", "name": str(name)}
             )
         )
 

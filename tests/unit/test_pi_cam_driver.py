@@ -942,3 +942,93 @@ def test_collective_boundary_gathers_lifetime_counter() -> None:
     driver.comm = DivergentComm()
     with pytest.raises(PICAMStateError, match="different boundaries"):
         driver._require_collective_boundary("synchronize")
+
+
+def test_python_process_set_parameters_takes_effect_next_invocation() -> None:
+    driver, _, _ = _driver()
+    driver.initialize()
+    tracer = driver.define_variable(
+        PICAMVariableSpec("experiment_tracer", ("pcols", "pver"), initial=0.0)
+    )
+
+    def add_scaled(fields, context, *, scale):
+        del context
+        fields["experiment_tracer"][...] += scale
+
+    process = driver.physics.install_python(
+        add_scaled,
+        name="notebook_heating",
+        after="dadadj",
+        writes=("experiment_tracer",),
+        parameters={"scale": 1.0},
+    )
+    process.run()
+    assert np.array_equal(tracer, np.full(tracer.shape, 1.0))
+
+    result = driver.python_processes.set_parameters(
+        "notebook_heating", {"scale": 10.0}
+    )
+    assert result["parameters"] == {"scale": 10.0}
+    process.run()
+    assert np.array_equal(tracer, np.full(tracer.shape, 11.0))
+    assert driver.python_processes.parameters("notebook_heating") == {
+        "scale": 10.0
+    }
+
+
+def test_set_parameters_rejects_unknown_processes_collectively() -> None:
+    from freecam.model.errors import PythonProcessContractError
+
+    driver, _, _ = _driver()
+    driver.initialize()
+    with pytest.raises(PythonProcessContractError, match="unknown"):
+        driver.python_processes.set_parameters("missing", {"x": 1})
+    with pytest.raises(PythonProcessContractError, match="unknown"):
+        driver.python_processes.parameters("missing")
+
+
+def test_set_parameters_leaves_the_spec_on_rank_divergence() -> None:
+    from freecam.model.errors import PythonProcessContractError
+
+    driver, _, _ = _driver()
+    driver.initialize()
+    driver.define_variable(
+        PICAMVariableSpec("experiment_tracer", ("pcols", "pver"), initial=0.0)
+    )
+
+    def add_scaled(fields, context, *, scale):
+        del context
+        fields["experiment_tracer"][...] += scale
+
+    driver.physics.install_python(
+        add_scaled,
+        name="notebook_heating",
+        after="dadadj",
+        writes=("experiment_tracer",),
+        parameters={"scale": 1.0},
+    )
+    record = driver.python_processes.installed["notebook_heating"]
+    original_spec = record.spec
+
+    class DivergentComm:
+        rank = 0
+        size = 2
+
+        @staticmethod
+        def allgather(value):
+            # Boundary cursors (tuples) and error gathers (None) agree;
+            # only the parameter hash -- a string -- diverges.
+            if isinstance(value, str):
+                return [value, "a-different-hash"]
+            return [value, value]
+
+        @staticmethod
+        def barrier():
+            return None
+
+    driver.comm = DivergentComm()
+    with pytest.raises(PythonProcessContractError, match="differ across"):
+        driver.python_processes.set_parameters(
+            "notebook_heating", {"scale": 2.0}
+        )
+    assert record.spec is original_spec

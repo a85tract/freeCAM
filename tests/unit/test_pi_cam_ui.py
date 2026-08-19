@@ -517,6 +517,7 @@ def test_workflow_insert_installs_physics_object_with_declared_placement() -> No
         "after": "dadadj",
         "reads": ("phys_state.q",),
         "writes": ("phys_state.t",),
+        "parameters": None,
         "enabled": True,
         "transactional": True,
     }

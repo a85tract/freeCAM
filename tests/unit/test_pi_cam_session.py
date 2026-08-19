@@ -17,6 +17,7 @@ from freecam.pi_cam.session import (
     PICAMNotebookError,
     PICAMNotebookSession,
     _authkey_argument,
+    _SessionActionReference,
     _SessionFieldCollection,
     _SessionFieldReference,
 )
@@ -1037,9 +1038,12 @@ def test_session_dynamic_field_and_python_process_commands(
         state.tracer += 2.0 * context.timestep_seconds
 
     assert process.reload(revised_callback) is process
-    assert commands[5]["op"] == "reload_python"
-    assert commands[5]["name"] == "heating"
-    replacement = PythonProcessSpec.from_mapping(commands[5]["spec"])
+    # A raw-function reload first checks the live process for declared
+    # runtime properties it would otherwise silently invalidate.
+    assert commands[5]["op"] == "get_python_parameters"
+    assert commands[6]["op"] == "reload_python"
+    assert commands[6]["name"] == "heating"
+    replacement = PythonProcessSpec.from_mapping(commands[6]["spec"])
     assert replacement.writes == ("tracer",)
     values = np.zeros(3)
     restored = cloudpickle.loads(replacement.payload)
@@ -1273,3 +1277,102 @@ def test_runtime_process_can_use_final_boundary_as_append_anchor(tmp_path: Path)
         "boundary_export",
         None,
     )
+
+
+def test_process_properties_view_reads_merges_and_writes(
+    tmp_path: Path, monkeypatch
+) -> None:
+    config, boundary, run_dir, env_script, _ = _session_files(tmp_path)
+    session = PICAMNotebookSession(
+        config,
+        boundary=boundary,
+        run_dir=run_dir,
+        env_script=env_script,
+    )
+    commands = []
+    live = {"properties": {"rate": 0.01, "floor": 0.0}}
+
+    def request(command):
+        commands.append(command)
+        if command["op"] == "get_python_parameters":
+            return dict(live)
+        if command["op"] == "set_python_parameters":
+            live.update(command["parameters"])
+            return {"name": command["name"], "parameters": dict(live)}
+        return {"name": command.get("name", "p")}
+
+    monkeypatch.setattr(session, "_request", request)
+    handle = _SessionActionReference(
+        session, "heating", "cam_run1", kind="python_process"
+    )
+
+    view = handle.properties
+    assert view["rate"] == 0.01
+    assert dict(view) == {"rate": 0.01, "floor": 0.0}
+
+    view["rate"] = 0.02
+    assert commands[-1] == {
+        "op": "set_python_parameters",
+        "name": "heating",
+        "parameters": {"properties": {"rate": 0.02, "floor": 0.0}},
+    }
+    assert view["rate"] == 0.02
+
+    view.update(floor=-1.0)
+    assert live["properties"] == {"rate": 0.02, "floor": -1.0}
+
+    scheme = _SessionActionReference(session, "radiation", "cam_run1")
+    with pytest.raises(TypeError, match="Notebook Python processes"):
+        scheme.properties
+
+
+def test_reload_accepts_a_physics_instance_and_ships_its_properties(
+    tmp_path: Path, monkeypatch
+) -> None:
+    import freecam as fc
+
+    config, boundary, run_dir, env_script, _ = _session_files(tmp_path)
+    session = PICAMNotebookSession(
+        config,
+        boundary=boundary,
+        run_dir=run_dir,
+        env_script=env_script,
+    )
+    commands = []
+
+    def request(command):
+        commands.append(command)
+        if command["op"] == "get_python_parameters":
+            return {"properties": {"rate": 0.01}}
+        return {"name": command.get("name", "p")}
+
+    monkeypatch.setattr(session, "_request", request)
+    handle = _SessionActionReference(
+        session, "heating", "cam_run1", kind="python_process"
+    )
+
+    class Heating(fc.Physics):
+        name = "heating"
+        rate = fc.Property(0.05)
+        writes = ("phys_state.t",)
+
+        def run(self, state, context):
+            del context
+            state.T += self.rate
+
+    handle.reload(Heating())
+    reload_command = commands[-1]
+    assert reload_command["op"] == "reload_python"
+    assert reload_command["preserve_parameters"] is False
+    spec = PythonProcessSpec.from_mapping(reload_command["spec"])
+    assert spec.parameters == {"properties": {"rate": 0.05}}
+
+    def plain(state, context):
+        del context
+        state.T += 1.0
+
+    with pytest.raises(TypeError, match="declares runtime properties"):
+        handle.reload(plain)
+    handle.reload(plain, parameters={})
+    assert commands[-1]["op"] == "reload_python"
+    assert commands[-1]["preserve_parameters"] is False

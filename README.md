@@ -186,6 +186,59 @@ class Heating(fc.Physics):
 driver.cam.workflow.insert(Heating())
 ```
 
+### CAM namelist parameters
+
+CAM's physics tunables live in the run directory's `atm_in` namelist and are
+read once, at initialization. Pass overrides when constructing the model and
+they are applied to that file before CAM sees it:
+
+```python
+driver = fc.Driver(
+    case="PI-atm",
+    nsteps=50,
+    namelist={"cldfrc_rhminl": 0.9, "zmconv_c0_lnd": 0.0075},
+)
+driver.cam.namelist["cldfrc_rhminl"]   # current file value
+driver.cam.namelist.overrides           # what this run changed
+```
+
+Every name and value is validated against the pinned iCESM source's own
+namelist definition before anything launches: unknown variables (with
+spelling suggestions), Fortran type mismatches, and variables whose namelist
+group this configuration never reads are all rejected outright, because CAM
+itself either aborts without naming the variable or ignores the setting
+silently. With no overrides the file is not touched at all, byte for byte.
+`fc.CaseConfig` accepts the same `namelist=` mapping for reusable case
+declarations, and the MPI command line accepts repeatable
+`--namelist NAME=VALUE` flags.
+
+### Runtime Physics properties
+
+A `fc.Property` declares a tunable parameter of a Python process. Assigning
+to it on a live model ships the value to every MPI rank collectively and
+takes effect at the process's next invocation:
+
+```python
+class TunableHeating(fc.Physics):
+    name = "notebook_heating"
+    after = "dry_adjustment"
+    rate = fc.Property(0.01)
+
+    def run(self, state, context):
+        state.T += self.rate * context.timestep_seconds
+
+
+heating = TunableHeating()
+driver.cam.workflow.insert(heating)
+
+heating.rate = 0.02                                     # live update
+driver.cam.workflow["notebook_heating"].properties      # authoritative view
+driver.cam.workflow["notebook_heating"].properties["rate"] = 0.03
+```
+
+Values must be JSON-compatible scalars or small containers; large arrays
+belong in StatePool fields.
+
 See the Notebook for field aliases, plotting, workflow construction, runtime
 process replacement, asynchronous execution, and Xarray history access.
 

@@ -334,6 +334,14 @@ def _command(command: dict[str, Any], driver: Any, comm: Any) -> object:
     if operation == "remove_python":
         result = driver.python_processes.remove(str(command["name"]))
         return result if comm.rank == 0 else None
+    if operation == "set_python_parameters":
+        result = driver.python_processes.set_parameters(
+            str(command["name"]), dict(command["parameters"])
+        )
+        return result if comm.rank == 0 else None
+    if operation == "get_python_parameters":
+        result = driver.python_processes.parameters(str(command["name"]))
+        return result if comm.rank == 0 else None
     if operation == "install_fortran":
         record = driver.fortran_processes.install(
             command["spec"], unsafe=bool(command.get("unsafe", False))
