@@ -1,6 +1,7 @@
 """Python-owned fields reach CAM's own history files, not a separate stream."""
 
 from pathlib import Path
+import warnings
 
 import numpy as np
 import pytest
@@ -237,6 +238,37 @@ def test_windows_wait_until_cam_writes_their_file(tmp_path: Path) -> None:
     assert stream.pending == 0
     with netCDF4.Dataset(path) as dataset:
         assert "rain" in dataset.variables
+
+
+def test_a_tape_cam_never_writes_bounds_the_queue(tmp_path: Path) -> None:
+    """A stream pointed at a tape the case never writes must not grow forever."""
+
+    driver = _driver(tmp_path, nhtfrq=1)
+    driver.initialize()
+    _python_field(driver, "rain")
+    stream = driver.history_streams.stream("python_fields")
+    limit = stream.pending_limit
+
+    for _ in range(limit):
+        driver.clock.advance()
+        stream.step()
+    assert stream.pending == limit
+    assert stream.dropped == 0
+
+    # The next window has nowhere to go; the oldest is discarded, loudly.
+    driver.clock.advance()
+    with pytest.warns(RuntimeWarning, match="no 'h0' history file"):
+        stream.step()
+    assert stream.pending == limit
+    assert stream.dropped == 1
+
+    # Only the first eviction warns, but every loss is still counted.
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        driver.clock.advance()
+        stream.step()
+    assert stream.pending == limit
+    assert stream.dropped == 2
 
 
 def test_finalize_drains_queued_windows(tmp_path: Path) -> None:

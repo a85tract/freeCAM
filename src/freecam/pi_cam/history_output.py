@@ -18,10 +18,12 @@ arrays CAM already produced and appends them to a closed NetCDF file.
 
 from __future__ import annotations
 
+from collections import deque
 from dataclasses import dataclass
 from pathlib import Path
 import re
 from typing import Any, Iterator, Mapping, Sequence
+import warnings
 
 import numpy as np
 
@@ -31,6 +33,11 @@ _DAYS_PER_MONTH: tuple[int, ...] = (31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 
 _COLUMN_DIMENSION = "ncol"
 _TIME_DIMENSION = "time"
 _STREAM_PATTERN = re.compile(r"\.cam\.(h\d+)\.")
+# A completed window waits only until CAM closes the file it belongs to,
+# so a healthy stream holds at most one or two.  A queue that keeps growing
+# means the target tape is never written, and the reduced fields it holds
+# are large enough that an unbounded queue would exhaust rank 0.
+DEFAULT_PENDING_LIMIT: int = 64
 
 
 @dataclass(frozen=True, slots=True)
@@ -184,8 +191,9 @@ class PICAMHistoryStream:
         self._sums: dict[str, np.ndarray] = {}
         self._samples = 0
         self._interval_start: tuple[int, int, int, int] | None = None
-        self._pending: list[_PendingSample] = []
+        self._pending: deque[_PendingSample] = deque(maxlen=DEFAULT_PENDING_LIMIT)
         self._written = 0
+        self._dropped = 0
         self._plan: _ColumnPlan | None = None
 
     # -- state -----------------------------------------------------------
@@ -201,6 +209,18 @@ class PICAMHistoryStream:
         """Completed windows still waiting for their CAM history file."""
 
         return len(self._pending)
+
+    @property
+    def pending_limit(self) -> int:
+        """How many completed windows may wait before the oldest is lost."""
+
+        return int(self._pending.maxlen)
+
+    @property
+    def dropped(self) -> int:
+        """Windows discarded because no CAM history file ever claimed them."""
+
+        return self._dropped
 
     @property
     def accumulated(self) -> int:
@@ -323,6 +343,21 @@ class PICAMHistoryStream:
             )
             for name in values
         }
+        if len(self._pending) == self._pending.maxlen:
+            # Losing model output silently is worse than the memory it costs,
+            # so say so.  Reaching this point means the configured tape is
+            # never written, not that the queue is merely busy.
+            self._dropped += 1
+            if self._dropped == 1:
+                warnings.warn(
+                    f"history stream {self.spec.name!r} has "
+                    f"{self.pending_limit} completed windows waiting and no "
+                    f"'{self.spec.stream}' history file to write them to; the "
+                    "oldest window is being discarded. Check that the case "
+                    f"writes a {self.spec.stream} tape.",
+                    RuntimeWarning,
+                    stacklevel=2,
+                )
         self._pending.append(
             _PendingSample(
                 date=year * 10000 + month * 100 + day,
@@ -633,6 +668,7 @@ class PICAMHistoryStreamRegistry:
                 "resolved_fields": [item.output_name for item in stream.fields()],
                 "written": stream.written,
                 "pending": stream.pending,
+                "dropped": stream.dropped,
                 "accumulated": stream.accumulated,
             }
             for stream in self._streams.values()

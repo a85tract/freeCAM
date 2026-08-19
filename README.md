@@ -198,17 +198,28 @@ The current validated results are:
 | Python-controlled PI-CAM, 50 steps | 512 | BFB with the pinned Fortran reference |
 | Exact online CESM provider, 50 steps | 512 | 53/53 x2a, 53/53 a2x, and 4/4 CAM output files match |
 | Exact online CESM provider, one year | 512 | 180/180 CAM history and restart files match |
+| Exact online CESM provider, five years | 512 | 884/884 CAM history and restart files match |
+| Monthly output vs. an independent production run, one year | 512 | 12/12 monthly files, 215 variables each, bit identical |
+| Monthly output vs. an independent production run, five years | 512 | 60/60 monthly files, 215 variables each, bit identical |
 
-The one-year online run completed 17,520 half-hour steps at 15.67 SYPD. Its
-total runtime was 5,549 seconds versus 5,027 seconds for the original Fortran
-CESM lifecycle, an observed overhead of approximately 10.4% from one run of
-each configuration.
+The last two gates compare against a separately produced twenty-year CESM
+integration of the same case rather than against a reference this project
+generated, so they test the whole lifecycle end to end.
+
+Measured overhead against the original Fortran lifecycle is +8.7% run time and
++8.2% memory over five model years, and does not grow with integration length.
+[`validation/performance_overhead.md`](validation/performance_overhead.md)
+records the method, the per-run numbers, and their caveats.
 
 Primary evidence:
 
 - [`validation/pi_cam_exact_cesm_online_50step.json`](validation/pi_cam_exact_cesm_online_50step.json)
 - [`validation/pi_cam_exact_cesm_online_1year.json`](validation/pi_cam_exact_cesm_online_1year.json)
 - [`validation/pi_cam_exact_cesm_online_1year_bfb.json`](validation/pi_cam_exact_cesm_online_1year_bfb.json)
+- [`validation/pi_cam_exact_cesm_online_5year.json`](validation/pi_cam_exact_cesm_online_5year.json)
+- [`validation/pi_cam_exact_cesm_online_5year_bfb.json`](validation/pi_cam_exact_cesm_online_5year_bfb.json)
+- [`validation/pi_cam_monthly_1year_bfb.json`](validation/pi_cam_monthly_1year_bfb.json)
+- [`validation/pi_cam_monthly_5year_bfb.json`](validation/pi_cam_monthly_5year_bfb.json)
 - [`validation/pi_cam_process_support.json`](validation/pi_cam_process_support.json)
 
 The directory comparator requires identical CAM file inventories, numerical
