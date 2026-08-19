@@ -1,0 +1,146 @@
+# Runtime-writable CAM physics tunables for the admitted PI-atm build
+# (CAM5 physics, SE dycore, iCESM1.3.1, Intel toolchain).
+#
+# Each entry names one namelist tunable and the Fortran module storage the
+# running model actually reads.  CAM copies namelist values into module
+# variables during initialization and never re-reads the file, so runtime
+# tuning writes those module variables directly.  Admission required a
+# source audit proving the variable is re-read by a run-phase routine on
+# every timestep and is not baked into derived constants at init; the
+# `readers` keys cite the per-call read sites in the pinned source.
+#
+# `symbols` are Intel ifort external names (<module>_mp_<variable>_) in the
+# fixed-address image build/pi_cam_promoted/libfreecam_pi_cam.so.  Where a
+# parameter lists two symbols, initialization copied the value into another
+# module (a shadow the CAM5 path reads), and both copies must change
+# together for the tuning to be real.  Every binding is verified at model
+# initialization by comparing the value read through the symbol against the
+# value parsed from the run directory's atm_in; a mismatch disables that
+# parameter rather than risking a write to the wrong address.
+#
+# Audited and rejected -- do not add without a new audit:
+#   zmconv_org           registers a constituent (cnst_add, pcnst) at init;
+#                        structural, not a tunable  [zm_conv_intr.F90:112-114]
+#   zmconv_ke_lnd        only read when zm_org is true; inert here
+#   cldfrc_iceopt, cldfrc_icecrit, cldfrc_ice, cldfrc_freeze_dry
+#                        cldfrc computes with them each call, but CAM5 keeps
+#                        only its concld output; their products are discarded
+#                        [macrop_driver.F90:911-914]
+#   hkconv_*, cldwat_*, cldsed_*
+#                        RK-microphysics path only; unreachable under CAM5
+#   cldfrc_rhminp / cldfrc_rhminp_botmb
+#                        WACCM path; rhminp_botmb is also never broadcast
+#                        beyond the master rank  [cloud_fraction.F90:133-146]
+
+schema_version: 1
+
+parameters:
+  zmconv_c0_lnd:
+    dtype: float64
+    symbols: [zm_conv_mp_c0_lnd_]
+    workflow_action: cam_run1.deep_convection
+    readers: "zm_conv.F90:2301 (cldprp, every zm_convr call)"
+    notes: >
+      Deep-convection autoconversion over land.  The namelist value passes
+      by value from zm_conv_intr into zm_convi, which stores it in
+      zm_conv's own module variable; only that copy is read afterwards.
+
+  zmconv_c0_ocn:
+    dtype: float64
+    symbols: [zm_conv_mp_c0_ocn_]
+    workflow_action: cam_run1.deep_convection
+    readers: "zm_conv.F90:2301 (cldprp)"
+    notes: Deep-convection autoconversion over ocean.
+
+  zmconv_ke:
+    dtype: float64
+    symbols: [zm_conv_mp_ke_]
+    workflow_action: cam_run1.deep_convection
+    readers: "zm_conv.F90:972,974 (zm_conv_evap, every call)"
+    notes: Evaporation efficiency of precipitation in ZM deep convection.
+
+  cldfrc_sh1:
+    dtype: float64
+    symbols: [cloud_fraction_mp_sh1_]
+    workflow_action: cam_run1.shallow_convection
+    readers: "cloud_fraction.F90:489 (cldfrc, every macrop_driver call)"
+    notes: >
+      Shallow-convective cloud-fraction coefficient.  Under CAM5 the
+      surviving cldfrc output is concld, which sh1/sh2/dp1/dp2 control.
+
+  cldfrc_sh2:
+    dtype: float64
+    symbols: [cloud_fraction_mp_sh2_]
+    workflow_action: cam_run1.shallow_convection
+    readers: "cloud_fraction.F90:489 (cldfrc)"
+    notes: Shallow-convective cloud-fraction scale.
+
+  cldfrc_dp1:
+    dtype: float64
+    symbols: [cloud_fraction_mp_dp1_]
+    workflow_action: cam_run1.deep_convection
+    readers: "cloud_fraction.F90:493 (cldfrc)"
+    notes: Deep-convective cloud-fraction coefficient.
+
+  cldfrc_dp2:
+    dtype: float64
+    symbols: [cloud_fraction_mp_dp2_]
+    workflow_action: cam_run1.deep_convection
+    readers: "cloud_fraction.F90:493 (cldfrc)"
+    notes: Deep-convective cloud-fraction scale.
+
+  cldfrc_rhminl:
+    dtype: float64
+    symbols: [cloud_fraction_mp_rhminl_, cldwat2m_macro_mp_rhminl_const_]
+    workflow_action: cam_run1.cloud_macro_microphysics
+    readers: >
+      cloud_fraction.F90:522,525 (cldfrc);
+      cldwat2m_macro.F90:1350 (rhcrit_calc, every mmacro_pcond call)
+    notes: >
+      Minimum RH for low stratus.  Initialization copies the value into
+      cldwat2m_macro's rhminl_const, and the CAM5 macrophysics reads that
+      shadow; both copies are written together.
+
+  cldfrc_rhminl_adj_land:
+    dtype: float64
+    symbols:
+      - cloud_fraction_mp_rhminl_adj_land_
+      - cldwat2m_macro_mp_rhminl_adj_land_const_
+    workflow_action: cam_run1.cloud_macro_microphysics
+    readers: "cloud_fraction.F90:522; cldwat2m_macro.F90:1351"
+    notes: Snow-free-land adjustment to rhminl; dual copy as rhminl.
+
+  cldfrc_rhminh:
+    dtype: float64
+    symbols: [cloud_fraction_mp_rhminh_, cldwat2m_macro_mp_rhminh_const_]
+    workflow_action: cam_run1.cloud_macro_microphysics
+    readers: "cloud_fraction.F90:838 (relhum_min); cldwat2m_macro.F90:1352"
+    notes: Minimum RH for high stable clouds; dual copy as rhminl.
+
+  cldfrc_premit:
+    dtype: float64
+    symbols: [cloud_fraction_mp_premit_, cldwat2m_macro_mp_premit_]
+    workflow_action: cam_run1.cloud_macro_microphysics
+    readers: "cloud_fraction.F90:536,552; cldwat2m_macro.F90:1366"
+    notes: Top of the mid-level RH ramp; dual copy as rhminl.
+
+  cldfrc_premib:
+    dtype: float64
+    symbols: [cloud_fraction_mp_premib_, cldwat2m_macro_mp_premib_]
+    workflow_action: cam_run1.cloud_macro_microphysics
+    readers: "cloud_fraction.F90:516,552,690; cldwat2m_macro.F90:1367"
+    notes: Bottom of the mid-level RH ramp; dual copy as rhminl.
+
+  uwshcu_rpen:
+    dtype: float64
+    symbols: [uwshcu_mp_rpen_]
+    workflow_action: cam_run1.shallow_convection
+    readers: "uwshcu.F90:3523-3597 (compute_uwshcu, every call)"
+    notes: Penetrative-entrainment efficiency of UW shallow convection.
+
+  effgw_oro:
+    dtype: float64
+    symbols: [gw_drag_mp_effgw_oro_]
+    workflow_action: cam_run2.gravity_wave_drag
+    readers: "gw_drag.F90:1286 (gw_tend, every call)"
+    notes: Orographic gravity-wave-drag efficiency.

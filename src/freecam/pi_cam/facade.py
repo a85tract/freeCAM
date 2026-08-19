@@ -1093,6 +1093,62 @@ class _NamelistView(Mapping[str, str]):
         return f"<CAM namelist: {len(self)} variables{suffix}>"
 
 
+class _ParametersView(Mapping[str, float]):
+    """Live view of the audited runtime-writable CAM physics tunables.
+
+    Reads come from the bound Fortran module storage on the running
+    model; item assignment changes the value on every MPI rank, taking
+    effect the next time the owning routine runs.  Changes are not part
+    of any restart file -- a run restarted from CAM restart files
+    reverts to the namelist values, so re-apply them after a restart.
+    """
+
+    def __init__(self, driver: "Driver") -> None:
+        self._driver = driver
+
+    def _described(self) -> Mapping[str, Any]:
+        return self._driver._live_session().get_module_parameters()
+
+    def __getitem__(self, name: str) -> float:
+        return float(
+            self._described()["parameters"][str(name).strip().lower()]["value"]
+        )
+
+    def __setitem__(self, name: str, value: Any) -> None:
+        self._driver._live_session().set_module_parameter(str(name), value)
+
+    def __iter__(self) -> Iterator[str]:
+        return iter(self._described().get("parameters", {}))
+
+    def __len__(self) -> int:
+        return len(self._described().get("parameters", {}))
+
+    @property
+    def overrides(self) -> Mapping[str, tuple[float, float]]:
+        """Tunables changed since initialization, as {name: (was, is)}."""
+
+        return {
+            name: (float(entry["baseline"]), float(entry["value"]))
+            for name, entry in self._described().get("parameters", {}).items()
+            if entry["value"] != entry["baseline"]
+        }
+
+    @property
+    def unavailable(self) -> Mapping[str, str]:
+        """Audited tunables that could not be bound, with the reasons."""
+
+        return dict(self._described().get("unavailable", {}))
+
+    def __repr__(self) -> str:
+        described = self._described()
+        overridden = sorted(self.overrides)
+        suffix = f", overrides={overridden}" if overridden else ""
+        return (
+            f"<CAM runtime parameters: "
+            f"{len(described.get('parameters', {}))} bound{suffix}>"
+        )
+
+
 class _CAMFacade:
     """Lazy FreeCAM handle exposed as ``driver.cam``."""
 
@@ -1101,6 +1157,7 @@ class _CAMFacade:
         self.history = PICAMOutputView(driver, "history")
         self.restart = PICAMOutputView(driver, "restart")
         self.namelist = _NamelistView(driver)
+        self.parameters = _ParametersView(driver)
 
     @property
     def state(self) -> Any:

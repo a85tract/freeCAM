@@ -1321,9 +1321,36 @@ def test_process_properties_view_reads_merges_and_writes(
     view.update(floor=-1.0)
     assert live["properties"] == {"rate": 0.02, "floor": -1.0}
 
-    scheme = _SessionActionReference(session, "radiation", "cam_run1")
-    with pytest.raises(TypeError, match="Notebook Python processes"):
-        scheme.properties
+    # Native scheme actions expose the audited CAM tunables instead.
+    def native_request(command):
+        commands.append(command)
+        if command["op"] == "get_module_parameters":
+            return {
+                "parameters": {
+                    "zmconv_c0_lnd": {
+                        "value": 0.0059,
+                        "baseline": 0.0059,
+                        "workflow_action": "cam_run1.deep_convection",
+                    }
+                },
+                "unavailable": {},
+            }
+        return {"name": command.get("name", "p")}
+
+    monkeypatch.setattr(session, "_request", native_request)
+    scheme = _SessionActionReference(session, "deep_convection", "cam_run1")
+    native = scheme.properties
+    assert dict(native) == {"zmconv_c0_lnd": 0.0059}
+    native["zmconv_c0_lnd"] = 0.0075
+    assert commands[-1] == {
+        "op": "set_module_parameter",
+        "name": "zmconv_c0_lnd",
+        "value": 0.0075,
+    }
+    with pytest.raises(KeyError, match="not an audited tunable"):
+        native["cldfrc_sh1"] = 1.0
+    other = _SessionActionReference(session, "radiation", "cam_run1")
+    assert len(other.properties) == 0
 
 
 def test_reload_accepts_a_physics_instance_and_ships_its_properties(

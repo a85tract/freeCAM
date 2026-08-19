@@ -283,6 +283,8 @@ def _command(command: dict[str, Any], driver: Any, comm: Any) -> object:
         )
     if operation == "assign_expression":
         name = driver.pool.canonical_name(str(command["name"]))
+        if not driver.pool.contract(name).writable:
+            raise ValueError(f"field {name!r} is read-only")
         selection = command.get("selection", Ellipsis)
         count = assign_expression(
             driver.pool,
@@ -341,6 +343,14 @@ def _command(command: dict[str, Any], driver: Any, comm: Any) -> object:
         return result if comm.rank == 0 else None
     if operation == "get_python_parameters":
         result = driver.python_processes.parameters(str(command["name"]))
+        return result if comm.rank == 0 else None
+    if operation == "set_module_parameter":
+        result = driver.module_parameters.set(
+            str(command["name"]), command["value"]
+        )
+        return result if comm.rank == 0 else None
+    if operation == "get_module_parameters":
+        result = driver.module_parameters.describe()
         return result if comm.rank == 0 else None
     if operation == "install_fortran":
         record = driver.fortran_processes.install(

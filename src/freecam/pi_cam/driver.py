@@ -24,6 +24,7 @@ from .config import DEFAULT_TRACE_LIMIT, PICAMConfig, validate_trace_limit
 from .errors import BoundaryReplayError, PICAMConfigurationError, PICAMStateError
 from .history_output import PICAMHistoryStreamRegistry
 from .native import CAMNumericalBackend
+from .parameters import PICAMModuleParameterRegistry
 from .physics_catalog import (
     PICAMPhysicsCatalog,
     merge_runtime_process_records,
@@ -1072,6 +1073,7 @@ class PICAMDriver:
         self._native_call_depth = 0
         self._python_initialized_addresses: dict[str, int] = {}
         self.python_processes = PICAMPythonProcessRegistry(self)
+        self.module_parameters = PICAMModuleParameterRegistry(self)
         self.history_streams = PICAMHistoryStreamRegistry(self)
         self.default_history_stream = bool(default_history_stream)
         self.fortran_processes = PICAMFortranProcessRegistry(self)
@@ -1266,6 +1268,10 @@ class PICAMDriver:
                     "initial boundary import",
                     lambda: self.boundary.import_fields(0, self.rank, self.pool),
                 )
+            # Native initialization has read atm_in into module storage;
+            # only now do the audited tunables hold values to verify
+            # against, so this is the earliest safe binding point.
+            self.module_parameters.bind()
             self._validate_initial_cam_export()
             self._prime_initial_cam_state()
             self._install_default_history_stream()
@@ -1882,6 +1888,11 @@ class PICAMDriver:
             return int(raw.split(",")[0].strip())
         except ValueError:
             return 0
+
+    def set_module_parameter(self, name: str, value: object) -> dict:
+        """Collectively change one audited CAM physics tunable in place."""
+
+        return self.module_parameters.set(name, value)
 
     def install_history_stream(
         self,

@@ -438,11 +438,13 @@ class PICAMStatePool(Mapping[str, np.ndarray]):
     @property
     def nbytes(self) -> int:
         # Inline native fields are strided views into the corresponding raw
-        # derived-type owner buffer and therefore must not be counted twice.
+        # derived-type owner buffer and therefore must not be counted twice;
+        # module-parameter fields view storage the Fortran image owns.
         return sum(
             array.nbytes
             for name, array in self._arrays.items()
-            if self._contracts[name].category != "native_cam_inline_state"
+            if self._contracts[name].category
+            not in ("native_cam_inline_state", "native_module_parameter")
         )
 
 

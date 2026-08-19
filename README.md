@@ -212,6 +212,28 @@ silently. With no overrides the file is not touched at all, byte for byte.
 declarations, and the MPI command line accepts repeatable
 `--namelist NAME=VALUE` flags.
 
+A hand-audited subset of these tunables can also be changed **while the
+model is running**. CAM copies namelist values into Fortran module
+variables at initialization; for parameters proven to be re-read on every
+timestep, freeCAM binds that module storage directly and a write takes
+effect at the owning routine's next call:
+
+```python
+driver.cam.parameters["zmconv_c0_lnd"] = 0.0075   # all 512 ranks, next step
+driver.cam.parameters.overrides                    # {'zmconv_c0_lnd': (0.0059, 0.0075)}
+
+driver.cam.workflow["deep_convection"].properties  # the same tunables, per process
+```
+
+The admitted set lives in `native/pi_cam/runtime_parameters.yaml`, one
+audited entry per parameter; every binding verifies at initialization that
+the value read through the symbol equals the value in `atm_in`, and refuses
+to bind otherwise. Where initialization copied a value into a second module
+(the CAM5 macrophysics keeps shadow copies of the `rhminl` family), a write
+updates every copy together. These values are not part of any restart
+file: a run restarted from CAM restart files reverts to its namelist
+values, so runtime changes must be re-applied after a restart.
+
 ### Runtime Physics properties
 
 A `fc.Property` declares a tunable parameter of a Python process. Assigning

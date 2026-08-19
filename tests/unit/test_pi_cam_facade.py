@@ -1084,3 +1084,54 @@ def test_install_ships_properties_and_registers_forwarding() -> None:
     plain = VolcanicAerosol()
     plain._install(session)
     assert installations[1]["parameters"] is None
+
+
+def test_cam_parameters_view_reads_and_writes_collectively(tmp_path) -> None:
+    paths = _driver_tree(tmp_path)
+    FakeSession.instances.clear()
+
+    described = {
+        "parameters": {
+            "zmconv_c0_lnd": {
+                "value": 0.0059,
+                "baseline": 0.0059,
+                "workflow_action": "cam_run1.deep_convection",
+            }
+        },
+        "unavailable": {"uwshcu_rpen": "not set in this run's atm_in"},
+    }
+    writes = []
+
+    class ParameterSession(FakeSession):
+        def get_module_parameters(self):
+            return described
+
+        def set_module_parameter(self, name, value):
+            writes.append((name, value))
+            described["parameters"][name]["value"] = value
+            return {"name": name, "value": value}
+
+    driver = Driver(
+        case="PI-atm",
+        nsteps=2,
+        repo=paths["repo"],
+        config=paths["config"],
+        scratch=tmp_path / "scratch",
+        reference_case=paths["reference_case"],
+        reference_run=paths["reference_run"],
+        boundary=paths["boundary"],
+        session_factory=ParameterSession,
+    )
+
+    assert dict(driver.cam.parameters) == {"zmconv_c0_lnd": 0.0059}
+    assert driver.cam.parameters.overrides == {}
+    driver.cam.parameters["zmconv_c0_lnd"] = 0.0075
+    assert writes == [("zmconv_c0_lnd", 0.0075)]
+    assert driver.cam.parameters["zmconv_c0_lnd"] == 0.0075
+    assert driver.cam.parameters.overrides == {
+        "zmconv_c0_lnd": (0.0059, 0.0075)
+    }
+    assert (
+        driver.cam.parameters.unavailable["uwshcu_rpen"]
+        == "not set in this run's atm_in"
+    )

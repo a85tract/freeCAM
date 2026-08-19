@@ -212,3 +212,47 @@ def test_python_parameter_ops_reply_only_from_rank_zero() -> None:
         )
         is None
     )
+
+
+def test_module_parameter_ops_route_to_the_registry() -> None:
+    driver = _bounded_driver()
+    calls = []
+
+    class RegistryStub:
+        def set(self, name, value):
+            calls.append(("set", name, value))
+            return {"name": name, "previous": 1.0, "value": value}
+
+        def describe(self):
+            calls.append(("describe",))
+            return {"parameters": {}, "unavailable": {}}
+
+    driver.module_parameters = RegistryStub()
+    result = _command(
+        {"op": "set_module_parameter", "name": "zmconv_ke", "value": 2e-6},
+        driver,
+        FakeComm(rank=0),
+    )
+    assert result == {"name": "zmconv_ke", "previous": 1.0, "value": 2e-6}
+    assert (
+        _command(
+            {"op": "get_module_parameters"}, driver, FakeComm(rank=1)
+        )
+        is None
+    )
+    assert calls == [("set", "zmconv_ke", 2e-6), ("describe",)]
+
+
+def test_assign_expression_rejects_read_only_fields() -> None:
+    driver = _bounded_driver()
+    # model_timestep is a configuration scalar declared writable=False.
+    with pytest.raises(ValueError, match="read-only"):
+        _command(
+            {
+                "op": "assign_expression",
+                "name": "model_timestep",
+                "expression": None,
+            },
+            driver,
+            FakeComm(rank=0),
+        )

@@ -479,6 +479,61 @@ class _SessionProcessProperties(MutableMapping):
         return f"<properties of {self._name}: {self._read()!r}>"
 
 
+class _SessionNativeParameters(MutableMapping):
+    """Audited CAM tunables of one native workflow action, live.
+
+    Reads come from the bound Fortran module storage; writes are
+    collective and take effect the next time the owning routine runs.
+    Changes are not part of any restart file: a run restarted from CAM
+    restart files reverts to the namelist values.
+    """
+
+    def __init__(
+        self, session: "PICAMNotebookSession", qualified_action: str
+    ) -> None:
+        self._session = session
+        self._action = qualified_action
+
+    def _read(self) -> dict[str, float]:
+        described = self._session.get_module_parameters()
+        return {
+            name: float(entry["value"])
+            for name, entry in described.get("parameters", {}).items()
+            if entry.get("workflow_action") == self._action
+        }
+
+    def __getitem__(self, key: str) -> float:
+        return self._read()[str(key)]
+
+    def __setitem__(self, key: str, value: Any) -> None:
+        name = str(key)
+        if name not in self._read():
+            raise KeyError(
+                f"{name!r} is not an audited tunable of {self._action!r}"
+            )
+        self._session.set_module_parameter(name, value)
+
+    def __delitem__(self, key: str) -> None:
+        raise TypeError(
+            "CAM tunables cannot be removed; assign a new value instead"
+        )
+
+    def __iter__(self) -> Any:
+        return iter(self._read())
+
+    def __len__(self) -> int:
+        return len(self._read())
+
+    def __repr__(self) -> str:
+        values = self._read()
+        if not values:
+            return (
+                f"<no audited runtime tunables for {self._action}; see "
+                "native/pi_cam/runtime_parameters.yaml>"
+            )
+        return f"<tunables of {self._action}: {values!r}>"
+
+
 class _SessionActionReference:
     """A physics action that can be run or edited without string plumbing."""
 
@@ -639,14 +694,17 @@ class _SessionActionReference:
         return self
 
     @property
-    def properties(self) -> "_SessionProcessProperties":
-        """Runtime-adjustable properties of one Notebook Python process."""
+    def properties(self) -> MutableMapping:
+        """Runtime-adjustable parameters of this workflow process.
 
-        if self.kind != "python_process":
-            raise TypeError(
-                "properties are available only for Notebook Python processes"
-            )
-        return _SessionProcessProperties(self.session, self.name)
+        Notebook Python processes expose their declared ``fc.Property``
+        values; native CAM actions expose the audited namelist tunables
+        bound to their Fortran module storage.
+        """
+
+        if self.kind == "python_process":
+            return _SessionProcessProperties(self.session, self.name)
+        return _SessionNativeParameters(self.session, self.qualified_name)
 
     def remove(self) -> Mapping[str, Any]:
         if self.kind == "python_process":
@@ -2211,6 +2269,24 @@ class PICAMNotebookSession:
                 {"op": "get_python_parameters", "name": str(name)}
             )
         )
+
+    def set_module_parameter(self, name: str, value: Any) -> Mapping[str, Any]:
+        """Collectively change one audited CAM physics tunable in place."""
+
+        return dict(
+            self._request(
+                {
+                    "op": "set_module_parameter",
+                    "name": str(name),
+                    "value": value,
+                }
+            )
+        )
+
+    def get_module_parameters(self) -> dict[str, Any]:
+        """Read every bound tunable's value, baseline, and availability."""
+
+        return dict(self._request({"op": "get_module_parameters"}))
 
     def install_fortran(
         self,
