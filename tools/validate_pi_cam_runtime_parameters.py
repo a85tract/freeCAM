@@ -45,6 +45,9 @@ def main() -> int:
         run_dir=args.run_dir,
     ) as cam:
         cam.initialize()
+        # Initialization may run lookahead steps, so completed steps are
+        # counted relative to the post-initialize cursor.
+        start_step = int(cam.coupling_step)
         registry = cam.module_parameters
         bound = registry.names()
         unavailable = dict(registry.unavailable)
@@ -59,7 +62,7 @@ def main() -> int:
         cam.advance(args.steps - args.change_at)
         final_value = registry.value(args.parameter)
         overrides = registry.overrides()
-        final_step = int(cam.coupling_step)
+        completed = int(cam.coupling_step) - start_step
 
     local = {
         "rank": world.Get_rank(),
@@ -85,7 +88,7 @@ def main() -> int:
         and not unavailable
         and len(bound) == 14
         and after == args.value
-        and final_step == args.steps
+        and completed == args.steps
         and report["previous"] == before
         and overrides == {args.parameter: (before, args.value)}
     )
