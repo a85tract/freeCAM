@@ -14,12 +14,14 @@ from freecam.pi_cam import (
     Driver,
     FreeCAM,
     Physics,
+    Property,
     OnlineBoundaryProvider,
     ProcessSpec,
     PICAMStepPlan,
     RunResult,
     process,
 )
+from freecam.pi_cam.errors import PICAMConfigurationError
 
 
 class FakeSession:
@@ -167,10 +169,11 @@ class FakeDeclarativeSession(FakeSession):
                 before,
                 reads,
                 writes,
+                parameters=None,
                 enabled,
                 transactional,
             ):
-                del function, reads, writes, enabled, transactional
+                del function, reads, writes, parameters, enabled, transactional
                 phase = before.split(".", 1)[0]
                 handle = FakeWorkflowAction(self, name, phase)
                 inner_self.installations.append(
@@ -831,3 +834,304 @@ def test_case_workflow_can_omit_optional_process_but_not_control_boundary(
     with pytest.raises(ValueError, match="cannot remove required CAM control"):
         invalid_driver.initialize()
     assert FakeSession.instances[-1].closed
+
+
+_MINI_CATALOG = """<?xml version="1.0"?>
+<namelist_definition>
+<entry id="cldfrc_rhminl" type="real" category="cldfrc"
+       group="cldfrc_nl" valid_values="" >
+Minimum rh & such.
+</entry>
+<entry id="zmconv_c0_lnd" type="real" category="conv" group="zmconv_nl" valid_values="" >
+Autoconversion over land.
+</entry>
+</namelist_definition>
+"""
+
+
+def _namelist_tree(tmp_path) -> dict[str, Path]:
+    paths = _driver_tree(tmp_path)
+    catalog = (
+        paths["repo"]
+        / "components"
+        / "cam"
+        / "bld"
+        / "namelist_files"
+        / "namelist_definition.xml"
+    )
+    catalog.parent.mkdir(parents=True)
+    catalog.write_text(_MINI_CATALOG)
+    (paths["reference_run"] / "atm_in").write_text(
+        "&cldfrc_nl\n cldfrc_rhminl\t\t= 0.870D0\n/\n"
+    )
+    return paths
+
+
+def _namelist_driver(tmp_path, paths, **kwargs) -> Driver:
+    return Driver(
+        case="PI-atm",
+        nsteps=2,
+        repo=paths["repo"],
+        config=paths["config"],
+        scratch=tmp_path / "scratch",
+        reference_case=paths["reference_case"],
+        reference_run=paths["reference_run"],
+        boundary=paths["boundary"],
+        session_factory=FakeSession,
+        **kwargs,
+    )
+
+
+def test_namelist_overrides_are_validated_at_construction(tmp_path) -> None:
+    paths = _namelist_tree(tmp_path)
+    with pytest.raises(PICAMConfigurationError, match="cldfrc_rhminl"):
+        _namelist_driver(tmp_path, paths, namelist={"cldfrc_rhminls": 0.9})
+    with pytest.raises(PICAMConfigurationError, match="boolean"):
+        _namelist_driver(tmp_path, paths, namelist={"cldfrc_rhminl": True})
+
+
+def test_namelist_overrides_reach_the_run_directory(tmp_path) -> None:
+    paths = _namelist_tree(tmp_path)
+    driver = _namelist_driver(
+        tmp_path, paths, namelist={"cldfrc_rhminl": 0.9}
+    )
+    assert driver.cam.namelist["cldfrc_rhminl"] == "0.870D0"
+    run_dir = driver._prepare_run_dir()
+    assert (
+        (run_dir / "atm_in").read_text()
+        == "&cldfrc_nl\n cldfrc_rhminl\t\t= 0.9D0\n/\n"
+    )
+    assert driver.cam.namelist["cldfrc_rhminl"] == "0.9D0"
+    assert driver.cam.namelist.overrides == {
+        "cldfrc_rhminl": ("0.870D0", "0.9D0")
+    }
+
+
+def test_default_run_directory_namelist_is_byte_identical(tmp_path) -> None:
+    paths = _namelist_tree(tmp_path)
+    driver = _namelist_driver(tmp_path, paths)
+    run_dir = driver._prepare_run_dir()
+    assert (
+        (run_dir / "atm_in").read_bytes()
+        == (paths["reference_run"] / "atm_in").read_bytes()
+    )
+    assert driver.cam.namelist.overrides == {}
+
+
+def test_case_namelist_merges_under_the_driver_kwarg(tmp_path) -> None:
+    paths = _namelist_tree(tmp_path)
+    case = CaseConfig(
+        name="PI-atm-tuned",
+        description="perturbed cloud fraction",
+        forcing="fixed PI",
+        namelist={"cldfrc_rhminl": 0.9, "zmconv_c0_lnd": 0.004},
+    )
+    driver = Driver(
+        case=case,
+        nsteps=2,
+        repo=paths["repo"],
+        config=paths["config"],
+        scratch=tmp_path / "scratch",
+        reference_case=paths["reference_case"],
+        reference_run=paths["reference_run"],
+        boundary=paths["boundary"],
+        session_factory=FakeSession,
+        namelist={"cldfrc_rhminl": 0.95},
+    )
+    assert driver._namelist_overrides == {
+        "cldfrc_rhminl": 0.95,
+        "zmconv_c0_lnd": 0.004,
+    }
+
+
+def test_physics_properties_inject_before_run() -> None:
+    observed = []
+
+    class Heating(Physics):
+        rate = Property(0.01)
+
+        def run(self, state, context):
+            del context
+            observed.append(self.rate)
+            state.T += self.rate
+
+    values = {"T": np.zeros(2)}
+    callback = Heating()._runtime_callback()
+
+    callback(values, object())
+    assert observed == [0.01]
+
+    callback(values, object(), properties={"rate": 0.5})
+    assert observed == [0.01, 0.5]
+    assert values["T"].tolist() == [0.51, 0.51]
+
+    with pytest.raises(TypeError, match="declares no property"):
+        callback(values, object(), properties={"missing": 1.0})
+
+
+def test_two_instances_of_one_class_keep_independent_properties() -> None:
+    class Cooling(Physics):
+        rate = Property(1.0)
+
+        def run(self, state, context):
+            del state, context
+
+    first, second = Cooling(), Cooling()
+    first.rate = 2.0
+    assert first.rate == 2.0
+    assert second.rate == 1.0
+    assert Cooling.rate.default == 1.0
+
+
+def test_property_cannot_shadow_the_physics_contract() -> None:
+    # Python 3.11 wraps __set_name__ failures in RuntimeError; the original
+    # TypeError rides along as the cause.
+    with pytest.raises(RuntimeError, match="__set_name__") as excinfo:
+
+        class Broken(Physics):  # noqa: F811 - intentionally discarded
+            enabled = Property(True)
+
+    assert "contract attribute" in str(excinfo.value.__cause__)
+
+
+def test_pickled_physics_instance_does_not_forward_property_writes() -> None:
+    import cloudpickle
+
+    forwarded = []
+
+    class ForwardingSession:
+        def set_python_parameters(self, name, parameters):
+            forwarded.append((name, parameters))
+            return {}
+
+    class Tracer(Physics):
+        scale = Property(1.0)
+
+        def run(self, state, context):
+            del state, context
+
+    from freecam.pi_cam.facade import _LIVE_PHYSICS
+
+    instance = Tracer()
+    _LIVE_PHYSICS[instance] = (ForwardingSession(), "tracer")
+    callback = instance._runtime_callback()
+
+    restored = cloudpickle.loads(cloudpickle.dumps(callback))
+    restored({"T": np.zeros(1)}, object(), properties={"scale": 3.0})
+    assert forwarded == []
+
+    instance.scale = 2.0
+    assert forwarded == [("tracer", {"properties": {"scale": 2.0}})]
+    assert instance.scale == 2.0
+
+
+def test_failed_forwarding_leaves_the_local_mirror_unchanged() -> None:
+    class RejectingSession:
+        def set_python_parameters(self, name, parameters):
+            raise RuntimeError("ranks disagreed")
+
+    class Tracer(Physics):
+        scale = Property(1.0)
+
+        def run(self, state, context):
+            del state, context
+
+    from freecam.pi_cam.facade import _LIVE_PHYSICS
+
+    instance = Tracer()
+    _LIVE_PHYSICS[instance] = (RejectingSession(), "tracer")
+    with pytest.raises(RuntimeError, match="ranks disagreed"):
+        instance.scale = 2.0
+    assert instance.scale == 1.0
+
+
+def test_install_ships_properties_and_registers_forwarding() -> None:
+    installations = []
+
+    class PhysicsCollection:
+        def install_python(self, function, **kwargs):
+            installations.append(kwargs)
+            return "handle"
+
+    class SessionStub:
+        def __init__(self):
+            self.physics = PhysicsCollection()
+            self.parameter_updates = []
+
+        def set_python_parameters(self, name, parameters):
+            self.parameter_updates.append((name, parameters))
+            return {}
+
+    class Heating(Physics):
+        name = "notebook_heating"
+        after = "dadadj"
+        rate = Property(0.01)
+
+        def run(self, state, context):
+            del context
+            state.T += self.rate
+
+    session = SessionStub()
+    instance = Heating()
+    assert instance._install(session) == "handle"
+    assert installations[0]["parameters"] == {"properties": {"rate": 0.01}}
+
+    instance.rate = 0.02
+    assert session.parameter_updates == [
+        ("notebook_heating", {"properties": {"rate": 0.02}})
+    ]
+
+    plain = VolcanicAerosol()
+    plain._install(session)
+    assert installations[1]["parameters"] is None
+
+
+def test_cam_parameters_view_reads_and_writes_collectively(tmp_path) -> None:
+    paths = _driver_tree(tmp_path)
+    FakeSession.instances.clear()
+
+    described = {
+        "parameters": {
+            "zmconv_c0_lnd": {
+                "value": 0.0059,
+                "baseline": 0.0059,
+                "workflow_action": "cam_run1.deep_convection",
+            }
+        },
+        "unavailable": {"uwshcu_rpen": "not set in this run's atm_in"},
+    }
+    writes = []
+
+    class ParameterSession(FakeSession):
+        def get_module_parameters(self):
+            return described
+
+        def set_module_parameter(self, name, value):
+            writes.append((name, value))
+            described["parameters"][name]["value"] = value
+            return {"name": name, "value": value}
+
+    driver = Driver(
+        case="PI-atm",
+        nsteps=2,
+        repo=paths["repo"],
+        config=paths["config"],
+        scratch=tmp_path / "scratch",
+        reference_case=paths["reference_case"],
+        reference_run=paths["reference_run"],
+        boundary=paths["boundary"],
+        session_factory=ParameterSession,
+    )
+
+    assert dict(driver.cam.parameters) == {"zmconv_c0_lnd": 0.0059}
+    assert driver.cam.parameters.overrides == {}
+    driver.cam.parameters["zmconv_c0_lnd"] = 0.0075
+    assert writes == [("zmconv_c0_lnd", 0.0075)]
+    assert driver.cam.parameters["zmconv_c0_lnd"] == 0.0075
+    assert driver.cam.parameters.overrides == {
+        "zmconv_c0_lnd": (0.0059, 0.0075)
+    }
+    assert (
+        driver.cam.parameters.unavailable["uwshcu_rpen"]
+        == "not set in this run's atm_in"
+    )

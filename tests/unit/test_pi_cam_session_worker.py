@@ -39,6 +39,7 @@ from freecam.pi_cam import (
     InMemoryBoundaryProvider,
     PICAMConfig,
     PICAMDriver,
+    PICAMVariableSpec,
     RecordingCAMBackend,
 )
 _command = session_worker_module._command
@@ -128,3 +129,130 @@ def test_parse_trace_limit_accepts_none_and_integers() -> None:
     assert _parse_trace_limit("none") is None
     assert _parse_trace_limit("None") is None
     assert _parse_trace_limit("4096") == 4096
+
+
+def test_python_parameter_ops_round_trip_through_the_dispatcher() -> None:
+    driver = _bounded_driver()
+    driver.define_variable(
+        PICAMVariableSpec("marker", ("pcols",), initial=0.0)
+    )
+
+    def stamp(fields, context, *, properties=None):
+        del context
+        fields["marker"][...] = float(
+            (properties or {}).get("value", -1.0)
+        )
+
+    driver.physics.install_python(
+        stamp,
+        name="stamper",
+        after="dadadj",
+        writes=("marker",),
+        parameters={"properties": {"value": 1.0}},
+    )
+
+    result = _command(
+        {"op": "get_python_parameters", "name": "stamper"},
+        driver,
+        FakeComm(rank=0),
+    )
+    assert result == {"properties": {"value": 1.0}}
+
+    result = _command(
+        {
+            "op": "set_python_parameters",
+            "name": "stamper",
+            "parameters": {"properties": {"value": 7.0}},
+        },
+        driver,
+        FakeComm(rank=0),
+    )
+    assert result["parameters"] == {"properties": {"value": 7.0}}
+
+    driver.physics.process("stamper").run()
+    assert np.array_equal(
+        driver.pool["marker"], np.full_like(driver.pool["marker"], 7.0)
+    )
+
+
+def test_python_parameter_ops_reply_only_from_rank_zero() -> None:
+    driver = _bounded_driver()
+    driver.define_variable(
+        PICAMVariableSpec("marker", ("pcols",), initial=0.0)
+    )
+
+    def stamp(fields, context, *, properties=None):
+        del context, properties
+        fields["marker"][...] = 1.0
+
+    driver.physics.install_python(
+        stamp,
+        name="stamper",
+        after="dadadj",
+        writes=("marker",),
+        parameters={"properties": {}},
+    )
+    assert (
+        _command(
+            {"op": "get_python_parameters", "name": "stamper"},
+            driver,
+            FakeComm(rank=1),
+        )
+        is None
+    )
+    assert (
+        _command(
+            {
+                "op": "set_python_parameters",
+                "name": "stamper",
+                "parameters": {"properties": {"value": 2.0}},
+            },
+            driver,
+            FakeComm(rank=1),
+        )
+        is None
+    )
+
+
+def test_module_parameter_ops_route_to_the_registry() -> None:
+    driver = _bounded_driver()
+    calls = []
+
+    class RegistryStub:
+        def set(self, name, value):
+            calls.append(("set", name, value))
+            return {"name": name, "previous": 1.0, "value": value}
+
+        def describe(self):
+            calls.append(("describe",))
+            return {"parameters": {}, "unavailable": {}}
+
+    driver.module_parameters = RegistryStub()
+    result = _command(
+        {"op": "set_module_parameter", "name": "zmconv_ke", "value": 2e-6},
+        driver,
+        FakeComm(rank=0),
+    )
+    assert result == {"name": "zmconv_ke", "previous": 1.0, "value": 2e-6}
+    assert (
+        _command(
+            {"op": "get_module_parameters"}, driver, FakeComm(rank=1)
+        )
+        is None
+    )
+    assert calls == [("set", "zmconv_ke", 2e-6), ("describe",)]
+
+
+def test_assign_expression_rejects_read_only_fields() -> None:
+    driver = _bounded_driver()
+    # model_timestep is a configuration scalar declared writable=False.
+    with pytest.raises(ValueError, match="read-only"):
+        _command(
+            {
+                "op": "assign_expression",
+                "name": "model_timestep",
+                "expression": None,
+            },
+            driver,
+            FakeComm(rank=0),
+        )

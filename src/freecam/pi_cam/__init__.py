@@ -44,6 +44,7 @@ from .facade import (
     Driver,
     FreeCAM,
     Physics,
+    Property,
     ProcessSpec,
     PICAMCaseInfo,
     RunHandle,
@@ -57,6 +58,12 @@ from .facade import (
     process,
 )
 from .history import PICAMOutputView
+from .history_output import (
+    PICAMHistorySpec,
+    PICAMHistoryStream,
+    PICAMHistoryStreamRegistry,
+    PICAMHistoryVariable,
+)
 from .native import CAMNumericalBackend, NativeCAMDevice, RecordingCAMBackend
 from .physics_catalog import (
     PICAMPhysicsCatalog,
@@ -142,6 +149,10 @@ __all__ = [
     "PICAMKernelRules",
     "PICAMNotebookError",
     "PICAMNotebookSession",
+    "PICAMHistorySpec",
+    "PICAMHistoryStream",
+    "PICAMHistoryStreamRegistry",
+    "PICAMHistoryVariable",
     "PICAMOutputView",
     "PICAMPhysicsCatalog",
     "PICAMPhysicsProcess",
@@ -161,6 +172,7 @@ __all__ = [
     "PICAMWorkflowAction",
     "PICAMWorkflowView",
     "Physics",
+    "Property",
     "ProcessSpec",
     "RunHandle",
     "RunProgress",

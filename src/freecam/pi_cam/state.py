@@ -19,6 +19,9 @@ class PICAMFieldContract:
     category: str = "prognostic"
     writable: bool = True
     restart: bool = True
+    # Python-owned fields join the default history stream unless a caller
+    # opts out, mirroring CAM's registered fields joining the default tape.
+    output: bool = True
     aliases: tuple[str, ...] = ()
     standard_name: str | None = None
     requires_contiguous: bool = True
@@ -87,6 +90,7 @@ class PICAMVariableSpec:
     initial: float | int = 0.0
     writable: bool = True
     restart: bool = True
+    output: bool = True
     aliases: tuple[str, ...] = ()
     standard_name: str | None = None
 
@@ -107,6 +111,7 @@ class PICAMVariableSpec:
             category="dynamic",
             writable=self.writable,
             restart=self.restart,
+            output=self.output,
             aliases=tuple(self.aliases),
             standard_name=self.standard_name,
             owner="python",
@@ -433,11 +438,13 @@ class PICAMStatePool(Mapping[str, np.ndarray]):
     @property
     def nbytes(self) -> int:
         # Inline native fields are strided views into the corresponding raw
-        # derived-type owner buffer and therefore must not be counted twice.
+        # derived-type owner buffer and therefore must not be counted twice;
+        # module-parameter fields view storage the Fortran image owns.
         return sum(
             array.nbytes
             for name, array in self._arrays.items()
-            if self._contracts[name].category != "native_cam_inline_state"
+            if self._contracts[name].category
+            not in ("native_cam_inline_state", "native_module_parameter")
         )
 
 

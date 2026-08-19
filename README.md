@@ -96,6 +96,31 @@ their trace was truncated. Pass `trace_limit=None` to `freecam.Driver` (or
 `PICAMNotebookSession`) only when a complete in-memory debug trace is
 explicitly needed.
 
+### History output for Python-owned fields
+
+The original CAM writer only knows the fields CAM registered at build time,
+so Notebook-defined StatePool variables never reached an output file. They now
+land in the model's own history files, beside `T` and `PS`, exactly as a newly
+registered CAM field would:
+
+```python
+driver.cam.state.create("heating_rate", like="T", units="K s-1")
+result = driver.run()
+
+driver.cam.history.latest()   # the usual case.cam.h0.*.nc, now with heating_rate
+```
+
+No configuration is required. A Python-owned field joins the default output
+automatically, accumulated over the same window the case's `nhtfrq` selects and
+written at the same time samples CAM wrote. Pass `output=False` when creating a
+variable to keep a scratch field out of history, or construct the model with
+`default_history_stream=False` to disable the behaviour entirely.
+
+The run directory therefore stays indistinguishable from the original model's:
+a run with no Python-owned fields writes exactly the files the original writes,
+bit for bit, and a run that defines them adds those variables to those same
+files rather than creating new ones.
+
 The maintained Jupyter walkthrough is
 [`examples/try_pi_cam.ipynb`](examples/try_pi_cam.ipynb).
 
@@ -161,6 +186,81 @@ class Heating(fc.Physics):
 driver.cam.workflow.insert(Heating())
 ```
 
+### CAM namelist parameters
+
+CAM's physics tunables live in the run directory's `atm_in` namelist and are
+read once, at initialization. Pass overrides when constructing the model and
+they are applied to that file before CAM sees it:
+
+```python
+driver = fc.Driver(
+    case="PI-atm",
+    nsteps=50,
+    namelist={"cldfrc_rhminl": 0.9, "zmconv_c0_lnd": 0.0075},
+)
+driver.cam.namelist["cldfrc_rhminl"]   # current file value
+driver.cam.namelist.overrides           # what this run changed
+```
+
+Every name and value is validated against the pinned iCESM source's own
+namelist definition before anything launches: unknown variables (with
+spelling suggestions), Fortran type mismatches, and variables whose namelist
+group this configuration never reads are all rejected outright, because CAM
+itself either aborts without naming the variable or ignores the setting
+silently. With no overrides the file is not touched at all, byte for byte.
+`fc.CaseConfig` accepts the same `namelist=` mapping for reusable case
+declarations, and the MPI command line accepts repeatable
+`--namelist NAME=VALUE` flags.
+
+A hand-audited subset of these tunables can also be changed **while the
+model is running**. CAM copies namelist values into Fortran module
+variables at initialization; for parameters proven to be re-read on every
+timestep, freeCAM binds that module storage directly and a write takes
+effect at the owning routine's next call:
+
+```python
+driver.cam.parameters["zmconv_c0_lnd"] = 0.0075   # all 512 ranks, next step
+driver.cam.parameters.overrides                    # {'zmconv_c0_lnd': (0.0059, 0.0075)}
+
+driver.cam.workflow["deep_convection"].properties  # the same tunables, per process
+```
+
+The admitted set lives in `native/pi_cam/runtime_parameters.yaml`, one
+audited entry per parameter; every binding verifies at initialization that
+the value read through the symbol equals the value in `atm_in`, and refuses
+to bind otherwise. Where initialization copied a value into a second module
+(the CAM5 macrophysics keeps shadow copies of the `rhminl` family), a write
+updates every copy together. These values are not part of any restart
+file: a run restarted from CAM restart files reverts to its namelist
+values, so runtime changes must be re-applied after a restart.
+
+### Runtime Physics properties
+
+A `fc.Property` declares a tunable parameter of a Python process. Assigning
+to it on a live model ships the value to every MPI rank collectively and
+takes effect at the process's next invocation:
+
+```python
+class TunableHeating(fc.Physics):
+    name = "notebook_heating"
+    after = "dry_adjustment"
+    rate = fc.Property(0.01)
+
+    def run(self, state, context):
+        state.T += self.rate * context.timestep_seconds
+
+
+heating = TunableHeating()
+driver.cam.workflow.insert(heating)
+
+heating.rate = 0.02                                     # live update
+driver.cam.workflow["notebook_heating"].properties      # authoritative view
+driver.cam.workflow["notebook_heating"].properties["rate"] = 0.03
+```
+
+Values must be JSON-compatible scalars or small containers; large arrays
+belong in StatePool fields.
+
 See the Notebook for field aliases, plotting, workflow construction, runtime
 process replacement, asynchronous execution, and Xarray history access.
 
@@ -173,17 +273,28 @@ The current validated results are:
 | Python-controlled PI-CAM, 50 steps | 512 | BFB with the pinned Fortran reference |
 | Exact online CESM provider, 50 steps | 512 | 53/53 x2a, 53/53 a2x, and 4/4 CAM output files match |
 | Exact online CESM provider, one year | 512 | 180/180 CAM history and restart files match |
+| Exact online CESM provider, five years | 512 | 884/884 CAM history and restart files match |
+| Monthly output vs. an independent production run, one year | 512 | 12/12 monthly files, 215 variables each, bit identical |
+| Monthly output vs. an independent production run, five years | 512 | 60/60 monthly files, 215 variables each, bit identical |
 
-The one-year online run completed 17,520 half-hour steps at 15.67 SYPD. Its
-total runtime was 5,549 seconds versus 5,027 seconds for the original Fortran
-CESM lifecycle, an observed overhead of approximately 10.4% from one run of
-each configuration.
+The last two gates compare against a separately produced twenty-year CESM
+integration of the same case rather than against a reference this project
+generated, so they test the whole lifecycle end to end.
+
+Measured overhead against the original Fortran lifecycle is +8.7% run time and
++8.2% memory over five model years, and does not grow with integration length.
+[`validation/performance_overhead.md`](validation/performance_overhead.md)
+records the method, the per-run numbers, and their caveats.
 
 Primary evidence:
 
 - [`validation/pi_cam_exact_cesm_online_50step.json`](validation/pi_cam_exact_cesm_online_50step.json)
 - [`validation/pi_cam_exact_cesm_online_1year.json`](validation/pi_cam_exact_cesm_online_1year.json)
 - [`validation/pi_cam_exact_cesm_online_1year_bfb.json`](validation/pi_cam_exact_cesm_online_1year_bfb.json)
+- [`validation/pi_cam_exact_cesm_online_5year.json`](validation/pi_cam_exact_cesm_online_5year.json)
+- [`validation/pi_cam_exact_cesm_online_5year_bfb.json`](validation/pi_cam_exact_cesm_online_5year_bfb.json)
+- [`validation/pi_cam_monthly_1year_bfb.json`](validation/pi_cam_monthly_1year_bfb.json)
+- [`validation/pi_cam_monthly_5year_bfb.json`](validation/pi_cam_monthly_5year_bfb.json)
 - [`validation/pi_cam_process_support.json`](validation/pi_cam_process_support.json)
 
 The directory comparator requires identical CAM file inventories, numerical

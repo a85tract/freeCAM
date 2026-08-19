@@ -20,6 +20,7 @@ from freecam.model.python_processes import (
     PythonProcessContext,
     PythonProcessSpec,
     PythonStateView,
+    _parameter_hash,
     _validate_signature,
 )
 
@@ -284,6 +285,55 @@ class PICAMPythonProcessRegistry:
             "writes": tuple(record.write_bindings),
             "enabled": bool(action.enabled),
         }
+
+    def set_parameters(
+        self, name: str, updates: Mapping[str, Any]
+    ) -> dict[str, Any]:
+        """Collectively update one process's persistent keyword parameters.
+
+        The worker deserializes the payload on every invocation, so the
+        replaced spec takes effect at the process's next call with nothing
+        to invalidate.
+        """
+
+        self._require_boundary()
+        key = str(name).strip().lower()
+        record = self.installed.get(key)
+        candidate: PythonProcessSpec | None = None
+        local_error: str | None = None
+        try:
+            if record is None:
+                raise PythonProcessContractError(
+                    f"unknown Python process {key!r}"
+                )
+            candidate = record.spec.with_parameters(updates)
+        except BaseException as exc:
+            local_error = f"{type(exc).__name__}: {exc}"
+        self._collective_error(local_error, "Python process parameter update")
+        assert record is not None and candidate is not None
+        hashes = self.driver.comm.allgather(
+            _parameter_hash(candidate.parameters or {})
+        )
+        if len(set(hashes)) != 1:
+            raise PythonProcessContractError(
+                f"Python process parameters differ across MPI ranks: {hashes}"
+            )
+        record.spec = candidate
+        self.driver.comm.barrier()
+        return {
+            "name": record.spec.name,
+            "parameters": dict(record.spec.parameters or {}),
+            "payload_hash": record.spec.payload_hash,
+        }
+
+    def parameters(self, name: str) -> dict[str, Any]:
+        """Read one process's current persistent keyword parameters."""
+
+        key = str(name).strip().lower()
+        record = self.installed.get(key)
+        if record is None:
+            raise PythonProcessContractError(f"unknown Python process {key!r}")
+        return dict(record.spec.parameters or {})
 
     def _resolve_field(self, name: str) -> str:
         """Resolve callback names without changing the name exposed to Python."""

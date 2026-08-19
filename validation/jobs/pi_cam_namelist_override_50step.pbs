@@ -1,0 +1,126 @@
+#!/bin/bash
+#PBS -N freecam-namelist-50
+#PBS -A UCUB0188
+# ``develop`` is the public route; PBS places eligible jobs in ``cpudev``.
+#PBS -q develop
+#PBS -l select=4:ncpus=64:mpiprocs=128:ompthreads=1:mem=110GB
+#PBS -l walltime=00:30:00
+#PBS -j oe
+#PBS -o /glade/work/ruitong/freeCAM/logs/
+#PBS -V
+
+set -euo pipefail
+
+repo=/glade/work/ruitong/freeCAM
+python=${repo}/.venv/bin/python
+case_root=/glade/work/ruitong/CESM_cases/f.e13.F1850C5.ne16_g16.icesm131_ihesp.PI-cam-oracle.50step
+cam_reference=/glade/derecho/scratch/ruitong/pyCAM/PI-cam/f.e13.F1850C5.ne16_g16.icesm131_ihesp.PI-cam-oracle.50step/run
+cesm_reference=/glade/derecho/scratch/ruitong/pyCESM/PI-atm/oracle-50step-run1/run
+library=${FREECAM_CESM_PROVIDER_LIBRARY:-${repo}/build/cesm/pi_atm/production-components/libpycesm_external_atm.so}
+root=/glade/derecho/scratch/ruitong/pyCAM/PI-cam/namelist-override-50step-${PBS_JOBID}
+cam_run=${root}/cam-run
+cesm_run=${root}/cesm-provider-run
+
+source "${case_root}/.env_mach_specific.sh" >/dev/null 2>&1
+mpi_root=${CRAY_MPICH_DIR:-/opt/cray/pe/mpich/8.1.25/ofi/intel/19.0}
+export LD_LIBRARY_PATH="${mpi_root}/lib-abi-mpich:${mpi_root}/lib:${LD_LIBRARY_PATH:-}"
+export LD_PRELOAD=/glade/u/apps/common/23.04/spack/opt/spack/intel-oneapi-compilers/2023.0.0/compiler/2023.0.0/linux/compiler/lib/intel64_lin/libimf.so${LD_PRELOAD:+:${LD_PRELOAD}}
+export PYTHONPATH=${repo}/src
+export OMP_NUM_THREADS=1
+export OMP_STACKSIZE=64M
+export FI_CXI_RX_MATCH_MODE=hybrid
+export FI_MR_CACHE_MONITOR=memhooks
+export MPICH_MPIIO_HINTS='*:romio_cb_read=enable:romio_cb_write=enable:striping_factor=24'
+
+mkdir -p "${cam_run}" "${cesm_run}"
+rsync -a --exclude '*.nc' --exclude '*.bin' --exclude '*.log*' \
+  --exclude 'rpointer.*' --exclude 'timing/' "${cam_reference}/" "${cam_run}/"
+rsync -a --exclude '*.nc' --exclude '*.bin' --exclude '*.log*' \
+  --exclude 'rpointer.*' --exclude 'timing/' "${cesm_reference}/" "${cesm_run}/"
+cp "${cam_reference}/SEMapping.nc" "${cam_run}/"
+cp "${cesm_reference}/SEMapping.nc" "${cesm_run}/"
+mkdir -p "${cam_run}/timing/checkpoints" "${cesm_run}/timing/checkpoints"
+
+# The perturbed physics changes CAM's exports from the first coupled step,
+# so the per-boundary oracle comparison must stay off: divergence from the
+# unperturbed reference is the expected result here, not a failure.
+"${python}" - <<PY
+from pathlib import Path
+import cloudpickle
+from freecam import CESMOnlineBoundaryProvider
+
+provider = CESMOnlineBoundaryProvider(
+    library=Path("${library}"),
+    run_dir=Path("${cesm_run}"),
+)
+Path("${cam_run}/.exact-cesm-provider.pkl").write_bytes(
+    cloudpickle.dumps(provider, protocol=5)
+)
+PY
+
+cd "${repo}"
+mpiexec --label -n 512 "${python}" -m freecam.pi_cam.cli \
+  --config configs/pi_cam_icesm131_exact_online_50step.yaml \
+  --boundary-provider "${cam_run}/.exact-cesm-provider.pkl" \
+  --run-dir "${cam_run}" \
+  --steps 50 \
+  --namelist cldfrc_rhminl=0.9 \
+  --summary "${root}/summary.json" \
+  > "${cam_run}/freecam.log" 2>&1
+
+# The gate is inverted: the run must complete, the override must be exactly
+# one changed line in atm_in, and the output must NOT be bit-for-bit with
+# the unperturbed oracle -- that difference is the proof the value reached
+# the physics.
+"${python}" tools/verify_pi_cam.py \
+  --reference "${cam_reference}" \
+  --candidate "${cam_run}" \
+  --output "${root}/bfb.json" \
+  || true
+
+"${python}" - <<PY
+import json
+import subprocess
+from pathlib import Path
+
+summary = json.loads(Path("${root}/summary.json").read_text())
+assert summary["run_status"] == "passed", summary["run_status"]
+assert summary["steps"] == 50, summary["steps"]
+overrides = summary["applied_namelist_overrides"]
+assert overrides == {
+    "cldfrc_rhminl": {"previous": "0.870D0", "value": "0.9D0"}
+}, overrides
+
+diff = subprocess.run(
+    ["diff", "${cam_reference}/atm_in", "${cam_run}/atm_in"],
+    capture_output=True,
+    text=True,
+)
+changed = [line for line in diff.stdout.splitlines() if line[:1] in "<>"]
+assert len(changed) == 2, diff.stdout  # one line: its old and new form
+assert "cldfrc_rhminl" in changed[0], diff.stdout
+
+bfb = json.loads(Path("${root}/bfb.json").read_text())
+assert bfb["bfb"] is False, "override produced bit-identical output"
+
+record = {
+    "schema_version": 1,
+    "gate": "pi_cam_namelist_override_50step",
+    "expectation": (
+        "a validated cldfrc_rhminl override is exactly one atm_in line and "
+        "changes CAM's 50-step output, proving the value reached the physics"
+    ),
+    "pbs_job_id": summary.get("pbs_job_id"),
+    "steps": summary["steps"],
+    "applied_namelist_overrides": overrides,
+    "atm_in_lines_changed": 1,
+    "output_bfb_with_unperturbed_reference": bfb["bfb"],
+    "compared_files": bfb.get("compared_files"),
+    "first_difference": bfb.get("first_difference"),
+    "run_status": "passed",
+}
+Path("validation/pi_cam_namelist_override_50step.json").write_text(
+    json.dumps(record, indent=2, sort_keys=True) + "\n"
+)
+print("namelist override gate passed:", record["applied_namelist_overrides"])
+PY

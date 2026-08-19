@@ -22,7 +22,9 @@ from freecam.model.python_processes import PythonProcessSpec
 from .boundary import CAMBoundaryProvider
 from .config import DEFAULT_TRACE_LIMIT, PICAMConfig, validate_trace_limit
 from .errors import BoundaryReplayError, PICAMConfigurationError, PICAMStateError
+from .history_output import PICAMHistoryStreamRegistry
 from .native import CAMNumericalBackend
+from .parameters import PICAMModuleParameterRegistry
 from .physics_catalog import (
     PICAMPhysicsCatalog,
     merge_runtime_process_records,
@@ -1015,6 +1017,7 @@ class PICAMDriver:
         history_callback: Callable[[PICAMAction, "PICAMDriver"], None] | None = None,
         run_dir: str | Path | None = None,
         trace_limit: int | None = DEFAULT_TRACE_LIMIT,
+        default_history_stream: bool = True,
     ) -> None:
         if not 0 <= rank < size:
             raise PICAMConfigurationError("rank must be in the MPI communicator")
@@ -1070,6 +1073,9 @@ class PICAMDriver:
         self._native_call_depth = 0
         self._python_initialized_addresses: dict[str, int] = {}
         self.python_processes = PICAMPythonProcessRegistry(self)
+        self.module_parameters = PICAMModuleParameterRegistry(self)
+        self.history_streams = PICAMHistoryStreamRegistry(self)
+        self.default_history_stream = bool(default_history_stream)
         self.fortran_processes = PICAMFortranProcessRegistry(self)
         self.process_contexts = PICAMProcessContextRegistry(self)
         self.physics = _PhysicsCollection(self)
@@ -1262,8 +1268,13 @@ class PICAMDriver:
                     "initial boundary import",
                     lambda: self.boundary.import_fields(0, self.rank, self.pool),
                 )
+            # Native initialization has read atm_in into module storage;
+            # only now do the audited tunables hold values to verify
+            # against, so this is the earliest safe binding point.
+            self.module_parameters.bind()
             self._validate_initial_cam_export()
             self._prime_initial_cam_state()
+            self._install_default_history_stream()
         except Exception:
             self.lifecycle = PICAMLifecycle.FAILED
             raise
@@ -1419,11 +1430,19 @@ class PICAMDriver:
                 self._execute_io_service(action)
             elif action.operation not in {"wshist", "restart"}:
                 self._execute_io_service(action)
+        elif action.kind == "python_history":
+            self._execute_python_history(action)
         elif action.kind == "service":
             self._execute_state_service(action)
         else:
             self._execute_native(action)
         return self._record(action)
+
+    def _execute_python_history(self, action: PICAMAction) -> None:
+        """Extend CAM history output at this stream's workflow position."""
+
+        with self.profiler.region(f"HISTORY:{action.operation}"):
+            self.history_streams.step(action.operation)
 
     def _restart_due(self) -> bool:
         """Return the Python-owned restart alarm for the admitted nstep case."""
@@ -1813,6 +1832,168 @@ class PICAMDriver:
         assert action is not None
         return action
 
+    def _install_default_history_stream(self) -> None:
+        """Let Python-owned fields reach CAM's own history files by default.
+
+        The stream mirrors the case's ``nhtfrq`` so its samples line up with
+        the tape CAM writes.  With no Python-owned fields it accumulates
+        nothing and adds nothing, so the run directory stays identical to the
+        original model's.
+        """
+
+        if not self.default_history_stream:
+            return
+        if "phys_state.cid" not in self.pool:
+            # Without CAM's column identifiers there is no way to place
+            # Python-owned columns; leave output to the original writer.
+            return
+        name = "python_fields"
+        if name in self.history_streams:
+            return
+        self.history_streams.install(
+            name,
+            fields=None,
+            stream="h0",
+            nhtfrq=self._history_nhtfrq(),
+        )
+        self.step_plan.add(
+            PICAMAction(
+                name=name,
+                phase="runtime",
+                operation=name,
+                kind="python_history",
+                native_id=None,
+            ),
+            after="wshist",
+            experimental=True,
+        )
+
+    def _history_nhtfrq(self) -> int:
+        """Read CAM's own output frequency from the run directory namelist."""
+
+        if self.run_dir is None:
+            return 0
+        namelist = Path(self.run_dir) / "atm_in"
+        if not namelist.is_file():
+            return 0
+        from .namelist import read_values
+
+        try:
+            raw = read_values(namelist).get("nhtfrq")
+        except PICAMConfigurationError:
+            return 0
+        if raw is None:
+            return 0
+        try:
+            return int(raw.split(",")[0].strip())
+        except ValueError:
+            return 0
+
+    def set_module_parameter(self, name: str, value: object) -> dict:
+        """Collectively change one audited CAM physics tunable in place."""
+
+        return self.module_parameters.set(name, value)
+
+    def install_history_stream(
+        self,
+        name: str = "python_fields",
+        *,
+        fields: Sequence[Any] | None = None,
+        stream: str = "h0",
+        nhtfrq: int = 0,
+        before: str | None = None,
+        after: str | None = "wshist",
+        enabled: bool = True,
+        time_period: str = "mean",
+        precision: str = "float32",
+    ) -> PICAMAction:
+        """Add one Python-owned CAM-format history stream to the workflow."""
+
+        self._require_collective_boundary("install a history stream")
+        if (before is None) == (after is None):
+            raise PICAMConfigurationError("provide exactly one of before or after")
+        signature = (
+            str(name),
+            str(stream),
+            None if fields is None else tuple(str(item) for item in fields),
+            int(nhtfrq),
+            before,
+            after,
+            bool(enabled),
+        )
+        if len(set(self.comm.allgather(signature))) != 1:
+            raise PICAMStateError("history stream request differs across MPI ranks")
+
+        action: PICAMAction | None = None
+        installed = False
+        local_error: str | None = None
+        try:
+            self.history_streams.install(
+                name,
+                fields=fields,
+                stream=stream,
+                nhtfrq=nhtfrq,
+                precision=precision,
+                time_period=time_period,
+            )
+            installed = True
+            action = PICAMAction(
+                name=str(name),
+                phase="runtime",
+                operation=str(name),
+                kind="python_history",
+                native_id=None,
+                enabled=bool(enabled),
+            )
+            self.step_plan.add(
+                action,
+                before=before,
+                after=after,
+                experimental=True,
+            )
+        except BaseException as exc:
+            local_error = f"{type(exc).__name__}: {exc}"
+        errors = self.comm.allgather(local_error)
+        if any(error is not None for error in errors):
+            if action is not None:
+                try:
+                    selected = self.step_plan.select(action.name, phase=action.phase)
+                except PICAMConfigurationError:
+                    selected = None
+                if selected is not None and selected.kind == "python_history":
+                    self.step_plan.remove(
+                        action.name, phase=action.phase, experimental=True
+                    )
+            if installed:
+                self.history_streams.remove(str(name))
+            self.comm.barrier()
+            message = collective_error_message(
+                "history stream installation rollback", errors
+            )
+            raise PICAMStateError(message or "history stream installation failed")
+        self.comm.barrier()
+        assert action is not None
+        return action
+
+    def remove_history_stream(self, name: str) -> None:
+        """Collectively remove one Python-owned history stream."""
+
+        self._require_collective_boundary("remove a history stream")
+        if len(set(self.comm.allgather(str(name)))) != 1:
+            raise PICAMStateError("history stream removal differs across MPI ranks")
+        local_error: str | None = None
+        try:
+            self.step_plan.remove(str(name), phase="runtime", experimental=True)
+            self.history_streams.remove(str(name))
+        except BaseException as exc:
+            local_error = f"{type(exc).__name__}: {exc}"
+        errors = self.comm.allgather(local_error)
+        if any(error is not None for error in errors):
+            self.comm.barrier()
+            message = collective_error_message("history stream removal", errors)
+            raise PICAMStateError(message or "history stream removal failed")
+        self.comm.barrier()
+
     def _record_promoted_process(self, name: str) -> PICAMActionTrace:
         return self._record(
             PICAMAction(
@@ -2102,6 +2283,10 @@ class PICAMDriver:
     def _finalize(self) -> None:
         if self.lifecycle == PICAMLifecycle.FINALIZED:
             return
+        if self.lifecycle in {PICAMLifecycle.INITIALIZED, PICAMLifecycle.RUNNING}:
+            # CAM has closed its history files by now, so any window still
+            # queued can reach the tape it belongs to.
+            self.history_streams.drain()
         if self.lifecycle not in {
             PICAMLifecycle.INITIALIZED,
             PICAMLifecycle.RUNNING,

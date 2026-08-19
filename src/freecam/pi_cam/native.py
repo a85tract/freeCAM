@@ -435,6 +435,24 @@ class NativeCAMDevice:
                 name: int(values.ctypes.data) for name, values in pool.items()
             }
 
+    _MODULE_SYMBOL_TYPES = {"float64": ctypes.c_double}
+
+    def module_symbol(self, symbol: str, dtype: str) -> object | None:
+        """Resolve one Fortran module data symbol in the loaded image.
+
+        Returns a ctypes object viewing the module variable's storage, or
+        ``None`` when the symbol or dtype is not available -- callers fail
+        closed on ``None`` rather than guessing an address.
+        """
+
+        ctype = self._MODULE_SYMBOL_TYPES.get(str(dtype))
+        if ctype is None:
+            return None
+        try:
+            return ctype.in_dll(self._library, str(symbol))
+        except ValueError:
+            return None
+
     def configure_shared_coupler(self, enabled: bool) -> None:
         """Select whether CESM already owns the shared MPI/PIO control plane."""
 

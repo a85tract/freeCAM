@@ -1,0 +1,128 @@
+#!/bin/bash
+#PBS -N freecam-runtime-50
+#PBS -A UCUB0188
+# ``develop`` is the public route; PBS places eligible jobs in ``cpudev``.
+#PBS -q develop
+#PBS -l select=4:ncpus=64:mpiprocs=128:ompthreads=1:mem=110GB
+#PBS -l walltime=00:30:00
+#PBS -j oe
+#PBS -o /glade/work/ruitong/freeCAM/logs/
+#PBS -V
+
+set -euo pipefail
+
+repo=/glade/work/ruitong/freeCAM
+python=${repo}/.venv/bin/python
+case_root=/glade/work/ruitong/CESM_cases/f.e13.F1850C5.ne16_g16.icesm131_ihesp.PI-cam-oracle.50step
+cam_reference=/glade/derecho/scratch/ruitong/pyCAM/PI-cam/f.e13.F1850C5.ne16_g16.icesm131_ihesp.PI-cam-oracle.50step/run
+cesm_reference=/glade/derecho/scratch/ruitong/pyCESM/PI-atm/oracle-50step-run1/run
+library=${FREECAM_CESM_PROVIDER_LIBRARY:-${repo}/build/cesm/pi_atm/production-components/libpycesm_external_atm.so}
+root=/glade/derecho/scratch/ruitong/pyCAM/PI-cam/runtime-parameter-50step-${PBS_JOBID}
+cam_run=${root}/cam-run
+cesm_run=${root}/cesm-provider-run
+
+source "${case_root}/.env_mach_specific.sh" >/dev/null 2>&1
+mpi_root=${CRAY_MPICH_DIR:-/opt/cray/pe/mpich/8.1.25/ofi/intel/19.0}
+export LD_LIBRARY_PATH="${mpi_root}/lib-abi-mpich:${mpi_root}/lib:${LD_LIBRARY_PATH:-}"
+export LD_PRELOAD=/glade/u/apps/common/23.04/spack/opt/spack/intel-oneapi-compilers/2023.0.0/compiler/2023.0.0/linux/compiler/lib/intel64_lin/libimf.so${LD_PRELOAD:+:${LD_PRELOAD}}
+export PYTHONPATH=${repo}/src
+export OMP_NUM_THREADS=1
+export OMP_STACKSIZE=64M
+export FI_CXI_RX_MATCH_MODE=hybrid
+export FI_MR_CACHE_MONITOR=memhooks
+export MPICH_MPIIO_HINTS='*:romio_cb_read=enable:romio_cb_write=enable:striping_factor=24'
+
+mkdir -p "${cam_run}" "${cesm_run}"
+rsync -a --exclude '*.nc' --exclude '*.bin' --exclude '*.log*' \
+  --exclude 'rpointer.*' --exclude 'timing/' "${cam_reference}/" "${cam_run}/"
+rsync -a --exclude '*.nc' --exclude '*.bin' --exclude '*.log*' \
+  --exclude 'rpointer.*' --exclude 'timing/' "${cesm_reference}/" "${cesm_run}/"
+cp "${cam_reference}/SEMapping.nc" "${cam_run}/"
+cp "${cesm_reference}/SEMapping.nc" "${cesm_run}/"
+mkdir -p "${cam_run}/timing/checkpoints" "${cesm_run}/timing/checkpoints"
+
+# The perturbation begins mid-run, so the per-boundary oracle comparison
+# must stay off: divergence in the second half is the expected result.
+"${python}" - <<PY
+from pathlib import Path
+import cloudpickle
+from freecam import CESMOnlineBoundaryProvider
+
+provider = CESMOnlineBoundaryProvider(
+    library=Path("${library}"),
+    run_dir=Path("${cesm_run}"),
+)
+Path("${cam_run}/.exact-cesm-provider.pkl").write_bytes(
+    cloudpickle.dumps(provider, protocol=5)
+)
+PY
+
+cd "${repo}"
+mpiexec --label -n 512 "${python}" tools/validate_pi_cam_runtime_parameters.py \
+  --config configs/pi_cam_icesm131_exact_online_50step.yaml \
+  --boundary-provider "${cam_run}/.exact-cesm-provider.pkl" \
+  --run-dir "${cam_run}" \
+  --steps 50 \
+  --change-at 25 \
+  --parameter zmconv_c0_lnd \
+  --value 0.0075 \
+  --output "${root}/summary.json" \
+  > "${cam_run}/freecam.log" 2>&1
+
+# The gate is split in time: the history file CAM wrote BEFORE the change
+# must stay bit-for-bit with the unperturbed oracle, and the restart files
+# written AFTER it must differ -- together they prove the write neither
+# perturbed anything early nor failed to reach the physics late.
+"${python}" - <<PY
+import json
+import sys
+from pathlib import Path
+
+sys.path.insert(0, "tools")
+from compare_with_reference_case import compare, index
+
+summary = json.loads(Path("${root}/summary.json").read_text())
+assert summary["run_status"] == "passed", summary
+assert summary["bound_count"] == 14, summary["bound_parameters"]
+assert summary["unavailable"] == {}, summary["unavailable"]
+
+candidates = index(Path("${cam_run}"))
+references = index(Path("${cam_reference}"))
+shared = sorted(set(candidates) & set(references))
+results = {
+    stamp: compare(candidates[stamp], references[stamp]) for stamp in shared
+}
+
+# index() keys are "<stream>.<stamp>"; h0 was written before the change,
+# the r/rh0/rs restart set after step 50.
+pre_change = {k: v for k, v in results.items() if k.startswith("h0.")}
+post_change = {
+    k: v
+    for k, v in results.items()
+    if k.startswith(("r.", "rh0.", "rs."))
+}
+assert pre_change and post_change, sorted(results)
+for stamp, row in pre_change.items():
+    assert row["bfb"], f"pre-change history diverged: {stamp}: {row}"
+diverged = [stamp for stamp, row in post_change.items() if not row["bfb"]]
+assert diverged, "post-change restart files are still bit-identical"
+
+record = {
+    "schema_version": 1,
+    "gate": "pi_cam_runtime_parameter_50step",
+    "expectation": (
+        "all 14 audited tunables bind and verify against atm_in; changing "
+        "zmconv_c0_lnd at step 25 leaves the pre-change history file bit "
+        "identical and makes the post-change restart files differ"
+    ),
+    "pbs_job_id": "${PBS_JOBID}",
+    "summary": summary,
+    "pre_change_files_identical": sorted(pre_change),
+    "post_change_files_diverged": diverged,
+    "run_status": "passed",
+}
+Path("validation/pi_cam_runtime_parameter_50step.json").write_text(
+    json.dumps(record, indent=2, sort_keys=True) + "\n"
+)
+print("runtime parameter gate passed:", diverged)
+PY

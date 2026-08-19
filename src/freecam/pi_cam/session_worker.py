@@ -165,6 +165,50 @@ def _command(command: dict[str, Any], driver: Any, comm: Any) -> object:
     if operation == "remove_promoted_process":
         record = driver.remove_promoted_process(str(command["name"]))
         return record.to_payload() if comm.rank == 0 else None
+    if operation == "install_history_stream":
+        action = driver.install_history_stream(
+            str(command["name"]),
+            fields=(
+                None if command.get("fields") is None else tuple(command["fields"])
+            ),
+            stream=str(command.get("stream", "h0")),
+            nhtfrq=int(command.get("nhtfrq", 0)),
+            before=command.get("before"),
+            after=command.get("after", "wshist"),
+            enabled=bool(command.get("enabled", True)),
+            precision=str(command.get("precision", "float32")),
+            time_period=str(command.get("time_period", "mean")),
+        )
+        return (
+            {
+                "action": {
+                    "name": action.name,
+                    "phase": action.phase,
+                    "operation": action.operation,
+                    "kind": action.kind,
+                    "enabled": action.enabled,
+                },
+                "streams": driver.history_streams.describe(),
+                "plan": driver.step_plan.describe(),
+            }
+            if comm.rank == 0
+            else None
+        )
+    if operation == "remove_history_stream":
+        driver.remove_history_stream(str(command["name"]))
+        return (
+            {
+                "removed": str(command["name"]),
+                "streams": driver.history_streams.describe(),
+            }
+            if comm.rank == 0
+            else None
+        )
+    if operation == "history_streams":
+        return driver.history_streams.describe() if comm.rank == 0 else None
+    if operation == "drain_history_streams":
+        written = driver.history_streams.drain()
+        return {"written": int(written)} if comm.rank == 0 else None
     leaf_expansions = {
         "expand_cam_run1_leaves": driver.expand_cam_run1_leaves,
         "expand_cam_run2_leaves": driver.expand_cam_run2_leaves,
@@ -239,6 +283,8 @@ def _command(command: dict[str, Any], driver: Any, comm: Any) -> object:
         )
     if operation == "assign_expression":
         name = driver.pool.canonical_name(str(command["name"]))
+        if not driver.pool.contract(name).writable:
+            raise ValueError(f"field {name!r} is read-only")
         selection = command.get("selection", Ellipsis)
         count = assign_expression(
             driver.pool,
@@ -289,6 +335,22 @@ def _command(command: dict[str, Any], driver: Any, comm: Any) -> object:
         return result if comm.rank == 0 else None
     if operation == "remove_python":
         result = driver.python_processes.remove(str(command["name"]))
+        return result if comm.rank == 0 else None
+    if operation == "set_python_parameters":
+        result = driver.python_processes.set_parameters(
+            str(command["name"]), dict(command["parameters"])
+        )
+        return result if comm.rank == 0 else None
+    if operation == "get_python_parameters":
+        result = driver.python_processes.parameters(str(command["name"]))
+        return result if comm.rank == 0 else None
+    if operation == "set_module_parameter":
+        result = driver.module_parameters.set(
+            str(command["name"]), command["value"]
+        )
+        return result if comm.rank == 0 else None
+    if operation == "get_module_parameters":
+        result = driver.module_parameters.describe()
         return result if comm.rank == 0 else None
     if operation == "install_fortran":
         record = driver.fortran_processes.install(

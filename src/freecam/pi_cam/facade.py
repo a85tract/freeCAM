@@ -16,6 +16,7 @@ import shutil
 import textwrap
 import threading
 import warnings
+import weakref
 from collections import Counter, defaultdict
 from concurrent.futures import Future
 from dataclasses import dataclass, field
@@ -26,7 +27,10 @@ from typing import Any, Callable, Iterator, Mapping, Sequence
 from uuid import uuid4
 from xml.etree import ElementTree
 
-from freecam.model.python_processes import PythonStateView
+from freecam.model.python_processes import (
+    PythonStateView,
+    _normalize_parameter_value,
+)
 
 from .boundary import (
     CAMBoundaryProvider,
@@ -35,6 +39,12 @@ from .boundary import (
 )
 from .config import DEFAULT_TRACE_LIMIT, PICAMConfig, validate_trace_limit
 from .history import PICAMOutputView
+from .namelist import (
+    apply_overrides,
+    load_catalog,
+    read_values,
+    validate_overrides,
+)
 from .plan import PICAMStepPlan
 from .session import PICAMNotebookSession
 
@@ -118,6 +128,94 @@ class Variable:
         object.__setattr__(self, "standard_name", standard_name)
 
 
+# Live Physics instances installed into a running model, mapped to the
+# session and registered process name their property writes forward to.
+# Deliberately not an instance attribute: a session reference must never
+# ride along when the instance is pickled into the worker payload, and the
+# worker's own (empty) registry is what makes rank-side property injection
+# a plain local write.
+_LIVE_PHYSICS: "weakref.WeakKeyDictionary[Any, tuple[Any, str]]" = (
+    weakref.WeakKeyDictionary()
+)
+
+_PHYSICS_CONTRACT_ATTRIBUTES = frozenset(
+    {
+        "name",
+        "before",
+        "after",
+        "reads",
+        "writes",
+        "enabled",
+        "transactional",
+        "run",
+        "tendency",
+    }
+)
+
+
+class Property:
+    """Runtime-adjustable parameter of a Notebook ``Physics`` process.
+
+    Declare it as a class attribute::
+
+        class Heating(fc.Physics):
+            rate = fc.Property(0.01)
+
+            def run(self, state, context):
+                state.T += self.rate * context.timestep_seconds
+
+    Before the process is installed, assignment simply stores the value on
+    the instance.  Once installed into a live model, assignment ships the
+    complete property set to every MPI rank collectively, and the new value
+    takes effect at the process's next invocation.  Values must be
+    JSON-compatible scalars or small containers; large arrays belong in
+    StatePool fields.
+    """
+
+    def __init__(self, default: Any, doc: str | None = None) -> None:
+        self._default = default
+        self.__doc__ = doc
+        self._name: str | None = None
+        self._storage: str | None = None
+
+    def __set_name__(self, owner: type, name: str) -> None:
+        if name in _PHYSICS_CONTRACT_ATTRIBUTES:
+            raise TypeError(
+                f"Property cannot shadow the Physics contract attribute "
+                f"{name!r}"
+            )
+        self._name = name
+        self._storage = f"_freecam_property_{name}"
+        self._default = _normalize_parameter_value(
+            self._default, f"property {name!r} default"
+        )
+
+    @property
+    def default(self) -> Any:
+        return self._default
+
+    def __get__(self, instance: Any, owner: type | None = None) -> Any:
+        if instance is None:
+            return self
+        return instance.__dict__.get(self._storage, self._default)
+
+    def __set__(self, instance: Any, value: Any) -> None:
+        normalized = _normalize_parameter_value(
+            value, f"property {self._name!r}"
+        )
+        live = _LIVE_PHYSICS.get(instance)
+        if live is not None:
+            session, registered = live
+            merged = instance._current_properties()
+            merged[self._name] = normalized
+            # Ship first; the local mirror only changes once every rank has
+            # accepted the value.
+            session.set_python_parameters(
+                registered, {"properties": merged}
+            )
+        instance.__dict__[self._storage] = normalized
+
+
 class Physics:
     """Base class for one Notebook-defined rank-local Python process."""
 
@@ -128,6 +226,20 @@ class Physics:
     writes: tuple[str, ...] = ()
     enabled: bool = True
     transactional: bool = True
+
+    @classmethod
+    def _declared_properties(cls) -> dict[str, Property]:
+        declared: dict[str, Property] = {}
+        for klass in reversed(cls.__mro__):
+            for key, value in vars(klass).items():
+                if isinstance(value, Property):
+                    declared[key] = value
+        return declared
+
+    def _current_properties(self) -> dict[str, Any]:
+        return {
+            name: getattr(self, name) for name in self._declared_properties()
+        }
 
     def run(self, state: PythonStateView, context: Any) -> None:
         """Run against friendly rank-local StatePool attributes."""
@@ -149,12 +261,23 @@ class Physics:
             owner=type(self).__name__,
         )
 
-    def _runtime_callback(self) -> Callable[[Any, Any], None]:
+    def _runtime_callback(self) -> Callable[..., None]:
         """Return the fixed two-argument callback required by MPI workers."""
 
         process = self
 
-        def callback(fields: Any, context: Any) -> None:
+        def callback(
+            fields: Any, context: Any, *, properties: Any = None
+        ) -> None:
+            if properties:
+                declared = type(process)._declared_properties()
+                for key, value in dict(properties).items():
+                    if key not in declared:
+                        raise TypeError(
+                            f"{type(process).__name__} declares no property "
+                            f"{key!r}"
+                        )
+                    setattr(process, key, value)
             if type(process).run is not Physics.run:
                 return _invoke_physics_callback(
                     process.run,
@@ -187,16 +310,20 @@ class Physics:
             placement_before = self.before
             placement_after = self.after
         reads, writes = _python_process_access(self)
-        return session.physics.install_python(
+        properties = self._current_properties()
+        handle = session.physics.install_python(
             self._runtime_callback(),
             name=process_name,
             before=placement_before,
             after=placement_after,
             reads=reads,
             writes=writes,
+            parameters=({"properties": properties} if properties else None),
             enabled=self.enabled,
             transactional=self.transactional,
         )
+        _LIVE_PHYSICS[self] = (session, process_name)
+        return handle
 
 
 def _invoke_physics_callback(
@@ -594,6 +721,10 @@ class CaseConfig:
     make_atm: Callable[[], FreeCAM] = FreeCAM
     base: str = "PI-atm"
     config: str | Path | None = None
+    # CAM namelist overrides for this case, e.g. {"cldfrc_rhminl": 0.9}.
+    # Applied to the run directory's atm_in before CAM reads it; unrelated
+    # to PICAMConfig.namelist, which is an unused Path field.
+    namelist: Mapping[str, Any] | None = None
 
     def build_atmosphere(self) -> FreeCAM:
         atmosphere = self.make_atm()
@@ -871,15 +1002,20 @@ def _apply_case_workflow(
                     "custom Physics cannot be placed after boundary_export"
                 )
             reads, writes = _python_process_access(item)
+            properties = item._current_properties()
             handle = session.physics.install_python(
                 item._runtime_callback(),
                 name=runtime_names[index],
                 before=anchor.qualified_name,
                 reads=reads,
                 writes=writes,
+                parameters=(
+                    {"properties": properties} if properties else None
+                ),
                 enabled=True,
                 transactional=item.transactional,
             )
+            _LIVE_PHYSICS[item] = (session, runtime_names[index])
             installed.append(handle)
             final.append(handle)
         for item in omitted:
@@ -919,6 +1055,100 @@ class PICAMCaseInfo:
         )
 
 
+class _NamelistView(Mapping[str, str]):
+    """Read-only view of the CAM namelist the model will run (or ran) with."""
+
+    def __init__(self, driver: "Driver") -> None:
+        self._driver = driver
+
+    def _path(self) -> Path:
+        run_dir = self._driver.run_dir
+        base = Path(run_dir) if run_dir is not None else self._driver.reference_run
+        path = base / "atm_in"
+        if not path.is_file():
+            raise FileNotFoundError(f"no atm_in at {path}")
+        return path
+
+    def _values(self) -> dict[str, str]:
+        return read_values(self._path())
+
+    def __getitem__(self, name: str) -> str:
+        return self._values()[str(name).strip().lower()]
+
+    def __iter__(self) -> Iterator[str]:
+        return iter(self._values())
+
+    def __len__(self) -> int:
+        return len(self._values())
+
+    @property
+    def overrides(self) -> Mapping[str, tuple[str | None, str]]:
+        """Overrides applied to this run's atm_in, as {name: (old, new)}."""
+
+        return dict(self._driver._namelist_report or {})
+
+    def __repr__(self) -> str:
+        overridden = sorted(self.overrides)
+        suffix = f", overrides={overridden}" if overridden else ""
+        return f"<CAM namelist: {len(self)} variables{suffix}>"
+
+
+class _ParametersView(Mapping[str, float]):
+    """Live view of the audited runtime-writable CAM physics tunables.
+
+    Reads come from the bound Fortran module storage on the running
+    model; item assignment changes the value on every MPI rank, taking
+    effect the next time the owning routine runs.  Changes are not part
+    of any restart file -- a run restarted from CAM restart files
+    reverts to the namelist values, so re-apply them after a restart.
+    """
+
+    def __init__(self, driver: "Driver") -> None:
+        self._driver = driver
+
+    def _described(self) -> Mapping[str, Any]:
+        return self._driver._live_session().get_module_parameters()
+
+    def __getitem__(self, name: str) -> float:
+        return float(
+            self._described()["parameters"][str(name).strip().lower()]["value"]
+        )
+
+    def __setitem__(self, name: str, value: Any) -> None:
+        self._driver._live_session().set_module_parameter(str(name), value)
+
+    def __iter__(self) -> Iterator[str]:
+        return iter(self._described().get("parameters", {}))
+
+    def __len__(self) -> int:
+        return len(self._described().get("parameters", {}))
+
+    @property
+    def overrides(self) -> Mapping[str, tuple[float, float]]:
+        """Tunables changed since initialization, as {name: (was, is)}."""
+
+        return {
+            name: (float(entry["baseline"]), float(entry["value"]))
+            for name, entry in self._described().get("parameters", {}).items()
+            if entry["value"] != entry["baseline"]
+        }
+
+    @property
+    def unavailable(self) -> Mapping[str, str]:
+        """Audited tunables that could not be bound, with the reasons."""
+
+        return dict(self._described().get("unavailable", {}))
+
+    def __repr__(self) -> str:
+        described = self._described()
+        overridden = sorted(self.overrides)
+        suffix = f", overrides={overridden}" if overridden else ""
+        return (
+            f"<CAM runtime parameters: "
+            f"{len(described.get('parameters', {}))} bound{suffix}>"
+        )
+
+
 class _CAMFacade:
     """Lazy FreeCAM handle exposed as ``driver.cam``."""
 
@@ -926,6 +1156,8 @@ class _CAMFacade:
         self._driver = driver
         self.history = PICAMOutputView(driver, "history")
         self.restart = PICAMOutputView(driver, "restart")
+        self.namelist = _NamelistView(driver)
+        self.parameters = _ParametersView(driver)
 
     @property
     def state(self) -> Any:
@@ -966,6 +1198,43 @@ class _CAMFacade:
 
     def advance(self, steps: int = 1) -> Mapping[str, Any]:
         return self._driver.advance(steps)
+
+    def install_history_stream(
+        self,
+        name: str = "python_fields",
+        *,
+        fields: Sequence[Any] | None = None,
+        stream: str = "h0",
+        nhtfrq: int = 0,
+        before: str | None = None,
+        after: str | None = "wshist",
+        enabled: bool = True,
+        time_period: str = "mean",
+        precision: str = "float32",
+    ) -> Mapping[str, Any]:
+        """Write Python-owned StatePool fields in the original CAM format."""
+
+        return self._driver._live_session().install_history_stream(
+            name,
+            fields=fields,
+            stream=stream,
+            nhtfrq=nhtfrq,
+            before=before,
+            after=after,
+            enabled=enabled,
+            precision=precision,
+            time_period=time_period,
+        )
+
+    def remove_history_stream(self, name: str) -> Mapping[str, Any]:
+        return self._driver._live_session().remove_history_stream(name)
+
+    @property
+    def history_streams(self) -> tuple[Mapping[str, Any], ...]:
+        return self._driver._live_session().history_streams()
+
+    def drain_history_streams(self) -> int:
+        return self._driver._live_session().drain_history_streams()
 
 
 @dataclass(frozen=True, slots=True)
@@ -1251,6 +1520,7 @@ class Driver:
         python_executable: str | Path | None = None,
         session_factory: Any = PICAMNotebookSession,
         trace_limit: int | None = DEFAULT_TRACE_LIMIT,
+        namelist: Mapping[str, Any] | None = None,
     ) -> None:
         if int(nsteps) < 1:
             raise ValueError("nsteps must be positive")
@@ -1291,6 +1561,24 @@ class Driver:
         self._atmosphere = atmosphere
         self._configured_processes: tuple[Any, ...] = ()
         self.nsteps = int(nsteps)
+        # CAM namelist overrides: names and values are checked against the
+        # pinned source's own definition catalogue now, before anything is
+        # launched; whether each target group exists in this case's atm_in
+        # can only be checked once the run directory is materialized.
+        merged_namelist: dict[str, Any] = {}
+        if declared_case is not None and declared_case.namelist:
+            merged_namelist.update(declared_case.namelist)
+        if namelist:
+            merged_namelist.update(namelist)
+        if merged_namelist:
+            self._namelist_catalog = load_catalog(self.config.source_root)
+            self._namelist_overrides = validate_overrides(
+                merged_namelist, self._namelist_catalog
+            )
+        else:
+            self._namelist_catalog = None
+            self._namelist_overrides = {}
+        self._namelist_report: dict[str, tuple[str | None, str]] | None = None
         self.scratch = Path(
             scratch
             or os.environ.get("SCRATCH")
@@ -1800,6 +2088,14 @@ class Driver:
             dirs_exist_ok=True,
             ignore=self._ignore_reference_output,
         )
+        if self._namelist_overrides:
+            # The provider's own cesm-provider-run keeps its untouched copy;
+            # only the CAM the user drives reads this atm_in.
+            self._namelist_report = apply_overrides(
+                destination / "atm_in",
+                self._namelist_overrides,
+                self._namelist_catalog,
+            )
         (destination / "timing" / "checkpoints").mkdir(parents=True, exist_ok=True)
         self._run_dir = destination.resolve()
         return self._run_dir
@@ -1829,6 +2125,7 @@ __all__ = [
     "Driver",
     "FreeCAM",
     "Physics",
+    "Property",
     "ProcessSpec",
     "PICAMCaseInfo",
     "RunHandle",

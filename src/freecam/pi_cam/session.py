@@ -14,7 +14,7 @@ import subprocess
 import sys
 import threading
 import time
-from collections.abc import Mapping, Sequence
+from collections.abc import Mapping, MutableMapping, Sequence
 from html import escape
 from multiprocessing.connection import Connection, Listener
 from pathlib import Path
@@ -429,6 +429,111 @@ class _SessionProcessCallResult(Mapping[str, _SessionFieldReference]):
         return f"ProcessResult(name={self.name!r}, outputs={tuple(self)!r})"
 
 
+class _SessionProcessProperties(MutableMapping):
+    """Live view of one Python process's declared runtime properties.
+
+    Reads come from the rank-side spec, so this is authoritative even after
+    another handle -- or the original ``Physics`` instance -- changed a
+    value.  Writes are collective: the merged property set is shipped to
+    every MPI rank and takes effect at the process's next invocation.
+    """
+
+    def __init__(self, session: "PICAMNotebookSession", name: str) -> None:
+        self._session = session
+        self._name = name
+
+    def _read(self) -> dict[str, Any]:
+        parameters = self._session.get_python_parameters(self._name)
+        return dict(parameters.get("properties") or {})
+
+    def _write(self, properties: Mapping[str, Any]) -> None:
+        self._session.set_python_parameters(
+            self._name, {"properties": dict(properties)}
+        )
+
+    def __getitem__(self, key: str) -> Any:
+        return self._read()[str(key)]
+
+    def __setitem__(self, key: str, value: Any) -> None:
+        merged = self._read()
+        merged[str(key)] = value
+        self._write(merged)
+
+    def __delitem__(self, key: str) -> None:
+        merged = self._read()
+        del merged[str(key)]
+        self._write(merged)
+
+    def update(self, *args: Any, **kwargs: Any) -> None:
+        merged = self._read()
+        merged.update(*args, **kwargs)
+        self._write(merged)
+
+    def __iter__(self) -> Any:
+        return iter(self._read())
+
+    def __len__(self) -> int:
+        return len(self._read())
+
+    def __repr__(self) -> str:
+        return f"<properties of {self._name}: {self._read()!r}>"
+
+
+class _SessionNativeParameters(MutableMapping):
+    """Audited CAM tunables of one native workflow action, live.
+
+    Reads come from the bound Fortran module storage; writes are
+    collective and take effect the next time the owning routine runs.
+    Changes are not part of any restart file: a run restarted from CAM
+    restart files reverts to the namelist values.
+    """
+
+    def __init__(
+        self, session: "PICAMNotebookSession", qualified_action: str
+    ) -> None:
+        self._session = session
+        self._action = qualified_action
+
+    def _read(self) -> dict[str, float]:
+        described = self._session.get_module_parameters()
+        return {
+            name: float(entry["value"])
+            for name, entry in described.get("parameters", {}).items()
+            if entry.get("workflow_action") == self._action
+        }
+
+    def __getitem__(self, key: str) -> float:
+        return self._read()[str(key)]
+
+    def __setitem__(self, key: str, value: Any) -> None:
+        name = str(key)
+        if name not in self._read():
+            raise KeyError(
+                f"{name!r} is not an audited tunable of {self._action!r}"
+            )
+        self._session.set_module_parameter(name, value)
+
+    def __delitem__(self, key: str) -> None:
+        raise TypeError(
+            "CAM tunables cannot be removed; assign a new value instead"
+        )
+
+    def __iter__(self) -> Any:
+        return iter(self._read())
+
+    def __len__(self) -> int:
+        return len(self._read())
+
+    def __repr__(self) -> str:
+        values = self._read()
+        if not values:
+            return (
+                f"<no audited runtime tunables for {self._action}; see "
+                "native/pi_cam/runtime_parameters.yaml>"
+            )
+        return f"<tunables of {self._action}: {values!r}>"
+
+
 class _SessionActionReference:
     """A physics action that can be run or edited without string plumbing."""
 
@@ -549,10 +654,33 @@ class _SessionActionReference:
         if self.kind != "python_process":
             raise TypeError("reload() is available only for Notebook Python processes")
         # Import lazily: facade imports this module to construct the session.
-        from .facade import _python_callable_access, _runtime_state_callback
+        from .facade import (
+            Physics,
+            _python_callable_access,
+            _python_process_access,
+            _runtime_state_callback,
+        )
 
-        inferred_reads, inferred_writes = _python_callable_access(function)
-        callback = _runtime_state_callback(function, owner=self.name)
+        if isinstance(function, Physics):
+            # A Physics instance carries its own callback contract and its
+            # current property values replace the live ones wholesale.
+            process = function
+            inferred_reads, inferred_writes = _python_process_access(process)
+            callback = process._runtime_callback()
+            if parameters is None:
+                current = process._current_properties()
+                parameters = {"properties": current} if current else {}
+        else:
+            inferred_reads, inferred_writes = _python_callable_access(function)
+            callback = _runtime_state_callback(function, owner=self.name)
+            if parameters is None and self.session.get_python_parameters(
+                self.name
+            ).get("properties"):
+                raise TypeError(
+                    f"{self.name!r} declares runtime properties; reload it "
+                    "with a Physics instance, or pass parameters={} to drop "
+                    "them explicitly"
+                )
         self.session.reload_python(
             callback,
             name=self.name,
@@ -564,6 +692,19 @@ class _SessionActionReference:
             unsafe=unsafe,
         )
         return self
+
+    @property
+    def properties(self) -> MutableMapping:
+        """Runtime-adjustable parameters of this workflow process.
+
+        Notebook Python processes expose their declared ``fc.Property``
+        values; native CAM actions expose the audited namelist tunables
+        bound to their Fortran module storage.
+        """
+
+        if self.kind == "python_process":
+            return _SessionProcessProperties(self.session, self.name)
+        return _SessionNativeParameters(self.session, self.qualified_name)
 
     def remove(self) -> Mapping[str, Any]:
         if self.kind == "python_process":
@@ -1833,6 +1974,57 @@ class PICAMNotebookSession:
         self._status = dict(self._request({"op": "status"}))
         return result
 
+    def install_history_stream(
+        self,
+        name: str = "python_fields",
+        *,
+        fields: Sequence[Any] | None = None,
+        stream: str = "h0",
+        nhtfrq: int = 0,
+        before: str | None = None,
+        after: str | None = "wshist",
+        enabled: bool = True,
+        time_period: str = "mean",
+        precision: str = "float32",
+    ) -> Mapping[str, Any]:
+        """Add one Python-owned CAM-format history stream on every rank."""
+
+        result = dict(
+            self._request(
+                {
+                    "op": "install_history_stream",
+                    "name": str(name),
+                    "fields": None if fields is None else list(fields),
+                    "stream": str(stream),
+                    "nhtfrq": int(nhtfrq),
+                    "before": before,
+                    "after": after,
+                    "enabled": bool(enabled),
+                    "precision": str(precision),
+                    "time_period": str(time_period),
+                }
+            )
+        )
+        self._status = dict(self._request({"op": "status"}))
+        return result
+
+    def remove_history_stream(self, name: str) -> Mapping[str, Any]:
+        result = dict(
+            self._request({"op": "remove_history_stream", "name": str(name)})
+        )
+        self._status = dict(self._request({"op": "status"}))
+        return result
+
+    def history_streams(self) -> tuple[Mapping[str, Any], ...]:
+        """Return every installed Python-owned history stream."""
+
+        return tuple(self._request({"op": "history_streams"}))
+
+    def drain_history_streams(self) -> int:
+        """Add every queued window to the CAM history file it belongs to."""
+
+        return int(self._request({"op": "drain_history_streams"})["written"])
+
     def trace_window(self, *, since: int = 0) -> dict[str, Any]:
         """Return ``{'first_sequence', 'total', 'records'}`` from the worker.
 
@@ -2053,6 +2245,48 @@ class PICAMNotebookSession:
                 }
             )
         )
+
+    def set_python_parameters(
+        self, name: str, parameters: Mapping[str, Any]
+    ) -> Mapping[str, Any]:
+        """Collectively replace one process's persistent keyword parameters."""
+
+        return dict(
+            self._request(
+                {
+                    "op": "set_python_parameters",
+                    "name": str(name),
+                    "parameters": dict(parameters),
+                }
+            )
+        )
+
+    def get_python_parameters(self, name: str) -> dict[str, Any]:
+        """Read one process's current persistent keyword parameters."""
+
+        return dict(
+            self._request(
+                {"op": "get_python_parameters", "name": str(name)}
+            )
+        )
+
+    def set_module_parameter(self, name: str, value: Any) -> Mapping[str, Any]:
+        """Collectively change one audited CAM physics tunable in place."""
+
+        return dict(
+            self._request(
+                {
+                    "op": "set_module_parameter",
+                    "name": str(name),
+                    "value": value,
+                }
+            )
+        )
+
+    def get_module_parameters(self) -> dict[str, Any]:
+        """Read every bound tunable's value, baseline, and availability."""
+
+        return dict(self._request({"op": "get_module_parameters"}))
 
     def install_fortran(
         self,
