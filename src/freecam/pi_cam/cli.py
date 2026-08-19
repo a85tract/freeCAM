@@ -20,7 +20,39 @@ from .boundary import (
     ReplayBoundaryProvider,
 )
 from .case import PICAMCase
+from .errors import PICAMConfigurationError
+from .namelist import (
+    NamelistEntry,
+    apply_overrides,
+    coerce_text,
+    load_catalog,
+)
 from .native import NativeCAMDevice
+
+
+def _namelist_requests(items: list[str]) -> dict[str, str]:
+    """Split repeatable ``NAME=VALUE`` flags, rejecting malformed ones."""
+
+    requested: dict[str, str] = {}
+    for item in items:
+        name, separator, value = item.partition("=")
+        if not separator or not name.strip():
+            raise PICAMConfigurationError(
+                f"--namelist expects NAME=VALUE, got {item!r}"
+            )
+        requested[name.strip().lower()] = value
+    return requested
+
+
+def _catalog_entry(
+    catalog: dict[str, NamelistEntry], name: str
+) -> NamelistEntry:
+    entry = catalog.get(name)
+    if entry is None:
+        raise PICAMConfigurationError(
+            f"unknown CAM namelist variable {name!r}"
+        )
+    return entry
 
 
 def _process_memory(label: str, step: int) -> dict[str, int | str]:
@@ -121,6 +153,18 @@ def main(argv: list[str] | None = None) -> int:
             "model's own h0 output by default, so this only overrides that"
         ),
     )
+    parser.add_argument(
+        "--namelist",
+        action="append",
+        default=[],
+        dest="namelist_overrides",
+        metavar="NAME=VALUE",
+        help=(
+            "override one CAM namelist variable in the run directory's "
+            "atm_in before initialization, validated against the pinned "
+            "source's namelist definition; repeatable"
+        ),
+    )
     parser.add_argument("--summary", type=Path)
     parser.add_argument(
         "--memory-sample-every",
@@ -137,6 +181,21 @@ def main(argv: list[str] | None = None) -> int:
 
     world = MPI.COMM_WORLD
     case = PICAMCase.from_yaml(args.config)
+    # Every rank validates the overrides (a rank-0-only failure between
+    # barriers would hang the rest); only rank 0 rewrites the file.
+    applied_namelist: dict[str, tuple[str | None, str]] = {}
+    if args.namelist_overrides:
+        requested = _namelist_requests(args.namelist_overrides)
+        catalog = load_catalog(case.config.source_root)
+        overrides = {
+            name: coerce_text(text, _catalog_entry(catalog, name))
+            for name, text in requested.items()
+        }
+        if world.rank == 0:
+            applied_namelist = apply_overrides(
+                Path(args.run_dir) / "atm_in", overrides, catalog
+            )
+        world.Barrier()
     if args.execution_mode is not None:
         case = PICAMCase(replace(case.config, execution_mode=args.execution_mode))
     if args.boundary is not None:
@@ -408,6 +467,10 @@ def main(argv: list[str] | None = None) -> int:
             "schema_version": 1,
             "run_status": "passed",
             "case": case.config.case_name,
+            "applied_namelist_overrides": {
+                name: {"previous": old, "value": new}
+                for name, (old, new) in applied_namelist.items()
+            },
             "pbs_job_id": os.environ.get("PBS_JOBID"),
             "mpi_ranks": world.Get_size(),
             "steps": steps,

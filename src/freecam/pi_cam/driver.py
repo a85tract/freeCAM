@@ -1870,15 +1870,18 @@ class PICAMDriver:
         namelist = Path(self.run_dir) / "atm_in"
         if not namelist.is_file():
             return 0
-        for line in namelist.read_text().splitlines():
-            name, separator, value = line.partition("=")
-            if separator and name.strip().lower() == "nhtfrq":
-                first = value.split(",")[0].strip()
-                try:
-                    return int(first)
-                except ValueError:
-                    return 0
-        return 0
+        from .namelist import read_values
+
+        try:
+            raw = read_values(namelist).get("nhtfrq")
+        except PICAMConfigurationError:
+            return 0
+        if raw is None:
+            return 0
+        try:
+            return int(raw.split(",")[0].strip())
+        except ValueError:
+            return 0
 
     def install_history_stream(
         self,
