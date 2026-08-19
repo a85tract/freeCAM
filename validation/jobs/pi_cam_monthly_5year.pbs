@@ -1,5 +1,5 @@
 #!/bin/bash
-#PBS -N freecam-mem-5y
+#PBS -N freecam-monthly-5y
 #PBS -q main
 #PBS -l select=4:ncpus=64:mpiprocs=128:ompthreads=1:mem=110GB
 #PBS -l walltime=10:00:00
@@ -14,7 +14,7 @@ python=${repo}/.venv/bin/python
 case_root=/glade/work/${USER}/CESM_cases/f.e13.F1850C5.ne16_g16.icesm131_ihesp.PI-cam-oracle.50step
 reference=/glade/derecho/scratch/${USER}/freeCAM/PI-cam/original-fortran-five-year-reference/run
 library=${FREECAM_CESM_PROVIDER_LIBRARY:-${repo}/build/cesm/pi_atm/production-components/libpycesm_external_atm.so}
-root=/glade/derecho/scratch/${USER}/freeCAM/PI-cam/memory-5year-${PBS_JOBID}
+root=/glade/derecho/scratch/${USER}/freeCAM/PI-cam/monthly-5year-${PBS_JOBID}
 cam_run=${root}/cam-run
 cesm_run=${root}/cesm-provider-run
 summary=${root}/summary.json
@@ -54,6 +54,11 @@ Path("${cam_run}/.exact-cesm-provider.pkl").write_bytes(
 )
 PY
 
+# Production output contract: monthly means, one sample per file, so the
+# result is directly comparable with the long reference integration.
+perl -0pi -e 's/nhtfrq\s*=\s*-?\d+/nhtfrq\t\t= 0/; s/mfilt\s*=\s*\d+/mfilt\t\t= 1/' \
+  "${cam_run}/atm_in"
+
 cd "${repo}"
 mpiexec --label -n 512 "${python}" -m freecam.pi_cam.cli \
   --config configs/pi_cam_icesm131_exact_online_5year.yaml \
@@ -64,4 +69,11 @@ mpiexec --label -n 512 "${python}" -m freecam.pi_cam.cli \
   --summary "${summary}" \
   > "${cam_run}/freecam.log" 2>&1
 
-cp "${summary}" validation/pi_cam_python_memory_5year.json
+"${python}" tools/compare_with_reference_case.py \
+  --candidate "${cam_run}" \
+  --reference /glade/derecho/scratch/fengzhu/CESM_output/f.e13.F1850C5.ne16_g16.icesm131_ihesp.PI-atm.001/run \
+  --stream h0 \
+  --output "${root}/bfb.json"
+
+cp "${summary}" validation/pi_cam_monthly_5year.json
+cp "${root}/bfb.json" validation/pi_cam_monthly_5year_bfb.json

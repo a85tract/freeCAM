@@ -1,0 +1,181 @@
+{
+  "schema_version": 1,
+  "candidate_dir": "/glade/derecho/scratch/ruitong/freeCAM/PI-cam/monthly-1year-7149429.desched1/cam-run",
+  "reference_dir": "/glade/derecho/scratch/fengzhu/CESM_output/f.e13.F1850C5.ne16_g16.icesm131_ihesp.PI-atm.001/run",
+  "stream": "h0",
+  "candidate_files": 12,
+  "reference_files": 227,
+  "compared_files": 12,
+  "unmatched_candidates": [],
+  "bfb": true,
+  "files": [
+    {
+      "candidate": "f.e13.F1850C5.ne16_g16.icesm131_ihesp.PI-cam-oracle.1year.cam.h0.0001-01.nc",
+      "reference": "f.e13.F1850C5.ne16_g16.icesm131_ihesp.PI-atm.001.cam.h0.0001-01.nc",
+      "dimensions_match": true,
+      "identical": 215,
+      "differing": [],
+      "skipped": [
+        "date_written",
+        "time_written"
+      ],
+      "only_in_candidate": [],
+      "only_in_reference": [],
+      "bfb": true
+    },
+    {
+      "candidate": "f.e13.F1850C5.ne16_g16.icesm131_ihesp.PI-cam-oracle.1year.cam.h0.0001-02.nc",
+      "reference": "f.e13.F1850C5.ne16_g16.icesm131_ihesp.PI-atm.001.cam.h0.0001-02.nc",
+      "dimensions_match": true,
+      "identical": 215,
+      "differing": [],
+      "skipped": [
+        "date_written",
+        "time_written"
+      ],
+      "only_in_candidate": [],
+      "only_in_reference": [],
+      "bfb": true
+    },
+    {
+      "candidate": "f.e13.F1850C5.ne16_g16.icesm131_ihesp.PI-cam-oracle.1year.cam.h0.0001-03.nc",
+      "reference": "f.e13.F1850C5.ne16_g16.icesm131_ihesp.PI-atm.001.cam.h0.0001-03.nc",
+      "dimensions_match": true,
+      "identical": 215,
+      "differing": [],
+      "skipped": [
+        "date_written",
+        "time_written"
+      ],
+      "only_in_candidate": [],
+      "only_in_reference": [],
+      "bfb": true
+    },
+    {
+      "candidate": "f.e13.F1850C5.ne16_g16.icesm131_ihesp.PI-cam-oracle.1year.cam.h0.0001-04.nc",
+      "reference": "f.e13.F1850C5.ne16_g16.icesm131_ihesp.PI-atm.001.cam.h0.0001-04.nc",
+      "dimensions_match": true,
+      "identical": 215,
+      "differing": [],
+      "skipped": [
+        "date_written",
+        "time_written"
+      ],
+      "only_in_candidate": [],
+      "only_in_reference": [],
+      "bfb": true
+    },
+    {
+      "candidate": "f.e13.F1850C5.ne16_g16.icesm131_ihesp.PI-cam-oracle.1year.cam.h0.0001-05.nc",
+      "reference": "f.e13.F1850C5.ne16_g16.icesm131_ihesp.PI-atm.001.cam.h0.0001-05.nc",
+      "dimensions_match": true,
+      "identical": 215,
+      "differing": [],
+      "skipped": [
+        "date_written",
+        "time_written"
+      ],
+      "only_in_candidate": [],
+      "only_in_reference": [],
+      "bfb": true
+    },
+    {
+      "candidate": "f.e13.F1850C5.ne16_g16.icesm131_ihesp.PI-cam-oracle.1year.cam.h0.0001-06.nc",
+      "reference": "f.e13.F1850C5.ne16_g16.icesm131_ihesp.PI-atm.001.cam.h0.0001-06.nc",
+      "dimensions_match": true,
+      "identical": 215,
+      "differing": [],
+      "skipped": [
+        "date_written",
+        "time_written"
+      ],
+      "only_in_candidate": [],
+      "only_in_reference": [],
+      "bfb": true
+    },
+    {
+      "candidate": "f.e13.F1850C5.ne16_g16.icesm131_ihesp.PI-cam-oracle.1year.cam.h0.0001-07.nc",
+      "reference": "f.e13.F1850C5.ne16_g16.icesm131_ihesp.PI-atm.001.cam.h0.0001-07.nc",
+      "dimensions_match": true,
+      "identical": 215,
+      "differing": [],
+      "skipped": [
+        "date_written",
+        "time_written"
+      ],
+      "only_in_candidate": [],
+      "only_in_reference": [],
+      "bfb": true
+    },
+    {
+      "candidate": "f.e13.F1850C5.ne16_g16.icesm131_ihesp.PI-cam-oracle.1year.cam.h0.0001-08.nc",
+      "reference": "f.e13.F1850C5.ne16_g16.icesm131_ihesp.PI-atm.001.cam.h0.0001-08.nc",
+      "dimensions_match": true,
+      "identical": 215,
+      "differing": [],
+      "skipped": [
+        "date_written",
+        "time_written"
+      ],
+      "only_in_candidate": [],
+      "only_in_reference": [],
+      "bfb": true
+    },
+    {
+      "candidate": "f.e13.F1850C5.ne16_g16.icesm131_ihesp.PI-cam-oracle.1year.cam.h0.0001-09.nc",
+      "reference": "f.e13.F1850C5.ne16_g16.icesm131_ihesp.PI-atm.001.cam.h0.0001-09.nc",
+      "dimensions_match": true,
+      "identical": 215,
+      "differing": [],
+      "skipped": [
+        "date_written",
+        "time_written"
+      ],
+      "only_in_candidate": [],
+      "only_in_reference": [],
+      "bfb": true
+    },
+    {
+      "candidate": "f.e13.F1850C5.ne16_g16.icesm131_ihesp.PI-cam-oracle.1year.cam.h0.0001-10.nc",
+      "reference": "f.e13.F1850C5.ne16_g16.icesm131_ihesp.PI-atm.001.cam.h0.0001-10.nc",
+      "dimensions_match": true,
+      "identical": 215,
+      "differing": [],
+      "skipped": [
+        "date_written",
+        "time_written"
+      ],
+      "only_in_candidate": [],
+      "only_in_reference": [],
+      "bfb": true
+    },
+    {
+      "candidate": "f.e13.F1850C5.ne16_g16.icesm131_ihesp.PI-cam-oracle.1year.cam.h0.0001-11.nc",
+      "reference": "f.e13.F1850C5.ne16_g16.icesm131_ihesp.PI-atm.001.cam.h0.0001-11.nc",
+      "dimensions_match": true,
+      "identical": 215,
+      "differing": [],
+      "skipped": [
+        "date_written",
+        "time_written"
+      ],
+      "only_in_candidate": [],
+      "only_in_reference": [],
+      "bfb": true
+    },
+    {
+      "candidate": "f.e13.F1850C5.ne16_g16.icesm131_ihesp.PI-cam-oracle.1year.cam.h0.0001-12.nc",
+      "reference": "f.e13.F1850C5.ne16_g16.icesm131_ihesp.PI-atm.001.cam.h0.0001-12.nc",
+      "dimensions_match": true,
+      "identical": 215,
+      "differing": [],
+      "skipped": [
+        "date_written",
+        "time_written"
+      ],
+      "only_in_candidate": [],
+      "only_in_reference": [],
+      "bfb": true
+    }
+  ]
+}

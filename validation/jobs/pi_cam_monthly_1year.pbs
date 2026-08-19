@@ -1,8 +1,11 @@
 #!/bin/bash
-#PBS -N freecam-mem-5y
-#PBS -q main
+#PBS -N freecam-monthly-1y
+# develop routes to the shared cpudev execution queue on Derecho.
+#PBS -q develop
 #PBS -l select=4:ncpus=64:mpiprocs=128:ompthreads=1:mem=110GB
-#PBS -l walltime=10:00:00
+# One-year runs have previously taken about 92 minutes; keep three hours
+# of headroom while remaining suitable for the development queue.
+#PBS -l walltime=03:00:00
 #PBS -j oe
 #PBS -o /glade/work/ruitong/freeCAM/logs/
 #PBS -V
@@ -12,9 +15,9 @@ set -euo pipefail
 repo=/glade/work/${USER}/freeCAM
 python=${repo}/.venv/bin/python
 case_root=/glade/work/${USER}/CESM_cases/f.e13.F1850C5.ne16_g16.icesm131_ihesp.PI-cam-oracle.50step
-reference=/glade/derecho/scratch/${USER}/freeCAM/PI-cam/original-fortran-five-year-reference/run
+reference=/glade/derecho/scratch/${USER}/freeCAM/PI-cam/original-fortran-one-year-reference/run
 library=${FREECAM_CESM_PROVIDER_LIBRARY:-${repo}/build/cesm/pi_atm/production-components/libpycesm_external_atm.so}
-root=/glade/derecho/scratch/${USER}/freeCAM/PI-cam/memory-5year-${PBS_JOBID}
+root=/glade/derecho/scratch/${USER}/freeCAM/PI-cam/monthly-1year-${PBS_JOBID}
 cam_run=${root}/cam-run
 cesm_run=${root}/cesm-provider-run
 summary=${root}/summary.json
@@ -54,14 +57,26 @@ Path("${cam_run}/.exact-cesm-provider.pkl").write_bytes(
 )
 PY
 
+# Production output contract: monthly means, one sample per file, so the
+# result is directly comparable with the long reference integration.
+perl -0pi -e 's/nhtfrq\s*=\s*-?\d+/nhtfrq\t\t= 0/; s/mfilt\s*=\s*\d+/mfilt\t\t= 1/' \
+  "${cam_run}/atm_in"
+
 cd "${repo}"
 mpiexec --label -n 512 "${python}" -m freecam.pi_cam.cli \
-  --config configs/pi_cam_icesm131_exact_online_5year.yaml \
+  --config configs/pi_cam_icesm131_exact_online_1year.yaml \
   --boundary-provider "${cam_run}/.exact-cesm-provider.pkl" \
   --run-dir "${cam_run}" \
-  --steps 87600 \
+  --steps 17520 \
   --memory-sample-every 2000 \
   --summary "${summary}" \
   > "${cam_run}/freecam.log" 2>&1
 
-cp "${summary}" validation/pi_cam_python_memory_5year.json
+"${python}" tools/compare_with_reference_case.py \
+  --candidate "${cam_run}" \
+  --reference /glade/derecho/scratch/fengzhu/CESM_output/f.e13.F1850C5.ne16_g16.icesm131_ihesp.PI-atm.001/run \
+  --stream h0 \
+  --output "${root}/bfb.json"
+
+cp "${summary}" validation/pi_cam_monthly_1year.json
+cp "${root}/bfb.json" validation/pi_cam_monthly_1year_bfb.json
