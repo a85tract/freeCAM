@@ -1,0 +1,68 @@
+{
+  "expectation": "all 14 audited tunables bind and verify against atm_in; changing zmconv_c0_lnd at step 25 leaves the pre-change history file bit identical and makes the post-change restart files differ",
+  "gate": "pi_cam_runtime_parameter_50step",
+  "pbs_job_id": "7164949.desched1",
+  "post_change_files_diverged": [
+    "r.0001-01-02-03600",
+    "rh0.0001-01-02-03600",
+    "rs.0001-01-02-03600"
+  ],
+  "pre_change_files_identical": [
+    "h0.0001-01-01-00000"
+  ],
+  "run_status": "passed",
+  "schema_version": 1,
+  "summary": {
+    "all_ranks_agree": true,
+    "baseline_values": {
+      "cldfrc_dp1": 0.1,
+      "cldfrc_dp2": 500.0,
+      "cldfrc_premib": 70000.0,
+      "cldfrc_premit": 40000.0,
+      "cldfrc_rhminh": 0.8,
+      "cldfrc_rhminl": 0.87,
+      "cldfrc_rhminl_adj_land": 0.1,
+      "cldfrc_sh1": 0.04,
+      "cldfrc_sh2": 500.0,
+      "effgw_oro": 0.125,
+      "uwshcu_rpen": 5.0,
+      "zmconv_c0_lnd": 0.0059,
+      "zmconv_c0_ocn": 0.045,
+      "zmconv_ke": 1e-06
+    },
+    "binding_verified_against_atm_in": true,
+    "bound_count": 14,
+    "bound_parameters": [
+      "cldfrc_dp1",
+      "cldfrc_dp2",
+      "cldfrc_premib",
+      "cldfrc_premit",
+      "cldfrc_rhminh",
+      "cldfrc_rhminl",
+      "cldfrc_rhminl_adj_land",
+      "cldfrc_sh1",
+      "cldfrc_sh2",
+      "effgw_oro",
+      "uwshcu_rpen",
+      "zmconv_c0_lnd",
+      "zmconv_c0_ocn",
+      "zmconv_ke"
+    ],
+    "change_at_step": 25,
+    "gate": "pi_cam_runtime_parameter_50step",
+    "mpi_ranks": 512,
+    "overrides": {
+      "zmconv_c0_lnd": {
+        "baseline": 0.0059,
+        "value": 0.0075
+      }
+    },
+    "parameter": "zmconv_c0_lnd",
+    "run_status": "passed",
+    "schema_version": 1,
+    "steps": 50,
+    "unavailable": {},
+    "value_after": 0.0075,
+    "value_before": 0.0059
+  }
+}
