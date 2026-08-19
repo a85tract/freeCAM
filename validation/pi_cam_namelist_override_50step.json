@@ -1,0 +1,35 @@
+{
+  "applied_namelist_overrides": {
+    "cldfrc_rhminl": {
+      "previous": "0.870D0",
+      "value": "0.9D0"
+    }
+  },
+  "atm_in_lines_changed": 1,
+  "compared_files": 4,
+  "expectation": "a validated cldfrc_rhminl override is exactly one atm_in line and changes CAM's 50-step output, proving the value reached the physics",
+  "first_difference": {
+    "candidate": {
+      "bits": "0x3a05e7fc",
+      "value": 0.000510811572894454
+    },
+    "file": "cam.h0.0001-01-01-00000.nc",
+    "index": [
+      0,
+      18,
+      328
+    ],
+    "kind": "value",
+    "reference": {
+      "bits": "0x3a05fab8",
+      "value": 0.000511090736836195
+    },
+    "variable": "ADRAIN"
+  },
+  "gate": "pi_cam_namelist_override_50step",
+  "output_bfb_with_unperturbed_reference": false,
+  "pbs_job_id": "7164274.desched1",
+  "run_status": "passed",
+  "schema_version": 1,
+  "steps": 50
+}
