@@ -172,6 +172,12 @@ workflow["dry_adjustment"].run()
 workflow["radiation"].move(before="vertical_diffusion")
 ```
 
+Running one process alone reads and writes the same live state the complete
+step uses, so its inputs can be set to anything first and its outputs read
+back afterwards.
+[`examples/macro_microphysics.ipynb`](examples/macro_microphysics.ipynb) is
+that in one cell for CAM5's cloud macro/microphysics stage.
+
 Notebook-defined Python physics can be inserted without rebuilding CAM:
 
 ```python
