@@ -24,6 +24,7 @@ import json
 from pathlib import Path
 
 import netCDF4
+import numpy as np
 
 import freecam as fc
 
@@ -42,6 +43,40 @@ def _tapes(run_dir: str | Path) -> list[dict[str, object]]:
                 }
             )
     return rows
+
+
+def _attribute_kind(value: object) -> str:
+    """Text or the numeric type a reader sees, not the value itself."""
+
+    if isinstance(value, (str, bytes)):
+        return "text"
+    return str(np.asarray(value).dtype)
+
+
+def _added_variable_matches_cam(path: str | Path) -> dict[str, object]:
+    """Compare the added field's declaration with a CAM field in the same file."""
+
+    with netCDF4.Dataset(path) as dataset:
+        native = dataset.variables["T"]
+        added = dataset.variables["dt_macro"]
+        return {
+            "file_format": dataset.data_model,
+            "dimensions_match": added.dimensions == native.dimensions,
+            "dtype_matches": str(added.dtype) == str(native.dtype),
+            "attributes_match": sorted(added.ncattrs()) == sorted(native.ncattrs()),
+            "attribute_types_match": {
+                name: _attribute_kind(added.getncattr(name)) for name in added.ncattrs()
+            }
+            == {
+                name: _attribute_kind(native.getncattr(name))
+                for name in native.ncattrs()
+            },
+            "dimensions": list(added.dimensions),
+            "dtype": str(added.dtype),
+            "attribute_types": {
+                name: _attribute_kind(added.getncattr(name)) for name in added.ncattrs()
+            },
+        }
 
 
 def main() -> int:
@@ -67,6 +102,7 @@ def main() -> int:
     after_close = _tapes(run_dir)
 
     samples = [row for row in after_close if row["dt_macro"]]
+    fidelity = _added_variable_matches_cam(f"{run_dir}/{after_close[-1]['file']}")
     resolved = [
         list(row.get("resolved_fields", ())) for row in streams
     ]
@@ -76,6 +112,10 @@ def main() -> int:
         and bool(after_close[-1]["dt_macro"])
         and not bool(before_close[-1]["dt_macro"])
         and not any(row["scratch_probe"] for row in after_close)
+        and fidelity["dimensions_match"]
+        and fidelity["dtype_matches"]
+        and fidelity["attributes_match"]
+        and fidelity["attribute_types_match"]
     )
     record = {
         "schema_version": 1,
@@ -84,7 +124,8 @@ def main() -> int:
             "every CAM history sample written after a Python-owned field "
             "exists carries it, including the run's last sample, which only "
             "finalization completes; a field created with output=False "
-            "reaches no history file; describing history streams on a live "
+            "reaches no history file; the added variable is declared exactly "
+            "as CAM declares its own; describing history streams on a live "
             "model returns on every rank"
         ),
         "run_status": "passed" if passed else "failed",
@@ -101,6 +142,7 @@ def main() -> int:
         "output_false_field_written_anywhere": any(
             row["scratch_probe"] for row in after_close
         ),
+        "added_variable_matches_cam": fidelity,
         "run_dir": run_dir,
     }
     args.output.parent.mkdir(parents=True, exist_ok=True)

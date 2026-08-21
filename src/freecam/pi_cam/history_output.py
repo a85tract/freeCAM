@@ -472,7 +472,10 @@ class PICAMHistoryStream:
                 dimensions,
             )
             if len(dimensions) == 3:
-                created.mdims = 1
+                # CAM writes this marker as a 32-bit integer; a CDF-5 file
+                # would otherwise carry a 64-bit one for Python-owned fields
+                # alone, which is a difference readers can see.
+                created.mdims = np.int32(1)
             created.units = units or "1"
             created.long_name = long_name or name
             created.cell_methods = self.spec.cell_methods

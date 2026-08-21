@@ -1,5 +1,24 @@
 {
-  "expectation": "every CAM history sample written after a Python-owned field exists carries it, including the run's last sample, which only finalization completes; a field created with output=False reaches no history file; describing history streams on a live model returns on every rank",
+  "added_variable_matches_cam": {
+    "attribute_types": {
+      "cell_methods": "text",
+      "long_name": "text",
+      "mdims": "int32",
+      "units": "text"
+    },
+    "attribute_types_match": true,
+    "attributes_match": true,
+    "dimensions": [
+      "time",
+      "lev",
+      "ncol"
+    ],
+    "dimensions_match": true,
+    "dtype": "float32",
+    "dtype_matches": true,
+    "file_format": "NETCDF3_64BIT_DATA"
+  },
+  "expectation": "every CAM history sample written after a Python-owned field exists carries it, including the run's last sample, which only finalization completes; a field created with output=False reaches no history file; the added variable is declared exactly as CAM declares its own; describing history streams on a live model returns on every rank",
   "final_sample_completed_at_finalization": true,
   "gate": "pi_cam_python_history_output_12step",
   "history_streams": [
@@ -21,8 +40,8 @@
   ],
   "nhtfrq": -1,
   "output_false_field_written_anywhere": false,
-  "pbs_job_id": "7187851.desched1",
-  "run_dir": "/glade/derecho/scratch/ruitong/freeCAM/PI-cam/notebook-20260820-194401-8b6b23df/run",
+  "pbs_job_id": "7188336.desched1",
+  "run_dir": "/glade/derecho/scratch/ruitong/freeCAM/PI-cam/notebook-20260820-200622-5168ef9d/run",
   "run_status": "passed",
   "samples_with_python_field": 6,
   "schema_version": 1,

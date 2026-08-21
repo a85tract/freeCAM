@@ -187,6 +187,28 @@ def test_python_field_lands_in_the_cam_history_file(tmp_path: Path) -> None:
         assert float(dataset.variables["T"][0, 0, 0]) == 250.0
 
 
+def test_added_variable_matches_the_files_own_field_metadata(tmp_path: Path) -> None:
+    """A Python-owned field must look like a CAM field to every reader."""
+
+    driver = _driver(tmp_path)
+    driver.initialize()
+    _python_field(driver, "heating_rate", levels=True, units="K s-1")
+    path = _cam_history_file(driver, [(1, 2, 1, 0)])
+    stream = driver.history_streams.stream("python_fields")
+    stream.accumulate()
+    driver.clock.month = 2
+    assert stream.step() == 1
+
+    with netCDF4.Dataset(path) as dataset:
+        native = dataset.variables["T"]
+        added = dataset.variables["heating_rate"]
+        assert added.dimensions == native.dimensions
+        assert added.dtype == native.dtype
+        assert sorted(added.ncattrs()) == ["cell_methods", "long_name", "mdims", "units"]
+        # CAM writes this marker as a 32-bit integer.
+        assert np.asarray(added.getncattr("mdims")).dtype == np.int32
+
+
 def test_level_field_uses_the_files_own_vertical_axis(tmp_path: Path) -> None:
     driver = _driver(tmp_path)
     driver.initialize()
