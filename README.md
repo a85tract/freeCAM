@@ -77,17 +77,29 @@ and arrays until `driver.close()` or the context manager exits.
 
 FreeCAM profiles its Python control regions, boundary operations, complete
 steps, individually dispatched processes, and Fortran calls by default. When
-the model closes it writes two CESM-style text reports under the run directory:
+the model closes it writes three CESM-style text reports under the run
+directory:
 
 ```text
-timing/freecam_timing.0000   rank-0 hierarchical call timing
-timing/freecam_timing_stats  aggregate statistics across all MPI ranks
+timing/freecam_timing.0000        rank-0 hierarchical call timing
+timing/freecam_timing_stats       aggregate statistics across all MPI ranks
+timing/cesm_timing.<case>.<lid>   CIME-format performance profile
 ```
+
+The performance profile carries the same high-level summary CIME writes for a
+CESM case — Model Cost (pe-hrs/simulated-year), Model Throughput
+(simulated-years/day), and Init/Run/Final times — derived from the gathered
+`FREECAM:INITIALIZE`/`STEP`/`FINALIZE` totals. Because freeCAM advances the CAM
+atmosphere as one timed unit, its component breakdown reads like a standalone
+`atm`-only compset: ATM carries the whole run cost and every other component
+reads zero. Model Cost bills whole nodes, matching CIME's node-granular
+accounting.
 
 Timing uses `MPI_Wtime`. Process execution adds no timing barriers; rank-local
 records are gathered only once during finalization. The online surface/coupler
-provider may also write its original `cesm_timing.*` files in its own run
-directory. Those files profile different code and are intentionally retained.
+provider writes its own original `cesm_timing.*` files into its separate,
+private CESM run directory (never freeCAM's). Those files profile different
+code and are intentionally retained.
 
 The in-memory action trace is bounded to the most recent 4,096 records per
 rank by default, so long simulations do not accumulate one Python object per
