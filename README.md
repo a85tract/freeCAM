@@ -179,7 +179,7 @@ scientific process in the step; control, clock, and I/O actions keep their
 slots, so the step still writes CAM's history file at its end:
 
 ```python
-workflow[:] = [workflow["macro_microphysics"], workflow["state_and_convection_diagnostics"]]
+workflow[:] = [workflow["macro_microphysics"]]
 driver.cam.state.T += 2.0
 driver.run()                   # one step, one process, one history sample
 driver.cam.history.latest()
