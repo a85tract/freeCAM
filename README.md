@@ -112,9 +112,11 @@ driver.cam.history.latest()   # the usual case.cam.h0.*.nc, now with heating_rat
 
 No configuration is required. A Python-owned field joins the default output
 automatically, accumulated over the same window the case's `nhtfrq` selects and
-written at the same time samples CAM wrote. Pass `output=False` when creating a
-variable to keep a scratch field out of history, or construct the model with
-`default_history_stream=False` to disable the behaviour entirely.
+written at the same time samples CAM wrote. The run's final sample is completed
+when the model closes, over the part of its window the run actually reached.
+Pass `output=False` when creating a variable to keep a scratch field out of
+history, or construct the model with `default_history_stream=False` to disable
+the behaviour entirely.
 
 The run directory therefore stays indistinguishable from the original model's:
 a run with no Python-owned fields writes exactly the files the original writes,
@@ -282,9 +284,10 @@ The current validated results are:
 | Exact online CESM provider, five years | 512 | 884/884 CAM history and restart files match |
 | Monthly output vs. an independent production run, one year | 512 | 12/12 monthly files, 215 variables each, bit identical |
 | Monthly output vs. an independent production run, five years | 512 | 60/60 monthly files, 215 variables each, bit identical |
+| Python-owned fields in CAM history output, twelve steps | 512 | 6/6 hourly samples carry the field, `output=False` reaches none |
 
-The last two gates compare against a separately produced twenty-year CESM
-integration of the same case rather than against a reference this project
+The two monthly-output gates compare against a separately produced twenty-year
+CESM integration of the same case rather than against a reference this project
 generated, so they test the whole lifecycle end to end.
 
 Measured overhead against the original Fortran lifecycle is +8.7% run time and
@@ -301,6 +304,7 @@ Primary evidence:
 - [`validation/pi_cam_exact_cesm_online_5year_bfb.json`](validation/pi_cam_exact_cesm_online_5year_bfb.json)
 - [`validation/pi_cam_monthly_1year_bfb.json`](validation/pi_cam_monthly_1year_bfb.json)
 - [`validation/pi_cam_monthly_5year_bfb.json`](validation/pi_cam_monthly_5year_bfb.json)
+- [`validation/pi_cam_python_history_output_12step.json`](validation/pi_cam_python_history_output_12step.json)
 - [`validation/pi_cam_process_support.json`](validation/pi_cam_process_support.json)
 
 The directory comparator requires identical CAM file inventories, numerical

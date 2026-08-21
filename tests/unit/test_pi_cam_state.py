@@ -45,6 +45,22 @@ def test_dynamic_variable_contract_round_trip_and_safe_removal() -> None:
     assert "experiment_tracer" not in pool
 
 
+def test_dynamic_variable_payload_keeps_the_history_output_flag() -> None:
+    """A scratch field asked to stay out of output must stay out on every rank."""
+
+    spec = PICAMVariableSpec(
+        "scratch", ("column", "level"), output=False, restart=False
+    )
+
+    restored = PICAMVariableSpec.from_payload(spec.to_payload())
+
+    assert restored.output is False
+    assert restored.contract().output is False
+    assert PICAMVariableSpec.from_payload(
+        PICAMVariableSpec("kept", ("column",)).to_payload()
+    ).output is True
+
+
 def test_rank_independent_numpy_array_is_copied_and_registered_dynamically() -> None:
     pool = PICAMStatePool({})
     source = np.arange(12.0).reshape(3, 4)

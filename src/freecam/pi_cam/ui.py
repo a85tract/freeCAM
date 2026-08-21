@@ -1061,6 +1061,7 @@ class PICAMStateView:
             initial=value.initial,
             writable=value.writable,
             restart=value.restart,
+            output=value.output,
             aliases=value.aliases,
             standard_name=value.standard_name,
         )
@@ -1126,6 +1127,7 @@ class PICAMStateView:
         dtype: str | None = None,
         writable: bool = True,
         restart: bool = True,
+        output: bool = True,
         aliases: Sequence[str] = (),
         standard_name: str | None = None,
     ) -> Any:
@@ -1163,6 +1165,7 @@ class PICAMStateView:
             initial=initial,
             writable=writable,
             restart=restart,
+            output=output,
             aliases=tuple(str(item) for item in aliases),
             standard_name=standard_name,
         )

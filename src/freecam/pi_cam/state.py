@@ -137,6 +137,7 @@ class PICAMVariableSpec:
             initial=values.get("initial", 0.0),
             writable=bool(values.get("writable", True)),
             restart=bool(values.get("restart", True)),
+            output=bool(values.get("output", True)),
             aliases=tuple(str(item) for item in values.get("aliases", ())),
             standard_name=(
                 None

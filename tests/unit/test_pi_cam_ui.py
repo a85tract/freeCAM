@@ -395,12 +395,16 @@ def test_state_attribute_assignment_creates_and_deletes_distributed_variable() -
         initial=0.0,
         aliases=("tracer",),
     )
+    state.scratch_probe = Variable(("pcols", "chunks"), output=False)
     del state.experiment_tracer
 
     assert calls[0][0:2] == ("create", "experiment_tracer")
     assert calls[0][2]["dims"] == ("pcols", "pver", "chunks")
     assert calls[0][2]["aliases"] == ("tracer",)
-    assert calls[1] == ("delete", "experiment_tracer")
+    # A field joins CAM's history by default and stays out of it on request.
+    assert calls[0][2]["output"] is True
+    assert calls[1][2]["output"] is False
+    assert calls[2] == ("delete", "experiment_tracer")
 
 
 def test_state_attribute_assignment_accepts_rank_independent_numpy_array() -> None:
@@ -600,6 +604,7 @@ def test_state_create_like_reuses_distributed_field_dimensions() -> None:
                 "initial": 0.0,
                 "writable": True,
                 "restart": True,
+                "output": True,
                 "aliases": (),
                 "standard_name": None,
             },

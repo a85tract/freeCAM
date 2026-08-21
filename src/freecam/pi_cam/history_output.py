@@ -367,6 +367,20 @@ class PICAMHistoryStream:
             )
         )
 
+    def flush(self) -> int:
+        """Close a still-open window at finalization and write what it holds.
+
+        CAM writes a tape sample one step before this stream's window for
+        that sample closes, so a run that stops right after a write would
+        drop its own last sample.  The window is reduced over the samples
+        it actually holds, which is fewer than a complete window when the
+        run stops mid-window.  Collective: every rank must call it.
+        """
+
+        if self._samples:
+            self.close_window()
+        return self.drain()
+
     def drain(self) -> int:
         """Add every queued window whose CAM history file is complete."""
 
@@ -660,6 +674,11 @@ class PICAMHistoryStreamRegistry:
         """Add every queued window across streams, at finalization."""
 
         return sum(stream.drain() for stream in self._streams.values())
+
+    def flush(self) -> int:
+        """Close every open window across streams.  Collective on all ranks."""
+
+        return sum(stream.flush() for stream in self._streams.values())
 
     def describe(self) -> tuple[dict[str, Any], ...]:
         return tuple(

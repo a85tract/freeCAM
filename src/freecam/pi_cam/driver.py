@@ -2284,9 +2284,12 @@ class PICAMDriver:
         if self.lifecycle == PICAMLifecycle.FINALIZED:
             return
         if self.lifecycle in {PICAMLifecycle.INITIALIZED, PICAMLifecycle.RUNNING}:
-            # CAM has closed its history files by now, so any window still
-            # queued can reach the tape it belongs to.
-            self.history_streams.drain()
+            # CAM writes a tape sample one step before this stream's window
+            # for that sample closes, so the run's last window is still open
+            # here.  Closing it is collective; every rank reaches this line.
+            # Whatever it queues for the tape CAM still holds is written
+            # after cam_final.
+            self.history_streams.flush()
         if self.lifecycle not in {
             PICAMLifecycle.INITIALIZED,
             PICAMLifecycle.RUNNING,
@@ -2307,6 +2310,11 @@ class PICAMDriver:
                 with self.profiler.region("FORTRAN:CAM_FINALIZE"):
                     self.backend.finalize(self.pool, fcomm=self.fcomm)
                 self._backend_initialized = False
+                # A run that stops on a history boundary closes its last
+                # window while CAM still owns the file that window belongs
+                # to.  cam_final writes and closes that tape, so this is the
+                # first moment the sample can be appended -- and the last.
+                self.history_streams.drain()
             with self.profiler.region("BOUNDARY:FINALIZE"):
                 if shared_cam and not failed:
                     getattr(self.boundary, "finalize_after_cam")()

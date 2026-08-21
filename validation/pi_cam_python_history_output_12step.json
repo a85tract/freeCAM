@@ -1,0 +1,132 @@
+{
+  "expectation": "every CAM history sample written after a Python-owned field exists carries it, including the run's last sample, which only finalization completes; a field created with output=False reaches no history file; describing history streams on a live model returns on every rank",
+  "final_sample_completed_at_finalization": true,
+  "gate": "pi_cam_python_history_output_12step",
+  "history_streams": [
+    {
+      "accumulated": 0,
+      "dropped": 0,
+      "name": "python_fields",
+      "nhtfrq": -1,
+      "pending": 0,
+      "precision": "float32",
+      "resolved_fields": [
+        "dt_macro"
+      ],
+      "stream": "h0",
+      "time_period": "mean",
+      "variables": null,
+      "written": 0
+    }
+  ],
+  "nhtfrq": -1,
+  "output_false_field_written_anywhere": false,
+  "pbs_job_id": "7187851.desched1",
+  "run_dir": "/glade/derecho/scratch/ruitong/freeCAM/PI-cam/notebook-20260820-194401-8b6b23df/run",
+  "run_status": "passed",
+  "samples_with_python_field": 6,
+  "schema_version": 1,
+  "steps": 12,
+  "tapes_after_close": [
+    {
+      "date": 10101,
+      "datesec": 0,
+      "dt_macro": false,
+      "file": "f.e13.F1850C5.ne16_g16.icesm131_ihesp.PI-cam-oracle.50step.cam.h0.0001-01-01-00000.nc",
+      "scratch_probe": false
+    },
+    {
+      "date": 10101,
+      "datesec": 3600,
+      "dt_macro": true,
+      "file": "f.e13.F1850C5.ne16_g16.icesm131_ihesp.PI-cam-oracle.50step.cam.h0.0001-01-01-03600.nc",
+      "scratch_probe": false
+    },
+    {
+      "date": 10101,
+      "datesec": 7200,
+      "dt_macro": true,
+      "file": "f.e13.F1850C5.ne16_g16.icesm131_ihesp.PI-cam-oracle.50step.cam.h0.0001-01-01-07200.nc",
+      "scratch_probe": false
+    },
+    {
+      "date": 10101,
+      "datesec": 10800,
+      "dt_macro": true,
+      "file": "f.e13.F1850C5.ne16_g16.icesm131_ihesp.PI-cam-oracle.50step.cam.h0.0001-01-01-10800.nc",
+      "scratch_probe": false
+    },
+    {
+      "date": 10101,
+      "datesec": 14400,
+      "dt_macro": true,
+      "file": "f.e13.F1850C5.ne16_g16.icesm131_ihesp.PI-cam-oracle.50step.cam.h0.0001-01-01-14400.nc",
+      "scratch_probe": false
+    },
+    {
+      "date": 10101,
+      "datesec": 18000,
+      "dt_macro": true,
+      "file": "f.e13.F1850C5.ne16_g16.icesm131_ihesp.PI-cam-oracle.50step.cam.h0.0001-01-01-18000.nc",
+      "scratch_probe": false
+    },
+    {
+      "date": 10101,
+      "datesec": 21600,
+      "dt_macro": true,
+      "file": "f.e13.F1850C5.ne16_g16.icesm131_ihesp.PI-cam-oracle.50step.cam.h0.0001-01-01-21600.nc",
+      "scratch_probe": false
+    }
+  ],
+  "tapes_before_close": [
+    {
+      "date": 10101,
+      "datesec": 0,
+      "dt_macro": false,
+      "file": "f.e13.F1850C5.ne16_g16.icesm131_ihesp.PI-cam-oracle.50step.cam.h0.0001-01-01-00000.nc",
+      "scratch_probe": false
+    },
+    {
+      "date": 10101,
+      "datesec": 3600,
+      "dt_macro": true,
+      "file": "f.e13.F1850C5.ne16_g16.icesm131_ihesp.PI-cam-oracle.50step.cam.h0.0001-01-01-03600.nc",
+      "scratch_probe": false
+    },
+    {
+      "date": 10101,
+      "datesec": 7200,
+      "dt_macro": true,
+      "file": "f.e13.F1850C5.ne16_g16.icesm131_ihesp.PI-cam-oracle.50step.cam.h0.0001-01-01-07200.nc",
+      "scratch_probe": false
+    },
+    {
+      "date": 10101,
+      "datesec": 10800,
+      "dt_macro": true,
+      "file": "f.e13.F1850C5.ne16_g16.icesm131_ihesp.PI-cam-oracle.50step.cam.h0.0001-01-01-10800.nc",
+      "scratch_probe": false
+    },
+    {
+      "date": 10101,
+      "datesec": 14400,
+      "dt_macro": true,
+      "file": "f.e13.F1850C5.ne16_g16.icesm131_ihesp.PI-cam-oracle.50step.cam.h0.0001-01-01-14400.nc",
+      "scratch_probe": false
+    },
+    {
+      "date": 10101,
+      "datesec": 18000,
+      "dt_macro": true,
+      "file": "f.e13.F1850C5.ne16_g16.icesm131_ihesp.PI-cam-oracle.50step.cam.h0.0001-01-01-18000.nc",
+      "scratch_probe": false
+    },
+    {
+      "date": 10101,
+      "datesec": 21600,
+      "dt_macro": false,
+      "file": "f.e13.F1850C5.ne16_g16.icesm131_ihesp.PI-cam-oracle.50step.cam.h0.0001-01-01-21600.nc",
+      "scratch_probe": false
+    }
+  ]
+}

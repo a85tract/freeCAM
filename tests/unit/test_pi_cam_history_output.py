@@ -26,7 +26,9 @@ NCOLS = (3, 2)
 TOTAL_COLUMNS = sum(NCOLS)
 
 
-def _driver(tmp_path: Path, *, nhtfrq: int = 0, **kwargs) -> PICAMDriver:
+def _driver(
+    tmp_path: Path, *, nhtfrq: int = 0, backend: object | None = None, **kwargs
+) -> PICAMDriver:
     config = PICAMConfig(
         case_name="unit-history",
         source_root=Path("/tmp/source"),
@@ -44,7 +46,7 @@ def _driver(tmp_path: Path, *, nhtfrq: int = 0, **kwargs) -> PICAMDriver:
     driver = PICAMDriver(
         config,
         boundary,
-        RecordingCAMBackend(),
+        backend or RecordingCAMBackend(),
         rank=0,
         size=1,
         run_dir=run_dir,
@@ -286,6 +288,70 @@ def test_finalize_drains_queued_windows(tmp_path: Path) -> None:
     assert stream.pending == 0
     with netCDF4.Dataset(path) as dataset:
         assert "rain" in dataset.variables
+
+
+def test_finalize_drains_the_tape_cam_closes_last(tmp_path: Path) -> None:
+    """A run that stops on a history boundary still writes its last window.
+
+    CAM owns the file it is writing until ``cam_final`` closes it, so the
+    window that closed on the run's own last step can only be appended
+    after the native finalization, not before it.
+    """
+
+    live: dict[str, PICAMDriver] = {}
+
+    class _LateTapeBackend(RecordingCAMBackend):
+        def finalize(self, pool, *, fcomm: int) -> None:
+            _cam_history_file(live["driver"], [(1, 1, 1, 1800)])
+            super().finalize(pool, fcomm=fcomm)
+
+    driver = _driver(tmp_path, nhtfrq=1, backend=_LateTapeBackend())
+    live["driver"] = driver
+    driver.initialize()
+    _python_field(driver, "rain")
+    stream = driver.history_streams.stream("python_fields")
+
+    driver.clock.advance()
+    assert stream.step() == 0
+    assert stream.pending == 1
+
+    driver.finalize()
+
+    assert stream.pending == 0
+    path = next(Path(driver.run_dir).glob("*.cam.h0.*.nc"))
+    with netCDF4.Dataset(path) as dataset:
+        assert "rain" in dataset.variables
+
+
+def test_finalize_writes_a_window_cam_has_already_sampled(tmp_path: Path) -> None:
+    """The run's last CAM sample must still carry its Python-owned fields.
+
+    An hourly tape at a half-hour timestep closes this stream's window one
+    step after CAM writes the sample that window belongs to, so a run that
+    stops on a CAM write leaves that window open.
+    """
+
+    driver = _driver(tmp_path, nhtfrq=-1)
+    driver.initialize()
+    _python_field(driver, "rain")
+    stream = driver.history_streams.stream("python_fields")
+
+    driver.clock.advance()
+    assert stream.step() == 0
+    assert stream.accumulated == 1
+    assert stream.pending == 0
+
+    path = _cam_history_file(driver, [(1, 1, 1, 1800)])
+    driver.finalize()
+
+    assert stream.accumulated == 0
+    assert stream.pending == 0
+    with netCDF4.Dataset(path) as dataset:
+        added = dataset.variables["rain"]
+        assert added.dimensions == ("time", "ncol")
+        # The partial window is reduced over the one sample it holds.
+        expected = np.asarray([1, 2, 3, 4, 5], dtype="f4")
+        assert np.allclose(added[0, :], expected, rtol=1e-6)
 
 
 def test_output_false_keeps_a_field_out_of_history(tmp_path: Path) -> None:
