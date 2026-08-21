@@ -669,6 +669,75 @@ def test_workflow_moves_and_toggles_process_objects() -> None:
     ]
 
 
+def test_workflow_assignment_runs_the_listed_processes_only() -> None:
+    """``workflow[:] = [process]`` leaves exactly that process in the step."""
+
+    calls = []
+
+    class Process:
+        def __init__(self, name, phase, kind="scheme", operation=None):
+            self.name = name
+            self.phase = phase
+            self.kind = kind
+            self.operation = operation or name
+
+        @property
+        def qualified_name(self):
+            return f"{self.phase}.{self.name}"
+
+        def enable(self):
+            calls.append(("enable", self.qualified_name))
+
+        def disable(self):
+            calls.append(("disable", self.qualified_name))
+
+        def remove(self):
+            calls.append(("remove", self.qualified_name))
+
+    rows = (
+        ("coupling", "boundary_import", "boundary", "boundary_import", True),
+        ("cam_run1", "dry_adjustment", "scheme", "dadadj", False),
+        ("cam_run1", "cloud_macro_microphysics", "scheme", "macro_microphysics", True),
+        ("cam_run1", "notebook_heating", "python_process", "notebook_heating", True),
+        ("cam_run1", "cloud_diagnostics_leaf", "scheme", "leaf_cloud_diagnostics_calc", True),
+        ("cam_run1", "radiation", "scheme", "radiation_tend", True),
+        ("cam_run4", "history", "io", "wshist", True),
+        ("coupling", "boundary_export", "boundary", "boundary_export", True),
+    )
+    processes = {
+        name: Process(name, phase, kind, operation)
+        for phase, name, kind, operation, _ in rows
+    }
+    session = FakeSession()
+    session._status["step_plan"] = tuple(
+        {"phase": phase, "name": name, "kind": kind, "operation": operation,
+         "enabled": enabled}
+        for phase, name, kind, operation, enabled in rows
+    )
+    session.workflow_action = lambda name, phase, kind: processes[name]
+    session.replace_workflow = lambda order: calls.append(tuple(order)) or {}
+    workflow = PICAMWorkflowView(session)
+
+    # Names work like handles; a leaf goes by the name the workflow displays.
+    workflow[:] = ["macro_microphysics", "dry_adjustment", "cloud_diagnostics"]
+
+    assert calls == [
+        ("enable", "cam_run1.dry_adjustment"),        # listed, was disabled
+        ("remove", "cam_run1.notebook_heating"),      # omitted runtime process
+        ("disable", "cam_run1.radiation"),            # omitted CAM process
+        (                                             # hidden actions keep slots
+            "coupling.boundary_import",
+            "cam_run1.cloud_macro_microphysics",
+            "cam_run1.dry_adjustment",
+            "cam_run1.cloud_diagnostics_leaf",
+            "cam_run4.history",
+            "coupling.boundary_export",
+        ),
+    ]
+    with pytest.raises(ValueError, match="only once"):
+        workflow[:] = ["radiation", "radiation"]
+
+
 def test_workflow_slice_assignment_replaces_one_complete_remote_order() -> None:
     calls = []
 

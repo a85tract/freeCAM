@@ -174,9 +174,21 @@ workflow["dry_adjustment"].run()
 workflow["radiation"].move(before="vertical_diffusion")
 ```
 
-Running one process alone reads and writes the same live state the complete
-step uses, so its inputs can be set to anything first and its outputs read
-back afterwards.
+The workflow is a list, and the list is what runs. Assigning one leaves one
+scientific process in the step; control, clock, and I/O actions keep their
+slots, so the step still writes CAM's history file at its end:
+
+```python
+workflow[:] = [workflow["macro_microphysics"], workflow["state_and_convection_diagnostics"]]
+driver.cam.state.T += 2.0
+driver.run()                   # one step, one process, one history sample
+driver.cam.history.latest()
+```
+
+A process left out of the list stops running: an original CAM process is
+disabled and can be enabled again, a notebook process is uninstalled, the
+same as `workflow.pop()` and `workflow.remove()`.
+
 [`examples/macro_microphysics.ipynb`](examples/macro_microphysics.ipynb) is
 that in one cell for CAM5's cloud macro/microphysics stage.
 
