@@ -77,17 +77,29 @@ and arrays until `driver.close()` or the context manager exits.
 
 FreeCAM profiles its Python control regions, boundary operations, complete
 steps, individually dispatched processes, and Fortran calls by default. When
-the model closes it writes two CESM-style text reports under the run directory:
+the model closes it writes three CESM-style text reports under the run
+directory:
 
 ```text
-timing/freecam_timing.0000   rank-0 hierarchical call timing
-timing/freecam_timing_stats  aggregate statistics across all MPI ranks
+timing/freecam_timing.0000        rank-0 hierarchical call timing
+timing/freecam_timing_stats       aggregate statistics across all MPI ranks
+timing/cesm_timing.<case>.<lid>   CIME-format performance profile
 ```
+
+The performance profile carries the same high-level summary CIME writes for a
+CESM case — Model Cost (pe-hrs/simulated-year), Model Throughput
+(simulated-years/day), and Init/Run/Final times — derived from the gathered
+`FREECAM:INITIALIZE`/`STEP`/`FINALIZE` totals. Because freeCAM advances the CAM
+atmosphere as one timed unit, its component breakdown reads like a standalone
+`atm`-only compset: ATM carries the whole run cost and every other component
+reads zero. Model Cost bills whole nodes, matching CIME's node-granular
+accounting.
 
 Timing uses `MPI_Wtime`. Process execution adds no timing barriers; rank-local
 records are gathered only once during finalization. The online surface/coupler
-provider may also write its original `cesm_timing.*` files in its own run
-directory. Those files profile different code and are intentionally retained.
+provider writes its own original `cesm_timing.*` files into its separate,
+private CESM run directory (never freeCAM's). Those files profile different
+code and are intentionally retained.
 
 The in-memory action trace is bounded to the most recent 4,096 records per
 rank by default, so long simulations do not accumulate one Python object per
@@ -112,9 +124,11 @@ driver.cam.history.latest()   # the usual case.cam.h0.*.nc, now with heating_rat
 
 No configuration is required. A Python-owned field joins the default output
 automatically, accumulated over the same window the case's `nhtfrq` selects and
-written at the same time samples CAM wrote. Pass `output=False` when creating a
-variable to keep a scratch field out of history, or construct the model with
-`default_history_stream=False` to disable the behaviour entirely.
+written at the same time samples CAM wrote. The run's final sample is completed
+when the model closes, over the part of its window the run actually reached.
+Pass `output=False` when creating a variable to keep a scratch field out of
+history, or construct the model with `default_history_stream=False` to disable
+the behaviour entirely.
 
 The run directory therefore stays indistinguishable from the original model's:
 a run with no Python-owned fields writes exactly the files the original writes,
@@ -171,6 +185,24 @@ workflow["radiation"].enable()
 workflow["dry_adjustment"].run()
 workflow["radiation"].move(before="vertical_diffusion")
 ```
+
+The workflow is a list, and the list is what runs. Assigning one leaves one
+scientific process in the step; control, clock, and I/O actions keep their
+slots, so the step still writes CAM's history file at its end:
+
+```python
+workflow[:] = [workflow["macro_microphysics"]]
+driver.cam.state.T += 2.0
+driver.run()                   # one step, one process, one history sample
+driver.cam.history.latest()
+```
+
+A process left out of the list stops running: an original CAM process is
+disabled and can be enabled again, a notebook process is uninstalled, the
+same as `workflow.pop()` and `workflow.remove()`.
+
+[`examples/macro_microphysics.ipynb`](examples/macro_microphysics.ipynb) is
+that in one cell for CAM5's cloud macro/microphysics stage.
 
 Notebook-defined Python physics can be inserted without rebuilding CAM:
 
@@ -276,9 +308,10 @@ The current validated results are:
 | Exact online CESM provider, five years | 512 | 884/884 CAM history and restart files match |
 | Monthly output vs. an independent production run, one year | 512 | 12/12 monthly files, 215 variables each, bit identical |
 | Monthly output vs. an independent production run, five years | 512 | 60/60 monthly files, 215 variables each, bit identical |
+| Python-owned fields in CAM history output, twelve steps | 512 | 6/6 hourly samples carry the field, `output=False` reaches none |
 
-The last two gates compare against a separately produced twenty-year CESM
-integration of the same case rather than against a reference this project
+The two monthly-output gates compare against a separately produced twenty-year
+CESM integration of the same case rather than against a reference this project
 generated, so they test the whole lifecycle end to end.
 
 Measured overhead against the original Fortran lifecycle is +8.7% run time and
@@ -295,6 +328,7 @@ Primary evidence:
 - [`validation/pi_cam_exact_cesm_online_5year_bfb.json`](validation/pi_cam_exact_cesm_online_5year_bfb.json)
 - [`validation/pi_cam_monthly_1year_bfb.json`](validation/pi_cam_monthly_1year_bfb.json)
 - [`validation/pi_cam_monthly_5year_bfb.json`](validation/pi_cam_monthly_5year_bfb.json)
+- [`validation/pi_cam_python_history_output_12step.json`](validation/pi_cam_python_history_output_12step.json)
 - [`validation/pi_cam_process_support.json`](validation/pi_cam_process_support.json)
 
 The directory comparator requires identical CAM file inventories, numerical

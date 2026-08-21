@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import time
 import traceback
 from collections import Counter, deque
 from dataclasses import dataclass
@@ -40,7 +41,7 @@ from .runtime_fortran import (
 )
 from .runtime_processes import PICAMPythonProcessRegistry
 from .state import PICAMStatePool, PICAMStateSchema, PICAMVariableSpec
-from .timing import FreeCAMProfiler
+from .timing import CESMTimingContext, FreeCAMProfiler
 
 
 class _SerialComm:
@@ -2278,15 +2279,22 @@ class PICAMDriver:
         finally:
             self.profiler.stop_total()
             if self.run_dir is not None:
-                self.profiler.write(self.run_dir, self.comm)
+                self.profiler.write(
+                    self.run_dir,
+                    self.comm,
+                    profile=self._cesm_timing_context(),
+                )
 
     def _finalize(self) -> None:
         if self.lifecycle == PICAMLifecycle.FINALIZED:
             return
         if self.lifecycle in {PICAMLifecycle.INITIALIZED, PICAMLifecycle.RUNNING}:
-            # CAM has closed its history files by now, so any window still
-            # queued can reach the tape it belongs to.
-            self.history_streams.drain()
+            # CAM writes a tape sample one step before this stream's window
+            # for that sample closes, so the run's last window is still open
+            # here.  Closing it is collective; every rank reaches this line.
+            # Whatever it queues for the tape CAM still holds is written
+            # after cam_final.
+            self.history_streams.flush()
         if self.lifecycle not in {
             PICAMLifecycle.INITIALIZED,
             PICAMLifecycle.RUNNING,
@@ -2307,6 +2315,11 @@ class PICAMDriver:
                 with self.profiler.region("FORTRAN:CAM_FINALIZE"):
                     self.backend.finalize(self.pool, fcomm=self.fcomm)
                 self._backend_initialized = False
+                # A run that stops on a history boundary closes its last
+                # window while CAM still owns the file that window belongs
+                # to.  cam_final writes and closes that tape, so this is the
+                # first moment the sample can be appended -- and the last.
+                self.history_streams.drain()
             with self.profiler.region("BOUNDARY:FINALIZE"):
                 if shared_cam and not failed:
                     getattr(self.boundary, "finalize_after_cam")()
@@ -2317,6 +2330,53 @@ class PICAMDriver:
             if self._previous_directory is not None:
                 os.chdir(self._previous_directory)
                 self._previous_directory = None
+
+    def _cesm_timing_context(self) -> CESMTimingContext:
+        """Assemble the metadata for the CIME-format performance profile.
+
+        The wall clock and environment are read once here, at finalization, so
+        the profile carries the run's real LID and date while the formatter it
+        feeds stays pure and testable.
+        """
+
+        config = self.config
+        online = config.boundary_mode == "online"
+        components = (
+            ("cpl", "cpl"),
+            ("atm", "cam"),
+            ("lnd", "clm" if online else "slnd"),
+            ("ice", "cice" if online else "sice"),
+            ("ocn", "docn" if online else "socn"),
+            ("rof", "rtm" if online else "srof"),
+            ("glc", "sglc"),
+            ("wav", "swav"),
+            ("esp", "sesp"),
+        )
+        surface = "_".join(model.upper() for _label, model in components[2:6])
+        compset = (
+            f"{config.orbital_year}_CAM%{config.physics_package.upper()}"
+            f"_{surface}_SGLC_SWAV_SESP"
+        )
+        job = os.environ.get("PBS_JOBID") or os.uname().nodename
+        return CESMTimingContext(
+            case_name=config.case_name,
+            lid=f"{job}.{time.strftime('%y%m%d-%H%M%S')}",
+            machine=os.environ.get("NCAR_HOST") or "derecho",
+            caseroot="" if self.run_dir is None else str(self.run_dir),
+            user=os.environ.get("USER") or os.uname().nodename,
+            curr_date=time.strftime("%a %b %e %H:%M:%S %Y"),
+            driver="freeCAM",
+            grid=(
+                f"a%{config.resolution}np4 "
+                f"{config.physics_package}-{config.dynamics}"
+            ),
+            compset=compset,
+            run_type="startup, continue_run = FALSE (inittype = TRUE)",
+            timestep_seconds=config.timestep_seconds,
+            mpi_ranks=self.size,
+            tasks_per_node=int(os.environ.get("FREECAM_TASKS_PER_NODE") or 128),
+            components=components,
+        )
 
     def __enter__(self) -> "PICAMDriver":
         return self

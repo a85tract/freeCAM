@@ -179,6 +179,9 @@ def _command(command: dict[str, Any], driver: Any, comm: Any) -> object:
             precision=str(command.get("precision", "float32")),
             time_period=str(command.get("time_period", "mean")),
         )
+        # ``describe`` resolves each stream's fields, and resolving them
+        # builds the collective column map.  Every rank has to reach it.
+        streams = driver.history_streams.describe()
         return (
             {
                 "action": {
@@ -188,7 +191,7 @@ def _command(command: dict[str, Any], driver: Any, comm: Any) -> object:
                     "kind": action.kind,
                     "enabled": action.enabled,
                 },
-                "streams": driver.history_streams.describe(),
+                "streams": streams,
                 "plan": driver.step_plan.describe(),
             }
             if comm.rank == 0
@@ -196,16 +199,15 @@ def _command(command: dict[str, Any], driver: Any, comm: Any) -> object:
         )
     if operation == "remove_history_stream":
         driver.remove_history_stream(str(command["name"]))
+        streams = driver.history_streams.describe()
         return (
-            {
-                "removed": str(command["name"]),
-                "streams": driver.history_streams.describe(),
-            }
+            {"removed": str(command["name"]), "streams": streams}
             if comm.rank == 0
             else None
         )
     if operation == "history_streams":
-        return driver.history_streams.describe() if comm.rank == 0 else None
+        streams = driver.history_streams.describe()
+        return streams if comm.rank == 0 else None
     if operation == "drain_history_streams":
         written = driver.history_streams.drain()
         return {"written": int(written)} if comm.rank == 0 else None

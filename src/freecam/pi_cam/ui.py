@@ -163,18 +163,25 @@ class PICAMWorkflowView:
         matches = tuple(
             action
             for action in self.actions(include_disabled=True)
-            if name in {action.name, action.operation, action.qualified_name}
+            if name
+            in {
+                action.name,
+                action.display_name,
+                action.operation,
+                action.qualified_name,
+            }
         )
         if len(matches) != 1:
             raise KeyError(f"workflow action {name!r} is unknown or ambiguous")
         return self._process(matches[0])
 
     def __setitem__(self, index: int | slice, value: Any) -> None:
-        """Apply normal list assignment as one atomic remote reorder.
+        """Apply normal list assignment as one remote reorder.
 
-        The resulting list must still contain every enabled action exactly
-        once.  This makes ``workflow[:] = new_order`` safe: omission does not
-        silently disable a CAM process.
+        The list afterwards is exactly what runs: ``workflow[:] = [process]``
+        leaves one scientific process in the step, the way it would in a
+        list.  Omitted processes follow :meth:`pop`: an original CAM process
+        is disabled, a runtime one is uninstalled.
         """
 
         order = self[:]
@@ -203,43 +210,42 @@ class PICAMWorkflowView:
         """Replace the visible process order on every MPI rank.
 
         In the normal scientific view, hidden control and I/O actions retain
-        their slots while the requested scientific processes are reordered
-        around them.  The debug view replaces the complete enabled order.
+        their slots while the listed scientific processes run, in that order,
+        and every other visible process stops running.  The debug view
+        replaces the complete enabled order.
         """
 
         resolved = tuple(self._resolve(process) for process in processes)
+        listed = tuple(process.qualified_name for process in resolved)
+        if len(set(listed)) != len(listed):
+            raise ValueError("a process may appear only once in the workflow")
         if not self._include_internal:
-            full_rows = tuple(
-                PICAMWorkflowAction(
-                    index=int(row.get("index", index)),
-                    phase=str(row["phase"]),
-                    name=str(row["name"]),
-                    operation=str(row["operation"]),
-                    kind=str(row["kind"]),
-                    enabled=bool(row["enabled"]),
-                    native_id=(
-                        None
-                        if row.get("native_id") is None
-                        else int(row["native_id"])
-                    ),
-                    control_owner=str(row.get("control_owner", "python")),
-                    implementation=str(row.get("implementation", "python")),
+            full_rows = PICAMWorkflowView(
+                self._session, include_internal=True
+            ).actions(include_disabled=True)
+            for action in full_rows:
+                if not self.is_scientific(action):
+                    continue
+                if action.qualified_name in listed:
+                    if not action.enabled:
+                        self._process(action).enable()
+                elif action.enabled:
+                    self._drop(self._process(action))
+            # The listed processes take the slots the step still has for
+            # scientific work, in the order given; hidden actions keep theirs.
+            kept = tuple(
+                row
+                for row in full_rows
+                if (
+                    row.qualified_name in listed
+                    if self.is_scientific(row)
+                    else row.enabled
                 )
-                for index, row in enumerate(
-                    self._session.status.get("step_plan", ())
-                )
-                if bool(row.get("enabled", True))
             )
-            visible = tuple(row for row in full_rows if self.is_scientific(row))
-            if len(resolved) != len(visible):
-                raise ValueError(
-                    "workflow must contain every visible scientific process "
-                    "exactly once"
-                )
             replacements = iter(resolved)
             resolved = tuple(
                 next(replacements) if self.is_scientific(row) else self._process(row)
-                for row in full_rows
+                for row in kept
             )
         return self._session.replace_workflow(
             tuple(process.qualified_name for process in resolved)
@@ -388,6 +394,13 @@ class PICAMWorkflowView:
         """Remove a runtime process or disable an original CAM process."""
 
         process = self[index]
+        self._drop(process)
+        return process
+
+    @staticmethod
+    def _drop(process: Any) -> None:
+        """Take one process out of the step: uninstall or disable it."""
+
         if process.operation in {
             "boundary_import",
             "advance_timestep",
@@ -404,7 +417,6 @@ class PICAMWorkflowView:
             process.remove()
         else:
             process.disable()
-        return process
 
     def remove(self, process: str | Any) -> None:
         """List-style removal with the same safety rules as :meth:`pop`."""
@@ -1061,6 +1073,7 @@ class PICAMStateView:
             initial=value.initial,
             writable=value.writable,
             restart=value.restart,
+            output=value.output,
             aliases=value.aliases,
             standard_name=value.standard_name,
         )
@@ -1126,6 +1139,7 @@ class PICAMStateView:
         dtype: str | None = None,
         writable: bool = True,
         restart: bool = True,
+        output: bool = True,
         aliases: Sequence[str] = (),
         standard_name: str | None = None,
     ) -> Any:
@@ -1163,6 +1177,7 @@ class PICAMStateView:
             initial=initial,
             writable=writable,
             restart=restart,
+            output=output,
             aliases=tuple(str(item) for item in aliases),
             standard_name=standard_name,
         )

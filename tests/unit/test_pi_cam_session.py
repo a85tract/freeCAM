@@ -997,6 +997,10 @@ def test_session_dynamic_field_and_python_process_commands(
         dims=("pcols", "pver"),
         aliases=("tracer",),
     )
+    session.fields.create("scratch_probe", dims=("pcols", "pver"), output=False)
+    assert commands[0]["spec"]["output"] is True
+    assert commands[1]["spec"]["output"] is False
+    del commands[1]
     relative_humidity = session.fields.create_array("rh", np.zeros(30))
     tracer += 2.0
 

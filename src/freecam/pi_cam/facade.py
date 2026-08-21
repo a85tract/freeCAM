@@ -103,6 +103,10 @@ class Variable:
     dtype: str = "float64"
     writable: bool = True
     restart: bool = True
+    # Python-owned fields join CAM's default history tape, exactly as a
+    # newly registered CAM field would.  ``output=False`` keeps a scratch
+    # field out of the model's output files.
+    output: bool = True
     aliases: tuple[str, ...] = ()
     standard_name: str | None = None
 
@@ -115,6 +119,7 @@ class Variable:
         dtype: str = "float64",
         writable: bool = True,
         restart: bool = True,
+        output: bool = True,
         aliases: Sequence[str] = (),
         standard_name: str | None = None,
     ) -> None:
@@ -124,6 +129,7 @@ class Variable:
         object.__setattr__(self, "dtype", str(dtype))
         object.__setattr__(self, "writable", bool(writable))
         object.__setattr__(self, "restart", bool(restart))
+        object.__setattr__(self, "output", bool(output))
         object.__setattr__(self, "aliases", tuple(str(item) for item in aliases))
         object.__setattr__(self, "standard_name", standard_name)
 

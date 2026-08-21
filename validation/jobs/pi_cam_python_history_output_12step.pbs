@@ -1,0 +1,38 @@
+#!/bin/bash
+#PBS -N freecam-history-12
+#PBS -A UCUB0188
+# ``develop`` is the public route; PBS places eligible jobs in ``cpudev``.
+#PBS -q develop
+#PBS -l select=4:ncpus=64:mpiprocs=128:ompthreads=1:mem=110GB
+#PBS -l walltime=00:30:00
+#PBS -j oe
+#PBS -o /glade/work/ruitong/freeCAM/logs/
+#PBS -V
+
+set -euo pipefail
+
+repo=/glade/work/ruitong/freeCAM
+python=${repo}/.venv/bin/python
+summary=/glade/derecho/scratch/ruitong/freeCAM/PI-cam/history-output-${PBS_JOBID}.json
+
+export PYTHONPATH=${repo}/src
+export OMP_NUM_THREADS=1
+
+cd "${repo}"
+# freecam.Driver launches its own 512 ranks inside this allocation.
+"${python}" tools/validate_pi_cam_history_output.py \
+  --steps 12 \
+  --output "${summary}"
+
+"${python}" - <<PY
+import json
+from pathlib import Path
+
+record = json.loads(Path("${summary}").read_text())
+assert record["run_status"] == "passed", record
+record["pbs_job_id"] = "${PBS_JOBID}"
+Path("validation/pi_cam_python_history_output_12step.json").write_text(
+    json.dumps(record, indent=2, sort_keys=True) + "\n"
+)
+print("history output gate recorded")
+PY

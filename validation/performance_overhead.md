@@ -168,15 +168,24 @@ instant of the write and are expected to differ.
 
 ## Job index
 
-| Job | Name | Config | Memory | Elapsed |
-| --- | --- | --- | ---: | ---: |
-| `7113832` | `fortran-1year` | Fortran baseline, `nhtfrq=-50` | 194.42 GB | 1.41 h |
-| `7126500` | `fortran-5year` | Fortran baseline, `nhtfrq=-50` | 204.21 GB | 7.12 h |
-| `7149358` | `freecam-mem-1y` | freeCAM, `nhtfrq=-50` | 214.51 GB | 1.55 h |
-| `7149359` | `freecam-mem-5y` | freeCAM, `nhtfrq=-50` | 221.04 GB | 7.74 h |
-| `7149429` | `freecam-monthly-1y` | freeCAM, `nhtfrq=0` | 201.24 GB | 1.56 h |
-| `7149430` | `freecam-monthly-5y` | freeCAM, `nhtfrq=0` | 206.89 GB | 7.51 h |
-| `7126501` | `freecam-online-5y` | freeCAM **before** memory fix | 438.48 GB | 9.40 h |
+| Job | Name | Config | Memory | Elapsed | Ended |
+| --- | --- | --- | ---: | ---: | --- |
+| `7113832` | `fortran-1year` | Fortran baseline, `nhtfrq=-50` | 194.42 GB | 1.41 h | 2026-08-14 |
+| `7126500` | `fortran-5year` | Fortran baseline, `nhtfrq=-50` | 204.21 GB | 7.12 h | 2026-08-16 |
+| `7149358` | `freecam-mem-1y` | freeCAM, `nhtfrq=-50` | 214.51 GB | 1.55 h | 2026-08-18 |
+| `7149359` | `freecam-mem-5y` | freeCAM, `nhtfrq=-50` | 221.04 GB | 7.74 h | 2026-08-19 |
+| `7149429` | `freecam-monthly-1y` | freeCAM, `nhtfrq=0` | 201.24 GB | 1.56 h | 2026-08-18 |
+| `7149430` | `freecam-monthly-5y` | freeCAM, `nhtfrq=0` | 206.89 GB | 7.51 h | 2026-08-19 |
+| `7126501` | `freecam-online-5y` | freeCAM **before** memory fix | 438.48 GB | 9.40 h | 2026-08-17 |
+
+The memory and elapsed columns are PBS accounting values. `qhist` searches
+only the current day's log by default, so retrieving them again requires the
+period flag with the end dates above:
+
+```bash
+qhist -j 7113832,7126500,7126501,7149358,7149359,7149429,7149430 \
+      -p 20260813-20260819 -w
+```
 
 ## Evidence
 

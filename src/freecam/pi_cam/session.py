@@ -351,6 +351,7 @@ class _SessionFieldCollection:
         initial: float | int = 0.0,
         writable: bool = True,
         restart: bool = True,
+        output: bool = True,
         aliases: Sequence[str] = (),
         standard_name: str | None = None,
     ) -> _SessionFieldReference:
@@ -362,6 +363,7 @@ class _SessionFieldCollection:
             initial=initial,
             writable=writable,
             restart=restart,
+            output=output,
             aliases=aliases,
             standard_name=standard_name,
         )
@@ -2076,6 +2078,7 @@ class PICAMNotebookSession:
         initial: float | int = 0.0,
         writable: bool = True,
         restart: bool = True,
+        output: bool = True,
         aliases: Sequence[str] = (),
         standard_name: str | None = None,
     ) -> Mapping[str, Any]:
@@ -2087,6 +2090,7 @@ class PICAMNotebookSession:
             initial=initial,
             writable=writable,
             restart=restart,
+            output=output,
             aliases=tuple(aliases),
             standard_name=standard_name,
         )

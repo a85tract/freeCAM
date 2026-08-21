@@ -243,6 +243,41 @@ def test_module_parameter_ops_route_to_the_registry() -> None:
     assert calls == [("set", "zmconv_ke", 2e-6), ("describe",)]
 
 
+class _CountingStreams:
+    """Stand-in registry that records which ranks resolve stream metadata."""
+
+    def __init__(self) -> None:
+        self.described = 0
+
+    def describe(self):
+        self.described += 1
+        return ({"name": "python_fields", "resolved_fields": []},)
+
+
+def test_history_stream_description_reaches_every_rank() -> None:
+    """Resolving a stream's fields is collective, so no rank may skip it."""
+
+    driver = _bounded_driver()
+    streams = _CountingStreams()
+    driver.history_streams = streams
+    driver.remove_history_stream = lambda name: None
+
+    assert _command({"op": "history_streams"}, driver, FakeComm(rank=3)) is None
+    assert streams.described == 1
+
+    reply = _command({"op": "history_streams"}, driver, FakeComm(rank=0))
+    assert reply == ({"name": "python_fields", "resolved_fields": []},)
+    assert streams.described == 2
+
+    removed = _command(
+        {"op": "remove_history_stream", "name": "python_fields"},
+        driver,
+        FakeComm(rank=3),
+    )
+    assert removed is None
+    assert streams.described == 3
+
+
 def test_assign_expression_rejects_read_only_fields() -> None:
     driver = _bounded_driver()
     # model_timestep is a configuration scalar declared writable=False.

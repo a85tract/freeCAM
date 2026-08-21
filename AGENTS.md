@@ -19,6 +19,7 @@ evidence.
 - `native/pi_cam/`: source patches, adapter rules, and native support code.
 - `external/iCESM1.3.1_fzhu/`: pinned upstream iCESM source submodule.
 - `examples/try_pi_cam.ipynb`: maintained user-facing Notebook.
+- `examples/macro_microphysics.ipynb`: one-cell single-process example.
 - `tests/unit/`: local Python tests.
 - `tools/`: PI-CAM preparation, build, capture, and validation tools.
 - `validation/`: PI-CAM PBS jobs and machine-readable evidence.
