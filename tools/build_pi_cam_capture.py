@@ -4,20 +4,20 @@
 from __future__ import annotations
 
 import argparse
-from hashlib import sha256
 import json
 from pathlib import Path
 import shutil
 import subprocess
 
-from build_pi_cam_devices import (
-    _compile_command,
-    _compile_to,
-    _link_command,
-    _replace_archive,
-    _replace_library,
-    _run,
-    _xml,
+from pi_cam_build_common import (
+    compile_command as _compile_command,
+    compile_to as _compile_to,
+    link_command as _link_command,
+    replace_archive as _replace_archive,
+    replace_library as _replace_library,
+    run as _run,
+    sha256 as _sha256,
+    xml as _xml,
 )
 
 
@@ -26,14 +26,6 @@ PATCHES = (
     REPO / "native/pi_cam/patches/0001-capture-cam-boundary.patch",
     REPO / "native/pi_cam/control_patches/0024-startup-boundary-capture.patch",
 )
-
-
-def _sha256(path: Path) -> str:
-    digest = sha256()
-    with path.open("rb") as stream:
-        for block in iter(lambda: stream.read(1024 * 1024), b""):
-            digest.update(block)
-    return digest.hexdigest()
 
 
 def build(case: Path, source_root: Path, output: Path) -> dict[str, object]:

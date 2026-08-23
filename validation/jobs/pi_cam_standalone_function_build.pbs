@@ -1,0 +1,32 @@
+#!/bin/bash
+#PBS -N freecam-standalone-build
+#PBS -q develop
+#PBS -l select=1:ncpus=4:mpiprocs=1:ompthreads=1:mem=16GB
+#PBS -l walltime=00:20:00
+#PBS -j oe
+#PBS -o logs/
+#PBS -V
+
+# Link one physics routine from the oracle's objects into a standalone image
+# and record every audit as evidence.  FUNCTION selects the reviewed spec
+# (default dadadj, the pathfinder).  The image goes under build/ and is never
+# committed; the manifest copy under validation/ is the evidence.
+
+set -euo pipefail
+
+function=${FUNCTION:-dadadj}
+repo=/glade/work/$USER/freeCAM
+python=${repo}/.venv/bin/python
+case_root=/glade/work/$USER/CESM_cases/f.e13.F1850C5.ne16_g16.icesm131_ihesp.PI-cam-oracle.50step
+
+source "${case_root}/.env_mach_specific.sh" >/dev/null 2>&1
+export PYTHONPATH=${repo}/src
+# A standalone image must load with no help from the session environment.
+unset LD_PRELOAD
+
+cd "${repo}"
+"${python}" tools/build_pi_cam_standalone_function.py \
+  --function "${function}" \
+  --case "${case_root}" \
+  --output-root build/pi_cam_standalone \
+  --evidence "validation/pi_cam_${function}_standalone_build.json"
