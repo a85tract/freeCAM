@@ -27,6 +27,7 @@ import subprocess
 import sys
 import tempfile
 import threading
+import time
 from typing import Any, Mapping
 
 import numpy as np
@@ -173,7 +174,7 @@ class SubprocessHost:
         self._reader.start()
         self._stdout_reader.start()
         try:
-            self._connection = listener.accept()
+            self._connection = self._accept(listener)
         finally:
             listener.close()
         hello = self._request({"op": "hello", "manifest": str(self.manifest_path)})
@@ -182,6 +183,28 @@ class SubprocessHost:
         self.verification = self._request({"op": "initialize", "snapshot": self.snapshot})["verification"]
         if self._parameters:
             self._request({"op": "set_parameters", "values": self._parameters})
+
+    def _accept(self, listener: Listener, timeout: float = 120.0):
+        """Wait for the worker to connect, or report how it died trying."""
+
+        from multiprocessing.connection import wait
+
+        socket = listener._listener._socket  # noqa: SLF001 - the only handle to poll on
+        deadline = time.monotonic() + timeout
+        assert self._process is not None
+        while True:
+            if wait([socket], timeout=0.5):
+                return listener.accept()
+            if self._process.poll() is not None:
+                if self._reader is not None:
+                    self._reader.join(timeout=5)
+                raise PhysicsError(
+                    f"worker exited {self._process.returncode} before connecting: "
+                    + " | ".join(list(self._stderr)[-5:])
+                )
+            if time.monotonic() > deadline:
+                self._process.kill()
+                raise PhysicsError(f"worker did not connect within {timeout:.0f}s")
 
     def _request(self, message: Mapping[str, Any]) -> dict[str, Any]:
         assert self._connection is not None
@@ -275,6 +298,10 @@ class SubprocessHost:
                 self._process.kill()
         for path in self._socket_dir.glob("worker-*.sock"):
             path.unlink(missing_ok=True)
+        try:
+            self._socket_dir.rmdir()
+        except OSError:
+            pass
 
     def __enter__(self) -> "SubprocessHost":
         return self

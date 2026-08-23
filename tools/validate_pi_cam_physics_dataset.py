@@ -19,7 +19,7 @@ import sys
 
 import numpy as np
 
-from freecam.physics import Anchored, Dataset, HybridPressure, Normal, Uniform, load_function
+from freecam.physics import Anchored, HybridPressure, Uniform, available_examples, load_example_column, load_function, open_dataset
 from freecam.physics.spec import load_function_spec
 
 REPO = Path(__file__).resolve().parents[1]
@@ -67,39 +67,42 @@ def main() -> int:
     anchor = anchor_from_bundle(spec, args.bundle, args.history, index=args.record, lane=args.lane)
     anchor_path = REPO / "validation" / f"pi_cam_{args.function}_anchor_column.json"
     anchor_path.write_text(json.dumps(anchor, indent=2, sort_keys=True) + "\n")
-    column = {name: np.asarray(value) for name, value in anchor["inputs"].items()}
+    column = load_example_column(args.function) if args.function in available_examples(args.function) and False else None
+    from freecam.physics.distributions import HybridCoordinate
+    from freecam.physics.examples import ExampleColumn
+
     hybrid = anchor["hybrid_coordinate"]
+    interface = {"dadadj": "pint", "mmacro_pcond": None}[args.function]
+    midpoint, thickness = {"dadadj": ("pmid", "pdel"), "mmacro_pcond": ("p", "dp")}[args.function]
+    raw = {name: np.asarray(value) for name, value in anchor["inputs"].items()}
+    surface = float(raw[interface][-1]) if interface else float(raw[midpoint][-1] + 0.5 * raw[thickness][-1])
+    anchor["surface_pressure"] = surface
+    anchor_path.write_text(json.dumps(anchor, indent=2, sort_keys=True) + "\n")
+    column = ExampleColumn(
+        raw, function=args.function, name="captured-anchor", surface_pressure=surface,
+        hybrid=HybridCoordinate(np.asarray(hybrid["hyai"]), np.asarray(hybrid["hybi"]), float(hybrid["p0"])),
+        source=anchor["source"],
+    )
 
     # Anchored draws for the thermodynamic column, a structural pressure
     # profile, and one parameter as an extra dimension.
-    pressure_names = {
-        "dadadj": ("pmid", "pdel", "pint"),
-        "mmacro_pcond": ("p", "dp", None),
-    }[args.function]
-    distributions: dict = {}
-    midpoint, thickness, interface = pressure_names
-    produces = tuple(name for name in (midpoint, thickness, interface or "__pint") if name)
-    surface = float(column[interface][-1]) if interface else float(column[midpoint][-1] + 0.5 * column[thickness][-1])
-    distributions[midpoint] = HybridPressure(
-        np.asarray(hybrid["hyai"]), np.asarray(hybrid["hybi"]), hybrid["p0"],
-        Uniform(surface * 0.95, surface * 1.05), produces=(midpoint, thickness, interface or "__pint"),
-    )
+    pressure = HybridPressure.from_column(column, Uniform(surface * 0.95, surface * 1.05))
     if args.function == "dadadj":
-        distributions["t"] = Anchored(column["t"], 2.0)
-        distributions["q"] = Anchored(column["q"], 0.05, relative=True, clip=(0.0, None))
-        distributions["nlvdry"] = Uniform(2, 6)
+        inputs = {"pmid": pressure, "t": Anchored(column["t"], absolute_scale=2.0),
+                  "q": Anchored(column["q"], relative_scale=0.05, absolute_scale=1e-8, clip=(0.0, None))}
+        parameters = {"nlvdry": Uniform(2, 6)}
     else:
-        distributions["t0"] = Anchored(column["t0"], 1.0)
-        distributions["qv0"] = Anchored(column["qv0"], 0.05, relative=True, clip=(0.0, None))
-        distributions["ql0"] = Anchored(column["ql0"], 0.05, relative=True, clip=(0.0, None))
-        distributions["qi0"] = Anchored(column["qi0"], 0.05, relative=True, clip=(0.0, None))
-        distributions["cldfrc_rhminl"] = Uniform(0.80, 0.95)
-    fixed = {name: value for name, value in column.items() if name not in distributions and name not in produces}
+        inputs = {"p": pressure, "t0": Anchored(column["t0"], absolute_scale=1.0),
+                  "qv0": Anchored(column["qv0"], relative_scale=0.05, absolute_scale=1e-8, clip=(0.0, None)),
+                  "ql0": Anchored(column["ql0"], relative_scale=0.05, absolute_scale=1e-10, clip=(0.0, None)),
+                  "qi0": Anchored(column["qi0"], relative_scale=0.05, absolute_scale=1e-10, clip=(0.0, None))}
+        parameters = {"cldfrc_rhminl": Uniform(0.80, 0.95)}
 
     function = load_function(args.function)
     try:
-        first = function.generate_dataset(args.samples, distributions, seed=args.seed, inputs=fixed)
-        second = function.generate_dataset(args.samples, distributions, seed=args.seed, inputs=fixed)
+        space = function.sampling_space(base=column, inputs=inputs, parameters=parameters)
+        first = function.generate_dataset(args.samples, space, seed=args.seed)
+        second = function.generate_dataset(args.samples, space, seed=args.seed)
         same_inputs = all(np.array_equal(first.inputs[k], second.inputs[k]) for k in first.inputs) and all(
             np.array_equal(first.parameters[k], second.parameters[k]) for k in first.parameters
         )
@@ -110,15 +113,12 @@ def main() -> int:
         replays = 0
         replay_equal = True
         for index in valid[:: max(1, len(valid) // 10)][:10]:
-            sample = first.sample(int(index))
-            again = function.run(sample["inputs"], sample["parameters"])
             replays += 1
-            for name, value in {**first.outputs, **first.updated}.items():
-                if not np.array_equal(again[name], value[index]):
-                    replay_equal = False
+            if not first.verify_sample(function, int(index)).equal:
+                replay_equal = False
         dataset_path = args.dataset or Path(os.environ.get("SCRATCH", "/glade/derecho/scratch/" + os.environ.get("USER", ""))) / "freecam-physics" / f"{args.function}_training.nc"
-        first.save(dataset_path)
-        loaded = Dataset.load(dataset_path)
+        first.to_netcdf(dataset_path)
+        loaded = open_dataset(dataset_path)
         round_trip = all(np.array_equal(loaded.inputs[k], first.inputs[k]) for k in first.inputs) and np.array_equal(loaded.status, first.status)
     finally:
         function.close()
@@ -137,6 +137,7 @@ def main() -> int:
         "samples": int(args.samples),
         "seed": int(args.seed),
         "sampling_space": first.attributes["sampling_space"],
+        "api": "sampling_space + generate_dataset + verify_sample + to_netcdf/open_dataset",
         "status_counts": first.status_counts,
         "failure_messages": sorted(set(failed))[:10],
         "same_seed_same_inputs": bool(same_inputs),

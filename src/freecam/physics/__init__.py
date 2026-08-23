@@ -7,18 +7,21 @@ minimal standalone image of the original Fortran and call it one column at a
 time.
 """
 
-from .errors import PhysicsError, PhysicsSpecError
-from .dataset import Dataset
+from .errors import CallError, FortranAbortError, InternalError, PhysicsError, PhysicsSpecError, WorkerCrashError
+from .examples import ExampleColumn, available_examples, load_example_column
+from .dataset import Dataset, SampleVerification, open_dataset
 from .distributions import (
     Anchored,
     Constant,
     Derived,
+    HybridCoordinate,
     HybridPressure,
     LogUniform,
     Normal,
     SamplingSpace,
     Uniform,
 )
+from .column import InvalidInput
 from .function import PhysicsFunction, load_function
 from .result import FunctionResult
 from .spec import (
@@ -33,6 +36,17 @@ from .spec import (
 __all__ = [
     "Anchored",
     "ArgumentSpec",
+    "CallError",
+    "ExampleColumn",
+    "FortranAbortError",
+    "HybridCoordinate",
+    "InternalError",
+    "InvalidInput",
+    "SampleVerification",
+    "WorkerCrashError",
+    "available_examples",
+    "load_example_column",
+    "open_dataset",
     "Constant",
     "Dataset",
     "Derived",

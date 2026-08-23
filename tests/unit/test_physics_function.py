@@ -66,18 +66,31 @@ def test_function_run_returns_outputs_and_restores_parameters() -> None:
     spec, inputs = _column()
     host = _Host()
     function = PhysicsFunction(spec, host)
-    result = function.run(inputs, parameters={"nlvdry": 5})
-    assert result.ok and np.array_equal(result["t"], inputs["t"] + 1.0)
+    result = function.run(inputs=inputs, parameters={"nlvdry": 5})
+    assert result.ok and np.array_equal(result.updated_inputs["t"], inputs["t"] + 1.0)
+    assert result["t"] is result.updated_inputs["t"]
     assert result.metadata["parameters"] == {"nlvdry": 5}
     assert host.parameters == [("set", {"nlvdry": 5}), ("restore", {})]
     assert function(inputs).ok
+    assert "status='ok'" in repr(result)
 
 
-def test_function_reports_invalid_input_and_aborts_as_statuses() -> None:
+def test_interactive_run_raises_and_try_run_returns_a_status() -> None:
+    from freecam.physics import FortranAbortError
+
     spec, inputs = _column()
-    assert PhysicsFunction(spec, _Host()).run({"t": np.zeros(30)}).status == "invalid_input"
-    aborted = PhysicsFunction(spec, _Host("fortran_abort")).run(inputs)
+    with pytest.raises(InvalidInput, match="missing inputs"):
+        PhysicsFunction(spec, _Host()).run({"t": np.zeros(30)})
+    assert PhysicsFunction(spec, _Host()).try_run({"t": np.zeros(30)}).status == "invalid_input"
+    with pytest.raises(FortranAbortError, match="boom"):
+        PhysicsFunction(spec, _Host("fortran_abort")).run(inputs)
+    aborted = PhysicsFunction(spec, _Host("fortran_abort")).run(inputs, errors="return")
     assert aborted.status == "fortran_abort" and aborted.message == "boom" and aborted.outputs == {}
+    assert "fortran_abort" in repr(aborted)
+    with pytest.raises(FortranAbortError):
+        aborted.raise_for_status()
+    with pytest.raises(ValueError):
+        PhysicsFunction(spec, _Host()).run(inputs, errors="maybe")
 
 
 def test_result_rejects_unknown_status() -> None:

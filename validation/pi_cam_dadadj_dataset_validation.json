@@ -1,5 +1,6 @@
 {
   "anchor_column": "/glade/work/ruitong/pycam-sima-pi-cam-only/validation/pi_cam_dadadj_anchor_column.json",
+  "api": "sampling_space + generate_dataset + verify_sample + to_netcdf/open_dataset",
   "driver_free": true,
   "failed_samples_have_nan_outputs": true,
   "failure_messages": [],
@@ -15,7 +16,7 @@
   "same_seed_same_inputs": true,
   "same_seed_same_outputs": true,
   "samples": 200,
-  "sampling_space": "  pmid                     HybridPressure(surface=Uniform(91277.98418939073, 100886.19305143188))\n  t                        Anchored(scale=2.0)\n  q                        Anchored(scale=0.05, relative)\n  nlvdry                   Uniform(2, 6)",
+  "sampling_space": "SamplingSpace for dadadj: 3 drawn inputs, 1 drawn parameters, 0 inputs from the base column\n  pmid                     input      HybridPressure(surface_pressure=Uniform(91278, 100886))\n  t                        input      Anchored(absolute_scale=2.0)\n  q                        input      Anchored(relative_scale=0.05, absolute_scale=1e-08, clip=(0.0, None))\n  nlvdry                   parameter  Uniform(2, 6)",
   "schema_version": 1,
   "seed": 42,
   "status_counts": {

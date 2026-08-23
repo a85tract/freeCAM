@@ -300,21 +300,29 @@ process replacement, asynchronous execution, and Xarray history access.
 
 Besides running the model, freeCAM can hand you one physics routine as an
 ordinary numerical function -- `y = f(x, p)` on a single vertical column --
-with no `Driver`, no MPI and no model state.  The routine is linked from the
+with no `Driver`, no MPI session and no Driver-managed model state.  The routine is linked from the
 oracle build's own objects into a small standalone image and runs in a worker
 process beside your Python:
 
 ```python
 import freecam as fc
 
-f = fc.physics.load_function("mmacro_pcond")   # CAM5 cloud macrophysics
-print(f.describe())                             # inputs, in/outs, outputs, parameters
+scheme = fc.physics.load_function("mmacro_pcond")   # the condensation routine of CAM5 cloud macrophysics
+print(scheme.describe())                             # inputs, in/outs, outputs, parameters
 
-result = f.run(inputs, parameters={"cldfrc_rhminl": 0.85})
-result["cld"]                                   # one column's cloud fraction, (lev,)
+column = scheme.example_input("captured-anchor")     # a real column, shipped with the package
+result = scheme.run(inputs=column, parameters={"cldfrc_rhminl": 0.85})
+result.outputs["cld"]                                # one column's cloud fraction, (lev,)
 
-dataset = f.generate_dataset(10_000, sampling_space, seed=42)
-dataset.save("mmacro_pcond_training.nc")        # inputs, parameters, outputs, status, provenance
+space = scheme.sampling_space(
+    base=column,
+    inputs={"t0": fc.physics.Anchored(column["t0"], absolute_scale=1.0),
+            "p": fc.physics.HybridPressure.from_column(column, fc.physics.Uniform(9.0e4, 1.0e5))},
+    parameters={"cldfrc_rhminl": fc.physics.Uniform(0.80, 0.95)},
+)
+dataset = scheme.generate_dataset(n_samples=10_000, space=space, seed=42)
+dataset.to_netcdf("mmacro_pcond_training.nc")        # inputs, parameters, outputs, status, provenance
+fc.physics.open_dataset("mmacro_pcond_training.nc").verify_sample(scheme).assert_equal()
 ```
 
 | Interface | What it does |
@@ -322,10 +330,11 @@ dataset.save("mmacro_pcond_training.nc")        # inputs, parameters, outputs, s
 | `driver.cam.workflow[...]` | runs a process on the full model field, inside a timestep |
 | `fc.physics.load_function(...)` | calls the scheme on one column, Driver-free |
 
-Inputs are `(lev,)` profiles and scalars; parameters are the scheme's own
-namelist tunables and join the sampling space as extra dimensions.  A sample
-the Fortran refuses comes back as `status="fortran_abort"` with the routine's
-diagnostic, never as data.  Every function has a reviewed specification under
+Inputs are `(lev,)` profiles and scalars; parameters are the routine's own
+namelist tunables and join the sampling space as extra dimensions.  An input
+the Fortran refuses raises `FortranAbortError` with the routine's diagnostic
+(`try_run` returns the status instead); during dataset generation such a
+sample keeps its status and is never written as data.  Every function has a reviewed specification under
 `native/pi_cam/functions/`, and its image is proven before use: the wrapper
 demonstrably calls the original routine, and replaying calls captured from a
 real 512-rank run through the image reproduces the model bit for bit

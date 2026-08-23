@@ -59,7 +59,46 @@ class PhysicsFunction:
 
     # -- calling --------------------------------------------------------------
 
-    def run(self, inputs: Mapping[str, Any], parameters: Mapping[str, Any] | None = None) -> FunctionResult:
+    def example_input(self, name: str = "captured-anchor"):
+        """A real column shipped with the package, ready to pass as ``inputs``."""
+
+        from .examples import load_example_column
+
+        return load_example_column(self.spec.function, name)
+
+    def sampling_space(
+        self,
+        *,
+        base: Mapping[str, Any],
+        inputs: Mapping[str, Any] | None = None,
+        parameters: Mapping[str, Any] | None = None,
+        fixed_parameters: Mapping[str, Any] | None = None,
+    ):
+        """Distributions over inputs and parameters, everything else from ``base``."""
+
+        from .distributions import SamplingSpace
+
+        return SamplingSpace(self.spec, inputs=inputs, parameters=parameters, base=base, fixed_parameters=fixed_parameters)
+
+    def run(self, inputs: Mapping[str, Any], parameters: Mapping[str, Any] | None = None, *, errors: str = "raise") -> FunctionResult:
+        """Call the routine on one column.
+
+        With ``errors="raise"`` (the default) an input the routine refuses
+        raises ``FortranAbortError`` and the like; ``errors="return"`` --
+        also :meth:`try_run` -- returns the result with its ``status`` set,
+        which is what batch generation uses so one bad sample never stops
+        the rest.
+        """
+
+        if errors not in ("raise", "return"):
+            raise ValueError("errors must be 'raise' or 'return'")
+        result = self._run(inputs, parameters)
+        return result.raise_for_status() if errors == "raise" else result
+
+    def try_run(self, inputs: Mapping[str, Any], parameters: Mapping[str, Any] | None = None) -> FunctionResult:
+        return self._run(inputs, parameters)
+
+    def _run(self, inputs: Mapping[str, Any], parameters: Mapping[str, Any] | None) -> FunctionResult:
         metadata = {**self.metadata, "parameters": dict(parameters or {})}
         try:
             resolved = coerce_inputs(self.spec, inputs)
@@ -89,24 +128,27 @@ class PhysicsFunction:
             own = dict(sample.get("parameters", {}) or {}) if isinstance(sample, Mapping) and "parameters" in sample else {}
             inputs = sample.get("inputs", sample) if isinstance(sample, Mapping) and "inputs" in sample else sample
             merged = {**(parameters or {}), **own}
-            results.append(self.run(inputs, merged or None))
+            results.append(self.try_run(inputs, merged or None))
         return results
 
     def generate_dataset(
         self,
-        n: int,
-        distributions: Mapping[str, Any],
+        n_samples: int,
+        space: Any,
         *,
         seed: int = 0,
+        base: Mapping[str, Any] | None = None,
         parameters: Mapping[str, Any] | None = None,
-        inputs: Mapping[str, Any] | None = None,
         progress: Any = None,
     ):
-        """Draw ``n`` joint samples, run each, and return a :class:`Dataset`.
+        """Draw ``n_samples`` joint samples from ``space``, run each, return a Dataset.
 
-        ``inputs`` and ``parameters`` are fixed values for anything not drawn.
-        Every sample is one independent column call; a sample the routine
-        refuses keeps its inputs and a status, never fabricated outputs.
+        ``space`` is a :class:`SamplingSpace` (preferred; see
+        :meth:`sampling_space`) or a plain ``{name: distribution}`` mapping,
+        in which case ``base`` supplies the undrawn inputs and
+        ``parameters`` any fixed parameter values.  Every sample is one
+        independent column call; a sample the routine refuses keeps its
+        inputs and a status, never fabricated outputs.
         """
 
         import subprocess
@@ -114,14 +156,18 @@ class PhysicsFunction:
         from .dataset import assemble
         from .distributions import SamplingSpace
 
-        space = SamplingSpace(self.spec, distributions)
+        if isinstance(space, SamplingSpace):
+            if base is not None or parameters is not None:
+                raise ValueError("pass base and fixed parameters when building the SamplingSpace")
+        else:
+            drawn_inputs = {k: v for k, v in dict(space).items() if k not in self.spec.parameters}
+            drawn_parameters = {k: v for k, v in dict(space).items() if k in self.spec.parameters}
+            space = SamplingSpace(self.spec, inputs=drawn_inputs, parameters=drawn_parameters, base=base, fixed_parameters=parameters)
         rng = np.random.default_rng(seed)
         rows = []
-        for index in range(int(n)):
-            drawn_inputs, drawn_parameters = space.draw(rng)
-            sample_inputs = {**(inputs or {}), **drawn_inputs}
-            sample_parameters = {**(parameters or {}), **drawn_parameters}
-            result = self.run(sample_inputs, sample_parameters or None)
+        for index in range(int(n_samples)):
+            sample_inputs, sample_parameters = space.draw(rng)
+            result = self.try_run(sample_inputs, sample_parameters or None)
             rows.append({
                 "inputs": coerce_inputs(self.spec, sample_inputs) if result.status != "invalid_input" else {
                     k: np.asarray(v) for k, v in sample_inputs.items()
@@ -133,7 +179,7 @@ class PhysicsFunction:
                 "message": result.message,
             })
             if progress is not None:
-                progress(index + 1, int(n), result.status)
+                progress(index + 1, int(n_samples), result.status)
         try:
             commit = subprocess.run(["git", "rev-parse", "HEAD"], cwd=REPO, capture_output=True, text=True, check=False).stdout.strip()
         except OSError:
@@ -141,9 +187,9 @@ class PhysicsFunction:
         attributes = {
             **self.metadata,
             "seed": int(seed),
-            "samples": int(n),
+            "samples": int(n_samples),
             "sampling_space": space.describe(),
-            "fixed_parameters": json.dumps(dict(parameters or {})),
+            "fixed_parameters": json.dumps(dict(space.fixed_parameters)),
             "freecam_commit": commit,
         }
         return assemble(self.spec, rows, attributes)
@@ -185,11 +231,10 @@ def load_function(
         backend = InProcessHost(manifest_path, snapshot)
     else:
         raise PhysicsError(f"unknown host {host!r}")
+    # Provenance travels as hashes, not as this machine's paths.
     metadata = {
         "function": spec.qualified_name,
-        "image": str(manifest_path),
         "image_sha256": json.loads(manifest_path.read_text())["library_sha256"],
-        "module_state": str(snapshot_path),
         "module_state_digest": snapshot.get("digest"),
     }
     return PhysicsFunction(spec, backend, metadata=metadata)

@@ -23,6 +23,8 @@ dependencies = [
 notebook = [
   "ipykernel>=7.0",
   "matplotlib>=3.9",
+  "nbclient>=0.10",
+  "nbformat>=5.10",
   "xarray>=2025.1",
 ]
 test = ["pytest>=8.0"]

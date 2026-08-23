@@ -34,6 +34,55 @@ class Dataset:
     def __len__(self) -> int:
         return int(self.status.shape[0])
 
+    def __repr__(self) -> str:
+        counts = ", ".join(f"{name}={count}" for name, count in self.status_counts.items())
+        return (f"Dataset({self.function}: {len(self)} samples [{counts}]; "
+                f"{len(self.inputs)} inputs, {len(self.parameters)} parameters, "
+                f"{len(self.outputs)} outputs, {len(self.updated)} updated)")
+
+    @property
+    def first_valid_index(self) -> int:
+        indices = np.flatnonzero(self.valid)
+        if indices.size == 0:
+            raise ValueError("the dataset has no valid sample")
+        return int(indices[0])
+
+    def to_xarray(self):
+        """The same content as an ``xarray.Dataset`` (``input__*`` etc. variables)."""
+
+        import xarray as xr
+
+        variables = {}
+        for prefix, table in (("input", self.inputs), ("parameter", self.parameters), ("output", self.outputs), ("updated", self.updated)):
+            for name, values in table.items():
+                dims = ["sample"] + [self.axes.get(f"{name}:{axis}", f"dim_{extent}") for axis, extent in enumerate(values.shape[1:])]
+                variables[f"{prefix}__{name}"] = (dims, values)
+        variables["status"] = (["sample"], np.asarray(self.status, dtype=object))
+        variables["message"] = (["sample"], np.asarray([item or "" for item in self.message], dtype=object))
+        variables["sample_id"] = (["sample"], self.sample_id)
+        return xr.Dataset(variables, attrs={k: (v if isinstance(v, (int, float)) else str(v)) for k, v in self.attributes.items()})
+
+    def verify_sample(self, function: Any, index: int | str = "first_valid") -> "SampleVerification":
+        """Re-execute one stored sample and compare every returned value bit for bit."""
+
+        from .image import _first_difference
+
+        position = self.first_valid_index if index == "first_valid" else int(index)
+        sample = self.sample(position)
+        result = function.try_run(inputs=sample["inputs"], parameters=sample["parameters"])
+        differences: dict[str, dict[str, Any]] = {}
+        stored_status = sample["status"]
+        if result.status == stored_status == "ok":
+            for table, stored in (("outputs", sample["outputs"]), ("updated_inputs", sample["updated"])):
+                for name, value in stored.items():
+                    difference = _first_difference(np.asarray(value), np.asarray(getattr(result, table)[name]))
+                    if difference is not None:
+                        differences[name] = difference
+        return SampleVerification(
+            index=position, stored_status=stored_status, replayed_status=result.status,
+            compared=len(sample["outputs"]) + len(sample["updated"]), differences=differences,
+        )
+
     @property
     def valid(self) -> np.ndarray:
         return self.status == "ok"
@@ -52,6 +101,9 @@ class Dataset:
             "message": self.message[index],
             "sample_id": int(self.sample_id[index]),
         }
+
+    def to_netcdf(self, path: str | Path) -> Path:
+        return self.save(path)
 
     def save(self, path: str | Path) -> Path:
         from netCDF4 import Dataset as NetCDF
@@ -94,11 +146,14 @@ class Dataset:
         from netCDF4 import Dataset as NetCDF
 
         tables: dict[str, dict[str, np.ndarray]] = {"input": {}, "parameter": {}, "output": {}, "updated": {}}
+        axes: dict[str, str] = {}
         with NetCDF(str(path)) as handle:
             for name, variable in handle.variables.items():
                 prefix, _, item = name.partition("__")
                 if prefix in tables and item:
                     tables[prefix][item] = np.asarray(variable[...])
+                    for axis, dimension in enumerate(variable.dimensions[1:]):
+                        axes[f"{item}:{axis}"] = str(dimension)
             status = np.asarray([str(item) for item in handle.variables["status"][...]])
             message = [str(item) or None for item in handle.variables["message"][...]]
             sample_id = np.asarray(handle.variables["sample_id"][...])
@@ -106,8 +161,42 @@ class Dataset:
         return cls(
             function=str(attributes.get("function", "")),
             inputs=tables["input"], parameters=tables["parameter"], outputs=tables["output"], updated=tables["updated"],
-            status=status, message=message, sample_id=sample_id, attributes=attributes,
+            status=status, message=message, sample_id=sample_id, attributes=attributes, axes=axes,
         )
+
+
+@dataclass(frozen=True)
+class SampleVerification:
+    """One stored sample re-executed: same status, and every value identical?"""
+
+    index: int
+    stored_status: str
+    replayed_status: str
+    compared: int
+    differences: dict[str, dict[str, Any]]
+
+    @property
+    def equal(self) -> bool:
+        return self.stored_status == self.replayed_status and not self.differences
+
+    def assert_equal(self) -> "SampleVerification":
+        if not self.equal:
+            raise AssertionError(
+                f"sample {self.index} did not re-execute identically: status {self.stored_status!r} -> "
+                f"{self.replayed_status!r}, differences in {sorted(self.differences)}"
+            )
+        return self
+
+    def __repr__(self) -> str:
+        verdict = "identical" if self.equal else f"DIFFERENT in {sorted(self.differences)}"
+        return (f"SampleVerification(index={self.index}, status={self.stored_status!r} -> {self.replayed_status!r}, "
+                f"{self.compared} values compared: {verdict})")
+
+
+def open_dataset(path: str | Path) -> Dataset:
+    """Read a dataset written by :meth:`Dataset.to_netcdf`."""
+
+    return Dataset.load(path)
 
 
 def assemble(spec: FunctionSpec, rows: Sequence[Mapping[str, Any]], attributes: Mapping[str, Any]) -> Dataset:
@@ -152,4 +241,4 @@ def assemble(spec: FunctionSpec, rows: Sequence[Mapping[str, Any]], attributes: 
     )
 
 
-__all__ = ["Dataset", "assemble"]
+__all__ = ["Dataset", "SampleVerification", "assemble", "open_dataset"]
