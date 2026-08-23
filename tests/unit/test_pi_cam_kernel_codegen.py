@@ -61,6 +61,116 @@ kernels:
     assert "field_2(:,:,1,chunk))" in source
 
 
+def _pointer_descriptor(tmp_path: Path, **overrides: object) -> Path:
+    fields = {
+        "rank": 3,
+        "chunk_axis": 3,
+        "intent": "in",
+        "extra": "",
+    }
+    fields.update(overrides)  # type: ignore[arg-type]
+    descriptor = tmp_path / "kernels.yaml"
+    descriptor.write_text(
+        f"""
+schema_version: 1
+kernels:
+  - name: sample
+    routine: original_sample
+    symbol: pycam_sample_v1
+    arguments:
+      - field: state.tke
+        dtype: float64
+        rank: {fields["rank"]}
+        intent: {fields["intent"]}
+        chunk_axis: {fields["chunk_axis"]}
+        pointer: true
+{fields["extra"]}
+      - field: state.do_ice
+        dtype: int32
+        rank: 1
+        intent: in
+        chunk_axis: 1
+        fortran_type: logical
+"""
+    )
+    return descriptor
+
+
+def test_pointer_dummy_receives_a_pointer_and_a_logical_is_converted(
+    tmp_path: Path,
+) -> None:
+    kernels = load_direct_kernels(_pointer_descriptor(tmp_path))
+    source = generate_direct_kernel_module(kernels)
+
+    # A POINTER dummy cannot take an array section, so the wrapper keeps a
+    # pointer of the dummy's own rank and associates it with this chunk.
+    assert "real(c_double), pointer :: field_1_chunk(:,:)" in source
+    assert "field_1_chunk => field_1(:,:,chunk)" in source
+    # A Fortran logical travels as int32 and is converted at the call.
+    assert "logical :: field_2_value" in source
+    assert "field_2_value = (field_2(chunk) /= 0_c_int32_t)" in source
+    assert "call original_sample( &" in source
+    assert "field_1_chunk, &" in source
+    assert "field_2_value)" in source
+
+
+def test_pointer_dummy_requires_the_chunk_axis_to_be_last(tmp_path: Path) -> None:
+    # A pointer is associated with a contiguous slice, so chunks must be slowest.
+    descriptor = _pointer_descriptor(tmp_path, chunk_axis=1)
+    with pytest.raises(PICAMConfigurationError, match="chunk axis must be last"):
+        load_direct_kernels(descriptor)
+
+
+def test_pointer_dummy_cannot_also_fix_an_axis(tmp_path: Path) -> None:
+    descriptor = _pointer_descriptor(
+        tmp_path, rank=4, chunk_axis=4, extra="        fixed_indices: {3: 1}"
+    )
+    with pytest.raises(PICAMConfigurationError, match="cannot fix an axis"):
+        load_direct_kernels(descriptor)
+
+
+def test_logical_argument_must_be_one_int32_per_chunk(tmp_path: Path) -> None:
+    descriptor = tmp_path / "kernels.yaml"
+    descriptor.write_text(
+        """
+schema_version: 1
+kernels:
+  - name: invalid
+    arguments:
+      - field: state.flag
+        dtype: float64
+        rank: 1
+        intent: in
+        chunk_axis: 1
+        fortran_type: logical
+"""
+    )
+
+    with pytest.raises(PICAMConfigurationError, match="one int32 value per chunk"):
+        load_direct_kernels(descriptor)
+
+
+def test_logical_argument_cannot_be_written_back(tmp_path: Path) -> None:
+    descriptor = tmp_path / "kernels.yaml"
+    descriptor.write_text(
+        """
+schema_version: 1
+kernels:
+  - name: invalid
+    arguments:
+      - field: state.flag
+        dtype: int32
+        rank: 1
+        intent: inout
+        chunk_axis: 1
+        fortran_type: logical
+"""
+    )
+
+    with pytest.raises(PICAMConfigurationError, match="intent\\(in\\)"):
+        load_direct_kernels(descriptor)
+
+
 def test_direct_kernel_descriptor_rejects_chunk_axis_as_fixed_index(tmp_path: Path) -> None:
     descriptor = tmp_path / "kernels.yaml"
     descriptor.write_text(

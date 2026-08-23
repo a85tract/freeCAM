@@ -145,11 +145,6 @@ module_state:
     shape: []
     write: verify
     expected: 6
-  - symbol: spmd_utils_mp_masterproc_
-    dtype: int32
-    shape: []
-    write: declared
-    value: 0
 
 initializers: []
 
@@ -165,6 +160,8 @@ image:
     - ppgrid.o
   stubs:
     inert:
+      # masterproc is this image's own datum (the model's rank 0 holds
+      # .true.); only banner writes read it, so it is not verified state.
       - spmd_utils_mp_masterproc_
       - mpishorthand_mp_mpicom_
       - mpishorthand_mp_mpir8_

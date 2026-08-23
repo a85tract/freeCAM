@@ -869,7 +869,6 @@ module_state:
   - {symbol: physconst_mp_epsilo_, dtype: float64, shape: [], write: verify}
   - {symbol: physconst_mp_tmelt_, dtype: float64, shape: [], write: verify}
   - {symbol: cam_logfile_mp_iulog_, dtype: int32, shape: [], write: verify, expected: 6}
-  - {symbol: spmd_utils_mp_masterproc_, dtype: int32, shape: [], write: declared, value: 0}
 
 # Called once after load, before module state is verified.  wv_sat_init
 # needs no namelist, grid, or MPI; it sets the saturation constants the

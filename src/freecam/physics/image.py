@@ -93,6 +93,7 @@ __all__ = ["module_view", "read_entry", "read_module_state", "state_digest"]
 import json
 import os
 from pathlib import Path
+import sys
 
 from freecam.core.fortran_adapter import PointerTableAdapter
 
@@ -103,6 +104,49 @@ EXPECTED_MXCSR = 0x9FC0
 
 class ModuleStateMismatch(PhysicsError):
     """The image's module state does not match the model snapshot."""
+
+
+class MathLibraryNotPreloaded(PhysicsError):
+    """The process did not start with the image's Intel math library preloaded."""
+
+
+def preloaded_libraries() -> tuple[str, ...]:
+    return tuple(item for item in os.environ.get("LD_PRELOAD", "").replace(":", " ").split() if item)
+
+
+def require_math_library(math_library: Path) -> None:
+    """The image's exp/log/pow must bind to Intel's libimf, as the model's do.
+
+    A Python process already holds glibc's libm in its global symbol scope,
+    which the dynamic loader searches before a dlopen'd image's own
+    dependencies; without the preload the routine's transcendental calls
+    bind to glibc and results differ in the last bits.  Only a preload puts
+    libimf ahead of libm, so the process must have been started with it.
+    """
+
+    wanted = math_library.resolve()
+    for item in preloaded_libraries():
+        try:
+            if Path(item).resolve() == wanted:
+                return
+        except OSError:
+            continue
+    raise MathLibraryNotPreloaded(
+        f"start this process with LD_PRELOAD={wanted} (the standalone harness "
+        "does this for its worker); without it the routine's math binds to glibc"
+    )
+
+
+def reexec_with_math_library(manifest: str | Path) -> None:
+    """Restart the current tool under the manifest's libimf if it is missing."""
+
+    math_library = Path(str(json.loads(Path(manifest).read_text())["intel_math_library"]))
+    try:
+        require_math_library(math_library)
+    except MathLibraryNotPreloaded:
+        env = dict(os.environ)
+        env["LD_PRELOAD"] = str(math_library)
+        os.execve(sys.executable, [sys.executable, *sys.argv], env)
 
 
 def _first_difference(reference: np.ndarray, candidate: np.ndarray) -> dict[str, Any] | None:
@@ -149,6 +193,8 @@ class StandaloneImage:
         if digest != self.manifest["library_sha256"]:
             raise PhysicsError(f"{library} hash {digest[:12]} differs from its manifest")
         self.library_path = library
+        self.math_library = Path(str(self.manifest["intel_math_library"]))
+        require_math_library(self.math_library)
         self.library = ctypes.CDLL(str(library), mode=ctypes.RTLD_LOCAL | os.RTLD_NOW)
         base = int(str(self.manifest["load_start"]), 16)
         mapped = [line for line in Path("/proc/self/maps").read_text().splitlines() if str(library) in line]
@@ -287,11 +333,9 @@ class StandaloneImage:
     def empty_pool(self, nchunks: int = 1) -> dict[str, np.ndarray]:
         """Zeroed native arrays for every argument, chunk axis last."""
 
-        pool: dict[str, np.ndarray] = {}
-        for item in self.spec.arguments:
-            shape = (*item.native_extent(self.spec.dimensions), nchunks)
-            pool[f"{self.spec.function}.{item.name}"] = np.zeros(shape, dtype=np.dtype(item.dtype), order="F")
-        return pool
+        from .column import empty_pool
+
+        return empty_pool(self.spec, nchunks)
 
     def call(self, pool: Mapping[str, np.ndarray]) -> None:
         """Run the routine on every chunk of ``pool`` (one wrapper call)."""
@@ -300,4 +344,4 @@ class StandaloneImage:
         self._adapter.call("call", pool, fcomm=0)
 
 
-__all__ += ["ModuleStateMismatch", "StandaloneImage", "bitwise_equal"]
+__all__ += ["MathLibraryNotPreloaded", "ModuleStateMismatch", "StandaloneImage", "bitwise_equal", "reexec_with_math_library", "require_math_library"]

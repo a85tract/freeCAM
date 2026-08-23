@@ -28,6 +28,16 @@ _FORTRAN_TYPES = {
 
 @dataclass(frozen=True, slots=True)
 class DirectKernelArgument:
+    """One StatePool field bound to one dummy argument of the original routine.
+
+    ``pointer`` and ``fortran_type`` record how the original declaration differs
+    from a plain array of ``dtype``.  A ``pointer`` dummy cannot receive an array
+    section, so the wrapper hands it a Fortran pointer associated with the same
+    storage; a ``logical`` dummy has no portable C type, so the wrapper carries
+    the value as ``int32`` and converts it at the call.  Both are conversions of
+    shape and scalar representation, not of numerical content.
+    """
+
     field: str
     dtype: str
     rank: int
@@ -35,6 +45,8 @@ class DirectKernelArgument:
     chunk_axis: int
     fixed_indices: tuple[tuple[int, int], ...] = ()
     extents: tuple[str, ...] = ()
+    pointer: bool = False
+    fortran_type: str = ""
 
     @classmethod
     def from_payload(cls, payload: Mapping[str, Any]) -> "DirectKernelArgument":
@@ -72,6 +84,35 @@ class DirectKernelArgument:
             raise PICAMConfigurationError(
                 "direct kernel extents accept only names, positive integers, or chunks"
             )
+        pointer = bool(payload.get("pointer", False))
+        if pointer and chunk_axis != rank:
+            raise PICAMConfigurationError(
+                f"direct kernel field {payload.get('field')!r} is a pointer dummy, "
+                "so its chunk axis must be last for the per-chunk slice to be "
+                "contiguous"
+            )
+        if pointer and fixed:
+            raise PICAMConfigurationError(
+                f"direct kernel field {payload.get('field')!r} cannot fix an axis "
+                "of a pointer dummy"
+            )
+        fortran_type = str(payload.get("fortran_type", "")).lower()
+        if fortran_type not in {"", "logical"}:
+            raise PICAMConfigurationError(
+                f"direct kernel field {payload.get('field')!r} declares unsupported "
+                f"fortran_type {fortran_type!r}"
+            )
+        if fortran_type == "logical":
+            if dtype != np.dtype("int32").str or rank != 1 or chunk_axis != 1:
+                raise PICAMConfigurationError(
+                    f"direct kernel field {payload.get('field')!r} carries a Fortran "
+                    "logical, which must be one int32 value per chunk"
+                )
+            if intent != "in":
+                raise PICAMConfigurationError(
+                    f"direct kernel field {payload.get('field')!r} carries a Fortran "
+                    "logical, which the wrapper can only pass as intent(in)"
+                )
         return cls(
             field=str(payload["field"]),
             dtype=dtype,
@@ -80,10 +121,12 @@ class DirectKernelArgument:
             chunk_axis=chunk_axis,
             fixed_indices=fixed,
             extents=extents,
+            pointer=pointer,
+            fortran_type=fortran_type,
         )
 
     @property
-    def fortran_type(self) -> str:
+    def storage_type(self) -> str:
         return _FORTRAN_TYPES[self.dtype]
 
     def operation_payload(self) -> dict[str, object]:
@@ -176,7 +219,7 @@ def _shape_index(field_index: int, axis: int) -> str:
     return f"{field_index} * max_rank + {axis}"
 
 
-def _argument_reference(name: str, argument: DirectKernelArgument) -> str:
+def _chunk_slice(name: str, argument: DirectKernelArgument) -> str:
     fixed = dict(argument.fixed_indices)
     indices = []
     for axis in range(1, argument.rank + 1):
@@ -187,6 +230,28 @@ def _argument_reference(name: str, argument: DirectKernelArgument) -> str:
         else:
             indices.append(":")
     return f"{name}({','.join(indices)})"
+
+
+def _argument_reference(name: str, argument: DirectKernelArgument) -> str:
+    """The actual argument handed to the original routine for this chunk."""
+
+    if argument.pointer:
+        return f"{name}_chunk"
+    if argument.fortran_type == "logical":
+        return f"{name}_value"
+    return _chunk_slice(name, argument)
+
+
+def _chunk_preamble(name: str, argument: DirectKernelArgument) -> tuple[str, ...]:
+    """Statements that prepare this argument inside the chunk loop."""
+
+    if argument.pointer:
+        return (f"    {name}_chunk => {_chunk_slice(name, argument)}",)
+    if argument.fortran_type == "logical":
+        return (
+            f"    {name}_value = ({_chunk_slice(name, argument)} /= 0_c_int32_t)",
+        )
+    return ()
 
 
 def _kernel_function(kernel: DirectKernel) -> list[str]:
@@ -206,7 +271,16 @@ def _kernel_function(kernel: DirectKernel) -> list[str]:
     ]
     for name, argument in zip(names, kernel.arguments):
         dimensions = ",".join(":" for _ in range(argument.rank))
-        lines.append(f"  {argument.fortran_type}, pointer :: {name}({dimensions})")
+        lines.append(f"  {argument.storage_type}, pointer :: {name}({dimensions})")
+        if argument.pointer:
+            # A POINTER dummy cannot take an array section, so the wrapper keeps
+            # a pointer of the dummy's own rank and associates it per chunk.
+            slice_dimensions = ",".join(":" for _ in range(argument.rank - 1))
+            lines.append(
+                f"  {argument.storage_type}, pointer :: {name}_chunk({slice_dimensions})"
+            )
+        if argument.fortran_type == "logical":
+            lines.append(f"  logical :: {name}_value")
     lines.extend(
         [
             "  call pycam_pi_cam_set_fp_environment_v1()",
@@ -290,6 +364,8 @@ def _kernel_function(kernel: DirectKernel) -> list[str]:
             "  do chunk = 1, nchunks",
         ]
     )
+    for name, argument in zip(names, kernel.arguments):
+        lines.extend(_chunk_preamble(name, argument))
     lines.append(f"    call {kernel.routine}( &")
     for index, argument in enumerate(arguments):
         ending = ", &" if index + 1 < len(arguments) else ")"

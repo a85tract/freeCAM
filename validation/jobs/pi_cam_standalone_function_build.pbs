@@ -22,6 +22,7 @@ case_root=/glade/work/$USER/CESM_cases/f.e13.F1850C5.ne16_g16.icesm131_ihesp.PI-
 source "${case_root}/.env_mach_specific.sh" >/dev/null 2>&1
 export PYTHONPATH=${repo}/src
 # A standalone image must load with no help from the session environment.
+# The builder preloads the image's own libimf into its smoke-load children.
 unset LD_PRELOAD
 
 cd "${repo}"

@@ -38,6 +38,7 @@ from pi_cam_build_common import (  # noqa: E402
     direct_kernel_call_proof,
     load_range,
     run,
+    runtime_library,
     sha256,
     xml,
     zero_calls,
@@ -253,6 +254,7 @@ _SMOKE = textwrap.dedent(
     mapped = [line for line in open("/proc/self/maps") if path in line]
     loaded_base = min(int(line.split("-")[0], 16) for line in mapped)
     fortran_runtime = sorted({line.split()[-1] for line in open("/proc/self/maps") if "libifcore" in line})
+    math_runtime = sorted({line.split()[-1] for line in open("/proc/self/maps") if "libimf" in line})
     library.pycam_pi_cam_get_mxcsr_v1.restype = ctypes.c_uint32
     before = library.pycam_pi_cam_get_mxcsr_v1()
     library.pycam_pi_cam_set_fp_environment_v1()
@@ -262,7 +264,8 @@ _SMOKE = textwrap.dedent(
     print(json.dumps({
         "loaded_base": hex(loaded_base), "base_matches": loaded_base == base,
         "mxcsr_before": hex(before), "mxcsr_after": hex(after),
-        "fortran_runtime": fortran_runtime, "initializers_returned": list(initializers),
+        "fortran_runtime": fortran_runtime, "math_runtime": math_runtime,
+        "ld_preload": os.environ.get("LD_PRELOAD"), "initializers_returned": list(initializers),
         "mpi_initialized": False,
     }))
     """
@@ -280,18 +283,23 @@ _PROBE = textwrap.dedent(
 )
 
 
-def _child_env() -> dict[str, str]:
+def _child_env(math_library: Path) -> dict[str, str]:
+    # A Python process already holds glibc's libm in its global scope, so the
+    # image's exp/log/pow would bind there instead of to Intel's libimf, which
+    # is what the model binds.  Preloading the image's own libimf, as the
+    # freeCAM session does, restores the model's math binding.
     env = {key: value for key, value in os.environ.items() if key != "LD_PRELOAD"}
+    env["LD_PRELOAD"] = str(math_library)
     env["PYTHONUNBUFFERED"] = "1"
     return env
 
 
-def smoke_load(image: Path, spec: FunctionSpec) -> dict[str, object]:
+def smoke_load(image: Path, spec: FunctionSpec, math_library: Path) -> dict[str, object]:
     """A bare Python child loads the image, sets FP state, runs initializers."""
 
     result = subprocess.run(
         [sys.executable, "-c", _SMOKE, str(image), hex(spec.image.base_address), *spec.initializers],
-        capture_output=True, text=True, env=_child_env(), check=False,
+        capture_output=True, text=True, env=_child_env(math_library), check=False,
     )
     if result.returncode != 0:
         raise RuntimeError(f"smoke load failed ({result.returncode}):\n{result.stderr}")
@@ -302,7 +310,7 @@ def smoke_load(image: Path, spec: FunctionSpec) -> dict[str, object]:
         raise RuntimeError(f"floating-point environment is {record['mxcsr_after']}, expected 0x9fc0")
     probe = subprocess.run(
         [sys.executable, "-c", _PROBE, str(image), PROBE_MESSAGE],
-        capture_output=True, text=True, env=_child_env(), check=False,
+        capture_output=True, text=True, env=_child_env(math_library), check=False,
     )
     expected = f"FREECAM_FORTRAN_ABORT: {PROBE_MESSAGE}"
     if probe.returncode != EXIT_ABORT or expected not in probe.stderr:
@@ -387,7 +395,8 @@ def build(spec: FunctionSpec, case: Path, output_root: Path) -> dict[str, object
     call_proof = direct_kernel_call_proof(image, kernel.symbol, spec.routine)
     symbol_audit = audit_image_symbols(image, spec, kernel.symbol)
     dynamic = readelf_dynamic(image)
-    smoke = smoke_load(image, spec)
+    math_library = runtime_library(image, "libimf")
+    smoke = smoke_load(image, spec, math_library)
 
     return {
         "schema_version": 1,
@@ -424,6 +433,8 @@ def build(spec: FunctionSpec, case: Path, output_root: Path) -> dict[str, object
             "stubs": stubs_compile, "floating_environment": fp_compile,
         },
         "dynamic": dynamic,
+        "intel_math_library": str(math_library),
+        "intel_math_library_sha256": sha256(math_library),
         "symbols": symbol_audit,
         "smoke_load": smoke,
         "pbs_job_id": os.environ.get("PBS_JOBID"),
