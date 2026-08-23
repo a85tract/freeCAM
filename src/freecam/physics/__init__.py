@@ -8,6 +8,17 @@ time.
 """
 
 from .errors import PhysicsError, PhysicsSpecError
+from .dataset import Dataset
+from .distributions import (
+    Anchored,
+    Constant,
+    Derived,
+    HybridPressure,
+    LogUniform,
+    Normal,
+    SamplingSpace,
+    Uniform,
+)
 from .function import PhysicsFunction, load_function
 from .result import FunctionResult
 from .spec import (
@@ -20,7 +31,16 @@ from .spec import (
 )
 
 __all__ = [
+    "Anchored",
     "ArgumentSpec",
+    "Constant",
+    "Dataset",
+    "Derived",
+    "HybridPressure",
+    "LogUniform",
+    "Normal",
+    "SamplingSpace",
+    "Uniform",
     "FunctionResult",
     "FunctionSpec",
     "ImageSpec",

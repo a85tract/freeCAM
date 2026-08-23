@@ -1,0 +1,27 @@
+{
+  "anchor_column": "/glade/work/ruitong/pycam-sima-pi-cam-only/validation/pi_cam_dadadj_anchor_column.json",
+  "driver_free": true,
+  "failed_samples_have_nan_outputs": true,
+  "failure_messages": [],
+  "function": "dadadj::dadadj",
+  "gate": "pi_cam_dadadj_dataset_validation",
+  "image_sha256": "786dacbffc3523e33df23cc888802512ae3a928ccc3951292f1331f341cc2225",
+  "module_state_digest": "e796f5676467a68c7fd78e23544f25cb6aa630e87f9859bd12e883b3109bc054",
+  "mpi_initialized": false,
+  "netcdf": "/glade/derecho/scratch/ruitong/freecam-physics/dadadj_training.nc",
+  "netcdf_round_trip": true,
+  "passed": true,
+  "pbs_job_id": null,
+  "same_seed_same_inputs": true,
+  "same_seed_same_outputs": true,
+  "samples": 200,
+  "sampling_space": "  pmid                     HybridPressure(surface=Uniform(91277.98418939073, 100886.19305143188))\n  t                        Anchored(scale=2.0)\n  q                        Anchored(scale=0.05, relative)\n  nlvdry                   Uniform(2, 6)",
+  "schema_version": 1,
+  "seed": 42,
+  "status_counts": {
+    "ok": 200
+  },
+  "stored_samples_reexecute_identically": true,
+  "stored_samples_replayed": 10,
+  "worker_restarts": 0
+}

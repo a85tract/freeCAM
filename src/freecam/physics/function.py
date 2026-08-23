@@ -92,6 +92,62 @@ class PhysicsFunction:
             results.append(self.run(inputs, merged or None))
         return results
 
+    def generate_dataset(
+        self,
+        n: int,
+        distributions: Mapping[str, Any],
+        *,
+        seed: int = 0,
+        parameters: Mapping[str, Any] | None = None,
+        inputs: Mapping[str, Any] | None = None,
+        progress: Any = None,
+    ):
+        """Draw ``n`` joint samples, run each, and return a :class:`Dataset`.
+
+        ``inputs`` and ``parameters`` are fixed values for anything not drawn.
+        Every sample is one independent column call; a sample the routine
+        refuses keeps its inputs and a status, never fabricated outputs.
+        """
+
+        import subprocess
+
+        from .dataset import assemble
+        from .distributions import SamplingSpace
+
+        space = SamplingSpace(self.spec, distributions)
+        rng = np.random.default_rng(seed)
+        rows = []
+        for index in range(int(n)):
+            drawn_inputs, drawn_parameters = space.draw(rng)
+            sample_inputs = {**(inputs or {}), **drawn_inputs}
+            sample_parameters = {**(parameters or {}), **drawn_parameters}
+            result = self.run(sample_inputs, sample_parameters or None)
+            rows.append({
+                "inputs": coerce_inputs(self.spec, sample_inputs) if result.status != "invalid_input" else {
+                    k: np.asarray(v) for k, v in sample_inputs.items()
+                },
+                "parameters": sample_parameters,
+                "outputs": dict(result.outputs),
+                "updated": dict(result.updated_inputs),
+                "status": result.status,
+                "message": result.message,
+            })
+            if progress is not None:
+                progress(index + 1, int(n), result.status)
+        try:
+            commit = subprocess.run(["git", "rev-parse", "HEAD"], cwd=REPO, capture_output=True, text=True, check=False).stdout.strip()
+        except OSError:
+            commit = ""
+        attributes = {
+            **self.metadata,
+            "seed": int(seed),
+            "samples": int(n),
+            "sampling_space": space.describe(),
+            "fixed_parameters": json.dumps(dict(parameters or {})),
+            "freecam_commit": commit,
+        }
+        return assemble(self.spec, rows, attributes)
+
     def close(self) -> None:
         self.host.close()
 

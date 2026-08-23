@@ -296,6 +296,43 @@ belong in StatePool fields.
 See the Notebook for field aliases, plotting, workflow construction, runtime
 process replacement, asynchronous execution, and Xarray history access.
 
+## Calling a CAM scheme as a function
+
+Besides running the model, freeCAM can hand you one physics routine as an
+ordinary numerical function -- `y = f(x, p)` on a single vertical column --
+with no `Driver`, no MPI and no model state.  The routine is linked from the
+oracle build's own objects into a small standalone image and runs in a worker
+process beside your Python:
+
+```python
+import freecam as fc
+
+f = fc.physics.load_function("mmacro_pcond")   # CAM5 cloud macrophysics
+print(f.describe())                             # inputs, in/outs, outputs, parameters
+
+result = f.run(inputs, parameters={"cldfrc_rhminl": 0.85})
+result["cld"]                                   # one column's cloud fraction, (lev,)
+
+dataset = f.generate_dataset(10_000, sampling_space, seed=42)
+dataset.save("mmacro_pcond_training.nc")        # inputs, parameters, outputs, status, provenance
+```
+
+| Interface | What it does |
+| --- | --- |
+| `driver.cam.workflow[...]` | runs a process on the full model field, inside a timestep |
+| `fc.physics.load_function(...)` | calls the scheme on one column, Driver-free |
+
+Inputs are `(lev,)` profiles and scalars; parameters are the scheme's own
+namelist tunables and join the sampling space as extra dimensions.  A sample
+the Fortran refuses comes back as `status="fortran_abort"` with the routine's
+diagnostic, never as data.  Every function has a reviewed specification under
+`native/pi_cam/functions/`, and its image is proven before use: the wrapper
+demonstrably calls the original routine, and replaying calls captured from a
+real 512-rank run through the image reproduces the model bit for bit
+(`validation/pi_cam_*_full_chunk_vs_capture.json`,
+`..._single_column_vs_capture.json`, `..._public_api_vs_capture.json`).
+`examples/physics_function.ipynb` walks through it.
+
 ## Validation
 
 The current validated results are:

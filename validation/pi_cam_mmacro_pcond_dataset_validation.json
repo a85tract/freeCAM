@@ -1,0 +1,27 @@
+{
+  "anchor_column": "/glade/work/ruitong/pycam-sima-pi-cam-only/validation/pi_cam_mmacro_pcond_anchor_column.json",
+  "driver_free": true,
+  "failed_samples_have_nan_outputs": true,
+  "failure_messages": [],
+  "function": "cldwat2m_macro::mmacro_pcond",
+  "gate": "pi_cam_mmacro_pcond_dataset_validation",
+  "image_sha256": "75dcf6f2baac191bea036cd1e48072e7042c088a2d7950f42e8b3c01c66263e1",
+  "module_state_digest": "dde42b747dc61d972dd2a9521d4ddd441527a6f064268c2eb7524f36aeaed95a",
+  "mpi_initialized": false,
+  "netcdf": "/glade/derecho/scratch/ruitong/freecam-physics/mmacro_pcond_training.nc",
+  "netcdf_round_trip": true,
+  "passed": true,
+  "pbs_job_id": null,
+  "same_seed_same_inputs": true,
+  "same_seed_same_outputs": true,
+  "samples": 200,
+  "sampling_space": "  p                        HybridPressure(surface=Uniform(91277.98418939073, 100886.19305143188))\n  t0                       Anchored(scale=1.0)\n  qv0                      Anchored(scale=0.05, relative)\n  ql0                      Anchored(scale=0.05, relative)\n  qi0                      Anchored(scale=0.05, relative)\n  cldfrc_rhminl            Uniform(0.8, 0.95)",
+  "schema_version": 1,
+  "seed": 42,
+  "status_counts": {
+    "ok": 200
+  },
+  "stored_samples_reexecute_identically": true,
+  "stored_samples_replayed": 10,
+  "worker_restarts": 0
+}
