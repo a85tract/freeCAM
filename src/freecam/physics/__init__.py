@@ -8,6 +8,8 @@ time.
 """
 
 from .errors import PhysicsError, PhysicsSpecError
+from .function import PhysicsFunction, load_function
+from .result import FunctionResult
 from .spec import (
     ArgumentSpec,
     FunctionSpec,
@@ -19,11 +21,14 @@ from .spec import (
 
 __all__ = [
     "ArgumentSpec",
+    "FunctionResult",
     "FunctionSpec",
     "ImageSpec",
     "ModuleStateEntry",
     "ParameterSpec",
     "PhysicsError",
+    "PhysicsFunction",
     "PhysicsSpecError",
+    "load_function",
     "load_function_spec",
 ]

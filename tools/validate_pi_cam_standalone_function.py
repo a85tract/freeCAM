@@ -86,6 +86,9 @@ def main() -> int:
     parser.add_argument("--single-column-output", type=Path, default=None)
     parser.add_argument("--max-records", type=int, default=None)
     parser.add_argument("--single-column-records", type=int, default=8)
+    parser.add_argument("--public-api-records", type=int, default=0,
+                        help="also run captured columns through fc.physics.load_function().run() in a worker")
+    parser.add_argument("--public-api-output", type=Path, default=None)
     args = parser.parse_args()
 
     manifest = args.manifest or REPO / "build/pi_cam_standalone" / args.function / "manifest.json"
@@ -177,7 +180,58 @@ def main() -> int:
     output = args.single_column_output or REPO / "validation" / f"pi_cam_{args.function}_single_column_vs_capture.json"
     output.write_text(json.dumps(single, indent=2, sort_keys=True) + "\n")
     print(f"gate B single column: {'passed' if single_equal else 'FAILED'} ({single['columns_equal']}/{len(columns)} columns)")
-    return 0 if all_equal and single_equal else 1
+
+    # Gate C: the public function, in a worker, on captured columns.
+    api_equal = True
+    if args.public_api_records > 0:
+        from freecam.physics import load_function
+
+        function = load_function(spec.function, manifest=manifest, module_state=snapshot_path)
+        rows = []
+        try:
+            for index in range(min(count, args.public_api_records)):
+                ncol = int(bundle["ncol"][index])
+                for lane in range(ncol):
+                    inputs = {}
+                    for item in spec.user_arguments:
+                        values = bundle[f"before__{item.name}"][..., index]
+                        inputs[item.name] = np.asarray(values).reshape(-1)[0] if item.rank == 0 else values[lane]
+                    inputs["dt"] = float(bundle["dt"][index]) if "dt" in [a.name for a in spec.user_arguments] else inputs.get("dt")
+                    inputs = {k: v for k, v in inputs.items() if v is not None}
+                    result = function.run(inputs)
+                    comparison = {}
+                    for item in spec.arguments:
+                        if not item.returned:
+                            continue
+                        reference = bundle[f"after__{item.name}"][..., index]
+                        reference = np.asarray(reference).reshape(-1)[0] if item.rank == 0 else reference[lane]
+                        difference = _first_difference(np.asarray(reference), np.asarray(result[item.name])) if result.ok else {"reason": result.status}
+                        comparison[item.name] = {"equal": difference is None, **({"first_difference": difference} if difference else {})}
+                    equal = result.ok and all(item["equal"] for item in comparison.values())
+                    api_equal = api_equal and equal
+                    rows.append({"index": index, "lane": lane, "status": result.status, "equal": equal,
+                                 **({"outputs": comparison} if not equal else {})})
+        finally:
+            function.close()
+        api = {
+            "schema_version": 1,
+            "gate": f"pi_cam_{args.function}_public_api_vs_capture",
+            "function": spec.function,
+            "passed": api_equal,
+            "driver_free": True,
+            "mpi_initialized": "mpi4py" in sys.modules,
+            "host": "subprocess",
+            "worker_restarts": function.host.restarts,
+            "image_sha256": image.manifest["library_sha256"],
+            "snapshot_digest": snapshot.get("digest"),
+            "columns_compared": len(rows),
+            "columns_equal": sum(1 for item in rows if item["equal"]),
+            "columns": rows,
+        }
+        output = args.public_api_output or REPO / "validation" / f"pi_cam_{args.function}_public_api_vs_capture.json"
+        output.write_text(json.dumps(api, indent=2, sort_keys=True) + "\n")
+        print(f"gate C public API: {'passed' if api_equal else 'FAILED'} ({api['columns_equal']}/{len(rows)} columns)")
+    return 0 if all_equal and single_equal and api_equal else 1
 
 
 if __name__ == "__main__":

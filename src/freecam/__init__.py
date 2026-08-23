@@ -88,4 +88,6 @@ __all__ = [
     "PythonStateView",
 ]
 
+from . import physics  # noqa: E402  (single-column physics functions)
+
 __version__ = "0.19.0"
