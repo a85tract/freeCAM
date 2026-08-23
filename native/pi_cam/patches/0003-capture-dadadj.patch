@@ -1,0 +1,24 @@
+--- a/src/physics/cam/physpkg.F90
++++ b/src/physics/cam/physpkg.F90
+@@ -1747,0 +1748 @@ subroutine tphysbc (ztodt,               &
++     use pycam_function_capture
+@@ -2056,0 +2058,9 @@ subroutine tphysbc (ztodt,               &
++    call pycam_capture_begin('dadadj', 'before', lchnk, ncol, ztodt, 7)
++    call pycam_capture_int('lchnk', lchnk)
++    call pycam_capture_int('ncol', ncol)
++    call pycam_capture_real2('pmid', state%pmid)
++    call pycam_capture_real2('pint', state%pint)
++    call pycam_capture_real2('pdel', state%pdel)
++    call pycam_capture_real2('t', ptend%s)
++    call pycam_capture_real2('q', ptend%q(:,:,1))
++    call pycam_capture_end()
+@@ -2058,0 +2069,9 @@ subroutine tphysbc (ztodt,               &
++    call pycam_capture_begin('dadadj', 'after', lchnk, ncol, ztodt, 7)
++    call pycam_capture_int('lchnk', lchnk)
++    call pycam_capture_int('ncol', ncol)
++    call pycam_capture_real2('pmid', state%pmid)
++    call pycam_capture_real2('pint', state%pint)
++    call pycam_capture_real2('pdel', state%pdel)
++    call pycam_capture_real2('t', ptend%s)
++    call pycam_capture_real2('q', ptend%q(:,:,1))
++    call pycam_capture_end()

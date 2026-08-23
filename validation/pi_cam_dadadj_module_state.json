@@ -1,0 +1,60 @@
+{
+  "atm_in_sha256": "6cf906571702ac0c912c22c42d7a5b4568ef2001697d59a05078538ed8bc3472",
+  "config": "configs/pi_cam_icesm131_replay.yaml",
+  "digest": "e796f5676467a68c7fd78e23544f25cb6aa630e87f9859bd12e883b3109bc054",
+  "drifted_after_one_step": [],
+  "entries": {
+    "cam_control_mod_mp_nlvdry_": {
+      "dtype": "int32",
+      "sha256": "9d9f290527a6be626a8f5985b26e19b237b44872b03631811df4416fc1713178",
+      "shape": [],
+      "symbol": "cam_control_mod_mp_nlvdry_",
+      "values": [
+        3
+      ],
+      "write": "parameter"
+    },
+    "cam_logfile_mp_iulog_": {
+      "dtype": "int32",
+      "sha256": "7aa8ca4a02506da9133d8f889678b76f716ce45d02e22fdb7b70a15e56a0eff8",
+      "shape": [],
+      "symbol": "cam_logfile_mp_iulog_",
+      "values": [
+        6
+      ],
+      "write": "verify"
+    },
+    "physconst_mp_cappa_": {
+      "dtype": "float64",
+      "hex": [
+        "0x1.2492e38a1f3e8p-2"
+      ],
+      "sha256": "069f8492a4382bd97e7b0ac75d360381d75bdcd352e3b49a459dd986c5e11ee1",
+      "shape": [],
+      "symbol": "physconst_mp_cappa_",
+      "values": [
+        0.28571658640413355
+      ],
+      "write": "verify"
+    },
+    "spmd_utils_mp_masterproc_": {
+      "dtype": "int32",
+      "sha256": "ad95131bc0b799c0b1af477fb14fcf26a6a9f76079e48bf090acb7e8367bfd0e",
+      "shape": [],
+      "symbol": "spmd_utils_mp_masterproc_",
+      "values": [
+        -1
+      ],
+      "write": "declared"
+    }
+  },
+  "function": "dadadj",
+  "library_sha256": "8ca6c0d2bcbbd7702558599132f60a8ec3b4876720fedc621c35d08f03732128",
+  "mpi_ranks": 512,
+  "native_manifest": "/glade/work/ruitong/freeCAM/build/pi_cam_promoted/native_cam_manifest.json",
+  "pbs_job_id": "7218608.desched1",
+  "qualified_name": "dadadj::dadadj",
+  "schema_version": 1,
+  "spec_sha256": "dc94fa17619df86dc80f10302d54f1c4ac8ada02a906693838012946c2b048e0",
+  "stable_after_one_step": true
+}

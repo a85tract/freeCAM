@@ -1,0 +1,62 @@
+{
+  "arguments": [
+    "lchnk",
+    "ncol",
+    "pmid",
+    "pint",
+    "pdel",
+    "t",
+    "q"
+  ],
+  "bundle": "/glade/derecho/scratch/ruitong/pyCAM/PI-cam/function-capture-7218608.desched1/bundles/dadadj_capture.npz",
+  "capture_prefix": "/glade/derecho/scratch/ruitong/pyCAM/PI-cam/function-capture-7218608.desched1/raw/function",
+  "dt": [
+    1800.0
+  ],
+  "executable_sha256": "e5beff395bb44b0b1fed7d3deb863ba57ed2c85c7b927c1423cd8bcd2004e69a",
+  "function": "dadadj",
+  "ncol_histogram": {
+    "13": 1020,
+    "14": 1028
+  },
+  "pbs_job_id": "7218608.desched1",
+  "pointer_associated_counts": {},
+  "rank_files": 512,
+  "ranks": 512,
+  "records": 2048,
+  "schema_version": 1,
+  "sha256": {
+    "lchnk": {
+      "after": "f279dd3f061a3a99f711a47a0ec0b57840348b7858c324399a7b3f3e474c85ce",
+      "before": "f279dd3f061a3a99f711a47a0ec0b57840348b7858c324399a7b3f3e474c85ce"
+    },
+    "ncol": {
+      "after": "8b4e910030676d324272e7218076e6d8f48c635e616f80304ba91e91d6f6ef5b",
+      "before": "8b4e910030676d324272e7218076e6d8f48c635e616f80304ba91e91d6f6ef5b"
+    },
+    "pdel": {
+      "after": "a4494ee6eb57e0fefeaafd435bf0037f2f0a9db347030120081edc2963d31388",
+      "before": "a4494ee6eb57e0fefeaafd435bf0037f2f0a9db347030120081edc2963d31388"
+    },
+    "pint": {
+      "after": "b727d97fbff9f27489b31d884994b98ffabb393387b7a04025092aeeb8920b21",
+      "before": "b727d97fbff9f27489b31d884994b98ffabb393387b7a04025092aeeb8920b21"
+    },
+    "pmid": {
+      "after": "70577b3634e186739862387a72b3d9be9fdf0fa834f038a983e411058853a90d",
+      "before": "70577b3634e186739862387a72b3d9be9fdf0fa834f038a983e411058853a90d"
+    },
+    "q": {
+      "after": "a3c8a59da8c4579f3b9921d1e93ef4e8a741d2528568d3ff646b1747ae6f22e6",
+      "before": "a3c8a59da8c4579f3b9921d1e93ef4e8a741d2528568d3ff646b1747ae6f22e6"
+    },
+    "t": {
+      "after": "44d1fdf40494f0f1f7ffe4143c4d89b4bd5c6c4675ba3bddeb6bddfd889b03c8",
+      "before": "44d1fdf40494f0f1f7ffe4143c4d89b4bd5c6c4675ba3bddeb6bddfd889b03c8"
+    }
+  },
+  "steps": [
+    1,
+    2
+  ]
+}
