@@ -1,0 +1,180 @@
+# Standalone function specification for dadadj (GFDL-style dry adiabatic
+# adjustment), the pathfinder for the Driver-free physics-function harness.
+#
+# This file is the runtime's only source of truth for the function boundary.
+# tools/verify_pi_cam_function_spec.py checks it at build time against the
+# kernel inventory (argument order, dtype, rank, intent, extents) and against
+# the declaration comments in the pinned source (units); the runtime never
+# parses Fortran.  dadadj exercises object-level linking, image loading, the
+# pointer-table ABI, the floating-point environment, the abort convention and
+# the call-target proof -- nothing more is built on it.
+
+schema_version: 1
+function: dadadj
+qualified_name: dadadj::dadadj
+routine: dadadj
+source: components/cam/src/physics/cam/dadadj.F90
+# dadadj is an external subroutine, not a module procedure: the wrapper
+# calls dadadj_ directly and no module is `use`d for it.
+module: null
+
+# Native extents are compile-time constants of the admitted build
+# (-DPCOLS=16 -DPLEV=30); the public axis names are what users see.
+dimensions:
+  pcols: 16
+  pver: 30
+  pverp: 31
+public_axes:
+  pver: lev
+  pverp: ilev
+
+# Fortran argument order.  Every dummy has exactly one role:
+#   structural  owned by the runtime, never user-visible (chunk id, ncol)
+#   input       intent(in), user-supplied
+#   inout       intent(inout), user supplies the initial value, updated on return
+#   output      intent(out), allocated by the runtime, returned
+#   workspace   passed but never dereferenced on this configuration's path
+arguments:
+  - name: lchnk
+    role: structural
+    fortran_type: integer
+    dtype: int32
+    rank: 0
+    intent: in
+    native_shape: []
+    value: 1
+    description: Chunk identifier; only read by the error message on non-convergence.
+  - name: ncol
+    role: structural
+    fortran_type: integer
+    dtype: int32
+    rank: 0
+    intent: in
+    native_shape: []
+    value: 1
+    description: Number of active columns; the public API always evaluates one.
+  - name: pmid
+    role: input
+    fortran_type: real
+    dtype: float64
+    rank: 2
+    intent: in
+    native_shape: [pcols, pver]
+    public_shape: [pver]
+    units: Pa
+    range: [100.0, 110000.0]
+    constraints: [positive, pressure_midpoint]
+    description: Pressure at model levels.
+  - name: pint
+    role: input
+    fortran_type: real
+    dtype: float64
+    rank: 2
+    intent: in
+    native_shape: [pcols, pverp]
+    public_shape: [pverp]
+    units: Pa
+    range: [100.0, 110000.0]
+    constraints: [positive, pressure_interface]
+    description: Pressure at model interfaces.
+  - name: pdel
+    role: input
+    fortran_type: real
+    dtype: float64
+    rank: 2
+    intent: in
+    native_shape: [pcols, pver]
+    public_shape: [pver]
+    units: Pa
+    range: [1.0, 20000.0]
+    constraints: [positive, pressure_thickness]
+    description: Vertical delta-p.
+  - name: t
+    role: inout
+    fortran_type: real
+    dtype: float64
+    rank: 2
+    intent: inout
+    native_shape: [pcols, pver]
+    public_shape: [pver]
+    units: K
+    range: [150.0, 330.0]
+    constraints: [positive]
+    description: Temperature; adjusted in place where the column is statically unstable.
+  - name: q
+    role: inout
+    fortran_type: real
+    dtype: float64
+    rank: 2
+    intent: inout
+    native_shape: [pcols, pver]
+    public_shape: [pver]
+    units: kg/kg
+    range: [0.0, 0.04]
+    constraints: [nonnegative]
+    description: Specific humidity; mixed across adjusted layers.
+
+# Module-level tunables the routine reads on every call.  Names follow the
+# namelist; symbols are every storage copy present in the standalone image.
+parameters:
+  nlvdry:
+    dtype: int32
+    symbols: [cam_control_mod_mp_nlvdry_]
+    default: 3
+    range: [1, 29]
+    description: >
+      Number of top layers over which dry adjustment acts; levels 1..nlvdry+1
+      are inspected and rewritten, everything below passes through.
+
+# Module state the routine depends on besides its arguments.  `verify` entries
+# are read back from the image and compared bit-for-bit with the snapshot
+# taken in an initialized model; `write: declared` entries are poked to the
+# stated value; `write: parameter` entries are owned by the parameter block.
+module_state:
+  - symbol: physconst_mp_cappa_
+    dtype: float64
+    shape: []
+    write: verify
+    note: R/Cp, initialized data from shr_const_mod.
+  - symbol: cam_control_mod_mp_nlvdry_
+    dtype: int32
+    shape: []
+    write: parameter
+  - symbol: cam_logfile_mp_iulog_
+    dtype: int32
+    shape: []
+    write: verify
+    expected: 6
+  - symbol: spmd_utils_mp_masterproc_
+    dtype: int32
+    shape: []
+    write: declared
+    value: 0
+
+initializers: []
+
+# How the standalone image is linked: the oracle archive members it needs
+# (numerics are never recompiled) and the stubs that close the link.  The
+# builder fails if the undefined-symbol set differs from this declaration.
+image:
+  archive_members:
+    - dadadj.o
+    - physconst.o
+    - cam_control_mod.o
+    - cam_logfile.o
+    - ppgrid.o
+  stubs:
+    inert:
+      - spmd_utils_mp_masterproc_
+      - mpishorthand_mp_mpicom_
+      - mpishorthand_mp_mpir8_
+    fail_closed:
+      - phys_grid_mp_get_lat_p_
+      - phys_grid_mp_get_lon_p_
+      - mpibcast_
+      - shr_nl_mod_mp_shr_nl_find_group_name_
+      - units_mp_getunit_
+      - units_mp_freeunit_
+    abort:
+      - shr_sys_mod_mp_shr_sys_abort_
+  base_address: 0x50000000

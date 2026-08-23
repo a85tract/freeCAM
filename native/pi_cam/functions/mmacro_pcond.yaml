@@ -1,0 +1,916 @@
+# Standalone function specification for mmacro_pcond, CAM5 cloud
+# macrophysics (Park et al.), treated as a pure single-column function.
+#
+# This file is the runtime's only source of truth for the function boundary.
+# tools/verify_pi_cam_function_spec.py checks it at build time against the
+# kernel inventory (argument order, dtype, rank, intent, extents) and against
+# the declaration comments in the pinned source (units); the runtime never
+# parses Fortran.
+#
+# Why this routine and not the stage: macrop_driver_tend is physics-buffer
+# plumbing around it.  cldwat2m_macro.F90 references no physics buffer, loops
+# `do i = 1, ncol` over independent columns, keeps no saved state between
+# calls, and takes its entire input set through these 60 arguments plus the
+# module state listed below -- so a call is a closed function of what is
+# declared here.
+
+schema_version: 1
+function: mmacro_pcond
+qualified_name: cldwat2m_macro::mmacro_pcond
+routine: mmacro_pcond
+source: components/cam/src/physics/cam/cldwat2m_macro.F90
+module: cldwat2m_macro
+
+dimensions:
+  pcols: 16
+  pver: 30
+  pverp: 31
+public_axes:
+  pver: lev
+  pverp: ilev
+
+# Fortran argument order.  Roles:
+#   structural  owned by the runtime, never user-visible
+#   input       intent(in), user-supplied (defaults where the MVP holds a
+#               forcing term at zero -- the well-defined case of no advection,
+#               no microphysical feedback, no detrainment, no PBL flux)
+#   inout       user supplies the initial value, updated on return
+#   output      allocated by the runtime, returned
+#   workspace   passed but never dereferenced: the six real(r8), pointer
+#               dummies are read only when i_rhminl/i_rhmini are non-zero,
+#               and both are 0 in the admitted configuration (UW shallow);
+#               the module_state block pins that guard.
+arguments:
+  - name: lchnk
+    role: structural
+    fortran_type: integer
+    dtype: int32
+    rank: 0
+    intent: in
+    native_shape: []
+    value: 1
+    description: Chunk number; only the history calls read it, which the standalone image stubs.
+  - name: ncol
+    role: structural
+    fortran_type: integer
+    dtype: int32
+    rank: 0
+    intent: in
+    native_shape: []
+    value: 1
+    description: Number of active columns; the public API always evaluates one.
+  - name: dt
+    role: input
+    fortran_type: real
+    dtype: float64
+    rank: 0
+    intent: in
+    native_shape: []
+    public_shape: []
+    units: s
+    range: [1.0, 7200.0]
+    constraints: [positive]
+    default: 1800.0
+    description: Model integration time step [s].
+  - name: p
+    role: input
+    fortran_type: real
+    dtype: float64
+    rank: 2
+    intent: in
+    native_shape: [pcols, pver]
+    public_shape: [pver]
+    units: Pa
+    range: [100.0, 110000.0]
+    constraints: [positive, pressure_midpoint]
+    description: Pressure at the layer mid-point [Pa].
+  - name: dp
+    role: input
+    fortran_type: real
+    dtype: float64
+    rank: 2
+    intent: in
+    native_shape: [pcols, pver]
+    public_shape: [pver]
+    units: Pa
+    range: [1.0, 20000.0]
+    constraints: [positive, pressure_thickness]
+    description: Pressure thickness [Pa] > 0.
+  - name: t0
+    role: inout
+    fortran_type: real
+    dtype: float64
+    rank: 2
+    intent: inout
+    native_shape: [pcols, pver]
+    public_shape: [pver]
+    units: K
+    range: [150.0, 330.0]
+    constraints: [positive]
+    description: Temperature [K].
+  - name: qv0
+    role: inout
+    fortran_type: real
+    dtype: float64
+    rank: 2
+    intent: inout
+    native_shape: [pcols, pver]
+    public_shape: [pver]
+    units: kg/kg
+    range: [0.0, 0.04]
+    constraints: [nonnegative]
+    description: Grid-mean water vapor specific humidity [kg/kg].
+  - name: ql0
+    role: inout
+    fortran_type: real
+    dtype: float64
+    rank: 2
+    intent: inout
+    native_shape: [pcols, pver]
+    public_shape: [pver]
+    units: kg/kg
+    range: [0.0, 0.01]
+    constraints: [nonnegative]
+    description: Grid-mean liquid water content [kg/kg].
+  - name: qi0
+    role: inout
+    fortran_type: real
+    dtype: float64
+    rank: 2
+    intent: inout
+    native_shape: [pcols, pver]
+    public_shape: [pver]
+    units: kg/kg
+    range: [0.0, 0.01]
+    constraints: [nonnegative]
+    description: Grid-mean ice water content [kg/kg].
+  - name: nl0
+    role: inout
+    fortran_type: real
+    dtype: float64
+    rank: 2
+    intent: inout
+    native_shape: [pcols, pver]
+    public_shape: [pver]
+    units: "#/kg"
+    range: [0.0, 1000000000.0]
+    constraints: [nonnegative]
+    description: Grid-mean number concentration of cloud liquid droplet [#/kg].
+  - name: ni0
+    role: inout
+    fortran_type: real
+    dtype: float64
+    rank: 2
+    intent: inout
+    native_shape: [pcols, pver]
+    public_shape: [pver]
+    units: "#/kg"
+    range: [0.0, 100000000.0]
+    constraints: [nonnegative]
+    description: Grid-mean number concentration of cloud ice droplet [#/kg] Input variables.
+  - name: a_t
+    role: input
+    fortran_type: real
+    dtype: float64
+    rank: 2
+    intent: in
+    native_shape: [pcols, pver]
+    public_shape: [pver]
+    units: K/s
+    range: [-0.01, 0.01]
+    default: 0.0
+    description: Non-microphysical advective external forcing of T [K/s].
+  - name: a_qv
+    role: input
+    fortran_type: real
+    dtype: float64
+    rank: 2
+    intent: in
+    native_shape: [pcols, pver]
+    public_shape: [pver]
+    units: kg/kg/s
+    range: [-1e-06, 1e-06]
+    default: 0.0
+    description: Non-microphysical advective external forcing of qv [kg/kg/s].
+  - name: a_ql
+    role: input
+    fortran_type: real
+    dtype: float64
+    rank: 2
+    intent: in
+    native_shape: [pcols, pver]
+    public_shape: [pver]
+    units: kg/kg/s
+    range: [-1e-06, 1e-06]
+    default: 0.0
+    description: Non-microphysical advective external forcing of ql [kg/kg/s].
+  - name: a_qi
+    role: input
+    fortran_type: real
+    dtype: float64
+    rank: 2
+    intent: in
+    native_shape: [pcols, pver]
+    public_shape: [pver]
+    units: kg/kg/s
+    range: [-1e-06, 1e-06]
+    default: 0.0
+    description: Non-microphysical advective external forcing of qi [kg/kg/s].
+  - name: a_nl
+    role: input
+    fortran_type: real
+    dtype: float64
+    rank: 2
+    intent: in
+    native_shape: [pcols, pver]
+    public_shape: [pver]
+    units: "#/kg/s"
+    range: [-10000.0, 10000.0]
+    default: 0.0
+    description: Non-microphysical advective external forcing of nl [#/kg/s].
+  - name: a_ni
+    role: input
+    fortran_type: real
+    dtype: float64
+    rank: 2
+    intent: in
+    native_shape: [pcols, pver]
+    public_shape: [pver]
+    units: "#/kg/s"
+    range: [-1000.0, 1000.0]
+    default: 0.0
+    description: Non-microphysical advective external forcing of ni [#/kg/s].
+  - name: c_t
+    role: input
+    fortran_type: real
+    dtype: float64
+    rank: 2
+    intent: in
+    native_shape: [pcols, pver]
+    public_shape: [pver]
+    units: K/s
+    range: [-0.01, 0.01]
+    default: 0.0
+    description: Microphysical advective external forcing of T [K/s].
+  - name: c_qv
+    role: input
+    fortran_type: real
+    dtype: float64
+    rank: 2
+    intent: in
+    native_shape: [pcols, pver]
+    public_shape: [pver]
+    units: kg/kg/s
+    range: [-1e-06, 1e-06]
+    default: 0.0
+    description: Microphysical advective external forcing of qv [kg/kg/s].
+  - name: c_ql
+    role: input
+    fortran_type: real
+    dtype: float64
+    rank: 2
+    intent: in
+    native_shape: [pcols, pver]
+    public_shape: [pver]
+    units: kg/kg/s
+    range: [-1e-06, 1e-06]
+    default: 0.0
+    description: Microphysical advective external forcing of ql [kg/kg/s].
+  - name: c_qi
+    role: input
+    fortran_type: real
+    dtype: float64
+    rank: 2
+    intent: in
+    native_shape: [pcols, pver]
+    public_shape: [pver]
+    units: kg/kg/s
+    range: [-1e-06, 1e-06]
+    default: 0.0
+    description: Microphysical advective external forcing of qi [kg/kg/s].
+  - name: c_nl
+    role: input
+    fortran_type: real
+    dtype: float64
+    rank: 2
+    intent: in
+    native_shape: [pcols, pver]
+    public_shape: [pver]
+    units: "#/kg/s"
+    range: [-10000.0, 10000.0]
+    default: 0.0
+    description: Microphysical advective external forcing of nl [#/kg/s].
+  - name: c_ni
+    role: input
+    fortran_type: real
+    dtype: float64
+    rank: 2
+    intent: in
+    native_shape: [pcols, pver]
+    public_shape: [pver]
+    units: "#/kg/s"
+    range: [-1000.0, 1000.0]
+    default: 0.0
+    description: Microphysical advective external forcing of ni [#/kg/s].
+  - name: c_qlst
+    role: input
+    fortran_type: real
+    dtype: float64
+    rank: 2
+    intent: in
+    native_shape: [pcols, pver]
+    public_shape: [pver]
+    units: kg/kg/s
+    range: [-1e-06, 1e-06]
+    default: 0.0
+    description: Microphysical advective external forcing of ql within liquid stratus [kg/kg/s].
+  - name: d_t
+    role: input
+    fortran_type: real
+    dtype: float64
+    rank: 2
+    intent: in
+    native_shape: [pcols, pver]
+    public_shape: [pver]
+    units: K/s
+    range: [-0.01, 0.01]
+    default: 0.0
+    description: Cumulus detrainment external forcing of T [K/s].
+  - name: d_qv
+    role: input
+    fortran_type: real
+    dtype: float64
+    rank: 2
+    intent: in
+    native_shape: [pcols, pver]
+    public_shape: [pver]
+    units: kg/kg/s
+    range: [-1e-06, 1e-06]
+    default: 0.0
+    description: Cumulus detrainment external forcing of qv [kg/kg/s].
+  - name: d_ql
+    role: input
+    fortran_type: real
+    dtype: float64
+    rank: 2
+    intent: in
+    native_shape: [pcols, pver]
+    public_shape: [pver]
+    units: kg/kg/s
+    range: [-1e-06, 1e-06]
+    default: 0.0
+    description: Cumulus detrainment external forcing of ql [kg/kg/s].
+  - name: d_qi
+    role: input
+    fortran_type: real
+    dtype: float64
+    rank: 2
+    intent: in
+    native_shape: [pcols, pver]
+    public_shape: [pver]
+    units: kg/kg/s
+    range: [-1e-06, 1e-06]
+    default: 0.0
+    description: Cumulus detrainment external forcing of qi [kg/kg/s].
+  - name: d_nl
+    role: input
+    fortran_type: real
+    dtype: float64
+    rank: 2
+    intent: in
+    native_shape: [pcols, pver]
+    public_shape: [pver]
+    units: "#/kg/s"
+    range: [-10000.0, 10000.0]
+    default: 0.0
+    description: Cumulus detrainment external forcing of nl [#/kg/s].
+  - name: d_ni
+    role: input
+    fortran_type: real
+    dtype: float64
+    rank: 2
+    intent: in
+    native_shape: [pcols, pver]
+    public_shape: [pver]
+    units: "#/kg/s"
+    range: [-1000.0, 1000.0]
+    default: 0.0
+    description: Cumulus detrainment external forcing of qi [#/kg/s].
+  - name: a_cud
+    role: input
+    fortran_type: real
+    dtype: float64
+    rank: 2
+    intent: in
+    native_shape: [pcols, pver]
+    public_shape: [pver]
+    units: 1
+    range: [0.0, 1.0]
+    constraints: [fraction]
+    default: 0.0
+    description: Old cumulus fraction before update.
+  - name: a_cu0
+    role: input
+    fortran_type: real
+    dtype: float64
+    rank: 2
+    intent: in
+    native_shape: [pcols, pver]
+    public_shape: [pver]
+    units: 1
+    range: [0.0, 1.0]
+    constraints: [fraction]
+    default: 0.0
+    description: New cumulus fraction after update.
+  - name: clrw_old
+    role: input
+    fortran_type: real
+    dtype: float64
+    rank: 2
+    intent: in
+    native_shape: [pcols, pver]
+    public_shape: [pver]
+    units: 1
+    range: [0.0, 1.0]
+    constraints: [fraction]
+    default: 1.0
+    description: Clear sky fraction at the previous time step for liquid stratus process.
+  - name: clri_old
+    role: input
+    fortran_type: real
+    dtype: float64
+    rank: 2
+    intent: in
+    native_shape: [pcols, pver]
+    public_shape: [pver]
+    units: 1
+    range: [0.0, 1.0]
+    constraints: [fraction]
+    default: 1.0
+    description: Clear sky fraction at the previous time step for ice stratus process.
+  - name: landfrac
+    role: input
+    fortran_type: real
+    dtype: float64
+    rank: 1
+    intent: in
+    native_shape: [pcols]
+    public_shape: []
+    units: 1
+    range: [0.0, 1.0]
+    constraints: [fraction]
+    default: 0.0
+    description: Land fraction.
+  - name: snowh
+    role: input
+    fortran_type: real
+    dtype: float64
+    rank: 1
+    intent: in
+    native_shape: [pcols]
+    public_shape: []
+    units: m
+    range: [0.0, 10.0]
+    constraints: [nonnegative]
+    default: 0.0
+    description: Snow depth (liquid water equivalent).
+  - name: tke
+    role: workspace
+    fortran_type: real
+    dtype: float64
+    rank: 2
+    intent: in
+    pointer: true
+    native_shape: [pcols, pverp]
+    public_shape: [pverp]
+    units: m2/s2
+    default: 0.0
+    description: (pcols,pverp) TKE from the PBL scheme.
+  - name: qtl_flx
+    role: workspace
+    fortran_type: real
+    dtype: float64
+    rank: 2
+    intent: in
+    pointer: true
+    native_shape: [pcols, pverp]
+    public_shape: [pverp]
+    units: kg/kg m/s
+    default: 0.0
+    description: (pcols,pverp) overbar(w'qtl') from PBL scheme where qtl = qv + ql.
+  - name: qti_flx
+    role: workspace
+    fortran_type: real
+    dtype: float64
+    rank: 2
+    intent: in
+    pointer: true
+    native_shape: [pcols, pverp]
+    public_shape: [pverp]
+    units: kg/kg m/s
+    default: 0.0
+    description: (pcols,pverp) overbar(w'qti') from PBL scheme where qti = qv + qi.
+  - name: cmfr_det
+    role: workspace
+    fortran_type: real
+    dtype: float64
+    rank: 2
+    intent: in
+    pointer: true
+    native_shape: [pcols, pver]
+    public_shape: [pver]
+    units: kg/m2/s
+    default: 0.0
+    description: (pcols,pver) Detrained mass flux from the convection scheme.
+  - name: qlr_det
+    role: workspace
+    fortran_type: real
+    dtype: float64
+    rank: 2
+    intent: in
+    pointer: true
+    native_shape: [pcols, pver]
+    public_shape: [pver]
+    units: kg/kg
+    default: 0.0
+    description: (pcols,pver) Detrained ql from the convection scheme.
+  - name: qir_det
+    role: workspace
+    fortran_type: real
+    dtype: float64
+    rank: 2
+    intent: in
+    pointer: true
+    native_shape: [pcols, pver]
+    public_shape: [pver]
+    units: kg/kg
+    default: 0.0
+    description: (pcols,pver) Detrained qi from the convection scheme.
+  - name: s_tendout
+    role: output
+    fortran_type: real
+    dtype: float64
+    rank: 2
+    intent: out
+    native_shape: [pcols, pver]
+    public_shape: [pver]
+    units: J/kg/s
+    description: Net tendency of grid-mean s from 'Micro+Macro' processes [J/kg/s].
+  - name: qv_tendout
+    role: output
+    fortran_type: real
+    dtype: float64
+    rank: 2
+    intent: out
+    native_shape: [pcols, pver]
+    public_shape: [pver]
+    units: kg/kg/s
+    description: Net tendency of grid-mean qv from 'Micro+Macro' processes [kg/kg/s].
+  - name: ql_tendout
+    role: output
+    fortran_type: real
+    dtype: float64
+    rank: 2
+    intent: out
+    native_shape: [pcols, pver]
+    public_shape: [pver]
+    units: kg/kg/s
+    description: Net tendency of grid-mean ql from 'Micro+Macro' processes [kg/kg/s].
+  - name: qi_tendout
+    role: output
+    fortran_type: real
+    dtype: float64
+    rank: 2
+    intent: out
+    native_shape: [pcols, pver]
+    public_shape: [pver]
+    units: kg/kg/s
+    description: Net tendency of grid-mean qi from 'Micro+Macro' processes [kg/kg/s].
+  - name: nl_tendout
+    role: output
+    fortran_type: real
+    dtype: float64
+    rank: 2
+    intent: out
+    native_shape: [pcols, pver]
+    public_shape: [pver]
+    units: "#/kg/s"
+    description: Net tendency of grid-mean nl from 'Micro+Macro' processes [#/kg/s].
+  - name: ni_tendout
+    role: output
+    fortran_type: real
+    dtype: float64
+    rank: 2
+    intent: out
+    native_shape: [pcols, pver]
+    public_shape: [pver]
+    units: "#/kg/s"
+    description: Net tendency of grid-mean ni from 'Micro+Macro' processes [#/kg/s].
+  - name: qme
+    role: output
+    fortran_type: real
+    dtype: float64
+    rank: 2
+    intent: out
+    native_shape: [pcols, pver]
+    public_shape: [pver]
+    units: kg/kg/s
+    description: Net condensation rate [kg/kg/s].
+  - name: qvadj
+    role: output
+    fortran_type: real
+    dtype: float64
+    rank: 2
+    intent: out
+    native_shape: [pcols, pver]
+    public_shape: [pver]
+    units: kg/kg/s
+    description: adjustment tendency from "positive_moisture" call (vapor).
+  - name: qladj
+    role: output
+    fortran_type: real
+    dtype: float64
+    rank: 2
+    intent: out
+    native_shape: [pcols, pver]
+    public_shape: [pver]
+    units: kg/kg/s
+    description: adjustment tendency from "positive_moisture" call (liquid).
+  - name: qiadj
+    role: output
+    fortran_type: real
+    dtype: float64
+    rank: 2
+    intent: out
+    native_shape: [pcols, pver]
+    public_shape: [pver]
+    units: kg/kg/s
+    description: adjustment tendency from "positive_moisture" call (ice).
+  - name: qllim
+    role: output
+    fortran_type: real
+    dtype: float64
+    rank: 2
+    intent: out
+    native_shape: [pcols, pver]
+    public_shape: [pver]
+    units: kg/kg/s
+    description: tendency from "instratus_condensate" call (liquid).
+  - name: qilim
+    role: output
+    fortran_type: real
+    dtype: float64
+    rank: 2
+    intent: out
+    native_shape: [pcols, pver]
+    public_shape: [pver]
+    units: kg/kg/s
+    description: tendency from "instratus_condensate" call (ice).
+  - name: cld
+    role: output
+    fortran_type: real
+    dtype: float64
+    rank: 2
+    intent: out
+    native_shape: [pcols, pver]
+    public_shape: [pver]
+    units: 1
+    constraints: [fraction]
+    description: Net cloud fraction ( 0 <= cld <= 1 ).
+  - name: al_st_star
+    role: output
+    fortran_type: real
+    dtype: float64
+    rank: 2
+    intent: out
+    native_shape: [pcols, pver]
+    public_shape: [pver]
+    units: 1
+    constraints: [fraction]
+    description: Physical liquid stratus fraction.
+  - name: ai_st_star
+    role: output
+    fortran_type: real
+    dtype: float64
+    rank: 2
+    intent: out
+    native_shape: [pcols, pver]
+    public_shape: [pver]
+    units: 1
+    constraints: [fraction]
+    description: Physical ice stratus fraction.
+  - name: ql_st_star
+    role: output
+    fortran_type: real
+    dtype: float64
+    rank: 2
+    intent: out
+    native_shape: [pcols, pver]
+    public_shape: [pver]
+    units: kg/kg
+    description: In-stratus LWC [kg/kg].
+  - name: qi_st_star
+    role: output
+    fortran_type: real
+    dtype: float64
+    rank: 2
+    intent: out
+    native_shape: [pcols, pver]
+    public_shape: [pver]
+    units: kg/kg
+    description: In-stratus IWC [kg/kg].
+  - name: do_cldice
+    role: input
+    fortran_type: logical
+    dtype: int32
+    carrier: logical
+    rank: 0
+    intent: in
+    native_shape: []
+    public_shape: []
+    default: 1
+    description: Whether cloud ice is prognosed; 1 in the admitted CAM5 configuration.
+
+# Module-level tunables read on every call.  Names follow the namelist;
+# symbols are every storage copy present in the standalone image (the
+# cloud_fraction owner copy is not linked -- its only consumer here is
+# cldfrc_getparams, which the image stubs).  Defaults are the admitted
+# PI-atm atm_in values.  rhminl/rhminl_adj_land/rhminh are passed by
+# mmacro_pcond to cldfrc2m as explicit overrides, so their cldfrc2m copies
+# are listed for completeness; premit/premib have no override and the
+# cldfrc2m copy is the one the stratus-fraction ramps read.
+parameters:
+  cldfrc_rhminl:
+    dtype: float64
+    symbols: [cldwat2m_macro_mp_rhminl_const_, cldfrc2m_mp_rhminl_const_]
+    default: 0.870
+    range: [0.70, 0.99]
+    description: Minimum RH for low stratus.
+  cldfrc_rhminl_adj_land:
+    dtype: float64
+    symbols: [cldwat2m_macro_mp_rhminl_adj_land_const_, cldfrc2m_mp_rhminl_adj_land_const_]
+    default: 0.100
+    range: [0.0, 0.20]
+    description: Snow-free-land adjustment to rhminl.
+  cldfrc_rhminh:
+    dtype: float64
+    symbols: [cldwat2m_macro_mp_rhminh_const_, cldfrc2m_mp_rhminh_const_]
+    default: 0.800
+    range: [0.60, 0.99]
+    description: Minimum RH for high stable clouds.
+  cldfrc_premit:
+    dtype: float64
+    symbols: [cldwat2m_macro_mp_premit_, cldfrc2m_mp_premit_]
+    default: 40000.0
+    range: [20000.0, 60000.0]
+    units: Pa
+    description: Top of the mid-level RH ramp.
+  cldfrc_premib:
+    dtype: float64
+    symbols: [cldwat2m_macro_mp_premib_, cldfrc2m_mp_premib_]
+    default: 70000.0
+    range: [50000.0, 90000.0]
+    units: Pa
+    constraints: [greater_than:cldfrc_premit]
+    description: Bottom of the mid-level RH ramp.
+  cldfrc2m_rhmini:
+    dtype: float64
+    symbols: [cldfrc2m_mp_rhmini_const_]
+    default: 0.80
+    range: [0.60, 0.99]
+    description: Minimum RH for ice stratus.
+  cldfrc2m_rhmaxi:
+    dtype: float64
+    symbols: [cldfrc2m_mp_rhmaxi_const_]
+    default: 1.1
+    range: [1.0, 1.3]
+    constraints: [greater_than:cldfrc2m_rhmini]
+    description: RH at which ice stratus fraction reaches one.
+  cldfrc_icecrit:
+    dtype: float64
+    symbols: [cldfrc2m_mp_icecrit_]
+    default: 0.93
+    range: [0.80, 1.0]
+    description: Critical RH for ice cloud under iceopt 4.
+  cldfrc_iceopt:
+    dtype: int32
+    symbols: [cldfrc2m_mp_iceopt_]
+    default: 5
+    values: [1, 2, 3, 4, 5]
+    description: Ice-cloud-fraction parameterization selector (categorical).
+
+# Module state besides the arguments.  `verify` entries are compared
+# bit-for-bit with the snapshot taken in an initialized model; `declared`
+# entries are poked to the stated value; `initializer` entries are produced
+# by the initializers below and then verified; `parameter` entries belong to
+# the parameter block.
+module_state:
+  - symbol: ref_pres_mp_trop_cloud_top_lev_
+    dtype: int32
+    shape: []
+    write: snapshot
+    expected: 1
+    note: >
+      Lower bound of nearly every vertical loop.  `protected`, set only by
+      ref_pres_init from the reference pressures (PIO + initial file), so the
+      standalone image takes the live value; 1 for the L30 grid.
+  - symbol: constituents_mp_cnst_name_
+    dtype: S16
+    shape: [57]
+    write: snapshot
+    expected: [Q, CLDLIQ, CLDICE, NUMLIQ, NUMICE]
+    note: >
+      cnst_get_ind('CLDLIQ'/'CLDICE') scans this table and endruns if absent.
+      The whole table is taken from the live model; the first five slots must
+      be these names or the configuration is not the one this spec describes.
+  - symbol: constituents_mp_qmin_
+    dtype: float64
+    shape: [57]
+    write: snapshot
+    expected: [1.0e-12, 0.0, 0.0, 0.0, 0.0]
+  - symbol: cldwat2m_macro_mp_i_rhminl_
+    dtype: int32
+    shape: []
+    write: declared
+    value: 0
+    note: Guards the six pointer dummies; non-zero only under UNICON.
+  - symbol: cldwat2m_macro_mp_i_rhmini_
+    dtype: int32
+    shape: []
+    write: declared
+    value: 0
+  - {symbol: cldwat2m_macro_mp_rhminl_const_, dtype: float64, shape: [], write: parameter}
+  - {symbol: cldwat2m_macro_mp_rhminl_adj_land_const_, dtype: float64, shape: [], write: parameter}
+  - {symbol: cldwat2m_macro_mp_rhminh_const_, dtype: float64, shape: [], write: parameter}
+  - {symbol: cldwat2m_macro_mp_premit_, dtype: float64, shape: [], write: parameter}
+  - {symbol: cldwat2m_macro_mp_premib_, dtype: float64, shape: [], write: parameter}
+  - {symbol: cldfrc2m_mp_rhminl_const_, dtype: float64, shape: [], write: parameter}
+  - {symbol: cldfrc2m_mp_rhminl_adj_land_const_, dtype: float64, shape: [], write: parameter}
+  - {symbol: cldfrc2m_mp_rhminh_const_, dtype: float64, shape: [], write: parameter}
+  - {symbol: cldfrc2m_mp_premit_, dtype: float64, shape: [], write: parameter}
+  - {symbol: cldfrc2m_mp_premib_, dtype: float64, shape: [], write: parameter}
+  - {symbol: cldfrc2m_mp_rhmini_const_, dtype: float64, shape: [], write: parameter}
+  - {symbol: cldfrc2m_mp_rhmaxi_const_, dtype: float64, shape: [], write: parameter}
+  - {symbol: cldfrc2m_mp_icecrit_, dtype: float64, shape: [], write: parameter}
+  - {symbol: cldfrc2m_mp_iceopt_, dtype: int32, shape: [], write: parameter}
+  - {symbol: wv_saturation_mp_c3_, dtype: float64, shape: [], write: initializer}
+  - {symbol: wv_saturation_mp_omeps_, dtype: float64, shape: [], write: initializer}
+  - {symbol: wv_saturation_mp_plenest_, dtype: int32, shape: [], write: initializer}
+  - {symbol: wv_sat_methods_mp_epsilo_, dtype: float64, shape: [], write: initializer}
+  - {symbol: wv_sat_methods_mp_omeps_, dtype: float64, shape: [], write: initializer}
+  - {symbol: wv_sat_methods_mp_tboil_, dtype: float64, shape: [], write: initializer}
+  - {symbol: wv_sat_methods_mp_tmelt_, dtype: float64, shape: [], write: initializer}
+  - {symbol: wv_sat_methods_mp_h2otrip_, dtype: float64, shape: [], write: initializer}
+  - {symbol: wv_sat_methods_mp_ttrice_, dtype: float64, shape: [], write: initializer}
+  - {symbol: wv_sat_methods_mp_default_idx_, dtype: int32, shape: [], write: verify}
+  - {symbol: physconst_mp_gravit_, dtype: float64, shape: [], write: verify}
+  - {symbol: physconst_mp_rair_, dtype: float64, shape: [], write: verify}
+  - {symbol: physconst_mp_rh2o_, dtype: float64, shape: [], write: verify}
+  - {symbol: physconst_mp_epsilo_, dtype: float64, shape: [], write: verify}
+  - {symbol: physconst_mp_tmelt_, dtype: float64, shape: [], write: verify}
+  - {symbol: cam_logfile_mp_iulog_, dtype: int32, shape: [], write: verify, expected: 6}
+  - {symbol: spmd_utils_mp_masterproc_, dtype: int32, shape: [], write: declared, value: 0}
+
+# Called once after load, before module state is verified.  wv_sat_init
+# needs no namelist, grid, or MPI; it sets the saturation constants the
+# routine's qsat/findsp calls depend on.
+initializers:
+  - wv_saturation_mp_wv_sat_init_
+
+# How the standalone image is linked: oracle archive members (numerics are
+# never recompiled) plus the stubs that close the link.  cloud_fraction.o is
+# deliberately absent -- it is reachable only through ini_macro's
+# cldfrc_getparams and would drag cam_history, phys_grid and PIO/MPI in.
+image:
+  archive_members:
+    - cldwat2m_macro.o
+    - cldfrc2m.o
+    - wv_saturation.o
+    - wv_sat_methods.o
+    - constituents.o
+    - physconst.o
+    - ppgrid.o
+    - cam_logfile.o
+    - ref_pres.o
+    - error_messages.o
+  stubs:
+    inert:
+      - cam_history_mp_outfld_
+      - cam_history_mp_hist_fld_active_
+      - shr_assert_mod_mp_shr_assert_in_domain_0d_double_
+      - spmd_utils_mp_masterproc_
+      - mpishorthand_mp_mpicom_
+      - mpishorthand_mp_mpir8_
+      - mpishorthand_mp_mpichar_
+    fail_closed:
+      - cam_history_mp_addfld_
+      - cloud_fraction_mp_cldfrc_getparams_
+      - mpibcast_
+      - shr_nl_mod_mp_shr_nl_find_group_name_
+      - units_mp_getunit_
+      - units_mp_freeunit_
+      - dyn_grid_mp_dyn_grid_get_pref_
+      - netcdf_mp_nf90_strerror_
+    abort:
+      - shr_sys_mod_mp_shr_sys_abort_
+  base_address: 0x50000000
