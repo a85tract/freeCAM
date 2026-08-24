@@ -79,12 +79,11 @@ def declaration_comments(source: Path, first: int, last: int) -> dict[str, tuple
     return found
 
 
-PUBLIC_AXIS = {"pver": "lev", "pverp": "ilev"}
-
-
 def public_shape(dimensions: list[str], canonical: dict[str, str]) -> list[str]:
-    """Native extents minus the column axis, named by the public axis.
+    """Native extents minus the column axis.
 
+    The spec keeps native dimension names here -- `public_axes` renames them
+    for the user at the API layer -- so this must match what `spec.py` checks.
     An assumed-shape (`:`) or explicitly bounded (`0:pver`) dimension carries
     no extent the runtime can check, so it is handed to the reviewer.
     """
@@ -95,10 +94,7 @@ def public_shape(dimensions: list[str], canonical: dict[str, str]) -> list[str]:
         name = canonical.get(key)
         if name == "pcols":
             continue                           # the column axis never reaches the user
-        if name is None:
-            public.append(f"REVIEW extent {key}")
-        else:
-            public.append(PUBLIC_AXIS.get(name, name))
+        public.append(name if name is not None else f"REVIEW extent {key}")
     return public
 
 

@@ -66,7 +66,7 @@ arguments:
     rank: 2
     intent: in
     native_shape: ["pcols", "pver"]
-    public_shape: ["lev"]
+    public_shape: ["pver"]
     units: REVIEW
     range: REVIEW
     constraints: REVIEW
@@ -78,7 +78,7 @@ arguments:
     rank: 3
     intent: in
     native_shape: ["pcols", "pver", "nbndlw"]
-    public_shape: ["lev", "REVIEW extent nbndlw"]
+    public_shape: ["pver", "REVIEW extent nbndlw"]
     units: REVIEW
     range: REVIEW
     constraints: REVIEW
@@ -90,7 +90,7 @@ arguments:
     rank: 2
     intent: in
     native_shape: ["pcols", "pver"]
-    public_shape: ["lev"]
+    public_shape: ["pver"]
     units: REVIEW
     range: REVIEW
     constraints: REVIEW
@@ -102,7 +102,7 @@ arguments:
     rank: 3
     intent: in
     native_shape: ["nbndlw", "pcols", "pver"]
-    public_shape: ["REVIEW extent nbndlw", "lev"]
+    public_shape: ["REVIEW extent nbndlw", "pver"]
     units: REVIEW
     range: REVIEW
     constraints: REVIEW
@@ -114,7 +114,7 @@ arguments:
     rank: 2
     intent: out
     native_shape: ["pcols", "pver"]
-    public_shape: ["lev"]
+    public_shape: ["pver"]
     units: REVIEW
     range: REVIEW
     constraints: REVIEW
@@ -126,7 +126,7 @@ arguments:
     rank: 2
     intent: out
     native_shape: ["pcols", "pver"]
-    public_shape: ["lev"]
+    public_shape: ["pver"]
     units: REVIEW
     range: REVIEW
     constraints: REVIEW

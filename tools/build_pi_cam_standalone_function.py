@@ -26,6 +26,7 @@ import shutil
 import subprocess
 import sys
 import textwrap
+from typing import Iterable
 
 import numpy as np
 
@@ -321,9 +322,34 @@ def smoke_load(image: Path, spec: FunctionSpec, math_library: Path) -> dict[str,
     return record
 
 
+def resolve_archives(build_root: Path, names: Iterable[str]) -> dict[str, Path]:
+    """Locate each named oracle archive under the case's build root.
+
+    Most members come from the atmosphere archive.  A routine may also need a
+    numerical object from CSM share (uwshcu's shr_spfn_erfc); that archive
+    lives under a compiler/mpi-specific path, so it is searched rather than
+    spelled out, and a missing or ambiguous match fails the build.
+    """
+
+    known = {"atm": [build_root / "lib" / "libatm.a"]}
+    archives: dict[str, Path] = {}
+    for name in names:
+        candidates = known.get(name) or sorted(build_root.rglob(f"lib{name}.a"))
+        found = [path for path in candidates if path.is_file()]
+        if not found:
+            raise RuntimeError(f"archive {name!r} not found under {build_root}")
+        if len({sha256(path) for path in found}) != 1:
+            raise RuntimeError(
+                f"archive {name!r} is ambiguous under {build_root}: " + ", ".join(map(str, found))
+            )
+        archives[name] = found[0]
+    return archives
+
+
 def build(spec: FunctionSpec, case: Path, output_root: Path) -> dict[str, object]:
     build_root = Path(xml(case, "EXEROOT")).resolve()
-    archive = build_root / "lib" / "libatm.a"
+    archives = resolve_archives(build_root, spec.image.archives)
+    archive = archives["atm"]
     module_include = build_root / "atm" / "obj"
     target = output_root / spec.function
     work = target / "objects"
@@ -333,14 +359,17 @@ def build(spec: FunctionSpec, case: Path, output_root: Path) -> dict[str, object
 
     members: list[dict[str, str]] = []
     member_objects: list[Path] = []
-    for name in spec.image.archive_members:
-        run(["ar", "x", str(archive), name], cwd=work)
-        path = work / name
+    for item in spec.image.archive_members:
+        source = archives[item.archive]
+        run(["ar", "x", str(source), item.member], cwd=work)
+        path = work / item.member
         digest = sha256(path)
-        listed = subprocess.run(["ar", "p", str(archive), name], check=True, capture_output=True).stdout
+        listed = subprocess.run(
+            ["ar", "p", str(source), item.member], check=True, capture_output=True
+        ).stdout
         if hashlib.sha256(listed).hexdigest() != digest:
-            raise RuntimeError(f"extracted {name} differs from the archive member")
-        members.append({"name": name, "sha256": digest})
+            raise RuntimeError(f"extracted {item.member} differs from the {item.archive} archive member")
+        members.append({"name": item.member, "archive": item.archive, "sha256": digest})
         member_objects.append(path)
 
     kernel = standalone_kernel(spec)
@@ -410,7 +439,9 @@ def build(spec: FunctionSpec, case: Path, output_root: Path) -> dict[str, object
         "library_bytes": image.stat().st_size,
         "load_start": hex(start),
         "load_end": hex(end),
-        "numerical_archive": {"path": str(archive), "sha256": sha256(archive)},
+        "numerical_archives": {
+            name: {"path": str(path), "sha256": sha256(path)} for name, path in archives.items()
+        },
         "members": members,
         "wrapper": {
             "symbol": kernel.symbol,

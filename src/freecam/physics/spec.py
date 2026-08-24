@@ -104,16 +104,35 @@ class ModuleStateEntry:
 
 
 @dataclass(frozen=True, slots=True)
+class ArchiveMember:
+    """One object file, and which of the oracle build's archives holds it."""
+
+    member: str
+    archive: str = "atm"
+
+    def __str__(self) -> str:
+        return self.member if self.archive == "atm" else f"{self.archive}:{self.member}"
+
+
+@dataclass(frozen=True, slots=True)
 class ImageSpec:
     """How the function's standalone image is linked."""
 
-    archive_members: tuple[str, ...]
+    archive_members: tuple[ArchiveMember, ...]
     stubs: Mapping[str, tuple[str, ...]]
     base_address: int
 
     @property
     def stub_symbols(self) -> frozenset[str]:
         return frozenset(symbol for group in self.stubs.values() for symbol in group)
+
+    @property
+    def member_names(self) -> tuple[str, ...]:
+        return tuple(item.member for item in self.archive_members)
+
+    @property
+    def archives(self) -> tuple[str, ...]:
+        return tuple(dict.fromkeys(item.archive for item in self.archive_members))
 
 
 @dataclass(frozen=True, slots=True)
@@ -127,6 +146,7 @@ class FunctionSpec:
     module: str | None
     dimensions: Mapping[str, int]
     public_axes: Mapping[str, str]
+    dimension_aliases: Mapping[str, str]
     arguments: tuple[ArgumentSpec, ...]
     parameters: Mapping[str, ParameterSpec]
     module_state: tuple[ModuleStateEntry, ...]
@@ -352,10 +372,44 @@ def _module_state(entry: Mapping[str, Any]) -> ModuleStateEntry:
     )
 
 
+def _archive_members(raw: Any) -> tuple[ArchiveMember, ...]:
+    """Accept a plain object name (the atm archive) or {member, archive}.
+
+    A routine may need a numerical object the atmosphere archive does not
+    hold -- uwshcu calls shr_spfn_erfc, which lives in libcsm_share -- and
+    that must be linked, never stubbed, so the archive is named here rather
+    than guessed by the builder.
+    """
+
+    if not isinstance(raw, (list, tuple)) or not raw:
+        raise PhysicsSpecError("image.archive_members must be a non-empty list")
+    members: list[ArchiveMember] = []
+    seen: set[str] = set()
+    for item in raw:
+        if isinstance(item, str):
+            member, archive = item, "atm"
+        elif isinstance(item, Mapping) and "member" in item:
+            unknown = sorted(set(item) - {"member", "archive"})
+            if unknown:
+                raise PhysicsSpecError(
+                    f"image.archive_members entry has unsupported keys: {', '.join(unknown)}"
+                )
+            member, archive = str(item["member"]), str(item.get("archive", "atm"))
+        else:
+            raise PhysicsSpecError(
+                f"image.archive_members entry must be a name or {{member, archive}}: {item!r}"
+            )
+        if not member.endswith(".o"):
+            raise PhysicsSpecError(f"archive member {member!r} is not an object file")
+        if member in seen:
+            raise PhysicsSpecError(f"archive member {member!r} is listed twice")
+        seen.add(member)
+        members.append(ArchiveMember(member=member, archive=archive))
+    return tuple(members)
+
+
 def _image(entry: Mapping[str, Any]) -> ImageSpec:
-    members = _tuple_of_str(entry.get("archive_members"), "image.archive_members")
-    if not members:
-        raise PhysicsSpecError("image.archive_members is empty")
+    members = _archive_members(entry.get("archive_members"))
     raw = entry.get("stubs") or {}
     unknown = sorted(set(raw) - set(STUB_CLASSES))
     if unknown:
@@ -415,6 +469,17 @@ def parse_function_spec(document: Mapping[str, Any], *, path: Path | None = None
     orphans = [item.symbol for item in module_state if item.write == "parameter" and item.symbol not in owned]
     if orphans:
         raise PhysicsSpecError("module_state parameter symbols without a parameter: " + ", ".join(orphans))
+    aliases_raw = document.get("dimension_aliases") or {}
+    if not isinstance(aliases_raw, Mapping):
+        raise PhysicsSpecError("dimension_aliases must be a mapping")
+    aliases: dict[str, str] = {}
+    for native, canonical in aliases_raw.items():
+        key = " ".join(str(native).split())
+        if str(canonical) not in dimensions:
+            raise PhysicsSpecError(
+                f"dimension_aliases[{native!r}] names unknown dimension {canonical!r}"
+            )
+        aliases[key] = str(canonical)
     image = _image(document["image"])
     return FunctionSpec(
         function=str(document["function"]),
@@ -424,6 +489,7 @@ def parse_function_spec(document: Mapping[str, Any], *, path: Path | None = None
         module=None if document.get("module") is None else str(document["module"]),
         dimensions=dimensions,
         public_axes={str(key): str(value) for key, value in dict(document.get("public_axes") or {}).items()},
+        dimension_aliases=aliases,
         arguments=arguments,
         parameters=parameters,
         module_state=module_state,
@@ -453,6 +519,7 @@ def load_function_spec(name_or_path: str | Path, *, functions_dir: Path | None =
 __all__ = [
     "ArgumentSpec",
     "FunctionSpec",
+    "ArchiveMember",
     "ImageSpec",
     "ModuleStateEntry",
     "ParameterSpec",

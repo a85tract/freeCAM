@@ -1,0 +1,764 @@
+# Standalone function specification for compute_uwshcu_inv, the UW shallow
+# cumulus scheme (Park and Bretherton 2009), treated as a pure single-column
+# function.
+#
+# This file is the runtime's only source of truth for the function boundary.
+# tools/verify_pi_cam_function_spec.py checks it at build time against the
+# kernel inventory (argument order, dtype, rank, intent, extents) and against
+# the declaration comments in the pinned source (units); the runtime never
+# parses Fortran.
+#
+# Why this routine and not the stage: convect_shallow_tend is physics-buffer
+# plumbing around it -- it copies the physics state, pulls a dozen pbuf
+# fields, and packs the result into a ptend.  compute_uwshcu_inv inverts the
+# vertical index order and calls compute_uwshcu, whose entire calculation runs
+# inside `do i = 1, iend` (uwshcu.F90:1389); the only work outside that loop
+# is a level loop over findsp_vc, which is element-wise per column.  So a call
+# is a closed function of these 54 arguments plus the module state below.
+#
+# Water isotope tracing is active in this configuration (atm_in sets
+# trace_water and wisotope true), so the water_tracers path is live and its
+# objects are linked rather than stubbed.
+
+schema_version: 1
+function: uwshcu
+qualified_name: uwshcu::compute_uwshcu_inv
+routine: compute_uwshcu_inv
+source: components/cam/src/physics/cam/uwshcu.F90
+module: uwshcu
+
+dimensions:
+  pcols: 16
+  pver: 30
+  pverp: 31
+  pcnst: 57
+public_axes:
+  pver: lev
+  pverp: ilev
+
+# The routine names its own extents; these are the canonical dimensions they
+# denote, so the build-time verifier can compare the spec against the kernel
+# inventory without inferring anything.
+dimension_aliases:
+  mix: pcols
+  mkx: pver
+  mkx + 1: pverp
+  ncnst: pcnst
+
+# Fortran argument order.  Roles:
+#   structural  owned by the runtime, never user-visible
+#   input       intent(in), user-supplied
+#   inout       user supplies the initial value, updated on return
+#   output      allocated by the runtime, returned
+arguments:
+  - name: "mix"
+    role: "structural"
+    fortran_type: "integer"
+    dtype: "int32"
+    rank: 0
+    intent: "in"
+    native_shape: []
+    value: 16
+    description: "Column capacity of the native arrays; compile-time pcols."
+  - name: "mkx"
+    role: "structural"
+    fortran_type: "integer"
+    dtype: "int32"
+    rank: 0
+    intent: "in"
+    native_shape: []
+    value: 30
+    description: "Number of layers; compile-time pver."
+  - name: "iend"
+    role: "structural"
+    fortran_type: "integer"
+    dtype: "int32"
+    rank: 0
+    intent: "in"
+    native_shape: []
+    value: 1
+    description: "Number of active columns; the public API always evaluates one."
+  - name: "ncnst"
+    role: "structural"
+    fortran_type: "integer"
+    dtype: "int32"
+    rank: 0
+    intent: "in"
+    native_shape: []
+    value: 57
+    description: "Number of constituents; compile-time pcnst."
+  - name: "dt"
+    role: "input"
+    fortran_type: "real"
+    dtype: "float64"
+    rank: 0
+    intent: "in"
+    native_shape: []
+    public_shape: []
+    units: "s"
+    range: [1.0, 7200.0]
+    constraints: ["positive"]
+    description: "Time step : 2*delta_t"
+    note: "The scheme's own comment reads '2*delta_t'; the driver passes ztodt, which is the model timestep in this configuration."
+  - name: "ps0_inv"
+    role: "input"
+    fortran_type: "real"
+    dtype: "float64"
+    rank: 2
+    intent: "in"
+    native_shape: ["pcols", "pverp"]
+    public_shape: ["pverp"]
+    units: "Pa"
+    range: [1.0, 110000.0]
+    constraints: ["positive", "increasing"]
+    description: "Environmental pressure at the interfaces"
+  - name: "zs0_inv"
+    role: "input"
+    fortran_type: "real"
+    dtype: "float64"
+    rank: 2
+    intent: "in"
+    native_shape: ["pcols", "pverp"]
+    public_shape: ["pverp"]
+    units: "m"
+    range: [-500.0, 100000.0]
+    constraints: ["decreasing"]
+    description: "Environmental height at the interfaces"
+  - name: "p0_inv"
+    role: "input"
+    fortran_type: "real"
+    dtype: "float64"
+    rank: 2
+    intent: "in"
+    native_shape: ["pcols", "pver"]
+    public_shape: ["pver"]
+    units: "Pa"
+    range: [1.0, 110000.0]
+    constraints: ["positive", "increasing"]
+    description: "Environmental pressure at the layer mid-point"
+  - name: "z0_inv"
+    role: "input"
+    fortran_type: "real"
+    dtype: "float64"
+    rank: 2
+    intent: "in"
+    native_shape: ["pcols", "pver"]
+    public_shape: ["pver"]
+    units: "m"
+    range: [-500.0, 100000.0]
+    constraints: ["decreasing"]
+    description: "Environmental height at the layer mid-point"
+  - name: "dp0_inv"
+    role: "input"
+    fortran_type: "real"
+    dtype: "float64"
+    rank: 2
+    intent: "in"
+    native_shape: ["pcols", "pver"]
+    public_shape: ["pver"]
+    units: "Pa"
+    range: [0.01, 20000.0]
+    constraints: ["positive"]
+    description: "Environmental layer pressure thickness [ Pa ] > 0"
+  - name: "u0_inv"
+    role: "input"
+    fortran_type: "real"
+    dtype: "float64"
+    rank: 2
+    intent: "in"
+    native_shape: ["pcols", "pver"]
+    public_shape: ["pver"]
+    units: "m/s"
+    range: [-200.0, 200.0]
+    constraints: []
+    description: "Environmental zonal wind"
+  - name: "v0_inv"
+    role: "input"
+    fortran_type: "real"
+    dtype: "float64"
+    rank: 2
+    intent: "in"
+    native_shape: ["pcols", "pver"]
+    public_shape: ["pver"]
+    units: "m/s"
+    range: [-200.0, 200.0]
+    constraints: []
+    description: "Environmental meridional wind"
+  - name: "qv0_inv"
+    role: "input"
+    fortran_type: "real"
+    dtype: "float64"
+    rank: 2
+    intent: "in"
+    native_shape: ["pcols", "pver"]
+    public_shape: ["pver"]
+    units: "kg/kg"
+    range: [0.0, 0.1]
+    constraints: ["non_negative"]
+    description: "Environmental water vapor specific humidity"
+  - name: "ql0_inv"
+    role: "input"
+    fortran_type: "real"
+    dtype: "float64"
+    rank: 2
+    intent: "in"
+    native_shape: ["pcols", "pver"]
+    public_shape: ["pver"]
+    units: "kg/kg"
+    range: [0.0, 0.05]
+    constraints: ["non_negative"]
+    description: "Environmental liquid water specific humidity"
+  - name: "qi0_inv"
+    role: "input"
+    fortran_type: "real"
+    dtype: "float64"
+    rank: 2
+    intent: "in"
+    native_shape: ["pcols", "pver"]
+    public_shape: ["pver"]
+    units: "kg/kg"
+    range: [0.0, 0.05]
+    constraints: ["non_negative"]
+    description: "Environmental ice specific humidity"
+  - name: "t0_inv"
+    role: "input"
+    fortran_type: "real"
+    dtype: "float64"
+    rank: 2
+    intent: "in"
+    native_shape: ["pcols", "pver"]
+    public_shape: ["pver"]
+    units: "K"
+    range: [150.0, 350.0]
+    constraints: ["positive"]
+    description: "Environmental temperature"
+  - name: "s0_inv"
+    role: "input"
+    fortran_type: "real"
+    dtype: "float64"
+    rank: 2
+    intent: "in"
+    native_shape: ["pcols", "pver"]
+    public_shape: ["pver"]
+    units: "J/kg"
+    range: [140000.0, 1200000.0]
+    constraints: ["positive"]
+    description: "Environmental dry static energy"
+  - name: "tr0_inv"
+    role: "input"
+    fortran_type: "real"
+    dtype: "float64"
+    rank: 3
+    intent: "in"
+    native_shape: ["pcols", "pver", "pcnst"]
+    public_shape: ["pver", "pcnst"]
+    units: "#, kg/kg"
+    range: [0.0, 1000000000000.0]
+    constraints: ["non_negative"]
+    description: "Environmental tracers"
+    note: "All 57 constituents in cnst_name order.  Water isotope tracing is active in this configuration (trace_water and wisotope are both true), so the isotopic slots are read, not ignored."
+  - name: "tke_inv"
+    role: "input"
+    fortran_type: "real"
+    dtype: "float64"
+    rank: 2
+    intent: "in"
+    native_shape: ["pcols", "pverp"]
+    public_shape: ["pverp"]
+    units: "m2/s2"
+    range: [0.0, 100.0]
+    constraints: ["non_negative"]
+    description: "Turbulent kinetic energy at the interfaces"
+  - name: "cldfrct_inv"
+    role: "input"
+    fortran_type: "real"
+    dtype: "float64"
+    rank: 2
+    intent: "in"
+    native_shape: ["pcols", "pver"]
+    public_shape: ["pver"]
+    units: "fraction"
+    range: [0.0, 1.0]
+    constraints: ["fraction"]
+    description: "Total cloud fraction at the previous time step"
+  - name: "concldfrct_inv"
+    role: "input"
+    fortran_type: "real"
+    dtype: "float64"
+    rank: 2
+    intent: "in"
+    native_shape: ["pcols", "pver"]
+    public_shape: ["pver"]
+    units: "fraction"
+    range: [0.0, 1.0]
+    constraints: ["fraction"]
+    description: "Total convective ( shallow + deep ) cloud fraction at the previous time step"
+  - name: "pblh"
+    role: "input"
+    fortran_type: "real"
+    dtype: "float64"
+    rank: 1
+    intent: "in"
+    native_shape: ["pcols"]
+    public_shape: []
+    units: "m"
+    range: [0.0, 10000.0]
+    constraints: ["non_negative"]
+    description: "Height of PBL"
+  - name: "cush"
+    role: "inout"
+    fortran_type: "real"
+    dtype: "float64"
+    rank: 1
+    intent: "inout"
+    native_shape: ["pcols"]
+    public_shape: []
+    units: "m"
+    range: [-1.0, 10000.0]
+    constraints: []
+    description: "Convective scale height"
+    note: "Convective scale height carried between timesteps in the physics buffer; the routine writes -1 when no shallow convection develops, so the initial value may legitimately be negative."
+  - name: "umf_inv"
+    role: "output"
+    fortran_type: "real"
+    dtype: "float64"
+    rank: 2
+    intent: "out"
+    native_shape: ["pcols", "pverp"]
+    public_shape: ["pverp"]
+    units: "kg/m2/s"
+    description: "Updraft mass flux at the interfaces"
+  - name: "slflx_inv"
+    role: "output"
+    fortran_type: "real"
+    dtype: "float64"
+    rank: 2
+    intent: "out"
+    native_shape: ["pcols", "pverp"]
+    public_shape: ["pverp"]
+    units: "J/kg * kg/m2/s"
+    description: "Updraft liquid static energy flux"
+  - name: "qtflx_inv"
+    role: "output"
+    fortran_type: "real"
+    dtype: "float64"
+    rank: 2
+    intent: "out"
+    native_shape: ["pcols", "pverp"]
+    public_shape: ["pverp"]
+    units: "kg/kg * kg/m2/s"
+    description: "Updraft total water flux"
+  - name: "flxprc1_inv"
+    role: "output"
+    fortran_type: "real"
+    dtype: "float64"
+    rank: 2
+    intent: "out"
+    native_shape: ["pcols", "pverp"]
+    public_shape: ["pverp"]
+    units: "kg/m2/s"
+    description: "uw grid-box mean rain+snow flux (kg m^-2 s^-1) for physics buffer calls in convect_shallow.F90"
+  - name: "flxsnow1_inv"
+    role: "output"
+    fortran_type: "real"
+    dtype: "float64"
+    rank: 2
+    intent: "out"
+    native_shape: ["pcols", "pverp"]
+    public_shape: ["pverp"]
+    units: "kg/m2/s"
+    description: "uw grid-box mean snow flux (kg m^-2 s^-1) for physics buffer calls in convect_shallow.F90"
+  - name: "qvten_inv"
+    role: "output"
+    fortran_type: "real"
+    dtype: "float64"
+    rank: 2
+    intent: "out"
+    native_shape: ["pcols", "pver"]
+    public_shape: ["pver"]
+    units: "kg/kg/s"
+    description: "Tendency of water vapor specific humidity"
+  - name: "qlten_inv"
+    role: "output"
+    fortran_type: "real"
+    dtype: "float64"
+    rank: 2
+    intent: "out"
+    native_shape: ["pcols", "pver"]
+    public_shape: ["pver"]
+    units: "kg/kg/s"
+    description: "Tendency of liquid water specific humidity"
+  - name: "qiten_inv"
+    role: "output"
+    fortran_type: "real"
+    dtype: "float64"
+    rank: 2
+    intent: "out"
+    native_shape: ["pcols", "pver"]
+    public_shape: ["pver"]
+    units: "kg/kg/s"
+    description: "Tendency of ice specific humidity"
+  - name: "sten_inv"
+    role: "output"
+    fortran_type: "real"
+    dtype: "float64"
+    rank: 2
+    intent: "out"
+    native_shape: ["pcols", "pver"]
+    public_shape: ["pver"]
+    units: "J/kg/s"
+    description: "Tendency of dry static energy"
+  - name: "uten_inv"
+    role: "output"
+    fortran_type: "real"
+    dtype: "float64"
+    rank: 2
+    intent: "out"
+    native_shape: ["pcols", "pver"]
+    public_shape: ["pver"]
+    units: "m/s2"
+    description: "Tendency of zonal wind"
+  - name: "vten_inv"
+    role: "output"
+    fortran_type: "real"
+    dtype: "float64"
+    rank: 2
+    intent: "out"
+    native_shape: ["pcols", "pver"]
+    public_shape: ["pver"]
+    units: "m/s2"
+    description: "Tendency of meridional wind"
+  - name: "trten_inv"
+    role: "output"
+    fortran_type: "real"
+    dtype: "float64"
+    rank: 3
+    intent: "out"
+    native_shape: ["pcols", "pver", "pcnst"]
+    public_shape: ["pver", "pcnst"]
+    units: "#/s, kg/kg/s"
+    description: "Tendency of tracers"
+  - name: "qrten_inv"
+    role: "output"
+    fortran_type: "real"
+    dtype: "float64"
+    rank: 2
+    intent: "out"
+    native_shape: ["pcols", "pver"]
+    public_shape: ["pver"]
+    units: "kg/kg/s"
+    description: "Tendency of rain water specific humidity"
+  - name: "qsten_inv"
+    role: "output"
+    fortran_type: "real"
+    dtype: "float64"
+    rank: 2
+    intent: "out"
+    native_shape: ["pcols", "pver"]
+    public_shape: ["pver"]
+    units: "kg/kg/s"
+    description: "Tendency of snow specific humidity"
+  - name: "precip"
+    role: "output"
+    fortran_type: "real"
+    dtype: "float64"
+    rank: 1
+    intent: "out"
+    native_shape: ["pcols"]
+    public_shape: []
+    units: "m/s"
+    description: "Precipitation ( rain + snow ) flux at the surface"
+  - name: "snow"
+    role: "output"
+    fortran_type: "real"
+    dtype: "float64"
+    rank: 1
+    intent: "out"
+    native_shape: ["pcols"]
+    public_shape: []
+    units: "m/s"
+    description: "Snow flux at the surface"
+  - name: "evapc_inv"
+    role: "output"
+    fortran_type: "real"
+    dtype: "float64"
+    rank: 2
+    intent: "out"
+    native_shape: ["pcols", "pver"]
+    public_shape: ["pver"]
+    units: "kg/kg/s"
+    description: "Evaporation of precipitation"
+  - name: "cufrc_inv"
+    role: "output"
+    fortran_type: "real"
+    dtype: "float64"
+    rank: 2
+    intent: "out"
+    native_shape: ["pcols", "pver"]
+    public_shape: ["pver"]
+    units: "fraction"
+    description: "Shallow cumulus cloud fraction at the layer mid-point"
+  - name: "qcu_inv"
+    role: "output"
+    fortran_type: "real"
+    dtype: "float64"
+    rank: 2
+    intent: "out"
+    native_shape: ["pcols", "pver"]
+    public_shape: ["pver"]
+    units: "kg/kg"
+    description: "Liquid+ice specific humidity within cumulus updraft"
+  - name: "qlu_inv"
+    role: "output"
+    fortran_type: "real"
+    dtype: "float64"
+    rank: 2
+    intent: "out"
+    native_shape: ["pcols", "pver"]
+    public_shape: ["pver"]
+    units: "kg/kg"
+    description: "Liquid water specific humidity within cumulus updraft"
+  - name: "qiu_inv"
+    role: "output"
+    fortran_type: "real"
+    dtype: "float64"
+    rank: 2
+    intent: "out"
+    native_shape: ["pcols", "pver"]
+    public_shape: ["pver"]
+    units: "kg/kg"
+    description: "Ice specific humidity within cumulus updraft"
+  - name: "cbmf"
+    role: "output"
+    fortran_type: "real"
+    dtype: "float64"
+    rank: 1
+    intent: "out"
+    native_shape: ["pcols"]
+    public_shape: []
+    units: "kg/m2/s"
+    description: "Cumulus base mass flux"
+  - name: "qc_inv"
+    role: "output"
+    fortran_type: "real"
+    dtype: "float64"
+    rank: 2
+    intent: "out"
+    native_shape: ["pcols", "pver"]
+    public_shape: ["pver"]
+    units: "kg/kg/s"
+    description: "Tendency of cumulus condensate detrained into the environment"
+  - name: "rliq"
+    role: "output"
+    fortran_type: "real"
+    dtype: "float64"
+    rank: 1
+    intent: "out"
+    native_shape: ["pcols"]
+    public_shape: []
+    units: "m/s"
+    description: "Vertical integral of tendency of detrained cloud condensate qc"
+  - name: "cnt_inv"
+    role: "output"
+    fortran_type: "real"
+    dtype: "float64"
+    rank: 1
+    intent: "out"
+    native_shape: ["pcols"]
+    public_shape: []
+    units: "no"
+    description: "Cumulus top  interface index, cnt = kpen"
+  - name: "cnb_inv"
+    role: "output"
+    fortran_type: "real"
+    dtype: "float64"
+    rank: 1
+    intent: "out"
+    native_shape: ["pcols"]
+    public_shape: []
+    units: "no"
+    description: "Cumulus base interface index, cnb = krel - 1 Water tracers: *************"
+  - name: "lchnk"
+    role: "structural"
+    fortran_type: "integer"
+    dtype: "int32"
+    rank: 0
+    intent: "in"
+    native_shape: []
+    value: 1
+    description: "Chunk number; only the history calls read it, which the image stubs."
+  - name: "dpdry0_inv"
+    role: "input"
+    fortran_type: "real"
+    dtype: "float64"
+    rank: 2
+    intent: "in"
+    native_shape: ["pcols", "pver"]
+    public_shape: ["pver"]
+    units: "Pa"
+    range: [0.01, 20000.0]
+    constraints: ["positive"]
+    description: "Environmental dry layer pressure thickness"
+  - name: "wtprec"
+    role: "output"
+    fortran_type: "real"
+    dtype: "float64"
+    rank: 2
+    intent: "out"
+    native_shape: ["pcols", "pcnst"]
+    public_shape: ["pcnst"]
+    units: "m/s"
+    description: "Water tracer surface precipitation"
+  - name: "wtsnow"
+    role: "output"
+    fortran_type: "real"
+    dtype: "float64"
+    rank: 2
+    intent: "out"
+    native_shape: ["pcols", "pcnst"]
+    public_shape: ["pcnst"]
+    units: "m/s"
+    description: "Water tracer surface snow"
+  - name: "wtqc_inv"
+    role: "output"
+    fortran_type: "real"
+    dtype: "float64"
+    rank: 3
+    intent: "out"
+    native_shape: ["pcols", "pver", "pcnst"]
+    public_shape: ["pver", "pcnst"]
+    units: "kg/kg/s"
+    description: "Water tracer detrained condensate *************"
+
+# The scheme's one namelist tunable.  Every other module value it reads is a
+# physical constant recorded in module_state.
+parameters:
+  uwshcu_rpen:
+    dtype: float64
+    symbols: [uwshcu_mp_rpen_]
+    default: 5.0
+    range: [1.0, 20.0]
+    description: Penetrative entrainment efficiency.
+
+# init_uwshcu registers 40 history fields through addfld, which the image
+# stubs fail-closed, so it cannot run here: the constants it would set are
+# taken from the snapshot instead.  wv_sat_init needs no namelist, grid or
+# MPI and is called, as for mmacro_pcond.
+module_state:
+  # uwshcu's own constants, all set by init_uwshcu from physconst.
+  - {symbol: uwshcu_mp_xlv_, dtype: float64, shape: [], write: snapshot}
+  - {symbol: uwshcu_mp_xlf_, dtype: float64, shape: [], write: snapshot}
+  - {symbol: uwshcu_mp_xls_, dtype: float64, shape: [], write: snapshot}
+  - {symbol: uwshcu_mp_cp_, dtype: float64, shape: [], write: snapshot}
+  - {symbol: uwshcu_mp_zvir_, dtype: float64, shape: [], write: snapshot}
+  - {symbol: uwshcu_mp_r_, dtype: float64, shape: [], write: snapshot}
+  - {symbol: uwshcu_mp_g_, dtype: float64, shape: [], write: snapshot}
+  - {symbol: uwshcu_mp_ep2_, dtype: float64, shape: [], write: snapshot}
+  - {symbol: uwshcu_mp_p00_, dtype: float64, shape: [], write: snapshot}
+  - {symbol: uwshcu_mp_rovcp_, dtype: float64, shape: [], write: snapshot}
+  - {symbol: uwshcu_mp_rpen_, dtype: float64, shape: [], write: parameter}
+
+  # cnst_get_ind and cnst_get_type_byind scan these tables and endrun if a
+  # name is absent; qmin bounds the tracer update.
+  - symbol: constituents_mp_cnst_name_
+    dtype: S16
+    shape: [57]
+    write: snapshot
+    expected: [Q, CLDLIQ, CLDICE, NUMLIQ, NUMICE]
+  - {symbol: constituents_mp_cnst_type_, dtype: S8, shape: [57], write: snapshot}
+  - {symbol: constituents_mp_qmin_, dtype: float64, shape: [57], write: snapshot}
+
+  # Water isotope tracing.  Every runtime-set value in water_tracer_vars is
+  # taken from the model rather than reasoned about one at a time: the six
+  # water_tracers entry points uwshcu calls read wisotope, wtrc_alpha_kinetic,
+  # wtrc_fixed_alpha, wtrc_fixed_rstd and wtrc_qmin, and uwshcu itself reads
+  # iwspec, trace_water, wtrc_iatype and wtrc_nwset.
+  - {symbol: water_tracer_vars_mp_trace_water_, dtype: int32, shape: [], write: snapshot, expected: 1}
+  - {symbol: water_tracer_vars_mp_wisotope_, dtype: int32, shape: [], write: snapshot, expected: 1}
+  - {symbol: water_tracer_vars_mp_wtrc_ncnst_, dtype: int32, shape: [], write: snapshot}
+  - {symbol: water_tracer_vars_mp_wtrc_nwset_, dtype: int32, shape: [], write: snapshot}
+  - {symbol: water_tracer_vars_mp_wtrc_nspec_, dtype: int32, shape: [], write: snapshot}
+  - {symbol: water_tracer_vars_mp_wtrc_ntype_, dtype: int32, shape: [], write: snapshot}
+  - {symbol: water_tracer_vars_mp_iwspec_, dtype: int32, shape: [4], write: snapshot}
+  - {symbol: water_tracer_vars_mp_iwater_, dtype: int32, shape: [], write: snapshot}
+  - {symbol: water_tracer_vars_mp_iwistag_, dtype: int32, shape: [], write: snapshot}
+  - {symbol: water_tracer_vars_mp_wtrc_alpha_kinetic_, dtype: int32, shape: [], write: snapshot}
+  - {symbol: water_tracer_vars_mp_wtrc_lh2oadj_, dtype: int32, shape: [], write: snapshot}
+  - {symbol: water_tracer_vars_mp_wtrc_fixed_alpha_, dtype: float64, shape: [4], write: verify}
+  - {symbol: water_tracer_vars_mp_wtrc_fixed_rstd_, dtype: float64, shape: [4], write: verify}
+  - {symbol: water_tracer_vars_mp_wtrc_qmin_, dtype: float64, shape: [], write: verify}
+
+  # Saturation, built by the initializer below and then verified.
+  - {symbol: wv_saturation_mp_c3_, dtype: float64, shape: [], write: initializer}
+  - {symbol: wv_saturation_mp_omeps_, dtype: float64, shape: [], write: initializer}
+  - {symbol: wv_saturation_mp_plenest_, dtype: int32, shape: [], write: initializer}
+  - {symbol: wv_sat_methods_mp_epsilo_, dtype: float64, shape: [], write: initializer}
+  - {symbol: wv_sat_methods_mp_omeps_, dtype: float64, shape: [], write: initializer}
+  - {symbol: wv_sat_methods_mp_tboil_, dtype: float64, shape: [], write: initializer}
+  - {symbol: wv_sat_methods_mp_tmelt_, dtype: float64, shape: [], write: initializer}
+  - {symbol: wv_sat_methods_mp_h2otrip_, dtype: float64, shape: [], write: initializer}
+  - {symbol: wv_sat_methods_mp_ttrice_, dtype: float64, shape: [], write: initializer}
+  - {symbol: wv_sat_methods_mp_default_idx_, dtype: int32, shape: [], write: verify}
+
+  # Compile-time or .data; verified so a rebuilt oracle cannot drift silently.
+  - {symbol: physconst_mp_gravit_, dtype: float64, shape: [], write: verify}
+  - {symbol: physconst_mp_rair_, dtype: float64, shape: [], write: verify}
+  - {symbol: physconst_mp_rh2o_, dtype: float64, shape: [], write: verify}
+  - {symbol: physconst_mp_epsilo_, dtype: float64, shape: [], write: verify}
+  - {symbol: physconst_mp_tmelt_, dtype: float64, shape: [], write: verify}
+  - {symbol: physconst_mp_cpair_, dtype: float64, shape: [], write: verify}
+  - {symbol: physconst_mp_latvap_, dtype: float64, shape: [], write: verify}
+  - {symbol: physconst_mp_latice_, dtype: float64, shape: [], write: verify}
+  - {symbol: cam_logfile_mp_iulog_, dtype: int32, shape: [], write: verify, expected: 6}
+
+initializers:
+  - wv_saturation_mp_wv_sat_init_
+
+# How the standalone image is linked.  Two archives: the atmosphere library
+# for the physics, and CSM share for shr_spfn_erfc -- which uwshcu calls on
+# its numerical path (uwshcu.F90:2362, 2382, 6066) and so must be linked, not
+# stubbed -- and for the isotope tables water_tracers reads.  cloud_fraction,
+# physics_buffer and cam_initfiles are deliberately absent: they are reachable
+# only from water_tracers routines this entry point does not call, and each
+# would drag cam_history and PIO/MPI in.
+image:
+  archive_members:
+    - uwshcu.o
+    - constituents.o
+    - water_tracers.o
+    - water_tracer_vars.o
+    - wv_saturation.o
+    - wv_sat_methods.o
+    - physconst.o
+    - ppgrid.o
+    - cam_logfile.o
+    - error_messages.o
+    - {member: shr_spfn_mod.o, archive: csm_share}
+    - {member: water_isotopes.o, archive: csm_share}
+    - {member: water_types.o, archive: csm_share}
+  stubs:
+    inert:
+      - cam_history_mp_outfld_
+      - shr_assert_mod_mp_shr_assert_in_domain_0d_double_
+      - spmd_utils_mp_masterproc_
+      - mpishorthand_mp_mpicom_
+      - mpishorthand_mp_mpir8_
+      - mpishorthand_mp_mpichar_
+      - mpishorthand_mp_mpiint_
+      - mpishorthand_mp_mpilog_
+    fail_closed:
+      - cam_history_mp_addfld_
+      - cam_history_mp_add_default_
+      - cam_initfiles_mp_initial_file_get_id_
+      - cloud_fraction_mp_cldfrc_fice_
+      - physics_buffer_mp_pbuf_add_field_double_
+      - physics_buffer_mp_pbuf_get_field_name_
+      - physics_buffer_mp_get_pbuf1d_field_by_index_1d_double_
+      - mpibcast_
+      - shr_nl_mod_mp_shr_nl_find_group_name_
+      - units_mp_getunit_
+      - units_mp_freeunit_
+      - netcdf_mp_nf90_strerror_
+    abort:
+      - shr_sys_mod_mp_shr_sys_abort_
+  base_address: 0x50000000

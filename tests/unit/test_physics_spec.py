@@ -157,3 +157,66 @@ def test_unit_conflicts_with_the_source_fail() -> None:
     ]
     report = verify_against_source(spec, lines, line_start=1, line_end=len(lines))
     assert report.failures == ["argument pmid: source declares [hPa], spec says 'Pa'"]
+
+
+def test_archive_members_may_name_a_second_archive() -> None:
+    """uwshcu needs shr_spfn_erfc, which libatm does not hold."""
+
+    spec = load_function_spec("uwshcu")
+    assert spec.image.archives == ("atm", "csm_share")
+    from_share = [item.member for item in spec.image.archive_members if item.archive == "csm_share"]
+    assert from_share == ["shr_spfn_mod.o", "water_isotopes.o", "water_types.o"]
+    assert "uwshcu.o" in spec.image.member_names
+    assert str(spec.image.archive_members[0]) == "uwshcu.o"
+    assert str(next(i for i in spec.image.archive_members if i.archive == "csm_share")) == "csm_share:shr_spfn_mod.o"
+
+
+def test_archive_members_fail_closed_on_malformed_entries() -> None:
+    from freecam.physics.spec import _archive_members
+
+    assert [item.archive for item in _archive_members(["a.o"])] == ["atm"]
+    for bad, message in (
+        ([], "non-empty"),
+        (["a.o", "a.o"], "listed twice"),
+        (["a.c"], "not an object file"),
+        ([{"archive": "csm_share"}], "must be a name"),
+        ([{"member": "a.o", "surprise": 1}], "unsupported keys"),
+    ):
+        with pytest.raises(PhysicsSpecError, match=message):
+            _archive_members(bad)
+
+
+def test_dimension_aliases_let_a_routine_name_its_own_extents() -> None:
+    """uwshcu's dummies say mix/mkx where the spec says pcols/pver."""
+
+    spec = load_function_spec("uwshcu")
+    assert spec.dimension_aliases == {"mix": "pcols", "mkx": "pver", "mkx + 1": "pverp", "ncnst": "pcnst"}
+    assert spec.argument("p0_inv").native_shape == ("pcols", "pver")
+    assert spec.argument("tr0_inv").native_shape == ("pcols", "pver", "pcnst")
+    # mmacro_pcond needs none: its dummies are already declared in pcols/pver.
+    assert load_function_spec("mmacro_pcond").dimension_aliases == {}
+
+
+def test_dimension_aliases_must_name_a_declared_dimension() -> None:
+    document = yaml.safe_load(Path(load_function_spec("uwshcu").path).read_text())
+    document["dimension_aliases"]["mix"] = "pnotadimension"
+    with pytest.raises(PhysicsSpecError, match="unknown dimension"):
+        parse_function_spec(document)
+
+
+def test_uwshcu_boundary_is_single_column_and_complete() -> None:
+    spec = load_function_spec("uwshcu")
+    assert len(spec.arguments) == 54
+    assert [item.name for item in spec.structural] == ["mix", "mkx", "iend", "ncnst", "lchnk"]
+    assert spec.argument("iend").value == 1 and spec.argument("mix").value == 16
+    assert [item.name for item in spec.inouts] == ["cush"]
+    # The tracer axis is public in full, as reviewed.
+    assert spec.argument("tr0_inv").public_shape == ("pver", "pcnst")
+    assert spec.argument("trten_inv").public_shape == ("pver", "pcnst")
+    assert set(spec.parameters) == {"uwshcu_rpen"}
+    # Water isotope tracing is live in this configuration, so it is pinned.
+    pinned = {entry.symbol: entry for entry in spec.module_state}
+    assert pinned["water_tracer_vars_mp_trace_water_"].expected == 1
+    assert pinned["water_tracer_vars_mp_wisotope_"].expected == 1
+    assert pinned["uwshcu_mp_rpen_"].write == "parameter"
+    assert pinned["uwshcu_mp_xlv_"].write == "snapshot"

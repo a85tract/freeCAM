@@ -97,9 +97,17 @@ def verify_against_inventory(
         elif str(intent).lower() != reviewed.intent:
             report.fail(f"{where}: inventory intent {intent!r}, spec intent {reviewed.intent!r}")
         dimensions = tuple(str(item) for item in declared.get("dimensions") or ())
-        if not pointer and dimensions != reviewed.native_shape:
+        # A routine names its own extents (uwshcu writes mix/mkx, not
+        # pcols/pver).  The spec declares that correspondence; nothing is
+        # inferred here, so an undeclared name still fails.
+        resolved = tuple(
+            spec.dimension_aliases.get(" ".join(item.split()), item) for item in dimensions
+        )
+        if not pointer and resolved != reviewed.native_shape:
             report.fail(
-                f"{where}: inventory extents {list(dimensions)}, spec native_shape {list(reviewed.native_shape)}"
+                f"{where}: inventory extents {list(dimensions)}"
+                + (f" (aliased to {list(resolved)})" if resolved != dimensions else "")
+                + f", spec native_shape {list(reviewed.native_shape)}"
             )
         if bool(declared.get("optional")):
             report.fail(f"{where}: optional dummies are not supported")

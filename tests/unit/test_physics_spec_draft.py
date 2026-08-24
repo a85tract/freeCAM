@@ -30,9 +30,10 @@ def test_declared_names_ignores_commas_inside_dimensions() -> None:
 def test_public_shape_drops_the_column_axis_and_flags_unknown_extents() -> None:
     module = _module()
     canonical = {"mix": "pcols", "mkx": "pver", "mkx+1": "pverp", "ncnst": "pcnst"}
-    assert module.public_shape(["mix", "mkx"], canonical) == ["lev"]
-    assert module.public_shape(["mix", "mkx+1"], canonical) == ["ilev"]
-    assert module.public_shape(["mix", "mkx", "ncnst"], canonical) == ["lev", "pcnst"]
+    # Native names, not the public-axis aliases: this is what spec.py checks.
+    assert module.public_shape(["mix", "mkx"], canonical) == ["pver"]
+    assert module.public_shape(["mix", "mkx+1"], canonical) == ["pverp"]
+    assert module.public_shape(["mix", "mkx", "ncnst"], canonical) == ["pver", "pcnst"]
     # An assumed-shape or explicitly bounded dimension carries no checkable extent.
     assert module.public_shape(["pcols", "0:pver"], {"pcols": "pcols"}) == ["REVIEW extent 0:pver"]
     assert module.public_shape([":", ":"], {}) == ["REVIEW extent :", "REVIEW extent :"]
@@ -70,10 +71,10 @@ def test_uwshcu_draft_parses_and_carries_the_recorded_facts(tmp_path: Path) -> N
     assert [a["name"] for a in draft["arguments"]][:5] == ["mix", "mkx", "iend", "ncnst", "dt"]
     # Facts the inventory and the source already carry are filled in.
     assert by_name["p0_inv"]["native_shape"] == ["pcols", "pver"]
-    assert by_name["p0_inv"]["public_shape"] == ["lev"]
+    assert by_name["p0_inv"]["public_shape"] == ["pver"]
     assert by_name["p0_inv"]["units"] == "Pa"
-    assert by_name["tr0_inv"]["public_shape"] == ["lev", "pcnst"]
-    assert by_name["umf_inv"]["role"] == "output" and by_name["umf_inv"]["public_shape"] == ["ilev"]
+    assert by_name["tr0_inv"]["public_shape"] == ["pver", "pcnst"]
+    assert by_name["umf_inv"]["role"] == "output" and by_name["umf_inv"]["public_shape"] == ["pverp"]
     assert by_name["cush"]["role"] == "inout"
     assert by_name["mix"]["role"] == "structural"
     # Judgement is left to the reviewer, never guessed.

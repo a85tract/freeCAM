@@ -60,7 +60,7 @@ arguments:
     rank: 2
     intent: in
     native_shape: ["pcols", "pver"]
-    public_shape: ["lev"]
+    public_shape: ["pver"]
     units: "K"
     range: REVIEW
     constraints: REVIEW
@@ -72,7 +72,7 @@ arguments:
     rank: 2
     intent: in
     native_shape: ["pcols", "pver"]
-    public_shape: ["lev"]
+    public_shape: ["pver"]
     units: "kg/kg"
     range: REVIEW
     constraints: REVIEW
@@ -96,7 +96,7 @@ arguments:
     rank: 2
     intent: in
     native_shape: ["pcols", "pver"]
-    public_shape: ["lev"]
+    public_shape: ["pver"]
     units: "kg/kg"
     range: REVIEW
     constraints: REVIEW
@@ -108,7 +108,7 @@ arguments:
     rank: 2
     intent: in
     native_shape: ["pcols", "pver"]
-    public_shape: ["lev"]
+    public_shape: ["pver"]
     units: "kg/kg"
     range: REVIEW
     constraints: REVIEW
@@ -120,7 +120,7 @@ arguments:
     rank: 2
     intent: in
     native_shape: ["pcols", "pver"]
-    public_shape: ["lev"]
+    public_shape: ["pver"]
     units: "J/kg"
     range: REVIEW
     constraints: REVIEW
@@ -132,7 +132,7 @@ arguments:
     rank: 2
     intent: in
     native_shape: ["pcols", "pver"]
-    public_shape: ["lev"]
+    public_shape: ["pver"]
     units: "Pa"
     range: REVIEW
     constraints: REVIEW
@@ -144,7 +144,7 @@ arguments:
     rank: 2
     intent: in
     native_shape: ["pcols", "pver"]
-    public_shape: ["lev"]
+    public_shape: ["pver"]
     units: "1/Pa"
     range: REVIEW
     constraints: REVIEW
@@ -156,7 +156,7 @@ arguments:
     rank: 2
     intent: in
     native_shape: ["pcols", "pver"]
-    public_shape: ["lev"]
+    public_shape: ["pver"]
     units: "fraction"
     range: REVIEW
     constraints: REVIEW
@@ -168,7 +168,7 @@ arguments:
     rank: 2
     intent: in
     native_shape: ["pcols", "pver"]
-    public_shape: ["lev"]
+    public_shape: ["pver"]
     units: REVIEW
     range: REVIEW
     constraints: REVIEW
@@ -180,7 +180,7 @@ arguments:
     rank: 2
     intent: in
     native_shape: ["pcols", "pver"]
-    public_shape: ["lev"]
+    public_shape: ["pver"]
     units: "m/s"
     range: REVIEW
     constraints: REVIEW
@@ -192,7 +192,7 @@ arguments:
     rank: 2
     intent: in
     native_shape: ["pcols", "pver"]
-    public_shape: ["lev"]
+    public_shape: ["pver"]
     units: "m"
     range: REVIEW
     constraints: REVIEW
@@ -204,7 +204,7 @@ arguments:
     rank: 2
     intent: in
     native_shape: ["pcols", "pverp"]
-    public_shape: ["ilev"]
+    public_shape: ["pverp"]
     units: "m"
     range: REVIEW
     constraints: REVIEW
@@ -216,7 +216,7 @@ arguments:
     rank: 2
     intent: in
     native_shape: ["pcols", "pver"]
-    public_shape: ["lev"]
+    public_shape: ["pver"]
     units: "Pa"
     range: REVIEW
     constraints: REVIEW
@@ -228,7 +228,7 @@ arguments:
     rank: 2
     intent: in
     native_shape: ["pcols", "pverp"]
-    public_shape: ["ilev"]
+    public_shape: ["pverp"]
     units: "Pa"
     range: REVIEW
     constraints: REVIEW
@@ -240,7 +240,7 @@ arguments:
     rank: 2
     intent: in
     native_shape: ["pcols", "pver"]
-    public_shape: ["lev"]
+    public_shape: ["pver"]
     units: "m/s"
     range: REVIEW
     constraints: REVIEW
@@ -252,7 +252,7 @@ arguments:
     rank: 2
     intent: in
     native_shape: ["pcols", "pver"]
-    public_shape: ["lev"]
+    public_shape: ["pver"]
     units: "m/s"
     range: REVIEW
     constraints: REVIEW
@@ -373,7 +373,7 @@ arguments:
     rank: 2
     intent: in
     native_shape: ["pcols", "pverp"]
-    public_shape: ["ilev"]
+    public_shape: ["pverp"]
     units: "m2/s"
     range: REVIEW
     constraints: REVIEW
@@ -385,7 +385,7 @@ arguments:
     rank: 2
     intent: in
     native_shape: ["pcols", "pverp"]
-    public_shape: ["ilev"]
+    public_shape: ["pverp"]
     units: "m2/s"
     range: REVIEW
     constraints: REVIEW
@@ -397,7 +397,7 @@ arguments:
     rank: 2
     intent: out
     native_shape: ["pcols", "pverp"]
-    public_shape: ["ilev"]
+    public_shape: ["pverp"]
     units: "m2/s"
     range: REVIEW
     constraints: REVIEW
@@ -409,7 +409,7 @@ arguments:
     rank: 2
     intent: out
     native_shape: ["pcols", "pverp"]
-    public_shape: ["ilev"]
+    public_shape: ["pverp"]
     units: "m2/s"
     range: REVIEW
     constraints: REVIEW
@@ -421,7 +421,7 @@ arguments:
     rank: 2
     intent: out
     native_shape: ["pcols", "pverp"]
-    public_shape: ["ilev"]
+    public_shape: ["pverp"]
     units: "m2/s"
     range: REVIEW
     constraints: REVIEW
@@ -433,7 +433,7 @@ arguments:
     rank: 2
     intent: out
     native_shape: ["pcols", "pverp"]
-    public_shape: ["ilev"]
+    public_shape: ["pverp"]
     units: "J/kg/m"
     range: REVIEW
     constraints: REVIEW
@@ -445,7 +445,7 @@ arguments:
     rank: 2
     intent: out
     native_shape: ["pcols", "pverp"]
-    public_shape: ["ilev"]
+    public_shape: ["pverp"]
     units: "cg/flux"
     range: REVIEW
     constraints: REVIEW
@@ -493,7 +493,7 @@ arguments:
     rank: 2
     intent: out
     native_shape: ["pcols", "pverp"]
-    public_shape: ["ilev"]
+    public_shape: ["pverp"]
     units: "m2/s2"
     range: REVIEW
     constraints: REVIEW
@@ -505,7 +505,7 @@ arguments:
     rank: 2
     intent: out
     native_shape: ["pcols", "pverp"]
-    public_shape: ["ilev"]
+    public_shape: ["pverp"]
     units: "m2/s3"
     range: REVIEW
     constraints: REVIEW
@@ -517,7 +517,7 @@ arguments:
     rank: 2
     intent: out
     native_shape: ["pcols", "pverp"]
-    public_shape: ["ilev"]
+    public_shape: ["pverp"]
     units: "m2/s3"
     range: REVIEW
     constraints: REVIEW
@@ -529,7 +529,7 @@ arguments:
     rank: 2
     intent: out
     native_shape: ["pcols", "pverp"]
-    public_shape: ["ilev"]
+    public_shape: ["pverp"]
     units: "fraction"
     range: REVIEW
     constraints: REVIEW
@@ -650,7 +650,7 @@ arguments:
     rank: 2
     intent: out
     native_shape: ["pcols", "pverp"]
-    public_shape: ["ilev"]
+    public_shape: ["pverp"]
     units: "no unit"
     range: REVIEW
     constraints: REVIEW
@@ -662,7 +662,7 @@ arguments:
     rank: 2
     intent: out
     native_shape: ["pcols", "pverp"]
-    public_shape: ["ilev"]
+    public_shape: ["pverp"]
     units: "no unit"
     range: REVIEW
     constraints: REVIEW
