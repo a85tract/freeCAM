@@ -472,7 +472,77 @@ def generate_fortran_include(bridge: LegacyStateBridge) -> str:
             "  end select",
             "end subroutine cam_python_state_transfer",
             "",
+            *_pbuf_accessor(),
         ]
+    )
+
+
+def _pbuf_accessor() -> tuple[str, ...]:
+    """A zero-copy handle on one physics-buffer field of one chunk.
+
+    The physics buffer is the last host service Python could not see.  It is
+    not a state owner -- CAM allocates it, indexes it by a name registered at
+    initialization, and rotates two time samples -- so it gets a handle rather
+    than a StatePool field: the caller asks for a field by the index CAM gave
+    it and receives the address CAM already holds.  Nothing is copied and
+    nothing is allocated, so a Python-driven process reads and writes the same
+    storage the Fortran process would have.
+
+    Only the two shapes CAM's physics actually asks for are served: a plain
+    ``(pcols, n)`` field, and the ``(pcols, pver)`` plane of a time-rotated
+    field at the older sample.  Anything else is refused rather than guessed.
+    """
+
+    return (
+        "integer(c_int) function pycam_pbuf_field_v1(lchnk, field_index, &",
+        "     time_sliced, ptr, extents) &",
+        "     bind(C, name='pycam_pbuf_field_v1') result(status)",
+        "  use, intrinsic :: iso_c_binding, only: c_ptr, c_loc, c_int, &",
+        "       c_int64_t, c_null_ptr",
+        "  use physics_buffer, only: physics_buffer_desc, pbuf_get_chunk, &",
+        "       pbuf_get_field, pbuf_old_tim_idx",
+        "  use ppgrid, only: pcols, pver",
+        "  integer(c_int), value, intent(in)  :: lchnk, field_index, time_sliced",
+        "  type(c_ptr),           intent(out) :: ptr",
+        "  integer(c_int64_t),    intent(out) :: extents(2)",
+        "  type(physics_buffer_desc), pointer :: pbuf(:)",
+        "  real(r8), pointer :: plane(:,:)",
+        "  integer :: itim",
+        "  status = 0_c_int",
+        "  ptr = c_null_ptr",
+        "  extents = 0_c_int64_t",
+        "  nullify(plane)",
+        "  ! An index of -1 is how CAM says a field was never registered; the",
+        "  ! six UNICON fields are like that in this configuration.",
+        "  if (field_index < 1) then",
+        "    status = 1_c_int",
+        "    return",
+        "  endif",
+        "  if (lchnk < begchunk .or. lchnk > endchunk) then",
+        "    status = 2_c_int",
+        "    return",
+        "  endif",
+        "  if (.not. associated(pbuf2d)) then",
+        "    status = 3_c_int",
+        "    return",
+        "  endif",
+        "  pbuf => pbuf_get_chunk(pbuf2d, lchnk)",
+        "  if (time_sliced /= 0_c_int) then",
+        "    itim = pbuf_old_tim_idx()",
+        "    call pbuf_get_field(pbuf, field_index, plane, &",
+        "         start=(/1,1,itim/), kount=(/pcols,pver,1/))",
+        "  else",
+        "    call pbuf_get_field(pbuf, field_index, plane)",
+        "  endif",
+        "  if (.not. associated(plane)) then",
+        "    status = 4_c_int",
+        "    return",
+        "  endif",
+        "  ptr = c_loc(plane(1,1))",
+        "  extents(1) = int(size(plane,1), c_int64_t)",
+        "  extents(2) = int(size(plane,2), c_int64_t)",
+        "end function pycam_pbuf_field_v1",
+        "",
     )
 
 

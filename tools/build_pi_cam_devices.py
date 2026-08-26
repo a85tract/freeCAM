@@ -60,6 +60,8 @@ ABI_SYMBOLS = (
 PREPARE_INITIALIZE_SYMBOL = "pycam_pi_cam_prepare_initialize_v1"
 STATE_CONTEXT_SYMBOL = "pycam_pi_cam_state_context_v1"
 STATE_BIND_SYMBOL = "pycam_pi_cam_bind_state_v1"
+# The physics buffer is reached by handle, not by StatePool field.
+PBUF_FIELD_SYMBOL = "pycam_pbuf_field_v1"
 LEAF_ACTION_SYMBOL = "pycam_pi_cam_leaf_action_v1"
 LEAF_OPERATION_NAMES = (
     "leaf_modal_aero_prepare",
