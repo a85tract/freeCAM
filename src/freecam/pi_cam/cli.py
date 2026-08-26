@@ -175,6 +175,15 @@ def main(argv: list[str] | None = None) -> int:
             "boundary alone"
         ),
     )
+    parser.add_argument(
+        "--macrophysics-python",
+        action="store_true",
+        help=(
+            "install Macrophysics.tend on every rank between the two halves of "
+            "the split macrophysics stage, so the driver layer runs as Python "
+            "with every FLOP still in Fortran; requires --split-macrophysics"
+        ),
+    )
     parser.add_argument("--summary", type=Path)
     parser.add_argument(
         "--memory-sample-every",
@@ -238,6 +247,8 @@ def main(argv: list[str] | None = None) -> int:
         cam.step_plan.expand_cam_run2_run4_leaves(experimental=True)
     if args.split_macrophysics:
         cam.step_plan.split_macrophysics(experimental=True)
+    if args.macrophysics_python and not args.split_macrophysics:
+        raise SystemExit("--macrophysics-python requires --split-macrophysics")
     created_addresses = {
         name: int(values.ctypes.data) for name, values in cam.pool.items()
     }
@@ -250,6 +261,26 @@ def main(argv: list[str] | None = None) -> int:
         world.Barrier()
         initialize_started = MPI.Wtime()
         cam.initialize()
+        if args.macrophysics_python:
+            # The Python driver layer, installed collectively on every rank
+            # once the model exists: a native, non-transactional process (it
+            # owns no StatePool field; every array it touches is CAM's own
+            # storage reached by handle) sitting between the two halves.
+            from freecam.model.python_processes import PythonProcessSpec
+            from freecam.physics.macrophysics import Macrophysics
+
+            scheme = Macrophysics()
+            cam.python_processes.install(
+                PythonProcessSpec.from_callable(
+                    scheme.tend,
+                    name="macro_tend",
+                    group="cam_run1",
+                    after="macro_tend_pre_leaf",
+                    native=True,
+                    transactional=False,
+                ),
+                unsafe=True,
+            )
         for request in history_streams:
             cam.install_history_stream(
                 str(request["name"]),
@@ -488,6 +519,8 @@ def main(argv: list[str] | None = None) -> int:
             "mpi_ranks": world.Get_size(),
             "steps": steps,
             "execution_mode": case.config.execution_mode,
+            "macrophysics_split": bool(args.split_macrophysics),
+            "macrophysics_python": bool(args.macrophysics_python),
             "boundary_mode": case.config.boundary_mode,
             "boundary_provider": type(boundary).__name__,
             "validation_scope": (
