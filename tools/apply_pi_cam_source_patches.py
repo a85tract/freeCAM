@@ -22,7 +22,26 @@ PATCHES = (
     "native/pi_cam/control_patches/0025-python-owned-atm-mct-state.patch",
     "native/pi_cam/control_patches/0030-order-independent-scheme-actions.patch",
     "native/pi_cam/control_patches/0033-single-cam-online-coupler.patch",
+    "native/pi_cam/control_patches/0035-macro-split-actions.patch",
 )
+
+# Modules this repository owns that the patches `use`.  They are copied in
+# before the patches are applied, not carried inside them, so they stay
+# reviewable and compilable on their own.
+SUPPORT_SOURCES = (
+    ("native/pi_cam/support/pycam_macro_split.F90",
+     "src/physics/cam/pycam_macro_split.F90"),
+)
+
+
+def _install_support_sources(cam_root: Path) -> tuple[Path, ...]:
+    installed = []
+    for relative, destination in SUPPORT_SOURCES:
+        target = cam_root / destination
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(REPO / relative, target)
+        installed.append(target)
+    return tuple(installed)
 
 
 def _cam_root(source_root: Path) -> Path:
@@ -36,6 +55,7 @@ def _cam_root(source_root: Path) -> Path:
 
 
 def _apply_to(cam_root: Path) -> tuple[Path, ...]:
+    _install_support_sources(cam_root)
     applied: list[Path] = []
     for relative in PATCHES:
         patch = REPO / relative
@@ -78,6 +98,7 @@ def apply_patches(source_root: Path, *, check: bool = False) -> tuple[Path, ...]
         Path("src/cpl/atm_comp_mct.F90"),
         Path("src/control/cam_comp.F90"),
         Path("src/physics/cam/physpkg.F90"),
+        Path("src/physics/cam/macrop_driver.F90"),
     )
     with tempfile.TemporaryDirectory(prefix="pycam-pi-cam-patches-") as temporary:
         scratch = Path(temporary)
