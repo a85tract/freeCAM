@@ -17,6 +17,7 @@ from freecam.model.errors import (
 )
 from freecam.model.python_processes import (
     PythonFieldView,
+    NativeAccess,
     PythonProcessContext,
     PythonProcessSpec,
     PythonStateView,
@@ -414,6 +415,7 @@ class PICAMPythonProcessRegistry:
                 day=self.driver.clock.day,
                 seconds=self.driver.clock.seconds,
                 calendar=self.driver.clock.calendar,
+                native=NativeAccess(self.driver) if record.spec.native else None,
             )
             function = cloudpickle.loads(record.spec.payload)
             result = function(fields, context, **dict(record.spec.parameters or {}))
