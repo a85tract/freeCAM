@@ -918,11 +918,11 @@ def test_session_ui_lists_every_supported_pi_cam_physics_interface(
     order.insert(order.index(vertical_diffusion), radiation)
     assert order.index(radiation) < order.index(vertical_diffusion)
 
-    assert len(session.physics) == 300
-    assert len(set(session.physics.names)) == 300
+    assert len(session.physics) == 298
+    assert len(set(session.physics.names)) == 298
     assert session.physics.coverage == {
-        "interfaces": 300,
-        "runnable": 38,
+        "interfaces": 298,
+        "runnable": 36,
         "catalog_only": 262,
         "source_reachable": 372,
         "source_catalog": 371,
@@ -941,8 +941,8 @@ def test_session_ui_lists_every_supported_pi_cam_physics_interface(
         "runtime_overlap": 14,
         "excluded_lifecycle": 1,
         "enabled": 31,
-        "disabled": 7,
-        "leaf": 17,
+        "disabled": 5,
+        "leaf": 15,
         "stage": 21,
     }
     assert session.physics.dadadj.operation == "dadadj"
@@ -952,13 +952,13 @@ def test_session_ui_lists_every_supported_pi_cam_physics_interface(
         session.physics.leaf_cloud_diagnostics_calc.parent_stage
         == "cam_run1.diagnostics"
     )
-    assert sum(process.runnable for process in session.physics) == 38
+    assert sum(process.runnable for process in session.physics) == 36
     assert not hasattr(session.physics, "by_phase")
     assert session.physics.cloud_fraction_fice.runnable is False
     assert session.physics.cldfrc_fice.name == "cloud_fraction_fice"
     assert session.physics.zm_conv_evap.qualified_name == "zm_conv::zm_conv_evap"
     html = session.physics._repr_html_()
-    assert "300 flat physics interfaces" in html
+    assert "298 flat physics interfaces" in html
     assert "convect_deep_tend" in html
     assert "leaf_cloud_diagnostics_calc" in html
     assert "Parent stage" in html

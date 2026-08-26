@@ -363,10 +363,10 @@ def test_pythonic_phase_and_action_handles_edit_the_same_step_plan() -> None:
 
     assert "rayleigh_friction" in dir(driver.physics)
     assert "rayleigh_friction_tend" in dir(driver.physics)
-    assert len(driver.physics) == 300
+    assert len(driver.physics) == 298
     assert driver.physics.coverage == {
-        "interfaces": 300,
-        "runnable": 38,
+        "interfaces": 298,
+        "runnable": 36,
         "catalog_only": 262,
         "source_reachable": 372,
         "source_catalog": 371,
@@ -385,8 +385,8 @@ def test_pythonic_phase_and_action_handles_edit_the_same_step_plan() -> None:
         "runtime_overlap": 14,
         "excluded_lifecycle": 1,
         "enabled": 31,
-        "disabled": 7,
-        "leaf": 17,
+        "disabled": 5,
+        "leaf": 15,
         "stage": 21,
     }
     assert driver.physics.names[0] == "surface_fluxes_and_emissions"

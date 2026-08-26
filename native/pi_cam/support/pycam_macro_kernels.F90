@@ -8,9 +8,13 @@
 ! `state_loc%t` becomes `t`, `ptend_loc%q` becomes `ptend_q`, a module flag
 ! becomes an argument.  Every expression, every loop nest and every bound is
 ! character for character what the pinned source computes, which is what lets
-! the bit-for-bit gate mean something.  macrop_driver_tend itself calls these,
-! so the monolithic Fortran path and a Python-driven one execute the same
-! object code.
+! the bit-for-bit gate mean something.
+!
+! This module is an addition to the source tree.  macrop_driver_tend is not
+! changed to call it, so the oracle's own macrop_driver.o -- the machine code
+! the gate validated -- stays untouched; only a Python-driven timestep runs
+! these.  The Python-driven run is gated bit-for-bit against the oracle, and
+! that gate is what proves the two copies of the arithmetic agree.
 !
 ! Nothing here touches a derived type, the physics buffer, the clock or the
 ! history file.  That is deliberate: these are exactly the pieces of the

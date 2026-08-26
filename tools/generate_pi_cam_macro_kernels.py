@@ -9,12 +9,19 @@ from the pinned source and only *renamed* -- a derived-type component becomes
 the plain array it already is, a module flag becomes an argument -- so the
 expressions the compiler sees are character for character the originals.
 
-    tools/generate_pi_cam_macro_kernels.py            # write both artefacts
-    tools/generate_pi_cam_macro_kernels.py --check    # fail if either is stale
+The module is an addition to the CAM source tree, never a replacement.
+macrop_driver.F90 is not patched to call it: the oracle's macrop_driver.o
+stays byte for byte what the bit-for-bit gate validated, and only a
+Python-driven timestep reaches these routines.  The price is that the
+arithmetic exists twice -- once in the driver, once here -- which is why a
+test compares every body here against the pinned text, and why the
+Python-driven run is itself gated bit-for-bit against the oracle.
 
-The bodies come from ``external/iCESM1.3.1_fzhu``, which the patch also
-targets, so a change to the pinned source shows up as a --check failure
-rather than as a silent divergence.
+    tools/generate_pi_cam_macro_kernels.py            # write the module
+    tools/generate_pi_cam_macro_kernels.py --check    # fail if it is stale
+
+The bodies come from ``external/iCESM1.3.1_fzhu``, so a change to the pinned
+source shows up as a --check failure rather than as a silent divergence.
 """
 
 from __future__ import annotations
@@ -22,16 +29,11 @@ from __future__ import annotations
 import argparse
 import difflib
 from pathlib import Path
-import re
-import shutil
-import subprocess
 import sys
-import tempfile
 
 REPO = Path(__file__).resolve().parents[1]
 PINNED = REPO / "external/iCESM1.3.1_fzhu/components/cam/src/physics/cam/macrop_driver.F90"
 MODULE = REPO / "native/pi_cam/support/pycam_macro_kernels.F90"
-PATCH = REPO / "native/pi_cam/control_patches/0038-macro-carve-arithmetic.patch"
 
 # Renames applied to every carved body.  Each one replaces a name the routine
 # could only see as a host association with a name it receives as an argument.
@@ -50,28 +52,11 @@ COMMON = {
 }
 
 
-# The caller's own name for each dummy -- the inverse of the renames above,
-# plus the two the caller computes on the spot.
-ACTUALS = {
-    "t": "state_loc%t",
-    "pdel": "state_loc%pdel",
-    "q": "state_loc%q",
-    "ptend_s": "ptend_loc%s",
-    "ptend_q": "ptend_loc%q",
-    "iatype_liq": "wtrc_iatype(:,iwtliq)",
-    "iatype_ice": "wtrc_iatype(:,iwtice)",
-    "nwset": "wtrc_nwset",
-    "do_wtrc_detrain": "trace_water .and. wtrc_detrain_in_macrop",
-    "nstep": "get_nstep()",
-    "status": "macro_status",
-}
-
-
 class Block:
     """One carved routine: where its body is, and what it receives."""
 
     def __init__(self, name, first, last, signature, declarations, locals_, *,
-                 renames=None, after_call=()):
+                 renames=None):
         self.name = name
         self.first = first          # 1-based, inclusive
         self.last = last
@@ -79,11 +64,10 @@ class Block:
         self.declarations = declarations
         self.locals = locals_
         self.renames = dict(COMMON, **(renames or {}))
-        self.after_call = tuple(after_call)
 
-    def actuals(self) -> list[str]:
-        names = ", ".join(self.signature).split(", ")
-        return [ACTUALS.get(name, name) for name in names]
+    @property
+    def arguments(self) -> tuple[str, ...]:
+        return tuple(", ".join(self.signature).split(", "))
 
     def body(self, lines: list[str]) -> list[str]:
         out = []
@@ -178,11 +162,6 @@ BLOCKS = (
          "   ! drives reports instead, and the caller decides to stop.",
          "   integer,  intent(out)   :: status"],
         ["   integer :: i, k"],
-        after_call=[
-            "   if (macro_status /= 0) call endrun('macrop_driver:ERROR - ' // &",
-            "        'mmacro_pcond returned tendencies for a species Cldwat is ' // &",
-            "        'configured not to prognose.')",
-        ],
         renames={
             'call endrun("macrop_driver:ERROR - "// &': "status = 1",
             'call endrun("macrop_driver:ERROR -"// &': "status = 2",
@@ -244,9 +223,8 @@ def render_module(source: Path | None = None) -> str:
     nl = "\n"
     routines = []
     for block in BLOCKS:
-        arguments = ", ".join(block.signature).split(", ")
         header = [f"  subroutine {block.name}( &"] + [
-            "  " + line for line in _wrap(arguments, "       ")
+            "  " + line for line in _wrap(block.arguments, "       ")
         ]
         pieces = header + [""] + block.declarations
         if block.locals:
@@ -266,9 +244,13 @@ def render_module(source: Path | None = None) -> str:
 ! `state_loc%t` becomes `t`, `ptend_loc%q` becomes `ptend_q`, a module flag
 ! becomes an argument.  Every expression, every loop nest and every bound is
 ! character for character what the pinned source computes, which is what lets
-! the bit-for-bit gate mean something.  macrop_driver_tend itself calls these,
-! so the monolithic Fortran path and a Python-driven one execute the same
-! object code.
+! the bit-for-bit gate mean something.
+!
+! This module is an addition to the source tree.  macrop_driver_tend is not
+! changed to call it, so the oracle's own macrop_driver.o -- the machine code
+! the gate validated -- stays untouched; only a Python-driven timestep runs
+! these.  The Python-driven run is gated bit-for-bit against the oracle, and
+! that gate is what proves the two copies of the arithmetic agree.
 !
 ! Nothing here touches a derived type, the physics buffer, the clock or the
 ! history file.  That is deliberate: these are exactly the pieces of the
@@ -293,47 +275,12 @@ end module pycam_macro_kernels
 '''
 
 
-def render_patch(source: Path | None = None) -> str:
-    """Replace each carved block in macrop_driver_tend with its call."""
-
-    lines = (source or PINNED).read_text().splitlines()
-    replacements = []
-    for block in BLOCKS:
-        call = [f"   call {block.name}( &"] + _wrap(block.actuals(), "        ")
-        replacements.append((block.first, block.last, call + list(block.after_call)))
-
-    out = list(lines)
-    for first, last, call in sorted(replacements, reverse=True):
-        out[first - 1:last] = call
-
-    index = out.index("  use ref_pres,         only: top_lev => trop_cloud_top_lev")
-    out[index + 1:index + 1] = ["  use pycam_macro_kernels"]
-    index = out.index("  integer i,k")
-    out[index + 1:index + 1] = [
-        "  integer macro_status                              ! carved-kernel refusal code",
-    ]
-
-    with tempfile.TemporaryDirectory(prefix="pycam-macro-carve-") as temporary:
-        work = Path(temporary)
-        original, patched = work / "before.F90", work / "after.F90"
-        shutil.copy2(source or PINNED, original)
-        patched.write_text("\n".join(out) + "\n")
-        diff = subprocess.run(
-            ["git", "diff", "--no-index", "--unified=0", "--no-prefix",
-             str(original), str(patched)],
-            capture_output=True, text=True,
-        ).stdout.splitlines()
-    body = [line for line in diff if not line.startswith(("diff --git", "index ", "--- ", "+++ "))]
-    return "\n".join(["--- a/src/physics/cam/macrop_driver.F90",
-                      "+++ b/src/physics/cam/macrop_driver.F90"] + body) + "\n"
-
-
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--check", action="store_true")
     arguments = parser.parse_args()
     stale = []
-    for path, rendered in ((MODULE, render_module()), (PATCH, render_patch())):
+    for path, rendered in ((MODULE, render_module()),):
         if arguments.check:
             current = path.read_text() if path.is_file() else ""
             if current != rendered:

@@ -1,10 +1,8 @@
-"""The carved macrophysics kernels are the driver's own arithmetic, moved."""
+"""The carved macrophysics kernels are the driver's own arithmetic, lifted."""
 
 from __future__ import annotations
 
 import re
-import shutil
-import subprocess
 import sys
 from pathlib import Path
 
@@ -14,7 +12,7 @@ REPO = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO / "tools"))
 
 import generate_pi_cam_macro_kernels as carve  # noqa: E402
-from apply_pi_cam_source_patches import PATCHES  # noqa: E402
+from apply_pi_cam_source_patches import PATCHES, SUPPORT_SOURCES  # noqa: E402
 
 pinned = pytest.mark.skipif(
     not carve.PINNED.is_file(),
@@ -23,18 +21,19 @@ pinned = pytest.mark.skipif(
 
 
 @pinned
-def test_the_generated_artefacts_are_what_the_pinned_source_produces() -> None:
+def test_the_module_is_what_the_pinned_source_produces() -> None:
     assert carve.MODULE.read_text() == carve.render_module()
-    assert carve.PATCH.read_text() == carve.render_patch()
 
 
 @pinned
 def test_every_carved_body_is_the_original_text_renamed_and_nothing_else() -> None:
-    """The whole claim of this patch, checked line for line.
+    """The whole claim of this module, checked line for line.
 
-    If a body were retyped rather than lifted, an expression could differ by a
-    parenthesis or an operand order and still compile -- and the bit-for-bit
-    gate would fail with nothing to point at.  So compare the text.
+    The arithmetic now exists twice -- in the oracle's driver and here -- and
+    only one of the two is validated by machine code.  If a body here were
+    retyped rather than lifted, an expression could differ by a parenthesis
+    or an operand order and still compile; the Python-driven run would then
+    fail its bit-for-bit gate with nothing to point at.  So compare the text.
     """
 
     source = carve.PINNED.read_text().splitlines()
@@ -43,7 +42,6 @@ def test_every_carved_body_is_the_original_text_renamed_and_nothing_else() -> No
         expected = "\n".join(block.body(source))
         assert expected.strip(), block.name
         assert expected in module, f"{block.name} body is not the pinned text"
-        # and every rename actually removed the host-associated name
         for original in block.renames:
             if original.endswith(")") or " " in original:
                 continue
@@ -51,108 +49,69 @@ def test_every_carved_body_is_the_original_text_renamed_and_nothing_else() -> No
 
 
 @pinned
-def test_the_driver_no_longer_computes_what_the_kernels_compute() -> None:
-    """Carved, not copied: the arithmetic must exist in exactly one place."""
+def test_the_blocks_cover_every_arithmetic_statement_of_the_driver() -> None:
+    """Nothing that computes may be left for Python to reproduce."""
 
-    patched = carve.render_patch()
-    removed = [line[1:] for line in patched.splitlines() if line.startswith("-")]
-    added = "\n".join(line[1:] for line in patched.splitlines() if line.startswith("+"))
-    signatures = (
-        "dpdlfliq(i,k) = ( dlf(i,k)",
-        "clrw_old(i,k) = max(",
-        "lmitend(:ncol,top_lev:pver) =",
-        "ptend_loc%q(i,k,ixnumice) = niten(i,k)",
-        "nqctn(i,k) = qcten(i,k)",
-        "mr_lsliq(i,k) = state_loc%q(i,k,ixcldliq)",
-        "cldsice(:ncol,k) = lcwat(:ncol,k)",
-    )
-    joined = "\n".join(removed)
-    for signature in signatures:
-        assert signature in joined, f"the patch never removed {signature!r}"
-        assert signature not in added, f"the patch re-adds {signature!r}"
-
-
-@pinned
-def test_each_kernel_is_called_once_with_the_caller_s_own_names() -> None:
-    added = "\n".join(
-        line[1:] for line in carve.render_patch().splitlines() if line.startswith("+")
-    )
+    lines = carve.PINNED.read_text().splitlines()
+    covered = set()
     for block in carve.BLOCKS:
-        assert added.count(f"call {block.name}(") == 1, block.name
-    # The bodies speak of `t` and `ptend_s`; the call site must still speak of
-    # the derived types the driver actually holds.
-    assert "state_loc%t" in added and "ptend_loc%q" in added
-    assert "wtrc_iatype(:,iwtliq)" in added
-    assert "get_nstep()" in added
+        covered.update(range(block.first, block.last + 1))
+    # executable part of macrop_driver_tend: after the declarations, before end
+    arithmetic = []
+    for number in range(612, 1224):
+        text = lines[number - 1].split("!")[0].strip()
+        if not text or text.startswith(("call ", "if", "do ", "end", "else", "enddo", "endif")):
+            continue
+        if "=" not in text or text.startswith(("real", "integer", "logical", "type")):
+            continue
+        rhs = text.split("=", 1)[1]
+        if re.search(r"[*/]|[+-]\s*[a-zA-Z(]", rhs) and not re.fullmatch(r"\s*0\._r8\s*", rhs):
+            arithmetic.append(number)
+    uncovered = [n for n in arithmetic if n not in covered]
+    # `rdtime = 1._r8/dtime` and `latsub = latvap + latice` are scalars the
+    # caller computes and passes; `det_ice(:ncol) = det_ice(:ncol)/1000._r8`
+    # sits between two blocks and is one array statement Python asks the
+    # image for as well.  Anything else uncovered is a hole.
+    allowed = {n for n in uncovered if any(
+        token in lines[n - 1] for token in ("rdtime = 1._r8/dtime", "latsub = latvap + latice",
+                                            "det_ice(:ncol) = det_ice(:ncol)/1000._r8")
+    )}
+    assert set(uncovered) == allowed, [lines[n - 1].strip() for n in uncovered if n not in allowed]
 
 
 @pinned
-def test_the_refusals_became_a_status_the_caller_still_stops_on() -> None:
+def test_the_refusals_became_a_status_not_an_abort() -> None:
     module = carve.MODULE.read_text()
-    body = module.split("subroutine macrop_kernel_to_ptend", 1)[1]
-    body = body.split("end subroutine", 1)[0]
+    body = module.split("subroutine macrop_kernel_to_ptend", 1)[1].split("end subroutine", 1)[0]
     assert "call endrun" not in body, "a carved kernel must not abort the model itself"
     assert body.count("status = 1") + body.count("status = 2") == 4
-    added = "\n".join(
-        line[1:] for line in carve.render_patch().splitlines() if line.startswith("+")
-    )
-    assert "if (macro_status /= 0) call endrun" in added
-
-
-@pinned
-def test_the_patch_applies_to_the_pinned_source_and_ships_in_production(tmp_path: Path) -> None:
-    target = tmp_path / "src/physics/cam"
-    target.mkdir(parents=True)
-    shutil.copy2(carve.PINNED, target / "macrop_driver.F90")
-    subprocess.run(
-        ["git", "apply", "--unidiff-zero", "--check", str(carve.PATCH)],
-        cwd=tmp_path, check=True, capture_output=True, text=True,
-    )
-    # It moves numerical code, so it answers to the bit-for-bit gate.
-    assert str(carve.PATCH.relative_to(REPO)) in PATCHES
+    assert "status = 0" in body
 
 
 def test_the_kernels_touch_no_host_service() -> None:
     """No derived type, no pbuf, no clock, no history -- that is the point."""
 
     module = carve.MODULE.read_text()
-    body = module.split("contains", 1)[1]
+    # Code only: a comment is allowed to say what the original did.
+    body = "\n".join(line.split("!")[0] for line in module.split("contains", 1)[1].splitlines())
     for forbidden in ("pbuf", "outfld", "get_nstep", "physics_state", "physics_ptend",
-                      "state_loc", "ptend_loc", "%"):
+                      "state_loc", "ptend_loc", "%", "endrun"):
         assert forbidden not in body, f"a carved kernel reaches for {forbidden}"
     uses = re.findall(r"^\s*use\s+(\w+)", module, re.M)
     assert set(uses) == {"shr_kind_mod", "ppgrid", "constituents"}
 
 
-@pinned
-def test_the_two_macrop_driver_patches_compose_in_production_order(tmp_path: Path) -> None:
-    """0035 and 0038 edit the same file; zero-context hunks can drift.
+def test_the_module_is_an_addition_and_never_a_replacement() -> None:
+    """The oracle's macrop_driver.o must stay byte for byte what the gate ran.
 
-    git apply searches when a hunk's line number no longer matches, so a stale
-    offset shows up as a wrong-place edit rather than an error.  Apply both in
-    the order production uses and check the result by content.
+    Recompiling a numerical object -- even from unchanged source -- has
+    produced ULP differences in this repository before, so no patch may edit
+    macrop_driver.F90 and no numerical object may be replaced.  The module is
+    copied in beside the source and reached only from Python.
     """
 
-    target = tmp_path / "src/physics/cam"
-    target.mkdir(parents=True)
-    shutil.copy2(carve.PINNED, target / "macrop_driver.F90")
-    ours = [name for name in PATCHES if "macro-split-actions" in name or "macro-carve" in name]
-    assert len(ours) == 2 and ours.index(
-        "native/pi_cam/control_patches/0035-macro-split-actions.patch"
-    ) < ours.index("native/pi_cam/control_patches/0038-macro-carve-arithmetic.patch")
-    for name in ours:
-        subprocess.run(
-            ["git", "apply", "--unidiff-zero", "--verbose", str(REPO / name)],
-            cwd=tmp_path, check=True, capture_output=True, text=True,
-        )
-
-    result = (target / "macrop_driver.F90").read_text()
-    assert result.count("call pycam_macro_before(macro_stage_local, &") == 1
-    assert result.count("call pycam_macro_after(macro_stage_local, &") == 1
-    assert "call mmacro_pcond(" not in result, "the kernel call should have moved out"
-    for block in carve.BLOCKS:
-        assert result.count(f"call {block.name}( &") == 1, block.name
-    # The carved arithmetic is gone from the driver, exactly once each.
-    for signature in ("dpdlfliq(i,k) = ( dlf(i,k)", "clrw_old(i,k) = max(",
-                      "cldsice(:ncol,k) = lcwat(:ncol,k)"):
-        assert signature not in result, f"{signature!r} survived in the driver"
+    assert any(source.endswith("pycam_macro_kernels.F90") for source, _ in SUPPORT_SOURCES)
+    for name in PATCHES:
+        text = (REPO / name).read_text()
+        assert "macrop_driver.F90" not in text, f"{name} edits the macrophysics driver"
+        assert "pycam_macro_kernels" not in text, f"{name} wires the kernels into Fortran"

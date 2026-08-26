@@ -45,7 +45,6 @@ LEAF_PATCHES = (
     / "native/pi_cam/control_patches/0028-python-after-coupler-leaf-control.patch",
     REPO / "native/pi_cam/control_patches/0029-python-run4-leaf-control.patch",
     REPO / "native/pi_cam/control_patches/0031-order-independent-leaf-actions.patch",
-    REPO / "native/pi_cam/control_patches/0037-macro-split-leaf-dispatch.patch",
 )
 IMAGE_BASE = 0x30000000
 IMAGE_WINDOW_BYTES = 0x20000000
@@ -85,12 +84,8 @@ LEAF_OPERATION_NAMES = (
     "leaf_cam_run4_wrapup",
     "leaf_cam_run4_step_cost",
     "leaf_cam_run4_flush",
-    "leaf_macro_pre",
-    "leaf_macro_post",
 )
-LEAF_OPERATION_IDS = (
-    *range(450, 459), *range(460, 469), *range(470, 473), *range(480, 482)
-)
+LEAF_OPERATION_IDS = (*range(450, 459), *range(460, 469), *range(470, 473))
 
 
 from pi_cam_build_common import (  # noqa: E402

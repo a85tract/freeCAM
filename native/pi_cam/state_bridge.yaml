@@ -18,13 +18,6 @@ owners:
   - name: phys_tend
     type: physics_tend
     source: components/cam/src/physics/cam/physics_types.F90
-  # The mmacro_pcond kernel boundary, published by macrop_driver_tend's first
-  # half and consumed by its second.  Every component is generated from
-  # native/pi_cam/functions/mmacro_pcond.yaml, so what a surrogate reads and
-  # writes here is the reviewed function boundary and nothing else.
-  - name: macro_split
-    type: pycam_macro_record_t
-    source: components/cam/src/physics/cam/pycam_macro_split.F90
 
 exclude: []
 

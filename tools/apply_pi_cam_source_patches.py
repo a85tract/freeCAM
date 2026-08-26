@@ -22,17 +22,13 @@ PATCHES = (
     "native/pi_cam/control_patches/0025-python-owned-atm-mct-state.patch",
     "native/pi_cam/control_patches/0030-order-independent-scheme-actions.patch",
     "native/pi_cam/control_patches/0033-single-cam-online-coupler.patch",
-    "native/pi_cam/control_patches/0035-macro-split-actions.patch",
-    "native/pi_cam/control_patches/0036-macro-split-tphysbc.patch",
-    "native/pi_cam/control_patches/0038-macro-carve-arithmetic.patch",
 )
 
-# Modules this repository owns that the patches `use`.  They are copied in
-# before the patches are applied, not carried inside them, so they stay
-# reviewable and compilable on their own.
+# Modules this repository owns that are added to the CAM source tree.  They
+# are additions, never replacements: no patch edits a numerical object to
+# call them, so the oracle's machine code is untouched and they are reached
+# only from Python.
 SUPPORT_SOURCES = (
-    ("native/pi_cam/support/pycam_macro_split.F90",
-     "src/physics/cam/pycam_macro_split.F90"),
     ("native/pi_cam/support/pycam_macro_kernels.F90",
      "src/physics/cam/pycam_macro_kernels.F90"),
 )
@@ -102,7 +98,6 @@ def apply_patches(source_root: Path, *, check: bool = False) -> tuple[Path, ...]
         Path("src/cpl/atm_comp_mct.F90"),
         Path("src/control/cam_comp.F90"),
         Path("src/physics/cam/physpkg.F90"),
-        Path("src/physics/cam/macrop_driver.F90"),
     )
     with tempfile.TemporaryDirectory(prefix="pycam-pi-cam-patches-") as temporary:
         scratch = Path(temporary)
