@@ -176,6 +176,24 @@ class PICAMStepPlan:
         index = self._actions.index(selected)
         self._actions[index] = replace(selected, enabled=bool(enabled))
 
+    def split_macrophysics(self, *, experimental: bool = False) -> None:
+        """Stop the macrophysics stage before its driver and resume after it.
+
+        The whole stage and its two halves are alternatives, never both:
+        leaving the stage enabled beside its halves would run the
+        macrophysics twice a step, and disabling all three would not run it
+        at all.  Doing the swap in one call is the only way to be sure of
+        neither.
+        """
+
+        if not experimental:
+            raise PICAMConfigurationError(
+                "splitting the macrophysics stage requires experimental=True"
+            )
+        self.set_enabled("cloud_macro_microphysics", False, phase="cam_run1", experimental=True)
+        for name in ("macro_tend_pre_leaf", "macro_tend_post_leaf"):
+            self.set_enabled(name, True, phase="cam_run1", experimental=True)
+
     def expand_cam_run1_leaves(self, *, experimental: bool = False) -> None:
         """Replace three composite ``cam_run1`` stages with leaf actions."""
 

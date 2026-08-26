@@ -165,6 +165,16 @@ def main(argv: list[str] | None = None) -> int:
             "source's namelist definition; repeatable"
         ),
     )
+    parser.add_argument(
+        "--split-macrophysics",
+        action="store_true",
+        help=(
+            "run the macrophysics stage as its two halves, stopped before "
+            "macrop_driver_tend and resumed after it; with no Python process "
+            "installed the resume calls the original driver, which gates the "
+            "boundary alone"
+        ),
+    )
     parser.add_argument("--summary", type=Path)
     parser.add_argument(
         "--memory-sample-every",
@@ -226,6 +236,8 @@ def main(argv: list[str] | None = None) -> int:
         cam.step_plan.expand_cam_run1_leaves(experimental=True)
     if args.expand_cam_run2_run4_leaves:
         cam.step_plan.expand_cam_run2_run4_leaves(experimental=True)
+    if args.split_macrophysics:
+        cam.step_plan.split_macrophysics(experimental=True)
     created_addresses = {
         name: int(values.ctypes.data) for name, values in cam.pool.items()
     }
@@ -310,6 +322,7 @@ def main(argv: list[str] | None = None) -> int:
             "date": cam.clock.yyyymmdd,
             "seconds": cam.clock.seconds,
             "fields": len(cam.pool),
+            "macrophysics_split": bool(args.split_macrophysics),
             "state_bytes": cam.pool.nbytes,
             "actions": cam.trace_count,
             "step_plan_actions": len(tuple(cam.step_plan)),

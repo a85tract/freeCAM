@@ -123,3 +123,20 @@ def test_the_support_modules_are_additions_the_image_links() -> None:
     assert builder.index("for source_name in SUPPORT_MODULES:") < builder.index(
         'for source_name in (\n        "physpkg.F90", "cam_comp.F90", "atm_comp_mct.F90",\n    ):')
     assert "*(str(path) for path in support_objects)," in builder
+
+
+def test_split_macrophysics_swaps_the_stage_for_its_halves_in_one_call() -> None:
+    from freecam.pi_cam.errors import PICAMConfigurationError
+
+    plan = PICAMStepPlan.default()
+    with pytest.raises(PICAMConfigurationError):
+        plan.split_macrophysics()
+    plan.split_macrophysics(experimental=True)
+    state = {a.operation: a.enabled for a in plan.actions
+             if a.operation in ("macro_microphysics", "leaf_macro_tend_pre", "leaf_macro_tend_post")}
+    assert state == {"macro_microphysics": False, "leaf_macro_tend_pre": True, "leaf_macro_tend_post": True}
+    # the halves run where the stage ran, in order
+    order = [a.operation for a in plan]
+    assert order.index("leaf_macro_tend_pre") + 1 == order.index("leaf_macro_tend_post")
+    assert order.index("sslt_rebin_adv") < order.index("leaf_macro_tend_pre") < order.index("leaf_modal_aero_prepare") or \
+        order.index("sslt_rebin_adv") < order.index("leaf_macro_tend_pre") < order.index("aero_model_wetdep")
