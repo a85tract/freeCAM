@@ -3,7 +3,8 @@
 Each drawn argument and each drawn parameter gets a distribution.  Plain ones
 (``Uniform``, ``Normal``, ``LogUniform``, ``Constant``) draw every element
 independently over a declared range -- the right tool for boundary and
-sensitivity studies.  Real atmospheres are not boxes, though:
+sensitivity studies -- and ``Choice`` does the same for a knob whose spec
+declares a fixed set of values rather than a range.  Real atmospheres are not boxes, though:
 ``HybridPressure`` draws a whole pressure profile from one surface pressure
 through the hybrid coordinate so midpoints, thicknesses and interfaces never
 contradict each other; ``Derived`` computes one input from others already
@@ -66,6 +67,30 @@ class Uniform(Distribution):
 
     def describe(self) -> str:
         return f"Uniform({_fmt(self.low)}, {_fmt(self.high)})"
+
+
+@dataclass(frozen=True, repr=False)
+class Choice(Distribution):
+    """One of a fixed set of values, each equally likely.
+
+    A categorical knob -- a scheme selector whose spec declares ``values``
+    instead of a ``range`` -- has no continuous draw to round: rounding
+    distorts the frequencies at both ends of the set and can land outside
+    it.  This draws from the set itself.
+    """
+
+    values: Any
+
+    def __post_init__(self) -> None:
+        if np.asarray(self.values).size == 0:
+            raise PhysicsError("Choice needs at least one value")
+
+    def sample(self, rng, shape, drawn):
+        table = np.asarray(self.values, dtype=np.float64).reshape(-1)
+        return table[rng.integers(0, table.size, shape)]
+
+    def describe(self) -> str:
+        return f"Choice({np.asarray(self.values).tolist()!r})"
 
 
 @dataclass(frozen=True, repr=False)
@@ -396,6 +421,6 @@ def _fmt_clip(clip: tuple[Any, Any] | None) -> str:
 
 
 __all__ = [
-    "Anchored", "Constant", "Derived", "Distribution", "HybridCoordinate", "HybridPressure",
+    "Anchored", "Choice", "Constant", "Derived", "Distribution", "HybridCoordinate", "HybridPressure",
     "LogUniform", "Normal", "SamplingSpace", "Uniform",
 ]

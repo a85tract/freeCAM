@@ -8,8 +8,8 @@ import numpy as np
 import pytest
 
 from freecam.physics import (
-    Anchored, Constant, Dataset, Derived, HybridCoordinate, HybridPressure, LogUniform, Normal,
-    SamplingSpace, Uniform, load_example_column, open_dataset,
+    Anchored, Choice, Constant, Dataset, Derived, HybridCoordinate, HybridPressure, LogUniform,
+    Normal, SamplingSpace, Uniform, load_example_column, open_dataset,
 )
 from freecam.physics.errors import PhysicsError
 from freecam.physics.function import PhysicsFunction
@@ -37,6 +37,20 @@ def test_plain_distributions_respect_their_bounds_and_seeds() -> None:
     first = Uniform(0.0, 1.0).sample(np.random.default_rng(11), (4,), {})
     second = Uniform(0.0, 1.0).sample(np.random.default_rng(11), (4,), {})
     assert np.array_equal(first, second)
+
+
+def test_choice_draws_only_declared_values_and_never_rounds_outside_them() -> None:
+    rng = np.random.default_rng(5)
+    values = [1, 2, 3, 4, 5]
+    drawn = Choice(values).sample(rng, (4000,), {})
+    assert set(np.unique(drawn)) == set(values)
+    counts = np.array([np.sum(drawn == value) for value in values])
+    assert counts.min() > 4000 / len(values) * 0.85  # equal probability, not a rounded Uniform
+    assert Choice(values).describe() == "Choice([1, 2, 3, 4, 5])"
+    scalar = Choice([0, 1]).sample(rng, (), {})
+    assert scalar.shape == () and int(np.round(scalar)) in (0, 1)
+    with pytest.raises(PhysicsError):
+        Choice([])
 
 
 def test_anchored_relative_noise_cannot_leave_a_zero_level_frozen() -> None:

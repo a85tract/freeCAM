@@ -12,6 +12,7 @@ from .examples import ExampleColumn, available_examples, load_example_column
 from .dataset import Dataset, SampleVerification, open_dataset
 from .distributions import (
     Anchored,
+    Choice,
     Constant,
     Derived,
     HybridCoordinate,
@@ -36,6 +37,7 @@ from .spec import (
 __all__ = [
     "Anchored",
     "ArgumentSpec",
+    "Choice",
     "CallError",
     "ExampleColumn",
     "FortranAbortError",
