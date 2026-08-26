@@ -616,10 +616,16 @@ def main() -> int:
 
     atm_archive = output.parent / "libatm_nonpic_python_control.a"
     base_atm_archive = build / "lib/libatm.a"
+    # The support modules go into the archive as new members as well as onto
+    # the fixed link line: the capture executable is a pure CESM link against
+    # this archive, and the replaced physpkg and cam_comp objects reference
+    # them.  An added member is never a replaced numerical object.
+    support_additions = tuple(path.name for path in support_objects)
     replacement_objects: tuple[Path, ...] = (
         objects["physpkg.F90"],
         objects["cam_comp.F90"],
         objects["atm_comp_mct.F90"],
+        *support_objects,
     )
     if args.zero_copy_state:
         # Every production numerical object must come from the oracle build.
@@ -635,12 +641,16 @@ def main() -> int:
             objects["physics_types.F90"],
             objects["camsrfexch.F90"],
             generated_objects / "pycam_python_state_registry.o",
+            *support_objects,
         )
     _replace_archive(
         base_atm_archive,
         atm_archive,
         replacement_objects,
-        additions=("pycam_python_state_registry.o",) if args.zero_copy_state else (),
+        additions=(
+            *(("pycam_python_state_registry.o",) if args.zero_copy_state else ()),
+            *support_additions,
+        ),
     )
 
     link_log, original_link = _link_command(build)
