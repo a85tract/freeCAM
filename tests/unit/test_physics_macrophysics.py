@@ -11,6 +11,7 @@ import pytest
 
 from freecam.physics import macrophysics as M
 from freecam.physics.macrophysics import Macrophysics, SEQUENCE, VIEW, FORCING
+from freecam.physics.stage import _StageProcess
 
 REPO = Path(__file__).resolve().parents[2]
 PINNED = REPO / "external/iCESM1.3.1_fzhu/components/cam/src/physics/cam/macrop_driver.F90"
@@ -232,7 +233,6 @@ def fake(monkeypatch):
     )
     monkeypatch.setattr(M._Constants, "read", classmethod(lambda cls, library: constants))
     monkeypatch.setattr(M, "module_view", lambda library, symbol, dtype, shape: np.array(3, dtype=np.int32))
-    M._RankState._cache.clear()
     return native
 
 
@@ -268,13 +268,12 @@ def test_a_model_in_the_kernel_s_place_sees_live_columns_and_must_answer_all_23(
     def partial(batch):
         return {"cld": np.zeros((batch["t0"].shape[0], 30))}
 
-    M._RankState._cache.clear()
     with pytest.raises(M.PhysicsError, match="missing"):
         Macrophysics(kernel=partial).tend(None, _Context(fake))
 
 
 def test_the_installed_process_is_native_and_owns_no_pool_field() -> None:
-    process = M._MacroTendProcess(Macrophysics())
+    process = _StageProcess(Macrophysics())
     assert process.native is True
     assert process.reads == () and process.writes == ()
     assert process.transactional is False
@@ -304,7 +303,7 @@ def test_attach_swaps_the_stage_for_its_halves_and_sits_between_them() -> None:
     assert Run.workflow.items[M.FIRST_HALF].enabled is True
     assert Run.workflow.items[M.SECOND_HALF].enabled is True
     assert Run.workflow.inserted == [(M.FIRST_HALF, handle)]
-    assert isinstance(handle, M._MacroTendProcess)
+    assert isinstance(handle, _StageProcess)
 
 
 def test_tend_refuses_to_run_as_an_ordinary_process() -> None:
@@ -327,7 +326,7 @@ def test_copy_out_writes_live_lanes_only_and_leaves_padding_as_cam_left_it(fake)
     for array in lib.views.values():
         if array.ndim >= 1 and array.shape[0] == 16:
             array[14:, ...] = -777.0             # chunk 1540 has ncol=14 -> lanes 14,15 pad
-    M._RankState._cache.clear()
+    scheme._runtimes.clear()
     scheme.tend(None, _Context(fake))
     touched = [key for key, array in lib.views.items()
                if key[0] == 1540 and array.ndim >= 1 and array.shape[0] == 16 and not np.all(array[14:, ...] == -777.0)]
@@ -336,7 +335,6 @@ def test_copy_out_writes_live_lanes_only_and_leaves_padding_as_cam_left_it(fake)
 
 def test_the_trace_records_one_line_per_chunk_with_live_lane_hashes(fake, tmp_path, monkeypatch) -> None:
     monkeypatch.setenv("FREECAM_MACRO_TRACE", str(tmp_path))
-    M._RankState._cache.clear()
     Macrophysics().tend(None, _Context(fake))
     import json
     files = list(tmp_path.glob("macro_trace.rank-*.jsonl"))
