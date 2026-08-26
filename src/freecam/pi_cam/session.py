@@ -1425,6 +1425,7 @@ class _SessionPhysicsCollection:
         parameters: Mapping[str, Any] | None = None,
         enabled: bool = True,
         transactional: bool = True,
+        native: bool = False,
         unsafe: bool = False,
     ) -> _SessionActionReference:
         phase, before, after = self._resolve_placement(
@@ -1441,6 +1442,7 @@ class _SessionPhysicsCollection:
             parameters=parameters,
             enabled=enabled,
             transactional=transactional,
+            native=native,
             unsafe=unsafe,
         )
         return _SessionActionReference(
@@ -2187,6 +2189,7 @@ class PICAMNotebookSession:
         parameters: Mapping[str, Any] | None = None,
         enabled: bool = True,
         transactional: bool = True,
+        native: bool = False,
         unsafe: bool = False,
     ) -> Mapping[str, Any]:
         spec = PythonProcessSpec.from_callable(
@@ -2200,6 +2203,7 @@ class PICAMNotebookSession:
             parameters=parameters,
             enabled=enabled,
             transactional=transactional,
+            native=native,
         )
         return dict(
             self._request(

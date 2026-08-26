@@ -2131,9 +2131,13 @@ class PICAMDriver:
         return tuple(self._execute(action) for action in actions)
 
     def run_kernel(
-        self, name: str, *, experimental: bool = False
+        self, name: str, *, experimental: bool = False, pool: Mapping[str, np.ndarray] | None = None
     ) -> PICAMActionTrace:
-        """Run one raw-array numerical routine without its CAM host stage."""
+        """Run one raw-array numerical routine without its CAM host stage.
+
+        ``pool`` defaults to this rank's StatePool; a native Python process
+        passes its own mapping of arrays instead, one chunk per last axis.
+        """
 
         if self.lifecycle not in {PICAMLifecycle.INITIALIZED, PICAMLifecycle.RUNNING}:
             raise PICAMStateError(f"run kernel from {self.lifecycle.value}")
@@ -2146,7 +2150,7 @@ class PICAMDriver:
             raise PICAMConfigurationError("the selected backend has no direct kernels")
         with self.profiler.region(f"CAM:{name}"):
             with self.profiler.region("FORTRAN:DIRECT_KERNEL"):
-                execute(name, self.pool, fcomm=self.fcomm)
+                execute(name, self.pool if pool is None else pool, fcomm=self.fcomm)
         return self._record(
             PICAMAction(
                 name=name,

@@ -140,3 +140,19 @@ def test_split_macrophysics_swaps_the_stage_for_its_halves_in_one_call() -> None
     assert order.index("leaf_macro_tend_pre") + 1 == order.index("leaf_macro_tend_post")
     assert order.index("sslt_rebin_adv") < order.index("leaf_macro_tend_pre") < order.index("leaf_modal_aero_prepare") or \
         order.index("sslt_rebin_adv") < order.index("leaf_macro_tend_pre") < order.index("aero_model_wetdep")
+
+
+@pinned
+def test_the_boundary_hands_out_the_forcing_the_driver_was_called_with() -> None:
+    """dlf, dlf2, cmfmc, cmfmc2, zdu, rliq, wtdlf live in physpkg's private
+    buffers; a transliteration needs their addresses, nothing more."""
+
+    added = "\n".join(l[1:] for l in boundary.BOUNDARY.read_text().splitlines() if l.startswith("+"))
+    assert "bind(C, name='pycam_macro_forcing_v1')" in added
+    for name in ("pycesm_bc_zdu", "pycesm_bc_cmfmc", "pycesm_bc_cmfmc2", "pycesm_bc_dlf",
+                 "pycesm_bc_dlf2", "pycesm_bc_rliq", "pycesm_bc_wtdlf"):
+        assert f"{name}(" in added, name
+    # the buffers are not TARGET and their declarations are a shared anchor, so
+    # the address goes through a TARGET dummy and no `public` line is added
+    assert "real(r8), target, intent(in) :: array(:,:)" in added
+    assert "public pycam_macro_forcing_v1" not in added

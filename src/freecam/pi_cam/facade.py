@@ -232,6 +232,9 @@ class Physics:
     writes: tuple[str, ...] = ()
     enabled: bool = True
     transactional: bool = True
+    # True for a process that calls the image's own routines through
+    # ``context.native`` instead of only reading and writing StatePool fields.
+    native: bool = False
 
     @classmethod
     def _declared_properties(cls) -> dict[str, Property]:
@@ -1020,6 +1023,7 @@ def _apply_case_workflow(
                 ),
                 enabled=True,
                 transactional=item.transactional,
+                native=bool(getattr(item, "native", False)),
             )
             _LIVE_PHYSICS[item] = (session, runtime_names[index])
             installed.append(handle)

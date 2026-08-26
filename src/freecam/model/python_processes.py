@@ -184,6 +184,12 @@ class PythonProcessSpec:
     source: str | None = None
     python_version: str = platform.python_version()
     cloudpickle_version: str = cloudpickle.__version__
+    # A native process may call the image's numerical routines directly --
+    # direct kernels, bind(C) handles, module variables -- rather than only
+    # reading and writing StatePool fields.  It receives the driver's native
+    # access object in its context.  Off by default: an ordinary process
+    # never sees a pointer.
+    native: bool = False
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "name", _safe_name(self.name, "process name"))
@@ -239,6 +245,7 @@ class PythonProcessSpec:
         parameters: Mapping[str, Any] | None = None,
         enabled: bool = True,
         transactional: bool = True,
+        native: bool = False,
         max_payload_bytes: int = DEFAULT_MAX_PAYLOAD_BYTES,
         max_parameter_bytes: int = DEFAULT_MAX_PARAMETER_BYTES,
     ) -> "PythonProcessSpec":
@@ -284,6 +291,7 @@ class PythonProcessSpec:
             max_parameter_bytes=max_parameter_bytes,
             enabled=enabled,
             transactional=transactional,
+            native=native,
             source=source,
         )
 
@@ -302,6 +310,7 @@ class PythonProcessSpec:
             "max_parameter_bytes": self.max_parameter_bytes,
             "enabled": self.enabled,
             "transactional": self.transactional,
+            "native": self.native,
             "source": self.source,
             "python_version": self.python_version,
             "cloudpickle_version": self.cloudpickle_version,
@@ -335,6 +344,7 @@ class PythonProcessSpec:
             ),
             enabled=bool(values.get("enabled", True)),
             transactional=bool(values.get("transactional", True)),
+            native=bool(values.get("native", False)),
             source=(None if values.get("source") is None else str(values["source"])),
             python_version=str(values.get("python_version", platform.python_version())),
             cloudpickle_version=str(
@@ -359,6 +369,67 @@ class PythonProcessSpec:
         return replace(self, parameters=values)
 
 
+class NativeAccess:
+    """What a native process may reach: the image, the pool, the kernels.
+
+    A Python transliteration of a Fortran driver is not a NumPy process; it
+    asks the image to run its routines and hands them the image's own
+    storage.  This is the narrowest object that lets it: the loaded library
+    for bind(C) entries and module variables, the rank-local pool for the
+    chunk table, the Fortran communicator handle, and one call that runs a
+    direct kernel on a mapping of arrays and records it in the action trace
+    like any other kernel run.  It holds the driver by reference and copies
+    nothing.
+    """
+
+    def __init__(self, driver: Any) -> None:
+        self._driver = driver
+
+    @property
+    def library(self) -> Any:
+        """The loaded CAM image, for ctypes entry points and module views."""
+
+        backend = self._driver.backend
+        library = getattr(backend, "_library", None)
+        if library is None:
+            raise PythonProcessContractError("the backend exposes no loaded image")
+        return library
+
+    @property
+    def pool(self) -> Any:
+        return self._driver.pool
+
+    @property
+    def fcomm(self) -> int:
+        return int(self._driver.fcomm)
+
+    @property
+    def chunks(self) -> tuple[np.ndarray, np.ndarray]:
+        """``(lchnk, ncol)`` for every chunk of this rank, in pool order."""
+
+        pool = self._driver.pool
+        return (
+            np.asarray(pool["grid.chunk_id"], dtype=np.int64).reshape(-1),
+            np.asarray(pool["grid.chunk_ncols"], dtype=np.int64).reshape(-1),
+        )
+
+    def kernel_arguments(self, name: str) -> tuple[Mapping[str, Any], ...]:
+        """The manifest's argument records for direct kernel ``name``."""
+
+        operations = getattr(self._driver.backend, "_operations", {})
+        try:
+            return tuple(operations[f"direct_kernel.{name}"]["arguments"])
+        except KeyError as exc:
+            raise PythonProcessContractError(
+                f"the image declares no direct kernel {name!r}"
+            ) from exc
+
+    def run_kernel(self, name: str, arrays: Mapping[str, np.ndarray]) -> None:
+        """Run direct kernel ``name`` on ``arrays`` (one chunk per last axis)."""
+
+        self._driver.run_kernel(name, experimental=True, pool=arrays)
+
+
 @dataclass(frozen=True, slots=True)
 class PythonProcessContext:
     """Read-only model metadata provided at a Python process boundary."""
@@ -374,6 +445,10 @@ class PythonProcessContext:
     day: int
     seconds: int
     calendar: str
+    # Only for a process installed with native=True: the driver's numerical
+    # image, its rank-local pool, and a way to run a direct kernel.  None for
+    # every other process.
+    native: Any = None
 
     @property
     def date(self) -> tuple[int, int, int]:
@@ -751,6 +826,7 @@ class PythonProcessRegistry:
                 writes=record.write_bindings,
             )
             clock = self.driver.clock
+            native = NativeAccess(self.driver) if record.spec.native else None
             context = PythonProcessContext(
                 process_name=record.name,
                 group=str(scheme.group),
@@ -763,6 +839,7 @@ class PythonProcessRegistry:
                 day=int(clock.day),
                 seconds=int(clock.seconds),
                 calendar=str(clock.calendar),
+                native=native,
             )
             result = function(fields, context, **effective_parameters)
             if result is not None:

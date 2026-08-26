@@ -172,8 +172,9 @@ class FakeDeclarativeSession(FakeSession):
                 parameters=None,
                 enabled,
                 transactional,
+                native=False,
             ):
-                del function, reads, writes, parameters, enabled, transactional
+                del function, reads, writes, parameters, enabled, transactional, native
                 phase = before.split(".", 1)[0]
                 handle = FakeWorkflowAction(self, name, phase)
                 inner_self.installations.append(

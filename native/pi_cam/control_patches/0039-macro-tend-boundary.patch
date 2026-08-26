@@ -66,3 +66,78 @@
 +                     cam_in%ts,       cam_in%sst,     zdu,              &
 +                     pbuf,            det_s,          det_ice)
 +             end if
+@@ -3202,0 +3246,74 @@ end subroutine phys_timestep_init
++
++integer(c_int) function pycam_macro_forcing_v1(lchnk, code, ptr, ndims, extents) &
++     bind(C, name='pycam_macro_forcing_v1') result(status)
++  use, intrinsic :: iso_c_binding, only: c_int, c_int64_t, c_ptr, c_null_ptr
++  integer(c_int), value, intent(in) :: lchnk, code
++  type(c_ptr), intent(out) :: ptr
++  integer(c_int), intent(out) :: ndims
++  integer(c_int64_t), intent(out) :: extents(4)
++  ptr = c_null_ptr
++  ndims = 0_c_int
++  extents = 0_c_int64_t
++  status = 1_c_int
++  if (.not. allocated(pycesm_bc_dlf)) return
++  if (lchnk < begchunk .or. lchnk > endchunk) then
++    status = 2_c_int
++    return
++  endif
++  ! The buffers are not declared TARGET (their declarations are an anchor
++  ! the leaf patches share), so the address is taken through a TARGET
++  ! dummy: no copy is made for a contiguous chunk slice.
++  select case (code)
++  case (1)
++    call pycam_macro_address2(pycesm_bc_zdu(:,:,lchnk), ptr, ndims, extents)
++  case (2)
++    call pycam_macro_address2(pycesm_bc_cmfmc(:,:,lchnk), ptr, ndims, extents)
++  case (3)
++    call pycam_macro_address2(pycesm_bc_cmfmc2(:,:,lchnk), ptr, ndims, extents)
++  case (4)
++    call pycam_macro_address2(pycesm_bc_dlf(:,:,lchnk), ptr, ndims, extents)
++  case (5)
++    call pycam_macro_address2(pycesm_bc_dlf2(:,:,lchnk), ptr, ndims, extents)
++  case (6)
++    call pycam_macro_address1(pycesm_bc_rliq(:,lchnk), ptr, ndims, extents)
++  case (7)
++    call pycam_macro_address3(pycesm_bc_wtdlf(:,:,:,lchnk), ptr, ndims, extents)
++  case default
++    status = 3_c_int
++    return
++  end select
++  status = 0_c_int
++end function pycam_macro_forcing_v1
++
++subroutine pycam_macro_address1(array, ptr, ndims, extents)
++  use, intrinsic :: iso_c_binding, only: c_int, c_int64_t, c_ptr, c_loc
++  real(r8), target, intent(in) :: array(:)
++  type(c_ptr), intent(out) :: ptr
++  integer(c_int), intent(out) :: ndims
++  integer(c_int64_t), intent(out) :: extents(4)
++  ptr = c_loc(array(1)); ndims = 1_c_int
++  extents(1) = int(size(array,1), c_int64_t)
++end subroutine pycam_macro_address1
++
++subroutine pycam_macro_address2(array, ptr, ndims, extents)
++  use, intrinsic :: iso_c_binding, only: c_int, c_int64_t, c_ptr, c_loc
++  real(r8), target, intent(in) :: array(:,:)
++  type(c_ptr), intent(out) :: ptr
++  integer(c_int), intent(out) :: ndims
++  integer(c_int64_t), intent(out) :: extents(4)
++  ptr = c_loc(array(1,1)); ndims = 2_c_int
++  extents(1) = int(size(array,1), c_int64_t)
++  extents(2) = int(size(array,2), c_int64_t)
++end subroutine pycam_macro_address2
++
++subroutine pycam_macro_address3(array, ptr, ndims, extents)
++  use, intrinsic :: iso_c_binding, only: c_int, c_int64_t, c_ptr, c_loc
++  real(r8), target, intent(in) :: array(:,:,:)
++  type(c_ptr), intent(out) :: ptr
++  integer(c_int), intent(out) :: ndims
++  integer(c_int64_t), intent(out) :: extents(4)
++  ptr = c_loc(array(1,1,1)); ndims = 3_c_int
++  extents(1) = int(size(array,1), c_int64_t)
++  extents(2) = int(size(array,2), c_int64_t)
++  extents(3) = int(size(array,3), c_int64_t)
++end subroutine pycam_macro_address3
