@@ -30,6 +30,12 @@ boundary=/glade/derecho/scratch/$USER/pyCAM/PI-cam/nonpic-boundary-capture-50ste
 manifest=${PYCAM_NATIVE_MANIFEST:-${repo}/build/pi_cam_promoted/native_cam_manifest.json}
 summary=${PYCAM_SUMMARY:-validation/pi_cam_macro_tend_python_50step.json}
 bfb_output=${PYCAM_BFB_OUTPUT:-validation/pi_cam_macro_tend_python_vs_oracle_50step_bfb.json}
+# The oracle's own mmacro_pcond arguments for steps 1 and 2, every chunk of
+# every rank, from the reviewed capture.  tend() traces the same arguments;
+# the two are compared after the run whether or not the run was bit-for-bit.
+capture_bundle=${PYCAM_CAPTURE_BUNDLE:-/glade/derecho/scratch/$USER/pyCAM/PI-cam/function-capture-7218608.desched1/bundles/mmacro_pcond_capture.npz}
+trace_output=${PYCAM_TRACE_OUTPUT:-validation/pi_cam_macro_tend_python_trace_vs_capture.json}
+export FREECAM_MACRO_TRACE=${run_dir}/macro_trace
 
 source "${case_root}/.env_mach_specific.sh" >/dev/null 2>&1
 mpi_root=${CRAY_MPICH_DIR:-/opt/cray/pe/mpich/8.1.25/ofi/intel/19.0}
@@ -60,9 +66,16 @@ mpiexec --label -n 512 "${python}" -m freecam.pi_cam.cli \
   --macrophysics-python \
   --steps 50 \
   --summary "${summary}" \
-  > "${run_dir}/pi_cam_python.log" 2>&1
+  > "${run_dir}/pi_cam_python.log" 2>&1 || echo "model run exited $? (comparing the trace anyway)"
 
+status=0
 "${python}" tools/verify_pi_cam.py \
   --reference "${oracle_run}" \
   --candidate "${run_dir}" \
-  --output "${bfb_output}"
+  --output "${bfb_output}" || status=$?
+
+"${python}" tools/compare_pi_cam_macro_trace.py \
+  --bundle "${capture_bundle}" \
+  --trace "${run_dir}/macro_trace" \
+  --output "${trace_output}" || true
+exit "${status}"
