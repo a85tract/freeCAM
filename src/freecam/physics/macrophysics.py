@@ -27,6 +27,7 @@ from __future__ import annotations
 
 import ctypes
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any, Callable, Mapping, Sequence
 
 import numpy as np
@@ -34,9 +35,13 @@ import numpy as np
 from ..pi_cam.errors import PICAMConfigurationError
 from ..pi_cam.facade import Physics
 from ..pi_cam.pbuf import PBuf, macrop_fields
+from ..pi_cam.kernel_codegen import load_direct_kernels
 from .errors import PhysicsError
 from .image import module_view
 from .spec import load_function_spec
+
+REPO = Path(__file__).resolve().parents[3]
+DESCRIPTORS = REPO / "native/pi_cam/direct_kernels_promoted.yaml"
 
 FUNCTION = "mmacro_pcond"
 STAGE = "cam_run1.cloud_macro_microphysics"
@@ -66,6 +71,24 @@ RECORD_PTEND_LOC, RECORD_PTEND = 1, 2
 
 # physpkg's pycam_macro_forcing_v1 codes: the driver's forcing arguments.
 FORCING = {"zdu": 1, "cmfmc": 2, "cmfmc2": 3, "dlf": 4, "dlf2": 5, "rliq": 6, "wtdlf": 7}
+
+#: cldfrc_fice is promoted from the catalog, and a catalog-promoted descriptor
+#: carries no extents -- it sizes itself from the pool's contracts.  These are
+#: the routine's declared shapes (cloud_fraction.F90: t, fice, fsnow are
+#: (pcols,pver)), used only where a descriptor says nothing.
+FALLBACK_EXTENTS = {
+    "ncol": ("chunks",), "t": ("pcols", "pver", "chunks"),
+    "fice": ("pcols", "pver", "chunks"), "fsnow": ("pcols", "pver", "chunks"),
+}
+
+#: The direct kernels tend() runs; every one must be in the image and in
+#: the reviewed descriptors with the same field list.
+KERNELS = (
+    "macrop_detrain_partition", "macrop_clear_fraction", "macrop_advective_forcing",
+    "macrop_kernel_to_ptend", "macrop_tracer_rate_split", "macrop_cloud_mixing_ratio",
+    "macrop_save_equilibrium", "mmacro_pcond", "wtrc_init_rates", "wtrc_add_rates",
+    "cloud_fraction_fice",
+)
 
 #: The order in which the Fortran driver calls things; ``tend`` follows it
 #: and a test compares the two.  Names are the routine or handle entry.
@@ -662,11 +685,22 @@ class _RankState:
         self.pbuf = PBuf(library, macrop_fields(indices))
         lchnk, _ = native.chunks
         self.pbuf.verify(int(lchnk[0]), pcols=self.pcols, pver=self.pver)
+        # The image's manifest names each kernel's fields but not their
+        # extents; the reviewed descriptors carry both.  Shapes come from the
+        # descriptors, and the image is asked only to confirm it declares the
+        # same fields in the same order.
+        self.descriptors = {k.name: k for k in load_direct_kernels(DESCRIPTORS)}
+        for name in KERNELS:
+            declared = [a["field"] for a in native.kernel_arguments(name)]
+            described = [a.field for a in self.descriptors[name].arguments]
+            if declared != described:
+                raise PICAMConfigurationError(
+                    f"the image's {name} takes {declared}; the descriptors say {described}")
         self.scratch = self._allocate()
         # cldfrc_fice's promoted descriptor names its fields after StatePool
         # entries; the routine's dummies are ncol, t, fice, fsnow in that order.
         self.fice_fields = dict(zip(("ncol", "t", "fice", "fsnow"),
-                                    (a["field"] for a in native.kernel_arguments("cloud_fraction_fice"))))
+                                    (a.field for a in self.descriptors["cloud_fraction_fice"].arguments)))
         _check(self.entries.set_owner(1), "pycam_macro_set_owner_v1")
 
     def _allocate(self) -> dict[str, np.ndarray]:
@@ -675,15 +709,15 @@ class _RankState:
         dims = {"pcols": self.pcols, "pver": self.pver, "pverp": self.pverp, "pcnst": self.pcnst,
                 "pwtype": PWTYPE, "wtrc_nwset": self.constants.wtrc_nwset, "chunks": 1}
         scratch: dict[str, np.ndarray] = {}
-        for name in ("macrop_detrain_partition", "macrop_clear_fraction", "macrop_advective_forcing",
-                     "macrop_kernel_to_ptend", "macrop_tracer_rate_split", "macrop_cloud_mixing_ratio",
-                     "macrop_save_equilibrium", "mmacro_pcond", "wtrc_init_rates", "wtrc_add_rates"):
-            for argument in self.native.kernel_arguments(name):
-                key = argument["field"].removeprefix("macro.")
+        for name in KERNELS:
+            if name == "cloud_fraction_fice":
+                continue
+            for argument in self.descriptors[name].arguments:
+                key = argument.field.removeprefix("macro.")
                 if key in scratch:
                     continue
-                shape = tuple(dims[e] if isinstance(e, str) else int(e) for e in argument["extents"])
-                scratch[key] = np.zeros(shape, dtype=np.dtype(argument["dtype"]), order="F")
+                shape = tuple(dims[e] if e in dims else int(e) for e in argument.extents)
+                scratch[key] = np.zeros(shape, dtype=np.dtype(argument.dtype), order="F")
         for name in ("concld_old", "rhcloud", "cldst", "rhu00", "icecldf", "liqcldf", "relhum", "shfrc_zero"):
             scratch.setdefault(name, np.zeros((self.pcols, self.pver, 1), dtype=np.float64, order="F"))
         scratch.setdefault("clc", np.zeros((self.pcols, 1), dtype=np.float64, order="F"))
@@ -713,8 +747,8 @@ class _RankState:
 
         arrays: dict[str, np.ndarray] = {}
         inverse = {} if fields is None else {field: local for local, field in fields.items()}
-        for argument in self.native.kernel_arguments(name):
-            field = argument["field"]
+        for argument in self.descriptors[name].arguments:
+            field = argument.field
             local = field.removeprefix("macro.") if fields is None else inverse[field]
             scratch = self.scratch[local] if local in self.scratch else self._scratch_for(argument, local)
             value = inputs.get(local)
@@ -727,11 +761,15 @@ class _RankState:
                 continue
             self._copy_out(target, self.scratch[local])
 
-    def _scratch_for(self, argument: Mapping[str, Any], key: str) -> np.ndarray:
+    def _scratch_for(self, argument: Any, key: str) -> np.ndarray:
         dims = {"pcols": self.pcols, "pver": self.pver, "pverp": self.pverp, "pcnst": self.pcnst,
                 "pwtype": PWTYPE, "wtrc_nwset": self.constants.wtrc_nwset, "chunks": 1}
-        shape = tuple(dims[e] if isinstance(e, str) else int(e) for e in argument["extents"])
-        self.scratch[key] = np.zeros(shape, dtype=np.dtype(argument["dtype"]), order="F")
+        extents = argument.extents or FALLBACK_EXTENTS.get(key)
+        if not extents or len(extents) != argument.rank:
+            raise PICAMConfigurationError(
+                f"no extents for kernel field {argument.field!r} (rank {argument.rank})")
+        shape = tuple(dims[e] if e in dims else int(e) for e in extents)
+        self.scratch[key] = np.zeros(shape, dtype=np.dtype(argument.dtype), order="F")
         return self.scratch[key]
 
     @staticmethod

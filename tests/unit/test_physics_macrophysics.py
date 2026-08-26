@@ -175,15 +175,11 @@ class _Native:
         self.pool = {"grid.chunk_id": np.array([1540, 1541]), "grid.chunk_ncols": np.array([14, 13])}
         self.pool_dims = {"pcols": 16, "pver": 30, "pverp": 31, "pcnst": 57}
         self.kernels: list[str] = []
-        import yaml
-        text = yaml.safe_load((REPO / "native/pi_cam/direct_kernels_macrophysics.yaml").read_text())
-        self._args = {k["name"]: k["arguments"] for k in text["kernels"]}
-        self._args["cloud_fraction_fice"] = [
-            {"field": "cldfrc_fice.ncol", "dtype": "int32", "rank": 1, "extents": ["chunks"]},
-            {"field": "cldfrc_fice.t", "dtype": "float64", "rank": 3, "extents": ["pcols", "pver", "chunks"]},
-            {"field": "cldfrc_fice.fice", "dtype": "float64", "rank": 3, "extents": ["pcols", "pver", "chunks"]},
-            {"field": "cldfrc_fice.fsnow", "dtype": "float64", "rank": 3, "extents": ["pcols", "pver", "chunks"]},
-        ]
+        # What the image's manifest really carries per argument: the field
+        # name and dtype, but not the extents -- Gate B2 failed once on that.
+        from freecam.pi_cam.kernel_codegen import load_direct_kernels
+        self._args = {k.name: [{"field": a.field, "dtype": a.dtype, "rank": a.rank} for a in k.arguments]
+                      for k in load_direct_kernels(REPO / "native/pi_cam/direct_kernels_promoted.yaml")}
 
     @property
     def chunks(self):
