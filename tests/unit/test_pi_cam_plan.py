@@ -47,6 +47,8 @@ def test_pi_cam_default_plan_matches_cesm_cam_source_order() -> None:
         "convect_shallow_tend",
         "sslt_rebin_adv",
         "macro_microphysics",
+        "leaf_macro_tend_pre",
+        "leaf_macro_tend_post",
         "aero_model_wetdep",
         "leaf_modal_aero_prepare",
         "leaf_aero_model_wetdep",
@@ -77,7 +79,10 @@ def test_pi_cam_default_plan_matches_cesm_cam_source_order() -> None:
         *range(465, 469),
         *range(413, 418),
         *range(470, 473),
-        *range(418, 429),
+        *range(418, 428),
+        480,
+        481,
+        428,
         *range(450, 454),
         429,
         454,
@@ -87,7 +92,7 @@ def test_pi_cam_default_plan_matches_cesm_cam_source_order() -> None:
         *range(456, 459),
         432,
     ]
-    assert len(plan.actions) == 54
+    assert len(plan.actions) == 56
     assert len(tuple(plan)) == 47
     assert len(plan.in_phase("cam_run2")) == 19
     assert sum(action.phase == "cam_run2" for action in plan.actions) == 22
@@ -96,7 +101,7 @@ def test_pi_cam_default_plan_matches_cesm_cam_source_order() -> None:
     assert len(plan.in_phase("cam_run4")) == 5
     assert sum(action.phase == "cam_run4" for action in plan.actions) == 6
     assert len(plan.in_phase("cam_run1")) == 19
-    assert sum(action.phase == "cam_run1" for action in plan.actions) == 22
+    assert sum(action.phase == "cam_run1" for action in plan.actions) == 24
     assert not any(action.kind == "control" for action in plan.actions)
     assert all(action.control_owner == "python" for action in plan.actions)
 
@@ -122,6 +127,8 @@ def test_pi_cam_leaf_actions_name_the_composite_stage_they_expand() -> None:
         "leaf_cam_run4_wrapup": "cam_run4.finish",
         "leaf_cam_run4_step_cost": "cam_run4.finish",
         "leaf_cam_run4_flush": "cam_run4.finish",
+        "leaf_macro_tend_pre": "cam_run1.cloud_macro_microphysics",
+        "leaf_macro_tend_post": "cam_run1.cloud_macro_microphysics",
         "leaf_modal_aero_prepare": "cam_run1.wet_deposition",
         "leaf_aero_model_wetdep": "cam_run1.wet_deposition",
         "leaf_carma_wetdep_tend": "cam_run1.wet_deposition",

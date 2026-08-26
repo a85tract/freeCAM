@@ -1,0 +1,68 @@
+--- a/src/physics/cam/physpkg.F90
++++ b/src/physics/cam/physpkg.F90
+@@ -2138 +2138 @@ subroutine tphysbc (ztodt,               &
+-       sgh30, cam_out, cam_in, action_id)
++       sgh30, cam_out, cam_in, action_id, macro_stage)
+@@ -2174,0 +2175,2 @@ subroutine tphysbc (ztodt,               &
++    use pycam_macro_handles, only: macro_ptend, macro_det_s, macro_det_ice, &
++         python_owns_tend
+@@ -2224,0 +2227,5 @@ subroutine tphysbc (ztodt,               &
++    ! Where to pause around the macrophysics driver.  Absent or 0 runs
++    ! the stage whole.  1 returns just before call macrop_driver_tend;
++    ! 2 resumes just after it, taking the tendencies from Python if
++    ! Python claimed the step and calling the driver itself otherwise.
++    integer, intent(in), optional :: macro_stage
+@@ -2246,0 +2254 @@ subroutine tphysbc (ztodt,               &
++    integer :: macro_stage_local              ! 0 whole, 1 stop before, 2 resume after
+@@ -2340,0 +2349,14 @@ subroutine tphysbc (ztodt,               &
++    macro_stage_local = 0
++    if (present(macro_stage)) macro_stage_local = macro_stage
++    if (macro_stage_local /= 0) then
++       ! The resume re-enters this routine and reruns everything in the
++       ! stage that precedes the driver call.  That is only safe where
++       ! the preceding work is idempotent, so the paths that are not
++       ! are refused rather than silently run twice.
++       if (cld_macmic_num_steps /= 1) call endrun &
++            ('TPHYSBC: the macrophysics boundary needs cld_macmic_num_steps = 1')
++       if (carma_do_cldice .or. carma_do_cldliq) call endrun &
++            ('TPHYSBC: the macrophysics boundary does not carry CARMA cloud precipitation')
++       if (micro_do_icesupersat) call endrun &
++            ('TPHYSBC: the macrophysics boundary does not carry the ice-supersaturation aerosol step')
++    end if
+@@ -2729,0 +2752,6 @@ subroutine tphysbc (ztodt,               &
++       if (macro_stage_local /= 0) then
++          if (microp_scheme /= 'MG') call endrun &
++               ('TPHYSBC: the macrophysics boundary is for the MG microphysics branch')
++          if (macrop_scheme == 'CLUBB_SGS') call endrun &
++               ('TPHYSBC: the macrophysics boundary is for the Park macrophysics, not CLUBB')
++       end if
+@@ -2824,7 +2852,22 @@ subroutine tphysbc (ztodt,               &
+-             call macrop_driver_tend( &
+-                  state,           ptend,          cld_macmic_ztodt, &
+-                  cam_in%landfrac, cam_in%ocnfrac, cam_in%snowhland, & ! sediment
+-                  dlf,             dlf2,           wtdlf,            & ! detrain
+-                  cmfmc,           cmfmc2,                           &
+-                  cam_in%ts,       cam_in%sst,     zdu,              &
+-                  pbuf,            det_s,          det_ice)
++             if (macro_stage_local == 1) then
++                ! Python runs here and calls back in with macro_stage = 2.
++                call t_stopf('macrop_tend')
++                return
++             end if
++
++             if (macro_stage_local == 2 .and. python_owns_tend) then
++                ! The driver's outputs, as Python's transliteration left them.
++                if (macro_ptend(lchnk)%psetcols < 1) call endrun &
++                     ('TPHYSBC: Python claimed the macrophysics step but produced no tendencies')
++                ptend   = macro_ptend(lchnk)
++                det_s   = macro_det_s(:,lchnk)
++                det_ice = macro_det_ice(:,lchnk)
++             else
++                call macrop_driver_tend( &
++                     state,           ptend,          cld_macmic_ztodt, &
++                     cam_in%landfrac, cam_in%ocnfrac, cam_in%snowhland, & ! sediment
++                     dlf,             dlf2,           wtdlf,            & ! detrain
++                     cmfmc,           cmfmc2,                           &
++                     cam_in%ts,       cam_in%sst,     zdu,              &
++                     pbuf,            det_s,          det_ice)
++             end if

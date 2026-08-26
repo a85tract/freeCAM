@@ -115,3 +115,71 @@ def test_the_module_is_an_addition_and_never_a_replacement() -> None:
         text = (REPO / name).read_text()
         assert "macrop_driver.F90" not in text, f"{name} edits the macrophysics driver"
         assert "pycam_macro_kernels" not in text, f"{name} wires the kernels into Fortran"
+
+
+# -- descriptors: the same declarations, seen as direct kernels ---------------
+
+from freecam.pi_cam.kernel_codegen import load_direct_kernels  # noqa: E402
+import yaml  # noqa: E402
+
+
+def _descriptors():
+    return {k.name: k for k in load_direct_kernels(carve.DESCRIPTORS)}
+
+
+@pinned
+def test_the_descriptors_are_what_the_generator_produces() -> None:
+    assert carve.DESCRIPTORS.read_text() == carve.render_descriptors()
+
+
+def test_every_lifted_kernel_has_a_descriptor_whose_arguments_are_its_dummies() -> None:
+    kernels = _descriptors()
+    for block in carve.BLOCKS:
+        kernel = kernels[block.name]
+        fields = tuple(a.field.removeprefix("macro.") for a in kernel.arguments)
+        assert fields == block.arguments, block.name
+        assert kernel.routine == block.name
+        assert dict(kernel.modules)["pycam_macro_kernels"] == (block.name,)
+        # one chunk per slice, chunk axis last, every extent a name the wrapper can see
+        for argument in kernel.arguments:
+            assert argument.chunk_axis == argument.rank
+            assert argument.extents[-1] == "chunks"
+            assert set(argument.extents[:-1]) <= {"pcols", "pver", "pcnst", "pwtype", "wtrc_nwset"}
+
+
+def test_mmacro_pcond_descriptor_is_the_reviewed_specification_in_model() -> None:
+    spec = yaml.safe_load(carve.SPEC.read_text())["arguments"]
+    kernel = _descriptors()["mmacro_pcond"]
+    assert len(kernel.arguments) == len(spec) == 60
+    for item, argument in zip(spec, kernel.arguments):
+        assert argument.field == f"macro.{item['name']}"
+        assert argument.rank == len(item["native_shape"]) + 1
+        assert argument.pointer == bool(item.get("pointer"))
+        if item.get("carrier") == "logical":
+            assert argument.fortran_type == "logical"
+        expected = {"structural": "in", "input": "in", "inout": "inout",
+                    "workspace": "inout", "output": "out"}[item["role"]]
+        if item.get("pointer"):
+            expected = "inout"
+        assert argument.intent == expected, item["name"]
+    assert dict(kernel.modules)["cldwat2m_macro"] == ("mmacro_pcond",)
+
+
+def test_the_water_tracer_rate_routines_never_get_the_optional_argument() -> None:
+    kernels = _descriptors()
+    assert [a.field for a in kernels["wtrc_init_rates"].arguments] == ["macro.top_lev", "macro.process_rates"]
+    add = [a.field for a in kernels["wtrc_add_rates"].arguments]
+    assert add[-1] == "macro.rate" and "macro.do_reverse" not in add
+
+
+def test_the_descriptors_reach_the_promoted_set_additively() -> None:
+    promoted = {k.name: k for k in load_direct_kernels(REPO / "native/pi_cam/direct_kernels_promoted.yaml")}
+    ours = _descriptors()
+    for name, kernel in ours.items():
+        assert name in promoted, name
+        assert promoted[name].symbol == kernel.symbol
+        assert len(promoted[name].arguments) == len(kernel.arguments)
+    # the reviewed base still comes first and dadadj is still there
+    assert "dadadj" in promoted
+    assert all(not k.symbol.startswith("freecam_pi_cam_promoted_") for k in ours.values()), \
+        "our kernels belong in the fixed image, not the promoted add-on"

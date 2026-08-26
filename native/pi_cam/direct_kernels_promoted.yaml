@@ -75,6 +75,1858 @@ kernels:
     - chunks
     fixed_indices:
       3: 1
+- name: macrop_detrain_partition
+  routine: macrop_detrain_partition
+  symbol: pycam_pi_cam_macrop_detrain_partition_v1
+  action_id: 0
+  modules:
+    pycam_macro_kernels:
+    - macrop_detrain_partition
+    ppgrid:
+    - pcols
+    - pver
+    constituents:
+    - pcnst
+    water_types:
+    - pwtype
+    water_tracer_vars:
+    - wtrc_nwset
+  arguments:
+  - field: macro.ncol
+    dtype: int32
+    rank: 1
+    intent: in
+    chunk_axis: 1
+    extents:
+    - chunks
+  - field: macro.top_lev
+    dtype: int32
+    rank: 1
+    intent: in
+    chunk_axis: 1
+    extents:
+    - chunks
+  - field: macro.ixcldliq
+    dtype: int32
+    rank: 1
+    intent: in
+    chunk_axis: 1
+    extents:
+    - chunks
+  - field: macro.ixcldice
+    dtype: int32
+    rank: 1
+    intent: in
+    chunk_axis: 1
+    extents:
+    - chunks
+  - field: macro.ixnumliq
+    dtype: int32
+    rank: 1
+    intent: in
+    chunk_axis: 1
+    extents:
+    - chunks
+  - field: macro.ixnumice
+    dtype: int32
+    rank: 1
+    intent: in
+    chunk_axis: 1
+    extents:
+    - chunks
+  - field: macro.nwset
+    dtype: int32
+    rank: 1
+    intent: in
+    chunk_axis: 1
+    extents:
+    - chunks
+  - field: macro.iatype_liq
+    dtype: int32
+    rank: 2
+    intent: in
+    chunk_axis: 2
+    extents:
+    - wtrc_nwset
+    - chunks
+  - field: macro.iatype_ice
+    dtype: int32
+    rank: 2
+    intent: in
+    chunk_axis: 2
+    extents:
+    - wtrc_nwset
+    - chunks
+  - field: macro.do_detrain
+    dtype: int32
+    rank: 1
+    intent: in
+    chunk_axis: 1
+    extents:
+    - chunks
+  - field: macro.cu_det_st
+    dtype: int32
+    rank: 1
+    intent: in
+    chunk_axis: 1
+    extents:
+    - chunks
+  - field: macro.do_wtrc_detrain
+    dtype: int32
+    rank: 1
+    intent: in
+    chunk_axis: 1
+    extents:
+    - chunks
+  - field: macro.gravit
+    dtype: float64
+    rank: 1
+    intent: in
+    chunk_axis: 1
+    extents:
+    - chunks
+  - field: macro.latice
+    dtype: float64
+    rank: 1
+    intent: in
+    chunk_axis: 1
+    extents:
+    - chunks
+  - field: macro.cpair
+    dtype: float64
+    rank: 1
+    intent: in
+    chunk_axis: 1
+    extents:
+    - chunks
+  - field: macro.t
+    dtype: float64
+    rank: 3
+    intent: in
+    chunk_axis: 3
+    extents:
+    - pcols
+    - pver
+    - chunks
+  - field: macro.pdel
+    dtype: float64
+    rank: 3
+    intent: in
+    chunk_axis: 3
+    extents:
+    - pcols
+    - pver
+    - chunks
+  - field: macro.dlf
+    dtype: float64
+    rank: 3
+    intent: in
+    chunk_axis: 3
+    extents:
+    - pcols
+    - pver
+    - chunks
+  - field: macro.dlf2
+    dtype: float64
+    rank: 3
+    intent: in
+    chunk_axis: 3
+    extents:
+    - pcols
+    - pver
+    - chunks
+  - field: macro.wtdlf
+    dtype: float64
+    rank: 4
+    intent: in
+    chunk_axis: 4
+    extents:
+    - pcols
+    - pver
+    - wtrc_nwset
+    - chunks
+  - field: macro.ptend_s
+    dtype: float64
+    rank: 3
+    intent: inout
+    chunk_axis: 3
+    extents:
+    - pcols
+    - pver
+    - chunks
+  - field: macro.ptend_q
+    dtype: float64
+    rank: 4
+    intent: inout
+    chunk_axis: 4
+    extents:
+    - pcols
+    - pver
+    - pcnst
+    - chunks
+  - field: macro.det_s
+    dtype: float64
+    rank: 2
+    intent: out
+    chunk_axis: 2
+    extents:
+    - pcols
+    - chunks
+  - field: macro.det_ice
+    dtype: float64
+    rank: 2
+    intent: out
+    chunk_axis: 2
+    extents:
+    - pcols
+    - chunks
+  - field: macro.dlf_T
+    dtype: float64
+    rank: 3
+    intent: inout
+    chunk_axis: 3
+    extents:
+    - pcols
+    - pver
+    - chunks
+  - field: macro.dlf_qv
+    dtype: float64
+    rank: 3
+    intent: inout
+    chunk_axis: 3
+    extents:
+    - pcols
+    - pver
+    - chunks
+  - field: macro.dlf_ql
+    dtype: float64
+    rank: 3
+    intent: inout
+    chunk_axis: 3
+    extents:
+    - pcols
+    - pver
+    - chunks
+  - field: macro.dlf_qi
+    dtype: float64
+    rank: 3
+    intent: inout
+    chunk_axis: 3
+    extents:
+    - pcols
+    - pver
+    - chunks
+  - field: macro.dlf_nl
+    dtype: float64
+    rank: 3
+    intent: inout
+    chunk_axis: 3
+    extents:
+    - pcols
+    - pver
+    - chunks
+  - field: macro.dlf_ni
+    dtype: float64
+    rank: 3
+    intent: inout
+    chunk_axis: 3
+    extents:
+    - pcols
+    - pver
+    - chunks
+  - field: macro.dpdlfliq
+    dtype: float64
+    rank: 3
+    intent: out
+    chunk_axis: 3
+    extents:
+    - pcols
+    - pver
+    - chunks
+  - field: macro.dpdlfice
+    dtype: float64
+    rank: 3
+    intent: out
+    chunk_axis: 3
+    extents:
+    - pcols
+    - pver
+    - chunks
+  - field: macro.shdlfliq
+    dtype: float64
+    rank: 3
+    intent: out
+    chunk_axis: 3
+    extents:
+    - pcols
+    - pver
+    - chunks
+  - field: macro.shdlfice
+    dtype: float64
+    rank: 3
+    intent: out
+    chunk_axis: 3
+    extents:
+    - pcols
+    - pver
+    - chunks
+  - field: macro.dpdlft
+    dtype: float64
+    rank: 3
+    intent: out
+    chunk_axis: 3
+    extents:
+    - pcols
+    - pver
+    - chunks
+  - field: macro.shdlft
+    dtype: float64
+    rank: 3
+    intent: out
+    chunk_axis: 3
+    extents:
+    - pcols
+    - pver
+    - chunks
+- name: macrop_clear_fraction
+  routine: macrop_clear_fraction
+  symbol: pycam_pi_cam_macrop_clear_fraction_v1
+  action_id: 0
+  modules:
+    pycam_macro_kernels:
+    - macrop_clear_fraction
+    ppgrid:
+    - pcols
+    - pver
+    constituents:
+    - pcnst
+    water_types:
+    - pwtype
+    water_tracer_vars:
+    - wtrc_nwset
+  arguments:
+  - field: macro.ncol
+    dtype: int32
+    rank: 1
+    intent: in
+    chunk_axis: 1
+    extents:
+    - chunks
+  - field: macro.top_lev
+    dtype: int32
+    rank: 1
+    intent: in
+    chunk_axis: 1
+    extents:
+    - chunks
+  - field: macro.concld
+    dtype: float64
+    rank: 3
+    intent: in
+    chunk_axis: 3
+    extents:
+    - pcols
+    - pver
+    - chunks
+  - field: macro.alst
+    dtype: float64
+    rank: 3
+    intent: in
+    chunk_axis: 3
+    extents:
+    - pcols
+    - pver
+    - chunks
+  - field: macro.ast
+    dtype: float64
+    rank: 3
+    intent: in
+    chunk_axis: 3
+    extents:
+    - pcols
+    - pver
+    - chunks
+  - field: macro.clrw_old
+    dtype: float64
+    rank: 3
+    intent: out
+    chunk_axis: 3
+    extents:
+    - pcols
+    - pver
+    - chunks
+  - field: macro.clri_old
+    dtype: float64
+    rank: 3
+    intent: out
+    chunk_axis: 3
+    extents:
+    - pcols
+    - pver
+    - chunks
+- name: macrop_advective_forcing
+  routine: macrop_advective_forcing
+  symbol: pycam_pi_cam_macrop_advective_forcing_v1
+  action_id: 0
+  modules:
+    pycam_macro_kernels:
+    - macrop_advective_forcing
+    ppgrid:
+    - pcols
+    - pver
+    constituents:
+    - pcnst
+    water_types:
+    - pwtype
+    water_tracer_vars:
+    - wtrc_nwset
+  arguments:
+  - field: macro.ncol
+    dtype: int32
+    rank: 1
+    intent: in
+    chunk_axis: 1
+    extents:
+    - chunks
+  - field: macro.top_lev
+    dtype: int32
+    rank: 1
+    intent: in
+    chunk_axis: 1
+    extents:
+    - chunks
+  - field: macro.nstep
+    dtype: int32
+    rank: 1
+    intent: in
+    chunk_axis: 1
+    extents:
+    - chunks
+  - field: macro.rdtime
+    dtype: float64
+    rank: 1
+    intent: in
+    chunk_axis: 1
+    extents:
+    - chunks
+  - field: macro.t
+    dtype: float64
+    rank: 3
+    intent: in
+    chunk_axis: 3
+    extents:
+    - pcols
+    - pver
+    - chunks
+  - field: macro.q
+    dtype: float64
+    rank: 4
+    intent: in
+    chunk_axis: 4
+    extents:
+    - pcols
+    - pver
+    - pcnst
+    - chunks
+  - field: macro.qc
+    dtype: float64
+    rank: 3
+    intent: in
+    chunk_axis: 3
+    extents:
+    - pcols
+    - pver
+    - chunks
+  - field: macro.qi
+    dtype: float64
+    rank: 3
+    intent: in
+    chunk_axis: 3
+    extents:
+    - pcols
+    - pver
+    - chunks
+  - field: macro.nc
+    dtype: float64
+    rank: 3
+    intent: in
+    chunk_axis: 3
+    extents:
+    - pcols
+    - pver
+    - chunks
+  - field: macro.ni
+    dtype: float64
+    rank: 3
+    intent: in
+    chunk_axis: 3
+    extents:
+    - pcols
+    - pver
+    - chunks
+  - field: macro.CC_T
+    dtype: float64
+    rank: 3
+    intent: inout
+    chunk_axis: 3
+    extents:
+    - pcols
+    - pver
+    - chunks
+  - field: macro.CC_qv
+    dtype: float64
+    rank: 3
+    intent: inout
+    chunk_axis: 3
+    extents:
+    - pcols
+    - pver
+    - chunks
+  - field: macro.CC_ql
+    dtype: float64
+    rank: 3
+    intent: inout
+    chunk_axis: 3
+    extents:
+    - pcols
+    - pver
+    - chunks
+  - field: macro.CC_qi
+    dtype: float64
+    rank: 3
+    intent: inout
+    chunk_axis: 3
+    extents:
+    - pcols
+    - pver
+    - chunks
+  - field: macro.CC_nl
+    dtype: float64
+    rank: 3
+    intent: inout
+    chunk_axis: 3
+    extents:
+    - pcols
+    - pver
+    - chunks
+  - field: macro.CC_ni
+    dtype: float64
+    rank: 3
+    intent: inout
+    chunk_axis: 3
+    extents:
+    - pcols
+    - pver
+    - chunks
+  - field: macro.CC_qlst
+    dtype: float64
+    rank: 3
+    intent: inout
+    chunk_axis: 3
+    extents:
+    - pcols
+    - pver
+    - chunks
+  - field: macro.tcwat
+    dtype: float64
+    rank: 3
+    intent: inout
+    chunk_axis: 3
+    extents:
+    - pcols
+    - pver
+    - chunks
+  - field: macro.qcwat
+    dtype: float64
+    rank: 3
+    intent: inout
+    chunk_axis: 3
+    extents:
+    - pcols
+    - pver
+    - chunks
+  - field: macro.lcwat
+    dtype: float64
+    rank: 3
+    intent: inout
+    chunk_axis: 3
+    extents:
+    - pcols
+    - pver
+    - chunks
+  - field: macro.iccwat
+    dtype: float64
+    rank: 3
+    intent: inout
+    chunk_axis: 3
+    extents:
+    - pcols
+    - pver
+    - chunks
+  - field: macro.nlwat
+    dtype: float64
+    rank: 3
+    intent: inout
+    chunk_axis: 3
+    extents:
+    - pcols
+    - pver
+    - chunks
+  - field: macro.niwat
+    dtype: float64
+    rank: 3
+    intent: inout
+    chunk_axis: 3
+    extents:
+    - pcols
+    - pver
+    - chunks
+  - field: macro.ttend
+    dtype: float64
+    rank: 3
+    intent: out
+    chunk_axis: 3
+    extents:
+    - pcols
+    - pver
+    - chunks
+  - field: macro.qtend
+    dtype: float64
+    rank: 3
+    intent: out
+    chunk_axis: 3
+    extents:
+    - pcols
+    - pver
+    - chunks
+  - field: macro.ltend
+    dtype: float64
+    rank: 3
+    intent: out
+    chunk_axis: 3
+    extents:
+    - pcols
+    - pver
+    - chunks
+  - field: macro.itend
+    dtype: float64
+    rank: 3
+    intent: out
+    chunk_axis: 3
+    extents:
+    - pcols
+    - pver
+    - chunks
+  - field: macro.nltend
+    dtype: float64
+    rank: 3
+    intent: out
+    chunk_axis: 3
+    extents:
+    - pcols
+    - pver
+    - chunks
+  - field: macro.nitend
+    dtype: float64
+    rank: 3
+    intent: out
+    chunk_axis: 3
+    extents:
+    - pcols
+    - pver
+    - chunks
+  - field: macro.lmitend
+    dtype: float64
+    rank: 3
+    intent: out
+    chunk_axis: 3
+    extents:
+    - pcols
+    - pver
+    - chunks
+  - field: macro.t_inout
+    dtype: float64
+    rank: 3
+    intent: out
+    chunk_axis: 3
+    extents:
+    - pcols
+    - pver
+    - chunks
+  - field: macro.qv_inout
+    dtype: float64
+    rank: 3
+    intent: out
+    chunk_axis: 3
+    extents:
+    - pcols
+    - pver
+    - chunks
+  - field: macro.ql_inout
+    dtype: float64
+    rank: 3
+    intent: out
+    chunk_axis: 3
+    extents:
+    - pcols
+    - pver
+    - chunks
+  - field: macro.qi_inout
+    dtype: float64
+    rank: 3
+    intent: out
+    chunk_axis: 3
+    extents:
+    - pcols
+    - pver
+    - chunks
+  - field: macro.nl_inout
+    dtype: float64
+    rank: 3
+    intent: out
+    chunk_axis: 3
+    extents:
+    - pcols
+    - pver
+    - chunks
+  - field: macro.ni_inout
+    dtype: float64
+    rank: 3
+    intent: out
+    chunk_axis: 3
+    extents:
+    - pcols
+    - pver
+    - chunks
+- name: macrop_kernel_to_ptend
+  routine: macrop_kernel_to_ptend
+  symbol: pycam_pi_cam_macrop_kernel_to_ptend_v1
+  action_id: 0
+  modules:
+    pycam_macro_kernels:
+    - macrop_kernel_to_ptend
+    ppgrid:
+    - pcols
+    - pver
+    constituents:
+    - pcnst
+    water_types:
+    - pwtype
+    water_tracer_vars:
+    - wtrc_nwset
+  arguments:
+  - field: macro.ncol
+    dtype: int32
+    rank: 1
+    intent: in
+    chunk_axis: 1
+    extents:
+    - chunks
+  - field: macro.top_lev
+    dtype: int32
+    rank: 1
+    intent: in
+    chunk_axis: 1
+    extents:
+    - chunks
+  - field: macro.ixcldliq
+    dtype: int32
+    rank: 1
+    intent: in
+    chunk_axis: 1
+    extents:
+    - chunks
+  - field: macro.ixcldice
+    dtype: int32
+    rank: 1
+    intent: in
+    chunk_axis: 1
+    extents:
+    - chunks
+  - field: macro.ixnumliq
+    dtype: int32
+    rank: 1
+    intent: in
+    chunk_axis: 1
+    extents:
+    - chunks
+  - field: macro.ixnumice
+    dtype: int32
+    rank: 1
+    intent: in
+    chunk_axis: 1
+    extents:
+    - chunks
+  - field: macro.do_cldice
+    dtype: int32
+    rank: 1
+    intent: in
+    chunk_axis: 1
+    extents:
+    - chunks
+  - field: macro.do_cldliq
+    dtype: int32
+    rank: 1
+    intent: in
+    chunk_axis: 1
+    extents:
+    - chunks
+  - field: macro.tlat
+    dtype: float64
+    rank: 3
+    intent: in
+    chunk_axis: 3
+    extents:
+    - pcols
+    - pver
+    - chunks
+  - field: macro.qvlat
+    dtype: float64
+    rank: 3
+    intent: in
+    chunk_axis: 3
+    extents:
+    - pcols
+    - pver
+    - chunks
+  - field: macro.qcten
+    dtype: float64
+    rank: 3
+    intent: in
+    chunk_axis: 3
+    extents:
+    - pcols
+    - pver
+    - chunks
+  - field: macro.qiten
+    dtype: float64
+    rank: 3
+    intent: in
+    chunk_axis: 3
+    extents:
+    - pcols
+    - pver
+    - chunks
+  - field: macro.ncten
+    dtype: float64
+    rank: 3
+    intent: in
+    chunk_axis: 3
+    extents:
+    - pcols
+    - pver
+    - chunks
+  - field: macro.niten
+    dtype: float64
+    rank: 3
+    intent: in
+    chunk_axis: 3
+    extents:
+    - pcols
+    - pver
+    - chunks
+  - field: macro.ptend_s
+    dtype: float64
+    rank: 3
+    intent: inout
+    chunk_axis: 3
+    extents:
+    - pcols
+    - pver
+    - chunks
+  - field: macro.ptend_q
+    dtype: float64
+    rank: 4
+    intent: inout
+    chunk_axis: 4
+    extents:
+    - pcols
+    - pver
+    - pcnst
+    - chunks
+  - field: macro.status
+    dtype: int32
+    rank: 1
+    intent: out
+    chunk_axis: 1
+    extents:
+    - chunks
+- name: macrop_tracer_rate_split
+  routine: macrop_tracer_rate_split
+  symbol: pycam_pi_cam_macrop_tracer_rate_split_v1
+  action_id: 0
+  modules:
+    pycam_macro_kernels:
+    - macrop_tracer_rate_split
+    ppgrid:
+    - pcols
+    - pver
+    constituents:
+    - pcnst
+    water_types:
+    - pwtype
+    water_tracer_vars:
+    - wtrc_nwset
+  arguments:
+  - field: macro.ncol
+    dtype: int32
+    rank: 1
+    intent: in
+    chunk_axis: 1
+    extents:
+    - chunks
+  - field: macro.top_lev
+    dtype: int32
+    rank: 1
+    intent: in
+    chunk_axis: 1
+    extents:
+    - chunks
+  - field: macro.qcten
+    dtype: float64
+    rank: 3
+    intent: in
+    chunk_axis: 3
+    extents:
+    - pcols
+    - pver
+    - chunks
+  - field: macro.qiten
+    dtype: float64
+    rank: 3
+    intent: in
+    chunk_axis: 3
+    extents:
+    - pcols
+    - pver
+    - chunks
+  - field: macro.pqctn
+    dtype: float64
+    rank: 3
+    intent: out
+    chunk_axis: 3
+    extents:
+    - pcols
+    - pver
+    - chunks
+  - field: macro.nqctn
+    dtype: float64
+    rank: 3
+    intent: out
+    chunk_axis: 3
+    extents:
+    - pcols
+    - pver
+    - chunks
+  - field: macro.pqitn
+    dtype: float64
+    rank: 3
+    intent: out
+    chunk_axis: 3
+    extents:
+    - pcols
+    - pver
+    - chunks
+  - field: macro.nqitn
+    dtype: float64
+    rank: 3
+    intent: out
+    chunk_axis: 3
+    extents:
+    - pcols
+    - pver
+    - chunks
+- name: macrop_cloud_mixing_ratio
+  routine: macrop_cloud_mixing_ratio
+  symbol: pycam_pi_cam_macrop_cloud_mixing_ratio_v1
+  action_id: 0
+  modules:
+    pycam_macro_kernels:
+    - macrop_cloud_mixing_ratio
+    ppgrid:
+    - pcols
+    - pver
+    constituents:
+    - pcnst
+    water_types:
+    - pwtype
+    water_tracer_vars:
+    - wtrc_nwset
+  arguments:
+  - field: macro.ncol
+    dtype: int32
+    rank: 1
+    intent: in
+    chunk_axis: 1
+    extents:
+    - chunks
+  - field: macro.top_lev
+    dtype: int32
+    rank: 1
+    intent: in
+    chunk_axis: 1
+    extents:
+    - chunks
+  - field: macro.ixcldliq
+    dtype: int32
+    rank: 1
+    intent: in
+    chunk_axis: 1
+    extents:
+    - chunks
+  - field: macro.ixcldice
+    dtype: int32
+    rank: 1
+    intent: in
+    chunk_axis: 1
+    extents:
+    - chunks
+  - field: macro.q
+    dtype: float64
+    rank: 4
+    intent: in
+    chunk_axis: 4
+    extents:
+    - pcols
+    - pver
+    - pcnst
+    - chunks
+  - field: macro.cld
+    dtype: float64
+    rank: 3
+    intent: in
+    chunk_axis: 3
+    extents:
+    - pcols
+    - pver
+    - chunks
+  - field: macro.mr_ccliq
+    dtype: float64
+    rank: 3
+    intent: out
+    chunk_axis: 3
+    extents:
+    - pcols
+    - pver
+    - chunks
+  - field: macro.mr_ccice
+    dtype: float64
+    rank: 3
+    intent: out
+    chunk_axis: 3
+    extents:
+    - pcols
+    - pver
+    - chunks
+  - field: macro.mr_lsliq
+    dtype: float64
+    rank: 3
+    intent: out
+    chunk_axis: 3
+    extents:
+    - pcols
+    - pver
+    - chunks
+  - field: macro.mr_lsice
+    dtype: float64
+    rank: 3
+    intent: out
+    chunk_axis: 3
+    extents:
+    - pcols
+    - pver
+    - chunks
+- name: macrop_save_equilibrium
+  routine: macrop_save_equilibrium
+  symbol: pycam_pi_cam_macrop_save_equilibrium_v1
+  action_id: 0
+  modules:
+    pycam_macro_kernels:
+    - macrop_save_equilibrium
+    ppgrid:
+    - pcols
+    - pver
+    constituents:
+    - pcnst
+    water_types:
+    - pwtype
+    water_tracer_vars:
+    - wtrc_nwset
+  arguments:
+  - field: macro.ncol
+    dtype: int32
+    rank: 1
+    intent: in
+    chunk_axis: 1
+    extents:
+    - chunks
+  - field: macro.top_lev
+    dtype: int32
+    rank: 1
+    intent: in
+    chunk_axis: 1
+    extents:
+    - chunks
+  - field: macro.ixcldliq
+    dtype: int32
+    rank: 1
+    intent: in
+    chunk_axis: 1
+    extents:
+    - chunks
+  - field: macro.ixcldice
+    dtype: int32
+    rank: 1
+    intent: in
+    chunk_axis: 1
+    extents:
+    - chunks
+  - field: macro.ixnumliq
+    dtype: int32
+    rank: 1
+    intent: in
+    chunk_axis: 1
+    extents:
+    - chunks
+  - field: macro.ixnumice
+    dtype: int32
+    rank: 1
+    intent: in
+    chunk_axis: 1
+    extents:
+    - chunks
+  - field: macro.tmelt
+    dtype: float64
+    rank: 1
+    intent: in
+    chunk_axis: 1
+    extents:
+    - chunks
+  - field: macro.t
+    dtype: float64
+    rank: 3
+    intent: in
+    chunk_axis: 3
+    extents:
+    - pcols
+    - pver
+    - chunks
+  - field: macro.q
+    dtype: float64
+    rank: 4
+    intent: in
+    chunk_axis: 4
+    extents:
+    - pcols
+    - pver
+    - pcnst
+    - chunks
+  - field: macro.tcwat
+    dtype: float64
+    rank: 3
+    intent: out
+    chunk_axis: 3
+    extents:
+    - pcols
+    - pver
+    - chunks
+  - field: macro.qcwat
+    dtype: float64
+    rank: 3
+    intent: out
+    chunk_axis: 3
+    extents:
+    - pcols
+    - pver
+    - chunks
+  - field: macro.lcwat
+    dtype: float64
+    rank: 3
+    intent: out
+    chunk_axis: 3
+    extents:
+    - pcols
+    - pver
+    - chunks
+  - field: macro.iccwat
+    dtype: float64
+    rank: 3
+    intent: out
+    chunk_axis: 3
+    extents:
+    - pcols
+    - pver
+    - chunks
+  - field: macro.nlwat
+    dtype: float64
+    rank: 3
+    intent: out
+    chunk_axis: 3
+    extents:
+    - pcols
+    - pver
+    - chunks
+  - field: macro.niwat
+    dtype: float64
+    rank: 3
+    intent: out
+    chunk_axis: 3
+    extents:
+    - pcols
+    - pver
+    - chunks
+  - field: macro.cldsice
+    dtype: float64
+    rank: 3
+    intent: out
+    chunk_axis: 3
+    extents:
+    - pcols
+    - pver
+    - chunks
+- name: mmacro_pcond
+  routine: mmacro_pcond
+  symbol: pycam_pi_cam_mmacro_pcond_v1
+  action_id: 0
+  modules:
+    cldwat2m_macro:
+    - mmacro_pcond
+    ppgrid:
+    - pcols
+    - pver
+    - pverp
+  arguments:
+  - field: macro.lchnk
+    dtype: int32
+    rank: 1
+    intent: in
+    chunk_axis: 1
+    extents:
+    - chunks
+  - field: macro.ncol
+    dtype: int32
+    rank: 1
+    intent: in
+    chunk_axis: 1
+    extents:
+    - chunks
+  - field: macro.dt
+    dtype: float64
+    rank: 1
+    intent: in
+    chunk_axis: 1
+    extents:
+    - chunks
+  - field: macro.p
+    dtype: float64
+    rank: 3
+    intent: in
+    chunk_axis: 3
+    extents:
+    - pcols
+    - pver
+    - chunks
+  - field: macro.dp
+    dtype: float64
+    rank: 3
+    intent: in
+    chunk_axis: 3
+    extents:
+    - pcols
+    - pver
+    - chunks
+  - field: macro.t0
+    dtype: float64
+    rank: 3
+    intent: inout
+    chunk_axis: 3
+    extents:
+    - pcols
+    - pver
+    - chunks
+  - field: macro.qv0
+    dtype: float64
+    rank: 3
+    intent: inout
+    chunk_axis: 3
+    extents:
+    - pcols
+    - pver
+    - chunks
+  - field: macro.ql0
+    dtype: float64
+    rank: 3
+    intent: inout
+    chunk_axis: 3
+    extents:
+    - pcols
+    - pver
+    - chunks
+  - field: macro.qi0
+    dtype: float64
+    rank: 3
+    intent: inout
+    chunk_axis: 3
+    extents:
+    - pcols
+    - pver
+    - chunks
+  - field: macro.nl0
+    dtype: float64
+    rank: 3
+    intent: inout
+    chunk_axis: 3
+    extents:
+    - pcols
+    - pver
+    - chunks
+  - field: macro.ni0
+    dtype: float64
+    rank: 3
+    intent: inout
+    chunk_axis: 3
+    extents:
+    - pcols
+    - pver
+    - chunks
+  - field: macro.a_t
+    dtype: float64
+    rank: 3
+    intent: in
+    chunk_axis: 3
+    extents:
+    - pcols
+    - pver
+    - chunks
+  - field: macro.a_qv
+    dtype: float64
+    rank: 3
+    intent: in
+    chunk_axis: 3
+    extents:
+    - pcols
+    - pver
+    - chunks
+  - field: macro.a_ql
+    dtype: float64
+    rank: 3
+    intent: in
+    chunk_axis: 3
+    extents:
+    - pcols
+    - pver
+    - chunks
+  - field: macro.a_qi
+    dtype: float64
+    rank: 3
+    intent: in
+    chunk_axis: 3
+    extents:
+    - pcols
+    - pver
+    - chunks
+  - field: macro.a_nl
+    dtype: float64
+    rank: 3
+    intent: in
+    chunk_axis: 3
+    extents:
+    - pcols
+    - pver
+    - chunks
+  - field: macro.a_ni
+    dtype: float64
+    rank: 3
+    intent: in
+    chunk_axis: 3
+    extents:
+    - pcols
+    - pver
+    - chunks
+  - field: macro.c_t
+    dtype: float64
+    rank: 3
+    intent: in
+    chunk_axis: 3
+    extents:
+    - pcols
+    - pver
+    - chunks
+  - field: macro.c_qv
+    dtype: float64
+    rank: 3
+    intent: in
+    chunk_axis: 3
+    extents:
+    - pcols
+    - pver
+    - chunks
+  - field: macro.c_ql
+    dtype: float64
+    rank: 3
+    intent: in
+    chunk_axis: 3
+    extents:
+    - pcols
+    - pver
+    - chunks
+  - field: macro.c_qi
+    dtype: float64
+    rank: 3
+    intent: in
+    chunk_axis: 3
+    extents:
+    - pcols
+    - pver
+    - chunks
+  - field: macro.c_nl
+    dtype: float64
+    rank: 3
+    intent: in
+    chunk_axis: 3
+    extents:
+    - pcols
+    - pver
+    - chunks
+  - field: macro.c_ni
+    dtype: float64
+    rank: 3
+    intent: in
+    chunk_axis: 3
+    extents:
+    - pcols
+    - pver
+    - chunks
+  - field: macro.c_qlst
+    dtype: float64
+    rank: 3
+    intent: in
+    chunk_axis: 3
+    extents:
+    - pcols
+    - pver
+    - chunks
+  - field: macro.d_t
+    dtype: float64
+    rank: 3
+    intent: in
+    chunk_axis: 3
+    extents:
+    - pcols
+    - pver
+    - chunks
+  - field: macro.d_qv
+    dtype: float64
+    rank: 3
+    intent: in
+    chunk_axis: 3
+    extents:
+    - pcols
+    - pver
+    - chunks
+  - field: macro.d_ql
+    dtype: float64
+    rank: 3
+    intent: in
+    chunk_axis: 3
+    extents:
+    - pcols
+    - pver
+    - chunks
+  - field: macro.d_qi
+    dtype: float64
+    rank: 3
+    intent: in
+    chunk_axis: 3
+    extents:
+    - pcols
+    - pver
+    - chunks
+  - field: macro.d_nl
+    dtype: float64
+    rank: 3
+    intent: in
+    chunk_axis: 3
+    extents:
+    - pcols
+    - pver
+    - chunks
+  - field: macro.d_ni
+    dtype: float64
+    rank: 3
+    intent: in
+    chunk_axis: 3
+    extents:
+    - pcols
+    - pver
+    - chunks
+  - field: macro.a_cud
+    dtype: float64
+    rank: 3
+    intent: in
+    chunk_axis: 3
+    extents:
+    - pcols
+    - pver
+    - chunks
+  - field: macro.a_cu0
+    dtype: float64
+    rank: 3
+    intent: in
+    chunk_axis: 3
+    extents:
+    - pcols
+    - pver
+    - chunks
+  - field: macro.clrw_old
+    dtype: float64
+    rank: 3
+    intent: in
+    chunk_axis: 3
+    extents:
+    - pcols
+    - pver
+    - chunks
+  - field: macro.clri_old
+    dtype: float64
+    rank: 3
+    intent: in
+    chunk_axis: 3
+    extents:
+    - pcols
+    - pver
+    - chunks
+  - field: macro.landfrac
+    dtype: float64
+    rank: 2
+    intent: in
+    chunk_axis: 2
+    extents:
+    - pcols
+    - chunks
+  - field: macro.snowh
+    dtype: float64
+    rank: 2
+    intent: in
+    chunk_axis: 2
+    extents:
+    - pcols
+    - chunks
+  - field: macro.tke
+    dtype: float64
+    rank: 3
+    intent: inout
+    chunk_axis: 3
+    extents:
+    - pcols
+    - pverp
+    - chunks
+  - field: macro.qtl_flx
+    dtype: float64
+    rank: 3
+    intent: inout
+    chunk_axis: 3
+    extents:
+    - pcols
+    - pverp
+    - chunks
+  - field: macro.qti_flx
+    dtype: float64
+    rank: 3
+    intent: inout
+    chunk_axis: 3
+    extents:
+    - pcols
+    - pverp
+    - chunks
+  - field: macro.cmfr_det
+    dtype: float64
+    rank: 3
+    intent: inout
+    chunk_axis: 3
+    extents:
+    - pcols
+    - pver
+    - chunks
+  - field: macro.qlr_det
+    dtype: float64
+    rank: 3
+    intent: inout
+    chunk_axis: 3
+    extents:
+    - pcols
+    - pver
+    - chunks
+  - field: macro.qir_det
+    dtype: float64
+    rank: 3
+    intent: inout
+    chunk_axis: 3
+    extents:
+    - pcols
+    - pver
+    - chunks
+  - field: macro.s_tendout
+    dtype: float64
+    rank: 3
+    intent: out
+    chunk_axis: 3
+    extents:
+    - pcols
+    - pver
+    - chunks
+  - field: macro.qv_tendout
+    dtype: float64
+    rank: 3
+    intent: out
+    chunk_axis: 3
+    extents:
+    - pcols
+    - pver
+    - chunks
+  - field: macro.ql_tendout
+    dtype: float64
+    rank: 3
+    intent: out
+    chunk_axis: 3
+    extents:
+    - pcols
+    - pver
+    - chunks
+  - field: macro.qi_tendout
+    dtype: float64
+    rank: 3
+    intent: out
+    chunk_axis: 3
+    extents:
+    - pcols
+    - pver
+    - chunks
+  - field: macro.nl_tendout
+    dtype: float64
+    rank: 3
+    intent: out
+    chunk_axis: 3
+    extents:
+    - pcols
+    - pver
+    - chunks
+  - field: macro.ni_tendout
+    dtype: float64
+    rank: 3
+    intent: out
+    chunk_axis: 3
+    extents:
+    - pcols
+    - pver
+    - chunks
+  - field: macro.qme
+    dtype: float64
+    rank: 3
+    intent: out
+    chunk_axis: 3
+    extents:
+    - pcols
+    - pver
+    - chunks
+  - field: macro.qvadj
+    dtype: float64
+    rank: 3
+    intent: out
+    chunk_axis: 3
+    extents:
+    - pcols
+    - pver
+    - chunks
+  - field: macro.qladj
+    dtype: float64
+    rank: 3
+    intent: out
+    chunk_axis: 3
+    extents:
+    - pcols
+    - pver
+    - chunks
+  - field: macro.qiadj
+    dtype: float64
+    rank: 3
+    intent: out
+    chunk_axis: 3
+    extents:
+    - pcols
+    - pver
+    - chunks
+  - field: macro.qllim
+    dtype: float64
+    rank: 3
+    intent: out
+    chunk_axis: 3
+    extents:
+    - pcols
+    - pver
+    - chunks
+  - field: macro.qilim
+    dtype: float64
+    rank: 3
+    intent: out
+    chunk_axis: 3
+    extents:
+    - pcols
+    - pver
+    - chunks
+  - field: macro.cld
+    dtype: float64
+    rank: 3
+    intent: out
+    chunk_axis: 3
+    extents:
+    - pcols
+    - pver
+    - chunks
+  - field: macro.al_st_star
+    dtype: float64
+    rank: 3
+    intent: out
+    chunk_axis: 3
+    extents:
+    - pcols
+    - pver
+    - chunks
+  - field: macro.ai_st_star
+    dtype: float64
+    rank: 3
+    intent: out
+    chunk_axis: 3
+    extents:
+    - pcols
+    - pver
+    - chunks
+  - field: macro.ql_st_star
+    dtype: float64
+    rank: 3
+    intent: out
+    chunk_axis: 3
+    extents:
+    - pcols
+    - pver
+    - chunks
+  - field: macro.qi_st_star
+    dtype: float64
+    rank: 3
+    intent: out
+    chunk_axis: 3
+    extents:
+    - pcols
+    - pver
+    - chunks
+  - field: macro.do_cldice
+    dtype: int32
+    rank: 1
+    intent: in
+    chunk_axis: 1
+    extents:
+    - chunks
+- name: wtrc_init_rates
+  routine: wtrc_init_rates
+  symbol: pycam_pi_cam_wtrc_init_rates_v1
+  action_id: 0
+  modules:
+    water_tracers:
+    - wtrc_init_rates
+    ppgrid:
+    - pcols
+    - pver
+    water_types:
+    - pwtype
+  arguments:
+  - field: macro.top_lev
+    dtype: int32
+    rank: 1
+    intent: in
+    chunk_axis: 1
+    extents:
+    - chunks
+  - field: macro.process_rates
+    dtype: float64
+    rank: 6
+    intent: out
+    chunk_axis: 6
+    extents:
+    - pcols
+    - pver
+    - pwtype
+    - pwtype
+    - pwtype
+    - chunks
+- name: wtrc_add_rates
+  routine: wtrc_add_rates
+  symbol: pycam_pi_cam_wtrc_add_rates_v1
+  action_id: 0
+  modules:
+    water_tracers:
+    - wtrc_add_rates
+    ppgrid:
+    - pcols
+    - pver
+    water_types:
+    - pwtype
+  arguments:
+  - field: macro.process_rates
+    dtype: float64
+    rank: 6
+    intent: inout
+    chunk_axis: 6
+    extents:
+    - pcols
+    - pver
+    - pwtype
+    - pwtype
+    - pwtype
+    - chunks
+  - field: macro.ncol
+    dtype: int32
+    rank: 1
+    intent: in
+    chunk_axis: 1
+    extents:
+    - chunks
+  - field: macro.top_lev
+    dtype: int32
+    rank: 1
+    intent: in
+    chunk_axis: 1
+    extents:
+    - chunks
+  - field: macro.isrctype
+    dtype: int32
+    rank: 1
+    intent: in
+    chunk_axis: 1
+    extents:
+    - chunks
+  - field: macro.idsttype
+    dtype: int32
+    rank: 1
+    intent: in
+    chunk_axis: 1
+    extents:
+    - chunks
+  - field: macro.rtype
+    dtype: int32
+    rank: 1
+    intent: in
+    chunk_axis: 1
+    extents:
+    - chunks
+  - field: macro.rate
+    dtype: float64
+    rank: 3
+    intent: in
+    chunk_axis: 3
+    extents:
+    - pcols
+    - pver
+    - chunks
 - name: calc_obklen
   routine: calc_obklen
   symbol: freecam_pi_cam_promoted_calc_obklen_3f599c4098e6_v1

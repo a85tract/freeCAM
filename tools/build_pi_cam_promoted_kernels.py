@@ -21,8 +21,10 @@ def main() -> int:
     parser.add_argument(
         "--base",
         type=Path,
-        default=Path("native/pi_cam/direct_kernels.yaml"),
-        help="descriptor containing reviewed hand-bound kernels such as dadadj",
+        action="append",
+        default=None,
+        help="descriptor of reviewed kernels (repeatable; default: direct_kernels.yaml "
+             "and direct_kernels_macrophysics.yaml)",
     )
     parser.add_argument(
         "--output",
@@ -35,9 +37,14 @@ def main() -> int:
         default=Path("native/pi_cam/process_promotion_rules.yaml"),
     )
     args = parser.parse_args()
+    bases = args.base or [
+        Path("native/pi_cam/direct_kernels.yaml"),
+        Path("native/pi_cam/direct_kernels_macrophysics.yaml"),
+    ]
     base = tuple(
         kernel
-        for kernel in load_direct_kernels(args.base)
+        for path in bases
+        for kernel in load_direct_kernels(path)
         if not kernel.name.startswith("__generated_")
     )
     reviewed_routines = {kernel.routine.casefold() for kernel in base}

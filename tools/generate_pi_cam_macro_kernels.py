@@ -17,8 +17,8 @@ arithmetic exists twice -- once in the driver, once here -- which is why a
 test compares every body here against the pinned text, and why the
 Python-driven run is itself gated bit-for-bit against the oracle.
 
-    tools/generate_pi_cam_macro_kernels.py            # write the module
-    tools/generate_pi_cam_macro_kernels.py --check    # fail if it is stale
+    tools/generate_pi_cam_macro_kernels.py            # write the module + descriptors
+    tools/generate_pi_cam_macro_kernels.py --check    # fail if either is stale
 
 The bodies come from ``external/iCESM1.3.1_fzhu``, so a change to the pinned
 source shows up as a --check failure rather than as a silent divergence.
@@ -34,6 +34,8 @@ import sys
 REPO = Path(__file__).resolve().parents[1]
 PINNED = REPO / "external/iCESM1.3.1_fzhu/components/cam/src/physics/cam/macrop_driver.F90"
 MODULE = REPO / "native/pi_cam/support/pycam_macro_kernels.F90"
+DESCRIPTORS = REPO / "native/pi_cam/direct_kernels_macrophysics.yaml"
+SPEC = REPO / "native/pi_cam/functions/mmacro_pcond.yaml"
 
 # Renames applied to every carved body.  Each one replaces a name the routine
 # could only see as a host association with a name it receives as an argument.
@@ -275,12 +277,142 @@ end module pycam_macro_kernels
 '''
 
 
+# -- direct-kernel descriptors ------------------------------------------------
+#
+# Every routine Python calls in the driver's place is a direct kernel: the
+# generated wrapper hands one chunk's NumPy arrays to the original Fortran and
+# nothing else.  The descriptors below are derived from the same declarations
+# the module is generated from, so a dummy list and its descriptor cannot drift.
+
+_SCALAR_KINDS = {"integer": "int32", "real(r8)": "float64", "logical": "int32"}
+
+
+def _declared(block):
+    """(name, kind, dims, intent) for every dummy of a carved routine."""
+
+    import re
+    out = {}
+    for line in block.declarations:
+        text = line.strip()
+        if not text or text.startswith("!"):
+            continue
+        head, names = text.split("::")
+        kind = head.split(",")[0].strip()
+        intent = re.search(r"intent\((\w+)\)", head).group(1)
+        for item in re.finditer(r"(\w+)(?:\(([^)]*)\))?", names):
+            name, dims = item.group(1), item.group(2)
+            out[name] = (kind, tuple(d.strip() for d in dims.split(",")) if dims else (), intent)
+    return out
+
+
+# An extent named after a dummy of the routine (nwset) has to become the
+# module variable the caller reads it from, which the wrapper can import.
+_EXTENT_NAMES = {"nwset": "wtrc_nwset"}
+
+
+def _argument(name, kind, dims, intent):
+    dtype = _SCALAR_KINDS[kind]
+    extents = [*(_EXTENT_NAMES.get(d, d) for d in dims), "chunks"]
+    rank = len(extents)
+    payload = {
+        "field": f"macro.{name}", "dtype": dtype, "rank": rank,
+        "intent": intent, "chunk_axis": rank, "extents": extents,
+    }
+    if kind == "logical":
+        payload["fortran_type"] = "logical"
+    return payload
+
+
+def render_descriptors() -> str:
+    import yaml
+
+    kernels = []
+    for block in BLOCKS:
+        declared = _declared(block)
+        arguments = [_argument(name, *declared[name]) for name in block.arguments]
+        kernels.append({
+            "name": block.name, "routine": block.name,
+            "symbol": f"pycam_pi_cam_{block.name}_v1", "action_id": 0,
+            "modules": {"pycam_macro_kernels": [block.name],
+                        "ppgrid": ["pcols", "pver"], "constituents": ["pcnst"],
+                        "water_types": ["pwtype"], "water_tracer_vars": ["wtrc_nwset"]},
+            "arguments": arguments,
+        })
+
+    # mmacro_pcond itself, from the reviewed specification: the same 60
+    # arguments the standalone image takes, now reached inside the model.
+    spec = yaml.safe_load(SPEC.read_text())
+    arguments = []
+    for item in spec["arguments"]:
+        extents = [*item["native_shape"], "chunks"]
+        rank = len(extents)
+        intent = {"structural": "in", "input": "in", "inout": "inout",
+                  "workspace": "inout", "output": "out"}[item["role"]]
+        if item.get("pointer"):
+            intent = "inout"
+        payload = {
+            "field": f"macro.{item['name']}", "dtype": item["dtype"], "rank": rank,
+            "intent": intent, "chunk_axis": rank, "extents": extents,
+        }
+        if item.get("pointer"):
+            payload["pointer"] = True
+        if item.get("carrier") == "logical":
+            payload["fortran_type"] = "logical"
+        arguments.append(payload)
+    kernels.append({
+        "name": "mmacro_pcond", "routine": "mmacro_pcond",
+        "symbol": "pycam_pi_cam_mmacro_pcond_v1", "action_id": 0,
+        "modules": {"cldwat2m_macro": ["mmacro_pcond"], "ppgrid": ["pcols", "pver", "pverp"]},
+        "arguments": arguments,
+    })
+
+    # The two water-tracer rate routines the driver calls on plain arrays.
+    kernels.append({
+        "name": "wtrc_init_rates", "routine": "wtrc_init_rates",
+        "symbol": "pycam_pi_cam_wtrc_init_rates_v1", "action_id": 0,
+        "modules": {"water_tracers": ["wtrc_init_rates"], "ppgrid": ["pcols", "pver"],
+                    "water_types": ["pwtype"]},
+        "arguments": [
+            _argument("top_lev", "integer", (), "in"),
+            _argument("process_rates", "real(r8)", ("pcols", "pver", "pwtype", "pwtype", "pwtype"), "out"),
+        ],
+    })
+    kernels.append({
+        "name": "wtrc_add_rates", "routine": "wtrc_add_rates",
+        "symbol": "pycam_pi_cam_wtrc_add_rates_v1", "action_id": 0,
+        "modules": {"water_tracers": ["wtrc_add_rates"], "ppgrid": ["pcols", "pver"],
+                    "water_types": ["pwtype"]},
+        # do_reverse is optional and the driver never passes it; the wrapper
+        # passes exactly what is listed here.
+        "arguments": [
+            _argument("process_rates", "real(r8)", ("pcols", "pver", "pwtype", "pwtype", "pwtype"), "inout"),
+            _argument("ncol", "integer", (), "in"),
+            _argument("top_lev", "integer", (), "in"),
+            _argument("isrctype", "integer", (), "in"),
+            _argument("idsttype", "integer", (), "in"),
+            _argument("rtype", "integer", (), "in"),
+            _argument("rate", "real(r8)", ("pcols", "pver"), "in"),
+        ],
+    })
+    header = (
+        "# GENERATED by tools/generate_pi_cam_macro_kernels.py -- do not edit.\n"
+        "#\n"
+        "# The routines a Python-driven macrophysics timestep calls in the Fortran\n"
+        "# driver's place, as direct kernels: seven lifted from the driver's own\n"
+        "# arithmetic, mmacro_pcond from its reviewed specification, and the two\n"
+        "# water-tracer rate routines.  Every field is a `macro.<dummy>` StatePool\n"
+        "# array Python owns, one chunk per slice.  Merged into\n"
+        "# direct_kernels_promoted.yaml by tools/build_pi_cam_promoted_kernels.py.\n"
+    )
+    return header + yaml.safe_dump({"schema_version": 1, "kernels": kernels}, sort_keys=False, width=100)
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--check", action="store_true")
     arguments = parser.parse_args()
     stale = []
-    for path, rendered in ((MODULE, render_module()),):
+    for path, rendered in ((MODULE, render_module()), (DESCRIPTORS, render_descriptors())):
         if arguments.check:
             current = path.read_text() if path.is_file() else ""
             if current != rendered:

@@ -88,6 +88,11 @@ _DEFAULT_ACTIONS = (
     PICAMAction("shallow_convection", "cam_run1", "convect_shallow_tend", "scheme", 425),
     PICAMAction("sea_salt_rebin", "cam_run1", "sslt_rebin_adv", "scheme", 426),
     PICAMAction("cloud_macro_microphysics", "cam_run1", "macro_microphysics", "scheme", 427),
+    # The macrophysics stage stopped before its driver and resumed after it,
+    # so a Python transliteration of the driver can run in between.  Off by
+    # default: Macrophysics.attach enables these and disables their parent.
+    PICAMAction("macro_tend_pre_leaf", "cam_run1", "leaf_macro_tend_pre", "scheme", 480, False, parent_stage="cam_run1.cloud_macro_microphysics"),
+    PICAMAction("macro_tend_post_leaf", "cam_run1", "leaf_macro_tend_post", "scheme", 481, False, parent_stage="cam_run1.cloud_macro_microphysics"),
     PICAMAction("wet_deposition", "cam_run1", "aero_model_wetdep", "scheme", 428, False),
     PICAMAction("modal_aerosol_preparation_leaf", "cam_run1", "leaf_modal_aero_prepare", "scheme", 450, parent_stage="cam_run1.wet_deposition"),
     PICAMAction("aerosol_wet_deposition_leaf", "cam_run1", "leaf_aero_model_wetdep", "scheme", 451, parent_stage="cam_run1.wet_deposition"),

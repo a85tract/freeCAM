@@ -45,6 +45,7 @@ LEAF_PATCHES = (
     / "native/pi_cam/control_patches/0028-python-after-coupler-leaf-control.patch",
     REPO / "native/pi_cam/control_patches/0029-python-run4-leaf-control.patch",
     REPO / "native/pi_cam/control_patches/0031-order-independent-leaf-actions.patch",
+    REPO / "native/pi_cam/control_patches/0040-macro-tend-leaf-dispatch.patch",
 )
 IMAGE_BASE = 0x30000000
 IMAGE_WINDOW_BYTES = 0x20000000
@@ -61,6 +62,12 @@ STATE_CONTEXT_SYMBOL = "pycam_pi_cam_state_context_v1"
 STATE_BIND_SYMBOL = "pycam_pi_cam_bind_state_v1"
 # The physics buffer is reached by handle, not by StatePool field.
 PBUF_FIELD_SYMBOL = "pycam_pbuf_field_v1"
+# Fortran modules this repository adds to the source tree beside CAM's own.
+# They are compiled into the fixed image as additions -- no numerical object
+# is replaced -- and are reached only from Python or from the control
+# objects the builder already replaces.
+SUPPORT_MODULES = ("pycam_macro_kernels.F90", "pycam_macro_handles.F90")
+MACRO_BIND_HOSTS_SYMBOL = "pycam_macro_bind_hosts_v1"
 LEAF_ACTION_SYMBOL = "pycam_pi_cam_leaf_action_v1"
 LEAF_OPERATION_NAMES = (
     "leaf_modal_aero_prepare",
@@ -84,8 +91,12 @@ LEAF_OPERATION_NAMES = (
     "leaf_cam_run4_wrapup",
     "leaf_cam_run4_step_cost",
     "leaf_cam_run4_flush",
+    "leaf_macro_tend_pre",
+    "leaf_macro_tend_post",
 )
-LEAF_OPERATION_IDS = (*range(450, 459), *range(460, 469), *range(470, 473))
+LEAF_OPERATION_IDS = (
+    *range(450, 459), *range(460, 469), *range(470, 473), *range(480, 482)
+)
 
 
 from pi_cam_build_common import (  # noqa: E402
@@ -360,6 +371,20 @@ def main() -> int:
     compile_commands: dict[str, list[str]] = {}
     objects: dict[str, Path] = {}
     leaf_addon_objects: tuple[Path, ...] = ()
+    # The support modules first: physpkg and cam_comp `use` them, and ifort
+    # writes their .mod files into the working directory, which -I. covers.
+    support_objects: list[Path] = []
+    for source_name in SUPPORT_MODULES:
+        source = source_root / "components/cam/src/physics/cam" / source_name
+        if not source.is_file():
+            raise RuntimeError(f"support module is absent from the prepared source: {source}")
+        log, command = _compile_command(build, "macrop_driver.F90")
+        destination = work / f"{Path(source_name).stem}.o"
+        compile_commands[source_name] = _compile_to(
+            command, "macrop_driver.F90", source, destination, work, build / "atm/obj",
+        )
+        compile_logs[source_name] = str(log)
+        support_objects.append(destination)
     for source_name in (
         "physpkg.F90", "cam_comp.F90", "atm_comp_mct.F90",
     ):
@@ -658,6 +683,7 @@ def main() -> int:
         # objects come last and resolve against symbols already selected by
         # that link, without changing the source archive boundary.
         str(adapter_object),
+        *(str(path) for path in support_objects),
         str(direct_kernel_object),
         str(floating_environment_object),
         "-Wl,--unresolved-symbols=ignore-all",

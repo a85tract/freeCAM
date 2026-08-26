@@ -22,6 +22,7 @@ PATCHES = (
     "native/pi_cam/control_patches/0025-python-owned-atm-mct-state.patch",
     "native/pi_cam/control_patches/0030-order-independent-scheme-actions.patch",
     "native/pi_cam/control_patches/0033-single-cam-online-coupler.patch",
+    "native/pi_cam/control_patches/0039-macro-tend-boundary.patch",
 )
 
 # Modules this repository owns that are added to the CAM source tree.  They
@@ -31,6 +32,8 @@ PATCHES = (
 SUPPORT_SOURCES = (
     ("native/pi_cam/support/pycam_macro_kernels.F90",
      "src/physics/cam/pycam_macro_kernels.F90"),
+    ("native/pi_cam/support/pycam_macro_handles.F90",
+     "src/physics/cam/pycam_macro_handles.F90"),
 )
 
 

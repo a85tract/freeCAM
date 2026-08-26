@@ -473,7 +473,30 @@ def generate_fortran_include(bridge: LegacyStateBridge) -> str:
             "end subroutine cam_python_state_transfer",
             "",
             *_pbuf_accessor(),
+            *_macro_host_binding(),
         ]
+    )
+
+
+def _macro_host_binding() -> tuple[str, ...]:
+    """Hand the macrophysics handles the state array and the physics buffer.
+
+    Both live in cam_comp, which the handles module cannot use (cam_comp uses
+    it), so the binding is done from here, once, when Python asks for it
+    after initialization.
+    """
+
+    return (
+        "integer(c_int) function pycam_macro_bind_hosts_v1() &",
+        "     bind(C, name='pycam_macro_bind_hosts_v1') result(status)",
+        "  use, intrinsic :: iso_c_binding, only: c_int",
+        "  use pycam_macro_handles, only: pycam_macro_bind_hosts",
+        "  status = 1_c_int",
+        "  if (.not. associated(phys_state) .or. .not. associated(pbuf2d)) return",
+        "  call pycam_macro_bind_hosts(phys_state, pbuf2d)",
+        "  status = 0_c_int",
+        "end function pycam_macro_bind_hosts_v1",
+        "",
     )
 
 
