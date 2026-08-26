@@ -162,7 +162,9 @@ class SubprocessHost:
             [
                 *self._worker_command,
                 "--manifest", str(self.manifest_path), "--address", address,
-                "--authkey", base64.urlsafe_b64encode(authkey).decode("ascii"),
+                # One token in 64 starts with '-', which argparse would read as
+                # the next option; the joined form leaves it no room to.
+                "--authkey=" + base64.urlsafe_b64encode(authkey).decode("ascii"),
             ],
             stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
             text=True, env=self._environment(), start_new_session=True, preexec_fn=self._raise_stack_limit,
