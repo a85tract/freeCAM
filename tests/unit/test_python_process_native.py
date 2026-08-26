@@ -79,3 +79,25 @@ def test_native_access_refuses_a_backend_without_an_image() -> None:
     driver.backend = object()
     with pytest.raises(PythonProcessContractError, match="no loaded image"):
         NativeAccess(driver).library
+
+
+def test_every_context_construction_site_passes_the_native_handle() -> None:
+    """Gate B2 failed once because the PI-CAM registry built its own context.
+
+    There are two registries and each constructs PythonProcessContext itself;
+    a process installed with native=True must find the handle on whichever
+    executes it.  Check the sites by text so a third one cannot slip through.
+    """
+
+    import re
+    from pathlib import Path
+
+    src = Path(__file__).resolve().parents[2] / "src/freecam"
+    sites = []
+    for path in src.rglob("*.py"):
+        text = path.read_text()
+        for m in re.finditer(r"PythonProcessContext\((.*?)\n\s*\)", text, re.S):
+            sites.append((path.name, m.group(1)))
+    assert len(sites) >= 2, [s[0] for s in sites]
+    for name, arguments in sites:
+        assert "native=" in arguments, f"{name} builds a context without native="
