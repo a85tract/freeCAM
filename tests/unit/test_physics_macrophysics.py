@@ -159,6 +159,10 @@ class _Lib:
                 lib._fill(ptr, ndims, extents, lib._array((lchnk, 100 + code), shape))
             elif name == "pycam_macro_set_owner_v1":
                 lib.owner = args[0]
+            elif name == "pycam_macro_nstep_v1":
+                return 5
+            elif name == "pycam_macro_dt_v1":
+                return 1800
             elif name == "pycam_pbuf_field_v1":
                 lchnk, index, sliced, ptr, extents = args
                 array = lib._array((lchnk, 200 + index), (16, 30))

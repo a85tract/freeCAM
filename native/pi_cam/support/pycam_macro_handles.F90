@@ -36,6 +36,7 @@ module pycam_macro_handles
   use cloud_fraction, only: cldfrc
   use water_tracers,  only: wtrc_apply_rates
   use cam_history,    only: outfld
+  use time_manager,   only: get_nstep, get_step_size
 
   implicit none
   private
@@ -119,6 +120,21 @@ contains
     integer(c_int), intent(in) :: lchnk
     chunk_ok = associated(host_state) .and. lchnk >= begchunk .and. lchnk <= endchunk
   end function chunk_ok
+
+  ! ------------------------------------------------------------------ !
+  ! The model's own clock.  The driver branches on get_nstep() and divides
+  ! by the step size; a transliteration must read the same clock, not a
+  ! mirror of it.
+  ! ------------------------------------------------------------------ !
+  integer(c_int) function pycam_macro_nstep_v1() &
+       bind(C, name='pycam_macro_nstep_v1') result(nstep)
+    nstep = int(get_nstep(), c_int)
+  end function pycam_macro_nstep_v1
+
+  integer(c_int) function pycam_macro_dt_v1() &
+       bind(C, name='pycam_macro_dt_v1') result(dt)
+    dt = int(get_step_size(), c_int)
+  end function pycam_macro_dt_v1
 
   ! ------------------------------------------------------------------ !
   ! Ownership

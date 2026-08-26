@@ -130,11 +130,18 @@ class _Entries:
         self.outfld = self._bind("pycam_outfld_v1", [
             c.c_char_p, c.c_int, c.POINTER(c.c_double), c.c_int, c.c_int])
         self.cldfrc = self._bind("pycam_macro_cldfrc_v1", None)
+        # The model's clock.  Images built before these entries existed fall
+        # back to the driver's mirror of it, which advances in the same
+        # action as the Fortran clock.
+        self.nstep = self._bind("pycam_macro_nstep_v1", [], optional=True)
+        self.dt = self._bind("pycam_macro_dt_v1", [], optional=True)
 
-    def _bind(self, name: str, argtypes: list | None):
+    def _bind(self, name: str, argtypes: list | None, *, optional: bool = False):
         try:
             function = getattr(self.library, name)
         except AttributeError as error:
+            if optional:
+                return None
             raise PICAMConfigurationError(
                 f"the image exposes no {name}; it predates the macrophysics boundary"
             ) from error
@@ -359,8 +366,9 @@ class Macrophysics:
         if native is None:
             raise PhysicsError("Macrophysics.tend must run as a native process")
         state = _RankState.get(native, self)
-        dt = float(context.timestep_seconds)
-        nstep = int(context.step)
+        entries = state.entries
+        dt = float(entries.dt()) if entries.dt is not None else float(context.timestep_seconds)
+        nstep = int(entries.nstep()) if entries.nstep is not None else int(context.step)
         self.calls = []
         for index, (lchnk, ncol) in enumerate(zip(*native.chunks)):
             self._tend_chunk(state, int(lchnk), int(ncol), index, dt, nstep)
