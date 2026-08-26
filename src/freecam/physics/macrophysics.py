@@ -26,6 +26,8 @@ Swapping the kernel for a model is then one assignment: ``scheme.kernel``.
 from __future__ import annotations
 
 import ctypes
+import json
+import os
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable, Mapping, Sequence
@@ -36,6 +38,7 @@ from ..pi_cam.errors import PICAMConfigurationError
 from ..pi_cam.facade import Physics
 from ..pi_cam.pbuf import PBuf, macrop_fields
 from ..pi_cam.kernel_codegen import load_direct_kernels
+from .capture import lane_sha256
 from .errors import PhysicsError
 from .image import module_view
 from .spec import load_function_spec
@@ -369,13 +372,18 @@ class Macrophysics:
         entries = state.entries
         dt = float(entries.dt()) if entries.dt is not None else float(context.timestep_seconds)
         nstep = int(entries.nstep()) if entries.nstep is not None else int(context.step)
+        state.rank = int(context.rank)
+        state.nstep = nstep
         self.calls = []
         for index, (lchnk, ncol) in enumerate(zip(*native.chunks)):
             self._tend_chunk(state, int(lchnk), int(ncol), index, dt, nstep)
 
     def _tend_chunk(self, st: "_RankState", lchnk: int, ncol: int, index: int, dt: float, nstep: int) -> None:
-        H, C, pb, K = st.handles, st.constants, st.pbuf, st.kernel_on_chunk
+        H, C, pb = st.handles, st.constants, st.pbuf
         L = st.local
+
+        def K(name, inputs, *, outputs, fields=None):
+            st.kernel_on_chunk(name, inputs, outputs=outputs, fields=fields, ncol=ncol)
         top = C.top_lev
         pcols, pver, pverp = st.pcols, st.pver, st.pverp
         cols = slice(0, ncol)
@@ -591,8 +599,11 @@ class Macrophysics:
         H.state_dealloc(lchnk); log("physics_state_dealloc")
 
     def _kernel_call(self, st, lchnk, ncol, dt, pbv, forcing, cam_in, index) -> None:
-        C, s, K = st.constants, st.local, st.kernel_on_chunk
+        C, s = st.constants, st.local
         S = st.handles
+
+        def K(name, inputs, *, outputs):
+            st.kernel_on_chunk(name, inputs, outputs=outputs, ncol=ncol)
         state_pmid = S.view(lchnk, VIEW["state_pmid"])
         state_pdel = S.view(lchnk, VIEW["state_pdel"])
         inputs = {
@@ -625,8 +636,16 @@ class Macrophysics:
                    "ai_st_star": pbv["AIST"], "ql_st_star": pbv["QLST"], "qi_st_star": pbv["QIST"],
                    "t0": s["t_inout"], "qv0": s["qv_inout"], "ql0": s["ql_inout"], "qi0": s["qi_inout"],
                    "nl0": s["nl_inout"], "ni0": s["ni_inout"]}
+        trace = st.trace
+        if trace is not None:
+            before = {name: lane_sha256(np.asarray(value), ncol) for name, value in inputs.items()}
         if self.kernel is None:
             K("mmacro_pcond", inputs, outputs=outputs)
+            if trace is not None:
+                after = {name: lane_sha256(np.asarray(value), ncol) for name, value in outputs.items()}
+                trace.write(json.dumps({"mpi_rank": st.rank, "lchnk": lchnk, "nstep": st.nstep, "ncol": ncol,
+                                        "dt": dt, "before": before, "after": after}) + "\n")
+                trace.flush()
             return
         # A model in the kernel's place: the live columns as (ncol, ...) arrays
         # in, the 23 returned values by name out, written to the live columns.
@@ -680,6 +699,16 @@ class _RankState:
 
     def __init__(self, native: Any, scheme: Macrophysics) -> None:
         self.native = native
+        self.rank = 0
+        self.nstep = 0
+        # FREECAM_MACRO_TRACE=<dir>: one JSON line per chunk per step with the
+        # live-lane hash of every mmacro_pcond argument before and after the
+        # call, comparable record for record with a capture of the oracle.
+        directory = os.environ.get("FREECAM_MACRO_TRACE")
+        self.trace = None
+        if directory:
+            Path(directory).mkdir(parents=True, exist_ok=True)
+            self.trace = open(Path(directory) / f"macro_trace.rank-{os.getpid()}.jsonl", "a")
         library = native.library
         self.entries = _Entries(library)
         _check(self.entries.bind_hosts(), "pycam_macro_bind_hosts_v1")
@@ -744,13 +773,15 @@ class _RankState:
                 for name in ("landfrac", "ocnfrac", "snowhland", "ts", "sst")}
 
     def kernel_on_chunk(self, name: str, inputs: Mapping[str, Any], *, outputs: Mapping[str, Any],
-                        fields: Mapping[str, str] | None = None) -> None:
+                        fields: Mapping[str, str] | None = None, ncol: int | None = None) -> None:
         """Run one direct kernel on one chunk, copying views in and out exactly.
 
         Inputs that are handle or buffer views are copied into the kernel's
         scratch slice before the call; outputs mapped to a view are copied
-        back after it.  ``None`` means "the scratch array of the same name".
-        Every copy is a bit-exact move of doubles; no arithmetic happens here.
+        back after it -- live lanes only, since the Fortran driver never
+        writes a padding lane and a view's padding must stay what CAM left
+        there.  ``None`` means "the scratch array of the same name".  Every
+        copy is a bit-exact move of doubles; no arithmetic happens here.
         """
 
         arrays: dict[str, np.ndarray] = {}
@@ -767,7 +798,7 @@ class _RankState:
         for local, target in outputs.items():
             if target is None:
                 continue
-            self._copy_out(target, self.scratch[local])
+            self._copy_out(target, self.scratch[local], ncol)
 
     def _scratch_for(self, argument: Any, key: str) -> np.ndarray:
         dims = {"pcols": self.pcols, "pver": self.pver, "pverp": self.pverp, "pcnst": self.pcnst,
@@ -788,12 +819,12 @@ class _RankState:
         else:
             scratch[..., 0] = array.astype(scratch.dtype, copy=False)
 
-    @staticmethod
-    def _copy_out(target: np.ndarray, scratch: np.ndarray) -> None:
-        if target.ndim == 0 or target.ndim == scratch.ndim:
-            target[...] = scratch
+    def _copy_out(self, target: np.ndarray, scratch: np.ndarray, ncol: int | None) -> None:
+        source = scratch if target.ndim == 0 or target.ndim == scratch.ndim else scratch[..., 0]
+        if ncol is None or target.ndim == 0 or target.shape[0] != self.pcols:
+            target[...] = source
         else:
-            target[...] = scratch[..., 0]
+            target[:ncol, ...] = source[:ncol, ...]
 
 
 class _Local(Mapping[str, np.ndarray]):

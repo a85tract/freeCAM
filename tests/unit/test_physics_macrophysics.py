@@ -211,6 +211,7 @@ class _Context:
         self.native = native
         self.timestep_seconds = 1800
         self.step = 5
+        self.rank = 3
 
 
 @pytest.fixture
@@ -312,3 +313,38 @@ def test_tend_refuses_to_run_as_an_ordinary_process() -> None:
 
     with pytest.raises(M.PhysicsError, match="native"):
         Macrophysics().tend(None, Context())
+
+
+
+def test_copy_out_writes_live_lanes_only_and_leaves_padding_as_cam_left_it(fake) -> None:
+    """The Fortran driver never writes a padding lane; a view's padding must
+    stay whatever CAM's storage held, not become the scratch's zeros."""
+
+    scheme = Macrophysics()
+    lib = fake.library
+    # pre-fill every view CAM would hand out with a marker in the padding lanes
+    scheme.tend(None, _Context(fake))            # allocates the fake's views
+    for array in lib.views.values():
+        if array.ndim >= 1 and array.shape[0] == 16:
+            array[14:, ...] = -777.0             # chunk 1540 has ncol=14 -> lanes 14,15 pad
+    M._RankState._cache.clear()
+    scheme.tend(None, _Context(fake))
+    touched = [key for key, array in lib.views.items()
+               if key[0] == 1540 and array.ndim >= 1 and array.shape[0] == 16 and not np.all(array[14:, ...] == -777.0)]
+    assert touched == [], touched
+
+
+def test_the_trace_records_one_line_per_chunk_with_live_lane_hashes(fake, tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("FREECAM_MACRO_TRACE", str(tmp_path))
+    M._RankState._cache.clear()
+    Macrophysics().tend(None, _Context(fake))
+    import json
+    files = list(tmp_path.glob("macro_trace.rank-*.jsonl"))
+    assert len(files) == 1
+    lines = [json.loads(l) for l in files[0].read_text().splitlines()]
+    assert [(l["lchnk"], l["ncol"]) for l in lines] == [(1540, 14), (1541, 13)]
+    assert lines[0]["mpi_rank"] == 3 and lines[0]["nstep"] == 5
+    # before: the 37 reads (2 structural, 29 input, 6 inout) and the 6
+    # pointer workspaces as they enter; after: the 23 returned values
+    assert len(lines[0]["before"]) == 43 and len(lines[0]["after"]) == 23
+    assert all(len(h) == 64 for h in lines[0]["before"].values())

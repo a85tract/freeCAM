@@ -153,6 +153,23 @@ def pair_records(records: Sequence[CaptureRecord]) -> list[tuple[CaptureRecord, 
     return pairs
 
 
+def lane_sha256(values: np.ndarray, ncol: int) -> str:
+    """Hash the live lanes of one chunk argument, in Fortran order.
+
+    The padding lanes ``ncol..pcols-1`` are never written by the routine and
+    hold whatever the caller's storage held, so they are excluded; everything
+    else -- every level, every constituent -- is hashed as float64 bytes.
+    Used by the Python driver layer's trace and by the tool that compares it
+    against a capture, so both hash the same bytes.
+    """
+
+    array = np.asarray(values, dtype=np.float64)
+    if array.ndim == 0:
+        return hashlib.sha256(array.tobytes()).hexdigest()
+    live = np.asfortranarray(array[: int(ncol)])
+    return hashlib.sha256(live.tobytes(order="F")).hexdigest()
+
+
 def array_sha256(values: np.ndarray) -> str:
     return hashlib.sha256(np.ascontiguousarray(values).tobytes()).hexdigest()
 

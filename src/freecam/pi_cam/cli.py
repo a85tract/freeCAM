@@ -594,9 +594,19 @@ if __name__ == "__main__":
         # A rank-local BFB or native-state failure must not leave the other
         # ranks blocked in their next CAM collective until PBS walltime.  The
         # failing rank prints the useful diagnostic first, then terminates the
-        # complete validation communicator.
+        # complete validation communicator.  It also leaves the diagnostic in
+        # the run directory: an abort can kill a rank before its stderr is
+        # flushed, and the message that names the first differing field is
+        # the one worth keeping.
         traceback.print_exc()
         sys.stderr.flush()
+        try:
+            run_dir = Path(sys.argv[sys.argv.index("--run-dir") + 1])
+            rank = os.environ.get("PMI_RANK") or os.environ.get("PMIX_RANK") or "unknown"
+            (run_dir / f"error.rank-{rank}.json").write_text(json.dumps(
+                {"rank": rank, "traceback": traceback.format_exc()}, indent=2))
+        except Exception:
+            pass
         try:
             from mpi4py import MPI
         except ImportError:
