@@ -48,6 +48,12 @@ SECOND_HALF = "cam_run1.macro_tend_post_leaf"
 IWTVAP, IWTLIQ, IWTICE, PWTYPE = 1, 2, 3, 7
 WTRC_MAX_CNST = 700
 
+# physconst.F90 declares these three as parameters of shr_const_mod, so the
+# image has no symbol for them either.  The decimal literals below are the
+# source's; Python and the Fortran compiler round the same literal to the
+# same double.  A test pins them against the pinned shr_const_mod.F90.
+CPAIR, LATICE, LATVAP = 1.00464e3, 3.337e5, 2.501e6
+
 # pycam_macro_handles.F90 view codes.  A test keeps this table equal to the
 # Fortran one.
 VIEW = {
@@ -246,9 +252,8 @@ class _Constants:
             do_detrain=b("macrop_driver_mp_do_detrain_"),
             micro_do_icesupersat=b("macrop_driver_mp_micro_do_icesupersat_"),
             use_shfrc=b("macrop_driver_mp_use_shfrc_"),
-            cpair=r("physconst_mp_cpair_"), latice=r("physconst_mp_latice_"),
-            latvap=r("physconst_mp_latvap_"), gravit=r("physconst_mp_gravit_"),
-            tmelt=r("physconst_mp_tmelt_"),
+            cpair=CPAIR, latice=LATICE, latvap=LATVAP,
+            gravit=r("physconst_mp_gravit_"), tmelt=r("physconst_mp_tmelt_"),
             trace_water=b("water_tracer_vars_mp_trace_water_"),
             wtrc_detrain_in_macrop=b("water_tracer_vars_mp_wtrc_detrain_in_macrop_"),
             wtrc_nwset=i("water_tracer_vars_mp_wtrc_nwset_"),

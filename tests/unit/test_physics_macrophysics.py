@@ -42,6 +42,25 @@ def test_water_type_constants_equal_the_pinned_source() -> None:
     assert int(re.search(r"WTRC_MAX_CNST\s*=\s*(\d+)", tracers).group(1)) == M.WTRC_MAX_CNST
 
 
+@pinned
+def test_the_three_physconst_parameters_equal_the_pinned_shr_const_literals() -> None:
+    """cpair, latice and latvap are parameters: no symbol, so they are pinned.
+
+    Gate B2 failed once on `image has no symbol physconst_mp_cpair_`.
+    """
+
+    text = (REPO / "external/iCESM1.3.1_fzhu/cime/src/share/util/shr_const_mod.F90").read_text()
+    literal = {m.group(1): float(m.group(2).replace("_R8", "").replace("_r8", ""))
+               for m in re.finditer(r"SHR_CONST_(CPDAIR|LATICE|LATVAP)\s*=\s*([0-9.eE+-]+_[Rr]8)", text)}
+    assert literal == {"CPDAIR": M.CPAIR, "LATICE": M.LATICE, "LATVAP": M.LATVAP}
+    # and physconst really does declare them as parameters, not variables
+    physconst = next(REPO.glob("external/iCESM1.3.1_fzhu/components/cam/src/**/physconst.F90")).read_text()
+    for name in ("cpair", "latice", "latvap"):
+        assert re.search(rf"parameter\s*::\s*{name}\s*=\s*shr_const_", physconst), name
+    for name in ("gravit", "tmelt"):
+        assert not re.search(rf"parameter\s*::\s*{name}\s*=", physconst), f"{name} is a parameter now; read it that way"
+
+
 def test_forcing_codes_equal_the_boundary_accessor_s_cases() -> None:
     added = "\n".join(l[1:] for l in BOUNDARY.read_text().splitlines() if l.startswith("+"))
     cases = re.findall(r"case \((\d)\)\n\s*call pycam_macro_address\d\(pycesm_bc_(\w+)\(", added)
