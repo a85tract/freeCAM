@@ -112,6 +112,17 @@ def direct_kernel_payload(kernels: Iterable[DirectKernel]) -> Mapping[str, objec
                             if argument.extents
                             else {}
                         ),
+                        # A POINTER dummy and a LOGICAL dummy each change how
+                        # the wrapper passes the argument; dropping either here
+                        # compiles a wrapper that hands the routine the wrong
+                        # thing.  Written only when set, so kernels without them
+                        # serialize as they always have.
+                        **({"pointer": True} if argument.pointer else {}),
+                        **(
+                            {"fortran_type": argument.fortran_type}
+                            if argument.fortran_type
+                            else {}
+                        ),
                         **(
                             {
                                 "fixed_indices": {

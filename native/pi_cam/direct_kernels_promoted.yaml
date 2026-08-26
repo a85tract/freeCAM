@@ -164,6 +164,7 @@ kernels:
     chunk_axis: 1
     extents:
     - chunks
+    fortran_type: logical
   - field: macro.cu_det_st
     dtype: int32
     rank: 1
@@ -171,6 +172,7 @@ kernels:
     chunk_axis: 1
     extents:
     - chunks
+    fortran_type: logical
   - field: macro.do_wtrc_detrain
     dtype: int32
     rank: 1
@@ -178,6 +180,7 @@ kernels:
     chunk_axis: 1
     extents:
     - chunks
+    fortran_type: logical
   - field: macro.gravit
     dtype: float64
     rank: 1
@@ -864,6 +867,7 @@ kernels:
     chunk_axis: 1
     extents:
     - chunks
+    fortran_type: logical
   - field: macro.do_cldliq
     dtype: int32
     rank: 1
@@ -871,6 +875,7 @@ kernels:
     chunk_axis: 1
     extents:
     - chunks
+    fortran_type: logical
   - field: macro.tlat
     dtype: float64
     rank: 3
@@ -1621,6 +1626,7 @@ kernels:
     - pcols
     - pverp
     - chunks
+    pointer: true
   - field: macro.qtl_flx
     dtype: float64
     rank: 3
@@ -1630,6 +1636,7 @@ kernels:
     - pcols
     - pverp
     - chunks
+    pointer: true
   - field: macro.qti_flx
     dtype: float64
     rank: 3
@@ -1639,6 +1646,7 @@ kernels:
     - pcols
     - pverp
     - chunks
+    pointer: true
   - field: macro.cmfr_det
     dtype: float64
     rank: 3
@@ -1648,6 +1656,7 @@ kernels:
     - pcols
     - pver
     - chunks
+    pointer: true
   - field: macro.qlr_det
     dtype: float64
     rank: 3
@@ -1657,6 +1666,7 @@ kernels:
     - pcols
     - pver
     - chunks
+    pointer: true
   - field: macro.qir_det
     dtype: float64
     rank: 3
@@ -1666,6 +1676,7 @@ kernels:
     - pcols
     - pver
     - chunks
+    pointer: true
   - field: macro.s_tendout
     dtype: float64
     rank: 3
@@ -1826,6 +1837,7 @@ kernels:
     chunk_axis: 1
     extents:
     - chunks
+    fortran_type: logical
 - name: wtrc_init_rates
   routine: wtrc_init_rates
   symbol: pycam_pi_cam_wtrc_init_rates_v1

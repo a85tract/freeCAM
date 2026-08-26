@@ -183,3 +183,28 @@ def test_the_descriptors_reach_the_promoted_set_additively() -> None:
     assert "dadadj" in promoted
     assert all(not k.symbol.startswith("freecam_pi_cam_promoted_") for k in ours.values()), \
         "our kernels belong in the fixed image, not the promoted add-on"
+
+
+def test_the_promoted_round_trip_keeps_pointer_and_logical_dummies() -> None:
+    """The image build failed once because it did not.
+
+    build_pi_cam_promoted_kernels.py re-serializes every reviewed kernel into
+    direct_kernels_promoted.yaml, and the serializer used to write neither
+    `pointer` nor `fortran_type`.  The wrapper generated from that file then
+    passed mmacro_pcond's six pointer dummies as plain sections and its
+    logical as an integer, and the compiler refused both.
+    """
+
+    from freecam.pi_cam.kernel_codegen import DirectKernel
+    from freecam.pi_cam.process_codegen import direct_kernel_payload
+
+    ours = tuple(load_direct_kernels(carve.DESCRIPTORS))
+    payload = direct_kernel_payload(ours)
+    again = tuple(DirectKernel.from_payload(item) for item in payload["kernels"])
+    for before, after in zip(ours, again):
+        for a, b in zip(before.arguments, after.arguments):
+            assert a.pointer == b.pointer, (before.name, a.field)
+            assert a.fortran_type == b.fortran_type, (before.name, a.field)
+    promoted = (REPO / "native/pi_cam/direct_kernels_promoted.yaml").read_text()
+    assert promoted.count("pointer: true") == 6
+    assert promoted.count("fortran_type: logical") == 6
