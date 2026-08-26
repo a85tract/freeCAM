@@ -14,7 +14,9 @@
 !
 ! The exposed record is registered as a state-bridge owner, so every component
 ! reaches Python as a zero-copy `macro_split.<name>` view.  `in_*` are the
-! 35 arguments the kernel reads, `out_*` and `ref_*` the 23 it returns --
+! 37 arguments the kernel reads -- including lchnk and ncol, without which
+! Python could not tell which lanes of a chunk are live -- and `out_*` and
+! `ref_*` the 23 it returns --
 ! 17 outputs and the 6 in/out values as they leave.  Those are exactly the
 ! `input__*` and `output__*`/`updated__*` variables of a training set built by
 ! examples/generate_mmacro_pcond_dataset.py, so a surrogate keeps one layout
@@ -60,6 +62,8 @@ module pycam_macro_split
   type pycam_macro_record_t
      integer  :: kernel_mode
      integer  :: stage_seen
+     integer  :: in_lchnk
+     integer  :: in_ncol
      real(r8) :: in_dt
      real(r8) :: in_p(pcols,pver)
      real(r8) :: in_dp(pcols,pver)
@@ -146,7 +150,7 @@ module pycam_macro_split
   type(pycam_macro_record_t), allocatable, target, save :: pycam_macro_record(:)
 
   ! Not a user boundary: continuity for the second half only.  These are the
-  ! 14 values it reads that the kernel interface does not carry.
+  ! 16 values it reads that the kernel interface does not carry.
   type pycam_macro_carry_t
      real(r8) :: cldsice(pcols,pver)
      real(r8) :: cldst(pcols,pver)
@@ -162,6 +166,8 @@ module pycam_macro_split
      real(r8) :: pqctn(pcols,pver)
      real(r8) :: pqitn(pcols,pver)
      real(r8) :: process_rates(pcols,pver,pwtype,pwtype,pwtype)
+     real(r8) :: det_s(pcols)
+     real(r8) :: det_ice(pcols)
   end type pycam_macro_carry_t
 
   type(pycam_macro_carry_t), allocatable, target, save :: carry(:)
@@ -193,7 +199,7 @@ contains
        qme, qvadj, qladj, qiadj, qllim, qilim, cld, al_st_star, ai_st_star, &
        ql_st_star, qi_st_star, do_cldice, cldsice, cldst, fice, icecldf, &
        liqcldf, mr_ccice, mr_ccliq, mr_lsice, mr_lsliq, nqctn, nqitn, pqctn, &
-       pqitn, process_rates, state_loc, ptend_loc)
+       pqitn, process_rates, det_s, det_ice, state_loc, ptend_loc)
 
     integer, intent(in) :: stage
     integer, intent(in) :: lchnk
@@ -270,6 +276,8 @@ contains
     real(r8), intent(in) :: pqctn(pcols,pver)
     real(r8), intent(in) :: pqitn(pcols,pver)
     real(r8), intent(in) :: process_rates(pcols,pver,pwtype,pwtype,pwtype)
+    real(r8), intent(in) :: det_s(pcols)
+    real(r8), intent(in) :: det_ice(pcols)
     type(physics_state), intent(in) :: state_loc
     type(physics_ptend), intent(in) :: ptend_loc
 
@@ -297,6 +305,8 @@ contains
     mode = slot%kernel_mode
     slot%stage_seen = pycam_macro_stage_first
 
+    slot%in_lchnk = lchnk
+    slot%in_ncol = ncol
     slot%in_dt = dt
     slot%in_p = p
     slot%in_dp = dp
@@ -410,6 +420,8 @@ contains
     hold%pqctn = pqctn
     hold%pqitn = pqitn
     hold%process_rates = process_rates
+    hold%det_s = det_s
+    hold%det_ice = det_ice
     carried_state(lchnk) = state_loc
     carried_ptend(lchnk) = ptend_loc
   end subroutine pycam_macro_before
@@ -424,7 +436,8 @@ contains
        al_st_star, ai_st_star, ql_st_star, qi_st_star, t0, qv0, ql0, qi0, &
        nl0, ni0, clrw_old, clri_old, d_ql, d_qi, cldsice, cldst, fice, &
        icecldf, liqcldf, mr_ccice, mr_ccliq, mr_lsice, mr_lsliq, nqctn, &
-       nqitn, pqctn, pqitn, process_rates, state_loc, ptend_loc)
+       nqitn, pqctn, pqitn, process_rates, det_s, det_ice, state_loc, &
+       ptend_loc)
 
     integer, intent(in) :: stage
     integer, intent(in) :: lchnk
@@ -469,6 +482,8 @@ contains
     real(r8), intent(inout) :: pqctn(pcols,pver)
     real(r8), intent(inout) :: pqitn(pcols,pver)
     real(r8), intent(inout) :: process_rates(pcols,pver,pwtype,pwtype,pwtype)
+    real(r8), intent(inout) :: det_s(pcols)
+    real(r8), intent(inout) :: det_ice(pcols)
     type(physics_state), intent(inout) :: state_loc
     type(physics_ptend), intent(inout) :: ptend_loc
 
@@ -503,6 +518,8 @@ contains
     pqctn = hold%pqctn
     pqitn = hold%pqitn
     process_rates = hold%process_rates
+    det_s = hold%det_s
+    det_ice = hold%det_ice
     state_loc = carried_state(lchnk)
     ptend_loc = carried_ptend(lchnk)
 

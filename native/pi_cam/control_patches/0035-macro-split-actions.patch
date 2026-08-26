@@ -40,7 +40,7 @@
 +        qiten, ncten, niten, cmeliq, qvadj, qladj, qiadj, qllim, qilim, cld, &
 +        alst, aist, qlst, qist, do_cldice, cldsice, cldst, fice, icecldf, &
 +        liqcldf, mr_ccice, mr_ccliq, mr_lsice, mr_lsliq, nqctn, nqitn, pqctn, &
-+        pqitn, process_rates, state_loc, ptend_loc)
++        pqitn, process_rates, det_s, det_ice, state_loc, ptend_loc)
 +
 +   if (macro_stage_local == 1) then
 +      ! The kernel boundary is published; Python runs between the halves.
@@ -55,5 +55,5 @@
 +        qiadj, qllim, qilim, cld, alst, aist, qlst, qist, t_inout, qv_inout, &
 +        ql_inout, qi_inout, nl_inout, ni_inout, clrw_old, clri_old, dlf_ql, &
 +        dlf_qi, cldsice, cldst, fice, icecldf, liqcldf, mr_ccice, mr_ccliq, &
-+        mr_lsice, mr_lsliq, nqctn, nqitn, pqctn, pqitn, process_rates, &
-+        state_loc, ptend_loc)
++        mr_lsice, mr_lsliq, nqctn, nqitn, pqctn, pqitn, process_rates, det_s, &
++        det_ice, state_loc, ptend_loc)

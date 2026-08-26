@@ -70,6 +70,10 @@ CARRY = (
     ("nqctn", "pcols,pver"), ("nqitn", "pcols,pver"),
     ("pqctn", "pcols,pver"), ("pqitn", "pcols,pver"),
     ("process_rates", "pcols,pver,pwtype,pwtype,pwtype"),
+    # Not locals but `intent(out)` arguments, and the first half is where they
+    # are set (macrop_driver.F90:706-808).  The caller reads them after the
+    # kernel, so they have to survive the gap like everything else.
+    ("det_s", "pcols"), ("det_ice", "pcols"),
 )
 
 # Kernel inputs the second half still reads once the kernel has run, so the
@@ -103,7 +107,7 @@ def _wrap(items, indent: str, *, close: bool = False, width: int = 78) -> list[s
 def render_module() -> str:
     args = _arguments()
     spec = {a["name"]: a for a in args}
-    inputs = [a for a in args if a["role"] in ("input", "inout")]
+    inputs = [a for a in args if a["role"] in ("structural", "input", "inout")]
     returned = [a for a in args if a["role"] == "output"] + [a for a in args if a["role"] == "inout"]
     names = [a["name"] for a in args]
 
@@ -157,7 +161,9 @@ def render_module() -> str:
 !
 ! The exposed record is registered as a state-bridge owner, so every component
 ! reaches Python as a zero-copy `macro_split.<name>` view.  `in_*` are the
-! {len(inputs)} arguments the kernel reads, `out_*` and `ref_*` the {len(returned)} it returns --
+! {len(inputs)} arguments the kernel reads -- including lchnk and ncol, without which
+! Python could not tell which lanes of a chunk are live -- and `out_*` and
+! `ref_*` the {len(returned)} it returns --
 ! 17 outputs and the 6 in/out values as they leave.  Those are exactly the
 ! `input__*` and `output__*`/`updated__*` variables of a training set built by
 ! examples/generate_mmacro_pcond_dataset.py, so a surrogate keeps one layout

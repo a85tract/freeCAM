@@ -1,0 +1,45 @@
+--- a/src/physics/cam/physpkg.F90
++++ b/src/physics/cam/physpkg.F90
+@@ -2138 +2138 @@ subroutine tphysbc (ztodt,               &
+-       sgh30, cam_out, cam_in, action_id)
++       sgh30, cam_out, cam_in, action_id, macro_stage)
+@@ -2224,0 +2225,4 @@ subroutine tphysbc (ztodt,               &
++    ! Which half of the macrophysics stage to run.  Absent or 0 keeps the
++    ! stage whole.  1 stops just after the kernel boundary is published,
++    ! 2 resumes from there.  See pycam_macro_split.
++    integer, intent(in), optional :: macro_stage
+@@ -2246,0 +2251 @@ subroutine tphysbc (ztodt,               &
++    integer :: macro_stage_local              ! 0 whole, 1 first half, 2 second half
+@@ -2340,0 +2346,14 @@ subroutine tphysbc (ztodt,               &
++    macro_stage_local = 0
++    if (present(macro_stage)) macro_stage_local = macro_stage
++    if (macro_stage_local /= 0) then
++       ! The second half re-enters this routine and reruns everything in
++       ! the stage that precedes the kernel.  That is only safe where the
++       ! preceding work is idempotent, so the paths that are not are
++       ! refused rather than silently run twice.
++       if (cld_macmic_num_steps /= 1) call endrun &
++            ('TPHYSBC: the macrophysics split needs cld_macmic_num_steps = 1')
++       if (carma_do_cldice .or. carma_do_cldliq) call endrun &
++            ('TPHYSBC: the macrophysics split does not carry CARMA cloud precipitation')
++       if (micro_do_icesupersat) call endrun &
++            ('TPHYSBC: the macrophysics split does not carry the ice-supersaturation aerosol step')
++    end if
+@@ -2729,0 +2749,6 @@ subroutine tphysbc (ztodt,               &
++       if (macro_stage_local /= 0) then
++          if (microp_scheme /= 'MG') call endrun &
++               ('TPHYSBC: the macrophysics split is for the MG microphysics branch')
++          if (macrop_scheme == 'CLUBB_SGS') call endrun &
++               ('TPHYSBC: the macrophysics split is for the Park macrophysics, not CLUBB')
++       end if
+@@ -2830 +2855,9 @@ subroutine tphysbc (ztodt,               &
+-                  pbuf,            det_s,          det_ice)
++                  pbuf,            det_s,          det_ice,          &
++                  macro_stage=macro_stage_local)
++
++             if (macro_stage_local == 1) then
++                ! The kernel boundary is published.  Python runs here and
++                ! calls back in with macro_stage = 2.
++                call t_stopf('macrop_tend')
++                return
++             end if

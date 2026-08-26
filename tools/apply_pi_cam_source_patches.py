@@ -23,6 +23,7 @@ PATCHES = (
     "native/pi_cam/control_patches/0030-order-independent-scheme-actions.patch",
     "native/pi_cam/control_patches/0033-single-cam-online-coupler.patch",
     "native/pi_cam/control_patches/0035-macro-split-actions.patch",
+    "native/pi_cam/control_patches/0036-macro-split-tphysbc.patch",
 )
 
 # Modules this repository owns that the patches `use`.  They are copied in

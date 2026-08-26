@@ -25,6 +25,15 @@ from .distributions import (
 from .column import InvalidInput
 from .function import PhysicsFunction, load_function
 from .result import FunctionResult
+from .surrogate import (
+    INPUTS,
+    RETURNED,
+    IdentityKernel,
+    MacroKernel,
+    ShadowSurrogate,
+    TorchSurrogate,
+    split_macro_stage,
+)
 from .spec import (
     ArgumentSpec,
     FunctionSpec,
@@ -65,6 +74,11 @@ __all__ = [
     "PhysicsError",
     "PhysicsFunction",
     "PhysicsSpecError",
+    "IdentityKernel",
+    "MacroKernel",
+    "ShadowSurrogate",
+    "TorchSurrogate",
+    "split_macro_stage",
     "load_function",
     "load_function_spec",
 ]

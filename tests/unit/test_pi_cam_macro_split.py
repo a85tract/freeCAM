@@ -16,12 +16,13 @@ sys.path.insert(0, str(REPO / "tools"))
 
 import generate_pi_cam_macro_split as generator  # noqa: E402
 from apply_pi_cam_source_patches import PATCHES, SUPPORT_SOURCES  # noqa: E402
+from build_pi_cam_devices import LEAF_OPERATION_IDS, LEAF_OPERATION_NAMES, LEAF_PATCHES  # noqa: E402
 
 from freecam.pi_cam.state_codegen import load_state_bridge  # noqa: E402
 
 SPEC = yaml.safe_load(generator.SPEC.read_text())
 ARGUMENTS = SPEC["arguments"]
-INPUTS = tuple(a["name"] for a in ARGUMENTS if a["role"] in ("input", "inout"))
+INPUTS = tuple(a["name"] for a in ARGUMENTS if a["role"] in ("structural", "input", "inout"))
 RETURNED = tuple(
     [a["name"] for a in ARGUMENTS if a["role"] == "output"]
     + [a["name"] for a in ARGUMENTS if a["role"] == "inout"]
@@ -127,3 +128,37 @@ def test_the_call_site_mapping_agrees_with_the_capture_patch() -> None:
     for name, local in recorded.items():
         assert generator.ACTUAL[name] == local, f"{name} binds to a different local"
     assert set(recorded) == set(generator.ACTUAL)
+
+
+def test_each_patch_sits_in_the_build_that_has_to_prove_it() -> None:
+    """Numerical and control edits earn different gates, so they ship apart."""
+
+    production = [Path(name).name for name in PATCHES]
+    add_on = [path.name for path in LEAF_PATCHES]
+    # These two move numerical and control code that every run executes, so
+    # they are in the production set and answer to the bit-for-bit gate.
+    assert "0035-macro-split-actions.patch" in production
+    assert "0036-macro-split-tphysbc.patch" in production
+    # This one only widens the leaf dispatcher, which exists solely to let
+    # Python drive; it stays an add-on so enabling the API moves nothing.
+    assert "0037-macro-split-leaf-dispatch.patch" in add_on
+    assert "0037-macro-split-leaf-dispatch.patch" not in production
+    # The dispatcher patch edits what 0031 leaves behind, so it must come last.
+    assert add_on[-1] == "0037-macro-split-leaf-dispatch.patch"
+
+
+def test_the_two_halves_have_ids_that_collide_with_nothing() -> None:
+    from freecam.pi_cam.plan import PICAMStepPlan
+
+    assert dict(zip(LEAF_OPERATION_NAMES, LEAF_OPERATION_IDS))["leaf_macro_pre"] == 480
+    assert dict(zip(LEAF_OPERATION_NAMES, LEAF_OPERATION_IDS))["leaf_macro_post"] == 481
+    assert len(set(LEAF_OPERATION_IDS)) == len(LEAF_OPERATION_IDS)
+    assert len(LEAF_OPERATION_IDS) == len(LEAF_OPERATION_NAMES)
+
+    plan = PICAMStepPlan.default()
+    halves = [a for a in plan.actions if a.operation in ("leaf_macro_pre", "leaf_macro_post")]
+    assert [a.native_id for a in halves] == [480, 481]
+    # Off by default: the stage runs whole until someone asks for the split.
+    assert not any(a.enabled for a in halves)
+    stage = next(a for a in plan.actions if a.operation == "macro_microphysics")
+    assert stage.enabled
