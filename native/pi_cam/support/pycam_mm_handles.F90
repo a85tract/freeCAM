@@ -219,6 +219,10 @@ contains
     mm_ptend(lchnk)   = macro_ptend(lchnk)
     mm_det_s(:,lchnk)   = macro_det_s(:,lchnk)
     mm_det_ice(:,lchnk) = macro_det_ice(:,lchnk)
+    ! tphysbc's ptend is one object, freed by physics_update before the
+    ! next driver call initialises it; the walk's copy dies here likewise,
+    ! or physics_ptend_init refuses it next step
+    call physics_ptend_dealloc(macro_ptend(lchnk))
     status = 0_c_int
   end function pycam_mm_take_macro_v1
 
@@ -233,6 +237,7 @@ contains
     status = 2_c_int
     if (micro_ptend(lchnk)%psetcols < 1) return
     mm_ptend(lchnk) = micro_ptend(lchnk)
+    call physics_ptend_dealloc(micro_ptend(lchnk))
     status = 0_c_int
   end function pycam_mm_take_micro_v1
 

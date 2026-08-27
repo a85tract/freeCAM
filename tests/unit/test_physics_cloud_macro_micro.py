@@ -474,3 +474,17 @@ def test_without_water_tracers_the_mass_fixer_is_not_called(fake, monkeypatch) -
     scheme.tend(None, _Context(fake))
     assert "wtrc_mass_fixer" not in scheme.calls
     assert scheme.calls == [c for c in SEQUENCE_WHOLE if c != "wtrc_mass_fixer"] * 2
+
+
+def test_a_hand_over_frees_the_walk_s_tendency_object() -> None:
+    """tphysbc's ptend is one object that physics_update frees before the
+    next driver initialises it; each take_* copies the walk's and frees it,
+    or physics_ptend_init refuses the still-allocated one next step."""
+
+    text = HANDLES.read_text()
+    for walk in ("macro", "micro"):
+        body = re.search(rf"function pycam_mm_take_{walk}_v1.*?end function pycam_mm_take_{walk}_v1",
+                         text, re.S).group(0)
+        copy = re.search(rf"mm_ptend\(lchnk\)\s*=\s*{walk}_ptend\(lchnk\)", body).start()
+        free = body.index(f"call physics_ptend_dealloc({walk}_ptend(lchnk))")
+        assert copy < free
