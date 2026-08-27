@@ -16,10 +16,13 @@ type through ``pycam_mm_handles``.  The stage's own tendency objects
 live in Fortran and are reached by handle; the six precipitation fields
 are physics-buffer storage reached by index.
 
-In this form the two drivers, ``macrop_driver_tend`` and
-``microp_driver_tend``, are called whole, exactly as tphysbc calls them
-(Gate M-1).  The macrophysics and microphysics sub-walks replace those two
-calls in the next phases.
+``macrop_driver_tend`` is the :class:`Macrophysics` sub-walk, composed
+into this stage: its tendency object and detrainment are taken over
+exactly as the split stage's post-leaf took them (Gate M-2).
+``microp_driver_tend`` is still called whole, exactly as tphysbc calls it;
+the microphysics sub-walk replaces it next.  ``whole_drivers=True`` calls
+both drivers whole (Gate M-1), the form the composed one is diagnosed
+against.
 """
 
 from __future__ import annotations
@@ -34,12 +37,13 @@ import numpy as np
 from ..pi_cam.errors import PICAMConfigurationError
 from ..pi_cam.pbuf import PBuf, load_pbuf_table
 from .image import module_view
-from .macrophysics import FORCING
+from .macrophysics import FORCING, Macrophysics
 from .stage import (
     CORE_ENTRIES,
     HostEntries,
     HostServices,
     NativeStage,
+    StageProfile,
     StageRuntime,
     check as _check,
     pointer_of as _ptr,
@@ -66,8 +70,9 @@ PTEND, PTEND_AERO = 1, 2
 KERNELS = ("mm_substep_dt", "mm_flux_terms", "mm_precip_accumulate", "mm_precip_average")
 
 #: The order in which tphysbc does things inside stage 7 under the admitted
-#: configuration; ``tend`` follows it per chunk and a test compares the two.
-SEQUENCE = (
+#: configuration, with both drivers called whole; ``tend`` follows it per
+#: chunk and a test compares the two.
+SEQUENCE_WHOLE = (
     "pbuf_get_field*", "mm_substep_dt", "macmic_zero",
     "macrop_driver_tend", "mm_flux_terms",
     "physics_ptend_scale", "physics_update", "check_energy_chng:macrop_tend",
@@ -76,6 +81,11 @@ SEQUENCE = (
     "mm_precip_accumulate",
     "mm_precip_average", "wtrc_mass_fixer",
 )
+#: The same with the macrophysics sub-walk in the driver's place.
+SEQUENCE = tuple(
+    ("Macrophysics.tend_chunk", "take_macro") if name == "macrop_driver_tend" else (name,)
+    for name in SEQUENCE_WHOLE)
+SEQUENCE = tuple(name for names in SEQUENCE for name in names)
 
 #: The arguments tphysbc hands macrop_driver_tend beside state, ptend, the
 #: substep length, pbuf and the two detrainment outputs -- in its order.
@@ -115,6 +125,9 @@ class _MMEntries(HostEntries):
                           _P_DBL, _P_DBL, _P_DBL, _P_DBL, _INT], False),
         "ptend_sum_aero": ("pycam_{prefix}_ptend_sum_aero_v1", [_INT, _INT], False),
         "wtrc_mass_fixer": ("pycam_{prefix}_wtrc_mass_fixer_v1", [_INT], False),
+        # optional: an image built for Gate M-1 predates it, and that image
+        # still serves the whole-drivers form; the composed form refuses
+        "take_macro": ("pycam_{prefix}_take_macro_v1", [_INT], True),
     }
 
 
@@ -169,6 +182,11 @@ class _MMHandles(HostServices):
 
     def wtrc_mass_fixer(self, lchnk: int) -> None:
         _check(self.e.wtrc_mass_fixer(lchnk), "wtrc_mass_fixer")
+
+    def take_macro(self, lchnk: int) -> None:
+        """The macrophysics sub-walk's ptend and detrainment become the stage's."""
+
+        _check(self.e.take_macro(lchnk), "take_macro (ptend = macro_ptend(lchnk))")
 
 
 # -- module constants --------------------------------------------------------------
@@ -238,7 +256,9 @@ class CloudMacroMicrophysics(NativeStage):
 
     A whole workflow action: :meth:`attach` disables action 427 and puts
     :meth:`tend` in its place.  Per chunk, :meth:`tend_chunk` is the stage's
-    Fortran statement for statement, with the two drivers called whole.
+    Fortran statement for statement, with the macrophysics driver as the
+    composed :class:`Macrophysics` walk and the microphysics driver called
+    whole.  ``kernels["mmacro_pcond"]`` reaches the sub-walk's core.
     """
 
     STAGE = "cam_run1.cloud_macro_microphysics"
@@ -254,6 +274,20 @@ class CloudMacroMicrophysics(NativeStage):
 
     entries_class = _MMEntries
     services_class = _MMHandles
+
+    def __init__(self, *, whole_drivers: bool = False, kernels=None) -> None:
+        super().__init__(kernels=None)
+        #: The macrophysics sub-walk, or None to call macrop_driver_tend whole.
+        self.macro: Macrophysics | None = None
+        if not whole_drivers:
+            self.compose(macro=Macrophysics())
+        if kernels:
+            unknown = [name for name in kernels if name not in self.kernels]
+            if unknown:
+                raise PICAMConfigurationError(
+                    f"{type(self).__name__} has no swappable kernel named {unknown}; "
+                    f"it has {list(self.kernels)}")
+            self.kernels.update(kernels)
 
     # -- what the runtime asks of this stage -------------------------------------
 
@@ -308,16 +342,27 @@ class CloudMacroMicrophysics(NativeStage):
             st.scratch[name][...] = 0.0
         log("macmic_zero")
 
-        cam_in = st.cam_in(index)
         forcing = {name: H.forcing(lchnk, name) for name in FORCING}
-        arrays = [cam_in[name] if name in cam_in else forcing[name] for name in MACROP_ARGUMENTS]
+        if self.macro is None:
+            cam_in = st.cam_in(index)
+            arrays = [cam_in[name] if name in cam_in else forcing[name] for name in MACROP_ARGUMENTS]
 
         # 2218: do macmic_it = 1, cld_macmic_num_steps
         for _macmic_it in range(1, n + 1):
             # 2220-2234: micro_do_icesupersat is off (refused at attach)
-            # 2242-2250: macrop_scheme is not CLUBB_SGS (refused at attach); the whole driver
-            H.macrop_driver_tend(lchnk, sub_dt, arrays)
-            log("macrop_driver_tend")
+            # 2242-2250: macrop_scheme is not CLUBB_SGS (refused at attach); the driver
+            if self.macro is None:
+                H.macrop_driver_tend(lchnk, sub_dt, arrays)
+                log("macrop_driver_tend")
+            else:
+                # the sub-walk, with the driver's dtime; then its ptend, det_s
+                # and det_ice become the stage's, as the split stage's post-leaf did
+                macro_rt = self.macro.runtime(st.native)
+                macro_rt.rank, macro_rt.nstep = st.rank, nstep
+                del self.macro.calls[:]
+                self.macro.tend_chunk(macro_rt, lchnk, ncol, index, sub_dt, nstep)
+                log("Macrophysics.tend_chunk")
+                H.take_macro(lchnk); log("take_macro")
             det_s, det_ice = H.view(lchnk, VIEW["det_s"]), H.view(lchnk, VIEW["det_ice"])
             # 2254-2255: flx_cnd = -1*rliq ; flx_heat = det_s
             K("mm_flux_terms", {"ncol": ncol, "rliq": forcing["rliq"], "det_s": det_s},
@@ -360,6 +405,14 @@ class CloudMacroMicrophysics(NativeStage):
         if C.trace_water:
             H.wtrc_mass_fixer(lchnk); log("wtrc_mass_fixer")
 
+    def tend(self, fields: Any, context: Any) -> None:
+        super().tend(fields, context)
+        # the sub-walks' profiles are written with this stage's
+        for stage in self.components.values():
+            for runtime in stage._runtimes.values():
+                if isinstance(runtime.profile, StageProfile):
+                    runtime.profile.write(runtime.rank)
+
 
 __all__ = ["CloudMacroMicrophysics", "KERNELS", "MACROP_ARGUMENTS", "PBUF_FIELDS",
-           "PTEND", "PTEND_AERO", "SEQUENCE", "VIEW"]
+           "PTEND", "PTEND_AERO", "SEQUENCE", "SEQUENCE_WHOLE", "VIEW"]

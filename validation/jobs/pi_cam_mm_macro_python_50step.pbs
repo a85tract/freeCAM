@@ -1,5 +1,5 @@
 #!/bin/bash
-#PBS -N pycam-mm-glue-py-50
+#PBS -N pycam-mm-macro-py-50
 #PBS -q develop
 # Preserve the validated rank placement: 512 MPI ranks on four nodes while
 # charging the cpudev maximum of 256 physical CPUs.
@@ -9,17 +9,12 @@
 #PBS -o logs/
 #PBS -V
 
-# Gate M-1 of the cloud macro/microphysics transliteration: workflow action
-# 427 (tphysbc stage 7) is disabled and CloudMacroMicrophysics.tend runs in
-# its place on every rank -- the stage's glue as Python, the three drivers
-# (microp_aero_run, macrop_driver_tend, microp_driver_tend) called whole
-# through pycam_mm_handles, every FLOP still the oracle's Fortran.  What is
-# on trial: replacing a whole action rather than stopping inside one, the
-# phys_tend binding, the energy checks with their substep expressions, the
-# precipitation bookkeeping, and that the dlf buffer stage 7 used to save
-# already holds what stage 8 restores.  bfb: true is the only acceptable
-# result; a difference is diagnosed against the oracle run of the same
-# image, which differs from this one by exactly the Python process.
+# Gate M-2 of the cloud macro/microphysics transliteration: Gate M-1's
+# stage with the Macrophysics walk composed into it in macrop_driver_tend's
+# place -- its ptend, det_s and det_ice taken over exactly as the split
+# stage's post-leaf took them -- and microp_driver_tend still called whole.
+# It differs from Gate M-1's run by exactly the sub-walk; bfb: true is the
+# only acceptable result.
 
 set -euo pipefail
 
@@ -28,13 +23,14 @@ python=${repo}/.venv/bin/python
 case_root=/glade/work/$USER/CESM_cases/f.e13.F1850C5.ne16_g16.icesm131_ihesp.PI-cam-python-state
 oracle_run=/glade/derecho/scratch/$USER/pyCAM/PI-cam/f.e13.F1850C5.ne16_g16.icesm131_ihesp.PI-cam-oracle.50step/run
 mode=${PYCAM_EXECUTION_MODE:-fine_grained}
-run_dir=/glade/derecho/scratch/$USER/pyCAM/PI-cam/mm-glue-python-${mode}-${PBS_JOBID}/run
+run_dir=/glade/derecho/scratch/$USER/pyCAM/PI-cam/mm-macro-python-${mode}-${PBS_JOBID}/run
 boundary=/glade/derecho/scratch/$USER/pyCAM/PI-cam/nonpic-boundary-capture-50step/boundary/replay
 manifest=${PYCAM_NATIVE_MANIFEST:-${repo}/build/pi_cam_promoted/native_cam_manifest.json}
-summary=${PYCAM_SUMMARY:-validation/pi_cam_mm_glue_python_50step.json}
-bfb_output=${PYCAM_BFB_OUTPUT:-validation/pi_cam_mm_glue_python_vs_oracle_50step_bfb.json}
+summary=${PYCAM_SUMMARY:-validation/pi_cam_mm_macro_python_50step.json}
+bfb_output=${PYCAM_BFB_OUTPUT:-validation/pi_cam_mm_macro_python_vs_oracle_50step_bfb.json}
 # Per-rank timing of every handle entry, kernel and trace hash by name.
 export FREECAM_MM_PROFILE=${run_dir}/mm_profile
+export FREECAM_MACRO_PROFILE=${run_dir}/macro_profile
 
 source "${case_root}/.env_mach_specific.sh" >/dev/null 2>&1
 mpi_root=${CRAY_MPICH_DIR:-/opt/cray/pe/mpich/8.1.25/ofi/intel/19.0}
@@ -62,7 +58,6 @@ mpiexec --label -n 512 "${python}" -m freecam.pi_cam.cli \
   --run-dir "${run_dir}" \
   --execution-mode "${mode}" \
   --cloud-macro-micro-python \
-  --cloud-macro-micro-whole-drivers \
   --steps 50 \
   --summary "${summary}" \
   > "${run_dir}/pi_cam_python.log" 2>&1 || echo "model run exited $? (comparing the output anyway)"
@@ -76,4 +71,6 @@ status=0
 echo "--- where the Python stage's time went (mean per rank) ---"
 "${python}" tools/summarize_stage_profile.py "${run_dir}/mm_profile" --prefix mm --top 25 \
   --output "${run_dir}/mm_profile_summary.json" || true
+"${python}" tools/summarize_stage_profile.py "${run_dir}/macro_profile" --prefix macro --top 15 \
+  --output "${run_dir}/macro_profile_summary.json" || true
 exit "${status}"

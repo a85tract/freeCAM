@@ -28,6 +28,7 @@ module pycam_mm_handles
   use water_tracers,  only: wtrc_mass_fixer
   use water_tracer_vars, only: wtrc_nwset
   use time_manager,   only: get_nstep, get_step_size
+  use pycam_macro_handles, only: macro_ptend, macro_det_s, macro_det_ice
 
   implicit none
   private
@@ -201,6 +202,24 @@ contains
          pbuf, mm_det_s(:,lchnk), mm_det_ice(:,lchnk))
     status = 0_c_int
   end function pycam_mm_macrop_driver_tend_v1
+
+  integer(c_int) function pycam_mm_take_macro_v1(lchnk) &
+       bind(C, name='pycam_mm_take_macro_v1') result(status)
+    ! The macrophysics sub-walk in the driver's place: what the split stage's
+    ! post-leaf did (0039-macro-tend-boundary.patch), statement for statement
+    ! -- the walk's tendency object and detrainment become the stage's.
+    ! Three copies; the tendency assignment reallocates mm_ptend's
+    ! components exactly as tphysbc's `ptend = macro_ptend(lchnk)` did.
+    integer(c_int), value, intent(in) :: lchnk
+    status = 1_c_int
+    if (.not. chunk_ok(lchnk)) return
+    status = 2_c_int
+    if (macro_ptend(lchnk)%psetcols < 1) return
+    mm_ptend(lchnk)   = macro_ptend(lchnk)
+    mm_det_s(:,lchnk)   = macro_det_s(:,lchnk)
+    mm_det_ice(:,lchnk) = macro_det_ice(:,lchnk)
+    status = 0_c_int
+  end function pycam_mm_take_macro_v1
 
   integer(c_int) function pycam_mm_microp_driver_tend_v1(lchnk, cld_macmic_ztodt) &
        bind(C, name='pycam_mm_microp_driver_tend_v1') result(status)
