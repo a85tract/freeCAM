@@ -1,0 +1,381 @@
+{
+ "ranks": 512,
+ "tend_mean_seconds": null,
+ "rows": [
+  {
+   "key": "kernel-run:mmacro_pcond",
+   "mean_seconds": 0.32556648426222523,
+   "max_seconds": 0.780540720326826,
+   "mean_calls": 100.0,
+   "ranks_reporting": 512,
+   "share_of_tend": null
+  },
+  {
+   "key": "entry:wtrc_apply",
+   "mean_seconds": 0.18994765931623192,
+   "max_seconds": 0.48266143444925547,
+   "mean_calls": 100.0,
+   "ranks_reporting": 512,
+   "share_of_tend": null
+  },
+  {
+   "key": "kernel-run:wtrc_add_rates",
+   "mean_seconds": 0.15732269339846994,
+   "max_seconds": 0.5919428295455873,
+   "mean_calls": 500.0,
+   "ranks_reporting": 512,
+   "share_of_tend": null
+  },
+  {
+   "key": "kernel-copy-out:wtrc_add_rates",
+   "mean_seconds": 0.15127865218317993,
+   "max_seconds": 0.6018165075220168,
+   "mean_calls": 500.0,
+   "ranks_reporting": 512,
+   "share_of_tend": null
+  },
+  {
+   "key": "kernel-copy-in:wtrc_add_rates",
+   "mean_seconds": 0.1498367049149465,
+   "max_seconds": 0.6760042463429272,
+   "mean_calls": 500.0,
+   "ranks_reporting": 512,
+   "share_of_tend": null
+  },
+  {
+   "key": "kernel-run:macrop_detrain_partition",
+   "mean_seconds": 0.0905581281487855,
+   "max_seconds": 0.17057437868788838,
+   "mean_calls": 100.0,
+   "ranks_reporting": 512,
+   "share_of_tend": null
+  },
+  {
+   "key": "kernel-run:wtrc_init_rates",
+   "mean_seconds": 0.0832333584930609,
+   "max_seconds": 0.2418799928855151,
+   "mean_calls": 100.0,
+   "ranks_reporting": 512,
+   "share_of_tend": null
+  },
+  {
+   "key": "kernel-copy-out:wtrc_init_rates",
+   "mean_seconds": 0.07891434328834634,
+   "max_seconds": 0.26841004425659776,
+   "mean_calls": 100.0,
+   "ranks_reporting": 512,
+   "share_of_tend": null
+  },
+  {
+   "key": "kernel-run:macrop_advective_forcing",
+   "mean_seconds": 0.07608229609488149,
+   "max_seconds": 0.21329339896328747,
+   "mean_calls": 100.0,
+   "ranks_reporting": 512,
+   "share_of_tend": null
+  },
+  {
+   "key": "kernel-run:macrop_kernel_to_ptend",
+   "mean_seconds": 0.07112664355466336,
+   "max_seconds": 0.19499818235635757,
+   "mean_calls": 100.0,
+   "ranks_reporting": 512,
+   "share_of_tend": null
+  },
+  {
+   "key": "kernel-run:macrop_cloud_mixing_ratio",
+   "mean_seconds": 0.06231246460757234,
+   "max_seconds": 0.14838424162007868,
+   "mean_calls": 100.0,
+   "ranks_reporting": 512,
+   "share_of_tend": null
+  },
+  {
+   "key": "kernel-run:macrop_tracer_rate_split",
+   "mean_seconds": 0.05180561596836242,
+   "max_seconds": 0.1937473388388753,
+   "mean_calls": 100.0,
+   "ranks_reporting": 512,
+   "share_of_tend": null
+  },
+  {
+   "key": "kernel-run:macrop_save_equilibrium",
+   "mean_seconds": 0.05116183322911638,
+   "max_seconds": 0.1227675611153245,
+   "mean_calls": 100.0,
+   "ranks_reporting": 512,
+   "share_of_tend": null
+  },
+  {
+   "key": "kernel-run:cloud_fraction_fice",
+   "mean_seconds": 0.031354684700858115,
+   "max_seconds": 0.10517541319131851,
+   "mean_calls": 100.0,
+   "ranks_reporting": 512,
+   "share_of_tend": null
+  },
+  {
+   "key": "kernel-run:macrop_clear_fraction",
+   "mean_seconds": 0.029750992483087657,
+   "max_seconds": 0.062186808325350285,
+   "mean_calls": 100.0,
+   "ranks_reporting": 512,
+   "share_of_tend": null
+  },
+  {
+   "key": "kernel-copy-in:macrop_kernel_to_ptend",
+   "mean_seconds": 0.024740492073306086,
+   "max_seconds": 0.07694283802993596,
+   "mean_calls": 100.0,
+   "ranks_reporting": 512,
+   "share_of_tend": null
+  },
+  {
+   "key": "kernel-copy-in:mmacro_pcond",
+   "mean_seconds": 0.02460128174965348,
+   "max_seconds": 0.07204586081206799,
+   "mean_calls": 100.0,
+   "ranks_reporting": 512,
+   "share_of_tend": null
+  },
+  {
+   "key": "entry:update",
+   "mean_seconds": 0.021819036579813655,
+   "max_seconds": 0.045068393694236875,
+   "mean_calls": 200.0,
+   "ranks_reporting": 512,
+   "share_of_tend": null
+  },
+  {
+   "key": "kernel-copy-in:macrop_detrain_partition",
+   "mean_seconds": 0.021082816993043707,
+   "max_seconds": 0.06331009557470679,
+   "mean_calls": 100.0,
+   "ranks_reporting": 512,
+   "share_of_tend": null
+  },
+  {
+   "key": "kernel-copy-in:macrop_advective_forcing",
+   "mean_seconds": 0.02060799404705449,
+   "max_seconds": 0.0804839157499373,
+   "mean_calls": 100.0,
+   "ranks_reporting": 512,
+   "share_of_tend": null
+  },
+  {
+   "key": "entry:state_copy",
+   "mean_seconds": 0.01980361179295187,
+   "max_seconds": 0.08051559305749834,
+   "mean_calls": 100.0,
+   "ranks_reporting": 512,
+   "share_of_tend": null
+  },
+  {
+   "key": "kernel-copy-in:macrop_cloud_mixing_ratio",
+   "mean_seconds": 0.017185166942113028,
+   "max_seconds": 0.051187814213335514,
+   "mean_calls": 100.0,
+   "ranks_reporting": 512,
+   "share_of_tend": null
+  },
+  {
+   "key": "entry:ptend_sum",
+   "mean_seconds": 0.015180169157900991,
+   "max_seconds": 0.052836068673059344,
+   "mean_calls": 200.0,
+   "ranks_reporting": 512,
+   "share_of_tend": null
+  },
+  {
+   "key": "kernel-copy-out:mmacro_pcond",
+   "mean_seconds": 0.014507844640775147,
+   "max_seconds": 0.04292863956652582,
+   "mean_calls": 100.0,
+   "ranks_reporting": 512,
+   "share_of_tend": null
+  },
+  {
+   "key": "kernel-copy-out:macrop_kernel_to_ptend",
+   "mean_seconds": 0.014500424782880827,
+   "max_seconds": 0.043817192781716585,
+   "mean_calls": 100.0,
+   "ranks_reporting": 512,
+   "share_of_tend": null
+  },
+  {
+   "key": "entry:cldfrc",
+   "mean_seconds": 0.014233037518721403,
+   "max_seconds": 0.025064654415473342,
+   "mean_calls": 100.0,
+   "ranks_reporting": 512,
+   "share_of_tend": null
+  },
+  {
+   "key": "kernel-copy-in:macrop_save_equilibrium",
+   "mean_seconds": 0.01422592197465633,
+   "max_seconds": 0.04285966698080301,
+   "mean_calls": 100.0,
+   "ranks_reporting": 512,
+   "share_of_tend": null
+  },
+  {
+   "key": "entry:outfld",
+   "mean_seconds": 0.013425131751603203,
+   "max_seconds": 0.025453641777858138,
+   "mean_calls": 3100.0,
+   "ranks_reporting": 512,
+   "share_of_tend": null
+  },
+  {
+   "key": "entry:ptend_init",
+   "mean_seconds": 0.01298337836067276,
+   "max_seconds": 0.037843561731278896,
+   "mean_calls": 300.0,
+   "ranks_reporting": 512,
+   "share_of_tend": null
+  },
+  {
+   "key": "kernel-copy-out:macrop_detrain_partition",
+   "mean_seconds": 0.010470226162652807,
+   "max_seconds": 0.030963432509452105,
+   "mean_calls": 100.0,
+   "ranks_reporting": 512,
+   "share_of_tend": null
+  },
+  {
+   "key": "entry:view",
+   "mean_seconds": 0.007651725578369906,
+   "max_seconds": 0.012579626869410276,
+   "mean_calls": 1600.0,
+   "ranks_reporting": 512,
+   "share_of_tend": null
+  },
+  {
+   "key": "kernel-copy-out:macrop_advective_forcing",
+   "mean_seconds": 0.006342614061537688,
+   "max_seconds": 0.01618079817853868,
+   "mean_calls": 100.0,
+   "ranks_reporting": 512,
+   "share_of_tend": null
+  },
+  {
+   "key": "kernel-copy-in:macrop_tracer_rate_split",
+   "mean_seconds": 0.004647436306498776,
+   "max_seconds": 0.012532161083072424,
+   "mean_calls": 100.0,
+   "ranks_reporting": 512,
+   "share_of_tend": null
+  },
+  {
+   "key": "kernel-copy-out:macrop_save_equilibrium",
+   "mean_seconds": 0.004346715658954281,
+   "max_seconds": 0.010591828264296055,
+   "mean_calls": 100.0,
+   "ranks_reporting": 512,
+   "share_of_tend": null
+  },
+  {
+   "key": "kernel-copy-in:macrop_clear_fraction",
+   "mean_seconds": 0.0038536670500661785,
+   "max_seconds": 0.010342360474169254,
+   "mean_calls": 100.0,
+   "ranks_reporting": 512,
+   "share_of_tend": null
+  },
+  {
+   "key": "entry:state_dealloc",
+   "mean_seconds": 0.0029232443329760827,
+   "max_seconds": 0.008295704610645771,
+   "mean_calls": 100.0,
+   "ranks_reporting": 512,
+   "share_of_tend": null
+  },
+  {
+   "key": "kernel-copy-in:cloud_fraction_fice",
+   "mean_seconds": 0.002412455735253616,
+   "max_seconds": 0.00544185726903379,
+   "mean_calls": 100.0,
+   "ranks_reporting": 512,
+   "share_of_tend": null
+  },
+  {
+   "key": "kernel-copy-in:wtrc_init_rates",
+   "mean_seconds": 0.002360981682414831,
+   "max_seconds": 0.005881385179236531,
+   "mean_calls": 100.0,
+   "ranks_reporting": 512,
+   "share_of_tend": null
+  },
+  {
+   "key": "entry:forcing",
+   "mean_seconds": 0.0020383501360186074,
+   "max_seconds": 0.0033715174067765474,
+   "mean_calls": 600.0,
+   "ranks_reporting": 512,
+   "share_of_tend": null
+  },
+  {
+   "key": "kernel-copy-out:macrop_cloud_mixing_ratio",
+   "mean_seconds": 0.00037821673254256893,
+   "max_seconds": 0.0016294168308377266,
+   "mean_calls": 100.0,
+   "ranks_reporting": 512,
+   "share_of_tend": null
+  },
+  {
+   "key": "kernel-copy-out:macrop_tracer_rate_split",
+   "mean_seconds": 0.0003084593489006693,
+   "max_seconds": 0.00194297987036407,
+   "mean_calls": 100.0,
+   "ranks_reporting": 512,
+   "share_of_tend": null
+  },
+  {
+   "key": "entry:bind_hosts",
+   "mean_seconds": 0.0002608679186550944,
+   "max_seconds": 0.0007356388960033655,
+   "mean_calls": 1.0,
+   "ranks_reporting": 512,
+   "share_of_tend": null
+  },
+  {
+   "key": "kernel-copy-out:macrop_clear_fraction",
+   "mean_seconds": 0.0001799669564661599,
+   "max_seconds": 0.00046449643559753895,
+   "mean_calls": 100.0,
+   "ranks_reporting": 512,
+   "share_of_tend": null
+  },
+  {
+   "key": "kernel-copy-out:cloud_fraction_fice",
+   "mean_seconds": 0.0001643276302729646,
+   "max_seconds": 0.0003219990321667865,
+   "mean_calls": 100.0,
+   "ranks_reporting": 512,
+   "share_of_tend": null
+  },
+  {
+   "key": "trace-hash:mmacro_pcond",
+   "mean_seconds": 0.00014645087279063773,
+   "max_seconds": 0.0004342340398579836,
+   "mean_calls": 100.0,
+   "ranks_reporting": 512,
+   "share_of_tend": null
+  },
+  {
+   "key": "entry:set_owner",
+   "mean_seconds": 2.186393504644002e-05,
+   "max_seconds": 0.00010677700629457831,
+   "mean_calls": 1.0,
+   "ranks_reporting": 512,
+   "share_of_tend": null
+  }
+ ],
+ "by_family": {
+  "kernel-run": 1.0302751949410833,
+  "entry": 0.30028807637896193,
+  "kernel-copy-in": 0.285554919469007,
+  "kernel-copy-out": 0.2813917914465094,
+  "trace-hash": 0.00014645087279063773
+ }
+}

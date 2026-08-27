@@ -1,0 +1,501 @@
+{
+ "ranks": 512,
+ "tend_mean_seconds": null,
+ "rows": [
+  {
+   "key": "entry:wtrc_apply",
+   "mean_seconds": 0.3244647787837778,
+   "max_seconds": 0.7034569738898426,
+   "mean_calls": 100.0,
+   "ranks_reporting": 512,
+   "share_of_tend": null
+  },
+  {
+   "key": "entry:core",
+   "mean_seconds": 0.22925124082192383,
+   "max_seconds": 0.39059556275606155,
+   "mean_calls": 100.0,
+   "ranks_reporting": 512,
+   "share_of_tend": null
+  },
+  {
+   "key": "kernel-run:wtrc_add_rates",
+   "mean_seconds": 0.21514572257456166,
+   "max_seconds": 0.38962384685873985,
+   "mean_calls": 1100.0,
+   "ranks_reporting": 512,
+   "share_of_tend": null
+  },
+  {
+   "key": "kernel-run:wtrc_init_rates",
+   "mean_seconds": 0.1310790991092574,
+   "max_seconds": 0.5868885079398751,
+   "mean_calls": 200.0,
+   "ranks_reporting": 512,
+   "share_of_tend": null
+  },
+  {
+   "key": "kernel-run:micro_macro_feedback",
+   "mean_seconds": 0.07496984997905543,
+   "max_seconds": 0.16141789918765426,
+   "mean_calls": 100.0,
+   "ranks_reporting": 512,
+   "share_of_tend": null
+  },
+  {
+   "key": "entry:view",
+   "mean_seconds": 0.06324079245476355,
+   "max_seconds": 0.0803701498080045,
+   "mean_calls": 18800.0,
+   "ranks_reporting": 512,
+   "share_of_tend": null
+  },
+  {
+   "key": "kernel-run:micro_effective_outputs",
+   "mean_seconds": 0.060299296998238106,
+   "max_seconds": 0.1371679084841162,
+   "mean_calls": 100.0,
+   "ranks_reporting": 512,
+   "share_of_tend": null
+  },
+  {
+   "key": "kernel-run:micro_in_cloud_quantities",
+   "mean_seconds": 0.059479960138929755,
+   "max_seconds": 0.12202516943216324,
+   "mean_calls": 100.0,
+   "ranks_reporting": 512,
+   "share_of_tend": null
+  },
+  {
+   "key": "kernel-run:micro_ice_and_precip_size",
+   "mean_seconds": 0.05887129556930404,
+   "max_seconds": 0.14083320926874876,
+   "mean_calls": 100.0,
+   "ranks_reporting": 512,
+   "share_of_tend": null
+  },
+  {
+   "key": "kernel-run:micro_precip_diagnostics",
+   "mean_seconds": 0.0569306956326443,
+   "max_seconds": 0.11672303243540227,
+   "mean_calls": 100.0,
+   "ranks_reporting": 512,
+   "share_of_tend": null
+  },
+  {
+   "key": "kernel-run:micro_initial_water_paths",
+   "mean_seconds": 0.05487607829516605,
+   "max_seconds": 0.11131791188381612,
+   "mean_calls": 100.0,
+   "ranks_reporting": 512,
+   "share_of_tend": null
+  },
+  {
+   "key": "kernel-run:micro_history_tendencies",
+   "mean_seconds": 0.048973445179342434,
+   "max_seconds": 0.10512630990706384,
+   "mean_calls": 100.0,
+   "ranks_reporting": 512,
+   "share_of_tend": null
+  },
+  {
+   "key": "kernel-run:micro_liquid_size",
+   "mean_seconds": 0.043998125114569575,
+   "max_seconds": 0.09739090665243566,
+   "mean_calls": 100.0,
+   "ranks_reporting": 512,
+   "share_of_tend": null
+  },
+  {
+   "key": "kernel-run:micro_precip_efficiency",
+   "mean_seconds": 0.0394299958575175,
+   "max_seconds": 0.07919714180752635,
+   "mean_calls": 100.0,
+   "ranks_reporting": 512,
+   "share_of_tend": null
+  },
+  {
+   "key": "entry:substep_unpack",
+   "mean_seconds": 0.03748040366829741,
+   "max_seconds": 0.142253392143175,
+   "mean_calls": 100.0,
+   "ranks_reporting": 512,
+   "share_of_tend": null
+  },
+  {
+   "key": "entry:outfld",
+   "mean_seconds": 0.036063210463595397,
+   "max_seconds": 0.07110073557123542,
+   "mean_calls": 10000.0,
+   "ranks_reporting": 512,
+   "share_of_tend": null
+  },
+  {
+   "key": "kernel-run:micro_split_signs",
+   "mean_seconds": 0.03479176757119262,
+   "max_seconds": 0.07675518142059445,
+   "mean_calls": 100.0,
+   "ranks_reporting": 512,
+   "share_of_tend": null
+  },
+  {
+   "key": "kernel-run:micro_air_density",
+   "mean_seconds": 0.03403210609693019,
+   "max_seconds": 0.07799127651378512,
+   "mean_calls": 100.0,
+   "ranks_reporting": 512,
+   "share_of_tend": null
+  },
+  {
+   "key": "entry:post_proc",
+   "mean_seconds": 0.0337817704493375,
+   "max_seconds": 0.07596685783937573,
+   "mean_calls": 100.0,
+   "ranks_reporting": 512,
+   "share_of_tend": null
+  },
+  {
+   "key": "kernel-run:micro_autoconversion_ratio",
+   "mean_seconds": 0.029723167621483526,
+   "max_seconds": 0.05517130973748863,
+   "mean_calls": 100.0,
+   "ranks_reporting": 512,
+   "share_of_tend": null
+  },
+  {
+   "key": "kernel-copy-in:wtrc_add_rates",
+   "mean_seconds": 0.02958617090527582,
+   "max_seconds": 0.06068231910467148,
+   "mean_calls": 1100.0,
+   "ranks_reporting": 512,
+   "share_of_tend": null
+  },
+  {
+   "key": "entry:pack_prelude",
+   "mean_seconds": 0.027310978059063018,
+   "max_seconds": 0.06372718745842576,
+   "mean_calls": 100.0,
+   "ranks_reporting": 512,
+   "share_of_tend": null
+  },
+  {
+   "key": "kernel-copy-in:micro_in_cloud_quantities",
+   "mean_seconds": 0.022646105222008828,
+   "max_seconds": 0.12063448410481215,
+   "mean_calls": 100.0,
+   "ranks_reporting": 512,
+   "share_of_tend": null
+  },
+  {
+   "key": "entry:begin",
+   "mean_seconds": 0.01834774736735767,
+   "max_seconds": 0.06764110620133579,
+   "mean_calls": 100.0,
+   "ranks_reporting": 512,
+   "share_of_tend": null
+  },
+  {
+   "key": "kernel-copy-in:micro_macro_feedback",
+   "mean_seconds": 0.015607030524023457,
+   "max_seconds": 0.05495434673503041,
+   "mean_calls": 100.0,
+   "ranks_reporting": 512,
+   "share_of_tend": null
+  },
+  {
+   "key": "kernel-copy-in:micro_initial_water_paths",
+   "mean_seconds": 0.013575967095164287,
+   "max_seconds": 0.04480679100379348,
+   "mean_calls": 100.0,
+   "ranks_reporting": 512,
+   "share_of_tend": null
+  },
+  {
+   "key": "kernel-copy-in:micro_precip_diagnostics",
+   "mean_seconds": 0.008539180292416404,
+   "max_seconds": 0.0251468897331506,
+   "mean_calls": 100.0,
+   "ranks_reporting": 512,
+   "share_of_tend": null
+  },
+  {
+   "key": "entry:init_ptend",
+   "mean_seconds": 0.00735792296026716,
+   "max_seconds": 0.027457298943772912,
+   "mean_calls": 100.0,
+   "ranks_reporting": 512,
+   "share_of_tend": null
+  },
+  {
+   "key": "kernel-copy-in:micro_ice_and_precip_size",
+   "mean_seconds": 0.006786670879819212,
+   "max_seconds": 0.018149212934076786,
+   "mean_calls": 100.0,
+   "ranks_reporting": 512,
+   "share_of_tend": null
+  },
+  {
+   "key": "entry:end",
+   "mean_seconds": 0.005924423306794324,
+   "max_seconds": 0.022835975512862206,
+   "mean_calls": 100.0,
+   "ranks_reporting": 512,
+   "share_of_tend": null
+  },
+  {
+   "key": "kernel-copy-in:micro_effective_outputs",
+   "mean_seconds": 0.00534081363323935,
+   "max_seconds": 0.012233806541189551,
+   "mean_calls": 100.0,
+   "ranks_reporting": 512,
+   "share_of_tend": null
+  },
+  {
+   "key": "entry:bind_input",
+   "mean_seconds": 0.005155080099228826,
+   "max_seconds": 0.00952823436819017,
+   "mean_calls": 1900.0,
+   "ranks_reporting": 512,
+   "share_of_tend": null
+  },
+  {
+   "key": "kernel-copy-in:micro_precip_efficiency",
+   "mean_seconds": 0.004938295345311872,
+   "max_seconds": 0.014308692421764135,
+   "mean_calls": 100.0,
+   "ranks_reporting": 512,
+   "share_of_tend": null
+  },
+  {
+   "key": "entry:wtrc_add_sum",
+   "mean_seconds": 0.004866012351300242,
+   "max_seconds": 0.015563393011689186,
+   "mean_calls": 400.0,
+   "ranks_reporting": 512,
+   "share_of_tend": null
+  },
+  {
+   "key": "kernel-copy-in:micro_liquid_size",
+   "mean_seconds": 0.00432848105393191,
+   "max_seconds": 0.010434818686917424,
+   "mean_calls": 100.0,
+   "ranks_reporting": 512,
+   "share_of_tend": null
+  },
+  {
+   "key": "kernel-copy-in:micro_air_density",
+   "mean_seconds": 0.004251813303341123,
+   "max_seconds": 0.01250566472299397,
+   "mean_calls": 100.0,
+   "ranks_reporting": 512,
+   "share_of_tend": null
+  },
+  {
+   "key": "kernel-copy-in:wtrc_init_rates",
+   "mean_seconds": 0.004231838897567286,
+   "max_seconds": 0.009553096955642104,
+   "mean_calls": 200.0,
+   "ranks_reporting": 512,
+   "share_of_tend": null
+  },
+  {
+   "key": "kernel-copy-out:micro_macro_feedback",
+   "mean_seconds": 0.003647440720527584,
+   "max_seconds": 0.008245487697422504,
+   "mean_calls": 100.0,
+   "ranks_reporting": 512,
+   "share_of_tend": null
+  },
+  {
+   "key": "entry:output_precip",
+   "mean_seconds": 0.0033971745984047175,
+   "max_seconds": 0.00936529878526926,
+   "mean_calls": 100.0,
+   "ranks_reporting": 512,
+   "share_of_tend": null
+  },
+  {
+   "key": "kernel-copy-in:micro_split_signs",
+   "mean_seconds": 0.0033744068247472114,
+   "max_seconds": 0.013110575266182423,
+   "mean_calls": 100.0,
+   "ranks_reporting": 512,
+   "share_of_tend": null
+  },
+  {
+   "key": "kernel-copy-in:micro_history_tendencies",
+   "mean_seconds": 0.002821814336840589,
+   "max_seconds": 0.006823316682130098,
+   "mean_calls": 100.0,
+   "ranks_reporting": 512,
+   "share_of_tend": null
+  },
+  {
+   "key": "kernel-copy-in:micro_autoconversion_ratio",
+   "mean_seconds": 0.002134960507618189,
+   "max_seconds": 0.0038167827297002077,
+   "mean_calls": 100.0,
+   "ranks_reporting": 512,
+   "share_of_tend": null
+  },
+  {
+   "key": "kernel-copy-out:micro_ice_and_precip_size",
+   "mean_seconds": 0.002040916661087522,
+   "max_seconds": 0.0038791638799011707,
+   "mean_calls": 100.0,
+   "ranks_reporting": 512,
+   "share_of_tend": null
+  },
+  {
+   "key": "kernel-copy-out:micro_precip_diagnostics",
+   "mean_seconds": 0.0017354823764605953,
+   "max_seconds": 0.003950081532821059,
+   "mean_calls": 100.0,
+   "ranks_reporting": 512,
+   "share_of_tend": null
+  },
+  {
+   "key": "entry:substep_pack",
+   "mean_seconds": 0.0016767426042747502,
+   "max_seconds": 0.005829136585816741,
+   "mean_calls": 100.0,
+   "ranks_reporting": 512,
+   "share_of_tend": null
+  },
+  {
+   "key": "kernel-copy-out:micro_in_cloud_quantities",
+   "mean_seconds": 0.001555955926534125,
+   "max_seconds": 0.003672782564535737,
+   "mean_calls": 100.0,
+   "ranks_reporting": 512,
+   "share_of_tend": null
+  },
+  {
+   "key": "kernel-copy-out:wtrc_add_rates",
+   "mean_seconds": 0.0014687118933522925,
+   "max_seconds": 0.0026797300670295954,
+   "mean_calls": 1100.0,
+   "ranks_reporting": 512,
+   "share_of_tend": null
+  },
+  {
+   "key": "kernel-copy-out:micro_liquid_size",
+   "mean_seconds": 0.0013172226370556928,
+   "max_seconds": 0.0033891249913722277,
+   "mean_calls": 100.0,
+   "ranks_reporting": 512,
+   "share_of_tend": null
+  },
+  {
+   "key": "kernel-copy-out:micro_effective_outputs",
+   "mean_seconds": 0.0010940989266146062,
+   "max_seconds": 0.002175154397264123,
+   "mean_calls": 100.0,
+   "ranks_reporting": 512,
+   "share_of_tend": null
+  },
+  {
+   "key": "kernel-copy-out:micro_precip_efficiency",
+   "mean_seconds": 0.0009199155280441573,
+   "max_seconds": 0.0017948944587260485,
+   "mean_calls": 100.0,
+   "ranks_reporting": 512,
+   "share_of_tend": null
+  },
+  {
+   "key": "kernel-copy-out:wtrc_init_rates",
+   "mean_seconds": 0.0003418584855694462,
+   "max_seconds": 0.001115645980462432,
+   "mean_calls": 200.0,
+   "ranks_reporting": 512,
+   "share_of_tend": null
+  },
+  {
+   "key": "kernel-copy-out:micro_split_signs",
+   "mean_seconds": 0.00020537732982006673,
+   "max_seconds": 0.0005297851748764515,
+   "mean_calls": 100.0,
+   "ranks_reporting": 512,
+   "share_of_tend": null
+  },
+  {
+   "key": "kernel-copy-out:micro_initial_water_paths",
+   "mean_seconds": 0.0001986913544271829,
+   "max_seconds": 0.0003653918392956257,
+   "mean_calls": 100.0,
+   "ranks_reporting": 512,
+   "share_of_tend": null
+  },
+  {
+   "key": "kernel-copy-out:micro_history_tendencies",
+   "mean_seconds": 0.00019743298176422286,
+   "max_seconds": 0.0003668195568025112,
+   "mean_calls": 100.0,
+   "ranks_reporting": 512,
+   "share_of_tend": null
+  },
+  {
+   "key": "kernel-copy-out:micro_autoconversion_ratio",
+   "mean_seconds": 0.00017600664605765814,
+   "max_seconds": 0.00033327494747936726,
+   "mean_calls": 100.0,
+   "ranks_reporting": 512,
+   "share_of_tend": null
+  },
+  {
+   "key": "kernel-copy-out:micro_air_density",
+   "mean_seconds": 0.0001675293195546601,
+   "max_seconds": 0.0003609319683164358,
+   "mean_calls": 100.0,
+   "ranks_reporting": 512,
+   "share_of_tend": null
+  },
+  {
+   "key": "trace-hash:micro_mg_tend",
+   "mean_seconds": 0.00016366157794323044,
+   "max_seconds": 0.000319755170494318,
+   "mean_calls": 100.0,
+   "ranks_reporting": 512,
+   "share_of_tend": null
+  },
+  {
+   "key": "entry:bind_hosts",
+   "mean_seconds": 3.284745707787806e-05,
+   "max_seconds": 9.52139962464571e-05,
+   "mean_calls": 1.0,
+   "ranks_reporting": 512,
+   "share_of_tend": null
+  },
+  {
+   "key": "entry:configure",
+   "mean_seconds": 3.1684379564467235e-05,
+   "max_seconds": 0.00011672708205878735,
+   "mean_calls": 1.0,
+   "ranks_reporting": 512,
+   "share_of_tend": null
+  },
+  {
+   "key": "entry:set_core_owner",
+   "mean_seconds": 1.3813923231964509e-05,
+   "max_seconds": 0.00010720700083766133,
+   "mean_calls": 2.0,
+   "ranks_reporting": 512,
+   "share_of_tend": null
+  },
+  {
+   "key": "entry:set_owner",
+   "mean_seconds": 1.8479975096852286e-06,
+   "max_seconds": 4.990026354789734e-06,
+   "mean_calls": 1.0,
+   "ranks_reporting": 512,
+   "share_of_tend": null
+  }
+ ],
+ "by_family": {
+  "kernel-run": 0.9426006057381926,
+  "entry": 0.7983984717457702,
+  "kernel-copy-in": 0.12816354882130554,
+  "kernel-copy-out": 0.015066640786869812,
+  "trace-hash": 0.00016366157794323044
+ }
+}
