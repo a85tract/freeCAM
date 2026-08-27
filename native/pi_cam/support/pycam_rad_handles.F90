@@ -741,6 +741,24 @@ contains
     status = 0_c_int
   end function pycam_rad_radheat_v1
 
+  integer(c_int) function pycam_rad_zenith_v1( &
+       lchnk, ncol, calday, clat, clon, coszrs) &
+       bind(C, name='pycam_rad_zenith_v1') result(status)
+    integer(c_int), value, intent(in) :: lchnk
+    integer(c_int), value, intent(in) :: ncol
+    real(c_double), value, intent(in) :: calday
+    real(c_double), intent(in) :: clat(pcols), clon(pcols)
+    real(c_double), intent(inout) :: coszrs(pcols)
+
+    status = 1_c_int
+    if (.not. chunk_ok(lchnk)) return
+    ! zenith lives at file scope in zenith.F90, not in a module, so a
+    ! generated direct-kernel wrapper cannot use-associate it.  An
+    ! external call needs no interface and is legal here.
+    call zenith(calday, clat, clon, coszrs, ncol)
+    status = 0_c_int
+  end function pycam_rad_zenith_v1
+
   integer(c_int) function pycam_rad_outfld_scaled_v1( &
        lchnk, ncol, name, name_len, field, cpair_in) &
        bind(C, name='pycam_rad_outfld_scaled_v1') result(status)

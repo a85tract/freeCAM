@@ -276,6 +276,18 @@ WRAPPERS = (
          "         fsns(:,lchnk), fsnt(:,lchnk), flns(:,lchnk), flnt(:,lchnk), &",
          "         host_cam_in(lchnk)%p%asdir, rad_net_flx(:,lchnk))"],
         needs_pbuf=True, needs_state=True, needs_cam=True),
+    # -- zenith: a bare external subroutine, so not a direct kernel ---------
+    Wrapper(
+        "zenith", ["lchnk", "ncol", "calday", "clat", "clon", "coszrs"],
+        ["    integer(c_int), value, intent(in) :: ncol",
+         "    real(c_double), value, intent(in) :: calday",
+         "    real(c_double), intent(in) :: clat(pcols), clon(pcols)",
+         "    real(c_double), intent(inout) :: coszrs(pcols)"],
+        ["    ! zenith lives at file scope in zenith.F90, not in a module, so a",
+         "    ! generated direct-kernel wrapper cannot use-associate it.  An",
+         "    ! external call needs no interface and is legal here.",
+         "    call zenith(calday, clat, clon, coszrs, ncol)"]),
+
     # -- the one history call that carries arithmetic ------------------------
     Wrapper(
         "outfld_scaled", ["lchnk", "ncol", "name", "name_len", "field", "cpair_in"],

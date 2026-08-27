@@ -1939,6 +1939,1473 @@ kernels:
     - pcols
     - pver
     - chunks
+- name: rad_gather_day_night
+  routine: rad_gather_day_night
+  symbol: pycam_pi_cam_rad_gather_day_night_v1
+  action_id: 0
+  modules:
+    pycam_rad_kernels:
+    - rad_gather_day_night
+    ppgrid:
+    - pcols
+    - pver
+    - pverp
+    parrrsw:
+    - nbndsw
+    parrrtm:
+    - nbndlw
+  arguments:
+  - field: rad.ncol
+    dtype: int32
+    rank: 1
+    intent: in
+    chunk_axis: 1
+    extents:
+    - chunks
+  - field: rad.coszrs
+    dtype: float64
+    rank: 2
+    intent: in
+    chunk_axis: 2
+    extents:
+    - pcols
+    - chunks
+  - field: rad.Nday
+    dtype: int32
+    rank: 1
+    intent: out
+    chunk_axis: 1
+    extents:
+    - chunks
+  - field: rad.Nnite
+    dtype: int32
+    rank: 1
+    intent: out
+    chunk_axis: 1
+    extents:
+    - chunks
+  - field: rad.IdxDay
+    dtype: int32
+    rank: 2
+    intent: out
+    chunk_axis: 2
+    extents:
+    - pcols
+    - chunks
+  - field: rad.IdxNite
+    dtype: int32
+    rank: 2
+    intent: out
+    chunk_axis: 2
+    extents:
+    - pcols
+    - chunks
+- name: rad_combine_cld_optics_sw
+  routine: rad_combine_cld_optics_sw
+  symbol: pycam_pi_cam_rad_combine_cld_optics_sw_v1
+  action_id: 0
+  modules:
+    pycam_rad_kernels:
+    - rad_combine_cld_optics_sw
+    ppgrid:
+    - pcols
+    - pver
+    - pverp
+    parrrsw:
+    - nbndsw
+    parrrtm:
+    - nbndlw
+  arguments:
+  - field: rad.ncol
+    dtype: int32
+    rank: 1
+    intent: in
+    chunk_axis: 1
+    extents:
+    - chunks
+  - field: rad.liq_tau
+    dtype: float64
+    rank: 4
+    intent: in
+    chunk_axis: 4
+    extents:
+    - nbndsw
+    - pcols
+    - pver
+    - chunks
+  - field: rad.liq_tau_w
+    dtype: float64
+    rank: 4
+    intent: in
+    chunk_axis: 4
+    extents:
+    - nbndsw
+    - pcols
+    - pver
+    - chunks
+  - field: rad.liq_tau_w_g
+    dtype: float64
+    rank: 4
+    intent: in
+    chunk_axis: 4
+    extents:
+    - nbndsw
+    - pcols
+    - pver
+    - chunks
+  - field: rad.liq_tau_w_f
+    dtype: float64
+    rank: 4
+    intent: in
+    chunk_axis: 4
+    extents:
+    - nbndsw
+    - pcols
+    - pver
+    - chunks
+  - field: rad.ice_tau
+    dtype: float64
+    rank: 4
+    intent: in
+    chunk_axis: 4
+    extents:
+    - nbndsw
+    - pcols
+    - pver
+    - chunks
+  - field: rad.ice_tau_w
+    dtype: float64
+    rank: 4
+    intent: in
+    chunk_axis: 4
+    extents:
+    - nbndsw
+    - pcols
+    - pver
+    - chunks
+  - field: rad.ice_tau_w_g
+    dtype: float64
+    rank: 4
+    intent: in
+    chunk_axis: 4
+    extents:
+    - nbndsw
+    - pcols
+    - pver
+    - chunks
+  - field: rad.ice_tau_w_f
+    dtype: float64
+    rank: 4
+    intent: in
+    chunk_axis: 4
+    extents:
+    - nbndsw
+    - pcols
+    - pver
+    - chunks
+  - field: rad.cld_tau
+    dtype: float64
+    rank: 4
+    intent: out
+    chunk_axis: 4
+    extents:
+    - nbndsw
+    - pcols
+    - pver
+    - chunks
+  - field: rad.cld_tau_w
+    dtype: float64
+    rank: 4
+    intent: out
+    chunk_axis: 4
+    extents:
+    - nbndsw
+    - pcols
+    - pver
+    - chunks
+  - field: rad.cld_tau_w_g
+    dtype: float64
+    rank: 4
+    intent: out
+    chunk_axis: 4
+    extents:
+    - nbndsw
+    - pcols
+    - pver
+    - chunks
+  - field: rad.cld_tau_w_f
+    dtype: float64
+    rank: 4
+    intent: out
+    chunk_axis: 4
+    extents:
+    - nbndsw
+    - pcols
+    - pver
+    - chunks
+- name: rad_snow_blend_sw
+  routine: rad_snow_blend_sw
+  symbol: pycam_pi_cam_rad_snow_blend_sw_v1
+  action_id: 0
+  modules:
+    pycam_rad_kernels:
+    - rad_snow_blend_sw
+    ppgrid:
+    - pcols
+    - pver
+    - pverp
+    parrrsw:
+    - nbndsw
+    parrrtm:
+    - nbndlw
+  arguments:
+  - field: rad.ncol
+    dtype: int32
+    rank: 1
+    intent: in
+    chunk_axis: 1
+    extents:
+    - chunks
+  - field: rad.has_snow
+    dtype: int32
+    rank: 1
+    intent: in
+    chunk_axis: 1
+    extents:
+    - chunks
+    fortran_type: logical
+  - field: rad.cld
+    dtype: float64
+    rank: 3
+    intent: in
+    chunk_axis: 3
+    extents:
+    - pcols
+    - pver
+    - chunks
+  - field: rad.cldfsnow
+    dtype: float64
+    rank: 3
+    intent: in
+    chunk_axis: 3
+    extents:
+    - pcols
+    - pver
+    - chunks
+  - field: rad.snow_tau
+    dtype: float64
+    rank: 4
+    intent: in
+    chunk_axis: 4
+    extents:
+    - nbndsw
+    - pcols
+    - pver
+    - chunks
+  - field: rad.snow_tau_w
+    dtype: float64
+    rank: 4
+    intent: in
+    chunk_axis: 4
+    extents:
+    - nbndsw
+    - pcols
+    - pver
+    - chunks
+  - field: rad.snow_tau_w_g
+    dtype: float64
+    rank: 4
+    intent: in
+    chunk_axis: 4
+    extents:
+    - nbndsw
+    - pcols
+    - pver
+    - chunks
+  - field: rad.snow_tau_w_f
+    dtype: float64
+    rank: 4
+    intent: in
+    chunk_axis: 4
+    extents:
+    - nbndsw
+    - pcols
+    - pver
+    - chunks
+  - field: rad.cld_tau
+    dtype: float64
+    rank: 4
+    intent: in
+    chunk_axis: 4
+    extents:
+    - nbndsw
+    - pcols
+    - pver
+    - chunks
+  - field: rad.cld_tau_w
+    dtype: float64
+    rank: 4
+    intent: in
+    chunk_axis: 4
+    extents:
+    - nbndsw
+    - pcols
+    - pver
+    - chunks
+  - field: rad.cld_tau_w_g
+    dtype: float64
+    rank: 4
+    intent: in
+    chunk_axis: 4
+    extents:
+    - nbndsw
+    - pcols
+    - pver
+    - chunks
+  - field: rad.cld_tau_w_f
+    dtype: float64
+    rank: 4
+    intent: in
+    chunk_axis: 4
+    extents:
+    - nbndsw
+    - pcols
+    - pver
+    - chunks
+  - field: rad.cldfprime
+    dtype: float64
+    rank: 3
+    intent: inout
+    chunk_axis: 3
+    extents:
+    - pcols
+    - pver
+    - chunks
+  - field: rad.c_cld_tau
+    dtype: float64
+    rank: 4
+    intent: out
+    chunk_axis: 4
+    extents:
+    - nbndsw
+    - pcols
+    - pver
+    - chunks
+  - field: rad.c_cld_tau_w
+    dtype: float64
+    rank: 4
+    intent: out
+    chunk_axis: 4
+    extents:
+    - nbndsw
+    - pcols
+    - pver
+    - chunks
+  - field: rad.c_cld_tau_w_g
+    dtype: float64
+    rank: 4
+    intent: out
+    chunk_axis: 4
+    extents:
+    - nbndsw
+    - pcols
+    - pver
+    - chunks
+  - field: rad.c_cld_tau_w_f
+    dtype: float64
+    rank: 4
+    intent: out
+    chunk_axis: 4
+    extents:
+    - nbndsw
+    - pcols
+    - pver
+    - chunks
+- name: rad_combine_cld_optics_lw
+  routine: rad_combine_cld_optics_lw
+  symbol: pycam_pi_cam_rad_combine_cld_optics_lw_v1
+  action_id: 0
+  modules:
+    pycam_rad_kernels:
+    - rad_combine_cld_optics_lw
+    ppgrid:
+    - pcols
+    - pver
+    - pverp
+    parrrsw:
+    - nbndsw
+    parrrtm:
+    - nbndlw
+  arguments:
+  - field: rad.ncol
+    dtype: int32
+    rank: 1
+    intent: in
+    chunk_axis: 1
+    extents:
+    - chunks
+  - field: rad.liq_lw_abs
+    dtype: float64
+    rank: 4
+    intent: in
+    chunk_axis: 4
+    extents:
+    - nbndlw
+    - pcols
+    - pver
+    - chunks
+  - field: rad.ice_lw_abs
+    dtype: float64
+    rank: 4
+    intent: in
+    chunk_axis: 4
+    extents:
+    - nbndlw
+    - pcols
+    - pver
+    - chunks
+  - field: rad.cld_lw_abs
+    dtype: float64
+    rank: 4
+    intent: out
+    chunk_axis: 4
+    extents:
+    - nbndlw
+    - pcols
+    - pver
+    - chunks
+- name: rad_snow_blend_lw
+  routine: rad_snow_blend_lw
+  symbol: pycam_pi_cam_rad_snow_blend_lw_v1
+  action_id: 0
+  modules:
+    pycam_rad_kernels:
+    - rad_snow_blend_lw
+    ppgrid:
+    - pcols
+    - pver
+    - pverp
+    parrrsw:
+    - nbndsw
+    parrrtm:
+    - nbndlw
+  arguments:
+  - field: rad.ncol
+    dtype: int32
+    rank: 1
+    intent: in
+    chunk_axis: 1
+    extents:
+    - chunks
+  - field: rad.has_snow
+    dtype: int32
+    rank: 1
+    intent: in
+    chunk_axis: 1
+    extents:
+    - chunks
+    fortran_type: logical
+  - field: rad.cld
+    dtype: float64
+    rank: 3
+    intent: in
+    chunk_axis: 3
+    extents:
+    - pcols
+    - pver
+    - chunks
+  - field: rad.cldfsnow
+    dtype: float64
+    rank: 3
+    intent: in
+    chunk_axis: 3
+    extents:
+    - pcols
+    - pver
+    - chunks
+  - field: rad.snow_lw_abs
+    dtype: float64
+    rank: 4
+    intent: in
+    chunk_axis: 4
+    extents:
+    - nbndlw
+    - pcols
+    - pver
+    - chunks
+  - field: rad.cld_lw_abs
+    dtype: float64
+    rank: 4
+    intent: in
+    chunk_axis: 4
+    extents:
+    - nbndlw
+    - pcols
+    - pver
+    - chunks
+  - field: rad.cldfprime
+    dtype: float64
+    rank: 3
+    intent: inout
+    chunk_axis: 3
+    extents:
+    - pcols
+    - pver
+    - chunks
+  - field: rad.c_cld_lw_abs
+    dtype: float64
+    rank: 4
+    intent: out
+    chunk_axis: 4
+    extents:
+    - nbndlw
+    - pcols
+    - pver
+    - chunks
+- name: rad_interface_temperature
+  routine: rad_interface_temperature
+  symbol: pycam_pi_cam_rad_interface_temperature_v1
+  action_id: 0
+  modules:
+    pycam_rad_kernels:
+    - rad_interface_temperature
+    ppgrid:
+    - pcols
+    - pver
+    - pverp
+    parrrsw:
+    - nbndsw
+    parrrtm:
+    - nbndlw
+  arguments:
+  - field: rad.ncol
+    dtype: int32
+    rank: 1
+    intent: in
+    chunk_axis: 1
+    extents:
+    - chunks
+  - field: rad.t
+    dtype: float64
+    rank: 3
+    intent: in
+    chunk_axis: 3
+    extents:
+    - pcols
+    - pver
+    - chunks
+  - field: rad.lnpint
+    dtype: float64
+    rank: 3
+    intent: in
+    chunk_axis: 3
+    extents:
+    - pcols
+    - pverp
+    - chunks
+  - field: rad.lnpmid
+    dtype: float64
+    rank: 3
+    intent: in
+    chunk_axis: 3
+    extents:
+    - pcols
+    - pver
+    - chunks
+  - field: rad.lwup
+    dtype: float64
+    rank: 2
+    intent: in
+    chunk_axis: 2
+    extents:
+    - pcols
+    - chunks
+  - field: rad.stebol
+    dtype: float64
+    rank: 1
+    intent: in
+    chunk_axis: 1
+    extents:
+    - chunks
+  - field: rad.tint
+    dtype: float64
+    rank: 3
+    intent: out
+    chunk_axis: 3
+    extents:
+    - pcols
+    - pverp
+    - chunks
+- name: rad_sw_cloud_forcing
+  routine: rad_sw_cloud_forcing
+  symbol: pycam_pi_cam_rad_sw_cloud_forcing_v1
+  action_id: 0
+  modules:
+    pycam_rad_kernels:
+    - rad_sw_cloud_forcing
+    ppgrid:
+    - pcols
+    - pver
+    - pverp
+    parrrsw:
+    - nbndsw
+    parrrtm:
+    - nbndlw
+  arguments:
+  - field: rad.ncol
+    dtype: int32
+    rank: 1
+    intent: in
+    chunk_axis: 1
+    extents:
+    - chunks
+  - field: rad.fsntoa
+    dtype: float64
+    rank: 2
+    intent: in
+    chunk_axis: 2
+    extents:
+    - pcols
+    - chunks
+  - field: rad.fsntoac
+    dtype: float64
+    rank: 2
+    intent: in
+    chunk_axis: 2
+    extents:
+    - pcols
+    - chunks
+  - field: rad.swcf
+    dtype: float64
+    rank: 2
+    intent: out
+    chunk_axis: 2
+    extents:
+    - pcols
+    - chunks
+- name: rad_scale_by_cpair
+  routine: rad_scale_by_cpair
+  symbol: pycam_pi_cam_rad_scale_by_cpair_v1
+  action_id: 0
+  modules:
+    pycam_rad_kernels:
+    - rad_scale_by_cpair
+    ppgrid:
+    - pcols
+    - pver
+    - pverp
+    parrrsw:
+    - nbndsw
+    parrrtm:
+    - nbndlw
+  arguments:
+  - field: rad.ncol
+    dtype: int32
+    rank: 1
+    intent: in
+    chunk_axis: 1
+    extents:
+    - chunks
+  - field: rad.field
+    dtype: float64
+    rank: 3
+    intent: in
+    chunk_axis: 3
+    extents:
+    - pcols
+    - pver
+    - chunks
+  - field: rad.cpair
+    dtype: float64
+    rank: 1
+    intent: in
+    chunk_axis: 1
+    extents:
+    - chunks
+  - field: rad.ftem
+    dtype: float64
+    rank: 3
+    intent: inout
+    chunk_axis: 3
+    extents:
+    - pcols
+    - pver
+    - chunks
+- name: rad_visible_tau
+  routine: rad_visible_tau
+  symbol: pycam_pi_cam_rad_visible_tau_v1
+  action_id: 0
+  modules:
+    pycam_rad_kernels:
+    - rad_visible_tau
+    ppgrid:
+    - pcols
+    - pver
+    - pverp
+    parrrsw:
+    - nbndsw
+    parrrtm:
+    - nbndlw
+  arguments:
+  - field: rad.ncol
+    dtype: int32
+    rank: 1
+    intent: in
+    chunk_axis: 1
+    extents:
+    - chunks
+  - field: rad.Nnite
+    dtype: int32
+    rank: 1
+    intent: in
+    chunk_axis: 1
+    extents:
+    - chunks
+  - field: rad.IdxNite
+    dtype: int32
+    rank: 2
+    intent: in
+    chunk_axis: 2
+    extents:
+    - pcols
+    - chunks
+  - field: rad.has_snow
+    dtype: int32
+    rank: 1
+    intent: in
+    chunk_axis: 1
+    extents:
+    - chunks
+    fortran_type: logical
+  - field: rad.idx_sw_diag
+    dtype: int32
+    rank: 1
+    intent: in
+    chunk_axis: 1
+    extents:
+    - chunks
+  - field: rad.fillvalue
+    dtype: float64
+    rank: 1
+    intent: in
+    chunk_axis: 1
+    extents:
+    - chunks
+  - field: rad.c_cld_tau
+    dtype: float64
+    rank: 4
+    intent: in
+    chunk_axis: 4
+    extents:
+    - nbndsw
+    - pcols
+    - pver
+    - chunks
+  - field: rad.liq_tau
+    dtype: float64
+    rank: 4
+    intent: in
+    chunk_axis: 4
+    extents:
+    - nbndsw
+    - pcols
+    - pver
+    - chunks
+  - field: rad.ice_tau
+    dtype: float64
+    rank: 4
+    intent: in
+    chunk_axis: 4
+    extents:
+    - nbndsw
+    - pcols
+    - pver
+    - chunks
+  - field: rad.snow_tau
+    dtype: float64
+    rank: 4
+    intent: in
+    chunk_axis: 4
+    extents:
+    - nbndsw
+    - pcols
+    - pver
+    - chunks
+  - field: rad.cldfprime
+    dtype: float64
+    rank: 3
+    intent: in
+    chunk_axis: 3
+    extents:
+    - pcols
+    - pver
+    - chunks
+  - field: rad.tot_cld_vistau
+    dtype: float64
+    rank: 3
+    intent: out
+    chunk_axis: 3
+    extents:
+    - pcols
+    - pver
+    - chunks
+  - field: rad.tot_icld_vistau
+    dtype: float64
+    rank: 3
+    intent: out
+    chunk_axis: 3
+    extents:
+    - pcols
+    - pver
+    - chunks
+  - field: rad.liq_icld_vistau
+    dtype: float64
+    rank: 3
+    intent: out
+    chunk_axis: 3
+    extents:
+    - pcols
+    - pver
+    - chunks
+  - field: rad.ice_icld_vistau
+    dtype: float64
+    rank: 3
+    intent: out
+    chunk_axis: 3
+    extents:
+    - pcols
+    - pver
+    - chunks
+  - field: rad.snow_icld_vistau
+    dtype: float64
+    rank: 3
+    intent: out
+    chunk_axis: 3
+    extents:
+    - pcols
+    - pver
+    - chunks
+- name: rad_lwup_cgs
+  routine: rad_lwup_cgs
+  symbol: pycam_pi_cam_rad_lwup_cgs_v1
+  action_id: 0
+  modules:
+    pycam_rad_kernels:
+    - rad_lwup_cgs
+    ppgrid:
+    - pcols
+    - pver
+    - pverp
+    parrrsw:
+    - nbndsw
+    parrrtm:
+    - nbndlw
+  arguments:
+  - field: rad.ncol
+    dtype: int32
+    rank: 1
+    intent: in
+    chunk_axis: 1
+    extents:
+    - chunks
+  - field: rad.lwup
+    dtype: float64
+    rank: 2
+    intent: in
+    chunk_axis: 2
+    extents:
+    - pcols
+    - chunks
+  - field: rad.refused_scm
+    dtype: int32
+    rank: 1
+    intent: in
+    chunk_axis: 1
+    extents:
+    - chunks
+    fortran_type: logical
+  - field: rad.lwupcgs
+    dtype: float64
+    rank: 2
+    intent: out
+    chunk_axis: 2
+    extents:
+    - pcols
+    - chunks
+- name: rad_lw_cloud_forcing
+  routine: rad_lw_cloud_forcing
+  symbol: pycam_pi_cam_rad_lw_cloud_forcing_v1
+  action_id: 0
+  modules:
+    pycam_rad_kernels:
+    - rad_lw_cloud_forcing
+    ppgrid:
+    - pcols
+    - pver
+    - pverp
+    parrrsw:
+    - nbndsw
+    parrrtm:
+    - nbndlw
+  arguments:
+  - field: rad.ncol
+    dtype: int32
+    rank: 1
+    intent: in
+    chunk_axis: 1
+    extents:
+    - chunks
+  - field: rad.flutc
+    dtype: float64
+    rank: 2
+    intent: in
+    chunk_axis: 2
+    extents:
+    - pcols
+    - chunks
+  - field: rad.flut
+    dtype: float64
+    rank: 2
+    intent: in
+    chunk_axis: 2
+    extents:
+    - pcols
+    - chunks
+  - field: rad.lwcf
+    dtype: float64
+    rank: 2
+    intent: out
+    chunk_axis: 2
+    extents:
+    - pcols
+    - chunks
+- name: rad_emissivity
+  routine: rad_emissivity
+  symbol: pycam_pi_cam_rad_emissivity_v1
+  action_id: 0
+  modules:
+    pycam_rad_kernels:
+    - rad_emissivity
+    ppgrid:
+    - pcols
+    - pver
+    - pverp
+    parrrsw:
+    - nbndsw
+    parrrtm:
+    - nbndlw
+  arguments:
+  - field: rad.ncol
+    dtype: int32
+    rank: 1
+    intent: in
+    chunk_axis: 1
+    extents:
+    - chunks
+  - field: rad.rrtmg_lw_cloudsim_band
+    dtype: int32
+    rank: 1
+    intent: in
+    chunk_axis: 1
+    extents:
+    - chunks
+  - field: rad.cld_lw_abs
+    dtype: float64
+    rank: 4
+    intent: in
+    chunk_axis: 4
+    extents:
+    - nbndlw
+    - pcols
+    - pver
+    - chunks
+  - field: rad.emis
+    dtype: float64
+    rank: 3
+    intent: out
+    chunk_axis: 3
+    extents:
+    - pcols
+    - pver
+    - chunks
+- name: rad_snow_gridbox
+  routine: rad_snow_gridbox
+  symbol: pycam_pi_cam_rad_snow_gridbox_v1
+  action_id: 0
+  modules:
+    pycam_rad_kernels:
+    - rad_snow_gridbox
+    ppgrid:
+    - pcols
+    - pver
+    - pverp
+    parrrsw:
+    - nbndsw
+    parrrtm:
+    - nbndlw
+  arguments:
+  - field: rad.ncol
+    dtype: int32
+    rank: 1
+    intent: in
+    chunk_axis: 1
+    extents:
+    - chunks
+  - field: rad.has_snow
+    dtype: int32
+    rank: 1
+    intent: in
+    chunk_axis: 1
+    extents:
+    - chunks
+    fortran_type: logical
+  - field: rad.rrtmg_sw_cloudsim_band
+    dtype: int32
+    rank: 1
+    intent: in
+    chunk_axis: 1
+    extents:
+    - chunks
+  - field: rad.rrtmg_lw_cloudsim_band
+    dtype: int32
+    rank: 1
+    intent: in
+    chunk_axis: 1
+    extents:
+    - chunks
+  - field: rad.cldfsnow
+    dtype: float64
+    rank: 3
+    intent: in
+    chunk_axis: 3
+    extents:
+    - pcols
+    - pver
+    - chunks
+  - field: rad.snow_tau
+    dtype: float64
+    rank: 4
+    intent: in
+    chunk_axis: 4
+    extents:
+    - nbndsw
+    - pcols
+    - pver
+    - chunks
+  - field: rad.snow_lw_abs
+    dtype: float64
+    rank: 4
+    intent: in
+    chunk_axis: 4
+    extents:
+    - nbndlw
+    - pcols
+    - pver
+    - chunks
+  - field: rad.gb_snow_tau
+    dtype: float64
+    rank: 3
+    intent: out
+    chunk_axis: 3
+    extents:
+    - pcols
+    - pver
+    - chunks
+  - field: rad.gb_snow_lw
+    dtype: float64
+    rank: 3
+    intent: out
+    chunk_axis: 3
+    extents:
+    - pcols
+    - pver
+    - chunks
+- name: rad_heating_unscale
+  routine: rad_heating_unscale
+  symbol: pycam_pi_cam_rad_heating_unscale_v1
+  action_id: 0
+  modules:
+    pycam_rad_kernels:
+    - rad_heating_unscale
+    ppgrid:
+    - pcols
+    - pver
+    - pverp
+    parrrsw:
+    - nbndsw
+    parrrtm:
+    - nbndlw
+  arguments:
+  - field: rad.ncol
+    dtype: int32
+    rank: 1
+    intent: in
+    chunk_axis: 1
+    extents:
+    - chunks
+  - field: rad.conserve_energy
+    dtype: int32
+    rank: 1
+    intent: in
+    chunk_axis: 1
+    extents:
+    - chunks
+    fortran_type: logical
+  - field: rad.pdel
+    dtype: float64
+    rank: 3
+    intent: in
+    chunk_axis: 3
+    extents:
+    - pcols
+    - pver
+    - chunks
+  - field: rad.qrs
+    dtype: float64
+    rank: 3
+    intent: inout
+    chunk_axis: 3
+    extents:
+    - pcols
+    - pver
+    - chunks
+  - field: rad.qrl
+    dtype: float64
+    rank: 3
+    intent: inout
+    chunk_axis: 3
+    extents:
+    - pcols
+    - pver
+    - chunks
+- name: rad_theta_heating
+  routine: rad_theta_heating
+  symbol: pycam_pi_cam_rad_theta_heating_v1
+  action_id: 0
+  modules:
+    pycam_rad_kernels:
+    - rad_theta_heating
+    ppgrid:
+    - pcols
+    - pver
+    - pverp
+    parrrsw:
+    - nbndsw
+    parrrtm:
+    - nbndlw
+  arguments:
+  - field: rad.ncol
+    dtype: int32
+    rank: 1
+    intent: in
+    chunk_axis: 1
+    extents:
+    - chunks
+  - field: rad.qrs
+    dtype: float64
+    rank: 3
+    intent: in
+    chunk_axis: 3
+    extents:
+    - pcols
+    - pver
+    - chunks
+  - field: rad.qrl
+    dtype: float64
+    rank: 3
+    intent: in
+    chunk_axis: 3
+    extents:
+    - pcols
+    - pver
+    - chunks
+  - field: rad.cpair
+    dtype: float64
+    rank: 1
+    intent: in
+    chunk_axis: 1
+    extents:
+    - chunks
+  - field: rad.pmid
+    dtype: float64
+    rank: 3
+    intent: in
+    chunk_axis: 3
+    extents:
+    - pcols
+    - pver
+    - chunks
+  - field: rad.cappa
+    dtype: float64
+    rank: 1
+    intent: in
+    chunk_axis: 1
+    extents:
+    - chunks
+  - field: rad.ftem
+    dtype: float64
+    rank: 3
+    intent: out
+    chunk_axis: 3
+    extents:
+    - pcols
+    - pver
+    - chunks
+- name: rad_heating_scale
+  routine: rad_heating_scale
+  symbol: pycam_pi_cam_rad_heating_scale_v1
+  action_id: 0
+  modules:
+    pycam_rad_kernels:
+    - rad_heating_scale
+    ppgrid:
+    - pcols
+    - pver
+    - pverp
+    parrrsw:
+    - nbndsw
+    parrrtm:
+    - nbndlw
+  arguments:
+  - field: rad.ncol
+    dtype: int32
+    rank: 1
+    intent: in
+    chunk_axis: 1
+    extents:
+    - chunks
+  - field: rad.conserve_energy
+    dtype: int32
+    rank: 1
+    intent: in
+    chunk_axis: 1
+    extents:
+    - chunks
+    fortran_type: logical
+  - field: rad.pdel
+    dtype: float64
+    rank: 3
+    intent: in
+    chunk_axis: 3
+    extents:
+    - pcols
+    - pver
+    - chunks
+  - field: rad.qrs
+    dtype: float64
+    rank: 3
+    intent: inout
+    chunk_axis: 3
+    extents:
+    - pcols
+    - pver
+    - chunks
+  - field: rad.qrl
+    dtype: float64
+    rank: 3
+    intent: inout
+    chunk_axis: 3
+    extents:
+    - pcols
+    - pver
+    - chunks
+- name: rad_inp
+  routine: rad_inp
+  symbol: pycam_pi_cam_rad_inp_v1
+  action_id: 0
+  modules:
+    pycam_rad_kernels:
+    - rad_inp
+    ppgrid:
+    - pcols
+    - pver
+    - pverp
+    parrrsw:
+    - nbndsw
+    parrrtm:
+    - nbndlw
+  arguments:
+  - field: rad.ncol
+    dtype: int32
+    rank: 1
+    intent: in
+    chunk_axis: 1
+    extents:
+    - chunks
+  - field: rad.pmid
+    dtype: float64
+    rank: 3
+    intent: in
+    chunk_axis: 3
+    extents:
+    - pcols
+    - pver
+    - chunks
+  - field: rad.pint
+    dtype: float64
+    rank: 3
+    intent: in
+    chunk_axis: 3
+    extents:
+    - pcols
+    - pverp
+    - chunks
+  - field: rad.pmidrd
+    dtype: float64
+    rank: 3
+    intent: out
+    chunk_axis: 3
+    extents:
+    - pcols
+    - pver
+    - chunks
+  - field: rad.pintrd
+    dtype: float64
+    rank: 3
+    intent: out
+    chunk_axis: 3
+    extents:
+    - pcols
+    - pverp
+    - chunks
+  - field: rad.eccf
+    dtype: float64
+    rank: 1
+    intent: out
+    chunk_axis: 1
+    extents:
+    - chunks
+- name: zenith
+  routine: zenith
+  symbol: pycam_pi_cam_zenith_v1
+  action_id: 0
+  modules:
+    zenith:
+    - zenith
+    ppgrid:
+    - pcols
+  arguments:
+  - field: rad.calday
+    dtype: float64
+    rank: 1
+    intent: in
+    chunk_axis: 1
+    extents:
+    - chunks
+  - field: rad.clat
+    dtype: float64
+    rank: 2
+    intent: in
+    chunk_axis: 2
+    extents:
+    - pcols
+    - chunks
+  - field: rad.clon
+    dtype: float64
+    rank: 2
+    intent: in
+    chunk_axis: 2
+    extents:
+    - pcols
+    - chunks
+  - field: rad.coszrs
+    dtype: float64
+    rank: 2
+    intent: out
+    chunk_axis: 2
+    extents:
+    - pcols
+    - chunks
+  - field: rad.ncol
+    dtype: int32
+    rank: 1
+    intent: in
+    chunk_axis: 1
+    extents:
+    - chunks
+- name: get_variability
+  routine: get_variability
+  symbol: pycam_pi_cam_get_variability_v1
+  action_id: 0
+  modules:
+    rad_solar_var:
+    - get_variability
+    radconstants:
+    - nswbands
+  arguments:
+  - field: rad.sfac
+    dtype: float64
+    rank: 2
+    intent: out
+    chunk_axis: 2
+    extents:
+    - nswbands
+    - chunks
+- name: vertinterp
+  routine: vertinterp
+  symbol: pycam_pi_cam_vertinterp_v1
+  action_id: 0
+  modules:
+    interpolate_data:
+    - vertinterp
+    ppgrid:
+    - pcols
+    - pverp
+  arguments:
+  - field: rad.ncol
+    dtype: int32
+    rank: 1
+    intent: in
+    chunk_axis: 1
+    extents:
+    - chunks
+  - field: rad.ncold
+    dtype: int32
+    rank: 1
+    intent: in
+    chunk_axis: 1
+    extents:
+    - chunks
+  - field: rad.nlev
+    dtype: int32
+    rank: 1
+    intent: in
+    chunk_axis: 1
+    extents:
+    - chunks
+  - field: rad.pmid
+    dtype: float64
+    rank: 3
+    intent: in
+    chunk_axis: 3
+    extents:
+    - pcols
+    - pverp
+    - chunks
+  - field: rad.pout
+    dtype: float64
+    rank: 1
+    intent: in
+    chunk_axis: 1
+    extents:
+    - chunks
+  - field: rad.arrin
+    dtype: float64
+    rank: 3
+    intent: in
+    chunk_axis: 3
+    extents:
+    - pcols
+    - pverp
+    - chunks
+  - field: rad.arrout
+    dtype: float64
+    rank: 2
+    intent: out
+    chunk_axis: 2
+    extents:
+    - pcols
+    - chunks
 - name: calc_obklen
   routine: calc_obklen
   symbol: freecam_pi_cam_promoted_calc_obklen_3f599c4098e6_v1

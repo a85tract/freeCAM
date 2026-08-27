@@ -430,14 +430,11 @@ def _argument(name, kind, dims, intent):
 #: The driver's plain-array calls, promoted as they stand.  ``vertinterp``
 #: is called four times on the live path with different arrays; one
 #: descriptor serves them all.
+#:
+#: ``zenith`` is not here: it is a bare external subroutine at file scope,
+#: not a module procedure, so a generated wrapper cannot ``use`` it.  It gets
+#: a handle entry instead, where an external call is legal.
 PLAIN = (
-    ("zenith", "zenith", {"zenith": ["zenith"], "ppgrid": ["pcols"]}, [
-        ("calday", "real(r8)", (), "in"),
-        ("clat", "real(r8)", ("pcols",), "in"),
-        ("clon", "real(r8)", ("pcols",), "in"),
-        ("coszrs", "real(r8)", ("pcols",), "out"),
-        ("ncol", "integer", (), "in"),
-    ]),
     ("get_variability", "get_variability", {"rad_solar_var": ["get_variability"],
                                             "radconstants": ["nswbands"]}, [
         ("sfac", "real(r8)", ("nswbands",), "out"),

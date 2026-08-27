@@ -26,6 +26,9 @@ ENTRIES = (
     "pycam_rad_nstep_v1", "pycam_rad_dt_v1",
     # radiation's own queries: the driver's predicates, never re-derived
     "pycam_rad_calday_v1", "pycam_rad_do_v1", "pycam_rad_latlon_v1",
+    # zenith is a bare external subroutine, not a module procedure, so it
+    # cannot be a generated direct kernel and lives here instead
+    "pycam_rad_zenith_v1",
     "pycam_rad_options_v1", "pycam_rad_hist_active_v1",
     # the RRTMG state's chunk-local lifetime
     "pycam_rad_rstate_create_v1", "pycam_rad_rstate_update_v1",
@@ -101,7 +104,7 @@ def test_it_replaces_no_numerical_routine_and_only_calls_the_originals() -> None
         "rrtmg_state_update", "rrtmg_state_destroy", "rad_rrtmg_sw", "rad_rrtmg_lw",
         "tropopause_find", "rad_cnst_out", "rad_data_write", "radheat_tend",
         "rad_cnst_get_call_list", "get_rlat_all_p", "get_rlon_all_p", "outfld",
-        "view1", "view2",
+        "zenith", "view1", "view2",
     } - own, sorted(outside)
     # rrtmg_state_create is a function, so it is referenced rather than called
     assert "rrtmg_state_create(" in code

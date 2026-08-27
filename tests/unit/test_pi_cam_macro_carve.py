@@ -205,6 +205,14 @@ def test_the_promoted_round_trip_keeps_pointer_and_logical_dummies() -> None:
         for a, b in zip(before.arguments, after.arguments):
             assert a.pointer == b.pointer, (before.name, a.field)
             assert a.fortran_type == b.fortran_type, (before.name, a.field)
-    promoted = (REPO / "native/pi_cam/direct_kernels_promoted.yaml").read_text()
-    assert promoted.count("pointer: true") == 6
-    assert promoted.count("fortran_type: logical") == 6
+    # scoped to mmacro_pcond: other stages contribute logical dummies of
+    # their own, and a global count would drift with every one added
+    promoted = {k.name: k for k in load_direct_kernels(
+        REPO / "native/pi_cam/direct_kernels_promoted.yaml")}
+    kernel = promoted["mmacro_pcond"]
+    assert sum(1 for a in kernel.arguments if a.pointer) == 6
+    assert sum(1 for a in kernel.arguments if a.fortran_type == "logical") == 1
+    # and every reviewed kernel's flags survive the round trip into that file
+    for name, mine in ((k.name, k) for k in ours):
+        for a, b in zip(mine.arguments, promoted[name].arguments):
+            assert a.pointer == b.pointer and a.fortran_type == b.fortran_type, (name, a.field)

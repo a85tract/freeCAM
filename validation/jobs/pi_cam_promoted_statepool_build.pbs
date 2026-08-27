@@ -55,7 +55,7 @@ from pathlib import Path
 manifest = Path("build/pi_cam_promoted/native_cam_manifest.json")
 payload = json.loads(manifest.read_text())
 names = tuple(item["name"] for item in payload["direct_kernels"]["kernels"])
-assert len(names) == 49, names
+assert len(names) == 48, names
 assert "dadadj" in names
 assert "cloud_fraction_fice" in names
 assert "zm_conv_evap" in names
@@ -68,6 +68,5 @@ assert "rad_gather_day_night" in names
 assert "rad_snow_blend_sw" in names
 assert "rad_theta_heating" in names
 assert "rad_inp" in names
-assert "zenith" in names
 print({"manifest": str(manifest), "direct_kernels": names})
 PY
