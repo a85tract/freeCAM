@@ -210,3 +210,46 @@ kernels:
 
     with pytest.raises(PICAMConfigurationError, match="extents accept"):
         load_direct_kernels(descriptor)
+
+
+def test_a_character_error_channel_is_read_back_and_reported() -> None:
+    """A routine whose last dummy is a character(len=*) intent(out) reports
+    failure the way CAM's callers read it: blank means it succeeded.  The
+    wrapper holds the string, hands the text to the caller through the error
+    message it already carries, and leaves one int32 per chunk."""
+
+    import numpy as np
+
+    from freecam.pi_cam.kernel_codegen import (
+        CHARACTER_LENGTH, DirectKernel, DirectKernelArgument, generate_direct_kernel_module,
+    )
+
+    arguments = (
+        DirectKernelArgument(field="f.ncol", dtype=np.dtype("int32").str, rank=1,
+                             intent="in", chunk_axis=1, extents=("chunks",)),
+        DirectKernelArgument(field="f.errstring", dtype=np.dtype("int32").str, rank=1,
+                             intent="out", chunk_axis=1, extents=("chunks",),
+                             fortran_type="character"),
+    )
+    kernel = DirectKernel(name="demo", routine="demo_routine", symbol="pycam_demo_v1",
+                          action_id=0, modules=(), arguments=arguments)
+    text = generate_direct_kernel_module((kernel,))
+    assert f"character(len={CHARACTER_LENGTH}) :: field_2_value" in text
+    assert "    field_2_value = ' '" in text                     # blank before the call
+    assert "         field_2_value)" in text                     # passed, not a slice
+    assert "    if (field_2_value /= ' ') then" in text           # read back after it
+    assert "      status = 70_c_int" in text
+    assert "errmsg(index) = field_2_value(index:index)" in text
+
+
+def test_a_character_carrier_must_be_one_int32_per_chunk_and_intent_out() -> None:
+    from freecam.pi_cam.errors import PICAMConfigurationError
+    from freecam.pi_cam.kernel_codegen import DirectKernelArgument
+
+    payload = {"field": "f.errstring", "dtype": "int32", "rank": 1, "intent": "out",
+               "chunk_axis": 1, "extents": ["chunks"], "fortran_type": "character"}
+    DirectKernelArgument.from_payload(payload)
+    with pytest.raises(PICAMConfigurationError, match="intent"):
+        DirectKernelArgument.from_payload({**payload, "intent": "inout"})
+    with pytest.raises(PICAMConfigurationError, match="one int32 value per chunk"):
+        DirectKernelArgument.from_payload({**payload, "dtype": "float64"})

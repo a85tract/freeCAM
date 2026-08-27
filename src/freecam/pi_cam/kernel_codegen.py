@@ -19,6 +19,10 @@ import yaml
 from .errors import PICAMConfigurationError
 
 
+#: How long a character carrier's string is.  CAM's error channels are
+#: character(128) everywhere the promoted set reaches.
+CHARACTER_LENGTH = 128
+
 _FORTRAN_TYPES = {
     np.dtype("float64").str: "real(c_double)",
     np.dtype("int32").str: "integer(c_int32_t)",
@@ -97,11 +101,25 @@ class DirectKernelArgument:
                 "of a pointer dummy"
             )
         fortran_type = str(payload.get("fortran_type", "")).lower()
-        if fortran_type not in {"", "logical"}:
+        if fortran_type not in {"", "logical", "character"}:
             raise PICAMConfigurationError(
                 f"direct kernel field {payload.get('field')!r} declares unsupported "
                 f"fortran_type {fortran_type!r}"
             )
+        if fortran_type == "character":
+            # A routine whose last dummy is a character(len=*) intent(out) is
+            # reporting an error the way CAM's own callers read it: blank means
+            # it succeeded.  The wrapper holds the string, hands the caller the
+            # text through the error message it already carries, and leaves one
+            # int32 per chunk saying whether the call was refused.
+            if dtype != np.dtype("int32").str or rank != 1 or chunk_axis != 1:
+                raise PICAMConfigurationError(
+                    f"direct kernel field {payload.get('field')!r} carries a Fortran "
+                    "character, which must be one int32 value per chunk")
+            if intent != "out":
+                raise PICAMConfigurationError(
+                    f"direct kernel field {payload.get('field')!r} carries a Fortran "
+                    "character, which the wrapper can only pass as intent(out)")
         if fortran_type == "logical":
             if dtype != np.dtype("int32").str or rank != 1 or chunk_axis != 1:
                 raise PICAMConfigurationError(
@@ -237,7 +255,7 @@ def _argument_reference(name: str, argument: DirectKernelArgument) -> str:
 
     if argument.pointer:
         return f"{name}_chunk"
-    if argument.fortran_type == "logical":
+    if argument.fortran_type in ("logical", "character"):
         return f"{name}_value"
     return _chunk_slice(name, argument)
 
@@ -251,7 +269,27 @@ def _chunk_preamble(name: str, argument: DirectKernelArgument) -> tuple[str, ...
         return (
             f"    {name}_value = ({_chunk_slice(name, argument)} /= 0_c_int32_t)",
         )
+    if argument.fortran_type == "character":
+        return (f"    {name}_value = ' '",)
     return ()
+
+
+def _chunk_postamble(name: str, argument: DirectKernelArgument) -> tuple[str, ...]:
+    """Statements that read this argument back after the call."""
+
+    if argument.fortran_type != "character":
+        return ()
+    return (
+        f"    if ({name}_value /= ' ') then",
+        f"      {_chunk_slice(name, argument)} = 1_c_int32_t",
+        f"      do index = 1, min(int(errmsg_len) - 1, len_trim({name}_value))",
+        f"        errmsg(index) = {name}_value(index:index)",
+        "      enddo",
+        "      status = 70_c_int",
+        "      return",
+        "    endif",
+        f"    {_chunk_slice(name, argument)} = 0_c_int32_t",
+    )
 
 
 def _kernel_function(kernel: DirectKernel) -> list[str]:
@@ -281,6 +319,8 @@ def _kernel_function(kernel: DirectKernel) -> list[str]:
             )
         if argument.fortran_type == "logical":
             lines.append(f"  logical :: {name}_value")
+        if argument.fortran_type == "character":
+            lines.append(f"  character(len={CHARACTER_LENGTH}) :: {name}_value")
     lines.extend(
         [
             "  call pycam_pi_cam_set_fp_environment_v1()",
@@ -370,6 +410,8 @@ def _kernel_function(kernel: DirectKernel) -> list[str]:
     for index, argument in enumerate(arguments):
         ending = ", &" if index + 1 < len(arguments) else ")"
         lines.append(f"         {argument}{ending}")
+    for name, argument in zip(names, kernel.arguments):
+        lines.extend(_chunk_postamble(name, argument))
     lines.extend(("  enddo", f"end function {kernel.symbol}", ""))
     return lines
 
