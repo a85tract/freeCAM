@@ -18,7 +18,7 @@ pinned = pytest.mark.skipif(not PINNED.is_file(),
                             reason="the pinned iCESM submodule is not checked out")
 
 ENTRIES = (
-    "pycam_micro_set_owner_v1", "pycam_micro_configure_v1", "pycam_micro_nstep_v1",
+    "pycam_micro_set_owner_v1", "pycam_micro_set_core_owner_v1", "pycam_micro_configure_v1", "pycam_micro_nstep_v1",
     "pycam_micro_dt_v1", "pycam_micro_view_v1",
     "pycam_micro_begin_v1", "pycam_micro_ptend_init_v1", "pycam_micro_bind_input_v1",
     "pycam_micro_pack_prelude_v1", "pycam_micro_substep_pack_v1", "pycam_micro_core_v1",

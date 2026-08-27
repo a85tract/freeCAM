@@ -111,8 +111,10 @@ def build_table(routine: str, source: Path, module: str,
     shapes = pointer_shapes(body)
     rows: dict[str, dict] = {}
     for number, text in body:
-        match = re.match(r"call\s+pbuf_get_field\s*\(\s*pbuf\s*,\s*(\w+)\s*,\s*(\w+)(.*)\)\s*$",
-                         text, re.I)
+        # a read guarded on one line -- `if (qrain_idx > 0) call pbuf_get_field(...)`
+        # -- is a read of a field the configuration may not register
+        match = re.match(r"(?:if\s*\([^)]*\)\s*)?call\s+pbuf_get_field\s*\(\s*pbuf\s*,\s*(\w+)\s*,"
+                         r"\s*(\w+)(.*)\)\s*$", text, re.I)
         if not match:
             continue
         idx, pointer, rest = match.group(1), match.group(2).lower(), match.group(3)

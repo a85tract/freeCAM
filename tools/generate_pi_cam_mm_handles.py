@@ -89,6 +89,7 @@ module pycam_mm_handles
   use water_tracer_vars, only: wtrc_nwset
   use time_manager,   only: get_nstep, get_step_size
   use pycam_macro_handles, only: macro_ptend, macro_det_s, macro_det_ice
+  use pycam_micro_handles, only: micro_ptend
 
   implicit none
   private
@@ -260,6 +261,20 @@ contains
     mm_det_ice(:,lchnk) = macro_det_ice(:,lchnk)
     status = 0_c_int
   end function pycam_mm_take_macro_v1
+
+  integer(c_int) function pycam_mm_take_micro_v1(lchnk) &
+       bind(C, name='pycam_mm_take_micro_v1') result(status)
+    ! The microphysics sub-walk in microp_driver_tend's place: the driver's
+    ! ptend is intent(out), so the walk's tendency object becomes the
+    ! stage's -- one derived-type assignment, as for the macrophysics.
+    integer(c_int), value, intent(in) :: lchnk
+    status = 1_c_int
+    if (.not. chunk_ok(lchnk)) return
+    status = 2_c_int
+    if (micro_ptend(lchnk)%psetcols < 1) return
+    mm_ptend(lchnk) = micro_ptend(lchnk)
+    status = 0_c_int
+  end function pycam_mm_take_micro_v1
 
   integer(c_int) function pycam_mm_microp_driver_tend_v1(lchnk, cld_macmic_ztodt) &
        bind(C, name='pycam_mm_microp_driver_tend_v1') result(status)

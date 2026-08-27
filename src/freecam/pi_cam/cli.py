@@ -221,6 +221,14 @@ def main(argv: list[str] | None = None) -> int:
             "instead of running the Macrophysics sub-walk in its place (Gate M-1's form)"
         ),
     )
+    parser.add_argument(
+        "--cloud-macro-micro-whole-micro",
+        action="store_true",
+        help=(
+            "with --cloud-macro-micro-python, call microp_driver_tend whole "
+            "instead of running the Microphysics sub-walk in its place (Gate M-2's form)"
+        ),
+    )
     parser.add_argument("--summary", type=Path)
     parser.add_argument(
         "--memory-sample-every",
@@ -349,7 +357,9 @@ def main(argv: list[str] | None = None) -> int:
             from freecam.model.python_processes import PythonProcessSpec
             from freecam.physics.cloud_macro_microphysics import CloudMacroMicrophysics
 
-            scheme = CloudMacroMicrophysics(whole_drivers=bool(args.cloud_macro_micro_whole_drivers))
+            scheme = CloudMacroMicrophysics(
+                whole_drivers=bool(args.cloud_macro_micro_whole_drivers),
+                whole_micro=bool(args.cloud_macro_micro_whole_micro))
             cam.step_plan.set_enabled("cloud_macro_microphysics", False, phase="cam_run1", experimental=True)
             cam.python_processes.install(
                 PythonProcessSpec.from_callable(
@@ -607,6 +617,7 @@ def main(argv: list[str] | None = None) -> int:
             "radiation_python": bool(args.radiation_python),
             "cloud_macro_micro_python": bool(args.cloud_macro_micro_python),
             "cloud_macro_micro_whole_drivers": bool(args.cloud_macro_micro_whole_drivers),
+            "cloud_macro_micro_whole_micro": bool(args.cloud_macro_micro_whole_micro),
             "boundary_mode": case.config.boundary_mode,
             "boundary_provider": type(boundary).__name__,
             "validation_scope": (

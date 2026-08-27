@@ -903,7 +903,7 @@ contains
   end subroutine micro_substep_pack
 
   subroutine micro_core()
-    ! micro_mg_cam.F90:2087-2206, verbatim
+    ! micro_mg_cam.F90:2087-2209, verbatim
     integer :: i
 
           select case (micro_mg_version)
@@ -1027,6 +1027,9 @@ contains
              end select
           end select
 
+          call handle_errmsg(errstring, subname="micro_mg_tend")
+
+
   end subroutine micro_core
 
   subroutine micro_substep_unpack()
@@ -1132,15 +1135,36 @@ contains
   ! Entries
   ! ------------------------------------------------------------------ !
 
-  integer(c_int) function pycam_micro_set_owner_v1(owns, owns_core) &
+  integer(c_int) function pycam_micro_set_owner_v1(owns) &
        bind(C, name='pycam_micro_set_owner_v1') result(status)
-    integer(c_int), value, intent(in) :: owns, owns_core
+    integer(c_int), value, intent(in) :: owns
     python_owns_micro = owns /= 0_c_int
-    python_owns_core = owns_core /= 0_c_int
     status = 0_c_int
   end function pycam_micro_set_owner_v1
 
-  integer(c_int) function pycam_micro_configure_v1(micro_mg_version_in, micro_mg_sub_version_in, num_steps_in, microp_uniform_in, do_cldice_in, do_cldliq_in, ixcldliq_in, ixcldice_in, ixnumliq_in, ixnumice_in, ixrain_in, ixsnow_in, ixnumrain_in, ixnumsnow_in) &
+  integer(c_int) function pycam_micro_set_core_owner_v1(owns_core) &
+       bind(C, name='pycam_micro_set_core_owner_v1') result(status)
+    ! A model in micro_mg_tend's place: the core procedure is then skipped
+    ! and Python fills the packed outputs before the unpack.
+    integer(c_int), value, intent(in) :: owns_core
+    python_owns_core = owns_core /= 0_c_int
+    status = 0_c_int
+  end function pycam_micro_set_core_owner_v1
+
+  integer(c_int) function pycam_micro_configure_v1(micro_mg_version_in, &
+       micro_mg_sub_version_in, &
+       num_steps_in, &
+       microp_uniform_in, &
+       do_cldice_in, &
+       do_cldliq_in, &
+       ixcldliq_in, &
+       ixcldice_in, &
+       ixnumliq_in, &
+       ixnumice_in, &
+       ixrain_in, &
+       ixsnow_in, &
+       ixnumrain_in, &
+       ixnumsnow_in) &
        bind(C, name='pycam_micro_configure_v1') result(status)
     integer(c_int), value, intent(in) :: micro_mg_version_in
     integer(c_int), value, intent(in) :: micro_mg_sub_version_in

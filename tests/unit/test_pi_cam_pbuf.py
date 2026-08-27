@@ -203,7 +203,7 @@ def test_the_microphysics_table_has_the_shapes_the_source_declares() -> None:
 
     table = yaml.safe_load((REPO / "native/pi_cam/pbuf_fields_micro.yaml").read_text())
     fields = table["fields"]
-    assert len(fields) == 61
+    assert len(fields) == 65
     assert sum(f["time_sliced"] for f in fields) == 12
     assert {f["rank"] for f in fields} == {1, 2, 3}
     assert [f["name"] for f in fields if f["dtype"] == "int32"] == ["ACNUM"]

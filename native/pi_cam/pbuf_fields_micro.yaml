@@ -326,6 +326,30 @@ fields:
   rank: 2
   dtype: float64
   line: 1643
+- name: QRAIN
+  symbol: micro_mg_cam_mp_qrain_idx_
+  time_sliced: false
+  rank: 2
+  dtype: float64
+  line: 1646
+- name: QSNOW
+  symbol: micro_mg_cam_mp_qsnow_idx_
+  time_sliced: false
+  rank: 2
+  dtype: float64
+  line: 1647
+- name: NRAIN
+  symbol: micro_mg_cam_mp_nrain_idx_
+  time_sliced: false
+  rank: 2
+  dtype: float64
+  line: 1648
+- name: NSNOW
+  symbol: micro_mg_cam_mp_nsnow_idx_
+  time_sliced: false
+  rank: 2
+  dtype: float64
+  line: 1649
 - name: LS_REFFRAIN
   symbol: micro_mg_cam_mp_ls_reffrain_idx_
   time_sliced: false

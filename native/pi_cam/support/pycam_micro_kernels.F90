@@ -185,6 +185,7 @@ contains
       snow_str = snow_pcw + snow_sed
 
       icecldf(:ncol,top_lev:pver) = ast(:ncol,top_lev:pver)
+      liqcldf(:ncol,top_lev:pver) = ast(:ncol,top_lev:pver)
 
   end subroutine micro_macro_feedback
 

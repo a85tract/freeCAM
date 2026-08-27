@@ -51,7 +51,7 @@ DECLARATIONS = (997, 1553)
 VERBATIM = (
     ("micro_pack_prelude", 1768, 2069),
     ("micro_substep_pack", 2074, 2086),
-    ("micro_core", 2087, 2206),
+    ("micro_core", 2087, 2209),          # the core call and its error check
     ("micro_substep_unpack", 2210, 2247),
     ("micro_post_proc", 2252, 2286),
 )
@@ -252,7 +252,7 @@ def render_module(source: Path | None = None) -> str:
         binds.append(f"    case ({code})")
         binds.append(f"      call c_f_pointer(ptr, {name}, {shape})")
     input_binds = nl.join(binds)
-    configure_args = ", ".join(f"{n}_in" for n, _ in CONFIGURATION)
+    configure_args = ", &\n       ".join(f"{n}_in" for n, _ in CONFIGURATION)
     configure_decl = nl.join(
         f"    integer(c_int), value, intent(in) :: {n}_in" for n, _ in CONFIGURATION)
     configure_body = nl.join(
@@ -380,13 +380,21 @@ contains
   ! Entries
   ! ------------------------------------------------------------------ !
 
-  integer(c_int) function pycam_micro_set_owner_v1(owns, owns_core) &
+  integer(c_int) function pycam_micro_set_owner_v1(owns) &
        bind(C, name='pycam_micro_set_owner_v1') result(status)
-    integer(c_int), value, intent(in) :: owns, owns_core
+    integer(c_int), value, intent(in) :: owns
     python_owns_micro = owns /= 0_c_int
-    python_owns_core = owns_core /= 0_c_int
     status = 0_c_int
   end function pycam_micro_set_owner_v1
+
+  integer(c_int) function pycam_micro_set_core_owner_v1(owns_core) &
+       bind(C, name='pycam_micro_set_core_owner_v1') result(status)
+    ! A model in micro_mg_tend's place: the core procedure is then skipped
+    ! and Python fills the packed outputs before the unpack.
+    integer(c_int), value, intent(in) :: owns_core
+    python_owns_core = owns_core /= 0_c_int
+    status = 0_c_int
+  end function pycam_micro_set_core_owner_v1
 
   integer(c_int) function pycam_micro_configure_v1({configure_args}) &
        bind(C, name='pycam_micro_configure_v1') result(status)
