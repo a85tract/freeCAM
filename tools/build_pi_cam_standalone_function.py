@@ -70,6 +70,10 @@ INERT_KINDS = {
     "mpishorthand_mp_mpicom_": "FREECAM_INERT_DATA_INT32",
     "mpishorthand_mp_mpir8_": "FREECAM_INERT_DATA_INT32",
     "mpishorthand_mp_mpichar_": "FREECAM_INERT_DATA_INT32",
+    # mpishorthand's remaining handles, the same shape as the three above:
+    # module integers a broadcast would name, and this image broadcasts nothing
+    "mpishorthand_mp_mpiint_": "FREECAM_INERT_DATA_INT32",
+    "mpishorthand_mp_mpilog_": "FREECAM_INERT_DATA_INT32",
 }
 # Symbols the compiler runtime and libc provide; never candidates for stubs.
 RUNTIME_SYMBOL = re.compile(r"^(?:for_|for__|_intel_|__intel_|__svml|_svml|__kmpc|_mm_|f_|d_|__libm|__stack_chk)")
@@ -93,13 +97,13 @@ def standalone_kernel(spec: FunctionSpec) -> DirectKernel:
                     "generator in this checkout cannot express it"
                 )
             extra["pointer"] = True
-        if item.carrier == "logical":
+        if item.carrier in ("logical", "character"):
             if "fortran_type" not in fields:
                 raise RuntimeError(
-                    f"{spec.function}.{item.name} is a logical; the wrapper "
+                    f"{spec.function}.{item.name} is a {item.carrier}; the wrapper "
                     "generator in this checkout cannot express it"
                 )
-            extra["fortran_type"] = "logical"
+            extra["fortran_type"] = item.carrier
         arguments.append(
             DirectKernelArgument(
                 field=f"{spec.function}.{item.name}",
@@ -107,12 +111,16 @@ def standalone_kernel(spec: FunctionSpec) -> DirectKernel:
                 rank=item.rank + 1,
                 intent=item.intent,
                 chunk_axis=item.rank + 1,
-                extents=(*item.native_shape, "chunks"),
+                # ppgrid names the model's own axes; a routine's own extent --
+                # micro_mg_tend's four dust bins -- is no module symbol here, so
+                # the wrapper checks it against the number the spec reviewed
+                extents=(*(axis if axis in _MODULE_AXES else str(spec.dimensions[axis])
+                           for axis in item.native_shape), "chunks"),
                 **extra,
             )
         )
     axes = tuple(
-        axis for axis in ("pcols", "pver", "pverp")
+        axis for axis in _MODULE_AXES
         if any(axis in item.native_shape for item in spec.arguments)
     )
     modules: list[tuple[str, tuple[str, ...]]] = []
@@ -345,6 +353,10 @@ def resolve_archives(build_root: Path, names: Iterable[str]) -> dict[str, Path]:
         archives[name] = found[0]
     return archives
 
+
+#: The axes ppgrid declares, which a wrapper can `use` by name.  Any other
+#: extent a spec names is the routine's own literal.
+_MODULE_AXES = ("pcols", "pver", "pverp")
 
 def build(spec: FunctionSpec, case: Path, output_root: Path) -> dict[str, object]:
     build_root = Path(xml(case, "EXEROOT")).resolve()

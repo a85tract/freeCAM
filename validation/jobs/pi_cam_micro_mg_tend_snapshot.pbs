@@ -1,0 +1,62 @@
+#!/bin/bash
+#PBS -N pycam-mg-snapshot
+#PBS -q develop
+#PBS -l select=4:ncpus=64:mpiprocs=128:ompthreads=1:mem=64GB
+#PBS -l walltime=00:20:00
+#PBS -j oe
+#PBS -o logs/
+#PBS -V
+
+# The module state micro_mg_tend reads, snapshotted from an initialized
+# freeCAM model.  MG1.0 keeps its constants -- the fall-speed and
+# mass-diameter parameters, the latent heats, the thirty-odd `cons` groupings
+# -- in module variables that micro_mg_init computes once from the physical
+# constants.  A standalone image has no micro_mg_init to call, so it is given
+# the live values instead, and the snapshot re-reads them after a step to
+# show they are init-time constants rather than state the routine evolves.
+
+set -euo pipefail
+
+repo=/glade/work/$USER/freeCAM
+python=${repo}/.venv/bin/python
+case_root=/glade/work/$USER/CESM_cases/f.e13.F1850C5.ne16_g16.icesm131_ihesp.PI-cam-python-state
+oracle_run=/glade/derecho/scratch/$USER/pyCAM/PI-cam/f.e13.F1850C5.ne16_g16.icesm131_ihesp.PI-cam-oracle.50step/run
+run_dir=/glade/derecho/scratch/$USER/pyCAM/PI-cam/mg-snapshot-${PBS_JOBID}/run
+boundary=/glade/derecho/scratch/$USER/pyCAM/PI-cam/nonpic-boundary-capture-50step/boundary/replay
+manifest=${PYCAM_NATIVE_MANIFEST:-${repo}/build/pi_cam_promoted/native_cam_manifest.json}
+
+source "${case_root}/.env_mach_specific.sh" >/dev/null 2>&1
+mpi_root=${CRAY_MPICH_DIR:-/opt/cray/pe/mpich/8.1.25/ofi/intel/19.0}
+export LD_LIBRARY_PATH="${mpi_root}/lib-abi-mpich:${mpi_root}/lib:${LD_LIBRARY_PATH:-}"
+export LD_PRELOAD=/glade/u/apps/common/23.04/spack/opt/spack/intel-oneapi-compilers/2023.0.0/compiler/2023.0.0/linux/compiler/lib/intel64_lin/libimf.so${LD_PRELOAD:+:${LD_PRELOAD}}
+export PYTHONPATH=${repo}/src
+export OMP_NUM_THREADS=1
+export OMP_STACKSIZE=64M
+export FI_CXI_RX_MATCH_MODE=hybrid
+export FI_MR_CACHE_MONITOR=memhooks
+
+mkdir -p "${run_dir}"
+rsync -a \
+  --exclude 'f.e13.F1850C5.ne16_g16.icesm131_ihesp.PI-cam-oracle.50step.*' \
+  --exclude '*.log.*' --exclude 'rpointer.*' --exclude 'timing/' \
+  "${oracle_run}/" "${run_dir}/"
+mkdir -p "${run_dir}/timing/checkpoints"
+
+cd "${repo}"
+mpiexec --label -n 512 "${python}" tools/snapshot_pi_cam_module_state.py \
+  --config configs/pi_cam_icesm131_replay.yaml \
+  --boundary "${boundary}" \
+  --run-dir "${run_dir}" \
+  --native-manifest "${manifest}" \
+  --function micro_mg_tend \
+  --output-dir validation \
+  > "${run_dir}/snapshot.log" 2>&1
+
+"${python}" - <<'PY'
+import json
+from pathlib import Path
+payload = json.loads(Path("validation/pi_cam_micro_mg_tend_module_state.json").read_text())
+print("entries:", len(payload["entries"]))
+print("drifted after one step:", payload["drifted_after_one_step"])
+print("digest:", payload["digest"])
+PY

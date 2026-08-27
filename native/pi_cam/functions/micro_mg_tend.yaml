@@ -2057,8 +2057,23 @@ image:
   - member: shr_spfn_mod.o
     archive: csm_share
   stubs:
-    inert: []
-    fail_closed: []
+    # what the linked objects reference but this image never numerically needs:
+    # the parallel environment and an assertion the routine does not call
+    inert:
+    - spmd_utils_mp_masterproc_
+    - mpishorthand_mp_mpicom_
+    - mpishorthand_mp_mpir8_
+    - mpishorthand_mp_mpichar_
+    - mpishorthand_mp_mpiint_
+    - mpishorthand_mp_mpilog_
+    - shr_assert_mod_mp_shr_assert_in_domain_0d_double_
+    # reading a namelist or a file has no meaning outside the model: refuse
+    fail_closed:
+    - mpibcast_
+    - shr_nl_mod_mp_shr_nl_find_group_name_
+    - units_mp_getunit_
+    - units_mp_freeunit_
+    - netcdf_mp_nf90_strerror_
     abort:
     - shr_sys_mod_mp_shr_sys_abort_
   base_address: 1342177280
