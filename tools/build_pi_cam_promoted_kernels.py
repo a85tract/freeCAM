@@ -24,7 +24,7 @@ def main() -> int:
         action="append",
         default=None,
         help="descriptor of reviewed kernels (repeatable; default: direct_kernels.yaml "
-             "and direct_kernels_macrophysics.yaml)",
+             "direct_kernels_macrophysics.yaml and direct_kernels_radiation.yaml)",
     )
     parser.add_argument(
         "--output",
@@ -40,6 +40,7 @@ def main() -> int:
     bases = args.base or [
         Path("native/pi_cam/direct_kernels.yaml"),
         Path("native/pi_cam/direct_kernels_macrophysics.yaml"),
+        Path("native/pi_cam/direct_kernels_radiation.yaml"),
     ]
     base = tuple(
         kernel
