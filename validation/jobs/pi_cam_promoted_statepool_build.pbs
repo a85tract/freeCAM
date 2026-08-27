@@ -25,6 +25,12 @@ export PYTHONPATH=${repo}/src
 
 cd "${repo}"
 mkdir -p "${output_root}"
+# Re-prepare the patched source tree first.  It is a build product, and a
+# stale one silently drops a support module or a control patch added since it
+# was last written -- which is exactly how 7255599 failed.
+rm -rf "${prepared_source}"
+"${python}" tools/prepare_pi_cam_source.py --output "${prepared_source}"
+
 "${python}" tools/generate_pi_cam_python_state_source.py \
   --source-root "${prepared_source}" \
   --output-dir "${case_root}/SourceMods/src.cam"

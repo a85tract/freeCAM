@@ -176,12 +176,31 @@ def main(argv: list[str] | None = None) -> int:
         ),
     )
     parser.add_argument(
+        "--split-radiation",
+        action="store_true",
+        help=(
+            "run the radiation stage as its two halves, stopped before "
+            "radiation_tend and resumed after it; with no Python process "
+            "installed the resume calls the original driver, which gates the "
+            "boundary alone"
+        ),
+    )
+    parser.add_argument(
         "--macrophysics-python",
         action="store_true",
         help=(
             "install Macrophysics.tend on every rank between the two halves of "
             "the split macrophysics stage, so the driver layer runs as Python "
             "with every FLOP still in Fortran; requires --split-macrophysics"
+        ),
+    )
+    parser.add_argument(
+        "--radiation-python",
+        action="store_true",
+        help=(
+            "install Radiation.tend on every rank between the two halves of "
+            "the split radiation stage, so the driver layer runs as Python "
+            "with every FLOP still in Fortran; requires --split-radiation"
         ),
     )
     parser.add_argument("--summary", type=Path)
@@ -249,6 +268,10 @@ def main(argv: list[str] | None = None) -> int:
         cam.step_plan.split_macrophysics(experimental=True)
     if args.macrophysics_python and not args.split_macrophysics:
         raise SystemExit("--macrophysics-python requires --split-macrophysics")
+    if args.split_radiation:
+        cam.step_plan.split_radiation(experimental=True)
+    if args.radiation_python and not args.split_radiation:
+        raise SystemExit("--radiation-python requires --split-radiation")
     created_addresses = {
         name: int(values.ctypes.data) for name, values in cam.pool.items()
     }
@@ -354,6 +377,7 @@ def main(argv: list[str] | None = None) -> int:
             "seconds": cam.clock.seconds,
             "fields": len(cam.pool),
             "macrophysics_split": bool(args.split_macrophysics),
+            "radiation_split": bool(args.split_radiation),
             "state_bytes": cam.pool.nbytes,
             "actions": cam.trace_count,
             "step_plan_actions": len(tuple(cam.step_plan)),
@@ -521,6 +545,8 @@ def main(argv: list[str] | None = None) -> int:
             "execution_mode": case.config.execution_mode,
             "macrophysics_split": bool(args.split_macrophysics),
             "macrophysics_python": bool(args.macrophysics_python),
+            "radiation_split": bool(args.split_radiation),
+            "radiation_python": bool(args.radiation_python),
             "boundary_mode": case.config.boundary_mode,
             "boundary_provider": type(boundary).__name__,
             "validation_scope": (
