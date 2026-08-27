@@ -425,27 +425,23 @@ class Radiation(NativeStage):
     #: What the driver keeps that no kernel declares.
     EXTRA_SCRATCH = (
         ("clat", ("pcols", "chunks")), ("clon", ("pcols", "chunks")),
-        ("troplev_r", ("pcols", "chunks")), ("p_trop", ("pcols", "chunks")),
-        ("pbr", ("pcols", "pver", "chunks")), ("pnm", ("pcols", "pverp", "chunks")),
-        ("liq_lw_abs", ("nbndlw", "pcols", "pver", "chunks")),
-        ("ice_lw_abs", ("nbndlw", "pcols", "pver", "chunks")),
-        ("snow_lw_abs", ("nbndlw", "pcols", "pver", "chunks")),
-        ("liq_tau_w", ("nbndsw", "pcols", "pver", "chunks")),
+        # the driver reads CLDFSNOW only when the field is registered; when it
+        # is not, the arrays that would have held it stay zero, and the lifted
+        # routines take has_snow = .false. and never look
+        ("cldfsnow_zero", ("pcols", "pver", "chunks")),
         ("aer_tau", ("pcols", "pverp", "nbndsw", "chunks")),
         ("aer_tau_w", ("pcols", "pverp", "nbndsw", "chunks")),
         ("aer_tau_w_g", ("pcols", "pverp", "nbndsw", "chunks")),
         ("aer_tau_w_f", ("pcols", "pverp", "nbndsw", "chunks")),
         ("aer_lw_abs", ("pcols", "pver", "nbndlw", "chunks")),
-        ("sfac", ("nbndsw", "chunks")),
         ("qrsc", ("pcols", "pver", "chunks")), ("qrlc", ("pcols", "pver", "chunks")),
         ("fns", ("pcols", "pverp", "chunks")), ("fcns", ("pcols", "pverp", "chunks")),
         ("fnl", ("pcols", "pverp", "chunks")), ("fcnl", ("pcols", "pverp", "chunks")),
     ) + tuple(
         (name, ("pcols", "chunks")) for name in (
-            "solin", "fsntoa", "fsutoa", "fsntoac", "fsnirt", "fsnrtc", "fsnirtsq",
-            "fsntc", "fsnsc", "fsdsc", "flut", "flutc", "flntc", "flnsc", "fldsc",
+            "solin", "fsutoa", "fsnirt", "fsnrtc", "fsnirtsq",
+            "fsntc", "fsnsc", "fsdsc", "flntc", "flnsc", "fldsc",
             "fsn200", "fsn200c", "fln200", "fln200c", "fsnr", "flnr",
-            "lwupcgs", "eccf_out",
         )
     )
 
@@ -464,7 +460,12 @@ class Radiation(NativeStage):
         constants.refuse_unsupported()
 
     def extra_extents(self, constants: _Constants) -> Mapping[str, int]:
+        # nswbands and nlwbands are radconstants' names for the same band
+        # counts parrrsw and parrrtm call nbndsw and nbndlw; get_variability's
+        # sfac is declared with the former, the lifted routines with the
+        # latter, and a test pins the two definitions equal.
         return {"nbndsw": NBNDSW, "nbndlw": NBNDLW,
+                "nswbands": NBNDSW, "nlwbands": NBNDLW,
                 "rrtmg_levs": constants.num_rrtmg_levs,
                 "rrtmg_levsp": constants.num_rrtmg_levs + 1}
 

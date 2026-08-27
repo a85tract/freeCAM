@@ -344,3 +344,74 @@ def test_every_path_the_transliteration_cannot_carry_is_refused(overrides, messa
 
     with pytest.raises(PICAMConfigurationError, match=message):
         _constants(**overrides).refuse_unsupported()
+
+
+# -- the scratch the transliteration reads ---------------------------------------
+
+
+def test_every_scratch_name_tend_chunk_reads_is_one_the_runtime_allocates() -> None:
+    """A name that is read but never allocated is a KeyError 512 ranks deep,
+    and the shapes only exist in two places -- the descriptors and
+    EXTRA_SCRATCH -- so the two can be compared here instead."""
+
+    from freecam.pi_cam.kernel_codegen import load_direct_kernels
+
+    described = {k.name: k for k in load_direct_kernels(Radiation.DESCRIPTORS)}
+    allocated = {a.field.removeprefix("rad.")
+                 for name in Radiation.KERNELS for a in described[name].arguments}
+    allocated |= {name for name, _ in Radiation.EXTRA_SCRATCH}
+
+    source = (REPO / "src/freecam/physics/radiation.py").read_text()
+    read = set(re.findall(r'L\["(\w+)"\]', source))
+    read |= set(re.findall(r'st\.local\["(\w+)"\]', source))
+    assert not read - allocated, sorted(read - allocated)
+
+
+def test_no_extra_scratch_is_declared_that_nothing_reads() -> None:
+    """EXTRA_SCRATCH is for what no kernel declares, so an entry nothing reads
+    is either a leftover or a name that drifted."""
+
+    source = (REPO / "src/freecam/physics/radiation.py").read_text()
+    read = set(re.findall(r'L\["(\w+)"\]', source))
+    read |= set(re.findall(r'st\.local\["(\w+)"\]', source))
+    unread = sorted(name for name, _ in Radiation.EXTRA_SCRATCH if name not in read)
+    assert not unread, unread
+
+
+def test_extra_scratch_never_shadows_a_field_a_kernel_already_declares() -> None:
+    """Two shapes for one name is a silent mismatch: the allocation wins and
+    the kernel reads it as something else."""
+
+    from freecam.pi_cam.kernel_codegen import load_direct_kernels
+
+    described = {k.name: k for k in load_direct_kernels(Radiation.DESCRIPTORS)}
+    from_kernels = {a.field.removeprefix("rad.")
+                    for name in Radiation.KERNELS for a in described[name].arguments}
+    clashes = sorted(name for name, _ in Radiation.EXTRA_SCRATCH if name in from_kernels)
+    assert not clashes, clashes
+
+
+def test_every_extent_a_kernel_declares_is_one_the_stage_can_resolve() -> None:
+    """An extent name the runtime cannot resolve is a ValueError when the
+    scratch is allocated, 512 ranks deep.  radconstants and the RRTMG
+    parameter modules name the same band counts differently, which is exactly
+    how sfac's `nswbands` slipped past a first reading."""
+
+    from freecam.pi_cam.kernel_codegen import load_direct_kernels
+
+    class _C:
+        num_rrtmg_levs = 29
+
+    described = {k.name: k for k in load_direct_kernels(Radiation.DESCRIPTORS)}
+    resolvable = {"pcols", "pver", "pverp", "pcnst", "chunks"}
+    resolvable |= set(Radiation().extra_extents(_C()))
+    declared = {extent for name in Radiation.KERNELS
+                for a in described[name].arguments for extent in a.extents}
+    unresolved = sorted(e for e in declared if e not in resolvable and not e.isdigit())
+    assert not unresolved, unresolved
+
+
+def test_the_two_names_for_the_band_counts_agree() -> None:
+    extents = Radiation().extra_extents(type("C", (), {"num_rrtmg_levs": 29})())
+    assert extents["nswbands"] == extents["nbndsw"] == R.NBNDSW
+    assert extents["nlwbands"] == extents["nbndlw"] == R.NBNDLW
