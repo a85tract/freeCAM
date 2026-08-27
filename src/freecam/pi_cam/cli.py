@@ -304,6 +304,25 @@ def main(argv: list[str] | None = None) -> int:
                 ),
                 unsafe=True,
             )
+        if args.radiation_python:
+            # The same shape for radiation: Radiation.tend between the two
+            # halves of the split stage, native and non-transactional for the
+            # same reason -- it owns no StatePool field.
+            from freecam.model.python_processes import PythonProcessSpec
+            from freecam.physics.radiation import Radiation
+
+            scheme = Radiation()
+            cam.python_processes.install(
+                PythonProcessSpec.from_callable(
+                    scheme.tend,
+                    name="rad_tend",
+                    group="cam_run1",
+                    after="rad_tend_pre_leaf",
+                    native=True,
+                    transactional=False,
+                ),
+                unsafe=True,
+            )
         for request in history_streams:
             cam.install_history_stream(
                 str(request["name"]),
