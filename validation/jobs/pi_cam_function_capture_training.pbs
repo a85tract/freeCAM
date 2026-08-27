@@ -51,9 +51,13 @@ PYCAM_FUNCTION_CAPTURE="${root}/raw/function" PYCAM_FUNCTION_CAPTURE_STEPS="${st
   mpiexec --label -n 512 "${executable}" > cesm.log.capture 2>&1
 
 cd "${repo}"
+# --summary-dir is deliberately not passed: the reviewed two-step capture's
+# summaries under validation/ are evidence for the replay, and a training
+# capture is not that.  The bundle's own header carries the provenance.
 PYTHONPATH=${repo}/src "${python}" tools/convert_pi_cam_function_capture.py \
   --capture-prefix "${root}/raw/function" \
   --output-dir "${root}/bundles" \
+  --summary-dir "${root}" \
   --executable-sha256 "$(sha256sum "${executable}" | cut -d' ' -f1)"
 
 ls -la "${root}/bundles"
