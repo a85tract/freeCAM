@@ -42,7 +42,7 @@ COMMON: dict[str, str] = {}
 
 P2, P1, PP = "(pcols,pver)", "(pcols)", "(pcols,pverp)"
 P2_4 = "(pcols,pver,4)"
-P2_M = "(pcols,pver,nmodes)"     # nmodes is a dummy of the routine that takes it
+
 
 #: microp_aero.F90:62-65, the fixed dust bin radii.
 PARAMETERS_AT = (62, 63, 64, 65)
@@ -51,13 +51,15 @@ PARAMETERS_AT = (62, 63, 64, 65)
 class Block:
     """One carved routine: where its body is, and what it receives."""
 
-    def __init__(self, name, first, last, arguments, *, skip=(), locals_=(), note=""):
+    def __init__(self, name, first, last, arguments, *, skip=(), locals_=(),
+                 line_renames=None, note=""):
         self.name = name
         self.first = first
         self.last = last
         self.arguments = arguments
         self.skip = frozenset(skip)
         self.locals = tuple(locals_)
+        self.line_renames = dict(line_renames or {})
         self.note = note
 
     @property
@@ -75,6 +77,8 @@ class Block:
                 continue
             line = lines[number - 1]
             for old, new in COMMON.items():
+                line = line.replace(old, new)
+            for old, new in self.line_renames.get(number, {}).items():
                 line = line.replace(old, new)
             out.append("   " + line if line.strip() else line)
         return out
@@ -146,13 +150,16 @@ BLOCKS = (
         # 632-684: the contact-freezing dust bins.  The bulk-aerosol arm
         # (667-680) is dropped with its `else`.
         "aero_contact_freezing", 632, 684,
-        _int("ncol", "top_lev", "nmodes", "mode_coarse_dst_idx")
-        + _logical("separate_dust")
-        + _real("t", "coarse_dust", "coarse_nacl", "num_coarse", "rho", intent="in")
-        + _real("dgnumwet", dims=P2_M, intent="in")
+        _int("ncol", "top_lev") + _logical("separate_dust")
+        + _real("t", "coarse_dust", "coarse_nacl", "num_coarse", "rho",
+                "dgnumwet_coarse", intent="in")
         + _real("nacon", "rndst", dims=P2_4),
         # `if (clim_modal_aero) then` and the bulk arm it guards, with its end if
         skip=(637,) + tuple(range(667, 681)),
+        # the source indexes one plane of the mode-resolved diameters; the
+        # walk passes that plane, so the reference loses its third index and
+        # nothing else changes
+        line_renames={662: {"dgnumwet(i,k,mode_coarse_dst_idx)": "dgnumwet_coarse(i,k)"}},
         locals_=("   integer :: i, k", "   real(r8) :: dmc, ssmc, wght"),
         note="the bulk-aerosol arm and its `if (clim_modal_aero) then`",
     ),
@@ -222,8 +229,11 @@ end module pycam_aero_kernels
 # -- direct-kernel descriptors ------------------------------------------------
 
 _DTYPE = {"real(r8),": "float64", "integer, ": "int32", "logical,  ": "int32"}
+#: a Fortran logical travels as one int32 per chunk and the wrapper declares
+#: it logical again, which the descriptor has to say
+_CARRIER = {"logical,  ": "logical"}
 _DIMS = {P2: ["pcols", "pver"], P1: ["pcols"], PP: ["pcols", "pverp"],
-         P2_4: ["pcols", "pver", "4"], P2_M: ["pcols", "pver", "nmodes"], "": []}
+         P2_4: ["pcols", "pver", "4"], "": []}
 
 
 def render_descriptors() -> str:
@@ -234,10 +244,13 @@ def render_descriptors() -> str:
         arguments = []
         for name, kind, dims, intent in block.arguments:
             extents = [*_DIMS[dims], "chunks"]
-            arguments.append({
+            entry = {
                 "field": f"aero.{name}", "dtype": _DTYPE[kind], "rank": len(extents),
                 "intent": intent, "chunk_axis": len(extents), "extents": extents,
-            })
+            }
+            if kind in _CARRIER:
+                entry["fortran_type"] = _CARRIER[kind]
+            arguments.append(entry)
         kernels.append({
             "name": block.name, "routine": block.name,
             "symbol": f"pycam_pi_cam_{block.name}_v1", "action_id": 0,

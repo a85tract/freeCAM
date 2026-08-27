@@ -171,20 +171,18 @@ contains
   end subroutine aero_npccn_from_mixnuc
 
   subroutine aero_contact_freezing( &
-         ncol, top_lev, nmodes, mode_coarse_dst_idx, separate_dust, t, &
-         coarse_dust, coarse_nacl, num_coarse, rho, dgnumwet, nacon, rndst)
+         ncol, top_lev, separate_dust, t, coarse_dust, coarse_nacl, &
+         num_coarse, rho, dgnumwet_coarse, nacon, rndst)
 
    integer,  intent(in) :: ncol
    integer,  intent(in) :: top_lev
-   integer,  intent(in) :: nmodes
-   integer,  intent(in) :: mode_coarse_dst_idx
    logical,   intent(in) :: separate_dust
    real(r8), intent(in) :: t(pcols,pver)
    real(r8), intent(in) :: coarse_dust(pcols,pver)
    real(r8), intent(in) :: coarse_nacl(pcols,pver)
    real(r8), intent(in) :: num_coarse(pcols,pver)
    real(r8), intent(in) :: rho(pcols,pver)
-   real(r8), intent(in) :: dgnumwet(pcols,pver,nmodes)
+   real(r8), intent(in) :: dgnumwet_coarse(pcols,pver)
    real(r8), intent(inout) :: nacon(pcols,pver,4)
    real(r8), intent(inout) :: rndst(pcols,pver,4)
 
@@ -220,7 +218,7 @@ contains
 
                   !also redefine parameters based on size...
 
-                  rndst(i,k,3) = 0.5_r8*dgnumwet(i,k,mode_coarse_dst_idx)
+                  rndst(i,k,3) = 0.5_r8*dgnumwet_coarse(i,k)
                   if (rndst(i,k,3) <= 0._r8) then 
                      rndst(i,k,3) = rn_dst3
                   end if

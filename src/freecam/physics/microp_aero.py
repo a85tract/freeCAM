@@ -335,11 +335,12 @@ class MicropAero(NativeStage):
         log("aero_npccn_from_mixnuc")
         # 632-684
         K("aero_contact_freezing",
-          {"ncol": ncol, "top_lev": top, "nmodes": self._nmodes,
-           "mode_coarse_dst_idx": C.mode_coarse_dst_idx, "separate_dust": C.separate_dust,
+          {"ncol": ncol, "top_lev": top, "separate_dust": C.separate_dust,
            "t": S["state_t"], "coarse_dust": coarse["coarse_dust"],
            "coarse_nacl": coarse["coarse_nacl"], "num_coarse": coarse["num_coarse"],
-           "rho": None, "dgnumwet": pbv["DGNUMWET"]},
+           "rho": None,
+           # 662 indexes one plane of the mode-resolved diameters
+           "dgnumwet_coarse": pbv["DGNUMWET"][:, :, C.mode_coarse_dst_idx - 1]},
           outputs={"nacon": pbv["NACON"], "rndst": pbv["RNDST"]})
         log("aero_contact_freezing")
         # 701-705

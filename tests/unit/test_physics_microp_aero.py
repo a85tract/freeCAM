@@ -51,11 +51,31 @@ def test_every_carved_line_is_the_pinned_source_s() -> None:
                          module, re.S)
         assert body, block.name
         carved = [line.strip() for line in body.group(1).splitlines() if line.strip()]
-        pinned = [LINES[n - 1].strip() for n in range(block.first, block.last + 1)
-                  if n not in block.skip and LINES[n - 1].strip()]
+        pinned = []
+        for n in range(block.first, block.last + 1):
+            if n in block.skip or not LINES[n - 1].strip():
+                continue
+            line = LINES[n - 1]
+            for old, new in block.line_renames.get(n, {}).items():
+                line = line.replace(old, new)
+            pinned.append(line.strip())
         declared = {line for line in carved if re.match(
             r"(integer|real\(r8\)|logical)[ ,]", line)}
         assert [line for line in carved if line not in declared] == pinned, block.name
+
+
+def test_the_only_rewritten_line_is_the_one_that_loses_a_slice() -> None:
+    """One line is renamed rather than copied: the source indexes one plane of
+    the mode-resolved diameters, and the walk passes that plane."""
+
+    import generate_pi_cam_aero_kernels as gen
+
+    renamed = {block.name: block.line_renames for block in gen.BLOCKS if block.line_renames}
+    assert renamed == {"aero_contact_freezing": {
+        662: {"dgnumwet(i,k,mode_coarse_dst_idx)": "dgnumwet_coarse(i,k)"}}}
+    assert "dgnumwet(i,k,mode_coarse_dst_idx)" in LINES[661]
+    # the arithmetic either side of it is untouched
+    assert LINES[661].strip().startswith("rndst(i,k,3) = 0.5_r8*")
 
 
 def test_the_drops_are_exactly_the_arms_this_configuration_never_takes() -> None:

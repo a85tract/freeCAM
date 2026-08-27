@@ -148,6 +148,7 @@ kernels:
     chunk_axis: 1
     extents:
     - chunks
+    fortran_type: logical
   - field: aero.tke
     dtype: float64
     rank: 3
@@ -376,20 +377,6 @@ kernels:
     chunk_axis: 1
     extents:
     - chunks
-  - field: aero.nmodes
-    dtype: int32
-    rank: 1
-    intent: in
-    chunk_axis: 1
-    extents:
-    - chunks
-  - field: aero.mode_coarse_dst_idx
-    dtype: int32
-    rank: 1
-    intent: in
-    chunk_axis: 1
-    extents:
-    - chunks
   - field: aero.separate_dust
     dtype: int32
     rank: 1
@@ -397,6 +384,7 @@ kernels:
     chunk_axis: 1
     extents:
     - chunks
+    fortran_type: logical
   - field: aero.t
     dtype: float64
     rank: 3
@@ -442,15 +430,14 @@ kernels:
     - pcols
     - pver
     - chunks
-  - field: aero.dgnumwet
+  - field: aero.dgnumwet_coarse
     dtype: float64
-    rank: 4
+    rank: 3
     intent: in
-    chunk_axis: 4
+    chunk_axis: 3
     extents:
     - pcols
     - pver
-    - nmodes
     - chunks
   - field: aero.nacon
     dtype: float64
