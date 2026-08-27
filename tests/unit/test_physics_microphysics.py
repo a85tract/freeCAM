@@ -440,6 +440,33 @@ def test_the_paths_the_configuration_never_takes_are_refused(bad, what) -> None:
     _constants().refuse_unsupported()
 
 
+def test_the_packed_names_map_to_the_core_s_dummies_positionally() -> None:
+    """`packed_t` is the routine's `tn`, `packed_rel` its `effc`: the pairing
+    is the lifted call's argument order, not a guess."""
+
+    call = re.search(r"call micro_mg_tend1_0\((.*?)\)\s*\n\s*case \(5\)",
+                     HANDLES.read_text(), re.S).group(1)
+    actuals = [a.strip() for a in re.sub(r"[&\n]", " ", call).split(",")]
+    source = (REPO / "external/iCESM1.3.1_fzhu/components/cam/src/physics/cam/micro_mg1_0.F90"
+              ).read_text().splitlines()
+    start = next(i for i, line in enumerate(source)
+                 if re.match(r"^\s*subroutine micro_mg_tend\s*\(", line))
+    text = ""
+    for line in source[start:]:
+        text += line.split("!")[0].strip()
+        if not text.rstrip().endswith("&"):
+            break
+        text = text.rstrip()[:-1] + " "
+    dummies = [d.strip() for d in re.search(r"\((.*)\)", text).group(1).split(",")]
+    assert len(dummies) == len(actuals) == 116
+    pinned = {a.removeprefix("packed_"): d for a, d in zip(actuals, dummies)
+              if a.startswith("packed_")}
+    assert M.PACKED_TO_DUMMY == {k: v for k, v in pinned.items() if k != v}
+    # every packed name the contract carries pairs with a dummy of that call
+    for name in M.PACKED_INPUTS + M.PACKED_OUTPUTS:
+        assert name in pinned, name
+
+
 def test_the_packed_contract_is_the_core_s_argument_list() -> None:
     """Every packed input and output is a view the handles module serves, and
     together they are micro_mg_tend1_0's array arguments minus the five the
@@ -473,8 +500,11 @@ def test_a_model_in_the_core_s_place_sees_the_packed_batch_and_answers_it(fake) 
     assert lib.core_owner == 1
     assert "core" not in [n for n, _ in lib.lifecycle]
     assert scheme.calls == list(SEQUENCE) * 2
-    assert set(seen) == set(M.PACKED_INPUTS)
+    assert set(seen) == set(M.PACKED_INPUTS) | set(M.PACKED_SCALARS)
     assert seen["t"] == (16, 30) and seen["rndst"] == (16, 30, 57)
+    # the configuration the core branches on and the substep's length travel
+    # with the columns, so a model gets everything the routine gets
+    assert seen["microp_uniform"] == () and seen["deltatin"] == ()
     # the answer landed in the packed storage the unpack reads
     tlat = lib.views[(1540, "view", VIEW["packed_tlat"])]
     assert np.all(tlat == 7.0)
@@ -558,3 +588,49 @@ def test_every_buffer_field_the_routine_reads_is_reached_by_the_walk() -> None:
     table = {row["name"] for row in
              yaml.safe_load((REPO / "native/pi_cam/pbuf_fields_micro.yaml").read_text())["fields"]}
     assert table - named == set(), sorted(table - named)
+
+
+def test_the_standalone_core_answers_the_packed_contract(monkeypatch) -> None:
+    """`standalone_core()` is the original in the stage's own kernel slot: it
+    takes the packed batch column by column, renames each to the routine's
+    dummy, and returns every packed output.  The image itself is not needed
+    to check the wiring."""
+
+    import types
+
+    scheme = Microphysics()
+    spec = types.SimpleNamespace(
+        arguments=[types.SimpleNamespace(
+            name=name, rank=0 if name in M.PACKED_SCALARS else 1, role="input",
+            public_extent=lambda dims, name=name: () if name in M.PACKED_SCALARS else (30,))
+            for name in {M.PACKED_TO_DUMMY.get(n, n)
+                         for n in M.PACKED_INPUTS + M.PACKED_OUTPUTS} | set(M.PACKED_SCALARS)],
+        dimensions={"pcols": 16, "pver": 30, "pverp": 31, "ndust": 4},
+    )
+    seen: list[dict] = []
+
+    class _Function:
+        def __init__(self):
+            self.spec = spec
+
+        def run(self, one, parameters=None):
+            seen.append(one)
+            outputs = {M.PACKED_TO_DUMMY.get(n, n): np.full(30, 3.0) for n in M.PACKED_OUTPUTS}
+            return types.SimpleNamespace(outputs=outputs, updated_inputs={})
+
+    monkeypatch.setattr(scheme, "_function", lambda: _Function())
+    model = scheme.standalone_core()
+    rows, levels = 2, 30
+    batch = {name: np.ones((rows, levels)) for name in M.PACKED_INPUTS
+             if name not in ("rndst", "nacon")}
+    batch["rndst"] = np.ones((rows, levels, 4))
+    batch["nacon"] = np.ones((rows, levels, 4))
+    batch.update({name: np.array(1.0) for name in M.PACKED_SCALARS})
+    answer = model(batch)
+    assert set(answer) == set(M.PACKED_OUTPUTS)
+    assert len(seen) == rows
+    # each column was handed the routine's own names, one column at a time
+    assert "tn" in seen[0] and "t" not in seen[0]
+    assert np.asarray(seen[0]["tn"]).shape == (levels,)
+    assert np.asarray(seen[0]["deltatin"]).shape == ()
+    assert answer["tlat"].shape == (rows, levels)

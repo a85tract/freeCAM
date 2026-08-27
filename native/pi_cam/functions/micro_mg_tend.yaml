@@ -1544,6 +1544,7 @@ arguments:
   - pcols
   - pver
   pointer: true
+  default: 0.0
   public_shape:
   - pver
   units: null
@@ -1560,6 +1561,7 @@ arguments:
   - pcols
   - pver
   pointer: true
+  default: 0.0
   public_shape:
   - pver
   units: null
@@ -1576,6 +1578,7 @@ arguments:
   - pcols
   - pver
   pointer: true
+  default: 0.0
   public_shape:
   - pver
   units: null
@@ -1592,6 +1595,7 @@ arguments:
   - pcols
   - pver
   pointer: true
+  default: 0.0
   public_shape:
   - pver
   units: null
@@ -1608,6 +1612,7 @@ arguments:
   - pcols
   - pver
   pointer: true
+  default: 0.0
   public_shape:
   - pver
   units: null
@@ -1624,6 +1629,7 @@ arguments:
   - pcols
   - pver
   pointer: true
+  default: 0.0
   public_shape:
   - pver
   units: null

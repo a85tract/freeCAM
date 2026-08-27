@@ -183,6 +183,22 @@ PACKED_OUTPUTS = (
     "frzro", "meltso", "wtfc", "wtfi", "wtprelat", "wtpostlat",
 )
 
+#: The driver's packed arrays and the core's dummies are named differently:
+#: `packed_t` is the routine's `tn`, `packed_rel` its `effc`.  The pairing is
+#: positional in the lifted call, and a test derives this table from it.
+PACKED_TO_DUMMY = {
+    "t": "tn", "q": "qn", "npccn": "npccnin", "rel": "effc", "rei": "effi",
+    "dei": "deffi", "mu": "pgamrad", "lambdac": "lamcrad", "des": "dsout",
+    "cmei": "cmeiout", "pra": "prao", "prc": "prco", "mnuccc": "mnuccco",
+    "mnucct": "mnuccto", "msacwi": "msacwio", "psacws": "psacwso", "bergs": "bergso",
+    "berg": "bergo", "melt": "melto", "homo": "homoo", "qcres": "qcreso",
+    "prci": "prcio", "prai": "praio", "qires": "qireso", "mnuccr": "mnuccro",
+    "pracs": "pracso", "mnuccd": "mnuccdo",
+}
+#: What the core reads that is not a packed array: the configuration it
+#: branches on and the substep's length.
+PACKED_SCALARS = ("microp_uniform", "do_cldice", "deltatin")
+
 #: The order in which the Fortran routine does things under the admitted
 #: configuration; ``tend`` follows it per chunk and a test compares the two
 #: against the pinned source.
@@ -404,6 +420,82 @@ class Microphysics(NativeStage):
 
     entries_class = _MicroEntries
     services_class = _MicroHandles
+
+    def __init__(self, *, kernel=None, kernels=None) -> None:
+        super().__init__(kernel=kernel, kernels=kernels)
+        self._standalone: Any = None
+
+    # -- standalone ------------------------------------------------------------
+
+    def micro_mg_tend(self, inputs: Mapping[str, Any],
+                      parameters: Mapping[str, Any] | None = None):
+        """One column through the reviewed standalone image; no model needed."""
+
+        return self._function().run(inputs, parameters)
+
+    def example_input(self, name: str = "captured-anchor"):
+        return self._function().example_input(name)
+
+    def _function(self):
+        if self._standalone is None:
+            from .function import load_function
+
+            self._standalone = load_function(CORE)
+        return self._standalone
+
+    def close(self) -> None:
+        if self._standalone is not None:
+            self._standalone.close()
+            self._standalone = None
+
+    def standalone_core(self):
+        """The original core, as a model the stage may run in its own place.
+
+        Gate M-5's form: ``stage.kernels["micro_mg_tend"] =
+        micro.standalone_core()`` sends every packed column through the
+        standalone image instead of the routine inside the lifted section.
+        The answer must be the same to the bit -- it is the same machine
+        code, on the same numbers -- which is what makes the packed contract
+        worth trusting before a model takes its place.
+        """
+
+        function = self._function()
+        dummy = {item.name: item for item in function.spec.arguments}
+        # The driver hands five outputs to locals it discards (*_dum), and two
+        # of them are intent(inout): the routine zeroes both at 995-996 before
+        # it writes them, so what goes in cannot be read.  Zeros stand in.
+        discarded = {item.name: np.zeros(item.public_extent(function.spec.dimensions))
+                     for item in function.spec.arguments
+                     if item.role == "inout" and item.name not in PACKED_TO_DUMMY.values()
+                     and item.name not in PACKED_OUTPUTS}
+
+        def model(batch: Mapping[str, np.ndarray]) -> dict[str, np.ndarray]:
+            packed = {name: np.asarray(value) for name, value in batch.items()}
+            rows = int(packed["t"].shape[0])
+            levels = int(packed["t"].shape[1])
+            # rflx and sflx carry one more level than the rest: the shape is
+            # the routine's own, not this batch's
+            def shape(name: str) -> tuple[int, ...]:
+                item = dummy[PACKED_TO_DUMMY.get(name, name)]
+                extent = item.public_extent(function.spec.dimensions)
+                return (rows, *(levels + 1 if axis > levels else axis for axis in extent))
+
+            answer = {name: np.zeros(shape(name)) for name in PACKED_OUTPUTS
+                      if PACKED_TO_DUMMY.get(name, name) in dummy}
+            for row in range(rows):
+                one: dict[str, Any] = dict(discarded)
+                for name, value in packed.items():
+                    key = PACKED_TO_DUMMY.get(name, name)
+                    if key not in dummy:
+                        continue
+                    one[key] = value if name in PACKED_SCALARS else value[row]
+                result = function.run(one)
+                values = {**result.outputs, **result.updated_inputs}
+                for name in answer:
+                    answer[name][row] = np.asarray(values[PACKED_TO_DUMMY.get(name, name)])
+            return answer
+
+        return model
 
     # -- what the runtime asks of this stage -------------------------------------
 
@@ -699,6 +791,10 @@ class Microphysics(NativeStage):
         inputs = {name: H.view(lchnk, VIEW[f"packed_{name}"]) for name in names}
         outputs = {name: H.view(lchnk, VIEW[f"packed_{name}"]) for name in PACKED_OUTPUTS}
         mgncol = int(inputs["t"].shape[0])
+        # 2087-2095: what the core reads beside the packed columns
+        inputs["microp_uniform"] = int(C.microp_uniform)
+        inputs["do_cldice"] = int(C.do_cldice)
+        inputs["deltatin"] = dt / C.num_steps
         st.swappable_kernel(CORE, inputs, outputs=outputs, ncol=mgncol, lchnk=lchnk, dt=dt,
                             original=lambda: H.core(lchnk))
         self.calls.append(CORE)
@@ -771,4 +867,4 @@ class Microphysics(NativeStage):
 
 __all__ = ["CORE", "CONFIGURATION", "GRID_COPIES", "GRID_PBUF", "HISTORY_GRID", "HISTORY_MG",
            "HISTORY_TENDENCIES", "INPUT", "KERNELS", "Microphysics", "PACKED_INPUTS",
-           "PACKED_OUTPUTS", "SEQUENCE", "VIEW"]
+           "PACKED_OUTPUTS", "PACKED_SCALARS", "PACKED_TO_DUMMY", "SEQUENCE", "VIEW"]
