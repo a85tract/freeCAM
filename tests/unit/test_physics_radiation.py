@@ -480,3 +480,28 @@ def test_every_handle_method_the_transliteration_calls_exists() -> None:
     calls |= set(re.findall(r"st\.handles\.(\w+)\(", _source()))
     missing = sorted(name for name in calls if not hasattr(R._RadHandles, name))
     assert not missing, missing
+
+
+def test_no_two_kernels_of_a_stage_name_one_field_with_different_shapes() -> None:
+    """The scratch is keyed by field name across every kernel of a stage, so
+    two kernels declaring one name share one array.  Same shape is how a value
+    flows from one lifted routine to the next and is the point; different
+    shapes is a broadcast error on the first chunk, which is what vertinterp's
+    generic `pmid` cost -- it collided with rad_theta_heating's."""
+
+    from freecam.pi_cam.kernel_codegen import load_direct_kernels
+    from freecam.physics.macrophysics import Macrophysics
+
+    for stage in (Radiation, Macrophysics):
+        described = {k.name: k for k in load_direct_kernels(stage.DESCRIPTORS)}
+        seen: dict[str, tuple[str, tuple[str, ...]]] = {}
+        clashes = []
+        for name in stage.KERNELS:
+            for a in described[name].arguments:
+                field, extents = a.field.split(".")[-1], tuple(a.extents)
+                if not extents:
+                    continue          # a catalog descriptor sized from the pool
+                if field in seen and seen[field][1] and seen[field][1] != extents:
+                    clashes.append((field, seen[field], (name, extents)))
+                seen.setdefault(field, (name, extents))
+        assert not clashes, (stage.__name__, clashes)

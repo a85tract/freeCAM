@@ -776,9 +776,10 @@ class Radiation(NativeStage):
             # 200 mb interpolations run
             for source, target in (("fcns", "fsn200c"), ("fns", "fsn200")):
                 K("vertinterp",
-                  {"ncol": ncol, "ncold": pcols, "nlev": pverp,
-                   "pmid": S["state_pint"], "pout": 20000.0, "arrin": L[source]},
-                  outputs={"arrout": L[target]})
+                  {"ncol": ncol, "vi_ncold": pcols, "vi_nlev": pverp,
+                   "vi_pint": S["state_pint"], "vi_pout": 20000.0,
+                   "vi_arrin": L[source]},
+                  outputs={"vi_arrout": L[target]})
             log("vertinterp*")
 
             # 1057-1059
@@ -853,9 +854,10 @@ class Radiation(NativeStage):
             # 1160-1161: FLNR is off, asserted at attach
             for source, target in (("fnl", "fln200"), ("fcnl", "fln200c")):
                 K("vertinterp",
-                  {"ncol": ncol, "ncold": pcols, "nlev": pverp,
-                   "pmid": S["state_pint"], "pout": 20000.0, "arrin": L[source]},
-                  outputs={"arrout": L[target]})
+                  {"ncol": ncol, "vi_ncold": pcols, "vi_nlev": pverp,
+                   "vi_pint": S["state_pint"], "vi_pout": 20000.0,
+                   "vi_arrin": L[source]},
+                  outputs={"vi_arrout": L[target]})
             log("vertinterp*")
 
             # 1170-1171: the division and the (:ncol,:) shape are one

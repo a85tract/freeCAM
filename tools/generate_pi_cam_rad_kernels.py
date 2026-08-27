@@ -439,15 +439,20 @@ PLAIN = (
                                             "radconstants": ["nswbands"]}, [
         ("sfac", "real(r8)", ("nswbands",), "out"),
     ]),
+    # vertinterp's dummies carry the most generic names in the driver, and
+    # `pmid` collided with rad_inp's, which is a different shape.  The scratch
+    # is keyed by field name across every kernel of a stage, so the two would
+    # have shared one array.  Prefixed here, and its own `pmid` named for what
+    # the driver actually passes: state%pint, at every live call site.
     ("vertinterp", "vertinterp", {"interpolate_data": ["vertinterp"],
                                   "ppgrid": ["pcols", "pverp"]}, [
         ("ncol", "integer", (), "in"),
-        ("ncold", "integer", (), "in"),
-        ("nlev", "integer", (), "in"),
-        ("pmid", "real(r8)", ("pcols", "pverp"), "in"),
-        ("pout", "real(r8)", (), "in"),
-        ("arrin", "real(r8)", ("pcols", "pverp"), "in"),
-        ("arrout", "real(r8)", ("pcols",), "out"),
+        ("vi_ncold", "integer", (), "in"),
+        ("vi_nlev", "integer", (), "in"),
+        ("vi_pint", "real(r8)", ("pcols", "pverp"), "in"),
+        ("vi_pout", "real(r8)", (), "in"),
+        ("vi_arrin", "real(r8)", ("pcols", "pverp"), "in"),
+        ("vi_arrout", "real(r8)", ("pcols",), "out"),
     ]),
 )
 

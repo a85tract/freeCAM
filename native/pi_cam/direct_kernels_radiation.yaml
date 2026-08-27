@@ -1380,21 +1380,21 @@ kernels:
     chunk_axis: 1
     extents:
     - chunks
-  - field: rad.ncold
+  - field: rad.vi_ncold
     dtype: int32
     rank: 1
     intent: in
     chunk_axis: 1
     extents:
     - chunks
-  - field: rad.nlev
+  - field: rad.vi_nlev
     dtype: int32
     rank: 1
     intent: in
     chunk_axis: 1
     extents:
     - chunks
-  - field: rad.pmid
+  - field: rad.vi_pint
     dtype: float64
     rank: 3
     intent: in
@@ -1403,14 +1403,14 @@ kernels:
     - pcols
     - pverp
     - chunks
-  - field: rad.pout
+  - field: rad.vi_pout
     dtype: float64
     rank: 1
     intent: in
     chunk_axis: 1
     extents:
     - chunks
-  - field: rad.arrin
+  - field: rad.vi_arrin
     dtype: float64
     rank: 3
     intent: in
@@ -1419,7 +1419,7 @@ kernels:
     - pcols
     - pverp
     - chunks
-  - field: rad.arrout
+  - field: rad.vi_arrout
     dtype: float64
     rank: 2
     intent: out
