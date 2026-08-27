@@ -203,6 +203,16 @@ def main(argv: list[str] | None = None) -> int:
             "with every FLOP still in Fortran; requires --split-radiation"
         ),
     )
+    parser.add_argument(
+        "--cloud-macro-micro-python",
+        action="store_true",
+        help=(
+            "disable the cloud_macro_microphysics action (tphysbc stage 7) and "
+            "install CloudMacroMicrophysics.tend in its place on every rank, so "
+            "the stage's driver layer runs as Python with every FLOP still in "
+            "Fortran; the whole action is replaced, nothing is split"
+        ),
+    )
     parser.add_argument("--summary", type=Path)
     parser.add_argument(
         "--memory-sample-every",
@@ -318,6 +328,27 @@ def main(argv: list[str] | None = None) -> int:
                     name="rad_tend",
                     group="cam_run1",
                     after="rad_tend_pre_leaf",
+                    native=True,
+                    transactional=False,
+                ),
+                unsafe=True,
+            )
+        if args.cloud_macro_micro_python:
+            # A whole workflow action rather than a call inside one: the
+            # Fortran stage is disabled and the Python stage sits where it
+            # was.  Native and non-transactional for the same reason as the
+            # other two -- it owns no StatePool field.
+            from freecam.model.python_processes import PythonProcessSpec
+            from freecam.physics.cloud_macro_microphysics import CloudMacroMicrophysics
+
+            scheme = CloudMacroMicrophysics()
+            cam.step_plan.set_enabled("cloud_macro_microphysics", False, phase="cam_run1", experimental=True)
+            cam.python_processes.install(
+                PythonProcessSpec.from_callable(
+                    scheme.tend,
+                    name="cloud_macro_microphysics_python",
+                    group="cam_run1",
+                    after="cloud_macro_microphysics",
                     native=True,
                     transactional=False,
                 ),
@@ -566,6 +597,7 @@ def main(argv: list[str] | None = None) -> int:
             "macrophysics_python": bool(args.macrophysics_python),
             "radiation_split": bool(args.split_radiation),
             "radiation_python": bool(args.radiation_python),
+            "cloud_macro_micro_python": bool(args.cloud_macro_micro_python),
             "boundary_mode": case.config.boundary_mode,
             "boundary_provider": type(boundary).__name__,
             "validation_scope": (

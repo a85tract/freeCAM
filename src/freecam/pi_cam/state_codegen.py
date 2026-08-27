@@ -475,6 +475,8 @@ def generate_fortran_include(bridge: LegacyStateBridge) -> str:
             *_pbuf_accessor(),
             *_macro_host_binding(),
             *_rad_host_binding(),
+            *_micro_host_binding(),
+            *_mm_host_binding(),
         ]
     )
 
@@ -514,6 +516,46 @@ def _rad_host_binding() -> tuple[str, ...]:
         "  call pycam_rad_bind_hosts(phys_state, pbuf2d)",
         "  status = 0_c_int",
         "end function pycam_rad_bind_hosts_v1",
+        "",
+    )
+
+
+def _micro_host_binding() -> tuple[str, ...]:
+    """The same for the microphysics handles."""
+
+    return (
+        "integer(c_int) function pycam_micro_bind_hosts_v1() &",
+        "     bind(C, name='pycam_micro_bind_hosts_v1') result(status)",
+        "  use, intrinsic :: iso_c_binding, only: c_int",
+        "  use pycam_micro_handles, only: pycam_micro_bind_hosts",
+        "  status = 1_c_int",
+        "  if (.not. associated(phys_state) .or. .not. associated(pbuf2d)) return",
+        "  call pycam_micro_bind_hosts(phys_state, pbuf2d)",
+        "  status = 0_c_int",
+        "end function pycam_micro_bind_hosts_v1",
+        "",
+    )
+
+
+def _mm_host_binding() -> tuple[str, ...]:
+    """The cloud macro/microphysics stage also updates ``phys_tend``.
+
+    ``physics_update(state, ptend, ztodt, tend)`` in tphysbc accumulates the
+    stage's tendencies into cam_comp's ``phys_tend(lchnk)``, so that array
+    is bound alongside the state and the buffer.
+    """
+
+    return (
+        "integer(c_int) function pycam_mm_bind_hosts_v1() &",
+        "     bind(C, name='pycam_mm_bind_hosts_v1') result(status)",
+        "  use, intrinsic :: iso_c_binding, only: c_int",
+        "  use pycam_mm_handles, only: pycam_mm_bind_hosts",
+        "  status = 1_c_int",
+        "  if (.not. associated(phys_state) .or. .not. associated(phys_tend) &",
+        "       .or. .not. associated(pbuf2d)) return",
+        "  call pycam_mm_bind_hosts(phys_state, phys_tend, pbuf2d)",
+        "  status = 0_c_int",
+        "end function pycam_mm_bind_hosts_v1",
         "",
     )
 
