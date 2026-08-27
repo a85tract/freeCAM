@@ -451,7 +451,9 @@ class Microphysics(NativeStage):
         model = self.kernels[CORE]
         if model is None:
             return self._function().run(inputs, parameters)
-        answer = dict(model(inputs))
+        answer = dict(model(inputs, parameters)
+                      if getattr(model, "takes_parameters", False)
+                      else model(inputs))
         missing = [name for name in RETURNED if name not in answer]
         if missing:
             raise PhysicsError(

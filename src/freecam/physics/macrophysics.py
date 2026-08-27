@@ -301,10 +301,17 @@ class Macrophysics(NativeStage):
     entries_class = _MacroEntries
     services_class = _MacroHandles
 
-    def __init__(self, *, kernel: Callable[..., Mapping[str, np.ndarray]] | None = None) -> None:
+    def __init__(self, *, kernel: Callable[..., Mapping[str, np.ndarray]] | None = None,
+                 surrogate: str | Path | None = None) -> None:
         super().__init__(kernel=kernel)
         self.spec = load_function_spec(FUNCTION)
         self._standalone: Any = None
+        #: A trained network to run in the kernel's place, named by path.
+        #: The path travels, not the weights: the stage is cloudpickled to
+        #: every rank when it is installed, and a few megabytes of parameters
+        #: do not belong in that payload.  Each rank loads its own copy the
+        #: first time the kernel is called.
+        self.surrogate = None if surrogate is None else str(surrogate)
 
     # -- standalone ------------------------------------------------------------
 
@@ -323,9 +330,15 @@ class Macrophysics(NativeStage):
         """
 
         model = self.kernels[FUNCTION]
+        if model is None and self.surrogate is not None:
+            from .surrogate import load_surrogate
+
+            model = self.kernels[FUNCTION] = load_surrogate(self.surrogate)
         if model is None:
             return self._function().run(inputs, parameters)
-        answer = dict(model(inputs))
+        answer = dict(model(inputs, parameters)
+                      if getattr(model, "takes_parameters", False)
+                      else model(inputs))
         missing = [name for name in RETURNED if name not in answer]
         if missing:
             raise PhysicsError(

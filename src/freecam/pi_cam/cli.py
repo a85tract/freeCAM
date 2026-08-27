@@ -357,17 +357,9 @@ def main(argv: list[str] | None = None) -> int:
             from freecam.model.python_processes import PythonProcessSpec
             from freecam.physics.macrophysics import Macrophysics
 
-            scheme = Macrophysics()
-            if args.macro_kernel_surrogate is not None:
-                # a model in the kernel's place: the class has one definition
-                # of what computes mmacro_pcond, so this reaches the walk and
-                # any single-column caller alike
-                import sys as _sys
-
-                _sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "tools"))
-                from pi_cam_surrogate_kernel import load_surrogate
-
-                scheme.kernels["mmacro_pcond"] = load_surrogate(args.macro_kernel_surrogate)
+            # A model in the kernel's place is named by path, not carried:
+            # the stage is pickled to every rank, and each loads its own.
+            scheme = Macrophysics(surrogate=args.macro_kernel_surrogate)
             cam.python_processes.install(
                 PythonProcessSpec.from_callable(
                     scheme.tend,
