@@ -189,17 +189,6 @@ contains
     status = 0_c_int
   end function pycam_rad_set_owner_v1
 
-  integer(c_int) function pycam_rad_bind_hosts_v1() &
-       bind(C, name='pycam_rad_bind_hosts_v1') result(status)
-    ! The control layer calls pycam_rad_bind_hosts; this is the check that it
-    ! did, so a stage that starts before initialisation is refused.
-    status = 1_c_int
-    if (.not. associated(host_state)) return
-    if (.not. associated(host_pbuf2d)) return
-    if (.not. allocated(rad_ptend)) return
-    status = 0_c_int
-  end function pycam_rad_bind_hosts_v1
-
   integer(c_int) function pycam_rad_nstep_v1() &
        bind(C, name='pycam_rad_nstep_v1') result(status)
     status = int(get_nstep(), c_int)

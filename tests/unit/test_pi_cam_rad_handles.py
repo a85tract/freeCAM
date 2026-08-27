@@ -21,8 +21,10 @@ sys.path.insert(0, str(REPO / "tools"))
 #: Every C entry the module promises.  Python's Radiation class binds exactly
 #: these; a rename on either side fails here first.
 ENTRIES = (
-    # the shared core every NativeStage expects
-    "pycam_rad_set_owner_v1", "pycam_rad_bind_hosts_v1", "pycam_rad_view_v1",
+    # the shared core every NativeStage expects.  bind_hosts is not here:
+    # phys_state and pbuf2d live in cam_comp, which uses this module, so the
+    # binder is emitted into cam_comp by state_codegen instead.
+    "pycam_rad_set_owner_v1", "pycam_rad_view_v1",
     "pycam_rad_nstep_v1", "pycam_rad_dt_v1",
     # radiation's own queries: the driver's predicates, never re-derived
     "pycam_rad_calday_v1", "pycam_rad_do_v1", "pycam_rad_latlon_v1",
@@ -216,3 +218,29 @@ def test_the_chunk_binding_takes_addresses_and_owns_nothing() -> None:
     assert "host_cam_in(lchnk)%p => chunk_cam_in" in body
     assert "host_cam_out(lchnk)%p => chunk_cam_out" in body
     assert not re.search(r"\ballocate\s*\(", body)     # it stores pointers, not copies
+
+
+# -- the hosts are bound from above, not merely checked --------------------------
+
+
+def test_the_bind_entry_is_emitted_where_the_hosts_are_in_scope() -> None:
+    """Gate R-B2 failed once because this module defined a bind_hosts entry
+    that only checked.  phys_state and pbuf2d are cam_comp's, and cam_comp
+    uses this module, so the binder has to be generated into cam_comp."""
+
+    from freecam.pi_cam import state_codegen
+
+    for stage in ("macro", "rad"):
+        emitter = getattr(state_codegen, f"_{stage}_host_binding")
+        body = "\n".join(emitter())
+        assert f"bind(C, name='pycam_{stage}_bind_hosts_v1')" in body
+        assert f"call pycam_{stage}_bind_hosts(phys_state, pbuf2d)" in body, stage
+        assert "status = 0_c_int" in body
+    # and both are actually emitted into the include
+    source = (REPO / "src/freecam/pi_cam/state_codegen.py").read_text()
+    assert "*_macro_host_binding()," in source
+    assert "*_rad_host_binding()," in source
+    # the handles module offers the subroutine but claims no C name for it,
+    # or the two definitions would collide at link time
+    assert "public :: pycam_rad_bind_hosts" in _code()
+    assert "pycam_rad_bind_hosts_v1" not in _code()
