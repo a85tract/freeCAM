@@ -40,6 +40,7 @@ from ..pi_cam.pbuf import PBuf, load_pbuf_table
 from .image import module_view
 from .macrophysics import CPAIR, IWTICE, IWTLIQ, IWTVAP, PWTYPE
 from .errors import PhysicsError
+from .result import FunctionResult
 from .stage import (
     CORE_ENTRIES,
     HostEntries,
@@ -198,6 +199,9 @@ PACKED_TO_DUMMY = {
 #: What the core reads that is not a packed array: the configuration it
 #: branches on and the substep's length.
 PACKED_SCALARS = ("microp_uniform", "do_cldice", "deltatin")
+#: Everything the core answers, under its own dummy names.  A model in its
+#: place is given a column under those names and must answer all of them.
+RETURNED = tuple(PACKED_TO_DUMMY.get(name, name) for name in PACKED_OUTPUTS)
 
 #: The order in which the Fortran routine does things under the admitted
 #: configuration; ``tend`` follows it per chunk and a test compares the two
@@ -424,6 +428,8 @@ class Microphysics(NativeStage):
     def __init__(self, *, kernel=None, kernels=None, standalone_core: bool = False) -> None:
         super().__init__(kernel=kernel, kernels=kernels)
         self._standalone: Any = None
+        self._scalars: dict[str, Any] = {}
+        self._discarded: dict[str, np.ndarray] | None = None
         #: Run the core through its standalone image rather than the copy the
         #: model holds.  A flag, not the callable: the stage is cloudpickled to
         #: every rank when it is installed, and a loaded image is not picklable.
@@ -434,9 +440,24 @@ class Microphysics(NativeStage):
 
     def micro_mg_tend(self, inputs: Mapping[str, Any],
                       parameters: Mapping[str, Any] | None = None):
-        """One column through the reviewed standalone image; no model needed."""
+        """The stage's numerical core: one column in, one column out.
 
-        return self._function().run(inputs, parameters)
+        This is the only place in the class that says what computes
+        ``micro_mg_tend``.  :meth:`tend_chunk` calls it for every packed
+        column the driver gathered, and a notebook calls it for a column of
+        its own; installing a model under :attr:`kernels` changes both.
+        """
+
+        model = self.kernels[CORE]
+        if model is None:
+            return self._function().run(inputs, parameters)
+        answer = dict(model(inputs))
+        missing = [name for name in RETURNED if name not in answer]
+        if missing:
+            raise PhysicsError(
+                f"the model in {CORE}'s place returned {len(answer)} of {len(RETURNED)} "
+                f"values; missing {missing}")
+        return FunctionResult(outputs=answer, updated_inputs={})
 
     def example_input(self, name: str = "captured-anchor"):
         return self._function().example_input(name)
@@ -799,12 +820,36 @@ class Microphysics(NativeStage):
         outputs = {name: H.view(lchnk, VIEW[f"packed_{name}"]) for name in PACKED_OUTPUTS}
         mgncol = int(inputs["t"].shape[0])
         # 2087-2095: what the core reads beside the packed columns
-        inputs["microp_uniform"] = int(C.microp_uniform)
-        inputs["do_cldice"] = int(C.do_cldice)
-        inputs["deltatin"] = dt / C.num_steps
-        st.swappable_kernel(CORE, inputs, outputs=outputs, ncol=mgncol, lchnk=lchnk, dt=dt,
-                            original=lambda: H.core(lchnk))
+        self._scalars = {"microp_uniform": int(C.microp_uniform),
+                         "do_cldice": int(C.do_cldice),
+                         "deltatin": dt / C.num_steps}
+        inputs.update(self._scalars)
+        if self._discarded is None:
+            spec = self._function().spec
+            # the two intent(inout) outputs the driver hands to locals it
+            # discards; the routine zeroes both before writing them
+            self._discarded = {item.name: np.zeros(item.public_extent(spec.dimensions))
+                               for item in spec.arguments
+                               if item.role == "inout" and item.name not in PACKED_OUTPUTS}
+        # The lifted section skips its own copy of the core: this stage's own
+        # kernel runs instead, on every packed column the packer gathered.
+        if getattr(st, "core_owner", None) is not True:
+            H.set_core_owner(True)
+            st.core_owner = True
+        st.column_kernel(CORE, inputs, outputs=outputs, ncol=mgncol, lchnk=lchnk, dt=dt,
+                         call=self._column, structural=PACKED_SCALARS)
         self.calls.append(CORE)
+
+    def _column(self, column: Mapping[str, Any]):
+        """One packed column, under the names the core's own dummies use."""
+
+        renamed = {PACKED_TO_DUMMY.get(name, name): value for name, value in column.items()}
+        renamed.update(self._discarded)
+        answer = self.micro_mg_tend({**renamed, **self._scalars})
+        values = {**answer.outputs, **answer.updated_inputs}
+        return FunctionResult(
+            outputs={name: values[PACKED_TO_DUMMY.get(name, name)] for name in PACKED_OUTPUTS},
+            updated_inputs={})
 
     def _water_tracers(self, st, lchnk, ncol, alst_mic, aist_mic, V, K, G) -> None:
         """2567-2700 under trace_water, without subcolumns."""
@@ -874,4 +919,5 @@ class Microphysics(NativeStage):
 
 __all__ = ["CORE", "CONFIGURATION", "GRID_COPIES", "GRID_PBUF", "HISTORY_GRID", "HISTORY_MG",
            "HISTORY_TENDENCIES", "INPUT", "KERNELS", "Microphysics", "PACKED_INPUTS",
-           "PACKED_OUTPUTS", "PACKED_SCALARS", "PACKED_TO_DUMMY", "SEQUENCE", "VIEW"]
+           "PACKED_OUTPUTS", "PACKED_SCALARS", "PACKED_TO_DUMMY", "RETURNED", "SEQUENCE",
+           "VIEW"]

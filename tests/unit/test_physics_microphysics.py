@@ -262,6 +262,10 @@ class _Lib:
 
     def _view_shape(self, code: int) -> tuple[int, ...]:
         name = next(k for k, v in VIEW.items() if v == code)
+        if name in ("packed_rndst", "packed_nacon"):
+            return (self.PCOLS, self.PVER, 4)        # four dust bins, not pcnst
+        if name in ("packed_rflx", "packed_sflx"):
+            return (self.PCOLS, self.PVERP)          # the fluxes are on interfaces
         rank = M.VIEW_RANK[name]
         if rank == 1:
             return (self.PCOLS,)
@@ -387,14 +391,18 @@ def test_tend_walks_the_routine_in_its_order_on_every_chunk(fake) -> None:
     scheme.tend(None, _Context(fake))
     assert scheme.calls == list(SEQUENCE) * 2
     lib = fake.library
-    assert lib.owner == 1 and lib.core_owner == 0
+    # the walk owns the core now, whichever computes it, so the lifted
+    # section always skips its own copy
+    assert lib.owner == 1 and lib.core_owner == 1
     assert lib.configured == (1, 0, 1, 0, 1, 1, 2, 3, 4, 5, -1, -1, -1, -1)
     for name in KERNELS:
         expected = {"wtrc_init_rates": 4, "wtrc_add_rates": 22}.get(name, 2)
         assert fake.kernels.count(name) == expected, name
     # the lifted section, once per chunk in its order, with the driver's dtime
     names = [n for n, _ in lib.lifecycle]
-    per_chunk = ["begin", "ptend_init", "pack_prelude", "substep_pack", "core", "substep_unpack",
+    # `core` is absent: the lifted section skips its own copy and the walk
+    # runs the class's own kernel instead
+    per_chunk = ["begin", "ptend_init", "pack_prelude", "substep_pack", "substep_unpack",
                  "post_proc", "wtrc_add_sum", "wtrc_add_sum", "wtrc_add_sum", "wtrc_add_sum",
                  "wtrc_apply", "output_precip", "end"]
     assert names == ["bind_hosts"] + per_chunk * 2
@@ -486,32 +494,39 @@ def test_the_packed_contract_is_the_core_s_argument_list() -> None:
     assert {"qc", "qi", "nc", "ni"} <= set(M.PACKED_INPUTS) & set(M.PACKED_OUTPUTS)
 
 
-def test_a_model_in_the_core_s_place_sees_the_packed_batch_and_answers_it(fake) -> None:
-    seen = {}
+def test_a_model_in_the_core_s_place_sees_one_column_under_the_routine_s_names(fake) -> None:
+    """The walk reaches the core through Microphysics.micro_mg_tend, so a
+    model installed under that name is given exactly what the routine is
+    given: one packed column, under the routine's own dummy names."""
 
-    def model(batch):
-        seen.update({k: np.asarray(v).shape for k, v in batch.items()})
-        return {name: np.full(batch["t"].shape if name not in ("prect", "preci") else batch["t"].shape[:1],
-                              7.0) for name in M.PACKED_OUTPUTS}
+    seen: list[dict] = []
+
+    def model(column):
+        seen.append({k: np.asarray(v).shape for k, v in column.items()})
+        levels = np.asarray(column["tn"]).shape[0]
+        return {name: (np.full(levels + 1, 7.0) if name in ("rflx", "sflx")
+                       else np.full((), 7.0) if name in ("prect", "preci")
+                       else np.full(levels, 7.0))
+                for name in M.RETURNED}
 
     scheme = Microphysics(kernel=model)
     scheme.tend(None, _Context(fake))
     lib = fake.library
     assert lib.core_owner == 1
-    assert "core" not in [n for n, _ in lib.lifecycle]
+    assert "core" not in [n for n, _ in lib.lifecycle]      # the lifted copy was skipped
     assert scheme.calls == list(SEQUENCE) * 2
-    assert set(seen) == set(M.PACKED_INPUTS) | set(M.PACKED_SCALARS)
-    assert seen["t"] == (16, 30) and seen["rndst"] == (16, 30, 57)
-    # the configuration the core branches on and the substep's length travel
-    # with the columns, so a model gets everything the routine gets
-    assert seen["microp_uniform"] == () and seen["deltatin"] == ()
+    assert len(seen) == 16 * 2                              # every packed column of both chunks
+    # the routine's names, not the driver's packed ones
+    assert "tn" in seen[0] and "t" not in seen[0]
+    assert seen[0]["tn"] == (30,) and seen[0]["rndst"] == (30, 4)
+    assert seen[0]["microp_uniform"] == () and seen[0]["deltatin"] == ()
     # the answer landed in the packed storage the unpack reads
     tlat = lib.views[(1540, "view", VIEW["packed_tlat"])]
     assert np.all(tlat == 7.0)
 
 
 def test_a_model_must_answer_every_output(fake) -> None:
-    scheme = Microphysics(kernel=lambda batch: {"tlat": batch["t"]})
+    scheme = Microphysics(kernel=lambda column: {"tlat": column["tn"]})
     from freecam.physics.errors import PhysicsError
 
     with pytest.raises(PhysicsError, match="missing"):
