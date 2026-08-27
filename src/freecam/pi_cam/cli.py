@@ -388,11 +388,11 @@ def main(argv: list[str] | None = None) -> int:
             scheme = CloudMacroMicrophysics(
                 whole_drivers=bool(args.cloud_macro_micro_whole_drivers),
                 whole_micro=bool(args.cloud_macro_micro_whole_micro),
-                whole_aero=bool(args.cloud_macro_micro_whole_aero))
-            if args.micro_core_standalone:
-                # the original core, reached the way a model would be: through
-                # the stage's own kernel slot, column by column
-                scheme.kernels["micro_mg_tend"] = scheme.micro.standalone_core()
+                whole_aero=bool(args.cloud_macro_micro_whole_aero),
+                # the original core through its standalone image, opened by each
+                # rank on first use: the stage is pickled to the ranks, and a
+                # loaded image is not picklable
+                micro_core_standalone=bool(args.micro_core_standalone))
             cam.step_plan.set_enabled("cloud_macro_microphysics", False, phase="cam_run1", experimental=True)
             cam.python_processes.install(
                 PythonProcessSpec.from_callable(

@@ -421,9 +421,14 @@ class Microphysics(NativeStage):
     entries_class = _MicroEntries
     services_class = _MicroHandles
 
-    def __init__(self, *, kernel=None, kernels=None) -> None:
+    def __init__(self, *, kernel=None, kernels=None, standalone_core: bool = False) -> None:
         super().__init__(kernel=kernel, kernels=kernels)
         self._standalone: Any = None
+        #: Run the core through its standalone image rather than the copy the
+        #: model holds.  A flag, not the callable: the stage is cloudpickled to
+        #: every rank when it is installed, and a loaded image is not picklable.
+        #: Each rank opens its own on first use.
+        self.use_standalone_core = bool(standalone_core)
 
     # -- standalone ------------------------------------------------------------
 
@@ -780,6 +785,8 @@ class Microphysics(NativeStage):
 
         H, C = st.handles, st.constants
         model = self.kernels.get(CORE)
+        if model is None and self.use_standalone_core:
+            model = self.kernels[CORE] = self.standalone_core()
         if getattr(st, "core_owner", None) != (model is not None):
             H.set_core_owner(model is not None)
             st.core_owner = model is not None

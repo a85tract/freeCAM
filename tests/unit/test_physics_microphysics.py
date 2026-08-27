@@ -634,3 +634,16 @@ def test_the_standalone_core_answers_the_packed_contract(monkeypatch) -> None:
     assert np.asarray(seen[0]["tn"]).shape == (levels,)
     assert np.asarray(seen[0]["deltatin"]).shape == ()
     assert answer["tlat"].shape == (rows, levels)
+
+
+def test_the_standalone_core_is_a_flag_the_stage_can_be_pickled_with() -> None:
+    """The stage is cloudpickled to every rank when it is installed, so the
+    choice travels as a flag and each rank opens its own image."""
+
+    import cloudpickle
+
+    scheme = Microphysics(standalone_core=True)
+    assert scheme.use_standalone_core and scheme.kernels[CORE] is None
+    restored = cloudpickle.loads(cloudpickle.dumps(scheme.tend))
+    assert restored.__self__.use_standalone_core
+    assert restored.__self__._standalone is None

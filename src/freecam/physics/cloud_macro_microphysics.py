@@ -303,17 +303,22 @@ class CloudMacroMicrophysics(NativeStage):
     services_class = _MMHandles
 
     def __init__(self, *, whole_drivers: bool = False, whole_micro: bool = False,
-                 whole_aero: bool = False, kernels=None) -> None:
+                 whole_aero: bool = False, micro_core_standalone: bool = False,
+                 kernels=None) -> None:
         super().__init__(kernels=None)
         #: The sub-walks, or None to call the driver whole.
         self.macro: Macrophysics | None = None
         self.micro: Microphysics | None = None
         self.aero: MicropAero | None = None
         walks: dict[str, NativeStage] = {}
+        if micro_core_standalone and (whole_drivers or whole_micro):
+            raise PICAMConfigurationError(
+                "the standalone core is the microphysics walk's; it has no meaning "
+                "when the driver is called whole")
         if not whole_drivers:
             walks["macro"] = Macrophysics()
             if not whole_micro:
-                walks["micro"] = Microphysics()
+                walks["micro"] = Microphysics(standalone_core=micro_core_standalone)
                 if not whole_aero:
                     walks["aero"] = MicropAero()
         self.compose(**walks)
