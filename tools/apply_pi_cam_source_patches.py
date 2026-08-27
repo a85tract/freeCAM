@@ -45,6 +45,10 @@ SUPPORT_SOURCES = (
      "src/physics/cam/pycam_mm_kernels.F90"),
     ("native/pi_cam/support/pycam_micro_handles.F90",
      "src/physics/cam/pycam_micro_handles.F90"),
+    ("native/pi_cam/support/pycam_aero_kernels.F90",
+     "src/physics/cam/pycam_aero_kernels.F90"),
+    ("native/pi_cam/support/pycam_aero_handles.F90",
+     "src/physics/cam/pycam_aero_handles.F90"),
     ("native/pi_cam/support/pycam_mm_handles.F90",
      "src/physics/cam/pycam_mm_handles.F90"),
 )

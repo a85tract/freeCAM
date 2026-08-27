@@ -477,6 +477,7 @@ def generate_fortran_include(bridge: LegacyStateBridge) -> str:
             *_rad_host_binding(),
             *_micro_host_binding(),
             *_mm_host_binding(),
+            *_aero_host_binding(),
         ]
     )
 
@@ -556,6 +557,23 @@ def _mm_host_binding() -> tuple[str, ...]:
         "  call pycam_mm_bind_hosts(phys_state, phys_tend, pbuf2d)",
         "  status = 0_c_int",
         "end function pycam_mm_bind_hosts_v1",
+        "",
+    )
+
+
+def _aero_host_binding() -> tuple[str, ...]:
+    """The same for the aerosol activation handles."""
+
+    return (
+        "integer(c_int) function pycam_aero_bind_hosts_v1() &",
+        "     bind(C, name='pycam_aero_bind_hosts_v1') result(status)",
+        "  use, intrinsic :: iso_c_binding, only: c_int",
+        "  use pycam_aero_handles, only: pycam_aero_bind_hosts",
+        "  status = 1_c_int",
+        "  if (.not. associated(phys_state) .or. .not. associated(pbuf2d)) return",
+        "  call pycam_aero_bind_hosts(phys_state, pbuf2d)",
+        "  status = 0_c_int",
+        "end function pycam_aero_bind_hosts_v1",
         "",
     )
 

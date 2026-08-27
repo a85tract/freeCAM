@@ -21,11 +21,12 @@ sys.path.insert(0, str(REPO / "tools"))
 
 import freecam.physics.cloud_macro_microphysics as M  # noqa: E402
 from freecam.physics.cloud_macro_microphysics import (  # noqa: E402
-    KERNELS, MACROP_ARGUMENTS, SEQUENCE, SEQUENCE_WHOLE, SEQUENCE_WHOLE_MICRO, VIEW,
-    CloudMacroMicrophysics,
+    KERNELS, MACROP_ARGUMENTS, SEQUENCE, SEQUENCE_WHOLE, SEQUENCE_WHOLE_AERO,
+    SEQUENCE_WHOLE_MICRO, VIEW, CloudMacroMicrophysics,
 )
 from freecam.physics.macrophysics import Macrophysics  # noqa: E402
 from freecam.physics.microphysics import Microphysics  # noqa: E402
+from freecam.physics.microp_aero import MicropAero  # noqa: E402
 from freecam.pi_cam.errors import PICAMConfigurationError  # noqa: E402
 
 HANDLES = REPO / "native/pi_cam/support/pycam_mm_handles.F90"
@@ -218,11 +219,14 @@ def test_tend_s_sequence_is_the_pinned_stage_s_live_statements() -> None:
     # composed: each driver is its sub-walk plus the hand-over
     def undo(sequence, walk, driver):
         at = list(sequence).index(f"{walk}.tend_chunk")
-        assert sequence[at + 1] == f"take_{driver.split('_')[0].removesuffix('p')}"
+        assert sequence[at + 1] == {"macrop_driver_tend": "take_macro",
+                                    "microp_driver_tend": "take_micro",
+                                    "microp_aero_run": "take_aero"}[driver]
         return tuple(sequence[:at]) + (driver,) + tuple(sequence[at + 2:])
 
     assert undo(SEQUENCE_WHOLE_MICRO, "Macrophysics", "macrop_driver_tend") == SEQUENCE_WHOLE
-    assert undo(SEQUENCE, "Microphysics", "microp_driver_tend") == SEQUENCE_WHOLE_MICRO
+    assert undo(SEQUENCE_WHOLE_AERO, "Microphysics", "microp_driver_tend") == SEQUENCE_WHOLE_MICRO
+    assert undo(SEQUENCE, "MicropAero", "microp_aero_run") == SEQUENCE_WHOLE_AERO
 
 
 # -- the fake image -------------------------------------------------------------
@@ -283,7 +287,8 @@ class _Lib:
             elif name in ("pycam_mm_macrop_driver_tend_v1", "pycam_mm_microp_aero_run_v1",
                           "pycam_mm_microp_driver_tend_v1"):
                 lib.drivers.append((name, args[0], args[1], len(args) - 2))
-            elif name in ("pycam_mm_take_macro_v1", "pycam_mm_take_micro_v1"):
+            elif name in ("pycam_mm_take_macro_v1", "pycam_mm_take_micro_v1",
+                          "pycam_mm_take_aero_v1"):
                 lib.drivers.append((name, args[0], None, 0))
             return 0
         return entry
@@ -394,10 +399,12 @@ class _SubWalk:
 
 
 def test_composed_both_walks_run_in_their_drivers_places(fake, monkeypatch) -> None:
-    walk = _SubWalk(monkeypatch, Macrophysics, Microphysics)
+    walk = _SubWalk(monkeypatch, Macrophysics, Microphysics, MicropAero)
     scheme = CloudMacroMicrophysics()
     assert isinstance(scheme.macro, Macrophysics) and isinstance(scheme.micro, Microphysics)
-    assert scheme.components == {"macro": scheme.macro, "micro": scheme.micro}
+    assert isinstance(scheme.aero, MicropAero)
+    assert scheme.components == {"macro": scheme.macro, "micro": scheme.micro,
+                                 "aero": scheme.aero}
     # one kernels mapping: every sub-walk's swappable core is reachable from the stage
     assert scheme.kernels == {"mmacro_pcond": None, "micro_mg_tend": None}
     assert scheme.macro.kernels is scheme.kernels and scheme.micro.kernels is scheme.kernels
@@ -405,26 +412,41 @@ def test_composed_both_walks_run_in_their_drivers_places(fake, monkeypatch) -> N
     assert scheme.calls == list(SEQUENCE) * 2
     # each sub-walk got the driver's dtime -- the substep length Fortran formed --
     # and the chunk it was asked for; the hand-over followed on the same chunk
-    assert walk.calls == [("Macrophysics", 1540, 14, 0, 900.0, 5), ("Microphysics", 1540, 14, 0, 900.0, 5),
-                          ("Macrophysics", 1541, 13, 1, 900.0, 5), ("Microphysics", 1541, 13, 1, 900.0, 5)]
+    per_chunk = ("Macrophysics", "MicropAero", "Microphysics")
+    assert walk.calls == [(name, 1540, 14, 0, 900.0, 5) for name in per_chunk] + [
+        (name, 1541, 13, 1, 900.0, 5) for name in per_chunk]
     lib = fake.library
     names = [d[0].removeprefix("pycam_mm_").removesuffix("_v1") for d in lib.drivers]
-    assert names == ["take_macro", "microp_aero_run", "take_micro"] * 2
+    assert names == ["take_macro", "take_aero", "take_micro"] * 2
+    assert "pycam_mm_microp_aero_run_v1" not in lib.calls
     assert "pycam_mm_macrop_driver_tend_v1" not in lib.calls
     assert "pycam_mm_microp_driver_tend_v1" not in lib.calls
     # a sub-walk's own call log is per chunk, not per run
     assert scheme.macro.calls == ["Macrophysics"] and scheme.micro.calls == ["Microphysics"]
+    assert scheme.aero.calls == ["MicropAero"]
 
 
 def test_whole_micro_keeps_gate_m2_s_form(fake, monkeypatch) -> None:
     walk = _SubWalk(monkeypatch, Macrophysics)
     scheme = CloudMacroMicrophysics(whole_micro=True)
+    assert scheme.aero is None
     assert scheme.micro is None and scheme.kernels == {"mmacro_pcond": None}
     scheme.tend(None, _Context(fake))
     assert scheme.calls == list(SEQUENCE_WHOLE_MICRO) * 2
     names = [d[0].removeprefix("pycam_mm_").removesuffix("_v1") for d in fake.library.drivers]
     assert names == ["take_macro", "microp_aero_run", "microp_driver_tend"] * 2
     assert len(walk.calls) == 2
+
+
+def test_whole_aero_keeps_gate_m3_s_form(fake, monkeypatch) -> None:
+    walk = _SubWalk(monkeypatch, Macrophysics, Microphysics)
+    scheme = CloudMacroMicrophysics(whole_aero=True)
+    assert scheme.aero is None and scheme.micro is not None
+    scheme.tend(None, _Context(fake))
+    assert scheme.calls == list(SEQUENCE_WHOLE_AERO) * 2
+    names = [d[0].removeprefix("pycam_mm_").removesuffix("_v1") for d in fake.library.drivers]
+    assert names == ["take_macro", "microp_aero_run", "take_micro"] * 2
+    assert len(walk.calls) == 4
 
 
 def test_a_model_assigned_on_the_stage_reaches_the_sub_walk() -> None:

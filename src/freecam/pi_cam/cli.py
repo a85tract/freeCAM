@@ -238,6 +238,14 @@ def main(argv: list[str] | None = None) -> int:
             "instead of running the Microphysics sub-walk in its place (Gate M-2's form)"
         ),
     )
+    parser.add_argument(
+        "--cloud-macro-micro-whole-aero",
+        action="store_true",
+        help=(
+            "with --cloud-macro-micro-python, call microp_aero_run whole instead "
+            "of running the MicropAero sub-walk in its place (Gate M-3's form)"
+        ),
+    )
     parser.add_argument("--summary", type=Path)
     parser.add_argument(
         "--memory-sample-every",
@@ -369,7 +377,8 @@ def main(argv: list[str] | None = None) -> int:
 
             scheme = CloudMacroMicrophysics(
                 whole_drivers=bool(args.cloud_macro_micro_whole_drivers),
-                whole_micro=bool(args.cloud_macro_micro_whole_micro))
+                whole_micro=bool(args.cloud_macro_micro_whole_micro),
+                whole_aero=bool(args.cloud_macro_micro_whole_aero))
             cam.step_plan.set_enabled("cloud_macro_microphysics", False, phase="cam_run1", experimental=True)
             cam.python_processes.install(
                 PythonProcessSpec.from_callable(
@@ -628,6 +637,7 @@ def main(argv: list[str] | None = None) -> int:
             "cloud_macro_micro_python": bool(args.cloud_macro_micro_python),
             "cloud_macro_micro_whole_drivers": bool(args.cloud_macro_micro_whole_drivers),
             "cloud_macro_micro_whole_micro": bool(args.cloud_macro_micro_whole_micro),
+            "cloud_macro_micro_whole_aero": bool(args.cloud_macro_micro_whole_aero),
             "boundary_mode": case.config.boundary_mode,
             "boundary_provider": type(boundary).__name__,
             "validation_scope": (

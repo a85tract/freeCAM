@@ -5613,6 +5613,471 @@ kernels:
     chunk_axis: 1
     extents:
     - chunks
+- name: aero_initial_bins
+  routine: aero_initial_bins
+  symbol: pycam_pi_cam_aero_initial_bins_v1
+  action_id: 0
+  modules:
+    pycam_aero_kernels:
+    - aero_initial_bins
+    ppgrid:
+    - pcols
+    - pver
+    - pverp
+  arguments:
+  - field: aero.ncol
+    dtype: int32
+    rank: 1
+    intent: in
+    chunk_axis: 1
+    extents:
+    - chunks
+  - field: aero.npccn
+    dtype: float64
+    rank: 3
+    intent: inout
+    chunk_axis: 3
+    extents:
+    - pcols
+    - pver
+    - chunks
+  - field: aero.nacon
+    dtype: float64
+    rank: 4
+    intent: inout
+    chunk_axis: 4
+    extents:
+    - pcols
+    - pver
+    - '4'
+    - chunks
+  - field: aero.rndst
+    dtype: float64
+    rank: 4
+    intent: inout
+    chunk_axis: 4
+    extents:
+    - pcols
+    - pver
+    - '4'
+    - chunks
+- name: aero_air_density
+  routine: aero_air_density
+  symbol: pycam_pi_cam_aero_air_density_v1
+  action_id: 0
+  modules:
+    pycam_aero_kernels:
+    - aero_air_density
+    ppgrid:
+    - pcols
+    - pver
+    - pverp
+  arguments:
+  - field: aero.ncol
+    dtype: int32
+    rank: 1
+    intent: in
+    chunk_axis: 1
+    extents:
+    - chunks
+  - field: aero.top_lev
+    dtype: int32
+    rank: 1
+    intent: in
+    chunk_axis: 1
+    extents:
+    - chunks
+  - field: aero.rair
+    dtype: float64
+    rank: 1
+    intent: in
+    chunk_axis: 1
+    extents:
+    - chunks
+  - field: aero.pmid
+    dtype: float64
+    rank: 3
+    intent: in
+    chunk_axis: 3
+    extents:
+    - pcols
+    - pver
+    - chunks
+  - field: aero.t
+    dtype: float64
+    rank: 3
+    intent: in
+    chunk_axis: 3
+    extents:
+    - pcols
+    - pver
+    - chunks
+  - field: aero.rho
+    dtype: float64
+    rank: 3
+    intent: inout
+    chunk_axis: 3
+    extents:
+    - pcols
+    - pver
+    - chunks
+- name: aero_subgrid_velocity
+  routine: aero_subgrid_velocity
+  symbol: pycam_pi_cam_aero_subgrid_velocity_v1
+  action_id: 0
+  modules:
+    pycam_aero_kernels:
+    - aero_subgrid_velocity
+    ppgrid:
+    - pcols
+    - pver
+    - pverp
+  arguments:
+  - field: aero.ncol
+    dtype: int32
+    rank: 1
+    intent: in
+    chunk_axis: 1
+    extents:
+    - chunks
+  - field: aero.top_lev
+    dtype: int32
+    rank: 1
+    intent: in
+    chunk_axis: 1
+    extents:
+    - chunks
+  - field: aero.use_preexisting_ice
+    dtype: int32
+    rank: 1
+    intent: in
+    chunk_axis: 1
+    extents:
+    - chunks
+  - field: aero.tke
+    dtype: float64
+    rank: 3
+    intent: in
+    chunk_axis: 3
+    extents:
+    - pcols
+    - pverp
+    - chunks
+  - field: aero.wsub
+    dtype: float64
+    rank: 3
+    intent: inout
+    chunk_axis: 3
+    extents:
+    - pcols
+    - pver
+    - chunks
+  - field: aero.wsubi
+    dtype: float64
+    rank: 3
+    intent: inout
+    chunk_axis: 3
+    extents:
+    - pcols
+    - pver
+    - chunks
+- name: aero_liquid_fraction
+  routine: aero_liquid_fraction
+  symbol: pycam_pi_cam_aero_liquid_fraction_v1
+  action_id: 0
+  modules:
+    pycam_aero_kernels:
+    - aero_liquid_fraction
+    ppgrid:
+    - pcols
+    - pver
+    - pverp
+  arguments:
+  - field: aero.ncol
+    dtype: int32
+    rank: 1
+    intent: in
+    chunk_axis: 1
+    extents:
+    - chunks
+  - field: aero.top_lev
+    dtype: int32
+    rank: 1
+    intent: in
+    chunk_axis: 1
+    extents:
+    - chunks
+  - field: aero.mincld
+    dtype: float64
+    rank: 1
+    intent: in
+    chunk_axis: 1
+    extents:
+    - chunks
+  - field: aero.ast
+    dtype: float64
+    rank: 3
+    intent: in
+    chunk_axis: 3
+    extents:
+    - pcols
+    - pver
+    - chunks
+  - field: aero.lcldm
+    dtype: float64
+    rank: 3
+    intent: inout
+    chunk_axis: 3
+    extents:
+    - pcols
+    - pver
+    - chunks
+- name: aero_cloud_fraction_split
+  routine: aero_cloud_fraction_split
+  symbol: pycam_pi_cam_aero_cloud_fraction_split_v1
+  action_id: 0
+  modules:
+    pycam_aero_kernels:
+    - aero_cloud_fraction_split
+    ppgrid:
+    - pcols
+    - pver
+    - pverp
+  arguments:
+  - field: aero.ncol
+    dtype: int32
+    rank: 1
+    intent: in
+    chunk_axis: 1
+    extents:
+    - chunks
+  - field: aero.top_lev
+    dtype: int32
+    rank: 1
+    intent: in
+    chunk_axis: 1
+    extents:
+    - chunks
+  - field: aero.qsmall
+    dtype: float64
+    rank: 1
+    intent: in
+    chunk_axis: 1
+    extents:
+    - chunks
+  - field: aero.qc
+    dtype: float64
+    rank: 3
+    intent: in
+    chunk_axis: 3
+    extents:
+    - pcols
+    - pver
+    - chunks
+  - field: aero.qi
+    dtype: float64
+    rank: 3
+    intent: in
+    chunk_axis: 3
+    extents:
+    - pcols
+    - pver
+    - chunks
+  - field: aero.cldn
+    dtype: float64
+    rank: 3
+    intent: in
+    chunk_axis: 3
+    extents:
+    - pcols
+    - pver
+    - chunks
+  - field: aero.cldo
+    dtype: float64
+    rank: 3
+    intent: in
+    chunk_axis: 3
+    extents:
+    - pcols
+    - pver
+    - chunks
+  - field: aero.lcldn
+    dtype: float64
+    rank: 3
+    intent: inout
+    chunk_axis: 3
+    extents:
+    - pcols
+    - pver
+    - chunks
+  - field: aero.lcldo
+    dtype: float64
+    rank: 3
+    intent: inout
+    chunk_axis: 3
+    extents:
+    - pcols
+    - pver
+    - chunks
+- name: aero_npccn_from_mixnuc
+  routine: aero_npccn_from_mixnuc
+  symbol: pycam_pi_cam_aero_npccn_from_mixnuc_v1
+  action_id: 0
+  modules:
+    pycam_aero_kernels:
+    - aero_npccn_from_mixnuc
+    ppgrid:
+    - pcols
+    - pver
+    - pverp
+  arguments:
+  - field: aero.ncol
+    dtype: int32
+    rank: 1
+    intent: in
+    chunk_axis: 1
+    extents:
+    - chunks
+  - field: aero.nctend_mixnuc
+    dtype: float64
+    rank: 3
+    intent: in
+    chunk_axis: 3
+    extents:
+    - pcols
+    - pver
+    - chunks
+  - field: aero.npccn
+    dtype: float64
+    rank: 3
+    intent: inout
+    chunk_axis: 3
+    extents:
+    - pcols
+    - pver
+    - chunks
+- name: aero_contact_freezing
+  routine: aero_contact_freezing
+  symbol: pycam_pi_cam_aero_contact_freezing_v1
+  action_id: 0
+  modules:
+    pycam_aero_kernels:
+    - aero_contact_freezing
+    ppgrid:
+    - pcols
+    - pver
+    - pverp
+  arguments:
+  - field: aero.ncol
+    dtype: int32
+    rank: 1
+    intent: in
+    chunk_axis: 1
+    extents:
+    - chunks
+  - field: aero.top_lev
+    dtype: int32
+    rank: 1
+    intent: in
+    chunk_axis: 1
+    extents:
+    - chunks
+  - field: aero.nmodes
+    dtype: int32
+    rank: 1
+    intent: in
+    chunk_axis: 1
+    extents:
+    - chunks
+  - field: aero.mode_coarse_dst_idx
+    dtype: int32
+    rank: 1
+    intent: in
+    chunk_axis: 1
+    extents:
+    - chunks
+  - field: aero.separate_dust
+    dtype: int32
+    rank: 1
+    intent: in
+    chunk_axis: 1
+    extents:
+    - chunks
+  - field: aero.t
+    dtype: float64
+    rank: 3
+    intent: in
+    chunk_axis: 3
+    extents:
+    - pcols
+    - pver
+    - chunks
+  - field: aero.coarse_dust
+    dtype: float64
+    rank: 3
+    intent: in
+    chunk_axis: 3
+    extents:
+    - pcols
+    - pver
+    - chunks
+  - field: aero.coarse_nacl
+    dtype: float64
+    rank: 3
+    intent: in
+    chunk_axis: 3
+    extents:
+    - pcols
+    - pver
+    - chunks
+  - field: aero.num_coarse
+    dtype: float64
+    rank: 3
+    intent: in
+    chunk_axis: 3
+    extents:
+    - pcols
+    - pver
+    - chunks
+  - field: aero.rho
+    dtype: float64
+    rank: 3
+    intent: in
+    chunk_axis: 3
+    extents:
+    - pcols
+    - pver
+    - chunks
+  - field: aero.dgnumwet
+    dtype: float64
+    rank: 4
+    intent: in
+    chunk_axis: 4
+    extents:
+    - pcols
+    - pver
+    - nmodes
+    - chunks
+  - field: aero.nacon
+    dtype: float64
+    rank: 4
+    intent: inout
+    chunk_axis: 4
+    extents:
+    - pcols
+    - pver
+    - '4'
+    - chunks
+  - field: aero.rndst
+    dtype: float64
+    rank: 4
+    intent: inout
+    chunk_axis: 4
+    extents:
+    - pcols
+    - pver
+    - '4'
+    - chunks
 - name: calc_obklen
   routine: calc_obklen
   symbol: freecam_pi_cam_promoted_calc_obklen_3f599c4098e6_v1

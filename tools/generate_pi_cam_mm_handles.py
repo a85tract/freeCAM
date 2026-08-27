@@ -90,6 +90,7 @@ module pycam_mm_handles
   use time_manager,   only: get_nstep, get_step_size
   use pycam_macro_handles, only: macro_ptend, macro_det_s, macro_det_ice
   use pycam_micro_handles, only: micro_ptend
+  use pycam_aero_handles, only: aero_ptend
 
   implicit none
   private
@@ -293,6 +294,22 @@ contains
     call microp_driver_tend(host_state(lchnk), mm_ptend(lchnk), cld_macmic_ztodt, pbuf)
     status = 0_c_int
   end function pycam_mm_microp_driver_tend_v1
+
+  integer(c_int) function pycam_mm_take_aero_v1(lchnk) &
+       bind(C, name='pycam_mm_take_aero_v1') result(status)
+    ! The aerosol sub-walk in microp_aero_run's place: its ptend is the
+    ! stage's ptend_aero, which physics_ptend_sum folds into ptend later.
+    ! dropmixnuc's ptend is intent(out), so the walk's object is freed here
+    ! as the driver's exit freed it.
+    integer(c_int), value, intent(in) :: lchnk
+    status = 1_c_int
+    if (.not. chunk_ok(lchnk)) return
+    status = 2_c_int
+    if (aero_ptend(lchnk)%psetcols < 1) return
+    mm_ptend_aero(lchnk) = aero_ptend(lchnk)
+    call physics_ptend_dealloc(aero_ptend(lchnk))
+    status = 0_c_int
+  end function pycam_mm_take_aero_v1
 
   integer(c_int) function pycam_mm_ptend_scale_v1(lchnk, which, cld_macmic_num_steps, ncol) &
        bind(C, name='pycam_mm_ptend_scale_v1') result(status)

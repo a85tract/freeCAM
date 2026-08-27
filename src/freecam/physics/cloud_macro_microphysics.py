@@ -38,6 +38,7 @@ from ..pi_cam.errors import PICAMConfigurationError
 from ..pi_cam.pbuf import PBuf, load_pbuf_table
 from .image import module_view
 from .macrophysics import FORCING, Macrophysics
+from .microp_aero import MicropAero
 from .microphysics import Microphysics
 from .stage import (
     CORE_ENTRIES,
@@ -93,9 +94,12 @@ def _composed(sequence: tuple[str, ...], **walks: tuple[str, str]) -> tuple[str,
 #: The same with the macrophysics sub-walk in its driver's place (Gate M-2).
 SEQUENCE_WHOLE_MICRO = _composed(
     SEQUENCE_WHOLE, macrop_driver_tend=("Macrophysics.tend_chunk", "take_macro"))
-#: Both sub-walks in their drivers' places (Gate M-3).
-SEQUENCE = _composed(
+#: Both cloud sub-walks in their drivers' places (Gate M-3).
+SEQUENCE_WHOLE_AERO = _composed(
     SEQUENCE_WHOLE_MICRO, microp_driver_tend=("Microphysics.tend_chunk", "take_micro"))
+#: And the aerosol activation as its own walk (Gate M-4).
+SEQUENCE = _composed(
+    SEQUENCE_WHOLE_AERO, microp_aero_run=("MicropAero.tend_chunk", "take_aero"))
 
 #: The arguments tphysbc hands macrop_driver_tend beside state, ptend, the
 #: substep length, pbuf and the two detrainment outputs -- in its order.
@@ -139,6 +143,7 @@ class _MMEntries(HostEntries):
         # still serves the whole-drivers form; the composed form refuses
         "take_macro": ("pycam_{prefix}_take_macro_v1", [_INT], True),
         "take_micro": ("pycam_{prefix}_take_micro_v1", [_INT], True),
+        "take_aero": ("pycam_{prefix}_take_aero_v1", [_INT], True),
     }
 
 
@@ -203,6 +208,11 @@ class _MMHandles(HostServices):
         """The microphysics sub-walk's ptend becomes the stage's."""
 
         _check(self.e.take_micro(lchnk), "take_micro (ptend = micro_ptend(lchnk))")
+
+    def take_aero(self, lchnk: int) -> None:
+        """The aerosol sub-walk's ptend becomes the stage's ptend_aero."""
+
+        _check(self.e.take_aero(lchnk), "take_aero (ptend_aero = aero_ptend(lchnk))")
 
 
 # -- module constants --------------------------------------------------------------
@@ -293,16 +303,19 @@ class CloudMacroMicrophysics(NativeStage):
     services_class = _MMHandles
 
     def __init__(self, *, whole_drivers: bool = False, whole_micro: bool = False,
-                 kernels=None) -> None:
+                 whole_aero: bool = False, kernels=None) -> None:
         super().__init__(kernels=None)
         #: The sub-walks, or None to call the driver whole.
         self.macro: Macrophysics | None = None
         self.micro: Microphysics | None = None
+        self.aero: MicropAero | None = None
         walks: dict[str, NativeStage] = {}
         if not whole_drivers:
             walks["macro"] = Macrophysics()
             if not whole_micro:
                 walks["micro"] = Microphysics()
+                if not whole_aero:
+                    walks["aero"] = MicropAero()
         self.compose(**walks)
         if kernels:
             unknown = [name for name in kernels if name not in self.kernels]
@@ -395,8 +408,13 @@ class CloudMacroMicrophysics(NativeStage):
                            zero, L["flx_cnd"], det_ice, L["flx_heat"], scaled=True)
             log("check_energy_chng:macrop_tend")
             # 2304-2314: subcolumns are off (refused at attach)
-            # 2317-2322: aerosol activation, the whole routine
-            H.microp_aero_run(lchnk, sub_dt); log("microp_aero_run")
+            # 2317-2322: aerosol activation
+            if self.aero is None:
+                H.microp_aero_run(lchnk, sub_dt); log("microp_aero_run")
+            else:
+                self._sub_walk(self.aero, st, lchnk, ncol, index, sub_dt, nstep)
+                log("MicropAero.tend_chunk")
+                H.take_aero(lchnk); log("take_aero")
             # 2325-2352: use_subcol_microp is off; the driver
             if self.micro is None:
                 H.microp_driver_tend(lchnk, sub_dt); log("microp_driver_tend")
@@ -450,4 +468,4 @@ class CloudMacroMicrophysics(NativeStage):
 
 
 __all__ = ["CloudMacroMicrophysics", "KERNELS", "MACROP_ARGUMENTS", "PBUF_FIELDS", "PTEND",
-           "PTEND_AERO", "SEQUENCE", "SEQUENCE_WHOLE", "SEQUENCE_WHOLE_MICRO", "VIEW"]
+           "PTEND_AERO", "SEQUENCE", "SEQUENCE_WHOLE", "SEQUENCE_WHOLE_AERO", "SEQUENCE_WHOLE_MICRO", "VIEW"]

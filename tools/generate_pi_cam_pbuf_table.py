@@ -8,7 +8,7 @@ pinned source instead.  For every ``pbuf_get_field(pbuf, <idx>, <ptr>, ...)``
 in the routine this records the field's registered name (from the module's
 ``pbuf_add_field('NAME', ..., <idx>)`` or ``<idx> = pbuf_get_index('NAME')``),
 the module symbol holding the index, whether the routine reads the older
-time sample (``start=``), and the rank and kind of the pointer it declares
+time sample (``start=`` with ``itim_old``), and the rank and kind it declares
 for the field -- which is what the rank-aware accessor needs.
 
     tools/generate_pi_cam_pbuf_table.py --routine micro_mg_cam_tend \\
@@ -133,7 +133,9 @@ def build_table(routine: str, source: Path, module: str,
         rows[idx] = {
             "name": names[idx],
             "symbol": f"{owner}_mp_{idx}_",
-            "time_sliced": "start=" in rest.replace(" ", ""),
+            # a start= that indexes the buffer's older time sample, not one
+            # that merely slices a third dimension (DGNUMWET's modes, say)
+            "time_sliced": "itim_old" in rest.replace(" ", ""),
             "rank": rank,
             "dtype": dtype,
             "line": number,

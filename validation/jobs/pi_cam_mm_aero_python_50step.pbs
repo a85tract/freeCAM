@@ -1,5 +1,5 @@
 #!/bin/bash
-#PBS -N pycam-mm-micro-py-50
+#PBS -N pycam-mm-aero-py-50
 #PBS -q develop
 # Preserve the validated rank placement: 512 MPI ranks on four nodes while
 # charging the cpudev maximum of 256 physical CPUs.
@@ -9,12 +9,14 @@
 #PBS -o logs/
 #PBS -V
 
-# Gate M-3 of the cloud macro/microphysics transliteration: Gate M-2's
-# stage with the Microphysics walk composed into it in microp_driver_tend's
-# place -- micro_mg_cam_tend as Python, its packer section lifted verbatim
-# into pycam_micro_handles, the MG core the original -- and its ptend taken
-# over as the macrophysics walk's is.  It differs from Gate M-2's run by
-# exactly the sub-walk; bfb: true is the only acceptable result.
+# Gate M-4 of the cloud macro/microphysics transliteration: Gate M-3's
+# stage with the MicropAero walk composed into it in microp_aero_run's
+# place -- the aerosol activation as Python, its twenty arithmetic
+# statements lifted, its four cores (ice nucleation, droplet activation and
+# the two classical-freezing calls) still the oracle's -- and its ptend
+# taken over as the other walks' are.  Stage 7 is then Python end to end.
+# It differs from Gate M-3's run by exactly the sub-walk; bfb: true is the
+# only acceptable result.
 
 set -euo pipefail
 
@@ -23,15 +25,16 @@ python=${repo}/.venv/bin/python
 case_root=/glade/work/$USER/CESM_cases/f.e13.F1850C5.ne16_g16.icesm131_ihesp.PI-cam-python-state
 oracle_run=/glade/derecho/scratch/$USER/pyCAM/PI-cam/f.e13.F1850C5.ne16_g16.icesm131_ihesp.PI-cam-oracle.50step/run
 mode=${PYCAM_EXECUTION_MODE:-fine_grained}
-run_dir=/glade/derecho/scratch/$USER/pyCAM/PI-cam/mm-micro-python-${mode}-${PBS_JOBID}/run
+run_dir=/glade/derecho/scratch/$USER/pyCAM/PI-cam/mm-aero-python-${mode}-${PBS_JOBID}/run
 boundary=/glade/derecho/scratch/$USER/pyCAM/PI-cam/nonpic-boundary-capture-50step/boundary/replay
 manifest=${PYCAM_NATIVE_MANIFEST:-${repo}/build/pi_cam_promoted/native_cam_manifest.json}
-summary=${PYCAM_SUMMARY:-validation/pi_cam_mm_micro_python_50step.json}
-bfb_output=${PYCAM_BFB_OUTPUT:-validation/pi_cam_mm_micro_python_vs_oracle_50step_bfb.json}
+summary=${PYCAM_SUMMARY:-validation/pi_cam_mm_aero_python_50step.json}
+bfb_output=${PYCAM_BFB_OUTPUT:-validation/pi_cam_mm_aero_python_vs_oracle_50step_bfb.json}
 # Per-rank timing of every handle entry, kernel and trace hash by name.
 export FREECAM_MM_PROFILE=${run_dir}/mm_profile
 export FREECAM_MACRO_PROFILE=${run_dir}/macro_profile
 export FREECAM_MICRO_PROFILE=${run_dir}/micro_profile
+export FREECAM_AERO_PROFILE=${run_dir}/aero_profile
 
 source "${case_root}/.env_mach_specific.sh" >/dev/null 2>&1
 mpi_root=${CRAY_MPICH_DIR:-/opt/cray/pe/mpich/8.1.25/ofi/intel/19.0}
@@ -59,7 +62,6 @@ mpiexec --label -n 512 "${python}" -m freecam.pi_cam.cli \
   --run-dir "${run_dir}" \
   --execution-mode "${mode}" \
   --cloud-macro-micro-python \
-  --cloud-macro-micro-whole-aero \
   --steps "${PYCAM_STEPS:-50}" \
   --summary "${summary}" \
   > "${run_dir}/pi_cam_python.log" 2>&1 || echo "model run exited $? (comparing the output anyway)"
@@ -77,4 +79,6 @@ echo "--- where the Python stage's time went (mean per rank) ---"
   --output "${run_dir}/macro_profile_summary.json" || true
 "${python}" tools/summarize_stage_profile.py "${run_dir}/micro_profile" --prefix micro --top 25 \
   --output "${run_dir}/micro_profile_summary.json" || true
+"${python}" tools/summarize_stage_profile.py "${run_dir}/aero_profile" --prefix aero --top 15 \
+  --output "${run_dir}/aero_profile_summary.json" || true
 exit "${status}"
