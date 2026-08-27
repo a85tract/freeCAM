@@ -259,6 +259,7 @@ class Macrophysics(NativeStage):
     UNSCRATCHED = ("cloud_fraction_fice",)
     FALLBACK_EXTENTS = FALLBACK_EXTENTS
     CAM_IN = ("landfrac", "ocnfrac", "snowhland", "ts", "sst")
+    SWAPPABLE = (FUNCTION,)
     #: What the driver keeps that no kernel declares.
     EXTRA_SCRATCH = tuple(
         (name, ("pcols", "pver", "chunks")) for name in (
@@ -587,7 +588,7 @@ class Macrophysics(NativeStage):
         # The one kernel a model may replace.  The runtime runs the
         # original or the model, and traces both the same way.
         st.swappable_kernel(FUNCTION, inputs, outputs=outputs, ncol=ncol,
-                            lchnk=lchnk, dt=dt, kernel=self.kernel)
+                            lchnk=lchnk, dt=dt)
 #: The stage's place in the workflow, for callers that ask before constructing one.
 STAGE = Macrophysics.STAGE
 FIRST_HALF = Macrophysics.FIRST_HALF

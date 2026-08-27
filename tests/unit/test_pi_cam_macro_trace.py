@@ -12,7 +12,7 @@ REPO = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO / "tools"))
 sys.path.insert(0, str(REPO / "src"))
 
-import compare_pi_cam_macro_trace as tool  # noqa: E402
+import compare_pi_cam_stage_trace as tool  # noqa: E402
 from freecam.physics.capture import lane_sha256  # noqa: E402
 
 
@@ -78,3 +78,41 @@ def test_a_padding_lane_never_counts(tmp_path: Path) -> None:
 
     report = tool.compare(*_bundle_and_trace(tmp_path, perturb="padding"))
     assert report["identical"]
+
+
+def test_the_kernel_filter_picks_one_kernel_out_of_a_two_kernel_trace(tmp_path) -> None:
+    """A stage with two swappable kernels writes both into one trace file;
+    a bundle covers one of them, so the comparison must select by name."""
+
+    import json
+    import numpy as np
+    from freecam.physics.capture import lane_sha256
+
+    ncol = 3
+    good = np.arange(12, dtype=np.float64).reshape(4, 3)
+    trace = tmp_path / "trace"
+    trace.mkdir()
+    bundle = tmp_path / "b.npz"
+    np.savez(bundle, **{"before__x": good[..., None], "after__y": good[..., None],
+                        "mpi_rank": np.array([1]), "lchnk": np.array([7]),
+                        "nstep": np.array([2]), "ncol": np.array([ncol])})
+    lines = [
+        {"mpi_rank": 1, "lchnk": 7, "nstep": 2, "ncol": ncol, "dt": 1800.0,
+         "kernel": "rad_rrtmg_sw", "replaced": False,
+         "before": {"x": lane_sha256(good, ncol)}, "after": {"y": lane_sha256(good, ncol)}},
+        {"mpi_rank": 1, "lchnk": 7, "nstep": 2, "ncol": ncol, "dt": 1800.0,
+         "kernel": "rad_rrtmg_lw", "replaced": False,
+         "before": {"x": lane_sha256(good + 1, ncol)}, "after": {"y": lane_sha256(good, ncol)}},
+    ]
+    (trace / "rad_trace.rank-1.jsonl").write_text(
+        "\n".join(json.dumps(line) for line in lines) + "\n")
+
+    picked = tool.compare(bundle, trace, prefix="rad", kernel="rad_rrtmg_sw")
+    assert picked["identical"] is True and picked["matched_records"] == 1
+
+    other = tool.compare(bundle, trace, prefix="rad", kernel="rad_rrtmg_lw")
+    assert other["identical"] is False
+    assert other["first_differing_before_call"] == {"x": 1}
+
+    # unfiltered, the two records collide on the same key and only one survives
+    assert tool.compare(bundle, trace, prefix="rad")["matched_records"] == 1

@@ -74,8 +74,9 @@ status=0
   --candidate "${run_dir}" \
   --output "${bfb_output}" || status=$?
 
-"${python}" tools/compare_pi_cam_macro_trace.py \
+"${python}" tools/compare_pi_cam_stage_trace.py \
   --bundle "${capture_bundle}" \
   --trace "${run_dir}/macro_trace" \
+  --prefix macro --kernel mmacro_pcond \
   --output "${trace_output}" || true
 exit "${status}"

@@ -140,6 +140,7 @@ class Widget(NativeStage):
     PROCESS_NAME = "widget_tend"
     TRACE_ENV = "FREECAM_WIDGET_TRACE"
     KERNELS = ("widget_step",)
+    SWAPPABLE = ("widget_step",)
     EXTRA_SCRATCH = (("spare", ("pcols", "pver", "chunks")),)
     CAM_IN = ("landfrac",)
 
@@ -158,8 +159,7 @@ class Widget(NativeStage):
         st.handles.outfld("WIDGET  ", x, PCOLS, lchnk)
         self.calls.append("kernel")
         st.swappable_kernel("widget_step", {"ncol": ncol, "x": x},
-                            outputs={"y": st.local["y"]}, ncol=ncol, lchnk=lchnk, dt=dt,
-                            kernel=self.kernel)
+                            outputs={"y": st.local["y"]}, ncol=ncol, lchnk=lchnk, dt=dt)
 
 
 @pytest.fixture
@@ -348,3 +348,100 @@ def test_attach_swaps_the_stage_for_its_halves_and_sits_between_them() -> None:
     assert handle.name == "widget_tend"
     assert handle.native is True and handle.transactional is False
     assert handle.reads == () and handle.writes == ()
+
+
+# -- several swappable kernels ---------------------------------------------------
+
+
+def test_a_stage_with_one_swappable_kernel_keeps_the_singular_kernel_attribute() -> None:
+    stage = Widget()
+    assert stage.kernels == {"widget_step": None}
+    assert stage.kernel is None
+    model = lambda batch: {}
+    stage.kernel = model
+    assert stage.kernels["widget_step"] is model
+
+
+def test_a_stage_with_two_swappable_kernels_refuses_the_singular_attribute() -> None:
+    class Pair(Widget):
+        SWAPPABLE = ("widget_step", "widget_other")
+
+    stage = Pair()
+    assert stage.kernels == {"widget_step": None, "widget_other": None}
+    with pytest.raises(PhysicsError, match="assign into .kernels"):
+        stage.kernel
+    with pytest.raises(PhysicsError, match="assign into .kernels"):
+        stage.kernel = lambda batch: {}
+    stage.kernels["widget_other"] = lambda batch: {}      # the way to do it
+    assert stage.kernels["widget_step"] is None
+
+
+def test_constructing_with_an_unknown_kernel_name_is_refused() -> None:
+    with pytest.raises(PhysicsError, match="no swappable kernel named"):
+        Widget(kernels={"nope": lambda batch: {}})
+
+
+def test_the_stage_s_kernels_mapping_is_what_swappable_kernel_looks_up(widget) -> None:
+    """Nothing threads the model through the call; the runtime reads the stage."""
+
+    stage = Widget()
+    stage.kernels["widget_step"] = lambda batch: {"y": np.full((batch["x"].shape[0], 2), 9.0)}
+    stage.tend(None, _Context(widget))
+    assert widget.kernels == []                       # the original never ran
+    assert stage.runtime(widget).scratch["y"][0, 0, 0] == 9.0
+
+
+# -- an original that is not a direct kernel -------------------------------------
+
+
+def test_original_runs_in_the_direct_kernel_s_place_and_is_traced(
+        widget, tmp_path, monkeypatch) -> None:
+    """A routine taking a derived type cannot be a direct kernel; the stage
+    hands swappable_kernel a closure that calls its handle wrapper instead."""
+
+    monkeypatch.setenv("FREECAM_WIDGET_TRACE", str(tmp_path))
+    ran = []
+
+    class ViaWrapper(Widget):
+        def tend_chunk(self, st, lchnk, ncol, index, dt, nstep):
+            x = st.handles.view(lchnk, 1)
+            st.swappable_kernel("widget_step", {"ncol": ncol, "x": x},
+                                outputs={"y": st.local["y"]}, ncol=ncol, lchnk=lchnk, dt=dt,
+                                original=lambda: ran.append(lchnk))
+
+    stage = ViaWrapper()
+    stage.tend(None, _Context(widget))
+    assert ran == [10, 11]
+    assert widget.kernels == []                       # the direct kernel was not used
+    lines = [json.loads(l) for l in
+             next(tmp_path.glob("widget_trace.rank-*.jsonl")).read_text().splitlines()]
+    assert [l["replaced"] for l in lines] == [False, False]
+    assert set(lines[0]["before"]) == {"ncol", "x"}
+
+    # a model still wins over the closure
+    ran.clear()
+    stage = ViaWrapper()
+    stage.kernels["widget_step"] = lambda batch: {"y": np.zeros((batch["x"].shape[0], 2))}
+    stage.tend(None, _Context(widget))
+    assert ran == []
+
+
+# -- host services a stage did not declare ---------------------------------------
+
+
+def test_a_service_the_stage_never_declared_is_refused_by_name() -> None:
+    from freecam.pi_cam.errors import PICAMConfigurationError
+    from freecam.physics.stage import CORE_ENTRIES, HOST_ENTRIES, PTEND_ENTRIES
+
+    assert HOST_ENTRIES == {**CORE_ENTRIES, **PTEND_ENTRIES}
+    assert set(CORE_ENTRIES) & set(PTEND_ENTRIES) == set()
+
+    class CoreOnly(HostEntries):
+        TABLE = CORE_ENTRIES
+
+    services = HostServices(CoreOnly(_Lib(), "widget"), pcnst=3)
+    services.outfld("X       ", np.zeros((PCOLS, PVER), order="F"), PCOLS, 10)   # core: fine
+    with pytest.raises(PICAMConfigurationError, match="declares no 'state_copy' entry"):
+        services.state_copy(10)
+    with pytest.raises(PICAMConfigurationError, match="declares no 'update' entry"):
+        services.update(10, 1800.0)

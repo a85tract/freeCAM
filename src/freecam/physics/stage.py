@@ -57,20 +57,34 @@ _P_DBL = _c.POINTER(_c.c_double)
 #: argtypes leaves the call undeclared, for wrappers whose pointers are
 #: passed positionally.  ``optional`` entries are absent from images built
 #: before they existed, and the stage falls back.
-HOST_ENTRIES: dict[str, tuple[str, list | None, bool]] = {
+#:
+#: Every stage has the core: it owns storage, it hands out views, it writes
+#: history, it can be asked the model's clock.
+CORE_ENTRIES: dict[str, tuple[str, list | None, bool]] = {
     "set_owner": ("pycam_{prefix}_set_owner_v1", [_INT], False),
     "bind_hosts": ("pycam_{prefix}_bind_hosts_v1", [], False),
+    "view": ("pycam_{prefix}_view_v1", [_INT, _INT, _P_VOID, _P_INT, _P_I64], False),
+    "outfld": ("pycam_outfld_v1", [_STR, _INT, _P_DBL, _INT, _INT], False),
+    "nstep": ("pycam_{prefix}_nstep_v1", [], True),
+    "dt": ("pycam_{prefix}_dt_v1", [], True),
+}
+
+#: Only a stage that copies the physics state and builds its own ptend needs
+#: these.  A stage whose driver never calls ``physics_state_copy`` -- radiation
+#: hands its ptend straight to ``radheat_tend`` -- declares neither the Fortran
+#: entries nor these bindings, and asking for one of the services raises.
+PTEND_ENTRIES: dict[str, tuple[str, list | None, bool]] = {
     "state_copy": ("pycam_{prefix}_state_copy_v1", [_INT], False),
     "state_dealloc": ("pycam_{prefix}_state_dealloc_v1", [_INT], False),
     "ptend_init": ("pycam_{prefix}_ptend_init_v1",
                    [_INT, _INT, _STR, _INT, _INT, _INT, _P_I32], False),
     "ptend_sum": ("pycam_{prefix}_ptend_sum_v1", [_INT, _INT], False),
     "update": ("pycam_{prefix}_update_v1", [_INT, _DBL], False),
-    "view": ("pycam_{prefix}_view_v1", [_INT, _INT, _P_VOID, _P_INT, _P_I64], False),
-    "outfld": ("pycam_outfld_v1", [_STR, _INT, _P_DBL, _INT, _INT], False),
-    "nstep": ("pycam_{prefix}_nstep_v1", [], True),
-    "dt": ("pycam_{prefix}_dt_v1", [], True),
 }
+
+#: What a stage that does all of it declares.  Kept as the default so a
+#: stage written before the split still binds what it used to.
+HOST_ENTRIES: dict[str, tuple[str, list | None, bool]] = {**CORE_ENTRIES, **PTEND_ENTRIES}
 
 
 def check(status: int, what: str) -> None:
@@ -147,6 +161,17 @@ class HostServices:
         self.e = entries
         self.pcnst = pcnst
 
+    def _entry(self, attribute: str):
+        """The bound entry, or a refusal naming what the stage did not declare."""
+
+        entry = getattr(self.e, attribute, None)
+        if entry is None:
+            raise PICAMConfigurationError(
+                f"the {self.e.prefix} stage declares no {attribute!r} entry; "
+                f"its handles module does not offer that host service"
+            )
+        return entry
+
     # -- storage -------------------------------------------------------------
 
     def _deref(self, entry, what: str, *arguments, ndims_max: int = 5) -> np.ndarray:
@@ -159,38 +184,38 @@ class HostServices:
     def view(self, lchnk: int, code: int) -> np.ndarray:
         """A zero-copy view of one component of the stage's held derived types."""
 
-        return self._deref(self.e.view, f"{self.e.prefix} view(chunk {lchnk}, code {code})",
+        return self._deref(self._entry("view"), f"{self.e.prefix} view(chunk {lchnk}, code {code})",
                            lchnk, code)
 
     # -- derived types -------------------------------------------------------
 
     def state_copy(self, lchnk: int) -> None:
-        check(self.e.state_copy(lchnk), "physics_state_copy")
+        check(self._entry("state_copy")(lchnk), "physics_state_copy")
 
     def state_dealloc(self, lchnk: int) -> None:
-        check(self.e.state_dealloc(lchnk), "physics_state_dealloc")
+        check(self._entry("state_dealloc")(lchnk), "physics_state_dealloc")
 
     def ptend_init(self, lchnk: int, which: int, name: str, *, ls: bool | None = None,
                    lq: np.ndarray | None = None) -> None:
         with_flags = lq is not None
         flags = np.zeros(self.pcnst, dtype=np.int32) if lq is None else np.asarray(lq, dtype=np.int32)
         assert flags.shape == (self.pcnst,)
-        check(self.e.ptend_init(
+        check(self._entry("ptend_init")(
             lchnk, which, name.encode("ascii"), len(name), int(with_flags),
             int(bool(ls)), flags.ctypes.data_as(ctypes.POINTER(ctypes.c_int32)),
         ), f"physics_ptend_init({name!r})")
 
     def ptend_sum(self, lchnk: int, ncol: int) -> None:
-        check(self.e.ptend_sum(lchnk, ncol), "physics_ptend_sum")
+        check(self._entry("ptend_sum")(lchnk, ncol), "physics_ptend_sum")
 
     def update(self, lchnk: int, dt: float) -> None:
-        check(self.e.update(lchnk, float(dt)), "physics_update")
+        check(self._entry("update")(lchnk, float(dt)), "physics_update")
 
     # -- history -------------------------------------------------------------
 
     def outfld(self, name: str, array: np.ndarray, idim: int, lchnk: int) -> None:
         array = fortran(array)
-        check(self.e.outfld(name.encode("ascii"), len(name), pointer_of(array), idim, lchnk),
+        check(self._entry("outfld")(name.encode("ascii"), len(name), pointer_of(array), idim, lchnk),
               f"outfld({name!r})")
 
 
@@ -352,24 +377,36 @@ class StageRuntime:
     def swappable_kernel(self, name: str, inputs: Mapping[str, Any], *,
                          outputs: Mapping[str, np.ndarray], ncol: int, lchnk: int, dt: float,
                          kernel: Callable[..., Mapping[str, np.ndarray]] | None = None,
+                         original: Callable[[], None] | None = None,
                          fields: Mapping[str, str] | None = None) -> None:
-        """The one kernel of the stage a model may replace.
+        """A kernel of the stage that a model may replace.
 
-        With ``kernel`` unset the original Fortran runs through its direct
-        kernel and the result is bit-for-bit.  With a callable in its place
-        the live columns go in as ``(ncol, ...)`` arrays and the returned
-        values are written back to the same lanes -- a full replacement, no
-        per-column fallback.  Either way, if the stage is tracing, the
-        live-lane hash of every argument is recorded before and after, so a
-        run can be compared with a capture of the oracle argument by
-        argument.
+        With no model installed the original Fortran runs and the result is
+        bit-for-bit: through the direct kernel of this name by default, or
+        through ``original`` -- a closure the stage supplies -- when the
+        routine cannot be a direct kernel because it takes a derived type.
+        With a callable in its place the live columns go in as ``(ncol, ...)``
+        arrays and the returned values are written back to the same lanes --
+        a full replacement, no per-column fallback.  Either way, if the stage
+        is tracing, the live-lane hash of every argument is recorded before
+        and after, so a run can be compared with a capture of the oracle
+        argument by argument.
+
+        ``kernel`` defaults to whatever the stage holds under this name in
+        :attr:`NativeStage.kernels`, so a stage with several swappable
+        kernels does not have to thread the lookup through every call.
         """
 
+        if kernel is None:
+            kernel = self.stage.kernels.get(name)
         trace = self.trace
         before = ({key: lane_sha256(np.asarray(value), ncol) for key, value in inputs.items()}
                   if trace is not None else None)
         if kernel is None:
-            self.kernel_on_chunk(name, inputs, outputs=outputs, fields=fields, ncol=ncol)
+            if original is not None:
+                original()
+            else:
+                self.kernel_on_chunk(name, inputs, outputs=outputs, fields=fields, ncol=ncol)
         else:
             batch = {}
             for key, value in inputs.items():
@@ -462,21 +499,56 @@ class NativeStage:
     FALLBACK_EXTENTS: dict[str, tuple[str, ...]] = {}
     #: The ``cam_in`` surface fields the stage reads, by StatePool name.
     CAM_IN: tuple[str, ...] = ()
+    #: The kernels of this stage a model may replace, in the order the driver
+    #: calls them.  Macrophysics has one; radiation has the two RRTMG cores.
+    SWAPPABLE: tuple[str, ...] = ()
 
     DESCRIPTORS = DESCRIPTORS
     TRACE_ENV = "FREECAM_STAGE_TRACE"
     entries_class = HostEntries
     services_class = HostServices
 
-    def __init__(self, *, kernel: Callable[..., Mapping[str, np.ndarray]] | None = None) -> None:
-        #: What computes the stage's one replaceable kernel.  ``None`` runs
-        #: the original Fortran and the stage is bit-for-bit; a callable --
-        #: a ``torch.nn.Module`` wrapped to take and return the batch by
-        #: name -- takes its place entirely.
-        self.kernel = kernel
+    def __init__(self, *, kernel: Callable[..., Mapping[str, np.ndarray]] | None = None,
+                 kernels: Mapping[str, Callable[..., Mapping[str, np.ndarray]] | None] | None = None
+                 ) -> None:
+        #: What computes each replaceable kernel, by name.  ``None`` runs the
+        #: original Fortran and the stage is bit-for-bit; a callable -- a
+        #: ``torch.nn.Module`` wrapped to take and return the batch by name --
+        #: takes its place entirely.  Every name in :attr:`SWAPPABLE` is
+        #: present from the start, so a caller can assign into the mapping
+        #: without knowing whether the stage has one kernel or several.
+        self.kernels: dict[str, Callable[..., Mapping[str, np.ndarray]] | None] = {
+            name: None for name in self.SWAPPABLE
+        }
+        if kernels is not None:
+            unknown = [name for name in kernels if name not in self.kernels]
+            if unknown:
+                raise PhysicsError(
+                    f"{type(self).__name__} has no swappable kernel named {unknown}; "
+                    f"it has {list(self.kernels)}")
+            self.kernels.update(kernels)
+        if kernel is not None:
+            self.kernel = kernel            # the property below, for one-kernel stages
         self.calls: list[str] = []      # what tend() did last, for the sequence test
         self._process: Any = None
         self._runtimes: dict[int, StageRuntime] = {}
+
+    @property
+    def kernel(self):
+        """The model in the one swappable kernel's place, for stages that have one."""
+
+        return self.kernels[self._only_kernel()]
+
+    @kernel.setter
+    def kernel(self, value) -> None:
+        self.kernels[self._only_kernel()] = value
+
+    def _only_kernel(self) -> str:
+        if len(self.kernels) != 1:
+            raise PhysicsError(
+                f"{type(self).__name__} has {len(self.kernels)} swappable kernels "
+                f"{list(self.kernels)}; assign into .kernels[name] instead of .kernel")
+        return next(iter(self.kernels))
 
     # -- what a subclass supplies ------------------------------------------
 
@@ -551,6 +623,7 @@ class NativeStage:
 
 
 __all__ = [
-    "DESCRIPTORS", "HOST_ENTRIES", "HostEntries", "HostServices", "Local",
-    "NativeStage", "StageRuntime", "as_view", "check", "fortran", "pointer_of",
+    "CORE_ENTRIES", "DESCRIPTORS", "HOST_ENTRIES", "HostEntries", "HostServices",
+    "Local", "NativeStage", "PTEND_ENTRIES", "StageRuntime", "as_view", "check",
+    "fortran", "pointer_of",
 ]
