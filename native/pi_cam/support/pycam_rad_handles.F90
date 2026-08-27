@@ -139,21 +139,30 @@ contains
       allocate(rad_net_flx(pcols,begchunk:endchunk))
       rad_net_flx = 0._r8
     end if
-    if (.not. allocated(host_cam_in)) allocate(host_cam_in(begchunk:endchunk))
-    if (.not. allocated(host_cam_out)) allocate(host_cam_out(begchunk:endchunk))
+    call ensure_chunk_refs()
   end subroutine pycam_rad_bind_hosts
 
   subroutine pycam_rad_bind_chunk(lchnk, chunk_cam_in, chunk_cam_out)
     ! Called from tphysbc's stop, where cam_in and cam_out are the chunk's own
     ! objects.  Only the address leaves; the objects stay where they are.
+    !
+    ! The stop runs before Python's first tend, so this cannot wait for
+    ! pycam_rad_bind_hosts to make the storage: it allocates its own.  Gate
+    ! R-B2 failed once on exactly that ordering, silently, because the guard
+    ! here used to return instead.
     integer, intent(in) :: lchnk
     type(cam_in_t), intent(in), target :: chunk_cam_in
     type(cam_out_t), intent(inout), target :: chunk_cam_out
-    if (.not. allocated(host_cam_in)) return
     if (lchnk < begchunk .or. lchnk > endchunk) return
+    call ensure_chunk_refs()
     host_cam_in(lchnk)%p => chunk_cam_in
     host_cam_out(lchnk)%p => chunk_cam_out
   end subroutine pycam_rad_bind_chunk
+
+  subroutine ensure_chunk_refs()
+    if (.not. allocated(host_cam_in)) allocate(host_cam_in(begchunk:endchunk))
+    if (.not. allocated(host_cam_out)) allocate(host_cam_out(begchunk:endchunk))
+  end subroutine ensure_chunk_refs
 
   subroutine view1(field, ptr, ndims, extents)
     ! A TARGET dummy so c_loc is legal whatever the actual argument's

@@ -244,3 +244,24 @@ def test_the_bind_entry_is_emitted_where_the_hosts_are_in_scope() -> None:
     # or the two definitions would collide at link time
     assert "public :: pycam_rad_bind_hosts" in _code()
     assert "pycam_rad_bind_hosts_v1" not in _code()
+
+
+def test_the_chunk_binding_does_not_wait_for_the_host_binding() -> None:
+    """tphysbc's stop runs before Python's first tend, so bind_chunk cannot
+    depend on bind_hosts having made the storage.  Gate R-B2 failed on that
+    ordering once, silently, because the guard returned instead."""
+
+    code = _code()
+    body = code[code.index("subroutine pycam_rad_bind_chunk("):]
+    body = body[:body.index("end subroutine pycam_rad_bind_chunk")]
+    assert "call ensure_chunk_refs()" in body
+    assert "if (.not. allocated(host_cam_in)) return" not in body
+    # the only guard left is the chunk range, which is a real bound
+    guards = re.findall(r"if \((.*?)\) return", body)
+    assert guards == ["lchnk < begchunk .or. lchnk > endchunk"], guards
+    # and both allocations live in one place, used by both binders
+    ensure = code[code.index("subroutine ensure_chunk_refs"):]
+    ensure = ensure[:ensure.index("end subroutine ensure_chunk_refs")]
+    assert "allocate(host_cam_in(begchunk:endchunk))" in ensure
+    assert "allocate(host_cam_out(begchunk:endchunk))" in ensure
+    assert code.count("call ensure_chunk_refs()") == 2
