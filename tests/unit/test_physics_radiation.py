@@ -437,3 +437,46 @@ def test_a_scalar_scratch_is_never_indexed_as_if_it_had_a_lane() -> None:
              for m in re.finditer(r'L\["(\w+)"\]\s*\[([^\]]*)\]', source)
              if m.group(1) in scalars and m.group(2) != "()"]
     assert not wrong, wrong
+
+
+# -- what only a 512-rank run would otherwise catch -------------------------------
+
+
+def _source() -> str:
+    return (REPO / "src/freecam/physics/radiation.py").read_text()
+
+
+def test_every_kernel_argument_the_transliteration_names_is_that_kernel_s() -> None:
+    """A key that is not one of the kernel's fields is silently ignored on the
+    way in and a KeyError on the way out."""
+
+    from freecam.pi_cam.kernel_codegen import load_direct_kernels
+
+    described = {k.name: k for k in load_direct_kernels(Radiation.DESCRIPTORS)}
+    wrong = []
+    for match in re.finditer(r'K\("(\w+)",\s*\{(.*?)\}\s*,\s*\n?\s*outputs=\{(.*?)\}\)',
+                             _source(), re.S):
+        name, inputs, outputs = match.groups()
+        fields = {a.field.removeprefix("rad.") for a in described[name].arguments}
+        keys = set(re.findall(r'"(\w+)":', inputs)) | set(re.findall(r'"(\w+)":', outputs))
+        wrong.extend((name, key) for key in sorted(keys - fields))
+    assert not wrong, wrong
+
+
+def test_every_view_the_transliteration_asks_for_is_in_the_table() -> None:
+    assert not set(re.findall(r'VIEW\["(\w+)"\]', _source())) - set(VIEW)
+
+
+def test_every_declared_kernel_is_actually_called() -> None:
+    """A kernel in KERNELS that nothing calls is scratch allocated for nothing,
+    and usually means a statement of the driver was dropped."""
+
+    called = set(re.findall(r'K\("(\w+)"', _source()))
+    assert not set(Radiation.KERNELS) - called, sorted(set(Radiation.KERNELS) - called)
+
+
+def test_every_handle_method_the_transliteration_calls_exists() -> None:
+    calls = set(re.findall(r"\bH\.(\w+)\(", _source()))
+    calls |= set(re.findall(r"st\.handles\.(\w+)\(", _source()))
+    missing = sorted(name for name in calls if not hasattr(R._RadHandles, name))
+    assert not missing, missing
