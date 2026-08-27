@@ -637,8 +637,9 @@ class Radiation(NativeStage):
         K("rad_gather_day_night", {"ncol": ncol, "coszrs": coszrs},
           outputs={"Nday": None, "Nnite": None, "IdxDay": None, "IdxNite": None})
         log("rad_gather_day_night")
-        nday = int(L["Nday"][0])
-        nnite = int(L["Nnite"][0])
+        # both are scalar dummies, so the local view is 0-d
+        nday = int(L["Nday"][()])
+        nnite = int(L["Nnite"][()])
         idxday, idxnite = L["IdxDay"], L["IdxNite"]
 
         # 868-869: the driver's own predicates, asked rather than re-derived

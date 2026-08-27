@@ -415,3 +415,25 @@ def test_the_two_names_for_the_band_counts_agree() -> None:
     extents = Radiation().extra_extents(type("C", (), {"num_rrtmg_levs": 29})())
     assert extents["nswbands"] == extents["nbndsw"] == R.NBNDSW
     assert extents["nlwbands"] == extents["nbndlw"] == R.NBNDLW
+
+
+def test_a_scalar_scratch_is_never_indexed_as_if_it_had_a_lane() -> None:
+    """A dummy declared without dimensions has extents ("chunks",), so the
+    local view drops to 0-d and `[0]` raises.  Gate R-B2 spent a 512-rank run
+    finding that for Nday."""
+
+    from freecam.pi_cam.kernel_codegen import load_direct_kernels
+
+    described = {k.name: k for k in load_direct_kernels(Radiation.DESCRIPTORS)}
+    extents: dict[str, tuple[str, ...]] = {}
+    for name in Radiation.KERNELS:
+        for a in described[name].arguments:
+            extents.setdefault(a.field.removeprefix("rad."), tuple(a.extents))
+    scalars = {name for name, e in extents.items() if e == ("chunks",)}
+    assert scalars, "the descriptors declare no scalar dummies at all"
+
+    source = (REPO / "src/freecam/physics/radiation.py").read_text()
+    wrong = [(m.group(1), m.group(2))
+             for m in re.finditer(r'L\["(\w+)"\]\s*\[([^\]]*)\]', source)
+             if m.group(1) in scalars and m.group(2) != "()"]
+    assert not wrong, wrong
