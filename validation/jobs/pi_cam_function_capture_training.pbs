@@ -1,0 +1,60 @@
+#!/bin/bash
+# Capture mmacro_pcond's own arguments over a whole 50-step month-start, for
+# training data.
+#
+# The reviewed capture job records two timesteps, which is the right size for
+# proving a replay reproduces the oracle.  A surrogate needs the model's own
+# distribution instead: every column the macrophysics saw, over enough steps
+# that the sample is the model's and not one column's neighbourhood.  Fifty
+# steps of 512 ranks is about 700,000 columns.
+#
+#   PYCAM_CAPTURE_STEPS=1,50   which timesteps to record
+#
+# This job does not check bit-for-bit: the reviewed capture job already
+# proved the hook is inert when unset and faithful when set, with the same
+# executable.  This one only produces data.
+
+#PBS -N pycam-capture-train
+#PBS -q develop
+#PBS -l select=4:ncpus=64:mpiprocs=128:ompthreads=1:mem=64GB
+#PBS -l walltime=00:45:00
+#PBS -j oe
+#PBS -o logs/
+#PBS -V
+
+set -euo pipefail
+
+repo=/glade/work/$USER/freeCAM
+python=${repo}/.venv/bin/python
+case_root=/glade/work/$USER/CESM_cases/f.e13.F1850C5.ne16_g16.icesm131_ihesp.PI-cam-oracle.50step
+oracle_run=/glade/derecho/scratch/$USER/pyCAM/PI-cam/f.e13.F1850C5.ne16_g16.icesm131_ihesp.PI-cam-oracle.50step/run
+executable=${repo}/build/pi_cam_function_capture/pi_cam_function_capture.exe
+root=/glade/derecho/scratch/$USER/pyCAM/PI-cam/function-capture-training-${PBS_JOBID}
+steps=${PYCAM_CAPTURE_STEPS:-1,50}   # 覆盖全部 50 步
+
+source "${case_root}/.env_mach_specific.sh" >/dev/null 2>&1
+export OMP_NUM_THREADS=1
+export OMP_STACKSIZE=64M
+export FI_CXI_RX_MATCH_MODE=hybrid
+export FI_MR_CACHE_MONITOR=memhooks
+export MPICH_MPIIO_HINTS='*:romio_cb_read=enable:romio_cb_write=enable:striping_factor=24'
+
+mkdir -p "${root}/raw" "${root}/run"
+rsync -a \
+  --exclude '*.nc' --exclude '*.bin' --exclude '*.log.*' \
+  --exclude 'rpointer.*' --exclude 'timing/' \
+  "${oracle_run}/" "${root}/run/"
+mkdir -p "${root}/run/timing/checkpoints"
+
+cd "${root}/run"
+PYCAM_FUNCTION_CAPTURE="${root}/raw/function" PYCAM_FUNCTION_CAPTURE_STEPS="${steps}" \
+  mpiexec --label -n 512 "${executable}" > cesm.log.capture 2>&1
+
+cd "${repo}"
+PYTHONPATH=${repo}/src "${python}" tools/convert_pi_cam_function_capture.py \
+  --capture-prefix "${root}/raw/function" \
+  --output-dir "${root}/bundles" \
+  --executable-sha256 "$(sha256sum "${executable}" | cut -d' ' -f1)"
+
+ls -la "${root}/bundles"
+echo "bundles: ${root}/bundles"

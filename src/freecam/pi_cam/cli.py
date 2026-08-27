@@ -256,6 +256,17 @@ def main(argv: list[str] | None = None) -> int:
             "packed-array contract carries every argument"
         ),
     )
+    parser.add_argument(
+        "--macro-kernel-surrogate",
+        type=Path,
+        default=None,
+        metavar="MODEL",
+        help=(
+            "put a trained surrogate in the macrophysics stage's kernel slot "
+            "instead of mmacro_pcond: the run is then a different model, not a "
+            "reproduction of the oracle, and is never evidence of bit-for-bit"
+        ),
+    )
     parser.add_argument("--summary", type=Path)
     parser.add_argument(
         "--memory-sample-every",
@@ -347,6 +358,16 @@ def main(argv: list[str] | None = None) -> int:
             from freecam.physics.macrophysics import Macrophysics
 
             scheme = Macrophysics()
+            if args.macro_kernel_surrogate is not None:
+                # a model in the kernel's place: the class has one definition
+                # of what computes mmacro_pcond, so this reaches the walk and
+                # any single-column caller alike
+                import sys as _sys
+
+                _sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "tools"))
+                from pi_cam_surrogate_kernel import load_surrogate
+
+                scheme.kernels["mmacro_pcond"] = load_surrogate(args.macro_kernel_surrogate)
             cam.python_processes.install(
                 PythonProcessSpec.from_callable(
                     scheme.tend,
@@ -648,6 +669,8 @@ def main(argv: list[str] | None = None) -> int:
             "macrophysics_python": bool(args.macrophysics_python),
             "radiation_split": bool(args.split_radiation),
             "radiation_python": bool(args.radiation_python),
+            "macro_kernel_surrogate": (str(args.macro_kernel_surrogate)
+                                       if args.macro_kernel_surrogate else None),
             "cloud_macro_micro_python": bool(args.cloud_macro_micro_python),
             "cloud_macro_micro_whole_drivers": bool(args.cloud_macro_micro_whole_drivers),
             "cloud_macro_micro_whole_micro": bool(args.cloud_macro_micro_whole_micro),

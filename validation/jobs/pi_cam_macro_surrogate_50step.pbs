@@ -1,0 +1,96 @@
+#!/bin/bash
+#PBS -N pycam-macro-ml-50
+#PBS -q develop
+# Preserve the validated rank placement: 512 MPI ranks on four nodes while
+# charging the cpudev maximum of 256 physical CPUs.
+#PBS -l select=4:ncpus=64:mpiprocs=128:ompthreads=1:mem=64GB
+#PBS -l walltime=00:20:00
+#PBS -j oe
+#PBS -o logs/
+#PBS -V
+
+# Gate B2 of the macrophysics transliteration: the stage runs as its two
+# halves and Macrophysics.tend runs between them on every rank -- the
+# macrophysics driver layer as Python, every FLOP still the oracle's Fortran
+# through the lifted kernels, the handles and the direct kernel.  What is on
+# trial is the transliteration itself: its order, its argument bindings, its
+# copies.  bfb: true is the only acceptable result; a difference is diagnosed
+# against Gate B1's run of the same image, which differs from this one by
+# exactly the Python process.
+
+# What a trained surrogate does to the model, over fifty steps.
+#
+# The macrophysics stage runs as Python and its kernel slot holds a network
+# trained on the model's own captured columns instead of mmacro_pcond.  This
+# is NOT a bit-for-bit gate and its output is not evidence of one: the answer
+# is a different model's.  What it measures is how far the run drifts from
+# the oracle and whether it stays standing at all -- the first honest
+# question to ask of a surrogate, before anyone asks whether it is good.
+#
+#   PYCAM_SURROGATE=<model>.pt   the trained network to install
+
+set -euo pipefail
+
+repo=/glade/work/$USER/freeCAM
+python=${repo}/.venv/bin/python
+case_root=/glade/work/$USER/CESM_cases/f.e13.F1850C5.ne16_g16.icesm131_ihesp.PI-cam-python-state
+oracle_run=/glade/derecho/scratch/$USER/pyCAM/PI-cam/f.e13.F1850C5.ne16_g16.icesm131_ihesp.PI-cam-oracle.50step/run
+mode=${PYCAM_EXECUTION_MODE:-fine_grained}
+root=/glade/derecho/scratch/$USER/pyCAM/PI-cam/macro-surrogate-${PBS_JOBID}
+mkdir -p "${root}"
+run_dir=/glade/derecho/scratch/$USER/pyCAM/PI-cam/macro-tend-surrogate-${mode}-${PBS_JOBID}/run
+boundary=/glade/derecho/scratch/$USER/pyCAM/PI-cam/nonpic-boundary-capture-50step/boundary/replay
+manifest=${PYCAM_NATIVE_MANIFEST:-${repo}/build/pi_cam_promoted/native_cam_manifest.json}
+summary=${PYCAM_SUMMARY:-${root}/summary.json}
+bfb_output=${PYCAM_BFB_OUTPUT:-${root}/bfb.json}
+# The oracle's own mmacro_pcond arguments for steps 1 and 2, every chunk of
+# every rank, from the reviewed capture.  tend() traces the same arguments;
+# the two are compared after the run whether or not the run was bit-for-bit.
+capture_bundle=${PYCAM_CAPTURE_BUNDLE:-/glade/derecho/scratch/$USER/pyCAM/PI-cam/function-capture-7218608.desched1/bundles/mmacro_pcond_capture.npz}
+trace_output=${PYCAM_TRACE_OUTPUT:-${root}/trace.json}
+export FREECAM_MACRO_TRACE=${run_dir}/macro_trace
+
+source "${case_root}/.env_mach_specific.sh" >/dev/null 2>&1
+mpi_root=${CRAY_MPICH_DIR:-/opt/cray/pe/mpich/8.1.25/ofi/intel/19.0}
+export LD_LIBRARY_PATH="${mpi_root}/lib-abi-mpich:${mpi_root}/lib:${LD_LIBRARY_PATH:-}"
+export LD_PRELOAD=/glade/u/apps/common/23.04/spack/opt/spack/intel-oneapi-compilers/2023.0.0/compiler/2023.0.0/linux/compiler/lib/intel64_lin/libimf.so${LD_PRELOAD:+:${LD_PRELOAD}}
+export PYTHONPATH=${repo}/src
+export OMP_NUM_THREADS=1
+export OMP_STACKSIZE=64M
+export FI_CXI_RX_MATCH_MODE=hybrid
+export FI_MR_CACHE_MONITOR=memhooks
+export MPICH_MPIIO_HINTS='*:romio_cb_read=enable:romio_cb_write=enable:striping_factor=24'
+
+mkdir -p "${run_dir}"
+rsync -a \
+  --exclude 'f.e13.F1850C5.ne16_g16.icesm131_ihesp.PI-cam-oracle.50step.*' \
+  --exclude '*.log.*' --exclude 'rpointer.*' --exclude 'timing/' \
+  "${oracle_run}/" "${run_dir}/"
+mkdir -p "${run_dir}/timing/checkpoints"
+
+cd "${repo}"
+mpiexec --label -n 512 "${python}" -m freecam.pi_cam.cli \
+  --config configs/pi_cam_icesm131_replay.yaml \
+  --native-manifest "${manifest}" \
+  --boundary "${boundary}" \
+  --run-dir "${run_dir}" \
+  --execution-mode "${mode}" \
+  --split-macrophysics \
+  --macrophysics-python \
+  --macro-kernel-surrogate "${PYCAM_SURROGATE}" \
+  --steps 50 \
+  --summary "${summary}" \
+  > "${run_dir}/pi_cam_python.log" 2>&1 || echo "model run exited $? (comparing the trace anyway)"
+
+status=0
+"${python}" tools/verify_pi_cam.py \
+  --reference "${oracle_run}" \
+  --candidate "${run_dir}" \
+  --output "${bfb_output}" || status=$?
+
+"${python}" tools/compare_pi_cam_stage_trace.py \
+  --bundle "${capture_bundle}" \
+  --trace "${run_dir}/macro_trace" \
+  --prefix macro --kernel mmacro_pcond \
+  --output "${trace_output}" || true
+exit "${status}"
