@@ -13,10 +13,24 @@ lies in [0, 1]; an advective tendency of 0.01 K/s is 864 K/day) the draw uses
 the physical sub-range instead, and every such narrowing is listed in
 ``SAMPLING_NOTES`` and written into the file.
 
+There are two ways to place the state.  Without ``--anchor-bundle`` the
+states are perturbed around one captured column, which is a demonstration
+space: one column's vertical structure is rank one, and the model's own cloud
+water needs twenty-four principal components, so no retuning of the noise
+reaches it.  With ``--anchor-bundle`` the anchor is drawn per sample from a
+capture's real columns (see ``tools/extract_pi_cam_anchor_columns.py``), which
+puts the state on the model's manifold and leaves the perturbation to do the
+one job it is good at: a stated budget of off-manifold states, which a
+surrogate run inside the model will visit through its own error.
+
 Run it with::
 
     uv run python examples/generate_mmacro_pcond_dataset.py \
         --samples 10000 --seed 42 --output mmacro_pcond_training.nc
+
+    uv run python examples/generate_mmacro_pcond_dataset.py \
+        --samples 200000 --anchor-bundle anchors.npz \
+        --output mmacro_pcond_capture_anchored.nc
 """
 
 from __future__ import annotations
@@ -157,7 +171,17 @@ def build_space(scheme, column, *, forcing_scale: float, vary_do_cldice: bool):
     if vary_do_cldice:
         inputs["do_cldice"] = fc.physics.Choice([0, 1])
 
-    parameters = {
+    return scheme.sampling_space(base=column, inputs=inputs, parameters=build_parameters())
+
+
+def build_parameters():
+    """The nine tunable parameters, over the reviewed ranges.
+
+    A capture holds one namelist, so this is the only source of a parameter
+    axis; both sampling spaces use it unchanged.
+    """
+
+    return {
         "cldfrc_rhminl": fc.physics.Uniform(0.70, 0.99),
         "cldfrc_rhminl_adj_land": fc.physics.Uniform(0.0, 0.2),
         "cldfrc_rhminh": fc.physics.Uniform(0.60, 0.99),
@@ -169,7 +193,100 @@ def build_space(scheme, column, *, forcing_scale: float, vary_do_cldice: bool):
         "cldfrc_icecrit": fc.physics.Uniform(0.80, 1.00),
         "cldfrc_iceopt": fc.physics.Choice([1, 2, 3, 4, 5]),
     }
-    return scheme.sampling_space(base=column, inputs=inputs, parameters=parameters)
+
+
+# Perturbation around a captured column, by argument.  Scales are read off
+# the capture itself (tools/extract_pi_cam_anchor_columns.py prints them):
+# a relative term leaves an exact zero exactly zero, so the model's own
+# fraction of clear levels survives -- 73% for ql0, 85% for the cumulus
+# fractions -- and an absolute term is gated where seeding a clear level is
+# the point rather than an accident.
+CAPTURE_RELATIVE = {
+    "qv0": 0.02, "ql0": 0.05, "qi0": 0.05, "nl0": 0.05, "ni0": 0.05,
+    "a_cud": 0.05, "a_cu0": 0.05,
+    **{f"{prefix}_{q}": 0.05
+       for prefix in ("a", "c", "d")
+       for q in ("t", "qv", "ql", "qi", "nl", "ni")},
+    "c_qlst": 0.05,
+}
+
+#: Ungated unless listed in CAPTURE_GATE: t0 wants half a degree everywhere.
+CAPTURE_ABSOLUTE = {"t0": 0.5, "ql0": 1.0e-6, "qi0": 1.0e-7}
+
+#: The off-manifold budget: how often a level the model left clear takes on
+#: condensate.  Small on purpose -- the first surrogate failed because its
+#: training set had cloud in 51% of levels against the model's 16%.  The rate
+#: is masked to the levels the capture ever clouds: the top of the column
+#: holds no liquid water in any column of any rank at any step, and a budget
+#: spent there buys nothing a surrogate will ever be asked about.
+CAPTURE_GATE = {"ql0": 0.03, "qi0": 0.03}
+
+#: A level counts as one the model clouds if any captured column holds this
+#: much there.  Below it the capture's values are denormal residue, not cloud.
+CAPTURE_CLOUD_FLOOR = 1.0e-12
+
+CAPTURE_CLIP = {
+    "t0": (150.0, 330.0), "qv0": (0.0, 0.04),
+    "ql0": (0.0, 0.01), "qi0": (0.0, 0.01),
+    "nl0": (0.0, 1.0e9), "ni0": (0.0, 1.0e8),
+    "a_cud": (0.0, 1.0), "a_cu0": (0.0, 1.0),
+}
+
+#: Taken from the capture untouched.  p and dp are one hydrostatic pair and
+#: perturbing them apart makes them contradict each other; landfrac and snowh
+#: are surface properties the routine reads through nint() switches, where a
+#: nudge is a category change rather than a perturbation.
+CAPTURE_UNPERTURBED = ("p", "dp", "landfrac", "snowh", "clrw_old", "clri_old")
+
+CAPTURE_NOTES = """\
+State, forcing and surface arguments are drawn as whole captured columns:
+one real column per sample, every argument taken from that same column, so a
+sample is a state the model actually visited rather than independent draws
+per variable.  This is what a single-column anchor cannot give -- the model's
+cloud water spans 24 principal components over 30 levels and one anchor
+supplies exactly one -- and it carries the correlations with it: cloud water
+sits where the column reached saturation, and the zero fractions (73% for
+ql0, 85% for the cumulus fractions, 64% ocean for landfrac) are the model's.
+
+Perturbation is kept, at a stated budget, for the states a surrogate running
+inside the model reaches through its own error.  Relative terms preserve
+exact zeros; the absolute term for ql0/qi0 is gated so a clear level takes on
+condensate at CAPTURE_GATE rather than everywhere.
+
+dt is drawn over 900-3600 s rather than taken from the capture, which ran at
+one timestep: the routine's dependence on it is real and a surrogate that
+never saw it vary cannot represent it.  All nine parameters are drawn exactly
+as in the single-anchor space -- a capture holds one namelist, so the
+parameter axis can only come from the sampler.
+"""
+
+
+def build_capture_space(scheme, anchors, column, *, gate_scale: float):
+    """Distributions anchored on a capture: real columns, drawn whole."""
+
+    produced = tuple(name for name in anchors.files
+                     if not name.startswith("meta_") and name != "provenance"
+                     and name not in ("dt", "do_cldice"))
+    columns = {name: np.asarray(anchors[name]) for name in produced}
+    gate = {}
+    for name, rate in CAPTURE_GATE.items():
+        if name not in columns:
+            continue
+        clouds = (columns[name] > CAPTURE_CLOUD_FLOOR).any(axis=0)
+        gate[name] = clouds.astype(np.float64) * rate * gate_scale
+    captured = fc.physics.CapturedColumns(
+        columns=columns,
+        produces=produced,
+        relative_scale={k: v for k, v in CAPTURE_RELATIVE.items()
+                        if k in produced and k not in CAPTURE_UNPERTURBED},
+        absolute_scale={k: v for k, v in CAPTURE_ABSOLUTE.items()
+                        if k in produced and k not in CAPTURE_UNPERTURBED},
+        absolute_probability=gate,
+        clip={k: v for k, v in CAPTURE_CLIP.items() if k in produced},
+    )
+    inputs = {produced[0]: captured, "dt": fc.physics.Uniform(900.0, 3600.0)}
+    return scheme.sampling_space(base=column, inputs=inputs,
+                                 parameters=build_parameters())
 
 
 def _cover(space, spec, held: frozenset[str]) -> None:
@@ -190,17 +307,29 @@ def main() -> int:
     parser.add_argument("--forcing-scale", type=float, default=1.0, help="multiplies every tendency range (default 1.0)")
     parser.add_argument("--vary-do-cldice", action="store_true", help="also draw do_cldice; off by default because 0 is not the admitted CAM5 configuration")
     parser.add_argument("--example", default="captured-anchor", help="the example column to perturb around")
+    parser.add_argument("--anchor-bundle", type=Path, default=None,
+                        help="anchor on a capture's real columns (tools/extract_pi_cam_anchor_columns.py) "
+                             "instead of perturbing one example column")
+    parser.add_argument("--gate-scale", type=float, default=1.0,
+                        help="multiplies the rate at which a clear level is seeded with condensate (default 1.0)")
     arguments = parser.parse_args()
 
     scheme = fc.physics.load_function(FUNCTION, max_restarts=max(100, arguments.samples))
     try:
         column = scheme.example_input(arguments.example)
-        space = build_space(
-            scheme, column,
-            forcing_scale=arguments.forcing_scale,
-            vary_do_cldice=arguments.vary_do_cldice,
-        )
-        _cover(space, scheme.spec, frozenset() if arguments.vary_do_cldice else frozenset({"do_cldice"}))
+        if arguments.anchor_bundle is not None:
+            anchors = np.load(arguments.anchor_bundle, allow_pickle=True)
+            space = build_capture_space(scheme, anchors, column,
+                                        gate_scale=arguments.gate_scale)
+            held = frozenset({"do_cldice"})
+        else:
+            space = build_space(
+                scheme, column,
+                forcing_scale=arguments.forcing_scale,
+                vary_do_cldice=arguments.vary_do_cldice,
+            )
+            held = frozenset() if arguments.vary_do_cldice else frozenset({"do_cldice"})
+        _cover(space, scheme.spec, held)
         print(space.describe(), flush=True)
 
         started = time.monotonic()
@@ -219,6 +348,11 @@ def main() -> int:
     dataset.attributes["generator"] = "examples/generate_mmacro_pcond_dataset.py"
     dataset.attributes["forcing_scale"] = float(arguments.forcing_scale)
     dataset.attributes["example_column"] = str(arguments.example)
+    if arguments.anchor_bundle is not None:
+        dataset.attributes["anchor_bundle"] = str(arguments.anchor_bundle)
+        dataset.attributes["anchor_provenance"] = str(anchors["provenance"])
+        dataset.attributes["gate_scale"] = float(arguments.gate_scale)
+        dataset.attributes["capture_notes"] = CAPTURE_NOTES
     dataset.attributes["do_cldice"] = "drawn" if arguments.vary_do_cldice else "held at 1, the admitted CAM5 configuration"
     dataset.attributes["sampling_notes"] = SAMPLING_NOTES
     dataset.attributes["worker_restarts"] = int(getattr(scheme.host, "restarts", 0))

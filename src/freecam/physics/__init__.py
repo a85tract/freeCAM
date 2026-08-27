@@ -12,6 +12,7 @@ from .examples import ExampleColumn, available_examples, load_example_column
 from .dataset import Dataset, SampleVerification, open_dataset
 from .distributions import (
     Anchored,
+    CapturedColumns,
     Choice,
     Constant,
     Derived,
@@ -38,6 +39,7 @@ from .spec import (
 
 __all__ = [
     "Anchored",
+    "CapturedColumns",
     "ArgumentSpec",
     "Choice",
     "CallError",

@@ -8,8 +8,9 @@ import numpy as np
 import pytest
 
 from freecam.physics import (
-    Anchored, Choice, Constant, Dataset, Derived, HybridCoordinate, HybridPressure, LogUniform,
-    Normal, SamplingSpace, Uniform, load_example_column, open_dataset,
+    Anchored, CapturedColumns, Choice, Constant, Dataset, Derived, HybridCoordinate,
+    HybridPressure, LogUniform, Normal, SamplingSpace, Uniform, load_example_column,
+    open_dataset,
 )
 from freecam.physics.errors import PhysicsError
 from freecam.physics.function import PhysicsFunction
@@ -72,8 +73,8 @@ def test_hybrid_pressure_is_structurally_consistent_and_named_by_the_spec() -> N
     assert np.all(np.diff(pint) > 0)
     assert np.allclose(inputs["pdel"], np.diff(pint)) and np.allclose(inputs["pmid"], 0.5 * (pint[:-1] + pint[1:]))
     assert 60000.0 <= float(pint[-1]) <= 100000.0
-    # A HybridPressure keyed under a name it does not produce is an error.
-    with pytest.raises(PhysicsError, match="does not produce"):
+    # A multi-argument distribution keyed under a name it does not answer with.
+    with pytest.raises(PhysicsError, match=r"produces \['pmid', 'pdel', 'pint'\], not 't'"):
         SamplingSpace(spec, inputs={"t": HybridPressure(COORDINATE, Constant(9e4))})
 
 
@@ -170,3 +171,82 @@ def test_generate_dataset_is_reproducible_keeps_failed_samples_and_verifies(tmp_
     assert len(legacy) == 5 and legacy.valid.all()
     with pytest.raises(ValueError):
         function.generate_dataset(5, space, seed=1, base=column)
+
+
+def _captured(columns: int = 4, levels: int = 30) -> dict[str, np.ndarray]:
+    """Four columns whose arguments agree only within a column.
+
+    ``t`` counts the column, ``q`` counts it downwards: taking ``t`` from one
+    column and ``q`` from another shows up as ``t + q != columns - 1``, which
+    is what makes the joint draw testable rather than asserted.
+    """
+
+    index = np.arange(columns, dtype=np.float64)[:, None]
+    return {
+        "t": np.broadcast_to(index, (columns, levels)).copy(),
+        "q": np.broadcast_to(columns - 1.0 - index, (columns, levels)).copy(),
+    }
+
+
+def test_captured_columns_draws_one_whole_column_per_sample() -> None:
+    columns = _captured()
+    space = SamplingSpace(load_function_spec("dadadj"), inputs={
+        "t": CapturedColumns(columns=columns, produces=("t", "q")),
+    }, base=load_example_column("dadadj"))
+    rng = np.random.default_rng(0)
+    drawn = set()
+    for _ in range(200):
+        inputs, _ = space.draw(rng)
+        # Both arguments came from the same column, every level of both.
+        assert np.allclose(inputs["t"] + inputs["q"], 3.0)
+        drawn.add(float(inputs["t"][0]))
+    assert drawn == {0.0, 1.0, 2.0, 3.0}     # and the draw reaches all of them
+
+
+def test_captured_columns_relative_noise_leaves_exact_zeros_alone() -> None:
+    columns = {"t": np.zeros((3, 30)), "q": np.ones((3, 30))}
+    captured = CapturedColumns(columns=columns, produces=("t", "q"),
+                               relative_scale={"t": 0.5, "q": 0.5})
+    rng = np.random.default_rng(1)
+    for _ in range(50):
+        answer = captured.sample(rng, (30,), {})
+        assert np.all(answer["t"] == 0.0)    # a clear level stays clear
+        assert not np.allclose(answer["q"], 1.0)
+
+
+def test_captured_columns_gates_the_absolute_term_per_level() -> None:
+    columns = {"t": np.zeros((2, 30)), "q": np.zeros((2, 30))}
+    rate = np.zeros(30)
+    rate[10:] = 1.0                          # the top ten levels are never seeded
+    captured = CapturedColumns(
+        columns=columns, produces=("t", "q"),
+        absolute_scale={"t": 1.0, "q": 1.0},
+        absolute_probability={"t": rate, "q": 0.25},
+    )
+    rng = np.random.default_rng(2)
+    drawn = np.stack([captured.sample(rng, (30,), {})["t"] for _ in range(400)])
+    assert np.all(drawn[:, :10] == 0.0)
+    assert np.all((drawn[:, 10:] != 0.0).mean(axis=0) > 0.95)
+    gated = np.stack([captured.sample(rng, (30,), {})["q"] for _ in range(400)])
+    assert 0.2 < float((gated != 0.0).mean()) < 0.3
+    assert "on 20/30 levels" in captured.describe()
+
+
+def test_captured_columns_fails_closed_on_a_malformed_anchor_set() -> None:
+    columns = _captured()
+    with pytest.raises(PhysicsError, match="no captured values"):
+        CapturedColumns(columns=columns, produces=("t", "missing"))
+    with pytest.raises(PhysicsError, match="disagree on how many columns"):
+        CapturedColumns(columns={"t": np.zeros((3, 30)), "q": np.zeros((4, 30))},
+                        produces=("t", "q"))
+    with pytest.raises(PhysicsError, match="is a probability"):
+        CapturedColumns(columns=columns, produces=("t", "q"),
+                        absolute_scale={"t": 1.0}, absolute_probability={"t": 1.5})
+    with pytest.raises(PhysicsError, match="must be non-negative"):
+        CapturedColumns(columns=columns, produces=("t", "q"), relative_scale={"t": -0.1})
+    with pytest.raises(PhysicsError, match="the arguments it produces"):
+        CapturedColumns(columns=columns)
+    # Keyed under an argument it does not answer with, as HybridPressure is.
+    with pytest.raises(PhysicsError, match=r"produces \['t', 'q'\], not 'pmid'"):
+        SamplingSpace(load_function_spec("dadadj"),
+                      inputs={"pmid": CapturedColumns(columns=columns, produces=("t", "q"))})

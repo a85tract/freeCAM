@@ -8,7 +8,9 @@ declares a fixed set of values rather than a range.  Real atmospheres are not bo
 ``HybridPressure`` draws a whole pressure profile from one surface pressure
 through the hybrid coordinate so midpoints, thicknesses and interfaces never
 contradict each other; ``Derived`` computes one input from others already
-drawn; ``Anchored`` perturbs a real column within bounds.  A
+drawn; ``Anchored`` perturbs a real column within bounds, and
+``CapturedColumns`` draws the column itself from a capture so a sample is a
+state the model actually visited.  A
 ``SamplingSpace`` ties distributions to a function, takes every undrawn
 input from a base column, resolves the dependency order, and draws one
 complete joint sample at a time from a single seeded generator.
@@ -168,6 +170,100 @@ class Anchored(Distribution):
         return f"Anchored({', '.join(parts)}{_fmt_clip(self.clip)})"
 
 
+@dataclass(frozen=True, repr=False, eq=False)
+class CapturedColumns(Distribution):
+    """Real columns from a capture, drawn whole and perturbed.
+
+    ``Anchored`` perturbs one column, so every sample is that column's shape
+    scaled up and down: the model's own cloud water needs twenty-four
+    principal components over thirty levels, a single anchor supplies one, and
+    no retuning of the noise supplies the rest.  This draws the anchor itself,
+    one captured column per sample, and answers with every argument taken from
+    **that same column** -- a sample stays one coherent atmospheric state
+    rather than six unrelated ones spliced together.
+
+    Perturbation is what keeps the space from being the capture replayed.  It
+    is deliberately two-sided:
+
+    * ``relative_scale`` multiplies each level by ``1 + N(0, scale)``, which
+      leaves an exact zero exactly zero -- the model's clear layers stay
+      clear, and the fraction of levels holding no condensate is the model's
+      own rather than an artefact of the sampler;
+    * ``absolute_scale`` adds ``N(0, scale)``, which is the only way a level
+      the model left empty can take on a value.  ``absolute_probability``
+      gates it per argument: unlisted arguments are ungated (temperature wants
+      half a degree at every level), while condensate is listed at a small
+      rate so a clear layer takes on cloud at a stated frequency instead of
+      everywhere.  A rate may be one number or one per level, which is how a
+      level the model never clouds -- the top of the column holds no liquid
+      water at all -- is left alone rather than spending the budget there.  This is the off-manifold budget -- a surrogate run inside
+      the model is pushed off the manifold by its own error, and a training
+      set with no such states has nothing to say when it happens.
+
+    ``columns`` maps an argument name to its captured values, leading axis the
+    column.  ``produces`` names the arguments answered together.
+    """
+
+    columns: Mapping[str, np.ndarray]
+    produces: tuple[str, ...] = ()
+    relative_scale: Mapping[str, float] = field(default_factory=dict)
+    absolute_scale: Mapping[str, float] = field(default_factory=dict)
+    absolute_probability: Mapping[str, float] = field(default_factory=dict)
+    clip: Mapping[str, tuple[Any, Any]] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        if not self.produces:
+            raise PhysicsError("CapturedColumns needs the arguments it produces")
+        missing = [name for name in self.produces if name not in self.columns]
+        if missing:
+            raise PhysicsError("CapturedColumns has no captured values for: " + ", ".join(missing))
+        lengths = {int(np.asarray(self.columns[name]).shape[0]) for name in self.produces}
+        if len(lengths) != 1:
+            raise PhysicsError(f"captured arguments disagree on how many columns they hold: {sorted(lengths)}")
+        for name, rate in self.absolute_probability.items():
+            values = np.asarray(rate, dtype=np.float64)
+            if values.size and (values.min() < 0.0 or values.max() > 1.0):
+                raise PhysicsError(f"{name}: absolute_probability is a probability, got {rate!r}")
+        for name, scale in list(self.relative_scale.items()) + list(self.absolute_scale.items()):
+            if scale < 0:
+                raise PhysicsError(f"{name}: perturbation scales must be non-negative")
+
+    @property
+    def length(self) -> int:
+        return int(np.asarray(self.columns[self.produces[0]]).shape[0])
+
+    def sample(self, rng, shape, drawn):
+        index = int(rng.integers(0, self.length))
+        answer: dict[str, np.ndarray] = {}
+        for name in self.produces:
+            value = np.array(self.columns[name][index], dtype=np.float64)
+            relative = float(self.relative_scale.get(name, 0.0))
+            if relative:
+                value = value * (1.0 + rng.standard_normal(value.shape) * relative)
+            absolute = float(self.absolute_scale.get(name, 0.0))
+            if absolute:
+                noise = rng.standard_normal(value.shape) * absolute
+                rate = np.asarray(self.absolute_probability.get(name, 1.0), dtype=np.float64)
+                if rate.ndim or rate < 1.0:
+                    noise = noise * (rng.random(value.shape) < rate)
+                value = value + noise
+            answer[name] = _clip(value, self.clip.get(name))
+        return answer
+
+    def describe(self) -> str:
+        perturbed = sum(1 for name in self.produces
+                        if self.relative_scale.get(name) or self.absolute_scale.get(name))
+        def rate_of(value):
+            value = np.asarray(value, dtype=np.float64)
+            return f"{float(value):g}" if not value.ndim else \
+                f"{float(value.max()):g} on {int(np.count_nonzero(value))}/{value.size} levels"
+
+        gated = ", ".join(f"{name}@{rate_of(rate)}"
+                          for name, rate in sorted(self.absolute_probability.items()))
+        return (f"CapturedColumns({self.length} columns, {len(self.produces)} arguments, "
+                f"{perturbed} perturbed" + (f", gated {gated}" if gated else "") + ")")
+
+
 @dataclass(frozen=True, repr=False)
 class Derived(Distribution):
     """One argument computed from others: ``fn(rng, **drawn_values)``."""
@@ -311,10 +407,14 @@ class SamplingSpace:
             raise PhysicsError(f"{self.spec.function} has no argument {name!r}") from error
 
     def _resolve_produces(self, key: str, distribution: Distribution) -> Distribution:
-        if not isinstance(distribution, HybridPressure):
-            return distribution
-        produces = distribution.produces
-        if produces is None:
+        """Register a distribution that answers with several arguments at once.
+
+        ``HybridPressure`` names its arguments by their declared roles when it
+        was built without them; every other multi-argument distribution states
+        ``produces`` itself.
+        """
+
+        if isinstance(distribution, HybridPressure) and distribution.produces is None:
             by_role = {}
             for item in self.spec.user_arguments:
                 for role in _PRESSURE_ROLES:
@@ -324,11 +424,18 @@ class SamplingSpace:
             if not any(produces):
                 raise PhysicsError(f"{self.spec.function} declares no pressure arguments for HybridPressure")
             distribution = HybridPressure(distribution.coordinate, distribution.surface_pressure, produces)
-        for name in distribution.produces or ():
-            if name:
-                self.produced[name] = key
-        if key not in (distribution.produces or ()):
-            raise PhysicsError(f"HybridPressure under {key!r} does not produce {key!r}; it produces {list(distribution.produces)}")
+        produces = distribution.produces
+        if produces is None:
+            return distribution
+        for name in produces:
+            if not name:
+                continue
+            item = self._argument(name)
+            if not item.user_visible:
+                raise PhysicsError(f"{item.name} is {item.role}; it cannot be sampled")
+            self.produced[name] = key
+        if key not in produces:
+            raise PhysicsError(f"the distribution under {key!r} produces {[n for n in produces if n]}, not {key!r}")
         return distribution
 
     def _order(self) -> list[str]:
