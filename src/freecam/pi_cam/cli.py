@@ -246,6 +246,16 @@ def main(argv: list[str] | None = None) -> int:
             "of running the MicropAero sub-walk in its place (Gate M-3's form)"
         ),
     )
+    parser.add_argument(
+        "--micro-core-standalone",
+        action="store_true",
+        help=(
+            "with --cloud-macro-micro-python, run micro_mg_tend through its "
+            "standalone image instead of the copy inside the model: the same "
+            "machine code on the same numbers, which is what proves the "
+            "packed-array contract carries every argument"
+        ),
+    )
     parser.add_argument("--summary", type=Path)
     parser.add_argument(
         "--memory-sample-every",
@@ -379,6 +389,10 @@ def main(argv: list[str] | None = None) -> int:
                 whole_drivers=bool(args.cloud_macro_micro_whole_drivers),
                 whole_micro=bool(args.cloud_macro_micro_whole_micro),
                 whole_aero=bool(args.cloud_macro_micro_whole_aero))
+            if args.micro_core_standalone:
+                # the original core, reached the way a model would be: through
+                # the stage's own kernel slot, column by column
+                scheme.kernels["micro_mg_tend"] = scheme.micro.standalone_core()
             cam.step_plan.set_enabled("cloud_macro_microphysics", False, phase="cam_run1", experimental=True)
             cam.python_processes.install(
                 PythonProcessSpec.from_callable(
@@ -638,6 +652,7 @@ def main(argv: list[str] | None = None) -> int:
             "cloud_macro_micro_whole_drivers": bool(args.cloud_macro_micro_whole_drivers),
             "cloud_macro_micro_whole_micro": bool(args.cloud_macro_micro_whole_micro),
             "cloud_macro_micro_whole_aero": bool(args.cloud_macro_micro_whole_aero),
+            "micro_core_standalone": bool(args.micro_core_standalone),
             "boundary_mode": case.config.boundary_mode,
             "boundary_provider": type(boundary).__name__,
             "validation_scope": (
