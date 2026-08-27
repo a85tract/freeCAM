@@ -540,3 +540,21 @@ def test_each_kernel_reads_the_state_the_source_reads() -> None:
     # and both sets of views exist, at distinct codes
     for stem in ("t", "q", "pmid", "pdel"):
         assert VIEW[f"state_{stem}"] != VIEW[f"state_loc_{stem}"]
+
+
+def test_every_buffer_field_the_routine_reads_is_reached_by_the_walk() -> None:
+    """The generated table is what the pinned routine reads; a field in it that
+    the walk never binds, reads or writes is a statement the walk dropped."""
+
+    import yaml
+
+    source = (REPO / "src/freecam/physics/microphysics.py").read_text().split("def tend_chunk", 1)[1]
+    named = set(re.findall(r'pbv\["(\w+)"\]', source))
+    named |= set(M.GRID_PBUF.values())                        # reached through G()
+    for group in re.findall(r'for name in \(([^)]*)\):\n\s*H\.bind_input', source):
+        named |= {n.strip().strip('"').upper() for n in group.split(",") if n.strip()}
+    # named singly, or through a loop variable
+    named |= {"AST", "RATE1_CW2PR_ST", "QRAIN", "QSNOW", "NRAIN", "NSNOW"}
+    table = {row["name"] for row in
+             yaml.safe_load((REPO / "native/pi_cam/pbuf_fields_micro.yaml").read_text())["fields"]}
+    assert table - named == set(), sorted(table - named)
