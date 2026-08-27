@@ -1,0 +1,252 @@
+{
+ "ranks": 512,
+ "tend_mean_seconds": null,
+ "rows": [
+  {
+   "key": "entry:dropmixnuc",
+   "mean_seconds": 0.20362380345844144,
+   "max_seconds": 0.2600839347578585,
+   "mean_calls": 100.0,
+   "ranks_reporting": 512,
+   "share_of_tend": null
+  },
+  {
+   "key": "kernel-run:aero_contact_freezing",
+   "mean_seconds": 0.03277509012474411,
+   "max_seconds": 0.04103579111688305,
+   "mean_calls": 100.0,
+   "ranks_reporting": 512,
+   "share_of_tend": null
+  },
+  {
+   "key": "kernel-run:aero_cloud_fraction_split",
+   "mean_seconds": 0.028758563316387153,
+   "max_seconds": 0.038145704005728476,
+   "mean_calls": 100.0,
+   "ranks_reporting": 512,
+   "share_of_tend": null
+  },
+  {
+   "key": "kernel-run:aero_air_density",
+   "mean_seconds": 0.026172368827729997,
+   "max_seconds": 0.03508305363357067,
+   "mean_calls": 100.0,
+   "ranks_reporting": 512,
+   "share_of_tend": null
+  },
+  {
+   "key": "kernel-run:aero_npccn_from_mixnuc",
+   "mean_seconds": 0.025702934540419164,
+   "max_seconds": 0.04296729899942875,
+   "mean_calls": 100.0,
+   "ranks_reporting": 512,
+   "share_of_tend": null
+  },
+  {
+   "key": "kernel-run:aero_initial_bins",
+   "mean_seconds": 0.025027927219355206,
+   "max_seconds": 0.03962172399042174,
+   "mean_calls": 100.0,
+   "ranks_reporting": 512,
+   "share_of_tend": null
+  },
+  {
+   "key": "kernel-run:aero_liquid_fraction",
+   "mean_seconds": 0.021699734575918228,
+   "max_seconds": 0.029527002028771676,
+   "mean_calls": 100.0,
+   "ranks_reporting": 512,
+   "share_of_tend": null
+  },
+  {
+   "key": "kernel-run:aero_subgrid_velocity",
+   "mean_seconds": 0.01953717739385752,
+   "max_seconds": 0.02658851895830594,
+   "mean_calls": 100.0,
+   "ranks_reporting": 512,
+   "share_of_tend": null
+  },
+  {
+   "key": "entry:nucleate_ice",
+   "mean_seconds": 0.017413587749132375,
+   "max_seconds": 0.023692175280302763,
+   "mean_calls": 100.0,
+   "ranks_reporting": 512,
+   "share_of_tend": null
+  },
+  {
+   "key": "kernel-copy-in:aero_contact_freezing",
+   "mean_seconds": 0.004572144048040627,
+   "max_seconds": 0.006855208892375231,
+   "mean_calls": 100.0,
+   "ranks_reporting": 512,
+   "share_of_tend": null
+  },
+  {
+   "key": "kernel-copy-in:aero_cloud_fraction_split",
+   "mean_seconds": 0.004092456132184452,
+   "max_seconds": 0.005978133529424667,
+   "mean_calls": 100.0,
+   "ranks_reporting": 512,
+   "share_of_tend": null
+  },
+  {
+   "key": "entry:view",
+   "mean_seconds": 0.0034226936234063032,
+   "max_seconds": 0.004921908883261494,
+   "mean_calls": 700.0,
+   "ranks_reporting": 512,
+   "share_of_tend": null
+  },
+  {
+   "key": "kernel-copy-in:aero_subgrid_velocity",
+   "mean_seconds": 0.003306948675287913,
+   "max_seconds": 0.004563264083117247,
+   "mean_calls": 100.0,
+   "ranks_reporting": 512,
+   "share_of_tend": null
+  },
+  {
+   "key": "kernel-copy-in:aero_air_density",
+   "mean_seconds": 0.0032980074774684454,
+   "max_seconds": 0.005273010989185423,
+   "mean_calls": 100.0,
+   "ranks_reporting": 512,
+   "share_of_tend": null
+  },
+  {
+   "key": "kernel-copy-in:aero_liquid_fraction",
+   "mean_seconds": 0.002862049026703062,
+   "max_seconds": 0.004250053782016039,
+   "mean_calls": 100.0,
+   "ranks_reporting": 512,
+   "share_of_tend": null
+  },
+  {
+   "key": "kernel-copy-in:aero_npccn_from_mixnuc",
+   "mean_seconds": 0.002215642728003786,
+   "max_seconds": 0.0038052047602832317,
+   "mean_calls": 100.0,
+   "ranks_reporting": 512,
+   "share_of_tend": null
+  },
+  {
+   "key": "kernel-copy-out:aero_initial_bins",
+   "mean_seconds": 0.0021778251024784367,
+   "max_seconds": 0.003483922962914221,
+   "mean_calls": 100.0,
+   "ranks_reporting": 512,
+   "share_of_tend": null
+  },
+  {
+   "key": "entry:outfld",
+   "mean_seconds": 0.002101844366933392,
+   "max_seconds": 0.003429372824029997,
+   "mean_calls": 300.0,
+   "ranks_reporting": 512,
+   "share_of_tend": null
+  },
+  {
+   "key": "kernel-copy-in:aero_initial_bins",
+   "mean_seconds": 0.0019993233669879373,
+   "max_seconds": 0.0031658667139708996,
+   "mean_calls": 100.0,
+   "ranks_reporting": 512,
+   "share_of_tend": null
+  },
+  {
+   "key": "kernel-copy-out:aero_contact_freezing",
+   "mean_seconds": 0.0015637385299669404,
+   "max_seconds": 0.0027251173742115498,
+   "mean_calls": 100.0,
+   "ranks_reporting": 512,
+   "share_of_tend": null
+  },
+  {
+   "key": "kernel-copy-out:aero_npccn_from_mixnuc",
+   "mean_seconds": 0.0007964280124497236,
+   "max_seconds": 0.0011764480732381344,
+   "mean_calls": 100.0,
+   "ranks_reporting": 512,
+   "share_of_tend": null
+  },
+  {
+   "key": "entry:modal_fields",
+   "mean_seconds": 0.0007253176395636274,
+   "max_seconds": 0.0012183389771962538,
+   "mean_calls": 100.0,
+   "ranks_reporting": 512,
+   "share_of_tend": null
+  },
+  {
+   "key": "entry:begin",
+   "mean_seconds": 0.0003226666187003957,
+   "max_seconds": 0.0005896390357520431,
+   "mean_calls": 100.0,
+   "ranks_reporting": 512,
+   "share_of_tend": null
+  },
+  {
+   "key": "entry:end",
+   "mean_seconds": 0.0003171730460849176,
+   "max_seconds": 0.0005345442332327366,
+   "mean_calls": 100.0,
+   "ranks_reporting": 512,
+   "share_of_tend": null
+  },
+  {
+   "key": "kernel-copy-out:aero_cloud_fraction_split",
+   "mean_seconds": 0.00016902243947924944,
+   "max_seconds": 0.00027023702568840235,
+   "mean_calls": 100.0,
+   "ranks_reporting": 512,
+   "share_of_tend": null
+  },
+  {
+   "key": "kernel-copy-out:aero_subgrid_velocity",
+   "mean_seconds": 0.0001684885777706313,
+   "max_seconds": 0.00028072670102119446,
+   "mean_calls": 100.0,
+   "ranks_reporting": 512,
+   "share_of_tend": null
+  },
+  {
+   "key": "kernel-copy-out:aero_liquid_fraction",
+   "mean_seconds": 0.00015986152246227903,
+   "max_seconds": 0.00027652084827423096,
+   "mean_calls": 100.0,
+   "ranks_reporting": 512,
+   "share_of_tend": null
+  },
+  {
+   "key": "kernel-copy-out:aero_air_density",
+   "mean_seconds": 0.00015973403628777305,
+   "max_seconds": 0.0002339533530175686,
+   "mean_calls": 100.0,
+   "ranks_reporting": 512,
+   "share_of_tend": null
+  },
+  {
+   "key": "entry:set_owner",
+   "mean_seconds": 8.423605351026708e-06,
+   "max_seconds": 2.7894042432308197e-05,
+   "mean_calls": 1.0,
+   "ranks_reporting": 512,
+   "share_of_tend": null
+  },
+  {
+   "key": "entry:bind_hosts",
+   "mean_seconds": 2.229170775081002e-06,
+   "max_seconds": 8.026006980799139e-06,
+   "mean_calls": 1.0,
+   "ranks_reporting": 512,
+   "share_of_tend": null
+  }
+ ],
+ "by_family": {
+  "entry": 0.22793773927838856,
+  "kernel-run": 0.17967379599841138,
+  "kernel-copy-in": 0.022346571454676223,
+  "kernel-copy-out": 0.005195098220895034
+ }
+}

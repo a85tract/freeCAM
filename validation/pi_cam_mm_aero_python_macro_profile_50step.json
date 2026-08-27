@@ -1,0 +1,381 @@
+{
+ "ranks": 512,
+ "tend_mean_seconds": null,
+ "rows": [
+  {
+   "key": "kernel-run:mmacro_pcond",
+   "mean_seconds": 0.31704741188963226,
+   "max_seconds": 0.4819775349460542,
+   "mean_calls": 100.0,
+   "ranks_reporting": 512,
+   "share_of_tend": null
+  },
+  {
+   "key": "entry:wtrc_apply",
+   "mean_seconds": 0.16926741435972303,
+   "max_seconds": 0.22934489836916327,
+   "mean_calls": 100.0,
+   "ranks_reporting": 512,
+   "share_of_tend": null
+  },
+  {
+   "key": "kernel-run:wtrc_add_rates",
+   "mean_seconds": 0.1304804749500761,
+   "max_seconds": 0.23075611935928464,
+   "mean_calls": 500.0,
+   "ranks_reporting": 512,
+   "share_of_tend": null
+  },
+  {
+   "key": "kernel-copy-out:wtrc_add_rates",
+   "mean_seconds": 0.11246303190205253,
+   "max_seconds": 0.1572787957265973,
+   "mean_calls": 500.0,
+   "ranks_reporting": 512,
+   "share_of_tend": null
+  },
+  {
+   "key": "kernel-copy-in:wtrc_add_rates",
+   "mean_seconds": 0.10673132929105122,
+   "max_seconds": 0.16205460764467716,
+   "mean_calls": 500.0,
+   "ranks_reporting": 512,
+   "share_of_tend": null
+  },
+  {
+   "key": "kernel-run:macrop_cloud_mixing_ratio",
+   "mean_seconds": 0.10377929977315148,
+   "max_seconds": 0.18209445709362626,
+   "mean_calls": 100.0,
+   "ranks_reporting": 512,
+   "share_of_tend": null
+  },
+  {
+   "key": "kernel-run:macrop_advective_forcing",
+   "mean_seconds": 0.0959003140788468,
+   "max_seconds": 0.18718395094037987,
+   "mean_calls": 100.0,
+   "ranks_reporting": 512,
+   "share_of_tend": null
+  },
+  {
+   "key": "kernel-run:macrop_detrain_partition",
+   "mean_seconds": 0.08022764631741097,
+   "max_seconds": 0.14429803332313895,
+   "mean_calls": 100.0,
+   "ranks_reporting": 512,
+   "share_of_tend": null
+  },
+  {
+   "key": "kernel-run:macrop_kernel_to_ptend",
+   "mean_seconds": 0.06527669356017896,
+   "max_seconds": 0.10026472434401512,
+   "mean_calls": 100.0,
+   "ranks_reporting": 512,
+   "share_of_tend": null
+  },
+  {
+   "key": "kernel-run:wtrc_init_rates",
+   "mean_seconds": 0.06437259308185617,
+   "max_seconds": 0.10296384012326598,
+   "mean_calls": 100.0,
+   "ranks_reporting": 512,
+   "share_of_tend": null
+  },
+  {
+   "key": "kernel-copy-out:wtrc_init_rates",
+   "mean_seconds": 0.056868385191393145,
+   "max_seconds": 0.09913852857425809,
+   "mean_calls": 100.0,
+   "ranks_reporting": 512,
+   "share_of_tend": null
+  },
+  {
+   "key": "kernel-run:macrop_save_equilibrium",
+   "mean_seconds": 0.04811416526584367,
+   "max_seconds": 0.07326536113396287,
+   "mean_calls": 100.0,
+   "ranks_reporting": 512,
+   "share_of_tend": null
+  },
+  {
+   "key": "kernel-run:macrop_tracer_rate_split",
+   "mean_seconds": 0.046047884660112004,
+   "max_seconds": 0.1409647148102522,
+   "mean_calls": 100.0,
+   "ranks_reporting": 512,
+   "share_of_tend": null
+  },
+  {
+   "key": "kernel-run:cloud_fraction_fice",
+   "mean_seconds": 0.029258980614400798,
+   "max_seconds": 0.043411598104285076,
+   "mean_calls": 100.0,
+   "ranks_reporting": 512,
+   "share_of_tend": null
+  },
+  {
+   "key": "kernel-run:macrop_clear_fraction",
+   "mean_seconds": 0.02726598010832504,
+   "max_seconds": 0.08366109570488334,
+   "mean_calls": 100.0,
+   "ranks_reporting": 512,
+   "share_of_tend": null
+  },
+  {
+   "key": "kernel-copy-in:mmacro_pcond",
+   "mean_seconds": 0.020686611099165475,
+   "max_seconds": 0.029156383592635393,
+   "mean_calls": 100.0,
+   "ranks_reporting": 512,
+   "share_of_tend": null
+  },
+  {
+   "key": "kernel-copy-in:macrop_kernel_to_ptend",
+   "mean_seconds": 0.020169919793744384,
+   "max_seconds": 0.034471285063773394,
+   "mean_calls": 100.0,
+   "ranks_reporting": 512,
+   "share_of_tend": null
+  },
+  {
+   "key": "entry:update",
+   "mean_seconds": 0.01870354193545154,
+   "max_seconds": 0.024339085444808006,
+   "mean_calls": 200.0,
+   "ranks_reporting": 512,
+   "share_of_tend": null
+  },
+  {
+   "key": "kernel-copy-in:macrop_detrain_partition",
+   "mean_seconds": 0.016827856584939127,
+   "max_seconds": 0.020282918121665716,
+   "mean_calls": 100.0,
+   "ranks_reporting": 512,
+   "share_of_tend": null
+  },
+  {
+   "key": "kernel-copy-in:macrop_advective_forcing",
+   "mean_seconds": 0.015858125299359926,
+   "max_seconds": 0.024514381308108568,
+   "mean_calls": 100.0,
+   "ranks_reporting": 512,
+   "share_of_tend": null
+  },
+  {
+   "key": "kernel-copy-in:macrop_cloud_mixing_ratio",
+   "mean_seconds": 0.014211476551992064,
+   "max_seconds": 0.02897793333977461,
+   "mean_calls": 100.0,
+   "ranks_reporting": 512,
+   "share_of_tend": null
+  },
+  {
+   "key": "entry:cldfrc",
+   "mean_seconds": 0.013210108793487052,
+   "max_seconds": 0.016255495604127645,
+   "mean_calls": 100.0,
+   "ranks_reporting": 512,
+   "share_of_tend": null
+  },
+  {
+   "key": "kernel-copy-out:mmacro_pcond",
+   "mean_seconds": 0.013133349686995643,
+   "max_seconds": 0.020571373403072357,
+   "mean_calls": 100.0,
+   "ranks_reporting": 512,
+   "share_of_tend": null
+  },
+  {
+   "key": "entry:state_copy",
+   "mean_seconds": 0.012834960871941803,
+   "max_seconds": 0.017568998970091343,
+   "mean_calls": 100.0,
+   "ranks_reporting": 512,
+   "share_of_tend": null
+  },
+  {
+   "key": "entry:outfld",
+   "mean_seconds": 0.012559263952880428,
+   "max_seconds": 0.01687157852575183,
+   "mean_calls": 3100.0,
+   "ranks_reporting": 512,
+   "share_of_tend": null
+  },
+  {
+   "key": "kernel-copy-out:macrop_kernel_to_ptend",
+   "mean_seconds": 0.011929416105886048,
+   "max_seconds": 0.022653795778751373,
+   "mean_calls": 100.0,
+   "ranks_reporting": 512,
+   "share_of_tend": null
+  },
+  {
+   "key": "kernel-copy-in:macrop_save_equilibrium",
+   "mean_seconds": 0.01180270297811603,
+   "max_seconds": 0.0263794525526464,
+   "mean_calls": 100.0,
+   "ranks_reporting": 512,
+   "share_of_tend": null
+  },
+  {
+   "key": "entry:ptend_sum",
+   "mean_seconds": 0.010510302714408226,
+   "max_seconds": 0.01455371966585517,
+   "mean_calls": 200.0,
+   "ranks_reporting": 512,
+   "share_of_tend": null
+  },
+  {
+   "key": "entry:ptend_init",
+   "mean_seconds": 0.010398039525824743,
+   "max_seconds": 0.013599601108580828,
+   "mean_calls": 300.0,
+   "ranks_reporting": 512,
+   "share_of_tend": null
+  },
+  {
+   "key": "kernel-copy-out:macrop_detrain_partition",
+   "mean_seconds": 0.008018076290227327,
+   "max_seconds": 0.011700971983373165,
+   "mean_calls": 100.0,
+   "ranks_reporting": 512,
+   "share_of_tend": null
+  },
+  {
+   "key": "entry:view",
+   "mean_seconds": 0.007413734218744139,
+   "max_seconds": 0.009439030662178993,
+   "mean_calls": 1600.0,
+   "ranks_reporting": 512,
+   "share_of_tend": null
+  },
+  {
+   "key": "kernel-copy-out:macrop_advective_forcing",
+   "mean_seconds": 0.00585515368157985,
+   "max_seconds": 0.008713798131793737,
+   "mean_calls": 100.0,
+   "ranks_reporting": 512,
+   "share_of_tend": null
+  },
+  {
+   "key": "kernel-copy-in:macrop_tracer_rate_split",
+   "mean_seconds": 0.003958882760542792,
+   "max_seconds": 0.007177756167948246,
+   "mean_calls": 100.0,
+   "ranks_reporting": 512,
+   "share_of_tend": null
+  },
+  {
+   "key": "kernel-copy-out:macrop_save_equilibrium",
+   "mean_seconds": 0.003956400075338706,
+   "max_seconds": 0.009561832994222641,
+   "mean_calls": 100.0,
+   "ranks_reporting": 512,
+   "share_of_tend": null
+  },
+  {
+   "key": "kernel-copy-in:macrop_clear_fraction",
+   "mean_seconds": 0.003417108240341804,
+   "max_seconds": 0.004231818951666355,
+   "mean_calls": 100.0,
+   "ranks_reporting": 512,
+   "share_of_tend": null
+  },
+  {
+   "key": "entry:state_dealloc",
+   "mean_seconds": 0.0023837338052317136,
+   "max_seconds": 0.003759239800274372,
+   "mean_calls": 100.0,
+   "ranks_reporting": 512,
+   "share_of_tend": null
+  },
+  {
+   "key": "kernel-copy-in:cloud_fraction_fice",
+   "mean_seconds": 0.0022598012153594027,
+   "max_seconds": 0.0032729902304708958,
+   "mean_calls": 100.0,
+   "ranks_reporting": 512,
+   "share_of_tend": null
+  },
+  {
+   "key": "kernel-copy-in:wtrc_init_rates",
+   "mean_seconds": 0.00210748145565276,
+   "max_seconds": 0.00368758337572217,
+   "mean_calls": 100.0,
+   "ranks_reporting": 512,
+   "share_of_tend": null
+  },
+  {
+   "key": "entry:forcing",
+   "mean_seconds": 0.001990813591675078,
+   "max_seconds": 0.002294684760272503,
+   "mean_calls": 600.0,
+   "ranks_reporting": 512,
+   "share_of_tend": null
+  },
+  {
+   "key": "kernel-copy-out:macrop_cloud_mixing_ratio",
+   "mean_seconds": 0.0003545345122404342,
+   "max_seconds": 0.0006277556531131268,
+   "mean_calls": 100.0,
+   "ranks_reporting": 512,
+   "share_of_tend": null
+  },
+  {
+   "key": "kernel-copy-out:macrop_tracer_rate_split",
+   "mean_seconds": 0.000258781312965084,
+   "max_seconds": 0.0004558120126603171,
+   "mean_calls": 100.0,
+   "ranks_reporting": 512,
+   "share_of_tend": null
+  },
+  {
+   "key": "entry:bind_hosts",
+   "mean_seconds": 0.0002486636145420107,
+   "max_seconds": 0.0005003659898648039,
+   "mean_calls": 1.0,
+   "ranks_reporting": 512,
+   "share_of_tend": null
+  },
+  {
+   "key": "kernel-copy-out:macrop_clear_fraction",
+   "mean_seconds": 0.00017220548900809263,
+   "max_seconds": 0.0003044470213353634,
+   "mean_calls": 100.0,
+   "ranks_reporting": 512,
+   "share_of_tend": null
+  },
+  {
+   "key": "kernel-copy-out:cloud_fraction_fice",
+   "mean_seconds": 0.00015761262807245657,
+   "max_seconds": 0.00023399200290441513,
+   "mean_calls": 100.0,
+   "ranks_reporting": 512,
+   "share_of_tend": null
+  },
+  {
+   "key": "trace-hash:mmacro_pcond",
+   "mean_seconds": 0.00012702192395863676,
+   "max_seconds": 0.00018990205717273057,
+   "mean_calls": 100.0,
+   "ranks_reporting": 512,
+   "share_of_tend": null
+  },
+  {
+   "key": "entry:set_owner",
+   "mean_seconds": 2.22031816292656e-05,
+   "max_seconds": 9.178882464766502e-05,
+   "mean_calls": 1.0,
+   "ranks_reporting": 512,
+   "share_of_tend": null
+  }
+ ],
+ "by_family": {
+  "kernel-run": 1.0077714442998342,
+  "entry": 0.25954278056553903,
+  "kernel-copy-in": 0.218031295270265,
+  "kernel-copy-out": 0.21316694687575932,
+  "trace-hash": 0.00012702192395863676
+ }
+}
