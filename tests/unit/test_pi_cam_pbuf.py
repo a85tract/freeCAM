@@ -144,9 +144,160 @@ def test_the_index_table_must_be_complete() -> None:
 
 def test_the_generated_fortran_serves_only_the_two_shapes_the_source_uses() -> None:
     text = "\n".join(_pbuf_accessor())
-    assert "kount=(/pcols,pver,1/)" in text
-    assert "pbuf_old_tim_idx()" in text
+    first = text[:text.index("end function pycam_pbuf_field_v1")]
+    assert "kount=(/pcols,pver,1/)" in first
+    assert "pbuf_old_tim_idx()" in first
     # every refusal path returns before touching the pointer
     for status in ("1_c_int", "2_c_int", "3_c_int", "4_c_int"):
-        assert f"status = {status}" in text
-    assert text.count("c_loc(") == 1
+        assert f"status = {status}" in first
+    assert first.count("c_loc(") == 1
+
+
+def test_the_second_accessor_serves_every_shape_the_microphysics_reads() -> None:
+    """micro_mg_cam_tend reads rank-1 doubles, rank-3 doubles and one
+    rank-1 integer as well as the planes; each has its own pointer kind and
+    rank in Fortran, so each is a branch here, and anything else is refused."""
+
+    text = "\n".join(_pbuf_accessor())
+    second = text[text.index("function pycam_pbuf_field_v2"):]
+    assert "bind(C, name='pycam_pbuf_field_v2')" in second
+    for pointer in ("r1(:)", "r2(:,:)", "r3(:,:,:)", "i1(:)", "i2(:,:)"):
+        assert pointer in second, pointer
+    # the older time sample is a (pcols, pver) double plane, nowhere else
+    assert second.count("pbuf_old_tim_idx()") == 1
+    assert second.count("kount=(/pcols,pver,1/)") == 1
+    # an unsupported rank or kind falls out unassociated and is refused
+    assert second.count("case default") == 2
+    assert "status = 4_c_int" in second
+    # nothing is returned before the pointer is checked: one check per
+    # pointer kind, plus the buffer itself
+    assert second.count("c_loc(") == 5
+    assert second.count("if (.not. associated(") == 6
+
+
+# -- generated field tables ------------------------------------------------------
+
+REPO = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(REPO / "tools"))
+
+PINNED_MICRO = REPO / "external/iCESM1.3.1_fzhu/components/cam/src/physics/cam/micro_mg_cam.F90"
+pinned = pytest.mark.skipif(not PINNED_MICRO.is_file(),
+                            reason="the pinned iCESM submodule is not checked out")
+
+
+@pinned
+def test_the_committed_tables_are_what_the_generator_writes() -> None:
+    import generate_pi_cam_pbuf_table as gen
+
+    micro = gen.build_table("micro_mg_cam_tend", gen.CAM_SRC / "physics/cam/micro_mg_cam.F90",
+                            "micro_mg_cam", {}, None)
+    assert (REPO / "native/pi_cam/pbuf_fields_micro.yaml").read_text() == gen.render(micro)
+    glue = gen.build_table("tphysbc", gen.CAM_SRC / "physics/cam/physpkg.F90", "physpkg", {},
+                           {"prec_str_idx", "snow_str_idx", "prec_sed_idx", "snow_sed_idx",
+                            "prec_pcw_idx", "snow_pcw_idx"})
+    assert (REPO / "native/pi_cam/pbuf_fields_mm.yaml").read_text() == gen.render(glue)
+
+
+def test_the_microphysics_table_has_the_shapes_the_source_declares() -> None:
+    import yaml
+
+    table = yaml.safe_load((REPO / "native/pi_cam/pbuf_fields_micro.yaml").read_text())
+    fields = table["fields"]
+    assert len(fields) == 61
+    assert sum(f["time_sliced"] for f in fields) == 12
+    assert {f["rank"] for f in fields} == {1, 2, 3}
+    assert [f["name"] for f in fields if f["dtype"] == "int32"] == ["ACNUM"]
+    assert {f["name"] for f in fields if f["rank"] == 3} == {"RNDST", "NACON"}
+    # every time-sliced field is a (pcols, pver) double plane, the one form
+    # the older-sample read has
+    assert all(f["rank"] == 2 and f["dtype"] == "float64" for f in fields if f["time_sliced"])
+    assert all(f["symbol"].startswith("micro_mg_cam_mp_") for f in fields)
+
+
+def test_load_pbuf_table_binds_indices_and_refuses_a_missing_symbol() -> None:
+    from freecam.pi_cam.pbuf import load_pbuf_table
+
+    path = REPO / "native/pi_cam/pbuf_fields_mm.yaml"
+    import yaml
+
+    symbols = [f["symbol"] for f in yaml.safe_load(path.read_text())["fields"]]
+    fields = load_pbuf_table(path, {s: i + 1 for i, s in enumerate(symbols)})
+    assert set(fields) == {"PREC_STR", "SNOW_STR", "PREC_SED", "SNOW_SED", "PREC_PCW", "SNOW_PCW"}
+    assert all(f.rank == 1 and f.dtype == "float64" and not f.time_sliced for f in fields.values())
+    assert not fields["PREC_STR"].plain_plane
+    with pytest.raises(PICAMConfigurationError, match="were not read"):
+        load_pbuf_table(path, {})
+
+
+# -- the second accessor, through a fake image -----------------------------------
+
+
+class FakeImageV2(FakeImage):
+    """A fake with both accessors; storage may hold any rank and kind."""
+
+    def __getattr__(self, name):
+        if name == SYMBOL:
+            return FakeImage.__getattr__(self, name)
+        if name != "pycam_pbuf_field_v2":
+            raise AttributeError(name)
+
+        def entry(chunk, index, time_sliced, rank, is_integer, pointer, ndims, extents):
+            self.calls.append(("v2", chunk, index, rank, is_integer))
+            array = self.storage[index]
+            if array.ndim != rank or (array.dtype == np.int32) != bool(is_integer):
+                return 4
+            pointer._obj.value = array.ctypes.data
+            ndims._obj.value = array.ndim
+            for i, n in enumerate(array.shape):
+                extents[i] = n
+            return 0
+
+        entry.restype = None
+        entry.argtypes = None
+        return entry
+
+
+def test_a_rank_one_or_integer_field_goes_through_the_second_accessor() -> None:
+    storage = {
+        1: np.asfortranarray(np.arange(PCOLS * PVER, dtype=np.float64).reshape(PCOLS, PVER)),
+        2: np.arange(PCOLS, dtype=np.float64),
+        3: np.arange(PCOLS, dtype=np.int32),
+        4: np.asfortranarray(np.zeros((PCOLS, PVER, 4))),
+    }
+    fields = {
+        "PLANE": PBufField("PLANE", 1, False),
+        "PREC_STR": PBufField("PREC_STR", 2, False, rank=1),
+        "ACNUM": PBufField("ACNUM", 3, False, rank=1, dtype="int32"),
+        "RNDST": PBufField("RNDST", 4, False, rank=3),
+    }
+    image = FakeImageV2(storage)
+    pbuf = PBuf(image, fields)
+    plane = pbuf.view("PLANE", 7)
+    assert plane.shape == (PCOLS, PVER) and image.calls[-1] == (7, 1, 0)       # v1 as before
+    vector = pbuf.view("PREC_STR", 7)
+    assert vector.shape == (PCOLS,) and image.calls[-1] == ("v2", 7, 2, 1, 0)
+    vector[3] = 42.0
+    assert storage[2][3] == 42.0                                               # a view, not a copy
+    counts = pbuf.view("ACNUM", 7)
+    assert counts.dtype == np.int32 and image.calls[-1] == ("v2", 7, 3, 1, 1)
+    cube = pbuf.view("RNDST", 7)
+    assert cube.shape == (PCOLS, PVER, 4) and cube.flags.f_contiguous
+
+
+def test_a_shape_the_image_cannot_serve_is_refused_by_name() -> None:
+    storage = {2: np.arange(PCOLS, dtype=np.float64)}
+    fields = {"PREC_STR": PBufField("PREC_STR", 2, False, rank=1)}
+    # an image that predates the second accessor
+    with pytest.raises(PICAMConfigurationError, match="predates the rank-aware handle"):
+        PBuf(FakeImage(storage), fields).view("PREC_STR", 7)
+    # an image with it, asked for the wrong rank
+    wrong = {"PREC_STR": PBufField("PREC_STR", 2, False, rank=3)}
+    with pytest.raises(PICAMConfigurationError, match="refused PREC_STR"):
+        PBuf(FakeImageV2(storage), wrong).view("PREC_STR", 7)
+
+
+def test_verify_checks_only_the_leading_extent_of_a_rank_one_field() -> None:
+    storage = {1: np.asfortranarray(np.zeros((PCOLS, PVER))), 2: np.zeros(PCOLS)}
+    fields = {"PLANE": PBufField("PLANE", 1, False), "PREC_STR": PBufField("PREC_STR", 2, False, rank=1)}
+    shapes = PBuf(FakeImageV2(storage), fields).verify(7, pcols=PCOLS, pver=PVER)
+    assert shapes == {"PLANE": (PCOLS, PVER), "PREC_STR": (PCOLS,)}

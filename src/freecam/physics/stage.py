@@ -673,15 +673,59 @@ class NativeStage:
     # -- installing --------------------------------------------------------
 
     def attach(self, run: Any) -> Any:
-        """Put :meth:`tend` between the two halves of this stage."""
+        """Put :meth:`tend` where this stage runs.
+
+        A stage with halves is stopped before its driver and resumed after
+        it, and :meth:`tend` sits between the two.  A stage with no halves
+        is a whole workflow action Python replaces outright: the action is
+        disabled and the process takes its slot, so everything before and
+        after it runs exactly as it did.
+        """
 
         run.workflow.process(self.STAGE)     # fail early if this is not a PI-CAM workflow
         process = _StageProcess(self)
         run.workflow.process(self.STAGE).disable()
+        if self.replaces_whole_action:
+            self._process = run.workflow.insert_after(self.STAGE, process)
+            return self._process
         for name in (self.FIRST_HALF, self.SECOND_HALF):
             run.workflow.process(name).enable()
         self._process = run.workflow.insert_after(self.FIRST_HALF, process)
         return self._process
+
+    @property
+    def replaces_whole_action(self) -> bool:
+        """True for a stage that is a whole workflow action, not a call inside one."""
+
+        return not self.FIRST_HALF and not self.SECOND_HALF
+
+    # -- composition -------------------------------------------------------
+
+    def compose(self, **stages: "NativeStage") -> None:
+        """Make ``stages`` sub-walks of this one, sharing its swappable kernels.
+
+        A composed stage owns a workflow action whose Fortran calls other
+        drivers; each of those, already transliterated as a stage of its own,
+        runs as a sub-walk inside this stage's :meth:`tend_chunk` with its
+        own runtime, prefix, handles and scratch.  What is shared is the
+        :attr:`kernels` mapping: every sub-stage's swappable kernels are
+        entries of this stage's, so ``outer.kernels[name] = model`` reaches
+        the sub-walk that runs ``name``.
+        """
+
+        for attribute, stage in stages.items():
+            for name in stage.SWAPPABLE:
+                if name in self.kernels and self.kernels[name] is not None:
+                    raise PhysicsError(
+                        f"{name!r} is already a swappable kernel of {type(self).__name__}")
+                self.kernels.setdefault(name, stage.kernels.get(name))
+            stage.kernels = self.kernels          # one mapping, several walkers
+            setattr(self, attribute, stage)
+        self._components = dict(stages)
+
+    @property
+    def components(self) -> Mapping[str, "NativeStage"]:
+        return dict(getattr(self, "_components", {}))
 
     def runtime(self, native: Any) -> StageRuntime:
         """This rank's runtime, built on first use and kept per pool."""

@@ -494,3 +494,100 @@ def test_with_profiling_off_nothing_is_timed_and_nothing_is_written(widget, tmp_
 
     assert isinstance(stage.runtime(widget).profile, _NoProfile)
     assert not list(tmp_path.glob("*profile*"))
+
+
+# -- a stage that is a whole action --------------------------------------------
+
+
+class _Workflow:
+    def __init__(self, *names):
+        self.items = {n: _Action() for n in names}
+        self.inserted = []
+
+    def process(self, name):
+        return self.items[name]
+
+    def insert_after(self, anchor, process):
+        self.inserted.append((anchor, process))
+        return process
+
+
+class _Action:
+    def __init__(self):
+        self.enabled = None
+
+    def enable(self, **_):
+        self.enabled = True
+
+    def disable(self, **_):
+        self.enabled = False
+
+
+def test_a_stage_with_no_halves_replaces_its_whole_action() -> None:
+    class Whole(Widget):
+        STAGE = "cam_run1.widgets"
+        FIRST_HALF = ""
+        SECOND_HALF = ""
+
+    class Run:
+        workflow = _Workflow("cam_run1.widgets")
+
+    stage = Whole()
+    assert stage.replaces_whole_action
+    handle = stage.attach(Run)
+    assert Run.workflow.items["cam_run1.widgets"].enabled is False
+    # the process takes the action's slot: inserted right after the disabled action
+    assert Run.workflow.inserted == [("cam_run1.widgets", handle)]
+
+
+def test_a_stage_with_halves_still_sits_between_them() -> None:
+    class Run:
+        workflow = _Workflow(Widget.STAGE, Widget.FIRST_HALF, Widget.SECOND_HALF)
+
+    stage = Widget()
+    assert not stage.replaces_whole_action
+    handle = stage.attach(Run)
+    assert Run.workflow.items[Widget.FIRST_HALF].enabled is True
+    assert Run.workflow.inserted == [(Widget.FIRST_HALF, handle)]
+
+
+# -- composition -----------------------------------------------------------------
+
+
+def test_a_composed_stage_shares_one_kernels_mapping_with_its_sub_walks() -> None:
+    class Inner(Widget):
+        PREFIX = "inner"
+        SWAPPABLE = ("inner_core",)
+        KERNELS = ()
+
+    class Outer(Widget):
+        PREFIX = "outer"
+        SWAPPABLE = ("outer_core",)
+        KERNELS = ()
+
+    outer = Outer()
+    inner = Inner()
+    outer.compose(inner=inner)
+    assert outer.inner is inner
+    assert list(outer.components) == ["inner"]
+    assert set(outer.kernels) == {"outer_core", "inner_core"}
+    # one mapping: assigning through the outer reaches the inner's lookup
+    model = lambda batch: {}
+    outer.kernels["inner_core"] = model
+    assert inner.kernels["inner_core"] is model
+    assert inner.kernels is outer.kernels
+
+
+def test_composing_refuses_a_kernel_name_two_stages_both_claim() -> None:
+    class A(Widget):
+        SWAPPABLE = ("core",)
+        KERNELS = ()
+
+    class B(Widget):
+        SWAPPABLE = ("core",)
+        KERNELS = ()
+
+    outer = A()
+    outer.kernels["core"] = lambda batch: {}
+    with pytest.raises(PhysicsError, match="already a swappable kernel"):
+        outer.compose(other=B())

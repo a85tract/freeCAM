@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import ctypes
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any, Mapping
 
 import numpy as np
@@ -28,6 +29,7 @@ import numpy as np
 from .errors import PICAMConfigurationError
 
 SYMBOL = "pycam_pbuf_field_v1"
+SYMBOL_V2 = "pycam_pbuf_field_v2"
 
 #: What the Fortran side returns.  Anything but ``0`` yields no view.
 STATUS = {
@@ -45,11 +47,25 @@ class PBufFieldAbsent(PICAMConfigurationError):
 
 @dataclass(frozen=True, slots=True)
 class PBufField:
-    """One named physics-buffer field and how it is stored."""
+    """One named physics-buffer field and how it is stored.
+
+    ``rank`` and ``dtype`` describe the pointer the Fortran routine declares
+    for it; the default is the ``(pcols, n)`` double every macrophysics and
+    radiation field is.  Microphysics also reads rank-1 doubles, rank-3
+    doubles and one rank-1 integer, which go through the second accessor.
+    """
 
     name: str
     index: int
     time_sliced: bool
+    rank: int = 2
+    dtype: str = "float64"
+
+    @property
+    def plain_plane(self) -> bool:
+        """The shape the first accessor serves: a ``(pcols, n)`` double."""
+
+        return self.rank == 2 and self.dtype == "float64"
 
     @property
     def registered(self) -> bool:
@@ -75,6 +91,18 @@ class PBuf:
             ctypes.POINTER(ctypes.c_void_p), ctypes.POINTER(ctypes.c_int64),
         ]
         self._entry = entry
+        # The rank-aware accessor.  Images built before it existed lack it;
+        # such an image still serves every (pcols, n) double, and refuses a
+        # field of any other shape by name rather than misreading it.
+        second = getattr(library, SYMBOL_V2, None)
+        if second is not None:
+            second.restype = ctypes.c_int
+            second.argtypes = [
+                ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_int,
+                ctypes.POINTER(ctypes.c_void_p), ctypes.POINTER(ctypes.c_int),
+                ctypes.POINTER(ctypes.c_int64),
+            ]
+        self._entry_v2 = second
 
     def __contains__(self, name: str) -> bool:
         field = self.fields.get(name)
@@ -94,6 +122,8 @@ class PBuf:
             raise PBufFieldAbsent(
                 f"{name} has index {field.index}; {STATUS[1]}"
             )
+        if not field.plain_plane:
+            return self._view_any(field, chunk)
         pointer = ctypes.c_void_p()
         extents = (ctypes.c_int64 * 2)()
         status = self._entry(
@@ -117,6 +147,43 @@ class PBuf:
         buffer = (ctypes.c_double * (shape[0] * shape[1])).from_address(pointer.value)
         return np.ndarray(shape, dtype=np.float64, buffer=buffer, order="F")
 
+    def _view_any(self, field: PBufField, chunk: int) -> np.ndarray:
+        """A field of any served rank and kind, through the second accessor."""
+
+        if self._entry_v2 is None:
+            raise PICAMConfigurationError(
+                f"{field.name} is a rank-{field.rank} {field.dtype} field and the loaded "
+                f"image exposes no {SYMBOL_V2}; it predates the rank-aware handle"
+            )
+        pointer = ctypes.c_void_p()
+        ndims = ctypes.c_int()
+        extents = (ctypes.c_int64 * 3)()
+        is_integer = field.dtype in ("int32", "int64")
+        status = self._entry_v2(
+            int(chunk), int(field.index), int(field.time_sliced), int(field.rank),
+            int(is_integer), ctypes.byref(pointer), ctypes.byref(ndims), extents,
+        )
+        if status != 0:
+            raise PICAMConfigurationError(
+                f"physics buffer refused {field.name} (rank {field.rank}, {field.dtype}) "
+                f"on chunk {chunk}: {STATUS.get(status, f'status {status}')}"
+            )
+        if not pointer.value or ndims.value != field.rank:
+            raise PICAMConfigurationError(
+                f"physics buffer returned rank {ndims.value} for {field.name}, "
+                f"declared rank {field.rank}, on chunk {chunk}"
+            )
+        shape = tuple(int(extents[i]) for i in range(ndims.value))
+        if any(n < 1 for n in shape):
+            raise PICAMConfigurationError(
+                f"physics buffer returned {shape} for {field.name} on chunk {chunk}"
+            )
+        count = int(np.prod(shape))
+        ctype = ctypes.c_int32 if is_integer else ctypes.c_double
+        buffer = (ctype * count).from_address(pointer.value)
+        return np.ndarray(shape, dtype=np.int32 if is_integer else np.float64,
+                          buffer=buffer, order="F")
+
     def verify(self, chunk: int, *, pcols: int, pver: int) -> dict[str, tuple[int, int]]:
         """Fetch every registered field once and check its shape.
 
@@ -131,7 +198,9 @@ class PBuf:
                 continue
             view = self.view(name, chunk)
             shapes[name] = view.shape
-            if view.shape[0] != pcols or view.shape[1] not in (pver, pver + 1):
+            if view.shape[0] != pcols:
+                wrong.append(f"{name}{view.shape}")
+            elif field.rank >= 2 and view.shape[1] not in (pver, pver + 1):
                 wrong.append(f"{name}{view.shape}")
         if wrong:
             raise PICAMConfigurationError(
@@ -168,6 +237,30 @@ MACROP_FIELDS = (
 )
 
 
+def load_pbuf_table(path, indices: Mapping[str, int]) -> dict[str, PBufField]:
+    """Bind a generated field table (``tools/generate_pi_cam_pbuf_table.py``)
+    to the indices read from the image.
+
+    The table names each field, the module integer holding its index, how the
+    routine reads it (time-sliced or not), and the rank and kind of the
+    pointer it declares for it.  ``indices`` maps the symbol to its value.
+    """
+
+    import yaml
+
+    payload = yaml.safe_load(Path(path).read_text())
+    missing = [row["symbol"] for row in payload["fields"] if row["symbol"] not in indices]
+    if missing:
+        raise PICAMConfigurationError(
+            f"physics-buffer index variables were not read: {', '.join(missing)}")
+    return {
+        row["name"]: PBufField(row["name"], int(indices[row["symbol"]]),
+                               bool(row["time_sliced"]), int(row.get("rank", 2)),
+                               str(row.get("dtype", "float64")))
+        for row in payload["fields"]
+    }
+
+
 def macrop_fields(indices: Mapping[str, int]) -> dict[str, PBufField]:
     """Bind the driver's field table to the indices read from its module."""
 
@@ -182,5 +275,6 @@ def macrop_fields(indices: Mapping[str, int]) -> dict[str, PBufField]:
     }
 
 
-__all__ = ["MACROP_FIELDS", "PBuf", "PBufField", "PBufFieldAbsent", "STATUS",
+__all__ = ["MACROP_FIELDS", "PBuf", "PBufField", "PBufFieldAbsent", "STATUS", "SYMBOL_V2",
+           "load_pbuf_table",
            "SYMBOL", "macrop_fields"]
