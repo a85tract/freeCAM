@@ -68,7 +68,8 @@ PBUF_FIELD_SYMBOL = "pycam_pbuf_field_v1"
 # is replaced -- and are reached only from Python or from the control
 # objects the builder already replaces.
 SUPPORT_MODULES = ("pycam_macro_kernels.F90", "pycam_macro_handles.F90",
-                   "pycam_rad_kernels.F90", "pycam_rad_handles.F90")
+                   "pycam_rad_kernels.F90", "pycam_rad_handles.F90",
+                   "pycam_micro_kernels.F90", "pycam_mm_kernels.F90")
 MACRO_BIND_HOSTS_SYMBOL = "pycam_macro_bind_hosts_v1"
 RAD_BIND_HOSTS_SYMBOL = "pycam_rad_bind_hosts_v1"
 LEAF_ACTION_SYMBOL = "pycam_pi_cam_leaf_action_v1"

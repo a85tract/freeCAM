@@ -1,0 +1,202 @@
+#!/usr/bin/env python3
+"""Lift the cloud macro/microphysics stage's own arithmetic into routines.
+
+tphysbc stage 7 (``physpkg.F90``) surrounds the macrophysics and
+microphysics drivers with a substepping loop and a little bookkeeping, and
+that bookkeeping computes: the condensate and heat flux terms the energy
+check takes after macrophysics, the precipitation sums over substeps and
+their averages, and the substep length.  Twelve statements, all trivial, all
+floating-point, all Fortran's to compute.  Each contiguous run becomes a
+routine here, its body the pinned text.  physpkg.F90 is not patched for
+this: the module is an addition.
+
+The expressions the stage passes inside call arguments -- ``ztodt /
+cld_macmic_num_steps`` to the drivers, ``1._r8 / cld_macmic_num_steps`` to
+``physics_ptend_scale``, ``flx_cnd / cld_macmic_num_steps`` to
+``check_energy_chng`` -- are kept whole in the handle wrappers that make
+those calls (``pycam_mm_handles``), which receive the count and form the
+expression in Fortran.
+
+    tools/generate_pi_cam_mm_kernels.py            # write the module and descriptors
+    tools/generate_pi_cam_mm_kernels.py --check    # fail if either is stale
+"""
+
+from __future__ import annotations
+
+import argparse
+import difflib
+import sys
+from pathlib import Path
+
+REPO = Path(__file__).resolve().parents[1]
+PINNED = REPO / "external/iCESM1.3.1_fzhu/components/cam/src/physics/cam/physpkg.F90"
+MODULE = REPO / "native/pi_cam/support/pycam_mm_kernels.F90"
+DESCRIPTORS = REPO / "native/pi_cam/direct_kernels_mm.yaml"
+
+P1 = "(pcols)"
+
+
+class Block:
+    def __init__(self, name, first, last, arguments, *, renames=None, locals_=()):
+        self.name = name
+        self.first = first
+        self.last = last
+        self.arguments = arguments          # (dummy, kind, dims, intent)
+        self.renames = dict(renames or {})
+        self.locals = tuple(locals_)
+        self.skip = frozenset()
+
+    @property
+    def dummies(self):
+        return tuple(a[0] for a in self.arguments)
+
+    def declarations(self):
+        return [f"   {kind:9s} intent({intent}) :: {name}{dims}"
+                for name, kind, dims, intent in self.arguments]
+
+    def body(self, lines):
+        out = []
+        for number in range(self.first, self.last + 1):
+            line = lines[number - 1]
+            for old, new in self.renames.items():
+                line = line.replace(old, new)
+            out.append("   " + line if line.strip() else line)
+        return out
+
+
+def _real(*names, dims=P1, intent="inout"):
+    return [(n, "real(r8),", dims, intent) for n in names]
+
+
+BLOCKS = (
+    Block(
+        # 2254-2255: the Park branch's flux terms for check_energy_chng
+        "mm_flux_terms", 2254, 2255,
+        [("ncol", "integer, ", "", "in")]
+        + _real("rliq", "det_s", intent="in") + _real("flx_cnd", "flx_heat"),
+    ),
+    Block(
+        # 2369-2372: the precipitation sums at the end of each substep
+        "mm_precip_accumulate", 2369, 2372,
+        [("ncol", "integer, ", "", "in")]
+        + _real("prec_sed", "snow_sed", "prec_pcw", "snow_pcw", intent="in")
+        + _real("prec_sed_macmic", "snow_sed_macmic", "prec_pcw_macmic", "snow_pcw_macmic"),
+    ),
+    Block(
+        # 2376-2381: the averages after the loop and the stratiform totals
+        "mm_precip_average", 2376, 2381,
+        [("ncol", "integer, ", "", "in"), ("cld_macmic_num_steps", "integer, ", "", "in")]
+        + _real("prec_sed_macmic", "snow_sed_macmic", "prec_pcw_macmic", "snow_pcw_macmic",
+                intent="in")
+        + _real("prec_sed", "snow_sed", "prec_pcw", "snow_pcw", "prec_str", "snow_str"),
+    ),
+    Block(
+        # 2210: the substep length the drivers are given
+        "mm_substep_dt", 2210, 2210,
+        [("ztodt", "real(r8),", "", "in"), ("cld_macmic_num_steps", "integer, ", "", "in"),
+         ("cld_macmic_ztodt", "real(r8),", "", "inout")],
+    ),
+)
+
+
+def _wrap(items, indent, width=76):
+    out, current = [], indent
+    for index, name in enumerate(items):
+        piece = name + ("," if index < len(items) - 1 else "")
+        if len(current) + len(piece) + 2 > width:
+            out.append(current + " &")
+            current = indent
+        current += ("" if current == indent else " ") + piece
+    return out + [current + ")"]
+
+
+def render_module(source: Path | None = None) -> str:
+    lines = (source or PINNED).read_text().splitlines()
+    nl = "\n"
+    routines = []
+    for block in BLOCKS:
+        header = [f"  subroutine {block.name}( &"] + ["  " + l for l in _wrap(block.dummies, "       ")]
+        pieces = header + [""] + block.declarations()
+        if block.locals:
+            pieces += [""] + list(block.locals)
+        pieces += [""] + block.body(lines) + ["", f"  end subroutine {block.name}"]
+        routines.append(nl.join(pieces))
+    return f'''! tphysbc stage 7's own arithmetic -- the cloud macro/microphysics glue --
+! as routines the image can be asked to run.
+!
+! GENERATED by tools/generate_pi_cam_mm_kernels.py from the pinned source
+! physpkg.F90.  Do not edit by hand; edit the generator.
+!
+! Each body is the original text, character for character; only the names
+! of tphysbc's locals become dummies.  This module is an addition to the
+! source tree: physpkg.F90 is not changed to call it, and only a
+! Python-driven timestep runs these.
+
+module pycam_mm_kernels
+
+  use shr_kind_mod, only: r8 => shr_kind_r8
+  use ppgrid,       only: pcols
+
+  implicit none
+  private
+
+{nl.join("  public :: " + block.name for block in BLOCKS)}
+
+contains
+
+{(nl + nl).join(routines)}
+
+end module pycam_mm_kernels
+'''
+
+
+_DTYPE = {"real(r8),": "float64", "integer, ": "int32"}
+_DIMS = {P1: ["pcols"], "": []}
+
+
+def render_descriptors() -> str:
+    import yaml
+
+    kernels = []
+    for block in BLOCKS:
+        arguments = []
+        for name, kind, dims, intent in block.arguments:
+            extents = [*_DIMS[dims], "chunks"]
+            arguments.append({"field": f"mm.{name}", "dtype": _DTYPE[kind], "rank": len(extents),
+                              "intent": intent, "chunk_axis": len(extents), "extents": extents})
+        kernels.append({"name": block.name, "routine": block.name,
+                        "symbol": f"pycam_pi_cam_{block.name}_v1", "action_id": 0,
+                        "modules": {"pycam_mm_kernels": [block.name], "ppgrid": ["pcols"]},
+                        "arguments": arguments})
+    header = ("# GENERATED by tools/generate_pi_cam_mm_kernels.py -- do not edit.\n#\n"
+              "# The cloud macro/microphysics stage's own arithmetic, as direct kernels.\n"
+              "# Every field is an `mm.<dummy>` StatePool array Python owns, one chunk\n"
+              "# per slice.  Merged into direct_kernels_promoted.yaml by\n"
+              "# tools/build_pi_cam_promoted_kernels.py.\n")
+    return header + yaml.safe_dump({"schema_version": 1, "kernels": kernels}, sort_keys=False, width=100)
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--check", action="store_true")
+    arguments = parser.parse_args()
+    stale = []
+    for path, rendered in ((MODULE, render_module()), (DESCRIPTORS, render_descriptors())):
+        if arguments.check:
+            current = path.read_text() if path.is_file() else ""
+            if current != rendered:
+                stale.append(path)
+                sys.stderr.write("".join(difflib.unified_diff(
+                    current.splitlines(keepends=True), rendered.splitlines(keepends=True),
+                    fromfile=f"{path.name} (committed)", tofile=f"{path.name} (generated)"))[:3000])
+        else:
+            path.write_text(rendered)
+            print(f"wrote {path.relative_to(REPO)}")
+    if stale:
+        sys.stderr.write("\nstale: " + ", ".join(str(p.relative_to(REPO)) for p in stale) + "\n")
+        return 1
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
