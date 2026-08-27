@@ -18,7 +18,8 @@ from .spec import FunctionSpec
 
 _UNIT_BRACKET = re.compile(r"\[([^\]]+)\]")
 _DECLARATION = re.compile(
-    r"^\s*(?:real\s*\(\s*r8\s*\)|real|integer|logical)\s*(?:,[^:]*)?::\s*(?P<names>[^!]*?)\s*(?:!(?P<comment>.*))?$",
+    r"^\s*(?:real\s*\(\s*r8\s*\)|real|integer|logical|character\s*\(\s*[^)]*\s*\))"
+    r"\s*(?:,[^:]*)?::\s*(?P<names>[^!]*?)\s*(?:!(?P<comment>.*))?$",
     re.IGNORECASE,
 )
 _CONTINUED_COMMENT = re.compile(r"^\s*!(?P<comment>.*)$")
@@ -52,9 +53,18 @@ class VerificationReport:
 
 
 def _inventory_dtype(argument: Mapping[str, Any]) -> tuple[str, str | None]:
+    """What a reviewed spec must say for the type the inventory records.
+
+    Two Fortran types have no NumPy equivalent and travel as one int32 with a
+    carrier naming what they really are: a logical, and the character an
+    error channel returns.
+    """
+
     dtype = str(argument.get("dtype") or "")
     if dtype == "logical":
         return "int32", "logical"
+    if dtype == "character":
+        return "int32", "character"
     return dtype, None
 
 

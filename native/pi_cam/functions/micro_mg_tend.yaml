@@ -1,0 +1,2064 @@
+# The standalone boundary of MG1.0's microphysics core.
+#
+# micro_mg_tend takes 116 plain arrays -- the packed cloudy columns the
+# CAM driver gathers -- and returns the tendencies and the process rates.
+# It is the swappable kernel of the Python microphysics stage: this file
+# is what lets the same routine run outside the model, on one column, so
+# a replacement can be compared with it.
+#
+# Reviewed by hand from tools/draft_pi_cam_function_spec.py's draft.  The
+# source declares no bracketed units, so units stay unset rather than
+# invented, and ranges with them: a sampling space needs a captured anchor
+# first, and Gate M-5 compares the routine with itself.  `ndust` is the
+# routine's own literal 4, the dust bins contact freezing carries.
+schema_version: 1
+function: micro_mg_tend
+qualified_name: micro_mg1_0::micro_mg_tend
+routine: micro_mg_tend
+source: components/cam/src/physics/cam/micro_mg1_0.F90
+module: micro_mg1_0
+dimensions:
+  pcols: 16
+  pver: 30
+  pverp: 31
+  ndust: 4
+public_axes:
+  pver: lev
+  pverp: ilev
+  ndust: dust_bin
+# the routine writes its own extents; these are the same axes under CAM's names
+dimension_aliases:
+  '4': ndust
+  pver + 1: pverp
+arguments:
+- name: microp_uniform
+  role: input
+  fortran_type: logical
+  dtype: int32
+  rank: 0
+  intent: in
+  native_shape: []
+  carrier: logical
+  default: 0
+  public_shape: []
+  units: null
+  range: null
+  constraints: null
+  description: True = configure uniform for sub-columns False = use w/o sub-columns (standard)
+- name: pcols
+  role: structural
+  fortran_type: integer
+  dtype: int32
+  rank: 0
+  intent: in
+  value: 16
+  native_shape: []
+  description: size of column (first) index
+- name: pver
+  role: structural
+  fortran_type: integer
+  dtype: int32
+  rank: 0
+  intent: in
+  value: 30
+  native_shape: []
+  description: number of layers in columns
+- name: ncol
+  role: structural
+  fortran_type: integer
+  dtype: int32
+  rank: 0
+  intent: in
+  value: 1
+  native_shape: []
+  description: number of columns
+- name: top_lev
+  role: structural
+  fortran_type: integer
+  dtype: int32
+  rank: 0
+  intent: in
+  value: 1
+  native_shape: []
+  description: top level microphys is applied
+- name: deltatin
+  role: input
+  fortran_type: real
+  dtype: float64
+  rank: 0
+  intent: in
+  native_shape: []
+  public_shape: []
+  units: null
+  range: null
+  constraints: null
+  description: time step (s)
+- name: tn
+  role: input
+  fortran_type: real
+  dtype: float64
+  rank: 2
+  intent: in
+  native_shape:
+  - pcols
+  - pver
+  public_shape:
+  - pver
+  units: null
+  range: null
+  constraints: null
+  description: input temperature (K)
+- name: qn
+  role: input
+  fortran_type: real
+  dtype: float64
+  rank: 2
+  intent: in
+  native_shape:
+  - pcols
+  - pver
+  public_shape:
+  - pver
+  units: null
+  range: null
+  constraints: null
+  description: input h20 vapor mixing ratio (kg/kg)
+- name: qc
+  role: inout
+  fortran_type: real
+  dtype: float64
+  rank: 2
+  intent: inout
+  native_shape:
+  - pcols
+  - pver
+  public_shape:
+  - pver
+  units: null
+  range: null
+  constraints: null
+  description: cloud water mixing ratio (kg/kg)
+- name: qi
+  role: inout
+  fortran_type: real
+  dtype: float64
+  rank: 2
+  intent: inout
+  native_shape:
+  - pcols
+  - pver
+  public_shape:
+  - pver
+  units: null
+  range: null
+  constraints: null
+  description: cloud ice mixing ratio (kg/kg)
+- name: nc
+  role: inout
+  fortran_type: real
+  dtype: float64
+  rank: 2
+  intent: inout
+  native_shape:
+  - pcols
+  - pver
+  public_shape:
+  - pver
+  units: null
+  range: null
+  constraints: null
+  description: cloud water number conc (1/kg)
+- name: ni
+  role: inout
+  fortran_type: real
+  dtype: float64
+  rank: 2
+  intent: inout
+  native_shape:
+  - pcols
+  - pver
+  public_shape:
+  - pver
+  units: null
+  range: null
+  constraints: null
+  description: cloud ice number conc (1/kg)
+- name: p
+  role: input
+  fortran_type: real
+  dtype: float64
+  rank: 2
+  intent: in
+  native_shape:
+  - pcols
+  - pver
+  public_shape:
+  - pver
+  units: null
+  range: null
+  constraints: null
+  description: air pressure (pa)
+- name: pdel
+  role: input
+  fortran_type: real
+  dtype: float64
+  rank: 2
+  intent: in
+  native_shape:
+  - pcols
+  - pver
+  public_shape:
+  - pver
+  units: null
+  range: null
+  constraints: null
+  description: pressure difference across level (pa)
+- name: cldn
+  role: input
+  fortran_type: real
+  dtype: float64
+  rank: 2
+  intent: in
+  native_shape:
+  - pcols
+  - pver
+  public_shape:
+  - pver
+  units: null
+  range: null
+  constraints: null
+  description: cloud fraction
+- name: liqcldf
+  role: input
+  fortran_type: real
+  dtype: float64
+  rank: 2
+  intent: in
+  native_shape:
+  - pcols
+  - pver
+  public_shape:
+  - pver
+  units: null
+  range: null
+  constraints: null
+  description: liquid cloud fraction
+- name: relvar
+  role: input
+  fortran_type: real
+  dtype: float64
+  rank: 2
+  intent: in
+  native_shape:
+  - pcols
+  - pver
+  public_shape:
+  - pver
+  units: null
+  range: null
+  constraints: null
+  description: relative variance of cloud water (-)
+- name: accre_enhan
+  role: input
+  fortran_type: real
+  dtype: float64
+  rank: 2
+  intent: in
+  native_shape:
+  - pcols
+  - pver
+  public_shape:
+  - pver
+  units: null
+  range: null
+  constraints: null
+  description: 'optional accretion enhancement factor (-) note: all input cloud variables are grid-averaged'
+- name: icecldf
+  role: input
+  fortran_type: real
+  dtype: float64
+  rank: 2
+  intent: in
+  native_shape:
+  - pcols
+  - pver
+  public_shape:
+  - pver
+  units: null
+  range: null
+  constraints: null
+  description: ice cloud fraction
+- name: rate1ord_cw2pr_st
+  role: output
+  fortran_type: real
+  dtype: float64
+  rank: 2
+  intent: out
+  native_shape:
+  - pcols
+  - pver
+  public_shape:
+  - pver
+  units: null
+  range: null
+  constraints: null
+  description: 1st order rate for direct cw to precip conversion used for scavenging Inputs for aerosol
+    activation
+- name: naai
+  role: input
+  fortran_type: real
+  dtype: float64
+  rank: 2
+  intent: in
+  native_shape:
+  - pcols
+  - pver
+  public_shape:
+  - pver
+  units: null
+  range: null
+  constraints: null
+  description: ice nulceation number (from microp_aero_ts)
+- name: npccnin
+  role: input
+  fortran_type: real
+  dtype: float64
+  rank: 2
+  intent: in
+  native_shape:
+  - pcols
+  - pver
+  public_shape:
+  - pver
+  units: null
+  range: null
+  constraints: null
+  description: ccn activated number tendency (from microp_aero_ts)
+- name: rndst
+  role: input
+  fortran_type: real
+  dtype: float64
+  rank: 3
+  intent: in
+  native_shape:
+  - pcols
+  - pver
+  - ndust
+  public_shape:
+  - pver
+  - ndust
+  units: null
+  range: null
+  constraints: null
+  description: radius of 4 dust bins for contact freezing (from microp_aero_ts)
+- name: nacon
+  role: input
+  fortran_type: real
+  dtype: float64
+  rank: 3
+  intent: in
+  native_shape:
+  - pcols
+  - pver
+  - ndust
+  public_shape:
+  - pver
+  - ndust
+  units: null
+  range: null
+  constraints: null
+  description: number in 4 dust bins for contact freezing (from microp_aero_ts) Used with CARMA cirrus
+    microphysics (or similar external microphysics model)
+- name: tlat
+  role: output
+  fortran_type: real
+  dtype: float64
+  rank: 2
+  intent: out
+  native_shape:
+  - pcols
+  - pver
+  public_shape:
+  - pver
+  units: null
+  range: null
+  constraints: null
+  description: latent heating rate (W/kg)
+- name: qvlat
+  role: output
+  fortran_type: real
+  dtype: float64
+  rank: 2
+  intent: out
+  native_shape:
+  - pcols
+  - pver
+  public_shape:
+  - pver
+  units: null
+  range: null
+  constraints: null
+  description: microphysical tendency qv (1/s)
+- name: qctend
+  role: output
+  fortran_type: real
+  dtype: float64
+  rank: 2
+  intent: out
+  native_shape:
+  - pcols
+  - pver
+  public_shape:
+  - pver
+  units: null
+  range: null
+  constraints: null
+  description: microphysical tendency qc (1/s)
+- name: qitend
+  role: output
+  fortran_type: real
+  dtype: float64
+  rank: 2
+  intent: out
+  native_shape:
+  - pcols
+  - pver
+  public_shape:
+  - pver
+  units: null
+  range: null
+  constraints: null
+  description: microphysical tendency qi (1/s)
+- name: nctend
+  role: output
+  fortran_type: real
+  dtype: float64
+  rank: 2
+  intent: out
+  native_shape:
+  - pcols
+  - pver
+  public_shape:
+  - pver
+  units: null
+  range: null
+  constraints: null
+  description: microphysical tendency nc (1/(kg*s))
+- name: nitend
+  role: output
+  fortran_type: real
+  dtype: float64
+  rank: 2
+  intent: out
+  native_shape:
+  - pcols
+  - pver
+  public_shape:
+  - pver
+  units: null
+  range: null
+  constraints: null
+  description: microphysical tendency ni (1/(kg*s))
+- name: effc
+  role: output
+  fortran_type: real
+  dtype: float64
+  rank: 2
+  intent: out
+  native_shape:
+  - pcols
+  - pver
+  public_shape:
+  - pver
+  units: null
+  range: null
+  constraints: null
+  description: droplet effective radius (micron)
+- name: effc_fn
+  role: output
+  fortran_type: real
+  dtype: float64
+  rank: 2
+  intent: out
+  native_shape:
+  - pcols
+  - pver
+  public_shape:
+  - pver
+  units: null
+  range: null
+  constraints: null
+  description: droplet effective radius, assuming nc = 1.e8 kg-1
+- name: effi
+  role: output
+  fortran_type: real
+  dtype: float64
+  rank: 2
+  intent: out
+  native_shape:
+  - pcols
+  - pver
+  public_shape:
+  - pver
+  units: null
+  range: null
+  constraints: null
+  description: cloud ice effective radius (micron)
+- name: prect
+  role: output
+  fortran_type: real
+  dtype: float64
+  rank: 1
+  intent: out
+  native_shape:
+  - pcols
+  public_shape: []
+  units: null
+  range: null
+  constraints: null
+  description: surface precip rate (m/s)
+- name: preci
+  role: output
+  fortran_type: real
+  dtype: float64
+  rank: 1
+  intent: out
+  native_shape:
+  - pcols
+  public_shape: []
+  units: null
+  range: null
+  constraints: null
+  description: cloud ice/snow precip rate (m/s)
+- name: nevapr
+  role: output
+  fortran_type: real
+  dtype: float64
+  rank: 2
+  intent: out
+  native_shape:
+  - pcols
+  - pver
+  public_shape:
+  - pver
+  units: null
+  range: null
+  constraints: null
+  description: evaporation rate of rain + snow
+- name: evapsnow
+  role: output
+  fortran_type: real
+  dtype: float64
+  rank: 2
+  intent: out
+  native_shape:
+  - pcols
+  - pver
+  public_shape:
+  - pver
+  units: null
+  range: null
+  constraints: null
+  description: sublimation rate of snow
+- name: am_evp_st
+  role: output
+  fortran_type: real
+  dtype: float64
+  rank: 2
+  intent: out
+  native_shape:
+  - pcols
+  - pver
+  public_shape:
+  - pver
+  units: null
+  range: null
+  constraints: null
+  description: stratiform evaporation area
+- name: prain
+  role: output
+  fortran_type: real
+  dtype: float64
+  rank: 2
+  intent: out
+  native_shape:
+  - pcols
+  - pver
+  public_shape:
+  - pver
+  units: null
+  range: null
+  constraints: null
+  description: production of rain + snow
+- name: prodsnow
+  role: output
+  fortran_type: real
+  dtype: float64
+  rank: 2
+  intent: out
+  native_shape:
+  - pcols
+  - pver
+  public_shape:
+  - pver
+  units: null
+  range: null
+  constraints: null
+  description: production of snow
+- name: cmeout
+  role: output
+  fortran_type: real
+  dtype: float64
+  rank: 2
+  intent: out
+  native_shape:
+  - pcols
+  - pver
+  public_shape:
+  - pver
+  units: null
+  range: null
+  constraints: null
+  description: evap/sub of cloud
+- name: deffi
+  role: output
+  fortran_type: real
+  dtype: float64
+  rank: 2
+  intent: out
+  native_shape:
+  - pcols
+  - pver
+  public_shape:
+  - pver
+  units: null
+  range: null
+  constraints: null
+  description: ice effective diameter for optics (radiation)
+- name: pgamrad
+  role: output
+  fortran_type: real
+  dtype: float64
+  rank: 2
+  intent: out
+  native_shape:
+  - pcols
+  - pver
+  public_shape:
+  - pver
+  units: null
+  range: null
+  constraints: null
+  description: ice gamma parameter for optics (radiation)
+- name: lamcrad
+  role: output
+  fortran_type: real
+  dtype: float64
+  rank: 2
+  intent: out
+  native_shape:
+  - pcols
+  - pver
+  public_shape:
+  - pver
+  units: null
+  range: null
+  constraints: null
+  description: slope of droplet distribution for optics (radiation)
+- name: qsout
+  role: output
+  fortran_type: real
+  dtype: float64
+  rank: 2
+  intent: out
+  native_shape:
+  - pcols
+  - pver
+  public_shape:
+  - pver
+  units: null
+  range: null
+  constraints: null
+  description: snow mixing ratio (kg/kg)
+- name: dsout
+  role: output
+  fortran_type: real
+  dtype: float64
+  rank: 2
+  intent: out
+  native_shape:
+  - pcols
+  - pver
+  public_shape:
+  - pver
+  units: null
+  range: null
+  constraints: null
+  description: snow diameter (m)
+- name: rflx
+  role: output
+  fortran_type: real
+  dtype: float64
+  rank: 2
+  intent: out
+  native_shape:
+  - pcols
+  - pverp
+  public_shape:
+  - pverp
+  units: null
+  range: null
+  constraints: null
+  description: grid-box average rain flux (kg m^-2 s^-1)
+- name: sflx
+  role: output
+  fortran_type: real
+  dtype: float64
+  rank: 2
+  intent: out
+  native_shape:
+  - pcols
+  - pverp
+  public_shape:
+  - pverp
+  units: null
+  range: null
+  constraints: null
+  description: grid-box average snow flux (kg m^-2 s^-1)
+- name: qrout
+  role: output
+  fortran_type: real
+  dtype: float64
+  rank: 2
+  intent: out
+  native_shape:
+  - pcols
+  - pver
+  public_shape:
+  - pver
+  units: null
+  range: null
+  constraints: null
+  description: grid-box average rain mixing ratio (kg/kg)
+- name: reff_rain
+  role: inout
+  fortran_type: real
+  dtype: float64
+  rank: 2
+  intent: inout
+  native_shape:
+  - pcols
+  - pver
+  public_shape:
+  - pver
+  units: null
+  range: null
+  constraints: null
+  description: rain effective radius (micron)
+- name: reff_snow
+  role: inout
+  fortran_type: real
+  dtype: float64
+  rank: 2
+  intent: inout
+  native_shape:
+  - pcols
+  - pver
+  public_shape:
+  - pver
+  units: null
+  range: null
+  constraints: null
+  description: snow effective radius (micron)
+- name: qcsevap
+  role: output
+  fortran_type: real
+  dtype: float64
+  rank: 2
+  intent: out
+  native_shape:
+  - pcols
+  - pver
+  public_shape:
+  - pver
+  units: null
+  range: null
+  constraints: null
+  description: cloud water evaporation due to sedimentation
+- name: qisevap
+  role: output
+  fortran_type: real
+  dtype: float64
+  rank: 2
+  intent: out
+  native_shape:
+  - pcols
+  - pver
+  public_shape:
+  - pver
+  units: null
+  range: null
+  constraints: null
+  description: cloud ice sublimation due to sublimation
+- name: qvres
+  role: output
+  fortran_type: real
+  dtype: float64
+  rank: 2
+  intent: out
+  native_shape:
+  - pcols
+  - pver
+  public_shape:
+  - pver
+  units: null
+  range: null
+  constraints: null
+  description: residual condensation term to ensure RH < 100%
+- name: cmeiout
+  role: output
+  fortran_type: real
+  dtype: float64
+  rank: 2
+  intent: out
+  native_shape:
+  - pcols
+  - pver
+  public_shape:
+  - pver
+  units: null
+  range: null
+  constraints: null
+  description: grid-mean cloud ice sub/dep
+- name: vtrmc
+  role: output
+  fortran_type: real
+  dtype: float64
+  rank: 2
+  intent: out
+  native_shape:
+  - pcols
+  - pver
+  public_shape:
+  - pver
+  units: null
+  range: null
+  constraints: null
+  description: mass-weighted cloud water fallspeed
+- name: vtrmi
+  role: output
+  fortran_type: real
+  dtype: float64
+  rank: 2
+  intent: out
+  native_shape:
+  - pcols
+  - pver
+  public_shape:
+  - pver
+  units: null
+  range: null
+  constraints: null
+  description: mass-weighted cloud ice fallspeed
+- name: qcsedten
+  role: output
+  fortran_type: real
+  dtype: float64
+  rank: 2
+  intent: out
+  native_shape:
+  - pcols
+  - pver
+  public_shape:
+  - pver
+  units: null
+  range: null
+  constraints: null
+  description: qc sedimentation tendency
+- name: qisedten
+  role: output
+  fortran_type: real
+  dtype: float64
+  rank: 2
+  intent: out
+  native_shape:
+  - pcols
+  - pver
+  public_shape:
+  - pver
+  units: null
+  range: null
+  constraints: null
+  description: qi sedimentation tendency microphysical process rates for output (mixing ratio tendencies)
+- name: prao
+  role: output
+  fortran_type: real
+  dtype: float64
+  rank: 2
+  intent: out
+  native_shape:
+  - pcols
+  - pver
+  public_shape:
+  - pver
+  units: null
+  range: null
+  constraints: null
+  description: accretion of cloud by rain
+- name: prco
+  role: output
+  fortran_type: real
+  dtype: float64
+  rank: 2
+  intent: out
+  native_shape:
+  - pcols
+  - pver
+  public_shape:
+  - pver
+  units: null
+  range: null
+  constraints: null
+  description: autoconversion of cloud to rain
+- name: mnuccco
+  role: output
+  fortran_type: real
+  dtype: float64
+  rank: 2
+  intent: out
+  native_shape:
+  - pcols
+  - pver
+  public_shape:
+  - pver
+  units: null
+  range: null
+  constraints: null
+  description: mixing rat tend due to immersion freezing
+- name: mnuccto
+  role: output
+  fortran_type: real
+  dtype: float64
+  rank: 2
+  intent: out
+  native_shape:
+  - pcols
+  - pver
+  public_shape:
+  - pver
+  units: null
+  range: null
+  constraints: null
+  description: mixing ratio tend due to contact freezing
+- name: msacwio
+  role: output
+  fortran_type: real
+  dtype: float64
+  rank: 2
+  intent: out
+  native_shape:
+  - pcols
+  - pver
+  public_shape:
+  - pver
+  units: null
+  range: null
+  constraints: null
+  description: mixing ratio tend due to H-M splintering
+- name: psacwso
+  role: output
+  fortran_type: real
+  dtype: float64
+  rank: 2
+  intent: out
+  native_shape:
+  - pcols
+  - pver
+  public_shape:
+  - pver
+  units: null
+  range: null
+  constraints: null
+  description: collection of cloud water by snow
+- name: bergso
+  role: output
+  fortran_type: real
+  dtype: float64
+  rank: 2
+  intent: out
+  native_shape:
+  - pcols
+  - pver
+  public_shape:
+  - pver
+  units: null
+  range: null
+  constraints: null
+  description: bergeron process on snow
+- name: bergo
+  role: output
+  fortran_type: real
+  dtype: float64
+  rank: 2
+  intent: out
+  native_shape:
+  - pcols
+  - pver
+  public_shape:
+  - pver
+  units: null
+  range: null
+  constraints: null
+  description: bergeron process on cloud ice
+- name: melto
+  role: output
+  fortran_type: real
+  dtype: float64
+  rank: 2
+  intent: out
+  native_shape:
+  - pcols
+  - pver
+  public_shape:
+  - pver
+  units: null
+  range: null
+  constraints: null
+  description: melting of cloud ice
+- name: homoo
+  role: output
+  fortran_type: real
+  dtype: float64
+  rank: 2
+  intent: out
+  native_shape:
+  - pcols
+  - pver
+  public_shape:
+  - pver
+  units: null
+  range: null
+  constraints: null
+  description: homogeneos freezign cloud water
+- name: qcreso
+  role: output
+  fortran_type: real
+  dtype: float64
+  rank: 2
+  intent: out
+  native_shape:
+  - pcols
+  - pver
+  public_shape:
+  - pver
+  units: null
+  range: null
+  constraints: null
+  description: residual cloud condensation due to removal of excess supersat
+- name: prcio
+  role: output
+  fortran_type: real
+  dtype: float64
+  rank: 2
+  intent: out
+  native_shape:
+  - pcols
+  - pver
+  public_shape:
+  - pver
+  units: null
+  range: null
+  constraints: null
+  description: autoconversion of cloud ice to snow
+- name: praio
+  role: output
+  fortran_type: real
+  dtype: float64
+  rank: 2
+  intent: out
+  native_shape:
+  - pcols
+  - pver
+  public_shape:
+  - pver
+  units: null
+  range: null
+  constraints: null
+  description: accretion of cloud ice by snow
+- name: qireso
+  role: output
+  fortran_type: real
+  dtype: float64
+  rank: 2
+  intent: out
+  native_shape:
+  - pcols
+  - pver
+  public_shape:
+  - pver
+  units: null
+  range: null
+  constraints: null
+  description: residual ice deposition due to removal of excess supersat
+- name: mnuccro
+  role: output
+  fortran_type: real
+  dtype: float64
+  rank: 2
+  intent: out
+  native_shape:
+  - pcols
+  - pver
+  public_shape:
+  - pver
+  units: null
+  range: null
+  constraints: null
+  description: mixing ratio tendency due to heterogeneous freezing of rain to snow (1/s)
+- name: pracso
+  role: output
+  fortran_type: real
+  dtype: float64
+  rank: 2
+  intent: out
+  native_shape:
+  - pcols
+  - pver
+  public_shape:
+  - pver
+  units: null
+  range: null
+  constraints: null
+  description: mixing ratio tendency due to accretion of rain by snow (1/s)
+- name: meltsdt
+  role: output
+  fortran_type: real
+  dtype: float64
+  rank: 2
+  intent: out
+  native_shape:
+  - pcols
+  - pver
+  public_shape:
+  - pver
+  units: null
+  range: null
+  constraints: null
+  description: latent heating rate due to melting of snow (W/kg)
+- name: frzrdt
+  role: output
+  fortran_type: real
+  dtype: float64
+  rank: 2
+  intent: out
+  native_shape:
+  - pcols
+  - pver
+  public_shape:
+  - pver
+  units: null
+  range: null
+  constraints: null
+  description: latent heating rate due to homogeneous freezing of rain (W/kg)
+- name: mnuccdo
+  role: output
+  fortran_type: real
+  dtype: float64
+  rank: 2
+  intent: out
+  native_shape:
+  - pcols
+  - pver
+  public_shape:
+  - pver
+  units: null
+  range: null
+  constraints: null
+  description: mass tendency from ice nucleation
+- name: nrout
+  role: output
+  fortran_type: real
+  dtype: float64
+  rank: 2
+  intent: out
+  native_shape:
+  - pcols
+  - pver
+  public_shape:
+  - pver
+  units: null
+  range: null
+  constraints: null
+  description: rain number concentration (1/m3)
+- name: nsout
+  role: output
+  fortran_type: real
+  dtype: float64
+  rank: 2
+  intent: out
+  native_shape:
+  - pcols
+  - pver
+  public_shape:
+  - pver
+  units: null
+  range: null
+  constraints: null
+  description: snow number concentration (1/m3)
+- name: refl
+  role: output
+  fortran_type: real
+  dtype: float64
+  rank: 2
+  intent: out
+  native_shape:
+  - pcols
+  - pver
+  public_shape:
+  - pver
+  units: null
+  range: null
+  constraints: null
+  description: analytic radar reflectivity
+- name: arefl
+  role: output
+  fortran_type: real
+  dtype: float64
+  rank: 2
+  intent: out
+  native_shape:
+  - pcols
+  - pver
+  public_shape:
+  - pver
+  units: null
+  range: null
+  constraints: null
+  description: average reflectivity will zero points outside valid range
+- name: areflz
+  role: output
+  fortran_type: real
+  dtype: float64
+  rank: 2
+  intent: out
+  native_shape:
+  - pcols
+  - pver
+  public_shape:
+  - pver
+  units: null
+  range: null
+  constraints: null
+  description: average reflectivity in z
+- name: frefl
+  role: output
+  fortran_type: real
+  dtype: float64
+  rank: 2
+  intent: out
+  native_shape:
+  - pcols
+  - pver
+  public_shape:
+  - pver
+  units: null
+  range: null
+  constraints: null
+  description: REVIEW
+- name: csrfl
+  role: output
+  fortran_type: real
+  dtype: float64
+  rank: 2
+  intent: out
+  native_shape:
+  - pcols
+  - pver
+  public_shape:
+  - pver
+  units: null
+  range: null
+  constraints: null
+  description: cloudsat reflectivity
+- name: acsrfl
+  role: output
+  fortran_type: real
+  dtype: float64
+  rank: 2
+  intent: out
+  native_shape:
+  - pcols
+  - pver
+  public_shape:
+  - pver
+  units: null
+  range: null
+  constraints: null
+  description: cloudsat average
+- name: fcsrfl
+  role: output
+  fortran_type: real
+  dtype: float64
+  rank: 2
+  intent: out
+  native_shape:
+  - pcols
+  - pver
+  public_shape:
+  - pver
+  units: null
+  range: null
+  constraints: null
+  description: REVIEW
+- name: rercld
+  role: output
+  fortran_type: real
+  dtype: float64
+  rank: 2
+  intent: out
+  native_shape:
+  - pcols
+  - pver
+  public_shape:
+  - pver
+  units: null
+  range: null
+  constraints: null
+  description: effective radius calculation for rain + cloud
+- name: ncai
+  role: output
+  fortran_type: real
+  dtype: float64
+  rank: 2
+  intent: out
+  native_shape:
+  - pcols
+  - pver
+  public_shape:
+  - pver
+  units: null
+  range: null
+  constraints: null
+  description: output number conc of ice nuclei available (1/m3)
+- name: ncal
+  role: output
+  fortran_type: real
+  dtype: float64
+  rank: 2
+  intent: out
+  native_shape:
+  - pcols
+  - pver
+  public_shape:
+  - pver
+  units: null
+  range: null
+  constraints: null
+  description: output number conc of CCN (1/m3)
+- name: qrout2
+  role: output
+  fortran_type: real
+  dtype: float64
+  rank: 2
+  intent: out
+  native_shape:
+  - pcols
+  - pver
+  public_shape:
+  - pver
+  units: null
+  range: null
+  constraints: null
+  description: REVIEW
+- name: qsout2
+  role: output
+  fortran_type: real
+  dtype: float64
+  rank: 2
+  intent: out
+  native_shape:
+  - pcols
+  - pver
+  public_shape:
+  - pver
+  units: null
+  range: null
+  constraints: null
+  description: REVIEW
+- name: nrout2
+  role: output
+  fortran_type: real
+  dtype: float64
+  rank: 2
+  intent: out
+  native_shape:
+  - pcols
+  - pver
+  public_shape:
+  - pver
+  units: null
+  range: null
+  constraints: null
+  description: REVIEW
+- name: nsout2
+  role: output
+  fortran_type: real
+  dtype: float64
+  rank: 2
+  intent: out
+  native_shape:
+  - pcols
+  - pver
+  public_shape:
+  - pver
+  units: null
+  range: null
+  constraints: null
+  description: REVIEW
+- name: drout2
+  role: output
+  fortran_type: real
+  dtype: float64
+  rank: 2
+  intent: out
+  native_shape:
+  - pcols
+  - pver
+  public_shape:
+  - pver
+  units: null
+  range: null
+  constraints: null
+  description: mean rain particle diameter (m)
+- name: dsout2
+  role: output
+  fortran_type: real
+  dtype: float64
+  rank: 2
+  intent: out
+  native_shape:
+  - pcols
+  - pver
+  public_shape:
+  - pver
+  units: null
+  range: null
+  constraints: null
+  description: mean snow particle diameter (m)
+- name: freqs
+  role: output
+  fortran_type: real
+  dtype: float64
+  rank: 2
+  intent: out
+  native_shape:
+  - pcols
+  - pver
+  public_shape:
+  - pver
+  units: null
+  range: null
+  constraints: null
+  description: REVIEW
+- name: freqr
+  role: output
+  fortran_type: real
+  dtype: float64
+  rank: 2
+  intent: out
+  native_shape:
+  - pcols
+  - pver
+  public_shape:
+  - pver
+  units: null
+  range: null
+  constraints: null
+  description: REVIEW
+- name: nfice
+  role: output
+  fortran_type: real
+  dtype: float64
+  rank: 2
+  intent: out
+  native_shape:
+  - pcols
+  - pver
+  public_shape:
+  - pver
+  units: null
+  range: null
+  constraints: null
+  description: REVIEW
+- name: prer_evap
+  role: output
+  fortran_type: real
+  dtype: float64
+  rank: 2
+  intent: out
+  native_shape:
+  - pcols
+  - pver
+  public_shape:
+  - pver
+  units: null
+  range: null
+  constraints: null
+  description: REVIEW
+- name: do_cldice
+  role: input
+  fortran_type: logical
+  dtype: int32
+  rank: 0
+  intent: in
+  native_shape: []
+  carrier: logical
+  default: 1
+  public_shape: []
+  units: null
+  range: null
+  constraints: null
+  description: Prognosing cldice output arguments
+- name: errstring
+  role: output
+  fortran_type: character
+  dtype: int32
+  rank: 0
+  intent: out
+  native_shape: []
+  carrier: character
+  public_shape: []
+  units: null
+  range: null
+  constraints: null
+  description: Output status (non-blank for error return) Tendencies calculated by external schemes that
+    can replace MG's native process tendencies Used with CARMA cirrus microphysics (or similar external
+    microphysics model)
+- name: tnd_qsnow
+  role: input
+  fortran_type: real
+  dtype: float64
+  rank: 2
+  intent: in
+  native_shape:
+  - pcols
+  - pver
+  pointer: true
+  public_shape:
+  - pver
+  units: null
+  range: null
+  constraints: null
+  description: snow mass tendency (kg/kg/s)
+- name: tnd_nsnow
+  role: input
+  fortran_type: real
+  dtype: float64
+  rank: 2
+  intent: in
+  native_shape:
+  - pcols
+  - pver
+  pointer: true
+  public_shape:
+  - pver
+  units: null
+  range: null
+  constraints: null
+  description: snow number tendency (#/kg/s)
+- name: re_ice
+  role: input
+  fortran_type: real
+  dtype: float64
+  rank: 2
+  intent: in
+  native_shape:
+  - pcols
+  - pver
+  pointer: true
+  public_shape:
+  - pver
+  units: null
+  range: null
+  constraints: null
+  description: ice effective radius (m) From external ice nucleation
+- name: frzimm
+  role: input
+  fortran_type: real
+  dtype: float64
+  rank: 2
+  intent: in
+  native_shape:
+  - pcols
+  - pver
+  pointer: true
+  public_shape:
+  - pver
+  units: null
+  range: null
+  constraints: null
+  description: Number tendency due to immersion freezing (1/cm3)
+- name: frzcnt
+  role: input
+  fortran_type: real
+  dtype: float64
+  rank: 2
+  intent: in
+  native_shape:
+  - pcols
+  - pver
+  pointer: true
+  public_shape:
+  - pver
+  units: null
+  range: null
+  constraints: null
+  description: Number tendency due to contact freezing (1/cm3)
+- name: frzdep
+  role: input
+  fortran_type: real
+  dtype: float64
+  rank: 2
+  intent: in
+  native_shape:
+  - pcols
+  - pver
+  pointer: true
+  public_shape:
+  - pver
+  units: null
+  range: null
+  constraints: null
+  description: Number tendency due to deposition nucleation (1/cm3) Water tracer/isotopes
+- name: preo
+  role: output
+  fortran_type: real
+  dtype: float64
+  rank: 2
+  intent: out
+  native_shape:
+  - pcols
+  - pver
+  public_shape:
+  - pver
+  units: null
+  range: null
+  constraints: null
+  description: mass tendency from rain evaporation
+- name: prdso
+  role: output
+  fortran_type: real
+  dtype: float64
+  rank: 2
+  intent: out
+  native_shape:
+  - pcols
+  - pver
+  public_shape:
+  - pver
+  units: null
+  range: null
+  constraints: null
+  description: mass tendency from snow sublimation
+- name: frzro
+  role: output
+  fortran_type: real
+  dtype: float64
+  rank: 2
+  intent: out
+  native_shape:
+  - pcols
+  - pver
+  public_shape:
+  - pver
+  units: null
+  range: null
+  constraints: null
+  description: mass tendency from freezing of rain
+- name: meltso
+  role: output
+  fortran_type: real
+  dtype: float64
+  rank: 2
+  intent: out
+  native_shape:
+  - pcols
+  - pver
+  public_shape:
+  - pver
+  units: null
+  range: null
+  constraints: null
+  description: mass tendency from melting of snow
+- name: wtfc
+  role: output
+  fortran_type: real
+  dtype: float64
+  rank: 2
+  intent: out
+  native_shape:
+  - pcols
+  - pver
+  public_shape:
+  - pver
+  units: null
+  range: null
+  constraints: null
+  description: initial fall velocity of cloud liquid (?)
+- name: wtfi
+  role: output
+  fortran_type: real
+  dtype: float64
+  rank: 2
+  intent: out
+  native_shape:
+  - pcols
+  - pver
+  public_shape:
+  - pver
+  units: null
+  range: null
+  constraints: null
+  description: initial fall velocity of cloud ice (?)
+- name: wtprelat
+  role: output
+  fortran_type: real
+  dtype: float64
+  rank: 2
+  intent: out
+  native_shape:
+  - pcols
+  - pver
+  public_shape:
+  - pver
+  units: null
+  range: null
+  constraints: null
+  description: change in temperature due to pre-sed processes
+- name: wtpostlat
+  role: output
+  fortran_type: real
+  dtype: float64
+  rank: 2
+  intent: out
+  native_shape:
+  - pcols
+  - pver
+  public_shape:
+  - pver
+  units: null
+  range: null
+  constraints: null
+  description: change in temperature due to post-sed processes local workspace all units mks unless otherwise
+    stated Additional constants to help speed up code
+parameters: {}
+module_state:
+- symbol: micro_mg1_0_mp_ac_
+  dtype: float64
+  shape: []
+  write: snapshot
+- symbol: micro_mg1_0_mp_ai_
+  dtype: float64
+  shape: []
+  write: snapshot
+- symbol: micro_mg1_0_mp_aimm_
+  dtype: float64
+  shape: []
+  write: snapshot
+- symbol: micro_mg1_0_mp_ar_
+  dtype: float64
+  shape: []
+  write: snapshot
+- symbol: micro_mg1_0_mp_as_
+  dtype: float64
+  shape: []
+  write: snapshot
+- symbol: micro_mg1_0_mp_bc_
+  dtype: float64
+  shape: []
+  write: snapshot
+- symbol: micro_mg1_0_mp_bi_
+  dtype: float64
+  shape: []
+  write: snapshot
+- symbol: micro_mg1_0_mp_bimm_
+  dtype: float64
+  shape: []
+  write: snapshot
+- symbol: micro_mg1_0_mp_br_
+  dtype: float64
+  shape: []
+  write: snapshot
+- symbol: micro_mg1_0_mp_bs_
+  dtype: float64
+  shape: []
+  write: snapshot
+- symbol: micro_mg1_0_mp_ci_
+  dtype: float64
+  shape: []
+  write: snapshot
+- symbol: micro_mg1_0_mp_cons11_
+  dtype: float64
+  shape: []
+  write: snapshot
+- symbol: micro_mg1_0_mp_cons13_
+  dtype: float64
+  shape: []
+  write: snapshot
+- symbol: micro_mg1_0_mp_cons14_
+  dtype: float64
+  shape: []
+  write: snapshot
+- symbol: micro_mg1_0_mp_cons16_
+  dtype: float64
+  shape: []
+  write: snapshot
+- symbol: micro_mg1_0_mp_cons17_
+  dtype: float64
+  shape: []
+  write: snapshot
+- symbol: micro_mg1_0_mp_cons1_
+  dtype: float64
+  shape: []
+  write: snapshot
+- symbol: micro_mg1_0_mp_cons22_
+  dtype: float64
+  shape: []
+  write: snapshot
+- symbol: micro_mg1_0_mp_cons23_
+  dtype: float64
+  shape: []
+  write: snapshot
+- symbol: micro_mg1_0_mp_cons24_
+  dtype: float64
+  shape: []
+  write: snapshot
+- symbol: micro_mg1_0_mp_cons25_
+  dtype: float64
+  shape: []
+  write: snapshot
+- symbol: micro_mg1_0_mp_cons27_
+  dtype: float64
+  shape: []
+  write: snapshot
+- symbol: micro_mg1_0_mp_cons28_
+  dtype: float64
+  shape: []
+  write: snapshot
+- symbol: micro_mg1_0_mp_cons4_
+  dtype: float64
+  shape: []
+  write: snapshot
+- symbol: micro_mg1_0_mp_cons5_
+  dtype: float64
+  shape: []
+  write: snapshot
+- symbol: micro_mg1_0_mp_cons6_
+  dtype: float64
+  shape: []
+  write: snapshot
+- symbol: micro_mg1_0_mp_cons7_
+  dtype: float64
+  shape: []
+  write: snapshot
+- symbol: micro_mg1_0_mp_cons8_
+  dtype: float64
+  shape: []
+  write: snapshot
+- symbol: micro_mg1_0_mp_cpp_
+  dtype: float64
+  shape: []
+  write: snapshot
+- symbol: micro_mg1_0_mp_cr_
+  dtype: float64
+  shape: []
+  write: snapshot
+- symbol: micro_mg1_0_mp_cs_
+  dtype: float64
+  shape: []
+  write: snapshot
+- symbol: micro_mg1_0_mp_csmax_
+  dtype: float64
+  shape: []
+  write: snapshot
+- symbol: micro_mg1_0_mp_csmin_
+  dtype: float64
+  shape: []
+  write: snapshot
+- symbol: micro_mg1_0_mp_dcs_
+  dtype: float64
+  shape: []
+  write: snapshot
+- symbol: micro_mg1_0_mp_di_
+  dtype: float64
+  shape: []
+  write: snapshot
+- symbol: micro_mg1_0_mp_dr_
+  dtype: float64
+  shape: []
+  write: snapshot
+- symbol: micro_mg1_0_mp_ds_
+  dtype: float64
+  shape: []
+  write: snapshot
+- symbol: micro_mg1_0_mp_ecr_
+  dtype: float64
+  shape: []
+  write: snapshot
+- symbol: micro_mg1_0_mp_eii_
+  dtype: float64
+  shape: []
+  write: snapshot
+- symbol: micro_mg1_0_mp_f1r_
+  dtype: float64
+  shape: []
+  write: snapshot
+- symbol: micro_mg1_0_mp_f1s_
+  dtype: float64
+  shape: []
+  write: snapshot
+- symbol: micro_mg1_0_mp_f2r_
+  dtype: float64
+  shape: []
+  write: snapshot
+- symbol: micro_mg1_0_mp_f2s_
+  dtype: float64
+  shape: []
+  write: snapshot
+- symbol: micro_mg1_0_mp_g_
+  dtype: float64
+  shape: []
+  write: snapshot
+- symbol: micro_mg1_0_mp_lammaxi_
+  dtype: float64
+  shape: []
+  write: snapshot
+- symbol: micro_mg1_0_mp_lammaxr_
+  dtype: float64
+  shape: []
+  write: snapshot
+- symbol: micro_mg1_0_mp_lammaxs_
+  dtype: float64
+  shape: []
+  write: snapshot
+- symbol: micro_mg1_0_mp_lammini_
+  dtype: float64
+  shape: []
+  write: snapshot
+- symbol: micro_mg1_0_mp_lamminr_
+  dtype: float64
+  shape: []
+  write: snapshot
+- symbol: micro_mg1_0_mp_lammins_
+  dtype: float64
+  shape: []
+  write: snapshot
+- symbol: micro_mg1_0_mp_mi0_
+  dtype: float64
+  shape: []
+  write: snapshot
+- symbol: micro_mg1_0_mp_micro_mg_berg_eff_factor_
+  dtype: float64
+  shape: []
+  write: snapshot
+- symbol: micro_mg1_0_mp_mindbz_
+  dtype: float64
+  shape: []
+  write: snapshot
+- symbol: micro_mg1_0_mp_minrefl_
+  dtype: float64
+  shape: []
+  write: snapshot
+- symbol: micro_mg1_0_mp_pi_
+  dtype: float64
+  shape: []
+  write: snapshot
+- symbol: micro_mg1_0_mp_qsmall_
+  dtype: float64
+  shape: []
+  write: snapshot
+- symbol: micro_mg1_0_mp_r_
+  dtype: float64
+  shape: []
+  write: snapshot
+- symbol: micro_mg1_0_mp_rhmini_
+  dtype: float64
+  shape: []
+  write: snapshot
+- symbol: micro_mg1_0_mp_rhoi_
+  dtype: float64
+  shape: []
+  write: snapshot
+- symbol: micro_mg1_0_mp_rhosn_
+  dtype: float64
+  shape: []
+  write: snapshot
+- symbol: micro_mg1_0_mp_rhosu_
+  dtype: float64
+  shape: []
+  write: snapshot
+- symbol: micro_mg1_0_mp_rhow_
+  dtype: float64
+  shape: []
+  write: snapshot
+- symbol: micro_mg1_0_mp_rin_
+  dtype: float64
+  shape: []
+  write: snapshot
+- symbol: micro_mg1_0_mp_rv_
+  dtype: float64
+  shape: []
+  write: snapshot
+- symbol: micro_mg1_0_mp_tmax_fsnow_
+  dtype: float64
+  shape: []
+  write: snapshot
+- symbol: micro_mg1_0_mp_tmelt_
+  dtype: float64
+  shape: []
+  write: snapshot
+- symbol: micro_mg1_0_mp_tmin_fsnow_
+  dtype: float64
+  shape: []
+  write: snapshot
+- symbol: micro_mg1_0_mp_tt0_
+  dtype: float64
+  shape: []
+  write: snapshot
+- symbol: micro_mg1_0_mp_use_hetfrz_classnuc_
+  dtype: int32
+  shape: []
+  write: snapshot
+- symbol: micro_mg1_0_mp_xlf_
+  dtype: float64
+  shape: []
+  write: snapshot
+- symbol: micro_mg1_0_mp_xxls_
+  dtype: float64
+  shape: []
+  write: snapshot
+- symbol: micro_mg1_0_mp_xxlv_
+  dtype: float64
+  shape: []
+  write: snapshot
+initializers:
+- wv_saturation_mp_wv_sat_init_
+image:
+  archive_members:
+  - micro_mg1_0.o
+  - wv_sat_methods.o
+  - wv_saturation.o
+  - phys_control.o
+  - physconst.o
+  - ppgrid.o
+  - cam_logfile.o
+  - error_messages.o
+  - cam_abortutils.o
+  - member: shr_spfn_mod.o
+    archive: csm_share
+  stubs:
+    inert: []
+    fail_closed: []
+    abort:
+    - shr_sys_mod_mp_shr_sys_abort_
+  base_address: 1342177280
