@@ -26,8 +26,99 @@ overhead is the cost of control, not of a different answer. See
 | **1 model year** | **+10.2%** | **+10.3%** |
 | **5 model years** | **+8.7%** | **+8.2%** |
 
+That is the cost of Python owning the workflow.  Owning one *stage* as well —
+`tphysbc` stage 7 as a Python class — costs a further **+40.4% of time** and
+**+4.4% of memory** over freeCAM, measured over a model month and still
+bit-for-bit; see [the section below](#what-the-python-cloud-macromicrophysics-stage-costs).
+
 Overhead **does not grow with integration length** — it decreases slightly,
 because the fixed Python startup cost is amortised over more steps.
+
+---
+
+## What the Python cloud macro/microphysics stage costs
+
+The numbers above are the cost of Python owning the *workflow*.  This
+section is the cost of Python owning a *stage*: `tphysbc` stage 7, the
+macro/microphysics action, as `CloudMacroMicrophysics` — the substep loop,
+both drivers and the aerosol activation walked statement for statement,
+with every floating-point number still the oracle's.
+
+Three runs of the same PI-atm month (1,488 steps, 512 ranks, the recorded
+one-month boundary), all on 2026-08-27:
+
+| Run | PBS job | What Python owns |
+| --- | --- | --- |
+| original Fortran | `7256750` | nothing |
+| freeCAM | `7256751` | the workflow, the clock, the coupling |
+| freeCAM + Python stage | `7256752` | the above, and stage 7's control flow |
+
+### Correctness first
+
+All three are bit-for-bit with the oracle month over all 18 CAM history and
+restart files — the Fortran rerun, freeCAM, and freeCAM with the stage in
+Python.  The overhead below is the cost of control, not of a different
+answer.
+
+### Time
+
+Compared on the integration loop: the Fortran model's `CPL:ATM_RUN` — its
+atmosphere inside the coupled loop — against freeCAM's `advance_seconds`.
+
+| Run | 1,488 steps | vs Fortran | vs freeCAM |
+| --- | ---: | ---: | ---: |
+| original Fortran | 379.43 s | — | — |
+| freeCAM | 402.51 s | **+6.1%** (+23.1 s) | — |
+| freeCAM + Python stage | 565.31 s | **+49.0%** (+185.9 s) | **+40.4%** (+162.8 s) |
+
+The stage itself costs **109 ms per step per rank**, against ≈ 39 ms for the
+Fortran stage it replaces.  Throughput falls from 18.23 to 12.98 SYPD.
+
+Where that time goes, from the Gate M-4 profile (per step per rank):
+
+| | Total | Lifted kernels | Handle calls | Copies |
+| --- | ---: | ---: | ---: | ---: |
+| whole stage | 152.9 ms | | | |
+| macrophysics walk | 34.0 ms | 20.2 | 5.2 | 8.6 |
+| microphysics walk | 32.7 ms | 16.3 | 14.1 | 2.3 |
+| aerosol walk | 8.7 ms | 3.6 | 4.6 | 0.6 |
+
+The rest is the glue, the physics-buffer reads and the hundred-odd history
+writes.  Note that the profile is measured with the timer on every call, so
+it over-reads the total; the 109 ms above is the timed run's own figure.
+The cost is per *call*, not per FLOP: about 700 crossings of the Python /
+Fortran boundary per chunk per step, each cheap and none of them numerical.
+
+### Memory
+
+| Run | PBS high-water | vs Fortran |
+| --- | ---: | ---: |
+| original Fortran | 182.85 GB | — |
+| freeCAM | 215.46 GB | +17.8% |
+| freeCAM + Python stage | 224.95 GB | +23.0% |
+
+The stage adds **+4.4% (9.5 GB)** over freeCAM: about 18 MB per rank, which
+is the stage's scratch — one array per kernel field — plus the standalone
+handles' views.  The driver's own cross-rank sampling agrees: peak total PSS
+197.02 GB → 206.27 GB, **+4.70%**, and peak per-rank RSS 797 MB → 862 MB.
+
+These month figures are not comparable with the year figures above: this
+comparison replays a recorded boundary (14 GB of files read per rank set)
+while the year runs coupled live components, so the freeCAM baseline sits
+higher here than the +10.3% measured for the online year.
+
+Evidence:
+[`pi_cam_stage_python_1month_overhead.json`](pi_cam_stage_python_1month_overhead.json),
+[`pi_cam_1month_stage_fortran_performance.json`](pi_cam_1month_stage_fortran_performance.json),
+[`pi_cam_1month_stage_python_performance.json`](pi_cam_1month_stage_python_performance.json),
+and the two bfb records beside them.  Reproduce with
+
+```bash
+qsub -A <account> validation/jobs/pi_atm_fortran_1month_performance.pbs
+qsub -A <account> -v PYCAM_STAGE_FORM=fortran validation/jobs/pi_cam_stage_python_1month_performance.pbs
+qsub -A <account> -v PYCAM_STAGE_FORM=python  validation/jobs/pi_cam_stage_python_1month_performance.pbs
+tools/report_pi_cam_stage_overhead.py --fortran-report ... --python-report ...
+```
 
 ---
 
@@ -177,6 +268,9 @@ instant of the write and are expected to differ.
 | `7149429` | `freecam-monthly-1y` | freeCAM, `nhtfrq=0` | 201.24 GB | 1.56 h | 2026-08-18 |
 | `7149430` | `freecam-monthly-5y` | freeCAM, `nhtfrq=0` | 206.89 GB | 7.51 h | 2026-08-19 |
 | `7126501` | `freecam-online-5y` | freeCAM **before** memory fix | 438.48 GB | 9.40 h | 2026-08-17 |
+| `7256750` | `fortran-1month` | Fortran baseline, replay month | 182.85 GB | 0.14 h | 2026-08-27 |
+| `7256751` | `freecam-stage-1month` | freeCAM, stage 7 in Fortran | 215.46 GB | 0.12 h | 2026-08-27 |
+| `7256752` | `freecam-stage-1month` | freeCAM, stage 7 in Python | 224.95 GB | 0.18 h | 2026-08-27 |
 
 The memory and elapsed columns are PBS accounting values. `qhist` searches
 only the current day's log by default, so retrieving them again requires the
@@ -185,6 +279,7 @@ period flag with the end dates above:
 ```bash
 qhist -j 7113832,7126500,7126501,7149358,7149359,7149429,7149430 \
       -p 20260813-20260819 -w
+qhist -j 7256750,7256751,7256752 -p 20260827-20260827 -w
 ```
 
 ## Evidence
@@ -195,6 +290,10 @@ qhist -j 7113832,7126500,7126501,7149358,7149359,7149429,7149430 \
   [`pi_cam_monthly_1year_bfb.json`](pi_cam_monthly_1year_bfb.json)
 - [`pi_cam_monthly_5year.json`](pi_cam_monthly_5year.json) ·
   [`pi_cam_monthly_5year_bfb.json`](pi_cam_monthly_5year_bfb.json)
+- the Python stage over a month:
+  [`pi_cam_stage_python_1month_overhead.json`](pi_cam_stage_python_1month_overhead.json) ·
+  [`pi_cam_1month_stage_fortran_performance.json`](pi_cam_1month_stage_fortran_performance.json) ·
+  [`pi_cam_1month_stage_python_performance.json`](pi_cam_1month_stage_python_performance.json)
 
 Fortran baseline timing is read from `timing/cesm_timing_stats` in
 `/glade/derecho/scratch/$USER/freeCAM/PI-cam/original-fortran-{one,five}-year-reference/run`.

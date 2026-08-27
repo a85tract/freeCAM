@@ -2,7 +2,7 @@
 # Fresh original-Fortran performance sample for the FreeCAM month comparison.
 # Submit with: qsub -q develop -A <account> validation/jobs/pi_atm_fortran_1month_performance.pbs
 #PBS -N fortran-1month
-#PBS -q cpudev
+#PBS -q develop
 #PBS -l select=4:ncpus=64:mpiprocs=128:ompthreads=1:mem=64GB
 #PBS -l walltime=00:30:00
 #PBS -j oe

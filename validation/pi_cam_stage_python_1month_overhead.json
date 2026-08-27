@@ -1,0 +1,96 @@
+{
+  "bfb": {
+    "freecam_stage_fortran": true,
+    "freecam_stage_python": true
+  },
+  "memory_accounted_by_pbs": {
+    "fortran_model": {
+      "available": true,
+      "cpu_hours": 199.96,
+      "elapsed_hours": 0.14,
+      "job": "7256750",
+      "used_memory_gb": 182.85
+    },
+    "freecam_stage_fortran": {
+      "available": true,
+      "cpu_hours": 199.95,
+      "elapsed_hours": 0.12,
+      "job": "7256751",
+      "used_memory_gb": 215.46
+    },
+    "freecam_stage_python": {
+      "available": true,
+      "cpu_hours": 199.96,
+      "elapsed_hours": 0.18,
+      "job": "7256752",
+      "used_memory_gb": 224.95
+    },
+    "overhead_percent": {
+      "freecam_stage_fortran": 17.834290401968843,
+      "freecam_stage_python": 23.024336888159702
+    }
+  },
+  "memory_sampled_by_the_driver": {
+    "freecam_stage_fortran": {
+      "available": true,
+      "initialized_total_pss_gb": 194.79686546325684,
+      "peak_label": "step_1488",
+      "peak_rank_rss_mb": 796.94921875,
+      "peak_total_pss_gb": 197.01590728759766,
+      "peak_total_rss_gb": 239.6925277709961,
+      "rank_count": 512,
+      "sample_every_steps": 200,
+      "samples": 13
+    },
+    "freecam_stage_python": {
+      "available": true,
+      "initialized_total_pss_gb": 194.83559703826904,
+      "peak_label": "step_1488",
+      "peak_rank_rss_mb": 861.9140625,
+      "peak_total_pss_gb": 206.27269840240479,
+      "peak_total_rss_gb": 248.94337844848633,
+      "rank_count": 512,
+      "sample_every_steps": 200,
+      "samples": 13
+    },
+    "stage_over_freecam": {
+      "absolute_gb": 9.256791114807129,
+      "overhead_percent": 4.698499345687024,
+      "peak_total_pss_gb": 206.27269840240479,
+      "reference_gb": 197.01590728759766
+    }
+  },
+  "mpi_ranks": 512,
+  "result": "passed",
+  "schema_version": 1,
+  "simulated_days": 31.0,
+  "steps": 1488,
+  "time": {
+    "freecam_stage_fortran_vs_original": {
+      "absolute_seconds": 23.081177411,
+      "overhead_percent": 6.0830728656894095,
+      "ratio": 1.060830728656894,
+      "reference_seconds": 379.432861,
+      "seconds": 402.514038411
+    },
+    "freecam_stage_python_vs_freecam": {
+      "absolute_seconds": 162.79513755400012,
+      "overhead_percent": 40.4445862799381,
+      "ratio": 1.404445862799381,
+      "reference_seconds": 402.514038411,
+      "seconds": 565.3091759650001
+    },
+    "freecam_stage_python_vs_original": {
+      "absolute_seconds": 185.87631496500012,
+      "overhead_percent": 48.987932799262765,
+      "ratio": 1.4898793279926277,
+      "reference_seconds": 379.432861,
+      "seconds": 565.3091759650001
+    },
+    "oracle_month_atmosphere_seconds": 403.634491,
+    "original_fortran_atmosphere_seconds": 379.432861,
+    "original_fortran_reference": "a Fortran month run the same day",
+    "stage_cost_ms_per_step": 109.40533437768826
+  },
+  "what": "the cost of running tphysbc stage 7 as a Python class over a model month"
+}

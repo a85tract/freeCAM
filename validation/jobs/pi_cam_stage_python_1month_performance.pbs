@@ -1,0 +1,105 @@
+#!/bin/bash
+# What the Python cloud macro/microphysics stage costs over a model month.
+#
+#   PYCAM_STAGE_FORM=fortran   freeCAM with tphysbc stage 7 in Fortran (the
+#                              baseline: Python owns the workflow, not the stage)
+#   PYCAM_STAGE_FORM=python    the same run with CloudMacroMicrophysics in the
+#                              action's place -- all three sub-walks, every FLOP
+#                              still the oracle's
+#
+# Both forms integrate the same 1488 steps of the PI-atm month from the same
+# recorded boundary, sample memory as they go, and are compared byte for byte
+# with the original Fortran month.  The pair is the measurement; the original
+# Fortran timing comes from the oracle month's GPTL file, and its memory from
+# PBS accounting for validation/jobs/pi_atm_fortran_1month_performance.pbs.
+#
+# Submit with: qsub -A <account> -v PYCAM_STAGE_FORM=python \
+#   validation/jobs/pi_cam_stage_python_1month_performance.pbs
+
+#PBS -N freecam-stage-1month
+#PBS -q develop
+#PBS -l select=4:ncpus=64:mpiprocs=128:ompthreads=1:mem=64GB
+#PBS -l walltime=00:40:00
+#PBS -j oe
+#PBS -o /glade/work/ruitong/freeCAM/logs/
+#PBS -V
+
+set -euo pipefail
+
+repo=/glade/work/$USER/freeCAM
+python=${repo}/.venv/bin/python
+case_root=/glade/work/$USER/CESM_cases/f.e13.F1850C5.ne16_g16.icesm131_ihesp.PI-cam-oracle.50step
+oracle_run=/glade/derecho/scratch/$USER/pyCESM/PI-atm/oracle-1month/run
+boundary=/glade/derecho/scratch/$USER/pyCAM/PI-cam/nonpic-boundary-capture-1month/boundary/replay
+form=${PYCAM_STAGE_FORM:-python}
+root=/glade/derecho/scratch/$USER/freeCAM/PI-cam/stage-month-${form}-${PBS_JOBID}
+run_dir=${root}/run
+summary=${root}/freecam-summary.json
+bfb=${root}/bfb.json
+report=${root}/performance-and-bfb.json
+config=${repo}/configs/pi_cam_icesm131_1month.yaml
+fortran_timing=${oracle_run}/timing/cesm_timing.000
+
+extra=""
+if [[ "${form}" == "python" ]]; then
+  extra="--cloud-macro-micro-python"
+fi
+
+source "${case_root}/.env_mach_specific.sh" >/dev/null 2>&1
+mpi_root=${CRAY_MPICH_DIR:-/opt/cray/pe/mpich/8.1.25/ofi/intel/19.0}
+export LD_LIBRARY_PATH="${mpi_root}/lib-abi-mpich:${mpi_root}/lib:${LD_LIBRARY_PATH:-}"
+export LD_PRELOAD=/glade/u/apps/common/23.04/spack/opt/spack/intel-oneapi-compilers/2023.0.0/compiler/2023.0.0/linux/compiler/lib/intel64_lin/libimf.so${LD_PRELOAD:+:${LD_PRELOAD}}
+export PYTHONPATH=${repo}/src
+export OMP_NUM_THREADS=1
+export OMP_STACKSIZE=64M
+export FI_CXI_RX_MATCH_MODE=hybrid
+export FI_MR_CACHE_MONITOR=memhooks
+export MPICH_MPIIO_HINTS='*:romio_cb_read=enable:romio_cb_write=enable:striping_factor=24'
+# No stage profiler here: it times every handle call, and this run is the
+# timing.
+
+mkdir -p "${run_dir}"
+rsync -a \
+  --exclude '*.cam.*.nc' --exclude '*.clm2.*.nc' --exclude '*.cice.*.nc' \
+  --exclude '*.cpl.*.nc' --exclude '*.rtm.*.nc' --exclude '*.log.*' \
+  --exclude 'rpointer.*' --exclude 'timing/' \
+  "${oracle_run}/" "${run_dir}/"
+mkdir -p "${run_dir}/timing/checkpoints"
+
+cd "${repo}"
+mpiexec --label -n 512 "${python}" -m freecam.pi_cam.cli \
+  --config "${config}" \
+  --boundary "${boundary}" \
+  --run-dir "${run_dir}" \
+  ${extra} \
+  --steps 1488 \
+  --memory-sample-every 200 \
+  --summary "${summary}" \
+  > "${run_dir}/freecam.log" 2>&1
+
+"${python}" tools/verify_pi_cam.py \
+  --reference "${oracle_run}" \
+  --candidate "${run_dir}" \
+  --output "${bfb}"
+
+"${python}" tools/report_pi_cam_month.py \
+  --freecam-summary "${summary}" \
+  --bfb "${bfb}" \
+  --fortran-timing "${fortran_timing}" \
+  --config "${config}" \
+  --output "${report}"
+
+cp "${summary}" "validation/pi_cam_1month_stage_${form}.json"
+cp "${bfb}" "validation/pi_cam_1month_stage_${form}_vs_oracle_bfb.json"
+cp "${report}" "validation/pi_cam_1month_stage_${form}_performance.json"
+
+"${python}" - <<PY
+import json
+report = json.load(open("${report}"))
+print("form: ${form}")
+print("  bfb:", report["bfb"]["bfb"], "over", report["bfb"]["compared_files"], "files")
+print("  advance:", round(report["freecam_seconds"]["advance"], 2), "s",
+      "| total:", round(report["freecam_seconds"]["total"], 2), "s")
+print("  fortran atmosphere:", round(report["original_fortran_seconds"]["atmosphere_inside_coupled_loop"], 2), "s")
+PY
+echo "run: ${run_dir}"
