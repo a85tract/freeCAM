@@ -445,3 +445,52 @@ def test_a_service_the_stage_never_declared_is_refused_by_name() -> None:
         services.state_copy(10)
     with pytest.raises(PICAMConfigurationError, match="declares no 'update' entry"):
         services.update(10, 1800.0)
+
+
+# -- profiling -------------------------------------------------------------------
+
+
+def test_the_profile_times_every_entry_kernel_and_tend_by_name(widget, tmp_path, monkeypatch) -> None:
+    """Where a stage's time goes is a question the gate cannot answer -- it
+    sees one region -- so the runtime can be asked to time each handle entry,
+    each kernel and its copies, and each trace hash under its own key."""
+
+    monkeypatch.setenv("FREECAM_WIDGET_TRACE", str(tmp_path / "trace"))
+    monkeypatch.setenv("FREECAM_WIDGET_PROFILE", str(tmp_path / "profile"))
+
+    class Profiled(Widget):
+        PROFILE_ENV = "FREECAM_WIDGET_PROFILE"
+
+    stage = Profiled()
+    stage.tend(None, _Context(widget))
+    files = list((tmp_path / "profile").glob("widget_profile.rank-*.json"))
+    assert len(files) == 1
+    report = json.loads(files[0].read_text())
+    assert report["rank"] == 2
+    seconds, calls = report["seconds"], report["calls"]
+    # the whole walk, and one region per chunk
+    assert calls["tend"] == 1 and calls["tend_chunk"] == 2
+    # every handle entry the walk used, under its own name
+    for entry in ("entry:view", "entry:outfld", "entry:set_owner", "entry:bind_hosts"):
+        assert entry in calls, entry
+    assert calls["entry:view"] == 2 and calls["entry:outfld"] == 2
+    # the kernel, split into its copies and its run
+    for key in ("kernel-copy-in:widget_step", "kernel-run:widget_step",
+                "kernel-copy-out:widget_step"):
+        assert calls[key] == 2, key
+    # the trace's hashing and its write, separately
+    assert calls["trace-hash:widget_step"] == 4      # before and after, per chunk
+    assert calls["trace-write:widget_step"] == 2
+    assert all(v >= 0.0 for v in seconds.values())
+    # the totals are ordered so the biggest cost reads first
+    assert list(seconds) == sorted(seconds, key=lambda k: -seconds[k])
+
+
+def test_with_profiling_off_nothing_is_timed_and_nothing_is_written(widget, tmp_path, monkeypatch) -> None:
+    monkeypatch.delenv("FREECAM_WIDGET_PROFILE", raising=False)
+    stage = Widget()
+    stage.tend(None, _Context(widget))
+    from freecam.physics.stage import _NoProfile
+
+    assert isinstance(stage.runtime(widget).profile, _NoProfile)
+    assert not list(tmp_path.glob("*profile*"))

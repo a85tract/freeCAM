@@ -252,6 +252,7 @@ class Macrophysics(NativeStage):
     PREFIX = "macro"
     PROCESS_NAME = "macro_tend"
     TRACE_ENV = "FREECAM_MACRO_TRACE"
+    PROFILE_ENV = "FREECAM_MACRO_PROFILE"
 
     KERNELS = KERNELS
     #: cldfrc_fice comes from the catalog, so its fields are named after

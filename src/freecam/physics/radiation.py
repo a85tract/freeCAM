@@ -419,6 +419,7 @@ class Radiation(NativeStage):
     PREFIX = "rad"
     PROCESS_NAME = "rad_tend"
     TRACE_ENV = "FREECAM_RAD_TRACE"
+    PROFILE_ENV = "FREECAM_RAD_PROFILE"
 
     KERNELS = KERNELS
     SWAPPABLE = (SW, LW)

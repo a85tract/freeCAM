@@ -87,6 +87,81 @@ PTEND_ENTRIES: dict[str, tuple[str, list | None, bool]] = {
 HOST_ENTRIES: dict[str, tuple[str, list | None, bool]] = {**CORE_ENTRIES, **PTEND_ENTRIES}
 
 
+class StageProfile:
+    """Where a Python-driven stage's time goes, by name, on this rank.
+
+    On when the stage's ``PROFILE_ENV`` names a directory.  Every bound
+    handle entry, every direct-kernel run and its copies, every trace hash
+    and every ``tend`` is timed under its own key; ``tend`` writes the totals
+    to ``<dir>/<prefix>_profile.rank-<pid>.json`` after each call, so a run
+    that aborts still leaves what it measured.  Wall-clock only, no
+    arithmetic on model values, nothing on the path when it is off.
+    """
+
+    def __init__(self, directory: Path, prefix: str) -> None:
+        import os
+
+        directory.mkdir(parents=True, exist_ok=True)
+        self.path = directory / f"{prefix}_profile.rank-{os.getpid()}.json"
+        self.seconds: dict[str, float] = {}
+        self.calls: dict[str, int] = {}
+
+    def add(self, key: str, seconds: float) -> None:
+        self.seconds[key] = self.seconds.get(key, 0.0) + seconds
+        self.calls[key] = self.calls.get(key, 0) + 1
+
+    def wrap(self, key: str, function):
+        import time
+
+        def timed(*arguments):
+            started = time.perf_counter()
+            try:
+                return function(*arguments)
+            finally:
+                self.add(key, time.perf_counter() - started)
+        return timed
+
+    class _Region:
+        def __init__(self, profile, key):
+            self.profile, self.key = profile, key
+
+        def __enter__(self):
+            import time
+
+            self.started = time.perf_counter()
+
+        def __exit__(self, *_):
+            import time
+
+            self.profile.add(self.key, time.perf_counter() - self.started)
+
+    def region(self, key: str) -> "_Region":
+        return self._Region(self, key)
+
+    def write(self, rank: int) -> None:
+        self.path.write_text(json.dumps({
+            "rank": rank,
+            "seconds": dict(sorted(self.seconds.items(), key=lambda kv: -kv[1])),
+            "calls": self.calls,
+        }, indent=1))
+
+
+class _NoProfile:
+    """The profiler when profiling is off: every region is free."""
+
+    class _Region:
+        def __enter__(self): pass
+        def __exit__(self, *_): pass
+
+    _region = _Region()
+
+    def region(self, key: str):
+        return self._region
+
+    def add(self, key: str, seconds: float) -> None:
+        pass
+
+
 def check(status: int, what: str) -> None:
     """A non-zero status from a handle entry is a refusal, never a warning."""
 
@@ -126,12 +201,15 @@ class HostEntries:
 
     TABLE: dict[str, tuple[str, list | None, bool]] = HOST_ENTRIES
 
-    def __init__(self, library: Any, prefix: str) -> None:
+    def __init__(self, library: Any, prefix: str, *, profile: "StageProfile | None" = None) -> None:
         self.library = library
         self.prefix = prefix
+        self.profile = profile
         for attribute, (template, argtypes, optional) in self.TABLE.items():
-            setattr(self, attribute,
-                    self._bind(template.format(prefix=prefix), argtypes, optional=optional))
+            bound = self._bind(template.format(prefix=prefix), argtypes, optional=optional)
+            if bound is not None and profile is not None:
+                bound = profile.wrap(f"entry:{attribute}", bound)
+            setattr(self, attribute, bound)
 
     def _bind(self, name: str, argtypes: list | None, *, optional: bool = False):
         try:
@@ -258,8 +336,12 @@ class StageRuntime:
         if directory:
             Path(directory).mkdir(parents=True, exist_ok=True)
             self.trace = open(Path(directory) / f"{stage.PREFIX}_trace.rank-{os.getpid()}.jsonl", "a")
+        directory = os.environ.get(stage.PROFILE_ENV)
+        self.profile = StageProfile(Path(directory), stage.PREFIX) if directory else _NoProfile()
         library = native.library
-        self.entries = stage.entries_class(library, stage.PREFIX)
+        self.entries = stage.entries_class(
+            library, stage.PREFIX,
+            profile=self.profile if isinstance(self.profile, StageProfile) else None)
         check(self.entries.bind_hosts(), f"pycam_{stage.PREFIX}_bind_hosts_v1")
         dims = native.pool.dimensions
         self.pcols, self.pver, self.pverp, self.pcnst = (
@@ -360,19 +442,22 @@ class StageRuntime:
         arrays: dict[str, np.ndarray] = {}
         inverse = {} if fields is None else {field: local for local, field in fields.items()}
         prefix = f"{self.stage.PREFIX}."
-        for argument in self.descriptors[name].arguments:
-            field = argument.field
-            local = field.removeprefix(prefix) if fields is None else inverse[field]
-            scratch = self.scratch[local] if local in self.scratch else self._scratch_for(argument, local)
-            value = inputs.get(local)
-            if value is not None:
-                self._copy_in(scratch, value)
-            arrays[field] = scratch
-        self.native.run_kernel(name, arrays)
-        for local, target in outputs.items():
-            if target is None:
-                continue
-            self._copy_out(target, self.scratch[local], ncol)
+        with self.profile.region(f"kernel-copy-in:{name}"):
+            for argument in self.descriptors[name].arguments:
+                field = argument.field
+                local = field.removeprefix(prefix) if fields is None else inverse[field]
+                scratch = self.scratch[local] if local in self.scratch else self._scratch_for(argument, local)
+                value = inputs.get(local)
+                if value is not None:
+                    self._copy_in(scratch, value)
+                arrays[field] = scratch
+        with self.profile.region(f"kernel-run:{name}"):
+            self.native.run_kernel(name, arrays)
+        with self.profile.region(f"kernel-copy-out:{name}"):
+            for local, target in outputs.items():
+                if target is None:
+                    continue
+                self._copy_out(target, self.scratch[local], ncol)
 
     def swappable_kernel(self, name: str, inputs: Mapping[str, Any], *,
                          outputs: Mapping[str, np.ndarray], ncol: int, lchnk: int, dt: float,
@@ -400,8 +485,9 @@ class StageRuntime:
         if kernel is None:
             kernel = self.stage.kernels.get(name)
         trace = self.trace
-        before = ({key: lane_sha256(np.asarray(value), ncol) for key, value in inputs.items()}
-                  if trace is not None else None)
+        with self.profile.region(f"trace-hash:{name}"):
+            before = ({key: lane_sha256(np.asarray(value), ncol) for key, value in inputs.items()}
+                      if trace is not None else None)
         if kernel is None:
             if original is not None:
                 original()
@@ -420,12 +506,14 @@ class StageRuntime:
             for key, target in outputs.items():
                 target[:ncol, ...] = np.asarray(answer[key], dtype=np.float64)
         if trace is not None:
-            after = {key: lane_sha256(np.asarray(value), ncol) for key, value in outputs.items()}
-            trace.write(json.dumps({
+            with self.profile.region(f"trace-hash:{name}"):
+                after = {key: lane_sha256(np.asarray(value), ncol) for key, value in outputs.items()}
+            with self.profile.region(f"trace-write:{name}"):
+              trace.write(json.dumps({
                 "mpi_rank": self.rank, "lchnk": lchnk, "nstep": self.nstep, "ncol": ncol,
                 "dt": dt, "kernel": name, "replaced": kernel is not None,
                 "before": before, "after": after}) + "\n")
-            trace.flush()
+              trace.flush()
 
     # -- exact moves ---------------------------------------------------------
 
@@ -505,6 +593,9 @@ class NativeStage:
 
     DESCRIPTORS = DESCRIPTORS
     TRACE_ENV = "FREECAM_STAGE_TRACE"
+    #: Names a directory to write per-rank timing of every handle entry,
+    #: kernel and trace hash into; unset, nothing is timed.
+    PROFILE_ENV = "FREECAM_STAGE_PROFILE"
     entries_class = HostEntries
     services_class = HostServices
 
@@ -618,12 +709,16 @@ class NativeStage:
         runtime.rank = int(context.rank)
         runtime.nstep = nstep
         self.calls = []
-        for index, (lchnk, ncol) in enumerate(zip(*native.chunks)):
-            self.tend_chunk(runtime, int(lchnk), int(ncol), index, dt, nstep)
+        with runtime.profile.region("tend"):
+            for index, (lchnk, ncol) in enumerate(zip(*native.chunks)):
+                with runtime.profile.region("tend_chunk"):
+                    self.tend_chunk(runtime, int(lchnk), int(ncol), index, dt, nstep)
+        if isinstance(runtime.profile, StageProfile):
+            runtime.profile.write(runtime.rank)
 
 
 __all__ = [
     "CORE_ENTRIES", "DESCRIPTORS", "HOST_ENTRIES", "HostEntries", "HostServices",
-    "Local", "NativeStage", "PTEND_ENTRIES", "StageRuntime", "as_view", "check",
-    "fortran", "pointer_of",
+    "Local", "NativeStage", "PTEND_ENTRIES", "StageProfile", "StageRuntime", "as_view",
+    "check", "fortran", "pointer_of",
 ]

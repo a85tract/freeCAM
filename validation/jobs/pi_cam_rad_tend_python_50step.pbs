@@ -41,6 +41,8 @@ bfb_output=${PYCAM_BFB_OUTPUT:-validation/pi_cam_rad_tend_python_vs_oracle_50ste
 capture_bundle=${PYCAM_CAPTURE_BUNDLE:-}
 trace_output=${PYCAM_TRACE_OUTPUT:-validation/pi_cam_rad_tend_python_trace_vs_capture.json}
 export FREECAM_RAD_TRACE=${run_dir}/rad_trace
+# Per-rank timing of every handle entry, kernel and trace hash by name.
+export FREECAM_RAD_PROFILE=${run_dir}/rad_profile
 
 source "${case_root}/.env_mach_specific.sh" >/dev/null 2>&1
 mpi_root=${CRAY_MPICH_DIR:-/opt/cray/pe/mpich/8.1.25/ofi/intel/19.0}
@@ -88,4 +90,7 @@ if [[ -n "${capture_bundle}" ]]; then
 else
   echo "no radiation capture bundle given; the bit-for-bit comparison stands alone"
 fi
+echo "--- where the Python stage's time went (mean per rank) ---"
+"${python}" tools/summarize_stage_profile.py "${run_dir}/rad_profile" --prefix rad --top 25 \
+  --output "${run_dir}/rad_profile_summary.json" || true
 exit "${status}"
