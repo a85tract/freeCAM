@@ -24,13 +24,23 @@ sys.path.insert(0, str(REPO / "tools"))
 pinned = pytest.mark.skipif(not PINNED.is_file(),
                             reason="the pinned iCESM submodule is not checked out")
 
-#: Branches the admitted configuration never enters: oldcldoptics is .false.
-#: and icecldoptics/liqcldoptics are 'mitchell'/'gammadist' in atm_in, docosp
-#: and dohirs are .false. by default, spectralflux is .false., and this is
-#: not a single-column run.  ``Radiation.refuse_unsupported`` asserts each
-#: of these against the image before a timestep runs.
-DEAD = ((862, 866), (869, 874), (891, 893), (896, 897), (904, 905),
-        (949, 951), (954, 955), (962, 963), (1201, 1236), (1259, 1273))
+#: Branches the admitted configuration never enters, each refused at attach
+#: with the module state that decides it.
+DEAD = (
+    (830, 835),      # spectralflux: the four spectral-flux pbuf fields
+    (838, 842),      # single_column .and. scm_crm_mode: the CRM cloud override
+    (871, 873),      # hist_fld_active('FSNR'/'FLNR'): the tropopause lookup
+    (891, 893),      # oldcldoptics, shortwave
+    (896, 897),      # icecldoptics == 'ebertcurry'
+    (904, 905),      # liqcldoptics == 'slingo'
+    (949, 951),      # oldcldoptics, longwave
+    (954, 955),      # ice ebertcurry, longwave
+    (962, 963),      # liquid slingo, longwave
+    (1052, 1056),    # hist_fld_active('FSNR'): the per-column interpolation
+    (1163, 1167),    # hist_fld_active('FLNR'): the same, longwave
+    (1201, 1236),    # dohirs: hirsrtm and the gases it needs
+    (1259, 1273),    # docosp: the COSP simulator
+)
 
 FIRST, LAST = 848, 1320       # radiation_tend's executable body
 

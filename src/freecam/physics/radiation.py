@@ -61,7 +61,7 @@ SW, LW = "rad_rrtmg_sw", "rad_rrtmg_lw"
 # the pinned source.
 NBNDSW, NBNDLW = 14, 16
 IDX_SW_DIAG = 10
-RRTMG_SW_CLOUDSIM_BAND, RRTMG_LW_CLOUDSIM_BAND = 9, 7
+RRTMG_SW_CLOUDSIM_BAND, RRTMG_LW_CLOUDSIM_BAND = 9, 6
 N_DIAG = 10
 FILLVALUE = 1.0e36
 
@@ -113,7 +113,7 @@ KERNELS = (
 #: a test compares the two.  Names are the routine, the handle entry, or the
 #: predicate Python branches on.
 SEQUENCE_RADIATION_STEP = (
-    "calday", "pbuf_get_field*", "outfld", "latlon", "zenith",
+    "calday", "pbuf_get_field*", "outfld*", "latlon", "zenith",
     "rad_gather_day_night", "radiation_do:sw", "radiation_do:lw",
     "rrtmg_state_create",
     "get_ice_optics_sw", "get_liquid_optics_sw", "rad_combine_cld_optics_sw",
@@ -128,17 +128,17 @@ SEQUENCE_RADIATION_STEP = (
     "rad_lwup_cgs", "rrtmg_state_update", "aer_rad_props_lw", "rad_rrtmg_lw",
     "rad_lw_cloud_forcing", "vertinterp*", "outfld_scaled", "outfld_scaled",
     "outfld*",
-    "rrtmg_state_destroy", "rad_emissivity", "outfld", "rad_snow_gridbox",
-    "rad_data_write", "radheat_tend", "rad_theta_heating", "outfld",
+    "rrtmg_state_destroy", "rad_emissivity", "outfld*", "rad_snow_gridbox",
+    "rad_data_write", "radheat_tend", "rad_theta_heating", "outfld*",
     "rad_heating_scale",
 )
 
 #: What the driver does on a step where neither shortwave nor longwave runs.
 SEQUENCE_QUIET_STEP = (
-    "calday", "pbuf_get_field*", "outfld", "latlon", "zenith",
+    "calday", "pbuf_get_field*", "outfld*", "latlon", "zenith",
     "rad_gather_day_night", "radiation_do:sw", "radiation_do:lw",
     "rad_heating_unscale",
-    "rad_data_write", "radheat_tend", "rad_theta_heating", "outfld",
+    "rad_data_write", "radheat_tend", "rad_theta_heating", "outfld*",
     "rad_heating_scale",
 )
 
@@ -497,3 +497,494 @@ class Radiation(NativeStage):
         )
         runtime.constants.refuse_unsupported()
         runtime.has_snow = runtime.constants.cldfsnow_idx > 0
+
+    # -- the numerical methods ---------------------------------------------------
+    #
+    # Ten routines the driver calls to compute something.  Each takes the
+    # runtime and a chunk and returns the arrays the driver would have had;
+    # the two cores additionally accept a model in their place.
+
+    def ice_optics_sw(self, st: StageRuntime, lchnk: int) -> tuple[np.ndarray, ...]:
+        """``get_ice_optics_sw``: ice cloud optics for the shortwave bands."""
+
+        out = [st.local[n] for n in ("ice_tau", "ice_tau_w", "ice_tau_w_g", "ice_tau_w_f")]
+        st.handles.ice_optics_sw(lchnk, out)
+        return tuple(out)
+
+    def liquid_optics_sw(self, st: StageRuntime, lchnk: int) -> tuple[np.ndarray, ...]:
+        """``get_liquid_optics_sw``: liquid cloud optics, shortwave."""
+
+        out = [st.local[n] for n in ("liq_tau", "liq_tau_w", "liq_tau_w_g", "liq_tau_w_f")]
+        st.handles.liquid_optics_sw(lchnk, out)
+        return tuple(out)
+
+    def snow_optics_sw(self, st: StageRuntime, lchnk: int) -> tuple[np.ndarray, ...]:
+        """``get_snow_optics_sw``: snow optics, shortwave."""
+
+        out = [st.local[n] for n in ("snow_tau", "snow_tau_w", "snow_tau_w_g", "snow_tau_w_f")]
+        st.handles.snow_optics_sw(lchnk, out)
+        return tuple(out)
+
+    def ice_props_lw(self, st: StageRuntime, lchnk: int) -> np.ndarray:
+        """``ice_cloud_get_rad_props_lw``: ice absorption optical depth."""
+
+        out = st.local["ice_lw_abs"]
+        st.handles.ice_props_lw(lchnk, out)
+        return out
+
+    def liquid_props_lw(self, st: StageRuntime, lchnk: int) -> np.ndarray:
+        """``liquid_cloud_get_rad_props_lw``: liquid absorption optical depth."""
+
+        out = st.local["liq_lw_abs"]
+        st.handles.liquid_props_lw(lchnk, out)
+        return out
+
+    def snow_props_lw(self, st: StageRuntime, lchnk: int) -> np.ndarray:
+        """``snow_cloud_get_rad_props_lw``: snow absorption optical depth."""
+
+        out = st.local["snow_lw_abs"]
+        st.handles.snow_props_lw(lchnk, out)
+        return out
+
+    def aer_props_sw(self, st: StageRuntime, lchnk: int, nnite: int,
+                     idxnite: np.ndarray) -> tuple[np.ndarray, ...]:
+        """``aer_rad_props_sw``: aerosol optics for the climate call."""
+
+        out = [st.local[n] for n in ("aer_tau", "aer_tau_w", "aer_tau_w_g", "aer_tau_w_f")]
+        st.handles.aer_props_sw(lchnk, 0, nnite, idxnite, out)
+        return tuple(out)
+
+    def aer_props_lw(self, st: StageRuntime, lchnk: int) -> np.ndarray:
+        """``aer_rad_props_lw``: aerosol absorption optical depth."""
+
+        out = st.local["aer_lw_abs"]
+        st.handles.aer_props_lw(lchnk, 0, out)
+        return out
+
+    def rad_rrtmg_sw(self, st: StageRuntime, lchnk: int, ncol: int, dt: float,
+                     inputs: Mapping[str, Any], outputs: Mapping[str, np.ndarray],
+                     scalars, arrays) -> None:
+        """The shortwave core.  A model in :attr:`kernels` takes its place."""
+
+        st.swappable_kernel(
+            SW, inputs, outputs=outputs, ncol=ncol, lchnk=lchnk, dt=dt,
+            original=lambda: st.handles.rrtmg_sw(lchnk, scalars, arrays))
+
+    def rad_rrtmg_lw(self, st: StageRuntime, lchnk: int, ncol: int, dt: float,
+                     inputs: Mapping[str, Any], outputs: Mapping[str, np.ndarray],
+                     scalars, arrays) -> None:
+        """The longwave core.  A model in :attr:`kernels` takes its place."""
+
+        st.swappable_kernel(
+            LW, inputs, outputs=outputs, ncol=ncol, lchnk=lchnk, dt=dt,
+            original=lambda: st.handles.rrtmg_lw(lchnk, scalars, arrays))
+
+    # -- the transliteration -----------------------------------------------------
+
+    def tend_chunk(self, st: StageRuntime, lchnk: int, ncol: int, index: int,
+                   dt: float, nstep: int) -> None:
+        """``radiation_tend``, statement for statement, for one chunk.
+
+        Line numbers in the trailing comments are ``physics/rrtmg/radiation.F90``
+        in the pinned submodule.  Branches the admitted configuration never
+        enters are refused at attach and are not written here; the sequence
+        test compares what this walks against the pinned call order with those
+        branches removed.
+        """
+
+        H, C, pb = st.handles, st.constants, st.pbuf
+        L = st.local
+        S = {name: H.view(lchnk, code) for name, code in VIEW.items()
+             if name.startswith("state_")}
+        cam_in = {name.removeprefix("cam_in_"): H.view(lchnk, code)
+                  for name, code in VIEW.items() if name.startswith("cam_in_")}
+        cam_out = {name.removeprefix("cam_out_"): H.view(lchnk, code)
+                   for name, code in VIEW.items() if name.startswith("cam_out_")}
+        flux = {name: H.view(lchnk, VIEW[name])
+                for name in ("fsns", "fsnt", "flns", "flnt", "fsds")}
+        pcols, pver, pverp = st.pcols, st.pver, st.pverp
+        has_snow = st.has_snow
+        log = self.calls.append
+
+        def K(name, inputs, *, outputs):
+            st.kernel_on_chunk(name, inputs, outputs=outputs, ncol=ncol)
+
+        # 807-812: lchnk, ncol; the calendar day the zenith angle needs
+        calday = H.calday(); log("calday")
+
+        # 816-830: the physics-buffer fields, older time sample where the
+        # source says so.  spectralflux is refused, so su/sd/lu/ld are not
+        # fetched here any more than the driver fetches them when it is off.
+        cld = pb.view("CLD", lchnk)
+        cldfsnow = pb.view("CLDFSNOW", lchnk) if has_snow else L["cldfsnow_zero"]
+        qrs = pb.view("QRS", lchnk)
+        qrl = pb.view("QRL", lchnk)
+        log("pbuf_get_field*")
+
+        # 836-838
+        if has_snow:
+            H.outfld("CLDFSNOW", cldfsnow, pcols, lchnk)
+        log("outfld")
+
+        # 843-845: the cosine of the solar zenith angle for this step
+        clat, clon, coszrs = L["clat"], L["clon"], L["coszrs"]
+        H.latlon(lchnk, ncol, clat, clon); log("latlon")
+        H.zenith(lchnk, ncol, calday, clat, clon, coszrs); log("zenith")
+
+        # 856-866: which columns are lit.  The counts and the index arrays go
+        # straight into the shortwave core, which does the gather itself.
+        K("rad_gather_day_night", {"ncol": ncol, "coszrs": coszrs},
+          outputs={"Nday": None, "Nnite": None, "IdxDay": None, "IdxNite": None})
+        log("rad_gather_day_night")
+        nday = int(L["Nday"][0])
+        nnite = int(L["Nnite"][0])
+        idxday, idxnite = L["IdxDay"], L["IdxNite"]
+
+        # 868-869: the driver's own predicates, asked rather than re-derived
+        dosw = H.radiation_do("sw"); log("radiation_do:sw")
+        dolw = H.radiation_do("lw"); log("radiation_do:lw")
+
+        if dosw or dolw:                                             # 875
+            self._radiative_step(st, lchnk, ncol, dt, dosw, dolw, nday, nnite,
+                                 idxday, idxnite, cld, cldfsnow, qrs, qrl,
+                                 coszrs, S, cam_in, cam_out, flux)
+        else:                                                        # 1275
+            # 1277-1287: the heating rates are kept as Q*dp between radiation
+            # steps, so a quiet step only converts them back.
+            K("rad_heating_unscale",
+              {"ncol": ncol, "conserve_energy": 1, "pdel": S["state_pdel"],
+               "qrs": qrs, "qrl": qrl},
+              outputs={"qrs": qrs, "qrl": qrl})
+            log("rad_heating_unscale")
+
+        # 1292: rad_data_write returns at once unless radiation output is on
+        H.data_write(lchnk, coszrs); log("rad_data_write")
+
+        # 1295-1296: radheat_tend fills the ptend and the net flux the resume
+        # half of tphysbc takes back
+        H.radheat(lchnk, qrl, qrs); log("radheat_tend")
+
+        # 1298-1304: the heating rate for dtheta/dt
+        K("rad_theta_heating",
+          {"ncol": ncol, "qrs": qrs, "qrl": qrl, "cpair": CPAIR,
+           "pmid": S["state_pmid"], "cappa": C.cappa},
+          outputs={"ftem": None})
+        log("rad_theta_heating")
+        H.outfld("HR      ", L["ftem"], pcols, lchnk); log("outfld")
+
+        # 1306-1316
+        K("rad_heating_scale",
+          {"ncol": ncol, "conserve_energy": 1, "pdel": S["state_pdel"],
+           "qrs": qrs, "qrl": qrl},
+          outputs={"qrs": qrs, "qrl": qrl})
+        log("rad_heating_scale")
+
+        # 1318
+        cam_out["netsw"][:ncol] = flux["fsns"][:ncol]                # [exact] a copy
+
+    def _radiative_step(self, st, lchnk, ncol, dt, dosw, dolw, nday, nnite,
+                        idxday, idxnite, cld, cldfsnow, qrs, qrl, coszrs,
+                        S, cam_in, cam_out, flux) -> None:
+        """``radiation.F90:875-1273``: the branch that computes."""
+
+        H, C = st.handles, st.constants
+        L = st.local
+        pcols, pver, pverp = st.pcols, st.pver, st.pverp
+        has_snow = st.has_snow
+        log = self.calls.append
+
+        def K(name, inputs, *, outputs):
+            st.kernel_on_chunk(name, inputs, outputs=outputs, ncol=ncol)
+
+        # 878: the RRTMG state, alive until 1192
+        H.rstate_create(lchnk); log("rrtmg_state_create")
+
+        if dosw:                                                     # 890
+            # 898, 906: the two optics branches this configuration takes
+            self.ice_optics_sw(st, lchnk); log("get_ice_optics_sw")
+            self.liquid_optics_sw(st, lchnk); log("get_liquid_optics_sw")
+            # 912-915
+            K("rad_combine_cld_optics_sw",
+              {"ncol": ncol,
+               "liq_tau": None, "liq_tau_w": None, "liq_tau_w_g": None, "liq_tau_w_f": None,
+               "ice_tau": None, "ice_tau_w": None, "ice_tau_w_g": None, "ice_tau_w_f": None},
+              outputs={"cld_tau": None, "cld_tau_w": None,
+                       "cld_tau_w_g": None, "cld_tau_w_f": None})
+            log("rad_combine_cld_optics_sw")
+            # 917-945, with 919's optics call made first
+            if has_snow:
+                self.snow_optics_sw(st, lchnk)
+            log("get_snow_optics_sw")
+            K("rad_snow_blend_sw",
+              {"ncol": ncol, "has_snow": int(has_snow), "cld": cld, "cldfsnow": cldfsnow,
+               "snow_tau": None, "snow_tau_w": None,
+               "snow_tau_w_g": None, "snow_tau_w_f": None,
+               "cld_tau": None, "cld_tau_w": None,
+               "cld_tau_w_g": None, "cld_tau_w_f": None},
+              outputs={"cldfprime": None, "c_cld_tau": None, "c_cld_tau_w": None,
+                       "c_cld_tau_w_g": None, "c_cld_tau_w_f": None})
+            log("rad_snow_blend_sw")
+
+        if dolw:                                                     # 948
+            self.ice_props_lw(st, lchnk); log("ice_cloud_get_rad_props_lw")
+            self.liquid_props_lw(st, lchnk); log("liquid_cloud_get_rad_props_lw")
+            # 968
+            K("rad_combine_cld_optics_lw",
+              {"ncol": ncol, "liq_lw_abs": None, "ice_lw_abs": None},
+              outputs={"cld_lw_abs": None})
+            log("rad_combine_cld_optics_lw")
+            if has_snow:
+                self.snow_props_lw(st, lchnk)
+            log("snow_cloud_get_rad_props_lw")
+
+        # 974-995: the LW blend, and the cldfprime default when there is no
+        # snow field, which the driver writes outside the dolw branch
+        K("rad_snow_blend_lw",
+          {"ncol": ncol, "has_snow": int(has_snow), "cld": cld, "cldfsnow": cldfsnow,
+           "snow_lw_abs": None, "cld_lw_abs": None},
+          outputs={"cldfprime": None, "c_cld_lw_abs": None})
+        log("rad_snow_blend_lw")
+
+        # 1000: cgs pressures and the earth-sun distance factor
+        K("rad_inp",
+          {"ncol": ncol, "pmid": S["state_pmid"], "pint": S["state_pint"]},
+          outputs={"pmidrd": None, "pintrd": None, "eccf": None})
+        log("radinp")
+        eccf = float(L["eccf"][()])
+
+        # 1005-1012
+        K("rad_interface_temperature",
+          {"ncol": ncol, "t": S["state_t"], "lnpint": S["state_lnpint"],
+           "lnpmid": S["state_lnpmid"], "lwup": cam_in["lwup"], "stebol": STEBOL},
+          outputs={"tint": None})
+        log("rad_interface_temperature")
+
+        if dosw:                                                     # 1016
+            K("get_variability", {}, outputs={"sfac": None}); log("get_variability")
+            # 1026: only the climate call is active, asserted at attach
+            H.rstate_update(lchnk, 0); log("rrtmg_state_update")
+            self.aer_props_sw(st, lchnk, nnite, idxnite); log("aer_rad_props_sw")
+
+            # 1034-1051: the shortwave core
+            self._call_sw(st, lchnk, ncol, dt, eccf, nday, nnite, idxday, idxnite,
+                          S, cam_in, cam_out, flux, qrs, coszrs)
+            log(SW)
+
+            # 1052-1055: FSNR is off, asserted at attach, so only the two
+            # 200 mb interpolations run
+            for source, target in (("fcns", "fsn200c"), ("fns", "fsn200")):
+                K("vertinterp",
+                  {"ncol": ncol, "ncold": pcols, "nlev": pverp,
+                   "pmid": S["state_pint"], "pout": 20000.0, "arrin": L[source]},
+                  outputs={"arrout": L[target]})
+            log("vertinterp*")
+
+            # 1057-1059
+            K("rad_sw_cloud_forcing",
+              {"ncol": ncol, "fsntoa": None, "fsntoac": None}, outputs={"swcf": None})
+            log("rad_sw_cloud_forcing")
+
+            # 1061-1090: the shortwave history block
+            K("rad_scale_by_cpair", {"ncol": ncol, "field": qrs, "cpair": CPAIR},
+              outputs={"ftem": None})
+            log("rad_scale_by_cpair")
+            H.outfld("QRS     ", L["ftem"], pcols, lchnk)
+            K("rad_scale_by_cpair", {"ncol": ncol, "field": L["qrsc"], "cpair": CPAIR},
+              outputs={"ftem": None})
+            log("rad_scale_by_cpair")
+            for name, value in (
+                ("QRSC    ", L["ftem"]), ("SOLIN   ", L["solin"]),
+                ("FSDS    ", flux["fsds"]), ("FSNIRTOA", L["fsnirt"]),
+                ("FSNRTOAC", L["fsnrtc"]), ("FSNRTOAS", L["fsnirtsq"]),
+                ("FSNT    ", flux["fsnt"]), ("FSNS    ", flux["fsns"]),
+                ("FSNTC   ", L["fsntc"]), ("FSNSC   ", L["fsnsc"]),
+                ("FSDSC   ", L["fsdsc"]), ("FSNTOA  ", L["fsntoa"]),
+                ("FSUTOA  ", L["fsutoa"]), ("FSNTOAC ", L["fsntoac"]),
+                ("SOLS    ", cam_out["sols"]), ("SOLL    ", cam_out["soll"]),
+                ("SOLSD   ", cam_out["solsd"]), ("SOLLD   ", cam_out["solld"]),
+                ("FSN200  ", L["fsn200"]), ("FSN200C ", L["fsn200c"]),
+                ("SWCF    ", L["swcf"]), ("FSNR    ", L["fsnr"]),
+            ):
+                H.outfld(name, value, pcols, lchnk)
+            log("outfld*")
+
+            # 1092-1110
+            K("rad_visible_tau",
+              {"ncol": ncol, "Nnite": nnite, "IdxNite": idxnite,
+               "has_snow": int(has_snow), "idx_sw_diag": IDX_SW_DIAG,
+               "fillvalue": FILLVALUE, "c_cld_tau": None, "liq_tau": None,
+               "ice_tau": None, "snow_tau": None, "cldfprime": None},
+              outputs={"tot_cld_vistau": None, "tot_icld_vistau": None,
+                       "liq_icld_vistau": None, "ice_icld_vistau": None,
+                       "snow_icld_vistau": None})
+            log("rad_visible_tau")
+            for name, key in (("TOT_CLD_VISTAU", "tot_cld_vistau"),
+                              ("TOT_ICLD_VISTAU", "tot_icld_vistau"),
+                              ("LIQ_ICLD_VISTAU", "liq_icld_vistau"),
+                              ("ICE_ICLD_VISTAU", "ice_icld_vistau")):
+                H.outfld(f"{name:8s}"[:16], L[key], pcols, lchnk)
+            if has_snow:
+                H.outfld("SNOW_ICLD_VISTAU", L["snow_icld_vistau"], pcols, lchnk)
+            log("outfld*")
+
+        # 1122: aerosol mixing ratios, outside the dosw branch
+        H.cnst_out(lchnk, 0); log("rad_cnst_out")
+
+        if dolw:                                                     # 1126
+            # 1130-1134
+            K("rad_lwup_cgs",
+              {"ncol": ncol, "lwup": cam_in["lwup"], "refused_scm": 0},
+              outputs={"lwupcgs": None})
+            log("rad_lwup_cgs")
+            H.rstate_update(lchnk, 0); log("rrtmg_state_update")
+            self.aer_props_lw(st, lchnk); log("aer_rad_props_lw")
+
+            # 1148-1154: the longwave core
+            self._call_lw(st, lchnk, ncol, dt, S, cam_out, flux, qrl, cld)
+            log(LW)
+
+            # 1156-1158
+            K("rad_lw_cloud_forcing",
+              {"ncol": ncol, "flutc": None, "flut": None}, outputs={"lwcf": None})
+            log("rad_lw_cloud_forcing")
+
+            # 1160-1161: FLNR is off, asserted at attach
+            for source, target in (("fnl", "fln200"), ("fcnl", "fln200c")):
+                K("vertinterp",
+                  {"ncol": ncol, "ncold": pcols, "nlev": pverp,
+                   "pmid": S["state_pint"], "pout": 20000.0, "arrin": L[source]},
+                  outputs={"arrout": L[target]})
+            log("vertinterp*")
+
+            # 1170-1171: the division and the (:ncol,:) shape are one
+            # expression outfld is given with idim = ncol, so the handles
+            # module keeps the whole line rather than splitting it
+            H.outfld_scaled(lchnk, ncol, "QRL     ", qrl, CPAIR); log("outfld_scaled")
+            H.outfld_scaled(lchnk, ncol, "QRLC    ", L["qrlc"], CPAIR); log("outfld_scaled")
+            for name, value in (
+                ("FLNT    ", flux["flnt"]), ("FLUT    ", L["flut"]),
+                ("FLUTC   ", L["flutc"]), ("FLNTC   ", L["flntc"]),
+                ("FLNS    ", flux["flns"]), ("FLDSC   ", L["fldsc"]),
+                ("FLNSC   ", L["flnsc"]), ("LWCF    ", L["lwcf"]),
+                ("FLN200  ", L["fln200"]), ("FLN200C ", L["fln200c"]),
+                ("FLDS    ", cam_out["flwds"]), ("FLNR    ", L["flnr"]),
+            ):
+                H.outfld(name, value, pcols, lchnk)
+            log("outfld*")
+
+        # 1192
+        H.rstate_destroy(lchnk); log("rrtmg_state_destroy")
+
+        # 1241-1243
+        K("rad_emissivity",
+          {"ncol": ncol, "rrtmg_lw_cloudsim_band": RRTMG_LW_CLOUDSIM_BAND,
+           "cld_lw_abs": None}, outputs={"emis": None})
+        log("rad_emissivity")
+        H.outfld("EMIS    ", L["emis"], pcols, lchnk); log("outfld")
+
+        # 1246-1257: computed for COSP, which is refused, but the driver
+        # writes these unconditionally and a gate notices a missing write
+        K("rad_snow_gridbox",
+          {"ncol": ncol, "has_snow": int(has_snow),
+           "rrtmg_sw_cloudsim_band": RRTMG_SW_CLOUDSIM_BAND,
+           "rrtmg_lw_cloudsim_band": RRTMG_LW_CLOUDSIM_BAND,
+           "cldfsnow": cldfsnow, "snow_tau": None, "snow_lw_abs": None},
+          outputs={"gb_snow_tau": None, "gb_snow_lw": None})
+        log("rad_snow_gridbox")
+
+    # -- the two cores, assembled ------------------------------------------------
+
+    def _call_sw(self, st, lchnk, ncol, dt, eccf, nday, nnite, idxday, idxnite,
+                 S, cam_in, cam_out, flux, qrs, coszrs) -> None:
+        """``radiation.F90:1034-1051``, argument for argument.
+
+        ``scalars`` and ``arrays`` are the wrapper's dummy list in order;
+        ``inputs`` and ``outputs`` are the same values by the name a model
+        would see, which is also what the trace records.
+        """
+
+        L = st.local
+        scalars = (ncol, st.constants.num_rrtmg_levs, nday, nnite, eccf)
+        arrays = [
+            idxday, idxnite,
+            S["state_pmid"], L["cldfprime"],
+            L["aer_tau"], L["aer_tau_w"], L["aer_tau_w_g"], L["aer_tau_w_f"],
+            coszrs, cam_in["asdir"], cam_in["asdif"], cam_in["aldir"], cam_in["aldif"],
+            L["sfac"],
+            L["c_cld_tau"], L["c_cld_tau_w"], L["c_cld_tau_w_g"], L["c_cld_tau_w_f"],
+            L["solin"], qrs, L["qrsc"], flux["fsnt"], L["fsntc"], L["fsntoa"],
+            L["fsutoa"], L["fsntoac"], L["fsnirt"], L["fsnrtc"], L["fsnirtsq"],
+            flux["fsns"], L["fsnsc"], L["fsdsc"], flux["fsds"],
+            cam_out["sols"], cam_out["soll"], cam_out["solsd"], cam_out["solld"],
+            L["fns"], L["fcns"],
+        ]
+        inputs = {
+            "ncol": ncol, "rrtmg_levs": st.constants.num_rrtmg_levs,
+            "Nday": nday, "Nnite": nnite, "IdxDay": idxday, "IdxNite": idxnite,
+            "pmid": S["state_pmid"], "cld": L["cldfprime"], "eccf": eccf,
+            "aer_tau": L["aer_tau"], "aer_tau_w": L["aer_tau_w"],
+            "aer_tau_w_g": L["aer_tau_w_g"], "aer_tau_w_f": L["aer_tau_w_f"],
+            "coszrs": coszrs, "asdir": cam_in["asdir"], "asdif": cam_in["asdif"],
+            "aldir": cam_in["aldir"], "aldif": cam_in["aldif"], "sfac": L["sfac"],
+            "cld_tau": L["c_cld_tau"], "cld_tau_w": L["c_cld_tau_w"],
+            "cld_tau_w_g": L["c_cld_tau_w_g"], "cld_tau_w_f": L["c_cld_tau_w_f"],
+            "rstate_pmidmb": st.handles.view(lchnk, VIEW["rstate_pmidmb"]),
+            "rstate_pintmb": st.handles.view(lchnk, VIEW["rstate_pintmb"]),
+            "rstate_tlay": st.handles.view(lchnk, VIEW["rstate_tlay"]),
+            "rstate_tlev": st.handles.view(lchnk, VIEW["rstate_tlev"]),
+            "rstate_h2ovmr": st.handles.view(lchnk, VIEW["rstate_h2ovmr"]),
+            "rstate_o3vmr": st.handles.view(lchnk, VIEW["rstate_o3vmr"]),
+            "rstate_co2vmr": st.handles.view(lchnk, VIEW["rstate_co2vmr"]),
+        }
+        outputs = {
+            "solin": L["solin"], "qrs": qrs, "qrsc": L["qrsc"],
+            "fsnt": flux["fsnt"], "fsntc": L["fsntc"], "fsntoa": L["fsntoa"],
+            "fsutoa": L["fsutoa"], "fsntoac": L["fsntoac"], "fsnirtoa": L["fsnirt"],
+            "fsnrtoac": L["fsnrtc"], "fsnrtoaq": L["fsnirtsq"], "fsns": flux["fsns"],
+            "fsnsc": L["fsnsc"], "fsdsc": L["fsdsc"], "fsds": flux["fsds"],
+            "sols": cam_out["sols"], "soll": cam_out["soll"],
+            "solsd": cam_out["solsd"], "solld": cam_out["solld"],
+            "fns": L["fns"], "fcns": L["fcns"],
+        }
+        self.rad_rrtmg_sw(st, lchnk, ncol, dt, inputs, outputs, scalars, arrays)
+
+    def _call_lw(self, st, lchnk, ncol, dt, S, cam_out, flux, qrl, cld) -> None:
+        """``radiation.F90:1148-1154``, argument for argument."""
+
+        L = st.local
+        scalars = (ncol, st.constants.num_rrtmg_levs)
+        arrays = [
+            S["state_pmid"], L["aer_lw_abs"], L["cldfprime"], L["c_cld_lw_abs"],
+            qrl, L["qrlc"],
+            flux["flns"], flux["flnt"], L["flnsc"], L["flntc"], cam_out["flwds"],
+            L["flut"], L["flutc"], L["fnl"], L["fcnl"], L["fldsc"],
+        ]
+        inputs = {
+            "ncol": ncol, "rrtmg_levs": st.constants.num_rrtmg_levs,
+            "pmid": S["state_pmid"], "aer_lw_abs": L["aer_lw_abs"],
+            "cld": L["cldfprime"], "tauc_lw": L["c_cld_lw_abs"],
+            "rstate_pmidmb": st.handles.view(lchnk, VIEW["rstate_pmidmb"]),
+            "rstate_pintmb": st.handles.view(lchnk, VIEW["rstate_pintmb"]),
+            "rstate_tlay": st.handles.view(lchnk, VIEW["rstate_tlay"]),
+            "rstate_tlev": st.handles.view(lchnk, VIEW["rstate_tlev"]),
+            "rstate_h2ovmr": st.handles.view(lchnk, VIEW["rstate_h2ovmr"]),
+            "rstate_o3vmr": st.handles.view(lchnk, VIEW["rstate_o3vmr"]),
+            "rstate_co2vmr": st.handles.view(lchnk, VIEW["rstate_co2vmr"]),
+        }
+        outputs = {
+            "qrl": qrl, "qrlc": L["qrlc"],
+            "flns": flux["flns"], "flnt": flux["flnt"], "flnsc": L["flnsc"],
+            "flntc": L["flntc"], "flwds": cam_out["flwds"], "flut": L["flut"],
+            "flutc": L["flutc"], "fnl": L["fnl"], "fcnl": L["fcnl"],
+            "fldsc": L["fldsc"],
+        }
+        self.rad_rrtmg_lw(st, lchnk, ncol, dt, inputs, outputs, scalars, arrays)
+
+
+__all__ = ["FIRST_HALF", "KERNELS", "Radiation", "SECOND_HALF", "SEQUENCE_QUIET_STEP",
+           "SEQUENCE_RADIATION_STEP", "STAGE", "SW", "LW", "VIEW"]
+
+#: The stage's place in the workflow, for callers that ask before constructing one.
+STAGE = Radiation.STAGE
+FIRST_HALF = Radiation.FIRST_HALF
+SECOND_HALF = Radiation.SECOND_HALF

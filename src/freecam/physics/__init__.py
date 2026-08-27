@@ -25,6 +25,7 @@ from .distributions import (
 from .column import InvalidInput
 from .function import PhysicsFunction, load_function
 from .macrophysics import Macrophysics
+from .radiation import Radiation
 from .result import FunctionResult
 from .spec import (
     ArgumentSpec,
@@ -65,6 +66,7 @@ __all__ = [
     "ParameterSpec",
     "PhysicsError",
     "Macrophysics",
+    "Radiation",
     "PhysicsFunction",
     "PhysicsSpecError",
     "load_function",
