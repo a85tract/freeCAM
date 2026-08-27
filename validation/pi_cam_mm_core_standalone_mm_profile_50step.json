@@ -1,0 +1,237 @@
+{
+ "ranks": 512,
+ "tend_mean_seconds": 25.449313023943233,
+ "rows": [
+  {
+   "key": "tend",
+   "mean_seconds": 25.449313023943233,
+   "max_seconds": 28.36684917099774,
+   "mean_calls": 50.0,
+   "ranks_reporting": 512,
+   "share_of_tend": 1.0
+  },
+  {
+   "key": "tend_chunk",
+   "mean_seconds": 25.44597232016332,
+   "max_seconds": 28.362964428961277,
+   "mean_calls": 100.0,
+   "ranks_reporting": 512,
+   "share_of_tend": 0.9998687310821801
+  },
+  {
+   "key": "kernel-run:mm_precip_average",
+   "mean_seconds": 0.03203295283122998,
+   "max_seconds": 0.040095141157507896,
+   "mean_calls": 100.0,
+   "ranks_reporting": 512,
+   "share_of_tend": 0.0012586961699552644
+  },
+  {
+   "key": "kernel-run:mm_precip_accumulate",
+   "mean_seconds": 0.02835475110560992,
+   "max_seconds": 0.0419594319537282,
+   "mean_calls": 100.0,
+   "ranks_reporting": 512,
+   "share_of_tend": 0.0011141656782221662
+  },
+  {
+   "key": "kernel-run:mm_substep_dt",
+   "mean_seconds": 0.02751897329395092,
+   "max_seconds": 0.034452412743121386,
+   "mean_calls": 100.0,
+   "ranks_reporting": 512,
+   "share_of_tend": 0.001081324799143321
+  },
+  {
+   "key": "kernel-run:mm_flux_terms",
+   "mean_seconds": 0.027145720796056594,
+   "max_seconds": 0.03878917700785678,
+   "mean_calls": 100.0,
+   "ranks_reporting": 512,
+   "share_of_tend": 0.001066658293310996
+  },
+  {
+   "key": "entry:update_tend",
+   "mean_seconds": 0.0242675677091313,
+   "max_seconds": 0.03249521116958931,
+   "mean_calls": 200.0,
+   "ranks_reporting": 512,
+   "share_of_tend": 0.0009535647459835115
+  },
+  {
+   "key": "entry:take_macro",
+   "mean_seconds": 0.010238883318436365,
+   "max_seconds": 0.016581003554165363,
+   "mean_calls": 100.0,
+   "ranks_reporting": 512,
+   "share_of_tend": 0.0004023245463955516
+  },
+  {
+   "key": "entry:take_micro",
+   "mean_seconds": 0.008939694135818854,
+   "max_seconds": 0.019308028742671013,
+   "mean_calls": 100.0,
+   "ranks_reporting": 512,
+   "share_of_tend": 0.0003512744775235468
+  },
+  {
+   "key": "entry:wtrc_mass_fixer",
+   "mean_seconds": 0.0076715039659518425,
+   "max_seconds": 0.011498561128973961,
+   "mean_calls": 100.0,
+   "ranks_reporting": 512,
+   "share_of_tend": 0.00030144247739553263
+  },
+  {
+   "key": "entry:take_aero",
+   "mean_seconds": 0.007561469927679809,
+   "max_seconds": 0.011271159164607525,
+   "mean_calls": 100.0,
+   "ranks_reporting": 512,
+   "share_of_tend": 0.0002971188228368217
+  },
+  {
+   "key": "entry:ptend_scale",
+   "mean_seconds": 0.004315384178369186,
+   "max_seconds": 0.006462316960096359,
+   "mean_calls": 200.0,
+   "ranks_reporting": 512,
+   "share_of_tend": 0.00016956780618436278
+  },
+  {
+   "key": "kernel-copy-in:mm_precip_accumulate",
+   "mean_seconds": 0.003910232129868518,
+   "max_seconds": 0.005800375249236822,
+   "mean_calls": 100.0,
+   "ranks_reporting": 512,
+   "share_of_tend": 0.00015364784606129416
+  },
+  {
+   "key": "entry:check_energy",
+   "mean_seconds": 0.003491806501131123,
+   "max_seconds": 0.004922154068481177,
+   "mean_calls": 200.0,
+   "ranks_reporting": 512,
+   "share_of_tend": 0.00013720631664383083
+  },
+  {
+   "key": "entry:forcing",
+   "mean_seconds": 0.0029486959947178093,
+   "max_seconds": 0.003394997213035822,
+   "mean_calls": 700.0,
+   "ranks_reporting": 512,
+   "share_of_tend": 0.00011586544563869428
+  },
+  {
+   "key": "kernel-copy-in:mm_flux_terms",
+   "mean_seconds": 0.0029434640112242505,
+   "max_seconds": 0.00445649866014719,
+   "mean_calls": 100.0,
+   "ranks_reporting": 512,
+   "share_of_tend": 0.00011565986117012193
+  },
+  {
+   "key": "kernel-copy-in:mm_substep_dt",
+   "mean_seconds": 0.0025299912224170384,
+   "max_seconds": 0.0034841326996684074,
+   "mean_calls": 100.0,
+   "ranks_reporting": 512,
+   "share_of_tend": 9.941294761225072e-05
+  },
+  {
+   "key": "kernel-copy-in:mm_precip_average",
+   "mean_seconds": 0.002517693233016871,
+   "max_seconds": 0.0036058821715414524,
+   "mean_calls": 100.0,
+   "ranks_reporting": 512,
+   "share_of_tend": 9.892971298078552e-05
+  },
+  {
+   "key": "entry:ptend_sum_aero",
+   "mean_seconds": 0.0021358285958967826,
+   "max_seconds": 0.004461228381842375,
+   "mean_calls": 100.0,
+   "ranks_reporting": 512,
+   "share_of_tend": 8.392480354528044e-05
+  },
+  {
+   "key": "kernel-copy-out:mm_precip_average",
+   "mean_seconds": 0.0019817264467008044,
+   "max_seconds": 0.0024862182326614857,
+   "mean_calls": 100.0,
+   "ranks_reporting": 512,
+   "share_of_tend": 7.786954582374603e-05
+  },
+  {
+   "key": "entry:view",
+   "mean_seconds": 0.001326066417760785,
+   "max_seconds": 0.0020834580063819885,
+   "mean_calls": 200.0,
+   "ranks_reporting": 512,
+   "share_of_tend": 5.210617734605232e-05
+  },
+  {
+   "key": "entry:dt",
+   "mean_seconds": 0.0003601238739747714,
+   "max_seconds": 0.0006299666129052639,
+   "mean_calls": 50.0,
+   "ranks_reporting": 512,
+   "share_of_tend": 1.4150632421235084e-05
+  },
+  {
+   "key": "kernel-copy-out:mm_substep_dt",
+   "mean_seconds": 0.00018790729174611442,
+   "max_seconds": 0.00023501506075263023,
+   "mean_calls": 100.0,
+   "ranks_reporting": 512,
+   "share_of_tend": 7.383589944818055e-06
+  },
+  {
+   "key": "kernel-copy-out:mm_flux_terms",
+   "mean_seconds": 0.00018334944110165452,
+   "max_seconds": 0.00032582879066467285,
+   "mean_calls": 100.0,
+   "ranks_reporting": 512,
+   "share_of_tend": 7.204494711867296e-06
+  },
+  {
+   "key": "kernel-copy-out:mm_precip_accumulate",
+   "mean_seconds": 0.00014591646751682674,
+   "max_seconds": 0.0002161557786166668,
+   "mean_calls": 100.0,
+   "ranks_reporting": 512,
+   "share_of_tend": 5.73361125227803e-06
+  },
+  {
+   "key": "entry:nstep",
+   "mean_seconds": 8.42127330997755e-05,
+   "max_seconds": 0.00013736821711063385,
+   "mean_calls": 50.0,
+   "ranks_reporting": 512,
+   "share_of_tend": 3.3090375767922082e-06
+  },
+  {
+   "key": "entry:bind_hosts",
+   "mean_seconds": 4.811548700445201e-05,
+   "max_seconds": 0.00025455281138420105,
+   "mean_calls": 1.0,
+   "ranks_reporting": 512,
+   "share_of_tend": 1.8906399146878336e-06
+  },
+  {
+   "key": "entry:set_owner",
+   "mean_seconds": 1.012230086416821e-05,
+   "max_seconds": 2.5348737835884094e-05,
+   "mean_calls": 1.0,
+   "ranks_reporting": 512,
+   "share_of_tend": 3.977435797439775e-07
+  }
+ ],
+ "by_family": {
+  "tend_chunk": 25.44597232016332,
+  "kernel-run": 0.11505239802684741,
+  "entry": 0.07339947513983702,
+  "kernel-copy-in": 0.011901380596526678,
+  "kernel-copy-out": 0.0024988996470654
+ }
+}

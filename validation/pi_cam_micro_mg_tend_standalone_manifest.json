@@ -1,0 +1,1232 @@
+{
+  "abort_probe": {
+    "source_sha256": "e5645c63548f7fef3b028dccd5ba4fa0f6b35ec1a08496ed8fc5a8f290fa32fe"
+  },
+  "compile_commands": {
+    "abort_probe": [
+      "ftn",
+      "-c",
+      "-I.",
+      "-I/glade/derecho/scratch/ruitong/pyCAM/PI-cam/f.e13.F1850C5.ne16_g16.icesm131_ihesp.PI-cam-oracle.50step/bld/atm/obj",
+      "-I/glade/derecho/scratch/ruitong/pyCAM/PI-cam/f.e13.F1850C5.ne16_g16.icesm131_ihesp.PI-cam-oracle.50step/bld/intel/mpich/nodebug/nothreads/mct/include",
+      "-I/glade/derecho/scratch/ruitong/pyCAM/PI-cam/f.e13.F1850C5.ne16_g16.icesm131_ihesp.PI-cam-oracle.50step/bld/intel/mpich/nodebug/nothreads/mct/mct/noesmf/c1a1l1i1o1r1g1w1e1/include",
+      "-I/glade/u/apps/derecho/23.06/spack/opt/spack/netcdf/4.9.2/cray-mpich/8.1.25/oneapi/2023.0.0/wzol/include",
+      "-I/glade/u/apps/derecho/23.06/spack/opt/spack/parallel-netcdf/1.12.3/cray-mpich/8.1.25/oneapi/2023.0.0/blyr/include",
+      "-I/glade/derecho/scratch/ruitong/pyCAM/PI-cam/f.e13.F1850C5.ne16_g16.icesm131_ihesp.PI-cam-oracle.50step/bld/intel/mpich/nodebug/nothreads/mct/include",
+      "-I/glade/derecho/scratch/ruitong/pyCAM/PI-cam/f.e13.F1850C5.ne16_g16.icesm131_ihesp.PI-cam-oracle.50step/bld/intel/mpich/nodebug/nothreads/mct/mct/noesmf/include",
+      "-I/glade/derecho/scratch/ruitong/pyCAM/PI-cam/f.e13.F1850C5.ne16_g16.icesm131_ihesp.PI-cam-oracle.50step/bld/intel/mpich/nodebug/nothreads/mct/mct/noesmf/clm/obj",
+      "-I.",
+      "-I/glade/work/ruitong/CESM_cases/f.e13.F1850C5.ne16_g16.icesm131_ihesp.PI-cam-oracle.50step/SourceMods/src.cam",
+      "-I/SourceMods/src.cam",
+      "-I/glade/work/ruitong/iCESM1.3.1_PI_cam_only/components//cam/src/unit_drivers",
+      "-I/glade/work/ruitong/iCESM1.3.1_PI_cam_only/components//cam/src/unit_drivers/stub",
+      "-I/glade/work/ruitong/iCESM1.3.1_PI_cam_only/components/cam/src/chemistry/pp_trop_mam3",
+      "-I/glade/work/ruitong/iCESM1.3.1_PI_cam_only/components//cam/src/chemistry/modal_aero",
+      "-I/glade/work/ruitong/iCESM1.3.1_PI_cam_only/components//cam/src/chemistry/aerosol",
+      "-I/glade/work/ruitong/iCESM1.3.1_PI_cam_only/components//cam/src/chemistry/mozart",
+      "-I/glade/work/ruitong/iCESM1.3.1_PI_cam_only/components//cam/src/chemistry/utils",
+      "-I/glade/work/ruitong/iCESM1.3.1_PI_cam_only/components//cam/src/physics/rrtmg",
+      "-I/glade/work/ruitong/iCESM1.3.1_PI_cam_only/components//cam/src/physics/rrtmg/ext/rrtmg_mcica",
+      "-I/glade/work/ruitong/iCESM1.3.1_PI_cam_only/components//cam/src/physics/rrtmg/ext/rrtmg_lw",
+      "-I/glade/work/ruitong/iCESM1.3.1_PI_cam_only/components//cam/src/physics/rrtmg/ext/rrtmg_sw",
+      "-I/glade/work/ruitong/iCESM1.3.1_PI_cam_only/components//cam/src/physics/cam",
+      "-I/glade/work/ruitong/iCESM1.3.1_PI_cam_only/components//cam/src/dynamics/se",
+      "-I/glade/work/ruitong/iCESM1.3.1_PI_cam_only/components//cam/src/dynamics/se/share",
+      "-I/glade/work/ruitong/iCESM1.3.1_PI_cam_only/components//cam/src/cpl",
+      "-I/glade/work/ruitong/iCESM1.3.1_PI_cam_only/components//cam/src/control",
+      "-I/glade/work/ruitong/iCESM1.3.1_PI_cam_only/components//cam/src/utils",
+      "-I/glade/derecho/scratch/ruitong/pyCAM/PI-cam/f.e13.F1850C5.ne16_g16.icesm131_ihesp.PI-cam-oracle.50step/bld/lib/include",
+      "-qno-opt-dynamic-align",
+      "-convert",
+      "big_endian",
+      "-assume",
+      "byterecl",
+      "-ftz",
+      "-traceback",
+      "-assume",
+      "realloc_lhs",
+      "-fp-model",
+      "source",
+      "-O2",
+      "-debug",
+      "minimal",
+      "-DCO2A",
+      "-DMAXPATCH_PFT=numpft+1",
+      "-DLSMLAT=1",
+      "-DLSMLON=1",
+      "-DPLON=13826",
+      "-DPLAT=1",
+      "-DNP=4",
+      "-DNC=4",
+      "-DHAVE_F2003_PTR_BND_REMAP",
+      "-DPLEV=30",
+      "-DPCNST=57",
+      "-DPCOLS=16",
+      "-DPSUBCOLS=1",
+      "-DN_RAD_CNST=30",
+      "-DPTRM=1",
+      "-DPTRN=1",
+      "-DPTRK=1",
+      "-D_MPI",
+      "-DCAM",
+      "-D_WK_GRAD",
+      "-D_PRIM",
+      "-DSPMD",
+      "-DMODAL_AERO",
+      "-DMODAL_AERO_3MODE",
+      "-DCNL",
+      "-DCESMCOUPLED",
+      "-DLINUX",
+      "-DFORTRANUNDERSCORE",
+      "-DCPRINTEL",
+      "-DNDEBUG",
+      "-DMCT_INTERFACE",
+      "-DHAVE_MPI",
+      "-DPIO1",
+      "-DHAVE_SLASHPROC",
+      "-D_PNETCDF",
+      "-free",
+      "-DUSE_CONTIGUOUS=",
+      "/glade/work/ruitong/pycam-sima-pi-cam-only/native/pi_cam/standalone/abort_probe.F90",
+      "-o",
+      "/glade/work/ruitong/pycam-sima-pi-cam-only/build/pi_cam_standalone/micro_mg_tend/objects/abort_probe.o"
+    ],
+    "floating_environment": [
+      "cc",
+      "-c",
+      "-O2",
+      "/glade/work/ruitong/pycam-sima-pi-cam-only/native/pi_cam/floating_environment.c",
+      "-o",
+      "/glade/work/ruitong/pycam-sima-pi-cam-only/build/pi_cam_standalone/micro_mg_tend/objects/floating_environment.o"
+    ],
+    "stubs": [
+      "cc",
+      "-c",
+      "-O2",
+      "-I/glade/work/ruitong/pycam-sima-pi-cam-only/build/pi_cam_standalone/micro_mg_tend/objects",
+      "/glade/work/ruitong/pycam-sima-pi-cam-only/native/pi_cam/standalone/cam_stubs.c",
+      "-o",
+      "/glade/work/ruitong/pycam-sima-pi-cam-only/build/pi_cam_standalone/micro_mg_tend/objects/cam_stubs.o"
+    ],
+    "wrapper": [
+      "ftn",
+      "-c",
+      "-I.",
+      "-I/glade/derecho/scratch/ruitong/pyCAM/PI-cam/f.e13.F1850C5.ne16_g16.icesm131_ihesp.PI-cam-oracle.50step/bld/atm/obj",
+      "-I/glade/derecho/scratch/ruitong/pyCAM/PI-cam/f.e13.F1850C5.ne16_g16.icesm131_ihesp.PI-cam-oracle.50step/bld/intel/mpich/nodebug/nothreads/mct/include",
+      "-I/glade/derecho/scratch/ruitong/pyCAM/PI-cam/f.e13.F1850C5.ne16_g16.icesm131_ihesp.PI-cam-oracle.50step/bld/intel/mpich/nodebug/nothreads/mct/mct/noesmf/c1a1l1i1o1r1g1w1e1/include",
+      "-I/glade/u/apps/derecho/23.06/spack/opt/spack/netcdf/4.9.2/cray-mpich/8.1.25/oneapi/2023.0.0/wzol/include",
+      "-I/glade/u/apps/derecho/23.06/spack/opt/spack/parallel-netcdf/1.12.3/cray-mpich/8.1.25/oneapi/2023.0.0/blyr/include",
+      "-I/glade/derecho/scratch/ruitong/pyCAM/PI-cam/f.e13.F1850C5.ne16_g16.icesm131_ihesp.PI-cam-oracle.50step/bld/intel/mpich/nodebug/nothreads/mct/include",
+      "-I/glade/derecho/scratch/ruitong/pyCAM/PI-cam/f.e13.F1850C5.ne16_g16.icesm131_ihesp.PI-cam-oracle.50step/bld/intel/mpich/nodebug/nothreads/mct/mct/noesmf/include",
+      "-I/glade/derecho/scratch/ruitong/pyCAM/PI-cam/f.e13.F1850C5.ne16_g16.icesm131_ihesp.PI-cam-oracle.50step/bld/intel/mpich/nodebug/nothreads/mct/mct/noesmf/clm/obj",
+      "-I.",
+      "-I/glade/work/ruitong/CESM_cases/f.e13.F1850C5.ne16_g16.icesm131_ihesp.PI-cam-oracle.50step/SourceMods/src.cam",
+      "-I/SourceMods/src.cam",
+      "-I/glade/work/ruitong/iCESM1.3.1_PI_cam_only/components//cam/src/unit_drivers",
+      "-I/glade/work/ruitong/iCESM1.3.1_PI_cam_only/components//cam/src/unit_drivers/stub",
+      "-I/glade/work/ruitong/iCESM1.3.1_PI_cam_only/components/cam/src/chemistry/pp_trop_mam3",
+      "-I/glade/work/ruitong/iCESM1.3.1_PI_cam_only/components//cam/src/chemistry/modal_aero",
+      "-I/glade/work/ruitong/iCESM1.3.1_PI_cam_only/components//cam/src/chemistry/aerosol",
+      "-I/glade/work/ruitong/iCESM1.3.1_PI_cam_only/components//cam/src/chemistry/mozart",
+      "-I/glade/work/ruitong/iCESM1.3.1_PI_cam_only/components//cam/src/chemistry/utils",
+      "-I/glade/work/ruitong/iCESM1.3.1_PI_cam_only/components//cam/src/physics/rrtmg",
+      "-I/glade/work/ruitong/iCESM1.3.1_PI_cam_only/components//cam/src/physics/rrtmg/ext/rrtmg_mcica",
+      "-I/glade/work/ruitong/iCESM1.3.1_PI_cam_only/components//cam/src/physics/rrtmg/ext/rrtmg_lw",
+      "-I/glade/work/ruitong/iCESM1.3.1_PI_cam_only/components//cam/src/physics/rrtmg/ext/rrtmg_sw",
+      "-I/glade/work/ruitong/iCESM1.3.1_PI_cam_only/components//cam/src/physics/cam",
+      "-I/glade/work/ruitong/iCESM1.3.1_PI_cam_only/components//cam/src/dynamics/se",
+      "-I/glade/work/ruitong/iCESM1.3.1_PI_cam_only/components//cam/src/dynamics/se/share",
+      "-I/glade/work/ruitong/iCESM1.3.1_PI_cam_only/components//cam/src/cpl",
+      "-I/glade/work/ruitong/iCESM1.3.1_PI_cam_only/components//cam/src/control",
+      "-I/glade/work/ruitong/iCESM1.3.1_PI_cam_only/components//cam/src/utils",
+      "-I/glade/derecho/scratch/ruitong/pyCAM/PI-cam/f.e13.F1850C5.ne16_g16.icesm131_ihesp.PI-cam-oracle.50step/bld/lib/include",
+      "-qno-opt-dynamic-align",
+      "-convert",
+      "big_endian",
+      "-assume",
+      "byterecl",
+      "-ftz",
+      "-traceback",
+      "-assume",
+      "realloc_lhs",
+      "-fp-model",
+      "source",
+      "-O2",
+      "-debug",
+      "minimal",
+      "-DCO2A",
+      "-DMAXPATCH_PFT=numpft+1",
+      "-DLSMLAT=1",
+      "-DLSMLON=1",
+      "-DPLON=13826",
+      "-DPLAT=1",
+      "-DNP=4",
+      "-DNC=4",
+      "-DHAVE_F2003_PTR_BND_REMAP",
+      "-DPLEV=30",
+      "-DPCNST=57",
+      "-DPCOLS=16",
+      "-DPSUBCOLS=1",
+      "-DN_RAD_CNST=30",
+      "-DPTRM=1",
+      "-DPTRN=1",
+      "-DPTRK=1",
+      "-D_MPI",
+      "-DCAM",
+      "-D_WK_GRAD",
+      "-D_PRIM",
+      "-DSPMD",
+      "-DMODAL_AERO",
+      "-DMODAL_AERO_3MODE",
+      "-DCNL",
+      "-DCESMCOUPLED",
+      "-DLINUX",
+      "-DFORTRANUNDERSCORE",
+      "-DCPRINTEL",
+      "-DNDEBUG",
+      "-DMCT_INTERFACE",
+      "-DHAVE_MPI",
+      "-DPIO1",
+      "-DHAVE_SLASHPROC",
+      "-D_PNETCDF",
+      "-free",
+      "-DUSE_CONTIGUOUS=",
+      "/glade/work/ruitong/pycam-sima-pi-cam-only/build/pi_cam_standalone/micro_mg_tend/objects/freecam_standalone_micro_mg_tend.F90",
+      "-o",
+      "/glade/work/ruitong/pycam-sima-pi-cam-only/build/pi_cam_standalone/micro_mg_tend/objects/wrapper.o"
+    ]
+  },
+  "dynamic": {
+    "needed": [
+      "libpmi.so.0",
+      "libpmi2.so.0",
+      "libpals.so.0",
+      "libmpifort_intel.so.12",
+      "libmpi_intel.so.12",
+      "libimf.so",
+      "libifport.so.5",
+      "libifcoremt.so.5",
+      "libsvml.so",
+      "libm.so.6",
+      "libintlc.so.5",
+      "libc.so.6",
+      "libgcc_s.so.1"
+    ],
+    "rpath": [
+      "/glade/u/apps/common/25.10/spack/opt/spack/intel-oneapi-compilers/2025.2.1/s4f2/compiler/2025.2/lib:/glade/u/apps/derecho/25.10/spack/opt/spack/netcdf/4.9.3/intel-oneapi-compilers/2025.2.1/2t5o/lib64:/glade/u/apps/derecho/25.10/spack/opt/spack/netcdf/4.9.3/intel-oneapi-compilers/2025.2.1/2t5o/lib:/glade/u/apps/derecho/25.10/spack/opt/spack/nco/5.3.4/gcc/12.5.0/chl2/lib:/glade/u/apps/opt/ncl/6.6.2/lib:/opt/cray/libfabric/1.22.0/lib64:/glade/u/apps/derecho/25.10/spack/opt/spack/hdf5/1.14.6/intel-oneapi-compilers/2025.2.1/fr4a/lib:/glade/u/apps/derecho/25.10/opt/view/lib64:/glade/u/apps/derecho/25.10/opt/view/lib:/glade/u/apps/common/25.10/spack/opt/spack/intel-oneapi-compilers/2025.2.1/s4f2/linux/compiler/lib/intel64:/opt/cray/pe/mpich/8.1.32/ofi/intel/2022.1/lib:/opt/cray/pe/pmi/6.1.15/lib:/opt/cray/pals/1.6/lib"
+    ]
+  },
+  "execution_model": "fixed-address-nonpic-standalone-function",
+  "function": "micro_mg_tend",
+  "intel_math_library": "/glade/u/apps/common/25.10/spack/opt/spack/intel-oneapi-compilers/2025.2.1/s4f2/compiler/2025.2/lib/libimf.so",
+  "intel_math_library_sha256": "f3433e8ed7a95fb17227e307f7a1ab07963b89e4af8150b0ef1811d06d71fdd7",
+  "library": "/glade/work/ruitong/pycam-sima-pi-cam-only/build/pi_cam_standalone/micro_mg_tend/libfreecam_micro_mg_tend.so",
+  "library_bytes": 689728,
+  "library_sha256": "c39a67dddbacda9b679c1c5066162882b2436c67d6f55b8ec916ae7a383bdd20",
+  "link": {
+    "command": [
+      "ftn",
+      "-nostartfiles",
+      "-nofor-main",
+      "-shared-intel",
+      "-Wl,-e,0,-Ttext-segment=0x50000000,--export-dynamic,-Bsymbolic-functions,-soname,libfreecam_micro_mg_tend.so",
+      "-Wl,--trace,-Map=/glade/work/ruitong/pycam-sima-pi-cam-only/build/pi_cam_standalone/micro_mg_tend/link.map",
+      "-Wl,-u,freecam_standalone_micro_mg_tend_v1",
+      "-Wl,-u,freecam_standalone_abort_probe_v1",
+      "/glade/work/ruitong/pycam-sima-pi-cam-only/build/pi_cam_standalone/micro_mg_tend/objects/wrapper.o",
+      "/glade/work/ruitong/pycam-sima-pi-cam-only/build/pi_cam_standalone/micro_mg_tend/objects/abort_probe.o",
+      "/glade/work/ruitong/pycam-sima-pi-cam-only/build/pi_cam_standalone/micro_mg_tend/objects/cam_stubs.o",
+      "/glade/work/ruitong/pycam-sima-pi-cam-only/build/pi_cam_standalone/micro_mg_tend/objects/floating_environment.o",
+      "/glade/work/ruitong/pycam-sima-pi-cam-only/build/pi_cam_standalone/micro_mg_tend/objects/micro_mg1_0.o",
+      "/glade/work/ruitong/pycam-sima-pi-cam-only/build/pi_cam_standalone/micro_mg_tend/objects/wv_sat_methods.o",
+      "/glade/work/ruitong/pycam-sima-pi-cam-only/build/pi_cam_standalone/micro_mg_tend/objects/wv_saturation.o",
+      "/glade/work/ruitong/pycam-sima-pi-cam-only/build/pi_cam_standalone/micro_mg_tend/objects/phys_control.o",
+      "/glade/work/ruitong/pycam-sima-pi-cam-only/build/pi_cam_standalone/micro_mg_tend/objects/physconst.o",
+      "/glade/work/ruitong/pycam-sima-pi-cam-only/build/pi_cam_standalone/micro_mg_tend/objects/ppgrid.o",
+      "/glade/work/ruitong/pycam-sima-pi-cam-only/build/pi_cam_standalone/micro_mg_tend/objects/cam_logfile.o",
+      "/glade/work/ruitong/pycam-sima-pi-cam-only/build/pi_cam_standalone/micro_mg_tend/objects/error_messages.o",
+      "/glade/work/ruitong/pycam-sima-pi-cam-only/build/pi_cam_standalone/micro_mg_tend/objects/cam_abortutils.o",
+      "/glade/work/ruitong/pycam-sima-pi-cam-only/build/pi_cam_standalone/micro_mg_tend/objects/shr_spfn_mod.o",
+      "-o",
+      "/glade/work/ruitong/pycam-sima-pi-cam-only/build/pi_cam_standalone/micro_mg_tend/libfreecam_micro_mg_tend.exec"
+    ],
+    "map": "/glade/work/ruitong/pycam-sima-pi-cam-only/build/pi_cam_standalone/micro_mg_tend/link.map",
+    "own_objects": [
+      "/glade/work/ruitong/pycam-sima-pi-cam-only/build/pi_cam_standalone/micro_mg_tend/objects/wrapper.o",
+      "/glade/work/ruitong/pycam-sima-pi-cam-only/build/pi_cam_standalone/micro_mg_tend/objects/abort_probe.o",
+      "/glade/work/ruitong/pycam-sima-pi-cam-only/build/pi_cam_standalone/micro_mg_tend/objects/cam_stubs.o",
+      "/glade/work/ruitong/pycam-sima-pi-cam-only/build/pi_cam_standalone/micro_mg_tend/objects/floating_environment.o",
+      "/glade/work/ruitong/pycam-sima-pi-cam-only/build/pi_cam_standalone/micro_mg_tend/objects/micro_mg1_0.o",
+      "/glade/work/ruitong/pycam-sima-pi-cam-only/build/pi_cam_standalone/micro_mg_tend/objects/wv_sat_methods.o",
+      "/glade/work/ruitong/pycam-sima-pi-cam-only/build/pi_cam_standalone/micro_mg_tend/objects/wv_saturation.o",
+      "/glade/work/ruitong/pycam-sima-pi-cam-only/build/pi_cam_standalone/micro_mg_tend/objects/phys_control.o",
+      "/glade/work/ruitong/pycam-sima-pi-cam-only/build/pi_cam_standalone/micro_mg_tend/objects/physconst.o",
+      "/glade/work/ruitong/pycam-sima-pi-cam-only/build/pi_cam_standalone/micro_mg_tend/objects/ppgrid.o",
+      "/glade/work/ruitong/pycam-sima-pi-cam-only/build/pi_cam_standalone/micro_mg_tend/objects/cam_logfile.o",
+      "/glade/work/ruitong/pycam-sima-pi-cam-only/build/pi_cam_standalone/micro_mg_tend/objects/error_messages.o",
+      "/glade/work/ruitong/pycam-sima-pi-cam-only/build/pi_cam_standalone/micro_mg_tend/objects/cam_abortutils.o",
+      "/glade/work/ruitong/pycam-sima-pi-cam-only/build/pi_cam_standalone/micro_mg_tend/objects/shr_spfn_mod.o"
+    ],
+    "runtime_inputs": [
+      "/opt/cray/pe/pmi/6.1.15/lib/libpmi.so",
+      "/opt/cray/pe/pmi/6.1.15/lib/libpmi2.so",
+      "/usr/lib/../lib64/libpthread.a",
+      "/opt/cray/pals/1.6/lib/libpals.so",
+      "/opt/cray/pe/mpich/8.1.32/ofi/intel/2022.1/lib/libmpifort_intel.so",
+      "/opt/cray/pe/mpich/8.1.32/ofi/intel/2022.1/lib/libmpi_intel.so",
+      "/usr/lib/../lib64/librt.a",
+      "/usr/lib/../lib64/libpthread.a",
+      "/opt/cray/pe/pmi/6.1.15/lib/libpmi.so",
+      "/opt/cray/pe/pmi/6.1.15/lib/libpmi2.so",
+      "/glade/u/apps/common/25.10/spack/opt/spack/intel-oneapi-compilers/2025.2.1/s4f2/compiler/2025.2/lib/libimf.so",
+      "/usr/lib/../lib64/libm.so",
+      "/lib64/libm.so.6",
+      "/lib64/libmvec.so.1",
+      "/usr/lib/../lib64/libpthread.a",
+      "/glade/u/apps/common/25.10/spack/opt/spack/intel-oneapi-compilers/2025.2.1/s4f2/compiler/2025.2/lib/libifport.so",
+      "/glade/u/apps/common/25.10/spack/opt/spack/intel-oneapi-compilers/2025.2.1/s4f2/compiler/2025.2/lib/libifport.so.5",
+      "/glade/u/apps/common/25.10/spack/opt/spack/intel-oneapi-compilers/2025.2.1/s4f2/compiler/2025.2/lib/libifcoremt.so",
+      "/glade/u/apps/common/25.10/spack/opt/spack/intel-oneapi-compilers/2025.2.1/s4f2/compiler/2025.2/lib/libifcoremt.so.5",
+      "/glade/u/apps/common/25.10/spack/opt/spack/intel-oneapi-compilers/2025.2.1/s4f2/compiler/2025.2/lib/libimf.so",
+      "/glade/u/apps/common/25.10/spack/opt/spack/intel-oneapi-compilers/2025.2.1/s4f2/compiler/2025.2/lib/libsvml.so",
+      "/usr/lib/../lib64/libm.so",
+      "/lib64/libm.so.6",
+      "/lib64/libmvec.so.1",
+      "/lib64/libmvec.so.1",
+      "/glade/u/apps/common/25.10/spack/opt/spack/intel-oneapi-compilers/2025.2.1/s4f2/compiler/2025.2/lib/libipgo.a",
+      "/glade/u/apps/common/25.10/spack/opt/spack/intel-oneapi-compilers/2025.2.1/s4f2/compiler/2025.2/lib/libintlc.so",
+      "/glade/u/apps/common/25.10/spack/opt/spack/intel-oneapi-compilers/2025.2.1/s4f2/compiler/2025.2/lib/libintlc.so.5",
+      "/usr/lib/../lib64/libpthread.a",
+      "/glade/u/apps/common/25.10/spack/opt/spack/intel-oneapi-compilers/2025.2.1/s4f2/compiler/2025.2/lib/libsvml.so",
+      "/usr/lib/../lib64/libc.so",
+      "/lib64/libc.so.6",
+      "/usr/lib64/libc_nonshared.a",
+      "/lib64/ld-linux-x86-64.so.2",
+      "/usr/lib64/libc_nonshared.a",
+      "/lib64/ld-linux-x86-64.so.2",
+      "/glade/u/apps/common/25.10/spack/opt/spack/gcc/12.5.0/hsbg/bin/../lib/gcc/x86_64-pc-linux-gnu/12.5.0//libgcc.a",
+      "/glade/u/apps/common/25.10/spack/opt/spack/gcc/12.5.0/hsbg/lib64/libgcc_s.so",
+      "/glade/u/apps/common/25.10/spack/opt/spack/gcc/12.5.0/hsbg/lib64/libgcc_s.so.1",
+      "/glade/u/apps/common/25.10/spack/opt/spack/gcc/12.5.0/hsbg/bin/../lib/gcc/x86_64-pc-linux-gnu/12.5.0//libgcc.a",
+      "/glade/u/apps/common/25.10/spack/opt/spack/intel-oneapi-compilers/2025.2.1/s4f2/compiler/2025.2/lib/libirc_s.a",
+      "/usr/lib/../lib64/libdl.a",
+      "/usr/lib/../lib64/libc.so",
+      "/lib64/libc.so.6",
+      "/usr/lib64/libc_nonshared.a",
+      "/lib64/ld-linux-x86-64.so.2"
+    ]
+  },
+  "load_end": "0x50087f88",
+  "load_start": "0x50000000",
+  "members": [
+    {
+      "archive": "atm",
+      "name": "micro_mg1_0.o",
+      "sha256": "42237afe044a3378565ee5e27292dc6a7d4c1eaa6d0d0a7d7e5946078ab33f82"
+    },
+    {
+      "archive": "atm",
+      "name": "wv_sat_methods.o",
+      "sha256": "082b6f1d649f0e7b029365704154b12c8103c240c5a51d36b56ef44711e456fb"
+    },
+    {
+      "archive": "atm",
+      "name": "wv_saturation.o",
+      "sha256": "c08d33ee3f49becf8bd2409e1a103fea55bea1b2560b96c7abb84fc25ea78ba9"
+    },
+    {
+      "archive": "atm",
+      "name": "phys_control.o",
+      "sha256": "a9b1ab3cd29f0ed701992281cd7909ac7bafb77e3248a8429de223d8b8f666a2"
+    },
+    {
+      "archive": "atm",
+      "name": "physconst.o",
+      "sha256": "0e8f6347691d4d6e8f7f2e84c69e8bda82554457bcc3dd924244a577a6fb61b5"
+    },
+    {
+      "archive": "atm",
+      "name": "ppgrid.o",
+      "sha256": "4be30a7e743d68bd266765ced612cd900431ecb735cf42e192b521eaeed0d165"
+    },
+    {
+      "archive": "atm",
+      "name": "cam_logfile.o",
+      "sha256": "d0e47ef522fc07056154a32e0709a466ab4fde85b89132100eb7236ddb8e7f18"
+    },
+    {
+      "archive": "atm",
+      "name": "error_messages.o",
+      "sha256": "eed34d62c58062fb58a202e6b15c291fb06eb13c8c1d067a56bc701a9ee9b8d5"
+    },
+    {
+      "archive": "atm",
+      "name": "cam_abortutils.o",
+      "sha256": "2de327db7296b04ea5f2fc9155ca1acc414c1e5f53138dfc6ffe960ae17bd41d"
+    },
+    {
+      "archive": "csm_share",
+      "name": "shr_spfn_mod.o",
+      "sha256": "4ecd823f3e7cf192f28e6b601e9afe70db799809889f003bd9f380dbb1b17a1a"
+    }
+  ],
+  "numerical_archives": {
+    "atm": {
+      "path": "/glade/derecho/scratch/ruitong/pyCAM/PI-cam/f.e13.F1850C5.ne16_g16.icesm131_ihesp.PI-cam-oracle.50step/bld/lib/libatm.a",
+      "sha256": "56eae2ed53b1fc529d149489e320b9cab83a0cf715c02745f211c3fdbc943930"
+    },
+    "csm_share": {
+      "path": "/glade/derecho/scratch/ruitong/pyCAM/PI-cam/f.e13.F1850C5.ne16_g16.icesm131_ihesp.PI-cam-oracle.50step/bld/intel/mpich/nodebug/nothreads/mct/mct/noesmf/c1a1l1i1o1r1g1w1e1/csm_share/libcsm_share.a",
+      "sha256": "ca4b330f182a54feafb321318b8dc745f3b08f4d0b66082d68585255462c4e13"
+    }
+  },
+  "original_call_proof": "5002d277:\te8 74 c9 01 00       \tcall   50049bf0 <micro_mg1_0_mp_micro_mg_tend_>",
+  "pbs_job_id": null,
+  "qualified_name": "micro_mg1_0::micro_mg_tend",
+  "schema_version": 1,
+  "smoke_load": {
+    "abort_probe": {
+      "exit_status": 86,
+      "stderr_line": "FREECAM_FORTRAN_ABORT: freecam standalone abort probe"
+    },
+    "base_matches": true,
+    "fortran_runtime": [
+      "/glade/u/apps/common/25.10/spack/opt/spack/intel-oneapi-compilers/2025.2.1/s4f2/compiler/2025.2/lib/libifcore.so.5",
+      "/glade/u/apps/common/25.10/spack/opt/spack/intel-oneapi-compilers/2025.2.1/s4f2/compiler/2025.2/lib/libifcoremt.so.5"
+    ],
+    "initializers_returned": [
+      "wv_saturation_mp_wv_sat_init_"
+    ],
+    "ld_preload": "/glade/u/apps/common/25.10/spack/opt/spack/intel-oneapi-compilers/2025.2.1/s4f2/compiler/2025.2/lib/libimf.so",
+    "loaded_base": "0x50000000",
+    "math_runtime": [
+      "/glade/u/apps/common/25.10/spack/opt/spack/intel-oneapi-compilers/2025.2.1/s4f2/compiler/2025.2/lib/libimf.so"
+    ],
+    "mpi_initialized": false,
+    "mxcsr_after": "0x9fc0",
+    "mxcsr_before": "0x1fa0"
+  },
+  "spec": "/glade/work/ruitong/pycam-sima-pi-cam-only/native/pi_cam/functions/micro_mg_tend.yaml",
+  "spec_sha256": "009511cb4cccbc62fd8e125c61c868c9322b5de893132ba77f053ef8a8135ac8",
+  "stubs": {
+    "cesm_symbols_needed": [
+      "mpibcast_",
+      "mpishorthand_mp_mpichar_",
+      "mpishorthand_mp_mpicom_",
+      "mpishorthand_mp_mpiint_",
+      "mpishorthand_mp_mpilog_",
+      "mpishorthand_mp_mpir8_",
+      "netcdf_mp_nf90_strerror_",
+      "shr_assert_mod_mp_shr_assert_in_domain_0d_double_",
+      "shr_nl_mod_mp_shr_nl_find_group_name_",
+      "shr_sys_mod_mp_shr_sys_abort_",
+      "spmd_utils_mp_masterproc_",
+      "units_mp_freeunit_",
+      "units_mp_getunit_"
+    ],
+    "list": "/* Generated by build_pi_cam_standalone_function.py from the function YAML. */\nFREECAM_INERT_DATA_INT32(spmd_utils_mp_masterproc_)\nFREECAM_INERT_DATA_INT32(mpishorthand_mp_mpicom_)\nFREECAM_INERT_DATA_INT32(mpishorthand_mp_mpir8_)\nFREECAM_INERT_DATA_INT32(mpishorthand_mp_mpichar_)\nFREECAM_INERT_DATA_INT32(mpishorthand_mp_mpiint_)\nFREECAM_INERT_DATA_INT32(mpishorthand_mp_mpilog_)\nFREECAM_INERT_VOID(shr_assert_mod_mp_shr_assert_in_domain_0d_double_)\nFREECAM_FAIL_CLOSED(mpibcast_)\nFREECAM_FAIL_CLOSED(shr_nl_mod_mp_shr_nl_find_group_name_)\nFREECAM_FAIL_CLOSED(units_mp_getunit_)\nFREECAM_FAIL_CLOSED(units_mp_freeunit_)\nFREECAM_FAIL_CLOSED(netcdf_mp_nf90_strerror_)\nFREECAM_ABORT(shr_sys_mod_mp_shr_sys_abort_)\n",
+    "source": "/glade/work/ruitong/pycam-sima-pi-cam-only/native/pi_cam/standalone/cam_stubs.c",
+    "source_sha256": "ebe1366c902f0827e5480c9acfb82c6e28d1ef2eec57aa90acff541acd91c3c4",
+    "stubs": [
+      "mpibcast_",
+      "mpishorthand_mp_mpichar_",
+      "mpishorthand_mp_mpicom_",
+      "mpishorthand_mp_mpiint_",
+      "mpishorthand_mp_mpilog_",
+      "mpishorthand_mp_mpir8_",
+      "netcdf_mp_nf90_strerror_",
+      "shr_assert_mod_mp_shr_assert_in_domain_0d_double_",
+      "shr_nl_mod_mp_shr_nl_find_group_name_",
+      "shr_sys_mod_mp_shr_sys_abort_",
+      "spmd_utils_mp_masterproc_",
+      "units_mp_freeunit_",
+      "units_mp_getunit_"
+    ]
+  },
+  "symbols": {
+    "cam_history_symbols": [],
+    "module_state_sizes": {
+      "micro_mg1_0_mp_ac_": 8,
+      "micro_mg1_0_mp_ai_": 8,
+      "micro_mg1_0_mp_aimm_": 8,
+      "micro_mg1_0_mp_ar_": 8,
+      "micro_mg1_0_mp_as_": 8,
+      "micro_mg1_0_mp_bc_": 8,
+      "micro_mg1_0_mp_bi_": 8,
+      "micro_mg1_0_mp_bimm_": 8,
+      "micro_mg1_0_mp_br_": 8,
+      "micro_mg1_0_mp_bs_": 8,
+      "micro_mg1_0_mp_ci_": 8,
+      "micro_mg1_0_mp_cons11_": 8,
+      "micro_mg1_0_mp_cons13_": 8,
+      "micro_mg1_0_mp_cons14_": 8,
+      "micro_mg1_0_mp_cons16_": 8,
+      "micro_mg1_0_mp_cons17_": 8,
+      "micro_mg1_0_mp_cons1_": 8,
+      "micro_mg1_0_mp_cons22_": 8,
+      "micro_mg1_0_mp_cons23_": 8,
+      "micro_mg1_0_mp_cons24_": 8,
+      "micro_mg1_0_mp_cons25_": 8,
+      "micro_mg1_0_mp_cons27_": 8,
+      "micro_mg1_0_mp_cons28_": 8,
+      "micro_mg1_0_mp_cons4_": 8,
+      "micro_mg1_0_mp_cons5_": 8,
+      "micro_mg1_0_mp_cons6_": 8,
+      "micro_mg1_0_mp_cons7_": 8,
+      "micro_mg1_0_mp_cons8_": 8,
+      "micro_mg1_0_mp_cpp_": 8,
+      "micro_mg1_0_mp_cr_": 8,
+      "micro_mg1_0_mp_cs_": 8,
+      "micro_mg1_0_mp_csmax_": 8,
+      "micro_mg1_0_mp_csmin_": 8,
+      "micro_mg1_0_mp_dcs_": 8,
+      "micro_mg1_0_mp_di_": 8,
+      "micro_mg1_0_mp_dr_": 8,
+      "micro_mg1_0_mp_ds_": 8,
+      "micro_mg1_0_mp_ecr_": 8,
+      "micro_mg1_0_mp_eii_": 8,
+      "micro_mg1_0_mp_f1r_": 8,
+      "micro_mg1_0_mp_f1s_": 8,
+      "micro_mg1_0_mp_f2r_": 8,
+      "micro_mg1_0_mp_f2s_": 8,
+      "micro_mg1_0_mp_g_": 8,
+      "micro_mg1_0_mp_lammaxi_": 8,
+      "micro_mg1_0_mp_lammaxr_": 8,
+      "micro_mg1_0_mp_lammaxs_": 8,
+      "micro_mg1_0_mp_lammini_": 8,
+      "micro_mg1_0_mp_lamminr_": 8,
+      "micro_mg1_0_mp_lammins_": 8,
+      "micro_mg1_0_mp_mi0_": 8,
+      "micro_mg1_0_mp_micro_mg_berg_eff_factor_": 8,
+      "micro_mg1_0_mp_mindbz_": 8,
+      "micro_mg1_0_mp_minrefl_": 8,
+      "micro_mg1_0_mp_pi_": 8,
+      "micro_mg1_0_mp_qsmall_": 8,
+      "micro_mg1_0_mp_r_": 8,
+      "micro_mg1_0_mp_rhmini_": 8,
+      "micro_mg1_0_mp_rhoi_": 8,
+      "micro_mg1_0_mp_rhosn_": 8,
+      "micro_mg1_0_mp_rhosu_": 8,
+      "micro_mg1_0_mp_rhow_": 8,
+      "micro_mg1_0_mp_rin_": 8,
+      "micro_mg1_0_mp_rv_": 8,
+      "micro_mg1_0_mp_tmax_fsnow_": 8,
+      "micro_mg1_0_mp_tmelt_": 8,
+      "micro_mg1_0_mp_tmin_fsnow_": 8,
+      "micro_mg1_0_mp_tt0_": 8,
+      "micro_mg1_0_mp_use_hetfrz_classnuc_": 4,
+      "micro_mg1_0_mp_xlf_": 8,
+      "micro_mg1_0_mp_xxls_": 8,
+      "micro_mg1_0_mp_xxlv_": 8
+    }
+  },
+  "wrapper": {
+    "action_id": 1,
+    "operation": {
+      "action_id": 1,
+      "arguments": [
+        {
+          "dtype": "int32",
+          "field": "micro_mg_tend.microp_uniform",
+          "intent": "in",
+          "rank": 1
+        },
+        {
+          "dtype": "int32",
+          "field": "micro_mg_tend.pcols",
+          "intent": "in",
+          "rank": 1
+        },
+        {
+          "dtype": "int32",
+          "field": "micro_mg_tend.pver",
+          "intent": "in",
+          "rank": 1
+        },
+        {
+          "dtype": "int32",
+          "field": "micro_mg_tend.ncol",
+          "intent": "in",
+          "rank": 1
+        },
+        {
+          "dtype": "int32",
+          "field": "micro_mg_tend.top_lev",
+          "intent": "in",
+          "rank": 1
+        },
+        {
+          "dtype": "float64",
+          "field": "micro_mg_tend.deltatin",
+          "intent": "in",
+          "rank": 1
+        },
+        {
+          "dtype": "float64",
+          "field": "micro_mg_tend.tn",
+          "intent": "in",
+          "rank": 3
+        },
+        {
+          "dtype": "float64",
+          "field": "micro_mg_tend.qn",
+          "intent": "in",
+          "rank": 3
+        },
+        {
+          "dtype": "float64",
+          "field": "micro_mg_tend.qc",
+          "intent": "inout",
+          "rank": 3
+        },
+        {
+          "dtype": "float64",
+          "field": "micro_mg_tend.qi",
+          "intent": "inout",
+          "rank": 3
+        },
+        {
+          "dtype": "float64",
+          "field": "micro_mg_tend.nc",
+          "intent": "inout",
+          "rank": 3
+        },
+        {
+          "dtype": "float64",
+          "field": "micro_mg_tend.ni",
+          "intent": "inout",
+          "rank": 3
+        },
+        {
+          "dtype": "float64",
+          "field": "micro_mg_tend.p",
+          "intent": "in",
+          "rank": 3
+        },
+        {
+          "dtype": "float64",
+          "field": "micro_mg_tend.pdel",
+          "intent": "in",
+          "rank": 3
+        },
+        {
+          "dtype": "float64",
+          "field": "micro_mg_tend.cldn",
+          "intent": "in",
+          "rank": 3
+        },
+        {
+          "dtype": "float64",
+          "field": "micro_mg_tend.liqcldf",
+          "intent": "in",
+          "rank": 3
+        },
+        {
+          "dtype": "float64",
+          "field": "micro_mg_tend.relvar",
+          "intent": "in",
+          "rank": 3
+        },
+        {
+          "dtype": "float64",
+          "field": "micro_mg_tend.accre_enhan",
+          "intent": "in",
+          "rank": 3
+        },
+        {
+          "dtype": "float64",
+          "field": "micro_mg_tend.icecldf",
+          "intent": "in",
+          "rank": 3
+        },
+        {
+          "dtype": "float64",
+          "field": "micro_mg_tend.rate1ord_cw2pr_st",
+          "intent": "out",
+          "rank": 3
+        },
+        {
+          "dtype": "float64",
+          "field": "micro_mg_tend.naai",
+          "intent": "in",
+          "rank": 3
+        },
+        {
+          "dtype": "float64",
+          "field": "micro_mg_tend.npccnin",
+          "intent": "in",
+          "rank": 3
+        },
+        {
+          "dtype": "float64",
+          "field": "micro_mg_tend.rndst",
+          "intent": "in",
+          "rank": 4
+        },
+        {
+          "dtype": "float64",
+          "field": "micro_mg_tend.nacon",
+          "intent": "in",
+          "rank": 4
+        },
+        {
+          "dtype": "float64",
+          "field": "micro_mg_tend.tlat",
+          "intent": "out",
+          "rank": 3
+        },
+        {
+          "dtype": "float64",
+          "field": "micro_mg_tend.qvlat",
+          "intent": "out",
+          "rank": 3
+        },
+        {
+          "dtype": "float64",
+          "field": "micro_mg_tend.qctend",
+          "intent": "out",
+          "rank": 3
+        },
+        {
+          "dtype": "float64",
+          "field": "micro_mg_tend.qitend",
+          "intent": "out",
+          "rank": 3
+        },
+        {
+          "dtype": "float64",
+          "field": "micro_mg_tend.nctend",
+          "intent": "out",
+          "rank": 3
+        },
+        {
+          "dtype": "float64",
+          "field": "micro_mg_tend.nitend",
+          "intent": "out",
+          "rank": 3
+        },
+        {
+          "dtype": "float64",
+          "field": "micro_mg_tend.effc",
+          "intent": "out",
+          "rank": 3
+        },
+        {
+          "dtype": "float64",
+          "field": "micro_mg_tend.effc_fn",
+          "intent": "out",
+          "rank": 3
+        },
+        {
+          "dtype": "float64",
+          "field": "micro_mg_tend.effi",
+          "intent": "out",
+          "rank": 3
+        },
+        {
+          "dtype": "float64",
+          "field": "micro_mg_tend.prect",
+          "intent": "out",
+          "rank": 2
+        },
+        {
+          "dtype": "float64",
+          "field": "micro_mg_tend.preci",
+          "intent": "out",
+          "rank": 2
+        },
+        {
+          "dtype": "float64",
+          "field": "micro_mg_tend.nevapr",
+          "intent": "out",
+          "rank": 3
+        },
+        {
+          "dtype": "float64",
+          "field": "micro_mg_tend.evapsnow",
+          "intent": "out",
+          "rank": 3
+        },
+        {
+          "dtype": "float64",
+          "field": "micro_mg_tend.am_evp_st",
+          "intent": "out",
+          "rank": 3
+        },
+        {
+          "dtype": "float64",
+          "field": "micro_mg_tend.prain",
+          "intent": "out",
+          "rank": 3
+        },
+        {
+          "dtype": "float64",
+          "field": "micro_mg_tend.prodsnow",
+          "intent": "out",
+          "rank": 3
+        },
+        {
+          "dtype": "float64",
+          "field": "micro_mg_tend.cmeout",
+          "intent": "out",
+          "rank": 3
+        },
+        {
+          "dtype": "float64",
+          "field": "micro_mg_tend.deffi",
+          "intent": "out",
+          "rank": 3
+        },
+        {
+          "dtype": "float64",
+          "field": "micro_mg_tend.pgamrad",
+          "intent": "out",
+          "rank": 3
+        },
+        {
+          "dtype": "float64",
+          "field": "micro_mg_tend.lamcrad",
+          "intent": "out",
+          "rank": 3
+        },
+        {
+          "dtype": "float64",
+          "field": "micro_mg_tend.qsout",
+          "intent": "out",
+          "rank": 3
+        },
+        {
+          "dtype": "float64",
+          "field": "micro_mg_tend.dsout",
+          "intent": "out",
+          "rank": 3
+        },
+        {
+          "dtype": "float64",
+          "field": "micro_mg_tend.rflx",
+          "intent": "out",
+          "rank": 3
+        },
+        {
+          "dtype": "float64",
+          "field": "micro_mg_tend.sflx",
+          "intent": "out",
+          "rank": 3
+        },
+        {
+          "dtype": "float64",
+          "field": "micro_mg_tend.qrout",
+          "intent": "out",
+          "rank": 3
+        },
+        {
+          "dtype": "float64",
+          "field": "micro_mg_tend.reff_rain",
+          "intent": "inout",
+          "rank": 3
+        },
+        {
+          "dtype": "float64",
+          "field": "micro_mg_tend.reff_snow",
+          "intent": "inout",
+          "rank": 3
+        },
+        {
+          "dtype": "float64",
+          "field": "micro_mg_tend.qcsevap",
+          "intent": "out",
+          "rank": 3
+        },
+        {
+          "dtype": "float64",
+          "field": "micro_mg_tend.qisevap",
+          "intent": "out",
+          "rank": 3
+        },
+        {
+          "dtype": "float64",
+          "field": "micro_mg_tend.qvres",
+          "intent": "out",
+          "rank": 3
+        },
+        {
+          "dtype": "float64",
+          "field": "micro_mg_tend.cmeiout",
+          "intent": "out",
+          "rank": 3
+        },
+        {
+          "dtype": "float64",
+          "field": "micro_mg_tend.vtrmc",
+          "intent": "out",
+          "rank": 3
+        },
+        {
+          "dtype": "float64",
+          "field": "micro_mg_tend.vtrmi",
+          "intent": "out",
+          "rank": 3
+        },
+        {
+          "dtype": "float64",
+          "field": "micro_mg_tend.qcsedten",
+          "intent": "out",
+          "rank": 3
+        },
+        {
+          "dtype": "float64",
+          "field": "micro_mg_tend.qisedten",
+          "intent": "out",
+          "rank": 3
+        },
+        {
+          "dtype": "float64",
+          "field": "micro_mg_tend.prao",
+          "intent": "out",
+          "rank": 3
+        },
+        {
+          "dtype": "float64",
+          "field": "micro_mg_tend.prco",
+          "intent": "out",
+          "rank": 3
+        },
+        {
+          "dtype": "float64",
+          "field": "micro_mg_tend.mnuccco",
+          "intent": "out",
+          "rank": 3
+        },
+        {
+          "dtype": "float64",
+          "field": "micro_mg_tend.mnuccto",
+          "intent": "out",
+          "rank": 3
+        },
+        {
+          "dtype": "float64",
+          "field": "micro_mg_tend.msacwio",
+          "intent": "out",
+          "rank": 3
+        },
+        {
+          "dtype": "float64",
+          "field": "micro_mg_tend.psacwso",
+          "intent": "out",
+          "rank": 3
+        },
+        {
+          "dtype": "float64",
+          "field": "micro_mg_tend.bergso",
+          "intent": "out",
+          "rank": 3
+        },
+        {
+          "dtype": "float64",
+          "field": "micro_mg_tend.bergo",
+          "intent": "out",
+          "rank": 3
+        },
+        {
+          "dtype": "float64",
+          "field": "micro_mg_tend.melto",
+          "intent": "out",
+          "rank": 3
+        },
+        {
+          "dtype": "float64",
+          "field": "micro_mg_tend.homoo",
+          "intent": "out",
+          "rank": 3
+        },
+        {
+          "dtype": "float64",
+          "field": "micro_mg_tend.qcreso",
+          "intent": "out",
+          "rank": 3
+        },
+        {
+          "dtype": "float64",
+          "field": "micro_mg_tend.prcio",
+          "intent": "out",
+          "rank": 3
+        },
+        {
+          "dtype": "float64",
+          "field": "micro_mg_tend.praio",
+          "intent": "out",
+          "rank": 3
+        },
+        {
+          "dtype": "float64",
+          "field": "micro_mg_tend.qireso",
+          "intent": "out",
+          "rank": 3
+        },
+        {
+          "dtype": "float64",
+          "field": "micro_mg_tend.mnuccro",
+          "intent": "out",
+          "rank": 3
+        },
+        {
+          "dtype": "float64",
+          "field": "micro_mg_tend.pracso",
+          "intent": "out",
+          "rank": 3
+        },
+        {
+          "dtype": "float64",
+          "field": "micro_mg_tend.meltsdt",
+          "intent": "out",
+          "rank": 3
+        },
+        {
+          "dtype": "float64",
+          "field": "micro_mg_tend.frzrdt",
+          "intent": "out",
+          "rank": 3
+        },
+        {
+          "dtype": "float64",
+          "field": "micro_mg_tend.mnuccdo",
+          "intent": "out",
+          "rank": 3
+        },
+        {
+          "dtype": "float64",
+          "field": "micro_mg_tend.nrout",
+          "intent": "out",
+          "rank": 3
+        },
+        {
+          "dtype": "float64",
+          "field": "micro_mg_tend.nsout",
+          "intent": "out",
+          "rank": 3
+        },
+        {
+          "dtype": "float64",
+          "field": "micro_mg_tend.refl",
+          "intent": "out",
+          "rank": 3
+        },
+        {
+          "dtype": "float64",
+          "field": "micro_mg_tend.arefl",
+          "intent": "out",
+          "rank": 3
+        },
+        {
+          "dtype": "float64",
+          "field": "micro_mg_tend.areflz",
+          "intent": "out",
+          "rank": 3
+        },
+        {
+          "dtype": "float64",
+          "field": "micro_mg_tend.frefl",
+          "intent": "out",
+          "rank": 3
+        },
+        {
+          "dtype": "float64",
+          "field": "micro_mg_tend.csrfl",
+          "intent": "out",
+          "rank": 3
+        },
+        {
+          "dtype": "float64",
+          "field": "micro_mg_tend.acsrfl",
+          "intent": "out",
+          "rank": 3
+        },
+        {
+          "dtype": "float64",
+          "field": "micro_mg_tend.fcsrfl",
+          "intent": "out",
+          "rank": 3
+        },
+        {
+          "dtype": "float64",
+          "field": "micro_mg_tend.rercld",
+          "intent": "out",
+          "rank": 3
+        },
+        {
+          "dtype": "float64",
+          "field": "micro_mg_tend.ncai",
+          "intent": "out",
+          "rank": 3
+        },
+        {
+          "dtype": "float64",
+          "field": "micro_mg_tend.ncal",
+          "intent": "out",
+          "rank": 3
+        },
+        {
+          "dtype": "float64",
+          "field": "micro_mg_tend.qrout2",
+          "intent": "out",
+          "rank": 3
+        },
+        {
+          "dtype": "float64",
+          "field": "micro_mg_tend.qsout2",
+          "intent": "out",
+          "rank": 3
+        },
+        {
+          "dtype": "float64",
+          "field": "micro_mg_tend.nrout2",
+          "intent": "out",
+          "rank": 3
+        },
+        {
+          "dtype": "float64",
+          "field": "micro_mg_tend.nsout2",
+          "intent": "out",
+          "rank": 3
+        },
+        {
+          "dtype": "float64",
+          "field": "micro_mg_tend.drout2",
+          "intent": "out",
+          "rank": 3
+        },
+        {
+          "dtype": "float64",
+          "field": "micro_mg_tend.dsout2",
+          "intent": "out",
+          "rank": 3
+        },
+        {
+          "dtype": "float64",
+          "field": "micro_mg_tend.freqs",
+          "intent": "out",
+          "rank": 3
+        },
+        {
+          "dtype": "float64",
+          "field": "micro_mg_tend.freqr",
+          "intent": "out",
+          "rank": 3
+        },
+        {
+          "dtype": "float64",
+          "field": "micro_mg_tend.nfice",
+          "intent": "out",
+          "rank": 3
+        },
+        {
+          "dtype": "float64",
+          "field": "micro_mg_tend.prer_evap",
+          "intent": "out",
+          "rank": 3
+        },
+        {
+          "dtype": "int32",
+          "field": "micro_mg_tend.do_cldice",
+          "intent": "in",
+          "rank": 1
+        },
+        {
+          "dtype": "int32",
+          "field": "micro_mg_tend.errstring",
+          "intent": "out",
+          "rank": 1
+        },
+        {
+          "dtype": "float64",
+          "field": "micro_mg_tend.tnd_qsnow",
+          "intent": "in",
+          "rank": 3
+        },
+        {
+          "dtype": "float64",
+          "field": "micro_mg_tend.tnd_nsnow",
+          "intent": "in",
+          "rank": 3
+        },
+        {
+          "dtype": "float64",
+          "field": "micro_mg_tend.re_ice",
+          "intent": "in",
+          "rank": 3
+        },
+        {
+          "dtype": "float64",
+          "field": "micro_mg_tend.frzimm",
+          "intent": "in",
+          "rank": 3
+        },
+        {
+          "dtype": "float64",
+          "field": "micro_mg_tend.frzcnt",
+          "intent": "in",
+          "rank": 3
+        },
+        {
+          "dtype": "float64",
+          "field": "micro_mg_tend.frzdep",
+          "intent": "in",
+          "rank": 3
+        },
+        {
+          "dtype": "float64",
+          "field": "micro_mg_tend.preo",
+          "intent": "out",
+          "rank": 3
+        },
+        {
+          "dtype": "float64",
+          "field": "micro_mg_tend.prdso",
+          "intent": "out",
+          "rank": 3
+        },
+        {
+          "dtype": "float64",
+          "field": "micro_mg_tend.frzro",
+          "intent": "out",
+          "rank": 3
+        },
+        {
+          "dtype": "float64",
+          "field": "micro_mg_tend.meltso",
+          "intent": "out",
+          "rank": 3
+        },
+        {
+          "dtype": "float64",
+          "field": "micro_mg_tend.wtfc",
+          "intent": "out",
+          "rank": 3
+        },
+        {
+          "dtype": "float64",
+          "field": "micro_mg_tend.wtfi",
+          "intent": "out",
+          "rank": 3
+        },
+        {
+          "dtype": "float64",
+          "field": "micro_mg_tend.wtprelat",
+          "intent": "out",
+          "rank": 3
+        },
+        {
+          "dtype": "float64",
+          "field": "micro_mg_tend.wtpostlat",
+          "intent": "out",
+          "rank": 3
+        }
+      ],
+      "symbol": "freecam_standalone_micro_mg_tend_v1"
+    },
+    "source": "/glade/work/ruitong/pycam-sima-pi-cam-only/build/pi_cam_standalone/micro_mg_tend/objects/freecam_standalone_micro_mg_tend.F90",
+    "source_sha256": "b2ce307be289df7c4dd7878ee836c3bac013e68fb355d039f5836963278bc4de",
+    "symbol": "freecam_standalone_micro_mg_tend_v1"
+  }
+}
