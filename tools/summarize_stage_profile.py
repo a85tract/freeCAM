@@ -63,6 +63,9 @@ def main() -> int:
     report = summarize(arguments.directory, arguments.prefix)
     if arguments.output:
         arguments.output.write_text(json.dumps(report, indent=1) + "\n")
+    if report["tend_mean_seconds"] is None:
+        print(f"{report['ranks']} ranks; no tend timing was written (the run did not finish a step)")
+        return 0
     print(f"{report['ranks']} ranks; tend mean {report['tend_mean_seconds']:.3f} s per rank")
     print("\nby family (mean seconds per rank):")
     for family, total in report["by_family"].items():

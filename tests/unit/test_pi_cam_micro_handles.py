@@ -132,3 +132,19 @@ def test_the_module_sits_below_the_control_layer() -> None:
     for control in ("physpkg", "cam_comp", "atm_comp_mct", "micro_mg_cam",
                     "pycam_macro_handles", "pycam_rad_handles"):
         assert control not in used, control
+
+
+def test_every_array_the_lifted_text_allocates_is_released_before_the_next_chunk() -> None:
+    """The routine's allocatable locals died with it; as module state they
+    are freed by release_locals, which begin and end call."""
+
+    text = MODULE.read_text()
+    allocated = set(re.findall(r"^\s*allocate\((\w+)\(", text, re.M))
+    body = re.search(r"subroutine release_locals\(\)(.*?)end subroutine release_locals", text, re.S).group(1)
+    released = set(re.findall(r"if \(allocated\((\w+)\)\) deallocate\(\1\)", body))
+    pointers = set(re.findall(r"^\s*real\(r8\), pointer, save :: (\w+)", text, re.M))
+    assert allocated - pointers <= released, sorted(allocated - pointers - released)
+    begin = re.search(r"function pycam_micro_begin_v1.*?end function pycam_micro_begin_v1", text, re.S).group(0)
+    end = re.search(r"function pycam_micro_end_v1.*?end function pycam_micro_end_v1", text, re.S).group(0)
+    assert begin.index("call release_locals()") < begin.index("call physics_state_copy")
+    assert "call release_locals()" in end

@@ -224,7 +224,14 @@ def _verbatim(lines, name, first, last) -> str:
 def render_module(source: Path | None = None) -> str:
     lines = (source or PINNED).read_text().splitlines()
     nl = "\n"
-    state = nl.join(row for row, _ in module_state(lines))
+    rows = module_state(lines)
+    state = nl.join(row for row, _ in rows)
+    # The routine's allocatable locals were freed by its exit; as module
+    # state they must be freed by hand before the prelude allocates them
+    # again for the next chunk.  Every allocatable array of the state, in
+    # declaration order; a deallocate of what exit would have deallocated.
+    releases = nl.join(f"    if (allocated({name})) deallocate({name})" for row, name in rows
+                       if ", allocatable" in row and not row.lstrip().startswith("type("))
     config = nl.join(f"  {kind}, save :: {name}" for name, kind in CONFIGURATION)
     views = view_table(lines)
     codes = nl.join(f"  integer(c_int), parameter, public :: view_{n} = {c}" for n, _, _, c in views)
@@ -327,6 +334,14 @@ module pycam_micro_handles
 
 contains
 
+  subroutine release_locals()
+    ! What the routine's exit did for its allocatable locals: the packed
+    ! arrays the prelude allocates are module state here and would be
+    ! allocated twice without this.  Called before every chunk's state copy
+    ! and after its state dealloc.
+{releases}
+  end subroutine release_locals
+
   logical function chunk_ok(lchnk_in)
     integer(c_int), intent(in) :: lchnk_in
     chunk_ok = allocated(micro_ptend) .and. lchnk_in >= begchunk .and. lchnk_in <= endchunk
@@ -426,6 +441,7 @@ contains
     nlev = pver - top_lev + 1
     state => host_state(lchnk)
     ptend => micro_ptend(lchnk)
+    call release_locals()
     if (state_live) call physics_state_dealloc(state_loc)
     call physics_state_copy(state, state_loc)
     state_live = .true.
@@ -573,6 +589,7 @@ contains
     if (.not. chunk_ok(lchnk_in) .or. lchnk_in /= lchnk .or. .not. state_live) return
     call physics_state_dealloc(state_loc)
     state_live = .false.
+    call release_locals()
     status = 0_c_int
   end function pycam_micro_end_v1
 
