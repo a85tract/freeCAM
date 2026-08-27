@@ -3,20 +3,14 @@
 #PBS -q develop
 # Preserve the validated rank placement: 512 MPI ranks on four nodes while
 # charging the cpudev maximum of 256 physical CPUs.
-#PBS -l select=4:ncpus=64:mpiprocs=128:ompthreads=1:mem=64GB
+# 235GB rather than the usual 64: every rank carries a PyTorch runtime of
+# its own beside CAM's state, and 512 of those do not fit in 4 x 64GB -- the
+# first attempt (7257397) was killed at 256GB after two steps.
+#PBS -l select=4:ncpus=64:mpiprocs=128:ompthreads=1:mem=235GB
 #PBS -l walltime=00:20:00
 #PBS -j oe
 #PBS -o logs/
 #PBS -V
-
-# Gate B2 of the macrophysics transliteration: the stage runs as its two
-# halves and Macrophysics.tend runs between them on every rank -- the
-# macrophysics driver layer as Python, every FLOP still the oracle's Fortran
-# through the lifted kernels, the handles and the direct kernel.  What is on
-# trial is the transliteration itself: its order, its argument bindings, its
-# copies.  bfb: true is the only acceptable result; a difference is diagnosed
-# against Gate B1's run of the same image, which differs from this one by
-# exactly the Python process.
 
 # What a trained surrogate does to the model, over fifty steps.
 #
@@ -26,6 +20,12 @@
 # is a different model's.  What it measures is how far the run drifts from
 # the oracle and whether it stays standing at all -- the first honest
 # question to ask of a surrogate, before anyone asks whether it is good.
+#
+# --no-verify-exports is what lets it get that far: the replay compares every
+# step's coupler export with the oracle's byte for byte and stops at the first
+# difference, which for a surrogate is step three.  Turning that check off is
+# only ever right for a run that claims to reproduce nothing, which is this
+# one.
 #
 #   PYCAM_SURROGATE=<model>.pt   the trained network to install
 
@@ -78,15 +78,24 @@ mpiexec --label -n 512 "${python}" -m freecam.pi_cam.cli \
   --split-macrophysics \
   --macrophysics-python \
   --macro-kernel-surrogate "${PYCAM_SURROGATE}" \
+  --no-verify-exports \
   --steps 50 \
   --summary "${summary}" \
   > "${run_dir}/pi_cam_python.log" 2>&1 || echo "model run exited $? (comparing the trace anyway)"
 
-status=0
+# A surrogate is never bit-for-bit; the comparison is recorded, not enforced.
 "${python}" tools/verify_pi_cam.py \
   --reference "${oracle_run}" \
   --candidate "${run_dir}" \
-  --output "${bfb_output}" || status=$?
+  --output "${bfb_output}" || true
+
+# what is worth reading instead: how far each field moved
+"${python}" tools/report_pi_cam_surrogate_drift.py \
+  --reference "${oracle_run}" \
+  --candidate "${run_dir}" \
+  --output "${root}/drift.json" || true
+
+status=0
 
 "${python}" tools/compare_pi_cam_stage_trace.py \
   --bundle "${capture_bundle}" \

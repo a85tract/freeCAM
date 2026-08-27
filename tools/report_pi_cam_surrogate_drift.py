@@ -23,11 +23,29 @@ def history_files(directory: Path) -> list[Path]:
     return sorted(p for p in directory.glob("*.cam.h*.nc"))
 
 
+def elapsed_records(dataset) -> np.ndarray:
+    """Which time records post-date the start of the run.
+
+    CAM writes a record for the initial state, before a single physics step
+    has run.  Both the oracle and a surrogate hold the same initial condition,
+    so that record is identical by construction and says nothing at all about
+    the surrogate -- which is exactly how it reads as a passing comparison if
+    it is not excluded.
+    """
+
+    for name in ("nsteph", "time"):
+        if name in dataset.variables:
+            values = np.asarray(dataset.variables[name][:]).reshape(-1)
+            return np.flatnonzero(values > 0)
+    return np.arange(len(dataset.dimensions.get("time", [])) or 1)
+
+
 def compare(reference: Path, candidate: Path) -> dict[str, object]:
     import netCDF4
 
     fields: list[dict[str, object]] = []
     with netCDF4.Dataset(reference) as a, netCDF4.Dataset(candidate) as b:
+        records = elapsed_records(a)
         for name, variable in a.variables.items():
             if name not in b.variables or not np.issubdtype(variable.dtype, np.floating):
                 continue
@@ -35,14 +53,23 @@ def compare(reference: Path, candidate: Path) -> dict[str, object]:
             y = np.asarray(b.variables[name][:], dtype=np.float64)
             if x.shape != y.shape or x.size == 0:
                 continue
+            if "time" in variable.dimensions:
+                if records.size == 0:
+                    continue
+                x, y = x[records], y[records]
             finite = np.isfinite(x) & np.isfinite(y)
             if not finite.any():
                 continue
             difference = y[finite] - x[finite]
             spread = np.std(x[finite])
             scale = spread if spread > 0 else np.max(np.abs(x[finite]))
+            # A field with no time axis, or one the reference holds constant,
+            # is a coordinate or a grid descriptor.  Comparing those and
+            # reporting them identical says nothing about the run: a surrogate
+            # that aborted at step three still writes the right latitudes.
             fields.append({
                 "name": name,
+                "after_start": "time" in variable.dimensions and records.size > 0,
                 "rms_difference": float(np.sqrt(np.mean(difference ** 2))),
                 "relative_rms": float(np.sqrt(np.mean(difference ** 2)) / scale) if scale else 0.0,
                 "max_difference": float(np.max(np.abs(difference))),
@@ -72,17 +99,21 @@ def main() -> int:
 
     identical = sum(1 for field in every if field["identical"])
     non_finite = [field["name"] for field in every if field["candidate_non_finite"]]
-    ranked = sorted(every, key=lambda field: -field["relative_rms"])
+    informative = [field for field in every
+                   if field["after_start"] and field["reference_spread"] > 0]
+    ranked = sorted(informative or every, key=lambda field: -field["relative_rms"])
     summary = {
-        "schema_version": 1,
+        "schema_version": 2,
         "files": [report["file"] for report in reports],
         "fields_compared": len(every),
+        "fields_informative": len(informative),
+        "informative": bool(informative),
         "fields_identical": identical,
         "fields_with_non_finite_values": non_finite,
         "relative_rms": {
-            "median": float(np.median([f["relative_rms"] for f in every])),
-            "p90": float(np.percentile([f["relative_rms"] for f in every], 90)),
-            "max": float(max(f["relative_rms"] for f in every)),
+            "median": float(np.median([f["relative_rms"] for f in (informative or every)])),
+            "p90": float(np.percentile([f["relative_rms"] for f in (informative or every)], 90)),
+            "max": float(max(f["relative_rms"] for f in (informative or every))),
         },
         "worst": ranked[:arguments.top],
         "unchanged": [f["name"] for f in every if f["identical"]][:arguments.top],
@@ -90,7 +121,16 @@ def main() -> int:
     arguments.output.parent.mkdir(parents=True, exist_ok=True)
     arguments.output.write_text(json.dumps(summary, indent=2) + "\n")
 
-    print(f"{len(every)} fields compared, {identical} bit-for-bit identical")
+    print(f"{len(every)} fields compared, {len(informative)} of them written after the run "
+          f"started, {identical} bit-for-bit identical")
+    if not informative:
+        # The loud case.  Every history record is the initial state, which both
+        # runs hold identically before a step is taken; reporting that as
+        # "identical" would read as a surrogate that reproduced the model.
+        print("NOT A DRIFT MEASUREMENT: every history record is the run's initial state")
+        print("(nsteph = 0), which both runs share by construction.  The candidate wrote no")
+        print("record after a physics step; read the run log's first export difference and")
+        print("the stage trace instead.")
     print(f"relative RMS difference: median {summary['relative_rms']['median']:.3e}  "
           f"p90 {summary['relative_rms']['p90']:.3e}  max {summary['relative_rms']['max']:.3e}")
     if non_finite:

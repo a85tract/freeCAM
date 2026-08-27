@@ -1,0 +1,92 @@
+#!/bin/bash
+# Build a capture-anchored training set for mmacro_pcond, and train on it.
+#
+# Why a batch job for what is nominally a Python script: generating half a
+# million samples in one process holds all of them in memory at once and was
+# killed at sample 325000, and running it in chunks from an interactive shell
+# loses the chunks when the shell's process group goes away.  A compute node
+# has the memory and does not care whether anyone is logged in.
+#
+# What it does, in one place so the set and the model that reads it cannot
+# drift apart:
+#
+#   1. draw real columns out of the capture bundle (the anchors);
+#   2. generate CHUNKS datasets in parallel, each under its own seed, each
+#      calling the reviewed standalone image for every sample -- so every
+#      floating-point number in Y is the oracle's;
+#   3. join them into X and Y, the nine namelist parameters among the
+#      features;
+#   4. train the gated surrogate and evaluate it on held-out rows.
+#
+#   PYCAM_ANCHOR_COLUMNS   real columns to draw from the capture (200000)
+#   PYCAM_CHUNKS           parallel generator processes (10)
+#   PYCAM_CHUNK_SAMPLES    samples per chunk (50000)
+#   PYCAM_EPOCHS           training epochs (60)
+#   PYCAM_BUNDLE           the capture bundle to anchor on
+
+#PBS -N pycam-mmacro-dataset
+#PBS -q develop
+#PBS -l select=1:ncpus=128:mem=235GB
+#PBS -l walltime=01:00:00
+#PBS -j oe
+#PBS -o logs/
+#PBS -V
+
+set -euo pipefail
+
+repo=/glade/work/$USER/freeCAM
+python=${repo}/.venv/bin/python
+root=/glade/derecho/scratch/$USER/pyCAM/PI-cam/mmacro-dataset-${PBS_JOBID}
+bundle=${PYCAM_BUNDLE:-/glade/derecho/scratch/$USER/pyCAM/PI-cam/function-capture-training-7257250.desched1/bundles/mmacro_pcond_capture.npz}
+columns=${PYCAM_ANCHOR_COLUMNS:-200000}
+chunks=${PYCAM_CHUNKS:-10}
+samples=${PYCAM_CHUNK_SAMPLES:-50000}
+epochs=${PYCAM_EPOCHS:-60}
+
+mkdir -p "${root}"
+cd "${repo}"
+export PYTHONPATH=${repo}/src
+export OMP_NUM_THREADS=1
+
+echo "=== anchors: ${columns} real columns from $(basename "${bundle}")"
+"${python}" tools/extract_pi_cam_anchor_columns.py \
+  --function mmacro_pcond --bundle "${bundle}" \
+  --columns "${columns}" --output "${root}/anchors.npz"
+
+echo "=== generating ${chunks} x ${samples} samples"
+pids=()
+for index in $(seq 1 "${chunks}"); do
+  seed=$((2026 + index))
+  "${python}" examples/generate_mmacro_pcond_dataset.py \
+    --samples "${samples}" --seed "${seed}" \
+    --anchor-bundle "${root}/anchors.npz" \
+    --output "${root}/chunk_${seed}.nc" > "${root}/chunk_${seed}.log" 2>&1 &
+  pids+=($!)
+done
+failed=0
+for pid in "${pids[@]}"; do wait "${pid}" || failed=$((failed + 1)); done
+echo "=== ${failed} of ${chunks} chunks failed"
+ls -la "${root}"/chunk_*.nc || true
+# A chunk that died leaves no file; the set is built from what is there, and
+# how many that is goes in the record rather than being assumed.
+[ "${failed}" -eq "${chunks}" ] && { echo "every chunk failed"; exit 1; }
+
+echo "=== joining into X and Y"
+"${python}" tools/build_pi_cam_kernel_training_set.py \
+  --function mmacro_pcond \
+  --dataset "${root}"/chunk_*.nc \
+  --output "${root}/training"
+
+echo "=== training the gated surrogate"
+"${python}" tools/train_pi_cam_gated_surrogate.py \
+  --training "${root}/training" \
+  --output "${root}/mmacro_gated.pt" \
+  --epochs "${epochs}" --hidden 1024 --depth 3 --threads 32
+
+echo "=== held-out skill"
+"${python}" tools/evaluate_pi_cam_kernel_surrogate.py \
+  --model "${root}/mmacro_gated.pt" \
+  --training "${root}/training" \
+  --output "${root}/skill.json"
+
+echo "=== done: ${root}"
