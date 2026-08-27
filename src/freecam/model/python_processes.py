@@ -581,6 +581,12 @@ class RegisteredPythonProcess:
     scheme_key: str
     read_bindings: Mapping[str, str]
     write_bindings: Mapping[str, str]
+    #: The callable, materialised from the payload once and kept.  Loading it
+    #: per invocation handed every step a fresh copy of whatever it closed
+    #: over -- a bound method's object included -- so nothing a process kept
+    #: between steps survived, and a stage that caches its runtime rebuilt it
+    #: every step.
+    function: Any = None
 
     @property
     def name(self) -> str:
@@ -819,7 +825,10 @@ class PythonProcessRegistry:
         try:
             for resolved in read_writeability:
                 pool.get(resolved).flags.writeable = False
-            function = cloudpickle.loads(record.spec.payload)
+            function = record.function
+            if function is None:
+                function = cloudpickle.loads(record.spec.payload)
+                record.function = function
             fields = PythonFieldView(
                 pool,
                 reads=record.read_bindings,

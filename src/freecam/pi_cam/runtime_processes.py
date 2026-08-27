@@ -35,6 +35,12 @@ class RegisteredPICAMPythonProcess:
     action_name: str
     read_bindings: Mapping[str, str]
     write_bindings: Mapping[str, str]
+    #: The callable, materialised from the payload once at install.  Loading
+    #: it per invocation gave every step a fresh copy of whatever the callable
+    #: closed over -- a bound method's object included -- so no state could
+    #: survive from one step to the next, and a stage that caches its runtime
+    #: rebuilt it every step.
+    function: Any = None
 
 
 class PICAMPythonProcessRegistry:
@@ -139,6 +145,7 @@ class PICAMPythonProcessRegistry:
                 action_name=action.name,
                 read_bindings=read_bindings,
                 write_bindings=write_bindings,
+                function=function,
             )
         except BaseException as exc:
             local_error = f"{type(exc).__name__}: {exc}"
@@ -258,17 +265,21 @@ class PICAMPythonProcessRegistry:
             record.spec,
             record.read_bindings,
             record.write_bindings,
+            record.function,
         )
         local_error = None
         try:
             record.spec = candidate
             record.read_bindings = read_bindings
             record.write_bindings = write_bindings
+            # the materialised callable is part of the record, so a reload
+            # that kept the old one would keep running the old code
+            record.function = function
         except BaseException as exc:
             local_error = f"{type(exc).__name__}: {exc}"
         errors = self.driver.comm.allgather(local_error)
         if any(error is not None for error in errors):
-            record.spec, record.read_bindings, record.write_bindings = previous
+            record.spec, record.read_bindings, record.write_bindings, record.function = previous
             self.driver.comm.barrier()
             message = collective_error_message(
                 "Python process reload rollback", errors
@@ -417,7 +428,12 @@ class PICAMPythonProcessRegistry:
                 calendar=self.driver.clock.calendar,
                 native=NativeAccess(self.driver) if record.spec.native else None,
             )
-            function = cloudpickle.loads(record.spec.payload)
+            function = record.function
+            if function is None:
+                # a record restored without its callable (an older pickle of the
+                # registry, say) materialises it once, here, and keeps it
+                function = cloudpickle.loads(record.spec.payload)
+                record.function = function
             result = function(fields, context, **dict(record.spec.parameters or {}))
             if result is not None:
                 raise PythonProcessContractError(

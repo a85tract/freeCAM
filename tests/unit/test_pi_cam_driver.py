@@ -1032,3 +1032,70 @@ def test_set_parameters_leaves_the_spec_on_rank_divergence() -> None:
             "notebook_heating", {"scale": 2.0}
         )
     assert record.spec is original_spec
+
+
+def test_a_python_process_keeps_its_object_from_one_step_to_the_next() -> None:
+    """The registry used to unpickle the callable on every invocation, which
+    handed each step a fresh copy of whatever it closed over -- a bound
+    method's object included.  A stage that caches its runtime on that object
+    rebuilt it every step: 585 ms of a 650 ms radiation step, measured.  The
+    callable is materialised once at install now, and kept."""
+
+    driver, _, _ = _driver()
+    driver.initialize()
+    driver.define_variable(PICAMVariableSpec("experiment_tracer", ("pcols", "pver"), initial=0.0))
+
+    class Counting:
+        def __init__(self):
+            self.steps = 0
+            self.expensive_setup_runs = 0
+            self._runtime = None
+
+        def tend(self, fields, context):
+            del context
+            if self._runtime is None:            # what a NativeStage does
+                self.expensive_setup_runs += 1
+                self._runtime = object()
+            self.steps += 1
+            fields["experiment_tracer"][...] += 1.0
+
+    scheme = Counting()
+    process = driver.physics.install_python(
+        scheme.tend, name="counting_stage", after="dadadj", writes=("experiment_tracer",))
+    record = driver.python_processes.installed[process.name]
+    first = record.function
+    assert first is not None and first.__self__ is not scheme     # a pickled copy, by design
+    process.run()
+    process.run()
+    process.run()
+    assert record.function is first                              # the same copy every step
+    assert first.__self__.steps == 3
+    assert first.__self__.expensive_setup_runs == 1              # set up once, not per step
+    assert float(driver.pool["experiment_tracer"][0, 0]) == 3.0
+
+
+def test_a_reload_replaces_the_kept_callable_too() -> None:
+    driver, _, _ = _driver()
+    driver.initialize()
+    driver.define_variable(PICAMVariableSpec("experiment_tracer", ("pcols", "pver"), initial=0.0))
+
+    def add_one(fields, context):
+        del context
+        fields["experiment_tracer"][...] += 1.0
+
+    process = driver.physics.install_python(
+        add_one, name="swappable", after="dadadj", writes=("experiment_tracer",))
+    record = driver.python_processes.installed[process.name]
+    before = record.function
+    process.run()
+
+    def add_ten(fields, context):
+        del context
+        fields["experiment_tracer"][...] += 10.0
+
+    driver.python_processes.reload(process.name, PythonProcessSpec.from_callable(
+        add_ten, name=process.name, group=process.phase, writes=("experiment_tracer",)))
+    assert record.function is not before
+    process.run()
+    # 1 from the old callable, 10 from the new: a stale kept function would give 2
+    assert float(driver.pool["experiment_tracer"][0, 0]) == 11.0
