@@ -486,3 +486,57 @@ def test_a_model_must_answer_every_output(fake) -> None:
 
     with pytest.raises(PhysicsError, match="missing"):
         scheme.tend(None, _Context(fake))
+
+
+def test_a_kernel_field_that_lives_in_the_buffer_must_be_named_by_the_walk(fake, monkeypatch) -> None:
+    """Scratch is not the physics buffer: a `_grid` field the walk forgets to
+    pass would be read as zeros.  The walk refuses instead."""
+
+    from freecam.physics.errors import PhysicsError
+
+    # cld_grid is a routine local the walk fills by copy, so the walk passes it
+    # to no kernel; calling it buffer-backed makes the guard fire on the real
+    # call that takes it
+    monkeypatch.setitem(M.GRID_PBUF, "cld_grid", "CLD")
+    scheme = Microphysics()
+    with pytest.raises(PhysicsError, match="cld_grid.*physics buffer"):
+        scheme.tend(None, _Context(fake))
+
+
+def test_each_kernel_reads_the_state_the_source_reads() -> None:
+    """The routine reads `state%` before it copies and again after the substep
+    updated the copy, and `state_loc%` in between; from the substep on they
+    are different arrays.  A kernel field named `q`/`t`/`pmid`/`pdel` is the
+    host's, one named `*_loc` the copy's, and the walk must pass each from the
+    matching view."""
+
+    import generate_pi_cam_micro_kernels as kernels
+    from freecam.pi_cam.kernel_codegen import load_direct_kernels
+
+    host = {v: k for k, v in kernels.COMMON.items() if k.startswith("state%")}
+    copy = {v: k for k, v in kernels.COMMON.items() if k.startswith("state_loc%")}
+    assert set(host) == {"q", "pmid", "t", "pdel"} and set(copy) == {
+        "q_loc", "pmid_loc", "t_loc", "pdel_loc"}
+
+    source = (REPO / "src/freecam/physics/microphysics.py").read_text().split("def tend_chunk", 1)[1]
+    calls = {m.group(1): m.group(2) for m in
+             re.finditer(r'K\("(\w+)",\s*(.*?)\n\s*log\(', source, re.S)}
+    described = {k.name: [a.field.removeprefix("micro.") for a in k.arguments]
+                 for k in load_direct_kernels(Microphysics.DESCRIPTORS)}
+    checked = 0
+    for name, fields in described.items():
+        if name not in calls:
+            continue
+        for field in fields:
+            if field in host:
+                assert f'"{field}": S["state_{field}"]' in calls[name], (name, field)
+                checked += 1
+            elif field in copy:
+                stem = field.removesuffix("_loc")
+                assert f'"{field}": S["state_loc_{stem}"]' in calls[name] or (
+                    field == "q_loc" and '"q_loc": q_loc' in calls[name]), (name, field)
+                checked += 1
+    assert checked >= 6
+    # and both sets of views exist, at distinct codes
+    for stem in ("t", "q", "pmid", "pdel"):
+        assert VIEW[f"state_{stem}"] != VIEW[f"state_loc_{stem}"]

@@ -2432,9 +2432,10 @@ class PICAMDriver:
         errors = self.comm.allgather(local_error)
         failure = collective_error_message(label, errors)
         if failure is not None:
-            if self.rank == 0:
-                message = failure
-            else:
-                message = f"{label} failed collectively; see rank 0"
-            raise BoundaryReplayError(message)
+            # Every rank raises the whole message, not a pointer to rank 0's:
+            # the first rank to reach MPI_Abort kills the others where they
+            # stand, so a message only rank 0 holds is lost exactly when it
+            # is needed.  The text is already grouped by distinct traceback,
+            # so this repeats nothing per rank.
+            raise BoundaryReplayError(failure)
         return result

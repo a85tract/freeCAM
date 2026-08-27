@@ -59,7 +59,7 @@ mpiexec --label -n 512 "${python}" -m freecam.pi_cam.cli \
   --run-dir "${run_dir}" \
   --execution-mode "${mode}" \
   --cloud-macro-micro-python \
-  --steps 50 \
+  --steps "${PYCAM_STEPS:-50}" \
   --summary "${summary}" \
   > "${run_dir}/pi_cam_python.log" 2>&1 || echo "model run exited $? (comparing the output anyway)"
 

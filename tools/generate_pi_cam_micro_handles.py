@@ -183,8 +183,13 @@ def view_table(lines) -> list[tuple[str, str, int, str]]:
     declared = declarations(lines)
     rows = []
     code = 0
-    # state_loc and the tendencies
-    for name, expr, rank in (("state_loc_t", "state_loc%t", 2), ("state_loc_q", "state_loc%q", 3),
+    # the host state, the copy, and the tendencies.  The routine reads both:
+    # `state%` before the copy (1730-1734) and after the substep updated the
+    # copy (2712-2713), `state_loc%` in between.  They are different arrays
+    # from the substep on, so the walk must be able to name each.
+    for name, expr, rank in (("state_t", "state%t", 2), ("state_q", "state%q", 3),
+                             ("state_pmid", "state%pmid", 2), ("state_pdel", "state%pdel", 2),
+                             ("state_loc_t", "state_loc%t", 2), ("state_loc_q", "state_loc%q", 3),
                              ("state_loc_pmid", "state_loc%pmid", 2), ("state_loc_pdel", "state_loc%pdel", 2),
                              ("ptend_loc_s", "ptend_loc%s", 2), ("ptend_loc_q", "ptend_loc%q", 3),
                              ("ptend_s", "micro_ptend(lchnk)%s", 2), ("ptend_q", "micro_ptend(lchnk)%q", 3)):
@@ -246,6 +251,8 @@ def render_module(source: Path | None = None) -> str:
             cases.append(f"      if (.not. allocated({expr})) return")
         elif expr.startswith("state_loc"):
             cases.append("      if (.not. state_live) return")
+        elif expr.startswith("state%"):
+            cases.append("      if (.not. associated(state)) return")
         cases.append(f"      call view{rank}({expr}, ptr, ndims, extents)")
     procedures = (nl + nl).join(_verbatim(lines, *v) for v in VERBATIM)
     # micro_mg_cam.F90:3186-3196: the pointer helpers add_field takes

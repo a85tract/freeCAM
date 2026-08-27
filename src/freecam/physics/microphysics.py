@@ -39,6 +39,7 @@ from ..pi_cam.errors import PICAMConfigurationError
 from ..pi_cam.pbuf import PBuf, load_pbuf_table
 from .image import module_view
 from .macrophysics import CPAIR, IWTICE, IWTLIQ, IWTVAP, PWTYPE
+from .errors import PhysicsError
 from .stage import (
     CORE_ENTRIES,
     HostEntries,
@@ -456,6 +457,21 @@ class Microphysics(NativeStage):
             return H.view(lchnk, VIEW[name])
 
         def K(name, inputs, *, outputs, fields=None):
+            # A field the walk does not name keeps whatever its scratch holds,
+            # which is right for a routine local the previous kernel wrote and
+            # wrong for anything living in the physics buffer or a handle view:
+            # that storage is never the scratch.  Refuse rather than read zeros.
+            if fields is None:
+                named = set(inputs) | set(outputs)
+                missing = [a.field.removeprefix(f"{self.PREFIX}.")
+                           for a in st.descriptors[name].arguments
+                           if a.field.removeprefix(f"{self.PREFIX}.") in GRID_PBUF
+                           and a.field.removeprefix(f"{self.PREFIX}.") not in named]
+                if missing:
+                    raise PhysicsError(
+                        f"{name} takes {missing} from the physics buffer; the walk "
+                        f"passes neither the value nor a target, so the kernel would "
+                        f"read this stage's scratch instead")
             merged = {**{k: v for k, v in outputs.items() if v is not None}, **inputs}
             st.kernel_on_chunk(name, merged, outputs=outputs, fields=fields, ncol=None)
 
@@ -468,7 +484,11 @@ class Microphysics(NativeStage):
         # 1556-1559, 1741: sizes and the state copy (the copy is logged where
         # the source makes it)
         H.begin(lchnk, ncol, dt)
-        S = {name: V(name) for name in ("state_loc_t", "state_loc_q", "state_loc_pmid", "state_loc_pdel")}
+        # both the host state and the driver's copy: the routine reads the
+        # host's before the copy and again after the substep updated the copy
+        S = {name: V(name) for name in (
+            "state_t", "state_q", "state_pmid", "state_pdel",
+            "state_loc_t", "state_loc_q", "state_loc_pmid", "state_loc_pdel")}
         q_loc = S["state_loc_q"]
 
         # 1573-1644, 1700-1714: the buffer fields, older time sample where the
@@ -494,11 +514,11 @@ class Microphysics(NativeStage):
         alst_mic = aist_mic = pbv["AST"]
         log("pbuf_get_field*")
 
-        # 1724-1736
+        # 1724-1736: the host state, before the copy
         K("micro_initial_water_paths",
           {"ncol": ncol, "top_lev": top, "ixcldliq": C.ixcldliq, "ixcldice": C.ixcldice,
-           "mincld": C.mincld, "gravit": C.gravit, "q": q_loc, "ast": pbv["AST"],
-           "pdel": S["state_loc_pdel"]},
+           "mincld": C.mincld, "gravit": C.gravit, "q": S["state_q"], "ast": pbv["AST"],
+           "pdel": S["state_pdel"]},
           outputs={"iclwpi": None, "iciwpi": None})
         log("micro_initial_water_paths")
         # 1738 [exact: a copy]
@@ -583,9 +603,9 @@ class Microphysics(NativeStage):
         if C.trace_water:
             self._water_tracers(st, lchnk, ncol, alst_mic, aist_mic, V, K, G)
 
-        # 2712-2718
+        # 2712-2718: the host state again, not the copy the substep updated
         K("micro_air_density", {"ncol": ncol, "top_lev": top, "rair": C.rair,
-                                "pmid": S["state_loc_pmid"], "t": S["state_loc_t"]},
+                                "pmid": S["state_pmid"], "t": S["state_t"]},
           outputs={"rho": None})
         log("micro_air_density")
         st.scratch["rho_grid"][..., 0] = L["rho"]              # 2717 [exact: a copy]
@@ -609,7 +629,8 @@ class Microphysics(NativeStage):
         # 2864-2927
         K("micro_precip_efficiency",
           {"ngrdcol": ngrdcol, "top_lev": top, "gravit": C.gravit, "rhoh2o": C.rhoh2o,
-           "cmeliq_grid": G("cmeliq_grid"), "prec_str_grid": G("prec_str_grid")},
+           "cmeliq_grid": G("cmeliq_grid"), "prec_str_grid": G("prec_str_grid"),
+           "iclwpst_grid": G("iclwpst_grid")},
           outputs={"acgcme_grid": G("acgcme_grid"), "acprecl_grid": G("acprecl_grid"),
                    "acnum_grid": G("acnum_grid"), "tgliqwp_grid": None, "tgcmeliq_grid": None,
                    "pe_grid": None, "tpr_grid": None, "pefrac_grid": None})

@@ -3,828 +3,844 @@
 # or writes, by name; and pycam_micro_bind_input_v1 codes: the pbuf-backed
 # inputs Python binds before the packer prelude.
 views:
-- name: state_loc_t
+- name: state_t
   code: 1
+  rank: 2
+  expression: state%t
+- name: state_q
+  code: 2
+  rank: 3
+  expression: state%q
+- name: state_pmid
+  code: 3
+  rank: 2
+  expression: state%pmid
+- name: state_pdel
+  code: 4
+  rank: 2
+  expression: state%pdel
+- name: state_loc_t
+  code: 5
   rank: 2
   expression: state_loc%t
 - name: state_loc_q
-  code: 2
+  code: 6
   rank: 3
   expression: state_loc%q
 - name: state_loc_pmid
-  code: 3
+  code: 7
   rank: 2
   expression: state_loc%pmid
 - name: state_loc_pdel
-  code: 4
+  code: 8
   rank: 2
   expression: state_loc%pdel
 - name: ptend_loc_s
-  code: 5
+  code: 9
   rank: 2
   expression: ptend_loc%s
 - name: ptend_loc_q
-  code: 6
+  code: 10
   rank: 3
   expression: ptend_loc%q
 - name: ptend_s
-  code: 7
+  code: 11
   rank: 2
   expression: micro_ptend(lchnk)%s
 - name: ptend_q
-  code: 8
+  code: 12
   rank: 3
   expression: micro_ptend(lchnk)%q
 - name: acsrfl
-  code: 9
+  code: 13
   rank: 2
   expression: acsrfl
 - name: am_evp_st
-  code: 10
+  code: 14
   rank: 2
   expression: am_evp_st
 - name: arefl
-  code: 11
+  code: 15
   rank: 2
   expression: arefl
 - name: areflz
-  code: 12
+  code: 16
   rank: 2
   expression: areflz
 - name: bergo
-  code: 13
+  code: 17
   rank: 2
   expression: bergo
 - name: bergso
-  code: 14
+  code: 18
   rank: 2
   expression: bergso
 - name: cmeice
-  code: 15
+  code: 19
   rank: 2
   expression: cmeice
 - name: cmeiout
-  code: 16
+  code: 20
   rank: 2
   expression: cmeiout
 - name: csrfl
-  code: 17
+  code: 21
   rank: 2
   expression: csrfl
 - name: evapsnow
-  code: 18
+  code: 22
   rank: 2
   expression: evapsnow
 - name: fcsrfl
-  code: 19
+  code: 23
   rank: 2
   expression: fcsrfl
 - name: frefl
-  code: 20
+  code: 24
   rank: 2
   expression: frefl
 - name: freqr
-  code: 21
+  code: 25
   rank: 2
   expression: freqr
 - name: freqs
-  code: 22
+  code: 26
   rank: 2
   expression: freqs
 - name: frzrdt
-  code: 23
+  code: 27
   rank: 2
   expression: frzrdt
 - name: frzro
-  code: 24
+  code: 28
   rank: 2
   expression: frzro
 - name: homoo
-  code: 25
+  code: 29
   rank: 2
   expression: homoo
 - name: melto
-  code: 26
+  code: 30
   rank: 2
   expression: melto
 - name: meltsdt
-  code: 27
+  code: 31
   rank: 2
   expression: meltsdt
 - name: meltso
-  code: 28
+  code: 32
   rank: 2
   expression: meltso
 - name: mnuccco
-  code: 29
+  code: 33
   rank: 2
   expression: mnuccco
 - name: mnuccdo
-  code: 30
+  code: 34
   rank: 2
   expression: mnuccdo
 - name: mnuccdohet
-  code: 31
+  code: 35
   rank: 2
   expression: mnuccdohet
 - name: mnuccro
-  code: 32
+  code: 36
   rank: 2
   expression: mnuccro
 - name: mnuccto
-  code: 33
+  code: 37
   rank: 2
   expression: mnuccto
 - name: msacwio
-  code: 34
+  code: 38
   rank: 2
   expression: msacwio
 - name: ncai
-  code: 35
+  code: 39
   rank: 2
   expression: ncai
 - name: ncal
-  code: 36
+  code: 40
   rank: 2
   expression: ncal
 - name: ncten
-  code: 37
+  code: 41
   rank: 2
   expression: ncten
 - name: nfice
-  code: 38
+  code: 42
   rank: 2
   expression: nfice
 - name: niten
-  code: 39
+  code: 43
   rank: 2
   expression: niten
 - name: nrout
-  code: 40
+  code: 44
   rank: 2
   expression: nrout
 - name: nrout2
-  code: 41
+  code: 45
   rank: 2
   expression: nrout2
 - name: nrten
-  code: 42
+  code: 46
   rank: 2
   expression: nrten
 - name: nsout
-  code: 43
+  code: 47
   rank: 2
   expression: nsout
 - name: nsout2
-  code: 44
+  code: 48
   rank: 2
   expression: nsout2
 - name: nsten
-  code: 45
+  code: 49
   rank: 2
   expression: nsten
 - name: pracso
-  code: 46
+  code: 50
   rank: 2
   expression: pracso
 - name: praio
-  code: 47
+  code: 51
   rank: 2
   expression: praio
 - name: prao
-  code: 48
+  code: 52
   rank: 2
   expression: prao
 - name: prcio
-  code: 49
+  code: 53
   rank: 2
   expression: prcio
 - name: prco
-  code: 50
+  code: 54
   rank: 2
   expression: prco
 - name: prdso
-  code: 51
+  code: 55
   rank: 2
   expression: prdso
 - name: preci
-  code: 52
+  code: 56
   rank: 1
   expression: preci
 - name: prect
-  code: 53
+  code: 57
   rank: 1
   expression: prect
 - name: preo
-  code: 54
+  code: 58
   rank: 2
   expression: preo
 - name: prodsnow
-  code: 55
+  code: 59
   rank: 2
   expression: prodsnow
 - name: psacwso
-  code: 56
+  code: 60
   rank: 2
   expression: psacwso
 - name: qcrat
-  code: 57
+  code: 61
   rank: 2
   expression: qcrat
 - name: qcreso
-  code: 58
+  code: 62
   rank: 2
   expression: qcreso
 - name: qcsedten
-  code: 59
+  code: 63
   rank: 2
   expression: qcsedten
 - name: qcsevap
-  code: 60
+  code: 64
   rank: 2
   expression: qcsevap
 - name: qcten
-  code: 61
+  code: 65
   rank: 2
   expression: qcten
 - name: qireso
-  code: 62
+  code: 66
   rank: 2
   expression: qireso
 - name: qisedten
-  code: 63
+  code: 67
   rank: 2
   expression: qisedten
 - name: qisevap
-  code: 64
+  code: 68
   rank: 2
   expression: qisevap
 - name: qiten
-  code: 65
+  code: 69
   rank: 2
   expression: qiten
 - name: qrout
-  code: 66
+  code: 70
   rank: 2
   expression: qrout
 - name: qrout2
-  code: 67
+  code: 71
   rank: 2
   expression: qrout2
 - name: qrsedten
-  code: 68
+  code: 72
   rank: 2
   expression: qrsedten
 - name: qrten
-  code: 69
+  code: 73
   rank: 2
   expression: qrten
 - name: qsout
-  code: 70
+  code: 74
   rank: 2
   expression: qsout
 - name: qsout2
-  code: 71
+  code: 75
   rank: 2
   expression: qsout2
 - name: qssedten
-  code: 72
+  code: 76
   rank: 2
   expression: qssedten
 - name: qsten
-  code: 73
+  code: 77
   rank: 2
   expression: qsten
 - name: qvlat
-  code: 74
+  code: 78
   rank: 2
   expression: qvlat
 - name: qvres
-  code: 75
+  code: 79
   rank: 2
   expression: qvres
 - name: rate1cld
-  code: 76
+  code: 80
   rank: 2
   expression: rate1cld
 - name: refl
-  code: 77
+  code: 81
   rank: 2
   expression: refl
 - name: rercld
-  code: 78
+  code: 82
   rank: 2
   expression: rercld
 - name: rflx
-  code: 79
+  code: 83
   rank: 2
   expression: rflx
 - name: sflx
-  code: 80
+  code: 84
   rank: 2
   expression: sflx
 - name: tlat
-  code: 81
+  code: 85
   rank: 2
   expression: tlat
 - name: umr
-  code: 82
+  code: 86
   rank: 2
   expression: umr
 - name: ums
-  code: 83
+  code: 87
   rank: 2
   expression: ums
 - name: vtrmc
-  code: 84
+  code: 88
   rank: 2
   expression: vtrmc
 - name: vtrmi
-  code: 85
+  code: 89
   rank: 2
   expression: vtrmi
 - name: wtfc
-  code: 86
+  code: 90
   rank: 2
   expression: wtfc
 - name: wtfi
-  code: 87
+  code: 91
   rank: 2
   expression: wtfi
 - name: wtpostlat
-  code: 88
+  code: 92
   rank: 2
   expression: wtpostlat
 - name: wtprelat
-  code: 89
+  code: 93
   rank: 2
   expression: wtprelat
 - name: packed_accre_enhan
-  code: 90
+  code: 94
   rank: 2
   expression: packed_accre_enhan
 - name: packed_acsrfl
-  code: 91
+  code: 95
   rank: 2
   expression: packed_acsrfl
 - name: packed_am_evp_st
-  code: 92
+  code: 96
   rank: 2
   expression: packed_am_evp_st
 - name: packed_arefl
-  code: 93
+  code: 97
   rank: 2
   expression: packed_arefl
 - name: packed_areflz
-  code: 94
+  code: 98
   rank: 2
   expression: packed_areflz
 - name: packed_berg
-  code: 95
+  code: 99
   rank: 2
   expression: packed_berg
 - name: packed_bergs
-  code: 96
+  code: 100
   rank: 2
   expression: packed_bergs
 - name: packed_cldn
-  code: 97
+  code: 101
   rank: 2
   expression: packed_cldn
 - name: packed_cmei
-  code: 98
+  code: 102
   rank: 2
   expression: packed_cmei
 - name: packed_cmeout
-  code: 99
+  code: 103
   rank: 2
   expression: packed_cmeout
 - name: packed_csrfl
-  code: 100
+  code: 104
   rank: 2
   expression: packed_csrfl
 - name: packed_dei
-  code: 101
+  code: 105
   rank: 2
   expression: packed_dei
 - name: packed_des
-  code: 102
+  code: 106
   rank: 2
   expression: packed_des
 - name: packed_evapsnow
-  code: 103
+  code: 107
   rank: 2
   expression: packed_evapsnow
 - name: packed_fcsrfl
-  code: 104
+  code: 108
   rank: 2
   expression: packed_fcsrfl
 - name: packed_frefl
-  code: 105
+  code: 109
   rank: 2
   expression: packed_frefl
 - name: packed_freqr
-  code: 106
+  code: 110
   rank: 2
   expression: packed_freqr
 - name: packed_freqs
-  code: 107
+  code: 111
   rank: 2
   expression: packed_freqs
 - name: packed_frzcnt
-  code: 108
+  code: 112
   rank: 2
   expression: packed_frzcnt
 - name: packed_frzdep
-  code: 109
+  code: 113
   rank: 2
   expression: packed_frzdep
 - name: packed_frzimm
-  code: 110
+  code: 114
   rank: 2
   expression: packed_frzimm
 - name: packed_frzrdt
-  code: 111
+  code: 115
   rank: 2
   expression: packed_frzrdt
 - name: packed_frzro
-  code: 112
+  code: 116
   rank: 2
   expression: packed_frzro
 - name: packed_homo
-  code: 113
+  code: 117
   rank: 2
   expression: packed_homo
 - name: packed_icecldf
-  code: 114
+  code: 118
   rank: 2
   expression: packed_icecldf
 - name: packed_lambdac
-  code: 115
+  code: 119
   rank: 2
   expression: packed_lambdac
 - name: packed_liqcldf
-  code: 116
+  code: 120
   rank: 2
   expression: packed_liqcldf
 - name: packed_melt
-  code: 117
+  code: 121
   rank: 2
   expression: packed_melt
 - name: packed_meltsdt
-  code: 118
+  code: 122
   rank: 2
   expression: packed_meltsdt
 - name: packed_meltso
-  code: 119
+  code: 123
   rank: 2
   expression: packed_meltso
 - name: packed_mnuccc
-  code: 120
+  code: 124
   rank: 2
   expression: packed_mnuccc
 - name: packed_mnuccd
-  code: 121
+  code: 125
   rank: 2
   expression: packed_mnuccd
 - name: packed_mnuccr
-  code: 122
+  code: 126
   rank: 2
   expression: packed_mnuccr
 - name: packed_mnucct
-  code: 123
+  code: 127
   rank: 2
   expression: packed_mnucct
 - name: packed_msacwi
-  code: 124
+  code: 128
   rank: 2
   expression: packed_msacwi
 - name: packed_mu
-  code: 125
+  code: 129
   rank: 2
   expression: packed_mu
 - name: packed_naai
-  code: 126
+  code: 130
   rank: 2
   expression: packed_naai
 - name: packed_nacon
-  code: 127
+  code: 131
   rank: 3
   expression: packed_nacon
 - name: packed_nc
-  code: 128
+  code: 132
   rank: 2
   expression: packed_nc
 - name: packed_ncai
-  code: 129
+  code: 133
   rank: 2
   expression: packed_ncai
 - name: packed_ncal
-  code: 130
+  code: 134
   rank: 2
   expression: packed_ncal
 - name: packed_nctend
-  code: 131
+  code: 135
   rank: 2
   expression: packed_nctend
 - name: packed_nevapr
-  code: 132
+  code: 136
   rank: 2
   expression: packed_nevapr
 - name: packed_nfice
-  code: 133
+  code: 137
   rank: 2
   expression: packed_nfice
 - name: packed_ni
-  code: 134
+  code: 138
   rank: 2
   expression: packed_ni
 - name: packed_nitend
-  code: 135
+  code: 139
   rank: 2
   expression: packed_nitend
 - name: packed_npccn
-  code: 136
+  code: 140
   rank: 2
   expression: packed_npccn
 - name: packed_nr
-  code: 137
+  code: 141
   rank: 2
   expression: packed_nr
 - name: packed_nrout
-  code: 138
+  code: 142
   rank: 2
   expression: packed_nrout
 - name: packed_nrout2
-  code: 139
+  code: 143
   rank: 2
   expression: packed_nrout2
 - name: packed_nrtend
-  code: 140
+  code: 144
   rank: 2
   expression: packed_nrtend
 - name: packed_ns
-  code: 141
+  code: 145
   rank: 2
   expression: packed_ns
 - name: packed_nsout
-  code: 142
+  code: 146
   rank: 2
   expression: packed_nsout
 - name: packed_nsout2
-  code: 143
+  code: 147
   rank: 2
   expression: packed_nsout2
 - name: packed_nstend
-  code: 144
+  code: 148
   rank: 2
   expression: packed_nstend
 - name: packed_p
-  code: 145
+  code: 149
   rank: 2
   expression: packed_p
 - name: packed_pdel
-  code: 146
+  code: 150
   rank: 2
   expression: packed_pdel
 - name: packed_pint
-  code: 147
+  code: 151
   rank: 2
   expression: packed_pint
 - name: packed_pra
-  code: 148
+  code: 152
   rank: 2
   expression: packed_pra
 - name: packed_pracs
-  code: 149
+  code: 153
   rank: 2
   expression: packed_pracs
 - name: packed_prai
-  code: 150
+  code: 154
   rank: 2
   expression: packed_prai
 - name: packed_prain
-  code: 151
+  code: 155
   rank: 2
   expression: packed_prain
 - name: packed_prc
-  code: 152
+  code: 156
   rank: 2
   expression: packed_prc
 - name: packed_prci
-  code: 153
+  code: 157
   rank: 2
   expression: packed_prci
 - name: packed_prdso
-  code: 154
+  code: 158
   rank: 2
   expression: packed_prdso
 - name: packed_preci
-  code: 155
+  code: 159
   rank: 1
   expression: packed_preci
 - name: packed_prect
-  code: 156
+  code: 160
   rank: 1
   expression: packed_prect
 - name: packed_preo
-  code: 157
+  code: 161
   rank: 2
   expression: packed_preo
 - name: packed_prer_evap
-  code: 158
+  code: 162
   rank: 2
   expression: packed_prer_evap
 - name: packed_prodsnow
-  code: 159
+  code: 163
   rank: 2
   expression: packed_prodsnow
 - name: packed_psacws
-  code: 160
+  code: 164
   rank: 2
   expression: packed_psacws
 - name: packed_q
-  code: 161
+  code: 165
   rank: 2
   expression: packed_q
 - name: packed_qc
-  code: 162
+  code: 166
   rank: 2
   expression: packed_qc
 - name: packed_qcrat
-  code: 163
+  code: 167
   rank: 2
   expression: packed_qcrat
 - name: packed_qcres
-  code: 164
+  code: 168
   rank: 2
   expression: packed_qcres
 - name: packed_qcsedten
-  code: 165
+  code: 169
   rank: 2
   expression: packed_qcsedten
 - name: packed_qcsevap
-  code: 166
+  code: 170
   rank: 2
   expression: packed_qcsevap
 - name: packed_qctend
-  code: 167
+  code: 171
   rank: 2
   expression: packed_qctend
 - name: packed_qi
-  code: 168
+  code: 172
   rank: 2
   expression: packed_qi
 - name: packed_qires
-  code: 169
+  code: 173
   rank: 2
   expression: packed_qires
 - name: packed_qisedten
-  code: 170
+  code: 174
   rank: 2
   expression: packed_qisedten
 - name: packed_qisevap
-  code: 171
+  code: 175
   rank: 2
   expression: packed_qisevap
 - name: packed_qitend
-  code: 172
+  code: 176
   rank: 2
   expression: packed_qitend
 - name: packed_qr
-  code: 173
+  code: 177
   rank: 2
   expression: packed_qr
 - name: packed_qrout
-  code: 174
+  code: 178
   rank: 2
   expression: packed_qrout
 - name: packed_qrout2
-  code: 175
+  code: 179
   rank: 2
   expression: packed_qrout2
 - name: packed_qrsedten
-  code: 176
+  code: 180
   rank: 2
   expression: packed_qrsedten
 - name: packed_qrtend
-  code: 177
+  code: 181
   rank: 2
   expression: packed_qrtend
 - name: packed_qs
-  code: 178
+  code: 182
   rank: 2
   expression: packed_qs
 - name: packed_qsout
-  code: 179
+  code: 183
   rank: 2
   expression: packed_qsout
 - name: packed_qsout2
-  code: 180
+  code: 184
   rank: 2
   expression: packed_qsout2
 - name: packed_qssedten
-  code: 181
+  code: 185
   rank: 2
   expression: packed_qssedten
 - name: packed_qstend
-  code: 182
+  code: 186
   rank: 2
   expression: packed_qstend
 - name: packed_qvlat
-  code: 183
+  code: 187
   rank: 2
   expression: packed_qvlat
 - name: packed_qvres
-  code: 184
+  code: 188
   rank: 2
   expression: packed_qvres
 - name: packed_rate1ord_cw2pr_st
-  code: 185
+  code: 189
   rank: 2
   expression: packed_rate1ord_cw2pr_st
 - name: packed_re_ice
-  code: 186
+  code: 190
   rank: 2
   expression: packed_re_ice
 - name: packed_refl
-  code: 187
+  code: 191
   rank: 2
   expression: packed_refl
 - name: packed_rei
-  code: 188
+  code: 192
   rank: 2
   expression: packed_rei
 - name: packed_rel
-  code: 189
+  code: 193
   rank: 2
   expression: packed_rel
 - name: packed_relvar
-  code: 190
+  code: 194
   rank: 2
   expression: packed_relvar
 - name: packed_rercld
-  code: 191
+  code: 195
   rank: 2
   expression: packed_rercld
 - name: packed_rflx
-  code: 192
+  code: 196
   rank: 2
   expression: packed_rflx
 - name: packed_rndst
-  code: 193
+  code: 197
   rank: 3
   expression: packed_rndst
 - name: packed_sflx
-  code: 194
+  code: 198
   rank: 2
   expression: packed_sflx
 - name: packed_t
-  code: 195
+  code: 199
   rank: 2
   expression: packed_t
 - name: packed_tlat
-  code: 196
+  code: 200
   rank: 2
   expression: packed_tlat
 - name: packed_tnd_nsnow
-  code: 197
+  code: 201
   rank: 2
   expression: packed_tnd_nsnow
 - name: packed_tnd_qsnow
-  code: 198
+  code: 202
   rank: 2
   expression: packed_tnd_qsnow
 - name: packed_umr
-  code: 199
+  code: 203
   rank: 2
   expression: packed_umr
 - name: packed_ums
-  code: 200
+  code: 204
   rank: 2
   expression: packed_ums
 - name: packed_vtrmc
-  code: 201
+  code: 205
   rank: 2
   expression: packed_vtrmc
 - name: packed_vtrmi
-  code: 202
+  code: 206
   rank: 2
   expression: packed_vtrmi
 - name: packed_wtfc
-  code: 203
+  code: 207
   rank: 2
   expression: packed_wtfc
 - name: packed_wtfi
-  code: 204
+  code: 208
   rank: 2
   expression: packed_wtfi
 - name: packed_wtpostlat
-  code: 205
+  code: 209
   rank: 2
   expression: packed_wtpostlat
 - name: packed_wtprelat
-  code: 206
+  code: 210
   rank: 2
   expression: packed_wtprelat
 inputs:

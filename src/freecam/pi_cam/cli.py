@@ -113,6 +113,15 @@ def main(argv: list[str] | None = None) -> int:
     boundary_group = parser.add_mutually_exclusive_group(required=True)
     boundary_group.add_argument("--boundary", type=Path)
     boundary_group.add_argument("--boundary-provider", type=Path)
+    parser.add_argument(
+        "--no-verify-exports",
+        action="store_true",
+        help=(
+            "let a replay run continue past an export that is not bitwise "
+            "identical to the capture; for diagnosis only -- it turns off the "
+            "check a gate exists to make, so no run with this flag is evidence"
+        ),
+    )
     boundary_group.add_argument("--online-bootstrap", type=Path)
     parser.add_argument("--run-dir", type=Path, required=True)
     parser.add_argument(
@@ -263,7 +272,8 @@ def main(argv: list[str] | None = None) -> int:
     if args.execution_mode is not None:
         case = PICAMCase(replace(case.config, execution_mode=args.execution_mode))
     if args.boundary is not None:
-        boundary: CAMBoundaryProvider = ReplayBoundaryProvider(args.boundary)
+        boundary: CAMBoundaryProvider = ReplayBoundaryProvider(
+            args.boundary, verify_exports=not args.no_verify_exports)
     elif args.online_bootstrap is not None:
         boundary = OnlineBoundaryProvider.held(args.online_bootstrap)
     else:

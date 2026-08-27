@@ -67,8 +67,12 @@ def test_rank_local_boundary_failure_is_raised_on_every_rank() -> None:
         communicator=FailureComm(),
     )
 
-    with pytest.raises(BoundaryReplayError, match="failed collectively; see rank 0"):
+    # every rank raises the whole grouped message, not a pointer to rank 0:
+    # whichever rank aborts first kills the others, so the diagnostic has to
+    # be on the rank that prints it
+    with pytest.raises(BoundaryReplayError, match="failed collectively on") as failure:
         driver._collective_boundary_call("test boundary", lambda: None)
+    assert "rank zero failed" in str(failure.value)
 
 
 def test_complete_step_is_ordered_by_python_and_advances_1800_seconds() -> None:
