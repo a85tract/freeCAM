@@ -505,3 +505,192 @@ def test_no_two_kernels_of_a_stage_name_one_field_with_different_shapes() -> Non
                     clashes.append((field, seen[field], (name, extents)))
                 seen.setdefault(field, (name, extents))
         assert not clashes, (stage.__name__, clashes)
+
+
+# -- end to end against a fake image ---------------------------------------------
+
+
+class _Lib:
+    """A fake image: every entry succeeds, every view is a real array.
+
+    Shapes come from the same place the runtime's do -- the reviewed
+    descriptors and the VIEW table -- so a view whose rank or extent the
+    transliteration reads wrongly fails here rather than 512 ranks deep.
+    """
+
+    PCOLS, PVER, PVERP = 16, 30, 31
+    LEVS = 29
+
+    def __init__(self) -> None:
+        self.views: dict[tuple[int, int], np.ndarray] = {}
+        self.calls: list[str] = []
+        self.owner = 0
+        self.history: list[str] = []
+
+    _SHAPES = {
+        1: ("PCOLS", "PVER"), 2: ("PCOLS", "PVER"), 3: ("PCOLS", "PVERP"),
+        4: ("PCOLS", "PVER"), 5: ("PCOLS", "PVERP"), 6: ("PCOLS", "PVER"),
+        21: ("PCOLS", "PVER"),
+    }
+
+    def _shape(self, code: int) -> tuple[int, ...]:
+        if code in self._SHAPES:
+            return tuple(getattr(self, n) for n in self._SHAPES[code])
+        if 41 <= code <= 71:
+            return (self.PCOLS,)
+        if 81 <= code <= 94:
+            # the RRTMG state: pintmb and tlev carry one more level
+            return (self.PCOLS, self.LEVS + (1 if code in (92, 94) else 0))
+        raise AssertionError(f"the fake image has no shape for view code {code}")
+
+    def __getattr__(self, name):
+        if not name.startswith("pycam_"):
+            raise AttributeError(name)
+        lib = self
+
+        def entry(*args):
+            lib.calls.append(name)
+            if name == "pycam_rad_view_v1":
+                lchnk, code, ptr, ndims, extents = args
+                array = lib.views.setdefault(
+                    (lchnk, code), np.zeros(lib._shape(code), order="F"))
+                ptr._obj.value = array.ctypes.data
+                ndims._obj.value = array.ndim
+                for i, e in enumerate(array.shape):
+                    extents[i] = e
+            elif name == "pycam_rad_set_owner_v1":
+                lib.owner = args[0]
+            elif name == "pycam_rad_nstep_v1":
+                return 5
+            elif name == "pycam_rad_dt_v1":
+                return 1800
+            elif name == "pycam_rad_do_v1":
+                return 1                       # a radiation step
+            elif name == "pycam_rad_options_v1":
+                codes = args[0]
+                codes[0], codes[1], codes[2], codes[3] = 0, 1, 1, 1
+            elif name == "pycam_rad_hist_active_v1":
+                return 0                       # FSNR and FLNR are off
+            elif name == "pycam_rad_outfld_scaled_v1":
+                lib.history.append(args[2].decode())
+            elif name == "pycam_outfld_v1":
+                lib.history.append(args[0].decode())
+            elif name == "pycam_pbuf_field_v1":
+                lchnk, index, sliced, ptr, extents = args
+                array = lib.views.setdefault(
+                    (lchnk, 200 + index), np.zeros((lib.PCOLS, lib.PVER), order="F"))
+                ptr._obj.value = array.ctypes.data
+                extents[0], extents[1] = array.shape
+            return 0
+
+        return entry
+
+
+class _Pool(dict):
+    @property
+    def dimensions(self):
+        return {"pcols": 16, "pver": 30, "pverp": 31, "pcnst": 57, "chunks": 2}
+
+
+class _Native:
+    def __init__(self, lib):
+        self.library = lib
+        self.pool = _Pool({"grid.chunk_id": np.array([1540, 1541]),
+                           "grid.chunk_ncols": np.array([14, 13])})
+        self.kernels: list[str] = []
+        from freecam.pi_cam.kernel_codegen import load_direct_kernels
+
+        # what the image's manifest really carries: the field name and dtype,
+        # never the extents
+        self._args = {k.name: [{"field": a.field, "dtype": a.dtype, "rank": a.rank}
+                               for a in k.arguments]
+                      for k in load_direct_kernels(Radiation.DESCRIPTORS)}
+
+    @property
+    def chunks(self):
+        return self.pool["grid.chunk_id"], self.pool["grid.chunk_ncols"]
+
+    def kernel_arguments(self, name):
+        return tuple(self._args[name])
+
+    def run_kernel(self, name, arrays):
+        self.kernels.append(name)
+
+
+class _Context:
+    def __init__(self, native):
+        self.native = native
+        self.timestep_seconds = 1800
+        self.step = 5
+        self.rank = 3
+
+
+@pytest.fixture
+def fake(monkeypatch):
+    native = _Native(_Lib())
+    constants = _constants()
+    monkeypatch.setattr(R._Constants, "read", classmethod(lambda cls, library: constants))
+    monkeypatch.setattr(R, "module_view",
+                        lambda library, symbol, dtype, shape: np.array(3, dtype=np.int32))
+    monkeypatch.setattr(R.PBuf, "verify", lambda self, chunk, **kw: None)
+    return native
+
+
+def test_tend_walks_the_driver_in_its_order_on_every_chunk(fake) -> None:
+    scheme = Radiation()
+    scheme.tend(None, _Context(fake))
+    per_chunk = len(SEQUENCE_RADIATION_STEP)
+    assert len(scheme.calls) == 2 * per_chunk
+    assert scheme.calls[:per_chunk] == list(SEQUENCE_RADIATION_STEP)
+    assert scheme.calls[per_chunk:] == list(SEQUENCE_RADIATION_STEP)
+    assert fake.library.owner == 1
+    # every kernel a radiation step uses ran once per chunk.  rad_heating_unscale
+    # is the exception: it belongs to the other branch, and a step that computes
+    # leaves the heating rates as Q*dp for rad_heating_scale to convert.
+    for name in Radiation.KERNELS:
+        if name == "rad_heating_unscale":
+            assert name not in fake.kernels
+            continue
+        assert fake.kernels.count(name) >= 2, name
+
+
+def test_a_quiet_step_takes_the_other_branch(fake, monkeypatch) -> None:
+    original = _Lib.__getattr__
+
+    def off(self, name):
+        entry = original(self, name)
+        if name != "pycam_rad_do_v1":
+            return entry
+
+        def quiet(*args):
+            entry(*args)
+            return 0                            # neither shortwave nor longwave
+        return quiet
+
+    monkeypatch.setattr(_Lib, "__getattr__", off)
+    scheme = Radiation()
+    scheme.tend(None, _Context(fake))
+    per_chunk = len(SEQUENCE_QUIET_STEP)
+    assert scheme.calls[:per_chunk] == list(SEQUENCE_QUIET_STEP)
+    assert len(scheme.calls) == 2 * per_chunk
+    # the cores never ran, and the other branch's conversion did
+    assert "rad_rrtmg_sw" not in fake.kernels
+    assert fake.kernels.count("rad_heating_unscale") == 2
+
+
+def test_a_model_in_a_core_s_place_sees_live_columns_and_must_answer_all(fake) -> None:
+    seen = {}
+
+    def model(batch):
+        seen.update({k: np.asarray(v).shape for k, v in batch.items()})
+        return {name: np.zeros((batch["pmid"].shape[0], 30)) for name in ()}
+
+    scheme = Radiation()
+    scheme.kernels[SW] = model
+    from freecam.physics.errors import PhysicsError
+
+    with pytest.raises(PhysicsError, match="missing"):
+        scheme.tend(None, _Context(fake))
+    # the model was reached, and saw only the live columns of the first chunk
+    assert seen["pmid"] == (14, 30)
+    assert seen["ncol"] == ()

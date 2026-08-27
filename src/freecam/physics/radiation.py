@@ -625,7 +625,7 @@ class Radiation(NativeStage):
         # 836-838
         if has_snow:
             H.outfld("CLDFSNOW", cldfsnow, pcols, lchnk)
-        log("outfld")
+        log("outfld*")
 
         # 843-845: the cosine of the solar zenith angle for this step
         clat, clon, coszrs = L["clat"], L["clon"], L["coszrs"]
@@ -672,7 +672,7 @@ class Radiation(NativeStage):
            "pmid": S["state_pmid"], "cappa": C.cappa},
           outputs={"ftem": None})
         log("rad_theta_heating")
-        H.outfld("HR      ", L["ftem"], pcols, lchnk); log("outfld")
+        H.outfld("HR      ", L["ftem"], pcols, lchnk); log("outfld*")
 
         # 1306-1316
         K("rad_heating_scale",
@@ -791,7 +791,7 @@ class Radiation(NativeStage):
             K("rad_scale_by_cpair", {"ncol": ncol, "field": qrs, "cpair": CPAIR},
               outputs={"ftem": None})
             log("rad_scale_by_cpair")
-            H.outfld("QRS     ", L["ftem"], pcols, lchnk)
+            H.outfld("QRS     ", L["ftem"], pcols, lchnk); log("outfld*")
             K("rad_scale_by_cpair", {"ncol": ncol, "field": L["qrsc"], "cpair": CPAIR},
               outputs={"ftem": None})
             log("rad_scale_by_cpair")
@@ -884,7 +884,7 @@ class Radiation(NativeStage):
           {"ncol": ncol, "rrtmg_lw_cloudsim_band": RRTMG_LW_CLOUDSIM_BAND,
            "cld_lw_abs": None}, outputs={"emis": None})
         log("rad_emissivity")
-        H.outfld("EMIS    ", L["emis"], pcols, lchnk); log("outfld")
+        H.outfld("EMIS    ", L["emis"], pcols, lchnk); log("outfld*")
 
         # 1246-1257: computed for COSP, which is refused, but the driver
         # writes these unconditionally and a gate notices a missing write
