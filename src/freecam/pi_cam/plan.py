@@ -102,6 +102,8 @@ _DEFAULT_ACTIONS = (
     PICAMAction("state_and_convection_diagnostics_leaf", "cam_run1", "leaf_diag_phys_writeout", "scheme", 454, parent_stage="cam_run1.diagnostics"),
     PICAMAction("cloud_diagnostics_leaf", "cam_run1", "leaf_cloud_diagnostics_calc", "scheme", 455, parent_stage="cam_run1.diagnostics"),
     PICAMAction("radiation", "cam_run1", "radiation_tend", "scheme", 430),
+    PICAMAction("rad_tend_pre_leaf", "cam_run1", "leaf_rad_tend_pre", "scheme", 482, False, parent_stage="cam_run1.radiation"),
+    PICAMAction("rad_tend_post_leaf", "cam_run1", "leaf_rad_tend_post", "scheme", 483, False, parent_stage="cam_run1.radiation"),
     PICAMAction("state_export", "cam_run1", "cam_export", "scheme", 431, False),
     PICAMAction("tropopause_leaf", "cam_run1", "leaf_tropopause_output", "scheme", 456, parent_stage="cam_run1.state_export"),
     PICAMAction("state_export_leaf", "cam_run1", "leaf_cam_export", "scheme", 457, parent_stage="cam_run1.state_export"),
@@ -192,6 +194,24 @@ class PICAMStepPlan:
             )
         self.set_enabled("cloud_macro_microphysics", False, phase="cam_run1", experimental=True)
         for name in ("macro_tend_pre_leaf", "macro_tend_post_leaf"):
+            self.set_enabled(name, True, phase="cam_run1", experimental=True)
+
+    def split_radiation(self, *, experimental: bool = False) -> None:
+        """Stop the radiation stage before its driver and resume after it.
+
+        The whole stage and its two halves are alternatives, never both, for
+        the same reason macrophysics' are: leaving the stage enabled beside
+        its halves would run radiation twice a step, and disabling all three
+        would not run it at all.  Doing the swap in one call is the only way
+        to be sure of neither.
+        """
+
+        if not experimental:
+            raise PICAMConfigurationError(
+                "splitting the radiation stage requires experimental=True"
+            )
+        self.set_enabled("radiation", False, phase="cam_run1", experimental=True)
+        for name in ("rad_tend_pre_leaf", "rad_tend_post_leaf"):
             self.set_enabled(name, True, phase="cam_run1", experimental=True)
 
     def expand_cam_run1_leaves(self, *, experimental: bool = False) -> None:

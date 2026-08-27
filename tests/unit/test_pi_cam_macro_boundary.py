@@ -44,16 +44,21 @@ def test_each_patch_ships_in_the_set_that_has_to_prove_it() -> None:
     add_on = [path.name for path in LEAF_PATCHES]
     # The boundary edits tphysbc, which every run executes: production set,
     # answering to the bit-for-bit gate.
-    assert production[-1] == "0039-macro-tend-boundary.patch"
+    assert "0039-macro-tend-boundary.patch" in production
+    # Radiation's boundary is the same kind of edit and ships the same way.
+    assert production[-1] == "0041-rad-tend-boundary.patch"
     # The dispatcher only widens the leaf entry point Python drives: add-on
     # set, last, since it edits what 0031 leaves behind.
-    assert add_on[-1] == "0040-macro-tend-leaf-dispatch.patch"
-    assert "0040-macro-tend-leaf-dispatch.patch" not in production
+    assert "0040-macro-tend-leaf-dispatch.patch" in add_on
+    assert add_on[-1] == "0042-rad-tend-leaf-dispatch.patch"
+    for name in ("0040-macro-tend-leaf-dispatch.patch", "0042-rad-tend-leaf-dispatch.patch"):
+        assert name not in production
     # Neither touches a numerical object.
     for name in (boundary.BOUNDARY, boundary.DISPATCH):
         text = name.read_text()
         assert text.startswith("--- a/src/physics/cam/physpkg.F90")
         assert "macrop_driver.F90" not in text
+        assert "radiation.F90" not in text
 
 
 @pinned
@@ -101,7 +106,8 @@ def test_the_two_leaves_are_wired_end_to_end_and_off_by_default() -> None:
     assert ids["leaf_macro_tend_post"] == 481
     assert len(set(LEAF_OPERATION_IDS)) == len(LEAF_OPERATION_IDS) == len(LEAF_OPERATION_NAMES)
     adapter = (REPO / "native/pi_cam/pi_cam_leaf_adapter.F90").read_text()
-    assert "case (480:481)" in adapter
+    # 480/481 share their dispatch block with radiation's 482/483
+    assert "case (480:483)" in adapter
     assert "cam_phys_run1_leaf_action(action_id - 459" in adapter   # 480 -> 21, 481 -> 22
 
     plan = PICAMStepPlan.default()
@@ -114,7 +120,8 @@ def test_the_two_leaves_are_wired_end_to_end_and_off_by_default() -> None:
 
 
 def test_the_support_modules_are_additions_the_image_links() -> None:
-    assert SUPPORT_MODULES == ("pycam_macro_kernels.F90", "pycam_macro_handles.F90")
+    assert SUPPORT_MODULES == ("pycam_macro_kernels.F90", "pycam_macro_handles.F90",
+                               "pycam_rad_kernels.F90", "pycam_rad_handles.F90")
     for name in SUPPORT_MODULES:
         assert (REPO / "native/pi_cam/support" / name).is_file()
     builder = (REPO / "tools/build_pi_cam_devices.py").read_text()

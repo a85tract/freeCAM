@@ -50,10 +50,11 @@ contains
     case (460:468)
        call cam_phys_run2_leaf_action(action_id - 449, cam_out, cam_in, &
             local_status)
-    case (480:481)
-       ! The two halves of the macrophysics stage: stop before the driver,
-       ! resume after it.  They belong to cam_run1 but its 450:458 block is
-       ! full, so they get a block of their own rather than a renumbering.
+    case (480:483)
+       ! The two halves of the macrophysics stage and the two of radiation:
+       ! stop before each driver, resume after it.  All four belong to
+       ! cam_run1 but its 450:458 block is full, so they share a block of
+       ! their own rather than forcing a renumbering.
        call cam_phys_run1_leaf_action(action_id - 459, cam_in, cam_out, &
             local_status)
     case (470:472)

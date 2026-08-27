@@ -1,0 +1,58 @@
+--- a/src/physics/cam/physpkg.F90
++++ b/src/physics/cam/physpkg.F90
+@@ -2138 +2138 @@ subroutine tphysbc (ztodt,               &
+-       sgh30, cam_out, cam_in, action_id, macro_stage)
++       sgh30, cam_out, cam_in, action_id, macro_stage, rad_stage)
+@@ -2193,0 +2194,2 @@ subroutine tphysbc (ztodt,               &
++    use pycam_rad_handles, only: rad_ptend, rad_net_flx, python_owns_rad, &
++         pycam_rad_bind_chunk
+@@ -2231,0 +2234,6 @@ subroutine tphysbc (ztodt,               &
++    ! Where to pause around the radiation driver.  Absent or 0 runs the
++    ! stage whole.  1 binds this chunk's cam_in and cam_out and returns
++    ! just before call radiation_tend; 2 resumes just after it, taking
++    ! the tendency and the net flux from Python if Python claimed the
++    ! step and calling the driver itself otherwise.
++    integer, intent(in), optional :: rad_stage
+@@ -2254,0 +2263 @@ subroutine tphysbc (ztodt,               &
++    integer :: rad_stage_local                ! 0 whole, 1 stop before, 2 resume after
+@@ -2362,0 +2372,12 @@ subroutine tphysbc (ztodt,               &
++    rad_stage_local = 0
++    if (present(rad_stage)) rad_stage_local = rad_stage
++    if (rad_stage_local /= 0) then
++       ! The resume re-enters this routine at stage 10, which begins at
++       ! the radiation timer, so nothing before the driver call is rerun.
++       ! What cannot be reproduced statement for statement is refused
++       ! here rather than run differently; the rest of the refusals need
++       ! module state physpkg cannot see and are made by Python at
++       ! attach, against the image, before a timestep runs.
++       if (single_column .or. scm_crm_mode) call endrun &
++            ('TPHYSBC: the radiation boundary does not carry the single-column path')
++    end if
+@@ -3109,5 +3130,22 @@ subroutine tphysbc (ztodt,               &
+-    call radiation_tend(state,ptend, pbuf, &
+-         cam_out, cam_in, &
+-         cam_in%landfrac, cam_in%icefrac, cam_in%snowhland, &
+-         fsns,    fsnt, flns,    flnt,  &
+-         fsds, net_flx)
++    if (rad_stage_local == 1) then
++       ! Python runs here and calls back in with rad_stage = 2.  cam_in
++       ! and cam_out are dummies of this routine, so their addresses are
++       ! handed over now, while the chunk's own objects are in scope.
++       call pycam_rad_bind_chunk(lchnk, cam_in, cam_out)
++       call t_stopf('radiation')
++       return
++    end if
++
++    if (rad_stage_local == 2 .and. python_owns_rad) then
++       ! The driver's outputs, as Python's transliteration left them.
++       if (.not. allocated(rad_ptend(lchnk)%s)) call endrun &
++            ('TPHYSBC: Python claimed the radiation step but produced no tendency')
++       ptend   = rad_ptend(lchnk)
++       net_flx = rad_net_flx(:,lchnk)
++    else
++       call radiation_tend(state,ptend, pbuf, &
++            cam_out, cam_in, &
++            cam_in%landfrac, cam_in%icefrac, cam_in%snowhland, &
++            fsns,    fsnt, flns,    flnt,  &
++            fsds, net_flx)
++    end if

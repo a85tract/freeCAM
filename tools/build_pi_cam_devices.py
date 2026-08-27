@@ -46,6 +46,7 @@ LEAF_PATCHES = (
     REPO / "native/pi_cam/control_patches/0029-python-run4-leaf-control.patch",
     REPO / "native/pi_cam/control_patches/0031-order-independent-leaf-actions.patch",
     REPO / "native/pi_cam/control_patches/0040-macro-tend-leaf-dispatch.patch",
+    REPO / "native/pi_cam/control_patches/0042-rad-tend-leaf-dispatch.patch",
 )
 IMAGE_BASE = 0x30000000
 IMAGE_WINDOW_BYTES = 0x20000000
@@ -66,8 +67,10 @@ PBUF_FIELD_SYMBOL = "pycam_pbuf_field_v1"
 # They are compiled into the fixed image as additions -- no numerical object
 # is replaced -- and are reached only from Python or from the control
 # objects the builder already replaces.
-SUPPORT_MODULES = ("pycam_macro_kernels.F90", "pycam_macro_handles.F90")
+SUPPORT_MODULES = ("pycam_macro_kernels.F90", "pycam_macro_handles.F90",
+                   "pycam_rad_kernels.F90", "pycam_rad_handles.F90")
 MACRO_BIND_HOSTS_SYMBOL = "pycam_macro_bind_hosts_v1"
+RAD_BIND_HOSTS_SYMBOL = "pycam_rad_bind_hosts_v1"
 LEAF_ACTION_SYMBOL = "pycam_pi_cam_leaf_action_v1"
 LEAF_OPERATION_NAMES = (
     "leaf_modal_aero_prepare",
@@ -93,9 +96,11 @@ LEAF_OPERATION_NAMES = (
     "leaf_cam_run4_flush",
     "leaf_macro_tend_pre",
     "leaf_macro_tend_post",
+    "leaf_rad_tend_pre",
+    "leaf_rad_tend_post",
 )
 LEAF_OPERATION_IDS = (
-    *range(450, 459), *range(460, 469), *range(470, 473), *range(480, 482)
+    *range(450, 459), *range(460, 469), *range(470, 473), *range(480, 484)
 )
 
 

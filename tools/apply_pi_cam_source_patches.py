@@ -23,6 +23,7 @@ PATCHES = (
     "native/pi_cam/control_patches/0030-order-independent-scheme-actions.patch",
     "native/pi_cam/control_patches/0033-single-cam-online-coupler.patch",
     "native/pi_cam/control_patches/0039-macro-tend-boundary.patch",
+    "native/pi_cam/control_patches/0041-rad-tend-boundary.patch",
 )
 
 # Modules this repository owns that are added to the CAM source tree.  They
@@ -34,6 +35,10 @@ SUPPORT_SOURCES = (
      "src/physics/cam/pycam_macro_kernels.F90"),
     ("native/pi_cam/support/pycam_macro_handles.F90",
      "src/physics/cam/pycam_macro_handles.F90"),
+    ("native/pi_cam/support/pycam_rad_kernels.F90",
+     "src/physics/cam/pycam_rad_kernels.F90"),
+    ("native/pi_cam/support/pycam_rad_handles.F90",
+     "src/physics/cam/pycam_rad_handles.F90"),
 )
 
 

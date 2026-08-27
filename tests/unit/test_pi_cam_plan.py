@@ -58,6 +58,8 @@ def test_pi_cam_default_plan_matches_cesm_cam_source_order() -> None:
         "leaf_diag_phys_writeout",
         "leaf_cloud_diagnostics_calc",
         "radiation_tend",
+        "leaf_rad_tend_pre",
+        "leaf_rad_tend_post",
         "cam_export",
         "leaf_tropopause_output",
         "leaf_cam_export",
@@ -88,11 +90,13 @@ def test_pi_cam_default_plan_matches_cesm_cam_source_order() -> None:
         454,
         455,
         430,
+        482,
+        483,
         431,
         *range(456, 459),
         432,
     ]
-    assert len(plan.actions) == 56
+    assert len(plan.actions) == 58
     assert len(tuple(plan)) == 47
     assert len(plan.in_phase("cam_run2")) == 19
     assert sum(action.phase == "cam_run2" for action in plan.actions) == 22
@@ -101,7 +105,7 @@ def test_pi_cam_default_plan_matches_cesm_cam_source_order() -> None:
     assert len(plan.in_phase("cam_run4")) == 5
     assert sum(action.phase == "cam_run4" for action in plan.actions) == 6
     assert len(plan.in_phase("cam_run1")) == 19
-    assert sum(action.phase == "cam_run1" for action in plan.actions) == 24
+    assert sum(action.phase == "cam_run1" for action in plan.actions) == 26
     assert not any(action.kind == "control" for action in plan.actions)
     assert all(action.control_owner == "python" for action in plan.actions)
 
@@ -129,6 +133,8 @@ def test_pi_cam_leaf_actions_name_the_composite_stage_they_expand() -> None:
         "leaf_cam_run4_flush": "cam_run4.finish",
         "leaf_macro_tend_pre": "cam_run1.cloud_macro_microphysics",
         "leaf_macro_tend_post": "cam_run1.cloud_macro_microphysics",
+        "leaf_rad_tend_pre": "cam_run1.radiation",
+        "leaf_rad_tend_post": "cam_run1.radiation",
         "leaf_modal_aero_prepare": "cam_run1.wet_deposition",
         "leaf_aero_model_wetdep": "cam_run1.wet_deposition",
         "leaf_carma_wetdep_tend": "cam_run1.wet_deposition",
