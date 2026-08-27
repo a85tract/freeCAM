@@ -225,7 +225,7 @@ def fake(monkeypatch):
     native.pool = pool
     constants = M._Constants(
         top_lev=1, ixcldliq=2, ixcldice=3, ixnumliq=4, ixnumice=5, do_cldice=True, do_cldliq=True,
-        do_detrain=True, micro_do_icesupersat=False, use_shfrc=True, cpair=1004.64, latice=3.337e5,
+        do_detrain=True, micro_do_icesupersat=False, use_shfrc=True, i_rhminl=0, i_rhmini=0, cpair=1004.64, latice=3.337e5,
         latvap=2.501e6, gravit=9.80616, tmelt=273.15, trace_water=True, wtrc_detrain_in_macrop=True,
         wtrc_nwset=4, wtrc_ncnst=12,
         wtrc_iatype=np.tile(np.arange(6, 13)[None, :], (700, 1)).astype(np.int32),
@@ -236,37 +236,50 @@ def fake(monkeypatch):
     return native
 
 
+def _column_stand_in(record=None):
+    """Something to put in the kernel's place that needs no Fortran.
+
+    The walk reaches the core through ``Macrophysics.mmacro_pcond``, so a
+    stand-in installed under that name exercises the whole walk without a
+    standalone image -- which is the point of the class owning one
+    definition of what computes it.
+    """
+
+    def model(column):
+        if record is not None:
+            record.append({k: np.asarray(v).shape for k, v in column.items()})
+        return {name: (np.zeros(30) if name not in ("prect",) else np.zeros(()))
+                for name in M.RETURNED}
+    return model
+
+
 def test_tend_walks_the_driver_in_its_order_on_every_chunk(fake) -> None:
-    scheme = Macrophysics()
+    scheme = Macrophysics(kernel=_column_stand_in())
     scheme.tend(None, _Context(fake))
     per_chunk = len(SEQUENCE)
     assert len(scheme.calls) == 2 * per_chunk
     assert scheme.calls[:per_chunk] == list(SEQUENCE)
     assert scheme.calls[per_chunk:] == list(SEQUENCE)
-    # every kernel ran once per chunk, all on the native path
+    # every promoted kernel ran once per chunk; the core is the class's own
+    # method now, so it is not among them
     kernels = [k for k in fake.kernels]
-    assert kernels.count("mmacro_pcond") == 2
+    assert "mmacro_pcond" not in kernels
     assert kernels.count("wtrc_add_rates") == 10
     assert fake.library.owner == 1
 
 
-def test_a_model_in_the_kernel_s_place_sees_live_columns_and_must_answer_all_23(fake) -> None:
-    seen = {}
-
-    def model(batch):
-        seen.update({k: np.asarray(v).shape for k, v in batch.items()})
-        return {name: np.zeros((batch["t0"].shape[0], 30)) for name in (
-            "s_tendout", "qv_tendout", "ql_tendout", "qi_tendout", "nl_tendout", "ni_tendout", "qme",
-            "qvadj", "qladj", "qiadj", "qllim", "qilim", "cld", "al_st_star", "ai_st_star", "ql_st_star",
-            "qi_st_star", "t0", "qv0", "ql0", "qi0", "nl0", "ni0")}
-
-    scheme = Macrophysics(kernel=model)
+def test_a_model_in_the_kernel_s_place_sees_one_column_and_must_answer_all_23(fake) -> None:
+    seen: list[dict] = []
+    scheme = Macrophysics(kernel=_column_stand_in(seen))
     scheme.tend(None, _Context(fake))
-    assert seen["t0"] == (13, 30) and seen["landfrac"] == (13,)      # the last chunk has 13 columns
+    # one call per live column, each a profile of its own -- the same
+    # boundary the standalone image has
+    assert len(seen) == 14 + 13
+    assert seen[0]["t0"] == (30,) and seen[0]["landfrac"] == ()
     assert "mmacro_pcond" not in fake.kernels                          # the original was not called
 
-    def partial(batch):
-        return {"cld": np.zeros((batch["t0"].shape[0], 30))}
+    def partial(column):
+        return {"cld": np.zeros(30)}
 
     with pytest.raises(M.PhysicsError, match="missing"):
         Macrophysics(kernel=partial).tend(None, _Context(fake))
@@ -319,7 +332,7 @@ def test_copy_out_writes_live_lanes_only_and_leaves_padding_as_cam_left_it(fake)
     """The Fortran driver never writes a padding lane; a view's padding must
     stay whatever CAM's storage held, not become the scratch's zeros."""
 
-    scheme = Macrophysics()
+    scheme = Macrophysics(kernel=_column_stand_in())
     lib = fake.library
     # pre-fill every view CAM would hand out with a marker in the padding lanes
     scheme.tend(None, _Context(fake))            # allocates the fake's views
@@ -335,14 +348,16 @@ def test_copy_out_writes_live_lanes_only_and_leaves_padding_as_cam_left_it(fake)
 
 def test_the_trace_records_one_line_per_chunk_with_live_lane_hashes(fake, tmp_path, monkeypatch) -> None:
     monkeypatch.setenv("FREECAM_MACRO_TRACE", str(tmp_path))
-    Macrophysics().tend(None, _Context(fake))
+    Macrophysics(kernel=_column_stand_in()).tend(None, _Context(fake))
     import json
     files = list(tmp_path.glob("macro_trace.rank-*.jsonl"))
     assert len(files) == 1
     lines = [json.loads(l) for l in files[0].read_text().splitlines()]
     assert [(l["lchnk"], l["ncol"]) for l in lines] == [(1540, 14), (1541, 13)]
     assert lines[0]["mpi_rank"] == 3 and lines[0]["nstep"] == 5
-    # before: the 37 reads (2 structural, 29 input, 6 inout) and the 6
-    # pointer workspaces as they enter; after: the 23 returned values
-    assert len(lines[0]["before"]) == 43 and len(lines[0]["after"]) == 23
+    # before: what the walk hands the kernel -- 2 structural, 29 input and 6
+    # inout; the six pointer workspaces are the boundary's, not the walk's.
+    # after: the 23 values it answers.
+    assert len(lines[0]["before"]) == 37 and len(lines[0]["after"]) == 23
+    assert lines[0]["backend"] == "standalone-column"
     assert all(len(h) == 64 for h in lines[0]["before"].values())

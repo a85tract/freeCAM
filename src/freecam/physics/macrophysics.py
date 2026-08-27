@@ -43,6 +43,7 @@ import numpy as np
 from ..pi_cam.errors import PICAMConfigurationError
 from ..pi_cam.pbuf import PBuf, MACROP_FIELDS, macrop_fields
 from .errors import PhysicsError
+from .result import FunctionResult
 from .image import module_view
 from .spec import load_function_spec
 from .stage import (
@@ -82,6 +83,20 @@ VIEW = {
     "det_s": 31, "det_ice": 32, "process_rates": 33,
 }
 RECORD_PTEND_LOC, RECORD_PTEND = 1, 2
+
+#: What the single-column boundary sets for itself: the chunk it is on and
+#: how many columns it was given.  mmacro_pcond.yaml fixes both.
+STRUCTURAL = ("lchnk", "ncol")
+#: The kernel's six in/out profiles, which come back as updated inputs
+#: rather than outputs.
+UPDATED = ("t0", "qv0", "ql0", "qi0", "nl0", "ni0")
+#: Everything the kernel answers, whichever computes it.  A model in its
+#: place must answer all of them, for the column it was given.
+RETURNED = (
+    "s_tendout", "qv_tendout", "ql_tendout", "qi_tendout", "nl_tendout", "ni_tendout",
+    "qme", "qvadj", "qladj", "qiadj", "qllim", "qilim", "cld", "al_st_star", "ai_st_star",
+    "ql_st_star", "qi_st_star", *UPDATED,
+)
 
 # physpkg's pycam_macro_forcing_v1 codes: the driver's forcing arguments.
 FORCING = {"zdu": 1, "cmfmc": 2, "cmfmc2": 3, "dlf": 4, "dlf2": 5, "rliq": 6, "wtdlf": 7}
@@ -182,6 +197,8 @@ class _Constants:
     do_detrain: bool
     micro_do_icesupersat: bool
     use_shfrc: bool
+    i_rhminl: int
+    i_rhmini: int
     cpair: float
     latice: float
     latvap: float
@@ -213,6 +230,8 @@ class _Constants:
             do_detrain=b("macrop_driver_mp_do_detrain_"),
             micro_do_icesupersat=b("macrop_driver_mp_micro_do_icesupersat_"),
             use_shfrc=b("macrop_driver_mp_use_shfrc_"),
+            i_rhminl=i("cldwat2m_macro_mp_i_rhminl_"),
+            i_rhmini=i("cldwat2m_macro_mp_i_rhmini_"),
             cpair=CPAIR, latice=LATICE, latvap=LATVAP,
             gravit=r("physconst_mp_gravit_"), tmelt=r("physconst_mp_tmelt_"),
             trace_water=b("water_tracer_vars_mp_trace_water_"),
@@ -231,6 +250,17 @@ class _Constants:
         if self.micro_do_icesupersat:
             raise PICAMConfigurationError(
                 "micro_do_icesupersat is on; the Python macrophysics does not carry ice_macro_tend")
+        if self.i_rhminl > 0 or self.i_rhmini > 0:
+            # rhcrit_calc reads the PBL's turbulent kinetic energy and the
+            # convection's detrainment through six pointer arguments only when
+            # these options are on.  The reviewed single-column boundary
+            # declares them workspace -- it does not carry them -- so with the
+            # options on the walk would hand the kernel zeros where the driver
+            # hands it the physics buffer.  Refuse rather than compute that.
+            raise PICAMConfigurationError(
+                f"rhminl_opt={self.i_rhminl}, rhmini_opt={self.i_rhmini}; mmacro_pcond then reads "
+                "tke, qtl_flx, qti_flx, cmfr_det, qlr_det and qir_det, which its standalone "
+                "boundary does not carry")
 
 
 # -- the class ---------------------------------------------------------------------
@@ -282,9 +312,28 @@ class Macrophysics(NativeStage):
         return self._function().example_input(name)
 
     def mmacro_pcond(self, inputs: Mapping[str, Any], parameters: Mapping[str, Any] | None = None):
-        """One column through the reviewed standalone image; no model needed."""
+        """The stage's numerical core: one column in, one column out.
 
-        return self._function().run(inputs, parameters)
+        This is the only place in the class that says what computes
+        ``mmacro_pcond``.  :meth:`tend_chunk` calls it for every live column
+        of the chunk, and a notebook calls it for a column of its own, so
+        there is no second answer to change when this one changes -- which
+        is also what makes a replacement complete: assign into
+        :attr:`kernels` and both callers change together.
+        """
+
+        model = self.kernels[FUNCTION]
+        if model is None:
+            return self._function().run(inputs, parameters)
+        answer = dict(model(inputs))
+        missing = [name for name in RETURNED if name not in answer]
+        if missing:
+            raise PhysicsError(
+                f"the model in {FUNCTION}'s place returned {len(answer)} of {len(RETURNED)} "
+                f"values; missing {missing}")
+        return FunctionResult(
+            outputs={name: answer[name] for name in RETURNED if name not in UPDATED},
+            updated_inputs={name: answer[name] for name in UPDATED})
 
     def _function(self):
         if self._standalone is None:
@@ -565,7 +614,11 @@ class Macrophysics(NativeStage):
             "d_t": None, "d_qv": None, "d_ql": None, "d_qi": None, "d_nl": None, "d_ni": None,
             "a_cud": None, "a_cu0": pbv["CONCLD"], "clrw_old": None, "clri_old": None,
             "landfrac": cam_in["landfrac"], "snowh": cam_in["snowhland"],
-            "tke": None, "qtl_flx": None, "qti_flx": None, "cmfr_det": None, "qlr_det": None, "qir_det": None,
+            # tke, qtl_flx, qti_flx, cmfr_det, qlr_det and qir_det are the
+            # kernel's workspace: rhcrit_calc reads them only when
+            # rhminl_opt/rhmini_opt are on, which attach refuses.  The
+            # boundary fills them with the zeros the driver's own pointers
+            # would have carried here.
             "do_cldice": C.do_cldice,
         }
         # the driver's names for the kernel's: the same mapping the capture hook used
@@ -573,9 +626,7 @@ class Macrophysics(NativeStage):
                  "nl0": "nl_inout", "ni0": "ni_inout", "a_t": "ttend", "a_qv": "qtend", "a_ql": "lmitend",
                  "a_qi": "itend", "a_nl": "nltend", "a_ni": "nitend", "d_t": "dlf_T", "d_qv": "dlf_qv",
                  "d_ql": "dlf_ql", "d_qi": "dlf_qi", "d_nl": "dlf_nl", "d_ni": "dlf_ni",
-                 "a_cud": "concld_old", "clrw_old": "clrw_old", "clri_old": "clri_old",
-                 "tke": "tke", "qtl_flx": "qtl_flx", "qti_flx": "qti_flx", "cmfr_det": "cmfr_det",
-                 "qlr_det": "qlr_det", "qir_det": "qir_det"}
+                 "a_cud": "concld_old", "clrw_old": "clrw_old", "clri_old": "clri_old"}
         for name, source in alias.items():
             if inputs[name] is None:
                 inputs[name] = s[source]
@@ -586,14 +637,16 @@ class Macrophysics(NativeStage):
                    "ai_st_star": pbv["AIST"], "ql_st_star": pbv["QLST"], "qi_st_star": pbv["QIST"],
                    "t0": s["t_inout"], "qv0": s["qv_inout"], "ql0": s["ql_inout"], "qi0": s["qi_inout"],
                    "nl0": s["nl_inout"], "ni0": s["ni_inout"]}
-        # The one kernel a model may replace.  The runtime runs the
-        # original or the model, and traces both the same way.
-        st.swappable_kernel(FUNCTION, inputs, outputs=outputs, ncol=ncol,
-                            lchnk=lchnk, dt=dt)
+        # The stage's own kernel, on every live column of this chunk.  The
+        # routine has no cross-column term -- no reduction over i, no i+/-1 --
+        # so a column at a time is what the chunk call computed anyway.
+        st.column_kernel(
+            FUNCTION, inputs, outputs=outputs, ncol=ncol, lchnk=lchnk, dt=dt,
+            call=self.mmacro_pcond, structural=STRUCTURAL, updated=UPDATED)
 #: The stage's place in the workflow, for callers that ask before constructing one.
 STAGE = Macrophysics.STAGE
 FIRST_HALF = Macrophysics.FIRST_HALF
 SECOND_HALF = Macrophysics.SECOND_HALF
 
 __all__ = ["FIRST_HALF", "FORCING", "KERNELS", "Macrophysics", "SECOND_HALF", "SEQUENCE",
-           "STAGE", "VIEW"]
+           "RETURNED", "STAGE", "STRUCTURAL", "UPDATED", "VIEW"]

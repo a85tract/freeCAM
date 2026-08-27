@@ -459,6 +459,47 @@ class StageRuntime:
                     continue
                 self._copy_out(target, self.scratch[local], ncol)
 
+    def column_kernel(self, name: str, inputs: Mapping[str, Any], *,
+                      outputs: Mapping[str, np.ndarray], ncol: int, lchnk: int, dt: float,
+                      call: Callable[[Mapping[str, Any]], Any],
+                      structural: Sequence[str] = (),
+                      updated: Sequence[str] = ()) -> None:
+        """Run the stage's own single-column kernel on every live column.
+
+        The stage owns one definition of what computes this kernel -- the
+        method of the same name -- and this runs it where the driver ran the
+        chunk-wide routine: column by column, each one taken out of the
+        chunk's arrays, handed to the method, and written back into the same
+        lanes.  Padding lanes are never touched, exactly as the Fortran left
+        them.  ``structural`` names the arguments the single-column boundary
+        fixes for itself (the chunk number, the column count); ``updated``
+        the ones it returns as updated inputs rather than outputs.
+        """
+
+        trace = self.trace
+        with self.profile.region(f"trace-hash:{name}"):
+            before = ({key: lane_sha256(np.asarray(value), ncol) for key, value in inputs.items()}
+                      if trace is not None else None)
+        fixed = set(structural)
+        columns = {key: np.asarray(value) for key, value in inputs.items() if key not in fixed}
+        with self.profile.region(f"kernel-run:{name}"):
+            for index in range(ncol):
+                one = {key: (value if value.ndim == 0 else value[index])
+                       for key, value in columns.items()}
+                answer = call(one)
+                for key, target in outputs.items():
+                    source = answer.updated_inputs if key in set(updated) else answer.outputs
+                    target[index, ...] = np.asarray(source[key], dtype=np.float64)
+        if trace is not None:
+            with self.profile.region(f"trace-hash:{name}"):
+                after = {key: lane_sha256(np.asarray(value), ncol) for key, value in outputs.items()}
+            with self.profile.region(f"trace-write:{name}"):
+                trace.write(json.dumps({
+                    "mpi_rank": self.rank, "lchnk": lchnk, "nstep": self.nstep, "ncol": ncol,
+                    "dt": dt, "kernel": name, "replaced": False, "backend": "standalone-column",
+                    "before": before, "after": after}) + "\n")
+                trace.flush()
+
     def swappable_kernel(self, name: str, inputs: Mapping[str, Any], *,
                          outputs: Mapping[str, np.ndarray], ncol: int, lchnk: int, dt: float,
                          kernel: Callable[..., Mapping[str, np.ndarray]] | None = None,
