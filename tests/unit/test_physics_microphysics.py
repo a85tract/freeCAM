@@ -440,8 +440,49 @@ def test_the_paths_the_configuration_never_takes_are_refused(bad, what) -> None:
     _constants().refuse_unsupported()
 
 
-def test_a_model_in_the_core_s_place_is_not_yet_wired(fake) -> None:
-    scheme = Microphysics(kernel=object())
-    with pytest.raises(PICAMConfigurationError, match="packed-array contract"):
+def test_the_packed_contract_is_the_core_s_argument_list() -> None:
+    """Every packed input and output is a view the handles module serves, and
+    together they are micro_mg_tend1_0's array arguments minus the five the
+    driver discards."""
+
+    for name in M.PACKED_INPUTS + M.PACKED_INPUTS_NO_CLDICE + M.PACKED_INPUTS_HETFRZ + M.PACKED_OUTPUTS:
+        assert f"packed_{name}" in VIEW, name
+    text = HANDLES.read_text()
+    call = re.search(r"call micro_mg_tend1_0\((.*?)\)\s*\n\s*case \(5\)", text, re.S).group(1)
+    actuals = [a.strip() for a in re.sub(r"[&\n]", " ", call).split(",")]
+    packed = [a.removeprefix("packed_") for a in actuals if a.startswith("packed_")]
+    contract = set(M.PACKED_INPUTS + M.PACKED_INPUTS_NO_CLDICE + M.PACKED_INPUTS_HETFRZ + M.PACKED_OUTPUTS)
+    assert set(packed) == contract
+    assert [a for a in actuals if a.endswith("_dum")] == [
+        "rel_fn_dum", "reff_rain_dum", "reff_snow_dum", "drout_dum", "dsout2_dum"]
+    # inout arguments are in both lists
+    assert {"qc", "qi", "nc", "ni"} <= set(M.PACKED_INPUTS) & set(M.PACKED_OUTPUTS)
+
+
+def test_a_model_in_the_core_s_place_sees_the_packed_batch_and_answers_it(fake) -> None:
+    seen = {}
+
+    def model(batch):
+        seen.update({k: np.asarray(v).shape for k, v in batch.items()})
+        return {name: np.full(batch["t"].shape if name not in ("prect", "preci") else batch["t"].shape[:1],
+                              7.0) for name in M.PACKED_OUTPUTS}
+
+    scheme = Microphysics(kernel=model)
+    scheme.tend(None, _Context(fake))
+    lib = fake.library
+    assert lib.core_owner == 1
+    assert "core" not in [n for n, _ in lib.lifecycle]
+    assert scheme.calls == list(SEQUENCE) * 2
+    assert set(seen) == set(M.PACKED_INPUTS)
+    assert seen["t"] == (16, 30) and seen["rndst"] == (16, 30, 57)
+    # the answer landed in the packed storage the unpack reads
+    tlat = lib.views[(1540, "view", VIEW["packed_tlat"])]
+    assert np.all(tlat == 7.0)
+
+
+def test_a_model_must_answer_every_output(fake) -> None:
+    scheme = Microphysics(kernel=lambda batch: {"tlat": batch["t"]})
+    from freecam.physics.errors import PhysicsError
+
+    with pytest.raises(PhysicsError, match="missing"):
         scheme.tend(None, _Context(fake))
-    assert fake.library.core_owner == 1

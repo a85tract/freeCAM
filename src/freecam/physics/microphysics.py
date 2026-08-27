@@ -161,6 +161,27 @@ HISTORY_GRID = (
     ("PRCIO", "prcio_grid"), ("PRAIO", "praio_grid"), ("QIRESO", "qireso_grid"),
 )
 
+#: The core's arguments (micro_mg1_0.F90 ``micro_mg_tend``) as the packed
+#: arrays the lifted section hands it, by intent: what a model in its place
+#: receives, and what it must answer.  ``qc, qi, nc, ni`` are inout.  The
+#: five ``*_dum`` actuals (effc_fn, reff_rain, reff_snow, drout2, dsout2)
+#: are outputs the driver discards and are not part of the contract.
+PACKED_INPUTS = ("t", "q", "qc", "qi", "nc", "ni", "p", "pdel", "cldn", "liqcldf", "relvar",
+                 "accre_enhan", "icecldf", "naai", "npccn", "rndst", "nacon")
+PACKED_INPUTS_NO_CLDICE = ("tnd_qsnow", "tnd_nsnow", "re_ice")
+PACKED_INPUTS_HETFRZ = ("frzimm", "frzcnt", "frzdep")
+PACKED_OUTPUTS = (
+    "qc", "qi", "nc", "ni", "rate1ord_cw2pr_st", "tlat", "qvlat", "qctend", "qitend", "nctend",
+    "nitend", "rel", "rei", "prect", "preci", "nevapr", "evapsnow", "am_evp_st", "prain",
+    "prodsnow", "cmeout", "dei", "mu", "lambdac", "qsout", "des", "rflx", "sflx", "qrout",
+    "qcsevap", "qisevap", "qvres", "cmei", "vtrmc", "vtrmi", "qcsedten", "qisedten", "pra", "prc",
+    "mnuccc", "mnucct", "msacwi", "psacws", "bergs", "berg", "melt", "homo", "qcres", "prci",
+    "prai", "qires", "mnuccr", "pracs", "meltsdt", "frzrdt", "mnuccd", "nrout", "nsout", "refl",
+    "arefl", "areflz", "frefl", "csrfl", "acsrfl", "fcsrfl", "rercld", "ncai", "ncal", "qrout2",
+    "qsout2", "nrout2", "nsout2", "freqs", "freqr", "nfice", "prer_evap", "preo", "prdso",
+    "frzro", "meltso", "wtfc", "wtfi", "wtprelat", "wtpostlat",
+)
+
 #: The order in which the Fortran routine does things under the admitted
 #: configuration; ``tend`` follows it per chunk and a test compares the two
 #: against the pinned source.
@@ -634,20 +655,32 @@ class Microphysics(NativeStage):
         H.end(lchnk); log("physics_state_dealloc")
 
     def _core_call(self, st: StageRuntime, lchnk: int, ncol: int, dt: float) -> None:
-        """2087-2206: the original core inside the lifted section, or a model.
+        """2087-2209: the core inside the lifted section, or a model in its place.
 
-        With a model installed the lifted section skips the core and the
-        model answers from the packed views; that path lands with the
-        standalone core (Gate M-5).
+        The packed arrays the lifted section built are the contract: a
+        model receives the inputs as ``(mgncol, nlev)`` batches and answers
+        every output, which is written back into the packed storage the
+        unpack reads.  With no model the original runs where it always did.
+        Either way the trace, when on, hashes every argument before and
+        after.
         """
 
+        H, C = st.handles, st.constants
         model = self.kernels.get(CORE)
-        if model is None:
-            st.handles.core(lchnk)
-            self.calls.append(CORE)
-            return
-        raise PICAMConfigurationError(
-            "a model in micro_mg_tend's place needs the packed-array contract; not yet wired")
+        if getattr(st, "core_owner", None) != (model is not None):
+            H.set_core_owner(model is not None)
+            st.core_owner = model is not None
+        names = list(PACKED_INPUTS)
+        if not C.do_cldice:
+            names += PACKED_INPUTS_NO_CLDICE
+        if C.use_hetfrz_classnuc:
+            names += PACKED_INPUTS_HETFRZ
+        inputs = {name: H.view(lchnk, VIEW[f"packed_{name}"]) for name in names}
+        outputs = {name: H.view(lchnk, VIEW[f"packed_{name}"]) for name in PACKED_OUTPUTS}
+        mgncol = int(inputs["t"].shape[0])
+        st.swappable_kernel(CORE, inputs, outputs=outputs, ncol=mgncol, lchnk=lchnk, dt=dt,
+                            original=lambda: H.core(lchnk))
+        self.calls.append(CORE)
 
     def _water_tracers(self, st, lchnk, ncol, alst_mic, aist_mic, V, K, G) -> None:
         """2567-2700 under trace_water, without subcolumns."""
@@ -716,4 +749,5 @@ class Microphysics(NativeStage):
 
 
 __all__ = ["CORE", "CONFIGURATION", "GRID_COPIES", "GRID_PBUF", "HISTORY_GRID", "HISTORY_MG",
-           "HISTORY_TENDENCIES", "INPUT", "KERNELS", "Microphysics", "SEQUENCE", "VIEW"]
+           "HISTORY_TENDENCIES", "INPUT", "KERNELS", "Microphysics", "PACKED_INPUTS",
+           "PACKED_OUTPUTS", "SEQUENCE", "VIEW"]
