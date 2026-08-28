@@ -31,6 +31,7 @@ be committed. Scheduler output belongs under `logs/`.
 
 ```bash
 uv sync --extra notebook --extra test
+uv run python tools/prepare_pi_cam_source.py --check   # the pinned externals
 cp site.env.example site.env    # then set FREECAM_ACCOUNT
 uv run python -m freecam.site   # what this checkout resolves to, and lacks
 uv run pytest -q

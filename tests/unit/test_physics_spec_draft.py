@@ -11,6 +11,9 @@ import yaml
 PROJECT = Path(__file__).resolve().parents[2]
 TOOL = PROJECT / "tools/draft_pi_cam_function_spec.py"
 INVENTORY = PROJECT / "validation/pi_cam_kernel_inventory.json"
+# The drafter reads the patched tree, which tools/prepare_pi_cam_source.py
+# writes: a build product, absent in a fresh checkout.
+PREPARED = PROJECT / "build/iCESM1.3.1_PI_cam_only/components/cam/src/physics/cam"
 
 
 def _module():
@@ -54,12 +57,18 @@ def test_sequence_and_quoted_survive_yaml() -> None:
 
 
 @pytest.mark.skipif(not INVENTORY.is_file(), reason="kernel inventory not present")
+@pytest.mark.skipif(
+    not (PREPARED / "uwshcu.F90").is_file(),
+    reason="the prepared source tree is not built here",
+)
 def test_uwshcu_draft_parses_and_carries_the_recorded_facts(tmp_path: Path) -> None:
     import subprocess
+    import sys
 
     out = tmp_path / "uwshcu.yaml"
     subprocess.run(
-        ["python3", str(TOOL), "uwshcu::compute_uwshcu_inv",
+        # the interpreter running the suite, not whichever python3 is on PATH
+        [sys.executable, str(TOOL), "uwshcu::compute_uwshcu_inv",
          "--dimensions", "mix=pcols", "mkx=pver", "ncnst=pcnst", "--out", str(out)],
         check=True, capture_output=True, cwd=PROJECT,
     )

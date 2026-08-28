@@ -26,7 +26,12 @@ from freecam.pi_cam.errors import PICAMConfigurationError  # noqa: E402
 KERNEL_MODULE = REPO / "native/pi_cam/support/pycam_aero_kernels.F90"
 HANDLES = REPO / "native/pi_cam/support/pycam_aero_handles.F90"
 SOURCE = REPO / "external/iCESM1.3.1_fzhu/components/cam/src/physics/cam/microp_aero.F90"
-LINES = SOURCE.read_text().splitlines()
+pytestmark = pytest.mark.skipif(
+    not SOURCE.is_file(),
+    reason="the pinned iCESM externals are not checked out; run "
+           "tools/prepare_pi_cam_source.py --check",
+)
+LINES = SOURCE.read_text().splitlines() if SOURCE.is_file() else []
 
 
 # -- the generated modules -------------------------------------------------------

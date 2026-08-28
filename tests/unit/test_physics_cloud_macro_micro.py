@@ -33,10 +33,15 @@ HANDLES = REPO / "native/pi_cam/support/pycam_mm_handles.F90"
 PHYSPKG = REPO / "external/iCESM1.3.1_fzhu/components/cam/src/physics/cam/physpkg.F90"
 # from the first statement of the MG branch through the end if that closes
 # the mass fixer's: 1-based line numbers found by their text
-_SOURCE = PHYSPKG.read_text().splitlines()
-LAST = 2 + _SOURCE.index("     call wtrc_mass_fixer(state)")
-FIRST = 2 + max(i for i, line in enumerate(_SOURCE[:LAST])
-                if "elseif( microp_scheme == 'MG' )" in line)
+pytestmark = pytest.mark.skipif(
+    not PHYSPKG.is_file(),
+    reason="the pinned iCESM externals are not checked out; run "
+           "tools/prepare_pi_cam_source.py --check",
+)
+_SOURCE = PHYSPKG.read_text().splitlines() if PHYSPKG.is_file() else []
+LAST = 2 + _SOURCE.index("     call wtrc_mass_fixer(state)") if _SOURCE else 0
+FIRST = (2 + max(i for i, line in enumerate(_SOURCE[:LAST])
+                 if "elseif( microp_scheme == 'MG' )" in line)) if _SOURCE else 0
 
 
 def _lines(path: Path, first: int, last: int) -> list[str]:

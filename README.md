@@ -48,7 +48,12 @@ git clone git@github.com:a85tract/freeCAM.git
 cd freeCAM
 git submodule update --init external/iCESM1.3.1_fzhu
 uv sync --extra notebook --extra test
+uv run python tools/prepare_pi_cam_source.py --check
 ```
+
+The submodule is only the iCESM shell: its `components/` are managed
+externals, and the last line checks them out and verifies all seven pinned
+revisions. Tests that read the pinned source skip until it is there.
 
 The supplied runtime and PBS jobs target NCAR Derecho. A configured iCESM
 reference case, its machine environment, and the required input data must be

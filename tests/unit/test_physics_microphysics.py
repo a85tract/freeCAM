@@ -30,7 +30,19 @@ from freecam.pi_cam.errors import PICAMConfigurationError  # noqa: E402
 
 HANDLES = REPO / "native/pi_cam/support/pycam_micro_handles.F90"
 SOURCE = REPO / "external/iCESM1.3.1_fzhu/components/cam/src/physics/cam/micro_mg_cam.F90"
-LINES = SOURCE.read_text().splitlines()
+# The walk reads the core's spec off the standalone image, so the tests that
+# reach the core need it built; the rest of the module does not.
+CORE_IMAGE = REPO / "build/pi_cam_standalone/micro_mg_tend/manifest.json"
+built = pytest.mark.skipif(
+    not CORE_IMAGE.is_file(),
+    reason="the micro_mg_tend standalone image is not built here",
+)
+pytestmark = pytest.mark.skipif(
+    not SOURCE.is_file(),
+    reason="the pinned iCESM externals are not checked out; run "
+           "tools/prepare_pi_cam_source.py --check",
+)
+LINES = SOURCE.read_text().splitlines() if SOURCE.is_file() else []
 
 
 def _line(n: int) -> str:
@@ -386,6 +398,7 @@ def fake(monkeypatch):
     return native
 
 
+@built
 def test_tend_walks_the_routine_in_its_order_on_every_chunk(fake) -> None:
     scheme = Microphysics()
     scheme.tend(None, _Context(fake))
@@ -422,6 +435,7 @@ def test_tend_walks_the_routine_in_its_order_on_every_chunk(fake) -> None:
     assert lib.history == per_chunk_history * 2
 
 
+@built
 def test_the_flags_the_walk_branches_on(fake, monkeypatch) -> None:
     constants = _constants(use_hetfrz_classnuc=True, rate1_cw2pr_st_idx=0, trace_water=False)
     monkeypatch.setattr(M._Constants, "read", classmethod(lambda cls, library: constants))
@@ -494,6 +508,7 @@ def test_the_packed_contract_is_the_core_s_argument_list() -> None:
     assert {"qc", "qi", "nc", "ni"} <= set(M.PACKED_INPUTS) & set(M.PACKED_OUTPUTS)
 
 
+@built
 def test_a_model_in_the_core_s_place_sees_one_column_under_the_routine_s_names(fake) -> None:
     """The walk reaches the core through Microphysics.micro_mg_tend, so a
     model installed under that name is given exactly what the routine is
@@ -525,6 +540,7 @@ def test_a_model_in_the_core_s_place_sees_one_column_under_the_routine_s_names(f
     assert np.all(tlat == 7.0)
 
 
+@built
 def test_a_model_must_answer_every_output(fake) -> None:
     scheme = Microphysics(kernel=lambda column: {"tlat": column["tn"]})
     from freecam.physics.errors import PhysicsError
@@ -533,6 +549,7 @@ def test_a_model_must_answer_every_output(fake) -> None:
         scheme.tend(None, _Context(fake))
 
 
+@built
 def test_a_kernel_field_that_lives_in_the_buffer_must_be_named_by_the_walk(fake, monkeypatch) -> None:
     """Scratch is not the physics buffer: a `_grid` field the walk forgets to
     pass would be read as zeros.  The walk refuses instead."""

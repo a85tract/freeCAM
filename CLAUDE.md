@@ -12,6 +12,7 @@ freeCAM runs the CAM atmosphere component of iCESM1.3.1 under a Python control l
 
 ```bash
 uv sync --extra notebook --extra test    # install (requires Python >=3.11,<3.12)
+uv run python tools/prepare_pi_cam_source.py --check   # check out the pinned externals
 cp site.env.example site.env             # then set FREECAM_ACCOUNT; not committed
 uv run python -m freecam.site            # what this checkout resolves to, and lacks
 uv run pytest -q                         # full local unit suite
