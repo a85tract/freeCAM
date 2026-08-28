@@ -84,17 +84,55 @@ def main() -> int:
 
     rows = holdout_rows(kernel, meta, arguments.rows)
     x = np.asarray(X[rows], dtype=np.float64)
-    truth = np.asarray(Y[rows], dtype=np.float64)
-    prediction = kernel.predict_rows(x)
+    truth_all = np.asarray(Y[rows], dtype=np.float64)
+    truth_names = [str(name) for name in meta["y_names"]]
+
+    # A model that derives some of its answers has fewer output columns than
+    # the training set has target columns, so the truth is looked up by name.
+    # Indexing it with the model's own offsets would compare the right
+    # prediction against the wrong argument, silently.
+    where_in_truth = {name: index for index, name in enumerate(truth_names)}
+    answer = kernel.batched_answer(x)
+    prediction, truth, layout = [], [], {}
+    at = 0
+    for argument, values in answer.items():
+        columns = [where_in_truth[name] for name in truth_names
+                   if name == argument or name.startswith(argument + "[")]
+        block = np.atleast_2d(values.T).T if values.ndim > 1 else values.reshape(-1, 1)
+        if block.shape[1] != len(columns):
+            raise SystemExit(f"{argument}: model gives {block.shape[1]} columns, "
+                             f"the training set records {len(columns)}")
+        prediction.append(block)
+        truth.append(truth_all[:, columns])
+        layout[argument] = slice(at, at + block.shape[1])
+        at += block.shape[1]
+    prediction = np.concatenate(prediction, axis=1)
+    truth = np.concatenate(truth, axis=1)
+    # Firing thresholds live in the model's own column order.  A derived
+    # answer has none: nothing decided whether it fires.
+    by_name = {name: index for index, name in enumerate(kernel.y_names)}
+    def threshold_block(argument, width):
+        columns = [by_name[n] for n in kernel.y_names
+                   if n == argument or n.startswith(argument + "[")]
+        if len(columns) != width:
+            return np.full(width, -np.inf), np.zeros(width)
+        return thresholds[columns], separations[columns]
+
+    cut_blocks, sep_blocks = zip(*(threshold_block(a, w.stop - w.start)
+                                   for a, w in layout.items()))
+    thresholds, separations = np.concatenate(cut_blocks), np.concatenate(sep_blocks)
+    derived = set(getattr(kernel, "derived", []) or
+                  [i.target for i in kernel.identities])
 
     def coefficient(t: np.ndarray, p: np.ndarray):
         variance = t.var()
         return float(1 - ((p - t) ** 2).mean() / variance) if variance > 0 else None
 
     report = []
-    for argument, where in kernel._y_slices.items():
+    for argument, where in layout.items():
         t, p = truth[:, where], prediction[:, where]
         entry = {"argument": argument, "r2": coefficient(t, p),
+                 "derived": argument in derived,
                  "truth_rms": float(np.sqrt((t ** 2).mean()))}
 
         # What the model was actually fitted to.  For a state that is the
@@ -140,8 +178,39 @@ def main() -> int:
             entry["r2_firing"] = coefficient(learned_t[both], learned_p[both])
         report.append(entry)
 
+    # Two separate questions, which one number would confuse.  The identity
+    # is exact by construction, so its residual before any repair must be
+    # zero; a non-zero one means the derivation is wrong.  The floor is a
+    # repair *on top* of it, and how often it fires is a measurement of the
+    # tendency heads -- a floor that catches a third of the levels is saying
+    # the tendencies drive condensate negative a third of the time.  The
+    # repair also invents the water it clips, so what it invents is reported
+    # rather than left implicit.
+    identity_residual, repair = {}, {}
+    column = {name: x[:, where] if where.stop - where.start > 1 else x[:, where.start]
+              for name, where in kernel._x_slices.items()}
+    dt = column["dt"].reshape(-1, 1)
+    for identity in kernel.identities:
+        derived_value = identity(column, {n: prediction[:, layout[n]]
+                                          for n in identity.derives_from}, dt)
+        final = prediction[:, layout[identity.target]]
+        floored = np.maximum(derived_value, 0.0) if identity.target in kernel.non_negative \
+            else derived_value
+        scale = max(float(np.percentile(np.abs(final), 99)), 1e-300)
+        identity_residual[identity.target] = float(np.abs(floored - final).max() / scale)
+        if identity.target in kernel.non_negative:
+            below = derived_value < 0.0
+            repair[identity.target] = {
+                "levels_clipped": float(below.mean()),
+                "invented_over_truth_rms": float(
+                    np.abs(np.minimum(derived_value, 0.0)).sum()
+                    / max(np.abs(truth[:, layout[identity.target]]).sum(), 1e-300)),
+            }
+
     summary = {
-        "schema_version": 2,
+        "identity_residual": identity_residual,
+        "non_negative_repair": repair,
+        "schema_version": 3,
         "model": str(arguments.model), "training": str(arguments.training),
         "kind": kernel.kind, "rows": int(rows.size),
         "provenance": kernel.provenance,
@@ -150,6 +219,15 @@ def main() -> int:
     arguments.output.parent.mkdir(parents=True, exist_ok=True)
     arguments.output.write_text(json.dumps(summary, indent=2, default=float) + "\n")
 
+    if identity_residual:
+        worst = max(identity_residual.values())
+        print(f"identity residual after repair: worst {worst:.2e} relative"
+              f"  --  {'exact' if worst < 1e-12 else 'NOT EXACT: the derivation is wrong'}")
+    if repair:
+        print("non-negativity floor (a repair, not an identity):")
+        for name, item in sorted(repair.items(), key=lambda kv: -kv[1]["levels_clipped"]):
+            print(f"  {name:6s} clipped {100 * item['levels_clipped']:5.2f}% of levels, "
+                  f"inventing {100 * item['invented_over_truth_rms']:6.3f}% of the argument's mass")
     print(f"{'argument':14s} {'zero':>7s} {'r2':>8s} {'r2_delta':>9s} "
           f"{'gate P/R':>13s} {'decades p50':>11s} {'sign':>6s}")
     for item in report:

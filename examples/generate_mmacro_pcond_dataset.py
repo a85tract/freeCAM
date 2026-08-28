@@ -261,13 +261,37 @@ parameter axis can only come from the sampler.
 """
 
 
-def build_capture_space(scheme, anchors, column, *, gate_scale: float):
-    """Distributions anchored on a capture: real columns, drawn whole."""
+def build_capture_space(scheme, anchors, column, *, gate_scale: float,
+                        part: int = 0, parts: int = 1, limit: int | None = None):
+    """Distributions anchored on a capture: real columns, drawn whole.
+
+    ``limit`` uses a random ``limit`` of the anchors rather than the first of
+    them, so a published set can be asked for fewer without rewriting it.  The
+    first of them is not a subset to take: extraction sorts the indices it drew,
+    and the global column order runs record then rank, so the leading anchors
+    are the lowest MPI ranks -- a fixed piece of the globe rather than a sample
+    of it.  ``part``/``parts`` split the anchor set between processes.  Two hundred
+    thousand columns are 1.4 GB once resident, and generating in parallel
+    means that much per process -- five of them was enough to have one killed
+    outright.  Taking every ``parts``-th column instead keeps the total
+    constant however many processes run, and every anchor still reaches
+    exactly one of them.
+    """
 
     produced = tuple(name for name in anchors.files
                      if not name.startswith("meta_") and name != "provenance"
                      and name not in ("dt", "do_cldice"))
-    columns = {name: np.asarray(anchors[name]) for name in produced}
+    # .copy(), not the strided view a slice would give: a view keeps the
+    # whole decompressed member alive and saves nothing at all.
+    held = int(np.asarray(anchors[produced[0]]).shape[0])
+    if limit is None or limit >= held:
+        take = slice(None)
+    else:
+        # Seeded on the size alone, so every process of one run takes the same
+        # subset and their shares stay disjoint.
+        take = np.sort(np.random.default_rng(limit).choice(held, limit, replace=False))
+    columns = {name: np.array(anchors[name][take][part::parts], copy=True)
+               for name in produced}
     gate = {}
     for name, rate in CAPTURE_GATE.items():
         if name not in columns:
@@ -312,6 +336,13 @@ def main() -> int:
                              "instead of perturbing one example column")
     parser.add_argument("--gate-scale", type=float, default=1.0,
                         help="multiplies the rate at which a clear level is seeded with condensate (default 1.0)")
+    parser.add_argument("--anchor-columns", type=int, default=None,
+                        help="use only the first this many anchors (default: all of them)")
+    parser.add_argument("--anchor-part", type=int, default=0,
+                        help="which share of the anchors this process takes (default 0)")
+    parser.add_argument("--anchor-parts", type=int, default=1,
+                        help="how many shares the anchors are split into, one per parallel "
+                             "process; each holds 1/parts of them in memory (default 1)")
     arguments = parser.parse_args()
 
     scheme = fc.physics.load_function(FUNCTION, max_restarts=max(100, arguments.samples))
@@ -320,7 +351,10 @@ def main() -> int:
         if arguments.anchor_bundle is not None:
             anchors = np.load(arguments.anchor_bundle, allow_pickle=True)
             space = build_capture_space(scheme, anchors, column,
-                                        gate_scale=arguments.gate_scale)
+                                        gate_scale=arguments.gate_scale,
+                                        part=arguments.anchor_part,
+                                        parts=arguments.anchor_parts,
+                                        limit=arguments.anchor_columns)
             held = frozenset({"do_cldice"})
         else:
             space = build_space(
@@ -352,6 +386,7 @@ def main() -> int:
         dataset.attributes["anchor_bundle"] = str(arguments.anchor_bundle)
         dataset.attributes["anchor_provenance"] = str(anchors["provenance"])
         dataset.attributes["gate_scale"] = float(arguments.gate_scale)
+        dataset.attributes["anchor_share"] = f"{arguments.anchor_part}/{arguments.anchor_parts}"
         dataset.attributes["capture_notes"] = CAPTURE_NOTES
     dataset.attributes["do_cldice"] = "drawn" if arguments.vary_do_cldice else "held at 1, the admitted CAM5 configuration"
     dataset.attributes["sampling_notes"] = SAMPLING_NOTES

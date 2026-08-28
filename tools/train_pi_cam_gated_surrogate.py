@@ -44,6 +44,8 @@ from torch import nn
 REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO / "src"))
 
+from freecam.physics.identities import derived_targets  # noqa: E402
+
 #: Two log-magnitude classes count as separated -- and so as a gate worth
 #: fitting -- only when their means are this many decades apart.  Below it the
 #: column is a continuous response and Otsu's split would be an artefact.
@@ -120,7 +122,7 @@ class GatedSurrogate(nn.Module):
         return self.significance(h), self.sign(h), self.magnitude(h)
 
 
-def prepare(training: Path) -> dict:
+def prepare(training: Path, function: str | None = None) -> dict:
     """Targets, thresholds and the three label sets, from X and Y on disk."""
 
     X = np.load(training / "X.npy", mmap_mode="r")
@@ -130,7 +132,22 @@ def prepare(training: Path) -> dict:
     y_names = [str(name) for name in meta["y_names"]]
     y_arguments = [str(name) for name in meta["y_arguments"]]
 
-    target = np.asarray(Y, dtype=np.float64)
+    # Answers the routine forms from its other answers are not fitted.  They
+    # are computed at inference from the identity they came from, which makes
+    # them exactly consistent instead of approximately so -- and takes a third
+    # of the output space out of the fit.
+    derived = set(derived_targets(function or ""))
+    free = [name for name in y_arguments if name not in derived]
+    keep = [index for index, name in enumerate(y_names)
+            if name.split("[")[0] not in derived]
+    if derived:
+        print(f"  derived from identities, not fitted: {sorted(derived)}")
+        print(f"  fitted targets: {len(free)} arguments, {len(keep)} columns "
+              f"(of {len(y_arguments)} and {len(y_names)})")
+    y_names = [y_names[index] for index in keep]
+    y_arguments = free
+
+    target = np.asarray(Y[:, keep], dtype=np.float64)
 
     # The six states the routine updates are learned as a change, not as a
     # value: their answer is the input plus a small correction, and a network
@@ -174,6 +191,7 @@ def prepare(training: Path) -> dict:
     fires = np.isfinite(logs) & (logs >= thresholds[None, :])
     return {"X": X, "target": target, "logs": logs, "fires": fires,
             "thresholds": thresholds, "separations": separations,
+            "derived": sorted(derived), "function": function,
             "x_names": x_names, "y_names": y_names,
             "x_arguments": [str(n) for n in meta["x_arguments"]],
             "y_arguments": y_arguments, "levels": int(meta["levels"]),
@@ -203,7 +221,10 @@ def main() -> int:
     rng = np.random.default_rng(arguments.seed)
 
     print(f"reading {arguments.training}", flush=True)
-    data = prepare(arguments.training)
+    meta_head = np.load(arguments.training / "meta.npz", allow_pickle=True)
+    function = json.loads(str(meta_head["provenance"])).get("function") \
+        if "provenance" in meta_head else None
+    data = prepare(arguments.training, function)
 
     # The parameter features carry the namelist.  A model run holds it at the
     # case's defaults, so the surrogate must know them: it is called with a
@@ -211,7 +232,6 @@ def main() -> int:
     # read as zero -- an rhminl of 0 rather than 0.87.
     dataset_provenance = json.loads(str(data["meta"]["provenance"])) if "provenance" in data["meta"] else {}
     parameter_defaults: dict[str, float] = {}
-    function = dataset_provenance.get("function")
     if function:
         from freecam.physics.spec import load_function_spec
 
@@ -345,6 +365,7 @@ def main() -> int:
         "decade_clamp": DECADE_CLAMP,
         "delta_columns": data["delta_columns"], "delta_inputs": data["delta_inputs"],
         "parameter_defaults": parameter_defaults,
+        "function": function, "derived": data["derived"],
         "levels": data["levels"],
         "holdout_rows": valid_rows,
         "provenance": {

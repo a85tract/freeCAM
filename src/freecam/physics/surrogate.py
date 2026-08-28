@@ -44,6 +44,8 @@ from typing import Any, Mapping
 
 import numpy as np
 
+from .identities import NON_NEGATIVE, identities_for
+
 
 class SurrogateKernel:
     """A trained network, callable the way the stage calls its kernel."""
@@ -76,6 +78,12 @@ class SurrogateKernel:
         self.provenance = payload.get("provenance", {})
         self.kind = str(payload.get("kind", "linear"))
         self.parameter_defaults = dict(payload.get("parameter_defaults", {}))
+        # Answers the routine forms from its other answers.  The network never
+        # saw them; they are computed from the identity they came from, so
+        # state and tendency cannot drift apart the way a model run notices.
+        self.function = payload.get("function")
+        self.identities = identities_for(str(self.function or ""))
+        self.non_negative = NON_NEGATIVE.get(str(self.function or ""), ())
 
         if self.kind == "gated":
             self._load_gated(payload, nn)
@@ -201,7 +209,27 @@ class SurrogateKernel:
                 # it was given plus what the network says it becomes
                 piece = piece + np.asarray(column[argument], dtype=np.float64).reshape(-1)
             out[argument] = piece if where.stop - where.start > 1 else piece.reshape(())
-        return out
+        return self._close(out, column)
+
+    def _close(self, answer: dict[str, np.ndarray],
+               column: Mapping[str, Any]) -> dict[str, np.ndarray]:
+        """Fill in the answers the routine derives, then keep them physical.
+
+        Order matters: the identities are what the routine did, so they come
+        first and are exact.  The floor is a repair on top -- a tendency the
+        network overshoots would take condensate below zero, which the routine
+        never does and which stops a model run.
+        """
+
+        if not self.identities and not self.non_negative:
+            return answer                    # a function with no table claims none
+        dt = float(np.asarray(column["dt"], dtype=np.float64).reshape(-1)[0])
+        for identity in self.identities:
+            answer[identity.target] = identity(column, answer, dt)
+        for name in self.non_negative:
+            if name in answer:
+                answer[name] = np.maximum(answer[name], 0.0)
+        return answer
 
     def _gated_answer(self, x) -> np.ndarray:
         """Fire or not, which way, how big -- in that order."""
@@ -241,6 +269,26 @@ class SurrogateKernel:
             if argument in self.delta_columns:
                 values[:, where] += rows[:, self._x_slices[argument]]
         return values
+
+    def batched_answer(self, rows: np.ndarray) -> dict[str, np.ndarray]:
+        """Every answer for a matrix of rows, derived ones included."""
+
+        values = self.predict_rows(rows)
+        column = {name: rows[:, where] if where.stop - where.start > 1
+                  else rows[:, where.start]
+                  for name, where in self._x_slices.items()}
+        answer = {name: values[:, where] if where.stop - where.start > 1
+                  else values[:, where.start]
+                  for name, where in self._y_slices.items()}
+        if not self.identities and not self.non_negative:
+            return answer
+        dt = column["dt"].reshape(-1, 1)
+        for identity in self.identities:
+            answer[identity.target] = identity(column, answer, dt)
+        for name in self.non_negative:
+            if name in answer:
+                answer[name] = np.maximum(answer[name], 0.0)
+        return answer
 
     def as_method(self):
         """The same thing shaped as a method, for ``MethodType`` binding."""
