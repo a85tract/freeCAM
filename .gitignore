@@ -17,3 +17,6 @@ artifacts/
 
 # Generated training datasets: runtime output, not source.
 /examples/*.nc
+
+# Site configuration: not committed.
+site.env

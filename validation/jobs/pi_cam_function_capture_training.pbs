@@ -1,4 +1,5 @@
 #!/bin/bash
+# Submit with: validation/jobs/submit.sh validation/jobs/pi_cam_function_capture_training.pbs
 # Capture mmacro_pcond's own arguments over a whole 50-step month-start, for
 # training data.
 #
@@ -24,12 +25,14 @@
 
 set -euo pipefail
 
-repo=/glade/work/$USER/freeCAM
+source "${FREECAM_REPO:-${PBS_O_WORKDIR:-$PWD}}/validation/jobs/common.sh"
+
+repo=${FREECAM_REPO}
 python=${repo}/.venv/bin/python
-case_root=/glade/work/$USER/CESM_cases/f.e13.F1850C5.ne16_g16.icesm131_ihesp.PI-cam-oracle.50step
-oracle_run=/glade/derecho/scratch/$USER/pyCAM/PI-cam/f.e13.F1850C5.ne16_g16.icesm131_ihesp.PI-cam-oracle.50step/run
+case_root=${FREECAM_REFERENCE_CASE}
+oracle_run=${FREECAM_REFERENCE_RUN}
 executable=${repo}/build/pi_cam_function_capture/pi_cam_function_capture.exe
-root=/glade/derecho/scratch/$USER/pyCAM/PI-cam/function-capture-training-${PBS_JOBID}
+root=${FREECAM_SCRATCH}/pyCAM/PI-cam/function-capture-training-${PBS_JOBID}
 steps=${PYCAM_CAPTURE_STEPS:-1,50}   # 覆盖全部 50 步
 
 source "${case_root}/.env_mach_specific.sh" >/dev/null 2>&1

@@ -1,18 +1,20 @@
 #!/bin/bash
+# Submit with: validation/jobs/submit.sh validation/jobs/pi_cam_online_coupler_build.pbs
 #PBS -N freecam-online-build
 #PBS -q develop
-#PBS -A UCUB0188
 #PBS -l select=1:ncpus=1:mpiprocs=1:ompthreads=1:mem=80GB
 #PBS -l walltime=00:30:00
 #PBS -j oe
-#PBS -o /glade/work/ruitong/freeCAM/logs/
+#PBS -o logs/
 
 set -euo pipefail
 set -x
 
-repo=/glade/work/ruitong/freeCAM
-case_root=/glade/work/ruitong/CESM_cases/f.e13.F1850C5.ne16_g16.icesm131_ihesp.PI-atm.pycesm-ref.50step
-source_root=/glade/work/ruitong/iCESM1.3.1_PI_atm_pycesm
+source "${FREECAM_REPO:-${PBS_O_WORKDIR:-$PWD}}/validation/jobs/common.sh"
+
+repo=${FREECAM_REPO}
+case_root=${FREECAM_PYCESM_CASE}
+source_root=${FREECAM_ICESM_SOURCE}
 
 source "${case_root}/.env_mach_specific.sh"
 cd "${repo}"

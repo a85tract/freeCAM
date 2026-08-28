@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import threading
 from pathlib import Path
 
@@ -21,6 +22,7 @@ from freecam.pi_cam import (
     RunResult,
     process,
 )
+from freecam.pi_cam import facade
 from freecam.pi_cam.errors import PICAMConfigurationError
 
 
@@ -602,6 +604,124 @@ def test_driver_reads_case_account_and_preserves_venv_python_symlink(
 
     assert driver.account == "TEST_ACCOUNT"
     assert driver.python_executable == python.absolute()
+
+
+def test_driver_reads_the_account_from_the_site_file(tmp_path, monkeypatch) -> None:
+    paths = _driver_tree(tmp_path)
+    (paths["repo"] / "pyproject.toml").write_text("[project]\nname = 'freecam'\n")
+    (paths["repo"] / "site.env").write_text("FREECAM_ACCOUNT=SITE_ACCOUNT\n")
+    monkeypatch.delenv("FREECAM_ACCOUNT", raising=False)
+    monkeypatch.delenv("PBS_ACCOUNT_DERECHO", raising=False)
+
+    driver = Driver(
+        nsteps=2,
+        repo=paths["repo"],
+        config=paths["config"],
+        reference_case=paths["reference_case"],
+        reference_run=paths["reference_run"],
+        boundary=paths["boundary"],
+        session_factory=FakeSession,
+    )
+
+    # The site file beats the reference case, whose CHARGE_ACCOUNT is whoever
+    # happened to configure it.
+    assert driver.account == "SITE_ACCOUNT"
+    assert "site.env" in driver.account_source
+
+
+def test_driver_environment_account_overrides_the_site_file(
+    tmp_path, monkeypatch
+) -> None:
+    paths = _driver_tree(tmp_path)
+    (paths["repo"] / "pyproject.toml").write_text("[project]\nname = 'freecam'\n")
+    (paths["repo"] / "site.env").write_text("FREECAM_ACCOUNT=SITE_ACCOUNT\n")
+    monkeypatch.setenv("FREECAM_ACCOUNT", "ENVIRONMENT_ACCOUNT")
+
+    driver = Driver(
+        nsteps=2,
+        repo=paths["repo"],
+        config=paths["config"],
+        reference_case=paths["reference_case"],
+        reference_run=paths["reference_run"],
+        boundary=paths["boundary"],
+        session_factory=FakeSession,
+    )
+
+    assert driver.account == "ENVIRONMENT_ACCOUNT"
+    assert driver.account_source == "$FREECAM_ACCOUNT"
+
+
+def test_driver_warns_when_the_account_belongs_to_another_user(
+    tmp_path, monkeypatch
+) -> None:
+    paths = _driver_tree(tmp_path)
+    monkeypatch.delenv("FREECAM_ACCOUNT", raising=False)
+    monkeypatch.delenv("PBS_ACCOUNT_DERECHO", raising=False)
+    # The reference case is somebody else's, as it is whenever a shared
+    # installation is used.
+    monkeypatch.setattr(facade.os, "getuid", lambda: os.stat(__file__).st_uid + 1)
+
+    with pytest.warns(RuntimeWarning, match="belongs to another user"):
+        driver = Driver(
+            nsteps=2,
+            repo=paths["repo"],
+            config=paths["config"],
+            reference_case=paths["reference_case"],
+            reference_run=paths["reference_run"],
+            boundary=paths["boundary"],
+            session_factory=FakeSession,
+        )
+
+    assert driver.account == "TEST_ACCOUNT"
+
+
+def test_driver_does_not_warn_about_an_account_the_user_declared(
+    tmp_path, monkeypatch, recwarn
+) -> None:
+    paths = _driver_tree(tmp_path)
+    (paths["repo"] / "pyproject.toml").write_text("[project]\nname = 'freecam'\n")
+    (paths["repo"] / "site.env").write_text("FREECAM_ACCOUNT=SITE_ACCOUNT\n")
+    monkeypatch.delenv("FREECAM_ACCOUNT", raising=False)
+    monkeypatch.setattr(facade.os, "getuid", lambda: os.stat(__file__).st_uid + 1)
+
+    Driver(
+        nsteps=2,
+        repo=paths["repo"],
+        config=paths["config"],
+        reference_case=paths["reference_case"],
+        reference_run=paths["reference_run"],
+        boundary=paths["boundary"],
+        session_factory=FakeSession,
+    )
+
+    assert not [w for w in recwarn if issubclass(w.category, RuntimeWarning)]
+
+
+def test_driver_takes_scratch_and_queue_from_the_site_file(
+    tmp_path, monkeypatch
+) -> None:
+    paths = _driver_tree(tmp_path)
+    (paths["repo"] / "pyproject.toml").write_text("[project]\nname = 'freecam'\n")
+    (paths["repo"] / "site.env").write_text(
+        "FREECAM_ACCOUNT=SITE_ACCOUNT\n"
+        f"FREECAM_SCRATCH={tmp_path / 'site-scratch'}\n"
+        "FREECAM_QUEUE=main\n"
+    )
+    monkeypatch.delenv("FREECAM_SCRATCH", raising=False)
+    monkeypatch.delenv("FREECAM_QUEUE", raising=False)
+
+    driver = Driver(
+        nsteps=2,
+        repo=paths["repo"],
+        config=paths["config"],
+        reference_case=paths["reference_case"],
+        reference_run=paths["reference_run"],
+        boundary=paths["boundary"],
+        session_factory=FakeSession,
+    )
+
+    assert driver.scratch == tmp_path / "site-scratch"
+    assert driver.queue == "main"
 
 
 def test_driver_explicit_account_overrides_reference_case(tmp_path) -> None:

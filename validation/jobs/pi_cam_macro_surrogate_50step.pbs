@@ -1,4 +1,5 @@
 #!/bin/bash
+# Submit with: validation/jobs/submit.sh validation/jobs/pi_cam_macro_surrogate_50step.pbs
 #PBS -N pycam-macro-ml-50
 #PBS -q develop
 # Preserve the validated rank placement: 512 MPI ranks on four nodes while
@@ -31,29 +32,31 @@
 
 set -euo pipefail
 
-repo=/glade/work/$USER/freeCAM
+source "${FREECAM_REPO:-${PBS_O_WORKDIR:-$PWD}}/validation/jobs/common.sh"
+
+repo=${FREECAM_REPO}
 python=${repo}/.venv/bin/python
-case_root=/glade/work/$USER/CESM_cases/f.e13.F1850C5.ne16_g16.icesm131_ihesp.PI-cam-python-state
-oracle_run=/glade/derecho/scratch/$USER/pyCAM/PI-cam/f.e13.F1850C5.ne16_g16.icesm131_ihesp.PI-cam-oracle.50step/run
+case_root=${FREECAM_STATE_CASE}
+oracle_run=${FREECAM_REFERENCE_RUN}
 mode=${PYCAM_EXECUTION_MODE:-fine_grained}
-root=/glade/derecho/scratch/$USER/pyCAM/PI-cam/macro-surrogate-${PBS_JOBID}
+root=${FREECAM_SCRATCH}/pyCAM/PI-cam/macro-surrogate-${PBS_JOBID}
 mkdir -p "${root}"
-run_dir=/glade/derecho/scratch/$USER/pyCAM/PI-cam/macro-tend-surrogate-${mode}-${PBS_JOBID}/run
-boundary=/glade/derecho/scratch/$USER/pyCAM/PI-cam/nonpic-boundary-capture-50step/boundary/replay
+run_dir=${FREECAM_SCRATCH}/pyCAM/PI-cam/macro-tend-surrogate-${mode}-${PBS_JOBID}/run
+boundary=${FREECAM_SCRATCH}/pyCAM/PI-cam/nonpic-boundary-capture-50step/boundary/replay
 manifest=${PYCAM_NATIVE_MANIFEST:-${repo}/build/pi_cam_promoted/native_cam_manifest.json}
 summary=${PYCAM_SUMMARY:-${root}/summary.json}
 bfb_output=${PYCAM_BFB_OUTPUT:-${root}/bfb.json}
 # The oracle's own mmacro_pcond arguments for steps 1 and 2, every chunk of
 # every rank, from the reviewed capture.  tend() traces the same arguments;
 # the two are compared after the run whether or not the run was bit-for-bit.
-capture_bundle=${PYCAM_CAPTURE_BUNDLE:-/glade/derecho/scratch/$USER/pyCAM/PI-cam/function-capture-7218608.desched1/bundles/mmacro_pcond_capture.npz}
+capture_bundle=${PYCAM_CAPTURE_BUNDLE:-${FREECAM_SCRATCH}/pyCAM/PI-cam/function-capture-7218608.desched1/bundles/mmacro_pcond_capture.npz}
 trace_output=${PYCAM_TRACE_OUTPUT:-${root}/trace.json}
 export FREECAM_MACRO_TRACE=${run_dir}/macro_trace
 
 source "${case_root}/.env_mach_specific.sh" >/dev/null 2>&1
 mpi_root=${CRAY_MPICH_DIR:-/opt/cray/pe/mpich/8.1.25/ofi/intel/19.0}
 export LD_LIBRARY_PATH="${mpi_root}/lib-abi-mpich:${mpi_root}/lib:${LD_LIBRARY_PATH:-}"
-export LD_PRELOAD=/glade/u/apps/common/23.04/spack/opt/spack/intel-oneapi-compilers/2023.0.0/compiler/2023.0.0/linux/compiler/lib/intel64_lin/libimf.so${LD_PRELOAD:+:${LD_PRELOAD}}
+export LD_PRELOAD=${FREECAM_LD_PRELOAD}${LD_PRELOAD:+:${LD_PRELOAD}}
 export PYTHONPATH=${repo}/src
 export OMP_NUM_THREADS=1
 export OMP_STACKSIZE=64M

@@ -1,19 +1,22 @@
 #!/bin/bash
+# Submit with: validation/jobs/submit.sh validation/jobs/pi_atm_fortran_monthly_1month.pbs
 #PBS -N fortran-1month-monthly
 #PBS -q develop
 #PBS -l select=4:ncpus=64:mpiprocs=128:ompthreads=1:mem=64GB
 #PBS -l walltime=00:40:00
 #PBS -j oe
-#PBS -o /glade/work/ruitong/freeCAM/logs/
+#PBS -o logs/
 #PBS -V
 
 set -euo pipefail
 
-repo=/glade/work/${USER}/freeCAM
-case_root=/glade/work/${USER}/CESM_cases/f.e13.F1850C5.ne16_g16.icesm131_ihesp.PI-atm.pycesm-ref.50step
-executable=/glade/derecho/scratch/${USER}/pyCESM/PI-atm/f.e13.F1850C5.ne16_g16.icesm131_ihesp.PI-atm.pycesm-ref.50step/bld/cesm.exe
-seed=/glade/derecho/scratch/${USER}/pyCESM/PI-atm/oracle-1month/run
-root=/glade/derecho/scratch/${USER}/freeCAM/PI-cam/fortran-monthly-1month-reference
+source "${FREECAM_REPO:-${PBS_O_WORKDIR:-$PWD}}/validation/jobs/common.sh"
+
+repo=${FREECAM_REPO}
+case_root=${FREECAM_PYCESM_CASE}
+executable=${FREECAM_SCRATCH}/pyCESM/PI-atm/f.e13.F1850C5.ne16_g16.icesm131_ihesp.PI-atm.pycesm-ref.50step/bld/cesm.exe
+seed=${FREECAM_SCRATCH}/pyCESM/PI-atm/oracle-1month/run
+root=${FREECAM_SCRATCH}/freeCAM/PI-cam/fortran-monthly-1month-reference
 run_dir=${root}/run
 
 source "${case_root}/.env_mach_specific.sh" >/dev/null 2>&1

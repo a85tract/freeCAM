@@ -1,26 +1,29 @@
 #!/bin/bash
+# Submit with: validation/jobs/submit.sh validation/jobs/pi_cam_catalog_process_50step.pbs
 #PBS -N freecam-catalog-50
 #PBS -q develop
 #PBS -l select=4:ncpus=64:mpiprocs=128:ompthreads=1:mem=64GB
 #PBS -l walltime=00:20:00
 #PBS -j oe
-#PBS -o /glade/work/ruitong/freeCAM/logs/
+#PBS -o logs/
 #PBS -V
 
 set -euo pipefail
 
-repo=/glade/work/$USER/freeCAM
+source "${FREECAM_REPO:-${PBS_O_WORKDIR:-$PWD}}/validation/jobs/common.sh"
+
+repo=${FREECAM_REPO}
 python=${repo}/.venv/bin/python
-case_root=/glade/work/$USER/CESM_cases/f.e13.F1850C5.ne16_g16.icesm131_ihesp.PI-cam-python-state
-oracle_run=/glade/derecho/scratch/$USER/pyCAM/PI-cam/f.e13.F1850C5.ne16_g16.icesm131_ihesp.PI-cam-oracle.50step/run
-run_dir=/glade/derecho/scratch/$USER/pyCAM/PI-cam/catalog-process-${PBS_JOBID}/run
-boundary=/glade/derecho/scratch/$USER/pyCAM/PI-cam/nonpic-boundary-capture-50step/boundary/replay
+case_root=${FREECAM_STATE_CASE}
+oracle_run=${FREECAM_REFERENCE_RUN}
+run_dir=${FREECAM_SCRATCH}/pyCAM/PI-cam/catalog-process-${PBS_JOBID}/run
+boundary=${FREECAM_SCRATCH}/pyCAM/PI-cam/nonpic-boundary-capture-50step/boundary/replay
 manifest=${repo}/build/pi_cam_promoted/native_cam_manifest.json
 
 source "${case_root}/.env_mach_specific.sh" >/dev/null 2>&1
 mpi_root=${CRAY_MPICH_DIR:-/opt/cray/pe/mpich/8.1.25/ofi/intel/19.0}
 export LD_LIBRARY_PATH="${mpi_root}/lib-abi-mpich:${mpi_root}/lib:${LD_LIBRARY_PATH:-}"
-export LD_PRELOAD=/glade/u/apps/common/23.04/spack/opt/spack/intel-oneapi-compilers/2023.0.0/compiler/2023.0.0/linux/compiler/lib/intel64_lin/libimf.so${LD_PRELOAD:+:${LD_PRELOAD}}
+export LD_PRELOAD=${FREECAM_LD_PRELOAD}${LD_PRELOAD:+:${LD_PRELOAD}}
 export PYTHONPATH=${repo}/src
 export OMP_NUM_THREADS=1
 export OMP_STACKSIZE=64M

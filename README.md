@@ -54,6 +54,101 @@ The supplied runtime and PBS jobs target NCAR Derecho. A configured iCESM
 reference case, its machine environment, and the required input data must be
 available before launching the 512-rank scientific configuration.
 
+## Site configuration
+
+Nothing in this repository names a user or an allocation. A site describes
+itself once, in `site.env` at the repository root:
+
+```bash
+cp site.env.example site.env
+$EDITOR site.env          # FREECAM_ACCOUNT is the only required entry
+```
+
+Both readers use that one file — `freecam.site` from Python, and
+`validation/jobs/common.sh` from every PBS job — so a notebook and a job
+cannot disagree about where the model lives. Anything set in the environment
+wins over the file, and an explicit `Driver(..., account=...)` wins over both.
+
+| setting | meaning | default |
+| --- | --- | --- |
+| `FREECAM_ACCOUNT` | PBS allocation every job is charged to | none: it must be given |
+| `FREECAM_SCRATCH` | run directories and generated data | `$SCRATCH`, then `/glade/derecho/scratch/$USER` |
+| `FREECAM_CASES` | directory holding the configured CESM cases | `<repository>/../CESM_cases` |
+| `FREECAM_REFERENCE_CASE` | the case supplying the machine environment | `$FREECAM_CASES/<case name>` |
+| `FREECAM_REFERENCE_RUN` | the oracle run supplying `atm_in` and the initial state | `$FREECAM_SCRATCH/pyCAM/PI-cam/<case name>/run` |
+| `FREECAM_QUEUE` | PBS queue for interactive sessions | `develop` |
+
+Check what a checkout resolves to, and what it is still missing, before
+launching anything:
+
+```bash
+uv run python -m freecam.site
+```
+
+### What a clone cannot bring with it
+
+Three things are external to this repository and have to exist before the
+512-rank configuration runs. `python -m freecam.site` names whichever is
+absent, and what produces it:
+
+1. **Derecho**, its module environment, and a PBS allocation.
+2. **The native image** under `build/pi_cam_promoted/`. It is compiled in
+   place from the pinned submodule by the jobs in `validation/jobs/`
+   (`*_build.pbs`, some hours), and its manifest records absolute paths, so
+   it cannot be copied between checkouts.
+3. **A configured CESM case and one completed oracle run** — the machine
+   environment, `atm_in`, the initial state, and the input data they name.
+
+To use an existing installation rather than repeat the build, point
+`FREECAM_NATIVE_MANIFEST`, `FREECAM_REFERENCE_CASE` and `FREECAM_REFERENCE_RUN`
+at its owner's paths and keep your own `FREECAM_SCRATCH` and
+`FREECAM_ACCOUNT`: run directories are created under your scratch, and your
+allocation is charged. `site.env.example` carries this recipe.
+
+### Building the native image
+
+The `.so` is not a recompilation of the pinned source. It is the oracle's own
+machine code with three control surfaces replaced and the ELF type changed
+from `ET_EXEC` to `ET_DYN`, so Python can `dlopen` it. Rebuilding CAM as
+position-independent changes register allocation and already fails the PI-atm
+bitwise gate, which is why the pipeline preserves the oracle's objects rather
+than producing its own.
+
+1. `git submodule update --init external/iCESM1.3.1_fzhu`.
+   `tools/prepare_pi_cam_source.py` refuses a revision mismatch in any of the
+   seven pinned components.
+2. Two CESM cases, both built:
+   * the **oracle** case (`FREECAM_REFERENCE_CASE`) — its `bld/lib/libatm.a`
+     supplies the numerical objects the image links, unchanged;
+   * the **python-state** case (`FREECAM_STATE_CASE`) — supplies `.mod` files
+     and the control shells, its `SourceMods/src.cam` written by
+     `tools/generate_pi_cam_python_state_source.py`.
+3. `validation/jobs/submit.sh validation/jobs/pi_cam_promoted_statepool_build.pbs`
+   does the rest, in one place so the parts cannot drift apart:
+   * `prepare_pi_cam_source.py` copies the pinned tree to
+     `build/iCESM1.3.1_PI_cam_only` and applies the patches and the support
+     modules this repository owns. The tree is deleted and rebuilt every time:
+     a stale one silently drops a patch added since it was written.
+   * `build_pi_cam_promoted_kernels.py` regenerates the direct-kernel
+     descriptor, 71 kernels reached from Python.
+   * `build_pi_cam_devices.py` generates the adapters, compiles them non-PIC,
+     links the fixed-address image, retypes it, and writes
+     `native_cam_manifest.json` — every compile and link command, and the
+     sha256 of what they produced.
+
+That the pipeline reproduces the image in use is checked rather than assumed:
+`validation/pi_cam_native_image_rebuild.json` records a rebuild into a scratch
+image root, compared command by command, object by object, and symbol by
+symbol against the image this checkout runs.
+
+`native/pi_cam/patches/` and `native/pi_cam/control_patches/` hold 41 patch
+files between them; this configuration applies 12, listed in
+`apply_pi_cam_source_patches.PATCHES` and recorded with their hashes, together
+with the ten installed support modules, in `.pycam-source.json` inside the
+prepared tree. Every one of them adds a Python control point or a capture
+hook. None edits a numerical routine, so the arithmetic the image executes is
+the pinned model's.
+
 ## Quick start
 
 Online CESM coupling is the default:
@@ -389,7 +484,7 @@ src/freecam/pi_cam/       Python driver, StatePool, workflow, and public API
 native/pi_cam/            adapters, support code, and source patches
 external/iCESM1.3.1_fzhu pinned upstream iCESM source
 configs/                  admitted PI-CAM configurations
-examples/                 maintained Jupyter walkthrough
+examples/                 maintained Jupyter walkthroughs
 tools/                    build, capture, audit, and validation utilities
 tests/unit/               local Python test suite
 validation/               PBS jobs and machine-readable scientific evidence
@@ -410,8 +505,13 @@ git diff --check
 The 512-rank 50-step scientific gate is submitted with:
 
 ```bash
-qsub validation/jobs/pi_cam_exact_cesm_online_50step.pbs
+validation/jobs/submit.sh validation/jobs/pi_cam_exact_cesm_online_50step.pbs
 ```
+
+`submit.sh` supplies `-A $FREECAM_ACCOUNT` on the command line. No job carries
+a `#PBS -A` directive: `qsub` does not expand variables in directives, so a
+working one would have to name a project in a shared file. Every job resolves
+its paths through `validation/jobs/common.sh`, and so runs from any checkout.
 
 Adding another CAM configuration requires a compatible native build context,
 field bindings, and independent numerical validation. freeCAM does not

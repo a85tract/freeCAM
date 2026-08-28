@@ -10,6 +10,7 @@ from pathlib import Path
 import shutil
 import subprocess
 import sys
+import tempfile
 from typing import Mapping
 
 
@@ -116,37 +117,35 @@ def prepare_source(source: Path, output: Path, *, force: bool = False) -> Path:
     )
 
     patch_tool = REPO / "tools/apply_pi_cam_source_patches.py"
-    subprocess.run(
-        [sys.executable, str(patch_tool), "--source-root", str(output)],
-        cwd=REPO,
-        check=True,
-    )
-    patch_root = REPO / "native/pi_cam"
-    patch_paths = tuple(
-        sorted((patch_root / "patches").glob("*.patch"))
-        + sorted((patch_root / "control_patches").glob("*.patch"))
-    )
+    # The applier reports what it applied, and that report is the record.  A
+    # second list kept by hand here drifts: it named ten patches while twelve
+    # were being applied, silently omitting the macrophysics and radiation
+    # stage boundaries from every prepared tree's provenance.
+    with tempfile.TemporaryDirectory(prefix="pycam-prepare-") as temporary:
+        report_path = Path(temporary) / "applied.json"
+        subprocess.run(
+            [
+                sys.executable,
+                str(patch_tool),
+                "--source-root",
+                str(output),
+                "--report",
+                str(report_path),
+            ],
+            cwd=REPO,
+            check=True,
+        )
+        report = json.loads(report_path.read_text())
     manifest = {
         "schema_version": 1,
         "source_external": str(source),
         "output": str(output),
         "revisions": revisions,
         "applied_patches": {
-            str(path.relative_to(REPO)): _sha256(path)
-            for path in patch_paths
-            if path.name
-            in {
-                "0001-capture-cam-boundary.patch",
-                "0010-python-atm-phase-control.patch",
-                "0011-python-cam-phase-control.patch",
-                "0013-python-physics-phase-control.patch",
-                "0015-python-after-coupler-scheme-control.patch",
-                "0017-python-before-coupler-scheme-control.patch",
-                "0024-startup-boundary-capture.patch",
-                "0025-python-owned-atm-mct-state.patch",
-                "0030-order-independent-scheme-actions.patch",
-                "0033-single-cam-online-coupler.patch",
-            }
+            name: _sha256(REPO / name) for name in report["patches"]
+        },
+        "installed_support_sources": {
+            name: _sha256(REPO / name) for name in report["support_sources"]
         },
     }
     manifest_path = output / ".pycam-source.json"

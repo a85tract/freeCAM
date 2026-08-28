@@ -1,4 +1,5 @@
 #!/bin/bash
+# Submit with: validation/jobs/submit.sh validation/jobs/pi_cam_standalone_function_build.pbs
 #PBS -N freecam-standalone-build
 #PBS -q develop
 #PBS -l select=1:ncpus=4:mpiprocs=1:ompthreads=1:mem=16GB
@@ -14,10 +15,12 @@
 
 set -euo pipefail
 
+source "${FREECAM_REPO:-${PBS_O_WORKDIR:-$PWD}}/validation/jobs/common.sh"
+
 function=${FUNCTION:-dadadj}
-repo=/glade/work/$USER/freeCAM
+repo=${FREECAM_REPO}
 python=${repo}/.venv/bin/python
-case_root=/glade/work/$USER/CESM_cases/f.e13.F1850C5.ne16_g16.icesm131_ihesp.PI-cam-oracle.50step
+case_root=${FREECAM_REFERENCE_CASE}
 
 source "${case_root}/.env_mach_specific.sh" >/dev/null 2>&1
 export PYTHONPATH=${repo}/src

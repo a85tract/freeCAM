@@ -1,19 +1,21 @@
 #!/bin/bash
-# Submit with: qsub -A <account> validation/jobs/pi_cam_boundary_capture_1month.pbs
+# Submit with: validation/jobs/submit.sh validation/jobs/pi_cam_boundary_capture_1month.pbs
 #PBS -N pycam-x2a-1mon
 #PBS -q cpudev
 #PBS -l select=4:ncpus=64:mpiprocs=128:ompthreads=1:mem=64GB
 #PBS -l walltime=02:00:00
 #PBS -j oe
-#PBS -o /glade/work/ruitong/freeCAM/logs/
+#PBS -o logs/
 #PBS -V
 
 set -euo pipefail
 
-repo=/glade/work/ruitong/freeCAM
-case_root=/glade/work/ruitong/CESM_cases/f.e13.F1850C5.ne16_g16.icesm131_ihesp.PI-atm.pycesm-ref.50step
-oracle_run=/glade/derecho/scratch/ruitong/pyCESM/PI-atm/oracle-1month/run
-output_root=/glade/derecho/scratch/ruitong/pyCAM/PI-cam/nonpic-boundary-capture-1month
+source "${FREECAM_REPO:-${PBS_O_WORKDIR:-$PWD}}/validation/jobs/common.sh"
+
+repo=${FREECAM_REPO}
+case_root=${FREECAM_PYCESM_CASE}
+oracle_run=${FREECAM_SCRATCH}/pyCESM/PI-atm/oracle-1month/run
+output_root=${FREECAM_SCRATCH}/pyCAM/PI-cam/nonpic-boundary-capture-1month
 run_dir=${output_root}/run
 capture_root=${output_root}/boundary
 capture_prefix=${capture_root}/raw/pi_cam

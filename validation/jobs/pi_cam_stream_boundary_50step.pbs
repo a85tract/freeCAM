@@ -1,18 +1,21 @@
 #!/bin/bash
+# Submit with: validation/jobs/submit.sh validation/jobs/pi_cam_stream_boundary_50step.pbs
 #PBS -N freecam-stream-50
 #PBS -q develop
 #PBS -l select=4:ncpus=64:mpiprocs=128:ompthreads=1:mem=64GB
 #PBS -l walltime=00:20:00
 #PBS -j oe
-#PBS -o /glade/work/ruitong/freeCAM/logs/
+#PBS -o logs/
 #PBS -V
 
 set -euo pipefail
 
-repo=/glade/work/${USER}/freeCAM
-case_root=/glade/work/${USER}/CESM_cases/f.e13.F1850C5.ne16_g16.icesm131_ihesp.PI-cam-oracle.50step
-oracle_run=/glade/derecho/scratch/${USER}/pyCAM/PI-cam/f.e13.F1850C5.ne16_g16.icesm131_ihesp.PI-cam-oracle.50step/run
-output_root=/glade/derecho/scratch/${USER}/freeCAM/PI-cam/stream-boundary-50step
+source "${FREECAM_REPO:-${PBS_O_WORKDIR:-$PWD}}/validation/jobs/common.sh"
+
+repo=${FREECAM_REPO}
+case_root=${FREECAM_REFERENCE_CASE}
+oracle_run=${FREECAM_REFERENCE_RUN}
+output_root=${FREECAM_SCRATCH}/freeCAM/PI-cam/stream-boundary-50step
 run_dir=${output_root}/run
 capture_root=${output_root}/boundary
 capture_prefix=${capture_root}/raw/pi_cam

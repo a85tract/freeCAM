@@ -1,20 +1,22 @@
 #!/bin/bash
+# Submit with: validation/jobs/submit.sh validation/jobs/pi_cam_boundary_capture_50step.pbs
 #PBS -N pycam-boundary-50
-#PBS -A $PBS_ACCOUNT
 #PBS -q develop
 #PBS -l select=4:ncpus=64:mpiprocs=128:ompthreads=1:mem=64GB
 #PBS -l walltime=00:20:00
 #PBS -j oe
-#PBS -o /glade/work/$USER/freeCAM/logs/
+#PBS -o logs/
 #PBS -V
 
 set -euo pipefail
 
-repo=/glade/work/$USER/freeCAM
-case_root=/glade/work/$USER/CESM_cases/f.e13.F1850C5.ne16_g16.icesm131_ihesp.PI-cam-oracle.50step
-oracle_run=/glade/derecho/scratch/$USER/pyCAM/PI-cam/f.e13.F1850C5.ne16_g16.icesm131_ihesp.PI-cam-oracle.50step/run
-run_dir=/glade/derecho/scratch/$USER/pyCAM/PI-cam/nonpic-boundary-capture-50step/run
-capture_root=/glade/derecho/scratch/$USER/pyCAM/PI-cam/nonpic-boundary-capture-50step/boundary
+source "${FREECAM_REPO:-${PBS_O_WORKDIR:-$PWD}}/validation/jobs/common.sh"
+
+repo=${FREECAM_REPO}
+case_root=${FREECAM_REFERENCE_CASE}
+oracle_run=${FREECAM_REFERENCE_RUN}
+run_dir=${FREECAM_SCRATCH}/pyCAM/PI-cam/nonpic-boundary-capture-50step/run
+capture_root=${FREECAM_SCRATCH}/pyCAM/PI-cam/nonpic-boundary-capture-50step/boundary
 capture_prefix=${capture_root}/raw/pi_cam
 replay_root=${capture_root}/replay
 executable=${repo}/build/pi_cam/pi_cam_capture.exe

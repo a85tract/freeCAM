@@ -1,26 +1,28 @@
 #!/bin/bash
-# Submit with: qsub -q develop -A <account> validation/jobs/pi_cam_python_60step_1month.pbs
+# Submit with: validation/jobs/submit.sh validation/jobs/pi_cam_python_60step_1month.pbs
 #PBS -N freecam-x2a-60
 #PBS -q cpudev
 #PBS -l select=4:ncpus=64:mpiprocs=128:ompthreads=1:mem=64GB
 #PBS -l walltime=00:15:00
 #PBS -j oe
-#PBS -o /glade/work/ruitong/freeCAM/logs/
+#PBS -o logs/
 #PBS -V
 
 set -euo pipefail
 
-repo=/glade/work/ruitong/freeCAM
+source "${FREECAM_REPO:-${PBS_O_WORKDIR:-$PWD}}/validation/jobs/common.sh"
+
+repo=${FREECAM_REPO}
 python=${repo}/.venv/bin/python
-case_root=/glade/work/ruitong/CESM_cases/f.e13.F1850C5.ne16_g16.icesm131_ihesp.PI-cam-oracle.50step
-reference=/glade/derecho/scratch/ruitong/pyCAM/PI-cam/f.e13.F1850C5.ne16_g16.icesm131_ihesp.PI-cam-oracle.50step/run
-boundary=/glade/derecho/scratch/ruitong/pyCAM/PI-cam/nonpic-boundary-capture-1month/boundary/replay
-run_dir=/glade/derecho/scratch/ruitong/pyCAM/PI-cam/python-driver-1month-smoke-60step/run
+case_root=${FREECAM_REFERENCE_CASE}
+reference=${FREECAM_REFERENCE_RUN}
+boundary=${FREECAM_SCRATCH}/pyCAM/PI-cam/nonpic-boundary-capture-1month/boundary/replay
+run_dir=${FREECAM_SCRATCH}/pyCAM/PI-cam/python-driver-1month-smoke-60step/run
 
 source "${case_root}/.env_mach_specific.sh" >/dev/null 2>&1
 mpi_root=${CRAY_MPICH_DIR:-/opt/cray/pe/mpich/8.1.25/ofi/intel/19.0}
 export LD_LIBRARY_PATH="${mpi_root}/lib-abi-mpich:${mpi_root}/lib:${LD_LIBRARY_PATH:-}"
-export LD_PRELOAD=/glade/u/apps/common/23.04/spack/opt/spack/intel-oneapi-compilers/2023.0.0/compiler/2023.0.0/linux/compiler/lib/intel64_lin/libimf.so${LD_PRELOAD:+:${LD_PRELOAD}}
+export LD_PRELOAD=${FREECAM_LD_PRELOAD}${LD_PRELOAD:+:${LD_PRELOAD}}
 export PYTHONPATH=${repo}/src
 export OMP_NUM_THREADS=1
 export OMP_STACKSIZE=64M

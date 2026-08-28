@@ -1,0 +1,87 @@
+{
+  "schema_version": 1,
+  "question": "Does the documented pipeline rebuild the native image in use?",
+  "job": "7276113.desched1",
+  "method": [
+    "tools/prepare_pi_cam_source.py into a fresh tree, compared against the tree the image in use was built from",
+    "validation/jobs/pi_cam_promoted_statepool_build.pbs with FREECAM_IMAGE_ROOT and FREECAM_PREPARED_SOURCE pointed at scratch, so the image in use was not replaced",
+    "compared: manifest commands, compiled objects, exported symbols, ELF sections"
+  ],
+  "reused_not_rebuilt": [
+    "the oracle CESM case bld/lib/libatm.a -- the pipeline links the oracle's own objects by design; rebuilding them would move the numerical boundary and require a new 512-rank bit-for-bit gate",
+    "the python-state CESM case build"
+  ],
+  "prepared_source": {
+    "files_that_differ": [
+      ".pycam-source.json"
+    ],
+    "note": "byte-identical otherwise; the record now names 12 applied patches and 10 installed support modules, where the previous hand-kept list named 10 patches and no support modules",
+    "applied_patches": 12,
+    "installed_support_sources": 10
+  },
+  "commands": {
+    "identical_after_normalising_the_two_build_roots": true,
+    "per_file_compile_commands": 17,
+    "difference": "the -o path and the working directory only"
+  },
+  "compiled_objects": {
+    "count": 34,
+    "text_section_byte_identical": 34
+  },
+  "artifacts": {
+    "libfreecam_pi_cam.so": {
+      "exported_symbols": 16103,
+      "exported_symbols_identical": true,
+      "bytes_in_use": 56856088,
+      "bytes_rebuilt": 56861888,
+      "sections_that_differ": [
+        ".debug_line",
+        ".debug_str",
+        ".trace"
+      ]
+    },
+    "libfreecam_pi_cam_leaf.so": {
+      "exported_symbols": 134,
+      "exported_symbols_identical": true,
+      "bytes_in_use": 626048,
+      "bytes_rebuilt": 626928,
+      "sections_that_differ": [
+        ".debug_line",
+        ".debug_str",
+        ".trace"
+      ]
+    },
+    "libfreecam_pi_cam_promoted_kernels.so": {
+      "exported_symbols": 22,
+      "exported_symbols_identical": true,
+      "bytes_in_use": 352760,
+      "bytes_rebuilt": 353208,
+      "sections_that_differ": [
+        ".debug_line",
+        ".debug_str",
+        ".trace"
+      ]
+    },
+    "pi_cam_capture.exe": {
+      "exported_symbols": 496,
+      "exported_symbols_identical": true,
+      "bytes_in_use": 54497872,
+      "bytes_rebuilt": 54500704,
+      "sections_that_differ": [
+        ".debug_line",
+        ".debug_str",
+        ".trace"
+      ]
+    }
+  },
+  "direct_kernels": {
+    "count": 71,
+    "same_set_and_order": true
+  },
+  "operations": {
+    "count": 136,
+    "identical": true
+  },
+  "control_source_sha256_identical": true,
+  "conclusion": "The pipeline reproduces the image. Every compile and link command is identical once the build roots are normalised, all 34 compiled objects have byte-identical .text, and the linked artifacts export identical symbol sets. The linked files differ only in .debug_str/.debug_line/.trace, which embed the build's own paths, and in the addresses those sections shift."
+}

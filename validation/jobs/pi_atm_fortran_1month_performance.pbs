@@ -1,22 +1,24 @@
 #!/bin/bash
 # Fresh original-Fortran performance sample for the FreeCAM month comparison.
-# Submit with: qsub -q develop -A <account> validation/jobs/pi_atm_fortran_1month_performance.pbs
+# Submit with: validation/jobs/submit.sh validation/jobs/pi_atm_fortran_1month_performance.pbs
 #PBS -N fortran-1month
 #PBS -q develop
 #PBS -l select=4:ncpus=64:mpiprocs=128:ompthreads=1:mem=64GB
 #PBS -l walltime=00:30:00
 #PBS -j oe
-#PBS -o /glade/work/ruitong/freeCAM/logs/
+#PBS -o logs/
 #PBS -V
 
 set -euo pipefail
 
-repo=/glade/work/ruitong/freeCAM
+source "${FREECAM_REPO:-${PBS_O_WORKDIR:-$PWD}}/validation/jobs/common.sh"
+
+repo=${FREECAM_REPO}
 python=${repo}/.venv/bin/python
-case_root=/glade/work/ruitong/CESM_cases/f.e13.F1850C5.ne16_g16.icesm131_ihesp.PI-atm.pycesm-ref.50step
-executable=/glade/derecho/scratch/ruitong/pyCESM/PI-atm/f.e13.F1850C5.ne16_g16.icesm131_ihesp.PI-atm.pycesm-ref.50step/bld/cesm.exe
-oracle_run=/glade/derecho/scratch/ruitong/pyCESM/PI-atm/oracle-1month/run
-root=/glade/derecho/scratch/ruitong/freeCAM/PI-cam/original-fortran-one-month-${PBS_JOBID}
+case_root=${FREECAM_PYCESM_CASE}
+executable=${FREECAM_SCRATCH}/pyCESM/PI-atm/f.e13.F1850C5.ne16_g16.icesm131_ihesp.PI-atm.pycesm-ref.50step/bld/cesm.exe
+oracle_run=${FREECAM_SCRATCH}/pyCESM/PI-atm/oracle-1month/run
+root=${FREECAM_SCRATCH}/freeCAM/PI-cam/original-fortran-one-month-${PBS_JOBID}
 run_dir=${root}/run
 bfb=${root}/bfb.json
 

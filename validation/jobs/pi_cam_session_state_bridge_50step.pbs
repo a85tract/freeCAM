@@ -1,21 +1,23 @@
 #!/bin/bash
+# Submit with: validation/jobs/submit.sh validation/jobs/pi_cam_session_state_bridge_50step.pbs
 #PBS -N pycam-session-state-50
-#PBS -A $PBS_ACCOUNT
 #PBS -q develop
 #PBS -l select=4:ncpus=64:mpiprocs=128:ompthreads=1:mem=64GB
 #PBS -l walltime=00:15:00
 #PBS -j oe
-#PBS -o /glade/work/$USER/freeCAM/logs/
+#PBS -o logs/
 #PBS -V
 
 set -euo pipefail
 
-repo=/glade/work/$USER/freeCAM
+source "${FREECAM_REPO:-${PBS_O_WORKDIR:-$PWD}}/validation/jobs/common.sh"
+
+repo=${FREECAM_REPO}
 python=${repo}/.venv/bin/python
-case_root=/glade/work/$USER/CESM_cases/f.e13.F1850C5.ne16_g16.icesm131_ihesp.PI-cam-oracle.50step
-oracle_run=/glade/derecho/scratch/$USER/pyCAM/PI-cam/f.e13.F1850C5.ne16_g16.icesm131_ihesp.PI-cam-oracle.50step/run
-run_dir=/glade/derecho/scratch/$USER/pyCAM/PI-cam/python-session-state-bridge-20260806-v2/run
-boundary=/glade/derecho/scratch/$USER/pyCAM/PI-cam/nonpic-boundary-capture-50step/boundary/replay
+case_root=${FREECAM_REFERENCE_CASE}
+oracle_run=${FREECAM_REFERENCE_RUN}
+run_dir=${FREECAM_SCRATCH}/pyCAM/PI-cam/python-session-state-bridge-20260806-v2/run
+boundary=${FREECAM_SCRATCH}/pyCAM/PI-cam/nonpic-boundary-capture-50step/boundary/replay
 
 source "${case_root}/.env_mach_specific.sh" >/dev/null 2>&1
 export PYTHONPATH=${repo}/src

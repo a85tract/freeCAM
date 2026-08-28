@@ -1,24 +1,30 @@
 #!/bin/bash
+# Submit with: validation/jobs/submit.sh validation/jobs/pi_cam_promoted_statepool_build.pbs
 #PBS -N freecam-statepool-adapters
 #PBS -q develop
 #PBS -l select=1:ncpus=1:mpiprocs=1:ompthreads=1:mem=80GB
 #PBS -l walltime=00:30:00
 #PBS -j oe
-#PBS -o /glade/work/ruitong/freeCAM/logs/
+#PBS -o logs/
 #PBS -V
 
 set -euxo pipefail
+
+source "${FREECAM_REPO:-${PBS_O_WORKDIR:-$PWD}}/validation/jobs/common.sh"
 trap 'status=$?; echo "PI-CAM device build exit status: ${status}"' EXIT
 
-repo=/glade/work/$USER/freeCAM
+repo=${FREECAM_REPO}
 python=${repo}/.venv/bin/python
-case_root=/glade/work/$USER/CESM_cases/f.e13.F1850C5.ne16_g16.icesm131_ihesp.PI-cam-python-state
+case_root=${FREECAM_STATE_CASE}
 # Reuse the machine code from the admitted BFB oracle build.  The
 # python-state case supplies replacement .mod files and control shells only;
 # using its rebuilt libatm.a would change the numerical object boundary.
-numerical_build=/glade/derecho/scratch/$USER/pyCAM/PI-cam/f.e13.F1850C5.ne16_g16.icesm131_ihesp.PI-cam-oracle.50step/bld
-output_root=${repo}/build/pi_cam_promoted
-prepared_source=${repo}/build/iCESM1.3.1_PI_cam_only
+numerical_build=${FREECAM_SCRATCH}/pyCAM/PI-cam/${FREECAM_REFERENCE_CASE_NAME}/bld
+# Both are overridable so a rebuild can be checked against the image in use
+# instead of replacing it:
+#   FREECAM_IMAGE_ROOT=$SCRATCH/verify-image validation/jobs/submit.sh ...
+output_root=${FREECAM_IMAGE_ROOT:-${repo}/build/pi_cam_promoted}
+prepared_source=${FREECAM_PREPARED_SOURCE:-${repo}/build/iCESM1.3.1_PI_cam_only}
 
 source "${case_root}/.env_mach_specific.sh" >/dev/null 2>&1
 export PYTHONPATH=${repo}/src
@@ -48,11 +54,12 @@ rm -rf "${prepared_source}"
   --manifest "${output_root}/native_cam_manifest.json" \
   > "${output_root}/build-manifest.stdout.json"
 
-"${python}" - <<'PY'
+"${python}" - "${output_root}" <<'PY'
 import json
+import sys
 from pathlib import Path
 
-manifest = Path("build/pi_cam_promoted/native_cam_manifest.json")
+manifest = Path(sys.argv[1]) / "native_cam_manifest.json"
 payload = json.loads(manifest.read_text())
 names = tuple(item["name"] for item in payload["direct_kernels"]["kernels"])
 assert len(names) == 71, names

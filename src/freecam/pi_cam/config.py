@@ -175,6 +175,14 @@ class PICAMConfig:
             value = values.get(name)
             if value is not None and not Path(value).is_absolute():
                 values[name] = base / value
+        # A native image is compiled in place and records absolute paths, so
+        # it cannot be copied between checkouts.  A site that wants to run
+        # against an existing one says where it is rather than rebuilding.
+        from .. import site
+
+        external = site.setting("FREECAM_NATIVE_MANIFEST", repo=base)
+        if external:
+            values["native_manifest"] = Path(external).expanduser()
         return cls.from_mapping(values)
 
 

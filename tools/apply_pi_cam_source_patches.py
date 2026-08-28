@@ -128,6 +128,15 @@ def apply_patches(source_root: Path, *, check: bool = False) -> tuple[Path, ...]
         return _apply_to(scratch)
 
 
+def report() -> dict[str, tuple[str, ...]]:
+    """What applying does, as data, so a caller records the action itself."""
+
+    return {
+        "patches": tuple(PATCHES),
+        "support_sources": tuple(source for source, _ in SUPPORT_SOURCES),
+    }
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument(
@@ -141,9 +150,31 @@ def main() -> int:
         action="store_true",
         help="validate that every patch applies without modifying the checkout",
     )
+    parser.add_argument(
+        "--report",
+        type=Path,
+        help="write what was applied, for the caller's provenance record",
+    )
     args = parser.parse_args()
-    for patch in apply_patches(args.source_root, check=args.check):
+    applied = apply_patches(args.source_root, check=args.check)
+    for patch in applied:
         print(patch.relative_to(REPO))
+    if args.report is not None:
+        import json
+
+        args.report.parent.mkdir(parents=True, exist_ok=True)
+        args.report.write_text(
+            json.dumps(
+                {
+                    "patches": [str(patch.relative_to(REPO)) for patch in applied],
+                    "support_sources": [
+                        source for source, _ in SUPPORT_SOURCES
+                    ],
+                },
+                indent=2,
+            )
+            + "\n"
+        )
     return 0
 
 

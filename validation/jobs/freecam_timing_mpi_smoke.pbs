@@ -1,18 +1,20 @@
 #!/bin/bash
+# Submit with: validation/jobs/submit.sh validation/jobs/freecam_timing_mpi_smoke.pbs
 #PBS -N freecam-timing
-#PBS -A UCUB0188
 #PBS -q develop
 #PBS -l select=1:ncpus=2:mpiprocs=2:ompthreads=1:mem=8GB
 #PBS -l walltime=00:05:00
 #PBS -j oe
-#PBS -o /glade/work/ruitong/freeCAM/logs/
+#PBS -o logs/
 #PBS -V
 
 set -euo pipefail
 
-repo=/glade/work/ruitong/freeCAM
+source "${FREECAM_REPO:-${PBS_O_WORKDIR:-$PWD}}/validation/jobs/common.sh"
+
+repo=${FREECAM_REPO}
 python=${repo}/.venv/bin/python
-run_dir=/glade/derecho/scratch/ruitong/freeCAM/timing-smoke-${PBS_JOBID}
+run_dir=${FREECAM_SCRATCH}/freeCAM/timing-smoke-${PBS_JOBID}
 
 export PYTHONPATH=${repo}/src
 export FREECAM_TIMING_SMOKE_RUN=${run_dir}

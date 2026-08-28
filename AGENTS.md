@@ -31,9 +31,17 @@ be committed. Scheduler output belongs under `logs/`.
 
 ```bash
 uv sync --extra notebook --extra test
+cp site.env.example site.env    # then set FREECAM_ACCOUNT
+uv run python -m freecam.site   # what this checkout resolves to, and lacks
 uv run pytest -q
 uv run freecam --help
 ```
+
+No file in this repository may name a user or an allocation. A site declares
+its own once, in `site.env` at the root, which is not committed; both readers
+use it, `freecam.site` from Python and `validation/jobs/common.sh` from every
+PBS job. Add a new site fact to `site.SETTINGS` and to `site.env.example`
+rather than writing a path into a script, a notebook, or a job.
 
 Use four-space indentation, type hints, concise docstrings, `snake_case` for
 functions and modules, and `PascalCase` for classes. Keep ABI arrays
@@ -49,8 +57,14 @@ Local tests check API and control semantics. Numeric runtime changes also need
 the 512-rank, 50-step PI-atm gate:
 
 ```bash
-qsub validation/jobs/pi_cam_python_zero_copy_state_50step.pbs
+validation/jobs/submit.sh validation/jobs/pi_cam_python_zero_copy_state_50step.pbs
 ```
+
+`submit.sh` passes `-A $FREECAM_ACCOUNT` on the command line. Jobs carry no
+`#PBS -A` directive: `qsub` does not expand variables in directives, so a
+working one would name a project in a shared file. A new job sources
+`validation/jobs/common.sh` after its `set -euo pipefail` and takes every path
+from there.
 
 The result must compare bit-for-bit with the pinned iCESM reference and be
 recorded under `validation/`. Never overwrite oracle output. A wrapper or

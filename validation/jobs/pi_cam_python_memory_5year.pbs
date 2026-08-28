@@ -1,20 +1,23 @@
 #!/bin/bash
+# Submit with: validation/jobs/submit.sh validation/jobs/pi_cam_python_memory_5year.pbs
 #PBS -N freecam-mem-5y
 #PBS -q main
 #PBS -l select=4:ncpus=64:mpiprocs=128:ompthreads=1:mem=110GB
 #PBS -l walltime=10:00:00
 #PBS -j oe
-#PBS -o /glade/work/ruitong/freeCAM/logs/
+#PBS -o logs/
 #PBS -V
 
 set -euo pipefail
 
-repo=/glade/work/${USER}/freeCAM
+source "${FREECAM_REPO:-${PBS_O_WORKDIR:-$PWD}}/validation/jobs/common.sh"
+
+repo=${FREECAM_REPO}
 python=${repo}/.venv/bin/python
-case_root=/glade/work/${USER}/CESM_cases/f.e13.F1850C5.ne16_g16.icesm131_ihesp.PI-cam-oracle.50step
-reference=/glade/derecho/scratch/${USER}/freeCAM/PI-cam/original-fortran-five-year-reference/run
+case_root=${FREECAM_REFERENCE_CASE}
+reference=${FREECAM_SCRATCH}/freeCAM/PI-cam/original-fortran-five-year-reference/run
 library=${FREECAM_CESM_PROVIDER_LIBRARY:-${repo}/build/cesm/pi_atm/production-components/libpycesm_external_atm.so}
-root=/glade/derecho/scratch/${USER}/freeCAM/PI-cam/memory-5year-${PBS_JOBID}
+root=${FREECAM_SCRATCH}/freeCAM/PI-cam/memory-5year-${PBS_JOBID}
 cam_run=${root}/cam-run
 cesm_run=${root}/cesm-provider-run
 summary=${root}/summary.json
@@ -23,7 +26,7 @@ bfb=${root}/bfb.json
 source "${case_root}/.env_mach_specific.sh" >/dev/null 2>&1
 mpi_root=${CRAY_MPICH_DIR:-/opt/cray/pe/mpich/8.1.25/ofi/intel/19.0}
 export LD_LIBRARY_PATH="${mpi_root}/lib-abi-mpich:${mpi_root}/lib:${LD_LIBRARY_PATH:-}"
-export LD_PRELOAD=/glade/u/apps/common/23.04/spack/opt/spack/intel-oneapi-compilers/2023.0.0/compiler/2023.0.0/linux/compiler/lib/intel64_lin/libimf.so${LD_PRELOAD:+:${LD_PRELOAD}}
+export LD_PRELOAD=${FREECAM_LD_PRELOAD}${LD_PRELOAD:+:${LD_PRELOAD}}
 export PYTHONPATH=${repo}/src
 export OMP_NUM_THREADS=1
 export OMP_STACKSIZE=64M

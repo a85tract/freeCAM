@@ -1,11 +1,11 @@
 #!/bin/bash
+# Submit with: validation/jobs/submit.sh validation/jobs/pi_cam_adapter_context_build.pbs
 #PBS -N freecam-adapter-context
-#PBS -A $PBS_ACCOUNT
 #PBS -q develop
 #PBS -l select=1:ncpus=32:mpiprocs=1:ompthreads=1:mem=80GB
 #PBS -l walltime=01:00:00
 #PBS -j oe
-#PBS -o /glade/work/$USER/freeCAM/logs/
+#PBS -o logs/
 #PBS -V
 
 set -euo pipefail

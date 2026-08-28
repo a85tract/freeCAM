@@ -1,4 +1,5 @@
 #!/bin/bash
+# Submit with: validation/jobs/submit.sh validation/jobs/pi_cam_mmacro_dataset_build.pbs
 # Build a capture-anchored training set for mmacro_pcond, and train on it.
 #
 # Why a batch job for what is nominally a Python script: generating half a
@@ -23,6 +24,9 @@
 #   PYCAM_CHUNK_SAMPLES    samples per chunk (50000)
 #   PYCAM_EPOCHS           training epochs (60)
 #   PYCAM_BUNDLE           the capture bundle to anchor on
+#   PYCAM_TRAINING_DIR     an existing X/Y directory: skip straight to training,
+#                          which is what a change to the model rather than to
+#                          the data needs
 
 #PBS -N pycam-mmacro-dataset
 #PBS -q develop
@@ -34,10 +38,12 @@
 
 set -euo pipefail
 
-repo=/glade/work/$USER/freeCAM
+source "${FREECAM_REPO:-${PBS_O_WORKDIR:-$PWD}}/validation/jobs/common.sh"
+
+repo=${FREECAM_REPO}
 python=${repo}/.venv/bin/python
-root=/glade/derecho/scratch/$USER/pyCAM/PI-cam/mmacro-dataset-${PBS_JOBID}
-bundle=${PYCAM_BUNDLE:-/glade/derecho/scratch/$USER/pyCAM/PI-cam/function-capture-training-7257250.desched1/bundles/mmacro_pcond_capture.npz}
+root=${FREECAM_SCRATCH}/pyCAM/PI-cam/mmacro-dataset-${PBS_JOBID}
+bundle=${PYCAM_BUNDLE:-${FREECAM_SCRATCH}/pyCAM/PI-cam/function-capture-training-7257250.desched1/bundles/mmacro_pcond_capture.npz}
 columns=${PYCAM_ANCHOR_COLUMNS:-200000}
 chunks=${PYCAM_CHUNKS:-10}
 samples=${PYCAM_CHUNK_SAMPLES:-50000}
@@ -47,6 +53,12 @@ mkdir -p "${root}"
 cd "${repo}"
 export PYTHONPATH=${repo}/src
 export OMP_NUM_THREADS=1
+
+training=${PYCAM_TRAINING_DIR:-}
+if [ -n "${training}" ]; then
+  echo "=== reusing the training set at ${training}"
+else
+  training=${root}/training
 
 echo "=== anchors: ${columns} real columns from $(basename "${bundle}")"
 "${python}" tools/extract_pi_cam_anchor_columns.py \
@@ -75,18 +87,19 @@ echo "=== joining into X and Y"
 "${python}" tools/build_pi_cam_kernel_training_set.py \
   --function mmacro_pcond \
   --dataset "${root}"/chunk_*.nc \
-  --output "${root}/training"
+  --output "${training}"
+fi
 
 echo "=== training the gated surrogate"
 "${python}" tools/train_pi_cam_gated_surrogate.py \
-  --training "${root}/training" \
+  --training "${training}" \
   --output "${root}/mmacro_gated.pt" \
   --epochs "${epochs}" --hidden 1024 --depth 3 --threads 32
 
 echo "=== held-out skill"
 "${python}" tools/evaluate_pi_cam_kernel_surrogate.py \
   --model "${root}/mmacro_gated.pt" \
-  --training "${root}/training" \
+  --training "${training}" \
   --output "${root}/skill.json"
 
 echo "=== done: ${root}"

@@ -1,30 +1,32 @@
 #!/bin/bash
+# Submit with: validation/jobs/submit.sh validation/jobs/pi_cam_runtime_parameter_50step.pbs
 #PBS -N freecam-runtime-50
-#PBS -A UCUB0188
 # ``develop`` is the public route; PBS places eligible jobs in ``cpudev``.
 #PBS -q develop
 #PBS -l select=4:ncpus=64:mpiprocs=128:ompthreads=1:mem=110GB
 #PBS -l walltime=00:30:00
 #PBS -j oe
-#PBS -o /glade/work/ruitong/freeCAM/logs/
+#PBS -o logs/
 #PBS -V
 
 set -euo pipefail
 
-repo=/glade/work/ruitong/freeCAM
+source "${FREECAM_REPO:-${PBS_O_WORKDIR:-$PWD}}/validation/jobs/common.sh"
+
+repo=${FREECAM_REPO}
 python=${repo}/.venv/bin/python
-case_root=/glade/work/ruitong/CESM_cases/f.e13.F1850C5.ne16_g16.icesm131_ihesp.PI-cam-oracle.50step
-cam_reference=/glade/derecho/scratch/ruitong/pyCAM/PI-cam/f.e13.F1850C5.ne16_g16.icesm131_ihesp.PI-cam-oracle.50step/run
-cesm_reference=/glade/derecho/scratch/ruitong/pyCESM/PI-atm/oracle-50step-run1/run
+case_root=${FREECAM_REFERENCE_CASE}
+cam_reference=${FREECAM_REFERENCE_RUN}
+cesm_reference=${FREECAM_SCRATCH}/pyCESM/PI-atm/oracle-50step-run1/run
 library=${FREECAM_CESM_PROVIDER_LIBRARY:-${repo}/build/cesm/pi_atm/production-components/libpycesm_external_atm.so}
-root=/glade/derecho/scratch/ruitong/pyCAM/PI-cam/runtime-parameter-50step-${PBS_JOBID}
+root=${FREECAM_SCRATCH}/pyCAM/PI-cam/runtime-parameter-50step-${PBS_JOBID}
 cam_run=${root}/cam-run
 cesm_run=${root}/cesm-provider-run
 
 source "${case_root}/.env_mach_specific.sh" >/dev/null 2>&1
 mpi_root=${CRAY_MPICH_DIR:-/opt/cray/pe/mpich/8.1.25/ofi/intel/19.0}
 export LD_LIBRARY_PATH="${mpi_root}/lib-abi-mpich:${mpi_root}/lib:${LD_LIBRARY_PATH:-}"
-export LD_PRELOAD=/glade/u/apps/common/23.04/spack/opt/spack/intel-oneapi-compilers/2023.0.0/compiler/2023.0.0/linux/compiler/lib/intel64_lin/libimf.so${LD_PRELOAD:+:${LD_PRELOAD}}
+export LD_PRELOAD=${FREECAM_LD_PRELOAD}${LD_PRELOAD:+:${LD_PRELOAD}}
 export PYTHONPATH=${repo}/src
 export OMP_NUM_THREADS=1
 export OMP_STACKSIZE=64M

@@ -12,6 +12,8 @@ freeCAM runs the CAM atmosphere component of iCESM1.3.1 under a Python control l
 
 ```bash
 uv sync --extra notebook --extra test    # install (requires Python >=3.11,<3.12)
+cp site.env.example site.env             # then set FREECAM_ACCOUNT; not committed
+uv run python -m freecam.site            # what this checkout resolves to, and lacks
 uv run pytest -q                         # full local unit suite
 uv run pytest tests/unit/test_pi_cam_state.py -q     # one test file
 uv run pytest tests/unit/test_pi_cam_state.py -k name -q   # one test
@@ -22,13 +24,16 @@ git diff --check                         # run before committing
 Scientific gates run under PBS on Derecho (512 ranks):
 
 ```bash
-qsub validation/jobs/pi_cam_python_zero_copy_state_50step.pbs   # 50-step BFB gate
-qsub validation/jobs/pi_cam_exact_cesm_online_50step.pbs        # exact online-coupling gate
+validation/jobs/submit.sh validation/jobs/pi_cam_python_zero_copy_state_50step.pbs
+validation/jobs/submit.sh validation/jobs/pi_cam_exact_cesm_online_50step.pbs
 ```
+
+`submit.sh` supplies `-A $FREECAM_ACCOUNT` from `site.env`; jobs carry no
+`#PBS -A` directive and take every path from `validation/jobs/common.sh`.
 
 `tools/verify_pi_cam.py --reference <dir> --candidate <dir>` compares CAM output directories bit-for-bit (no numerical tolerance) via `freecam.pi_cam.validation.compare_pi_cam_directories`.
 
-Native build pipeline lives in `tools/` (e.g. `prepare_pi_cam_source.py` creates the patched source tree under `build/iCESM1.3.1_PI_cam_only` from the pinned submodule, rejecting any revision mismatch; `build_pi_cam_*.py` generate and compile adapters/couplers, usually via the `*_build.pbs` jobs).
+Native build pipeline lives in `tools/`, driven by `validation/jobs/pi_cam_promoted_statepool_build.pbs`: `prepare_pi_cam_source.py` rebuilds the patched tree under `build/iCESM1.3.1_PI_cam_only` from the pinned submodule (rejecting any revision mismatch, applying the 12 patches and 10 support modules `apply_pi_cam_source_patches.py` reports, and recording them in `.pycam-source.json`); `build_pi_cam_promoted_kernels.py` regenerates the direct-kernel descriptor; `build_pi_cam_devices.py` links the fixed-address image from the oracle's own objects and writes `native_cam_manifest.json`. Other `build_pi_cam_*.py` build the standalone functions, the online coupler, and the capture executable. See the README's *Building the native image*.
 
 ## Architecture
 
@@ -56,5 +61,6 @@ Key subsystems around that spine:
 - Keep ABI arrays Fortran-contiguous. Native code must not retain Python-owned pointers beyond a declared call boundary.
 - Do not reintroduce retired generic runtimes into the public API. New cases need their own configuration and independent validation evidence — PI-atm adapters are not silently reused for incompatible configurations.
 - Generated libraries and compiler products belong under `build/`; scheduler output under `logs/`. Neither is committed. Do not commit `error.json`, runtime output, or unrelated validation records.
+- No file may name a user or an allocation. Site facts live in `site.env` (not committed) and are declared in `freecam.site.SETTINGS` and `site.env.example`; Python reads them through `freecam.site`, bash through `validation/jobs/common.sh`.
 - Style: four-space indentation, type hints, concise docstrings, `snake_case` functions/modules, `PascalCase` classes.
 - Commits: concise imperative subject (e.g. `Add PI-CAM process control`); stage only files related to the current task and leave unrelated dirty-tree work alone.

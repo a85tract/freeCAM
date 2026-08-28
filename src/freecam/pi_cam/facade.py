@@ -68,24 +68,60 @@ def _case_pbs_account(case_root: Path) -> str | None:
     return values.get("CHARGE_ACCOUNT") or values.get("PROJECT")
 
 
-def _resolve_pbs_account(explicit: str | None, case_root: Path) -> str | None:
-    """Resolve an allocation without embedding a user or project in source."""
+def _resolve_pbs_account(
+    explicit: str | None, case_root: Path, repo: Path | None = None
+) -> tuple[str | None, str | None]:
+    """Resolve an allocation, and say where it came from.
+
+    No user or project is embedded in source: a site declares its own in
+    ``site.env``.  The provenance travels with the value because the least
+    obvious source -- a configured CESM case -- can belong to somebody else,
+    and charging their allocation should not be silent.
+    """
+
+    from .. import site
 
     if explicit:
-        return explicit
-    machine_specific = os.environ.get("PBS_ACCOUNT_DERECHO")
-    if machine_specific not in {None, "", "N/A"}:
-        return machine_specific
+        return explicit, "the account= argument"
+    for name in ("FREECAM_ACCOUNT", "PBS_ACCOUNT_DERECHO"):
+        from_environment = os.environ.get(name)
+        if from_environment not in {None, "", "N/A"}:
+            return from_environment, f"${name}"
+    configured = site.load(repo).get("FREECAM_ACCOUNT")
+    if configured not in {None, "", "N/A"}:
+        return configured, f"FREECAM_ACCOUNT in {site.site_file(repo)}"
     case_account = _case_pbs_account(case_root)
     if case_account:
-        return case_account
+        return case_account, f"CHARGE_ACCOUNT in {case_root / 'env_batch.xml'}"
     # A generic PBS_ACCOUNT is reliable only inside an existing allocation.
     # Login-shell profiles may export an account for another NCAR machine.
     if os.environ.get("PBS_JOBID") or os.environ.get("PBS_NODEFILE"):
         allocation_account = os.environ.get("PBS_ACCOUNT")
         if allocation_account not in {None, "", "N/A"}:
-            return allocation_account
-    return None
+            return allocation_account, "$PBS_ACCOUNT inside this allocation"
+    return None, None
+
+
+def _warn_on_borrowed_account(account: str | None, source: str | None) -> None:
+    """Say so when the allocation was read out of another user's case."""
+
+    if account is None or source is None or "CHARGE_ACCOUNT" not in source:
+        return
+    case_file = Path(source.split(" in ", 1)[1])
+    try:
+        owner = case_file.stat().st_uid
+    except OSError:
+        return
+    if owner == os.getuid():
+        return
+    warnings.warn(
+        f"PBS account {account!r} was read from {case_file}, which belongs to "
+        "another user; jobs from this session will be charged to their "
+        "allocation.  Set FREECAM_ACCOUNT in site.env, or pass "
+        "account=... to freecam.Driver.",
+        RuntimeWarning,
+        stacklevel=3,
+    )
 
 
 @dataclass(frozen=True, slots=True)
@@ -1521,7 +1557,7 @@ class Driver:
         run_dir: str | Path | None = None,
         launch_mode: str = "auto",
         account: str | None = None,
-        queue: str = "develop",
+        queue: str | None = None,
         walltime: str = "02:00:00",
         memory_per_node: str = "110GB",
         history_every: int | None = 1,
@@ -1589,19 +1625,32 @@ class Driver:
             self._namelist_catalog = None
             self._namelist_overrides = {}
         self._namelist_report: dict[str, tuple[str | None, str]] | None = None
+        # Site facts -- where scratch is, which cases are configured, which
+        # allocation may be charged -- are declared once in site.env rather
+        # than repeated in every notebook and job.  An explicit argument
+        # still wins, and so does the environment.
+        from .. import site
+
         self.scratch = Path(
             scratch
+            or site.setting("FREECAM_SCRATCH", repo=self.repo)
             or os.environ.get("SCRATCH")
             or f"/glade/derecho/scratch/{os.environ.get('USER', 'unknown')}"
         ).expanduser().resolve()
         case_name = self.config.case_name
         reference_name = self._CASE_REFERENCE_NAMES.get(case_key, case_name)
+        cases_root = Path(
+            site.setting("FREECAM_CASES", repo=self.repo)
+            or self.repo.parent / "CESM_cases"
+        ).expanduser()
         self.reference_case = Path(
             reference_case
-            or self.repo.parent / "CESM_cases" / reference_name
+            or site.setting("FREECAM_REFERENCE_CASE", repo=self.repo)
+            or cases_root / reference_name
         ).expanduser().resolve()
         self.reference_run = Path(
             reference_run
+            or site.setting("FREECAM_REFERENCE_RUN", repo=self.repo)
             or self.scratch / "pyCAM" / "PI-cam" / reference_name / "run"
         ).expanduser().resolve()
         self._online_library = (
@@ -1650,8 +1699,15 @@ class Driver:
             None if run_dir is None else Path(run_dir).expanduser().resolve()
         )
         self.launch_mode = launch_mode
-        self.account = _resolve_pbs_account(account, self.reference_case)
-        self.queue = queue
+        self.account, self.account_source = _resolve_pbs_account(
+            account, self.reference_case, self.repo
+        )
+        _warn_on_borrowed_account(self.account, self.account_source)
+        self.queue = (
+            queue
+            or site.setting("FREECAM_QUEUE", repo=self.repo)
+            or "develop"
+        )
         self.walltime = walltime
         self.memory_per_node = memory_per_node
         if history_every is not None and (
