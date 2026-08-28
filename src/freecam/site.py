@@ -22,8 +22,11 @@ else's allocation is the kind of mistake that should be loud.
 
 from __future__ import annotations
 
+import json
 import os
+import platform
 import re
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterable, Mapping, Sequence
@@ -368,6 +371,47 @@ def resolved(
     }
 
 
+def _interpreter_fits_beneath(window: tuple[int, int] | None) -> tuple[bool, str]:
+    """Does this interpreter leave the image's fixed address window alone?
+
+    The native image is linked non-PIC at a fixed address and mapped there,
+    over whatever is already in the way.  A position-independent interpreter
+    is loaded high and its heap grows from there, well clear of the window.
+    One that is not -- uv's downloaded CPython from 3.12 on is linked at
+    0x400000 -- starts its heap low enough to grow into the window, and the
+    ranks whose heap happens to land there die in glibc or on a fault, with
+    no Python left to say why.
+
+    The heap's base is randomised, so a single sample proves nothing; the
+    executable's load address does not move, and is what this reads.
+    """
+
+    if window is None:
+        return True, "no image to collide with"
+    start, end = window
+    try:
+        binary = os.path.realpath(sys.executable)
+        lowest = None
+        for line in Path("/proc/self/maps").read_text().splitlines():
+            fields = line.split(maxsplit=5)
+            if len(fields) == 6 and fields[5].strip() == binary:
+                base = int(fields[0].split("-", 1)[0], 16)
+                lowest = base if lowest is None else min(lowest, base)
+    except OSError:
+        return True, "cannot read this process's mappings"
+    if lowest is None:
+        return True, f"python {platform.python_version()}"
+    if lowest >= end:
+        return True, (
+            f"python {platform.python_version()} at 0x{lowest:x}, "
+            f"clear of 0x{start:x}-0x{end:x}"
+        )
+    return False, (
+        f"python {platform.python_version()} is loaded at 0x{lowest:x}, "
+        f"below the image's 0x{start:x}-0x{end:x}"
+    )
+
+
 def preflight(
     *, repo: str | Path | None = None, config: str | Path | None = None
 ) -> tuple[Check, ...]:
@@ -387,6 +431,14 @@ def preflight(
     assert isinstance(python, Path)
     assert isinstance(reference_case, Path) and isinstance(reference_run, Path)
     assert isinstance(manifest, Path)
+    window = None
+    if manifest.is_file():
+        try:
+            image = json.loads(manifest.read_text())
+            window = (int(image["load_start"]), int(image["load_end"]))
+        except (OSError, ValueError, KeyError):
+            window = None
+    clear, where = _interpreter_fits_beneath(window)
     return (
         Check(
             "allocation",
@@ -400,6 +452,15 @@ def preflight(
             python.is_file(),
             str(python),
             "uv sync --extra notebook --extra test",
+        ),
+        Check(
+            "interpreter",
+            clear,
+            where,
+            "use a position-independent interpreter: `uv sync -p <python>` "
+            "with a system or conda build.  uv's own downloaded CPython is "
+            "linked at a fixed low address from 3.12 on, and its heap grows "
+            "into the window the native image is mapped at",
         ),
         Check(
             "scheduler",

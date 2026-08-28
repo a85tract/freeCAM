@@ -1,0 +1,62 @@
+{
+  "schema_version": 1,
+  "question": "Which Python versions and builds can host the fixed-address native image?",
+  "finding": "The version is not the constraint; the interpreter's load address is. The image is linked non-PIC at 0x30000000 and mapped there over whatever is in the way. An interpreter loaded above that window is safe; one linked at a fixed low address starts its brk heap below it and grows into it.",
+  "image_window": {
+    "start": "0x30000000",
+    "end": "0x39f77190"
+  },
+  "measured": [
+    {
+      "interpreter": "system CPython 3.11.13",
+      "path": "/usr/bin/python3.11",
+      "loaded_at": "0x5643xxxxxxxx",
+      "position_independent": true,
+      "run": "7276799",
+      "result": "4 steps on 512 ranks, 0 errors"
+    },
+    {
+      "interpreter": "uv CPython 3.11.14",
+      "position_independent": true,
+      "loaded_at": "0x5610xxxxxxxx",
+      "run": "7277593",
+      "result": "4 steps on 512 ranks, 0 errors"
+    },
+    {
+      "interpreter": "uv CPython 3.12.12",
+      "position_independent": false,
+      "loaded_at": "0x3ff000",
+      "run": null,
+      "result": "not run; the preflight refuses it on the same grounds as 3.13.9"
+    },
+    {
+      "interpreter": "uv CPython 3.13.9",
+      "position_independent": false,
+      "loaded_at": "0x3ff000",
+      "run": "7277556",
+      "result": "79 of 512 ranks SIGSEGV before any Python output"
+    },
+    {
+      "interpreter": "uv CPython 3.13.9, PYTHONMALLOC=malloc",
+      "position_independent": false,
+      "loaded_at": "0x3ff000",
+      "run": "7277635",
+      "result": "47 of 512 ranks SIGSEGV; one rank aborted in glibc sysmalloc asserting on the heap top, which is the collision itself"
+    },
+    {
+      "interpreter": "conda CPython 3.13.9",
+      "path": "/glade/u/apps/opt/cmipap-configuration/libexec/intake-esgf/bin/python3.13",
+      "position_independent": true,
+      "loaded_at": "0x562fxxxxxxxx",
+      "run": "7277671",
+      "result": "4 steps on 512 ranks, 0 errors"
+    }
+  ],
+  "why_only_some_ranks": "The brk heap's base is randomised per process, so a rank dies only when its heap lands in or grows into the window. A green run therefore proves nothing; the executable's load address does not move, and is what freecam.site checks.",
+  "unit_suite": {
+    "3.11.13": "638 passed",
+    "3.13.9": "624 passed, 11 skipped (the skips are build products a clone does not have)"
+  },
+  "code_change": "requires-python widened to >=3.11; one test that asserted Python 3.11's RuntimeError wrapping of __set_name__ failures now accepts either form; freecam.site gained an `interpreter` preflight check.",
+  "not_established": "Bit-for-bit identity of a 512-rank run under a different interpreter. The 4-step runs agree on the global mean to the printed digits, which is not the 50-step bit-for-bit gate."
+}

@@ -55,6 +55,37 @@ The submodule is only the iCESM shell: its `components/` are managed
 externals, and the last line checks them out and verifies all seven pinned
 revisions. Tests that read the pinned source skip until it is there.
 
+### The interpreter has to be position-independent
+
+Python 3.11 through 3.13 all work, but **not every build of them does**. The
+native image is linked non-PIC at a fixed address and mapped there, over
+whatever is in the way. A position-independent interpreter is loaded high and
+its heap grows from there, clear of the window; one linked at a fixed low
+address — uv's own downloaded CPython, from 3.12 on — starts its heap low
+enough to grow into it, and the ranks whose heap lands there die inside glibc
+or on a fault, with no Python left to say why.
+
+So take the interpreter from the system or a conda environment rather than
+letting uv download one:
+
+```bash
+uv sync -p /path/to/a/python3.13 --extra notebook --extra test
+uv run python -m freecam.site        # the `interpreter` check reads the load address
+```
+
+Measured on Derecho, against the same 4-step 512-rank run:
+
+| interpreter | loaded at | 512 ranks |
+| --- | --- | --- |
+| system CPython 3.11.13 | `0x5643…` | runs |
+| uv CPython 3.11.14 | `0x5610…` | runs |
+| uv CPython 3.12.12 / 3.13.9 | `0x3ff000` | **SIGSEGV on 47–79 ranks** |
+| conda CPython 3.13.9 | `0x562f…` | runs |
+
+The heap's base is randomised, which is why only some ranks die and why a
+green run proves nothing; the executable's load address does not move, and is
+what the preflight reads.
+
 The supplied runtime and PBS jobs target NCAR Derecho. A configured iCESM
 reference case, its machine environment, and the required input data must be
 available before launching the 512-rank scientific configuration.

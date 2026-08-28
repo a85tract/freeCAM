@@ -240,3 +240,45 @@ def test_resolved_derives_every_path_from_the_checkout(tmp_path, monkeypatch) ->
     assert where["reference run"] == (
         tmp_path / "scratch" / "pyCAM" / "PI-cam" / "a-case" / "run"
     )
+
+
+def _executable_base() -> int:
+    import os
+    import sys
+
+    binary = os.path.realpath(sys.executable)
+    bases = [
+        int(line.split(maxsplit=5)[0].split("-", 1)[0], 16)
+        for line in Path("/proc/self/maps").read_text().splitlines()
+        if len(line.split(maxsplit=5)) == 6
+        and line.split(maxsplit=5)[5].strip() == binary
+    ]
+    return min(bases)
+
+
+def test_an_interpreter_below_the_image_window_is_refused() -> None:
+    # The native image is mapped at a fixed address over whatever is there.
+    # An interpreter loaded below it grows its heap into that window and the
+    # ranks that reach it die in glibc, with no Python left to say why -- so
+    # the answer has to come from the preflight, not from 512 core dumps.
+    base = _executable_base()
+
+    clear, where = site._interpreter_fits_beneath((base + 1, base + 0x1000))
+
+    assert not clear
+    assert f"0x{base:x}" in where
+
+
+def test_an_interpreter_above_the_image_window_is_accepted() -> None:
+    base = _executable_base()
+
+    clear, where = site._interpreter_fits_beneath((0x1000, base - 0x1000))
+
+    assert clear
+    assert "clear of" in where
+
+
+def test_no_image_is_nothing_to_collide_with() -> None:
+    clear, where = site._interpreter_fits_beneath(None)
+
+    assert clear and "no image" in where

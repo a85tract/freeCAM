@@ -1129,14 +1129,17 @@ def test_two_instances_of_one_class_keep_independent_properties() -> None:
 
 
 def test_property_cannot_shadow_the_physics_contract() -> None:
-    # Python 3.11 wraps __set_name__ failures in RuntimeError; the original
-    # TypeError rides along as the cause.
-    with pytest.raises(RuntimeError, match="__set_name__") as excinfo:
+    # Python 3.11 wraps a __set_name__ failure in RuntimeError and carries the
+    # original as its cause; 3.12 and later raise the original.  What matters
+    # is that the class is refused and says why, on either.
+    with pytest.raises((RuntimeError, TypeError)) as excinfo:
 
         class Broken(Physics):  # noqa: F811 - intentionally discarded
             enabled = Property(True)
 
-    assert "contract attribute" in str(excinfo.value.__cause__)
+    raised = excinfo.value
+    reason = raised.__cause__ if isinstance(raised, RuntimeError) else raised
+    assert "contract attribute" in str(reason)
 
 
 def test_pickled_physics_instance_does_not_forward_property_writes() -> None:
