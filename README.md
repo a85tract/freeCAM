@@ -97,16 +97,20 @@ Three things are external to this repository and have to exist before the
 absent, and what produces it:
 
 1. **Derecho**, its module environment, and a PBS allocation.
-2. **The native image** under `build/pi_cam_promoted/`. It is compiled in
-   place from the pinned submodule by the jobs in `validation/jobs/`
-   (`*_build.pbs`, some hours), and its manifest records absolute paths, so
-   it cannot be copied between checkouts.
-3. **A configured CESM case and one completed oracle run** — the machine
-   environment, `atm_in`, the initial state, and the input data they name.
+2. **Two builds** under `build/`: the native image
+   (`pi_cam_promoted/`, see below) and the online CESM provider library
+   (`cesm/pi_atm/production-components/`, from
+   `validation/jobs/pi_cam_online_coupler_build.pbs`), which the default case
+   runs live.  Both are compiled in place and are pointed at, not copied.
+3. **A configured CESM case and two completed runs** — the oracle's, for the
+   machine environment, `atm_in`, the initial state and the input data they
+   name; and one of the original coupled model, which the online provider
+   seeds its surface components from.
 
 To use an existing installation rather than repeat the build, point
-`FREECAM_NATIVE_MANIFEST`, `FREECAM_REFERENCE_CASE` and `FREECAM_REFERENCE_RUN`
-at its owner's paths and keep your own `FREECAM_SCRATCH` and
+`FREECAM_NATIVE_MANIFEST`, `FREECAM_CESM_PROVIDER_LIBRARY`,
+`FREECAM_CESM_PROVIDER_SEED`, `FREECAM_REFERENCE_CASE` and
+`FREECAM_REFERENCE_RUN` at its owner's paths and keep your own `FREECAM_SCRATCH` and
 `FREECAM_ACCOUNT`: run directories are created under your scratch, and your
 allocation is charged. `site.env.example` carries this recipe.
 

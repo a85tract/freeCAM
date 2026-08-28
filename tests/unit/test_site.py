@@ -186,9 +186,17 @@ def test_bash_and_python_read_the_committed_example_the_same_way(tmp_path) -> No
 
 
 def test_preflight_names_every_prerequisite_a_clone_lacks(tmp_path, monkeypatch) -> None:
-    monkeypatch.delenv("FREECAM_ACCOUNT", raising=False)
-    monkeypatch.delenv("FREECAM_REFERENCE_CASE", raising=False)
-    monkeypatch.delenv("FREECAM_REFERENCE_RUN", raising=False)
+    monkeypatch.setenv("SCRATCH", str(tmp_path / "scratch"))
+    for name in (
+        "FREECAM_ACCOUNT",
+        "FREECAM_REFERENCE_CASE",
+        "FREECAM_REFERENCE_RUN",
+        "FREECAM_SCRATCH",
+        "FREECAM_CESM_PROVIDER_LIBRARY",
+        "FREECAM_CESM_PROVIDER_SEED",
+        "FREECAM_NATIVE_MANIFEST",
+    ):
+        monkeypatch.delenv(name, raising=False)
     repo = _checkout(tmp_path)
     config = repo / "configs" / "pi_cam_icesm131.yaml"
     config.parent.mkdir()
@@ -203,6 +211,12 @@ def test_preflight_names_every_prerequisite_a_clone_lacks(tmp_path, monkeypatch)
     assert not checks["native image"].ok
     assert not checks["reference case"].ok
     assert not checks["reference run"].ok
+    # The default case runs the original CESM surface components live, so its
+    # library and the run it seeds from are prerequisites too -- a preflight
+    # that passed without them sent a run to a queue slot to find out.
+    assert not checks["provider library"].ok
+    assert not checks["provider seed"].ok
+    assert "online_coupler_build" in checks["provider library"].produced_by
     # A failed check is only useful if it says what would satisfy it.
     assert all(check.produced_by for check in checks.values())
     assert "uv sync" in checks["environment"].produced_by

@@ -97,6 +97,17 @@ SETTINGS: tuple[Setting, ...] = (
         "defaults to develop",
     ),
     Setting(
+        "FREECAM_CESM_PROVIDER_LIBRARY",
+        "the online CESM surface and coupler components, which the default "
+        "case runs live",
+        "validation/jobs/pi_cam_online_coupler_build.pbs",
+    ),
+    Setting(
+        "FREECAM_CESM_PROVIDER_SEED",
+        "the CESM run the online provider seeds its components from",
+        "one completed run of the original coupled model",
+    ),
+    Setting(
         "FREECAM_NATIVE_MANIFEST",
         "an existing native image to run against instead of building one",
         "validation/jobs/pi_cam_promoted_statepool_build.pbs; the image is "
@@ -335,6 +346,16 @@ def resolved(
             scratch / "pyCAM" / "PI-cam" / case_name / "run",
             repo=root,
         ),
+        "provider library": path(
+            "FREECAM_CESM_PROVIDER_LIBRARY",
+            root / "build/cesm/pi_atm/production-components/libpycesm_external_atm.so",
+            repo=root,
+        ),
+        "provider seed": path(
+            "FREECAM_CESM_PROVIDER_SEED",
+            scratch / "pyCESM" / "PI-atm" / "oracle-1month" / "run",
+            repo=root,
+        ),
         "native manifest": path(
             "FREECAM_NATIVE_MANIFEST",
             root
@@ -360,6 +381,9 @@ def preflight(
     reference_case = where["reference case"]
     reference_run = where["reference run"]
     manifest = where["native manifest"]
+    library = where["provider library"]
+    seed = where["provider seed"]
+    assert isinstance(library, Path) and isinstance(seed, Path)
     assert isinstance(python, Path)
     assert isinstance(reference_case, Path) and isinstance(reference_run, Path)
     assert isinstance(manifest, Path)
@@ -392,6 +416,23 @@ def preflight(
             "image\".  It is compiled in place and records absolute paths, so "
             "FREECAM_NATIVE_MANIFEST points at an existing one rather than "
             "copying it",
+        ),
+        Check(
+            "provider library",
+            library.is_file(),
+            str(library),
+            "validation/jobs/pi_cam_online_coupler_build.pbs; the default "
+            "case runs the original CESM surface components and coupler "
+            "live, or point FREECAM_CESM_PROVIDER_LIBRARY at an existing "
+            "build",
+        ),
+        Check(
+            "provider seed",
+            (seed / "drv_in").is_file(),
+            str(seed),
+            "one completed run of the original coupled model, which the "
+            "online provider seeds from; or point FREECAM_CESM_PROVIDER_SEED "
+            "at one",
         ),
         Check(
             "reference case",

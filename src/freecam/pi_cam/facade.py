@@ -2074,9 +2074,13 @@ class Driver:
         return self._session
 
     def _resolve_online_library(self) -> Path:
+        from .. import site
+
         if self._online_library is not None:
             return self._online_library
-        configured = os.environ.get("FREECAM_CESM_PROVIDER_LIBRARY")
+        configured = site.setting(
+            "FREECAM_CESM_PROVIDER_LIBRARY", repo=self.repo
+        )
         if configured:
             return Path(configured).expanduser().resolve()
         return (
@@ -2089,9 +2093,11 @@ class Driver:
         ).resolve()
 
     def _resolve_online_seed_run(self) -> Path:
+        from .. import site
+
         if self._online_seed_run is not None:
             return self._online_seed_run
-        configured = os.environ.get("FREECAM_CESM_PROVIDER_SEED")
+        configured = site.setting("FREECAM_CESM_PROVIDER_SEED", repo=self.repo)
         if configured:
             return Path(configured).expanduser().resolve()
         return (
