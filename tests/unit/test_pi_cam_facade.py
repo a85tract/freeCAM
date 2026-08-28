@@ -675,14 +675,13 @@ def test_driver_warns_when_the_account_belongs_to_another_user(
     assert driver.account == "TEST_ACCOUNT"
 
 
-def test_driver_does_not_warn_about_an_account_the_user_declared(
+def test_driver_does_not_warn_about_the_users_own_site_file(
     tmp_path, monkeypatch, recwarn
 ) -> None:
     paths = _driver_tree(tmp_path)
     (paths["repo"] / "pyproject.toml").write_text("[project]\nname = 'freecam'\n")
     (paths["repo"] / "site.env").write_text("FREECAM_ACCOUNT=SITE_ACCOUNT\n")
     monkeypatch.delenv("FREECAM_ACCOUNT", raising=False)
-    monkeypatch.setattr(facade.os, "getuid", lambda: os.stat(__file__).st_uid + 1)
 
     Driver(
         nsteps=2,
@@ -695,6 +694,31 @@ def test_driver_does_not_warn_about_an_account_the_user_declared(
     )
 
     assert not [w for w in recwarn if issubclass(w.category, RuntimeWarning)]
+
+
+def test_driver_warns_when_the_site_file_belongs_to_another_user(
+    tmp_path, monkeypatch
+) -> None:
+    # Running out of a colleague's installation is the normal way to use one:
+    # their site.env is right about every path and wrong about who pays.
+    paths = _driver_tree(tmp_path)
+    (paths["repo"] / "pyproject.toml").write_text("[project]\nname = 'freecam'\n")
+    (paths["repo"] / "site.env").write_text("FREECAM_ACCOUNT=THEIR_ACCOUNT\n")
+    monkeypatch.delenv("FREECAM_ACCOUNT", raising=False)
+    monkeypatch.setattr(facade.os, "getuid", lambda: os.stat(__file__).st_uid + 1)
+
+    with pytest.warns(RuntimeWarning, match="belongs to another user"):
+        driver = Driver(
+            nsteps=2,
+            repo=paths["repo"],
+            config=paths["config"],
+            reference_case=paths["reference_case"],
+            reference_run=paths["reference_run"],
+            boundary=paths["boundary"],
+            session_factory=FakeSession,
+        )
+
+    assert driver.account == "THEIR_ACCOUNT"
 
 
 def test_driver_takes_scratch_and_queue_from_the_site_file(

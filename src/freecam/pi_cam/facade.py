@@ -103,22 +103,28 @@ def _resolve_pbs_account(
 
 
 def _warn_on_borrowed_account(account: str | None, source: str | None) -> None:
-    """Say so when the allocation was read out of another user's case."""
+    """Say so when the allocation was read out of another user's file.
 
-    if account is None or source is None or "CHARGE_ACCOUNT" not in source:
+    Both file-borne sources are shared: a configured CESM case, and the
+    site.env of an installation somebody else owns.  Running out of a
+    colleague's checkout is the normal way to use one, and it should not
+    quietly spend their core-hours.
+    """
+
+    if account is None or source is None or " in " not in source:
         return
-    case_file = Path(source.split(" in ", 1)[1])
+    origin = Path(source.split(" in ", 1)[1])
     try:
-        owner = case_file.stat().st_uid
+        owner = origin.stat().st_uid
     except OSError:
         return
     if owner == os.getuid():
         return
     warnings.warn(
-        f"PBS account {account!r} was read from {case_file}, which belongs to "
-        "another user; jobs from this session will be charged to their "
-        "allocation.  Set FREECAM_ACCOUNT in site.env, or pass "
-        "account=... to freecam.Driver.",
+        f"PBS account {account!r} was read from {origin}, which belongs to "
+        "another user; jobs from this session would be charged to their "
+        "allocation.  Pass account=... to freecam.Driver, set "
+        "FREECAM_ACCOUNT, or write your own site.env.",
         RuntimeWarning,
         stacklevel=3,
     )
