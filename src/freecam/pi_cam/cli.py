@@ -55,6 +55,38 @@ def _catalog_entry(
     return entry
 
 
+def _cprofile_for(rank: int):
+    """A cProfile.Profile for this rank when FREECAM_CPROFILE_RANKS names it.
+
+    The variable lists MPI ranks separated by commas.  Unset or empty, no rank
+    is profiled and the integration loop pays nothing; a named rank profiles
+    its whole advance and writes the result beside the run at the end.
+    """
+
+    text = os.environ.get("FREECAM_CPROFILE_RANKS", "").strip()
+    if not text:
+        return None
+    ranks = {int(item) for item in text.split(",") if item.strip()}
+    if rank not in ranks:
+        return None
+    import cProfile
+
+    return cProfile.Profile()
+
+
+def _write_cprofile(profiler, run_dir: Path, rank: int) -> None:
+    """Write one rank's profile: the binary stats and a table by own time."""
+
+    import io
+    import pstats
+
+    stem = run_dir / f"cprofile.rank-{rank}"
+    profiler.dump_stats(f"{stem}.prof")
+    buffer = io.StringIO()
+    pstats.Stats(profiler, stream=buffer).sort_stats("tottime").print_stats(80)
+    Path(f"{stem}.txt").write_text(buffer.getvalue())
+
+
 def _process_memory(label: str, step: int) -> dict[str, int | str]:
     """Return one rank-local Linux memory sample in bytes."""
 
@@ -442,19 +474,27 @@ def main(argv: list[str] | None = None) -> int:
         world.Barrier()
         advance_started = MPI.Wtime()
         steps = args.steps if args.steps is not None else case.config.stop_n
-        if args.memory_sample_every > 0:
-            for completed in range(1, steps + 1):
-                cam.step()
-                if (
-                    completed == 1
-                    or completed == steps
-                    or completed % args.memory_sample_every == 0
-                ):
-                    memory_samples.append(
-                        _process_memory(f"step_{completed}", cam.clock.nstep)
-                    )
-        else:
-            cam.advance(steps)
+        profiler = _cprofile_for(world.Get_rank())
+        if profiler is not None:
+            profiler.enable()
+        try:
+            if args.memory_sample_every > 0:
+                for completed in range(1, steps + 1):
+                    cam.step()
+                    if (
+                        completed == 1
+                        or completed == steps
+                        or completed % args.memory_sample_every == 0
+                    ):
+                        memory_samples.append(
+                            _process_memory(f"step_{completed}", cam.clock.nstep)
+                        )
+            else:
+                cam.advance(steps)
+        finally:
+            if profiler is not None:
+                profiler.disable()
+                _write_cprofile(profiler, Path(args.run_dir), world.Get_rank())
         world.Barrier()
         advance_seconds = MPI.Wtime() - advance_started
         final_addresses = {
