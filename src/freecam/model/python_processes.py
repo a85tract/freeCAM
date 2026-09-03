@@ -429,6 +429,11 @@ class NativeAccess:
 
         self._driver.run_kernel(name, experimental=True, pool=arrays)
 
+    def bind_kernel(self, name: str, arrays: Mapping[str, np.ndarray]):
+        """:meth:`run_kernel` prepared once for these arrays: a no-argument callable."""
+
+        return self._driver.bind_kernel(name, experimental=True, pool=arrays)
+
 
 @dataclass(frozen=True, slots=True)
 class PythonProcessContext:

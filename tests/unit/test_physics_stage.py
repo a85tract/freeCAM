@@ -591,3 +591,39 @@ def test_composing_refuses_a_kernel_name_two_stages_both_claim() -> None:
     outer.kernels["core"] = lambda batch: {}
     with pytest.raises(PhysicsError, match="already a swappable kernel"):
         outer.compose(other=B())
+
+
+# -- kernels are bound once, run every call -------------------------------------
+
+
+def test_a_kernel_is_bound_once_and_run_on_every_call_when_the_native_can_bind(widget) -> None:
+    """The argument marshalling is paid per distinct set of arrays, not per call.
+
+    A stage hands each kernel its own scratch, allocated once, so across two
+    chunks and two steps there is one binding and four runs.  A native that
+    offers bind_kernel is never called the plain way.
+    """
+
+    binds: list[str] = []
+    runs: list[str] = []
+
+    class _Binding(_Native):
+        def bind_kernel(self, name, arrays):
+            binds.append(name)
+
+            def run():
+                runs.append(name)
+                arrays["widget.y"][...] = 2.0
+            return run
+
+        def run_kernel(self, name, arrays):
+            raise AssertionError("a native that binds must not be called one shot at a time")
+
+    native = _Binding(widget.library, Widget.DESCRIPTORS)
+    stage = Widget()
+    stage.tend(None, _Context(native))
+    stage.tend(None, _Context(native))
+
+    assert binds == ["widget_step"]
+    assert runs == ["widget_step"] * 4
+    assert np.all(stage.runtime(native).local["y"] == 2.0)

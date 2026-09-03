@@ -117,7 +117,26 @@ class PointerTableAdapter:
                 f"field {argument.field!r} is read-only but intent is {argument.intent}"
             )
 
-    def call(self, operation: str, pool: Mapping[str, np.ndarray], *, fcomm: int) -> None:
+    def bind(self, operation: str, pool: Mapping[str, np.ndarray], *, fcomm: int) -> "BoundCall":
+        """Prepare ``operation`` on ``pool`` once, for calling many times.
+
+        :meth:`call` does the same work on every invocation: resolve the
+        entry point, validate each argument, build the pointer, rank and
+        extent tables, allocate the error buffer, set the signature.  None
+        of it changes while the arrays stay where they are, and a stage's
+        scratch never moves -- so a stage that calls a hundred kernels a step
+        was paying 135-500 microseconds of table-building per call.  The
+        bound call keeps the tables and checks, on each call, only that the
+        arrays are still the ones it was built on.
+        """
+
+        call, function = self._resolve(operation)
+        arrays = [np.asarray(pool[argument.field]) for argument in call.arguments]
+        for argument, array in zip(call.arguments, arrays):
+            self._validate(argument, array)
+        return BoundCall(operation, call, function, arrays, fcomm)
+
+    def _resolve(self, operation: str):
         try:
             call = self.operations[operation]
         except KeyError as exc:
@@ -130,6 +149,10 @@ class PointerTableAdapter:
             raise FortranAdapterError(
                 f"{self.library_name} does not export {call.symbol!r}"
             ) from exc
+        return call, function
+
+    def call(self, operation: str, pool: Mapping[str, np.ndarray], *, fcomm: int) -> None:
+        call, function = self._resolve(operation)
 
         arrays = [np.asarray(pool[argument.field]) for argument in call.arguments]
         for argument, array in zip(call.arguments, arrays):
@@ -193,4 +216,76 @@ class PointerTableAdapter:
             if actual != invariant:
                 raise FortranAdapterError(
                     f"native operation {operation!r} changed a Python array descriptor"
+                )
+
+
+class BoundCall:
+    """One operation, prepared once for arrays it will be handed again and again.
+
+    Everything :meth:`PointerTableAdapter.call` rebuilds per call -- the
+    pointer, rank and extent tables, the error buffer, the signature -- is
+    built here once and kept, together with references to the arrays so they
+    cannot be freed underneath the tables.  A call is then the native
+    invocation and the same post-call check the adapter has always made: that
+    no array's descriptor changed while Fortran had its address.
+    """
+
+    _ARGTYPES = [
+        ctypes.c_int32,
+        ctypes.c_int32,
+        ctypes.POINTER(ctypes.c_void_p),
+        ctypes.POINTER(ctypes.c_int32),
+        ctypes.POINTER(ctypes.c_int64),
+        ctypes.c_int32,
+        ctypes.c_int32,
+        ctypes.c_char_p,
+        ctypes.c_int32,
+    ]
+
+    def __init__(self, operation: str, call: FortranCall, function: Any,
+                 arrays: list[np.ndarray], fcomm: int) -> None:
+        self.operation = operation
+        self.arrays = list(arrays)
+        self.invariants = tuple(
+            (int(array.ctypes.data), array.shape, array.dtype.str) for array in self.arrays
+        )
+        self.max_rank = max(
+            (array.ndim + (1 if argument.character else 0)
+             for argument, array in zip(call.arguments, self.arrays)),
+            default=0,
+        )
+        width = max(1, self.max_rank)
+        self.pointers = (ctypes.c_void_p * len(self.arrays))(
+            *(ctypes.c_void_p(pointer) for pointer, _, _ in self.invariants)
+        )
+        self.ndims = (ctypes.c_int32 * len(self.arrays))(*(array.ndim for array in self.arrays))
+        self.shapes = (ctypes.c_int64 * (len(self.arrays) * width))()
+        for index, array in enumerate(self.arrays):
+            for axis, extent in enumerate(array.shape):
+                self.shapes[index * width + axis] = extent
+            if call.arguments[index].character:
+                self.shapes[index * width + array.ndim] = array.dtype.itemsize
+        self.error_buffer = ctypes.create_string_buffer(4096)
+        function.argtypes = self._ARGTYPES
+        function.restype = ctypes.c_int32
+        self.function = function
+        self.action_id = call.action_id
+        self.count = len(self.arrays)
+        self.fcomm = int(fcomm)
+
+    def __call__(self) -> None:
+        self.error_buffer[0] = b"\x00"
+        status = int(self.function(
+            self.action_id, self.count, self.pointers, self.ndims, self.shapes,
+            self.max_rank, self.fcomm, self.error_buffer, len(self.error_buffer),
+        ))
+        if status:
+            detail = self.error_buffer.value.decode(errors="replace")
+            raise FortranAdapterError(
+                f"native operation {self.operation!r} failed ({status}): {detail}"
+            )
+        for array, invariant in zip(self.arrays, self.invariants):
+            if (int(array.ctypes.data), array.shape, array.dtype.str) != invariant:
+                raise FortranAdapterError(
+                    f"native operation {self.operation!r} changed a Python array descriptor"
                 )

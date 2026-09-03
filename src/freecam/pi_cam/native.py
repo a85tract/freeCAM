@@ -339,9 +339,41 @@ class NativeCAMDevice:
 
         return self._leaf_abi is not None
 
+    def bind_kernel(self, name: str, pool: Mapping[str, np.ndarray], *, fcomm: int):
+        """Prepare direct kernel ``name`` on ``pool`` for repeated calls.
+
+        The same entry :meth:`execute_kernel` reaches, with the argument
+        tables built once (see ``BoundCall``); the returned callable takes
+        no arguments and raises the same error the one-shot path would.
+        """
+
+        if name not in self.direct_kernels:
+            raise NativeCAMError(f"unknown direct CAM kernel {name!r}")
+        operation = f"direct_kernel.{name}"
+        try:
+            bound = self._adapter_for(operation).bind(operation, pool, fcomm=fcomm)
+        except FortranAdapterError as exc:
+            raise NativeCAMError(str(exc)) from exc
+
+        def run() -> None:
+            try:
+                bound()
+            except FortranAdapterError as exc:
+                raise NativeCAMError(str(exc)) from exc
+
+        return run
+
     def _call(
         self, operation: str, pool: Mapping[str, np.ndarray], fcomm: int
     ) -> None:
+        try:
+            self._adapter_for(operation).call(operation, pool, fcomm=fcomm)
+        except FortranAdapterError as exc:
+            raise NativeCAMError(str(exc)) from exc
+
+    def _adapter_for(self, operation: str) -> PointerTableAdapter:
+        """The adapter that serves ``operation``, loading its library on first use."""
+
         try:
             if operation in self._leaf_operation_names:
                 if not self._native_initialized:

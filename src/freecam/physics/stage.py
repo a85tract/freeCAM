@@ -365,6 +365,8 @@ class StageRuntime:
                 raise PICAMConfigurationError(
                     f"the image's {name} takes {declared}; the descriptors say {described}")
         self.scratch = self._allocate()
+        # direct-kernel calls bound once per (kernel, arrays); see _run
+        self._bound: dict[tuple, Callable[[], Any]] = {}
         stage.after_runtime(self)
         check(self.entries.set_owner(1), f"pycam_{stage.PREFIX}_set_owner_v1")
 
@@ -455,12 +457,34 @@ class StageRuntime:
                     self._copy_in(scratch, value)
                 arrays[field] = scratch
         with self.profile.region(f"kernel-run:{name}"):
-            self.native.run_kernel(name, arrays)
+            self._run(name, arrays)
         with self.profile.region(f"kernel-copy-out:{name}"):
             for local, target in outputs.items():
                 if target is None:
                     continue
                 self._copy_out(target, self.scratch[local], ncol)
+
+    def _run(self, name: str, arrays: Mapping[str, np.ndarray]) -> None:
+        """Run a direct kernel on its scratch, bound once per distinct set of arrays.
+
+        The arrays handed to a kernel are this runtime's scratch, allocated
+        once and never moved, so the argument marshalling the image's adapter
+        does per call -- 135 to 500 microseconds for the kernels here -- can
+        be done once and kept.  The cache is keyed by the array objects; the
+        bound call keeps references to them, so an entry can never outlive
+        the arrays it points into.  A native that cannot bind (the tests'
+        fakes) is called the plain way.
+        """
+
+        binder = getattr(self.native, "bind_kernel", None)
+        if binder is None:
+            self.native.run_kernel(name, arrays)
+            return
+        key = (name, tuple(id(array) for array in arrays.values()))
+        run = self._bound.get(key)
+        if run is None:
+            run = self._bound[key] = binder(name, arrays)
+        run()
 
     def column_kernel(self, name: str, inputs: Mapping[str, Any], *,
                       outputs: Mapping[str, np.ndarray], ncol: int, lchnk: int, dt: float,

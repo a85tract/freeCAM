@@ -404,18 +404,21 @@ def test_tend_walks_the_routine_in_its_order_on_every_chunk(fake) -> None:
     scheme.tend(None, _Context(fake))
     assert scheme.calls == list(SEQUENCE) * 2
     lib = fake.library
-    # the walk owns the core now, whichever computes it, so the lifted
-    # section always skips its own copy
-    assert lib.owner == 1 and lib.core_owner == 1
+    # nothing is in the slot, so the lifted section runs its own copy of the
+    # core -- the original, over every packed column at once, as the driver
+    # called it; Python owns the core only when a model takes its place
+    assert lib.owner == 1 and lib.core_owner == 0
+    assert "core" in [n for n, _ in lib.lifecycle]
     assert lib.configured == (1, 0, 1, 0, 1, 1, 2, 3, 4, 5, -1, -1, -1, -1)
     for name in KERNELS:
         expected = {"wtrc_init_rates": 4, "wtrc_add_rates": 22}.get(name, 2)
         assert fake.kernels.count(name) == expected, name
     # the lifted section, once per chunk in its order, with the driver's dtime
     names = [n for n, _ in lib.lifecycle]
-    # `core` is absent: the lifted section skips its own copy and the walk
-    # runs the class's own kernel instead
-    per_chunk = ["begin", "ptend_init", "pack_prelude", "substep_pack", "substep_unpack",
+    # `core` is present: with nothing in the slot the lifted section runs its
+    # own copy of the core, over every packed column at once, where the
+    # driver called it -- between the substep's pack and unpack
+    per_chunk = ["begin", "ptend_init", "pack_prelude", "substep_pack", "core", "substep_unpack",
                  "post_proc", "wtrc_add_sum", "wtrc_add_sum", "wtrc_add_sum", "wtrc_add_sum",
                  "wtrc_apply", "output_precip", "end"]
     assert names == ["bind_hosts"] + per_chunk * 2

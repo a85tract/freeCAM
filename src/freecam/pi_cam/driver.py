@@ -2161,6 +2161,43 @@ class PICAMDriver:
             )
         )
 
+    def bind_kernel(
+        self, name: str, *, experimental: bool = False, pool: Mapping[str, np.ndarray]
+    ) -> Callable[[], PICAMActionTrace]:
+        """Prepare :meth:`run_kernel` for calling ``name`` on ``pool`` repeatedly.
+
+        A Python-driven stage runs the same kernel on the same scratch arrays
+        every chunk of every step.  This does the argument marshalling once
+        and returns a callable that only invokes, times and records the run,
+        exactly as :meth:`run_kernel` would each time.
+        """
+
+        if self.lifecycle not in {PICAMLifecycle.INITIALIZED, PICAMLifecycle.RUNNING}:
+            raise PICAMStateError(f"bind kernel from {self.lifecycle.value}")
+        if not experimental:
+            raise PICAMConfigurationError(
+                "isolated raw CAM kernels require experimental=True"
+            )
+        bind = getattr(self.backend, "bind_kernel", None)
+        if not callable(bind):
+            raise PICAMConfigurationError("the selected backend cannot bind direct kernels")
+        bound = bind(name, pool, fcomm=self.fcomm)
+        action = PICAMAction(
+            name=name, phase="direct_kernel", operation=name, kind="kernel", native_id=None,
+        )
+        profiler = self.profiler
+        region, kernel_region = f"CAM:{name}", "FORTRAN:DIRECT_KERNEL"
+
+        def run() -> PICAMActionTrace:
+            if self.lifecycle not in {PICAMLifecycle.INITIALIZED, PICAMLifecycle.RUNNING}:
+                raise PICAMStateError(f"run kernel from {self.lifecycle.value}")
+            with profiler.region(region):
+                with profiler.region(kernel_region):
+                    bound()
+            return self._record(action)
+
+        return run
+
     def step(self) -> tuple[PICAMActionTrace, ...]:
         with self.profiler.region("FREECAM:STEP"):
             return self._step()
