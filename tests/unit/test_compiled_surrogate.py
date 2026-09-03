@@ -293,3 +293,88 @@ def test_an_exported_checkpoint_runs_on_columns_the_routine_answered(
         # the routine's own identities close the state, so it is the input
         # state plus the answered tendency -- never the network's guess at it
         assert np.all(np.asarray(answer["ql0"]) >= 0.0)
+
+
+# -- the chunk goes through the network in one pass ----------------------------
+
+
+def test_a_chunk_of_columns_answers_as_the_columns_do_one_at_a_time() -> None:
+    """``batched`` is the same arithmetic as ``__call__``, columns stacked.
+
+    This is what lets the stage hand the model a whole chunk: the model's
+    unit is still the column -- nothing in the feature vector comes from a
+    neighbour -- so stacking them changes how many rows go through the
+    network at once and nothing else.
+    """
+
+    kernel = SurrogateKernel(_compiled_payload(
+        x_mean=[0.0, 1.0], x_std=[1.0, 2.0], y_mean=[5.0], y_std=[3.0]))
+    chunk = {"a": np.array([[1.0, 2.0], [3.0, 4.0], [-1.0, 0.0]])}
+
+    batched = kernel.batched(chunk)["b"]
+    one = np.stack([np.asarray(kernel({"a": row})["b"]).reshape(-1)
+                    for row in chunk["a"]])
+
+    # one target, so each column's answer is a number rather than a profile
+    assert batched.shape == (3,)
+    assert np.allclose(batched, one.reshape(-1), rtol=1e-12, atol=0.0)
+
+
+def test_a_batch_carries_scalars_profiles_and_per_column_numbers() -> None:
+    """Each argument arrives in the shape the stage's chunk views have."""
+
+    payload = _compiled_payload(
+        x_mean=[0.0] * 4, x_std=[1.0] * 4, y_mean=[0.0], y_std=[1.0])
+    # one profile of two levels, one per-column number, one chunk-wide scalar
+    payload["x_names"] = ["p[0]", "p[1]", "landfrac", "dt"]
+    payload["x_arguments"] = ["p", "landfrac", "dt"]
+    kernel = SurrogateKernel(payload)
+
+    rows = kernel.features_batch({
+        "p": np.array([[1.0, 2.0], [3.0, 4.0]]),      # (columns, levels)
+        "landfrac": np.array([0.25, 0.75]),           # one per column
+        "dt": 1800.0,                                 # one for the chunk
+    })
+
+    assert np.array_equal(rows, np.array([[1.0, 2.0, 0.25, 1800.0],
+                                          [3.0, 4.0, 0.75, 1800.0]]))
+
+
+@pytest.mark.skipif(not EXPORTED, reason="no exported checkpoint in this checkout")
+@pytest.mark.parametrize("checkpoint", EXPORTED, ids=lambda p: p.stem)
+def test_an_exported_checkpoint_answers_a_chunk_as_it_answers_a_column(
+    checkpoint: Path,
+) -> None:
+    """The real networks, on the shapes the stage will hand them."""
+
+    from freecam.physics.macrophysics import RETURNED
+
+    kernel = load_surrogate(checkpoint)
+    rng = np.random.default_rng(7)
+    columns = 4
+    chunk = {}
+    for name, where in kernel._x_slices.items():
+        width = where.stop - where.start
+        chunk[name] = (rng.normal(size=(columns, kernel.levels)) if width > 1
+                       else rng.normal(size=columns))
+    chunk["dt"] = 1800.0
+
+    batched = kernel.batched(chunk)
+    assert set(RETURNED) <= set(batched)
+    for name in RETURNED:
+        value = np.asarray(batched[name])
+        assert value.shape[0] == columns
+        assert np.all(np.isfinite(value))
+
+    # and the same numbers the per-column call gives -- closely, not
+    # exactly: a matrix multiply of four rows blocks differently from one of
+    # a single row, so the two forms agree to the network's own precision
+    # rather than bit for bit.  A run that changes form is a different run,
+    # which is true of any model in this slot.
+    one = kernel({name: (value[0] if np.ndim(value) else value)
+                  for name, value in chunk.items()})
+    for name in RETURNED:
+        chunked = np.asarray(batched[name])[0]
+        single = np.asarray(one[name]).reshape(-1)
+        scale = max(float(np.abs(single).max()), 1e-300)
+        assert np.allclose(chunked, single, rtol=1e-5, atol=1e-6 * scale), name

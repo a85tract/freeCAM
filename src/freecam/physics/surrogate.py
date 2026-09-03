@@ -56,6 +56,7 @@ from typing import Any, Mapping
 
 import numpy as np
 
+from .errors import PhysicsError
 from .identities import NON_NEGATIVE, identities_for
 
 
@@ -265,16 +266,69 @@ class SurrogateKernel:
         for argument, where in self._x_slices.items():
             value = np.asarray(column[argument], dtype=np.float64).reshape(-1)
             row[where] = value if value.size == (where.stop - where.start) else value.item()
+        self._parameter_columns(row, parameters)
+        return row
+
+    def _parameter_columns(self, rows: np.ndarray,
+                           parameters: Mapping[str, Any] | None) -> None:
+        """Write the namelist's values into every row's parameter columns."""
+
         given = dict(parameters or {})
         for name, where in self._parameters.items():
             value = float(given.get(name, self.parameter_defaults.get(name, 0.0)))
             if "column" in where:
-                row[where["column"]] = value
+                rows[..., where["column"]] = value
             else:
                 indicators = where["indicators"]
                 nearest = min(indicators, key=lambda admitted: abs(admitted - value))
-                row[indicators[nearest]] = 1.0
-        return row
+                rows[..., indicators[nearest]] = 1.0
+
+    def features_batch(self, columns: Mapping[str, Any],
+                       parameters: Mapping[str, Any] | None = None) -> np.ndarray:
+        """One feature row per column of a chunk, in the training set's order.
+
+        The layout is the one :meth:`features` builds, assembled for many
+        columns at once.  The model's unit is still the column -- nothing in
+        the feature vector comes from a neighbour -- so the rows are
+        independent and the batch is only about how many go through the
+        network in one call.
+        """
+
+        count = next((np.asarray(columns[argument]).shape[0]
+                      for argument in self._x_slices
+                      if np.asarray(columns[argument]).ndim == 2), None)
+        if count is None:
+            raise PhysicsError(
+                "a batch of columns must carry at least one profile argument "
+                f"shaped (columns, levels); got {sorted(self._x_slices)}")
+        rows = np.zeros((count, len(self.x_names)), dtype=np.float64)
+        for argument, where in self._x_slices.items():
+            value = np.asarray(columns[argument], dtype=np.float64)
+            width = where.stop - where.start
+            if value.ndim == 0:
+                rows[:, where] = value                      # one value for the chunk
+            elif value.ndim == 1:
+                # one number per column, or one profile every column shares
+                rows[:, where] = value[:count, None] if width == 1 else value[None, :]
+            else:
+                rows[:, where] = value[:count, :width]      # a profile per column
+        self._parameter_columns(rows, parameters)
+        return rows
+
+    def batched(self, columns: Mapping[str, Any],
+                parameters: Mapping[str, Any] | None = None) -> dict[str, np.ndarray]:
+        """Every answer for a chunk's live columns, in one pass of the network.
+
+        The same arithmetic as calling this kernel once per column, with the
+        columns stacked: one matrix multiply of ``ncol`` rows rather than
+        ``ncol`` of one row, which is the difference between a network used
+        well and used badly.  Floating point makes the two agree closely
+        rather than exactly -- a batched matrix multiply blocks differently
+        -- so a run that swaps one form for the other is a different run,
+        which is true of any model in this slot anyway.
+        """
+
+        return self.batched_answer(self.features_batch(columns, parameters))
 
     def __call__(self, column: Mapping[str, Any],
                  parameters: Mapping[str, Any] | None = None) -> dict[str, np.ndarray]:

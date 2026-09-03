@@ -329,11 +329,7 @@ class Macrophysics(NativeStage):
         :attr:`kernels` and both callers change together.
         """
 
-        model = self.kernels[FUNCTION]
-        if model is None and self.surrogate is not None:
-            from .surrogate import load_surrogate
-
-            model = self.kernels[FUNCTION] = load_surrogate(self.surrogate)
+        model = self._model()
         if model is None:
             return self._function().run(inputs, parameters)
         answer = dict(model(inputs, parameters)
@@ -347,6 +343,57 @@ class Macrophysics(NativeStage):
         return FunctionResult(
             outputs={name: answer[name] for name in RETURNED if name not in UPDATED},
             updated_inputs={name: answer[name] for name in UPDATED})
+
+    def _model(self):
+        """What is in the kernel's slot: an installed model, or None.
+
+        A surrogate named by path rather than carried is loaded here on
+        first use and kept in the slot, so the single-column caller above
+        and the chunk call in :meth:`_kernel_call` reach the same object --
+        and so a run that names a model can never quietly fall back to the
+        Fortran core because nothing loaded it.
+        """
+
+        model = self.kernels[FUNCTION]
+        if model is None and self.surrogate is not None:
+            from .surrogate import load_surrogate
+
+            model = self.kernels[FUNCTION] = load_surrogate(self.surrogate)
+        return model
+
+    def _chunk_model(self, ncol: int):
+        """The installed model, answering a chunk's live columns in one call.
+
+        The column is still the unit the model was trained on -- this
+        routine has no cross-column term -- but a chunk's columns are
+        independent, so a model that can take them stacked gets them
+        stacked: one pass of the network instead of ``ncol`` of them.  A
+        callable that only knows how to answer one column, as a notebook's
+        own function does, is walked column by column and its answers
+        stacked, so the older contract still works.
+        """
+
+        model = self._model()
+        if model is None:
+            return None
+
+        def call(columns: Mapping[str, Any]) -> dict[str, np.ndarray]:
+            if hasattr(model, "batched"):
+                answer = dict(model.batched(columns))
+            else:
+                one = [dict(model({name: value[index] if np.ndim(value) else value
+                                   for name, value in columns.items()}))
+                       for index in range(ncol)]
+                answer = {name: np.stack([piece[name] for piece in one])
+                          for name in one[0]}
+            missing = [name for name in RETURNED if name not in answer]
+            if missing:
+                raise PhysicsError(
+                    f"the model in {FUNCTION}'s place returned {len(answer)} of "
+                    f"{len(RETURNED)} values; missing {missing}")
+            return answer
+
+        return call
 
     def _function(self):
         if self._standalone is None:
@@ -650,12 +697,16 @@ class Macrophysics(NativeStage):
                    "ai_st_star": pbv["AIST"], "ql_st_star": pbv["QLST"], "qi_st_star": pbv["QIST"],
                    "t0": s["t_inout"], "qv0": s["qv_inout"], "ql0": s["ql_inout"], "qi0": s["qi_inout"],
                    "nl0": s["nl_inout"], "ni0": s["ni_inout"]}
-        # The stage's own kernel, on every live column of this chunk.  The
-        # routine has no cross-column term -- no reduction over i, no i+/-1 --
-        # so a column at a time is what the chunk call computed anyway.
-        st.column_kernel(
+        # The stage's own kernel, over the chunk's live columns at once --
+        # the call the Fortran driver made.  The routine has no cross-column
+        # term (no reduction over i, no i+/-1), so this and a column at a
+        # time compute the same thing; the chunk call is the one that leaves
+        # the routine's own `do i = 1, ncol` loops with something to
+        # vectorise, and it hands a model the columns as one batch rather
+        # than asking it ncol times for one.
+        st.swappable_kernel(
             FUNCTION, inputs, outputs=outputs, ncol=ncol, lchnk=lchnk, dt=dt,
-            call=self.mmacro_pcond, structural=STRUCTURAL, updated=UPDATED)
+            kernel=self._chunk_model(ncol))
 #: The stage's place in the workflow, for callers that ask before constructing one.
 STAGE = Macrophysics.STAGE
 FIRST_HALF = Macrophysics.FIRST_HALF
