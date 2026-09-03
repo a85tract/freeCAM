@@ -79,6 +79,14 @@ class SurrogateKernel:
         # core would thrash the node and buy nothing: a column is one small
         # matrix multiply.
         torch.set_num_threads(1)
+        # The inter-op pool defaults to one thread per core -- 128 on a
+        # Derecho node, per rank, with 128 ranks on the node.  Nothing here
+        # forks work across ops, so one is right; it can only be set before
+        # the pool exists, hence the guard for a second kernel in a process.
+        try:
+            torch.set_num_interop_threads(1)
+        except RuntimeError:
+            pass
         self.torch = torch
         self.x_names = list(payload["x_names"])
         self.y_names = list(payload["y_names"])

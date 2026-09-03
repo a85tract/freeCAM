@@ -102,7 +102,9 @@ class StageProfile:
         import os
 
         directory.mkdir(parents=True, exist_ok=True)
-        self.path = directory / f"{prefix}_profile.rank-{os.getpid()}.json"
+        # host and pid: a pid alone repeats across the nodes of one job, and
+        # two ranks writing one file lost 162 of 512 profiles in job 7301886
+        self.path = directory / f"{prefix}_profile.rank-{os.uname().nodename}-{os.getpid()}.json"
         self.seconds: dict[str, float] = {}
         self.calls: dict[str, int] = {}
 
@@ -335,7 +337,8 @@ class StageRuntime:
         self.trace = None
         if directory:
             Path(directory).mkdir(parents=True, exist_ok=True)
-            self.trace = open(Path(directory) / f"{stage.PREFIX}_trace.rank-{os.getpid()}.jsonl", "a")
+            self.trace = open(Path(directory) / (
+                f"{stage.PREFIX}_trace.rank-{os.uname().nodename}-{os.getpid()}.jsonl"), "a")
         directory = os.environ.get(stage.PROFILE_ENV)
         self.profile = StageProfile(Path(directory), stage.PREFIX) if directory else _NoProfile()
         library = native.library
