@@ -374,82 +374,79 @@ class NativeCAMDevice:
     def _adapter_for(self, operation: str) -> PointerTableAdapter:
         """The adapter that serves ``operation``, loading its library on first use."""
 
-        try:
-            if operation in self._leaf_operation_names:
-                if not self._native_initialized:
+        if operation in self._leaf_operation_names:
+            if not self._native_initialized:
+                raise NativeCAMError(
+                    "cam_run1 leaf actions require an initialized CAM model"
+                )
+            if self._leaf_abi is None:
+                if (
+                    self._leaf_library_path is None
+                    or not self._leaf_library_path.is_file()
+                ):
                     raise NativeCAMError(
-                        "cam_run1 leaf actions require an initialized CAM model"
+                        f"native CAM leaf library does not exist: {self._leaf_library_path}"
                     )
-                if self._leaf_abi is None:
-                    if (
-                        self._leaf_library_path is None
-                        or not self._leaf_library_path.is_file()
-                    ):
-                        raise NativeCAMError(
-                            f"native CAM leaf library does not exist: {self._leaf_library_path}"
-                        )
-                    # Promote the already-loaded CAM image only now, after
-                    # initialization and only for an explicitly requested
-                    # leaf action.  Default BFB runs retain RTLD_LOCAL for
-                    # their entire lifecycle.
+                # Promote the already-loaded CAM image only now, after
+                # initialization and only for an explicitly requested
+                # leaf action.  Default BFB runs retain RTLD_LOCAL for
+                # their entire lifecycle.
+                self._global_library = ctypes.CDLL(
+                    str(self.library_path),
+                    mode=os.RTLD_NOLOAD | ctypes.RTLD_GLOBAL,
+                )
+                self._leaf_library = ctypes.CDLL(
+                    str(self._leaf_library_path), mode=ctypes.RTLD_LOCAL
+                )
+                leaf_operations = {
+                    name: self._operations[name]
+                    for name in self._leaf_operation_names
+                }
+                self._leaf_abi = PointerTableAdapter(
+                    self._leaf_library,
+                    leaf_operations,
+                    library_name=str(self._leaf_library_path),
+                )
+            return self._leaf_abi
+        elif operation in self._promoted_kernel_operation_names:
+            if not self._native_initialized:
+                raise NativeCAMError(
+                    "promoted CAM kernels require an initialized CAM model"
+                )
+            if self._promoted_kernel_abi is None:
+                if (
+                    self._promoted_kernel_library_path is None
+                    or not self._promoted_kernel_library_path.is_file()
+                ):
+                    raise NativeCAMError(
+                        "native CAM promoted-kernel library does not exist: "
+                        f"{self._promoted_kernel_library_path}"
+                    )
+                # Keep the default CAM lifecycle on the exact BFB main
+                # image.  Only an explicit promoted-process call exposes
+                # that image's original module procedures and loads the
+                # generated adapter add-on.
+                if self._global_library is None:
                     self._global_library = ctypes.CDLL(
                         str(self.library_path),
                         mode=os.RTLD_NOLOAD | ctypes.RTLD_GLOBAL,
                     )
-                    self._leaf_library = ctypes.CDLL(
-                        str(self._leaf_library_path), mode=ctypes.RTLD_LOCAL
-                    )
-                    leaf_operations = {
-                        name: self._operations[name]
-                        for name in self._leaf_operation_names
-                    }
-                    self._leaf_abi = PointerTableAdapter(
-                        self._leaf_library,
-                        leaf_operations,
-                        library_name=str(self._leaf_library_path),
-                    )
-                self._leaf_abi.call(operation, pool, fcomm=fcomm)
-            elif operation in self._promoted_kernel_operation_names:
-                if not self._native_initialized:
-                    raise NativeCAMError(
-                        "promoted CAM kernels require an initialized CAM model"
-                    )
-                if self._promoted_kernel_abi is None:
-                    if (
-                        self._promoted_kernel_library_path is None
-                        or not self._promoted_kernel_library_path.is_file()
-                    ):
-                        raise NativeCAMError(
-                            "native CAM promoted-kernel library does not exist: "
-                            f"{self._promoted_kernel_library_path}"
-                        )
-                    # Keep the default CAM lifecycle on the exact BFB main
-                    # image.  Only an explicit promoted-process call exposes
-                    # that image's original module procedures and loads the
-                    # generated adapter add-on.
-                    if self._global_library is None:
-                        self._global_library = ctypes.CDLL(
-                            str(self.library_path),
-                            mode=os.RTLD_NOLOAD | ctypes.RTLD_GLOBAL,
-                        )
-                    self._promoted_kernel_library = ctypes.CDLL(
-                        str(self._promoted_kernel_library_path),
-                        mode=ctypes.RTLD_LOCAL,
-                    )
-                    promoted_operations = {
-                        name: self._operations[name]
-                        for name in self._promoted_kernel_operation_names
-                    }
-                    self._promoted_kernel_abi = PointerTableAdapter(
-                        self._promoted_kernel_library,
-                        promoted_operations,
-                        library_name=str(self._promoted_kernel_library_path),
-                    )
-                self._promoted_kernel_abi.call(operation, pool, fcomm=fcomm)
-            else:
-                self._abi.call(operation, pool, fcomm=fcomm)
-        except FortranAdapterError as exc:
-            raise NativeCAMError(str(exc)) from exc
+                self._promoted_kernel_library = ctypes.CDLL(
+                    str(self._promoted_kernel_library_path),
+                    mode=ctypes.RTLD_LOCAL,
+                )
+                promoted_operations = {
+                    name: self._operations[name]
+                    for name in self._promoted_kernel_operation_names
+                }
+                self._promoted_kernel_abi = PointerTableAdapter(
+                    self._promoted_kernel_library,
+                    promoted_operations,
+                    library_name=str(self._promoted_kernel_library_path),
+                )
+            return self._promoted_kernel_abi
+        else:
+            return self._abi
 
     def prepare_state(
         self,
