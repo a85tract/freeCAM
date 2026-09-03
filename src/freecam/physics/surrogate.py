@@ -21,7 +21,7 @@ under the routine's own argument names, which is what the reviewed
 standalone boundary is handed; what it must answer is every value the
 routine answers, under the same names.
 
-Two kinds of trained model load through the same class.  The first is one
+Three kinds of trained model load through the same class.  The first is one
 regression head over linearly scaled targets.  The second is *gated*: three
 heads per target -- does this term fire, which way, and how big in decades
 above its firing threshold -- which is what it takes to answer "nothing
@@ -30,6 +30,18 @@ time.  A gated model also reads the nine tunable parameters as features, so
 it is a function of the namelist rather than of one point in it; a column
 arrives without a namelist, so the run's values are supplied by the caller
 or taken from the case defaults recorded at training.
+
+The third is *compiled*: the exporter serialised the trained module itself
+as TorchScript instead of a state dict, so its architecture travels with
+it and this class never has to know what shape it has inside.  That is how
+a model whose layers this file could not rebuild -- a transformer over the
+column's levels, say -- arrives without teaching this file about tokens:
+it is handed the same flat feature vector as the others and slices out
+whatever it wants.  Such a checkpoint carries its own normalisation
+(standardised features, clipped; standardised targets) rather than the
+arcsinh scaling the two rebuilt kinds use, which is why the transform
+lives behind :meth:`SurrogateKernel._encode` and
+:meth:`SurrogateKernel._decode`.
 
 This module deliberately holds no science: it assembles the feature
 vector in the order the training set recorded, runs the network, and
@@ -71,7 +83,6 @@ class SurrogateKernel:
         self.y_names = list(payload["y_names"])
         self.x_arguments = list(payload["x_arguments"])
         self.y_arguments = list(payload["y_arguments"])
-        self.x_scale = np.asarray(payload["x_scale"])
         self.delta_columns = dict(payload["delta_columns"])
         self.delta_inputs = dict(payload["delta_inputs"])
         self.levels = int(payload["levels"])
@@ -85,9 +96,13 @@ class SurrogateKernel:
         self.identities = identities_for(str(self.function or ""))
         self.non_negative = NON_NEGATIVE.get(str(self.function or ""), ())
 
-        if self.kind == "gated":
+        if self.kind == "compiled":
+            self._load_compiled(payload, torch)
+        elif self.kind == "gated":
+            self.x_scale = np.asarray(payload["x_scale"])
             self._load_gated(payload, nn)
         else:
+            self.x_scale = np.asarray(payload["x_scale"])
             self.y_scale = np.asarray(payload["y_scale"])
             layers: list[Any] = []
             size = int(payload["features"])
@@ -130,6 +145,57 @@ class SurrogateKernel:
             else:
                 layout[body] = {"column": index}
         return layout
+
+    def _load_compiled(self, payload: Mapping[str, Any], torch) -> None:
+        """A module the exporter compiled to TorchScript, with its own scaling.
+
+        Nothing is rebuilt: the archive the payload carries is the trained
+        module, so whatever it is inside -- a transformer over the column's
+        thirty levels, in the checkpoint this was written for -- arrives
+        intact and takes the same flat feature vector as the rebuilt kinds,
+        slicing its own profile, scalar and parameter columns out of it.
+
+        Its normalisation is its own: features standardised and clipped to
+        keep a floored standard deviation from turning a quiet channel into
+        a huge input, targets standardised.  Undoing the target transform is
+        an affine move, as it is for the linear kind -- never a sinh, which
+        would make the network's error an exponential one.
+        """
+
+        import io
+
+        self.x_mean = np.asarray(payload["x_mean"], dtype=np.float64)
+        self.x_std = np.asarray(payload["x_std"], dtype=np.float64)
+        clip = payload.get("x_clip")
+        self.x_clip = None if clip is None else float(clip)
+        self.y_mean = np.asarray(payload["y_mean"], dtype=np.float64)
+        self.y_std = np.asarray(payload["y_std"], dtype=np.float64)
+        module = torch.jit.load(io.BytesIO(payload["torchscript"]), map_location="cpu")
+        module.eval()
+        self.net = module
+
+    def _encode(self, rows: np.ndarray):
+        """Feature rows in the units the network was trained on."""
+
+        if self.kind == "compiled":
+            scaled = (rows - self.x_mean) / self.x_std
+            if self.x_clip is not None:
+                scaled = np.clip(scaled, -self.x_clip, self.x_clip)
+        else:
+            scaled = np.arcsinh(rows / self.x_scale)
+        return self.torch.from_numpy(scaled.astype(np.float32))
+
+    def _decode(self, answer: Any) -> np.ndarray:
+        """The network's answer in the routine's own units.
+
+        Both scalings are affine, so undoing one is a multiply and an add
+        over the last axis -- one column or a batch of them alike.
+        """
+
+        values = np.asarray(answer, dtype=np.float64)
+        if self.kind == "compiled":
+            return values * self.y_std + self.y_mean
+        return values * self.y_scale
 
     def _load_gated(self, payload: Mapping[str, Any], nn) -> None:
         import torch
@@ -190,16 +256,12 @@ class SurrogateKernel:
     def __call__(self, column: Mapping[str, Any],
                  parameters: Mapping[str, Any] | None = None) -> dict[str, np.ndarray]:
         row = self.features(column, parameters)
-        x = self.torch.from_numpy(np.arcsinh(row / self.x_scale).astype(np.float32)[None, :])
+        x = self._encode(row[None, :])
         with self.torch.no_grad():
             if self.kind == "gated":
                 values = self._gated_answer(x)
             else:
-                answer = self.net(x).numpy()[0]
-                # the targets were scaled linearly, so undoing it is a
-                # multiply: no sinh, which would turn the network's error into
-                # an exponential one
-                values = answer.astype(np.float64) * self.y_scale
+                values = self._decode(self.net(x).numpy()[0])
 
         out: dict[str, np.ndarray] = {}
         for argument, where in self._y_slices.items():
@@ -252,7 +314,7 @@ class SurrogateKernel:
         """
 
         rows = np.asarray(rows, dtype=np.float64)
-        x = self.torch.from_numpy(np.arcsinh(rows / self.x_scale).astype(np.float32))
+        x = self._encode(rows)
         with self.torch.no_grad():
             if self.kind == "gated":
                 hidden = self.net.trunk(x)
@@ -264,7 +326,7 @@ class SurrogateKernel:
                 size = np.power(10.0, excess + self.floor[None, :])
                 values = np.where(fires, np.where(positive, size, -size), 0.0)
             else:
-                values = self.net(x).numpy().astype(np.float64) * self.y_scale[None, :]
+                values = self._decode(self.net(x).numpy())
         for argument, where in self._y_slices.items():
             if argument in self.delta_columns:
                 values[:, where] += rows[:, self._x_slices[argument]]
