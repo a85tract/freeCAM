@@ -170,9 +170,32 @@ class SurrogateKernel:
         self.x_clip = None if clip is None else float(clip)
         self.y_mean = np.asarray(payload["y_mean"], dtype=np.float64)
         self.y_std = np.asarray(payload["y_std"], dtype=np.float64)
+        # A soft-gated module answers a pair -- the value and, per target, a
+        # logit for whether the term fires at all.  The threshold is on the
+        # probability, so the shipped 0.5 is the logit's own sign.
+        self.gate_threshold = float(payload.get("gate_threshold", 0.5))
         module = torch.jit.load(io.BytesIO(payload["torchscript"]), map_location="cpu")
         module.eval()
         self.net = module
+
+    def _net_answer(self, x) -> np.ndarray:
+        """The network's answers for encoded rows, in the routine's units.
+
+        A gated module answers a target it says does not fire as **exactly**
+        zero, which is what the routine answers most of the time and what a
+        regression head alone cannot say.  Substituting the module's
+        ``zero_norm`` before undoing the target scaling would be the other
+        way to write this, and it is worse: it is zero only to float32
+        rounding, and for condensate the residue lands negative -- the
+        quantity CAM's own bounds check stops a run over.
+        """
+
+        answer = self.net(x)
+        if not isinstance(answer, tuple):
+            return self._decode(answer.numpy())
+        value, gate = answer
+        fires = self.torch.sigmoid(gate).numpy() >= self.gate_threshold
+        return np.where(fires, self._decode(value.numpy()), 0.0)
 
     def _encode(self, rows: np.ndarray):
         """Feature rows in the units the network was trained on."""
@@ -261,7 +284,7 @@ class SurrogateKernel:
             if self.kind == "gated":
                 values = self._gated_answer(x)
             else:
-                values = self._decode(self.net(x).numpy()[0])
+                values = self._net_answer(x)[0]
 
         out: dict[str, np.ndarray] = {}
         for argument, where in self._y_slices.items():
@@ -326,7 +349,7 @@ class SurrogateKernel:
                 size = np.power(10.0, excess + self.floor[None, :])
                 values = np.where(fires, np.where(positive, size, -size), 0.0)
             else:
-                values = self._decode(self.net(x).numpy())
+                values = self._net_answer(x)
         for argument, where in self._y_slices.items():
             if argument in self.delta_columns:
                 values[:, where] += rows[:, self._x_slices[argument]]

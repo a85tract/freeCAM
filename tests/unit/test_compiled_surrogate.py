@@ -32,6 +32,7 @@ from freecam.physics.surrogate import SurrogateKernel, load_surrogate  # noqa: E
 #: trained model rather than source, so it is not committed; the tests that
 #: need it skip without it.
 TRANSFORMER = REPO / "mmacro_pcond_transformer.pt"
+SOFT_GATED = REPO / "mmacro_pcond_soft_gated.pt"
 CAPTURE = REPO / "examples/mmacro_pcond_training.nc"
 
 
@@ -50,6 +51,23 @@ class _Doubler(torch.nn.Module):
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         total = x.sum(dim=1, keepdim=True)
         return total.expand(x.shape[0], self.targets)
+
+
+class _GatedDoubler(torch.nn.Module):
+    """Answers the same value everywhere, with a per-target gate logit.
+
+    ``gates`` are the logits to answer, so a test can say which targets
+    fire and which do not.
+    """
+
+    def __init__(self, gates: list[float]) -> None:
+        super().__init__()
+        self.register_buffer("gates", torch.tensor(gates))
+
+    def forward(self, x: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+        total = x.sum(dim=1, keepdim=True)
+        value = total.expand(x.shape[0], self.gates.shape[0])
+        return value, self.gates.expand(x.shape[0], self.gates.shape[0])
 
 
 def _compiled_payload(*, x_mean, x_std, y_mean, y_std, clip=None) -> dict:
@@ -150,15 +168,81 @@ def test_the_rebuilt_kinds_still_use_their_own_scaling() -> None:
     assert answer == pytest.approx(float(np.arcsinh(1.5)) * 10.0, rel=1e-6)
 
 
+def _gated_payload(*, gates, y_mean, y_std, threshold=None) -> dict:
+    """A compiled payload whose module answers (value, gate logit)."""
+
+    payload = _compiled_payload(
+        x_mean=[0.0], x_std=[1.0], y_mean=y_mean, y_std=y_std)
+    module = torch.jit.script(_GatedDoubler(list(gates)))
+    buffer = io.BytesIO()
+    torch.jit.save(module, buffer)
+    payload["torchscript"] = buffer.getvalue()
+    payload["y_names"] = [f"b[{k}]" for k in range(len(gates))]
+    payload["levels"] = len(gates)
+    if threshold is not None:
+        payload["gate_threshold"] = threshold
+    return payload
+
+
+def test_a_target_whose_gate_does_not_fire_is_answered_as_exactly_zero() -> None:
+    """Not a small number -- zero.
+
+    The routine's answers are exactly zero most of the time, and CAM's own
+    bounds check stops a run over negative condensate, so a residue of the
+    wrong sign is not a rounding detail.  Substituting the module's
+    zero_norm before undoing the target scaling would leave one; this does
+    not.
+    """
+
+    kernel = SurrogateKernel(_gated_payload(
+        gates=[5.0, -5.0], y_mean=[100.0, 100.0], y_std=[3.0, 3.0]))
+    answer = np.asarray(kernel({"a": np.array([2.0])})["b"], dtype=np.float64)
+
+    assert answer[0] == pytest.approx(2.0 * 3.0 + 100.0, rel=1e-6)   # fires
+    assert answer[1] == 0.0                                          # exactly
+    assert not np.signbit(answer[1])                                 # not -0.0
+
+
+def test_the_gate_threshold_is_read_from_the_checkpoint() -> None:
+    """A logit of 1.0 is a probability of 0.73: it fires at 0.5, not at 0.9."""
+
+    fires = SurrogateKernel(_gated_payload(
+        gates=[1.0], y_mean=[0.0], y_std=[1.0], threshold=0.5))
+    holds = SurrogateKernel(_gated_payload(
+        gates=[1.0], y_mean=[0.0], y_std=[1.0], threshold=0.9))
+
+    assert float(np.asarray(fires({"a": np.array([7.0])})["b"])) == pytest.approx(7.0)
+    assert float(np.asarray(holds({"a": np.array([7.0])})["b"])) == 0.0
+    assert fires.gate_threshold == 0.5 and holds.gate_threshold == 0.9
+
+
+def test_a_gated_batch_answers_as_the_single_column_does() -> None:
+    kernel = SurrogateKernel(_gated_payload(
+        gates=[3.0, -3.0], y_mean=[1.0, 1.0], y_std=[2.0, 2.0]))
+    rows = np.array([[4.0], [-1.0]])
+    batched = kernel.predict_rows(rows)
+    one = np.stack([np.asarray(kernel({"a": row})["b"]).reshape(-1) for row in rows])
+
+    assert np.array_equal(batched, one)
+    assert np.all(batched[:, 1] == 0.0)          # the closed gate, every row
+
+
 # -- the real checkpoint, when this checkout has it ----------------------------
 
 
-@pytest.mark.skipif(not TRANSFORMER.is_file(),
-                    reason=f"{TRANSFORMER.name} is not in this checkout")
-def test_the_exported_transformer_answers_every_value_the_stage_demands() -> None:
+#: Every exported checkpoint this checkout has, transformer and soft-gated
+#: alike: both are kind="compiled" and both must answer the same contract.
+EXPORTED = tuple(path for path in (TRANSFORMER, SOFT_GATED) if path.is_file())
+
+
+@pytest.mark.skipif(not EXPORTED, reason="no exported checkpoint in this checkout")
+@pytest.mark.parametrize("checkpoint", EXPORTED, ids=lambda p: p.stem)
+def test_an_exported_checkpoint_answers_every_value_the_stage_demands(
+    checkpoint: Path,
+) -> None:
     from freecam.physics.macrophysics import RETURNED
 
-    kernel = load_surrogate(TRANSFORMER)
+    kernel = load_surrogate(checkpoint)
     assert kernel.kind == "compiled"
     assert kernel.function == "mmacro_pcond"
     # the flat feature vector is the contract; the transformer slices its own
@@ -179,15 +263,18 @@ def test_the_exported_transformer_answers_every_value_the_stage_demands() -> Non
         assert np.all(np.isfinite(value)), f"{name} is not finite"
 
 
-@pytest.mark.skipif(not (TRANSFORMER.is_file() and CAPTURE.is_file()),
-                    reason="the transformer or the captured columns are absent")
-def test_the_transformer_runs_on_columns_the_routine_itself_answered() -> None:
+@pytest.mark.skipif(not (EXPORTED and CAPTURE.is_file()),
+                    reason="a checkpoint or the captured columns are absent")
+@pytest.mark.parametrize("checkpoint", EXPORTED, ids=lambda p: p.stem)
+def test_an_exported_checkpoint_runs_on_columns_the_routine_answered(
+    checkpoint: Path,
+) -> None:
     """Real captured inputs, not random ones: the shape the stage hands it."""
 
     netCDF4 = pytest.importorskip("netCDF4")
     from freecam.physics.macrophysics import RETURNED
 
-    kernel = load_surrogate(TRANSFORMER)
+    kernel = load_surrogate(checkpoint)
     dataset = netCDF4.Dataset(CAPTURE)
     inputs = {name[len("input__"):]: variable
               for name, variable in dataset.variables.items()
