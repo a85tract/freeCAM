@@ -524,6 +524,10 @@ def test_workflow_insert_installs_physics_object_with_declared_placement() -> No
         "parameters": None,
         "enabled": True,
         "transactional": True,
+        # an ordinary notebook process reads and writes StatePool fields
+        # inside the snapshot, so it is neither native nor unsafe
+        "native": False,
+        "unsafe": False,
     }
 
     session._status["step_plan"][1]["enabled"] = True
@@ -878,3 +882,69 @@ def test_workflow_list_operations_preserve_required_control_actions() -> None:
     ]
     with pytest.raises(ValueError, match="cannot be popped"):
         workflow.debug.pop(0)
+
+
+class _HandleSession(FakeSession):
+    """A session that serves live process handles, as the real one does."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.calls: list[tuple[str, str, str]] = []
+
+    def workflow_action(self, name: str, *, phase: str, kind: str):
+        calls = self.calls
+
+        class Handle:
+            def __init__(self) -> None:
+                self.name, self.phase = name, phase
+
+            def enable(self):
+                calls.append(("enable", name, phase))
+                return {"enabled": True}
+
+            def disable(self):
+                calls.append(("disable", name, phase))
+                return {"enabled": False}
+
+        return Handle()
+
+
+def test_naming_a_process_and_telling_it_to_stop_are_one_path() -> None:
+    """``workflow.process(name).disable()`` is ``workflow.disable(name)``.
+
+    The container's verb resolves the name and calls the handle's, so there
+    is one implementation of stopping a process and two ways to spell it --
+    the list-like form for code that is reordering a step, the handle form
+    for code that already holds one process.
+    """
+
+    session = _HandleSession()
+    workflow = PICAMWorkflowView(session)
+
+    workflow.process("dry_adjustment").disable()
+    workflow.disable("dry_adjustment")
+
+    assert session.calls == [("disable", "dry_adjustment", "cam_run1")] * 2
+
+
+def test_the_lookup_is_the_subscript_and_refuses_a_name_it_cannot_resolve() -> None:
+    workflow = PICAMWorkflowView(FakeSession())
+
+    assert workflow.process("dry_adjustment") == workflow["dry_adjustment"]
+    with pytest.raises(KeyError, match="no_such_process"):
+        workflow.process("no_such_process")
+
+
+def test_every_way_of_reaching_a_process_spells_the_lookup_the_same() -> None:
+    """One word for "give me this process", whichever object is asked.
+
+    The live workflow, the flat physics catalogue and the order declared
+    before MPI starts are three different objects at three different times;
+    a notebook should not have to remember which of them accepts the word.
+    """
+
+    from freecam.pi_cam.facade import WorkflowTemplate
+    from freecam.pi_cam.session import _SessionPhysicsCollection
+
+    for owner in (PICAMWorkflowView, WorkflowTemplate, _SessionPhysicsCollection):
+        assert callable(getattr(owner, "process", None)), owner.__name__

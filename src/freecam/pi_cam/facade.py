@@ -372,6 +372,16 @@ class Physics:
             parameters=({"properties": properties} if properties else None),
             enabled=self.enabled,
             transactional=self.transactional,
+            # A class that declares itself native is asking for
+            # ``context.native``, and one that declares itself
+            # non-transactional has already said the thing ``unsafe`` exists
+            # to make a caller say: a process outside the snapshot cannot be
+            # rolled back.  Both were declared on the class and neither
+            # reached the installer, so a transliterated stage -- native and
+            # non-transactional, owning no StatePool field -- could be
+            # written as a Physics subclass but not run as one.
+            native=self.native,
+            unsafe=not self.transactional,
         )
         _LIVE_PHYSICS[self] = (session, process_name)
         return handle
