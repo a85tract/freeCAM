@@ -73,6 +73,7 @@ atmosphere inside the coupled loop — against freeCAM's `advance_seconds`.
 | freeCAM + Python stage, 2026-08-27 (`7256752`) | 565.31 s | **+49.0%** (+185.9 s) | **+40.4%** (+162.8 s) |
 | … after round 1, 2026-09-03 (`7303107`) | 521.43 s | +37.4% (+141.9 s) | +29.5% (+118.9 s) |
 | … after round 2, 2026-09-03 (`7303342`) | 472.41 s | **+24.5%** (+93.0 s) | **+17.4%** (+69.9 s) |
+| … after round 4, 2026-09-04 (`7304288`) | 475.53 s | +25.3% (+96.1 s) | +18.1% (+73.0 s) |
 
 The stage itself cost **146 ms per step per rank** in the first run, against
 38.9 ms for the Fortran stage it replaces (the `CAM:macro_microphysics`
@@ -89,9 +90,28 @@ before the month was rerun, brought the stage to **100 ms** and then
   storage reused while the image reports the same address and extents, and
   a two-slot profiler region in place of the generator-backed one.
 
-Everything outside the stage is unchanged between the four runs to within
-run-to-run noise (230.4 ms per step in the freeCAM run, 228.1 ms in the last
-Python run).  What remains of the stage's excess — about 50 ms per step — is
+Rounds 3 and 4 (2026-09-04) then let a kernel read its `intent(in)` inputs
+where they live instead of copying them into scratch, reused physics-buffer
+views, local views and surface columns, and -- after the first attempt showed
+why not -- kept the process's own error collective.  The first attempt
+(`638b193`, month `7304103`: +33.4%) taught two things worth recording.
+Binding a kernel to the address of its input storage rebuilt the argument
+tables whenever the storage moved, and the per-chunk state copy moves on
+every call; the rebuilds came in bursts on one rank at a time, invisible in
+any rank's monthly total and fully visible on the step's critical path,
+because the other 511 ranks waited at the next collective.  `BoundCall`
+now points one argument at moved storage instead (`bc09299`).  And
+deferring the stage's error collective to the boundary export saved
+nothing: measured with the same code either way (`7304174`, `7304175`) the
+wait simply appeared at the export, larger, so the immediate collective is
+back (`951ad3f`).  Round 4 lands at the same figure as round 2 -- the stage's
+own work is lower, but the step is set by the slowest rank's stage each
+step, and that jitter (85-98 ms per step per rank over the month) is what
+the collective after the stage waits for.
+
+Everything outside the stage is unchanged between the runs to within
+run-to-run noise (230.4 ms per step in the freeCAM run, 229.4 ms in the
+round-4 run).  What remains of the stage's excess — about 50 ms per step — is
 the count of Python-level operations per chunk: some 3,000 per step per rank
 (entry calls, view constructions, history writes, scratch copies), each a
 few microseconds to a few tens of microseconds, none of them arithmetic.  A
