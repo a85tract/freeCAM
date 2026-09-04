@@ -14,9 +14,9 @@ import re
 from typing import Any, Mapping
 
 import numpy as np
-import yaml
 
 from .errors import PICAMConfigurationError
+from freecam.pi_cam.tables import load_table
 
 
 #: How long a character carrier's string is.  CAM's error channels are
@@ -213,7 +213,7 @@ class DirectKernel:
 
 def load_direct_kernels(path: str | Path) -> tuple[DirectKernel, ...]:
     source = Path(path).resolve()
-    payload = yaml.safe_load(source.read_text())
+    payload = load_table(source)
     if not isinstance(payload, Mapping) or int(payload.get("schema_version", 0)) != 1:
         raise PICAMConfigurationError("direct kernels require schema_version: 1")
     records = payload.get("kernels")

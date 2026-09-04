@@ -27,6 +27,7 @@ from typing import Any, Mapping
 import numpy as np
 
 from .errors import PICAMConfigurationError
+from freecam.pi_cam.tables import load_table
 
 SYMBOL = "pycam_pbuf_field_v1"
 SYMBOL_V2 = "pycam_pbuf_field_v2"
@@ -246,9 +247,7 @@ def load_pbuf_table(path, indices: Mapping[str, int]) -> dict[str, PBufField]:
     pointer it declares for it.  ``indices`` maps the symbol to its value.
     """
 
-    import yaml
-
-    payload = yaml.safe_load(Path(path).read_text())
+    payload = load_table(path)
     missing = [row["symbol"] for row in payload["fields"] if row["symbol"] not in indices]
     if missing:
         raise PICAMConfigurationError(

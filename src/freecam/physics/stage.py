@@ -25,6 +25,7 @@ the calls pass addresses.
 from __future__ import annotations
 
 import ctypes
+from dataclasses import dataclass
 import json
 import os
 from pathlib import Path
@@ -240,6 +241,8 @@ class HostServices:
     def __init__(self, entries: HostEntries, pcnst: int) -> None:
         self.e = entries
         self.pcnst = pcnst
+        # views handed out, by entry and arguments: (address, shape, array)
+        self._views: dict[tuple, tuple[int, tuple[int, ...], np.ndarray]] = {}
 
     def _entry(self, attribute: str):
         """The bound entry, or a refusal naming what the stage did not declare."""
@@ -255,11 +258,27 @@ class HostServices:
     # -- storage -------------------------------------------------------------
 
     def _deref(self, entry, what: str, *arguments, ndims_max: int = 5) -> np.ndarray:
+        """A view of the storage ``entry`` names, the same object while the storage is.
+
+        The image is asked every time -- a physics-buffer field scoped to the
+        step may move between steps -- but when it answers with the address
+        and extents it gave last time, the view built then is handed back
+        instead of a new one.
+        """
+
         pointer = ctypes.c_void_p()
         ndims = ctypes.c_int()
         extents = (ctypes.c_int64 * ndims_max)()
         check(entry(*arguments, ctypes.byref(pointer), ctypes.byref(ndims), extents), what)
-        return as_view(pointer, ndims.value, extents)
+        rank = ndims.value
+        shape = tuple(extents[i] for i in range(rank))
+        key = (id(entry), arguments)
+        cached = self._views.get(key)
+        if cached is not None and cached[0] == pointer.value and cached[1] == shape:
+            return cached[2]
+        view = as_view(pointer, rank, extents)
+        self._views[key] = (pointer.value, shape, view)
+        return view
 
     def view(self, lchnk: int, code: int) -> np.ndarray:
         """A zero-copy view of one component of the stage's held derived types."""
@@ -315,6 +334,17 @@ class Local(Mapping[str, np.ndarray]):
         return len(self._scratch)
 
 
+@dataclass(frozen=True, slots=True)
+class _KernelPlan:
+    """One direct kernel's resolved argument table; see StageRuntime._plan."""
+
+    slots: tuple[tuple[str, np.ndarray], ...]
+    arrays: dict[str, np.ndarray]
+    copy_in_region: str
+    run_region: str
+    copy_out_region: str
+
+
 class StageRuntime:
     """What one stage needs on one rank, built once and kept on the stage.
 
@@ -365,8 +395,9 @@ class StageRuntime:
                 raise PICAMConfigurationError(
                     f"the image's {name} takes {declared}; the descriptors say {described}")
         self.scratch = self._allocate()
-        # direct-kernel calls bound once per (kernel, arrays); see _run
+        # direct-kernel calls bound once per (kernel, arrays); see _run and _plan
         self._bound: dict[tuple, Callable[[], Any]] = {}
+        self._plans: dict[tuple[str, int], _KernelPlan] = {}
         stage.after_runtime(self)
         check(self.entries.set_owner(1), f"pycam_{stage.PREFIX}_set_owner_v1")
 
@@ -444,25 +475,47 @@ class StageRuntime:
         copy is a bit-exact move of doubles; no arithmetic happens here.
         """
 
-        arrays: dict[str, np.ndarray] = {}
-        inverse = {} if fields is None else {field: local for local, field in fields.items()}
-        prefix = f"{self.stage.PREFIX}."
-        with self.profile.region(f"kernel-copy-in:{name}"):
-            for argument in self.descriptors[name].arguments:
-                field = argument.field
-                local = field.removeprefix(prefix) if fields is None else inverse[field]
-                scratch = self.scratch[local] if local in self.scratch else self._scratch_for(argument, local)
+        plan = self._plan(name, fields)
+        with self.profile.region(plan.copy_in_region):
+            for local, scratch in plan.slots:
                 value = inputs.get(local)
                 if value is not None:
                     self._copy_in(scratch, value)
-                arrays[field] = scratch
-        with self.profile.region(f"kernel-run:{name}"):
-            self._run(name, arrays)
-        with self.profile.region(f"kernel-copy-out:{name}"):
+        with self.profile.region(plan.run_region):
+            self._run(name, plan.arrays)
+        with self.profile.region(plan.copy_out_region):
             for local, target in outputs.items():
                 if target is None:
                     continue
                 self._copy_out(target, self.scratch[local], ncol)
+
+    def _plan(self, name: str, fields: Mapping[str, str] | None) -> "_KernelPlan":
+        """The kernel's scratch slots and argument table, resolved once.
+
+        Which scratch array stands behind each argument never changes after
+        the first call -- the scratch is allocated once -- so the walk over
+        the descriptor, the name mapping and the region labels are done here
+        and kept, keyed by the kernel and the identity of its field map.
+        """
+
+        key = (name, id(fields))
+        plan = self._plans.get(key)
+        if plan is not None:
+            return plan
+        inverse = {} if fields is None else {field: local for local, field in fields.items()}
+        prefix = f"{self.stage.PREFIX}."
+        slots: list[tuple[str, np.ndarray]] = []
+        arrays: dict[str, np.ndarray] = {}
+        for argument in self.descriptors[name].arguments:
+            field = argument.field
+            local = field.removeprefix(prefix) if fields is None else inverse[field]
+            scratch = self.scratch[local] if local in self.scratch else self._scratch_for(argument, local)
+            slots.append((local, scratch))
+            arrays[field] = scratch
+        plan = _KernelPlan(tuple(slots), arrays, f"kernel-copy-in:{name}", f"kernel-run:{name}",
+                           f"kernel-copy-out:{name}")
+        self._plans[key] = plan
+        return plan
 
     def _run(self, name: str, arrays: Mapping[str, np.ndarray]) -> None:
         """Run a direct kernel on its scratch, bound once per distinct set of arrays.
@@ -480,7 +533,7 @@ class StageRuntime:
         if binder is None:
             self.native.run_kernel(name, arrays)
             return
-        key = (name, tuple(id(array) for array in arrays.values()))
+        key = (name, id(arrays)) if type(arrays) is dict else (name, tuple(id(a) for a in arrays.values()))
         run = self._bound.get(key)
         if run is None:
             run = self._bound[key] = binder(name, arrays)

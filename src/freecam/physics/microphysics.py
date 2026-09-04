@@ -41,6 +41,7 @@ from .image import module_view
 from .macrophysics import CPAIR, IWTICE, IWTLIQ, IWTVAP, PWTYPE
 from .errors import PhysicsError
 from .result import FunctionResult
+from freecam.pi_cam.tables import load_table
 from .stage import (
     CORE_ENTRIES,
     HostEntries,
@@ -74,9 +75,7 @@ QSMALL, MINCLD = 1.e-18, 0.0001
 
 
 def _load_views() -> tuple[dict[str, int], dict[str, int], dict[str, int]]:
-    import yaml
-
-    payload = yaml.safe_load(VIEWS_TABLE.read_text())
+    payload = load_table(VIEWS_TABLE)
     views = {row["name"]: int(row["code"]) for row in payload["views"]}
     ranks = {row["name"]: int(row["rank"]) for row in payload["views"]}
     inputs = {row["name"]: int(row["code"]) for row in payload["inputs"]}
@@ -538,9 +537,8 @@ class Microphysics(NativeStage):
         return {"pwtype": PWTYPE}
 
     def build_pbuf(self, library: Any, runtime: StageRuntime) -> PBuf:
-        import yaml
 
-        symbols = [row["symbol"] for row in yaml.safe_load(PBUF_TABLE.read_text())["fields"]]
+        symbols = [row["symbol"] for row in load_table(PBUF_TABLE)["fields"]]
         indices = {symbol: int(module_view(library, symbol, "int32", ())) for symbol in symbols}
         buffer = PBuf(library, load_pbuf_table(PBUF_TABLE, indices))
         lchnk, _ = runtime.native.chunks

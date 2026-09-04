@@ -13,10 +13,9 @@ and the global summary is written.
 from __future__ import annotations
 
 import time
-from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Callable, Iterator, Mapping, Sequence
+from typing import Any, Callable, Mapping, Sequence
 
 
 @dataclass(slots=True)
@@ -46,6 +45,27 @@ class _ActiveTimer:
     name: str
     path: tuple[str, ...]
     started: float
+
+
+class _Region:
+    """``with profiler.region(name)``: one timer, entered and left by hand.
+
+    A plain object with two slots rather than a generator-backed context
+    manager: the runtime opens a few hundred regions per step per rank, and
+    the generator machinery cost more than the timing it wrapped.
+    """
+
+    __slots__ = ("_profiler", "_name")
+
+    def __init__(self, profiler: "FreeCAMProfiler", name: str) -> None:
+        self._profiler = profiler
+        self._name = name
+
+    def __enter__(self) -> None:
+        self._profiler.start(self._name)
+
+    def __exit__(self, *exc_info: object) -> None:
+        self._profiler.stop(self._name)
 
 
 class FreeCAMProfiler:
@@ -99,17 +119,19 @@ class FreeCAMProfiler:
         self._total_active = False
 
     def start(self, name: str) -> None:
-        normalized = str(name).strip()
+        normalized = name if type(name) is str and name.strip() == name else str(name).strip()
         if not normalized:
             raise ValueError("timer name cannot be empty")
-        path = (*self.active_path, normalized)
+        stack = self._stack
+        path = (*stack[-1].path, normalized) if stack else (normalized,)
         # Create the record on entry, rather than on exit, so dictionary order
         # is a true pre-order traversal: parent first, followed by its children.
-        self._records.setdefault(path, _TimerRecord())
-        self._stack.append(_ActiveTimer(normalized, path, self._clock()))
+        if path not in self._records:
+            self._records[path] = _TimerRecord()
+        stack.append(_ActiveTimer(normalized, path, self._clock()))
 
     def stop(self, name: str) -> float:
-        normalized = str(name).strip()
+        normalized = name if type(name) is str and name.strip() == name else str(name).strip()
         if not self._stack:
             raise RuntimeError(f"timer {normalized!r} is not active")
         active = self._stack[-1]
@@ -123,13 +145,8 @@ class FreeCAMProfiler:
         self._records[active.path].add(elapsed)
         return elapsed
 
-    @contextmanager
-    def region(self, name: str) -> Iterator[None]:
-        self.start(name)
-        try:
-            yield
-        finally:
-            self.stop(name)
+    def region(self, name: str) -> _Region:
+        return _Region(self, name)
 
     def snapshot(self) -> dict[str, object]:
         return {

@@ -627,3 +627,46 @@ def test_a_kernel_is_bound_once_and_run_on_every_call_when_the_native_can_bind(w
     assert binds == ["widget_step"]
     assert runs == ["widget_step"] * 4
     assert np.all(stage.runtime(native).local["y"] == 2.0)
+
+
+# -- what is resolved once and kept ----------------------------------------------
+
+
+def test_a_view_of_unchanged_storage_is_the_same_object_and_moved_storage_a_new_one(widget) -> None:
+    runtime = Widget().runtime(widget)
+    first = runtime.handles.view(10, 1)
+    assert runtime.handles.view(10, 1) is first          # same address and extents
+    widget.library.views[(10, 1)] = np.zeros((PCOLS, PVER), order="F")   # the image moved it
+    moved = runtime.handles.view(10, 1)
+    assert moved is not first
+    assert moved.ctypes.data == widget.library.views[(10, 1)].ctypes.data
+    assert runtime.handles.view(11, 1) is not first      # another chunk, another view
+
+
+def test_a_kernel_is_planned_and_bound_once_and_then_only_run(widget) -> None:
+    binds: list[str] = []
+    runs: list[str] = []
+
+    def bind_kernel(name, arrays):
+        binds.append(name)
+        target = arrays["widget.y"]
+
+        def run():
+            runs.append(name)
+            target[...] = 2.0
+        return run
+
+    widget.bind_kernel = bind_kernel
+    stage = Widget()
+    stage.tend(None, _Context(widget))
+    stage.tend(None, _Context(widget))
+    assert binds == ["widget_step"]                      # two steps, two chunks each: one bind
+    assert runs == ["widget_step"] * 4
+    assert widget.kernels == []                          # the plain path was never taken
+    runtime = stage.runtime(widget)
+    assert len(runtime._plans) == 1
+    (plan,) = runtime._plans.values()
+    assert [local for local, _ in plan.slots] == [a.field.removeprefix("widget.")
+                                                  for a in runtime.descriptors["widget_step"].arguments]
+    assert all(plan.arrays[f"widget.{local}"] is scratch for local, scratch in plan.slots)
+    assert np.all(runtime.local["y"] == 2.0)

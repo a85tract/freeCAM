@@ -40,6 +40,7 @@ from .image import module_view
 from .macrophysics import FORCING, Macrophysics
 from .microp_aero import MicropAero
 from .microphysics import Microphysics
+from freecam.pi_cam.tables import load_table
 from .stage import (
     CORE_ENTRIES,
     HostEntries,
@@ -339,9 +340,8 @@ class CloudMacroMicrophysics(NativeStage):
         constants.refuse_unsupported()
 
     def build_pbuf(self, library: Any, runtime: StageRuntime) -> PBuf:
-        import yaml
 
-        symbols = [row["symbol"] for row in yaml.safe_load(PBUF_TABLE.read_text())["fields"]]
+        symbols = [row["symbol"] for row in load_table(PBUF_TABLE)["fields"]]
         indices = {symbol: int(module_view(library, symbol, "int32", ())) for symbol in symbols}
         buffer = PBuf(library, load_pbuf_table(PBUF_TABLE, indices))
         lchnk, _ = runtime.native.chunks
