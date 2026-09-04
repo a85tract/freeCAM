@@ -187,28 +187,11 @@ def fortran(array: np.ndarray) -> np.ndarray:
     return np.asfortranarray(array, dtype=np.float64)
 
 
-_POINTERS: dict[int, tuple[np.ndarray, Any]] = {}
-
-
 def pointer_of(array: np.ndarray):
-    """The address of an F-contiguous double array, for a Fortran dummy.
+    """The address of an F-contiguous double array, for a Fortran dummy."""
 
-    The arrays the walks hand to entries are views the runtime keeps -- of
-    CAM's storage or of its own scratch -- so the pointer is kept with the
-    array, by identity, and only made again for an array not seen before.
-    A held array cannot be freed, so its id cannot come round for another;
-    the table is emptied when it grows past what a run's views need.
-    """
-
-    hit = _POINTERS.get(id(array))
-    if hit is not None and hit[0] is array:
-        return hit[1]
     assert array.flags.f_contiguous and array.dtype == np.float64
-    pointer = array.ctypes.data_as(ctypes.POINTER(ctypes.c_double))
-    if len(_POINTERS) >= 65536:
-        _POINTERS.clear()
-    _POINTERS[id(array)] = (array, pointer)
-    return pointer
+    return array.ctypes.data_as(ctypes.POINTER(ctypes.c_double))
 
 
 class HostEntries:
@@ -368,8 +351,9 @@ class _KernelPlan:
     scratch's place -- only an ``intent(in)`` array argument may, since the
     kernel then reads CAM's storage where it would have read a copy of it
     and writes nothing there.  ``bound`` maps the identity of the arrays
-    actually handed over to the call prepared for them, and holds those
-    arrays, so an identity in the table can never be another array's.
+    actually handed over -- the scratch by identity, a caller's array by the
+    address of its data, since the walks slice their views afresh on every
+    call -- to the call prepared for them, and holds those arrays.
     """
 
     slots: tuple[tuple[str, np.ndarray, bool], ...]
@@ -541,7 +525,10 @@ class StageRuntime:
                     self._copy_in(scratch, value)
                     handed.append(scratch)
         with self.profile.region(plan.run_region):
-            key = tuple(id(array) for array in handed)
+            # keyed by address for a caller's array -- the walks slice their
+            # views afresh each call -- and by identity for the scratch
+            key = tuple(id(array) if array is slot[1] else array.ctypes.data
+                        for array, slot in zip(handed, plan.slots))
             hit = plan.bound.get(key)
             run = None if hit is None else hit[0]
             if hit is None:

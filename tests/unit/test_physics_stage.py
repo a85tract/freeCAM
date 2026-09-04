@@ -743,14 +743,18 @@ def test_local_hands_back_the_same_view_while_the_scratch_is_the_same(widget) ->
     assert runtime.local["x"].base is runtime.scratch["x"]
 
 
-def test_pointer_of_is_kept_per_array_and_points_at_it() -> None:
-    from freecam.physics.stage import pointer_of
+def test_a_fresh_slice_of_the_same_storage_reuses_the_binding(widget) -> None:
+    """The walks slice their views on every call; the same memory is the same binding."""
 
-    a = np.zeros((3, 2), order="F")
-    p = pointer_of(a)
-    assert pointer_of(a) is p
-    assert ctypes.cast(p, ctypes.c_void_p).value == a.ctypes.data
-    assert pointer_of(np.zeros((3, 2), order="F")) is not p
+    binds: list[int] = []
+    widget.bind_kernel = lambda name, arrays: (binds.append(arrays["widget.x"].ctypes.data), lambda: None)[1]
+    runtime = Widget().runtime(widget)
+    cube = np.zeros((PCOLS, PVER, 3), order="F")
+    for _ in range(5):
+        runtime.kernel_on_chunk("widget_step", {"x": cube[:, :, 1], "ncol": np.int32(6)}, outputs={})
+    assert binds == [cube[:, :, 1].ctypes.data]              # five new view objects, one binding
+    runtime.kernel_on_chunk("widget_step", {"x": cube[:, :, 2], "ncol": np.int32(6)}, outputs={})
+    assert len(binds) == 2                                    # other memory, another binding
 
 
 def test_a_kernel_whose_callers_always_hand_new_arrays_goes_back_to_copying(widget) -> None:
