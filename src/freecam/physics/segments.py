@@ -117,6 +117,20 @@ class KernelFrame:
         return tuple(written)
 
 
+class OriginalKernel:
+    """Put in a kernel slot: the original Fortran kernel, but called from Python.
+
+    A test's replacement.  The stage runs segmented -- the runner pauses at
+    the kernel, hands Python the frame -- and Python answers with the
+    original direct kernel run on the frame's own values.  Bit-for-bit
+    against the whole stage is then the proof that the pause, the frame and
+    the write-back are right, since the arithmetic is the same routine.
+    """
+
+    def __repr__(self) -> str:
+        return "OriginalKernel()"
+
+
 class SegmentRunner(Protocol):
     """What the image (or a fake) offers for one stage.
 
@@ -246,5 +260,5 @@ class SegmentedStage:
             self.context = None
 
 
-__all__ = ["FrameArgument", "KernelFrame", "SegmentCounters", "SegmentEvent", "SegmentRunner",
-           "SegmentedStage"]
+__all__ = ["FrameArgument", "KernelFrame", "OriginalKernel", "SegmentCounters", "SegmentEvent",
+           "SegmentRunner", "SegmentedStage"]

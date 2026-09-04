@@ -38,7 +38,7 @@ from ..pi_cam.facade import Physics
 from ..pi_cam.kernel_codegen import load_direct_kernels
 from .capture import lane_sha256
 from .errors import PhysicsError
-from .segments import SegmentedStage
+from .segments import OriginalKernel, SegmentedStage
 
 REPO = Path(__file__).resolve().parents[3]
 
@@ -1091,11 +1091,68 @@ class NativeStage:
                     f"the image offers no segment runner for {self.STAGE!r}; segmented "
                     f"execution is not built for it yet")
             segmented = self._segmented = SegmentedStage(self.STAGE, runner)
-        segmented.run(self.kernels)
+        kernels = {name: (self._original_through_python(native, name) if isinstance(kernel, OriginalKernel)
+                          else kernel) for name, kernel in self.kernels.items()}
+        segmented.run(kernels)
         counters = segmented.counters
         self.execution.native_segment_calls = counters.starts + counters.resumes
         self.execution.python_model_calls = counters.model_calls
         self.execution.segment_pauses = counters.pauses
+
+    def _original_through_python(self, native: Any, name: str) -> Callable[[Mapping[str, Any]], dict]:
+        """The original direct kernel, as a model: the frame's live lanes in, its outputs out.
+
+        The kernel takes chunk-shaped arrays with a trailing chunk axis; the
+        frame hands live lanes.  Each call pads the lanes into fresh chunk
+        arrays, runs the kernel the way the walk's scratch path does, and
+        returns the live lanes of every argument the kernel writes.
+        """
+
+        descriptors = {k.name: k for k in load_direct_kernels(self.DESCRIPTORS)}
+        try:
+            kernel = descriptors[name]
+        except KeyError as error:
+            raise PhysicsError(f"{type(self).__name__} has no direct kernel {name!r}") from error
+        runtime = self.runtime(native)
+        pcols = int(runtime.pcols)
+        prefix = f"{self.PREFIX}."
+
+        def run(batch: Mapping[str, Any]) -> dict[str, np.ndarray]:
+            arrays: dict[str, np.ndarray] = {}
+            written: list[tuple[str, np.ndarray]] = []
+            for argument in kernel.arguments:
+                local = argument.field.removeprefix(prefix)
+                value = np.asarray(batch[local]) if local in batch else None
+                if argument.rank <= 1 and (value is None or value.ndim == 0):
+                    array = np.zeros((1,), dtype=argument.dtype, order="F")
+                    if value is not None:
+                        array[0] = value
+                else:
+                    if value is not None:
+                        ncol = value.shape[0]
+                        shape = (pcols, *value.shape[1:], 1)
+                    else:
+                        shape = (pcols, *self._lane_shape(runtime, argument), 1)
+                    array = np.zeros(shape, dtype=argument.dtype, order="F")
+                    if value is not None:
+                        array[:ncol, ..., 0] = value
+                arrays[argument.field] = array
+                if argument.intent in ("out", "inout"):
+                    written.append((local, array))
+            native.run_kernel(name, arrays)
+            ncol = int(np.asarray(batch["ncol"])) if "ncol" in batch else pcols
+            return {local: (array[:ncol, ..., 0].copy() if array.ndim > 1 else array.copy())
+                    for local, array in written}
+
+        return run
+
+    @staticmethod
+    def _lane_shape(runtime: "StageRuntime", argument: Any) -> tuple[int, ...]:
+        """A chunk-shaped argument's extents beyond the column axis, from the runtime's sizes."""
+
+        sizes = runtime.extents
+        names = tuple(argument.extents)[1:-1]
+        return tuple(int(sizes[e]) if e in sizes else int(e) for e in names)
 
     def _tend_walk(self, native: Any, context: Any) -> None:
         """The transliteration, statement by statement: the legacy-python path."""

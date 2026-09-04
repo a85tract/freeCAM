@@ -339,6 +339,28 @@ class NativeCAMDevice:
 
         return self._leaf_abi is not None
 
+    def segment_runner(self, stage: str):
+        """The image's segment runner for ``stage``, or None if this image has none.
+
+        Only tphysbc stage 7 has one so far (pycam_stage7_runner); an image
+        built before it exports none of its entries and gets None, which the
+        stage reports as "not built for it yet".
+        """
+
+        from .segment_runner import STAGE, StageSevenRunner, image_offers_runner
+        from freecam.physics.macrophysics import Macrophysics
+
+        if stage != STAGE:
+            return None
+        if self._leaf_library is None and self._leaf_operation_names and self._native_initialized:
+            # the runner is linked into the leaf library, which is opened on
+            # the first leaf action; open it the same way now
+            self._adapter_for(next(iter(sorted(self._leaf_operation_names))))
+        for library in (self._library, self._leaf_library, self._global_library):
+            if library is not None and image_offers_runner(library):
+                return StageSevenRunner(library, Macrophysics.DESCRIPTORS)
+        return None
+
     def bind_kernel(self, name: str, pool: Mapping[str, np.ndarray], *, fcomm: int):
         """Prepare direct kernel ``name`` on ``pool`` for repeated calls.
 

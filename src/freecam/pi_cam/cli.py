@@ -273,6 +273,16 @@ def main(argv: list[str] | None = None) -> int:
         ),
     )
     parser.add_argument(
+        "--segmented-original",
+        action="store_true",
+        help=(
+            "test only: with the composed stage and --stage-execution segmented, "
+            "put the ORIGINAL mmacro_pcond in the kernel slot as a Python-side "
+            "replacement, so the runner pauses, Python answers with the same "
+            "routine and resumes -- bit-for-bit is then the proof of the pause"
+        ),
+    )
+    parser.add_argument(
         "--cloud-macro-micro-python",
         action="store_true",
         help=(
@@ -473,6 +483,9 @@ def main(argv: list[str] | None = None) -> int:
                 # a trained network in mmacro_pcond's place, named by path
                 macro_surrogate=args.macro_kernel_surrogate)
             scheme.execution_policy = args.stage_execution
+            if args.segmented_original:
+                from freecam.physics.segments import OriginalKernel
+                scheme.kernels["mmacro_pcond"] = OriginalKernel()
             cam.step_plan.set_enabled("cloud_macro_microphysics", False, phase="cam_run1", experimental=True)
             cam.python_processes.install(
                 PythonProcessSpec.from_callable(
@@ -741,6 +754,7 @@ def main(argv: list[str] | None = None) -> int:
                                        if args.macro_kernel_surrogate else None),
             "cloud_macro_micro_python": bool(args.cloud_macro_micro_python),
             "stage_execution_policy": args.stage_execution,
+            "segmented_original": bool(args.segmented_original),
             "stage_execution": _stage_executions(cam),
             "cloud_macro_micro_whole_drivers": bool(args.cloud_macro_micro_whole_drivers),
             "cloud_macro_micro_whole_micro": bool(args.cloud_macro_micro_whole_micro),

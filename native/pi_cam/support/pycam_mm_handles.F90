@@ -36,6 +36,11 @@ module pycam_mm_handles
   private
 
   public :: pycam_mm_bind_hosts, python_owns_mm
+  ! The stage's tendency objects and its hosts are also what the segment
+  ! runner (pycam_stage7_runner) works on: the original glue, run in
+  ! Fortran, on the same storage the Python glue reached by handle.
+  public :: mm_ptend, mm_ptend_aero, mm_det_s, mm_det_ice
+  public :: host_state, host_tend, host_pbuf2d
 
   logical, save :: python_owns_mm = .false.
 

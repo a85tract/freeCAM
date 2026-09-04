@@ -937,3 +937,31 @@ def test_segmented_execution_drives_the_runner_the_image_offers(widget) -> None:
     assert described["segment_pauses"] == 8 and described["python_model_calls"] == 8
     assert described["native_segment_calls"] == 2 + 8            # two starts, eight resumes
     assert [e for e in widget.runner.log if e[0] == "create"] == [("create", "cam_run1.widgets")]
+
+
+def test_an_original_kernel_marker_runs_the_direct_kernel_on_the_frame_s_lanes(widget) -> None:
+    from freecam.physics.segments import OriginalKernel
+    from tests.unit.test_physics_segments import FakeRunner
+
+    widget.runner = FakeRunner()
+    ran: list[dict] = []
+
+    def run_kernel(name, arrays):
+        ran.append({k: v.copy() for k, v in arrays.items()})
+        arrays["widget.y"][..., 0] = 7.0                      # the "original" writes its output
+
+    widget.run_kernel = run_kernel
+
+    class Segmentable(WholeWidget):
+        SWAPPABLE = ("a", "b", "widget_step")
+        KERNELS = ("widget_step",)
+
+    stage = Segmentable()
+    stage.execution_policy = "segmented"
+    # the fake runner pauses on kernel "a"; route it to the widget's direct kernel by name
+    stage.kernels["a"] = OriginalKernel()
+    original = stage._original_through_python(widget, "widget_step")
+    answer = original({"ncol": np.int32(6), "x": np.full((6, PVER), 3.0)})
+    assert list(answer) == ["y"] and answer["y"].shape == (6, 2) and np.all(answer["y"] == 7.0)
+    assert ran[0]["widget.x"].shape == (PCOLS, PVER, 1) and np.all(ran[0]["widget.x"][:6, :, 0] == 3.0)
+    assert np.all(ran[0]["widget.x"][6:] == 0.0) and int(ran[0]["widget.ncol"][0]) == 6
