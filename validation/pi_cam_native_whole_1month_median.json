@@ -1,0 +1,46 @@
+{
+  "schema_version": 1,
+  "what": "The PI-atm month (1,488 steps, 512 ranks) with CloudMacroMicrophysics installed as a trusted native process and nothing replaced: execution mode native-whole. Three runs of the same code (3d36ea8..54c012a); the acceptance is the median.",
+  "reference_seconds": {
+    "freecam_fortran_stage": 402.514038411,
+    "original_fortran_cpl_atm_run": 379.43
+  },
+  "reference_stage_ms_per_step": 38.9,
+  "runs": [
+    {
+      "pbs_job_id": "7314497",
+      "advance_seconds": 419.03,
+      "stage_ms_per_step": 39.08,
+      "bfb_files": 18,
+      "bfb": true
+    },
+    {
+      "pbs_job_id": "7314498",
+      "advance_seconds": 404.22,
+      "stage_ms_per_step": 39.04,
+      "bfb_files": 18,
+      "bfb": true
+    },
+    {
+      "pbs_job_id": "7314664",
+      "advance_seconds": 404.61,
+      "stage_ms_per_step": 39.02,
+      "bfb_files": 18,
+      "bfb": true
+    }
+  ],
+  "median_advance_seconds": 404.61,
+  "median_overhead_vs_freecam_percent": 0.5207176368988709,
+  "median_stage_ms_per_step": 39.04,
+  "acceptance": {
+    "overhead_vs_freecam_percent_max": 5.0,
+    "stage_ms_per_step_max": 48.6,
+    "passed": true
+  },
+  "execution_record": {
+    "execution_mode": "native-whole",
+    "native_stage_calls_per_run": 1488,
+    "python_fortran_crossings_per_step": 1,
+    "python_model_calls": 0
+  }
+}

@@ -77,6 +77,13 @@ atmosphere inside the coupled loop — against freeCAM's `advance_seconds`.
 | freeCAM + Python stage, native-whole, 2026-09-04 (`7314269`) | 424.30 s | +11.8% (+44.9 s) | +5.4% (+21.8 s) |
 | … native-whole, trusted process path (`7314497`) | 419.03 s | +10.4% (+39.6 s) | **+4.1%** (+16.5 s) |
 | … native-whole, trusted process path, second run (`7314498`) | 404.22 s | +6.5% (+24.8 s) | **+0.4%** (+1.7 s) |
+| … native-whole, trusted process path, third run (`7314664`) | 404.61 s | +6.6% (+25.2 s) | **+0.5%** (+2.1 s) |
+
+The median of the three trusted native-whole runs is **404.61 s, +0.5% over
+freeCAM**, with the stage at 39.0 ms per step against the Fortran action's
+38.9; the first run's +4.1% sits entirely in the dynamics region and is
+the step's run-to-run noise
+([`pi_cam_native_whole_1month_median.json`](pi_cam_native_whole_1month_median.json)).
 
 The last row is the Python class installed with none of its kernels
 replaced and `--stage-execution native-whole` (branch
