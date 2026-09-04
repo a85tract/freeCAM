@@ -334,7 +334,7 @@ class Local(Mapping[str, np.ndarray]):
         return len(self._scratch)
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(slots=True)
 class _KernelPlan:
     """One direct kernel's resolved argument table; see StageRuntime._plan."""
 
@@ -343,6 +343,7 @@ class _KernelPlan:
     copy_in_region: str
     run_region: str
     copy_out_region: str
+    bound: Callable[[], Any] | None = None
 
 
 class StageRuntime:
@@ -397,7 +398,7 @@ class StageRuntime:
         self.scratch = self._allocate()
         # direct-kernel calls bound once per (kernel, arrays); see _run and _plan
         self._bound: dict[tuple, Callable[[], Any]] = {}
-        self._plans: dict[tuple[str, int], _KernelPlan] = {}
+        self._plans: dict[tuple[str, frozenset | None], _KernelPlan] = {}
         stage.after_runtime(self)
         check(self.entries.set_owner(1), f"pycam_{stage.PREFIX}_set_owner_v1")
 
@@ -482,7 +483,15 @@ class StageRuntime:
                 if value is not None:
                     self._copy_in(scratch, value)
         with self.profile.region(plan.run_region):
-            self._run(name, plan.arrays)
+            run = plan.bound
+            if run is None:
+                binder = getattr(self.native, "bind_kernel", None)
+                if binder is None:                  # a native that cannot bind: the plain call
+                    self.native.run_kernel(name, plan.arrays)
+                else:
+                    run = plan.bound = binder(name, plan.arrays)
+            if run is not None:
+                run()
         with self.profile.region(plan.copy_out_region):
             for local, target in outputs.items():
                 if target is None:
@@ -498,7 +507,9 @@ class StageRuntime:
         and kept, keyed by the kernel and the identity of its field map.
         """
 
-        key = (name, id(fields))
+        # keyed by what the map says, never by the dict object: walks build
+        # these maps per call, and a freed dict's address is reused
+        key = (name, None if fields is None else frozenset(fields.items()))
         plan = self._plans.get(key)
         if plan is not None:
             return plan
@@ -533,7 +544,7 @@ class StageRuntime:
         if binder is None:
             self.native.run_kernel(name, arrays)
             return
-        key = (name, id(arrays)) if type(arrays) is dict else (name, tuple(id(a) for a in arrays.values()))
+        key = (name, tuple(id(array) for array in arrays.values()))
         run = self._bound.get(key)
         if run is None:
             run = self._bound[key] = binder(name, arrays)

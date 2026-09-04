@@ -670,3 +670,30 @@ def test_a_kernel_is_planned_and_bound_once_and_then_only_run(widget) -> None:
                                                   for a in runtime.descriptors["widget_step"].arguments]
     assert all(plan.arrays[f"widget.{local}"] is scratch for local, scratch in plan.slots)
     assert np.all(runtime.local["y"] == 2.0)
+
+
+def test_the_same_kernel_under_two_field_maps_keeps_two_plans(widget) -> None:
+    """The maps are per-call temporaries; a plan must follow the map's content,
+    never the dict object -- a freed dict's address comes back for another."""
+
+    seen: list[dict[str, np.ndarray]] = []
+
+    def bind_kernel(name, arrays):
+        seen.append(dict(arrays))
+        return lambda: None
+
+    widget.bind_kernel = bind_kernel
+    runtime = Widget().runtime(widget)
+    ones = np.ones((PCOLS, PVER), order="F")
+    twos = np.full((PCOLS, PVER), 2.0, order="F")
+    for _ in range(3):                                       # as a walk does: one map per rate name
+        runtime.kernel_on_chunk("widget_step", {"p": ones, "n": np.int32(6)}, outputs={},
+                                fields={"p": "widget.x", "q": "widget.y", "n": "widget.ncol"})
+        runtime.kernel_on_chunk("widget_step", {"r": twos, "n": np.int32(6)}, outputs={},
+                                fields={"r": "widget.x", "s": "widget.y", "n": "widget.ncol"})
+    assert len(seen) == 2                                    # one bind per distinct map
+    assert seen[0]["widget.x"] is runtime.scratch["p"]
+    assert seen[1]["widget.x"] is runtime.scratch["r"]
+    assert np.all(runtime.scratch["p"][..., 0] == 1.0)       # each map fed its own slot
+    assert np.all(runtime.scratch["r"][..., 0] == 2.0)
+    assert len(runtime._plans) == 2
