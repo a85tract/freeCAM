@@ -37,7 +37,7 @@ def test_every_argument_of_the_kernel_has_a_home_in_the_frame_in_call_order() ->
     assert f"frame_slots = {len(names)}" in text
     for index, name in enumerate(names, start=1):
         expression, rank = gen.FRAME_SOURCES[name]
-        helper = {0: "scalar_slot", 1: "slot1", 2: "slot2"}[rank]
+        helper = "slot2_or" if "|" in expression else {0: "scalar_slot", 1: "slot1", 2: "slot2"}[rank]
         assert f"call {helper}({index}, " in text
     # the original call carries the same arguments in the same order
     call = text[text.index("call mmacro_pcond("):text.index("end subroutine original_pcond")]

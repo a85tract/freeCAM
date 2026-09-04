@@ -71,11 +71,12 @@ FRAME_SOURCES = {
     "d_nl": ("dlf_nl", 2), "d_ni": ("dlf_ni", 2),
     "a_cud": ("concld_old", 2), "a_cu0": ("concld", 2), "clrw_old": ("clrw_old", 2), "clri_old": ("clri_old", 2),
     "landfrac": ("cam_in(lchnk)%landfrac", 1), "snowh": ("cam_in(lchnk)%snowhland", 1),
-    # the kernel's workspace pointers are unassociated in this configuration
-    # (no PBL tke, no UNICON detrainment); the frame hands the zeros the
-    # lifted-kernel boundary hands, which the kernel does not read here
-    "tke": ("ws_tke", 2), "qtl_flx": ("ws_qtl_flx", 2), "qti_flx": ("ws_qti_flx", 2),
-    "cmfr_det": ("ws_cmfr_det", 2), "qlr_det": ("ws_qlr_det", 2), "qir_det": ("ws_qir_det", 2),
+    # the kernel's workspace pointers: the physics-buffer field where the
+    # configuration registers one (the UW PBL's tke), as the original passes
+    # it, and zeros where it is unassociated (UNICON's detrainment fields)
+    "tke": ("tke|ws_tke", 2), "qtl_flx": ("qtl_flx|ws_qtl_flx", 2), "qti_flx": ("qti_flx|ws_qti_flx", 2),
+    "cmfr_det": ("cmfr_det|ws_cmfr_det", 2), "qlr_det": ("qlr_det|ws_qlr_det", 2),
+    "qir_det": ("qir_det|ws_qir_det", 2),
     "s_tendout": ("tlat", 2), "qv_tendout": ("qvlat", 2), "ql_tendout": ("qcten", 2),
     "qi_tendout": ("qiten", 2), "nl_tendout": ("ncten", 2), "ni_tendout": ("niten", 2),
     "qme": ("cmeliq", 2), "qvadj": ("qvadj", 2), "qladj": ("qladj", 2), "qiadj": ("qiadj", 2),
@@ -94,7 +95,10 @@ def frame_cases(arguments: list[dict]) -> str:
         expression, rank = FRAME_SOURCES[name]
         intent = INTENT_CODE[argument["intent"]]
         dtype = 1 if argument["dtype"] == "float64" else 2
-        if rank == 0:
+        if "|" in expression:
+            pointer, fallback = expression.split("|")
+            lines.append(f"    call slot2_or({index}, {pointer}, {fallback}, {dtype}, {intent}, ptrs, ndims, shapes, dtypes, intents)")
+        elif rank == 0:
             lines.append(f"    call scalar_slot({index}, c_loc({expression}), {dtype}, {intent}, ptrs, ndims, shapes, dtypes, intents)")
         elif rank == 1:
             lines.append(f"    call slot1({index}, {expression}, {dtype}, {intent}, ptrs, ndims, shapes, dtypes, intents)")
@@ -252,8 +256,8 @@ module pycam_stage7_runner
                     mr_ccice(pcols,pver), cldsice(pcols,pver)
   real(r8), save :: process_rates(pcols,pver,pwtype,pwtype,pwtype)
   real(r8), save :: pqctn(pcols,pver), nqctn(pcols,pver), pqitn(pcols,pver), nqitn(pcols,pver)
-  ! the paused kernel's frame: the scalars by value, and zeros for the
-  ! workspace pointers that are unassociated in this configuration
+  ! the paused kernel's frame: the scalars by value, and zeros standing in
+  ! for whichever workspace pointers are unassociated in this configuration
   integer(c_int32_t), save, target :: frame_lchnk = 0, frame_ncol = 0, frame_do_cldice = 0
   real(c_double), save, target :: frame_dt = 0._c_double
   real(r8), save, target :: ws_tke(pcols,pverp), ws_qtl_flx(pcols,pverp), ws_qti_flx(pcols,pverp), &
@@ -357,12 +361,6 @@ contains
     cmfr_det_idx = pbuf_get_index('cmfr_det', istat)
     qlr_det_idx  = pbuf_get_index('qlr_det', istat)
     qir_det_idx  = pbuf_get_index('qir_det', istat)
-    if (tke_idx > 0 .or. qtl_flx_idx > 0 .or. qti_flx_idx > 0 .or. cmfr_det_idx > 0 &
-        .or. qlr_det_idx > 0 .or. qir_det_idx > 0) then
-      status = 3_c_int
-      last_error = 'stage 7 runner: the configuration has PBL/UNICON workspace fields the frame does not carry'
-      return
-    end if
     shfrc_zero = 0._r8
     ws_tke = 0._r8; ws_qtl_flx = 0._r8; ws_qti_flx = 0._r8
     ws_cmfr_det = 0._r8; ws_qlr_det = 0._r8; ws_qir_det = 0._r8
@@ -1068,6 +1066,22 @@ contains
     dtypes(index) = int(dtype, c_int)
     intents(index) = int(intent, c_int)
   end subroutine slot1
+
+  subroutine slot2_or(index, field, fallback, dtype, intent, ptrs, ndims, shapes, dtypes, intents)
+    ! a physics-buffer pointer where the configuration has the field, the
+    ! zero workspace where it is unassociated -- what the original passes
+    integer, intent(in) :: index, dtype, intent
+    real(r8), pointer, intent(in) :: field(:,:)
+    real(r8), target, intent(in) :: fallback(:,:)
+    type(c_ptr), intent(inout) :: ptrs(:)
+    integer(c_int), intent(inout) :: ndims(:), dtypes(:), intents(:)
+    integer(c_int64_t), intent(inout) :: shapes(:,:)
+    if (associated(field)) then
+      call slot2(index, field, dtype, intent, ptrs, ndims, shapes, dtypes, intents)
+    else
+      call slot2(index, fallback, dtype, intent, ptrs, ndims, shapes, dtypes, intents)
+    end if
+  end subroutine slot2_or
 
   subroutine slot2(index, array, dtype, intent, ptrs, ndims, shapes, dtypes, intents)
     integer, intent(in) :: index, dtype, intent

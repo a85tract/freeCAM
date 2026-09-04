@@ -142,8 +142,8 @@ module pycam_stage7_runner
                     mr_ccice(pcols,pver), cldsice(pcols,pver)
   real(r8), save :: process_rates(pcols,pver,pwtype,pwtype,pwtype)
   real(r8), save :: pqctn(pcols,pver), nqctn(pcols,pver), pqitn(pcols,pver), nqitn(pcols,pver)
-  ! the paused kernel's frame: the scalars by value, and zeros for the
-  ! workspace pointers that are unassociated in this configuration
+  ! the paused kernel's frame: the scalars by value, and zeros standing in
+  ! for whichever workspace pointers are unassociated in this configuration
   integer(c_int32_t), save, target :: frame_lchnk = 0, frame_ncol = 0, frame_do_cldice = 0
   real(c_double), save, target :: frame_dt = 0._c_double
   real(r8), save, target :: ws_tke(pcols,pverp), ws_qtl_flx(pcols,pverp), ws_qti_flx(pcols,pverp), &
@@ -247,12 +247,6 @@ contains
     cmfr_det_idx = pbuf_get_index('cmfr_det', istat)
     qlr_det_idx  = pbuf_get_index('qlr_det', istat)
     qir_det_idx  = pbuf_get_index('qir_det', istat)
-    if (tke_idx > 0 .or. qtl_flx_idx > 0 .or. qti_flx_idx > 0 .or. cmfr_det_idx > 0 &
-        .or. qlr_det_idx > 0 .or. qir_det_idx > 0) then
-      status = 3_c_int
-      last_error = 'stage 7 runner: the configuration has PBL/UNICON workspace fields the frame does not carry'
-      return
-    end if
     shfrc_zero = 0._r8
     ws_tke = 0._r8; ws_qtl_flx = 0._r8; ws_qti_flx = 0._r8
     ws_cmfr_det = 0._r8; ws_qlr_det = 0._r8; ws_qir_det = 0._r8
@@ -380,12 +374,12 @@ contains
     call slot2(34, clri_old, 1, 0, ptrs, ndims, shapes, dtypes, intents)
     call slot1(35, cam_in(lchnk)%landfrac, 1, 0, ptrs, ndims, shapes, dtypes, intents)
     call slot1(36, cam_in(lchnk)%snowhland, 1, 0, ptrs, ndims, shapes, dtypes, intents)
-    call slot2(37, ws_tke, 1, 2, ptrs, ndims, shapes, dtypes, intents)
-    call slot2(38, ws_qtl_flx, 1, 2, ptrs, ndims, shapes, dtypes, intents)
-    call slot2(39, ws_qti_flx, 1, 2, ptrs, ndims, shapes, dtypes, intents)
-    call slot2(40, ws_cmfr_det, 1, 2, ptrs, ndims, shapes, dtypes, intents)
-    call slot2(41, ws_qlr_det, 1, 2, ptrs, ndims, shapes, dtypes, intents)
-    call slot2(42, ws_qir_det, 1, 2, ptrs, ndims, shapes, dtypes, intents)
+    call slot2_or(37, tke, ws_tke, 1, 2, ptrs, ndims, shapes, dtypes, intents)
+    call slot2_or(38, qtl_flx, ws_qtl_flx, 1, 2, ptrs, ndims, shapes, dtypes, intents)
+    call slot2_or(39, qti_flx, ws_qti_flx, 1, 2, ptrs, ndims, shapes, dtypes, intents)
+    call slot2_or(40, cmfr_det, ws_cmfr_det, 1, 2, ptrs, ndims, shapes, dtypes, intents)
+    call slot2_or(41, qlr_det, ws_qlr_det, 1, 2, ptrs, ndims, shapes, dtypes, intents)
+    call slot2_or(42, qir_det, ws_qir_det, 1, 2, ptrs, ndims, shapes, dtypes, intents)
     call slot2(43, tlat, 1, 1, ptrs, ndims, shapes, dtypes, intents)
     call slot2(44, qvlat, 1, 1, ptrs, ndims, shapes, dtypes, intents)
     call slot2(45, qcten, 1, 1, ptrs, ndims, shapes, dtypes, intents)
@@ -1017,6 +1011,22 @@ contains
     dtypes(index) = int(dtype, c_int)
     intents(index) = int(intent, c_int)
   end subroutine slot1
+
+  subroutine slot2_or(index, field, fallback, dtype, intent, ptrs, ndims, shapes, dtypes, intents)
+    ! a physics-buffer pointer where the configuration has the field, the
+    ! zero workspace where it is unassociated -- what the original passes
+    integer, intent(in) :: index, dtype, intent
+    real(r8), pointer, intent(in) :: field(:,:)
+    real(r8), target, intent(in) :: fallback(:,:)
+    type(c_ptr), intent(inout) :: ptrs(:)
+    integer(c_int), intent(inout) :: ndims(:), dtypes(:), intents(:)
+    integer(c_int64_t), intent(inout) :: shapes(:,:)
+    if (associated(field)) then
+      call slot2(index, field, dtype, intent, ptrs, ndims, shapes, dtypes, intents)
+    else
+      call slot2(index, fallback, dtype, intent, ptrs, ndims, shapes, dtypes, intents)
+    end if
+  end subroutine slot2_or
 
   subroutine slot2(index, array, dtype, intent, ptrs, ndims, shapes, dtypes, intents)
     integer, intent(in) :: index, dtype, intent
