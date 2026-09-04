@@ -450,6 +450,16 @@ class NativeAccess:
 
         return self._driver.bind_kernel(name, experimental=True, pool=arrays)
 
+    def segment_runner(self, stage: str):
+        """The image's segment runner for ``stage``, or None while none is built.
+
+        See :mod:`freecam.physics.segments`: the runner executes the original
+        Fortran of the stage and pauses at each replaced kernel.
+        """
+
+        provider = getattr(self._driver.backend, "segment_runner", None)
+        return None if provider is None else provider(stage)
+
     def run_action(self, name: str, *, phase: str | None = None):
         """Run one native workflow action whole, timed and recorded as the plan would.
 

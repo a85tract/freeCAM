@@ -119,6 +119,9 @@ class _Native:
     def run_action(self, name, *, phase=None):
         self.actions.append((name, phase))
 
+    def segment_runner(self, stage):
+        return getattr(self, "runner", None)
+
 
 class _Pool(dict):
     @property
@@ -860,8 +863,8 @@ def test_with_nothing_replaced_the_original_stage_runs_once_and_the_walk_not_at_
     assert stage.execution.mode == "native-whole"
     assert stage.execution.describe() == {
         "execution_mode": "native-whole", "active_replacements": [],
-        "native_stage_calls": 2, "native_segment_calls": 0, "python_model_calls": 0,
-        "legacy_steps": 0, "python_fortran_crossings_per_step": 1,
+        "native_stage_calls": 2, "native_segment_calls": 0, "segment_pauses": 0,
+        "python_model_calls": 0, "legacy_steps": 0, "python_fortran_crossings_per_step": 1,
     }
 
 
@@ -897,7 +900,10 @@ def test_the_policy_can_force_the_walk_and_refuses_what_it_cannot_do(widget) -> 
         split.tend(None, _Context(widget))
     stage = WholeWidget()
     stage.execution_policy = "segmented"
-    with pytest.raises(PhysicsError, match="not built yet"):
+    with pytest.raises(PhysicsError, match="nothing is replaced"):
+        stage.tend(None, _Context(widget))
+    stage.kernels["widget_step"] = lambda batch: {}
+    with pytest.raises(PhysicsError, match="no segment runner"):     # the fake image offers none
         stage.tend(None, _Context(widget))
     stage.execution_policy = "sideways"
     with pytest.raises(PhysicsError, match="unknown stage execution policy"):
@@ -908,3 +914,26 @@ def test_a_split_stage_walks_under_auto_because_it_has_no_whole_action(widget) -
     stage = Widget()
     stage.tend(None, _Context(widget))
     assert widget.actions == [] and stage.execution.mode == "legacy-python"
+
+
+def test_segmented_execution_drives_the_runner_the_image_offers(widget) -> None:
+    from tests.unit.test_physics_segments import FakeRunner, _original_a
+
+    widget.runner = FakeRunner()                      # what the image would offer for this stage
+
+    class Segmentable(WholeWidget):
+        SWAPPABLE = ("a", "b")
+        KERNELS = ("widget_step",)
+
+    stage = Segmentable()
+    stage.execution_policy = "segmented"
+    stage.kernels["a"] = _original_a
+    stage.tend(None, _Context(widget))
+    stage.tend(None, _Context(widget))
+    assert widget.actions == [] and stage.calls == []          # neither the whole action nor the walk
+    described = stage.execution.describe()
+    assert described["execution_mode"] == "segmented"
+    assert described["active_replacements"] == ["a"]
+    assert described["segment_pauses"] == 8 and described["python_model_calls"] == 8
+    assert described["native_segment_calls"] == 2 + 8            # two starts, eight resumes
+    assert [e for e in widget.runner.log if e[0] == "create"] == [("create", "cam_run1.widgets")]

@@ -38,6 +38,7 @@ from ..pi_cam.facade import Physics
 from ..pi_cam.kernel_codegen import load_direct_kernels
 from .capture import lane_sha256
 from .errors import PhysicsError
+from .segments import SegmentedStage
 
 REPO = Path(__file__).resolve().parents[3]
 
@@ -801,6 +802,7 @@ class StageExecution:
     native_segment_calls: int = 0
     python_model_calls: int = 0
     legacy_steps: int = 0
+    segment_pauses: int = 0
 
     def describe(self) -> dict[str, Any]:
         crossings = 1 if self.mode == "native-whole" else None
@@ -809,6 +811,7 @@ class StageExecution:
             "active_replacements": list(self.replacements),
             "native_stage_calls": self.native_stage_calls,
             "native_segment_calls": self.native_segment_calls,
+            "segment_pauses": self.segment_pauses,
             "python_model_calls": self.python_model_calls,
             "legacy_steps": self.legacy_steps,
             "python_fortran_crossings_per_step": crossings,
@@ -882,6 +885,8 @@ class NativeStage:
         self.execution_policy: str = "auto"
         #: What happened, for the run's record.
         self.execution = StageExecution()
+        #: The segment runner's driver, created on the first segmented step.
+        self._segmented: "SegmentedStage | None" = None
         if kernels is not None:
             unknown = [name for name in kernels if name not in self.kernels]
             if unknown:
@@ -1029,7 +1034,15 @@ class NativeStage:
         if policy == "legacy-python":
             return "legacy-python"
         if policy == "segmented":
-            raise PhysicsError("segmented stage execution is not built yet")
+            if not replaced:
+                raise PhysicsError(
+                    "segmented execution pauses at replaced kernels, and nothing is replaced; "
+                    "use auto or native-whole")
+            if not self.WHOLE_ACTION:
+                raise PhysicsError(
+                    f"{type(self).__name__} is not the whole of {self.STAGE!r}; only a whole "
+                    f"stage has a segment runner")
+            return "segmented"
         if policy == "native-whole":
             if replaced:
                 raise PhysicsError(
@@ -1041,7 +1054,7 @@ class NativeStage:
                     f"whole Fortran stage of its own to run")
             return "native-whole"
         # auto: the original stage while nothing is replaced, the walk otherwise
-        # (segmented, when built, takes the walk's place here)
+        # -- segmented takes the walk's place here once its gates have passed
         if not replaced and self.WHOLE_ACTION:
             return "native-whole"
         return "legacy-python"
@@ -1061,8 +1074,28 @@ class NativeStage:
             native.run_action(self.STAGE)
             self.execution.native_stage_calls += 1
             return
+        if mode == "segmented":
+            self._tend_segmented(native)
+            return
         self.execution.legacy_steps += 1
         self._tend_walk(native, context)
+
+    def _tend_segmented(self, native: Any) -> None:
+        """The original Fortran through its segment runner, paused at each replaced kernel."""
+
+        segmented = self._segmented
+        if segmented is None:
+            runner = native.segment_runner(self.STAGE)
+            if runner is None:
+                raise PhysicsError(
+                    f"the image offers no segment runner for {self.STAGE!r}; segmented "
+                    f"execution is not built for it yet")
+            segmented = self._segmented = SegmentedStage(self.STAGE, runner)
+        segmented.run(self.kernels)
+        counters = segmented.counters
+        self.execution.native_segment_calls = counters.starts + counters.resumes
+        self.execution.python_model_calls = counters.model_calls
+        self.execution.segment_pauses = counters.pauses
 
     def _tend_walk(self, native: Any, context: Any) -> None:
         """The transliteration, statement by statement: the legacy-python path."""
