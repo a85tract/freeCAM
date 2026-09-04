@@ -25,8 +25,9 @@ library=${FREECAM_CESM_PROVIDER_LIBRARY:-${repo}/build/cesm/pi_atm/production-co
 form=${PYCAM_STAGE_FORM:-fortran}
 case "${form}" in
   fortran) extra=""; suffix="" ;;
-  python)  extra="--cloud-macro-micro-python"; suffix="_stage_python" ;;
-  *) echo "PYCAM_STAGE_FORM must be fortran or python, not '${form}'" >&2; exit 2 ;;
+  python)  extra="--cloud-macro-micro-python --stage-execution legacy-python"; suffix="_stage_python" ;;
+  native-whole) extra="--cloud-macro-micro-python --stage-execution native-whole"; suffix="_stage_native_whole" ;;
+  *) echo "PYCAM_STAGE_FORM must be fortran, python or native-whole, not '${form}'" >&2; exit 2 ;;
 esac
 root=${FREECAM_SCRATCH}/freeCAM/PI-cam/memory-5year-${form}-${PBS_JOBID}
 cam_run=${root}/cam-run

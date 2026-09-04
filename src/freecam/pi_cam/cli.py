@@ -55,6 +55,23 @@ def _catalog_entry(
     return entry
 
 
+def _stage_executions(cam) -> dict[str, dict[str, object]]:
+    """How each installed Python stage ran, from the instance that ran it.
+
+    A stage is cloudpickled into the process registry when it is installed,
+    so the object the command line built never runs; the copy bound to the
+    installed callable did, and holds the counts.
+    """
+
+    executions: dict[str, dict[str, object]] = {}
+    for name, record in getattr(cam.python_processes, "installed", {}).items():
+        stage = getattr(getattr(record, "function", None), "__self__", None)
+        execution = getattr(stage, "execution", None)
+        if execution is not None and hasattr(execution, "describe"):
+            executions[name] = execution.describe()
+    return executions
+
+
 def _cprofile_for(rank: int):
     """A cProfile.Profile for this rank when FREECAM_CPROFILE_RANKS names it.
 
@@ -388,7 +405,6 @@ def main(argv: list[str] | None = None) -> int:
     world.Barrier()
     total_started = MPI.Wtime()
     memory_samples = [_process_memory("python_ready", cam.clock.nstep)]
-    stages: list = []            # the Python stages installed, for the record
     with cam:
         world.Barrier()
         initialize_started = MPI.Wtime()
@@ -405,7 +421,6 @@ def main(argv: list[str] | None = None) -> int:
             # the stage is pickled to every rank, and each loads its own.
             scheme = Macrophysics(surrogate=args.macro_kernel_surrogate)
             scheme.execution_policy = args.stage_execution
-            stages.append(scheme)
             cam.python_processes.install(
                 PythonProcessSpec.from_callable(
                     scheme.tend,
@@ -426,7 +441,6 @@ def main(argv: list[str] | None = None) -> int:
 
             scheme = Radiation()
             scheme.execution_policy = args.stage_execution
-            stages.append(scheme)
             cam.python_processes.install(
                 PythonProcessSpec.from_callable(
                     scheme.tend,
@@ -457,7 +471,6 @@ def main(argv: list[str] | None = None) -> int:
                 # a trained network in mmacro_pcond's place, named by path
                 macro_surrogate=args.macro_kernel_surrogate)
             scheme.execution_policy = args.stage_execution
-            stages.append(scheme)
             cam.step_plan.set_enabled("cloud_macro_microphysics", False, phase="cam_run1", experimental=True)
             cam.python_processes.install(
                 PythonProcessSpec.from_callable(
@@ -725,7 +738,7 @@ def main(argv: list[str] | None = None) -> int:
                                        if args.macro_kernel_surrogate else None),
             "cloud_macro_micro_python": bool(args.cloud_macro_micro_python),
             "stage_execution_policy": args.stage_execution,
-            "stage_execution": {type(stage).__name__: stage.execution.describe() for stage in stages},
+            "stage_execution": _stage_executions(cam),
             "cloud_macro_micro_whole_drivers": bool(args.cloud_macro_micro_whole_drivers),
             "cloud_macro_micro_whole_micro": bool(args.cloud_macro_micro_whole_micro),
             "cloud_macro_micro_whole_aero": bool(args.cloud_macro_micro_whole_aero),
