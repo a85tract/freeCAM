@@ -15,13 +15,13 @@
   "config": "/glade/work/ruitong/pycam-sima-pi-cam-only/configs/pi_cam_icesm131_1month.yaml",
   "config_sha256": "33ab1618a2b95fe8741a52f4461bf8c664acf354b33ebc171b89b7215cdea291",
   "freecam_seconds": {
-    "advance": 565.3091759650001,
-    "advance_sypd": 12.980652895390367,
-    "finalize": 0.5197744790000343,
-    "initialize": 16.44739011999991,
-    "total": 582.2972846279999
+    "advance": 472.41355771400004,
+    "advance_sypd": 15.533174423040816,
+    "finalize": 0.47706171100003303,
+    "initialize": 11.110568279999939,
+    "total": 484.0211496260001
   },
-  "git_commit": "b3ce074c2f2759fddbeba0cc17fd10d945dc9ffd",
+  "git_commit": "316a3d582789445eff6d230cdde76567e10632af",
   "mpi_ranks": 512,
   "original_fortran_seconds": {
     "atmosphere_inside_coupled_loop": 403.634491,
@@ -32,10 +32,10 @@
     "pbs_job_id": null,
     "timer_source": "CESM GPTL rank-zero wallclock"
   },
-  "pbs_job_id": "7256752.desched1",
+  "pbs_job_id": "7303342.desched1",
   "performance_ratios": {
-    "freecam_advance_over_original_atmosphere": 1.400547248983735,
-    "freecam_total_over_original_cesm_lifecycle": 1.1234037637234378
+    "freecam_advance_over_original_atmosphere": 1.1703993792591922,
+    "freecam_total_over_original_cesm_lifecycle": 0.9338033948740955
   },
   "result": "passed",
   "schema_version": 1,

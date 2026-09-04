@@ -27,9 +27,10 @@ overhead is the cost of control, not of a different answer. See
 | **5 model years** | **+8.7%** | **+8.2%** |
 
 That is the cost of Python owning the workflow.  Owning one *stage* as well —
-`tphysbc` stage 7 as a Python class — costs a further **+40.4% of time** and
-**+4.4% of memory** over freeCAM, measured over a model month and still
-bit-for-bit; see [the section below](#what-the-python-cloud-macromicrophysics-stage-costs).
+`tphysbc` stage 7 as a Python class — cost a further **+40.4% of time** and
+**+4.4% of memory** over freeCAM when first measured over a model month, and
+**+17.4% of time** after the two rounds of control-path work recorded below,
+still bit-for-bit; see [the section below](#what-the-python-cloud-macromicrophysics-stage-costs).
 
 Overhead **does not grow with integration length** — it decreases slightly,
 because the fixed Python startup cost is amortised over more steps.
@@ -69,10 +70,38 @@ atmosphere inside the coupled loop — against freeCAM's `advance_seconds`.
 | --- | ---: | ---: | ---: |
 | original Fortran | 379.43 s | — | — |
 | freeCAM | 402.51 s | **+6.1%** (+23.1 s) | — |
-| freeCAM + Python stage | 565.31 s | **+49.0%** (+185.9 s) | **+40.4%** (+162.8 s) |
+| freeCAM + Python stage, 2026-08-27 (`7256752`) | 565.31 s | **+49.0%** (+185.9 s) | **+40.4%** (+162.8 s) |
+| … after round 1, 2026-09-03 (`7303107`) | 521.43 s | +37.4% (+141.9 s) | +29.5% (+118.9 s) |
+| … after round 2, 2026-09-03 (`7303342`) | 472.41 s | **+24.5%** (+93.0 s) | **+17.4%** (+69.9 s) |
 
-The stage itself costs **109 ms per step per rank**, against ≈ 39 ms for the
-Fortran stage it replaces.  Throughput falls from 18.23 to 12.98 SYPD.
+The stage itself cost **146 ms per step per rank** in the first run, against
+38.9 ms for the Fortran stage it replaces (the `CAM:macro_microphysics`
+region of the freeCAM run); throughput fell from 18.23 to 12.98 SYPD.  Two
+rounds of work on the control path, each gated bit-for-bit at 512 ranks
+before the month was rerun, brought the stage to **100 ms** and then
+**89 ms per step** (14.07 and 15.53 SYPD):
+
+- round 1 — the cloud cores called once per chunk instead of once per
+  column, and every direct kernel's argument table built once and kept
+  (`PointerTableAdapter.bind`) instead of on every call;
+- round 2 — the generated YAML tables parsed once with libyaml, a kernel's
+  scratch slots resolved once per kernel and field map, a view of Fortran
+  storage reused while the image reports the same address and extents, and
+  a two-slot profiler region in place of the generator-backed one.
+
+Everything outside the stage is unchanged between the four runs to within
+run-to-run noise (230.4 ms per step in the freeCAM run, 228.1 ms in the last
+Python run).  What remains of the stage's excess — about 50 ms per step — is
+the count of Python-level operations per chunk: some 3,000 per step per rank
+(entry calls, view constructions, history writes, scratch copies), each a
+few microseconds to a few tens of microseconds, none of them arithmetic.  A
+production-form cProfile of four ranks (`pi_cam_stage_python_cprofile_50step.pbs`)
+found no single hot spot, and a one-node probe found compute-node Python
+only 1.1–1.26× slower than the login node, so the remaining cost is the
+operation count itself.  Bringing it further down means fewer operations per
+chunk — history writes and views handed over as tables rather than one call
+each, kernels run on the views without the scratch copy — which is work in
+the handles modules, not in the walks.
 
 Where that time goes, from the Gate M-4 profile (per step per rank):
 
@@ -85,7 +114,8 @@ Where that time goes, from the Gate M-4 profile (per step per rank):
 
 The rest is the glue, the physics-buffer reads and the hundred-odd history
 writes.  Note that the profile is measured with the timer on every call, so
-it over-reads the total; the 109 ms above is the timed run's own figure.
+it over-reads the total; the 146 ms above is the timed month run's own
+figure, and the table predates both rounds of control-path work.
 The cost is per *call*, not per FLOP: about 700 crossings of the Python /
 Fortran boundary per chunk per step, each cheap and none of them numerical.
 

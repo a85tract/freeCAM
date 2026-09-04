@@ -565,6 +565,7 @@
     "leaf_tracers_timestep_tend": 1489,
     "leaf_tropopause_output": 1489
   },
+  "macro_kernel_surrogate": null,
   "macrophysics_python": false,
   "macrophysics_split": false,
   "memory": {
@@ -573,133 +574,133 @@
     "samples": [
       {
         "label": "python_ready",
-        "maximum_rank_hwm_bytes": 222269440,
-        "maximum_rank_rss_bytes": 222269440,
-        "maximum_rank_ru_maxrss_bytes": 222269440,
+        "maximum_rank_hwm_bytes": 223100928,
+        "maximum_rank_rss_bytes": 223100928,
+        "maximum_rank_ru_maxrss_bytes": 223100928,
         "step": 0,
-        "total_hwm_bytes": 110505762816,
-        "total_pss_bytes": 91925314560,
-        "total_rss_bytes": 110505762816
+        "total_hwm_bytes": 111551414272,
+        "total_pss_bytes": 92317984768,
+        "total_rss_bytes": 111551414272
       },
       {
         "label": "initialized",
-        "maximum_rank_hwm_bytes": 809713664,
-        "maximum_rank_rss_bytes": 809713664,
-        "maximum_rank_ru_maxrss_bytes": 809713664,
+        "maximum_rank_hwm_bytes": 804646912,
+        "maximum_rank_rss_bytes": 804646912,
+        "maximum_rank_ru_maxrss_bytes": 804646912,
         "step": 0,
-        "total_hwm_bytes": 244128374784,
-        "total_pss_bytes": 209203129344,
-        "total_rss_bytes": 243861827584
+        "total_hwm_bytes": 244586307584,
+        "total_pss_bytes": 209769079808,
+        "total_rss_bytes": 244318887936
       },
       {
         "label": "step_1",
-        "maximum_rank_hwm_bytes": 822296576,
-        "maximum_rank_rss_bytes": 822296576,
-        "maximum_rank_ru_maxrss_bytes": 822296576,
+        "maximum_rank_hwm_bytes": 808841216,
+        "maximum_rank_rss_bytes": 808841216,
+        "maximum_rank_ru_maxrss_bytes": 808841216,
         "step": 1,
-        "total_hwm_bytes": 252707037184,
-        "total_pss_bytes": 217286942720,
-        "total_rss_bytes": 252477165568
+        "total_hwm_bytes": 251886428160,
+        "total_pss_bytes": 215361882112,
+        "total_rss_bytes": 251638706176
       },
       {
         "label": "step_200",
-        "maximum_rank_hwm_bytes": 856993792,
-        "maximum_rank_rss_bytes": 825610240,
-        "maximum_rank_ru_maxrss_bytes": 856993792,
+        "maximum_rank_hwm_bytes": 847368192,
+        "maximum_rank_rss_bytes": 847368192,
+        "maximum_rank_ru_maxrss_bytes": 847368192,
         "step": 200,
-        "total_hwm_bytes": 261357678592,
-        "total_pss_bytes": 220008440832,
-        "total_rss_bytes": 261030080512
+        "total_hwm_bytes": 259999182848,
+        "total_pss_bytes": 218320508928,
+        "total_rss_bytes": 259804975104
       },
       {
         "label": "step_400",
-        "maximum_rank_hwm_bytes": 857067520,
-        "maximum_rank_rss_bytes": 825556992,
-        "maximum_rank_ru_maxrss_bytes": 857067520,
+        "maximum_rank_hwm_bytes": 847368192,
+        "maximum_rank_rss_bytes": 847368192,
+        "maximum_rank_ru_maxrss_bytes": 847368192,
         "step": 400,
-        "total_hwm_bytes": 262899933184,
-        "total_pss_bytes": 220039416832,
-        "total_rss_bytes": 262572142592
+        "total_hwm_bytes": 261221625856,
+        "total_pss_bytes": 218509858816,
+        "total_rss_bytes": 261130190848
       },
       {
         "label": "step_600",
-        "maximum_rank_hwm_bytes": 857067520,
-        "maximum_rank_rss_bytes": 825667584,
-        "maximum_rank_ru_maxrss_bytes": 857067520,
+        "maximum_rank_hwm_bytes": 847368192,
+        "maximum_rank_rss_bytes": 847368192,
+        "maximum_rank_ru_maxrss_bytes": 847368192,
         "step": 600,
-        "total_hwm_bytes": 263868817408,
-        "total_pss_bytes": 220053551104,
-        "total_rss_bytes": 263541137408
+        "total_hwm_bytes": 262002171904,
+        "total_pss_bytes": 218541314048,
+        "total_rss_bytes": 261910736896
       },
       {
         "label": "step_800",
-        "maximum_rank_hwm_bytes": 857124864,
-        "maximum_rank_rss_bytes": 825667584,
-        "maximum_rank_ru_maxrss_bytes": 857124864,
+        "maximum_rank_hwm_bytes": 847368192,
+        "maximum_rank_rss_bytes": 847368192,
+        "maximum_rank_ru_maxrss_bytes": 847368192,
         "step": 800,
-        "total_hwm_bytes": 265729888256,
-        "total_pss_bytes": 221095215104,
-        "total_rss_bytes": 265401106432
+        "total_hwm_bytes": 263507841024,
+        "total_pss_bytes": 219321818112,
+        "total_rss_bytes": 263415652352
       },
       {
         "label": "step_1000",
-        "maximum_rank_hwm_bytes": 857124864,
-        "maximum_rank_rss_bytes": 825667584,
-        "maximum_rank_ru_maxrss_bytes": 857124864,
+        "maximum_rank_hwm_bytes": 847368192,
+        "maximum_rank_rss_bytes": 847368192,
+        "maximum_rank_ru_maxrss_bytes": 847368192,
         "step": 1000,
-        "total_hwm_bytes": 266273050624,
-        "total_pss_bytes": 221095463936,
-        "total_rss_bytes": 265944285184
+        "total_hwm_bytes": 263996174336,
+        "total_pss_bytes": 219333729280,
+        "total_rss_bytes": 263903993856
       },
       {
         "label": "step_1200",
-        "maximum_rank_hwm_bytes": 857124864,
-        "maximum_rank_rss_bytes": 825667584,
-        "maximum_rank_ru_maxrss_bytes": 857124864,
+        "maximum_rank_hwm_bytes": 847368192,
+        "maximum_rank_rss_bytes": 847368192,
+        "maximum_rank_ru_maxrss_bytes": 847368192,
         "step": 1200,
-        "total_hwm_bytes": 266715549696,
-        "total_pss_bytes": 221095550976,
-        "total_rss_bytes": 266386780160
+        "total_hwm_bytes": 264350593024,
+        "total_pss_bytes": 219335796736,
+        "total_rss_bytes": 264258420736
       },
       {
         "label": "step_1400",
-        "maximum_rank_hwm_bytes": 857124864,
-        "maximum_rank_rss_bytes": 825667584,
-        "maximum_rank_ru_maxrss_bytes": 857124864,
+        "maximum_rank_hwm_bytes": 847368192,
+        "maximum_rank_rss_bytes": 847368192,
+        "maximum_rank_ru_maxrss_bytes": 847368192,
         "step": 1400,
-        "total_hwm_bytes": 267042705408,
-        "total_pss_bytes": 221095944192,
-        "total_rss_bytes": 266713935872
+        "total_hwm_bytes": 264692428800,
+        "total_pss_bytes": 219337735168,
+        "total_rss_bytes": 264600264704
       },
       {
         "label": "step_1488",
-        "maximum_rank_hwm_bytes": 903782400,
-        "maximum_rank_rss_bytes": 903782400,
-        "maximum_rank_ru_maxrss_bytes": 903782400,
+        "maximum_rank_hwm_bytes": 889204736,
+        "maximum_rank_rss_bytes": 847425536,
+        "maximum_rank_ru_maxrss_bytes": 889204736,
         "step": 1488,
-        "total_hwm_bytes": 267312500736,
-        "total_pss_bytes": 221483623424,
-        "total_rss_bytes": 267300917248
+        "total_hwm_bytes": 264992325632,
+        "total_pss_bytes": 219426577408,
+        "total_rss_bytes": 264862941184
       },
       {
         "label": "pre_finalize",
-        "maximum_rank_hwm_bytes": 903782400,
-        "maximum_rank_rss_bytes": 903782400,
-        "maximum_rank_ru_maxrss_bytes": 903782400,
+        "maximum_rank_hwm_bytes": 889204736,
+        "maximum_rank_rss_bytes": 847425536,
+        "maximum_rank_ru_maxrss_bytes": 889204736,
         "step": 1488,
-        "total_hwm_bytes": 267312500736,
-        "total_pss_bytes": 221483623424,
-        "total_rss_bytes": 267300917248
+        "total_hwm_bytes": 264992325632,
+        "total_pss_bytes": 219426577408,
+        "total_rss_bytes": 264862941184
       },
       {
         "label": "finalized",
-        "maximum_rank_hwm_bytes": 903782400,
-        "maximum_rank_rss_bytes": 869429248,
-        "maximum_rank_ru_maxrss_bytes": 903782400,
+        "maximum_rank_hwm_bytes": 889204736,
+        "maximum_rank_rss_bytes": 812851200,
+        "maximum_rank_ru_maxrss_bytes": 889204736,
         "step": 1488,
-        "total_hwm_bytes": 267356524544,
-        "total_pss_bytes": 206482736128,
-        "total_rss_bytes": 253495824384
+        "total_hwm_bytes": 265041473536,
+        "total_pss_bytes": 204430071808,
+        "total_rss_bytes": 251039068160
       }
     ]
   },
@@ -709,7 +710,7 @@
   "native_library_sha256": "4d3879e280b191d564c5fe1277ebcfad70ac5cc9503e720c34e16c411f8bc54a",
   "native_manifest": "/glade/work/ruitong/pycam-sima-pi-cam-only/build/pi_cam_promoted/native_cam_manifest.json",
   "native_state_ownership": "python-owned-zero-copy-derived-shell",
-  "pbs_job_id": "7256752.desched1",
+  "pbs_job_id": "7303342.desched1",
   "radiation_python": false,
   "radiation_split": false,
   "rank_created_fields": [
@@ -3803,14 +3804,14 @@
   "step_plan_actions": 48,
   "steps": 1488,
   "timing": {
-    "advance_seconds": 565.3091759650001,
-    "advance_sypd": 12.980652895390367,
+    "advance_seconds": 472.41355771400004,
+    "advance_sypd": 15.533174423040816,
     "aggregation": "maximum across all MPI ranks",
     "clock": "MPI.Wtime with MPI barriers",
-    "finalize_seconds": 0.5197744790000343,
-    "initialize_seconds": 16.44739011999991,
+    "finalize_seconds": 0.47706171100003303,
+    "initialize_seconds": 11.110568279999939,
     "simulated_days": 31.0,
-    "total_seconds": 582.2972846279999
+    "total_seconds": 484.0211496260001
   },
   "validation_scope": "configured CAM runtime"
 }
