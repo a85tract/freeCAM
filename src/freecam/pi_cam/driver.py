@@ -2190,14 +2190,16 @@ class PICAMDriver:
             name=name, phase="direct_kernel", operation=name, kind="kernel", native_id=None,
         )
         profiler = self.profiler
-        region, kernel_region = f"CAM:{name}", "FORTRAN:DIRECT_KERNEL"
+        region = f"CAM:{name}"
+        running = {PICAMLifecycle.INITIALIZED, PICAMLifecycle.RUNNING}
 
         def run() -> PICAMActionTrace:
-            if self.lifecycle not in {PICAMLifecycle.INITIALIZED, PICAMLifecycle.RUNNING}:
+            # one region per run: a bound kernel is nothing but its native
+            # call, so the FORTRAN:DIRECT_KERNEL child row would repeat the row
+            if self.lifecycle not in running:
                 raise PICAMStateError(f"run kernel from {self.lifecycle.value}")
             with profiler.region(region):
-                with profiler.region(kernel_region):
-                    bound()
+                bound()
             return self._record(action)
 
         return run

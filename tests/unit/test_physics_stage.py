@@ -690,8 +690,10 @@ def test_the_same_kernel_under_two_field_maps_keeps_two_plans(widget) -> None:
 
     widget.bind_kernel = bind_kernel
     runtime = Widget().runtime(widget)
-    ones = np.ones((PCOLS, PVER), order="F")
-    twos = np.full((PCOLS, PVER), 2.0, order="F")
+    cube = np.zeros((PCOLS, PVER, 2), order="F")
+    ones, twos = cube[:, :, 0], cube[:, :, 1]                # views, as the walks hand
+    ones[...] = 1.0
+    twos[...] = 2.0
     for _ in range(3):                                       # as a walk does: one map per rate name
         runtime.kernel_on_chunk("widget_step", {"p": ones, "n": np.int32(6)}, outputs={},
                                 fields={"p": "widget.x", "q": "widget.y", "n": "widget.ncol"})
@@ -709,10 +711,13 @@ def test_an_input_that_is_also_written_or_of_another_dtype_still_goes_through_sc
     seen: list[dict[str, np.ndarray]] = []
     widget.bind_kernel = lambda name, arrays: (seen.append(dict(arrays)), lambda: None)[1]
     runtime = Widget().runtime(widget)
-    x = np.ones((PCOLS, PVER), order="F")
+    x = np.ones((PCOLS, PVER, 1), order="F")[:, :, 0]
     # named among the outputs: the kernel writes it, so it must not be CAM's storage
     runtime.kernel_on_chunk("widget_step", {"x": x, "ncol": np.int32(6)}, outputs={"x": x})
     assert seen[-1]["widget.x"] is runtime.scratch["x"] and np.all(runtime.scratch["x"] == 1.0)
+    # an array that owns its memory is a temporary the walk computed: copied, never bound
+    runtime.kernel_on_chunk("widget_step", {"x": np.ones((PCOLS, PVER), order="F"), "ncol": np.int32(6)}, outputs={})
+    assert seen[-1]["widget.x"] is runtime.scratch["x"]
     # a float32 array or a C-ordered one is copied into the F-ordered double scratch
     runtime.kernel_on_chunk("widget_step", {"x": x.astype(np.float32), "ncol": np.int32(6)}, outputs={})
     assert seen[-1]["widget.x"] is runtime.scratch["x"]
@@ -724,8 +729,10 @@ def test_a_moved_input_view_is_bound_again_and_the_table_stays_small(widget) -> 
     binds: list[int] = []
     widget.bind_kernel = lambda name, arrays: (binds.append(arrays["widget.x"].ctypes.data), lambda: None)[1]
     runtime = Widget().runtime(widget)
-    views = [np.full((PCOLS, PVER), float(i), order="F") for i in range(12)]
-    for view in views:                                        # storage that moves every call
+    block = np.zeros((PCOLS, PVER, 12), order="F")
+    views = [block[:, :, i] for i in range(12)]
+    for i, view in enumerate(views):                          # storage that moves every call
+        view[...] = float(i)
         runtime.kernel_on_chunk("widget_step", {"x": view, "ncol": np.int32(6)}, outputs={})
     assert binds == [v.ctypes.data for v in views]
     (plan,) = runtime._plans.values()
@@ -763,8 +770,10 @@ def test_a_kernel_whose_callers_always_hand_new_arrays_goes_back_to_copying(widg
     binds: list[int] = []
     widget.bind_kernel = lambda name, arrays: (binds.append(arrays["widget.x"].ctypes.data), lambda: None)[1]
     runtime = Widget().runtime(widget)
+    block = np.zeros((PCOLS, PVER, REBINDS_BEFORE_COPYING + 20), order="F")
     for i in range(REBINDS_BEFORE_COPYING + 20):
-        fresh = np.full((PCOLS, PVER), float(i), order="F")
+        fresh = block[:, :, i]                                # a view somewhere new every call
+        fresh[...] = float(i)
         runtime.kernel_on_chunk("widget_step", {"x": fresh, "ncol": np.int32(6)}, outputs={})
     (plan,) = runtime._plans.values()
     assert plan.in_place is False

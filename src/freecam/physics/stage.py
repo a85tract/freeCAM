@@ -369,7 +369,7 @@ class _KernelPlan:
 
 #: bound calls kept per kernel plan, and the rebinds after which a plan whose
 #: callers keep handing it new arrays goes back to copying them into scratch
-BOUND_PER_PLAN, REBINDS_BEFORE_COPYING = 64, 96
+BOUND_PER_PLAN, REBINDS_BEFORE_COPYING = 64, 48
 
 
 class StageRuntime:
@@ -518,6 +518,7 @@ class StageRuntime:
                 if value is None:
                     handed.append(scratch)
                 elif (may_stand_in and plan.in_place and type(value) is np.ndarray
+                      and value.base is not None            # a view of kept storage, not a temporary
                       and local not in outputs and value.dtype == scratch.dtype
                       and value.flags.f_contiguous and value.shape == scratch.shape[:-1]):
                     handed.append(value)                # read in place: no copy
