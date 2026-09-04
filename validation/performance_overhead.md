@@ -139,6 +139,27 @@ figure, and the table predates both rounds of control-path work.
 The cost is per *call*, not per FLOP: about 700 crossings of the Python /
 Fortran boundary per chunk per step, each cheap and none of them numerical.
 
+### A trained network in mmacro_pcond's place
+
+The same month was run once more with the Python stage and the soft-gated
+surrogate `mmacro_pcond_soft_gated.pt` in the macrophysics core's slot
+(`pi_cam_macro_surrogate_1month.pbs`, job `7305340`, 2026-09-04).  It is
+not a bit-for-bit run and was never going to be; the questions were what
+it costs and whether it stands.  It did not stand: at step 100, writing
+the first two-day history record, PIO refused a value as not representable
+in the file's type and CAM aborted.  The log carries thousands of
+water-tracer consistency warnings from the first steps on (`wtrc q1q2
+uqdiff error`, `BIG ERROR, diff value` of order 1e-2, `isotopic stratiform
+precipitation mass error`), so the surrogate's condensation tendencies are
+inconsistent with the isotopic water budget this configuration carries,
+and something derived from it grew past float range within two days.  No
+valid history record exists, so drift cannot be measured.  Until the
+abort it ran at about 0.59 s per step against 0.32 s for the Python stage
+with the Fortran core and 0.27 s for freeCAM: the network's inference on
+the compute nodes costs more than the Fortran core it replaces, as the
+fifty-step runs had suggested.  PBS high-water memory 296 GB, 74 GB above
+the Python-stage month, for a PyTorch runtime on every rank.
+
 ### Memory
 
 | Run | PBS high-water | vs Fortran |

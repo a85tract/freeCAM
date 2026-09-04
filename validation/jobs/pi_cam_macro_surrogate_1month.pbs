@@ -44,8 +44,9 @@ fortran_timing=${oracle_run}/timing/cesm_timing.000
 
 mkdir -p "${run_dir}"
 rsync -a \
-  --exclude 'f.e13.F1850C5.ne16_g16.icesm131_ihesp.PI-cam-oracle.1month.*' \
-  --exclude '*.log.*' --exclude 'rpointer.*' --exclude 'timing/' \
+  --exclude '*.cam.*.nc' --exclude '*.clm2.*.nc' --exclude '*.cice.*.nc' \
+  --exclude '*.cpl.*.nc' --exclude '*.rtm.*.nc' --exclude '*.log.*' \
+  --exclude 'rpointer.*' --exclude 'timing/' \
   "${oracle_run}/" "${run_dir}/"
 mkdir -p "${run_dir}/timing/checkpoints"
 
@@ -86,7 +87,8 @@ mpiexec --label -n 512 "${python}" -m freecam.pi_cam.cli \
   --config "${config}" \
   --output "${report}" || true
 
-# how far each history field moved over the month
+# how far each history field moved over the month (the oracle's files are
+# not in the run directory, so the pairing is by the run's own output)
 "${python}" tools/report_pi_cam_surrogate_drift.py \
   --reference "${oracle_run}" \
   --candidate "${run_dir}" \
