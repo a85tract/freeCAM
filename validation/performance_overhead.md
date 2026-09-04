@@ -74,6 +74,19 @@ atmosphere inside the coupled loop — against freeCAM's `advance_seconds`.
 | … after round 1, 2026-09-03 (`7303107`) | 521.43 s | +37.4% (+141.9 s) | +29.5% (+118.9 s) |
 | … after round 2, 2026-09-03 (`7303342`) | 472.41 s | **+24.5%** (+93.0 s) | **+17.4%** (+69.9 s) |
 | … after round 4, 2026-09-04 (`7304288`) | 475.53 s | +25.3% (+96.1 s) | +18.1% (+73.0 s) |
+| freeCAM + Python stage, native-whole, 2026-09-04 (`7314269`) | 424.30 s | +11.8% (+44.9 s) | **+5.4%** (+21.8 s) |
+
+The last row is the Python class installed with none of its kernels
+replaced and `--stage-execution native-whole` (branch
+`native-stage-batching`, code `086c1cc`): the class keeps its slot in the
+workflow and, finding nothing to replace, runs the original Fortran stage
+once a step through the plan's own primitive -- one Python/Fortran
+crossing, no walk, no views, no copies.  Bit-for-bit over the 18 files;
+the stage region is 48.5 ms per step against 38.9 ms for the Fortran
+action itself, the difference being the Python process wrapper around
+the single call (its pointer-stability check and its error collective).
+The statement-by-statement walk remains available as
+`--stage-execution legacy-python`; the 475.53 s above is its record.
 
 The stage itself cost **146 ms per step per rank** in the first run, against
 38.9 ms for the Fortran stage it replaces (the `CAM:macro_microphysics`

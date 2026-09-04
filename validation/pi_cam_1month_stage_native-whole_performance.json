@@ -1,0 +1,44 @@
+{
+  "bfb": {
+    "bfb": true,
+    "candidate_files": 18,
+    "compared_files": 18,
+    "extra_in_candidate": [],
+    "first_difference": null,
+    "missing_in_candidate": [],
+    "reference_files": 18
+  },
+  "comparison_scope": {
+    "bfb": "All numeric variables in every CAM history and restart NetCDF file are compared byte for byte.",
+    "performance": "FreeCAM uses the recorded x2a/a2x boundary bundle for the simulated duration; the original atmosphere timer excludes other component compute but includes its live coupler exchange. The ratio is therefore an end-to-end CAM-path comparison, not a kernel-only benchmark."
+  },
+  "config": "/glade/work/ruitong/pycam-sima-pi-cam-only/configs/pi_cam_icesm131_1month.yaml",
+  "config_sha256": "33ab1618a2b95fe8741a52f4461bf8c664acf354b33ebc171b89b7215cdea291",
+  "freecam_seconds": {
+    "advance": 424.3016426050001,
+    "advance_sypd": 17.294493951823195,
+    "finalize": 0.37853693800002475,
+    "initialize": 16.301306706000105,
+    "total": 441.0003834889999
+  },
+  "git_commit": "086c1cc086cd35895f48ea221b2ef7ecd73ac73e",
+  "mpi_ranks": 512,
+  "original_fortran_seconds": {
+    "atmosphere_inside_coupled_loop": 403.634491,
+    "coupled_run_loop": 495.303711,
+    "finalize_all_components": 0.785248,
+    "initialize_all_components": 22.244078,
+    "lifecycle_sum": 518.333037,
+    "pbs_job_id": null,
+    "timer_source": "CESM GPTL rank-zero wallclock"
+  },
+  "pbs_job_id": "7314269.desched1",
+  "performance_ratios": {
+    "freecam_advance_over_original_atmosphere": 1.051202640175267,
+    "freecam_total_over_original_cesm_lifecycle": 0.8508050847798843
+  },
+  "result": "passed",
+  "schema_version": 1,
+  "simulated_days": 31.0,
+  "steps": 1488
+}
