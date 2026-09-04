@@ -429,6 +429,7 @@ def main(argv: list[str] | None = None) -> int:
                     after="macro_tend_pre_leaf",
                     native=True,
                     transactional=False,
+                    trusted_native=True,
                 ),
                 unsafe=True,
             )
@@ -449,6 +450,7 @@ def main(argv: list[str] | None = None) -> int:
                     after="rad_tend_pre_leaf",
                     native=True,
                     transactional=False,
+                    trusted_native=True,
                 ),
                 unsafe=True,
             )
@@ -480,6 +482,7 @@ def main(argv: list[str] | None = None) -> int:
                     after="cloud_macro_microphysics",
                     native=True,
                     transactional=False,
+                    trusted_native=True,
                 ),
                 unsafe=True,
             )

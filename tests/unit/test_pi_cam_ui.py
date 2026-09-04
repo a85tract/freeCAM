@@ -527,6 +527,7 @@ def test_workflow_insert_installs_physics_object_with_declared_placement() -> No
         # an ordinary notebook process reads and writes StatePool fields
         # inside the snapshot, so it is neither native nor unsafe
         "native": False,
+        "trusted_native": False,
         "unsafe": False,
     }
 

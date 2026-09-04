@@ -18,6 +18,7 @@ import numpy as np
 
 from freecam.model.clock import ModelClock
 from freecam.model.collective import collective_error_message
+from freecam.model.errors import PythonProcessTaintedError
 from freecam.model.python_processes import PythonProcessSpec
 
 from .boundary import CAMBoundaryProvider
@@ -852,6 +853,8 @@ class _PhysicsCollection:
         parameters: Mapping[str, Any] | None = None,
         enabled: bool = True,
         transactional: bool = True,
+        native: bool = False,
+        trusted_native: bool = False,
         unsafe: bool = False,
     ) -> _PythonProcessReference:
         phase, before, after = self._resolve_placement(
@@ -868,6 +871,8 @@ class _PhysicsCollection:
             parameters=parameters,
             enabled=enabled,
             transactional=transactional,
+            native=native,
+            trusted_native=trusted_native,
         )
         self.driver.python_processes.install(spec, unsafe=unsafe)
         action = self.driver.step_plan.select(spec.name, phase=spec.group)
@@ -1074,6 +1079,10 @@ class PICAMDriver:
         self._native_call_depth = 0
         self._python_initialized_addresses: dict[str, int] = {}
         self.python_processes = PICAMPythonProcessRegistry(self)
+        # (process name, this rank's traceback or None) for every trusted
+        # native process run since the last boundary collective
+        self._deferred_process_errors: list[tuple[str, str | None]] = []
+        self._in_step = False
         self.module_parameters = PICAMModuleParameterRegistry(self)
         self.history_streams = PICAMHistoryStreamRegistry(self)
         self.default_history_stream = bool(default_history_stream)
@@ -2239,6 +2248,7 @@ class PICAMDriver:
             raise PICAMStateError("complete PI-CAM step requires one import and one export")
         capture: list[PICAMActionTrace] = []
         self._trace_captures.append(capture)
+        self._in_step = True
         try:
             source_step = getattr(self.backend, "execute_source_step", None)
             use_source_boundary = (
@@ -2298,6 +2308,7 @@ class PICAMDriver:
             self.lifecycle = PICAMLifecycle.FAILED
             raise
         finally:
+            self._in_step = False
             self._trace_captures.pop()
         return tuple(capture)
 
@@ -2459,6 +2470,41 @@ class PICAMDriver:
         with self.profiler.region(timer):
             return self._collective_boundary_call_impl(label, function)
 
+    def _settle_process_error(self, name: str, error: str | None) -> None:
+        """Take a trusted native process's outcome: to the export inside a step, now outside one.
+
+        Inside a step the boundary export's collective already exists, so the
+        outcome rides on it and every rank raises the same grouped message
+        there; that saves the stage a collective a step.  Outside a step no
+        export follows, so the ranks agree at once.
+        """
+
+        if self._in_step:
+            self._deferred_process_errors.append((name, error))
+            return
+        errors = self.comm.allgather(error)
+        failure = collective_error_message(f"Python process {name!r}", errors)
+        if failure is not None:
+            raise PythonProcessTaintedError(
+                f"Python process {name!r} failed without rollback:\n" + failure
+            )
+
+    def _raise_deferred_process_errors(self, per_rank: list[list[tuple[str, str | None]]]) -> None:
+        """Raise on every rank if any rank's trusted native process failed since the last collective."""
+
+        names: list[str] = []
+        for entries in per_rank:
+            for name, _ in entries:
+                if name not in names:
+                    names.append(name)
+        for name in names:
+            errors = [dict(entries).get(name) for entries in per_rank]
+            failure = collective_error_message(f"Python process {name!r}", errors)
+            if failure is not None:
+                raise PythonProcessTaintedError(
+                    f"Python process {name!r} failed without rollback:\n" + failure
+                )
+
     @staticmethod
     def _boundary_timer_name(label: str) -> str:
         lowered = label.lower()
@@ -2491,7 +2537,11 @@ class PICAMDriver:
             result = function()
         except BaseException:
             local_error = traceback.format_exc()
-        errors = self.comm.allgather(local_error)
+        deferred = self._deferred_process_errors
+        self._deferred_process_errors = []
+        gathered = self.comm.allgather((local_error, deferred))
+        errors = [item[0] for item in gathered]
+        self._raise_deferred_process_errors([item[1] for item in gathered])
         failure = collective_error_message(label, errors)
         if failure is not None:
             # Every rank raises the whole message, not a pointer to rank 0's:

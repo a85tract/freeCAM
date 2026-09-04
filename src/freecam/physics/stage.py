@@ -771,6 +771,7 @@ class _StageProcess(Physics):
     writes = ()
     native = True
     transactional = False
+    trusted_native = True
 
     def __init__(self, stage: "NativeStage") -> None:
         self.stage = stage

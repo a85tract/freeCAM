@@ -190,8 +190,20 @@ class PythonProcessSpec:
     # access object in its context.  Off by default: an ordinary process
     # never sees a pointer.
     native: bool = False
+    # A trusted native process is one of freeCAM's own stage classes: it
+    # owns no StatePool field, runs the image's routines directly, and its
+    # failures taint the run rather than roll back.  The registry runs it
+    # without the field view, the snapshot and the per-call pointer scan a
+    # notebook process gets, and gathers its outcome once a step at the
+    # boundary export instead of once per call.
+    trusted_native: bool = False
 
     def __post_init__(self) -> None:
+        if self.trusted_native and (not self.native or self.transactional or self.reads or self.writes):
+            raise PythonProcessContractError(
+                f"Python process {self.name!r}: trusted_native requires native=True, "
+                f"transactional=False and no StatePool reads or writes"
+            )
         object.__setattr__(self, "name", _safe_name(self.name, "process name"))
         object.__setattr__(self, "payload", bytes(self.payload))
         object.__setattr__(self, "group", str(self.group).strip().lower())
@@ -246,6 +258,7 @@ class PythonProcessSpec:
         enabled: bool = True,
         transactional: bool = True,
         native: bool = False,
+        trusted_native: bool = False,
         max_payload_bytes: int = DEFAULT_MAX_PAYLOAD_BYTES,
         max_parameter_bytes: int = DEFAULT_MAX_PARAMETER_BYTES,
     ) -> "PythonProcessSpec":
@@ -292,6 +305,7 @@ class PythonProcessSpec:
             enabled=enabled,
             transactional=transactional,
             native=native,
+            trusted_native=trusted_native,
             source=source,
         )
 
@@ -311,6 +325,7 @@ class PythonProcessSpec:
             "enabled": self.enabled,
             "transactional": self.transactional,
             "native": self.native,
+            "trusted_native": self.trusted_native,
             "source": self.source,
             "python_version": self.python_version,
             "cloudpickle_version": self.cloudpickle_version,
@@ -345,6 +360,7 @@ class PythonProcessSpec:
             enabled=bool(values.get("enabled", True)),
             transactional=bool(values.get("transactional", True)),
             native=bool(values.get("native", False)),
+            trusted_native=bool(values.get("trusted_native", False)),
             source=(None if values.get("source") is None else str(values["source"])),
             python_version=str(values.get("python_version", platform.python_version())),
             cloudpickle_version=str(

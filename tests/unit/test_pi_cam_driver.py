@@ -50,7 +50,8 @@ def test_rank_local_boundary_failure_is_raised_on_every_rank() -> None:
         @staticmethod
         def allgather(value):
             del value
-            return ["rank zero failed", None, None]
+            # the boundary collective gathers (this rank's error, deferred process outcomes)
+            return [("rank zero failed", []), (None, []), (None, [])]
 
     config = PICAMConfig(
         case_name="collective-boundary-test",
