@@ -76,6 +76,7 @@ atmosphere inside the coupled loop — against freeCAM's `advance_seconds`.
 | … after round 4, 2026-09-04 (`7304288`) | 475.53 s | +25.3% (+96.1 s) | +18.1% (+73.0 s) |
 | freeCAM + Python stage, native-whole, 2026-09-04 (`7314269`) | 424.30 s | +11.8% (+44.9 s) | +5.4% (+21.8 s) |
 | … native-whole, trusted process path (`7314497`) | 419.03 s | +10.4% (+39.6 s) | **+4.1%** (+16.5 s) |
+| … native-whole, trusted process path, second run (`7314498`) | 404.22 s | +6.5% (+24.8 s) | **+0.4%** (+1.7 s) |
 
 The last row is the Python class installed with none of its kernels
 replaced and `--stage-execution native-whole` (branch
