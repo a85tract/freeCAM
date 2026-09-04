@@ -515,3 +515,13 @@ def test_a_hand_over_frees_the_walk_s_tendency_object() -> None:
         copy = re.search(rf"mm_ptend\(lchnk\)\s*=\s*{walk}_ptend\(lchnk\)", body).start()
         free = body.index(f"call physics_ptend_dealloc({walk}_ptend(lchnk))")
         assert copy < free
+
+
+def test_a_macro_surrogate_is_handed_to_the_macrophysics_walk_by_path() -> None:
+    scheme = CloudMacroMicrophysics(macro_surrogate="/models/mmacro_pcond.pt")
+    assert scheme.macro is not None and scheme.macro.surrogate == "/models/mmacro_pcond.pt"
+    assert CloudMacroMicrophysics().macro.surrogate is None
+    from freecam.pi_cam.errors import PICAMConfigurationError
+
+    with pytest.raises(PICAMConfigurationError, match="no such place"):
+        CloudMacroMicrophysics(whole_drivers=True, macro_surrogate="/models/mmacro_pcond.pt")

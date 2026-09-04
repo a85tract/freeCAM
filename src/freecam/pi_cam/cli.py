@@ -437,7 +437,9 @@ def main(argv: list[str] | None = None) -> int:
                 # the original core through its standalone image, opened by each
                 # rank on first use: the stage is pickled to the ranks, and a
                 # loaded image is not picklable
-                micro_core_standalone=bool(args.micro_core_standalone))
+                micro_core_standalone=bool(args.micro_core_standalone),
+                # a trained network in mmacro_pcond's place, named by path
+                macro_surrogate=args.macro_kernel_surrogate)
             cam.step_plan.set_enabled("cloud_macro_microphysics", False, phase="cam_run1", experimental=True)
             cam.python_processes.install(
                 PythonProcessSpec.from_callable(
