@@ -98,6 +98,7 @@ class _Native:
                            "grid.chunk_ncols": np.array([6, 5]),
                            "cam_in.landfrac": np.zeros((PCOLS, 2), order="F")})
         self.kernels: list[str] = []
+        self.actions: list[tuple] = []
         from freecam.pi_cam.kernel_codegen import load_direct_kernels
 
         self._args = {k.name: [{"field": a.field, "dtype": a.dtype, "rank": a.rank}
@@ -114,6 +115,9 @@ class _Native:
     def run_kernel(self, name, arrays):
         self.kernels.append(name)
         arrays["widget.y"][...] = 2.0
+
+    def run_action(self, name, *, phase=None):
+        self.actions.append((name, phase))
 
 
 class _Pool(dict):
@@ -833,3 +837,74 @@ def test_a_full_table_points_its_oldest_call_at_the_new_arrays_instead_of_rebuil
     before = len(log)
     runtime.kernel_on_chunk("widget_step", {"x": block[:, :, BOUND_PER_PLAN + 2], "ncol": np.int32(6)}, outputs={})
     assert [e[0] for e in log[before:]] == ["run"]
+
+
+# -- execution modes -------------------------------------------------------------
+
+
+class WholeWidget(Widget):
+    """The widget as a whole workflow action, with an original Fortran stage to run."""
+
+    STAGE = "cam_run1.widgets"
+    WHOLE_ACTION = True
+    FIRST_HALF = ""
+    SECOND_HALF = ""
+
+
+def test_with_nothing_replaced_the_original_stage_runs_once_and_the_walk_not_at_all(widget) -> None:
+    stage = WholeWidget()
+    stage.tend(None, _Context(widget))
+    stage.tend(None, _Context(widget))
+    assert widget.actions == [("cam_run1.widgets", None)] * 2       # one native call a step
+    assert widget.kernels == [] and stage.calls == []                # tend_chunk never ran
+    assert stage.execution.mode == "native-whole"
+    assert stage.execution.describe() == {
+        "execution_mode": "native-whole", "active_replacements": [],
+        "native_stage_calls": 2, "native_segment_calls": 0, "python_model_calls": 0,
+        "legacy_steps": 0, "python_fortran_crossings_per_step": 1,
+    }
+
+
+def test_a_replacement_switches_to_the_walk_and_its_removal_back(widget) -> None:
+    stage = WholeWidget()
+    stage.kernels["widget_step"] = lambda batch: {"y": np.full((batch["ncol"], 2), 3.0)}
+    stage.tend(None, _Context(widget))
+    assert widget.actions == []                                       # no whole-stage call
+    assert stage.calls == ["view", "cam_in", "outfld", "kernel"] * 2  # the walk ran
+    assert stage.execution.mode == "legacy-python"
+    assert stage.execution.replacements == ("widget_step",)
+    assert stage.execution.python_model_calls == 2 and stage.execution.legacy_steps == 1
+    stage.kernels["widget_step"] = None
+    stage.tend(None, _Context(widget))
+    assert widget.actions == [("cam_run1.widgets", None)]
+    assert stage.execution.mode == "native-whole"
+
+
+def test_the_policy_can_force_the_walk_and_refuses_what_it_cannot_do(widget) -> None:
+    stage = WholeWidget()
+    stage.execution_policy = "legacy-python"
+    stage.tend(None, _Context(widget))
+    assert widget.actions == [] and stage.execution.mode == "legacy-python"
+
+    stage = WholeWidget()
+    stage.execution_policy = "native-whole"
+    stage.kernels["widget_step"] = lambda batch: {}
+    with pytest.raises(PhysicsError, match="are replaced"):
+        stage.tend(None, _Context(widget))
+    split = Widget()                                                  # sits inside a split action
+    split.execution_policy = "native-whole"
+    with pytest.raises(PhysicsError, match="not the whole of"):
+        split.tend(None, _Context(widget))
+    stage = WholeWidget()
+    stage.execution_policy = "segmented"
+    with pytest.raises(PhysicsError, match="not built yet"):
+        stage.tend(None, _Context(widget))
+    stage.execution_policy = "sideways"
+    with pytest.raises(PhysicsError, match="unknown stage execution policy"):
+        stage.tend(None, _Context(widget))
+
+
+def test_a_split_stage_walks_under_auto_because_it_has_no_whole_action(widget) -> None:
+    stage = Widget()
+    stage.tend(None, _Context(widget))
+    assert widget.actions == [] and stage.execution.mode == "legacy-python"

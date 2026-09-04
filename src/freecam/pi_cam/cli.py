@@ -245,6 +245,17 @@ def main(argv: list[str] | None = None) -> int:
         ),
     )
     parser.add_argument(
+        "--stage-execution",
+        choices=("auto", "native-whole", "segmented", "legacy-python"),
+        default="auto",
+        help=(
+            "how a Python stage runs: auto runs the original Fortran stage whole "
+            "while none of its kernels is replaced and the transliteration "
+            "otherwise; native-whole and legacy-python force those paths; "
+            "segmented is the native runner with a stop at each replaced kernel"
+        ),
+    )
+    parser.add_argument(
         "--cloud-macro-micro-python",
         action="store_true",
         help=(
@@ -377,6 +388,7 @@ def main(argv: list[str] | None = None) -> int:
     world.Barrier()
     total_started = MPI.Wtime()
     memory_samples = [_process_memory("python_ready", cam.clock.nstep)]
+    stages: list = []            # the Python stages installed, for the record
     with cam:
         world.Barrier()
         initialize_started = MPI.Wtime()
@@ -392,6 +404,8 @@ def main(argv: list[str] | None = None) -> int:
             # A model in the kernel's place is named by path, not carried:
             # the stage is pickled to every rank, and each loads its own.
             scheme = Macrophysics(surrogate=args.macro_kernel_surrogate)
+            scheme.execution_policy = args.stage_execution
+            stages.append(scheme)
             cam.python_processes.install(
                 PythonProcessSpec.from_callable(
                     scheme.tend,
@@ -411,6 +425,8 @@ def main(argv: list[str] | None = None) -> int:
             from freecam.physics.radiation import Radiation
 
             scheme = Radiation()
+            scheme.execution_policy = args.stage_execution
+            stages.append(scheme)
             cam.python_processes.install(
                 PythonProcessSpec.from_callable(
                     scheme.tend,
@@ -440,6 +456,8 @@ def main(argv: list[str] | None = None) -> int:
                 micro_core_standalone=bool(args.micro_core_standalone),
                 # a trained network in mmacro_pcond's place, named by path
                 macro_surrogate=args.macro_kernel_surrogate)
+            scheme.execution_policy = args.stage_execution
+            stages.append(scheme)
             cam.step_plan.set_enabled("cloud_macro_microphysics", False, phase="cam_run1", experimental=True)
             cam.python_processes.install(
                 PythonProcessSpec.from_callable(
@@ -706,6 +724,8 @@ def main(argv: list[str] | None = None) -> int:
             "macro_kernel_surrogate": (str(args.macro_kernel_surrogate)
                                        if args.macro_kernel_surrogate else None),
             "cloud_macro_micro_python": bool(args.cloud_macro_micro_python),
+            "stage_execution_policy": args.stage_execution,
+            "stage_execution": {type(stage).__name__: stage.execution.describe() for stage in stages},
             "cloud_macro_micro_whole_drivers": bool(args.cloud_macro_micro_whole_drivers),
             "cloud_macro_micro_whole_micro": bool(args.cloud_macro_micro_whole_micro),
             "cloud_macro_micro_whole_aero": bool(args.cloud_macro_micro_whole_aero),

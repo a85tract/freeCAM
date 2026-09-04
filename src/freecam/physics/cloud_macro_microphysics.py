@@ -290,6 +290,7 @@ class CloudMacroMicrophysics(NativeStage):
     """
 
     STAGE = "cam_run1.cloud_macro_microphysics"
+    WHOLE_ACTION = True          # tend is the whole action: stage 7 end to end
     PREFIX = "mm"
     PROCESS_NAME = "cloud_macro_microphysics"
     TRACE_ENV = "FREECAM_MM_TRACE"

@@ -434,6 +434,16 @@ class NativeAccess:
 
         return self._driver.bind_kernel(name, experimental=True, pool=arrays)
 
+    def run_action(self, name: str, *, phase: str | None = None):
+        """Run one native workflow action whole, timed and recorded as the plan would.
+
+        A stage that replaces a whole action calls its original Fortran this
+        way when none of its kernels is replaced; the action itself stays
+        disabled in the plan.
+        """
+
+        return self._driver.run_native_action(name, phase=phase)
+
 
 @dataclass(frozen=True, slots=True)
 class PythonProcessContext:

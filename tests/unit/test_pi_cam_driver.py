@@ -1103,3 +1103,22 @@ def test_a_reload_replaces_the_kept_callable_too() -> None:
     process.run()
     # 1 from the old callable, 10 from the new: a stale kept function would give 2
     assert float(driver.pool["experiment_tracer"][0, 0]) == 11.0
+
+
+def test_a_native_action_can_be_run_outside_the_plan_and_a_python_one_cannot() -> None:
+    driver, backend, _ = _driver()
+    driver.initialize()
+    driver.step_plan.set_enabled("cloud_macro_microphysics", False, phase="cam_run1", experimental=True)
+    before = list(backend.calls)
+    trace = driver.run_native_action("cam_run1.cloud_macro_microphysics")
+    assert backend.calls[len(before):] == ["macro_microphysics"]
+    assert trace.operation == "macro_microphysics" and trace.name == "cloud_macro_microphysics"
+    assert driver.trace[-1].operation == "macro_microphysics"
+
+    def quiet(fields, context):
+        del fields, context
+
+    driver.physics.install_python(quiet, name="quiet_stage", after="dadadj",
+                                  transactional=False, unsafe=True)
+    with pytest.raises(PICAMStateError, match="only a native action"):
+        driver.run_native_action("quiet_stage")

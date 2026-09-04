@@ -1513,6 +1513,26 @@ class PICAMDriver:
     def _synchronize_clock(self, action: PICAMAction) -> None:
         self._execute_backend_primitive("synchronize_clock", action)
 
+    def run_native_action(self, name: str, *, phase: str | None = None) -> PICAMActionTrace:
+        """Run one native workflow action now, whether or not the plan has it enabled.
+
+        This is how a Python stage that owns a workflow action runs the
+        original Fortran stage whole when nothing in it is replaced: the
+        action stays disabled in the plan, so the step does not run it a
+        second time, and the stage calls it here from its own slot.  Only a
+        native action may be run this way -- a Python process would recurse
+        into the dispatch that is running it -- and it is timed and recorded
+        exactly as the plan would have.
+        """
+
+        action = self.step_plan.select(name, phase=phase)
+        if action.kind not in {"scheme", "coupling", "dynamics", "kernel"}:
+            raise PICAMStateError(
+                f"{action.qualified_name} is a {action.kind!r} action; only a native "
+                f"action can be run outside the plan"
+            )
+        return self._execute(action)
+
     def _execute_native(self, action: PICAMAction) -> None:
         if action.kind not in {
             "scheme",

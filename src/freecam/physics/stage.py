@@ -723,6 +723,7 @@ class StageRuntime:
                 array = np.asarray(value)
                 batch[key] = array[:ncol].copy() if array.ndim else array
             answer = kernel(batch)
+            self.stage.execution.python_model_calls += 1
             missing = [key for key in outputs if key not in answer]
             if missing:
                 raise PhysicsError(
@@ -779,6 +780,40 @@ class _StageProcess(Physics):
         self.stage.tend(state, context)
 
 
+EXECUTION_POLICIES = ("auto", "native-whole", "segmented", "legacy-python")
+
+
+@dataclass(slots=True)
+class StageExecution:
+    """How a stage ran, and how often, for the record.
+
+    ``mode`` is what the last :meth:`NativeStage.tend` chose: ``native-whole``
+    ran the original Fortran stage once through its workflow action;
+    ``legacy-python`` walked the transliteration statement by statement;
+    ``segmented`` is the native runner with a stop at each replaced kernel
+    and is not built yet.  The counters accumulate over the run.
+    """
+
+    mode: str = "unset"
+    replacements: tuple[str, ...] = ()
+    native_stage_calls: int = 0
+    native_segment_calls: int = 0
+    python_model_calls: int = 0
+    legacy_steps: int = 0
+
+    def describe(self) -> dict[str, Any]:
+        crossings = 1 if self.mode == "native-whole" else None
+        return {
+            "execution_mode": self.mode,
+            "active_replacements": list(self.replacements),
+            "native_stage_calls": self.native_stage_calls,
+            "native_segment_calls": self.native_segment_calls,
+            "python_model_calls": self.python_model_calls,
+            "legacy_steps": self.legacy_steps,
+            "python_fortran_crossings_per_step": crossings,
+        }
+
+
 class NativeStage:
     """A CAM physics stage whose driver layer is Python.
 
@@ -791,6 +826,12 @@ class NativeStage:
     #: The whole stage as one workflow process, and the two halves that
     #: bracket the point where the Fortran driver used to be called.
     STAGE = ""
+    #: True when :meth:`tend` is the whole of :attr:`STAGE` -- everything the
+    #: workflow action does, so that with nothing replaced the original
+    #: Fortran action can run in its place.  A sub-walk that covers one
+    #: driver inside the action (the microphysics inside stage 7, say) names
+    #: the same STAGE but is not the whole of it, and leaves this False.
+    WHOLE_ACTION = False
     FIRST_HALF = ""
     SECOND_HALF = ""
 
@@ -835,6 +876,11 @@ class NativeStage:
         self.kernels: dict[str, Callable[..., Mapping[str, np.ndarray]] | None] = {
             name: None for name in self.SWAPPABLE
         }
+        #: Which path :meth:`tend` takes; see :data:`EXECUTION_POLICIES`.  ``auto``
+        #: runs the original Fortran stage whole while no kernel is replaced.
+        self.execution_policy: str = "auto"
+        #: What happened, for the run's record.
+        self.execution = StageExecution()
         if kernels is not None:
             unknown = [name for name in kernels if name not in self.kernels]
             if unknown:
@@ -964,12 +1010,62 @@ class NativeStage:
 
     # -- running -----------------------------------------------------------
 
+    # -- execution mode ----------------------------------------------------
+
+    def replacements(self) -> tuple[str, ...]:
+        """The kernels something other than the original Fortran computes."""
+
+        return tuple(name for name, kernel in self.kernels.items() if kernel is not None)
+
+    def select_mode(self) -> str:
+        """Which path :meth:`tend` takes this step, from the policy and the kernel slots."""
+
+        policy = self.execution_policy
+        if policy not in EXECUTION_POLICIES:
+            raise PhysicsError(
+                f"unknown stage execution policy {policy!r}; one of {EXECUTION_POLICIES}")
+        replaced = self.replacements()
+        if policy == "legacy-python":
+            return "legacy-python"
+        if policy == "segmented":
+            raise PhysicsError("segmented stage execution is not built yet")
+        if policy == "native-whole":
+            if replaced:
+                raise PhysicsError(
+                    f"native-whole execution runs the original Fortran stage, but "
+                    f"{list(replaced)} are replaced; use auto or legacy-python")
+            if not self.WHOLE_ACTION:
+                raise PhysicsError(
+                    f"{type(self).__name__} is not the whole of {self.STAGE!r}; it has no "
+                    f"whole Fortran stage of its own to run")
+            return "native-whole"
+        # auto: the original stage while nothing is replaced, the walk otherwise
+        # (segmented, when built, takes the walk's place here)
+        if not replaced and self.WHOLE_ACTION:
+            return "native-whole"
+        return "legacy-python"
+
     def tend(self, fields: Any, context: Any) -> None:
-        """The Fortran driver, for every chunk this rank owns."""
+        """The stage, for every chunk this rank owns, by whichever path the policy selects."""
 
         native = context.native
         if native is None:
             raise PhysicsError(f"{type(self).__name__}.tend must run as a native process")
+        mode = self.select_mode()
+        self.execution.mode = mode
+        self.execution.replacements = self.replacements()
+        if mode == "native-whole":
+            # nothing replaced: the original Fortran stage, once, through its
+            # own (disabled) workflow action -- no walk, no views, no copies
+            native.run_action(self.STAGE)
+            self.execution.native_stage_calls += 1
+            return
+        self.execution.legacy_steps += 1
+        self._tend_walk(native, context)
+
+    def _tend_walk(self, native: Any, context: Any) -> None:
+        """The transliteration, statement by statement: the legacy-python path."""
+
         runtime = self.runtime(native)
         entries = runtime.entries
         dt = float(entries.dt()) if entries.dt is not None else float(context.timestep_seconds)
@@ -986,7 +1082,7 @@ class NativeStage:
 
 
 __all__ = [
-    "CORE_ENTRIES", "DESCRIPTORS", "HOST_ENTRIES", "HostEntries", "HostServices",
-    "Local", "NativeStage", "PTEND_ENTRIES", "StageProfile", "StageRuntime", "as_view",
-    "check", "fortran", "pointer_of",
+    "CORE_ENTRIES", "DESCRIPTORS", "EXECUTION_POLICIES", "HOST_ENTRIES", "HostEntries",
+    "HostServices", "Local", "NativeStage", "PTEND_ENTRIES", "StageExecution", "StageProfile",
+    "StageRuntime", "as_view", "check", "fortran", "pointer_of",
 ]
