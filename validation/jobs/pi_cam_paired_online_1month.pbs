@@ -1,0 +1,127 @@
+#!/bin/bash
+# Submit with: PYCAM_PAIR_ORDER=AC validation/jobs/submit.sh validation/jobs/pi_cam_paired_online_1month.pbs
+#PBS -N freecam-pair-1month
+#PBS -q develop
+#PBS -l select=4:ncpus=64:mpiprocs=128:ompthreads=1:mem=64GB
+#PBS -l walltime=00:55:00
+#PBS -j oe
+#PBS -o logs/
+#PBS -V
+
+# One paired measurement of the month, A against C, in one allocation:
+#
+#   A  the original Fortran model (the pyCESM case executable) for the
+#      PI-atm month, every component live, timed by its own GPTL CPL:RUN_LOOP;
+#   C  freeCAM in the exact-online configuration -- the same components
+#      through the online provider, the Python stage class installed with
+#      nothing replaced -- timed by its advance over the same coupling loop.
+#
+# The two run back to back on the same nodes in the order PYCAM_PAIR_ORDER
+# gives (AC or CA; alternate it between pairs), each in its own directory.
+# C is compared bit-for-bit with the oracle month; the pair is appended to
+# validation/pi_cam_faster_than_fortran.json with both times, the lifecycle
+# times, memory, and the ratio.  No profiler runs.
+#
+#   PYCAM_PAIR_ORDER=AC|CA     which runs first (default AC)
+#   PYCAM_STAGE_EXECUTION      native-whole (default) | legacy-python
+
+set -euo pipefail
+
+source "${FREECAM_REPO:-${PBS_O_WORKDIR:-$PWD}}/validation/jobs/common.sh"
+
+repo=${FREECAM_REPO}
+python=${repo}/.venv/bin/python
+order=${PYCAM_PAIR_ORDER:-AC}
+policy=${PYCAM_STAGE_EXECUTION:-native-whole}
+pycesm_case=${FREECAM_PYCESM_CASE}
+reference_case=${FREECAM_REFERENCE_CASE}
+executable=${FREECAM_SCRATCH}/pyCESM/PI-atm/f.e13.F1850C5.ne16_g16.icesm131_ihesp.PI-atm.pycesm-ref.50step/bld/cesm.exe
+oracle_run=${FREECAM_SCRATCH}/pyCESM/PI-atm/oracle-1month/run
+library=${FREECAM_CESM_PROVIDER_LIBRARY:-${repo}/build/cesm/pi_atm/production-components/libpycesm_external_atm.so}
+root=${FREECAM_SCRATCH}/freeCAM/PI-cam/pair-1month-${order}-${PBS_JOBID}
+a_run=${root}/A-original-fortran/run
+c_root=${root}/C-freecam
+cam_run=${c_root}/cam-run
+cesm_run=${c_root}/cesm-provider-run
+summary=${c_root}/summary.json
+bfb=${c_root}/bfb.json
+config=configs/pi_cam_icesm131_exact_online_1month.yaml
+
+common_env() {
+  export OMP_NUM_THREADS=1
+  export OMP_STACKSIZE=64M
+  export FI_CXI_RX_MATCH_MODE=hybrid
+  export FI_MR_CACHE_MONITOR=memhooks
+  export MPICH_MPIIO_HINTS='*:romio_cb_read=enable:romio_cb_write=enable:striping_factor=24'
+}
+
+run_a() {
+  echo "=== A: original Fortran month ($(date)) ==="
+  ( source "${pycesm_case}/.env_mach_specific.sh" >/dev/null 2>&1
+    common_env
+    mkdir -p "${a_run}"
+    rsync -a --exclude '*.nc' --exclude '*.bin' --exclude '*.log.*' \
+      --exclude 'rpointer.*' --exclude 'timing/' "${oracle_run}/" "${a_run}/"
+    mkdir -p "${a_run}/timing/checkpoints"
+    cd "${a_run}"
+    mpiexec --label -n 512 "${executable}" > original-fortran.log 2>&1 )
+  echo "A done ($(date))"
+}
+
+run_c() {
+  echo "=== C: freeCAM exact-online month, stage ${policy} ($(date)) ==="
+  ( source "${reference_case}/.env_mach_specific.sh" >/dev/null 2>&1
+    mpi_root=${CRAY_MPICH_DIR:-/opt/cray/pe/mpich/8.1.25/ofi/intel/19.0}
+    export LD_LIBRARY_PATH="${mpi_root}/lib-abi-mpich:${mpi_root}/lib:${LD_LIBRARY_PATH:-}"
+    export LD_PRELOAD=${FREECAM_LD_PRELOAD}${LD_PRELOAD:+:${LD_PRELOAD}}
+    export PYTHONPATH=${repo}/src
+    common_env
+    mkdir -p "${cam_run}" "${cesm_run}"
+    for d in "${cam_run}" "${cesm_run}"; do
+      rsync -a --exclude '*.nc' --exclude '*.bin' --exclude '*.log*' \
+        --exclude 'rpointer.*' --exclude 'timing/' "${oracle_run}/" "${d}/"
+      cp "${oracle_run}/SEMapping.nc" "${d}/" 2>/dev/null || true
+      mkdir -p "${d}/timing/checkpoints"
+    done
+    "${python}" - <<PY
+from pathlib import Path
+import cloudpickle
+from freecam import CESMOnlineBoundaryProvider
+provider = CESMOnlineBoundaryProvider(library=Path("${library}"), run_dir=Path("${cesm_run}"))
+Path("${cam_run}/.exact-cesm-provider.pkl").write_bytes(cloudpickle.dumps(provider, protocol=5))
+PY
+    cd "${repo}"
+    mpiexec --label -n 512 "${python}" -m freecam.pi_cam.cli \
+      --config "${config}" \
+      --boundary-provider "${cam_run}/.exact-cesm-provider.pkl" \
+      --run-dir "${cam_run}" \
+      --cloud-macro-micro-python \
+      --stage-execution "${policy}" \
+      --steps 1488 \
+      --summary "${summary}" \
+      > "${cam_run}/freecam.log" 2>&1
+    "${python}" tools/verify_pi_cam.py \
+      --reference "${oracle_run}" \
+      --candidate "${cam_run}" \
+      --output "${bfb}" || echo "C is not bit-for-bit (recorded)" )
+  echo "C done ($(date))"
+}
+
+mkdir -p "${root}"
+case "${order}" in
+  AC) run_a; run_c ;;
+  CA) run_c; run_a ;;
+  *) echo "PYCAM_PAIR_ORDER must be AC or CA, not '${order}'" >&2; exit 2 ;;
+esac
+
+cd "${repo}"
+"${python}" tools/report_pi_cam_pair.py \
+  --a-timing "${a_run}/timing/cesm_timing.000" \
+  --a-executable "${executable}" \
+  --c-summary "${summary}" \
+  --c-bfb "${bfb}" \
+  --order "${order}" \
+  --stage-execution "${policy}" \
+  --pbs-job-id "${PBS_JOBID}" \
+  --record validation/pi_cam_faster_than_fortran.json
+echo "root: ${root}"
