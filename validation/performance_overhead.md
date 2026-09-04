@@ -74,7 +74,8 @@ atmosphere inside the coupled loop — against freeCAM's `advance_seconds`.
 | … after round 1, 2026-09-03 (`7303107`) | 521.43 s | +37.4% (+141.9 s) | +29.5% (+118.9 s) |
 | … after round 2, 2026-09-03 (`7303342`) | 472.41 s | **+24.5%** (+93.0 s) | **+17.4%** (+69.9 s) |
 | … after round 4, 2026-09-04 (`7304288`) | 475.53 s | +25.3% (+96.1 s) | +18.1% (+73.0 s) |
-| freeCAM + Python stage, native-whole, 2026-09-04 (`7314269`) | 424.30 s | +11.8% (+44.9 s) | **+5.4%** (+21.8 s) |
+| freeCAM + Python stage, native-whole, 2026-09-04 (`7314269`) | 424.30 s | +11.8% (+44.9 s) | +5.4% (+21.8 s) |
+| … native-whole, trusted process path (`7314497`) | 419.03 s | +10.4% (+39.6 s) | **+4.1%** (+16.5 s) |
 
 The last row is the Python class installed with none of its kernels
 replaced and `--stage-execution native-whole` (branch
@@ -85,7 +86,14 @@ crossing, no walk, no views, no copies.  Bit-for-bit over the 18 files;
 the stage region is 48.5 ms per step against 38.9 ms for the Fortran
 action itself, the difference being the Python process wrapper around
 the single call (its pointer-stability check and its error collective).
-The statement-by-statement walk remains available as
+With the stage class installed as a *trusted* native process (`3d36ea8`:
+no field view, no snapshot, no per-call scan of the pool's pointers, and
+its outcome gathered once a step at the boundary export instead of once
+per call) the stage region is 39.1 ms per step against the Fortran
+action's 38.9 -- the wrapper is gone -- and the month is 419.03 s, +4.1%
+over freeCAM; what remains is the imbalance the stage's own collective
+used to absorb, now visible at the export, and run-to-run noise.  The
+statement-by-statement walk remains available as
 `--stage-execution legacy-python`; the 475.53 s above is its record.
 
 The stage itself cost **146 ms per step per rank** in the first run, against
