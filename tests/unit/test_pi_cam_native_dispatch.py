@@ -22,6 +22,8 @@ class _Adapter:
         self.calls: list[tuple] = []
         self.binds: list[tuple] = []
         self.runs: list[str] = []
+        self.retargets: list[tuple] = []
+        self.fail_retarget = False
 
     def call(self, operation, pool, *, fcomm):
         if self.fail:
@@ -35,6 +37,13 @@ class _Adapter:
 
         def run():
             self.runs.append(operation)
+
+        def retarget(index, array):
+            if self.fail_retarget:
+                raise FortranAdapterError(f"{self.name} cannot retarget {operation}")
+            self.retargets.append((operation, index, array.ctypes.data))
+
+        run.retarget = retarget
         return run
 
 
@@ -85,3 +94,16 @@ def test_an_unknown_kernel_and_an_adapter_refusal_are_native_errors() -> None:
         device.bind_kernel("promoted", pool, fcomm=0)
     with pytest.raises(NativeCAMError, match="refused direct_kernel.promoted"):
         device.execute_kernel("promoted", pool, fcomm=0)
+
+
+def test_a_bound_kernel_forwards_retargeting_and_its_refusal() -> None:
+    promoted, main = _Adapter("promoted"), _Adapter("main")
+    device = _device(promoted=promoted, main=main)
+    pool = {"x": np.zeros((2, 1), order="F")}
+    run = device.bind_kernel("promoted", pool, fcomm=3)
+    moved = np.zeros((2, 1), order="F")
+    run.retarget(0, moved)
+    assert promoted.retargets == [("direct_kernel.promoted", 0, moved.ctypes.data)]
+    promoted.fail_retarget = True
+    with pytest.raises(NativeCAMError, match="cannot retarget"):
+        run.retarget(0, moved)

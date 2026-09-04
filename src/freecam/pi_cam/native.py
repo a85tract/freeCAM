@@ -361,6 +361,13 @@ class NativeCAMDevice:
             except FortranAdapterError as exc:
                 raise NativeCAMError(str(exc)) from exc
 
+        def retarget(index: int, array: np.ndarray) -> None:
+            try:
+                bound.retarget(index, array)
+            except FortranAdapterError as exc:
+                raise NativeCAMError(str(exc)) from exc
+
+        run.retarget = retarget  # type: ignore[attr-defined]
         return run
 
     def _call(

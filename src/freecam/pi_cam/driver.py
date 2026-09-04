@@ -2202,6 +2202,9 @@ class PICAMDriver:
                 bound()
             return self._record(action)
 
+        retarget = getattr(bound, "retarget", None)
+        if retarget is not None:
+            run.retarget = retarget  # type: ignore[attr-defined]
         return run
 
     def step(self) -> tuple[PICAMActionTrace, ...]:

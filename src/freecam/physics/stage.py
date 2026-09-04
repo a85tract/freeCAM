@@ -362,14 +362,19 @@ class _KernelPlan:
     run_region: str
     copy_out_region: str
     bind_region: str
-    bound: dict[tuple[int, ...], tuple[Callable[[], Any], tuple[np.ndarray, ...]]]
+    bound: dict[tuple[int, ...], tuple[Callable[[], Any], list[np.ndarray]]]
     in_place: bool = True
     binds: int = 0
 
 
-#: bound calls kept per kernel plan, and the rebinds after which a plan whose
-#: callers keep handing it new arrays goes back to copying them into scratch
-BOUND_PER_PLAN, REBINDS_BEFORE_COPYING = 64, 48
+#: bound calls kept per kernel plan: one per set of arrays handed, which for
+#: a stage is one per chunk; when the set is new and the table is full, the
+#: oldest call is pointed at the new arrays instead of a new one being built
+BOUND_PER_PLAN = 8
+#: rebinds after which a plan whose binder cannot retarget goes back to
+#: copying into scratch, so a caller handing new storage every call does not
+#: pay a table-building per call
+REBINDS_BEFORE_COPYING = 48
 
 
 class StageRuntime:
@@ -534,26 +539,14 @@ class StageRuntime:
             run = None if hit is None else hit[0]
             if hit is None:
                 binder = getattr(self.native, "bind_kernel", None)
-                arrays: dict[str, np.ndarray] = {}
-                for field, array, (_, scratch, _) in zip(plan.fields, handed, plan.slots):
-                    if array.ndim != scratch.ndim:      # a chunk view: give it the chunk axis
-                        array = np.reshape(array, (*array.shape, 1), order="F")
-                    arrays[field] = array
+                given = [array if array.ndim == scratch.ndim
+                         else np.reshape(array, (*array.shape, 1), order="F")   # a chunk view: chunk axis on
+                         for array, (_, scratch, _) in zip(handed, plan.slots)]
                 if binder is None:                  # a native that cannot bind: the plain call
-                    self.native.run_kernel(name, arrays)
+                    self.native.run_kernel(name, dict(zip(plan.fields, given)))
                 else:
                     with self.profile.region(plan.bind_region):
-                        plan.binds += 1
-                        if len(plan.bound) >= BOUND_PER_PLAN:
-                            plan.bound.clear()
-                        if plan.binds > REBINDS_BEFORE_COPYING and plan.in_place:
-                            # the callers hand this kernel a new array every time:
-                            # reading in place buys nothing, so copy from here on
-                            # and bind the scratch once
-                            plan.in_place = False
-                            plan.bound.clear()
-                        run = binder(name, arrays)
-                        plan.bound[key] = (run, tuple(handed))
+                        run = self._bind_or_retarget(plan, binder, name, key, given)
             if run is not None:
                 run()
         with self.profile.region(plan.copy_out_region):
@@ -561,6 +554,40 @@ class StageRuntime:
                 if target is None:
                     continue
                 self._copy_out(target, self.scratch[local], ncol)
+
+    def _bind_or_retarget(self, plan: "_KernelPlan", binder, name: str, key: tuple[int, ...],
+                          given: list[np.ndarray]) -> Callable[[], Any]:
+        """The bound call for ``given``: built while the table has room, otherwise
+        the oldest call pointed at the new arrays.
+
+        Pointing costs a few microseconds per argument that moved; building
+        costs the whole marshalling.  A kernel whose input storage moves on
+        every call -- the per-chunk state copy -- therefore never pays more
+        than the pointing, and never a storm of rebuilds when a rank's
+        allocator moves everything at once.  A binder that cannot retarget
+        (a test's fake) rebuilds, and after enough rebuilds the plan goes
+        back to copying into scratch.
+        """
+
+        plan.binds += 1
+        if len(plan.bound) >= BOUND_PER_PLAN:
+            oldest_key = next(iter(plan.bound))
+            run, current = plan.bound.pop(oldest_key)
+            retarget = getattr(run, "retarget", None)
+            if retarget is not None:
+                for index, (array, held) in enumerate(zip(given, current)):
+                    if array is not held and (array.ctypes.data != held.ctypes.data
+                                              or array.shape != held.shape):
+                        retarget(index, array)
+                    current[index] = array
+                plan.bound[key] = (run, current)
+                return run
+            if plan.binds > REBINDS_BEFORE_COPYING and plan.in_place:
+                plan.in_place = False
+                plan.bound.clear()
+        run = binder(name, dict(zip(plan.fields, given)))
+        plan.bound[key] = (run, list(given))
+        return run
 
     def _plan(self, name: str, fields: Mapping[str, str] | None) -> "_KernelPlan":
         """The kernel's scratch slots and argument table, resolved once.

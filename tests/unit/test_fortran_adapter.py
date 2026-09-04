@@ -149,3 +149,34 @@ def test_a_bound_call_refuses_an_array_whose_descriptor_moved() -> None:
     x.shape = (2, 3)                              # the tables still describe (6,)
     with pytest.raises(FortranAdapterError, match="changed a Python array descriptor"):
         bound()
+
+
+def test_a_bound_call_can_be_pointed_at_another_array_of_the_same_form() -> None:
+    """retarget() moves one argument's pointer without rebuilding the tables."""
+
+    seen: list[int] = []
+
+    @_CALLBACK
+    def kernel(action, nfields, pointers, ndims, shapes, max_rank, fcomm, error, error_len):
+        del action, nfields, ndims, shapes, max_rank, fcomm, error, error_len
+        seen.append(pointers[0])
+        return 0
+
+    adapter = PointerTableAdapter(
+        SimpleNamespace(pycam_test_v1=kernel),  # type: ignore[arg-type]
+        {"run": {"symbol": "pycam_test_v1", "action_id": 1, "arguments": [
+            {"field": "x", "dtype": "float64", "rank": 2, "intent": "in"}]}},
+        library_name="fake",
+    )
+    first = np.zeros((4, 3), order="F")
+    second = np.ones((4, 3), order="F")
+    bound = adapter.bind("run", {"x": first}, fcomm=0)
+    bound()
+    bound.retarget(0, second)
+    bound()
+    assert seen == [first.ctypes.data, second.ctypes.data]
+    assert bound.arrays[0] is second                       # the post-call check follows it
+    with pytest.raises(FortranAdapterError, match="cannot be retargeted"):
+        bound.retarget(0, np.zeros((3, 4), order="F"))     # another shape: the extents table would lie
+    with pytest.raises(FortranAdapterError, match="cannot be retargeted"):
+        bound.retarget(0, np.zeros((4, 3)))                # C order: not what the tables describe

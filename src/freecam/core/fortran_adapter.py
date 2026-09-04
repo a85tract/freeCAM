@@ -246,9 +246,9 @@ class BoundCall:
                  arrays: list[np.ndarray], fcomm: int) -> None:
         self.operation = operation
         self.arrays = list(arrays)
-        self.invariants = tuple(
+        self.invariants = [
             (int(array.ctypes.data), array.shape, array.dtype.str) for array in self.arrays
-        )
+        ]
         self.max_rank = max(
             (array.ndim + (1 if argument.character else 0)
              for argument, array in zip(call.arguments, self.arrays)),
@@ -272,6 +272,30 @@ class BoundCall:
         self.action_id = call.action_id
         self.count = len(self.arrays)
         self.fcomm = int(fcomm)
+
+    def retarget(self, index: int, array: np.ndarray) -> None:
+        """Point argument ``index`` at ``array``, another array of the same form.
+
+        A stage hands a kernel the storage its inputs live in, and that
+        storage moves -- a per-chunk state copy is re-allocated by the
+        wrapper on every call.  Rebuilding the tables for a new address cost
+        as much as the one-shot call did; this changes one pointer and keeps
+        everything else.  The array must have the shape, rank, dtype and
+        F-order the call was built on, so the extents table stays right.
+        """
+
+        current = self.arrays[index]
+        if (array.shape != current.shape or array.dtype.str != current.dtype.str
+                or not (array.flags.f_contiguous or array.ndim <= 1)):
+            raise FortranAdapterError(
+                f"native operation {self.operation!r}: argument {index} cannot be retargeted "
+                f"to an array of shape {array.shape} {array.dtype} (bound on "
+                f"{current.shape} {current.dtype})"
+            )
+        address = int(array.ctypes.data)
+        self.arrays[index] = array
+        self.pointers[index] = address
+        self.invariants[index] = (address, array.shape, array.dtype.str)
 
     def __call__(self) -> None:
         self.error_buffer[0] = b"\x00"

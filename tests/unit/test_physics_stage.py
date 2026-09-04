@@ -793,3 +793,43 @@ def test_a_surface_column_is_the_same_view_while_the_pool_array_is(widget) -> No
     widget.pool["cam_in.landfrac"] = np.ones((PCOLS, 2), order="F")     # the pool re-bound it
     again = runtime.column("cam_in.landfrac", 1)
     assert again is not first and np.all(again == 1.0)
+
+
+class _Retargetable:
+    """A fake bound call that remembers where each argument points, like BoundCall."""
+
+    def __init__(self, log: list, name: str, arrays: dict[str, np.ndarray]) -> None:
+        self.log = log
+        self.name = name
+        self.arrays = list(arrays.values())
+        log.append(("bind", name, self.arrays[1].ctypes.data))
+
+    def __call__(self) -> None:
+        self.log.append(("run", self.name, self.arrays[1].ctypes.data))
+
+    def retarget(self, index: int, array: np.ndarray) -> None:
+        self.arrays[index] = array
+        self.log.append(("retarget", self.name, index, array.ctypes.data))
+
+
+def test_a_full_table_points_its_oldest_call_at_the_new_arrays_instead_of_rebuilding(widget) -> None:
+    from freecam.physics.stage import BOUND_PER_PLAN
+
+    log: list = []
+    widget.bind_kernel = lambda name, arrays: _Retargetable(log, name, arrays)
+    runtime = Widget().runtime(widget)
+    block = np.zeros((PCOLS, PVER, BOUND_PER_PLAN + 3), order="F")
+    for i in range(BOUND_PER_PLAN + 3):                      # storage that moves on every call
+        runtime.kernel_on_chunk("widget_step", {"x": block[:, :, i], "ncol": np.int32(6)}, outputs={})
+    binds = [e for e in log if e[0] == "bind"]
+    retargets = [e for e in log if e[0] == "retarget"]
+    runs = [e for e in log if e[0] == "run"]
+    assert len(binds) == BOUND_PER_PLAN                      # the table filled, then no more builds
+    assert [e[3] for e in retargets] == [block[:, :, i].ctypes.data for i in range(BOUND_PER_PLAN, BOUND_PER_PLAN + 3)]
+    assert [e[2] for e in runs] == [block[:, :, i].ctypes.data for i in range(BOUND_PER_PLAN + 3)]
+    (plan,) = runtime._plans.values()
+    assert len(plan.bound) == BOUND_PER_PLAN and plan.in_place is True
+    # a set already in the table is a plain hit: no bind, no retarget
+    before = len(log)
+    runtime.kernel_on_chunk("widget_step", {"x": block[:, :, BOUND_PER_PLAN + 2], "ncol": np.int32(6)}, outputs={})
+    assert [e[0] for e in log[before:]] == ["run"]
