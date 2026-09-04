@@ -445,12 +445,6 @@ class PICAMPythonProcessRegistry:
         finally:
             for resolved, writable in read_writeability.items():
                 self.driver.pool[resolved].flags.writeable = writable
-        if not record.spec.transactional:
-            # No rollback to coordinate, so no collective of its own: the
-            # error, if any, rides on the step's boundary export collective
-            # and every rank raises there (see PICAMDriver._defer_process_error).
-            self.driver._defer_process_error(record.spec.name, local_error)
-            return
         errors = self.driver.comm.allgather(local_error)
         failure = collective_error_message(
             f"Python process {record.spec.name!r}", errors

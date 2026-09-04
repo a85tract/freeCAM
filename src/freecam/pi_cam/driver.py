@@ -18,7 +18,6 @@ import numpy as np
 
 from freecam.model.clock import ModelClock
 from freecam.model.collective import collective_error_message
-from freecam.model.errors import PythonProcessTaintedError
 from freecam.model.python_processes import PythonProcessSpec
 
 from .boundary import CAMBoundaryProvider
@@ -1075,9 +1074,6 @@ class PICAMDriver:
         self._native_call_depth = 0
         self._python_initialized_addresses: dict[str, int] = {}
         self.python_processes = PICAMPythonProcessRegistry(self)
-        # (process name, this rank's traceback or None) for every
-        # non-transactional Python process run since the last collective
-        self._deferred_process_errors: list[tuple[str, str | None]] = []
         self.module_parameters = PICAMModuleParameterRegistry(self)
         self.history_streams = PICAMHistoryStreamRegistry(self)
         self.default_history_stream = bool(default_history_stream)
@@ -2443,34 +2439,6 @@ class PICAMDriver:
         with self.profiler.region(timer):
             return self._collective_boundary_call_impl(label, function)
 
-    def _defer_process_error(self, name: str, error: str | None) -> None:
-        """Note a non-transactional Python process's outcome for the next collective.
-
-        A process without rollback taints the state if it fails, so nothing
-        is gained by stopping every rank at once; its ranks carry on to the
-        step's boundary export, whose collective already exists, and raise
-        there together.  The one collective per Python process per step that
-        this removes was the stage's largest single wait.
-        """
-
-        self._deferred_process_errors.append((name, error))
-
-    def _raise_deferred_process_errors(self, per_rank: list[list[tuple[str, str | None]]]) -> None:
-        """Raise on every rank if any rank's deferred Python process failed."""
-
-        names: list[str] = []
-        for entries in per_rank:
-            for name, _ in entries:
-                if name not in names:
-                    names.append(name)
-        for name in names:
-            errors = [dict(entries).get(name) for entries in per_rank]
-            failure = collective_error_message(f"Python process {name!r}", errors)
-            if failure is not None:
-                raise PythonProcessTaintedError(
-                    f"Python process {name!r} failed without rollback:\n" + failure
-                )
-
     @staticmethod
     def _boundary_timer_name(label: str) -> str:
         lowered = label.lower()
@@ -2503,11 +2471,7 @@ class PICAMDriver:
             result = function()
         except BaseException:
             local_error = traceback.format_exc()
-        deferred = self._deferred_process_errors
-        self._deferred_process_errors = []
-        gathered = self.comm.allgather((local_error, deferred))
-        errors = [item[0] for item in gathered]
-        self._raise_deferred_process_errors([item[1] for item in gathered])
+        errors = self.comm.allgather(local_error)
         failure = collective_error_message(label, errors)
         if failure is not None:
             # Every rank raises the whole message, not a pointer to rank 0's:
