@@ -3,6 +3,7 @@ from pathlib import Path
 import numpy as np
 import pytest
 
+from freecam.model.errors import PythonProcessTaintedError
 from freecam.model.python_processes import PythonProcessSpec
 from freecam.pi_cam import (
     InMemoryBoundaryProvider,
@@ -50,7 +51,8 @@ def test_rank_local_boundary_failure_is_raised_on_every_rank() -> None:
         @staticmethod
         def allgather(value):
             del value
-            return ["rank zero failed", None, None]
+            # what the boundary collective gathers: (this rank's error, deferred process errors)
+            return [("rank zero failed", []), (None, []), (None, [])]
 
     config = PICAMConfig(
         case_name="collective-boundary-test",
@@ -1103,3 +1105,54 @@ def test_a_reload_replaces_the_kept_callable_too() -> None:
     process.run()
     # 1 from the old callable, 10 from the new: a stale kept function would give 2
     assert float(driver.pool["experiment_tracer"][0, 0]) == 11.0
+
+
+def test_a_non_transactional_process_failure_is_raised_at_the_export_on_every_rank() -> None:
+    """A process without rollback runs no collective of its own; whatever it
+    reports rides on the step's boundary export and every rank raises there."""
+
+    class RemoteFailureComm:
+        rank = 0
+        size = 2
+        gathers: list[object] = []
+
+        @classmethod
+        def allgather(cls, value):
+            cls.gathers.append(value)
+            boundary_shape = (isinstance(value, tuple) and len(value) == 2
+                              and isinstance(value[1], list))
+            if boundary_shape and value[1]:                      # (boundary error, deferred list)
+                other = [(name, "Traceback: rank one failed") for name, _ in value[1]]
+                return [value, (None, other)]
+            return [value, value]
+
+        @staticmethod
+        def barrier() -> None:
+            return None
+
+    config = PICAMConfig(
+        case_name="deferred-process-error", source_root=Path("/tmp/source"), mpi_size=2, stop_n=2,
+    )
+    boundary = InMemoryBoundaryProvider(
+        {(step, 0): {"sst": np.full((2,), 280.0 + step)} for step in range(4)}
+    )
+    driver = PICAMDriver(
+        config, boundary, RecordingCAMBackend(), rank=0, size=2, communicator=RemoteFailureComm(),
+    )
+    driver.initialize()
+
+    def quiet(fields, context):
+        del fields, context
+
+    driver.physics.install_python(
+        quiet, name="quiet_stage", after="dadadj", transactional=False, unsafe=True,
+    )
+    with pytest.raises(PythonProcessTaintedError, match="failed collectively on 1/2") as failure:
+        driver.step()
+    assert "rank one failed" in str(failure.value)
+    # the process itself gathered nothing: its (clean) outcome rode on the export
+    boundary_gathers = [g for g in RemoteFailureComm.gathers
+                        if isinstance(g, tuple) and len(g) == 2 and isinstance(g[1], list)]
+    counts = [len(g[1]) for g in boundary_gathers]              # initialization, import: none
+    assert counts[:-1] == [0] * (len(counts) - 1) and counts[-1] == 1   # export: the one entry
+    assert boundary_gathers[-1][1][0] == ("quiet_stage", None)

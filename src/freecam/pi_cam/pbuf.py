@@ -104,6 +104,7 @@ class PBuf:
                 ctypes.POINTER(ctypes.c_int64),
             ]
         self._entry_v2 = second
+        self._views: dict[tuple[str, int], tuple[int, tuple[int, int], np.ndarray]] = {}
 
     def __contains__(self, name: str) -> bool:
         field = self.fields.get(name)
@@ -145,8 +146,15 @@ class PBuf:
             raise PICAMConfigurationError(
                 f"physics buffer returned {shape} for {name} on chunk {chunk}"
             )
+        # the same view while the buffer answers with the same storage; a
+        # field the buffer re-allocates gets a fresh one
+        hit = self._views.get((name, chunk))
+        if hit is not None and hit[0] == pointer.value and hit[1] == shape:
+            return hit[2]
         buffer = (ctypes.c_double * (shape[0] * shape[1])).from_address(pointer.value)
-        return np.ndarray(shape, dtype=np.float64, buffer=buffer, order="F")
+        view = np.ndarray(shape, dtype=np.float64, buffer=buffer, order="F")
+        self._views[(name, chunk)] = (pointer.value, shape, view)
+        return view
 
     def _view_any(self, field: PBufField, chunk: int) -> np.ndarray:
         """A field of any served rank and kind, through the second accessor."""

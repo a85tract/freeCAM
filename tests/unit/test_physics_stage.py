@@ -596,20 +596,21 @@ def test_composing_refuses_a_kernel_name_two_stages_both_claim() -> None:
 # -- kernels are bound once, run every call -------------------------------------
 
 
-def test_a_kernel_is_bound_once_and_run_on_every_call_when_the_native_can_bind(widget) -> None:
+def test_a_kernel_is_bound_once_per_chunk_and_run_on_every_call_when_the_native_can_bind(widget) -> None:
     """The argument marshalling is paid per distinct set of arrays, not per call.
 
-    A stage hands each kernel its own scratch, allocated once, so across two
-    chunks and two steps there is one binding and four runs.  A native that
-    offers bind_kernel is never called the plain way.
+    An intent(in) array is handed to the kernel in place, so each chunk's view
+    of x is its own binding; across two chunks and two steps that is two
+    bindings and four runs.  A native that offers bind_kernel is never called
+    the plain way.
     """
 
-    binds: list[str] = []
+    binds: list[int] = []
     runs: list[str] = []
 
     class _Binding(_Native):
         def bind_kernel(self, name, arrays):
-            binds.append(name)
+            binds.append(arrays["widget.x"].ctypes.data)
 
             def run():
                 runs.append(name)
@@ -624,7 +625,7 @@ def test_a_kernel_is_bound_once_and_run_on_every_call_when_the_native_can_bind(w
     stage.tend(None, _Context(native))
     stage.tend(None, _Context(native))
 
-    assert binds == ["widget_step"]
+    assert binds == [widget.library.views[(10, 1)].ctypes.data, widget.library.views[(11, 1)].ctypes.data]
     assert runs == ["widget_step"] * 4
     assert np.all(stage.runtime(native).local["y"] == 2.0)
 
@@ -643,12 +644,12 @@ def test_a_view_of_unchanged_storage_is_the_same_object_and_moved_storage_a_new_
     assert runtime.handles.view(11, 1) is not first      # another chunk, another view
 
 
-def test_a_kernel_is_planned_and_bound_once_and_then_only_run(widget) -> None:
-    binds: list[str] = []
+def test_a_kernel_is_planned_once_and_an_input_view_is_read_in_place(widget) -> None:
+    binds: list[dict] = []
     runs: list[str] = []
 
     def bind_kernel(name, arrays):
-        binds.append(name)
+        binds.append(dict(arrays))
         target = arrays["widget.y"]
 
         def run():
@@ -660,15 +661,20 @@ def test_a_kernel_is_planned_and_bound_once_and_then_only_run(widget) -> None:
     stage = Widget()
     stage.tend(None, _Context(widget))
     stage.tend(None, _Context(widget))
-    assert binds == ["widget_step"]                      # two steps, two chunks each: one bind
-    assert runs == ["widget_step"] * 4
-    assert widget.kernels == []                          # the plain path was never taken
+    assert len(binds) == 2 and runs == ["widget_step"] * 4    # one bind per chunk's view of x
+    assert widget.kernels == []                                # the plain path was never taken
     runtime = stage.runtime(widget)
     assert len(runtime._plans) == 1
     (plan,) = runtime._plans.values()
-    assert [local for local, _ in plan.slots] == [a.field.removeprefix("widget.")
-                                                  for a in runtime.descriptors["widget_step"].arguments]
-    assert all(plan.arrays[f"widget.{local}"] is scratch for local, scratch in plan.slots)
+    assert plan.fields == tuple(a.field for a in runtime.descriptors["widget_step"].arguments)
+    assert [local for local, _, _ in plan.slots] == [f.removeprefix("widget.") for f in plan.fields]
+    # x is intent(in): the kernel read CAM's storage itself, and the scratch copy stayed untouched
+    x_view = widget.library.views[(10, 1)]
+    assert binds[0]["widget.x"].ctypes.data == x_view.ctypes.data
+    assert binds[0]["widget.x"].shape == runtime.scratch["x"].shape       # given the chunk axis
+    assert np.all(runtime.scratch["x"] == 0.0)
+    # y is written: it is the runtime's own scratch, copied out afterwards
+    assert binds[0]["widget.y"] is runtime.scratch["y"]
     assert np.all(runtime.local["y"] == 2.0)
 
 
@@ -692,8 +698,56 @@ def test_the_same_kernel_under_two_field_maps_keeps_two_plans(widget) -> None:
         runtime.kernel_on_chunk("widget_step", {"r": twos, "n": np.int32(6)}, outputs={},
                                 fields={"r": "widget.x", "s": "widget.y", "n": "widget.ncol"})
     assert len(seen) == 2                                    # one bind per distinct map
-    assert seen[0]["widget.x"] is runtime.scratch["p"]
-    assert seen[1]["widget.x"] is runtime.scratch["r"]
-    assert np.all(runtime.scratch["p"][..., 0] == 1.0)       # each map fed its own slot
-    assert np.all(runtime.scratch["r"][..., 0] == 2.0)
+    assert seen[0]["widget.x"].ctypes.data == ones.ctypes.data     # each map fed its own array
+    assert seen[1]["widget.x"].ctypes.data == twos.ctypes.data
+    assert seen[0]["widget.y"] is runtime.scratch["q"]
+    assert seen[1]["widget.y"] is runtime.scratch["s"]
     assert len(runtime._plans) == 2
+
+
+def test_an_input_that_is_also_written_or_of_another_dtype_still_goes_through_scratch(widget) -> None:
+    seen: list[dict[str, np.ndarray]] = []
+    widget.bind_kernel = lambda name, arrays: (seen.append(dict(arrays)), lambda: None)[1]
+    runtime = Widget().runtime(widget)
+    x = np.ones((PCOLS, PVER), order="F")
+    # named among the outputs: the kernel writes it, so it must not be CAM's storage
+    runtime.kernel_on_chunk("widget_step", {"x": x, "ncol": np.int32(6)}, outputs={"x": x})
+    assert seen[-1]["widget.x"] is runtime.scratch["x"] and np.all(runtime.scratch["x"] == 1.0)
+    # a float32 array or a C-ordered one is copied into the F-ordered double scratch
+    runtime.kernel_on_chunk("widget_step", {"x": x.astype(np.float32), "ncol": np.int32(6)}, outputs={})
+    assert seen[-1]["widget.x"] is runtime.scratch["x"]
+    runtime.kernel_on_chunk("widget_step", {"x": np.ascontiguousarray(x), "ncol": np.int32(6)}, outputs={})
+    assert seen[-1]["widget.x"] is runtime.scratch["x"]
+
+
+def test_a_moved_input_view_is_bound_again_and_the_table_stays_small(widget) -> None:
+    binds: list[int] = []
+    widget.bind_kernel = lambda name, arrays: (binds.append(arrays["widget.x"].ctypes.data), lambda: None)[1]
+    runtime = Widget().runtime(widget)
+    views = [np.full((PCOLS, PVER), float(i), order="F") for i in range(12)]
+    for view in views:                                        # storage that moves every call
+        runtime.kernel_on_chunk("widget_step", {"x": view, "ncol": np.int32(6)}, outputs={})
+    assert binds == [v.ctypes.data for v in views]
+    (plan,) = runtime._plans.values()
+    assert len(plan.bound) <= 8
+    runtime.kernel_on_chunk("widget_step", {"x": views[-1], "ncol": np.int32(6)}, outputs={})
+    assert len(binds) == 12                                   # the last one was still held
+
+
+def test_local_hands_back_the_same_view_while_the_scratch_is_the_same(widget) -> None:
+    runtime = Widget().runtime(widget)
+    first = runtime.local["x"]
+    assert runtime.local["x"] is first
+    runtime.scratch["x"] = np.zeros_like(runtime.scratch["x"])   # a late re-allocation is followed
+    assert runtime.local["x"] is not first
+    assert runtime.local["x"].base is runtime.scratch["x"]
+
+
+def test_pointer_of_is_kept_per_array_and_points_at_it() -> None:
+    from freecam.physics.stage import pointer_of
+
+    a = np.zeros((3, 2), order="F")
+    p = pointer_of(a)
+    assert pointer_of(a) is p
+    assert ctypes.cast(p, ctypes.c_void_p).value == a.ctypes.data
+    assert pointer_of(np.zeros((3, 2), order="F")) is not p

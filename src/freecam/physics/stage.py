@@ -187,11 +187,28 @@ def fortran(array: np.ndarray) -> np.ndarray:
     return np.asfortranarray(array, dtype=np.float64)
 
 
-def pointer_of(array: np.ndarray):
-    """The address of an F-contiguous double array, for a Fortran dummy."""
+_POINTERS: dict[int, tuple[np.ndarray, Any]] = {}
 
+
+def pointer_of(array: np.ndarray):
+    """The address of an F-contiguous double array, for a Fortran dummy.
+
+    The arrays the walks hand to entries are views the runtime keeps -- of
+    CAM's storage or of its own scratch -- so the pointer is kept with the
+    array, by identity, and only made again for an array not seen before.
+    A held array cannot be freed, so its id cannot come round for another;
+    the table is emptied when it grows past what a run's views need.
+    """
+
+    hit = _POINTERS.get(id(array))
+    if hit is not None and hit[0] is array:
+        return hit[1]
     assert array.flags.f_contiguous and array.dtype == np.float64
-    return array.ctypes.data_as(ctypes.POINTER(ctypes.c_double))
+    pointer = array.ctypes.data_as(ctypes.POINTER(ctypes.c_double))
+    if len(_POINTERS) >= 65536:
+        _POINTERS.clear()
+    _POINTERS[id(array)] = (array, pointer)
+    return pointer
 
 
 class HostEntries:
@@ -313,7 +330,8 @@ class HostServices:
     # -- history -------------------------------------------------------------
 
     def outfld(self, name: str, array: np.ndarray, idim: int, lchnk: int) -> None:
-        array = fortran(array)
+        if not (type(array) is np.ndarray and array.dtype == np.float64 and array.flags.f_contiguous):
+            array = fortran(array)
         check(self._entry("outfld")(name.encode("ascii"), len(name), pointer_of(array), idim, lchnk),
               f"outfld({name!r})")
 
@@ -323,9 +341,16 @@ class Local(Mapping[str, np.ndarray]):
 
     def __init__(self, scratch: dict[str, np.ndarray]) -> None:
         self._scratch = scratch
+        self._views: dict[str, tuple[np.ndarray, np.ndarray]] = {}
 
     def __getitem__(self, name: str) -> np.ndarray:
-        return self._scratch[name][..., 0]
+        base = self._scratch[name]
+        hit = self._views.get(name)
+        if hit is not None and hit[0] is base:
+            return hit[1]
+        view = base[..., 0]
+        self._views[name] = (base, view)
+        return view
 
     def __iter__(self):
         return iter(self._scratch)
@@ -336,14 +361,23 @@ class Local(Mapping[str, np.ndarray]):
 
 @dataclass(slots=True)
 class _KernelPlan:
-    """One direct kernel's resolved argument table; see StageRuntime._plan."""
+    """One direct kernel's resolved argument table; see StageRuntime._plan.
 
-    slots: tuple[tuple[str, np.ndarray], ...]
-    arrays: dict[str, np.ndarray]
+    ``slots`` holds, per descriptor argument, the local name, the scratch
+    array and whether a caller's array may be handed to the kernel in the
+    scratch's place -- only an ``intent(in)`` array argument may, since the
+    kernel then reads CAM's storage where it would have read a copy of it
+    and writes nothing there.  ``bound`` maps the identity of the arrays
+    actually handed over to the call prepared for them.
+    """
+
+    slots: tuple[tuple[str, np.ndarray, bool], ...]
+    fields: tuple[str, ...]
     copy_in_region: str
     run_region: str
     copy_out_region: str
-    bound: Callable[[], Any] | None = None
+    bind_region: str
+    bound: dict[tuple[int, ...], Callable[[], Any]]
 
 
 class StageRuntime:
@@ -396,6 +430,7 @@ class StageRuntime:
                 raise PICAMConfigurationError(
                     f"the image's {name} takes {declared}; the descriptors say {described}")
         self.scratch = self._allocate()
+        self._local = Local(self.scratch)
         # direct-kernel calls bound once per (kernel, arrays); see _run and _plan
         self._bound: dict[tuple, Callable[[], Any]] = {}
         self._plans: dict[tuple[str, frozenset | None], _KernelPlan] = {}
@@ -437,7 +472,7 @@ class StageRuntime:
     def local(self) -> Local:
         """The scratch arrays with the chunk axis dropped: live views, never copies."""
 
-        return Local(self.scratch)
+        return self._local
 
     def _scratch_for(self, argument: Any, key: str) -> np.ndarray:
         sizes = self.extents
@@ -477,19 +512,36 @@ class StageRuntime:
         """
 
         plan = self._plan(name, fields)
+        handed: list[np.ndarray] = []
         with self.profile.region(plan.copy_in_region):
-            for local, scratch in plan.slots:
+            for local, scratch, may_stand_in in plan.slots:
                 value = inputs.get(local)
-                if value is not None:
+                if value is None:
+                    handed.append(scratch)
+                elif (may_stand_in and type(value) is np.ndarray and local not in outputs
+                      and value.dtype == scratch.dtype and value.flags.f_contiguous
+                      and value.shape == scratch.shape[:-1]):
+                    handed.append(value)                # read in place: no copy
+                else:
                     self._copy_in(scratch, value)
+                    handed.append(scratch)
         with self.profile.region(plan.run_region):
-            run = plan.bound
+            key = tuple(id(array) for array in handed)
+            run = plan.bound.get(key)
             if run is None:
                 binder = getattr(self.native, "bind_kernel", None)
+                arrays: dict[str, np.ndarray] = {}
+                for field, array, (_, scratch, _) in zip(plan.fields, handed, plan.slots):
+                    if array.ndim != scratch.ndim:      # a chunk view: give it the chunk axis
+                        array = np.reshape(array, (*array.shape, 1), order="F")
+                    arrays[field] = array
                 if binder is None:                  # a native that cannot bind: the plain call
-                    self.native.run_kernel(name, plan.arrays)
+                    self.native.run_kernel(name, arrays)
                 else:
-                    run = plan.bound = binder(name, plan.arrays)
+                    with self.profile.region(plan.bind_region):
+                        if len(plan.bound) >= 8:    # storage that keeps moving: hold few
+                            plan.bound.clear()
+                        run = plan.bound[key] = binder(name, arrays)
             if run is not None:
                 run()
         with self.profile.region(plan.copy_out_region):
@@ -515,16 +567,17 @@ class StageRuntime:
             return plan
         inverse = {} if fields is None else {field: local for local, field in fields.items()}
         prefix = f"{self.stage.PREFIX}."
-        slots: list[tuple[str, np.ndarray]] = []
-        arrays: dict[str, np.ndarray] = {}
+        slots: list[tuple[str, np.ndarray, bool]] = []
+        names: list[str] = []
         for argument in self.descriptors[name].arguments:
             field = argument.field
             local = field.removeprefix(prefix) if fields is None else inverse[field]
             scratch = self.scratch[local] if local in self.scratch else self._scratch_for(argument, local)
-            slots.append((local, scratch))
-            arrays[field] = scratch
-        plan = _KernelPlan(tuple(slots), arrays, f"kernel-copy-in:{name}", f"kernel-run:{name}",
-                           f"kernel-copy-out:{name}")
+            slots.append((local, scratch, argument.intent == "in" and argument.rank >= 1
+                          and not argument.fixed_indices))
+            names.append(field)
+        plan = _KernelPlan(tuple(slots), tuple(names), f"kernel-copy-in:{name}",
+                           f"kernel-run:{name}", f"kernel-copy-out:{name}", f"kernel-bind:{name}", {})
         self._plans[key] = plan
         return plan
 
