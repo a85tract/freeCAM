@@ -1,202 +1,175 @@
-# FreeCAM Native Stage 批量执行与可替换 Kernel 分段运行计划
+# FreeCAM Python Process 性能重构计划（v2）
 
-分支：`native-stage-batching`（自 `standalone-physics-function` 建立，2026-09-04）。
-本文件是任务的计划书，逐条对应实现与验证；历史性能证据见
-`validation/performance_overhead.md`，不得被覆盖。
+分支：`native-stage-batching`（自 `standalone-physics-function`，2026-09-04）。本文件是任务的计划书；
+历史性能证据见 `validation/performance_overhead.md`，不得被覆盖。v2 取代了同名 v1：分段执行改为
+给原始 Fortran 调用点生成 start/resume 接口，不再把 Python class 翻译回 Fortran。
 
 ## Summary
 
-保留现有 Python class 和 kernel 替换接口，但停止使用 Python 逐个调度几百个 Fortran helper/kernel。
+保留现有 Python process class 和 kernel 替换接口，但改变生产执行方式：
 
-新增三种内部执行模式：
+- Python class 不再被重新生成或编译成 Fortran。
+- 没有 kernel 替换时，直接一次调用原始完整 Fortran process。
+- 有 Python/AI kernel 替换时，原始 Fortran 运行到替换点后返回 Python；Python 执行替代 kernel，
+  再调用 resume() 让 Fortran 从原位置继续。
+- 不允许 Fortran 回调 Python，不使用 c_funptr 或 ctypes.CFUNCTYPE。
+- 当前逐句翻译的 Python 实现继续保留，作为可读参考、调试工具和 BFB oracle，不再作为默认热路径。
+- UI 和未提交的 workflow_builder/ 不属于本任务。
 
-- **native-whole**：没有 kernel 被替换，Python 只调用一次原始 Fortran stage。
-- **segmented**：存在 Python/AI kernel，native runner 运行到替换点后返回 Python，Python 执行模型，
-  native runner 从断点继续。
-- **legacy-python**：保留当前逐调用实现，仅用于调试、BFB 对照和性能回归。
+状态：native-whole 已实现并通过一个月、18 个 history/restart 文件 BFB；424.30 s，比普通 FreeCAM
+的 402.51 s 慢约 5.4%。剩余核心任务是 segmented replacement 和最后的 wrapper 开销优化。
 
-严格遵守已选择的限制：
+## 1. 执行语义
 
-- 不允许 Fortran 回调 Python。
-- 不使用 c_funptr 或 ctypes.CFUNCTYPE。
-- 所有执行都由 Python 主动调用 start() 或 resume()。
-- 只有实际被替换的 kernel 会让 native runner 返回 Python。
-
-第一批完整覆盖当前四个可替换边界：`mmacro_pcond`、`micro_mg_tend`、`rad_rrtmg_sw`、`rad_rrtmg_lw`。
-
-UI 工作继续暂停，不修改未提交的 `workflow_builder/`。
-
-## Public API 与运行语义
-
-保持现有用户接口不变：
+保持现有接口：
 
 ```python
-stage = fc.CloudMacroMicrophysics()
-stage.kernels["mmacro_pcond"] = None      # None 代表使用原始 Fortran kernel
-stage.kernels["mmacro_pcond"] = model     # 替换成 Python 或 AI 模型
-stage.attach(driver)
-stage.kernel = model                      # 单 kernel 的简写仍可用
+stage.kernels["mmacro_pcond"] = None
+stage.kernels["mmacro_pcond"] = model
 stage.kernels["micro_mg_tend"] = model
+stage.kernels["rad_rrtmg_sw"] = model
+stage.kernels["rad_rrtmg_lw"] = model
 ```
 
-内部新增只读诊断信息：
+内部三种模式：
 
-```python
-stage.execution.mode        # "native-whole" / "segmented" / "legacy-python"
-stage.execution.describe()  # mode、active replacements、native segment calls、
-                            # Python model calls、Python/Fortran crossings
-```
+- **native-whole**：所有 replacement 都是 None；Python class 每步只调用一次原始完整 Fortran process。
+- **segmented**：至少有一个 kernel 被替换；Fortran 只在实际替换点暂停并返回 Python；未替换的 helper、
+  kernel、循环和数值操作继续在原始 Fortran 中连续执行。
+- **legacy-python**：当前逐语句 Python 翻译；只用于调试、调用顺序检查和性能对照。
 
-执行规则：
+默认 auto：没有 replacement → native-whole；存在 replacement → segmented。
 
-- 所有 kernel 均为 None 时，class 仍存在，但 run() 直接执行原始完整 Fortran stage。
-- 某个 kernel 被替换时，执行计划只在该 kernel 前停止。
-- 未替换的相邻 kernel、handle 调用、copy 和 history 写入在 native runner 内连续执行。
-- Python 模型继续接收与当前接口相同的字段名称、shape 和输出契约。
-- replacement 输入只包含有效 ncol，padding lane 不交给模型；结果复制回原存储后再恢复 native runner。
-- kernel 赋值、reload 或移除只能在完整 action 边界生效；当前 stage 正在暂停时禁止修改执行计划。
-- 模型异常或输出契约错误时销毁暂停 context 并将当前模型标记为 tainted；因为该 stage 是非事务性的，
-  不伪装成可以回滚。
+Python 仍控制 workflow 顺序、process 启用状态以及 replacement 选择；process 内部未被替换的高频循环和
+helper 调度留在 Fortran，避免数万次 Python/Fortran 跨界。
 
-## Implementation Changes
+## 2. 实现方案
 
-### 1. 先恢复无替换场景的性能
+### 2.1 完成 native-whole 快速路径
 
-- 扩展 NativeAccess，允许 Python stage 直接按原始 action ID 调用 backend native primitive，
-  不能再次经过 workflow 分派，避免递归。
-- NativeStage 每次运行前根据四个 kernel slot 生成轻量 fingerprint。
-- fingerprint 中没有 replacement 时选择 native-whole：不进入 tend_chunk()，不创建 kernel 字典、
-  scratch copy 或逐字段 view，不执行数百次 ctypes 调用，直接调用未修改的原始 Fortran stage。
-- 当前 Python 逐语句实现保留为 legacy-python，用于比较，不能再作为默认路径。
+优化内置 NativeStage 经过 Python process registry 时的额外开销：
 
-### 2. 建立可暂停的 native segment runner
+- 给内置 stage process 增加可信原生标记，和普通 Notebook Python process 分开处理。
+- native-whole 不创建 PythonFieldView，不执行字段 snapshot。
+- 每步不扫描全部 StatePool 指针；指针稳定性检查改到初始化、字段注册变化和 debug 模式。
+- 合并重复的 MPI 错误收集，只保留一次 collective 状态检查。
+- native.run_action() 直接调用 backend primitive，不重新进入 workflow dispatcher，避免递归。
 
-统一 ABI：
+### 2.2 为原始 Fortran 增加 start/resume 接口
+
+从固定版本的原始 Fortran call site 生成并人工审核分段代码，不从 Python class 反向生成 Fortran。
+
+统一内部 ABI：
 
 ```
-stage_context_create(stage_id, config, status) -> context_id
-stage_run(context_id, replacement_mask, dynamic_scalars, event, status)
-stage_resume(context_id, completed_kernel_id, event, status)
-stage_kernel_frame(context_id, kernel_id, pointers, ndims, shapes, intents, status)
-stage_context_reset(context_id)
+stage_context_create(stage_id) -> context_id
+stage_start(context_id, replacement_mask) -> event
+stage_frame(context_id) -> kernel arguments
+stage_resume(context_id, completed_kernel_id) -> event
 stage_context_destroy(context_id)
 ```
 
-event 只能返回 `DONE`、`NEEDS_PYTHON_KERNEL`、`ERROR`。
+事件只有 `DONE`、`NEEDS_PYTHON_KERNEL`、`ERROR`。
 
-运行流程：Python 调用 stage_run() → native runner 连续执行原生操作 → 遇到未替换 kernel 直接调用并继续 →
-遇到 replacement 保存 program counter、chunk 和 substep 并返回 NEEDS_PYTHON_KERNEL → Python 取得
-kernel frame 并运行模型 → Python 写回输出并调用 stage_resume() → native runner 继续执行。
+执行过程：Python stage.run() → stage_start() → Fortran 连续运行 → 遇到被替换的 kernel → 保存当前位置和
+live state → 返回 NEEDS_PYTHON_KERNEL → Python 执行 model → 检查并写回结果 → stage_resume() →
+Fortran 从原位置继续。
 
-每个 MPI rank 拥有独立的 rank-local context；不通过 MPI 传输模型数组。
+### 2.3 保存 Fortran 暂停状态
 
-### 3. 用声明式 StageProgram 替代热路径中的 Python 语句调度
+普通 Fortran 局部变量在 subroutine 返回后不会保留，因此每个 MPI rank 建立独立的 rank-local context，保存：
+program counter；当前 chunk、lchnk、ncol；substep 和 kernel 调用序号；replacement mask；需要跨暂停点存活
+的标量；自动数组或临时 tendency；指向 CAM module/derived-type storage 的稳定 handle。
 
-新增内部 StageProgramSpec，支持 `NativeCall`、`Copy`、`Fill`、`HistoryWrite`、`Loop`、
-`ConstantBranch`、`ModelBoundary`。
+生成工具对原始调用点做 live-variable 分析并生成 scaffold；每个边界的 live-state 清单必须人工审核。
+原始源码 hash 或调用点 anchor 变化时构建直接失败，不能静默使用旧 adapter。
 
-- 当前 SEQUENCE 继续作为顺序审计依据，但扩展为包含参数绑定的完整 program spec。
-- 配置相关分支在初始化后解析一次，生成线性执行计划。
-- dt、nstep、lchnk 和 ncol 作为每步动态标量传入。
-- 将 Python stage 里剩余的 NumPy 浮点运算提升为原生 direct kernel，native runner 本身不重新实现科学公式。
-- Python class 只负责声明计划和 replacement，不再在每一步构造字典或执行数值语句。
-- program 在每个 rank 初始化一次，并按 library hash + stage type + configuration digest 缓存。
+### 2.4 支持四个替换边界
 
-### 4. 统一 Fortran dispatch 与内存绑定
+第一版完整支持 `mmacro_pcond`、`micro_mg_tend`、`rad_rrtmg_sw`、`rad_rrtmg_lw`。
 
-- 为 direct kernel、host service 和 history service 生成统一的 bind(C) dispatcher，以整数 operation ID
-  调用现有 Fortran 实现。
-- runner 中的 select case(operation_id) 由现有 descriptor 和新的 stage program manifest 自动生成，
-  禁止手写重复参数表。
-- 每个 stage/chunk 开始时通过一次 bulk resolver 取得需要的 Fortran 存储地址、shape 和 dtype；
-  不再逐字段调用 _deref()。
-- scratch、pbuf、physics state 和 cam_in/cam_out 使用整数 slot ID 绑定；地址改变时只更新 slot table。
-- kernel 参数表、shape 表、字符串和 history 字段名全部预绑定，只在存储地址或配置改变时重建。
-- runner 内部连续完成 copy、native calls 和 outfld，不为每个操作返回 Python。
-- 原始完整 Fortran stage 保持不修改，专门服务 native-whole 路径。
+处理嵌套调用：cloud stage context 保存外层 tphysbc 和 substep 状态；macrophysics/microphysics 子 context
+暂停在对应核心前；子 context 返回 replacement event 时，外层 context 同时保存位置并返回 Python；
+resume() 先恢复子过程，再恢复外层过程；radiation 使用同一个 context 依次支持 SW 和 LW 两个暂停点。
 
-### 5. Replacement frame 与生命周期
+每次原始 kernel 调用最多产生一次 pause/resume。第一版不跨 chunk 或 substep 重新排序调用，
+避免改变浮点和 history 顺序。
 
-- ModelBoundary 保存 kernel ID、program counter、chunk/substep index、输入输出 slot、ncol、
-  dtype、shape 和 intent。
-- Python 根据 frame 生成当前接口所需的 batch mapping。
-- 默认复制有效输入给用户模型，避免模型保留 native 临时指针；模型输出通过 np.copyto 写回 context 输出 slot。
-- shape、dtype、必需输出和有限生命周期在 resume() 前验证。
-- 一个 stage 允许依次经过多个 replacement；每次只保存一个活动 boundary。
-- stage 成功完成后 context 回到 idle；checkpoint、history flush、workflow 修改和 finalize 只允许在
-  idle 状态执行。
-- finalize 或异常必须释放所有 native context 和临时数组。
-- KernelSlots 替换当前普通字典实现，但保持 `stage.kernels[name] = value` 语法，并维护 generation 计数
-  用于计划失效。
+### 2.5 Python replacement frame
 
-### 6. 兼容与交付
+stage_frame() 返回：kernel_id、call_index、lchnk、ncol、substep、argument names、pointers、shape、
+dtype、intent。
 
-测试专用选择：`--stage-execution=auto|native-whole|segmented|legacy-python`，默认 auto
-（无 replacement → native-whole；有 replacement → segmented）。
+Python 沿用当前模型接口：只把有效的 ncol 交给模型，不暴露 padding lane；输入按照现有契约生成 batch
+mapping；输出必须包含所有 required fields；shape、dtype 和字段名称必须完全匹配；使用
+`np.copyto(..., casting="no")` 写回原生 context；写回完成后才允许调用 resume()。
 
-现有 `--cloud-macro-micro-python` 继续可用，但改为启用 Python class 接口，不再强制逐 kernel Python 调度。
-保留现有 whole-driver 和 legacy 验证入口，等新路径全部通过后再标记 deprecated，不立即删除。
+模型异常或返回非法结果时：销毁当前 context；将模型标记为 tainted；禁止继续 step、checkpoint 或
+finalize；不宣称能够回滚已经执行过的非事务性 Fortran 操作。
 
-提交机器可读指标：
+### 2.6 生命周期限制
 
-```json
-{"execution_mode": "native-whole", "native_stage_calls": 1488, "native_segment_calls": 0,
- "python_model_calls": 0, "python_fortran_crossings_per_step": 1}
-```
+只有 context 为 idle 时才允许：更换或移除 replacement；修改 workflow；checkpoint/restart；history flush；
+finalize。每个 context 带 generation 和调用 token，拒绝重复 resume、错误 kernel resume 或旧 frame 写回。
 
-更新性能文档时同时保留旧的 475.53 秒结果，不能覆盖历史证据。
+## 3. 测试与验证
 
-## Test Plan
+### 单元测试
 
-### 单元和 ABI 测试
+- 无 replacement 时每步只调用一次原始 stage，tend_chunk() 调用次数为零。
+- 增加 replacement 后 auto 切换到 segmented；移除后恢复 native-whole。
+- runner 只在被替换的 kernel 前返回；未替换 kernel 不返回 Python。
+- 多 replacement、chunk 和 substep 的暂停顺序正确。
+- nested context 能正确向外传播事件并从原位置恢复。
+- frame 的名称、shape、dtype、intent 和 ncol 与当前接口一致。
+- 非法输出、异常、重复 resume 和 stale token 能安全清理。
+- 静态检查确认不存在 Fortran→Python callback。
+- GitHub Actions 使用 fake backend 验证状态机，不依赖 Derecho。
 
-- 无 replacement 时只发生一次完整 native stage 调用，tend_chunk() 调用数必须为零。
-- replacement fingerprint 变化后正确切换为 segmented；移除 replacement 后恢复 native-whole。
-- runner 只在指定 kernel 返回，其他 kernel 连续执行。
-- 多 replacement 顺序、chunk 循环和 substep 循环的 program counter 正确。
-- kernel frame 的名称、shape、dtype、intent 和有效 ncol 与现有契约一致。
-- 模型缺字段、返回错误 shape/dtype、抛异常和 resume 顺序错误均能清理 context。
-- storage 地址变化时 slot table 更新；地址不变时不重新绑定。
-- 静态测试禁止 Fortran→Python callback 符号和 callback 注册路径。
-- fake dispatcher 测试可在 GitHub Actions 运行，不依赖 Derecho、MPI 或真实 CAM 库。
+### BFB 验证（依次执行）
 
-### BFB 验证
+1. 单 rank synthetic：native-whole、legacy-python、segmented-original 全数组 bitwise identical。
+2. 512 ranks、50 steps：mmacro_pcond 分段后仍调用原始 kernel；micro_mg_tend；rad_rrtmg_sw；
+   rad_rrtmg_lw；四个边界同时启用。
+3. 比较全部 StatePool、history 和 restart 数值，不使用容差。
+4. 一个月 1488 steps，全部 18 个文件 BFB。
+5. 月度通过后运行一年，全部 180 个文件 BFB。
 
-1. 单 rank synthetic ABI：legacy、native-whole 和 segmented-original 逐数组完全一致。
-2. 512-rank、50-step：class 启用但无 replacement；mmacro_pcond 在 segmented 边界调用原始 kernel；
-   micro_mg_tend 同样验证；两个 RRTMG kernel 分别验证；四个边界组合验证。
-3. 每个测试比较全部 StatePool 字段、CAM history 和 restart，不使用容差。
-4. 一个月 1488 步验证全部 18 个 history/restart 文件 BFB。
-5. 月度通过后运行一年，比较全部 180 个文件 BFB。
+"segmented 后仍调用原始 kernel"必须 BFB；如果不 BFB，说明暂停状态、调用顺序或写回位置有错误，
+不能归因于模型替换。
 
-replacement 调用原始 kernel 仍不 BFB 时，不允许以"模型本来就会改变结果"为理由跳过；这代表 segment
-前后状态没有正确保存。
+### 性能 gates
 
-### 性能验收
+相同编译器、512 ranks、4 节点、rank placement 和输入，各运行三次取中位数：
 
-使用与已有结果相同的 512 ranks、4 节点、输入、编译器、rank placement 和无 profiler 配置，至少运行三次并报告中位数：
+- native-whole：相对普通 FreeCAM 不超过 5%。
+- native-whole stage：不超过 48.6 ms/step/rank。
+- segmented-original：相对当前 92.13 ms 至少消除一半额外开销，目标不超过约 65 ms/step/rank。
+- 分别报告：Python/Fortran crossings；pause/resume 次数；Python model 调用次数；pointer resolve 次数；
+  copy 字节数；平均 rank 和最慢 rank 时间。
 
-| 路径 | 当前基线 | 验收目标 |
-| --- | ---: | --- |
-| 普通 FreeCAM 一月 | 402.51 s | 对照 |
-| 当前细粒度 Python stage | 475.53 s | 历史对照 |
-| 新 native-whole | — | 不超过普通 FreeCAM 5% |
-| 原始 Fortran stage | 37.68 ms/step/rank | 对照 |
-| 当前 Python stage | 92.13 ms/step/rank | 历史对照 |
-| 新 native-whole stage | — | 不超过 48.6 ms，消除至少 80% 的额外 stage 时间 |
-| segmented-original | — | 相对当前 Python stage 至少消除 50% 的额外 stage 时间 |
+真实模型的推理时间和框架 pause/resume 开销必须分开报告。
 
-同时报告：native segment 调用数、Python model 调用数、bulk pointer resolve 次数、copy 字节数、
-每步 Python/Fortran crossings、MPI 最慢 rank 与平均 rank 时间、BFB 结果。
-性能比较只使用模型推进区间，不把 PBS 排队、启动和文件准备时间混入结果。
+## 4. 交付顺序
 
-## Assumptions and Defaults
+在当前 native-stage-batching 分支继续：
 
-- 从当前 standalone-physics-function 分支建立独立 native-stage-batching 分支。
-- 未提交的 UI 目录和 UI 实验不进入本任务。
-- Python 继续拥有 workflow 和 replacement 选择；native runner 只执行 Python 已经编译好的 stage program。
-- 原始无 replacement 路径优先调用未修改的完整 Fortran stage，而不是强迫它经过 segment state machine。
-- Python/AI replacement 允许比原始 kernel 慢，但框架调度成本必须与模型计算成本分别报告。
-- 第一版只保证当前 PI-CAM 配置和四个现有 SWAPPABLE 边界；其他配置必须明确报 unsupported。
-- 不改变科学公式、浮点操作顺序、MPI communicator 或 rank placement。
-- 只有全部 50-step、月度 BFB 和性能 gate 通过后，auto 才切换为新默认路径。
+1. 精简 native-whole registry 和 MPI 检查，达到 5% gate。
+2. 实现通用 context、event、frame ABI 和 fake runner。
+3. 接入 mmacro_pcond，完成 50-step BFB。
+4. 接入 micro_mg_tend，完成嵌套 context BFB。
+5. 接入两个 RRTMG kernel。
+6. 完成四边界组合、月度和年度 BFB。
+7. 更新性能文档和机器可读 validation JSON。
+8. 通过所有 gates 后才把 auto + replacement → segmented 设为默认。
+
+每个阶段独立提交。保留当前历史性能结果，不覆盖旧数据；不提交或修改未跟踪的 workflow_builder/ UI 工作。
+
+## Assumptions
+
+- 原始 Fortran 是科学公式和浮点顺序的唯一 native source of truth。
+- Python class 是公开 process 对象、replacement dispatcher，以及可执行的参考/debug 实现。
+- 不把 Python class 翻译回 Fortran。
+- 不要求每个内部 helper-level if 和循环都由解释执行的 Python 负责；否则当前 30% 左右的损耗无法根本消除。
+- 第一版只覆盖当前 PI-CAM 配置和四个已声明的 swappable kernels；其他配置明确报 unsupported。
+- 不改变 MPI communicator、rank placement、数值公式或 reduction 顺序。
