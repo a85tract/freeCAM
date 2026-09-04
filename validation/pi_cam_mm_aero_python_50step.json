@@ -574,43 +574,43 @@
     "samples": [
       {
         "label": "python_ready",
-        "maximum_rank_hwm_bytes": 223485952,
-        "maximum_rank_rss_bytes": 223485952,
-        "maximum_rank_ru_maxrss_bytes": 223485952,
+        "maximum_rank_hwm_bytes": 223248384,
+        "maximum_rank_rss_bytes": 223248384,
+        "maximum_rank_ru_maxrss_bytes": 223248384,
         "step": 0,
-        "total_hwm_bytes": 111581728768,
-        "total_pss_bytes": 92331361280,
-        "total_rss_bytes": 111581728768
+        "total_hwm_bytes": 111662034944,
+        "total_pss_bytes": 92442079232,
+        "total_rss_bytes": 111662034944
       },
       {
         "label": "initialized",
-        "maximum_rank_hwm_bytes": 777936896,
-        "maximum_rank_rss_bytes": 777936896,
-        "maximum_rank_ru_maxrss_bytes": 777936896,
+        "maximum_rank_hwm_bytes": 780537856,
+        "maximum_rank_rss_bytes": 780537856,
+        "maximum_rank_ru_maxrss_bytes": 780537856,
         "step": 0,
-        "total_hwm_bytes": 229528731648,
-        "total_pss_bytes": 194627036160,
-        "total_rss_bytes": 229259857920
+        "total_hwm_bytes": 229562048512,
+        "total_pss_bytes": 194634322944,
+        "total_rss_bytes": 229296652288
       },
       {
         "label": "pre_finalize",
-        "maximum_rank_hwm_bytes": 840851456,
-        "maximum_rank_rss_bytes": 840851456,
-        "maximum_rank_ru_maxrss_bytes": 840851456,
+        "maximum_rank_hwm_bytes": 825913344,
+        "maximum_rank_rss_bytes": 825913344,
+        "maximum_rank_ru_maxrss_bytes": 825913344,
         "step": 50,
-        "total_hwm_bytes": 235927449600,
-        "total_pss_bytes": 196602187776,
-        "total_rss_bytes": 235912966144
+        "total_hwm_bytes": 235901222912,
+        "total_pss_bytes": 196574432256,
+        "total_rss_bytes": 235886952448
       },
       {
         "label": "finalized",
-        "maximum_rank_hwm_bytes": 840851456,
-        "maximum_rank_rss_bytes": 836337664,
-        "maximum_rank_ru_maxrss_bytes": 840851456,
+        "maximum_rank_hwm_bytes": 825913344,
+        "maximum_rank_rss_bytes": 820363264,
+        "maximum_rank_ru_maxrss_bytes": 825913344,
         "step": 50,
-        "total_hwm_bytes": 236006436864,
-        "total_pss_bytes": 196625784832,
-        "total_rss_bytes": 235941363712
+        "total_hwm_bytes": 235984814080,
+        "total_pss_bytes": 196596608000,
+        "total_rss_bytes": 235919286272
       }
     ]
   },
@@ -620,7 +620,7 @@
   "native_library_sha256": "4d3879e280b191d564c5fe1277ebcfad70ac5cc9503e720c34e16c411f8bc54a",
   "native_manifest": "/glade/work/ruitong/pycam-sima-pi-cam-only/build/pi_cam_promoted/native_cam_manifest.json",
   "native_state_ownership": "python-owned-zero-copy-derived-shell",
-  "pbs_job_id": "7314219.desched1",
+  "pbs_job_id": "7314449.desched1",
   "radiation_python": false,
   "radiation_split": false,
   "rank_created_fields": [
@@ -3712,28 +3712,29 @@
   "schema_version": 1,
   "scientific_bfb": null,
   "stage_execution": {
-    "CloudMacroMicrophysics": {
+    "cloud_macro_microphysics_python": {
       "active_replacements": [],
-      "execution_mode": "unset",
+      "execution_mode": "native-whole",
       "legacy_steps": 0,
       "native_segment_calls": 0,
-      "native_stage_calls": 0,
-      "python_fortran_crossings_per_step": null,
-      "python_model_calls": 0
+      "native_stage_calls": 50,
+      "python_fortran_crossings_per_step": 1,
+      "python_model_calls": 0,
+      "segment_pauses": 0
     }
   },
   "stage_execution_policy": "auto",
   "step_plan_actions": 48,
   "steps": 50,
   "timing": {
-    "advance_seconds": 16.653068916999928,
-    "advance_sypd": 14.806600734957765,
+    "advance_seconds": 16.68240086500009,
+    "advance_sypd": 14.780566925655883,
     "aggregation": "maximum across all MPI ranks",
     "clock": "MPI.Wtime with MPI barriers",
-    "finalize_seconds": 0.3477865859999838,
-    "initialize_seconds": 17.273013184000092,
+    "finalize_seconds": 0.34438048399988475,
+    "initialize_seconds": 14.953113545000178,
     "simulated_days": 1.0416666666666667,
-    "total_seconds": 34.29377088900014
+    "total_seconds": 32.00188787500019
   },
   "validation_scope": "configured CAM runtime"
 }
