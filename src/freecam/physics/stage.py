@@ -368,7 +368,8 @@ class _KernelPlan:
     scratch's place -- only an ``intent(in)`` array argument may, since the
     kernel then reads CAM's storage where it would have read a copy of it
     and writes nothing there.  ``bound`` maps the identity of the arrays
-    actually handed over to the call prepared for them.
+    actually handed over to the call prepared for them, and holds those
+    arrays, so an identity in the table can never be another array's.
     """
 
     slots: tuple[tuple[str, np.ndarray, bool], ...]
@@ -377,7 +378,14 @@ class _KernelPlan:
     run_region: str
     copy_out_region: str
     bind_region: str
-    bound: dict[tuple[int, ...], Callable[[], Any]]
+    bound: dict[tuple[int, ...], tuple[Callable[[], Any], tuple[np.ndarray, ...]]]
+    in_place: bool = True
+    binds: int = 0
+
+
+#: bound calls kept per kernel plan, and the rebinds after which a plan whose
+#: callers keep handing it new arrays goes back to copying them into scratch
+BOUND_PER_PLAN, REBINDS_BEFORE_COPYING = 64, 96
 
 
 class StageRuntime:
@@ -434,6 +442,7 @@ class StageRuntime:
         # direct-kernel calls bound once per (kernel, arrays); see _run and _plan
         self._bound: dict[tuple, Callable[[], Any]] = {}
         self._plans: dict[tuple[str, frozenset | None], _KernelPlan] = {}
+        self._columns: dict[tuple[str, int], tuple[np.ndarray, np.ndarray]] = {}
         stage.after_runtime(self)
         check(self.entries.set_owner(1), f"pycam_{stage.PREFIX}_set_owner_v1")
 
@@ -487,9 +496,15 @@ class StageRuntime:
     # -- the pool ------------------------------------------------------------
 
     def column(self, field: str, index: int) -> np.ndarray:
-        """One chunk's lane of a StatePool field, F-ordered."""
+        """One chunk's lane of a StatePool field, F-ordered: the same view while the pool array is."""
 
-        return fortran(np.asarray(self.native.pool[field])[:, index])
+        base = np.asarray(self.native.pool[field])
+        hit = self._columns.get((field, index))
+        if hit is not None and hit[0] is base:
+            return hit[1]
+        view = fortran(base[:, index])
+        self._columns[(field, index)] = (base, view)
+        return view
 
     def cam_in(self, index: int) -> dict[str, np.ndarray]:
         """The surface fields the stage reads, one chunk's lane each."""
@@ -518,17 +533,18 @@ class StageRuntime:
                 value = inputs.get(local)
                 if value is None:
                     handed.append(scratch)
-                elif (may_stand_in and type(value) is np.ndarray and local not in outputs
-                      and value.dtype == scratch.dtype and value.flags.f_contiguous
-                      and value.shape == scratch.shape[:-1]):
+                elif (may_stand_in and plan.in_place and type(value) is np.ndarray
+                      and local not in outputs and value.dtype == scratch.dtype
+                      and value.flags.f_contiguous and value.shape == scratch.shape[:-1]):
                     handed.append(value)                # read in place: no copy
                 else:
                     self._copy_in(scratch, value)
                     handed.append(scratch)
         with self.profile.region(plan.run_region):
             key = tuple(id(array) for array in handed)
-            run = plan.bound.get(key)
-            if run is None:
+            hit = plan.bound.get(key)
+            run = None if hit is None else hit[0]
+            if hit is None:
                 binder = getattr(self.native, "bind_kernel", None)
                 arrays: dict[str, np.ndarray] = {}
                 for field, array, (_, scratch, _) in zip(plan.fields, handed, plan.slots):
@@ -539,9 +555,17 @@ class StageRuntime:
                     self.native.run_kernel(name, arrays)
                 else:
                     with self.profile.region(plan.bind_region):
-                        if len(plan.bound) >= 8:    # storage that keeps moving: hold few
+                        plan.binds += 1
+                        if len(plan.bound) >= BOUND_PER_PLAN:
                             plan.bound.clear()
-                        run = plan.bound[key] = binder(name, arrays)
+                        if plan.binds > REBINDS_BEFORE_COPYING and plan.in_place:
+                            # the callers hand this kernel a new array every time:
+                            # reading in place buys nothing, so copy from here on
+                            # and bind the scratch once
+                            plan.in_place = False
+                            plan.bound.clear()
+                        run = binder(name, arrays)
+                        plan.bound[key] = (run, tuple(handed))
             if run is not None:
                 run()
         with self.profile.region(plan.copy_out_region):

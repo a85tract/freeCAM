@@ -729,7 +729,7 @@ def test_a_moved_input_view_is_bound_again_and_the_table_stays_small(widget) -> 
         runtime.kernel_on_chunk("widget_step", {"x": view, "ncol": np.int32(6)}, outputs={})
     assert binds == [v.ctypes.data for v in views]
     (plan,) = runtime._plans.values()
-    assert len(plan.bound) <= 8
+    assert len(plan.bound) <= 64
     runtime.kernel_on_chunk("widget_step", {"x": views[-1], "ncol": np.int32(6)}, outputs={})
     assert len(binds) == 12                                   # the last one was still held
 
@@ -751,3 +751,32 @@ def test_pointer_of_is_kept_per_array_and_points_at_it() -> None:
     assert pointer_of(a) is p
     assert ctypes.cast(p, ctypes.c_void_p).value == a.ctypes.data
     assert pointer_of(np.zeros((3, 2), order="F")) is not p
+
+
+def test_a_kernel_whose_callers_always_hand_new_arrays_goes_back_to_copying(widget) -> None:
+    from freecam.physics.stage import REBINDS_BEFORE_COPYING
+
+    binds: list[int] = []
+    widget.bind_kernel = lambda name, arrays: (binds.append(arrays["widget.x"].ctypes.data), lambda: None)[1]
+    runtime = Widget().runtime(widget)
+    for i in range(REBINDS_BEFORE_COPYING + 20):
+        fresh = np.full((PCOLS, PVER), float(i), order="F")
+        runtime.kernel_on_chunk("widget_step", {"x": fresh, "ncol": np.int32(6)}, outputs={})
+    (plan,) = runtime._plans.values()
+    assert plan.in_place is False
+    # the switch happens on the bind after the limit, which was still in place;
+    # from then on every call reads the scratch copy through one more binding
+    assert len(binds) == REBINDS_BEFORE_COPYING + 2
+    assert binds[-1] == runtime.scratch["x"].ctypes.data
+    assert np.all(runtime.scratch["x"][..., 0] == float(REBINDS_BEFORE_COPYING + 19))
+
+
+def test_a_surface_column_is_the_same_view_while_the_pool_array_is(widget) -> None:
+    runtime = Widget().runtime(widget)
+    first = runtime.column("cam_in.landfrac", 1)
+    assert runtime.column("cam_in.landfrac", 1) is first
+    assert runtime.column("cam_in.landfrac", 0) is not first
+    assert runtime.cam_in(1)["landfrac"] is first
+    widget.pool["cam_in.landfrac"] = np.ones((PCOLS, 2), order="F")     # the pool re-bound it
+    again = runtime.column("cam_in.landfrac", 1)
+    assert again is not first and np.all(again == 1.0)

@@ -104,7 +104,7 @@ class PBuf:
                 ctypes.POINTER(ctypes.c_int64),
             ]
         self._entry_v2 = second
-        self._views: dict[tuple[str, int], tuple[int, tuple[int, int], np.ndarray]] = {}
+        self._views: dict[tuple[str, int], tuple[int, tuple[int, ...], np.ndarray]] = {}
 
     def __contains__(self, name: str) -> bool:
         field = self.fields.get(name)
@@ -187,11 +187,16 @@ class PBuf:
             raise PICAMConfigurationError(
                 f"physics buffer returned {shape} for {field.name} on chunk {chunk}"
             )
+        hit = self._views.get((field.name, chunk))
+        if hit is not None and hit[0] == pointer.value and hit[1] == shape:
+            return hit[2]
         count = int(np.prod(shape))
         ctype = ctypes.c_int32 if is_integer else ctypes.c_double
         buffer = (ctype * count).from_address(pointer.value)
-        return np.ndarray(shape, dtype=np.int32 if is_integer else np.float64,
+        view = np.ndarray(shape, dtype=np.int32 if is_integer else np.float64,
                           buffer=buffer, order="F")
+        self._views[(field.name, chunk)] = (pointer.value, shape, view)
+        return view
 
     def verify(self, chunk: int, *, pcols: int, pver: int) -> dict[str, tuple[int, int]]:
         """Fetch every registered field once and check its shape.
