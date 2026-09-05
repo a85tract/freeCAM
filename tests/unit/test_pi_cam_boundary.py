@@ -393,3 +393,185 @@ def test_exact_cesm_provider_prepares_only_startup_inputs(tmp_path) -> None:
     assert not (prepared / "cesm.log.test").exists()
     assert not (prepared / "rpointer.drv").exists()
     assert (prepared / "timing" / "checkpoints").is_dir()
+
+
+class _CountingWorld:
+    """A one-rank world that offers the buffer reduction and records aborts."""
+
+    def __init__(self) -> None:
+        self.reductions = 0
+        self.gathers = 0
+        self.aborts: list[int] = []
+
+    def Allreduce(self, sendbuf, recvbuf) -> None:
+        self.reductions += 1
+        recvbuf[...] = sendbuf
+
+    def allreduce(self, value):
+        raise AssertionError("the pickling reduction must not be used when Allreduce exists")
+
+    def allgather(self, value):
+        self.gathers += 1
+        return [value]
+
+    def Abort(self, code: int) -> None:
+        self.aborts.append(code)
+
+
+class _RecordingCoupler:
+    """The native coupler as the provider drives it, recording the order."""
+
+    def __init__(self, *, refuse: int | None = None, mask: int = 0b1111111) -> None:
+        self.calls: list[object] = []
+        self.refuse = refuse
+        self.mask = mask
+
+    def pycesm_full_step_begin_v1(self, native_step, ymd, seconds, mask, status) -> None:
+        self.calls.append("begin")
+        native_step._obj.value = 1
+        ymd._obj.value = 10101
+        seconds._obj.value = 1800
+        mask._obj.value = self.mask
+        status._obj.value = 0
+
+    def pycesm_full_action_v1(self, action_id, status) -> None:
+        self.calls.append(action_id.value)
+        status._obj.value = 4 if action_id.value == self.refuse else 0
+
+    def pycesm_full_nested_action_v1(self, action_id, complete, status) -> None:
+        self.calls.append(action_id.value)
+        complete._obj.value = 0
+        status._obj.value = 0
+
+    def pycesm_full_step_end_v1(self, status) -> None:
+        self.calls.append("end")
+        status._obj.value = 0
+
+
+def _grouped_provider(tmp_path, native) -> tuple[CESMOnlineBoundaryProvider, _CountingWorld]:
+    provider = CESMOnlineBoundaryProvider(library=tmp_path / "libcesm.so", run_dir=tmp_path)
+    provider._rank = 0
+    provider._size = 1
+    world = _CountingWorld()
+    provider._world = world
+    provider._native = native
+    return provider, world
+
+
+def test_the_coupling_step_opens_with_one_reduction_after_the_whole_sequence(tmp_path) -> None:
+    """The original driver runs the land, ice and ocean actions back to back,
+    each rank skipping the components it is not part of, so they overlap on
+    disjoint ranks.  A check after every action lined them up behind each
+    other; the check now comes once, after the whole opening sequence."""
+
+    native = _RecordingCoupler()
+    provider, world = _grouped_provider(tmp_path, native)
+
+    provider._begin_coupling_step()
+
+    assert native.calls[0] == "begin"
+    assert native.calls[1:] == [*range(101, 125), 201, 202]
+    assert world.reductions == 1
+    assert world.gathers == 0
+    assert provider._remaining_actions == [126, 127, 128, 129]
+    assert provider._active_coupling_step
+
+
+def test_an_alarm_that_is_off_drops_its_actions_from_the_sequence(tmp_path) -> None:
+    # every alarm but rof (bit 3)
+    native = _RecordingCoupler(mask=0b1110111)
+    provider, _ = _grouped_provider(tmp_path, native)
+
+    provider._begin_coupling_step()
+
+    assert 106 not in native.calls and 118 not in native.calls
+    assert 102 in native.calls and 104 in native.calls
+
+
+def test_a_protocol_refusal_stops_the_sequence_and_is_reported_collectively(tmp_path) -> None:
+    """A status is decided from replicated state, so every rank stops at the
+    same call and meets at the one reduction; nobody aborts."""
+
+    native = _RecordingCoupler(refuse=111)
+    provider, world = _grouped_provider(tmp_path, native)
+
+    with pytest.raises(BoundaryReplayError, match="coupling step begin"):
+        provider._begin_coupling_step()
+
+    assert native.calls[-1] == 111
+    assert world.reductions == 1
+    assert world.gathers == 1
+    assert world.aborts == []
+    assert not provider._active_coupling_step
+
+
+def test_a_rank_local_failure_inside_the_sequence_aborts_instead_of_hanging_the_others(
+    tmp_path,
+) -> None:
+    """An allocation callback failing is one rank's problem.  The other ranks
+    may already be inside the next call's MPI collective, so the rank aborts
+    the job as shr_sys_abort would rather than leave them waiting."""
+
+    from freecam.pi_cam.boundary import CESMRankLocalError
+
+    class FailingRegistry:
+        def raise_if_failed(self) -> None:
+            raise CESMRankLocalError("CESM MCT allocation callback failed")
+
+    native = _RecordingCoupler()
+    provider, world = _grouped_provider(tmp_path, native)
+    provider._registry = FailingRegistry()
+
+    with pytest.raises(CESMRankLocalError):
+        provider._begin_coupling_step()
+
+    assert world.aborts == [1]
+    assert world.reductions == 0
+    assert native.calls == ["begin"]
+
+
+def test_the_export_carries_the_loop_vote_in_its_reduction_and_closes_in_one_group(
+    tmp_path, monkeypatch
+) -> None:
+    native = _RecordingCoupler()
+    provider, world = _grouped_provider(tmp_path, native)
+    provider._initial_x2a = np.zeros((2, 3), order="F")
+    provider._x2a = _CESMMCTBuffer(
+        allocation_id=-1, scope="test", field_names=("x0", "x1"), values=np.ones((2, 3), order="F")
+    )
+    provider._a2x = _CESMMCTBuffer(
+        allocation_id=-2, scope="test", field_names=("a0", "a1"), values=np.zeros((2, 3), order="F")
+    )
+    pool = PICAMStatePool({})
+
+    def begin() -> None:
+        provider._active_coupling_step = True
+        provider._remaining_actions = [126, 129]
+
+    monkeypatch.setattr(provider, "_begin_coupling_step", begin)
+    monkeypatch.setattr(provider, "_call_external_atm_iteration", lambda: True)
+
+    for step in (0, 1):
+        provider.import_fields(step, 0, pool)
+        provider.export_fields(step, 0, pool)
+    provider.import_fields(2, 0, pool)
+    world.reductions = 0
+    native.calls.clear()
+
+    provider.export_fields(2, 0, pool)
+
+    # one reduction votes on the loop's completion; one closes the step
+    assert world.reductions == 2
+    assert native.calls == [210, 126, 129, "end"]
+    assert provider._coupling_steps == 1
+    assert not provider._active_coupling_step
+
+
+def test_a_world_without_the_buffer_reduction_still_agrees(tmp_path) -> None:
+    native = _RecordingCoupler()
+    provider, _ = _grouped_provider(tmp_path, native)
+    provider._world = _OneRankWorld()
+
+    provider._begin_coupling_step()
+
+    assert native.calls[-1] == 202

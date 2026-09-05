@@ -67,6 +67,10 @@ class _SerialComm:
         del root
         return value
 
+    @staticmethod
+    def Allreduce(sendbuf: np.ndarray, recvbuf: np.ndarray) -> None:
+        recvbuf[...] = sendbuf
+
 
 class PICAMLifecycle(str, Enum):
     CREATED = "created"
@@ -1038,6 +1042,8 @@ class PICAMDriver:
             raise PICAMConfigurationError(
                 "communicator rank/size do not match PICAMDriver rank/size"
             )
+        self._flag_send = np.zeros(1, dtype=np.int32)
+        self._flag_recv = np.zeros(1, dtype=np.int32)
         self.profiler = FreeCAMProfiler(rank=self.rank, size=self.size)
         self.step_plan = step_plan or PICAMStepPlan.default()
         self.pool = (state_schema or PICAMStateSchema.core()).allocate(
@@ -1381,21 +1387,15 @@ class PICAMDriver:
         elif action.kind == "runtime_catalog_process":
             self.process_contexts.invoke(action.name)
         elif action.operation == "boundary_import":
-            self._collective_boundary_call(
-                f"step {self._boundary_step} boundary import",
-                lambda: self.boundary.import_fields(
-                    self._boundary_step, self.rank, self.pool
-                ),
-            )
             # A coupled atmosphere interval can contain more than one CAM
             # substep.  CESM calls atm_import only at the beginning of that
             # interval and holds cam_in for the remaining substeps.  The
-            # replay manifest records those held boundaries explicitly.
+            # replay manifest records those held boundaries explicitly.  The
+            # import and the question of whether it was fresh travel through
+            # one collective; the answer is derived from replicated state.
             if self._collective_boundary_call(
-                f"step {self._boundary_step} boundary import schedule",
-                lambda: self.boundary.has_fresh_import(
-                    self._boundary_step, self.rank
-                ),
+                f"step {self._boundary_step} boundary import",
+                self._import_with_schedule,
             ):
                 self._execute_boundary_kernel(action)
         elif action.operation == "boundary_export":
@@ -2505,6 +2505,12 @@ class PICAMDriver:
                     f"Python process {name!r} failed without rollback:\n" + failure
                 )
 
+    def _import_with_schedule(self) -> bool:
+        """Import this step's boundary and say whether CAM must apply it."""
+
+        self.boundary.import_fields(self._boundary_step, self.rank, self.pool)
+        return bool(self.boundary.has_fresh_import(self._boundary_step, self.rank))
+
     @staticmethod
     def _boundary_timer_name(label: str) -> str:
         lowered = label.lower()
@@ -2539,6 +2545,16 @@ class PICAMDriver:
             local_error = traceback.format_exc()
         deferred = self._deferred_process_errors
         self._deferred_process_errors = []
+        # The normal path is one integer reduction: every rank contributes
+        # whether it has anything to report.  Only when some rank does are
+        # the tracebacks themselves gathered.  Communicator doubles without
+        # the buffer form take the gathering path directly.
+        allreduce = getattr(self.comm, "Allreduce", None)
+        if allreduce is not None:
+            self._flag_send[0] = 1 if local_error is not None or deferred else 0
+            allreduce(self._flag_send, self._flag_recv)
+            if not int(self._flag_recv[0]):
+                return result
         gathered = self.comm.allgather((local_error, deferred))
         errors = [item[0] for item in gathered]
         self._raise_deferred_process_errors([item[1] for item in gathered])

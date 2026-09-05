@@ -13,7 +13,7 @@ from pathlib import Path
 import shutil
 import sys
 import traceback
-from typing import BinaryIO, Callable, Mapping
+from typing import BinaryIO, Callable, Iterable, Iterator, Mapping
 
 import numpy as np
 
@@ -21,6 +21,17 @@ from freecam.core.fortran_runtime import prepare_fortran_runtime
 
 from .errors import BoundaryReplayError
 from .state import PICAMStatePool
+
+
+class CESMRankLocalError(BoundaryReplayError):
+    """A failure one rank found on its own, not a verdict every rank shares.
+
+    The native coupler protocol refuses a call with a status every rank
+    derives from the same replicated clock and sequence state, so a status
+    error stops every rank at the same call.  An allocation callback failing
+    is this rank's alone: the others carry on into the next call's MPI
+    collective and would wait there for a rank that has stopped.
+    """
 
 
 def _array_hash(values: np.ndarray) -> str:
@@ -433,7 +444,7 @@ class _CESMMCTRegistry:
         if self.error is not None:
             error = self.error
             self.error = None
-            raise BoundaryReplayError("CESM MCT allocation callback failed") from error
+            raise CESMRankLocalError("CESM MCT allocation callback failed") from error
 
     def component_exchange(self, attributes: int) -> _CESMMCTBuffer:
         matches = tuple(
@@ -569,7 +580,7 @@ class _CESMFortranHeapRegistry:
         if self.error is not None:
             error = self.error
             self.error = None
-            raise BoundaryReplayError("CESM heap allocation callback failed") from error
+            raise CESMRankLocalError("CESM heap allocation callback failed") from error
 
 
 class CESMOnlineBoundaryProvider(CAMBoundaryProvider):
@@ -614,6 +625,9 @@ class CESMOnlineBoundaryProvider(CAMBoundaryProvider):
         self._rank: int | None = None
         self._size: int | None = None
         self._world: object | None = None
+        self._reduce_send: np.ndarray | None = None
+        self._reduce_recv: np.ndarray | None = None
+        self._reductions = 0
         self._native: ctypes.CDLL | None = None
         self._registry: _CESMMCTRegistry | None = None
         self._heap_registry: _CESMFortranHeapRegistry | None = None
@@ -686,25 +700,96 @@ class CESMOnlineBoundaryProvider(CAMBoundaryProvider):
             )
 
     def _collective(self, operation: str, function: Callable[[], None]) -> None:
+        """Run one native coupler call on every rank and fail all ranks together."""
+
+        self._grouped(operation, ((operation, function),))
+
+    def _grouped(
+        self,
+        operation: str,
+        steps: Iterable[tuple[str, Callable[[], None]]],
+        *,
+        vote: Callable[[], int] | None = None,
+    ) -> int:
+        """Run a sequence of native coupler calls, then check for failure once.
+
+        The original driver makes these calls back to back; each rank skips
+        the components it is not part of, so the land, ice and ocean work of
+        one coupling step proceeds concurrently on disjoint ranks.  Checking
+        after every call lined those components up behind one another: the
+        ice ranks waited at the check while the land ranks ran, and so on.
+        One check after the whole sequence keeps the original's concurrency.
+
+        A protocol status error is decided by every rank from the same
+        replicated clock and sequence state, so every rank stops at the same
+        call and meets at the check, which then reports the failure on all
+        of them.  Any other failure is this rank's alone -- the others may
+        already be inside an MPI collective of the next call -- so the rank
+        aborts the job the way the original ``shr_sys_abort`` does rather
+        than leave them waiting.  The returned integer is the sum over ranks
+        of ``vote()`` when one is given, carried in the same reduction.
+        """
+
         assert self._world is not None
         local_error: str | None = None
         try:
             with self._provider_directory():
-                function()
-            if self._registry is not None:
-                self._registry.raise_if_failed()
-            if self._heap_registry is not None:
-                self._heap_registry.raise_if_failed()
-        except BaseException:
+                for _name, call in steps:
+                    call()
+                    if self._registry is not None:
+                        self._registry.raise_if_failed()
+                    if self._heap_registry is not None:
+                        self._heap_registry.raise_if_failed()
+        except CESMRankLocalError:
+            self._abort_rank(operation)
+            raise
+        except BoundaryReplayError:
             local_error = traceback.format_exc()
-        failure_count = int(self._world.allreduce(int(local_error is not None)))
-        if not failure_count:
-            return
+        except BaseException:
+            self._abort_rank(operation)
+            raise
+        ballot = 0 if local_error is not None or vote is None else int(vote())
+        failures, votes = self._reduce(local_error is not None, ballot)
+        if not failures:
+            return votes
         errors = self._world.allgather(local_error)
         first = next((item for item in errors if item), "unknown error")
         raise BoundaryReplayError(
             f"original CESM online provider failed during {operation}:\n{first}"
         )
+
+    def _abort_rank(self, operation: str) -> None:
+        assert self._world is not None
+        print(
+            f"rank {self._rank}: original CESM online provider failed during "
+            f"{operation}; aborting so no other rank waits for this one",
+            file=sys.stderr,
+        )
+        traceback.print_exc()
+        sys.stderr.flush()
+        self._world.Abort(1)
+
+    def _reduce(self, failed: bool, vote: int) -> tuple[int, int]:
+        """Sum the failure flag and the vote over all ranks in one reduction.
+
+        Two integers in a preallocated buffer go through ``Allreduce``; the
+        pickling ``allreduce`` is kept only for communicator doubles that
+        offer nothing else.
+        """
+
+        world = self._world
+        assert world is not None
+        self._reductions += 1
+        allreduce = getattr(world, "Allreduce", None)
+        if allreduce is None:
+            return int(world.allreduce(int(failed))), int(world.allreduce(int(vote)))
+        if self._reduce_send is None or self._reduce_recv is None:
+            self._reduce_send = np.zeros(2, dtype=np.int32)
+            self._reduce_recv = np.zeros(2, dtype=np.int32)
+        self._reduce_send[0] = int(failed)
+        self._reduce_send[1] = int(vote)
+        allreduce(self._reduce_send, self._reduce_recv)
+        return int(self._reduce_recv[0]), int(self._reduce_recv[1])
 
     def _call_initialize_action(self, action_id: int) -> None:
         assert self._native is not None
@@ -1013,26 +1098,31 @@ class CESMOnlineBoundaryProvider(CAMBoundaryProvider):
             )
             self._check(status, "step begin")
 
-        self._collective("step begin", begin)
-        self._alarm_mask = int(mask.value)
-        actions = [
-            action_id
-            for action_id, alarm, kind in _CESM_PLAN_ACTIONS
-            if self._action_enabled(action_id, alarm, kind, self._alarm_mask)
-        ]
-        if 125 not in actions:
-            raise BoundaryReplayError("PI-atm provider ATM alarm is unexpectedly off")
-        split = actions.index(125)
-        for action_id in actions[:split]:
-            self._collective(
-                f"coupling action {action_id}",
-                lambda action_id=action_id: self._call_plan_action(action_id),
-            )
-        self._collective(
-            "ATM component begin", lambda: self._call_nested_action(201)
-        )
-        self._collective("ATM import begin", lambda: self._call_nested_action(202))
-        self._remaining_actions = actions[split + 1 :]
+        def steps() -> Iterator[tuple[str, Callable[[], None]]]:
+            # The alarm mask is known only once the step has begun, so the
+            # actions it enables are decided as the sequence runs.
+            yield "step begin", begin
+            self._alarm_mask = int(mask.value)
+            actions = [
+                action_id
+                for action_id, alarm, kind in _CESM_PLAN_ACTIONS
+                if self._action_enabled(action_id, alarm, kind, self._alarm_mask)
+            ]
+            if 125 not in actions:
+                raise BoundaryReplayError(
+                    "PI-atm provider ATM alarm is unexpectedly off"
+                )
+            split = actions.index(125)
+            for action_id in actions[:split]:
+                yield (
+                    f"coupling action {action_id}",
+                    lambda action_id=action_id: self._call_plan_action(action_id),
+                )
+            yield "ATM component begin", lambda: self._call_nested_action(201)
+            yield "ATM import begin", lambda: self._call_nested_action(202)
+            self._remaining_actions = actions[split + 1 :]
+
+        self._grouped("coupling step begin", steps())
         self._active_coupling_step = True
         self._fresh_import = True
 
@@ -1095,21 +1185,17 @@ class CESMOnlineBoundaryProvider(CAMBoundaryProvider):
             nonlocal complete
             complete = self._call_external_atm_iteration()
 
-        self._collective("external ATM iteration", iterate)
-        assert self._world is not None
-        complete_count = int(self._world.allreduce(int(complete)))
+        complete_count = self._grouped(
+            "external ATM iteration",
+            (("external ATM iteration", iterate),),
+            vote=lambda: int(complete),
+        )
         if complete_count not in (0, self._size):
             raise BoundaryReplayError(
                 "external ATM loop completion differs across MPI ranks"
             )
         complete = complete_count == self._size
         if complete:
-            self._collective("ATM component end", lambda: self._call_nested_action(210))
-            for action_id in self._remaining_actions:
-                self._collective(
-                    f"coupling action {action_id}",
-                    lambda action_id=action_id: self._call_plan_action(action_id),
-                )
 
             def end() -> None:
                 assert self._native is not None
@@ -1117,7 +1203,18 @@ class CESMOnlineBoundaryProvider(CAMBoundaryProvider):
                 self._native.pycesm_full_step_end_v1(ctypes.byref(status))
                 self._check(status, "step end")
 
-            self._collective("step end", end)
+            closing: list[tuple[str, Callable[[], None]]] = [
+                ("ATM component end", lambda: self._call_nested_action(210))
+            ]
+            closing.extend(
+                (
+                    f"coupling action {action_id}",
+                    lambda action_id=action_id: self._call_plan_action(action_id),
+                )
+                for action_id in self._remaining_actions
+            )
+            closing.append(("step end", end))
+            self._grouped("coupling step end", closing)
             self._active_coupling_step = False
             self._remaining_actions = []
             self._coupling_steps += 1
@@ -1183,6 +1280,7 @@ class CESMOnlineBoundaryProvider(CAMBoundaryProvider):
             "imports": self._next_import_step,
             "exports": self._last_export_step + 1,
             "coupling_steps": self._coupling_steps,
+            "collective_reductions": self._reductions,
             "shadow_a2x_bfb_steps": self._shadow_matches,
             "shadow_atmosphere": False,
             "oracle_x2a_bfb_steps": self._oracle_import_matches,

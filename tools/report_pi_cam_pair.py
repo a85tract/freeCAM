@@ -45,7 +45,7 @@ def gptl_seconds(gptl: dict, key: str) -> float | None:
 
 
 def pair_record(a_timing: Path, a_executable: Path | None, c_summary: Path, c_bfb: Path,
-                order: str, policy: str, job: str | None) -> dict:
+                order: str, policy: str, job: str | None, git_commit: str | None = None) -> dict:
     gptl = parse_gptl(a_timing)
     a_loop = gptl_seconds(gptl, "CPL:RUN_LOOP")
     if a_loop is None:
@@ -76,7 +76,9 @@ def pair_record(a_timing: Path, a_executable: Path | None, c_summary: Path, c_bf
             "lifecycle_seconds": float(timing.get("total_seconds", 0.0)),
             "sypd": timing.get("advance_sypd"),
             "native_library_sha256": summary.get("native_library_sha256"),
-            "git_commit": summary.get("git_commit"),
+            "git_commit": git_commit or summary.get("git_commit"),
+            "collective_reductions": (summary.get("boundary_rank_zero") or {}).get(
+                "collective_reductions"),
             "bfb": bfb.get("bfb"),
             "bfb_files": bfb.get("compared_files"),
             "peak_rank_rss_bytes": c_memory.get("maximum_rank_rss_bytes"),
@@ -118,6 +120,7 @@ def main() -> int:
     parser.add_argument("--order", choices=("AC", "CA"), required=True)
     parser.add_argument("--stage-execution", default="native-whole")
     parser.add_argument("--pbs-job-id")
+    parser.add_argument("--git-commit", help="the freeCAM commit the C run executed")
     parser.add_argument("--duration", choices=("1month", "1year"), default="1month")
     parser.add_argument("--record", type=Path, required=True)
     arguments = parser.parse_args()
@@ -129,7 +132,8 @@ def main() -> int:
                             "the year, bit-for-bit, on 512 ranks.",
                     "1month": {"pairs": []}, "1year": {"pairs": []}})
     pair = pair_record(arguments.a_timing, arguments.a_executable, arguments.c_summary, arguments.c_bfb,
-                       arguments.order, arguments.stage_execution, arguments.pbs_job_id)
+                       arguments.order, arguments.stage_execution, arguments.pbs_job_id,
+                       arguments.git_commit)
     block = record.setdefault(arguments.duration, {"pairs": []})
     block["pairs"].append(pair)
     block["summary"] = summarise(block["pairs"])

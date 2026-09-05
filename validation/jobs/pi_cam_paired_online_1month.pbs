@@ -123,5 +123,6 @@ cd "${repo}"
   --order "${order}" \
   --stage-execution "${policy}" \
   --pbs-job-id "${PBS_JOBID}" \
+  --git-commit "$(git rev-parse HEAD)" \
   --record validation/pi_cam_faster_than_fortran.json
 echo "root: ${root}"

@@ -1123,3 +1123,60 @@ def test_a_native_action_can_be_run_outside_the_plan_and_a_python_one_cannot() -
                                   transactional=False, unsafe=True)
     with pytest.raises(PICAMStateError, match="only a native action"):
         driver.run_native_action("quiet_stage")
+
+
+def test_a_clean_boundary_collective_is_one_reduction_and_gathers_nothing() -> None:
+    """Every rank says with one integer whether it has anything to report;
+    the tracebacks are gathered only when some rank does.  A step has two
+    such collectives, the import and the export -- the import's schedule
+    travels with the import."""
+
+    class BufferComm:
+        rank = 0
+        size = 1
+
+        def __init__(self) -> None:
+            self.reductions = 0
+            self.gathers: list[object] = []
+
+        def Allreduce(self, sendbuf, recvbuf) -> None:
+            self.reductions += 1
+            recvbuf[...] = sendbuf
+
+        def allgather(self, value):
+            self.gathers.append(value)
+            return [value]
+
+        @staticmethod
+        def gather(value, root=0):
+            del root
+            return [value]
+
+        @staticmethod
+        def barrier() -> None:
+            return None
+
+        @staticmethod
+        def bcast(value, root=0):
+            del root
+            return value
+
+    driver, _, boundary = _driver()
+    comm = BufferComm()
+    driver.comm = comm
+    driver.initialize()
+    comm.reductions = 0
+    comm.gathers.clear()
+
+    driver.step()
+
+    assert comm.reductions == 2
+    assert comm.gathers == []
+
+    def failing_import(step, rank, pool):
+        raise RuntimeError("rank-local import failure")
+
+    boundary.import_fields = failing_import
+    with pytest.raises(BoundaryReplayError, match="rank-local import failure"):
+        driver.step()
+    assert len(comm.gathers) == 1
