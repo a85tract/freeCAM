@@ -58,6 +58,12 @@ def _scientific_order(document: WorkflowDocument) -> list[str]:
     return [node.name for node in document.nodes if node.scientific and node.enabled]
 
 
+def _original_order(document: WorkflowDocument) -> list[str]:
+    """The original processes only: an inserted process is already in its place."""
+
+    return [node.name for node in document.nodes if node.scientific and node.enabled and node.origin == "default"]
+
+
 def _neighbours(document: WorkflowDocument, node: WorkflowNode) -> tuple[WorkflowNode | None, WorkflowNode | None]:
     index = document.index(node.id)
     before = next((n for n in reversed(document.nodes[:index]) if n.scientific and n.enabled), None)
@@ -236,12 +242,12 @@ def apply_document(driver: Any, document: WorkflowDocument, applied: AppliedStat
     # 5. the order and membership of the original processes
     order = _scientific_order(document)
     if previous is not None:
-        reference = _scientific_order(previous)
+        reference = _original_order(previous)
     elif default is not None:
-        reference = _scientific_order(default)
+        reference = _original_order(default)
     else:
         reference = _default_order(driver, document)
-    if order != reference:
+    if _original_order(document) != reference:
         workflow.replace(list(order))
         log.append(f"workflow.replace({order})")
 

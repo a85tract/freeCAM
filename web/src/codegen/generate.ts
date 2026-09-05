@@ -53,6 +53,11 @@ function scientificOrder(document: WorkflowDocument): string[] {
   return document.nodes.filter((node) => node.scientific && node.enabled).map((node) => node.name);
 }
 
+/** The original processes only: an inserted process is already in its place, so it does not make the order "changed". */
+function originalOrder(document: WorkflowDocument): string[] {
+  return document.nodes.filter((node) => node.scientific && node.enabled && node.origin === "default").map((node) => node.name);
+}
+
 function classNameOf(source: string, fallback: string): string {
   const match = /^class\s+([A-Za-z_][A-Za-z0-9_]*)\s*\(/m.exec(source);
   return match ? match[1] : fallback;
@@ -95,6 +100,7 @@ export function describeChanges(document: WorkflowDocument, defaults: WorkflowDo
   const sharedDefault = defaultOrder.filter((name) => order.includes(name));
   const sharedCurrent = order.filter((name) => defaultOrder.includes(name));
   if (sharedDefault.join(" ") !== sharedCurrent.join(" ")) changes.push("scientific order changed");
+  else if (originalOrder(document).join(" ") !== originalOrder(defaults).join(" ")) changes.push("process set changed");
   for (const node of document.nodes) {
     for (const [kernel, binding] of Object.entries(node.configuration.kernels)) {
       if (binding.kind !== "original") changes.push(`${node.display_name}.${kernel} answered by ${binding.path}`);
@@ -220,9 +226,8 @@ export function configureBody(document: WorkflowDocument, defaults: WorkflowDocu
   }
 
   // 5. enabled and disabled original processes, and the order
-  const defaultOrder = scientificOrder(defaults);
   const order = scientificOrder(document);
-  if (order.join(" ") !== defaultOrder.join(" ")) {
+  if (originalOrder(document).join(" ") !== originalOrder(defaults).join(" ")) {
     add();
     add("# the step's scientific processes, in this order; anything not listed stops running");
     add("workflow.replace([");
