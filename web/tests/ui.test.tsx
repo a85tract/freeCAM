@@ -88,10 +88,14 @@ describe("the page in preview mode", () => {
     const code = await screen.findByLabelText("Generated code");
     expect(code).toHaveTextContent("notebook_process = NotebookProcess()");
     expect(code).toHaveTextContent("notebook_process.rate = 0.5");
-    await user.click(screen.getByRole("button", { name: "script" }));
-    expect(screen.getByLabelText("Generated code")).toHaveTextContent('with fc.Driver(case="PI-atm", nsteps=2) as driver:');
+    // the complete program comes first; the setup-only fragment says what it is
+    expect(code).toHaveTextContent("with fc.Driver(case=CASE, nsteps=NSTEPS) as driver:");
+    expect(code).toHaveTextContent("uv run python <this file>");
     await user.click(screen.getByRole("button", { name: "Download" }));
-    expect(created.some((name) => name.endsWith(".py"))).toBe(true);
+    expect(created.some((name) => name.endsWith(".py") && !name.endsWith("_setup.py"))).toBe(true);
+    await user.click(screen.getByRole("button", { name: "Setup only" }));
+    expect(screen.getByLabelText("Generated code")).toHaveTextContent("Configuration only");
+    expect(screen.getByLabelText("Generated code")).not.toHaveTextContent("def main():");
     click.mockRestore();
   });
 

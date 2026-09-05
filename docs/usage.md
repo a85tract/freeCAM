@@ -288,11 +288,14 @@ the scientific order or the set of physical processes needs Experimental.
 A passing check says the declared constraints hold; only a gate says the
 result is bit-for-bit.
 
-Generate freezes the draft and produces a setup snippet for a notebook with
-a live driver, a complete script, a notebook and `workflow.json`, all through
-the ordinary interface described above -- `fc.Driver`, the workflow list,
-`fc.Physics`, `state.create`, `driver.cam.parameters`, a stage class attached
-to the model. The default workflow generates a run that configures nothing.
+Generate freezes the draft and produces a complete script -- save it on the
+machine with the model and run `uv run python <file>` from the checkout -- a
+notebook of the same cells, a setup-only snippet for a session that already
+has a driver (`configure(driver)` after `driver.initialize()`), and
+`workflow.json`, all through the ordinary interface described above --
+`fc.Driver`, the workflow list, `fc.Physics`, `state.create`,
+`driver.cam.parameters`, a stage class attached to the model. The default
+workflow generates a run that configures nothing.
 Model files are referred to by path and never embedded. The service applies
 a document with the same calls in the same order as the generated script,
 and a test holds the two to that.

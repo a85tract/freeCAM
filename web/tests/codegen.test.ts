@@ -43,7 +43,12 @@ describe("the default workflow", () => {
     expect(artifacts.script).toContain("the validated default: nothing to change");
     expect(artifacts.script).not.toContain("workflow.replace(");
     expect(artifacts.script).not.toContain("parameters[");
-    expect(artifacts.script).toContain('fc.Driver(case="PI-atm", nsteps=2)');
+    expect(artifacts.script).toContain('CASE = "PI-atm"');
+    expect(artifacts.script).toContain("NSTEPS = 2");
+    expect(artifacts.script).toContain("with fc.Driver(case=CASE, nsteps=NSTEPS) as driver:");
+    expect(artifacts.script).toContain("driver.run(progress=True)");
+    expect(artifacts.setup).toContain("Configuration only");
+    expect(artifacts.setup).not.toContain("def main():");
     expect(artifacts.external_files).toEqual([]);
   });
 
@@ -97,7 +102,8 @@ describe("an edited workflow", () => {
       position = next;
     }
     expect(script).toContain("from freecam.physics.cloud_macro_microphysics import CloudMacroMicrophysics");
-    expect(script).toContain('namelist={"cldfrc_rhminl": 0.9}');
+    expect(script).toContain('NAMELIST = {"cldfrc_rhminl": 0.9}');
+    expect(script).toContain("namelist=NAMELIST");
     expect(script).not.toContain('"shallow_convection",');         // dropped from the order
     expect(script).not.toContain("torch");                            // weights stay a path
   });

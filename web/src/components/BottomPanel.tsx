@@ -114,8 +114,17 @@ function IssueList({ issues, onSelect, onEnableExperimental }: { issues: Issue[]
 
 const STATUS_BADGE: Record<ValidationReport["status"], string> = { valid: "ok", warning: "warn", error: "err" };
 
+type CodeTab = "script" | "notebook" | "setup" | "workflow";
+
+const CODE_TABS: { key: CodeTab; label: string; hint: string }[] = [
+  { key: "script", label: "Script", hint: "A complete program. Save it on the machine that has the model and run `uv run python <file>` from the freeCAM checkout; it starts the model, applies this workflow, runs the steps and closes." },
+  { key: "notebook", label: "Notebook", hint: "The same program as notebook cells, without outputs; open it in Jupyter on the machine that has the model." },
+  { key: "setup", label: "Setup only", hint: "Configuration only: the classes and configure(driver). Paste it into a session that already has a driver and call configure(driver) after driver.initialize(). It does not start or run anything by itself." },
+  { key: "workflow", label: "workflow.json", hint: "The document itself. Import it into any builder page, local or preview, to continue editing." },
+];
+
 export function BottomPanel(props: Props) {
-  const [codeTab, setCodeTab] = useState<"setup" | "script" | "notebook" | "workflow">("setup");
+  const [codeTab, setCodeTab] = useState<CodeTab>("script");
   const stale = props.artifacts !== null && props.artifacts.hash !== props.document.workflow_hash;
   return (
     <section className="bottom" aria-label="Details" style={{ height: props.height }}>
@@ -162,8 +171,8 @@ export function BottomPanel(props: Props) {
               {props.artifacts && (
                 <>
                   <span className="muted">workflow {props.artifacts.hash.slice(0, 12)}{stale ? " — the draft has changed since" : ""}</span>
-                  {(["setup", "script", "notebook", "workflow"] as const).map((name) => (
-                    <button key={name} className="secondary" aria-pressed={codeTab === name} onClick={() => setCodeTab(name)}>{name}</button>
+                  {CODE_TABS.map((entry) => (
+                    <button key={entry.key} className="secondary" aria-pressed={codeTab === entry.key} onClick={() => setCodeTab(entry.key)}>{entry.label}</button>
                   ))}
                   <button className="secondary" onClick={() => props.onCopy(props.artifacts!.generated[codeTab])}>Copy</button>
                   <button className="secondary" onClick={() => {
@@ -177,7 +186,8 @@ export function BottomPanel(props: Props) {
                 </>
               )}
             </div>
-            {!props.artifacts && <p className="muted">Generate freezes the current draft and produces the setup snippet, a complete script, a notebook and workflow.json. The code uses the ordinary freeCAM interface; edit the workflow here rather than the code, or download and change it freely.</p>}
+            {!props.artifacts && <p className="muted">Generate freezes the current draft and produces a complete script, a notebook, a setup-only snippet for a session with a live driver, and workflow.json. The code uses the ordinary freeCAM interface; edit the workflow here rather than the code, or download and change it freely.</p>}
+            {props.artifacts && <p className="muted" style={{ margin: "0 0 6px" }}>{CODE_TABS.find((entry) => entry.key === codeTab)!.hint}</p>}
             {props.artifacts && props.artifacts.generated.external_files.length > 0 && (
               <p className="muted">Files you provide: {props.artifacts.generated.external_files.join(", ")}</p>
             )}

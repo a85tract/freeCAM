@@ -251,11 +251,36 @@ export function configureBody(document: WorkflowDocument, defaults: WorkflowDocu
   return lines;
 }
 
-function driverCall(document: WorkflowDocument): string {
-  const args = [`case=${pyString(document.case)}`, `nsteps=${document.nsteps}`];
-  if (Object.keys(document.namelist).length) args.push(`namelist=${pyLiteral(document.namelist)}`);
+function driverCall(document: WorkflowDocument, constants = false): string {
+  const args = constants
+    ? ["case=CASE", "nsteps=NSTEPS"]
+    : [`case=${pyString(document.case)}`, `nsteps=${document.nsteps}`];
+  if (Object.keys(document.namelist).length) args.push(constants ? "namelist=NAMELIST" : `namelist=${pyLiteral(document.namelist)}`);
   return `fc.Driver(${args.join(", ")})`;
 }
+
+/** The module-level constants the script's main() hands to the Driver. */
+function scriptConstants(document: WorkflowDocument): string[] {
+  const lines = [`CASE = ${pyString(document.case)}`, `NSTEPS = ${document.nsteps}`];
+  if (Object.keys(document.namelist).length) lines.push(`NAMELIST = ${pyLiteral(document.namelist)}`);
+  return lines;
+}
+
+const SETUP_NOTE = [
+  "#",
+  "# Configuration only, for a session that already has a driver -- a notebook, or",
+  "# the builder's own Run: call configure(driver) once, after driver.initialize().",
+  "# The script and the notebook are the complete programs.",
+];
+
+const SCRIPT_NOTE = [
+  "#",
+  "# A complete program. Run it on the machine that has the model, from the",
+  "# freeCAM checkout with site.env set:",
+  "#     uv run python <this file>",
+  "# Constructing the Driver starts nothing; initialize() requests the ranks the",
+  "# case needs, run() executes NSTEPS steps, and leaving the block releases them.",
+];
 
 function stageImports(document: WorkflowDocument): string[] {
   const out: string[] = [];
@@ -272,6 +297,7 @@ export function generateSetup(document: WorkflowDocument, snapshot: CatalogSnaps
   const changes = describeChanges(document, defaults);
   return [
     ...header(document, snapshot, changes),
+    ...SETUP_NOTE,
     "import freecam as fc",
     ...stageImports(document),
     "",
@@ -290,11 +316,11 @@ export function generateScript(document: WorkflowDocument, snapshot: CatalogSnap
   const changes = describeChanges(document, defaults);
   return [
     ...header(document, snapshot, changes),
+    ...SCRIPT_NOTE,
     "import freecam as fc",
     ...stageImports(document),
     "",
-    `CASE = ${pyString(document.case)}`,
-    `NSTEPS = ${document.nsteps}`,
+    ...scriptConstants(document),
     "",
     "",
     ...processDefinitions(document),
@@ -306,7 +332,7 @@ export function generateScript(document: WorkflowDocument, snapshot: CatalogSnap
     "",
     "def main():",
     `    # Nothing starts here; the first live operation launches the MPI session.`,
-    `    with ${driverCall(document)} as driver:`,
+    `    with ${driverCall(document, true)} as driver:`,
     "        driver.initialize()",
     "        configure(driver)",
     "        result = driver.run(progress=True)",
