@@ -460,4 +460,55 @@ def load_surrogate(path: str | Path) -> SurrogateKernel:
     return SurrogateKernel(torch.load(Path(path), map_location="cpu", weights_only=False))
 
 
-__all__ = ["SurrogateKernel", "load_surrogate"]
+class PendingSurrogate:
+    """A surrogate named by path, standing in the kernel slot before it is loaded.
+
+    The slot has to hold *something* from the moment the stage is built: the
+    stage decides how to run -- the original Fortran whole, or paused at the
+    kernels something else computes -- by looking at which slots are filled,
+    and a slot that only fills on first use was empty at that decision.  That
+    is how a run naming a model once ran the original Fortran to the end and
+    reported it bit-for-bit.  What travels is still the path: the stage is
+    cloudpickled to every rank when it is installed, and the weights are
+    loaded by each rank the first time the kernel is called.
+    """
+
+    takes_parameters = True
+
+    def __init__(self, path: str | Path) -> None:
+        self.path = str(path)
+        self._kernel: SurrogateKernel | None = None
+
+    @property
+    def loaded(self) -> bool:
+        return self._kernel is not None
+
+    def kernel(self) -> SurrogateKernel:
+        if self._kernel is None:
+            self._kernel = load_surrogate(self.path)
+        return self._kernel
+
+    def __call__(self, column: Mapping[str, Any],
+                 parameters: Mapping[str, Any] | None = None) -> dict[str, np.ndarray]:
+        return self.kernel()(column, parameters)
+
+    def batched(self, columns: Mapping[str, Any],
+                parameters: Mapping[str, Any] | None = None) -> dict[str, np.ndarray]:
+        return self.kernel().batched(columns, parameters)
+
+    def __getattr__(self, name: str) -> Any:
+        if name.startswith("_"):
+            raise AttributeError(name)
+        return getattr(self.kernel(), name)
+
+    def __getstate__(self) -> dict[str, Any]:
+        return {"path": self.path, "_kernel": None}      # the weights never travel
+
+    def __setstate__(self, state: dict[str, Any]) -> None:
+        self.__dict__.update(state)
+
+    def __repr__(self) -> str:
+        return f"PendingSurrogate({self.path!r}{', loaded' if self.loaded else ''})"
+
+
+__all__ = ["PendingSurrogate", "SurrogateKernel", "load_surrogate"]

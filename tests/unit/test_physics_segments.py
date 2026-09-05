@@ -23,6 +23,8 @@ class FakeRunner:
     stale token is refused, as the image will refuse it.
     """
 
+    kernels = ("a", "b")                    # what the image's runner would advertise
+
     def __init__(self) -> None:
         self.x = {10: np.arange(PCOLS * PVER, dtype=float).reshape(PCOLS, PVER, order="F").copy(order="F"),
                   11: np.full((PCOLS, PVER), 5.0, order="F")}

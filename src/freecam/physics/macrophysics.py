@@ -312,6 +312,47 @@ class Macrophysics(NativeStage):
         #: do not belong in that payload.  Each rank loads its own copy the
         #: first time the kernel is called.
         self.surrogate = None if surrogate is None else str(surrogate)
+        if self.surrogate is not None:
+            if kernel is not None:
+                raise PhysicsError(
+                    f"{FUNCTION} cannot have both a kernel and a surrogate in its place")
+            # The slot is filled now, by the unloaded surrogate, so the stage
+            # knows the kernel is replaced when it decides how to run.
+            from .surrogate import PendingSurrogate
+
+            self.kernels[FUNCTION] = PendingSurrogate(self.surrogate)
+
+    def configured_replacements(self) -> tuple[str, ...]:
+        return (FUNCTION,) if self.surrogate is not None else ()
+
+    def frame_kernel(self, name: str, kernel: Callable[..., Any], native: Any) -> Callable[[Mapping[str, Any]], dict]:
+        """``kernel`` as the segment runner's frame calls it.
+
+        The frame hands the live lanes of every input, ``(ncol, ...)`` arrays
+        under the routine's own argument names -- the batch the walk's chunk
+        call assembles -- and wants back every output the routine writes.  A
+        model answers the values the routine returns (:data:`RETURNED`, and
+        all of them, as :meth:`_chunk_model` insists); the inout workspace
+        arguments it never saw -- ``tke`` and the flux and detrainment
+        arrays, which the routine reads only under options the stage refuses
+        -- go back as they came, which is what the routine does with them.
+        """
+
+        if name != FUNCTION:
+            return kernel
+        model = kernel
+
+        def answer(batch: Mapping[str, Any]) -> dict[str, np.ndarray]:
+            ncol = int(np.asarray(batch["ncol"]))
+            call = self._chunk_model(ncol, model)
+            assert call is not None
+            values = call(batch)
+            out = {key: value for key, value in batch.items()}   # the workspace, unchanged
+            for key in RETURNED:
+                out[key] = np.asarray(values[key], dtype=np.float64)
+            return out
+
+        return answer
 
     # -- standalone ------------------------------------------------------------
 
@@ -356,12 +397,12 @@ class Macrophysics(NativeStage):
 
         model = self.kernels[FUNCTION]
         if model is None and self.surrogate is not None:
-            from .surrogate import load_surrogate
+            from .surrogate import PendingSurrogate
 
-            model = self.kernels[FUNCTION] = load_surrogate(self.surrogate)
+            model = self.kernels[FUNCTION] = PendingSurrogate(self.surrogate)
         return model
 
-    def _chunk_model(self, ncol: int):
+    def _chunk_model(self, ncol: int, model: Any = None):
         """The installed model, answering a chunk's live columns in one call.
 
         The column is still the unit the model was trained on -- this
@@ -373,7 +414,8 @@ class Macrophysics(NativeStage):
         stacked, so the older contract still works.
         """
 
-        model = self._model()
+        if model is None:
+            model = self._model()
         if model is None:
             return None
 

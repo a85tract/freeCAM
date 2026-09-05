@@ -39,6 +39,10 @@ def image_offers_runner(library: Any) -> bool:
 class StageSevenRunner:
     """The ``pycam_stage7_*`` entries as a SegmentRunner."""
 
+    #: the kernels this runner can pause at; a stage chooses segmented
+    #: execution under ``auto`` only when every replaced kernel is one
+    kernels = KERNELS
+
     def __init__(self, library: Any, descriptors: str | Any) -> None:
         self.library = library
         kernels = {k.name: k for k in load_direct_kernels(descriptors)}

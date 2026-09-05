@@ -1023,8 +1023,45 @@ class NativeStage:
 
         return tuple(name for name, kernel in self.kernels.items() if kernel is not None)
 
-    def select_mode(self) -> str:
-        """Which path :meth:`tend` takes this step, from the policy and the kernel slots."""
+    def configured_replacements(self) -> tuple[str, ...]:
+        """Kernels the stage was *told* to replace, whether or not a slot shows it yet.
+
+        A stage that was handed a model by name must never run the original
+        kernel in its place because nothing had loaded the model when the
+        path was chosen; :meth:`tend` refuses if one of these is missing
+        from :meth:`replacements`.
+        """
+
+        return ()
+
+    def frame_kernel(self, name: str, kernel: Callable[..., Any], native: Any) -> Callable[..., Any]:
+        """``kernel`` as the segment runner's frame will call it: batch in, answer out.
+
+        The default is the kernel itself.  A stage whose kernel has a richer
+        contract -- columns stacked one way, namelist parameters, values the
+        routine derives -- adapts it here.
+        """
+
+        del name, native
+        return kernel
+
+    def _owner_of(self, name: str) -> "NativeStage":
+        """The sub-walk whose swappable kernel ``name`` is, or this stage."""
+
+        for stage in self.components.values():
+            if name in stage.SWAPPABLE:
+                return stage
+        return self
+
+    def select_mode(self, native: Any = None) -> str:
+        """Which path :meth:`tend` takes this step, from the policy and the kernel slots.
+
+        Under ``auto`` the original stage runs whole while nothing is
+        replaced; with replacements it runs segmented when ``native`` offers
+        a runner for this stage that pauses at every replaced kernel, and
+        as the Python walk otherwise -- so a kernel no runner covers yet
+        still has its proven path.
+        """
 
         policy = self.execution_policy
         if policy not in EXECUTION_POLICIES:
@@ -1053,10 +1090,16 @@ class NativeStage:
                     f"{type(self).__name__} is not the whole of {self.STAGE!r}; it has no "
                     f"whole Fortran stage of its own to run")
             return "native-whole"
-        # auto: the original stage while nothing is replaced, the walk otherwise
-        # -- segmented takes the walk's place here once its gates have passed
+        # auto: the original stage while nothing is replaced; segmented where the
+        # image's runner pauses at every replaced kernel; the walk otherwise
         if not replaced and self.WHOLE_ACTION:
             return "native-whole"
+        if replaced and self.WHOLE_ACTION and native is not None:
+            offer = getattr(native, "segment_runner", None)
+            runner = None if offer is None else offer(self.STAGE)
+            covered = set(getattr(runner, "kernels", ()) or ())
+            if runner is not None and set(replaced) <= covered:
+                return "segmented"
         return "legacy-python"
 
     def tend(self, fields: Any, context: Any) -> None:
@@ -1065,9 +1108,17 @@ class NativeStage:
         native = context.native
         if native is None:
             raise PhysicsError(f"{type(self).__name__}.tend must run as a native process")
-        mode = self.select_mode()
+        mode = self.select_mode(native)
         self.execution.mode = mode
         self.execution.replacements = self.replacements()
+        expected = set(self.configured_replacements())
+        for stage in self.components.values():
+            expected.update(stage.configured_replacements())
+        unhonoured = sorted(expected.difference(self.execution.replacements))
+        if unhonoured:
+            raise PhysicsError(
+                f"{type(self).__name__} was told to replace {unhonoured} but the kernel "
+                f"slots do not show it; the original Fortran will not be run in their place")
         if mode == "native-whole":
             # nothing replaced: the original Fortran stage, once, through its
             # own (disabled) workflow action -- no walk, no views, no copies
@@ -1091,8 +1142,14 @@ class NativeStage:
                     f"the image offers no segment runner for {self.STAGE!r}; segmented "
                     f"execution is not built for it yet")
             segmented = self._segmented = SegmentedStage(self.STAGE, runner)
-        kernels = {name: (self._original_through_python(native, name) if isinstance(kernel, OriginalKernel)
-                          else kernel) for name, kernel in self.kernels.items()}
+        kernels: dict[str, Callable[..., Any] | None] = {}
+        for name, kernel in self.kernels.items():
+            if kernel is None:
+                kernels[name] = None
+            elif isinstance(kernel, OriginalKernel):
+                kernels[name] = self._original_through_python(native, name)
+            else:
+                kernels[name] = self._owner_of(name).frame_kernel(name, kernel, native)
         segmented.run(kernels)
         counters = segmented.counters
         self.execution.native_segment_calls = counters.starts + counters.resumes

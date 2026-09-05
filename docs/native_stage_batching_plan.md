@@ -25,6 +25,11 @@ mmacro_pcond 被替换为「原始 kernel 经 Python 边界执行」，runner �
 50 步共 150 次 segment 调用、100 次 Python 模型调用，4 个 history/restart 文件全部 BFB
 （`validation/pi_cam_stage7_segmented_original_50step.json` 及其 `_vs_oracle_50step_bfb.json`）。
 
+状态更新（2026-09-04，晚）：交付顺序第 8 条已落地——auto 策略在「有替换且镜像的 runner 覆盖全部被替换 kernel」
+时选 segmented，runner 不覆盖的替换仍走 legacy-python。同时修正一个静默回退：按路径配置的 surrogate 原先在
+首次调用时才加载，选路径时槽位为空，一次 surrogate 月因此以原始 Fortran 跑完并报告 BFB（作业 7322838）。
+现在槽位在构造时就由未加载的 `PendingSurrogate` 占住，`tend` 对「被告知替换但槽位未体现」的情况直接报错。
+
 ## 1. 执行语义
 
 保持现有接口：
