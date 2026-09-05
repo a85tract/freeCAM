@@ -236,6 +236,7 @@ across all 512 ranks.
 | 1 year | 17,520 | 4,999.71 s | 5,510.10 s | **+10.21%** | +510 s (8.5 min) |
 | 5 years | 87,600 | 25,556.49 s | 27,781.62 s | **+8.71%** | +2,225 s (37.1 min) |
 | 1 year, Python stage (`7305332`, 2026-09-04) | 17,520 | 4,999.71 s | 6,636.20 s | +32.73% vs Fortran, +20.44% vs freeCAM | +1,636 s (27.3 min) |
+| 5 years, Python stage (`7305333`, 2026-09-04) | 87,600 | 25,556.49 s | 33,979.62 s | +32.96% vs Fortran, +22.31% vs freeCAM | +8,423 s (140.4 min) |
 
 The Python-stage year is the same online configuration with
 `CloudMacroMicrophysics` in stage 7's place (`--cloud-macro-micro-python`,
@@ -245,6 +246,15 @@ history and restart files
 runs at 13.02 SYPD, and its PBS high-water memory is 221.8 GB (+3.4% over
 freeCAM, +14.1% over Fortran).  Per step that is 64 ms of stage control on
 top of freeCAM's 25 ms of workflow control, consistent with the month.
+
+The five-year Python-stage run is the same configuration continued to 87,600
+steps.  It is bit-for-bit with the Fortran five-year reference over all 884
+CAM history and restart files
+([`pi_cam_python_memory_5year_stage_python_bfb.json`](pi_cam_python_memory_5year_stage_python_bfb.json)),
+runs at 12.71 SYPD, and its PBS high-water memory is 228.0 GB (+3.2% over
+freeCAM's 221.04 GB, +11.7% over Fortran's 204.21 GB).  Per step that is
+71 ms of stage control on top of freeCAM's 25 ms, the same proportion as
+the year: the overhead does not grow with run length.
 
 Per step this is ≈ 25 ms of Python control on a ≈ 292 ms Fortran step.
 
