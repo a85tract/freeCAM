@@ -64,12 +64,15 @@ def build_document(variant: str, steps: int):
     return snapshot, session.default_document, session.document
 
 
-def generate_setup(document, snapshot) -> str:
+def generate_setup(document, snapshot) -> tuple[str, list[str]]:
+    """The setup code and the generator's own list of changes against the default."""
+
     from freecam.pi_cam.workflow_builder import codegen
 
     if not codegen.available():
         raise SystemExit("the generator bundle is not built or node is missing; run `npm run build` under web/")
-    return codegen.generate(document, snapshot).setup
+    artifacts = codegen.generate(document, snapshot)
+    return artifacts.setup, list(artifacts.changes)
 
 
 def load_configure(setup: str):
@@ -107,8 +110,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--dry-run", action="store_true")
     arguments = parser.parse_args(argv)
 
-    snapshot, default, document = build_document(arguments.variant, arguments.steps)
-    setup = generate_setup(document, snapshot)
+    snapshot, _default, document = build_document(arguments.variant, arguments.steps)
+    setup, changes = generate_setup(document, snapshot)
     configure = load_configure(setup)
     print(f"variant {arguments.variant}: workflow {document.workflow_hash[:12]}, "
           f"{len(setup.splitlines())} lines of setup code", file=sys.stderr)
@@ -152,7 +155,8 @@ def main(argv: list[str] | None = None) -> int:
         "workflow_hash": document.workflow_hash,
         "catalog_hash": snapshot["catalog_hash"],
         "setup_sha256": hashlib.sha256(setup.encode()).hexdigest(),
-        "configure_changed_the_model": document.workflow_hash != default.workflow_hash,
+        "changes_against_the_default": changes,
+        "configure_changed_the_model": bool(changes),
         "python_processes_installed": python_processes,
         "noop_process_calls_in_trace": calls if arguments.variant == "noop-python" else None,
         "trace_actions": len(trace),
