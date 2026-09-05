@@ -937,6 +937,9 @@ def test_segmented_execution_drives_the_runner_the_image_offers(widget) -> None:
     assert described["segment_pauses"] == 8 and described["python_model_calls"] == 8
     assert described["native_segment_calls"] == 2 + 8            # two starts, eight resumes
     assert [e for e in widget.runner.log if e[0] == "create"] == [("create", "cam_run1.widgets")]
+    # the runner reads the hosts the runtime binds: the runtime exists although
+    # neither the walk nor the original-through-Python kernel asked for it
+    assert len(stage._runtimes) == 1
 
 
 def test_an_original_kernel_marker_runs_the_direct_kernel_on_the_frame_s_lanes(widget) -> None:

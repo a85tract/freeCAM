@@ -1134,6 +1134,13 @@ class NativeStage:
     def _tend_segmented(self, native: Any) -> None:
         """The original Fortran through its segment runner, paused at each replaced kernel."""
 
+        # The runner reads the stage's hosts -- state, tendencies, the physics
+        # buffer -- through the same bindings the walk uses, and those are
+        # made when this rank's runtime is built.  Build it first: a model in
+        # the slot, unlike the original kernel run through Python, would not
+        # otherwise touch the runtime at all, and the runner refuses a
+        # context while the hosts are unbound.
+        self.runtime(native)
         segmented = self._segmented
         if segmented is None:
             runner = native.segment_runner(self.STAGE)
