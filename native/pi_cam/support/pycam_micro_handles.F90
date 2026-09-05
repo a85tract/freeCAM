@@ -1059,9 +1059,10 @@ contains
   ! ------------------------------------------------------------------ !
 
   subroutine micro_head()
-    ! micro_mg_cam.F90:1555-1767, verbatim
+    ! micro_mg_cam.F90:1554-1767, verbatim
     integer :: i, k
 
+       nlev  = pver - top_lev + 1
 
        lchnk = state%lchnk
        ncol  = state%ncol
@@ -2884,100 +2885,476 @@ contains
     call scalar_slot(4, c_loc(frame_mgncol), 2, 0, ptrs, ndims, shapes, dtypes, intents)
     call scalar_slot(5, c_loc(frame_one), 2, 0, ptrs, ndims, shapes, dtypes, intents)
     call scalar_slot(6, c_loc(frame_deltatin), 1, 0, ptrs, ndims, shapes, dtypes, intents)
-    call slot2(7, packed_t, 1, 0, ptrs, ndims, shapes, dtypes, intents)
-    call slot2(8, packed_q, 1, 0, ptrs, ndims, shapes, dtypes, intents)
-    call slot2(9, packed_qc, 1, 2, ptrs, ndims, shapes, dtypes, intents)
-    call slot2(10, packed_qi, 1, 2, ptrs, ndims, shapes, dtypes, intents)
-    call slot2(11, packed_nc, 1, 2, ptrs, ndims, shapes, dtypes, intents)
-    call slot2(12, packed_ni, 1, 2, ptrs, ndims, shapes, dtypes, intents)
-    call slot2(13, packed_p, 1, 0, ptrs, ndims, shapes, dtypes, intents)
-    call slot2(14, packed_pdel, 1, 0, ptrs, ndims, shapes, dtypes, intents)
-    call slot2(15, packed_cldn, 1, 0, ptrs, ndims, shapes, dtypes, intents)
-    call slot2(16, packed_liqcldf, 1, 0, ptrs, ndims, shapes, dtypes, intents)
-    call slot2(17, packed_relvar, 1, 0, ptrs, ndims, shapes, dtypes, intents)
-    call slot2(18, packed_accre_enhan, 1, 0, ptrs, ndims, shapes, dtypes, intents)
-    call slot2(19, packed_icecldf, 1, 0, ptrs, ndims, shapes, dtypes, intents)
-    call slot2(20, packed_rate1ord_cw2pr_st, 1, 1, ptrs, ndims, shapes, dtypes, intents)
-    call slot2(21, packed_naai, 1, 0, ptrs, ndims, shapes, dtypes, intents)
-    call slot2(22, packed_npccn, 1, 0, ptrs, ndims, shapes, dtypes, intents)
-    call slot3(23, packed_rndst, 1, 0, ptrs, ndims, shapes, dtypes, intents)
-    call slot3(24, packed_nacon, 1, 0, ptrs, ndims, shapes, dtypes, intents)
-    call slot2(25, packed_tlat, 1, 1, ptrs, ndims, shapes, dtypes, intents)
-    call slot2(26, packed_qvlat, 1, 1, ptrs, ndims, shapes, dtypes, intents)
-    call slot2(27, packed_qctend, 1, 1, ptrs, ndims, shapes, dtypes, intents)
-    call slot2(28, packed_qitend, 1, 1, ptrs, ndims, shapes, dtypes, intents)
-    call slot2(29, packed_nctend, 1, 1, ptrs, ndims, shapes, dtypes, intents)
-    call slot2(30, packed_nitend, 1, 1, ptrs, ndims, shapes, dtypes, intents)
-    call slot2(31, packed_rel, 1, 1, ptrs, ndims, shapes, dtypes, intents)
-    call slot2(32, rel_fn_dum, 1, 1, ptrs, ndims, shapes, dtypes, intents)
-    call slot2(33, packed_rei, 1, 1, ptrs, ndims, shapes, dtypes, intents)
-    call slot1(34, packed_prect, 1, 1, ptrs, ndims, shapes, dtypes, intents)
-    call slot1(35, packed_preci, 1, 1, ptrs, ndims, shapes, dtypes, intents)
-    call slot2(36, packed_nevapr, 1, 1, ptrs, ndims, shapes, dtypes, intents)
-    call slot2(37, packed_evapsnow, 1, 1, ptrs, ndims, shapes, dtypes, intents)
-    call slot2(38, packed_am_evp_st, 1, 1, ptrs, ndims, shapes, dtypes, intents)
-    call slot2(39, packed_prain, 1, 1, ptrs, ndims, shapes, dtypes, intents)
-    call slot2(40, packed_prodsnow, 1, 1, ptrs, ndims, shapes, dtypes, intents)
-    call slot2(41, packed_cmeout, 1, 1, ptrs, ndims, shapes, dtypes, intents)
-    call slot2(42, packed_dei, 1, 1, ptrs, ndims, shapes, dtypes, intents)
-    call slot2(43, packed_mu, 1, 1, ptrs, ndims, shapes, dtypes, intents)
-    call slot2(44, packed_lambdac, 1, 1, ptrs, ndims, shapes, dtypes, intents)
-    call slot2(45, packed_qsout, 1, 1, ptrs, ndims, shapes, dtypes, intents)
-    call slot2(46, packed_des, 1, 1, ptrs, ndims, shapes, dtypes, intents)
-    call slot2(47, packed_rflx, 1, 1, ptrs, ndims, shapes, dtypes, intents)
-    call slot2(48, packed_sflx, 1, 1, ptrs, ndims, shapes, dtypes, intents)
-    call slot2(49, packed_qrout, 1, 1, ptrs, ndims, shapes, dtypes, intents)
-    call slot2(50, reff_rain_dum, 1, 2, ptrs, ndims, shapes, dtypes, intents)
-    call slot2(51, reff_snow_dum, 1, 2, ptrs, ndims, shapes, dtypes, intents)
-    call slot2(52, packed_qcsevap, 1, 1, ptrs, ndims, shapes, dtypes, intents)
-    call slot2(53, packed_qisevap, 1, 1, ptrs, ndims, shapes, dtypes, intents)
-    call slot2(54, packed_qvres, 1, 1, ptrs, ndims, shapes, dtypes, intents)
-    call slot2(55, packed_cmei, 1, 1, ptrs, ndims, shapes, dtypes, intents)
-    call slot2(56, packed_vtrmc, 1, 1, ptrs, ndims, shapes, dtypes, intents)
-    call slot2(57, packed_vtrmi, 1, 1, ptrs, ndims, shapes, dtypes, intents)
-    call slot2(58, packed_qcsedten, 1, 1, ptrs, ndims, shapes, dtypes, intents)
-    call slot2(59, packed_qisedten, 1, 1, ptrs, ndims, shapes, dtypes, intents)
-    call slot2(60, packed_pra, 1, 1, ptrs, ndims, shapes, dtypes, intents)
-    call slot2(61, packed_prc, 1, 1, ptrs, ndims, shapes, dtypes, intents)
-    call slot2(62, packed_mnuccc, 1, 1, ptrs, ndims, shapes, dtypes, intents)
-    call slot2(63, packed_mnucct, 1, 1, ptrs, ndims, shapes, dtypes, intents)
-    call slot2(64, packed_msacwi, 1, 1, ptrs, ndims, shapes, dtypes, intents)
-    call slot2(65, packed_psacws, 1, 1, ptrs, ndims, shapes, dtypes, intents)
-    call slot2(66, packed_bergs, 1, 1, ptrs, ndims, shapes, dtypes, intents)
-    call slot2(67, packed_berg, 1, 1, ptrs, ndims, shapes, dtypes, intents)
-    call slot2(68, packed_melt, 1, 1, ptrs, ndims, shapes, dtypes, intents)
-    call slot2(69, packed_homo, 1, 1, ptrs, ndims, shapes, dtypes, intents)
-    call slot2(70, packed_qcres, 1, 1, ptrs, ndims, shapes, dtypes, intents)
-    call slot2(71, packed_prci, 1, 1, ptrs, ndims, shapes, dtypes, intents)
-    call slot2(72, packed_prai, 1, 1, ptrs, ndims, shapes, dtypes, intents)
-    call slot2(73, packed_qires, 1, 1, ptrs, ndims, shapes, dtypes, intents)
-    call slot2(74, packed_mnuccr, 1, 1, ptrs, ndims, shapes, dtypes, intents)
-    call slot2(75, packed_pracs, 1, 1, ptrs, ndims, shapes, dtypes, intents)
-    call slot2(76, packed_meltsdt, 1, 1, ptrs, ndims, shapes, dtypes, intents)
-    call slot2(77, packed_frzrdt, 1, 1, ptrs, ndims, shapes, dtypes, intents)
-    call slot2(78, packed_mnuccd, 1, 1, ptrs, ndims, shapes, dtypes, intents)
-    call slot2(79, packed_nrout, 1, 1, ptrs, ndims, shapes, dtypes, intents)
-    call slot2(80, packed_nsout, 1, 1, ptrs, ndims, shapes, dtypes, intents)
-    call slot2(81, packed_refl, 1, 1, ptrs, ndims, shapes, dtypes, intents)
-    call slot2(82, packed_arefl, 1, 1, ptrs, ndims, shapes, dtypes, intents)
-    call slot2(83, packed_areflz, 1, 1, ptrs, ndims, shapes, dtypes, intents)
-    call slot2(84, packed_frefl, 1, 1, ptrs, ndims, shapes, dtypes, intents)
-    call slot2(85, packed_csrfl, 1, 1, ptrs, ndims, shapes, dtypes, intents)
-    call slot2(86, packed_acsrfl, 1, 1, ptrs, ndims, shapes, dtypes, intents)
-    call slot2(87, packed_fcsrfl, 1, 1, ptrs, ndims, shapes, dtypes, intents)
-    call slot2(88, packed_rercld, 1, 1, ptrs, ndims, shapes, dtypes, intents)
-    call slot2(89, packed_ncai, 1, 1, ptrs, ndims, shapes, dtypes, intents)
-    call slot2(90, packed_ncal, 1, 1, ptrs, ndims, shapes, dtypes, intents)
-    call slot2(91, packed_qrout2, 1, 1, ptrs, ndims, shapes, dtypes, intents)
-    call slot2(92, packed_qsout2, 1, 1, ptrs, ndims, shapes, dtypes, intents)
-    call slot2(93, packed_nrout2, 1, 1, ptrs, ndims, shapes, dtypes, intents)
-    call slot2(94, packed_nsout2, 1, 1, ptrs, ndims, shapes, dtypes, intents)
-    call slot2(95, drout_dum, 1, 1, ptrs, ndims, shapes, dtypes, intents)
-    call slot2(96, dsout2_dum, 1, 1, ptrs, ndims, shapes, dtypes, intents)
-    call slot2(97, packed_freqs, 1, 1, ptrs, ndims, shapes, dtypes, intents)
-    call slot2(98, packed_freqr, 1, 1, ptrs, ndims, shapes, dtypes, intents)
-    call slot2(99, packed_nfice, 1, 1, ptrs, ndims, shapes, dtypes, intents)
-    call slot2(100, packed_prer_evap, 1, 1, ptrs, ndims, shapes, dtypes, intents)
+    if (allocated(packed_t)) then
+      call slot2(7, packed_t, 1, 0, ptrs, ndims, shapes, dtypes, intents)
+    else
+      call empty_slot(7, 2, 1, 0, ptrs, ndims, shapes, dtypes, intents)
+    end if
+    if (allocated(packed_q)) then
+      call slot2(8, packed_q, 1, 0, ptrs, ndims, shapes, dtypes, intents)
+    else
+      call empty_slot(8, 2, 1, 0, ptrs, ndims, shapes, dtypes, intents)
+    end if
+    if (allocated(packed_qc)) then
+      call slot2(9, packed_qc, 1, 2, ptrs, ndims, shapes, dtypes, intents)
+    else
+      call empty_slot(9, 2, 1, 2, ptrs, ndims, shapes, dtypes, intents)
+    end if
+    if (allocated(packed_qi)) then
+      call slot2(10, packed_qi, 1, 2, ptrs, ndims, shapes, dtypes, intents)
+    else
+      call empty_slot(10, 2, 1, 2, ptrs, ndims, shapes, dtypes, intents)
+    end if
+    if (allocated(packed_nc)) then
+      call slot2(11, packed_nc, 1, 2, ptrs, ndims, shapes, dtypes, intents)
+    else
+      call empty_slot(11, 2, 1, 2, ptrs, ndims, shapes, dtypes, intents)
+    end if
+    if (allocated(packed_ni)) then
+      call slot2(12, packed_ni, 1, 2, ptrs, ndims, shapes, dtypes, intents)
+    else
+      call empty_slot(12, 2, 1, 2, ptrs, ndims, shapes, dtypes, intents)
+    end if
+    if (allocated(packed_p)) then
+      call slot2(13, packed_p, 1, 0, ptrs, ndims, shapes, dtypes, intents)
+    else
+      call empty_slot(13, 2, 1, 0, ptrs, ndims, shapes, dtypes, intents)
+    end if
+    if (allocated(packed_pdel)) then
+      call slot2(14, packed_pdel, 1, 0, ptrs, ndims, shapes, dtypes, intents)
+    else
+      call empty_slot(14, 2, 1, 0, ptrs, ndims, shapes, dtypes, intents)
+    end if
+    if (allocated(packed_cldn)) then
+      call slot2(15, packed_cldn, 1, 0, ptrs, ndims, shapes, dtypes, intents)
+    else
+      call empty_slot(15, 2, 1, 0, ptrs, ndims, shapes, dtypes, intents)
+    end if
+    if (allocated(packed_liqcldf)) then
+      call slot2(16, packed_liqcldf, 1, 0, ptrs, ndims, shapes, dtypes, intents)
+    else
+      call empty_slot(16, 2, 1, 0, ptrs, ndims, shapes, dtypes, intents)
+    end if
+    if (allocated(packed_relvar)) then
+      call slot2(17, packed_relvar, 1, 0, ptrs, ndims, shapes, dtypes, intents)
+    else
+      call empty_slot(17, 2, 1, 0, ptrs, ndims, shapes, dtypes, intents)
+    end if
+    if (allocated(packed_accre_enhan)) then
+      call slot2(18, packed_accre_enhan, 1, 0, ptrs, ndims, shapes, dtypes, intents)
+    else
+      call empty_slot(18, 2, 1, 0, ptrs, ndims, shapes, dtypes, intents)
+    end if
+    if (allocated(packed_icecldf)) then
+      call slot2(19, packed_icecldf, 1, 0, ptrs, ndims, shapes, dtypes, intents)
+    else
+      call empty_slot(19, 2, 1, 0, ptrs, ndims, shapes, dtypes, intents)
+    end if
+    if (allocated(packed_rate1ord_cw2pr_st)) then
+      call slot2(20, packed_rate1ord_cw2pr_st, 1, 1, ptrs, ndims, shapes, dtypes, intents)
+    else
+      call empty_slot(20, 2, 1, 1, ptrs, ndims, shapes, dtypes, intents)
+    end if
+    if (allocated(packed_naai)) then
+      call slot2(21, packed_naai, 1, 0, ptrs, ndims, shapes, dtypes, intents)
+    else
+      call empty_slot(21, 2, 1, 0, ptrs, ndims, shapes, dtypes, intents)
+    end if
+    if (allocated(packed_npccn)) then
+      call slot2(22, packed_npccn, 1, 0, ptrs, ndims, shapes, dtypes, intents)
+    else
+      call empty_slot(22, 2, 1, 0, ptrs, ndims, shapes, dtypes, intents)
+    end if
+    if (allocated(packed_rndst)) then
+      call slot3(23, packed_rndst, 1, 0, ptrs, ndims, shapes, dtypes, intents)
+    else
+      call empty_slot(23, 3, 1, 0, ptrs, ndims, shapes, dtypes, intents)
+    end if
+    if (allocated(packed_nacon)) then
+      call slot3(24, packed_nacon, 1, 0, ptrs, ndims, shapes, dtypes, intents)
+    else
+      call empty_slot(24, 3, 1, 0, ptrs, ndims, shapes, dtypes, intents)
+    end if
+    if (allocated(packed_tlat)) then
+      call slot2(25, packed_tlat, 1, 1, ptrs, ndims, shapes, dtypes, intents)
+    else
+      call empty_slot(25, 2, 1, 1, ptrs, ndims, shapes, dtypes, intents)
+    end if
+    if (allocated(packed_qvlat)) then
+      call slot2(26, packed_qvlat, 1, 1, ptrs, ndims, shapes, dtypes, intents)
+    else
+      call empty_slot(26, 2, 1, 1, ptrs, ndims, shapes, dtypes, intents)
+    end if
+    if (allocated(packed_qctend)) then
+      call slot2(27, packed_qctend, 1, 1, ptrs, ndims, shapes, dtypes, intents)
+    else
+      call empty_slot(27, 2, 1, 1, ptrs, ndims, shapes, dtypes, intents)
+    end if
+    if (allocated(packed_qitend)) then
+      call slot2(28, packed_qitend, 1, 1, ptrs, ndims, shapes, dtypes, intents)
+    else
+      call empty_slot(28, 2, 1, 1, ptrs, ndims, shapes, dtypes, intents)
+    end if
+    if (allocated(packed_nctend)) then
+      call slot2(29, packed_nctend, 1, 1, ptrs, ndims, shapes, dtypes, intents)
+    else
+      call empty_slot(29, 2, 1, 1, ptrs, ndims, shapes, dtypes, intents)
+    end if
+    if (allocated(packed_nitend)) then
+      call slot2(30, packed_nitend, 1, 1, ptrs, ndims, shapes, dtypes, intents)
+    else
+      call empty_slot(30, 2, 1, 1, ptrs, ndims, shapes, dtypes, intents)
+    end if
+    if (allocated(packed_rel)) then
+      call slot2(31, packed_rel, 1, 1, ptrs, ndims, shapes, dtypes, intents)
+    else
+      call empty_slot(31, 2, 1, 1, ptrs, ndims, shapes, dtypes, intents)
+    end if
+    if (allocated(rel_fn_dum)) then
+      call slot2(32, rel_fn_dum, 1, 1, ptrs, ndims, shapes, dtypes, intents)
+    else
+      call empty_slot(32, 2, 1, 1, ptrs, ndims, shapes, dtypes, intents)
+    end if
+    if (allocated(packed_rei)) then
+      call slot2(33, packed_rei, 1, 1, ptrs, ndims, shapes, dtypes, intents)
+    else
+      call empty_slot(33, 2, 1, 1, ptrs, ndims, shapes, dtypes, intents)
+    end if
+    if (allocated(packed_prect)) then
+      call slot1(34, packed_prect, 1, 1, ptrs, ndims, shapes, dtypes, intents)
+    else
+      call empty_slot(34, 1, 1, 1, ptrs, ndims, shapes, dtypes, intents)
+    end if
+    if (allocated(packed_preci)) then
+      call slot1(35, packed_preci, 1, 1, ptrs, ndims, shapes, dtypes, intents)
+    else
+      call empty_slot(35, 1, 1, 1, ptrs, ndims, shapes, dtypes, intents)
+    end if
+    if (allocated(packed_nevapr)) then
+      call slot2(36, packed_nevapr, 1, 1, ptrs, ndims, shapes, dtypes, intents)
+    else
+      call empty_slot(36, 2, 1, 1, ptrs, ndims, shapes, dtypes, intents)
+    end if
+    if (allocated(packed_evapsnow)) then
+      call slot2(37, packed_evapsnow, 1, 1, ptrs, ndims, shapes, dtypes, intents)
+    else
+      call empty_slot(37, 2, 1, 1, ptrs, ndims, shapes, dtypes, intents)
+    end if
+    if (allocated(packed_am_evp_st)) then
+      call slot2(38, packed_am_evp_st, 1, 1, ptrs, ndims, shapes, dtypes, intents)
+    else
+      call empty_slot(38, 2, 1, 1, ptrs, ndims, shapes, dtypes, intents)
+    end if
+    if (allocated(packed_prain)) then
+      call slot2(39, packed_prain, 1, 1, ptrs, ndims, shapes, dtypes, intents)
+    else
+      call empty_slot(39, 2, 1, 1, ptrs, ndims, shapes, dtypes, intents)
+    end if
+    if (allocated(packed_prodsnow)) then
+      call slot2(40, packed_prodsnow, 1, 1, ptrs, ndims, shapes, dtypes, intents)
+    else
+      call empty_slot(40, 2, 1, 1, ptrs, ndims, shapes, dtypes, intents)
+    end if
+    if (allocated(packed_cmeout)) then
+      call slot2(41, packed_cmeout, 1, 1, ptrs, ndims, shapes, dtypes, intents)
+    else
+      call empty_slot(41, 2, 1, 1, ptrs, ndims, shapes, dtypes, intents)
+    end if
+    if (allocated(packed_dei)) then
+      call slot2(42, packed_dei, 1, 1, ptrs, ndims, shapes, dtypes, intents)
+    else
+      call empty_slot(42, 2, 1, 1, ptrs, ndims, shapes, dtypes, intents)
+    end if
+    if (allocated(packed_mu)) then
+      call slot2(43, packed_mu, 1, 1, ptrs, ndims, shapes, dtypes, intents)
+    else
+      call empty_slot(43, 2, 1, 1, ptrs, ndims, shapes, dtypes, intents)
+    end if
+    if (allocated(packed_lambdac)) then
+      call slot2(44, packed_lambdac, 1, 1, ptrs, ndims, shapes, dtypes, intents)
+    else
+      call empty_slot(44, 2, 1, 1, ptrs, ndims, shapes, dtypes, intents)
+    end if
+    if (allocated(packed_qsout)) then
+      call slot2(45, packed_qsout, 1, 1, ptrs, ndims, shapes, dtypes, intents)
+    else
+      call empty_slot(45, 2, 1, 1, ptrs, ndims, shapes, dtypes, intents)
+    end if
+    if (allocated(packed_des)) then
+      call slot2(46, packed_des, 1, 1, ptrs, ndims, shapes, dtypes, intents)
+    else
+      call empty_slot(46, 2, 1, 1, ptrs, ndims, shapes, dtypes, intents)
+    end if
+    if (allocated(packed_rflx)) then
+      call slot2(47, packed_rflx, 1, 1, ptrs, ndims, shapes, dtypes, intents)
+    else
+      call empty_slot(47, 2, 1, 1, ptrs, ndims, shapes, dtypes, intents)
+    end if
+    if (allocated(packed_sflx)) then
+      call slot2(48, packed_sflx, 1, 1, ptrs, ndims, shapes, dtypes, intents)
+    else
+      call empty_slot(48, 2, 1, 1, ptrs, ndims, shapes, dtypes, intents)
+    end if
+    if (allocated(packed_qrout)) then
+      call slot2(49, packed_qrout, 1, 1, ptrs, ndims, shapes, dtypes, intents)
+    else
+      call empty_slot(49, 2, 1, 1, ptrs, ndims, shapes, dtypes, intents)
+    end if
+    if (allocated(reff_rain_dum)) then
+      call slot2(50, reff_rain_dum, 1, 2, ptrs, ndims, shapes, dtypes, intents)
+    else
+      call empty_slot(50, 2, 1, 2, ptrs, ndims, shapes, dtypes, intents)
+    end if
+    if (allocated(reff_snow_dum)) then
+      call slot2(51, reff_snow_dum, 1, 2, ptrs, ndims, shapes, dtypes, intents)
+    else
+      call empty_slot(51, 2, 1, 2, ptrs, ndims, shapes, dtypes, intents)
+    end if
+    if (allocated(packed_qcsevap)) then
+      call slot2(52, packed_qcsevap, 1, 1, ptrs, ndims, shapes, dtypes, intents)
+    else
+      call empty_slot(52, 2, 1, 1, ptrs, ndims, shapes, dtypes, intents)
+    end if
+    if (allocated(packed_qisevap)) then
+      call slot2(53, packed_qisevap, 1, 1, ptrs, ndims, shapes, dtypes, intents)
+    else
+      call empty_slot(53, 2, 1, 1, ptrs, ndims, shapes, dtypes, intents)
+    end if
+    if (allocated(packed_qvres)) then
+      call slot2(54, packed_qvres, 1, 1, ptrs, ndims, shapes, dtypes, intents)
+    else
+      call empty_slot(54, 2, 1, 1, ptrs, ndims, shapes, dtypes, intents)
+    end if
+    if (allocated(packed_cmei)) then
+      call slot2(55, packed_cmei, 1, 1, ptrs, ndims, shapes, dtypes, intents)
+    else
+      call empty_slot(55, 2, 1, 1, ptrs, ndims, shapes, dtypes, intents)
+    end if
+    if (allocated(packed_vtrmc)) then
+      call slot2(56, packed_vtrmc, 1, 1, ptrs, ndims, shapes, dtypes, intents)
+    else
+      call empty_slot(56, 2, 1, 1, ptrs, ndims, shapes, dtypes, intents)
+    end if
+    if (allocated(packed_vtrmi)) then
+      call slot2(57, packed_vtrmi, 1, 1, ptrs, ndims, shapes, dtypes, intents)
+    else
+      call empty_slot(57, 2, 1, 1, ptrs, ndims, shapes, dtypes, intents)
+    end if
+    if (allocated(packed_qcsedten)) then
+      call slot2(58, packed_qcsedten, 1, 1, ptrs, ndims, shapes, dtypes, intents)
+    else
+      call empty_slot(58, 2, 1, 1, ptrs, ndims, shapes, dtypes, intents)
+    end if
+    if (allocated(packed_qisedten)) then
+      call slot2(59, packed_qisedten, 1, 1, ptrs, ndims, shapes, dtypes, intents)
+    else
+      call empty_slot(59, 2, 1, 1, ptrs, ndims, shapes, dtypes, intents)
+    end if
+    if (allocated(packed_pra)) then
+      call slot2(60, packed_pra, 1, 1, ptrs, ndims, shapes, dtypes, intents)
+    else
+      call empty_slot(60, 2, 1, 1, ptrs, ndims, shapes, dtypes, intents)
+    end if
+    if (allocated(packed_prc)) then
+      call slot2(61, packed_prc, 1, 1, ptrs, ndims, shapes, dtypes, intents)
+    else
+      call empty_slot(61, 2, 1, 1, ptrs, ndims, shapes, dtypes, intents)
+    end if
+    if (allocated(packed_mnuccc)) then
+      call slot2(62, packed_mnuccc, 1, 1, ptrs, ndims, shapes, dtypes, intents)
+    else
+      call empty_slot(62, 2, 1, 1, ptrs, ndims, shapes, dtypes, intents)
+    end if
+    if (allocated(packed_mnucct)) then
+      call slot2(63, packed_mnucct, 1, 1, ptrs, ndims, shapes, dtypes, intents)
+    else
+      call empty_slot(63, 2, 1, 1, ptrs, ndims, shapes, dtypes, intents)
+    end if
+    if (allocated(packed_msacwi)) then
+      call slot2(64, packed_msacwi, 1, 1, ptrs, ndims, shapes, dtypes, intents)
+    else
+      call empty_slot(64, 2, 1, 1, ptrs, ndims, shapes, dtypes, intents)
+    end if
+    if (allocated(packed_psacws)) then
+      call slot2(65, packed_psacws, 1, 1, ptrs, ndims, shapes, dtypes, intents)
+    else
+      call empty_slot(65, 2, 1, 1, ptrs, ndims, shapes, dtypes, intents)
+    end if
+    if (allocated(packed_bergs)) then
+      call slot2(66, packed_bergs, 1, 1, ptrs, ndims, shapes, dtypes, intents)
+    else
+      call empty_slot(66, 2, 1, 1, ptrs, ndims, shapes, dtypes, intents)
+    end if
+    if (allocated(packed_berg)) then
+      call slot2(67, packed_berg, 1, 1, ptrs, ndims, shapes, dtypes, intents)
+    else
+      call empty_slot(67, 2, 1, 1, ptrs, ndims, shapes, dtypes, intents)
+    end if
+    if (allocated(packed_melt)) then
+      call slot2(68, packed_melt, 1, 1, ptrs, ndims, shapes, dtypes, intents)
+    else
+      call empty_slot(68, 2, 1, 1, ptrs, ndims, shapes, dtypes, intents)
+    end if
+    if (allocated(packed_homo)) then
+      call slot2(69, packed_homo, 1, 1, ptrs, ndims, shapes, dtypes, intents)
+    else
+      call empty_slot(69, 2, 1, 1, ptrs, ndims, shapes, dtypes, intents)
+    end if
+    if (allocated(packed_qcres)) then
+      call slot2(70, packed_qcres, 1, 1, ptrs, ndims, shapes, dtypes, intents)
+    else
+      call empty_slot(70, 2, 1, 1, ptrs, ndims, shapes, dtypes, intents)
+    end if
+    if (allocated(packed_prci)) then
+      call slot2(71, packed_prci, 1, 1, ptrs, ndims, shapes, dtypes, intents)
+    else
+      call empty_slot(71, 2, 1, 1, ptrs, ndims, shapes, dtypes, intents)
+    end if
+    if (allocated(packed_prai)) then
+      call slot2(72, packed_prai, 1, 1, ptrs, ndims, shapes, dtypes, intents)
+    else
+      call empty_slot(72, 2, 1, 1, ptrs, ndims, shapes, dtypes, intents)
+    end if
+    if (allocated(packed_qires)) then
+      call slot2(73, packed_qires, 1, 1, ptrs, ndims, shapes, dtypes, intents)
+    else
+      call empty_slot(73, 2, 1, 1, ptrs, ndims, shapes, dtypes, intents)
+    end if
+    if (allocated(packed_mnuccr)) then
+      call slot2(74, packed_mnuccr, 1, 1, ptrs, ndims, shapes, dtypes, intents)
+    else
+      call empty_slot(74, 2, 1, 1, ptrs, ndims, shapes, dtypes, intents)
+    end if
+    if (allocated(packed_pracs)) then
+      call slot2(75, packed_pracs, 1, 1, ptrs, ndims, shapes, dtypes, intents)
+    else
+      call empty_slot(75, 2, 1, 1, ptrs, ndims, shapes, dtypes, intents)
+    end if
+    if (allocated(packed_meltsdt)) then
+      call slot2(76, packed_meltsdt, 1, 1, ptrs, ndims, shapes, dtypes, intents)
+    else
+      call empty_slot(76, 2, 1, 1, ptrs, ndims, shapes, dtypes, intents)
+    end if
+    if (allocated(packed_frzrdt)) then
+      call slot2(77, packed_frzrdt, 1, 1, ptrs, ndims, shapes, dtypes, intents)
+    else
+      call empty_slot(77, 2, 1, 1, ptrs, ndims, shapes, dtypes, intents)
+    end if
+    if (allocated(packed_mnuccd)) then
+      call slot2(78, packed_mnuccd, 1, 1, ptrs, ndims, shapes, dtypes, intents)
+    else
+      call empty_slot(78, 2, 1, 1, ptrs, ndims, shapes, dtypes, intents)
+    end if
+    if (allocated(packed_nrout)) then
+      call slot2(79, packed_nrout, 1, 1, ptrs, ndims, shapes, dtypes, intents)
+    else
+      call empty_slot(79, 2, 1, 1, ptrs, ndims, shapes, dtypes, intents)
+    end if
+    if (allocated(packed_nsout)) then
+      call slot2(80, packed_nsout, 1, 1, ptrs, ndims, shapes, dtypes, intents)
+    else
+      call empty_slot(80, 2, 1, 1, ptrs, ndims, shapes, dtypes, intents)
+    end if
+    if (allocated(packed_refl)) then
+      call slot2(81, packed_refl, 1, 1, ptrs, ndims, shapes, dtypes, intents)
+    else
+      call empty_slot(81, 2, 1, 1, ptrs, ndims, shapes, dtypes, intents)
+    end if
+    if (allocated(packed_arefl)) then
+      call slot2(82, packed_arefl, 1, 1, ptrs, ndims, shapes, dtypes, intents)
+    else
+      call empty_slot(82, 2, 1, 1, ptrs, ndims, shapes, dtypes, intents)
+    end if
+    if (allocated(packed_areflz)) then
+      call slot2(83, packed_areflz, 1, 1, ptrs, ndims, shapes, dtypes, intents)
+    else
+      call empty_slot(83, 2, 1, 1, ptrs, ndims, shapes, dtypes, intents)
+    end if
+    if (allocated(packed_frefl)) then
+      call slot2(84, packed_frefl, 1, 1, ptrs, ndims, shapes, dtypes, intents)
+    else
+      call empty_slot(84, 2, 1, 1, ptrs, ndims, shapes, dtypes, intents)
+    end if
+    if (allocated(packed_csrfl)) then
+      call slot2(85, packed_csrfl, 1, 1, ptrs, ndims, shapes, dtypes, intents)
+    else
+      call empty_slot(85, 2, 1, 1, ptrs, ndims, shapes, dtypes, intents)
+    end if
+    if (allocated(packed_acsrfl)) then
+      call slot2(86, packed_acsrfl, 1, 1, ptrs, ndims, shapes, dtypes, intents)
+    else
+      call empty_slot(86, 2, 1, 1, ptrs, ndims, shapes, dtypes, intents)
+    end if
+    if (allocated(packed_fcsrfl)) then
+      call slot2(87, packed_fcsrfl, 1, 1, ptrs, ndims, shapes, dtypes, intents)
+    else
+      call empty_slot(87, 2, 1, 1, ptrs, ndims, shapes, dtypes, intents)
+    end if
+    if (allocated(packed_rercld)) then
+      call slot2(88, packed_rercld, 1, 1, ptrs, ndims, shapes, dtypes, intents)
+    else
+      call empty_slot(88, 2, 1, 1, ptrs, ndims, shapes, dtypes, intents)
+    end if
+    if (allocated(packed_ncai)) then
+      call slot2(89, packed_ncai, 1, 1, ptrs, ndims, shapes, dtypes, intents)
+    else
+      call empty_slot(89, 2, 1, 1, ptrs, ndims, shapes, dtypes, intents)
+    end if
+    if (allocated(packed_ncal)) then
+      call slot2(90, packed_ncal, 1, 1, ptrs, ndims, shapes, dtypes, intents)
+    else
+      call empty_slot(90, 2, 1, 1, ptrs, ndims, shapes, dtypes, intents)
+    end if
+    if (allocated(packed_qrout2)) then
+      call slot2(91, packed_qrout2, 1, 1, ptrs, ndims, shapes, dtypes, intents)
+    else
+      call empty_slot(91, 2, 1, 1, ptrs, ndims, shapes, dtypes, intents)
+    end if
+    if (allocated(packed_qsout2)) then
+      call slot2(92, packed_qsout2, 1, 1, ptrs, ndims, shapes, dtypes, intents)
+    else
+      call empty_slot(92, 2, 1, 1, ptrs, ndims, shapes, dtypes, intents)
+    end if
+    if (allocated(packed_nrout2)) then
+      call slot2(93, packed_nrout2, 1, 1, ptrs, ndims, shapes, dtypes, intents)
+    else
+      call empty_slot(93, 2, 1, 1, ptrs, ndims, shapes, dtypes, intents)
+    end if
+    if (allocated(packed_nsout2)) then
+      call slot2(94, packed_nsout2, 1, 1, ptrs, ndims, shapes, dtypes, intents)
+    else
+      call empty_slot(94, 2, 1, 1, ptrs, ndims, shapes, dtypes, intents)
+    end if
+    if (allocated(drout_dum)) then
+      call slot2(95, drout_dum, 1, 1, ptrs, ndims, shapes, dtypes, intents)
+    else
+      call empty_slot(95, 2, 1, 1, ptrs, ndims, shapes, dtypes, intents)
+    end if
+    if (allocated(dsout2_dum)) then
+      call slot2(96, dsout2_dum, 1, 1, ptrs, ndims, shapes, dtypes, intents)
+    else
+      call empty_slot(96, 2, 1, 1, ptrs, ndims, shapes, dtypes, intents)
+    end if
+    if (allocated(packed_freqs)) then
+      call slot2(97, packed_freqs, 1, 1, ptrs, ndims, shapes, dtypes, intents)
+    else
+      call empty_slot(97, 2, 1, 1, ptrs, ndims, shapes, dtypes, intents)
+    end if
+    if (allocated(packed_freqr)) then
+      call slot2(98, packed_freqr, 1, 1, ptrs, ndims, shapes, dtypes, intents)
+    else
+      call empty_slot(98, 2, 1, 1, ptrs, ndims, shapes, dtypes, intents)
+    end if
+    if (allocated(packed_nfice)) then
+      call slot2(99, packed_nfice, 1, 1, ptrs, ndims, shapes, dtypes, intents)
+    else
+      call empty_slot(99, 2, 1, 1, ptrs, ndims, shapes, dtypes, intents)
+    end if
+    if (allocated(packed_prer_evap)) then
+      call slot2(100, packed_prer_evap, 1, 1, ptrs, ndims, shapes, dtypes, intents)
+    else
+      call empty_slot(100, 2, 1, 1, ptrs, ndims, shapes, dtypes, intents)
+    end if
     call scalar_slot(101, c_loc(frame_do_cldice), 2, 0, ptrs, ndims, shapes, dtypes, intents)
     call slot2_or(102, packed_tnd_qsnow, ws_null2, 1, 0, ptrs, ndims, shapes, dtypes, intents)
     call slot2_or(103, packed_tnd_nsnow, ws_null2, 1, 0, ptrs, ndims, shapes, dtypes, intents)
@@ -2985,16 +3362,61 @@ contains
     call slot2_or(105, packed_frzimm, ws_null2, 1, 0, ptrs, ndims, shapes, dtypes, intents)
     call slot2_or(106, packed_frzcnt, ws_null2, 1, 0, ptrs, ndims, shapes, dtypes, intents)
     call slot2_or(107, packed_frzdep, ws_null2, 1, 0, ptrs, ndims, shapes, dtypes, intents)
-    call slot2(108, packed_preo, 1, 1, ptrs, ndims, shapes, dtypes, intents)
-    call slot2(109, packed_prdso, 1, 1, ptrs, ndims, shapes, dtypes, intents)
-    call slot2(110, packed_frzro, 1, 1, ptrs, ndims, shapes, dtypes, intents)
-    call slot2(111, packed_meltso, 1, 1, ptrs, ndims, shapes, dtypes, intents)
-    call slot2(112, packed_wtfc, 1, 1, ptrs, ndims, shapes, dtypes, intents)
-    call slot2(113, packed_wtfi, 1, 1, ptrs, ndims, shapes, dtypes, intents)
-    call slot2(114, packed_wtprelat, 1, 1, ptrs, ndims, shapes, dtypes, intents)
-    call slot2(115, packed_wtpostlat, 1, 1, ptrs, ndims, shapes, dtypes, intents)
+    if (allocated(packed_preo)) then
+      call slot2(108, packed_preo, 1, 1, ptrs, ndims, shapes, dtypes, intents)
+    else
+      call empty_slot(108, 2, 1, 1, ptrs, ndims, shapes, dtypes, intents)
+    end if
+    if (allocated(packed_prdso)) then
+      call slot2(109, packed_prdso, 1, 1, ptrs, ndims, shapes, dtypes, intents)
+    else
+      call empty_slot(109, 2, 1, 1, ptrs, ndims, shapes, dtypes, intents)
+    end if
+    if (allocated(packed_frzro)) then
+      call slot2(110, packed_frzro, 1, 1, ptrs, ndims, shapes, dtypes, intents)
+    else
+      call empty_slot(110, 2, 1, 1, ptrs, ndims, shapes, dtypes, intents)
+    end if
+    if (allocated(packed_meltso)) then
+      call slot2(111, packed_meltso, 1, 1, ptrs, ndims, shapes, dtypes, intents)
+    else
+      call empty_slot(111, 2, 1, 1, ptrs, ndims, shapes, dtypes, intents)
+    end if
+    if (allocated(packed_wtfc)) then
+      call slot2(112, packed_wtfc, 1, 1, ptrs, ndims, shapes, dtypes, intents)
+    else
+      call empty_slot(112, 2, 1, 1, ptrs, ndims, shapes, dtypes, intents)
+    end if
+    if (allocated(packed_wtfi)) then
+      call slot2(113, packed_wtfi, 1, 1, ptrs, ndims, shapes, dtypes, intents)
+    else
+      call empty_slot(113, 2, 1, 1, ptrs, ndims, shapes, dtypes, intents)
+    end if
+    if (allocated(packed_wtprelat)) then
+      call slot2(114, packed_wtprelat, 1, 1, ptrs, ndims, shapes, dtypes, intents)
+    else
+      call empty_slot(114, 2, 1, 1, ptrs, ndims, shapes, dtypes, intents)
+    end if
+    if (allocated(packed_wtpostlat)) then
+      call slot2(115, packed_wtpostlat, 1, 1, ptrs, ndims, shapes, dtypes, intents)
+    else
+      call empty_slot(115, 2, 1, 1, ptrs, ndims, shapes, dtypes, intents)
+    end if
     ncol_out = int(mgncol, c_int)
   end subroutine micro_core_frame
+
+  subroutine empty_slot(index, rank, dtype, intent, ptrs, ndims, shapes, dtypes, intents)
+    ! an argument with no storage in this call: a null address and zero extents
+    integer, intent(in) :: index, rank, dtype, intent
+    type(c_ptr), intent(inout) :: ptrs(:)
+    integer(c_int), intent(inout) :: ndims(:), dtypes(:), intents(:)
+    integer(c_int64_t), intent(inout) :: shapes(:,:)
+    ptrs(index) = c_null_ptr
+    ndims(index) = int(rank, c_int)
+    shapes(:, index) = 0_c_int64_t
+    dtypes(index) = int(dtype, c_int)
+    intents(index) = int(intent, c_int)
+  end subroutine empty_slot
 
   subroutine scalar_slot(index, address, dtype, intent, ptrs, ndims, shapes, dtypes, intents)
     integer, intent(in) :: index, dtype, intent

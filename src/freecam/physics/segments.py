@@ -104,6 +104,17 @@ class KernelFrame:
         for argument in outputs:
             target = argument.array[:self.ncol] if argument.array.ndim else argument.array
             value = np.asarray(answer[argument.name])
+            if target.size == 0:
+                # an output the routine has no room for -- a field this
+                # configuration never registered, packed as a zero-size array,
+                # or a chunk with no cloudy column: nothing to write, whatever
+                # extents the model gave its empty answer
+                if value.size != 0:
+                    raise PhysicsError(
+                        f"kernel {self.kernel!r}: {argument.name} has no storage in this call "
+                        f"(shape {target.shape}), the model returned {value.shape}")
+                written.append(argument.name)
+                continue
             if value.shape != target.shape:
                 raise PhysicsError(
                     f"kernel {self.kernel!r}: {argument.name} must be {target.shape}, "

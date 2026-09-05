@@ -250,8 +250,13 @@ class ImageSegmentRunner:
             shape = tuple(int(shapes[3 * i + axis]) for axis in range(rank))
             dtype = np.dtype(DTYPES[dtypes[i]])
             count = int(np.prod(shape)) if shape else 1
-            buffer = (ctypes.c_byte * (count * dtype.itemsize)).from_address(pointers[i])
-            array = np.ndarray(shape, dtype=dtype, buffer=buffer, order="F")
+            if count == 0 or not pointers[i]:
+                # no storage behind this argument in this call (a field the
+                # configuration never registered, or no packed column)
+                array = np.zeros(shape, dtype=dtype, order="F")
+            else:
+                buffer = (ctypes.c_byte * (count * dtype.itemsize)).from_address(pointers[i])
+                array = np.ndarray(shape, dtype=dtype, buffer=buffer, order="F")
             arguments.append(FrameArgument(argument, array, INTENTS[intents[i]]))
         return KernelFrame(kernel=name, call_index=index.value, lchnk=lchnk.value,
                            ncol=ncol.value, substep=substep.value, arguments=tuple(arguments),

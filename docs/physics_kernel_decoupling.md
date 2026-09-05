@@ -53,6 +53,19 @@ whether a replacement can run segmented; the Workflow Builder reads it to say
 which kernels are bindable and which are validated. A runner is
 `ImageSegmentRunner(library, spec)`, one class for every prefix.
 
+**A second pause, without a second transcription.** The stage-7 runner used
+to call the microphysics driver whole. `pycam_micro_handles`, which already
+held the driver's packer section verbatim for the Python walk, now holds the
+whole of `micro_mg_cam_tend` in pieces -- the head before the packer, the
+packer's five procedures, the tail after it -- with the routine's locals as
+module state and the driver module's private buffer indices resolved by the
+same field names. The runner calls those pieces in the source's order around
+the substep loop and pauses at every `micro_mg_tend` call when the slot is
+filled; the frame is the core's own argument list from the reviewed contract,
+served from the packed arrays where the substep left them. Nothing numerical
+moved: the pieces are the pinned text, checked line for line, and both modules
+compile with the case's own flags before an image is built.
+
 **The read-only description.** `stage.describe_kernels()` returns one record
 per kernel: the owning class, whether the runner pauses at it, whether that
 pause has passed a gate, the reviewed contract's inputs and outputs when one
@@ -105,6 +118,17 @@ shallow convection, and the wet deposition, dry deposition, convective
 transport and chemistry leaves. For the four leaves the catalog's active call
 graph lists no procedure yet; the ledger says so rather than choosing kernels
 without it.
+
+The radiation cores are next, and the micro pause is their template:
+`radiation_tend` (radiation.F90, 577-1320) is one routine with the two calls
+at 1034 and 1148, so it hoists into `pycam_rad_handles` as pieces the same
+way, with the radiation module's private indices resolved by name. Two things
+are different. The stage is today a pair of leaves around the driver, and a
+runner owns a whole action, so `Radiation` has to take the whole action back
+before it can run segmented. And both cores take an `rrtmg_state_t`, which
+no frame can hand a model as one slot: the frame must serve its arrays one
+by one, which is what the draft contracts under
+`native/pi_cam/functions/drafts/` still mark for review.
 
 The stages that exist are delivered in this order: the generic contract and
 runner registration (done, above); the cloud stage's second kernel and the two

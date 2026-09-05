@@ -49,7 +49,7 @@ DECLARATIONS = (997, 1553)
 #: kept; the driver's own `if`s on module flags are evaluated by the same
 #: flags, passed in.
 VERBATIM = (
-    ("micro_head", 1555, 1767),          # sizes, the buffer fields, the state copy, the ptend
+    ("micro_head", 1554, 1767),          # nlev, the sizes, the buffer fields, the state copy, the ptend
     ("micro_pack_prelude", 1768, 2069),
     ("micro_substep_pack", 2074, 2086),
     ("micro_core", 2087, 2209),          # the core call and its error check
@@ -318,7 +318,7 @@ def frame_table(lines) -> list[dict]:
             kind, attributes, dims, _ = declared[actual.lower()]
             rank = dims.count(",") + 1 if dims else 1
             row.update(kind="pointer" if "pointer" in attributes else "array", expression=actual,
-                       dtype=1, rank=rank)
+                       dtype=1, rank=rank, allocatable="allocatable" in attributes)
         rows.append(row)
     return rows
 
@@ -333,6 +333,17 @@ def frame_cases(lines) -> str:
         elif row["kind"] == "pointer":
             out.append(f"    call slot2_or({index}, {row['expression']}, ws_null2, {row['dtype']}, {intent}, "
                        f"ptrs, ndims, shapes, dtypes, intents)")
+        elif row.get("allocatable"):
+            # a packed array the prelude allocates only when the configuration
+            # registers its field: an empty slot otherwise, never a reference
+            # to unallocated storage
+            out.append(f"    if (allocated({row['expression']})) then")
+            out.append(f"      call slot{row['rank']}({index}, {row['expression']}, {row['dtype']}, {intent}, "
+                       f"ptrs, ndims, shapes, dtypes, intents)")
+            out.append(f"    else")
+            out.append(f"      call empty_slot({index}, {row['rank']}, {row['dtype']}, {intent}, "
+                       f"ptrs, ndims, shapes, dtypes, intents)")
+            out.append(f"    end if")
         else:
             out.append(f"    call slot{row['rank']}({index}, {row['expression']}, {row['dtype']}, {intent}, "
                        f"ptrs, ndims, shapes, dtypes, intents)")
@@ -413,6 +424,19 @@ RUNNER_API = """  subroutine micro_resolve_indices()
 {frame_cases}
     ncol_out = int(mgncol, c_int)
   end subroutine micro_core_frame
+
+  subroutine empty_slot(index, rank, dtype, intent, ptrs, ndims, shapes, dtypes, intents)
+    ! an argument with no storage in this call: a null address and zero extents
+    integer, intent(in) :: index, rank, dtype, intent
+    type(c_ptr), intent(inout) :: ptrs(:)
+    integer(c_int), intent(inout) :: ndims(:), dtypes(:), intents(:)
+    integer(c_int64_t), intent(inout) :: shapes(:,:)
+    ptrs(index) = c_null_ptr
+    ndims(index) = int(rank, c_int)
+    shapes(:, index) = 0_c_int64_t
+    dtypes(index) = int(dtype, c_int)
+    intents(index) = int(intent, c_int)
+  end subroutine empty_slot
 
   subroutine scalar_slot(index, address, dtype, intent, ptrs, ndims, shapes, dtypes, intents)
     integer, intent(in) :: index, dtype, intent
