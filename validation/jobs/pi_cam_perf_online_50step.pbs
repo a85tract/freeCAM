@@ -1,0 +1,95 @@
+#!/bin/bash
+# Submit with: validation/jobs/submit.sh validation/jobs/pi_cam_perf_online_50step.pbs
+#PBS -N freecam-perf-50
+# ``develop`` is the public route; PBS places eligible jobs in ``cpudev``.
+#PBS -q develop
+#PBS -l select=4:ncpus=64:mpiprocs=128:ompthreads=1:mem=110GB
+#PBS -l walltime=00:30:00
+#PBS -j oe
+#PBS -o logs/
+#PBS -V
+
+# A diagnostic, not a gate: the exact online 50-step run with every rank
+# counted by perf (task clock, page faults) and four ranks -- one from each
+# processor group of the coupled layout: land 0-255, ice 256-383, ocean
+# 384-415, atmosphere-only 416-511 -- sampled in user space.  The report
+# says where the step's time goes by library and symbol, which is the
+# budget the Fortran memory work is planned against.  Numerics are
+# untouched, so the run is still compared with the oracle.
+set -euo pipefail
+
+source "${FREECAM_REPO:-${PBS_O_WORKDIR:-$PWD}}/validation/jobs/common.sh"
+
+repo=${FREECAM_REPO}
+python=${repo}/.venv/bin/python
+case_root=${FREECAM_REFERENCE_CASE}
+cam_reference=${FREECAM_REFERENCE_RUN}
+cesm_reference=${FREECAM_SCRATCH}/pyCESM/PI-atm/oracle-50step-run1/run
+oracle=${FREECAM_SCRATCH}/pyCAM/PI-cam/nonpic-boundary-capture-50step/boundary/replay
+library=${FREECAM_CESM_PROVIDER_LIBRARY:-${repo}/build/cesm/pi_atm/production-components/libpycesm_external_atm.so}
+root=${FREECAM_SCRATCH}/pyCAM/PI-cam/perf-online-50step-${PBS_JOBID}
+cam_run=${root}/cam-run
+cesm_run=${root}/cesm-provider-run
+
+source "${case_root}/.env_mach_specific.sh" >/dev/null 2>&1
+mpi_root=${CRAY_MPICH_DIR:-/opt/cray/pe/mpich/8.1.25/ofi/intel/19.0}
+export LD_LIBRARY_PATH="${mpi_root}/lib-abi-mpich:${mpi_root}/lib:${LD_LIBRARY_PATH:-}"
+export LD_PRELOAD=${FREECAM_LD_PRELOAD}${LD_PRELOAD:+:${LD_PRELOAD}}
+export PYTHONPATH=${repo}/src
+export OMP_NUM_THREADS=1
+export OMP_STACKSIZE=64M
+export FI_CXI_RX_MATCH_MODE=hybrid
+export FI_MR_CACHE_MONITOR=memhooks
+export MPICH_MPIIO_HINTS='*:romio_cb_read=enable:romio_cb_write=enable:striping_factor=24'
+
+mkdir -p "${cam_run}" "${cesm_run}"
+rsync -a --exclude '*.nc' --exclude '*.bin' --exclude '*.log*' \
+  --exclude 'rpointer.*' --exclude 'timing/' "${cam_reference}/" "${cam_run}/"
+rsync -a --exclude '*.nc' --exclude '*.bin' --exclude '*.log*' \
+  --exclude 'rpointer.*' --exclude 'timing/' "${cesm_reference}/" "${cesm_run}/"
+cp "${cam_reference}/SEMapping.nc" "${cam_run}/"
+cp "${cesm_reference}/SEMapping.nc" "${cesm_run}/"
+mkdir -p "${cam_run}/timing/checkpoints" "${cesm_run}/timing/checkpoints"
+
+"${python}" - <<PY
+from pathlib import Path
+import cloudpickle
+from freecam import CESMOnlineBoundaryProvider
+
+provider = CESMOnlineBoundaryProvider(
+    library=Path("${library}"),
+    run_dir=Path("${cesm_run}"),
+    oracle=Path("${oracle}"),
+)
+Path("${cam_run}/.exact-cesm-provider.pkl").write_bytes(
+    cloudpickle.dumps(provider, protocol=5)
+)
+PY
+
+export FREECAM_PERF_DIR=${root}/perf
+export FREECAM_PERF_RECORD_RANKS=${PYCAM_PERF_RECORD_RANKS:-100,300,400,450}
+export FREECAM_PERF_HZ=${PYCAM_PERF_HZ:-299}
+
+cd "${repo}"
+mpiexec --label -n 512 tools/perf_rank_wrapper.sh "${python}" -m freecam.pi_cam.cli \
+  --config configs/pi_cam_icesm131_exact_online_50step.yaml \
+  --boundary-provider "${cam_run}/.exact-cesm-provider.pkl" \
+  --run-dir "${cam_run}" \
+  --steps 50 \
+  --memory-sample-every 10 \
+  --summary "${root}/summary.json" \
+  > "${cam_run}/freecam.log" 2>&1
+
+"${python}" tools/verify_pi_cam.py \
+  --reference "${cam_reference}" \
+  --candidate "${cam_run}" \
+  --output "${root}/bfb.json"
+
+"${python}" tools/report_pi_cam_perf.py \
+  --perf-dir "${FREECAM_PERF_DIR}" \
+  --summary "${root}/summary.json" \
+  --bfb "${root}/bfb.json" \
+  --pbs-job-id "${PBS_JOBID}" \
+  --git-commit "$(git rev-parse HEAD)" \
+  --output validation/pi_cam_perf_online_50step.json
+echo "root: ${root}"
