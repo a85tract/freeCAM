@@ -46,6 +46,9 @@ freecam = "freecam.cli:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/freecam"]
+# The Workflow Builder's page and generator bundle are build products (see
+# web/); they are ignored by git but shipped in the wheel when present.
+artifacts = ["src/freecam/pi_cam/workflow_builder/static/**"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
