@@ -1,0 +1,63 @@
+name: Workflow Builder
+
+# The builder's page: tested and built on every pull request, deployed to
+# GitHub Pages from main.  The page is the preview -- it edits, checks,
+# generates and downloads; it never runs CAM.  The catalog snapshot it reads
+# is exported from the checkout's own records and must be current.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - name: Install the Python package and its test extras
+        run: uv sync --extra test --extra ui
+      - name: The catalog snapshot the page reads is current
+        run: uv run python tools/export_workflow_catalog.py --check
+      - name: Python tests of the builder's document, checks, bridge and service
+        run: uv run pytest tests/unit/test_workflow_builder_document.py tests/unit/test_workflow_builder_catalog.py tests/unit/test_workflow_builder_validate.py tests/unit/test_workflow_builder_bridge.py tests/unit/test_workflow_builder_service.py -q
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - name: Install the page's dependencies
+        working-directory: web
+        run: npm ci
+      - name: Type-check and test the page (the export contract tests spawn the checkout's Python)
+        working-directory: web
+        run: npm run typecheck && npm test
+      - name: Build the page for the project site path
+        working-directory: web
+        run: npm run build:pages
+      - name: Upload the preview build
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: web/dist-pages
+
+  deploy:
+    if: github.event_name != 'pull_request'
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

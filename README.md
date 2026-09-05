@@ -42,6 +42,9 @@ runs next, and Fortran performs it.
   runs.
 - **Schemes as functions.** A physics routine can be called on a single
   column as `y = f(x, p)`, with no model session, and sampled into datasets.
+- **A workflow page.** `driver.ui()` serves a browser editor for the step
+  that generates the freeCAM code it describes and runs it on the model; the
+  same page is published as a preview that edits without running.
 
 ## Installation
 
@@ -114,6 +117,9 @@ Leaving the `with` block, or calling `driver.close()`, releases them.
   place.
 - [validation/performance_overhead.md](validation/performance_overhead.md):
   the measured time and memory cost of the Python control layer.
+- The Workflow Builder preview at https://a85tract.github.io/freeCAM/ (once
+  Pages is enabled for the repository); how to use it is in
+  [docs/usage.md](docs/usage.md#the-workflow-builder).
 
 ## Development
 
