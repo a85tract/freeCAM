@@ -1,0 +1,104 @@
+{
+  "schema_version": 1,
+  "what": "Paired online runs of the PI-atm case: A the original Fortran model, C freeCAM with the Python stage class installed and nothing replaced, in one allocation each. The goal is a median C/A coupling-loop ratio of 0.95 or better over the month and the year, bit-for-bit, on 512 ranks.",
+  "1month": {
+    "pairs": [
+      {
+        "pbs_job_id": "7322199.desched1",
+        "order": "AC",
+        "stage_execution": "native-whole",
+        "steps": 1488,
+        "a": {
+          "coupling_loop_seconds": 457.58963,
+          "init_seconds": 20.922365,
+          "final_seconds": 0.00471,
+          "lifecycle_seconds": 478.516705,
+          "executable_sha256": "accd9860c1a29b32415d1fecd86d5728c8cd5c4204ad41e9d93e2db6b0077d7e",
+          "timing_source": "GPTL CPL:RUN_LOOP in timing/cesm_timing.000"
+        },
+        "c": {
+          "coupling_loop_seconds": 491.141816953,
+          "init_seconds": 15.554660547999902,
+          "final_seconds": 0.4026861749998716,
+          "lifecycle_seconds": 507.1206788389999,
+          "sypd": 14.940862167480727,
+          "native_library_sha256": "43df9524851f077c1e01cbd2d7485c76055f7565f3a6dfaa9da5655b6c1d2b05",
+          "git_commit": null,
+          "bfb": true,
+          "bfb_files": 18,
+          "peak_rank_rss_bytes": 880013312,
+          "total_rss_bytes": 266175082496,
+          "stage_execution_record": {
+            "cloud_macro_microphysics_python": {
+              "active_replacements": [],
+              "execution_mode": "native-whole",
+              "legacy_steps": 0,
+              "native_segment_calls": 0,
+              "native_stage_calls": 1488,
+              "python_fortran_crossings_per_step": 1,
+              "python_model_calls": 0,
+              "segment_pauses": 0
+            }
+          }
+        },
+        "ratio_c_over_a": 1.0733237485145806
+      },
+      {
+        "pbs_job_id": "7322349.desched1",
+        "order": "CA",
+        "stage_execution": "native-whole",
+        "steps": 1488,
+        "a": {
+          "coupling_loop_seconds": 437.875732,
+          "init_seconds": 13.05982,
+          "final_seconds": 0.002086,
+          "lifecycle_seconds": 450.93763800000005,
+          "executable_sha256": "accd9860c1a29b32415d1fecd86d5728c8cd5c4204ad41e9d93e2db6b0077d7e",
+          "timing_source": "GPTL CPL:RUN_LOOP in timing/cesm_timing.000"
+        },
+        "c": {
+          "coupling_loop_seconds": 476.8024565449998,
+          "init_seconds": 17.2244287609999,
+          "final_seconds": 0.3922731010000007,
+          "lifecycle_seconds": 494.4405892489999,
+          "sypd": 15.390193760648684,
+          "native_library_sha256": "43df9524851f077c1e01cbd2d7485c76055f7565f3a6dfaa9da5655b6c1d2b05",
+          "git_commit": null,
+          "collective_reductions": null,
+          "bfb": true,
+          "bfb_files": 18,
+          "peak_rank_rss_bytes": 911519744,
+          "total_rss_bytes": 266552262656,
+          "stage_execution_record": {
+            "cloud_macro_microphysics_python": {
+              "active_replacements": [],
+              "execution_mode": "native-whole",
+              "legacy_steps": 0,
+              "native_segment_calls": 0,
+              "native_stage_calls": 1488,
+              "python_fortran_crossings_per_step": 1,
+              "python_model_calls": 0,
+              "segment_pauses": 0
+            }
+          }
+        },
+        "ratio_c_over_a": 1.0888990224856758
+      }
+    ],
+    "summary": {
+      "pairs": 2,
+      "ratios": [
+        1.0733237485145806,
+        1.0888990224856758
+      ],
+      "median_ratio": 1.0811113855001282,
+      "bootstrap_95_interval": null,
+      "target_median_ratio": 0.95,
+      "target_met": false,
+      "all_bfb": true
+    }
+  },
+  "1year": {
+    "pairs": []
+  }
+}
