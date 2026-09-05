@@ -1,6 +1,8 @@
 #!/bin/bash
-# Submit with: PYCAM_PAIR_ORDER=AC validation/jobs/submit.sh validation/jobs/pi_cam_paired_online_1month.pbs
-#PBS -N freecam-pair-1month
+# Submit with: validation/jobs/submit.sh validation/jobs/pi_cam_paired_online_1month.pbs -v PYCAM_PAIR_ORDER=AC
+#   the year: validation/jobs/submit.sh validation/jobs/pi_cam_paired_online_1month.pbs \
+#               -v PYCAM_PAIR_ORDER=AC,PYCAM_PAIR_DURATION=1year -l walltime=04:00:00
+#PBS -N freecam-pair
 #PBS -q develop
 #PBS -l select=4:ncpus=64:mpiprocs=128:ompthreads=1:mem=64GB
 #PBS -l walltime=00:55:00
@@ -24,6 +26,11 @@
 #
 #   PYCAM_PAIR_ORDER=AC|CA     which runs first (default AC)
 #   PYCAM_STAGE_EXECUTION      native-whole (default) | legacy-python
+#   PYCAM_PAIR_DURATION        1month (default, 1488 steps) | 1year (17520 steps)
+#
+# The year has no separate oracle: both runs start from the month's seed
+# with the driver's stop and restart intervals set to the year, and C is
+# compared bit-for-bit with A's own output.  Ask for four hours.
 
 set -euo pipefail
 
@@ -33,19 +40,26 @@ repo=${FREECAM_REPO}
 python=${repo}/.venv/bin/python
 order=${PYCAM_PAIR_ORDER:-AC}
 policy=${PYCAM_STAGE_EXECUTION:-native-whole}
+duration=${PYCAM_PAIR_DURATION:-1month}
+case "${duration}" in
+  1month) steps=1488 ;;
+  1year) steps=17520 ;;
+  *) echo "PYCAM_PAIR_DURATION must be 1month or 1year, not '${duration}'" >&2; exit 2 ;;
+esac
 pycesm_case=${FREECAM_PYCESM_CASE}
 reference_case=${FREECAM_REFERENCE_CASE}
 executable=${FREECAM_SCRATCH}/pyCESM/PI-atm/f.e13.F1850C5.ne16_g16.icesm131_ihesp.PI-atm.pycesm-ref.50step/bld/cesm.exe
 oracle_run=${FREECAM_SCRATCH}/pyCESM/PI-atm/oracle-1month/run
 library=${FREECAM_CESM_PROVIDER_LIBRARY:-${repo}/build/cesm/pi_atm/production-components/libpycesm_external_atm.so}
-root=${FREECAM_SCRATCH}/freeCAM/PI-cam/pair-1month-${order}-${PBS_JOBID}
+root=${FREECAM_SCRATCH}/freeCAM/PI-cam/pair-${duration}-${order}-${PBS_JOBID}
+seed=${root}/seed
 a_run=${root}/A-original-fortran/run
 c_root=${root}/C-freecam
 cam_run=${c_root}/cam-run
 cesm_run=${c_root}/cesm-provider-run
 summary=${c_root}/summary.json
 bfb=${c_root}/bfb.json
-config=configs/pi_cam_icesm131_exact_online_1month.yaml
+config=configs/pi_cam_icesm131_exact_online_${duration}.yaml
 
 common_env() {
   export OMP_NUM_THREADS=1
@@ -55,13 +69,23 @@ common_env() {
   export MPICH_MPIIO_HINTS='*:romio_cb_read=enable:romio_cb_write=enable:striping_factor=24'
 }
 
+prepare_seed() {
+  mkdir -p "${seed}"
+  rsync -a --exclude '*.nc' --exclude '*.bin' --exclude '*.log*' \
+    --exclude 'rpointer.*' --exclude 'timing/' "${oracle_run}/" "${seed}/"
+  cp "${oracle_run}/SEMapping.nc" "${seed}/" 2>/dev/null || true
+  if [ "${steps}" != 1488 ]; then
+    perl -0pi -e "s/restart_n = 1488/restart_n = ${steps}/; s/stop_n = 1488/stop_n = ${steps}/" \
+      "${seed}/drv_in"
+  fi
+}
+
 run_a() {
-  echo "=== A: original Fortran month ($(date)) ==="
+  echo "=== A: original Fortran ${duration} ($(date)) ==="
   ( source "${pycesm_case}/.env_mach_specific.sh" >/dev/null 2>&1
     common_env
     mkdir -p "${a_run}"
-    rsync -a --exclude '*.nc' --exclude '*.bin' --exclude '*.log.*' \
-      --exclude 'rpointer.*' --exclude 'timing/' "${oracle_run}/" "${a_run}/"
+    rsync -a "${seed}/" "${a_run}/"
     mkdir -p "${a_run}/timing/checkpoints"
     cd "${a_run}"
     mpiexec --label -n 512 "${executable}" > original-fortran.log 2>&1 )
@@ -69,7 +93,7 @@ run_a() {
 }
 
 run_c() {
-  echo "=== C: freeCAM exact-online month, stage ${policy} ($(date)) ==="
+  echo "=== C: freeCAM exact-online ${duration}, stage ${policy} ($(date)) ==="
   ( source "${reference_case}/.env_mach_specific.sh" >/dev/null 2>&1
     mpi_root=${CRAY_MPICH_DIR:-/opt/cray/pe/mpich/8.1.25/ofi/intel/19.0}
     export LD_LIBRARY_PATH="${mpi_root}/lib-abi-mpich:${mpi_root}/lib:${LD_LIBRARY_PATH:-}"
@@ -78,9 +102,7 @@ run_c() {
     common_env
     mkdir -p "${cam_run}" "${cesm_run}"
     for d in "${cam_run}" "${cesm_run}"; do
-      rsync -a --exclude '*.nc' --exclude '*.bin' --exclude '*.log*' \
-        --exclude 'rpointer.*' --exclude 'timing/' "${oracle_run}/" "${d}/"
-      cp "${oracle_run}/SEMapping.nc" "${d}/" 2>/dev/null || true
+      rsync -a "${seed}/" "${d}/"
       mkdir -p "${d}/timing/checkpoints"
     done
     "${python}" - <<PY
@@ -97,22 +119,31 @@ PY
       --run-dir "${cam_run}" \
       --cloud-macro-micro-python \
       --stage-execution "${policy}" \
-      --steps 1488 \
+      --steps "${steps}" \
       --summary "${summary}" \
-      > "${cam_run}/freecam.log" 2>&1
-    "${python}" tools/verify_pi_cam.py \
-      --reference "${oracle_run}" \
-      --candidate "${cam_run}" \
-      --output "${bfb}" || echo "C is not bit-for-bit (recorded)" )
+      > "${cam_run}/freecam.log" 2>&1 )
   echo "C done ($(date))"
 }
 
+compare_c() {
+  # The month has an oracle of its own; the year is compared with A's output
+  # from this same allocation.  Either way the verdict is recorded, not fatal.
+  local reference=${oracle_run}
+  [ "${duration}" = 1month ] || reference=${a_run}
+  "${python}" tools/verify_pi_cam.py \
+    --reference "${reference}" \
+    --candidate "${cam_run}" \
+    --output "${bfb}" || echo "C is not bit-for-bit (recorded)"
+}
+
 mkdir -p "${root}"
+prepare_seed
 case "${order}" in
   AC) run_a; run_c ;;
   CA) run_c; run_a ;;
   *) echo "PYCAM_PAIR_ORDER must be AC or CA, not '${order}'" >&2; exit 2 ;;
 esac
+compare_c
 
 cd "${repo}"
 "${python}" tools/report_pi_cam_pair.py \
@@ -124,5 +155,6 @@ cd "${repo}"
   --stage-execution "${policy}" \
   --pbs-job-id "${PBS_JOBID}" \
   --git-commit "$(git rev-parse HEAD)" \
+  --duration "${duration}" \
   --record validation/pi_cam_faster_than_fortran.json
 echo "root: ${root}"

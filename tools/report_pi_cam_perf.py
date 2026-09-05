@@ -93,7 +93,7 @@ def rank_stats(values: list[float]) -> dict[str, float | None]:
 
 
 def build_record(perf_dir: Path, summary: dict, bfb: dict, job: str | None,
-                 git_commit: str | None, *, symbols: int = 40) -> dict:
+                 git_commit: str | None, *, symbols: int = 40, delay_ms: int = 0) -> dict:
     stats: dict[int, dict[str, float]] = {}
     for path in sorted(perf_dir.glob("stat.*.csv")):
         rank = int(path.stem.split(".")[1])
@@ -122,6 +122,7 @@ def build_record(perf_dir: Path, summary: dict, bfb: dict, job: str | None,
                  "online 50-step run; a diagnostic of where the step's time goes, not a gate"),
         "pbs_job_id": job,
         "git_commit": git_commit,
+        "counting_started_after_ms": delay_ms,
         "steps": steps,
         "bfb": bfb.get("bfb"),
         "ranks_counted": len(stats),
@@ -141,11 +142,14 @@ def main() -> int:
     parser.add_argument("--bfb", type=Path, required=True)
     parser.add_argument("--pbs-job-id")
     parser.add_argument("--git-commit")
+    parser.add_argument("--delay-ms", type=int, default=0,
+                        help="milliseconds after process start at which counting began")
     parser.add_argument("--output", type=Path, required=True)
     arguments = parser.parse_args()
     summary = json.loads(arguments.summary.read_text())
     bfb = json.loads(arguments.bfb.read_text()) if arguments.bfb.exists() else {"bfb": None}
-    record = build_record(arguments.perf_dir, summary, bfb, arguments.pbs_job_id, arguments.git_commit)
+    record = build_record(arguments.perf_dir, summary, bfb, arguments.pbs_job_id, arguments.git_commit,
+                          delay_ms=arguments.delay_ms)
     arguments.output.write_text(json.dumps(record, indent=2) + "\n")
     print(f"ranks counted {record['ranks_counted']}; page faults per rank per step "
           f"{record['page_faults_per_rank_per_step']}; bfb {record['bfb']}")
