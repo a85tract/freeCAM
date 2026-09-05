@@ -1,9 +1,11 @@
 name: Workflow Builder
 
-# The builder's page: tested and built on every pull request, deployed to
-# GitHub Pages from main.  The page is the preview -- it edits, checks,
-# generates and downloads; it never runs CAM.  The catalog snapshot it reads
-# is exported from the checkout's own records and must be current.
+# The builder's page: tested and built on every pull request, published from
+# main by pushing the build to the gh-pages branch, which Pages serves
+# (Settings > Pages > Deploy from a branch: gh-pages, root).  The page is the
+# preview -- it edits, checks, generates and downloads; it never runs CAM.
+# The catalog snapshot it reads is exported from the checkout's own records
+# and must be current.
 
 on:
   push:
@@ -12,9 +14,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
-  pages: write
-  id-token: write
+  contents: write
 
 concurrency:
   group: pages
@@ -46,18 +46,18 @@ jobs:
       - name: Build the page for the project site path
         working-directory: web
         run: npm run build:pages
-      - name: Upload the preview build
-        uses: actions/upload-pages-artifact@v3
+      - name: Keep the preview build
+        uses: actions/upload-artifact@v4
         with:
+          name: workflow-builder-preview
           path: web/dist-pages
-
-  deploy:
-    if: github.event_name != 'pull_request'
-    needs: build
-    runs-on: ubuntu-latest
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
-    steps:
-      - id: deployment
-        uses: actions/deploy-pages@v4
+      - name: Publish the preview to the gh-pages branch
+        if: github.event_name != 'pull_request'
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: web/dist-pages
+          publish_branch: gh-pages
+          force_orphan: true
+          enable_jekyll: false
+          commit_message: "Publish the Workflow Builder preview from ${{ github.sha }}"

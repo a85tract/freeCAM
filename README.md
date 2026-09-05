@@ -117,8 +117,8 @@ Leaving the `with` block, or calling `driver.close()`, releases them.
   place.
 - [validation/performance_overhead.md](validation/performance_overhead.md):
   the measured time and memory cost of the Python control layer.
-- The Workflow Builder preview at https://a85tract.github.io/freeCAM/ (once
-  Pages is enabled for the repository); how to use it is in
+- The Workflow Builder preview at https://a85tract.github.io/freeCAM/: the
+  page without a model behind it; how to use it is in
   [docs/usage.md](docs/usage.md#the-workflow-builder).
 
 ## Development
