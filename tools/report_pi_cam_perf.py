@@ -78,8 +78,10 @@ def classify_dso(name: str) -> str:
 
 
 def perf_report(data: Path, sort: str, limit: int) -> list[tuple[float, str]]:
+    # ``-g none`` gives the flat listing whether or not call chains were
+    # recorded; ``--max-stack 0`` cannot read a call-chain recording.
     command = ["perf", "report", "-i", str(data), "--stdio", "--sort", sort,
-               "--percent-limit", "0.2", "--max-stack", "0"]
+               "--percent-limit", "0.2", "-g", "none"]
     result = subprocess.run(command, capture_output=True, text=True, check=False)
     rows = parse_percent_lines(result.stdout)
     return rows[:limit]
