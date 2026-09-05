@@ -130,7 +130,8 @@ compare_c() {
   # from this same allocation.  Either way the verdict is recorded, not fatal.
   local reference=${oracle_run}
   [ "${duration}" = 1month ] || reference=${a_run}
-  "${python}" tools/verify_pi_cam.py \
+  # The job's working directory is wherever PBS started it, not the checkout.
+  "${python}" "${repo}/tools/verify_pi_cam.py" \
     --reference "${reference}" \
     --candidate "${cam_run}" \
     --output "${bfb}" || echo "C is not bit-for-bit (recorded)"

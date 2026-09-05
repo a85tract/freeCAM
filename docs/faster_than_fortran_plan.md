@@ -214,6 +214,7 @@ BFB 和最终目标是否达成。更新 `validation/performance_overhead.md`，
 | 7322199 | 改动前 | AC | 457.59 s | 491.14 s | 1.0733 | 是 |
 | 7322349 | 改动前 | CA | 437.88 s | 476.80 s | 1.0889 | 是 |
 | 7322467 | 改动后 `ed685d5` | AC | 437.47 s | 440.07 s | **1.0060** | 是 |
+| 7322553 | 改动后 `f565b67` | CA | 438.30 s | 439.86 s | **1.0036** | 是 |
 
 记录在 `validation/pi_cam_faster_than_fortran.json`（每对含生命周期时间、内存、BFB、provider 的
 collective 次数与代码提交）。B 组未运行：没有进入 Fortran 侧的原生优化阶段。年度配对未运行。
@@ -230,7 +231,7 @@ collective 次数与代码提交）。B 组未运行：没有进入 Fortran 侧�
   2 整数 `Allreduce`；driver 的边界 collective 改为整数标志、仅出错时收集 traceback；import 与 schedule
   合并。每步 5 次 reduction。协议状态错误由全 rank 一致报告；组内 rank 本地失败按 `shr_sys_abort` 语义
   abort，不让其他 rank 卡在后续 collective。512 rank 在线 50 步 gate 7322441 BFB。
-- **效果**：边界路径 115 s → 61 s，C/A 1.081 → 1.006。
+- **效果**：边界路径 115 s → 61 s，C/A 中位数 1.081 → 1.005（改动后两对：1.0060、1.0036）。
 
 ### 剩余预算（步内 perf，作业 7322501，跳过初始化）
 
