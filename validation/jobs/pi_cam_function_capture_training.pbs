@@ -33,7 +33,7 @@ case_root=${FREECAM_REFERENCE_CASE}
 oracle_run=${FREECAM_REFERENCE_RUN}
 executable=${repo}/build/pi_cam_function_capture/pi_cam_function_capture.exe
 root=${FREECAM_SCRATCH}/pyCAM/PI-cam/function-capture-training-${PBS_JOBID}
-steps=${PYCAM_CAPTURE_STEPS:-1,50}   # 覆盖全部 50 步
+steps=${PYCAM_CAPTURE_STEPS:-1,50}   # cover all 50 steps
 
 source "${case_root}/.env_mach_specific.sh" >/dev/null 2>&1
 export OMP_NUM_THREADS=1

@@ -1,263 +1,390 @@
-# FreeCAM 性能优化计划：保持现有 UI 和 BFB，超过原始 Fortran 至少 5%
+# freeCAM performance plan: keep the UI and bit-for-bit, beat the original Fortran by 5%
 
-分支：`native-stage-batching`（2026-09-04 起）。本文件是任务的计划书（v3，取代
-`native_stage_batching_plan.md` 作为总目标；后者的 native-whole / segmented / legacy-python 三模式
-与 runner 设计仍然有效，是本计划第 3 阶段的内容）。历史性能证据见 `validation/performance_overhead.md`，
-不得被覆盖。
+Branch: `native-stage-batching` (from 2026-09-04). This file is the task's
+plan (v3; it supersedes `native_stage_batching_plan.md` as the overall goal,
+while that plan's three modes, native-whole / segmented / legacy-python, and
+its runner design remain valid as phase 3 here). The historical performance
+evidence lives in `validation/performance_overhead.md` and is never
+overwritten.
 
-## 1. 目标与验收标准
+## 1. Goal and acceptance
 
-保留当前 Python class、workflow 编辑、kernel 替换、动态变量、动态 Python 函数、reload、逐步运行和绘图
-接口。所有 Python 函数继续由 Python 主动执行，Fortran 通过返回状态交还控制权。
+Keep the current Python classes, workflow editing, kernel replacement, dynamic
+variables, dynamic Python functions, reload, step-by-step running and
+plotting. Every Python function is still driven by Python; Fortran hands
+control back through return statuses.
 
-最终目标：同样资源、同样 online 耦合、同样数值结果和输出，FreeCAM 的完整模型推进时间比原始 Fortran
-至少减少 5%。
+Goal: with the same resources, the same online coupling, and the same numbers
+and output, freeCAM advances the complete model at least 5% faster than the
+original Fortran.
 
-验收分别覆盖：一个月（1488 coupling steps）；一年（17520 coupling steps）；当前 PI-atm 配置，512 MPI
-ranks、4 节点；全部活动 component 正常计算，使用真实 online x2a/a2x；history/restart 的变量、频率、精度
-和压缩设置相同；原始 kernel 路径保持 BFB；保留全部现有用户功能，不通过减少科学计算或输出达到目标。
+Acceptance covers a month (1488 coupling steps) and a year (17520 coupling
+steps) of the current PI-atm configuration on 512 MPI ranks and four nodes,
+with every active component computing normally on real online x2a/a2x, the
+same history and restart variables, frequencies, precision and compression,
+the original kernel path bit-for-bit, and every existing user feature kept.
+The goal is not reached by doing less science or writing less output.
 
-主要性能门槛：`median(FreeCAM 推进耗时 / 原始 Fortran 推进耗时) ≤ 0.95`。同时要求完整生命周期耗时不出现
-回退，并报告峰值内存。
+The performance threshold is `median(freeCAM advance time / original Fortran
+advance time) <= 0.95`, with no regression of the full lifecycle time, and
+peak memory reported.
 
-现有的"相对普通 FreeCAM 额外开销 ≤5%"仅作为历史阶段指标，不再代表最终任务完成。native-whole 的月度结果
-已经验证；分段 runner 正在开发，需要接续现有工作。
+The earlier "at most 5% over plain freeCAM" is a historical milestone, not
+completion. The native-whole month is already verified; the segment runner is
+in development and continues from that work.
 
-## 2. 建立可信基线与性能预算
+## 2. A trustworthy baseline and a budget
 
-### 三组对照
+### Three groups
 
-| 组别 | 控制层 | 原生实现 | 用途 |
+| Group | Control layer | Native implementation | Purpose |
 | --- | --- | --- | --- |
-| A | 原始 Fortran driver | 固定版本原始实现 | 最终目标基线 |
-| B | 原始 Fortran driver | 优化后的原生实现 | 测量原生优化收益 |
-| C | FreeCAM Python driver/class | 与 B 相同的原生实现 | 测量完整 FreeCAM 性能 |
+| A | original Fortran driver | the pinned original | the target baseline |
+| B | original Fortran driver | the optimised native code | the gain from native optimisation |
+| C | freeCAM Python driver and classes | the same native code as B | the complete freeCAM |
 
-最终比较 C/A；同时报告 B/A 和 C/B，区分原生优化收益与 Python 框架成本。可独立使用的原生优化必须同时用于
-B 和 C。
+C/A is the final comparison; B/A and C/B are reported too, to separate native
+gains from the Python framework's cost. A native optimisation that can stand
+alone is used by both B and C.
 
-### 固定运行条件
+### Fixed conditions
 
-- 固定源码、编译器、优化选项、MPI 库、输入文件、namelist 和 native library hash。
-- 固定 rank-to-node、CPU affinity、OpenMP/数学库线程数。
-- 核对现有 PBS 请求与实际 CPU 绑定，避免把资源布局变化误算成代码收益。
-- 路径、账户和队列从现有 site 配置读取，新增脚本不写入个人路径或账户。
-- 性能运行关闭细粒度 profiler；诊断运行单独执行。
-- 同一组配对测试尽量在同一个 allocation 中顺序运行，交替 A/C 顺序，使用独立输出目录。
+- Fixed source, compiler, optimisation flags, MPI library, inputs, namelist
+  and native library hash.
+- Fixed rank-to-node placement, CPU affinity, and OpenMP and maths-library
+  thread counts.
+- The PBS requests are checked against the actual CPU binding, so a change of
+  layout is not mistaken for a code gain.
+- Paths, accounts and queues come from the site configuration; no new script
+  names a personal path or account.
+- Performance runs disable the fine-grained profiler; diagnostics run
+  separately.
+- A pair runs in one allocation where possible, A and C in alternating order,
+  each in its own output directory.
 
-计时使用相同的完整 coupling-loop 边界，包含 CAM、其他 components、coupler、正常通信及循环内输出。初始化、
-最终输出和清理另报生命周期时间。不能用 FreeCAM online 耗时与原始 Fortran 的单独 ATM timer 比较。
+Timing uses the same complete coupling-loop boundary for both: CAM, the other
+components, the coupler, normal communication and in-loop output.
+Initialization, final output and cleanup are reported as lifecycle time.
+freeCAM's online time is never compared with the original's ATM timer alone.
 
-### 找出足够的收益
+### Finding enough to recover
 
-先做 50-step 正确性运行和 300-step 性能诊断，覆盖：Python workflow、adapter、参数绑定和 trace；CAM
-physics、dynamics；online provider、coupler 和其他 components；MPI 状态通信及等待；原生
-allocation/deallocation、数组复制和临时数组；history/restart 和目录切换。同时记录平均 rank 与最慢 rank。
-优化优先级按完整推进时间中的可回收耗时排序，不能简单相加重叠 timer。
+A 50-step correctness run and a 300-step diagnostic first, covering the
+Python workflow, adapters, parameter bindings and trace; CAM physics and
+dynamics; the online provider, coupler and other components; MPI status
+communication and waiting; native allocation, array copies and temporaries;
+history, restart and directory switches. Mean-rank and slowest-rank times are
+both recorded. Optimisations are ranked by the time they can recover from the
+complete advance; overlapping timers are not simply added.
 
-以历史一年结果估算，从约 5510 秒降到原始约 5000 秒的 95%，需要节省约 760 秒。该数字仅用于说明工作量，
-正式预算以重新测得的 A/C 为准。
+From the historical year, going from about 5510 s to 95% of the original's
+about 5000 s means saving about 760 s. That figure only sizes the work; the
+budget proper comes from the re-measured A and C.
 
-## 3. 实现路线
+## 3. Implementation route
 
-### A. 缓存 workflow 和 ABI 调用准备
+### A. Cache the workflow and ABI call preparation
 
-增加内部执行缓存，保持公开 UI 不变。
+Internal execution caches, with the public UI unchanged.
 
-- workflow 变更时建立执行列表，提前分类 native、Python callback、边界、时钟和 I/O。
-- 将稳定 action 从通用 adapter.call() 改为预绑定调用，复用函数入口、指针表、shape、dtype 和错误缓冲。
-- StatePool、workflow、kernel registry 分别维护变更版本。
-- 数组数值的原地修改不触发重建；字段增删、地址变化、workflow 调整和 reload 使相关缓存失效。
-- 缓存保留数组所有者引用，动态移除字段时同步释放相关绑定。
-- 普通用户 callback 保留字段权限、返回值检查和事务性语义。
+- Build an execution list when the workflow changes, classifying native,
+  Python callback, boundary, clock and I/O actions in advance.
+- Turn stable actions from the generic `adapter.call()` into pre-bound calls
+  that reuse the entry, pointer table, shapes, dtypes and error buffer.
+- StatePool, workflow and kernel registry each keep a change version.
+- In-place changes to array values do not rebuild anything; adding or
+  removing fields, address changes, workflow edits and reload invalidate the
+  caches concerned.
+- Caches keep a reference to the array owner and release bindings when a
+  field is removed dynamically.
+- Ordinary user callbacks keep their field permissions, return-value checks
+  and transactional semantics.
 
-缓存只优化准备过程，不缓存随时间变化的计算结果，也不能跳过用户覆盖的 Python 方法。
+Caches optimise preparation only: never a time-dependent result, and never a
+skipped user override.
 
-### B. 完成原始过程与分段 runner
+### B. Finish the original process and the segment runner
 
-保留三种内部执行模式：无 replacement → native-whole；有 replacement → segmented；调试与对照 →
-legacy-python。完成 mmacro_pcond、micro_mg_tend、rad_rrtmg_sw、rad_rrtmg_lw 四个边界。
+Three internal modes: no replacement selects native-whole; a replacement
+selects segmented; debugging and comparison use legacy-python. Finish the four
+boundaries `mmacro_pcond`, `micro_mg_tend`, `rad_rrtmg_sw` and `rad_rrtmg_lw`.
 
-- 从固定原始 Fortran 调用点切分控制，复用已有句柄和参数描述。
-- 数值 kernel 保留原始实现；adapter 不复制数值算法。
-- runner 保存跨暂停点存活的变量、chunk、substep 和执行位置。
-- Python 使用 start/frame/resume 驱动；没有 Fortran→Python callback。
-- 只在被替换的 kernel 前暂停，其余原生操作连续执行。
-- 不同 rank 可以有不同的本地调用次数，因此不在每个暂停点增加 MPI collective。
-- replacement 出错后禁止继续推进；允许显式关闭并释放资源。
-- context 活跃时禁止更换绑定、checkpoint 或移动过程；完成后恢复正常操作。
+- Cut control at the pinned original Fortran call sites, reusing the existing
+  handles and argument descriptions.
+- Numerical kernels keep the original implementation; adapters copy no
+  arithmetic.
+- The runner saves the variables, chunk, substep and position that survive a
+  pause.
+- Python drives start/frame/resume; there is no Fortran-to-Python callback.
+- Pause only before a replaced kernel; the other native operations run
+  contiguously.
+- Ranks may differ in their local call counts, so no MPI collective is added
+  at a pause.
+- After a replacement fails, advancing is refused; explicit close and
+  release are allowed.
+- While a context is active, rebinding, checkpointing and moving processes
+  are refused; normal operation resumes afterwards.
 
-原始 kernel 通过 replacement 边界执行也必须 BFB，作为暂停/恢复正确性的独立证明。
+The original kernel executed through the replacement boundary must be
+bit-for-bit: that is the independent proof that pause and resume are right.
 
-### C. 合并相邻原生 action
+### C. Batch adjacent native actions
 
-在 stage 分段通过验证后，将相同原则应用于 workflow：
+Once the stage segmentation is verified, apply the same principle to the
+workflow:
 
-- Python 根据当前 workflow 建立连续 native action 列表。
-- native runner 按列表执行，并返回实际完成的 action、状态和必要计时。
-- Python callback、运行时 Python 条件、字段观察、时钟和不能合并的 I/O 边界结束当前批次。
-- 不重排 kernel，不跨越副作用或通信依赖。
-- 用户单独调用某个 process 时仍只执行该 process。
-- 修改 workflow 或 reload 后，下一 action 边界采用新计划。
-- 每步采样和暂停语义保持一致，不跨用户要求观察的 step 批量推进。
+- Python builds the list of contiguous native actions from the current
+  workflow.
+- The native runner executes the list and returns the actions completed,
+  their status, and any timing needed.
+- Python callbacks, runtime Python conditions, field observation, the clock
+  and I/O boundaries that cannot be merged end the current batch.
+- No kernel reordering, and no batching across side effects or communication
+  dependencies.
+- A process a user runs on its own still runs alone.
+- After a workflow edit or reload, the next action boundary takes the new
+  plan.
+- Per-step sampling and pause semantics are unchanged; no batch crosses a
+  step the user asked to observe.
 
-这一步执行的是 Python 已确定的调用列表，不是把 Python class 重新翻译成 Fortran。
+This executes a call list Python has already decided; it is not the Python
+class translated back into Fortran.
 
-### D. 优化 MPI 控制通信
+### D. MPI control communication
 
-- 正常路径用预分配整数 buffer 做 Allreduce 检查错误标志。
-- 只有发现错误时才收集字符串和 traceback。
-- 删除重复验证之前，先证明相关操作具有相同 communicator 和一致执行顺序。
-- 所有 rank 必须在进入下一项需要集体参与的计算前确认错误状态。
-- 不随意删除同步点，不改变数值 reduction 的顺序和算法。
-- 配置、payload hash 和 workflow 一致性检查移到安装或修改边界；每步只检查需要动态验证的状态。
+- The normal path checks the error flag with an `Allreduce` on a
+  preallocated integer buffer.
+- Strings and tracebacks are gathered only when an error is found.
+- Before a duplicated check is removed, show that the operations concerned
+  share a communicator and a consistent execution order.
+- Every rank confirms the error status before entering the next computation
+  that needs collective participation.
+- No synchronisation point is dropped casually, and no numerical reduction's
+  order or algorithm changes.
+- Configuration, payload-hash and workflow consistency checks move to the
+  install and edit boundaries; a step checks only what must be verified
+  dynamically.
 
-分别测量消息数量、序列化成本和同步等待，确认收益出现在完整 step，而不是把等待移到其他 timer。
+Message counts, serialisation cost and synchronisation waits are measured
+separately, to confirm the gain appears in the complete step rather than
+moving the wait to another timer.
 
-### E. 优化 Fortran 内部内存与重复工作
+### E. Fortran-internal memory and repeated work
 
-这是超越原始实现的重要阶段，首先处理源码中已经确认的候选：
+This is the phase that goes beyond the original; the candidates already seen
+in the source come first.
 
-**微物理 packed workspace。** micro_mg_cam 每次调用申请和释放大量 packed 数组。改为 model/rank 所有的
-可复用 workspace：首次申请，容量不足时扩展；每次调用仍恢复原始初始化值；保持实际 mgncol、shape、leading
-dimension 和有效列范围；不依赖上一次调用留下的值；model 关闭时统一释放。
+**Microphysics packed workspace.** `micro_mg_cam` allocates and frees many
+packed arrays on every call. Replace them with a model- or rank-owned reusable
+workspace: allocated once, grown when capacity is short; the original initial
+values restored on every call; the actual `mgncol`, shapes, leading dimensions
+and valid column ranges kept; nothing depending on what the previous call
+left behind; released together when the model closes.
 
-**物理状态与 tendency 临时存储。** 针对 physics_state_copy、physics_ptend_init 及对应释放路径：分离存储
-准备与数值初始化；复用分配好的存储，同时保留原始逐次初始化语义；审核 allocation 状态是否被其他逻辑读取，
-不能直接让本来应失效的对象继续表现为有效；只删除经过依赖分析证明多余的复制；对必须隔离更新的 state_loc
-保留私有存储。
+**Physics state and tendency temporaries.** For `physics_state_copy`,
+`physics_ptend_init` and their release paths: separate storage preparation
+from numerical initialization; reuse allocated storage while keeping the
+original per-call initialization semantics; audit whether allocation status
+is read elsewhere, so an object that should be invalid does not keep looking
+valid; remove only the copies dependency analysis proves redundant; keep
+private storage for a `state_loc` that must be updated in isolation.
 
-**数据搬运和静态查询。** 缓存生命周期内稳定的字段索引、metadata 和映射查询；保留 MCT component/coupler
-的布局差异，只有布局和所有权都已证明一致时才省略中转复制；无额外复制的 view 必须有明确寿命，不能让 Python
-callback 保留即将复用的 scratch；online provider 的目录切换按连续调用区域合并，并确保各 component 的 I/O
-仍写到正确目录。
+**Data movement and static lookups.** Cache field indices, metadata and
+mapping lookups that are stable over a lifetime; keep the MCT component and
+coupler layout differences and skip an intermediate copy only where layout
+and ownership are proven identical; a view without an extra copy has an
+explicit lifetime, and no Python callback may hold scratch about to be
+reused; the online provider's directory switches merge over contiguous call
+regions while every component's I/O still lands in the right directory.
 
-每项优化使用独立源码补丁，同时构建 A/B/C 对照。原始源码和 oracle 输出保持只读。
+Each optimisation is its own source patch, with A, B and C built alongside.
+The original source and the oracle output stay read-only.
 
-如果上述收益不足，按实测最慢路径继续处理 dynamics、radiation 或 coupler 中的分配、复制、索引和可证明不变
-的重复工作。浮点表达式、求和顺序及数学库调用保持不变；引入表达式调整的候选必须独立验证，失败即撤销。
+If these gains are not enough, continue with the measured slowest paths in
+the dynamics, radiation or coupler: allocation, copies, indexing and
+provably invariant repeated work. Floating-point expressions, summation order
+and maths-library calls do not change; a candidate that alters an expression
+is validated on its own and withdrawn on failure.
 
-### F. 压缩观测开销，保留结果
+### F. Observation overhead
 
-- trace 使用紧凑记录和批量转换，保留现有顺序、数量及保留范围。
-- 图表数据按照用户注册的变量、统计和 step 采样，展示时再创建 UI 对象。
-- 已要求的逐步采样、history 和 restart 不能省略。
-- 性能门槛采用原始相同输出配置；额外 Notebook 观测的成本单独量化。
+- The trace uses compact records and batch conversion, keeping the existing
+  order, count and retention.
+- Plot data follows the variables, statistics and step sampling the user
+  registered; UI objects are created at display time.
+- Requested per-step sampling, history and restart are never skipped.
+- The performance threshold uses the original's output configuration; the
+  cost of extra notebook observation is quantified separately.
 
-## 4. 验证与性能验收
+## 4. Verification and performance acceptance
 
-### 单元和接口测试
+### Unit and interface tests
 
-覆盖预绑定失效、数组生命周期、workflow 重排、enable/disable、动态字段增删、callback 安装与 reload、单独
-运行过程、逐步采样和分段异常清理。重点验证：修改后不会继续调用旧函数或旧数组地址；native 批次与逐 action
-路径的实际执行顺序一致；callback 的读写权限和回滚保持原语义；单 rank 出错不会使其他 rank 卡在后续
-collective；runner 成功、失败和关闭都能释放资源。
+Cover pre-binding invalidation, array lifetimes, workflow reordering,
+enable/disable, dynamic field addition and removal, callback installation and
+reload, running a process alone, per-step sampling, and cleanup after a
+segmented failure. In particular: an edit never leaves an old function or an
+old array address being called; the native batch and the per-action path
+execute in the same order; callback read/write permissions and rollback keep
+their semantics; a failure on one rank does not leave the others waiting in
+the next collective; the runner releases its resources on success, failure
+and close.
 
-### 数值 gates（按顺序）
+### Numerical gates, in order
 
-1. 真实 kernel 输入 capture/replay，逐数组字节比较。
-2. 覆盖 ncol < pcols、不同 chunk 数、变化的 mgncol、多 substep、workspace 扩展以及 restart。
-3. 每项会影响数值或调用顺序的修改执行 512-rank、50-step gate。
-4. 四个 replacement 边界分别及组合执行原始 kernel，证明实际经过暂停路径并保持 BFB。
-5. 一个月、再一年完整 online 验证。
-6. 对比 CAM 全部 history/restart，并核对其他活动 component 输出和 coupling 边界；比较所有有定义的
-   StatePool 数值，明确排除未初始化 padding。
+1. Capture and replay of real kernel inputs, compared array by array, byte
+   for byte.
+2. Coverage of `ncol < pcols`, different chunk counts, varying `mgncol`,
+   several substeps, workspace growth, and restart.
+3. A 512-rank 50-step gate for every change that can affect numbers or call
+   order.
+4. The original kernel executed through each of the four replacement
+   boundaries, alone and combined, proving the pause path is taken and stays
+   bit-for-bit.
+5. A complete online month, then a year.
+6. Every CAM history and restart file compared, the other active components'
+   output and the coupling boundary checked, and every defined StatePool
+   value compared with uninitialised padding explicitly excluded.
 
-每项记录实际执行次数、source/library hash、首个差异及覆盖范围。模型替换实验的科学结果单独评价，不用 AI
-近似结果替代 BFB gate。
+Each gate records the actual execution counts, the source and library hashes,
+the first difference and the coverage. Model-replacement experiments are
+evaluated separately; an AI approximation never stands in for a bit-for-bit
+gate.
 
-### 性能测试
+### Performance tests
 
-- 月度至少五组 A/C 配对；年度至少三组 A/C 配对。
-- B 组同步测量原生优化收益，并报告 C/B 框架开销。
-- 不挑选最快一次，报告每次结果、配对比值中位数及置信区间。
-- 月度、年度都要求中位比值 ≤0.95，且配对比值的 95% 置信区间上界 <1。
-- 如果波动导致结论不清楚，按预定规则增加两组配对，不因某次结果不好而任意剔除样本。
-- 只有调度故障、节点故障或输入配置不一致等可核查原因才能排除运行，并保留记录。
+- At least five A/C pairs for the month and three for the year.
+- Group B measured alongside for the native gain, with C/B reported as the
+  framework overhead.
+- No picking the fastest run: every result is reported, with the median of
+  the paired ratios and a confidence interval.
+- Month and year both need a median ratio of 0.95 or less and an upper 95%
+  confidence bound below 1.
+- If scatter leaves the conclusion unclear, two more pairs are added by the
+  predeclared rule; no sample is dropped because it came out badly.
+- Only a verifiable cause, such as a scheduler fault, a node fault or an
+  inconsistent input configuration, excludes a run, and the record is kept.
 
-最终性能 gate 使用原始 kernels、Python class 接口启用的默认科学路径。任意用户 Python/AI 模型的运行速度取决
-于其自身实现，不承诺所有 replacement 都快于原始 kernel。
+The final performance gate uses the original kernels on the default
+scientific path with the Python class interface enabled. The speed of a
+user's own Python or AI model is that model's own; no replacement is promised
+to be faster than the original kernel.
 
-内存同时验收：重复运行后 workspace 达到稳定容量，不随 step 持续增长；峰值不超过优化前对应 FreeCAM 配置
-的 105%。
+Memory is accepted at the same time: workspaces reach a stable size over
+repeated runs and do not grow with the step count, and the peak stays within
+105% of the corresponding freeCAM configuration before the optimisation.
 
-## 5. 执行顺序与交付
+## 5. Order of work and deliverables
 
-在当前 native-stage-batching 工作基础上推进，保留正在开发的 runner 和未提交 UI 内容。首先记录工作区与
-已有验证结果，再按下列阶段提交：
+Continue from the current `native-stage-batching` work, keeping the runner in
+development and the uncommitted UI content. Record the workspace and the
+existing validation results first, then deliver in phases:
 
-1. online 配对基准、计时边界和性能预算。
-2. workflow/ABI 缓存和 MPI 状态通信。
-3. 四个 kernel 分段边界及原始 kernel BFB。
-4. 相邻 native action 批量执行。
-5. packed workspace、state/tendency 存储复用和数据搬运优化。
-6. 完整月度、年度性能与 BFB 验收。
-7. 默认执行策略、文档和维护脚本更新。
+1. Online paired baselines, timing boundaries and the budget.
+2. Workflow and ABI caching, and MPI status communication.
+3. The four kernel boundaries and the original-kernel bit-for-bit proof.
+4. Batched adjacent native actions.
+5. Packed workspace, state and tendency storage reuse, and data movement.
+6. Complete month and year performance and bit-for-bit acceptance.
+7. Default execution policy, documentation and maintenance scripts.
 
-内部优化默认由框架选择，现有 Notebook 不需要新增性能参数。保留诊断路径以复现优化前行为。
+The framework chooses the internal optimisations by default; existing
+notebooks need no new performance parameter. The diagnostic paths that
+reproduce the pre-optimisation behaviour are kept.
 
-新增 `validation/pi_cam_faster_than_fortran.json`，保存基线、构建信息、每次 PBS 运行、A/B/C 时间、内存、
-BFB 和最终目标是否达成。更新 `validation/performance_overhead.md`，保留历史记录。
+`validation/pi_cam_faster_than_fortran.json` is added, holding the baselines,
+build information, every PBS run, the A/B/C times, memory, bit-for-bit
+verdicts and whether the goal was met. `validation/performance_overhead.md`
+is updated with its history kept.
 
-最终完成条件是月度和年度均达到至少 5% 的耗时下降，并通过科学和 UI 验证。如果尚未达到，继续依据剩余耗时
-推进可验证优化；如果可行候选耗尽，则交付准确的收益分解和限制，明确标记目标未达成，不降低验收线或把阶段
-结果当作完成。
+The task is complete when the month and the year both show at least a 5%
+reduction and pass the scientific and UI validation. If not, work continues
+on verifiable optimisations ordered by the remaining time; if the candidates
+run out, an accurate gain breakdown and its limits are delivered with the
+goal marked unmet, without lowering the acceptance line or presenting a
+phase result as completion.
 
-## 6. 结果与状态（2026-09-04）
+## 6. Outcome and status (2026-09-04)
 
-**目标未达成；已达到与原始 Fortran 持平，并按用户决定在此停止。**
+**The goal was not met. freeCAM runs level with the original Fortran, and
+the work stops there by the user's decision.**
 
-### 配对测量（月度，online 耦合，同一 allocation，512 ranks）
+### Paired measurements (month, online coupling, one allocation, 512 ranks)
 
-| 作业 | 代码 | 顺序 | A 原始 Fortran | C freeCAM | C/A | BFB |
+| Job | Code | Order | A, original Fortran | C, freeCAM | C/A | Bit-for-bit |
 | --- | --- | --- | ---: | ---: | ---: | --- |
-| 7322199 | 改动前 | AC | 457.59 s | 491.14 s | 1.0733 | 是 |
-| 7322349 | 改动前 | CA | 437.88 s | 476.80 s | 1.0889 | 是 |
-| 7322467 | 改动后 `ed685d5` | AC | 437.47 s | 440.07 s | **1.0060** | 是 |
-| 7322553 | 改动后 `f565b67` | CA | 438.30 s | 439.86 s | **1.0036** | 是 |
+| 7322199 | before | AC | 457.59 s | 491.14 s | 1.0733 | yes |
+| 7322349 | before | CA | 437.88 s | 476.80 s | 1.0889 | yes |
+| 7322467 | after, `ed685d5` | AC | 437.47 s | 440.07 s | **1.0060** | yes |
+| 7322553 | after, `f565b67` | CA | 438.30 s | 439.86 s | **1.0036** | yes |
 
-年度（17520 步，同一 allocation，A 先 C 后）：
+One year (17520 steps, one allocation, A then C):
 
-| 作业 | 代码 | 顺序 | A 原始 Fortran | C freeCAM | C/A | BFB |
+| Job | Code | Order | A, original Fortran | C, freeCAM | C/A | Bit-for-bit |
 | --- | --- | --- | ---: | ---: | ---: | --- |
-| 7322841 | 改动后 `958bd60` | AC | 5067.39 s | 5130.82 s | **1.0125** | 是（180 个文件） |
+| 7322841 | after, `958bd60` | AC | 5067.39 s | 5130.82 s | **1.0125** | yes (180 files) |
 
-记录在 `validation/pi_cam_faster_than_fortran.json`（每对含生命周期时间、内存、BFB、provider 的
-collective 次数与代码提交）。B 组未运行：没有进入 Fortran 侧的原生优化阶段。年度配对一对（用户决定持平即可之后补测）。
+The pairs are recorded in `validation/pi_cam_faster_than_fortran.json`, each
+with its lifecycle times, memory, bit-for-bit verdict, the provider's
+collective count and the code commit. Group B was not run: the native
+optimisation phase on the Fortran side was not entered. One year pair was
+run, after the decision to stop at parity.
 
-### 收益分解
+### Where the time went
 
-- **CAM 本身不慢。** 改动前 C 的 CAM action 平均 376 s，A 的 `CPL:ATM_RUN` 平均 382 s；Python 控制层
-  每步约 2.6 ms（≈1%，见 native-whole 月 7314664 的计时表）。第 3.A、3.F 条最多回收 1%，未做。
-- **差距全在边界路径。** 改动前 C 的 import 71 s、export 44 s（A 对应约 48 s 与 27 s）。原因：online
-  provider 在每个 coupler action 之后做一次 pickle allreduce（每步约 30 次）。原始驱动连续调用、各 rank
-  跳过不属于自己的组件，LND（rank 0–255）、ICE（256–383）、OCN（384–415）本是并行的，被逐动作同步串行化，
-  并叠加轮换 straggler 的等待。
-- **第 3.D 条已实施**（提交 `3384292`）：step-begin 组、ATM iteration（含完成投票）、closing 组各一次
-  2 整数 `Allreduce`；driver 的边界 collective 改为整数标志、仅出错时收集 traceback；import 与 schedule
-  合并。每步 5 次 reduction。协议状态错误由全 rank 一致报告；组内 rank 本地失败按 `shr_sys_abort` 语义
-  abort，不让其他 rank 卡在后续 collective。512 rank 在线 50 步 gate 7322441 BFB。
-- **效果**：边界路径 115 s → 61 s，C/A 中位数 1.081 → 1.005（改动后两对：1.0060、1.0036）。
+- **CAM itself was not slower.** Before the change, C's CAM actions averaged
+  376 s against A's `CPL:ATM_RUN` average of 382 s, and the Python control
+  layer cost about 2.6 ms a step (about 1%, from the timing table of the
+  native-whole month 7314664). Items 3.A and 3.F could recover 1% at most
+  and were not done.
+- **The whole deficit was in the boundary path.** Before the change, C spent
+  71 s in import and 44 s in export (A: about 48 s and 27 s). The online
+  provider ran one pickled allreduce after every coupler action, about 30 a
+  step. The original driver makes those calls back to back with each rank
+  skipping the components it is not part of, so land (ranks 0-255), ice
+  (256-383) and ocean (384-415) overlap; the per-action synchronisation
+  lined them up behind one another and added a wait for every rotating
+  straggler.
+- **Item 3.D was implemented** (commit `3384292`): the step-begin group, the
+  ATM iteration with its completion vote, and the closing group each make
+  one two-integer `Allreduce`; the driver's boundary collectives reduce an
+  integer flag and gather tracebacks only on error; the import carries its
+  schedule. Five reductions a step. A protocol status is reported by every
+  rank together; a rank-local failure inside a group aborts as
+  `shr_sys_abort` would, so no other rank waits in a later collective. The
+  512-rank online 50-step gate 7322441 is bit-for-bit.
+- **Effect**: the boundary path fell from 115 s to 61 s; the median C/A from
+  1.081 to 1.005 (the two pairs after the change: 1.0060 and 1.0036).
 
-### 剩余预算（步内 perf，作业 7322501，跳过初始化）
+### The remaining budget (in-step perf, job 7322501, initialization excluded)
 
-| 份额 | rank 100 | rank 400 |
+| Share | rank 100 | rank 400 |
 | --- | ---: | ---: |
-| CAM（`libfreecam_pi_cam.so`） | 67.7% | 66.3% |
-| MPI（libmpi + libfabric，含等待） | 9.4% | 12.3% |
-| Intel 数学库 | 7.4% | 7.8% |
-| libc（主要是 progress engine 的 `sched_yield`） | 6.8% | 8.1% |
+| CAM (`libfreecam_pi_cam.so`) | 67.7% | 66.3% |
+| MPI (libmpi + libfabric, including waits) | 9.4% | 12.3% |
+| Intel maths library | 7.4% | 7.8% |
+| libc (mostly the progress engine's `sched_yield`) | 6.8% | 8.1% |
 | Python | 4.2% | 4.1% |
-| CAM 内 `memcpy` / `memset` | 4.2% / 3.7% | 4.1% / 3.2% |
+| `memcpy` / `memset` inside CAM | 4.2% / 3.7% | 4.1% / 3.2% |
 
-页错误中位数每 rank 每步约 52 次，`malloc`/`free` 不在前列：分配本身不是成本，第 3.E 条的可回收部分只有
-复制与置零（约 7%）以及边界路径剩余的约 16 s/月（3.5%）。dwarf 调用链无法穿过固定地址镜像展开，复制的
-调用者未能定位。要再快 5.5% 需要同时拿到这两部分的大半，在用户决定持平即可之后未再推进。
+Page faults run at a median of about 52 per rank and step, and `malloc` and
+`free` do not appear in the listing: allocation itself is not a cost, so what
+item 3.E could recover is the copies and zero-fills (about 7%) plus the
+boundary path's remaining 16 s a month (3.5%). DWARF call chains do not
+unwind through the fixed-address image, so the callers of the copies were not
+located. Another 5.5% would need most of both, and the work was not taken
+further after the decision to stop at parity.
 
-### 交付物
+### Deliverables
 
-- 分段 runner 的原始 kernel BFB gate（7322256）、grouped collectives gate（7322441）、配对记录、perf 记录。
-- segmented 路径的实测成本：原始 kernel 经 Python 回答时 stage 65 ms/step/rank（gate 7322256），native-whole 39 ms，legacy-python walk 92 ms。真模型（`mmacro_pcond_soft_gated.pt`）经 runner 运行时
-  与 legacy walk 一样在首次写 history 时被 PIO 拒绝（作业 7324422，约 100 步，285 GB），模型本身不成立。
-- 诊断工具：`validation/jobs/pi_cam_perf_online_50step.pbs`、`tools/perf_rank_wrapper.sh`、
-  `tools/report_pi_cam_perf.py`；配对作业支持 `PYCAM_PAIR_DURATION=1year`。
+- The original-kernel bit-for-bit gate of the segment runner (7322256), the
+  grouped-collectives gate (7322441), the pair records and the perf record.
+- The measured cost of the segmented path: the stage at 65 ms a step and rank
+  with the original kernel answered through Python (gate 7322256), against
+  39 ms native-whole and 92 ms for the legacy-python walk. The real network
+  (`mmacro_pcond_soft_gated.pt`) run through the runner failed the way it did
+  through the legacy walk: PIO refused a value at the first history write
+  (job 7324422, about 100 steps, 285 GB); the network itself does not stand.
+- Diagnostics: `validation/jobs/pi_cam_perf_online_50step.pbs`,
+  `tools/perf_rank_wrapper.sh`, `tools/report_pi_cam_perf.py`; the paired job
+  accepts `PYCAM_PAIR_DURATION=1year`.
