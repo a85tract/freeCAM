@@ -1115,13 +1115,14 @@ class NativeStage:
             raise PhysicsError(f"{type(self).__name__} has no direct kernel {name!r}") from error
         runtime = self.runtime(native)
         pcols = int(runtime.pcols)
-        prefix = f"{self.PREFIX}."
 
         def run(batch: Mapping[str, Any]) -> dict[str, np.ndarray]:
             arrays: dict[str, np.ndarray] = {}
             written: list[tuple[str, np.ndarray]] = []
             for argument in kernel.arguments:
-                local = argument.field.removeprefix(prefix)
+                # the frame names an argument by what follows the descriptor's
+                # prefix -- which is the sub-walk's, not necessarily this stage's
+                local = argument.field.split(".", 1)[1]
                 value = np.asarray(batch[local]) if local in batch else None
                 if argument.rank <= 1 and (value is None or value.ndim == 0):
                     array = np.zeros((1,), dtype=argument.dtype, order="F")

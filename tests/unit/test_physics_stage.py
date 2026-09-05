@@ -965,3 +965,31 @@ def test_an_original_kernel_marker_runs_the_direct_kernel_on_the_frame_s_lanes(w
     assert list(answer) == ["y"] and answer["y"].shape == (6, 2) and np.all(answer["y"] == 7.0)
     assert ran[0]["widget.x"].shape == (PCOLS, PVER, 1) and np.all(ran[0]["widget.x"][:6, :, 0] == 3.0)
     assert np.all(ran[0]["widget.x"][6:] == 0.0) and int(ran[0]["widget.ncol"][0]) == 6
+
+
+def test_the_original_kernel_answers_in_the_frame_s_names_whatever_the_descriptor_s_prefix(widget, tmp_path) -> None:
+    """A composed stage's kernels carry a sub-walk's prefix; the frame strips that one."""
+
+    from freecam.physics.segments import OriginalKernel
+
+    other = tmp_path / "other.yaml"
+    other.write_text(DESCRIPTORS.replace("widget.", "other."))
+    ran: list[dict] = []
+
+    class Other(WholeWidget):
+        DESCRIPTORS = other
+        SWAPPABLE = ("widget_step",)
+
+    native = _Native(widget.library, other)
+
+    def run_kernel(name, arrays):
+        ran.append(dict(arrays))
+        arrays["other.y"][..., 0] = 9.0
+
+    native.run_kernel = run_kernel
+    stage = Other()
+    stage.kernels["widget_step"] = OriginalKernel()
+    original = stage._original_through_python(native, "widget_step")
+    answer = original({"ncol": np.int32(5), "x": np.full((5, PVER), 4.0)})
+    assert list(answer) == ["y"] and np.all(answer["y"] == 9.0) and answer["y"].shape == (5, 2)
+    assert np.all(ran[0]["other.x"][:5, :, 0] == 4.0)             # the input was found under its frame name
