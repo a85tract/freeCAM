@@ -202,3 +202,53 @@ BFB 和最终目标是否达成。更新 `validation/performance_overhead.md`，
 最终完成条件是月度和年度均达到至少 5% 的耗时下降，并通过科学和 UI 验证。如果尚未达到，继续依据剩余耗时
 推进可验证优化；如果可行候选耗尽，则交付准确的收益分解和限制，明确标记目标未达成，不降低验收线或把阶段
 结果当作完成。
+
+## 6. 结果与状态（2026-09-04）
+
+**目标未达成；已达到与原始 Fortran 持平，并按用户决定在此停止。**
+
+### 配对测量（月度，online 耦合，同一 allocation，512 ranks）
+
+| 作业 | 代码 | 顺序 | A 原始 Fortran | C freeCAM | C/A | BFB |
+| --- | --- | --- | ---: | ---: | ---: | --- |
+| 7322199 | 改动前 | AC | 457.59 s | 491.14 s | 1.0733 | 是 |
+| 7322349 | 改动前 | CA | 437.88 s | 476.80 s | 1.0889 | 是 |
+| 7322467 | 改动后 `ed685d5` | AC | 437.47 s | 440.07 s | **1.0060** | 是 |
+
+记录在 `validation/pi_cam_faster_than_fortran.json`（每对含生命周期时间、内存、BFB、provider 的
+collective 次数与代码提交）。B 组未运行：没有进入 Fortran 侧的原生优化阶段。年度配对未运行。
+
+### 收益分解
+
+- **CAM 本身不慢。** 改动前 C 的 CAM action 平均 376 s，A 的 `CPL:ATM_RUN` 平均 382 s；Python 控制层
+  每步约 2.6 ms（≈1%，见 native-whole 月 7314664 的计时表）。第 3.A、3.F 条最多回收 1%，未做。
+- **差距全在边界路径。** 改动前 C 的 import 71 s、export 44 s（A 对应约 48 s 与 27 s）。原因：online
+  provider 在每个 coupler action 之后做一次 pickle allreduce（每步约 30 次）。原始驱动连续调用、各 rank
+  跳过不属于自己的组件，LND（rank 0–255）、ICE（256–383）、OCN（384–415）本是并行的，被逐动作同步串行化，
+  并叠加轮换 straggler 的等待。
+- **第 3.D 条已实施**（提交 `3384292`）：step-begin 组、ATM iteration（含完成投票）、closing 组各一次
+  2 整数 `Allreduce`；driver 的边界 collective 改为整数标志、仅出错时收集 traceback；import 与 schedule
+  合并。每步 5 次 reduction。协议状态错误由全 rank 一致报告；组内 rank 本地失败按 `shr_sys_abort` 语义
+  abort，不让其他 rank 卡在后续 collective。512 rank 在线 50 步 gate 7322441 BFB。
+- **效果**：边界路径 115 s → 61 s，C/A 1.081 → 1.006。
+
+### 剩余预算（步内 perf，作业 7322501，跳过初始化）
+
+| 份额 | rank 100 | rank 400 |
+| --- | ---: | ---: |
+| CAM（`libfreecam_pi_cam.so`） | 67.7% | 66.3% |
+| MPI（libmpi + libfabric，含等待） | 9.4% | 12.3% |
+| Intel 数学库 | 7.4% | 7.8% |
+| libc（主要是 progress engine 的 `sched_yield`） | 6.8% | 8.1% |
+| Python | 4.2% | 4.1% |
+| CAM 内 `memcpy` / `memset` | 4.2% / 3.7% | 4.1% / 3.2% |
+
+页错误中位数每 rank 每步约 52 次，`malloc`/`free` 不在前列：分配本身不是成本，第 3.E 条的可回收部分只有
+复制与置零（约 7%）以及边界路径剩余的约 16 s/月（3.5%）。dwarf 调用链无法穿过固定地址镜像展开，复制的
+调用者未能定位。要再快 5.5% 需要同时拿到这两部分的大半，在用户决定持平即可之后未再推进。
+
+### 交付物
+
+- 分段 runner 的原始 kernel BFB gate（7322256）、grouped collectives gate（7322441）、配对记录、perf 记录。
+- 诊断工具：`validation/jobs/pi_cam_perf_online_50step.pbs`、`tools/perf_rank_wrapper.sh`、
+  `tools/report_pi_cam_perf.py`；配对作业支持 `PYCAM_PAIR_DURATION=1year`。

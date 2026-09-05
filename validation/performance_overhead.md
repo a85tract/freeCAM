@@ -35,6 +35,12 @@ still bit-for-bit; see [the section below](#what-the-python-cloud-macromicrophys
 Overhead **does not grow with integration length** — it decreases slightly,
 because the fixed Python startup cost is amortised over more steps.
 
+Measured against the original Fortran model *in the same allocation* — the
+paired online months [below](#paired-online-months) — freeCAM with the Python
+stage class installed now runs **level with the original** (C/A 1.006) after
+the coupler sequence was made to synchronise once per group instead of after
+every action; it was 7–9% behind before.
+
 ---
 
 ## What the Python cloud macro/microphysics stage costs
@@ -258,6 +264,31 @@ the year: the overhead does not grow with run length.
 
 Per step this is ≈ 25 ms of Python control on a ≈ 292 ms Fortran step.
 
+### Paired online months
+
+The year and month figures above compare runs made on different days.  The
+pairs here put the original Fortran executable (**A**, timed by its GPTL
+`CPL:RUN_LOOP`) and freeCAM in the exact-online configuration with the Python
+stage class installed and nothing replaced (**C**, timed by its advance over
+the same coupling loop) back to back on the same four nodes, in alternating
+order, for the PI-atm month.  Every C is bit-for-bit with the oracle month.
+
+| Job | Code | Order | A | C | C/A |
+| --- | --- | --- | ---: | ---: | ---: |
+| `7322199` | before `3384292` | AC | 457.59 s | 491.14 s | 1.0733 |
+| `7322349` | before `3384292` | CA | 437.88 s | 476.80 s | 1.0889 |
+| `7322467` | `ed685d5` | AC | 437.47 s | 440.07 s | **1.0060** |
+
+The deficit before was entirely in the boundary path: the online provider
+checked for errors with a pickled allreduce after every coupler action,
+about thirty a step, which lined the land, ice and ocean components up
+behind one another where the original overlaps them on disjoint ranks.  One
+reduction per group of actions (five a step) took the boundary path from
+115 s to 61 s a month; CAM's own actions were never slower than the
+original's.  Records: [`pi_cam_faster_than_fortran.json`](pi_cam_faster_than_fortran.json);
+the step-only profile that sized what remains is
+[`pi_cam_perf_online_50step.json`](pi_cam_perf_online_50step.json).
+
 ### Throughput
 
 | Run | Fortran | freeCAM | Loss |
@@ -390,6 +421,9 @@ instant of the write and are expected to differ.
 | `7126501` | `freecam-online-5y` | freeCAM **before** memory fix | 438.48 GB | 9.40 h | 2026-08-17 |
 | `7256750` | `fortran-1month` | Fortran baseline, replay month | 182.85 GB | 0.14 h | 2026-08-27 |
 | `7256751` | `freecam-stage-1month` | freeCAM, stage 7 in Fortran | 215.46 GB | 0.12 h | 2026-08-27 |
+| `7322199` | `freecam-pair-1month` | A then C, code before `3384292` | 206.08 GB | 0.28 h | 2026-09-04 |
+| `7322349` | `freecam-pair-1month` | C then A, code before `3384292` | 203.41 GB | 0.27 h | 2026-09-04 |
+| `7322467` | `freecam-pair-1month` | A then C, `ed685d5` | 206.78 GB | 0.28 h | 2026-09-04 |
 | `7256752` | `freecam-stage-1month` | freeCAM, stage 7 in Python | 224.95 GB | 0.18 h | 2026-08-27 |
 
 The memory and elapsed columns are PBS accounting values. `qhist` searches
