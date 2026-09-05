@@ -57,8 +57,10 @@ def test_every_kernel_row_is_a_kernel_a_stage_class_describes_and_only_mmacro_pc
     assert pcond["in_model_gates"][0]["bfb"] is True and pcond["in_model_gates"][0]["path"] == "segmented"
     micro = rows["micro_mg_tend"]
     assert micro["status"] == "open" and micro["contract"] == "reviewed" and micro["bindable"]
+    assert micro["validated_through_runner"]                    # gate 7331040
     assert "segment_runner" not in micro["missing"] and "in_model_replacement_bfb" not in micro["missing"]
-    assert "capture" in micro["missing"]                        # the runner pause itself is not gated yet
+    assert "capture" in micro["missing"]                        # no captured calls replayed through its image yet
+    assert record["summary"]["kernels_validated_through_runner"] == 2
     assert micro["in_model_gates"][0]["bfb"] is True          # the walk with the core through its image
     for name in ("rad_rrtmg_sw", "rad_rrtmg_lw"):
         assert rows[name]["contract"] == "draft" and "reviewed_contract" in rows[name]["missing"]

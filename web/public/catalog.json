@@ -4,7 +4,9 @@
    "bindable": true,
    "evidence": [
     "validation/pi_cam_stage7_segmented_original_50step.json",
-    "validation/pi_cam_stage7_segmented_original_vs_oracle_50step_bfb.json"
+    "validation/pi_cam_stage7_segmented_original_vs_oracle_50step_bfb.json",
+    "validation/pi_cam_stage7_segmented_both_50step.json",
+    "validation/pi_cam_stage7_segmented_both_vs_oracle_50step_bfb.json"
    ],
    "kernel": "mmacro_pcond",
    "owner_class": "freecam.physics.macrophysics.Macrophysics",
@@ -15,13 +17,18 @@
   },
   {
    "bindable": true,
-   "evidence": [],
+   "evidence": [
+    "validation/pi_cam_stage7_segmented_micro_50step.json",
+    "validation/pi_cam_stage7_segmented_micro_vs_oracle_50step_bfb.json",
+    "validation/pi_cam_stage7_segmented_both_50step.json",
+    "validation/pi_cam_stage7_segmented_both_vs_oracle_50step_bfb.json"
+   ],
    "kernel": "micro_mg_tend",
    "owner_class": "freecam.physics.microphysics.Microphysics",
-   "reason": "bindable, but the pause path has not passed a bit-for-bit gate",
+   "reason": null,
    "stage_action": "cam_run1.cloud_macro_microphysics",
    "stage_class": "freecam.physics.cloud_macro_microphysics.CloudMacroMicrophysics",
-   "validated": false
+   "validated": true
   },
   {
    "bindable": false,
@@ -50,11 +57,11 @@
   "PI-atm-online": "configs/pi_cam_icesm131_online.yaml",
   "PI-atm-replay": "configs/pi_cam_icesm131_replay.yaml"
  },
- "catalog_hash": "fe75af1c2a1413bb2e46ea0ead7354aee2fc638a756e3a3815885cd1455c6b2f",
- "commit": "fcce11ded0121088ed8e0947b6c3c70c8ed66e65",
+ "catalog_hash": "6a0806d56e2471509a6782411cf917b64f0a4ff18847ccab60aec043de05f00c",
+ "commit": "b144852b32647c931afb7762efc37504b7c60fe7",
  "default_document": {
   "case": "PI-atm",
-  "catalog_version": "fe75af1c2a1413bb2e46ea0ead7354aee2fc638a756e3a3815885cd1455c6b2f",
+  "catalog_version": "6a0806d56e2471509a6782411cf917b64f0a4ff18847ccab60aec043de05f00c",
   "experimental": false,
   "namelist": {},
   "nodes": [
@@ -1463,7 +1470,9 @@
        "bindable": true,
        "evidence": [
         "validation/pi_cam_stage7_segmented_original_50step.json",
-        "validation/pi_cam_stage7_segmented_original_vs_oracle_50step_bfb.json"
+        "validation/pi_cam_stage7_segmented_original_vs_oracle_50step_bfb.json",
+        "validation/pi_cam_stage7_segmented_both_50step.json",
+        "validation/pi_cam_stage7_segmented_both_vs_oracle_50step_bfb.json"
        ],
        "kernel": "mmacro_pcond",
        "owner_class": "freecam.physics.macrophysics.Macrophysics",
@@ -1474,13 +1483,18 @@
       },
       {
        "bindable": true,
-       "evidence": [],
+       "evidence": [
+        "validation/pi_cam_stage7_segmented_micro_50step.json",
+        "validation/pi_cam_stage7_segmented_micro_vs_oracle_50step_bfb.json",
+        "validation/pi_cam_stage7_segmented_both_50step.json",
+        "validation/pi_cam_stage7_segmented_both_vs_oracle_50step_bfb.json"
+       ],
        "kernel": "micro_mg_tend",
        "owner_class": "freecam.physics.microphysics.Microphysics",
-       "reason": "bindable, but the pause path has not passed a bit-for-bit gate",
+       "reason": null,
        "stage_action": "cam_run1.cloud_macro_microphysics",
        "stage_class": "freecam.physics.cloud_macro_microphysics.CloudMacroMicrophysics",
-       "validated": false
+       "validated": true
       }
      ],
      "parameters": [
@@ -3580,7 +3594,9 @@
       "bindable": true,
       "evidence": [
        "validation/pi_cam_stage7_segmented_original_50step.json",
-       "validation/pi_cam_stage7_segmented_original_vs_oracle_50step_bfb.json"
+       "validation/pi_cam_stage7_segmented_original_vs_oracle_50step_bfb.json",
+       "validation/pi_cam_stage7_segmented_both_50step.json",
+       "validation/pi_cam_stage7_segmented_both_vs_oracle_50step_bfb.json"
       ],
       "kernel": "mmacro_pcond",
       "owner_class": "freecam.physics.macrophysics.Macrophysics",
@@ -3591,13 +3607,18 @@
      },
      {
       "bindable": true,
-      "evidence": [],
+      "evidence": [
+       "validation/pi_cam_stage7_segmented_micro_50step.json",
+       "validation/pi_cam_stage7_segmented_micro_vs_oracle_50step_bfb.json",
+       "validation/pi_cam_stage7_segmented_both_50step.json",
+       "validation/pi_cam_stage7_segmented_both_vs_oracle_50step_bfb.json"
+      ],
       "kernel": "micro_mg_tend",
       "owner_class": "freecam.physics.microphysics.Microphysics",
-      "reason": "bindable, but the pause path has not passed a bit-for-bit gate",
+      "reason": null,
       "stage_action": "cam_run1.cloud_macro_microphysics",
       "stage_class": "freecam.physics.cloud_macro_microphysics.CloudMacroMicrophysics",
-      "validated": false
+      "validated": true
      }
     ],
     "parameters": [
@@ -5929,7 +5950,9 @@
       "bindable": true,
       "evidence": [
        "validation/pi_cam_stage7_segmented_original_50step.json",
-       "validation/pi_cam_stage7_segmented_original_vs_oracle_50step_bfb.json"
+       "validation/pi_cam_stage7_segmented_original_vs_oracle_50step_bfb.json",
+       "validation/pi_cam_stage7_segmented_both_50step.json",
+       "validation/pi_cam_stage7_segmented_both_vs_oracle_50step_bfb.json"
       ],
       "kernel": "mmacro_pcond",
       "owner_class": "freecam.physics.macrophysics.Macrophysics",
@@ -5940,13 +5963,18 @@
      },
      {
       "bindable": true,
-      "evidence": [],
+      "evidence": [
+       "validation/pi_cam_stage7_segmented_micro_50step.json",
+       "validation/pi_cam_stage7_segmented_micro_vs_oracle_50step_bfb.json",
+       "validation/pi_cam_stage7_segmented_both_50step.json",
+       "validation/pi_cam_stage7_segmented_both_vs_oracle_50step_bfb.json"
+      ],
       "kernel": "micro_mg_tend",
       "owner_class": "freecam.physics.microphysics.Microphysics",
-      "reason": "bindable, but the pause path has not passed a bit-for-bit gate",
+      "reason": null,
       "stage_action": "cam_run1.cloud_macro_microphysics",
       "stage_class": "freecam.physics.cloud_macro_microphysics.CloudMacroMicrophysics",
-      "validated": false
+      "validated": true
      }
     ],
     "parameters": [
@@ -18378,7 +18406,7 @@
    "writes": []
   }
  ],
- "generated_at": "2026-09-05T20:24:53+00:00",
+ "generated_at": "2026-09-05T20:56:07+00:00",
  "parameters": {
   "cam_run1.cloud_macro_microphysics": [
    {

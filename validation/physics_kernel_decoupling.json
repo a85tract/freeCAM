@@ -47,7 +47,7 @@
       "open": 3
     },
     "kernels_bindable": 2,
-    "kernels_validated_through_runner": 1,
+    "kernels_validated_through_runner": 2,
     "catalog_procedures": 371
   },
   "closure": {
@@ -4774,7 +4774,7 @@
       "contract": "reviewed",
       "contract_path": "native/pi_cam/functions/micro_mg_tend.yaml",
       "bindable": true,
-      "validated_through_runner": false,
+      "validated_through_runner": true,
       "evidence": {
         "capture": [],
         "standalone_build": [
@@ -5016,5 +5016,5 @@
       "why": "the physics catalog lists no procedure under this action; its active call graph must be extended before this action's kernels can be chosen"
     }
   ],
-  "coverage_hash": "364aace69bf718cccd065c0627b076cbd8943a28e7638ed69afb5d95ed3970e7"
+  "coverage_hash": "b7ca9fe949fadbd39512d1f3747ccc12852d3eb637072a1496bdf02f46bd287d"
 }

@@ -88,12 +88,12 @@ def test_a_kernel_binding_is_offered_only_where_the_runner_covers_it(session, ca
     report = _check(session, catalog)
     assert "kernel-not-bindable" in _codes(report) and report.status == "error"
     session.apply({"operation": "configure", "node_id": "cam_run1.radiation", "configuration": {"kernels": {}}})
-    # the runner pauses at micro_mg_tend but that pause has passed no gate yet: a warning
+    # the runner pauses at micro_mg_tend and that pause has passed its gate: no finding beyond the binding itself
     session.apply({"operation": "configure", "node_id": "cam_run1.cloud_macro_microphysics",
                    "configuration": {"kernels": {"micro_mg_tend": {"kind": "surrogate", "path": "m.pt"}}}})
     report = _check(session, catalog)
-    assert "kernel-not-validated" in _codes(report) and "kernel-not-bindable" not in _codes(report)
-    assert report.status == "warning"
+    assert "kernel-not-validated" not in _codes(report) and "kernel-not-bindable" not in _codes(report)
+    assert report.status == "valid"
     session.apply({"operation": "configure", "node_id": "cam_run1.cloud_macro_microphysics",
                    "configuration": {"kernels": {"mmacro_pcond": {"kind": "surrogate", "path": "m.pt"}}}})
     browser = _check(session, catalog)

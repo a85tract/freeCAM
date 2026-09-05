@@ -105,13 +105,16 @@ committed file equals a fresh build or the test fails.
 
 | Kernel | Owner | Contract | Runner pause | In-model gate | Loop |
 | --- | --- | --- | --- | --- | --- |
-| `mmacro_pcond` | Macrophysics (in the cloud stage) | reviewed | yes, validated | segmented, bit-for-bit | complete |
-| `micro_mg_tend` | Microphysics (in the cloud stage) | reviewed | no | walk with the core through its image, bit-for-bit | open |
+| `mmacro_pcond` | Macrophysics (in the cloud stage) | reviewed | yes, validated | segmented, bit-for-bit; alone and together with `micro_mg_tend` | complete |
+| `micro_mg_tend` | Microphysics (in the cloud stage) | reviewed | yes, validated | segmented, bit-for-bit (100 pauses in 50 steps); alone and together with `mmacro_pcond` (200 pauses) | open: no captured calls replayed through its standalone image yet |
 | `rad_rrtmg_sw` | Radiation | draft | no | walk with the original kernel, bit-for-bit | open |
 | `rad_rrtmg_lw` | Radiation | draft | no | walk with the original kernel, bit-for-bit | open |
 
 Twelve enabled scheme actions do numerical work in this configuration. Two
-have a Python class today, both partial by the loop above. The other ten are
+have a Python class today, both partial by the loop above: the cloud stage's
+two kernels both pause in the runner and both pauses have passed the gate
+with the original kernel answering; what the microphysics core still lacks
+is the capture-and-replay step of its own standalone image. The other ten are
 gaps with their candidate procedures listed from the catalog: vertical
 diffusion, gravity-wave drag, the energy fixer, dry adjustment, deep and
 shallow convection, and the wet deposition, dry deposition, convective

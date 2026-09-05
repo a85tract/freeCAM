@@ -131,10 +131,10 @@ describe("browser check", () => {
   it("offers a binding only where the runner covers the kernel", () => {
     const bad = configure(snapshot.default_document, "cam_run1.radiation", { kernels: { rad_rrtmg_sw: { kind: "surrogate", path: "m.pt" } } });
     expect(validateDocument(bad, snapshot.default_document, catalog, snapshot.capabilities).issues.map((i) => i.code)).toContain("kernel-not-bindable");
-    // the runner pauses at micro_mg_tend, but that pause has passed no gate: bindable, not validated
-    const unproven = configure(snapshot.default_document, "cam_run1.cloud_macro_microphysics", { kernels: { micro_mg_tend: { kind: "surrogate", path: "m.pt" } } });
-    const codes = validateDocument(unproven, snapshot.default_document, catalog, snapshot.capabilities).issues.map((i) => i.code);
-    expect(codes).toContain("kernel-not-validated");
+    // the runner pauses at micro_mg_tend and that pause has passed its gate: a binding there is only informational
+    const proven = configure(snapshot.default_document, "cam_run1.cloud_macro_microphysics", { kernels: { micro_mg_tend: { kind: "surrogate", path: "m.pt" } } });
+    const codes = validateDocument(proven, snapshot.default_document, catalog, snapshot.capabilities).issues.map((i) => i.code);
+    expect(codes).not.toContain("kernel-not-validated");
     expect(codes).not.toContain("kernel-not-bindable");
     const good = configure(snapshot.default_document, "cam_run1.cloud_macro_microphysics", { kernels: { mmacro_pcond: { kind: "surrogate", path: "m.pt" } } });
     const report = validateDocument(good, snapshot.default_document, catalog, snapshot.capabilities);

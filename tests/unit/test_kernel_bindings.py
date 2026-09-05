@@ -38,8 +38,8 @@ def test_the_manifest_declares_the_stage_7_runner_and_the_module_exports_its_ent
     exported = set(re.findall(r"bind\(C,\s*name='([^']+)'\)", module))
     assert set(spec.entries) <= exported, sorted(set(spec.entries) - exported)
     assert (REPO / spec.generator).is_file() and (REPO / spec.descriptors).is_file()
-    assert spec.kernel("mmacro_pcond").validated          # both gate records are in the checkout
-    assert not spec.kernel("micro_mg_tend").validated     # bindable, not yet gated
+    assert spec.kernel("mmacro_pcond").validated          # every gate record named is in the checkout
+    assert spec.kernel("micro_mg_tend").validated         # gate 7331040: the pause, bit-for-bit
     assert spec.kernel("micro_mg_tend").contract == "native/pi_cam/functions/micro_mg_tend.yaml"
     assert runners.runner_kernels() == {"cam_run1.cloud_macro_microphysics": ("mmacro_pcond", "micro_mg_tend")}
     assert runners.bindable_kernels() == ("mmacro_pcond", "micro_mg_tend")
@@ -195,14 +195,14 @@ def test_describe_kernels_reports_contract_coverage_binding_and_calls() -> None:
     pcond = rows["mmacro_pcond"]
     assert pcond["owner_class"].endswith("macrophysics.Macrophysics")
     assert pcond["stage_action"] == "cam_run1.cloud_macro_microphysics"
-    assert pcond["bindable"] and pcond["validated"] and len(pcond["validated_by"]) == 2
+    assert pcond["bindable"] and pcond["validated"] and len(pcond["validated_by"]) == 4
     assert pcond["contract"]["path"] == "native/pi_cam/functions/mmacro_pcond.yaml"
     assert "cld" in pcond["contract"]["outputs"] and "t0" in pcond["contract"]["in_place"]
     assert pcond["contract"]["module_state_inputs"]["parameter"] >= 1
     assert pcond["binding"] == "original" and not pcond["replaced"] and pcond["model_calls"] == 0
     micro = rows["micro_mg_tend"]
     assert micro["owner_class"].endswith("microphysics.Microphysics")
-    assert micro["bindable"] and not micro["validated"]            # the runner pauses at it; no gate yet
+    assert micro["bindable"] and micro["validated"] and len(micro["validated_by"]) == 4
     assert micro["contract"]["path"] == "native/pi_cam/functions/micro_mg_tend.yaml"
     stage.kernels["mmacro_pcond"] = _answer
     stage.execution.count_model_call("mmacro_pcond")
@@ -214,11 +214,11 @@ def test_describe_kernels_reports_contract_coverage_binding_and_calls() -> None:
 def test_the_builder_s_capabilities_come_from_the_manifest() -> None:
     from freecam.pi_cam.workflow_builder.capabilities import kernel_capabilities, validated_through_runner
 
-    assert set(validated_through_runner()) == {"mmacro_pcond"}
+    assert set(validated_through_runner()) == {"mmacro_pcond", "micro_mg_tend"}
     by_name = {c.kernel: c for c in kernel_capabilities()}
     assert by_name["mmacro_pcond"].bindable and by_name["mmacro_pcond"].validated
     assert by_name["mmacro_pcond"].evidence == runners.runner_spec("cam_run1.cloud_macro_microphysics").kernel("mmacro_pcond").validated_by
-    assert by_name["micro_mg_tend"].bindable and not by_name["micro_mg_tend"].validated
+    assert by_name["micro_mg_tend"].bindable and by_name["micro_mg_tend"].validated
     assert not by_name["rad_rrtmg_sw"].bindable
 
 

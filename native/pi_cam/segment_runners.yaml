@@ -23,10 +23,16 @@ runners:
     validated_by:
     - validation/pi_cam_stage7_segmented_original_50step.json
     - validation/pi_cam_stage7_segmented_original_vs_oracle_50step_bfb.json
+    - validation/pi_cam_stage7_segmented_both_50step.json
+    - validation/pi_cam_stage7_segmented_both_vs_oracle_50step_bfb.json
   # the microphysics core, paused inside micro_mg_cam_tend's substep loop; its
   # frame is the routine's own argument list (the reviewed contract), without
   # the character argument the driver checks after the call
   - name: micro_mg_tend
     owner: freecam.physics.microphysics.Microphysics
     contract: native/pi_cam/functions/micro_mg_tend.yaml
-    validated_by: []
+    validated_by:
+    - validation/pi_cam_stage7_segmented_micro_50step.json
+    - validation/pi_cam_stage7_segmented_micro_vs_oracle_50step_bfb.json
+    - validation/pi_cam_stage7_segmented_both_50step.json
+    - validation/pi_cam_stage7_segmented_both_vs_oracle_50step_bfb.json
