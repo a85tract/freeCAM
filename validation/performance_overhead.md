@@ -195,6 +195,23 @@ the compute nodes costs more than the Fortran core it replaces, as the
 fifty-step runs had suggested.  PBS high-water memory 296 GB, 74 GB above
 the Python-stage month, for a PyTorch runtime on every rank.
 
+The month was tried again on 2026-09-04 through the segment runner
+(`7324422`): the original Fortran stage runs whole and pauses at
+`mmacro_pcond`, where the network answers the frame.  The outcome was the
+same -- the water-tracer warnings from the first steps on, then PIO refusing
+a value as not representable at the first history write, about a hundred
+steps in, after roughly 95 s of stepping -- so the network, not the path it
+is called by, is what fails; the two paths agree on that.  PBS high-water
+memory 285 GB.  Two earlier attempts that day did not reach the model at
+all and were the framework's own faults, both since fixed: a surrogate
+named by path left its kernel slot empty until first use, so the stage
+chose the original Fortran whole and reported a bit-for-bit month
+(`7322838`); and a model in the slot did not build the runtime whose
+bindings the runner reads (`7323058`).  What the runner path itself costs
+is measured by the original-kernel gate (`7322256`, above): the stage at
+65 ms a step and rank with the kernel answered through Python, against
+39 ms with the original stage run whole and 92 ms for the Python walk.
+
 ### Memory
 
 | Run | PBS high-water | vs Fortran |

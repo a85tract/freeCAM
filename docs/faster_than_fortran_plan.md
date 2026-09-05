@@ -257,5 +257,7 @@ collective 次数与代码提交）。B 组未运行：没有进入 Fortran 侧�
 ### 交付物
 
 - 分段 runner 的原始 kernel BFB gate（7322256）、grouped collectives gate（7322441）、配对记录、perf 记录。
+- segmented 路径的实测成本：原始 kernel 经 Python 回答时 stage 65 ms/step/rank（gate 7322256），native-whole 39 ms，legacy-python walk 92 ms。真模型（`mmacro_pcond_soft_gated.pt`）经 runner 运行时
+  与 legacy walk 一样在首次写 history 时被 PIO 拒绝（作业 7324422，约 100 步，285 GB），模型本身不成立。
 - 诊断工具：`validation/jobs/pi_cam_perf_online_50step.pbs`、`tools/perf_rank_wrapper.sh`、
   `tools/report_pi_cam_perf.py`；配对作业支持 `PYCAM_PAIR_DURATION=1year`。
