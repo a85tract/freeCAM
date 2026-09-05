@@ -14,11 +14,11 @@
    "validated": true
   },
   {
-   "bindable": false,
+   "bindable": true,
    "evidence": [],
    "kernel": "micro_mg_tend",
    "owner_class": "freecam.physics.microphysics.Microphysics",
-   "reason": "the image has no segment runner for this kernel yet; a replacement would run the statement-by-statement Python walk, which the builder does not offer",
+   "reason": "bindable, but the pause path has not passed a bit-for-bit gate",
    "stage_action": "cam_run1.cloud_macro_microphysics",
    "stage_class": "freecam.physics.cloud_macro_microphysics.CloudMacroMicrophysics",
    "validated": false
@@ -50,11 +50,11 @@
   "PI-atm-online": "configs/pi_cam_icesm131_online.yaml",
   "PI-atm-replay": "configs/pi_cam_icesm131_replay.yaml"
  },
- "catalog_hash": "c65c1ff0c1712f77bd0ece3b3242df6ce130c27b1925bae5abed87fd908ef705",
- "commit": "e891383fe3c37f30dd63ff445c9a686e113150ef",
+ "catalog_hash": "fe75af1c2a1413bb2e46ea0ead7354aee2fc638a756e3a3815885cd1455c6b2f",
+ "commit": "fcce11ded0121088ed8e0947b6c3c70c8ed66e65",
  "default_document": {
   "case": "PI-atm",
-  "catalog_version": "c65c1ff0c1712f77bd0ece3b3242df6ce130c27b1925bae5abed87fd908ef705",
+  "catalog_version": "fe75af1c2a1413bb2e46ea0ead7354aee2fc638a756e3a3815885cd1455c6b2f",
   "experimental": false,
   "namelist": {},
   "nodes": [
@@ -1473,11 +1473,11 @@
        "validated": true
       },
       {
-       "bindable": false,
+       "bindable": true,
        "evidence": [],
        "kernel": "micro_mg_tend",
        "owner_class": "freecam.physics.microphysics.Microphysics",
-       "reason": "the image has no segment runner for this kernel yet; a replacement would run the statement-by-statement Python walk, which the builder does not offer",
+       "reason": "bindable, but the pause path has not passed a bit-for-bit gate",
        "stage_action": "cam_run1.cloud_macro_microphysics",
        "stage_class": "freecam.physics.cloud_macro_microphysics.CloudMacroMicrophysics",
        "validated": false
@@ -3590,11 +3590,11 @@
       "validated": true
      },
      {
-      "bindable": false,
+      "bindable": true,
       "evidence": [],
       "kernel": "micro_mg_tend",
       "owner_class": "freecam.physics.microphysics.Microphysics",
-      "reason": "the image has no segment runner for this kernel yet; a replacement would run the statement-by-statement Python walk, which the builder does not offer",
+      "reason": "bindable, but the pause path has not passed a bit-for-bit gate",
       "stage_action": "cam_run1.cloud_macro_microphysics",
       "stage_class": "freecam.physics.cloud_macro_microphysics.CloudMacroMicrophysics",
       "validated": false
@@ -5939,11 +5939,11 @@
       "validated": true
      },
      {
-      "bindable": false,
+      "bindable": true,
       "evidence": [],
       "kernel": "micro_mg_tend",
       "owner_class": "freecam.physics.microphysics.Microphysics",
-      "reason": "the image has no segment runner for this kernel yet; a replacement would run the statement-by-statement Python walk, which the builder does not offer",
+      "reason": "bindable, but the pause path has not passed a bit-for-bit gate",
       "stage_action": "cam_run1.cloud_macro_microphysics",
       "stage_class": "freecam.physics.cloud_macro_microphysics.CloudMacroMicrophysics",
       "validated": false
@@ -18378,7 +18378,7 @@
    "writes": []
   }
  ],
- "generated_at": "2026-09-05T07:24:44+00:00",
+ "generated_at": "2026-09-05T20:24:53+00:00",
  "parameters": {
   "cam_run1.cloud_macro_microphysics": [
    {

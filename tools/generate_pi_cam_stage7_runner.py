@@ -13,8 +13,12 @@ Python glue reaches by handle, reached here directly.  Nothing numerical is
 new: every arithmetic statement below is the pinned source's, the order is
 the source's, and the routines called are the originals.
 
-Only the mmacro_pcond boundary pauses in this version.  microp_aero_run and
-microp_driver_tend run whole, as the source calls them.
+Two boundaries pause: mmacro_pcond, inside the macrophysics driver, and
+micro_mg_tend, inside the microphysics driver.  The microphysics driver is
+not transcribed here a second time: pycam_micro_handles holds
+micro_mg_cam_tend verbatim in pieces, with the routine's locals as module
+state, and this runner calls those pieces in the source's order around the
+core call.  microp_aero_run runs whole, as the source calls it.
 
 The original ranges this transcribes are pinned by hash: if the pinned
 source moves, --check fails and the module is not silently reused.
@@ -53,6 +57,15 @@ def kernel_arguments() -> list[dict]:
     payload = yaml.safe_load(DESCRIPTORS.read_text())
     (kernel,) = [k for k in payload["kernels"] if k["name"] == "mmacro_pcond"]
     return kernel["arguments"]
+
+
+def micro_frame_slots() -> int:
+    """How many slots the paused micro_mg_tend call takes, from the micro generator's table."""
+
+    sys.path.insert(0, str(REPO / "tools"))
+    import generate_pi_cam_micro_handles as micro
+
+    return len(micro.frame_table(micro.PINNED.read_text().splitlines()))
 
 
 # What stands behind each of mmacro_pcond's arguments in the runner: the
@@ -110,6 +123,7 @@ def frame_cases(arguments: list[dict]) -> str:
 def render_module() -> str:
     arguments = kernel_arguments()
     nargs = len(arguments)
+    slots = max(nargs, micro_frame_slots())
     physpkg = ANCHORS["physpkg.F90"]
     macro = ANCHORS["macrop_driver.F90"]
     return f'''! The segment runner for tphysbc stage 7: the original Fortran, pausable at mmacro_pcond.
@@ -156,7 +170,6 @@ module pycam_stage7_runner
   use cldwat2m_macro,  only: mmacro_pcond
   use macrop_driver,   only: do_cldice, do_cldliq, do_detrain
   use microp_aero,     only: microp_aero_run
-  use microp_driver,   only: microp_driver_tend
   use water_tracers,   only: wtrc_mass_fixer, wtrc_init_rates, wtrc_add_rates, wtrc_apply_rates
   use water_tracer_vars, only: trace_water, wtrc_detrain_in_macrop, wtrc_nwset, wtrc_iatype, &
                                wtrc_indices, wtrc_ncnst
@@ -170,24 +183,29 @@ module pycam_stage7_runner
   use convect_shallow, only: convect_shallow_use_shfrc
   use subcol_utils,    only: is_subcol_on
   use pycam_mm_handles, only: mm_ptend, mm_ptend_aero, host_state, host_tend, host_pbuf2d
+  use pycam_micro_handles, only: micro_runner_bind, micro_run_head, micro_runner_end, &
+                                 micro_runner_ready, micro_substep, micro_num_steps, &
+                                 micro_pack_prelude, micro_substep_pack, micro_core, &
+                                 micro_substep_unpack, micro_post_proc, micro_tail, micro_core_frame
   implicit none
   private
 
   ! events and program counters
   integer(c_int), parameter :: ev_done = 0_c_int, ev_needs_kernel = 1_c_int, ev_error = 2_c_int
   integer, parameter :: pc_idle = 0, pc_chunk_begin = 1, pc_substep = 2, pc_at_pcond = 3, &
-                        pc_after_pcond = 4, pc_chunk_end = 5
-  integer(c_int), parameter :: kernel_mmacro_pcond = 1_c_int
-  integer, parameter :: nkernels = 1
-  integer, parameter :: frame_slots = {nargs}
+                        pc_after_pcond = 4, pc_chunk_end = 5, pc_micro_substep = 6, &
+                        pc_at_mg = 7, pc_after_mg = 8, pc_micro_post = 9
+  integer(c_int), parameter :: kernel_mmacro_pcond = 1_c_int, kernel_micro_mg_tend = 2_c_int
+  integer, parameter :: nkernels = 2
+  integer, parameter :: frame_slots = {slots}
   integer, parameter :: context_id = 1
 
   ! the context: one per rank, one stage
   logical, save :: created = .false.
   integer, save :: pc = pc_idle
-  integer, save :: lchnk = 0, macmic_it = 0, ncol = 0, nstep = 0
+  integer, save :: lchnk = 0, macmic_it = 0, ncol = 0, nstep = 0, micro_it = 0
   integer(c_int), save :: token = 0_c_int, call_index = 0_c_int
-  logical, save :: replace_pcond = .false.
+  logical, save :: replace_pcond = .false., replace_mg = .false.
   character(len=256), save :: last_error = ' '
 
   ! the configuration this transcription is admitted for, read once
@@ -318,6 +336,9 @@ contains
     if (cld_macmic_num_steps < 1) then
       last_error = 'cld_macmic_num_steps must be positive'; return
     end if
+    if (.not. micro_runner_ready()) then
+      last_error = 'the microphysics pieces are not configured (pycam_micro_configure_v1 first)'; return
+    end if
     ! macrop_driver_init's indices, by the same names
     call cnst_get_ind('CLDLIQ', ixcldliq)
     call cnst_get_ind('CLDICE', ixcldice)
@@ -374,7 +395,7 @@ contains
   integer(c_int) function pycam_stage7_start_v1(context, count, mask, event) &
        bind(C, name='pycam_stage7_start_v1') result(status)
     ! Run stage 7 from its top for every chunk of this rank; mask(1) says
-    ! whether mmacro_pcond is Python's.
+    ! whether mmacro_pcond is Python's, mask(2) whether micro_mg_tend is.
     integer(c_int), value, intent(in) :: context, count
     integer(c_int), intent(in) :: mask(count)
     integer(c_int), intent(out) :: event
@@ -390,6 +411,7 @@ contains
       last_error = 'replacement mask is too short'; status = 3_c_int; return
     end if
     replace_pcond = mask(kernel_mmacro_pcond) /= 0_c_int
+    replace_mg = mask(kernel_micro_mg_tend) /= 0_c_int
     ! tphysbc's per-call values
     ztodt = get_step_size()
     nstep = get_nstep()
@@ -410,17 +432,24 @@ contains
     if (.not. created .or. context /= context_id) then
       last_error = 'no stage 7 context'; return
     end if
-    if (pc /= pc_at_pcond) then
+    if (pc /= pc_at_pcond .and. pc /= pc_at_mg) then
       last_error = 'stage 7 is not paused'; status = 2_c_int; return
     end if
-    if (kernel /= kernel_mmacro_pcond) then
+    if (pc == pc_at_pcond .and. kernel /= kernel_mmacro_pcond) then
       last_error = 'stage 7 is paused on mmacro_pcond, not on the kernel resumed'; status = 3_c_int; return
+    end if
+    if (pc == pc_at_mg .and. kernel /= kernel_micro_mg_tend) then
+      last_error = 'stage 7 is paused on micro_mg_tend, not on the kernel resumed'; status = 3_c_int; return
     end if
     if (token_in /= token) then
       last_error = 'stale resume: the frame token does not match the pause'; status = 4_c_int; return
     end if
     token = token + 1_c_int
-    pc = pc_after_pcond
+    if (pc == pc_at_pcond) then
+      pc = pc_after_pcond
+    else
+      pc = pc_after_mg
+    end if
     call advance(event)
     status = 0_c_int
   end function pycam_stage7_resume_v1
@@ -442,11 +471,22 @@ contains
     if (.not. created .or. context /= context_id) then
       last_error = 'no stage 7 context'; return
     end if
-    if (pc /= pc_at_pcond) then
+    if (pc /= pc_at_pcond .and. pc /= pc_at_mg) then
       last_error = 'stage 7 is not paused; there is no frame'; status = 2_c_int; return
     end if
     if (count < frame_slots) then
       last_error = 'frame table is too short'; status = 3_c_int; return
+    end if
+    if (pc == pc_at_mg) then
+      ! the packed columns of this micro substep, where pycam_micro_handles holds them
+      call micro_core_frame(ptrs, ndims, shapes, dtypes, intents, ncol_out)
+      kernel = kernel_micro_mg_tend
+      index_out = call_index
+      lchnk_out = int(lchnk, c_int)
+      substep_out = int((macmic_it - 1) * micro_num_steps() + micro_it, c_int)
+      token_out = token
+      status = 0_c_int
+      return
     end if
     frame_lchnk = int(lchnk, c_int32_t)
     frame_ncol = int(ncol, c_int32_t)
@@ -535,7 +575,39 @@ contains
       case (pc_after_pcond)
         call_index = call_index + 1_c_int
         call macro_after_pcond()
-        call substep_tail()
+        call substep_tail_to_micro()
+        micro_it = 1
+        pc = pc_micro_substep
+      case (pc_micro_substep)
+        ! micro_mg_cam.F90:2071, the substep loop, one iteration a visit
+        if (micro_it > micro_num_steps()) then
+          pc = pc_micro_post
+          cycle
+        end if
+        call micro_substep(micro_it)
+        call micro_substep_pack()
+        if (replace_mg) then
+          token = token + 1_c_int
+          pc = pc_at_mg
+          event = ev_needs_kernel
+          return
+        end if
+        call micro_core()
+        pc = pc_after_mg
+      case (pc_at_mg)
+        last_error = 'stage 7 is paused; only resume continues it'
+        event = ev_error
+        return
+      case (pc_after_mg)
+        call_index = call_index + 1_c_int
+        call micro_substep_unpack()
+        micro_it = micro_it + 1
+        pc = pc_micro_substep
+      case (pc_micro_post)
+        call micro_post_proc()
+        call micro_tail()
+        call micro_runner_end()
+        call substep_tail_after_micro()
         macmic_it = macmic_it + 1
         pc = pc_substep
       case (pc_chunk_end)
@@ -981,10 +1053,11 @@ contains
     call physics_state_dealloc(state_loc)
   end subroutine macro_after_pcond
 
-  subroutine substep_tail()
-    ! physpkg.F90:2251-2378: after the macrophysics driver returns, to the end
-    ! of one substep -- energy check, aerosol activation, microphysics whole,
-    ! energy check, precipitation accumulation.  ncol is tphysbc's.
+  subroutine substep_tail_to_micro()
+    ! physpkg.F90:2251-2351: after the macrophysics driver returns, to the
+    ! microphysics driver -- energy check, aerosol activation -- and then
+    ! microp_driver.F90:156-183 and the head of micro_mg_cam_tend, its
+    ! pieces held by pycam_micro_handles.  ncol is tphysbc's.
     ncol = host_state(lchnk)%ncol
     !  Since we "added" the reserved liquid back in this routine, we need
     !    to account for it in the energy checker
@@ -1003,7 +1076,18 @@ contains
     call microp_aero_run(host_state(lchnk), mm_ptend_aero(lchnk), cld_macmic_ztodt, pbuf)
     call t_stopf('microp_aero_run')
     call t_startf('microp_tend')
-    call microp_driver_tend(host_state(lchnk), mm_ptend(lchnk), cld_macmic_ztodt, pbuf)
+    ! microp_driver_tend: its select on microp_scheme is 'MG' here (refused otherwise at create)
+    call t_startf('microp_mg_tend')
+    ! micro_mg_cam_tend(state, ptend, dtime, pbuf), in its pieces: the dummies
+    call micro_runner_bind(lchnk, mm_ptend(lchnk), cld_macmic_ztodt)
+    call micro_run_head()
+    call micro_pack_prelude()
+  end subroutine substep_tail_to_micro
+
+  subroutine substep_tail_after_micro()
+    ! micro_mg_cam_tend has returned; microp_driver.F90:184-192 and
+    ! physpkg.F90:2352-2378 -- energy check, precipitation accumulation
+    call t_stopf('microp_mg_tend')
     ! combine aero and micro tendencies for the grid
     call physics_ptend_sum(mm_ptend_aero(lchnk), mm_ptend(lchnk), ncol)
     call physics_ptend_dealloc(mm_ptend_aero(lchnk))
@@ -1019,7 +1103,7 @@ contains
     snow_sed_macmic(:ncol) = snow_sed_macmic(:ncol) + snow_sed(:ncol)
     prec_pcw_macmic(:ncol) = prec_pcw_macmic(:ncol) + prec_pcw(:ncol)
     snow_pcw_macmic(:ncol) = snow_pcw_macmic(:ncol) + snow_pcw(:ncol)
-  end subroutine substep_tail
+  end subroutine substep_tail_after_micro
 
   subroutine chunk_end()
     ! physpkg.F90:2379-{physpkg[1]}: after the substeps -- the means, and the

@@ -82,10 +82,18 @@ def test_the_local_level_parses_python_and_checks_the_declared_name(session, cat
 
 
 def test_a_kernel_binding_is_offered_only_where_the_runner_covers_it(session, catalog) -> None:
+    # no runner pauses at the radiation cores: a binding there is an error
+    session.apply({"operation": "configure", "node_id": "cam_run1.radiation",
+                   "configuration": {"kernels": {"rad_rrtmg_sw": {"kind": "surrogate", "path": "m.pt"}}}})
+    report = _check(session, catalog)
+    assert "kernel-not-bindable" in _codes(report) and report.status == "error"
+    session.apply({"operation": "configure", "node_id": "cam_run1.radiation", "configuration": {"kernels": {}}})
+    # the runner pauses at micro_mg_tend but that pause has passed no gate yet: a warning
     session.apply({"operation": "configure", "node_id": "cam_run1.cloud_macro_microphysics",
                    "configuration": {"kernels": {"micro_mg_tend": {"kind": "surrogate", "path": "m.pt"}}}})
     report = _check(session, catalog)
-    assert "kernel-not-bindable" in _codes(report) and report.status == "error"
+    assert "kernel-not-validated" in _codes(report) and "kernel-not-bindable" not in _codes(report)
+    assert report.status == "warning"
     session.apply({"operation": "configure", "node_id": "cam_run1.cloud_macro_microphysics",
                    "configuration": {"kernels": {"mmacro_pcond": {"kind": "surrogate", "path": "m.pt"}}}})
     browser = _check(session, catalog)

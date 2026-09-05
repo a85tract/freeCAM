@@ -43,6 +43,9 @@ class RunnerKernel:
     name: str
     owner: str
     validated_by: tuple[str, ...] = ()
+    #: a reviewed function contract whose argument list is the frame's, in
+    #: order; None when the frame follows the kernel's direct-kernel descriptor
+    contract: str | None = None
 
     @property
     def validated(self) -> bool:
@@ -107,6 +110,7 @@ def load_manifest(path: str | Path | None = None) -> tuple[RunnerSpec, ...]:
             kernels.append(RunnerKernel(
                 name=name, owner=str(item.get("owner", "")),
                 validated_by=tuple(str(p) for p in item.get("validated_by") or ()),
+                contract=None if item.get("contract") is None else str(item["contract"]),
             ))
         stage = str(record["stage"])
         if stage in seen_stages:
@@ -143,6 +147,15 @@ def bindable_kernels(path: str | Path | None = None) -> tuple[str, ...]:
     return tuple(name for spec in load_manifest(path) for name in spec.kernel_names)
 
 
+def frame_names_from_contract(path: Path) -> tuple[str, ...]:
+    """The routine's arguments in order, less the character ones no model answers."""
+
+    from freecam.physics.spec import load_function_spec
+
+    spec = load_function_spec(path)
+    return tuple(a.name for a in spec.arguments if not a.fortran_type.lower().startswith("character"))
+
+
 def image_offers_runner(library: Any, spec: RunnerSpec | None = None) -> bool:
     """Whether ``library`` exports the runner's entries."""
 
@@ -164,14 +177,17 @@ class ImageSegmentRunner:
         self.kernels = spec.kernel_names
         path = Path(descriptors) if descriptors is not None else REPO / spec.descriptors
         described = {k.name: k for k in load_direct_kernels(path)}
-        missing = [name for name in self.kernels if name not in described]
-        if missing:
-            raise NativeCAMError(
-                f"{spec.descriptors} describes no kernel named {missing}; the runner for "
-                f"{spec.stage!r} cannot decode their frames")
         #: kernel -> the frame's argument names in the call's order, without the stage prefix
-        self.names = {name: tuple(a.field.split(".", 1)[1] for a in described[name].arguments)
-                      for name in self.kernels}
+        self.names: dict[str, tuple[str, ...]] = {}
+        for kernel in spec.kernels:
+            if kernel.contract is not None:
+                self.names[kernel.name] = frame_names_from_contract(REPO / kernel.contract)
+            elif kernel.name in described:
+                self.names[kernel.name] = tuple(a.field.split(".", 1)[1] for a in described[kernel.name].arguments)
+            else:
+                raise NativeCAMError(
+                    f"{spec.descriptors} describes no kernel named {kernel.name!r} and the manifest "
+                    f"names no contract; the runner for {spec.stage!r} cannot decode its frames")
         self.slots = max(len(names) for names in self.names.values())
         self._entry = {suffix: getattr(library, f"{spec.prefix}_{suffix}_v1") for suffix in ENTRY_SUFFIXES}
         self._bind()
@@ -289,5 +305,5 @@ class StageSevenRunner(ImageSegmentRunner):
 
 
 __all__ = ["ENTRIES", "ENTRY_SUFFIXES", "KERNELS", "MANIFEST", "STAGE", "ImageSegmentRunner",
-           "RunnerKernel", "RunnerSpec", "StageSevenRunner", "bindable_kernels", "image_offers_runner",
-           "load_manifest", "runner_for", "runner_kernels", "runner_spec"]
+           "RunnerKernel", "RunnerSpec", "StageSevenRunner", "bindable_kernels", "frame_names_from_contract",
+           "image_offers_runner", "load_manifest", "runner_for", "runner_kernels", "runner_spec"]

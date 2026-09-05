@@ -46,7 +46,7 @@
       "complete": 1,
       "open": 3
     },
-    "kernels_bindable": 1,
+    "kernels_bindable": 2,
     "kernels_validated_through_runner": 1,
     "catalog_procedures": 371
   },
@@ -4773,7 +4773,7 @@
       "routine": "micro_mg_tend",
       "contract": "reviewed",
       "contract_path": "native/pi_cam/functions/micro_mg_tend.yaml",
-      "bindable": false,
+      "bindable": true,
       "validated_through_runner": false,
       "evidence": {
         "capture": [],
@@ -4802,8 +4802,7 @@
         "capture",
         "replay_full_chunk",
         "replay_single_column",
-        "replay_public_api",
-        "segment_runner"
+        "replay_public_api"
       ]
     },
     {
@@ -4945,10 +4944,6 @@
       "why": "no record in validation/ for this step of the loop"
     },
     {
-      "what": "micro_mg_tend: segment_runner",
-      "why": "no record in validation/ for this step of the loop"
-    },
-    {
       "what": "rad_rrtmg_sw: capture",
       "why": "no record in validation/ for this step of the loop"
     },
@@ -5021,5 +5016,5 @@
       "why": "the physics catalog lists no procedure under this action; its active call graph must be extended before this action's kernels can be chosen"
     }
   ],
-  "coverage_hash": "9f4fafce12f324eb5495e32e6ada7bc9cceff9fb19cfe578f6f2710930fe9915"
+  "coverage_hash": "364aace69bf718cccd065c0627b076cbd8943a28e7638ed69afb5d95ed3970e7"
 }

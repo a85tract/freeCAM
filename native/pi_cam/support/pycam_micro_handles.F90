@@ -16,21 +16,26 @@
 
 module pycam_micro_handles
 
-  use, intrinsic :: iso_c_binding, only: c_char, c_double, c_int, c_int64_t, &
+  use, intrinsic :: iso_c_binding, only: c_char, c_double, c_int, c_int32_t, c_int64_t, &
        c_loc, c_null_ptr, c_ptr
   use shr_kind_mod,     only: r8 => shr_kind_r8
-  use ppgrid,           only: pcols, pver, pverp, begchunk, endchunk
+  use ppgrid,           only: pcols, pver, pverp, psubcols, begchunk, endchunk
   use constituents,     only: pcnst
   use physconst,        only: gravit, rair, tmelt, cpair, rh2o, rhoh2o, latvap, latice, mwh2o
   use physics_types,    only: physics_state, physics_ptend, physics_ptend_init, &
        physics_state_copy, physics_update, physics_state_dealloc, physics_ptend_sum, &
        physics_ptend_scale
-  use physics_buffer,   only: physics_buffer_desc, pbuf_get_chunk
-  use phys_control,     only: use_hetfrz_classnuc
+  use physics_buffer,   only: physics_buffer_desc, pbuf_get_chunk, pbuf_get_field, &
+       pbuf_old_tim_idx, pbuf_col_type_index, pbuf_get_index
+  use phys_control,     only: use_hetfrz_classnuc, phys_getopts
   use cam_abortutils,   only: endrun
+  use cam_history,      only: outfld
   use error_messages,   only: handle_errmsg
   use ref_pres,         only: top_lev => trop_cloud_top_lev
+  use micro_mg_utils,   only: size_dist_param_basic, size_dist_param_liq, &
+       mg_liq_props, mg_ice_props, avg_diameter, rhoi, rhosn, rhow, rhows, qsmall, mincld
   use micro_mg_data,    only: MGPacker, MGPostProc, accum_null, accum_mean
+  use subcol,           only: subcol_field_avg
   use micro_mg1_0,      only: micro_mg_tend1_0 => micro_mg_tend, micro_mg_get_cols1_0 => micro_mg_get_cols
   use micro_mg1_5,      only: micro_mg_tend1_5 => micro_mg_tend, micro_mg_get_cols1_5 => micro_mg_get_cols
   use micro_mg2_0,      only: micro_mg_tend2_0 => micro_mg_tend, micro_mg_get_cols2_0 => micro_mg_get_cols
@@ -43,6 +48,11 @@ module pycam_micro_handles
   private
 
   public :: pycam_micro_bind_hosts, python_owns_micro, micro_ptend
+  ! what the stage's segment runner drives: the routine in its pieces, and
+  ! the context around them
+  public :: micro_runner_bind, micro_run_head, micro_runner_end, micro_runner_ready, &
+            micro_substep, micro_num_steps, micro_pack_prelude, micro_substep_pack, micro_core, &
+            micro_substep_unpack, micro_post_proc, micro_tail, micro_core_frame
 
   logical, save :: python_owns_micro = .false.
   logical, save :: python_owns_core = .false.
@@ -66,62 +76,185 @@ module pycam_micro_handles
   integer, save :: ixnumrain
   integer, save :: ixnumsnow
 
-  ! the packer section's locals, held per chunk call
-  real(r8), pointer, save :: accre_enhan(:,:)
+  ! the routine's locals, held per chunk call
+  real(r8), pointer, save :: accre_enhan(:,:) => null()
+  real(r8), pointer, dimension(:), save :: acgcme_grid => null()
+  integer, pointer, dimension(:), save :: acnum_grid => null()
+  real(r8), pointer, dimension(:), save :: acprecl_grid => null()
   real(r8), target, save :: acsrfl(pcols,pver)
-  real(r8), pointer, save :: aist_mic(:,:)
-  real(r8), pointer, save :: alst_mic(:,:)
+  real(r8), pointer, save :: aist_mic(:,:) => null()
+  real(r8), pointer, save :: aist_mic_grid(:,:) => null()
+  real(r8), pointer, save :: alst_mic(:,:) => null()
+  real(r8), pointer, save :: alst_mic_grid(:,:) => null()
   real(r8), target, save :: am_evp_st(pcols,pver)
+  real(r8), pointer, save :: am_evp_st_grid(:,:) => null()
   real(r8), target, save :: arefl(pcols,pver)
   real(r8), target, save :: areflz(pcols,pver)
-  real(r8), pointer, save :: ast(:,:)
+  real(r8), pointer, save :: ast(:,:) => null()
+  real(r8), pointer, save :: ast_grid(:,:) => null()
   real(r8), target, save :: bergo(pcols,pver)
+  real(r8), save :: bergo_grid(pcols,pver)
   real(r8), target, save :: bergso(pcols,pver)
+  real(r8), save :: bergso_grid(pcols,pver)
+  real(r8), pointer, save :: cc_ni(:,:) => null()
+  real(r8), pointer, save :: cc_ni_grid(:,:) => null()
+  real(r8), pointer, save :: cc_nl(:,:) => null()
+  real(r8), pointer, save :: cc_nl_grid(:,:) => null()
+  real(r8), pointer, save :: cc_qi(:,:) => null()
+  real(r8), pointer, save :: cc_qi_grid(:,:) => null()
+  real(r8), pointer, save :: cc_ql(:,:) => null()
+  real(r8), pointer, save :: cc_ql_grid(:,:) => null()
+  real(r8), pointer, save :: cc_qlst(:,:) => null()
+  real(r8), pointer, save :: cc_qlst_grid(:,:) => null()
+  real(r8), pointer, save :: cc_qv(:,:) => null()
+  real(r8), pointer, save :: cc_qv_grid(:,:) => null()
+  real(r8), pointer, save :: cc_t(:,:) => null()
+  real(r8), pointer, save :: cc_t_grid(:,:) => null()
+  real(r8), save :: cdnumc_grid(pcols)
+  real(r8), pointer, save :: cld(:,:) => null()
+  real(r8), save :: cld_grid(pcols,pver)
+  real(r8), pointer, save :: cldfsnow(:,:) => null()
+  real(r8), pointer, save :: cldfsnow_grid(:,:) => null()
+  real(r8), save :: cldmax(pcols,pver)
+  real(r8), save :: cldmax_grid(pcols,pver)
+  real(r8), pointer, save :: cldo(:,:) => null()
+  real(r8), pointer, save :: cldo_grid(:,:) => null()
   real(r8), target, save :: cmeice(pcols,pver)
   real(r8), target, save :: cmeiout(pcols,pver)
+  real(r8), save :: cmeiout_grid(pcols,pver)
+  real(r8), pointer, save :: cmeliq(:,:) => null()
+  real(r8), pointer, save :: cmeliq_grid(:,:) => null()
+  integer, save :: cnt_grid(pcols)
+  integer, save :: col_type
+  real(r8), pointer, save :: concld(:,:) => null()
   real(r8), target, save :: csrfl(pcols,pver)
-  real(r8), pointer, save :: dei(:,:)
-  real(r8), pointer, save :: des(:,:)
+  real(r8), save :: ctni_grid(pcols)
+  real(r8), save :: ctnl_grid(pcols)
+  real(r8), save :: ctrei_grid(pcols)
+  real(r8), save :: ctrel_grid(pcols)
+  real(r8), pointer, save :: cvreffice(:,:) => null()
+  real(r8), pointer, save :: cvreffice_grid(:,:) => null()
+  real(r8), pointer, save :: cvreffliq(:,:) => null()
+  real(r8), pointer, save :: cvreffliq_grid(:,:) => null()
+  real(r8), parameter :: dcon = 25.e-6_r8
+  real(r8), pointer, save :: dei(:,:) => null()
+  real(r8), pointer, save :: dei_grid(:,:) => null()
+  real(r8), parameter :: deicon = 50._r8
+  real(r8), pointer, save :: des(:,:) => null()
+  real(r8), pointer, save :: des_grid(:,:) => null()
+  real(r8), save :: drout2_grid(pcols,pver)
   real(r8), allocatable, save :: drout_dum(:,:)
   real(r8), allocatable, save :: dsout2_dum(:,:)
+  real(r8), save :: dsout2_grid(pcols,pver)
+  real(r8), save :: efcout_grid(pcols,pver)
+  real(r8), save :: efiout_grid(pcols,pver)
   real(r8), target, save :: evapsnow(pcols,pver)
+  real(r8), pointer, save :: evprain_st_grid(:,:) => null()
+  real(r8), pointer, save :: evpsnow_st_grid(:,:) => null()
   real(r8), target, save :: fcsrfl(pcols,pver)
+  real(r8), save :: fcti_grid(pcols)
+  real(r8), save :: fctl_grid(pcols)
   real(r8), target, save :: frefl(pcols,pver)
+  real(r8), save :: freqi_grid(pcols,pver)
+  real(r8), save :: freql_grid(pcols,pver)
   real(r8), target, save :: freqr(pcols,pver)
   real(r8), target, save :: freqs(pcols,pver)
-  real(r8), pointer, save :: frzcnt(:,:)
-  real(r8), pointer, save :: frzdep(:,:)
-  real(r8), pointer, save :: frzimm(:,:)
+  real(r8), pointer, save :: frzcnt(:,:) => null()
+  real(r8), pointer, save :: frzdep(:,:) => null()
+  real(r8), pointer, save :: frzimm(:,:) => null()
   real(r8), target, save :: frzrdt(pcols,pver)
   real(r8), target, save :: frzro(pcols,pver)
+  real(r8), pointer, save :: frzro_grid(:,:) => null()
+  real(r8), save :: ftem_grid(pcols,pver)
   real(r8), target, save :: homoo(pcols,pver)
-  real(r8), pointer, save :: lambdac(:,:)
+  real(r8), save :: homoo_grid(pcols,pver)
+  real(r8), save :: icecldf(pcols,pver)
+  real(r8), save :: icecldf_grid(pcols,pver)
+  real(r8), save :: icimrst(pcols,pver)
+  real(r8), save :: icimrst_grid(pcols,pver)
+  real(r8), save :: icimrst_grid_out(pcols,pver)
+  real(r8), save :: icinc(pcols,pver)
+  real(r8), save :: icinc_grid(pcols,pver)
+  real(r8), save :: iciwpi(pcols)
+  real(r8), pointer, save :: iciwpst(:,:) => null()
+  real(r8), pointer, save :: iciwpst_grid(:,:) => null()
+  real(r8), save :: iclwpi(pcols)
+  real(r8), pointer, save :: iclwpst(:,:) => null()
+  real(r8), pointer, save :: iclwpst_grid(:,:) => null()
+  real(r8), pointer, save :: icswp(:,:) => null()
+  real(r8), pointer, save :: icswp_grid(:,:) => null()
+  real(r8), save :: icwmrst(pcols,pver)
+  real(r8), save :: icwmrst_grid(pcols,pver)
+  real(r8), save :: icwmrst_grid_out(pcols,pver)
+  real(r8), save :: icwnc(pcols,pver)
+  real(r8), save :: icwnc_grid(pcols,pver)
+  integer, save :: itim_old
+  real(r8), pointer, save :: lambdac(:,:) => null()
+  real(r8), pointer, save :: lambdac_grid(:,:) => null()
+  real(r8), save :: liqcldf(pcols,pver)
+  real(r8), save :: liqcldf_grid(pcols,pver)
   real(r8), target, save :: melto(pcols,pver)
+  real(r8), save :: melto_grid(pcols,pver)
   real(r8), target, save :: meltsdt(pcols,pver)
   real(r8), target, save :: meltso(pcols,pver)
+  real(r8), pointer, save :: meltso_grid(:,:) => null()
   integer, allocatable, save :: mgcols(:)
+  real(r8), pointer, save :: mgflxprc(:,:) => null()
+  real(r8), pointer, save :: mgflxprc_grid(:,:) => null()
+  real(r8), pointer, save :: mgflxsnw(:,:) => null()
+  real(r8), pointer, save :: mgflxsnw_grid(:,:) => null()
+  real(r8), pointer, save :: mgmrprc(:,:) => null()
+  real(r8), pointer, save :: mgmrprc_grid(:,:) => null()
+  real(r8), pointer, save :: mgmrsnw(:,:) => null()
+  real(r8), pointer, save :: mgmrsnw_grid(:,:) => null()
   integer, save :: mgncol
+  real(r8), pointer, save :: mgreffrain_grid(:,:) => null()
+  real(r8), pointer, save :: mgreffsnow_grid(:,:) => null()
+  real(r8), save :: minlwp
   real(r8), target, save :: mnuccco(pcols,pver)
+  real(r8), save :: mnuccco_grid(pcols,pver)
   real(r8), target, save :: mnuccdo(pcols,pver)
   real(r8), save :: mnuccdohet(pcols,pver)
   real(r8), target, save :: mnuccro(pcols,pver)
+  real(r8), pointer, save :: mnuccro_grid(:,:) => null()
   real(r8), target, save :: mnuccto(pcols,pver)
+  real(r8), save :: mnuccto_grid(pcols,pver)
   real(r8), target, save :: msacwio(pcols,pver)
-  real(r8), pointer, save :: mu(:,:)
-  real(r8), pointer, save :: naai(:,:)
-  real(r8), pointer, save :: nacon(:,:,:)
+  real(r8), save :: msacwio_grid(pcols,pver)
+  real(r8), pointer, save :: mu(:,:) => null()
+  real(r8), pointer, save :: mu_grid(:,:) => null()
+  real(r8), parameter :: mucon = 5.3_r8
+  real(r8), pointer, save :: naai(:,:) => null()
+  real(r8), pointer, save :: naai_hom(:,:) => null()
+  real(r8), pointer, save :: nacon(:,:,:) => null()
+  real(r8), save :: nc_grid(pcols,pver)
   real(r8), target, save :: ncai(pcols,pver)
   real(r8), target, save :: ncal(pcols,pver)
+  real(r8), save :: ncic_grid(pcols,pver)
+  real(r8), save :: ncmei_grid(pcols,pver)
+  real(r8), save :: ncout_grid(pcols,pver)
   real(r8), target, save :: ncten(pcols,pver)
-  real(r8), pointer, save :: nevapr(:,:)
+  real(r8), pointer, save :: nevapr(:,:) => null()
+  real(r8), pointer, save :: nevapr_grid(:,:) => null()
   real(r8), target, save :: nfice(pcols,pver)
+  integer, save :: ngrdcol
+  real(r8), save :: ni_grid(pcols,pver)
+  real(r8), save :: niic_grid(pcols,pver)
+  real(r8), save :: niout_grid(pcols,pver)
   real(r8), target, save :: niten(pcols,pver)
-  real(r8), pointer, save :: npccn(:,:)
+  real(r8), save :: nmelts_grid(pcols,pver)
+  real(r8), pointer, save :: npccn(:,:) => null()
+  real(r8), save :: nr_grid(pcols,pver)
   real(r8), target, save :: nrout(pcols,pver)
   real(r8), target, save :: nrout2(pcols,pver)
+  real(r8), save :: nrout_grid(pcols,pver)
+  real(r8), pointer, save :: nrout_grid_ptr(:,:) => null()
   real(r8), target, save :: nrten(pcols,pver)
+  real(r8), save :: ns_grid(pcols,pver)
   real(r8), target, save :: nsout(pcols,pver)
   real(r8), target, save :: nsout2(pcols,pver)
+  real(r8), save :: nsout_grid(pcols,pver)
+  real(r8), pointer, save :: nsout_grid_ptr(:,:) => null()
   real(r8), target, save :: nsten(pcols,pver)
   real(r8), allocatable, save :: packed_accre_enhan(:,:)
   real(r8), allocatable, target, save :: packed_acsrfl(:,:)
@@ -141,9 +274,9 @@ module pycam_micro_handles
   real(r8), allocatable, target, save :: packed_frefl(:,:)
   real(r8), allocatable, target, save :: packed_freqr(:,:)
   real(r8), allocatable, target, save :: packed_freqs(:,:)
-  real(r8), pointer, save :: packed_frzcnt(:,:)
-  real(r8), pointer, save :: packed_frzdep(:,:)
-  real(r8), pointer, save :: packed_frzimm(:,:)
+  real(r8), pointer, save :: packed_frzcnt(:,:) => null()
+  real(r8), pointer, save :: packed_frzdep(:,:) => null()
+  real(r8), pointer, save :: packed_frzimm(:,:) => null()
   real(r8), allocatable, target, save :: packed_frzrdt(:,:)
   real(r8), allocatable, target, save :: packed_frzro(:,:)
   real(r8), allocatable, target, save :: packed_homo(:,:)
@@ -219,7 +352,7 @@ module pycam_micro_handles
   real(r8), allocatable, target, save :: packed_qvlat(:,:)
   real(r8), allocatable, target, save :: packed_qvres(:,:)
   real(r8), allocatable, target, save :: packed_rate1ord_cw2pr_st(:,:)
-  real(r8), pointer, save :: packed_re_ice(:,:)
+  real(r8), pointer, save :: packed_re_ice(:,:) => null()
   real(r8), allocatable, target, save :: packed_refl(:,:)
   real(r8), allocatable, target, save :: packed_rei(:,:)
   real(r8), allocatable, target, save :: packed_rel(:,:)
@@ -230,8 +363,8 @@ module pycam_micro_handles
   real(r8), allocatable, target, save :: packed_sflx(:,:)
   real(r8), allocatable, save :: packed_t(:,:)
   real(r8), allocatable, target, save :: packed_tlat(:,:)
-  real(r8), pointer, save :: packed_tnd_nsnow(:,:)
-  real(r8), pointer, save :: packed_tnd_qsnow(:,:)
+  real(r8), pointer, save :: packed_tnd_nsnow(:,:) => null()
+  real(r8), pointer, save :: packed_tnd_qsnow(:,:) => null()
   real(r8), allocatable, target, save :: packed_umr(:,:)
   real(r8), allocatable, target, save :: packed_ums(:,:)
   real(r8), allocatable, target, save :: packed_vtrmc(:,:)
@@ -240,63 +373,125 @@ module pycam_micro_handles
   real(r8), allocatable, target, save :: packed_wtfi(:,:)
   real(r8), allocatable, target, save :: packed_wtpostlat(:,:)
   real(r8), allocatable, target, save :: packed_wtprelat(:,:)
+  real(r8), save :: pcmei_grid(pcols,pver)
+  real(r8), save :: pdel_grid(pcols,pver)
+  real(r8), save :: pe_grid(pcols)
+  real(r8), save :: pefrac_grid(pcols)
+  real(r8), save :: pmelts_grid(pcols,pver)
+  real(r8), save :: post_rates_grid(pcols,pver,pwtype,pwtype,pwtype)
   real(r8), target, save :: pracso(pcols,pver)
-  real(r8), pointer, save :: prain(:,:)
+  real(r8), pointer, save :: pracso_grid(:,:) => null()
+  real(r8), pointer, save :: prain(:,:) => null()
+  real(r8), pointer, save :: prain_grid(:,:) => null()
   real(r8), target, save :: praio(pcols,pver)
+  real(r8), save :: praio_grid(pcols,pver)
   real(r8), target, save :: prao(pcols,pver)
+  real(r8), save :: prao_grid(pcols,pver)
   real(r8), target, save :: prcio(pcols,pver)
+  real(r8), save :: prcio_grid(pcols,pver)
   real(r8), target, save :: prco(pcols,pver)
+  real(r8), save :: prco_grid(pcols,pver)
   real(r8), target, save :: prdso(pcols,pver)
+  real(r8), pointer, save :: prdso_grid(:,:) => null()
+  real(r8), save :: pre_rates_grid(pcols,pver,pwtype,pwtype,pwtype)
+  real(r8), pointer, save :: prec_pcw(:) => null()
+  real(r8), pointer, save :: prec_pcw_grid(:) => null()
+  real(r8), pointer, save :: prec_sed(:) => null()
+  real(r8), pointer, save :: prec_sed_grid(:) => null()
+  real(r8), pointer, save :: prec_str(:) => null()
+  real(r8), pointer, save :: prec_str_grid(:) => null()
   real(r8), target, save :: preci(pcols)
   real(r8), target, save :: prect(pcols)
   real(r8), target, save :: preo(pcols,pver)
-  real(r8), pointer, save :: prer_evap(:,:)
+  real(r8), pointer, save :: preo_grid(:,:) => null()
+  real(r8), pointer, save :: prer_evap(:,:) => null()
   real(r8), target, save :: prodsnow(pcols,pver)
   real(r8), target, save :: psacwso(pcols,pver)
+  real(r8), save :: psacwso_grid(pcols,pver)
   real(r8), target, save :: qcrat(pcols,pver)
   real(r8), target, save :: qcreso(pcols,pver)
+  real(r8), save :: qcreso_grid(pcols,pver)
   real(r8), target, save :: qcsedten(pcols,pver)
+  real(r8), pointer, save :: qcsedten_grid(:,:) => null()
   real(r8), target, save :: qcsevap(pcols,pver)
   real(r8), target, save :: qcten(pcols,pver)
   real(r8), target, save :: qireso(pcols,pver)
+  real(r8), save :: qireso_grid(pcols,pver)
   real(r8), target, save :: qisedten(pcols,pver)
+  real(r8), pointer, save :: qisedten_grid(:,:) => null()
   real(r8), target, save :: qisevap(pcols,pver)
   real(r8), target, save :: qiten(pcols,pver)
+  real(r8), pointer, save :: qme(:,:) => null()
+  real(r8), pointer, save :: qme_grid(:,:) => null()
+  real(r8), save :: qr_grid(pcols,pver)
   real(r8), target, save :: qrout(pcols,pver)
   real(r8), target, save :: qrout2(pcols,pver)
+  real(r8), save :: qrout_grid(pcols,pver)
+  real(r8), pointer, save :: qrout_grid_ptr(:,:) => null()
   real(r8), target, save :: qrsedten(pcols,pver)
   real(r8), target, save :: qrten(pcols,pver)
+  real(r8), save :: qs_grid(pcols,pver)
   real(r8), target, save :: qsout(pcols,pver)
   real(r8), target, save :: qsout2(pcols,pver)
+  real(r8), save :: qsout_grid(pcols,pver)
+  real(r8), pointer, save :: qsout_grid_ptr(:,:) => null()
   real(r8), target, save :: qssedten(pcols,pver)
   real(r8), target, save :: qsten(pcols,pver)
   real(r8), target, save :: qvlat(pcols,pver)
   real(r8), target, save :: qvres(pcols,pver)
+  real(r8), save :: racau_grid(pcols)
   real(r8), target, save :: rate1cld(pcols,pver)
-  real(r8), pointer, save :: rate1ord_cw2pr_st(:,:)
-  real(r8), pointer, dimension(:,:), save :: re_ice
+  real(r8), pointer, save :: rate1ord_cw2pr_st(:,:) => null()
+  real(r8), pointer, save :: rate1ord_cw2pr_st_grid(:,:) => null()
+  real(r8), pointer, dimension(:,:), save :: re_ice => null()
   real(r8), allocatable, save :: reff_rain_dum(:,:)
+  real(r8), save :: reff_rain_grid(pcols,pver)
   real(r8), allocatable, save :: reff_snow_dum(:,:)
+  real(r8), save :: reff_snow_grid(pcols,pver)
   real(r8), target, save :: refl(pcols,pver)
-  real(r8), pointer, save :: rei(:,:)
-  real(r8), pointer, save :: rel(:,:)
+  real(r8), pointer, save :: rei(:,:) => null()
+  real(r8), pointer, save :: rei_grid(:,:) => null()
+  real(r8), pointer, save :: rel(:,:) => null()
   real(r8), allocatable, save :: rel_fn_dum(:,:)
-  real(r8), pointer, save :: relvar(:,:)
+  real(r8), save :: rel_fn_grid(pcols,pver)
+  real(r8), pointer, save :: rel_grid(:,:) => null()
+  real(r8), pointer, save :: relvar(:,:) => null()
   real(r8), target, save :: rercld(pcols,pver)
   real(r8), target, save :: rflx(pcols,pverp)
-  real(r8), pointer, save :: rndst(:,:,:)
+  real(r8), save :: rho(pcols,pver)
+  real(r8), save :: rho_grid(pcols,pver)
+  real(r8), pointer, save :: rndst(:,:,:) => null()
+  real(r8), save :: sed_rates_grid(pcols,pver,pwtype)
   real(r8), target, save :: sflx(pcols,pverp)
+  real(r8), pointer, save :: snow_pcw(:) => null()
+  real(r8), pointer, save :: snow_pcw_grid(:) => null()
+  real(r8), pointer, save :: snow_sed(:) => null()
+  real(r8), pointer, save :: snow_sed_grid(:) => null()
+  real(r8), pointer, save :: snow_str(:) => null()
+  real(r8), pointer, save :: snow_str_grid(:) => null()
+  real(r8), save :: tgcmeliq_grid(pcols)
+  real(r8), save :: tgliqwp_grid(pcols)
   real(r8), target, save :: tlat(pcols,pver)
-  real(r8), pointer, dimension(:,:), save :: tnd_nsnow
-  real(r8), pointer, dimension(:,:), save :: tnd_qsnow
+  real(r8), pointer, dimension(:,:), save :: tnd_nsnow => null()
+  real(r8), pointer, dimension(:,:), save :: tnd_qsnow => null()
+  real(r8), save :: tpr_grid(pcols)
   real(r8), target, save :: umr(pcols,pver)
   real(r8), target, save :: ums(pcols,pver)
+  logical, save :: use_subcol_microp
+  real(r8), save :: vprao_grid(pcols)
+  real(r8), save :: vprco_grid(pcols)
   real(r8), target, save :: vtrmc(pcols,pver)
   real(r8), target, save :: vtrmi(pcols,pver)
+  real(r8), pointer, save :: wsedl(:,:) => null()
+  real(r8), pointer, save :: wsedl_grid(:,:) => null()
   real(r8), target, save :: wtfc(pcols,pver)
+  real(r8), pointer, save :: wtfc_grid(:,:) => null()
   real(r8), target, save :: wtfi(pcols,pver)
+  real(r8), pointer, save :: wtfi_grid(:,:) => null()
   real(r8), target, save :: wtpostlat(pcols,pver)
+  real(r8), pointer, save :: wtpostlat_grid(:,:) => null()
   real(r8), target, save :: wtprelat(pcols,pver)
+  real(r8), pointer, save :: wtprelat_grid(:,:) => null()
   type(physics_state), pointer, save :: state => null()
   type(physics_ptend), pointer, save :: ptend => null()
   type(physics_state), save :: state_loc
@@ -309,8 +504,88 @@ module pycam_micro_handles
   real(r8), save :: dtime = 0._r8
   logical, save :: lq(pcnst)
   character(len=128), save :: errstring
+  character(len=*), parameter :: subname = 'micro_mg_cam_tend'
 
-  integer, save :: rate1_cw2pr_st_idx = 0, qrain_idx = 0, qsnow_idx = 0, nrain_idx = 0, nsnow_idx = 0
+  ! the driver module's physics-buffer indices, private to it; resolved here
+  ! by the same field names when the module is configured (-1 where the
+  ! configuration registers no such field, as the driver's init leaves them)
+  integer, save :: accre_enhan_idx = -1
+  integer, save :: acgcme_idx = -1
+  integer, save :: acnum_idx = -1
+  integer, save :: acpr_idx = -1
+  integer, save :: am_evp_st_idx = -1
+  integer, save :: ast_idx = -1
+  integer, save :: cc_ni_idx = -1
+  integer, save :: cc_nl_idx = -1
+  integer, save :: cc_qi_idx = -1
+  integer, save :: cc_ql_idx = -1
+  integer, save :: cc_qlst_idx = -1
+  integer, save :: cc_qv_idx = -1
+  integer, save :: cc_t_idx = -1
+  integer, save :: cld_idx = -1
+  integer, save :: cldfsnow_idx = -1
+  integer, save :: cldo_idx = -1
+  integer, save :: cmeliq_idx = -1
+  integer, save :: concld_idx = -1
+  integer, save :: cv_reffice_idx = -1
+  integer, save :: cv_reffliq_idx = -1
+  integer, save :: dei_idx = -1
+  integer, save :: des_idx = -1
+  integer, save :: evprain_st_idx = -1
+  integer, save :: evpsnow_st_idx = -1
+  integer, save :: frzcnt_idx = -1
+  integer, save :: frzdep_idx = -1
+  integer, save :: frzimm_idx = -1
+  integer, save :: iciwpst_idx = -1
+  integer, save :: iclwpst_idx = -1
+  integer, save :: icswp_idx = -1
+  integer, save :: lambdac_idx = -1
+  integer, save :: ls_flxprc_idx = -1
+  integer, save :: ls_flxsnw_idx = -1
+  integer, save :: ls_mrprc_idx = -1
+  integer, save :: ls_mrsnw_idx = -1
+  integer, save :: ls_reffrain_idx = -1
+  integer, save :: ls_reffsnow_idx = -1
+  integer, save :: mu_idx = -1
+  integer, save :: naai_hom_idx = -1
+  integer, save :: naai_idx = -1
+  integer, save :: nacon_idx = -1
+  integer, save :: nevapr_idx = -1
+  integer, save :: npccn_idx = -1
+  integer, save :: nrain_idx = -1
+  integer, save :: nsnow_idx = -1
+  integer, save :: prain_idx = -1
+  integer, save :: prec_pcw_idx = -1
+  integer, save :: prec_sed_idx = -1
+  integer, save :: prec_str_idx = -1
+  integer, save :: prer_evap_idx = -1
+  integer, save :: qme_idx = -1
+  integer, save :: qrain_idx = -1
+  integer, save :: qsnow_idx = -1
+  integer, save :: rate1_cw2pr_st_idx = -1
+  integer, save :: re_ice_idx = -1
+  integer, save :: rei_idx = -1
+  integer, save :: rel_idx = -1
+  integer, save :: relvar_idx = -1
+  integer, save :: rndst_idx = -1
+  integer, save :: snow_pcw_idx = -1
+  integer, save :: snow_sed_idx = -1
+  integer, save :: snow_str_idx = -1
+  integer, save :: tnd_nsnow_idx = -1
+  integer, save :: tnd_qsnow_idx = -1
+  integer, save :: wsedl_idx = -1
+
+  ! the segment runner's context: the chunk's buffer, and whether the module
+  ! has been configured and its indices resolved
+  logical, save :: configured = .false.
+  type(physics_buffer_desc), pointer, save :: pbuf(:) => null()
+  ! the paused core call's frame: the scalars by value, and zeros standing in
+  ! for the packed pointers the configuration leaves unassociated
+  integer, parameter, public :: micro_frame_slots = 115
+  integer(c_int32_t), save, target :: frame_microp_uniform = 0, frame_mgncol = 0, frame_nlev = 0, &
+                                      frame_one = 1, frame_do_cldice = 0
+  real(c_double), save, target :: frame_deltatin = 0._c_double
+  real(r8), allocatable, save, target :: ws_null2(:,:)
 
   interface p
      module procedure p1
@@ -334,199 +609,280 @@ module pycam_micro_handles
   integer(c_int), parameter, public :: view_arefl = 15
   integer(c_int), parameter, public :: view_areflz = 16
   integer(c_int), parameter, public :: view_bergo = 17
-  integer(c_int), parameter, public :: view_bergso = 18
-  integer(c_int), parameter, public :: view_cmeice = 19
-  integer(c_int), parameter, public :: view_cmeiout = 20
-  integer(c_int), parameter, public :: view_csrfl = 21
-  integer(c_int), parameter, public :: view_evapsnow = 22
-  integer(c_int), parameter, public :: view_fcsrfl = 23
-  integer(c_int), parameter, public :: view_frefl = 24
-  integer(c_int), parameter, public :: view_freqr = 25
-  integer(c_int), parameter, public :: view_freqs = 26
-  integer(c_int), parameter, public :: view_frzrdt = 27
-  integer(c_int), parameter, public :: view_frzro = 28
-  integer(c_int), parameter, public :: view_homoo = 29
-  integer(c_int), parameter, public :: view_melto = 30
-  integer(c_int), parameter, public :: view_meltsdt = 31
-  integer(c_int), parameter, public :: view_meltso = 32
-  integer(c_int), parameter, public :: view_mnuccco = 33
-  integer(c_int), parameter, public :: view_mnuccdo = 34
-  integer(c_int), parameter, public :: view_mnuccdohet = 35
-  integer(c_int), parameter, public :: view_mnuccro = 36
-  integer(c_int), parameter, public :: view_mnuccto = 37
-  integer(c_int), parameter, public :: view_msacwio = 38
-  integer(c_int), parameter, public :: view_ncai = 39
-  integer(c_int), parameter, public :: view_ncal = 40
-  integer(c_int), parameter, public :: view_ncten = 41
-  integer(c_int), parameter, public :: view_nfice = 42
-  integer(c_int), parameter, public :: view_niten = 43
-  integer(c_int), parameter, public :: view_nrout = 44
-  integer(c_int), parameter, public :: view_nrout2 = 45
-  integer(c_int), parameter, public :: view_nrten = 46
-  integer(c_int), parameter, public :: view_nsout = 47
-  integer(c_int), parameter, public :: view_nsout2 = 48
-  integer(c_int), parameter, public :: view_nsten = 49
-  integer(c_int), parameter, public :: view_pracso = 50
-  integer(c_int), parameter, public :: view_praio = 51
-  integer(c_int), parameter, public :: view_prao = 52
-  integer(c_int), parameter, public :: view_prcio = 53
-  integer(c_int), parameter, public :: view_prco = 54
-  integer(c_int), parameter, public :: view_prdso = 55
-  integer(c_int), parameter, public :: view_preci = 56
-  integer(c_int), parameter, public :: view_prect = 57
-  integer(c_int), parameter, public :: view_preo = 58
-  integer(c_int), parameter, public :: view_prodsnow = 59
-  integer(c_int), parameter, public :: view_psacwso = 60
-  integer(c_int), parameter, public :: view_qcrat = 61
-  integer(c_int), parameter, public :: view_qcreso = 62
-  integer(c_int), parameter, public :: view_qcsedten = 63
-  integer(c_int), parameter, public :: view_qcsevap = 64
-  integer(c_int), parameter, public :: view_qcten = 65
-  integer(c_int), parameter, public :: view_qireso = 66
-  integer(c_int), parameter, public :: view_qisedten = 67
-  integer(c_int), parameter, public :: view_qisevap = 68
-  integer(c_int), parameter, public :: view_qiten = 69
-  integer(c_int), parameter, public :: view_qrout = 70
-  integer(c_int), parameter, public :: view_qrout2 = 71
-  integer(c_int), parameter, public :: view_qrsedten = 72
-  integer(c_int), parameter, public :: view_qrten = 73
-  integer(c_int), parameter, public :: view_qsout = 74
-  integer(c_int), parameter, public :: view_qsout2 = 75
-  integer(c_int), parameter, public :: view_qssedten = 76
-  integer(c_int), parameter, public :: view_qsten = 77
-  integer(c_int), parameter, public :: view_qvlat = 78
-  integer(c_int), parameter, public :: view_qvres = 79
-  integer(c_int), parameter, public :: view_rate1cld = 80
-  integer(c_int), parameter, public :: view_refl = 81
-  integer(c_int), parameter, public :: view_rercld = 82
-  integer(c_int), parameter, public :: view_rflx = 83
-  integer(c_int), parameter, public :: view_sflx = 84
-  integer(c_int), parameter, public :: view_tlat = 85
-  integer(c_int), parameter, public :: view_umr = 86
-  integer(c_int), parameter, public :: view_ums = 87
-  integer(c_int), parameter, public :: view_vtrmc = 88
-  integer(c_int), parameter, public :: view_vtrmi = 89
-  integer(c_int), parameter, public :: view_wtfc = 90
-  integer(c_int), parameter, public :: view_wtfi = 91
-  integer(c_int), parameter, public :: view_wtpostlat = 92
-  integer(c_int), parameter, public :: view_wtprelat = 93
-  integer(c_int), parameter, public :: view_packed_accre_enhan = 94
-  integer(c_int), parameter, public :: view_packed_acsrfl = 95
-  integer(c_int), parameter, public :: view_packed_am_evp_st = 96
-  integer(c_int), parameter, public :: view_packed_arefl = 97
-  integer(c_int), parameter, public :: view_packed_areflz = 98
-  integer(c_int), parameter, public :: view_packed_berg = 99
-  integer(c_int), parameter, public :: view_packed_bergs = 100
-  integer(c_int), parameter, public :: view_packed_cldn = 101
-  integer(c_int), parameter, public :: view_packed_cmei = 102
-  integer(c_int), parameter, public :: view_packed_cmeout = 103
-  integer(c_int), parameter, public :: view_packed_csrfl = 104
-  integer(c_int), parameter, public :: view_packed_dei = 105
-  integer(c_int), parameter, public :: view_packed_des = 106
-  integer(c_int), parameter, public :: view_packed_evapsnow = 107
-  integer(c_int), parameter, public :: view_packed_fcsrfl = 108
-  integer(c_int), parameter, public :: view_packed_frefl = 109
-  integer(c_int), parameter, public :: view_packed_freqr = 110
-  integer(c_int), parameter, public :: view_packed_freqs = 111
-  integer(c_int), parameter, public :: view_packed_frzcnt = 112
-  integer(c_int), parameter, public :: view_packed_frzdep = 113
-  integer(c_int), parameter, public :: view_packed_frzimm = 114
-  integer(c_int), parameter, public :: view_packed_frzrdt = 115
-  integer(c_int), parameter, public :: view_packed_frzro = 116
-  integer(c_int), parameter, public :: view_packed_homo = 117
-  integer(c_int), parameter, public :: view_packed_icecldf = 118
-  integer(c_int), parameter, public :: view_packed_lambdac = 119
-  integer(c_int), parameter, public :: view_packed_liqcldf = 120
-  integer(c_int), parameter, public :: view_packed_melt = 121
-  integer(c_int), parameter, public :: view_packed_meltsdt = 122
-  integer(c_int), parameter, public :: view_packed_meltso = 123
-  integer(c_int), parameter, public :: view_packed_mnuccc = 124
-  integer(c_int), parameter, public :: view_packed_mnuccd = 125
-  integer(c_int), parameter, public :: view_packed_mnuccr = 126
-  integer(c_int), parameter, public :: view_packed_mnucct = 127
-  integer(c_int), parameter, public :: view_packed_msacwi = 128
-  integer(c_int), parameter, public :: view_packed_mu = 129
-  integer(c_int), parameter, public :: view_packed_naai = 130
-  integer(c_int), parameter, public :: view_packed_nacon = 131
-  integer(c_int), parameter, public :: view_packed_nc = 132
-  integer(c_int), parameter, public :: view_packed_ncai = 133
-  integer(c_int), parameter, public :: view_packed_ncal = 134
-  integer(c_int), parameter, public :: view_packed_nctend = 135
-  integer(c_int), parameter, public :: view_packed_nevapr = 136
-  integer(c_int), parameter, public :: view_packed_nfice = 137
-  integer(c_int), parameter, public :: view_packed_ni = 138
-  integer(c_int), parameter, public :: view_packed_nitend = 139
-  integer(c_int), parameter, public :: view_packed_npccn = 140
-  integer(c_int), parameter, public :: view_packed_nr = 141
-  integer(c_int), parameter, public :: view_packed_nrout = 142
-  integer(c_int), parameter, public :: view_packed_nrout2 = 143
-  integer(c_int), parameter, public :: view_packed_nrtend = 144
-  integer(c_int), parameter, public :: view_packed_ns = 145
-  integer(c_int), parameter, public :: view_packed_nsout = 146
-  integer(c_int), parameter, public :: view_packed_nsout2 = 147
-  integer(c_int), parameter, public :: view_packed_nstend = 148
-  integer(c_int), parameter, public :: view_packed_p = 149
-  integer(c_int), parameter, public :: view_packed_pdel = 150
-  integer(c_int), parameter, public :: view_packed_pint = 151
-  integer(c_int), parameter, public :: view_packed_pra = 152
-  integer(c_int), parameter, public :: view_packed_pracs = 153
-  integer(c_int), parameter, public :: view_packed_prai = 154
-  integer(c_int), parameter, public :: view_packed_prain = 155
-  integer(c_int), parameter, public :: view_packed_prc = 156
-  integer(c_int), parameter, public :: view_packed_prci = 157
-  integer(c_int), parameter, public :: view_packed_prdso = 158
-  integer(c_int), parameter, public :: view_packed_preci = 159
-  integer(c_int), parameter, public :: view_packed_prect = 160
-  integer(c_int), parameter, public :: view_packed_preo = 161
-  integer(c_int), parameter, public :: view_packed_prer_evap = 162
-  integer(c_int), parameter, public :: view_packed_prodsnow = 163
-  integer(c_int), parameter, public :: view_packed_psacws = 164
-  integer(c_int), parameter, public :: view_packed_q = 165
-  integer(c_int), parameter, public :: view_packed_qc = 166
-  integer(c_int), parameter, public :: view_packed_qcrat = 167
-  integer(c_int), parameter, public :: view_packed_qcres = 168
-  integer(c_int), parameter, public :: view_packed_qcsedten = 169
-  integer(c_int), parameter, public :: view_packed_qcsevap = 170
-  integer(c_int), parameter, public :: view_packed_qctend = 171
-  integer(c_int), parameter, public :: view_packed_qi = 172
-  integer(c_int), parameter, public :: view_packed_qires = 173
-  integer(c_int), parameter, public :: view_packed_qisedten = 174
-  integer(c_int), parameter, public :: view_packed_qisevap = 175
-  integer(c_int), parameter, public :: view_packed_qitend = 176
-  integer(c_int), parameter, public :: view_packed_qr = 177
-  integer(c_int), parameter, public :: view_packed_qrout = 178
-  integer(c_int), parameter, public :: view_packed_qrout2 = 179
-  integer(c_int), parameter, public :: view_packed_qrsedten = 180
-  integer(c_int), parameter, public :: view_packed_qrtend = 181
-  integer(c_int), parameter, public :: view_packed_qs = 182
-  integer(c_int), parameter, public :: view_packed_qsout = 183
-  integer(c_int), parameter, public :: view_packed_qsout2 = 184
-  integer(c_int), parameter, public :: view_packed_qssedten = 185
-  integer(c_int), parameter, public :: view_packed_qstend = 186
-  integer(c_int), parameter, public :: view_packed_qvlat = 187
-  integer(c_int), parameter, public :: view_packed_qvres = 188
-  integer(c_int), parameter, public :: view_packed_rate1ord_cw2pr_st = 189
-  integer(c_int), parameter, public :: view_packed_re_ice = 190
-  integer(c_int), parameter, public :: view_packed_refl = 191
-  integer(c_int), parameter, public :: view_packed_rei = 192
-  integer(c_int), parameter, public :: view_packed_rel = 193
-  integer(c_int), parameter, public :: view_packed_relvar = 194
-  integer(c_int), parameter, public :: view_packed_rercld = 195
-  integer(c_int), parameter, public :: view_packed_rflx = 196
-  integer(c_int), parameter, public :: view_packed_rndst = 197
-  integer(c_int), parameter, public :: view_packed_sflx = 198
-  integer(c_int), parameter, public :: view_packed_t = 199
-  integer(c_int), parameter, public :: view_packed_tlat = 200
-  integer(c_int), parameter, public :: view_packed_tnd_nsnow = 201
-  integer(c_int), parameter, public :: view_packed_tnd_qsnow = 202
-  integer(c_int), parameter, public :: view_packed_umr = 203
-  integer(c_int), parameter, public :: view_packed_ums = 204
-  integer(c_int), parameter, public :: view_packed_vtrmc = 205
-  integer(c_int), parameter, public :: view_packed_vtrmi = 206
-  integer(c_int), parameter, public :: view_packed_wtfc = 207
-  integer(c_int), parameter, public :: view_packed_wtfi = 208
-  integer(c_int), parameter, public :: view_packed_wtpostlat = 209
-  integer(c_int), parameter, public :: view_packed_wtprelat = 210
+  integer(c_int), parameter, public :: view_bergo_grid = 18
+  integer(c_int), parameter, public :: view_bergso = 19
+  integer(c_int), parameter, public :: view_bergso_grid = 20
+  integer(c_int), parameter, public :: view_cdnumc_grid = 21
+  integer(c_int), parameter, public :: view_cld_grid = 22
+  integer(c_int), parameter, public :: view_cldmax = 23
+  integer(c_int), parameter, public :: view_cldmax_grid = 24
+  integer(c_int), parameter, public :: view_cmeice = 25
+  integer(c_int), parameter, public :: view_cmeiout = 26
+  integer(c_int), parameter, public :: view_cmeiout_grid = 27
+  integer(c_int), parameter, public :: view_csrfl = 28
+  integer(c_int), parameter, public :: view_ctni_grid = 29
+  integer(c_int), parameter, public :: view_ctnl_grid = 30
+  integer(c_int), parameter, public :: view_ctrei_grid = 31
+  integer(c_int), parameter, public :: view_ctrel_grid = 32
+  integer(c_int), parameter, public :: view_drout2_grid = 33
+  integer(c_int), parameter, public :: view_dsout2_grid = 34
+  integer(c_int), parameter, public :: view_efcout_grid = 35
+  integer(c_int), parameter, public :: view_efiout_grid = 36
+  integer(c_int), parameter, public :: view_evapsnow = 37
+  integer(c_int), parameter, public :: view_fcsrfl = 38
+  integer(c_int), parameter, public :: view_fcti_grid = 39
+  integer(c_int), parameter, public :: view_fctl_grid = 40
+  integer(c_int), parameter, public :: view_frefl = 41
+  integer(c_int), parameter, public :: view_freqi_grid = 42
+  integer(c_int), parameter, public :: view_freql_grid = 43
+  integer(c_int), parameter, public :: view_freqr = 44
+  integer(c_int), parameter, public :: view_freqs = 45
+  integer(c_int), parameter, public :: view_frzrdt = 46
+  integer(c_int), parameter, public :: view_frzro = 47
+  integer(c_int), parameter, public :: view_ftem_grid = 48
+  integer(c_int), parameter, public :: view_homoo = 49
+  integer(c_int), parameter, public :: view_homoo_grid = 50
+  integer(c_int), parameter, public :: view_icecldf = 51
+  integer(c_int), parameter, public :: view_icecldf_grid = 52
+  integer(c_int), parameter, public :: view_icimrst = 53
+  integer(c_int), parameter, public :: view_icimrst_grid = 54
+  integer(c_int), parameter, public :: view_icimrst_grid_out = 55
+  integer(c_int), parameter, public :: view_icinc = 56
+  integer(c_int), parameter, public :: view_icinc_grid = 57
+  integer(c_int), parameter, public :: view_iciwpi = 58
+  integer(c_int), parameter, public :: view_iclwpi = 59
+  integer(c_int), parameter, public :: view_icwmrst = 60
+  integer(c_int), parameter, public :: view_icwmrst_grid = 61
+  integer(c_int), parameter, public :: view_icwmrst_grid_out = 62
+  integer(c_int), parameter, public :: view_icwnc = 63
+  integer(c_int), parameter, public :: view_icwnc_grid = 64
+  integer(c_int), parameter, public :: view_liqcldf = 65
+  integer(c_int), parameter, public :: view_liqcldf_grid = 66
+  integer(c_int), parameter, public :: view_melto = 67
+  integer(c_int), parameter, public :: view_melto_grid = 68
+  integer(c_int), parameter, public :: view_meltsdt = 69
+  integer(c_int), parameter, public :: view_meltso = 70
+  integer(c_int), parameter, public :: view_mnuccco = 71
+  integer(c_int), parameter, public :: view_mnuccco_grid = 72
+  integer(c_int), parameter, public :: view_mnuccdo = 73
+  integer(c_int), parameter, public :: view_mnuccdohet = 74
+  integer(c_int), parameter, public :: view_mnuccro = 75
+  integer(c_int), parameter, public :: view_mnuccto = 76
+  integer(c_int), parameter, public :: view_mnuccto_grid = 77
+  integer(c_int), parameter, public :: view_msacwio = 78
+  integer(c_int), parameter, public :: view_msacwio_grid = 79
+  integer(c_int), parameter, public :: view_nc_grid = 80
+  integer(c_int), parameter, public :: view_ncai = 81
+  integer(c_int), parameter, public :: view_ncal = 82
+  integer(c_int), parameter, public :: view_ncic_grid = 83
+  integer(c_int), parameter, public :: view_ncmei_grid = 84
+  integer(c_int), parameter, public :: view_ncout_grid = 85
+  integer(c_int), parameter, public :: view_ncten = 86
+  integer(c_int), parameter, public :: view_nfice = 87
+  integer(c_int), parameter, public :: view_ni_grid = 88
+  integer(c_int), parameter, public :: view_niic_grid = 89
+  integer(c_int), parameter, public :: view_niout_grid = 90
+  integer(c_int), parameter, public :: view_niten = 91
+  integer(c_int), parameter, public :: view_nmelts_grid = 92
+  integer(c_int), parameter, public :: view_nr_grid = 93
+  integer(c_int), parameter, public :: view_nrout = 94
+  integer(c_int), parameter, public :: view_nrout2 = 95
+  integer(c_int), parameter, public :: view_nrout_grid = 96
+  integer(c_int), parameter, public :: view_nrten = 97
+  integer(c_int), parameter, public :: view_ns_grid = 98
+  integer(c_int), parameter, public :: view_nsout = 99
+  integer(c_int), parameter, public :: view_nsout2 = 100
+  integer(c_int), parameter, public :: view_nsout_grid = 101
+  integer(c_int), parameter, public :: view_nsten = 102
+  integer(c_int), parameter, public :: view_pcmei_grid = 103
+  integer(c_int), parameter, public :: view_pdel_grid = 104
+  integer(c_int), parameter, public :: view_pe_grid = 105
+  integer(c_int), parameter, public :: view_pefrac_grid = 106
+  integer(c_int), parameter, public :: view_pmelts_grid = 107
+  integer(c_int), parameter, public :: view_pracso = 108
+  integer(c_int), parameter, public :: view_praio = 109
+  integer(c_int), parameter, public :: view_praio_grid = 110
+  integer(c_int), parameter, public :: view_prao = 111
+  integer(c_int), parameter, public :: view_prao_grid = 112
+  integer(c_int), parameter, public :: view_prcio = 113
+  integer(c_int), parameter, public :: view_prcio_grid = 114
+  integer(c_int), parameter, public :: view_prco = 115
+  integer(c_int), parameter, public :: view_prco_grid = 116
+  integer(c_int), parameter, public :: view_prdso = 117
+  integer(c_int), parameter, public :: view_preci = 118
+  integer(c_int), parameter, public :: view_prect = 119
+  integer(c_int), parameter, public :: view_preo = 120
+  integer(c_int), parameter, public :: view_prodsnow = 121
+  integer(c_int), parameter, public :: view_psacwso = 122
+  integer(c_int), parameter, public :: view_psacwso_grid = 123
+  integer(c_int), parameter, public :: view_qcrat = 124
+  integer(c_int), parameter, public :: view_qcreso = 125
+  integer(c_int), parameter, public :: view_qcreso_grid = 126
+  integer(c_int), parameter, public :: view_qcsedten = 127
+  integer(c_int), parameter, public :: view_qcsevap = 128
+  integer(c_int), parameter, public :: view_qcten = 129
+  integer(c_int), parameter, public :: view_qireso = 130
+  integer(c_int), parameter, public :: view_qireso_grid = 131
+  integer(c_int), parameter, public :: view_qisedten = 132
+  integer(c_int), parameter, public :: view_qisevap = 133
+  integer(c_int), parameter, public :: view_qiten = 134
+  integer(c_int), parameter, public :: view_qr_grid = 135
+  integer(c_int), parameter, public :: view_qrout = 136
+  integer(c_int), parameter, public :: view_qrout2 = 137
+  integer(c_int), parameter, public :: view_qrout_grid = 138
+  integer(c_int), parameter, public :: view_qrsedten = 139
+  integer(c_int), parameter, public :: view_qrten = 140
+  integer(c_int), parameter, public :: view_qs_grid = 141
+  integer(c_int), parameter, public :: view_qsout = 142
+  integer(c_int), parameter, public :: view_qsout2 = 143
+  integer(c_int), parameter, public :: view_qsout_grid = 144
+  integer(c_int), parameter, public :: view_qssedten = 145
+  integer(c_int), parameter, public :: view_qsten = 146
+  integer(c_int), parameter, public :: view_qvlat = 147
+  integer(c_int), parameter, public :: view_qvres = 148
+  integer(c_int), parameter, public :: view_racau_grid = 149
+  integer(c_int), parameter, public :: view_rate1cld = 150
+  integer(c_int), parameter, public :: view_reff_rain_grid = 151
+  integer(c_int), parameter, public :: view_reff_snow_grid = 152
+  integer(c_int), parameter, public :: view_refl = 153
+  integer(c_int), parameter, public :: view_rel_fn_grid = 154
+  integer(c_int), parameter, public :: view_rercld = 155
+  integer(c_int), parameter, public :: view_rflx = 156
+  integer(c_int), parameter, public :: view_rho = 157
+  integer(c_int), parameter, public :: view_rho_grid = 158
+  integer(c_int), parameter, public :: view_sed_rates_grid = 159
+  integer(c_int), parameter, public :: view_sflx = 160
+  integer(c_int), parameter, public :: view_tgcmeliq_grid = 161
+  integer(c_int), parameter, public :: view_tgliqwp_grid = 162
+  integer(c_int), parameter, public :: view_tlat = 163
+  integer(c_int), parameter, public :: view_tpr_grid = 164
+  integer(c_int), parameter, public :: view_umr = 165
+  integer(c_int), parameter, public :: view_ums = 166
+  integer(c_int), parameter, public :: view_vprao_grid = 167
+  integer(c_int), parameter, public :: view_vprco_grid = 168
+  integer(c_int), parameter, public :: view_vtrmc = 169
+  integer(c_int), parameter, public :: view_vtrmi = 170
+  integer(c_int), parameter, public :: view_wtfc = 171
+  integer(c_int), parameter, public :: view_wtfi = 172
+  integer(c_int), parameter, public :: view_wtpostlat = 173
+  integer(c_int), parameter, public :: view_wtprelat = 174
+  integer(c_int), parameter, public :: view_packed_accre_enhan = 175
+  integer(c_int), parameter, public :: view_packed_acsrfl = 176
+  integer(c_int), parameter, public :: view_packed_am_evp_st = 177
+  integer(c_int), parameter, public :: view_packed_arefl = 178
+  integer(c_int), parameter, public :: view_packed_areflz = 179
+  integer(c_int), parameter, public :: view_packed_berg = 180
+  integer(c_int), parameter, public :: view_packed_bergs = 181
+  integer(c_int), parameter, public :: view_packed_cldn = 182
+  integer(c_int), parameter, public :: view_packed_cmei = 183
+  integer(c_int), parameter, public :: view_packed_cmeout = 184
+  integer(c_int), parameter, public :: view_packed_csrfl = 185
+  integer(c_int), parameter, public :: view_packed_dei = 186
+  integer(c_int), parameter, public :: view_packed_des = 187
+  integer(c_int), parameter, public :: view_packed_evapsnow = 188
+  integer(c_int), parameter, public :: view_packed_fcsrfl = 189
+  integer(c_int), parameter, public :: view_packed_frefl = 190
+  integer(c_int), parameter, public :: view_packed_freqr = 191
+  integer(c_int), parameter, public :: view_packed_freqs = 192
+  integer(c_int), parameter, public :: view_packed_frzcnt = 193
+  integer(c_int), parameter, public :: view_packed_frzdep = 194
+  integer(c_int), parameter, public :: view_packed_frzimm = 195
+  integer(c_int), parameter, public :: view_packed_frzrdt = 196
+  integer(c_int), parameter, public :: view_packed_frzro = 197
+  integer(c_int), parameter, public :: view_packed_homo = 198
+  integer(c_int), parameter, public :: view_packed_icecldf = 199
+  integer(c_int), parameter, public :: view_packed_lambdac = 200
+  integer(c_int), parameter, public :: view_packed_liqcldf = 201
+  integer(c_int), parameter, public :: view_packed_melt = 202
+  integer(c_int), parameter, public :: view_packed_meltsdt = 203
+  integer(c_int), parameter, public :: view_packed_meltso = 204
+  integer(c_int), parameter, public :: view_packed_mnuccc = 205
+  integer(c_int), parameter, public :: view_packed_mnuccd = 206
+  integer(c_int), parameter, public :: view_packed_mnuccr = 207
+  integer(c_int), parameter, public :: view_packed_mnucct = 208
+  integer(c_int), parameter, public :: view_packed_msacwi = 209
+  integer(c_int), parameter, public :: view_packed_mu = 210
+  integer(c_int), parameter, public :: view_packed_naai = 211
+  integer(c_int), parameter, public :: view_packed_nacon = 212
+  integer(c_int), parameter, public :: view_packed_nc = 213
+  integer(c_int), parameter, public :: view_packed_ncai = 214
+  integer(c_int), parameter, public :: view_packed_ncal = 215
+  integer(c_int), parameter, public :: view_packed_nctend = 216
+  integer(c_int), parameter, public :: view_packed_nevapr = 217
+  integer(c_int), parameter, public :: view_packed_nfice = 218
+  integer(c_int), parameter, public :: view_packed_ni = 219
+  integer(c_int), parameter, public :: view_packed_nitend = 220
+  integer(c_int), parameter, public :: view_packed_npccn = 221
+  integer(c_int), parameter, public :: view_packed_nr = 222
+  integer(c_int), parameter, public :: view_packed_nrout = 223
+  integer(c_int), parameter, public :: view_packed_nrout2 = 224
+  integer(c_int), parameter, public :: view_packed_nrtend = 225
+  integer(c_int), parameter, public :: view_packed_ns = 226
+  integer(c_int), parameter, public :: view_packed_nsout = 227
+  integer(c_int), parameter, public :: view_packed_nsout2 = 228
+  integer(c_int), parameter, public :: view_packed_nstend = 229
+  integer(c_int), parameter, public :: view_packed_p = 230
+  integer(c_int), parameter, public :: view_packed_pdel = 231
+  integer(c_int), parameter, public :: view_packed_pint = 232
+  integer(c_int), parameter, public :: view_packed_pra = 233
+  integer(c_int), parameter, public :: view_packed_pracs = 234
+  integer(c_int), parameter, public :: view_packed_prai = 235
+  integer(c_int), parameter, public :: view_packed_prain = 236
+  integer(c_int), parameter, public :: view_packed_prc = 237
+  integer(c_int), parameter, public :: view_packed_prci = 238
+  integer(c_int), parameter, public :: view_packed_prdso = 239
+  integer(c_int), parameter, public :: view_packed_preci = 240
+  integer(c_int), parameter, public :: view_packed_prect = 241
+  integer(c_int), parameter, public :: view_packed_preo = 242
+  integer(c_int), parameter, public :: view_packed_prer_evap = 243
+  integer(c_int), parameter, public :: view_packed_prodsnow = 244
+  integer(c_int), parameter, public :: view_packed_psacws = 245
+  integer(c_int), parameter, public :: view_packed_q = 246
+  integer(c_int), parameter, public :: view_packed_qc = 247
+  integer(c_int), parameter, public :: view_packed_qcrat = 248
+  integer(c_int), parameter, public :: view_packed_qcres = 249
+  integer(c_int), parameter, public :: view_packed_qcsedten = 250
+  integer(c_int), parameter, public :: view_packed_qcsevap = 251
+  integer(c_int), parameter, public :: view_packed_qctend = 252
+  integer(c_int), parameter, public :: view_packed_qi = 253
+  integer(c_int), parameter, public :: view_packed_qires = 254
+  integer(c_int), parameter, public :: view_packed_qisedten = 255
+  integer(c_int), parameter, public :: view_packed_qisevap = 256
+  integer(c_int), parameter, public :: view_packed_qitend = 257
+  integer(c_int), parameter, public :: view_packed_qr = 258
+  integer(c_int), parameter, public :: view_packed_qrout = 259
+  integer(c_int), parameter, public :: view_packed_qrout2 = 260
+  integer(c_int), parameter, public :: view_packed_qrsedten = 261
+  integer(c_int), parameter, public :: view_packed_qrtend = 262
+  integer(c_int), parameter, public :: view_packed_qs = 263
+  integer(c_int), parameter, public :: view_packed_qsout = 264
+  integer(c_int), parameter, public :: view_packed_qsout2 = 265
+  integer(c_int), parameter, public :: view_packed_qssedten = 266
+  integer(c_int), parameter, public :: view_packed_qstend = 267
+  integer(c_int), parameter, public :: view_packed_qvlat = 268
+  integer(c_int), parameter, public :: view_packed_qvres = 269
+  integer(c_int), parameter, public :: view_packed_rate1ord_cw2pr_st = 270
+  integer(c_int), parameter, public :: view_packed_re_ice = 271
+  integer(c_int), parameter, public :: view_packed_refl = 272
+  integer(c_int), parameter, public :: view_packed_rei = 273
+  integer(c_int), parameter, public :: view_packed_rel = 274
+  integer(c_int), parameter, public :: view_packed_relvar = 275
+  integer(c_int), parameter, public :: view_packed_rercld = 276
+  integer(c_int), parameter, public :: view_packed_rflx = 277
+  integer(c_int), parameter, public :: view_packed_rndst = 278
+  integer(c_int), parameter, public :: view_packed_sflx = 279
+  integer(c_int), parameter, public :: view_packed_t = 280
+  integer(c_int), parameter, public :: view_packed_tlat = 281
+  integer(c_int), parameter, public :: view_packed_tnd_nsnow = 282
+  integer(c_int), parameter, public :: view_packed_tnd_qsnow = 283
+  integer(c_int), parameter, public :: view_packed_umr = 284
+  integer(c_int), parameter, public :: view_packed_ums = 285
+  integer(c_int), parameter, public :: view_packed_vtrmc = 286
+  integer(c_int), parameter, public :: view_packed_vtrmi = 287
+  integer(c_int), parameter, public :: view_packed_wtfc = 288
+  integer(c_int), parameter, public :: view_packed_wtfi = 289
+  integer(c_int), parameter, public :: view_packed_wtpostlat = 290
+  integer(c_int), parameter, public :: view_packed_wtprelat = 291
 
 contains
 
@@ -652,6 +1008,7 @@ contains
     if (allocated(reff_rain_dum)) deallocate(reff_rain_dum)
     if (allocated(reff_snow_dum)) deallocate(reff_snow_dum)
     if (allocated(rel_fn_dum)) deallocate(rel_fn_dum)
+    if (allocated(ws_null2)) deallocate(ws_null2)
   end subroutine release_locals
 
   logical function chunk_ok(lchnk_in)
@@ -701,9 +1058,229 @@ contains
   ! The packer section, verbatim
   ! ------------------------------------------------------------------ !
 
+  subroutine micro_head()
+    ! micro_mg_cam.F90:1555-1767, verbatim
+    integer :: i, k
+
+
+       lchnk = state%lchnk
+       ncol  = state%ncol
+       psetcols = state%psetcols
+       ngrdcol  = state%ngrdcol
+
+       itim_old = pbuf_old_tim_idx()
+
+       call phys_getopts(use_subcol_microp_out=use_subcol_microp)
+
+       ! Set the col_type flag to grid or subcolumn dependent on the value of use_subcol_microp
+       call pbuf_col_type_index(use_subcol_microp, col_type=col_type)
+
+       !-----------------------
+       ! These physics buffer fields are read only and not set in this parameterization
+       ! If these fields do not have subcolumn data, copy the grid to the subcolumn if subcolumns is turned on
+       ! If subcolumns is not turned on, then these fields will be grid data
+
+       call pbuf_get_field(pbuf, naai_idx,        naai,        col_type=col_type, copy_if_needed=use_subcol_microp)
+       call pbuf_get_field(pbuf, naai_hom_idx,    naai_hom,    col_type=col_type, copy_if_needed=use_subcol_microp)
+       call pbuf_get_field(pbuf, npccn_idx,       npccn,       col_type=col_type, copy_if_needed=use_subcol_microp)
+       call pbuf_get_field(pbuf, rndst_idx,       rndst,       col_type=col_type, copy_if_needed=use_subcol_microp)
+       call pbuf_get_field(pbuf, nacon_idx,       nacon,       col_type=col_type, copy_if_needed=use_subcol_microp)
+       call pbuf_get_field(pbuf, relvar_idx,      relvar,      col_type=col_type, copy_if_needed=use_subcol_microp)
+       call pbuf_get_field(pbuf, accre_enhan_idx, accre_enhan, col_type=col_type, copy_if_needed=use_subcol_microp)
+       call pbuf_get_field(pbuf, cmeliq_idx,      cmeliq,      col_type=col_type, copy_if_needed=use_subcol_microp)
+
+       call pbuf_get_field(pbuf, cld_idx,         cld,     start=(/1,1,itim_old/), kount=(/psetcols,pver,1/), &
+            col_type=col_type, copy_if_needed=use_subcol_microp)
+       call pbuf_get_field(pbuf, concld_idx,      concld,  start=(/1,1,itim_old/), kount=(/psetcols,pver,1/), &
+            col_type=col_type, copy_if_needed=use_subcol_microp)
+       call pbuf_get_field(pbuf, ast_idx,         ast,     start=(/1,1,itim_old/), kount=(/psetcols,pver,1/), &
+            col_type=col_type, copy_if_needed=use_subcol_microp)
+
+       if (.not. do_cldice) then
+          call pbuf_get_field(pbuf, tnd_qsnow_idx,   tnd_qsnow,   col_type=col_type, copy_if_needed=use_subcol_microp)
+          call pbuf_get_field(pbuf, tnd_nsnow_idx,   tnd_nsnow,   col_type=col_type, copy_if_needed=use_subcol_microp)
+          call pbuf_get_field(pbuf, re_ice_idx,      re_ice,      col_type=col_type, copy_if_needed=use_subcol_microp)
+       end if
+
+       if (use_hetfrz_classnuc) then
+          call pbuf_get_field(pbuf, frzimm_idx, frzimm, col_type=col_type, copy_if_needed=use_subcol_microp)
+          call pbuf_get_field(pbuf, frzcnt_idx, frzcnt, col_type=col_type, copy_if_needed=use_subcol_microp)
+          call pbuf_get_field(pbuf, frzdep_idx, frzdep, col_type=col_type, copy_if_needed=use_subcol_microp)
+       end if
+
+       !-----------------------
+       ! These physics buffer fields are calculated and set in this parameterization
+       ! If subcolumns is turned on, then these fields will be calculated on a subcolumn grid, otherwise they will be a normal grid
+
+       call pbuf_get_field(pbuf, prec_str_idx,    prec_str,    col_type=col_type)
+       call pbuf_get_field(pbuf, snow_str_idx,    snow_str,    col_type=col_type)
+       call pbuf_get_field(pbuf, prec_pcw_idx,    prec_pcw,    col_type=col_type)
+       call pbuf_get_field(pbuf, snow_pcw_idx,    snow_pcw,    col_type=col_type)
+       call pbuf_get_field(pbuf, prec_sed_idx,    prec_sed,    col_type=col_type)
+       call pbuf_get_field(pbuf, snow_sed_idx,    snow_sed,    col_type=col_type)
+       call pbuf_get_field(pbuf, nevapr_idx,      nevapr,      col_type=col_type)
+       call pbuf_get_field(pbuf, prer_evap_idx,   prer_evap,   col_type=col_type)
+       call pbuf_get_field(pbuf, prain_idx,       prain,       col_type=col_type)
+       call pbuf_get_field(pbuf, dei_idx,         dei,         col_type=col_type)
+       call pbuf_get_field(pbuf, mu_idx,          mu,          col_type=col_type)
+       call pbuf_get_field(pbuf, lambdac_idx,     lambdac,     col_type=col_type)
+       call pbuf_get_field(pbuf, des_idx,         des,         col_type=col_type)
+       call pbuf_get_field(pbuf, ls_flxprc_idx,   mgflxprc,    col_type=col_type)
+       call pbuf_get_field(pbuf, ls_flxsnw_idx,   mgflxsnw,    col_type=col_type)
+       call pbuf_get_field(pbuf, ls_mrprc_idx,    mgmrprc,     col_type=col_type)
+       call pbuf_get_field(pbuf, ls_mrsnw_idx,    mgmrsnw,     col_type=col_type)
+       call pbuf_get_field(pbuf, cv_reffliq_idx,  cvreffliq,   col_type=col_type)
+       call pbuf_get_field(pbuf, cv_reffice_idx,  cvreffice,   col_type=col_type)
+       call pbuf_get_field(pbuf, iciwpst_idx,     iciwpst,     col_type=col_type)
+       call pbuf_get_field(pbuf, iclwpst_idx,     iclwpst,     col_type=col_type)
+       call pbuf_get_field(pbuf, icswp_idx,       icswp,       col_type=col_type)
+       call pbuf_get_field(pbuf, rel_idx,         rel,         col_type=col_type)
+       call pbuf_get_field(pbuf, rei_idx,         rei,         col_type=col_type)
+       call pbuf_get_field(pbuf, wsedl_idx,       wsedl,       col_type=col_type)
+       call pbuf_get_field(pbuf, qme_idx,         qme,         col_type=col_type)
+
+       call pbuf_get_field(pbuf, cldo_idx,        cldo,     start=(/1,1,itim_old/), kount=(/psetcols,pver,1/), col_type=col_type)
+       call pbuf_get_field(pbuf, cldfsnow_idx,    cldfsnow, start=(/1,1,itim_old/), kount=(/psetcols,pver,1/), col_type=col_type)
+       call pbuf_get_field(pbuf, cc_t_idx,        CC_t,     start=(/1,1,itim_old/), kount=(/psetcols,pver,1/), col_type=col_type)
+       call pbuf_get_field(pbuf, cc_qv_idx,       CC_qv,    start=(/1,1,itim_old/), kount=(/psetcols,pver,1/), col_type=col_type)
+       call pbuf_get_field(pbuf, cc_ql_idx,       CC_ql,    start=(/1,1,itim_old/), kount=(/psetcols,pver,1/), col_type=col_type)
+       call pbuf_get_field(pbuf, cc_qi_idx,       CC_qi,    start=(/1,1,itim_old/), kount=(/psetcols,pver,1/), col_type=col_type)
+       call pbuf_get_field(pbuf, cc_nl_idx,       CC_nl,    start=(/1,1,itim_old/), kount=(/psetcols,pver,1/), col_type=col_type)
+       call pbuf_get_field(pbuf, cc_ni_idx,       CC_ni,    start=(/1,1,itim_old/), kount=(/psetcols,pver,1/), col_type=col_type)
+       call pbuf_get_field(pbuf, cc_qlst_idx,     CC_qlst,  start=(/1,1,itim_old/), kount=(/psetcols,pver,1/), col_type=col_type)
+
+       if (rate1_cw2pr_st_idx > 0) then
+          call pbuf_get_field(pbuf, rate1_cw2pr_st_idx, rate1ord_cw2pr_st, col_type=col_type)
+       end if
+
+       if (qrain_idx > 0) call pbuf_get_field(pbuf, qrain_idx, qrout_grid_ptr)
+       if (qsnow_idx > 0) call pbuf_get_field(pbuf, qsnow_idx, qsout_grid_ptr)
+       if (nrain_idx > 0) call pbuf_get_field(pbuf, nrain_idx, nrout_grid_ptr)
+       if (nsnow_idx > 0) call pbuf_get_field(pbuf, nsnow_idx, nsout_grid_ptr)
+
+       !-----------------------
+       ! If subcolumns is turned on, all calculated fields which are on subcolumns
+       ! need to be retrieved on the grid as well for storing averaged values
+
+       if (use_subcol_microp) then
+          call pbuf_get_field(pbuf, prec_str_idx,    prec_str_grid)
+          call pbuf_get_field(pbuf, snow_str_idx,    snow_str_grid)
+          call pbuf_get_field(pbuf, prec_pcw_idx,    prec_pcw_grid)
+          call pbuf_get_field(pbuf, snow_pcw_idx,    snow_pcw_grid)
+          call pbuf_get_field(pbuf, prec_sed_idx,    prec_sed_grid)
+          call pbuf_get_field(pbuf, snow_sed_idx,    snow_sed_grid)
+          call pbuf_get_field(pbuf, nevapr_idx,      nevapr_grid)
+          call pbuf_get_field(pbuf, prain_idx,       prain_grid)
+          call pbuf_get_field(pbuf, dei_idx,         dei_grid)
+          call pbuf_get_field(pbuf, mu_idx,          mu_grid)
+          call pbuf_get_field(pbuf, lambdac_idx,     lambdac_grid)
+          call pbuf_get_field(pbuf, des_idx,         des_grid)
+          call pbuf_get_field(pbuf, ls_flxprc_idx,   mgflxprc_grid)
+          call pbuf_get_field(pbuf, ls_flxsnw_idx,   mgflxsnw_grid)
+          call pbuf_get_field(pbuf, ls_mrprc_idx,    mgmrprc_grid)
+          call pbuf_get_field(pbuf, ls_mrsnw_idx,    mgmrsnw_grid)
+          call pbuf_get_field(pbuf, cv_reffliq_idx,  cvreffliq_grid)
+          call pbuf_get_field(pbuf, cv_reffice_idx,  cvreffice_grid)
+          call pbuf_get_field(pbuf, iciwpst_idx,     iciwpst_grid)
+          call pbuf_get_field(pbuf, iclwpst_idx,     iclwpst_grid)
+          call pbuf_get_field(pbuf, icswp_idx,       icswp_grid)
+          call pbuf_get_field(pbuf, rel_idx,         rel_grid)
+          call pbuf_get_field(pbuf, rei_idx,         rei_grid)
+          call pbuf_get_field(pbuf, wsedl_idx,       wsedl_grid)
+          call pbuf_get_field(pbuf, qme_idx,         qme_grid)
+
+          call pbuf_get_field(pbuf, cldo_idx,     cldo_grid,     start=(/1,1,itim_old/), kount=(/pcols,pver,1/))
+          call pbuf_get_field(pbuf, cldfsnow_idx, cldfsnow_grid, start=(/1,1,itim_old/), kount=(/pcols,pver,1/))
+          call pbuf_get_field(pbuf, cc_t_idx,     CC_t_grid,     start=(/1,1,itim_old/), kount=(/pcols,pver,1/))
+          call pbuf_get_field(pbuf, cc_qv_idx,    CC_qv_grid,    start=(/1,1,itim_old/), kount=(/pcols,pver,1/))
+          call pbuf_get_field(pbuf, cc_ql_idx,    CC_ql_grid,    start=(/1,1,itim_old/), kount=(/pcols,pver,1/))
+          call pbuf_get_field(pbuf, cc_qi_idx,    CC_qi_grid,    start=(/1,1,itim_old/), kount=(/pcols,pver,1/))
+          call pbuf_get_field(pbuf, cc_nl_idx,    CC_nl_grid,    start=(/1,1,itim_old/), kount=(/pcols,pver,1/))
+          call pbuf_get_field(pbuf, cc_ni_idx,    CC_ni_grid,    start=(/1,1,itim_old/), kount=(/pcols,pver,1/))
+          call pbuf_get_field(pbuf, cc_qlst_idx,  CC_qlst_grid,  start=(/1,1,itim_old/), kount=(/pcols,pver,1/))
+
+          if (rate1_cw2pr_st_idx > 0) then
+             call pbuf_get_field(pbuf, rate1_cw2pr_st_idx, rate1ord_cw2pr_st_grid)
+          end if
+
+       end if
+
+       !-----------------------
+       ! These are only on the grid regardless of whether subcolumns are turned on or not
+       call pbuf_get_field(pbuf, ls_reffrain_idx, mgreffrain_grid)
+       call pbuf_get_field(pbuf, ls_reffsnow_idx, mgreffsnow_grid)
+       call pbuf_get_field(pbuf, acpr_idx,        acprecl_grid)
+       call pbuf_get_field(pbuf, acgcme_idx,      acgcme_grid)
+       call pbuf_get_field(pbuf, acnum_idx,       acnum_grid)
+       call pbuf_get_field(pbuf, cmeliq_idx,      cmeliq_grid)
+       call pbuf_get_field(pbuf, ast_idx,         ast_grid, start=(/1,1,itim_old/), kount=(/pcols,pver,1/))
+
+       call pbuf_get_field(pbuf, evprain_st_idx,  evprain_st_grid)
+       call pbuf_get_field(pbuf, evpsnow_st_idx,  evpsnow_st_grid)
+
+       ! Only MG 1 defines this field so far.
+       if (micro_mg_version == 1 .and. micro_mg_sub_version == 0) then
+          call pbuf_get_field(pbuf, am_evp_st_idx,   am_evp_st_grid)
+       end if
+
+       !-------------------------------------------------------------------------------------
+       ! Microphysics assumes 'liquid stratus frac = ice stratus frac
+       !                      = max( liquid stratus frac, ice stratus frac )'.
+       alst_mic => ast
+       aist_mic => ast
+
+       ! Output initial in-cloud LWP (before microphysics)
+
+       iclwpi = 0._r8
+       iciwpi = 0._r8
+
+       do i = 1, ncol
+          do k = top_lev, pver
+             iclwpi(i) = iclwpi(i) + &
+                  min(state%q(i,k,ixcldliq) / max(mincld,ast(i,k)),0.005_r8) &
+                  * state%pdel(i,k) / gravit
+             iciwpi(i) = iciwpi(i) + &
+                  min(state%q(i,k,ixcldice) / max(mincld,ast(i,k)),0.005_r8) &
+                  * state%pdel(i,k) / gravit
+          end do
+       end do
+
+       cldo(:ncol,top_lev:pver)=ast(:ncol,top_lev:pver)
+
+       ! Initialize local state from input.
+       call physics_state_copy(state, state_loc)
+
+       ! Initialize ptend for output.
+       lq = .false.
+       lq(1) = .true.
+       lq(ixcldliq) = .true.
+       lq(ixcldice) = .true.
+       lq(ixnumliq) = .true.
+       lq(ixnumice) = .true.
+       if (micro_mg_version > 1) then
+          lq(ixrain) = .true.
+          lq(ixsnow) = .true.
+          lq(ixnumrain) = .true.
+          lq(ixnumsnow) = .true.
+       end if
+
+       !Water tracers:
+       if ( trace_water ) then
+          do i=1,wtrc_ncnst
+            lq(wtrc_indices(i)) = .true.
+          end do
+       end if
+
+       ! the name 'cldwat' triggers special tests on cldliq
+       ! and cldice in physics_update
+       call physics_ptend_init(ptend, psetcols, "cldwat", ls=.true., lq=lq)
+
+
+  end subroutine micro_head
+
   subroutine micro_pack_prelude()
     ! micro_mg_cam.F90:1768-2069, verbatim
-    integer :: i
+    integer :: i, k
 
        select case (micro_mg_version)
        case (1)
@@ -1012,7 +1589,7 @@ contains
 
   subroutine micro_substep_pack()
     ! micro_mg_cam.F90:2074-2086, verbatim
-    integer :: i
+    integer :: i, k
 
           packed_t = packer%pack(state_loc%t)
           packed_q = packer%pack(state_loc%q(:,:,1))
@@ -1032,7 +1609,7 @@ contains
 
   subroutine micro_core()
     ! micro_mg_cam.F90:2087-2209, verbatim
-    integer :: i
+    integer :: i, k
 
           select case (micro_mg_version)
           case (1)
@@ -1162,7 +1739,7 @@ contains
 
   subroutine micro_substep_unpack()
     ! micro_mg_cam.F90:2210-2247, verbatim
-    integer :: i
+    integer :: i, k
 
           call physics_ptend_init(ptend_loc, psetcols, "micro_mg", &
                                   ls=.true., lq=lq)
@@ -1207,7 +1784,7 @@ contains
 
   subroutine micro_post_proc()
     ! micro_mg_cam.F90:2252-2286, verbatim
-    integer :: i
+    integer :: i, k
 
        call physics_ptend_scale(ptend, 1._r8/num_steps, ncol)
 
@@ -1247,6 +1824,909 @@ contains
 
   end subroutine micro_post_proc
 
+  subroutine micro_tail()
+    ! micro_mg_cam.F90:2287-3182, verbatim
+    integer :: i, k
+
+       do k=top_lev,pver
+          do i=1,ncol
+             if (naai(i,k) > 0._r8) then
+                mnuccdohet(i,k) = mnuccdo(i,k) - (naai_hom(i,k)/naai(i,k))*mnuccdo(i,k)
+             end if
+          end do
+       end do
+
+       mgflxprc(:ncol,top_lev:pverp) = rflx(:ncol,top_lev:pverp) + sflx(:ncol,top_lev:pverp)
+       mgflxsnw(:ncol,top_lev:pverp) = sflx(:ncol,top_lev:pverp)
+
+       mgmrprc(:ncol,top_lev:pver) = qrout(:ncol,top_lev:pver) + qsout(:ncol,top_lev:pver)
+       mgmrsnw(:ncol,top_lev:pver) = qsout(:ncol,top_lev:pver)
+
+       !! calculate effective radius of convective liquid and ice using dcon and deicon (not used by code, not useful for COSP)
+       !! hard-coded as average of hard-coded values used for deep/shallow convective detrainment (near line 1502/1505)
+       cvreffliq(:ncol,top_lev:pver) = 9.0_r8
+       cvreffice(:ncol,top_lev:pver) = 37.0_r8
+
+       ! Reassign rate1 if modal aerosols
+       if (rate1_cw2pr_st_idx > 0) then
+          rate1ord_cw2pr_st(:ncol,top_lev:pver) = rate1cld(:ncol,top_lev:pver)
+       end if
+
+       ! Sedimentation velocity for liquid stratus cloud droplet
+       wsedl(:ncol,top_lev:pver) = vtrmc(:ncol,top_lev:pver)
+
+       ! Microphysical tendencies for use in the macrophysics at the next time step
+       CC_T(:ncol,top_lev:pver)    =  tlat(:ncol,top_lev:pver)/cpair
+       CC_qv(:ncol,top_lev:pver)   = qvlat(:ncol,top_lev:pver)
+       CC_ql(:ncol,top_lev:pver)   = qcten(:ncol,top_lev:pver)
+       CC_qi(:ncol,top_lev:pver)   = qiten(:ncol,top_lev:pver)
+       CC_nl(:ncol,top_lev:pver)   = ncten(:ncol,top_lev:pver)
+       CC_ni(:ncol,top_lev:pver)   = niten(:ncol,top_lev:pver)
+       CC_qlst(:ncol,top_lev:pver) = qcten(:ncol,top_lev:pver)/max(0.01_r8,alst_mic(:ncol,top_lev:pver))
+
+       ! Net micro_mg_cam condensation rate
+       qme(:ncol,top_lev:pver) = cmeliq(:ncol,top_lev:pver) + cmeiout(:ncol,top_lev:pver)
+
+       ! For precip, accumulate only total precip in prec_pcw and snow_pcw variables.
+       ! Other precip output variables are set to 0
+       ! Do not subscript by ncol here, because in physpkg we divide the whole
+       ! array and need to avoid an FPE due to uninitialized data.
+       prec_pcw = prect
+       snow_pcw = preci
+       prec_sed = 0._r8
+       snow_sed = 0._r8
+       prec_str = prec_pcw + prec_sed
+       snow_str = snow_pcw + snow_sed
+
+       icecldf(:ncol,top_lev:pver) = ast(:ncol,top_lev:pver)
+       liqcldf(:ncol,top_lev:pver) = ast(:ncol,top_lev:pver)
+
+       ! ------------------------------------------------------------ !
+       ! Compute in cloud ice and liquid mixing ratios                !
+       ! Note that 'iclwp, iciwp' are used for radiation computation. !
+       ! ------------------------------------------------------------ !
+
+       icinc = 0._r8
+       icwnc = 0._r8
+       iciwpst = 0._r8
+       iclwpst = 0._r8
+       icswp = 0._r8
+       cldfsnow = 0._r8
+
+       do k = top_lev, pver
+          do i = 1, ncol
+             ! Limits for in-cloud mixing ratios consistent with MG microphysics
+             ! in-cloud mixing ratio maximum limit of 0.005 kg/kg
+             icimrst(i,k)   = min( state_loc%q(i,k,ixcldice) / max(mincld,icecldf(i,k)),0.005_r8 )
+             icwmrst(i,k)   = min( state_loc%q(i,k,ixcldliq) / max(mincld,liqcldf(i,k)),0.005_r8 )
+             icinc(i,k)     = state_loc%q(i,k,ixnumice) / max(mincld,icecldf(i,k)) * &
+                  state_loc%pmid(i,k) / (287.15_r8*state_loc%t(i,k))
+             icwnc(i,k)     = state_loc%q(i,k,ixnumliq) / max(mincld,liqcldf(i,k)) * &
+                  state_loc%pmid(i,k) / (287.15_r8*state_loc%t(i,k))
+             ! Calculate micro_mg_cam cloud water paths in each layer
+             ! Note: uses stratiform cloud fraction!
+             iciwpst(i,k)   = min(state_loc%q(i,k,ixcldice)/max(mincld,ast(i,k)),0.005_r8) * state_loc%pdel(i,k) / gravit
+             iclwpst(i,k)   = min(state_loc%q(i,k,ixcldliq)/max(mincld,ast(i,k)),0.005_r8) * state_loc%pdel(i,k) / gravit
+
+             ! ------------------------------ !
+             ! Adjust cloud fraction for snow !
+             ! ------------------------------ !
+             cldfsnow(i,k) = cld(i,k)
+             ! If cloud and only ice ( no convective cloud or ice ), then set to 0.
+             if( ( cldfsnow(i,k) .gt. 1.e-4_r8 ) .and. &
+                ( concld(i,k)   .lt. 1.e-4_r8 ) .and. &
+                ( state_loc%q(i,k,ixcldliq) .lt. 1.e-10_r8 ) ) then
+                cldfsnow(i,k) = 0._r8
+             end if
+             ! If no cloud and snow, then set to 0.25
+             if( ( cldfsnow(i,k) .le. 1.e-4_r8 ) .and. ( qsout(i,k) .gt. 1.e-6_r8 ) ) then
+                cldfsnow(i,k) = 0.25_r8
+             end if
+             ! Calculate in-cloud snow water path
+             icswp(i,k) = qsout(i,k) / max( mincld, cldfsnow(i,k) ) * state_loc%pdel(i,k) / gravit
+          end do
+       end do
+
+       ! Calculate cloud fraction for prognostic precip sizes.
+       if (micro_mg_version > 1) then
+          ! Cloud fraction for purposes of precipitation is maximum cloud
+          ! fraction out of all the layers that the precipitation may be
+          ! falling down from.
+          cldmax = max(mincld, ast)
+          do k = top_lev+1, pver
+             where (state_loc%q(:ncol,k-1,ixrain) >= qsmall .or. &
+                  state_loc%q(:ncol,k-1,ixsnow) >= qsmall)
+                cldmax(:ncol,k) = max(cldmax(:ncol,k-1), cldmax(:ncol,k))
+             end where
+          end do
+       end if
+
+       ! ------------------------------------------------------ !
+       ! ------------------------------------------------------ !
+       ! All code from here to the end is on grid columns only  !
+       ! ------------------------------------------------------ !
+       ! ------------------------------------------------------ !
+
+       ! Average the fields which are needed later in this paramterization to be on the grid
+       if (use_subcol_microp) then
+          call subcol_field_avg(prec_str,  ngrdcol, lchnk, prec_str_grid)
+          call subcol_field_avg(iclwpst,   ngrdcol, lchnk, iclwpst_grid)
+          call subcol_field_avg(cvreffliq, ngrdcol, lchnk, cvreffliq_grid)
+          call subcol_field_avg(cvreffice, ngrdcol, lchnk, cvreffice_grid)
+          call subcol_field_avg(mgflxprc,  ngrdcol, lchnk, mgflxprc_grid)
+          call subcol_field_avg(mgflxsnw,  ngrdcol, lchnk, mgflxsnw_grid)
+          call subcol_field_avg(qme,       ngrdcol, lchnk, qme_grid)
+          call subcol_field_avg(nevapr,    ngrdcol, lchnk, nevapr_grid)
+          call subcol_field_avg(prain,     ngrdcol, lchnk, prain_grid)
+          call subcol_field_avg(evapsnow,  ngrdcol, lchnk, evpsnow_st_grid)
+
+          if (micro_mg_version == 1 .and. micro_mg_sub_version == 0) then
+             call subcol_field_avg(am_evp_st, ngrdcol, lchnk, am_evp_st_grid)
+          end if
+
+          ! Average fields which are not in pbuf
+          call subcol_field_avg(qrout,     ngrdcol, lchnk, qrout_grid)
+          call subcol_field_avg(qsout,     ngrdcol, lchnk, qsout_grid)
+          call subcol_field_avg(nsout,     ngrdcol, lchnk, nsout_grid)
+          call subcol_field_avg(nrout,     ngrdcol, lchnk, nrout_grid)
+          call subcol_field_avg(cld,       ngrdcol, lchnk, cld_grid)
+          call subcol_field_avg(qcreso,    ngrdcol, lchnk, qcreso_grid)
+          call subcol_field_avg(melto,     ngrdcol, lchnk, melto_grid)
+          call subcol_field_avg(mnuccco,   ngrdcol, lchnk, mnuccco_grid)
+          call subcol_field_avg(mnuccto,   ngrdcol, lchnk, mnuccto_grid)
+          call subcol_field_avg(bergo,     ngrdcol, lchnk, bergo_grid)
+          call subcol_field_avg(homoo,     ngrdcol, lchnk, homoo_grid)
+          call subcol_field_avg(msacwio,   ngrdcol, lchnk, msacwio_grid)
+          call subcol_field_avg(psacwso,   ngrdcol, lchnk, psacwso_grid)
+          call subcol_field_avg(bergso,    ngrdcol, lchnk, bergso_grid)
+          call subcol_field_avg(cmeiout,   ngrdcol, lchnk, cmeiout_grid)
+          call subcol_field_avg(qireso,    ngrdcol, lchnk, qireso_grid)
+          call subcol_field_avg(prcio,     ngrdcol, lchnk, prcio_grid)
+          call subcol_field_avg(praio,     ngrdcol, lchnk, praio_grid)
+          call subcol_field_avg(icwmrst,   ngrdcol, lchnk, icwmrst_grid)
+          call subcol_field_avg(icimrst,   ngrdcol, lchnk, icimrst_grid)
+          call subcol_field_avg(liqcldf,   ngrdcol, lchnk, liqcldf_grid)
+          call subcol_field_avg(icecldf,   ngrdcol, lchnk, icecldf_grid)
+          call subcol_field_avg(icwnc,     ngrdcol, lchnk, icwnc_grid)
+          call subcol_field_avg(icinc,     ngrdcol, lchnk, icinc_grid)
+          call subcol_field_avg(state_loc%pdel,            ngrdcol, lchnk, pdel_grid)
+          call subcol_field_avg(prao,      ngrdcol, lchnk, prao_grid)
+          call subcol_field_avg(prco,      ngrdcol, lchnk, prco_grid)
+
+          call subcol_field_avg(state_loc%q(:,:,ixnumliq), ngrdcol, lchnk, nc_grid)
+          call subcol_field_avg(state_loc%q(:,:,ixnumice), ngrdcol, lchnk, ni_grid)
+
+          if (micro_mg_version > 1) then
+             call subcol_field_avg(cldmax,    ngrdcol, lchnk, cldmax_grid)
+
+             call subcol_field_avg(state_loc%q(:,:,ixrain),    ngrdcol, lchnk, qr_grid)
+             call subcol_field_avg(state_loc%q(:,:,ixnumrain), ngrdcol, lchnk, nr_grid)
+             call subcol_field_avg(state_loc%q(:,:,ixsnow),    ngrdcol, lchnk, qs_grid)
+             call subcol_field_avg(state_loc%q(:,:,ixnumsnow), ngrdcol, lchnk, ns_grid)
+          end if
+
+       else
+          ! These pbuf fields need to be assigned.  There is no corresponding subcol_field_avg
+          ! as they are reset before being used, so it would be a needless calculation
+          lambdac_grid    => lambdac
+          mu_grid         => mu
+          rel_grid        => rel
+          rei_grid        => rei
+          dei_grid        => dei
+          des_grid        => des
+
+          ! fields already on grids, so just assign
+          prec_str_grid   => prec_str
+          iclwpst_grid    => iclwpst
+          cvreffliq_grid  => cvreffliq
+          cvreffice_grid  => cvreffice
+          mgflxprc_grid   => mgflxprc
+          mgflxsnw_grid   => mgflxsnw
+          qme_grid        => qme
+          nevapr_grid     => nevapr
+          prain_grid      => prain
+
+          if (micro_mg_version == 1 .and. micro_mg_sub_version == 0) then
+             am_evp_st_grid  = am_evp_st
+          end if
+
+          evpsnow_st_grid = evapsnow
+          qrout_grid      = qrout
+          qsout_grid      = qsout
+          nsout_grid      = nsout
+          nrout_grid      = nrout
+          cld_grid        = cld
+          qcreso_grid     = qcreso
+          melto_grid      = melto
+          mnuccco_grid    = mnuccco
+          mnuccto_grid    = mnuccto
+          bergo_grid      = bergo
+          homoo_grid      = homoo
+          msacwio_grid    = msacwio
+          psacwso_grid    = psacwso
+          bergso_grid     = bergso
+          cmeiout_grid    = cmeiout
+          qireso_grid     = qireso
+          prcio_grid      = prcio
+          praio_grid      = praio
+          icwmrst_grid    = icwmrst
+          icimrst_grid    = icimrst
+          liqcldf_grid    = liqcldf
+          icecldf_grid    = icecldf
+          icwnc_grid      = icwnc
+          icinc_grid      = icinc
+          pdel_grid       = state_loc%pdel
+          prao_grid       = prao
+          prco_grid       = prco
+
+          nc_grid = state_loc%q(:,:,ixnumliq)
+          ni_grid = state_loc%q(:,:,ixnumice)
+
+          if (micro_mg_version > 1) then
+             cldmax_grid = cldmax
+
+             qr_grid = state_loc%q(:,:,ixrain)
+             nr_grid = state_loc%q(:,:,ixnumrain)
+             qs_grid = state_loc%q(:,:,ixsnow)
+             ns_grid = state_loc%q(:,:,ixnumsnow)
+          end if
+
+       end if
+
+       ! If on subcolumns, average the rest of the pbuf fields which were modified on subcolumns but are not used further in
+       ! this parameterization  (no need to assign in the non-subcolumn case -- the else step)
+       if (use_subcol_microp) then
+          call subcol_field_avg(snow_str,    ngrdcol, lchnk, snow_str_grid)
+          call subcol_field_avg(prec_pcw,    ngrdcol, lchnk, prec_pcw_grid)
+          call subcol_field_avg(snow_pcw,    ngrdcol, lchnk, snow_pcw_grid)
+          call subcol_field_avg(prec_sed,    ngrdcol, lchnk, prec_sed_grid)
+          call subcol_field_avg(snow_sed,    ngrdcol, lchnk, snow_sed_grid)
+          call subcol_field_avg(cldo,        ngrdcol, lchnk, cldo_grid)
+          call subcol_field_avg(mgmrprc,     ngrdcol, lchnk, mgmrprc_grid)
+          call subcol_field_avg(mgmrsnw,     ngrdcol, lchnk, mgmrsnw_grid)
+          call subcol_field_avg(wsedl,       ngrdcol, lchnk, wsedl_grid)
+          call subcol_field_avg(cc_t,        ngrdcol, lchnk, cc_t_grid)
+          call subcol_field_avg(cc_qv,       ngrdcol, lchnk, cc_qv_grid)
+          call subcol_field_avg(cc_ql,       ngrdcol, lchnk, cc_ql_grid)
+          call subcol_field_avg(cc_qi,       ngrdcol, lchnk, cc_qi_grid)
+          call subcol_field_avg(cc_nl,       ngrdcol, lchnk, cc_nl_grid)
+          call subcol_field_avg(cc_ni,       ngrdcol, lchnk, cc_ni_grid)
+          call subcol_field_avg(cc_qlst,     ngrdcol, lchnk, cc_qlst_grid)
+          call subcol_field_avg(iciwpst,     ngrdcol, lchnk, iciwpst_grid)
+          call subcol_field_avg(icswp,       ngrdcol, lchnk, icswp_grid)
+          call subcol_field_avg(cldfsnow,    ngrdcol, lchnk, cldfsnow_grid)
+
+          if (rate1_cw2pr_st_idx > 0) then
+             call subcol_field_avg(rate1ord_cw2pr_st,    ngrdcol, lchnk, rate1ord_cw2pr_st_grid)
+          end if
+
+       end if
+
+       !----------------------------------------
+       !water tracers/isotopes   (on gridlevel)
+       !----------------------------------------
+
+       ! Convert fields to grid level early, that are needed by water tracers
+
+        if (trace_water) then
+
+             ! Average isotope fields to the grid level , so they can be operated on
+             if (use_subcol_microp) then
+                !
+                ! EBK Apr/21/2015
+                ! In order to run on sub-columns all fields would need to
+                ! be averaged to the grid level like so...
+                !call subcol_field_avg(preo,      ngrdcol, lchnk, preo_grid)
+                ! For the list of fields, see the "else" statement
+                ! Also "state", "ptend" and "pbuf" would all be on
+                ! sub-columns and would need to be averaged to grid level
+                ! and then copied to the sub-column level. Or all the operations
+                ! below would need to be on the sub-column level rather than
+                ! grid level. Some of this would also require changes in water_tracers.F90.
+                !
+                ! (For now just terminate early)
+                call endrun(subname // ':: ERROR water tracers are NOT configured to work with subcolumns')
+             else
+                preo_grid      => preo
+                prdso_grid     => prdso
+                frzro_grid     => frzro
+                meltso_grid    => meltso
+                wtfc_grid      => wtfc
+                wtfi_grid      => wtfi
+                wtprelat_grid  => wtprelat
+                wtpostlat_grid => wtpostlat
+
+                mnuccro_grid  => mnuccro
+                pracso_grid   => pracso
+                qcsedten_grid => qcsedten
+                qisedten_grid => qisedten
+                alst_mic_grid => alst_mic
+                aist_mic_grid => aist_mic
+             end if
+
+             ! Setup microphysics rates to be applied before sedimentation.
+             call wtrc_init_rates(top_lev, pre_rates_grid)
+
+             !initalize variables
+             pcmei_grid(:,top_lev:) = 0._r8
+             ncmei_grid(:,top_lev:) = 0._r8
+             pmelts_grid(:,top_lev:) = 0._r8
+             nmelts_grid(:,top_lev:) = 0._r8
+
+             !split into positive and negative tendencies - JN
+             do i=1,ncol
+               do k=top_lev,pver
+                 if(cmeiout_grid(i,k) .lt. 0._r8) then
+                   ncmei_grid(i,k) = cmeiout_grid(i,k) !sublimation (ice-dependent)
+                 else
+                   pcmei_grid(i,k) = cmeiout_grid(i,k) !deposition (vapor-dependent)
+                 end if
+                 if(meltso(i,k) .lt. 0._r8) then
+                   nmelts_grid(i,k) = meltso_grid(i,k)
+                 else
+                   pmelts_grid(i,k) = meltso_grid(i,k)
+                 end if
+               end do
+             end do
+
+             ! Processes that consume water vapor.
+
+             call wtrc_add_rates(pre_rates_grid, ncol, top_lev, iwtvap, iwtice, iwtvap, pcmei_grid) !deposition
+             call wtrc_add_rates(pre_rates_grid, ncol, top_lev, iwtvap, iwtice, iwtice, ncmei_grid) !sublimation
+
+             call wtrc_add_rates(pre_rates_grid, ncol, top_lev, iwtvap,    iwtstrain, iwtstrain, preo_grid)  !rain re-evaporation
+             call wtrc_add_rates(pre_rates_grid, ncol, top_lev, iwtvap,    iwtstsnow, iwtstsnow, prdso_grid) !snow sublimation
+
+             ! Processes that consume liquid
+             !Freezing,accretion on ice,and evaporation to deposition:
+             call wtrc_add_rates(pre_rates_grid, ncol, top_lev, iwtliq,    &
+                                 iwtice,    iwtliq,                        &
+                                 mnuccco_grid + mnuccto_grid + msacwio_grid)
+             !Accretion on rain,autoconversion:
+             call wtrc_add_rates(pre_rates_grid, ncol, top_lev, iwtliq,    iwtstrain, iwtliq, prao_grid + prco_grid)
+             !Accretion on snow, Bergeron process on snow:
+             call wtrc_add_rates(pre_rates_grid, ncol, top_lev, iwtliq,    iwtstsnow, iwtliq, psacwso_grid)
+
+             !Bergeron processes to ice and snow (NOTE:  This is handled specifically in apply_rates, so the sources and sinks are not
+             !physical here.  It might be good to figure out a logical switch instead of using specific water type variables. - JN).
+             call wtrc_add_rates(pre_rates_grid, ncol, top_lev, iwtliq, iwtliq, iwtliq, bergo_grid)
+             call wtrc_add_rates(pre_rates_grid, ncol, top_lev, iwtice, iwtice, iwtice, bergso_grid)
+
+             ! Processes that consume ice
+             !Ice accretion on snow,autoncversion of snow:
+             call wtrc_add_rates(pre_rates_grid, ncol, top_lev, iwtice,    iwtstsnow, iwtice, praio_grid + prcio_grid)
+
+             ! Processes that consume rain
+             !Accretion on snow, freezing (hetero and homo?):
+             !Don't include freezing of rain (frzro_grid) as handled separately
+             call wtrc_add_rates(pre_rates_grid, ncol, top_lev, iwtstrain, &
+                                 iwtstsnow, iwtstrain,                     &
+                                 pracso_grid + mnuccro_grid)
+
+             ! Don't include melting of snow (pmelts_grid, nmelts_grid) as handled separately
+
+             ! Setup  sedimentation.
+             sed_rates_grid(:, top_lev:, :)        = 0._r8
+             sed_rates_grid(:, top_lev:, iwtliq)   = qcsedten_grid
+             sed_rates_grid(:, top_lev:, iwtice)   = qisedten_grid
+
+             ! Setup microphysics rates to be applied after sedimentation.
+             call wtrc_init_rates(top_lev, post_rates_grid)
+
+             ! Processes that consume water vapor.
+             !Condenstation (sets supersat = 0):
+             call wtrc_add_rates(post_rates_grid, ncol, top_lev, iwtvap,    iwtliq,   iwtvap, qcreso_grid)
+             !Deposition (sets supersat = 0):
+             call wtrc_add_rates(post_rates_grid, ncol, top_lev, iwtvap,    iwtice,   iwtvap, qireso_grid) !positive
+
+             ! Processes that consume liquid.
+             !
+             ! NOTE: The evaporation is of liquid that sedimented from a higher
+             ! level. The source of the vapor has already been include in the
+             ! sedimentation tendency. (NOTE:  managed in wtrc_sediment -JN)
+             !Freezing:
+             call wtrc_add_rates(post_rates_grid, ncol, top_lev, iwtliq,    iwtice,   iwtliq, homoo_grid) !positive
+
+             ! Processes that consume ice
+             !
+             ! NOTE: The evaporation is of ice that sedimented from a higher
+             ! level. The source of the vapor has already been include in the
+             ! sedimentation tendency. (NOTE:  managed in wtrc_sediment - JN)
+             !Melting:
+             call wtrc_add_rates(post_rates_grid, ncol, top_lev, iwtice,    iwtliq,   iwtice, melto_grid) !positive
+
+             ! Apply the microphysical process to the isotopes. rates.
+              call wtrc_apply_rates(state, ptend, pbuf, top_lev, dtime, .true., pre_rates=pre_rates_grid, sed_rates=sed_rates_grid, &
+                                    post_rates=post_rates_grid, do_stprecip=.true., liqcldf=alst_mic, icecldf=aist_mic,    &
+                                    fc=wtfc_grid, fi=wtfi_grid, prelat=wtprelat_grid, postlat=wtpostlat_grid,              &
+                                    frzro=frzro_grid, meltso=meltso_grid)
+
+        end if !water tracers
+
+       !-------------------------------------
+       ! ------------------------------------- !
+       ! Size distribution calculation         !
+       ! ------------------------------------- !
+
+       ! Calculate rho (on subcolumns if turned on) for size distribution
+       ! parameter calculations and average it if needed
+       !
+       ! State instead of state_loc to preserve answers for MG1 (and in any
+       ! case, it is unlikely to make much difference).
+       rho(:ncol,top_lev:) = state%pmid(:ncol,top_lev:) / &
+            (rair*state%t(:ncol,top_lev:))
+       if (use_subcol_microp) then
+          call subcol_field_avg(rho, ngrdcol, lchnk, rho_grid)
+       else
+          rho_grid = rho
+       end if
+
+       ! Effective radius for cloud liquid, fixed number.
+       mu_grid = 0._r8
+       lambdac_grid = 0._r8
+       rel_fn_grid = 10._r8
+
+       ncic_grid = 1.e8_r8
+
+       call size_dist_param_liq(mg_liq_props, icwmrst_grid(:ngrdcol,top_lev:), &
+            ncic_grid(:ngrdcol,top_lev:), rho_grid(:ngrdcol,top_lev:), &
+            mu_grid(:ngrdcol,top_lev:), lambdac_grid(:ngrdcol,top_lev:))
+
+       where (icwmrst_grid(:ngrdcol,top_lev:) > qsmall)
+          rel_fn_grid(:ngrdcol,top_lev:) = &
+               (mu_grid(:ngrdcol,top_lev:) + 3._r8)/ &
+               lambdac_grid(:ngrdcol,top_lev:)/2._r8 * 1.e6_r8
+       end where
+
+       ! Effective radius for cloud liquid, and size parameters
+       ! mu_grid and lambdac_grid.
+       mu_grid = 0._r8
+       lambdac_grid = 0._r8
+       rel_grid = 10._r8
+
+       ! Calculate ncic on the grid
+       ncic_grid(:ngrdcol,top_lev:) = nc_grid(:ngrdcol,top_lev:) / &
+            max(mincld,liqcldf_grid(:ngrdcol,top_lev:))
+
+       call size_dist_param_liq(mg_liq_props, icwmrst_grid(:ngrdcol,top_lev:), &
+            ncic_grid(:ngrdcol,top_lev:), rho_grid(:ngrdcol,top_lev:), &
+            mu_grid(:ngrdcol,top_lev:), lambdac_grid(:ngrdcol,top_lev:))
+
+       where (icwmrst_grid(:ngrdcol,top_lev:) >= qsmall)
+          rel_grid(:ngrdcol,top_lev:) = &
+               (mu_grid(:ngrdcol,top_lev:) + 3._r8) / &
+               lambdac_grid(:ngrdcol,top_lev:)/2._r8 * 1.e6_r8
+       elsewhere
+          ! Deal with the fact that size_dist_param_liq sets mu_grid to -100
+          ! wherever there is no cloud.
+          mu_grid(:ngrdcol,top_lev:) = 0._r8
+       end where
+
+       ! Rain/Snow effective diameter.
+       drout2_grid = 0._r8
+       reff_rain_grid = 0._r8
+       des_grid = 0._r8
+       dsout2_grid = 0._r8
+       reff_snow_grid = 0._r8
+
+       if (micro_mg_version > 1) then
+          ! Prognostic precipitation
+
+          where (qr_grid(:ngrdcol,top_lev:) >= 1.e-7_r8)
+             drout2_grid(:ngrdcol,top_lev:) = avg_diameter( &
+                  qr_grid(:ngrdcol,top_lev:), &
+                  nr_grid(:ngrdcol,top_lev:) * rho_grid(:ngrdcol,top_lev:), &
+                  rho_grid(:ngrdcol,top_lev:), rhow)
+
+             reff_rain_grid(:ngrdcol,top_lev:) = drout2_grid(:ngrdcol,top_lev:) * &
+                  1.5_r8 * 1.e6_r8
+          end where
+
+          where (qs_grid(:ngrdcol,top_lev:) >= 1.e-7_r8)
+             dsout2_grid(:ngrdcol,top_lev:) = avg_diameter( &
+                  qs_grid(:ngrdcol,top_lev:), &
+                  ns_grid(:ngrdcol,top_lev:) * rho_grid(:ngrdcol,top_lev:), &
+                  rho_grid(:ngrdcol,top_lev:), rhosn)
+
+             des_grid(:ngrdcol,top_lev:) = dsout2_grid(:ngrdcol,top_lev:) *&
+                  3._r8 * rhosn/rhows
+
+             reff_snow_grid(:ngrdcol,top_lev:) = dsout2_grid(:ngrdcol,top_lev:) * &
+                  1.5_r8 * 1.e6_r8
+          end where
+
+       else
+          ! Diagnostic precipitation
+
+          where (qrout_grid(:ngrdcol,top_lev:) >= 1.e-7_r8)
+             drout2_grid(:ngrdcol,top_lev:) = avg_diameter( &
+                  qrout_grid(:ngrdcol,top_lev:), &
+                  nrout_grid(:ngrdcol,top_lev:) * rho_grid(:ngrdcol,top_lev:), &
+                  rho_grid(:ngrdcol,top_lev:), rhow)
+
+             reff_rain_grid(:ngrdcol,top_lev:) = drout2_grid(:ngrdcol,top_lev:) * &
+                  1.5_r8 * 1.e6_r8
+          end where
+
+          where (qsout_grid(:ngrdcol,top_lev:) >= 1.e-7_r8)
+             dsout2_grid(:ngrdcol,top_lev:) = avg_diameter( &
+                  qsout_grid(:ngrdcol,top_lev:), &
+                  nsout_grid(:ngrdcol,top_lev:) * rho_grid(:ngrdcol,top_lev:), &
+                  rho_grid(:ngrdcol,top_lev:), rhosn)
+
+             des_grid(:ngrdcol,top_lev:) = dsout2_grid(:ngrdcol,top_lev:) &
+                  * 3._r8 * rhosn/rhows
+
+             reff_snow_grid(:ngrdcol,top_lev:) = &
+                  dsout2_grid(:ngrdcol,top_lev:) * 1.5_r8 * 1.e6_r8
+          end where
+
+       end if
+
+       ! Effective radius and diameter for cloud ice.
+       rei_grid = 25._r8
+
+       niic_grid(:ngrdcol,top_lev:) = ni_grid(:ngrdcol,top_lev:) / &
+            max(mincld,icecldf_grid(:ngrdcol,top_lev:))
+
+       call size_dist_param_basic(mg_ice_props, icimrst_grid(:ngrdcol,top_lev:), &
+            niic_grid(:ngrdcol,top_lev:), rei_grid(:ngrdcol,top_lev:))
+
+       where (icimrst_grid(:ngrdcol,top_lev:) >= qsmall)
+          rei_grid(:ngrdcol,top_lev:) = 1.5_r8/rei_grid(:ngrdcol,top_lev:) &
+               * 1.e6_r8
+       elsewhere
+          rei_grid(:ngrdcol,top_lev:) = 25._r8
+       end where
+
+       dei_grid = rei_grid * rhoi/rhows * 2._r8
+
+       ! Limiters for low cloud fraction.
+       do k = top_lev, pver
+          do i = 1, ngrdcol
+             ! Convert snow effective diameter to microns
+             des_grid(i,k) = des_grid(i,k) * 1.e6_r8
+             if ( ast_grid(i,k) < 1.e-4_r8 ) then
+                mu_grid(i,k) = mucon
+                lambdac_grid(i,k) = (mucon + 1._r8)/dcon
+                dei_grid(i,k) = deicon
+             end if
+          end do
+       end do
+
+       mgreffrain_grid(:ngrdcol,top_lev:pver) = reff_rain_grid(:ngrdcol,top_lev:pver)
+       mgreffsnow_grid(:ngrdcol,top_lev:pver) = reff_snow_grid(:ngrdcol,top_lev:pver)
+
+       ! ------------------------------------- !
+       ! Precipitation efficiency Calculation  !
+       ! ------------------------------------- !
+
+       !-----------------------------------------------------------------------
+       ! Liquid water path
+
+       ! Compute liquid water paths, and column condensation
+       tgliqwp_grid(:ngrdcol) = 0._r8
+       tgcmeliq_grid(:ngrdcol) = 0._r8
+       do k = top_lev, pver
+          do i = 1, ngrdcol
+             tgliqwp_grid(i)  = tgliqwp_grid(i) + iclwpst_grid(i,k)*cld_grid(i,k)
+
+             if (cmeliq_grid(i,k) > 1.e-12_r8) then
+                !convert cmeliq to right units:  kgh2o/kgair/s  *  kgair/m2  / kgh2o/m3  = m/s
+                tgcmeliq_grid(i) = tgcmeliq_grid(i) + cmeliq_grid(i,k) * &
+                     (pdel_grid(i,k) / gravit) / rhoh2o
+             end if
+          end do
+       end do
+
+       ! note: 1e-6 kgho2/kgair/s * 1000. pa / (9.81 m/s2) / 1000 kgh2o/m3 = 1e-7 m/s
+       ! this is 1ppmv of h2o in 10hpa
+       ! alternatively: 0.1 mm/day * 1.e-4 m/mm * 1/86400 day/s = 1.e-9
+
+       !-----------------------------------------------------------------------
+       ! precipitation efficiency calculation  (accumulate cme and precip)
+
+       minlwp = 0.01_r8        !minimum lwp threshold (kg/m3)
+
+       ! zero out precip efficiency and total averaged precip
+       pe_grid(:ngrdcol)     = 0._r8
+       tpr_grid(:ngrdcol)    = 0._r8
+       pefrac_grid(:ngrdcol) = 0._r8
+
+       ! accumulate precip and condensation
+       do i = 1, ngrdcol
+
+          acgcme_grid(i)  = acgcme_grid(i) + tgcmeliq_grid(i)
+          acprecl_grid(i) = acprecl_grid(i) + prec_str_grid(i)
+          acnum_grid(i)   = acnum_grid(i) + 1
+
+          ! if LWP is zero, then 'end of cloud': calculate precip efficiency
+          if (tgliqwp_grid(i) < minlwp) then
+             if (acprecl_grid(i) > 5.e-8_r8) then
+                tpr_grid(i) = max(acprecl_grid(i)/acnum_grid(i), 1.e-15_r8)
+                if (acgcme_grid(i) > 1.e-10_r8) then
+                   pe_grid(i) = min(max(acprecl_grid(i)/acgcme_grid(i), 1.e-15_r8), 1.e5_r8)
+                   pefrac_grid(i) = 1._r8
+                end if
+             end if
+
+             ! reset counters
+    !        if (pe_grid(i) /= 0._r8 .and. (pe_grid(i) < 1.e-8_r8 .or. pe_grid(i) > 1.e3_r8)) then
+    !           write (iulog,*) 'PE_grid:ANOMALY  pe_grid, acprecl_grid, acgcme_grid, tpr_grid, acnum_grid ', &
+    !                           pe_grid(i),acprecl_grid(i), acgcme_grid(i), tpr_grid(i), acnum_grid(i)
+    !        endif
+
+             acprecl_grid(i) = 0._r8
+             acgcme_grid(i)  = 0._r8
+             acnum_grid(i)   = 0
+          end if               ! end LWP zero conditional
+
+          ! if never find any rain....(after 10^3 timesteps...)
+          if (acnum_grid(i) > 1000) then
+             acnum_grid(i)   = 0
+             acprecl_grid(i) = 0._r8
+             acgcme_grid(i)  = 0._r8
+          end if
+
+       end do
+
+       !-----------------------------------------------------------------------
+       ! vertical average of non-zero accretion, autoconversion and ratio.
+       ! vars: vprco_grid(i),vprao_grid(i),racau_grid(i),cnt_grid
+
+       vprao_grid = 0._r8
+       cnt_grid = 0
+       do k = top_lev, pver
+          vprao_grid(:ngrdcol) = vprao_grid(:ngrdcol) + prao_grid(:ngrdcol,k)
+          where (prao_grid(:ngrdcol,k) /= 0._r8) cnt_grid(:ngrdcol) = cnt_grid(:ngrdcol) + 1
+       end do
+
+       where (cnt_grid > 0) vprao_grid = vprao_grid/cnt_grid
+
+       vprco_grid = 0._r8
+       cnt_grid = 0
+       do k = top_lev, pver
+          vprco_grid(:ngrdcol) = vprco_grid(:ngrdcol) + prco_grid(:ngrdcol,k)
+          where (prco_grid(:ngrdcol,k) /= 0._r8) cnt_grid(:ngrdcol) = cnt_grid(:ngrdcol) + 1
+       end do
+
+       where (cnt_grid > 0)
+          vprco_grid = vprco_grid/cnt_grid
+          racau_grid = vprao_grid/vprco_grid
+       elsewhere
+          racau_grid = 0._r8
+       end where
+
+       racau_grid = min(racau_grid, 1.e10_r8)
+
+       ! --------------------- !
+       ! History Output Fields !
+       ! --------------------- !
+
+       ! Column droplet concentration
+       cdnumc_grid(:ngrdcol) = sum(nc_grid(:ngrdcol,top_lev:pver) * &
+            pdel_grid(:ngrdcol,top_lev:pver)/gravit, dim=2)
+
+       ! Averaging for new output fields
+       efcout_grid      = 0._r8
+       efiout_grid      = 0._r8
+       ncout_grid       = 0._r8
+       niout_grid       = 0._r8
+       freql_grid       = 0._r8
+       freqi_grid       = 0._r8
+       icwmrst_grid_out = 0._r8
+       icimrst_grid_out = 0._r8
+
+       do k = top_lev, pver
+          do i = 1, ngrdcol
+             if ( liqcldf_grid(i,k) > 0.01_r8 .and. icwmrst_grid(i,k) > 5.e-5_r8 ) then
+                efcout_grid(i,k) = rel_grid(i,k) * liqcldf_grid(i,k)
+                ncout_grid(i,k)  = icwnc_grid(i,k) * liqcldf_grid(i,k)
+                freql_grid(i,k)  = liqcldf_grid(i,k)
+                icwmrst_grid_out(i,k) = icwmrst_grid(i,k)
+             end if
+             if ( icecldf_grid(i,k) > 0.01_r8 .and. icimrst_grid(i,k) > 1.e-6_r8 ) then
+                efiout_grid(i,k) = rei_grid(i,k) * icecldf_grid(i,k)
+                niout_grid(i,k)  = icinc_grid(i,k) * icecldf_grid(i,k)
+                freqi_grid(i,k)  = icecldf_grid(i,k)
+                icimrst_grid_out(i,k) = icimrst_grid(i,k)
+             end if
+          end do
+       end do
+
+       ! Cloud top effective radius and number.
+       fcti_grid  = 0._r8
+       fctl_grid  = 0._r8
+       ctrel_grid = 0._r8
+       ctrei_grid = 0._r8
+       ctnl_grid  = 0._r8
+       ctni_grid  = 0._r8
+       do i = 1, ngrdcol
+          do k = top_lev, pver
+             if ( liqcldf_grid(i,k) > 0.01_r8 .and. icwmrst_grid(i,k) > 1.e-7_r8 ) then
+                ctrel_grid(i) = rel_grid(i,k) * liqcldf_grid(i,k)
+                ctnl_grid(i)  = icwnc_grid(i,k) * liqcldf_grid(i,k)
+                fctl_grid(i)  = liqcldf_grid(i,k)
+                exit
+             end if
+             if ( icecldf_grid(i,k) > 0.01_r8 .and. icimrst_grid(i,k) > 1.e-7_r8 ) then
+                ctrei_grid(i) = rei_grid(i,k) * icecldf_grid(i,k)
+                ctni_grid(i)  = icinc_grid(i,k) * icecldf_grid(i,k)
+                fcti_grid(i)  = icecldf_grid(i,k)
+                exit
+             end if
+          end do
+       end do
+
+       ! Evaporation of stratiform precipitation fields for UNICON
+       evprain_st_grid(:ngrdcol,:pver) = nevapr_grid(:ngrdcol,:pver) - evpsnow_st_grid(:ngrdcol,:pver)
+       do k = top_lev, pver
+          do i = 1, ngrdcol
+             evprain_st_grid(i,k) = max(evprain_st_grid(i,k), 0._r8)
+             evpsnow_st_grid(i,k) = max(evpsnow_st_grid(i,k), 0._r8)
+          end do
+       end do
+
+       ! Assign the values to the pbuf pointers if they exist in pbuf
+       if (qrain_idx > 0)  qrout_grid_ptr = qrout_grid
+       if (qsnow_idx > 0)  qsout_grid_ptr = qsout_grid
+       if (nrain_idx > 0)  nrout_grid_ptr = nrout_grid
+       if (nsnow_idx > 0)  nsout_grid_ptr = nsout_grid
+
+       ! --------------------------------------------- !
+       ! General outfield calls for microphysics       !
+       ! --------------------------------------------- !
+
+       ! Output a handle of variables which are calculated on the fly
+       ftem_grid = 0._r8
+
+       ftem_grid(:ngrdcol,top_lev:pver) =  qcreso_grid(:ngrdcol,top_lev:pver)
+       call outfld( 'MPDW2V', ftem_grid, pcols, lchnk)
+
+       ftem_grid(:ngrdcol,top_lev:pver) =  melto_grid(:ngrdcol,top_lev:pver) - mnuccco_grid(:ngrdcol,top_lev:pver)&
+            - mnuccto_grid(:ngrdcol,top_lev:pver) -  bergo_grid(:ngrdcol,top_lev:pver) - homoo_grid(:ngrdcol,top_lev:pver)&
+            - msacwio_grid(:ngrdcol,top_lev:pver)
+       call outfld( 'MPDW2I', ftem_grid, pcols, lchnk)
+
+       ftem_grid(:ngrdcol,top_lev:pver) = -prao_grid(:ngrdcol,top_lev:pver) - prco_grid(:ngrdcol,top_lev:pver)&
+            - psacwso_grid(:ngrdcol,top_lev:pver) - bergso_grid(:ngrdcol,top_lev:pver)
+       call outfld( 'MPDW2P', ftem_grid, pcols, lchnk)
+
+       ftem_grid(:ngrdcol,top_lev:pver) =  cmeiout_grid(:ngrdcol,top_lev:pver) + qireso_grid(:ngrdcol,top_lev:pver)
+       call outfld( 'MPDI2V', ftem_grid, pcols, lchnk)
+
+       ftem_grid(:ngrdcol,top_lev:pver) = -melto_grid(:ngrdcol,top_lev:pver) + mnuccco_grid(:ngrdcol,top_lev:pver) &
+            + mnuccto_grid(:ngrdcol,top_lev:pver) +  bergo_grid(:ngrdcol,top_lev:pver) + homoo_grid(:ngrdcol,top_lev:pver)&
+            + msacwio_grid(:ngrdcol,top_lev:pver)
+       call outfld( 'MPDI2W', ftem_grid, pcols, lchnk)
+
+       ftem_grid(:ngrdcol,top_lev:pver) = -prcio_grid(:ngrdcol,top_lev:pver) - praio_grid(:ngrdcol,top_lev:pver)
+       call outfld( 'MPDI2P', ftem_grid, pcols, lchnk)
+
+       ! Output fields which have not been averaged already, averaging if use_subcol_microp is true
+       call outfld('MPICLWPI',    iclwpi,      psetcols, lchnk, avg_subcol_field=use_subcol_microp)
+       call outfld('MPICIWPI',    iciwpi,      psetcols, lchnk, avg_subcol_field=use_subcol_microp)
+       call outfld('REFL',        refl,        psetcols, lchnk, avg_subcol_field=use_subcol_microp)
+       call outfld('AREFL',       arefl,       psetcols, lchnk, avg_subcol_field=use_subcol_microp)
+       call outfld('AREFLZ',      areflz,      psetcols, lchnk, avg_subcol_field=use_subcol_microp)
+       call outfld('FREFL',       frefl,       psetcols, lchnk, avg_subcol_field=use_subcol_microp)
+       call outfld('CSRFL',       csrfl,       psetcols, lchnk, avg_subcol_field=use_subcol_microp)
+       call outfld('ACSRFL',      acsrfl,      psetcols, lchnk, avg_subcol_field=use_subcol_microp)
+       call outfld('FCSRFL',      fcsrfl,      psetcols, lchnk, avg_subcol_field=use_subcol_microp)
+       call outfld('RERCLD',      rercld,      psetcols, lchnk, avg_subcol_field=use_subcol_microp)
+       call outfld('NCAL',        ncal,        psetcols, lchnk, avg_subcol_field=use_subcol_microp)
+       call outfld('NCAI',        ncai,        psetcols, lchnk, avg_subcol_field=use_subcol_microp)
+       call outfld('AQRAIN',      qrout2,      psetcols, lchnk, avg_subcol_field=use_subcol_microp)
+       call outfld('AQSNOW',      qsout2,      psetcols, lchnk, avg_subcol_field=use_subcol_microp)
+       call outfld('ANRAIN',      nrout2,      psetcols, lchnk, avg_subcol_field=use_subcol_microp)
+       call outfld('ANSNOW',      nsout2,      psetcols, lchnk, avg_subcol_field=use_subcol_microp)
+       call outfld('FREQR',       freqr,       psetcols, lchnk, avg_subcol_field=use_subcol_microp)
+       call outfld('FREQS',       freqs,       psetcols, lchnk, avg_subcol_field=use_subcol_microp)
+       call outfld('MPDT',        tlat,        psetcols, lchnk, avg_subcol_field=use_subcol_microp)
+       call outfld('MPDQ',        qvlat,       psetcols, lchnk, avg_subcol_field=use_subcol_microp)
+       call outfld('MPDLIQ',      qcten,       psetcols, lchnk, avg_subcol_field=use_subcol_microp)
+       call outfld('MPDICE',      qiten,       psetcols, lchnk, avg_subcol_field=use_subcol_microp)
+       call outfld('EVAPSNOW',    evapsnow,    psetcols, lchnk, avg_subcol_field=use_subcol_microp)
+       call outfld('QCSEVAP',     qcsevap,     psetcols, lchnk, avg_subcol_field=use_subcol_microp)
+       call outfld('QISEVAP',     qisevap,     psetcols, lchnk, avg_subcol_field=use_subcol_microp)
+       call outfld('QVRES',       qvres,       psetcols, lchnk, avg_subcol_field=use_subcol_microp)
+       call outfld('VTRMC',       vtrmc,       psetcols, lchnk, avg_subcol_field=use_subcol_microp)
+       call outfld('VTRMI',       vtrmi,       psetcols, lchnk, avg_subcol_field=use_subcol_microp)
+       call outfld('QCSEDTEN',    qcsedten,    psetcols, lchnk, avg_subcol_field=use_subcol_microp)
+       call outfld('QISEDTEN',    qisedten,    psetcols, lchnk, avg_subcol_field=use_subcol_microp)
+       if (micro_mg_version > 1) then
+          call outfld('QRSEDTEN',    qrsedten,    psetcols, lchnk, avg_subcol_field=use_subcol_microp)
+          call outfld('QSSEDTEN',    qssedten,    psetcols, lchnk, avg_subcol_field=use_subcol_microp)
+       end if
+       call outfld('MNUCCDO',     mnuccdo,     psetcols, lchnk, avg_subcol_field=use_subcol_microp)
+       call outfld('MNUCCDOhet',  mnuccdohet,  psetcols, lchnk, avg_subcol_field=use_subcol_microp)
+       call outfld('MNUCCRO',     mnuccro,     psetcols, lchnk, avg_subcol_field=use_subcol_microp)
+       call outfld('PRACSO',      pracso ,     psetcols, lchnk, avg_subcol_field=use_subcol_microp)
+       call outfld('MELTSDT',     meltsdt,     psetcols, lchnk, avg_subcol_field=use_subcol_microp)
+       call outfld('FRZRDT',      frzrdt ,     psetcols, lchnk, avg_subcol_field=use_subcol_microp)
+       call outfld('FICE',        nfice,       psetcols, lchnk, avg_subcol_field=use_subcol_microp)
+
+       if (micro_mg_version > 1) then
+          call outfld('UMR',      umr,         psetcols, lchnk, avg_subcol_field=use_subcol_microp)
+          call outfld('UMS',      ums,         psetcols, lchnk, avg_subcol_field=use_subcol_microp)
+       end if
+
+       if (.not. (micro_mg_version == 1 .and. micro_mg_sub_version == 0)) then
+          call outfld('QCRAT',    qcrat,       psetcols, lchnk, avg_subcol_field=use_subcol_microp)
+       end if
+
+       ! Example subcolumn outfld call
+       if (use_subcol_microp) then
+          call outfld('FICE_SCOL',   nfice,       psubcols*pcols, lchnk)
+       end if
+
+       ! Output fields which are already on the grid
+       call outfld('QRAIN',       qrout_grid,       pcols, lchnk)
+       call outfld('QSNOW',       qsout_grid,       pcols, lchnk)
+       call outfld('NRAIN',       nrout_grid,       pcols, lchnk)
+       call outfld('NSNOW',       nsout_grid,       pcols, lchnk)
+       call outfld('CV_REFFLIQ',  cvreffliq_grid,   pcols, lchnk)
+       call outfld('CV_REFFICE',  cvreffice_grid,   pcols, lchnk)
+       call outfld('LS_FLXPRC',   mgflxprc_grid,    pcols, lchnk)
+       call outfld('LS_FLXSNW',   mgflxsnw_grid,    pcols, lchnk)
+       call outfld('CME',         qme_grid,         pcols, lchnk)
+       call outfld('PRODPREC',    prain_grid,       pcols, lchnk)
+       call outfld('EVAPPREC',    nevapr_grid,      pcols, lchnk)
+       call outfld('QCRESO',      qcreso_grid,      pcols, lchnk)
+       call outfld('LS_REFFRAIN', mgreffrain_grid,  pcols, lchnk)
+       call outfld('LS_REFFSNOW', mgreffsnow_grid,  pcols, lchnk)
+       call outfld('DSNOW',       des_grid,         pcols, lchnk)
+       call outfld('ADRAIN',      drout2_grid,      pcols, lchnk)
+       call outfld('ADSNOW',      dsout2_grid,      pcols, lchnk)
+       call outfld('PE',          pe_grid,          pcols, lchnk)
+       call outfld('PEFRAC',      pefrac_grid,      pcols, lchnk)
+       call outfld('APRL',        tpr_grid,         pcols, lchnk)
+       call outfld('VPRAO',       vprao_grid,       pcols, lchnk)
+       call outfld('VPRCO',       vprco_grid,       pcols, lchnk)
+       call outfld('RACAU',       racau_grid,       pcols, lchnk)
+       call outfld('AREL',        efcout_grid,      pcols, lchnk)
+       call outfld('AREI',        efiout_grid,      pcols, lchnk)
+       call outfld('AWNC' ,       ncout_grid,       pcols, lchnk)
+       call outfld('AWNI' ,       niout_grid,       pcols, lchnk)
+       call outfld('FREQL',       freql_grid,       pcols, lchnk)
+       call outfld('FREQI',       freqi_grid,       pcols, lchnk)
+       call outfld('ACTREL',      ctrel_grid,       pcols, lchnk)
+       call outfld('ACTREI',      ctrei_grid,       pcols, lchnk)
+       call outfld('ACTNL',       ctnl_grid,        pcols, lchnk)
+       call outfld('ACTNI',       ctni_grid,        pcols, lchnk)
+       call outfld('FCTL',        fctl_grid,        pcols, lchnk)
+       call outfld('FCTI',        fcti_grid,        pcols, lchnk)
+       call outfld('ICINC',       icinc_grid,       pcols, lchnk)
+       call outfld('ICWNC',       icwnc_grid,       pcols, lchnk)
+       call outfld('EFFLIQ_IND',  rel_fn_grid,      pcols, lchnk)
+       call outfld('CDNUMC',      cdnumc_grid,      pcols, lchnk)
+       call outfld('REL',         rel_grid,         pcols, lchnk)
+       call outfld('REI',         rei_grid,         pcols, lchnk)
+       call outfld('ICIMRST',     icimrst_grid_out, pcols, lchnk)
+       call outfld('ICWMRST',     icwmrst_grid_out, pcols, lchnk)
+       call outfld('CMEIOUT',     cmeiout_grid,     pcols, lchnk)
+       call outfld('PRAO',        prao_grid,        pcols, lchnk)
+       call outfld('PRCO',        prco_grid,        pcols, lchnk)
+       call outfld('MNUCCCO',     mnuccco_grid,     pcols, lchnk)
+       call outfld('MNUCCTO',     mnuccto_grid,     pcols, lchnk)
+       call outfld('MSACWIO',     msacwio_grid,     pcols, lchnk)
+       call outfld('PSACWSO',     psacwso_grid,     pcols, lchnk)
+       call outfld('BERGSO',      bergso_grid,      pcols, lchnk)
+       call outfld('BERGO',       bergo_grid,       pcols, lchnk)
+       call outfld('MELTO',       melto_grid,       pcols, lchnk)
+       call outfld('HOMOO',       homoo_grid,       pcols, lchnk)
+       call outfld('PRCIO',       prcio_grid,       pcols, lchnk)
+       call outfld('PRAIO',       praio_grid,       pcols, lchnk)
+       call outfld('QIRESO',      qireso_grid,      pcols, lchnk)
+
+       ! Output fields for the water traacers.
+       call wtrc_output_precip(state_loc, pbuf)
+
+       ! ptend_loc is deallocated in physics_update above
+       call physics_state_dealloc(state_loc)
+
+  end subroutine micro_tail
+
   function p1(tin) result(pout)
     real(r8), target, intent(in) :: tin(:)
     real(r8), pointer :: pout(:)
@@ -1258,6 +2738,336 @@ contains
     real(r8), pointer :: pout(:,:)
     pout => tin
   end function p2
+
+  ! ------------------------------------------------------------------ !
+  ! The segment runner's context and the paused core's frame
+  ! ------------------------------------------------------------------ !
+
+  subroutine micro_resolve_indices()
+    ! micro_mg_cam_register's and micro_mg_cam_init's indices, by the same names
+    integer :: ierr
+    accre_enhan_idx = pbuf_get_index('ACCRE_ENHAN', ierr)
+    acgcme_idx = pbuf_get_index('ACGCME', ierr)
+    acnum_idx = pbuf_get_index('ACNUM', ierr)
+    acpr_idx = pbuf_get_index('ACPRECL', ierr)
+    am_evp_st_idx = pbuf_get_index('am_evp_st', ierr)
+    ast_idx = pbuf_get_index('AST', ierr)
+    cc_ni_idx = pbuf_get_index('CC_ni', ierr)
+    cc_nl_idx = pbuf_get_index('CC_nl', ierr)
+    cc_qi_idx = pbuf_get_index('CC_qi', ierr)
+    cc_ql_idx = pbuf_get_index('CC_ql', ierr)
+    cc_qlst_idx = pbuf_get_index('CC_qlst', ierr)
+    cc_qv_idx = pbuf_get_index('CC_qv', ierr)
+    cc_t_idx = pbuf_get_index('CC_T', ierr)
+    cld_idx = pbuf_get_index('CLD', ierr)
+    cldfsnow_idx = pbuf_get_index('CLDFSNOW ', ierr)
+    cldo_idx = pbuf_get_index('CLDO', ierr)
+    cmeliq_idx = pbuf_get_index('CMELIQ', ierr)
+    concld_idx = pbuf_get_index('CONCLD', ierr)
+    cv_reffice_idx = pbuf_get_index('CV_REFFICE', ierr)
+    cv_reffliq_idx = pbuf_get_index('CV_REFFLIQ', ierr)
+    dei_idx = pbuf_get_index('DEI', ierr)
+    des_idx = pbuf_get_index('DES', ierr)
+    evprain_st_idx = pbuf_get_index('evprain_st', ierr)
+    evpsnow_st_idx = pbuf_get_index('evpsnow_st', ierr)
+    frzcnt_idx = pbuf_get_index('FRZCNT', ierr)
+    frzdep_idx = pbuf_get_index('FRZDEP', ierr)
+    frzimm_idx = pbuf_get_index('FRZIMM', ierr)
+    iciwpst_idx = pbuf_get_index('ICIWPST', ierr)
+    iclwpst_idx = pbuf_get_index('ICLWPST', ierr)
+    icswp_idx = pbuf_get_index('ICSWP', ierr)
+    lambdac_idx = pbuf_get_index('LAMBDAC', ierr)
+    ls_flxprc_idx = pbuf_get_index('LS_FLXPRC', ierr)
+    ls_flxsnw_idx = pbuf_get_index('LS_FLXSNW', ierr)
+    ls_mrprc_idx = pbuf_get_index('LS_MRPRC', ierr)
+    ls_mrsnw_idx = pbuf_get_index('LS_MRSNW', ierr)
+    ls_reffrain_idx = pbuf_get_index('LS_REFFRAIN', ierr)
+    ls_reffsnow_idx = pbuf_get_index('LS_REFFSNOW', ierr)
+    mu_idx = pbuf_get_index('MU', ierr)
+    naai_hom_idx = pbuf_get_index('NAAI_HOM', ierr)
+    naai_idx = pbuf_get_index('NAAI', ierr)
+    nacon_idx = pbuf_get_index('NACON', ierr)
+    nevapr_idx = pbuf_get_index('NEVAPR', ierr)
+    npccn_idx = pbuf_get_index('NPCCN', ierr)
+    nrain_idx = pbuf_get_index('NRAIN', ierr)
+    nsnow_idx = pbuf_get_index('NSNOW', ierr)
+    prain_idx = pbuf_get_index('PRAIN', ierr)
+    prec_pcw_idx = pbuf_get_index('PREC_PCW', ierr)
+    prec_sed_idx = pbuf_get_index('PREC_SED', ierr)
+    prec_str_idx = pbuf_get_index('PREC_STR', ierr)
+    prer_evap_idx = pbuf_get_index('PRER_EVAP', ierr)
+    qme_idx = pbuf_get_index('QME', ierr)
+    qrain_idx = pbuf_get_index('QRAIN', ierr)
+    qsnow_idx = pbuf_get_index('QSNOW', ierr)
+    rate1_cw2pr_st_idx = pbuf_get_index('RATE1_CW2PR_ST', ierr)
+    re_ice_idx = pbuf_get_index('RE_ICE', ierr)
+    rei_idx = pbuf_get_index('REI', ierr)
+    rel_idx = pbuf_get_index('REL', ierr)
+    relvar_idx = pbuf_get_index('RELVAR', ierr)
+    rndst_idx = pbuf_get_index('RNDST', ierr)
+    snow_pcw_idx = pbuf_get_index('SNOW_PCW', ierr)
+    snow_sed_idx = pbuf_get_index('SNOW_SED', ierr)
+    snow_str_idx = pbuf_get_index('SNOW_STR', ierr)
+    tnd_nsnow_idx = pbuf_get_index('TND_NSNOW', ierr)
+    tnd_qsnow_idx = pbuf_get_index('TND_QSNOW', ierr)
+    wsedl_idx = pbuf_get_index('WSEDL', ierr)
+  end subroutine micro_resolve_indices
+
+  logical function micro_runner_ready()
+    micro_runner_ready = configured .and. associated(host_state) .and. associated(host_pbuf2d)
+  end function micro_runner_ready
+
+  integer function micro_num_steps()
+    micro_num_steps = num_steps
+  end function micro_num_steps
+
+  subroutine micro_substep(it_in)
+    integer, intent(in) :: it_in
+    it = it_in
+  end subroutine micro_substep
+
+  subroutine micro_runner_bind(lchnk_in, ptend_in, dtime_in)
+    ! What micro_mg_cam_tend's dummies stand for when the stage runner calls
+    ! the routine in its pieces: tphysbc's state for this chunk, the stage's
+    ! ptend, the chunk's buffer, the co-substep's timestep.  The routine's
+    ! own head (micro_run_head) then copies the state and initialises the
+    ! ptend, as the source does.
+    integer, intent(in) :: lchnk_in
+    type(physics_ptend), target, intent(inout) :: ptend_in
+    real(r8), intent(in) :: dtime_in
+    lchnk = lchnk_in
+    state => host_state(lchnk)
+    ptend => ptend_in
+    pbuf => pbuf_get_chunk(host_pbuf2d, lchnk)
+    dtime = dtime_in
+    call release_locals()
+    if (state_live) call physics_state_dealloc(state_loc)
+    state_live = .false.
+  end subroutine micro_runner_bind
+
+  subroutine micro_run_head()
+    call micro_head()
+    state_live = .true.
+  end subroutine micro_run_head
+
+  subroutine micro_runner_end()
+    ! micro_tail deallocated state_loc (3182); the locals go the way the
+    ! routine's exit would have taken them
+    state_live = .false.
+    call release_locals()
+  end subroutine micro_runner_end
+
+  subroutine micro_core_frame(ptrs, ndims, shapes, dtypes, intents, ncol_out)
+    ! The paused micro_mg_tend call's arguments where they live: the packed
+    ! arrays the substep just filled, in the call's order (the contract's),
+    ! the scalars by value, zeros for the pointers this configuration leaves
+    ! unassociated.  The character argument the driver checks afterwards has
+    ! no slot.
+    type(c_ptr), intent(inout) :: ptrs(:)
+    integer(c_int), intent(inout) :: ndims(:), dtypes(:), intents(:)
+    integer(c_int64_t), intent(inout) :: shapes(:,:)
+    integer(c_int), intent(out) :: ncol_out
+    frame_microp_uniform = merge(1_c_int32_t, 0_c_int32_t, microp_uniform)
+    frame_do_cldice = merge(1_c_int32_t, 0_c_int32_t, do_cldice)
+    frame_mgncol = int(mgncol, c_int32_t)
+    frame_nlev = int(nlev, c_int32_t)
+    frame_one = 1_c_int32_t
+    frame_deltatin = real(dtime/num_steps, c_double)
+    if (allocated(ws_null2)) then
+      if (size(ws_null2, 1) /= mgncol .or. size(ws_null2, 2) /= nlev) deallocate(ws_null2)
+    end if
+    if (.not. allocated(ws_null2)) allocate(ws_null2(mgncol, nlev))
+    ws_null2 = 0._r8
+    call scalar_slot(1, c_loc(frame_microp_uniform), 2, 0, ptrs, ndims, shapes, dtypes, intents)
+    call scalar_slot(2, c_loc(frame_mgncol), 2, 0, ptrs, ndims, shapes, dtypes, intents)
+    call scalar_slot(3, c_loc(frame_nlev), 2, 0, ptrs, ndims, shapes, dtypes, intents)
+    call scalar_slot(4, c_loc(frame_mgncol), 2, 0, ptrs, ndims, shapes, dtypes, intents)
+    call scalar_slot(5, c_loc(frame_one), 2, 0, ptrs, ndims, shapes, dtypes, intents)
+    call scalar_slot(6, c_loc(frame_deltatin), 1, 0, ptrs, ndims, shapes, dtypes, intents)
+    call slot2(7, packed_t, 1, 0, ptrs, ndims, shapes, dtypes, intents)
+    call slot2(8, packed_q, 1, 0, ptrs, ndims, shapes, dtypes, intents)
+    call slot2(9, packed_qc, 1, 2, ptrs, ndims, shapes, dtypes, intents)
+    call slot2(10, packed_qi, 1, 2, ptrs, ndims, shapes, dtypes, intents)
+    call slot2(11, packed_nc, 1, 2, ptrs, ndims, shapes, dtypes, intents)
+    call slot2(12, packed_ni, 1, 2, ptrs, ndims, shapes, dtypes, intents)
+    call slot2(13, packed_p, 1, 0, ptrs, ndims, shapes, dtypes, intents)
+    call slot2(14, packed_pdel, 1, 0, ptrs, ndims, shapes, dtypes, intents)
+    call slot2(15, packed_cldn, 1, 0, ptrs, ndims, shapes, dtypes, intents)
+    call slot2(16, packed_liqcldf, 1, 0, ptrs, ndims, shapes, dtypes, intents)
+    call slot2(17, packed_relvar, 1, 0, ptrs, ndims, shapes, dtypes, intents)
+    call slot2(18, packed_accre_enhan, 1, 0, ptrs, ndims, shapes, dtypes, intents)
+    call slot2(19, packed_icecldf, 1, 0, ptrs, ndims, shapes, dtypes, intents)
+    call slot2(20, packed_rate1ord_cw2pr_st, 1, 1, ptrs, ndims, shapes, dtypes, intents)
+    call slot2(21, packed_naai, 1, 0, ptrs, ndims, shapes, dtypes, intents)
+    call slot2(22, packed_npccn, 1, 0, ptrs, ndims, shapes, dtypes, intents)
+    call slot3(23, packed_rndst, 1, 0, ptrs, ndims, shapes, dtypes, intents)
+    call slot3(24, packed_nacon, 1, 0, ptrs, ndims, shapes, dtypes, intents)
+    call slot2(25, packed_tlat, 1, 1, ptrs, ndims, shapes, dtypes, intents)
+    call slot2(26, packed_qvlat, 1, 1, ptrs, ndims, shapes, dtypes, intents)
+    call slot2(27, packed_qctend, 1, 1, ptrs, ndims, shapes, dtypes, intents)
+    call slot2(28, packed_qitend, 1, 1, ptrs, ndims, shapes, dtypes, intents)
+    call slot2(29, packed_nctend, 1, 1, ptrs, ndims, shapes, dtypes, intents)
+    call slot2(30, packed_nitend, 1, 1, ptrs, ndims, shapes, dtypes, intents)
+    call slot2(31, packed_rel, 1, 1, ptrs, ndims, shapes, dtypes, intents)
+    call slot2(32, rel_fn_dum, 1, 1, ptrs, ndims, shapes, dtypes, intents)
+    call slot2(33, packed_rei, 1, 1, ptrs, ndims, shapes, dtypes, intents)
+    call slot1(34, packed_prect, 1, 1, ptrs, ndims, shapes, dtypes, intents)
+    call slot1(35, packed_preci, 1, 1, ptrs, ndims, shapes, dtypes, intents)
+    call slot2(36, packed_nevapr, 1, 1, ptrs, ndims, shapes, dtypes, intents)
+    call slot2(37, packed_evapsnow, 1, 1, ptrs, ndims, shapes, dtypes, intents)
+    call slot2(38, packed_am_evp_st, 1, 1, ptrs, ndims, shapes, dtypes, intents)
+    call slot2(39, packed_prain, 1, 1, ptrs, ndims, shapes, dtypes, intents)
+    call slot2(40, packed_prodsnow, 1, 1, ptrs, ndims, shapes, dtypes, intents)
+    call slot2(41, packed_cmeout, 1, 1, ptrs, ndims, shapes, dtypes, intents)
+    call slot2(42, packed_dei, 1, 1, ptrs, ndims, shapes, dtypes, intents)
+    call slot2(43, packed_mu, 1, 1, ptrs, ndims, shapes, dtypes, intents)
+    call slot2(44, packed_lambdac, 1, 1, ptrs, ndims, shapes, dtypes, intents)
+    call slot2(45, packed_qsout, 1, 1, ptrs, ndims, shapes, dtypes, intents)
+    call slot2(46, packed_des, 1, 1, ptrs, ndims, shapes, dtypes, intents)
+    call slot2(47, packed_rflx, 1, 1, ptrs, ndims, shapes, dtypes, intents)
+    call slot2(48, packed_sflx, 1, 1, ptrs, ndims, shapes, dtypes, intents)
+    call slot2(49, packed_qrout, 1, 1, ptrs, ndims, shapes, dtypes, intents)
+    call slot2(50, reff_rain_dum, 1, 2, ptrs, ndims, shapes, dtypes, intents)
+    call slot2(51, reff_snow_dum, 1, 2, ptrs, ndims, shapes, dtypes, intents)
+    call slot2(52, packed_qcsevap, 1, 1, ptrs, ndims, shapes, dtypes, intents)
+    call slot2(53, packed_qisevap, 1, 1, ptrs, ndims, shapes, dtypes, intents)
+    call slot2(54, packed_qvres, 1, 1, ptrs, ndims, shapes, dtypes, intents)
+    call slot2(55, packed_cmei, 1, 1, ptrs, ndims, shapes, dtypes, intents)
+    call slot2(56, packed_vtrmc, 1, 1, ptrs, ndims, shapes, dtypes, intents)
+    call slot2(57, packed_vtrmi, 1, 1, ptrs, ndims, shapes, dtypes, intents)
+    call slot2(58, packed_qcsedten, 1, 1, ptrs, ndims, shapes, dtypes, intents)
+    call slot2(59, packed_qisedten, 1, 1, ptrs, ndims, shapes, dtypes, intents)
+    call slot2(60, packed_pra, 1, 1, ptrs, ndims, shapes, dtypes, intents)
+    call slot2(61, packed_prc, 1, 1, ptrs, ndims, shapes, dtypes, intents)
+    call slot2(62, packed_mnuccc, 1, 1, ptrs, ndims, shapes, dtypes, intents)
+    call slot2(63, packed_mnucct, 1, 1, ptrs, ndims, shapes, dtypes, intents)
+    call slot2(64, packed_msacwi, 1, 1, ptrs, ndims, shapes, dtypes, intents)
+    call slot2(65, packed_psacws, 1, 1, ptrs, ndims, shapes, dtypes, intents)
+    call slot2(66, packed_bergs, 1, 1, ptrs, ndims, shapes, dtypes, intents)
+    call slot2(67, packed_berg, 1, 1, ptrs, ndims, shapes, dtypes, intents)
+    call slot2(68, packed_melt, 1, 1, ptrs, ndims, shapes, dtypes, intents)
+    call slot2(69, packed_homo, 1, 1, ptrs, ndims, shapes, dtypes, intents)
+    call slot2(70, packed_qcres, 1, 1, ptrs, ndims, shapes, dtypes, intents)
+    call slot2(71, packed_prci, 1, 1, ptrs, ndims, shapes, dtypes, intents)
+    call slot2(72, packed_prai, 1, 1, ptrs, ndims, shapes, dtypes, intents)
+    call slot2(73, packed_qires, 1, 1, ptrs, ndims, shapes, dtypes, intents)
+    call slot2(74, packed_mnuccr, 1, 1, ptrs, ndims, shapes, dtypes, intents)
+    call slot2(75, packed_pracs, 1, 1, ptrs, ndims, shapes, dtypes, intents)
+    call slot2(76, packed_meltsdt, 1, 1, ptrs, ndims, shapes, dtypes, intents)
+    call slot2(77, packed_frzrdt, 1, 1, ptrs, ndims, shapes, dtypes, intents)
+    call slot2(78, packed_mnuccd, 1, 1, ptrs, ndims, shapes, dtypes, intents)
+    call slot2(79, packed_nrout, 1, 1, ptrs, ndims, shapes, dtypes, intents)
+    call slot2(80, packed_nsout, 1, 1, ptrs, ndims, shapes, dtypes, intents)
+    call slot2(81, packed_refl, 1, 1, ptrs, ndims, shapes, dtypes, intents)
+    call slot2(82, packed_arefl, 1, 1, ptrs, ndims, shapes, dtypes, intents)
+    call slot2(83, packed_areflz, 1, 1, ptrs, ndims, shapes, dtypes, intents)
+    call slot2(84, packed_frefl, 1, 1, ptrs, ndims, shapes, dtypes, intents)
+    call slot2(85, packed_csrfl, 1, 1, ptrs, ndims, shapes, dtypes, intents)
+    call slot2(86, packed_acsrfl, 1, 1, ptrs, ndims, shapes, dtypes, intents)
+    call slot2(87, packed_fcsrfl, 1, 1, ptrs, ndims, shapes, dtypes, intents)
+    call slot2(88, packed_rercld, 1, 1, ptrs, ndims, shapes, dtypes, intents)
+    call slot2(89, packed_ncai, 1, 1, ptrs, ndims, shapes, dtypes, intents)
+    call slot2(90, packed_ncal, 1, 1, ptrs, ndims, shapes, dtypes, intents)
+    call slot2(91, packed_qrout2, 1, 1, ptrs, ndims, shapes, dtypes, intents)
+    call slot2(92, packed_qsout2, 1, 1, ptrs, ndims, shapes, dtypes, intents)
+    call slot2(93, packed_nrout2, 1, 1, ptrs, ndims, shapes, dtypes, intents)
+    call slot2(94, packed_nsout2, 1, 1, ptrs, ndims, shapes, dtypes, intents)
+    call slot2(95, drout_dum, 1, 1, ptrs, ndims, shapes, dtypes, intents)
+    call slot2(96, dsout2_dum, 1, 1, ptrs, ndims, shapes, dtypes, intents)
+    call slot2(97, packed_freqs, 1, 1, ptrs, ndims, shapes, dtypes, intents)
+    call slot2(98, packed_freqr, 1, 1, ptrs, ndims, shapes, dtypes, intents)
+    call slot2(99, packed_nfice, 1, 1, ptrs, ndims, shapes, dtypes, intents)
+    call slot2(100, packed_prer_evap, 1, 1, ptrs, ndims, shapes, dtypes, intents)
+    call scalar_slot(101, c_loc(frame_do_cldice), 2, 0, ptrs, ndims, shapes, dtypes, intents)
+    call slot2_or(102, packed_tnd_qsnow, ws_null2, 1, 0, ptrs, ndims, shapes, dtypes, intents)
+    call slot2_or(103, packed_tnd_nsnow, ws_null2, 1, 0, ptrs, ndims, shapes, dtypes, intents)
+    call slot2_or(104, packed_re_ice, ws_null2, 1, 0, ptrs, ndims, shapes, dtypes, intents)
+    call slot2_or(105, packed_frzimm, ws_null2, 1, 0, ptrs, ndims, shapes, dtypes, intents)
+    call slot2_or(106, packed_frzcnt, ws_null2, 1, 0, ptrs, ndims, shapes, dtypes, intents)
+    call slot2_or(107, packed_frzdep, ws_null2, 1, 0, ptrs, ndims, shapes, dtypes, intents)
+    call slot2(108, packed_preo, 1, 1, ptrs, ndims, shapes, dtypes, intents)
+    call slot2(109, packed_prdso, 1, 1, ptrs, ndims, shapes, dtypes, intents)
+    call slot2(110, packed_frzro, 1, 1, ptrs, ndims, shapes, dtypes, intents)
+    call slot2(111, packed_meltso, 1, 1, ptrs, ndims, shapes, dtypes, intents)
+    call slot2(112, packed_wtfc, 1, 1, ptrs, ndims, shapes, dtypes, intents)
+    call slot2(113, packed_wtfi, 1, 1, ptrs, ndims, shapes, dtypes, intents)
+    call slot2(114, packed_wtprelat, 1, 1, ptrs, ndims, shapes, dtypes, intents)
+    call slot2(115, packed_wtpostlat, 1, 1, ptrs, ndims, shapes, dtypes, intents)
+    ncol_out = int(mgncol, c_int)
+  end subroutine micro_core_frame
+
+  subroutine scalar_slot(index, address, dtype, intent, ptrs, ndims, shapes, dtypes, intents)
+    integer, intent(in) :: index, dtype, intent
+    type(c_ptr), intent(in) :: address
+    type(c_ptr), intent(inout) :: ptrs(:)
+    integer(c_int), intent(inout) :: ndims(:), dtypes(:), intents(:)
+    integer(c_int64_t), intent(inout) :: shapes(:,:)
+    ptrs(index) = address
+    ndims(index) = 0_c_int
+    shapes(:, index) = 0_c_int64_t
+    dtypes(index) = int(dtype, c_int)
+    intents(index) = int(intent, c_int)
+  end subroutine scalar_slot
+
+  subroutine slot1(index, array, dtype, intent, ptrs, ndims, shapes, dtypes, intents)
+    integer, intent(in) :: index, dtype, intent
+    real(r8), target, intent(in) :: array(:)
+    type(c_ptr), intent(inout) :: ptrs(:)
+    integer(c_int), intent(inout) :: ndims(:), dtypes(:), intents(:)
+    integer(c_int64_t), intent(inout) :: shapes(:,:)
+    ptrs(index) = c_loc(array(1))
+    ndims(index) = 1_c_int
+    shapes(:, index) = 0_c_int64_t
+    shapes(1, index) = int(size(array, 1), c_int64_t)
+    dtypes(index) = int(dtype, c_int)
+    intents(index) = int(intent, c_int)
+  end subroutine slot1
+
+  subroutine slot2(index, array, dtype, intent, ptrs, ndims, shapes, dtypes, intents)
+    integer, intent(in) :: index, dtype, intent
+    real(r8), target, intent(in) :: array(:,:)
+    type(c_ptr), intent(inout) :: ptrs(:)
+    integer(c_int), intent(inout) :: ndims(:), dtypes(:), intents(:)
+    integer(c_int64_t), intent(inout) :: shapes(:,:)
+    ptrs(index) = c_loc(array(1,1))
+    ndims(index) = 2_c_int
+    shapes(:, index) = 0_c_int64_t
+    shapes(1, index) = int(size(array, 1), c_int64_t)
+    shapes(2, index) = int(size(array, 2), c_int64_t)
+    dtypes(index) = int(dtype, c_int)
+    intents(index) = int(intent, c_int)
+  end subroutine slot2
+
+  subroutine slot3(index, array, dtype, intent, ptrs, ndims, shapes, dtypes, intents)
+    integer, intent(in) :: index, dtype, intent
+    real(r8), target, intent(in) :: array(:,:,:)
+    type(c_ptr), intent(inout) :: ptrs(:)
+    integer(c_int), intent(inout) :: ndims(:), dtypes(:), intents(:)
+    integer(c_int64_t), intent(inout) :: shapes(:,:)
+    ptrs(index) = c_loc(array(1,1,1))
+    ndims(index) = 3_c_int
+    shapes(1, index) = int(size(array, 1), c_int64_t)
+    shapes(2, index) = int(size(array, 2), c_int64_t)
+    shapes(3, index) = int(size(array, 3), c_int64_t)
+    dtypes(index) = int(dtype, c_int)
+    intents(index) = int(intent, c_int)
+  end subroutine slot3
+
+  subroutine slot2_or(index, field, fallback, dtype, intent, ptrs, ndims, shapes, dtypes, intents)
+    ! a packed pointer where the configuration fills it, the zero workspace
+    ! where it is unassociated -- what the original passes
+    integer, intent(in) :: index, dtype, intent
+    real(r8), pointer, intent(in) :: field(:,:)
+    real(r8), target, intent(in) :: fallback(:,:)
+    type(c_ptr), intent(inout) :: ptrs(:)
+    integer(c_int), intent(inout) :: ndims(:), dtypes(:), intents(:)
+    integer(c_int64_t), intent(inout) :: shapes(:,:)
+    if (associated(field)) then
+      call slot2(index, field, dtype, intent, ptrs, ndims, shapes, dtypes, intents)
+    else
+      call slot2(index, fallback, dtype, intent, ptrs, ndims, shapes, dtypes, intents)
+    end if
+  end subroutine slot2_or
 
   ! ------------------------------------------------------------------ !
   ! Entries
@@ -1322,6 +3132,8 @@ contains
     ixsnow = int(ixsnow_in)
     ixnumrain = int(ixnumrain_in)
     ixnumsnow = int(ixnumsnow_in)
+    call micro_resolve_indices()
+    configured = .true.
     status = 0_c_int
   end function pycam_micro_configure_v1
 
@@ -1630,20 +3442,58 @@ contains
       call view2(areflz, ptr, ndims, extents)
     case (view_bergo)
       call view2(bergo, ptr, ndims, extents)
+    case (view_bergo_grid)
+      call view2(bergo_grid, ptr, ndims, extents)
     case (view_bergso)
       call view2(bergso, ptr, ndims, extents)
+    case (view_bergso_grid)
+      call view2(bergso_grid, ptr, ndims, extents)
+    case (view_cdnumc_grid)
+      call view1(cdnumc_grid, ptr, ndims, extents)
+    case (view_cld_grid)
+      call view2(cld_grid, ptr, ndims, extents)
+    case (view_cldmax)
+      call view2(cldmax, ptr, ndims, extents)
+    case (view_cldmax_grid)
+      call view2(cldmax_grid, ptr, ndims, extents)
     case (view_cmeice)
       call view2(cmeice, ptr, ndims, extents)
     case (view_cmeiout)
       call view2(cmeiout, ptr, ndims, extents)
+    case (view_cmeiout_grid)
+      call view2(cmeiout_grid, ptr, ndims, extents)
     case (view_csrfl)
       call view2(csrfl, ptr, ndims, extents)
+    case (view_ctni_grid)
+      call view1(ctni_grid, ptr, ndims, extents)
+    case (view_ctnl_grid)
+      call view1(ctnl_grid, ptr, ndims, extents)
+    case (view_ctrei_grid)
+      call view1(ctrei_grid, ptr, ndims, extents)
+    case (view_ctrel_grid)
+      call view1(ctrel_grid, ptr, ndims, extents)
+    case (view_drout2_grid)
+      call view2(drout2_grid, ptr, ndims, extents)
+    case (view_dsout2_grid)
+      call view2(dsout2_grid, ptr, ndims, extents)
+    case (view_efcout_grid)
+      call view2(efcout_grid, ptr, ndims, extents)
+    case (view_efiout_grid)
+      call view2(efiout_grid, ptr, ndims, extents)
     case (view_evapsnow)
       call view2(evapsnow, ptr, ndims, extents)
     case (view_fcsrfl)
       call view2(fcsrfl, ptr, ndims, extents)
+    case (view_fcti_grid)
+      call view1(fcti_grid, ptr, ndims, extents)
+    case (view_fctl_grid)
+      call view1(fctl_grid, ptr, ndims, extents)
     case (view_frefl)
       call view2(frefl, ptr, ndims, extents)
+    case (view_freqi_grid)
+      call view2(freqi_grid, ptr, ndims, extents)
+    case (view_freql_grid)
+      call view2(freql_grid, ptr, ndims, extents)
     case (view_freqr)
       call view2(freqr, ptr, ndims, extents)
     case (view_freqs)
@@ -1652,16 +3502,56 @@ contains
       call view2(frzrdt, ptr, ndims, extents)
     case (view_frzro)
       call view2(frzro, ptr, ndims, extents)
+    case (view_ftem_grid)
+      call view2(ftem_grid, ptr, ndims, extents)
     case (view_homoo)
       call view2(homoo, ptr, ndims, extents)
+    case (view_homoo_grid)
+      call view2(homoo_grid, ptr, ndims, extents)
+    case (view_icecldf)
+      call view2(icecldf, ptr, ndims, extents)
+    case (view_icecldf_grid)
+      call view2(icecldf_grid, ptr, ndims, extents)
+    case (view_icimrst)
+      call view2(icimrst, ptr, ndims, extents)
+    case (view_icimrst_grid)
+      call view2(icimrst_grid, ptr, ndims, extents)
+    case (view_icimrst_grid_out)
+      call view2(icimrst_grid_out, ptr, ndims, extents)
+    case (view_icinc)
+      call view2(icinc, ptr, ndims, extents)
+    case (view_icinc_grid)
+      call view2(icinc_grid, ptr, ndims, extents)
+    case (view_iciwpi)
+      call view1(iciwpi, ptr, ndims, extents)
+    case (view_iclwpi)
+      call view1(iclwpi, ptr, ndims, extents)
+    case (view_icwmrst)
+      call view2(icwmrst, ptr, ndims, extents)
+    case (view_icwmrst_grid)
+      call view2(icwmrst_grid, ptr, ndims, extents)
+    case (view_icwmrst_grid_out)
+      call view2(icwmrst_grid_out, ptr, ndims, extents)
+    case (view_icwnc)
+      call view2(icwnc, ptr, ndims, extents)
+    case (view_icwnc_grid)
+      call view2(icwnc_grid, ptr, ndims, extents)
+    case (view_liqcldf)
+      call view2(liqcldf, ptr, ndims, extents)
+    case (view_liqcldf_grid)
+      call view2(liqcldf_grid, ptr, ndims, extents)
     case (view_melto)
       call view2(melto, ptr, ndims, extents)
+    case (view_melto_grid)
+      call view2(melto_grid, ptr, ndims, extents)
     case (view_meltsdt)
       call view2(meltsdt, ptr, ndims, extents)
     case (view_meltso)
       call view2(meltso, ptr, ndims, extents)
     case (view_mnuccco)
       call view2(mnuccco, ptr, ndims, extents)
+    case (view_mnuccco_grid)
+      call view2(mnuccco_grid, ptr, ndims, extents)
     case (view_mnuccdo)
       call view2(mnuccdo, ptr, ndims, extents)
     case (view_mnuccdohet)
@@ -1670,40 +3560,86 @@ contains
       call view2(mnuccro, ptr, ndims, extents)
     case (view_mnuccto)
       call view2(mnuccto, ptr, ndims, extents)
+    case (view_mnuccto_grid)
+      call view2(mnuccto_grid, ptr, ndims, extents)
     case (view_msacwio)
       call view2(msacwio, ptr, ndims, extents)
+    case (view_msacwio_grid)
+      call view2(msacwio_grid, ptr, ndims, extents)
+    case (view_nc_grid)
+      call view2(nc_grid, ptr, ndims, extents)
     case (view_ncai)
       call view2(ncai, ptr, ndims, extents)
     case (view_ncal)
       call view2(ncal, ptr, ndims, extents)
+    case (view_ncic_grid)
+      call view2(ncic_grid, ptr, ndims, extents)
+    case (view_ncmei_grid)
+      call view2(ncmei_grid, ptr, ndims, extents)
+    case (view_ncout_grid)
+      call view2(ncout_grid, ptr, ndims, extents)
     case (view_ncten)
       call view2(ncten, ptr, ndims, extents)
     case (view_nfice)
       call view2(nfice, ptr, ndims, extents)
+    case (view_ni_grid)
+      call view2(ni_grid, ptr, ndims, extents)
+    case (view_niic_grid)
+      call view2(niic_grid, ptr, ndims, extents)
+    case (view_niout_grid)
+      call view2(niout_grid, ptr, ndims, extents)
     case (view_niten)
       call view2(niten, ptr, ndims, extents)
+    case (view_nmelts_grid)
+      call view2(nmelts_grid, ptr, ndims, extents)
+    case (view_nr_grid)
+      call view2(nr_grid, ptr, ndims, extents)
     case (view_nrout)
       call view2(nrout, ptr, ndims, extents)
     case (view_nrout2)
       call view2(nrout2, ptr, ndims, extents)
+    case (view_nrout_grid)
+      call view2(nrout_grid, ptr, ndims, extents)
     case (view_nrten)
       call view2(nrten, ptr, ndims, extents)
+    case (view_ns_grid)
+      call view2(ns_grid, ptr, ndims, extents)
     case (view_nsout)
       call view2(nsout, ptr, ndims, extents)
     case (view_nsout2)
       call view2(nsout2, ptr, ndims, extents)
+    case (view_nsout_grid)
+      call view2(nsout_grid, ptr, ndims, extents)
     case (view_nsten)
       call view2(nsten, ptr, ndims, extents)
+    case (view_pcmei_grid)
+      call view2(pcmei_grid, ptr, ndims, extents)
+    case (view_pdel_grid)
+      call view2(pdel_grid, ptr, ndims, extents)
+    case (view_pe_grid)
+      call view1(pe_grid, ptr, ndims, extents)
+    case (view_pefrac_grid)
+      call view1(pefrac_grid, ptr, ndims, extents)
+    case (view_pmelts_grid)
+      call view2(pmelts_grid, ptr, ndims, extents)
     case (view_pracso)
       call view2(pracso, ptr, ndims, extents)
     case (view_praio)
       call view2(praio, ptr, ndims, extents)
+    case (view_praio_grid)
+      call view2(praio_grid, ptr, ndims, extents)
     case (view_prao)
       call view2(prao, ptr, ndims, extents)
+    case (view_prao_grid)
+      call view2(prao_grid, ptr, ndims, extents)
     case (view_prcio)
       call view2(prcio, ptr, ndims, extents)
+    case (view_prcio_grid)
+      call view2(prcio_grid, ptr, ndims, extents)
     case (view_prco)
       call view2(prco, ptr, ndims, extents)
+    case (view_prco_grid)
+      call view2(prco_grid, ptr, ndims, extents)
     case (view_prdso)
       call view2(prdso, ptr, ndims, extents)
     case (view_preci)
@@ -1716,10 +3652,14 @@ contains
       call view2(prodsnow, ptr, ndims, extents)
     case (view_psacwso)
       call view2(psacwso, ptr, ndims, extents)
+    case (view_psacwso_grid)
+      call view2(psacwso_grid, ptr, ndims, extents)
     case (view_qcrat)
       call view2(qcrat, ptr, ndims, extents)
     case (view_qcreso)
       call view2(qcreso, ptr, ndims, extents)
+    case (view_qcreso_grid)
+      call view2(qcreso_grid, ptr, ndims, extents)
     case (view_qcsedten)
       call view2(qcsedten, ptr, ndims, extents)
     case (view_qcsevap)
@@ -1728,24 +3668,34 @@ contains
       call view2(qcten, ptr, ndims, extents)
     case (view_qireso)
       call view2(qireso, ptr, ndims, extents)
+    case (view_qireso_grid)
+      call view2(qireso_grid, ptr, ndims, extents)
     case (view_qisedten)
       call view2(qisedten, ptr, ndims, extents)
     case (view_qisevap)
       call view2(qisevap, ptr, ndims, extents)
     case (view_qiten)
       call view2(qiten, ptr, ndims, extents)
+    case (view_qr_grid)
+      call view2(qr_grid, ptr, ndims, extents)
     case (view_qrout)
       call view2(qrout, ptr, ndims, extents)
     case (view_qrout2)
       call view2(qrout2, ptr, ndims, extents)
+    case (view_qrout_grid)
+      call view2(qrout_grid, ptr, ndims, extents)
     case (view_qrsedten)
       call view2(qrsedten, ptr, ndims, extents)
     case (view_qrten)
       call view2(qrten, ptr, ndims, extents)
+    case (view_qs_grid)
+      call view2(qs_grid, ptr, ndims, extents)
     case (view_qsout)
       call view2(qsout, ptr, ndims, extents)
     case (view_qsout2)
       call view2(qsout2, ptr, ndims, extents)
+    case (view_qsout_grid)
+      call view2(qsout_grid, ptr, ndims, extents)
     case (view_qssedten)
       call view2(qssedten, ptr, ndims, extents)
     case (view_qsten)
@@ -1754,22 +3704,46 @@ contains
       call view2(qvlat, ptr, ndims, extents)
     case (view_qvres)
       call view2(qvres, ptr, ndims, extents)
+    case (view_racau_grid)
+      call view1(racau_grid, ptr, ndims, extents)
     case (view_rate1cld)
       call view2(rate1cld, ptr, ndims, extents)
+    case (view_reff_rain_grid)
+      call view2(reff_rain_grid, ptr, ndims, extents)
+    case (view_reff_snow_grid)
+      call view2(reff_snow_grid, ptr, ndims, extents)
     case (view_refl)
       call view2(refl, ptr, ndims, extents)
+    case (view_rel_fn_grid)
+      call view2(rel_fn_grid, ptr, ndims, extents)
     case (view_rercld)
       call view2(rercld, ptr, ndims, extents)
     case (view_rflx)
       call view2(rflx, ptr, ndims, extents)
+    case (view_rho)
+      call view2(rho, ptr, ndims, extents)
+    case (view_rho_grid)
+      call view2(rho_grid, ptr, ndims, extents)
+    case (view_sed_rates_grid)
+      call view3(sed_rates_grid, ptr, ndims, extents)
     case (view_sflx)
       call view2(sflx, ptr, ndims, extents)
+    case (view_tgcmeliq_grid)
+      call view1(tgcmeliq_grid, ptr, ndims, extents)
+    case (view_tgliqwp_grid)
+      call view1(tgliqwp_grid, ptr, ndims, extents)
     case (view_tlat)
       call view2(tlat, ptr, ndims, extents)
+    case (view_tpr_grid)
+      call view1(tpr_grid, ptr, ndims, extents)
     case (view_umr)
       call view2(umr, ptr, ndims, extents)
     case (view_ums)
       call view2(ums, ptr, ndims, extents)
+    case (view_vprao_grid)
+      call view1(vprao_grid, ptr, ndims, extents)
+    case (view_vprco_grid)
+      call view1(vprco_grid, ptr, ndims, extents)
     case (view_vtrmc)
       call view2(vtrmc, ptr, ndims, extents)
     case (view_vtrmi)

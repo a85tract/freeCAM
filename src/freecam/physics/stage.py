@@ -1287,6 +1287,11 @@ class NativeStage:
         # otherwise touch the runtime at all, and the runner refuses a
         # context while the hosts are unbound.
         self.runtime(native)
+        # A runner that pauses inside a sub-walk's driver runs that driver's
+        # pieces from the sub-walk's handles module, which its runtime binds
+        # and configures (the microphysics pieces read flags Python sets).
+        for component in self.components.values():
+            component.runtime(native)
         segmented = self._segmented
         if segmented is None:
             runner = native.segment_runner(self.STAGE)
@@ -1300,7 +1305,11 @@ class NativeStage:
             if kernel is None:
                 kernels[name] = None
             elif isinstance(kernel, OriginalKernel):
-                kernels[name] = self._original_through_python(native, name)
+                owner = self._owner_of(name)
+                if type(owner).original_kernel_through_python is not NativeStage.original_kernel_through_python:
+                    kernels[name] = owner.original_kernel_through_python(native, name)
+                else:
+                    kernels[name] = self._original_through_python(native, name)
             else:
                 kernels[name] = self._owner_of(name).frame_kernel(name, kernel, native)
         segmented.run(kernels)
@@ -1309,6 +1318,17 @@ class NativeStage:
         self.execution.python_model_calls = counters.model_calls
         self.execution.model_calls_by_kernel = dict(counters.calls_by_kernel)
         self.execution.segment_pauses = counters.pauses
+
+    def original_kernel_through_python(self, native: Any, name: str) -> Callable[[Mapping[str, Any]], dict]:
+        """The original kernel ``name`` as a model for the runner's frame.
+
+        By default the direct kernel of that name, run on the frame's lanes
+        (see :meth:`_original_through_python`).  A stage whose kernel the
+        image reaches some other way -- through a lifted section rather than
+        a direct kernel -- overrides this with its own original.
+        """
+
+        return self._original_through_python(native, name)
 
     def _original_through_python(self, native: Any, name: str) -> Callable[[Mapping[str, Any]], dict]:
         """The original direct kernel, as a model: the frame's live lanes in, its outputs out.

@@ -32,15 +32,18 @@ def test_the_manifest_declares_the_stage_7_runner_and_the_module_exports_its_ent
     specs = runners.load_manifest()
     assert [spec.stage for spec in specs] == ["cam_run1.cloud_macro_microphysics"]
     (spec,) = specs
-    assert spec.kernel_names == ("mmacro_pcond",) and spec.kernel_id("mmacro_pcond") == 1
+    assert spec.kernel_names == ("mmacro_pcond", "micro_mg_tend")
+    assert spec.kernel_id("mmacro_pcond") == 1 and spec.kernel_id("micro_mg_tend") == 2
     module = (REPO / spec.module).read_text()
     exported = set(re.findall(r"bind\(C,\s*name='([^']+)'\)", module))
     assert set(spec.entries) <= exported, sorted(set(spec.entries) - exported)
     assert (REPO / spec.generator).is_file() and (REPO / spec.descriptors).is_file()
     assert spec.kernel("mmacro_pcond").validated          # both gate records are in the checkout
-    assert runners.runner_kernels() == {"cam_run1.cloud_macro_microphysics": ("mmacro_pcond",)}
-    assert runners.bindable_kernels() == ("mmacro_pcond",)
-    assert runners.KERNELS == ("mmacro_pcond",) and runners.ENTRIES[0] == "pycam_stage7_create_v1"
+    assert not spec.kernel("micro_mg_tend").validated     # bindable, not yet gated
+    assert spec.kernel("micro_mg_tend").contract == "native/pi_cam/functions/micro_mg_tend.yaml"
+    assert runners.runner_kernels() == {"cam_run1.cloud_macro_microphysics": ("mmacro_pcond", "micro_mg_tend")}
+    assert runners.bindable_kernels() == ("mmacro_pcond", "micro_mg_tend")
+    assert runners.KERNELS == ("mmacro_pcond", "micro_mg_tend") and runners.ENTRIES[0] == "pycam_stage7_create_v1"
     assert runners.runner_spec("cam_run1.radiation") is None
 
 
@@ -54,6 +57,55 @@ def test_the_manifest_refuses_a_kernel_two_runners_claim_and_a_runner_that_pause
     none.write_text(text[:text.index("  kernels:")] + "  kernels: []\n")
     with pytest.raises(Exception, match="pauses at no kernel"):
         runners.load_manifest(none)
+
+
+def test_the_micro_frame_is_the_contract_s_argument_list_without_the_character_argument() -> None:
+    names = runners.frame_names_from_contract(REPO / "native/pi_cam/functions/micro_mg_tend.yaml")
+    assert len(names) == 115 and "errstring" not in names
+    assert names[:6] == ("microp_uniform", "pcols", "pver", "ncol", "top_lev", "deltatin")
+    assert names[-1] == "wtpostlat"
+    # the Fortran frame table is the same list, slot for slot
+    import sys
+    sys.path.insert(0, str(REPO / "tools"))
+    import generate_pi_cam_micro_handles as micro
+
+    table = micro.frame_table(micro.PINNED.read_text().splitlines())
+    assert tuple(row["dummy"] for row in table) == names
+    assert [row["actual"] for row in table][:6] == ["microp_uniform", "mgncol", "nlev", "mgncol", "1", "dtime/num_steps"]
+    pointers = [row["dummy"] for row in table if row["kind"] == "pointer"]
+    assert pointers == ["tnd_qsnow", "tnd_nsnow", "re_ice", "frzimm", "frzcnt", "frzdep"]
+    assert {row["rank"] for row in table if row["kind"] == "array"} == {1, 2, 3}
+    assert (REPO / "native/pi_cam/support/pycam_micro_handles.F90").read_text().count("micro_frame_slots = 115") == 1
+
+
+def test_the_microphysics_answers_the_runner_s_frame_under_the_core_s_names() -> None:
+    from freecam.physics.microphysics import (
+        PACKED_INPUTS, PACKED_OUTPUTS, PACKED_TO_DUMMY, RETURNED, Microphysics,
+    )
+
+    seen: list = []
+
+    def model(batch):
+        seen.append(dict(batch))
+        rows = batch["t"].shape[0]
+        return {name: np.full((rows, 31) if name in ("rflx", "sflx") else (rows,) if name in ("prect", "preci")
+                        else (rows, 30), 2.0) for name in PACKED_OUTPUTS}
+
+    model.takes_packed_batch = True
+    stage = Microphysics()
+    answer = stage.frame_kernel("micro_mg_tend", model, native=None)
+    batch = {PACKED_TO_DUMMY.get(name, name): np.ones((5, 30)) for name in PACKED_INPUTS}
+    batch.update({"rndst": np.ones((5, 30, 4)), "nacon": np.ones((5, 30, 4)),
+                  "ncol": np.int32(5), "pcols": np.int32(5), "pver": np.int32(30), "top_lev": np.int32(1),
+                  "deltatin": np.float64(900.0), "microp_uniform": np.int32(0), "do_cldice": np.int32(1),
+                  "reff_rain": np.zeros((5, 30)), "reff_snow": np.zeros((5, 30))})
+    out = answer(batch)
+    # the model saw packed names and the scalars, and answered under the routine's dummies
+    assert "tn" not in seen[0] and "t" in seen[0] and seen[0]["deltatin"] == 900.0 and seen[0]["do_cldice"] == 1
+    assert set(RETURNED) <= set(out) and out["effc"].shape == (5, 30) and out["rflx"].shape == (5, 31)
+    for name in ("effc_fn", "reff_rain", "reff_snow", "drout2", "dsout2"):      # discarded by the driver
+        assert name in out and out[name].shape == (5, 30)
+    assert np.all(out["reff_rain"] == 0.0)                                       # handed back as it came
 
 
 def test_an_image_without_the_entries_offers_no_runner() -> None:
@@ -150,7 +202,7 @@ def test_describe_kernels_reports_contract_coverage_binding_and_calls() -> None:
     assert pcond["binding"] == "original" and not pcond["replaced"] and pcond["model_calls"] == 0
     micro = rows["micro_mg_tend"]
     assert micro["owner_class"].endswith("microphysics.Microphysics")
-    assert not micro["bindable"] and not micro["validated"]        # no runner pauses at it yet
+    assert micro["bindable"] and not micro["validated"]            # the runner pauses at it; no gate yet
     assert micro["contract"]["path"] == "native/pi_cam/functions/micro_mg_tend.yaml"
     stage.kernels["mmacro_pcond"] = _answer
     stage.execution.count_model_call("mmacro_pcond")
@@ -166,4 +218,5 @@ def test_the_builder_s_capabilities_come_from_the_manifest() -> None:
     by_name = {c.kernel: c for c in kernel_capabilities()}
     assert by_name["mmacro_pcond"].bindable and by_name["mmacro_pcond"].validated
     assert by_name["mmacro_pcond"].evidence == runners.runner_spec("cam_run1.cloud_macro_microphysics").kernel("mmacro_pcond").validated_by
-    assert not by_name["micro_mg_tend"].bindable and not by_name["rad_rrtmg_sw"].bindable
+    assert by_name["micro_mg_tend"].bindable and not by_name["micro_mg_tend"].validated
+    assert not by_name["rad_rrtmg_sw"].bindable

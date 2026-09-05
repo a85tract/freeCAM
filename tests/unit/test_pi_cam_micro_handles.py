@@ -79,12 +79,14 @@ def test_the_five_procedures_and_the_helpers_are_the_pinned_text_verbatim() -> N
 @pinned
 def test_the_procedures_hold_nothing_python_walks_itself() -> None:
     """No buffer read, no history write, no subcolumn averaging in the
-    verbatim ranges: those stay with Python, statement for statement."""
+    procedures the walk calls: those stay with Python, statement for
+    statement.  The head and the tail are the segment runner's, which runs
+    the routine whole in Fortran and reaches them itself."""
 
     lines = PINNED.read_text().splitlines()
     import generate_pi_cam_micro_handles as gen
 
-    for name, first, last in gen.VERBATIM:
+    for name, first, last in gen.WALK_LIFTED:
         text = "\n".join(lines[first - 1:last])
         for forbidden in ("pbuf_get_field", "outfld", "subcol_field_avg"):
             assert forbidden not in text, (name, forbidden)

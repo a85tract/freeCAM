@@ -34,7 +34,8 @@ def test_every_argument_of_the_kernel_has_a_home_in_the_frame_in_call_order() ->
                      if k.name == "mmacro_pcond" for a in k.arguments]
     assert set(names) == set(gen.FRAME_SOURCES)                     # no argument without a slot, no stray slot
     text = MODULE.read_text()
-    assert f"frame_slots = {len(names)}" in text
+    # the frame table holds the larger of the two paused calls' argument lists
+    assert f"frame_slots = {max(len(names), gen.micro_frame_slots())}" in text
     for index, name in enumerate(names, start=1):
         expression, rank = gen.FRAME_SOURCES[name]
         helper = "slot2_or" if "|" in expression else {0: "scalar_slot", 1: "slot1", 2: "slot2"}[rank]
@@ -106,7 +107,7 @@ def test_the_binding_starts_decodes_a_frame_and_resumes_with_the_token() -> None
     runner = StageSevenRunner(lib, Macrophysics.DESCRIPTORS)
     names = runner.names["mmacro_pcond"]                  # one entry per kernel the runner pauses at
     lib.names = names
-    assert runner.kernels == ("mmacro_pcond",)
+    assert runner.kernels == ("mmacro_pcond", "micro_mg_tend")
     assert names[:5] == ("lchnk", "ncol", "dt", "p", "dp") and names[-1] == "do_cldice"
     context = runner.create(STAGE)
     assert runner.start(context, {"mmacro_pcond": True}) == SegmentEvent.NEEDS_PYTHON_KERNEL

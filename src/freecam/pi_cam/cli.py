@@ -287,6 +287,14 @@ def main(argv: list[str] | None = None) -> int:
         ),
     )
     parser.add_argument(
+        "--segmented-original-kernels",
+        default="mmacro_pcond",
+        help=(
+            "test only: with --segmented-original, the kernels (comma-separated) put in "
+            "the slots as ORIGINAL replacements; each must be one the image's runner pauses at"
+        ),
+    )
+    parser.add_argument(
         "--cloud-macro-micro-python",
         action="store_true",
         help=(
@@ -489,7 +497,11 @@ def main(argv: list[str] | None = None) -> int:
             scheme.execution_policy = args.stage_execution
             if args.segmented_original:
                 from freecam.physics.segments import OriginalKernel
-                scheme.kernels["mmacro_pcond"] = OriginalKernel()
+                for kernel_name in [k.strip() for k in args.segmented_original_kernels.split(",") if k.strip()]:
+                    if kernel_name not in scheme.kernels:
+                        raise SystemExit(f"--segmented-original-kernels: {kernel_name!r} is not a kernel "
+                                         f"of the stage; it has {list(scheme.kernels)}")
+                    scheme.kernels[kernel_name] = OriginalKernel()
             cam.step_plan.set_enabled("cloud_macro_microphysics", False, phase="cam_run1", experimental=True)
             cam.python_processes.install(
                 PythonProcessSpec.from_callable(
@@ -759,6 +771,7 @@ def main(argv: list[str] | None = None) -> int:
             "cloud_macro_micro_python": bool(args.cloud_macro_micro_python),
             "stage_execution_policy": args.stage_execution,
             "segmented_original": bool(args.segmented_original),
+            "segmented_original_kernels": (args.segmented_original_kernels if args.segmented_original else None),
             "stage_execution": _stage_executions(cam),
             "cloud_macro_micro_whole_drivers": bool(args.cloud_macro_micro_whole_drivers),
             "cloud_macro_micro_whole_micro": bool(args.cloud_macro_micro_whole_micro),
