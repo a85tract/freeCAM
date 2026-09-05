@@ -41,9 +41,11 @@ python=${repo}/.venv/bin/python
 order=${PYCAM_PAIR_ORDER:-AC}
 policy=${PYCAM_STAGE_EXECUTION:-native-whole}
 duration=${PYCAM_PAIR_DURATION:-1month}
+# The year samples memory every 2000 steps, as the memory runs do; the month
+# keeps the measurement the earlier pairs made.
 case "${duration}" in
-  1month) steps=1488 ;;
-  1year) steps=17520 ;;
+  1month) steps=1488; memory_sample=0 ;;
+  1year) steps=17520; memory_sample=2000 ;;
   *) echo "PYCAM_PAIR_DURATION must be 1month or 1year, not '${duration}'" >&2; exit 2 ;;
 esac
 pycesm_case=${FREECAM_PYCESM_CASE}
@@ -120,6 +122,7 @@ PY
       --cloud-macro-micro-python \
       --stage-execution "${policy}" \
       --steps "${steps}" \
+      --memory-sample-every "${memory_sample}" \
       --summary "${summary}" \
       > "${cam_run}/freecam.log" 2>&1 )
   echo "C done ($(date))"
