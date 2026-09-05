@@ -280,6 +280,17 @@ order, for the PI-atm month.  Every C is bit-for-bit with the oracle month.
 | `7322467` | `ed685d5` | AC | 437.47 s | 440.07 s | **1.0060** |
 | `7322553` | `f565b67` | CA | 438.30 s | 439.86 s | **1.0036** |
 
+One year the same way (17,520 steps, A then C in one four-hour allocation,
+C compared bit-for-bit with A's own 180 history and restart files):
+
+| Job | Code | Order | A | C | C/A |
+| --- | --- | --- | ---: | ---: | ---: |
+| `7322841` | `958bd60` | AC | 5,067.39 s | 5,130.82 s | **1.0125** |
+
+The job's PBS high-water memory was 218.0 GB; A alone peaks near the
+Fortran baseline's 194.42 GB, so that figure is C's -- +12.1% over the
+Fortran year, +1.6% over freeCAM without the stage class (214.51 GB).
+
 The deficit before was entirely in the boundary path: the online provider
 checked for errors with a pickled allreduce after every coupler action,
 about thirty a step, which lined the land, ice and ocean components up
@@ -426,6 +437,7 @@ instant of the write and are expected to differ.
 | `7322349` | `freecam-pair-1month` | C then A, code before `3384292` | 203.41 GB | 0.27 h | 2026-09-04 |
 | `7322467` | `freecam-pair-1month` | A then C, `ed685d5` | 206.78 GB | 0.28 h | 2026-09-04 |
 | `7322553` | `freecam-pair-1month` | C then A, `f565b67` | 202.92 GB | 0.27 h | 2026-09-04 |
+| `7322841` | `freecam-pair` | 1 year, A then C, `958bd60` | 218.02 GB | 2.89 h | 2026-09-04 |
 | `7256752` | `freecam-stage-1month` | freeCAM, stage 7 in Python | 224.95 GB | 0.18 h | 2026-08-27 |
 
 The memory and elapsed columns are PBS accounting values. `qhist` searches

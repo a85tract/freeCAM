@@ -187,6 +187,59 @@
     }
   },
   "1year": {
-    "pairs": []
+    "pairs": [
+      {
+        "pbs_job_id": "7322841.desched1",
+        "order": "AC",
+        "stage_execution": "native-whole",
+        "steps": 17520,
+        "a": {
+          "coupling_loop_seconds": 5067.392578,
+          "init_seconds": 19.904715,
+          "final_seconds": 0.00737,
+          "lifecycle_seconds": 5087.304663,
+          "executable_sha256": "accd9860c1a29b32415d1fecd86d5728c8cd5c4204ad41e9d93e2db6b0077d7e",
+          "timing_source": "GPTL CPL:RUN_LOOP in timing/cesm_timing.000"
+        },
+        "c": {
+          "coupling_loop_seconds": 5130.8165803950005,
+          "init_seconds": 14.334752716999901,
+          "final_seconds": 0.39827749300002324,
+          "lifecycle_seconds": 5145.570455845,
+          "sypd": 16.83942480620666,
+          "native_library_sha256": "43df9524851f077c1e01cbd2d7485c76055f7565f3a6dfaa9da5655b6c1d2b05",
+          "git_commit": "958bd60e5e71c752fe590b481d75382aa0f84538",
+          "collective_reductions": 52594,
+          "bfb": true,
+          "bfb_files": 180,
+          "peak_rank_rss_bytes": 975745024,
+          "total_rss_bytes": 269011312640,
+          "stage_execution_record": {
+            "cloud_macro_microphysics_python": {
+              "active_replacements": [],
+              "execution_mode": "native-whole",
+              "legacy_steps": 0,
+              "native_segment_calls": 0,
+              "native_stage_calls": 17520,
+              "python_fortran_crossings_per_step": 1,
+              "python_model_calls": 0,
+              "segment_pauses": 0
+            }
+          }
+        },
+        "ratio_c_over_a": 1.0125161020029028
+      }
+    ],
+    "summary": {
+      "pairs": 1,
+      "ratios": [
+        1.0125161020029028
+      ],
+      "median_ratio": 1.0125161020029028,
+      "bootstrap_95_interval": null,
+      "target_median_ratio": 0.95,
+      "target_met": false,
+      "all_bfb": true
+    }
   }
 }

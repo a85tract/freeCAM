@@ -216,8 +216,14 @@ BFB 和最终目标是否达成。更新 `validation/performance_overhead.md`，
 | 7322467 | 改动后 `ed685d5` | AC | 437.47 s | 440.07 s | **1.0060** | 是 |
 | 7322553 | 改动后 `f565b67` | CA | 438.30 s | 439.86 s | **1.0036** | 是 |
 
+年度（17520 步，同一 allocation，A 先 C 后）：
+
+| 作业 | 代码 | 顺序 | A 原始 Fortran | C freeCAM | C/A | BFB |
+| --- | --- | --- | ---: | ---: | ---: | --- |
+| 7322841 | 改动后 `958bd60` | AC | 5067.39 s | 5130.82 s | **1.0125** | 是（180 个文件） |
+
 记录在 `validation/pi_cam_faster_than_fortran.json`（每对含生命周期时间、内存、BFB、provider 的
-collective 次数与代码提交）。B 组未运行：没有进入 Fortran 侧的原生优化阶段。年度配对未运行。
+collective 次数与代码提交）。B 组未运行：没有进入 Fortran 侧的原生优化阶段。年度配对一对（用户决定持平即可之后补测）。
 
 ### 收益分解
 
