@@ -52,7 +52,12 @@ code, pre, .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, m
 .library, .inspector { background: var(--panel); border-right: 1px solid var(--border); overflow: auto; padding: 10px; }
 .inspector { border-right: none; border-left: 1px solid var(--border); }
 .canvas { overflow: auto; padding: 12px 16px; }
-.bottom { grid-column: 1 / -1; background: var(--panel); border-top: 1px solid var(--border); height: 260px; display: flex; flex-direction: column; min-height: 120px; }
+.bottom { grid-column: 1 / -1; position: relative; background: var(--panel); border-top: 1px solid var(--border); height: 260px; display: flex; flex-direction: column; min-height: 120px; }
+.resize-handle { position: absolute; top: -4px; left: 0; right: 0; height: 9px; cursor: row-resize; z-index: 2; touch-action: none; }
+.resize-handle::after { content: ""; position: absolute; left: 50%; top: 3px; width: 48px; height: 3px; margin-left: -24px; border-radius: 2px; background: var(--border); }
+.resize-handle:hover::after, .resize-handle:focus-visible::after, .resize-handle[data-dragging]::after { background: var(--accent); }
+.resize-handle:focus-visible { outline: none; }
+.resize-handle[data-dragging] { cursor: row-resize; }
 .bottom .tabs, .inspector .tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--border); padding: 4px 8px 0; }
 .tabs button { background: none; border: 1px solid transparent; border-bottom: none; padding: 6px 10px; border-radius: 6px 6px 0 0; color: var(--muted); cursor: pointer; }
 .tabs button[aria-selected="true"] { color: var(--text); background: var(--panel-2); border-color: var(--border); }
@@ -113,7 +118,7 @@ pre.code { background: var(--panel-2); border: 1px solid var(--border); border-r
 .log { background: var(--panel-2); border: 1px solid var(--border); border-radius: 6px; padding: 6px; max-height: 120px; overflow: auto; }
 .log .error { color: var(--danger); }
 .log .warning { color: var(--warning); }
-.toast { position: fixed; bottom: 280px; left: 50%; transform: translateX(-50%); background: var(--danger); color: #fff; padding: 8px 14px; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.2); z-index: 10; display: flex; gap: 12px; align-items: center; }
+.toast { position: fixed; bottom: calc(var(--bottom-height, 260px) + 20px); left: 50%; transform: translateX(-50%); background: var(--danger); color: #fff; padding: 8px 14px; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.2); z-index: 10; display: flex; gap: 12px; align-items: center; }
 .toast button { background: transparent; border: 1px solid #fff; color: #fff; border-radius: 4px; padding: 2px 8px; cursor: pointer; }
 .dialog { position: fixed; inset: 0; background: rgba(0,0,0,0.35); display: flex; align-items: center; justify-content: center; z-index: 20; }
 .dialog .box { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 16px 20px; max-width: 520px; box-shadow: 0 8px 30px rgba(0,0,0,0.3); }

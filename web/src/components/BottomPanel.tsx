@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useCallback, useState, type KeyboardEvent, type PointerEvent } from "react";
 
 import type { LogEvent, Mode, RunStatus, ServiceState } from "../api";
 import type { GeneratedArtifacts } from "../codegen/generate";
@@ -27,6 +27,69 @@ interface Props {
   onStop: () => void;
   onClose: () => void;
   onEnableExperimental: () => void;
+  height: number;
+  onResize: (height: number) => void;
+}
+
+export const BOTTOM_MIN = 120;
+export const BOTTOM_DEFAULT = 260;
+
+/** The tallest the panel may be: leave the workflow at least this much room. */
+export function bottomMax(): number {
+  return Math.max(BOTTOM_MIN, (typeof window === "undefined" ? 900 : window.innerHeight) - 220);
+}
+
+export function clampHeight(height: number): number {
+  return Math.min(bottomMax(), Math.max(BOTTOM_MIN, Math.round(height)));
+}
+
+const KEY_STEP = 24;
+
+/** The bar between the workflow and the panel; drag it, use the arrow keys, or double-click to reset. */
+function ResizeHandle({ height, onResize }: { height: number; onResize: (height: number) => void }) {
+  const onPointerDown = useCallback((event: PointerEvent<HTMLDivElement>) => {
+    if (event.button !== 0) return;
+    event.preventDefault();
+    const startY = event.clientY;
+    const startHeight = height;
+    const target = event.currentTarget;
+    target.setPointerCapture?.(event.pointerId);
+    target.dataset.dragging = "true";
+    const move = (moved: globalThis.PointerEvent) => onResize(clampHeight(startHeight + (startY - moved.clientY)));
+    const stop = () => {
+      delete target.dataset.dragging;
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", stop);
+      window.removeEventListener("pointercancel", stop);
+    };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", stop);
+    window.addEventListener("pointercancel", stop);
+  }, [height, onResize]);
+  const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+    if (event.key === "ArrowUp") onResize(clampHeight(height + KEY_STEP));
+    else if (event.key === "ArrowDown") onResize(clampHeight(height - KEY_STEP));
+    else if (event.key === "Home") onResize(bottomMax());
+    else if (event.key === "End") onResize(BOTTOM_MIN);
+    else return;
+    event.preventDefault();
+  };
+  return (
+    <div
+      className="resize-handle"
+      role="separator"
+      aria-label="Resize the details panel"
+      aria-orientation="horizontal"
+      aria-valuemin={BOTTOM_MIN}
+      aria-valuemax={bottomMax()}
+      aria-valuenow={height}
+      tabIndex={0}
+      title="Drag to resize; double-click to reset"
+      onPointerDown={onPointerDown}
+      onDoubleClick={() => onResize(BOTTOM_DEFAULT)}
+      onKeyDown={onKeyDown}
+    />
+  );
 }
 
 function IssueList({ issues, onSelect, onEnableExperimental }: { issues: Issue[]; onSelect: (id: string) => void; onEnableExperimental?: () => void }) {
@@ -55,7 +118,8 @@ export function BottomPanel(props: Props) {
   const [codeTab, setCodeTab] = useState<"setup" | "script" | "notebook" | "workflow">("setup");
   const stale = props.artifacts !== null && props.artifacts.hash !== props.document.workflow_hash;
   return (
-    <section className="bottom" aria-label="Details">
+    <section className="bottom" aria-label="Details" style={{ height: props.height }}>
+      <ResizeHandle height={props.height} onResize={props.onResize} />
       <div className="tabs" role="tablist">
         <button role="tab" aria-selected={props.tab === "checks"} onClick={() => props.onTab("checks")}>
           Checks <span className={`badge ${STATUS_BADGE[props.browserReport.status]}`}>{props.browserReport.status}</span>

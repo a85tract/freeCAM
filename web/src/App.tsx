@@ -1,10 +1,10 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { DndContext, KeyboardSensor, PointerSensor, closestCenter, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core";
 import { sortableKeyboardCoordinates } from "@dnd-kit/sortable";
 
 import { detectMode, ServiceClient, ServiceError, type LogEvent, type Mode, type RunStatus, type ServiceState } from "./api";
 import { generateAll, type GeneratedArtifacts } from "./codegen/generate";
-import { BottomPanel, type PanelTab } from "./components/BottomPanel";
+import { BOTTOM_DEFAULT, BottomPanel, clampHeight, type PanelTab } from "./components/BottomPanel";
 import { Canvas, visibleNodes } from "./components/Canvas";
 import { Inspector } from "./components/Inspector";
 import { Library } from "./components/Library";
@@ -23,6 +23,18 @@ function initialTheme(): Theme {
     // no storage
   }
   return window.matchMedia?.("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+}
+
+const BOTTOM_HEIGHT_KEY = "freecam-ui-bottom-height";
+
+function initialBottomHeight(): number {
+  try {
+    const stored = Number(localStorage.getItem(BOTTOM_HEIGHT_KEY));
+    if (Number.isFinite(stored) && stored > 0) return clampHeight(stored);
+  } catch {
+    // no storage
+  }
+  return BOTTOM_DEFAULT;
 }
 
 function readText(file: File): Promise<string> {
@@ -61,6 +73,14 @@ export function App() {
 function Editor({ mode, snapshot, service: initialService, client }: { mode: Mode; snapshot: CatalogSnapshot; service: ServiceState | null; client: ServiceClient }) {
   const [state, dispatch] = useEditor(snapshot, initialService?.draft ?? null);
   const [theme, setTheme] = useState<Theme>(initialTheme);
+  const [bottomHeight, setBottomHeight] = useState<number>(initialBottomHeight);
+  useEffect(() => {
+    try {
+      localStorage.setItem(BOTTOM_HEIGHT_KEY, String(bottomHeight));
+    } catch {
+      // no storage
+    }
+  }, [bottomHeight]);
   const [panel, setPanel] = useState<PanelTab>("checks");
   const [artifacts, setArtifacts] = useState<{ generated: GeneratedArtifacts; hash: string } | null>(null);
   const [savedFiles, setSavedFiles] = useState<Record<string, string> | null>(null);
@@ -247,7 +267,7 @@ function Editor({ mode, snapshot, service: initialService, client }: { mode: Mod
 
   return (
     <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
-      <div className="app">
+      <div className="app" style={{ "--bottom-height": `${bottomHeight}px` } as CSSProperties}>
         {mode === "preview" && <div className="banner" role="status">Preview — no CAM execution. Edit, check, generate and download here; run it from a Python session with the model.</div>}
         <Toolbar
           mode={mode}
@@ -319,6 +339,8 @@ function Editor({ mode, snapshot, service: initialService, client }: { mode: Mod
           savedFiles={savedFiles}
           onRun={() => startRun(false)}
           onEnableExperimental={() => dispatch({ type: "set_experimental", experimental: true })}
+          height={bottomHeight}
+          onResize={setBottomHeight}
           onStop={() => client.stop().then(setRun).catch((error: Error) => setNotice(error.message))}
           onClose={() => client.close().then((status) => { setRun(status); client.state().then(setService).catch(() => undefined); }).catch((error: Error) => setNotice(error.message))}
         />

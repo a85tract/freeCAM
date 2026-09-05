@@ -1,4 +1,4 @@
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -125,6 +125,33 @@ describe("the page in preview mode", () => {
     await user.click(enabled[0]);
     expect(within(inspector).getByLabelText("mmacro_pcond model path")).toBeInTheDocument();
     expect(screen.getByTestId("row-cam_run1.cloud_macro_microphysics")).toHaveTextContent("1 kernel replaced");
+  });
+
+  it("lets the details panel be dragged taller, and remembers the height", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+    await screen.findByRole("listbox", { name: "Step order" });
+    const panel = screen.getByRole("region", { name: "Details" });
+    const handle = screen.getByRole("separator", { name: "Resize the details panel" });
+    expect(panel).toHaveStyle({ height: "260px" });
+
+    // drag the bar 100 px up: the panel grows by as much
+    fireEvent.pointerDown(handle, { button: 0, clientY: 500, pointerId: 1 });
+    fireEvent.pointerMove(window, { clientY: 400 });
+    fireEvent.pointerUp(window, { clientY: 400 });
+    expect(panel).toHaveStyle({ height: "360px" });
+    expect(localStorage.getItem("freecam-ui-bottom-height")).toBe("360");
+
+    // the keyboard works too, and it never shrinks below the minimum
+    handle.focus();
+    await user.keyboard("{ArrowUp}");
+    expect(panel).toHaveStyle({ height: "384px" });
+    await user.keyboard("{End}");
+    expect(panel).toHaveStyle({ height: "120px" });
+
+    // double-click puts it back
+    await user.dblClick(handle);
+    expect(panel).toHaveStyle({ height: "260px" });
   });
 
   it("switches theme and keeps the choice", async () => {
