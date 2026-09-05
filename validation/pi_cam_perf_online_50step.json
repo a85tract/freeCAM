@@ -1,0 +1,478 @@
+{
+  "schema_version": 1,
+  "what": "perf counters on every rank and user-space samples on a few, over the exact online 50-step run; a diagnostic of where the step's time goes, not a gate",
+  "pbs_job_id": "7322501.desched1",
+  "git_commit": "ed685d5",
+  "counting_started_after_ms": 20000,
+  "steps": 50,
+  "bfb": true,
+  "ranks_counted": 512,
+  "page_faults_per_rank": {
+    "min": 1554.0,
+    "median": 2579.5,
+    "max": 75676.0,
+    "mean": 3169.7578125
+  },
+  "page_faults_per_rank_per_step": {
+    "min": 31.08,
+    "median": 51.59,
+    "max": 1513.52,
+    "mean": 63.39515625
+  },
+  "task_clock_seconds_per_rank": {
+    "min": 18.306459999999998,
+    "median": 18.51288,
+    "max": 19.06601,
+    "mean": 18.5695976953125
+  },
+  "advance_seconds": 19.464645431999998,
+  "initialize_seconds": 14.491890194999996,
+  "recorded_ranks": {
+    "100": {
+      "by_dso": [
+        {
+          "percent": 67.7,
+          "dso": "67.70%  libfreecam_pi_cam.so"
+        },
+        {
+          "percent": 6.95,
+          "dso": "6.95%  libimf.so"
+        },
+        {
+          "percent": 6.95,
+          "dso": "6.95%  libmpi_intel.so.12.0.0"
+        },
+        {
+          "percent": 6.77,
+          "dso": "6.77%  libc.so.6"
+        },
+        {
+          "percent": 4.22,
+          "dso": "4.22%  python3.11"
+        },
+        {
+          "percent": 3.58,
+          "dso": "3.58%  libpycesm_external_atm.so"
+        },
+        {
+          "percent": 2.47,
+          "dso": "2.47%  libfabric.so.1.18.2"
+        },
+        {
+          "percent": 0.51,
+          "dso": "0.51%  libifcore.so.5"
+        },
+        {
+          "percent": 0.43,
+          "dso": "0.43%  libintlc.so.5"
+        }
+      ],
+      "by_bucket": {
+        "cam": 67.7,
+        "mpi": 9.42,
+        "intel-math": 7.38,
+        "libc": 6.77,
+        "python": 4.22,
+        "coupler+components": 3.58,
+        "other": 0.51
+      },
+      "top_symbols": [
+        {
+          "percent": 11.55,
+          "symbol": "11.55%  libfreecam_pi_cam.so        [.] prim_advection_mod_mp_euler_step_                       -      -"
+        },
+        {
+          "percent": 5.67,
+          "symbol": "5.67%  libc.so.6                   [.] __sched_yield                                           -      -"
+        },
+        {
+          "percent": 4.22,
+          "symbol": "4.22%  libfreecam_pi_cam.so        [.] __intel_avx_rep_memcpy                                  -      -"
+        },
+        {
+          "percent": 4.18,
+          "symbol": "4.18%  libfreecam_pi_cam.so        [.] edge_mod_mp_edgevpack_                                  -      -"
+        },
+        {
+          "percent": 3.71,
+          "symbol": "3.71%  libfreecam_pi_cam.so        [.] __intel_avx_rep_memset                                  -      -"
+        },
+        {
+          "percent": 3.37,
+          "symbol": "3.37%  libfreecam_pi_cam.so        [.] edge_mod_mp_edgevunpack_                                -      -"
+        },
+        {
+          "percent": 2.94,
+          "symbol": "2.94%  libimf.so                   [.] __libm_pow_l9                                           -      -"
+        },
+        {
+          "percent": 2.73,
+          "symbol": "2.73%  libfreecam_pi_cam.so        [.] water_tracers_mp_wtrc_apply_rates_                      -      -"
+        },
+        {
+          "percent": 2.6,
+          "symbol": "2.60%  libfreecam_pi_cam.so        [.] uwshcu_mp_compute_uwshcu_                               -      -"
+        },
+        {
+          "percent": 2.17,
+          "symbol": "2.17%  libmpi_intel.so.12.0.0      [.] MPIR_Wait_impl.part.0                                   -      -"
+        },
+        {
+          "percent": 2.05,
+          "symbol": "2.05%  libfreecam_pi_cam.so        [.] edge_mod_mp_edgespack_r8_                               -      -"
+        },
+        {
+          "percent": 2.05,
+          "symbol": "2.05%  libmpi_intel.so.12.0.0      [.] MPIDI_Cray_shared_mem_coll_bcast                        -      -"
+        },
+        {
+          "percent": 1.45,
+          "symbol": "1.45%  libfreecam_pi_cam.so        [.] derivative_mod_mp_laplace_sphere_wk_                    -      -"
+        },
+        {
+          "percent": 1.41,
+          "symbol": "1.41%  python3.11                  [.] _PyEval_EvalFrameDefault                                -      -"
+        },
+        {
+          "percent": 1.36,
+          "symbol": "1.36%  libfreecam_pi_cam.so        [.] derivative_mod_mp_divergence_sphere_                    -      -"
+        },
+        {
+          "percent": 1.28,
+          "symbol": "1.28%  libfreecam_pi_cam.so        [.] modal_aer_opt_mp_binterp_                               -      -"
+        },
+        {
+          "percent": 1.15,
+          "symbol": "1.15%  libpycesm_external_atm.so   [.] hydrologytracer_mp_hydrologytracersoilwater_            -      -"
+        },
+        {
+          "percent": 1.11,
+          "symbol": "1.11%  libfreecam_pi_cam.so        [.] vertremap_mod_mp_remap_q_ppm_                           -      -"
+        },
+        {
+          "percent": 1.07,
+          "symbol": "1.07%  libfreecam_pi_cam.so        [.] dust_sediment_mod_mp_cfint2_                            -      -"
+        },
+        {
+          "percent": 1.07,
+          "symbol": "1.07%  libmpi_intel.so.12.0.0      [.] MPIDI_SHMI_progress                                     -      -"
+        },
+        {
+          "percent": 0.85,
+          "symbol": "0.85%  libfreecam_pi_cam.so        [.] micro_mg1_0_mp_micro_mg_tend_                           -      -"
+        },
+        {
+          "percent": 0.81,
+          "symbol": "0.81%  libfreecam_pi_cam.so        [.] rrtmg_lw_rtrnmc_mp_rtrnmc_                              -      -"
+        },
+        {
+          "percent": 0.81,
+          "symbol": "0.81%  libimf.so                   [.] __powr8i4                                               -      -"
+        },
+        {
+          "percent": 0.77,
+          "symbol": "0.77%  libfreecam_pi_cam.so        [.] cam_history_mp_get_field_properties_                    -      -"
+        },
+        {
+          "percent": 0.77,
+          "symbol": "0.77%  python3.11                  [.] gc_collect_main                                         -      -"
+        },
+        {
+          "percent": 0.72,
+          "symbol": "0.72%  libfabric.so.1.18.2         [.] cxip_evtq_progress                                      -      -"
+        },
+        {
+          "percent": 0.72,
+          "symbol": "0.72%  libfreecam_pi_cam.so        [.] rrtmg_sw_vrtqdr_mp_vrtqdr_sw_                           -      -"
+        },
+        {
+          "percent": 0.72,
+          "symbol": "0.72%  libimf.so                   [.] __libm_exp_l9                                           -      -"
+        },
+        {
+          "percent": 0.68,
+          "symbol": "0.68%  libfreecam_pi_cam.so        [.] ndrop_mp_dropmixnuc_                                    -      -"
+        },
+        {
+          "percent": 0.68,
+          "symbol": "0.68%  libfreecam_pi_cam.so        [.] rrtmg_sw_reftra_mp_reftra_sw_                           -      -"
+        },
+        {
+          "percent": 0.64,
+          "symbol": "0.64%  libfreecam_pi_cam.so        [.] stepon_mp_stepon_run2_                                  -      -"
+        },
+        {
+          "percent": 0.6,
+          "symbol": "0.60%  libfreecam_pi_cam.so        [.] phys_prop_mp_physprop_get_                              -      -"
+        },
+        {
+          "percent": 0.6,
+          "symbol": "0.60%  libimf.so                   [.] __libm_log_l9                                           -      -"
+        },
+        {
+          "percent": 0.55,
+          "symbol": "0.55%  libfreecam_pi_cam.so        [.] micro_mg_cam_mp_micro_mg_cam_tend_                      -      -"
+        },
+        {
+          "percent": 0.55,
+          "symbol": "0.55%  libfreecam_pi_cam.so        [.] mo_jlong_mp_jlong_photo_                                -      -"
+        },
+        {
+          "percent": 0.55,
+          "symbol": "0.55%  libfreecam_pi_cam.so        [.] physics_types_mp_physics_update_                        -      -"
+        },
+        {
+          "percent": 0.55,
+          "symbol": "0.55%  libfreecam_pi_cam.so        [.] qneg3_                                                  -      -"
+        },
+        {
+          "percent": 0.55,
+          "symbol": "0.55%  libimf.so                   [.] __libm_log10_l9                                         -      -"
+        },
+        {
+          "percent": 0.51,
+          "symbol": "0.51%  libfreecam_pi_cam.so        [.] edge_mod_mp_edgesunpackmax_                             -      -"
+        },
+        {
+          "percent": 0.51,
+          "symbol": "0.51%  libfreecam_pi_cam.so        [.] water_isotopes_mp_wiso_alpl_                            -      -"
+        }
+      ],
+      "callers": {
+        "__intel_avx_rep_memcpy": [],
+        "__intel_avx_rep_memset": [],
+        "malloc": [],
+        "free": [],
+        "_intel_fast_memcpy": [],
+        "for_alloc_allocatable": [],
+        "for_dealloc_allocatable": [],
+        "__memcpy_avx_unaligned_erms": []
+      }
+    },
+    "400": {
+      "by_dso": [
+        {
+          "percent": 66.25,
+          "dso": "66.25%  libfreecam_pi_cam.so"
+        },
+        {
+          "percent": 8.37,
+          "dso": "8.37%  libmpi_intel.so.12.0.0"
+        },
+        {
+          "percent": 7.89,
+          "dso": "7.89%  libc.so.6"
+        },
+        {
+          "percent": 7.54,
+          "dso": "7.54%  libimf.so"
+        },
+        {
+          "percent": 4.1,
+          "dso": "4.10%  python3.11"
+        },
+        {
+          "percent": 3.92,
+          "dso": "3.92%  libfabric.so.1.18.2"
+        },
+        {
+          "percent": 0.78,
+          "dso": "0.78%  libpycesm_external_atm.so"
+        },
+        {
+          "percent": 0.48,
+          "dso": "0.48%  libifcore.so.5"
+        },
+        {
+          "percent": 0.26,
+          "dso": "0.26%  libintlc.so.5"
+        },
+        {
+          "percent": 0.22,
+          "dso": "0.22%  ld-linux-x86-64.so.2"
+        }
+      ],
+      "by_bucket": {
+        "cam": 66.25,
+        "mpi": 12.29,
+        "libc": 8.11,
+        "intel-math": 7.8,
+        "python": 4.1,
+        "coupler+components": 0.78,
+        "other": 0.48
+      },
+      "top_symbols": [
+        {
+          "percent": 9.81,
+          "symbol": "9.81%  libfreecam_pi_cam.so        [.] prim_advection_mod_mp_euler_step_                       -      -"
+        },
+        {
+          "percent": 6.15,
+          "symbol": "6.15%  libc.so.6                   [.] __sched_yield                                           -      -"
+        },
+        {
+          "percent": 4.23,
+          "symbol": "4.23%  libfreecam_pi_cam.so        [.] edge_mod_mp_edgevpack_                                  -      -"
+        },
+        {
+          "percent": 4.1,
+          "symbol": "4.10%  libfreecam_pi_cam.so        [.] __intel_avx_rep_memcpy                                  -      -"
+        },
+        {
+          "percent": 3.92,
+          "symbol": "3.92%  libfreecam_pi_cam.so        [.] uwshcu_mp_compute_uwshcu_                               -      -"
+        },
+        {
+          "percent": 3.71,
+          "symbol": "3.71%  libfreecam_pi_cam.so        [.] edge_mod_mp_edgevunpack_                                -      -"
+        },
+        {
+          "percent": 3.23,
+          "symbol": "3.23%  libfreecam_pi_cam.so        [.] __intel_avx_rep_memset                                  -      -"
+        },
+        {
+          "percent": 2.88,
+          "symbol": "2.88%  libmpi_intel.so.12.0.0      [.] MPIR_Wait_impl.part.0                                   -      -"
+        },
+        {
+          "percent": 2.75,
+          "symbol": "2.75%  libimf.so                   [.] __libm_pow_l9                                           -      -"
+        },
+        {
+          "percent": 2.27,
+          "symbol": "2.27%  libmpi_intel.so.12.0.0      [.] MPIDI_Cray_shared_mem_coll_bcast                        -      -"
+        },
+        {
+          "percent": 2.09,
+          "symbol": "2.09%  libfreecam_pi_cam.so        [.] water_tracers_mp_wtrc_apply_rates_                      -      -"
+        },
+        {
+          "percent": 1.61,
+          "symbol": "1.61%  libfreecam_pi_cam.so        [.] edge_mod_mp_edgespack_r8_                               -      -"
+        },
+        {
+          "percent": 1.48,
+          "symbol": "1.48%  libfreecam_pi_cam.so        [.] derivative_mod_mp_divergence_sphere_                    -      -"
+        },
+        {
+          "percent": 1.48,
+          "symbol": "1.48%  libfreecam_pi_cam.so        [.] derivative_mod_mp_laplace_sphere_wk_                    -      -"
+        },
+        {
+          "percent": 1.35,
+          "symbol": "1.35%  libfabric.so.1.18.2         [.] cxip_evtq_progress                                      -      -"
+        },
+        {
+          "percent": 1.13,
+          "symbol": "1.13%  libmpi_intel.so.12.0.0      [.] MPIDI_SHMI_progress                                     -      -"
+        },
+        {
+          "percent": 1.09,
+          "symbol": "1.09%  libfreecam_pi_cam.so        [.] modal_aer_opt_mp_binterp_                               -      -"
+        },
+        {
+          "percent": 1.05,
+          "symbol": "1.05%  libfreecam_pi_cam.so        [.] rrtmg_lw_rtrnmc_mp_rtrnmc_                              -      -"
+        },
+        {
+          "percent": 1.05,
+          "symbol": "1.05%  libfreecam_pi_cam.so        [.] vertremap_mod_mp_remap_q_ppm_                           -      -"
+        },
+        {
+          "percent": 1.05,
+          "symbol": "1.05%  libimf.so                   [.] __powr8i4                                               -      -"
+        },
+        {
+          "percent": 1.0,
+          "symbol": "1.00%  libfreecam_pi_cam.so        [.] uwshcu_mp_conden_                                       -      -"
+        },
+        {
+          "percent": 0.96,
+          "symbol": "0.96%  libfreecam_pi_cam.so        [.] micro_mg1_0_mp_micro_mg_tend_                           -      -"
+        },
+        {
+          "percent": 0.87,
+          "symbol": "0.87%  python3.11                  [.] _PyEval_EvalFrameDefault                                -      -"
+        },
+        {
+          "percent": 0.83,
+          "symbol": "0.83%  libimf.so                   [.] __libm_exp_l9                                           -      -"
+        },
+        {
+          "percent": 0.78,
+          "symbol": "0.78%  python3.11                  [.] gc_collect_main                                         -      -"
+        },
+        {
+          "percent": 0.74,
+          "symbol": "0.74%  libfreecam_pi_cam.so        [.] dust_sediment_mod_mp_cfint2_                            -      -"
+        },
+        {
+          "percent": 0.74,
+          "symbol": "0.74%  libmpi_intel.so.12.0.0      [.] MPIR_Waitall_impl                                       -      -"
+        },
+        {
+          "percent": 0.7,
+          "symbol": "0.70%  libfreecam_pi_cam.so        [.] rrtmg_sw_spcvmc_mp_spcvmc_sw_                           -      -"
+        },
+        {
+          "percent": 0.65,
+          "symbol": "0.65%  libfreecam_pi_cam.so        [.] rrtmg_sw_vrtqdr_mp_vrtqdr_sw_                           -      -"
+        },
+        {
+          "percent": 0.65,
+          "symbol": "0.65%  libfreecam_pi_cam.so        [.] wv_saturation_mp_qsat_                                  -      -"
+        },
+        {
+          "percent": 0.61,
+          "symbol": "0.61%  libfabric.so.1.18.2         [.] cxip_ep_ctrl_eq_progress                                -      -"
+        },
+        {
+          "percent": 0.61,
+          "symbol": "0.61%  libfreecam_pi_cam.so        [.] mo_jlong_mp_jlong_photo_                                -      -"
+        },
+        {
+          "percent": 0.61,
+          "symbol": "0.61%  libfreecam_pi_cam.so        [.] ndrop_mp_dropmixnuc_                                    -      -"
+        },
+        {
+          "percent": 0.61,
+          "symbol": "0.61%  libfreecam_pi_cam.so        [.] phys_prop_mp_physprop_get_                              -      -"
+        },
+        {
+          "percent": 0.61,
+          "symbol": "0.61%  libimf.so                   [.] __libm_log10_l9                                         -      -"
+        },
+        {
+          "percent": 0.61,
+          "symbol": "0.00%  libfabric.so.1.18.2         [.] cxi_eq_peek_event (inlined)                             -      -"
+        },
+        {
+          "percent": 0.57,
+          "symbol": "0.57%  libfreecam_pi_cam.so        [.] cam_history_mp_get_field_properties_                    -      -"
+        },
+        {
+          "percent": 0.52,
+          "symbol": "0.52%  libc.so.6                   [.] __memcmp_avx2_movbe                                     -      -"
+        },
+        {
+          "percent": 0.52,
+          "symbol": "0.52%  libfreecam_pi_cam.so        [.] dof_mod_mp_putuniquepoints4d_                           -      -"
+        },
+        {
+          "percent": 0.52,
+          "symbol": "0.52%  libfreecam_pi_cam.so        [.] edge_mod_mp_edgesunpackmax_                             -      -"
+        }
+      ],
+      "callers": {
+        "__intel_avx_rep_memcpy": [],
+        "__intel_avx_rep_memset": [],
+        "malloc": [],
+        "free": [],
+        "_intel_fast_memcpy": [],
+        "for_alloc_allocatable": [],
+        "for_dealloc_allocatable": [],
+        "__memcpy_avx_unaligned_erms": []
+      }
+    }
+  }
+}

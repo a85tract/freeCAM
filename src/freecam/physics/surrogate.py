@@ -21,7 +21,7 @@ under the routine's own argument names, which is what the reviewed
 standalone boundary is handed; what it must answer is every value the
 routine answers, under the same names.
 
-Two kinds of trained model load through the same class.  The first is one
+Three kinds of trained model load through the same class.  The first is one
 regression head over linearly scaled targets.  The second is *gated*: three
 heads per target -- does this term fire, which way, and how big in decades
 above its firing threshold -- which is what it takes to answer "nothing
@@ -30,6 +30,18 @@ time.  A gated model also reads the nine tunable parameters as features, so
 it is a function of the namelist rather than of one point in it; a column
 arrives without a namelist, so the run's values are supplied by the caller
 or taken from the case defaults recorded at training.
+
+The third is *compiled*: the exporter serialised the trained module itself
+as TorchScript instead of a state dict, so its architecture travels with
+it and this class never has to know what shape it has inside.  That is how
+a model whose layers this file could not rebuild -- a transformer over the
+column's levels, say -- arrives without teaching this file about tokens:
+it is handed the same flat feature vector as the others and slices out
+whatever it wants.  Such a checkpoint carries its own normalisation
+(standardised features, clipped; standardised targets) rather than the
+arcsinh scaling the two rebuilt kinds use, which is why the transform
+lives behind :meth:`SurrogateKernel._encode` and
+:meth:`SurrogateKernel._decode`.
 
 This module deliberately holds no science: it assembles the feature
 vector in the order the training set recorded, runs the network, and
@@ -44,6 +56,7 @@ from typing import Any, Mapping
 
 import numpy as np
 
+from .errors import PhysicsError
 from .identities import NON_NEGATIVE, identities_for
 
 
@@ -66,12 +79,19 @@ class SurrogateKernel:
         # core would thrash the node and buy nothing: a column is one small
         # matrix multiply.
         torch.set_num_threads(1)
+        # The inter-op pool defaults to one thread per core -- 128 on a
+        # Derecho node, per rank, with 128 ranks on the node.  Nothing here
+        # forks work across ops, so one is right; it can only be set before
+        # the pool exists, hence the guard for a second kernel in a process.
+        try:
+            torch.set_num_interop_threads(1)
+        except RuntimeError:
+            pass
         self.torch = torch
         self.x_names = list(payload["x_names"])
         self.y_names = list(payload["y_names"])
         self.x_arguments = list(payload["x_arguments"])
         self.y_arguments = list(payload["y_arguments"])
-        self.x_scale = np.asarray(payload["x_scale"])
         self.delta_columns = dict(payload["delta_columns"])
         self.delta_inputs = dict(payload["delta_inputs"])
         self.levels = int(payload["levels"])
@@ -85,9 +105,13 @@ class SurrogateKernel:
         self.identities = identities_for(str(self.function or ""))
         self.non_negative = NON_NEGATIVE.get(str(self.function or ""), ())
 
-        if self.kind == "gated":
+        if self.kind == "compiled":
+            self._load_compiled(payload, torch)
+        elif self.kind == "gated":
+            self.x_scale = np.asarray(payload["x_scale"])
             self._load_gated(payload, nn)
         else:
+            self.x_scale = np.asarray(payload["x_scale"])
             self.y_scale = np.asarray(payload["y_scale"])
             layers: list[Any] = []
             size = int(payload["features"])
@@ -130,6 +154,80 @@ class SurrogateKernel:
             else:
                 layout[body] = {"column": index}
         return layout
+
+    def _load_compiled(self, payload: Mapping[str, Any], torch) -> None:
+        """A module the exporter compiled to TorchScript, with its own scaling.
+
+        Nothing is rebuilt: the archive the payload carries is the trained
+        module, so whatever it is inside -- a transformer over the column's
+        thirty levels, in the checkpoint this was written for -- arrives
+        intact and takes the same flat feature vector as the rebuilt kinds,
+        slicing its own profile, scalar and parameter columns out of it.
+
+        Its normalisation is its own: features standardised and clipped to
+        keep a floored standard deviation from turning a quiet channel into
+        a huge input, targets standardised.  Undoing the target transform is
+        an affine move, as it is for the linear kind -- never a sinh, which
+        would make the network's error an exponential one.
+        """
+
+        import io
+
+        self.x_mean = np.asarray(payload["x_mean"], dtype=np.float64)
+        self.x_std = np.asarray(payload["x_std"], dtype=np.float64)
+        clip = payload.get("x_clip")
+        self.x_clip = None if clip is None else float(clip)
+        self.y_mean = np.asarray(payload["y_mean"], dtype=np.float64)
+        self.y_std = np.asarray(payload["y_std"], dtype=np.float64)
+        # A soft-gated module answers a pair -- the value and, per target, a
+        # logit for whether the term fires at all.  The threshold is on the
+        # probability, so the shipped 0.5 is the logit's own sign.
+        self.gate_threshold = float(payload.get("gate_threshold", 0.5))
+        module = torch.jit.load(io.BytesIO(payload["torchscript"]), map_location="cpu")
+        module.eval()
+        self.net = module
+
+    def _net_answer(self, x) -> np.ndarray:
+        """The network's answers for encoded rows, in the routine's units.
+
+        A gated module answers a target it says does not fire as **exactly**
+        zero, which is what the routine answers most of the time and what a
+        regression head alone cannot say.  Substituting the module's
+        ``zero_norm`` before undoing the target scaling would be the other
+        way to write this, and it is worse: it is zero only to float32
+        rounding, and for condensate the residue lands negative -- the
+        quantity CAM's own bounds check stops a run over.
+        """
+
+        answer = self.net(x)
+        if not isinstance(answer, tuple):
+            return self._decode(answer.numpy())
+        value, gate = answer
+        fires = self.torch.sigmoid(gate).numpy() >= self.gate_threshold
+        return np.where(fires, self._decode(value.numpy()), 0.0)
+
+    def _encode(self, rows: np.ndarray):
+        """Feature rows in the units the network was trained on."""
+
+        if self.kind == "compiled":
+            scaled = (rows - self.x_mean) / self.x_std
+            if self.x_clip is not None:
+                scaled = np.clip(scaled, -self.x_clip, self.x_clip)
+        else:
+            scaled = np.arcsinh(rows / self.x_scale)
+        return self.torch.from_numpy(scaled.astype(np.float32))
+
+    def _decode(self, answer: Any) -> np.ndarray:
+        """The network's answer in the routine's own units.
+
+        Both scalings are affine, so undoing one is a multiply and an add
+        over the last axis -- one column or a batch of them alike.
+        """
+
+        values = np.asarray(answer, dtype=np.float64)
+        if self.kind == "compiled":
+            return values * self.y_std + self.y_mean
+        return values * self.y_scale
 
     def _load_gated(self, payload: Mapping[str, Any], nn) -> None:
         import torch
@@ -176,30 +274,79 @@ class SurrogateKernel:
         for argument, where in self._x_slices.items():
             value = np.asarray(column[argument], dtype=np.float64).reshape(-1)
             row[where] = value if value.size == (where.stop - where.start) else value.item()
+        self._parameter_columns(row, parameters)
+        return row
+
+    def _parameter_columns(self, rows: np.ndarray,
+                           parameters: Mapping[str, Any] | None) -> None:
+        """Write the namelist's values into every row's parameter columns."""
+
         given = dict(parameters or {})
         for name, where in self._parameters.items():
             value = float(given.get(name, self.parameter_defaults.get(name, 0.0)))
             if "column" in where:
-                row[where["column"]] = value
+                rows[..., where["column"]] = value
             else:
                 indicators = where["indicators"]
                 nearest = min(indicators, key=lambda admitted: abs(admitted - value))
-                row[indicators[nearest]] = 1.0
-        return row
+                rows[..., indicators[nearest]] = 1.0
+
+    def features_batch(self, columns: Mapping[str, Any],
+                       parameters: Mapping[str, Any] | None = None) -> np.ndarray:
+        """One feature row per column of a chunk, in the training set's order.
+
+        The layout is the one :meth:`features` builds, assembled for many
+        columns at once.  The model's unit is still the column -- nothing in
+        the feature vector comes from a neighbour -- so the rows are
+        independent and the batch is only about how many go through the
+        network in one call.
+        """
+
+        count = next((np.asarray(columns[argument]).shape[0]
+                      for argument in self._x_slices
+                      if np.asarray(columns[argument]).ndim == 2), None)
+        if count is None:
+            raise PhysicsError(
+                "a batch of columns must carry at least one profile argument "
+                f"shaped (columns, levels); got {sorted(self._x_slices)}")
+        rows = np.zeros((count, len(self.x_names)), dtype=np.float64)
+        for argument, where in self._x_slices.items():
+            value = np.asarray(columns[argument], dtype=np.float64)
+            width = where.stop - where.start
+            if value.ndim == 0:
+                rows[:, where] = value                      # one value for the chunk
+            elif value.ndim == 1:
+                # one number per column, or one profile every column shares
+                rows[:, where] = value[:count, None] if width == 1 else value[None, :]
+            else:
+                rows[:, where] = value[:count, :width]      # a profile per column
+        self._parameter_columns(rows, parameters)
+        return rows
+
+    def batched(self, columns: Mapping[str, Any],
+                parameters: Mapping[str, Any] | None = None) -> dict[str, np.ndarray]:
+        """Every answer for a chunk's live columns, in one pass of the network.
+
+        The same arithmetic as calling this kernel once per column, with the
+        columns stacked: one matrix multiply of ``ncol`` rows rather than
+        ``ncol`` of one row, which is the difference between a network used
+        well and used badly.  Floating point makes the two agree closely
+        rather than exactly -- a batched matrix multiply blocks differently
+        -- so a run that swaps one form for the other is a different run,
+        which is true of any model in this slot anyway.
+        """
+
+        return self.batched_answer(self.features_batch(columns, parameters))
 
     def __call__(self, column: Mapping[str, Any],
                  parameters: Mapping[str, Any] | None = None) -> dict[str, np.ndarray]:
         row = self.features(column, parameters)
-        x = self.torch.from_numpy(np.arcsinh(row / self.x_scale).astype(np.float32)[None, :])
+        x = self._encode(row[None, :])
         with self.torch.no_grad():
             if self.kind == "gated":
                 values = self._gated_answer(x)
             else:
-                answer = self.net(x).numpy()[0]
-                # the targets were scaled linearly, so undoing it is a
-                # multiply: no sinh, which would turn the network's error into
-                # an exponential one
-                values = answer.astype(np.float64) * self.y_scale
+                values = self._net_answer(x)[0]
 
         out: dict[str, np.ndarray] = {}
         for argument, where in self._y_slices.items():
@@ -252,7 +399,7 @@ class SurrogateKernel:
         """
 
         rows = np.asarray(rows, dtype=np.float64)
-        x = self.torch.from_numpy(np.arcsinh(rows / self.x_scale).astype(np.float32))
+        x = self._encode(rows)
         with self.torch.no_grad():
             if self.kind == "gated":
                 hidden = self.net.trunk(x)
@@ -264,7 +411,7 @@ class SurrogateKernel:
                 size = np.power(10.0, excess + self.floor[None, :])
                 values = np.where(fires, np.where(positive, size, -size), 0.0)
             else:
-                values = self.net(x).numpy().astype(np.float64) * self.y_scale[None, :]
+                values = self._net_answer(x)
         for argument, where in self._y_slices.items():
             if argument in self.delta_columns:
                 values[:, where] += rows[:, self._x_slices[argument]]
@@ -313,4 +460,55 @@ def load_surrogate(path: str | Path) -> SurrogateKernel:
     return SurrogateKernel(torch.load(Path(path), map_location="cpu", weights_only=False))
 
 
-__all__ = ["SurrogateKernel", "load_surrogate"]
+class PendingSurrogate:
+    """A surrogate named by path, standing in the kernel slot before it is loaded.
+
+    The slot has to hold *something* from the moment the stage is built: the
+    stage decides how to run -- the original Fortran whole, or paused at the
+    kernels something else computes -- by looking at which slots are filled,
+    and a slot that only fills on first use was empty at that decision.  That
+    is how a run naming a model once ran the original Fortran to the end and
+    reported it bit-for-bit.  What travels is still the path: the stage is
+    cloudpickled to every rank when it is installed, and the weights are
+    loaded by each rank the first time the kernel is called.
+    """
+
+    takes_parameters = True
+
+    def __init__(self, path: str | Path) -> None:
+        self.path = str(path)
+        self._kernel: SurrogateKernel | None = None
+
+    @property
+    def loaded(self) -> bool:
+        return self._kernel is not None
+
+    def kernel(self) -> SurrogateKernel:
+        if self._kernel is None:
+            self._kernel = load_surrogate(self.path)
+        return self._kernel
+
+    def __call__(self, column: Mapping[str, Any],
+                 parameters: Mapping[str, Any] | None = None) -> dict[str, np.ndarray]:
+        return self.kernel()(column, parameters)
+
+    def batched(self, columns: Mapping[str, Any],
+                parameters: Mapping[str, Any] | None = None) -> dict[str, np.ndarray]:
+        return self.kernel().batched(columns, parameters)
+
+    def __getattr__(self, name: str) -> Any:
+        if name.startswith("_"):
+            raise AttributeError(name)
+        return getattr(self.kernel(), name)
+
+    def __getstate__(self) -> dict[str, Any]:
+        return {"path": self.path, "_kernel": None}      # the weights never travel
+
+    def __setstate__(self, state: dict[str, Any]) -> None:
+        self.__dict__.update(state)
+
+    def __repr__(self) -> str:
+        return f"PendingSurrogate({self.path!r}{', loaded' if self.loaded else ''})"
+
+
+__all__ = ["PendingSurrogate", "SurrogateKernel", "load_surrogate"]

@@ -27,12 +27,19 @@ overhead is the cost of control, not of a different answer. See
 | **5 model years** | **+8.7%** | **+8.2%** |
 
 That is the cost of Python owning the workflow.  Owning one *stage* as well —
-`tphysbc` stage 7 as a Python class — costs a further **+40.4% of time** and
-**+4.4% of memory** over freeCAM, measured over a model month and still
-bit-for-bit; see [the section below](#what-the-python-cloud-macromicrophysics-stage-costs).
+`tphysbc` stage 7 as a Python class — cost a further **+40.4% of time** and
+**+4.4% of memory** over freeCAM when first measured over a model month, and
+**+17.4% of time** after the two rounds of control-path work recorded below,
+still bit-for-bit; see [the section below](#what-the-python-cloud-macromicrophysics-stage-costs).
 
 Overhead **does not grow with integration length** — it decreases slightly,
 because the fixed Python startup cost is amortised over more steps.
+
+Measured against the original Fortran model *in the same allocation* — the
+paired online months [below](#paired-online-months) — freeCAM with the Python
+stage class installed now runs **level with the original** (C/A 1.006) after
+the coupler sequence was made to synchronise once per group instead of after
+every action; it was 7–9% behind before.
 
 ---
 
@@ -69,10 +76,87 @@ atmosphere inside the coupled loop — against freeCAM's `advance_seconds`.
 | --- | ---: | ---: | ---: |
 | original Fortran | 379.43 s | — | — |
 | freeCAM | 402.51 s | **+6.1%** (+23.1 s) | — |
-| freeCAM + Python stage | 565.31 s | **+49.0%** (+185.9 s) | **+40.4%** (+162.8 s) |
+| freeCAM + Python stage, 2026-08-27 (`7256752`) | 565.31 s | **+49.0%** (+185.9 s) | **+40.4%** (+162.8 s) |
+| … after round 1, 2026-09-03 (`7303107`) | 521.43 s | +37.4% (+141.9 s) | +29.5% (+118.9 s) |
+| … after round 2, 2026-09-03 (`7303342`) | 472.41 s | **+24.5%** (+93.0 s) | **+17.4%** (+69.9 s) |
+| … after round 4, 2026-09-04 (`7304288`) | 475.53 s | +25.3% (+96.1 s) | +18.1% (+73.0 s) |
+| freeCAM + Python stage, native-whole, 2026-09-04 (`7314269`) | 424.30 s | +11.8% (+44.9 s) | +5.4% (+21.8 s) |
+| … native-whole, trusted process path (`7314497`) | 419.03 s | +10.4% (+39.6 s) | **+4.1%** (+16.5 s) |
+| … native-whole, trusted process path, second run (`7314498`) | 404.22 s | +6.5% (+24.8 s) | **+0.4%** (+1.7 s) |
+| … native-whole, trusted process path, third run (`7314664`) | 404.61 s | +6.6% (+25.2 s) | **+0.5%** (+2.1 s) |
 
-The stage itself costs **109 ms per step per rank**, against ≈ 39 ms for the
-Fortran stage it replaces.  Throughput falls from 18.23 to 12.98 SYPD.
+The median of the three trusted native-whole runs is **404.61 s, +0.5% over
+freeCAM**, with the stage at 39.0 ms per step against the Fortran action's
+38.9; the first run's +4.1% sits entirely in the dynamics region and is
+the step's run-to-run noise
+([`pi_cam_native_whole_1month_median.json`](pi_cam_native_whole_1month_median.json)).
+
+The last row is the Python class installed with none of its kernels
+replaced and `--stage-execution native-whole` (branch
+`native-stage-batching`, code `086c1cc`): the class keeps its slot in the
+workflow and, finding nothing to replace, runs the original Fortran stage
+once a step through the plan's own primitive -- one Python/Fortran
+crossing, no walk, no views, no copies.  Bit-for-bit over the 18 files;
+the stage region is 48.5 ms per step against 38.9 ms for the Fortran
+action itself, the difference being the Python process wrapper around
+the single call (its pointer-stability check and its error collective).
+With the stage class installed as a *trusted* native process (`3d36ea8`:
+no field view, no snapshot, no per-call scan of the pool's pointers, and
+its outcome gathered once a step at the boundary export instead of once
+per call) the stage region is 39.1 ms per step against the Fortran
+action's 38.9 -- the wrapper is gone -- and the month is 419.03 s, +4.1%
+over freeCAM; what remains is the imbalance the stage's own collective
+used to absorb, now visible at the export, and run-to-run noise.  The
+statement-by-statement walk remains available as
+`--stage-execution legacy-python`; the 475.53 s above is its record.
+
+The stage itself cost **146 ms per step per rank** in the first run, against
+38.9 ms for the Fortran stage it replaces (the `CAM:macro_microphysics`
+region of the freeCAM run); throughput fell from 18.23 to 12.98 SYPD.  Two
+rounds of work on the control path, each gated bit-for-bit at 512 ranks
+before the month was rerun, brought the stage to **100 ms** and then
+**89 ms per step** (14.07 and 15.53 SYPD):
+
+- round 1 — the cloud cores called once per chunk instead of once per
+  column, and every direct kernel's argument table built once and kept
+  (`PointerTableAdapter.bind`) instead of on every call;
+- round 2 — the generated YAML tables parsed once with libyaml, a kernel's
+  scratch slots resolved once per kernel and field map, a view of Fortran
+  storage reused while the image reports the same address and extents, and
+  a two-slot profiler region in place of the generator-backed one.
+
+Rounds 3 and 4 (2026-09-04) then let a kernel read its `intent(in)` inputs
+where they live instead of copying them into scratch, reused physics-buffer
+views, local views and surface columns, and -- after the first attempt showed
+why not -- kept the process's own error collective.  The first attempt
+(`638b193`, month `7304103`: +33.4%) taught two things worth recording.
+Binding a kernel to the address of its input storage rebuilt the argument
+tables whenever the storage moved, and the per-chunk state copy moves on
+every call; the rebuilds came in bursts on one rank at a time, invisible in
+any rank's monthly total and fully visible on the step's critical path,
+because the other 511 ranks waited at the next collective.  `BoundCall`
+now points one argument at moved storage instead (`bc09299`).  And
+deferring the stage's error collective to the boundary export saved
+nothing: measured with the same code either way (`7304174`, `7304175`) the
+wait simply appeared at the export, larger, so the immediate collective is
+back (`951ad3f`).  Round 4 lands at the same figure as round 2 -- the stage's
+own work is lower, but the step is set by the slowest rank's stage each
+step, and that jitter (85-98 ms per step per rank over the month) is what
+the collective after the stage waits for.
+
+Everything outside the stage is unchanged between the runs to within
+run-to-run noise (230.4 ms per step in the freeCAM run, 229.4 ms in the
+round-4 run).  What remains of the stage's excess — about 50 ms per step — is
+the count of Python-level operations per chunk: some 3,000 per step per rank
+(entry calls, view constructions, history writes, scratch copies), each a
+few microseconds to a few tens of microseconds, none of them arithmetic.  A
+production-form cProfile of four ranks (`pi_cam_stage_python_cprofile_50step.pbs`)
+found no single hot spot, and a one-node probe found compute-node Python
+only 1.1–1.26× slower than the login node, so the remaining cost is the
+operation count itself.  Bringing it further down means fewer operations per
+chunk — history writes and views handed over as tables rather than one call
+each, kernels run on the views without the scratch copy — which is work in
+the handles modules, not in the walks.
 
 Where that time goes, from the Gate M-4 profile (per step per rank):
 
@@ -85,9 +169,48 @@ Where that time goes, from the Gate M-4 profile (per step per rank):
 
 The rest is the glue, the physics-buffer reads and the hundred-odd history
 writes.  Note that the profile is measured with the timer on every call, so
-it over-reads the total; the 109 ms above is the timed run's own figure.
+it over-reads the total; the 146 ms above is the timed month run's own
+figure, and the table predates both rounds of control-path work.
 The cost is per *call*, not per FLOP: about 700 crossings of the Python /
 Fortran boundary per chunk per step, each cheap and none of them numerical.
+
+### A trained network in mmacro_pcond's place
+
+The same month was run once more with the Python stage and the soft-gated
+surrogate `mmacro_pcond_soft_gated.pt` in the macrophysics core's slot
+(`pi_cam_macro_surrogate_1month.pbs`, job `7305340`, 2026-09-04).  It is
+not a bit-for-bit run and was never going to be; the questions were what
+it costs and whether it stands.  It did not stand: at step 100, writing
+the first two-day history record, PIO refused a value as not representable
+in the file's type and CAM aborted.  The log carries thousands of
+water-tracer consistency warnings from the first steps on (`wtrc q1q2
+uqdiff error`, `BIG ERROR, diff value` of order 1e-2, `isotopic stratiform
+precipitation mass error`), so the surrogate's condensation tendencies are
+inconsistent with the isotopic water budget this configuration carries,
+and something derived from it grew past float range within two days.  No
+valid history record exists, so drift cannot be measured.  Until the
+abort it ran at about 0.59 s per step against 0.32 s for the Python stage
+with the Fortran core and 0.27 s for freeCAM: the network's inference on
+the compute nodes costs more than the Fortran core it replaces, as the
+fifty-step runs had suggested.  PBS high-water memory 296 GB, 74 GB above
+the Python-stage month, for a PyTorch runtime on every rank.
+
+The month was tried again on 2026-09-04 through the segment runner
+(`7324422`): the original Fortran stage runs whole and pauses at
+`mmacro_pcond`, where the network answers the frame.  The outcome was the
+same -- the water-tracer warnings from the first steps on, then PIO refusing
+a value as not representable at the first history write, about a hundred
+steps in, after roughly 95 s of stepping -- so the network, not the path it
+is called by, is what fails; the two paths agree on that.  PBS high-water
+memory 285 GB.  Two earlier attempts that day did not reach the model at
+all and were the framework's own faults, both since fixed: a surrogate
+named by path left its kernel slot empty until first use, so the stage
+chose the original Fortran whole and reported a bit-for-bit month
+(`7322838`); and a model in the slot did not build the runtime whose
+bindings the runner reads (`7323058`).  What the runner path itself costs
+is measured by the original-kernel gate (`7322256`, above): the stage at
+65 ms a step and rank with the kernel answered through Python, against
+39 ms with the original stage run whole and 92 ms for the Python walk.
 
 ### Memory
 
@@ -135,8 +258,65 @@ across all 512 ranks.
 | --- | ---: | ---: | ---: | ---: | ---: |
 | 1 year | 17,520 | 4,999.71 s | 5,510.10 s | **+10.21%** | +510 s (8.5 min) |
 | 5 years | 87,600 | 25,556.49 s | 27,781.62 s | **+8.71%** | +2,225 s (37.1 min) |
+| 1 year, Python stage (`7305332`, 2026-09-04) | 17,520 | 4,999.71 s | 6,636.20 s | +32.73% vs Fortran, +20.44% vs freeCAM | +1,636 s (27.3 min) |
+| 5 years, Python stage (`7305333`, 2026-09-04) | 87,600 | 25,556.49 s | 33,979.62 s | +32.96% vs Fortran, +22.31% vs freeCAM | +8,423 s (140.4 min) |
+
+The Python-stage year is the same online configuration with
+`CloudMacroMicrophysics` in stage 7's place (`--cloud-macro-micro-python`,
+code `951ad3f`); it is bit-for-bit with the Fortran year over all 180 CAM
+history and restart files
+([`pi_cam_python_memory_1year_stage_python_bfb.json`](pi_cam_python_memory_1year_stage_python_bfb.json)),
+runs at 13.02 SYPD, and its PBS high-water memory is 221.8 GB (+3.4% over
+freeCAM, +14.1% over Fortran).  Per step that is 64 ms of stage control on
+top of freeCAM's 25 ms of workflow control, consistent with the month.
+
+The five-year Python-stage run is the same configuration continued to 87,600
+steps.  It is bit-for-bit with the Fortran five-year reference over all 884
+CAM history and restart files
+([`pi_cam_python_memory_5year_stage_python_bfb.json`](pi_cam_python_memory_5year_stage_python_bfb.json)),
+runs at 12.71 SYPD, and its PBS high-water memory is 228.0 GB (+3.2% over
+freeCAM's 221.04 GB, +11.7% over Fortran's 204.21 GB).  Per step that is
+71 ms of stage control on top of freeCAM's 25 ms, the same proportion as
+the year: the overhead does not grow with run length.
 
 Per step this is ≈ 25 ms of Python control on a ≈ 292 ms Fortran step.
+
+### Paired online months
+
+The year and month figures above compare runs made on different days.  The
+pairs here put the original Fortran executable (**A**, timed by its GPTL
+`CPL:RUN_LOOP`) and freeCAM in the exact-online configuration with the Python
+stage class installed and nothing replaced (**C**, timed by its advance over
+the same coupling loop) back to back on the same four nodes, in alternating
+order, for the PI-atm month.  Every C is bit-for-bit with the oracle month.
+
+| Job | Code | Order | A | C | C/A |
+| --- | --- | --- | ---: | ---: | ---: |
+| `7322199` | before `3384292` | AC | 457.59 s | 491.14 s | 1.0733 |
+| `7322349` | before `3384292` | CA | 437.88 s | 476.80 s | 1.0889 |
+| `7322467` | `ed685d5` | AC | 437.47 s | 440.07 s | **1.0060** |
+| `7322553` | `f565b67` | CA | 438.30 s | 439.86 s | **1.0036** |
+
+One year the same way (17,520 steps, A then C in one four-hour allocation,
+C compared bit-for-bit with A's own 180 history and restart files):
+
+| Job | Code | Order | A | C | C/A |
+| --- | --- | --- | ---: | ---: | ---: |
+| `7322841` | `958bd60` | AC | 5,067.39 s | 5,130.82 s | **1.0125** |
+
+The job's PBS high-water memory was 218.0 GB; A alone peaks near the
+Fortran baseline's 194.42 GB, so that figure is C's -- +12.1% over the
+Fortran year, +1.6% over freeCAM without the stage class (214.51 GB).
+
+The deficit before was entirely in the boundary path: the online provider
+checked for errors with a pickled allreduce after every coupler action,
+about thirty a step, which lined the land, ice and ocean components up
+behind one another where the original overlaps them on disjoint ranks.  One
+reduction per group of actions (five a step) took the boundary path from
+115 s to 61 s a month; CAM's own actions were never slower than the
+original's.  Records: [`pi_cam_faster_than_fortran.json`](pi_cam_faster_than_fortran.json);
+the step-only profile that sized what remains is
+[`pi_cam_perf_online_50step.json`](pi_cam_perf_online_50step.json).
 
 ### Throughput
 
@@ -270,6 +450,11 @@ instant of the write and are expected to differ.
 | `7126501` | `freecam-online-5y` | freeCAM **before** memory fix | 438.48 GB | 9.40 h | 2026-08-17 |
 | `7256750` | `fortran-1month` | Fortran baseline, replay month | 182.85 GB | 0.14 h | 2026-08-27 |
 | `7256751` | `freecam-stage-1month` | freeCAM, stage 7 in Fortran | 215.46 GB | 0.12 h | 2026-08-27 |
+| `7322199` | `freecam-pair-1month` | A then C, code before `3384292` | 206.08 GB | 0.28 h | 2026-09-04 |
+| `7322349` | `freecam-pair-1month` | C then A, code before `3384292` | 203.41 GB | 0.27 h | 2026-09-04 |
+| `7322467` | `freecam-pair-1month` | A then C, `ed685d5` | 206.78 GB | 0.28 h | 2026-09-04 |
+| `7322553` | `freecam-pair-1month` | C then A, `f565b67` | 202.92 GB | 0.27 h | 2026-09-04 |
+| `7322841` | `freecam-pair` | 1 year, A then C, `958bd60` | 218.02 GB | 2.89 h | 2026-09-04 |
 | `7256752` | `freecam-stage-1month` | freeCAM, stage 7 in Python | 224.95 GB | 0.18 h | 2026-08-27 |
 
 The memory and elapsed columns are PBS accounting values. `qhist` searches

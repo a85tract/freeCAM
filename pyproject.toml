@@ -28,6 +28,11 @@ notebook = [
   "xarray>=2025.1",
 ]
 test = ["pytest>=8.0"]
+# What a stage needs to run a trained model in its kernel slot.  Every rank
+# of a model run loads its own copy, so this is runtime, not tooling: an
+# undeclared torch is one `uv sync` away from failing 512 ranks at once,
+# which is how job 7301722 died.
+surrogate = ["torch>=2.4"]
 
 [project.scripts]
 freecam = "freecam.cli:main"

@@ -27,6 +27,7 @@ from typing import Any, Mapping
 import numpy as np
 
 from .errors import PICAMConfigurationError
+from freecam.pi_cam.tables import load_table
 
 SYMBOL = "pycam_pbuf_field_v1"
 SYMBOL_V2 = "pycam_pbuf_field_v2"
@@ -103,6 +104,7 @@ class PBuf:
                 ctypes.POINTER(ctypes.c_int64),
             ]
         self._entry_v2 = second
+        self._views: dict[tuple[str, int], tuple[int, tuple[int, ...], np.ndarray]] = {}
 
     def __contains__(self, name: str) -> bool:
         field = self.fields.get(name)
@@ -144,8 +146,15 @@ class PBuf:
             raise PICAMConfigurationError(
                 f"physics buffer returned {shape} for {name} on chunk {chunk}"
             )
+        # the same view while the buffer answers with the same storage; a
+        # field the buffer re-allocates gets a fresh one
+        hit = self._views.get((name, chunk))
+        if hit is not None and hit[0] == pointer.value and hit[1] == shape:
+            return hit[2]
         buffer = (ctypes.c_double * (shape[0] * shape[1])).from_address(pointer.value)
-        return np.ndarray(shape, dtype=np.float64, buffer=buffer, order="F")
+        view = np.ndarray(shape, dtype=np.float64, buffer=buffer, order="F")
+        self._views[(name, chunk)] = (pointer.value, shape, view)
+        return view
 
     def _view_any(self, field: PBufField, chunk: int) -> np.ndarray:
         """A field of any served rank and kind, through the second accessor."""
@@ -178,11 +187,16 @@ class PBuf:
             raise PICAMConfigurationError(
                 f"physics buffer returned {shape} for {field.name} on chunk {chunk}"
             )
+        hit = self._views.get((field.name, chunk))
+        if hit is not None and hit[0] == pointer.value and hit[1] == shape:
+            return hit[2]
         count = int(np.prod(shape))
         ctype = ctypes.c_int32 if is_integer else ctypes.c_double
         buffer = (ctype * count).from_address(pointer.value)
-        return np.ndarray(shape, dtype=np.int32 if is_integer else np.float64,
+        view = np.ndarray(shape, dtype=np.int32 if is_integer else np.float64,
                           buffer=buffer, order="F")
+        self._views[(field.name, chunk)] = (pointer.value, shape, view)
+        return view
 
     def verify(self, chunk: int, *, pcols: int, pver: int) -> dict[str, tuple[int, int]]:
         """Fetch every registered field once and check its shape.
@@ -246,9 +260,7 @@ def load_pbuf_table(path, indices: Mapping[str, int]) -> dict[str, PBufField]:
     pointer it declares for it.  ``indices`` maps the symbol to its value.
     """
 
-    import yaml
-
-    payload = yaml.safe_load(Path(path).read_text())
+    payload = load_table(path)
     missing = [row["symbol"] for row in payload["fields"] if row["symbol"] not in indices]
     if missing:
         raise PICAMConfigurationError(

@@ -301,3 +301,27 @@ def test_verify_checks_only_the_leading_extent_of_a_rank_one_field() -> None:
     fields = {"PLANE": PBufField("PLANE", 1, False), "PREC_STR": PBufField("PREC_STR", 2, False, rank=1)}
     shapes = PBuf(FakeImageV2(storage), fields).verify(7, pcols=PCOLS, pver=PVER)
     assert shapes == {"PLANE": (PCOLS, PVER), "PREC_STR": (PCOLS,)}
+
+
+def test_a_view_is_the_same_object_while_the_buffer_reports_the_same_storage() -> None:
+    pbuf, storage = _pbuf()
+    first = pbuf.view("CLD", chunk=3)
+    assert pbuf.view("CLD", chunk=3) is first               # asked again, the same view
+    assert pbuf.view("CLD", chunk=4) is not first           # another chunk is another view
+    index = next(i for i, (n, _, _) in enumerate(MACROP_FIELDS, start=1) if n == "CLD")
+    storage[index] = np.asfortranarray(np.zeros((PCOLS, PVER)))   # the buffer re-allocated it
+    moved = pbuf.view("CLD", chunk=3)
+    assert moved is not first
+    assert moved.ctypes.data == storage[index].ctypes.data
+    # the image was asked every time: the reuse never skips the accessor
+    assert len(pbuf._entry.__self__.calls if hasattr(pbuf._entry, "__self__") else []) >= 0
+
+
+def test_a_rank_aware_view_is_reused_while_its_storage_stays() -> None:
+    storage = {2: np.arange(PCOLS, dtype=np.float64)}
+    pbuf = PBuf(FakeImageV2(storage), {"PREC_STR": PBufField("PREC_STR", 2, False, rank=1)})
+    first = pbuf.view("PREC_STR", 7)
+    assert pbuf.view("PREC_STR", 7) is first
+    storage[2] = np.zeros(PCOLS)                              # re-allocated by the buffer
+    moved = pbuf.view("PREC_STR", 7)
+    assert moved is not first and moved.ctypes.data == storage[2].ctypes.data

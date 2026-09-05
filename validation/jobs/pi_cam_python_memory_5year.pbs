@@ -1,5 +1,10 @@
 #!/bin/bash
 # Submit with: validation/jobs/submit.sh validation/jobs/pi_cam_python_memory_5year.pbs
+#   PYCAM_STAGE_FORM=fortran   freeCAM with tphysbc stage 7 in Fortran (default,
+#                              the run this file has always made)
+#   PYCAM_STAGE_FORM=python    the same run with CloudMacroMicrophysics in the
+#                              stage's place: --cloud-macro-micro-python, results
+#                              under a stage-python suffix so neither overwrites the other
 #PBS -N freecam-mem-5y
 #PBS -q main
 #PBS -l select=4:ncpus=64:mpiprocs=128:ompthreads=1:mem=110GB
@@ -17,7 +22,14 @@ python=${repo}/.venv/bin/python
 case_root=${FREECAM_REFERENCE_CASE}
 reference=${FREECAM_SCRATCH}/freeCAM/PI-cam/original-fortran-five-year-reference/run
 library=${FREECAM_CESM_PROVIDER_LIBRARY:-${repo}/build/cesm/pi_atm/production-components/libpycesm_external_atm.so}
-root=${FREECAM_SCRATCH}/freeCAM/PI-cam/memory-5year-${PBS_JOBID}
+form=${PYCAM_STAGE_FORM:-fortran}
+case "${form}" in
+  fortran) extra=""; suffix="" ;;
+  python)  extra="--cloud-macro-micro-python --stage-execution legacy-python"; suffix="_stage_python" ;;
+  native-whole) extra="--cloud-macro-micro-python --stage-execution native-whole"; suffix="_stage_native_whole" ;;
+  *) echo "PYCAM_STAGE_FORM must be fortran, python or native-whole, not '${form}'" >&2; exit 2 ;;
+esac
+root=${FREECAM_SCRATCH}/freeCAM/PI-cam/memory-5year-${form}-${PBS_JOBID}
 cam_run=${root}/cam-run
 cesm_run=${root}/cesm-provider-run
 summary=${root}/summary.json
@@ -62,9 +74,10 @@ mpiexec --label -n 512 "${python}" -m freecam.pi_cam.cli \
   --config configs/pi_cam_icesm131_exact_online_5year.yaml \
   --boundary-provider "${cam_run}/.exact-cesm-provider.pkl" \
   --run-dir "${cam_run}" \
+  ${extra} \
   --steps 87600 \
   --memory-sample-every 2000 \
   --summary "${summary}" \
   > "${cam_run}/freecam.log" 2>&1
 
-cp "${summary}" validation/pi_cam_python_memory_5year.json
+cp "${summary}" "validation/pi_cam_python_memory_5year${suffix}.json"

@@ -40,6 +40,7 @@ from .image import module_view
 from .macrophysics import FORCING, Macrophysics
 from .microp_aero import MicropAero
 from .microphysics import Microphysics
+from freecam.pi_cam.tables import load_table
 from .stage import (
     CORE_ENTRIES,
     HostEntries,
@@ -289,6 +290,7 @@ class CloudMacroMicrophysics(NativeStage):
     """
 
     STAGE = "cam_run1.cloud_macro_microphysics"
+    WHOLE_ACTION = True          # tend is the whole action: stage 7 end to end
     PREFIX = "mm"
     PROCESS_NAME = "cloud_macro_microphysics"
     TRACE_ENV = "FREECAM_MM_TRACE"
@@ -304,8 +306,12 @@ class CloudMacroMicrophysics(NativeStage):
 
     def __init__(self, *, whole_drivers: bool = False, whole_micro: bool = False,
                  whole_aero: bool = False, micro_core_standalone: bool = False,
-                 kernels=None) -> None:
+                 macro_surrogate: "str | Path | None" = None, kernels=None) -> None:
         super().__init__(kernels=None)
+        if macro_surrogate is not None and whole_drivers:
+            raise PICAMConfigurationError(
+                "a surrogate stands in mmacro_pcond's place inside the macrophysics walk; "
+                "with the driver called whole there is no such place")
         #: The sub-walks, or None to call the driver whole.
         self.macro: Macrophysics | None = None
         self.micro: Microphysics | None = None
@@ -316,7 +322,9 @@ class CloudMacroMicrophysics(NativeStage):
                 "the standalone core is the microphysics walk's; it has no meaning "
                 "when the driver is called whole")
         if not whole_drivers:
-            walks["macro"] = Macrophysics()
+            # the trained network, if any, named by path: each rank loads its
+            # own copy the first time the kernel is called (see Macrophysics)
+            walks["macro"] = Macrophysics(surrogate=macro_surrogate)
             if not whole_micro:
                 walks["micro"] = Microphysics(standalone_core=micro_core_standalone)
                 if not whole_aero:
@@ -339,9 +347,8 @@ class CloudMacroMicrophysics(NativeStage):
         constants.refuse_unsupported()
 
     def build_pbuf(self, library: Any, runtime: StageRuntime) -> PBuf:
-        import yaml
 
-        symbols = [row["symbol"] for row in yaml.safe_load(PBUF_TABLE.read_text())["fields"]]
+        symbols = [row["symbol"] for row in load_table(PBUF_TABLE)["fields"]]
         indices = {symbol: int(module_view(library, symbol, "int32", ())) for symbol in symbols}
         buffer = PBuf(library, load_pbuf_table(PBUF_TABLE, indices))
         lchnk, _ = runtime.native.chunks

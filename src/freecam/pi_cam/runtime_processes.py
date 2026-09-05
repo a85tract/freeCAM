@@ -392,6 +392,9 @@ class PICAMPythonProcessRegistry:
             raise PythonProcessContractError(
                 f"Python process {action.name!r} is not installed"
             ) from exc
+        if record.spec.trusted_native:
+            self._invoke_trusted(record)
+            return
         snapshots = (
             {
                 name: np.array(self.driver.pool[resolved], copy=True, order="F")
@@ -466,6 +469,48 @@ class PICAMPythonProcessRegistry:
                 f"Python process {record.spec.name!r} failed without rollback:\n"
                 + failure
             )
+
+    def _invoke_trusted(self, record: RegisteredPICAMPythonProcess) -> None:
+        """Run one of freeCAM's own stage processes with nothing between it and the image.
+
+        No field view (it owns no field), no snapshot (it cannot roll back),
+        no pointer scan of the pool on every call (the pool's pointers are
+        checked where they can change: at initialization and registration),
+        and no collective of its own: its outcome rides on the step's
+        boundary export, where every rank raises the same message.  Outside
+        a step -- ``process.run()`` from a notebook -- the collective is
+        immediate, since no export follows.
+        """
+
+        driver = self.driver
+        local_error: str | None = None
+        try:
+            context = PythonProcessContext(
+                process_name=record.spec.name,
+                group=record.spec.group,
+                rank=driver.rank,
+                size=driver.size,
+                step=driver.clock.nstep,
+                timestep_seconds=driver.clock.dt_seconds,
+                year=driver.clock.year,
+                month=driver.clock.month,
+                day=driver.clock.day,
+                seconds=driver.clock.seconds,
+                calendar=driver.clock.calendar,
+                native=NativeAccess(driver),
+            )
+            function = record.function
+            if function is None:
+                function = cloudpickle.loads(record.spec.payload)
+                record.function = function
+            result = function(None, context, **dict(record.spec.parameters or {}))
+            if result is not None:
+                raise PythonProcessContractError(
+                    f"Python process must return None, got {type(result).__name__}"
+                )
+        except BaseException:
+            local_error = traceback.format_exc()
+        driver._settle_process_error(record.spec.name, local_error)
 
     def inventory(self) -> tuple[dict[str, Any], ...]:
         return tuple(

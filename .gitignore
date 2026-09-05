@@ -18,5 +18,8 @@ artifacts/
 # Generated training datasets: runtime output, not source.
 /examples/*.nc
 
+# Trained models: a run's product, named by path when a stage loads one.
+*.pt
+
 # Site configuration: not committed.
 site.env

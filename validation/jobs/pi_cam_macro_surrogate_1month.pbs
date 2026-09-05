@@ -1,0 +1,107 @@
+#!/bin/bash
+# Submit with: PYCAM_SURROGATE=<model>.pt validation/jobs/submit.sh validation/jobs/pi_cam_macro_surrogate_1month.pbs
+#PBS -N freecam-ml-1month
+#PBS -q main
+# 512 ranks on four nodes as every PI-atm run; 235GB a node rather than 64
+# because every rank carries a PyTorch runtime beside CAM's state.
+#PBS -l select=4:ncpus=64:mpiprocs=128:ompthreads=1:mem=235GB
+#PBS -l walltime=02:00:00
+#PBS -j oe
+#PBS -o logs/
+#PBS -V
+
+# The PI-atm month with CloudMacroMicrophysics in stage 7's place and a
+# trained network in mmacro_pcond's place inside it -- the same run as
+# pi_cam_stage_python_1month_performance.pbs but for that one kernel.  This
+# is NOT a bit-for-bit run and its output is not evidence of one: the answer
+# is a different model's.  It measures two things: what the month costs with
+# the network where the Fortran core was, against the Python-stage month and
+# the Fortran model; and how far the month's history drifts from the oracle.
+# --no-verify-exports is what lets it run to the end: the replay otherwise
+# stops at the first coupler export that differs, which for a surrogate is
+# the first step.
+#
+#   PYCAM_SURROGATE=<model>.pt   the trained network to install (required)
+
+set -euo pipefail
+
+source "${FREECAM_REPO:-${PBS_O_WORKDIR:-$PWD}}/validation/jobs/common.sh"
+: "${PYCAM_SURROGATE:?PYCAM_SURROGATE must name the trained network}"
+
+repo=${FREECAM_REPO}
+python=${repo}/.venv/bin/python
+case_root=${FREECAM_REFERENCE_CASE}
+oracle_run=${FREECAM_SCRATCH}/pyCESM/PI-atm/oracle-1month/run
+boundary=${FREECAM_SCRATCH}/pyCAM/PI-cam/nonpic-boundary-capture-1month/boundary/replay
+root=${FREECAM_SCRATCH}/freeCAM/PI-cam/surrogate-month-${PBS_JOBID}
+run_dir=${root}/run
+summary=${root}/freecam-summary.json
+bfb=${root}/bfb.json
+report=${root}/performance-and-bfb.json
+drift=${root}/drift.json
+config=${repo}/configs/pi_cam_icesm131_1month.yaml
+fortran_timing=${oracle_run}/timing/cesm_timing.000
+
+mkdir -p "${run_dir}"
+rsync -a \
+  --exclude '*.cam.*.nc' --exclude '*.clm2.*.nc' --exclude '*.cice.*.nc' \
+  --exclude '*.cpl.*.nc' --exclude '*.rtm.*.nc' --exclude '*.log.*' \
+  --exclude 'rpointer.*' --exclude 'timing/' \
+  "${oracle_run}/" "${run_dir}/"
+mkdir -p "${run_dir}/timing/checkpoints"
+
+source "${case_root}/.env_mach_specific.sh" >/dev/null 2>&1
+mpi_root=${CRAY_MPICH_DIR:-/opt/cray/pe/mpich/8.1.25/ofi/intel/19.0}
+export LD_LIBRARY_PATH="${mpi_root}/lib-abi-mpich:${mpi_root}/lib:${LD_LIBRARY_PATH:-}"
+export LD_PRELOAD=${FREECAM_LD_PRELOAD}${LD_PRELOAD:+:${LD_PRELOAD}}
+export PYTHONPATH=${repo}/src
+export OMP_NUM_THREADS=1
+export OMP_STACKSIZE=64M
+export FI_CXI_RX_MATCH_MODE=hybrid
+export FI_MR_CACHE_MONITOR=memhooks
+export MPICH_MPIIO_HINTS='*:romio_cb_read=enable:romio_cb_write=enable:striping_factor=24'
+
+cd "${repo}"
+mpiexec --label -n 512 "${python}" -m freecam.pi_cam.cli \
+  --config "${config}" \
+  --boundary "${boundary}" \
+  --run-dir "${run_dir}" \
+  --cloud-macro-micro-python \
+  --macro-kernel-surrogate "${PYCAM_SURROGATE}" \
+  --no-verify-exports \
+  --steps 1488 \
+  --memory-sample-every 200 \
+  --summary "${summary}" \
+  > "${run_dir}/freecam.log" 2>&1 || echo "model run exited $? (reporting what it left)"
+
+# never bit-for-bit; recorded, not enforced
+"${python}" tools/verify_pi_cam.py \
+  --reference "${oracle_run}" \
+  --candidate "${run_dir}" \
+  --output "${bfb}" || true
+
+"${python}" tools/report_pi_cam_month.py \
+  --freecam-summary "${summary}" \
+  --bfb "${bfb}" \
+  --fortran-timing "${fortran_timing}" \
+  --config "${config}" \
+  --output "${report}" || true
+
+# how far each history field moved over the month (the oracle's files are
+# not in the run directory, so the pairing is by the run's own output)
+"${python}" tools/report_pi_cam_surrogate_drift.py \
+  --reference "${oracle_run}" \
+  --candidate "${run_dir}" \
+  --output "${drift}" || true
+
+cp "${report}" validation/pi_cam_1month_macro_surrogate_performance.json 2>/dev/null || true
+cp "${drift}" validation/pi_cam_1month_macro_surrogate_drift.json 2>/dev/null || true
+
+"${python}" - <<PY || true
+import json
+r = json.load(open("${report}"))
+t = r["freecam_seconds"]
+print("surrogate month: advance %.2f s | fortran atmosphere %.2f s" % (t["advance"], r["original_fortran_seconds"]["atmosphere_inside_coupled_loop"]))
+print("bfb:", r["bfb"]["bfb"], "(expected False for a surrogate)")
+PY
+echo "run: ${run_dir}"

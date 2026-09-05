@@ -98,6 +98,7 @@ class _Native:
                            "grid.chunk_ncols": np.array([6, 5]),
                            "cam_in.landfrac": np.zeros((PCOLS, 2), order="F")})
         self.kernels: list[str] = []
+        self.actions: list[tuple] = []
         from freecam.pi_cam.kernel_codegen import load_direct_kernels
 
         self._args = {k.name: [{"field": a.field, "dtype": a.dtype, "rank": a.rank}
@@ -114,6 +115,12 @@ class _Native:
     def run_kernel(self, name, arrays):
         self.kernels.append(name)
         arrays["widget.y"][...] = 2.0
+
+    def run_action(self, name, *, phase=None):
+        self.actions.append((name, phase))
+
+    def segment_runner(self, stage):
+        return getattr(self, "runner", None)
 
 
 class _Pool(dict):
@@ -591,3 +598,401 @@ def test_composing_refuses_a_kernel_name_two_stages_both_claim() -> None:
     outer.kernels["core"] = lambda batch: {}
     with pytest.raises(PhysicsError, match="already a swappable kernel"):
         outer.compose(other=B())
+
+
+# -- kernels are bound once, run every call -------------------------------------
+
+
+def test_a_kernel_is_bound_once_per_chunk_and_run_on_every_call_when_the_native_can_bind(widget) -> None:
+    """The argument marshalling is paid per distinct set of arrays, not per call.
+
+    An intent(in) array is handed to the kernel in place, so each chunk's view
+    of x is its own binding; across two chunks and two steps that is two
+    bindings and four runs.  A native that offers bind_kernel is never called
+    the plain way.
+    """
+
+    binds: list[int] = []
+    runs: list[str] = []
+
+    class _Binding(_Native):
+        def bind_kernel(self, name, arrays):
+            binds.append(arrays["widget.x"].ctypes.data)
+
+            def run():
+                runs.append(name)
+                arrays["widget.y"][...] = 2.0
+            return run
+
+        def run_kernel(self, name, arrays):
+            raise AssertionError("a native that binds must not be called one shot at a time")
+
+    native = _Binding(widget.library, Widget.DESCRIPTORS)
+    stage = Widget()
+    stage.tend(None, _Context(native))
+    stage.tend(None, _Context(native))
+
+    assert binds == [widget.library.views[(10, 1)].ctypes.data, widget.library.views[(11, 1)].ctypes.data]
+    assert runs == ["widget_step"] * 4
+    assert np.all(stage.runtime(native).local["y"] == 2.0)
+
+
+# -- what is resolved once and kept ----------------------------------------------
+
+
+def test_a_view_of_unchanged_storage_is_the_same_object_and_moved_storage_a_new_one(widget) -> None:
+    runtime = Widget().runtime(widget)
+    first = runtime.handles.view(10, 1)
+    assert runtime.handles.view(10, 1) is first          # same address and extents
+    widget.library.views[(10, 1)] = np.zeros((PCOLS, PVER), order="F")   # the image moved it
+    moved = runtime.handles.view(10, 1)
+    assert moved is not first
+    assert moved.ctypes.data == widget.library.views[(10, 1)].ctypes.data
+    assert runtime.handles.view(11, 1) is not first      # another chunk, another view
+
+
+def test_a_kernel_is_planned_once_and_an_input_view_is_read_in_place(widget) -> None:
+    binds: list[dict] = []
+    runs: list[str] = []
+
+    def bind_kernel(name, arrays):
+        binds.append(dict(arrays))
+        target = arrays["widget.y"]
+
+        def run():
+            runs.append(name)
+            target[...] = 2.0
+        return run
+
+    widget.bind_kernel = bind_kernel
+    stage = Widget()
+    stage.tend(None, _Context(widget))
+    stage.tend(None, _Context(widget))
+    assert len(binds) == 2 and runs == ["widget_step"] * 4    # one bind per chunk's view of x
+    assert widget.kernels == []                                # the plain path was never taken
+    runtime = stage.runtime(widget)
+    assert len(runtime._plans) == 1
+    (plan,) = runtime._plans.values()
+    assert plan.fields == tuple(a.field for a in runtime.descriptors["widget_step"].arguments)
+    assert [local for local, _, _ in plan.slots] == [f.removeprefix("widget.") for f in plan.fields]
+    # x is intent(in): the kernel read CAM's storage itself, and the scratch copy stayed untouched
+    x_view = widget.library.views[(10, 1)]
+    assert binds[0]["widget.x"].ctypes.data == x_view.ctypes.data
+    assert binds[0]["widget.x"].shape == runtime.scratch["x"].shape       # given the chunk axis
+    assert np.all(runtime.scratch["x"] == 0.0)
+    # y is written: it is the runtime's own scratch, copied out afterwards
+    assert binds[0]["widget.y"] is runtime.scratch["y"]
+    assert np.all(runtime.local["y"] == 2.0)
+
+
+def test_the_same_kernel_under_two_field_maps_keeps_two_plans(widget) -> None:
+    """The maps are per-call temporaries; a plan must follow the map's content,
+    never the dict object -- a freed dict's address comes back for another."""
+
+    seen: list[dict[str, np.ndarray]] = []
+
+    def bind_kernel(name, arrays):
+        seen.append(dict(arrays))
+        return lambda: None
+
+    widget.bind_kernel = bind_kernel
+    runtime = Widget().runtime(widget)
+    cube = np.zeros((PCOLS, PVER, 2), order="F")
+    ones, twos = cube[:, :, 0], cube[:, :, 1]                # views, as the walks hand
+    ones[...] = 1.0
+    twos[...] = 2.0
+    for _ in range(3):                                       # as a walk does: one map per rate name
+        runtime.kernel_on_chunk("widget_step", {"p": ones, "n": np.int32(6)}, outputs={},
+                                fields={"p": "widget.x", "q": "widget.y", "n": "widget.ncol"})
+        runtime.kernel_on_chunk("widget_step", {"r": twos, "n": np.int32(6)}, outputs={},
+                                fields={"r": "widget.x", "s": "widget.y", "n": "widget.ncol"})
+    assert len(seen) == 2                                    # one bind per distinct map
+    assert seen[0]["widget.x"].ctypes.data == ones.ctypes.data     # each map fed its own array
+    assert seen[1]["widget.x"].ctypes.data == twos.ctypes.data
+    assert seen[0]["widget.y"] is runtime.scratch["q"]
+    assert seen[1]["widget.y"] is runtime.scratch["s"]
+    assert len(runtime._plans) == 2
+
+
+def test_an_input_that_is_also_written_or_of_another_dtype_still_goes_through_scratch(widget) -> None:
+    seen: list[dict[str, np.ndarray]] = []
+    widget.bind_kernel = lambda name, arrays: (seen.append(dict(arrays)), lambda: None)[1]
+    runtime = Widget().runtime(widget)
+    x = np.ones((PCOLS, PVER, 1), order="F")[:, :, 0]
+    # named among the outputs: the kernel writes it, so it must not be CAM's storage
+    runtime.kernel_on_chunk("widget_step", {"x": x, "ncol": np.int32(6)}, outputs={"x": x})
+    assert seen[-1]["widget.x"] is runtime.scratch["x"] and np.all(runtime.scratch["x"] == 1.0)
+    # an array that owns its memory is a temporary the walk computed: copied, never bound
+    runtime.kernel_on_chunk("widget_step", {"x": np.ones((PCOLS, PVER), order="F"), "ncol": np.int32(6)}, outputs={})
+    assert seen[-1]["widget.x"] is runtime.scratch["x"]
+    # a float32 array or a C-ordered one is copied into the F-ordered double scratch
+    runtime.kernel_on_chunk("widget_step", {"x": x.astype(np.float32), "ncol": np.int32(6)}, outputs={})
+    assert seen[-1]["widget.x"] is runtime.scratch["x"]
+    runtime.kernel_on_chunk("widget_step", {"x": np.ascontiguousarray(x), "ncol": np.int32(6)}, outputs={})
+    assert seen[-1]["widget.x"] is runtime.scratch["x"]
+
+
+def test_a_moved_input_view_is_bound_again_and_the_table_stays_small(widget) -> None:
+    binds: list[int] = []
+    widget.bind_kernel = lambda name, arrays: (binds.append(arrays["widget.x"].ctypes.data), lambda: None)[1]
+    runtime = Widget().runtime(widget)
+    block = np.zeros((PCOLS, PVER, 12), order="F")
+    views = [block[:, :, i] for i in range(12)]
+    for i, view in enumerate(views):                          # storage that moves every call
+        view[...] = float(i)
+        runtime.kernel_on_chunk("widget_step", {"x": view, "ncol": np.int32(6)}, outputs={})
+    assert binds == [v.ctypes.data for v in views]
+    (plan,) = runtime._plans.values()
+    assert len(plan.bound) <= 64
+    runtime.kernel_on_chunk("widget_step", {"x": views[-1], "ncol": np.int32(6)}, outputs={})
+    assert len(binds) == 12                                   # the last one was still held
+
+
+def test_local_hands_back_the_same_view_while_the_scratch_is_the_same(widget) -> None:
+    runtime = Widget().runtime(widget)
+    first = runtime.local["x"]
+    assert runtime.local["x"] is first
+    runtime.scratch["x"] = np.zeros_like(runtime.scratch["x"])   # a late re-allocation is followed
+    assert runtime.local["x"] is not first
+    assert runtime.local["x"].base is runtime.scratch["x"]
+
+
+def test_a_fresh_slice_of_the_same_storage_reuses_the_binding(widget) -> None:
+    """The walks slice their views on every call; the same memory is the same binding."""
+
+    binds: list[int] = []
+    widget.bind_kernel = lambda name, arrays: (binds.append(arrays["widget.x"].ctypes.data), lambda: None)[1]
+    runtime = Widget().runtime(widget)
+    cube = np.zeros((PCOLS, PVER, 3), order="F")
+    for _ in range(5):
+        runtime.kernel_on_chunk("widget_step", {"x": cube[:, :, 1], "ncol": np.int32(6)}, outputs={})
+    assert binds == [cube[:, :, 1].ctypes.data]              # five new view objects, one binding
+    runtime.kernel_on_chunk("widget_step", {"x": cube[:, :, 2], "ncol": np.int32(6)}, outputs={})
+    assert len(binds) == 2                                    # other memory, another binding
+
+
+def test_a_kernel_whose_callers_always_hand_new_arrays_goes_back_to_copying(widget) -> None:
+    from freecam.physics.stage import REBINDS_BEFORE_COPYING
+
+    binds: list[int] = []
+    widget.bind_kernel = lambda name, arrays: (binds.append(arrays["widget.x"].ctypes.data), lambda: None)[1]
+    runtime = Widget().runtime(widget)
+    block = np.zeros((PCOLS, PVER, REBINDS_BEFORE_COPYING + 20), order="F")
+    for i in range(REBINDS_BEFORE_COPYING + 20):
+        fresh = block[:, :, i]                                # a view somewhere new every call
+        fresh[...] = float(i)
+        runtime.kernel_on_chunk("widget_step", {"x": fresh, "ncol": np.int32(6)}, outputs={})
+    (plan,) = runtime._plans.values()
+    assert plan.in_place is False
+    # the switch happens on the bind after the limit, which was still in place;
+    # from then on every call reads the scratch copy through one more binding
+    assert len(binds) == REBINDS_BEFORE_COPYING + 2
+    assert binds[-1] == runtime.scratch["x"].ctypes.data
+    assert np.all(runtime.scratch["x"][..., 0] == float(REBINDS_BEFORE_COPYING + 19))
+
+
+def test_a_surface_column_is_the_same_view_while_the_pool_array_is(widget) -> None:
+    runtime = Widget().runtime(widget)
+    first = runtime.column("cam_in.landfrac", 1)
+    assert runtime.column("cam_in.landfrac", 1) is first
+    assert runtime.column("cam_in.landfrac", 0) is not first
+    assert runtime.cam_in(1)["landfrac"] is first
+    widget.pool["cam_in.landfrac"] = np.ones((PCOLS, 2), order="F")     # the pool re-bound it
+    again = runtime.column("cam_in.landfrac", 1)
+    assert again is not first and np.all(again == 1.0)
+
+
+class _Retargetable:
+    """A fake bound call that remembers where each argument points, like BoundCall."""
+
+    def __init__(self, log: list, name: str, arrays: dict[str, np.ndarray]) -> None:
+        self.log = log
+        self.name = name
+        self.arrays = list(arrays.values())
+        log.append(("bind", name, self.arrays[1].ctypes.data))
+
+    def __call__(self) -> None:
+        self.log.append(("run", self.name, self.arrays[1].ctypes.data))
+
+    def retarget(self, index: int, array: np.ndarray) -> None:
+        self.arrays[index] = array
+        self.log.append(("retarget", self.name, index, array.ctypes.data))
+
+
+def test_a_full_table_points_its_oldest_call_at_the_new_arrays_instead_of_rebuilding(widget) -> None:
+    from freecam.physics.stage import BOUND_PER_PLAN
+
+    log: list = []
+    widget.bind_kernel = lambda name, arrays: _Retargetable(log, name, arrays)
+    runtime = Widget().runtime(widget)
+    block = np.zeros((PCOLS, PVER, BOUND_PER_PLAN + 3), order="F")
+    for i in range(BOUND_PER_PLAN + 3):                      # storage that moves on every call
+        runtime.kernel_on_chunk("widget_step", {"x": block[:, :, i], "ncol": np.int32(6)}, outputs={})
+    binds = [e for e in log if e[0] == "bind"]
+    retargets = [e for e in log if e[0] == "retarget"]
+    runs = [e for e in log if e[0] == "run"]
+    assert len(binds) == BOUND_PER_PLAN                      # the table filled, then no more builds
+    assert [e[3] for e in retargets] == [block[:, :, i].ctypes.data for i in range(BOUND_PER_PLAN, BOUND_PER_PLAN + 3)]
+    assert [e[2] for e in runs] == [block[:, :, i].ctypes.data for i in range(BOUND_PER_PLAN + 3)]
+    (plan,) = runtime._plans.values()
+    assert len(plan.bound) == BOUND_PER_PLAN and plan.in_place is True
+    # a set already in the table is a plain hit: no bind, no retarget
+    before = len(log)
+    runtime.kernel_on_chunk("widget_step", {"x": block[:, :, BOUND_PER_PLAN + 2], "ncol": np.int32(6)}, outputs={})
+    assert [e[0] for e in log[before:]] == ["run"]
+
+
+# -- execution modes -------------------------------------------------------------
+
+
+class WholeWidget(Widget):
+    """The widget as a whole workflow action, with an original Fortran stage to run."""
+
+    STAGE = "cam_run1.widgets"
+    WHOLE_ACTION = True
+    FIRST_HALF = ""
+    SECOND_HALF = ""
+
+
+def test_with_nothing_replaced_the_original_stage_runs_once_and_the_walk_not_at_all(widget) -> None:
+    stage = WholeWidget()
+    stage.tend(None, _Context(widget))
+    stage.tend(None, _Context(widget))
+    assert widget.actions == [("cam_run1.widgets", None)] * 2       # one native call a step
+    assert widget.kernels == [] and stage.calls == []                # tend_chunk never ran
+    assert stage.execution.mode == "native-whole"
+    assert stage.execution.describe() == {
+        "execution_mode": "native-whole", "active_replacements": [],
+        "native_stage_calls": 2, "native_segment_calls": 0, "segment_pauses": 0,
+        "python_model_calls": 0, "legacy_steps": 0, "python_fortran_crossings_per_step": 1,
+    }
+
+
+def test_a_replacement_switches_to_the_walk_and_its_removal_back(widget) -> None:
+    stage = WholeWidget()
+    stage.kernels["widget_step"] = lambda batch: {"y": np.full((batch["ncol"], 2), 3.0)}
+    stage.tend(None, _Context(widget))
+    assert widget.actions == []                                       # no whole-stage call
+    assert stage.calls == ["view", "cam_in", "outfld", "kernel"] * 2  # the walk ran
+    assert stage.execution.mode == "legacy-python"
+    assert stage.execution.replacements == ("widget_step",)
+    assert stage.execution.python_model_calls == 2 and stage.execution.legacy_steps == 1
+    stage.kernels["widget_step"] = None
+    stage.tend(None, _Context(widget))
+    assert widget.actions == [("cam_run1.widgets", None)]
+    assert stage.execution.mode == "native-whole"
+
+
+def test_the_policy_can_force_the_walk_and_refuses_what_it_cannot_do(widget) -> None:
+    stage = WholeWidget()
+    stage.execution_policy = "legacy-python"
+    stage.tend(None, _Context(widget))
+    assert widget.actions == [] and stage.execution.mode == "legacy-python"
+
+    stage = WholeWidget()
+    stage.execution_policy = "native-whole"
+    stage.kernels["widget_step"] = lambda batch: {}
+    with pytest.raises(PhysicsError, match="are replaced"):
+        stage.tend(None, _Context(widget))
+    split = Widget()                                                  # sits inside a split action
+    split.execution_policy = "native-whole"
+    with pytest.raises(PhysicsError, match="not the whole of"):
+        split.tend(None, _Context(widget))
+    stage = WholeWidget()
+    stage.execution_policy = "segmented"
+    with pytest.raises(PhysicsError, match="nothing is replaced"):
+        stage.tend(None, _Context(widget))
+    stage.kernels["widget_step"] = lambda batch: {}
+    with pytest.raises(PhysicsError, match="no segment runner"):     # the fake image offers none
+        stage.tend(None, _Context(widget))
+    stage.execution_policy = "sideways"
+    with pytest.raises(PhysicsError, match="unknown stage execution policy"):
+        stage.tend(None, _Context(widget))
+
+
+def test_a_split_stage_walks_under_auto_because_it_has_no_whole_action(widget) -> None:
+    stage = Widget()
+    stage.tend(None, _Context(widget))
+    assert widget.actions == [] and stage.execution.mode == "legacy-python"
+
+
+def test_segmented_execution_drives_the_runner_the_image_offers(widget) -> None:
+    from tests.unit.test_physics_segments import FakeRunner, _original_a
+
+    widget.runner = FakeRunner()                      # what the image would offer for this stage
+
+    class Segmentable(WholeWidget):
+        SWAPPABLE = ("a", "b")
+        KERNELS = ("widget_step",)
+
+    stage = Segmentable()
+    stage.execution_policy = "segmented"
+    stage.kernels["a"] = _original_a
+    stage.tend(None, _Context(widget))
+    stage.tend(None, _Context(widget))
+    assert widget.actions == [] and stage.calls == []          # neither the whole action nor the walk
+    described = stage.execution.describe()
+    assert described["execution_mode"] == "segmented"
+    assert described["active_replacements"] == ["a"]
+    assert described["segment_pauses"] == 8 and described["python_model_calls"] == 8
+    assert described["native_segment_calls"] == 2 + 8            # two starts, eight resumes
+    assert [e for e in widget.runner.log if e[0] == "create"] == [("create", "cam_run1.widgets")]
+    # the runner reads the hosts the runtime binds: the runtime exists although
+    # neither the walk nor the original-through-Python kernel asked for it
+    assert len(stage._runtimes) == 1
+
+
+def test_an_original_kernel_marker_runs_the_direct_kernel_on_the_frame_s_lanes(widget) -> None:
+    from freecam.physics.segments import OriginalKernel
+    from tests.unit.test_physics_segments import FakeRunner
+
+    widget.runner = FakeRunner()
+    ran: list[dict] = []
+
+    def run_kernel(name, arrays):
+        ran.append({k: v.copy() for k, v in arrays.items()})
+        arrays["widget.y"][..., 0] = 7.0                      # the "original" writes its output
+
+    widget.run_kernel = run_kernel
+
+    class Segmentable(WholeWidget):
+        SWAPPABLE = ("a", "b", "widget_step")
+        KERNELS = ("widget_step",)
+
+    stage = Segmentable()
+    stage.execution_policy = "segmented"
+    # the fake runner pauses on kernel "a"; route it to the widget's direct kernel by name
+    stage.kernels["a"] = OriginalKernel()
+    original = stage._original_through_python(widget, "widget_step")
+    answer = original({"ncol": np.int32(6), "x": np.full((6, PVER), 3.0)})
+    assert list(answer) == ["y"] and answer["y"].shape == (6, 2) and np.all(answer["y"] == 7.0)
+    assert ran[0]["widget.x"].shape == (PCOLS, PVER, 1) and np.all(ran[0]["widget.x"][:6, :, 0] == 3.0)
+    assert np.all(ran[0]["widget.x"][6:] == 0.0) and int(ran[0]["widget.ncol"][0]) == 6
+
+
+def test_the_original_kernel_answers_in_the_frame_s_names_whatever_the_descriptor_s_prefix(widget, tmp_path) -> None:
+    """A composed stage's kernels carry a sub-walk's prefix; the frame strips that one."""
+
+    from freecam.physics.segments import OriginalKernel
+
+    other = tmp_path / "other.yaml"
+    other.write_text(DESCRIPTORS.replace("widget.", "other."))
+    ran: list[dict] = []
+
+    class Other(WholeWidget):
+        DESCRIPTORS = other
+        SWAPPABLE = ("widget_step",)
+
+    native = _Native(widget.library, other)
+
+    def run_kernel(name, arrays):
+        ran.append(dict(arrays))
+        arrays["other.y"][..., 0] = 9.0
+
+    native.run_kernel = run_kernel
+    stage = Other()
+    stage.kernels["widget_step"] = OriginalKernel()
+    original = stage._original_through_python(native, "widget_step")
+    answer = original({"ncol": np.int32(5), "x": np.full((5, PVER), 4.0)})
+    assert list(answer) == ["y"] and np.all(answer["y"] == 9.0) and answer["y"].shape == (5, 2)
+    assert np.all(ran[0]["other.x"][:5, :, 0] == 4.0)             # the input was found under its frame name

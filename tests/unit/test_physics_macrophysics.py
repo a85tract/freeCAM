@@ -359,5 +359,8 @@ def test_the_trace_records_one_line_per_chunk_with_live_lane_hashes(fake, tmp_pa
     # inout; the six pointer workspaces are the boundary's, not the walk's.
     # after: the 23 values it answers.
     assert len(lines[0]["before"]) == 37 and len(lines[0]["after"]) == 23
-    assert lines[0]["backend"] == "standalone-column"
+    # the core runs over the chunk now, so the record says whether a model
+    # computed it rather than naming a per-column backend; this stand-in
+    # answers one column at a time, which the walk still accepts
+    assert lines[0]["replaced"] is True
     assert all(len(h) == 64 for h in lines[0]["before"].values())

@@ -277,6 +277,9 @@ class Physics:
     # True for a process that calls the image's own routines through
     # ``context.native`` instead of only reading and writing StatePool fields.
     native: bool = False
+    # freeCAM's own stage classes set this: no fields, native, non-transactional,
+    # run by the registry with nothing in between and settled once a step.
+    trusted_native: bool = False
 
     @classmethod
     def _declared_properties(cls) -> dict[str, Property]:
@@ -372,6 +375,17 @@ class Physics:
             parameters=({"properties": properties} if properties else None),
             enabled=self.enabled,
             transactional=self.transactional,
+            # A class that declares itself native is asking for
+            # ``context.native``, and one that declares itself
+            # non-transactional has already said the thing ``unsafe`` exists
+            # to make a caller say: a process outside the snapshot cannot be
+            # rolled back.  Both were declared on the class and neither
+            # reached the installer, so a transliterated stage -- native and
+            # non-transactional, owning no StatePool field -- could be
+            # written as a Physics subclass but not run as one.
+            native=self.native,
+            trusted_native=self.trusted_native,
+            unsafe=not self.transactional,
         )
         _LIVE_PHYSICS[self] = (session, process_name)
         return handle

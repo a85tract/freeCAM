@@ -41,6 +41,7 @@ from .image import module_view
 from .macrophysics import CPAIR, IWTICE, IWTLIQ, IWTVAP, PWTYPE
 from .errors import PhysicsError
 from .result import FunctionResult
+from freecam.pi_cam.tables import load_table
 from .stage import (
     CORE_ENTRIES,
     HostEntries,
@@ -74,9 +75,7 @@ QSMALL, MINCLD = 1.e-18, 0.0001
 
 
 def _load_views() -> tuple[dict[str, int], dict[str, int], dict[str, int]]:
-    import yaml
-
-    payload = yaml.safe_load(VIEWS_TABLE.read_text())
+    payload = load_table(VIEWS_TABLE)
     views = {row["name"]: int(row["code"]) for row in payload["views"]}
     ranks = {row["name"]: int(row["rank"]) for row in payload["views"]}
     inputs = {row["name"]: int(row["code"]) for row in payload["inputs"]}
@@ -523,6 +522,7 @@ class Microphysics(NativeStage):
                     answer[name][row] = np.asarray(values[PACKED_TO_DUMMY.get(name, name)])
             return answer
 
+        model.takes_packed_batch = True   # packed names, batch in, batch out
         return model
 
     # -- what the runtime asks of this stage -------------------------------------
@@ -537,9 +537,8 @@ class Microphysics(NativeStage):
         return {"pwtype": PWTYPE}
 
     def build_pbuf(self, library: Any, runtime: StageRuntime) -> PBuf:
-        import yaml
 
-        symbols = [row["symbol"] for row in yaml.safe_load(PBUF_TABLE.read_text())["fields"]]
+        symbols = [row["symbol"] for row in load_table(PBUF_TABLE)["fields"]]
         indices = {symbol: int(module_view(library, symbol, "int32", ())) for symbol in symbols}
         buffer = PBuf(library, load_pbuf_table(PBUF_TABLE, indices))
         lchnk, _ = runtime.native.chunks
@@ -798,21 +797,26 @@ class Microphysics(NativeStage):
     def _core_call(self, st: StageRuntime, lchnk: int, ncol: int, dt: float) -> None:
         """2087-2209: the core inside the lifted section, or a model in its place.
 
-        The packed arrays the lifted section built are the contract: a
-        model receives the inputs as ``(mgncol, nlev)`` batches and answers
-        every output, which is written back into the packed storage the
-        unpack reads.  With no model the original runs where it always did.
-        Either way the trace, when on, hashes every argument before and
-        after.
+        With nothing in the slot the original runs where it always did --
+        inside the lifted section, over every packed column at once, the
+        call the driver made.  A model is handed the packed inputs as
+        ``(mgncol, nlev)`` batches and answers every packed output, which is
+        written back into the packed storage the unpack reads.  Either way
+        the trace, when on, hashes every argument before and after.
         """
 
         H, C = st.handles, st.constants
         model = self.kernels.get(CORE)
         if model is None and self.use_standalone_core:
             model = self.kernels[CORE] = self.standalone_core()
-        if getattr(st, "core_owner", None) != (model is not None):
-            H.set_core_owner(model is not None)
-            st.core_owner = model is not None
+        owns = model is not None
+        if getattr(st, "core_owner", None) != owns:
+            H.set_core_owner(owns)
+            st.core_owner = owns
+        if not owns and st.trace is None:
+            H.core(lchnk)                      # 2087-2206, the original
+            self.calls.append(CORE)
+            return
         names = list(PACKED_INPUTS)
         if not C.do_cldice:
             names += PACKED_INPUTS_NO_CLDICE
@@ -826,27 +830,63 @@ class Microphysics(NativeStage):
                          "do_cldice": int(C.do_cldice),
                          "deltatin": dt / C.num_steps}
         inputs.update(self._scalars)
+        st.swappable_kernel(CORE, inputs, outputs=outputs, ncol=mgncol, lchnk=lchnk, dt=dt,
+                            kernel=self._chunk_model(model, mgncol) if owns else None,
+                            original=lambda: H.core(lchnk))
+        self.calls.append(CORE)
+
+    def _discarded_outputs(self) -> dict[str, np.ndarray]:
+        """The two intent(inout) outputs the driver hands to locals it discards.
+
+        The routine zeroes both before writing them, so what goes in cannot
+        be read; zeros stand in.  Their names come from the reviewed spec.
+        """
+
         if self._discarded is None:
             spec = self._function().spec
-            # the two intent(inout) outputs the driver hands to locals it
-            # discards; the routine zeroes both before writing them
             self._discarded = {item.name: np.zeros(item.public_extent(spec.dimensions))
                                for item in spec.arguments
                                if item.role == "inout" and item.name not in PACKED_OUTPUTS}
-        # The lifted section skips its own copy of the core: this stage's own
-        # kernel runs instead, on every packed column the packer gathered.
-        if getattr(st, "core_owner", None) is not True:
-            H.set_core_owner(True)
-            st.core_owner = True
-        st.column_kernel(CORE, inputs, outputs=outputs, ncol=mgncol, lchnk=lchnk, dt=dt,
-                         call=self._column, structural=PACKED_SCALARS)
-        self.calls.append(CORE)
+        return self._discarded
+
+    def _chunk_model(self, model, rows: int):
+        """The installed model, answering a chunk's packed columns in one call.
+
+        Three shapes of model reach the slot.  :meth:`standalone_core`'s
+        callable already takes the packed batch under the packed names and
+        passes straight through.  A kernel with a ``batched`` method (a
+        trained surrogate) is given the batch under the routine's own dummy
+        names, with the discarded outputs and the scalars beside them.  A
+        callable that only knows one column, as a notebook's own function
+        does, is walked column by column and its answers stacked -- the
+        contract :meth:`micro_mg_tend` has always offered.
+        """
+
+        if getattr(model, "takes_packed_batch", False):
+            return model
+
+        def call(batch: Mapping[str, Any]) -> dict[str, np.ndarray]:
+            packed = {name: np.asarray(value) for name, value in batch.items()}
+            if hasattr(model, "batched"):
+                columns = {PACKED_TO_DUMMY.get(name, name): value for name, value in packed.items()}
+                for name, zeros in self._discarded_outputs().items():
+                    columns[name] = np.broadcast_to(zeros, (rows, *zeros.shape))
+                answer = dict(model.batched(columns))
+                return {name: np.asarray(answer[PACKED_TO_DUMMY.get(name, name)])
+                        for name in PACKED_OUTPUTS}
+            pieces = [self._column({name: (value if name in PACKED_SCALARS else value[row])
+                                    for name, value in packed.items()})
+                      for row in range(rows)]
+            return {name: np.stack([np.asarray(piece.outputs[name]) for piece in pieces])
+                    for name in PACKED_OUTPUTS}
+
+        return call
 
     def _column(self, column: Mapping[str, Any]):
         """One packed column, under the names the core's own dummies use."""
 
         renamed = {PACKED_TO_DUMMY.get(name, name): value for name, value in column.items()}
-        renamed.update(self._discarded)
+        renamed.update(self._discarded_outputs())
         answer = self.micro_mg_tend({**renamed, **self._scalars})
         values = {**answer.outputs, **answer.updated_inputs}
         return FunctionResult(

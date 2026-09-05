@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "bundle": "/glade/derecho/scratch/ruitong/pyCAM/PI-cam/function-capture-7218608.desched1/bundles/mmacro_pcond_capture.npz",
-  "trace": "/glade/derecho/scratch/ruitong/pyCAM/PI-cam/macro-tend-python-fine_grained-7257160.desched1/run/macro_trace",
+  "trace": "/glade/derecho/scratch/ruitong/pyCAM/PI-cam/macro-tend-python-fine_grained-7302457.desched1/run/macro_trace",
   "prefix": "macro",
   "kernel": "mmacro_pcond",
   "trace_records": 51200,

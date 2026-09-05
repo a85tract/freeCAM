@@ -361,6 +361,7 @@ def fake(monkeypatch):
 
 def test_tend_walks_stage_seven_in_its_order_on_every_chunk(fake) -> None:
     scheme = CloudMacroMicrophysics(whole_drivers=True)
+    scheme.execution_policy = "legacy-python"   # these tests exercise the walk
     assert scheme.macro is None and scheme.kernels == {}
     scheme.tend(None, _Context(fake))
     assert scheme.calls == list(SEQUENCE_WHOLE) * 2
@@ -406,6 +407,7 @@ class _SubWalk:
 def test_composed_both_walks_run_in_their_drivers_places(fake, monkeypatch) -> None:
     walk = _SubWalk(monkeypatch, Macrophysics, Microphysics, MicropAero)
     scheme = CloudMacroMicrophysics()
+    scheme.execution_policy = "legacy-python"   # these tests exercise the walk
     assert isinstance(scheme.macro, Macrophysics) and isinstance(scheme.micro, Microphysics)
     assert isinstance(scheme.aero, MicropAero)
     assert scheme.components == {"macro": scheme.macro, "micro": scheme.micro,
@@ -434,6 +436,7 @@ def test_composed_both_walks_run_in_their_drivers_places(fake, monkeypatch) -> N
 def test_whole_micro_keeps_gate_m2_s_form(fake, monkeypatch) -> None:
     walk = _SubWalk(monkeypatch, Macrophysics)
     scheme = CloudMacroMicrophysics(whole_micro=True)
+    scheme.execution_policy = "legacy-python"   # these tests exercise the walk
     assert scheme.aero is None
     assert scheme.micro is None and scheme.kernels == {"mmacro_pcond": None}
     scheme.tend(None, _Context(fake))
@@ -446,6 +449,7 @@ def test_whole_micro_keeps_gate_m2_s_form(fake, monkeypatch) -> None:
 def test_whole_aero_keeps_gate_m3_s_form(fake, monkeypatch) -> None:
     walk = _SubWalk(monkeypatch, Macrophysics, Microphysics)
     scheme = CloudMacroMicrophysics(whole_aero=True)
+    scheme.execution_policy = "legacy-python"   # these tests exercise the walk
     assert scheme.aero is None and scheme.micro is not None
     scheme.tend(None, _Context(fake))
     assert scheme.calls == list(SEQUENCE_WHOLE_AERO) * 2
@@ -457,9 +461,11 @@ def test_whole_aero_keeps_gate_m3_s_form(fake, monkeypatch) -> None:
 def test_a_model_assigned_on_the_stage_reaches_the_sub_walk() -> None:
     model = object()
     scheme = CloudMacroMicrophysics(kernels={"mmacro_pcond": model})
+    scheme.execution_policy = "legacy-python"   # these tests exercise the walk
     assert scheme.macro.kernels["mmacro_pcond"] is model
     assert scheme.micro.kernels["mmacro_pcond"] is model      # one mapping
     scheme = CloudMacroMicrophysics(kernels={"micro_mg_tend": model})
+    scheme.execution_policy = "legacy-python"   # these tests exercise the walk
     assert scheme.micro.kernels["micro_mg_tend"] is model
     with pytest.raises(PICAMConfigurationError, match="no swappable kernel"):
         CloudMacroMicrophysics(kernels={"rad_rrtmg_sw": model})
@@ -471,6 +477,7 @@ def test_a_model_assigned_on_the_stage_reaches_the_sub_walk() -> None:
 
 def test_it_replaces_the_whole_action_and_has_no_swappable_kernel_yet() -> None:
     scheme = CloudMacroMicrophysics(whole_drivers=True)
+    scheme.execution_policy = "legacy-python"   # these tests exercise the walk
     assert scheme.replaces_whole_action
     assert scheme.STAGE == "cam_run1.cloud_macro_microphysics"
     assert scheme.kernels == {}
@@ -498,6 +505,7 @@ def test_without_water_tracers_the_mass_fixer_is_not_called(fake, monkeypatch) -
     constants = _constants(trace_water=False)
     monkeypatch.setattr(M._Constants, "read", classmethod(lambda cls, library: constants))
     scheme = CloudMacroMicrophysics(whole_drivers=True)
+    scheme.execution_policy = "legacy-python"   # these tests exercise the walk
     scheme.tend(None, _Context(fake))
     assert "wtrc_mass_fixer" not in scheme.calls
     assert scheme.calls == [c for c in SEQUENCE_WHOLE if c != "wtrc_mass_fixer"] * 2
@@ -515,3 +523,33 @@ def test_a_hand_over_frees_the_walk_s_tendency_object() -> None:
         copy = re.search(rf"mm_ptend\(lchnk\)\s*=\s*{walk}_ptend\(lchnk\)", body).start()
         free = body.index(f"call physics_ptend_dealloc({walk}_ptend(lchnk))")
         assert copy < free
+
+
+def test_a_macro_surrogate_is_handed_to_the_macrophysics_walk_by_path() -> None:
+    scheme = CloudMacroMicrophysics(macro_surrogate="/models/mmacro_pcond.pt")
+    scheme.execution_policy = "legacy-python"   # these tests exercise the walk
+    assert scheme.macro is not None and scheme.macro.surrogate == "/models/mmacro_pcond.pt"
+    assert CloudMacroMicrophysics().macro.surrogate is None
+    from freecam.pi_cam.errors import PICAMConfigurationError
+
+    with pytest.raises(PICAMConfigurationError, match="no such place"):
+        CloudMacroMicrophysics(whole_drivers=True, macro_surrogate="/models/mmacro_pcond.pt")
+
+
+def test_the_composed_stage_runs_the_original_action_once_while_nothing_is_replaced() -> None:
+    class _Native:
+        actions: list = []
+        chunks = (np.array([10]), np.array([6]))
+
+        def run_action(self, name, *, phase=None):
+            self.actions.append((name, phase))
+
+    class _Ctx:
+        native = _Native()
+        timestep_seconds, step, rank = 1800, 1, 0
+
+    scheme = CloudMacroMicrophysics()
+    scheme.tend(None, _Ctx())
+    assert _Native.actions == [("cam_run1.cloud_macro_microphysics", None)]
+    assert scheme.execution.describe()["execution_mode"] == "native-whole"
+    assert scheme.execution.describe()["python_fortran_crossings_per_step"] == 1

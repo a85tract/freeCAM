@@ -18,6 +18,7 @@ import numpy as np
 
 from freecam.model.clock import ModelClock
 from freecam.model.collective import collective_error_message
+from freecam.model.errors import PythonProcessTaintedError
 from freecam.model.python_processes import PythonProcessSpec
 
 from .boundary import CAMBoundaryProvider
@@ -65,6 +66,10 @@ class _SerialComm:
     def bcast(value: Any, root: int = 0) -> Any:
         del root
         return value
+
+    @staticmethod
+    def Allreduce(sendbuf: np.ndarray, recvbuf: np.ndarray) -> None:
+        recvbuf[...] = sendbuf
 
 
 class PICAMLifecycle(str, Enum):
@@ -852,6 +857,8 @@ class _PhysicsCollection:
         parameters: Mapping[str, Any] | None = None,
         enabled: bool = True,
         transactional: bool = True,
+        native: bool = False,
+        trusted_native: bool = False,
         unsafe: bool = False,
     ) -> _PythonProcessReference:
         phase, before, after = self._resolve_placement(
@@ -868,6 +875,8 @@ class _PhysicsCollection:
             parameters=parameters,
             enabled=enabled,
             transactional=transactional,
+            native=native,
+            trusted_native=trusted_native,
         )
         self.driver.python_processes.install(spec, unsafe=unsafe)
         action = self.driver.step_plan.select(spec.name, phase=spec.group)
@@ -1033,6 +1042,8 @@ class PICAMDriver:
             raise PICAMConfigurationError(
                 "communicator rank/size do not match PICAMDriver rank/size"
             )
+        self._flag_send = np.zeros(1, dtype=np.int32)
+        self._flag_recv = np.zeros(1, dtype=np.int32)
         self.profiler = FreeCAMProfiler(rank=self.rank, size=self.size)
         self.step_plan = step_plan or PICAMStepPlan.default()
         self.pool = (state_schema or PICAMStateSchema.core()).allocate(
@@ -1074,6 +1085,10 @@ class PICAMDriver:
         self._native_call_depth = 0
         self._python_initialized_addresses: dict[str, int] = {}
         self.python_processes = PICAMPythonProcessRegistry(self)
+        # (process name, this rank's traceback or None) for every trusted
+        # native process run since the last boundary collective
+        self._deferred_process_errors: list[tuple[str, str | None]] = []
+        self._in_step = False
         self.module_parameters = PICAMModuleParameterRegistry(self)
         self.history_streams = PICAMHistoryStreamRegistry(self)
         self.default_history_stream = bool(default_history_stream)
@@ -1372,21 +1387,15 @@ class PICAMDriver:
         elif action.kind == "runtime_catalog_process":
             self.process_contexts.invoke(action.name)
         elif action.operation == "boundary_import":
-            self._collective_boundary_call(
-                f"step {self._boundary_step} boundary import",
-                lambda: self.boundary.import_fields(
-                    self._boundary_step, self.rank, self.pool
-                ),
-            )
             # A coupled atmosphere interval can contain more than one CAM
             # substep.  CESM calls atm_import only at the beginning of that
             # interval and holds cam_in for the remaining substeps.  The
-            # replay manifest records those held boundaries explicitly.
+            # replay manifest records those held boundaries explicitly.  The
+            # import and the question of whether it was fresh travel through
+            # one collective; the answer is derived from replicated state.
             if self._collective_boundary_call(
-                f"step {self._boundary_step} boundary import schedule",
-                lambda: self.boundary.has_fresh_import(
-                    self._boundary_step, self.rank
-                ),
+                f"step {self._boundary_step} boundary import",
+                self._import_with_schedule,
             ):
                 self._execute_boundary_kernel(action)
         elif action.operation == "boundary_export":
@@ -1512,6 +1521,26 @@ class PICAMDriver:
 
     def _synchronize_clock(self, action: PICAMAction) -> None:
         self._execute_backend_primitive("synchronize_clock", action)
+
+    def run_native_action(self, name: str, *, phase: str | None = None) -> PICAMActionTrace:
+        """Run one native workflow action now, whether or not the plan has it enabled.
+
+        This is how a Python stage that owns a workflow action runs the
+        original Fortran stage whole when nothing in it is replaced: the
+        action stays disabled in the plan, so the step does not run it a
+        second time, and the stage calls it here from its own slot.  Only a
+        native action may be run this way -- a Python process would recurse
+        into the dispatch that is running it -- and it is timed and recorded
+        exactly as the plan would have.
+        """
+
+        action = self.step_plan.select(name, phase=phase)
+        if action.kind not in {"scheme", "coupling", "dynamics", "kernel"}:
+            raise PICAMStateError(
+                f"{action.qualified_name} is a {action.kind!r} action; only a native "
+                f"action can be run outside the plan"
+            )
+        return self._execute(action)
 
     def _execute_native(self, action: PICAMAction) -> None:
         if action.kind not in {
@@ -2161,6 +2190,48 @@ class PICAMDriver:
             )
         )
 
+    def bind_kernel(
+        self, name: str, *, experimental: bool = False, pool: Mapping[str, np.ndarray]
+    ) -> Callable[[], PICAMActionTrace]:
+        """Prepare :meth:`run_kernel` for calling ``name`` on ``pool`` repeatedly.
+
+        A Python-driven stage runs the same kernel on the same scratch arrays
+        every chunk of every step.  This does the argument marshalling once
+        and returns a callable that only invokes, times and records the run,
+        exactly as :meth:`run_kernel` would each time.
+        """
+
+        if self.lifecycle not in {PICAMLifecycle.INITIALIZED, PICAMLifecycle.RUNNING}:
+            raise PICAMStateError(f"bind kernel from {self.lifecycle.value}")
+        if not experimental:
+            raise PICAMConfigurationError(
+                "isolated raw CAM kernels require experimental=True"
+            )
+        bind = getattr(self.backend, "bind_kernel", None)
+        if not callable(bind):
+            raise PICAMConfigurationError("the selected backend cannot bind direct kernels")
+        bound = bind(name, pool, fcomm=self.fcomm)
+        action = PICAMAction(
+            name=name, phase="direct_kernel", operation=name, kind="kernel", native_id=None,
+        )
+        profiler = self.profiler
+        region = f"CAM:{name}"
+        running = {PICAMLifecycle.INITIALIZED, PICAMLifecycle.RUNNING}
+
+        def run() -> PICAMActionTrace:
+            # one region per run: a bound kernel is nothing but its native
+            # call, so the FORTRAN:DIRECT_KERNEL child row would repeat the row
+            if self.lifecycle not in running:
+                raise PICAMStateError(f"run kernel from {self.lifecycle.value}")
+            with profiler.region(region):
+                bound()
+            return self._record(action)
+
+        retarget = getattr(bound, "retarget", None)
+        if retarget is not None:
+            run.retarget = retarget  # type: ignore[attr-defined]
+        return run
+
     def step(self) -> tuple[PICAMActionTrace, ...]:
         with self.profiler.region("FREECAM:STEP"):
             return self._step()
@@ -2177,6 +2248,7 @@ class PICAMDriver:
             raise PICAMStateError("complete PI-CAM step requires one import and one export")
         capture: list[PICAMActionTrace] = []
         self._trace_captures.append(capture)
+        self._in_step = True
         try:
             source_step = getattr(self.backend, "execute_source_step", None)
             use_source_boundary = (
@@ -2236,6 +2308,7 @@ class PICAMDriver:
             self.lifecycle = PICAMLifecycle.FAILED
             raise
         finally:
+            self._in_step = False
             self._trace_captures.pop()
         return tuple(capture)
 
@@ -2397,6 +2470,47 @@ class PICAMDriver:
         with self.profiler.region(timer):
             return self._collective_boundary_call_impl(label, function)
 
+    def _settle_process_error(self, name: str, error: str | None) -> None:
+        """Take a trusted native process's outcome: to the export inside a step, now outside one.
+
+        Inside a step the boundary export's collective already exists, so the
+        outcome rides on it and every rank raises the same grouped message
+        there; that saves the stage a collective a step.  Outside a step no
+        export follows, so the ranks agree at once.
+        """
+
+        if self._in_step:
+            self._deferred_process_errors.append((name, error))
+            return
+        errors = self.comm.allgather(error)
+        failure = collective_error_message(f"Python process {name!r}", errors)
+        if failure is not None:
+            raise PythonProcessTaintedError(
+                f"Python process {name!r} failed without rollback:\n" + failure
+            )
+
+    def _raise_deferred_process_errors(self, per_rank: list[list[tuple[str, str | None]]]) -> None:
+        """Raise on every rank if any rank's trusted native process failed since the last collective."""
+
+        names: list[str] = []
+        for entries in per_rank:
+            for name, _ in entries:
+                if name not in names:
+                    names.append(name)
+        for name in names:
+            errors = [dict(entries).get(name) for entries in per_rank]
+            failure = collective_error_message(f"Python process {name!r}", errors)
+            if failure is not None:
+                raise PythonProcessTaintedError(
+                    f"Python process {name!r} failed without rollback:\n" + failure
+                )
+
+    def _import_with_schedule(self) -> bool:
+        """Import this step's boundary and say whether CAM must apply it."""
+
+        self.boundary.import_fields(self._boundary_step, self.rank, self.pool)
+        return bool(self.boundary.has_fresh_import(self._boundary_step, self.rank))
+
     @staticmethod
     def _boundary_timer_name(label: str) -> str:
         lowered = label.lower()
@@ -2429,7 +2543,21 @@ class PICAMDriver:
             result = function()
         except BaseException:
             local_error = traceback.format_exc()
-        errors = self.comm.allgather(local_error)
+        deferred = self._deferred_process_errors
+        self._deferred_process_errors = []
+        # The normal path is one integer reduction: every rank contributes
+        # whether it has anything to report.  Only when some rank does are
+        # the tracebacks themselves gathered.  Communicator doubles without
+        # the buffer form take the gathering path directly.
+        allreduce = getattr(self.comm, "Allreduce", None)
+        if allreduce is not None:
+            self._flag_send[0] = 1 if local_error is not None or deferred else 0
+            allreduce(self._flag_send, self._flag_recv)
+            if not int(self._flag_recv[0]):
+                return result
+        gathered = self.comm.allgather((local_error, deferred))
+        errors = [item[0] for item in gathered]
+        self._raise_deferred_process_errors([item[1] for item in gathered])
         failure = collective_error_message(label, errors)
         if failure is not None:
             # Every rank raises the whole message, not a pointer to rank 0's:

@@ -27,6 +27,7 @@ import numpy as np
 from ..pi_cam.errors import PICAMConfigurationError
 from ..pi_cam.pbuf import PBuf, load_pbuf_table
 from .image import module_view
+from freecam.pi_cam.tables import load_table
 from .stage import (
     CORE_ENTRIES,
     HostEntries,
@@ -233,9 +234,8 @@ class MicropAero(NativeStage):
         return {"nmodes": self._nmodes}
 
     def build_pbuf(self, library: Any, runtime: StageRuntime) -> PBuf:
-        import yaml
 
-        symbols = [row["symbol"] for row in yaml.safe_load(PBUF_TABLE.read_text())["fields"]]
+        symbols = [row["symbol"] for row in load_table(PBUF_TABLE)["fields"]]
         indices = {symbol: int(module_view(library, symbol, "int32", ())) for symbol in symbols}
         buffer = PBuf(library, load_pbuf_table(PBUF_TABLE, indices))
         lchnk, _ = runtime.native.chunks

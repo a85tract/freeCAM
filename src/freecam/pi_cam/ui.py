@@ -175,6 +175,22 @@ class PICAMWorkflowView:
             raise KeyError(f"workflow action {name!r} is unknown or ambiguous")
         return self._process(matches[0])
 
+    def process(self, name: str) -> Any:
+        """One live process handle by name; ``workflow[name]`` is the same thing.
+
+        The handle is where a single process's own verbs live -- ``enable``,
+        ``disable``, ``move``, ``run``, ``properties`` -- so code that holds
+        one asks it directly rather than going back through the container.
+        This name exists because the other two ways of reaching a process
+        spell the lookup this way as well: ``driver.physics.process(name)``
+        for the flat physics catalogue, and ``WorkflowTemplate.process(name)``
+        for the order declared before MPI starts.  Without it, the one
+        object a notebook reaches for most was the only one that refused the
+        word.
+        """
+
+        return self[str(name)]
+
     def __setitem__(self, index: int | slice, value: Any) -> None:
         """Apply normal list assignment as one remote reorder.
 

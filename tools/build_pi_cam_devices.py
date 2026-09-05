@@ -566,6 +566,8 @@ def main() -> int:
     leaf_adapter_object: Path | None = None
     leaf_adapter_compile: list[str] | None = None
     public_adapter_compile: list[str] | None = None
+    stage7_runner_object: Path | None = None
+    stage7_runner_compile: list[str] | None = None
     if leaf_addon_objects:
         public_adapter_source = work / "pi_cam_adapter_public.F90"
         public_marker = "  public :: pycam_pi_cam_state_transfer_v1\n"
@@ -593,6 +595,21 @@ def main() -> int:
             "cam_comp.F90",
             REPO / "native/pi_cam/pi_cam_leaf_adapter.F90",
             leaf_adapter_object,
+            work,
+            build / "atm/obj",
+            pic=True,
+        )
+        # The stage-7 segment runner is compiled like the leaf adapter: outside
+        # the tree, against the public adapter (for cam_in) and the tree's
+        # modules (the mm handles, physpkg's neighbours), and linked into the
+        # leaf library.  It replaces no object: it is a new module that calls
+        # the originals.
+        stage7_runner_object = work / "pi_cam_stage7_runner.o"
+        stage7_runner_compile = _compile_to(
+            adapter_command,
+            "cam_comp.F90",
+            REPO / "native/pi_cam/support/pycam_stage7_runner.F90",
+            stage7_runner_object,
             work,
             build / "atm/obj",
             pic=True,
@@ -740,6 +757,7 @@ def main() -> int:
             "-Wl,-z,notext,--allow-multiple-definition,--allow-shlib-undefined",
             str(leaf_adapter_object),
             *(str(path) for path in leaf_addon_objects),
+            *([str(stage7_runner_object)] if stage7_runner_object is not None else []),
             "-o",
             str(leaf_library),
         ]
@@ -752,6 +770,8 @@ def main() -> int:
         ).stdout
         if LEAF_ACTION_SYMBOL not in leaf_symbols:
             raise RuntimeError("PI-CAM leaf add-on lacks its action ABI")
+        if stage7_runner_object is not None and "pycam_stage7_start_v1" not in leaf_symbols:
+            raise RuntimeError("PI-CAM leaf library lacks the stage-7 segment runner's entries")
     promoted_kernel_library: Path | None = None
     promoted_kernel_link: list[str] | None = None
     if promoted_kernel_object is not None:
@@ -897,6 +917,7 @@ def main() -> int:
         "adapter_compile_command": adapter_compile,
         "public_adapter_compile_command": public_adapter_compile,
         "leaf_adapter_compile_command": leaf_adapter_compile,
+        "stage7_runner_compile_command": stage7_runner_compile,
         "leaf_link_command": leaf_link,
         "direct_kernel_compile_command": direct_kernel_compile,
         "promoted_kernel_compile_command": promoted_kernel_compile,

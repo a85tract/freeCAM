@@ -1,5 +1,10 @@
 #!/bin/bash
 # Submit with: validation/jobs/submit.sh validation/jobs/pi_cam_python_memory_1year.pbs
+#   PYCAM_STAGE_FORM=fortran   freeCAM with tphysbc stage 7 in Fortran (default,
+#                              the run this file has always made)
+#   PYCAM_STAGE_FORM=python    the same run with CloudMacroMicrophysics in the
+#                              stage's place: --cloud-macro-micro-python, results
+#                              under a stage-python suffix so neither overwrites the other
 #PBS -N freecam-mem-1y
 # develop routes to the shared cpudev execution queue on Derecho.
 #PBS -q develop
@@ -20,7 +25,14 @@ python=${repo}/.venv/bin/python
 case_root=${FREECAM_REFERENCE_CASE}
 reference=${FREECAM_SCRATCH}/freeCAM/PI-cam/original-fortran-one-year-reference/run
 library=${FREECAM_CESM_PROVIDER_LIBRARY:-${repo}/build/cesm/pi_atm/production-components/libpycesm_external_atm.so}
-root=${FREECAM_SCRATCH}/freeCAM/PI-cam/memory-1year-${PBS_JOBID}
+form=${PYCAM_STAGE_FORM:-fortran}
+case "${form}" in
+  fortran) extra=""; suffix="" ;;
+  python)  extra="--cloud-macro-micro-python --stage-execution legacy-python"; suffix="_stage_python" ;;
+  native-whole) extra="--cloud-macro-micro-python --stage-execution native-whole"; suffix="_stage_native_whole" ;;
+  *) echo "PYCAM_STAGE_FORM must be fortran, python or native-whole, not '${form}'" >&2; exit 2 ;;
+esac
+root=${FREECAM_SCRATCH}/freeCAM/PI-cam/memory-1year-${form}-${PBS_JOBID}
 cam_run=${root}/cam-run
 cesm_run=${root}/cesm-provider-run
 summary=${root}/summary.json
@@ -65,9 +77,10 @@ mpiexec --label -n 512 "${python}" -m freecam.pi_cam.cli \
   --config configs/pi_cam_icesm131_exact_online_1year.yaml \
   --boundary-provider "${cam_run}/.exact-cesm-provider.pkl" \
   --run-dir "${cam_run}" \
+  ${extra} \
   --steps 17520 \
   --memory-sample-every 2000 \
   --summary "${summary}" \
   > "${cam_run}/freecam.log" 2>&1
 
-cp "${summary}" validation/pi_cam_python_memory_1year.json
+cp "${summary}" "validation/pi_cam_python_memory_1year${suffix}.json"

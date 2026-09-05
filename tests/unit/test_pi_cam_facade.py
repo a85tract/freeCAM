@@ -1234,6 +1234,69 @@ def test_install_ships_properties_and_registers_forwarding() -> None:
     assert installations[1]["parameters"] is None
 
 
+def test_a_native_non_transactional_class_is_installed_as_one() -> None:
+    """The two flags a transliterated stage needs must reach the installer.
+
+    ``native`` is what gives the process ``context.native``, without which
+    a stage's ``tend`` refuses to run at all; ``transactional=False`` is
+    refused by the installer unless the caller also says ``unsafe``, which
+    declaring it on the class already is.  Both were dropped once, so a
+    stage could be written as a Physics subclass but not run as one.
+    """
+
+    installations = []
+
+    class PhysicsCollection:
+        def install_python(self, function, **kwargs):
+            installations.append(kwargs)
+            return "handle"
+
+    class SessionStub:
+        physics = PhysicsCollection()
+
+    class MacroTransformer(Physics):
+        name = "macro_tend"
+        native = True
+        transactional = False
+
+        def tendency(self, fields, context):
+            del fields, context
+
+    MacroTransformer()._install(SessionStub(), after="macro_tend_pre_leaf")
+
+    assert installations[0]["native"] is True
+    assert installations[0]["transactional"] is False
+    assert installations[0]["unsafe"] is True
+    assert installations[0]["after"] == "macro_tend_pre_leaf"
+
+
+def test_an_ordinary_class_is_still_installed_inside_the_snapshot() -> None:
+    """The default stays what it was: transactional, and never unsafe."""
+
+    installations = []
+
+    class PhysicsCollection:
+        def install_python(self, function, **kwargs):
+            installations.append(kwargs)
+            return "handle"
+
+    class SessionStub:
+        physics = PhysicsCollection()
+
+    class Heating(Physics):
+        name = "notebook_heating"
+
+        def run(self, state, context):
+            del context
+            state.T += 0.01
+
+    Heating()._install(SessionStub())
+
+    assert installations[0]["native"] is False
+    assert installations[0]["transactional"] is True
+    assert installations[0]["unsafe"] is False
+
+
 def test_cam_parameters_view_reads_and_writes_collectively(tmp_path) -> None:
     paths = _driver_tree(tmp_path)
     FakeSession.instances.clear()

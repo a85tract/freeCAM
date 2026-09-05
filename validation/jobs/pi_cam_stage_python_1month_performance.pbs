@@ -3,6 +3,8 @@
 #
 #   PYCAM_STAGE_FORM=fortran   freeCAM with tphysbc stage 7 in Fortran (the
 #                              baseline: Python owns the workflow, not the stage)
+#   PYCAM_STAGE_FORM=native-whole  CloudMacroMicrophysics installed with nothing
+#                              replaced: the original Fortran stage, called once a step
 #   PYCAM_STAGE_FORM=python    the same run with CloudMacroMicrophysics in the
 #                              action's place -- all three sub-walks, every FLOP
 #                              still the oracle's
@@ -43,9 +45,12 @@ config=${repo}/configs/pi_cam_icesm131_1month.yaml
 fortran_timing=${oracle_run}/timing/cesm_timing.000
 
 extra=""
-if [[ "${form}" == "python" ]]; then
-  extra="--cloud-macro-micro-python"
-fi
+case "${form}" in
+  fortran) ;;
+  python)       extra="--cloud-macro-micro-python --stage-execution legacy-python" ;;
+  native-whole) extra="--cloud-macro-micro-python --stage-execution native-whole" ;;
+  *) echo "PYCAM_STAGE_FORM must be fortran, python or native-whole, not '${form}'" >&2; exit 2 ;;
+esac
 
 source "${case_root}/.env_mach_specific.sh" >/dev/null 2>&1
 mpi_root=${CRAY_MPICH_DIR:-/opt/cray/pe/mpich/8.1.25/ofi/intel/19.0}

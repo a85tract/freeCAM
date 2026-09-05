@@ -25,6 +25,7 @@ the calls pass addresses.
 from __future__ import annotations
 
 import ctypes
+from dataclasses import dataclass
 import json
 import os
 from pathlib import Path
@@ -37,6 +38,7 @@ from ..pi_cam.facade import Physics
 from ..pi_cam.kernel_codegen import load_direct_kernels
 from .capture import lane_sha256
 from .errors import PhysicsError
+from .segments import OriginalKernel, SegmentedStage
 
 REPO = Path(__file__).resolve().parents[3]
 
@@ -102,7 +104,9 @@ class StageProfile:
         import os
 
         directory.mkdir(parents=True, exist_ok=True)
-        self.path = directory / f"{prefix}_profile.rank-{os.getpid()}.json"
+        # host and pid: a pid alone repeats across the nodes of one job, and
+        # two ranks writing one file lost 162 of 512 profiles in job 7301886
+        self.path = directory / f"{prefix}_profile.rank-{os.uname().nodename}-{os.getpid()}.json"
         self.seconds: dict[str, float] = {}
         self.calls: dict[str, int] = {}
 
@@ -238,6 +242,8 @@ class HostServices:
     def __init__(self, entries: HostEntries, pcnst: int) -> None:
         self.e = entries
         self.pcnst = pcnst
+        # views handed out, by entry and arguments: (address, shape, array)
+        self._views: dict[tuple, tuple[int, tuple[int, ...], np.ndarray]] = {}
 
     def _entry(self, attribute: str):
         """The bound entry, or a refusal naming what the stage did not declare."""
@@ -253,11 +259,27 @@ class HostServices:
     # -- storage -------------------------------------------------------------
 
     def _deref(self, entry, what: str, *arguments, ndims_max: int = 5) -> np.ndarray:
+        """A view of the storage ``entry`` names, the same object while the storage is.
+
+        The image is asked every time -- a physics-buffer field scoped to the
+        step may move between steps -- but when it answers with the address
+        and extents it gave last time, the view built then is handed back
+        instead of a new one.
+        """
+
         pointer = ctypes.c_void_p()
         ndims = ctypes.c_int()
         extents = (ctypes.c_int64 * ndims_max)()
         check(entry(*arguments, ctypes.byref(pointer), ctypes.byref(ndims), extents), what)
-        return as_view(pointer, ndims.value, extents)
+        rank = ndims.value
+        shape = tuple(extents[i] for i in range(rank))
+        key = (id(entry), arguments)
+        cached = self._views.get(key)
+        if cached is not None and cached[0] == pointer.value and cached[1] == shape:
+            return cached[2]
+        view = as_view(pointer, rank, extents)
+        self._views[key] = (pointer.value, shape, view)
+        return view
 
     def view(self, lchnk: int, code: int) -> np.ndarray:
         """A zero-copy view of one component of the stage's held derived types."""
@@ -292,7 +314,8 @@ class HostServices:
     # -- history -------------------------------------------------------------
 
     def outfld(self, name: str, array: np.ndarray, idim: int, lchnk: int) -> None:
-        array = fortran(array)
+        if not (type(array) is np.ndarray and array.dtype == np.float64 and array.flags.f_contiguous):
+            array = fortran(array)
         check(self._entry("outfld")(name.encode("ascii"), len(name), pointer_of(array), idim, lchnk),
               f"outfld({name!r})")
 
@@ -302,15 +325,57 @@ class Local(Mapping[str, np.ndarray]):
 
     def __init__(self, scratch: dict[str, np.ndarray]) -> None:
         self._scratch = scratch
+        self._views: dict[str, tuple[np.ndarray, np.ndarray]] = {}
 
     def __getitem__(self, name: str) -> np.ndarray:
-        return self._scratch[name][..., 0]
+        base = self._scratch[name]
+        hit = self._views.get(name)
+        if hit is not None and hit[0] is base:
+            return hit[1]
+        view = base[..., 0]
+        self._views[name] = (base, view)
+        return view
 
     def __iter__(self):
         return iter(self._scratch)
 
     def __len__(self) -> int:
         return len(self._scratch)
+
+
+@dataclass(slots=True)
+class _KernelPlan:
+    """One direct kernel's resolved argument table; see StageRuntime._plan.
+
+    ``slots`` holds, per descriptor argument, the local name, the scratch
+    array and whether a caller's array may be handed to the kernel in the
+    scratch's place -- only an ``intent(in)`` array argument may, since the
+    kernel then reads CAM's storage where it would have read a copy of it
+    and writes nothing there.  ``bound`` maps the identity of the arrays
+    actually handed over -- the scratch by identity, a caller's array by the
+    address of its data, since the walks slice their views afresh on every
+    call -- to the call prepared for them, and holds those arrays.
+    """
+
+    slots: tuple[tuple[str, np.ndarray, bool], ...]
+    fields: tuple[str, ...]
+    copy_in_region: str
+    run_region: str
+    copy_out_region: str
+    bind_region: str
+    bound: dict[tuple[int, ...], tuple[Callable[[], Any], list[np.ndarray]]]
+    in_place: bool = True
+    binds: int = 0
+
+
+#: bound calls kept per kernel plan: one per set of arrays handed, which for
+#: a stage is one per chunk; when the set is new and the table is full, the
+#: oldest call is pointed at the new arrays instead of a new one being built
+BOUND_PER_PLAN = 8
+#: rebinds after which a plan whose binder cannot retarget goes back to
+#: copying into scratch, so a caller handing new storage every call does not
+#: pay a table-building per call
+REBINDS_BEFORE_COPYING = 48
 
 
 class StageRuntime:
@@ -335,7 +400,8 @@ class StageRuntime:
         self.trace = None
         if directory:
             Path(directory).mkdir(parents=True, exist_ok=True)
-            self.trace = open(Path(directory) / f"{stage.PREFIX}_trace.rank-{os.getpid()}.jsonl", "a")
+            self.trace = open(Path(directory) / (
+                f"{stage.PREFIX}_trace.rank-{os.uname().nodename}-{os.getpid()}.jsonl"), "a")
         directory = os.environ.get(stage.PROFILE_ENV)
         self.profile = StageProfile(Path(directory), stage.PREFIX) if directory else _NoProfile()
         library = native.library
@@ -362,6 +428,11 @@ class StageRuntime:
                 raise PICAMConfigurationError(
                     f"the image's {name} takes {declared}; the descriptors say {described}")
         self.scratch = self._allocate()
+        self._local = Local(self.scratch)
+        # direct-kernel calls bound once per (kernel, arrays); see _run and _plan
+        self._bound: dict[tuple, Callable[[], Any]] = {}
+        self._plans: dict[tuple[str, frozenset | None], _KernelPlan] = {}
+        self._columns: dict[tuple[str, int], tuple[np.ndarray, np.ndarray]] = {}
         stage.after_runtime(self)
         check(self.entries.set_owner(1), f"pycam_{stage.PREFIX}_set_owner_v1")
 
@@ -400,7 +471,7 @@ class StageRuntime:
     def local(self) -> Local:
         """The scratch arrays with the chunk axis dropped: live views, never copies."""
 
-        return Local(self.scratch)
+        return self._local
 
     def _scratch_for(self, argument: Any, key: str) -> np.ndarray:
         sizes = self.extents
@@ -415,9 +486,15 @@ class StageRuntime:
     # -- the pool ------------------------------------------------------------
 
     def column(self, field: str, index: int) -> np.ndarray:
-        """One chunk's lane of a StatePool field, F-ordered."""
+        """One chunk's lane of a StatePool field, F-ordered: the same view while the pool array is."""
 
-        return fortran(np.asarray(self.native.pool[field])[:, index])
+        base = np.asarray(self.native.pool[field])
+        hit = self._columns.get((field, index))
+        if hit is not None and hit[0] is base:
+            return hit[1]
+        view = fortran(base[:, index])
+        self._columns[(field, index)] = (base, view)
+        return view
 
     def cam_in(self, index: int) -> dict[str, np.ndarray]:
         """The surface fields the stage reads, one chunk's lane each."""
@@ -439,25 +516,132 @@ class StageRuntime:
         copy is a bit-exact move of doubles; no arithmetic happens here.
         """
 
-        arrays: dict[str, np.ndarray] = {}
-        inverse = {} if fields is None else {field: local for local, field in fields.items()}
-        prefix = f"{self.stage.PREFIX}."
-        with self.profile.region(f"kernel-copy-in:{name}"):
-            for argument in self.descriptors[name].arguments:
-                field = argument.field
-                local = field.removeprefix(prefix) if fields is None else inverse[field]
-                scratch = self.scratch[local] if local in self.scratch else self._scratch_for(argument, local)
+        plan = self._plan(name, fields)
+        handed: list[np.ndarray] = []
+        with self.profile.region(plan.copy_in_region):
+            for local, scratch, may_stand_in in plan.slots:
                 value = inputs.get(local)
-                if value is not None:
+                if value is None:
+                    handed.append(scratch)
+                elif (may_stand_in and plan.in_place and type(value) is np.ndarray
+                      and value.base is not None            # a view of kept storage, not a temporary
+                      and local not in outputs and value.dtype == scratch.dtype
+                      and value.flags.f_contiguous and value.shape == scratch.shape[:-1]):
+                    handed.append(value)                # read in place: no copy
+                else:
                     self._copy_in(scratch, value)
-                arrays[field] = scratch
-        with self.profile.region(f"kernel-run:{name}"):
-            self.native.run_kernel(name, arrays)
-        with self.profile.region(f"kernel-copy-out:{name}"):
+                    handed.append(scratch)
+        with self.profile.region(plan.run_region):
+            # keyed by address for a caller's array -- the walks slice their
+            # views afresh each call -- and by identity for the scratch
+            key = tuple(id(array) if array is slot[1] else array.ctypes.data
+                        for array, slot in zip(handed, plan.slots))
+            hit = plan.bound.get(key)
+            run = None if hit is None else hit[0]
+            if hit is None:
+                binder = getattr(self.native, "bind_kernel", None)
+                given = [array if array.ndim == scratch.ndim
+                         else np.reshape(array, (*array.shape, 1), order="F")   # a chunk view: chunk axis on
+                         for array, (_, scratch, _) in zip(handed, plan.slots)]
+                if binder is None:                  # a native that cannot bind: the plain call
+                    self.native.run_kernel(name, dict(zip(plan.fields, given)))
+                else:
+                    with self.profile.region(plan.bind_region):
+                        run = self._bind_or_retarget(plan, binder, name, key, given)
+            if run is not None:
+                run()
+        with self.profile.region(plan.copy_out_region):
             for local, target in outputs.items():
                 if target is None:
                     continue
                 self._copy_out(target, self.scratch[local], ncol)
+
+    def _bind_or_retarget(self, plan: "_KernelPlan", binder, name: str, key: tuple[int, ...],
+                          given: list[np.ndarray]) -> Callable[[], Any]:
+        """The bound call for ``given``: built while the table has room, otherwise
+        the oldest call pointed at the new arrays.
+
+        Pointing costs a few microseconds per argument that moved; building
+        costs the whole marshalling.  A kernel whose input storage moves on
+        every call -- the per-chunk state copy -- therefore never pays more
+        than the pointing, and never a storm of rebuilds when a rank's
+        allocator moves everything at once.  A binder that cannot retarget
+        (a test's fake) rebuilds, and after enough rebuilds the plan goes
+        back to copying into scratch.
+        """
+
+        plan.binds += 1
+        if len(plan.bound) >= BOUND_PER_PLAN:
+            oldest_key = next(iter(plan.bound))
+            run, current = plan.bound.pop(oldest_key)
+            retarget = getattr(run, "retarget", None)
+            if retarget is not None:
+                for index, (array, held) in enumerate(zip(given, current)):
+                    if array is not held and (array.ctypes.data != held.ctypes.data
+                                              or array.shape != held.shape):
+                        retarget(index, array)
+                    current[index] = array
+                plan.bound[key] = (run, current)
+                return run
+            if plan.binds > REBINDS_BEFORE_COPYING and plan.in_place:
+                plan.in_place = False
+                plan.bound.clear()
+        run = binder(name, dict(zip(plan.fields, given)))
+        plan.bound[key] = (run, list(given))
+        return run
+
+    def _plan(self, name: str, fields: Mapping[str, str] | None) -> "_KernelPlan":
+        """The kernel's scratch slots and argument table, resolved once.
+
+        Which scratch array stands behind each argument never changes after
+        the first call -- the scratch is allocated once -- so the walk over
+        the descriptor, the name mapping and the region labels are done here
+        and kept, keyed by the kernel and the identity of its field map.
+        """
+
+        # keyed by what the map says, never by the dict object: walks build
+        # these maps per call, and a freed dict's address is reused
+        key = (name, None if fields is None else frozenset(fields.items()))
+        plan = self._plans.get(key)
+        if plan is not None:
+            return plan
+        inverse = {} if fields is None else {field: local for local, field in fields.items()}
+        prefix = f"{self.stage.PREFIX}."
+        slots: list[tuple[str, np.ndarray, bool]] = []
+        names: list[str] = []
+        for argument in self.descriptors[name].arguments:
+            field = argument.field
+            local = field.removeprefix(prefix) if fields is None else inverse[field]
+            scratch = self.scratch[local] if local in self.scratch else self._scratch_for(argument, local)
+            slots.append((local, scratch, argument.intent == "in" and argument.rank >= 1
+                          and not argument.fixed_indices))
+            names.append(field)
+        plan = _KernelPlan(tuple(slots), tuple(names), f"kernel-copy-in:{name}",
+                           f"kernel-run:{name}", f"kernel-copy-out:{name}", f"kernel-bind:{name}", {})
+        self._plans[key] = plan
+        return plan
+
+    def _run(self, name: str, arrays: Mapping[str, np.ndarray]) -> None:
+        """Run a direct kernel on its scratch, bound once per distinct set of arrays.
+
+        The arrays handed to a kernel are this runtime's scratch, allocated
+        once and never moved, so the argument marshalling the image's adapter
+        does per call -- 135 to 500 microseconds for the kernels here -- can
+        be done once and kept.  The cache is keyed by the array objects; the
+        bound call keeps references to them, so an entry can never outlive
+        the arrays it points into.  A native that cannot bind (the tests'
+        fakes) is called the plain way.
+        """
+
+        binder = getattr(self.native, "bind_kernel", None)
+        if binder is None:
+            self.native.run_kernel(name, arrays)
+            return
+        key = (name, tuple(id(array) for array in arrays.values()))
+        run = self._bound.get(key)
+        if run is None:
+            run = self._bound[key] = binder(name, arrays)
+        run()
 
     def column_kernel(self, name: str, inputs: Mapping[str, Any], *,
                       outputs: Mapping[str, np.ndarray], ncol: int, lchnk: int, dt: float,
@@ -540,6 +724,7 @@ class StageRuntime:
                 array = np.asarray(value)
                 batch[key] = array[:ncol].copy() if array.ndim else array
             answer = kernel(batch)
+            self.stage.execution.python_model_calls += 1
             missing = [key for key in outputs if key not in answer]
             if missing:
                 raise PhysicsError(
@@ -587,6 +772,7 @@ class _StageProcess(Physics):
     writes = ()
     native = True
     transactional = False
+    trusted_native = True
 
     def __init__(self, stage: "NativeStage") -> None:
         self.stage = stage
@@ -594,6 +780,42 @@ class _StageProcess(Physics):
 
     def run(self, state: Any, context: Any) -> None:
         self.stage.tend(state, context)
+
+
+EXECUTION_POLICIES = ("auto", "native-whole", "segmented", "legacy-python")
+
+
+@dataclass(slots=True)
+class StageExecution:
+    """How a stage ran, and how often, for the record.
+
+    ``mode`` is what the last :meth:`NativeStage.tend` chose: ``native-whole``
+    ran the original Fortran stage once through its workflow action;
+    ``legacy-python`` walked the transliteration statement by statement;
+    ``segmented`` is the native runner with a stop at each replaced kernel
+    and is not built yet.  The counters accumulate over the run.
+    """
+
+    mode: str = "unset"
+    replacements: tuple[str, ...] = ()
+    native_stage_calls: int = 0
+    native_segment_calls: int = 0
+    python_model_calls: int = 0
+    legacy_steps: int = 0
+    segment_pauses: int = 0
+
+    def describe(self) -> dict[str, Any]:
+        crossings = 1 if self.mode == "native-whole" else None
+        return {
+            "execution_mode": self.mode,
+            "active_replacements": list(self.replacements),
+            "native_stage_calls": self.native_stage_calls,
+            "native_segment_calls": self.native_segment_calls,
+            "segment_pauses": self.segment_pauses,
+            "python_model_calls": self.python_model_calls,
+            "legacy_steps": self.legacy_steps,
+            "python_fortran_crossings_per_step": crossings,
+        }
 
 
 class NativeStage:
@@ -608,6 +830,12 @@ class NativeStage:
     #: The whole stage as one workflow process, and the two halves that
     #: bracket the point where the Fortran driver used to be called.
     STAGE = ""
+    #: True when :meth:`tend` is the whole of :attr:`STAGE` -- everything the
+    #: workflow action does, so that with nothing replaced the original
+    #: Fortran action can run in its place.  A sub-walk that covers one
+    #: driver inside the action (the microphysics inside stage 7, say) names
+    #: the same STAGE but is not the whole of it, and leaves this False.
+    WHOLE_ACTION = False
     FIRST_HALF = ""
     SECOND_HALF = ""
 
@@ -652,6 +880,13 @@ class NativeStage:
         self.kernels: dict[str, Callable[..., Mapping[str, np.ndarray]] | None] = {
             name: None for name in self.SWAPPABLE
         }
+        #: Which path :meth:`tend` takes; see :data:`EXECUTION_POLICIES`.  ``auto``
+        #: runs the original Fortran stage whole while no kernel is replaced.
+        self.execution_policy: str = "auto"
+        #: What happened, for the run's record.
+        self.execution = StageExecution()
+        #: The segment runner's driver, created on the first segmented step.
+        self._segmented: "SegmentedStage | None" = None
         if kernels is not None:
             unknown = [name for name in kernels if name not in self.kernels]
             if unknown:
@@ -781,12 +1016,212 @@ class NativeStage:
 
     # -- running -----------------------------------------------------------
 
+    # -- execution mode ----------------------------------------------------
+
+    def replacements(self) -> tuple[str, ...]:
+        """The kernels something other than the original Fortran computes."""
+
+        return tuple(name for name, kernel in self.kernels.items() if kernel is not None)
+
+    def configured_replacements(self) -> tuple[str, ...]:
+        """Kernels the stage was *told* to replace, whether or not a slot shows it yet.
+
+        A stage that was handed a model by name must never run the original
+        kernel in its place because nothing had loaded the model when the
+        path was chosen; :meth:`tend` refuses if one of these is missing
+        from :meth:`replacements`.
+        """
+
+        return ()
+
+    def frame_kernel(self, name: str, kernel: Callable[..., Any], native: Any) -> Callable[..., Any]:
+        """``kernel`` as the segment runner's frame will call it: batch in, answer out.
+
+        The default is the kernel itself.  A stage whose kernel has a richer
+        contract -- columns stacked one way, namelist parameters, values the
+        routine derives -- adapts it here.
+        """
+
+        del name, native
+        return kernel
+
+    def _owner_of(self, name: str) -> "NativeStage":
+        """The sub-walk whose swappable kernel ``name`` is, or this stage."""
+
+        for stage in self.components.values():
+            if name in stage.SWAPPABLE:
+                return stage
+        return self
+
+    def select_mode(self, native: Any = None) -> str:
+        """Which path :meth:`tend` takes this step, from the policy and the kernel slots.
+
+        Under ``auto`` the original stage runs whole while nothing is
+        replaced; with replacements it runs segmented when ``native`` offers
+        a runner for this stage that pauses at every replaced kernel, and
+        as the Python walk otherwise -- so a kernel no runner covers yet
+        still has its proven path.
+        """
+
+        policy = self.execution_policy
+        if policy not in EXECUTION_POLICIES:
+            raise PhysicsError(
+                f"unknown stage execution policy {policy!r}; one of {EXECUTION_POLICIES}")
+        replaced = self.replacements()
+        if policy == "legacy-python":
+            return "legacy-python"
+        if policy == "segmented":
+            if not replaced:
+                raise PhysicsError(
+                    "segmented execution pauses at replaced kernels, and nothing is replaced; "
+                    "use auto or native-whole")
+            if not self.WHOLE_ACTION:
+                raise PhysicsError(
+                    f"{type(self).__name__} is not the whole of {self.STAGE!r}; only a whole "
+                    f"stage has a segment runner")
+            return "segmented"
+        if policy == "native-whole":
+            if replaced:
+                raise PhysicsError(
+                    f"native-whole execution runs the original Fortran stage, but "
+                    f"{list(replaced)} are replaced; use auto or legacy-python")
+            if not self.WHOLE_ACTION:
+                raise PhysicsError(
+                    f"{type(self).__name__} is not the whole of {self.STAGE!r}; it has no "
+                    f"whole Fortran stage of its own to run")
+            return "native-whole"
+        # auto: the original stage while nothing is replaced; segmented where the
+        # image's runner pauses at every replaced kernel; the walk otherwise
+        if not replaced and self.WHOLE_ACTION:
+            return "native-whole"
+        if replaced and self.WHOLE_ACTION and native is not None:
+            offer = getattr(native, "segment_runner", None)
+            runner = None if offer is None else offer(self.STAGE)
+            covered = set(getattr(runner, "kernels", ()) or ())
+            if runner is not None and set(replaced) <= covered:
+                return "segmented"
+        return "legacy-python"
+
     def tend(self, fields: Any, context: Any) -> None:
-        """The Fortran driver, for every chunk this rank owns."""
+        """The stage, for every chunk this rank owns, by whichever path the policy selects."""
 
         native = context.native
         if native is None:
             raise PhysicsError(f"{type(self).__name__}.tend must run as a native process")
+        mode = self.select_mode(native)
+        self.execution.mode = mode
+        self.execution.replacements = self.replacements()
+        expected = set(self.configured_replacements())
+        for stage in self.components.values():
+            expected.update(stage.configured_replacements())
+        unhonoured = sorted(expected.difference(self.execution.replacements))
+        if unhonoured:
+            raise PhysicsError(
+                f"{type(self).__name__} was told to replace {unhonoured} but the kernel "
+                f"slots do not show it; the original Fortran will not be run in their place")
+        if mode == "native-whole":
+            # nothing replaced: the original Fortran stage, once, through its
+            # own (disabled) workflow action -- no walk, no views, no copies
+            native.run_action(self.STAGE)
+            self.execution.native_stage_calls += 1
+            return
+        if mode == "segmented":
+            self._tend_segmented(native)
+            return
+        self.execution.legacy_steps += 1
+        self._tend_walk(native, context)
+
+    def _tend_segmented(self, native: Any) -> None:
+        """The original Fortran through its segment runner, paused at each replaced kernel."""
+
+        # The runner reads the stage's hosts -- state, tendencies, the physics
+        # buffer -- through the same bindings the walk uses, and those are
+        # made when this rank's runtime is built.  Build it first: a model in
+        # the slot, unlike the original kernel run through Python, would not
+        # otherwise touch the runtime at all, and the runner refuses a
+        # context while the hosts are unbound.
+        self.runtime(native)
+        segmented = self._segmented
+        if segmented is None:
+            runner = native.segment_runner(self.STAGE)
+            if runner is None:
+                raise PhysicsError(
+                    f"the image offers no segment runner for {self.STAGE!r}; segmented "
+                    f"execution is not built for it yet")
+            segmented = self._segmented = SegmentedStage(self.STAGE, runner)
+        kernels: dict[str, Callable[..., Any] | None] = {}
+        for name, kernel in self.kernels.items():
+            if kernel is None:
+                kernels[name] = None
+            elif isinstance(kernel, OriginalKernel):
+                kernels[name] = self._original_through_python(native, name)
+            else:
+                kernels[name] = self._owner_of(name).frame_kernel(name, kernel, native)
+        segmented.run(kernels)
+        counters = segmented.counters
+        self.execution.native_segment_calls = counters.starts + counters.resumes
+        self.execution.python_model_calls = counters.model_calls
+        self.execution.segment_pauses = counters.pauses
+
+    def _original_through_python(self, native: Any, name: str) -> Callable[[Mapping[str, Any]], dict]:
+        """The original direct kernel, as a model: the frame's live lanes in, its outputs out.
+
+        The kernel takes chunk-shaped arrays with a trailing chunk axis; the
+        frame hands live lanes.  Each call pads the lanes into fresh chunk
+        arrays, runs the kernel the way the walk's scratch path does, and
+        returns the live lanes of every argument the kernel writes.
+        """
+
+        descriptors = {k.name: k for k in load_direct_kernels(self.DESCRIPTORS)}
+        try:
+            kernel = descriptors[name]
+        except KeyError as error:
+            raise PhysicsError(f"{type(self).__name__} has no direct kernel {name!r}") from error
+        runtime = self.runtime(native)
+        pcols = int(runtime.pcols)
+
+        def run(batch: Mapping[str, Any]) -> dict[str, np.ndarray]:
+            arrays: dict[str, np.ndarray] = {}
+            written: list[tuple[str, np.ndarray]] = []
+            for argument in kernel.arguments:
+                # the frame names an argument by what follows the descriptor's
+                # prefix -- which is the sub-walk's, not necessarily this stage's
+                local = argument.field.split(".", 1)[1]
+                value = np.asarray(batch[local]) if local in batch else None
+                if argument.rank <= 1 and (value is None or value.ndim == 0):
+                    array = np.zeros((1,), dtype=argument.dtype, order="F")
+                    if value is not None:
+                        array[0] = value
+                else:
+                    if value is not None:
+                        ncol = value.shape[0]
+                        shape = (pcols, *value.shape[1:], 1)
+                    else:
+                        shape = (pcols, *self._lane_shape(runtime, argument), 1)
+                    array = np.zeros(shape, dtype=argument.dtype, order="F")
+                    if value is not None:
+                        array[:ncol, ..., 0] = value
+                arrays[argument.field] = array
+                if argument.intent in ("out", "inout"):
+                    written.append((local, array))
+            native.run_kernel(name, arrays)
+            ncol = int(np.asarray(batch["ncol"])) if "ncol" in batch else pcols
+            return {local: (array[:ncol, ..., 0].copy() if array.ndim > 1 else array.copy())
+                    for local, array in written}
+
+        return run
+
+    @staticmethod
+    def _lane_shape(runtime: "StageRuntime", argument: Any) -> tuple[int, ...]:
+        """A chunk-shaped argument's extents beyond the column axis, from the runtime's sizes."""
+
+        sizes = runtime.extents
+        names = tuple(argument.extents)[1:-1]
+        return tuple(int(sizes[e]) if e in sizes else int(e) for e in names)
+
+    def _tend_walk(self, native: Any, context: Any) -> None:
+        """The transliteration, statement by statement: the legacy-python path."""
+
         runtime = self.runtime(native)
         entries = runtime.entries
         dt = float(entries.dt()) if entries.dt is not None else float(context.timestep_seconds)
@@ -803,7 +1238,7 @@ class NativeStage:
 
 
 __all__ = [
-    "CORE_ENTRIES", "DESCRIPTORS", "HOST_ENTRIES", "HostEntries", "HostServices",
-    "Local", "NativeStage", "PTEND_ENTRIES", "StageProfile", "StageRuntime", "as_view",
-    "check", "fortran", "pointer_of",
+    "CORE_ENTRIES", "DESCRIPTORS", "EXECUTION_POLICIES", "HOST_ENTRIES", "HostEntries",
+    "HostServices", "Local", "NativeStage", "PTEND_ENTRIES", "StageExecution", "StageProfile",
+    "StageRuntime", "as_view", "check", "fortran", "pointer_of",
 ]
