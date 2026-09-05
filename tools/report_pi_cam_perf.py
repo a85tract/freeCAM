@@ -85,6 +85,39 @@ def perf_report(data: Path, sort: str, limit: int) -> list[tuple[float, str]]:
     return rows[:limit]
 
 
+_CALLER_LINE = re.compile(r"^\s*[|\s]*--([0-9]+(?:\.[0-9]+)?)%--(\S+)")
+_CALLED = ("__intel_avx_rep_memcpy", "__intel_avx_rep_memset", "malloc", "free", "_intel_fast_memcpy",
+           "for_alloc_allocatable", "for_dealloc_allocatable", "__memcpy_avx_unaligned_erms")
+
+
+def parse_callers(text: str, limit: int) -> list[dict[str, object]]:
+    """Return the heaviest immediate callers from a ``perf report -G`` caller graph."""
+
+    callers: dict[str, float] = {}
+    for line in text.splitlines():
+        match = _CALLER_LINE.match(line)
+        if match:
+            name = match.group(2)
+            callers[name] = callers.get(name, 0.0) + float(match.group(1))
+    ranked = sorted(callers.items(), key=lambda item: -item[1])[:limit]
+    return [{"percent": round(p, 2), "caller": c} for c, p in ranked]
+
+
+def callers_of(data: Path, symbol: str, limit: int = 12) -> list[dict[str, object]]:
+    """Who calls ``symbol`` in a recording made with call chains, by share of its samples."""
+
+    command = ["perf", "report", "-i", str(data), "--stdio", "--no-children", "--symbol-filter", symbol,
+               "--call-graph", "caller,0.5,0,callee", "--percent-limit", "0.05"]
+    result = subprocess.run(command, capture_output=True, text=True, check=False)
+    return parse_callers(result.stdout, limit)
+
+
+def has_callchains(data: Path) -> bool:
+    result = subprocess.run(["perf", "report", "-i", str(data), "--header-only"],
+                            capture_output=True, text=True, check=False)
+    return "--call-graph" in result.stdout or "-g" in result.stdout.split()
+
+
 def rank_stats(values: list[float]) -> dict[str, float | None]:
     if not values:
         return {"min": None, "median": None, "max": None, "mean": None}
@@ -109,12 +142,15 @@ def build_record(perf_dir: Path, summary: dict, bfb: dict, job: str | None,
         for percent, dso in by_dso:
             bucket = classify_dso(dso)
             buckets[bucket] = round(buckets.get(bucket, 0.0) + percent, 2)
-        recorded[str(rank)] = {
+        detail: dict[str, object] = {
             "by_dso": [{"percent": p, "dso": d} for p, d in by_dso],
             "by_bucket": dict(sorted(buckets.items(), key=lambda item: -item[1])),
             "top_symbols": [{"percent": p, "symbol": s}
                             for p, s in perf_report(path, "dso,symbol", symbols)],
         }
+        if has_callchains(path):
+            detail["callers"] = {called: callers_of(path, called) for called in _CALLED}
+        recorded[str(rank)] = detail
     timing = summary.get("timing", {})
     return {
         "schema_version": 1,

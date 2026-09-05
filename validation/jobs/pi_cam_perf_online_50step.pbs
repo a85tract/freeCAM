@@ -73,6 +73,11 @@ export FREECAM_PERF_HZ=${PYCAM_PERF_HZ:-299}
 # CAM and provider initialization); counting starts after this delay so the
 # profile describes the steps.  The 50 steps then run for about 20 s.
 export FREECAM_PERF_DELAY_MS=${PYCAM_PERF_DELAY_MS:-20000}
+# PYCAM_PERF_CALLGRAPH=dwarf adds call chains on the recorded ranks, and the
+# report then names the callers of the copies and the allocator.
+export FREECAM_PERF_CALLGRAPH=${PYCAM_PERF_CALLGRAPH:-}
+# PYCAM_PERF_OUTPUT names the record; a call-chain run keeps its own.
+output=${PYCAM_PERF_OUTPUT:-validation/pi_cam_perf_online_50step.json}
 
 cd "${repo}"
 mpiexec --label -n 512 tools/perf_rank_wrapper.sh "${python}" -m freecam.pi_cam.cli \
@@ -96,5 +101,5 @@ mpiexec --label -n 512 tools/perf_rank_wrapper.sh "${python}" -m freecam.pi_cam.
   --pbs-job-id "${PBS_JOBID}" \
   --git-commit "$(git rev-parse HEAD)" \
   --delay-ms "${FREECAM_PERF_DELAY_MS}" \
-  --output validation/pi_cam_perf_online_50step.json
+  --output "${output}"
 echo "root: ${root}"

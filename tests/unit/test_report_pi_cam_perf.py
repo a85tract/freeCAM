@@ -48,3 +48,16 @@ def test_the_record_aggregates_every_rank_s_counters(tmp_path, monkeypatch) -> N
     assert record["recorded_ranks"]["1"]["top_symbols"][0]["symbol"] == "libc.so.6  [.] malloc"
     assert record["bfb"] is True and record["git_commit"] == "abc"
     json.dumps(record)
+
+
+def test_callers_are_read_from_a_caller_graph() -> None:
+    text = ("     4.10%  libfreecam_pi_cam.so  [.] __intel_avx_rep_memcpy\n"
+            "            |\n"
+            "            |--2.30%--physics_types_mp_physics_state_copy_\n"
+            "            |          physpkg_mp_tphysbc_\n"
+            "            |\n"
+            "            |--1.10%--edge_mod_mp_edgevpack_\n"
+            "             --0.70%--physics_types_mp_physics_state_copy_\n")
+    assert rp.parse_callers(text, 5) == [
+        {"percent": 3.0, "caller": "physics_types_mp_physics_state_copy_"},
+        {"percent": 1.1, "caller": "edge_mod_mp_edgevpack_"}]

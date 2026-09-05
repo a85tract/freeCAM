@@ -16,6 +16,13 @@ hz=${FREECAM_PERF_HZ:-299}
 # model's initialization -- reading inputs, building tables -- stays out of
 # a profile that is meant to describe the step.
 delay=${FREECAM_PERF_DELAY_MS:-0}
+# With FREECAM_PERF_CALLGRAPH=dwarf the sampled ranks also record call
+# chains (unwound through .eh_frame, so no frame pointers are needed), which
+# says who calls the copies and the allocator.  Larger files; fewer ranks.
+callgraph=()
+if [ -n "${FREECAM_PERF_CALLGRAPH:-}" ]; then
+  callgraph=(--call-graph "${FREECAM_PERF_CALLGRAPH}")
+fi
 events=task-clock,page-faults,minor-faults,major-faults,context-switches
 mkdir -p "${dir}"
 
@@ -27,6 +34,7 @@ done
 
 if [ "${record}" = 1 ]; then
   exec perf stat -x, -D "${delay}" -e "${events}" -o "${dir}/stat.${rank}.csv" -- \
-    perf record -D "${delay}" -e cpu-clock:u -F "${hz}" -o "${dir}/record.${rank}.data" -- "$@"
+    perf record -D "${delay}" -e cpu-clock:u -F "${hz}" "${callgraph[@]}" \
+      -o "${dir}/record.${rank}.data" -- "$@"
 fi
 exec perf stat -x, -D "${delay}" -e "${events}" -o "${dir}/stat.${rank}.csv" -- "$@"
