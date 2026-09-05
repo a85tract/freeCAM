@@ -161,6 +161,8 @@ class SegmentCounters:
     crossings: int = 0           # Python -> Fortran calls: start + frame + resume ...
     bytes_copied_in: int = 0
     bytes_copied_out: int = 0
+    #: model calls by the kernel they answered, so a run can show where its pauses were
+    calls_by_kernel: dict[str, int] = field(default_factory=dict)
 
 
 class SegmentedStage:
@@ -228,6 +230,7 @@ class SegmentedStage:
                 counters.bytes_copied_in += sum(v.nbytes for v in batch.values())
                 answer = model(batch)
                 counters.model_calls += 1
+                counters.calls_by_kernel[frame.kernel] = counters.calls_by_kernel.get(frame.kernel, 0) + 1
                 written = frame.write_back(answer)
                 counters.bytes_copied_out += sum(
                     frame.argument(name).array[:frame.ncol].nbytes for name in written)

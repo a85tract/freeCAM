@@ -68,7 +68,11 @@ def _stage_executions(cam) -> dict[str, dict[str, object]]:
         stage = getattr(getattr(record, "function", None), "__self__", None)
         execution = getattr(stage, "execution", None)
         if execution is not None and hasattr(execution, "describe"):
-            executions[name] = execution.describe()
+            described = execution.describe()
+            describe_kernels = getattr(stage, "describe_kernels", None)
+            if callable(describe_kernels):
+                described["kernels"] = list(describe_kernels())
+            executions[name] = described
     return executions
 
 

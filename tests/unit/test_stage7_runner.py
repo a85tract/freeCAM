@@ -104,8 +104,10 @@ def test_the_binding_starts_decodes_a_frame_and_resumes_with_the_token() -> None
     lib = _FakeStageSevenLibrary()
     assert image_offers_runner(lib)
     runner = StageSevenRunner(lib, Macrophysics.DESCRIPTORS)
-    lib.names = runner.names
-    assert runner.names[:5] == ("lchnk", "ncol", "dt", "p", "dp") and runner.names[-1] == "do_cldice"
+    names = runner.names["mmacro_pcond"]                  # one entry per kernel the runner pauses at
+    lib.names = names
+    assert runner.kernels == ("mmacro_pcond",)
+    assert names[:5] == ("lchnk", "ncol", "dt", "p", "dp") and names[-1] == "do_cldice"
     context = runner.create(STAGE)
     assert runner.start(context, {"mmacro_pcond": True}) == SegmentEvent.NEEDS_PYTHON_KERNEL
     frame = runner.frame(context)

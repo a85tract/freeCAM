@@ -13,15 +13,22 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Mapping
 
+from freecam.pi_cam.segment_runner import load_manifest
 
-#: Kernels whose pause path has passed the 512-rank 50-step gate with the
-#: original kernel answering through Python, and the record that says so.
-VALIDATED_THROUGH_RUNNER: Mapping[str, tuple[str, ...]] = {
-    "mmacro_pcond": (
-        "validation/pi_cam_stage7_segmented_original_50step.json",
-        "validation/pi_cam_stage7_segmented_original_vs_oracle_50step_bfb.json",
-    ),
-}
+
+def validated_through_runner() -> dict[str, tuple[str, ...]]:
+    """Kernels whose pause path has passed a gate with the original kernel answering, and the records.
+
+    Read from the segment-runner manifest, which names the records; a record
+    the checkout does not hold does not count.
+    """
+
+    return {kernel.name: kernel.validated_by
+            for spec in load_manifest() for kernel in spec.kernels if kernel.validated}
+
+
+#: kept for callers that imported the table; the manifest is the source
+VALIDATED_THROUGH_RUNNER: Mapping[str, tuple[str, ...]] = validated_through_runner()
 
 
 @dataclass(frozen=True, slots=True)
@@ -64,8 +71,10 @@ def kernel_capabilities() -> tuple[KernelCapability, ...]:
     from freecam.physics.microp_aero import MicropAero
     from freecam.physics.microphysics import Microphysics
     from freecam.physics.radiation import Radiation
-    from freecam.pi_cam.segment_runner import KERNELS as RUNNER_KERNELS
+    from freecam.pi_cam.segment_runner import bindable_kernels
 
+    runner_kernels = set(bindable_kernels())
+    validated_kernels = validated_through_runner()
     owners = (
         (CloudMacroMicrophysics, Macrophysics),
         (CloudMacroMicrophysics, Microphysics),
@@ -75,8 +84,8 @@ def kernel_capabilities() -> tuple[KernelCapability, ...]:
     capabilities: list[KernelCapability] = []
     for stage_class, owner in owners:
         for kernel in getattr(owner, "SWAPPABLE", ()):
-            bindable = kernel in RUNNER_KERNELS
-            validated = kernel in VALIDATED_THROUGH_RUNNER
+            bindable = kernel in runner_kernels
+            validated = kernel in validated_kernels
             reason = None
             if not bindable:
                 reason = (
@@ -95,7 +104,7 @@ def kernel_capabilities() -> tuple[KernelCapability, ...]:
                     bindable=bindable,
                     validated=validated,
                     reason=reason,
-                    evidence=tuple(VALIDATED_THROUGH_RUNNER.get(kernel, ())),
+                    evidence=tuple(validated_kernels.get(kernel, ())),
                 )
             )
     return tuple(capabilities)
@@ -108,4 +117,5 @@ def capabilities_by_action() -> dict[str, tuple[KernelCapability, ...]]:
     return {action: tuple(items) for action, items in grouped.items()}
 
 
-__all__ = ["KernelCapability", "VALIDATED_THROUGH_RUNNER", "capabilities_by_action", "kernel_capabilities"]
+__all__ = ["KernelCapability", "VALIDATED_THROUGH_RUNNER", "capabilities_by_action", "kernel_capabilities",
+           "validated_through_runner"]

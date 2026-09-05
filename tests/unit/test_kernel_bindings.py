@@ -1,0 +1,169 @@
+"""One registry for what computes a kernel, and one manifest for where the image can pause.
+
+A kernel's replacement lives in ``stage.kernels[name]`` whichever way it was
+installed -- assigned into the mapping, named as ``surrogate=``, or bound
+over the method -- so the single-column caller and the model can never
+disagree about what runs.  The segment runners are declared in one manifest
+the backend, the stages and the builder all read.
+"""
+
+from __future__ import annotations
+
+import re
+from pathlib import Path
+from types import MethodType, SimpleNamespace
+
+import numpy as np
+import pytest
+
+from freecam.physics.errors import PhysicsError
+from freecam.physics.macrophysics import RETURNED, Macrophysics
+from freecam.physics.segments import OriginalKernel
+from freecam.physics.stage import MethodKernel
+from freecam.pi_cam import segment_runner as runners
+
+REPO = Path(__file__).resolve().parents[2]
+
+
+# -- the manifest ---------------------------------------------------------------------
+
+
+def test_the_manifest_declares_the_stage_7_runner_and_the_module_exports_its_entries() -> None:
+    specs = runners.load_manifest()
+    assert [spec.stage for spec in specs] == ["cam_run1.cloud_macro_microphysics"]
+    (spec,) = specs
+    assert spec.kernel_names == ("mmacro_pcond",) and spec.kernel_id("mmacro_pcond") == 1
+    module = (REPO / spec.module).read_text()
+    exported = set(re.findall(r"bind\(C,\s*name='([^']+)'\)", module))
+    assert set(spec.entries) <= exported, sorted(set(spec.entries) - exported)
+    assert (REPO / spec.generator).is_file() and (REPO / spec.descriptors).is_file()
+    assert spec.kernel("mmacro_pcond").validated          # both gate records are in the checkout
+    assert runners.runner_kernels() == {"cam_run1.cloud_macro_microphysics": ("mmacro_pcond",)}
+    assert runners.bindable_kernels() == ("mmacro_pcond",)
+    assert runners.KERNELS == ("mmacro_pcond",) and runners.ENTRIES[0] == "pycam_stage7_create_v1"
+    assert runners.runner_spec("cam_run1.radiation") is None
+
+
+def test_the_manifest_refuses_a_kernel_two_runners_claim_and_a_runner_that_pauses_nowhere(tmp_path) -> None:
+    text = (REPO / "native/pi_cam/segment_runners.yaml").read_text()
+    twice = tmp_path / "twice.yaml"
+    twice.write_text(text + text[text.index("- stage:"):].replace("cam_run1.cloud_macro_microphysics", "cam_run1.other"))
+    with pytest.raises(Exception, match="claimed by two runners"):
+        runners.load_manifest(twice)
+    none = tmp_path / "none.yaml"
+    none.write_text(text[:text.index("  kernels:")] + "  kernels: []\n")
+    with pytest.raises(Exception, match="pauses at no kernel"):
+        runners.load_manifest(none)
+
+
+def test_an_image_without_the_entries_offers_no_runner() -> None:
+    spec = runners.runner_spec("cam_run1.cloud_macro_microphysics")
+    assert spec is not None
+    assert not runners.image_offers_runner(SimpleNamespace(), spec)
+    assert runners.runner_for(SimpleNamespace(), "cam_run1.cloud_macro_microphysics") is None
+    assert runners.runner_for(SimpleNamespace(), "cam_run1.radiation") is None
+
+
+# -- one registry ---------------------------------------------------------------------
+
+
+def _answer(inputs, parameters=None):
+    return {name: np.zeros(30) for name in RETURNED}
+
+
+def test_binding_over_the_method_fills_the_kernel_slot_so_the_model_sees_the_replacement() -> None:
+    stage = Macrophysics()
+    assert stage.replacements() == ()
+    stage.mmacro_pcond = MethodType(lambda self, inputs, parameters=None: _answer(inputs), stage)
+    assert isinstance(stage.kernels["mmacro_pcond"], MethodKernel)
+    assert stage.replacements() == ("mmacro_pcond",)              # what decides how the stage runs
+    assert stage.binding_kind("mmacro_pcond") == "method"
+    result = stage.mmacro_pcond({"t0": np.zeros(30)})               # the single-column caller: the same function
+    assert set(result.outputs) | set(result.updated_inputs) == set(RETURNED)
+    # a whole stage with this replacement runs segmented where the image pauses at it, never whole
+    from freecam.physics.cloud_macro_microphysics import CloudMacroMicrophysics
+
+    composed = CloudMacroMicrophysics()
+    assert composed.macro is not None
+    composed.macro.mmacro_pcond = MethodType(lambda self, inputs, parameters=None: _answer(inputs), composed.macro)
+    assert composed.replacements() == ("mmacro_pcond",)
+    covering = SimpleNamespace(segment_runner=lambda stage: SimpleNamespace(kernels=("mmacro_pcond",)))
+    assert composed.select_mode(covering) == "segmented"
+    assert composed.select_mode(SimpleNamespace(segment_runner=lambda stage: None)) == "legacy-python"
+    composed.macro.mmacro_pcond = None                              # back to the original
+    assert composed.replacements() == () and composed.select_mode(covering) == "native-whole"
+
+
+def test_a_bound_function_result_is_flattened_and_a_one_argument_function_is_called_as_such() -> None:
+    from freecam.physics.result import FunctionResult
+
+    seen = []
+
+    def one(inputs):
+        seen.append(("one", sorted(inputs)))
+        return FunctionResult(outputs={"a": 1.0}, updated_inputs={"b": 2.0})
+
+    def two(inputs, parameters):
+        seen.append(("two", parameters))
+        return {"a": 3.0}
+
+    assert MethodKernel(one)({"x": 0}, {"p": 1}) == {"a": 1.0, "b": 2.0}
+    assert MethodKernel(two)({"x": 0}, {"p": 1}) == {"a": 3.0}
+    assert seen == [("one", ["x"]), ("two", {"p": 1})]
+    assert MethodKernel(one).takes_parameters
+
+
+def test_the_slot_takes_only_a_callable_the_original_marker_or_none() -> None:
+    stage = Macrophysics()
+    with pytest.raises(PhysicsError, match="swappable kernel"):
+        stage.mmacro_pcond = 3
+    stage.mmacro_pcond = OriginalKernel()
+    assert stage.binding_kind("mmacro_pcond") == "original-through-python"
+    stage.surrogate_marker = 3                                     # any other attribute is an attribute
+    assert stage.surrogate_marker == 3
+
+
+def test_a_surrogate_named_by_path_and_a_callable_are_the_same_kind_of_binding_to_the_registry() -> None:
+    stage = Macrophysics(surrogate="somewhere/model.pt")
+    assert stage.binding_kind("mmacro_pcond") == "surrogate"
+    plain = Macrophysics()
+    plain.kernels["mmacro_pcond"] = _answer
+    assert plain.binding_kind("mmacro_pcond") == "callable" and plain.replacements() == ("mmacro_pcond",)
+
+
+# -- the read-only description ------------------------------------------------------
+
+
+def test_describe_kernels_reports_contract_coverage_binding_and_calls() -> None:
+    from freecam.physics.cloud_macro_microphysics import CloudMacroMicrophysics
+
+    stage = CloudMacroMicrophysics()
+    rows = {row["kernel"]: row for row in stage.describe_kernels()}
+    assert list(rows) == ["mmacro_pcond", "micro_mg_tend"]
+    pcond = rows["mmacro_pcond"]
+    assert pcond["owner_class"].endswith("macrophysics.Macrophysics")
+    assert pcond["stage_action"] == "cam_run1.cloud_macro_microphysics"
+    assert pcond["bindable"] and pcond["validated"] and len(pcond["validated_by"]) == 2
+    assert pcond["contract"]["path"] == "native/pi_cam/functions/mmacro_pcond.yaml"
+    assert "cld" in pcond["contract"]["outputs"] and "t0" in pcond["contract"]["in_place"]
+    assert pcond["contract"]["module_state_inputs"]["parameter"] >= 1
+    assert pcond["binding"] == "original" and not pcond["replaced"] and pcond["model_calls"] == 0
+    micro = rows["micro_mg_tend"]
+    assert micro["owner_class"].endswith("microphysics.Microphysics")
+    assert not micro["bindable"] and not micro["validated"]        # no runner pauses at it yet
+    assert micro["contract"]["path"] == "native/pi_cam/functions/micro_mg_tend.yaml"
+    stage.kernels["mmacro_pcond"] = _answer
+    stage.execution.count_model_call("mmacro_pcond")
+    again = {row["kernel"]: row for row in stage.describe_kernels()}
+    assert again["mmacro_pcond"]["binding"] == "callable" and again["mmacro_pcond"]["model_calls"] == 1
+    assert stage.execution.describe()["python_model_calls_by_kernel"] == {"mmacro_pcond": 1}
+
+
+def test_the_builder_s_capabilities_come_from_the_manifest() -> None:
+    from freecam.pi_cam.workflow_builder.capabilities import kernel_capabilities, validated_through_runner
+
+    assert set(validated_through_runner()) == {"mmacro_pcond"}
+    by_name = {c.kernel: c for c in kernel_capabilities()}
+    assert by_name["mmacro_pcond"].bindable and by_name["mmacro_pcond"].validated
+    assert by_name["mmacro_pcond"].evidence == runners.runner_spec("cam_run1.cloud_macro_microphysics").kernel("mmacro_pcond").validated_by
+    assert not by_name["micro_mg_tend"].bindable and not by_name["rad_rrtmg_sw"].bindable

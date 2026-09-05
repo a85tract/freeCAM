@@ -25,7 +25,8 @@ the calls pass addresses.
 from __future__ import annotations
 
 import ctypes
-from dataclasses import dataclass
+import inspect
+from dataclasses import dataclass, field
 import json
 import os
 from pathlib import Path
@@ -724,7 +725,7 @@ class StageRuntime:
                 array = np.asarray(value)
                 batch[key] = array[:ncol].copy() if array.ndim else array
             answer = kernel(batch)
-            self.stage.execution.python_model_calls += 1
+            self.stage.execution.count_model_call(name)
             missing = [key for key in outputs if key not in answer]
             if missing:
                 raise PhysicsError(
@@ -785,6 +786,44 @@ class _StageProcess(Physics):
 EXECUTION_POLICIES = ("auto", "native-whole", "segmented", "legacy-python")
 
 
+class MethodKernel:
+    """A callable bound where a kernel's method was, held in the kernel's slot.
+
+    ``stage.mmacro_pcond = MethodType(fn, stage)`` used to rebind the method
+    alone: the single-column caller saw ``fn`` while the model, deciding
+    how to run from the slots, saw nothing replaced and ran the original
+    Fortran.  :meth:`NativeStage.__setattr__` now puts the binding here, in
+    the slot, so the walk, the runner's frame and the single-column caller
+    all reach the same function -- and the stage runs segmented, as any
+    replacement does.  The bound function is called as the original method
+    is: ``(inputs, parameters)`` when it takes two, ``(inputs)`` otherwise;
+    a :class:`~freecam.physics.result.FunctionResult` it returns is
+    flattened to the batch-by-name answer a slot's callable gives.
+    """
+
+    takes_parameters = True
+
+    def __init__(self, method: Callable[..., Any]) -> None:
+        self.method = method
+        try:
+            count = len([p for p in inspect.signature(method).parameters.values()
+                         if p.kind in (p.POSITIONAL_ONLY, p.POSITIONAL_OR_KEYWORD)])
+        except (TypeError, ValueError):
+            count = 2
+        self._two = count >= 2
+
+    def __call__(self, inputs: Mapping[str, Any], parameters: Mapping[str, Any] | None = None) -> dict[str, Any]:
+        answer = self.method(inputs, parameters) if self._two else self.method(inputs)
+        from .result import FunctionResult
+
+        if isinstance(answer, FunctionResult):
+            return {**dict(answer.outputs), **dict(answer.updated_inputs)}
+        return dict(answer)
+
+    def __repr__(self) -> str:
+        return f"MethodKernel({getattr(self.method, '__qualname__', self.method)!r})"
+
+
 @dataclass(slots=True)
 class StageExecution:
     """How a stage ran, and how often, for the record.
@@ -803,6 +842,12 @@ class StageExecution:
     python_model_calls: int = 0
     legacy_steps: int = 0
     segment_pauses: int = 0
+    #: model calls by the kernel they answered, whichever path made them
+    model_calls_by_kernel: dict[str, int] = field(default_factory=dict)
+
+    def count_model_call(self, kernel: str) -> None:
+        self.python_model_calls += 1
+        self.model_calls_by_kernel[kernel] = self.model_calls_by_kernel.get(kernel, 0) + 1
 
     def describe(self) -> dict[str, Any]:
         crossings = 1 if self.mode == "native-whole" else None
@@ -813,6 +858,7 @@ class StageExecution:
             "native_segment_calls": self.native_segment_calls,
             "segment_pauses": self.segment_pauses,
             "python_model_calls": self.python_model_calls,
+            "python_model_calls_by_kernel": dict(self.model_calls_by_kernel),
             "legacy_steps": self.legacy_steps,
             "python_fortran_crossings_per_step": crossings,
         }
@@ -899,6 +945,93 @@ class NativeStage:
         self.calls: list[str] = []      # what tend() did last, for the sequence test
         self._process: Any = None
         self._runtimes: dict[int, StageRuntime] = {}
+
+    def __setattr__(self, name: str, value: Any) -> None:
+        # Binding a swappable kernel's method -- ``stage.mmacro_pcond = MethodType(fn, stage)``
+        # -- is a replacement, and lives in the slot like every other, so the
+        # single-column caller and the model can never disagree about what runs.
+        kernels = self.__dict__.get("kernels")
+        if kernels is not None and name in kernels and name in type(self).SWAPPABLE:
+            if value is None or isinstance(value, (MethodKernel, OriginalKernel)):
+                kernels[name] = value
+            elif callable(value):
+                kernels[name] = MethodKernel(value)
+            else:
+                raise PhysicsError(
+                    f"{type(self).__name__}.{name} is a swappable kernel; assign a callable, "
+                    f"OriginalKernel() or None, not {type(value).__name__}")
+            return
+        object.__setattr__(self, name, value)
+
+    def binding_kind(self, name: str) -> str:
+        """What is in kernel ``name``'s slot: original, original-through-python, surrogate, method or callable."""
+
+        binding = self.kernels[name]
+        if binding is None:
+            return "original"
+        if isinstance(binding, OriginalKernel):
+            return "original-through-python"
+        if isinstance(binding, MethodKernel):
+            return "method"
+        kind = type(binding).__name__
+        if kind in ("PendingSurrogate", "SurrogateKernel"):
+            return "surrogate"
+        return "callable"
+
+    def describe_kernels(self, native: Any = None) -> tuple[dict[str, Any], ...]:
+        """The stage's kernels, read-only: contract, binding, coverage and calls so far.
+
+        One record per swappable kernel, in the order the drivers call them:
+        the owning class, whether the image's runner pauses at it
+        (``bindable``) and whether that pause path has passed a gate
+        (``validated``), the reviewed contract's inputs and outputs when one
+        exists, what is in the slot now, and how often a model has answered
+        for it in this run.  The workflow builder shows these; nothing else
+        keeps a list of kernels.
+        """
+
+        from ..pi_cam.segment_runner import runner_spec
+        from .spec import load_function_spec
+
+        spec = runner_spec(self.STAGE)
+        rows: list[dict[str, Any]] = []
+        for name in self.kernels:
+            owner = self._owner_of(name)
+            runner_kernel = None
+            if spec is not None and name in spec.kernel_names:
+                runner_kernel = spec.kernel(name)
+            contract: dict[str, Any] | None = None
+            try:
+                function = load_function_spec(name)
+            except Exception:    # noqa: BLE001 -- no reviewed contract for this kernel yet
+                function = None
+            if function is not None:
+                contract = {
+                    "path": str(Path(function.path).relative_to(REPO)) if function.path else None,
+                    "routine": function.qualified_name,
+                    "inputs": [a.name for a in function.arguments if a.role == "input"],
+                    "in_place": [a.name for a in function.arguments if a.role == "inout"],
+                    "outputs": [a.name for a in function.arguments if a.role == "output"],
+                    "parameters": sorted(function.parameters),
+                    # module variables the routine reads, by how the standalone image sets them;
+                    # the contract schema declares no persistent state a kernel writes
+                    "module_state_inputs": {mode: sum(1 for e in function.module_state if e.write == mode)
+                                            for mode in sorted({e.write for e in function.module_state})},
+                }
+            rows.append({
+                "kernel": name,
+                "stage_action": self.STAGE,
+                "owner_class": f"{type(owner).__module__}.{type(owner).__name__}",
+                "bindable": runner_kernel is not None,
+                "validated": bool(runner_kernel is not None and runner_kernel.validated),
+                "validated_by": list(runner_kernel.validated_by) if runner_kernel is not None else [],
+                "contract": contract,
+                "binding": self.binding_kind(name),
+                "replaced": self.kernels[name] is not None,
+                "execution_mode": self.execution.mode,
+                "model_calls": int(self.execution.model_calls_by_kernel.get(name, 0)),
+            })
+        return tuple(rows)
 
     @property
     def kernel(self):
@@ -1174,6 +1307,7 @@ class NativeStage:
         counters = segmented.counters
         self.execution.native_segment_calls = counters.starts + counters.resumes
         self.execution.python_model_calls = counters.model_calls
+        self.execution.model_calls_by_kernel = dict(counters.calls_by_kernel)
         self.execution.segment_pauses = counters.pauses
 
     def _original_through_python(self, native: Any, name: str) -> Callable[[Mapping[str, Any]], dict]:

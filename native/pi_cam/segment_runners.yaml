@@ -1,0 +1,25 @@
+# The segment runners the image offers: for each stage, the original Fortran
+# made pausable at named kernel call sites, and the Python side's key to it.
+#
+# A runner is registered here, not in the backend: freecam.pi_cam.native asks
+# this manifest which stage has a runner and what its entries are called, and
+# the workflow builder reads the same file to say which kernels are bindable.
+# The Fortran module and its generator are named so the staleness test can
+# hold the committed module to what the generator writes.  `validated_by`
+# lists the records of the 512-rank gates the pause path has passed with the
+# original kernel answered through Python; a kernel without one is bindable
+# but not validated.
+schema_version: 1
+runners:
+- stage: cam_run1.cloud_macro_microphysics
+  prefix: pycam_stage7
+  module: native/pi_cam/support/pycam_stage7_runner.F90
+  generator: tools/generate_pi_cam_stage7_runner.py
+  descriptors: native/pi_cam/direct_kernels_macrophysics.yaml
+  # kernel ids are positions here plus one, as the module numbers them
+  kernels:
+  - name: mmacro_pcond
+    owner: freecam.physics.macrophysics.Macrophysics
+    validated_by:
+    - validation/pi_cam_stage7_segmented_original_50step.json
+    - validation/pi_cam_stage7_segmented_original_vs_oracle_50step_bfb.json
