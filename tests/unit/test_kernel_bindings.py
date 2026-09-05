@@ -300,3 +300,25 @@ def test_the_runner_decodes_a_pause_on_the_second_kernel_by_the_contract_s_names
     assert lib.resumed == (2, 9)                    # the module's id for the second kernel, and the token
     with pytest.raises(Exception, match="cannot pause at"):
         runner.start(context, {"rad_rrtmg_sw": True})
+
+
+def test_falling_back_to_the_walk_is_said_out_loud() -> None:
+    """A replacement no runner pauses at runs the Python walk; auto never does that silently."""
+
+    import warnings
+
+    from freecam.physics.radiation import Radiation
+
+    stage = Radiation()
+    stage.kernels["rad_rrtmg_sw"] = _answer
+    native = SimpleNamespace(segment_runner=lambda stage: None)
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        assert stage.select_mode(native) == "legacy-python"
+    assert any("does not pause at ['rad_rrtmg_sw']" in str(w.message) for w in caught)
+    # a stage already on the walk does not repeat itself every step
+    stage.execution.mode = "legacy-python"
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        stage.select_mode(native)
+    assert not caught

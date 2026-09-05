@@ -26,6 +26,7 @@ from __future__ import annotations
 
 import ctypes
 import inspect
+import warnings
 from dataclasses import dataclass, field
 import json
 import os
@@ -1246,6 +1247,14 @@ class NativeStage:
             covered = set(getattr(runner, "kernels", ()) or ())
             if runner is not None and set(replaced) <= covered:
                 return "segmented"
+        if replaced and native is not None and self.execution.mode != "legacy-python":
+            # never a silent fall-back: the walk is the slow path, and a run
+            # that takes it should say so once, before the first step
+            uncovered = sorted(set(replaced) - covered) if self.WHOLE_ACTION else sorted(replaced)
+            warnings.warn(
+                f"{type(self).__name__}: the image's segment runner does not pause at {uncovered}; "
+                f"running the statement-by-statement Python walk (legacy-python) instead",
+                RuntimeWarning, stacklevel=2)
         return "legacy-python"
 
     def tend(self, fields: Any, context: Any) -> None:
