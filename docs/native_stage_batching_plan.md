@@ -19,6 +19,12 @@
 状态：native-whole 已实现并通过一个月、18 个 history/restart 文件 BFB；424.30 s，比普通 FreeCAM
 的 402.51 s 慢约 5.4%。剩余核心任务是 segmented replacement 和最后的 wrapper 开销优化。
 
+状态更新（2026-09-04）：trusted native 路径下 native-whole 三次月运行中位数 404.61 s，与普通
+FreeCAM 持平（+0.5%）。segmented-original 已通过 512 rank、50 step gate（作业 7322256）：
+mmacro_pcond 被替换为「原始 kernel 经 Python 边界执行」，runner 每步暂停 2 次（每 chunk 一次），
+50 步共 150 次 segment 调用、100 次 Python 模型调用，4 个 history/restart 文件全部 BFB
+（`validation/pi_cam_stage7_segmented_original_50step.json` 及其 `_vs_oracle_50step_bfb.json`）。
+
 ## 1. 执行语义
 
 保持现有接口：
