@@ -220,3 +220,83 @@ def test_the_builder_s_capabilities_come_from_the_manifest() -> None:
     assert by_name["mmacro_pcond"].evidence == runners.runner_spec("cam_run1.cloud_macro_microphysics").kernel("mmacro_pcond").validated_by
     assert by_name["micro_mg_tend"].bindable and not by_name["micro_mg_tend"].validated
     assert not by_name["rad_rrtmg_sw"].bindable
+
+
+# -- decoding the second kernel's frame ------------------------------------------
+
+
+class _Entry:
+    def __init__(self, lib, name):
+        self.lib, self.name = lib, name
+        self.argtypes = None
+        self.restype = None
+
+    def __call__(self, *args):
+        lib = self.lib
+        lib.calls.append(self.name)
+        if self.name.endswith("_create_v1"):
+            args[0]._obj.value = 1; return 0
+        if self.name.endswith("_start_v1"):
+            lib.mask = list(args[2]); args[3]._obj.value = 1; return 0
+        if self.name.endswith("_frame_v1"):
+            kernel, index, lchnk, ncol, substep, token, count, ptrs, ndims, shapes, dtypes, intents = args[1:]
+            kernel._obj.value = 2; index._obj.value = 5; lchnk._obj.value = 3; ncol._obj.value = 5
+            substep._obj.value = 1; token._obj.value = 9
+            assert count >= 115
+            for i in range(115):
+                ptrs[i] = lib.arrays[i].ctypes.data
+                ndims[i] = lib.arrays[i].ndim
+                for axis, extent in enumerate(lib.arrays[i].shape):
+                    shapes[3 * i + axis] = extent
+                dtypes[i] = 1 if lib.arrays[i].dtype == np.float64 else 2
+                intents[i] = lib.intents[i]
+            return 0
+        if self.name.endswith("_resume_v1"):
+            lib.resumed = (args[1], args[2]); args[3]._obj.value = 0; return 0
+        return 0
+
+
+class _TwoKernelLibrary:
+    """A fake stage-7 image paused on the second kernel, micro_mg_tend."""
+
+    def __init__(self) -> None:
+        self.calls: list = []
+        names = runners.frame_names_from_contract(REPO / "native/pi_cam/functions/micro_mg_tend.yaml")
+        self.arrays = [np.zeros((), dtype=np.int32) if n in ("pcols", "pver", "ncol", "top_lev", "microp_uniform", "do_cldice")
+                       else np.zeros((), dtype=np.float64) if n == "deltatin"
+                       else np.zeros((5, 30, 4), order="F") if n in ("rndst", "nacon")
+                       else np.zeros((5,), order="F") if n in ("prect", "preci")
+                       else np.zeros((5, 31), order="F") if n in ("rflx", "sflx")
+                       else np.zeros((5, 30), order="F") for n in names]
+        for name, value in (("pcols", 5), ("ncol", 5), ("pver", 30), ("top_lev", 1), ("do_cldice", 1), ("deltatin", 900.0)):
+            self.arrays[names.index(name)][...] = value           # the scalars the runner copies by value
+        self.intents = [2 if n in ("qc", "qi", "nc", "ni", "reff_rain", "reff_snow") else 1 if names.index(n) >= 19 and n not in
+                        ("naai", "npccnin", "rndst", "nacon", "do_cldice", "tnd_qsnow", "tnd_nsnow", "re_ice", "frzimm", "frzcnt", "frzdep")
+                        else 0 for n in names]
+        for suffix in runners.ENTRY_SUFFIXES:
+            setattr(self, f"pycam_stage7_{suffix}_v1", _Entry(self, f"pycam_stage7_{suffix}_v1"))
+
+
+def test_the_runner_decodes_a_pause_on_the_second_kernel_by_the_contract_s_names() -> None:
+    from freecam.physics.segments import SegmentEvent
+
+    lib = _TwoKernelLibrary()
+    spec = runners.runner_spec("cam_run1.cloud_macro_microphysics")
+    assert runners.image_offers_runner(lib, spec)
+    runner = runners.ImageSegmentRunner(lib, spec)
+    assert runner.slots == 115 and len(runner.names["mmacro_pcond"]) == 60
+    context = runner.create("cam_run1.cloud_macro_microphysics")
+    assert runner.start(context, {"mmacro_pcond": False, "micro_mg_tend": True}) == SegmentEvent.NEEDS_PYTHON_KERNEL
+    assert lib.mask == [0, 1]                       # the mask follows the manifest's order
+    frame = runner.frame(context)
+    assert frame.kernel == "micro_mg_tend" and frame.ncol == 5 and frame.token == 9 and frame.call_index == 5
+    assert [a.name for a in frame.arguments][:6] == ["microp_uniform", "pcols", "pver", "ncol", "top_lev", "deltatin"]
+    assert frame.argument("rndst").array.shape == (5, 30, 4) and frame.argument("rflx").array.shape == (5, 31)
+    assert frame.argument("qc").intent == "inout" and frame.argument("tlat").intent == "out"
+    assert frame.argument("tn").array.ctypes.data == lib.arrays[6].ctypes.data       # a view of the Fortran storage
+    batch = frame.batch()
+    assert "tn" in batch and "tlat" not in batch and int(batch["ncol"]) == 5
+    assert runner.resume(context, "micro_mg_tend", frame.token) == SegmentEvent.DONE
+    assert lib.resumed == (2, 9)                    # the module's id for the second kernel, and the token
+    with pytest.raises(Exception, match="cannot pause at"):
+        runner.start(context, {"rad_rrtmg_sw": True})
