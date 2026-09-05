@@ -55,6 +55,11 @@ describe("the page in preview mode", () => {
     await user.click(screen.getByRole("tab", { name: /Checks/ }));
     expect(screen.getByText(/enable Experimental to run it/)).toBeInTheDocument();
 
+    // one click on the finding itself says "this is an experiment"; the check turns into a warning
+    await user.click(screen.getByRole("button", { name: "Enable Experimental" }));
+    expect(screen.getByRole("tab", { name: /Checks/ })).toHaveTextContent("warning");
+    await user.click(screen.getByRole("button", { name: "Undo" }));          // the flag is an edit too
+
     // Undo restores the default; the check is green again
     await user.click(screen.getByRole("button", { name: "Undo" }));
     expect(screen.getByRole("tab", { name: /Checks/ })).toHaveTextContent("valid");

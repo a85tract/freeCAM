@@ -318,6 +318,7 @@ function Editor({ mode, snapshot, service: initialService, client }: { mode: Mod
           events={events}
           savedFiles={savedFiles}
           onRun={() => startRun(false)}
+          onEnableExperimental={() => dispatch({ type: "set_experimental", experimental: true })}
           onStop={() => client.stop().then(setRun).catch((error: Error) => setNotice(error.message))}
           onClose={() => client.close().then((status) => { setRun(status); client.state().then(setService).catch(() => undefined); }).catch((error: Error) => setNotice(error.message))}
         />

@@ -26,9 +26,10 @@ interface Props {
   onRun: () => void;
   onStop: () => void;
   onClose: () => void;
+  onEnableExperimental: () => void;
 }
 
-function IssueList({ issues, onSelect }: { issues: Issue[]; onSelect: (id: string) => void }) {
+function IssueList({ issues, onSelect, onEnableExperimental }: { issues: Issue[]; onSelect: (id: string) => void; onEnableExperimental?: () => void }) {
   if (!issues.length) return <p className="muted">No findings.</p>;
   return (
     <ul className="issues">
@@ -38,6 +39,9 @@ function IssueList({ issues, onSelect }: { issues: Issue[]; onSelect: (id: strin
           <span>
             {issue.message}
             {issue.node_id && <> — <button className="link" onClick={() => onSelect(issue.node_id as string)}>{issue.node_id}</button></>}
+            {issue.code === "experimental-required" && onEnableExperimental && (
+              <> — <button className="link" onClick={onEnableExperimental}>Enable Experimental</button></>
+            )}
           </span>
         </li>
       ))}
@@ -63,7 +67,10 @@ export function BottomPanel(props: Props) {
         {props.tab === "checks" && (
           <div>
             <h3 style={{ margin: "4px 0" }}>Browser check</h3>
-            <IssueList issues={props.browserReport.issues} onSelect={props.onSelectNode} />
+            <p className="muted" style={{ margin: "0 0 6px" }}>
+              Moving, removing or replacing a physical process leaves the validated default behind; tick Experimental to say so, and the check lets it through as exploratory.
+            </p>
+            <IssueList issues={props.browserReport.issues} onSelect={props.onSelectNode} onEnableExperimental={props.onEnableExperimental} />
             {(props.browserReport.checks.not_verified as string[])?.length > 0 && (
               <>
                 <h3 style={{ margin: "8px 0 4px" }}>Not verified here</h3>
@@ -77,7 +84,7 @@ export function BottomPanel(props: Props) {
             {props.localReport && (
               <>
                 {props.localReport.workflow_hash !== props.document.workflow_hash && <p className="muted">This result is for an earlier version of the draft; validate again.</p>}
-                <IssueList issues={props.localReport.issues} onSelect={props.onSelectNode} />
+                <IssueList issues={props.localReport.issues} onSelect={props.onSelectNode} onEnableExperimental={props.onEnableExperimental} />
               </>
             )}
             <p className="muted" style={{ marginTop: 8 }}>{props.browserReport.disclaimer}</p>
