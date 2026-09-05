@@ -131,6 +131,23 @@ describe("the page in preview mode", () => {
     expect(screen.getByTestId("row-cam_run1.cloud_macro_microphysics")).toHaveTextContent("1 kernel replaced");
   });
 
+  it("says where a disabled stage's work runs, and strikes only what is off", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+    await screen.findByRole("listbox", { name: "Step order" });
+    // the default plan runs wet deposition as its leaves and the macro leaves inside their stage
+    const wetdep = screen.getByTestId("row-cam_run1.wet_deposition");
+    expect(wetdep).toHaveTextContent("runs as its 4 leaves");
+    expect(wetdep).toHaveClass("elsewhere");
+    expect(wetdep).not.toHaveClass("disabled");
+    expect(screen.getByTestId("row-cam_run1.macro_tend_pre_leaf")).toHaveTextContent("runs inside cloud_macro_microphysics");
+    // switch a process off with nothing standing in: that one is struck
+    await user.click(screen.getByRole("button", { name: "Disable shallow_convection" }));
+    const shallow = screen.getByTestId("row-cam_run1.shallow_convection");
+    expect(shallow).toHaveClass("disabled");
+    expect(shallow).toHaveTextContent("off");
+  });
+
   it("lets the details panel be dragged taller, and remembers the height", async () => {
     const user = userEvent.setup();
     render(<App />);

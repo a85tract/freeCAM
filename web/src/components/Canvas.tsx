@@ -6,6 +6,8 @@ import type { WorkflowDocument, WorkflowNode } from "../model/types";
 
 interface Props {
   document: WorkflowDocument;
+  /** parent stage id -> the leaf ids that are the same work in finer pieces */
+  groups: Record<string, string[]>;
   selected: string | null;
   showControl: boolean;
   onSelect: (id: string | null) => void;
@@ -18,9 +20,29 @@ export function visibleNodes(document: WorkflowDocument, showControl: boolean): 
   return showControl ? document.nodes : document.nodes.filter((node) => node.scientific);
 }
 
-function Row({ node, index, selected, movable, onSelect, onKeyDown, onMoveBy, onRemove, onSetEnabled }: {
+/**
+ * For a disabled node, the other form of the same work that does run this step, if any:
+ * a parent stage whose leaves are on, or a leaf whose parent runs whole.  Such a node is
+ * not switched off, only represented elsewhere, and the row says so instead of striking it.
+ */
+export function runsElsewhere(node: WorkflowNode, document: WorkflowDocument, groups: Record<string, string[]>): string | null {
+  if (node.enabled) return null;
+  const byId = new Map(document.nodes.map((entry) => [entry.id, entry]));
+  const leaves = groups[node.id];
+  if (leaves) {
+    const running = leaves.filter((id) => byId.get(id)?.enabled).length;
+    if (running) return `runs as its ${running} ${running > 1 ? "leaves" : "leaf"}`;
+  }
+  for (const [parent, members] of Object.entries(groups)) {
+    if (members.includes(node.id) && byId.get(parent)?.enabled) return `runs inside ${byId.get(parent)!.display_name}`;
+  }
+  return null;
+}
+
+function Row({ node, index, elsewhere, selected, movable, onSelect, onKeyDown, onMoveBy, onRemove, onSetEnabled }: {
   node: WorkflowNode;
   index: number;
+  elsewhere: string | null;
   selected: boolean;
   movable: boolean;
   onSelect: () => void;
@@ -31,7 +53,7 @@ function Row({ node, index, selected, movable, onSelect, onKeyDown, onMoveBy, on
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: node.id, disabled: !movable });
   const style = { transform: CSS.Transform.toString(transform), transition };
-  const classes = ["row", selected ? "selected" : "", node.enabled ? "" : "disabled", node.scientific ? "" : "control", isDragging ? "dragging" : ""].join(" ");
+  const classes = ["row", selected ? "selected" : "", node.enabled ? "" : elsewhere ? "elsewhere" : "disabled", node.scientific ? "" : "control", isDragging ? "dragging" : ""].join(" ");
   const replaced = Object.values(node.configuration.kernels).filter((binding) => binding.kind !== "original").length;
   return (
     <li ref={setNodeRef} style={style} className={classes} tabIndex={0} role="option" aria-selected={selected} aria-label={`${index}. ${node.display_name}`} onClick={onSelect} onFocus={onSelect} onKeyDown={onKeyDown} data-testid={`row-${node.id}`}>
@@ -42,6 +64,7 @@ function Row({ node, index, selected, movable, onSelect, onKeyDown, onMoveBy, on
         <span className="detail">
           {node.origin === "python" ? "Python" : node.origin === "catalog" ? "catalog" : node.kind}
           {node.parent_stage ? " · leaf" : ""}
+          {elsewhere ? ` · ${elsewhere}` : !node.enabled ? " · off" : ""}
           {replaced ? ` · ${replaced} kernel${replaced > 1 ? "s" : ""} replaced` : ""}
           {Object.keys(node.configuration.parameters).length ? " · tuned" : ""}
         </span>
@@ -105,6 +128,7 @@ export function Canvas(props: Props) {
                   <Row
                     node={node}
                     index={position + 1}
+                    elsewhere={runsElsewhere(node, props.document, props.groups)}
                     selected={props.selected === node.id}
                     movable={node.movable}
                     onSelect={() => props.onSelect(node.id)}

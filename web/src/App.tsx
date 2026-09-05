@@ -302,6 +302,7 @@ function Editor({ mode, snapshot, service: initialService, client }: { mode: Mod
         />
         <Canvas
           document={state.document}
+          groups={snapshot.rules.parent_leaf_groups}
           selected={state.selected}
           showControl={state.showControl}
           onSelect={(id) => dispatch({ type: "select", id })}
