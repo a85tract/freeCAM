@@ -44,6 +44,10 @@ policy=${PYCAM_STAGE_EXECUTION:-native-whole}
 # the split radiation class and the cloud stage -- with nothing replaced, so
 # the pair measures the default path with the whole control layer in place.
 class_flags=(--cloud-macro-micro-python)
+# PYCAM_NATIVE_MANIFEST points the freeCAM run at an image other than the case's
+if [ -n "${PYCAM_NATIVE_MANIFEST:-}" ]; then
+  class_flags+=(--native-manifest "${PYCAM_NATIVE_MANIFEST}")
+fi
 if [ -n "${PYCAM_ALL_CLASSES:-}" ]; then
   class_flags+=(--split-radiation --radiation-python
     --python-stages dry_adjustment,shallow_convection,deep_convection,convective_tracer_transport_leaf,vertical_diffusion,gravity_wave_drag,aerosol_wet_deposition_leaf,aerosol_dry_deposition_leaf,chemistry_tendencies_leaf)
