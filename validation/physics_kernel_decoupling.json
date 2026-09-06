@@ -37,17 +37,18 @@
     "numeric_schemes_active": 12,
     "numeric_scheme_coverage": {
       "alternate": 9,
+      "complete": 1,
       "gap": 8,
       "not-required-in-this-configuration": 11,
-      "partial": 4
+      "partial": 3
     },
     "kernels": 6,
     "kernels_by_status": {
-      "complete": 1,
-      "open": 5
+      "complete": 2,
+      "open": 4
     },
     "kernels_bindable": 4,
-    "kernels_validated_through_runner": 2,
+    "kernels_validated_through_runner": 4,
     "catalog_procedures": 371
   },
   "closure": {
@@ -192,8 +193,8 @@
       "enabled": true,
       "parent_stage": "cam_run2.tracers_and_chemistry",
       "classification": "numeric_scheme",
-      "activity": "inert-by-configuration",
-      "activity_basis": "the test tracers are not enabled in this compset (unconfirmed: no targeted test yet)",
+      "activity": "inert-confirmed",
+      "activity_basis": "the test tracers are not enabled in this compset; confirmed: disabled in gate 7333956.desched1, the output still bit-for-bit with the oracle",
       "python_class": "freecam.physics.pausable.TracerTendencies",
       "kernels": [],
       "kernel_candidates": [],
@@ -217,8 +218,8 @@
       "enabled": true,
       "parent_stage": "cam_run2.tracers_and_chemistry",
       "classification": "numeric_scheme",
-      "activity": "inert-by-configuration",
-      "activity_basis": "aoa_tracers_flag is off (unconfirmed: no targeted test yet)",
+      "activity": "inert-confirmed",
+      "activity_basis": "aoa_tracers_flag is off; confirmed: disabled in gate 7333956.desched1, the output still bit-for-bit with the oracle",
       "python_class": "freecam.physics.pausable.AgeOfAirTendencies",
       "kernels": [],
       "kernel_candidates": [],
@@ -753,8 +754,8 @@
       "enabled": true,
       "parent_stage": null,
       "classification": "numeric_scheme",
-      "activity": "inert-by-configuration",
-      "activity_basis": "rayk0 is not set; the routine's tendency is zero and physics_update runs (unconfirmed: no targeted test yet)",
+      "activity": "inert-confirmed",
+      "activity_basis": "rayk0 is not set; the routine's tendency is zero and physics_update runs; confirmed: disabled in gate 7333956.desched1, the output still bit-for-bit with the oracle",
       "python_class": "freecam.physics.pausable.RayleighFriction",
       "kernels": [],
       "kernel_candidates": [
@@ -865,8 +866,8 @@
       "enabled": true,
       "parent_stage": "cam_run2.aerosol_dry_deposition",
       "classification": "numeric_scheme",
-      "activity": "inert-by-configuration",
-      "activity_basis": "carma_model is none (unconfirmed: no targeted test yet)",
+      "activity": "inert-confirmed",
+      "activity_basis": "carma_model is none; confirmed: disabled in gate 7333956.desched1, the output still bit-for-bit with the oracle",
       "python_class": "freecam.physics.pausable.CARMAAerosolTendencies",
       "kernels": [],
       "kernel_candidates": [],
@@ -890,8 +891,8 @@
       "enabled": true,
       "parent_stage": null,
       "classification": "numeric_scheme",
-      "activity": "inert-by-configuration",
-      "activity_basis": "no ionosphere: charge_fix reduces to mbar = mwdry (unconfirmed: no targeted test yet)",
+      "activity": "inert-confirmed",
+      "activity_basis": "no ionosphere: charge_fix reduces to mbar = mwdry; confirmed: disabled in gate 7333956.desched1, the output still bit-for-bit with the oracle",
       "python_class": "freecam.physics.pausable.ChargeNeutrality",
       "kernels": [],
       "kernel_candidates": [],
@@ -1266,8 +1267,8 @@
       "enabled": true,
       "parent_stage": null,
       "classification": "numeric_scheme",
-      "activity": "inert-by-configuration",
-      "activity_basis": "qbo_use_forcing is off (unconfirmed: no targeted test yet)",
+      "activity": "inert-confirmed",
+      "activity_basis": "qbo_use_forcing is off; confirmed: disabled in gate 7333956.desched1, the output still bit-for-bit with the oracle",
       "python_class": "freecam.physics.pausable.QBORelaxation",
       "kernels": [],
       "kernel_candidates": [
@@ -1370,8 +1371,8 @@
       "enabled": true,
       "parent_stage": null,
       "classification": "numeric_scheme",
-      "activity": "inert-by-configuration",
-      "activity_basis": "no WACCM: iondrag_calc returns without a tendency (unconfirmed: no targeted test yet)",
+      "activity": "inert-confirmed",
+      "activity_basis": "no WACCM: iondrag_calc returns without a tendency; confirmed: disabled in gate 7333956.desched1, the output still bit-for-bit with the oracle",
       "python_class": "freecam.physics.pausable.IonDrag",
       "kernels": [],
       "kernel_candidates": [],
@@ -1447,8 +1448,8 @@
       "enabled": true,
       "parent_stage": "cam_run2.finish",
       "classification": "numeric_scheme",
-      "activity": "inert-by-configuration",
-      "activity_basis": "carma_model is none (unconfirmed: no targeted test yet)",
+      "activity": "inert-confirmed",
+      "activity_basis": "carma_model is none; confirmed: disabled in gate 7333956.desched1, the output still bit-for-bit with the oracle",
       "python_class": "freecam.physics.pausable.CARMAStatistics",
       "kernels": [],
       "kernel_candidates": [],
@@ -1976,7 +1977,7 @@
       },
       "alternate_of": [],
       "performance": [],
-      "coverage": "partial",
+      "coverage": "complete",
       "note": null
     },
     {
@@ -2963,8 +2964,8 @@
       "enabled": true,
       "parent_stage": null,
       "classification": "numeric_scheme",
-      "activity": "inert-by-configuration",
-      "activity_basis": "sslt_rebin_adv acts on bulk sea salt, which the modal aerosols do not carry (unconfirmed: no targeted test yet)",
+      "activity": "inert-confirmed",
+      "activity_basis": "sslt_rebin_adv acts on bulk sea salt, which the modal aerosols do not carry; confirmed: disabled in gate 7333956.desched1, the output still bit-for-bit with the oracle",
       "python_class": "freecam.physics.pausable.SeaSaltRebin",
       "kernels": [],
       "kernel_candidates": [
@@ -3115,8 +3116,8 @@
       "enabled": true,
       "parent_stage": "cam_run1.wet_deposition",
       "classification": "numeric_scheme",
-      "activity": "inert-by-configuration",
-      "activity_basis": "modal_aero_prepare has no work outside the sub-column path (unconfirmed: no targeted test yet)",
+      "activity": "inert-confirmed",
+      "activity_basis": "modal_aero_prepare has no work outside the sub-column path; confirmed: disabled in gate 7333956.desched1, the output still bit-for-bit with the oracle",
       "python_class": "freecam.physics.pausable.ModalAerosolPreparation",
       "kernels": [],
       "kernel_candidates": [],
@@ -3165,8 +3166,8 @@
       "enabled": true,
       "parent_stage": "cam_run1.wet_deposition",
       "classification": "numeric_scheme",
-      "activity": "inert-by-configuration",
-      "activity_basis": "carma_model is none (unconfirmed: no targeted test yet)",
+      "activity": "inert-confirmed",
+      "activity_basis": "carma_model is none; confirmed: disabled in gate 7333956.desched1, the output still bit-for-bit with the oracle",
       "python_class": "freecam.physics.pausable.CARMAWetDeposition",
       "kernels": [],
       "kernel_candidates": [],
@@ -4765,6 +4766,22 @@
           "present": true,
           "bfb": true,
           "compared_files": 4
+        },
+        {
+          "path": "segmented, original kernel answered through the pause",
+          "record": "pi_cam_stage7_segmented_original_50step.json",
+          "bfb_record": "pi_cam_stage7_segmented_original_vs_oracle_50step_bfb.json",
+          "present": true,
+          "bfb": true,
+          "compared_files": 4
+        },
+        {
+          "path": "segmented, original kernel answered through the pause",
+          "record": "pi_cam_stage7_segmented_both_50step.json",
+          "bfb_record": "pi_cam_stage7_segmented_both_vs_oracle_50step_bfb.json",
+          "present": true,
+          "bfb": true,
+          "compared_files": 4
         }
       ],
       "status": "complete",
@@ -4796,6 +4813,22 @@
           "path": "legacy-python walk, core through its standalone image",
           "record": "pi_cam_mm_core_standalone_50step.json",
           "bfb_record": "pi_cam_mm_core_standalone_vs_oracle_50step_bfb.json",
+          "present": true,
+          "bfb": true,
+          "compared_files": 4
+        },
+        {
+          "path": "segmented, original kernel answered through the pause",
+          "record": "pi_cam_stage7_segmented_micro_50step.json",
+          "bfb_record": "pi_cam_stage7_segmented_micro_vs_oracle_50step_bfb.json",
+          "present": true,
+          "bfb": true,
+          "compared_files": 4
+        },
+        {
+          "path": "segmented, original kernel answered through the pause",
+          "record": "pi_cam_stage7_segmented_both_50step.json",
+          "bfb_record": "pi_cam_stage7_segmented_both_vs_oracle_50step_bfb.json",
           "present": true,
           "bfb": true,
           "compared_files": 4
@@ -4893,7 +4926,7 @@
       "contract": "reviewed",
       "contract_path": "native/pi_cam/functions/dadadj.yaml",
       "bindable": true,
-      "validated_through_runner": false,
+      "validated_through_runner": true,
       "evidence": {
         "capture": [
           "pi_cam_dadadj_capture_50step.json"
@@ -4914,11 +4947,26 @@
           "pi_cam_dadadj_module_state.json"
         ]
       },
-      "in_model_gates": [],
-      "status": "open",
-      "missing": [
-        "in_model_replacement_bfb"
-      ]
+      "in_model_gates": [
+        {
+          "path": "segmented, original kernel answered through the pause",
+          "record": "pi_cam_pausable_dadadj-pause_50step.json",
+          "bfb_record": "pi_cam_pausable_dadadj-pause_vs_oracle_50step_bfb.json",
+          "present": true,
+          "bfb": true,
+          "compared_files": 4
+        },
+        {
+          "path": "segmented, original kernel answered through the pause",
+          "record": "pi_cam_pausable_both-pause_50step.json",
+          "bfb_record": "pi_cam_pausable_both-pause_vs_oracle_50step_bfb.json",
+          "present": true,
+          "bfb": true,
+          "compared_files": 4
+        }
+      ],
+      "status": "complete",
+      "missing": []
     },
     {
       "kernel": "compute_uwshcu_inv",
@@ -4928,7 +4976,7 @@
       "contract": "reviewed",
       "contract_path": "native/pi_cam/functions/uwshcu.yaml",
       "bindable": true,
-      "validated_through_runner": false,
+      "validated_through_runner": true,
       "evidence": {
         "capture": [],
         "standalone_build": [],
@@ -4937,63 +4985,35 @@
         "replay_public_api": [],
         "module_state": []
       },
-      "in_model_gates": [],
+      "in_model_gates": [
+        {
+          "path": "segmented, original kernel answered through the pause",
+          "record": "pi_cam_pausable_shcu-pause_50step.json",
+          "bfb_record": "pi_cam_pausable_shcu-pause_vs_oracle_50step_bfb.json",
+          "present": true,
+          "bfb": true,
+          "compared_files": 4
+        },
+        {
+          "path": "segmented, original kernel answered through the pause",
+          "record": "pi_cam_pausable_both-pause_50step.json",
+          "bfb_record": "pi_cam_pausable_both-pause_vs_oracle_50step_bfb.json",
+          "present": true,
+          "bfb": true,
+          "compared_files": 4
+        }
+      ],
       "status": "open",
       "missing": [
         "capture",
         "standalone_build",
         "replay_full_chunk",
         "replay_single_column",
-        "replay_public_api",
-        "in_model_replacement_bfb"
+        "replay_public_api"
       ]
     }
   ],
   "unresolved": [
-    {
-      "what": "cam_run2.tracer_tendencies_leaf",
-      "why": "the test tracers are not enabled in this compset (unconfirmed: no targeted test yet)"
-    },
-    {
-      "what": "cam_run2.age_of_air_tendencies_leaf",
-      "why": "aoa_tracers_flag is off (unconfirmed: no targeted test yet)"
-    },
-    {
-      "what": "cam_run2.rayleigh_friction",
-      "why": "rayk0 is not set; the routine's tendency is zero and physics_update runs (unconfirmed: no targeted test yet)"
-    },
-    {
-      "what": "cam_run2.carma_aerosol_tendencies_leaf",
-      "why": "carma_model is none (unconfirmed: no targeted test yet)"
-    },
-    {
-      "what": "cam_run2.charge_neutrality",
-      "why": "no ionosphere: charge_fix reduces to mbar = mwdry (unconfirmed: no targeted test yet)"
-    },
-    {
-      "what": "cam_run2.qbo_relaxation",
-      "why": "qbo_use_forcing is off (unconfirmed: no targeted test yet)"
-    },
-    {
-      "what": "cam_run2.ion_drag",
-      "why": "no WACCM: iondrag_calc returns without a tendency (unconfirmed: no targeted test yet)"
-    },
-    {
-      "what": "cam_run2.carma_statistics_leaf",
-      "why": "carma_model is none (unconfirmed: no targeted test yet)"
-    },
-    {
-      "what": "cam_run1.sea_salt_rebin",
-      "why": "sslt_rebin_adv acts on bulk sea salt, which the modal aerosols do not carry (unconfirmed: no targeted test yet)"
-    },
-    {
-      "what": "cam_run1.modal_aerosol_preparation_leaf",
-      "why": "modal_aero_prepare has no work outside the sub-column path (unconfirmed: no targeted test yet)"
-    },
-    {
-      "what": "cam_run1.carma_wet_deposition_leaf",
-      "why": "carma_model is none (unconfirmed: no targeted test yet)"
-    },
     {
       "what": "micro_mg_tend: capture",
       "why": "no record in validation/ for this step of the loop"
@@ -5067,10 +5087,6 @@
       "why": "no record in validation/ for this step of the loop"
     },
     {
-      "what": "dadadj: in_model_replacement_bfb",
-      "why": "no record in validation/ for this step of the loop"
-    },
-    {
       "what": "compute_uwshcu_inv: capture",
       "why": "no record in validation/ for this step of the loop"
     },
@@ -5091,10 +5107,6 @@
       "why": "no record in validation/ for this step of the loop"
     },
     {
-      "what": "compute_uwshcu_inv: in_model_replacement_bfb",
-      "why": "no record in validation/ for this step of the loop"
-    },
-    {
       "what": "cam_run2.chemistry_tendencies_leaf",
       "why": "the physics catalog lists no procedure under this action; its active call graph must be extended before this action's kernels can be chosen"
     },
@@ -5111,5 +5123,5 @@
       "why": "the physics catalog lists no procedure under this action; its active call graph must be extended before this action's kernels can be chosen"
     }
   ],
-  "coverage_hash": "784134ed9f8ada7085db5e67f53f3db19538791c6ad37ca3b965aebc099a542a"
+  "coverage_hash": "e75d6ef2a5a5fd6e5743d2dc8de6e22b39c37554b4fce4c51ae23f067a314724"
 }

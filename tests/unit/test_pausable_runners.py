@@ -123,7 +123,7 @@ def test_a_pausable_stage_runs_whole_when_nothing_is_replaced_and_refuses_the_wa
         "cam_run2.carma_aerosol_tendencies_leaf", "cam_run2.carma_statistics_leaf", "cam_run2.tracer_tendencies_leaf",
         "cam_run2.age_of_air_tendencies_leaf"}
     rows = {r["kernel"]: r for r in stage.describe_kernels()}
-    assert rows["dadadj"]["bindable"] and not rows["dadadj"]["validated"]
+    assert rows["dadadj"]["bindable"] and rows["dadadj"]["validated"]      # gates 7333952 and 7333955
     assert rows["dadadj"]["contract"]["path"] == "native/pi_cam/functions/dadadj.yaml"
 
 

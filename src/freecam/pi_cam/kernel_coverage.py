@@ -132,6 +132,10 @@ PERFORMANCE_RECORDS = {
     "cam_run1.cloud_macro_microphysics": ("performance_overhead.md",
                                           "pi_cam_native_whole_1month_median.json"),
 }
+#: The inertness gate: a run with the actions expected to be inert switched off,
+#: compared byte for byte with the oracle.  Its summary lists what it disabled.
+INERT_GATE = ("pi_cam_pausable_inert_50step.json", "pi_cam_pausable_inert_vs_oracle_50step_bfb.json")
+
 #: Execution evidence: per-leaf call counts recorded by the online gate and a month.
 EXECUTION_RECORDS = (("online_50step", "pi_cam_exact_cesm_online_50step.json", 50),
                      ("month_1488step", "pi_cam_1month_stage_native-whole.json", 1488))
@@ -227,7 +231,7 @@ def _kernel_rows(stage_classes: Iterable[str], runner_specs: Mapping[str, Any]) 
             evidence = {step: [p.format(name=name) for p in patterns if (VALIDATION / p.format(name=name)).is_file()]
                         for step, patterns in EVIDENCE_PATTERNS.items()}
             gates = []
-            for path, record, bfb_record in IN_MODEL_GATES.get(name, ()):
+            for path, record, bfb_record in (*IN_MODEL_GATES.get(name, ()), *_manifest_gates(spec, name)):
                 bfb = _record(bfb_record)
                 gates.append({
                     "path": path, "record": record, "bfb_record": bfb_record,
@@ -309,6 +313,7 @@ def build_coverage() -> dict[str, Any]:
         for action in actions:
             candidates_by_action.setdefault(str(action), []).append(procedure)
 
+    confirmed_inert = _confirmed_inert()
     ids = [f'{row["phase"]}.{row["name"]}' for row in plan_rows]
     enabled_ids = {i for i, row in zip(ids, plan_rows) if row["enabled"]}
     groups: dict[str, list[str]] = {}
@@ -342,6 +347,10 @@ def build_coverage() -> dict[str, Any]:
         if not enabled:
             activity = "alternate-form" if alternate_of else "disabled"
             basis = ("the same work runs as " + ", ".join(alternate_of)) if alternate_of else None
+        elif i in INERT_BY_CONFIGURATION and i in confirmed_inert:
+            activity = "inert-confirmed"
+            basis = (INERT_BY_CONFIGURATION[i] + f"; confirmed: disabled in gate {confirmed_inert[i]}, "
+                     "the output still bit-for-bit with the oracle")
         elif i in INERT_BY_CONFIGURATION:
             activity = "inert-by-configuration"
             basis = INERT_BY_CONFIGURATION[i] + " (unconfirmed: no targeted test yet)"
@@ -366,7 +375,8 @@ def build_coverage() -> dict[str, Any]:
         if classification != "numeric_scheme":
             coverage = "not-applicable"
         elif activity != "active":
-            coverage = "not-required-in-this-configuration" if activity == "inert-by-configuration" else "alternate"
+            coverage = ("not-required-in-this-configuration" if activity in ("inert-by-configuration", "inert-confirmed")
+                        else "alternate")
         elif not kernels:
             coverage = "gap"
         elif all(k.status == "complete" for k in kernels_by_action[i]):
@@ -435,6 +445,34 @@ def build_coverage() -> dict[str, Any]:
     }
     record["coverage_hash"] = coverage_hash(record)
     return record
+
+
+def _manifest_gates(spec: Any, kernel: str) -> list[tuple[str, str, str]]:
+    """The pause gates the runner manifest names for a kernel: (summary, comparison) pairs under validation/."""
+
+    if spec is None:
+        return []
+    gates: list[tuple[str, str, str]] = []
+    for runner_kernel in spec.kernels:
+        if runner_kernel.name != kernel:
+            continue
+        names = [Path(record).name for record in runner_kernel.validated_by]
+        for summary in names:
+            if summary.endswith("_50step.json") and not summary.endswith("_bfb.json"):
+                comparison = summary.replace("_50step.json", "_vs_oracle_50step_bfb.json")
+                if comparison in names:
+                    gates.append(("segmented, original kernel answered through the pause", summary, comparison))
+    return gates
+
+
+def _confirmed_inert() -> dict[str, str]:
+    """action id -> the inertness gate's job id, for every action that gate disabled and stayed bit-for-bit."""
+
+    summary, comparison = (_record(name) for name in INERT_GATE)
+    if summary is None or comparison is None or comparison.get("bfb") is not True:
+        return {}
+    job = str(summary.get("pbs_job_id", "?"))
+    return {str(action): job for action in summary.get("disabled_actions") or ()}
 
 
 def _catalog_revision() -> str | None:

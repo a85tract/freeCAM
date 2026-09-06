@@ -111,7 +111,10 @@ whose leaves run, or a leaf whose stage runs whole), never as a hole. An
 enabled scheme whose body is expected to do nothing under this configuration
 (`rayleigh_friction` without `rayk0`, the CARMA leaves with no CARMA model)
 is marked inert-by-configuration and listed as unresolved until a targeted
-test confirms it; it is not counted as covered. Execution is evidenced from
+test confirms it; it is not counted as covered. The inertness gate is that
+test: one 50-step run with all eleven such actions disabled, bit-for-bit with
+the oracle (`pi_cam_pausable_inert_vs_oracle_50step_bfb.json`), flips them to
+inert-confirmed. Execution is evidenced from
 the recorded runs at two lengths, 50 steps and a month, not assumed from the
 plan.
 
@@ -127,8 +130,16 @@ committed file equals a fresh build or the test fails.
 | `micro_mg_tend` | Microphysics (in the cloud stage) | reviewed | yes, validated | segmented, bit-for-bit (100 pauses in 50 steps); alone and together with `mmacro_pcond` (200 pauses) | open: no captured calls replayed through its standalone image yet |
 | `rad_rrtmg_sw` | Radiation | draft | no | walk with the original kernel, bit-for-bit | open |
 | `rad_rrtmg_lw` | Radiation | draft | no | walk with the original kernel, bit-for-bit | open |
-| `dadadj` | DryAdjustment (pausable) | reviewed | yes, gate pending | pending | open: the in-model gate |
-| `compute_uwshcu_inv` | ShallowConvection (pausable) | reviewed | yes, gate pending | pending | open: the in-model gate, capture and replay |
+| `dadadj` | DryAdjustment (pausable) | reviewed | yes, validated | segmented, bit-for-bit (100 pauses in 50 steps); alone and together with `compute_uwshcu_inv` | complete |
+| `compute_uwshcu_inv` | ShallowConvection (pausable) | reviewed | yes, validated | segmented, bit-for-bit (100 pauses in 50 steps); alone and together with `dadadj` | open: no captured calls replayed through a standalone image yet |
+
+The pausable classes were gated on 2026-09-06 in six 512-rank 50-step runs on
+one image: each class installed with nothing replaced (dry adjustment, shallow
+convection), each kernel answered by the original through the pause, both
+paused in the same run, and the eleven inert actions disabled at once. All six
+are bit-for-bit with the oracle; the records are the
+`validation/pi_cam_pausable_*_50step.json` summaries and their
+`_vs_oracle_50step_bfb.json` comparisons.
 
 Twelve enabled scheme actions do numerical work in this configuration. Four
 have a Python class today, all partial by the loop above: the cloud stage's

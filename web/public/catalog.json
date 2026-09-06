@@ -52,23 +52,33 @@
   },
   {
    "bindable": true,
-   "evidence": [],
+   "evidence": [
+    "validation/pi_cam_pausable_dadadj-pause_50step.json",
+    "validation/pi_cam_pausable_dadadj-pause_vs_oracle_50step_bfb.json",
+    "validation/pi_cam_pausable_both-pause_50step.json",
+    "validation/pi_cam_pausable_both-pause_vs_oracle_50step_bfb.json"
+   ],
    "kernel": "dadadj",
    "owner_class": "freecam.physics.pausable.DryAdjustment",
-   "reason": "bindable, but the pause path has not passed a bit-for-bit gate",
+   "reason": null,
    "stage_action": "cam_run1.dry_adjustment",
    "stage_class": "freecam.physics.pausable.DryAdjustment",
-   "validated": false
+   "validated": true
   },
   {
    "bindable": true,
-   "evidence": [],
+   "evidence": [
+    "validation/pi_cam_pausable_shcu-pause_50step.json",
+    "validation/pi_cam_pausable_shcu-pause_vs_oracle_50step_bfb.json",
+    "validation/pi_cam_pausable_both-pause_50step.json",
+    "validation/pi_cam_pausable_both-pause_vs_oracle_50step_bfb.json"
+   ],
    "kernel": "compute_uwshcu_inv",
    "owner_class": "freecam.physics.pausable.ShallowConvection",
-   "reason": "bindable, but the pause path has not passed a bit-for-bit gate",
+   "reason": null,
    "stage_action": "cam_run1.shallow_convection",
    "stage_class": "freecam.physics.pausable.ShallowConvection",
-   "validated": false
+   "validated": true
   }
  ],
  "cases": {
@@ -77,11 +87,11 @@
   "PI-atm-online": "configs/pi_cam_icesm131_online.yaml",
   "PI-atm-replay": "configs/pi_cam_icesm131_replay.yaml"
  },
- "catalog_hash": "c4ac252353479d1e6e3d9e3d5c8f1a5d31c7bf76ac6c63b78ee6a75347f92ec0",
- "commit": "ab7b4eb60d1e5ab3006a0f1ce9bb1c103b90c555",
+ "catalog_hash": "b3c94776414dfab09f68693ea577af5b5d78e748a0d2787368fc73881a6715bf",
+ "commit": "8513d139d219daa1d2630f0ac68a6c9c7f8d254b",
  "default_document": {
   "case": "PI-atm",
-  "catalog_version": "c4ac252353479d1e6e3d9e3d5c8f1a5d31c7bf76ac6c63b78ee6a75347f92ec0",
+  "catalog_version": "b3c94776414dfab09f68693ea577af5b5d78e748a0d2787368fc73881a6715bf",
   "experimental": false,
   "namelist": {},
   "nodes": [
@@ -1306,13 +1316,18 @@
      "kernels": [
       {
        "bindable": true,
-       "evidence": [],
+       "evidence": [
+        "validation/pi_cam_pausable_dadadj-pause_50step.json",
+        "validation/pi_cam_pausable_dadadj-pause_vs_oracle_50step_bfb.json",
+        "validation/pi_cam_pausable_both-pause_50step.json",
+        "validation/pi_cam_pausable_both-pause_vs_oracle_50step_bfb.json"
+       ],
        "kernel": "dadadj",
        "owner_class": "freecam.physics.pausable.DryAdjustment",
-       "reason": "bindable, but the pause path has not passed a bit-for-bit gate",
+       "reason": null,
        "stage_action": "cam_run1.dry_adjustment",
        "stage_class": "freecam.physics.pausable.DryAdjustment",
-       "validated": false
+       "validated": true
       }
      ],
      "parameters": []
@@ -1416,13 +1431,18 @@
      "kernels": [
       {
        "bindable": true,
-       "evidence": [],
+       "evidence": [
+        "validation/pi_cam_pausable_shcu-pause_50step.json",
+        "validation/pi_cam_pausable_shcu-pause_vs_oracle_50step_bfb.json",
+        "validation/pi_cam_pausable_both-pause_50step.json",
+        "validation/pi_cam_pausable_both-pause_vs_oracle_50step_bfb.json"
+       ],
        "kernel": "compute_uwshcu_inv",
        "owner_class": "freecam.physics.pausable.ShallowConvection",
-       "reason": "bindable, but the pause path has not passed a bit-for-bit gate",
+       "reason": null,
        "stage_action": "cam_run1.shallow_convection",
        "stage_class": "freecam.physics.pausable.ShallowConvection",
-       "validated": false
+       "validated": true
       }
      ],
      "parameters": [
@@ -3462,13 +3482,18 @@
     "kernels": [
      {
       "bindable": true,
-      "evidence": [],
+      "evidence": [
+       "validation/pi_cam_pausable_dadadj-pause_50step.json",
+       "validation/pi_cam_pausable_dadadj-pause_vs_oracle_50step_bfb.json",
+       "validation/pi_cam_pausable_both-pause_50step.json",
+       "validation/pi_cam_pausable_both-pause_vs_oracle_50step_bfb.json"
+      ],
       "kernel": "dadadj",
       "owner_class": "freecam.physics.pausable.DryAdjustment",
-      "reason": "bindable, but the pause path has not passed a bit-for-bit gate",
+      "reason": null,
       "stage_action": "cam_run1.dry_adjustment",
       "stage_class": "freecam.physics.pausable.DryAdjustment",
-      "validated": false
+      "validated": true
      }
     ],
     "parameters": []
@@ -3572,13 +3597,18 @@
     "kernels": [
      {
       "bindable": true,
-      "evidence": [],
+      "evidence": [
+       "validation/pi_cam_pausable_shcu-pause_50step.json",
+       "validation/pi_cam_pausable_shcu-pause_vs_oracle_50step_bfb.json",
+       "validation/pi_cam_pausable_both-pause_50step.json",
+       "validation/pi_cam_pausable_both-pause_vs_oracle_50step_bfb.json"
+      ],
       "kernel": "compute_uwshcu_inv",
       "owner_class": "freecam.physics.pausable.ShallowConvection",
-      "reason": "bindable, but the pause path has not passed a bit-for-bit gate",
+      "reason": null,
       "stage_action": "cam_run1.shallow_convection",
       "stage_class": "freecam.physics.pausable.ShallowConvection",
-      "validated": false
+      "validated": true
      }
     ],
     "parameters": [
@@ -5826,13 +5856,18 @@
     "kernels": [
      {
       "bindable": true,
-      "evidence": [],
+      "evidence": [
+       "validation/pi_cam_pausable_dadadj-pause_50step.json",
+       "validation/pi_cam_pausable_dadadj-pause_vs_oracle_50step_bfb.json",
+       "validation/pi_cam_pausable_both-pause_50step.json",
+       "validation/pi_cam_pausable_both-pause_vs_oracle_50step_bfb.json"
+      ],
       "kernel": "dadadj",
       "owner_class": "freecam.physics.pausable.DryAdjustment",
-      "reason": "bindable, but the pause path has not passed a bit-for-bit gate",
+      "reason": null,
       "stage_action": "cam_run1.dry_adjustment",
       "stage_class": "freecam.physics.pausable.DryAdjustment",
-      "validated": false
+      "validated": true
      }
     ],
     "parameters": []
@@ -5948,13 +5983,18 @@
     "kernels": [
      {
       "bindable": true,
-      "evidence": [],
+      "evidence": [
+       "validation/pi_cam_pausable_shcu-pause_50step.json",
+       "validation/pi_cam_pausable_shcu-pause_vs_oracle_50step_bfb.json",
+       "validation/pi_cam_pausable_both-pause_50step.json",
+       "validation/pi_cam_pausable_both-pause_vs_oracle_50step_bfb.json"
+      ],
       "kernel": "compute_uwshcu_inv",
       "owner_class": "freecam.physics.pausable.ShallowConvection",
-      "reason": "bindable, but the pause path has not passed a bit-for-bit gate",
+      "reason": null,
       "stage_action": "cam_run1.shallow_convection",
       "stage_class": "freecam.physics.pausable.ShallowConvection",
-      "validated": false
+      "validated": true
      }
     ],
     "parameters": [
@@ -18522,7 +18562,7 @@
    "writes": []
   }
  ],
- "generated_at": "2026-09-06T11:54:29+00:00",
+ "generated_at": "2026-09-06T12:19:15+00:00",
  "parameters": {
   "cam_run1.cloud_macro_microphysics": [
    {

@@ -40,21 +40,30 @@ def test_the_inventory_closes_over_the_step_plan_and_the_catalog() -> None:
     # a leaf's execution is counted from the recorded runs, at both lengths
     assert by_id["cam_run1.aerosol_wet_deposition_leaf"]["execution"] == {"online_50step": 51, "month_1488step": 1489}
     assert by_id["cam_run1.macro_tend_pre_leaf"]["execution"] == {"online_50step": 0, "month_1488step": 0}
-    # an inert-by-configuration action is not counted as covered, and is listed as unresolved
+    # an inert action is confirmed by the inertness gate (7333956: the eleven disabled, bit-for-bit)
+    # and is then neither counted as covered nor listed as unresolved
+    rayleigh = by_id["cam_run2.rayleigh_friction"]
+    assert rayleigh["activity"] == "inert-confirmed" and "7333956" in rayleigh["activity_basis"]
+    assert rayleigh["coverage"] == "not-required-in-this-configuration"
+    assert not any(u["what"] == "cam_run2.rayleigh_friction" for u in record["unresolved"])
+    assert sum(a["activity"] == "inert-confirmed" for a in record["actions"]) == 11
+
+
+def test_an_inert_action_stays_unconfirmed_without_the_gate_s_record(monkeypatch) -> None:
+    monkeypatch.setattr(kernel_coverage, "INERT_GATE", ("missing_summary.json", "missing_bfb.json"))
+    record = kernel_coverage.build_coverage()
+    by_id = {a["id"]: a for a in record["actions"]}
     assert by_id["cam_run2.rayleigh_friction"]["activity"] == "inert-by-configuration"
-    assert by_id["cam_run2.rayleigh_friction"]["coverage"] == "not-required-in-this-configuration"
     assert any(u["what"] == "cam_run2.rayleigh_friction" for u in record["unresolved"])
 
 
-def test_every_kernel_row_is_a_kernel_a_stage_class_describes_and_only_mmacro_pcond_has_closed_the_loop() -> None:
+def test_every_kernel_row_is_a_kernel_a_stage_class_describes_and_two_have_closed_the_loop() -> None:
     record = kernel_coverage.build_coverage()
     rows = {k["kernel"]: k for k in record["kernels"]}
     assert set(rows) == {"mmacro_pcond", "micro_mg_tend", "rad_rrtmg_sw", "rad_rrtmg_lw",
                          "dadadj", "compute_uwshcu_inv"}
-    # the pausable stages: dadadj's standalone loop is closed and only the in-model gate is owed
+    # the pausable stages: dadadj has a reviewed contract and the runner pauses at it
     assert rows["dadadj"]["bindable"] and rows["dadadj"]["contract"] == "reviewed"
-    assert rows["dadadj"]["missing"] == ["in_model_replacement_bfb"]
-    assert rows["compute_uwshcu_inv"]["bindable"] and "in_model_replacement_bfb" in rows["compute_uwshcu_inv"]["missing"]
     pcond = rows["mmacro_pcond"]
     assert pcond["status"] == "complete" and pcond["missing"] == []
     assert pcond["contract"] == "reviewed" and pcond["bindable"] and pcond["validated_through_runner"]
@@ -65,11 +74,21 @@ def test_every_kernel_row_is_a_kernel_a_stage_class_describes_and_only_mmacro_pc
     assert micro["validated_through_runner"]                    # gate 7331040
     assert "segment_runner" not in micro["missing"] and "in_model_replacement_bfb" not in micro["missing"]
     assert "capture" in micro["missing"]                        # no captured calls replayed through its image yet
-    assert record["summary"]["kernels_validated_through_runner"] == 2
+    assert record["summary"]["kernels_validated_through_runner"] == 4
     assert micro["in_model_gates"][0]["bfb"] is True          # the walk with the core through its image
+    # the pause gates the manifest names are in-model evidence too (7331040, 7331041)
+    assert [g["record"] for g in micro["in_model_gates"][1:]] == [
+        "pi_cam_stage7_segmented_micro_50step.json", "pi_cam_stage7_segmented_both_50step.json"]
+    # the pausable classes' kernels: dadadj has closed the loop (7333952, 7333955), uwshcu lacks capture/replay
+    dadadj = rows["dadadj"]
+    assert dadadj["status"] == "complete" and dadadj["validated_through_runner"]
+    assert all(g["bfb"] is True and g["path"].startswith("segmented") for g in dadadj["in_model_gates"])
+    uwshcu = rows["compute_uwshcu_inv"]
+    assert uwshcu["status"] == "open" and uwshcu["validated_through_runner"]
+    assert "in_model_replacement_bfb" not in uwshcu["missing"] and "capture" in uwshcu["missing"]
     for name in ("rad_rrtmg_sw", "rad_rrtmg_lw"):
         assert rows[name]["contract"] == "draft" and "reviewed_contract" in rows[name]["missing"]
-    assert record["summary"]["kernels_by_status"] == {"complete": 1, "open": 5}
+    assert record["summary"]["kernels_by_status"] == {"complete": 2, "open": 4}
 
 
 def test_the_committed_record_is_what_the_builder_writes_now() -> None:

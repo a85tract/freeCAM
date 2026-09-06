@@ -50,7 +50,11 @@ runners:
   - name: dadadj
     owner: freecam.physics.pausable.DryAdjustment
     frame: native/pi_cam/segment_frames.yaml
-    validated_by: []
+    validated_by:
+    - validation/pi_cam_pausable_dadadj-pause_50step.json
+    - validation/pi_cam_pausable_dadadj-pause_vs_oracle_50step_bfb.json
+    - validation/pi_cam_pausable_both-pause_50step.json
+    - validation/pi_cam_pausable_both-pause_vs_oracle_50step_bfb.json
 - stage: cam_run1.shallow_convection
   prefix: pycam_shcu
   module: native/pi_cam/support/pycam_shcu_runner.F90
@@ -61,4 +65,8 @@ runners:
   - name: compute_uwshcu_inv
     owner: freecam.physics.pausable.ShallowConvection
     frame: native/pi_cam/segment_frames.yaml
-    validated_by: []
+    validated_by:
+    - validation/pi_cam_pausable_shcu-pause_50step.json
+    - validation/pi_cam_pausable_shcu-pause_vs_oracle_50step_bfb.json
+    - validation/pi_cam_pausable_both-pause_50step.json
+    - validation/pi_cam_pausable_both-pause_vs_oracle_50step_bfb.json
