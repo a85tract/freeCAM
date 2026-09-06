@@ -473,6 +473,7 @@ def main(argv: list[str] | None = None) -> int:
                 ),
                 unsafe=True,
             )
+        installed_kernels: set[str] = set()      # every swappable kernel of the classes installed this run
         if args.radiation_python:
             # The same shape for radiation: Radiation.tend between the two
             # halves of the split stage, native and non-transactional for the
@@ -487,6 +488,7 @@ def main(argv: list[str] | None = None) -> int:
                 for kernel_name in [k.strip() for k in args.segmented_original_kernels.split(",") if k.strip()]:
                     if kernel_name in scheme.kernels:
                         scheme.kernels[kernel_name] = OriginalKernel()
+            installed_kernels.update(scheme.kernels)
             cam.python_processes.install(
                 PythonProcessSpec.from_callable(
                     scheme.tend,
@@ -519,12 +521,13 @@ def main(argv: list[str] | None = None) -> int:
                 macro_surrogate=args.macro_kernel_surrogate)
             scheme.execution_policy = args.stage_execution
             if args.segmented_original:
+                # the kernel list is shared by every class installed this run; a name that
+                # belongs to none of them is refused below, once all are installed
                 from freecam.physics.segments import OriginalKernel
                 for kernel_name in [k.strip() for k in args.segmented_original_kernels.split(",") if k.strip()]:
-                    if kernel_name not in scheme.kernels:
-                        raise SystemExit(f"--segmented-original-kernels: {kernel_name!r} is not a kernel "
-                                         f"of the stage; it has {list(scheme.kernels)}")
-                    scheme.kernels[kernel_name] = OriginalKernel()
+                    if kernel_name in scheme.kernels:
+                        scheme.kernels[kernel_name] = OriginalKernel()
+            installed_kernels.update(scheme.kernels)
             cam.step_plan.set_enabled("cloud_macro_microphysics", False, phase="cam_run1", experimental=True)
             cam.python_processes.install(
                 PythonProcessSpec.from_callable(
@@ -570,6 +573,15 @@ def main(argv: list[str] | None = None) -> int:
                 ),
                 unsafe=True,
             )
+            installed_kernels.update(pausable_stage.kernels)
+        if args.segmented_original:
+            # every replaced kernel must belong to a class installed this run: a name
+            # nobody owns would leave the original in place silently
+            orphans = [k.strip() for k in args.segmented_original_kernels.split(",")
+                       if k.strip() and k.strip() not in installed_kernels]
+            if orphans:
+                raise SystemExit(f"--segmented-original-kernels: {orphans} belong to no installed stage class; "
+                                 f"installed classes own {sorted(installed_kernels)}")
         for request in history_streams:
             cam.install_history_stream(
                 str(request["name"]),
