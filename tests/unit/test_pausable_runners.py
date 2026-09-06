@@ -258,8 +258,11 @@ def test_the_deep_convection_frames_address_the_module_state_and_answerable_scal
     leaf = (pausable.SUPPORT / "pycam_zmtran_zm2.F90").read_text()
     # zm_conv_intr's per-chunk arrays (control patch 0044) are addressed through a TARGET dummy
     assert "use zm_conv_intr, only: mu, eu, du, md, ed, dp, dsubcld, jt, maxg, ideep, lengath" in deep
-    assert "call slot_address_r8(mu(1,1,lchnk), address)" in deep and "call slot_address_i4(lengath(lchnk), address)" in deep
-    assert "call slot_address_r8(mu(1,1,lchnk), address)" in leaf and "call slot_address_i4(jt(1,lchnk), address)" in leaf
+    # a section goes to an assumed-shape helper of its rank; an element (momtran's mu(1,1,lchnk)) and a
+    # scalar (the gathered count) to the sequence-association helper
+    assert "call slot_address_r8_2(mu(:,:,lchnk), address)" in deep and "call slot_address_i4(lengath(lchnk), address)" in deep
+    assert "call slot_address_r8(mu(1,1,lchnk), address)" in deep
+    assert "call slot_address_r8_2(mu(:,:,lchnk), address)" in leaf and "call slot_address_i4_1(jt(:,lchnk), address)" in leaf
     # a `:pcols` section starts at its lower bound; an automatic array is allocated once and sized by itself
     assert "c_loc(state1%q(1,1,1))" in deep
     assert "allocatable, save, target, public :: rwt(:,:,:,:)" in deep.lower()
@@ -286,6 +289,48 @@ def test_the_deep_convection_classes_own_their_actions_and_kernels() -> None:
     assert ConvectiveTracerTransport.SWAPPABLE == ("convtran",)
     assert ConvectiveTracerTransport.STAGE == "cam_run1.convective_tracer_transport_leaf"
     rows = {r["kernel"]: r for r in DeepConvection().describe_kernels()}
-    assert set(rows) == set(DeepConvection.SWAPPABLE) and all(r["bindable"] and not r["validated"] for r in rows.values())
+    assert set(rows) == set(DeepConvection.SWAPPABLE) and all(r["bindable"] for r in rows.values())
+    # gates 7334212 and 7334213 answered the evaporation and the momentum transport through the pause
+    assert rows["zm_conv_evap"]["validated"] and rows["momtran"]["validated"] and not rows["zm_convr"]["validated"]
     leaf = {r["kernel"]: r for r in ConvectiveTracerTransport().describe_kernels()}
     assert leaf["convtran"]["bindable"] and not leaf["convtran"]["validated"]
+
+
+def test_the_tphysac_frames_serve_every_site_alike_and_size_automatic_arrays_per_chunk() -> None:
+    frames = yaml.safe_load(pausable.FRAMES.read_text())["kernels"]
+    vdiff = {s["name"]: s for s in frames["compute_vdiff"]}
+    gw = {s["name"]: s for s in frames["gw_drag_prof"]}
+    assert len(frames["compute_vdiff"]) == 42 and len(frames["gw_drag_prof"]) == 33
+    # the solver's two sites serve one frame: the optional the dry site omits is an empty slot,
+    # a selector with private components is opaque, procedure arguments are not slots
+    assert vdiff["kvt"]["kind"] == "absent" and vdiff["fieldlist"]["kind"] == "opaque"
+    assert "compute_molec_diff" not in vdiff and "vd_lu_qdecomp" not in vdiff and "errstring" not in vdiff
+    driver = (pausable.SUPPORT / "pycam_vdiff_driver.F90").read_text()
+    assert "subroutine compute_vdiff_1_frame" in driver and "subroutine compute_vdiff_2_original" in driver
+    # a module pointer array's section is addressed through an assumed-shape helper of its rank
+    assert "call slot_address_r8_2(cpairv(:,:,state%lchnk), address)" in driver
+    assert "use shr_kind_mod, only: i4=> shr_kind_i4" in driver
+    runner = (pausable.SUPPORT / "pycam_vdiff_runner.F90").read_text()
+    assert "case (pc_at_compute_vdiff_1)" in runner and "case (pc_at_compute_vdiff_2)" in runner
+    assert "if (trim(eddy_scheme) /= 'diag_TKE') then" in runner
+    glue = (pausable.SUPPORT / "pycam_vdiff_glue.F90").read_text()
+    assert "pycam_ac_carry_v1" in glue and "logical, save, public :: do_clubb_sgs = .false." in glue
+    # the band and the coordinates by component; the optional adjustment an empty slot
+    assert {n for n in gw if n.startswith("band.")} == {"band.ngwv", "band.kwv", "band.effkwv"}
+    assert {n for n in gw if n.startswith("p.")} == {"p.del", "p.rdel"} and gw["ro_adjust"]["kind"] == "absent"
+    gwd = (pausable.SUPPORT / "pycam_gwd_driver.F90").read_text()
+    assert "allocatable, save, target, public :: ttgw(:,:)" in gwd
+    assert "if (any(shape(ttgw) /= (/ state%ncol, pver /))) deallocate(ttgw)" in gwd
+    assert "use gw_drag, only: band_oro" in gwd and "gw_spec_outflds" in gwd
+    # the frame ABI carries five extents: the tracer ratio is rank four
+    assert "shapes(5, count)" in runner and "shapes(5, count)" in (pausable.SUPPORT / "pycam_stage7_runner.F90").read_text()
+
+
+def test_the_tphysac_classes_own_their_actions_and_kernels() -> None:
+    from freecam.physics.pausable import STAGES, GravityWaveDrag, VerticalDiffusion
+
+    assert STAGES["vertical_diffusion"] is VerticalDiffusion and STAGES["gravity_wave_drag"] is GravityWaveDrag
+    assert VerticalDiffusion.SWAPPABLE == ("compute_tms", "compute_eddy_diff", "compute_vdiff")
+    assert GravityWaveDrag.SWAPPABLE == ("gw_drag_prof",) and GravityWaveDrag.STAGE == "cam_run2.gravity_wave_drag"
+    rows = {r["kernel"]: r for r in VerticalDiffusion().describe_kernels()}
+    assert set(rows) == set(VerticalDiffusion.SWAPPABLE) and all(r["bindable"] for r in rows.values())

@@ -123,11 +123,15 @@ runners:
   - name: zm_conv_evap
     owner: freecam.physics.pausable.DeepConvection
     frame: native/pi_cam/segment_frames.yaml
-    validated_by: []
+    validated_by:
+    - validation/pi_cam_pausable_deep-evap_50step.json
+    - validation/pi_cam_pausable_deep-evap_vs_oracle_50step_bfb.json
   - name: momtran
     owner: freecam.physics.pausable.DeepConvection
     frame: native/pi_cam/segment_frames.yaml
-    validated_by: []
+    validated_by:
+    - validation/pi_cam_pausable_deep-momtran_50step.json
+    - validation/pi_cam_pausable_deep-momtran_vs_oracle_50step_bfb.json
 - stage: cam_run1.convective_tracer_transport_leaf
   prefix: pycam_zmtran
   module: native/pi_cam/support/pycam_zmtran_runner.F90
@@ -137,5 +141,38 @@ runners:
   kernels:
   - name: convtran
     owner: freecam.physics.pausable.ConvectiveTracerTransport
+    frame: native/pi_cam/segment_frames.yaml
+    validated_by: []
+# The tphysac stages: vertical diffusion (its solver paused at both call
+# sites) and gravity wave drag (the orographic source's drag profile).  Both
+# read their modules' private state through control patches 0045 and 0046.
+- stage: cam_run2.vertical_diffusion
+  prefix: pycam_vdiff
+  module: native/pi_cam/support/pycam_vdiff_runner.F90
+  generator: tools/generate_pi_cam_pausable_runners.py
+  descriptors: native/pi_cam/direct_kernels_promoted.yaml
+  original: true
+  kernels:
+  - name: compute_tms
+    owner: freecam.physics.pausable.VerticalDiffusion
+    frame: native/pi_cam/segment_frames.yaml
+    validated_by: []
+  - name: compute_eddy_diff
+    owner: freecam.physics.pausable.VerticalDiffusion
+    frame: native/pi_cam/segment_frames.yaml
+    validated_by: []
+  - name: compute_vdiff
+    owner: freecam.physics.pausable.VerticalDiffusion
+    frame: native/pi_cam/segment_frames.yaml
+    validated_by: []
+- stage: cam_run2.gravity_wave_drag
+  prefix: pycam_gwd
+  module: native/pi_cam/support/pycam_gwd_runner.F90
+  generator: tools/generate_pi_cam_pausable_runners.py
+  descriptors: native/pi_cam/direct_kernels_promoted.yaml
+  original: true
+  kernels:
+  - name: gw_drag_prof
+    owner: freecam.physics.pausable.GravityWaveDrag
     frame: native/pi_cam/segment_frames.yaml
     validated_by: []

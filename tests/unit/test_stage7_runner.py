@@ -9,6 +9,8 @@ from pathlib import Path
 import numpy as np
 import pytest
 
+from freecam.pi_cam import segment_runner as runners
+
 REPO = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO / "tools"))
 
@@ -79,7 +81,7 @@ class _Entry:
             ncol._obj.value, substep._obj.value, token._obj.value = 6, 2, lib.token
             for i in range(n):                                     # every slot: a 2-D double, intent in
                 ptrs[i] = lib.arrays["t0"].ctypes.data; ndims[i] = 2
-                shapes[3 * i], shapes[3 * i + 1] = 8, 4; dtypes[i] = 1; intents[i] = 0
+                shapes[runners.FRAME_MAX_RANK * i], shapes[runners.FRAME_MAX_RANK * i + 1] = 8, 4; dtypes[i] = 1; intents[i] = 0
             names = lib.names
             ptrs[names.index("s_tendout")] = lib.arrays["s_tendout"].ctypes.data
             intents[names.index("s_tendout")] = 1

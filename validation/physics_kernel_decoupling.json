@@ -38,17 +38,17 @@
     "numeric_scheme_coverage": {
       "alternate": 9,
       "complete": 1,
-      "gap": 6,
+      "gap": 4,
       "not-required-in-this-configuration": 11,
-      "partial": 5
+      "partial": 7
     },
-    "kernels": 10,
+    "kernels": 14,
     "kernels_by_status": {
       "complete": 2,
-      "open": 8
+      "open": 12
     },
-    "kernels_bindable": 10,
-    "kernels_validated_through_runner": 6,
+    "kernels_bindable": 14,
+    "kernels_validated_through_runner": 8,
     "catalog_procedures": 371
   },
   "closure": {
@@ -270,8 +270,12 @@
       "classification": "numeric_scheme",
       "activity": "active",
       "activity_basis": "enabled in the plan; called every step in the recorded runs",
-      "python_class": null,
-      "kernels": [],
+      "python_class": "freecam.physics.pausable.VerticalDiffusion",
+      "kernels": [
+        "compute_tms",
+        "compute_eddy_diff",
+        "compute_vdiff"
+      ],
       "kernel_candidates": [
         {
           "name": "vertical_diffusion",
@@ -741,7 +745,7 @@
       },
       "alternate_of": [],
       "performance": [],
-      "coverage": "gap",
+      "coverage": "partial",
       "note": null
     },
     {
@@ -918,8 +922,10 @@
       "classification": "numeric_scheme",
       "activity": "active",
       "activity_basis": "enabled in the plan; called every step in the recorded runs",
-      "python_class": null,
-      "kernels": [],
+      "python_class": "freecam.physics.pausable.GravityWaveDrag",
+      "kernels": [
+        "gw_drag_prof"
+      ],
       "kernel_candidates": [
         {
           "name": "cam_energy_fixer_2",
@@ -1254,7 +1260,7 @@
       },
       "alternate_of": [],
       "performance": [],
-      "coverage": "gap",
+      "coverage": "partial",
       "note": null
     },
     {
@@ -5114,7 +5120,7 @@
       "contract": "frame",
       "contract_path": "native/pi_cam/segment_frames.yaml",
       "bindable": true,
-      "validated_through_runner": false,
+      "validated_through_runner": true,
       "evidence": {
         "capture": [],
         "standalone_build": [],
@@ -5123,21 +5129,65 @@
         "replay_public_api": [],
         "module_state": []
       },
-      "in_model_gates": [],
+      "in_model_gates": [
+        {
+          "path": "segmented, original kernel answered through the pause",
+          "record": "pi_cam_pausable_deep-evap_50step.json",
+          "bfb_record": "pi_cam_pausable_deep-evap_vs_oracle_50step_bfb.json",
+          "present": true,
+          "bfb": true,
+          "compared_files": 4
+        }
+      ],
       "status": "open",
       "missing": [
         "capture",
         "standalone_build",
         "replay_full_chunk",
         "replay_single_column",
-        "replay_public_api",
-        "in_model_replacement_bfb"
+        "replay_public_api"
       ]
     },
     {
       "kernel": "momtran",
       "stage_action": "cam_run1.deep_convection",
       "owner_class": "freecam.physics.pausable.DeepConvection",
+      "routine": null,
+      "contract": "frame",
+      "contract_path": "native/pi_cam/segment_frames.yaml",
+      "bindable": true,
+      "validated_through_runner": true,
+      "evidence": {
+        "capture": [],
+        "standalone_build": [],
+        "replay_full_chunk": [],
+        "replay_single_column": [],
+        "replay_public_api": [],
+        "module_state": []
+      },
+      "in_model_gates": [
+        {
+          "path": "segmented, original kernel answered through the pause",
+          "record": "pi_cam_pausable_deep-momtran_50step.json",
+          "bfb_record": "pi_cam_pausable_deep-momtran_vs_oracle_50step_bfb.json",
+          "present": true,
+          "bfb": true,
+          "compared_files": 4
+        }
+      ],
+      "status": "open",
+      "missing": [
+        "capture",
+        "standalone_build",
+        "replay_full_chunk",
+        "replay_single_column",
+        "replay_public_api"
+      ]
+    },
+    {
+      "kernel": "convtran",
+      "stage_action": "cam_run1.convective_tracer_transport_leaf",
+      "owner_class": "freecam.physics.pausable.ConvectiveTracerTransport",
       "routine": null,
       "contract": "frame",
       "contract_path": "native/pi_cam/segment_frames.yaml",
@@ -5163,9 +5213,93 @@
       ]
     },
     {
-      "kernel": "convtran",
-      "stage_action": "cam_run1.convective_tracer_transport_leaf",
-      "owner_class": "freecam.physics.pausable.ConvectiveTracerTransport",
+      "kernel": "compute_tms",
+      "stage_action": "cam_run2.vertical_diffusion",
+      "owner_class": "freecam.physics.pausable.VerticalDiffusion",
+      "routine": null,
+      "contract": "frame",
+      "contract_path": "native/pi_cam/segment_frames.yaml",
+      "bindable": true,
+      "validated_through_runner": false,
+      "evidence": {
+        "capture": [],
+        "standalone_build": [],
+        "replay_full_chunk": [],
+        "replay_single_column": [],
+        "replay_public_api": [],
+        "module_state": []
+      },
+      "in_model_gates": [],
+      "status": "open",
+      "missing": [
+        "capture",
+        "standalone_build",
+        "replay_full_chunk",
+        "replay_single_column",
+        "replay_public_api",
+        "in_model_replacement_bfb"
+      ]
+    },
+    {
+      "kernel": "compute_eddy_diff",
+      "stage_action": "cam_run2.vertical_diffusion",
+      "owner_class": "freecam.physics.pausable.VerticalDiffusion",
+      "routine": null,
+      "contract": "frame",
+      "contract_path": "native/pi_cam/segment_frames.yaml",
+      "bindable": true,
+      "validated_through_runner": false,
+      "evidence": {
+        "capture": [],
+        "standalone_build": [],
+        "replay_full_chunk": [],
+        "replay_single_column": [],
+        "replay_public_api": [],
+        "module_state": []
+      },
+      "in_model_gates": [],
+      "status": "open",
+      "missing": [
+        "capture",
+        "standalone_build",
+        "replay_full_chunk",
+        "replay_single_column",
+        "replay_public_api",
+        "in_model_replacement_bfb"
+      ]
+    },
+    {
+      "kernel": "compute_vdiff",
+      "stage_action": "cam_run2.vertical_diffusion",
+      "owner_class": "freecam.physics.pausable.VerticalDiffusion",
+      "routine": null,
+      "contract": "frame",
+      "contract_path": "native/pi_cam/segment_frames.yaml",
+      "bindable": true,
+      "validated_through_runner": false,
+      "evidence": {
+        "capture": [],
+        "standalone_build": [],
+        "replay_full_chunk": [],
+        "replay_single_column": [],
+        "replay_public_api": [],
+        "module_state": []
+      },
+      "in_model_gates": [],
+      "status": "open",
+      "missing": [
+        "capture",
+        "standalone_build",
+        "replay_full_chunk",
+        "replay_single_column",
+        "replay_public_api",
+        "in_model_replacement_bfb"
+      ]
+    },
+    {
+      "kernel": "gw_drag_prof",
+      "stage_action": "cam_run2.gravity_wave_drag",
+      "owner_class": "freecam.physics.pausable.GravityWaveDrag",
       "routine": null,
       "contract": "frame",
       "contract_path": "native/pi_cam/segment_frames.yaml",
@@ -5313,10 +5447,6 @@
       "why": "no record in validation/ for this step of the loop"
     },
     {
-      "what": "zm_conv_evap: in_model_replacement_bfb",
-      "why": "no record in validation/ for this step of the loop"
-    },
-    {
       "what": "momtran: capture",
       "why": "no record in validation/ for this step of the loop"
     },
@@ -5334,10 +5464,6 @@
     },
     {
       "what": "momtran: replay_public_api",
-      "why": "no record in validation/ for this step of the loop"
-    },
-    {
-      "what": "momtran: in_model_replacement_bfb",
       "why": "no record in validation/ for this step of the loop"
     },
     {
@@ -5365,6 +5491,102 @@
       "why": "no record in validation/ for this step of the loop"
     },
     {
+      "what": "compute_tms: capture",
+      "why": "no record in validation/ for this step of the loop"
+    },
+    {
+      "what": "compute_tms: standalone_build",
+      "why": "no record in validation/ for this step of the loop"
+    },
+    {
+      "what": "compute_tms: replay_full_chunk",
+      "why": "no record in validation/ for this step of the loop"
+    },
+    {
+      "what": "compute_tms: replay_single_column",
+      "why": "no record in validation/ for this step of the loop"
+    },
+    {
+      "what": "compute_tms: replay_public_api",
+      "why": "no record in validation/ for this step of the loop"
+    },
+    {
+      "what": "compute_tms: in_model_replacement_bfb",
+      "why": "no record in validation/ for this step of the loop"
+    },
+    {
+      "what": "compute_eddy_diff: capture",
+      "why": "no record in validation/ for this step of the loop"
+    },
+    {
+      "what": "compute_eddy_diff: standalone_build",
+      "why": "no record in validation/ for this step of the loop"
+    },
+    {
+      "what": "compute_eddy_diff: replay_full_chunk",
+      "why": "no record in validation/ for this step of the loop"
+    },
+    {
+      "what": "compute_eddy_diff: replay_single_column",
+      "why": "no record in validation/ for this step of the loop"
+    },
+    {
+      "what": "compute_eddy_diff: replay_public_api",
+      "why": "no record in validation/ for this step of the loop"
+    },
+    {
+      "what": "compute_eddy_diff: in_model_replacement_bfb",
+      "why": "no record in validation/ for this step of the loop"
+    },
+    {
+      "what": "compute_vdiff: capture",
+      "why": "no record in validation/ for this step of the loop"
+    },
+    {
+      "what": "compute_vdiff: standalone_build",
+      "why": "no record in validation/ for this step of the loop"
+    },
+    {
+      "what": "compute_vdiff: replay_full_chunk",
+      "why": "no record in validation/ for this step of the loop"
+    },
+    {
+      "what": "compute_vdiff: replay_single_column",
+      "why": "no record in validation/ for this step of the loop"
+    },
+    {
+      "what": "compute_vdiff: replay_public_api",
+      "why": "no record in validation/ for this step of the loop"
+    },
+    {
+      "what": "compute_vdiff: in_model_replacement_bfb",
+      "why": "no record in validation/ for this step of the loop"
+    },
+    {
+      "what": "gw_drag_prof: capture",
+      "why": "no record in validation/ for this step of the loop"
+    },
+    {
+      "what": "gw_drag_prof: standalone_build",
+      "why": "no record in validation/ for this step of the loop"
+    },
+    {
+      "what": "gw_drag_prof: replay_full_chunk",
+      "why": "no record in validation/ for this step of the loop"
+    },
+    {
+      "what": "gw_drag_prof: replay_single_column",
+      "why": "no record in validation/ for this step of the loop"
+    },
+    {
+      "what": "gw_drag_prof: replay_public_api",
+      "why": "no record in validation/ for this step of the loop"
+    },
+    {
+      "what": "gw_drag_prof: in_model_replacement_bfb",
+      "why": "no record in validation/ for this step of the loop"
+    },
+    {
       "what": "cam_run2.chemistry_tendencies_leaf",
       "why": "the physics catalog lists no procedure under this action; its active call graph must be extended before this action's kernels can be chosen"
     },
@@ -5377,5 +5599,5 @@
       "why": "the physics catalog lists no procedure under this action; its active call graph must be extended before this action's kernels can be chosen"
     }
   ],
-  "coverage_hash": "cc423bd3aa7eff6a91250a980ebaba6ecf92f32d378c2dc6db6029fccded894f"
+  "coverage_hash": "3c8d172c6a3cfe5868fd0e8e7a63eed1416de9eb7db9c8e8b6eaa61b47603bf9"
 }

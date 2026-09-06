@@ -1,0 +1,8 @@
+--- a/src/physics/cam/gw_drag.F90
++++ b/src/physics/cam/gw_drag.F90
+@@ -134,0 +135,5 @@ module gw_drag
++   ! pyCAM (control patch 0046): the wave bands, efficiencies, source descriptions,
++   ! buffer indices and history writer gw_tend reads and calls, readable by the
++   ! pausable runner's hoisted copy of the routine.  No executable statement changes.
++   public :: band_oro, band_mid, band_long, effgw_oro, effgw_cm, effgw_cm_igw, effgw_beres_dp, effgw_beres_sh, gw_polar_taper, beres_dp_desc, beres_sh_desc, cm_desc, cm_igw_desc, kvt_idx, ttend_dp_idx, ttend_sh_idx, frontgf_idx, frontga_idx, gw_spec_outflds
++

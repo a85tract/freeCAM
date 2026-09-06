@@ -190,6 +190,9 @@ contains
     landfrac => a_landfrac
     pbuf => a_pbuf
     wtdlf => a_wtdlf
+    if (allocated(rwt)) then
+      if (any(shape(rwt) /= (/ pcols, pver, wtrc_nwset, 2 /))) deallocate(rwt)
+    end if
     if (.not. allocated(rwt)) allocate(rwt(pcols,pver,wtrc_nwset,2))
   end subroutine zm_bind
 
@@ -659,25 +662,25 @@ contains
     else
       call empty_slot(25, 2, 1, 1, ptrs, ndims, shapes, dtypes, intents)
     end if
-    call slot_address_r8(mu(1,1,lchnk), address)
+    call slot_address_r8_2(mu(:,:,lchnk), address)
     call put_slot(26, address, 2, (/ int(pcols, c_int64_t), int(pver, c_int64_t) /), 1, 1, ptrs, ndims, shapes, dtypes, intents)
-    call slot_address_r8(md(1,1,lchnk), address)
+    call slot_address_r8_2(md(:,:,lchnk), address)
     call put_slot(27, address, 2, (/ int(pcols, c_int64_t), int(pver, c_int64_t) /), 1, 1, ptrs, ndims, shapes, dtypes, intents)
-    call slot_address_r8(du(1,1,lchnk), address)
+    call slot_address_r8_2(du(:,:,lchnk), address)
     call put_slot(28, address, 2, (/ int(pcols, c_int64_t), int(pver, c_int64_t) /), 1, 1, ptrs, ndims, shapes, dtypes, intents)
-    call slot_address_r8(eu(1,1,lchnk), address)
+    call slot_address_r8_2(eu(:,:,lchnk), address)
     call put_slot(29, address, 2, (/ int(pcols, c_int64_t), int(pver, c_int64_t) /), 1, 1, ptrs, ndims, shapes, dtypes, intents)
-    call slot_address_r8(ed(1,1,lchnk), address)
+    call slot_address_r8_2(ed(:,:,lchnk), address)
     call put_slot(30, address, 2, (/ int(pcols, c_int64_t), int(pver, c_int64_t) /), 1, 1, ptrs, ndims, shapes, dtypes, intents)
-    call slot_address_r8(dp(1,1,lchnk), address)
+    call slot_address_r8_2(dp(:,:,lchnk), address)
     call put_slot(31, address, 2, (/ int(pcols, c_int64_t), int(pver, c_int64_t) /), 1, 1, ptrs, ndims, shapes, dtypes, intents)
-    call slot_address_r8(dsubcld(1,lchnk), address)
+    call slot_address_r8_1(dsubcld(:,lchnk), address)
     call put_slot(32, address, 1, (/ int(pcols, c_int64_t) /), 1, 1, ptrs, ndims, shapes, dtypes, intents)
-    call slot_address_i4(jt(1,lchnk), address)
+    call slot_address_i4_1(jt(:,lchnk), address)
     call put_slot(33, address, 1, (/ int(pcols, c_int64_t) /), 2, 2, ptrs, ndims, shapes, dtypes, intents)
-    call slot_address_i4(maxg(1,lchnk), address)
+    call slot_address_i4_1(maxg(:,lchnk), address)
     call put_slot(34, address, 1, (/ int(pcols, c_int64_t) /), 2, 2, ptrs, ndims, shapes, dtypes, intents)
-    call slot_address_i4(ideep(1,lchnk), address)
+    call slot_address_i4_1(ideep(:,lchnk), address)
     call put_slot(35, address, 1, (/ int(pcols, c_int64_t) /), 2, 2, ptrs, ndims, shapes, dtypes, intents)
     call slot_address_i4(lengath(lchnk), address)
     call put_slot(36, address, 0, zero_shape, 2, 2, ptrs, ndims, shapes, dtypes, intents)
@@ -904,6 +907,30 @@ contains
     type(c_ptr), intent(out) :: address
     address = c_loc(field(1))
   end subroutine slot_address_i4
+
+  subroutine slot_address_r8_1(field, address)
+    ! a section's address through an assumed-shape TARGET dummy; a contiguous
+    ! section is passed without a copy
+    real(r8), intent(inout), target :: field(:)
+    type(c_ptr), intent(out) :: address
+    address = c_loc(field(1))
+  end subroutine slot_address_r8_1
+
+  subroutine slot_address_r8_2(field, address)
+    ! a section's address through an assumed-shape TARGET dummy; a contiguous
+    ! section is passed without a copy
+    real(r8), intent(inout), target :: field(:,:)
+    type(c_ptr), intent(out) :: address
+    address = c_loc(field(1,1))
+  end subroutine slot_address_r8_2
+
+  subroutine slot_address_i4_1(field, address)
+    ! a section's address through an assumed-shape TARGET dummy; a contiguous
+    ! section is passed without a copy
+    integer(c_int32_t), intent(inout), target :: field(:)
+    type(c_ptr), intent(out) :: address
+    address = c_loc(field(1))
+  end subroutine slot_address_i4_1
 
   subroutine put_slot(index, address, rank, shape, dtype, intent, ptrs, ndims, shapes, dtypes, intents)
     integer, intent(in) :: index, rank, dtype, intent

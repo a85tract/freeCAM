@@ -1,0 +1,8 @@
+--- a/src/physics/cam/vertical_diffusion.F90
++++ b/src/physics/cam/vertical_diffusion.F90
+@@ -138,0 +139,5 @@ module vertical_diffusion
++   ! pyCAM (control patch 0045): the options, field selectors and buffer indices
++   ! vertical_diffusion_tend reads, readable by the pausable runner's hoisted copy
++   ! of the routine.  No executable statement changes.
++   public :: eddy_scheme, do_pseudocon_diff, shallow_scheme, fieldlist_wet, fieldlist_dry, fieldlist_molec, ntop, nbot, tke_idx, kvh_idx, kvm_idx, kvt_idx, turbtype_idx, smaw_idx, tauresx_idx, tauresy_idx, vdiffnam, ixcldice, ixcldliq, ixnumice, ixnumliq, qrl_idx, wsedl_idx, pblh_idx, tpert_idx, qpert_idx, bprod_idx, ipbl_idx, kpblh_idx, wstarPBL_idx, tkes_idx, went_idx, qtl_flx_idx, qti_flx_idx, kv_top_pressure, kv_top_scale, kv_freetrop_scale, diff_cnsrv_mass_check, do_tms, prog_modal_aero, pmam_ncnst, pmam_cnst_idx
++

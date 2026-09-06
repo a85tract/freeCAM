@@ -26,6 +26,8 @@ PATCHES = (
     "native/pi_cam/control_patches/0041-rad-tend-boundary.patch",
     "native/pi_cam/control_patches/0043-stage-carry-boundary.patch",
     "native/pi_cam/control_patches/0044-zm-conv-state-boundary.patch",
+    "native/pi_cam/control_patches/0045-vertical-diffusion-state-boundary.patch",
+    "native/pi_cam/control_patches/0046-gw-drag-state-boundary.patch",
 )
 
 # Modules this repository owns that are added to the CAM source tree.  They
@@ -89,6 +91,18 @@ SUPPORT_SOURCES = (
      "src/physics/cam/pycam_zmtran_glue.F90"),
     ("native/pi_cam/support/pycam_zmtran_runner.F90",
      "src/physics/cam/pycam_zmtran_runner.F90"),
+    ("native/pi_cam/support/pycam_vdiff_driver.F90",
+     "src/physics/cam/pycam_vdiff_driver.F90"),
+    ("native/pi_cam/support/pycam_vdiff_glue.F90",
+     "src/physics/cam/pycam_vdiff_glue.F90"),
+    ("native/pi_cam/support/pycam_vdiff_runner.F90",
+     "src/physics/cam/pycam_vdiff_runner.F90"),
+    ("native/pi_cam/support/pycam_gwd_driver.F90",
+     "src/physics/cam/pycam_gwd_driver.F90"),
+    ("native/pi_cam/support/pycam_gwd_glue.F90",
+     "src/physics/cam/pycam_gwd_glue.F90"),
+    ("native/pi_cam/support/pycam_gwd_runner.F90",
+     "src/physics/cam/pycam_gwd_runner.F90"),
 )
 
 

@@ -110,23 +110,29 @@
   },
   {
    "bindable": true,
-   "evidence": [],
+   "evidence": [
+    "validation/pi_cam_pausable_deep-evap_50step.json",
+    "validation/pi_cam_pausable_deep-evap_vs_oracle_50step_bfb.json"
+   ],
    "kernel": "zm_conv_evap",
    "owner_class": "freecam.physics.pausable.DeepConvection",
-   "reason": "bindable, but the pause path has not passed a bit-for-bit gate",
+   "reason": null,
    "stage_action": "cam_run1.deep_convection",
    "stage_class": "freecam.physics.pausable.DeepConvection",
-   "validated": false
+   "validated": true
   },
   {
    "bindable": true,
-   "evidence": [],
+   "evidence": [
+    "validation/pi_cam_pausable_deep-momtran_50step.json",
+    "validation/pi_cam_pausable_deep-momtran_vs_oracle_50step_bfb.json"
+   ],
    "kernel": "momtran",
    "owner_class": "freecam.physics.pausable.DeepConvection",
-   "reason": "bindable, but the pause path has not passed a bit-for-bit gate",
+   "reason": null,
    "stage_action": "cam_run1.deep_convection",
    "stage_class": "freecam.physics.pausable.DeepConvection",
-   "validated": false
+   "validated": true
   },
   {
    "bindable": true,
@@ -137,6 +143,46 @@
    "stage_action": "cam_run1.convective_tracer_transport_leaf",
    "stage_class": "freecam.physics.pausable.ConvectiveTracerTransport",
    "validated": false
+  },
+  {
+   "bindable": true,
+   "evidence": [],
+   "kernel": "compute_tms",
+   "owner_class": "freecam.physics.pausable.VerticalDiffusion",
+   "reason": "bindable, but the pause path has not passed a bit-for-bit gate",
+   "stage_action": "cam_run2.vertical_diffusion",
+   "stage_class": "freecam.physics.pausable.VerticalDiffusion",
+   "validated": false
+  },
+  {
+   "bindable": true,
+   "evidence": [],
+   "kernel": "compute_eddy_diff",
+   "owner_class": "freecam.physics.pausable.VerticalDiffusion",
+   "reason": "bindable, but the pause path has not passed a bit-for-bit gate",
+   "stage_action": "cam_run2.vertical_diffusion",
+   "stage_class": "freecam.physics.pausable.VerticalDiffusion",
+   "validated": false
+  },
+  {
+   "bindable": true,
+   "evidence": [],
+   "kernel": "compute_vdiff",
+   "owner_class": "freecam.physics.pausable.VerticalDiffusion",
+   "reason": "bindable, but the pause path has not passed a bit-for-bit gate",
+   "stage_action": "cam_run2.vertical_diffusion",
+   "stage_class": "freecam.physics.pausable.VerticalDiffusion",
+   "validated": false
+  },
+  {
+   "bindable": true,
+   "evidence": [],
+   "kernel": "gw_drag_prof",
+   "owner_class": "freecam.physics.pausable.GravityWaveDrag",
+   "reason": "bindable, but the pause path has not passed a bit-for-bit gate",
+   "stage_action": "cam_run2.gravity_wave_drag",
+   "stage_class": "freecam.physics.pausable.GravityWaveDrag",
+   "validated": false
   }
  ],
  "cases": {
@@ -145,11 +191,11 @@
   "PI-atm-online": "configs/pi_cam_icesm131_online.yaml",
   "PI-atm-replay": "configs/pi_cam_icesm131_replay.yaml"
  },
- "catalog_hash": "cb49c21ebae6478c0ee8ad800cfb1892afed1d906ac5cffeb08a4c58b9bfff23",
- "commit": "aafa4c36676ac8cdc5d8d54f237ea30758af8060",
+ "catalog_hash": "68f052e068d3e4965d04a20e5a054c1b16463d93dafecafb5af82461fa63a559",
+ "commit": "43dc26ea31b98b2e891625745e626b0f00e68a30",
  "default_document": {
   "case": "PI-atm",
-  "catalog_version": "cb49c21ebae6478c0ee8ad800cfb1892afed1d906ac5cffeb08a4c58b9bfff23",
+  "catalog_version": "68f052e068d3e4965d04a20e5a054c1b16463d93dafecafb5af82461fa63a559",
   "experimental": false,
   "namelist": {},
   "nodes": [
@@ -393,7 +439,20 @@
    },
    {
     "configuration": {
-     "kernels": {},
+     "kernels": {
+      "compute_eddy_diff": {
+       "kind": "original",
+       "path": null
+      },
+      "compute_tms": {
+       "kind": "original",
+       "path": null
+      },
+      "compute_vdiff": {
+       "kind": "original",
+       "path": null
+      }
+     },
      "parameters": {},
      "python_source": null,
      "variables": []
@@ -408,7 +467,38 @@
     "locked": false,
     "metadata": {
      "control_owner": "python",
-     "kernels": [],
+     "kernels": [
+      {
+       "bindable": true,
+       "evidence": [],
+       "kernel": "compute_tms",
+       "owner_class": "freecam.physics.pausable.VerticalDiffusion",
+       "reason": "bindable, but the pause path has not passed a bit-for-bit gate",
+       "stage_action": "cam_run2.vertical_diffusion",
+       "stage_class": "freecam.physics.pausable.VerticalDiffusion",
+       "validated": false
+      },
+      {
+       "bindable": true,
+       "evidence": [],
+       "kernel": "compute_eddy_diff",
+       "owner_class": "freecam.physics.pausable.VerticalDiffusion",
+       "reason": "bindable, but the pause path has not passed a bit-for-bit gate",
+       "stage_action": "cam_run2.vertical_diffusion",
+       "stage_class": "freecam.physics.pausable.VerticalDiffusion",
+       "validated": false
+      },
+      {
+       "bindable": true,
+       "evidence": [],
+       "kernel": "compute_vdiff",
+       "owner_class": "freecam.physics.pausable.VerticalDiffusion",
+       "reason": "bindable, but the pause path has not passed a bit-for-bit gate",
+       "stage_action": "cam_run2.vertical_diffusion",
+       "stage_class": "freecam.physics.pausable.VerticalDiffusion",
+       "validated": false
+      }
+     ],
      "parameters": []
     },
     "movable": true,
@@ -597,7 +687,12 @@
    },
    {
     "configuration": {
-     "kernels": {},
+     "kernels": {
+      "gw_drag_prof": {
+       "kind": "original",
+       "path": null
+      }
+     },
      "parameters": {},
      "python_source": null,
      "variables": []
@@ -612,7 +707,18 @@
     "locked": false,
     "metadata": {
      "control_owner": "python",
-     "kernels": [],
+     "kernels": [
+      {
+       "bindable": true,
+       "evidence": [],
+       "kernel": "gw_drag_prof",
+       "owner_class": "freecam.physics.pausable.GravityWaveDrag",
+       "reason": "bindable, but the pause path has not passed a bit-for-bit gate",
+       "stage_action": "cam_run2.gravity_wave_drag",
+       "stage_class": "freecam.physics.pausable.GravityWaveDrag",
+       "validated": false
+      }
+     ],
      "parameters": [
       {
        "dtype": "float64",
@@ -1449,23 +1555,29 @@
       },
       {
        "bindable": true,
-       "evidence": [],
+       "evidence": [
+        "validation/pi_cam_pausable_deep-evap_50step.json",
+        "validation/pi_cam_pausable_deep-evap_vs_oracle_50step_bfb.json"
+       ],
        "kernel": "zm_conv_evap",
        "owner_class": "freecam.physics.pausable.DeepConvection",
-       "reason": "bindable, but the pause path has not passed a bit-for-bit gate",
+       "reason": null,
        "stage_action": "cam_run1.deep_convection",
        "stage_class": "freecam.physics.pausable.DeepConvection",
-       "validated": false
+       "validated": true
       },
       {
        "bindable": true,
-       "evidence": [],
+       "evidence": [
+        "validation/pi_cam_pausable_deep-momtran_50step.json",
+        "validation/pi_cam_pausable_deep-momtran_vs_oracle_50step_bfb.json"
+       ],
        "kernel": "momtran",
        "owner_class": "freecam.physics.pausable.DeepConvection",
-       "reason": "bindable, but the pause path has not passed a bit-for-bit gate",
+       "reason": null,
        "stage_action": "cam_run1.deep_convection",
        "stage_class": "freecam.physics.pausable.DeepConvection",
-       "validated": false
+       "validated": true
       }
      ],
      "parameters": [
@@ -2637,7 +2749,20 @@
   },
   {
    "configuration": {
-    "kernels": {},
+    "kernels": {
+     "compute_eddy_diff": {
+      "kind": "original",
+      "path": null
+     },
+     "compute_tms": {
+      "kind": "original",
+      "path": null
+     },
+     "compute_vdiff": {
+      "kind": "original",
+      "path": null
+     }
+    },
     "parameters": {},
     "python_source": null,
     "variables": []
@@ -2652,7 +2777,38 @@
    "locked": false,
    "metadata": {
     "control_owner": "python",
-    "kernels": [],
+    "kernels": [
+     {
+      "bindable": true,
+      "evidence": [],
+      "kernel": "compute_tms",
+      "owner_class": "freecam.physics.pausable.VerticalDiffusion",
+      "reason": "bindable, but the pause path has not passed a bit-for-bit gate",
+      "stage_action": "cam_run2.vertical_diffusion",
+      "stage_class": "freecam.physics.pausable.VerticalDiffusion",
+      "validated": false
+     },
+     {
+      "bindable": true,
+      "evidence": [],
+      "kernel": "compute_eddy_diff",
+      "owner_class": "freecam.physics.pausable.VerticalDiffusion",
+      "reason": "bindable, but the pause path has not passed a bit-for-bit gate",
+      "stage_action": "cam_run2.vertical_diffusion",
+      "stage_class": "freecam.physics.pausable.VerticalDiffusion",
+      "validated": false
+     },
+     {
+      "bindable": true,
+      "evidence": [],
+      "kernel": "compute_vdiff",
+      "owner_class": "freecam.physics.pausable.VerticalDiffusion",
+      "reason": "bindable, but the pause path has not passed a bit-for-bit gate",
+      "stage_action": "cam_run2.vertical_diffusion",
+      "stage_class": "freecam.physics.pausable.VerticalDiffusion",
+      "validated": false
+     }
+    ],
     "parameters": []
    },
    "movable": true,
@@ -2841,7 +2997,12 @@
   },
   {
    "configuration": {
-    "kernels": {},
+    "kernels": {
+     "gw_drag_prof": {
+      "kind": "original",
+      "path": null
+     }
+    },
     "parameters": {},
     "python_source": null,
     "variables": []
@@ -2856,7 +3017,18 @@
    "locked": false,
    "metadata": {
     "control_owner": "python",
-    "kernels": [],
+    "kernels": [
+     {
+      "bindable": true,
+      "evidence": [],
+      "kernel": "gw_drag_prof",
+      "owner_class": "freecam.physics.pausable.GravityWaveDrag",
+      "reason": "bindable, but the pause path has not passed a bit-for-bit gate",
+      "stage_action": "cam_run2.gravity_wave_drag",
+      "stage_class": "freecam.physics.pausable.GravityWaveDrag",
+      "validated": false
+     }
+    ],
     "parameters": [
      {
       "dtype": "float64",
@@ -3693,23 +3865,29 @@
      },
      {
       "bindable": true,
-      "evidence": [],
+      "evidence": [
+       "validation/pi_cam_pausable_deep-evap_50step.json",
+       "validation/pi_cam_pausable_deep-evap_vs_oracle_50step_bfb.json"
+      ],
       "kernel": "zm_conv_evap",
       "owner_class": "freecam.physics.pausable.DeepConvection",
-      "reason": "bindable, but the pause path has not passed a bit-for-bit gate",
+      "reason": null,
       "stage_action": "cam_run1.deep_convection",
       "stage_class": "freecam.physics.pausable.DeepConvection",
-      "validated": false
+      "validated": true
      },
      {
       "bindable": true,
-      "evidence": [],
+      "evidence": [
+       "validation/pi_cam_pausable_deep-momtran_50step.json",
+       "validation/pi_cam_pausable_deep-momtran_vs_oracle_50step_bfb.json"
+      ],
       "kernel": "momtran",
       "owner_class": "freecam.physics.pausable.DeepConvection",
-      "reason": "bindable, but the pause path has not passed a bit-for-bit gate",
+      "reason": null,
       "stage_action": "cam_run1.deep_convection",
       "stage_class": "freecam.physics.pausable.DeepConvection",
-      "validated": false
+      "validated": true
      }
     ],
     "parameters": [
@@ -4919,7 +5097,20 @@
    "addable": true,
    "category": "Physics",
    "configuration": {
-    "kernels": {},
+    "kernels": {
+     "compute_eddy_diff": {
+      "kind": "original",
+      "path": null
+     },
+     "compute_tms": {
+      "kind": "original",
+      "path": null
+     },
+     "compute_vdiff": {
+      "kind": "original",
+      "path": null
+     }
+    },
     "parameters": {},
     "python_source": null,
     "variables": []
@@ -4936,7 +5127,38 @@
    "locked": false,
    "metadata": {
     "control_owner": "python",
-    "kernels": [],
+    "kernels": [
+     {
+      "bindable": true,
+      "evidence": [],
+      "kernel": "compute_tms",
+      "owner_class": "freecam.physics.pausable.VerticalDiffusion",
+      "reason": "bindable, but the pause path has not passed a bit-for-bit gate",
+      "stage_action": "cam_run2.vertical_diffusion",
+      "stage_class": "freecam.physics.pausable.VerticalDiffusion",
+      "validated": false
+     },
+     {
+      "bindable": true,
+      "evidence": [],
+      "kernel": "compute_eddy_diff",
+      "owner_class": "freecam.physics.pausable.VerticalDiffusion",
+      "reason": "bindable, but the pause path has not passed a bit-for-bit gate",
+      "stage_action": "cam_run2.vertical_diffusion",
+      "stage_class": "freecam.physics.pausable.VerticalDiffusion",
+      "validated": false
+     },
+     {
+      "bindable": true,
+      "evidence": [],
+      "kernel": "compute_vdiff",
+      "owner_class": "freecam.physics.pausable.VerticalDiffusion",
+      "reason": "bindable, but the pause path has not passed a bit-for-bit gate",
+      "stage_action": "cam_run2.vertical_diffusion",
+      "stage_class": "freecam.physics.pausable.VerticalDiffusion",
+      "validated": false
+     }
+    ],
     "parameters": []
    },
    "movable": true,
@@ -5159,7 +5381,12 @@
    "addable": true,
    "category": "Physics",
    "configuration": {
-    "kernels": {},
+    "kernels": {
+     "gw_drag_prof": {
+      "kind": "original",
+      "path": null
+     }
+    },
     "parameters": {},
     "python_source": null,
     "variables": []
@@ -5176,7 +5403,18 @@
    "locked": false,
    "metadata": {
     "control_owner": "python",
-    "kernels": [],
+    "kernels": [
+     {
+      "bindable": true,
+      "evidence": [],
+      "kernel": "gw_drag_prof",
+      "owner_class": "freecam.physics.pausable.GravityWaveDrag",
+      "reason": "bindable, but the pause path has not passed a bit-for-bit gate",
+      "stage_action": "cam_run2.gravity_wave_drag",
+      "stage_class": "freecam.physics.pausable.GravityWaveDrag",
+      "validated": false
+     }
+    ],
     "parameters": [
      {
       "dtype": "float64",
@@ -6151,23 +6389,29 @@
      },
      {
       "bindable": true,
-      "evidence": [],
+      "evidence": [
+       "validation/pi_cam_pausable_deep-evap_50step.json",
+       "validation/pi_cam_pausable_deep-evap_vs_oracle_50step_bfb.json"
+      ],
       "kernel": "zm_conv_evap",
       "owner_class": "freecam.physics.pausable.DeepConvection",
-      "reason": "bindable, but the pause path has not passed a bit-for-bit gate",
+      "reason": null,
       "stage_action": "cam_run1.deep_convection",
       "stage_class": "freecam.physics.pausable.DeepConvection",
-      "validated": false
+      "validated": true
      },
      {
       "bindable": true,
-      "evidence": [],
+      "evidence": [
+       "validation/pi_cam_pausable_deep-momtran_50step.json",
+       "validation/pi_cam_pausable_deep-momtran_vs_oracle_50step_bfb.json"
+      ],
       "kernel": "momtran",
       "owner_class": "freecam.physics.pausable.DeepConvection",
-      "reason": "bindable, but the pause path has not passed a bit-for-bit gate",
+      "reason": null,
       "stage_action": "cam_run1.deep_convection",
       "stage_class": "freecam.physics.pausable.DeepConvection",
-      "validated": false
+      "validated": true
      }
     ],
     "parameters": [
@@ -18854,7 +19098,7 @@
    "writes": []
   }
  ],
- "generated_at": "2026-09-06T13:20:19+00:00",
+ "generated_at": "2026-09-06T17:58:09+00:00",
  "parameters": {
   "cam_run1.cloud_macro_microphysics": [
    {

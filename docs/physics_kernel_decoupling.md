@@ -109,6 +109,24 @@ TARGET dummy, serves an intent(out) scalar such as the gathered column count
 where it lives so a model can answer it, and sizes an automatic array by its
 own extents where the callee's would name something only the callee imports.
 
+The two tphysac stages follow. Vertical diffusion hoists the tphysac block and
+`vertical_diffusion_tend`, pausing at the turbulent mountain stress
+`compute_tms`, the eddy diffusivities `compute_eddy_diff` and the implicit
+solver `compute_vdiff` at both of its call sites (the moist and the dry field
+lists; a kernel called at several sites pauses at each, and every site serves
+the same frame, an optional the site omits as an empty slot). The friction
+velocity and Obukhov length it writes are tphysac carries the dry deposition
+stage reads (control patch 0043). Gravity wave drag hoists `gw_tend` and
+pauses at `gw_drag_prof` inside the orographic block, the only source active
+here; the wave band and the pressure coordinates are served component by
+component, and the driver's automatic arrays, sized by each chunk's column
+count, are module allocatables re-sized when a chunk's shape changes. Both
+drivers read their modules' private options, selectors, bands and indices
+through control patches 0045 and 0046, accessibility statements like 0044; a
+field selector with private components and a procedure argument are passed by
+the original and served by the frame as nothing. The frame ABI carries five
+extents per slot: the convective transport's water-tracer ratio is rank four.
+
 **The read-only description.** `stage.describe_kernels()` returns one record
 per kernel: the owning class, whether the runner pauses at it, whether that
 pause has passed a gate, the reviewed contract's inputs and outputs when one
@@ -161,6 +179,10 @@ committed file equals a fresh build or the test fails.
 | `zm_conv_evap` | DeepConvection (pausable) | frame descriptor | yes, gate pending | pending | open: the pause gate, capture and replay |
 | `momtran` | DeepConvection (pausable) | frame descriptor | yes, gate pending | pending | open: the pause gate, capture and replay |
 | `convtran` | ConvectiveTracerTransport (pausable, a leaf) | frame descriptor | yes, gate pending | pending | open: the pause gate, capture and replay |
+| `compute_tms` | VerticalDiffusion (pausable) | frame descriptor | yes, gate pending | pending | open: the pause gate, capture and replay |
+| `compute_eddy_diff` | VerticalDiffusion (pausable) | frame descriptor | yes, gate pending | pending | open: the pause gate, capture and replay |
+| `compute_vdiff` | VerticalDiffusion (pausable, two sites) | frame descriptor | yes, gate pending | pending | open: the pause gate, capture and replay |
+| `gw_drag_prof` | GravityWaveDrag (pausable) | frame descriptor | yes, gate pending | pending | open: the pause gate, capture and replay |
 
 The pausable classes were gated on 2026-09-06 in six 512-rank 50-step runs on
 one image: each class installed with nothing replaced (dry adjustment, shallow

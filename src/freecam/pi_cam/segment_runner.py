@@ -24,6 +24,10 @@ import numpy as np
 
 from freecam.physics.segments import FrameArgument, KernelFrame, SegmentEvent
 from .errors import NativeCAMError
+
+#: Extents a frame slot carries in the runner ABI (`shapes(FRAME_MAX_RANK, count)`), the same
+#: number tools/pi_cam_pausable.py and the stage-7 generator write; a water-tracer ratio is rank 4.
+FRAME_MAX_RANK = 5
 from .kernel_codegen import load_direct_kernels
 from .tables import load_table
 
@@ -272,7 +276,7 @@ class ImageSegmentRunner:
         kernel, index, lchnk, ncol, substep, token = (ctypes.c_int(0) for _ in range(6))
         pointers = (ctypes.c_void_p * n)()
         ndims = (ctypes.c_int * n)()
-        shapes = (ctypes.c_int64 * (3 * n))()
+        shapes = (ctypes.c_int64 * (FRAME_MAX_RANK * n))()
         dtypes = (ctypes.c_int * n)()
         intents = (ctypes.c_int * n)()
         status = self._entry["frame"](
@@ -286,7 +290,9 @@ class ImageSegmentRunner:
         arguments = []
         for i, argument in enumerate(self.names[name]):
             rank = ndims[i]
-            shape = tuple(int(shapes[3 * i + axis]) for axis in range(rank))
+            if rank > FRAME_MAX_RANK:
+                raise NativeCAMError(f"frame slot {i} has rank {rank}; the runner ABI carries {FRAME_MAX_RANK} extents")
+            shape = tuple(int(shapes[FRAME_MAX_RANK * i + axis]) for axis in range(rank))
             dtype = np.dtype(DTYPES[dtypes[i]])
             count = int(np.prod(shape)) if shape else 1
             if count == 0 or not pointers[i]:

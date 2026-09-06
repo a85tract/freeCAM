@@ -216,7 +216,7 @@ def test_the_builder_s_capabilities_come_from_the_manifest() -> None:
     from freecam.pi_cam.workflow_builder.capabilities import kernel_capabilities, validated_through_runner
 
     assert set(validated_through_runner()) == {"mmacro_pcond", "micro_mg_tend", "dadadj", "compute_uwshcu_inv",
-                                               "rad_rrtmg_sw", "rad_rrtmg_lw"}
+                                               "rad_rrtmg_sw", "rad_rrtmg_lw", "zm_conv_evap", "momtran"}
     by_name = {c.kernel: c for c in kernel_capabilities()}
     assert by_name["mmacro_pcond"].bindable and by_name["mmacro_pcond"].validated
     assert by_name["mmacro_pcond"].evidence == runners.runner_spec("cam_run1.cloud_macro_microphysics").kernel("mmacro_pcond").validated_by
@@ -250,7 +250,7 @@ class _Entry:
                 ptrs[i] = lib.arrays[i].ctypes.data
                 ndims[i] = lib.arrays[i].ndim
                 for axis, extent in enumerate(lib.arrays[i].shape):
-                    shapes[3 * i + axis] = extent
+                    shapes[runners.FRAME_MAX_RANK * i + axis] = extent
                 dtypes[i] = 1 if lib.arrays[i].dtype == np.float64 else 2
                 intents[i] = lib.intents[i]
             return 0

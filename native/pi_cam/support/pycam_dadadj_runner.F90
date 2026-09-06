@@ -120,7 +120,7 @@ contains
     integer(c_int), intent(out) :: kernel, index_out, lchnk_out, ncol_out, substep_out, token_out
     type(c_ptr), intent(out) :: ptrs(count)
     integer(c_int), intent(out) :: ndims(count), dtypes(count), intents(count)
-    integer(c_int64_t), intent(out) :: shapes(3, count)
+    integer(c_int64_t), intent(out) :: shapes(5, count)
     kernel = 0_c_int; index_out = 0_c_int; lchnk_out = 0_c_int; ncol_out = 0_c_int
     substep_out = 0_c_int; token_out = 0_c_int
     status = 1_c_int

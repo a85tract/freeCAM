@@ -22,6 +22,8 @@
 # PYCAM_RADIATION_PYTHON=1 installs the split Radiation class between its two
 # halves (--split-radiation --radiation-python); with the RRTMG cores in
 # PYCAM_ORIGINAL_KERNELS they are answered at the radt runner's pauses.
+# PYCAM_CLOUD_PYTHON=1 installs the cloud macro/microphysics class over the
+# stage-7 runner (--cloud-macro-micro-python) for the same treatment.
 set -euo pipefail
 
 source "${FREECAM_REPO:-${PBS_O_WORKDIR:-$PWD}}/validation/jobs/common.sh"
@@ -62,6 +64,10 @@ if [ -n "${PYCAM_PYTHON_STAGES:-}" ]; then
 fi
 if [ -n "${PYCAM_RADIATION_PYTHON:-}" ]; then
   stage_flags+=(--split-radiation --radiation-python)
+fi
+if [ -n "${PYCAM_CLOUD_PYTHON:-}" ]; then
+  # the cloud macro/microphysics class (stage 7) over its own runner
+  stage_flags+=(--cloud-macro-micro-python)
 fi
 if [ ${#stage_flags[@]} -gt 0 ]; then
   stage_flags+=(--stage-execution "${PYCAM_STAGE_EXECUTION:-auto}")

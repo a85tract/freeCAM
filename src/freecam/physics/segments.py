@@ -206,6 +206,12 @@ class SegmentCounters:
     calls_by_kernel: dict[str, int] = field(default_factory=dict)
 
 
+def _live_bytes(array: np.ndarray, ncol: int) -> int:
+    """The bytes of an output's live lanes; a scalar served where it lives has no lanes."""
+
+    return (array[:ncol] if array.ndim else array).nbytes
+
+
 class SegmentedStage:
     """Drives one stage's segment runner through a step.
 
@@ -277,7 +283,7 @@ class SegmentedStage:
                 counters.calls_by_kernel[frame.kernel] = counters.calls_by_kernel.get(frame.kernel, 0) + 1
                 written = frame.write_back(answer)
                 counters.bytes_copied_out += sum(
-                    frame.argument(name).array[:frame.ncol].nbytes for name in written)
+                    _live_bytes(frame.argument(name).array, frame.ncol) for name in written)
                 event = self.runner.resume(self.context, frame.kernel, frame.token)
                 counters.resumes += 1
                 counters.crossings += 1

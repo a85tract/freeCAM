@@ -224,6 +224,30 @@ def _split_top(text: str) -> list[str]:
     return out
 
 
+def _procedure_dummies(lines: list[str], first: int, last: int) -> set[str]:
+    """Names declared as procedures in the range: the specifics of an `interface` block, or a
+    bare `optional ::` / `external` naming something no type declaration covers."""
+
+    found: set[str] = set()
+    depth = 0
+    for _, _, text in statements(lines, first, last):
+        low = text.strip().lower()
+        if re.match(r"^interface\b", low):
+            depth += 1
+            continue
+        if re.match(r"^end\s*interface\b", low):
+            depth = max(depth - 1, 0)
+            continue
+        if depth:
+            match = re.match(r"^(?:[\w() ,=]*?\s)?(?:subroutine|function)\s+(\w+)\s*\(", low)
+            if match:
+                found.add(match.group(1))
+        match = re.match(r"^(?:optional|external)\s*::\s*(.+)$", low)
+        if match:
+            found |= {n.strip() for n in match.group(1).split(",")}
+    return found
+
+
 def parse_declarations(lines: list[str], first: int, last: int) -> dict[str, Decl]:
     """name -> Decl for every entity declared in the range (dummies included, with their intent)."""
 
@@ -321,6 +345,13 @@ class Pause:
     statement: str = ""
     pc_at: str = ""
     pc_after: str = ""
+    site: int = 0                  # 0 for a kernel's only site, else its number in source order
+
+    @property
+    def tag(self) -> str:
+        """The kernel's name, suffixed by the site when the kernel pauses at several."""
+
+        return self.kernel if not self.site else f"{self.kernel}_{self.site}"
 
 
 @dataclass
@@ -367,6 +398,7 @@ class Unit:
     helpers: list[tuple[int, int]] = field(default_factory=list)          # the module's private procedures, verbatim
     postamble: list[str] = field(default_factory=list)                    # statements after the body, every chunk (glue)
     automatic: list[str] = field(default_factory=list)                    # locals with run-time extents, allocated once
+    carries_entry: str = "pycam_macro_forcing_v1"                         # the accessor handing a carry's chunk address
     elided: list[tuple[int, int]] = field(default_factory=list)           # body lines another action's leaf performs
     lines: list[str] = field(default_factory=list)
     decls: dict[str, Decl] = field(default_factory=dict)
@@ -490,6 +522,7 @@ def load_spec(path: Path) -> Spec:
             helpers=[(int(a), int(b)) for a, b in record.get("helpers") or []],
             postamble=[str(x) for x in record.get("postamble") or []],
             automatic=[str(x).lower() for x in record.get("automatic") or []],
+            carries_entry=str(record.get("carries_entry") or "pycam_macro_forcing_v1"),
             elided=[(int(a), int(b)) for a, b in record.get("elided") or []],
         )
         unit.body = _parse_body(record["body"], unit)
@@ -533,8 +566,17 @@ def _resolve(spec: Spec) -> None:
                 raise SystemExit(f"{unit.key}: lines {pause.first}-{pause.last} are not one call statement: {pause.statement[:60]}")
             if pause.kernel not in spec.kernels:
                 raise SystemExit(f"{unit.key}: pause names kernel {pause.kernel!r}, which the spec does not describe")
-            pause.pc_at = f"pc_at_{pause.kernel}"
-            pause.pc_after = f"pc_after_{pause.kernel}"
+    # a kernel called at several sites pauses at each; the sites are numbered in source order
+    sites: dict[str, list[Pause]] = {}
+    for unit in spec.units.values():
+        for pause in unit.pauses:
+            sites.setdefault(pause.kernel, []).append(pause)
+    for kernel, pauses in sites.items():
+        for index, pause in enumerate(pauses, start=1):
+            pause.site = index if len(pauses) > 1 else 0
+            pause.pc_at = f"pc_at_{pause.tag}"
+            pause.pc_after = f"pc_after_{pause.tag}"
+    for unit in spec.units.values():
         for call in unit.unit_calls:
             (call.statement,) = [t for _, _, t in statements(unit.lines, call.first, call.last)] or [""]
             if call.unit not in spec.units:
@@ -550,6 +592,10 @@ def _resolve(spec: Spec) -> None:
         kernel.body_range = (start, end or len(kernel.lines))
         kernel.dummies = signature(kernel.lines, start, kernel.body_range[1], kernel.routine)
         kernel.decls = parse_declarations(kernel.lines, start, kernel.body_range[1])
+        # a procedure dummy (an interface block, or a bare `optional ::`) has no data the frame serves
+        for name in _procedure_dummies(kernel.lines, start, kernel.body_range[1]):
+            if name in kernel.dummies and name not in kernel.decls:
+                kernel.decls[name] = Decl(name, "procedure", "", "", "", None)
 
 
 # ---------------------------------------------------------------------------
@@ -717,13 +763,25 @@ def frame_slots(pause: Pause, kernel: Kernel) -> list[Slot]:
         decl = kernel.decls.get(dummy)
         if decl is None:
             raise SystemExit(f"kernel {kernel.name}: dummy {dummy!r} has no declaration")
-        if dummy not in by_dummy:
-            continue                                  # an optional argument the call omits
-        actual = by_dummy[dummy]
-        if decl.base_type.startswith("character"):
+        if decl.base_type.startswith("character") or decl.kind == "procedure":
             continue
         intent = decl.intent or "inout"
+        if dummy not in by_dummy:
+            # an optional argument this site omits: the slot stays, empty, so every
+            # site of the kernel serves the same frame
+            if decl.is_derived or decl.base_type.startswith("character"):
+                continue
+            slots.append(Slot(dummy=dummy, actual="", intent=intent, kind="absent", rank=decl.rank,
+                              dtype=DTYPE_CODE.get(decl.base_type, 1), expression="", shape=[], guard=None))
+            continue
+        actual = by_dummy[dummy]
         if decl.is_derived:
+            if decl.kind.lower() not in DERIVED_TYPES:
+                # a type the frame does not know (private components, say): the
+                # original passes it, the frame serves nothing for it
+                slots.append(Slot(dummy=dummy, actual=actual, intent=intent, kind="opaque", rank=0, dtype=1,
+                                  expression="", shape=[], guard=None))
+                continue
             components = _components_used(kernel, dummy)
             for component, (crank, cbase, written) in components.items():
                 cintent = "in" if intent == "in" else ("out" if written and not _read(kernel, dummy, component) else ("inout" if written else "in"))
@@ -771,6 +829,10 @@ def frame_slots(pause: Pause, kernel: Kernel) -> list[Slot]:
                           shape=shape, guard=guard, helper=helper))
     return slots
 
+
+#: Extents a frame slot carries: the ABI's `shapes(FRAME_MAX_RANK, count)`, the same number
+#: freecam.pi_cam.segment_runner reads (a water-tracer ratio is rank 4).
+FRAME_MAX_RANK = 5
 
 #: Names every unit can evaluate in an extent: the grid's parameters (`use ppgrid` is unqualified
 #: in these drivers) and the constituent count.
@@ -850,8 +912,11 @@ def _components_used(kernel: Kernel, dummy: str) -> dict[str, tuple[int, str, bo
         code = strip_comment(line)
         for match in re.finditer(rf"\b{dummy}%(\w+)\s*(\([^)]*\))?", code, re.I):
             component = match.group(1).lower()
-            typed = DERIVED_TYPES.get(kernel.decls[dummy].kind.lower(), {}).get(component)
+            known = DERIVED_TYPES.get(kernel.decls[dummy].kind.lower())
+            typed = (known or {}).get(component)
             if typed is None:
+                if known is not None:
+                    continue                          # a type-bound procedure, not a data component
                 indexed = match.group(2) or ""
                 rank = indexed.count(",") + 1 if indexed else 0
                 base = "real"
@@ -894,6 +959,14 @@ DERIVED_TYPES: dict[str, dict[str, tuple[int, str]]] = {
             "h2ovmr", "o3vmr", "co2vmr", "ch4vmr", "o2vmr", "n2ovmr", "cfc11vmr", "cfc12vmr", "cfc22vmr",
             "ccl4vmr", "pmidmb", "pintmb", "tlay", "tlev")
     },
+    "type(gwband)": {
+        "ngwv": (0, "integer"), "dc": (0, "real"), "cref": (1, "real"), "fcrit2": (0, "real"),
+        "kwv": (0, "real"), "effkwv": (0, "real"),
+    },
+    "type(coords1d)": {
+        "n": (0, "integer"), "d": (0, "integer"), "ifc": (2, "real"), "mid": (2, "real"), "del": (2, "real"),
+        "dst": (2, "real"), "rdel": (2, "real"), "rdst": (2, "real"),
+    },
     "type(physics_ptend)": {
         "s": (2, "real"), "u": (2, "real"), "v": (2, "real"), "q": (3, "real"),
         "hflux_srf": (1, "real"), "hflux_top": (1, "real"), "taux_srf": (1, "real"), "taux_top": (1, "real"),
@@ -934,9 +1007,9 @@ def _hoisted_state(unit: Unit) -> list[str]:
         if decl.is_pointer and not init:
             init = "=> null()"
         shape = f"({decl.dims})" if decl.dims else ""
-        if name in unit.automatic:
+        if _is_automatic(unit, name):
             # an automatic array of the routine (an extent set at run time): module
-            # state cannot size it, so it is allocated once, at the first bind
+            # state cannot size it, so it is allocated at bind, again when the shape changes
             shape = "(" + ",".join(":" for _ in range(decl.rank)) + ")"
             rows.append(f"  {decl.kind}{attrs}, allocatable{save}{target}, public :: {name}{shape}")
             continue
@@ -944,12 +1017,34 @@ def _hoisted_state(unit: Unit) -> list[str]:
     return rows
 
 
+def _is_automatic(unit: Unit, name: str) -> bool:
+    """A local listed as automatic, or whose extents name a dummy's component or a dummy (state%ncol, ncol)."""
+
+    decl = unit.decls.get(name)
+    if decl is None or not decl.dims or decl.is_pointer or decl.is_allocatable or decl.is_parameter or decl.is_derived:
+        return False
+    if name in unit.automatic:
+        return True
+    if "%" in decl.dims:
+        return True
+    return bool(identifiers(decl.dims) & set(unit.dummy_names))
+
+
+def _automatic_names(unit: Unit) -> list[str]:
+    used: set[str] = set()
+    for number in range(unit.body_range[0], unit.body_range[1] + 1):
+        used |= identifiers(unit.lines[number - 1])
+    return sorted(n for n in used if n in unit.decls and n not in unit.dummy_names and _is_automatic(unit, n))
+
+
 def _automatic_allocations(unit: Unit, indent: str = "    ") -> list[str]:
     rows = []
-    for name in unit.automatic:
-        decl = unit.decls.get(name)
-        if decl is None or not decl.dims:
-            raise SystemExit(f"{unit.key}: automatic {name!r} is not an array local of {unit.routine}")
+    for name in _automatic_names(unit):
+        decl = unit.decls[name]
+        extents = ", ".join(f"({e.partition(':')[2]})-({e.partition(':')[0]})+1" if ":" in e else e for e in _split_top(decl.dims))
+        rows.append(f"{indent}if (allocated({name})) then")
+        rows.append(f"{indent}  if (any(shape({name}) /= (/ {extents} /))) deallocate({name})")
+        rows.append(f"{indent}end if")
         rows.append(f"{indent}if (.not. allocated({name})) allocate({name}({decl.dims}))")
     return rows
 
@@ -1055,14 +1150,14 @@ def _bind_routine(unit: Unit, caller: Unit) -> str:
 
 
 def _frame_routine(spec: Spec, pause: Pause, slots: list[Slot]) -> str:
-    name = f"{pause.kernel}_frame"
+    name = f"{pause.tag}_frame"
     lines = [f"  subroutine {name}(ptrs, ndims, shapes, dtypes, intents, ncol_out)",
              f"    ! the paused `{pause.statement[:70]}...` in the callee's argument order",
              "    type(c_ptr), intent(inout) :: ptrs(:)",
              "    integer(c_int), intent(inout) :: ndims(:), dtypes(:), intents(:)",
              "    integer(c_int64_t), intent(inout) :: shapes(:,:)",
              "    integer(c_int), intent(out) :: ncol_out"]
-    scalars = [s for s in slots if s.rank == 0 and not s.by_address]
+    scalars = [s for s in slots if s.rank == 0 and not s.by_address and s.kind not in ("absent", "opaque")]
     for index, slot in enumerate(scalars, start=1):
         kind = "real(c_double)" if slot.dtype == 1 else "integer(c_int32_t)"
         lines.append(f"    {kind}, save, target :: sc_{index}")
@@ -1070,6 +1165,9 @@ def _frame_routine(spec: Spec, pause: Pause, slots: list[Slot]) -> str:
         lines.append("    type(c_ptr) :: address")
     lines.append(f"    ncol_out = int({_ncol_expression(pause.unit)}, c_int)")
     for index, slot in enumerate(slots, start=1):
+        if slot.kind in ("absent", "opaque"):
+            lines.append(f"    call empty_slot({index}, {slot.rank}, {slot.dtype}, {INTENT_CODE[slot.intent]}, ptrs, ndims, shapes, dtypes, intents)")
+            continue
         if slot.rank == 0 and not slot.by_address:
             si = scalars.index(slot) + 1
             if slot.dtype == 1:
@@ -1082,8 +1180,17 @@ def _frame_routine(spec: Spec, pause: Pause, slots: list[Slot]) -> str:
             continue
         shape = "zero_shape" if slot.rank == 0 else "(/ " + ", ".join(f"int({e}, c_int64_t)" for e in slot.shape) + " /)"
         if slot.helper:
-            taker = "slot_address_r8" if slot.dtype == 1 else "slot_address_i4"
-            lines.append(f"    call {taker}({slot.expression}, address)")
+            base, section = _actual_base(slot.actual)
+            colons = [s for s in _split_top(section)] if section else []
+            sectioned = [s for s in colons if ":" in s]
+            if sectioned:
+                # a section (mu(:,:,lchnk), cpairv(:,:,state%lchnk)): the whole section goes to an
+                # assumed-shape TARGET dummy of its rank, which is legal for a pointer array too
+                taker = f"slot_address_{'r8' if slot.dtype == 1 else 'i4'}_{len(sectioned)}"
+                lines.append(f"    call {taker}({slot.actual}, address)")
+            else:
+                taker = "slot_address_r8" if slot.dtype == 1 else "slot_address_i4"
+                lines.append(f"    call {taker}({slot.expression}, address)")
             location = "address"
         else:
             location = f"c_loc({slot.expression})"
@@ -1125,9 +1232,42 @@ def _original_routine(pause: Pause) -> str:
     for number in range(pause.first, pause.last + 1):
         line = pause.unit.lines[number - 1].rstrip()
         body.append(("    " + line) if line.strip() else "")
-    return "\n".join([f"  subroutine {pause.kernel}_original()",
+    return "\n".join([f"  subroutine {pause.tag}_original()",
                       f"    ! the original call, {Path(pause.unit.source).name}:{pause.first}-{pause.last}, verbatim"]
-                     + body + [f"  end subroutine {pause.kernel}_original"])
+                     + body + [f"  end subroutine {pause.tag}_original"])
+
+
+def _section_helpers(ranks: set[tuple[int, int]]) -> str:
+    """slot_address_<kind>_<rank>: an assumed-shape TARGET dummy per (kind, rank) a frame needs."""
+
+    out = []
+    for dtype, rank in sorted(ranks):
+        kind = "real(r8)" if dtype == 1 else "integer(c_int32_t)"
+        name = f"slot_address_{'r8' if dtype == 1 else 'i4'}_{rank}"
+        dims = ",".join(":" for _ in range(rank))
+        ones = ",".join("1" for _ in range(rank))
+        out.append(f"""  subroutine {name}(field, address)
+    ! a section's address through an assumed-shape TARGET dummy; a contiguous
+    ! section is passed without a copy
+    {kind}, intent(inout), target :: field({dims})
+    type(c_ptr), intent(out) :: address
+    address = c_loc(field({ones}))
+  end subroutine {name}""")
+    return "\n\n".join(out)
+
+
+def _section_helper_ranks(spec: Spec, unit: Unit) -> set[tuple[int, int]]:
+    ranks: set[tuple[int, int]] = set()
+    for pause in unit.pauses:
+        for slot in frame_slots(pause, spec.kernels[pause.kernel]):
+            if not slot.helper:
+                continue
+            _, section = _actual_base(slot.actual)
+            sectioned = [s for s in _split_top(section)] if section else []
+            sectioned = [s for s in sectioned if ":" in s]
+            if sectioned:
+                ranks.add((slot.dtype, len(sectioned)))
+    return ranks
 
 
 ADDRESS_HELPERS = """  subroutine slot_address_r8(field, address)
@@ -1177,11 +1317,34 @@ SLOT_HELPERS = """  subroutine put_slot(index, address, rank, shape, dtype, inte
   end subroutine empty_slot"""
 
 
+def _only_r8(use: str) -> bool:
+    """A shr_kind_mod use the unit module already covers with its own `r8 => shr_kind_r8`."""
+
+    if not re.match(r"^\s*use\s+shr_kind_mod\b", use, re.I):
+        return False
+    only = re.search(r"only\s*:\s*(.*)$", strip_comment(use), re.I)
+    if not only:
+        return False
+    names = {item.split("=>")[0].strip().lower() for item in _split_top(only.group(1))}
+    return names <= {"r8"}
+
+
+def _without_r8(use: str) -> str:
+    """A shr_kind_mod use with its `r8 => shr_kind_r8` item dropped: the unit module imports r8 itself,
+    and ifort refuses the same local name from two use statements."""
+
+    if not re.match(r"^\s*use\s+shr_kind_mod\b", use, re.I):
+        return use
+    head, _, only = strip_comment(use).partition(":")
+    items = [item.strip() for item in _split_top(only) if item.split("=>")[0].strip().lower() != "r8"]
+    return f"{head.strip()}: {', '.join(items)}"
+
+
 def render_unit(spec: Spec, unit: Unit) -> str:
     """One unit's module: hoisted locals, dummies, pieces, frames, originals, binder."""
 
     uses = use_statements(unit.lines, ([unit.module_header] if unit.module_header else []) + [unit.declarations])
-    uses = [u for u in uses if not re.match(r"^\s*use\s+(shr_kind_mod|iso_c_binding)\b", u, re.I)]
+    uses = [_without_r8(u) for u in uses if not re.match(r"^\s*use\s+iso_c_binding\b", u, re.I) and not _only_r8(u)]
     header = [
         f"! {unit.routine} ({Path(unit.source).name}:{unit.body_range[0]}-{unit.body_range[1]}) hoisted for the",
         f"! {spec.prefix} segment runner: its locals as module state, its body in pieces the",
@@ -1204,7 +1367,7 @@ def render_unit(spec: Spec, unit: Unit) -> str:
     for call in unit.unit_calls:
         header.append(f"  use pycam_{spec.prefix}_{call.unit}, only: {call.unit}_bind")
     header += ["  implicit none", "  private", "  public :: " + ", ".join(
-        [n.name for n in unit.pieces] + [f"{p.kernel}_frame" for p in unit.pauses] + [f"{p.kernel}_original" for p in unit.pauses]
+        [n.name for n in unit.pieces] + [f"{p.tag}_frame" for p in unit.pauses] + [f"{p.tag}_original" for p in unit.pauses]
         + ([f"{unit.key}_bind"] if unit.key != "glue" else ["glue_enter"] + (["glue_leave"] if unit.postamble else []))
         + [f"{unit.key}_bind_{c.unit}" for c in unit.unit_calls]
         + ([f"{unit.key}_resolve_indices"] if unit.pbuf_indices else []) + ([f"{unit.key}_configure"] if unit.getopts else [])),
@@ -1272,6 +1435,10 @@ def render_unit(spec: Spec, unit: Unit) -> str:
     if any(s.helper for p in unit.pauses for s in frame_slots(p, spec.kernels[p.kernel])):
         body.append(ADDRESS_HELPERS)
         body.append("")
+        ranks = _section_helper_ranks(spec, unit)
+        if ranks:
+            body.append(_section_helpers(ranks))
+            body.append("")
     body.append(SLOT_HELPERS)
     body.append("")
     body.append(f"end module {unit.module}")
@@ -1350,11 +1517,12 @@ def _glue_enter(spec: Spec, unit: Unit) -> str:
     uses = ["    use cam_abortutils, only: endrun"] if (unit.carries or unit.records) else []
     interfaces = []
     if unit.carries:
-        interfaces.append("    interface\n      integer(c_int) function pycam_macro_forcing_v1(lchnk, code, ptr, ndims, extents) &\n"
-                          "           bind(C, name='pycam_macro_forcing_v1')\n        import :: c_int, c_int64_t, c_ptr\n"
+        entry = unit.carries_entry
+        interfaces.append(f"    interface\n      integer(c_int) function {entry}(lchnk, code, ptr, ndims, extents) &\n"
+                          f"           bind(C, name='{entry}')\n        import :: c_int, c_int64_t, c_ptr\n"
                           "        integer(c_int), value, intent(in) :: lchnk, code\n        type(c_ptr), intent(out) :: ptr\n"
                           "        integer(c_int), intent(out) :: ndims\n        integer(c_int64_t), intent(out) :: extents(4)\n"
-                          "      end function pycam_macro_forcing_v1\n    end interface")
+                          f"      end function {entry}\n    end interface")
     for name, entry in sorted(unit.records.items()):
         interfaces.append(f"    interface\n      integer(c_int) function {entry}(lchnk, ptr) bind(C, name='{entry}')\n"
                           f"        import :: c_int, c_ptr\n        integer(c_int), value, intent(in) :: lchnk\n"
@@ -1381,7 +1549,7 @@ def _glue_enter(spec: Spec, unit: Unit) -> str:
             body.append(f"    {name} = {target.replace('lchnk', 'lchnk_in')}")
     for name, code in sorted(unit.carries.items(), key=lambda kv: kv[1]):
         decl = unit.decls[name]
-        body.append(f"    status = pycam_macro_forcing_v1(int(lchnk_in, c_int), {code}_c_int, address, ndims, extents)")
+        body.append(f"    status = {unit.carries_entry}(int(lchnk_in, c_int), {code}_c_int, address, ndims, extents)")
         body.append(f"    if (status /= 0_c_int .or. ndims /= {decl.rank}_c_int) call endrun('{spec.runner_module}: carry {name} refused')")
         shape = ", ".join(f"int(extents({i + 1}))" for i in range(decl.rank))
         body.append(f"    call c_f_pointer(address, {name}, (/ {shape} /))")
@@ -1456,7 +1624,7 @@ def _node_pc(spec: Spec, unit: Unit, node: Node, states: list[State], after: str
         pc = _new_pc(counters, f"before_{pause.kernel}")
         states.append(State(pc, f"if (replace({kernel_id})) then\n          token = token + 1_c_int\n          pc = {at}\n"
                                 f"          event = ev_needs_kernel\n          return\n        end if\n"
-                                f"        call {pause.kernel}_original()\n        pc = {resumed}"))
+                                f"        call {pause.tag}_original()\n        pc = {resumed}"))
         states.append(State(at, f"last_error = '{spec.prefix} is paused; only resume continues it'\n        event = ev_error\n        return"))
         states.append(State(resumed, f"call_index = call_index + 1_c_int\n        pc = {after}"))
         return pc
@@ -1515,7 +1683,7 @@ def render_runner(spec: Spec) -> str:
     frame_slots_max = max(len(frame_slots(p, spec.kernels[p.kernel])) for p in all_pauses) if all_pauses else 1
     unit_uses = []
     for unit in spec.units.values():
-        names = [n.name for n in unit.pieces] + [f"{p.kernel}_frame" for p in unit.pauses] + [f"{p.kernel}_original" for p in unit.pauses]
+        names = [n.name for n in unit.pieces] + [f"{p.tag}_frame" for p in unit.pauses] + [f"{p.tag}_original" for p in unit.pauses]
         names += [f"{unit.key}_bind_{c.unit}" for c in unit.unit_calls]
         if unit.key == "glue":
             names.append("glue_enter")
@@ -1534,14 +1702,14 @@ def render_runner(spec: Spec) -> str:
     getopt_decls = ""
     refusals = "".join(f"    if ({r['when']}) then\n      last_error = '{spec.prefix}: {r['message']}'; return\n    end if\n" for r in spec.refuse)
     resolves = "".join(f"    call {u.key}_resolve_indices()\n" for u in spec.units.values() if u.pbuf_indices)
-    frame_cases = "\n".join(f"    case ({p.pc_at})\n      call {p.kernel}_frame(ptrs, ndims, shapes, dtypes, intents, ncol_out)\n"
+    frame_cases = "\n".join(f"    case ({p.pc_at})\n      call {p.tag}_frame(ptrs, ndims, shapes, dtypes, intents, ncol_out)\n"
                             f"      kernel = kernel_{p.kernel}" for p in all_pauses)
     resume_cases = "\n".join(f"    case ({p.pc_at})\n      if (kernel /= kernel_{p.kernel}) then\n"
                              f"        last_error = '{spec.prefix} is paused on {p.kernel}, not on the kernel resumed'; status = 3_c_int; return\n"
                              f"      end if\n      pc = {p.pc_after}" for p in all_pauses)
     original_cases = "\n".join(f"    case ({p.pc_at})\n      if (kernel /= kernel_{p.kernel}) then\n"
                                f"        last_error = '{spec.prefix} is paused on {p.kernel}, not on the kernel asked for'; status = 3_c_int; return\n"
-                               f"      end if\n      call {p.kernel}_original()" for p in all_pauses)
+                               f"      end if\n      call {p.tag}_original()" for p in all_pauses)
     paused_pcs = ", ".join(p.pc_at for p in all_pauses) or "-1"
     advance_cases = "\n".join(f"      case ({s.name})\n        {s.code}" for s in states)
     ep = spec.entry_prefix
@@ -1656,7 +1824,7 @@ contains
     integer(c_int), intent(out) :: kernel, index_out, lchnk_out, ncol_out, substep_out, token_out
     type(c_ptr), intent(out) :: ptrs(count)
     integer(c_int), intent(out) :: ndims(count), dtypes(count), intents(count)
-    integer(c_int64_t), intent(out) :: shapes(3, count)
+    integer(c_int64_t), intent(out) :: shapes({FRAME_MAX_RANK}, count)
     kernel = 0_c_int; index_out = 0_c_int; lchnk_out = 0_c_int; ncol_out = 0_c_int
     substep_out = 0_c_int; token_out = 0_c_int
     status = 1_c_int

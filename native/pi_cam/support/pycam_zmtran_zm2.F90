@@ -70,6 +70,9 @@ contains
     ptend => a_ptend
     ztodt = a_ztodt
     pbuf => a_pbuf
+    if (allocated(rwt)) then
+      if (any(shape(rwt) /= (/ pcols, pver, wtrc_nwset, 2 /))) deallocate(rwt)
+    end if
     if (.not. allocated(rwt)) allocate(rwt(pcols,pver,wtrc_nwset,2))
   end subroutine zm2_bind
 
@@ -164,25 +167,25 @@ contains
     call put_slot(3, c_loc(state%q(1,1,1)), 3, (/ int(pcols, c_int64_t), int(pver, c_int64_t), int((pcnst), c_int64_t) /), 1, 0, ptrs, ndims, shapes, dtypes, intents)
     sc_2 = int(pcnst, c_int32_t)
     call put_slot(4, c_loc(sc_2), 0, zero_shape, 2, 0, ptrs, ndims, shapes, dtypes, intents)
-    call slot_address_r8(mu(1,1,lchnk), address)
+    call slot_address_r8_2(mu(:,:,lchnk), address)
     call put_slot(5, address, 2, (/ int(pcols, c_int64_t), int(pver, c_int64_t) /), 1, 0, ptrs, ndims, shapes, dtypes, intents)
-    call slot_address_r8(md(1,1,lchnk), address)
+    call slot_address_r8_2(md(:,:,lchnk), address)
     call put_slot(6, address, 2, (/ int(pcols, c_int64_t), int(pver, c_int64_t) /), 1, 0, ptrs, ndims, shapes, dtypes, intents)
-    call slot_address_r8(du(1,1,lchnk), address)
+    call slot_address_r8_2(du(:,:,lchnk), address)
     call put_slot(7, address, 2, (/ int(pcols, c_int64_t), int(pver, c_int64_t) /), 1, 0, ptrs, ndims, shapes, dtypes, intents)
-    call slot_address_r8(eu(1,1,lchnk), address)
+    call slot_address_r8_2(eu(:,:,lchnk), address)
     call put_slot(8, address, 2, (/ int(pcols, c_int64_t), int(pver, c_int64_t) /), 1, 0, ptrs, ndims, shapes, dtypes, intents)
-    call slot_address_r8(ed(1,1,lchnk), address)
+    call slot_address_r8_2(ed(:,:,lchnk), address)
     call put_slot(9, address, 2, (/ int(pcols, c_int64_t), int(pver, c_int64_t) /), 1, 0, ptrs, ndims, shapes, dtypes, intents)
-    call slot_address_r8(dp(1,1,lchnk), address)
+    call slot_address_r8_2(dp(:,:,lchnk), address)
     call put_slot(10, address, 2, (/ int(pcols, c_int64_t), int(pver, c_int64_t) /), 1, 0, ptrs, ndims, shapes, dtypes, intents)
-    call slot_address_r8(dsubcld(1,lchnk), address)
+    call slot_address_r8_1(dsubcld(:,lchnk), address)
     call put_slot(11, address, 1, (/ int(pcols, c_int64_t) /), 1, 0, ptrs, ndims, shapes, dtypes, intents)
-    call slot_address_i4(jt(1,lchnk), address)
+    call slot_address_i4_1(jt(:,lchnk), address)
     call put_slot(12, address, 1, (/ int(pcols, c_int64_t) /), 2, 0, ptrs, ndims, shapes, dtypes, intents)
-    call slot_address_i4(maxg(1,lchnk), address)
+    call slot_address_i4_1(maxg(:,lchnk), address)
     call put_slot(13, address, 1, (/ int(pcols, c_int64_t) /), 2, 0, ptrs, ndims, shapes, dtypes, intents)
-    call slot_address_i4(ideep(1,lchnk), address)
+    call slot_address_i4_1(ideep(:,lchnk), address)
     call put_slot(14, address, 1, (/ int(pcols, c_int64_t) /), 2, 0, ptrs, ndims, shapes, dtypes, intents)
     sc_3 = int(1, c_int32_t)
     call put_slot(15, c_loc(sc_3), 0, zero_shape, 2, 0, ptrs, ndims, shapes, dtypes, intents)
@@ -223,6 +226,30 @@ contains
     type(c_ptr), intent(out) :: address
     address = c_loc(field(1))
   end subroutine slot_address_i4
+
+  subroutine slot_address_r8_1(field, address)
+    ! a section's address through an assumed-shape TARGET dummy; a contiguous
+    ! section is passed without a copy
+    real(r8), intent(inout), target :: field(:)
+    type(c_ptr), intent(out) :: address
+    address = c_loc(field(1))
+  end subroutine slot_address_r8_1
+
+  subroutine slot_address_r8_2(field, address)
+    ! a section's address through an assumed-shape TARGET dummy; a contiguous
+    ! section is passed without a copy
+    real(r8), intent(inout), target :: field(:,:)
+    type(c_ptr), intent(out) :: address
+    address = c_loc(field(1,1))
+  end subroutine slot_address_r8_2
+
+  subroutine slot_address_i4_1(field, address)
+    ! a section's address through an assumed-shape TARGET dummy; a contiguous
+    ! section is passed without a copy
+    integer(c_int32_t), intent(inout), target :: field(:)
+    type(c_ptr), intent(out) :: address
+    address = c_loc(field(1))
+  end subroutine slot_address_i4_1
 
   subroutine put_slot(index, address, rank, shape, dtype, intent, ptrs, ndims, shapes, dtypes, intents)
     integer, intent(in) :: index, rank, dtype, intent
