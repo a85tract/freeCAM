@@ -17,6 +17,8 @@
 # the runner's pause -- the pause, the frame, the write-back and the resume
 # exercised, the answer the oracle's or the path is wrong.  PYCAM_RUN_TAG
 # names the run's records.  PYCAM_NATIVE_MANIFEST points at the image.
+# PYCAM_DISABLE_ACTIONS (qualified action names) is the inertness gate: those
+# actions switched off, the answer must still be the oracle's.
 set -euo pipefail
 
 source "${FREECAM_REPO:-${PBS_O_WORKDIR:-$PWD}}/validation/jobs/common.sh"
@@ -51,9 +53,19 @@ rsync -a \
 mkdir -p "${run_dir}/timing/checkpoints"
 
 cd "${repo}"
-original_flags=()
+stage_flags=()
+if [ -n "${PYCAM_PYTHON_STAGES:-}" ]; then
+  stage_flags=(--python-stages "${PYCAM_PYTHON_STAGES}" --stage-execution "${PYCAM_STAGE_EXECUTION:-auto}")
+fi
 if [ -n "${PYCAM_ORIGINAL_KERNELS:-}" ]; then
-  original_flags=(--segmented-original --segmented-original-kernels "${PYCAM_ORIGINAL_KERNELS}")
+  stage_flags+=(--segmented-original --segmented-original-kernels "${PYCAM_ORIGINAL_KERNELS}")
+fi
+if [ -n "${PYCAM_DISABLE_ACTIONS:-}" ]; then
+  # the inertness gate: actions expected to do no numerical work, switched off
+  stage_flags+=(--disable-actions "${PYCAM_DISABLE_ACTIONS}")
+fi
+if [ ${#stage_flags[@]} -eq 0 ]; then
+  echo "set PYCAM_PYTHON_STAGES, PYCAM_ORIGINAL_KERNELS or PYCAM_DISABLE_ACTIONS" >&2; exit 2
 fi
 mpiexec --label -n 512 "${python}" -m freecam.pi_cam.cli \
   --config configs/pi_cam_icesm131_replay.yaml \
@@ -61,9 +73,7 @@ mpiexec --label -n 512 "${python}" -m freecam.pi_cam.cli \
   --boundary "${boundary}" \
   --run-dir "${run_dir}" \
   --execution-mode "${mode}" \
-  --python-stages "${PYCAM_PYTHON_STAGES:?name the pausable stages to install}" \
-  --stage-execution "${PYCAM_STAGE_EXECUTION:-auto}" \
-  "${original_flags[@]}" \
+  "${stage_flags[@]}" \
   --steps "${PYCAM_STEPS:-50}" \
   --summary "${summary}" \
   > "${run_dir}/pi_cam_python.log" 2>&1 || echo "model run exited $? (comparing the output anyway)"

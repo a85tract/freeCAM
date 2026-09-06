@@ -66,6 +66,24 @@ served from the packed arrays where the substep left them. Nothing numerical
 moved: the pieces are the pinned text, checked line for line, and both modules
 compile with the case's own flags before an image is built.
 
+**One generator for the rest.** `tools/pi_cam_pausable.py` turns a spec under
+`native/pi_cam/pausable/` into a pausable runner: the action's tphysbc block
+and the driver it calls are hoisted verbatim into modules whose locals are
+module state, cut into pieces at the kernel calls and at the `if`, `do` and
+`select` statements the runner re-expresses, and every paused call's
+arguments are served as a frame in the callee's own order, with the callee's
+intents and declared shapes (an element or a section passed by sequence
+association is served with the shape the callee sees). The runner also runs
+the very call on request, so a gate can answer a pause with the original and
+still exercise the frame's write-back. The pinned ranges are hashed into the
+spec; a source that moves fails `--check`. Dry adjustment (`dadadj`) and
+shallow convection (`compute_uwshcu_inv`) are the first two processes made
+this way; `PausableStage` in `freecam.physics.pausable` owns each action, runs
+it whole when nothing is replaced, and refuses the Python walk it does not
+have. The eleven actions whose bodies do no numerical work in this
+configuration are `InertStage`s: a class, no kernel, and one gate with all of
+them disabled to prove it.
+
 **The read-only description.** `stage.describe_kernels()` returns one record
 per kernel: the owning class, whether the runner pauses at it, whether that
 pause has passed a gate, the reviewed contract's inputs and outputs when one
@@ -109,16 +127,20 @@ committed file equals a fresh build or the test fails.
 | `micro_mg_tend` | Microphysics (in the cloud stage) | reviewed | yes, validated | segmented, bit-for-bit (100 pauses in 50 steps); alone and together with `mmacro_pcond` (200 pauses) | open: no captured calls replayed through its standalone image yet |
 | `rad_rrtmg_sw` | Radiation | draft | no | walk with the original kernel, bit-for-bit | open |
 | `rad_rrtmg_lw` | Radiation | draft | no | walk with the original kernel, bit-for-bit | open |
+| `dadadj` | DryAdjustment (pausable) | reviewed | yes, gate pending | pending | open: the in-model gate |
+| `compute_uwshcu_inv` | ShallowConvection (pausable) | reviewed | yes, gate pending | pending | open: the in-model gate, capture and replay |
 
-Twelve enabled scheme actions do numerical work in this configuration. Two
-have a Python class today, both partial by the loop above: the cloud stage's
+Twelve enabled scheme actions do numerical work in this configuration. Four
+have a Python class today, all partial by the loop above: the cloud stage's
 two kernels both pause in the runner and both pauses have passed the gate
 with the original kernel answering; what the microphysics core still lacks
-is the capture-and-replay step of its own standalone image. The other ten are
+is the capture-and-replay step of its own standalone image. The other eight are
 gaps with their candidate procedures listed from the catalog: vertical
-diffusion, gravity-wave drag, the energy fixer, dry adjustment, deep and
-shallow convection, and the wet deposition, dry deposition, convective
-transport and chemistry leaves. For the four leaves the catalog's active call
+diffusion, gravity-wave drag, the energy fixer, deep convection, and the wet
+deposition, dry deposition, convective transport and chemistry leaves. The
+energy fixer is deferred on purpose: `check_energy_fix` allocates its tendency
+inside and reads a module variable private to `check_energy`, so a frame at
+its call cannot serve its outputs; it needs an allocation-aware pause. For the four leaves the catalog's active call
 graph lists no procedure yet; the ledger says so rather than choosing kernels
 without it.
 
