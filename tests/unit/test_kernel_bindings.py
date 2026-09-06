@@ -215,13 +215,14 @@ def test_describe_kernels_reports_contract_coverage_binding_and_calls() -> None:
 def test_the_builder_s_capabilities_come_from_the_manifest() -> None:
     from freecam.pi_cam.workflow_builder.capabilities import kernel_capabilities, validated_through_runner
 
-    assert set(validated_through_runner()) == {"mmacro_pcond", "micro_mg_tend", "dadadj", "compute_uwshcu_inv"}
+    assert set(validated_through_runner()) == {"mmacro_pcond", "micro_mg_tend", "dadadj", "compute_uwshcu_inv",
+                                               "rad_rrtmg_sw", "rad_rrtmg_lw"}
     by_name = {c.kernel: c for c in kernel_capabilities()}
     assert by_name["mmacro_pcond"].bindable and by_name["mmacro_pcond"].validated
     assert by_name["mmacro_pcond"].evidence == runners.runner_spec("cam_run1.cloud_macro_microphysics").kernel("mmacro_pcond").validated_by
     assert by_name["micro_mg_tend"].bindable and by_name["micro_mg_tend"].validated
-    # the radt runner pauses at the cores; the pause path has no gate yet
-    assert by_name["rad_rrtmg_sw"].bindable and not by_name["rad_rrtmg_sw"].validated
+    # the radt runner pauses at the cores, gated 7334070-7334073
+    assert by_name["rad_rrtmg_sw"].bindable and by_name["rad_rrtmg_sw"].validated
 
 
 # -- decoding the second kernel's frame ------------------------------------------

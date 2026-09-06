@@ -48,7 +48,7 @@
       "open": 4
     },
     "kernels_bindable": 6,
-    "kernels_validated_through_runner": 4,
+    "kernels_validated_through_runner": 6,
     "catalog_procedures": 371
   },
   "closure": {
@@ -4850,7 +4850,7 @@
       "contract": "frame",
       "contract_path": "native/pi_cam/segment_frames.yaml",
       "bindable": true,
-      "validated_through_runner": false,
+      "validated_through_runner": true,
       "evidence": {
         "capture": [],
         "standalone_build": [],
@@ -4864,6 +4864,30 @@
           "path": "legacy-python walk, original kernel",
           "record": "pi_cam_rad_tend_python_50step.json",
           "bfb_record": "pi_cam_rad_tend_python_vs_oracle_50step_bfb.json",
+          "present": true,
+          "bfb": true,
+          "compared_files": 4
+        },
+        {
+          "path": "segmented, original kernel answered through the pause",
+          "record": "pi_cam_pausable_rad-sw-pause_50step.json",
+          "bfb_record": "pi_cam_pausable_rad-sw-pause_vs_oracle_50step_bfb.json",
+          "present": true,
+          "bfb": true,
+          "compared_files": 4
+        },
+        {
+          "path": "segmented, original kernel answered through the pause",
+          "record": "pi_cam_pausable_rad-both-pause_50step.json",
+          "bfb_record": "pi_cam_pausable_rad-both-pause_vs_oracle_50step_bfb.json",
+          "present": true,
+          "bfb": true,
+          "compared_files": 4
+        },
+        {
+          "path": "segmented, original kernel answered through the pause",
+          "record": "pi_cam_pausable_all-pause_50step.json",
+          "bfb_record": "pi_cam_pausable_all-pause_vs_oracle_50step_bfb.json",
           "present": true,
           "bfb": true,
           "compared_files": 4
@@ -4886,7 +4910,7 @@
       "contract": "frame",
       "contract_path": "native/pi_cam/segment_frames.yaml",
       "bindable": true,
-      "validated_through_runner": false,
+      "validated_through_runner": true,
       "evidence": {
         "capture": [],
         "standalone_build": [],
@@ -4900,6 +4924,30 @@
           "path": "legacy-python walk, original kernel",
           "record": "pi_cam_rad_tend_python_50step.json",
           "bfb_record": "pi_cam_rad_tend_python_vs_oracle_50step_bfb.json",
+          "present": true,
+          "bfb": true,
+          "compared_files": 4
+        },
+        {
+          "path": "segmented, original kernel answered through the pause",
+          "record": "pi_cam_pausable_rad-lw-pause_50step.json",
+          "bfb_record": "pi_cam_pausable_rad-lw-pause_vs_oracle_50step_bfb.json",
+          "present": true,
+          "bfb": true,
+          "compared_files": 4
+        },
+        {
+          "path": "segmented, original kernel answered through the pause",
+          "record": "pi_cam_pausable_rad-both-pause_50step.json",
+          "bfb_record": "pi_cam_pausable_rad-both-pause_vs_oracle_50step_bfb.json",
+          "present": true,
+          "bfb": true,
+          "compared_files": 4
+        },
+        {
+          "path": "segmented, original kernel answered through the pause",
+          "record": "pi_cam_pausable_all-pause_50step.json",
+          "bfb_record": "pi_cam_pausable_all-pause_vs_oracle_50step_bfb.json",
           "present": true,
           "bfb": true,
           "compared_files": 4
@@ -4959,6 +5007,14 @@
           "present": true,
           "bfb": true,
           "compared_files": 4
+        },
+        {
+          "path": "segmented, original kernel answered through the pause",
+          "record": "pi_cam_pausable_all-pause_50step.json",
+          "bfb_record": "pi_cam_pausable_all-pause_vs_oracle_50step_bfb.json",
+          "present": true,
+          "bfb": true,
+          "compared_files": 4
         }
       ],
       "status": "complete",
@@ -4994,6 +5050,14 @@
           "path": "segmented, original kernel answered through the pause",
           "record": "pi_cam_pausable_both-pause_50step.json",
           "bfb_record": "pi_cam_pausable_both-pause_vs_oracle_50step_bfb.json",
+          "present": true,
+          "bfb": true,
+          "compared_files": 4
+        },
+        {
+          "path": "segmented, original kernel answered through the pause",
+          "record": "pi_cam_pausable_all-pause_50step.json",
+          "bfb_record": "pi_cam_pausable_all-pause_vs_oracle_50step_bfb.json",
           "present": true,
           "bfb": true,
           "compared_files": 4
@@ -5103,5 +5167,5 @@
       "why": "the physics catalog lists no procedure under this action; its active call graph must be extended before this action's kernels can be chosen"
     }
   ],
-  "coverage_hash": "9d3396246f887223fd1cf2312ddba4cbf141d8254a31527720d8367c5a6de4cb"
+  "coverage_hash": "2811f4e0551f8cfa9825bd9aea5f2d1674784d7eef501656d2168013ae3f047f"
 }

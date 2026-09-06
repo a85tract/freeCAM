@@ -140,8 +140,8 @@ committed file equals a fresh build or the test fails.
 | --- | --- | --- | --- | --- | --- |
 | `mmacro_pcond` | Macrophysics (in the cloud stage) | reviewed | yes, validated | segmented, bit-for-bit; alone and together with `micro_mg_tend` | complete |
 | `micro_mg_tend` | Microphysics (in the cloud stage) | reviewed | yes, validated | segmented, bit-for-bit (100 pauses in 50 steps); alone and together with `mmacro_pcond` (200 pauses) | open: no captured calls replayed through its standalone image yet |
-| `rad_rrtmg_sw` | Radiation (split, pausable) | frame descriptor | yes, gate pending | walk with the original kernel, bit-for-bit; the pause gate pending | open: the pause gate, capture and replay |
-| `rad_rrtmg_lw` | Radiation (split, pausable) | frame descriptor | yes, gate pending | walk with the original kernel, bit-for-bit; the pause gate pending | open: the pause gate, capture and replay |
+| `rad_rrtmg_sw` | Radiation (split, pausable) | frame descriptor | yes, validated | segmented, bit-for-bit (50 pauses in 50 steps); alone, with `rad_rrtmg_lw`, and with every other exposed kernel paused in one run | open: capture and replay |
+| `rad_rrtmg_lw` | Radiation (split, pausable) | frame descriptor | yes, validated | segmented, bit-for-bit (50 pauses in 50 steps); alone, with `rad_rrtmg_sw`, and with every other exposed kernel paused in one run | open: capture and replay |
 | `dadadj` | DryAdjustment (pausable) | reviewed | yes, validated | segmented, bit-for-bit (100 pauses in 50 steps); alone and together with `compute_uwshcu_inv` | complete |
 | `compute_uwshcu_inv` | ShallowConvection (pausable) | reviewed | yes, validated | segmented, bit-for-bit (100 pauses in 50 steps); alone and together with `dadadj` | open: no captured calls replayed through a standalone image yet |
 
@@ -151,7 +151,12 @@ convection), each kernel answered by the original through the pause, both
 paused in the same run, and the eleven inert actions disabled at once. All six
 are bit-for-bit with the oracle; the records are the
 `validation/pi_cam_pausable_*_50step.json` summaries and their
-`_vs_oracle_50step_bfb.json` comparisons.
+`_vs_oracle_50step_bfb.json` comparisons. The radiation runner followed the
+same day in five runs on its own image: the split class installed with nothing
+replaced (the resume half calls the driver; no pause), each core answered by
+the original through its pause (50 pauses each, radiation running every other
+step), both cores in one run, and one run with dry adjustment, shallow
+convection and radiation all paused at once. All five bit-for-bit.
 
 Twelve enabled scheme actions do numerical work in this configuration. Four
 have a Python class today, all partial by the loop above: the cloud stage's

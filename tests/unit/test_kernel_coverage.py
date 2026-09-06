@@ -74,7 +74,7 @@ def test_every_kernel_row_is_a_kernel_a_stage_class_describes_and_two_have_close
     assert micro["validated_through_runner"]                    # gate 7331040
     assert "segment_runner" not in micro["missing"] and "in_model_replacement_bfb" not in micro["missing"]
     assert "capture" in micro["missing"]                        # no captured calls replayed through its image yet
-    assert record["summary"]["kernels_validated_through_runner"] == 4
+    assert record["summary"]["kernels_validated_through_runner"] == 6
     assert micro["in_model_gates"][0]["bfb"] is True          # the walk with the core through its image
     # the pause gates the manifest names are in-model evidence too (7331040, 7331041)
     assert [g["record"] for g in micro["in_model_gates"][1:]] == [
@@ -90,9 +90,10 @@ def test_every_kernel_row_is_a_kernel_a_stage_class_describes_and_two_have_close
         # the frame descriptor is the contract of a kernel taking derived types, and the
         # radt runner pauses at both cores; the in-model gate is the walk's until the pause gates run
         assert rows[name]["contract"] == "frame" and rows[name]["contract_path"] == "native/pi_cam/segment_frames.yaml"
-        assert rows[name]["bindable"] and not rows[name]["validated_through_runner"]
+        assert rows[name]["bindable"] and rows[name]["validated_through_runner"]      # gates 7334070-7334073
         assert "reviewed_contract" not in rows[name]["missing"] and "segment_runner" not in rows[name]["missing"]
         assert "in_model_replacement_bfb" not in rows[name]["missing"]
+        assert [g["record"] for g in rows[name]["in_model_gates"][1:]][-1] == "pi_cam_pausable_all-pause_50step.json"
     assert record["summary"]["kernels_by_status"] == {"complete": 2, "open": 4}
 
 

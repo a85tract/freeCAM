@@ -32,23 +32,37 @@
   },
   {
    "bindable": true,
-   "evidence": [],
+   "evidence": [
+    "validation/pi_cam_pausable_rad-sw-pause_50step.json",
+    "validation/pi_cam_pausable_rad-sw-pause_vs_oracle_50step_bfb.json",
+    "validation/pi_cam_pausable_rad-both-pause_50step.json",
+    "validation/pi_cam_pausable_rad-both-pause_vs_oracle_50step_bfb.json",
+    "validation/pi_cam_pausable_all-pause_50step.json",
+    "validation/pi_cam_pausable_all-pause_vs_oracle_50step_bfb.json"
+   ],
    "kernel": "rad_rrtmg_sw",
    "owner_class": "freecam.physics.radiation.Radiation",
-   "reason": "bindable, but the pause path has not passed a bit-for-bit gate",
+   "reason": null,
    "stage_action": "cam_run1.radiation",
    "stage_class": "freecam.physics.radiation.Radiation",
-   "validated": false
+   "validated": true
   },
   {
    "bindable": true,
-   "evidence": [],
+   "evidence": [
+    "validation/pi_cam_pausable_rad-lw-pause_50step.json",
+    "validation/pi_cam_pausable_rad-lw-pause_vs_oracle_50step_bfb.json",
+    "validation/pi_cam_pausable_rad-both-pause_50step.json",
+    "validation/pi_cam_pausable_rad-both-pause_vs_oracle_50step_bfb.json",
+    "validation/pi_cam_pausable_all-pause_50step.json",
+    "validation/pi_cam_pausable_all-pause_vs_oracle_50step_bfb.json"
+   ],
    "kernel": "rad_rrtmg_lw",
    "owner_class": "freecam.physics.radiation.Radiation",
-   "reason": "bindable, but the pause path has not passed a bit-for-bit gate",
+   "reason": null,
    "stage_action": "cam_run1.radiation",
    "stage_class": "freecam.physics.radiation.Radiation",
-   "validated": false
+   "validated": true
   },
   {
    "bindable": true,
@@ -56,7 +70,9 @@
     "validation/pi_cam_pausable_dadadj-pause_50step.json",
     "validation/pi_cam_pausable_dadadj-pause_vs_oracle_50step_bfb.json",
     "validation/pi_cam_pausable_both-pause_50step.json",
-    "validation/pi_cam_pausable_both-pause_vs_oracle_50step_bfb.json"
+    "validation/pi_cam_pausable_both-pause_vs_oracle_50step_bfb.json",
+    "validation/pi_cam_pausable_all-pause_50step.json",
+    "validation/pi_cam_pausable_all-pause_vs_oracle_50step_bfb.json"
    ],
    "kernel": "dadadj",
    "owner_class": "freecam.physics.pausable.DryAdjustment",
@@ -71,7 +87,9 @@
     "validation/pi_cam_pausable_shcu-pause_50step.json",
     "validation/pi_cam_pausable_shcu-pause_vs_oracle_50step_bfb.json",
     "validation/pi_cam_pausable_both-pause_50step.json",
-    "validation/pi_cam_pausable_both-pause_vs_oracle_50step_bfb.json"
+    "validation/pi_cam_pausable_both-pause_vs_oracle_50step_bfb.json",
+    "validation/pi_cam_pausable_all-pause_50step.json",
+    "validation/pi_cam_pausable_all-pause_vs_oracle_50step_bfb.json"
    ],
    "kernel": "compute_uwshcu_inv",
    "owner_class": "freecam.physics.pausable.ShallowConvection",
@@ -87,11 +105,11 @@
   "PI-atm-online": "configs/pi_cam_icesm131_online.yaml",
   "PI-atm-replay": "configs/pi_cam_icesm131_replay.yaml"
  },
- "catalog_hash": "95898ed3bae01845037c3875f8bf7347929abee34f9fae4074b7f8dfb4f5a1b2",
- "commit": "e407e817f545e36995499e5de5c8496262f009ab",
+ "catalog_hash": "eeaac2998f2538fcf04092a7921d2f0edd2ed40b1475f57d3f979087555b8b0f",
+ "commit": "78180d4ecc6f155482f66ca35fa7723719c97a23",
  "default_document": {
   "case": "PI-atm",
-  "catalog_version": "95898ed3bae01845037c3875f8bf7347929abee34f9fae4074b7f8dfb4f5a1b2",
+  "catalog_version": "eeaac2998f2538fcf04092a7921d2f0edd2ed40b1475f57d3f979087555b8b0f",
   "experimental": false,
   "namelist": {},
   "nodes": [
@@ -1320,7 +1338,9 @@
         "validation/pi_cam_pausable_dadadj-pause_50step.json",
         "validation/pi_cam_pausable_dadadj-pause_vs_oracle_50step_bfb.json",
         "validation/pi_cam_pausable_both-pause_50step.json",
-        "validation/pi_cam_pausable_both-pause_vs_oracle_50step_bfb.json"
+        "validation/pi_cam_pausable_both-pause_vs_oracle_50step_bfb.json",
+        "validation/pi_cam_pausable_all-pause_50step.json",
+        "validation/pi_cam_pausable_all-pause_vs_oracle_50step_bfb.json"
        ],
        "kernel": "dadadj",
        "owner_class": "freecam.physics.pausable.DryAdjustment",
@@ -1435,7 +1455,9 @@
         "validation/pi_cam_pausable_shcu-pause_50step.json",
         "validation/pi_cam_pausable_shcu-pause_vs_oracle_50step_bfb.json",
         "validation/pi_cam_pausable_both-pause_50step.json",
-        "validation/pi_cam_pausable_both-pause_vs_oracle_50step_bfb.json"
+        "validation/pi_cam_pausable_both-pause_vs_oracle_50step_bfb.json",
+        "validation/pi_cam_pausable_all-pause_50step.json",
+        "validation/pi_cam_pausable_all-pause_vs_oracle_50step_bfb.json"
        ],
        "kernel": "compute_uwshcu_inv",
        "owner_class": "freecam.physics.pausable.ShallowConvection",
@@ -1980,23 +2002,37 @@
      "kernels": [
       {
        "bindable": true,
-       "evidence": [],
+       "evidence": [
+        "validation/pi_cam_pausable_rad-sw-pause_50step.json",
+        "validation/pi_cam_pausable_rad-sw-pause_vs_oracle_50step_bfb.json",
+        "validation/pi_cam_pausable_rad-both-pause_50step.json",
+        "validation/pi_cam_pausable_rad-both-pause_vs_oracle_50step_bfb.json",
+        "validation/pi_cam_pausable_all-pause_50step.json",
+        "validation/pi_cam_pausable_all-pause_vs_oracle_50step_bfb.json"
+       ],
        "kernel": "rad_rrtmg_sw",
        "owner_class": "freecam.physics.radiation.Radiation",
-       "reason": "bindable, but the pause path has not passed a bit-for-bit gate",
+       "reason": null,
        "stage_action": "cam_run1.radiation",
        "stage_class": "freecam.physics.radiation.Radiation",
-       "validated": false
+       "validated": true
       },
       {
        "bindable": true,
-       "evidence": [],
+       "evidence": [
+        "validation/pi_cam_pausable_rad-lw-pause_50step.json",
+        "validation/pi_cam_pausable_rad-lw-pause_vs_oracle_50step_bfb.json",
+        "validation/pi_cam_pausable_rad-both-pause_50step.json",
+        "validation/pi_cam_pausable_rad-both-pause_vs_oracle_50step_bfb.json",
+        "validation/pi_cam_pausable_all-pause_50step.json",
+        "validation/pi_cam_pausable_all-pause_vs_oracle_50step_bfb.json"
+       ],
        "kernel": "rad_rrtmg_lw",
        "owner_class": "freecam.physics.radiation.Radiation",
-       "reason": "bindable, but the pause path has not passed a bit-for-bit gate",
+       "reason": null,
        "stage_action": "cam_run1.radiation",
        "stage_class": "freecam.physics.radiation.Radiation",
-       "validated": false
+       "validated": true
       }
      ],
      "parameters": []
@@ -3486,7 +3522,9 @@
        "validation/pi_cam_pausable_dadadj-pause_50step.json",
        "validation/pi_cam_pausable_dadadj-pause_vs_oracle_50step_bfb.json",
        "validation/pi_cam_pausable_both-pause_50step.json",
-       "validation/pi_cam_pausable_both-pause_vs_oracle_50step_bfb.json"
+       "validation/pi_cam_pausable_both-pause_vs_oracle_50step_bfb.json",
+       "validation/pi_cam_pausable_all-pause_50step.json",
+       "validation/pi_cam_pausable_all-pause_vs_oracle_50step_bfb.json"
       ],
       "kernel": "dadadj",
       "owner_class": "freecam.physics.pausable.DryAdjustment",
@@ -3601,7 +3639,9 @@
        "validation/pi_cam_pausable_shcu-pause_50step.json",
        "validation/pi_cam_pausable_shcu-pause_vs_oracle_50step_bfb.json",
        "validation/pi_cam_pausable_both-pause_50step.json",
-       "validation/pi_cam_pausable_both-pause_vs_oracle_50step_bfb.json"
+       "validation/pi_cam_pausable_both-pause_vs_oracle_50step_bfb.json",
+       "validation/pi_cam_pausable_all-pause_50step.json",
+       "validation/pi_cam_pausable_all-pause_vs_oracle_50step_bfb.json"
       ],
       "kernel": "compute_uwshcu_inv",
       "owner_class": "freecam.physics.pausable.ShallowConvection",
@@ -4146,23 +4186,37 @@
     "kernels": [
      {
       "bindable": true,
-      "evidence": [],
+      "evidence": [
+       "validation/pi_cam_pausable_rad-sw-pause_50step.json",
+       "validation/pi_cam_pausable_rad-sw-pause_vs_oracle_50step_bfb.json",
+       "validation/pi_cam_pausable_rad-both-pause_50step.json",
+       "validation/pi_cam_pausable_rad-both-pause_vs_oracle_50step_bfb.json",
+       "validation/pi_cam_pausable_all-pause_50step.json",
+       "validation/pi_cam_pausable_all-pause_vs_oracle_50step_bfb.json"
+      ],
       "kernel": "rad_rrtmg_sw",
       "owner_class": "freecam.physics.radiation.Radiation",
-      "reason": "bindable, but the pause path has not passed a bit-for-bit gate",
+      "reason": null,
       "stage_action": "cam_run1.radiation",
       "stage_class": "freecam.physics.radiation.Radiation",
-      "validated": false
+      "validated": true
      },
      {
       "bindable": true,
-      "evidence": [],
+      "evidence": [
+       "validation/pi_cam_pausable_rad-lw-pause_50step.json",
+       "validation/pi_cam_pausable_rad-lw-pause_vs_oracle_50step_bfb.json",
+       "validation/pi_cam_pausable_rad-both-pause_50step.json",
+       "validation/pi_cam_pausable_rad-both-pause_vs_oracle_50step_bfb.json",
+       "validation/pi_cam_pausable_all-pause_50step.json",
+       "validation/pi_cam_pausable_all-pause_vs_oracle_50step_bfb.json"
+      ],
       "kernel": "rad_rrtmg_lw",
       "owner_class": "freecam.physics.radiation.Radiation",
-      "reason": "bindable, but the pause path has not passed a bit-for-bit gate",
+      "reason": null,
       "stage_action": "cam_run1.radiation",
       "stage_class": "freecam.physics.radiation.Radiation",
-      "validated": false
+      "validated": true
      }
     ],
     "parameters": []
@@ -5860,7 +5914,9 @@
        "validation/pi_cam_pausable_dadadj-pause_50step.json",
        "validation/pi_cam_pausable_dadadj-pause_vs_oracle_50step_bfb.json",
        "validation/pi_cam_pausable_both-pause_50step.json",
-       "validation/pi_cam_pausable_both-pause_vs_oracle_50step_bfb.json"
+       "validation/pi_cam_pausable_both-pause_vs_oracle_50step_bfb.json",
+       "validation/pi_cam_pausable_all-pause_50step.json",
+       "validation/pi_cam_pausable_all-pause_vs_oracle_50step_bfb.json"
       ],
       "kernel": "dadadj",
       "owner_class": "freecam.physics.pausable.DryAdjustment",
@@ -5987,7 +6043,9 @@
        "validation/pi_cam_pausable_shcu-pause_50step.json",
        "validation/pi_cam_pausable_shcu-pause_vs_oracle_50step_bfb.json",
        "validation/pi_cam_pausable_both-pause_50step.json",
-       "validation/pi_cam_pausable_both-pause_vs_oracle_50step_bfb.json"
+       "validation/pi_cam_pausable_both-pause_vs_oracle_50step_bfb.json",
+       "validation/pi_cam_pausable_all-pause_50step.json",
+       "validation/pi_cam_pausable_all-pause_vs_oracle_50step_bfb.json"
       ],
       "kernel": "compute_uwshcu_inv",
       "owner_class": "freecam.physics.pausable.ShallowConvection",
@@ -6610,23 +6668,37 @@
     "kernels": [
      {
       "bindable": true,
-      "evidence": [],
+      "evidence": [
+       "validation/pi_cam_pausable_rad-sw-pause_50step.json",
+       "validation/pi_cam_pausable_rad-sw-pause_vs_oracle_50step_bfb.json",
+       "validation/pi_cam_pausable_rad-both-pause_50step.json",
+       "validation/pi_cam_pausable_rad-both-pause_vs_oracle_50step_bfb.json",
+       "validation/pi_cam_pausable_all-pause_50step.json",
+       "validation/pi_cam_pausable_all-pause_vs_oracle_50step_bfb.json"
+      ],
       "kernel": "rad_rrtmg_sw",
       "owner_class": "freecam.physics.radiation.Radiation",
-      "reason": "bindable, but the pause path has not passed a bit-for-bit gate",
+      "reason": null,
       "stage_action": "cam_run1.radiation",
       "stage_class": "freecam.physics.radiation.Radiation",
-      "validated": false
+      "validated": true
      },
      {
       "bindable": true,
-      "evidence": [],
+      "evidence": [
+       "validation/pi_cam_pausable_rad-lw-pause_50step.json",
+       "validation/pi_cam_pausable_rad-lw-pause_vs_oracle_50step_bfb.json",
+       "validation/pi_cam_pausable_rad-both-pause_50step.json",
+       "validation/pi_cam_pausable_rad-both-pause_vs_oracle_50step_bfb.json",
+       "validation/pi_cam_pausable_all-pause_50step.json",
+       "validation/pi_cam_pausable_all-pause_vs_oracle_50step_bfb.json"
+      ],
       "kernel": "rad_rrtmg_lw",
       "owner_class": "freecam.physics.radiation.Radiation",
-      "reason": "bindable, but the pause path has not passed a bit-for-bit gate",
+      "reason": null,
       "stage_action": "cam_run1.radiation",
       "stage_class": "freecam.physics.radiation.Radiation",
-      "validated": false
+      "validated": true
      }
     ],
     "parameters": []
@@ -18562,7 +18634,7 @@
    "writes": []
   }
  ],
- "generated_at": "2026-09-06T12:47:43+00:00",
+ "generated_at": "2026-09-06T13:10:15+00:00",
  "parameters": {
   "cam_run1.cloud_macro_microphysics": [
    {

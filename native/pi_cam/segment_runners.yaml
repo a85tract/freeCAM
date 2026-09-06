@@ -55,6 +55,8 @@ runners:
     - validation/pi_cam_pausable_dadadj-pause_vs_oracle_50step_bfb.json
     - validation/pi_cam_pausable_both-pause_50step.json
     - validation/pi_cam_pausable_both-pause_vs_oracle_50step_bfb.json
+    - validation/pi_cam_pausable_all-pause_50step.json
+    - validation/pi_cam_pausable_all-pause_vs_oracle_50step_bfb.json
 - stage: cam_run1.shallow_convection
   prefix: pycam_shcu
   module: native/pi_cam/support/pycam_shcu_runner.F90
@@ -70,6 +72,8 @@ runners:
     - validation/pi_cam_pausable_shcu-pause_vs_oracle_50step_bfb.json
     - validation/pi_cam_pausable_both-pause_50step.json
     - validation/pi_cam_pausable_both-pause_vs_oracle_50step_bfb.json
+    - validation/pi_cam_pausable_all-pause_50step.json
+    - validation/pi_cam_pausable_all-pause_vs_oracle_50step_bfb.json
 # The radiation runner covers the driver call of the split stage (control patch
 # 0041): the stop half binds the chunk, the runner runs radiation_tend into the
 # radiation handles' ptend and net flux, and the resume half takes them when
@@ -85,8 +89,20 @@ runners:
   - name: rad_rrtmg_sw
     owner: freecam.physics.radiation.Radiation
     frame: native/pi_cam/segment_frames.yaml
-    validated_by: []
+    validated_by:
+    - validation/pi_cam_pausable_rad-sw-pause_50step.json
+    - validation/pi_cam_pausable_rad-sw-pause_vs_oracle_50step_bfb.json
+    - validation/pi_cam_pausable_rad-both-pause_50step.json
+    - validation/pi_cam_pausable_rad-both-pause_vs_oracle_50step_bfb.json
+    - validation/pi_cam_pausable_all-pause_50step.json
+    - validation/pi_cam_pausable_all-pause_vs_oracle_50step_bfb.json
   - name: rad_rrtmg_lw
     owner: freecam.physics.radiation.Radiation
     frame: native/pi_cam/segment_frames.yaml
-    validated_by: []
+    validated_by:
+    - validation/pi_cam_pausable_rad-lw-pause_50step.json
+    - validation/pi_cam_pausable_rad-lw-pause_vs_oracle_50step_bfb.json
+    - validation/pi_cam_pausable_rad-both-pause_50step.json
+    - validation/pi_cam_pausable_rad-both-pause_vs_oracle_50step_bfb.json
+    - validation/pi_cam_pausable_all-pause_50step.json
+    - validation/pi_cam_pausable_all-pause_vs_oracle_50step_bfb.json

@@ -95,9 +95,15 @@ def test_a_kernel_binding_is_offered_only_where_the_runner_covers_it(session, ca
     report = validate_document(session.document, default=document, catalog=entries, level="browser",
                                catalog_version=snapshot["catalog_hash"], capabilities=uncovered)
     assert "kernel-not-bindable" in _codes(report) and report.status == "error"
-    # the radt runner pauses at the radiation cores, but that pause has no gate yet: a warning, not an error
-    report = _check(session, catalog)
+    # a pause that has not passed its gate is a warning, not an error
+    pending = [replace(c, validated=False, reason="bindable, no gate yet") if c.kernel == "rad_rrtmg_sw" else c
+               for c in kernel_capabilities()]
+    report = validate_document(session.document, default=document, catalog=entries, level="browser",
+                               catalog_version=snapshot["catalog_hash"], capabilities=pending)
     assert "kernel-not-validated" in _codes(report) and "kernel-not-bindable" not in _codes(report)
+    # every exposed kernel's pause has passed its gate: the binding itself is the only finding
+    report = _check(session, catalog)
+    assert "kernel-not-validated" not in _codes(report) and "kernel-not-bindable" not in _codes(report)
     session.apply({"operation": "configure", "node_id": "cam_run1.radiation", "configuration": {"kernels": {}}})
     # the runner pauses at micro_mg_tend and that pause has passed its gate: no finding beyond the binding itself
     session.apply({"operation": "configure", "node_id": "cam_run1.cloud_macro_microphysics",
