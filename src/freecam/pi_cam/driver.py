@@ -2546,12 +2546,18 @@ class PICAMDriver:
         deferred = self._deferred_process_errors
         self._deferred_process_errors = []
         # The normal path is one integer reduction: every rank contributes
-        # whether it has anything to report.  Only when some rank does are
-        # the tracebacks themselves gathered.  Communicator doubles without
-        # the buffer form take the gathering path directly.
+        # whether it has a failure to report -- its own, or a trusted
+        # process's outcome that was not None.  Only when some rank does are
+        # the tracebacks themselves gathered.  A trusted process that
+        # succeeded leaves a (name, None) outcome, which is not a report: with
+        # eleven stage classes installed the list is never empty, and testing
+        # its length here sent every step of a year down the pickled gather.
+        # Communicator doubles without the buffer form take the gathering
+        # path directly.
         allreduce = getattr(self.comm, "Allreduce", None)
         if allreduce is not None:
-            self._flag_send[0] = 1 if local_error is not None or deferred else 0
+            failed = local_error is not None or any(error is not None for _, error in deferred)
+            self._flag_send[0] = 1 if failed else 0
             allreduce(self._flag_send, self._flag_recv)
             if not int(self._flag_recv[0]):
                 return result
