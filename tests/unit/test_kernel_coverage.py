@@ -61,7 +61,8 @@ def test_every_kernel_row_is_a_kernel_a_stage_class_describes_and_two_have_close
     record = kernel_coverage.build_coverage()
     rows = {k["kernel"]: k for k in record["kernels"]}
     assert set(rows) == {"mmacro_pcond", "micro_mg_tend", "rad_rrtmg_sw", "rad_rrtmg_lw",
-                         "dadadj", "compute_uwshcu_inv"}
+                         "dadadj", "compute_uwshcu_inv",
+                         "zm_convr", "zm_conv_evap", "momtran", "convtran"}
     # the pausable stages: dadadj has a reviewed contract and the runner pauses at it
     assert rows["dadadj"]["bindable"] and rows["dadadj"]["contract"] == "reviewed"
     pcond = rows["mmacro_pcond"]
@@ -94,7 +95,7 @@ def test_every_kernel_row_is_a_kernel_a_stage_class_describes_and_two_have_close
         assert "reviewed_contract" not in rows[name]["missing"] and "segment_runner" not in rows[name]["missing"]
         assert "in_model_replacement_bfb" not in rows[name]["missing"]
         assert [g["record"] for g in rows[name]["in_model_gates"][1:]][-1] == "pi_cam_pausable_all-pause_50step.json"
-    assert record["summary"]["kernels_by_status"] == {"complete": 2, "open": 4}
+    assert record["summary"]["kernels_by_status"] == {"complete": 2, "open": 8}      # P3 adds four bindable, ungated kernels
 
 
 def test_the_committed_record_is_what_the_builder_writes_now() -> None:

@@ -85,6 +85,8 @@ STAGE_CLASSES = (
     "freecam.physics.radiation.Radiation",
     "freecam.physics.pausable.DryAdjustment",
     "freecam.physics.pausable.ShallowConvection",
+    "freecam.physics.pausable.DeepConvection",
+    "freecam.physics.pausable.ConvectiveTracerTransport",
     "freecam.physics.pausable.RayleighFriction",
     "freecam.physics.pausable.ChargeNeutrality",
     "freecam.physics.pausable.QBORelaxation",

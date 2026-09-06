@@ -96,6 +96,19 @@ took the Python walk's. With nothing replaced the class leaves the step to the
 resume half, which calls the driver itself: no runner, no walk. The walk
 remains as the `legacy-python` policy.
 
+Deep convection is a chain of three hoisted routines -- the tphysbc block,
+`convect_deep_tend`, `zm_conv_tend` -- pausable at the Zhang-McFarlane core
+`zm_convr`, the precipitation evaporation `zm_conv_evap` and the momentum
+transport `momtran`. The mass fluxes, detrainment and gathering indices the
+core writes are zm_conv_intr's own per-chunk module arrays, which control
+patch 0044 makes readable (one `public` statement, no executable change), so
+the tracer transport leaf a few actions later -- `convect_deep_tend_2`,
+`zm_conv_tend_2`, pausable at `convtran` -- transports with exactly what deep
+convection left there, never a copy. A frame addresses those arrays through a
+TARGET dummy, serves an intent(out) scalar such as the gathered column count
+where it lives so a model can answer it, and sizes an automatic array by its
+own extents where the callee's would name something only the callee imports.
+
 **The read-only description.** `stage.describe_kernels()` returns one record
 per kernel: the owning class, whether the runner pauses at it, whether that
 pause has passed a gate, the reviewed contract's inputs and outputs when one
@@ -144,6 +157,10 @@ committed file equals a fresh build or the test fails.
 | `rad_rrtmg_lw` | Radiation (split, pausable) | frame descriptor | yes, validated | segmented, bit-for-bit (50 pauses in 50 steps); alone, with `rad_rrtmg_sw`, and with every other exposed kernel paused in one run | open: capture and replay |
 | `dadadj` | DryAdjustment (pausable) | reviewed | yes, validated | segmented, bit-for-bit (100 pauses in 50 steps); alone and together with `compute_uwshcu_inv` | complete |
 | `compute_uwshcu_inv` | ShallowConvection (pausable) | reviewed | yes, validated | segmented, bit-for-bit (100 pauses in 50 steps); alone and together with `dadadj` | open: no captured calls replayed through a standalone image yet |
+| `zm_convr` | DeepConvection (pausable) | frame descriptor | yes, gate pending | pending | open: the pause gate, capture and replay |
+| `zm_conv_evap` | DeepConvection (pausable) | frame descriptor | yes, gate pending | pending | open: the pause gate, capture and replay |
+| `momtran` | DeepConvection (pausable) | frame descriptor | yes, gate pending | pending | open: the pause gate, capture and replay |
+| `convtran` | ConvectiveTracerTransport (pausable, a leaf) | frame descriptor | yes, gate pending | pending | open: the pause gate, capture and replay |
 
 The pausable classes were gated on 2026-09-06 in six 512-rank 50-step runs on
 one image: each class installed with nothing replaced (dry adjustment, shallow

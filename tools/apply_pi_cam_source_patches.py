@@ -25,6 +25,7 @@ PATCHES = (
     "native/pi_cam/control_patches/0039-macro-tend-boundary.patch",
     "native/pi_cam/control_patches/0041-rad-tend-boundary.patch",
     "native/pi_cam/control_patches/0043-stage-carry-boundary.patch",
+    "native/pi_cam/control_patches/0044-zm-conv-state-boundary.patch",
 )
 
 # Modules this repository owns that are added to the CAM source tree.  They
@@ -72,6 +73,22 @@ SUPPORT_SOURCES = (
      "src/physics/cam/pycam_radt_glue.F90"),
     ("native/pi_cam/support/pycam_radt_runner.F90",
      "src/physics/cam/pycam_radt_runner.F90"),
+    ("native/pi_cam/support/pycam_zmdeep_zm.F90",
+     "src/physics/cam/pycam_zmdeep_zm.F90"),
+    ("native/pi_cam/support/pycam_zmdeep_deep.F90",
+     "src/physics/cam/pycam_zmdeep_deep.F90"),
+    ("native/pi_cam/support/pycam_zmdeep_glue.F90",
+     "src/physics/cam/pycam_zmdeep_glue.F90"),
+    ("native/pi_cam/support/pycam_zmdeep_runner.F90",
+     "src/physics/cam/pycam_zmdeep_runner.F90"),
+    ("native/pi_cam/support/pycam_zmtran_zm2.F90",
+     "src/physics/cam/pycam_zmtran_zm2.F90"),
+    ("native/pi_cam/support/pycam_zmtran_deep2.F90",
+     "src/physics/cam/pycam_zmtran_deep2.F90"),
+    ("native/pi_cam/support/pycam_zmtran_glue.F90",
+     "src/physics/cam/pycam_zmtran_glue.F90"),
+    ("native/pi_cam/support/pycam_zmtran_runner.F90",
+     "src/physics/cam/pycam_zmtran_runner.F90"),
 )
 
 

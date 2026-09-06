@@ -931,3 +931,835 @@ kernels:
     dtype: float64
     intent: inout
     kind: pointer
+  convtran:
+  - name: lchnk
+    actual: lchnk
+    rank: 0
+    dtype: int32
+    intent: in
+    kind: scalar
+  - name: doconvtran
+    actual: ptend%lq
+    rank: 1
+    dtype: int32
+    intent: in
+    kind: array
+  - name: q
+    actual: state%q
+    rank: 3
+    dtype: float64
+    intent: in
+    kind: array
+  - name: ncnst
+    actual: pcnst
+    rank: 0
+    dtype: int32
+    intent: in
+    kind: scalar
+  - name: mu
+    actual: mu(:,:,lchnk)
+    rank: 2
+    dtype: float64
+    intent: in
+    kind: array
+  - name: md
+    actual: md(:,:,lchnk)
+    rank: 2
+    dtype: float64
+    intent: in
+    kind: array
+  - name: du
+    actual: du(:,:,lchnk)
+    rank: 2
+    dtype: float64
+    intent: in
+    kind: array
+  - name: eu
+    actual: eu(:,:,lchnk)
+    rank: 2
+    dtype: float64
+    intent: in
+    kind: array
+  - name: ed
+    actual: ed(:,:,lchnk)
+    rank: 2
+    dtype: float64
+    intent: in
+    kind: array
+  - name: dp
+    actual: dp(:,:,lchnk)
+    rank: 2
+    dtype: float64
+    intent: in
+    kind: array
+  - name: dsubcld
+    actual: dsubcld(:,lchnk)
+    rank: 1
+    dtype: float64
+    intent: in
+    kind: array
+  - name: jt
+    actual: jt(:,lchnk)
+    rank: 1
+    dtype: int32
+    intent: in
+    kind: array
+  - name: mx
+    actual: maxg(:,lchnk)
+    rank: 1
+    dtype: int32
+    intent: in
+    kind: array
+  - name: ideep
+    actual: ideep(:,lchnk)
+    rank: 1
+    dtype: int32
+    intent: in
+    kind: array
+  - name: il1g
+    actual: '1'
+    rank: 0
+    dtype: int32
+    intent: in
+    kind: scalar
+  - name: il2g
+    actual: lengath(lchnk)
+    rank: 0
+    dtype: int32
+    intent: in
+    kind: scalar
+  - name: nstep
+    actual: nstep
+    rank: 0
+    dtype: int32
+    intent: in
+    kind: scalar
+  - name: fracis
+    actual: fracis
+    rank: 3
+    dtype: float64
+    intent: in
+    kind: pointer
+  - name: dqdt
+    actual: ptend%q
+    rank: 3
+    dtype: float64
+    intent: out
+    kind: array
+  - name: dpdry
+    actual: dpdry
+    rank: 2
+    dtype: float64
+    intent: in
+    kind: array
+  - name: rwt
+    actual: Rwt
+    rank: 4
+    dtype: float64
+    intent: out
+    kind: array
+  zm_convr:
+  - name: lchnk
+    actual: lchnk
+    rank: 0
+    dtype: int32
+    intent: in
+    kind: scalar
+  - name: ncol
+    actual: ncol
+    rank: 0
+    dtype: int32
+    intent: in
+    kind: scalar
+  - name: t
+    actual: state%t
+    rank: 2
+    dtype: float64
+    intent: in
+    kind: array
+  - name: qh
+    actual: state%q(:,:,1)
+    rank: 2
+    dtype: float64
+    intent: in
+    kind: array
+  - name: prec
+    actual: prec
+    rank: 1
+    dtype: float64
+    intent: out
+    kind: pointer
+  - name: jctop
+    actual: jctop
+    rank: 1
+    dtype: float64
+    intent: out
+    kind: array
+  - name: jcbot
+    actual: jcbot
+    rank: 1
+    dtype: float64
+    intent: out
+    kind: array
+  - name: pblh
+    actual: pblh
+    rank: 1
+    dtype: float64
+    intent: in
+    kind: array
+  - name: zm
+    actual: state%zm
+    rank: 2
+    dtype: float64
+    intent: in
+    kind: array
+  - name: geos
+    actual: state%phis
+    rank: 1
+    dtype: float64
+    intent: in
+    kind: array
+  - name: zi
+    actual: state%zi
+    rank: 2
+    dtype: float64
+    intent: in
+    kind: array
+  - name: qtnd
+    actual: ptend_loc%q(:,:,1)
+    rank: 2
+    dtype: float64
+    intent: out
+    kind: array
+  - name: heat
+    actual: ptend_loc%s
+    rank: 2
+    dtype: float64
+    intent: out
+    kind: array
+  - name: pap
+    actual: state%pmid
+    rank: 2
+    dtype: float64
+    intent: in
+    kind: array
+  - name: paph
+    actual: state%pint
+    rank: 2
+    dtype: float64
+    intent: in
+    kind: array
+  - name: dpp
+    actual: state%pdel
+    rank: 2
+    dtype: float64
+    intent: in
+    kind: array
+  - name: delt
+    actual: .5_r8*ztodt
+    rank: 0
+    dtype: float64
+    intent: inout
+    kind: scalar
+  - name: mcon
+    actual: mcon
+    rank: 2
+    dtype: float64
+    intent: out
+    kind: array
+  - name: cme
+    actual: cme
+    rank: 2
+    dtype: float64
+    intent: out
+    kind: array
+  - name: cape
+    actual: cape
+    rank: 1
+    dtype: float64
+    intent: out
+    kind: array
+  - name: tpert
+    actual: tpert
+    rank: 1
+    dtype: float64
+    intent: in
+    kind: array
+  - name: dlf
+    actual: dlf
+    rank: 2
+    dtype: float64
+    intent: out
+    kind: array
+  - name: pflx
+    actual: pflx
+    rank: 2
+    dtype: float64
+    intent: out
+    kind: array
+  - name: zdu
+    actual: zdu
+    rank: 2
+    dtype: float64
+    intent: out
+    kind: array
+  - name: rprd
+    actual: rprd
+    rank: 2
+    dtype: float64
+    intent: out
+    kind: pointer
+  - name: mu
+    actual: mu(:,:,lchnk)
+    rank: 2
+    dtype: float64
+    intent: out
+    kind: array
+  - name: md
+    actual: md(:,:,lchnk)
+    rank: 2
+    dtype: float64
+    intent: out
+    kind: array
+  - name: du
+    actual: du(:,:,lchnk)
+    rank: 2
+    dtype: float64
+    intent: out
+    kind: array
+  - name: eu
+    actual: eu(:,:,lchnk)
+    rank: 2
+    dtype: float64
+    intent: out
+    kind: array
+  - name: ed
+    actual: ed(:,:,lchnk)
+    rank: 2
+    dtype: float64
+    intent: out
+    kind: array
+  - name: dp
+    actual: dp(:,:,lchnk)
+    rank: 2
+    dtype: float64
+    intent: out
+    kind: array
+  - name: dsubcld
+    actual: dsubcld(:,lchnk)
+    rank: 1
+    dtype: float64
+    intent: out
+    kind: array
+  - name: jt
+    actual: jt(:,lchnk)
+    rank: 1
+    dtype: int32
+    intent: inout
+    kind: array
+  - name: maxg
+    actual: maxg(:,lchnk)
+    rank: 1
+    dtype: int32
+    intent: inout
+    kind: array
+  - name: ideep
+    actual: ideep(:,lchnk)
+    rank: 1
+    dtype: int32
+    intent: inout
+    kind: array
+  - name: lengath
+    actual: lengath(lchnk)
+    rank: 0
+    dtype: int32
+    intent: inout
+    kind: scalar
+  - name: ql
+    actual: ql
+    rank: 2
+    dtype: float64
+    intent: inout
+    kind: pointer
+  - name: rliq
+    actual: rliq
+    rank: 1
+    dtype: float64
+    intent: out
+    kind: array
+  - name: landfrac
+    actual: landfrac
+    rank: 1
+    dtype: float64
+    intent: in
+    kind: array
+  - name: org
+    actual: org
+    rank: 2
+    dtype: float64
+    intent: inout
+    kind: pointer
+  - name: orgt
+    actual: orgt
+    rank: 2
+    dtype: float64
+    intent: inout
+    kind: pointer
+  - name: org2d
+    actual: zm_org2d
+    rank: 2
+    dtype: float64
+    intent: inout
+    kind: pointer
+  - name: qu
+    actual: qu
+    rank: 2
+    dtype: float64
+    intent: out
+    kind: array
+  - name: qd
+    actual: qd
+    rank: 2
+    dtype: float64
+    intent: out
+    kind: array
+  - name: dz
+    actual: dz
+    rank: 2
+    dtype: float64
+    intent: out
+    kind: array
+  - name: rppe
+    actual: rppe
+    rank: 2
+    dtype: float64
+    intent: out
+    kind: array
+  - name: eps0
+    actual: eps0
+    rank: 1
+    dtype: float64
+    intent: out
+    kind: array
+  - name: cu
+    actual: cu
+    rank: 2
+    dtype: float64
+    intent: out
+    kind: array
+  - name: evp
+    actual: evp
+    rank: 2
+    dtype: float64
+    intent: out
+    kind: array
+  - name: tu
+    actual: tu
+    rank: 2
+    dtype: float64
+    intent: out
+    kind: array
+  - name: td
+    actual: td
+    rank: 2
+    dtype: float64
+    intent: out
+    kind: array
+  - name: jd
+    actual: jd
+    rank: 1
+    dtype: int32
+    intent: out
+    kind: array
+  - name: done
+    actual: done
+    rank: 2
+    dtype: int32
+    intent: out
+    kind: array
+  - name: lel
+    actual: lel
+    rank: 1
+    dtype: int32
+    intent: out
+    kind: array
+  - name: jlcl
+    actual: lcl
+    rank: 1
+    dtype: int32
+    intent: out
+    kind: array
+  - name: qs
+    actual: qst
+    rank: 2
+    dtype: float64
+    intent: out
+    kind: array
+  - name: qsthat
+    actual: qsthat
+    rank: 2
+    dtype: float64
+    intent: out
+    kind: array
+  - name: hmn
+    actual: hmn
+    rank: 2
+    dtype: float64
+    intent: out
+    kind: array
+  - name: hsat
+    actual: hsat
+    rank: 2
+    dtype: float64
+    intent: out
+    kind: array
+  - name: hsthat
+    actual: hsthat
+    rank: 2
+    dtype: float64
+    intent: out
+    kind: array
+  - name: wteu
+    actual: wteu
+    rank: 2
+    dtype: float64
+    intent: out
+    kind: array
+  - name: wted
+    actual: wted
+    rank: 2
+    dtype: float64
+    intent: out
+    kind: array
+  - name: wtdu
+    actual: wtdu
+    rank: 2
+    dtype: float64
+    intent: out
+    kind: array
+  - name: wtmu
+    actual: wtmu
+    rank: 2
+    dtype: float64
+    intent: out
+    kind: array
+  - name: wtmd
+    actual: wtmd
+    rank: 2
+    dtype: float64
+    intent: out
+    kind: array
+  - name: wtcu
+    actual: wtcu
+    rank: 2
+    dtype: float64
+    intent: out
+    kind: array
+  - name: c0mask
+    actual: c0mask
+    rank: 1
+    dtype: float64
+    intent: out
+    kind: array
+  - name: wtrpd
+    actual: rpdpc
+    rank: 2
+    dtype: float64
+    intent: out
+    kind: array
+  - name: qds
+    actual: qds
+    rank: 2
+    dtype: float64
+    intent: out
+    kind: array
+  - name: wtevp
+    actual: wtevp
+    rank: 2
+    dtype: float64
+    intent: out
+    kind: array
+  zm_conv_evap:
+  - name: ncol
+    actual: state1%ncol
+    rank: 0
+    dtype: int32
+    intent: in
+    kind: scalar
+  - name: lchnk
+    actual: state1%lchnk
+    rank: 0
+    dtype: int32
+    intent: in
+    kind: scalar
+  - name: t
+    actual: state1%t
+    rank: 2
+    dtype: float64
+    intent: in
+    kind: array
+  - name: pmid
+    actual: state1%pmid
+    rank: 2
+    dtype: float64
+    intent: in
+    kind: array
+  - name: pdel
+    actual: state1%pdel
+    rank: 2
+    dtype: float64
+    intent: in
+    kind: array
+  - name: q
+    actual: state1%q(:pcols,:pver,1)
+    rank: 2
+    dtype: float64
+    intent: in
+    kind: array
+  - name: landfrac
+    actual: landfrac
+    rank: 1
+    dtype: float64
+    intent: in
+    kind: array
+  - name: tend_s
+    actual: ptend_loc%s
+    rank: 2
+    dtype: float64
+    intent: inout
+    kind: array
+  - name: tend_s_snwprd
+    actual: tend_s_snwprd
+    rank: 2
+    dtype: float64
+    intent: out
+    kind: array
+  - name: tend_s_snwevmlt
+    actual: tend_s_snwevmlt
+    rank: 2
+    dtype: float64
+    intent: out
+    kind: array
+  - name: tend_q
+    actual: ptend_loc%q(:pcols,:pver,1)
+    rank: 2
+    dtype: float64
+    intent: inout
+    kind: array
+  - name: prdprec
+    actual: rprd
+    rank: 2
+    dtype: float64
+    intent: in
+    kind: pointer
+  - name: cldfrc
+    actual: cld
+    rank: 2
+    dtype: float64
+    intent: in
+    kind: pointer
+  - name: deltat
+    actual: ztodt
+    rank: 0
+    dtype: float64
+    intent: in
+    kind: scalar
+  - name: prec
+    actual: prec
+    rank: 1
+    dtype: float64
+    intent: inout
+    kind: pointer
+  - name: snow
+    actual: snow
+    rank: 1
+    dtype: float64
+    intent: out
+    kind: pointer
+  - name: evpstore
+    actual: evpstore
+    rank: 2
+    dtype: float64
+    intent: out
+    kind: array
+  - name: substore
+    actual: substore
+    rank: 2
+    dtype: float64
+    intent: out
+    kind: array
+  - name: ntprprd
+    actual: ntprprd
+    rank: 2
+    dtype: float64
+    intent: out
+    kind: array
+  - name: ntsnprd
+    actual: ntsnprd
+    rank: 2
+    dtype: float64
+    intent: out
+    kind: array
+  - name: flxprec
+    actual: flxprec
+    rank: 2
+    dtype: float64
+    intent: out
+    kind: pointer
+  - name: flxsnow
+    actual: flxsnow
+    rank: 2
+    dtype: float64
+    intent: out
+    kind: pointer
+  momtran:
+  - name: lchnk
+    actual: lchnk
+    rank: 0
+    dtype: int32
+    intent: in
+    kind: scalar
+  - name: ncol
+    actual: ncol
+    rank: 0
+    dtype: int32
+    intent: in
+    kind: scalar
+  - name: domomtran
+    actual: l_windt
+    rank: 1
+    dtype: int32
+    intent: in
+    kind: array
+  - name: q
+    actual: winds
+    rank: 3
+    dtype: float64
+    intent: in
+    kind: array
+  - name: ncnst
+    actual: '2'
+    rank: 0
+    dtype: int32
+    intent: in
+    kind: scalar
+  - name: mu
+    actual: mu(1,1,lchnk)
+    rank: 2
+    dtype: float64
+    intent: in
+    kind: array
+  - name: md
+    actual: md(1,1,lchnk)
+    rank: 2
+    dtype: float64
+    intent: in
+    kind: array
+  - name: du
+    actual: du(1,1,lchnk)
+    rank: 2
+    dtype: float64
+    intent: in
+    kind: array
+  - name: eu
+    actual: eu(1,1,lchnk)
+    rank: 2
+    dtype: float64
+    intent: in
+    kind: array
+  - name: ed
+    actual: ed(1,1,lchnk)
+    rank: 2
+    dtype: float64
+    intent: in
+    kind: array
+  - name: dp
+    actual: dp(1,1,lchnk)
+    rank: 2
+    dtype: float64
+    intent: in
+    kind: array
+  - name: dsubcld
+    actual: dsubcld(1,lchnk)
+    rank: 1
+    dtype: float64
+    intent: in
+    kind: array
+  - name: jt
+    actual: jt(1,lchnk)
+    rank: 1
+    dtype: int32
+    intent: in
+    kind: array
+  - name: mx
+    actual: maxg(1,lchnk)
+    rank: 1
+    dtype: int32
+    intent: in
+    kind: array
+  - name: ideep
+    actual: ideep(1,lchnk)
+    rank: 1
+    dtype: int32
+    intent: in
+    kind: array
+  - name: il1g
+    actual: '1'
+    rank: 0
+    dtype: int32
+    intent: in
+    kind: scalar
+  - name: il2g
+    actual: lengath(lchnk)
+    rank: 0
+    dtype: int32
+    intent: in
+    kind: scalar
+  - name: nstep
+    actual: nstep
+    rank: 0
+    dtype: int32
+    intent: in
+    kind: scalar
+  - name: dqdt
+    actual: wind_tends
+    rank: 3
+    dtype: float64
+    intent: out
+    kind: array
+  - name: pguall
+    actual: pguall
+    rank: 3
+    dtype: float64
+    intent: out
+    kind: array
+  - name: pgdall
+    actual: pgdall
+    rank: 3
+    dtype: float64
+    intent: out
+    kind: array
+  - name: icwu
+    actual: icwu
+    rank: 3
+    dtype: float64
+    intent: out
+    kind: array
+  - name: icwd
+    actual: icwd
+    rank: 3
+    dtype: float64
+    intent: out
+    kind: array
+  - name: dt
+    actual: ztodt
+    rank: 0
+    dtype: float64
+    intent: in
+    kind: scalar
+  - name: seten
+    actual: seten
+    rank: 2
+    dtype: float64
+    intent: out
+    kind: array

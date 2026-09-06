@@ -106,3 +106,36 @@ runners:
     - validation/pi_cam_pausable_rad-both-pause_vs_oracle_50step_bfb.json
     - validation/pi_cam_pausable_all-pause_50step.json
     - validation/pi_cam_pausable_all-pause_vs_oracle_50step_bfb.json
+# Deep convection and the tracer transport leaf share zm_conv_intr's per-chunk
+# state (control patch 0044): the first writes it at zm_convr, the second reads
+# it at convtran, a few actions later, from the same module arrays.
+- stage: cam_run1.deep_convection
+  prefix: pycam_zmdeep
+  module: native/pi_cam/support/pycam_zmdeep_runner.F90
+  generator: tools/generate_pi_cam_pausable_runners.py
+  descriptors: native/pi_cam/direct_kernels_promoted.yaml
+  original: true
+  kernels:
+  - name: zm_convr
+    owner: freecam.physics.pausable.DeepConvection
+    frame: native/pi_cam/segment_frames.yaml
+    validated_by: []
+  - name: zm_conv_evap
+    owner: freecam.physics.pausable.DeepConvection
+    frame: native/pi_cam/segment_frames.yaml
+    validated_by: []
+  - name: momtran
+    owner: freecam.physics.pausable.DeepConvection
+    frame: native/pi_cam/segment_frames.yaml
+    validated_by: []
+- stage: cam_run1.convective_tracer_transport_leaf
+  prefix: pycam_zmtran
+  module: native/pi_cam/support/pycam_zmtran_runner.F90
+  generator: tools/generate_pi_cam_pausable_runners.py
+  descriptors: native/pi_cam/direct_kernels_promoted.yaml
+  original: true
+  kernels:
+  - name: convtran
+    owner: freecam.physics.pausable.ConvectiveTracerTransport
+    frame: native/pi_cam/segment_frames.yaml
+    validated_by: []

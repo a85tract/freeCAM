@@ -12,9 +12,10 @@ REPO = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO / "tools"))
 
 import generate_pi_cam_macro_boundary as boundary  # noqa: E402
+import generate_pi_cam_zm_state_boundary as zm_boundary  # noqa: E402
 from apply_pi_cam_source_patches import PATCHES  # noqa: E402
 from build_pi_cam_devices import (  # noqa: E402
-    LEAF_OPERATION_IDS, LEAF_OPERATION_NAMES, LEAF_PATCHES, SUPPORT_MODULES,
+    INTERFACE_MODULES, LEAF_OPERATION_IDS, LEAF_OPERATION_NAMES, LEAF_PATCHES, SUPPORT_MODULES,
 )
 
 from freecam.pi_cam.plan import PICAMStepPlan  # noqa: E402
@@ -39,6 +40,22 @@ def test_the_patches_are_what_the_generator_produces_on_their_own_bases() -> Non
     assert boundary.DISPATCH.read_text() == rendered[boundary.DISPATCH]
 
 
+@pinned
+def test_the_zm_state_patch_is_one_public_statement_on_the_pinned_module() -> None:
+    """Control patch 0044 names zm_conv_intr's per-chunk state public and changes nothing else."""
+
+    rendered = zm_boundary.render()[zm_boundary.BOUNDARY]
+    assert zm_boundary.BOUNDARY.read_text() == rendered
+    added = [line[1:] for line in rendered.splitlines() if line.startswith("+") and not line.startswith("+++")]
+    statements = [line.strip() for line in added if line.strip() and not line.strip().startswith("!")]
+    assert statements == ["public :: mu, eu, du, md, ed, dp, dsubcld, jt, maxg, ideep, lengath, zmconv_org, ixorg, limcnv"]
+    assert not any(line.startswith("-") and not line.startswith("---") for line in rendered.splitlines())
+    # the hoisted drivers read exactly those names from the module
+    for spec in ("deep_convection", "convective_tracer_transport"):
+        text = (REPO / f"native/pi_cam/pausable/{spec}.yaml").read_text()
+        assert "use zm_conv_intr, only: mu, eu, du, md, ed, dp, dsubcld, jt, maxg, ideep, lengath" in text
+
+
 def test_each_patch_ships_in_the_set_that_has_to_prove_it() -> None:
     production = [Path(name).name for name in PATCHES]
     add_on = [path.name for path in LEAF_PATCHES]
@@ -49,7 +66,7 @@ def test_each_patch_ships_in_the_set_that_has_to_prove_it() -> None:
     # carry accessors the pausable runners read come last, since they are
     # generated against physpkg with every earlier production patch applied.
     assert "0041-rad-tend-boundary.patch" in production
-    assert production[-1] == "0043-stage-carry-boundary.patch"
+    assert production[-2:] == ["0043-stage-carry-boundary.patch", "0044-zm-conv-state-boundary.patch"]
     # The dispatcher only widens the leaf entry point Python drives: add-on
     # set, last, since it edits what 0031 leaves behind.
     assert "0040-macro-tend-leaf-dispatch.patch" in add_on
@@ -133,12 +150,20 @@ def test_the_support_modules_are_additions_the_image_links() -> None:
                                "pycam_stage_hosts.F90",
                                "pycam_dadadj_glue.F90", "pycam_dadadj_runner.F90",
                                "pycam_shcu_driver.F90", "pycam_shcu_glue.F90", "pycam_shcu_runner.F90",
-                               "pycam_radt_driver.F90", "pycam_radt_glue.F90", "pycam_radt_runner.F90")
+                               "pycam_radt_driver.F90", "pycam_radt_glue.F90", "pycam_radt_runner.F90",
+                               "pycam_zmdeep_zm.F90", "pycam_zmdeep_deep.F90", "pycam_zmdeep_glue.F90",
+                               "pycam_zmdeep_runner.F90", "pycam_zmtran_zm2.F90", "pycam_zmtran_deep2.F90",
+                               "pycam_zmtran_glue.F90", "pycam_zmtran_runner.F90")
     for name in SUPPORT_MODULES:
         assert (REPO / "native/pi_cam/support" / name).is_file()
     builder = (REPO / "tools/build_pi_cam_devices.py").read_text()
     # compiled before the control objects that `use` them, linked into the
     # fixed image as explicit objects, never as archive replacements
+    # zm_conv_intr's control patch is accessibility alone: its .mod is compiled
+    # before the support modules that read it, and its object is never linked
+    assert INTERFACE_MODULES == ("zm_conv_intr.F90",)
+    assert builder.index("for source_name in INTERFACE_MODULES:") < builder.index("for source_name in SUPPORT_MODULES:")
+    assert "_interface_only.o" in builder and "_interface_only" not in builder[builder.index("replacement_objects: tuple"):]
     assert builder.index("for source_name in SUPPORT_MODULES:") < builder.index(
         'for source_name in (\n        "physpkg.F90", "cam_comp.F90", "atm_comp_mct.F90",\n    ):')
     assert "*(str(path) for path in support_objects)," in builder

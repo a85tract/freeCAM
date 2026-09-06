@@ -97,6 +97,46 @@
    "stage_action": "cam_run1.shallow_convection",
    "stage_class": "freecam.physics.pausable.ShallowConvection",
    "validated": true
+  },
+  {
+   "bindable": true,
+   "evidence": [],
+   "kernel": "zm_convr",
+   "owner_class": "freecam.physics.pausable.DeepConvection",
+   "reason": "bindable, but the pause path has not passed a bit-for-bit gate",
+   "stage_action": "cam_run1.deep_convection",
+   "stage_class": "freecam.physics.pausable.DeepConvection",
+   "validated": false
+  },
+  {
+   "bindable": true,
+   "evidence": [],
+   "kernel": "zm_conv_evap",
+   "owner_class": "freecam.physics.pausable.DeepConvection",
+   "reason": "bindable, but the pause path has not passed a bit-for-bit gate",
+   "stage_action": "cam_run1.deep_convection",
+   "stage_class": "freecam.physics.pausable.DeepConvection",
+   "validated": false
+  },
+  {
+   "bindable": true,
+   "evidence": [],
+   "kernel": "momtran",
+   "owner_class": "freecam.physics.pausable.DeepConvection",
+   "reason": "bindable, but the pause path has not passed a bit-for-bit gate",
+   "stage_action": "cam_run1.deep_convection",
+   "stage_class": "freecam.physics.pausable.DeepConvection",
+   "validated": false
+  },
+  {
+   "bindable": true,
+   "evidence": [],
+   "kernel": "convtran",
+   "owner_class": "freecam.physics.pausable.ConvectiveTracerTransport",
+   "reason": "bindable, but the pause path has not passed a bit-for-bit gate",
+   "stage_action": "cam_run1.convective_tracer_transport_leaf",
+   "stage_class": "freecam.physics.pausable.ConvectiveTracerTransport",
+   "validated": false
   }
  ],
  "cases": {
@@ -105,11 +145,11 @@
   "PI-atm-online": "configs/pi_cam_icesm131_online.yaml",
   "PI-atm-replay": "configs/pi_cam_icesm131_replay.yaml"
  },
- "catalog_hash": "eeaac2998f2538fcf04092a7921d2f0edd2ed40b1475f57d3f979087555b8b0f",
- "commit": "78180d4ecc6f155482f66ca35fa7723719c97a23",
+ "catalog_hash": "cb49c21ebae6478c0ee8ad800cfb1892afed1d906ac5cffeb08a4c58b9bfff23",
+ "commit": "aafa4c36676ac8cdc5d8d54f237ea30758af8060",
  "default_document": {
   "case": "PI-atm",
-  "catalog_version": "eeaac2998f2538fcf04092a7921d2f0edd2ed40b1475f57d3f979087555b8b0f",
+  "catalog_version": "cb49c21ebae6478c0ee8ad800cfb1892afed1d906ac5cffeb08a4c58b9bfff23",
   "experimental": false,
   "namelist": {},
   "nodes": [
@@ -1368,7 +1408,20 @@
    },
    {
     "configuration": {
-     "kernels": {},
+     "kernels": {
+      "momtran": {
+       "kind": "original",
+       "path": null
+      },
+      "zm_conv_evap": {
+       "kind": "original",
+       "path": null
+      },
+      "zm_convr": {
+       "kind": "original",
+       "path": null
+      }
+     },
      "parameters": {},
      "python_source": null,
      "variables": []
@@ -1383,7 +1436,38 @@
     "locked": false,
     "metadata": {
      "control_owner": "python",
-     "kernels": [],
+     "kernels": [
+      {
+       "bindable": true,
+       "evidence": [],
+       "kernel": "zm_convr",
+       "owner_class": "freecam.physics.pausable.DeepConvection",
+       "reason": "bindable, but the pause path has not passed a bit-for-bit gate",
+       "stage_action": "cam_run1.deep_convection",
+       "stage_class": "freecam.physics.pausable.DeepConvection",
+       "validated": false
+      },
+      {
+       "bindable": true,
+       "evidence": [],
+       "kernel": "zm_conv_evap",
+       "owner_class": "freecam.physics.pausable.DeepConvection",
+       "reason": "bindable, but the pause path has not passed a bit-for-bit gate",
+       "stage_action": "cam_run1.deep_convection",
+       "stage_class": "freecam.physics.pausable.DeepConvection",
+       "validated": false
+      },
+      {
+       "bindable": true,
+       "evidence": [],
+       "kernel": "momtran",
+       "owner_class": "freecam.physics.pausable.DeepConvection",
+       "reason": "bindable, but the pause path has not passed a bit-for-bit gate",
+       "stage_action": "cam_run1.deep_convection",
+       "stage_class": "freecam.physics.pausable.DeepConvection",
+       "validated": false
+      }
+     ],
      "parameters": [
       {
        "dtype": "float64",
@@ -1839,7 +1923,12 @@
    },
    {
     "configuration": {
-     "kernels": {},
+     "kernels": {
+      "convtran": {
+       "kind": "original",
+       "path": null
+      }
+     },
      "parameters": {},
      "python_source": null,
      "variables": []
@@ -1854,7 +1943,18 @@
     "locked": false,
     "metadata": {
      "control_owner": "python",
-     "kernels": [],
+     "kernels": [
+      {
+       "bindable": true,
+       "evidence": [],
+       "kernel": "convtran",
+       "owner_class": "freecam.physics.pausable.ConvectiveTracerTransport",
+       "reason": "bindable, but the pause path has not passed a bit-for-bit gate",
+       "stage_action": "cam_run1.convective_tracer_transport_leaf",
+       "stage_class": "freecam.physics.pausable.ConvectiveTracerTransport",
+       "validated": false
+      }
+     ],
      "parameters": []
     },
     "movable": true,
@@ -3552,7 +3652,20 @@
   },
   {
    "configuration": {
-    "kernels": {},
+    "kernels": {
+     "momtran": {
+      "kind": "original",
+      "path": null
+     },
+     "zm_conv_evap": {
+      "kind": "original",
+      "path": null
+     },
+     "zm_convr": {
+      "kind": "original",
+      "path": null
+     }
+    },
     "parameters": {},
     "python_source": null,
     "variables": []
@@ -3567,7 +3680,38 @@
    "locked": false,
    "metadata": {
     "control_owner": "python",
-    "kernels": [],
+    "kernels": [
+     {
+      "bindable": true,
+      "evidence": [],
+      "kernel": "zm_convr",
+      "owner_class": "freecam.physics.pausable.DeepConvection",
+      "reason": "bindable, but the pause path has not passed a bit-for-bit gate",
+      "stage_action": "cam_run1.deep_convection",
+      "stage_class": "freecam.physics.pausable.DeepConvection",
+      "validated": false
+     },
+     {
+      "bindable": true,
+      "evidence": [],
+      "kernel": "zm_conv_evap",
+      "owner_class": "freecam.physics.pausable.DeepConvection",
+      "reason": "bindable, but the pause path has not passed a bit-for-bit gate",
+      "stage_action": "cam_run1.deep_convection",
+      "stage_class": "freecam.physics.pausable.DeepConvection",
+      "validated": false
+     },
+     {
+      "bindable": true,
+      "evidence": [],
+      "kernel": "momtran",
+      "owner_class": "freecam.physics.pausable.DeepConvection",
+      "reason": "bindable, but the pause path has not passed a bit-for-bit gate",
+      "stage_action": "cam_run1.deep_convection",
+      "stage_class": "freecam.physics.pausable.DeepConvection",
+      "validated": false
+     }
+    ],
     "parameters": [
      {
       "dtype": "float64",
@@ -4023,7 +4167,12 @@
   },
   {
    "configuration": {
-    "kernels": {},
+    "kernels": {
+     "convtran": {
+      "kind": "original",
+      "path": null
+     }
+    },
     "parameters": {},
     "python_source": null,
     "variables": []
@@ -4038,7 +4187,18 @@
    "locked": false,
    "metadata": {
     "control_owner": "python",
-    "kernels": [],
+    "kernels": [
+     {
+      "bindable": true,
+      "evidence": [],
+      "kernel": "convtran",
+      "owner_class": "freecam.physics.pausable.ConvectiveTracerTransport",
+      "reason": "bindable, but the pause path has not passed a bit-for-bit gate",
+      "stage_action": "cam_run1.convective_tracer_transport_leaf",
+      "stage_class": "freecam.physics.pausable.ConvectiveTracerTransport",
+      "validated": false
+     }
+    ],
     "parameters": []
    },
    "movable": true,
@@ -5948,7 +6108,20 @@
    "addable": true,
    "category": "Physics",
    "configuration": {
-    "kernels": {},
+    "kernels": {
+     "momtran": {
+      "kind": "original",
+      "path": null
+     },
+     "zm_conv_evap": {
+      "kind": "original",
+      "path": null
+     },
+     "zm_convr": {
+      "kind": "original",
+      "path": null
+     }
+    },
     "parameters": {},
     "python_source": null,
     "variables": []
@@ -5965,7 +6138,38 @@
    "locked": false,
    "metadata": {
     "control_owner": "python",
-    "kernels": [],
+    "kernels": [
+     {
+      "bindable": true,
+      "evidence": [],
+      "kernel": "zm_convr",
+      "owner_class": "freecam.physics.pausable.DeepConvection",
+      "reason": "bindable, but the pause path has not passed a bit-for-bit gate",
+      "stage_action": "cam_run1.deep_convection",
+      "stage_class": "freecam.physics.pausable.DeepConvection",
+      "validated": false
+     },
+     {
+      "bindable": true,
+      "evidence": [],
+      "kernel": "zm_conv_evap",
+      "owner_class": "freecam.physics.pausable.DeepConvection",
+      "reason": "bindable, but the pause path has not passed a bit-for-bit gate",
+      "stage_action": "cam_run1.deep_convection",
+      "stage_class": "freecam.physics.pausable.DeepConvection",
+      "validated": false
+     },
+     {
+      "bindable": true,
+      "evidence": [],
+      "kernel": "momtran",
+      "owner_class": "freecam.physics.pausable.DeepConvection",
+      "reason": "bindable, but the pause path has not passed a bit-for-bit gate",
+      "stage_action": "cam_run1.deep_convection",
+      "stage_class": "freecam.physics.pausable.DeepConvection",
+      "validated": false
+     }
+    ],
     "parameters": [
      {
       "dtype": "float64",
@@ -6479,7 +6683,12 @@
    "addable": true,
    "category": "Physics",
    "configuration": {
-    "kernels": {},
+    "kernels": {
+     "convtran": {
+      "kind": "original",
+      "path": null
+     }
+    },
     "parameters": {},
     "python_source": null,
     "variables": []
@@ -6496,7 +6705,18 @@
    "locked": false,
    "metadata": {
     "control_owner": "python",
-    "kernels": [],
+    "kernels": [
+     {
+      "bindable": true,
+      "evidence": [],
+      "kernel": "convtran",
+      "owner_class": "freecam.physics.pausable.ConvectiveTracerTransport",
+      "reason": "bindable, but the pause path has not passed a bit-for-bit gate",
+      "stage_action": "cam_run1.convective_tracer_transport_leaf",
+      "stage_class": "freecam.physics.pausable.ConvectiveTracerTransport",
+      "validated": false
+     }
+    ],
     "parameters": []
    },
    "movable": true,
@@ -18634,7 +18854,7 @@
    "writes": []
   }
  ],
- "generated_at": "2026-09-06T13:10:15+00:00",
+ "generated_at": "2026-09-06T13:20:19+00:00",
  "parameters": {
   "cam_run1.cloud_macro_microphysics": [
    {

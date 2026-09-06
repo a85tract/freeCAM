@@ -240,3 +240,52 @@ def test_the_radiation_class_runs_between_its_halves_through_the_runner() -> Non
     stage.execution_policy = "native-whole"
     with pytest.raises(PhysicsError):
         stage.select_mode(native)
+
+
+def test_the_deep_convection_frames_address_the_module_state_and_answerable_scalars() -> None:
+    frames = yaml.safe_load(pausable.FRAMES.read_text())["kernels"]
+    zm = {s["name"]: s for s in frames["zm_convr"]}
+    tran = {s["name"]: s for s in frames["convtran"]}
+    assert len(frames["zm_convr"]) == 70 and len(frames["zm_conv_evap"]) == 22
+    assert len(frames["momtran"]) == 25 and len(frames["convtran"]) == 21
+    # the gathered column count is an intent(out) scalar of zm_convr: served where it lives
+    assert zm["lengath"] == {"name": "lengath", "actual": "lengath(lchnk)", "rank": 0, "dtype": "int32",
+                             "intent": "inout", "kind": "scalar"}
+    # an expression actual stays a copy; the organisation pointers are empty slots while unused
+    assert zm["delt"]["actual"] == ".5_r8*ztodt" and zm["org"]["kind"] == "pointer"
+    assert tran["mu"]["actual"] == "mu(:,:,lchnk)" and tran["doconvtran"]["actual"] == "ptend%lq"
+    deep = (pausable.SUPPORT / "pycam_zmdeep_zm.F90").read_text()
+    leaf = (pausable.SUPPORT / "pycam_zmtran_zm2.F90").read_text()
+    # zm_conv_intr's per-chunk arrays (control patch 0044) are addressed through a TARGET dummy
+    assert "use zm_conv_intr, only: mu, eu, du, md, ed, dp, dsubcld, jt, maxg, ideep, lengath" in deep
+    assert "call slot_address_r8(mu(1,1,lchnk), address)" in deep and "call slot_address_i4(lengath(lchnk), address)" in deep
+    assert "call slot_address_r8(mu(1,1,lchnk), address)" in leaf and "call slot_address_i4(jt(1,lchnk), address)" in leaf
+    # a `:pcols` section starts at its lower bound; an automatic array is allocated once and sized by itself
+    assert "c_loc(state1%q(1,1,1))" in deep
+    assert "allocatable, save, target, public :: rwt(:,:,:,:)" in deep.lower()
+    assert "if (.not. allocated(rwt)) allocate(rwt(pcols,pver,wtrc_nwset,2))" in deep.lower()
+    assert "int(size(rwt,3), c_int64_t)" in leaf.lower()
+    # a routine without an ncol local reports the state's
+    assert "ncol_out = int(state%ncol, c_int)" in leaf
+    glue = (pausable.SUPPORT / "pycam_zmdeep_glue.F90").read_text()
+    # the block's timer is closed after the last piece; the sub-column switch is a typed option
+    assert "subroutine glue_leave()" in glue and "call t_stopf('moist_convection')" in glue
+    assert "logical, save, public :: use_subcol_microp = .false." in glue
+    assert "call phys_getopts(use_subcol_microp_out=use_subcol_microp)" in glue
+    runner = (pausable.SUPPORT / "pycam_zmdeep_runner.F90").read_text()
+    assert "use phys_control, only: cam_physpkg_is" in runner and "call glue_leave()" in runner
+    tran_runner = (pausable.SUPPORT / "pycam_zmtran_runner.F90").read_text()
+    assert "if (deep_scheme_does_scav_trans()) then" in tran_runner
+
+
+def test_the_deep_convection_classes_own_their_actions_and_kernels() -> None:
+    from freecam.physics.pausable import STAGES, ConvectiveTracerTransport, DeepConvection
+
+    assert STAGES["deep_convection"] is DeepConvection and STAGES["convective_tracer_transport_leaf"] is ConvectiveTracerTransport
+    assert DeepConvection.SWAPPABLE == ("zm_convr", "zm_conv_evap", "momtran") and DeepConvection.WHOLE_ACTION
+    assert ConvectiveTracerTransport.SWAPPABLE == ("convtran",)
+    assert ConvectiveTracerTransport.STAGE == "cam_run1.convective_tracer_transport_leaf"
+    rows = {r["kernel"]: r for r in DeepConvection().describe_kernels()}
+    assert set(rows) == set(DeepConvection.SWAPPABLE) and all(r["bindable"] and not r["validated"] for r in rows.values())
+    leaf = {r["kernel"]: r for r in ConvectiveTracerTransport().describe_kernels()}
+    assert leaf["convtran"]["bindable"] and not leaf["convtran"]["validated"]

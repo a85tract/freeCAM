@@ -38,16 +38,16 @@
     "numeric_scheme_coverage": {
       "alternate": 9,
       "complete": 1,
-      "gap": 8,
+      "gap": 6,
       "not-required-in-this-configuration": 11,
-      "partial": 3
+      "partial": 5
     },
-    "kernels": 6,
+    "kernels": 10,
     "kernels_by_status": {
       "complete": 2,
-      "open": 4
+      "open": 8
     },
-    "kernels_bindable": 6,
+    "kernels_bindable": 10,
     "kernels_validated_through_runner": 6,
     "catalog_procedures": 371
   },
@@ -1992,8 +1992,12 @@
       "classification": "numeric_scheme",
       "activity": "active",
       "activity_basis": "enabled in the plan; called every step in the recorded runs",
-      "python_class": null,
-      "kernels": [],
+      "python_class": "freecam.physics.pausable.DeepConvection",
+      "kernels": [
+        "zm_convr",
+        "zm_conv_evap",
+        "momtran"
+      ],
       "kernel_candidates": [
         {
           "name": "deep_convection",
@@ -2501,7 +2505,7 @@
       },
       "alternate_of": [],
       "performance": [],
-      "coverage": "gap",
+      "coverage": "partial",
       "note": null
     },
     {
@@ -3193,8 +3197,10 @@
       "classification": "numeric_scheme",
       "activity": "active",
       "activity_basis": "enabled in the plan; called every step in the recorded runs",
-      "python_class": null,
-      "kernels": [],
+      "python_class": "freecam.physics.pausable.ConvectiveTracerTransport",
+      "kernels": [
+        "convtran"
+      ],
       "kernel_candidates": [],
       "deeper_procedures": 0,
       "execution": {
@@ -3203,7 +3209,7 @@
       },
       "alternate_of": [],
       "performance": [],
-      "coverage": "gap",
+      "coverage": "partial",
       "note": null
     },
     {
@@ -5071,6 +5077,118 @@
         "replay_single_column",
         "replay_public_api"
       ]
+    },
+    {
+      "kernel": "zm_convr",
+      "stage_action": "cam_run1.deep_convection",
+      "owner_class": "freecam.physics.pausable.DeepConvection",
+      "routine": null,
+      "contract": "frame",
+      "contract_path": "native/pi_cam/segment_frames.yaml",
+      "bindable": true,
+      "validated_through_runner": false,
+      "evidence": {
+        "capture": [],
+        "standalone_build": [],
+        "replay_full_chunk": [],
+        "replay_single_column": [],
+        "replay_public_api": [],
+        "module_state": []
+      },
+      "in_model_gates": [],
+      "status": "open",
+      "missing": [
+        "capture",
+        "standalone_build",
+        "replay_full_chunk",
+        "replay_single_column",
+        "replay_public_api",
+        "in_model_replacement_bfb"
+      ]
+    },
+    {
+      "kernel": "zm_conv_evap",
+      "stage_action": "cam_run1.deep_convection",
+      "owner_class": "freecam.physics.pausable.DeepConvection",
+      "routine": null,
+      "contract": "frame",
+      "contract_path": "native/pi_cam/segment_frames.yaml",
+      "bindable": true,
+      "validated_through_runner": false,
+      "evidence": {
+        "capture": [],
+        "standalone_build": [],
+        "replay_full_chunk": [],
+        "replay_single_column": [],
+        "replay_public_api": [],
+        "module_state": []
+      },
+      "in_model_gates": [],
+      "status": "open",
+      "missing": [
+        "capture",
+        "standalone_build",
+        "replay_full_chunk",
+        "replay_single_column",
+        "replay_public_api",
+        "in_model_replacement_bfb"
+      ]
+    },
+    {
+      "kernel": "momtran",
+      "stage_action": "cam_run1.deep_convection",
+      "owner_class": "freecam.physics.pausable.DeepConvection",
+      "routine": null,
+      "contract": "frame",
+      "contract_path": "native/pi_cam/segment_frames.yaml",
+      "bindable": true,
+      "validated_through_runner": false,
+      "evidence": {
+        "capture": [],
+        "standalone_build": [],
+        "replay_full_chunk": [],
+        "replay_single_column": [],
+        "replay_public_api": [],
+        "module_state": []
+      },
+      "in_model_gates": [],
+      "status": "open",
+      "missing": [
+        "capture",
+        "standalone_build",
+        "replay_full_chunk",
+        "replay_single_column",
+        "replay_public_api",
+        "in_model_replacement_bfb"
+      ]
+    },
+    {
+      "kernel": "convtran",
+      "stage_action": "cam_run1.convective_tracer_transport_leaf",
+      "owner_class": "freecam.physics.pausable.ConvectiveTracerTransport",
+      "routine": null,
+      "contract": "frame",
+      "contract_path": "native/pi_cam/segment_frames.yaml",
+      "bindable": true,
+      "validated_through_runner": false,
+      "evidence": {
+        "capture": [],
+        "standalone_build": [],
+        "replay_full_chunk": [],
+        "replay_single_column": [],
+        "replay_public_api": [],
+        "module_state": []
+      },
+      "in_model_gates": [],
+      "status": "open",
+      "missing": [
+        "capture",
+        "standalone_build",
+        "replay_full_chunk",
+        "replay_single_column",
+        "replay_public_api",
+        "in_model_replacement_bfb"
+      ]
     }
   ],
   "unresolved": [
@@ -5151,6 +5269,102 @@
       "why": "no record in validation/ for this step of the loop"
     },
     {
+      "what": "zm_convr: capture",
+      "why": "no record in validation/ for this step of the loop"
+    },
+    {
+      "what": "zm_convr: standalone_build",
+      "why": "no record in validation/ for this step of the loop"
+    },
+    {
+      "what": "zm_convr: replay_full_chunk",
+      "why": "no record in validation/ for this step of the loop"
+    },
+    {
+      "what": "zm_convr: replay_single_column",
+      "why": "no record in validation/ for this step of the loop"
+    },
+    {
+      "what": "zm_convr: replay_public_api",
+      "why": "no record in validation/ for this step of the loop"
+    },
+    {
+      "what": "zm_convr: in_model_replacement_bfb",
+      "why": "no record in validation/ for this step of the loop"
+    },
+    {
+      "what": "zm_conv_evap: capture",
+      "why": "no record in validation/ for this step of the loop"
+    },
+    {
+      "what": "zm_conv_evap: standalone_build",
+      "why": "no record in validation/ for this step of the loop"
+    },
+    {
+      "what": "zm_conv_evap: replay_full_chunk",
+      "why": "no record in validation/ for this step of the loop"
+    },
+    {
+      "what": "zm_conv_evap: replay_single_column",
+      "why": "no record in validation/ for this step of the loop"
+    },
+    {
+      "what": "zm_conv_evap: replay_public_api",
+      "why": "no record in validation/ for this step of the loop"
+    },
+    {
+      "what": "zm_conv_evap: in_model_replacement_bfb",
+      "why": "no record in validation/ for this step of the loop"
+    },
+    {
+      "what": "momtran: capture",
+      "why": "no record in validation/ for this step of the loop"
+    },
+    {
+      "what": "momtran: standalone_build",
+      "why": "no record in validation/ for this step of the loop"
+    },
+    {
+      "what": "momtran: replay_full_chunk",
+      "why": "no record in validation/ for this step of the loop"
+    },
+    {
+      "what": "momtran: replay_single_column",
+      "why": "no record in validation/ for this step of the loop"
+    },
+    {
+      "what": "momtran: replay_public_api",
+      "why": "no record in validation/ for this step of the loop"
+    },
+    {
+      "what": "momtran: in_model_replacement_bfb",
+      "why": "no record in validation/ for this step of the loop"
+    },
+    {
+      "what": "convtran: capture",
+      "why": "no record in validation/ for this step of the loop"
+    },
+    {
+      "what": "convtran: standalone_build",
+      "why": "no record in validation/ for this step of the loop"
+    },
+    {
+      "what": "convtran: replay_full_chunk",
+      "why": "no record in validation/ for this step of the loop"
+    },
+    {
+      "what": "convtran: replay_single_column",
+      "why": "no record in validation/ for this step of the loop"
+    },
+    {
+      "what": "convtran: replay_public_api",
+      "why": "no record in validation/ for this step of the loop"
+    },
+    {
+      "what": "convtran: in_model_replacement_bfb",
+      "why": "no record in validation/ for this step of the loop"
+    },
+    {
       "what": "cam_run2.chemistry_tendencies_leaf",
       "why": "the physics catalog lists no procedure under this action; its active call graph must be extended before this action's kernels can be chosen"
     },
@@ -5161,11 +5375,7 @@
     {
       "what": "cam_run1.aerosol_wet_deposition_leaf",
       "why": "the physics catalog lists no procedure under this action; its active call graph must be extended before this action's kernels can be chosen"
-    },
-    {
-      "what": "cam_run1.convective_tracer_transport_leaf",
-      "why": "the physics catalog lists no procedure under this action; its active call graph must be extended before this action's kernels can be chosen"
     }
   ],
-  "coverage_hash": "2811f4e0551f8cfa9825bd9aea5f2d1674784d7eef501656d2168013ae3f047f"
+  "coverage_hash": "cc423bd3aa7eff6a91250a980ebaba6ecf92f32d378c2dc6db6029fccded894f"
 }

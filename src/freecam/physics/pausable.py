@@ -96,6 +96,32 @@ class ShallowConvection(PausableStage):
     SWAPPABLE = ("compute_uwshcu_inv",)
 
 
+class DeepConvection(PausableStage):
+    """tphysbc stage 4: the Zhang-McFarlane deep convection driver.
+
+    Kernels: the core ``zm_convr``, the precipitation evaporation
+    ``zm_conv_evap`` and the momentum transport ``momtran``.  The mass fluxes
+    and indices the core writes stay in zm_conv_intr's own module arrays, so
+    :class:`ConvectiveTracerTransport` transports with exactly what ran here.
+    """
+
+    STAGE = "cam_run1.deep_convection"
+    PREFIX = "zmdeep"
+    RUNNER_PREFIX = "zmdeep"
+    PROCESS_NAME = "deep_convection"
+    SWAPPABLE = ("zm_convr", "zm_conv_evap", "momtran")
+
+
+class ConvectiveTracerTransport(PausableStage):
+    """The convective tracer transport leaf of tphysbc stage 8, ``convtran`` as its kernel."""
+
+    STAGE = "cam_run1.convective_tracer_transport_leaf"
+    PREFIX = "zmtran"
+    RUNNER_PREFIX = "zmtran"
+    PROCESS_NAME = "convective_tracer_transport_leaf"
+    SWAPPABLE = ("convtran",)
+
+
 def _inert(name: str, stage: str, process_name: str, because: str) -> type:
     return type(name, (InertStage,), {
         "STAGE": stage, "PREFIX": process_name, "RUNNER_PREFIX": "", "PROCESS_NAME": process_name,
@@ -127,13 +153,13 @@ AgeOfAirTendencies = _inert("AgeOfAirTendencies", "cam_run2.age_of_air_tendencie
 #: Every pausable and inert class by the action's name, for the command line and the ledger.
 STAGES: dict[str, type[PausableStage]] = {
     cls.PROCESS_NAME: cls for cls in (
-        DryAdjustment, ShallowConvection,
+        DryAdjustment, ShallowConvection, DeepConvection, ConvectiveTracerTransport,
         RayleighFriction, ChargeNeutrality, QBORelaxation, IonDrag, SeaSaltRebin, ModalAerosolPreparation,
         CARMAWetDeposition, CARMAAerosolTendencies, CARMAStatistics, TracerTendencies, AgeOfAirTendencies,
     )
 }
 
 __all__ = ["AgeOfAirTendencies", "CARMAAerosolTendencies", "CARMAStatistics", "CARMAWetDeposition",
-           "ChargeNeutrality", "DryAdjustment", "InertStage", "IonDrag", "ModalAerosolPreparation",
-           "PausableStage", "QBORelaxation", "RayleighFriction", "STAGES", "SeaSaltRebin", "ShallowConvection",
-           "TracerTendencies"]
+           "ChargeNeutrality", "ConvectiveTracerTransport", "DeepConvection", "DryAdjustment", "InertStage", "IonDrag",
+           "ModalAerosolPreparation", "PausableStage", "QBORelaxation", "RayleighFriction", "STAGES", "SeaSaltRebin",
+           "ShallowConvection", "TracerTendencies", "bind_stage_hosts"]

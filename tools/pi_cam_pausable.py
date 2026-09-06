@@ -365,6 +365,9 @@ class Unit:
     locals: dict[str, str] = field(default_factory=dict)       # local -> storage it is a pointer to (glue)
     module_private: list[tuple[int, int]] = field(default_factory=list)   # the module's own declarations, verbatim
     helpers: list[tuple[int, int]] = field(default_factory=list)          # the module's private procedures, verbatim
+    postamble: list[str] = field(default_factory=list)                    # statements after the body, every chunk (glue)
+    automatic: list[str] = field(default_factory=list)                    # locals with run-time extents, allocated once
+    elided: list[tuple[int, int]] = field(default_factory=list)           # body lines another action's leaf performs
     lines: list[str] = field(default_factory=list)
     decls: dict[str, Decl] = field(default_factory=dict)
     dummy_names: list[str] = field(default_factory=list)
@@ -443,6 +446,27 @@ def _parse_body(items: list, unit: Unit) -> list[Node]:
     return nodes
 
 
+GETOPT_TYPES = {"character": "character(len=16)", "logical": "logical", "integer": "integer"}
+#: option -> Fortran type of the module-private options phys_getopts reports
+GETOPTS: dict[str, str] = {}
+
+
+def _getopts(record) -> list[str]:
+    """`getopts:` as a list (character options) or a mapping option -> character | logical | integer."""
+
+    if not record:
+        return []
+    if isinstance(record, Mapping):
+        for name, kind in record.items():
+            if str(kind) not in GETOPT_TYPES:
+                raise SystemExit(f"getopts: {name} has type {kind!r}; one of {sorted(GETOPT_TYPES)}")
+            GETOPTS[str(name)] = GETOPT_TYPES[str(kind)]
+        return [str(name) for name in record]
+    for name in record:
+        GETOPTS.setdefault(str(name), GETOPT_TYPES["character"])
+    return [str(x) for x in record]
+
+
 def load_spec(path: Path) -> Spec:
     payload = yaml.safe_load(path.read_text())
     if int(payload.get("schema_version", 0)) != 1:
@@ -460,10 +484,13 @@ def load_spec(path: Path) -> Spec:
             pbuf_indices=record.get("pbuf_indices"),
             uses=[str(x) for x in record.get("uses") or []],
             records={str(k): str(v) for k, v in (record.get("records") or {}).items()},
-            getopts=[str(x) for x in record.get("getopts") or []],
+            getopts=_getopts(record.get("getopts")),
             locals={str(k): str(v) for k, v in (record.get("locals") or {}).items()},
             module_private=[(int(a), int(b)) for a, b in record.get("module_private") or []],
             helpers=[(int(a), int(b)) for a, b in record.get("helpers") or []],
+            postamble=[str(x) for x in record.get("postamble") or []],
+            automatic=[str(x).lower() for x in record.get("automatic") or []],
+            elided=[(int(a), int(b)) for a, b in record.get("elided") or []],
         )
         unit.body = _parse_body(record["body"], unit)
         units[str(key)] = unit
@@ -542,6 +569,8 @@ def coverage_gaps(unit: Unit) -> list[int]:
             covered.update(_skeleton_closers(unit, node))
             if node.kind == "select":
                 covered.update(_refused_case_lines(unit, node))
+    for first, last in unit.elided:
+        covered.update(range(first, last + 1))
     gaps = []
     for number in range(unit.body_range[0], unit.body_range[1] + 1):
         if number in covered:
@@ -621,6 +650,14 @@ def _opens_block(text: str, kind: str) -> bool:
 
 @dataclass
 class Slot:
+    """One argument of a paused call as the frame serves it.
+
+    ``by_address`` marks a scalar served where it lives rather than from a
+    copy: an intent(out) or inout scalar whose actual is a variable, so a model
+    can answer it.  ``helper`` marks storage whose address is taken through a
+    TARGET dummy (a module array with neither attribute, say).
+    """
+
     dummy: str
     actual: str
     intent: str
@@ -631,6 +668,9 @@ class Slot:
     shape: list[str]       # Fortran extent expressions, per dimension
     guard: str | None      # "associated(x)" / "allocated(x)" or None
     component: str | None = None
+    by_address: bool = False
+    helper: bool = False
+
 
 
 def _dummy_dims(decl: Decl, scalar_actuals: Mapping[str, str]) -> list[str]:
@@ -695,27 +735,61 @@ def frame_slots(pause: Pause, kernel: Kernel) -> list[Slot]:
             continue
         dtype = DTYPE_CODE.get(decl.base_type, 1)
         if decl.rank == 0:
+            designator = bool(re.match(r"^[\w%]+(\s*\([^()]*\))?$", actual.strip())) and not re.fullmatch(r"[\d.]+(_\w+)?", actual.strip())
+            base_name = actual.strip().split("%")[0].split("(")[0].lower()
+            by_address = designator and intent != "in" and decl.base_type != "logical"
             slots.append(Slot(dummy=dummy, actual=actual, intent=intent, kind="scalar", rank=0, dtype=dtype,
-                              expression=actual, shape=[], guard=None))
+                              expression=actual.strip(), shape=[], guard=None, by_address=by_address,
+                              helper=by_address and base_name not in unit_decls and base_name not in pause.unit.dummy_names))
             continue
         shape = _dummy_dims(decl, scalar_actuals) if decl.dims and ":" not in decl.dims.replace("(:,", "(") else []
         base, section = _actual_base(actual)
+        # the callee's declared extents, where the unit can evaluate them; an extent
+        # naming something only the callee imports (wtrc_ntype(iwtice), say) is the
+        # actual's own extent on that axis
+        resolvable = _resolvable_names(pause.unit)
+        shape = [extent if identifiers(extent) <= resolvable else f"size({base},{i + 1})"
+                 for i, extent in enumerate(shape)]
         if not shape:
-            shape = [f"size({base},{i + 1})" for i in range(decl.rank)] if not section else \
-                    [f"size({base},{i + 1})" for i in range(decl.rank)]
+            shape = [f"size({base},{i + 1})" for i in range(decl.rank)]
         guard = None
-        base_decl = unit_decls.get(base.split("%")[0].lower())
+        base_name = base.split("%")[0].lower()
+        base_decl = unit_decls.get(base_name)
         if base_decl is not None and "%" not in base:
             if base_decl.is_pointer:
                 guard = f"associated({base})"
             elif base_decl.is_allocatable:
                 guard = f"allocated({base})"
+        # a module variable of the driver's own module (a `use`d array with neither
+        # target nor pointer attribute) is addressed through a TARGET dummy
+        helper = base_decl is None and base_name not in pause.unit.dummy_names and base_name not in pause.unit.locals \
+            and base_name not in pause.unit.carries and base_name not in pause.unit.records
         slots.append(Slot(dummy=dummy, actual=actual, intent=intent,
                           kind="pointer" if guard and "associated" in guard else "array",
                           rank=decl.rank, dtype=dtype,
                           expression=_first_element(actual, base, section, decl.rank, base_decl),
-                          shape=shape, guard=guard))
+                          shape=shape, guard=guard, helper=helper))
     return slots
+
+
+#: Names every unit can evaluate in an extent: the grid's parameters (`use ppgrid` is unqualified
+#: in these drivers) and the constituent count.
+GRID_NAMES = {"pcols", "pver", "pverp", "pcnst", "psubcols", "begchunk", "endchunk"}
+
+
+def _resolvable_names(unit: Unit) -> set[str]:
+    """Identifiers a unit module can evaluate in a frame extent: its declarations, dummies,
+    resolved indices, options, and every name its use statements import by name."""
+
+    names = set(unit.decls) | set(unit.dummy_names) | set(unit.getopts) | GRID_NAMES
+    names |= {name for name, _ in _unit_pbuf_indices(unit)}
+    ranges = ([unit.module_header] if unit.module_header else []) + [unit.declarations]
+    for statement in use_statements(unit.lines, ranges) + unit.uses:
+        only = re.search(r"only\s*:\s*(.*)$", strip_comment(statement), re.I)
+        if only:
+            for item in _split_top(only.group(1)):
+                names.add(item.split("=>")[0].strip().lower())
+    return names
 
 
 def _actual_base(actual: str) -> tuple[str, str | None]:
@@ -752,7 +826,13 @@ def _first_element(actual: str, base: str, section: str | None, rank: int, decl:
     bounds = _lower_bounds(decl, rank)
     if section is None:
         return f"{base}({','.join(bounds)})"
-    indices = [(bounds[i] if s.strip() == ":" else s.strip()) for i, s in enumerate(_split_top(section))]
+    indices = []
+    for i, subscript in enumerate(_split_top(section)):
+        subscript = subscript.strip()
+        if ":" in subscript:
+            lower = subscript.partition(":")[0].strip()
+            subscript = lower if lower else (bounds[i] if i < len(bounds) else "1")
+        indices.append(subscript)
     return f"{base}({','.join(indices)})"
 
 
@@ -835,7 +915,7 @@ def _hoisted_state(unit: Unit) -> list[str]:
     used: set[str] = set()
     for number in range(unit.body_range[0], unit.body_range[1] + 1):
         used |= identifiers(unit.lines[number - 1])
-    for text in unit.preamble:
+    for text in unit.preamble + unit.postamble:
         used |= identifiers(text)
     for call in unit.unit_calls:
         used |= identifiers(call.statement)
@@ -854,7 +934,23 @@ def _hoisted_state(unit: Unit) -> list[str]:
         if decl.is_pointer and not init:
             init = "=> null()"
         shape = f"({decl.dims})" if decl.dims else ""
+        if name in unit.automatic:
+            # an automatic array of the routine (an extent set at run time): module
+            # state cannot size it, so it is allocated once, at the first bind
+            shape = "(" + ",".join(":" for _ in range(decl.rank)) + ")"
+            rows.append(f"  {decl.kind}{attrs}, allocatable{save}{target}, public :: {name}{shape}")
+            continue
         rows.append(f"  {decl.kind}{attrs}{save}{target}, public :: {name}{shape}{(' ' + init) if init else ''}")
+    return rows
+
+
+def _automatic_allocations(unit: Unit, indent: str = "    ") -> list[str]:
+    rows = []
+    for name in unit.automatic:
+        decl = unit.decls.get(name)
+        if decl is None or not decl.dims:
+            raise SystemExit(f"{unit.key}: automatic {name!r} is not an array local of {unit.routine}")
+        rows.append(f"{indent}if (.not. allocated({name})) allocate({name}({decl.dims}))")
     return rows
 
 
@@ -904,7 +1000,12 @@ def _verbatim(unit: Unit, first: int, last: int, indent: str = "  ") -> list[str
 
 
 def _getopts_state(unit: Unit) -> list[str]:
-    return [f"  character(len=16), save, public :: {name} = ' '" for name in unit.getopts]
+    rows = []
+    for name in unit.getopts:
+        kind = GETOPTS.get(name, GETOPT_TYPES["character"])
+        init = " = ' '" if kind.startswith("character") else (" = .false." if kind == "logical" else " = 0")
+        rows.append(f"  {kind}, save, public :: {name}{init}")
+    return rows
 
 
 def _carry_state(unit: Unit) -> list[str]:
@@ -948,6 +1049,7 @@ def _bind_routine(unit: Unit, caller: Unit) -> str:
             lines.append(f"    {name} => a_{name}")
         else:
             lines.append(f"    {name} = a_{name}")
+    lines += _automatic_allocations(unit)
     lines.append(f"  end subroutine {unit.key}_bind")
     return "\n".join(lines)
 
@@ -960,13 +1062,15 @@ def _frame_routine(spec: Spec, pause: Pause, slots: list[Slot]) -> str:
              "    integer(c_int), intent(inout) :: ndims(:), dtypes(:), intents(:)",
              "    integer(c_int64_t), intent(inout) :: shapes(:,:)",
              "    integer(c_int), intent(out) :: ncol_out"]
-    scalars = [s for s in slots if s.rank == 0]
+    scalars = [s for s in slots if s.rank == 0 and not s.by_address]
     for index, slot in enumerate(scalars, start=1):
         kind = "real(c_double)" if slot.dtype == 1 else "integer(c_int32_t)"
         lines.append(f"    {kind}, save, target :: sc_{index}")
-    lines.append(f"    ncol_out = int(ncol, c_int)")
+    if any(s.helper for s in slots):
+        lines.append("    type(c_ptr) :: address")
+    lines.append(f"    ncol_out = int({_ncol_expression(pause.unit)}, c_int)")
     for index, slot in enumerate(slots, start=1):
-        if slot.rank == 0:
+        if slot.rank == 0 and not slot.by_address:
             si = scalars.index(slot) + 1
             if slot.dtype == 1:
                 lines.append(f"    sc_{si} = real({slot.expression}, c_double)")
@@ -976,8 +1080,14 @@ def _frame_routine(spec: Spec, pause: Pause, slots: list[Slot]) -> str:
             lines.append(f"    call put_slot({index}, c_loc(sc_{si}), 0, zero_shape, {slot.dtype}, {INTENT_CODE[slot.intent]}, "
                          f"ptrs, ndims, shapes, dtypes, intents)")
             continue
-        shape = "(/ " + ", ".join(f"int({e}, c_int64_t)" for e in slot.shape) + " /)"
-        put = (f"call put_slot({index}, c_loc({slot.expression}), {slot.rank}, {shape}, {slot.dtype}, "
+        shape = "zero_shape" if slot.rank == 0 else "(/ " + ", ".join(f"int({e}, c_int64_t)" for e in slot.shape) + " /)"
+        if slot.helper:
+            taker = "slot_address_r8" if slot.dtype == 1 else "slot_address_i4"
+            lines.append(f"    call {taker}({slot.expression}, address)")
+            location = "address"
+        else:
+            location = f"c_loc({slot.expression})"
+        put = (f"call put_slot({index}, {location}, {slot.rank}, {shape}, {slot.dtype}, "
                f"{INTENT_CODE[slot.intent]}, ptrs, ndims, shapes, dtypes, intents)")
         if slot.guard:
             lines.append(f"    if ({slot.guard}) then")
@@ -989,6 +1099,19 @@ def _frame_routine(spec: Spec, pause: Pause, slots: list[Slot]) -> str:
             lines.append(f"    {put}")
     lines.append(f"  end subroutine {name}")
     return "\n".join(lines)
+
+
+def _ncol_expression(unit: Unit) -> str:
+    """The chunk's column count as the unit knows it: its `ncol`, else its physics state's."""
+
+    if "ncol" in unit.decls or "ncol" in unit.dummy_names:
+        return "ncol"
+    for name in unit.dummy_names:
+        decl = unit.decls.get(name)
+        if decl is not None and decl.kind.lower() == "type(physics_state)":
+            return f"{name}%ncol"
+    raise SystemExit(f"{unit.key}: {unit.routine} has neither an ncol local nor a physics_state dummy; "
+                     f"a frame cannot report the live columns")
 
 
 def _is_logical(slot: Slot, spec: Spec, pause: Pause) -> bool:
@@ -1006,6 +1129,21 @@ def _original_routine(pause: Pause) -> str:
                       f"    ! the original call, {Path(pause.unit.source).name}:{pause.first}-{pause.last}, verbatim"]
                      + body + [f"  end subroutine {pause.kernel}_original"])
 
+
+ADDRESS_HELPERS = """  subroutine slot_address_r8(field, address)
+    ! a TARGET dummy so c_loc is legal whatever the actual argument's attributes
+    ! (a module array of the driver's own module, say); a contiguous actual is
+    ! passed without a copy, and an element stands for the rest of its array
+    real(r8), intent(inout), target :: field(*)
+    type(c_ptr), intent(out) :: address
+    address = c_loc(field(1))
+  end subroutine slot_address_r8
+
+  subroutine slot_address_i4(field, address)
+    integer(c_int32_t), intent(inout), target :: field(*)
+    type(c_ptr), intent(out) :: address
+    address = c_loc(field(1))
+  end subroutine slot_address_i4"""
 
 SLOT_HELPERS = """  subroutine put_slot(index, address, rank, shape, dtype, intent, ptrs, ndims, shapes, dtypes, intents)
     integer, intent(in) :: index, rank, dtype, intent
@@ -1067,7 +1205,8 @@ def render_unit(spec: Spec, unit: Unit) -> str:
         header.append(f"  use pycam_{spec.prefix}_{call.unit}, only: {call.unit}_bind")
     header += ["  implicit none", "  private", "  public :: " + ", ".join(
         [n.name for n in unit.pieces] + [f"{p.kernel}_frame" for p in unit.pauses] + [f"{p.kernel}_original" for p in unit.pauses]
-        + ([f"{unit.key}_bind"] if unit.key != "glue" else ["glue_enter"]) + [f"{unit.key}_bind_{c.unit}" for c in unit.unit_calls]
+        + ([f"{unit.key}_bind"] if unit.key != "glue" else ["glue_enter"] + (["glue_leave"] if unit.postamble else []))
+        + [f"{unit.key}_bind_{c.unit}" for c in unit.unit_calls]
         + ([f"{unit.key}_resolve_indices"] if unit.pbuf_indices else []) + ([f"{unit.key}_configure"] if unit.getopts else [])),
         "", "  integer(c_int64_t), parameter :: zero_shape(1) = (/ 0_c_int64_t /)", "",
         "  ! the routine's dummies, bound by the caller"]
@@ -1094,6 +1233,10 @@ def render_unit(spec: Spec, unit: Unit) -> str:
     if unit.key == "glue":
         body.append(_glue_enter(spec, unit))
         body.append("")
+        if unit.postamble:
+            body.append("\n".join(["  subroutine glue_leave()", "    ! the block's closing statements, after the last piece"]
+                                  + ["    " + text for text in unit.postamble] + ["  end subroutine glue_leave"]))
+            body.append("")
     for call in unit.unit_calls:
         body.append(_unit_call_binder(spec, unit, call))
         body.append("")
@@ -1125,6 +1268,9 @@ def render_unit(spec: Spec, unit: Unit) -> str:
         body.append("")
     if unit.key == "glue" and _viewed_dummies(unit):
         body.append(VIEW_HELPER)
+        body.append("")
+    if any(s.helper for p in unit.pauses for s in frame_slots(p, spec.kernels[p.kernel])):
+        body.append(ADDRESS_HELPERS)
         body.append("")
     body.append(SLOT_HELPERS)
     body.append("")
@@ -1245,6 +1391,7 @@ def _glue_enter(spec: Spec, unit: Unit) -> str:
         body.append(f"    call c_f_pointer(address, {name})")
     for name, target in sorted(unit.locals.items()):
         body.append(f"    {name} => {target.replace('lchnk', 'lchnk_in')}")
+    body += _automatic_allocations(unit)
     for text in unit.preamble:
         body.append("    " + text)
     return "\n".join(head + uses + interfaces + decls + body + ["  end subroutine glue_enter"])
@@ -1372,6 +1519,8 @@ def render_runner(spec: Spec) -> str:
         names += [f"{unit.key}_bind_{c.unit}" for c in unit.unit_calls]
         if unit.key == "glue":
             names.append("glue_enter")
+            if unit.postamble:
+                names.append("glue_leave")
         if unit.pbuf_indices:
             names.append(f"{unit.key}_resolve_indices")
         if unit.getopts:
@@ -1592,7 +1741,7 @@ contains
         call glue_enter(lchnk)
         pc = {first_pc}
       case (pc_chunk_end)
-        lchnk = lchnk + 1
+{"        call glue_leave()" + chr(10) if glue.postamble else ""}        lchnk = lchnk + 1
         pc = pc_chunk_begin
 {advance_cases}
       case default
@@ -1656,7 +1805,7 @@ def spec_digest(spec: Spec) -> dict[str, str]:
             range_digest(unit.lines, *unit.body_range)
         out[f"{unit.key}:{Path(unit.source).name}:declarations {unit.declarations[0]}-{unit.declarations[1]}"] = \
             range_digest(unit.lines, *unit.declarations)
-        for first, last in unit.module_private + unit.helpers:
+        for first, last in unit.module_private + unit.helpers + unit.elided:
             out[f"{unit.key}:{Path(unit.source).name}:verbatim {first}-{last}"] = range_digest(unit.lines, first, last)
     for kernel in spec.kernels.values():
         out[f"{kernel.name}:{Path(kernel.source).name}:{kernel.body_range[0]}-{kernel.body_range[1]}"] = \
