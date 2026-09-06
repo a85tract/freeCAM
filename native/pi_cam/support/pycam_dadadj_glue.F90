@@ -84,6 +84,9 @@ module pycam_dadadj_glue
   type(cam_out_t), pointer, save, public :: cam_out => null()
   type(cam_in_t), pointer, save, public :: cam_in => null()
 
+  ! a piece's return, cycle or exit at the routine's level, for the runner to carry out
+  integer, save, public :: flow = 0
+
   ! the routine's locals, held for the chunk in flight
   integer, save, target, public :: lchnk
   logical, save, target, public :: lq(pcnst)

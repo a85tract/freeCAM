@@ -127,6 +127,21 @@ field selector with private components and a procedure argument are passed by
 the original and served by the frame as nothing. The frame ABI carries five
 extents per slot: the convective transport's water-tracer ratio is rank four.
 
+The three leaves complete the set. Aerosol wet deposition hoists the leaf's
+statements and `aero_model_wetdep`, pausing at the scavenging kernel
+`wetdepa_v2` at both of its call sites -- the interstitial and the cloud-borne
+forms -- inside the mode, phase and species loops the runner re-expresses;
+the driver's `cycle` of a species it skips, and its early `return` when no
+species is wet-deposited, are reported by the piece and carried out by the
+runner's loop and routine states, as is the chemistry driver's return on a
+skipped step. Aerosol dry deposition pauses at `modal_aero_depvel_part` at
+its four sites (the cloud droplets before the mode loop, each mode's
+interstitial aerosol inside it). Chemistry pauses once, at the whole
+gas-phase driver `gas_phase_chemdr`, which is the kernel entire, with its
+forty-odd arguments as one wide frame. Control patches 0047 and 0048 name the
+chemistry and aerosol modules' private state public, generated with the
+others by one module-state generator.
+
 **The read-only description.** `stage.describe_kernels()` returns one record
 per kernel: the owning class, whether the runner pauses at it, whether that
 pause has passed a gate, the reviewed contract's inputs and outputs when one
@@ -183,6 +198,9 @@ committed file equals a fresh build or the test fails.
 | `compute_eddy_diff` | VerticalDiffusion (pausable) | frame descriptor | yes, gate pending | pending | open: the pause gate, capture and replay |
 | `compute_vdiff` | VerticalDiffusion (pausable, two sites) | frame descriptor | yes, gate pending | pending | open: the pause gate, capture and replay |
 | `gw_drag_prof` | GravityWaveDrag (pausable) | frame descriptor | yes, gate pending | pending | open: the pause gate, capture and replay |
+| `wetdepa_v2` | AerosolWetDeposition (pausable, a leaf, two sites) | frame descriptor | yes, gate pending | pending | open: the pause gate, capture and replay |
+| `modal_aero_depvel_part` | AerosolDryDeposition (pausable, a leaf, four sites) | frame descriptor | yes, gate pending | pending | open: the pause gate, capture and replay |
+| `gas_phase_chemdr` | ChemistryTendencies (pausable, a leaf; the whole driver) | frame descriptor | yes, gate pending | pending | open: the pause gate, capture and replay |
 
 The pausable classes were gated on 2026-09-06 in six 512-rank 50-step runs on
 one image: each class installed with nothing replaced (dry adjustment, shallow

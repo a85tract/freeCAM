@@ -46,6 +46,9 @@ module pycam_gwd_driver
   type(cam_in_t), pointer, save, public :: cam_in => null()
   real(r8), pointer, save, public :: flx_heat(:) => null()
 
+  ! a piece's return, cycle or exit at the routine's level, for the runner to carry out
+  integer, save, public :: flow = 0
+
   ! the routine's locals, held for the chunk in flight
   real(r8), allocatable, save, target, public :: c(:,:)
   real(r8), allocatable, save, target, public :: de(:)
@@ -787,7 +790,7 @@ contains
     call put_slot(18, c_loc(yv(1)), 1, (/ int((ncol), c_int64_t) /), 1, 0, ptrs, ndims, shapes, dtypes, intents)
     call put_slot(19, c_loc(effgw(1)), 1, (/ int((ncol), c_int64_t) /), 1, 0, ptrs, ndims, shapes, dtypes, intents)
     if (allocated(c)) then
-      call put_slot(20, c_loc(c(1,1)), 2, (/ int(size(c,1), c_int64_t), int(size(c,2), c_int64_t) /), 1, 0, ptrs, ndims, shapes, dtypes, intents)
+      call put_slot(20, c_loc(c(lbound(c,1),lbound(c,2))), 2, (/ int(size(c,1), c_int64_t), int(size(c,2), c_int64_t) /), 1, 0, ptrs, ndims, shapes, dtypes, intents)
     else
       call empty_slot(20, 2, 1, 0, ptrs, ndims, shapes, dtypes, intents)
     end if
@@ -795,7 +798,7 @@ contains
     call put_slot(22, c_loc(q(1,1,1)), 3, (/ int(size(q,1), c_int64_t), int(size(q,2), c_int64_t), int(size(q,3), c_int64_t) /), 1, 0, ptrs, ndims, shapes, dtypes, intents)
     call put_slot(23, c_loc(dse(1,1)), 2, (/ int((ncol), c_int64_t), int(pver, c_int64_t) /), 1, 0, ptrs, ndims, shapes, dtypes, intents)
     if (allocated(tau)) then
-      call put_slot(24, c_loc(tau(1,1,1)), 3, (/ int(size(tau,1), c_int64_t), int(size(tau,2), c_int64_t), int(size(tau,3), c_int64_t) /), 1, 2, ptrs, ndims, shapes, dtypes, intents)
+      call put_slot(24, c_loc(tau(lbound(tau,1),lbound(tau,2),lbound(tau,3))), 3, (/ int(size(tau,1), c_int64_t), int(size(tau,2), c_int64_t), int(size(tau,3), c_int64_t) /), 1, 2, ptrs, ndims, shapes, dtypes, intents)
     else
       call empty_slot(24, 3, 1, 2, ptrs, ndims, shapes, dtypes, intents)
     end if
@@ -805,7 +808,7 @@ contains
     call put_slot(28, c_loc(qtgw(1,1,1)), 3, (/ int(size(qtgw,1), c_int64_t), int(size(qtgw,2), c_int64_t), int(size(qtgw,3), c_int64_t) /), 1, 1, ptrs, ndims, shapes, dtypes, intents)
     call put_slot(29, c_loc(egwdffi(1,1)), 2, (/ int((ncol), c_int64_t), int(pver+1, c_int64_t) /), 1, 1, ptrs, ndims, shapes, dtypes, intents)
     if (allocated(gwut)) then
-      call put_slot(30, c_loc(gwut(1,1,1)), 3, (/ int(size(gwut,1), c_int64_t), int(size(gwut,2), c_int64_t), int(size(gwut,3), c_int64_t) /), 1, 1, ptrs, ndims, shapes, dtypes, intents)
+      call put_slot(30, c_loc(gwut(lbound(gwut,1),lbound(gwut,2),lbound(gwut,3))), 3, (/ int(size(gwut,1), c_int64_t), int(size(gwut,2), c_int64_t), int(size(gwut,3), c_int64_t) /), 1, 1, ptrs, ndims, shapes, dtypes, intents)
     else
       call empty_slot(30, 3, 1, 1, ptrs, ndims, shapes, dtypes, intents)
     end if

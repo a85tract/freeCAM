@@ -91,6 +91,9 @@ module pycam_radt_glue
   real(r8), pointer, save, public :: net_flx(:) => null()
   type(physics_ptend), pointer, save, public :: ptend => null()
 
+  ! a piece's return, cycle or exit at the routine's level, for the runner to carry out
+  integer, save, public :: flow = 0
+
   ! the routine's locals, held for the chunk in flight
   integer, save, target, public :: lchnk
   integer, save, target, public :: ncol

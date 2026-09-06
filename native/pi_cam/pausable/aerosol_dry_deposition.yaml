@@ -1,0 +1,69 @@
+# Aerosol dry deposition (the leaf of tphysac stage 5, action 463): the
+# leaf's statements around aero_model_drydep (control patch 0028) and that
+# driver hoisted whole, pausable at the deposition velocities
+# modal_aero_depvel_part at its four call sites: the cloud droplets (two
+# moments) before the mode loop, and each mode's interstitial aerosol (two
+# moments) inside it.  The friction velocity and Obukhov length it reads are
+# tphysac carries the vertical diffusion stage wrote (control patch 0043).
+schema_version: 1
+prefix: adry
+stage: cam_run2.aerosol_dry_deposition_leaf
+runner_uses:
+  - "use modal_aero_data, only: ntot_amode"
+units:
+  glue:
+    source: components/cam/src/physics/cam/physpkg.F90
+    routine: tphysac
+    module_header: [1, 60]
+    declarations: [1248, 1367]
+    dummies:
+      state: host_state(lchnk)
+      tend: host_tend(lchnk)
+      pbuf: pbuf_get_chunk(host_pbuf2d, lchnk)
+      cam_in: host_cam_in(lchnk)
+      cam_out: host_cam_out(lchnk)
+      ztodt: real(get_step_size(), r8)
+    carries: {surfric: 1, obklen: 2}
+    carries_entry: pycam_ac_carry_v1
+    preamble:
+      - "lchnk = state%lchnk"
+      - "ncol = state%ncol"
+    body:
+      - piece: [1533, 1533]
+      - unit: {name: driver, call: [1534, 1534]}
+      - piece: [1535, 1536]
+  driver:
+    source: components/cam/src/chemistry/modal_aero/aero_model.F90
+    routine: aero_model_drydep
+    module_header: [1, 28]
+    declarations: [539, 607]
+    uses:
+      - "use aero_model, only: nmodes, dgnumwet_idx, qaerwat_idx, wetdens_ap_idx, drydep_lq"
+    body:
+      - piece: [608, 644]
+      - pause: {kernel: modal_aero_depvel_part, call: [645, 647]}
+      - piece: [648, 648]
+      - pause: {kernel: modal_aero_depvel_part, call: [649, 651]}
+      - piece: [652, 654]
+      - do: 655
+        body:
+          - do: 657
+            body:
+              - if: 659
+                then:
+                  - piece: [660, 669]
+                  - pause: {kernel: modal_aero_depvel_part, call: [670, 672]}
+                  - piece: [673, 673]
+                  - pause: {kernel: modal_aero_depvel_part, call: [674, 676]}
+              - piece: [678, 811]
+      - piece: [817, 819]
+kernels:
+  modal_aero_depvel_part:
+    source: components/cam/src/chemistry/modal_aero/aero_model.F90
+    routine: modal_aero_depvel_part
+anchors:
+  'glue:physpkg.F90:1533-1536': bfd5bbfbf48fa2f4
+  'glue:physpkg.F90:declarations 1248-1367': 35a81896e23a7968
+  'driver:aero_model.F90:608-819': 709cdef77d88e173
+  'driver:aero_model.F90:declarations 539-607': 999565c3d8753f32
+  'modal_aero_depvel_part:aero_model.F90:1777-1949': b6e2fe801ca2f61e

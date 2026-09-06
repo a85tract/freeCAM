@@ -38,17 +38,17 @@
     "numeric_scheme_coverage": {
       "alternate": 9,
       "complete": 1,
-      "gap": 4,
+      "gap": 1,
       "not-required-in-this-configuration": 11,
-      "partial": 7
+      "partial": 10
     },
-    "kernels": 14,
+    "kernels": 17,
     "kernels_by_status": {
       "complete": 2,
-      "open": 12
+      "open": 15
     },
-    "kernels_bindable": 14,
-    "kernels_validated_through_runner": 8,
+    "kernels_bindable": 17,
+    "kernels_validated_through_runner": 13,
     "catalog_procedures": 371
   },
   "closure": {
@@ -245,8 +245,10 @@
       "classification": "numeric_scheme",
       "activity": "active",
       "activity_basis": "enabled in the plan; called every step in the recorded runs",
-      "python_class": null,
-      "kernels": [],
+      "python_class": "freecam.physics.pausable.ChemistryTendencies",
+      "kernels": [
+        "gas_phase_chemdr"
+      ],
       "kernel_candidates": [],
       "deeper_procedures": 0,
       "execution": {
@@ -255,7 +257,7 @@
       },
       "alternate_of": [],
       "performance": [],
-      "coverage": "gap",
+      "coverage": "partial",
       "note": null
     },
     {
@@ -847,8 +849,10 @@
       "classification": "numeric_scheme",
       "activity": "active",
       "activity_basis": "enabled in the plan; called every step in the recorded runs",
-      "python_class": null,
-      "kernels": [],
+      "python_class": "freecam.physics.pausable.AerosolDryDeposition",
+      "kernels": [
+        "modal_aero_depvel_part"
+      ],
       "kernel_candidates": [],
       "deeper_procedures": 0,
       "execution": {
@@ -857,7 +861,7 @@
       },
       "alternate_of": [],
       "performance": [],
-      "coverage": "gap",
+      "coverage": "partial",
       "note": null
     },
     {
@@ -3153,8 +3157,10 @@
       "classification": "numeric_scheme",
       "activity": "active",
       "activity_basis": "enabled in the plan; called every step in the recorded runs",
-      "python_class": null,
-      "kernels": [],
+      "python_class": "freecam.physics.pausable.AerosolWetDeposition",
+      "kernels": [
+        "wetdepa_v2"
+      ],
       "kernel_candidates": [],
       "deeper_procedures": 0,
       "execution": {
@@ -3163,7 +3169,7 @@
       },
       "alternate_of": [],
       "performance": [],
-      "coverage": "gap",
+      "coverage": "partial",
       "note": null
     },
     {
@@ -5092,7 +5098,7 @@
       "contract": "frame",
       "contract_path": "native/pi_cam/segment_frames.yaml",
       "bindable": true,
-      "validated_through_runner": false,
+      "validated_through_runner": true,
       "evidence": {
         "capture": [],
         "standalone_build": [],
@@ -5101,15 +5107,39 @@
         "replay_public_api": [],
         "module_state": []
       },
-      "in_model_gates": [],
+      "in_model_gates": [
+        {
+          "path": "segmented, original kernel answered through the pause",
+          "record": "pi_cam_pausable_deep-zmconvr_50step.json",
+          "bfb_record": "pi_cam_pausable_deep-zmconvr_vs_oracle_50step_bfb.json",
+          "present": true,
+          "bfb": true,
+          "compared_files": 4
+        },
+        {
+          "path": "segmented, original kernel answered through the pause",
+          "record": "pi_cam_pausable_deep-all_50step.json",
+          "bfb_record": "pi_cam_pausable_deep-all_vs_oracle_50step_bfb.json",
+          "present": true,
+          "bfb": true,
+          "compared_files": 4
+        },
+        {
+          "path": "segmented, original kernel answered through the pause",
+          "record": "pi_cam_pausable_chain-pause_50step.json",
+          "bfb_record": "pi_cam_pausable_chain-pause_vs_oracle_50step_bfb.json",
+          "present": true,
+          "bfb": true,
+          "compared_files": 4
+        }
+      ],
       "status": "open",
       "missing": [
         "capture",
         "standalone_build",
         "replay_full_chunk",
         "replay_single_column",
-        "replay_public_api",
-        "in_model_replacement_bfb"
+        "replay_public_api"
       ]
     },
     {
@@ -5134,6 +5164,22 @@
           "path": "segmented, original kernel answered through the pause",
           "record": "pi_cam_pausable_deep-evap_50step.json",
           "bfb_record": "pi_cam_pausable_deep-evap_vs_oracle_50step_bfb.json",
+          "present": true,
+          "bfb": true,
+          "compared_files": 4
+        },
+        {
+          "path": "segmented, original kernel answered through the pause",
+          "record": "pi_cam_pausable_deep-all_50step.json",
+          "bfb_record": "pi_cam_pausable_deep-all_vs_oracle_50step_bfb.json",
+          "present": true,
+          "bfb": true,
+          "compared_files": 4
+        },
+        {
+          "path": "segmented, original kernel answered through the pause",
+          "record": "pi_cam_pausable_chain-pause_50step.json",
+          "bfb_record": "pi_cam_pausable_chain-pause_vs_oracle_50step_bfb.json",
           "present": true,
           "bfb": true,
           "compared_files": 4
@@ -5173,6 +5219,22 @@
           "present": true,
           "bfb": true,
           "compared_files": 4
+        },
+        {
+          "path": "segmented, original kernel answered through the pause",
+          "record": "pi_cam_pausable_deep-all_50step.json",
+          "bfb_record": "pi_cam_pausable_deep-all_vs_oracle_50step_bfb.json",
+          "present": true,
+          "bfb": true,
+          "compared_files": 4
+        },
+        {
+          "path": "segmented, original kernel answered through the pause",
+          "record": "pi_cam_pausable_chain-pause_50step.json",
+          "bfb_record": "pi_cam_pausable_chain-pause_vs_oracle_50step_bfb.json",
+          "present": true,
+          "bfb": true,
+          "compared_files": 4
         }
       ],
       "status": "open",
@@ -5192,7 +5254,7 @@
       "contract": "frame",
       "contract_path": "native/pi_cam/segment_frames.yaml",
       "bindable": true,
-      "validated_through_runner": false,
+      "validated_through_runner": true,
       "evidence": {
         "capture": [],
         "standalone_build": [],
@@ -5201,15 +5263,31 @@
         "replay_public_api": [],
         "module_state": []
       },
-      "in_model_gates": [],
+      "in_model_gates": [
+        {
+          "path": "segmented, original kernel answered through the pause",
+          "record": "pi_cam_pausable_tran-pause_50step.json",
+          "bfb_record": "pi_cam_pausable_tran-pause_vs_oracle_50step_bfb.json",
+          "present": true,
+          "bfb": true,
+          "compared_files": 4
+        },
+        {
+          "path": "segmented, original kernel answered through the pause",
+          "record": "pi_cam_pausable_chain-pause_50step.json",
+          "bfb_record": "pi_cam_pausable_chain-pause_vs_oracle_50step_bfb.json",
+          "present": true,
+          "bfb": true,
+          "compared_files": 4
+        }
+      ],
       "status": "open",
       "missing": [
         "capture",
         "standalone_build",
         "replay_full_chunk",
         "replay_single_column",
-        "replay_public_api",
-        "in_model_replacement_bfb"
+        "replay_public_api"
       ]
     },
     {
@@ -5220,7 +5298,7 @@
       "contract": "frame",
       "contract_path": "native/pi_cam/segment_frames.yaml",
       "bindable": true,
-      "validated_through_runner": false,
+      "validated_through_runner": true,
       "evidence": {
         "capture": [],
         "standalone_build": [],
@@ -5229,15 +5307,31 @@
         "replay_public_api": [],
         "module_state": []
       },
-      "in_model_gates": [],
+      "in_model_gates": [
+        {
+          "path": "segmented, original kernel answered through the pause",
+          "record": "pi_cam_pausable_vdiff-tms_50step.json",
+          "bfb_record": "pi_cam_pausable_vdiff-tms_vs_oracle_50step_bfb.json",
+          "present": true,
+          "bfb": true,
+          "compared_files": 4
+        },
+        {
+          "path": "segmented, original kernel answered through the pause",
+          "record": "pi_cam_pausable_vdiff-all_50step.json",
+          "bfb_record": "pi_cam_pausable_vdiff-all_vs_oracle_50step_bfb.json",
+          "present": true,
+          "bfb": true,
+          "compared_files": 4
+        }
+      ],
       "status": "open",
       "missing": [
         "capture",
         "standalone_build",
         "replay_full_chunk",
         "replay_single_column",
-        "replay_public_api",
-        "in_model_replacement_bfb"
+        "replay_public_api"
       ]
     },
     {
@@ -5248,7 +5342,7 @@
       "contract": "frame",
       "contract_path": "native/pi_cam/segment_frames.yaml",
       "bindable": true,
-      "validated_through_runner": false,
+      "validated_through_runner": true,
       "evidence": {
         "capture": [],
         "standalone_build": [],
@@ -5257,21 +5351,81 @@
         "replay_public_api": [],
         "module_state": []
       },
-      "in_model_gates": [],
+      "in_model_gates": [
+        {
+          "path": "segmented, original kernel answered through the pause",
+          "record": "pi_cam_pausable_vdiff-eddy_50step.json",
+          "bfb_record": "pi_cam_pausable_vdiff-eddy_vs_oracle_50step_bfb.json",
+          "present": true,
+          "bfb": true,
+          "compared_files": 4
+        },
+        {
+          "path": "segmented, original kernel answered through the pause",
+          "record": "pi_cam_pausable_vdiff-all_50step.json",
+          "bfb_record": "pi_cam_pausable_vdiff-all_vs_oracle_50step_bfb.json",
+          "present": true,
+          "bfb": true,
+          "compared_files": 4
+        }
+      ],
       "status": "open",
       "missing": [
         "capture",
         "standalone_build",
         "replay_full_chunk",
         "replay_single_column",
-        "replay_public_api",
-        "in_model_replacement_bfb"
+        "replay_public_api"
       ]
     },
     {
       "kernel": "compute_vdiff",
       "stage_action": "cam_run2.vertical_diffusion",
       "owner_class": "freecam.physics.pausable.VerticalDiffusion",
+      "routine": null,
+      "contract": "frame",
+      "contract_path": "native/pi_cam/segment_frames.yaml",
+      "bindable": true,
+      "validated_through_runner": true,
+      "evidence": {
+        "capture": [],
+        "standalone_build": [],
+        "replay_full_chunk": [],
+        "replay_single_column": [],
+        "replay_public_api": [],
+        "module_state": []
+      },
+      "in_model_gates": [
+        {
+          "path": "segmented, original kernel answered through the pause",
+          "record": "pi_cam_pausable_vdiff-vdiff_50step.json",
+          "bfb_record": "pi_cam_pausable_vdiff-vdiff_vs_oracle_50step_bfb.json",
+          "present": true,
+          "bfb": true,
+          "compared_files": 4
+        },
+        {
+          "path": "segmented, original kernel answered through the pause",
+          "record": "pi_cam_pausable_vdiff-all_50step.json",
+          "bfb_record": "pi_cam_pausable_vdiff-all_vs_oracle_50step_bfb.json",
+          "present": true,
+          "bfb": true,
+          "compared_files": 4
+        }
+      ],
+      "status": "open",
+      "missing": [
+        "capture",
+        "standalone_build",
+        "replay_full_chunk",
+        "replay_single_column",
+        "replay_public_api"
+      ]
+    },
+    {
+      "kernel": "gw_drag_prof",
+      "stage_action": "cam_run2.gravity_wave_drag",
+      "owner_class": "freecam.physics.pausable.GravityWaveDrag",
       "routine": null,
       "contract": "frame",
       "contract_path": "native/pi_cam/segment_frames.yaml",
@@ -5297,9 +5451,65 @@
       ]
     },
     {
-      "kernel": "gw_drag_prof",
-      "stage_action": "cam_run2.gravity_wave_drag",
-      "owner_class": "freecam.physics.pausable.GravityWaveDrag",
+      "kernel": "wetdepa_v2",
+      "stage_action": "cam_run1.aerosol_wet_deposition_leaf",
+      "owner_class": "freecam.physics.pausable.AerosolWetDeposition",
+      "routine": null,
+      "contract": "frame",
+      "contract_path": "native/pi_cam/segment_frames.yaml",
+      "bindable": true,
+      "validated_through_runner": false,
+      "evidence": {
+        "capture": [],
+        "standalone_build": [],
+        "replay_full_chunk": [],
+        "replay_single_column": [],
+        "replay_public_api": [],
+        "module_state": []
+      },
+      "in_model_gates": [],
+      "status": "open",
+      "missing": [
+        "capture",
+        "standalone_build",
+        "replay_full_chunk",
+        "replay_single_column",
+        "replay_public_api",
+        "in_model_replacement_bfb"
+      ]
+    },
+    {
+      "kernel": "modal_aero_depvel_part",
+      "stage_action": "cam_run2.aerosol_dry_deposition_leaf",
+      "owner_class": "freecam.physics.pausable.AerosolDryDeposition",
+      "routine": null,
+      "contract": "frame",
+      "contract_path": "native/pi_cam/segment_frames.yaml",
+      "bindable": true,
+      "validated_through_runner": false,
+      "evidence": {
+        "capture": [],
+        "standalone_build": [],
+        "replay_full_chunk": [],
+        "replay_single_column": [],
+        "replay_public_api": [],
+        "module_state": []
+      },
+      "in_model_gates": [],
+      "status": "open",
+      "missing": [
+        "capture",
+        "standalone_build",
+        "replay_full_chunk",
+        "replay_single_column",
+        "replay_public_api",
+        "in_model_replacement_bfb"
+      ]
+    },
+    {
+      "kernel": "gas_phase_chemdr",
+      "stage_action": "cam_run2.chemistry_tendencies_leaf",
+      "owner_class": "freecam.physics.pausable.ChemistryTendencies",
       "routine": null,
       "contract": "frame",
       "contract_path": "native/pi_cam/segment_frames.yaml",
@@ -5423,10 +5633,6 @@
       "why": "no record in validation/ for this step of the loop"
     },
     {
-      "what": "zm_convr: in_model_replacement_bfb",
-      "why": "no record in validation/ for this step of the loop"
-    },
-    {
       "what": "zm_conv_evap: capture",
       "why": "no record in validation/ for this step of the loop"
     },
@@ -5487,10 +5693,6 @@
       "why": "no record in validation/ for this step of the loop"
     },
     {
-      "what": "convtran: in_model_replacement_bfb",
-      "why": "no record in validation/ for this step of the loop"
-    },
-    {
       "what": "compute_tms: capture",
       "why": "no record in validation/ for this step of the loop"
     },
@@ -5508,10 +5710,6 @@
     },
     {
       "what": "compute_tms: replay_public_api",
-      "why": "no record in validation/ for this step of the loop"
-    },
-    {
-      "what": "compute_tms: in_model_replacement_bfb",
       "why": "no record in validation/ for this step of the loop"
     },
     {
@@ -5535,10 +5733,6 @@
       "why": "no record in validation/ for this step of the loop"
     },
     {
-      "what": "compute_eddy_diff: in_model_replacement_bfb",
-      "why": "no record in validation/ for this step of the loop"
-    },
-    {
       "what": "compute_vdiff: capture",
       "why": "no record in validation/ for this step of the loop"
     },
@@ -5556,10 +5750,6 @@
     },
     {
       "what": "compute_vdiff: replay_public_api",
-      "why": "no record in validation/ for this step of the loop"
-    },
-    {
-      "what": "compute_vdiff: in_model_replacement_bfb",
       "why": "no record in validation/ for this step of the loop"
     },
     {
@@ -5587,17 +5777,77 @@
       "why": "no record in validation/ for this step of the loop"
     },
     {
-      "what": "cam_run2.chemistry_tendencies_leaf",
-      "why": "the physics catalog lists no procedure under this action; its active call graph must be extended before this action's kernels can be chosen"
+      "what": "wetdepa_v2: capture",
+      "why": "no record in validation/ for this step of the loop"
     },
     {
-      "what": "cam_run2.aerosol_dry_deposition_leaf",
-      "why": "the physics catalog lists no procedure under this action; its active call graph must be extended before this action's kernels can be chosen"
+      "what": "wetdepa_v2: standalone_build",
+      "why": "no record in validation/ for this step of the loop"
     },
     {
-      "what": "cam_run1.aerosol_wet_deposition_leaf",
-      "why": "the physics catalog lists no procedure under this action; its active call graph must be extended before this action's kernels can be chosen"
+      "what": "wetdepa_v2: replay_full_chunk",
+      "why": "no record in validation/ for this step of the loop"
+    },
+    {
+      "what": "wetdepa_v2: replay_single_column",
+      "why": "no record in validation/ for this step of the loop"
+    },
+    {
+      "what": "wetdepa_v2: replay_public_api",
+      "why": "no record in validation/ for this step of the loop"
+    },
+    {
+      "what": "wetdepa_v2: in_model_replacement_bfb",
+      "why": "no record in validation/ for this step of the loop"
+    },
+    {
+      "what": "modal_aero_depvel_part: capture",
+      "why": "no record in validation/ for this step of the loop"
+    },
+    {
+      "what": "modal_aero_depvel_part: standalone_build",
+      "why": "no record in validation/ for this step of the loop"
+    },
+    {
+      "what": "modal_aero_depvel_part: replay_full_chunk",
+      "why": "no record in validation/ for this step of the loop"
+    },
+    {
+      "what": "modal_aero_depvel_part: replay_single_column",
+      "why": "no record in validation/ for this step of the loop"
+    },
+    {
+      "what": "modal_aero_depvel_part: replay_public_api",
+      "why": "no record in validation/ for this step of the loop"
+    },
+    {
+      "what": "modal_aero_depvel_part: in_model_replacement_bfb",
+      "why": "no record in validation/ for this step of the loop"
+    },
+    {
+      "what": "gas_phase_chemdr: capture",
+      "why": "no record in validation/ for this step of the loop"
+    },
+    {
+      "what": "gas_phase_chemdr: standalone_build",
+      "why": "no record in validation/ for this step of the loop"
+    },
+    {
+      "what": "gas_phase_chemdr: replay_full_chunk",
+      "why": "no record in validation/ for this step of the loop"
+    },
+    {
+      "what": "gas_phase_chemdr: replay_single_column",
+      "why": "no record in validation/ for this step of the loop"
+    },
+    {
+      "what": "gas_phase_chemdr: replay_public_api",
+      "why": "no record in validation/ for this step of the loop"
+    },
+    {
+      "what": "gas_phase_chemdr: in_model_replacement_bfb",
+      "why": "no record in validation/ for this step of the loop"
     }
   ],
-  "coverage_hash": "3c8d172c6a3cfe5868fd0e8e7a63eed1416de9eb7db9c8e8b6eaa61b47603bf9"
+  "coverage_hash": "54fa80e10aeae50e3426fbb7a38eb29d052d57d511a106abde79ac8f79b53c75"
 }

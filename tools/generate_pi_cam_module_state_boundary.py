@@ -79,6 +79,24 @@ STATE_PATCHES: tuple[StatePatch, ...] = (
          "buffer indices and history writer gw_tend reads and calls, readable by the",
          "pausable runner's hoisted copy of the routine.  No executable statement changes."),
     ),
+    StatePatch(
+        "0047-chemistry-state-boundary.patch", "src/chemistry/mozart/chemistry.F90",
+        "logical :: chem_rad_passive = .false.",
+        ("chem_name", "chem_rad_passive", "ghg_chem", "ixcldice", "ixcldliq", "ixndrop", "ndx_cld", "ndx_cldtop",
+         "ndx_cmfdqr", "ndx_nevapr", "ndx_pblh", "ndx_prain", "srcnam", "xactive_prates", "chem_step", "chem_freq"),
+        ("pyCAM (control patch 0047): the options, indices and names chem_timestep_tend",
+         "reads, readable by the pausable runner's hoisted copy of the routine.  No",
+         "executable statement changes."),
+    ),
+    StatePatch(
+        "0048-aero-model-state-boundary.patch", "src/chemistry/modal_aero/aero_model.F90",
+        "logical :: modal_accum_coarse_exch = .false.",
+        ("nmodes", "dgnumwet_idx", "qaerwat_idx", "fracis_idx", "wetdens_ap_idx", "nwetdep", "drydep_lq", "wetdep_lq",
+         "sol_facti_cloud_borne", "sol_factb_interstitial", "sol_factic_interstitial", "modal_aero_bcscavcoef_get"),
+        ("pyCAM (control patch 0048): the indices, selectors and solubility factors the",
+         "deposition drivers read and the scavenging coefficients they call for, readable",
+         "by the pausable runners' hoisted copies.  No executable statement changes."),
+    ),
 )
 BOUNDARIES = {entry.patch: entry.path for entry in STATE_PATCHES}
 

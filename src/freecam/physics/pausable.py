@@ -149,6 +149,36 @@ class GravityWaveDrag(PausableStage):
     SWAPPABLE = ("gw_drag_prof",)
 
 
+class AerosolWetDeposition(PausableStage):
+    """The aerosol wet deposition leaf of tphysbc stage 8, ``wetdepa_v2`` (both call sites) as its kernel."""
+
+    STAGE = "cam_run1.aerosol_wet_deposition_leaf"
+    PREFIX = "awet"
+    RUNNER_PREFIX = "awet"
+    PROCESS_NAME = "aerosol_wet_deposition_leaf"
+    SWAPPABLE = ("wetdepa_v2",)
+
+
+class AerosolDryDeposition(PausableStage):
+    """The aerosol dry deposition leaf of tphysac stage 5, ``modal_aero_depvel_part`` (four sites) as its kernel."""
+
+    STAGE = "cam_run2.aerosol_dry_deposition_leaf"
+    PREFIX = "adry"
+    RUNNER_PREFIX = "adry"
+    PROCESS_NAME = "aerosol_dry_deposition_leaf"
+    SWAPPABLE = ("modal_aero_depvel_part",)
+
+
+class ChemistryTendencies(PausableStage):
+    """The chemistry leaf of tphysac stage 2: the whole gas-phase driver ``gas_phase_chemdr`` as its kernel."""
+
+    STAGE = "cam_run2.chemistry_tendencies_leaf"
+    PREFIX = "chem"
+    RUNNER_PREFIX = "chem"
+    PROCESS_NAME = "chemistry_tendencies_leaf"
+    SWAPPABLE = ("gas_phase_chemdr",)
+
+
 def _inert(name: str, stage: str, process_name: str, because: str) -> type:
     return type(name, (InertStage,), {
         "STAGE": stage, "PREFIX": process_name, "RUNNER_PREFIX": "", "PROCESS_NAME": process_name,
@@ -181,13 +211,14 @@ AgeOfAirTendencies = _inert("AgeOfAirTendencies", "cam_run2.age_of_air_tendencie
 STAGES: dict[str, type[PausableStage]] = {
     cls.PROCESS_NAME: cls for cls in (
         DryAdjustment, ShallowConvection, DeepConvection, ConvectiveTracerTransport,
-        VerticalDiffusion, GravityWaveDrag,
+        VerticalDiffusion, GravityWaveDrag, AerosolWetDeposition, AerosolDryDeposition, ChemistryTendencies,
         RayleighFriction, ChargeNeutrality, QBORelaxation, IonDrag, SeaSaltRebin, ModalAerosolPreparation,
         CARMAWetDeposition, CARMAAerosolTendencies, CARMAStatistics, TracerTendencies, AgeOfAirTendencies,
     )
 }
 
-__all__ = ["AgeOfAirTendencies", "CARMAAerosolTendencies", "CARMAStatistics", "CARMAWetDeposition",
-           "ChargeNeutrality", "ConvectiveTracerTransport", "DeepConvection", "DryAdjustment", "GravityWaveDrag",
-           "InertStage", "IonDrag", "ModalAerosolPreparation", "PausableStage", "QBORelaxation", "RayleighFriction",
-           "STAGES", "SeaSaltRebin", "ShallowConvection", "TracerTendencies", "VerticalDiffusion", "bind_stage_hosts"]
+__all__ = ["AerosolDryDeposition", "AerosolWetDeposition", "AgeOfAirTendencies", "CARMAAerosolTendencies",
+           "CARMAStatistics", "CARMAWetDeposition", "ChargeNeutrality", "ChemistryTendencies",
+           "ConvectiveTracerTransport", "DeepConvection", "DryAdjustment", "GravityWaveDrag", "InertStage", "IonDrag",
+           "ModalAerosolPreparation", "PausableStage", "QBORelaxation", "RayleighFriction", "STAGES", "SeaSaltRebin",
+           "ShallowConvection", "TracerTendencies", "VerticalDiffusion", "bind_stage_hosts"]

@@ -34,6 +34,9 @@ module pycam_zmtran_zm2
   real(r8), save, public :: ztodt
   type(physics_buffer_desc), pointer, save, public :: pbuf(:) => null()
 
+  ! a piece's return, cycle or exit at the routine's level, for the runner to carry out
+  integer, save, public :: flow = 0
+
   ! the routine's locals, held for the chunk in flight
   real(r8), save, target, public :: dpdry(pcols,pver)
   real(r8), pointer, save, public :: fracis(:,:,:) => null()
@@ -194,7 +197,7 @@ contains
     sc_5 = int(nstep, c_int32_t)
     call put_slot(17, c_loc(sc_5), 0, zero_shape, 2, 0, ptrs, ndims, shapes, dtypes, intents)
     if (associated(fracis)) then
-      call put_slot(18, c_loc(fracis(1,1,1)), 3, (/ int(pcols, c_int64_t), int(pver, c_int64_t), int((pcnst), c_int64_t) /), 1, 0, ptrs, ndims, shapes, dtypes, intents)
+      call put_slot(18, c_loc(fracis(lbound(fracis,1),lbound(fracis,2),lbound(fracis,3))), 3, (/ int(pcols, c_int64_t), int(pver, c_int64_t), int((pcnst), c_int64_t) /), 1, 0, ptrs, ndims, shapes, dtypes, intents)
     else
       call empty_slot(18, 3, 1, 0, ptrs, ndims, shapes, dtypes, intents)
     end if

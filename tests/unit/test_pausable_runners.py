@@ -290,10 +290,10 @@ def test_the_deep_convection_classes_own_their_actions_and_kernels() -> None:
     assert ConvectiveTracerTransport.STAGE == "cam_run1.convective_tracer_transport_leaf"
     rows = {r["kernel"]: r for r in DeepConvection().describe_kernels()}
     assert set(rows) == set(DeepConvection.SWAPPABLE) and all(r["bindable"] for r in rows.values())
-    # gates 7334212 and 7334213 answered the evaporation and the momentum transport through the pause
-    assert rows["zm_conv_evap"]["validated"] and rows["momtran"]["validated"] and not rows["zm_convr"]["validated"]
+    # gates 7334212, 7334213 and 7335519 answered each kernel through its pause; 7335520 all three at once
+    assert all(rows[name]["validated"] for name in DeepConvection.SWAPPABLE)
     leaf = {r["kernel"]: r for r in ConvectiveTracerTransport().describe_kernels()}
-    assert leaf["convtran"]["bindable"] and not leaf["convtran"]["validated"]
+    assert leaf["convtran"]["bindable"] and leaf["convtran"]["validated"]        # gates 7335521, 7335522
 
 
 def test_the_tphysac_frames_serve_every_site_alike_and_size_automatic_arrays_per_chunk() -> None:
@@ -334,3 +334,46 @@ def test_the_tphysac_classes_own_their_actions_and_kernels() -> None:
     assert GravityWaveDrag.SWAPPABLE == ("gw_drag_prof",) and GravityWaveDrag.STAGE == "cam_run2.gravity_wave_drag"
     rows = {r["kernel"]: r for r in VerticalDiffusion().describe_kernels()}
     assert set(rows) == set(VerticalDiffusion.SWAPPABLE) and all(r["bindable"] for r in rows.values())
+
+
+def test_the_leaf_frames_and_the_flow_statements_the_runner_carries_out() -> None:
+    frames = yaml.safe_load(pausable.FRAMES.read_text())["kernels"]
+    wet = {s["name"]: s for s in frames["wetdepa_v2"]}
+    chem = {s["name"]: s for s in frames["gas_phase_chemdr"]}
+    assert len(frames["wetdepa_v2"]) == 32 and len(frames["modal_aero_depvel_part"]) == 13 and len(frames["gas_phase_chemdr"]) == 34
+    # the cloud-borne site omits the interstitial optionals; the buffer is opaque to the frame
+    assert wet["qqcw"]["kind"] == "absent" and wet["f_act_conv"]["kind"] == "absent"
+    assert chem["pbuf"]["kind"] == "opaque" and "chem_name" not in chem
+    awet = (pausable.SUPPORT / "pycam_awet_driver.F90").read_text()
+    runner = (pausable.SUPPORT / "pycam_awet_runner.F90").read_text()
+    # a species the driver skips: the piece reports the cycle, the runner moves its loop
+    assert "flow = 1   ! cycle at the routine's level: the runner moves its loop" in awet
+    assert "if (mm <= 0) then   ! cycle at the routine's level" in awet
+    # the driver's early return when nothing is wet-deposited: the piece reports it, the runner leaves the routine
+    assert "if (nwetdep<1) then   ! return at the routine's level: the runner leaves the routine" in awet
+    assert "select case (driver_flow)" in runner and "driver_flow => flow" in runner
+    # the else-if chain of the species loop is the runner's, with both pause sites inside it
+    assert "else if ((lphase == 1) .and. (lspec == nspec_amode(m)+1)) then" in runner
+    assert "case (pc_at_wetdepa_v2_1)" in runner and "case (pc_at_wetdepa_v2_2)" in runner
+    assert "do lspec" not in runner and "lspec = lspec + (1)" in runner        # the loop is re-expressed, not copied
+    adry = (pausable.SUPPORT / "pycam_adry_runner.F90").read_text()
+    assert all(f"case (pc_at_modal_aero_depvel_part_{n})" in adry for n in (1, 2, 3, 4))
+    chem_driver = (pausable.SUPPORT / "pycam_chem_driver.F90").read_text()
+    assert "if ( .not. chem_step ) then   ! return at the routine's level" in chem_driver
+    assert "use chemistry, only: chem_name" in chem_driver and "chem_freq" in chem_driver
+
+
+def test_the_leaf_classes_own_their_actions_and_kernels() -> None:
+    from freecam.physics.pausable import STAGES, AerosolDryDeposition, AerosolWetDeposition, ChemistryTendencies
+
+    assert STAGES["aerosol_wet_deposition_leaf"] is AerosolWetDeposition
+    assert STAGES["aerosol_dry_deposition_leaf"] is AerosolDryDeposition
+    assert STAGES["chemistry_tendencies_leaf"] is ChemistryTendencies
+    assert AerosolWetDeposition.SWAPPABLE == ("wetdepa_v2",) and AerosolDryDeposition.SWAPPABLE == ("modal_aero_depvel_part",)
+    assert ChemistryTendencies.SWAPPABLE == ("gas_phase_chemdr",) and ChemistryTendencies.STAGE == "cam_run2.chemistry_tendencies_leaf"
+    for cls in (AerosolWetDeposition, AerosolDryDeposition, ChemistryTendencies):
+        rows = {r["kernel"]: r for r in cls().describe_kernels()}
+        assert set(rows) == set(cls.SWAPPABLE) and all(r["bindable"] for r in rows.values())
+    # every exposed numerical process now has a class: nine pausable and eleven inert here, radiation and
+    # the cloud stage in their own modules
+    assert len(STAGES) == 20

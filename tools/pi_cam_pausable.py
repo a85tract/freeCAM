@@ -370,6 +370,8 @@ class Node:
     line: int = 0
     children: list = field(default_factory=list)          # if.then / do.body
     orelse: list = field(default_factory=list)            # if.else
+    elifs: list = field(default_factory=list)             # if.elif: (line, body) pairs
+    flows: set = field(default_factory=set)               # piece: the flow codes its statements set
     cases: dict = field(default_factory=dict)             # select
     refused: list = field(default_factory=list)           # select
     pause: Pause | None = None
@@ -466,7 +468,8 @@ def _parse_body(items: list, unit: Unit) -> list[Node]:
         elif "if" in item:
             nodes.append(Node("if", line=int(item["if"]),
                               children=_parse_body(item.get("then", []), unit),
-                              orelse=_parse_body(item.get("else", []), unit)))
+                              orelse=_parse_body(item.get("else", []), unit),
+                              elifs=[(int(e["line"]), _parse_body(e.get("then", []), unit)) for e in item.get("elif") or []]))
         elif "do" in item:
             nodes.append(Node("do", line=int(item["do"]), children=_parse_body(item.get("body", []), unit)))
         elif "select" in item:
@@ -544,6 +547,8 @@ def _walk(nodes: list[Node]):
         yield node
         yield from _walk(node.children)
         yield from _walk(node.orelse)
+        for _, body in node.elifs:
+            yield from _walk(body)
         for case in node.cases.values():
             yield from _walk(case)
 
@@ -863,13 +868,18 @@ def _actual_base(actual: str) -> tuple[str, str | None]:
     return actual, None
 
 
-def _lower_bounds(decl: Decl | None, rank: int) -> list[str]:
-    """The declared lower bound of every axis (1 unless the declaration says `lo:hi`)."""
+def _lower_bounds(decl: Decl | None, rank: int, base: str = "") -> list[str]:
+    """The lower bound of every axis: the declaration's `lo` in `lo:hi`, 1 for a plain extent, and
+    `lbound(base, axis)` for a deferred-shape axis (an allocatable or pointer, whose bounds are set
+    at run time: gw_tend's tau is allocated from -ngwv)."""
 
     bounds = []
     dims = _split_top(decl.dims) if decl is not None and decl.dims else []
     for axis in range(rank):
-        extent = dims[axis] if axis < len(dims) else ""
+        extent = dims[axis].strip() if axis < len(dims) else ""
+        if extent == ":" and base:
+            bounds.append(f"lbound({base},{axis + 1})")
+            continue
         lower = extent.partition(":")[0].strip() if ":" in extent else ""
         bounds.append(lower if lower else "1")
     return bounds
@@ -885,7 +895,7 @@ def _first_element(actual: str, base: str, section: str | None, rank: int, decl:
 
     if not rank:
         return base
-    bounds = _lower_bounds(decl, rank)
+    bounds = _lower_bounds(decl, rank, base)
     if section is None:
         return f"{base}({','.join(bounds)})"
     indices = []
@@ -1114,13 +1124,62 @@ def _carry_state(unit: Unit) -> list[str]:
     return rows
 
 
+FLOW_CODES = {"cycle": 1, "exit": 2, "return": 3}
+_BLOCK_OPEN = re.compile(r"^(?:\w+\s*:\s*)?(?:if\s*\(.*\)\s*then|do\b|select\s*case\b|select\s*type\b|where\s*\(.*\)\s*$|forall\s*\(.*\)\s*$|associate\s*\()", re.I)
+_BLOCK_CLOSE = re.compile(r"^(?:end\s*(?:if|do|select|where|forall|associate)|endif|enddo|endwhere|endforall)\b", re.I)
+_FLOW = re.compile(r"^(?:if\s*\((?P<cond>.*)\)\s*)?(?P<verb>return|cycle|exit)(?:\s+\w+)?$", re.I)
+
+
+def _piece_flows(unit: Unit, first: int, last: int) -> dict[int, tuple[int, int, str, str | None]]:
+    """start line -> (last line, flow code, verb, condition) for every return / cycle / exit at
+    the piece's own block level: they leave the enclosing routine or the runner's loop, which the
+    piece cannot do itself, so the piece reports them through `flow` and the runner acts."""
+
+    found: dict[int, tuple[int, int, str, str | None]] = {}
+    loops = 0
+    for start, end, text in statements(unit.lines, first, last):
+        low = text.strip().lower()
+        if re.match(r"^(?:end\s*do|enddo)\b", low):
+            loops = max(loops - 1, 0)
+            continue
+        if re.match(r"^(?:\w+\s*:\s*)?do\b", low) and not re.match(r"^do\s*\d", low):
+            loops += 1
+            continue
+        match = _FLOW.match(low)
+        if not match:
+            continue
+        verb = match.group("verb").lower()
+        # a return leaves the routine from any depth; a cycle or exit outside every loop
+        # of the piece belongs to the runner's loop
+        if verb == "return" or loops == 0:
+            found[start] = (end, FLOW_CODES[verb], verb, match.group("cond"))
+    return found
+
+
 def _piece_text(unit: Unit, node: Node) -> str:
     body = []
+    flows = _piece_flows(unit, node.first, node.last)
+    node.flows = {code for _, code, _, _ in flows.values()}
+    skip_to = 0
     for number in range(node.first, node.last + 1):
+        if number <= skip_to:
+            continue
         line = unit.lines[number - 1].rstrip()
+        if number in flows:
+            end, code, verb, condition = flows[number]
+            indent = " " * (len(line) - len(line.lstrip()))
+            note = f"! {verb} at the routine's level: the runner {'leaves the routine' if verb == 'return' else 'moves its loop'}"
+            if condition is None:
+                body += [f"    {indent}flow = {code}   {note}", f"    {indent}return"]
+            else:
+                body += [f"    {indent}if ({condition}) then   {note}", f"    {indent}  flow = {code}",
+                         f"    {indent}  return", f"    {indent}end if"]
+            skip_to = end
+            continue
         body.append(("    " + line) if line.strip() else "")
     return "\n".join([f"  subroutine {node.name}()",
-                      f"    ! {Path(unit.source).name}:{node.first}-{node.last}, verbatim", ""] + body
+                      f"    ! {Path(unit.source).name}:{node.first}-{node.last}, verbatim"
+                      + (" but for the flow statements the runner carries out" if flows else ""), ""] + body
                      + ["", f"  end subroutine {node.name}"])
 
 
@@ -1384,6 +1443,8 @@ def render_unit(spec: Spec, unit: Unit) -> str:
         header += ["", "  ! the module's private options, read through phys_getopts at configure"] + _getopts_state(unit)
     if unit.locals:
         header += ["", "  ! locals pointed at storage the stage's Python side reads back"] + _local_state(unit)
+    header += ["", "  ! a piece's return, cycle or exit at the routine's level, for the runner to carry out",
+               "  integer, save, public :: flow = 0"]
     header += ["", "  ! the routine's locals, held for the chunk in flight"] + _hoisted_state(unit)
     for first, last in unit.module_private:
         header += ["", f"  ! {Path(unit.source).name}:{first}-{last}: the module's own declaration, verbatim"]
@@ -1584,16 +1645,22 @@ class State:
     code: str          # the Fortran executed on entering this state (may set pc / return)
 
 
-def _flatten(spec: Spec, unit: Unit, nodes: list[Node], states: list[State], after: str, counters: dict) -> str:
-    """Return the pc that starts `nodes`; states appended; flow continues to `after`."""
+def _flatten(spec: Spec, unit: Unit, nodes: list[Node], states: list[State], after: str, counters: dict,
+             targets: dict | None = None) -> str:
+    """Return the pc that starts `nodes`; states appended; flow continues to `after`.
+
+    `targets` names where a piece's flow statements go: ``cycle`` and ``exit`` to the
+    enclosing skeleton loop's next / after states, ``return`` to the routine's end.
+    """
 
     if not nodes:
         return after
+    targets = targets or {"cycle": None, "exit": None, "return": "pc_chunk_end"}
     first_pc = None
     # build backwards so each state knows its successor
     next_pc = after
     for node in reversed(nodes):
-        pc = _node_pc(spec, unit, node, states, next_pc, counters)
+        pc = _node_pc(spec, unit, node, states, next_pc, counters, targets)
         next_pc = pc
         first_pc = pc
     return first_pc
@@ -1604,16 +1671,33 @@ def _new_pc(counters: dict, base: str) -> str:
     return f"pc_{base}_{counters[base]}"
 
 
-def _node_pc(spec: Spec, unit: Unit, node: Node, states: list[State], after: str, counters: dict) -> str:
+def _node_pc(spec: Spec, unit: Unit, node: Node, states: list[State], after: str, counters: dict,
+             targets: dict) -> str:
     if node.kind == "piece":
         pc = _new_pc(counters, node.name)
-        states.append(State(pc, f"call {node.name}()\n        pc = {after}"))
+        _piece_text(unit, node)          # records the flow codes the piece can set
+        if not node.flows:
+            states.append(State(pc, f"call {node.name}()\n        pc = {after}"))
+            return pc
+        branches = []
+        for code, verb in ((1, "cycle"), (2, "exit"), (3, "return")):
+            if code not in node.flows:
+                continue
+            target = targets.get(verb)
+            if target is None:
+                raise SystemExit(f"{unit.key}: piece {node.first}-{node.last} has a `{verb}` outside its loops "
+                                 f"but no skeleton loop encloses it")
+            branches.append(f"        case ({code})\n          {unit.key}_flow = 0\n          pc = {target}")
+        text = "\n".join(branches)
+        states.append(State(pc, f"call {node.name}()\n        select case ({unit.key}_flow)\n{text}\n"
+                                f"        case default\n          pc = {after}\n        end select"))
         return pc
     if node.kind == "unit":
         target = spec.units[node.call.unit]
         pc = _new_pc(counters, f"enter_{target.key}")
         inner_after = _new_pc(counters, f"leave_{target.key}")
-        first = _flatten(spec, target, target.body, states, inner_after, counters)
+        first = _flatten(spec, target, target.body, states, inner_after, counters,
+                         {"cycle": None, "exit": None, "return": inner_after})
         states.append(State(inner_after, f"pc = {after}"))
         states.append(State(pc, f"call {unit.key}_bind_{target.key}()\n        pc = {first}"))
         return pc
@@ -1633,10 +1717,18 @@ def _node_pc(spec: Spec, unit: Unit, node: Node, states: list[State], after: str
         condition = re.match(r"^if\s*\((.*)\)\s*then$", line, re.I)
         if not condition:
             raise SystemExit(f"{unit.key}: line {node.line} is not `if (...) then`: {line}")
-        then_pc = _flatten(spec, unit, node.children, states, after, counters)
-        else_pc = _flatten(spec, unit, node.orelse, states, after, counters)
+        then_pc = _flatten(spec, unit, node.children, states, after, counters, targets)
+        else_pc = _flatten(spec, unit, node.orelse, states, after, counters, targets)
+        chain = [f"if ({condition.group(1)}) then\n          pc = {then_pc}"]
+        for line, body in node.elifs:
+            text = strip_comment(unit.lines[line - 1]).strip()
+            elif_condition = re.match(r"^else\s*if\s*\((.*)\)\s*then$", text, re.I)
+            if not elif_condition:
+                raise SystemExit(f"{unit.key}: line {line} is not `else if (...) then`: {text}")
+            elif_pc = _flatten(spec, unit, body, states, after, counters, targets)
+            chain.append(f"        else if ({elif_condition.group(1)}) then\n          pc = {elif_pc}")
         pc = _new_pc(counters, "if")
-        states.append(State(pc, f"if ({condition.group(1)}) then\n          pc = {then_pc}\n        else\n          pc = {else_pc}\n        end if"))
+        states.append(State(pc, "\n".join(chain) + f"\n        else\n          pc = {else_pc}\n        end if"))
         return pc
     if node.kind == "do":
         header = re.match(r"^do\s+(\w+)\s*=\s*(.+?)\s*,\s*(.+?)(?:\s*,\s*(.+))?$", line, re.I)
@@ -1645,7 +1737,8 @@ def _node_pc(spec: Spec, unit: Unit, node: Node, states: list[State], after: str
         var, start, stop, step = header.groups()
         step = step or "1"
         check = _new_pc(counters, f"do_{var}")
-        body_pc = _flatten(spec, unit, node.children, states, f"{check}_next", counters)
+        body_pc = _flatten(spec, unit, node.children, states, f"{check}_next", counters,
+                           {**targets, "cycle": f"{check}_next", "exit": after})
         states.append(State(f"{check}_next", f"{var} = {var} + ({step})\n        pc = {check}"))
         test = f"{var} > {stop}" if not step.strip().startswith("-") else f"{var} < {stop}"
         states.append(State(check, f"if ({test}) then\n          pc = {after}\n        else\n          pc = {body_pc}\n        end if"))
@@ -1659,7 +1752,7 @@ def _node_pc(spec: Spec, unit: Unit, node: Node, states: list[State], after: str
         pc = _new_pc(counters, "select")
         branches = []
         for value, body in node.cases.items():
-            case_pc = _flatten(spec, unit, body, states, after, counters)
+            case_pc = _flatten(spec, unit, body, states, after, counters, targets)
             branches.append(f"        case ({value})\n          pc = {case_pc}")
         refused = "\n".join(branches)
         default = (f"        case default\n          last_error = '{spec.prefix}: {selector.group(1)} takes a case this runner "
@@ -1689,6 +1782,8 @@ def render_runner(spec: Spec) -> str:
             names.append("glue_enter")
             if unit.postamble:
                 names.append("glue_leave")
+        if any(_piece_flows(unit, n.first, n.last) for n in unit.pieces):
+            names.append(f"{unit.key}_flow => flow")
         if unit.pbuf_indices:
             names.append(f"{unit.key}_resolve_indices")
         if unit.getopts:
@@ -1942,6 +2037,8 @@ def _skeleton_names(unit: Unit) -> set[str]:
     for node in _walk(unit.body):
         if node.kind in ("if", "do", "select"):
             names |= identifiers(unit.lines[node.line - 1])
+            for line, _ in node.elifs:
+                names |= identifiers(unit.lines[line - 1])
     names -= KEYWORDS
     known = {n for n in names if n in unit.decls or n in unit.dummy_names or n in unit.carries
              or n in unit.records or n in unit.getopts}

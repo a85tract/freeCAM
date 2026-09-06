@@ -2631,3 +2631,480 @@ kernels:
     dtype: float64
     intent: out
     kind: absent
+  modal_aero_depvel_part:
+  - name: ncol
+    actual: ncol
+    rank: 0
+    dtype: int32
+    intent: in
+    kind: scalar
+  - name: t
+    actual: state%t(:,:)
+    rank: 2
+    dtype: float64
+    intent: in
+    kind: array
+  - name: pmid
+    actual: state%pmid(:,:)
+    rank: 2
+    dtype: float64
+    intent: in
+    kind: array
+  - name: ram1
+    actual: ram1
+    rank: 1
+    dtype: float64
+    intent: in
+    kind: array
+  - name: fv
+    actual: fv
+    rank: 1
+    dtype: float64
+    intent: in
+    kind: array
+  - name: vlc_dry
+    actual: vlc_dry(:,:,jvlc)
+    rank: 2
+    dtype: float64
+    intent: out
+    kind: array
+  - name: vlc_trb
+    actual: vlc_trb(:,jvlc)
+    rank: 1
+    dtype: float64
+    intent: out
+    kind: array
+  - name: vlc_grv
+    actual: vlc_grv(:,:,jvlc)
+    rank: 2
+    dtype: float64
+    intent: out
+    kind: array
+  - name: radius_part
+    actual: rad_aer(:,:)
+    rank: 2
+    dtype: float64
+    intent: in
+    kind: array
+  - name: density_part
+    actual: dens_aer(:,:)
+    rank: 2
+    dtype: float64
+    intent: in
+    kind: array
+  - name: sig_part
+    actual: sg_aer(:,:)
+    rank: 2
+    dtype: float64
+    intent: in
+    kind: array
+  - name: moment
+    actual: '3'
+    rank: 0
+    dtype: int32
+    intent: in
+    kind: scalar
+  - name: lchnk
+    actual: lchnk
+    rank: 0
+    dtype: int32
+    intent: in
+    kind: scalar
+  wetdepa_v2:
+  - name: p
+    actual: state%pmid
+    rank: 2
+    dtype: float64
+    intent: in
+    kind: array
+  - name: q
+    actual: state%q(:,:,1)
+    rank: 2
+    dtype: float64
+    intent: in
+    kind: array
+  - name: pdel
+    actual: state%pdel
+    rank: 2
+    dtype: float64
+    intent: in
+    kind: array
+  - name: cldt
+    actual: dep_inputs%cldt
+    rank: 2
+    dtype: float64
+    intent: in
+    kind: array
+  - name: cldc
+    actual: dep_inputs%cldcu
+    rank: 2
+    dtype: float64
+    intent: in
+    kind: array
+  - name: cmfdqr
+    actual: dep_inputs%cmfdqr
+    rank: 2
+    dtype: float64
+    intent: in
+    kind: array
+  - name: evapc
+    actual: dep_inputs%evapc
+    rank: 2
+    dtype: float64
+    intent: in
+    kind: array
+  - name: conicw
+    actual: dep_inputs%conicw
+    rank: 2
+    dtype: float64
+    intent: in
+    kind: array
+  - name: precs
+    actual: dep_inputs%prain
+    rank: 2
+    dtype: float64
+    intent: in
+    kind: array
+  - name: conds
+    actual: dep_inputs%qme
+    rank: 2
+    dtype: float64
+    intent: in
+    kind: array
+  - name: evaps
+    actual: dep_inputs%evapr
+    rank: 2
+    dtype: float64
+    intent: in
+    kind: array
+  - name: cwat
+    actual: dep_inputs%totcond
+    rank: 2
+    dtype: float64
+    intent: in
+    kind: array
+  - name: tracer
+    actual: fldcw
+    rank: 2
+    dtype: float64
+    intent: in
+    kind: pointer
+  - name: deltat
+    actual: dt
+    rank: 0
+    dtype: float64
+    intent: in
+    kind: scalar
+  - name: scavt
+    actual: dqdt_tmp
+    rank: 2
+    dtype: float64
+    intent: out
+    kind: array
+  - name: iscavt
+    actual: iscavt
+    rank: 2
+    dtype: float64
+    intent: out
+    kind: array
+  - name: cldvcu
+    actual: dep_inputs%cldvcu
+    rank: 2
+    dtype: float64
+    intent: in
+    kind: array
+  - name: cldvst
+    actual: dep_inputs%cldvst
+    rank: 2
+    dtype: float64
+    intent: in
+    kind: array
+  - name: dlf
+    actual: dlf
+    rank: 2
+    dtype: float64
+    intent: in
+    kind: array
+  - name: fracis
+    actual: fracis_cw
+    rank: 2
+    dtype: float64
+    intent: out
+    kind: array
+  - name: sol_fact
+    actual: sol_factb
+    rank: 0
+    dtype: float64
+    intent: in
+    kind: scalar
+  - name: ncol
+    actual: ncol
+    rank: 0
+    dtype: int32
+    intent: in
+    kind: scalar
+  - name: scavcoef
+    actual: scavcoefnv(:,:,jnv)
+    rank: 2
+    dtype: float64
+    intent: in
+    kind: array
+  - name: is_strat_cloudborne
+    actual: .true.
+    rank: 0
+    dtype: int32
+    intent: in
+    kind: scalar
+  - name: qqcw
+    actual: ''
+    rank: 2
+    dtype: float64
+    intent: in
+    kind: absent
+  - name: f_act_conv
+    actual: ''
+    rank: 2
+    dtype: float64
+    intent: in
+    kind: absent
+  - name: icscavt
+    actual: icscavt
+    rank: 2
+    dtype: float64
+    intent: out
+    kind: array
+  - name: isscavt
+    actual: isscavt
+    rank: 2
+    dtype: float64
+    intent: out
+    kind: array
+  - name: bcscavt
+    actual: bcscavt
+    rank: 2
+    dtype: float64
+    intent: out
+    kind: array
+  - name: bsscavt
+    actual: bsscavt
+    rank: 2
+    dtype: float64
+    intent: out
+    kind: array
+  - name: sol_facti_in
+    actual: sol_facti
+    rank: 0
+    dtype: float64
+    intent: in
+    kind: scalar
+  - name: sol_factic_in
+    actual: sol_factic
+    rank: 2
+    dtype: float64
+    intent: in
+    kind: array
+  gas_phase_chemdr:
+  - name: lchnk
+    actual: lchnk
+    rank: 0
+    dtype: int32
+    intent: in
+    kind: scalar
+  - name: ncol
+    actual: ncol
+    rank: 0
+    dtype: int32
+    intent: in
+    kind: scalar
+  - name: imozart
+    actual: imozart
+    rank: 0
+    dtype: int32
+    intent: in
+    kind: scalar
+  - name: q
+    actual: state%q
+    rank: 3
+    dtype: float64
+    intent: in
+    kind: array
+  - name: phis
+    actual: state%phis
+    rank: 1
+    dtype: float64
+    intent: in
+    kind: array
+  - name: zm
+    actual: state%zm
+    rank: 2
+    dtype: float64
+    intent: in
+    kind: array
+  - name: zi
+    actual: state%zi
+    rank: 2
+    dtype: float64
+    intent: in
+    kind: array
+  - name: calday
+    actual: calday
+    rank: 0
+    dtype: float64
+    intent: in
+    kind: scalar
+  - name: tfld
+    actual: state%t
+    rank: 2
+    dtype: float64
+    intent: in
+    kind: array
+  - name: pmid
+    actual: state%pmid
+    rank: 2
+    dtype: float64
+    intent: in
+    kind: array
+  - name: pdel
+    actual: state%pdel
+    rank: 2
+    dtype: float64
+    intent: in
+    kind: array
+  - name: pint
+    actual: state%pint
+    rank: 2
+    dtype: float64
+    intent: in
+    kind: array
+  - name: cldw
+    actual: cldw
+    rank: 2
+    dtype: float64
+    intent: in
+    kind: array
+  - name: troplev
+    actual: tropLev
+    rank: 1
+    dtype: int32
+    intent: in
+    kind: array
+  - name: ncldwtr
+    actual: ncldwtr
+    rank: 2
+    dtype: float64
+    intent: in
+    kind: array
+  - name: ufld
+    actual: state%u
+    rank: 2
+    dtype: float64
+    intent: in
+    kind: array
+  - name: vfld
+    actual: state%v
+    rank: 2
+    dtype: float64
+    intent: in
+    kind: array
+  - name: delt
+    actual: chem_dt
+    rank: 0
+    dtype: float64
+    intent: in
+    kind: scalar
+  - name: ps
+    actual: state%ps
+    rank: 1
+    dtype: float64
+    intent: in
+    kind: array
+  - name: xactive_prates
+    actual: xactive_prates
+    rank: 0
+    dtype: int32
+    intent: in
+    kind: scalar
+  - name: fsds
+    actual: fsds
+    rank: 1
+    dtype: float64
+    intent: in
+    kind: array
+  - name: ts
+    actual: cam_in%ts
+    rank: 1
+    dtype: float64
+    intent: in
+    kind: array
+  - name: asdir
+    actual: cam_in%asdir
+    rank: 1
+    dtype: float64
+    intent: in
+    kind: array
+  - name: ocnfrac
+    actual: cam_in%ocnfrac
+    rank: 1
+    dtype: float64
+    intent: in
+    kind: array
+  - name: icefrac
+    actual: cam_in%icefrac
+    rank: 1
+    dtype: float64
+    intent: in
+    kind: array
+  - name: precc
+    actual: cam_out%precc
+    rank: 1
+    dtype: float64
+    intent: in
+    kind: array
+  - name: precl
+    actual: cam_out%precl
+    rank: 1
+    dtype: float64
+    intent: in
+    kind: array
+  - name: snowhland
+    actual: cam_in%snowhland
+    rank: 1
+    dtype: float64
+    intent: in
+    kind: array
+  - name: ghg_chem
+    actual: ghg_chem
+    rank: 0
+    dtype: int32
+    intent: in
+    kind: scalar
+  - name: latmapback
+    actual: state%latmapback
+    rank: 1
+    dtype: int32
+    intent: in
+    kind: array
+  - name: drydepflx
+    actual: drydepflx
+    rank: 2
+    dtype: float64
+    intent: out
+    kind: array
+  - name: cflx
+    actual: cam_in%cflx
+    rank: 2
+    dtype: float64
+    intent: inout
+    kind: array
+  - name: qtend
+    actual: ptend%q
+    rank: 3
+    dtype: float64
+    intent: inout
+    kind: array
+  - name: pbuf
+    actual: pbuf
+    rank: 0
+    dtype: float64
+    intent: inout
+    kind: opaque

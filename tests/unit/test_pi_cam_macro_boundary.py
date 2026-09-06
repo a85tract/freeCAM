@@ -47,7 +47,9 @@ def test_the_module_state_patches_are_one_public_statement_each_on_the_pinned_mo
     rendered = state_boundary.render()
     assert [p.name for p in rendered] == ["0044-zm-conv-state-boundary.patch",
                                           "0045-vertical-diffusion-state-boundary.patch",
-                                          "0046-gw-drag-state-boundary.patch"]
+                                          "0046-gw-drag-state-boundary.patch",
+                                          "0047-chemistry-state-boundary.patch",
+                                          "0048-aero-model-state-boundary.patch"]
     for entry in state_boundary.STATE_PATCHES:
         text = rendered[entry.path]
         assert entry.path.read_text() == text
@@ -57,11 +59,15 @@ def test_the_module_state_patches_are_one_public_statement_each_on_the_pinned_mo
         assert not any(line.startswith("-") and not line.startswith("---") for line in text.splitlines())
     # the hoisted drivers read those names from their modules, and the build compiles each
     # module for its interface only
-    assert INTERFACE_MODULES == ("zm_conv_intr.F90", "vertical_diffusion.F90", "gw_drag.F90")
+    assert INTERFACE_MODULES[:3] == ("zm_conv_intr.F90", "vertical_diffusion.F90", "gw_drag.F90")
+    assert [Path(m).name for m in INTERFACE_MODULES[3:]] == ["chemistry.F90", "aero_model.F90"]
     for spec in ("deep_convection", "convective_tracer_transport"):
         text = (REPO / f"native/pi_cam/pausable/{spec}.yaml").read_text()
         assert "use zm_conv_intr, only: mu, eu, du, md, ed, dp, dsubcld, jt, maxg, ideep, lengath" in text
     assert "use vertical_diffusion, only:" in (REPO / "native/pi_cam/pausable/vertical_diffusion.yaml").read_text()
+    assert "use chemistry, only:" in (REPO / "native/pi_cam/pausable/chemistry_tendencies.yaml").read_text()
+    for spec in ("aerosol_wet_deposition", "aerosol_dry_deposition"):
+        assert "use aero_model, only:" in (REPO / f"native/pi_cam/pausable/{spec}.yaml").read_text()
     assert "use gw_drag, only:" in (REPO / "native/pi_cam/pausable/gravity_wave_drag.yaml").read_text()
 
 
@@ -75,8 +81,9 @@ def test_each_patch_ships_in_the_set_that_has_to_prove_it() -> None:
     # carry accessors the pausable runners read come last, since they are
     # generated against physpkg with every earlier production patch applied.
     assert "0041-rad-tend-boundary.patch" in production
-    assert production[-4:] == ["0043-stage-carry-boundary.patch", "0044-zm-conv-state-boundary.patch",
-                               "0045-vertical-diffusion-state-boundary.patch", "0046-gw-drag-state-boundary.patch"]
+    assert production[-6:] == ["0043-stage-carry-boundary.patch", "0044-zm-conv-state-boundary.patch",
+                               "0045-vertical-diffusion-state-boundary.patch", "0046-gw-drag-state-boundary.patch",
+                               "0047-chemistry-state-boundary.patch", "0048-aero-model-state-boundary.patch"]
     # The dispatcher only widens the leaf entry point Python drives: add-on
     # set, last, since it edits what 0031 leaves behind.
     assert "0040-macro-tend-leaf-dispatch.patch" in add_on
@@ -165,7 +172,10 @@ def test_the_support_modules_are_additions_the_image_links() -> None:
                                "pycam_zmdeep_runner.F90", "pycam_zmtran_zm2.F90", "pycam_zmtran_deep2.F90",
                                "pycam_zmtran_glue.F90", "pycam_zmtran_runner.F90",
                                "pycam_vdiff_driver.F90", "pycam_vdiff_glue.F90", "pycam_vdiff_runner.F90",
-                               "pycam_gwd_driver.F90", "pycam_gwd_glue.F90", "pycam_gwd_runner.F90")
+                               "pycam_gwd_driver.F90", "pycam_gwd_glue.F90", "pycam_gwd_runner.F90",
+                               "pycam_awet_driver.F90", "pycam_awet_glue.F90", "pycam_awet_runner.F90",
+                               "pycam_adry_driver.F90", "pycam_adry_glue.F90", "pycam_adry_runner.F90",
+                               "pycam_chem_driver.F90", "pycam_chem_glue.F90", "pycam_chem_runner.F90")
     for name in SUPPORT_MODULES:
         assert (REPO / "native/pi_cam/support" / name).is_file()
     builder = (REPO / "tools/build_pi_cam_devices.py").read_text()

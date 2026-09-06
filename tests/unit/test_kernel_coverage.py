@@ -63,7 +63,8 @@ def test_every_kernel_row_is_a_kernel_a_stage_class_describes_and_two_have_close
     assert set(rows) == {"mmacro_pcond", "micro_mg_tend", "rad_rrtmg_sw", "rad_rrtmg_lw",
                          "dadadj", "compute_uwshcu_inv",
                          "zm_convr", "zm_conv_evap", "momtran", "convtran",
-                         "compute_tms", "compute_eddy_diff", "compute_vdiff", "gw_drag_prof"}
+                         "compute_tms", "compute_eddy_diff", "compute_vdiff", "gw_drag_prof",
+                         "wetdepa_v2", "modal_aero_depvel_part", "gas_phase_chemdr"}
     # the pausable stages: dadadj has a reviewed contract and the runner pauses at it
     assert rows["dadadj"]["bindable"] and rows["dadadj"]["contract"] == "reviewed"
     pcond = rows["mmacro_pcond"]
@@ -76,7 +77,7 @@ def test_every_kernel_row_is_a_kernel_a_stage_class_describes_and_two_have_close
     assert micro["validated_through_runner"]                    # gate 7331040
     assert "segment_runner" not in micro["missing"] and "in_model_replacement_bfb" not in micro["missing"]
     assert "capture" in micro["missing"]                        # no captured calls replayed through its image yet
-    assert record["summary"]["kernels_validated_through_runner"] == 8      # + zm_conv_evap, momtran (7334212, 7334213)
+    assert record["summary"]["kernels_validated_through_runner"] == 13     # P3 and vertical diffusion gated, 7334212-7335527
     assert micro["in_model_gates"][0]["bfb"] is True          # the walk with the core through its image
     # the pause gates the manifest names are in-model evidence too (7331040, 7331041)
     assert [g["record"] for g in micro["in_model_gates"][1:]] == [
@@ -96,7 +97,7 @@ def test_every_kernel_row_is_a_kernel_a_stage_class_describes_and_two_have_close
         assert "reviewed_contract" not in rows[name]["missing"] and "segment_runner" not in rows[name]["missing"]
         assert "in_model_replacement_bfb" not in rows[name]["missing"]
         assert [g["record"] for g in rows[name]["in_model_gates"][1:]][-1] == "pi_cam_pausable_all-pause_50step.json"
-    assert record["summary"]["kernels_by_status"] == {"complete": 2, "open": 12}     # P3/P4 kernels await capture and replay
+    assert record["summary"]["kernels_by_status"] == {"complete": 2, "open": 15}     # P3-P5 kernels await capture and replay
 
 
 def test_the_committed_record_is_what_the_builder_writes_now() -> None:

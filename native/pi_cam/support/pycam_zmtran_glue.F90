@@ -88,6 +88,9 @@ module pycam_zmtran_glue
   ! locals that are pycesm carries of derived type: pointers to physpkg's records
   type(check_tracers_data), pointer, save, public :: tracerint => null()
 
+  ! a piece's return, cycle or exit at the routine's level, for the runner to carry out
+  integer, save, public :: flow = 0
+
   ! the routine's locals, held for the chunk in flight
   integer, save, target, public :: lchnk
   integer, save, target, public :: ncol

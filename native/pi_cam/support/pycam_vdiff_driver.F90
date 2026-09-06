@@ -58,6 +58,9 @@ module pycam_vdiff_driver
   real(r8), pointer, save, public :: sgh(:) => null()
   type(physics_buffer_desc), pointer, save, public :: pbuf(:) => null()
 
+  ! a piece's return, cycle or exit at the routine's level, for the runner to carry out
+  integer, save, public :: flow = 0
+
   ! the routine's locals, held for the chunk in flight
   real(r8), pointer, save, public :: bprod(:,:) => null()
   real(r8), save, target, public :: cgh(pcols,pverp)
@@ -494,7 +497,7 @@ contains
   end subroutine driver_piece_12
 
   subroutine driver_piece_13()
-    ! vertical_diffusion.F90:1106-1384, verbatim
+    ! vertical_diffusion.F90:1106-1384, verbatim but for the flow statements the runner carries out
 
 
         if (prog_modal_aero) then
@@ -774,6 +777,7 @@ contains
             call outfld( 'TTPXMLC'  , topflx,                    pcols, lchnk )
         end if
 
+        flow = 3   ! return at the routine's level: the runner leaves the routine
         return
 
   end subroutine driver_piece_13
@@ -849,12 +853,12 @@ contains
     call put_slot(12, c_loc(state%rpdel(1,1)), 2, (/ int((pcols), c_int64_t), int((pver), c_int64_t) /), 1, 0, ptrs, ndims, shapes, dtypes, intents)
     call put_slot(13, c_loc(cldn(1,1)), 2, (/ int((pcols), c_int64_t), int((pver), c_int64_t) /), 1, 0, ptrs, ndims, shapes, dtypes, intents)
     if (associated(qrl)) then
-      call put_slot(14, c_loc(qrl(1,1)), 2, (/ int((pcols), c_int64_t), int((pver), c_int64_t) /), 1, 0, ptrs, ndims, shapes, dtypes, intents)
+      call put_slot(14, c_loc(qrl(lbound(qrl,1),lbound(qrl,2))), 2, (/ int((pcols), c_int64_t), int((pver), c_int64_t) /), 1, 0, ptrs, ndims, shapes, dtypes, intents)
     else
       call empty_slot(14, 2, 1, 0, ptrs, ndims, shapes, dtypes, intents)
     end if
     if (associated(wsedl)) then
-      call put_slot(15, c_loc(wsedl(1,1)), 2, (/ int((pcols), c_int64_t), int((pver), c_int64_t) /), 1, 0, ptrs, ndims, shapes, dtypes, intents)
+      call put_slot(15, c_loc(wsedl(lbound(wsedl,1),lbound(wsedl,2))), 2, (/ int((pcols), c_int64_t), int((pver), c_int64_t) /), 1, 0, ptrs, ndims, shapes, dtypes, intents)
     else
       call empty_slot(15, 2, 1, 0, ptrs, ndims, shapes, dtypes, intents)
     end if
@@ -875,17 +879,17 @@ contains
     call put_slot(28, c_loc(rrho(1)), 1, (/ int((pcols), c_int64_t) /), 1, 1, ptrs, ndims, shapes, dtypes, intents)
     call put_slot(29, c_loc(ustar(1)), 1, (/ int((pcols), c_int64_t) /), 1, 1, ptrs, ndims, shapes, dtypes, intents)
     if (associated(pblh)) then
-      call put_slot(30, c_loc(pblh(1)), 1, (/ int((pcols), c_int64_t) /), 1, 1, ptrs, ndims, shapes, dtypes, intents)
+      call put_slot(30, c_loc(pblh(lbound(pblh,1))), 1, (/ int((pcols), c_int64_t) /), 1, 1, ptrs, ndims, shapes, dtypes, intents)
     else
       call empty_slot(30, 1, 1, 1, ptrs, ndims, shapes, dtypes, intents)
     end if
     if (associated(kvm_in)) then
-      call put_slot(31, c_loc(kvm_in(1,1)), 2, (/ int((pcols), c_int64_t), int((pver)+1, c_int64_t) /), 1, 0, ptrs, ndims, shapes, dtypes, intents)
+      call put_slot(31, c_loc(kvm_in(lbound(kvm_in,1),lbound(kvm_in,2))), 2, (/ int((pcols), c_int64_t), int((pver)+1, c_int64_t) /), 1, 0, ptrs, ndims, shapes, dtypes, intents)
     else
       call empty_slot(31, 2, 1, 0, ptrs, ndims, shapes, dtypes, intents)
     end if
     if (associated(kvh_in)) then
-      call put_slot(32, c_loc(kvh_in(1,1)), 2, (/ int((pcols), c_int64_t), int((pver)+1, c_int64_t) /), 1, 0, ptrs, ndims, shapes, dtypes, intents)
+      call put_slot(32, c_loc(kvh_in(lbound(kvh_in,1),lbound(kvh_in,2))), 2, (/ int((pcols), c_int64_t), int((pver)+1, c_int64_t) /), 1, 0, ptrs, ndims, shapes, dtypes, intents)
     else
       call empty_slot(32, 2, 1, 0, ptrs, ndims, shapes, dtypes, intents)
     end if
@@ -895,23 +899,23 @@ contains
     call put_slot(36, c_loc(cgh(1,1)), 2, (/ int((pcols), c_int64_t), int((pver)+1, c_int64_t) /), 1, 1, ptrs, ndims, shapes, dtypes, intents)
     call put_slot(37, c_loc(cgs(1,1)), 2, (/ int((pcols), c_int64_t), int((pver)+1, c_int64_t) /), 1, 1, ptrs, ndims, shapes, dtypes, intents)
     if (associated(tpert)) then
-      call put_slot(38, c_loc(tpert(1)), 1, (/ int((pcols), c_int64_t) /), 1, 1, ptrs, ndims, shapes, dtypes, intents)
+      call put_slot(38, c_loc(tpert(lbound(tpert,1))), 1, (/ int((pcols), c_int64_t) /), 1, 1, ptrs, ndims, shapes, dtypes, intents)
     else
       call empty_slot(38, 1, 1, 1, ptrs, ndims, shapes, dtypes, intents)
     end if
     if (associated(qpert)) then
-      call put_slot(39, c_loc(qpert(1)), 1, (/ int((pcols), c_int64_t) /), 1, 1, ptrs, ndims, shapes, dtypes, intents)
+      call put_slot(39, c_loc(qpert(lbound(qpert,1))), 1, (/ int((pcols), c_int64_t) /), 1, 1, ptrs, ndims, shapes, dtypes, intents)
     else
       call empty_slot(39, 1, 1, 1, ptrs, ndims, shapes, dtypes, intents)
     end if
     call put_slot(40, c_loc(wpert(1)), 1, (/ int((pcols), c_int64_t) /), 1, 1, ptrs, ndims, shapes, dtypes, intents)
     if (associated(tke)) then
-      call put_slot(41, c_loc(tke(1,1)), 2, (/ int((pcols), c_int64_t), int((pver)+1, c_int64_t) /), 1, 1, ptrs, ndims, shapes, dtypes, intents)
+      call put_slot(41, c_loc(tke(lbound(tke,1),lbound(tke,2))), 2, (/ int((pcols), c_int64_t), int((pver)+1, c_int64_t) /), 1, 1, ptrs, ndims, shapes, dtypes, intents)
     else
       call empty_slot(41, 2, 1, 1, ptrs, ndims, shapes, dtypes, intents)
     end if
     if (associated(bprod)) then
-      call put_slot(42, c_loc(bprod(1,1)), 2, (/ int((pcols), c_int64_t), int((pver)+1, c_int64_t) /), 1, 1, ptrs, ndims, shapes, dtypes, intents)
+      call put_slot(42, c_loc(bprod(lbound(bprod,1),lbound(bprod,2))), 2, (/ int((pcols), c_int64_t), int((pver)+1, c_int64_t) /), 1, 1, ptrs, ndims, shapes, dtypes, intents)
     else
       call empty_slot(42, 2, 1, 1, ptrs, ndims, shapes, dtypes, intents)
     end if
@@ -920,48 +924,48 @@ contains
     sc_8 = int(merge(1, 0, kvinit), c_int32_t)
     call put_slot(45, c_loc(sc_8), 0, zero_shape, 2, 0, ptrs, ndims, shapes, dtypes, intents)
     if (associated(tauresx)) then
-      call put_slot(46, c_loc(tauresx(1)), 1, (/ int((pcols), c_int64_t) /), 1, 2, ptrs, ndims, shapes, dtypes, intents)
+      call put_slot(46, c_loc(tauresx(lbound(tauresx,1))), 1, (/ int((pcols), c_int64_t) /), 1, 2, ptrs, ndims, shapes, dtypes, intents)
     else
       call empty_slot(46, 1, 1, 2, ptrs, ndims, shapes, dtypes, intents)
     end if
     if (associated(tauresy)) then
-      call put_slot(47, c_loc(tauresy(1)), 1, (/ int((pcols), c_int64_t) /), 1, 2, ptrs, ndims, shapes, dtypes, intents)
+      call put_slot(47, c_loc(tauresy(lbound(tauresy,1))), 1, (/ int((pcols), c_int64_t) /), 1, 2, ptrs, ndims, shapes, dtypes, intents)
     else
       call empty_slot(47, 1, 1, 2, ptrs, ndims, shapes, dtypes, intents)
     end if
     call put_slot(48, c_loc(ksrftms(1)), 1, (/ int((pcols), c_int64_t) /), 1, 0, ptrs, ndims, shapes, dtypes, intents)
     if (associated(ipbl)) then
-      call put_slot(49, c_loc(ipbl(1)), 1, (/ int((pcols), c_int64_t) /), 2, 1, ptrs, ndims, shapes, dtypes, intents)
+      call put_slot(49, c_loc(ipbl(lbound(ipbl,1))), 1, (/ int((pcols), c_int64_t) /), 2, 1, ptrs, ndims, shapes, dtypes, intents)
     else
       call empty_slot(49, 1, 2, 1, ptrs, ndims, shapes, dtypes, intents)
     end if
     if (associated(kpblh)) then
-      call put_slot(50, c_loc(kpblh(1)), 1, (/ int((pcols), c_int64_t) /), 2, 1, ptrs, ndims, shapes, dtypes, intents)
+      call put_slot(50, c_loc(kpblh(lbound(kpblh,1))), 1, (/ int((pcols), c_int64_t) /), 2, 1, ptrs, ndims, shapes, dtypes, intents)
     else
       call empty_slot(50, 1, 2, 1, ptrs, ndims, shapes, dtypes, intents)
     end if
     if (associated(wstarPBL)) then
-      call put_slot(51, c_loc(wstarPBL(1)), 1, (/ int((pcols), c_int64_t) /), 1, 1, ptrs, ndims, shapes, dtypes, intents)
+      call put_slot(51, c_loc(wstarPBL(lbound(wstarPBL,1))), 1, (/ int((pcols), c_int64_t) /), 1, 1, ptrs, ndims, shapes, dtypes, intents)
     else
       call empty_slot(51, 1, 1, 1, ptrs, ndims, shapes, dtypes, intents)
     end if
     if (associated(tkes)) then
-      call put_slot(52, c_loc(tkes(1)), 1, (/ int((pcols), c_int64_t) /), 1, 1, ptrs, ndims, shapes, dtypes, intents)
+      call put_slot(52, c_loc(tkes(lbound(tkes,1))), 1, (/ int((pcols), c_int64_t) /), 1, 1, ptrs, ndims, shapes, dtypes, intents)
     else
       call empty_slot(52, 1, 1, 1, ptrs, ndims, shapes, dtypes, intents)
     end if
     if (associated(went)) then
-      call put_slot(53, c_loc(went(1)), 1, (/ int((pcols), c_int64_t) /), 1, 1, ptrs, ndims, shapes, dtypes, intents)
+      call put_slot(53, c_loc(went(lbound(went,1))), 1, (/ int((pcols), c_int64_t) /), 1, 1, ptrs, ndims, shapes, dtypes, intents)
     else
       call empty_slot(53, 1, 1, 1, ptrs, ndims, shapes, dtypes, intents)
     end if
     if (associated(turbtype)) then
-      call put_slot(54, c_loc(turbtype(1,1)), 2, (/ int((pcols), c_int64_t), int((pver)+1, c_int64_t) /), 2, 1, ptrs, ndims, shapes, dtypes, intents)
+      call put_slot(54, c_loc(turbtype(lbound(turbtype,1),lbound(turbtype,2))), 2, (/ int((pcols), c_int64_t), int((pver)+1, c_int64_t) /), 2, 1, ptrs, ndims, shapes, dtypes, intents)
     else
       call empty_slot(54, 2, 2, 1, ptrs, ndims, shapes, dtypes, intents)
     end if
     if (associated(smaw)) then
-      call put_slot(55, c_loc(smaw(1,1)), 2, (/ int((pcols), c_int64_t), int((pver)+1, c_int64_t) /), 1, 1, ptrs, ndims, shapes, dtypes, intents)
+      call put_slot(55, c_loc(smaw(lbound(smaw,1),lbound(smaw,2))), 2, (/ int((pcols), c_int64_t), int((pver)+1, c_int64_t) /), 1, 1, ptrs, ndims, shapes, dtypes, intents)
     else
       call empty_slot(55, 2, 1, 1, ptrs, ndims, shapes, dtypes, intents)
     end if
@@ -1047,12 +1051,12 @@ contains
     call put_slot(34, c_loc(dtk(1,1)), 2, (/ int((pcols), c_int64_t), int((pver), c_int64_t) /), 1, 1, ptrs, ndims, shapes, dtypes, intents)
     call put_slot(35, c_loc(topflx(1)), 1, (/ int((pcols), c_int64_t) /), 1, 1, ptrs, ndims, shapes, dtypes, intents)
     if (associated(tauresx)) then
-      call put_slot(36, c_loc(tauresx(1)), 1, (/ int((pcols), c_int64_t) /), 1, 2, ptrs, ndims, shapes, dtypes, intents)
+      call put_slot(36, c_loc(tauresx(lbound(tauresx,1))), 1, (/ int((pcols), c_int64_t) /), 1, 2, ptrs, ndims, shapes, dtypes, intents)
     else
       call empty_slot(36, 1, 1, 2, ptrs, ndims, shapes, dtypes, intents)
     end if
     if (associated(tauresy)) then
-      call put_slot(37, c_loc(tauresy(1)), 1, (/ int((pcols), c_int64_t) /), 1, 2, ptrs, ndims, shapes, dtypes, intents)
+      call put_slot(37, c_loc(tauresy(lbound(tauresy,1))), 1, (/ int((pcols), c_int64_t) /), 1, 2, ptrs, ndims, shapes, dtypes, intents)
     else
       call empty_slot(37, 1, 1, 2, ptrs, ndims, shapes, dtypes, intents)
     end if
@@ -1064,7 +1068,7 @@ contains
     sc_10 = int(merge(1, 0, do_molec_diff), c_int32_t)
     call put_slot(41, c_loc(sc_10), 0, zero_shape, 2, 0, ptrs, ndims, shapes, dtypes, intents)
     if (associated(kvt)) then
-      call put_slot(42, c_loc(kvt(1,1)), 2, (/ int((pcols), c_int64_t), int((pver)+1, c_int64_t) /), 1, 1, ptrs, ndims, shapes, dtypes, intents)
+      call put_slot(42, c_loc(kvt(lbound(kvt,1),lbound(kvt,2))), 2, (/ int((pcols), c_int64_t), int((pver)+1, c_int64_t) /), 1, 1, ptrs, ndims, shapes, dtypes, intents)
     else
       call empty_slot(42, 2, 1, 1, ptrs, ndims, shapes, dtypes, intents)
     end if
@@ -1148,12 +1152,12 @@ contains
     call put_slot(34, c_loc(dtk(1,1)), 2, (/ int((pcols), c_int64_t), int((pver), c_int64_t) /), 1, 1, ptrs, ndims, shapes, dtypes, intents)
     call put_slot(35, c_loc(topflx(1)), 1, (/ int((pcols), c_int64_t) /), 1, 1, ptrs, ndims, shapes, dtypes, intents)
     if (associated(tauresx)) then
-      call put_slot(36, c_loc(tauresx(1)), 1, (/ int((pcols), c_int64_t) /), 1, 2, ptrs, ndims, shapes, dtypes, intents)
+      call put_slot(36, c_loc(tauresx(lbound(tauresx,1))), 1, (/ int((pcols), c_int64_t) /), 1, 2, ptrs, ndims, shapes, dtypes, intents)
     else
       call empty_slot(36, 1, 1, 2, ptrs, ndims, shapes, dtypes, intents)
     end if
     if (associated(tauresy)) then
-      call put_slot(37, c_loc(tauresy(1)), 1, (/ int((pcols), c_int64_t) /), 1, 2, ptrs, ndims, shapes, dtypes, intents)
+      call put_slot(37, c_loc(tauresy(lbound(tauresy,1))), 1, (/ int((pcols), c_int64_t) /), 1, 2, ptrs, ndims, shapes, dtypes, intents)
     else
       call empty_slot(37, 1, 1, 2, ptrs, ndims, shapes, dtypes, intents)
     end if

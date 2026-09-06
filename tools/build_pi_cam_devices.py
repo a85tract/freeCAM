@@ -83,13 +83,17 @@ SUPPORT_MODULES = ("pycam_macro_kernels.F90", "pycam_macro_handles.F90",
                    "pycam_zmdeep_zm.F90", "pycam_zmdeep_deep.F90", "pycam_zmdeep_glue.F90", "pycam_zmdeep_runner.F90",
                    "pycam_zmtran_zm2.F90", "pycam_zmtran_deep2.F90", "pycam_zmtran_glue.F90", "pycam_zmtran_runner.F90",
                    "pycam_vdiff_driver.F90", "pycam_vdiff_glue.F90", "pycam_vdiff_runner.F90",
-                   "pycam_gwd_driver.F90", "pycam_gwd_glue.F90", "pycam_gwd_runner.F90")
+                   "pycam_gwd_driver.F90", "pycam_gwd_glue.F90", "pycam_gwd_runner.F90",
+                   "pycam_awet_driver.F90", "pycam_awet_glue.F90", "pycam_awet_runner.F90",
+                   "pycam_adry_driver.F90", "pycam_adry_glue.F90", "pycam_adry_runner.F90",
+                   "pycam_chem_driver.F90", "pycam_chem_glue.F90", "pycam_chem_runner.F90")
 #: Modules whose control patch changes accessibility alone (a `public` statement
 #: naming module state the pausable runners' hoisted drivers read).  They are
 #: compiled from the prepared source for their .mod files only, into the working
 #: directory the support modules read first; the object is discarded and the
 #: oracle's stays in the archive, so no numerical machine code is recompiled.
-INTERFACE_MODULES = ("zm_conv_intr.F90", "vertical_diffusion.F90", "gw_drag.F90")
+INTERFACE_MODULES = ("zm_conv_intr.F90", "vertical_diffusion.F90", "gw_drag.F90",
+                     "../../chemistry/mozart/chemistry.F90", "../../chemistry/modal_aero/aero_model.F90")
 MACRO_BIND_HOSTS_SYMBOL = "pycam_macro_bind_hosts_v1"
 RAD_BIND_HOSTS_SYMBOL = "pycam_rad_bind_hosts_v1"
 MICRO_BIND_HOSTS_SYMBOL = "pycam_micro_bind_hosts_v1"
@@ -404,15 +408,16 @@ def main() -> int:
     # files land in the working directory, which -I. covers ahead of the case
     # objects; the objects are not linked.
     for source_name in INTERFACE_MODULES:
-        source = source_root / "components/cam/src/physics/cam" / source_name
+        # a name is under components/cam/src/physics/cam; a relative entry reaches the chemistry tree
+        source = (source_root / "components/cam/src/physics/cam" / source_name).resolve()
         if not source.is_file():
             raise RuntimeError(f"interface module is absent from the prepared source: {source}")
-        log, command = _compile_command(build, source_name)
-        destination = work / f"{Path(source_name).stem}_interface_only.o"
-        compile_commands[f"interface/{source_name}"] = _compile_to(
-            command, source_name, source, destination, work, build / "atm/obj",
+        log, command = _compile_command(build, source.name)
+        destination = work / f"{source.stem}_interface_only.o"
+        compile_commands[f"interface/{source.name}"] = _compile_to(
+            command, source.name, source, destination, work, build / "atm/obj",
         )
-        compile_logs[f"interface/{source_name}"] = str(log)
+        compile_logs[f"interface/{source.name}"] = str(log)
     # The support modules first: physpkg and cam_comp `use` them, and ifort
     # writes their .mod files into the working directory, which -I. covers.
     support_objects: list[Path] = []

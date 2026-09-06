@@ -95,6 +95,9 @@ module pycam_zmdeep_glue
   ! the module's private options, read through phys_getopts at configure
   logical, save, public :: use_subcol_microp = .false.
 
+  ! a piece's return, cycle or exit at the routine's level, for the runner to carry out
+  integer, save, public :: flow = 0
+
   ! the routine's locals, held for the chunk in flight
   real(r8), save, target, public :: cmfcme(pcols,pver)
   real(r8), save, target, public :: flx_cnd(pcols)

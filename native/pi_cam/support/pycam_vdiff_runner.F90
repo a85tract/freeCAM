@@ -20,7 +20,7 @@ module pycam_vdiff_runner
   use pycam_vdiff_driver, only: driver_piece_1, driver_piece_2, driver_piece_3, driver_piece_4, driver_piece_5, driver_piece_6, &
        driver_piece_7, driver_piece_8, driver_piece_9, driver_piece_10, driver_piece_11, driver_piece_12, &
        driver_piece_13, compute_tms_frame, compute_eddy_diff_frame, compute_vdiff_1_frame, compute_vdiff_2_frame, compute_tms_original, &
-       compute_eddy_diff_original, compute_vdiff_1_original, compute_vdiff_2_original
+       compute_eddy_diff_original, compute_vdiff_1_original, compute_vdiff_2_original, driver_flow => flow
   use vertical_diffusion, only: do_tms, eddy_scheme, fieldlist_wet, fieldlist_dry
   use diffusion_solver, only: any
   implicit none
@@ -307,7 +307,13 @@ contains
         pc = pc_glue_piece_4_1
       case (pc_driver_piece_13_1)
         call driver_piece_13()
-        pc = pc_leave_driver_1
+        select case (driver_flow)
+        case (3)
+          driver_flow = 0
+          pc = pc_leave_driver_1
+        case default
+          pc = pc_leave_driver_1
+        end select
       case (pc_driver_piece_12_1)
         call driver_piece_12()
         pc = pc_driver_piece_13_1

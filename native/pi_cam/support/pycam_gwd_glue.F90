@@ -80,6 +80,9 @@ module pycam_gwd_glue
   type(physics_buffer_desc), pointer, save, public :: pbuf(:) => null()
   real(r8), pointer, save, public :: fsds(:) => null()
 
+  ! a piece's return, cycle or exit at the routine's level, for the runner to carry out
+  integer, save, public :: flow = 0
+
   ! the routine's locals, held for the chunk in flight
   real(r8), save, target, public :: flx_heat(pcols)
   integer, save, target, public :: lchnk

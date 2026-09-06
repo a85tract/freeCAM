@@ -41,6 +41,9 @@ module pycam_zmdeep_deep
   ! the module's private options, read through phys_getopts at configure
   character(len=16), save, public :: deep_scheme = ' '
 
+  ! a piece's return, cycle or exit at the routine's level, for the runner to carry out
+  integer, save, public :: flow = 0
+
   ! the routine's locals, held for the chunk in flight
   real(r8), pointer, save, public :: cld(:,:,:) => null()
   real(r8), pointer, save, public :: evapcdp(:,:) => null()

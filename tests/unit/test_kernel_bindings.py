@@ -216,7 +216,8 @@ def test_the_builder_s_capabilities_come_from_the_manifest() -> None:
     from freecam.pi_cam.workflow_builder.capabilities import kernel_capabilities, validated_through_runner
 
     assert set(validated_through_runner()) == {"mmacro_pcond", "micro_mg_tend", "dadadj", "compute_uwshcu_inv",
-                                               "rad_rrtmg_sw", "rad_rrtmg_lw", "zm_conv_evap", "momtran"}
+                                               "rad_rrtmg_sw", "rad_rrtmg_lw", "zm_convr", "zm_conv_evap", "momtran",
+                                               "convtran", "compute_tms", "compute_eddy_diff", "compute_vdiff"}
     by_name = {c.kernel: c for c in kernel_capabilities()}
     assert by_name["mmacro_pcond"].bindable and by_name["mmacro_pcond"].validated
     assert by_name["mmacro_pcond"].evidence == runners.runner_spec("cam_run1.cloud_macro_microphysics").kernel("mmacro_pcond").validated_by
