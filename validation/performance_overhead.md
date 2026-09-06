@@ -260,6 +260,7 @@ across all 512 ranks.
 | 5 years | 87,600 | 25,556.49 s | 27,781.62 s | **+8.71%** | +2,225 s (37.1 min) |
 | 1 year, Python stage (`7305332`, 2026-09-04) | 17,520 | 4,999.71 s | 6,636.20 s | +32.73% vs Fortran, +20.44% vs freeCAM | +1,636 s (27.3 min) |
 | 5 years, Python stage (`7305333`, 2026-09-04) | 87,600 | 25,556.49 s | 33,979.62 s | +32.96% vs Fortran, +22.31% vs freeCAM | +8,423 s (140.4 min) |
+| 5 years, Python stage class, original stage run whole (`7322837`, 2026-09-05) | 87,600 | 25,556.49 s | 25,632.30 s | +0.30% vs Fortran, -7.74% vs freeCAM | +76 s (+1.3 min) |
 
 The Python-stage year is the same online configuration with
 `CloudMacroMicrophysics` in stage 7's place (`--cloud-macro-micro-python`,
@@ -280,6 +281,21 @@ freeCAM's 221.04 GB, +11.7% over Fortran's 204.21 GB).  Per step that is
 the year: the overhead does not grow with run length.
 
 Per step this is ≈ 25 ms of Python control on a ≈ 292 ms Fortran step.
+
+The five-year run was made once more on 2026-09-05 with the stage class
+installed and nothing replaced (`7322837`, `--stage-execution native-whole`,
+the same online configuration): the class holds its slot in the workflow and
+runs the original Fortran stage whole, once a step.  It is bit-for-bit with
+the Fortran five-year reference over all 884 CAM history and restart files
+([`pi_cam_python_memory_5year_stage_native_whole_bfb.json`](pi_cam_python_memory_5year_stage_native_whole_bfb.json)),
+advances in 25,632.30 s (16.85 SYPD) against the Fortran run's
+25,556.49 s -- +0.30%, two runs made on different days -- and
+7.7% faster than freeCAM without the stage class
+(27,781.62 s), since the grouped boundary collectives landed in between.  Its
+PBS high-water memory is 225.0 GB: +10.2% over Fortran,
++1.8% over freeCAM without the stage class, and
+1.3% below the Python-walk five-year run.  The summary is
+[`pi_cam_python_memory_5year_stage_native_whole.json`](pi_cam_python_memory_5year_stage_native_whole.json).
 
 ### Paired online months
 
@@ -359,6 +375,7 @@ over the 4 nodes.
 | --- | ---: | ---: | ---: |
 | 1 year | 194.42 GB (`7113832`) | 214.51 GB (`7149358`) | **+10.33%** (+20.1 GB) |
 | 5 years | 204.21 GB (`7126500`) | 221.04 GB (`7149359`) | **+8.24%** (+16.8 GB) |
+| 5 years, stage class, original stage whole | 204.21 GB (`7126500`) | 225.04 GB (`7322837`) | **+10.20%** (+20.8 GB) |
 
 Per rank that is 33 – 39 MB of Python control state on top of ≈ 380 MB of
 Fortran model state.
