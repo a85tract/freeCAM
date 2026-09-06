@@ -132,7 +132,8 @@ def test_the_support_modules_are_additions_the_image_links() -> None:
                                # the pausable runners: hosts, units, runners
                                "pycam_stage_hosts.F90",
                                "pycam_dadadj_glue.F90", "pycam_dadadj_runner.F90",
-                               "pycam_shcu_driver.F90", "pycam_shcu_glue.F90", "pycam_shcu_runner.F90")
+                               "pycam_shcu_driver.F90", "pycam_shcu_glue.F90", "pycam_shcu_runner.F90",
+                               "pycam_radt_driver.F90", "pycam_radt_glue.F90", "pycam_radt_runner.F90")
     for name in SUPPORT_MODULES:
         assert (REPO / "native/pi_cam/support" / name).is_file()
     builder = (REPO / "tools/build_pi_cam_devices.py").read_text()

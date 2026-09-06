@@ -44,7 +44,8 @@ def test_the_manifest_declares_the_stage_7_runner_and_the_module_exports_its_ent
     assert runners.runner_kernels()["cam_run1.cloud_macro_microphysics"] == ("mmacro_pcond", "micro_mg_tend")
     assert runners.bindable_kernels()[:2] == ("mmacro_pcond", "micro_mg_tend")
     assert runners.KERNELS == ("mmacro_pcond", "micro_mg_tend") and runners.ENTRIES[0] == "pycam_stage7_create_v1"
-    assert runners.runner_spec("cam_run1.radiation") is None
+    radiation = runners.runner_spec("cam_run1.radiation")          # the P2 runner covers the driver call
+    assert radiation is not None and radiation.kernel_names == ("rad_rrtmg_sw", "rad_rrtmg_lw") and radiation.original
 
 
 def test_the_manifest_refuses_a_kernel_two_runners_claim_and_a_runner_that_pauses_nowhere(tmp_path) -> None:
@@ -219,7 +220,8 @@ def test_the_builder_s_capabilities_come_from_the_manifest() -> None:
     assert by_name["mmacro_pcond"].bindable and by_name["mmacro_pcond"].validated
     assert by_name["mmacro_pcond"].evidence == runners.runner_spec("cam_run1.cloud_macro_microphysics").kernel("mmacro_pcond").validated_by
     assert by_name["micro_mg_tend"].bindable and by_name["micro_mg_tend"].validated
-    assert not by_name["rad_rrtmg_sw"].bindable
+    # the radt runner pauses at the cores; the pause path has no gate yet
+    assert by_name["rad_rrtmg_sw"].bindable and not by_name["rad_rrtmg_sw"].validated
 
 
 # -- decoding the second kernel's frame ------------------------------------------

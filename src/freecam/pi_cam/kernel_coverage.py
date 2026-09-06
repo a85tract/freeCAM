@@ -28,6 +28,7 @@ from .tables import load_table
 REPO = Path(__file__).resolve().parents[3]
 FUNCTIONS = REPO / "native/pi_cam/functions"
 VALIDATION = REPO / "validation"
+FRAMES = REPO / "native/pi_cam/segment_frames.yaml"
 
 SCHEMA_VERSION = 1
 
@@ -194,7 +195,15 @@ def _contracts() -> dict[str, tuple[str, str, str | None]]:
     """routine or function name -> (status, relative path, routine)."""
 
     found: dict[str, tuple[str, str, str | None]] = {}
-    for status, pattern in (("draft", "drafts/*.yaml"), ("reviewed", "*.yaml")):
+    for status, pattern in (("draft", "drafts/*.yaml"), ("frame", None), ("reviewed", "*.yaml")):
+        if status == "frame":
+            # a kernel a pausable runner stops at has its frame described from the
+            # pinned call and the callee's signature; for a kernel taking derived
+            # types that descriptor is the contract, and it outranks a draft
+            frames = _record_yaml(FRAMES)
+            for name in sorted((frames.get("kernels") or {}) if isinstance(frames, Mapping) else {}):
+                found[str(name)] = ("frame", str(FRAMES.relative_to(REPO)), None)
+            continue
         for path in sorted(FUNCTIONS.glob(pattern)):
             payload = load_table(path)
             if not isinstance(payload, Mapping):
@@ -205,6 +214,13 @@ def _contracts() -> dict[str, tuple[str, str, str | None]]:
                 if key and key != "None":
                     found[key] = (status, relative, None if routine is None else str(routine))
     return found
+
+
+def _record_yaml(path: Path) -> Mapping[str, Any] | None:
+    if not path.is_file():
+        return None
+    payload = load_table(path)
+    return payload if isinstance(payload, Mapping) else None
 
 
 def _record(name: str) -> Mapping[str, Any] | None:
@@ -244,7 +260,7 @@ def _kernel_rows(stage_classes: Iterable[str], runner_specs: Mapping[str, Any]) 
                 missing.append("in_model_replacement_bfb")
             if not description["bindable"]:
                 missing.append("segment_runner")
-            if contract is None or contract[0] != "reviewed":
+            if contract is None or contract[0] not in ("reviewed", "frame"):
                 missing.append("reviewed_contract")
             status = "complete" if not missing else "open"
             rows.append(KernelRow(

@@ -163,3 +163,80 @@ def test_a_pausable_stage_drives_a_fake_runner_with_the_original_at_the_pause() 
     assert stage.execution.describe()["python_model_calls_by_kernel"] == {"dadadj": 2}
     assert [e for e in runner.log if e[0] == "original"] == [("original", "dadadj")] * 2
     assert np.all(runner.t[:6] == 5.0) and np.all(runner.t[6:] == 3.0)     # both pauses ran and wrote back
+
+
+def test_the_radiation_frames_serve_the_rrtmg_state_by_component_and_arrays_from_their_lower_bounds() -> None:
+    frames = yaml.safe_load(pausable.FRAMES.read_text())["kernels"]
+    sw = {s["name"]: s for s in frames["rad_rrtmg_sw"]}
+    lw = {s["name"]: s for s in frames["rad_rrtmg_lw"]}
+    # the derived-type dummy is served component by component, each the core's body names
+    assert {n for n in sw if n.startswith("r_state.")} == {f"r_state.{c}" for c in (
+        "h2ovmr", "o3vmr", "co2vmr", "ch4vmr", "o2vmr", "n2ovmr", "pmidmb", "pintmb", "tlay", "tlev")}
+    assert sum(n.startswith("r_state.") for n in lw) == 14 and lw["r_state.cfc11vmr"]["intent"] == "in"
+    # a literal actual is a scalar slot; the spectral-flux pointers are slots served empty while null
+    assert sw["old_convert"] == {"name": "old_convert", "actual": ".false.", "rank": 0, "dtype": "int32",
+                                 "intent": "in", "kind": "scalar"}
+    assert sw["su"]["kind"] == "pointer" and lw["lu"]["kind"] == "pointer" and sw["qrs"]["intent"] == "out"
+    assert len(frames["rad_rrtmg_sw"]) == 58 and len(frames["rad_rrtmg_lw"]) == 35
+    driver = (pausable.SUPPORT / "pycam_radt_driver.F90").read_text()
+    # aer_tau(pcols,0:pver,nbndsw) starts at its declared lower bounds
+    assert "c_loc(aer_tau(1,0,1))" in driver and "c_loc(aer_lw_abs(1,1,1))" in driver
+    assert "if (associated(su)) then" in driver and "merge(1, 0, .false.)" in driver
+    # the module's private variables and procedures the body needs, verbatim
+    assert "logical :: spectralflux  = .false." in driver and "subroutine radinp(" in driver
+    runner = (pausable.SUPPORT / "pycam_radt_runner.F90").read_text()
+    assert "use rad_constituents, only: N_DIAG" in runner and "if (su_idx > 0) then" in runner
+    assert runner.index("call driver_resolve_indices()") < runner.index("if (su_idx > 0) then")
+
+
+def test_the_radiation_class_runs_between_its_halves_through_the_runner() -> None:
+    import ctypes
+
+    from freecam.physics.errors import PhysicsError
+    from freecam.physics.radiation import Radiation
+    from freecam.physics.segments import OriginalKernel
+
+    calls: list = []
+
+    class Library:
+        def pycam_rad_set_owner_v1(self, owns):
+            calls.append(("owner", owns.value if isinstance(owns, ctypes.c_int) else owns)); return 0
+
+        def pycam_rad_bind_hosts_v1(self):
+            calls.append(("rad_hosts",)); return 0
+
+        def pycam_stagehost_bind_v1(self):
+            calls.append(("stage_hosts",)); return 0
+
+    class Native:
+        library = Library()
+
+        def segment_runner(self, stage):
+            return SimpleNamespace(kernels=("rad_rrtmg_sw", "rad_rrtmg_lw"), runs_original=True) \
+                if stage == "cam_run1.radiation" else None
+
+        def run_action(self, stage):
+            raise AssertionError("a split stage has no whole action to run")
+
+    stage = Radiation()
+    assert stage.SPLIT_RUNNER and not stage.WHOLE_ACTION
+    native = Native()
+    # nothing replaced: the step is left to the resume half, which calls the driver itself
+    assert stage.select_mode(native) == "native-whole"
+    stage.tend(None, SimpleNamespace(native=native))
+    assert calls == [("owner", 0)] and stage.execution.native_stage_calls == 1
+    # a replaced core the runner pauses at: segmented, and the runner needs both host bindings
+    stage.kernels["rad_rrtmg_sw"] = OriginalKernel()
+    assert stage.select_mode(native) == "segmented"
+    stage.execution_policy = "segmented"
+    assert stage.select_mode(native) == "segmented"          # allowed for a split stage with a runner
+    calls.clear()
+    stage.prepare_segmented(native)
+    assert calls == [("stage_hosts",), ("rad_hosts",)]
+    calls.clear()
+    stage.after_segmented(native)
+    assert calls == [("owner", 1)]
+    # native-whole is refused while a core is replaced, as for any stage
+    stage.execution_policy = "native-whole"
+    with pytest.raises(PhysicsError):
+        stage.select_mode(native)

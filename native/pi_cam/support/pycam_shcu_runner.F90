@@ -66,12 +66,12 @@ contains
       last_error = 'shcu: the stage hosts are not bound (pycam_stagehost_bind_v1 first)'; return
     end if
     call driver_configure()
+    call glue_resolve_indices()
+    call driver_resolve_indices()
     status = 2_c_int
     if (trim(shallow_scheme) /= 'UW') then
       last_error = 'shcu: written for the UW shallow scheme'; return
     end if
-    call glue_resolve_indices()
-    call driver_resolve_indices()
     created = .true.
     pc = pc_idle
     context = int(context_id, c_int)

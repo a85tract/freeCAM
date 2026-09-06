@@ -70,3 +70,23 @@ runners:
     - validation/pi_cam_pausable_shcu-pause_vs_oracle_50step_bfb.json
     - validation/pi_cam_pausable_both-pause_50step.json
     - validation/pi_cam_pausable_both-pause_vs_oracle_50step_bfb.json
+# The radiation runner covers the driver call of the split stage (control patch
+# 0041): the stop half binds the chunk, the runner runs radiation_tend into the
+# radiation handles' ptend and net flux, and the resume half takes them when
+# Python owns the step.  Both RRTMG cores are pauses inside the dosw / dolw
+# blocks and their icall loops.
+- stage: cam_run1.radiation
+  prefix: pycam_radt
+  module: native/pi_cam/support/pycam_radt_runner.F90
+  generator: tools/generate_pi_cam_pausable_runners.py
+  descriptors: native/pi_cam/direct_kernels_radiation.yaml
+  original: true
+  kernels:
+  - name: rad_rrtmg_sw
+    owner: freecam.physics.radiation.Radiation
+    frame: native/pi_cam/segment_frames.yaml
+    validated_by: []
+  - name: rad_rrtmg_lw
+    owner: freecam.physics.radiation.Radiation
+    frame: native/pi_cam/segment_frames.yaml
+    validated_by: []

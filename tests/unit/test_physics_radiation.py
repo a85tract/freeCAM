@@ -638,6 +638,7 @@ def fake(monkeypatch):
 
 def test_tend_walks_the_driver_in_its_order_on_every_chunk(fake) -> None:
     scheme = Radiation()
+    scheme.execution_policy = "legacy-python"      # the walk; auto leaves an unreplaced step to the resume half
     scheme.tend(None, _Context(fake))
     per_chunk = len(SEQUENCE_RADIATION_STEP)
     assert len(scheme.calls) == 2 * per_chunk
@@ -669,6 +670,7 @@ def test_a_quiet_step_takes_the_other_branch(fake, monkeypatch) -> None:
 
     monkeypatch.setattr(_Lib, "__getattr__", off)
     scheme = Radiation()
+    scheme.execution_policy = "legacy-python"
     scheme.tend(None, _Context(fake))
     per_chunk = len(SEQUENCE_QUIET_STEP)
     assert scheme.calls[:per_chunk] == list(SEQUENCE_QUIET_STEP)

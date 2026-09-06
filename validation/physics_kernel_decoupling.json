@@ -47,7 +47,7 @@
       "complete": 2,
       "open": 4
     },
-    "kernels_bindable": 4,
+    "kernels_bindable": 6,
     "kernels_validated_through_runner": 4,
     "catalog_procedures": 371
   },
@@ -4846,10 +4846,10 @@
       "kernel": "rad_rrtmg_sw",
       "stage_action": "cam_run1.radiation",
       "owner_class": "freecam.physics.radiation.Radiation",
-      "routine": "rad_rrtmg_sw",
-      "contract": "draft",
-      "contract_path": "native/pi_cam/functions/drafts/radsw.draft.yaml",
-      "bindable": false,
+      "routine": null,
+      "contract": "frame",
+      "contract_path": "native/pi_cam/segment_frames.yaml",
+      "bindable": true,
       "validated_through_runner": false,
       "evidence": {
         "capture": [],
@@ -4875,19 +4875,17 @@
         "standalone_build",
         "replay_full_chunk",
         "replay_single_column",
-        "replay_public_api",
-        "segment_runner",
-        "reviewed_contract"
+        "replay_public_api"
       ]
     },
     {
       "kernel": "rad_rrtmg_lw",
       "stage_action": "cam_run1.radiation",
       "owner_class": "freecam.physics.radiation.Radiation",
-      "routine": "rad_rrtmg_lw",
-      "contract": "draft",
-      "contract_path": "native/pi_cam/functions/drafts/radlw.draft.yaml",
-      "bindable": false,
+      "routine": null,
+      "contract": "frame",
+      "contract_path": "native/pi_cam/segment_frames.yaml",
+      "bindable": true,
       "validated_through_runner": false,
       "evidence": {
         "capture": [],
@@ -4913,9 +4911,7 @@
         "standalone_build",
         "replay_full_chunk",
         "replay_single_column",
-        "replay_public_api",
-        "segment_runner",
-        "reviewed_contract"
+        "replay_public_api"
       ]
     },
     {
@@ -5051,14 +5047,6 @@
       "why": "no record in validation/ for this step of the loop"
     },
     {
-      "what": "rad_rrtmg_sw: segment_runner",
-      "why": "no record in validation/ for this step of the loop"
-    },
-    {
-      "what": "rad_rrtmg_sw: reviewed_contract",
-      "why": "no record in validation/ for this step of the loop"
-    },
-    {
       "what": "rad_rrtmg_lw: capture",
       "why": "no record in validation/ for this step of the loop"
     },
@@ -5076,14 +5064,6 @@
     },
     {
       "what": "rad_rrtmg_lw: replay_public_api",
-      "why": "no record in validation/ for this step of the loop"
-    },
-    {
-      "what": "rad_rrtmg_lw: segment_runner",
-      "why": "no record in validation/ for this step of the loop"
-    },
-    {
-      "what": "rad_rrtmg_lw: reviewed_contract",
       "why": "no record in validation/ for this step of the loop"
     },
     {
@@ -5123,5 +5103,5 @@
       "why": "the physics catalog lists no procedure under this action; its active call graph must be extended before this action's kernels can be chosen"
     }
   ],
-  "coverage_hash": "e75d6ef2a5a5fd6e5743d2dc8de6e22b39c37554b4fce4c51ae23f067a314724"
+  "coverage_hash": "9d3396246f887223fd1cf2312ddba4cbf141d8254a31527720d8367c5a6de4cb"
 }

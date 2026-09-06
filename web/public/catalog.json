@@ -31,21 +31,21 @@
    "validated": true
   },
   {
-   "bindable": false,
+   "bindable": true,
    "evidence": [],
    "kernel": "rad_rrtmg_sw",
    "owner_class": "freecam.physics.radiation.Radiation",
-   "reason": "the image has no segment runner for this kernel yet; a replacement would run the statement-by-statement Python walk, which the builder does not offer",
+   "reason": "bindable, but the pause path has not passed a bit-for-bit gate",
    "stage_action": "cam_run1.radiation",
    "stage_class": "freecam.physics.radiation.Radiation",
    "validated": false
   },
   {
-   "bindable": false,
+   "bindable": true,
    "evidence": [],
    "kernel": "rad_rrtmg_lw",
    "owner_class": "freecam.physics.radiation.Radiation",
-   "reason": "the image has no segment runner for this kernel yet; a replacement would run the statement-by-statement Python walk, which the builder does not offer",
+   "reason": "bindable, but the pause path has not passed a bit-for-bit gate",
    "stage_action": "cam_run1.radiation",
    "stage_class": "freecam.physics.radiation.Radiation",
    "validated": false
@@ -87,11 +87,11 @@
   "PI-atm-online": "configs/pi_cam_icesm131_online.yaml",
   "PI-atm-replay": "configs/pi_cam_icesm131_replay.yaml"
  },
- "catalog_hash": "b3c94776414dfab09f68693ea577af5b5d78e748a0d2787368fc73881a6715bf",
- "commit": "8513d139d219daa1d2630f0ac68a6c9c7f8d254b",
+ "catalog_hash": "95898ed3bae01845037c3875f8bf7347929abee34f9fae4074b7f8dfb4f5a1b2",
+ "commit": "e407e817f545e36995499e5de5c8496262f009ab",
  "default_document": {
   "case": "PI-atm",
-  "catalog_version": "b3c94776414dfab09f68693ea577af5b5d78e748a0d2787368fc73881a6715bf",
+  "catalog_version": "95898ed3bae01845037c3875f8bf7347929abee34f9fae4074b7f8dfb4f5a1b2",
   "experimental": false,
   "namelist": {},
   "nodes": [
@@ -1979,21 +1979,21 @@
      "control_owner": "python",
      "kernels": [
       {
-       "bindable": false,
+       "bindable": true,
        "evidence": [],
        "kernel": "rad_rrtmg_sw",
        "owner_class": "freecam.physics.radiation.Radiation",
-       "reason": "the image has no segment runner for this kernel yet; a replacement would run the statement-by-statement Python walk, which the builder does not offer",
+       "reason": "bindable, but the pause path has not passed a bit-for-bit gate",
        "stage_action": "cam_run1.radiation",
        "stage_class": "freecam.physics.radiation.Radiation",
        "validated": false
       },
       {
-       "bindable": false,
+       "bindable": true,
        "evidence": [],
        "kernel": "rad_rrtmg_lw",
        "owner_class": "freecam.physics.radiation.Radiation",
-       "reason": "the image has no segment runner for this kernel yet; a replacement would run the statement-by-statement Python walk, which the builder does not offer",
+       "reason": "bindable, but the pause path has not passed a bit-for-bit gate",
        "stage_action": "cam_run1.radiation",
        "stage_class": "freecam.physics.radiation.Radiation",
        "validated": false
@@ -4145,21 +4145,21 @@
     "control_owner": "python",
     "kernels": [
      {
-      "bindable": false,
+      "bindable": true,
       "evidence": [],
       "kernel": "rad_rrtmg_sw",
       "owner_class": "freecam.physics.radiation.Radiation",
-      "reason": "the image has no segment runner for this kernel yet; a replacement would run the statement-by-statement Python walk, which the builder does not offer",
+      "reason": "bindable, but the pause path has not passed a bit-for-bit gate",
       "stage_action": "cam_run1.radiation",
       "stage_class": "freecam.physics.radiation.Radiation",
       "validated": false
      },
      {
-      "bindable": false,
+      "bindable": true,
       "evidence": [],
       "kernel": "rad_rrtmg_lw",
       "owner_class": "freecam.physics.radiation.Radiation",
-      "reason": "the image has no segment runner for this kernel yet; a replacement would run the statement-by-statement Python walk, which the builder does not offer",
+      "reason": "bindable, but the pause path has not passed a bit-for-bit gate",
       "stage_action": "cam_run1.radiation",
       "stage_class": "freecam.physics.radiation.Radiation",
       "validated": false
@@ -6609,21 +6609,21 @@
     "control_owner": "python",
     "kernels": [
      {
-      "bindable": false,
+      "bindable": true,
       "evidence": [],
       "kernel": "rad_rrtmg_sw",
       "owner_class": "freecam.physics.radiation.Radiation",
-      "reason": "the image has no segment runner for this kernel yet; a replacement would run the statement-by-statement Python walk, which the builder does not offer",
+      "reason": "bindable, but the pause path has not passed a bit-for-bit gate",
       "stage_action": "cam_run1.radiation",
       "stage_class": "freecam.physics.radiation.Radiation",
       "validated": false
      },
      {
-      "bindable": false,
+      "bindable": true,
       "evidence": [],
       "kernel": "rad_rrtmg_lw",
       "owner_class": "freecam.physics.radiation.Radiation",
-      "reason": "the image has no segment runner for this kernel yet; a replacement would run the statement-by-statement Python walk, which the builder does not offer",
+      "reason": "bindable, but the pause path has not passed a bit-for-bit gate",
       "stage_action": "cam_run1.radiation",
       "stage_class": "freecam.physics.radiation.Radiation",
       "validated": false
@@ -18562,7 +18562,7 @@
    "writes": []
   }
  ],
- "generated_at": "2026-09-06T12:19:15+00:00",
+ "generated_at": "2026-09-06T12:47:43+00:00",
  "parameters": {
   "cam_run1.cloud_macro_microphysics": [
    {

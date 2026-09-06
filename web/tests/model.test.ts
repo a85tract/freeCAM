@@ -129,8 +129,14 @@ describe("browser check", () => {
   });
 
   it("offers a binding only where the runner covers the kernel", () => {
-    const bad = configure(snapshot.default_document, "cam_run1.radiation", { kernels: { rad_rrtmg_sw: { kind: "surrogate", path: "m.pt" } } });
-    expect(validateDocument(bad, snapshot.default_document, catalog, snapshot.capabilities).issues.map((i) => i.code)).toContain("kernel-not-bindable");
+    const bound = configure(snapshot.default_document, "cam_run1.radiation", { kernels: { rad_rrtmg_sw: { kind: "surrogate", path: "m.pt" } } });
+    // every exposed kernel has a runner now; a capability table without one shows the refusal
+    const uncovered = snapshot.capabilities.map((c) => (c.kernel === "rad_rrtmg_sw" ? { ...c, bindable: false, validated: false } : c));
+    expect(validateDocument(bound, snapshot.default_document, catalog, uncovered).issues.map((i) => i.code)).toContain("kernel-not-bindable");
+    // the radt runner pauses at the cores, but that pause has no gate yet: a warning, not an error
+    const pending = validateDocument(bound, snapshot.default_document, catalog, snapshot.capabilities).issues.map((i) => i.code);
+    expect(pending).toContain("kernel-not-validated");
+    expect(pending).not.toContain("kernel-not-bindable");
     // the runner pauses at micro_mg_tend and that pause has passed its gate: a binding there is only informational
     const proven = configure(snapshot.default_document, "cam_run1.cloud_macro_microphysics", { kernels: { micro_mg_tend: { kind: "surrogate", path: "m.pt" } } });
     const codes = validateDocument(proven, snapshot.default_document, catalog, snapshot.capabilities).issues.map((i) => i.code);

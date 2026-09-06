@@ -87,7 +87,12 @@ def test_every_kernel_row_is_a_kernel_a_stage_class_describes_and_two_have_close
     assert uwshcu["status"] == "open" and uwshcu["validated_through_runner"]
     assert "in_model_replacement_bfb" not in uwshcu["missing"] and "capture" in uwshcu["missing"]
     for name in ("rad_rrtmg_sw", "rad_rrtmg_lw"):
-        assert rows[name]["contract"] == "draft" and "reviewed_contract" in rows[name]["missing"]
+        # the frame descriptor is the contract of a kernel taking derived types, and the
+        # radt runner pauses at both cores; the in-model gate is the walk's until the pause gates run
+        assert rows[name]["contract"] == "frame" and rows[name]["contract_path"] == "native/pi_cam/segment_frames.yaml"
+        assert rows[name]["bindable"] and not rows[name]["validated_through_runner"]
+        assert "reviewed_contract" not in rows[name]["missing"] and "segment_runner" not in rows[name]["missing"]
+        assert "in_model_replacement_bfb" not in rows[name]["missing"]
     assert record["summary"]["kernels_by_status"] == {"complete": 2, "open": 4}
 
 

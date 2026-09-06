@@ -482,6 +482,11 @@ def main(argv: list[str] | None = None) -> int:
 
             scheme = Radiation()
             scheme.execution_policy = args.stage_execution
+            if args.segmented_original:
+                from freecam.physics.segments import OriginalKernel
+                for kernel_name in [k.strip() for k in args.segmented_original_kernels.split(",") if k.strip()]:
+                    if kernel_name in scheme.kernels:
+                        scheme.kernels[kernel_name] = OriginalKernel()
             cam.python_processes.install(
                 PythonProcessSpec.from_callable(
                     scheme.tend,

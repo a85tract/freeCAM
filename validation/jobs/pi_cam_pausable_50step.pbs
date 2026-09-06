@@ -19,6 +19,9 @@
 # names the run's records.  PYCAM_NATIVE_MANIFEST points at the image.
 # PYCAM_DISABLE_ACTIONS (qualified action names) is the inertness gate: those
 # actions switched off, the answer must still be the oracle's.
+# PYCAM_RADIATION_PYTHON=1 installs the split Radiation class between its two
+# halves (--split-radiation --radiation-python); with the RRTMG cores in
+# PYCAM_ORIGINAL_KERNELS they are answered at the radt runner's pauses.
 set -euo pipefail
 
 source "${FREECAM_REPO:-${PBS_O_WORKDIR:-$PWD}}/validation/jobs/common.sh"
@@ -55,7 +58,13 @@ mkdir -p "${run_dir}/timing/checkpoints"
 cd "${repo}"
 stage_flags=()
 if [ -n "${PYCAM_PYTHON_STAGES:-}" ]; then
-  stage_flags=(--python-stages "${PYCAM_PYTHON_STAGES}" --stage-execution "${PYCAM_STAGE_EXECUTION:-auto}")
+  stage_flags=(--python-stages "${PYCAM_PYTHON_STAGES}")
+fi
+if [ -n "${PYCAM_RADIATION_PYTHON:-}" ]; then
+  stage_flags+=(--split-radiation --radiation-python)
+fi
+if [ ${#stage_flags[@]} -gt 0 ]; then
+  stage_flags+=(--stage-execution "${PYCAM_STAGE_EXECUTION:-auto}")
 fi
 if [ -n "${PYCAM_ORIGINAL_KERNELS:-}" ]; then
   stage_flags+=(--segmented-original --segmented-original-kernels "${PYCAM_ORIGINAL_KERNELS}")
@@ -65,7 +74,7 @@ if [ -n "${PYCAM_DISABLE_ACTIONS:-}" ]; then
   stage_flags+=(--disable-actions "${PYCAM_DISABLE_ACTIONS}")
 fi
 if [ ${#stage_flags[@]} -eq 0 ]; then
-  echo "set PYCAM_PYTHON_STAGES, PYCAM_ORIGINAL_KERNELS or PYCAM_DISABLE_ACTIONS" >&2; exit 2
+  echo "set PYCAM_PYTHON_STAGES, PYCAM_RADIATION_PYTHON, PYCAM_ORIGINAL_KERNELS or PYCAM_DISABLE_ACTIONS" >&2; exit 2
 fi
 mpiexec --label -n 512 "${python}" -m freecam.pi_cam.cli \
   --config configs/pi_cam_icesm131_replay.yaml \

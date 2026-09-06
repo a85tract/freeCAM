@@ -24,6 +24,18 @@ from .errors import PhysicsError
 from .stage import NativeStage
 
 
+def bind_stage_hosts(native: Any) -> None:
+    """Bind the stage hosts (state, tendencies, pbuf, cam_in, cam_out) every pausable runner's glue reads."""
+
+    binder = getattr(native.library, "pycam_stagehost_bind_v1", None)
+    if binder is None:
+        raise PICAMConfigurationError(
+            "this image has no pycam_stagehost_bind_v1; it was built before the pausable runners")
+    status = int(binder())
+    if status:
+        raise PICAMConfigurationError(f"pycam_stagehost_bind_v1 refused ({status}): the state registry is not ready")
+
+
 class PausableStage(NativeStage):
     """A whole workflow action with its kernels behind a pausable runner."""
 
@@ -50,14 +62,7 @@ class PausableStage(NativeStage):
     def prepare_segmented(self, native: Any) -> None:
         """Bind the stage hosts the runner reads: one binder for every pausable runner."""
 
-        library = native.library
-        binder = getattr(library, "pycam_stagehost_bind_v1", None)
-        if binder is None:
-            raise PICAMConfigurationError(
-                "this image has no pycam_stagehost_bind_v1; it was built before the pausable runners")
-        status = int(binder())
-        if status:
-            raise PICAMConfigurationError(f"pycam_stagehost_bind_v1 refused ({status}): the state registry is not ready")
+        bind_stage_hosts(native)
 
     def tend_chunk(self, runtime, lchnk, ncol, index, dt, nstep) -> None:   # pragma: no cover - refused above
         raise PhysicsError(f"{type(self).__name__} has no Python walk")

@@ -66,6 +66,12 @@ SUPPORT_SOURCES = (
      "src/physics/cam/pycam_shcu_glue.F90"),
     ("native/pi_cam/support/pycam_shcu_runner.F90",
      "src/physics/cam/pycam_shcu_runner.F90"),
+    ("native/pi_cam/support/pycam_radt_driver.F90",
+     "src/physics/cam/pycam_radt_driver.F90"),
+    ("native/pi_cam/support/pycam_radt_glue.F90",
+     "src/physics/cam/pycam_radt_glue.F90"),
+    ("native/pi_cam/support/pycam_radt_runner.F90",
+     "src/physics/cam/pycam_radt_runner.F90"),
 )
 
 

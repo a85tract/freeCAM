@@ -84,6 +84,18 @@ have. The eleven actions whose bodies do no numerical work in this
 configuration are `InertStage`s: a class, no kernel, and one gate with all of
 them disabled to prove it.
 
+Radiation is the same generator over a split stage. `Radiation` keeps its two
+leaves (the stop before `radiation_tend` and the resume after it, control patch
+0041); the `pycam_radt` runner hoists `radiation_tend` whole -- the driver's
+private variables and helper procedures verbatim beside it -- and pauses at
+`rad_rrtmg_sw` and `rad_rrtmg_lw` inside the `dosw` / `dolw` blocks and their
+`icall` loops, the RRTMG state served component by component. The runner's
+glue is the resume half's driver call with `ptend` and `net_flx` pointed at
+the radiation handles' storage, so the resume half takes them exactly as it
+took the Python walk's. With nothing replaced the class leaves the step to the
+resume half, which calls the driver itself: no runner, no walk. The walk
+remains as the `legacy-python` policy.
+
 **The read-only description.** `stage.describe_kernels()` returns one record
 per kernel: the owning class, whether the runner pauses at it, whether that
 pause has passed a gate, the reviewed contract's inputs and outputs when one
@@ -128,8 +140,8 @@ committed file equals a fresh build or the test fails.
 | --- | --- | --- | --- | --- | --- |
 | `mmacro_pcond` | Macrophysics (in the cloud stage) | reviewed | yes, validated | segmented, bit-for-bit; alone and together with `micro_mg_tend` | complete |
 | `micro_mg_tend` | Microphysics (in the cloud stage) | reviewed | yes, validated | segmented, bit-for-bit (100 pauses in 50 steps); alone and together with `mmacro_pcond` (200 pauses) | open: no captured calls replayed through its standalone image yet |
-| `rad_rrtmg_sw` | Radiation | draft | no | walk with the original kernel, bit-for-bit | open |
-| `rad_rrtmg_lw` | Radiation | draft | no | walk with the original kernel, bit-for-bit | open |
+| `rad_rrtmg_sw` | Radiation (split, pausable) | frame descriptor | yes, gate pending | walk with the original kernel, bit-for-bit; the pause gate pending | open: the pause gate, capture and replay |
+| `rad_rrtmg_lw` | Radiation (split, pausable) | frame descriptor | yes, gate pending | walk with the original kernel, bit-for-bit; the pause gate pending | open: the pause gate, capture and replay |
 | `dadadj` | DryAdjustment (pausable) | reviewed | yes, validated | segmented, bit-for-bit (100 pauses in 50 steps); alone and together with `compute_uwshcu_inv` | complete |
 | `compute_uwshcu_inv` | ShallowConvection (pausable) | reviewed | yes, validated | segmented, bit-for-bit (100 pauses in 50 steps); alone and together with `dadadj` | open: no captured calls replayed through a standalone image yet |
 

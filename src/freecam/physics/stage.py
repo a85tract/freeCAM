@@ -885,6 +885,11 @@ class NativeStage:
     WHOLE_ACTION = False
     FIRST_HALF = ""
     SECOND_HALF = ""
+    #: True for a split stage whose image runner runs the driver call between
+    #: the two halves (radiation): segmented execution is the runner, and
+    #: native-whole is :meth:`native_between_halves` -- leaving the driver to
+    #: the resume half, which calls it itself when Python does not own the step.
+    SPLIT_RUNNER = False
 
     #: The stage's Fortran prefix: ``pycam_<PREFIX>_*`` entries, ``<PREFIX>.``
     #: kernel field names.
@@ -1215,6 +1220,7 @@ class NativeStage:
             raise PhysicsError(
                 f"unknown stage execution policy {policy!r}; one of {EXECUTION_POLICIES}")
         replaced = self.replacements()
+        whole = self.WHOLE_ACTION or self.SPLIT_RUNNER
         if policy == "legacy-python":
             return "legacy-python"
         if policy == "segmented":
@@ -1222,7 +1228,7 @@ class NativeStage:
                 raise PhysicsError(
                     "segmented execution pauses at replaced kernels, and nothing is replaced; "
                     "use auto or native-whole")
-            if not self.WHOLE_ACTION:
+            if not whole:
                 raise PhysicsError(
                     f"{type(self).__name__} is not the whole of {self.STAGE!r}; only a whole "
                     f"stage has a segment runner")
@@ -1232,16 +1238,16 @@ class NativeStage:
                 raise PhysicsError(
                     f"native-whole execution runs the original Fortran stage, but "
                     f"{list(replaced)} are replaced; use auto or legacy-python")
-            if not self.WHOLE_ACTION:
+            if not whole:
                 raise PhysicsError(
                     f"{type(self).__name__} is not the whole of {self.STAGE!r}; it has no "
                     f"whole Fortran stage of its own to run")
             return "native-whole"
         # auto: the original stage while nothing is replaced; segmented where the
         # image's runner pauses at every replaced kernel; the walk otherwise
-        if not replaced and self.WHOLE_ACTION:
+        if not replaced and whole:
             return "native-whole"
-        if replaced and self.WHOLE_ACTION and native is not None:
+        if replaced and whole and native is not None:
             offer = getattr(native, "segment_runner", None)
             runner = None if offer is None else offer(self.STAGE)
             covered = set(getattr(runner, "kernels", ()) or ())
@@ -1250,7 +1256,7 @@ class NativeStage:
         if replaced and native is not None and self.execution.mode != "legacy-python":
             # never a silent fall-back: the walk is the slow path, and a run
             # that takes it should say so once, before the first step
-            uncovered = sorted(set(replaced) - covered) if self.WHOLE_ACTION else sorted(replaced)
+            uncovered = sorted(set(replaced) - covered) if whole else sorted(replaced)
             warnings.warn(
                 f"{type(self).__name__}: the image's segment runner does not pause at {uncovered}; "
                 f"running the statement-by-statement Python walk (legacy-python) instead",
@@ -1276,15 +1282,32 @@ class NativeStage:
                 f"slots do not show it; the original Fortran will not be run in their place")
         if mode == "native-whole":
             # nothing replaced: the original Fortran stage, once, through its
-            # own (disabled) workflow action -- no walk, no views, no copies
-            native.run_action(self.STAGE)
+            # own (disabled) workflow action -- no walk, no views, no copies;
+            # a split stage leaves the driver to its resume half instead
+            if self.WHOLE_ACTION:
+                native.run_action(self.STAGE)
+            else:
+                self.native_between_halves(native)
             self.execution.native_stage_calls += 1
             return
         if mode == "segmented":
             self._tend_segmented(native)
+            self.after_segmented(native)
             return
         self.execution.legacy_steps += 1
         self._tend_walk(native, context)
+
+    def native_between_halves(self, native: Any) -> None:
+        """Native-whole for a split stage: what :meth:`tend` does so the resume half runs the driver."""
+
+        raise PhysicsError(
+            f"{type(self).__name__} is not the whole of {self.STAGE!r} and declares no "
+            f"native path between its halves")
+
+    def after_segmented(self, native: Any) -> None:
+        """After the runner has run every chunk: a split stage tells its resume half to take the result."""
+
+        del native
 
     def prepare_segmented(self, native: Any) -> None:
         """Bind what the runner reads before its first start.

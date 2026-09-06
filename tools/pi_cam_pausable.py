@@ -362,6 +362,9 @@ class Unit:
     uses: list[str] = field(default_factory=list)
     records: dict[str, str] = field(default_factory=dict)      # local -> accessor entry handing its address
     getopts: list[str] = field(default_factory=list)           # module-private options read by phys_getopts
+    locals: dict[str, str] = field(default_factory=dict)       # local -> storage it is a pointer to (glue)
+    module_private: list[tuple[int, int]] = field(default_factory=list)   # the module's own declarations, verbatim
+    helpers: list[tuple[int, int]] = field(default_factory=list)          # the module's private procedures, verbatim
     lines: list[str] = field(default_factory=list)
     decls: dict[str, Decl] = field(default_factory=dict)
     dummy_names: list[str] = field(default_factory=list)
@@ -396,6 +399,7 @@ class Spec:
     units: dict[str, Unit]
     kernels: dict[str, Kernel]
     hosts: str = "pycam_stage_hosts"
+    runner_uses: list[str] = field(default_factory=list)      # modules the runner's skeleton and refusals need
 
     @property
     def runner_module(self) -> str:
@@ -457,6 +461,9 @@ def load_spec(path: Path) -> Spec:
             uses=[str(x) for x in record.get("uses") or []],
             records={str(k): str(v) for k, v in (record.get("records") or {}).items()},
             getopts=[str(x) for x in record.get("getopts") or []],
+            locals={str(k): str(v) for k, v in (record.get("locals") or {}).items()},
+            module_private=[(int(a), int(b)) for a, b in record.get("module_private") or []],
+            helpers=[(int(a), int(b)) for a, b in record.get("helpers") or []],
         )
         unit.body = _parse_body(record["body"], unit)
         units[str(key)] = unit
@@ -466,7 +473,8 @@ def load_spec(path: Path) -> Spec:
                for name, k in payload["kernels"].items()}
     spec = Spec(path=path, prefix=prefix, stage=str(payload["stage"]),
                 refuse=list(payload.get("refuse") or []), getopts=[str(x) for x in payload.get("getopts") or []],
-                units=units, kernels=kernels, hosts=str(payload.get("hosts", "pycam_stage_hosts")))
+                units=units, kernels=kernels, hosts=str(payload.get("hosts", "pycam_stage_hosts")),
+                runner_uses=[str(x) for x in payload.get("runner_uses") or []])
     _resolve(spec)
     return spec
 
@@ -704,7 +712,8 @@ def frame_slots(pause: Pause, kernel: Kernel) -> list[Slot]:
                 guard = f"allocated({base})"
         slots.append(Slot(dummy=dummy, actual=actual, intent=intent,
                           kind="pointer" if guard and "associated" in guard else "array",
-                          rank=decl.rank, dtype=dtype, expression=_first_element(actual, base, section, decl.rank),
+                          rank=decl.rank, dtype=dtype,
+                          expression=_first_element(actual, base, section, decl.rank, base_decl),
                           shape=shape, guard=guard))
     return slots
 
@@ -718,12 +727,32 @@ def _actual_base(actual: str) -> tuple[str, str | None]:
     return actual, None
 
 
-def _first_element(actual: str, base: str, section: str | None, rank: int) -> str:
-    """The Fortran expression whose address is the argument's first element."""
+def _lower_bounds(decl: Decl | None, rank: int) -> list[str]:
+    """The declared lower bound of every axis (1 unless the declaration says `lo:hi`)."""
 
+    bounds = []
+    dims = _split_top(decl.dims) if decl is not None and decl.dims else []
+    for axis in range(rank):
+        extent = dims[axis] if axis < len(dims) else ""
+        lower = extent.partition(":")[0].strip() if ":" in extent else ""
+        bounds.append(lower if lower else "1")
+    return bounds
+
+
+def _first_element(actual: str, base: str, section: str | None, rank: int, decl: Decl | None = None) -> str:
+    """The Fortran expression whose address is the argument's first element.
+
+    A whole array passes its first element, at the declared lower bounds
+    (`aer_tau(pcols,0:pver,nbndsw)` starts at `aer_tau(1,0,1)`); a section's
+    omitted subscripts take the lower bound of their axis.
+    """
+
+    if not rank:
+        return base
+    bounds = _lower_bounds(decl, rank)
     if section is None:
-        return f"{base}({','.join('1' for _ in range(max(rank, 1)))})" if rank else base
-    indices = [("1" if s.strip() == ":" else s.strip()) for s in _split_top(section)]
+        return f"{base}({','.join(bounds)})"
+    indices = [(bounds[i] if s.strip() == ":" else s.strip()) for i, s in enumerate(_split_top(section))]
     return f"{base}({','.join(indices)})"
 
 
@@ -780,6 +809,11 @@ DERIVED_TYPES: dict[str, dict[str, tuple[int, str]]] = {
         "lnpmiddry": (2, "real"), "lnpintdry": (2, "real"), "te_ini": (1, "real"), "te_cur": (1, "real"),
         "tw_ini": (1, "real"), "tw_cur": (1, "real"), "psdry": (1, "real"), "count": (0, "integer"),
     },
+    "type(rrtmg_state_t)": {
+        name: (2, "real") for name in (
+            "h2ovmr", "o3vmr", "co2vmr", "ch4vmr", "o2vmr", "n2ovmr", "cfc11vmr", "cfc12vmr", "cfc22vmr",
+            "ccl4vmr", "pmidmb", "pintmb", "tlay", "tlev")
+    },
     "type(physics_ptend)": {
         "s": (2, "real"), "u": (2, "real"), "v": (2, "real"), "q": (3, "real"),
         "hflux_srf": (1, "real"), "hflux_top": (1, "real"), "taux_srf": (1, "real"), "taux_top": (1, "real"),
@@ -809,7 +843,7 @@ def _hoisted_state(unit: Unit) -> list[str]:
     for name in sorted(used):
         decl = unit.decls.get(name)
         if decl is None or name in unit.dummy_names or name in unit.carries or name in unit.records \
-                or name in unit.getopts or name in KEYWORDS:
+                or name in unit.getopts or name in unit.locals or name in KEYWORDS:
             continue
         attrs = f", {decl.attributes}" if decl.attributes else ""
         save = "" if decl.is_parameter else ", save"
@@ -849,6 +883,24 @@ def _record_state(unit: Unit) -> list[str]:
             raise SystemExit(f"{unit.key}: record {name!r} is not a local of {unit.routine}")
         rows.append(f"  {decl.kind}, pointer, save, public :: {name} => null()")
     return rows
+
+
+def _local_state(unit: Unit) -> list[str]:
+    """Locals the glue points at storage of its own choosing (`locals:` in the spec)."""
+
+    rows = []
+    for name in sorted(unit.locals):
+        decl = unit.decls.get(name)
+        if decl is None:
+            raise SystemExit(f"{unit.key}: local {name!r} is not a local of {unit.routine}")
+        dims = ",".join(":" for _ in range(decl.rank))
+        shape = f"({dims})" if dims else ""
+        rows.append(f"  {decl.kind}, pointer, save, public :: {name}{shape} => null()")
+    return rows
+
+
+def _verbatim(unit: Unit, first: int, last: int, indent: str = "  ") -> list[str]:
+    return [(indent + unit.lines[n - 1].rstrip()) if unit.lines[n - 1].strip() else "" for n in range(first, last + 1)]
 
 
 def _getopts_state(unit: Unit) -> list[str]:
@@ -1028,7 +1080,12 @@ def render_unit(spec: Spec, unit: Unit) -> str:
         header += ["", "  ! locals that are pycesm carries of derived type: pointers to physpkg's records"] + _record_state(unit)
     if unit.getopts:
         header += ["", "  ! the module's private options, read through phys_getopts at configure"] + _getopts_state(unit)
+    if unit.locals:
+        header += ["", "  ! locals pointed at storage the stage's Python side reads back"] + _local_state(unit)
     header += ["", "  ! the routine's locals, held for the chunk in flight"] + _hoisted_state(unit)
+    for first, last in unit.module_private:
+        header += ["", f"  ! {Path(unit.source).name}:{first}-{last}: the module's own declaration, verbatim"]
+        header += _verbatim(unit, first, last)
     if unit.pbuf_indices:
         indices = _unit_pbuf_indices(unit)
         header += ["", "  ! the module's private physics-buffer indices, resolved by name at configure"]
@@ -1061,6 +1118,13 @@ def render_unit(spec: Spec, unit: Unit) -> str:
         body.append(_frame_routine(spec, pause, slots))
         body.append("")
         body.append(_original_routine(pause))
+        body.append("")
+    for first, last in unit.helpers:
+        body.append("\n".join([f"  ! {Path(unit.source).name}:{first}-{last}: a private procedure of the module, verbatim"]
+                              + _verbatim(unit, first, last)))
+        body.append("")
+    if unit.key == "glue" and _viewed_dummies(unit):
+        body.append(VIEW_HELPER)
         body.append("")
     body.append(SLOT_HELPERS)
     body.append("")
@@ -1095,6 +1159,34 @@ def _copied_dummies(unit: Unit) -> dict[str, str]:
             if target.strip().lower().startswith("copy:")}
 
 
+def _viewed_dummies(unit: Unit) -> dict[str, str]:
+    """Dummies the glue serves as views of storage with no target attribute: `view: <expression>`
+    (comsrf's module arrays, say).  The address is taken through a target dummy, the idiom of the
+    handles' view routines; a contiguous actual is passed without a copy."""
+
+    return {name: target.split(":", 1)[1].strip() for name, target in unit.dummies.items()
+            if target.strip().lower().startswith("view:")}
+
+
+def _view_shape(decl: Decl) -> str:
+    dims = []
+    for extent in _split_top(decl.dims) if decl.dims else []:
+        if ":" in extent:
+            lower, _, upper = extent.partition(":")
+            extent = f"({upper})-({lower})+1"
+        dims.append(extent.strip())
+    return "(/ " + ", ".join(dims) + " /)"
+
+
+VIEW_HELPER = """  subroutine glue_view(field, address)
+    ! a TARGET dummy so c_loc is legal whatever the actual argument's attributes;
+    ! a contiguous actual is passed without a copy
+    real(r8), intent(inout), target :: field(*)
+    type(c_ptr), intent(out) :: address
+    address = c_loc(field(1))
+  end subroutine glue_view"""
+
+
 def _copy_state(unit: Unit) -> list[str]:
     rows = []
     for name in sorted(_copied_dummies(unit)):
@@ -1125,6 +1217,7 @@ def _glue_enter(spec: Spec, unit: Unit) -> str:
              "    type(c_ptr) :: address", "    integer(c_int) :: ndims, status", "    integer(c_int64_t) :: extents(4)"]
     body = []
     copied = _copied_dummies(unit)
+    viewed = _viewed_dummies(unit)
     for name in unit.dummy_names:
         target = unit.dummies.get(name)
         if target is None:
@@ -1133,6 +1226,9 @@ def _glue_enter(spec: Spec, unit: Unit) -> str:
         if name in copied:
             body.append(f"    copy_{name} = {copied[name].replace('lchnk', 'lchnk_in')}")
             body.append(f"    {name} => copy_{name}")
+        elif name in viewed:
+            body.append(f"    call glue_view({viewed[name].replace('lchnk', 'lchnk_in')}, address)")
+            body.append(f"    call c_f_pointer(address, {name}, {_view_shape(decl)})")
         elif decl.is_derived or decl.rank > 0 or decl.is_pointer:
             body.append(f"    {name} => {target.replace('lchnk', 'lchnk_in')}")
         else:
@@ -1147,6 +1243,8 @@ def _glue_enter(spec: Spec, unit: Unit) -> str:
         body.append(f"    status = {entry}(int(lchnk_in, c_int), address)")
         body.append(f"    if (status /= 0_c_int) call endrun('{spec.runner_module}: record {name} refused')")
         body.append(f"    call c_f_pointer(address, {name})")
+    for name, target in sorted(unit.locals.items()):
+        body.append(f"    {name} => {target.replace('lchnk', 'lchnk_in')}")
     for text in unit.preamble:
         body.append("    " + text)
     return "\n".join(head + uses + interfaces + decls + body + ["  end subroutine glue_enter"])
@@ -1278,9 +1376,11 @@ def render_runner(spec: Spec) -> str:
             names.append(f"{unit.key}_resolve_indices")
         if unit.getopts:
             names.append(f"{unit.key}_configure")
-        # the skeleton's conditions and loop variables live in the unit
-        names += sorted(_skeleton_names(unit) | set(unit.getopts))
+        # the skeleton's conditions and loop variables live in the unit, as do
+        # the indices and options the refusals test
+        names += sorted(_skeleton_names(unit) | set(unit.getopts) | _refusal_names(spec, unit))
         unit_uses.append(f"  use {unit.module}, only: " + ", &\n       ".join(", ".join(names[i:i + 6]) for i in range(0, len(names), 6)))
+    unit_uses += ["  " + use for use in spec.runner_uses]
     getopts = "".join(f"    call {u.key}_configure()\n" for u in spec.units.values() if u.getopts)
     getopt_decls = ""
     refusals = "".join(f"    if ({r['when']}) then\n      last_error = '{spec.prefix}: {r['message']}'; return\n    end if\n" for r in spec.refuse)
@@ -1347,8 +1447,8 @@ contains
     if (.not. stage_hosts_ok(int(begchunk, c_int))) then
       last_error = '{spec.prefix}: the stage hosts are not bound (pycam_stagehost_bind_v1 first)'; return
     end if
-{getopts}    status = 2_c_int
-{refusals}{resolves}    created = .true.
+{getopts}{resolves}    status = 2_c_int
+{refusals}    created = .true.
     pc = pc_idle
     context = int(context_id, c_int)
     status = 0_c_int
@@ -1507,6 +1607,17 @@ end module {spec.runner_module}
 '''
 
 
+def _refusal_names(spec: Spec, unit: Unit) -> set[str]:
+    """Names of the unit the spec's refusals test: its options and its resolved indices."""
+
+    names: set[str] = set()
+    for refusal in spec.refuse:
+        names |= identifiers(str(refusal["when"]))
+    names -= KEYWORDS
+    indices = {name for name, _ in _unit_pbuf_indices(unit)}
+    return {n for n in names if n in unit.getopts or n in indices or n in unit.decls}
+
+
 def _skeleton_names(unit: Unit) -> set[str]:
     """Names the runner's skeleton statements reference, which must be public in the unit."""
 
@@ -1545,6 +1656,8 @@ def spec_digest(spec: Spec) -> dict[str, str]:
             range_digest(unit.lines, *unit.body_range)
         out[f"{unit.key}:{Path(unit.source).name}:declarations {unit.declarations[0]}-{unit.declarations[1]}"] = \
             range_digest(unit.lines, *unit.declarations)
+        for first, last in unit.module_private + unit.helpers:
+            out[f"{unit.key}:{Path(unit.source).name}:verbatim {first}-{last}"] = range_digest(unit.lines, first, last)
     for kernel in spec.kernels.values():
         out[f"{kernel.name}:{Path(kernel.source).name}:{kernel.body_range[0]}-{kernel.body_range[1]}"] = \
             range_digest(kernel.lines, *kernel.body_range)
