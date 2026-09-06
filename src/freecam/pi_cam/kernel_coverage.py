@@ -82,6 +82,19 @@ INERT_BY_CONFIGURATION = {
 STAGE_CLASSES = (
     "freecam.physics.cloud_macro_microphysics.CloudMacroMicrophysics",
     "freecam.physics.radiation.Radiation",
+    "freecam.physics.pausable.DryAdjustment",
+    "freecam.physics.pausable.ShallowConvection",
+    "freecam.physics.pausable.RayleighFriction",
+    "freecam.physics.pausable.ChargeNeutrality",
+    "freecam.physics.pausable.QBORelaxation",
+    "freecam.physics.pausable.IonDrag",
+    "freecam.physics.pausable.SeaSaltRebin",
+    "freecam.physics.pausable.ModalAerosolPreparation",
+    "freecam.physics.pausable.CARMAWetDeposition",
+    "freecam.physics.pausable.CARMAAerosolTendencies",
+    "freecam.physics.pausable.CARMAStatistics",
+    "freecam.physics.pausable.TracerTendencies",
+    "freecam.physics.pausable.AgeOfAirTendencies",
 )
 
 #: Validation records per kernel, by the step of the delivery loop they prove.

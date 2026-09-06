@@ -5,7 +5,7 @@ import json
 import pytest
 
 from freecam.pi_cam.plan import PICAMStepPlan
-from freecam.pi_cam.segment_runner import KERNELS as RUNNER_KERNELS
+from freecam.pi_cam.segment_runner import bindable_kernels
 from freecam.pi_cam.workflow_builder import (
     WorkflowDocument,
     build_snapshot,
@@ -41,8 +41,9 @@ def test_the_library_lists_every_catalog_process_with_a_reason_when_it_cannot_be
 def test_kernel_capabilities_follow_the_runner_not_the_catalog() -> None:
     capabilities = {c.kernel: c for c in kernel_capabilities()}
     assert set(capabilities) >= {"mmacro_pcond", "micro_mg_tend", "rad_rrtmg_sw", "rad_rrtmg_lw"}
+    runner_kernels = set(bindable_kernels())
     for name, capability in capabilities.items():
-        assert capability.bindable == (name in RUNNER_KERNELS), name
+        assert capability.bindable == (name in runner_kernels), name
         if not capability.bindable:
             assert capability.reason and "runner" in capability.reason
     assert capabilities["mmacro_pcond"].validated

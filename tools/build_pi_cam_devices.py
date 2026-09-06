@@ -72,7 +72,12 @@ SUPPORT_MODULES = ("pycam_macro_kernels.F90", "pycam_macro_handles.F90",
                    "pycam_micro_kernels.F90", "pycam_mm_kernels.F90",
                    "pycam_aero_kernels.F90",
                    "pycam_micro_handles.F90", "pycam_aero_handles.F90",
-                   "pycam_mm_handles.F90")
+                   "pycam_mm_handles.F90",
+                   # the pausable runners: hosts, then each process's units (a
+                   # driver before the glue that binds it), then its runner
+                   "pycam_stage_hosts.F90",
+                   "pycam_dadadj_glue.F90", "pycam_dadadj_runner.F90",
+                   "pycam_shcu_driver.F90", "pycam_shcu_glue.F90", "pycam_shcu_runner.F90")
 MACRO_BIND_HOSTS_SYMBOL = "pycam_macro_bind_hosts_v1"
 RAD_BIND_HOSTS_SYMBOL = "pycam_rad_bind_hosts_v1"
 MICRO_BIND_HOSTS_SYMBOL = "pycam_micro_bind_hosts_v1"

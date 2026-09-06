@@ -24,6 +24,7 @@ PATCHES = (
     "native/pi_cam/control_patches/0033-single-cam-online-coupler.patch",
     "native/pi_cam/control_patches/0039-macro-tend-boundary.patch",
     "native/pi_cam/control_patches/0041-rad-tend-boundary.patch",
+    "native/pi_cam/control_patches/0043-stage-carry-boundary.patch",
 )
 
 # Modules this repository owns that are added to the CAM source tree.  They
@@ -51,6 +52,20 @@ SUPPORT_SOURCES = (
      "src/physics/cam/pycam_aero_handles.F90"),
     ("native/pi_cam/support/pycam_mm_handles.F90",
      "src/physics/cam/pycam_mm_handles.F90"),
+    # the pausable runners: the shared hosts first, each process's units, then
+    # its runner (tools/generate_pi_cam_pausable_runners.py)
+    ("native/pi_cam/support/pycam_stage_hosts.F90",
+     "src/physics/cam/pycam_stage_hosts.F90"),
+    ("native/pi_cam/support/pycam_dadadj_glue.F90",
+     "src/physics/cam/pycam_dadadj_glue.F90"),
+    ("native/pi_cam/support/pycam_dadadj_runner.F90",
+     "src/physics/cam/pycam_dadadj_runner.F90"),
+    ("native/pi_cam/support/pycam_shcu_driver.F90",
+     "src/physics/cam/pycam_shcu_driver.F90"),
+    ("native/pi_cam/support/pycam_shcu_glue.F90",
+     "src/physics/cam/pycam_shcu_glue.F90"),
+    ("native/pi_cam/support/pycam_shcu_runner.F90",
+     "src/physics/cam/pycam_shcu_runner.F90"),
 )
 
 

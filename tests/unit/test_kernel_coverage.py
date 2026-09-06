@@ -49,7 +49,12 @@ def test_the_inventory_closes_over_the_step_plan_and_the_catalog() -> None:
 def test_every_kernel_row_is_a_kernel_a_stage_class_describes_and_only_mmacro_pcond_has_closed_the_loop() -> None:
     record = kernel_coverage.build_coverage()
     rows = {k["kernel"]: k for k in record["kernels"]}
-    assert set(rows) == {"mmacro_pcond", "micro_mg_tend", "rad_rrtmg_sw", "rad_rrtmg_lw"}
+    assert set(rows) == {"mmacro_pcond", "micro_mg_tend", "rad_rrtmg_sw", "rad_rrtmg_lw",
+                         "dadadj", "compute_uwshcu_inv"}
+    # the pausable stages: dadadj's standalone loop is closed and only the in-model gate is owed
+    assert rows["dadadj"]["bindable"] and rows["dadadj"]["contract"] == "reviewed"
+    assert rows["dadadj"]["missing"] == ["in_model_replacement_bfb"]
+    assert rows["compute_uwshcu_inv"]["bindable"] and "in_model_replacement_bfb" in rows["compute_uwshcu_inv"]["missing"]
     pcond = rows["mmacro_pcond"]
     assert pcond["status"] == "complete" and pcond["missing"] == []
     assert pcond["contract"] == "reviewed" and pcond["bindable"] and pcond["validated_through_runner"]
@@ -64,7 +69,7 @@ def test_every_kernel_row_is_a_kernel_a_stage_class_describes_and_only_mmacro_pc
     assert micro["in_model_gates"][0]["bfb"] is True          # the walk with the core through its image
     for name in ("rad_rrtmg_sw", "rad_rrtmg_lw"):
         assert rows[name]["contract"] == "draft" and "reviewed_contract" in rows[name]["missing"]
-    assert record["summary"]["kernels_by_status"] == {"complete": 1, "open": 3}
+    assert record["summary"]["kernels_by_status"] == {"complete": 1, "open": 5}
 
 
 def test_the_committed_record_is_what_the_builder_writes_now() -> None:

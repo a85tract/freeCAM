@@ -46,6 +46,8 @@ class RunnerKernel:
     #: a reviewed function contract whose argument list is the frame's, in
     #: order; None when the frame follows the kernel's direct-kernel descriptor
     contract: str | None = None
+    #: a frame descriptor table (segment_frames.yaml) the pausable generator wrote
+    frame: str | None = None
 
     @property
     def validated(self) -> bool:
@@ -64,6 +66,8 @@ class RunnerSpec:
     generator: str
     descriptors: str
     kernels: tuple[RunnerKernel, ...] = field(default_factory=tuple)
+    #: whether the runner exports `<prefix>_original_v1`, running the paused call itself
+    original: bool = False
 
     @property
     def kernel_names(self) -> tuple[str, ...]:
@@ -111,6 +115,7 @@ def load_manifest(path: str | Path | None = None) -> tuple[RunnerSpec, ...]:
                 name=name, owner=str(item.get("owner", "")),
                 validated_by=tuple(str(p) for p in item.get("validated_by") or ()),
                 contract=None if item.get("contract") is None else str(item["contract"]),
+                frame=None if item.get("frame") is None else str(item["frame"]),
             ))
         stage = str(record["stage"])
         if stage in seen_stages:
@@ -121,7 +126,7 @@ def load_manifest(path: str | Path | None = None) -> tuple[RunnerSpec, ...]:
         specs.append(RunnerSpec(
             stage=stage, prefix=str(record["prefix"]), module=str(record["module"]),
             generator=str(record["generator"]), descriptors=str(record["descriptors"]),
-            kernels=tuple(kernels),
+            kernels=tuple(kernels), original=bool(record.get("original", False)),
         ))
     return tuple(specs)
 
@@ -145,6 +150,16 @@ def bindable_kernels(path: str | Path | None = None) -> tuple[str, ...]:
     """Every kernel some runner pauses at."""
 
     return tuple(name for spec in load_manifest(path) for name in spec.kernel_names)
+
+
+def frame_names_from_descriptor(path: Path, kernel: str) -> tuple[str, ...]:
+    """The slots of ``kernel`` in a pausable runner's frame table, in order."""
+
+    payload = load_table(path)
+    slots = (payload.get("kernels") or {}).get(kernel)
+    if not slots:
+        raise NativeCAMError(f"{path} describes no frame for kernel {kernel!r}")
+    return tuple(str(slot["name"]) for slot in slots)
 
 
 def frame_names_from_contract(path: Path) -> tuple[str, ...]:
@@ -180,7 +195,9 @@ class ImageSegmentRunner:
         #: kernel -> the frame's argument names in the call's order, without the stage prefix
         self.names: dict[str, tuple[str, ...]] = {}
         for kernel in spec.kernels:
-            if kernel.contract is not None:
+            if kernel.frame is not None:
+                self.names[kernel.name] = frame_names_from_descriptor(REPO / kernel.frame, kernel.name)
+            elif kernel.contract is not None:
                 self.names[kernel.name] = frame_names_from_contract(REPO / kernel.contract)
             elif kernel.name in described:
                 self.names[kernel.name] = tuple(a.field.split(".", 1)[1] for a in described[kernel.name].arguments)
@@ -190,6 +207,10 @@ class ImageSegmentRunner:
                     f"names no contract; the runner for {spec.stage!r} cannot decode its frames")
         self.slots = max(len(names) for names in self.names.values())
         self._entry = {suffix: getattr(library, f"{spec.prefix}_{suffix}_v1") for suffix in ENTRY_SUFFIXES}
+        self._original = getattr(library, f"{spec.prefix}_original_v1", None) if spec.original else None
+        if spec.original and self._original is None:
+            raise NativeCAMError(f"the manifest says the {spec.prefix} runner runs the original at a pause, "
+                                 f"but the image exports no {spec.prefix}_original_v1")
         self._bind()
 
     def _bind(self) -> None:
@@ -205,6 +226,24 @@ class ImageSegmentRunner:
         self._entry["error"].argtypes = [c_int, ctypes.c_char_p, c_int]
         self._entry["reset"].argtypes = [c_int]
         self._entry["destroy"].argtypes = [c_int]
+        if self._original is not None:
+            self._original.restype = c_int
+            self._original.argtypes = [c_int, c_int]
+
+    @property
+    def runs_original(self) -> bool:
+        """Whether this runner can run the paused call itself (see run_original)."""
+
+        return self._original is not None
+
+    def run_original(self, context: int, kernel: str) -> None:
+        """Run the original call on the paused frame's storage, in the runner."""
+
+        if self._original is None:
+            raise NativeCAMError(f"the {self.spec.prefix} runner does not run the original at a pause")
+        status = self._original(context, self.spec.kernel_id(kernel))
+        if status:
+            raise NativeCAMError(f"{self.spec.prefix} runner refused to run the original ({status}): {self.error(context)}")
 
     # -- the SegmentRunner protocol -------------------------------------------
 
@@ -311,4 +350,5 @@ class StageSevenRunner(ImageSegmentRunner):
 
 __all__ = ["ENTRIES", "ENTRY_SUFFIXES", "KERNELS", "MANIFEST", "STAGE", "ImageSegmentRunner",
            "RunnerKernel", "RunnerSpec", "StageSevenRunner", "bindable_kernels", "frame_names_from_contract",
+           "frame_names_from_descriptor",
            "image_offers_runner", "load_manifest", "runner_for", "runner_kernels", "runner_spec"]

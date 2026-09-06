@@ -40,7 +40,7 @@ from ..pi_cam.facade import Physics
 from ..pi_cam.kernel_codegen import load_direct_kernels
 from .capture import lane_sha256
 from .errors import PhysicsError
-from .segments import OriginalKernel, SegmentedStage
+from .segments import OriginalAtPause, OriginalKernel, SegmentedStage
 
 REPO = Path(__file__).resolve().parents[3]
 
@@ -1286,21 +1286,27 @@ class NativeStage:
         self.execution.legacy_steps += 1
         self._tend_walk(native, context)
 
+    def prepare_segmented(self, native: Any) -> None:
+        """Bind what the runner reads before its first start.
+
+        The stage-7 runner reads the stage's hosts -- state, tendencies, the
+        physics buffer -- through the same bindings the walk uses, and those
+        are made when this rank's runtime is built.  Build it first: a model
+        in the slot, unlike the original kernel run through Python, would not
+        otherwise touch the runtime at all, and the runner refuses a context
+        while the hosts are unbound.  A runner that pauses inside a sub-walk's
+        driver runs that driver's pieces from the sub-walk's handles module,
+        which its runtime binds and configures.
+        """
+
+        self.runtime(native)
+        for component in self.components.values():
+            component.runtime(native)
+
     def _tend_segmented(self, native: Any) -> None:
         """The original Fortran through its segment runner, paused at each replaced kernel."""
 
-        # The runner reads the stage's hosts -- state, tendencies, the physics
-        # buffer -- through the same bindings the walk uses, and those are
-        # made when this rank's runtime is built.  Build it first: a model in
-        # the slot, unlike the original kernel run through Python, would not
-        # otherwise touch the runtime at all, and the runner refuses a
-        # context while the hosts are unbound.
-        self.runtime(native)
-        # A runner that pauses inside a sub-walk's driver runs that driver's
-        # pieces from the sub-walk's handles module, which its runtime binds
-        # and configures (the microphysics pieces read flags Python sets).
-        for component in self.components.values():
-            component.runtime(native)
+        self.prepare_segmented(native)
         segmented = self._segmented
         if segmented is None:
             runner = native.segment_runner(self.STAGE)
@@ -1315,7 +1321,11 @@ class NativeStage:
                 kernels[name] = None
             elif isinstance(kernel, OriginalKernel):
                 owner = self._owner_of(name)
-                if type(owner).original_kernel_through_python is not NativeStage.original_kernel_through_python:
+                if getattr(segmented.runner, "runs_original", False):
+                    # the runner runs the paused call itself; the frame's
+                    # write-back is exercised with what it produced
+                    kernels[name] = OriginalAtPause()
+                elif type(owner).original_kernel_through_python is not NativeStage.original_kernel_through_python:
                     kernels[name] = owner.original_kernel_through_python(native, name)
                 else:
                     kernels[name] = self._original_through_python(native, name)

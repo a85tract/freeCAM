@@ -49,6 +49,26 @@
    "stage_action": "cam_run1.radiation",
    "stage_class": "freecam.physics.radiation.Radiation",
    "validated": false
+  },
+  {
+   "bindable": true,
+   "evidence": [],
+   "kernel": "dadadj",
+   "owner_class": "freecam.physics.pausable.DryAdjustment",
+   "reason": "bindable, but the pause path has not passed a bit-for-bit gate",
+   "stage_action": "cam_run1.dry_adjustment",
+   "stage_class": "freecam.physics.pausable.DryAdjustment",
+   "validated": false
+  },
+  {
+   "bindable": true,
+   "evidence": [],
+   "kernel": "compute_uwshcu_inv",
+   "owner_class": "freecam.physics.pausable.ShallowConvection",
+   "reason": "bindable, but the pause path has not passed a bit-for-bit gate",
+   "stage_action": "cam_run1.shallow_convection",
+   "stage_class": "freecam.physics.pausable.ShallowConvection",
+   "validated": false
   }
  ],
  "cases": {
@@ -57,11 +77,11 @@
   "PI-atm-online": "configs/pi_cam_icesm131_online.yaml",
   "PI-atm-replay": "configs/pi_cam_icesm131_replay.yaml"
  },
- "catalog_hash": "6a0806d56e2471509a6782411cf917b64f0a4ff18847ccab60aec043de05f00c",
- "commit": "b144852b32647c931afb7762efc37504b7c60fe7",
+ "catalog_hash": "c4ac252353479d1e6e3d9e3d5c8f1a5d31c7bf76ac6c63b78ee6a75347f92ec0",
+ "commit": "ab7b4eb60d1e5ab3006a0f1ce9bb1c103b90c555",
  "default_document": {
   "case": "PI-atm",
-  "catalog_version": "6a0806d56e2471509a6782411cf917b64f0a4ff18847ccab60aec043de05f00c",
+  "catalog_version": "c4ac252353479d1e6e3d9e3d5c8f1a5d31c7bf76ac6c63b78ee6a75347f92ec0",
   "experimental": false,
   "namelist": {},
   "nodes": [
@@ -1263,7 +1283,12 @@
    },
    {
     "configuration": {
-     "kernels": {},
+     "kernels": {
+      "dadadj": {
+       "kind": "original",
+       "path": null
+      }
+     },
      "parameters": {},
      "python_source": null,
      "variables": []
@@ -1278,7 +1303,18 @@
     "locked": false,
     "metadata": {
      "control_owner": "python",
-     "kernels": [],
+     "kernels": [
+      {
+       "bindable": true,
+       "evidence": [],
+       "kernel": "dadadj",
+       "owner_class": "freecam.physics.pausable.DryAdjustment",
+       "reason": "bindable, but the pause path has not passed a bit-for-bit gate",
+       "stage_action": "cam_run1.dry_adjustment",
+       "stage_class": "freecam.physics.pausable.DryAdjustment",
+       "validated": false
+      }
+     ],
      "parameters": []
     },
     "movable": true,
@@ -1357,7 +1393,12 @@
    },
    {
     "configuration": {
-     "kernels": {},
+     "kernels": {
+      "compute_uwshcu_inv": {
+       "kind": "original",
+       "path": null
+      }
+     },
      "parameters": {},
      "python_source": null,
      "variables": []
@@ -1372,7 +1413,18 @@
     "locked": false,
     "metadata": {
      "control_owner": "python",
-     "kernels": [],
+     "kernels": [
+      {
+       "bindable": true,
+       "evidence": [],
+       "kernel": "compute_uwshcu_inv",
+       "owner_class": "freecam.physics.pausable.ShallowConvection",
+       "reason": "bindable, but the pause path has not passed a bit-for-bit gate",
+       "stage_action": "cam_run1.shallow_convection",
+       "stage_class": "freecam.physics.pausable.ShallowConvection",
+       "validated": false
+      }
+     ],
      "parameters": [
       {
        "dtype": "float64",
@@ -3387,7 +3439,12 @@
   },
   {
    "configuration": {
-    "kernels": {},
+    "kernels": {
+     "dadadj": {
+      "kind": "original",
+      "path": null
+     }
+    },
     "parameters": {},
     "python_source": null,
     "variables": []
@@ -3402,7 +3459,18 @@
    "locked": false,
    "metadata": {
     "control_owner": "python",
-    "kernels": [],
+    "kernels": [
+     {
+      "bindable": true,
+      "evidence": [],
+      "kernel": "dadadj",
+      "owner_class": "freecam.physics.pausable.DryAdjustment",
+      "reason": "bindable, but the pause path has not passed a bit-for-bit gate",
+      "stage_action": "cam_run1.dry_adjustment",
+      "stage_class": "freecam.physics.pausable.DryAdjustment",
+      "validated": false
+     }
+    ],
     "parameters": []
    },
    "movable": true,
@@ -3481,7 +3549,12 @@
   },
   {
    "configuration": {
-    "kernels": {},
+    "kernels": {
+     "compute_uwshcu_inv": {
+      "kind": "original",
+      "path": null
+     }
+    },
     "parameters": {},
     "python_source": null,
     "variables": []
@@ -3496,7 +3569,18 @@
    "locked": false,
    "metadata": {
     "control_owner": "python",
-    "kernels": [],
+    "kernels": [
+     {
+      "bindable": true,
+      "evidence": [],
+      "kernel": "compute_uwshcu_inv",
+      "owner_class": "freecam.physics.pausable.ShallowConvection",
+      "reason": "bindable, but the pause path has not passed a bit-for-bit gate",
+      "stage_action": "cam_run1.shallow_convection",
+      "stage_class": "freecam.physics.pausable.ShallowConvection",
+      "validated": false
+     }
+    ],
     "parameters": [
      {
       "dtype": "float64",
@@ -5717,7 +5801,12 @@
    "addable": true,
    "category": "Physics",
    "configuration": {
-    "kernels": {},
+    "kernels": {
+     "dadadj": {
+      "kind": "original",
+      "path": null
+     }
+    },
     "parameters": {},
     "python_source": null,
     "variables": []
@@ -5734,7 +5823,18 @@
    "locked": false,
    "metadata": {
     "control_owner": "python",
-    "kernels": [],
+    "kernels": [
+     {
+      "bindable": true,
+      "evidence": [],
+      "kernel": "dadadj",
+      "owner_class": "freecam.physics.pausable.DryAdjustment",
+      "reason": "bindable, but the pause path has not passed a bit-for-bit gate",
+      "stage_action": "cam_run1.dry_adjustment",
+      "stage_class": "freecam.physics.pausable.DryAdjustment",
+      "validated": false
+     }
+    ],
     "parameters": []
    },
    "movable": true,
@@ -5823,7 +5923,12 @@
    "addable": true,
    "category": "Physics",
    "configuration": {
-    "kernels": {},
+    "kernels": {
+     "compute_uwshcu_inv": {
+      "kind": "original",
+      "path": null
+     }
+    },
     "parameters": {},
     "python_source": null,
     "variables": []
@@ -5840,7 +5945,18 @@
    "locked": false,
    "metadata": {
     "control_owner": "python",
-    "kernels": [],
+    "kernels": [
+     {
+      "bindable": true,
+      "evidence": [],
+      "kernel": "compute_uwshcu_inv",
+      "owner_class": "freecam.physics.pausable.ShallowConvection",
+      "reason": "bindable, but the pause path has not passed a bit-for-bit gate",
+      "stage_action": "cam_run1.shallow_convection",
+      "stage_class": "freecam.physics.pausable.ShallowConvection",
+      "validated": false
+     }
+    ],
     "parameters": [
      {
       "dtype": "float64",
@@ -18406,7 +18522,7 @@
    "writes": []
   }
  ],
- "generated_at": "2026-09-05T20:56:07+00:00",
+ "generated_at": "2026-09-06T11:54:29+00:00",
  "parameters": {
   "cam_run1.cloud_macro_microphysics": [
    {

@@ -75,11 +75,15 @@ def kernel_capabilities() -> tuple[KernelCapability, ...]:
 
     runner_kernels = set(bindable_kernels())
     validated_kernels = validated_through_runner()
+    from freecam.physics.pausable import STAGES
+
     owners = (
         (CloudMacroMicrophysics, Macrophysics),
         (CloudMacroMicrophysics, Microphysics),
         (CloudMacroMicrophysics, MicropAero),
         (Radiation, Radiation),
+        # the pausable stages own their kernels themselves
+        *((cls, cls) for cls in STAGES.values() if cls.SWAPPABLE),
     )
     capabilities: list[KernelCapability] = []
     for stage_class, owner in owners:

@@ -142,6 +142,36 @@ class OriginalKernel:
         return "OriginalKernel()"
 
 
+class OriginalAtPause:
+    """Put in a kernel slot: the original call, run by the runner itself at the pause.
+
+    The runner's `original` entry executes the very call statement on the
+    frame's storage.  This model then reads every output the frame declares,
+    zeroes it, and answers with what it read -- so the frame's write-back
+    puts the original's values back exactly, and the gate exercises the
+    pause, the frame's slots, the write-back and the resume, with no direct
+    kernel or standalone image required.  Bit-for-bit output is then the
+    proof of the path.
+    """
+
+    takes_frame = True
+
+    def __call__(self, frame: "KernelFrame", runner: "SegmentRunner", context: int) -> dict[str, np.ndarray]:
+        runner.run_original(context, frame.kernel)          # type: ignore[attr-defined]
+        answer: dict[str, np.ndarray] = {}
+        for argument in frame.arguments:
+            if not argument.is_output:
+                continue
+            target = argument.array[:frame.ncol] if argument.array.ndim else argument.array
+            answer[argument.name] = np.array(target, copy=True)
+            if target.size:
+                target[...] = 0
+        return answer
+
+    def __repr__(self) -> str:
+        return "OriginalAtPause()"
+
+
 class SegmentRunner(Protocol):
     """What the image (or a fake) offers for one stage.
 
@@ -237,9 +267,12 @@ class SegmentedStage:
                     raise PhysicsError(
                         f"{self.stage_name}: the runner paused on {frame.kernel!r}, which "
                         f"is not replaced")
-                batch = frame.batch()
-                counters.bytes_copied_in += sum(v.nbytes for v in batch.values())
-                answer = model(batch)
+                if getattr(model, "takes_frame", False):
+                    answer = model(frame, self.runner, self.context)
+                else:
+                    batch = frame.batch()
+                    counters.bytes_copied_in += sum(v.nbytes for v in batch.values())
+                    answer = model(batch)
                 counters.model_calls += 1
                 counters.calls_by_kernel[frame.kernel] = counters.calls_by_kernel.get(frame.kernel, 0) + 1
                 written = frame.write_back(answer)
@@ -274,5 +307,5 @@ class SegmentedStage:
             self.context = None
 
 
-__all__ = ["FrameArgument", "KernelFrame", "OriginalKernel", "SegmentCounters", "SegmentEvent",
-           "SegmentRunner", "SegmentedStage"]
+__all__ = ["FrameArgument", "KernelFrame", "OriginalAtPause", "OriginalKernel", "SegmentCounters",
+           "SegmentEvent", "SegmentRunner", "SegmentedStage"]

@@ -36,3 +36,29 @@ runners:
     - validation/pi_cam_stage7_segmented_micro_vs_oracle_50step_bfb.json
     - validation/pi_cam_stage7_segmented_both_50step.json
     - validation/pi_cam_stage7_segmented_both_vs_oracle_50step_bfb.json
+# The pausable runners (tools/generate_pi_cam_pausable_runners.py): one per
+# process, the original driver hoisted verbatim and cut at its kernel calls.
+# Their frames are described in native/pi_cam/segment_frames.yaml, and each
+# offers `original_v1`, which runs the paused call itself for the gate.
+- stage: cam_run1.dry_adjustment
+  prefix: pycam_dadadj
+  module: native/pi_cam/support/pycam_dadadj_runner.F90
+  generator: tools/generate_pi_cam_pausable_runners.py
+  descriptors: native/pi_cam/direct_kernels_promoted.yaml
+  original: true
+  kernels:
+  - name: dadadj
+    owner: freecam.physics.pausable.DryAdjustment
+    frame: native/pi_cam/segment_frames.yaml
+    validated_by: []
+- stage: cam_run1.shallow_convection
+  prefix: pycam_shcu
+  module: native/pi_cam/support/pycam_shcu_runner.F90
+  generator: tools/generate_pi_cam_pausable_runners.py
+  descriptors: native/pi_cam/direct_kernels_promoted.yaml
+  original: true
+  kernels:
+  - name: compute_uwshcu_inv
+    owner: freecam.physics.pausable.ShallowConvection
+    frame: native/pi_cam/segment_frames.yaml
+    validated_by: []

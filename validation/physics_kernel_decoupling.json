@@ -37,16 +37,16 @@
     "numeric_schemes_active": 12,
     "numeric_scheme_coverage": {
       "alternate": 9,
-      "gap": 10,
+      "gap": 8,
       "not-required-in-this-configuration": 11,
-      "partial": 2
+      "partial": 4
     },
-    "kernels": 4,
+    "kernels": 6,
     "kernels_by_status": {
       "complete": 1,
-      "open": 3
+      "open": 5
     },
-    "kernels_bindable": 2,
+    "kernels_bindable": 4,
     "kernels_validated_through_runner": 2,
     "catalog_procedures": 371
   },
@@ -194,7 +194,7 @@
       "classification": "numeric_scheme",
       "activity": "inert-by-configuration",
       "activity_basis": "the test tracers are not enabled in this compset (unconfirmed: no targeted test yet)",
-      "python_class": null,
+      "python_class": "freecam.physics.pausable.TracerTendencies",
       "kernels": [],
       "kernel_candidates": [],
       "deeper_procedures": 0,
@@ -219,7 +219,7 @@
       "classification": "numeric_scheme",
       "activity": "inert-by-configuration",
       "activity_basis": "aoa_tracers_flag is off (unconfirmed: no targeted test yet)",
-      "python_class": null,
+      "python_class": "freecam.physics.pausable.AgeOfAirTendencies",
       "kernels": [],
       "kernel_candidates": [],
       "deeper_procedures": 0,
@@ -755,7 +755,7 @@
       "classification": "numeric_scheme",
       "activity": "inert-by-configuration",
       "activity_basis": "rayk0 is not set; the routine's tendency is zero and physics_update runs (unconfirmed: no targeted test yet)",
-      "python_class": null,
+      "python_class": "freecam.physics.pausable.RayleighFriction",
       "kernels": [],
       "kernel_candidates": [
         {
@@ -867,7 +867,7 @@
       "classification": "numeric_scheme",
       "activity": "inert-by-configuration",
       "activity_basis": "carma_model is none (unconfirmed: no targeted test yet)",
-      "python_class": null,
+      "python_class": "freecam.physics.pausable.CARMAAerosolTendencies",
       "kernels": [],
       "kernel_candidates": [],
       "deeper_procedures": 0,
@@ -892,7 +892,7 @@
       "classification": "numeric_scheme",
       "activity": "inert-by-configuration",
       "activity_basis": "no ionosphere: charge_fix reduces to mbar = mwdry (unconfirmed: no targeted test yet)",
-      "python_class": null,
+      "python_class": "freecam.physics.pausable.ChargeNeutrality",
       "kernels": [],
       "kernel_candidates": [],
       "deeper_procedures": 0,
@@ -1268,7 +1268,7 @@
       "classification": "numeric_scheme",
       "activity": "inert-by-configuration",
       "activity_basis": "qbo_use_forcing is off (unconfirmed: no targeted test yet)",
-      "python_class": null,
+      "python_class": "freecam.physics.pausable.QBORelaxation",
       "kernels": [],
       "kernel_candidates": [
         {
@@ -1372,7 +1372,7 @@
       "classification": "numeric_scheme",
       "activity": "inert-by-configuration",
       "activity_basis": "no WACCM: iondrag_calc returns without a tendency (unconfirmed: no targeted test yet)",
-      "python_class": null,
+      "python_class": "freecam.physics.pausable.IonDrag",
       "kernels": [],
       "kernel_candidates": [],
       "deeper_procedures": 0,
@@ -1449,7 +1449,7 @@
       "classification": "numeric_scheme",
       "activity": "inert-by-configuration",
       "activity_basis": "carma_model is none (unconfirmed: no targeted test yet)",
-      "python_class": null,
+      "python_class": "freecam.physics.pausable.CARMAStatistics",
       "kernels": [],
       "kernel_candidates": [],
       "deeper_procedures": 0,
@@ -1925,8 +1925,10 @@
       "classification": "numeric_scheme",
       "activity": "active",
       "activity_basis": "enabled in the plan; called every step in the recorded runs",
-      "python_class": null,
-      "kernels": [],
+      "python_class": "freecam.physics.pausable.DryAdjustment",
+      "kernels": [
+        "dadadj"
+      ],
       "kernel_candidates": [
         {
           "name": "dry_adjustment",
@@ -1974,7 +1976,7 @@
       },
       "alternate_of": [],
       "performance": [],
-      "coverage": "gap",
+      "coverage": "partial",
       "note": null
     },
     {
@@ -2513,8 +2515,10 @@
       "classification": "numeric_scheme",
       "activity": "active",
       "activity_basis": "enabled in the plan; called every step in the recorded runs",
-      "python_class": null,
-      "kernels": [],
+      "python_class": "freecam.physics.pausable.ShallowConvection",
+      "kernels": [
+        "compute_uwshcu_inv"
+      ],
       "kernel_candidates": [
         {
           "name": "shallow_convection",
@@ -2946,7 +2950,7 @@
       },
       "alternate_of": [],
       "performance": [],
-      "coverage": "gap",
+      "coverage": "partial",
       "note": null
     },
     {
@@ -2961,7 +2965,7 @@
       "classification": "numeric_scheme",
       "activity": "inert-by-configuration",
       "activity_basis": "sslt_rebin_adv acts on bulk sea salt, which the modal aerosols do not carry (unconfirmed: no targeted test yet)",
-      "python_class": null,
+      "python_class": "freecam.physics.pausable.SeaSaltRebin",
       "kernels": [],
       "kernel_candidates": [
         {
@@ -3113,7 +3117,7 @@
       "classification": "numeric_scheme",
       "activity": "inert-by-configuration",
       "activity_basis": "modal_aero_prepare has no work outside the sub-column path (unconfirmed: no targeted test yet)",
-      "python_class": null,
+      "python_class": "freecam.physics.pausable.ModalAerosolPreparation",
       "kernels": [],
       "kernel_candidates": [],
       "deeper_procedures": 0,
@@ -3163,7 +3167,7 @@
       "classification": "numeric_scheme",
       "activity": "inert-by-configuration",
       "activity_basis": "carma_model is none (unconfirmed: no targeted test yet)",
-      "python_class": null,
+      "python_class": "freecam.physics.pausable.CARMAWetDeposition",
       "kernels": [],
       "kernel_candidates": [],
       "deeper_procedures": 0,
@@ -4880,6 +4884,69 @@
         "segment_runner",
         "reviewed_contract"
       ]
+    },
+    {
+      "kernel": "dadadj",
+      "stage_action": "cam_run1.dry_adjustment",
+      "owner_class": "freecam.physics.pausable.DryAdjustment",
+      "routine": "dadadj",
+      "contract": "reviewed",
+      "contract_path": "native/pi_cam/functions/dadadj.yaml",
+      "bindable": true,
+      "validated_through_runner": false,
+      "evidence": {
+        "capture": [
+          "pi_cam_dadadj_capture_50step.json"
+        ],
+        "standalone_build": [
+          "pi_cam_dadadj_standalone_build.json"
+        ],
+        "replay_full_chunk": [
+          "pi_cam_dadadj_full_chunk_vs_capture.json"
+        ],
+        "replay_single_column": [
+          "pi_cam_dadadj_single_column_vs_capture.json"
+        ],
+        "replay_public_api": [
+          "pi_cam_dadadj_public_api_vs_capture.json"
+        ],
+        "module_state": [
+          "pi_cam_dadadj_module_state.json"
+        ]
+      },
+      "in_model_gates": [],
+      "status": "open",
+      "missing": [
+        "in_model_replacement_bfb"
+      ]
+    },
+    {
+      "kernel": "compute_uwshcu_inv",
+      "stage_action": "cam_run1.shallow_convection",
+      "owner_class": "freecam.physics.pausable.ShallowConvection",
+      "routine": "compute_uwshcu_inv",
+      "contract": "reviewed",
+      "contract_path": "native/pi_cam/functions/uwshcu.yaml",
+      "bindable": true,
+      "validated_through_runner": false,
+      "evidence": {
+        "capture": [],
+        "standalone_build": [],
+        "replay_full_chunk": [],
+        "replay_single_column": [],
+        "replay_public_api": [],
+        "module_state": []
+      },
+      "in_model_gates": [],
+      "status": "open",
+      "missing": [
+        "capture",
+        "standalone_build",
+        "replay_full_chunk",
+        "replay_single_column",
+        "replay_public_api",
+        "in_model_replacement_bfb"
+      ]
     }
   ],
   "unresolved": [
@@ -5000,6 +5067,34 @@
       "why": "no record in validation/ for this step of the loop"
     },
     {
+      "what": "dadadj: in_model_replacement_bfb",
+      "why": "no record in validation/ for this step of the loop"
+    },
+    {
+      "what": "compute_uwshcu_inv: capture",
+      "why": "no record in validation/ for this step of the loop"
+    },
+    {
+      "what": "compute_uwshcu_inv: standalone_build",
+      "why": "no record in validation/ for this step of the loop"
+    },
+    {
+      "what": "compute_uwshcu_inv: replay_full_chunk",
+      "why": "no record in validation/ for this step of the loop"
+    },
+    {
+      "what": "compute_uwshcu_inv: replay_single_column",
+      "why": "no record in validation/ for this step of the loop"
+    },
+    {
+      "what": "compute_uwshcu_inv: replay_public_api",
+      "why": "no record in validation/ for this step of the loop"
+    },
+    {
+      "what": "compute_uwshcu_inv: in_model_replacement_bfb",
+      "why": "no record in validation/ for this step of the loop"
+    },
+    {
       "what": "cam_run2.chemistry_tendencies_leaf",
       "why": "the physics catalog lists no procedure under this action; its active call graph must be extended before this action's kernels can be chosen"
     },
@@ -5016,5 +5111,5 @@
       "why": "the physics catalog lists no procedure under this action; its active call graph must be extended before this action's kernels can be chosen"
     }
   ],
-  "coverage_hash": "b7ca9fe949fadbd39512d1f3747ccc12852d3eb637072a1496bdf02f46bd287d"
+  "coverage_hash": "784134ed9f8ada7085db5e67f53f3db19538791c6ad37ca3b965aebc099a542a"
 }

@@ -45,8 +45,11 @@ def test_each_patch_ships_in_the_set_that_has_to_prove_it() -> None:
     # The boundary edits tphysbc, which every run executes: production set,
     # answering to the bit-for-bit gate.
     assert "0039-macro-tend-boundary.patch" in production
-    # Radiation's boundary is the same kind of edit and ships the same way.
-    assert production[-1] == "0041-rad-tend-boundary.patch"
+    # Radiation's boundary is the same kind of edit and ships the same way; the
+    # carry accessors the pausable runners read come last, since they are
+    # generated against physpkg with every earlier production patch applied.
+    assert "0041-rad-tend-boundary.patch" in production
+    assert production[-1] == "0043-stage-carry-boundary.patch"
     # The dispatcher only widens the leaf entry point Python drives: add-on
     # set, last, since it edits what 0031 leaves behind.
     assert "0040-macro-tend-leaf-dispatch.patch" in add_on
@@ -125,7 +128,11 @@ def test_the_support_modules_are_additions_the_image_links() -> None:
                                "pycam_micro_kernels.F90", "pycam_mm_kernels.F90",
                                "pycam_aero_kernels.F90",
                                "pycam_micro_handles.F90", "pycam_aero_handles.F90",
-                               "pycam_mm_handles.F90")
+                               "pycam_mm_handles.F90",
+                               # the pausable runners: hosts, units, runners
+                               "pycam_stage_hosts.F90",
+                               "pycam_dadadj_glue.F90", "pycam_dadadj_runner.F90",
+                               "pycam_shcu_driver.F90", "pycam_shcu_glue.F90", "pycam_shcu_runner.F90")
     for name in SUPPORT_MODULES:
         assert (REPO / "native/pi_cam/support" / name).is_file()
     builder = (REPO / "tools/build_pi_cam_devices.py").read_text()

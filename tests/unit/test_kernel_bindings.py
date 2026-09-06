@@ -30,8 +30,8 @@ REPO = Path(__file__).resolve().parents[2]
 
 def test_the_manifest_declares_the_stage_7_runner_and_the_module_exports_its_entries() -> None:
     specs = runners.load_manifest()
-    assert [spec.stage for spec in specs] == ["cam_run1.cloud_macro_microphysics"]
-    (spec,) = specs
+    assert [spec.stage for spec in specs][0] == "cam_run1.cloud_macro_microphysics"
+    spec = specs[0]
     assert spec.kernel_names == ("mmacro_pcond", "micro_mg_tend")
     assert spec.kernel_id("mmacro_pcond") == 1 and spec.kernel_id("micro_mg_tend") == 2
     module = (REPO / spec.module).read_text()
@@ -41,8 +41,8 @@ def test_the_manifest_declares_the_stage_7_runner_and_the_module_exports_its_ent
     assert spec.kernel("mmacro_pcond").validated          # every gate record named is in the checkout
     assert spec.kernel("micro_mg_tend").validated         # gate 7331040: the pause, bit-for-bit
     assert spec.kernel("micro_mg_tend").contract == "native/pi_cam/functions/micro_mg_tend.yaml"
-    assert runners.runner_kernels() == {"cam_run1.cloud_macro_microphysics": ("mmacro_pcond", "micro_mg_tend")}
-    assert runners.bindable_kernels() == ("mmacro_pcond", "micro_mg_tend")
+    assert runners.runner_kernels()["cam_run1.cloud_macro_microphysics"] == ("mmacro_pcond", "micro_mg_tend")
+    assert runners.bindable_kernels()[:2] == ("mmacro_pcond", "micro_mg_tend")
     assert runners.KERNELS == ("mmacro_pcond", "micro_mg_tend") and runners.ENTRIES[0] == "pycam_stage7_create_v1"
     assert runners.runner_spec("cam_run1.radiation") is None
 
