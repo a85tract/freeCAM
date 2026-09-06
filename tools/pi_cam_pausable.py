@@ -586,6 +586,15 @@ def _resolve(spec: Spec) -> None:
             (call.statement,) = [t for _, _, t in statements(unit.lines, call.first, call.last)] or [""]
             if call.unit not in spec.units:
                 raise SystemExit(f"{unit.key}: unit call names {call.unit!r}, which the spec does not define")
+        for pause in unit.pauses:
+            kernel = spec.kernels[pause.kernel]
+            routine = kernel.routine.lower()
+            if kernel.source == unit.source and routine not in _resolvable_names(unit):
+                # a kernel the hoisted copy cannot see is an implicit external: it compiles and
+                # links to nothing (aero_model's private modal_aero_depvel_part did exactly that)
+                raise SystemExit(f"{unit.key}: kernel {pause.kernel!r} ({routine}) is not imported by a use "
+                                 f"statement of {unit.routine} or the spec's uses; a private procedure of the "
+                                 f"driver's own module needs the module-state patch and a `uses:` entry")
     for kernel in spec.kernels.values():
         kernel.lines = read_lines(kernel.source)
         start = next((i + 1 for i, line in enumerate(kernel.lines)

@@ -38,7 +38,7 @@ module pycam_adry_driver
   use modal_aero_data, only: lmassptr_amode
   use modal_aero_data, only: lmassptrcw_amode
   use modal_aero_deposition, only: set_srf_drydep
-  use aero_model, only: nmodes, dgnumwet_idx, qaerwat_idx, wetdens_ap_idx, drydep_lq
+  use aero_model, only: nmodes, dgnumwet_idx, qaerwat_idx, wetdens_ap_idx, drydep_lq, modal_aero_depvel_part
   implicit none
   private
   public :: driver_piece_1, driver_piece_2, driver_piece_3, driver_piece_4, driver_piece_5, driver_piece_6, driver_piece_7, modal_aero_depvel_part_1_frame, modal_aero_depvel_part_2_frame, modal_aero_depvel_part_3_frame, modal_aero_depvel_part_4_frame, modal_aero_depvel_part_1_original, modal_aero_depvel_part_2_original, modal_aero_depvel_part_3_original, modal_aero_depvel_part_4_original, driver_bind

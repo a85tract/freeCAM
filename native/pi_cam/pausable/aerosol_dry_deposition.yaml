@@ -38,7 +38,7 @@ units:
     module_header: [1, 28]
     declarations: [539, 607]
     uses:
-      - "use aero_model, only: nmodes, dgnumwet_idx, qaerwat_idx, wetdens_ap_idx, drydep_lq"
+      - "use aero_model, only: nmodes, dgnumwet_idx, qaerwat_idx, wetdens_ap_idx, drydep_lq, modal_aero_depvel_part"
     body:
       - piece: [608, 644]
       - pause: {kernel: modal_aero_depvel_part, call: [645, 647]}

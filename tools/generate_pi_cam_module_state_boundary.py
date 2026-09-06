@@ -92,10 +92,11 @@ STATE_PATCHES: tuple[StatePatch, ...] = (
         "0048-aero-model-state-boundary.patch", "src/chemistry/modal_aero/aero_model.F90",
         "logical :: modal_accum_coarse_exch = .false.",
         ("nmodes", "dgnumwet_idx", "qaerwat_idx", "fracis_idx", "wetdens_ap_idx", "nwetdep", "drydep_lq", "wetdep_lq",
-         "sol_facti_cloud_borne", "sol_factb_interstitial", "sol_factic_interstitial", "modal_aero_bcscavcoef_get"),
+         "sol_facti_cloud_borne", "sol_factb_interstitial", "sol_factic_interstitial", "modal_aero_bcscavcoef_get",
+         "modal_aero_depvel_part"),
         ("pyCAM (control patch 0048): the indices, selectors and solubility factors the",
-         "deposition drivers read and the scavenging coefficients they call for, readable",
-         "by the pausable runners' hoisted copies.  No executable statement changes."),
+         "deposition drivers read, and the module's own procedures they call, readable by",
+         "the pausable runners' hoisted copies.  No executable statement changes."),
     ),
 )
 BOUNDARIES = {entry.patch: entry.path for entry in STATE_PATCHES}

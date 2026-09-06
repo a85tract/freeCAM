@@ -2,7 +2,7 @@
 +++ b/src/chemistry/modal_aero/aero_model.F90
 @@ -90,0 +91,5 @@ module aero_model
 +   ! pyCAM (control patch 0048): the indices, selectors and solubility factors the
-+   ! deposition drivers read and the scavenging coefficients they call for, readable
-+   ! by the pausable runners' hoisted copies.  No executable statement changes.
-+   public :: nmodes, dgnumwet_idx, qaerwat_idx, fracis_idx, wetdens_ap_idx, nwetdep, drydep_lq, wetdep_lq, sol_facti_cloud_borne, sol_factb_interstitial, sol_factic_interstitial, modal_aero_bcscavcoef_get
++   ! deposition drivers read, and the module's own procedures they call, readable by
++   ! the pausable runners' hoisted copies.  No executable statement changes.
++   public :: nmodes, dgnumwet_idx, qaerwat_idx, fracis_idx, wetdens_ap_idx, nwetdep, drydep_lq, wetdep_lq, sol_facti_cloud_borne, sol_factb_interstitial, sol_factic_interstitial, modal_aero_bcscavcoef_get, modal_aero_depvel_part
 +
