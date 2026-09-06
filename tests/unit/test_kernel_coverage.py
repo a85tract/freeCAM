@@ -97,7 +97,7 @@ def test_every_kernel_row_is_a_kernel_a_stage_class_describes_and_two_have_close
         assert rows[name]["bindable"] and rows[name]["validated_through_runner"]      # gates 7334070-7334073
         assert "reviewed_contract" not in rows[name]["missing"] and "segment_runner" not in rows[name]["missing"]
         assert "in_model_replacement_bfb" not in rows[name]["missing"]
-        assert [g["record"] for g in rows[name]["in_model_gates"][1:]][-1] == "pi_cam_pausable_all-pause_50step.json"
+        assert [g["record"] for g in rows[name]["in_model_gates"][1:]][-1] == "pi_cam_pausable_everything_50step.json"
     assert record["summary"]["kernels_by_status"] == {"complete": 2, "open": 15}     # P3-P5 kernels await capture and replay
 
 
