@@ -81,7 +81,8 @@ def test_every_kernel_row_is_a_kernel_a_stage_class_describes_and_two_have_close
     assert micro["in_model_gates"][0]["bfb"] is True          # the walk with the core through its image
     # the pause gates the manifest names are in-model evidence too (7331040, 7331041)
     assert [g["record"] for g in micro["in_model_gates"][1:]] == [
-        "pi_cam_stage7_segmented_micro_50step.json", "pi_cam_stage7_segmented_both_50step.json"]
+        "pi_cam_stage7_segmented_micro_50step.json", "pi_cam_stage7_segmented_both_50step.json",
+        "pi_cam_pausable_everything_50step.json"]                  # every class installed, all kernels paused
     # the pausable classes' kernels: dadadj has closed the loop (7333952, 7333955), uwshcu lacks capture/replay
     dadadj = rows["dadadj"]
     assert dadadj["status"] == "complete" and dadadj["validated_through_runner"]

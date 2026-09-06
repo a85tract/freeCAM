@@ -196,14 +196,14 @@ def test_describe_kernels_reports_contract_coverage_binding_and_calls() -> None:
     pcond = rows["mmacro_pcond"]
     assert pcond["owner_class"].endswith("macrophysics.Macrophysics")
     assert pcond["stage_action"] == "cam_run1.cloud_macro_microphysics"
-    assert pcond["bindable"] and pcond["validated"] and len(pcond["validated_by"]) == 4
+    assert pcond["bindable"] and pcond["validated"] and len(pcond["validated_by"]) == 6    # + the everything run
     assert pcond["contract"]["path"] == "native/pi_cam/functions/mmacro_pcond.yaml"
     assert "cld" in pcond["contract"]["outputs"] and "t0" in pcond["contract"]["in_place"]
     assert pcond["contract"]["module_state_inputs"]["parameter"] >= 1
     assert pcond["binding"] == "original" and not pcond["replaced"] and pcond["model_calls"] == 0
     micro = rows["micro_mg_tend"]
     assert micro["owner_class"].endswith("microphysics.Microphysics")
-    assert micro["bindable"] and micro["validated"] and len(micro["validated_by"]) == 4
+    assert micro["bindable"] and micro["validated"] and len(micro["validated_by"]) == 6
     assert micro["contract"]["path"] == "native/pi_cam/functions/micro_mg_tend.yaml"
     stage.kernels["mmacro_pcond"] = _answer
     stage.execution.count_model_call("mmacro_pcond")

@@ -202,6 +202,12 @@ committed file equals a fresh build or the test fails.
 | `modal_aero_depvel_part` | AerosolDryDeposition (pausable, a leaf, four sites) | frame descriptor | yes, validated | segmented, bit-for-bit (800 pauses in 50 steps: the droplets and every mode at all four sites) | open: capture and replay |
 | `gas_phase_chemdr` | ChemistryTendencies (pausable, a leaf; the whole driver) | frame descriptor | yes, validated | segmented, bit-for-bit (100 pauses in 50 steps, the whole gas-phase driver answered as one kernel) | open: capture and replay |
 
+One run installs everything: the nine pausable classes, the split radiation
+class and the cloud stage, with all seventeen kernels answered by the original
+through their pauses (5300 pauses in 50 steps), bit-for-bit with the oracle
+(`pi_cam_pausable_everything_vs_oracle_50step_bfb.json`). Every kernel's
+manifest entry names that run beside its own gates.
+
 The energy fixer is the one active numerical action owned without a pause:
 `EnergyFixer` runs it whole and exposes no kernel, because `check_energy_fix`
 allocates its tendency inside the call and reads the module's private global

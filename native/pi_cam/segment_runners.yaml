@@ -25,6 +25,8 @@ runners:
     - validation/pi_cam_stage7_segmented_original_vs_oracle_50step_bfb.json
     - validation/pi_cam_stage7_segmented_both_50step.json
     - validation/pi_cam_stage7_segmented_both_vs_oracle_50step_bfb.json
+    - validation/pi_cam_pausable_everything_50step.json
+    - validation/pi_cam_pausable_everything_vs_oracle_50step_bfb.json
   # the microphysics core, paused inside micro_mg_cam_tend's substep loop; its
   # frame is the routine's own argument list (the reviewed contract), without
   # the character argument the driver checks after the call
@@ -36,6 +38,8 @@ runners:
     - validation/pi_cam_stage7_segmented_micro_vs_oracle_50step_bfb.json
     - validation/pi_cam_stage7_segmented_both_50step.json
     - validation/pi_cam_stage7_segmented_both_vs_oracle_50step_bfb.json
+    - validation/pi_cam_pausable_everything_50step.json
+    - validation/pi_cam_pausable_everything_vs_oracle_50step_bfb.json
 # The pausable runners (tools/generate_pi_cam_pausable_runners.py): one per
 # process, the original driver hoisted verbatim and cut at its kernel calls.
 # Their frames are described in native/pi_cam/segment_frames.yaml, and each
@@ -57,6 +61,8 @@ runners:
     - validation/pi_cam_pausable_both-pause_vs_oracle_50step_bfb.json
     - validation/pi_cam_pausable_all-pause_50step.json
     - validation/pi_cam_pausable_all-pause_vs_oracle_50step_bfb.json
+    - validation/pi_cam_pausable_everything_50step.json
+    - validation/pi_cam_pausable_everything_vs_oracle_50step_bfb.json
 - stage: cam_run1.shallow_convection
   prefix: pycam_shcu
   module: native/pi_cam/support/pycam_shcu_runner.F90
@@ -74,6 +80,8 @@ runners:
     - validation/pi_cam_pausable_both-pause_vs_oracle_50step_bfb.json
     - validation/pi_cam_pausable_all-pause_50step.json
     - validation/pi_cam_pausable_all-pause_vs_oracle_50step_bfb.json
+    - validation/pi_cam_pausable_everything_50step.json
+    - validation/pi_cam_pausable_everything_vs_oracle_50step_bfb.json
 # The radiation runner covers the driver call of the split stage (control patch
 # 0041): the stop half binds the chunk, the runner runs radiation_tend into the
 # radiation handles' ptend and net flux, and the resume half takes them when
@@ -96,6 +104,8 @@ runners:
     - validation/pi_cam_pausable_rad-both-pause_vs_oracle_50step_bfb.json
     - validation/pi_cam_pausable_all-pause_50step.json
     - validation/pi_cam_pausable_all-pause_vs_oracle_50step_bfb.json
+    - validation/pi_cam_pausable_everything_50step.json
+    - validation/pi_cam_pausable_everything_vs_oracle_50step_bfb.json
   - name: rad_rrtmg_lw
     owner: freecam.physics.radiation.Radiation
     frame: native/pi_cam/segment_frames.yaml
@@ -106,6 +116,8 @@ runners:
     - validation/pi_cam_pausable_rad-both-pause_vs_oracle_50step_bfb.json
     - validation/pi_cam_pausable_all-pause_50step.json
     - validation/pi_cam_pausable_all-pause_vs_oracle_50step_bfb.json
+    - validation/pi_cam_pausable_everything_50step.json
+    - validation/pi_cam_pausable_everything_vs_oracle_50step_bfb.json
 # Deep convection and the tracer transport leaf share zm_conv_intr's per-chunk
 # state (control patch 0044): the first writes it at zm_convr, the second reads
 # it at convtran, a few actions later, from the same module arrays.
@@ -126,6 +138,8 @@ runners:
     - validation/pi_cam_pausable_deep-all_vs_oracle_50step_bfb.json
     - validation/pi_cam_pausable_chain-pause_50step.json
     - validation/pi_cam_pausable_chain-pause_vs_oracle_50step_bfb.json
+    - validation/pi_cam_pausable_everything_50step.json
+    - validation/pi_cam_pausable_everything_vs_oracle_50step_bfb.json
   - name: zm_conv_evap
     owner: freecam.physics.pausable.DeepConvection
     frame: native/pi_cam/segment_frames.yaml
@@ -136,6 +150,8 @@ runners:
     - validation/pi_cam_pausable_deep-all_vs_oracle_50step_bfb.json
     - validation/pi_cam_pausable_chain-pause_50step.json
     - validation/pi_cam_pausable_chain-pause_vs_oracle_50step_bfb.json
+    - validation/pi_cam_pausable_everything_50step.json
+    - validation/pi_cam_pausable_everything_vs_oracle_50step_bfb.json
   - name: momtran
     owner: freecam.physics.pausable.DeepConvection
     frame: native/pi_cam/segment_frames.yaml
@@ -146,6 +162,8 @@ runners:
     - validation/pi_cam_pausable_deep-all_vs_oracle_50step_bfb.json
     - validation/pi_cam_pausable_chain-pause_50step.json
     - validation/pi_cam_pausable_chain-pause_vs_oracle_50step_bfb.json
+    - validation/pi_cam_pausable_everything_50step.json
+    - validation/pi_cam_pausable_everything_vs_oracle_50step_bfb.json
 - stage: cam_run1.convective_tracer_transport_leaf
   prefix: pycam_zmtran
   module: native/pi_cam/support/pycam_zmtran_runner.F90
@@ -161,6 +179,8 @@ runners:
     - validation/pi_cam_pausable_tran-pause_vs_oracle_50step_bfb.json
     - validation/pi_cam_pausable_chain-pause_50step.json
     - validation/pi_cam_pausable_chain-pause_vs_oracle_50step_bfb.json
+    - validation/pi_cam_pausable_everything_50step.json
+    - validation/pi_cam_pausable_everything_vs_oracle_50step_bfb.json
 # The tphysac stages: vertical diffusion (its solver paused at both call
 # sites) and gravity wave drag (the orographic source's drag profile).  Both
 # read their modules' private state through control patches 0045 and 0046.
@@ -179,6 +199,8 @@ runners:
     - validation/pi_cam_pausable_vdiff-tms_vs_oracle_50step_bfb.json
     - validation/pi_cam_pausable_vdiff-all_50step.json
     - validation/pi_cam_pausable_vdiff-all_vs_oracle_50step_bfb.json
+    - validation/pi_cam_pausable_everything_50step.json
+    - validation/pi_cam_pausable_everything_vs_oracle_50step_bfb.json
   - name: compute_eddy_diff
     owner: freecam.physics.pausable.VerticalDiffusion
     frame: native/pi_cam/segment_frames.yaml
@@ -187,6 +209,8 @@ runners:
     - validation/pi_cam_pausable_vdiff-eddy_vs_oracle_50step_bfb.json
     - validation/pi_cam_pausable_vdiff-all_50step.json
     - validation/pi_cam_pausable_vdiff-all_vs_oracle_50step_bfb.json
+    - validation/pi_cam_pausable_everything_50step.json
+    - validation/pi_cam_pausable_everything_vs_oracle_50step_bfb.json
   - name: compute_vdiff
     owner: freecam.physics.pausable.VerticalDiffusion
     frame: native/pi_cam/segment_frames.yaml
@@ -195,6 +219,8 @@ runners:
     - validation/pi_cam_pausable_vdiff-vdiff_vs_oracle_50step_bfb.json
     - validation/pi_cam_pausable_vdiff-all_50step.json
     - validation/pi_cam_pausable_vdiff-all_vs_oracle_50step_bfb.json
+    - validation/pi_cam_pausable_everything_50step.json
+    - validation/pi_cam_pausable_everything_vs_oracle_50step_bfb.json
 - stage: cam_run2.gravity_wave_drag
   prefix: pycam_gwd
   module: native/pi_cam/support/pycam_gwd_runner.F90
@@ -208,6 +234,8 @@ runners:
     validated_by:
     - validation/pi_cam_pausable_gwd-pause_50step.json
     - validation/pi_cam_pausable_gwd-pause_vs_oracle_50step_bfb.json
+    - validation/pi_cam_pausable_everything_50step.json
+    - validation/pi_cam_pausable_everything_vs_oracle_50step_bfb.json
 # The three leaves: wet deposition (its scavenging kernel at both sites), dry
 # deposition (its deposition velocity at four sites) and chemistry (the whole
 # gas-phase driver as one kernel).  Their modules' private state is read
@@ -225,6 +253,8 @@ runners:
     validated_by:
     - validation/pi_cam_pausable_awet-pause_50step.json
     - validation/pi_cam_pausable_awet-pause_vs_oracle_50step_bfb.json
+    - validation/pi_cam_pausable_everything_50step.json
+    - validation/pi_cam_pausable_everything_vs_oracle_50step_bfb.json
 - stage: cam_run2.aerosol_dry_deposition_leaf
   prefix: pycam_adry
   module: native/pi_cam/support/pycam_adry_runner.F90
@@ -238,6 +268,8 @@ runners:
     validated_by:
     - validation/pi_cam_pausable_adry-pause_50step.json
     - validation/pi_cam_pausable_adry-pause_vs_oracle_50step_bfb.json
+    - validation/pi_cam_pausable_everything_50step.json
+    - validation/pi_cam_pausable_everything_vs_oracle_50step_bfb.json
 - stage: cam_run2.chemistry_tendencies_leaf
   prefix: pycam_chem
   module: native/pi_cam/support/pycam_chem_runner.F90
@@ -251,3 +283,5 @@ runners:
     validated_by:
     - validation/pi_cam_pausable_chem-pause_50step.json
     - validation/pi_cam_pausable_chem-pause_vs_oracle_50step_bfb.json
+    - validation/pi_cam_pausable_everything_50step.json
+    - validation/pi_cam_pausable_everything_vs_oracle_50step_bfb.json

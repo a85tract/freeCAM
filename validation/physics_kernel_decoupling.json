@@ -4800,6 +4800,14 @@
           "present": true,
           "bfb": true,
           "compared_files": 4
+        },
+        {
+          "path": "segmented, original kernel answered through the pause",
+          "record": "pi_cam_pausable_everything_50step.json",
+          "bfb_record": "pi_cam_pausable_everything_vs_oracle_50step_bfb.json",
+          "present": true,
+          "bfb": true,
+          "compared_files": 4
         }
       ],
       "status": "complete",
@@ -4847,6 +4855,14 @@
           "path": "segmented, original kernel answered through the pause",
           "record": "pi_cam_stage7_segmented_both_50step.json",
           "bfb_record": "pi_cam_stage7_segmented_both_vs_oracle_50step_bfb.json",
+          "present": true,
+          "bfb": true,
+          "compared_files": 4
+        },
+        {
+          "path": "segmented, original kernel answered through the pause",
+          "record": "pi_cam_pausable_everything_50step.json",
+          "bfb_record": "pi_cam_pausable_everything_vs_oracle_50step_bfb.json",
           "present": true,
           "bfb": true,
           "compared_files": 4
@@ -4909,6 +4925,14 @@
           "present": true,
           "bfb": true,
           "compared_files": 4
+        },
+        {
+          "path": "segmented, original kernel answered through the pause",
+          "record": "pi_cam_pausable_everything_50step.json",
+          "bfb_record": "pi_cam_pausable_everything_vs_oracle_50step_bfb.json",
+          "present": true,
+          "bfb": true,
+          "compared_files": 4
         }
       ],
       "status": "open",
@@ -4966,6 +4990,14 @@
           "path": "segmented, original kernel answered through the pause",
           "record": "pi_cam_pausable_all-pause_50step.json",
           "bfb_record": "pi_cam_pausable_all-pause_vs_oracle_50step_bfb.json",
+          "present": true,
+          "bfb": true,
+          "compared_files": 4
+        },
+        {
+          "path": "segmented, original kernel answered through the pause",
+          "record": "pi_cam_pausable_everything_50step.json",
+          "bfb_record": "pi_cam_pausable_everything_vs_oracle_50step_bfb.json",
           "present": true,
           "bfb": true,
           "compared_files": 4
@@ -5033,6 +5065,14 @@
           "present": true,
           "bfb": true,
           "compared_files": 4
+        },
+        {
+          "path": "segmented, original kernel answered through the pause",
+          "record": "pi_cam_pausable_everything_50step.json",
+          "bfb_record": "pi_cam_pausable_everything_vs_oracle_50step_bfb.json",
+          "present": true,
+          "bfb": true,
+          "compared_files": 4
         }
       ],
       "status": "complete",
@@ -5076,6 +5116,14 @@
           "path": "segmented, original kernel answered through the pause",
           "record": "pi_cam_pausable_all-pause_50step.json",
           "bfb_record": "pi_cam_pausable_all-pause_vs_oracle_50step_bfb.json",
+          "present": true,
+          "bfb": true,
+          "compared_files": 4
+        },
+        {
+          "path": "segmented, original kernel answered through the pause",
+          "record": "pi_cam_pausable_everything_50step.json",
+          "bfb_record": "pi_cam_pausable_everything_vs_oracle_50step_bfb.json",
           "present": true,
           "bfb": true,
           "compared_files": 4
@@ -5131,6 +5179,14 @@
           "present": true,
           "bfb": true,
           "compared_files": 4
+        },
+        {
+          "path": "segmented, original kernel answered through the pause",
+          "record": "pi_cam_pausable_everything_50step.json",
+          "bfb_record": "pi_cam_pausable_everything_vs_oracle_50step_bfb.json",
+          "present": true,
+          "bfb": true,
+          "compared_files": 4
         }
       ],
       "status": "open",
@@ -5180,6 +5236,14 @@
           "path": "segmented, original kernel answered through the pause",
           "record": "pi_cam_pausable_chain-pause_50step.json",
           "bfb_record": "pi_cam_pausable_chain-pause_vs_oracle_50step_bfb.json",
+          "present": true,
+          "bfb": true,
+          "compared_files": 4
+        },
+        {
+          "path": "segmented, original kernel answered through the pause",
+          "record": "pi_cam_pausable_everything_50step.json",
+          "bfb_record": "pi_cam_pausable_everything_vs_oracle_50step_bfb.json",
           "present": true,
           "bfb": true,
           "compared_files": 4
@@ -5235,6 +5299,14 @@
           "present": true,
           "bfb": true,
           "compared_files": 4
+        },
+        {
+          "path": "segmented, original kernel answered through the pause",
+          "record": "pi_cam_pausable_everything_50step.json",
+          "bfb_record": "pi_cam_pausable_everything_vs_oracle_50step_bfb.json",
+          "present": true,
+          "bfb": true,
+          "compared_files": 4
         }
       ],
       "status": "open",
@@ -5276,6 +5348,14 @@
           "path": "segmented, original kernel answered through the pause",
           "record": "pi_cam_pausable_chain-pause_50step.json",
           "bfb_record": "pi_cam_pausable_chain-pause_vs_oracle_50step_bfb.json",
+          "present": true,
+          "bfb": true,
+          "compared_files": 4
+        },
+        {
+          "path": "segmented, original kernel answered through the pause",
+          "record": "pi_cam_pausable_everything_50step.json",
+          "bfb_record": "pi_cam_pausable_everything_vs_oracle_50step_bfb.json",
           "present": true,
           "bfb": true,
           "compared_files": 4
@@ -5323,6 +5403,14 @@
           "present": true,
           "bfb": true,
           "compared_files": 4
+        },
+        {
+          "path": "segmented, original kernel answered through the pause",
+          "record": "pi_cam_pausable_everything_50step.json",
+          "bfb_record": "pi_cam_pausable_everything_vs_oracle_50step_bfb.json",
+          "present": true,
+          "bfb": true,
+          "compared_files": 4
         }
       ],
       "status": "open",
@@ -5364,6 +5452,14 @@
           "path": "segmented, original kernel answered through the pause",
           "record": "pi_cam_pausable_vdiff-all_50step.json",
           "bfb_record": "pi_cam_pausable_vdiff-all_vs_oracle_50step_bfb.json",
+          "present": true,
+          "bfb": true,
+          "compared_files": 4
+        },
+        {
+          "path": "segmented, original kernel answered through the pause",
+          "record": "pi_cam_pausable_everything_50step.json",
+          "bfb_record": "pi_cam_pausable_everything_vs_oracle_50step_bfb.json",
           "present": true,
           "bfb": true,
           "compared_files": 4
@@ -5411,6 +5507,14 @@
           "present": true,
           "bfb": true,
           "compared_files": 4
+        },
+        {
+          "path": "segmented, original kernel answered through the pause",
+          "record": "pi_cam_pausable_everything_50step.json",
+          "bfb_record": "pi_cam_pausable_everything_vs_oracle_50step_bfb.json",
+          "present": true,
+          "bfb": true,
+          "compared_files": 4
         }
       ],
       "status": "open",
@@ -5444,6 +5548,14 @@
           "path": "segmented, original kernel answered through the pause",
           "record": "pi_cam_pausable_gwd-pause_50step.json",
           "bfb_record": "pi_cam_pausable_gwd-pause_vs_oracle_50step_bfb.json",
+          "present": true,
+          "bfb": true,
+          "compared_files": 4
+        },
+        {
+          "path": "segmented, original kernel answered through the pause",
+          "record": "pi_cam_pausable_everything_50step.json",
+          "bfb_record": "pi_cam_pausable_everything_vs_oracle_50step_bfb.json",
           "present": true,
           "bfb": true,
           "compared_files": 4
@@ -5483,6 +5595,14 @@
           "present": true,
           "bfb": true,
           "compared_files": 4
+        },
+        {
+          "path": "segmented, original kernel answered through the pause",
+          "record": "pi_cam_pausable_everything_50step.json",
+          "bfb_record": "pi_cam_pausable_everything_vs_oracle_50step_bfb.json",
+          "present": true,
+          "bfb": true,
+          "compared_files": 4
         }
       ],
       "status": "open",
@@ -5519,6 +5639,14 @@
           "present": true,
           "bfb": true,
           "compared_files": 4
+        },
+        {
+          "path": "segmented, original kernel answered through the pause",
+          "record": "pi_cam_pausable_everything_50step.json",
+          "bfb_record": "pi_cam_pausable_everything_vs_oracle_50step_bfb.json",
+          "present": true,
+          "bfb": true,
+          "compared_files": 4
         }
       ],
       "status": "open",
@@ -5552,6 +5680,14 @@
           "path": "segmented, original kernel answered through the pause",
           "record": "pi_cam_pausable_chem-pause_50step.json",
           "bfb_record": "pi_cam_pausable_chem-pause_vs_oracle_50step_bfb.json",
+          "present": true,
+          "bfb": true,
+          "compared_files": 4
+        },
+        {
+          "path": "segmented, original kernel answered through the pause",
+          "record": "pi_cam_pausable_everything_50step.json",
+          "bfb_record": "pi_cam_pausable_everything_vs_oracle_50step_bfb.json",
           "present": true,
           "bfb": true,
           "compared_files": 4
@@ -5865,5 +6001,5 @@
       "why": "no record in validation/ for this step of the loop"
     }
   ],
-  "coverage_hash": "280725f95f77ecaf7d32062332bed97c0eb9dd7f975ffc0f347864eb71ce18c6"
+  "coverage_hash": "25ce0ef71c8b3068de623594ff2253da1d68fbc5a38a2a9c84de14f438f0838c"
 }
