@@ -235,7 +235,9 @@ runners:
   - name: modal_aero_depvel_part
     owner: freecam.physics.pausable.AerosolDryDeposition
     frame: native/pi_cam/segment_frames.yaml
-    validated_by: []
+    validated_by:
+    - validation/pi_cam_pausable_adry-pause_50step.json
+    - validation/pi_cam_pausable_adry-pause_vs_oracle_50step_bfb.json
 - stage: cam_run2.chemistry_tendencies_leaf
   prefix: pycam_chem
   module: native/pi_cam/support/pycam_chem_runner.F90
@@ -246,4 +248,6 @@ runners:
   - name: gas_phase_chemdr
     owner: freecam.physics.pausable.ChemistryTendencies
     frame: native/pi_cam/segment_frames.yaml
-    validated_by: []
+    validated_by:
+    - validation/pi_cam_pausable_chem-pause_50step.json
+    - validation/pi_cam_pausable_chem-pause_vs_oracle_50step_bfb.json

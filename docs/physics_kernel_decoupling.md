@@ -199,8 +199,8 @@ committed file equals a fresh build or the test fails.
 | `compute_vdiff` | VerticalDiffusion (pausable, two sites) | frame descriptor | yes, validated | segmented, bit-for-bit (200 pauses, both sites); alone and with the stage's other kernels | open: capture and replay |
 | `gw_drag_prof` | GravityWaveDrag (pausable) | frame descriptor | yes, validated | segmented, bit-for-bit (100 pauses in 50 steps; the band and coordinates by component) | open: capture and replay |
 | `wetdepa_v2` | AerosolWetDeposition (pausable, a leaf, two sites) | frame descriptor | yes, validated | segmented, bit-for-bit (3000 pauses in 50 steps: every mode, phase and species at both sites) | open: capture and replay |
-| `modal_aero_depvel_part` | AerosolDryDeposition (pausable, a leaf, four sites) | frame descriptor | yes, gate pending | pending | open: the pause gate, capture and replay |
-| `gas_phase_chemdr` | ChemistryTendencies (pausable, a leaf; the whole driver) | frame descriptor | yes, gate pending | pending | open: the pause gate, capture and replay |
+| `modal_aero_depvel_part` | AerosolDryDeposition (pausable, a leaf, four sites) | frame descriptor | yes, validated | segmented, bit-for-bit (800 pauses in 50 steps: the droplets and every mode at all four sites) | open: capture and replay |
+| `gas_phase_chemdr` | ChemistryTendencies (pausable, a leaf; the whole driver) | frame descriptor | yes, validated | segmented, bit-for-bit (100 pauses in 50 steps, the whole gas-phase driver answered as one kernel) | open: capture and replay |
 
 The energy fixer is the one active numerical action owned without a pause:
 `EnergyFixer` runs it whole and exposes no kernel, because `check_energy_fix`

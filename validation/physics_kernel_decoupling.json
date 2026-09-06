@@ -48,7 +48,7 @@
       "open": 15
     },
     "kernels_bindable": 17,
-    "kernels_validated_through_runner": 15,
+    "kernels_validated_through_runner": 17,
     "catalog_procedures": 371
   },
   "closure": {
@@ -5502,7 +5502,7 @@
       "contract": "frame",
       "contract_path": "native/pi_cam/segment_frames.yaml",
       "bindable": true,
-      "validated_through_runner": false,
+      "validated_through_runner": true,
       "evidence": {
         "capture": [],
         "standalone_build": [],
@@ -5511,15 +5511,23 @@
         "replay_public_api": [],
         "module_state": []
       },
-      "in_model_gates": [],
+      "in_model_gates": [
+        {
+          "path": "segmented, original kernel answered through the pause",
+          "record": "pi_cam_pausable_adry-pause_50step.json",
+          "bfb_record": "pi_cam_pausable_adry-pause_vs_oracle_50step_bfb.json",
+          "present": true,
+          "bfb": true,
+          "compared_files": 4
+        }
+      ],
       "status": "open",
       "missing": [
         "capture",
         "standalone_build",
         "replay_full_chunk",
         "replay_single_column",
-        "replay_public_api",
-        "in_model_replacement_bfb"
+        "replay_public_api"
       ]
     },
     {
@@ -5530,7 +5538,7 @@
       "contract": "frame",
       "contract_path": "native/pi_cam/segment_frames.yaml",
       "bindable": true,
-      "validated_through_runner": false,
+      "validated_through_runner": true,
       "evidence": {
         "capture": [],
         "standalone_build": [],
@@ -5539,15 +5547,23 @@
         "replay_public_api": [],
         "module_state": []
       },
-      "in_model_gates": [],
+      "in_model_gates": [
+        {
+          "path": "segmented, original kernel answered through the pause",
+          "record": "pi_cam_pausable_chem-pause_50step.json",
+          "bfb_record": "pi_cam_pausable_chem-pause_vs_oracle_50step_bfb.json",
+          "present": true,
+          "bfb": true,
+          "compared_files": 4
+        }
+      ],
       "status": "open",
       "missing": [
         "capture",
         "standalone_build",
         "replay_full_chunk",
         "replay_single_column",
-        "replay_public_api",
-        "in_model_replacement_bfb"
+        "replay_public_api"
       ]
     }
   ],
@@ -5829,10 +5845,6 @@
       "why": "no record in validation/ for this step of the loop"
     },
     {
-      "what": "modal_aero_depvel_part: in_model_replacement_bfb",
-      "why": "no record in validation/ for this step of the loop"
-    },
-    {
       "what": "gas_phase_chemdr: capture",
       "why": "no record in validation/ for this step of the loop"
     },
@@ -5851,11 +5863,7 @@
     {
       "what": "gas_phase_chemdr: replay_public_api",
       "why": "no record in validation/ for this step of the loop"
-    },
-    {
-      "what": "gas_phase_chemdr: in_model_replacement_bfb",
-      "why": "no record in validation/ for this step of the loop"
     }
   ],
-  "coverage_hash": "d4a07a1ee5933a0e663a1387049f4e944d978e25478a6cf3d353d6fb9c083e1a"
+  "coverage_hash": "280725f95f77ecaf7d32062332bed97c0eb9dd7f975ffc0f347864eb71ce18c6"
 }

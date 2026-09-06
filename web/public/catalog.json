@@ -237,23 +237,29 @@
   },
   {
    "bindable": true,
-   "evidence": [],
+   "evidence": [
+    "validation/pi_cam_pausable_adry-pause_50step.json",
+    "validation/pi_cam_pausable_adry-pause_vs_oracle_50step_bfb.json"
+   ],
    "kernel": "modal_aero_depvel_part",
    "owner_class": "freecam.physics.pausable.AerosolDryDeposition",
-   "reason": "bindable, but the pause path has not passed a bit-for-bit gate",
+   "reason": null,
    "stage_action": "cam_run2.aerosol_dry_deposition_leaf",
    "stage_class": "freecam.physics.pausable.AerosolDryDeposition",
-   "validated": false
+   "validated": true
   },
   {
    "bindable": true,
-   "evidence": [],
+   "evidence": [
+    "validation/pi_cam_pausable_chem-pause_50step.json",
+    "validation/pi_cam_pausable_chem-pause_vs_oracle_50step_bfb.json"
+   ],
    "kernel": "gas_phase_chemdr",
    "owner_class": "freecam.physics.pausable.ChemistryTendencies",
-   "reason": "bindable, but the pause path has not passed a bit-for-bit gate",
+   "reason": null,
    "stage_action": "cam_run2.chemistry_tendencies_leaf",
    "stage_class": "freecam.physics.pausable.ChemistryTendencies",
-   "validated": false
+   "validated": true
   }
  ],
  "cases": {
@@ -262,11 +268,11 @@
   "PI-atm-online": "configs/pi_cam_icesm131_online.yaml",
   "PI-atm-replay": "configs/pi_cam_icesm131_replay.yaml"
  },
- "catalog_hash": "3d79b8368a956434db9921819a012a2e72cbb590828a1a2bda012997fab37b30",
- "commit": "af0934256851293ad7860c9706c3d9f303ddf535",
+ "catalog_hash": "9823d4cfcb4b5b3da8deccb41f837e9c06db38d000b1a67d40d4a2939e7c0ea2",
+ "commit": "ca99b13c19c2aef32b8d65558910bf1c5eb0b5be",
  "default_document": {
   "case": "PI-atm",
-  "catalog_version": "3d79b8368a956434db9921819a012a2e72cbb590828a1a2bda012997fab37b30",
+  "catalog_version": "9823d4cfcb4b5b3da8deccb41f837e9c06db38d000b1a67d40d4a2939e7c0ea2",
   "experimental": false,
   "namelist": {},
   "nodes": [
@@ -499,13 +505,16 @@
      "kernels": [
       {
        "bindable": true,
-       "evidence": [],
+       "evidence": [
+        "validation/pi_cam_pausable_chem-pause_50step.json",
+        "validation/pi_cam_pausable_chem-pause_vs_oracle_50step_bfb.json"
+       ],
        "kernel": "gas_phase_chemdr",
        "owner_class": "freecam.physics.pausable.ChemistryTendencies",
-       "reason": "bindable, but the pause path has not passed a bit-for-bit gate",
+       "reason": null,
        "stage_action": "cam_run2.chemistry_tendencies_leaf",
        "stage_class": "freecam.physics.pausable.ChemistryTendencies",
-       "validated": false
+       "validated": true
       }
      ],
      "parameters": []
@@ -710,13 +719,16 @@
      "kernels": [
       {
        "bindable": true,
-       "evidence": [],
+       "evidence": [
+        "validation/pi_cam_pausable_adry-pause_50step.json",
+        "validation/pi_cam_pausable_adry-pause_vs_oracle_50step_bfb.json"
+       ],
        "kernel": "modal_aero_depvel_part",
        "owner_class": "freecam.physics.pausable.AerosolDryDeposition",
-       "reason": "bindable, but the pause path has not passed a bit-for-bit gate",
+       "reason": null,
        "stage_action": "cam_run2.aerosol_dry_deposition_leaf",
        "stage_class": "freecam.physics.pausable.AerosolDryDeposition",
-       "validated": false
+       "validated": true
       }
      ],
      "parameters": []
@@ -2898,13 +2910,16 @@
     "kernels": [
      {
       "bindable": true,
-      "evidence": [],
+      "evidence": [
+       "validation/pi_cam_pausable_chem-pause_50step.json",
+       "validation/pi_cam_pausable_chem-pause_vs_oracle_50step_bfb.json"
+      ],
       "kernel": "gas_phase_chemdr",
       "owner_class": "freecam.physics.pausable.ChemistryTendencies",
-      "reason": "bindable, but the pause path has not passed a bit-for-bit gate",
+      "reason": null,
       "stage_action": "cam_run2.chemistry_tendencies_leaf",
       "stage_class": "freecam.physics.pausable.ChemistryTendencies",
-      "validated": false
+      "validated": true
      }
     ],
     "parameters": []
@@ -3109,13 +3124,16 @@
     "kernels": [
      {
       "bindable": true,
-      "evidence": [],
+      "evidence": [
+       "validation/pi_cam_pausable_adry-pause_50step.json",
+       "validation/pi_cam_pausable_adry-pause_vs_oracle_50step_bfb.json"
+      ],
       "kernel": "modal_aero_depvel_part",
       "owner_class": "freecam.physics.pausable.AerosolDryDeposition",
-      "reason": "bindable, but the pause path has not passed a bit-for-bit gate",
+      "reason": null,
       "stage_action": "cam_run2.aerosol_dry_deposition_leaf",
       "stage_class": "freecam.physics.pausable.AerosolDryDeposition",
-      "validated": false
+      "validated": true
      }
     ],
     "parameters": []
@@ -5331,13 +5349,16 @@
     "kernels": [
      {
       "bindable": true,
-      "evidence": [],
+      "evidence": [
+       "validation/pi_cam_pausable_chem-pause_50step.json",
+       "validation/pi_cam_pausable_chem-pause_vs_oracle_50step_bfb.json"
+      ],
       "kernel": "gas_phase_chemdr",
       "owner_class": "freecam.physics.pausable.ChemistryTendencies",
-      "reason": "bindable, but the pause path has not passed a bit-for-bit gate",
+      "reason": null,
       "stage_action": "cam_run2.chemistry_tendencies_leaf",
       "stage_class": "freecam.physics.pausable.ChemistryTendencies",
-      "validated": false
+      "validated": true
      }
     ],
     "parameters": []
@@ -5566,13 +5587,16 @@
     "kernels": [
      {
       "bindable": true,
-      "evidence": [],
+      "evidence": [
+       "validation/pi_cam_pausable_adry-pause_50step.json",
+       "validation/pi_cam_pausable_adry-pause_vs_oracle_50step_bfb.json"
+      ],
       "kernel": "modal_aero_depvel_part",
       "owner_class": "freecam.physics.pausable.AerosolDryDeposition",
-      "reason": "bindable, but the pause path has not passed a bit-for-bit gate",
+      "reason": null,
       "stage_action": "cam_run2.aerosol_dry_deposition_leaf",
       "stage_class": "freecam.physics.pausable.AerosolDryDeposition",
-      "validated": false
+      "validated": true
      }
     ],
     "parameters": []
@@ -19436,7 +19460,7 @@
    "writes": []
   }
  ],
- "generated_at": "2026-09-06T18:47:13+00:00",
+ "generated_at": "2026-09-06T18:49:40+00:00",
  "parameters": {
   "cam_run1.cloud_macro_microphysics": [
    {
