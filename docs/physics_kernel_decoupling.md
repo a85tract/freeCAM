@@ -190,13 +190,13 @@ committed file equals a fresh build or the test fails.
 | `rad_rrtmg_lw` | Radiation (split, pausable) | frame descriptor | yes, validated | segmented, bit-for-bit (50 pauses in 50 steps); alone, with `rad_rrtmg_sw`, and with every other exposed kernel paused in one run | open: capture and replay |
 | `dadadj` | DryAdjustment (pausable) | reviewed | yes, validated | segmented, bit-for-bit (100 pauses in 50 steps); alone and together with `compute_uwshcu_inv` | complete |
 | `compute_uwshcu_inv` | ShallowConvection (pausable) | reviewed | yes, validated | segmented, bit-for-bit (100 pauses in 50 steps); alone and together with `dadadj` | open: no captured calls replayed through a standalone image yet |
-| `zm_convr` | DeepConvection (pausable) | frame descriptor | yes, gate pending | pending | open: the pause gate, capture and replay |
-| `zm_conv_evap` | DeepConvection (pausable) | frame descriptor | yes, gate pending | pending | open: the pause gate, capture and replay |
-| `momtran` | DeepConvection (pausable) | frame descriptor | yes, gate pending | pending | open: the pause gate, capture and replay |
-| `convtran` | ConvectiveTracerTransport (pausable, a leaf) | frame descriptor | yes, gate pending | pending | open: the pause gate, capture and replay |
-| `compute_tms` | VerticalDiffusion (pausable) | frame descriptor | yes, gate pending | pending | open: the pause gate, capture and replay |
-| `compute_eddy_diff` | VerticalDiffusion (pausable) | frame descriptor | yes, gate pending | pending | open: the pause gate, capture and replay |
-| `compute_vdiff` | VerticalDiffusion (pausable, two sites) | frame descriptor | yes, gate pending | pending | open: the pause gate, capture and replay |
+| `zm_convr` | DeepConvection (pausable) | frame descriptor | yes, validated | segmented, bit-for-bit (100 pauses in 50 steps); alone, with the stage's other kernels, and with the tracer leaf paused in the same run | open: capture and replay |
+| `zm_conv_evap` | DeepConvection (pausable) | frame descriptor | yes, validated | segmented, bit-for-bit (100 pauses); alone and with the stage's other kernels | open: capture and replay |
+| `momtran` | DeepConvection (pausable) | frame descriptor | yes, validated | segmented, bit-for-bit (100 pauses); alone and with the stage's other kernels | open: capture and replay |
+| `convtran` | ConvectiveTracerTransport (pausable, a leaf) | frame descriptor | yes, validated | segmented, bit-for-bit (100 pauses); alone and with deep convection paused in the same run, transporting with what its runner wrote | open: capture and replay |
+| `compute_tms` | VerticalDiffusion (pausable) | frame descriptor | yes, validated | segmented, bit-for-bit (100 pauses); alone and with the stage's other kernels | open: capture and replay |
+| `compute_eddy_diff` | VerticalDiffusion (pausable) | frame descriptor | yes, validated | segmented, bit-for-bit (100 pauses); alone and with the stage's other kernels | open: capture and replay |
+| `compute_vdiff` | VerticalDiffusion (pausable, two sites) | frame descriptor | yes, validated | segmented, bit-for-bit (200 pauses, both sites); alone and with the stage's other kernels | open: capture and replay |
 | `gw_drag_prof` | GravityWaveDrag (pausable) | frame descriptor | yes, gate pending | pending | open: the pause gate, capture and replay |
 | `wetdepa_v2` | AerosolWetDeposition (pausable, a leaf, two sites) | frame descriptor | yes, gate pending | pending | open: the pause gate, capture and replay |
 | `modal_aero_depvel_part` | AerosolDryDeposition (pausable, a leaf, four sites) | frame descriptor | yes, gate pending | pending | open: the pause gate, capture and replay |
