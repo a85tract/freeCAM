@@ -40,6 +40,14 @@ repo=${FREECAM_REPO}
 python=${repo}/.venv/bin/python
 order=${PYCAM_PAIR_ORDER:-AC}
 policy=${PYCAM_STAGE_EXECUTION:-native-whole}
+# PYCAM_ALL_CLASSES=1 installs every stage class -- the nine pausable classes,
+# the split radiation class and the cloud stage -- with nothing replaced, so
+# the pair measures the default path with the whole control layer in place.
+class_flags=(--cloud-macro-micro-python)
+if [ -n "${PYCAM_ALL_CLASSES:-}" ]; then
+  class_flags+=(--split-radiation --radiation-python
+    --python-stages dry_adjustment,shallow_convection,deep_convection,convective_tracer_transport_leaf,vertical_diffusion,gravity_wave_drag,aerosol_wet_deposition_leaf,aerosol_dry_deposition_leaf,chemistry_tendencies_leaf)
+fi
 duration=${PYCAM_PAIR_DURATION:-1month}
 # The year samples memory every 2000 steps, as the memory runs do; the month
 # keeps the measurement the earlier pairs made.
@@ -119,7 +127,7 @@ PY
       --config "${config}" \
       --boundary-provider "${cam_run}/.exact-cesm-provider.pkl" \
       --run-dir "${cam_run}" \
-      --cloud-macro-micro-python \
+      "${class_flags[@]}" \
       --stage-execution "${policy}" \
       --steps "${steps}" \
       --memory-sample-every "${memory_sample}" \
