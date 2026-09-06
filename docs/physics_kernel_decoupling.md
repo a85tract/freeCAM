@@ -217,6 +217,14 @@ themselves; the physics catalog still lists no procedures under a leaf, so
 their candidate counts read zero -- a gap of the catalog's call graph, not of
 the classes.
 
+Two items the plan named remain open and are recorded here rather than
+dropped: a restart in the middle of a run, which freeCAM cannot do yet (the
+driver starts every run as a startup run; continuing from CAM's restart files
+is a feature of its own), and the standalone capture-and-replay loop for the
+fifteen kernels that have only their pause gates. The paired months and the
+paired year with every class installed report the default path's cost in
+`validation/pi_cam_faster_than_fortran.json`.
+
 The pausable classes were gated on 2026-09-06 in six 512-rank 50-step runs on
 one image: each class installed with nothing replaced (dry adjustment, shallow
 convection), each kernel answered by the original through the pause, both
