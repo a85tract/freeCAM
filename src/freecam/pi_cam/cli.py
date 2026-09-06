@@ -539,6 +539,7 @@ def main(argv: list[str] | None = None) -> int:
         for stage_name in [s.strip() for s in args.python_stages.split(",") if s.strip()]:
             # a pausable stage class in its action's place: the original Fortran
             # whole, or the image's runner paused at a replaced kernel
+            from freecam.model.python_processes import PythonProcessSpec
             from freecam.physics.pausable import STAGES
 
             if stage_name not in STAGES:
