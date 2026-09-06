@@ -48,7 +48,7 @@
       "open": 15
     },
     "kernels_bindable": 17,
-    "kernels_validated_through_runner": 13,
+    "kernels_validated_through_runner": 15,
     "catalog_procedures": 371
   },
   "closure": {
@@ -1861,7 +1861,7 @@
       "classification": "numeric_scheme",
       "activity": "active",
       "activity_basis": "enabled in the plan; called every step in the recorded runs",
-      "python_class": null,
+      "python_class": "freecam.physics.pausable.EnergyFixer",
       "kernels": [],
       "kernel_candidates": [
         {
@@ -1922,7 +1922,7 @@
       "alternate_of": [],
       "performance": [],
       "coverage": "gap",
-      "note": null
+      "note": "owned by EnergyFixer without a pause: check_energy_fix allocates its tendency inside the call and reads the module's private global heating; a pause at its call site would serve nothing"
     },
     {
       "id": "cam_run1.dry_adjustment",
@@ -5430,7 +5430,7 @@
       "contract": "frame",
       "contract_path": "native/pi_cam/segment_frames.yaml",
       "bindable": true,
-      "validated_through_runner": false,
+      "validated_through_runner": true,
       "evidence": {
         "capture": [],
         "standalone_build": [],
@@ -5439,15 +5439,23 @@
         "replay_public_api": [],
         "module_state": []
       },
-      "in_model_gates": [],
+      "in_model_gates": [
+        {
+          "path": "segmented, original kernel answered through the pause",
+          "record": "pi_cam_pausable_gwd-pause_50step.json",
+          "bfb_record": "pi_cam_pausable_gwd-pause_vs_oracle_50step_bfb.json",
+          "present": true,
+          "bfb": true,
+          "compared_files": 4
+        }
+      ],
       "status": "open",
       "missing": [
         "capture",
         "standalone_build",
         "replay_full_chunk",
         "replay_single_column",
-        "replay_public_api",
-        "in_model_replacement_bfb"
+        "replay_public_api"
       ]
     },
     {
@@ -5458,7 +5466,7 @@
       "contract": "frame",
       "contract_path": "native/pi_cam/segment_frames.yaml",
       "bindable": true,
-      "validated_through_runner": false,
+      "validated_through_runner": true,
       "evidence": {
         "capture": [],
         "standalone_build": [],
@@ -5467,15 +5475,23 @@
         "replay_public_api": [],
         "module_state": []
       },
-      "in_model_gates": [],
+      "in_model_gates": [
+        {
+          "path": "segmented, original kernel answered through the pause",
+          "record": "pi_cam_pausable_awet-pause_50step.json",
+          "bfb_record": "pi_cam_pausable_awet-pause_vs_oracle_50step_bfb.json",
+          "present": true,
+          "bfb": true,
+          "compared_files": 4
+        }
+      ],
       "status": "open",
       "missing": [
         "capture",
         "standalone_build",
         "replay_full_chunk",
         "replay_single_column",
-        "replay_public_api",
-        "in_model_replacement_bfb"
+        "replay_public_api"
       ]
     },
     {
@@ -5773,10 +5789,6 @@
       "why": "no record in validation/ for this step of the loop"
     },
     {
-      "what": "gw_drag_prof: in_model_replacement_bfb",
-      "why": "no record in validation/ for this step of the loop"
-    },
-    {
       "what": "wetdepa_v2: capture",
       "why": "no record in validation/ for this step of the loop"
     },
@@ -5794,10 +5806,6 @@
     },
     {
       "what": "wetdepa_v2: replay_public_api",
-      "why": "no record in validation/ for this step of the loop"
-    },
-    {
-      "what": "wetdepa_v2: in_model_replacement_bfb",
       "why": "no record in validation/ for this step of the loop"
     },
     {
@@ -5849,5 +5857,5 @@
       "why": "no record in validation/ for this step of the loop"
     }
   ],
-  "coverage_hash": "54fa80e10aeae50e3426fbb7a38eb29d052d57d511a106abde79ac8f79b53c75"
+  "coverage_hash": "d4a07a1ee5933a0e663a1387049f4e944d978e25478a6cf3d353d6fb9c083e1a"
 }

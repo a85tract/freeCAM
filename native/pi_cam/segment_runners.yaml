@@ -205,7 +205,9 @@ runners:
   - name: gw_drag_prof
     owner: freecam.physics.pausable.GravityWaveDrag
     frame: native/pi_cam/segment_frames.yaml
-    validated_by: []
+    validated_by:
+    - validation/pi_cam_pausable_gwd-pause_50step.json
+    - validation/pi_cam_pausable_gwd-pause_vs_oracle_50step_bfb.json
 # The three leaves: wet deposition (its scavenging kernel at both sites), dry
 # deposition (its deposition velocity at four sites) and chemistry (the whole
 # gas-phase driver as one kernel).  Their modules' private state is read
@@ -220,7 +222,9 @@ runners:
   - name: wetdepa_v2
     owner: freecam.physics.pausable.AerosolWetDeposition
     frame: native/pi_cam/segment_frames.yaml
-    validated_by: []
+    validated_by:
+    - validation/pi_cam_pausable_awet-pause_50step.json
+    - validation/pi_cam_pausable_awet-pause_vs_oracle_50step_bfb.json
 - stage: cam_run2.aerosol_dry_deposition_leaf
   prefix: pycam_adry
   module: native/pi_cam/support/pycam_adry_runner.F90

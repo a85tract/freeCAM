@@ -217,7 +217,8 @@ def test_the_builder_s_capabilities_come_from_the_manifest() -> None:
 
     assert set(validated_through_runner()) == {"mmacro_pcond", "micro_mg_tend", "dadadj", "compute_uwshcu_inv",
                                                "rad_rrtmg_sw", "rad_rrtmg_lw", "zm_convr", "zm_conv_evap", "momtran",
-                                               "convtran", "compute_tms", "compute_eddy_diff", "compute_vdiff"}
+                                               "convtran", "compute_tms", "compute_eddy_diff", "compute_vdiff",
+                                               "gw_drag_prof", "wetdepa_v2"}
     by_name = {c.kernel: c for c in kernel_capabilities()}
     assert by_name["mmacro_pcond"].bindable and by_name["mmacro_pcond"].validated
     assert by_name["mmacro_pcond"].evidence == runners.runner_spec("cam_run1.cloud_macro_microphysics").kernel("mmacro_pcond").validated_by

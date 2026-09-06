@@ -92,6 +92,7 @@ STAGE_CLASSES = (
     "freecam.physics.pausable.AerosolWetDeposition",
     "freecam.physics.pausable.AerosolDryDeposition",
     "freecam.physics.pausable.ChemistryTendencies",
+    "freecam.physics.pausable.EnergyFixer",
     "freecam.physics.pausable.RayleighFriction",
     "freecam.physics.pausable.ChargeNeutrality",
     "freecam.physics.pausable.QBORelaxation",
@@ -395,6 +396,11 @@ def build_coverage() -> dict[str, Any]:
             execution = {label: "in the step plan; the trace count covers every step"
                          for label, facts in execution_facts.items() if facts.get("trace_covers_every_step")}
         kernels = [k.kernel for k in kernels_by_action.get(i, [])]
+        if not kernels and class_by_action.get(i):
+            # a class that owns the action whole but exposes no kernel says why
+            reason = getattr(_import(class_by_action[i]), "NO_PAUSE_BECAUSE", None)
+            if reason:
+                note = f"owned by {class_by_action[i].rsplit('.', 1)[-1]} without a pause: {reason}"
         if classification != "numeric_scheme":
             coverage = "not-applicable"
         elif activity != "active":

@@ -211,23 +211,29 @@
   },
   {
    "bindable": true,
-   "evidence": [],
+   "evidence": [
+    "validation/pi_cam_pausable_gwd-pause_50step.json",
+    "validation/pi_cam_pausable_gwd-pause_vs_oracle_50step_bfb.json"
+   ],
    "kernel": "gw_drag_prof",
    "owner_class": "freecam.physics.pausable.GravityWaveDrag",
-   "reason": "bindable, but the pause path has not passed a bit-for-bit gate",
+   "reason": null,
    "stage_action": "cam_run2.gravity_wave_drag",
    "stage_class": "freecam.physics.pausable.GravityWaveDrag",
-   "validated": false
+   "validated": true
   },
   {
    "bindable": true,
-   "evidence": [],
+   "evidence": [
+    "validation/pi_cam_pausable_awet-pause_50step.json",
+    "validation/pi_cam_pausable_awet-pause_vs_oracle_50step_bfb.json"
+   ],
    "kernel": "wetdepa_v2",
    "owner_class": "freecam.physics.pausable.AerosolWetDeposition",
-   "reason": "bindable, but the pause path has not passed a bit-for-bit gate",
+   "reason": null,
    "stage_action": "cam_run1.aerosol_wet_deposition_leaf",
    "stage_class": "freecam.physics.pausable.AerosolWetDeposition",
-   "validated": false
+   "validated": true
   },
   {
    "bindable": true,
@@ -256,11 +262,11 @@
   "PI-atm-online": "configs/pi_cam_icesm131_online.yaml",
   "PI-atm-replay": "configs/pi_cam_icesm131_replay.yaml"
  },
- "catalog_hash": "73cf19fbf0ae5c2885d88ebf32bd98ea3214cbefa52e4d2b0dd99e9181ecb176",
- "commit": "f52c5e44f2982811824ccd34b81a47e51068bb52",
+ "catalog_hash": "3d79b8368a956434db9921819a012a2e72cbb590828a1a2bda012997fab37b30",
+ "commit": "af0934256851293ad7860c9706c3d9f303ddf535",
  "default_document": {
   "case": "PI-atm",
-  "catalog_version": "73cf19fbf0ae5c2885d88ebf32bd98ea3214cbefa52e4d2b0dd99e9181ecb176",
+  "catalog_version": "3d79b8368a956434db9921819a012a2e72cbb590828a1a2bda012997fab37b30",
   "experimental": false,
   "namelist": {},
   "nodes": [
@@ -822,13 +828,16 @@
      "kernels": [
       {
        "bindable": true,
-       "evidence": [],
+       "evidence": [
+        "validation/pi_cam_pausable_gwd-pause_50step.json",
+        "validation/pi_cam_pausable_gwd-pause_vs_oracle_50step_bfb.json"
+       ],
        "kernel": "gw_drag_prof",
        "owner_class": "freecam.physics.pausable.GravityWaveDrag",
-       "reason": "bindable, but the pause path has not passed a bit-for-bit gate",
+       "reason": null,
        "stage_action": "cam_run2.gravity_wave_drag",
        "stage_class": "freecam.physics.pausable.GravityWaveDrag",
-       "validated": false
+       "validated": true
       }
      ],
      "parameters": [
@@ -2117,13 +2126,16 @@
      "kernels": [
       {
        "bindable": true,
-       "evidence": [],
+       "evidence": [
+        "validation/pi_cam_pausable_awet-pause_50step.json",
+        "validation/pi_cam_pausable_awet-pause_vs_oracle_50step_bfb.json"
+       ],
        "kernel": "wetdepa_v2",
        "owner_class": "freecam.physics.pausable.AerosolWetDeposition",
-       "reason": "bindable, but the pause path has not passed a bit-for-bit gate",
+       "reason": null,
        "stage_action": "cam_run1.aerosol_wet_deposition_leaf",
        "stage_class": "freecam.physics.pausable.AerosolWetDeposition",
-       "validated": false
+       "validated": true
       }
      ],
      "parameters": []
@@ -3215,13 +3227,16 @@
     "kernels": [
      {
       "bindable": true,
-      "evidence": [],
+      "evidence": [
+       "validation/pi_cam_pausable_gwd-pause_50step.json",
+       "validation/pi_cam_pausable_gwd-pause_vs_oracle_50step_bfb.json"
+      ],
       "kernel": "gw_drag_prof",
       "owner_class": "freecam.physics.pausable.GravityWaveDrag",
-      "reason": "bindable, but the pause path has not passed a bit-for-bit gate",
+      "reason": null,
       "stage_action": "cam_run2.gravity_wave_drag",
       "stage_class": "freecam.physics.pausable.GravityWaveDrag",
-      "validated": false
+      "validated": true
      }
     ],
     "parameters": [
@@ -4510,13 +4525,16 @@
     "kernels": [
      {
       "bindable": true,
-      "evidence": [],
+      "evidence": [
+       "validation/pi_cam_pausable_awet-pause_50step.json",
+       "validation/pi_cam_pausable_awet-pause_vs_oracle_50step_bfb.json"
+      ],
       "kernel": "wetdepa_v2",
       "owner_class": "freecam.physics.pausable.AerosolWetDeposition",
-      "reason": "bindable, but the pause path has not passed a bit-for-bit gate",
+      "reason": null,
       "stage_action": "cam_run1.aerosol_wet_deposition_leaf",
       "stage_class": "freecam.physics.pausable.AerosolWetDeposition",
-      "validated": false
+      "validated": true
      }
     ],
     "parameters": []
@@ -5684,13 +5702,16 @@
     "kernels": [
      {
       "bindable": true,
-      "evidence": [],
+      "evidence": [
+       "validation/pi_cam_pausable_gwd-pause_50step.json",
+       "validation/pi_cam_pausable_gwd-pause_vs_oracle_50step_bfb.json"
+      ],
       "kernel": "gw_drag_prof",
       "owner_class": "freecam.physics.pausable.GravityWaveDrag",
-      "reason": "bindable, but the pause path has not passed a bit-for-bit gate",
+      "reason": null,
       "stage_action": "cam_run2.gravity_wave_drag",
       "stage_class": "freecam.physics.pausable.GravityWaveDrag",
-      "validated": false
+      "validated": true
      }
     ],
     "parameters": [
@@ -7165,13 +7186,16 @@
     "kernels": [
      {
       "bindable": true,
-      "evidence": [],
+      "evidence": [
+       "validation/pi_cam_pausable_awet-pause_50step.json",
+       "validation/pi_cam_pausable_awet-pause_vs_oracle_50step_bfb.json"
+      ],
       "kernel": "wetdepa_v2",
       "owner_class": "freecam.physics.pausable.AerosolWetDeposition",
-      "reason": "bindable, but the pause path has not passed a bit-for-bit gate",
+      "reason": null,
       "stage_action": "cam_run1.aerosol_wet_deposition_leaf",
       "stage_class": "freecam.physics.pausable.AerosolWetDeposition",
-      "validated": false
+      "validated": true
      }
     ],
     "parameters": []
@@ -19412,7 +19436,7 @@
    "writes": []
   }
  ],
- "generated_at": "2026-09-06T18:20:22+00:00",
+ "generated_at": "2026-09-06T18:47:13+00:00",
  "parameters": {
   "cam_run1.cloud_macro_microphysics": [
    {

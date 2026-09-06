@@ -374,6 +374,19 @@ def test_the_leaf_classes_own_their_actions_and_kernels() -> None:
     for cls in (AerosolWetDeposition, AerosolDryDeposition, ChemistryTendencies):
         rows = {r["kernel"]: r for r in cls().describe_kernels()}
         assert set(rows) == set(cls.SWAPPABLE) and all(r["bindable"] for r in rows.values())
-    # every exposed numerical process now has a class: nine pausable and eleven inert here, radiation and
-    # the cloud stage in their own modules
-    assert len(STAGES) == 20
+    # every exposed numerical process now has a class: nine pausable, the energy fixer and eleven inert
+    # here, radiation and the cloud stage in their own modules
+    assert len(STAGES) == 21
+
+
+def test_the_energy_fixer_is_owned_whole_and_says_why_it_has_no_pause() -> None:
+    from freecam.physics.errors import PhysicsError
+    from freecam.physics.pausable import STAGES, EnergyFixer
+
+    assert STAGES["energy_fixer"] is EnergyFixer and EnergyFixer.SWAPPABLE == ()
+    stage = EnergyFixer()
+    assert stage.select_mode(None) == "native-whole" and stage.describe_kernels() == ()
+    assert "check_energy_fix" in EnergyFixer.NO_PAUSE_BECAUSE
+    stage.execution_policy = "segmented"
+    with pytest.raises(PhysicsError):
+        stage.select_mode(None)

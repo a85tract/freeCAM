@@ -179,6 +179,25 @@ class ChemistryTendencies(PausableStage):
     SWAPPABLE = ("gas_phase_chemdr",)
 
 
+class EnergyFixer(PausableStage):
+    """tphysbc stage 2: the global energy fixer, owned whole, with no pause yet.
+
+    ``check_energy_fix`` allocates its tendency inside the call and reads the
+    module's private global heating, so a frame at its call site has nothing
+    to serve before the call and the original passes it by; the class runs
+    the original action whole and refuses every replacement.
+    """
+
+    STAGE = "cam_run1.energy_fixer"
+    PREFIX = "efix"
+    RUNNER_PREFIX = ""
+    PROCESS_NAME = "energy_fixer"
+    SWAPPABLE: tuple[str, ...] = ()
+    #: why no kernel is exposed, as the ledger records it
+    NO_PAUSE_BECAUSE = ("check_energy_fix allocates its tendency inside the call and reads the module's "
+                        "private global heating; a pause at its call site would serve nothing")
+
+
 def _inert(name: str, stage: str, process_name: str, because: str) -> type:
     return type(name, (InertStage,), {
         "STAGE": stage, "PREFIX": process_name, "RUNNER_PREFIX": "", "PROCESS_NAME": process_name,
@@ -212,6 +231,7 @@ STAGES: dict[str, type[PausableStage]] = {
     cls.PROCESS_NAME: cls for cls in (
         DryAdjustment, ShallowConvection, DeepConvection, ConvectiveTracerTransport,
         VerticalDiffusion, GravityWaveDrag, AerosolWetDeposition, AerosolDryDeposition, ChemistryTendencies,
+        EnergyFixer,
         RayleighFriction, ChargeNeutrality, QBORelaxation, IonDrag, SeaSaltRebin, ModalAerosolPreparation,
         CARMAWetDeposition, CARMAAerosolTendencies, CARMAStatistics, TracerTendencies, AgeOfAirTendencies,
     )
@@ -219,6 +239,7 @@ STAGES: dict[str, type[PausableStage]] = {
 
 __all__ = ["AerosolDryDeposition", "AerosolWetDeposition", "AgeOfAirTendencies", "CARMAAerosolTendencies",
            "CARMAStatistics", "CARMAWetDeposition", "ChargeNeutrality", "ChemistryTendencies",
-           "ConvectiveTracerTransport", "DeepConvection", "DryAdjustment", "GravityWaveDrag", "InertStage", "IonDrag",
+           "ConvectiveTracerTransport", "DeepConvection", "DryAdjustment", "EnergyFixer", "GravityWaveDrag",
+           "InertStage", "IonDrag",
            "ModalAerosolPreparation", "PausableStage", "QBORelaxation", "RayleighFriction", "STAGES", "SeaSaltRebin",
            "ShallowConvection", "TracerTendencies", "VerticalDiffusion", "bind_stage_hosts"]

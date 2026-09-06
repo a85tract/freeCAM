@@ -197,10 +197,19 @@ committed file equals a fresh build or the test fails.
 | `compute_tms` | VerticalDiffusion (pausable) | frame descriptor | yes, validated | segmented, bit-for-bit (100 pauses); alone and with the stage's other kernels | open: capture and replay |
 | `compute_eddy_diff` | VerticalDiffusion (pausable) | frame descriptor | yes, validated | segmented, bit-for-bit (100 pauses); alone and with the stage's other kernels | open: capture and replay |
 | `compute_vdiff` | VerticalDiffusion (pausable, two sites) | frame descriptor | yes, validated | segmented, bit-for-bit (200 pauses, both sites); alone and with the stage's other kernels | open: capture and replay |
-| `gw_drag_prof` | GravityWaveDrag (pausable) | frame descriptor | yes, gate pending | pending | open: the pause gate, capture and replay |
-| `wetdepa_v2` | AerosolWetDeposition (pausable, a leaf, two sites) | frame descriptor | yes, gate pending | pending | open: the pause gate, capture and replay |
+| `gw_drag_prof` | GravityWaveDrag (pausable) | frame descriptor | yes, validated | segmented, bit-for-bit (100 pauses in 50 steps; the band and coordinates by component) | open: capture and replay |
+| `wetdepa_v2` | AerosolWetDeposition (pausable, a leaf, two sites) | frame descriptor | yes, validated | segmented, bit-for-bit (3000 pauses in 50 steps: every mode, phase and species at both sites) | open: capture and replay |
 | `modal_aero_depvel_part` | AerosolDryDeposition (pausable, a leaf, four sites) | frame descriptor | yes, gate pending | pending | open: the pause gate, capture and replay |
 | `gas_phase_chemdr` | ChemistryTendencies (pausable, a leaf; the whole driver) | frame descriptor | yes, gate pending | pending | open: the pause gate, capture and replay |
+
+The energy fixer is the one active numerical action owned without a pause:
+`EnergyFixer` runs it whole and exposes no kernel, because `check_energy_fix`
+allocates its tendency inside the call and reads the module's private global
+heating, so a frame at its call site would serve nothing. The ledger records
+that reason on the action. The four leaves' classes declare their kernels
+themselves; the physics catalog still lists no procedures under a leaf, so
+their candidate counts read zero -- a gap of the catalog's call graph, not of
+the classes.
 
 The pausable classes were gated on 2026-09-06 in six 512-rank 50-step runs on
 one image: each class installed with nothing replaced (dry adjustment, shallow
