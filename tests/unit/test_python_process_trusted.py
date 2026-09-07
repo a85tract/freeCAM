@@ -123,3 +123,50 @@ def test_a_trusted_process_run_outside_a_step_settles_at_once() -> None:
     before = backend.calls.count("macro_microphysics")
     good.run()
     assert backend.calls.count("macro_microphysics") == before + 1
+
+
+def test_a_succeeding_trusted_process_costs_the_export_one_integer_reduction_not_a_gather() -> None:
+    """The fast path: the outcome (name, None) is not a failure, so the flag stays zero."""
+
+    class Reducing(_CountingComm):
+        def __init__(self) -> None:
+            super().__init__()
+            self.reductions = 0
+
+        def Allreduce(self, send, recv):
+            self.reductions += 1
+            recv[0] = send[0]
+
+    comm = Reducing()
+    driver, backend = _driver(comm)
+    driver.physics.install_python(_stage, name="stage_like", after="dadadj", native=True,
+                                  trusted_native=True, transactional=False, unsafe=True)
+    before_gathers, before_reductions = len(comm.gathers), comm.reductions
+    driver.step()
+    assert backend.calls.count("macro_microphysics") >= 1
+    assert comm.reductions > before_reductions                              # the export reduced one flag
+    assert not [g for g in comm.gathers[before_gathers:] if isinstance(g, tuple) and g[1]]   # and gathered nothing
+
+
+def test_a_failing_trusted_process_still_raises_through_the_reduction_path() -> None:
+    class ReducingFailure(_CountingComm):
+        size = 2
+
+        def Allreduce(self, send, recv):
+            recv[0] = send[0]
+
+        def allgather(self, value):
+            self.gathers.append(value)
+            if isinstance(value, tuple) and len(value) == 2 and isinstance(value[1], list) and value[1]:
+                return [value, value]
+            return [value, value]
+
+    driver, _ = _driver(ReducingFailure(), size=2)
+
+    def broken(fields, context):
+        raise RuntimeError("the stage refused")
+
+    driver.physics.install_python(broken, name="broken_stage", after="dadadj", native=True,
+                                  trusted_native=True, transactional=False, unsafe=True)
+    with pytest.raises(PythonProcessTaintedError, match="the stage refused"):
+        driver.step()

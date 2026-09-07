@@ -9,6 +9,8 @@ from pathlib import Path
 import numpy as np
 import pytest
 
+from freecam.pi_cam import segment_runner as runners
+
 REPO = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO / "tools"))
 
@@ -34,7 +36,8 @@ def test_every_argument_of_the_kernel_has_a_home_in_the_frame_in_call_order() ->
                      if k.name == "mmacro_pcond" for a in k.arguments]
     assert set(names) == set(gen.FRAME_SOURCES)                     # no argument without a slot, no stray slot
     text = MODULE.read_text()
-    assert f"frame_slots = {len(names)}" in text
+    # the frame table holds the larger of the two paused calls' argument lists
+    assert f"frame_slots = {max(len(names), gen.micro_frame_slots())}" in text
     for index, name in enumerate(names, start=1):
         expression, rank = gen.FRAME_SOURCES[name]
         helper = "slot2_or" if "|" in expression else {0: "scalar_slot", 1: "slot1", 2: "slot2"}[rank]
@@ -78,7 +81,7 @@ class _Entry:
             ncol._obj.value, substep._obj.value, token._obj.value = 6, 2, lib.token
             for i in range(n):                                     # every slot: a 2-D double, intent in
                 ptrs[i] = lib.arrays["t0"].ctypes.data; ndims[i] = 2
-                shapes[3 * i], shapes[3 * i + 1] = 8, 4; dtypes[i] = 1; intents[i] = 0
+                shapes[runners.FRAME_MAX_RANK * i], shapes[runners.FRAME_MAX_RANK * i + 1] = 8, 4; dtypes[i] = 1; intents[i] = 0
             names = lib.names
             ptrs[names.index("s_tendout")] = lib.arrays["s_tendout"].ctypes.data
             intents[names.index("s_tendout")] = 1
@@ -104,8 +107,10 @@ def test_the_binding_starts_decodes_a_frame_and_resumes_with_the_token() -> None
     lib = _FakeStageSevenLibrary()
     assert image_offers_runner(lib)
     runner = StageSevenRunner(lib, Macrophysics.DESCRIPTORS)
-    lib.names = runner.names
-    assert runner.names[:5] == ("lchnk", "ncol", "dt", "p", "dp") and runner.names[-1] == "do_cldice"
+    names = runner.names["mmacro_pcond"]                  # one entry per kernel the runner pauses at
+    lib.names = names
+    assert runner.kernels == ("mmacro_pcond", "micro_mg_tend")
+    assert names[:5] == ("lchnk", "ncol", "dt", "p", "dp") and names[-1] == "do_cldice"
     context = runner.create(STAGE)
     assert runner.start(context, {"mmacro_pcond": True}) == SegmentEvent.NEEDS_PYTHON_KERNEL
     frame = runner.frame(context)

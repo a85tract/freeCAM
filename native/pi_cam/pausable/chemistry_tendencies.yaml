@@ -1,0 +1,62 @@
+# Chemistry (the leaf of tphysac stage 2, action 462): the leaf's statements
+# around chem_timestep_tend (control patch 0028) and that driver hoisted
+# whole, pausable at the gas-phase driver gas_phase_chemdr, which is the
+# kernel entire: one pause, a wide frame.  The driver's early return on a
+# skipped chemistry step is carried out by the runner.
+schema_version: 1
+prefix: chem
+stage: cam_run2.chemistry_tendencies_leaf
+runner_uses:
+  - "use chemistry, only: chem_is_active"
+units:
+  glue:
+    source: components/cam/src/physics/cam/physpkg.F90
+    routine: tphysac
+    module_header: [1, 60]
+    declarations: [1248, 1367]
+    uses:
+      - "use comsrf, only: comsrf_fsds => fsds"
+    dummies:
+      state: host_state(lchnk)
+      tend: host_tend(lchnk)
+      pbuf: pbuf_get_chunk(host_pbuf2d, lchnk)
+      cam_in: host_cam_in(lchnk)
+      cam_out: host_cam_out(lchnk)
+      fsds: "view: comsrf_fsds(:, lchnk)"
+      ztodt: real(get_step_size(), r8)
+    records: {tracerint: pycam_ac_tracerint_addr_v1}
+    preamble:
+      - "lchnk = state%lchnk"
+      - "ncol = state%ncol"
+      - "nstep = get_nstep()"
+      - "zero = 0._r8"
+    body:
+      - if: 1458
+        then:
+          - unit: {name: driver, call: [1459, 1460]}
+          - piece: [1462, 1465]
+      - piece: [1469, 1471]
+    # the tracer source/sink timer, closed by the stage's own dispatch
+    elided: [[1467, 1467]]
+  driver:
+    source: components/cam/src/chemistry/mozart/chemistry.F90
+    routine: chem_timestep_tend
+    module_header: [1, 24]
+    declarations: [1236, 1303]
+    uses:
+      - "use chemistry, only: chem_name, chem_rad_passive, ghg_chem, ixcldice, ixcldliq, ixndrop, ndx_cld, ndx_cldtop, ndx_cmfdqr, ndx_nevapr, ndx_pblh, ndx_prain, srcnam, xactive_prates, chem_step, chem_freq, chem_is, imozart"
+    body:
+      - piece: [1304, 1361]
+      - pause: {kernel: gas_phase_chemdr, call: [1362, 1369]}
+      - piece: [1371, 1428]
+kernels:
+  gas_phase_chemdr:
+    source: components/cam/src/chemistry/mozart/mo_gas_phase_chemdr.F90
+    routine: gas_phase_chemdr
+anchors:
+  'glue:physpkg.F90:1458-1471': 6a517ff8cf56212b
+  'glue:physpkg.F90:declarations 1248-1367': 35a81896e23a7968
+  'glue:physpkg.F90:verbatim 1467-1467': ea078b5d3311c41a
+  'driver:chemistry.F90:1304-1428': 26d745270d4957a6
+  'driver:chemistry.F90:declarations 1236-1303': a2146b80c354fd83
+  'gas_phase_chemdr:mo_gas_phase_chemdr.F90:215-1067': 74738d8985f1a4a9

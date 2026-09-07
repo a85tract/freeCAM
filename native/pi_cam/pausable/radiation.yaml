@@ -1,0 +1,111 @@
+# Radiation (tphysbc stage 10, action 430): the driver call the resume half of
+# the split stage makes (control patch 0041), radiation_tend hoisted whole,
+# pausable at the two RRTMG cores inside the dosw / dolw blocks and their
+# icall loops.  The class stays split: the stop half binds the chunk, this
+# runner runs the driver into the radiation handles' ptend and net flux, and
+# the resume half takes them when Python owns the step.
+schema_version: 1
+prefix: radt
+stage: cam_run1.radiation
+runner_uses:
+  - "use pycam_rad_handles, only: rad_ptend"
+  - "use rad_constituents, only: N_DIAG"
+refuse:
+  - {when: ".not. allocated(rad_ptend)", message: "the radiation handles are not bound (pycam_rad_bind_hosts_v1 first)"}
+  # spectralflux is private to the module and its getter cannot return it;
+  # the spectral-flux fields are registered only when it is set
+  - {when: "su_idx > 0", message: "written for spectralflux = .false."}
+units:
+  glue:
+    source: components/cam/src/physics/cam/physpkg.F90
+    routine: tphysbc
+    module_header: [1, 60]
+    declarations: [1674, 1874]
+    uses:
+      - "use comsrf, only: comsrf_fsns => fsns, comsrf_fsnt => fsnt, comsrf_flns => flns, comsrf_flnt => flnt, comsrf_fsds => fsds"
+      - "use pycam_rad_handles, only: rad_ptend, rad_net_flx"
+    dummies:
+      state: host_state(lchnk)
+      pbuf: pbuf_get_chunk(host_pbuf2d, lchnk)
+      cam_in: host_cam_in(lchnk)
+      cam_out: host_cam_out(lchnk)
+      # phys_run1 passes comsrf's columns for this chunk; the driver reads and writes them
+      fsns: "view: comsrf_fsns(:, lchnk)"
+      fsnt: "view: comsrf_fsnt(:, lchnk)"
+      flns: "view: comsrf_flns(:, lchnk)"
+      flnt: "view: comsrf_flnt(:, lchnk)"
+      fsds: "view: comsrf_fsds(:, lchnk)"
+    # tphysbc's ptend and net_flx, pointed at the radiation handles' storage,
+    # which the resume half copies back (rad_ptend(lchnk), rad_net_flx(:,lchnk))
+    locals:
+      ptend: rad_ptend(lchnk)
+      net_flx: rad_net_flx(:, lchnk)
+    preamble:
+      - "lchnk = state%lchnk"
+      - "ncol = state%ncol"
+    body:
+      - unit: {name: driver, call: [2472, 2476]}
+  driver:
+    source: components/cam/src/physics/rrtmg/radiation.F90
+    routine: radiation_tend
+    module_header: [1, 83]
+    declarations: [577, 813]
+    # spectralflux, diag, dohirs, ihirsfq: the module's private variables the
+    # body reads, none namelist-settable in this configuration
+    module_private: [[72, 72], [74, 74], [76, 76], [79, 79]]
+    # radinp and calc_col_mean: the module's private procedures the body calls
+    helpers: [[1324, 1379], [1383, 1414]]
+    pbuf_indices: auto
+    uses:
+      - "use radiation, only: radiation_do, cosp_cnt"
+    body:
+      - piece: [815, 874]
+      - if: 875
+        then:
+          - piece: [876, 1015]
+          - if: 1016
+            then:
+              - piece: [1017, 1023]
+              - do: 1024
+                body:
+                  - if: 1026
+                    then:
+                      - piece: [1027, 1033]
+                      - pause: {kernel: rad_rrtmg_sw, call: [1034, 1047]}
+                      - piece: [1048, 1086]
+              - piece: [1089, 1118]
+          - piece: [1120, 1125]
+          - if: 1126
+            then:
+              - piece: [1127, 1138]
+              - do: 1139
+                body:
+                  - if: 1141
+                    then:
+                      - piece: [1142, 1147]
+                      - pause: {kernel: rad_rrtmg_lw, call: [1148, 1154]}
+                      - piece: [1155, 1185]
+          - piece: [1190, 1274]
+        else:
+          - piece: [1276, 1288]
+      - piece: [1290, 1318]
+kernels:
+  rad_rrtmg_sw:
+    source: components/cam/src/physics/rrtmg/radsw.F90
+    routine: rad_rrtmg_sw
+  rad_rrtmg_lw:
+    source: components/cam/src/physics/rrtmg/radlw.F90
+    routine: rad_rrtmg_lw
+anchors:
+  'glue:physpkg.F90:2472-2476': 2c638ca134cbc2ba
+  'glue:physpkg.F90:declarations 1674-1874': 4e089ee70c947a21
+  'driver:radiation.F90:815-1318': 8f9a768545cec183
+  'driver:radiation.F90:declarations 577-813': 62430774811a1afb
+  'driver:radiation.F90:verbatim 72-72': 29f81e70e850e5ce
+  'driver:radiation.F90:verbatim 74-74': 2abd537e491721be
+  'driver:radiation.F90:verbatim 76-76': 64b02409ed601a50
+  'driver:radiation.F90:verbatim 79-79': 91d5be7709be1df1
+  'driver:radiation.F90:verbatim 1324-1379': 0e11eda216e10316
+  'driver:radiation.F90:verbatim 1383-1414': 9cd36f7a31a71e86
+  'rad_rrtmg_sw:radsw.F90:40-654': 844ec40157c40e9f
+  'rad_rrtmg_lw:radlw.F90:38-297': a2fd1715957ab643

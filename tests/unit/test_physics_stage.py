@@ -864,7 +864,8 @@ def test_with_nothing_replaced_the_original_stage_runs_once_and_the_walk_not_at_
     assert stage.execution.describe() == {
         "execution_mode": "native-whole", "active_replacements": [],
         "native_stage_calls": 2, "native_segment_calls": 0, "segment_pauses": 0,
-        "python_model_calls": 0, "legacy_steps": 0, "python_fortran_crossings_per_step": 1,
+        "python_model_calls": 0, "python_model_calls_by_kernel": {}, "legacy_steps": 0,
+        "python_fortran_crossings_per_step": 1,
     }
 
 

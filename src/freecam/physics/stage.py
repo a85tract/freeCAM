@@ -25,7 +25,9 @@ the calls pass addresses.
 from __future__ import annotations
 
 import ctypes
-from dataclasses import dataclass
+import inspect
+import warnings
+from dataclasses import dataclass, field
 import json
 import os
 from pathlib import Path
@@ -38,7 +40,7 @@ from ..pi_cam.facade import Physics
 from ..pi_cam.kernel_codegen import load_direct_kernels
 from .capture import lane_sha256
 from .errors import PhysicsError
-from .segments import OriginalKernel, SegmentedStage
+from .segments import OriginalAtPause, OriginalKernel, SegmentedStage
 
 REPO = Path(__file__).resolve().parents[3]
 
@@ -724,7 +726,7 @@ class StageRuntime:
                 array = np.asarray(value)
                 batch[key] = array[:ncol].copy() if array.ndim else array
             answer = kernel(batch)
-            self.stage.execution.python_model_calls += 1
+            self.stage.execution.count_model_call(name)
             missing = [key for key in outputs if key not in answer]
             if missing:
                 raise PhysicsError(
@@ -785,6 +787,44 @@ class _StageProcess(Physics):
 EXECUTION_POLICIES = ("auto", "native-whole", "segmented", "legacy-python")
 
 
+class MethodKernel:
+    """A callable bound where a kernel's method was, held in the kernel's slot.
+
+    ``stage.mmacro_pcond = MethodType(fn, stage)`` used to rebind the method
+    alone: the single-column caller saw ``fn`` while the model, deciding
+    how to run from the slots, saw nothing replaced and ran the original
+    Fortran.  :meth:`NativeStage.__setattr__` now puts the binding here, in
+    the slot, so the walk, the runner's frame and the single-column caller
+    all reach the same function -- and the stage runs segmented, as any
+    replacement does.  The bound function is called as the original method
+    is: ``(inputs, parameters)`` when it takes two, ``(inputs)`` otherwise;
+    a :class:`~freecam.physics.result.FunctionResult` it returns is
+    flattened to the batch-by-name answer a slot's callable gives.
+    """
+
+    takes_parameters = True
+
+    def __init__(self, method: Callable[..., Any]) -> None:
+        self.method = method
+        try:
+            count = len([p for p in inspect.signature(method).parameters.values()
+                         if p.kind in (p.POSITIONAL_ONLY, p.POSITIONAL_OR_KEYWORD)])
+        except (TypeError, ValueError):
+            count = 2
+        self._two = count >= 2
+
+    def __call__(self, inputs: Mapping[str, Any], parameters: Mapping[str, Any] | None = None) -> dict[str, Any]:
+        answer = self.method(inputs, parameters) if self._two else self.method(inputs)
+        from .result import FunctionResult
+
+        if isinstance(answer, FunctionResult):
+            return {**dict(answer.outputs), **dict(answer.updated_inputs)}
+        return dict(answer)
+
+    def __repr__(self) -> str:
+        return f"MethodKernel({getattr(self.method, '__qualname__', self.method)!r})"
+
+
 @dataclass(slots=True)
 class StageExecution:
     """How a stage ran, and how often, for the record.
@@ -803,6 +843,12 @@ class StageExecution:
     python_model_calls: int = 0
     legacy_steps: int = 0
     segment_pauses: int = 0
+    #: model calls by the kernel they answered, whichever path made them
+    model_calls_by_kernel: dict[str, int] = field(default_factory=dict)
+
+    def count_model_call(self, kernel: str) -> None:
+        self.python_model_calls += 1
+        self.model_calls_by_kernel[kernel] = self.model_calls_by_kernel.get(kernel, 0) + 1
 
     def describe(self) -> dict[str, Any]:
         crossings = 1 if self.mode == "native-whole" else None
@@ -813,6 +859,7 @@ class StageExecution:
             "native_segment_calls": self.native_segment_calls,
             "segment_pauses": self.segment_pauses,
             "python_model_calls": self.python_model_calls,
+            "python_model_calls_by_kernel": dict(self.model_calls_by_kernel),
             "legacy_steps": self.legacy_steps,
             "python_fortran_crossings_per_step": crossings,
         }
@@ -838,6 +885,11 @@ class NativeStage:
     WHOLE_ACTION = False
     FIRST_HALF = ""
     SECOND_HALF = ""
+    #: True for a split stage whose image runner runs the driver call between
+    #: the two halves (radiation): segmented execution is the runner, and
+    #: native-whole is :meth:`native_between_halves` -- leaving the driver to
+    #: the resume half, which calls it itself when Python does not own the step.
+    SPLIT_RUNNER = False
 
     #: The stage's Fortran prefix: ``pycam_<PREFIX>_*`` entries, ``<PREFIX>.``
     #: kernel field names.
@@ -900,6 +952,93 @@ class NativeStage:
         self._process: Any = None
         self._runtimes: dict[int, StageRuntime] = {}
 
+    def __setattr__(self, name: str, value: Any) -> None:
+        # Binding a swappable kernel's method -- ``stage.mmacro_pcond = MethodType(fn, stage)``
+        # -- is a replacement, and lives in the slot like every other, so the
+        # single-column caller and the model can never disagree about what runs.
+        kernels = self.__dict__.get("kernels")
+        if kernels is not None and name in kernels and name in type(self).SWAPPABLE:
+            if value is None or isinstance(value, (MethodKernel, OriginalKernel)):
+                kernels[name] = value
+            elif callable(value):
+                kernels[name] = MethodKernel(value)
+            else:
+                raise PhysicsError(
+                    f"{type(self).__name__}.{name} is a swappable kernel; assign a callable, "
+                    f"OriginalKernel() or None, not {type(value).__name__}")
+            return
+        object.__setattr__(self, name, value)
+
+    def binding_kind(self, name: str) -> str:
+        """What is in kernel ``name``'s slot: original, original-through-python, surrogate, method or callable."""
+
+        binding = self.kernels[name]
+        if binding is None:
+            return "original"
+        if isinstance(binding, OriginalKernel):
+            return "original-through-python"
+        if isinstance(binding, MethodKernel):
+            return "method"
+        kind = type(binding).__name__
+        if kind in ("PendingSurrogate", "SurrogateKernel"):
+            return "surrogate"
+        return "callable"
+
+    def describe_kernels(self, native: Any = None) -> tuple[dict[str, Any], ...]:
+        """The stage's kernels, read-only: contract, binding, coverage and calls so far.
+
+        One record per swappable kernel, in the order the drivers call them:
+        the owning class, whether the image's runner pauses at it
+        (``bindable``) and whether that pause path has passed a gate
+        (``validated``), the reviewed contract's inputs and outputs when one
+        exists, what is in the slot now, and how often a model has answered
+        for it in this run.  The workflow builder shows these; nothing else
+        keeps a list of kernels.
+        """
+
+        from ..pi_cam.segment_runner import runner_spec
+        from .spec import load_function_spec
+
+        spec = runner_spec(self.STAGE)
+        rows: list[dict[str, Any]] = []
+        for name in self.kernels:
+            owner = self._owner_of(name)
+            runner_kernel = None
+            if spec is not None and name in spec.kernel_names:
+                runner_kernel = spec.kernel(name)
+            contract: dict[str, Any] | None = None
+            try:
+                function = load_function_spec(name)
+            except Exception:    # noqa: BLE001 -- no reviewed contract for this kernel yet
+                function = None
+            if function is not None:
+                contract = {
+                    "path": str(Path(function.path).relative_to(REPO)) if function.path else None,
+                    "routine": function.qualified_name,
+                    "inputs": [a.name for a in function.arguments if a.role == "input"],
+                    "in_place": [a.name for a in function.arguments if a.role == "inout"],
+                    "outputs": [a.name for a in function.arguments if a.role == "output"],
+                    "parameters": sorted(function.parameters),
+                    # module variables the routine reads, by how the standalone image sets them;
+                    # the contract schema declares no persistent state a kernel writes
+                    "module_state_inputs": {mode: sum(1 for e in function.module_state if e.write == mode)
+                                            for mode in sorted({e.write for e in function.module_state})},
+                }
+            rows.append({
+                "kernel": name,
+                "stage_action": self.STAGE,
+                "owner_class": f"{type(owner).__module__}.{type(owner).__name__}",
+                "bindable": runner_kernel is not None,
+                "validated": bool(runner_kernel is not None and runner_kernel.validated),
+                "validated_by": list(runner_kernel.validated_by) if runner_kernel is not None else [],
+                "contract": contract,
+                "binding": self.binding_kind(name),
+                "replaced": self.kernels[name] is not None,
+                "execution_mode": self.execution.mode,
+                "model_calls": int(self.execution.model_calls_by_kernel.get(name, 0)),
+            })
+        return tuple(rows)
+
     @property
     def kernel(self):
         """The model in the one swappable kernel's place, for stages that have one."""
@@ -958,15 +1097,28 @@ class NativeStage:
         after it runs exactly as it did.
         """
 
-        run.workflow.process(self.STAGE)     # fail early if this is not a PI-CAM workflow
+        workflow = run.workflow
+        workflow.process(self.STAGE)     # fail early if this is not a PI-CAM workflow
         process = _StageProcess(self)
-        run.workflow.process(self.STAGE).disable()
-        if self.replaces_whole_action:
-            self._process = run.workflow.insert_after(self.STAGE, process)
-            return self._process
-        for name in (self.FIRST_HALF, self.SECOND_HALF):
-            run.workflow.process(name).enable()
-        self._process = run.workflow.insert_after(self.FIRST_HALF, process)
+        workflow.process(self.STAGE).disable()
+        anchor = self.STAGE if self.replaces_whole_action else self.FIRST_HALF
+        if not self.replaces_whole_action:
+            for name in (self.FIRST_HALF, self.SECOND_HALF):
+                workflow.process(name).enable()
+        insert_after = getattr(workflow, "insert_after", None)
+        if callable(insert_after):
+            # the declarative template, before the model exists
+            self._process = insert_after(anchor, process)
+        else:
+            # the live workflow view: install the process after the anchor and
+            # keep its handle, which is what the template returns as well
+            install = getattr(workflow, "install", None)
+            anchor_name = anchor.split(".", 1)[1]
+            if callable(install):
+                self._process = install(process, after=anchor_name)
+            else:
+                workflow.insert(process, after=anchor_name)
+                self._process = workflow[process.name]
         return self._process
 
     @property
@@ -1068,6 +1220,7 @@ class NativeStage:
             raise PhysicsError(
                 f"unknown stage execution policy {policy!r}; one of {EXECUTION_POLICIES}")
         replaced = self.replacements()
+        whole = self.WHOLE_ACTION or self.SPLIT_RUNNER
         if policy == "legacy-python":
             return "legacy-python"
         if policy == "segmented":
@@ -1075,7 +1228,7 @@ class NativeStage:
                 raise PhysicsError(
                     "segmented execution pauses at replaced kernels, and nothing is replaced; "
                     "use auto or native-whole")
-            if not self.WHOLE_ACTION:
+            if not whole:
                 raise PhysicsError(
                     f"{type(self).__name__} is not the whole of {self.STAGE!r}; only a whole "
                     f"stage has a segment runner")
@@ -1085,21 +1238,29 @@ class NativeStage:
                 raise PhysicsError(
                     f"native-whole execution runs the original Fortran stage, but "
                     f"{list(replaced)} are replaced; use auto or legacy-python")
-            if not self.WHOLE_ACTION:
+            if not whole:
                 raise PhysicsError(
                     f"{type(self).__name__} is not the whole of {self.STAGE!r}; it has no "
                     f"whole Fortran stage of its own to run")
             return "native-whole"
         # auto: the original stage while nothing is replaced; segmented where the
         # image's runner pauses at every replaced kernel; the walk otherwise
-        if not replaced and self.WHOLE_ACTION:
+        if not replaced and whole:
             return "native-whole"
-        if replaced and self.WHOLE_ACTION and native is not None:
+        if replaced and whole and native is not None:
             offer = getattr(native, "segment_runner", None)
             runner = None if offer is None else offer(self.STAGE)
             covered = set(getattr(runner, "kernels", ()) or ())
             if runner is not None and set(replaced) <= covered:
                 return "segmented"
+        if replaced and native is not None and self.execution.mode != "legacy-python":
+            # never a silent fall-back: the walk is the slow path, and a run
+            # that takes it should say so once, before the first step
+            uncovered = sorted(set(replaced) - covered) if whole else sorted(replaced)
+            warnings.warn(
+                f"{type(self).__name__}: the image's segment runner does not pause at {uncovered}; "
+                f"running the statement-by-statement Python walk (legacy-python) instead",
+                RuntimeWarning, stacklevel=2)
         return "legacy-python"
 
     def tend(self, fields: Any, context: Any) -> None:
@@ -1121,26 +1282,54 @@ class NativeStage:
                 f"slots do not show it; the original Fortran will not be run in their place")
         if mode == "native-whole":
             # nothing replaced: the original Fortran stage, once, through its
-            # own (disabled) workflow action -- no walk, no views, no copies
-            native.run_action(self.STAGE)
+            # own (disabled) workflow action -- no walk, no views, no copies;
+            # a split stage leaves the driver to its resume half instead
+            if self.WHOLE_ACTION:
+                native.run_action(self.STAGE)
+            else:
+                self.native_between_halves(native)
             self.execution.native_stage_calls += 1
             return
         if mode == "segmented":
             self._tend_segmented(native)
+            self.after_segmented(native)
             return
         self.execution.legacy_steps += 1
         self._tend_walk(native, context)
 
+    def native_between_halves(self, native: Any) -> None:
+        """Native-whole for a split stage: what :meth:`tend` does so the resume half runs the driver."""
+
+        raise PhysicsError(
+            f"{type(self).__name__} is not the whole of {self.STAGE!r} and declares no "
+            f"native path between its halves")
+
+    def after_segmented(self, native: Any) -> None:
+        """After the runner has run every chunk: a split stage tells its resume half to take the result."""
+
+        del native
+
+    def prepare_segmented(self, native: Any) -> None:
+        """Bind what the runner reads before its first start.
+
+        The stage-7 runner reads the stage's hosts -- state, tendencies, the
+        physics buffer -- through the same bindings the walk uses, and those
+        are made when this rank's runtime is built.  Build it first: a model
+        in the slot, unlike the original kernel run through Python, would not
+        otherwise touch the runtime at all, and the runner refuses a context
+        while the hosts are unbound.  A runner that pauses inside a sub-walk's
+        driver runs that driver's pieces from the sub-walk's handles module,
+        which its runtime binds and configures.
+        """
+
+        self.runtime(native)
+        for component in self.components.values():
+            component.runtime(native)
+
     def _tend_segmented(self, native: Any) -> None:
         """The original Fortran through its segment runner, paused at each replaced kernel."""
 
-        # The runner reads the stage's hosts -- state, tendencies, the physics
-        # buffer -- through the same bindings the walk uses, and those are
-        # made when this rank's runtime is built.  Build it first: a model in
-        # the slot, unlike the original kernel run through Python, would not
-        # otherwise touch the runtime at all, and the runner refuses a
-        # context while the hosts are unbound.
-        self.runtime(native)
+        self.prepare_segmented(native)
         segmented = self._segmented
         if segmented is None:
             runner = native.segment_runner(self.STAGE)
@@ -1154,14 +1343,34 @@ class NativeStage:
             if kernel is None:
                 kernels[name] = None
             elif isinstance(kernel, OriginalKernel):
-                kernels[name] = self._original_through_python(native, name)
+                owner = self._owner_of(name)
+                if getattr(segmented.runner, "runs_original", False):
+                    # the runner runs the paused call itself; the frame's
+                    # write-back is exercised with what it produced
+                    kernels[name] = OriginalAtPause()
+                elif type(owner).original_kernel_through_python is not NativeStage.original_kernel_through_python:
+                    kernels[name] = owner.original_kernel_through_python(native, name)
+                else:
+                    kernels[name] = self._original_through_python(native, name)
             else:
                 kernels[name] = self._owner_of(name).frame_kernel(name, kernel, native)
         segmented.run(kernels)
         counters = segmented.counters
         self.execution.native_segment_calls = counters.starts + counters.resumes
         self.execution.python_model_calls = counters.model_calls
+        self.execution.model_calls_by_kernel = dict(counters.calls_by_kernel)
         self.execution.segment_pauses = counters.pauses
+
+    def original_kernel_through_python(self, native: Any, name: str) -> Callable[[Mapping[str, Any]], dict]:
+        """The original kernel ``name`` as a model for the runner's frame.
+
+        By default the direct kernel of that name, run on the frame's lanes
+        (see :meth:`_original_through_python`).  A stage whose kernel the
+        image reaches some other way -- through a lifted section rather than
+        a direct kernel -- overrides this with its own original.
+        """
+
+        return self._original_through_python(native, name)
 
     def _original_through_python(self, native: Any, name: str) -> Callable[[Mapping[str, Any]], dict]:
         """The original direct kernel, as a model: the frame's live lanes in, its outputs out.

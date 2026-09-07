@@ -200,3 +200,22 @@ def test_nothing_replaced_is_refused_and_the_context_is_kept_between_steps() -> 
     assert stage.generation == 2
     stage.close()
     assert not runner.contexts
+
+
+def test_an_empty_output_takes_any_empty_answer_and_nothing_else() -> None:
+    """A field the configuration never registered is packed as a zero-size
+    array; a chunk may pack no cloudy column at all.  Neither leaves the
+    model anything to write, and the frame does not hold it to the extents
+    of an array with nothing in it."""
+
+    import numpy as np
+
+    from freecam.physics.segments import FrameArgument, KernelFrame
+
+    frame = KernelFrame(
+        kernel="k", call_index=1, lchnk=1, ncol=0, substep=1, token=1,
+        arguments=(FrameArgument("nothing", np.zeros((0, 0), order="F"), "out"),
+                   FrameArgument("empty_rows", np.zeros((0, 30), order="F"), "out")))
+    assert frame.write_back({"nothing": np.zeros((0, 30)), "empty_rows": np.zeros((0, 30))}) == ("nothing", "empty_rows")
+    with pytest.raises(PhysicsError, match="no storage"):
+        frame.write_back({"nothing": np.zeros((2, 30)), "empty_rows": np.zeros((0, 30))})

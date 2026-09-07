@@ -49,12 +49,24 @@ DECLARATIONS = (997, 1553)
 #: kept; the driver's own `if`s on module flags are evaluated by the same
 #: flags, passed in.
 VERBATIM = (
+    ("micro_head", 1554, 1767),          # nlev, the sizes, the buffer fields, the state copy, the ptend
     ("micro_pack_prelude", 1768, 2069),
     ("micro_substep_pack", 2074, 2086),
     ("micro_core", 2087, 2209),          # the core call and its error check
     ("micro_substep_unpack", 2210, 2247),
     ("micro_post_proc", 2252, 2286),
+    ("micro_tail", 2287, 3182),          # diagnostics, tracers, history, the state dealloc
 )
+#: The procedures the Python walk calls as handles: the packer section.  The
+#: head and the tail are the runner's; the walk reaches their statements
+#: through the lifted kernels and its own entries.
+WALK_LIFTED = VERBATIM[1:-1]
+#: The substep loop the segment runner drives around the core: its header
+#: and footer are the runner's, its body the three procedures above.
+SUBSTEP_LOOP = (2071, 2249)
+#: The original call the runner pauses at, for the frame's argument order.
+CORE_CALL = (2092, 2119)
+CONTRACT = REPO / "native/pi_cam/functions/micro_mg_tend.yaml"
 
 #: micro_mg_cam module variables the verbatim text reads.  Private to that
 #: module, so Python reads each off the image (ifort emits the symbol) and
@@ -126,7 +138,7 @@ NOT_LOCAL = {"state", "ptend", "pbuf", "dtime", "it", "pcols", "pver", "pverp", 
              "micro_mg_get_cols1_0", "micro_mg_get_cols1_5", "micro_mg_get_cols2_0",
              "physics_ptend_init", "physics_ptend_sum", "physics_update", "physics_ptend_scale",
              "post_proc", "packer", "state_loc", "ptend_loc", "pckdptr", "qrain_idx", "qsnow_idx",
-             "nrain_idx", "nsnow_idx", "e", "in", "out", "i", "k"}
+             "nrain_idx", "nsnow_idx", "e", "in", "out", "i", "k", "subname"}
 
 
 def module_state(lines) -> list[tuple[str, str]]:
@@ -144,7 +156,10 @@ def module_state(lines) -> list[tuple[str, str]]:
             continue
         attrs = ", " + attributes if attributes else ""
         shape = f"({dims})" if dims else ""
-        rows.append((f"  {kind}{attrs}, save :: {name}{shape}{(' ' + init) if init else ''}", name))
+        if "pointer" in attributes and not init:
+            init = "=> null()"           # a module pointer's association status is otherwise undefined
+        save = "" if "parameter" in attributes else ", save"
+        rows.append((f"  {kind}{attrs}{save} :: {name}{shape}{(' ' + init) if init else ''}", name))
     # the four the driver holds as dummies or derived types, held here instead
     rows += [
         ("  type(physics_state), pointer, save :: state => null()", "state"),
@@ -159,6 +174,7 @@ def module_state(lines) -> list[tuple[str, str]]:
         ("  real(r8), save :: dtime = 0._r8", "dtime"),
         ("  logical, save :: lq(pcnst)", "lq"),
         ("  character(len=128), save :: errstring", "errstring"),
+        ("  character(len=*), parameter :: subname = 'micro_mg_cam_tend'", "subname"),
     ]
     return rows
 
@@ -204,6 +220,8 @@ def view_table(lines) -> list[tuple[str, str, int, str]]:
             continue
         if name.startswith("packed_") or name.endswith("_dum"):
             continue
+        if dims.count(",") + 1 > 3:
+            continue                     # the tracer rate arrays: no view helper for rank 5
         code += 1
         rows.append((name, name, dims.count(",") + 1, str(code)))
     # the packed arrays, for a model in the core's place
@@ -220,10 +238,278 @@ def view_table(lines) -> list[tuple[str, str, int, str]]:
 def _verbatim(lines, name, first, last) -> str:
     body = []
     for number in range(first, last + 1):
-        line = lines[number - 1]
+        line = lines[number - 1].rstrip()
         body.append("    " + line if line.strip() else line)
     return "\n".join([f"  subroutine {name}()", "    ! micro_mg_cam.F90:{}-{}, verbatim".format(first, last),
-                      "    integer :: i", ""] + body + ["", f"  end subroutine {name}"])
+                      "    integer :: i, k", ""] + body + ["", f"  end subroutine {name}"])
+
+
+#: The driver module's physics-buffer indices, private to it: the runner's
+#: copy is resolved by the same field names.
+def buffer_indices(lines) -> list[tuple[str, str]]:
+    """(index variable, field name) for every index the driver registers or looks up."""
+
+    found: dict[str, str] = {}
+    for _, _, text in _statements(lines, 1, ROUTINE[0] - 1):
+        # the field name as the source spells it, trailing blank included
+        match = re.match(r"call pbuf_add_field\(\s*'([^']+)'.*,\s*(\w+_idx)\s*\)$", text, re.I)
+        if match:
+            found.setdefault(match.group(2).lower(), match.group(1))
+            continue
+        match = re.match(r"(\w+_idx)\s*=\s*pbuf_get_index\(\s*'([^']+)'", text, re.I)
+        if match:
+            found.setdefault(match.group(1).lower(), match.group(2))
+    return sorted(found.items())
+
+
+def _split_arguments(text: str) -> list[str]:
+    out, depth, current = [], 0, []
+    for character in text:
+        if character == "(":
+            depth += 1
+        elif character == ")":
+            depth -= 1
+        if character == "," and depth == 0:
+            out.append("".join(current).strip()); current = []
+        else:
+            current.append(character)
+    if "".join(current).strip():
+        out.append("".join(current).strip())
+    return out
+
+
+#: What stands behind each scalar actual of the core call in the frame.
+FRAME_SCALARS = {
+    "microp_uniform": ("frame_microp_uniform", 2), "mgncol": ("frame_mgncol", 2), "nlev": ("frame_nlev", 2),
+    "1": ("frame_one", 2), "dtime/num_steps": ("frame_deltatin", 1), "do_cldice": ("frame_do_cldice", 2),
+}
+INTENT_CODE = {"input": 0, "structural": 0, "output": 1, "inout": 2}
+
+
+def frame_table(lines) -> list[dict]:
+    """The paused core call's arguments, in order: actual, dummy, role, and how the frame serves it.
+
+    The actuals are the pinned call's, the dummies and roles the reviewed
+    contract's; the character argument the driver checks after the call has
+    no slot, since no model answers it.
+    """
+
+    import yaml
+
+    statement = _statements(lines, *CORE_CALL)[0][2]
+    if not statement.lower().startswith("call micro_mg_tend1_0("):
+        raise SystemExit(f"lines {CORE_CALL} are not the MG 1.0 core call: {statement[:60]}")
+    inside = statement.split("(", 1)[1].rsplit(")", 1)[0]
+    actuals = _split_arguments(inside)
+    contract = yaml.safe_load(CONTRACT.read_text())
+    dummies = [(a["name"], a["role"], a["fortran_type"]) for a in contract["arguments"]]
+    if len(actuals) != len(dummies):
+        raise SystemExit(f"the core call has {len(actuals)} arguments, the contract {len(dummies)}")
+    declared = declarations(lines)
+    rows = []
+    for actual, (dummy, role, fortran_type) in zip(actuals, dummies):
+        if fortran_type.startswith("character"):
+            continue
+        row = {"actual": actual, "dummy": dummy, "role": role, "intent": INTENT_CODE[role]}
+        if actual.lower() in FRAME_SCALARS:
+            expression, dtype = FRAME_SCALARS[actual.lower()]
+            row.update(kind="scalar", expression=expression, dtype=dtype)
+        else:
+            kind, attributes, dims, _ = declared[actual.lower()]
+            rank = dims.count(",") + 1 if dims else 1
+            row.update(kind="pointer" if "pointer" in attributes else "array", expression=actual,
+                       dtype=1, rank=rank, allocatable="allocatable" in attributes)
+        rows.append(row)
+    return rows
+
+
+def frame_cases(lines) -> str:
+    out = []
+    for index, row in enumerate(frame_table(lines), start=1):
+        intent = row["intent"]
+        if row["kind"] == "scalar":
+            out.append(f"    call scalar_slot({index}, c_loc({row['expression']}), {row['dtype']}, {intent}, "
+                       f"ptrs, ndims, shapes, dtypes, intents)")
+        elif row["kind"] == "pointer":
+            out.append(f"    call slot2_or({index}, {row['expression']}, ws_null2, {row['dtype']}, {intent}, "
+                       f"ptrs, ndims, shapes, dtypes, intents)")
+        elif row.get("allocatable"):
+            # a packed array the prelude allocates only when the configuration
+            # registers its field: an empty slot otherwise, never a reference
+            # to unallocated storage
+            out.append(f"    if (allocated({row['expression']})) then")
+            out.append(f"      call slot{row['rank']}({index}, {row['expression']}, {row['dtype']}, {intent}, "
+                       f"ptrs, ndims, shapes, dtypes, intents)")
+            out.append(f"    else")
+            out.append(f"      call empty_slot({index}, {row['rank']}, {row['dtype']}, {intent}, "
+                       f"ptrs, ndims, shapes, dtypes, intents)")
+            out.append(f"    end if")
+        else:
+            out.append(f"    call slot{row['rank']}({index}, {row['expression']}, {row['dtype']}, {intent}, "
+                       f"ptrs, ndims, shapes, dtypes, intents)")
+    return "\n".join(out)
+
+
+RUNNER_API = """  subroutine micro_resolve_indices()
+    ! micro_mg_cam_register's and micro_mg_cam_init's indices, by the same names
+    integer :: ierr
+{index_resolution}
+  end subroutine micro_resolve_indices
+
+  logical function micro_runner_ready()
+    micro_runner_ready = configured .and. associated(host_state) .and. associated(host_pbuf2d)
+  end function micro_runner_ready
+
+  integer function micro_num_steps()
+    micro_num_steps = num_steps
+  end function micro_num_steps
+
+  subroutine micro_substep(it_in)
+    integer, intent(in) :: it_in
+    it = it_in
+  end subroutine micro_substep
+
+  subroutine micro_runner_bind(lchnk_in, ptend_in, dtime_in)
+    ! What micro_mg_cam_tend's dummies stand for when the stage runner calls
+    ! the routine in its pieces: tphysbc's state for this chunk, the stage's
+    ! ptend, the chunk's buffer, the co-substep's timestep.  The routine's
+    ! own head (micro_run_head) then copies the state and initialises the
+    ! ptend, as the source does.
+    integer, intent(in) :: lchnk_in
+    type(physics_ptend), target, intent(inout) :: ptend_in
+    real(r8), intent(in) :: dtime_in
+    lchnk = lchnk_in
+    state => host_state(lchnk)
+    ptend => ptend_in
+    pbuf => pbuf_get_chunk(host_pbuf2d, lchnk)
+    dtime = dtime_in
+    call release_locals()
+    if (state_live) call physics_state_dealloc(state_loc)
+    state_live = .false.
+  end subroutine micro_runner_bind
+
+  subroutine micro_run_head()
+    call micro_head()
+    state_live = .true.
+  end subroutine micro_run_head
+
+  subroutine micro_runner_end()
+    ! micro_tail deallocated state_loc (3182); the locals go the way the
+    ! routine's exit would have taken them
+    state_live = .false.
+    call release_locals()
+  end subroutine micro_runner_end
+
+  subroutine micro_core_frame(ptrs, ndims, shapes, dtypes, intents, ncol_out)
+    ! The paused micro_mg_tend call's arguments where they live: the packed
+    ! arrays the substep just filled, in the call's order (the contract's),
+    ! the scalars by value, zeros for the pointers this configuration leaves
+    ! unassociated.  The character argument the driver checks afterwards has
+    ! no slot.
+    type(c_ptr), intent(inout) :: ptrs(:)
+    integer(c_int), intent(inout) :: ndims(:), dtypes(:), intents(:)
+    integer(c_int64_t), intent(inout) :: shapes(:,:)
+    integer(c_int), intent(out) :: ncol_out
+    frame_microp_uniform = merge(1_c_int32_t, 0_c_int32_t, microp_uniform)
+    frame_do_cldice = merge(1_c_int32_t, 0_c_int32_t, do_cldice)
+    frame_mgncol = int(mgncol, c_int32_t)
+    frame_nlev = int(nlev, c_int32_t)
+    frame_one = 1_c_int32_t
+    frame_deltatin = real(dtime/num_steps, c_double)
+    if (allocated(ws_null2)) then
+      if (size(ws_null2, 1) /= mgncol .or. size(ws_null2, 2) /= nlev) deallocate(ws_null2)
+    end if
+    if (.not. allocated(ws_null2)) allocate(ws_null2(mgncol, nlev))
+    ws_null2 = 0._r8
+{frame_cases}
+    ncol_out = int(mgncol, c_int)
+  end subroutine micro_core_frame
+
+  subroutine empty_slot(index, rank, dtype, intent, ptrs, ndims, shapes, dtypes, intents)
+    ! an argument with no storage in this call: a null address and zero extents
+    integer, intent(in) :: index, rank, dtype, intent
+    type(c_ptr), intent(inout) :: ptrs(:)
+    integer(c_int), intent(inout) :: ndims(:), dtypes(:), intents(:)
+    integer(c_int64_t), intent(inout) :: shapes(:,:)
+    ptrs(index) = c_null_ptr
+    ndims(index) = int(rank, c_int)
+    shapes(:, index) = 0_c_int64_t
+    dtypes(index) = int(dtype, c_int)
+    intents(index) = int(intent, c_int)
+  end subroutine empty_slot
+
+  subroutine scalar_slot(index, address, dtype, intent, ptrs, ndims, shapes, dtypes, intents)
+    integer, intent(in) :: index, dtype, intent
+    type(c_ptr), intent(in) :: address
+    type(c_ptr), intent(inout) :: ptrs(:)
+    integer(c_int), intent(inout) :: ndims(:), dtypes(:), intents(:)
+    integer(c_int64_t), intent(inout) :: shapes(:,:)
+    ptrs(index) = address
+    ndims(index) = 0_c_int
+    shapes(:, index) = 0_c_int64_t
+    dtypes(index) = int(dtype, c_int)
+    intents(index) = int(intent, c_int)
+  end subroutine scalar_slot
+
+  subroutine slot1(index, array, dtype, intent, ptrs, ndims, shapes, dtypes, intents)
+    integer, intent(in) :: index, dtype, intent
+    real(r8), target, intent(in) :: array(:)
+    type(c_ptr), intent(inout) :: ptrs(:)
+    integer(c_int), intent(inout) :: ndims(:), dtypes(:), intents(:)
+    integer(c_int64_t), intent(inout) :: shapes(:,:)
+    ptrs(index) = c_loc(array(1))
+    ndims(index) = 1_c_int
+    shapes(:, index) = 0_c_int64_t
+    shapes(1, index) = int(size(array, 1), c_int64_t)
+    dtypes(index) = int(dtype, c_int)
+    intents(index) = int(intent, c_int)
+  end subroutine slot1
+
+  subroutine slot2(index, array, dtype, intent, ptrs, ndims, shapes, dtypes, intents)
+    integer, intent(in) :: index, dtype, intent
+    real(r8), target, intent(in) :: array(:,:)
+    type(c_ptr), intent(inout) :: ptrs(:)
+    integer(c_int), intent(inout) :: ndims(:), dtypes(:), intents(:)
+    integer(c_int64_t), intent(inout) :: shapes(:,:)
+    ptrs(index) = c_loc(array(1,1))
+    ndims(index) = 2_c_int
+    shapes(:, index) = 0_c_int64_t
+    shapes(1, index) = int(size(array, 1), c_int64_t)
+    shapes(2, index) = int(size(array, 2), c_int64_t)
+    dtypes(index) = int(dtype, c_int)
+    intents(index) = int(intent, c_int)
+  end subroutine slot2
+
+  subroutine slot3(index, array, dtype, intent, ptrs, ndims, shapes, dtypes, intents)
+    integer, intent(in) :: index, dtype, intent
+    real(r8), target, intent(in) :: array(:,:,:)
+    type(c_ptr), intent(inout) :: ptrs(:)
+    integer(c_int), intent(inout) :: ndims(:), dtypes(:), intents(:)
+    integer(c_int64_t), intent(inout) :: shapes(:,:)
+    ptrs(index) = c_loc(array(1,1,1))
+    ndims(index) = 3_c_int
+    shapes(1, index) = int(size(array, 1), c_int64_t)
+    shapes(2, index) = int(size(array, 2), c_int64_t)
+    shapes(3, index) = int(size(array, 3), c_int64_t)
+    dtypes(index) = int(dtype, c_int)
+    intents(index) = int(intent, c_int)
+  end subroutine slot3
+
+  subroutine slot2_or(index, field, fallback, dtype, intent, ptrs, ndims, shapes, dtypes, intents)
+    ! a packed pointer where the configuration fills it, the zero workspace
+    ! where it is unassociated -- what the original passes
+    integer, intent(in) :: index, dtype, intent
+    real(r8), pointer, intent(in) :: field(:,:)
+    real(r8), target, intent(in) :: fallback(:,:)
+    type(c_ptr), intent(inout) :: ptrs(:)
+    integer(c_int), intent(inout) :: ndims(:), dtypes(:), intents(:)
+    integer(c_int64_t), intent(inout) :: shapes(:,:)
+    if (associated(field)) then
+      call slot2(index, field, dtype, intent, ptrs, ndims, shapes, dtypes, intents)
+    else
+      call slot2(index, fallback, dtype, intent, ptrs, ndims, shapes, dtypes, intents)
+    end if
+  end subroutine slot2_or"""
 
 
 def render_module(source: Path | None = None) -> str:
@@ -272,6 +558,11 @@ def render_module(source: Path | None = None) -> str:
     configure_body = nl.join(
         (f"    {n} = {n}_in /= 0_c_int" if kind == "logical" else f"    {n} = int({n}_in)")
         for n, kind in CONFIGURATION)
+    indices = buffer_indices(lines)
+    index_state = nl.join(f"  integer, save :: {name} = -1" for name, _ in indices)
+    index_resolution = nl.join(f"    {name} = pbuf_get_index('{field}', ierr)" for name, field in indices)
+    slots = len(frame_table(lines))
+    runner_api = RUNNER_API.format(frame_cases=frame_cases(lines), index_resolution=index_resolution)
     return f'''! The calls a Python-driven microphysics timestep makes into CAM, and the
 ! packer section of micro_mg_cam_tend, verbatim.
 !
@@ -290,21 +581,26 @@ def render_module(source: Path | None = None) -> str:
 
 module pycam_micro_handles
 
-  use, intrinsic :: iso_c_binding, only: c_char, c_double, c_int, c_int64_t, &
+  use, intrinsic :: iso_c_binding, only: c_char, c_double, c_int, c_int32_t, c_int64_t, &
        c_loc, c_null_ptr, c_ptr
   use shr_kind_mod,     only: r8 => shr_kind_r8
-  use ppgrid,           only: pcols, pver, pverp, begchunk, endchunk
+  use ppgrid,           only: pcols, pver, pverp, psubcols, begchunk, endchunk
   use constituents,     only: pcnst
   use physconst,        only: gravit, rair, tmelt, cpair, rh2o, rhoh2o, latvap, latice, mwh2o
   use physics_types,    only: physics_state, physics_ptend, physics_ptend_init, &
        physics_state_copy, physics_update, physics_state_dealloc, physics_ptend_sum, &
        physics_ptend_scale
-  use physics_buffer,   only: physics_buffer_desc, pbuf_get_chunk
-  use phys_control,     only: use_hetfrz_classnuc
+  use physics_buffer,   only: physics_buffer_desc, pbuf_get_chunk, pbuf_get_field, &
+       pbuf_old_tim_idx, pbuf_col_type_index, pbuf_get_index
+  use phys_control,     only: use_hetfrz_classnuc, phys_getopts
   use cam_abortutils,   only: endrun
+  use cam_history,      only: outfld
   use error_messages,   only: handle_errmsg
   use ref_pres,         only: top_lev => trop_cloud_top_lev
+  use micro_mg_utils,   only: size_dist_param_basic, size_dist_param_liq, &
+       mg_liq_props, mg_ice_props, avg_diameter, rhoi, rhosn, rhow, rhows, qsmall, mincld
   use micro_mg_data,    only: MGPacker, MGPostProc, accum_null, accum_mean
+  use subcol,           only: subcol_field_avg
   use micro_mg1_0,      only: micro_mg_tend1_0 => micro_mg_tend, micro_mg_get_cols1_0 => micro_mg_get_cols
   use micro_mg1_5,      only: micro_mg_tend1_5 => micro_mg_tend, micro_mg_get_cols1_5 => micro_mg_get_cols
   use micro_mg2_0,      only: micro_mg_tend2_0 => micro_mg_tend, micro_mg_get_cols2_0 => micro_mg_get_cols
@@ -317,6 +613,11 @@ module pycam_micro_handles
   private
 
   public :: pycam_micro_bind_hosts, python_owns_micro, micro_ptend
+  ! what the stage's segment runner drives: the routine in its pieces, and
+  ! the context around them
+  public :: micro_runner_bind, micro_run_head, micro_runner_end, micro_runner_ready, &
+            micro_substep, micro_num_steps, micro_pack_prelude, micro_substep_pack, micro_core, &
+            micro_substep_unpack, micro_post_proc, micro_tail, micro_core_frame
 
   logical, save :: python_owns_micro = .false.
   logical, save :: python_owns_core = .false.
@@ -327,10 +628,25 @@ module pycam_micro_handles
   ! the driver's own flags, read off the image by Python and set once
 {config}
 
-  ! the packer section's locals, held per chunk call
+  ! the routine's locals, held per chunk call
 {state}
 
-  integer, save :: rate1_cw2pr_st_idx = 0, qrain_idx = 0, qsnow_idx = 0, nrain_idx = 0, nsnow_idx = 0
+  ! the driver module's physics-buffer indices, private to it; resolved here
+  ! by the same field names when the module is configured (-1 where the
+  ! configuration registers no such field, as the driver's init leaves them)
+{index_state}
+
+  ! the segment runner's context: the chunk's buffer, and whether the module
+  ! has been configured and its indices resolved
+  logical, save :: configured = .false.
+  type(physics_buffer_desc), pointer, save :: pbuf(:) => null()
+  ! the paused core call's frame: the scalars by value, and zeros standing in
+  ! for the packed pointers the configuration leaves unassociated
+  integer, parameter, public :: micro_frame_slots = {slots}
+  integer(c_int32_t), save, target :: frame_microp_uniform = 0, frame_mgncol = 0, frame_nlev = 0, &
+                                      frame_one = 1, frame_do_cldice = 0
+  real(c_double), save, target :: frame_deltatin = 0._c_double
+  real(r8), allocatable, save, target :: ws_null2(:,:)
 
   interface p
      module procedure p1
@@ -347,6 +663,7 @@ contains
     ! allocated twice without this.  Called before every chunk's state copy
     ! and after its state dealloc.
 {releases}
+    if (allocated(ws_null2)) deallocate(ws_null2)
   end subroutine release_locals
 
   logical function chunk_ok(lchnk_in)
@@ -399,6 +716,12 @@ contains
 {procedures}
 
   ! ------------------------------------------------------------------ !
+  ! The segment runner's context and the paused core's frame
+  ! ------------------------------------------------------------------ !
+
+{runner_api}
+
+  ! ------------------------------------------------------------------ !
   ! Entries
   ! ------------------------------------------------------------------ !
 
@@ -422,6 +745,8 @@ contains
        bind(C, name='pycam_micro_configure_v1') result(status)
 {configure_decl}
 {configure_body}
+    call micro_resolve_indices()
+    configured = .true.
     status = 0_c_int
   end function pycam_micro_configure_v1
 

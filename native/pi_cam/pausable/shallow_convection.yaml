@@ -1,0 +1,75 @@
+# Shallow convection (tphysbc stage 5, action 425): the tphysbc block around
+# convect_shallow_tend, the driver hoisted whole, pausable at the UW core
+# compute_uwshcu_inv.  Only the UW branch of the driver's select is carried;
+# the others are refused at create, as the admitted configuration never
+# takes them.
+schema_version: 1
+prefix: shcu
+stage: cam_run1.shallow_convection
+refuse:
+  - {when: "trim(shallow_scheme) /= 'UW'", message: "written for the UW shallow scheme"}
+units:
+  glue:
+    source: components/cam/src/physics/cam/physpkg.F90
+    routine: tphysbc
+    module_header: [1, 60]
+    declarations: [1674, 1874]
+    uses:
+      - "use comsrf, only: comsrf_sgh30 => sgh30"
+    dummies:
+      state: host_state(lchnk)
+      tend: host_tend(lchnk)
+      pbuf: pbuf_get_chunk(host_pbuf2d, lchnk)
+      cam_in: host_cam_in(lchnk)
+      cam_out: host_cam_out(lchnk)
+      sgh30: "copy: comsrf_sgh30(:, lchnk)"
+      ztodt: real(get_step_size(), r8)
+    # tphysbc locals that physpkg carries across its Python-dispatched actions
+    # (control patch 0039): views of the same storage, so what this stage
+    # reads is what deep convection wrote and what it writes is what the
+    # cloud stage reads
+    carries: {cmfmc: 2, cmfmc2: 3, dlf: 4, dlf2: 5, rliq: 6, wtdlf: 7}
+    records: {tracerint: pycam_bc_tracerint_addr_v1}
+    pbuf_indices: {prec_sh_idx: PREC_SH, snow_sh_idx: SNOW_SH}
+    preamble:
+      - "lchnk = state%lchnk"
+      - "ncol = state%ncol"
+      - "nstep = get_nstep()"
+      - "zero = 0._r8"
+      - "zero_tracers(:,:) = 0._r8"
+      - "call pbuf_get_field(pbuf, prec_sh_idx, prec_sh)"
+      - "call pbuf_get_field(pbuf, snow_sh_idx, snow_sh)"
+      - "call t_startf('moist_convection')"
+    body:
+      - piece: [2123, 2124]
+      - unit: {name: driver, call: [2125, 2127]}
+      - piece: [2128, 2152]
+  driver:
+    source: components/cam/src/physics/cam/convect_shallow.F90
+    routine: convect_shallow_tend
+    module_header: [1, 21]
+    declarations: [416, 575]
+    pbuf_indices: auto
+    getopts: [shallow_scheme, microp_scheme]
+    uses:
+      - "use convect_shallow, only: convect_shallow_use_shfrc"
+    body:
+      - piece: [576, 619]
+      - select: 620
+        cases:
+          "'UW'":
+            - piece: [667, 682]
+            - pause: {kernel: compute_uwshcu_inv, call: [683, 696]}
+            - piece: [697, 741]
+        refused: ["'off', 'CLUBB_SGS'", "'Hack'", "'UNICON'"]
+      - piece: [767, 1039]
+kernels:
+  compute_uwshcu_inv:
+    source: components/cam/src/physics/cam/uwshcu.F90
+    routine: compute_uwshcu_inv
+anchors:
+  'glue:physpkg.F90:2123-2152': 92d463e4a7737235
+  'glue:physpkg.F90:declarations 1674-1874': 4e089ee70c947a21
+  'driver:convect_shallow.F90:576-1039': c465e79d71b59721
+  'driver:convect_shallow.F90:declarations 416-575': 929813f1e0c481fd
+  'compute_uwshcu_inv:uwshcu.F90:242-496': d9b840fc8bb675d4

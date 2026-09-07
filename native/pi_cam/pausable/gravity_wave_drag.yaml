@@ -1,0 +1,64 @@
+# Gravity wave drag (tphysac stage 7, action 408): the tphysac block around
+# gw_tend and that driver hoisted whole, pausable at the drag profile solver
+# gw_drag_prof inside the orographic block, the only source active in this
+# configuration.  The convective and frontal source blocks are carried
+# verbatim and never entered; their gw_drag_prof calls are not pauses.  The
+# band and the pressure coordinates are served component by component.
+schema_version: 1
+prefix: gwd
+stage: cam_run2.gravity_wave_drag
+runner_uses:
+  - "use phys_control, only: use_gw_oro"
+units:
+  glue:
+    source: components/cam/src/physics/cam/physpkg.F90
+    routine: tphysac
+    module_header: [1, 60]
+    declarations: [1248, 1367]
+    uses:
+      - "use comsrf, only: comsrf_sgh => sgh"
+    dummies:
+      state: host_state(lchnk)
+      tend: host_tend(lchnk)
+      pbuf: pbuf_get_chunk(host_pbuf2d, lchnk)
+      cam_in: host_cam_in(lchnk)
+      cam_out: host_cam_out(lchnk)
+      sgh: "view: comsrf_sgh(:, lchnk)"
+      ztodt: real(get_step_size(), r8)
+    preamble:
+      - "lchnk = state%lchnk"
+      - "ncol = state%ncol"
+      - "nstep = get_nstep()"
+      - "zero = 0._r8"
+    body:
+      - piece: [1563, 1563]
+      - unit: {name: driver, call: [1565, 1565]}
+      - piece: [1567, 1571]
+  driver:
+    source: components/cam/src/physics/cam/gw_drag.F90
+    routine: gw_tend
+    module_header: [1, 43]
+    declarations: [771, 896]
+    # the history-field prefixes of each source, the module's parameters
+    module_private: [[127, 130]]
+    uses:
+      - "use gw_drag, only: band_oro, band_mid, band_long, effgw_oro, effgw_cm, effgw_cm_igw, effgw_beres_dp, effgw_beres_sh, gw_polar_taper, beres_dp_desc, beres_sh_desc, cm_desc, cm_igw_desc, kvt_idx, ttend_dp_idx, ttend_sh_idx, frontgf_idx, frontga_idx, gw_spec_outflds"
+    body:
+      - piece: [897, 1272]
+      - if: 1273
+        then:
+          - piece: [1274, 1298]
+          - pause: {kernel: gw_drag_prof, call: [1299, 1303]}
+          - piece: [1304, 1351]
+      - piece: [1353, 1360]
+kernels:
+  gw_drag_prof:
+    source: components/cam/src/physics/cam/gw_common.F90
+    routine: gw_drag_prof
+anchors:
+  'glue:physpkg.F90:1563-1571': e5aa86502095288d
+  'glue:physpkg.F90:declarations 1248-1367': 35a81896e23a7968
+  'driver:gw_drag.F90:897-1360': 0ce62ae209861993
+  'driver:gw_drag.F90:declarations 771-896': 7801e09c9e945532
+  'driver:gw_drag.F90:verbatim 127-130': 861f1eae21001a3c
+  'gw_drag_prof:gw_common.F90:255-560': 3b2647594b1dd8ff

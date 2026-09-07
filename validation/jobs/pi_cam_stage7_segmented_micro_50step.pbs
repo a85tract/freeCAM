@@ -1,0 +1,81 @@
+#!/bin/bash
+# Submit with: validation/jobs/submit.sh validation/jobs/pi_cam_stage7_segmented_micro_50step.pbs
+#PBS -N pycam-seg-micro-50
+#PBS -q develop
+# Preserve the validated rank placement: 512 MPI ranks on four nodes while
+# charging the cpudev maximum of 256 physical CPUs.
+#PBS -l select=4:ncpus=64:mpiprocs=128:ompthreads=1:mem=64GB
+#PBS -l walltime=00:20:00
+#PBS -j oe
+#PBS -o logs/
+#PBS -V
+
+# The segment runner's second pause: CloudMacroMicrophysics installed, its
+# micro_mg_tend slot holding the ORIGINAL core as a Python-side replacement
+# (--segmented-original-kernels micro_mg_tend), execution segmented.  The
+# image runs the original stage-7 Fortran through pycam_stage7_runner, which
+# now drives micro_mg_cam_tend in the pieces pycam_micro_handles holds and
+# pauses inside its substep loop at every micro_mg_tend call; Python answers
+# with the same routine from the standalone image (Gate M-5's form) and
+# resumes.  The answer is therefore the oracle's, or the pause, the frame or
+# the write-back is wrong: bfb: true is the only acceptable result.
+# PYCAM_ORIGINAL_KERNELS=mmacro_pcond,micro_mg_tend gates both pauses at once.
+set -euo pipefail
+
+source "${FREECAM_REPO:-${PBS_O_WORKDIR:-$PWD}}/validation/jobs/common.sh"
+
+repo=${FREECAM_REPO}
+python=${repo}/.venv/bin/python
+case_root=${FREECAM_STATE_CASE}
+oracle_run=${FREECAM_REFERENCE_RUN}
+mode=${PYCAM_EXECUTION_MODE:-fine_grained}
+run_dir=${FREECAM_SCRATCH}/pyCAM/PI-cam/stage7-segmented-micro-${PBS_JOBID}/run
+boundary=${FREECAM_SCRATCH}/pyCAM/PI-cam/nonpic-boundary-capture-50step/boundary/replay
+manifest=${PYCAM_NATIVE_MANIFEST:-${repo}/build/pi_cam_promoted/native_cam_manifest.json}
+summary=${PYCAM_SUMMARY:-validation/pi_cam_stage7_segmented_micro_50step.json}
+bfb_output=${PYCAM_BFB_OUTPUT:-validation/pi_cam_stage7_segmented_micro_vs_oracle_50step_bfb.json}
+
+source "${case_root}/.env_mach_specific.sh" >/dev/null 2>&1
+mpi_root=${CRAY_MPICH_DIR:-/opt/cray/pe/mpich/8.1.25/ofi/intel/19.0}
+export LD_LIBRARY_PATH="${mpi_root}/lib-abi-mpich:${mpi_root}/lib:${LD_LIBRARY_PATH:-}"
+export LD_PRELOAD=${FREECAM_LD_PRELOAD}${LD_PRELOAD:+:${LD_PRELOAD}}
+export PYTHONPATH=${repo}/src
+export OMP_NUM_THREADS=1
+export OMP_STACKSIZE=64M
+export FI_CXI_RX_MATCH_MODE=hybrid
+export FI_MR_CACHE_MONITOR=memhooks
+export MPICH_MPIIO_HINTS='*:romio_cb_read=enable:romio_cb_write=enable:striping_factor=24'
+
+mkdir -p "${run_dir}"
+rsync -a \
+  --exclude 'f.e13.F1850C5.ne16_g16.icesm131_ihesp.PI-cam-oracle.50step.*' \
+  --exclude '*.log.*' --exclude 'rpointer.*' --exclude 'timing/' \
+  "${oracle_run}/" "${run_dir}/"
+mkdir -p "${run_dir}/timing/checkpoints"
+
+cd "${repo}"
+mpiexec --label -n 512 "${python}" -m freecam.pi_cam.cli \
+  --config configs/pi_cam_icesm131_replay.yaml \
+  --native-manifest "${manifest}" \
+  --boundary "${boundary}" \
+  --run-dir "${run_dir}" \
+  --execution-mode "${mode}" \
+  --cloud-macro-micro-python \
+  --stage-execution segmented \
+  --segmented-original --segmented-original-kernels "${PYCAM_ORIGINAL_KERNELS:-micro_mg_tend}" \
+  --steps "${PYCAM_STEPS:-50}" \
+  --summary "${summary}" \
+  > "${run_dir}/pi_cam_python.log" 2>&1 || echo "model run exited $? (comparing the output anyway)"
+
+status=0
+"${python}" tools/verify_pi_cam.py \
+  --reference "${oracle_run}" \
+  --candidate "${run_dir}" \
+  --output "${bfb_output}" || status=$?
+
+"${python}" - <<PY || true
+import json
+s = json.load(open("${summary}"))
+print("stage execution:", json.dumps(s.get("stage_execution")))
+PY
+exit "${status}"

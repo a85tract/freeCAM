@@ -1,0 +1,112 @@
+# Vertical diffusion (tphysac stage 3, action 404): the tphysac block around
+# vertical_diffusion_tend and that driver hoisted whole, pausable at the
+# turbulent mountain stress (compute_tms), the eddy diffusivities
+# (compute_eddy_diff) and the implicit diffusion solver (compute_vdiff, at
+# both of its call sites: the moist and the dry field lists).  Only the
+# diag_TKE eddy scheme of the driver's select is carried.  The friction
+# velocity and Obukhov length the block writes are tphysac carries the dry
+# deposition stage reads (control patch 0043).
+schema_version: 1
+prefix: vdiff
+stage: cam_run2.vertical_diffusion
+runner_uses:
+  - "use vertical_diffusion, only: do_tms, eddy_scheme, fieldlist_wet, fieldlist_dry"
+  - "use diffusion_solver, only: any"
+refuse:
+  - {when: "trim(eddy_scheme) /= 'diag_TKE'", message: "written for the diag_TKE eddy scheme"}
+units:
+  glue:
+    source: components/cam/src/physics/cam/physpkg.F90
+    routine: tphysac
+    module_header: [1, 60]
+    declarations: [1248, 1367]
+    uses:
+      - "use comsrf, only: comsrf_sgh30 => sgh30"
+    dummies:
+      state: host_state(lchnk)
+      tend: host_tend(lchnk)
+      pbuf: pbuf_get_chunk(host_pbuf2d, lchnk)
+      cam_in: host_cam_in(lchnk)
+      cam_out: host_cam_out(lchnk)
+      sgh30: "view: comsrf_sgh30(:, lchnk)"
+      ztodt: real(get_step_size(), r8)
+    # what this stage writes for the dry deposition stage: views of physpkg's storage
+    carries: {surfric: 1, obklen: 2}
+    carries_entry: pycam_ac_carry_v1
+    # physpkg's private copy of the CLUBB switch, read through phys_getopts
+    getopts: {do_clubb_sgs: logical}
+    preamble:
+      - "lchnk = state%lchnk"
+      - "ncol = state%ncol"
+      - "nstep = get_nstep()"
+      - "ifld = pbuf_get_index('AST')"
+      - "call pbuf_get_field(pbuf, ifld, ast, start=(/1,1,pbuf_old_tim_idx()/), kount=(/pcols,pver,1/))"
+    body:
+      - if: 1481
+        then:
+          - piece: [1483, 1486]
+        else:
+          - piece: [1490, 1490]
+          - unit: {name: driver, call: [1491, 1494]}
+          - piece: [1499, 1504]
+      - piece: [1511, 1513]
+  driver:
+    source: components/cam/src/physics/cam/vertical_diffusion.F90
+    routine: vertical_diffusion_tend
+    module_header: [1, 57]
+    declarations: [635, 815]
+    # nturb and wstarent: the module's parameters the body passes on
+    module_private: [[80, 81]]
+    # positive_moisture: the module's private procedure the body calls
+    helpers: [[1391, 1465]]
+    uses:
+      - "use vertical_diffusion, only: eddy_scheme, do_pseudocon_diff, shallow_scheme, fieldlist_wet, fieldlist_dry, fieldlist_molec, ntop, nbot, tke_idx, kvh_idx, kvm_idx, kvt_idx, turbtype_idx, smaw_idx, tauresx_idx, tauresy_idx, vdiffnam, ixcldice, ixcldliq, ixnumice, ixnumliq, qrl_idx, wsedl_idx, pblh_idx, tpert_idx, qpert_idx, bprod_idx, ipbl_idx, kpblh_idx, wstarPBL_idx, tkes_idx, went_idx, qtl_flx_idx, qti_flx_idx, kv_top_pressure, kv_top_scale, kv_freetrop_scale, diff_cnsrv_mass_check, do_tms, prog_modal_aero, pmam_ncnst, pmam_cnst_idx"
+    body:
+      - piece: [816, 834]
+      - if: 835
+        then:
+          - pause: {kernel: compute_tms, call: [836, 839]}
+          - piece: [840, 847]
+        else:
+          - piece: [849, 851]
+      - piece: [853, 861]
+      - select: 862
+        cases:
+          "'diag_TKE'":
+            - piece: [864, 894]
+            - pause: {kernel: compute_eddy_diff, call: [895, 907]}
+            - piece: [908, 965]
+        refused: ["'HB', 'HBR'"]
+      - piece: [987, 1063]
+      - if: 1064
+        then:
+          - piece: [1065, 1065]
+          - pause: {kernel: compute_vdiff, call: [1066, 1076]}
+          - piece: [1077, 1080]
+      - piece: [1082, 1082]
+      - if: 1083
+        then:
+          - piece: [1084, 1089]
+          - pause: {kernel: compute_vdiff, call: [1090, 1100]}
+          - piece: [1101, 1104]
+      - piece: [1106, 1384]
+kernels:
+  compute_tms:
+    source: components/cam/src/physics/cam/trb_mtn_stress.F90
+    routine: compute_tms
+  compute_eddy_diff:
+    source: components/cam/src/physics/cam/eddy_diff.F90
+    routine: compute_eddy_diff
+  compute_vdiff:
+    source: components/cam/src/physics/cam/diffusion_solver.F90
+    routine: compute_vdiff
+anchors:
+  'glue:physpkg.F90:1481-1513': 4b3db1e312463dfe
+  'glue:physpkg.F90:declarations 1248-1367': 35a81896e23a7968
+  'driver:vertical_diffusion.F90:816-1384': 230a543357c0a09d
+  'driver:vertical_diffusion.F90:declarations 635-815': 4f86f3172a05bf26
+  'driver:vertical_diffusion.F90:verbatim 80-81': 1ff19ebc5fe75cff
+  'driver:vertical_diffusion.F90:verbatim 1391-1465': 1317fe8cde7bd8c6
+  'compute_tms:trb_mtn_stress.F90:59-178': d283cd44324b93c2
+  'compute_eddy_diff:eddy_diff.F90:351-873': 33f5f34c2ce804b6
+  'compute_vdiff:diffusion_solver.F90:131-949': 2e73f3feb8a44944

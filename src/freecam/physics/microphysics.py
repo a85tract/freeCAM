@@ -31,7 +31,7 @@ from __future__ import annotations
 import ctypes
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Mapping, Sequence
+from typing import Callable, Any, Mapping, Sequence
 
 import numpy as np
 
@@ -834,6 +834,60 @@ class Microphysics(NativeStage):
                             kernel=self._chunk_model(model, mgncol) if owns else None,
                             original=lambda: H.core(lchnk))
         self.calls.append(CORE)
+
+    def frame_kernel(self, name: str, kernel: Callable[..., Any], native: Any) -> Callable[[Mapping[str, Any]], dict]:
+        """``kernel`` as the segment runner's frame calls it.
+
+        The runner pauses inside micro_mg_cam_tend's substep loop and hands
+        the packed columns under the core's own dummy names -- the reviewed
+        contract's argument list, ``(mgncol, nlev)`` arrays and the scalars
+        -- and wants back every value the routine writes.  A model answers
+        the packed outputs (:data:`RETURNED`, through :meth:`_chunk_model`'s
+        three shapes); the five outputs the driver discards go back as the
+        frame handed them, since nothing reads them.
+        """
+
+        if name != CORE:
+            return kernel
+        model = kernel
+        from .spec import load_function_spec
+
+        spec = load_function_spec(CORE)
+        discarded = [a.name for a in spec.arguments
+                     if a.role in ("output", "inout") and a.name not in RETURNED
+                     and not a.fortran_type.lower().startswith("character")]
+        inputs = PACKED_INPUTS + PACKED_INPUTS_NO_CLDICE + PACKED_INPUTS_HETFRZ
+
+        def answer(batch: Mapping[str, Any]) -> dict[str, np.ndarray]:
+            mgncol = int(np.asarray(batch["ncol"]))
+            packed = {name: np.asarray(batch[PACKED_TO_DUMMY.get(name, name)])
+                      for name in inputs if PACKED_TO_DUMMY.get(name, name) in batch}
+            self._scalars = {"microp_uniform": int(np.asarray(batch["microp_uniform"])),
+                             "do_cldice": int(np.asarray(batch["do_cldice"])),
+                             "deltatin": float(np.asarray(batch["deltatin"]))}
+            call = self._chunk_model(model, mgncol)
+            values = call({**packed, **self._scalars})
+            out = {PACKED_TO_DUMMY.get(name, name): np.asarray(values[name], dtype=np.float64)
+                   for name in PACKED_OUTPUTS}
+            for name in discarded:
+                out[name] = (np.asarray(batch[name], dtype=np.float64) if name in batch
+                             else np.zeros_like(out["effc"]))
+            return out
+
+        return answer
+
+    def original_kernel_through_python(self, native: Any, name: str) -> Callable[[Mapping[str, Any]], dict]:
+        """The original core, answered through Python at the runner's pause: the standalone image.
+
+        The core is not a direct kernel of the model image -- the lifted
+        section calls it on the packed arrays -- so the original routine
+        reached from Python is the one the standalone image links from the
+        oracle's own objects (Gate M-5's form), column by column.
+        """
+
+        if name != CORE:
+            return super().original_kernel_through_python(native, name)
+        return self.frame_kernel(CORE, self.standalone_core(), native)
 
     def _discarded_outputs(self) -> dict[str, np.ndarray]:
         """The two intent(inout) outputs the driver hands to locals it discards.
