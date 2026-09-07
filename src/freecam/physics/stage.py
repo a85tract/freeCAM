@@ -958,15 +958,28 @@ class NativeStage:
         after it runs exactly as it did.
         """
 
-        run.workflow.process(self.STAGE)     # fail early if this is not a PI-CAM workflow
+        workflow = run.workflow
+        workflow.process(self.STAGE)     # fail early if this is not a PI-CAM workflow
         process = _StageProcess(self)
-        run.workflow.process(self.STAGE).disable()
-        if self.replaces_whole_action:
-            self._process = run.workflow.insert_after(self.STAGE, process)
-            return self._process
-        for name in (self.FIRST_HALF, self.SECOND_HALF):
-            run.workflow.process(name).enable()
-        self._process = run.workflow.insert_after(self.FIRST_HALF, process)
+        workflow.process(self.STAGE).disable()
+        anchor = self.STAGE if self.replaces_whole_action else self.FIRST_HALF
+        if not self.replaces_whole_action:
+            for name in (self.FIRST_HALF, self.SECOND_HALF):
+                workflow.process(name).enable()
+        insert_after = getattr(workflow, "insert_after", None)
+        if callable(insert_after):
+            # the declarative template, before the model exists
+            self._process = insert_after(anchor, process)
+        else:
+            # the live workflow view: install the process after the anchor and
+            # keep its handle, which is what the template returns as well
+            install = getattr(workflow, "install", None)
+            anchor_name = anchor.split(".", 1)[1]
+            if callable(install):
+                self._process = install(process, after=anchor_name)
+            else:
+                workflow.insert(process, after=anchor_name)
+                self._process = workflow[process.name]
         return self._process
 
     @property

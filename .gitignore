@@ -23,3 +23,10 @@ artifacts/
 
 # Site configuration: not committed.
 site.env
+
+# The Workflow Builder's front end: dependencies and build products.  The
+# built page is shipped inside the wheel but not committed; `npm run build`
+# under web/ produces it.
+/web/node_modules/
+/web/dist-pages/
+/src/freecam/pi_cam/workflow_builder/static/

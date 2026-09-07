@@ -2041,6 +2041,18 @@ class Driver:
             self._session.close()
             self._session = None
 
+    def ui(self, *, host: str = "127.0.0.1", port: int | None = None, open_browser: bool = False) -> Any:
+        """Serve the Workflow Builder page for this model and return its handle.
+
+        Only the page starts: no PBS, no MPI.  The handle's ``url`` carries the
+        session token; ``close()`` stops the page and leaves the model as it
+        is.  The model itself starts on the first Run the page asks for.
+        """
+
+        from .workflow_builder.ui import launch_ui
+
+        return launch_ui(self, host=host, port=port, open_browser=open_browser)
+
     def __enter__(self) -> "Driver":
         return self
 

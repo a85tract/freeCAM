@@ -238,6 +238,68 @@ rank by default. Run results always report exact action counts and state
 whether the trace was truncated; pass `trace_limit=None` to `fc.Driver` only
 when a complete in-memory trace is explicitly needed.
 
+## The Workflow Builder
+
+A browser page edits the step -- add, remove, replace, move, enable and
+disable processes, set their parameters, write Python processes, put a
+trained network in a kernel's slot -- and generates the freeCAM code that
+runs it. It runs in two modes.
+
+**Locally, beside a model.** From a Python session on the machine that has
+the model:
+
+```python
+import freecam as fc
+
+ui = fc.Driver(case="PI-atm", nsteps=2).ui()
+ui.url        # open it; the address carries a session token
+ui.close()    # stops the page; the model, if started, stays as it is
+```
+
+or from a shell, `freecam ui --case PI-atm --port 8765`. Opening the page
+starts nothing: no PBS, no MPI. The first Run confirms the resources the
+case needs, initializes the model, applies the workflow and runs the
+declared steps; later Runs apply only what changed and continue from the
+current step. A change the live model cannot take -- the case, a namelist
+override, a kernel binding already attached -- is refused with a message to
+close the model and start again. Stop ends a run at the next complete step;
+closing the browser tab does not touch the model; Close model releases it.
+The service listens on loopback with a session token and refuses cross-origin
+requests; reach one on a remote machine through SSH port forwarding.
+
+**As a preview, on GitHub Pages.** The same page, published from the
+repository, edits, checks, generates and downloads with no model behind it,
+and says so. Download `workflow.json` there and Import it into a local page
+to run it.
+
+What the page shows comes from the model's own records: the default order is
+the current step plan, the library is the physics catalog with a reason for
+every process that cannot be added, the tunables are the audited runtime
+parameters, and a kernel is offered for replacement only where the image's
+segment runner pauses at it -- today `mmacro_pcond` -- and labelled
+separately for whether that path has passed a bit-for-bit gate. Control,
+clock and output actions run every step and are shown read-only under
+"Full step".
+
+The check runs at two levels: the page checks names, duplicates, the control
+skeleton, parent/leaf exclusivity, bindings and parameter types; the local
+service adds Python syntax, model files and the catalog version. Changing
+the scientific order or the set of physical processes needs Experimental.
+A passing check says the declared constraints hold; only a gate says the
+result is bit-for-bit.
+
+Generate freezes the draft and produces a complete script -- save it on the
+machine with the model and run `uv run python <file>` from the checkout -- a
+notebook of the same cells, a setup-only snippet for a session that already
+has a driver (`configure(driver)` after `driver.initialize()`), and
+`workflow.json`, all through the ordinary interface described above --
+`fc.Driver`, the workflow list, `fc.Physics`, `state.create`,
+`driver.cam.parameters`, a stage class attached to the model. The default
+workflow generates a run that configures nothing.
+Model files are referred to by path and never embedded. The service applies
+a document with the same calls in the same order as the generated script,
+and a test holds the two to that.
+
 ## A scheme as a function
 
 Besides running the model, freeCAM can hand you one physics routine as an
