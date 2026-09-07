@@ -94,7 +94,11 @@ runners:
     # function contract's argument list.  It and compute_uwshcu_inv cannot be replaced together.
     contract: native/pi_cam/functions/fluxbelowinv.yaml
     within: compute_uwshcu_inv
-    validated_by: []
+    validated_by:
+    - validation/pi_cam_pausable_flux-hook_50step.json
+    - validation/pi_cam_pausable_flux-hook_vs_oracle_50step_bfb.json
+    - validation/pi_cam_pausable_hooks-everything_50step.json
+    - validation/pi_cam_pausable_hooks-everything_vs_oracle_50step_bfb.json
 - stage: cam_run1.radiation
   prefix: pycam_radt
   module: native/pi_cam/support/pycam_radt_runner.F90
@@ -179,12 +183,20 @@ runners:
     # function contract's argument list.  It and zm_conv_evap cannot be replaced together.
     contract: native/pi_cam/functions/cldfrc_fice.yaml
     within: zm_conv_evap
-    validated_by: []
+    validated_by:
+    - validation/pi_cam_pausable_fice-hook_50step.json
+    - validation/pi_cam_pausable_fice-hook_vs_oracle_50step_bfb.json
+    - validation/pi_cam_pausable_fice-capture_50step.json
+    - validation/pi_cam_pausable_fice-capture_vs_oracle_50step_bfb.json
+    - validation/pi_cam_pausable_hooks-everything_50step.json
+    - validation/pi_cam_pausable_hooks-everything_vs_oracle_50step_bfb.json
     note: >-
       The first attempt, a pause inside a hoisted copy of zm_conv_evap, was not bit-for-bit
       (gate 7343258, validation/pi_cam_pausable_fice-pause_50step_failure.json): a recompiled
       copy of a numerical routine does not reproduce the oracle object's rounding.  The hook
-      leaves zm_conv.o's machine code untouched; its gates are owed.
+      leaves zm_conv.o's machine code untouched.  Its first gate (7343594,
+      validation/pi_cam_pausable_fice-hook_50step_failure.json) failed on a duplicate global
+      symbol shared by two runners' fiber bodies; renamed, the gate is bit-for-bit.
 - stage: cam_run1.convective_tracer_transport_leaf
   prefix: pycam_zmtran
   module: native/pi_cam/support/pycam_zmtran_runner.F90

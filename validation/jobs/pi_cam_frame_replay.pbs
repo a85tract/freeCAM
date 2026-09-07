@@ -1,0 +1,42 @@
+#!/bin/bash
+# Submit with: PYCAM_REPLAY_FUNCTION=<function> PYCAM_REPLAY_CAPTURE_DIR=<dir> \
+#   validation/jobs/submit.sh validation/jobs/pi_cam_frame_replay.pbs
+#PBS -N freecam-frame-replay
+#PBS -q main
+#PBS -l select=1:ncpus=8:mem=64GB
+#PBS -l walltime=03:00:00
+#PBS -j oe
+#PBS -o logs/
+#PBS -V
+
+# Replay every frame a capture run recorded at a kernel's pause or hook through
+# the routine's standalone function (tools/replay_pi_cam_frame_capture.py), on
+# one node: a capture of tens of millions of calls is too long for a login
+# node.  PYCAM_REPLAY_FUNCTION names the function spec and standalone image;
+# PYCAM_REPLAY_CAPTURE_DIR the capture directory a pausable gate wrote
+# (<run dir>/../frame-capture); PYCAM_REPLAY_KERNEL the kernel name in the
+# capture files when it differs from the function's.  The record lands in
+# validation/pi_cam_<function>_frame_replay.json unless PYCAM_REPLAY_OUTPUT
+# says otherwise.
+set -euo pipefail
+
+source "${FREECAM_REPO:-${PBS_O_WORKDIR:-$PWD}}/validation/jobs/common.sh"
+
+repo=${FREECAM_REPO}
+python=${repo}/.venv/bin/python
+: "${PYCAM_REPLAY_FUNCTION:?set PYCAM_REPLAY_FUNCTION to the function spec name}"
+: "${PYCAM_REPLAY_CAPTURE_DIR:?set PYCAM_REPLAY_CAPTURE_DIR to the capture directory}"
+
+export LD_PRELOAD=${FREECAM_LD_PRELOAD}${LD_PRELOAD:+:${LD_PRELOAD}}
+export PYTHONPATH=${repo}/src
+export OMP_NUM_THREADS=1
+
+cd "${repo}"
+flags=(--function "${PYCAM_REPLAY_FUNCTION}" --capture-dir "${PYCAM_REPLAY_CAPTURE_DIR}")
+if [ -n "${PYCAM_REPLAY_KERNEL:-}" ]; then
+  flags+=(--kernel "${PYCAM_REPLAY_KERNEL}")
+fi
+if [ -n "${PYCAM_REPLAY_OUTPUT:-}" ]; then
+  flags+=(--output "${PYCAM_REPLAY_OUTPUT}")
+fi
+"${python}" tools/replay_pi_cam_frame_capture.py "${flags[@]}"

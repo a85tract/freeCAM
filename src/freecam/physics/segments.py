@@ -336,6 +336,7 @@ class SegmentedStage:
             self.counters.crossings += 1
         self.generation += 1
         counters = self.counters
+        pauses_before = counters.pauses
         event = self.runner.start(self.context, mask)
         counters.starts += 1
         counters.crossings += 1
@@ -343,7 +344,9 @@ class SegmentedStage:
             while event != SegmentEvent.DONE:
                 if event == SegmentEvent.ERROR:
                     detail = self.runner.error(self.context)
-                    raise PhysicsError(f"{self.stage_name}: the runner failed: {detail}")
+                    raise PhysicsError(
+                        f"{self.stage_name}: the runner failed after {counters.pauses - pauses_before} "
+                        f"pause(s) this run: {detail}")
                 frame = self.runner.frame(self.context)
                 counters.crossings += 1
                 counters.pauses += 1

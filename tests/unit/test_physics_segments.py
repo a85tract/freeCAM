@@ -174,7 +174,7 @@ def test_a_model_exception_taints_the_stage_too() -> None:
 def test_the_runner_s_own_error_is_reported_and_the_context_freed() -> None:
     runner = FakeRunner(); runner.fail_at = (11, 0)
     stage = SegmentedStage("s", runner)
-    with pytest.raises(PhysicsError, match="the runner failed: fake runner error"):
+    with pytest.raises(PhysicsError, match="the runner failed after 3 pause\\(s\\) this run: fake runner error"):
         stage.run({"a": _original_a, "b": None})
     assert not runner.contexts and stage.tainted
 

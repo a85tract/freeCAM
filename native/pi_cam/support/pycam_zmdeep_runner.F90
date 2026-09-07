@@ -129,10 +129,13 @@ contains
       call disarm_hooks()
       return
     end if
+    if (event == ev_error .and. len_trim(last_error) == 0) then
+      last_error = 'zmdeep: the fiber ended with an error event and no message'
+    end if
     call after_fiber_event(event)
   end subroutine run_from_start
 
-  subroutine fiber_body() bind(C)
+  subroutine fiber_body() bind(C, name='pycam_zmdeep_fiber_body_v1')
     ! the state machine on the fiber: a runner-level pause yields, a hook yields from
     ! inside the compiled routine, the end of the action finishes
     integer(c_int) :: ev
@@ -150,6 +153,9 @@ contains
       last_error = 'zmdeep: the fiber could not be resumed'; event = ev_error; on_fiber = .false.
       call disarm_hooks()
       return
+    end if
+    if (event == ev_error .and. len_trim(last_error) == 0) then
+      last_error = 'zmdeep: the fiber ended with an error event and no message'
     end if
     call after_fiber_event(event)
   end subroutine continue_fiber

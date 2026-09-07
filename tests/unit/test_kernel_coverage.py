@@ -79,9 +79,14 @@ def test_every_kernel_row_is_a_kernel_a_stage_class_describes_and_two_have_close
     # replayed bit-for-bit through the standalone function (7343396, pi_cam_virtem_frame_replay.json)
     assert rows["virtem"]["bindable"] and rows["virtem"]["validated_through_runner"]
     assert rows["virtem"]["status"] == "complete" and rows["virtem"]["missing"] == []
+    # the hooked kernels: answered by the original at their hooks, bit-for-bit (7343708, 7343709)
     for name in ("cldfrc_fice", "fluxbelowinv"):
-        assert rows[name]["bindable"] and not rows[name]["validated_through_runner"]
-        assert "in_model_replacement_bfb" in rows[name]["missing"]
+        assert rows[name]["bindable"] and rows[name]["validated_through_runner"]
+        assert "in_model_replacement_bfb" not in rows[name]["missing"]
+    # cldfrc_fice closed the loop: every frame captured at its hook (7343811, run tag fice-capture, found
+    # through the replay record) replayed bit-for-bit through the standalone function
+    assert rows["cldfrc_fice"]["status"] == "complete" and rows["cldfrc_fice"]["missing"] == []
+    assert rows["cldfrc_fice"]["evidence"]["capture"] == ["pi_cam_pausable_fice-capture_50step.json"]
     assert "7343258" in (rows["cldfrc_fice"]["note"] or "")
     # the pausable stages: dadadj has a reviewed contract and the runner pauses at it
     assert rows["dadadj"]["bindable"] and rows["dadadj"]["contract"] == "reviewed"
@@ -95,7 +100,7 @@ def test_every_kernel_row_is_a_kernel_a_stage_class_describes_and_two_have_close
     assert micro["validated_through_runner"]                    # gate 7331040
     assert "segment_runner" not in micro["missing"] and "in_model_replacement_bfb" not in micro["missing"]
     assert "capture" in micro["missing"]                        # no captured calls replayed through its image yet
-    assert record["summary"]["kernels_validated_through_runner"] == 18     # every exposed kernel but cldfrc_fice, through 7343260
+    assert record["summary"]["kernels_validated_through_runner"] == 20     # every exposed kernel; the hooked two through 7343708/9
     assert micro["in_model_gates"][0]["bfb"] is True          # the walk with the core through its image
     # the pause gates the manifest names are in-model evidence too (7331040, 7331041)
     assert [g["record"] for g in micro["in_model_gates"][1:]] == [
@@ -116,7 +121,7 @@ def test_every_kernel_row_is_a_kernel_a_stage_class_describes_and_two_have_close
         assert "reviewed_contract" not in rows[name]["missing"] and "segment_runner" not in rows[name]["missing"]
         assert "in_model_replacement_bfb" not in rows[name]["missing"]
         assert [g["record"] for g in rows[name]["in_model_gates"][1:]][-1] == "pi_cam_pausable_everything_50step.json"
-    assert record["summary"]["kernels_by_status"] == {"complete": 3, "open": 17}     # P3-P5 kernels and the hooked entries await capture and replay
+    assert record["summary"]["kernels_by_status"] == {"complete": 4, "open": 16}     # P3-P5 kernels and fluxbelowinv await capture and replay
 
 
 def test_the_committed_record_is_what_the_builder_writes_now() -> None:

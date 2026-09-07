@@ -130,6 +130,8 @@ def _hook_summary(records) -> dict[str, object] | None:
             entry["calls"] += int(counts.get("calls", 0))
             entry["paused"] += int(counts.get("paused", 0))
             entry["ranks_called"] += 1 if counts.get("calls") else 0
+            if "missed" in counts:          # armed calls made off the fiber, answered by the original
+                entry["missed"] = entry.get("missed", 0) + int(counts["missed"])
     return totals or None
 
 

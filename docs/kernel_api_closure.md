@@ -131,8 +131,8 @@ through `load_function`.
 | Routine | Shape | Standalone | In the model |
 | --- | --- | --- | --- |
 | `pbl_utils::virtem` | elemental scalar function reading module state (`zvir`) | image built; `result` returned as `outputs["result"]`, bitwise equal to the formula with the model's snapshot of `zvir`; every frame captured at the pause in a 50-step run (51200 calls, 691300 elements) replayed bit-for-bit through the standalone function | the vertical diffusion runner pauses at the assignment `thvs(:ncol) = virtem(...)`, serving the section actuals and the left-hand side as the frame; bit-for-bit, 100 pauses in 50 steps; the capture run itself bit-for-bit |
-| `uwshcu::fluxbelowinv` | private profile subroutine with `0:mkx` interface arrays | image built through the private procedure's ifort symbol behind an explicit interface, no module recompiled; the contract records the lower bounds | a hook (below): its definition in `uwshcu.o` is weakened and renamed, the hook takes the original name, and `compute_uwshcu`'s three call sites reach the hook; gates owed |
-| `cloud_fraction::cldfrc_fice` | chunk subroutine called inside `zm_conv_evap`, itself a kernel | image built, `tmelt` verified against the model | first through a hoisted copy of `zm_conv_evap`: **not** bit-for-bit (one rank, a few ULP, step 7; the failure is kept as [`pi_cam_pausable_fice-pause_50step_failure.json`](../validation/pi_cam_pausable_fice-pause_50step_failure.json)); now a hook: `zm_conv.o`'s one reference is renamed to it; gates owed |
+| `uwshcu::fluxbelowinv` | private profile subroutine with `0:mkx` interface arrays | image built through the private procedure's ifort symbol behind an explicit interface, no module recompiled; the contract records the lower bounds | a hook (below): its definition in `uwshcu.o` is weakened and renamed, the hook takes the original name, and `compute_uwshcu`'s call sites reach the hook; the original answers at the hook bit-for-bit, 36733580 pauses in 50 steps |
+| `cloud_fraction::cldfrc_fice` | chunk subroutine called inside `zm_conv_evap`, itself a kernel | image built, `tmelt` verified against the model; every frame captured at its hook in a 50-step run (51200 calls) replayed bit-for-bit | first through a hoisted copy of `zm_conv_evap`: **not** bit-for-bit (one rank, a few ULP, step 7; the failure is kept as [`pi_cam_pausable_fice-pause_50step_failure.json`](../validation/pi_cam_pausable_fice-pause_50step_failure.json)); then a hook: `zm_conv.o`'s one reference is renamed to it, and the original answers at the hook bit-for-bit, 51200 pauses in 50 steps |
 
 The failure in the last row shaped what followed.  Hoisting a routine
 verbatim into a module works for drivers, whose arithmetic is incidental; it
@@ -163,6 +163,43 @@ NEEDS_PYTHON_KERNEL to Python exactly as a runner-level pause does; `resume`
 switches back and the hook returns to its caller.  Fortran never calls Python;
 it switches stacks.  A stage with no hooked kernel replaced never touches the
 fiber, and a runner with no hooked kernels renders byte-identically to before.
+
+The first image linking two hooked runners failed its deep convection gate
+before the first pause: both runners had bound their fiber body to the bare C
+name `fiber_body`, the archive link kept the shallow convection runner's, and
+the deep runner's fiber ran the other state machine.  The record is
+[`pi_cam_pausable_fice-hook_50step_failure.json`](../validation/pi_cam_pausable_fice-hook_50step_failure.json);
+fiber bodies now carry their runner's prefix, and the device build refuses any
+global symbol two support objects define.
+
+Gates on the rebuilt image (`build/pi_cam_promoted_p10`), 512 ranks, 50 steps,
+all bit-for-bit with the oracle:
+
+| Gate | Job | What it proves | Hook counts |
+| --- | --- | --- | --- |
+| hooks linked, nothing replaced | 7343707 | the image with two redirected objects is the oracle's; every call passes through a hook and reaches the original | `cldfrc_fice` 53248 calls, `fluxbelowinv` 38152530 calls, 0 paused |
+| `cldfrc_fice` through its hook | 7343708 | the deep convection runner runs on its fiber, the hook inside `zm_conv_evap` yields, Python runs the original on the frame and resumes | 51200 paused (100 per rank: two chunks, 50 steps) |
+| `fluxbelowinv` through its hook | 7343709 | a private routine's weakened definition, three call sites inside `compute_uwshcu` | 36733580 paused |
+
+| `cldfrc_fice` captured at its hook | 7343811 | every frame recorded (51200 calls); replayed through the standalone function: 691300 lanes, 41478000 values, bit-for-bit ([`pi_cam_cldfrc_fice_frame_replay.json`](../validation/pi_cam_cldfrc_fice_frame_replay.json)) | 51200 paused, 0 missed |
+| `fluxbelowinv` captured at its hook | 7343844 | every frame recorded (36733580 calls, 100 GB); the first attempt (7343812) was killed at the job's 256 GB memory limit, the rerun asked for 200 GB per node: holding 71000 frames per rank costs 680 MB per rank | 36733580 paused, 0 missed |
+| both hooks and every class at once | 7343813 | nine stage classes, radiation and the cloud stage installed, eighteen kernels answered by the original at their pauses and hooks in one run | 51200 and 36733580 paused, 0 missed |
+
+Records: [`pi_cam_hooks_unarmed_50step.json`](../validation/pi_cam_hooks_unarmed_50step.json),
+[`pi_cam_pausable_fice-hook_50step.json`](../validation/pi_cam_pausable_fice-hook_50step.json),
+[`pi_cam_pausable_flux-hook_50step.json`](../validation/pi_cam_pausable_flux-hook_50step.json),
+[`pi_cam_pausable_fice-capture_50step.json`](../validation/pi_cam_pausable_fice-capture_50step.json),
+[`pi_cam_pausable_hooks-everything_50step.json`](../validation/pi_cam_pausable_hooks-everything_50step.json)
+and their `_vs_oracle_50step_bfb` companions.  A `missed` count is a call that
+found its hook armed while no fiber was running; the original answers it, and
+the count stayed at zero.  The unarmed calls outside the
+pauses (2048 for `cldfrc_fice`) are the two physics passes freeCAM runs before
+its first stepped one.  Cost: the unarmed image advances 50 steps in 16.7 s
+against 15.8 s for the default image's gate; a hook pause costs about 250 µs of
+Python round trip (the `fluxbelowinv` gate's 70915 pauses on rank 0 add 17.8 s
+to the advance).  Resident memory is unchanged within noise (804 MB per rank
+high-water mark unarmed, 775 and 821 MB with a hook armed); the fiber stack is
+reserved at 512 MB and touched only as deep as the Fortran needs.
 
 The hook path applies only to calls the linked objects reach through a
 relocation.  `compute_alpha`, the inlined function of `compute_uwshcu`, has

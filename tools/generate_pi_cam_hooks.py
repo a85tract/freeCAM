@@ -60,6 +60,12 @@ def _hook_procedure(hook: Hook, spec: FunctionSpec, index: int) -> str:
     lines.append(f"      call original_{hook.kernel}({names})")
     lines.append("      return")
     lines.append("    end if")
+    lines.append("    if (pycam_fiber_running_v1() == 0_c_int) then")
+    lines.append("      ! armed, yet not on the owning runner's fiber: the original answers, and the miss is counted")
+    lines.append(f"      missed({index}) = missed({index}) + 1_c_int64_t")
+    lines.append(f"      call original_{hook.kernel}({names})")
+    lines.append("      return")
+    lines.append("    end if")
     lines.append(f"    paused({index}) = paused({index}) + 1_c_int64_t")
     lines.append("    slot = 0")
     lines.append("    frame_shapes = 0_c_int64_t")
@@ -192,6 +198,7 @@ module pycam_hooks
   logical, save :: armed(nhooks) = .false.
   integer(c_int64_t), save :: calls(nhooks) = 0_c_int64_t
   integer(c_int64_t), save :: paused(nhooks) = 0_c_int64_t
+  integer(c_int64_t), save :: missed(nhooks) = 0_c_int64_t
   integer, save :: paused_hook = 0
   type(c_ptr), save :: frame_ptrs(max_slots)
   integer(c_int), save :: frame_ndims(max_slots) = 0_c_int, frame_dtypes(max_slots) = 0_c_int, frame_intents(max_slots) = 0_c_int
@@ -199,6 +206,9 @@ module pycam_hooks
   integer(c_int), save :: frame_nslots = 0_c_int, frame_ncol = 0_c_int
 
   interface
+    integer(c_int) function pycam_fiber_running_v1() bind(C, name='pycam_fiber_running_v1')
+      import :: c_int
+    end function pycam_fiber_running_v1
     subroutine pycam_fiber_yield_v1(event) bind(C, name='pycam_fiber_yield_v1')
       import :: c_int
       integer(c_int), value :: event
@@ -252,6 +262,17 @@ contains
     calls_out = calls(hook); paused_out = paused(hook)
     status = 0_c_int
   end function pycam_hooks_counts_v1
+
+  integer(c_int) function pycam_hooks_missed_v1(hook, missed_out) bind(C, name='pycam_hooks_missed_v1') result(status)
+    ! calls that found the hook armed while no fiber was running: the original answered them
+    integer(c_int), value, intent(in) :: hook
+    integer(c_int64_t), intent(out) :: missed_out
+    missed_out = 0_c_int64_t
+    status = 1_c_int
+    if (hook < 1 .or. hook > nhooks) return
+    missed_out = missed(hook)
+    status = 0_c_int
+  end function pycam_hooks_missed_v1
 
   integer(c_int) function pycam_hooks_paused_v1() bind(C, name='pycam_hooks_paused_v1') result(hook)
     ! the hook suspended on the fiber now, or 0

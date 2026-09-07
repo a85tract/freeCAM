@@ -6,6 +6,8 @@ import sys
 from pathlib import Path
 from types import SimpleNamespace
 
+import re
+
 import numpy as np
 import pytest
 import yaml
@@ -296,9 +298,11 @@ def test_the_deep_convection_classes_own_their_actions_and_kernels() -> None:
     rows = {r["kernel"]: r for r in DeepConvection().describe_kernels()}
     assert set(rows) == set(DeepConvection.SWAPPABLE) and all(r["bindable"] for r in rows.values())
     # gates 7334212, 7334213 and 7335519 answered each kernel through its pause; 7335520 all three at once;
-    # cldfrc_fice, inside the hoisted zm_conv_evap, is bindable and awaits its gate
+    # cldfrc_fice, hooked inside the compiled zm_conv_evap, is validated through gate 7343708
     assert all(rows[name]["validated"] for name in ("zm_convr", "zm_conv_evap", "momtran"))
-    assert not rows["cldfrc_fice"]["validated"]
+    assert rows["cldfrc_fice"]["validated"] and rows["cldfrc_fice"]["validated_by"][:2] == [
+        "validation/pi_cam_pausable_fice-hook_50step.json", "validation/pi_cam_pausable_fice-hook_vs_oracle_50step_bfb.json"]
+    assert len(rows["cldfrc_fice"]["validated_by"]) == 6         # + the capture run and the everything run
     leaf = {r["kernel"]: r for r in ConvectiveTracerTransport().describe_kernels()}
     assert leaf["convtran"]["bindable"] and leaf["convtran"]["validated"]        # gates 7335521, 7335522
 
@@ -456,3 +460,65 @@ def test_a_kernel_inside_a_compiled_kernel_is_reached_through_its_hook() -> None
     assert manifest["cam_run1.deep_convection"].kernel("cldfrc_fice").contract == "native/pi_cam/functions/cldfrc_fice.yaml"
     assert manifest["cam_run1.deep_convection"].replacement_conflicts({"zm_conv_evap": True, "cldfrc_fice": True}) == [("cldfrc_fice", "zm_conv_evap")]
     assert manifest["cam_run1.shallow_convection"].replacement_conflicts({"compute_uwshcu_inv": True, "fluxbelowinv": True}) == [("fluxbelowinv", "compute_uwshcu_inv")]
+
+
+def test_a_runner_error_event_names_the_pauses_made_and_the_runner_message() -> None:
+    from freecam.physics.errors import PhysicsError
+    from freecam.physics.pausable import DryAdjustment
+    from freecam.physics.segments import OriginalKernel, SegmentEvent
+
+    class FailingRunner:
+        kernels = ("dadadj",)
+        runs_original = True
+
+        def __init__(self):
+            self.t = np.zeros((8, 4), order="F")
+            self.destroyed = False
+
+        def create(self, stage): return 1
+        def start(self, cid, mask): return SegmentEvent.NEEDS_PYTHON_KERNEL
+        def frame(self, cid):
+            from freecam.physics.segments import FrameArgument, KernelFrame
+            return KernelFrame(kernel="dadadj", call_index=1, lchnk=1, ncol=6, substep=1, token=7,
+                               arguments=(FrameArgument("t", self.t, "inout"),))
+        def resume(self, cid, kernel, token): return SegmentEvent.ERROR
+        def run_original(self, cid, kernel): pass
+        def error(self, cid): return "dadadj: the fiber ended with an error event and no message"
+        def reset(self, cid): pass
+        def destroy(self, cid): self.destroyed = True
+
+    runner = FailingRunner()
+    library = SimpleNamespace(pycam_stagehost_bind_v1=lambda: 0)
+    native = SimpleNamespace(segment_runner=lambda stage: runner, library=library, run_action=lambda *a, **k: None)
+    stage = DryAdjustment()
+    stage.kernels["dadadj"] = OriginalKernel()
+    with pytest.raises(PhysicsError, match=r"failed after 1 pause\(s\) this run: dadadj: the fiber ended"):
+        stage.tend(None, SimpleNamespace(native=native))
+    assert runner.destroyed                      # the context is gone and the stage is tainted
+
+
+def test_every_c_bound_procedure_of_a_generated_support_module_carries_its_own_name() -> None:
+    # a bare bind(C) takes the procedure's own name as the global symbol; two runners doing that
+    # for their fiber bodies shared one symbol and ran each other's state machine (gate 7343594)
+    bare = {}
+    names = {}
+    for path in sorted((REPO / "native/pi_cam/support").glob("pycam_*.F90")):
+        in_interface = False
+        for number, line in enumerate(path.read_text().splitlines(), 1):
+            code = line.split("!", 1)[0].strip().lower()
+            if code.startswith("interface") or code.startswith("abstract interface"):
+                in_interface = True
+            if code.startswith("end interface"):
+                in_interface = False
+            if in_interface or not code:
+                continue                         # interfaces declare other objects' names
+            if re.search(r"bind\(\s*c\s*\)", code):
+                bare[f"{path.name}:{number}"] = line.strip()
+            match = re.search(r"bind\(\s*c\s*,\s*name\s*=\s*'([^']+)'", code)
+            if match:
+                names.setdefault(match.group(1), []).append(path.name)
+    assert bare == {}, bare
+    shared = {name: owners for name, owners in names.items() if len(set(owners)) > 1}
+    assert shared == {}, shared
+    assert names["pycam_zmdeep_fiber_body_v1"] == ["pycam_zmdeep_runner.F90"]
+    assert names["pycam_shcu_fiber_body_v1"] == ["pycam_shcu_runner.F90"]

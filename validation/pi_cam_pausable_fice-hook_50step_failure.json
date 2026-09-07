@@ -1,0 +1,34 @@
+{
+  "schema_version": 1,
+  "what": "A hook gate that failed before its first pause, kept as evidence: cldfrc_fice answered by the original through the hook in zm_conv_evap, on the first image linking two hooked runners.",
+  "pbs_job_id": "7343594.desched1",
+  "job": "validation/jobs/pi_cam_pausable_50step.pbs",
+  "run_tag": "fice-hook",
+  "python_stages": [
+    "deep_convection"
+  ],
+  "segmented_original_kernels": "cldfrc_fice",
+  "native_image": "build/pi_cam_promoted_p8",
+  "native_library_sha256": "e46cb8529b44e7f7e497dd9421a65dc69dc94fd37cb316eb03aa73e6292c6d85",
+  "runner": "pycam_zmdeep_runner (hooked kernel cldfrc_fice inside the compiled zm_conv_evap, on the runner's fiber)",
+  "outcome": "the runner reported an error event with no message at the first segmented step; the model exited",
+  "ranks": 512,
+  "steps_completed": 2,
+  "hook_pauses_before_failure": 0,
+  "resources_used": {
+    "walltime": "00:00:29",
+    "mem_kb": 194343928
+  },
+  "reproduction": {
+    "jobs": [
+      "7343663.desched1",
+      "7343678.desched1"
+    ],
+    "steps": 3,
+    "image": "build/pi_cam_promoted_p9 (the same runners with a message for a fiber error event)",
+    "message": "cam_run1.deep_convection: the runner failed after 0 pause(s) this run: zmdeep: the fiber ended with an error event and no message"
+  },
+  "diagnosis": "Both hooked runners defined their fiber body as `subroutine fiber_body() bind(C)`, so both objects exported the global symbol `fiber_body` (readelf: FUNC GLOBAL in pycam_shcu_runner.o and pycam_zmdeep_runner.o). Linked through the archive, the linker kept the first definition, the shallow convection runner's, and the deep convection runner's fiber ran the shallow runner's state machine, whose idle program counter is an error; that runner's message went to its own buffer, so the deep runner had none to report. The shallow convection gate on the same image (7343595, fluxbelowinv through its hook, 36733580 pauses) passed because its own body had won.",
+  "consequence": "Each runner's fiber body is bound to `pycam_<prefix>_fiber_body_v1`, the device build refuses any global symbol two support objects define, and a unit test refuses a bare bind(C) in a generated support module. The gate is rerun on the rebuilt image; see the records named in native/pi_cam/segment_runners.yaml for cldfrc_fice.",
+  "records_withheld": "pi_cam_pausable_fice-hook_50step.json was never written (the model exited before its summary); the bit-for-bit comparison of the truncated output is not kept."
+}

@@ -132,6 +132,10 @@ def read_hook_counts(library: Any) -> dict[str, dict[str, int]]:
     name_entry.argtypes = [ctypes.c_int32, ctypes.c_char_p, ctypes.c_int32]
     counts_entry.restype = ctypes.c_int32
     counts_entry.argtypes = [ctypes.c_int32, ctypes.POINTER(ctypes.c_int64), ctypes.POINTER(ctypes.c_int64)]
+    missed_entry = getattr(library, "pycam_hooks_missed_v1", None)     # armed calls made off the fiber
+    if missed_entry is not None:
+        missed_entry.restype = ctypes.c_int32
+        missed_entry.argtypes = [ctypes.c_int32, ctypes.POINTER(ctypes.c_int64)]
     result: dict[str, dict[str, int]] = {}
     for hook in range(1, int(count_entry()) + 1):
         buffer = ctypes.create_string_buffer(64)
@@ -140,7 +144,12 @@ def read_hook_counts(library: Any) -> dict[str, dict[str, int]]:
         calls, paused = ctypes.c_int64(0), ctypes.c_int64(0)
         if counts_entry(hook, ctypes.byref(calls), ctypes.byref(paused)) != 0:
             continue
-        result[buffer.value.decode("ascii", errors="replace")] = {"calls": int(calls.value), "paused": int(paused.value)}
+        record = {"calls": int(calls.value), "paused": int(paused.value)}
+        if missed_entry is not None:
+            missed = ctypes.c_int64(0)
+            if missed_entry(hook, ctypes.byref(missed)) == 0:
+                record["missed"] = int(missed.value)
+        result[buffer.value.decode("ascii", errors="replace")] = record
     return result
 
 

@@ -120,6 +120,27 @@ EVIDENCE_PATTERNS = {
     "replay_public_api": ("pi_cam_{name}_public_api_vs_capture.json", "pi_cam_{name}_frame_replay.json"),
     "module_state": ("pi_cam_{name}_module_state.json",),
 }
+def _capture_named_by_replay(name: str) -> list[str]:
+    """The capture run a kernel's frame-replay record names, when its records are here and bit-for-bit.
+
+    A capture run's tag need not spell the kernel's name (``fice-capture`` recorded
+    ``cldfrc_fice``); the replay record carries the run tag and the comparison it
+    was checked against, and the capture counts only when both are present and
+    the run was bit-for-bit.
+    """
+
+    replay = _record(f"pi_cam_{name}_frame_replay.json")
+    capture = (replay or {}).get("capture") or {}
+    run_tag, bfb_name = capture.get("run_tag"), capture.get("bfb_record")
+    if not run_tag or not bfb_name:
+        return []
+    record_name = f"{run_tag}.json"
+    bfb = _record(bfb_name)
+    if not (VALIDATION / record_name).is_file() or bfb is None or not bfb.get("bfb"):
+        return []
+    return [record_name]
+
+
 #: In-model replacement gates that are not named after the kernel: the record
 #: and the bit-for-bit comparison, and what path they prove.
 IN_MODEL_GATES = {
@@ -263,6 +284,8 @@ def _kernel_rows(stage_classes: Iterable[str], runner_specs: Mapping[str, Any]) 
             contract = contracts.get(name)
             evidence = {step: [p.format(name=name) for p in patterns if (VALIDATION / p.format(name=name)).is_file()]
                         for step, patterns in EVIDENCE_PATTERNS.items()}
+            if not evidence["capture"]:
+                evidence["capture"] = _capture_named_by_replay(name)
             gates = []
             for path, record, bfb_record in (*IN_MODEL_GATES.get(name, ()), *_manifest_gates(spec, name)):
                 bfb = _record(bfb_record)

@@ -287,6 +287,31 @@ def _text_sha256(path: Path, work: Path) -> str:
     return _sha256(dump)
 
 
+def _refuse_duplicate_globals(objects: list[Path]) -> None:
+    """Two support objects defining one global symbol is a build error.
+
+    Linked through the archive, the second definition would be dropped without
+    a word and every reference would reach the first: two runners whose fiber
+    bodies shared the bare C name ``fiber_body`` ran each other's state machine
+    (gate 7343594).
+    """
+
+    owners: dict[str, Path] = {}
+    duplicates: list[str] = []
+    for path in objects:
+        output = subprocess.run(["nm", "-g", "--defined-only", str(path)], check=True, capture_output=True, text=True).stdout
+        for line in output.splitlines():
+            parts = line.split()
+            if len(parts) != 3 or parts[1] not in ("T", "D", "B", "R"):
+                continue
+            symbol = parts[2]
+            if symbol in owners and owners[symbol] != path:
+                duplicates.append(f"{symbol} ({owners[symbol].name}, {path.name})")
+            owners.setdefault(symbol, path)
+    if duplicates:
+        raise RuntimeError("global symbols defined by more than one support object: " + "; ".join(sorted(duplicates)))
+
+
 def _relocations_naming(path: Path, symbol: str) -> int:
     output = subprocess.run(["readelf", "-rW", str(path)], check=True, capture_output=True, text=True).stdout
     return sum(1 for line in output.splitlines() if line.split() and symbol in line.split())
@@ -497,6 +522,7 @@ def main() -> int:
         )
         compile_logs[source_name] = str(log)
         support_objects.append(destination)
+    _refuse_duplicate_globals(support_objects)
     for source_name in (
         "physpkg.F90", "cam_comp.F90", "atm_comp_mct.F90",
     ):
