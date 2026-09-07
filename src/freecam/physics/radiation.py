@@ -416,6 +416,10 @@ class Radiation(NativeStage):
     STAGE = "cam_run1.radiation"
     FIRST_HALF = "cam_run1.rad_tend_pre_leaf"
     SECOND_HALF = "cam_run1.rad_tend_post_leaf"
+    #: The image's ``pycam_radt`` runner runs radiation_tend between the halves,
+    #: pausing at the two cores; with nothing replaced the resume half calls
+    #: the driver itself, and the walk below is only the legacy-python policy.
+    SPLIT_RUNNER = True
     PREFIX = "rad"
     PROCESS_NAME = "rad_tend"
     TRACE_ENV = "FREECAM_RAD_TRACE"
@@ -451,6 +455,41 @@ class Radiation(NativeStage):
 
     def __init__(self, *, kernels: Mapping[str, Callable | None] | None = None) -> None:
         super().__init__(kernels=kernels)
+
+    # -- the split stage over the image's runner ----------------------------------
+
+    def _set_owner(self, native: Any, owns: bool) -> None:
+        """Whether the resume half takes ptend and the net flux from Python this step."""
+
+        entry = getattr(native.library, "pycam_rad_set_owner_v1", None)
+        if entry is None:
+            raise PICAMConfigurationError("this image has no pycam_rad_set_owner_v1")
+        status = int(entry(ctypes.c_int(1 if owns else 0)))
+        if status:
+            raise PICAMConfigurationError(f"pycam_rad_set_owner_v1 refused ({status})")
+
+    def native_between_halves(self, native: Any) -> None:
+        # nothing replaced: Python does not own the step, so the resume half
+        # calls radiation_tend itself -- the original, once, no runner
+        self._set_owner(native, False)
+
+    def prepare_segmented(self, native: Any) -> None:
+        """Bind the stage hosts and the radiation handles the runner's glue reads."""
+
+        from .pausable import bind_stage_hosts
+
+        bind_stage_hosts(native)
+        binder = getattr(native.library, "pycam_rad_bind_hosts_v1", None)
+        if binder is None:
+            raise PICAMConfigurationError("this image has no pycam_rad_bind_hosts_v1")
+        status = int(binder())
+        if status:
+            raise PICAMConfigurationError(f"pycam_rad_bind_hosts_v1 refused ({status})")
+
+    def after_segmented(self, native: Any) -> None:
+        # the runner left every chunk's ptend and net flux in the handles'
+        # storage; the resume half copies them into tphysbc
+        self._set_owner(native, True)
 
     # -- what the runtime asks of this stage -------------------------------------
 

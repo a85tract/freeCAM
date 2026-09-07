@@ -342,23 +342,25 @@ class NativeCAMDevice:
     def segment_runner(self, stage: str):
         """The image's segment runner for ``stage``, or None if this image has none.
 
-        Only tphysbc stage 7 has one so far (pycam_stage7_runner); an image
-        built before it exports none of its entries and gets None, which the
-        stage reports as "not built for it yet".
+        The manifest ``native/pi_cam/segment_runners.yaml`` says which stages
+        have a runner and what its entries are called; this backend knows no
+        stage by name.  An image built before a runner exports none of its
+        entries and gets None, which the stage reports as "not built for it
+        yet".
         """
 
-        from .segment_runner import STAGE, StageSevenRunner, image_offers_runner
-        from freecam.physics.macrophysics import Macrophysics
+        from .segment_runner import ImageSegmentRunner, image_offers_runner, runner_spec
 
-        if stage != STAGE:
+        spec = runner_spec(stage)
+        if spec is None:
             return None
         if self._leaf_library is None and self._leaf_operation_names and self._native_initialized:
-            # the runner is linked into the leaf library, which is opened on
+            # the runners are linked into the leaf library, which is opened on
             # the first leaf action; open it the same way now
             self._adapter_for(next(iter(sorted(self._leaf_operation_names))))
         for library in (self._library, self._leaf_library, self._global_library):
-            if library is not None and image_offers_runner(library):
-                return StageSevenRunner(library, Macrophysics.DESCRIPTORS)
+            if library is not None and image_offers_runner(library, spec):
+                return ImageSegmentRunner(library, spec)
         return None
 
     def bind_kernel(self, name: str, pool: Mapping[str, np.ndarray], *, fcomm: int):

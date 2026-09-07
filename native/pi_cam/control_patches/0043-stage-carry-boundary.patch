@@ -1,0 +1,70 @@
+--- a/src/physics/cam/physpkg.F90
++++ b/src/physics/cam/physpkg.F90
+@@ -3357,0 +3358,67 @@ end subroutine pycam_macro_address3
++
++integer(c_int) function pycam_ac_carry_v1(lchnk, code, ptr, ndims, extents) &
++     bind(C, name='pycam_ac_carry_v1') result(status)
++  use, intrinsic :: iso_c_binding, only: c_int, c_int64_t, c_ptr, c_null_ptr
++  integer(c_int), value, intent(in) :: lchnk, code
++  type(c_ptr), intent(out) :: ptr
++  integer(c_int), intent(out) :: ndims
++  integer(c_int64_t), intent(out) :: extents(4)
++  ptr = c_null_ptr
++  ndims = 0_c_int
++  extents = 0_c_int64_t
++  status = 1_c_int
++  if (.not. allocated(pycesm_ac_surfric)) return
++  if (lchnk < begchunk .or. lchnk > endchunk) then
++    status = 2_c_int
++    return
++  endif
++  select case (code)
++  case (1)
++    call pycam_macro_address1(pycesm_ac_surfric(:,lchnk), ptr, ndims, extents)
++  case (2)
++    call pycam_macro_address1(pycesm_ac_obklen(:,lchnk), ptr, ndims, extents)
++  case default
++    status = 3_c_int
++    return
++  end select
++  status = 0_c_int
++end function pycam_ac_carry_v1
++
++integer(c_int) function pycam_ac_tracerint_addr_v1(lchnk, ptr) &
++     bind(C, name='pycam_ac_tracerint_addr_v1') result(status)
++  use, intrinsic :: iso_c_binding, only: c_int, c_ptr, c_null_ptr
++  integer(c_int), value, intent(in) :: lchnk
++  type(c_ptr), intent(out) :: ptr
++  ptr = c_null_ptr
++  status = 1_c_int
++  if (.not. allocated(pycesm_ac_tracerint)) return
++  if (lchnk < begchunk .or. lchnk > endchunk) then
++    status = 2_c_int
++    return
++  endif
++  call pycam_stage_record_addr(pycesm_ac_tracerint(lchnk), ptr)
++  status = 0_c_int
++end function pycam_ac_tracerint_addr_v1
++
++integer(c_int) function pycam_bc_tracerint_addr_v1(lchnk, ptr) &
++     bind(C, name='pycam_bc_tracerint_addr_v1') result(status)
++  use, intrinsic :: iso_c_binding, only: c_int, c_ptr, c_null_ptr
++  integer(c_int), value, intent(in) :: lchnk
++  type(c_ptr), intent(out) :: ptr
++  ptr = c_null_ptr
++  status = 1_c_int
++  if (.not. allocated(pycesm_bc_tracerint)) return
++  if (lchnk < begchunk .or. lchnk > endchunk) then
++    status = 2_c_int
++    return
++  endif
++  call pycam_stage_record_addr(pycesm_bc_tracerint(lchnk), ptr)
++  status = 0_c_int
++end function pycam_bc_tracerint_addr_v1
++
++subroutine pycam_stage_record_addr(record, ptr)
++  use, intrinsic :: iso_c_binding, only: c_ptr, c_loc
++  type(check_tracers_data), target, intent(in) :: record
++  type(c_ptr), intent(out) :: ptr
++  ptr = c_loc(record)
++end subroutine pycam_stage_record_addr

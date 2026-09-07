@@ -1,0 +1,75 @@
+# Aerosol wet deposition (the leaf of tphysbc stage 8, action 451): the
+# leaf's statements around aero_model_wetdep (control patch 0026) and that
+# driver hoisted whole, pausable at the scavenging kernel wetdepa_v2 at both
+# of its call sites -- the interstitial and the cloud-borne forms -- inside
+# the mode, phase and species loops the runner re-expresses.  A species the
+# driver skips (`cycle`) is skipped by the runner's loop.
+schema_version: 1
+prefix: awet
+stage: cam_run1.aerosol_wet_deposition_leaf
+runner_uses:
+  - "use convect_deep, only: deep_scheme_does_scav_trans"
+  - "use modal_aero_data, only: ntot_amode, nspec_amode, modeptr_coarse"
+refuse:
+  - {when: "deep_scheme_does_scav_trans()", message: "written for a deep scheme that leaves scavenging to the wet deposition leaf (ZM)"}
+units:
+  glue:
+    source: components/cam/src/physics/cam/physpkg.F90
+    routine: tphysbc
+    module_header: [1, 60]
+    declarations: [1674, 1874]
+    dummies:
+      state: host_state(lchnk)
+      tend: host_tend(lchnk)
+      pbuf: pbuf_get_chunk(host_pbuf2d, lchnk)
+      cam_out: host_cam_out(lchnk)
+      ztodt: real(get_step_size(), r8)
+    # the detrained condensate deep convection left for this leaf (control patch 0039)
+    carries: {dlf: 4}
+    preamble:
+      - "lchnk = state%lchnk"
+      - "ncol = state%ncol"
+    body:
+      - unit: {name: driver, call: [2413, 2413]}
+      - piece: [2414, 2414]
+  driver:
+    source: components/cam/src/chemistry/modal_aero/aero_model.F90
+    routine: aero_model_wetdep
+    module_header: [1, 28]
+    declarations: [825, 895]
+    uses:
+      - "use aero_model, only: nmodes, dgnumwet_idx, qaerwat_idx, fracis_idx, nwetdep, wetdep_lq, sol_facti_cloud_borne, sol_factb_interstitial, sol_factic_interstitial, modal_aero_bcscavcoef_get"
+    body:
+      - piece: [896, 958]
+      - do: 959
+        body:
+          - do: 961
+            body:
+              - piece: [962, 1020]
+              - do: 1021
+                body:
+                  - piece: [1022, 1075]
+                  - if: 1076
+                    then:
+                      - piece: [1077, 1082]
+                      - pause: {kernel: wetdepa_v2, call: [1083, 1094]}
+                      - piece: [1096, 1151]
+                    elif:
+                      - line: 1152
+                        then:
+                          - piece: [1153, 1189]
+                    else:
+                      - piece: [1191, 1193]
+                      - pause: {kernel: wetdepa_v2, call: [1194, 1203]}
+                      - piece: [1205, 1244]
+      - piece: [1253, 1255]
+kernels:
+  wetdepa_v2:
+    source: components/cam/src/chemistry/aerosol/wetdep.F90
+    routine: wetdepa_v2
+anchors:
+  'glue:physpkg.F90:2413-2414': 474b3ef1c8c01a40
+  'glue:physpkg.F90:declarations 1674-1874': 4e089ee70c947a21
+  'driver:aero_model.F90:896-1255': 928fd7338a1476d9
+  'driver:aero_model.F90:declarations 825-895': bbeec4be04f1e109
+  'wetdepa_v2:wetdep.F90:277-600': 29da72c458f68216

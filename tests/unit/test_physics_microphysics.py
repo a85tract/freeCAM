@@ -181,7 +181,7 @@ def _lifted_ranges() -> list[tuple[int, int, str]]:
     names = {"micro_pack_prelude": "pack_prelude", "micro_substep_pack": "substep_pack",
              "micro_core": CORE, "micro_substep_unpack": "substep_unpack",
              "micro_post_proc": "post_proc"}
-    ranges += [(first, last, names[name]) for name, first, last in handles.VERBATIM]
+    ranges += [(first, last, names[name]) for name, first, last in handles.WALK_LIFTED]
     ranges.append((1743, 1766, "physics_ptend_init:cldwat"))
     return sorted(ranges)
 

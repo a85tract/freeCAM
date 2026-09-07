@@ -1,0 +1,8 @@
+--- a/src/physics/cam/zm_conv_intr.F90
++++ b/src/physics/cam/zm_conv_intr.F90
+@@ -82,0 +83,5 @@ module zm_conv_intr
++   ! pyCAM (control patch 0044): the per-chunk convective state zm_conv_tend writes
++   ! and zm_conv_tend_2 reads, and the options both test, readable by the pausable
++   ! runners' hoisted copies of the two routines.  No executable statement changes.
++   public :: mu, eu, du, md, ed, dp, dsubcld, jt, maxg, ideep, lengath, zmconv_org, ixorg, limcnv
++

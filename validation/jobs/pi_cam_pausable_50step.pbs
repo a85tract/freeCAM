@@ -1,0 +1,107 @@
+#!/bin/bash
+# Submit with: validation/jobs/submit.sh validation/jobs/pi_cam_pausable_50step.pbs
+#PBS -N pycam-pausable-50
+#PBS -q develop
+# Preserve the validated rank placement: 512 MPI ranks on four nodes while
+# charging the cpudev maximum of 256 physical CPUs.
+#PBS -l select=4:ncpus=64:mpiprocs=128:ompthreads=1:mem=64GB
+#PBS -l walltime=00:20:00
+#PBS -j oe
+#PBS -o logs/
+#PBS -V
+
+# The pausable stages' gates.  PYCAM_PYTHON_STAGES names the classes to
+# install (comma-separated action names, freecam.physics.pausable.STAGES);
+# with PYCAM_ORIGINAL_KERNELS empty they run the original Fortran action
+# whole, and with it set those kernels are replaced by the original run at
+# the runner's pause -- the pause, the frame, the write-back and the resume
+# exercised, the answer the oracle's or the path is wrong.  PYCAM_RUN_TAG
+# names the run's records.  PYCAM_NATIVE_MANIFEST points at the image.
+# PYCAM_DISABLE_ACTIONS (qualified action names) is the inertness gate: those
+# actions switched off, the answer must still be the oracle's.
+# PYCAM_RADIATION_PYTHON=1 installs the split Radiation class between its two
+# halves (--split-radiation --radiation-python); with the RRTMG cores in
+# PYCAM_ORIGINAL_KERNELS they are answered at the radt runner's pauses.
+# PYCAM_CLOUD_PYTHON=1 installs the cloud macro/microphysics class over the
+# stage-7 runner (--cloud-macro-micro-python) for the same treatment.
+set -euo pipefail
+
+source "${FREECAM_REPO:-${PBS_O_WORKDIR:-$PWD}}/validation/jobs/common.sh"
+
+repo=${FREECAM_REPO}
+python=${repo}/.venv/bin/python
+case_root=${FREECAM_STATE_CASE}
+oracle_run=${FREECAM_REFERENCE_RUN}
+mode=${PYCAM_EXECUTION_MODE:-fine_grained}
+run_dir=${FREECAM_SCRATCH}/pyCAM/PI-cam/pausable-${PYCAM_RUN_TAG:-run}-${PBS_JOBID}/run
+boundary=${FREECAM_SCRATCH}/pyCAM/PI-cam/nonpic-boundary-capture-50step/boundary/replay
+manifest=${PYCAM_NATIVE_MANIFEST:-${repo}/build/pi_cam_promoted/native_cam_manifest.json}
+summary=${PYCAM_SUMMARY:-validation/pi_cam_pausable_${PYCAM_RUN_TAG:-run}_50step.json}
+bfb_output=${PYCAM_BFB_OUTPUT:-validation/pi_cam_pausable_${PYCAM_RUN_TAG:-run}_vs_oracle_50step_bfb.json}
+
+source "${case_root}/.env_mach_specific.sh" >/dev/null 2>&1
+mpi_root=${CRAY_MPICH_DIR:-/opt/cray/pe/mpich/8.1.25/ofi/intel/19.0}
+export LD_LIBRARY_PATH="${mpi_root}/lib-abi-mpich:${mpi_root}/lib:${LD_LIBRARY_PATH:-}"
+export LD_PRELOAD=${FREECAM_LD_PRELOAD}${LD_PRELOAD:+:${LD_PRELOAD}}
+export PYTHONPATH=${repo}/src
+export OMP_NUM_THREADS=1
+export OMP_STACKSIZE=64M
+export FI_CXI_RX_MATCH_MODE=hybrid
+export FI_MR_CACHE_MONITOR=memhooks
+export MPICH_MPIIO_HINTS='*:romio_cb_read=enable:romio_cb_write=enable:striping_factor=24'
+
+mkdir -p "${run_dir}"
+rsync -a \
+  --exclude 'f.e13.F1850C5.ne16_g16.icesm131_ihesp.PI-cam-oracle.50step.*' \
+  --exclude '*.log.*' --exclude 'rpointer.*' --exclude 'timing/' \
+  "${oracle_run}/" "${run_dir}/"
+mkdir -p "${run_dir}/timing/checkpoints"
+
+cd "${repo}"
+stage_flags=()
+if [ -n "${PYCAM_PYTHON_STAGES:-}" ]; then
+  stage_flags=(--python-stages "${PYCAM_PYTHON_STAGES}")
+fi
+if [ -n "${PYCAM_RADIATION_PYTHON:-}" ]; then
+  stage_flags+=(--split-radiation --radiation-python)
+fi
+if [ -n "${PYCAM_CLOUD_PYTHON:-}" ]; then
+  # the cloud macro/microphysics class (stage 7) over its own runner
+  stage_flags+=(--cloud-macro-micro-python)
+fi
+if [ ${#stage_flags[@]} -gt 0 ]; then
+  stage_flags+=(--stage-execution "${PYCAM_STAGE_EXECUTION:-auto}")
+fi
+if [ -n "${PYCAM_ORIGINAL_KERNELS:-}" ]; then
+  stage_flags+=(--segmented-original --segmented-original-kernels "${PYCAM_ORIGINAL_KERNELS}")
+fi
+if [ -n "${PYCAM_DISABLE_ACTIONS:-}" ]; then
+  # the inertness gate: actions expected to do no numerical work, switched off
+  stage_flags+=(--disable-actions "${PYCAM_DISABLE_ACTIONS}")
+fi
+if [ ${#stage_flags[@]} -eq 0 ]; then
+  echo "set PYCAM_PYTHON_STAGES, PYCAM_RADIATION_PYTHON, PYCAM_ORIGINAL_KERNELS or PYCAM_DISABLE_ACTIONS" >&2; exit 2
+fi
+mpiexec --label -n 512 "${python}" -m freecam.pi_cam.cli \
+  --config configs/pi_cam_icesm131_replay.yaml \
+  --native-manifest "${manifest}" \
+  --boundary "${boundary}" \
+  --run-dir "${run_dir}" \
+  --execution-mode "${mode}" \
+  "${stage_flags[@]}" \
+  --steps "${PYCAM_STEPS:-50}" \
+  --summary "${summary}" \
+  > "${run_dir}/pi_cam_python.log" 2>&1 || echo "model run exited $? (comparing the output anyway)"
+
+status=0
+"${python}" tools/verify_pi_cam.py \
+  --reference "${oracle_run}" \
+  --candidate "${run_dir}" \
+  --output "${bfb_output}" || status=$?
+
+"${python}" - <<PY || true
+import json
+s = json.load(open("${summary}"))
+print("stage execution:", json.dumps(s.get("stage_execution")))
+PY
+exit "${status}"

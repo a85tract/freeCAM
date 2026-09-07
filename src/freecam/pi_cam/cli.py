@@ -68,7 +68,11 @@ def _stage_executions(cam) -> dict[str, dict[str, object]]:
         stage = getattr(getattr(record, "function", None), "__self__", None)
         execution = getattr(stage, "execution", None)
         if execution is not None and hasattr(execution, "describe"):
-            executions[name] = execution.describe()
+            described = execution.describe()
+            describe_kernels = getattr(stage, "describe_kernels", None)
+            if callable(describe_kernels):
+                described["kernels"] = list(describe_kernels())
+            executions[name] = described
     return executions
 
 
@@ -283,6 +287,32 @@ def main(argv: list[str] | None = None) -> int:
         ),
     )
     parser.add_argument(
+        "--disable-actions",
+        default="",
+        help=(
+            "test only: disable these plan actions (comma-separated qualified names such as "
+            "cam_run2.rayleigh_friction) before the run, so a bit-for-bit result proves the "
+            "actions do no numerical work in this configuration"
+        ),
+    )
+    parser.add_argument(
+        "--python-stages",
+        default="",
+        help=(
+            "install these pausable stage classes (comma-separated action names, see "
+            "freecam.physics.pausable.STAGES) in their actions' places; each runs the original "
+            "Fortran whole, or through the image's runner when --segmented-original names its kernel"
+        ),
+    )
+    parser.add_argument(
+        "--segmented-original-kernels",
+        default="mmacro_pcond",
+        help=(
+            "test only: with --segmented-original, the kernels (comma-separated) put in "
+            "the slots as ORIGINAL replacements; each must be one the image's runner pauses at"
+        ),
+    )
+    parser.add_argument(
         "--cloud-macro-micro-python",
         action="store_true",
         help=(
@@ -443,6 +473,7 @@ def main(argv: list[str] | None = None) -> int:
                 ),
                 unsafe=True,
             )
+        installed_kernels: set[str] = set()      # every swappable kernel of the classes installed this run
         if args.radiation_python:
             # The same shape for radiation: Radiation.tend between the two
             # halves of the split stage, native and non-transactional for the
@@ -452,6 +483,12 @@ def main(argv: list[str] | None = None) -> int:
 
             scheme = Radiation()
             scheme.execution_policy = args.stage_execution
+            if args.segmented_original:
+                from freecam.physics.segments import OriginalKernel
+                for kernel_name in [k.strip() for k in args.segmented_original_kernels.split(",") if k.strip()]:
+                    if kernel_name in scheme.kernels:
+                        scheme.kernels[kernel_name] = OriginalKernel()
+            installed_kernels.update(scheme.kernels)
             cam.python_processes.install(
                 PythonProcessSpec.from_callable(
                     scheme.tend,
@@ -484,8 +521,13 @@ def main(argv: list[str] | None = None) -> int:
                 macro_surrogate=args.macro_kernel_surrogate)
             scheme.execution_policy = args.stage_execution
             if args.segmented_original:
+                # the kernel list is shared by every class installed this run; a name that
+                # belongs to none of them is refused below, once all are installed
                 from freecam.physics.segments import OriginalKernel
-                scheme.kernels["mmacro_pcond"] = OriginalKernel()
+                for kernel_name in [k.strip() for k in args.segmented_original_kernels.split(",") if k.strip()]:
+                    if kernel_name in scheme.kernels:
+                        scheme.kernels[kernel_name] = OriginalKernel()
+            installed_kernels.update(scheme.kernels)
             cam.step_plan.set_enabled("cloud_macro_microphysics", False, phase="cam_run1", experimental=True)
             cam.python_processes.install(
                 PythonProcessSpec.from_callable(
@@ -499,6 +541,47 @@ def main(argv: list[str] | None = None) -> int:
                 ),
                 unsafe=True,
             )
+        for qualified in [s.strip() for s in args.disable_actions.split(",") if s.strip()]:
+            phase, _, action_name = qualified.partition(".")
+            cam.step_plan.set_enabled(action_name, False, phase=phase, experimental=True)
+        for stage_name in [s.strip() for s in args.python_stages.split(",") if s.strip()]:
+            # a pausable stage class in its action's place: the original Fortran
+            # whole, or the image's runner paused at a replaced kernel
+            from freecam.model.python_processes import PythonProcessSpec
+            from freecam.physics.pausable import STAGES
+
+            if stage_name not in STAGES:
+                raise SystemExit(f"--python-stages: {stage_name!r} is not one of {sorted(STAGES)}")
+            pausable_stage = STAGES[stage_name]()
+            pausable_stage.execution_policy = args.stage_execution
+            if args.segmented_original:
+                from freecam.physics.segments import OriginalKernel
+                for kernel_name in [k.strip() for k in args.segmented_original_kernels.split(",") if k.strip()]:
+                    if kernel_name in pausable_stage.kernels:
+                        pausable_stage.kernels[kernel_name] = OriginalKernel()
+            phase, _, action_name = pausable_stage.STAGE.partition(".")
+            cam.step_plan.set_enabled(action_name, False, phase=phase, experimental=True)
+            cam.python_processes.install(
+                PythonProcessSpec.from_callable(
+                    pausable_stage.tend,
+                    name=f"{pausable_stage.PROCESS_NAME}_python",
+                    group=phase,
+                    after=action_name,
+                    native=True,
+                    transactional=False,
+                    trusted_native=True,
+                ),
+                unsafe=True,
+            )
+            installed_kernels.update(pausable_stage.kernels)
+        if args.segmented_original:
+            # every replaced kernel must belong to a class installed this run: a name
+            # nobody owns would leave the original in place silently
+            orphans = [k.strip() for k in args.segmented_original_kernels.split(",")
+                       if k.strip() and k.strip() not in installed_kernels]
+            if orphans:
+                raise SystemExit(f"--segmented-original-kernels: {orphans} belong to no installed stage class; "
+                                 f"installed classes own {sorted(installed_kernels)}")
         for request in history_streams:
             cam.install_history_stream(
                 str(request["name"]),
@@ -755,6 +838,9 @@ def main(argv: list[str] | None = None) -> int:
             "cloud_macro_micro_python": bool(args.cloud_macro_micro_python),
             "stage_execution_policy": args.stage_execution,
             "segmented_original": bool(args.segmented_original),
+            "segmented_original_kernels": (args.segmented_original_kernels if args.segmented_original else None),
+            "python_stages": [s.strip() for s in args.python_stages.split(",") if s.strip()],
+            "disabled_actions": [s.strip() for s in args.disable_actions.split(",") if s.strip()],
             "stage_execution": _stage_executions(cam),
             "cloud_macro_micro_whole_drivers": bool(args.cloud_macro_micro_whole_drivers),
             "cloud_macro_micro_whole_micro": bool(args.cloud_macro_micro_whole_micro),

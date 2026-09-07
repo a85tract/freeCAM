@@ -129,8 +129,23 @@ describe("browser check", () => {
   });
 
   it("offers a binding only where the runner covers the kernel", () => {
-    const bad = configure(snapshot.default_document, "cam_run1.cloud_macro_microphysics", { kernels: { micro_mg_tend: { kind: "surrogate", path: "m.pt" } } });
-    expect(validateDocument(bad, snapshot.default_document, catalog, snapshot.capabilities).issues.map((i) => i.code)).toContain("kernel-not-bindable");
+    const bound = configure(snapshot.default_document, "cam_run1.radiation", { kernels: { rad_rrtmg_sw: { kind: "surrogate", path: "m.pt" } } });
+    // every exposed kernel has a runner now; a capability table without one shows the refusal
+    const uncovered = snapshot.capabilities.map((c) => (c.kernel === "rad_rrtmg_sw" ? { ...c, bindable: false, validated: false } : c));
+    expect(validateDocument(bound, snapshot.default_document, catalog, uncovered).issues.map((i) => i.code)).toContain("kernel-not-bindable");
+    // a pause that has not passed its gate is a warning, not an error
+    const unproven = snapshot.capabilities.map((c) => (c.kernel === "rad_rrtmg_sw" ? { ...c, validated: false } : c));
+    const pending = validateDocument(bound, snapshot.default_document, catalog, unproven).issues.map((i) => i.code);
+    expect(pending).toContain("kernel-not-validated");
+    expect(pending).not.toContain("kernel-not-bindable");
+    // every exposed kernel's pause has passed its gate: the binding itself is the only finding
+    const gated = validateDocument(bound, snapshot.default_document, catalog, snapshot.capabilities).issues.map((i) => i.code);
+    expect(gated).not.toContain("kernel-not-validated");
+    // the runner pauses at micro_mg_tend and that pause has passed its gate: a binding there is only informational
+    const proven = configure(snapshot.default_document, "cam_run1.cloud_macro_microphysics", { kernels: { micro_mg_tend: { kind: "surrogate", path: "m.pt" } } });
+    const codes = validateDocument(proven, snapshot.default_document, catalog, snapshot.capabilities).issues.map((i) => i.code);
+    expect(codes).not.toContain("kernel-not-validated");
+    expect(codes).not.toContain("kernel-not-bindable");
     const good = configure(snapshot.default_document, "cam_run1.cloud_macro_microphysics", { kernels: { mmacro_pcond: { kind: "surrogate", path: "m.pt" } } });
     const report = validateDocument(good, snapshot.default_document, catalog, snapshot.capabilities);
     expect(report.status).toBe("valid");

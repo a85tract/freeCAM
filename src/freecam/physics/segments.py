@@ -104,6 +104,17 @@ class KernelFrame:
         for argument in outputs:
             target = argument.array[:self.ncol] if argument.array.ndim else argument.array
             value = np.asarray(answer[argument.name])
+            if target.size == 0:
+                # an output the routine has no room for -- a field this
+                # configuration never registered, packed as a zero-size array,
+                # or a chunk with no cloudy column: nothing to write, whatever
+                # extents the model gave its empty answer
+                if value.size != 0:
+                    raise PhysicsError(
+                        f"kernel {self.kernel!r}: {argument.name} has no storage in this call "
+                        f"(shape {target.shape}), the model returned {value.shape}")
+                written.append(argument.name)
+                continue
             if value.shape != target.shape:
                 raise PhysicsError(
                     f"kernel {self.kernel!r}: {argument.name} must be {target.shape}, "
@@ -129,6 +140,36 @@ class OriginalKernel:
 
     def __repr__(self) -> str:
         return "OriginalKernel()"
+
+
+class OriginalAtPause:
+    """Put in a kernel slot: the original call, run by the runner itself at the pause.
+
+    The runner's `original` entry executes the very call statement on the
+    frame's storage.  This model then reads every output the frame declares,
+    zeroes it, and answers with what it read -- so the frame's write-back
+    puts the original's values back exactly, and the gate exercises the
+    pause, the frame's slots, the write-back and the resume, with no direct
+    kernel or standalone image required.  Bit-for-bit output is then the
+    proof of the path.
+    """
+
+    takes_frame = True
+
+    def __call__(self, frame: "KernelFrame", runner: "SegmentRunner", context: int) -> dict[str, np.ndarray]:
+        runner.run_original(context, frame.kernel)          # type: ignore[attr-defined]
+        answer: dict[str, np.ndarray] = {}
+        for argument in frame.arguments:
+            if not argument.is_output:
+                continue
+            target = argument.array[:frame.ncol] if argument.array.ndim else argument.array
+            answer[argument.name] = np.array(target, copy=True)
+            if target.size:
+                target[...] = 0
+        return answer
+
+    def __repr__(self) -> str:
+        return "OriginalAtPause()"
 
 
 class SegmentRunner(Protocol):
@@ -161,6 +202,14 @@ class SegmentCounters:
     crossings: int = 0           # Python -> Fortran calls: start + frame + resume ...
     bytes_copied_in: int = 0
     bytes_copied_out: int = 0
+    #: model calls by the kernel they answered, so a run can show where its pauses were
+    calls_by_kernel: dict[str, int] = field(default_factory=dict)
+
+
+def _live_bytes(array: np.ndarray, ncol: int) -> int:
+    """The bytes of an output's live lanes; a scalar served where it lives has no lanes."""
+
+    return (array[:ncol] if array.ndim else array).nbytes
 
 
 class SegmentedStage:
@@ -224,13 +273,17 @@ class SegmentedStage:
                     raise PhysicsError(
                         f"{self.stage_name}: the runner paused on {frame.kernel!r}, which "
                         f"is not replaced")
-                batch = frame.batch()
-                counters.bytes_copied_in += sum(v.nbytes for v in batch.values())
-                answer = model(batch)
+                if getattr(model, "takes_frame", False):
+                    answer = model(frame, self.runner, self.context)
+                else:
+                    batch = frame.batch()
+                    counters.bytes_copied_in += sum(v.nbytes for v in batch.values())
+                    answer = model(batch)
                 counters.model_calls += 1
+                counters.calls_by_kernel[frame.kernel] = counters.calls_by_kernel.get(frame.kernel, 0) + 1
                 written = frame.write_back(answer)
                 counters.bytes_copied_out += sum(
-                    frame.argument(name).array[:frame.ncol].nbytes for name in written)
+                    _live_bytes(frame.argument(name).array, frame.ncol) for name in written)
                 event = self.runner.resume(self.context, frame.kernel, frame.token)
                 counters.resumes += 1
                 counters.crossings += 1
@@ -260,5 +313,5 @@ class SegmentedStage:
             self.context = None
 
 
-__all__ = ["FrameArgument", "KernelFrame", "OriginalKernel", "SegmentCounters", "SegmentEvent",
-           "SegmentRunner", "SegmentedStage"]
+__all__ = ["FrameArgument", "KernelFrame", "OriginalAtPause", "OriginalKernel", "SegmentCounters",
+           "SegmentEvent", "SegmentRunner", "SegmentedStage"]

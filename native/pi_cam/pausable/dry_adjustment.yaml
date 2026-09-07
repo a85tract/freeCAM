@@ -1,0 +1,38 @@
+# Dry adjustment (tphysbc stage 3, action 423): the tphysbc block around one
+# call of dadadj, pausable at that call.  The kernel is the routine itself:
+# lchnk, ncol, the chunk's pressures, and the temperature and humidity it
+# adjusts in place (handed as the ptend's s and q(:,:,1), the block's kludge).
+schema_version: 1
+prefix: dadadj
+stage: cam_run1.dry_adjustment
+refuse: []
+getopts: []
+units:
+  glue:
+    source: components/cam/src/physics/cam/physpkg.F90
+    routine: tphysbc
+    module_header: [1, 60]
+    declarations: [1674, 1874]
+    dummies:
+      state: host_state(lchnk)
+      tend: host_tend(lchnk)
+      pbuf: pbuf_get_chunk(host_pbuf2d, lchnk)
+      cam_in: host_cam_in(lchnk)
+      cam_out: host_cam_out(lchnk)
+      ztodt: real(get_step_size(), r8)
+    preamble:
+      - "lchnk = state%lchnk"
+      - "ncol = state%ncol"
+      - "nstep = get_nstep()"
+    body:
+      - piece: [2046, 2056]
+      - pause: {kernel: dadadj, call: [2057, 2058]}
+      - piece: [2059, 2063]
+kernels:
+  dadadj:
+    source: components/cam/src/physics/cam/dadadj.F90
+    routine: dadadj
+anchors:
+  'glue:physpkg.F90:2046-2063': 88a99ccb7d8bde36
+  'glue:physpkg.F90:declarations 1674-1874': 4e089ee70c947a21
+  'dadadj:dadadj.F90:2-135': 4a01683ce72a1bbe

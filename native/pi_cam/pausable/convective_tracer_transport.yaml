@@ -1,0 +1,80 @@
+# Convective tracer transport (the leaf of tphysbc stage 8, action 453): the
+# leaf's statements around convect_deep_tend_2 (control patch 0026), that
+# driver and zm_conv_tend_2 hoisted whole, pausable at convtran.  The mass
+# fluxes and indices it transports with are what the deep convection stage
+# left in zm_conv_intr's module arrays (control patch 0044 makes them
+# readable): the same storage, not a copy.
+schema_version: 1
+prefix: zmtran
+stage: cam_run1.convective_tracer_transport_leaf
+runner_uses:
+  - "use convect_deep, only: deep_scheme_does_scav_trans"
+refuse:
+  # the leaf runs only for a deep scheme without its own scavenging and transport (ZM)
+  - {when: "deep_scheme_does_scav_trans()", message: "written for a deep scheme that leaves tracer transport to convtran (ZM)"}
+units:
+  glue:
+    source: components/cam/src/physics/cam/physpkg.F90
+    routine: tphysbc
+    module_header: [1, 60]
+    declarations: [1674, 1874]
+    dummies:
+      state: host_state(lchnk)
+      tend: host_tend(lchnk)
+      pbuf: pbuf_get_chunk(host_pbuf2d, lchnk)
+      ztodt: real(get_step_size(), r8)
+    records: {tracerint: pycam_bc_tracerint_addr_v1}
+    preamble:
+      - "lchnk = state%lchnk"
+      - "ncol = state%ncol"
+      - "nstep = get_nstep()"
+      - "zero_tracers(:,:) = 0._r8"
+    body:
+      - piece: [2429, 2429]
+      - unit: {name: deep2, call: [2430, 2430]}
+      - piece: [2431, 2432]
+      - piece: [2435, 2435]
+      - piece: [2441, 2443]
+    # the aerosol block's timer, closed by the wet deposition leaf's dispatch
+    elided: [[2437, 2439]]
+  deep2:
+    source: components/cam/src/physics/cam/convect_deep.F90
+    routine: convect_deep_tend_2
+    module_header: [1, 50]
+    declarations: [306, 320]
+    getopts: [deep_scheme]
+    body:
+      - if: 323
+        then:
+          - unit: {name: zm2, call: [324, 324]}
+        else:
+          - piece: [326, 326]
+  zm2:
+    source: components/cam/src/physics/cam/zm_conv_intr.F90
+    routine: zm_conv_tend_2
+    module_header: [1, 21]
+    declarations: [912, 942]
+    pbuf_indices: auto
+    uses:
+      - "use zm_conv_intr, only: mu, eu, du, md, ed, dp, dsubcld, jt, maxg, ideep, lengath"
+    automatic: [Rwt]
+    body:
+      - piece: [947, 974]
+      - if: 976
+        then:
+          - piece: [977, 984]
+          - pause: {kernel: convtran, call: [985, 989]}
+          - piece: [990, 990]
+kernels:
+  convtran:
+    source: components/cam/src/physics/cam/zm_conv.F90
+    routine: convtran
+anchors:
+  'glue:physpkg.F90:2429-2443': 22ab571576083ee8
+  'glue:physpkg.F90:declarations 1674-1874': 4e089ee70c947a21
+  'glue:physpkg.F90:verbatim 2437-2439': 36717679fef7e500
+  'deep2:convect_deep.F90:323-326': 5357ec46aa4cd50f
+  'deep2:convect_deep.F90:declarations 306-320': deb701d61f7af3f0
+  'zm2:zm_conv_intr.F90:947-990': 171677f3da378830
+  'zm2:zm_conv_intr.F90:declarations 912-942': ba2f35e6804aa61c
+  'convtran:zm_conv.F90:1072-1410': 3460308fe6992fa0

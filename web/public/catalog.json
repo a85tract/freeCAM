@@ -4,7 +4,11 @@
    "bindable": true,
    "evidence": [
     "validation/pi_cam_stage7_segmented_original_50step.json",
-    "validation/pi_cam_stage7_segmented_original_vs_oracle_50step_bfb.json"
+    "validation/pi_cam_stage7_segmented_original_vs_oracle_50step_bfb.json",
+    "validation/pi_cam_stage7_segmented_both_50step.json",
+    "validation/pi_cam_stage7_segmented_both_vs_oracle_50step_bfb.json",
+    "validation/pi_cam_pausable_everything_50step.json",
+    "validation/pi_cam_pausable_everything_vs_oracle_50step_bfb.json"
    ],
    "kernel": "mmacro_pcond",
    "owner_class": "freecam.physics.macrophysics.Macrophysics",
@@ -14,34 +18,282 @@
    "validated": true
   },
   {
-   "bindable": false,
-   "evidence": [],
+   "bindable": true,
+   "evidence": [
+    "validation/pi_cam_stage7_segmented_micro_50step.json",
+    "validation/pi_cam_stage7_segmented_micro_vs_oracle_50step_bfb.json",
+    "validation/pi_cam_stage7_segmented_both_50step.json",
+    "validation/pi_cam_stage7_segmented_both_vs_oracle_50step_bfb.json",
+    "validation/pi_cam_pausable_everything_50step.json",
+    "validation/pi_cam_pausable_everything_vs_oracle_50step_bfb.json"
+   ],
    "kernel": "micro_mg_tend",
    "owner_class": "freecam.physics.microphysics.Microphysics",
-   "reason": "the image has no segment runner for this kernel yet; a replacement would run the statement-by-statement Python walk, which the builder does not offer",
+   "reason": null,
    "stage_action": "cam_run1.cloud_macro_microphysics",
    "stage_class": "freecam.physics.cloud_macro_microphysics.CloudMacroMicrophysics",
-   "validated": false
+   "validated": true
   },
   {
-   "bindable": false,
-   "evidence": [],
+   "bindable": true,
+   "evidence": [
+    "validation/pi_cam_pausable_rad-sw-pause_50step.json",
+    "validation/pi_cam_pausable_rad-sw-pause_vs_oracle_50step_bfb.json",
+    "validation/pi_cam_pausable_rad-both-pause_50step.json",
+    "validation/pi_cam_pausable_rad-both-pause_vs_oracle_50step_bfb.json",
+    "validation/pi_cam_pausable_all-pause_50step.json",
+    "validation/pi_cam_pausable_all-pause_vs_oracle_50step_bfb.json",
+    "validation/pi_cam_pausable_everything_50step.json",
+    "validation/pi_cam_pausable_everything_vs_oracle_50step_bfb.json"
+   ],
    "kernel": "rad_rrtmg_sw",
    "owner_class": "freecam.physics.radiation.Radiation",
-   "reason": "the image has no segment runner for this kernel yet; a replacement would run the statement-by-statement Python walk, which the builder does not offer",
+   "reason": null,
    "stage_action": "cam_run1.radiation",
    "stage_class": "freecam.physics.radiation.Radiation",
-   "validated": false
+   "validated": true
   },
   {
-   "bindable": false,
-   "evidence": [],
+   "bindable": true,
+   "evidence": [
+    "validation/pi_cam_pausable_rad-lw-pause_50step.json",
+    "validation/pi_cam_pausable_rad-lw-pause_vs_oracle_50step_bfb.json",
+    "validation/pi_cam_pausable_rad-both-pause_50step.json",
+    "validation/pi_cam_pausable_rad-both-pause_vs_oracle_50step_bfb.json",
+    "validation/pi_cam_pausable_all-pause_50step.json",
+    "validation/pi_cam_pausable_all-pause_vs_oracle_50step_bfb.json",
+    "validation/pi_cam_pausable_everything_50step.json",
+    "validation/pi_cam_pausable_everything_vs_oracle_50step_bfb.json"
+   ],
    "kernel": "rad_rrtmg_lw",
    "owner_class": "freecam.physics.radiation.Radiation",
-   "reason": "the image has no segment runner for this kernel yet; a replacement would run the statement-by-statement Python walk, which the builder does not offer",
+   "reason": null,
    "stage_action": "cam_run1.radiation",
    "stage_class": "freecam.physics.radiation.Radiation",
-   "validated": false
+   "validated": true
+  },
+  {
+   "bindable": true,
+   "evidence": [
+    "validation/pi_cam_pausable_dadadj-pause_50step.json",
+    "validation/pi_cam_pausable_dadadj-pause_vs_oracle_50step_bfb.json",
+    "validation/pi_cam_pausable_both-pause_50step.json",
+    "validation/pi_cam_pausable_both-pause_vs_oracle_50step_bfb.json",
+    "validation/pi_cam_pausable_all-pause_50step.json",
+    "validation/pi_cam_pausable_all-pause_vs_oracle_50step_bfb.json",
+    "validation/pi_cam_pausable_everything_50step.json",
+    "validation/pi_cam_pausable_everything_vs_oracle_50step_bfb.json"
+   ],
+   "kernel": "dadadj",
+   "owner_class": "freecam.physics.pausable.DryAdjustment",
+   "reason": null,
+   "stage_action": "cam_run1.dry_adjustment",
+   "stage_class": "freecam.physics.pausable.DryAdjustment",
+   "validated": true
+  },
+  {
+   "bindable": true,
+   "evidence": [
+    "validation/pi_cam_pausable_shcu-pause_50step.json",
+    "validation/pi_cam_pausable_shcu-pause_vs_oracle_50step_bfb.json",
+    "validation/pi_cam_pausable_both-pause_50step.json",
+    "validation/pi_cam_pausable_both-pause_vs_oracle_50step_bfb.json",
+    "validation/pi_cam_pausable_all-pause_50step.json",
+    "validation/pi_cam_pausable_all-pause_vs_oracle_50step_bfb.json",
+    "validation/pi_cam_pausable_everything_50step.json",
+    "validation/pi_cam_pausable_everything_vs_oracle_50step_bfb.json"
+   ],
+   "kernel": "compute_uwshcu_inv",
+   "owner_class": "freecam.physics.pausable.ShallowConvection",
+   "reason": null,
+   "stage_action": "cam_run1.shallow_convection",
+   "stage_class": "freecam.physics.pausable.ShallowConvection",
+   "validated": true
+  },
+  {
+   "bindable": true,
+   "evidence": [
+    "validation/pi_cam_pausable_deep-zmconvr_50step.json",
+    "validation/pi_cam_pausable_deep-zmconvr_vs_oracle_50step_bfb.json",
+    "validation/pi_cam_pausable_deep-all_50step.json",
+    "validation/pi_cam_pausable_deep-all_vs_oracle_50step_bfb.json",
+    "validation/pi_cam_pausable_chain-pause_50step.json",
+    "validation/pi_cam_pausable_chain-pause_vs_oracle_50step_bfb.json",
+    "validation/pi_cam_pausable_everything_50step.json",
+    "validation/pi_cam_pausable_everything_vs_oracle_50step_bfb.json"
+   ],
+   "kernel": "zm_convr",
+   "owner_class": "freecam.physics.pausable.DeepConvection",
+   "reason": null,
+   "stage_action": "cam_run1.deep_convection",
+   "stage_class": "freecam.physics.pausable.DeepConvection",
+   "validated": true
+  },
+  {
+   "bindable": true,
+   "evidence": [
+    "validation/pi_cam_pausable_deep-evap_50step.json",
+    "validation/pi_cam_pausable_deep-evap_vs_oracle_50step_bfb.json",
+    "validation/pi_cam_pausable_deep-all_50step.json",
+    "validation/pi_cam_pausable_deep-all_vs_oracle_50step_bfb.json",
+    "validation/pi_cam_pausable_chain-pause_50step.json",
+    "validation/pi_cam_pausable_chain-pause_vs_oracle_50step_bfb.json",
+    "validation/pi_cam_pausable_everything_50step.json",
+    "validation/pi_cam_pausable_everything_vs_oracle_50step_bfb.json"
+   ],
+   "kernel": "zm_conv_evap",
+   "owner_class": "freecam.physics.pausable.DeepConvection",
+   "reason": null,
+   "stage_action": "cam_run1.deep_convection",
+   "stage_class": "freecam.physics.pausable.DeepConvection",
+   "validated": true
+  },
+  {
+   "bindable": true,
+   "evidence": [
+    "validation/pi_cam_pausable_deep-momtran_50step.json",
+    "validation/pi_cam_pausable_deep-momtran_vs_oracle_50step_bfb.json",
+    "validation/pi_cam_pausable_deep-all_50step.json",
+    "validation/pi_cam_pausable_deep-all_vs_oracle_50step_bfb.json",
+    "validation/pi_cam_pausable_chain-pause_50step.json",
+    "validation/pi_cam_pausable_chain-pause_vs_oracle_50step_bfb.json",
+    "validation/pi_cam_pausable_everything_50step.json",
+    "validation/pi_cam_pausable_everything_vs_oracle_50step_bfb.json"
+   ],
+   "kernel": "momtran",
+   "owner_class": "freecam.physics.pausable.DeepConvection",
+   "reason": null,
+   "stage_action": "cam_run1.deep_convection",
+   "stage_class": "freecam.physics.pausable.DeepConvection",
+   "validated": true
+  },
+  {
+   "bindable": true,
+   "evidence": [
+    "validation/pi_cam_pausable_tran-pause_50step.json",
+    "validation/pi_cam_pausable_tran-pause_vs_oracle_50step_bfb.json",
+    "validation/pi_cam_pausable_chain-pause_50step.json",
+    "validation/pi_cam_pausable_chain-pause_vs_oracle_50step_bfb.json",
+    "validation/pi_cam_pausable_everything_50step.json",
+    "validation/pi_cam_pausable_everything_vs_oracle_50step_bfb.json"
+   ],
+   "kernel": "convtran",
+   "owner_class": "freecam.physics.pausable.ConvectiveTracerTransport",
+   "reason": null,
+   "stage_action": "cam_run1.convective_tracer_transport_leaf",
+   "stage_class": "freecam.physics.pausable.ConvectiveTracerTransport",
+   "validated": true
+  },
+  {
+   "bindable": true,
+   "evidence": [
+    "validation/pi_cam_pausable_vdiff-tms_50step.json",
+    "validation/pi_cam_pausable_vdiff-tms_vs_oracle_50step_bfb.json",
+    "validation/pi_cam_pausable_vdiff-all_50step.json",
+    "validation/pi_cam_pausable_vdiff-all_vs_oracle_50step_bfb.json",
+    "validation/pi_cam_pausable_everything_50step.json",
+    "validation/pi_cam_pausable_everything_vs_oracle_50step_bfb.json"
+   ],
+   "kernel": "compute_tms",
+   "owner_class": "freecam.physics.pausable.VerticalDiffusion",
+   "reason": null,
+   "stage_action": "cam_run2.vertical_diffusion",
+   "stage_class": "freecam.physics.pausable.VerticalDiffusion",
+   "validated": true
+  },
+  {
+   "bindable": true,
+   "evidence": [
+    "validation/pi_cam_pausable_vdiff-eddy_50step.json",
+    "validation/pi_cam_pausable_vdiff-eddy_vs_oracle_50step_bfb.json",
+    "validation/pi_cam_pausable_vdiff-all_50step.json",
+    "validation/pi_cam_pausable_vdiff-all_vs_oracle_50step_bfb.json",
+    "validation/pi_cam_pausable_everything_50step.json",
+    "validation/pi_cam_pausable_everything_vs_oracle_50step_bfb.json"
+   ],
+   "kernel": "compute_eddy_diff",
+   "owner_class": "freecam.physics.pausable.VerticalDiffusion",
+   "reason": null,
+   "stage_action": "cam_run2.vertical_diffusion",
+   "stage_class": "freecam.physics.pausable.VerticalDiffusion",
+   "validated": true
+  },
+  {
+   "bindable": true,
+   "evidence": [
+    "validation/pi_cam_pausable_vdiff-vdiff_50step.json",
+    "validation/pi_cam_pausable_vdiff-vdiff_vs_oracle_50step_bfb.json",
+    "validation/pi_cam_pausable_vdiff-all_50step.json",
+    "validation/pi_cam_pausable_vdiff-all_vs_oracle_50step_bfb.json",
+    "validation/pi_cam_pausable_everything_50step.json",
+    "validation/pi_cam_pausable_everything_vs_oracle_50step_bfb.json"
+   ],
+   "kernel": "compute_vdiff",
+   "owner_class": "freecam.physics.pausable.VerticalDiffusion",
+   "reason": null,
+   "stage_action": "cam_run2.vertical_diffusion",
+   "stage_class": "freecam.physics.pausable.VerticalDiffusion",
+   "validated": true
+  },
+  {
+   "bindable": true,
+   "evidence": [
+    "validation/pi_cam_pausable_gwd-pause_50step.json",
+    "validation/pi_cam_pausable_gwd-pause_vs_oracle_50step_bfb.json",
+    "validation/pi_cam_pausable_everything_50step.json",
+    "validation/pi_cam_pausable_everything_vs_oracle_50step_bfb.json"
+   ],
+   "kernel": "gw_drag_prof",
+   "owner_class": "freecam.physics.pausable.GravityWaveDrag",
+   "reason": null,
+   "stage_action": "cam_run2.gravity_wave_drag",
+   "stage_class": "freecam.physics.pausable.GravityWaveDrag",
+   "validated": true
+  },
+  {
+   "bindable": true,
+   "evidence": [
+    "validation/pi_cam_pausable_awet-pause_50step.json",
+    "validation/pi_cam_pausable_awet-pause_vs_oracle_50step_bfb.json",
+    "validation/pi_cam_pausable_everything_50step.json",
+    "validation/pi_cam_pausable_everything_vs_oracle_50step_bfb.json"
+   ],
+   "kernel": "wetdepa_v2",
+   "owner_class": "freecam.physics.pausable.AerosolWetDeposition",
+   "reason": null,
+   "stage_action": "cam_run1.aerosol_wet_deposition_leaf",
+   "stage_class": "freecam.physics.pausable.AerosolWetDeposition",
+   "validated": true
+  },
+  {
+   "bindable": true,
+   "evidence": [
+    "validation/pi_cam_pausable_adry-pause_50step.json",
+    "validation/pi_cam_pausable_adry-pause_vs_oracle_50step_bfb.json",
+    "validation/pi_cam_pausable_everything_50step.json",
+    "validation/pi_cam_pausable_everything_vs_oracle_50step_bfb.json"
+   ],
+   "kernel": "modal_aero_depvel_part",
+   "owner_class": "freecam.physics.pausable.AerosolDryDeposition",
+   "reason": null,
+   "stage_action": "cam_run2.aerosol_dry_deposition_leaf",
+   "stage_class": "freecam.physics.pausable.AerosolDryDeposition",
+   "validated": true
+  },
+  {
+   "bindable": true,
+   "evidence": [
+    "validation/pi_cam_pausable_chem-pause_50step.json",
+    "validation/pi_cam_pausable_chem-pause_vs_oracle_50step_bfb.json",
+    "validation/pi_cam_pausable_everything_50step.json",
+    "validation/pi_cam_pausable_everything_vs_oracle_50step_bfb.json"
+   ],
+   "kernel": "gas_phase_chemdr",
+   "owner_class": "freecam.physics.pausable.ChemistryTendencies",
+   "reason": null,
+   "stage_action": "cam_run2.chemistry_tendencies_leaf",
+   "stage_class": "freecam.physics.pausable.ChemistryTendencies",
+   "validated": true
   }
  ],
  "cases": {
@@ -50,11 +302,11 @@
   "PI-atm-online": "configs/pi_cam_icesm131_online.yaml",
   "PI-atm-replay": "configs/pi_cam_icesm131_replay.yaml"
  },
- "catalog_hash": "c65c1ff0c1712f77bd0ece3b3242df6ce130c27b1925bae5abed87fd908ef705",
- "commit": "e891383fe3c37f30dd63ff445c9a686e113150ef",
+ "catalog_hash": "15776020bd419dedbd27ec77bc5e113dcf36fdff1edd93106d1f342eea798f09",
+ "commit": "c618a73740e8e0e8f6cc2a5029e66d28d273a2aa",
  "default_document": {
   "case": "PI-atm",
-  "catalog_version": "c65c1ff0c1712f77bd0ece3b3242df6ce130c27b1925bae5abed87fd908ef705",
+  "catalog_version": "15776020bd419dedbd27ec77bc5e113dcf36fdff1edd93106d1f342eea798f09",
   "experimental": false,
   "namelist": {},
   "nodes": [
@@ -264,7 +516,12 @@
    },
    {
     "configuration": {
-     "kernels": {},
+     "kernels": {
+      "gas_phase_chemdr": {
+       "kind": "original",
+       "path": null
+      }
+     },
      "parameters": {},
      "python_source": null,
      "variables": []
@@ -279,7 +536,23 @@
     "locked": false,
     "metadata": {
      "control_owner": "python",
-     "kernels": [],
+     "kernels": [
+      {
+       "bindable": true,
+       "evidence": [
+        "validation/pi_cam_pausable_chem-pause_50step.json",
+        "validation/pi_cam_pausable_chem-pause_vs_oracle_50step_bfb.json",
+        "validation/pi_cam_pausable_everything_50step.json",
+        "validation/pi_cam_pausable_everything_vs_oracle_50step_bfb.json"
+       ],
+       "kernel": "gas_phase_chemdr",
+       "owner_class": "freecam.physics.pausable.ChemistryTendencies",
+       "reason": null,
+       "stage_action": "cam_run2.chemistry_tendencies_leaf",
+       "stage_class": "freecam.physics.pausable.ChemistryTendencies",
+       "validated": true
+      }
+     ],
      "parameters": []
     },
     "movable": true,
@@ -298,7 +571,20 @@
    },
    {
     "configuration": {
-     "kernels": {},
+     "kernels": {
+      "compute_eddy_diff": {
+       "kind": "original",
+       "path": null
+      },
+      "compute_tms": {
+       "kind": "original",
+       "path": null
+      },
+      "compute_vdiff": {
+       "kind": "original",
+       "path": null
+      }
+     },
      "parameters": {},
      "python_source": null,
      "variables": []
@@ -313,7 +599,59 @@
     "locked": false,
     "metadata": {
      "control_owner": "python",
-     "kernels": [],
+     "kernels": [
+      {
+       "bindable": true,
+       "evidence": [
+        "validation/pi_cam_pausable_vdiff-tms_50step.json",
+        "validation/pi_cam_pausable_vdiff-tms_vs_oracle_50step_bfb.json",
+        "validation/pi_cam_pausable_vdiff-all_50step.json",
+        "validation/pi_cam_pausable_vdiff-all_vs_oracle_50step_bfb.json",
+        "validation/pi_cam_pausable_everything_50step.json",
+        "validation/pi_cam_pausable_everything_vs_oracle_50step_bfb.json"
+       ],
+       "kernel": "compute_tms",
+       "owner_class": "freecam.physics.pausable.VerticalDiffusion",
+       "reason": null,
+       "stage_action": "cam_run2.vertical_diffusion",
+       "stage_class": "freecam.physics.pausable.VerticalDiffusion",
+       "validated": true
+      },
+      {
+       "bindable": true,
+       "evidence": [
+        "validation/pi_cam_pausable_vdiff-eddy_50step.json",
+        "validation/pi_cam_pausable_vdiff-eddy_vs_oracle_50step_bfb.json",
+        "validation/pi_cam_pausable_vdiff-all_50step.json",
+        "validation/pi_cam_pausable_vdiff-all_vs_oracle_50step_bfb.json",
+        "validation/pi_cam_pausable_everything_50step.json",
+        "validation/pi_cam_pausable_everything_vs_oracle_50step_bfb.json"
+       ],
+       "kernel": "compute_eddy_diff",
+       "owner_class": "freecam.physics.pausable.VerticalDiffusion",
+       "reason": null,
+       "stage_action": "cam_run2.vertical_diffusion",
+       "stage_class": "freecam.physics.pausable.VerticalDiffusion",
+       "validated": true
+      },
+      {
+       "bindable": true,
+       "evidence": [
+        "validation/pi_cam_pausable_vdiff-vdiff_50step.json",
+        "validation/pi_cam_pausable_vdiff-vdiff_vs_oracle_50step_bfb.json",
+        "validation/pi_cam_pausable_vdiff-all_50step.json",
+        "validation/pi_cam_pausable_vdiff-all_vs_oracle_50step_bfb.json",
+        "validation/pi_cam_pausable_everything_50step.json",
+        "validation/pi_cam_pausable_everything_vs_oracle_50step_bfb.json"
+       ],
+       "kernel": "compute_vdiff",
+       "owner_class": "freecam.physics.pausable.VerticalDiffusion",
+       "reason": null,
+       "stage_action": "cam_run2.vertical_diffusion",
+       "stage_class": "freecam.physics.pausable.VerticalDiffusion",
+       "validated": true
+      }
+     ],
      "parameters": []
     },
     "movable": true,
@@ -400,7 +738,12 @@
    },
    {
     "configuration": {
-     "kernels": {},
+     "kernels": {
+      "modal_aero_depvel_part": {
+       "kind": "original",
+       "path": null
+      }
+     },
      "parameters": {},
      "python_source": null,
      "variables": []
@@ -415,7 +758,23 @@
     "locked": false,
     "metadata": {
      "control_owner": "python",
-     "kernels": [],
+     "kernels": [
+      {
+       "bindable": true,
+       "evidence": [
+        "validation/pi_cam_pausable_adry-pause_50step.json",
+        "validation/pi_cam_pausable_adry-pause_vs_oracle_50step_bfb.json",
+        "validation/pi_cam_pausable_everything_50step.json",
+        "validation/pi_cam_pausable_everything_vs_oracle_50step_bfb.json"
+       ],
+       "kernel": "modal_aero_depvel_part",
+       "owner_class": "freecam.physics.pausable.AerosolDryDeposition",
+       "reason": null,
+       "stage_action": "cam_run2.aerosol_dry_deposition_leaf",
+       "stage_class": "freecam.physics.pausable.AerosolDryDeposition",
+       "validated": true
+      }
+     ],
      "parameters": []
     },
     "movable": true,
@@ -502,7 +861,12 @@
    },
    {
     "configuration": {
-     "kernels": {},
+     "kernels": {
+      "gw_drag_prof": {
+       "kind": "original",
+       "path": null
+      }
+     },
      "parameters": {},
      "python_source": null,
      "variables": []
@@ -517,7 +881,23 @@
     "locked": false,
     "metadata": {
      "control_owner": "python",
-     "kernels": [],
+     "kernels": [
+      {
+       "bindable": true,
+       "evidence": [
+        "validation/pi_cam_pausable_gwd-pause_50step.json",
+        "validation/pi_cam_pausable_gwd-pause_vs_oracle_50step_bfb.json",
+        "validation/pi_cam_pausable_everything_50step.json",
+        "validation/pi_cam_pausable_everything_vs_oracle_50step_bfb.json"
+       ],
+       "kernel": "gw_drag_prof",
+       "owner_class": "freecam.physics.pausable.GravityWaveDrag",
+       "reason": null,
+       "stage_action": "cam_run2.gravity_wave_drag",
+       "stage_class": "freecam.physics.pausable.GravityWaveDrag",
+       "validated": true
+      }
+     ],
      "parameters": [
       {
        "dtype": "float64",
@@ -1256,7 +1636,12 @@
    },
    {
     "configuration": {
-     "kernels": {},
+     "kernels": {
+      "dadadj": {
+       "kind": "original",
+       "path": null
+      }
+     },
      "parameters": {},
      "python_source": null,
      "variables": []
@@ -1271,7 +1656,27 @@
     "locked": false,
     "metadata": {
      "control_owner": "python",
-     "kernels": [],
+     "kernels": [
+      {
+       "bindable": true,
+       "evidence": [
+        "validation/pi_cam_pausable_dadadj-pause_50step.json",
+        "validation/pi_cam_pausable_dadadj-pause_vs_oracle_50step_bfb.json",
+        "validation/pi_cam_pausable_both-pause_50step.json",
+        "validation/pi_cam_pausable_both-pause_vs_oracle_50step_bfb.json",
+        "validation/pi_cam_pausable_all-pause_50step.json",
+        "validation/pi_cam_pausable_all-pause_vs_oracle_50step_bfb.json",
+        "validation/pi_cam_pausable_everything_50step.json",
+        "validation/pi_cam_pausable_everything_vs_oracle_50step_bfb.json"
+       ],
+       "kernel": "dadadj",
+       "owner_class": "freecam.physics.pausable.DryAdjustment",
+       "reason": null,
+       "stage_action": "cam_run1.dry_adjustment",
+       "stage_class": "freecam.physics.pausable.DryAdjustment",
+       "validated": true
+      }
+     ],
      "parameters": []
     },
     "movable": true,
@@ -1290,7 +1695,20 @@
    },
    {
     "configuration": {
-     "kernels": {},
+     "kernels": {
+      "momtran": {
+       "kind": "original",
+       "path": null
+      },
+      "zm_conv_evap": {
+       "kind": "original",
+       "path": null
+      },
+      "zm_convr": {
+       "kind": "original",
+       "path": null
+      }
+     },
      "parameters": {},
      "python_source": null,
      "variables": []
@@ -1305,7 +1723,65 @@
     "locked": false,
     "metadata": {
      "control_owner": "python",
-     "kernels": [],
+     "kernels": [
+      {
+       "bindable": true,
+       "evidence": [
+        "validation/pi_cam_pausable_deep-zmconvr_50step.json",
+        "validation/pi_cam_pausable_deep-zmconvr_vs_oracle_50step_bfb.json",
+        "validation/pi_cam_pausable_deep-all_50step.json",
+        "validation/pi_cam_pausable_deep-all_vs_oracle_50step_bfb.json",
+        "validation/pi_cam_pausable_chain-pause_50step.json",
+        "validation/pi_cam_pausable_chain-pause_vs_oracle_50step_bfb.json",
+        "validation/pi_cam_pausable_everything_50step.json",
+        "validation/pi_cam_pausable_everything_vs_oracle_50step_bfb.json"
+       ],
+       "kernel": "zm_convr",
+       "owner_class": "freecam.physics.pausable.DeepConvection",
+       "reason": null,
+       "stage_action": "cam_run1.deep_convection",
+       "stage_class": "freecam.physics.pausable.DeepConvection",
+       "validated": true
+      },
+      {
+       "bindable": true,
+       "evidence": [
+        "validation/pi_cam_pausable_deep-evap_50step.json",
+        "validation/pi_cam_pausable_deep-evap_vs_oracle_50step_bfb.json",
+        "validation/pi_cam_pausable_deep-all_50step.json",
+        "validation/pi_cam_pausable_deep-all_vs_oracle_50step_bfb.json",
+        "validation/pi_cam_pausable_chain-pause_50step.json",
+        "validation/pi_cam_pausable_chain-pause_vs_oracle_50step_bfb.json",
+        "validation/pi_cam_pausable_everything_50step.json",
+        "validation/pi_cam_pausable_everything_vs_oracle_50step_bfb.json"
+       ],
+       "kernel": "zm_conv_evap",
+       "owner_class": "freecam.physics.pausable.DeepConvection",
+       "reason": null,
+       "stage_action": "cam_run1.deep_convection",
+       "stage_class": "freecam.physics.pausable.DeepConvection",
+       "validated": true
+      },
+      {
+       "bindable": true,
+       "evidence": [
+        "validation/pi_cam_pausable_deep-momtran_50step.json",
+        "validation/pi_cam_pausable_deep-momtran_vs_oracle_50step_bfb.json",
+        "validation/pi_cam_pausable_deep-all_50step.json",
+        "validation/pi_cam_pausable_deep-all_vs_oracle_50step_bfb.json",
+        "validation/pi_cam_pausable_chain-pause_50step.json",
+        "validation/pi_cam_pausable_chain-pause_vs_oracle_50step_bfb.json",
+        "validation/pi_cam_pausable_everything_50step.json",
+        "validation/pi_cam_pausable_everything_vs_oracle_50step_bfb.json"
+       ],
+       "kernel": "momtran",
+       "owner_class": "freecam.physics.pausable.DeepConvection",
+       "reason": null,
+       "stage_action": "cam_run1.deep_convection",
+       "stage_class": "freecam.physics.pausable.DeepConvection",
+       "validated": true
+      }
+     ],
      "parameters": [
       {
        "dtype": "float64",
@@ -1350,7 +1826,12 @@
    },
    {
     "configuration": {
-     "kernels": {},
+     "kernels": {
+      "compute_uwshcu_inv": {
+       "kind": "original",
+       "path": null
+      }
+     },
      "parameters": {},
      "python_source": null,
      "variables": []
@@ -1365,7 +1846,27 @@
     "locked": false,
     "metadata": {
      "control_owner": "python",
-     "kernels": [],
+     "kernels": [
+      {
+       "bindable": true,
+       "evidence": [
+        "validation/pi_cam_pausable_shcu-pause_50step.json",
+        "validation/pi_cam_pausable_shcu-pause_vs_oracle_50step_bfb.json",
+        "validation/pi_cam_pausable_both-pause_50step.json",
+        "validation/pi_cam_pausable_both-pause_vs_oracle_50step_bfb.json",
+        "validation/pi_cam_pausable_all-pause_50step.json",
+        "validation/pi_cam_pausable_all-pause_vs_oracle_50step_bfb.json",
+        "validation/pi_cam_pausable_everything_50step.json",
+        "validation/pi_cam_pausable_everything_vs_oracle_50step_bfb.json"
+       ],
+       "kernel": "compute_uwshcu_inv",
+       "owner_class": "freecam.physics.pausable.ShallowConvection",
+       "reason": null,
+       "stage_action": "cam_run1.shallow_convection",
+       "stage_class": "freecam.physics.pausable.ShallowConvection",
+       "validated": true
+      }
+     ],
      "parameters": [
       {
        "dtype": "float64",
@@ -1463,7 +1964,11 @@
        "bindable": true,
        "evidence": [
         "validation/pi_cam_stage7_segmented_original_50step.json",
-        "validation/pi_cam_stage7_segmented_original_vs_oracle_50step_bfb.json"
+        "validation/pi_cam_stage7_segmented_original_vs_oracle_50step_bfb.json",
+        "validation/pi_cam_stage7_segmented_both_50step.json",
+        "validation/pi_cam_stage7_segmented_both_vs_oracle_50step_bfb.json",
+        "validation/pi_cam_pausable_everything_50step.json",
+        "validation/pi_cam_pausable_everything_vs_oracle_50step_bfb.json"
        ],
        "kernel": "mmacro_pcond",
        "owner_class": "freecam.physics.macrophysics.Macrophysics",
@@ -1473,14 +1978,21 @@
        "validated": true
       },
       {
-       "bindable": false,
-       "evidence": [],
+       "bindable": true,
+       "evidence": [
+        "validation/pi_cam_stage7_segmented_micro_50step.json",
+        "validation/pi_cam_stage7_segmented_micro_vs_oracle_50step_bfb.json",
+        "validation/pi_cam_stage7_segmented_both_50step.json",
+        "validation/pi_cam_stage7_segmented_both_vs_oracle_50step_bfb.json",
+        "validation/pi_cam_pausable_everything_50step.json",
+        "validation/pi_cam_pausable_everything_vs_oracle_50step_bfb.json"
+       ],
        "kernel": "micro_mg_tend",
        "owner_class": "freecam.physics.microphysics.Microphysics",
-       "reason": "the image has no segment runner for this kernel yet; a replacement would run the statement-by-statement Python walk, which the builder does not offer",
+       "reason": null,
        "stage_action": "cam_run1.cloud_macro_microphysics",
        "stage_class": "freecam.physics.cloud_macro_microphysics.CloudMacroMicrophysics",
-       "validated": false
+       "validated": true
       }
      ],
      "parameters": [
@@ -1663,7 +2175,12 @@
    },
    {
     "configuration": {
-     "kernels": {},
+     "kernels": {
+      "wetdepa_v2": {
+       "kind": "original",
+       "path": null
+      }
+     },
      "parameters": {},
      "python_source": null,
      "variables": []
@@ -1678,7 +2195,23 @@
     "locked": false,
     "metadata": {
      "control_owner": "python",
-     "kernels": [],
+     "kernels": [
+      {
+       "bindable": true,
+       "evidence": [
+        "validation/pi_cam_pausable_awet-pause_50step.json",
+        "validation/pi_cam_pausable_awet-pause_vs_oracle_50step_bfb.json",
+        "validation/pi_cam_pausable_everything_50step.json",
+        "validation/pi_cam_pausable_everything_vs_oracle_50step_bfb.json"
+       ],
+       "kernel": "wetdepa_v2",
+       "owner_class": "freecam.physics.pausable.AerosolWetDeposition",
+       "reason": null,
+       "stage_action": "cam_run1.aerosol_wet_deposition_leaf",
+       "stage_class": "freecam.physics.pausable.AerosolWetDeposition",
+       "validated": true
+      }
+     ],
      "parameters": []
     },
     "movable": true,
@@ -1731,7 +2264,12 @@
    },
    {
     "configuration": {
-     "kernels": {},
+     "kernels": {
+      "convtran": {
+       "kind": "original",
+       "path": null
+      }
+     },
      "parameters": {},
      "python_source": null,
      "variables": []
@@ -1746,7 +2284,25 @@
     "locked": false,
     "metadata": {
      "control_owner": "python",
-     "kernels": [],
+     "kernels": [
+      {
+       "bindable": true,
+       "evidence": [
+        "validation/pi_cam_pausable_tran-pause_50step.json",
+        "validation/pi_cam_pausable_tran-pause_vs_oracle_50step_bfb.json",
+        "validation/pi_cam_pausable_chain-pause_50step.json",
+        "validation/pi_cam_pausable_chain-pause_vs_oracle_50step_bfb.json",
+        "validation/pi_cam_pausable_everything_50step.json",
+        "validation/pi_cam_pausable_everything_vs_oracle_50step_bfb.json"
+       ],
+       "kernel": "convtran",
+       "owner_class": "freecam.physics.pausable.ConvectiveTracerTransport",
+       "reason": null,
+       "stage_action": "cam_run1.convective_tracer_transport_leaf",
+       "stage_class": "freecam.physics.pausable.ConvectiveTracerTransport",
+       "validated": true
+      }
+     ],
      "parameters": []
     },
     "movable": true,
@@ -1893,24 +2449,42 @@
      "control_owner": "python",
      "kernels": [
       {
-       "bindable": false,
-       "evidence": [],
+       "bindable": true,
+       "evidence": [
+        "validation/pi_cam_pausable_rad-sw-pause_50step.json",
+        "validation/pi_cam_pausable_rad-sw-pause_vs_oracle_50step_bfb.json",
+        "validation/pi_cam_pausable_rad-both-pause_50step.json",
+        "validation/pi_cam_pausable_rad-both-pause_vs_oracle_50step_bfb.json",
+        "validation/pi_cam_pausable_all-pause_50step.json",
+        "validation/pi_cam_pausable_all-pause_vs_oracle_50step_bfb.json",
+        "validation/pi_cam_pausable_everything_50step.json",
+        "validation/pi_cam_pausable_everything_vs_oracle_50step_bfb.json"
+       ],
        "kernel": "rad_rrtmg_sw",
        "owner_class": "freecam.physics.radiation.Radiation",
-       "reason": "the image has no segment runner for this kernel yet; a replacement would run the statement-by-statement Python walk, which the builder does not offer",
+       "reason": null,
        "stage_action": "cam_run1.radiation",
        "stage_class": "freecam.physics.radiation.Radiation",
-       "validated": false
+       "validated": true
       },
       {
-       "bindable": false,
-       "evidence": [],
+       "bindable": true,
+       "evidence": [
+        "validation/pi_cam_pausable_rad-lw-pause_50step.json",
+        "validation/pi_cam_pausable_rad-lw-pause_vs_oracle_50step_bfb.json",
+        "validation/pi_cam_pausable_rad-both-pause_50step.json",
+        "validation/pi_cam_pausable_rad-both-pause_vs_oracle_50step_bfb.json",
+        "validation/pi_cam_pausable_all-pause_50step.json",
+        "validation/pi_cam_pausable_all-pause_vs_oracle_50step_bfb.json",
+        "validation/pi_cam_pausable_everything_50step.json",
+        "validation/pi_cam_pausable_everything_vs_oracle_50step_bfb.json"
+       ],
        "kernel": "rad_rrtmg_lw",
        "owner_class": "freecam.physics.radiation.Radiation",
-       "reason": "the image has no segment runner for this kernel yet; a replacement would run the statement-by-statement Python walk, which the builder does not offer",
+       "reason": null,
        "stage_action": "cam_run1.radiation",
        "stage_class": "freecam.physics.radiation.Radiation",
-       "validated": false
+       "validated": true
       }
      ],
      "parameters": []
@@ -2381,7 +2955,12 @@
   },
   {
    "configuration": {
-    "kernels": {},
+    "kernels": {
+     "gas_phase_chemdr": {
+      "kind": "original",
+      "path": null
+     }
+    },
     "parameters": {},
     "python_source": null,
     "variables": []
@@ -2396,7 +2975,23 @@
    "locked": false,
    "metadata": {
     "control_owner": "python",
-    "kernels": [],
+    "kernels": [
+     {
+      "bindable": true,
+      "evidence": [
+       "validation/pi_cam_pausable_chem-pause_50step.json",
+       "validation/pi_cam_pausable_chem-pause_vs_oracle_50step_bfb.json",
+       "validation/pi_cam_pausable_everything_50step.json",
+       "validation/pi_cam_pausable_everything_vs_oracle_50step_bfb.json"
+      ],
+      "kernel": "gas_phase_chemdr",
+      "owner_class": "freecam.physics.pausable.ChemistryTendencies",
+      "reason": null,
+      "stage_action": "cam_run2.chemistry_tendencies_leaf",
+      "stage_class": "freecam.physics.pausable.ChemistryTendencies",
+      "validated": true
+     }
+    ],
     "parameters": []
    },
    "movable": true,
@@ -2415,7 +3010,20 @@
   },
   {
    "configuration": {
-    "kernels": {},
+    "kernels": {
+     "compute_eddy_diff": {
+      "kind": "original",
+      "path": null
+     },
+     "compute_tms": {
+      "kind": "original",
+      "path": null
+     },
+     "compute_vdiff": {
+      "kind": "original",
+      "path": null
+     }
+    },
     "parameters": {},
     "python_source": null,
     "variables": []
@@ -2430,7 +3038,59 @@
    "locked": false,
    "metadata": {
     "control_owner": "python",
-    "kernels": [],
+    "kernels": [
+     {
+      "bindable": true,
+      "evidence": [
+       "validation/pi_cam_pausable_vdiff-tms_50step.json",
+       "validation/pi_cam_pausable_vdiff-tms_vs_oracle_50step_bfb.json",
+       "validation/pi_cam_pausable_vdiff-all_50step.json",
+       "validation/pi_cam_pausable_vdiff-all_vs_oracle_50step_bfb.json",
+       "validation/pi_cam_pausable_everything_50step.json",
+       "validation/pi_cam_pausable_everything_vs_oracle_50step_bfb.json"
+      ],
+      "kernel": "compute_tms",
+      "owner_class": "freecam.physics.pausable.VerticalDiffusion",
+      "reason": null,
+      "stage_action": "cam_run2.vertical_diffusion",
+      "stage_class": "freecam.physics.pausable.VerticalDiffusion",
+      "validated": true
+     },
+     {
+      "bindable": true,
+      "evidence": [
+       "validation/pi_cam_pausable_vdiff-eddy_50step.json",
+       "validation/pi_cam_pausable_vdiff-eddy_vs_oracle_50step_bfb.json",
+       "validation/pi_cam_pausable_vdiff-all_50step.json",
+       "validation/pi_cam_pausable_vdiff-all_vs_oracle_50step_bfb.json",
+       "validation/pi_cam_pausable_everything_50step.json",
+       "validation/pi_cam_pausable_everything_vs_oracle_50step_bfb.json"
+      ],
+      "kernel": "compute_eddy_diff",
+      "owner_class": "freecam.physics.pausable.VerticalDiffusion",
+      "reason": null,
+      "stage_action": "cam_run2.vertical_diffusion",
+      "stage_class": "freecam.physics.pausable.VerticalDiffusion",
+      "validated": true
+     },
+     {
+      "bindable": true,
+      "evidence": [
+       "validation/pi_cam_pausable_vdiff-vdiff_50step.json",
+       "validation/pi_cam_pausable_vdiff-vdiff_vs_oracle_50step_bfb.json",
+       "validation/pi_cam_pausable_vdiff-all_50step.json",
+       "validation/pi_cam_pausable_vdiff-all_vs_oracle_50step_bfb.json",
+       "validation/pi_cam_pausable_everything_50step.json",
+       "validation/pi_cam_pausable_everything_vs_oracle_50step_bfb.json"
+      ],
+      "kernel": "compute_vdiff",
+      "owner_class": "freecam.physics.pausable.VerticalDiffusion",
+      "reason": null,
+      "stage_action": "cam_run2.vertical_diffusion",
+      "stage_class": "freecam.physics.pausable.VerticalDiffusion",
+      "validated": true
+     }
+    ],
     "parameters": []
    },
    "movable": true,
@@ -2517,7 +3177,12 @@
   },
   {
    "configuration": {
-    "kernels": {},
+    "kernels": {
+     "modal_aero_depvel_part": {
+      "kind": "original",
+      "path": null
+     }
+    },
     "parameters": {},
     "python_source": null,
     "variables": []
@@ -2532,7 +3197,23 @@
    "locked": false,
    "metadata": {
     "control_owner": "python",
-    "kernels": [],
+    "kernels": [
+     {
+      "bindable": true,
+      "evidence": [
+       "validation/pi_cam_pausable_adry-pause_50step.json",
+       "validation/pi_cam_pausable_adry-pause_vs_oracle_50step_bfb.json",
+       "validation/pi_cam_pausable_everything_50step.json",
+       "validation/pi_cam_pausable_everything_vs_oracle_50step_bfb.json"
+      ],
+      "kernel": "modal_aero_depvel_part",
+      "owner_class": "freecam.physics.pausable.AerosolDryDeposition",
+      "reason": null,
+      "stage_action": "cam_run2.aerosol_dry_deposition_leaf",
+      "stage_class": "freecam.physics.pausable.AerosolDryDeposition",
+      "validated": true
+     }
+    ],
     "parameters": []
    },
    "movable": true,
@@ -2619,7 +3300,12 @@
   },
   {
    "configuration": {
-    "kernels": {},
+    "kernels": {
+     "gw_drag_prof": {
+      "kind": "original",
+      "path": null
+     }
+    },
     "parameters": {},
     "python_source": null,
     "variables": []
@@ -2634,7 +3320,23 @@
    "locked": false,
    "metadata": {
     "control_owner": "python",
-    "kernels": [],
+    "kernels": [
+     {
+      "bindable": true,
+      "evidence": [
+       "validation/pi_cam_pausable_gwd-pause_50step.json",
+       "validation/pi_cam_pausable_gwd-pause_vs_oracle_50step_bfb.json",
+       "validation/pi_cam_pausable_everything_50step.json",
+       "validation/pi_cam_pausable_everything_vs_oracle_50step_bfb.json"
+      ],
+      "kernel": "gw_drag_prof",
+      "owner_class": "freecam.physics.pausable.GravityWaveDrag",
+      "reason": null,
+      "stage_action": "cam_run2.gravity_wave_drag",
+      "stage_class": "freecam.physics.pausable.GravityWaveDrag",
+      "validated": true
+     }
+    ],
     "parameters": [
      {
       "dtype": "float64",
@@ -3373,7 +4075,12 @@
   },
   {
    "configuration": {
-    "kernels": {},
+    "kernels": {
+     "dadadj": {
+      "kind": "original",
+      "path": null
+     }
+    },
     "parameters": {},
     "python_source": null,
     "variables": []
@@ -3388,7 +4095,27 @@
    "locked": false,
    "metadata": {
     "control_owner": "python",
-    "kernels": [],
+    "kernels": [
+     {
+      "bindable": true,
+      "evidence": [
+       "validation/pi_cam_pausable_dadadj-pause_50step.json",
+       "validation/pi_cam_pausable_dadadj-pause_vs_oracle_50step_bfb.json",
+       "validation/pi_cam_pausable_both-pause_50step.json",
+       "validation/pi_cam_pausable_both-pause_vs_oracle_50step_bfb.json",
+       "validation/pi_cam_pausable_all-pause_50step.json",
+       "validation/pi_cam_pausable_all-pause_vs_oracle_50step_bfb.json",
+       "validation/pi_cam_pausable_everything_50step.json",
+       "validation/pi_cam_pausable_everything_vs_oracle_50step_bfb.json"
+      ],
+      "kernel": "dadadj",
+      "owner_class": "freecam.physics.pausable.DryAdjustment",
+      "reason": null,
+      "stage_action": "cam_run1.dry_adjustment",
+      "stage_class": "freecam.physics.pausable.DryAdjustment",
+      "validated": true
+     }
+    ],
     "parameters": []
    },
    "movable": true,
@@ -3407,7 +4134,20 @@
   },
   {
    "configuration": {
-    "kernels": {},
+    "kernels": {
+     "momtran": {
+      "kind": "original",
+      "path": null
+     },
+     "zm_conv_evap": {
+      "kind": "original",
+      "path": null
+     },
+     "zm_convr": {
+      "kind": "original",
+      "path": null
+     }
+    },
     "parameters": {},
     "python_source": null,
     "variables": []
@@ -3422,7 +4162,65 @@
    "locked": false,
    "metadata": {
     "control_owner": "python",
-    "kernels": [],
+    "kernels": [
+     {
+      "bindable": true,
+      "evidence": [
+       "validation/pi_cam_pausable_deep-zmconvr_50step.json",
+       "validation/pi_cam_pausable_deep-zmconvr_vs_oracle_50step_bfb.json",
+       "validation/pi_cam_pausable_deep-all_50step.json",
+       "validation/pi_cam_pausable_deep-all_vs_oracle_50step_bfb.json",
+       "validation/pi_cam_pausable_chain-pause_50step.json",
+       "validation/pi_cam_pausable_chain-pause_vs_oracle_50step_bfb.json",
+       "validation/pi_cam_pausable_everything_50step.json",
+       "validation/pi_cam_pausable_everything_vs_oracle_50step_bfb.json"
+      ],
+      "kernel": "zm_convr",
+      "owner_class": "freecam.physics.pausable.DeepConvection",
+      "reason": null,
+      "stage_action": "cam_run1.deep_convection",
+      "stage_class": "freecam.physics.pausable.DeepConvection",
+      "validated": true
+     },
+     {
+      "bindable": true,
+      "evidence": [
+       "validation/pi_cam_pausable_deep-evap_50step.json",
+       "validation/pi_cam_pausable_deep-evap_vs_oracle_50step_bfb.json",
+       "validation/pi_cam_pausable_deep-all_50step.json",
+       "validation/pi_cam_pausable_deep-all_vs_oracle_50step_bfb.json",
+       "validation/pi_cam_pausable_chain-pause_50step.json",
+       "validation/pi_cam_pausable_chain-pause_vs_oracle_50step_bfb.json",
+       "validation/pi_cam_pausable_everything_50step.json",
+       "validation/pi_cam_pausable_everything_vs_oracle_50step_bfb.json"
+      ],
+      "kernel": "zm_conv_evap",
+      "owner_class": "freecam.physics.pausable.DeepConvection",
+      "reason": null,
+      "stage_action": "cam_run1.deep_convection",
+      "stage_class": "freecam.physics.pausable.DeepConvection",
+      "validated": true
+     },
+     {
+      "bindable": true,
+      "evidence": [
+       "validation/pi_cam_pausable_deep-momtran_50step.json",
+       "validation/pi_cam_pausable_deep-momtran_vs_oracle_50step_bfb.json",
+       "validation/pi_cam_pausable_deep-all_50step.json",
+       "validation/pi_cam_pausable_deep-all_vs_oracle_50step_bfb.json",
+       "validation/pi_cam_pausable_chain-pause_50step.json",
+       "validation/pi_cam_pausable_chain-pause_vs_oracle_50step_bfb.json",
+       "validation/pi_cam_pausable_everything_50step.json",
+       "validation/pi_cam_pausable_everything_vs_oracle_50step_bfb.json"
+      ],
+      "kernel": "momtran",
+      "owner_class": "freecam.physics.pausable.DeepConvection",
+      "reason": null,
+      "stage_action": "cam_run1.deep_convection",
+      "stage_class": "freecam.physics.pausable.DeepConvection",
+      "validated": true
+     }
+    ],
     "parameters": [
      {
       "dtype": "float64",
@@ -3467,7 +4265,12 @@
   },
   {
    "configuration": {
-    "kernels": {},
+    "kernels": {
+     "compute_uwshcu_inv": {
+      "kind": "original",
+      "path": null
+     }
+    },
     "parameters": {},
     "python_source": null,
     "variables": []
@@ -3482,7 +4285,27 @@
    "locked": false,
    "metadata": {
     "control_owner": "python",
-    "kernels": [],
+    "kernels": [
+     {
+      "bindable": true,
+      "evidence": [
+       "validation/pi_cam_pausable_shcu-pause_50step.json",
+       "validation/pi_cam_pausable_shcu-pause_vs_oracle_50step_bfb.json",
+       "validation/pi_cam_pausable_both-pause_50step.json",
+       "validation/pi_cam_pausable_both-pause_vs_oracle_50step_bfb.json",
+       "validation/pi_cam_pausable_all-pause_50step.json",
+       "validation/pi_cam_pausable_all-pause_vs_oracle_50step_bfb.json",
+       "validation/pi_cam_pausable_everything_50step.json",
+       "validation/pi_cam_pausable_everything_vs_oracle_50step_bfb.json"
+      ],
+      "kernel": "compute_uwshcu_inv",
+      "owner_class": "freecam.physics.pausable.ShallowConvection",
+      "reason": null,
+      "stage_action": "cam_run1.shallow_convection",
+      "stage_class": "freecam.physics.pausable.ShallowConvection",
+      "validated": true
+     }
+    ],
     "parameters": [
      {
       "dtype": "float64",
@@ -3580,7 +4403,11 @@
       "bindable": true,
       "evidence": [
        "validation/pi_cam_stage7_segmented_original_50step.json",
-       "validation/pi_cam_stage7_segmented_original_vs_oracle_50step_bfb.json"
+       "validation/pi_cam_stage7_segmented_original_vs_oracle_50step_bfb.json",
+       "validation/pi_cam_stage7_segmented_both_50step.json",
+       "validation/pi_cam_stage7_segmented_both_vs_oracle_50step_bfb.json",
+       "validation/pi_cam_pausable_everything_50step.json",
+       "validation/pi_cam_pausable_everything_vs_oracle_50step_bfb.json"
       ],
       "kernel": "mmacro_pcond",
       "owner_class": "freecam.physics.macrophysics.Macrophysics",
@@ -3590,14 +4417,21 @@
       "validated": true
      },
      {
-      "bindable": false,
-      "evidence": [],
+      "bindable": true,
+      "evidence": [
+       "validation/pi_cam_stage7_segmented_micro_50step.json",
+       "validation/pi_cam_stage7_segmented_micro_vs_oracle_50step_bfb.json",
+       "validation/pi_cam_stage7_segmented_both_50step.json",
+       "validation/pi_cam_stage7_segmented_both_vs_oracle_50step_bfb.json",
+       "validation/pi_cam_pausable_everything_50step.json",
+       "validation/pi_cam_pausable_everything_vs_oracle_50step_bfb.json"
+      ],
       "kernel": "micro_mg_tend",
       "owner_class": "freecam.physics.microphysics.Microphysics",
-      "reason": "the image has no segment runner for this kernel yet; a replacement would run the statement-by-statement Python walk, which the builder does not offer",
+      "reason": null,
       "stage_action": "cam_run1.cloud_macro_microphysics",
       "stage_class": "freecam.physics.cloud_macro_microphysics.CloudMacroMicrophysics",
-      "validated": false
+      "validated": true
      }
     ],
     "parameters": [
@@ -3780,7 +4614,12 @@
   },
   {
    "configuration": {
-    "kernels": {},
+    "kernels": {
+     "wetdepa_v2": {
+      "kind": "original",
+      "path": null
+     }
+    },
     "parameters": {},
     "python_source": null,
     "variables": []
@@ -3795,7 +4634,23 @@
    "locked": false,
    "metadata": {
     "control_owner": "python",
-    "kernels": [],
+    "kernels": [
+     {
+      "bindable": true,
+      "evidence": [
+       "validation/pi_cam_pausable_awet-pause_50step.json",
+       "validation/pi_cam_pausable_awet-pause_vs_oracle_50step_bfb.json",
+       "validation/pi_cam_pausable_everything_50step.json",
+       "validation/pi_cam_pausable_everything_vs_oracle_50step_bfb.json"
+      ],
+      "kernel": "wetdepa_v2",
+      "owner_class": "freecam.physics.pausable.AerosolWetDeposition",
+      "reason": null,
+      "stage_action": "cam_run1.aerosol_wet_deposition_leaf",
+      "stage_class": "freecam.physics.pausable.AerosolWetDeposition",
+      "validated": true
+     }
+    ],
     "parameters": []
    },
    "movable": true,
@@ -3848,7 +4703,12 @@
   },
   {
    "configuration": {
-    "kernels": {},
+    "kernels": {
+     "convtran": {
+      "kind": "original",
+      "path": null
+     }
+    },
     "parameters": {},
     "python_source": null,
     "variables": []
@@ -3863,7 +4723,25 @@
    "locked": false,
    "metadata": {
     "control_owner": "python",
-    "kernels": [],
+    "kernels": [
+     {
+      "bindable": true,
+      "evidence": [
+       "validation/pi_cam_pausable_tran-pause_50step.json",
+       "validation/pi_cam_pausable_tran-pause_vs_oracle_50step_bfb.json",
+       "validation/pi_cam_pausable_chain-pause_50step.json",
+       "validation/pi_cam_pausable_chain-pause_vs_oracle_50step_bfb.json",
+       "validation/pi_cam_pausable_everything_50step.json",
+       "validation/pi_cam_pausable_everything_vs_oracle_50step_bfb.json"
+      ],
+      "kernel": "convtran",
+      "owner_class": "freecam.physics.pausable.ConvectiveTracerTransport",
+      "reason": null,
+      "stage_action": "cam_run1.convective_tracer_transport_leaf",
+      "stage_class": "freecam.physics.pausable.ConvectiveTracerTransport",
+      "validated": true
+     }
+    ],
     "parameters": []
    },
    "movable": true,
@@ -4010,24 +4888,42 @@
     "control_owner": "python",
     "kernels": [
      {
-      "bindable": false,
-      "evidence": [],
+      "bindable": true,
+      "evidence": [
+       "validation/pi_cam_pausable_rad-sw-pause_50step.json",
+       "validation/pi_cam_pausable_rad-sw-pause_vs_oracle_50step_bfb.json",
+       "validation/pi_cam_pausable_rad-both-pause_50step.json",
+       "validation/pi_cam_pausable_rad-both-pause_vs_oracle_50step_bfb.json",
+       "validation/pi_cam_pausable_all-pause_50step.json",
+       "validation/pi_cam_pausable_all-pause_vs_oracle_50step_bfb.json",
+       "validation/pi_cam_pausable_everything_50step.json",
+       "validation/pi_cam_pausable_everything_vs_oracle_50step_bfb.json"
+      ],
       "kernel": "rad_rrtmg_sw",
       "owner_class": "freecam.physics.radiation.Radiation",
-      "reason": "the image has no segment runner for this kernel yet; a replacement would run the statement-by-statement Python walk, which the builder does not offer",
+      "reason": null,
       "stage_action": "cam_run1.radiation",
       "stage_class": "freecam.physics.radiation.Radiation",
-      "validated": false
+      "validated": true
      },
      {
-      "bindable": false,
-      "evidence": [],
+      "bindable": true,
+      "evidence": [
+       "validation/pi_cam_pausable_rad-lw-pause_50step.json",
+       "validation/pi_cam_pausable_rad-lw-pause_vs_oracle_50step_bfb.json",
+       "validation/pi_cam_pausable_rad-both-pause_50step.json",
+       "validation/pi_cam_pausable_rad-both-pause_vs_oracle_50step_bfb.json",
+       "validation/pi_cam_pausable_all-pause_50step.json",
+       "validation/pi_cam_pausable_all-pause_vs_oracle_50step_bfb.json",
+       "validation/pi_cam_pausable_everything_50step.json",
+       "validation/pi_cam_pausable_everything_vs_oracle_50step_bfb.json"
+      ],
       "kernel": "rad_rrtmg_lw",
       "owner_class": "freecam.physics.radiation.Radiation",
-      "reason": "the image has no segment runner for this kernel yet; a replacement would run the statement-by-statement Python walk, which the builder does not offer",
+      "reason": null,
       "stage_action": "cam_run1.radiation",
       "stage_class": "freecam.physics.radiation.Radiation",
-      "validated": false
+      "validated": true
      }
     ],
     "parameters": []
@@ -4530,7 +5426,12 @@
    "addable": true,
    "category": "Physics",
    "configuration": {
-    "kernels": {},
+    "kernels": {
+     "gas_phase_chemdr": {
+      "kind": "original",
+      "path": null
+     }
+    },
     "parameters": {},
     "python_source": null,
     "variables": []
@@ -4547,7 +5448,23 @@
    "locked": false,
    "metadata": {
     "control_owner": "python",
-    "kernels": [],
+    "kernels": [
+     {
+      "bindable": true,
+      "evidence": [
+       "validation/pi_cam_pausable_chem-pause_50step.json",
+       "validation/pi_cam_pausable_chem-pause_vs_oracle_50step_bfb.json",
+       "validation/pi_cam_pausable_everything_50step.json",
+       "validation/pi_cam_pausable_everything_vs_oracle_50step_bfb.json"
+      ],
+      "kernel": "gas_phase_chemdr",
+      "owner_class": "freecam.physics.pausable.ChemistryTendencies",
+      "reason": null,
+      "stage_action": "cam_run2.chemistry_tendencies_leaf",
+      "stage_class": "freecam.physics.pausable.ChemistryTendencies",
+      "validated": true
+     }
+    ],
     "parameters": []
    },
    "movable": true,
@@ -4570,7 +5487,20 @@
    "addable": true,
    "category": "Physics",
    "configuration": {
-    "kernels": {},
+    "kernels": {
+     "compute_eddy_diff": {
+      "kind": "original",
+      "path": null
+     },
+     "compute_tms": {
+      "kind": "original",
+      "path": null
+     },
+     "compute_vdiff": {
+      "kind": "original",
+      "path": null
+     }
+    },
     "parameters": {},
     "python_source": null,
     "variables": []
@@ -4587,7 +5517,59 @@
    "locked": false,
    "metadata": {
     "control_owner": "python",
-    "kernels": [],
+    "kernels": [
+     {
+      "bindable": true,
+      "evidence": [
+       "validation/pi_cam_pausable_vdiff-tms_50step.json",
+       "validation/pi_cam_pausable_vdiff-tms_vs_oracle_50step_bfb.json",
+       "validation/pi_cam_pausable_vdiff-all_50step.json",
+       "validation/pi_cam_pausable_vdiff-all_vs_oracle_50step_bfb.json",
+       "validation/pi_cam_pausable_everything_50step.json",
+       "validation/pi_cam_pausable_everything_vs_oracle_50step_bfb.json"
+      ],
+      "kernel": "compute_tms",
+      "owner_class": "freecam.physics.pausable.VerticalDiffusion",
+      "reason": null,
+      "stage_action": "cam_run2.vertical_diffusion",
+      "stage_class": "freecam.physics.pausable.VerticalDiffusion",
+      "validated": true
+     },
+     {
+      "bindable": true,
+      "evidence": [
+       "validation/pi_cam_pausable_vdiff-eddy_50step.json",
+       "validation/pi_cam_pausable_vdiff-eddy_vs_oracle_50step_bfb.json",
+       "validation/pi_cam_pausable_vdiff-all_50step.json",
+       "validation/pi_cam_pausable_vdiff-all_vs_oracle_50step_bfb.json",
+       "validation/pi_cam_pausable_everything_50step.json",
+       "validation/pi_cam_pausable_everything_vs_oracle_50step_bfb.json"
+      ],
+      "kernel": "compute_eddy_diff",
+      "owner_class": "freecam.physics.pausable.VerticalDiffusion",
+      "reason": null,
+      "stage_action": "cam_run2.vertical_diffusion",
+      "stage_class": "freecam.physics.pausable.VerticalDiffusion",
+      "validated": true
+     },
+     {
+      "bindable": true,
+      "evidence": [
+       "validation/pi_cam_pausable_vdiff-vdiff_50step.json",
+       "validation/pi_cam_pausable_vdiff-vdiff_vs_oracle_50step_bfb.json",
+       "validation/pi_cam_pausable_vdiff-all_50step.json",
+       "validation/pi_cam_pausable_vdiff-all_vs_oracle_50step_bfb.json",
+       "validation/pi_cam_pausable_everything_50step.json",
+       "validation/pi_cam_pausable_everything_vs_oracle_50step_bfb.json"
+      ],
+      "kernel": "compute_vdiff",
+      "owner_class": "freecam.physics.pausable.VerticalDiffusion",
+      "reason": null,
+      "stage_action": "cam_run2.vertical_diffusion",
+      "stage_class": "freecam.physics.pausable.VerticalDiffusion",
+      "validated": true
+     }
+    ],
     "parameters": []
    },
    "movable": true,
@@ -4690,7 +5672,12 @@
    "addable": true,
    "category": "Physics",
    "configuration": {
-    "kernels": {},
+    "kernels": {
+     "modal_aero_depvel_part": {
+      "kind": "original",
+      "path": null
+     }
+    },
     "parameters": {},
     "python_source": null,
     "variables": []
@@ -4707,7 +5694,23 @@
    "locked": false,
    "metadata": {
     "control_owner": "python",
-    "kernels": [],
+    "kernels": [
+     {
+      "bindable": true,
+      "evidence": [
+       "validation/pi_cam_pausable_adry-pause_50step.json",
+       "validation/pi_cam_pausable_adry-pause_vs_oracle_50step_bfb.json",
+       "validation/pi_cam_pausable_everything_50step.json",
+       "validation/pi_cam_pausable_everything_vs_oracle_50step_bfb.json"
+      ],
+      "kernel": "modal_aero_depvel_part",
+      "owner_class": "freecam.physics.pausable.AerosolDryDeposition",
+      "reason": null,
+      "stage_action": "cam_run2.aerosol_dry_deposition_leaf",
+      "stage_class": "freecam.physics.pausable.AerosolDryDeposition",
+      "validated": true
+     }
+    ],
     "parameters": []
    },
    "movable": true,
@@ -4810,7 +5813,12 @@
    "addable": true,
    "category": "Physics",
    "configuration": {
-    "kernels": {},
+    "kernels": {
+     "gw_drag_prof": {
+      "kind": "original",
+      "path": null
+     }
+    },
     "parameters": {},
     "python_source": null,
     "variables": []
@@ -4827,7 +5835,23 @@
    "locked": false,
    "metadata": {
     "control_owner": "python",
-    "kernels": [],
+    "kernels": [
+     {
+      "bindable": true,
+      "evidence": [
+       "validation/pi_cam_pausable_gwd-pause_50step.json",
+       "validation/pi_cam_pausable_gwd-pause_vs_oracle_50step_bfb.json",
+       "validation/pi_cam_pausable_everything_50step.json",
+       "validation/pi_cam_pausable_everything_vs_oracle_50step_bfb.json"
+      ],
+      "kernel": "gw_drag_prof",
+      "owner_class": "freecam.physics.pausable.GravityWaveDrag",
+      "reason": null,
+      "stage_action": "cam_run2.gravity_wave_drag",
+      "stage_class": "freecam.physics.pausable.GravityWaveDrag",
+      "validated": true
+     }
+    ],
     "parameters": [
      {
       "dtype": "float64",
@@ -5696,7 +6720,12 @@
    "addable": true,
    "category": "Physics",
    "configuration": {
-    "kernels": {},
+    "kernels": {
+     "dadadj": {
+      "kind": "original",
+      "path": null
+     }
+    },
     "parameters": {},
     "python_source": null,
     "variables": []
@@ -5713,7 +6742,27 @@
    "locked": false,
    "metadata": {
     "control_owner": "python",
-    "kernels": [],
+    "kernels": [
+     {
+      "bindable": true,
+      "evidence": [
+       "validation/pi_cam_pausable_dadadj-pause_50step.json",
+       "validation/pi_cam_pausable_dadadj-pause_vs_oracle_50step_bfb.json",
+       "validation/pi_cam_pausable_both-pause_50step.json",
+       "validation/pi_cam_pausable_both-pause_vs_oracle_50step_bfb.json",
+       "validation/pi_cam_pausable_all-pause_50step.json",
+       "validation/pi_cam_pausable_all-pause_vs_oracle_50step_bfb.json",
+       "validation/pi_cam_pausable_everything_50step.json",
+       "validation/pi_cam_pausable_everything_vs_oracle_50step_bfb.json"
+      ],
+      "kernel": "dadadj",
+      "owner_class": "freecam.physics.pausable.DryAdjustment",
+      "reason": null,
+      "stage_action": "cam_run1.dry_adjustment",
+      "stage_class": "freecam.physics.pausable.DryAdjustment",
+      "validated": true
+     }
+    ],
     "parameters": []
    },
    "movable": true,
@@ -5736,7 +6785,20 @@
    "addable": true,
    "category": "Physics",
    "configuration": {
-    "kernels": {},
+    "kernels": {
+     "momtran": {
+      "kind": "original",
+      "path": null
+     },
+     "zm_conv_evap": {
+      "kind": "original",
+      "path": null
+     },
+     "zm_convr": {
+      "kind": "original",
+      "path": null
+     }
+    },
     "parameters": {},
     "python_source": null,
     "variables": []
@@ -5753,7 +6815,65 @@
    "locked": false,
    "metadata": {
     "control_owner": "python",
-    "kernels": [],
+    "kernels": [
+     {
+      "bindable": true,
+      "evidence": [
+       "validation/pi_cam_pausable_deep-zmconvr_50step.json",
+       "validation/pi_cam_pausable_deep-zmconvr_vs_oracle_50step_bfb.json",
+       "validation/pi_cam_pausable_deep-all_50step.json",
+       "validation/pi_cam_pausable_deep-all_vs_oracle_50step_bfb.json",
+       "validation/pi_cam_pausable_chain-pause_50step.json",
+       "validation/pi_cam_pausable_chain-pause_vs_oracle_50step_bfb.json",
+       "validation/pi_cam_pausable_everything_50step.json",
+       "validation/pi_cam_pausable_everything_vs_oracle_50step_bfb.json"
+      ],
+      "kernel": "zm_convr",
+      "owner_class": "freecam.physics.pausable.DeepConvection",
+      "reason": null,
+      "stage_action": "cam_run1.deep_convection",
+      "stage_class": "freecam.physics.pausable.DeepConvection",
+      "validated": true
+     },
+     {
+      "bindable": true,
+      "evidence": [
+       "validation/pi_cam_pausable_deep-evap_50step.json",
+       "validation/pi_cam_pausable_deep-evap_vs_oracle_50step_bfb.json",
+       "validation/pi_cam_pausable_deep-all_50step.json",
+       "validation/pi_cam_pausable_deep-all_vs_oracle_50step_bfb.json",
+       "validation/pi_cam_pausable_chain-pause_50step.json",
+       "validation/pi_cam_pausable_chain-pause_vs_oracle_50step_bfb.json",
+       "validation/pi_cam_pausable_everything_50step.json",
+       "validation/pi_cam_pausable_everything_vs_oracle_50step_bfb.json"
+      ],
+      "kernel": "zm_conv_evap",
+      "owner_class": "freecam.physics.pausable.DeepConvection",
+      "reason": null,
+      "stage_action": "cam_run1.deep_convection",
+      "stage_class": "freecam.physics.pausable.DeepConvection",
+      "validated": true
+     },
+     {
+      "bindable": true,
+      "evidence": [
+       "validation/pi_cam_pausable_deep-momtran_50step.json",
+       "validation/pi_cam_pausable_deep-momtran_vs_oracle_50step_bfb.json",
+       "validation/pi_cam_pausable_deep-all_50step.json",
+       "validation/pi_cam_pausable_deep-all_vs_oracle_50step_bfb.json",
+       "validation/pi_cam_pausable_chain-pause_50step.json",
+       "validation/pi_cam_pausable_chain-pause_vs_oracle_50step_bfb.json",
+       "validation/pi_cam_pausable_everything_50step.json",
+       "validation/pi_cam_pausable_everything_vs_oracle_50step_bfb.json"
+      ],
+      "kernel": "momtran",
+      "owner_class": "freecam.physics.pausable.DeepConvection",
+      "reason": null,
+      "stage_action": "cam_run1.deep_convection",
+      "stage_class": "freecam.physics.pausable.DeepConvection",
+      "validated": true
+     }
+    ],
     "parameters": [
      {
       "dtype": "float64",
@@ -5802,7 +6922,12 @@
    "addable": true,
    "category": "Physics",
    "configuration": {
-    "kernels": {},
+    "kernels": {
+     "compute_uwshcu_inv": {
+      "kind": "original",
+      "path": null
+     }
+    },
     "parameters": {},
     "python_source": null,
     "variables": []
@@ -5819,7 +6944,27 @@
    "locked": false,
    "metadata": {
     "control_owner": "python",
-    "kernels": [],
+    "kernels": [
+     {
+      "bindable": true,
+      "evidence": [
+       "validation/pi_cam_pausable_shcu-pause_50step.json",
+       "validation/pi_cam_pausable_shcu-pause_vs_oracle_50step_bfb.json",
+       "validation/pi_cam_pausable_both-pause_50step.json",
+       "validation/pi_cam_pausable_both-pause_vs_oracle_50step_bfb.json",
+       "validation/pi_cam_pausable_all-pause_50step.json",
+       "validation/pi_cam_pausable_all-pause_vs_oracle_50step_bfb.json",
+       "validation/pi_cam_pausable_everything_50step.json",
+       "validation/pi_cam_pausable_everything_vs_oracle_50step_bfb.json"
+      ],
+      "kernel": "compute_uwshcu_inv",
+      "owner_class": "freecam.physics.pausable.ShallowConvection",
+      "reason": null,
+      "stage_action": "cam_run1.shallow_convection",
+      "stage_class": "freecam.physics.pausable.ShallowConvection",
+      "validated": true
+     }
+    ],
     "parameters": [
      {
       "dtype": "float64",
@@ -5929,7 +7074,11 @@
       "bindable": true,
       "evidence": [
        "validation/pi_cam_stage7_segmented_original_50step.json",
-       "validation/pi_cam_stage7_segmented_original_vs_oracle_50step_bfb.json"
+       "validation/pi_cam_stage7_segmented_original_vs_oracle_50step_bfb.json",
+       "validation/pi_cam_stage7_segmented_both_50step.json",
+       "validation/pi_cam_stage7_segmented_both_vs_oracle_50step_bfb.json",
+       "validation/pi_cam_pausable_everything_50step.json",
+       "validation/pi_cam_pausable_everything_vs_oracle_50step_bfb.json"
       ],
       "kernel": "mmacro_pcond",
       "owner_class": "freecam.physics.macrophysics.Macrophysics",
@@ -5939,14 +7088,21 @@
       "validated": true
      },
      {
-      "bindable": false,
-      "evidence": [],
+      "bindable": true,
+      "evidence": [
+       "validation/pi_cam_stage7_segmented_micro_50step.json",
+       "validation/pi_cam_stage7_segmented_micro_vs_oracle_50step_bfb.json",
+       "validation/pi_cam_stage7_segmented_both_50step.json",
+       "validation/pi_cam_stage7_segmented_both_vs_oracle_50step_bfb.json",
+       "validation/pi_cam_pausable_everything_50step.json",
+       "validation/pi_cam_pausable_everything_vs_oracle_50step_bfb.json"
+      ],
       "kernel": "micro_mg_tend",
       "owner_class": "freecam.physics.microphysics.Microphysics",
-      "reason": "the image has no segment runner for this kernel yet; a replacement would run the statement-by-statement Python walk, which the builder does not offer",
+      "reason": null,
       "stage_action": "cam_run1.cloud_macro_microphysics",
       "stage_class": "freecam.physics.cloud_macro_microphysics.CloudMacroMicrophysics",
-      "validated": false
+      "validated": true
      }
     ],
     "parameters": [
@@ -6157,7 +7313,12 @@
    "addable": true,
    "category": "Physics",
    "configuration": {
-    "kernels": {},
+    "kernels": {
+     "wetdepa_v2": {
+      "kind": "original",
+      "path": null
+     }
+    },
     "parameters": {},
     "python_source": null,
     "variables": []
@@ -6174,7 +7335,23 @@
    "locked": false,
    "metadata": {
     "control_owner": "python",
-    "kernels": [],
+    "kernels": [
+     {
+      "bindable": true,
+      "evidence": [
+       "validation/pi_cam_pausable_awet-pause_50step.json",
+       "validation/pi_cam_pausable_awet-pause_vs_oracle_50step_bfb.json",
+       "validation/pi_cam_pausable_everything_50step.json",
+       "validation/pi_cam_pausable_everything_vs_oracle_50step_bfb.json"
+      ],
+      "kernel": "wetdepa_v2",
+      "owner_class": "freecam.physics.pausable.AerosolWetDeposition",
+      "reason": null,
+      "stage_action": "cam_run1.aerosol_wet_deposition_leaf",
+      "stage_class": "freecam.physics.pausable.AerosolWetDeposition",
+      "validated": true
+     }
+    ],
     "parameters": []
    },
    "movable": true,
@@ -6237,7 +7414,12 @@
    "addable": true,
    "category": "Physics",
    "configuration": {
-    "kernels": {},
+    "kernels": {
+     "convtran": {
+      "kind": "original",
+      "path": null
+     }
+    },
     "parameters": {},
     "python_source": null,
     "variables": []
@@ -6254,7 +7436,25 @@
    "locked": false,
    "metadata": {
     "control_owner": "python",
-    "kernels": [],
+    "kernels": [
+     {
+      "bindable": true,
+      "evidence": [
+       "validation/pi_cam_pausable_tran-pause_50step.json",
+       "validation/pi_cam_pausable_tran-pause_vs_oracle_50step_bfb.json",
+       "validation/pi_cam_pausable_chain-pause_50step.json",
+       "validation/pi_cam_pausable_chain-pause_vs_oracle_50step_bfb.json",
+       "validation/pi_cam_pausable_everything_50step.json",
+       "validation/pi_cam_pausable_everything_vs_oracle_50step_bfb.json"
+      ],
+      "kernel": "convtran",
+      "owner_class": "freecam.physics.pausable.ConvectiveTracerTransport",
+      "reason": null,
+      "stage_action": "cam_run1.convective_tracer_transport_leaf",
+      "stage_class": "freecam.physics.pausable.ConvectiveTracerTransport",
+      "validated": true
+     }
+    ],
     "parameters": []
    },
    "movable": true,
@@ -6425,24 +7625,42 @@
     "control_owner": "python",
     "kernels": [
      {
-      "bindable": false,
-      "evidence": [],
+      "bindable": true,
+      "evidence": [
+       "validation/pi_cam_pausable_rad-sw-pause_50step.json",
+       "validation/pi_cam_pausable_rad-sw-pause_vs_oracle_50step_bfb.json",
+       "validation/pi_cam_pausable_rad-both-pause_50step.json",
+       "validation/pi_cam_pausable_rad-both-pause_vs_oracle_50step_bfb.json",
+       "validation/pi_cam_pausable_all-pause_50step.json",
+       "validation/pi_cam_pausable_all-pause_vs_oracle_50step_bfb.json",
+       "validation/pi_cam_pausable_everything_50step.json",
+       "validation/pi_cam_pausable_everything_vs_oracle_50step_bfb.json"
+      ],
       "kernel": "rad_rrtmg_sw",
       "owner_class": "freecam.physics.radiation.Radiation",
-      "reason": "the image has no segment runner for this kernel yet; a replacement would run the statement-by-statement Python walk, which the builder does not offer",
+      "reason": null,
       "stage_action": "cam_run1.radiation",
       "stage_class": "freecam.physics.radiation.Radiation",
-      "validated": false
+      "validated": true
      },
      {
-      "bindable": false,
-      "evidence": [],
+      "bindable": true,
+      "evidence": [
+       "validation/pi_cam_pausable_rad-lw-pause_50step.json",
+       "validation/pi_cam_pausable_rad-lw-pause_vs_oracle_50step_bfb.json",
+       "validation/pi_cam_pausable_rad-both-pause_50step.json",
+       "validation/pi_cam_pausable_rad-both-pause_vs_oracle_50step_bfb.json",
+       "validation/pi_cam_pausable_all-pause_50step.json",
+       "validation/pi_cam_pausable_all-pause_vs_oracle_50step_bfb.json",
+       "validation/pi_cam_pausable_everything_50step.json",
+       "validation/pi_cam_pausable_everything_vs_oracle_50step_bfb.json"
+      ],
       "kernel": "rad_rrtmg_lw",
       "owner_class": "freecam.physics.radiation.Radiation",
-      "reason": "the image has no segment runner for this kernel yet; a replacement would run the statement-by-statement Python walk, which the builder does not offer",
+      "reason": null,
       "stage_action": "cam_run1.radiation",
       "stage_class": "freecam.physics.radiation.Radiation",
-      "validated": false
+      "validated": true
      }
     ],
     "parameters": []
@@ -18378,7 +19596,7 @@
    "writes": []
   }
  ],
- "generated_at": "2026-09-05T07:24:44+00:00",
+ "generated_at": "2026-09-07T02:08:22+00:00",
  "parameters": {
   "cam_run1.cloud_macro_microphysics": [
    {

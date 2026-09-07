@@ -1,0 +1,8 @@
+--- a/src/chemistry/mozart/chemistry.F90
++++ b/src/chemistry/mozart/chemistry.F90
+@@ -138,0 +139,5 @@ module chemistry
++
++   ! pyCAM (control patch 0047): the options, indices and names chem_timestep_tend
++   ! reads, readable by the pausable runner's hoisted copy of the routine.  No
++   ! executable statement changes.
++   public :: chem_name, chem_rad_passive, ghg_chem, ixcldice, ixcldliq, ixndrop, ndx_cld, ndx_cldtop, ndx_cmfdqr, ndx_nevapr, ndx_pblh, ndx_prain, srcnam, xactive_prates, chem_step, chem_freq

@@ -84,6 +84,10 @@ def pair_record(a_timing: Path, a_executable: Path | None, c_summary: Path, c_bf
             "peak_rank_rss_bytes": c_memory.get("maximum_rank_rss_bytes"),
             "total_rss_bytes": c_memory.get("total_rss_bytes"),
             "stage_execution_record": summary.get("stage_execution"),
+            # which stage classes the run installed (every one of them for the P6 pairs)
+            "python_stages": summary.get("python_stages"),
+            "radiation_python": summary.get("radiation_python"),
+            "cloud_macro_micro_python": summary.get("cloud_macro_micro_python"),
         },
         "ratio_c_over_a": float(timing["advance_seconds"]) / a_loop,
     }

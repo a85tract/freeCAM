@@ -478,6 +478,7 @@ def generate_fortran_include(bridge: LegacyStateBridge) -> str:
             *_micro_host_binding(),
             *_mm_host_binding(),
             *_aero_host_binding(),
+            *_stagehost_binding(),
         ]
     )
 
@@ -574,6 +575,29 @@ def _aero_host_binding() -> tuple[str, ...]:
         "  call pycam_aero_bind_hosts(phys_state, pbuf2d)",
         "  status = 0_c_int",
         "end function pycam_aero_bind_hosts_v1",
+        "",
+    )
+
+
+def _stagehost_binding() -> tuple[str, ...]:
+    """One binder for every pausable runner.
+
+    The runners share ``pycam_stage_hosts``, which needs the three cam_comp
+    hosts and derives ``cam_in``/``cam_out`` from the zero-copy state registry
+    itself; its status is this binder's status, so a run without the registry
+    refuses here rather than failing later.
+    """
+
+    return (
+        "integer(c_int) function pycam_stagehost_bind_v1() &",
+        "     bind(C, name='pycam_stagehost_bind_v1') result(status)",
+        "  use, intrinsic :: iso_c_binding, only: c_int",
+        "  use pycam_stage_hosts, only: pycam_stagehost_bind",
+        "  status = 1_c_int",
+        "  if (.not. associated(phys_state) .or. .not. associated(phys_tend) &",
+        "       .or. .not. associated(pbuf2d)) return",
+        "  status = int(pycam_stagehost_bind(phys_state, phys_tend, pbuf2d), c_int)",
+        "end function pycam_stagehost_bind_v1",
         "",
     )
 

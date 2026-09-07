@@ -82,10 +82,35 @@ def test_the_local_level_parses_python_and_checks_the_declared_name(session, cat
 
 
 def test_a_kernel_binding_is_offered_only_where_the_runner_covers_it(session, catalog) -> None:
+    from dataclasses import replace
+
+    from freecam.pi_cam.workflow_builder.capabilities import kernel_capabilities
+
+    # every exposed kernel has a runner now; a capability table without one shows the refusal
+    session.apply({"operation": "configure", "node_id": "cam_run1.radiation",
+                   "configuration": {"kernels": {"rad_rrtmg_sw": {"kind": "surrogate", "path": "m.pt"}}}})
+    document, entries, snapshot = catalog
+    uncovered = [replace(c, bindable=False, validated=False, reason="no runner pauses here")
+                 if c.kernel == "rad_rrtmg_sw" else c for c in kernel_capabilities()]
+    report = validate_document(session.document, default=document, catalog=entries, level="browser",
+                               catalog_version=snapshot["catalog_hash"], capabilities=uncovered)
+    assert "kernel-not-bindable" in _codes(report) and report.status == "error"
+    # a pause that has not passed its gate is a warning, not an error
+    pending = [replace(c, validated=False, reason="bindable, no gate yet") if c.kernel == "rad_rrtmg_sw" else c
+               for c in kernel_capabilities()]
+    report = validate_document(session.document, default=document, catalog=entries, level="browser",
+                               catalog_version=snapshot["catalog_hash"], capabilities=pending)
+    assert "kernel-not-validated" in _codes(report) and "kernel-not-bindable" not in _codes(report)
+    # every exposed kernel's pause has passed its gate: the binding itself is the only finding
+    report = _check(session, catalog)
+    assert "kernel-not-validated" not in _codes(report) and "kernel-not-bindable" not in _codes(report)
+    session.apply({"operation": "configure", "node_id": "cam_run1.radiation", "configuration": {"kernels": {}}})
+    # the runner pauses at micro_mg_tend and that pause has passed its gate: no finding beyond the binding itself
     session.apply({"operation": "configure", "node_id": "cam_run1.cloud_macro_microphysics",
                    "configuration": {"kernels": {"micro_mg_tend": {"kind": "surrogate", "path": "m.pt"}}}})
     report = _check(session, catalog)
-    assert "kernel-not-bindable" in _codes(report) and report.status == "error"
+    assert "kernel-not-validated" not in _codes(report) and "kernel-not-bindable" not in _codes(report)
+    assert report.status == "valid"
     session.apply({"operation": "configure", "node_id": "cam_run1.cloud_macro_microphysics",
                    "configuration": {"kernels": {"mmacro_pcond": {"kind": "surrogate", "path": "m.pt"}}}})
     browser = _check(session, catalog)

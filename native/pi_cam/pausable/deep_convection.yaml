@@ -1,0 +1,106 @@
+# Deep convection (tphysbc stage 4, action 424): the tphysbc block around
+# convect_deep_tend, that driver and the Zhang-McFarlane driver it calls
+# hoisted whole, pausable at the ZM core (zm_convr), the precipitation
+# evaporation (zm_conv_evap) and the momentum transport (momtran).  The
+# per-chunk mass fluxes and indices the core writes live in zm_conv_intr's
+# own module arrays (control patch 0044 makes them readable), so the tracer
+# transport leaf reads exactly what this stage wrote.  Only the ZM case of
+# the driver's select is carried; the others are refused at create.
+schema_version: 1
+prefix: zmdeep
+stage: cam_run1.deep_convection
+runner_uses:
+  - "use phys_control, only: cam_physpkg_is"
+units:
+  glue:
+    source: components/cam/src/physics/cam/physpkg.F90
+    routine: tphysbc
+    module_header: [1, 60]
+    declarations: [1674, 1874]
+    dummies:
+      state: host_state(lchnk)
+      tend: host_tend(lchnk)
+      pbuf: pbuf_get_chunk(host_pbuf2d, lchnk)
+      cam_in: host_cam_in(lchnk)
+      cam_out: host_cam_out(lchnk)
+      ztodt: real(get_step_size(), r8)
+    # what this stage writes for the stages after it (control patch 0039):
+    # views of physpkg's storage, so the cloud stage reads what deep convection wrote
+    carries: {zdu: 1, cmfmc: 2, dlf: 4, rliq: 6, wtdlf: 7}
+    # physpkg's private precipitation indices the block reads, resolved by field name
+    pbuf_indices: {prec_dp_idx: PREC_DP, snow_dp_idx: SNOW_DP, prec_sh_idx: PREC_SH, snow_sh_idx: SNOW_SH,
+                   prec_str_idx: PREC_STR, snow_str_idx: SNOW_STR, prec_sed_idx: PREC_SED, snow_sed_idx: SNOW_SED,
+                   prec_pcw_idx: PREC_PCW, snow_pcw_idx: SNOW_PCW}
+    # physpkg's private copy of the sub-column switch, read through phys_getopts
+    getopts: {use_subcol_microp: logical}
+    preamble:
+      - "lchnk = state%lchnk"
+      - "ncol = state%ncol"
+      - "nstep = get_nstep()"
+      - "zero = 0._r8"
+    body:
+      - piece: [2068, 2068]
+      - piece: [2078, 2082]
+      - unit: {name: deep, call: [2083, 2088]}
+      - piece: [2089, 2118]
+    # the stage's dispatch stops the timer its first statement started
+    postamble:
+      - "call t_stopf('moist_convection')"
+  deep:
+    source: components/cam/src/physics/cam/convect_deep.F90
+    routine: convect_deep_tend
+    module_header: [1, 50]
+    declarations: [159, 228]
+    pbuf_indices: auto
+    getopts: [deep_scheme]
+    body:
+      - piece: [229, 231]
+      - select: 233
+        cases:
+          "'ZM'":
+            - piece: [279, 280]
+            - unit: {name: zm, call: [282, 288]}
+        refused: ["'off', 'UNICON', 'CLUBB_SGS'"]
+      - piece: [291, 301]
+  zm:
+    source: components/cam/src/physics/cam/zm_conv_intr.F90
+    routine: zm_conv_tend
+    module_header: [1, 21]
+    declarations: [339, 510]
+    pbuf_indices: auto
+    uses:
+      - "use zm_conv_intr, only: mu, eu, du, md, ed, dp, dsubcld, jt, maxg, ideep, lengath, zmconv_org, ixorg, limcnv"
+    # sized by the number of water-tracer sets, known only at run time
+    automatic: [Rwt]
+    body:
+      - piece: [514, 565]
+      - pause: {kernel: zm_convr, call: [566, 579]}
+      - piece: [580, 722]
+      - pause: {kernel: zm_conv_evap, call: [723, 728]}
+      - piece: [729, 803]
+      - if: 804
+        then:
+          - piece: [805, 814]
+          - pause: {kernel: momtran, call: [815, 819]}
+          - piece: [820, 851]
+      - piece: [853, 906]
+kernels:
+  zm_convr:
+    source: components/cam/src/physics/cam/zm_conv.F90
+    routine: zm_convr
+  zm_conv_evap:
+    source: components/cam/src/physics/cam/zm_conv.F90
+    routine: zm_conv_evap
+  momtran:
+    source: components/cam/src/physics/cam/zm_conv.F90
+    routine: momtran
+anchors:
+  'glue:physpkg.F90:2068-2118': bbb3db3e75306cdf
+  'glue:physpkg.F90:declarations 1674-1874': 4e089ee70c947a21
+  'deep:convect_deep.F90:229-301': ea17299392bed5a6
+  'deep:convect_deep.F90:declarations 159-228': 9e3872944d01bace
+  'zm:zm_conv_intr.F90:514-906': c9a58b5f52530089
+  'zm:zm_conv_intr.F90:declarations 339-510': 85c3ad5a915c728e
+  'zm_convr:zm_conv.F90:132-861': dddee4292135e14b
+  'zm_conv_evap:zm_conv.F90:864-1068': a24bea0b4bd0e6f9
+  'momtran:zm_conv.F90:1414-1824': 725d0698005287f7

@@ -125,7 +125,7 @@ describe("the page in preview mode", () => {
     await user.click(within(inspector).getByRole("tab", { name: "Kernels" }));
     const radios = within(inspector).getAllByRole("radio", { name: /trained network/ });
     const enabled = radios.filter((radio) => !(radio as HTMLInputElement).disabled);
-    expect(enabled).toHaveLength(1);
+    expect(enabled).toHaveLength(2);                       // the two kernels the stage-7 runner pauses at
     await user.click(enabled[0]);
     expect(within(inspector).getByLabelText("mmacro_pcond model path")).toBeInTheDocument();
     expect(screen.getByTestId("row-cam_run1.cloud_macro_microphysics")).toHaveTextContent("1 kernel replaced");

@@ -43,6 +43,38 @@ every action; it was 7–9% behind before.
 
 ---
 
+## What every stage class costs together
+
+Measured 2026-09-06 with the paired-run job (`validation/jobs/pi_cam_paired_online_1month.pbs`,
+`PYCAM_ALL_CLASSES=1`): the original Fortran (A) and freeCAM with all eleven stage classes
+installed and nothing replaced (C) run one after the other on the same four nodes, both
+against the online CESM coupling, and C is compared with the oracle bit-for-bit. The
+records are the pairs in `pi_cam_faster_than_fortran.json` whose `python_stages` list the
+nine pausable classes.
+
+| Pair | PBS job | A | C | C/A | bit-for-bit |
+| --- | --- | ---: | ---: | ---: | --- |
+| month, AC, before the export fix | `7335688` | 437.74 s | 462.58 s | 1.057 | yes |
+| month, CA, before the export fix | `7335689` | 442.60 s | 470.53 s | 1.063 | yes |
+| month, AC, before the export fix | `7335690` | 446.95 s | 471.23 s | 1.054 | yes |
+| year, AC, before the export fix | `7335747` | 5109.62 s | 5589.87 s | 1.094 | yes |
+| month, AC, after the export fix | `7336842` | 452.73 s | 451.00 s | 0.996 | yes |
+| month, CA, after the export fix | `7336843` | 455.06 s | 448.81 s | 0.986 | yes |
+| year, AC, after the export fix | `7336930` | 5135.00 s | 5183.62 s | 1.0095 | yes |
+
+The first pairs were five to nine percent slower than the cloud-only pairs above (1.006 for
+a month, 1.0125 for a year). The profiler (`timing/freecam_timing_stats` of each C run)
+attributed the year's extra 460 s as follows: the physics moved one-for-one from the plan's
+action regions into the classes' regions; the eleven Python wrappers cost 37 s together;
+the boundary export's wait grew by 293 s. Its fast path set the failure flag whenever the
+deferred-outcome list was non-empty, and a trusted class leaves a (name, None) outcome every
+step, so with eleven classes the export took the pickled allgather on every step. With the
+flag testing for an outcome that is not None (commit c618a73), the all-class month runs at
+the Fortran's pace and the year within one percent of it. Job `7335690` records the commit
+of the fix because the report reads the tree when the job ends; its freeCAM run started
+before the fix was written and its export wait (44 s over the month, against 25 s for the
+cloud-only month) matches the pairs before it.
+
 ## What the Python cloud macro/microphysics stage costs
 
 The numbers above are the cost of Python owning the *workflow*.  This
