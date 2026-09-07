@@ -12,7 +12,7 @@
 ! runs the very call on the paused frame.  Python makes every call; Fortran
 ! never calls Python.
 module pycam_zmdeep_runner
-  use, intrinsic :: iso_c_binding, only: c_int, c_int32_t, c_int64_t, c_double, c_ptr, c_char, c_null_ptr, c_loc
+  use, intrinsic :: iso_c_binding, only: c_int, c_int32_t, c_int64_t, c_double, c_ptr, c_char, c_null_ptr, c_loc, c_funloc, c_funptr
   use ppgrid, only: begchunk, endchunk
   use pycam_stage_hosts, only: stage_hosts_ok
   use pycam_zmdeep_glue, only: glue_piece_1, glue_piece_2, glue_piece_3, glue_bind_deep, glue_enter, glue_leave, &
@@ -21,11 +21,34 @@ module pycam_zmdeep_runner
        deep_scheme
   use pycam_zmdeep_zm, only: zm_piece_1, zm_piece_2, zm_piece_3, zm_piece_4, zm_piece_5, zm_piece_6, &
        zm_convr_frame, zm_conv_evap_frame, momtran_frame, zm_convr_original, zm_conv_evap_original, momtran_original, &
-       zm_bind_evap, zm_resolve_indices
-  use pycam_zmdeep_evap, only: evap_piece_1, evap_piece_2, cldfrc_fice_frame, cldfrc_fice_original
+       zm_resolve_indices
   use phys_control, only: cam_physpkg_is
+  use pycam_hooks, only: pycam_hooks_arm_v1, pycam_hooks_paused_v1, pycam_hooks_frame_v1, &
+       pycam_hooks_original_v1, pycam_hooks_reset_v1
   implicit none
   private
+  interface
+    integer(c_int) function pycam_fiber_start_v1(body, stack_bytes, event) bind(C, name='pycam_fiber_start_v1')
+      import :: c_int, c_int64_t, c_funptr
+      type(c_funptr), value :: body
+      integer(c_int64_t), value :: stack_bytes
+      integer(c_int), intent(out) :: event
+    end function pycam_fiber_start_v1
+    integer(c_int) function pycam_fiber_resume_v1(event) bind(C, name='pycam_fiber_resume_v1')
+      import :: c_int
+      integer(c_int), intent(out) :: event
+    end function pycam_fiber_resume_v1
+    subroutine pycam_fiber_yield_v1(event) bind(C, name='pycam_fiber_yield_v1')
+      import :: c_int
+      integer(c_int), value :: event
+    end subroutine pycam_fiber_yield_v1
+    subroutine pycam_fiber_finish_v1(event) bind(C, name='pycam_fiber_finish_v1')
+      import :: c_int
+      integer(c_int), value :: event
+    end subroutine pycam_fiber_finish_v1
+    subroutine pycam_fiber_abandon_v1() bind(C, name='pycam_fiber_abandon_v1')
+    end subroutine pycam_fiber_abandon_v1
+  end interface
 
   integer(c_int), parameter :: ev_done = 0_c_int, ev_needs_kernel = 1_c_int, ev_error = 2_c_int
   integer, parameter :: pc_idle = 0
@@ -41,29 +64,23 @@ module pycam_zmdeep_runner
   integer, parameter :: pc_zm_piece_4_1 = 10
   integer, parameter :: pc_if_1 = 11
   integer, parameter :: pc_zm_piece_3_1 = 12
-  integer, parameter :: pc_evap_piece_2_1 = 13
-  integer, parameter :: pc_before_cldfrc_fice_1 = 14
-  integer, parameter :: pc_at_cldfrc_fice = 15
-  integer, parameter :: pc_after_cldfrc_fice = 16
-  integer, parameter :: pc_evap_piece_1_1 = 17
-  integer, parameter :: pc_leave_evap_1 = 18
-  integer, parameter :: pc_before_zm_conv_evap_1 = 19
-  integer, parameter :: pc_at_zm_conv_evap = 20
-  integer, parameter :: pc_after_zm_conv_evap = 21
-  integer, parameter :: pc_zm_piece_2_1 = 22
-  integer, parameter :: pc_before_zm_convr_1 = 23
-  integer, parameter :: pc_at_zm_convr = 24
-  integer, parameter :: pc_after_zm_convr = 25
-  integer, parameter :: pc_zm_piece_1_1 = 26
-  integer, parameter :: pc_leave_zm_1 = 27
-  integer, parameter :: pc_enter_zm_1 = 28
-  integer, parameter :: pc_deep_piece_2_1 = 29
-  integer, parameter :: pc_select_1 = 30
-  integer, parameter :: pc_deep_piece_1_1 = 31
-  integer, parameter :: pc_leave_deep_1 = 32
-  integer, parameter :: pc_enter_deep_1 = 33
-  integer, parameter :: pc_glue_piece_2_1 = 34
-  integer, parameter :: pc_glue_piece_1_1 = 35
+  integer, parameter :: pc_before_zm_conv_evap_1 = 13
+  integer, parameter :: pc_at_zm_conv_evap = 14
+  integer, parameter :: pc_after_zm_conv_evap = 15
+  integer, parameter :: pc_zm_piece_2_1 = 16
+  integer, parameter :: pc_before_zm_convr_1 = 17
+  integer, parameter :: pc_at_zm_convr = 18
+  integer, parameter :: pc_after_zm_convr = 19
+  integer, parameter :: pc_zm_piece_1_1 = 20
+  integer, parameter :: pc_leave_zm_1 = 21
+  integer, parameter :: pc_enter_zm_1 = 22
+  integer, parameter :: pc_deep_piece_2_1 = 23
+  integer, parameter :: pc_select_1 = 24
+  integer, parameter :: pc_deep_piece_1_1 = 25
+  integer, parameter :: pc_leave_deep_1 = 26
+  integer, parameter :: pc_enter_deep_1 = 27
+  integer, parameter :: pc_glue_piece_2_1 = 28
+  integer, parameter :: pc_glue_piece_1_1 = 29
   integer(c_int), parameter :: kernel_zm_convr = 1_c_int
   integer(c_int), parameter :: kernel_zm_conv_evap = 2_c_int
   integer(c_int), parameter :: kernel_momtran = 3_c_int
@@ -78,8 +95,110 @@ module pycam_zmdeep_runner
   integer(c_int), save :: token = 0_c_int, call_index = 0_c_int
   logical, save :: replace(nkernels) = .false.
   character(len=256), save :: last_error = ' '
+  ! kernels reached inside compiled code: their hook ids, and the fiber the stage runs on
+  integer, parameter :: hook_of(nkernels) = (/ 0, 0, 0, 1 /)
+  integer(c_int64_t), parameter :: fiber_stack_bytes = 536870912_c_int64_t
+  logical, save :: on_fiber = .false.
 
 contains
+
+  ! ------------------------------------------------------------------ !
+  ! Hooked kernels: the stage runs on the fiber when one is replaced
+  ! ------------------------------------------------------------------ !
+
+  subroutine run_from_start(event)
+    ! arm the hooks the mask replaces; run on the fiber if any, else directly
+    integer(c_int), intent(out) :: event
+    integer :: k
+    logical :: use_fiber
+    use_fiber = .false.
+    do k = 1, nkernels
+      if (hook_of(k) == 0) cycle
+      if (pycam_hooks_arm_v1(int(hook_of(k), c_int), merge(1_c_int, 0_c_int, replace(k))) /= 0_c_int) then
+        last_error = 'zmdeep: a hook could not be armed'; event = ev_error; return
+      end if
+      use_fiber = use_fiber .or. replace(k)
+    end do
+    if (.not. use_fiber) then
+      call advance(event)
+      return
+    end if
+    on_fiber = .true.
+    if (pycam_fiber_start_v1(c_funloc(fiber_body), fiber_stack_bytes, event) /= 0_c_int) then
+      last_error = 'zmdeep: the fiber could not start'; event = ev_error; on_fiber = .false.
+      call disarm_hooks()
+      return
+    end if
+    call after_fiber_event(event)
+  end subroutine run_from_start
+
+  subroutine fiber_body() bind(C)
+    ! the state machine on the fiber: a runner-level pause yields, a hook yields from
+    ! inside the compiled routine, the end of the action finishes
+    integer(c_int) :: ev
+    do
+      call advance(ev)
+      if (ev /= ev_needs_kernel) exit
+      call pycam_fiber_yield_v1(ev)
+    end do
+    call pycam_fiber_finish_v1(ev)
+  end subroutine fiber_body
+
+  subroutine continue_fiber(event)
+    integer(c_int), intent(out) :: event
+    if (pycam_fiber_resume_v1(event) /= 0_c_int) then
+      last_error = 'zmdeep: the fiber could not be resumed'; event = ev_error; on_fiber = .false.
+      call disarm_hooks()
+      return
+    end if
+    call after_fiber_event(event)
+  end subroutine continue_fiber
+
+  subroutine after_fiber_event(event)
+    ! a hook pause takes a token like a runner pause; the end of the run disarms the hooks
+    integer(c_int), intent(in) :: event
+    if (event == ev_needs_kernel) then
+      if (pycam_hooks_paused_v1() /= 0_c_int) token = token + 1_c_int
+    else
+      on_fiber = .false.
+      call disarm_hooks()
+    end if
+  end subroutine after_fiber_event
+
+  subroutine disarm_hooks()
+    integer :: k
+    do k = 1, nkernels
+      if (hook_of(k) /= 0) then
+        if (pycam_hooks_arm_v1(int(hook_of(k), c_int), 0_c_int) /= 0_c_int) continue
+      end if
+    end do
+  end subroutine disarm_hooks
+
+  subroutine abandon_fiber()
+    ! after an error: forget the suspended stack, disarm and clear the hooks
+    if (on_fiber) call pycam_fiber_abandon_v1()
+    on_fiber = .false.
+    call disarm_hooks()
+    call pycam_hooks_reset_v1()
+  end subroutine abandon_fiber
+
+  logical function paused_in_hook()
+    paused_in_hook = on_fiber .and. pycam_hooks_paused_v1() /= 0_c_int
+  end function paused_in_hook
+
+  integer function hooks_paused()
+    hooks_paused = int(pycam_hooks_paused_v1())
+  end function hooks_paused
+
+  integer(c_int) function kernel_of_hook(hook)
+    integer, intent(in) :: hook
+    integer :: k
+    kernel_of_hook = 0_c_int
+    do k = 1, nkernels
+      if (hook_of(k) == hook) kernel_of_hook = int(k, c_int)
+    end do
+  end function kernel_of_hook
+
 
   ! ------------------------------------------------------------------ !
   ! The ABI Python drives
@@ -129,7 +248,7 @@ contains
     call_index = 0_c_int
     lchnk = begchunk
     pc = pc_chunk_begin
-    call advance(event)
+    call run_from_start(event)
     status = 0_c_int
   end function pycam_zmdeep_start_v1
 
@@ -143,6 +262,15 @@ contains
     end if
     if (token_in /= token) then
       last_error = 'stale resume: the frame token does not match the pause'; status = 4_c_int; return
+    end if
+    if (paused_in_hook()) then
+      if (hook_of(kernel) /= hooks_paused()) then
+        last_error = 'zmdeep is paused in a hook, not on the kernel resumed'; status = 3_c_int; return
+      end if
+      token = token + 1_c_int
+      call continue_fiber(event)
+      status = 0_c_int
+      return
     end if
     select case (pc)
     case (pc_at_zm_convr)
@@ -160,16 +288,15 @@ contains
         last_error = 'zmdeep is paused on momtran, not on the kernel resumed'; status = 3_c_int; return
       end if
       pc = pc_after_momtran
-    case (pc_at_cldfrc_fice)
-      if (kernel /= kernel_cldfrc_fice) then
-        last_error = 'zmdeep is paused on cldfrc_fice, not on the kernel resumed'; status = 3_c_int; return
-      end if
-      pc = pc_after_cldfrc_fice
     case default
       last_error = 'zmdeep is not paused'; status = 2_c_int; return
     end select
     token = token + 1_c_int
-    call advance(event)
+    if (on_fiber) then
+      call continue_fiber(event)
+    else
+      call advance(event)
+    end if
     status = 0_c_int
   end function pycam_zmdeep_resume_v1
 
@@ -189,6 +316,18 @@ contains
     if (count < frame_slots) then
       last_error = 'frame table is too short'; status = 3_c_int; return
     end if
+    if (paused_in_hook()) then
+      kernel = kernel_of_hook(hooks_paused())
+      if (pycam_hooks_frame_v1(count, ptrs, ndims, shapes, dtypes, intents, ncol_out) /= 0_c_int) then
+        last_error = 'zmdeep: the hook frame could not be served'; status = 4_c_int; return
+      end if
+      index_out = call_index
+      lchnk_out = int(lchnk, c_int)
+      substep_out = 1_c_int
+      token_out = token
+      status = 0_c_int
+      return
+    end if
     select case (pc)
     case (pc_at_zm_convr)
       call zm_convr_frame(ptrs, ndims, shapes, dtypes, intents, ncol_out)
@@ -199,9 +338,6 @@ contains
     case (pc_at_momtran)
       call momtran_frame(ptrs, ndims, shapes, dtypes, intents, ncol_out)
       kernel = kernel_momtran
-    case (pc_at_cldfrc_fice)
-      call cldfrc_fice_frame(ptrs, ndims, shapes, dtypes, intents, ncol_out)
-      kernel = kernel_cldfrc_fice
     case default
       last_error = 'zmdeep is not paused; there is no frame'; status = 2_c_int; return
     end select
@@ -220,6 +356,14 @@ contains
     if (.not. created .or. context /= context_id) then
       last_error = 'no zmdeep context'; return
     end if
+    if (paused_in_hook()) then
+      if (hook_of(kernel) /= hooks_paused()) then
+        last_error = 'zmdeep is paused in a hook, not on the kernel asked for'; status = 3_c_int; return
+      end if
+      status = pycam_hooks_original_v1()
+      if (status /= 0_c_int) last_error = 'zmdeep: the hook could not run the original'
+      return
+    end if
     select case (pc)
     case (pc_at_zm_convr)
       if (kernel /= kernel_zm_convr) then
@@ -236,11 +380,6 @@ contains
         last_error = 'zmdeep is paused on momtran, not on the kernel asked for'; status = 3_c_int; return
       end if
       call momtran_original()
-    case (pc_at_cldfrc_fice)
-      if (kernel /= kernel_cldfrc_fice) then
-        last_error = 'zmdeep is paused on cldfrc_fice, not on the kernel asked for'; status = 3_c_int; return
-      end if
-      call cldfrc_fice_original()
     case default
       last_error = 'zmdeep is not paused; there is nothing to run'; status = 2_c_int; return
     end select
@@ -264,6 +403,7 @@ contains
     integer(c_int), value, intent(in) :: context
     status = 1_c_int
     if (.not. created .or. context /= context_id) return
+    call abandon_fiber()
     pc = pc_idle
     status = 0_c_int
   end function pycam_zmdeep_reset_v1
@@ -272,6 +412,7 @@ contains
     integer(c_int), value, intent(in) :: context
     status = 1_c_int
     if (.not. created .or. context /= context_id) return
+    call abandon_fiber()
     created = .false.
     pc = pc_idle
     status = 0_c_int
@@ -337,43 +478,15 @@ contains
       case (pc_zm_piece_3_1)
         call zm_piece_3()
         pc = pc_if_1
-      case (pc_evap_piece_2_1)
-        call evap_piece_2()
-        pc = pc_leave_evap_1
-      case (pc_before_cldfrc_fice_1)
-        if (replace(4)) then
-          token = token + 1_c_int
-          pc = pc_at_cldfrc_fice
-          event = ev_needs_kernel
-          return
-        end if
-        call cldfrc_fice_original()
-        pc = pc_after_cldfrc_fice
-      case (pc_at_cldfrc_fice)
-        last_error = 'zmdeep is paused; only resume continues it'
-        event = ev_error
-        return
-      case (pc_after_cldfrc_fice)
-        call_index = call_index + 1_c_int
-        pc = pc_evap_piece_2_1
-      case (pc_evap_piece_1_1)
-        call evap_piece_1()
-        pc = pc_before_cldfrc_fice_1
-      case (pc_leave_evap_1)
-        pc = pc_zm_piece_3_1
       case (pc_before_zm_conv_evap_1)
         if (replace(2)) then
           token = token + 1_c_int
           pc = pc_at_zm_conv_evap
           event = ev_needs_kernel
           return
-        else if (replace(4)) then
-          call zm_bind_evap()
-          pc = pc_evap_piece_1_1
-        else
-          call zm_conv_evap_original()
-          pc = pc_after_zm_conv_evap
         end if
+        call zm_conv_evap_original()
+        pc = pc_after_zm_conv_evap
       case (pc_at_zm_conv_evap)
         last_error = 'zmdeep is paused; only resume continues it'
         event = ev_error

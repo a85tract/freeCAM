@@ -1269,6 +1269,7 @@ class NativeStage:
         native = context.native
         if native is None:
             raise PhysicsError(f"{type(self).__name__}.tend must run as a native process")
+        self._current_step = getattr(context, "step", getattr(context, "nstep", None))
         mode = self.select_mode(native)
         self.execution.mode = mode
         self.execution.replacements = self.replacements()
@@ -1354,6 +1355,9 @@ class NativeStage:
                     kernels[name] = self._original_through_python(native, name)
             else:
                 kernels[name] = self._owner_of(name).frame_kernel(name, kernel, native)
+        for model in kernels.values():
+            if hasattr(model, "current_step"):
+                model.current_step = getattr(self, "_current_step", None)
         segmented.run(kernels)
         counters = segmented.counters
         self.execution.native_segment_calls = counters.starts + counters.resumes

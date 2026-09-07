@@ -130,19 +130,44 @@ through `load_function`.
 
 | Routine | Shape | Standalone | In the model |
 | --- | --- | --- | --- |
-| `pbl_utils::virtem` | elemental scalar function reading module state (`zvir`) | image built; `result` returned as `outputs["result"]`, bitwise equal to the formula with the model's snapshot of `zvir` | the vertical diffusion runner pauses at the assignment `thvs(:ncol) = virtem(...)`, serving the section actuals and the left-hand side as the frame; bit-for-bit, 100 pauses in 50 steps |
-| `uwshcu::fluxbelowinv` | private profile subroutine with `0:mkx` interface arrays | image built through the private procedure's ifort symbol behind an explicit interface, no module recompiled; the contract records the lower bounds | no pause yet: its caller `compute_uwshcu` is 5000 lines of arithmetic, and see below |
-| `cloud_fraction::cldfrc_fice` | chunk subroutine called inside `zm_conv_evap`, itself a kernel | image built, `tmelt` verified against the model | the runner can enter a hoisted copy of `zm_conv_evap` and pause at the call; the gate was **not** bit-for-bit (one rank, a few ULP, step 7) |
+| `pbl_utils::virtem` | elemental scalar function reading module state (`zvir`) | image built; `result` returned as `outputs["result"]`, bitwise equal to the formula with the model's snapshot of `zvir`; every frame captured at the pause in a 50-step run (51200 calls, 691300 elements) replayed bit-for-bit through the standalone function | the vertical diffusion runner pauses at the assignment `thvs(:ncol) = virtem(...)`, serving the section actuals and the left-hand side as the frame; bit-for-bit, 100 pauses in 50 steps; the capture run itself bit-for-bit |
+| `uwshcu::fluxbelowinv` | private profile subroutine with `0:mkx` interface arrays | image built through the private procedure's ifort symbol behind an explicit interface, no module recompiled; the contract records the lower bounds | a hook (below): its definition in `uwshcu.o` is weakened and renamed, the hook takes the original name, and `compute_uwshcu`'s three call sites reach the hook; gates owed |
+| `cloud_fraction::cldfrc_fice` | chunk subroutine called inside `zm_conv_evap`, itself a kernel | image built, `tmelt` verified against the model | first through a hoisted copy of `zm_conv_evap`: **not** bit-for-bit (one rank, a few ULP, step 7; the failure is kept as [`pi_cam_pausable_fice-pause_50step_failure.json`](../validation/pi_cam_pausable_fice-pause_50step_failure.json)); now a hook: `zm_conv.o`'s one reference is renamed to it; gates owed |
 
-The last row is the finding that shapes what comes next.  Hoisting a routine
+The failure in the last row shaped what followed.  Hoisting a routine
 verbatim into a module works for drivers, whose arithmetic is incidental; it
 does not reproduce the oracle object's rounding for a numerical routine, because
-a recompiled copy vectorises and fuses differently.  Reaching a call inside a
-compiled kernel therefore needs a mechanism that leaves the kernel's machine
-code untouched: redirecting the call's symbol in the linked object to a hook
-that hands control back to Python from the depth of the call stack.  Until that
-exists, `cldfrc_fice` stays bindable and blocked, and no further numerical
+a recompiled copy vectorises and fuses differently.  No further numerical
 routine is hoisted.
+
+## Hooks: a call inside a compiled kernel, without hoisting
+
+A hook leaves every numerical object's machine code untouched and changes only
+where one call lands.  [`native/pi_cam/hooks.yaml`](../native/pi_cam/hooks.yaml)
+names each hooked kernel, its function contract, and the caller objects; the
+device build extracts those objects from the oracle archive and redirects the
+reference in the object's symbol table (`objcopy --redefine-sym` when the callee
+is in another object; when the callee is defined in the caller's own object its
+definition is weakened and given a second name, and the hook, a strong
+definition of the original name, wins the link).  The build proves the `.text`
+bytes are unchanged and records every redirection in the image manifest.
+
+The hook itself is a generated Fortran procedure with the callee's argument
+list (`pycam_hooks.F90`, from the contracts).  It counts every call.  Unarmed,
+it calls the original and returns.  Armed -- the owning stage class has a
+replacement installed -- it records the frame and yields the stage's *fiber*: a
+second execution stack (`pycam_fiber.c`, `ucontext`) the runner starts its
+state machine on when a hooked kernel is replaced.  The yield returns control
+to the runner's `start` or `resume` entry in the main context, which reports
+NEEDS_PYTHON_KERNEL to Python exactly as a runner-level pause does; `resume`
+switches back and the hook returns to its caller.  Fortran never calls Python;
+it switches stacks.  A stage with no hooked kernel replaced never touches the
+fiber, and a runner with no hooked kernels renders byte-identically to before.
+
+The hook path applies only to calls the linked objects reach through a
+relocation.  `compute_alpha`, the inlined function of `compute_uwshcu`, has
+none, and no hook can reach it; the inventory that follows the PoC records,
+for each candidate, whether such a relocation exists.
 
 ## Runtime evidence
 

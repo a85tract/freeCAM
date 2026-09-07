@@ -429,6 +429,7 @@ class Kernel:
     result: str | None = None      # function: the result variable's name
     elemental: bool = False        # function: elemental, so a section actual gives an array frame slot
     within: str | None = None      # the kernel whose hoisted unit this kernel's call sites live in
+    hook: bool = False             # reached inside compiled code through a redirected call (native/pi_cam/hooks.yaml)
     lines: list[str] = field(default_factory=list)
     dummies: list[str] = field(default_factory=list)
     decls: dict[str, Decl] = field(default_factory=dict)
@@ -556,7 +557,7 @@ def load_spec(path: Path) -> Spec:
     if "glue" not in units:
         raise SystemExit(f"{path}: a spec needs a unit named glue (the action's tphysbc/tphysac block)")
     kernels = {str(name): Kernel(name=str(name), source=str(k["source"]), routine=str(k["routine"]),
-                                 within=(str(k["within"]) if k.get("within") else None))
+                                 within=(str(k["within"]) if k.get("within") else None), hook=bool(k.get("hook", False)))
                for name, k in payload["kernels"].items()}
     spec = Spec(path=path, prefix=prefix, stage=str(payload["stage"]),
                 refuse=list(payload.get("refuse") or []), getopts=[str(x) for x in payload.get("getopts") or []],
@@ -662,6 +663,13 @@ def _resolve(spec: Spec) -> None:
                 kernel.decls[kernel.result] = Decl(kernel.result, typed.group(0).replace(" ", ""), "", "", "", None)
         if kernel.within is not None and kernel.within not in spec.kernels:
             raise SystemExit(f"kernel {kernel.name}: `within` names {kernel.within!r}, which the spec does not describe")
+    for kernel in spec.kernels.values():
+        if kernel.hook and any(pause.kernel == kernel.name for unit in spec.units.values() for pause in unit.pauses):
+            raise SystemExit(f"kernel {kernel.name}: a hooked kernel is reached inside compiled code and has no pause node")
+        if kernel.hook:
+            table = _hook_table()
+            if kernel.name not in table.kernel_names:
+                raise SystemExit(f"kernel {kernel.name}: `hook: true` but native/pi_cam/hooks.yaml does not list it")
     for unit in spec.units.values():
         for node in _walk(unit.body):
             if node.kind != "kernel_unit":
@@ -671,6 +679,32 @@ def _resolve(spec: Spec) -> None:
                 if spec.kernels[pause.kernel].within != node.pause.kernel:
                     raise SystemExit(f"{inner.key}: kernel {pause.kernel!r} pauses inside the hoisted {node.pause.kernel} "
                                      f"but does not declare `within: {node.pause.kernel}`")
+
+
+def _hook_table():
+    """native/pi_cam/hooks.yaml through freecam.pi_cam.hooks (imported lazily)."""
+
+    import sys as _sys
+
+    if str(REPO / "src") not in _sys.path:
+        _sys.path.insert(0, str(REPO / "src"))
+    from freecam.pi_cam.hooks import load_hooks
+
+    return load_hooks()
+
+
+def _hook_frame_slots(kernel_name: str) -> int:
+    """How many slots a hooked kernel's frame has: the dummies of its function contract."""
+
+    import sys as _sys
+
+    if str(REPO / "src") not in _sys.path:
+        _sys.path.insert(0, str(REPO / "src"))
+    from freecam.physics.spec import load_function_spec
+
+    table = _hook_table()
+    spec = load_function_spec(str(REPO / table.hook(kernel_name).contract))
+    return sum(1 for item in spec.arguments if item.role != "result")
 
 
 #: the head of a subroutine or function, with its prefix (elemental, pure, a result type)
@@ -1956,6 +1990,165 @@ def _node_pc(spec: Spec, unit: Unit, node: Node, states: list[State], after: str
     raise SystemExit(f"{unit.key}: unknown node kind {node.kind}")
 
 
+_FIBER_INTERFACES = """  interface
+    integer(c_int) function pycam_fiber_start_v1(body, stack_bytes, event) bind(C, name='pycam_fiber_start_v1')
+      import :: c_int, c_int64_t, c_funptr
+      type(c_funptr), value :: body
+      integer(c_int64_t), value :: stack_bytes
+      integer(c_int), intent(out) :: event
+    end function pycam_fiber_start_v1
+    integer(c_int) function pycam_fiber_resume_v1(event) bind(C, name='pycam_fiber_resume_v1')
+      import :: c_int
+      integer(c_int), intent(out) :: event
+    end function pycam_fiber_resume_v1
+    subroutine pycam_fiber_yield_v1(event) bind(C, name='pycam_fiber_yield_v1')
+      import :: c_int
+      integer(c_int), value :: event
+    end subroutine pycam_fiber_yield_v1
+    subroutine pycam_fiber_finish_v1(event) bind(C, name='pycam_fiber_finish_v1')
+      import :: c_int
+      integer(c_int), value :: event
+    end subroutine pycam_fiber_finish_v1
+    subroutine pycam_fiber_abandon_v1() bind(C, name='pycam_fiber_abandon_v1')
+    end subroutine pycam_fiber_abandon_v1
+  end interface
+"""
+
+_FIBER_PROCEDURES = """
+  ! ------------------------------------------------------------------ !
+  ! Hooked kernels: the stage runs on the fiber when one is replaced
+  ! ------------------------------------------------------------------ !
+
+  subroutine run_from_start(event)
+    ! arm the hooks the mask replaces; run on the fiber if any, else directly
+    integer(c_int), intent(out) :: event
+    integer :: k
+    logical :: use_fiber
+    use_fiber = .false.
+    do k = 1, nkernels
+      if (hook_of(k) == 0) cycle
+      if (pycam_hooks_arm_v1(int(hook_of(k), c_int), merge(1_c_int, 0_c_int, replace(k))) /= 0_c_int) then
+        last_error = '{prefix}: a hook could not be armed'; event = ev_error; return
+      end if
+      use_fiber = use_fiber .or. replace(k)
+    end do
+    if (.not. use_fiber) then
+      call advance(event)
+      return
+    end if
+    on_fiber = .true.
+    if (pycam_fiber_start_v1(c_funloc(fiber_body), fiber_stack_bytes, event) /= 0_c_int) then
+      last_error = '{prefix}: the fiber could not start'; event = ev_error; on_fiber = .false.
+      call disarm_hooks()
+      return
+    end if
+    call after_fiber_event(event)
+  end subroutine run_from_start
+
+  subroutine fiber_body() bind(C)
+    ! the state machine on the fiber: a runner-level pause yields, a hook yields from
+    ! inside the compiled routine, the end of the action finishes
+    integer(c_int) :: ev
+    do
+      call advance(ev)
+      if (ev /= ev_needs_kernel) exit
+      call pycam_fiber_yield_v1(ev)
+    end do
+    call pycam_fiber_finish_v1(ev)
+  end subroutine fiber_body
+
+  subroutine continue_fiber(event)
+    integer(c_int), intent(out) :: event
+    if (pycam_fiber_resume_v1(event) /= 0_c_int) then
+      last_error = '{prefix}: the fiber could not be resumed'; event = ev_error; on_fiber = .false.
+      call disarm_hooks()
+      return
+    end if
+    call after_fiber_event(event)
+  end subroutine continue_fiber
+
+  subroutine after_fiber_event(event)
+    ! a hook pause takes a token like a runner pause; the end of the run disarms the hooks
+    integer(c_int), intent(in) :: event
+    if (event == ev_needs_kernel) then
+      if (pycam_hooks_paused_v1() /= 0_c_int) token = token + 1_c_int
+    else
+      on_fiber = .false.
+      call disarm_hooks()
+    end if
+  end subroutine after_fiber_event
+
+  subroutine disarm_hooks()
+    integer :: k
+    do k = 1, nkernels
+      if (hook_of(k) /= 0) then
+        if (pycam_hooks_arm_v1(int(hook_of(k), c_int), 0_c_int) /= 0_c_int) continue
+      end if
+    end do
+  end subroutine disarm_hooks
+
+  subroutine abandon_fiber()
+    ! after an error: forget the suspended stack, disarm and clear the hooks
+    if (on_fiber) call pycam_fiber_abandon_v1()
+    on_fiber = .false.
+    call disarm_hooks()
+    call pycam_hooks_reset_v1()
+  end subroutine abandon_fiber
+
+  logical function paused_in_hook()
+    paused_in_hook = on_fiber .and. pycam_hooks_paused_v1() /= 0_c_int
+  end function paused_in_hook
+
+  integer function hooks_paused()
+    hooks_paused = int(pycam_hooks_paused_v1())
+  end function hooks_paused
+
+  integer(c_int) function kernel_of_hook(hook)
+    integer, intent(in) :: hook
+    integer :: k
+    kernel_of_hook = 0_c_int
+    do k = 1, nkernels
+      if (hook_of(k) == hook) kernel_of_hook = int(k, c_int)
+    end do
+  end function kernel_of_hook
+"""
+
+_RESUME_HOOK_BLOCK = """    if (paused_in_hook()) then
+      if (hook_of(kernel) /= hooks_paused()) then
+        last_error = '{prefix} is paused in a hook, not on the kernel resumed'; status = 3_c_int; return
+      end if
+      token = token + 1_c_int
+      call continue_fiber(event)
+      status = 0_c_int
+      return
+    end if
+"""
+
+_FRAME_HOOK_BLOCK = """    if (paused_in_hook()) then
+      kernel = kernel_of_hook(hooks_paused())
+      if (pycam_hooks_frame_v1(count, ptrs, ndims, shapes, dtypes, intents, ncol_out) /= 0_c_int) then
+        last_error = '{prefix}: the hook frame could not be served'; status = 4_c_int; return
+      end if
+      index_out = call_index
+      lchnk_out = int(lchnk, c_int)
+      substep_out = 1_c_int
+      token_out = token
+      status = 0_c_int
+      return
+    end if
+"""
+
+_ORIGINAL_HOOK_BLOCK = """    if (paused_in_hook()) then
+      if (hook_of(kernel) /= hooks_paused()) then
+        last_error = '{prefix} is paused in a hook, not on the kernel asked for'; status = 3_c_int; return
+      end if
+      status = pycam_hooks_original_v1()
+      if (status /= 0_c_int) last_error = '{prefix}: the hook could not run the original'
+      return
+    end if
+"""
+
+
 def render_runner(spec: Spec) -> str:
     glue = spec.units["glue"]
     states: list[State] = []
@@ -1968,6 +2161,15 @@ def render_runner(spec: Spec) -> str:
     pc_params = "\n".join(f"  integer, parameter :: {name} = {i}" for i, name in enumerate(pc_names))
     all_pauses = [p for u in spec.units.values() for p in u.pauses]
     frame_slots_max = max(len(frame_slots(p, spec.kernels[p.kernel])) for p in all_pauses) if all_pauses else 1
+    hooked = [k for k in kernels if spec.kernels[k].hook]
+    if hooked:
+        table = _hook_table()
+        frame_slots_max = max(frame_slots_max, max(_hook_frame_slots(k) for k in hooked))
+        hook_of = ", ".join(str(table.hook(k).id if spec.kernels[k].hook else 0) for k in kernels)
+        fiber_stack_bytes = table.fiber_stack_bytes
+    else:
+        hook_of = ", ".join("0" for _ in kernels)
+        fiber_stack_bytes = 0
     unit_uses = []
     for unit in spec.units.values():
         names = [n.name for n in unit.pieces] + [f"{p.tag}_frame" for p in unit.pauses] + [f"{p.tag}_original" for p in unit.pauses]
@@ -2002,6 +2204,29 @@ def render_runner(spec: Spec) -> str:
     paused_pcs = ", ".join(p.pc_at for p in all_pauses) or "-1"
     advance_cases = "\n".join(f"      case ({s.name})\n        {s.code}" for s in states)
     ep = spec.entry_prefix
+    if hooked:
+        c_binding = "c_int, c_int32_t, c_int64_t, c_double, c_ptr, c_char, c_null_ptr, c_loc, c_funloc, c_funptr"
+        hook_uses = ("  use pycam_hooks, only: pycam_hooks_arm_v1, pycam_hooks_paused_v1, pycam_hooks_frame_v1, &\n"
+                     "       pycam_hooks_original_v1, pycam_hooks_reset_v1\n")
+        hook_interfaces = _FIBER_INTERFACES
+        hook_state = (f"  ! kernels reached inside compiled code: their hook ids, and the fiber the stage runs on\n"
+                      f"  integer, parameter :: hook_of(nkernels) = (/ {hook_of} /)\n"
+                      f"  integer(c_int64_t), parameter :: fiber_stack_bytes = {fiber_stack_bytes}_c_int64_t\n"
+                      f"  logical, save :: on_fiber = .false.\n")
+        hook_procedures = _FIBER_PROCEDURES.replace("{prefix}", spec.prefix) + "\n"
+        start_call = "call run_from_start(event)"
+        resume_hook_block = _RESUME_HOOK_BLOCK.replace("{prefix}", spec.prefix)
+        resume_continue = ("if (on_fiber) then\n      call continue_fiber(event)\n    else\n"
+                           "      call advance(event)\n    end if")
+        frame_hook_block = _FRAME_HOOK_BLOCK.replace("{prefix}", spec.prefix)
+        original_hook_block = _ORIGINAL_HOOK_BLOCK.replace("{prefix}", spec.prefix)
+        reset_hook = "    call abandon_fiber()\n"
+    else:
+        c_binding = "c_int, c_int32_t, c_int64_t, c_double, c_ptr, c_char, c_null_ptr, c_loc"
+        hook_uses = hook_interfaces = hook_state = hook_procedures = ""
+        start_call = "call advance(event)"
+        resume_hook_block = frame_hook_block = original_hook_block = reset_hook = ""
+        resume_continue = "call advance(event)"
     return f'''! The segment runner for {spec.stage}: the original Fortran, pausable at
 ! {", ".join(kernels)}.
 !
@@ -2016,13 +2241,13 @@ def render_runner(spec: Spec) -> str:
 ! runs the very call on the paused frame.  Python makes every call; Fortran
 ! never calls Python.
 module {spec.runner_module}
-  use, intrinsic :: iso_c_binding, only: c_int, c_int32_t, c_int64_t, c_double, c_ptr, c_char, c_null_ptr, c_loc
+  use, intrinsic :: iso_c_binding, only: {c_binding}
   use ppgrid, only: begchunk, endchunk
   use {spec.hosts}, only: stage_hosts_ok
 {chr(10).join(unit_uses)}
-  implicit none
+{hook_uses}  implicit none
   private
-
+{hook_interfaces}
   integer(c_int), parameter :: ev_done = 0_c_int, ev_needs_kernel = 1_c_int, ev_error = 2_c_int
 {pc_params}
 {kernel_constants}
@@ -2036,9 +2261,9 @@ module {spec.runner_module}
   integer(c_int), save :: token = 0_c_int, call_index = 0_c_int
   logical, save :: replace(nkernels) = .false.
   character(len=256), save :: last_error = ' '
-{getopt_decls}
+{hook_state}{getopt_decls}
 contains
-
+{hook_procedures}
   ! ------------------------------------------------------------------ !
   ! The ABI Python drives
   ! ------------------------------------------------------------------ !
@@ -2082,7 +2307,7 @@ contains
     call_index = 0_c_int
     lchnk = begchunk
     pc = pc_chunk_begin
-    call advance(event)
+    {start_call}
     status = 0_c_int
   end function {ep}_start_v1
 
@@ -2097,13 +2322,13 @@ contains
     if (token_in /= token) then
       last_error = 'stale resume: the frame token does not match the pause'; status = 4_c_int; return
     end if
-    select case (pc)
+{resume_hook_block}    select case (pc)
 {resume_cases}
     case default
       last_error = '{spec.prefix} is not paused'; status = 2_c_int; return
     end select
     token = token + 1_c_int
-    call advance(event)
+    {resume_continue}
     status = 0_c_int
   end function {ep}_resume_v1
 
@@ -2123,7 +2348,7 @@ contains
     if (count < frame_slots) then
       last_error = 'frame table is too short'; status = 3_c_int; return
     end if
-    select case (pc)
+{frame_hook_block}    select case (pc)
 {frame_cases}
     case default
       last_error = '{spec.prefix} is not paused; there is no frame'; status = 2_c_int; return
@@ -2143,7 +2368,7 @@ contains
     if (.not. created .or. context /= context_id) then
       last_error = 'no {spec.prefix} context'; return
     end if
-    select case (pc)
+{original_hook_block}    select case (pc)
 {original_cases}
     case default
       last_error = '{spec.prefix} is not paused; there is nothing to run'; status = 2_c_int; return
@@ -2168,7 +2393,7 @@ contains
     integer(c_int), value, intent(in) :: context
     status = 1_c_int
     if (.not. created .or. context /= context_id) return
-    pc = pc_idle
+{reset_hook}    pc = pc_idle
     status = 0_c_int
   end function {ep}_reset_v1
 
@@ -2176,7 +2401,7 @@ contains
     integer(c_int), value, intent(in) :: context
     status = 1_c_int
     if (.not. created .or. context /= context_id) return
-    created = .false.
+{reset_hook}    created = .false.
     pc = pc_idle
     status = 0_c_int
   end function {ep}_destroy_v1

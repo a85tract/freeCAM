@@ -70,15 +70,19 @@ def test_every_kernel_row_is_a_kernel_a_stage_class_describes_and_two_have_close
                          "zm_convr", "zm_conv_evap", "momtran", "convtran",
                          "compute_tms", "compute_eddy_diff", "compute_vdiff", "gw_drag_prof",
                          "wetdepa_v2", "modal_aero_depvel_part", "gas_phase_chemdr",
-                         # the kernel-API closure's first representative entries: a function inside an
-                         # assignment and a kernel inside a hoisted kernel; bindable, gates still owed
-                         "virtem", "cldfrc_fice"}
+                         # the kernel-API closure's first entries: a function inside an assignment, and
+                         # two kernels inside compiled kernels reached through hooks
+                         "virtem", "cldfrc_fice", "fluxbelowinv"}
     # virtem: gates 7343257 and 7343260 answered it through its assignment pause; cldfrc_fice's
     # pause runs a hoisted copy of zm_conv_evap, which gate 7343258 showed is not bit-for-bit
+    # virtem has closed the loop: contract, image, snapshot, pause gates, and every captured frame
+    # replayed bit-for-bit through the standalone function (7343396, pi_cam_virtem_frame_replay.json)
     assert rows["virtem"]["bindable"] and rows["virtem"]["validated_through_runner"]
-    assert rows["virtem"]["status"] == "open" and "in_model_replacement_bfb" not in rows["virtem"]["missing"]
-    assert rows["cldfrc_fice"]["bindable"] and not rows["cldfrc_fice"]["validated_through_runner"]
-    assert "in_model_replacement_bfb" in rows["cldfrc_fice"]["missing"] and "7343258" in (rows["cldfrc_fice"]["note"] or "")
+    assert rows["virtem"]["status"] == "complete" and rows["virtem"]["missing"] == []
+    for name in ("cldfrc_fice", "fluxbelowinv"):
+        assert rows[name]["bindable"] and not rows[name]["validated_through_runner"]
+        assert "in_model_replacement_bfb" in rows[name]["missing"]
+    assert "7343258" in (rows["cldfrc_fice"]["note"] or "")
     # the pausable stages: dadadj has a reviewed contract and the runner pauses at it
     assert rows["dadadj"]["bindable"] and rows["dadadj"]["contract"] == "reviewed"
     pcond = rows["mmacro_pcond"]
@@ -112,7 +116,7 @@ def test_every_kernel_row_is_a_kernel_a_stage_class_describes_and_two_have_close
         assert "reviewed_contract" not in rows[name]["missing"] and "segment_runner" not in rows[name]["missing"]
         assert "in_model_replacement_bfb" not in rows[name]["missing"]
         assert [g["record"] for g in rows[name]["in_model_gates"][1:]][-1] == "pi_cam_pausable_everything_50step.json"
-    assert record["summary"]["kernels_by_status"] == {"complete": 2, "open": 17}     # P3-P5 kernels and the two closure entries await capture and replay
+    assert record["summary"]["kernels_by_status"] == {"complete": 3, "open": 17}     # P3-P5 kernels and the hooked entries await capture and replay
 
 
 def test_the_committed_record_is_what_the_builder_writes_now() -> None:

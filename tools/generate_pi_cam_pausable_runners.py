@@ -50,7 +50,8 @@ def main(argv: list[str] | None = None) -> int:
         return 1
     stale = False
     frames: dict = {}
-    if pausable.FRAMES.is_file():
+    if arguments.only and pausable.FRAMES.is_file():
+        # one spec regenerated: the other kernels' frames stay as recorded
         frames = yaml.safe_load(pausable.FRAMES.read_text()).get("kernels", {}) or {}
     for path in specs:
         spec = pausable.load_spec(path)

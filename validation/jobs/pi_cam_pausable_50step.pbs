@@ -17,6 +17,8 @@
 # the runner's pause -- the pause, the frame, the write-back and the resume
 # exercised, the answer the oracle's or the path is wrong.  PYCAM_RUN_TAG
 # names the run's records.  PYCAM_NATIVE_MANIFEST points at the image.
+# PYCAM_CAPTURE_KERNELS records every call's frame of the named kernels for the
+# standalone replay (tools/replay_pi_cam_frame_capture.py).
 # PYCAM_DISABLE_ACTIONS (qualified action names) is the inertness gate: those
 # actions switched off, the answer must still be the oracle's.
 # PYCAM_RADIATION_PYTHON=1 installs the split Radiation class between its two
@@ -78,6 +80,11 @@ fi
 if [ -n "${PYCAM_DISABLE_ACTIONS:-}" ]; then
   # the inertness gate: actions expected to do no numerical work, switched off
   stage_flags+=(--disable-actions "${PYCAM_DISABLE_ACTIONS}")
+fi
+if [ -n "${PYCAM_CAPTURE_KERNELS:-}" ]; then
+  # the named kernels answered by the original at their pauses with every call's
+  # frame recorded, for the standalone replay; the run must stay bit-for-bit
+  stage_flags+=(--capture-kernels "${PYCAM_CAPTURE_KERNELS}" --capture-dir "${run_dir}/../frame-capture")
 fi
 if [ ${#stage_flags[@]} -eq 0 ]; then
   echo "set PYCAM_PYTHON_STAGES, PYCAM_RADIATION_PYTHON, PYCAM_ORIGINAL_KERNELS or PYCAM_DISABLE_ACTIONS" >&2; exit 2

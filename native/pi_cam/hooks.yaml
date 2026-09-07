@@ -1,0 +1,35 @@
+# Hooks: kernels reached inside compiled routines without hoisting anything.
+#
+# For each hook the fixed image links a copy of every named caller object
+# whose reference to the callee's symbol is renamed (objcopy --redefine-sym) to
+# the hook's symbol; the copy's machine code is byte-identical to the oracle's
+# and the build proves it.  The generated module pycam_hooks (from
+# tools/generate_pi_cam_hooks.py) holds one hook procedure per kernel with the
+# callee's own argument list, taken from the reviewed function contract: it
+# counts every call, calls the original when the kernel is not armed, and when
+# it is armed hands Python the frame by yielding the stage's fiber
+# (native/pi_cam/pycam_fiber.c).  Fortran never calls Python.
+schema_version: 1
+# the fiber stack every hooked stage runs on; reserved lazily
+fiber_stack_bytes: 536870912
+hooks:
+  - kernel: cldfrc_fice
+    contract: native/pi_cam/functions/cldfrc_fice.yaml
+    original: {module: cloud_fraction, routine: cldfrc_fice}
+    callee_symbol: cloud_fraction_mp_cldfrc_fice_
+    # the callee lives in another object: the caller's references are renamed to the
+    # hook's symbol (zm_conv_evap's call, zm_conv.F90:945, one R_X86_64_PC32 relocation)
+    redirect: rename-references
+    callers:
+      - {object: zm_conv.o, routine: zm_conv_evap}
+  - kernel: fluxbelowinv
+    contract: native/pi_cam/functions/fluxbelowinv.yaml
+    # the callee is defined in the caller's own object, so its references cannot be
+    # renamed apart from its definition: the definition is weakened and given a second
+    # name, the hook takes the original name, and the linker resolves every reference
+    # (compute_uwshcu's three call sites, six PC32 relocations) to the hook
+    redirect: weaken-definition
+    original: {symbol: uwshcu_mp_fluxbelowinv_original_}
+    callee_symbol: uwshcu_mp_fluxbelowinv_
+    callers:
+      - {object: uwshcu.o, routine: compute_uwshcu}

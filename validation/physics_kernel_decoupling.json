@@ -42,12 +42,12 @@
       "not-required-in-this-configuration": 11,
       "partial": 10
     },
-    "kernels": 19,
+    "kernels": 20,
     "kernels_by_status": {
-      "complete": 2,
+      "complete": 3,
       "open": 17
     },
-    "kernels_bindable": 19,
+    "kernels_bindable": 20,
     "kernels_validated_through_runner": 18,
     "catalog_procedures": 371
   },
@@ -2564,7 +2564,8 @@
       "activity_basis": "enabled in the plan; called every step in the recorded runs",
       "python_class": "freecam.physics.pausable.ShallowConvection",
       "kernels": [
-        "compute_uwshcu_inv"
+        "compute_uwshcu_inv",
+        "fluxbelowinv"
       ],
       "kernel_candidates": [
         {
@@ -5192,6 +5193,36 @@
       "note": null
     },
     {
+      "kernel": "fluxbelowinv",
+      "stage_action": "cam_run1.shallow_convection",
+      "owner_class": "freecam.physics.pausable.ShallowConvection",
+      "routine": "fluxbelowinv",
+      "contract": "reviewed",
+      "contract_path": "native/pi_cam/functions/fluxbelowinv.yaml",
+      "bindable": true,
+      "validated_through_runner": false,
+      "evidence": {
+        "capture": [],
+        "standalone_build": [
+          "pi_cam_fluxbelowinv_standalone_build.json"
+        ],
+        "replay_full_chunk": [],
+        "replay_single_column": [],
+        "replay_public_api": [],
+        "module_state": []
+      },
+      "in_model_gates": [],
+      "status": "open",
+      "missing": [
+        "capture",
+        "replay_full_chunk",
+        "replay_single_column",
+        "replay_public_api",
+        "in_model_replacement_bfb"
+      ],
+      "note": null
+    },
+    {
       "kernel": "zm_convr",
       "stage_action": "cam_run1.deep_convection",
       "owner_class": "freecam.physics.pausable.DeepConvection",
@@ -5404,7 +5435,7 @@
         "replay_public_api",
         "in_model_replacement_bfb"
       ],
-      "note": "Gate 7343258 (pause at cldfrc_fice with the original answered, every other kernel native) was not bit-for-bit: rank 350 diverged by a few ULP at step 7 in cam_out.a2x_rattr. Reaching this pause runs the hoisted copy of zm_conv_evap's arithmetic, and a recompiled copy of a numerical routine does not reproduce the oracle object's rounding. Bindable, blocked until pauses inside compiled kernels stop depending on hoisting."
+      "note": "The first attempt, a pause inside a hoisted copy of zm_conv_evap, was not bit-for-bit (gate 7343258, validation/pi_cam_pausable_fice-pause_50step_failure.json): a recompiled copy of a numerical routine does not reproduce the oracle object's rounding. The hook leaves zm_conv.o's machine code untouched; its gates are owed."
     },
     {
       "kernel": "convtran",
@@ -5628,13 +5659,21 @@
       "bindable": true,
       "validated_through_runner": true,
       "evidence": {
-        "capture": [],
+        "capture": [
+          "pi_cam_pausable_virtem-capture_50step.json"
+        ],
         "standalone_build": [
           "pi_cam_virtem_standalone_build.json"
         ],
-        "replay_full_chunk": [],
-        "replay_single_column": [],
-        "replay_public_api": [],
+        "replay_full_chunk": [
+          "pi_cam_virtem_frame_replay.json"
+        ],
+        "replay_single_column": [
+          "pi_cam_virtem_frame_replay.json"
+        ],
+        "replay_public_api": [
+          "pi_cam_virtem_frame_replay.json"
+        ],
         "module_state": [
           "pi_cam_virtem_module_state.json"
         ]
@@ -5657,13 +5696,8 @@
           "compared_files": 4
         }
       ],
-      "status": "open",
-      "missing": [
-        "capture",
-        "replay_full_chunk",
-        "replay_single_column",
-        "replay_public_api"
-      ],
+      "status": "complete",
+      "missing": [],
       "note": null
     },
     {
@@ -5925,6 +5959,26 @@
       "why": "no record in validation/ for this step of the loop"
     },
     {
+      "what": "fluxbelowinv: capture",
+      "why": "no record in validation/ for this step of the loop"
+    },
+    {
+      "what": "fluxbelowinv: replay_full_chunk",
+      "why": "no record in validation/ for this step of the loop"
+    },
+    {
+      "what": "fluxbelowinv: replay_single_column",
+      "why": "no record in validation/ for this step of the loop"
+    },
+    {
+      "what": "fluxbelowinv: replay_public_api",
+      "why": "no record in validation/ for this step of the loop"
+    },
+    {
+      "what": "fluxbelowinv: in_model_replacement_bfb",
+      "why": "no record in validation/ for this step of the loop"
+    },
+    {
       "what": "zm_convr: capture",
       "why": "no record in validation/ for this step of the loop"
     },
@@ -6085,22 +6139,6 @@
       "why": "no record in validation/ for this step of the loop"
     },
     {
-      "what": "virtem: capture",
-      "why": "no record in validation/ for this step of the loop"
-    },
-    {
-      "what": "virtem: replay_full_chunk",
-      "why": "no record in validation/ for this step of the loop"
-    },
-    {
-      "what": "virtem: replay_single_column",
-      "why": "no record in validation/ for this step of the loop"
-    },
-    {
-      "what": "virtem: replay_public_api",
-      "why": "no record in validation/ for this step of the loop"
-    },
-    {
       "what": "gw_drag_prof: capture",
       "why": "no record in validation/ for this step of the loop"
     },
@@ -6181,5 +6219,5 @@
       "why": "no record in validation/ for this step of the loop"
     }
   ],
-  "coverage_hash": "2fb2749113fadb7e3bb6d09b430c35b698403a8336085036a2043eea79984f0f"
+  "coverage_hash": "7269bf5c34ec41e74d62e784ec5fc85c5bfb7ce371ccf9bd55f6d336a14bea1e"
 }

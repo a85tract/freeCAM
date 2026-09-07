@@ -109,11 +109,15 @@ STAGE_CLASSES = (
 #: Validation records per kernel, by the step of the delivery loop they prove.
 #: ``{name}`` is the kernel's name; a pattern that names no file is a gap.
 EVIDENCE_PATTERNS = {
-    "capture": ("pi_cam_{name}_capture_50step.json",),
+    # captured either by the Fortran instrumentation (pycam_function_capture) or at the
+    # runner's pause, every call's frame recorded in a bit-for-bit gate
+    "capture": ("pi_cam_{name}_capture_50step.json", "pi_cam_pausable_{name}-capture_50step.json"),
     "standalone_build": ("pi_cam_{name}_standalone_build.json", "pi_cam_{name}_standalone_manifest.json"),
-    "replay_full_chunk": ("pi_cam_{name}_full_chunk_vs_capture.json",),
-    "replay_single_column": ("pi_cam_{name}_single_column_vs_capture.json",),
-    "replay_public_api": ("pi_cam_{name}_public_api_vs_capture.json",),
+    # frame captures are replayed through the public function on every captured call and
+    # lane, which is at once the chunk, the column and the public-API replay
+    "replay_full_chunk": ("pi_cam_{name}_full_chunk_vs_capture.json", "pi_cam_{name}_frame_replay.json"),
+    "replay_single_column": ("pi_cam_{name}_single_column_vs_capture.json", "pi_cam_{name}_frame_replay.json"),
+    "replay_public_api": ("pi_cam_{name}_public_api_vs_capture.json", "pi_cam_{name}_frame_replay.json"),
     "module_state": ("pi_cam_{name}_module_state.json",),
 }
 #: In-model replacement gates that are not named after the kernel: the record

@@ -56,7 +56,12 @@ def test_the_runner_modules_carry_the_abi_and_the_original_entry() -> None:
         text = (pausable.SUPPORT / f"pycam_{prefix}_runner.F90").read_text()
         for suffix in ("create", "start", "frame", "resume", "original", "error", "reset", "destroy"):
             assert f"bind(C, name='pycam_{prefix}_{suffix}_v1')" in text, (prefix, suffix)
-        assert "c_funptr" not in text.lower() and "c_f_procpointer" not in text.lower()
+        # no callbacks into Python: the one procedure pointer a hooked runner takes is its own
+        # fiber body, handed to the C context switch
+        assert "c_f_procpointer" not in text.lower()
+        if "c_funptr" in text.lower():
+            assert "c_funloc(fiber_body)" in text and "hook_of(nkernels)" in text
+            assert text.lower().count("c_funloc(") == 1
 
 
 def test_the_manifest_names_the_pausable_runners_and_python_decodes_their_frames() -> None:
@@ -68,7 +73,7 @@ def test_the_manifest_names_the_pausable_runners_and_python_decodes_their_frames
     assert runners.frame_names_from_descriptor(REPO / spec.kernel("dadadj").frame, "dadadj") == (
         "lchnk", "ncol", "pmid", "pint", "pdel", "t", "q")
     shallow = runners.runner_spec("cam_run1.shallow_convection")
-    assert shallow is not None and shallow.kernel_names == ("compute_uwshcu_inv",)
+    assert shallow is not None and shallow.kernel_names == ("compute_uwshcu_inv", "fluxbelowinv")
     assert set(runners.bindable_kernels()) >= {"mmacro_pcond", "micro_mg_tend", "dadadj", "compute_uwshcu_inv"}
     # an image without the original entry is refused when the manifest promises it
     lib = SimpleNamespace(**{f"pycam_dadadj_{s}_v1": object() for s in runners.ENTRY_SUFFIXES})
@@ -114,7 +119,7 @@ def test_a_pausable_stage_runs_whole_when_nothing_is_replaced_and_refuses_the_wa
     stage.execution_policy = "legacy-python"
     with pytest.raises(PhysicsError, match="no statement-by-statement Python walk"):
         stage.select_mode(None)
-    assert ShallowConvection().SWAPPABLE == ("compute_uwshcu_inv",)
+    assert ShallowConvection().SWAPPABLE == ("compute_uwshcu_inv", "fluxbelowinv")
     inert = [cls for cls in STAGES.values() if issubclass(cls, InertStage)]
     assert len(inert) == 11 and all(cls.SWAPPABLE == () for cls in inert)
     assert {cls.STAGE for cls in inert} == {
@@ -417,25 +422,37 @@ def test_a_function_inside_an_assignment_pauses_with_its_sections_and_its_result
     assert pausable._section_extents("x(i,k)", None) == (0, [])
 
 
-def test_a_kernel_inside_a_hoisted_kernel_is_entered_only_when_it_alone_is_replaced() -> None:
-    """cldfrc_fice inside zm_conv_evap: three-way dispatch in the runner, a conflict when both are replaced."""
+def test_a_kernel_inside_a_compiled_kernel_is_reached_through_its_hook() -> None:
+    """cldfrc_fice and fluxbelowinv: hooked, so the runner runs on the fiber when they alone are replaced."""
 
-    spec = pausable.load_spec(pausable.SPECS / "deep_convection.yaml")
-    assert spec.kernels["cldfrc_fice"].within == "zm_conv_evap"
-    (node,) = [n for n in pausable._walk(spec.units["zm"].body) if n.kind == "kernel_unit"]
-    assert node.pause.kernel == "zm_conv_evap" and node.call.unit == "evap"
-    runner = pausable.render_runner(spec)
-    evap_id, fice_id = list(spec.kernels).index("zm_conv_evap") + 1, list(spec.kernels).index("cldfrc_fice") + 1
-    dispatch = runner[runner.index("case (pc_before_zm_conv_evap_1)"):]
-    dispatch = dispatch[:dispatch.index("case (pc_at_zm_conv_evap)")]
-    assert f"if (replace({evap_id})) then" in dispatch
-    assert f"else if (replace({fice_id})) then" in dispatch and "call zm_bind_evap()" in dispatch
-    assert "call zm_conv_evap_original()" in dispatch
-    frames = pausable.frame_descriptors(spec)
-    assert [s["name"] for s in frames["cldfrc_fice"]] == ["ncol", "t", "fice", "fsnow"]
+    import subprocess
+
+    from freecam.pi_cam.hooks import load_hooks
     from freecam.pi_cam.segment_runner import load_manifest
 
-    manifest = {s.stage: s for s in load_manifest()}["cam_run1.deep_convection"]
-    assert manifest.kernel("cldfrc_fice").within == "zm_conv_evap"
-    assert manifest.replacement_conflicts({"zm_conv_evap": True, "cldfrc_fice": True}) == [("cldfrc_fice", "zm_conv_evap")]
-    assert manifest.replacement_conflicts({"zm_convr": True, "cldfrc_fice": True}) == []
+    table = load_hooks()
+    assert table.kernel_names == ("cldfrc_fice", "fluxbelowinv")
+    fice, flux = table.hook("cldfrc_fice"), table.hook("fluxbelowinv")
+    assert fice.redirect == "rename-references" and fice.symbol == "pycam_hook_cldfrc_fice_"
+    assert flux.redirect == "weaken-definition" and flux.symbol == "uwshcu_mp_fluxbelowinv_"
+    assert flux.original_symbol == "uwshcu_mp_fluxbelowinv_original_"
+    for stem, kernel, ids in (("deep_convection", "cldfrc_fice", "0, 0, 0, 1"), ("shallow_convection", "fluxbelowinv", "0, 2")):
+        spec = pausable.load_spec(pausable.SPECS / f"{stem}.yaml")
+        assert spec.kernels[kernel].hook and spec.kernels[kernel].within
+        assert not any(p.kernel == kernel for u in spec.units.values() for p in u.pauses)
+        runner = pausable.render_runner(spec)
+        assert f"hook_of(nkernels) = (/ {ids} /)" in runner
+        for needle in ("call run_from_start(event)", "pycam_hooks_frame_v1(count, ptrs, ndims, shapes, dtypes, intents, ncol_out)",
+                       "status = pycam_hooks_original_v1()", "call continue_fiber(event)", "call abandon_fiber()"):
+            assert needle in runner, needle
+    # a runner without hooked kernels renders exactly as before: no fiber, no hooks
+    plain = pausable.render_runner(pausable.load_spec(pausable.SPECS / "dry_adjustment.yaml"))
+    assert "hook_of" not in plain and "fiber" not in plain and "pycam_hooks" not in plain
+    # the hook module is what its generator writes, and the manifest ties the kernels to their contracts
+    check = subprocess.run([sys.executable, str(pausable.REPO / "tools/generate_pi_cam_hooks.py"), "--check"],
+                           capture_output=True, text=True)
+    assert check.returncode == 0, check.stderr[-800:]
+    manifest = {s.stage: s for s in load_manifest()}
+    assert manifest["cam_run1.deep_convection"].kernel("cldfrc_fice").contract == "native/pi_cam/functions/cldfrc_fice.yaml"
+    assert manifest["cam_run1.deep_convection"].replacement_conflicts({"zm_conv_evap": True, "cldfrc_fice": True}) == [("cldfrc_fice", "zm_conv_evap")]
+    assert manifest["cam_run1.shallow_convection"].replacement_conflicts({"compute_uwshcu_inv": True, "fluxbelowinv": True}) == [("fluxbelowinv", "compute_uwshcu_inv")]

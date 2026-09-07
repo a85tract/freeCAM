@@ -87,6 +87,14 @@ runners:
 # radiation handles' ptend and net flux, and the resume half takes them when
 # Python owns the step.  Both RRTMG cores are pauses inside the dosw / dolw
 # blocks and their icall loops.
+  - name: fluxbelowinv
+    owner: freecam.physics.pausable.ShallowConvection
+    # a private routine called inside the compiled compute_uwshcu: uwshcu.o's definition is
+    # weakened and the hook takes its name (native/pi_cam/hooks.yaml); the frame is the
+    # function contract's argument list.  It and compute_uwshcu_inv cannot be replaced together.
+    contract: native/pi_cam/functions/fluxbelowinv.yaml
+    within: compute_uwshcu_inv
+    validated_by: []
 - stage: cam_run1.radiation
   prefix: pycam_radt
   module: native/pi_cam/support/pycam_radt_runner.F90
@@ -166,18 +174,17 @@ runners:
     - validation/pi_cam_pausable_everything_vs_oracle_50step_bfb.json
   - name: cldfrc_fice
     owner: freecam.physics.pausable.DeepConvection
-    frame: native/pi_cam/segment_frames.yaml
-    # called inside zm_conv_evap; the runner enters the hoisted evaporation driver
-    # to reach it, so it and zm_conv_evap cannot be replaced together
+    # called inside the compiled zm_conv_evap: zm_conv.o's reference is redirected to a
+    # hook (native/pi_cam/hooks.yaml) that yields the stage's fiber; the frame is the
+    # function contract's argument list.  It and zm_conv_evap cannot be replaced together.
+    contract: native/pi_cam/functions/cldfrc_fice.yaml
     within: zm_conv_evap
     validated_by: []
     note: >-
-      Gate 7343258 (pause at cldfrc_fice with the original answered, every other kernel
-      native) was not bit-for-bit: rank 350 diverged by a few ULP at step 7 in
-      cam_out.a2x_rattr.  Reaching this pause runs the hoisted copy of zm_conv_evap's
-      arithmetic, and a recompiled copy of a numerical routine does not reproduce the
-      oracle object's rounding.  Bindable, blocked until pauses inside compiled kernels
-      stop depending on hoisting.
+      The first attempt, a pause inside a hoisted copy of zm_conv_evap, was not bit-for-bit
+      (gate 7343258, validation/pi_cam_pausable_fice-pause_50step_failure.json): a recompiled
+      copy of a numerical routine does not reproduce the oracle object's rounding.  The hook
+      leaves zm_conv.o's machine code untouched; its gates are owed.
 - stage: cam_run1.convective_tracer_transport_leaf
   prefix: pycam_zmtran
   module: native/pi_cam/support/pycam_zmtran_runner.F90

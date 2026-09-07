@@ -1,0 +1,28 @@
+{
+  "schema_version": 1,
+  "what": "A pausable gate that was not bit-for-bit, kept as evidence: cldfrc_fice answered by the original through a pause reached by running a hoisted copy of zm_conv_evap.",
+  "pbs_job_id": "7343258.desched1",
+  "job": "validation/jobs/pi_cam_pausable_50step.pbs",
+  "run_tag": "fice-pause",
+  "python_stages": ["deep_convection"],
+  "segmented_original_kernels": "cldfrc_fice",
+  "native_image": "build/pi_cam_promoted_p7",
+  "native_library_sha256": "9bfadfa167531de46f5299ebff645d44a0d86e3e59ce13af98a4c4f579ee83fe",
+  "runner": "pycam_zmdeep_runner (kernel unit zm_conv_evap -> unit evap, pause at cldfrc_fice)",
+  "outcome": "not bit-for-bit",
+  "ranks": 512,
+  "steps_completed": 6,
+  "first_difference": {
+    "step": 7,
+    "rank": 350,
+    "field": "cam_out.a2x_rattr",
+    "index": [15, 4],
+    "candidate": {"value": 2.487130385123081e-05, "bits": "0x189f84fc5614fa3e"},
+    "reference": {"value": 2.4871303851230577e-05, "bits": "0xd39e84fc5614fa3e"},
+    "detector": "boundary export verification (verify_boundary_exports), which stops the run at the first non-identical export"
+  },
+  "resources_used": {"walltime": "00:00:57", "mem_kb": 194026720},
+  "diagnosis": "Reaching the pause runs the hoisted copy of zm_conv_evap's arithmetic (module pycam_zmdeep_evap) instead of the oracle object's zm_conv_evap. The two are the same Fortran text compiled with the same flags in different units; the copy does not reproduce the oracle's rounding. The same stage with zm_conv_evap itself answered through its pause (7343259) and with cldfrc_fice left native (7343260) is bit-for-bit, so the difference is the hoisted arithmetic, not the pause protocol.",
+  "consequence": "cldfrc_fice stays bindable and blocked in native/pi_cam/segment_runners.yaml. No further numerical routine is hoisted; pauses inside compiled kernels need a mechanism that leaves their machine code untouched.",
+  "records_withheld": "pi_cam_pausable_fice-pause_50step.json was never written (the model exited before its summary); the bfb comparison record is summarised here rather than kept."
+}

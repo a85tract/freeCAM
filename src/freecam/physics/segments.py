@@ -17,6 +17,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from enum import IntEnum
+from pathlib import Path
 from typing import Any, Callable, Mapping, Protocol, Sequence
 
 import numpy as np
@@ -170,6 +171,78 @@ class OriginalAtPause:
 
     def __repr__(self) -> str:
         return "OriginalAtPause()"
+
+
+class FrameCapture:
+    """Put in a kernel slot: the original at the pause, with every call's frame recorded.
+
+    Before the original runs, every input the frame declares is copied; after
+    it runs, every output is copied and answered exactly as
+    :class:`OriginalAtPause` does, so the stage stays bit-for-bit and the
+    record holds what the kernel was given and what it returned, call by
+    call.  :meth:`save` writes the rank's record as an ``.npz``: one array per
+    call and argument (``in/<call>/<name>``, ``out/<call>/<name>``, the live
+    lanes only) and a JSON ``meta`` array with the step, chunk column count
+    and token of each call.  ``step`` reports the model step when called.
+    """
+
+    takes_frame = True
+
+    def __init__(self, kernel: str) -> None:
+        self.kernel = kernel
+        #: the model step in flight, set by the stage before each run
+        self.current_step: int | None = None
+        self.inputs: list[dict[str, np.ndarray]] = []
+        self.outputs: list[dict[str, np.ndarray]] = []
+        self.meta: list[dict[str, Any]] = []
+        self._original = OriginalAtPause()
+
+    def __call__(self, frame: "KernelFrame", runner: "SegmentRunner", context: int) -> dict[str, np.ndarray]:
+        before: dict[str, np.ndarray] = {}
+        for argument in frame.arguments:
+            if argument.is_output and argument.intent == "out":
+                continue
+            before[argument.name] = np.array(_live(argument.array, frame.ncol), copy=True)
+        answer = self._original(frame, runner, context)
+        self.inputs.append(before)
+        self.outputs.append({name: np.array(value, copy=True) for name, value in answer.items()})
+        self.meta.append({
+            "step": None if self.current_step is None else int(self.current_step),
+            "ncol": int(frame.ncol),
+            "token": int(frame.token),
+            "kernel": frame.kernel,
+        })
+        return answer
+
+    @property
+    def calls(self) -> int:
+        return len(self.meta)
+
+    def save(self, path: str | Path) -> Path:
+        import json
+
+        arrays: dict[str, np.ndarray] = {}
+        for index, (before, after) in enumerate(zip(self.inputs, self.outputs)):
+            for name, value in before.items():
+                arrays[f"in/{index}/{name}"] = value
+            for name, value in after.items():
+                arrays[f"out/{index}/{name}"] = value
+        arrays["meta"] = np.array(json.dumps(self.meta))
+        target = Path(path)
+        target.parent.mkdir(parents=True, exist_ok=True)
+        np.savez(target, **arrays)
+        return target
+
+    def __repr__(self) -> str:
+        return f"FrameCapture({self.kernel!r}, calls={self.calls})"
+
+
+def _live(array: np.ndarray, ncol: int) -> np.ndarray:
+    """The live lanes of a frame array: the first ``ncol`` along the first axis."""
+
+    if array.ndim == 0:
+        return array
+    return array[:ncol] if array.shape[0] >= ncol else array
 
 
 class SegmentRunner(Protocol):

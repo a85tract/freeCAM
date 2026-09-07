@@ -30,6 +30,7 @@ from freecam.pi_cam.state_codegen import (  # noqa: E402
     instrument_cam_comp,
     load_state_bridge,
 )
+from freecam.pi_cam.hooks import HOOKS, load_hooks  # noqa: E402
 from freecam.pi_cam.kernel_codegen import (  # noqa: E402
     generate_direct_kernel_module,
     load_direct_kernels,
@@ -73,6 +74,9 @@ SUPPORT_MODULES = ("pycam_macro_kernels.F90", "pycam_macro_handles.F90",
                    "pycam_aero_kernels.F90",
                    "pycam_micro_handles.F90", "pycam_aero_handles.F90",
                    "pycam_mm_handles.F90",
+                   # the hooks: kernels reached inside compiled routines by symbol
+                   # redirection; the runners of hooked kernels use this module
+                   "pycam_hooks.F90",
                    # the pausable runners: hosts, then each process's units (a
                    # driver before the glue that binds it), then its runner
                    "pycam_stage_hosts.F90",
@@ -80,7 +84,7 @@ SUPPORT_MODULES = ("pycam_macro_kernels.F90", "pycam_macro_handles.F90",
                    "pycam_shcu_driver.F90", "pycam_shcu_glue.F90", "pycam_shcu_runner.F90",
                    "pycam_radt_driver.F90", "pycam_radt_glue.F90", "pycam_radt_runner.F90",
                    # the deepest unit first: each unit's binder is used by the unit that calls it
-                   "pycam_zmdeep_evap.F90", "pycam_zmdeep_zm.F90", "pycam_zmdeep_deep.F90", "pycam_zmdeep_glue.F90", "pycam_zmdeep_runner.F90",
+                   "pycam_zmdeep_zm.F90", "pycam_zmdeep_deep.F90", "pycam_zmdeep_glue.F90", "pycam_zmdeep_runner.F90",
                    "pycam_zmtran_zm2.F90", "pycam_zmtran_deep2.F90", "pycam_zmtran_glue.F90", "pycam_zmtran_runner.F90",
                    "pycam_vdiff_driver.F90", "pycam_vdiff_glue.F90", "pycam_vdiff_runner.F90",
                    "pycam_gwd_driver.F90", "pycam_gwd_glue.F90", "pycam_gwd_runner.F90",
@@ -92,7 +96,7 @@ SUPPORT_MODULES = ("pycam_macro_kernels.F90", "pycam_macro_handles.F90",
 #: compiled from the prepared source for their .mod files only, into the working
 #: directory the support modules read first; the object is discarded and the
 #: oracle's stays in the archive, so no numerical machine code is recompiled.
-INTERFACE_MODULES = ("zm_conv_intr.F90", "vertical_diffusion.F90", "gw_drag.F90", "zm_conv.F90",
+INTERFACE_MODULES = ("zm_conv_intr.F90", "vertical_diffusion.F90", "gw_drag.F90",
                      "../../chemistry/mozart/chemistry.F90", "../../chemistry/modal_aero/aero_model.F90")
 MACRO_BIND_HOSTS_SYMBOL = "pycam_macro_bind_hosts_v1"
 RAD_BIND_HOSTS_SYMBOL = "pycam_rad_bind_hosts_v1"
@@ -273,6 +277,67 @@ def _operations(state_bridge, direct_kernels=(), *, zero_copy_state: bool = Fals
             )
         operations[kernel.operation_name] = kernel.operation_payload()
     return operations
+
+
+def _text_sha256(path: Path, work: Path) -> str:
+    """The bytes of an object's .text section: the machine code a redirection must leave alone."""
+
+    dump = work / f"{path.name}.text.bin"
+    _run(["objcopy", "-O", "binary", "--only-section=.text", str(path), str(dump)], cwd=work)
+    return _sha256(dump)
+
+
+def _relocations_naming(path: Path, symbol: str) -> int:
+    output = subprocess.run(["readelf", "-rW", str(path)], check=True, capture_output=True, text=True).stdout
+    return sum(1 for line in output.splitlines() if line.split() and symbol in line.split())
+
+
+def _redirect_hook_callers(archive: Path, out_dir: Path, table) -> tuple[list[dict], list[Path]]:
+    """Copies of the hooked kernels' caller objects whose references reach the hooks.
+
+    ``rename-references``: the callee's symbol is renamed in the caller's copy, so
+    every reference (and nothing else) calls the hook.  ``weaken-definition``: the
+    callee is defined in the caller's own object; its definition is weakened and
+    given a second name for the hook to call, and the hook, a strong definition of
+    the original name elsewhere, wins the link for every reference.  Either way the
+    .text bytes are proved unchanged.
+    """
+
+    out_dir.mkdir(parents=True, exist_ok=True)
+    records: list[dict] = []
+    objects: list[Path] = []
+    for hook in table.hooks:
+        for caller in hook.callers:
+            target = out_dir / caller.object
+            if target.exists():
+                target.unlink()
+            _run(["ar", "x", str(archive), caller.object], cwd=out_dir)
+            before_text = _text_sha256(target, out_dir)
+            before_relocations = _relocations_naming(target, hook.callee_symbol)
+            if before_relocations == 0:
+                raise RuntimeError(f"{caller.object} has no relocation naming {hook.callee_symbol}; nothing to redirect")
+            if hook.redirect == "rename-references":
+                _run(["objcopy", f"--redefine-sym={hook.callee_symbol}={hook.symbol}", str(target)], cwd=out_dir)
+                after_relocations = _relocations_naming(target, hook.symbol)
+            else:
+                symbols = subprocess.run(["nm", str(target)], check=True, capture_output=True, text=True).stdout
+                definition = next((line.split() for line in symbols.splitlines()
+                                   if line.split() and line.split()[-1] == hook.callee_symbol and line.split()[-2] == "T"), None)
+                if definition is None:
+                    raise RuntimeError(f"{caller.object} does not define {hook.callee_symbol}; weaken-definition needs the definition")
+                _run(["objcopy", f"--add-symbol={hook.original_symbol}=.text:0x{definition[0]},global,function",
+                      f"--weaken-symbol={hook.callee_symbol}", str(target)], cwd=out_dir)
+                after_relocations = _relocations_naming(target, hook.callee_symbol)
+            after_text = _text_sha256(target, out_dir)
+            if after_text != before_text:
+                raise RuntimeError(f"{caller.object}: the redirection changed .text ({before_text[:12]} -> {after_text[:12]})")
+            records.append({
+                "kernel": hook.kernel, "object": caller.object, "routine": caller.routine, "mode": hook.redirect,
+                "callee_symbol": hook.callee_symbol, "hook_symbol": hook.symbol, "original_symbol": hook.original_symbol,
+                "relocations": after_relocations, "text_sha256": after_text, "object_sha256": _sha256(target),
+            })
+            objects.append(target)
+    return records, objects
 
 
 def main() -> int:
@@ -677,6 +742,11 @@ def main() -> int:
         "-o", str(floating_environment_object),
     ]
     _run(floating_environment_compile, cwd=work)
+    # the fiber the hooked stages run on: a second stack the hooks yield from
+    fiber_source = REPO / "native/pi_cam/pycam_fiber.c"
+    fiber_object = work / "pycam_fiber.o"
+    fiber_compile = ["cc", "-c", "-O2", str(fiber_source), "-o", str(fiber_object)]
+    _run(fiber_compile, cwd=work)
 
     atm_archive = output.parent / "libatm_nonpic_python_control.a"
     base_atm_archive = build / "lib/libatm.a"
@@ -707,6 +777,9 @@ def main() -> int:
             generated_objects / "pycam_python_state_registry.o",
             *support_objects,
         )
+    hook_table = load_hooks()
+    redirections, redirected_objects = _redirect_hook_callers(base_atm_archive, generated_objects / "redirected", hook_table)
+    replacement_objects = (*replacement_objects, *redirected_objects)
     _replace_archive(
         base_atm_archive,
         atm_archive,
@@ -722,6 +795,7 @@ def main() -> int:
     capture_executable = args.capture_executable.resolve()
     capture_link = list(patched_link)
     capture_link.insert(capture_link.index("-o"), str(floating_environment_object))
+    capture_link.insert(capture_link.index("-o"), str(fiber_object))
     capture_link[capture_link.index("-o") + 1] = str(capture_executable)
     _run(capture_link, cwd=build / "cpl/obj")
     # Record the exact Intel math runtime used by the standalone executable.
@@ -760,6 +834,7 @@ def main() -> int:
         *(str(path) for path in support_objects),
         str(direct_kernel_object),
         str(floating_environment_object),
+        str(fiber_object),
         "-Wl,--unresolved-symbols=ignore-all",
         "-o", str(fixed_executable),
     ]
@@ -921,6 +996,9 @@ def main() -> int:
         "adapter": str(args.adapter.resolve()),
         "floating_environment": str(args.floating_environment.resolve()),
         "floating_environment_compile_command": floating_environment_compile,
+        "fiber": {"source": str(fiber_source), "source_sha256": _sha256(fiber_source), "compile_command": fiber_compile,
+                  "stack_bytes": hook_table.fiber_stack_bytes},
+        "hooks": {"table": str(HOOKS), "table_sha256": hook_table.sha256, "redirections": redirections},
         "intel_math_library": str(imf_shared),
         "operations": _operations(
             state_bridge,

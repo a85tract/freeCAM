@@ -98,14 +98,6 @@ STATE_PATCHES: tuple[StatePatch, ...] = (
          "deposition drivers read, and the module's own procedures they call, readable by",
          "the pausable runners' hoisted copies.  No executable statement changes."),
     ),
-    StatePatch(
-        "0049-zm-conv-state-boundary.patch", "src/physics/cam/zm_conv.F90",
-        "logical  :: zm_org",
-        ("ke", "ke_lnd", "zm_org"),
-        ("pyCAM (control patch 0049): the evaporation efficiencies and the organization",
-         "switch zm_conv_evap reads, readable by the pausable runner's hoisted copy of the",
-         "routine.  No executable statement changes."),
-    ),
 )
 BOUNDARIES = {entry.patch: entry.path for entry in STATE_PATCHES}
 

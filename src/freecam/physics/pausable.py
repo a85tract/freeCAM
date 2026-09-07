@@ -93,7 +93,7 @@ class ShallowConvection(PausableStage):
     PREFIX = "shcu"
     RUNNER_PREFIX = "shcu"
     PROCESS_NAME = "shallow_convection"
-    SWAPPABLE = ("compute_uwshcu_inv",)
+    SWAPPABLE = ("compute_uwshcu_inv", "fluxbelowinv")
 
 
 class DeepConvection(PausableStage):

@@ -30,7 +30,6 @@ PATCHES = (
     "native/pi_cam/control_patches/0046-gw-drag-state-boundary.patch",
     "native/pi_cam/control_patches/0047-chemistry-state-boundary.patch",
     "native/pi_cam/control_patches/0048-aero-model-state-boundary.patch",
-    "native/pi_cam/control_patches/0049-zm-conv-state-boundary.patch",
 )
 
 # Modules this repository owns that are added to the CAM source tree.  They
@@ -78,8 +77,6 @@ SUPPORT_SOURCES = (
      "src/physics/cam/pycam_radt_glue.F90"),
     ("native/pi_cam/support/pycam_radt_runner.F90",
      "src/physics/cam/pycam_radt_runner.F90"),
-    ("native/pi_cam/support/pycam_zmdeep_evap.F90",
-     "src/physics/cam/pycam_zmdeep_evap.F90"),
     ("native/pi_cam/support/pycam_zmdeep_zm.F90",
      "src/physics/cam/pycam_zmdeep_zm.F90"),
     ("native/pi_cam/support/pycam_zmdeep_deep.F90",
@@ -126,6 +123,8 @@ SUPPORT_SOURCES = (
      "src/physics/cam/pycam_chem_glue.F90"),
     ("native/pi_cam/support/pycam_chem_runner.F90",
      "src/physics/cam/pycam_chem_runner.F90"),
+    ("native/pi_cam/support/pycam_hooks.F90",
+     "src/physics/cam/pycam_hooks.F90"),
 )
 
 

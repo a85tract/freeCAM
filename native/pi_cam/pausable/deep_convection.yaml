@@ -76,9 +76,7 @@ units:
       - piece: [514, 565]
       - pause: {kernel: zm_convr, call: [566, 579]}
       - piece: [580, 722]
-      # the evaporation driver is a kernel and a unit: paused at when replaced itself,
-      # entered when only cldfrc_fice inside it is replaced, called whole otherwise
-      - kernel_unit: {kernel: zm_conv_evap, unit: evap, call: [723, 728]}
+      - pause: {kernel: zm_conv_evap, call: [723, 728]}
       - piece: [729, 803]
       - if: 804
         then:
@@ -86,18 +84,6 @@ units:
           - pause: {kernel: momtran, call: [815, 819]}
           - piece: [820, 851]
       - piece: [853, 906]
-  evap:
-    source: components/cam/src/physics/cam/zm_conv.F90
-    routine: zm_conv_evap
-    module_header: [1, 27]
-    declarations: [864, 937]
-    # the module's private evaporation options the body reads (control patch 0049)
-    uses:
-      - "use zm_conv, only: ke, ke_lnd, zm_org"
-    body:
-      - piece: [938, 944]
-      - pause: {kernel: cldfrc_fice, call: [945, 945]}
-      - piece: [946, 1067]
 kernels:
   zm_convr:
     source: components/cam/src/physics/cam/zm_conv.F90
@@ -108,11 +94,14 @@ kernels:
   momtran:
     source: components/cam/src/physics/cam/zm_conv.F90
     routine: momtran
-  # inside the hoisted zm_conv_evap; last so the older kernels keep their ids
+  # called inside the compiled zm_conv_evap: reached through the hook its redirected
+  # call lands in (native/pi_cam/hooks.yaml), not through a pause in hoisted text --
+  # gate 7343258 showed a hoisted copy of zm_conv_evap is not bit-for-bit
   cldfrc_fice:
     source: components/cam/src/physics/cam/cloud_fraction.F90
     routine: cldfrc_fice
     within: zm_conv_evap
+    hook: true
 anchors:
   'glue:physpkg.F90:2068-2118': bbb3db3e75306cdf
   'glue:physpkg.F90:declarations 1674-1874': 4e089ee70c947a21
@@ -120,9 +109,7 @@ anchors:
   'deep:convect_deep.F90:declarations 159-228': 9e3872944d01bace
   'zm:zm_conv_intr.F90:514-906': c9a58b5f52530089
   'zm:zm_conv_intr.F90:declarations 339-510': 85c3ad5a915c728e
-  'evap:zm_conv.F90:938-1067': 6dc6ee3084f4e0b3
-  'evap:zm_conv.F90:declarations 864-937': 37f7a49cfb9379f9
   'zm_convr:zm_conv.F90:132-861': dddee4292135e14b
   'zm_conv_evap:zm_conv.F90:864-1068': a24bea0b4bd0e6f9
-  'cldfrc_fice:cloud_fraction.F90:754-825': e6b1651189eb648e
   'momtran:zm_conv.F90:1414-1824': 725d0698005287f7
+  'cldfrc_fice:cloud_fraction.F90:754-825': e6b1651189eb648e

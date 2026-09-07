@@ -1,8 +1,0 @@
---- a/src/physics/cam/zm_conv.F90
-+++ b/src/physics/cam/zm_conv.F90
-@@ -48,0 +49,5 @@ module zm_conv
-+
-+   ! pyCAM (control patch 0049): the evaporation efficiencies and the organization
-+   ! switch zm_conv_evap reads, readable by the pausable runner's hoisted copy of the
-+   ! routine.  No executable statement changes.
-+   public :: ke, ke_lnd, zm_org

@@ -76,6 +76,63 @@ def _stage_executions(cam) -> dict[str, dict[str, object]]:
     return executions
 
 
+def _save_frame_captures(cam, directory: Path, rank: int) -> dict[str, int]:
+    """Write every FrameCapture kernel slot of the installed stages: calls by kernel."""
+
+    from freecam.physics.segments import FrameCapture
+
+    calls: dict[str, int] = {}
+    for record in getattr(cam.python_processes, "installed", {}).values():
+        stage = getattr(getattr(record, "function", None), "__self__", None)
+        kernels = getattr(stage, "kernels", None)
+        if not isinstance(kernels, dict):
+            continue
+        for name, model in kernels.items():
+            if isinstance(model, FrameCapture):
+                model.save(Path(directory) / f"{name}.rank-{rank:04d}.npz")
+                calls[name] = model.calls
+    return calls
+
+
+def _frame_capture_summary(records, args, native_evidence) -> dict[str, object] | None:
+    """The capture run's provenance, written beside the capture files and into the summary."""
+
+    if not args.capture_kernels:
+        return None
+    totals: dict[str, int] = {}
+    for record in records:
+        for name, count in (record.get("frame_capture_calls") or {}).items():
+            totals[name] = totals.get(name, 0) + int(count)
+    provenance = {
+        "kernels": [k.strip() for k in args.capture_kernels.split(",") if k.strip()],
+        "calls_total_by_kernel": totals,
+        "ranks_with_calls_by_kernel": {
+            name: sum(1 for record in records if (record.get("frame_capture_calls") or {}).get(name))
+            for name in totals
+        },
+        "pbs_job_id": os.environ.get("PBS_JOBID"),
+        "native_library_sha256": native_evidence.get("native_library_sha256"),
+        "run_tag": Path(args.summary).stem if args.summary else None,
+        "bfb_record": None if args.summary is None else str(Path(args.summary).name).replace("_50step.json", "_vs_oracle_50step_bfb.json"),
+    }
+    Path(args.capture_dir).mkdir(parents=True, exist_ok=True)
+    (Path(args.capture_dir) / "capture.json").write_text(json.dumps(provenance, indent=2) + "\n")
+    return provenance
+
+
+def _hook_summary(records) -> dict[str, object] | None:
+    """Every hook's calls and pauses summed over the ranks, and the ranks that saw calls."""
+
+    totals: dict[str, dict[str, int]] = {}
+    for record in records:
+        for name, counts in (record.get("hook_counts") or {}).items():
+            entry = totals.setdefault(name, {"calls": 0, "paused": 0, "ranks_called": 0})
+            entry["calls"] += int(counts.get("calls", 0))
+            entry["paused"] += int(counts.get("paused", 0))
+            entry["ranks_called"] += 1 if counts.get("calls") else 0
+    return totals or None
+
+
 def _cprofile_for(rank: int):
     """A cProfile.Profile for this rank when FREECAM_CPROFILE_RANKS names it.
 
@@ -313,6 +370,21 @@ def main(argv: list[str] | None = None) -> int:
         ),
     )
     parser.add_argument(
+        "--capture-kernels",
+        default="",
+        help=(
+            "validation: answer these kernels (comma-separated) with the original at their "
+            "pauses and record every call's frame -- inputs and outputs -- for the standalone "
+            "replay (tools/replay_pi_cam_frame_capture.py); the run stays bit-for-bit"
+        ),
+    )
+    parser.add_argument(
+        "--capture-dir",
+        type=Path,
+        default=None,
+        help="where --capture-kernels writes <kernel>.rank-NNNN.npz and capture.json",
+    )
+    parser.add_argument(
         "--cloud-macro-micro-python",
         action="store_true",
         help=(
@@ -544,6 +616,9 @@ def main(argv: list[str] | None = None) -> int:
         for qualified in [s.strip() for s in args.disable_actions.split(",") if s.strip()]:
             phase, _, action_name = qualified.partition(".")
             cam.step_plan.set_enabled(action_name, False, phase=phase, experimental=True)
+        capture_kernels = [k.strip() for k in args.capture_kernels.split(",") if k.strip()]
+        if capture_kernels and args.capture_dir is None:
+            raise SystemExit("--capture-kernels needs --capture-dir")
         for stage_name in [s.strip() for s in args.python_stages.split(",") if s.strip()]:
             # a pausable stage class in its action's place: the original Fortran
             # whole, or the image's runner paused at a replaced kernel
@@ -559,6 +634,10 @@ def main(argv: list[str] | None = None) -> int:
                 for kernel_name in [k.strip() for k in args.segmented_original_kernels.split(",") if k.strip()]:
                     if kernel_name in pausable_stage.kernels:
                         pausable_stage.kernels[kernel_name] = OriginalKernel()
+            for kernel_name in capture_kernels:
+                if kernel_name in pausable_stage.kernels:
+                    from freecam.physics.segments import FrameCapture
+                    pausable_stage.kernels[kernel_name] = FrameCapture(kernel_name)
             phase, _, action_name = pausable_stage.STAGE.partition(".")
             cam.step_plan.set_enabled(action_name, False, phase=phase, experimental=True)
             cam.python_processes.install(
@@ -582,6 +661,10 @@ def main(argv: list[str] | None = None) -> int:
             if orphans:
                 raise SystemExit(f"--segmented-original-kernels: {orphans} belong to no installed stage class; "
                                  f"installed classes own {sorted(installed_kernels)}")
+        orphans = [k for k in capture_kernels if k not in installed_kernels]
+        if orphans:
+            raise SystemExit(f"--capture-kernels: {orphans} belong to no installed stage class; "
+                             f"installed classes own {sorted(installed_kernels)}")
         for request in history_streams:
             cam.install_history_stream(
                 str(request["name"]),
@@ -629,6 +712,9 @@ def main(argv: list[str] | None = None) -> int:
                 _write_cprofile(profiler, Path(args.run_dir), world.Get_rank())
         world.Barrier()
         advance_seconds = MPI.Wtime() - advance_started
+        frame_capture_calls = _save_frame_captures(cam, args.capture_dir, world.Get_rank()) if capture_kernels else {}
+        from freecam.pi_cam.hooks import read_hook_counts
+        hook_counts = read_hook_counts(getattr(cam.backend, "_library", None))
         final_addresses = {
             name: int(values.ctypes.data) for name, values in cam.pool.items()
         }
@@ -702,6 +788,8 @@ def main(argv: list[str] | None = None) -> int:
             "initialize_seconds": initialize_seconds,
             "advance_seconds": advance_seconds,
             "memory_samples": memory_samples,
+            "frame_capture_calls": frame_capture_calls,
+            "hook_counts": hook_counts,
         }
         memory_samples.append(_process_memory("pre_finalize", cam.clock.nstep))
         world.Barrier()
@@ -842,6 +930,8 @@ def main(argv: list[str] | None = None) -> int:
             "python_stages": [s.strip() for s in args.python_stages.split(",") if s.strip()],
             "disabled_actions": [s.strip() for s in args.disable_actions.split(",") if s.strip()],
             "stage_execution": _stage_executions(cam),
+            "frame_capture": _frame_capture_summary(records, args, native_evidence),
+            "hooks": _hook_summary(records),
             "cloud_macro_micro_whole_drivers": bool(args.cloud_macro_micro_whole_drivers),
             "cloud_macro_micro_whole_micro": bool(args.cloud_macro_micro_whole_micro),
             "cloud_macro_micro_whole_aero": bool(args.cloud_macro_micro_whole_aero),

@@ -112,6 +112,16 @@
   },
   {
    "bindable": true,
+   "evidence": [],
+   "kernel": "fluxbelowinv",
+   "owner_class": "freecam.physics.pausable.ShallowConvection",
+   "reason": "bindable, but the pause path has not passed a bit-for-bit gate",
+   "stage_action": "cam_run1.shallow_convection",
+   "stage_class": "freecam.physics.pausable.ShallowConvection",
+   "validated": false
+  },
+  {
+   "bindable": true,
    "evidence": [
     "validation/pi_cam_pausable_deep-zmconvr_50step.json",
     "validation/pi_cam_pausable_deep-zmconvr_vs_oracle_50step_bfb.json",
@@ -327,11 +337,11 @@
   "PI-atm-online": "configs/pi_cam_icesm131_online.yaml",
   "PI-atm-replay": "configs/pi_cam_icesm131_replay.yaml"
  },
- "catalog_hash": "cab742bd35294f2cca7566424359a737ed7125ea4bc59ea7f686e8652bd3fb7d",
- "commit": "8341cf473df347934dd633f0a1c91f6c176df35f",
+ "catalog_hash": "308154bf3ce006dbd1fac7ce3807fa6de0c423c5d62649320a33456b2b4368f5",
+ "commit": "3265a95a2f9753eb9c6b13f9655908c00fdd1090",
  "default_document": {
   "case": "PI-atm",
-  "catalog_version": "cab742bd35294f2cca7566424359a737ed7125ea4bc59ea7f686e8652bd3fb7d",
+  "catalog_version": "308154bf3ce006dbd1fac7ce3807fa6de0c423c5d62649320a33456b2b4368f5",
   "experimental": false,
   "namelist": {},
   "nodes": [
@@ -1888,6 +1898,10 @@
       "compute_uwshcu_inv": {
        "kind": "original",
        "path": null
+      },
+      "fluxbelowinv": {
+       "kind": "original",
+       "path": null
       }
      },
      "parameters": {},
@@ -1923,6 +1937,16 @@
        "stage_action": "cam_run1.shallow_convection",
        "stage_class": "freecam.physics.pausable.ShallowConvection",
        "validated": true
+      },
+      {
+       "bindable": true,
+       "evidence": [],
+       "kernel": "fluxbelowinv",
+       "owner_class": "freecam.physics.pausable.ShallowConvection",
+       "reason": "bindable, but the pause path has not passed a bit-for-bit gate",
+       "stage_action": "cam_run1.shallow_convection",
+       "stage_class": "freecam.physics.pausable.ShallowConvection",
+       "validated": false
       }
      ],
      "parameters": [
@@ -4360,6 +4384,10 @@
      "compute_uwshcu_inv": {
       "kind": "original",
       "path": null
+     },
+     "fluxbelowinv": {
+      "kind": "original",
+      "path": null
      }
     },
     "parameters": {},
@@ -4395,6 +4423,16 @@
       "stage_action": "cam_run1.shallow_convection",
       "stage_class": "freecam.physics.pausable.ShallowConvection",
       "validated": true
+     },
+     {
+      "bindable": true,
+      "evidence": [],
+      "kernel": "fluxbelowinv",
+      "owner_class": "freecam.physics.pausable.ShallowConvection",
+      "reason": "bindable, but the pause path has not passed a bit-for-bit gate",
+      "stage_action": "cam_run1.shallow_convection",
+      "stage_class": "freecam.physics.pausable.ShallowConvection",
+      "validated": false
      }
     ],
     "parameters": [
@@ -7050,6 +7088,10 @@
      "compute_uwshcu_inv": {
       "kind": "original",
       "path": null
+     },
+     "fluxbelowinv": {
+      "kind": "original",
+      "path": null
      }
     },
     "parameters": {},
@@ -7087,6 +7129,16 @@
       "stage_action": "cam_run1.shallow_convection",
       "stage_class": "freecam.physics.pausable.ShallowConvection",
       "validated": true
+     },
+     {
+      "bindable": true,
+      "evidence": [],
+      "kernel": "fluxbelowinv",
+      "owner_class": "freecam.physics.pausable.ShallowConvection",
+      "reason": "bindable, but the pause path has not passed a bit-for-bit gate",
+      "stage_action": "cam_run1.shallow_convection",
+      "stage_class": "freecam.physics.pausable.ShallowConvection",
+      "validated": false
      }
     ],
     "parameters": [
@@ -19720,7 +19772,7 @@
    "writes": []
   }
  ],
- "generated_at": "2026-09-07T19:13:58+00:00",
+ "generated_at": "2026-09-07T19:52:09+00:00",
  "parameters": {
   "cam_run1.cloud_macro_microphysics": [
    {
