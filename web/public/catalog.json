@@ -303,7 +303,7 @@
   "PI-atm-replay": "configs/pi_cam_icesm131_replay.yaml"
  },
  "catalog_hash": "15776020bd419dedbd27ec77bc5e113dcf36fdff1edd93106d1f342eea798f09",
- "commit": "ae577cf9a48c73b3f94efcc7722a0d7f2e08aea9",
+ "commit": "c618a73740e8e0e8f6cc2a5029e66d28d273a2aa",
  "default_document": {
   "case": "PI-atm",
   "catalog_version": "15776020bd419dedbd27ec77bc5e113dcf36fdff1edd93106d1f342eea798f09",
@@ -19596,7 +19596,7 @@
    "writes": []
   }
  ],
- "generated_at": "2026-09-06T18:51:18+00:00",
+ "generated_at": "2026-09-07T02:08:22+00:00",
  "parameters": {
   "cam_run1.cloud_macro_microphysics": [
    {

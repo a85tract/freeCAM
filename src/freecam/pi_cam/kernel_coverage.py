@@ -139,8 +139,12 @@ IN_MODEL_GATES = {
 #: Performance evidence for a stage class with nothing replaced (paired months and the year).
 PERFORMANCE_RECORDS = {
     "cam_run1.cloud_macro_microphysics": ("performance_overhead.md",
-                                          "pi_cam_native_whole_1month_median.json"),
+                                          "pi_cam_native_whole_1month_median.json",
+                                          "pi_cam_faster_than_fortran.json"),
 }
+#: The paired months and year with every stage class installed and nothing replaced
+#: (validation/pi_cam_faster_than_fortran.json) are the performance evidence of every class-owned action.
+ALL_CLASS_PAIRS = ("pi_cam_faster_than_fortran.json",)
 #: The inertness gate: a run with the actions expected to be inert switched off,
 #: compared byte for byte with the oracle.  Its summary lists what it disabled.
 INERT_GATE = ("pi_cam_pausable_inert_50step.json", "pi_cam_pausable_inert_vs_oracle_50step_bfb.json")
@@ -419,7 +423,8 @@ def build_coverage() -> dict[str, Any]:
             activity_basis=basis, python_class=class_by_action.get(i), kernels=kernels,
             kernel_candidates=candidates, deeper_procedures=len(raw) - len(shallow) if classification == "numeric_scheme" else 0,
             execution=execution, alternate_of=alternate_of,
-            performance=list(PERFORMANCE_RECORDS.get(i, ())), coverage=coverage, note=note,
+            performance=list(PERFORMANCE_RECORDS.get(i, ()) or (ALL_CLASS_PAIRS if class_by_action.get(i) and enabled else ())),
+            coverage=coverage, note=note,
         ))
 
     known = set(ids)

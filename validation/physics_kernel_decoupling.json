@@ -204,7 +204,9 @@
         "month_1488step": 1489
       },
       "alternate_of": [],
-      "performance": [],
+      "performance": [
+        "pi_cam_faster_than_fortran.json"
+      ],
       "coverage": "not-required-in-this-configuration",
       "note": null
     },
@@ -229,7 +231,9 @@
         "month_1488step": 1489
       },
       "alternate_of": [],
-      "performance": [],
+      "performance": [
+        "pi_cam_faster_than_fortran.json"
+      ],
       "coverage": "not-required-in-this-configuration",
       "note": null
     },
@@ -256,7 +260,9 @@
         "month_1488step": 1489
       },
       "alternate_of": [],
-      "performance": [],
+      "performance": [
+        "pi_cam_faster_than_fortran.json"
+      ],
       "coverage": "partial",
       "note": null
     },
@@ -746,7 +752,9 @@
         "month_1488step": "in the step plan; the trace count covers every step"
       },
       "alternate_of": [],
-      "performance": [],
+      "performance": [
+        "pi_cam_faster_than_fortran.json"
+      ],
       "coverage": "partial",
       "note": null
     },
@@ -808,7 +816,9 @@
         "month_1488step": "in the step plan; the trace count covers every step"
       },
       "alternate_of": [],
-      "performance": [],
+      "performance": [
+        "pi_cam_faster_than_fortran.json"
+      ],
       "coverage": "not-required-in-this-configuration",
       "note": null
     },
@@ -860,7 +870,9 @@
         "month_1488step": 1489
       },
       "alternate_of": [],
-      "performance": [],
+      "performance": [
+        "pi_cam_faster_than_fortran.json"
+      ],
       "coverage": "partial",
       "note": null
     },
@@ -885,7 +897,9 @@
         "month_1488step": 1489
       },
       "alternate_of": [],
-      "performance": [],
+      "performance": [
+        "pi_cam_faster_than_fortran.json"
+      ],
       "coverage": "not-required-in-this-configuration",
       "note": null
     },
@@ -910,7 +924,9 @@
         "month_1488step": "in the step plan; the trace count covers every step"
       },
       "alternate_of": [],
-      "performance": [],
+      "performance": [
+        "pi_cam_faster_than_fortran.json"
+      ],
       "coverage": "not-required-in-this-configuration",
       "note": null
     },
@@ -1263,7 +1279,9 @@
         "month_1488step": "in the step plan; the trace count covers every step"
       },
       "alternate_of": [],
-      "performance": [],
+      "performance": [
+        "pi_cam_faster_than_fortran.json"
+      ],
       "coverage": "partial",
       "note": null
     },
@@ -1367,7 +1385,9 @@
         "month_1488step": "in the step plan; the trace count covers every step"
       },
       "alternate_of": [],
-      "performance": [],
+      "performance": [
+        "pi_cam_faster_than_fortran.json"
+      ],
       "coverage": "not-required-in-this-configuration",
       "note": null
     },
@@ -1392,7 +1412,9 @@
         "month_1488step": "in the step plan; the trace count covers every step"
       },
       "alternate_of": [],
-      "performance": [],
+      "performance": [
+        "pi_cam_faster_than_fortran.json"
+      ],
       "coverage": "not-required-in-this-configuration",
       "note": null
     },
@@ -1469,7 +1491,9 @@
         "month_1488step": 1489
       },
       "alternate_of": [],
-      "performance": [],
+      "performance": [
+        "pi_cam_faster_than_fortran.json"
+      ],
       "coverage": "not-required-in-this-configuration",
       "note": null
     },
@@ -1920,7 +1944,9 @@
         "month_1488step": "in the step plan; the trace count covers every step"
       },
       "alternate_of": [],
-      "performance": [],
+      "performance": [
+        "pi_cam_faster_than_fortran.json"
+      ],
       "coverage": "gap",
       "note": "owned by EnergyFixer without a pause: check_energy_fix allocates its tendency inside the call and reads the module's private global heating; a pause at its call site would serve nothing"
     },
@@ -1986,7 +2012,9 @@
         "month_1488step": "in the step plan; the trace count covers every step"
       },
       "alternate_of": [],
-      "performance": [],
+      "performance": [
+        "pi_cam_faster_than_fortran.json"
+      ],
       "coverage": "complete",
       "note": null
     },
@@ -2514,7 +2542,9 @@
         "month_1488step": "in the step plan; the trace count covers every step"
       },
       "alternate_of": [],
-      "performance": [],
+      "performance": [
+        "pi_cam_faster_than_fortran.json"
+      ],
       "coverage": "partial",
       "note": null
     },
@@ -2964,7 +2994,9 @@
         "month_1488step": "in the step plan; the trace count covers every step"
       },
       "alternate_of": [],
-      "performance": [],
+      "performance": [
+        "pi_cam_faster_than_fortran.json"
+      ],
       "coverage": "partial",
       "note": null
     },
@@ -3004,7 +3036,9 @@
         "month_1488step": "in the step plan; the trace count covers every step"
       },
       "alternate_of": [],
-      "performance": [],
+      "performance": [
+        "pi_cam_faster_than_fortran.json"
+      ],
       "coverage": "not-required-in-this-configuration",
       "note": null
     },
@@ -3034,7 +3068,8 @@
       "alternate_of": [],
       "performance": [
         "performance_overhead.md",
-        "pi_cam_native_whole_1month_median.json"
+        "pi_cam_native_whole_1month_median.json",
+        "pi_cam_faster_than_fortran.json"
       ],
       "coverage": "partial",
       "note": null
@@ -3141,7 +3176,9 @@
         "month_1488step": 1489
       },
       "alternate_of": [],
-      "performance": [],
+      "performance": [
+        "pi_cam_faster_than_fortran.json"
+      ],
       "coverage": "not-required-in-this-configuration",
       "note": null
     },
@@ -3168,7 +3205,9 @@
         "month_1488step": 1489
       },
       "alternate_of": [],
-      "performance": [],
+      "performance": [
+        "pi_cam_faster_than_fortran.json"
+      ],
       "coverage": "partial",
       "note": null
     },
@@ -3193,7 +3232,9 @@
         "month_1488step": 1489
       },
       "alternate_of": [],
-      "performance": [],
+      "performance": [
+        "pi_cam_faster_than_fortran.json"
+      ],
       "coverage": "not-required-in-this-configuration",
       "note": null
     },
@@ -3220,7 +3261,9 @@
         "month_1488step": 1489
       },
       "alternate_of": [],
-      "performance": [],
+      "performance": [
+        "pi_cam_faster_than_fortran.json"
+      ],
       "coverage": "partial",
       "note": null
     },
@@ -4561,7 +4604,9 @@
         "month_1488step": "in the step plan; the trace count covers every step"
       },
       "alternate_of": [],
-      "performance": [],
+      "performance": [
+        "pi_cam_faster_than_fortran.json"
+      ],
       "coverage": "partial",
       "note": null
     },
@@ -6001,5 +6046,5 @@
       "why": "no record in validation/ for this step of the loop"
     }
   ],
-  "coverage_hash": "25ce0ef71c8b3068de623594ff2253da1d68fbc5a38a2a9c84de14f438f0838c"
+  "coverage_hash": "7e94a5dc5b74c0fa3ac1c68e9ab94555e7cb2d76dcec04257bb46320bce689e9"
 }

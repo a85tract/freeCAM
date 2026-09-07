@@ -34,7 +34,12 @@ def test_the_inventory_closes_over_the_step_plan_and_the_catalog() -> None:
     stage7 = by_id["cam_run1.cloud_macro_microphysics"]
     assert stage7["python_class"].endswith("CloudMacroMicrophysics")
     assert stage7["kernels"] == ["mmacro_pcond", "micro_mg_tend"] and stage7["coverage"] == "partial"
-    assert stage7["performance"] == ["performance_overhead.md", "pi_cam_native_whole_1month_median.json"]
+    assert stage7["performance"] == ["performance_overhead.md", "pi_cam_native_whole_1month_median.json",
+                                     "pi_cam_faster_than_fortran.json"]
+    # every class-owned action points at the all-class pairs; an action without a class has no performance record
+    assert by_id["cam_run1.deep_convection"]["performance"] == ["pi_cam_faster_than_fortran.json"]
+    assert by_id["cam_run2.rayleigh_friction"]["performance"] == ["pi_cam_faster_than_fortran.json"]
+    assert by_id["cam_run3.dynamics"]["performance"] == []
     radiation = by_id["cam_run1.radiation"]
     assert radiation["kernels"] == ["rad_rrtmg_sw", "rad_rrtmg_lw"] and radiation["coverage"] == "partial"
     # a leaf's execution is counted from the recorded runs, at both lengths

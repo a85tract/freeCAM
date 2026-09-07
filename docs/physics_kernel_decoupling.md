@@ -221,9 +221,31 @@ Two items the plan named remain open and are recorded here rather than
 dropped: a restart in the middle of a run, which freeCAM cannot do yet (the
 driver starts every run as a startup run; continuing from CAM's restart files
 is a feature of its own), and the standalone capture-and-replay loop for the
-fifteen kernels that have only their pause gates. The paired months and the
-paired year with every class installed report the default path's cost in
-`validation/pi_cam_faster_than_fortran.json`.
+fifteen kernels that have only their pause gates.
+
+**What the default path costs with every class installed.** Paired runs on
+one allocation, the original Fortran (A) against freeCAM with all eleven
+classes installed and nothing replaced (C), every one bit-for-bit with the
+oracle (`validation/pi_cam_faster_than_fortran.json`):
+
+| Pair | C/A | Note |
+| --- | --- | --- |
+| month, AC 7335688; CA 7335689; AC 7335690 | 1.057; 1.063; 1.054 | before the export fix below |
+| year, AC 7335747 | 1.094 | before the export fix |
+| month, AC 7336842; CA 7336843 | 0.996; 0.986 | after the fix |
+| year, AC 7336930 | 1.0095 | after the fix; the cloud-only year was 1.0125 |
+
+The first pairs were slower than the cloud-only baseline (1.006 for a month)
+by five to nine percent. The profiler put the physics one-for-one inside the
+class regions and the eleven Python wrappers at about 37 s of a year; the
+rest was waiting at the boundary export, whose fast path treated a trusted
+process's recorded outcome as something to report and so sent every step
+through the pickled allgather once the outcome list was never empty. With
+the flag testing for an actual failure, the all-class month runs at the
+Fortran's pace and the year within one percent of it, the same as with the
+cloud stage alone. The pre-fix pairs stay in the record; 7335690 carries the
+commit of the fix because the report reads the tree when the job ends, but
+its freeCAM run started before the fix was written.
 
 The pausable classes were gated on 2026-09-06 in six 512-rank 50-step runs on
 one image: each class installed with nothing replaced (dry adjustment, shallow
