@@ -1,0 +1,30 @@
+{
+  "atm_in_sha256": "6cf906571702ac0c912c22c42d7a5b4568ef2001697d59a05078538ed8bc3472",
+  "config": "configs/pi_cam_icesm131_replay.yaml",
+  "digest": "3b724d58ceec53d32f8707c9ba861ba882e2480d267fcee64572b2804c2c4543",
+  "drifted_after_one_step": [],
+  "entries": {
+    "physconst_mp_tmelt_": {
+      "dtype": "float64",
+      "hex": [
+        "0x1.1126666666666p+8"
+      ],
+      "sha256": "0c7c057ab37e5dca4056470f25805733cd4824f81cd636f6158e9aba1fa25d0c",
+      "shape": [],
+      "symbol": "physconst_mp_tmelt_",
+      "values": [
+        273.15
+      ],
+      "write": "verify"
+    }
+  },
+  "function": "cldfrc_fice",
+  "library_sha256": "d1eebfc52c66f19e53bc2faa84e910198fa9c3cfb4cbea39dd4227d48ae5ab22",
+  "mpi_ranks": 512,
+  "native_manifest": "/glade/work/ruitong/pycam-sima-pi-cam-only/build/pi_cam_promoted/native_cam_manifest.json",
+  "pbs_job_id": "7343297.desched1",
+  "qualified_name": "cloud_fraction::cldfrc_fice",
+  "schema_version": 1,
+  "spec_sha256": "651390d3f91385ace7c04abc16d7d87748071d538a82a888e188d184e18276b2",
+  "stable_after_one_step": true
+}

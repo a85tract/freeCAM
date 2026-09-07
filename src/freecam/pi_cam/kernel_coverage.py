@@ -170,6 +170,7 @@ class KernelRow:
     in_model_gates: list[dict[str, Any]] = field(default_factory=list)
     status: str = "open"
     missing: list[str] = field(default_factory=list)
+    note: str | None = None
 
 
 @dataclass(slots=True)
@@ -283,6 +284,7 @@ def _kernel_rows(stage_classes: Iterable[str], runner_specs: Mapping[str, Any]) 
                 bindable=bool(description["bindable"]),
                 validated_through_runner=bool(description["validated"]),
                 evidence=evidence, in_model_gates=gates, status=status, missing=missing,
+                note=(spec.kernel(name).note if spec is not None and name in spec.kernel_names else None),
             ))
         close = getattr(stage, "close", None)
         if callable(close):

@@ -38,7 +38,7 @@ module pycam_vdiff_driver
   use vertical_diffusion, only: eddy_scheme, do_pseudocon_diff, shallow_scheme, fieldlist_wet, fieldlist_dry, fieldlist_molec, ntop, nbot, tke_idx, kvh_idx, kvm_idx, kvt_idx, turbtype_idx, smaw_idx, tauresx_idx, tauresy_idx, vdiffnam, ixcldice, ixcldliq, ixnumice, ixnumliq, qrl_idx, wsedl_idx, pblh_idx, tpert_idx, qpert_idx, bprod_idx, ipbl_idx, kpblh_idx, wstarPBL_idx, tkes_idx, went_idx, qtl_flx_idx, qti_flx_idx, kv_top_pressure, kv_top_scale, kv_freetrop_scale, diff_cnsrv_mass_check, do_tms, prog_modal_aero, pmam_ncnst, pmam_cnst_idx
   implicit none
   private
-  public :: driver_piece_1, driver_piece_2, driver_piece_3, driver_piece_4, driver_piece_5, driver_piece_6, driver_piece_7, driver_piece_8, driver_piece_9, driver_piece_10, driver_piece_11, driver_piece_12, driver_piece_13, compute_tms_frame, compute_eddy_diff_frame, compute_vdiff_1_frame, compute_vdiff_2_frame, compute_tms_original, compute_eddy_diff_original, compute_vdiff_1_original, compute_vdiff_2_original, driver_bind
+  public :: driver_piece_1, driver_piece_2, driver_piece_3, driver_piece_4, driver_piece_5, driver_piece_6, driver_piece_7, driver_piece_8, driver_piece_9, driver_piece_10, driver_piece_11, driver_piece_12, driver_piece_13, driver_piece_14, compute_tms_frame, compute_eddy_diff_frame, virtem_frame, compute_vdiff_1_frame, compute_vdiff_2_frame, compute_tms_original, compute_eddy_diff_original, virtem_original, compute_vdiff_1_original, compute_vdiff_2_original, driver_bind
 
   integer(c_int64_t), parameter :: zero_shape(1) = (/ 0_c_int64_t /)
 
@@ -304,13 +304,18 @@ contains
   end subroutine driver_piece_5
 
   subroutine driver_piece_6()
-    ! vertical_diffusion.F90:908-965, verbatim
+    ! vertical_diffusion.F90:908-911, verbatim
 
 
            ! The diag_TKE scheme does not calculate the Monin-Obukhov length, which is used in dry deposition calculations.
            ! Use the routines from pbl_utils to accomplish this. Assumes ustar and rrho have been set.
            th(:ncol,pver) = state%t(:ncol,pver) * state%exner(:ncol,pver)
-           thvs(:ncol) = virtem(th(:ncol,pver),state%q(:ncol,pver,1))
+
+  end subroutine driver_piece_6
+
+  subroutine driver_piece_7()
+    ! vertical_diffusion.F90:913-965, verbatim
+
            call calc_obklen(th(:ncol,pver), thvs(:ncol), cflx(:ncol,1), shflx(:ncol), rrho(:ncol), ustar(:ncol), &
                             khfs(:ncol),    kqfs(:ncol), kbfs(:ncol),   obklen(:ncol))
 
@@ -365,9 +370,9 @@ contains
            end if
 
 
-  end subroutine driver_piece_6
+  end subroutine driver_piece_7
 
-  subroutine driver_piece_7()
+  subroutine driver_piece_8()
     ! vertical_diffusion.F90:987-1063, verbatim
 
 
@@ -448,16 +453,16 @@ contains
         call pbuf_get_field(pbuf, kvt_idx, kvt)
 
 
-  end subroutine driver_piece_7
+  end subroutine driver_piece_8
 
-  subroutine driver_piece_8()
+  subroutine driver_piece_9()
     ! vertical_diffusion.F90:1065-1065, verbatim
 
 
 
-  end subroutine driver_piece_8
+  end subroutine driver_piece_9
 
-  subroutine driver_piece_9()
+  subroutine driver_piece_10()
     ! vertical_diffusion.F90:1077-1080, verbatim
 
 
@@ -465,16 +470,16 @@ contains
                  extra_msg="Error in fieldlist_wet call from vertical_diffusion.")
 
 
-  end subroutine driver_piece_9
+  end subroutine driver_piece_10
 
-  subroutine driver_piece_10()
+  subroutine driver_piece_11()
     ! vertical_diffusion.F90:1082-1082, verbatim
 
 
 
-  end subroutine driver_piece_10
+  end subroutine driver_piece_11
 
-  subroutine driver_piece_11()
+  subroutine driver_piece_12()
     ! vertical_diffusion.F90:1084-1089, verbatim
 
 
@@ -484,9 +489,9 @@ contains
             end if
 
 
-  end subroutine driver_piece_11
+  end subroutine driver_piece_12
 
-  subroutine driver_piece_12()
+  subroutine driver_piece_13()
     ! vertical_diffusion.F90:1101-1104, verbatim
 
 
@@ -494,9 +499,9 @@ contains
                  extra_msg="Error in fieldlist_dry call from vertical_diffusion.")
 
 
-  end subroutine driver_piece_12
+  end subroutine driver_piece_13
 
-  subroutine driver_piece_13()
+  subroutine driver_piece_14()
     ! vertical_diffusion.F90:1106-1384, verbatim but for the flow statements the runner carries out
 
 
@@ -780,7 +785,7 @@ contains
         flow = 3   ! return at the routine's level: the runner leaves the routine
         return
 
-  end subroutine driver_piece_13
+  end subroutine driver_piece_14
 
   subroutine compute_tms_frame(ptrs, ndims, shapes, dtypes, intents, ncol_out)
     ! the paused `call compute_tms( pcols , pver , ncol , state%u , state%v , state%t , ...` in the callee's argument order
@@ -987,6 +992,23 @@ contains
                                    ipbl     , kpblh       , wstarPBL   , tkes       , went           , turbtype, &
                                    smaw )
   end subroutine compute_eddy_diff_original
+
+  subroutine virtem_frame(ptrs, ndims, shapes, dtypes, intents, ncol_out)
+    ! the paused `thvs(:ncol) = virtem(th(:ncol,pver),state%q(:ncol,pver,1))...` in the callee's argument order
+    type(c_ptr), intent(inout) :: ptrs(:)
+    integer(c_int), intent(inout) :: ndims(:), dtypes(:), intents(:)
+    integer(c_int64_t), intent(inout) :: shapes(:,:)
+    integer(c_int), intent(out) :: ncol_out
+    ncol_out = int(ncol, c_int)
+    call put_slot(1, c_loc(th(1,pver)), 1, (/ int(ncol, c_int64_t) /), 1, 0, ptrs, ndims, shapes, dtypes, intents)
+    call put_slot(2, c_loc(state%q(1,pver,1)), 1, (/ int(ncol, c_int64_t) /), 1, 0, ptrs, ndims, shapes, dtypes, intents)
+    call put_slot(3, c_loc(thvs(1)), 1, (/ int(ncol, c_int64_t) /), 1, 1, ptrs, ndims, shapes, dtypes, intents)
+  end subroutine virtem_frame
+
+  subroutine virtem_original()
+    ! the original call, vertical_diffusion.F90:912-912, verbatim
+           thvs(:ncol) = virtem(th(:ncol,pver),state%q(:ncol,pver,1))
+  end subroutine virtem_original
 
   subroutine compute_vdiff_1_frame(ptrs, ndims, shapes, dtypes, intents, ncol_out)
     ! the paused `call compute_vdiff( state%lchnk , pcols , pver , pcnst , ncol , state%...` in the callee's argument order

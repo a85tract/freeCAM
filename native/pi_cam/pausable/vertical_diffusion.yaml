@@ -75,7 +75,11 @@ units:
           "'diag_TKE'":
             - piece: [864, 894]
             - pause: {kernel: compute_eddy_diff, call: [895, 907]}
-            - piece: [908, 965]
+            - piece: [908, 911]
+            # a function inside an assignment: the frame serves its section actuals and
+            # the left-hand side it is stored into
+            - pause: {kernel: virtem, assign: [912, 912]}
+            - piece: [913, 965]
         refused: ["'HB', 'HBR'"]
       - piece: [987, 1063]
       - if: 1064
@@ -100,6 +104,10 @@ kernels:
   compute_vdiff:
     source: components/cam/src/physics/cam/diffusion_solver.F90
     routine: compute_vdiff
+  # an elemental function inside an assignment of the driver; last so the older kernels keep their ids
+  virtem:
+    source: components/cam/src/physics/cam/pbl_utils.F90
+    routine: virtem
 anchors:
   'glue:physpkg.F90:1481-1513': 4b3db1e312463dfe
   'glue:physpkg.F90:declarations 1248-1367': 35a81896e23a7968
@@ -107,6 +115,7 @@ anchors:
   'driver:vertical_diffusion.F90:declarations 635-815': 4f86f3172a05bf26
   'driver:vertical_diffusion.F90:verbatim 80-81': 1ff19ebc5fe75cff
   'driver:vertical_diffusion.F90:verbatim 1391-1465': 1317fe8cde7bd8c6
+  'virtem:pbl_utils.F90:112-123': abafffcc08fa36dd
   'compute_tms:trb_mtn_stress.F90:59-178': d283cd44324b93c2
   'compute_eddy_diff:eddy_diff.F90:351-873': 33f5f34c2ce804b6
   'compute_vdiff:diffusion_solver.F90:131-949': 2e73f3feb8a44944

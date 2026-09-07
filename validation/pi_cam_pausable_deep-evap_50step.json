@@ -575,53 +575,53 @@
     "samples": [
       {
         "label": "python_ready",
-        "maximum_rank_hwm_bytes": 223490048,
-        "maximum_rank_rss_bytes": 223490048,
-        "maximum_rank_ru_maxrss_bytes": 223490048,
+        "maximum_rank_hwm_bytes": 222957568,
+        "maximum_rank_rss_bytes": 222957568,
+        "maximum_rank_ru_maxrss_bytes": 222957568,
         "step": 0,
-        "total_hwm_bytes": 111709409280,
-        "total_pss_bytes": 92497852416,
-        "total_rss_bytes": 111709409280
+        "total_hwm_bytes": 111707283456,
+        "total_pss_bytes": 92506079232,
+        "total_rss_bytes": 111707283456
       },
       {
         "label": "initialized",
-        "maximum_rank_hwm_bytes": 784433152,
-        "maximum_rank_rss_bytes": 784433152,
-        "maximum_rank_ru_maxrss_bytes": 784433152,
+        "maximum_rank_hwm_bytes": 772075520,
+        "maximum_rank_rss_bytes": 772075520,
+        "maximum_rank_ru_maxrss_bytes": 772075520,
         "step": 0,
-        "total_hwm_bytes": 230747795456,
-        "total_pss_bytes": 195621033984,
-        "total_rss_bytes": 230481698816
+        "total_hwm_bytes": 228948783104,
+        "total_pss_bytes": 193918230528,
+        "total_rss_bytes": 228681150464
       },
       {
         "label": "pre_finalize",
-        "maximum_rank_hwm_bytes": 836288512,
-        "maximum_rank_rss_bytes": 836288512,
-        "maximum_rank_ru_maxrss_bytes": 836288512,
+        "maximum_rank_hwm_bytes": 842170368,
+        "maximum_rank_rss_bytes": 842170368,
+        "maximum_rank_ru_maxrss_bytes": 842170368,
         "step": 50,
-        "total_hwm_bytes": 240040992768,
-        "total_pss_bytes": 200268642304,
-        "total_rss_bytes": 240025653248
+        "total_hwm_bytes": 239306817536,
+        "total_pss_bytes": 199586601984,
+        "total_rss_bytes": 239295803392
       },
       {
         "label": "finalized",
-        "maximum_rank_hwm_bytes": 836288512,
-        "maximum_rank_rss_bytes": 830914560,
-        "maximum_rank_ru_maxrss_bytes": 836288512,
+        "maximum_rank_hwm_bytes": 842170368,
+        "maximum_rank_rss_bytes": 836083712,
+        "maximum_rank_ru_maxrss_bytes": 842170368,
         "step": 50,
-        "total_hwm_bytes": 240175042560,
-        "total_pss_bytes": 200290367488,
-        "total_rss_bytes": 240112029696
+        "total_hwm_bytes": 239395328000,
+        "total_pss_bytes": 199597399040,
+        "total_rss_bytes": 239337521152
       }
     ]
   },
   "micro_core_standalone": false,
   "mpi_ranks": 512,
-  "native_leaf_library_sha256": "48bdcbba937d4356a7c44f0ddbf2c8af64676dd6c7f225d39165a479ac8c017d",
-  "native_library_sha256": "f382080f50b3a290a25950e36a835f6490d6ed65e9239176131b25c6b434d95f",
-  "native_manifest": "/glade/work/ruitong/pycam-sima-pi-cam-only/build/pi_cam_promoted_p3/native_cam_manifest.json",
+  "native_leaf_library_sha256": "72c48117dc95bb01c180dbf12e239e41d9ab2b54281408ebd3922ca8021f1ec8",
+  "native_library_sha256": "9bfadfa167531de46f5299ebff645d44a0d86e3e59ce13af98a4c4f579ee83fe",
+  "native_manifest": "/glade/work/ruitong/pycam-sima-pi-cam-only/build/pi_cam_promoted_p7/native_cam_manifest.json",
   "native_state_ownership": "python-owned-zero-copy-derived-shell",
-  "pbs_job_id": "7334212.desched1",
+  "pbs_job_id": "7343259.desched1",
   "python_stages": [
     "deep_convection"
   ],
@@ -3734,8 +3734,17 @@
           "owner_class": "freecam.physics.pausable.DeepConvection",
           "replaced": false,
           "stage_action": "cam_run1.deep_convection",
-          "validated": false,
-          "validated_by": []
+          "validated": true,
+          "validated_by": [
+            "validation/pi_cam_pausable_deep-zmconvr_50step.json",
+            "validation/pi_cam_pausable_deep-zmconvr_vs_oracle_50step_bfb.json",
+            "validation/pi_cam_pausable_deep-all_50step.json",
+            "validation/pi_cam_pausable_deep-all_vs_oracle_50step_bfb.json",
+            "validation/pi_cam_pausable_chain-pause_50step.json",
+            "validation/pi_cam_pausable_chain-pause_vs_oracle_50step_bfb.json",
+            "validation/pi_cam_pausable_everything_50step.json",
+            "validation/pi_cam_pausable_everything_vs_oracle_50step_bfb.json"
+          ]
         },
         {
           "bindable": true,
@@ -3747,8 +3756,17 @@
           "owner_class": "freecam.physics.pausable.DeepConvection",
           "replaced": true,
           "stage_action": "cam_run1.deep_convection",
-          "validated": false,
-          "validated_by": []
+          "validated": true,
+          "validated_by": [
+            "validation/pi_cam_pausable_deep-evap_50step.json",
+            "validation/pi_cam_pausable_deep-evap_vs_oracle_50step_bfb.json",
+            "validation/pi_cam_pausable_deep-all_50step.json",
+            "validation/pi_cam_pausable_deep-all_vs_oracle_50step_bfb.json",
+            "validation/pi_cam_pausable_chain-pause_50step.json",
+            "validation/pi_cam_pausable_chain-pause_vs_oracle_50step_bfb.json",
+            "validation/pi_cam_pausable_everything_50step.json",
+            "validation/pi_cam_pausable_everything_vs_oracle_50step_bfb.json"
+          ]
         },
         {
           "bindable": true,
@@ -3756,6 +3774,43 @@
           "contract": null,
           "execution_mode": "segmented",
           "kernel": "momtran",
+          "model_calls": 0,
+          "owner_class": "freecam.physics.pausable.DeepConvection",
+          "replaced": false,
+          "stage_action": "cam_run1.deep_convection",
+          "validated": true,
+          "validated_by": [
+            "validation/pi_cam_pausable_deep-momtran_50step.json",
+            "validation/pi_cam_pausable_deep-momtran_vs_oracle_50step_bfb.json",
+            "validation/pi_cam_pausable_deep-all_50step.json",
+            "validation/pi_cam_pausable_deep-all_vs_oracle_50step_bfb.json",
+            "validation/pi_cam_pausable_chain-pause_50step.json",
+            "validation/pi_cam_pausable_chain-pause_vs_oracle_50step_bfb.json",
+            "validation/pi_cam_pausable_everything_50step.json",
+            "validation/pi_cam_pausable_everything_vs_oracle_50step_bfb.json"
+          ]
+        },
+        {
+          "bindable": true,
+          "binding": "original",
+          "contract": {
+            "in_place": [],
+            "inputs": [
+              "t"
+            ],
+            "module_state_inputs": {
+              "verify": 1
+            },
+            "outputs": [
+              "fice",
+              "fsnow"
+            ],
+            "parameters": [],
+            "path": "native/pi_cam/functions/cldfrc_fice.yaml",
+            "routine": "cloud_fraction::cldfrc_fice"
+          },
+          "execution_mode": "segmented",
+          "kernel": "cldfrc_fice",
           "model_calls": 0,
           "owner_class": "freecam.physics.pausable.DeepConvection",
           "replaced": false,
@@ -3779,14 +3834,14 @@
   "step_plan_actions": 48,
   "steps": 50,
   "timing": {
-    "advance_seconds": 17.08989261800025,
-    "advance_sypd": 14.428138782220513,
+    "advance_seconds": 17.32215507799998,
+    "advance_sypd": 14.234680462993701,
     "aggregation": "maximum across all MPI ranks",
     "clock": "MPI.Wtime with MPI barriers",
-    "finalize_seconds": 0.35155348299986144,
-    "initialize_seconds": 10.851679769999919,
+    "finalize_seconds": 0.36380876999999145,
+    "initialize_seconds": 17.59914702200001,
     "simulated_days": 1.0416666666666667,
-    "total_seconds": 28.31334323300007
+    "total_seconds": 35.304980563000015
   },
   "validation_scope": "configured CAM runtime"
 }

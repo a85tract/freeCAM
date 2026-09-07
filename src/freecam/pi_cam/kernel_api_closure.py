@@ -986,7 +986,30 @@ def _procedure_evidence(
     executed = [name for name in actions if action_evidence.get(name, {}).get("execution")]
     if executed:
         record["executed_through_actions"] = sorted(executed)
+    standalone = _standalone_evidence(scope.name)
+    if standalone:
+        record["standalone"] = standalone
     return record or None
+
+
+STANDALONE_RECORDS = {
+    "contract": "native/pi_cam/functions/{name}.yaml",
+    "standalone_build": "validation/pi_cam_{name}_standalone_build.json",
+    "module_state": "validation/pi_cam_{name}_module_state.json",
+    "replay": "validation/pi_cam_{name}_frame_replay.json",
+}
+
+
+def _standalone_evidence(name: str) -> dict[str, str]:
+    """Which standalone artefacts exist for a routine: its contract, image, snapshot, replay."""
+
+    root = Path(__file__).resolve().parents[3]
+    found = {}
+    for step, pattern in STANDALONE_RECORDS.items():
+        relative = pattern.format(name=name)
+        if (root / relative).is_file():
+            found[step] = relative
+    return found
 
 
 def _evaluator(

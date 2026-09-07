@@ -1,0 +1,170 @@
+# Standalone function specification for fluxbelowinv, the UW shallow scheme's
+# turbulent flux below the reconstructed inversion: the kernel-API closure's
+# representative profile subroutine.  A private procedure of uwshcu, called
+# three times per column inside compute_uwshcu; here it is reached through its
+# ifort symbol (uwshcu_mp_fluxbelowinv_) behind an explicit interface, on the
+# routine's own layout: interface profiles indexed 0:mkx.
+#
+# This file is the runtime's only source of truth for the function boundary.
+# tools/verify_pi_cam_function_spec.py checks it against the kernel inventory
+# and the pinned source; the runtime never parses Fortran.
+
+schema_version: 1
+function: fluxbelowinv
+qualified_name: uwshcu::fluxbelowinv
+routine: fluxbelowinv
+source: components/cam/src/physics/cam/uwshcu.F90
+module: uwshcu
+binding: mangled
+layout: direct
+
+# mkx is the number of layers (pver); the interface profiles have mkx+1 points,
+# indexed from 0, which pverp counts.
+dimensions:
+  pver: 30
+  pverp: 31
+public_axes:
+  pverp: ilev
+# the routine writes its interface extent as 0:mkx; pverp is what it counts
+dimension_aliases:
+  "0 : mkx": pverp
+
+arguments:
+  - name: cbmf
+    role: input
+    fortran_type: real
+    dtype: float64
+    rank: 0
+    intent: in
+    native_shape: []
+    units: kg/m2/s
+    constraints: [positive]
+    description: Cloud-base mass flux; the caller guarantees it is not zero.
+  - name: ps0
+    role: input
+    fortran_type: real
+    dtype: float64
+    rank: 1
+    intent: in
+    native_shape: [pverp]
+    lower_bounds: [0]
+    units: Pa
+    constraints: [positive, decreasing]
+    description: Environmental pressure at interfaces, ps0(0:mkx).
+  - name: mkx
+    role: structural
+    fortran_type: integer
+    dtype: int32
+    rank: 0
+    intent: in
+    native_shape: []
+    value: 30
+    description: Number of layers; the profiles run over 0:mkx.
+  - name: kinv
+    role: input
+    fortran_type: integer
+    dtype: int32
+    rank: 0
+    intent: in
+    native_shape: []
+    range: [2, 30]
+    description: Inversion layer index; the flux is computed at and below interface kinv-1.
+  - name: dt
+    role: input
+    fortran_type: real
+    dtype: float64
+    rank: 0
+    intent: in
+    native_shape: []
+    units: s
+    constraints: [positive]
+    description: Time step.
+  - name: xsrc
+    role: input
+    fortran_type: real
+    dtype: float64
+    rank: 0
+    intent: in
+    native_shape: []
+    description: Source value of the transported quantity in the source layer.
+  - name: xmean
+    role: input
+    fortran_type: real
+    dtype: float64
+    rank: 0
+    intent: in
+    native_shape: []
+    description: Mean value of the quantity in the kinv-1 layer.
+  - name: xtopin
+    role: input
+    fortran_type: real
+    dtype: float64
+    rank: 0
+    intent: in
+    native_shape: []
+    description: Value at the base interface of the kinv+1 layer.
+  - name: xbotin
+    role: input
+    fortran_type: real
+    dtype: float64
+    rank: 0
+    intent: in
+    native_shape: []
+    description: Value at the top interface of the kinv-1 layer.
+  - name: xflx
+    role: output
+    fortran_type: real
+    dtype: float64
+    rank: 1
+    intent: out
+    native_shape: [pverp]
+    lower_bounds: [0]
+    description: Turbulent flux at interfaces, xflx(0:mkx); zero above kinv-1.
+
+parameters: {}
+
+# fluxbelowinv reads no module state; the image carries uwshcu's object and
+# what it links against, exactly as compute_uwshcu_inv's image does.
+module_state: []
+
+image:
+  archive_members:
+    - uwshcu.o
+    - constituents.o
+    - water_tracers.o
+    - water_tracer_vars.o
+    - wv_saturation.o
+    - wv_sat_methods.o
+    - physconst.o
+    - ppgrid.o
+    - cam_logfile.o
+    - error_messages.o
+    - {member: shr_spfn_mod.o, archive: csm_share}
+    - {member: water_isotopes.o, archive: csm_share}
+    - {member: water_types.o, archive: csm_share}
+  stubs:
+    inert:
+      - cam_history_mp_outfld_
+      - shr_assert_mod_mp_shr_assert_in_domain_0d_double_
+      - spmd_utils_mp_masterproc_
+      - mpishorthand_mp_mpicom_
+      - mpishorthand_mp_mpir8_
+      - mpishorthand_mp_mpichar_
+      - mpishorthand_mp_mpiint_
+      - mpishorthand_mp_mpilog_
+    fail_closed:
+      - cam_history_mp_addfld_
+      - cam_history_mp_add_default_
+      - cam_initfiles_mp_initial_file_get_id_
+      - cloud_fraction_mp_cldfrc_fice_
+      - physics_buffer_mp_pbuf_add_field_double_
+      - physics_buffer_mp_pbuf_get_field_name_
+      - physics_buffer_mp_get_pbuf1d_field_by_index_1d_double_
+      - mpibcast_
+      - shr_nl_mod_mp_shr_nl_find_group_name_
+      - units_mp_getunit_
+      - units_mp_freeunit_
+      - netcdf_mp_nf90_strerror_
+    abort:
+      - shr_sys_mod_mp_shr_sys_abort_
+  base_address: 0x50000000

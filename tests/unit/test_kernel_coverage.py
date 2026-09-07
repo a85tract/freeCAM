@@ -69,7 +69,16 @@ def test_every_kernel_row_is_a_kernel_a_stage_class_describes_and_two_have_close
                          "dadadj", "compute_uwshcu_inv",
                          "zm_convr", "zm_conv_evap", "momtran", "convtran",
                          "compute_tms", "compute_eddy_diff", "compute_vdiff", "gw_drag_prof",
-                         "wetdepa_v2", "modal_aero_depvel_part", "gas_phase_chemdr"}
+                         "wetdepa_v2", "modal_aero_depvel_part", "gas_phase_chemdr",
+                         # the kernel-API closure's first representative entries: a function inside an
+                         # assignment and a kernel inside a hoisted kernel; bindable, gates still owed
+                         "virtem", "cldfrc_fice"}
+    # virtem: gates 7343257 and 7343260 answered it through its assignment pause; cldfrc_fice's
+    # pause runs a hoisted copy of zm_conv_evap, which gate 7343258 showed is not bit-for-bit
+    assert rows["virtem"]["bindable"] and rows["virtem"]["validated_through_runner"]
+    assert rows["virtem"]["status"] == "open" and "in_model_replacement_bfb" not in rows["virtem"]["missing"]
+    assert rows["cldfrc_fice"]["bindable"] and not rows["cldfrc_fice"]["validated_through_runner"]
+    assert "in_model_replacement_bfb" in rows["cldfrc_fice"]["missing"] and "7343258" in (rows["cldfrc_fice"]["note"] or "")
     # the pausable stages: dadadj has a reviewed contract and the runner pauses at it
     assert rows["dadadj"]["bindable"] and rows["dadadj"]["contract"] == "reviewed"
     pcond = rows["mmacro_pcond"]
@@ -82,7 +91,7 @@ def test_every_kernel_row_is_a_kernel_a_stage_class_describes_and_two_have_close
     assert micro["validated_through_runner"]                    # gate 7331040
     assert "segment_runner" not in micro["missing"] and "in_model_replacement_bfb" not in micro["missing"]
     assert "capture" in micro["missing"]                        # no captured calls replayed through its image yet
-    assert record["summary"]["kernels_validated_through_runner"] == 17     # every exposed kernel, through 7335681
+    assert record["summary"]["kernels_validated_through_runner"] == 18     # every exposed kernel but cldfrc_fice, through 7343260
     assert micro["in_model_gates"][0]["bfb"] is True          # the walk with the core through its image
     # the pause gates the manifest names are in-model evidence too (7331040, 7331041)
     assert [g["record"] for g in micro["in_model_gates"][1:]] == [
@@ -103,7 +112,7 @@ def test_every_kernel_row_is_a_kernel_a_stage_class_describes_and_two_have_close
         assert "reviewed_contract" not in rows[name]["missing"] and "segment_runner" not in rows[name]["missing"]
         assert "in_model_replacement_bfb" not in rows[name]["missing"]
         assert [g["record"] for g in rows[name]["in_model_gates"][1:]][-1] == "pi_cam_pausable_everything_50step.json"
-    assert record["summary"]["kernels_by_status"] == {"complete": 2, "open": 15}     # P3-P5 kernels await capture and replay
+    assert record["summary"]["kernels_by_status"] == {"complete": 2, "open": 17}     # P3-P5 kernels and the two closure entries await capture and replay
 
 
 def test_the_committed_record_is_what_the_builder_writes_now() -> None:

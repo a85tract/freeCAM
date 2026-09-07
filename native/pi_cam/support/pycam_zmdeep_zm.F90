@@ -31,9 +31,10 @@ module pycam_zmdeep_zm
   use water_tracers, only: wtrc_check_h2o, wtrc_precip_evap, wtrc_q1q2_pjr
   use constituents, only: cnst_name
   use zm_conv_intr, only: mu, eu, du, md, ed, dp, dsubcld, jt, maxg, ideep, lengath, zmconv_org, ixorg, limcnv
+  use pycam_zmdeep_evap, only: evap_bind
   implicit none
   private
-  public :: zm_piece_1, zm_piece_2, zm_piece_3, zm_piece_4, zm_piece_5, zm_piece_6, zm_convr_frame, zm_conv_evap_frame, momtran_frame, zm_convr_original, zm_conv_evap_original, momtran_original, zm_bind, zm_resolve_indices
+  public :: zm_piece_1, zm_piece_2, zm_piece_3, zm_piece_4, zm_piece_5, zm_piece_6, zm_convr_frame, zm_conv_evap_frame, momtran_frame, zm_convr_original, zm_conv_evap_original, momtran_original, zm_bind, zm_bind_evap, zm_resolve_indices
 
   integer(c_int64_t), parameter :: zero_shape(1) = (/ 0_c_int64_t /)
 
@@ -158,6 +159,11 @@ module pycam_zmdeep_zm
   integer, save, public :: snow_dp_idx = -1
 
 contains
+
+  subroutine zm_bind_evap()
+    ! zm_conv_intr.F90:723-728: the call's actuals bound to the unit's dummies
+    call evap_bind(state1%ncol,state1%lchnk, state1%t,state1%pmid,state1%pdel,state1%q(:pcols,:pver,1), landfrac, ptend_loc%s, tend_s_snwprd, tend_s_snwevmlt, ptend_loc%q(:pcols,:pver,1), rprd, cld, ztodt, prec, snow, evpstore, substore, ntprprd, ntsnprd, flxprec, flxsnow)
+  end subroutine zm_bind_evap
 
   subroutine zm_bind(a_pblh, a_mcon, a_cme, a_tpert, a_dlf, a_pflx, a_zdu, a_rliq, a_ztodt, a_jctop, a_jcbot, a_state, a_ptend_all, a_landfrac, a_pbuf, a_wtdlf)
     ! the dummies of zm_conv_tend, as the caller's statement passes them

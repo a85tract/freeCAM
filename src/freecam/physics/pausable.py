@@ -109,7 +109,7 @@ class DeepConvection(PausableStage):
     PREFIX = "zmdeep"
     RUNNER_PREFIX = "zmdeep"
     PROCESS_NAME = "deep_convection"
-    SWAPPABLE = ("zm_convr", "zm_conv_evap", "momtran")
+    SWAPPABLE = ("zm_convr", "zm_conv_evap", "momtran", "cldfrc_fice")
 
 
 class ConvectiveTracerTransport(PausableStage):
@@ -136,7 +136,7 @@ class VerticalDiffusion(PausableStage):
     PREFIX = "vdiff"
     RUNNER_PREFIX = "vdiff"
     PROCESS_NAME = "vertical_diffusion"
-    SWAPPABLE = ("compute_tms", "compute_eddy_diff", "compute_vdiff")
+    SWAPPABLE = ("compute_tms", "compute_eddy_diff", "compute_vdiff", "virtem")
 
 
 class GravityWaveDrag(PausableStage):

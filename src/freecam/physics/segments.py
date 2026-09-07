@@ -251,6 +251,13 @@ class SegmentedStage:
         if not any(mask.values()):
             raise PhysicsError(
                 f"{self.stage_name}: nothing is replaced; run the original stage whole")
+        spec = getattr(self.runner, "spec", None)
+        conflicts = spec.replacement_conflicts(mask) if spec is not None and hasattr(spec, "replacement_conflicts") else []
+        if conflicts:
+            detail = "; ".join(f"{inner!r} is called inside {outer!r}" for inner, outer in conflicts)
+            raise PhysicsError(
+                f"{self.stage_name}: a kernel and the kernel it runs inside are both replaced: {detail}. "
+                f"Replace one or the other; a replaced outer kernel never reaches the inner call")
         if self.context is None:
             self.context = self.runner.create(self.stage_name)
             self.counters.crossings += 1

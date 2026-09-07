@@ -62,13 +62,21 @@ def main(argv: list[str] | None = None) -> int:
                 return 1
         anchors = pausable.spec_digest(spec)
         recorded = (yaml.safe_load(path.read_text()) or {}).get("anchors") or {}
-        if recorded and recorded != anchors:
-            moved = [k for k in anchors if recorded.get(k) != anchors[k]]
+        moved = [k for k in anchors if k in recorded and recorded[k] != anchors[k]]
+        if moved:
             print(f"{path.name}: the pinned source moved under {moved}", file=sys.stderr)
             return 1
-        if not recorded and not arguments.check:
-            text = path.read_text().rstrip("\n") + "\nanchors:\n" + "".join(f"  {k!r}: {v}\n" for k, v in anchors.items())
-            path.write_text(text)
+        if recorded != anchors:
+            # a range added or dropped by the spec, not a source that moved: the anchors
+            # follow the spec when writing, and are stale when checking
+            if arguments.check:
+                print(f"{path.name}: anchors do not list {[k for k in anchors if k not in recorded]}"
+                      f" / list dropped {[k for k in recorded if k not in anchors]}", file=sys.stderr)
+                stale = True
+            else:
+                body = path.read_text()
+                body = body[: body.index("\nanchors:")] if "\nanchors:" in body else body.rstrip("\n")
+                path.write_text(body.rstrip("\n") + "\nanchors:\n" + "".join(f"  {k!r}: {v}\n" for k, v in anchors.items()))
         for target, text in pausable.render_all(spec).items():
             if arguments.check:
                 stale |= _stale(target, text)

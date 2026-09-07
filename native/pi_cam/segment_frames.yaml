@@ -3108,3 +3108,47 @@ kernels:
     dtype: float64
     intent: inout
     kind: opaque
+  virtem:
+  - name: t
+    actual: th(:ncol,pver)
+    rank: 1
+    dtype: float64
+    intent: in
+    kind: array
+  - name: q
+    actual: state%q(:ncol,pver,1)
+    rank: 1
+    dtype: float64
+    intent: in
+    kind: array
+  - name: virtem
+    actual: thvs(:ncol)
+    rank: 1
+    dtype: float64
+    intent: out
+    kind: array
+  cldfrc_fice:
+  - name: ncol
+    actual: ncol
+    rank: 0
+    dtype: int32
+    intent: in
+    kind: scalar
+  - name: t
+    actual: t
+    rank: 2
+    dtype: float64
+    intent: in
+    kind: array
+  - name: fice
+    actual: fice
+    rank: 2
+    dtype: float64
+    intent: out
+    kind: array
+  - name: fsnow
+    actual: fsnow_conv
+    rank: 2
+    dtype: float64
+    intent: out
+    kind: array

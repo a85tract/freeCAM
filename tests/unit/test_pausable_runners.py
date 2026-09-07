@@ -285,13 +285,15 @@ def test_the_deep_convection_classes_own_their_actions_and_kernels() -> None:
     from freecam.physics.pausable import STAGES, ConvectiveTracerTransport, DeepConvection
 
     assert STAGES["deep_convection"] is DeepConvection and STAGES["convective_tracer_transport_leaf"] is ConvectiveTracerTransport
-    assert DeepConvection.SWAPPABLE == ("zm_convr", "zm_conv_evap", "momtran") and DeepConvection.WHOLE_ACTION
+    assert DeepConvection.SWAPPABLE == ("zm_convr", "zm_conv_evap", "momtran", "cldfrc_fice") and DeepConvection.WHOLE_ACTION
     assert ConvectiveTracerTransport.SWAPPABLE == ("convtran",)
     assert ConvectiveTracerTransport.STAGE == "cam_run1.convective_tracer_transport_leaf"
     rows = {r["kernel"]: r for r in DeepConvection().describe_kernels()}
     assert set(rows) == set(DeepConvection.SWAPPABLE) and all(r["bindable"] for r in rows.values())
-    # gates 7334212, 7334213 and 7335519 answered each kernel through its pause; 7335520 all three at once
-    assert all(rows[name]["validated"] for name in DeepConvection.SWAPPABLE)
+    # gates 7334212, 7334213 and 7335519 answered each kernel through its pause; 7335520 all three at once;
+    # cldfrc_fice, inside the hoisted zm_conv_evap, is bindable and awaits its gate
+    assert all(rows[name]["validated"] for name in ("zm_convr", "zm_conv_evap", "momtran"))
+    assert not rows["cldfrc_fice"]["validated"]
     leaf = {r["kernel"]: r for r in ConvectiveTracerTransport().describe_kernels()}
     assert leaf["convtran"]["bindable"] and leaf["convtran"]["validated"]        # gates 7335521, 7335522
 
@@ -330,7 +332,7 @@ def test_the_tphysac_classes_own_their_actions_and_kernels() -> None:
     from freecam.physics.pausable import STAGES, GravityWaveDrag, VerticalDiffusion
 
     assert STAGES["vertical_diffusion"] is VerticalDiffusion and STAGES["gravity_wave_drag"] is GravityWaveDrag
-    assert VerticalDiffusion.SWAPPABLE == ("compute_tms", "compute_eddy_diff", "compute_vdiff")
+    assert VerticalDiffusion.SWAPPABLE == ("compute_tms", "compute_eddy_diff", "compute_vdiff", "virtem")
     assert GravityWaveDrag.SWAPPABLE == ("gw_drag_prof",) and GravityWaveDrag.STAGE == "cam_run2.gravity_wave_drag"
     rows = {r["kernel"]: r for r in VerticalDiffusion().describe_kernels()}
     assert set(rows) == set(VerticalDiffusion.SWAPPABLE) and all(r["bindable"] for r in rows.values())
@@ -390,3 +392,50 @@ def test_the_energy_fixer_is_owned_whole_and_says_why_it_has_no_pause() -> None:
     stage.execution_policy = "segmented"
     with pytest.raises(PhysicsError):
         stage.select_mode(None)
+
+
+def test_a_function_inside_an_assignment_pauses_with_its_sections_and_its_result() -> None:
+    """virtem: an elemental function applied to sections, served as arrays; the left-hand side is the result slot."""
+
+    spec = pausable.load_spec(pausable.SPECS / "vertical_diffusion.yaml")
+    kernel = spec.kernels["virtem"]
+    assert kernel.kind == "function" and kernel.elemental and kernel.result == "virtem"
+    (pause,) = [p for u in spec.units.values() for p in u.pauses if p.kernel == "virtem"]
+    assert pause.form == "assign" and pause.lhs == "thvs(:ncol)"
+    slots = pausable.frame_slots(pause, kernel)
+    assert [(s.dummy, s.rank, s.intent, s.shape) for s in slots] == [
+        ("t", 1, "in", ["ncol"]), ("q", 1, "in", ["ncol"]), ("virtem", 1, "out", ["ncol"])]
+    assert slots[0].expression == "th(1,pver)" and slots[1].expression == "state%q(1,pver,1)"
+    assert slots[2].expression == "thvs(1)"
+    driver = pausable.render_unit(spec, spec.units["driver"])
+    assert "thvs(:ncol) = virtem(th(:ncol,pver),state%q(:ncol,pver,1))" in driver   # the original, verbatim
+    # a partial range before another ranged axis is not contiguous and is refused
+    with pytest.raises(SystemExit):
+        pausable._section_extents("x(1:ncol,:)", None)
+    assert pausable._section_extents("x(:ncol,k)", None) == (1, ["ncol"])
+    assert pausable._section_extents("x(:,2:n,j)", None) == (2, ["size(x,1)", "(n)-(2)+1"])
+    assert pausable._section_extents("x(i,k)", None) == (0, [])
+
+
+def test_a_kernel_inside_a_hoisted_kernel_is_entered_only_when_it_alone_is_replaced() -> None:
+    """cldfrc_fice inside zm_conv_evap: three-way dispatch in the runner, a conflict when both are replaced."""
+
+    spec = pausable.load_spec(pausable.SPECS / "deep_convection.yaml")
+    assert spec.kernels["cldfrc_fice"].within == "zm_conv_evap"
+    (node,) = [n for n in pausable._walk(spec.units["zm"].body) if n.kind == "kernel_unit"]
+    assert node.pause.kernel == "zm_conv_evap" and node.call.unit == "evap"
+    runner = pausable.render_runner(spec)
+    evap_id, fice_id = list(spec.kernels).index("zm_conv_evap") + 1, list(spec.kernels).index("cldfrc_fice") + 1
+    dispatch = runner[runner.index("case (pc_before_zm_conv_evap_1)"):]
+    dispatch = dispatch[:dispatch.index("case (pc_at_zm_conv_evap)")]
+    assert f"if (replace({evap_id})) then" in dispatch
+    assert f"else if (replace({fice_id})) then" in dispatch and "call zm_bind_evap()" in dispatch
+    assert "call zm_conv_evap_original()" in dispatch
+    frames = pausable.frame_descriptors(spec)
+    assert [s["name"] for s in frames["cldfrc_fice"]] == ["ncol", "t", "fice", "fsnow"]
+    from freecam.pi_cam.segment_runner import load_manifest
+
+    manifest = {s.stage: s for s in load_manifest()}["cam_run1.deep_convection"]
+    assert manifest.kernel("cldfrc_fice").within == "zm_conv_evap"
+    assert manifest.replacement_conflicts({"zm_conv_evap": True, "cldfrc_fice": True}) == [("cldfrc_fice", "zm_conv_evap")]
+    assert manifest.replacement_conflicts({"zm_convr": True, "cldfrc_fice": True}) == []

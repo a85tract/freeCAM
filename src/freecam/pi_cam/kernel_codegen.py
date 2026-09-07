@@ -8,6 +8,8 @@ one rank-local chunk at a time from an aggregate StatePool field.
 
 from __future__ import annotations
 
+import itertools
+
 from dataclasses import dataclass
 from pathlib import Path
 import re
@@ -51,6 +53,14 @@ class DirectKernelArgument:
     extents: tuple[str, ...] = ()
     pointer: bool = False
     fortran_type: str = ""
+    #: the dummy this field feeds; set when the argument is passed by keyword (an OPTIONAL dummy)
+    dummy: str = ""
+    #: the int32 field (one per chunk) saying whether this optional argument is present
+    presence: str = ""
+    #: a flag field itself: carries presence for the named field and is not passed to the routine
+    flag_for: str = ""
+    #: the function's result: assigned from the call rather than passed to it
+    result: bool = False
 
     @classmethod
     def from_payload(cls, payload: Mapping[str, Any]) -> "DirectKernelArgument":
@@ -164,6 +174,11 @@ class DirectKernel:
     arguments: tuple[DirectKernelArgument, ...]
     modules: tuple[tuple[str, tuple[str, ...]], ...] = ()
     action_id: int = 0
+    #: subroutine, or function (one argument carries ``result``)
+    kind: str = "subroutine"
+    #: an explicit interface for a routine the wrapper reaches by external symbol (a
+    #: private module procedure through ifort's ``module_mp_routine_``); Fortran lines
+    interface: tuple[str, ...] = ()
 
     @property
     def operation_name(self) -> str:
@@ -395,10 +410,6 @@ def _kernel_function(kernel: DirectKernel) -> list[str]:
         for axis, value in enumerate(shape_values):
             ending = ", &" if axis + 1 < len(shape_values) else " /))"
             lines.append(f"       {value}{ending}")
-    arguments = [
-        _argument_reference(name, argument)
-        for name, argument in zip(names, kernel.arguments)
-    ]
     lines.extend(
         [
             "  do chunk = 1, nchunks",
@@ -406,13 +417,64 @@ def _kernel_function(kernel: DirectKernel) -> list[str]:
     )
     for name, argument in zip(names, kernel.arguments):
         lines.extend(_chunk_preamble(name, argument))
-    lines.append(f"    call {kernel.routine}( &")
-    for index, argument in enumerate(arguments):
-        ending = ", &" if index + 1 < len(arguments) else ")"
-        lines.append(f"         {argument}{ending}")
+    lines.extend(_call_statements(kernel, names))
     for name, argument in zip(names, kernel.arguments):
         lines.extend(_chunk_postamble(name, argument))
     lines.extend(("  enddo", f"end function {kernel.symbol}", ""))
+    return lines
+
+
+def _call_statements(kernel: DirectKernel, names: list[str]) -> list[str]:
+    """The call of the original routine for one chunk.
+
+    A function's result is assigned into its result field's chunk slice.  An
+    optional argument is passed by keyword when its presence flag is set and
+    left out otherwise, so the routine's ``present()`` tests see what the
+    caller meant: one call form per combination of the (at most two) optionals.
+    """
+
+    by_field = {argument.field: name for name, argument in zip(names, kernel.arguments)}
+    result_ref = None
+    fixed: list[str] = []
+    optionals: list[tuple[str, str, str]] = []      # (dummy, actual reference, flag reference)
+    for name, argument in zip(names, kernel.arguments):
+        if argument.flag_for:
+            continue
+        if argument.result:
+            result_ref = _argument_reference(name, argument)
+            continue
+        reference = _argument_reference(name, argument)
+        if argument.presence:
+            flag = _chunk_slice(by_field[argument.presence], next(a for a in kernel.arguments if a.field == argument.presence))
+            optionals.append((argument.dummy, reference, flag))
+        else:
+            fixed.append(reference)
+
+    def call(extra: list[tuple[str, str]]) -> list[str]:
+        actuals = fixed + [f"{dummy}={reference}" for dummy, reference in extra]
+        head = f"    {result_ref} = {kernel.routine}( &" if kernel.kind == "function" else f"    call {kernel.routine}( &"
+        if not actuals:
+            return [head.replace("( &", "()")]
+        out = [head]
+        for index, actual in enumerate(actuals):
+            ending = ", &" if index + 1 < len(actuals) else ")"
+            out.append(f"         {actual}{ending}")
+        return out
+
+    if kernel.kind == "function" and result_ref is None:
+        raise PICAMConfigurationError(f"direct kernel {kernel.name} is a function but no argument carries its result")
+    if not optionals:
+        return call([])
+    lines: list[str] = []
+    combinations = list(itertools.product((True, False), repeat=len(optionals)))
+    for index, present in enumerate(combinations):
+        condition = " .and. ".join(
+            f"{flag} {'/=' if flag_present else '=='} 0_c_int32_t" for (_, _, flag), flag_present in zip(optionals, present)
+        )
+        keyword = "if" if index == 0 else "else if"
+        lines.append(f"    {keyword} ({condition}) then")
+        lines.extend("  " + line for line in call([(dummy, reference) for (dummy, reference, _), flag_present in zip(optionals, present) if flag_present]))
+    lines.append("    end if")
     return lines
 
 
@@ -445,6 +507,11 @@ def generate_direct_kernel_module(
             "  end interface",
         )
     )
+    for kernel in kernels:
+        if kernel.interface:
+            lines.append("  interface")
+            lines.extend("    " + line for line in kernel.interface)
+            lines.append("  end interface")
     for kernel in kernels:
         lines.append(f"  public :: {kernel.symbol}")
     lines.extend(("contains", ""))

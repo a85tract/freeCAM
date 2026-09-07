@@ -7,7 +7,7 @@
   "source_revision": "556ad1c112af6606299f8270ad6f8b9b16540332",
   "rules": "native/pi_cam/kernel_api_closure_rules.yaml",
   "rules_sha256": "adcb38e8bc4f8dde432860fd8b8c3a2a3b772702fd614021b501c946fffe90a7",
-  "generator_sha256": "d1e2d88787b66edab311711e387948f265ee422162c12aa42f0b71982e94f7ca",
+  "generator_sha256": "50ed552cd62c4bc2bf2faa8f5ed065274af65e271b596726147566bb00673e58",
   "native_manifest_sha256": "707c16d7875c3b353c31a197bdfa613b889a402784b00afb159f05b7b2a8e558",
   "patched_physpkg_sha256": "eefd55fc9a5a2890df84e5f1aaeb69f7301566e1c4c7155876c73222a05bec8f",
   "plan_actions": 58
@@ -28554,7 +28554,12 @@
     },
     "executed_through_actions": [
      "cam_run1.cloud_macro_microphysics"
-    ]
+    ],
+    "standalone": {
+     "contract": "native/pi_cam/functions/mmacro_pcond.yaml",
+     "standalone_build": "validation/pi_cam_mmacro_pcond_standalone_build.json",
+     "module_state": "validation/pi_cam_mmacro_pcond_module_state.json"
+    }
    },
    "in_configuration": true,
    "entry_guards": [],
@@ -31851,10 +31856,21 @@
    "rule": null,
    "action_root": false,
    "runtime_evidence": {
+    "gated_kernel": {
+     "kernel": "cldfrc_fice",
+     "owner_class": "freecam.physics.pausable.DeepConvection",
+     "in_model_gates": [],
+     "status": "open"
+    },
     "executed_through_actions": [
      "cam_run1.cloud_macro_microphysics",
      "cam_run1.deep_convection"
-    ]
+    ],
+    "standalone": {
+     "contract": "native/pi_cam/functions/cldfrc_fice.yaml",
+     "standalone_build": "validation/pi_cam_cldfrc_fice_standalone_build.json",
+     "module_state": "validation/pi_cam_cldfrc_fice_module_state.json"
+    }
    },
    "in_configuration": true,
    "entry_guards": [],
@@ -41014,7 +41030,12 @@
     },
     "executed_through_actions": [
      "cam_run1.dry_adjustment"
-    ]
+    ],
+    "standalone": {
+     "contract": "native/pi_cam/functions/dadadj.yaml",
+     "standalone_build": "validation/pi_cam_dadadj_standalone_build.json",
+     "module_state": "validation/pi_cam_dadadj_module_state.json"
+    }
    },
    "in_configuration": true,
    "entry_guards": [],
@@ -66163,7 +66184,11 @@
     },
     "executed_through_actions": [
      "cam_run1.cloud_macro_microphysics"
-    ]
+    ],
+    "standalone": {
+     "contract": "native/pi_cam/functions/micro_mg_tend.yaml",
+     "module_state": "validation/pi_cam_micro_mg_tend_module_state.json"
+    }
    },
    "in_configuration": true,
    "entry_guards": [],
@@ -69655,6 +69680,10 @@
       }
      ],
      "status": "open"
+    },
+    "standalone": {
+     "contract": "native/pi_cam/functions/micro_mg_tend.yaml",
+     "module_state": "validation/pi_cam_micro_mg_tend_module_state.json"
     }
    },
    "in_configuration": false,
@@ -71527,6 +71556,10 @@
       }
      ],
      "status": "open"
+    },
+    "standalone": {
+     "contract": "native/pi_cam/functions/micro_mg_tend.yaml",
+     "module_state": "validation/pi_cam_micro_mg_tend_module_state.json"
     }
    },
    "in_configuration": false,
@@ -125550,9 +125583,37 @@
    "rule": null,
    "action_root": false,
    "runtime_evidence": {
+    "gated_kernel": {
+     "kernel": "virtem",
+     "owner_class": "freecam.physics.pausable.VerticalDiffusion",
+     "in_model_gates": [
+      {
+       "path": "segmented, original kernel answered through the pause",
+       "record": "pi_cam_pausable_virtem-pause_50step.json",
+       "bfb_record": "pi_cam_pausable_virtem-pause_vs_oracle_50step_bfb.json",
+       "present": true,
+       "bfb": true,
+       "compared_files": 4
+      },
+      {
+       "path": "segmented, original kernel answered through the pause",
+       "record": "pi_cam_pausable_everything_50step.json",
+       "bfb_record": "pi_cam_pausable_everything_vs_oracle_50step_bfb.json",
+       "present": true,
+       "bfb": true,
+       "compared_files": 4
+      }
+     ],
+     "status": "open"
+    },
     "executed_through_actions": [
      "cam_run2.vertical_diffusion"
-    ]
+    ],
+    "standalone": {
+     "contract": "native/pi_cam/functions/virtem.yaml",
+     "standalone_build": "validation/pi_cam_virtem_standalone_build.json",
+     "module_state": "validation/pi_cam_virtem_module_state.json"
+    }
    },
    "in_configuration": true,
    "entry_guards": [],
@@ -198731,7 +198792,11 @@
    "runtime_evidence": {
     "executed_through_actions": [
      "cam_run1.shallow_convection"
-    ]
+    ],
+    "standalone": {
+     "contract": "native/pi_cam/functions/fluxbelowinv.yaml",
+     "standalone_build": "validation/pi_cam_fluxbelowinv_standalone_build.json"
+    }
    },
    "in_configuration": true,
    "entry_guards": [],
@@ -218791,5 +218856,5 @@
   "duplicate_modules": {},
   "missing_roots": []
  },
- "inputs_hash": "cf3590aacd77b6b8bd095232ee33d28c3bcbaffcd33bf98fce47006e958655ef"
+ "inputs_hash": "ded69c067d81419df12a93ca9d30625d79c94312a02f22558d2f7e7d0ba21167"
 }

@@ -121,6 +121,29 @@ Fortran of their own.
   data capture; its in-model replacement unit is the enclosing loop-level
   call, and the record's loop depth marks the candidates.
 
+## Three representative entries
+
+Before batches, the inventory's generic pieces were proved on three routines of
+different shapes.  Each has a reviewed contract under `native/pi_cam/functions/`,
+a standalone image linked from the oracle's own objects, and a Python call
+through `load_function`.
+
+| Routine | Shape | Standalone | In the model |
+| --- | --- | --- | --- |
+| `pbl_utils::virtem` | elemental scalar function reading module state (`zvir`) | image built; `result` returned as `outputs["result"]`, bitwise equal to the formula with the model's snapshot of `zvir` | the vertical diffusion runner pauses at the assignment `thvs(:ncol) = virtem(...)`, serving the section actuals and the left-hand side as the frame; bit-for-bit, 100 pauses in 50 steps |
+| `uwshcu::fluxbelowinv` | private profile subroutine with `0:mkx` interface arrays | image built through the private procedure's ifort symbol behind an explicit interface, no module recompiled; the contract records the lower bounds | no pause yet: its caller `compute_uwshcu` is 5000 lines of arithmetic, and see below |
+| `cloud_fraction::cldfrc_fice` | chunk subroutine called inside `zm_conv_evap`, itself a kernel | image built, `tmelt` verified against the model | the runner can enter a hoisted copy of `zm_conv_evap` and pause at the call; the gate was **not** bit-for-bit (one rank, a few ULP, step 7) |
+
+The last row is the finding that shapes what comes next.  Hoisting a routine
+verbatim into a module works for drivers, whose arithmetic is incidental; it
+does not reproduce the oracle object's rounding for a numerical routine, because
+a recompiled copy vectorises and fuses differently.  Reaching a call inside a
+compiled kernel therefore needs a mechanism that leaves the kernel's machine
+code untouched: redirecting the call's symbol in the linked object to a hook
+that hands control back to Python from the depth of the call stack.  Until that
+exists, `cldfrc_fice` stays bindable and blocked, and no further numerical
+routine is hoisted.
+
 ## Runtime evidence
 
 Static reachability is never narrowed by a count of zero.  The record

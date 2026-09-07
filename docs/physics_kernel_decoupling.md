@@ -201,6 +201,8 @@ committed file equals a fresh build or the test fails.
 | `wetdepa_v2` | AerosolWetDeposition (pausable, a leaf, two sites) | frame descriptor | yes, validated | segmented, bit-for-bit (3000 pauses in 50 steps: every mode, phase and species at both sites) | open: capture and replay |
 | `modal_aero_depvel_part` | AerosolDryDeposition (pausable, a leaf, four sites) | frame descriptor | yes, validated | segmented, bit-for-bit (800 pauses in 50 steps: the droplets and every mode at all four sites) | open: capture and replay |
 | `gas_phase_chemdr` | ChemistryTendencies (pausable, a leaf; the whole driver) | frame descriptor | yes, validated | segmented, bit-for-bit (100 pauses in 50 steps, the whole gas-phase driver answered as one kernel) | open: capture and replay |
+| `virtem` | VerticalDiffusion (pausable; a function inside an assignment of the driver) | frame descriptor; standalone contract | yes, validated | segmented, bit-for-bit (100 pauses in 50 steps; gate 7343257, and with every class installed, 7343260); callable standalone from its own image with the model's `zvir` | open: capture and replay |
+| `cldfrc_fice` | DeepConvection (pausable; called inside `zm_conv_evap`, itself a kernel) | frame descriptor; standalone contract | bindable, not validated | the runner enters a hoisted copy of `zm_conv_evap` to reach it; gate 7343258 diverged by a few ULP at step 7 on one rank, so the path is blocked (see the note in the manifest); callable standalone from its own image | blocked: pausing inside a compiled kernel must not depend on hoisting its arithmetic |
 
 One run installs everything: the nine pausable classes, the split radiation
 class and the cloud stage, with all seventeen kernels answered by the original

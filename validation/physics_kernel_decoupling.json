@@ -42,13 +42,13 @@
       "not-required-in-this-configuration": 11,
       "partial": 10
     },
-    "kernels": 17,
+    "kernels": 19,
     "kernels_by_status": {
       "complete": 2,
-      "open": 15
+      "open": 17
     },
-    "kernels_bindable": 17,
-    "kernels_validated_through_runner": 17,
+    "kernels_bindable": 19,
+    "kernels_validated_through_runner": 18,
     "catalog_procedures": 371
   },
   "closure": {
@@ -282,7 +282,8 @@
       "kernels": [
         "compute_tms",
         "compute_eddy_diff",
-        "compute_vdiff"
+        "compute_vdiff",
+        "virtem"
       ],
       "kernel_candidates": [
         {
@@ -2034,7 +2035,8 @@
       "kernels": [
         "zm_convr",
         "zm_conv_evap",
-        "momtran"
+        "momtran",
+        "cldfrc_fice"
       ],
       "kernel_candidates": [
         {
@@ -4856,7 +4858,8 @@
         }
       ],
       "status": "complete",
-      "missing": []
+      "missing": [],
+      "note": null
     },
     {
       "kernel": "micro_mg_tend",
@@ -4919,7 +4922,8 @@
         "replay_full_chunk",
         "replay_single_column",
         "replay_public_api"
-      ]
+      ],
+      "note": null
     },
     {
       "kernel": "rad_rrtmg_sw",
@@ -4987,7 +4991,8 @@
         "replay_full_chunk",
         "replay_single_column",
         "replay_public_api"
-      ]
+      ],
+      "note": null
     },
     {
       "kernel": "rad_rrtmg_lw",
@@ -5055,7 +5060,8 @@
         "replay_full_chunk",
         "replay_single_column",
         "replay_public_api"
-      ]
+      ],
+      "note": null
     },
     {
       "kernel": "dadadj",
@@ -5121,7 +5127,8 @@
         }
       ],
       "status": "complete",
-      "missing": []
+      "missing": [],
+      "note": null
     },
     {
       "kernel": "compute_uwshcu_inv",
@@ -5181,7 +5188,8 @@
         "replay_full_chunk",
         "replay_single_column",
         "replay_public_api"
-      ]
+      ],
+      "note": null
     },
     {
       "kernel": "zm_convr",
@@ -5241,7 +5249,8 @@
         "replay_full_chunk",
         "replay_single_column",
         "replay_public_api"
-      ]
+      ],
+      "note": null
     },
     {
       "kernel": "zm_conv_evap",
@@ -5301,7 +5310,8 @@
         "replay_full_chunk",
         "replay_single_column",
         "replay_public_api"
-      ]
+      ],
+      "note": null
     },
     {
       "kernel": "momtran",
@@ -5361,7 +5371,40 @@
         "replay_full_chunk",
         "replay_single_column",
         "replay_public_api"
-      ]
+      ],
+      "note": null
+    },
+    {
+      "kernel": "cldfrc_fice",
+      "stage_action": "cam_run1.deep_convection",
+      "owner_class": "freecam.physics.pausable.DeepConvection",
+      "routine": "cldfrc_fice",
+      "contract": "reviewed",
+      "contract_path": "native/pi_cam/functions/cldfrc_fice.yaml",
+      "bindable": true,
+      "validated_through_runner": false,
+      "evidence": {
+        "capture": [],
+        "standalone_build": [
+          "pi_cam_cldfrc_fice_standalone_build.json"
+        ],
+        "replay_full_chunk": [],
+        "replay_single_column": [],
+        "replay_public_api": [],
+        "module_state": [
+          "pi_cam_cldfrc_fice_module_state.json"
+        ]
+      },
+      "in_model_gates": [],
+      "status": "open",
+      "missing": [
+        "capture",
+        "replay_full_chunk",
+        "replay_single_column",
+        "replay_public_api",
+        "in_model_replacement_bfb"
+      ],
+      "note": "Gate 7343258 (pause at cldfrc_fice with the original answered, every other kernel native) was not bit-for-bit: rank 350 diverged by a few ULP at step 7 in cam_out.a2x_rattr. Reaching this pause runs the hoisted copy of zm_conv_evap's arithmetic, and a recompiled copy of a numerical routine does not reproduce the oracle object's rounding. Bindable, blocked until pauses inside compiled kernels stop depending on hoisting."
     },
     {
       "kernel": "convtran",
@@ -5413,7 +5456,8 @@
         "replay_full_chunk",
         "replay_single_column",
         "replay_public_api"
-      ]
+      ],
+      "note": null
     },
     {
       "kernel": "compute_tms",
@@ -5465,7 +5509,8 @@
         "replay_full_chunk",
         "replay_single_column",
         "replay_public_api"
-      ]
+      ],
+      "note": null
     },
     {
       "kernel": "compute_eddy_diff",
@@ -5517,7 +5562,8 @@
         "replay_full_chunk",
         "replay_single_column",
         "replay_public_api"
-      ]
+      ],
+      "note": null
     },
     {
       "kernel": "compute_vdiff",
@@ -5569,7 +5615,56 @@
         "replay_full_chunk",
         "replay_single_column",
         "replay_public_api"
-      ]
+      ],
+      "note": null
+    },
+    {
+      "kernel": "virtem",
+      "stage_action": "cam_run2.vertical_diffusion",
+      "owner_class": "freecam.physics.pausable.VerticalDiffusion",
+      "routine": "virtem",
+      "contract": "reviewed",
+      "contract_path": "native/pi_cam/functions/virtem.yaml",
+      "bindable": true,
+      "validated_through_runner": true,
+      "evidence": {
+        "capture": [],
+        "standalone_build": [
+          "pi_cam_virtem_standalone_build.json"
+        ],
+        "replay_full_chunk": [],
+        "replay_single_column": [],
+        "replay_public_api": [],
+        "module_state": [
+          "pi_cam_virtem_module_state.json"
+        ]
+      },
+      "in_model_gates": [
+        {
+          "path": "segmented, original kernel answered through the pause",
+          "record": "pi_cam_pausable_virtem-pause_50step.json",
+          "bfb_record": "pi_cam_pausable_virtem-pause_vs_oracle_50step_bfb.json",
+          "present": true,
+          "bfb": true,
+          "compared_files": 4
+        },
+        {
+          "path": "segmented, original kernel answered through the pause",
+          "record": "pi_cam_pausable_everything_50step.json",
+          "bfb_record": "pi_cam_pausable_everything_vs_oracle_50step_bfb.json",
+          "present": true,
+          "bfb": true,
+          "compared_files": 4
+        }
+      ],
+      "status": "open",
+      "missing": [
+        "capture",
+        "replay_full_chunk",
+        "replay_single_column",
+        "replay_public_api"
+      ],
+      "note": null
     },
     {
       "kernel": "gw_drag_prof",
@@ -5613,7 +5708,8 @@
         "replay_full_chunk",
         "replay_single_column",
         "replay_public_api"
-      ]
+      ],
+      "note": null
     },
     {
       "kernel": "wetdepa_v2",
@@ -5657,7 +5753,8 @@
         "replay_full_chunk",
         "replay_single_column",
         "replay_public_api"
-      ]
+      ],
+      "note": null
     },
     {
       "kernel": "modal_aero_depvel_part",
@@ -5701,7 +5798,8 @@
         "replay_full_chunk",
         "replay_single_column",
         "replay_public_api"
-      ]
+      ],
+      "note": null
     },
     {
       "kernel": "gas_phase_chemdr",
@@ -5745,7 +5843,8 @@
         "replay_full_chunk",
         "replay_single_column",
         "replay_public_api"
-      ]
+      ],
+      "note": null
     }
   ],
   "unresolved": [
@@ -5886,6 +5985,26 @@
       "why": "no record in validation/ for this step of the loop"
     },
     {
+      "what": "cldfrc_fice: capture",
+      "why": "no record in validation/ for this step of the loop"
+    },
+    {
+      "what": "cldfrc_fice: replay_full_chunk",
+      "why": "no record in validation/ for this step of the loop"
+    },
+    {
+      "what": "cldfrc_fice: replay_single_column",
+      "why": "no record in validation/ for this step of the loop"
+    },
+    {
+      "what": "cldfrc_fice: replay_public_api",
+      "why": "no record in validation/ for this step of the loop"
+    },
+    {
+      "what": "cldfrc_fice: in_model_replacement_bfb",
+      "why": "no record in validation/ for this step of the loop"
+    },
+    {
       "what": "convtran: capture",
       "why": "no record in validation/ for this step of the loop"
     },
@@ -5963,6 +6082,22 @@
     },
     {
       "what": "compute_vdiff: replay_public_api",
+      "why": "no record in validation/ for this step of the loop"
+    },
+    {
+      "what": "virtem: capture",
+      "why": "no record in validation/ for this step of the loop"
+    },
+    {
+      "what": "virtem: replay_full_chunk",
+      "why": "no record in validation/ for this step of the loop"
+    },
+    {
+      "what": "virtem: replay_single_column",
+      "why": "no record in validation/ for this step of the loop"
+    },
+    {
+      "what": "virtem: replay_public_api",
       "why": "no record in validation/ for this step of the loop"
     },
     {
@@ -6046,5 +6181,5 @@
       "why": "no record in validation/ for this step of the loop"
     }
   ],
-  "coverage_hash": "a8b89b1b51380dc3906bc87526dfccb47f5e5bc616d495a06d1dc122e228850e"
+  "coverage_hash": "2fb2749113fadb7e3bb6d09b430c35b698403a8336085036a2043eea79984f0f"
 }

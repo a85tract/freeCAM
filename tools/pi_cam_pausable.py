@@ -285,13 +285,15 @@ def parse_declarations(lines: list[str], first: int, last: int) -> dict[str, Dec
 
 
 def signature(lines: list[str], first: int, last: int, routine: str) -> list[str]:
-    """The routine's dummy names in order, from its `subroutine` statement."""
+    """The routine's dummy names in order, from its `subroutine` or `function` statement."""
 
+    head = (r"^\s*(?:(?:pure|elemental|recursive|impure|module)\s+|(?:real|integer|logical|double\s+precision|character)"
+            r"(?:\s*\([^)]*\))?\s+)*(?:subroutine|function)\s+" + routine + r"\s*\((.*?)\)\s*(?:result\s*\(\s*\w+\s*\))?\s*$")
     for _, _, text in statements(lines, first, last):
-        match = re.match(rf"^\s*(?:recursive\s+)?subroutine\s+{routine}\s*\((.*)\)\s*$", text, re.I)
+        match = re.match(head, text, re.I)
         if match:
             return [a.strip().lower() for a in _split_top(match.group(1)) if a.strip()]
-    raise SystemExit(f"no `subroutine {routine}(...)` in lines {first}-{last}")
+    raise SystemExit(f"no `subroutine {routine}(...)` or `function {routine}(...)` in lines {first}-{last}")
 
 
 def use_statements(lines: list[str], ranges: Iterable[tuple[int, int]]) -> list[str]:
@@ -346,6 +348,9 @@ class Pause:
     pc_at: str = ""
     pc_after: str = ""
     site: int = 0                  # 0 for a kernel's only site, else its number in source order
+    form: str = "call"             # call: `call k(...)`; assign: `lhs = k(...)`, a function inside an assignment
+    lhs: str = ""                  # assign: the left-hand side the result is stored into
+    args: str = ""                 # the actual arguments, as written between the parentheses
 
     @property
     def tag(self) -> str:
@@ -364,7 +369,7 @@ class UnitCall:
 
 @dataclass
 class Node:
-    kind: str                       # piece | pause | unit | if | do | select
+    kind: str                       # piece | pause | unit | kernel_unit | if | do | select
     first: int = 0
     last: int = 0
     line: int = 0
@@ -420,6 +425,10 @@ class Kernel:
     name: str
     source: str
     routine: str
+    kind: str = "subroutine"       # subroutine | function
+    result: str | None = None      # function: the result variable's name
+    elemental: bool = False        # function: elemental, so a section actual gives an array frame slot
+    within: str | None = None      # the kernel whose hoisted unit this kernel's call sites live in
     lines: list[str] = field(default_factory=list)
     dummies: list[str] = field(default_factory=list)
     decls: dict[str, Decl] = field(default_factory=dict)
@@ -455,10 +464,24 @@ def _parse_body(items: list, unit: Unit) -> list[Node]:
             nodes.append(Node("piece", first=first, last=last))
         elif "pause" in item:
             pause = item["pause"]
-            first, last = pause["call"]
-            p = Pause(kernel=str(pause["kernel"]), first=first, last=last, unit=unit)
+            if "assign" in pause:
+                first, last = pause["assign"]
+                p = Pause(kernel=str(pause["kernel"]), first=first, last=last, unit=unit, form="assign")
+            else:
+                first, last = pause["call"]
+                p = Pause(kernel=str(pause["kernel"]), first=first, last=last, unit=unit)
             unit.pauses.append(p)
             nodes.append(Node("pause", first=first, last=last, pause=p))
+        elif "kernel_unit" in item:
+            # a kernel that is also hoisted: paused at when it is replaced itself, entered
+            # when only a kernel inside it is replaced, called whole otherwise
+            record = item["kernel_unit"]
+            first, last = record["call"]
+            p = Pause(kernel=str(record["kernel"]), first=first, last=last, unit=unit)
+            c = UnitCall(unit=str(record["unit"]), first=first, last=last)
+            unit.pauses.append(p)
+            unit.unit_calls.append(c)
+            nodes.append(Node("kernel_unit", first=first, last=last, pause=p, call=c))
         elif "unit" in item:
             call = item["unit"]
             first, last = call["call"]
@@ -532,7 +555,8 @@ def load_spec(path: Path) -> Spec:
         units[str(key)] = unit
     if "glue" not in units:
         raise SystemExit(f"{path}: a spec needs a unit named glue (the action's tphysbc/tphysac block)")
-    kernels = {str(name): Kernel(name=str(name), source=str(k["source"]), routine=str(k["routine"]))
+    kernels = {str(name): Kernel(name=str(name), source=str(k["source"]), routine=str(k["routine"]),
+                                 within=(str(k["within"]) if k.get("within") else None))
                for name, k in payload["kernels"].items()}
     spec = Spec(path=path, prefix=prefix, stage=str(payload["stage"]),
                 refuse=list(payload.get("refuse") or []), getopts=[str(x) for x in payload.get("getopts") or []],
@@ -562,15 +586,24 @@ def _resolve(spec: Spec) -> None:
         for index, node in enumerate(pieces, start=1):
             node.name = f"{unit.key}_piece_{index}"
         unit.pieces = pieces
-        spans = [(n.first, n.last) for n in _walk(unit.body) if n.kind in ("piece", "pause", "unit")]
+        spans = [(n.first, n.last) for n in _walk(unit.body) if n.kind in ("piece", "pause", "unit", "kernel_unit")]
         spans += [(n.line, n.line) for n in _walk(unit.body) if n.kind in ("if", "do", "select")]
         unit.body_range = (min(s[0] for s in spans), max(s[1] for s in spans))
         for pause in unit.pauses:
             (pause.statement,) = [t for _, _, t in statements(unit.lines, pause.first, pause.last)] or [""]
-            if not pause.statement.lower().startswith("call "):
-                raise SystemExit(f"{unit.key}: lines {pause.first}-{pause.last} are not one call statement: {pause.statement[:60]}")
             if pause.kernel not in spec.kernels:
                 raise SystemExit(f"{unit.key}: pause names kernel {pause.kernel!r}, which the spec does not describe")
+            routine = spec.kernels[pause.kernel].routine
+            if pause.form == "assign":
+                match = re.match(r"^(?P<lhs>[^=]+?)\s*=\s*(?P<fn>\w+)\s*\((?P<args>.*)\)\s*$", pause.statement, re.S)
+                if not match or match.group("fn").lower() != routine.lower():
+                    raise SystemExit(f"{unit.key}: lines {pause.first}-{pause.last} are not `lhs = {routine}(...)`: "
+                                     f"{pause.statement[:60]}")
+                pause.lhs, pause.args = match.group("lhs").strip(), match.group("args")
+            else:
+                if not pause.statement.lower().startswith("call "):
+                    raise SystemExit(f"{unit.key}: lines {pause.first}-{pause.last} are not one call statement: {pause.statement[:60]}")
+                pause.args = pause.statement.split("(", 1)[1].rsplit(")", 1)[0]
     # a kernel called at several sites pauses at each; the sites are numbered in source order
     sites: dict[str, list[Pause]] = {}
     for unit in spec.units.values():
@@ -597,12 +630,19 @@ def _resolve(spec: Spec) -> None:
                                  f"driver's own module needs the module-state patch and a `uses:` entry")
     for kernel in spec.kernels.values():
         kernel.lines = read_lines(kernel.source)
-        start = next((i + 1 for i, line in enumerate(kernel.lines)
-                      if re.match(rf"^\s*(?:recursive\s+)?subroutine\s+{kernel.routine}\b", line, re.I)), None)
-        if start is None:
-            raise SystemExit(f"kernel {kernel.name}: no subroutine {kernel.routine} in {kernel.source}")
+        head = None
+        for index, line in enumerate(kernel.lines):
+            match = _PROCEDURE_HEAD.match(line)
+            if match and match.group("name").lower() == kernel.routine.lower():
+                head, start = match, index + 1
+                break
+        if head is None:
+            raise SystemExit(f"kernel {kernel.name}: no subroutine or function {kernel.routine} in {kernel.source}")
+        kernel.kind = head.group("kind").lower()
+        prefix = head.group("prefix") or ""
+        kernel.elemental = "elemental" in prefix.lower()
         end = next((i + 1 for i, line in enumerate(kernel.lines[start:], start=start)
-                    if re.match(rf"^\s*end\s+subroutine\s+{kernel.routine}\b", line, re.I)), None)
+                    if re.match(rf"^\s*end\s+{kernel.kind}\s+{kernel.routine}\b", line, re.I)), None)
         kernel.body_range = (start, end or len(kernel.lines))
         kernel.dummies = signature(kernel.lines, start, kernel.body_range[1], kernel.routine)
         kernel.decls = parse_declarations(kernel.lines, start, kernel.body_range[1])
@@ -610,6 +650,33 @@ def _resolve(spec: Spec) -> None:
         for name in _procedure_dummies(kernel.lines, start, kernel.body_range[1]):
             if name in kernel.dummies and name not in kernel.decls:
                 kernel.decls[name] = Decl(name, "procedure", "", "", "", None)
+        if kernel.kind == "function":
+            (head_text,) = [text for _, _, text in statements(kernel.lines, start, min(start + 8, kernel.body_range[1]))][:1] or [""]
+            result = re.search(r"result\s*\(\s*(\w+)\s*\)", head_text, re.I)
+            kernel.result = (result.group(1) if result else kernel.routine).lower()
+            if kernel.result not in kernel.decls:
+                # the result's type is the prefix's (`elemental real(r8) function virtem(t,q)`)
+                typed = re.search(r"(real|integer|logical|double\s+precision|character)(\s*\([^)]*\))?", prefix, re.I)
+                if typed is None:
+                    raise SystemExit(f"kernel {kernel.name}: the result {kernel.result!r} of {kernel.routine} has no declared type")
+                kernel.decls[kernel.result] = Decl(kernel.result, typed.group(0).replace(" ", ""), "", "", "", None)
+        if kernel.within is not None and kernel.within not in spec.kernels:
+            raise SystemExit(f"kernel {kernel.name}: `within` names {kernel.within!r}, which the spec does not describe")
+    for unit in spec.units.values():
+        for node in _walk(unit.body):
+            if node.kind != "kernel_unit":
+                continue
+            inner = spec.units[node.call.unit]
+            for pause in inner.pauses:
+                if spec.kernels[pause.kernel].within != node.pause.kernel:
+                    raise SystemExit(f"{inner.key}: kernel {pause.kernel!r} pauses inside the hoisted {node.pause.kernel} "
+                                     f"but does not declare `within: {node.pause.kernel}`")
+
+
+#: the head of a subroutine or function, with its prefix (elemental, pure, a result type)
+_PROCEDURE_HEAD = re.compile(
+    r"^\s*(?P<prefix>(?:(?:pure|elemental|recursive|impure|module)\s+|(?:real|integer|logical|double\s+precision|character)"
+    r"(?:\s*\([^)]*\))?\s+)*)(?P<kind>subroutine|function)\s+(?P<name>\w+)\b", re.I)
 
 
 # ---------------------------------------------------------------------------
@@ -622,7 +689,7 @@ def coverage_gaps(unit: Unit) -> list[int]:
 
     covered: set[int] = set()
     for node in _walk(unit.body):
-        if node.kind in ("piece", "pause", "unit"):
+        if node.kind in ("piece", "pause", "unit", "kernel_unit"):
             covered.update(range(node.first, node.last + 1))
         elif node.kind in ("if", "do", "select"):
             covered.add(node.line)
@@ -759,8 +826,7 @@ def frame_slots(pause: Pause, kernel: Kernel) -> list[Slot]:
     names, as `dummy.component` slots; the frame does not carry the type.
     """
 
-    inside = pause.statement.split("(", 1)[1].rsplit(")", 1)[0]
-    actuals = _split_top(inside)
+    actuals = _split_top(pause.args)
     by_dummy: dict[str, str] = {}
     for index, actual in enumerate(actuals):
         match = re.match(r"^(\w+)\s*=\s*(.+)$", actual)
@@ -806,6 +872,19 @@ def frame_slots(pause: Pause, kernel: Kernel) -> list[Slot]:
                                   guard=None, component=component))
             continue
         dtype = DTYPE_CODE.get(decl.base_type, 1)
+        if decl.rank == 0 and kernel.elemental:
+            # an elemental kernel applied to a section: the frame serves the section as an array
+            base, section = _actual_base(actual.strip())
+            base_name = base.split("%")[0].lower()
+            base_decl = unit_decls.get(base_name)
+            section_rank, section_shape = _section_extents(actual.strip(), base_decl)
+            if section_rank:
+                helper = base_decl is None and "%" not in base and base_name not in pause.unit.dummy_names \
+                    and base_name not in pause.unit.locals and base_name not in pause.unit.carries and base_name not in pause.unit.records
+                slots.append(Slot(dummy=dummy, actual=actual, intent=intent, kind="array", rank=section_rank, dtype=dtype,
+                                  expression=_first_element(actual.strip(), base, section, len(_split_top(section)), base_decl),
+                                  shape=section_shape, guard=None, helper=helper))
+                continue
         if decl.rank == 0:
             designator = bool(re.match(r"^[\w%]+(\s*\([^()]*\))?$", actual.strip())) and not re.fullmatch(r"[\d.]+(_\w+)?", actual.strip())
             base_name = actual.strip().split("%")[0].split("(")[0].lower()
@@ -841,7 +920,71 @@ def frame_slots(pause: Pause, kernel: Kernel) -> list[Slot]:
                           rank=decl.rank, dtype=dtype,
                           expression=_first_element(actual, base, section, decl.rank, base_decl),
                           shape=shape, guard=guard, helper=helper))
+    if pause.form == "assign":
+        slots.append(_result_slot(pause, kernel))
     return slots
+
+
+def _result_slot(pause: Pause, kernel: Kernel) -> Slot:
+    """The function's result, served where the assignment stores it: the left-hand side."""
+
+    result = kernel.result or kernel.routine.lower()
+    rdecl = kernel.decls.get(result)
+    if rdecl is None:
+        raise SystemExit(f"kernel {kernel.name}: the result {result!r} has no declaration")
+    dtype = DTYPE_CODE.get(rdecl.base_type, 1)
+    lhs = pause.lhs
+    base, section = _actual_base(lhs)
+    base_name = base.split("%")[0].lower()
+    unit_decls = pause.unit.decls
+    base_decl = unit_decls.get(base_name)
+    rank, shape = _section_extents(lhs, base_decl) if kernel.elemental else (0, [])
+    if rank == 0 and rdecl.rank > 0:
+        raise SystemExit(f"kernel {kernel.name}: an array-valued function result is not served yet")
+    helper = base_decl is None and "%" not in base and base_name not in pause.unit.dummy_names \
+        and base_name not in pause.unit.locals and base_name not in pause.unit.carries and base_name not in pause.unit.records
+    if rank:
+        return Slot(dummy=result, actual=lhs, intent="out", kind="array", rank=rank, dtype=dtype,
+                    expression=_first_element(lhs, base, section, len(_split_top(section)), base_decl),
+                    shape=shape, guard=None, helper=helper)
+    return Slot(dummy=result, actual=lhs, intent="out", kind="scalar", rank=0, dtype=dtype,
+                expression=lhs, shape=[], guard=None, by_address=True, helper=helper)
+
+
+def _section_extents(actual: str, base_decl: Decl | None) -> tuple[int, list[str]]:
+    """The rank and extents of a contiguous section (`th(:ncol,pver)` -> 1, [ncol]); (0, []) for an element.
+
+    Only the leading axes may be ranged, and every ranged axis but the last must
+    be whole, so that the section's first element and its extents describe the
+    storage the frame hands over; anything else is refused.
+    """
+
+    base, section = _actual_base(actual)
+    if section is None:
+        return 0, []
+    subscripts = [s.strip() for s in _split_top(section)]
+    ranged = [i for i, s in enumerate(subscripts) if ":" in s]
+    if not ranged:
+        return 0, []
+    if ranged != list(range(len(ranged))):
+        raise SystemExit(f"section {actual!r} is not contiguous: its ranged subscripts are not the leading axes")
+    for axis in ranged[:-1]:
+        if subscripts[axis] != ":":
+            raise SystemExit(f"section {actual!r} is not contiguous: axis {axis + 1} is a partial range before another ranged axis")
+    bounds = _lower_bounds(base_decl, len(subscripts), base)
+    shape = []
+    for axis in ranged:
+        lower, _, upper = subscripts[axis].partition(":")
+        lower, upper = lower.strip(), upper.strip()
+        if upper and not lower and bounds[axis] == "1":
+            shape.append(upper)
+        elif upper:
+            shape.append(f"({upper})-({lower or bounds[axis]})+1")
+        elif not lower:
+            shape.append(f"size({base},{axis + 1})")
+        else:
+            shape.append(f"size({base},{axis + 1})-({lower})+({bounds[axis]})")
+    return len(ranged), shape
 
 
 #: Extents a frame slot carries: the ABI's `shapes(FRAME_MAX_RANK, count)`, the same number
@@ -1675,6 +1818,27 @@ def _flatten(spec: Spec, unit: Unit, nodes: list[Node], states: list[State], aft
     return first_pc
 
 
+def _kernel_ids_within(spec: Spec, unit: Unit) -> list[int]:
+    """The ids of every kernel paused at inside ``unit`` and the units it enters."""
+
+    names: list[str] = []
+    seen: set[str] = set()
+
+    def visit(current: Unit) -> None:
+        if current.key in seen:
+            return
+        seen.add(current.key)
+        for pause in current.pauses:
+            if pause.kernel not in names:
+                names.append(pause.kernel)
+        for call in current.unit_calls:
+            visit(spec.units[call.unit])
+
+    visit(unit)
+    order = list(spec.kernels)
+    return sorted(order.index(name) + 1 for name in names)
+
+
 def _new_pc(counters: dict, base: str) -> str:
     counters[base] = counters.get(base, 0) + 1
     return f"pc_{base}_{counters[base]}"
@@ -1718,6 +1882,27 @@ def _node_pc(spec: Spec, unit: Unit, node: Node, states: list[State], after: str
         states.append(State(pc, f"if (replace({kernel_id})) then\n          token = token + 1_c_int\n          pc = {at}\n"
                                 f"          event = ev_needs_kernel\n          return\n        end if\n"
                                 f"        call {pause.tag}_original()\n        pc = {resumed}"))
+        states.append(State(at, f"last_error = '{spec.prefix} is paused; only resume continues it'\n        event = ev_error\n        return"))
+        states.append(State(resumed, f"call_index = call_index + 1_c_int\n        pc = {after}"))
+        return pc
+    if node.kind == "kernel_unit":
+        # replaced itself: pause as a kernel; a kernel inside it replaced: run its hoisted
+        # pieces (which pause there); nothing replaced below it: the original call, whole
+        pause = node.pause
+        target = spec.units[node.call.unit]
+        at, resumed = pause.pc_at, pause.pc_after
+        kernel_id = list(spec.kernels).index(pause.kernel) + 1
+        inner_ids = _kernel_ids_within(spec, target)
+        pc = _new_pc(counters, f"before_{pause.kernel}")
+        inner_after = _new_pc(counters, f"leave_{target.key}")
+        first = _flatten(spec, target, target.body, states, inner_after, counters,
+                         {"cycle": None, "exit": None, "return": inner_after})
+        states.append(State(inner_after, f"pc = {after}"))
+        inside = " .or. ".join(f"replace({i})" for i in inner_ids) or ".false."
+        states.append(State(pc, f"if (replace({kernel_id})) then\n          token = token + 1_c_int\n          pc = {at}\n"
+                                f"          event = ev_needs_kernel\n          return\n"
+                                f"        else if ({inside}) then\n          call {unit.key}_bind_{target.key}()\n          pc = {first}\n"
+                                f"        else\n          call {pause.tag}_original()\n          pc = {resumed}\n        end if"))
         states.append(State(at, f"last_error = '{spec.prefix} is paused; only resume continues it'\n        event = ev_error\n        return"))
         states.append(State(resumed, f"call_index = call_index + 1_c_int\n        pc = {after}"))
         return pc

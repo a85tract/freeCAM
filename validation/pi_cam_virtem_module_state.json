@@ -1,0 +1,30 @@
+{
+  "atm_in_sha256": "6cf906571702ac0c912c22c42d7a5b4568ef2001697d59a05078538ed8bc3472",
+  "config": "configs/pi_cam_icesm131_replay.yaml",
+  "digest": "d24d45dac4276a83023293e63c6c21f78856aaa6a9b98ae14a3d93bb27eda695",
+  "drifted_after_one_step": [],
+  "entries": {
+    "pbl_utils_mp_zvir_": {
+      "dtype": "float64",
+      "hex": [
+        "0x1.3730a75507baep-1"
+      ],
+      "sha256": "d8e6ff7ffb1ed62ad0f772a6533172f9ce138d6bab364c1c9733ba06a1c2ea21",
+      "shape": [],
+      "symbol": "pbl_utils_mp_zvir_",
+      "values": [
+        0.6077930728241563
+      ],
+      "write": "snapshot"
+    }
+  },
+  "function": "virtem",
+  "library_sha256": "d1eebfc52c66f19e53bc2faa84e910198fa9c3cfb4cbea39dd4227d48ae5ab22",
+  "mpi_ranks": 512,
+  "native_manifest": "/glade/work/ruitong/pycam-sima-pi-cam-only/build/pi_cam_promoted/native_cam_manifest.json",
+  "pbs_job_id": "7343297.desched1",
+  "qualified_name": "pbl_utils::virtem",
+  "schema_version": 1,
+  "spec_sha256": "eb6260f76cb318040f8ac9d530a1b2b8cf229dfa58b0f41dc3a4a2c248e18b09",
+  "stable_after_one_step": true
+}

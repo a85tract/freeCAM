@@ -80,7 +80,7 @@ SUPPORT_MODULES = ("pycam_macro_kernels.F90", "pycam_macro_handles.F90",
                    "pycam_shcu_driver.F90", "pycam_shcu_glue.F90", "pycam_shcu_runner.F90",
                    "pycam_radt_driver.F90", "pycam_radt_glue.F90", "pycam_radt_runner.F90",
                    # the deepest unit first: each unit's binder is used by the unit that calls it
-                   "pycam_zmdeep_zm.F90", "pycam_zmdeep_deep.F90", "pycam_zmdeep_glue.F90", "pycam_zmdeep_runner.F90",
+                   "pycam_zmdeep_evap.F90", "pycam_zmdeep_zm.F90", "pycam_zmdeep_deep.F90", "pycam_zmdeep_glue.F90", "pycam_zmdeep_runner.F90",
                    "pycam_zmtran_zm2.F90", "pycam_zmtran_deep2.F90", "pycam_zmtran_glue.F90", "pycam_zmtran_runner.F90",
                    "pycam_vdiff_driver.F90", "pycam_vdiff_glue.F90", "pycam_vdiff_runner.F90",
                    "pycam_gwd_driver.F90", "pycam_gwd_glue.F90", "pycam_gwd_runner.F90",
@@ -92,7 +92,7 @@ SUPPORT_MODULES = ("pycam_macro_kernels.F90", "pycam_macro_handles.F90",
 #: compiled from the prepared source for their .mod files only, into the working
 #: directory the support modules read first; the object is discarded and the
 #: oracle's stays in the archive, so no numerical machine code is recompiled.
-INTERFACE_MODULES = ("zm_conv_intr.F90", "vertical_diffusion.F90", "gw_drag.F90",
+INTERFACE_MODULES = ("zm_conv_intr.F90", "vertical_diffusion.F90", "gw_drag.F90", "zm_conv.F90",
                      "../../chemistry/mozart/chemistry.F90", "../../chemistry/modal_aero/aero_model.F90")
 MACRO_BIND_HOSTS_SYMBOL = "pycam_macro_bind_hosts_v1"
 RAD_BIND_HOSTS_SYMBOL = "pycam_rad_bind_hosts_v1"

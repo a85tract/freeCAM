@@ -8,7 +8,7 @@ from typing import Any, Iterable, Mapping
 
 import numpy as np
 
-from .column import InvalidInput, coerce_inputs, pack_column, unpack_column
+from .column import InvalidInput, coerce_inputs, pack, unpack
 from .errors import PhysicsError
 from .host import InProcessHost, SubprocessHost
 from .result import FunctionResult
@@ -104,8 +104,10 @@ class PhysicsFunction:
             resolved = coerce_inputs(self.spec, inputs)
         except InvalidInput as error:
             return FunctionResult({}, {}, "invalid_input", str(error), metadata)
-        pool = pack_column(self.spec, resolved)
+        pool = pack(self.spec, resolved)
         returned = tuple(f"{self.spec.function}.{item.name}" for item in self.spec.arguments if item.returned)
+        if self.spec.result is not None:
+            metadata["result_name"] = self.spec.result.name
         if parameters:
             self.host.set_parameters(parameters)
         try:
@@ -115,7 +117,7 @@ class PhysicsFunction:
                 self.host.restore_parameters()
         if outcome.status != "ok":
             return FunctionResult({}, {}, outcome.status, outcome.message, metadata)
-        outputs, updated = unpack_column(self.spec, outcome.pool)
+        outputs, updated = unpack(self.spec, outcome.pool)
         return FunctionResult(outputs, updated, "ok", None, metadata)
 
     __call__ = run
@@ -222,9 +224,13 @@ def load_function(
     snapshot_path = Path(module_state) if module_state else REPO / "validation" / f"pi_cam_{name}_module_state.json"
     if not manifest_path.is_file():
         raise PhysicsError(f"no standalone image manifest for {name!r}: {manifest_path}")
-    if not snapshot_path.is_file():
+    if snapshot_path.is_file():
+        snapshot = json.loads(snapshot_path.read_text())
+    elif not spec.module_state and not spec.initializers:
+        # a routine reading no module state needs no snapshot from the model
+        snapshot = {"entries": {}, "digest": None}
+    else:
         raise PhysicsError(f"no module-state snapshot for {name!r}: {snapshot_path}")
-    snapshot = json.loads(snapshot_path.read_text())
     if host == "subprocess":
         backend: Any = SubprocessHost(manifest_path, snapshot, max_restarts=max_restarts)
     elif host == "inprocess":
