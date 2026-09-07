@@ -16,6 +16,7 @@ uv run python tools/prepare_pi_cam_source.py --check   # check out the pinned ex
 cp site.env.example site.env             # then set FREECAM_ACCOUNT; not committed
 uv run python -m freecam.site            # what this checkout resolves to, and lacks
 uv run pytest -q                         # full local unit suite
+uv run python tools/build_pi_cam_kernel_api_closure.py --check   # the call-tree inventory still matches source, rules and generator
 uv run pytest tests/unit/test_pi_cam_state.py -q     # one test file
 uv run pytest tests/unit/test_pi_cam_state.py -k name -q   # one test
 uv run freecam --help                    # CLI entry point
