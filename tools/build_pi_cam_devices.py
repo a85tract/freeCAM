@@ -15,6 +15,7 @@ import argparse
 import gzip
 import hashlib
 import json
+import os
 from pathlib import Path
 import re
 import shlex
@@ -317,52 +318,119 @@ def _relocations_naming(path: Path, symbol: str) -> int:
     return sum(1 for line in output.splitlines() if line.split() and symbol in line.split())
 
 
-def _redirect_hook_callers(archive: Path, out_dir: Path, table) -> tuple[list[dict], list[Path]]:
-    """Copies of the hooked kernels' caller objects whose references reach the hooks.
+def _load_tool(name: str):
+    import importlib.util
+    spec = importlib.util.spec_from_file_location(name, REPO / "tools" / f"{name}.py")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
 
-    ``rename-references``: the callee's symbol is renamed in the caller's copy, so
-    every reference (and nothing else) calls the hook.  ``weaken-definition``: the
-    callee is defined in the caller's own object; its definition is weakened and
-    given a second name for the hook to call, and the hook, a strong definition of
-    the original name elsewhere, wins the link for every reference.  Either way the
-    .text bytes are proved unchanged.
+
+def _refuse_trampoline_collisions(trampoline_object: Path, support_objects) -> None:
+    """A trampoline symbol defined strongly anywhere else would win or lose the link silently.
+
+    The image links with --allow-multiple-definition, where the first strong
+    definition wins without a diagnostic; a counting trampoline must therefore
+    never share a symbol with a support module (a replacement hook included).
+    """
+
+    def strong_globals(path: Path) -> set[str]:
+        out = subprocess.run(["nm", "-g", "--defined-only", str(path)], check=True,
+                             capture_output=True, text=True).stdout
+        return {line.split()[-1] for line in out.splitlines() if line.split() and line.split()[-2] in ("T", "D", "B", "R")}
+
+    trampolines = strong_globals(trampoline_object) - {"pycam_kcount_kernel_count"}
+    for support in support_objects:
+        clash = trampolines & strong_globals(Path(support))
+        if clash:
+            raise RuntimeError(f"counting trampolines collide with {Path(support).name}: {sorted(clash)}")
+
+
+def _definition_address(target: Path, symbol: str) -> str:
+    symbols = subprocess.run(["nm", str(target)], check=True, capture_output=True, text=True).stdout
+    definition = next((line.split() for line in symbols.splitlines()
+                       if line.split() and line.split()[-1] == symbol and line.split()[-2] == "T"), None)
+    if definition is None:
+        raise RuntimeError(f"{target.name} does not define {symbol}; weaken-definition needs the definition")
+    return definition[0]
+
+
+def _apply_redirections(archive: Path, out_dir: Path, plans: dict[str, list[dict]]) -> tuple[list[dict], list[Path]]:
+    """Redirected copies of archive objects; one extraction and one objcopy per object.
+
+    Every operation on one object is applied in a single objcopy invocation so a
+    later redirection can never clobber an earlier one.  ``redefine`` renames a
+    reference (the hooks' rename-references mode); ``weaken-alias`` weakens a
+    definition and adds a second, global name at the same address -- the strong
+    definition elsewhere (a replacement hook or a counting trampoline) then wins
+    every reference, and forwards to the alias, never to itself.  The .text bytes
+    are proved unchanged either way.
     """
 
     out_dir.mkdir(parents=True, exist_ok=True)
     records: list[dict] = []
     objects: list[Path] = []
+    for object_name, operations in sorted(plans.items()):
+        target = out_dir / object_name
+        if target.exists():
+            target.unlink()
+        _run(["ar", "x", str(archive), object_name], cwd=out_dir)
+        before_text = _text_sha256(target, out_dir)
+        flags: list[str] = []
+        for op in operations:
+            if op["kind"] == "redefine":
+                if _relocations_naming(target, op["old"]) == 0:
+                    raise RuntimeError(f"{object_name} has no relocation naming {op['old']}; nothing to redirect")
+                flags.append(f"--redefine-sym={op['old']}={op['new']}")
+            elif op["kind"] == "weaken-alias":
+                address = _definition_address(target, op["symbol"])
+                flags.append(f"--add-symbol={op['alias']}=.text:0x{address},global,function")
+                flags.append(f"--weaken-symbol={op['symbol']}")
+            else:
+                raise RuntimeError(f"unknown redirection kind {op['kind']!r}")
+        _run(["objcopy", *flags, str(target)], cwd=out_dir)
+        after_text = _text_sha256(target, out_dir)
+        if after_text != before_text:
+            raise RuntimeError(f"{object_name}: the redirection changed .text ({before_text[:12]} -> {after_text[:12]})")
+        object_sha = _sha256(target)
+        for op in operations:
+            named = op["new"] if op["kind"] == "redefine" else op["symbol"]
+            records.append({**op["record"], "mode": op["record"].get("mode", op["kind"]),
+                            "object": object_name, "relocations": _relocations_naming(target, named),
+                            "text_sha256": after_text, "object_sha256": object_sha})
+        objects.append(target)
+    return records, objects
+
+
+def _hook_plans(table) -> dict[str, list[dict]]:
+    """The hook table's redirections as per-object operation plans."""
+
+    plans: dict[str, list[dict]] = {}
     for hook in table.hooks:
         for caller in hook.callers:
-            target = out_dir / caller.object
-            if target.exists():
-                target.unlink()
-            _run(["ar", "x", str(archive), caller.object], cwd=out_dir)
-            before_text = _text_sha256(target, out_dir)
-            before_relocations = _relocations_naming(target, hook.callee_symbol)
-            if before_relocations == 0:
-                raise RuntimeError(f"{caller.object} has no relocation naming {hook.callee_symbol}; nothing to redirect")
+            record = {"kernel": hook.kernel, "routine": caller.routine, "mode": hook.redirect,
+                      "callee_symbol": hook.callee_symbol, "hook_symbol": hook.symbol,
+                      "original_symbol": hook.original_symbol}
             if hook.redirect == "rename-references":
-                _run(["objcopy", f"--redefine-sym={hook.callee_symbol}={hook.symbol}", str(target)], cwd=out_dir)
-                after_relocations = _relocations_naming(target, hook.symbol)
+                op = {"kind": "redefine", "old": hook.callee_symbol, "new": hook.symbol, "record": record}
             else:
-                symbols = subprocess.run(["nm", str(target)], check=True, capture_output=True, text=True).stdout
-                definition = next((line.split() for line in symbols.splitlines()
-                                   if line.split() and line.split()[-1] == hook.callee_symbol and line.split()[-2] == "T"), None)
-                if definition is None:
-                    raise RuntimeError(f"{caller.object} does not define {hook.callee_symbol}; weaken-definition needs the definition")
-                _run(["objcopy", f"--add-symbol={hook.original_symbol}=.text:0x{definition[0]},global,function",
-                      f"--weaken-symbol={hook.callee_symbol}", str(target)], cwd=out_dir)
-                after_relocations = _relocations_naming(target, hook.callee_symbol)
-            after_text = _text_sha256(target, out_dir)
-            if after_text != before_text:
-                raise RuntimeError(f"{caller.object}: the redirection changed .text ({before_text[:12]} -> {after_text[:12]})")
-            records.append({
-                "kernel": hook.kernel, "object": caller.object, "routine": caller.routine, "mode": hook.redirect,
-                "callee_symbol": hook.callee_symbol, "hook_symbol": hook.symbol, "original_symbol": hook.original_symbol,
-                "relocations": after_relocations, "text_sha256": after_text, "object_sha256": _sha256(target),
-            })
-            objects.append(target)
-    return records, objects
+                op = {"kind": "weaken-alias", "symbol": hook.callee_symbol,
+                      "alias": hook.original_symbol, "record": record}
+            plans.setdefault(caller.object, []).append(op)
+    return plans
+
+
+def _kcount_plans(rows: list[dict]) -> dict[str, list[dict]]:
+    """The counting trampolines' weaken-and-alias operations, one per kernel."""
+
+    plans: dict[str, list[dict]] = {}
+    for row in rows:
+        record = {"kernel": row["routine"], "qualified": row["qualified"], "mode": "count-weaken-alias",
+                  "callee_symbol": row["symbol"], "hook_symbol": row["symbol"], "original_symbol": row["alias"],
+                  "index": row["index"]}
+        plans.setdefault(row["object"], []).append(
+            {"kind": "weaken-alias", "symbol": row["symbol"], "alias": row["alias"], "record": record})
+    return plans
 
 
 def main() -> int:
@@ -412,6 +480,11 @@ def main() -> int:
     parser.add_argument(
         "--manifest", type=Path,
         default=REPO / "build/pi_cam/native_cam_manifest.json",
+    )
+    parser.add_argument(
+        "--kcount-scope", default=os.environ.get("FREECAM_KCOUNT_SCOPE", ""),
+        help="build a counting image: 'all', 'batch-a', or comma-separated process ids / routine names; "
+             "empty (the default) builds the ordinary image with the replacement hooks",
     )
     args = parser.parse_args()
 
@@ -773,6 +846,12 @@ def main() -> int:
     fiber_object = work / "pycam_fiber.o"
     fiber_compile = ["cc", "-c", "-O2", str(fiber_source), "-o", str(fiber_object)]
     _run(fiber_compile, cwd=work)
+    # the kernel execution counters: the table and its context are linked into
+    # every image so the ABI is uniform; trampolines exist only in a counting image
+    kcount_source = REPO / "native/pi_cam/pycam_kcount.c"
+    kcount_object = work / "pycam_kcount.o"
+    kcount_compile = ["cc", "-c", "-O2", str(kcount_source), "-o", str(kcount_object)]
+    _run(kcount_compile, cwd=work)
 
     atm_archive = output.parent / "libatm_nonpic_python_control.a"
     base_atm_archive = build / "lib/libatm.a"
@@ -804,7 +883,53 @@ def main() -> int:
             *support_objects,
         )
     hook_table = load_hooks()
-    redirections, redirected_objects = _redirect_hook_callers(base_atm_archive, generated_objects / "redirected", hook_table)
+    # count-only observation: a scope selects kernels whose symbol a counting
+    # trampoline takes (weaken-and-alias on the defining object).  '' keeps
+    # today's image (hooks only); 'batch-a' keeps the hooks and adds the
+    # trampolines that do not collide with a hook-owned symbol; anything else
+    # ('all', process ids, routine names) drops the replacement hooks -- a
+    # counting image counts, it does not replace.
+    kcount_scope = args.kcount_scope.strip()
+    hooks_active = kcount_scope in ("", "batch-a")
+    plans = _hook_plans(hook_table) if hooks_active else {}
+    kcount_rows: list[dict] = []
+    kcount_excluded: list[dict] = []
+    trampoline_source_sha = None
+    kcount_observability_sha = None
+    if kcount_scope:
+        kcount_gen = _load_tool("generate_pi_cam_kcount_trampolines")
+        observability = kcount_gen.load_observability()
+        kcount_observability_sha = observability["content_hash"]
+        selection = kcount_gen.select_kernels(
+            observability, "cldfrc_fice" if kcount_scope == "batch-a" else kcount_scope)
+        hook_symbols = {hook.symbol for hook in hook_table.hooks} if hooks_active else set()
+        for kernel in selection:
+            if kernel["symbol"] in hook_symbols:
+                kcount_excluded.append({"qualified": kernel["qualified"], "symbol": kernel["symbol"],
+                                        "reason": "a replacement hook owns this symbol in this image; "
+                                                  "its own call counter is the count"})
+            else:
+                kcount_rows.append(kernel)
+        if not kcount_rows:
+            raise RuntimeError(f"kcount scope {kcount_scope!r} selects no instrumentable kernel")
+        trampoline_rows = kcount_gen.trampoline_table(kcount_rows)
+        trampoline_asm = generated_objects / "pycam_kcount_trampolines.S"
+        generated_objects.mkdir(parents=True, exist_ok=True)
+        trampoline_asm.write_text(kcount_gen.render(observability, kcount_rows, kcount_scope))
+        trampoline_source_sha = _sha256(trampoline_asm)
+        trampoline_object = generated_objects / "pycam_kcount_trampolines.o"
+        _run(["cc", "-c", str(trampoline_asm), "-o", str(trampoline_object)], cwd=work)
+        _refuse_trampoline_collisions(trampoline_object, support_objects)
+        for object_name, ops in _kcount_plans(trampoline_rows).items():
+            plans.setdefault(object_name, []).extend(ops)
+    else:
+        trampoline_rows = []
+        trampoline_object = None
+    redirections, redirected_objects = _apply_redirections(base_atm_archive, generated_objects / "redirected", plans)
+    hook_redirections = [r for r in redirections if r["mode"] in ("rename-references", "weaken-definition")]
+    count_redirections = [r for r in redirections if r["mode"] == "count-weaken-alias"]
+    if not hooks_active:
+        hook_redirections = []
     replacement_objects = (*replacement_objects, *redirected_objects)
     _replace_archive(
         base_atm_archive,
@@ -861,6 +986,8 @@ def main() -> int:
         str(direct_kernel_object),
         str(floating_environment_object),
         str(fiber_object),
+        str(kcount_object),
+        *((str(trampoline_object),) if trampoline_object is not None else ()),
         "-Wl,--unresolved-symbols=ignore-all",
         "-o", str(fixed_executable),
     ]
@@ -1024,7 +1151,22 @@ def main() -> int:
         "floating_environment_compile_command": floating_environment_compile,
         "fiber": {"source": str(fiber_source), "source_sha256": _sha256(fiber_source), "compile_command": fiber_compile,
                   "stack_bytes": hook_table.fiber_stack_bytes},
-        "hooks": {"table": str(HOOKS), "table_sha256": hook_table.sha256, "redirections": redirections},
+        "hooks": {"table": str(HOOKS), "table_sha256": hook_table.sha256, "redirections": hook_redirections,
+                  "active": hooks_active},
+        "kernel_counts": {
+            "scope": kcount_scope or None,
+            "observability_sha256": kcount_observability_sha,
+            "table": {"slots": 64, "max_kernels": 1024, "dtype": "int64",
+                      "threading": "single-threaded per rank only; refuse OpenMP threads"},
+            "source": str(kcount_source), "source_sha256": _sha256(kcount_source),
+            "compile_command": kcount_compile,
+            "trampolines_sha256": trampoline_source_sha,
+            "instrumented": [{k: row[k] for k in ("index", "qualified", "routine", "symbol", "alias",
+                                                  "object", "coverage", "processes")}
+                             for row in trampoline_rows],
+            "excluded": kcount_excluded,
+            "redirections": count_redirections,
+        },
         "intel_math_library": str(imf_shared),
         "operations": _operations(
             state_bridge,

@@ -1072,6 +1072,9 @@ class PICAMDriver:
             maxlen=validate_trace_limit(trace_limit)
         )
         self._trace_count = 0
+        #: a counting image's kernel counters; installed by the CLI after
+        #: initialization, so init-phase calls stay in the initialization slot
+        self.kernel_counters = None
         self._operation_counts: Counter[str] = Counter()
         self._trace_captures: list[list[PICAMActionTrace]] = []
         self.history_callback = history_callback
@@ -1376,8 +1379,20 @@ class PICAMDriver:
         return trace
 
     def _execute(self, action: PICAMAction) -> PICAMActionTrace:
-        with self.profiler.region(f"CAM:{action.operation}"):
-            return self._execute_action(action)
+        counters = self.kernel_counters
+        if counters is None:
+            with self.profiler.region(f"CAM:{action.operation}"):
+                return self._execute_action(action)
+        # kernel execution counting: the action's context slot is set for the
+        # duration of the action and restored afterwards, whatever happens --
+        # paired operations nest into a stack, so an action invoked inside
+        # another attributes its kernels to itself, and its parent resumes.
+        previous = counters.enter_action(action.qualified_name)
+        try:
+            with self.profiler.region(f"CAM:{action.operation}"):
+                return self._execute_action(action)
+        finally:
+            counters.restore(previous)
 
     def _execute_action(self, action: PICAMAction) -> PICAMActionTrace:
         if action.kind == "python_process":

@@ -387,6 +387,21 @@ def main(argv: list[str] | None = None) -> int:
         help="where --capture-kernels writes <kernel>.rank-NNNN.npz and capture.json",
     )
     parser.add_argument(
+        "--observe-kernels",
+        action="store_true",
+        help=(
+            "observation: attribute the counting image's kernel execution counters to workflow "
+            "processes, steps and lifecycle phases, and write the raw observation record; needs "
+            "an image built with FREECAM_KCOUNT_SCOPE and exactly one thread per rank"
+        ),
+    )
+    parser.add_argument(
+        "--observe-output",
+        type=Path,
+        default=None,
+        help="where --observe-kernels writes kernel_observation.json (default: <run-dir>/../kernel_observation.json)",
+    )
+    parser.add_argument(
         "--cloud-macro-micro-python",
         action="store_true",
         help=(
@@ -490,6 +505,20 @@ def main(argv: list[str] | None = None) -> int:
         if args.native_manifest is None
         else NativeCAMDevice(args.native_manifest)
     )
+    observe_instrumented: list[dict] = []
+    if args.observe_kernels:
+        # refused before initialization: a mismatched image or threading would
+        # produce wrong statistics, never a partial record
+        if os.environ.get("OMP_NUM_THREADS", "1").strip() not in ("", "1"):
+            raise SystemExit("--observe-kernels: the counters are single-threaded per rank; OMP_NUM_THREADS must be 1")
+        if args.native_manifest is None:
+            raise SystemExit("--observe-kernels needs --native-manifest naming a counting image")
+        counting_manifest = json.loads(Path(args.native_manifest).read_text())
+        kcount_section = counting_manifest.get("kernel_counts") or {}
+        observe_instrumented = list(kcount_section.get("instrumented") or [])
+        if not kcount_section.get("scope") or not observe_instrumented:
+            raise SystemExit("--observe-kernels: this image was not built with FREECAM_KCOUNT_SCOPE; "
+                             "it carries no counting trampolines")
     cam = case.runtime(
         boundary=boundary,
         backend=backend,
@@ -682,6 +711,20 @@ def main(argv: list[str] | None = None) -> int:
                 precision=str(request.get("precision", "float32")),
             )
         memory_samples.append(_process_memory("initialized", cam.clock.nstep))
+        kernel_counters = None
+        if args.observe_kernels:
+            from freecam.pi_cam.kernel_counts import KernelCounters
+
+            kernel_counters = KernelCounters.from_library(getattr(cam.backend, "_library", None))
+            if kernel_counters is None:
+                raise SystemExit("--observe-kernels: the loaded image exports no counting ABI")
+            expected = 1 + max(int(row["index"]) for row in observe_instrumented)
+            if kernel_counters.kernels != expected:
+                raise SystemExit(f"--observe-kernels: the image reports {kernel_counters.kernels} counted "
+                                 f"kernels, the manifest {expected}; image and manifest do not match")
+            kernel_counters.assign_slots([action.qualified_name for action in cam.step_plan])
+            kernel_counters.begin_step_tracking()
+            cam.kernel_counters = kernel_counters
         world.Barrier()
         initialize_seconds = MPI.Wtime() - initialize_started
         python_initialized_addresses = cam.python_initialized_addresses
@@ -695,10 +738,12 @@ def main(argv: list[str] | None = None) -> int:
         if profiler is not None:
             profiler.enable()
         try:
-            if args.memory_sample_every > 0:
+            if args.memory_sample_every > 0 or kernel_counters is not None:
                 for completed in range(1, steps + 1):
                     cam.step()
-                    if (
+                    if kernel_counters is not None:
+                        kernel_counters.note_step(cam.clock.nstep)
+                    if args.memory_sample_every > 0 and (
                         completed == 1
                         or completed == steps
                         or completed % args.memory_sample_every == 0
@@ -793,6 +838,11 @@ def main(argv: list[str] | None = None) -> int:
             "frame_capture_calls": frame_capture_calls,
             "hook_counts": hook_counts,
         }
+        if kernel_counters is not None:
+            from freecam.pi_cam.kernel_counts import SLOT_FINALIZE
+
+            cam.kernel_counters = None
+            kernel_counters.set_context(SLOT_FINALIZE)
         memory_samples.append(_process_memory("pre_finalize", cam.clock.nstep))
         world.Barrier()
         finalize_started = MPI.Wtime()
@@ -808,6 +858,23 @@ def main(argv: list[str] | None = None) -> int:
         for name in final_addresses
     ):
         raise RuntimeError("native finalization changed Python-owned array addresses")
+    if kernel_counters is not None:
+        reduced = kernel_counters.reduce(world)
+        observation_path = args.observe_output or (Path(args.run_dir).resolve().parent / "kernel_observation.json")
+        local["kernel_observation"] = {"enabled": True, "record": str(observation_path)}
+        if reduced is not None:
+            observation = kernel_counters.observation_record(reduced, observe_instrumented)
+            observation.update({
+                "steps": steps,
+                "final_model_step": int(cam.clock.nstep),
+                "native_manifest_kernel_counts": {
+                    k: (counting_manifest.get("kernel_counts") or {}).get(k)
+                    for k in ("scope", "observability_sha256", "trampolines_sha256")},
+                "native_library_sha256": (counting_manifest or {}).get("library_sha256"),
+                "threads_per_rank": 1,
+            })
+            observation_path.parent.mkdir(parents=True, exist_ok=True)
+            observation_path.write_text(json.dumps(observation, indent=1, sort_keys=True) + "\n")
     records = world.gather(local, root=0)
     if world.Get_rank() == 0:
         manifest_path = (
