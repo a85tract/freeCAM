@@ -290,7 +290,7 @@ function ProcessLists({
                     <span className="chip">generic</span>
                   )}
                   <span className="chip">
-                    {process.core_kernels.length} core · {snapshot.process_membership[process.id]?.kernels.length ?? 0} candidates
+                    {(process.core_kernels ?? []).length} core · {snapshot.process_membership[process.id]?.kernels.length ?? 0} candidates
                   </span>
                 </span>
               </button>
@@ -356,7 +356,8 @@ function ProcessDetail({
   const [flat, setFlat] = useState(false);
   const membership = snapshot.process_membership[process.id];
   const tree = useMemo(() => (membership ? buildTree(membership) : []), [membership]);
-  const ownerClasses = [...new Set(process.core_kernels.map((c) => c.owner_class).filter(
+  const coreKernels = process.core_kernels ?? [];   // a cached pre-core snapshot degrades, never crashes
+  const ownerClasses = [...new Set(coreKernels.map((c) => c.owner_class).filter(
     (cls): cls is string => Boolean(cls) && cls !== process.python_class))];
   const bars = processBars(snapshot, process.id);
   return (
@@ -384,12 +385,12 @@ function ProcessDetail({
         )}
         {process.description && <div><dt>Description</dt><dd>{process.description}</dd></div>}
       </dl>
-      <h3>Core kernels exposed for replacement ({process.core_kernels.length})</h3>
-      {process.core_kernels.length === 0 ? (
+      <h3>Core kernels exposed for replacement ({coreKernels.length})</h3>
+      {coreKernels.length === 0 ? (
         <p className="muted">This process's class exposes no replaceable kernel yet.</p>
       ) : (
         <ul className="kernel-list">
-          {process.core_kernels.map((core) => (
+          {coreKernels.map((core) => (
             <li key={core.routine}>
               {core.id ? (
                 <KernelLink snapshot={snapshot} kid={core.id} processId={process.id} onNavigate={onNavigate} />
