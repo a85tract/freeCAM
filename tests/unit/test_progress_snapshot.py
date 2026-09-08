@@ -362,6 +362,9 @@ def test_the_real_snapshot_is_publishable() -> None:
     text = SNAPSHOT.read_text()
     for fragment in ("/glade", "desched", "/home/", "scratch"):
         assert fragment not in text.lower()
+    # the account name must not appear as a path segment; a bare-word search would
+    # trip over legitimate vocabulary (on GitHub runners USER is "runner", which
+    # the records use for the segment runners)
     user = os.environ.get("USER")
     if user and len(user) > 3:
-        assert user not in text
+        assert f"/{user}" not in text and f"{user}@" not in text
