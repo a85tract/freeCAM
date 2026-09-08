@@ -45,6 +45,13 @@ export interface KernelRecord {
   failures: string[];
 }
 
+export interface CoreKernel {
+  routine: string;
+  id: string | null;
+  owner_class: string | null;
+  status: string | null;
+}
+
 export interface ProcessRecord {
   id: string;
   native_id: number | null;
@@ -65,6 +72,7 @@ export interface ProcessRecord {
   python_api: string;
   python_class: string | null;
   class_kind: "dedicated" | "generic";
+  core_kernels: CoreKernel[];
   ledger_coverage: string | null;
   note: string | null;
 }

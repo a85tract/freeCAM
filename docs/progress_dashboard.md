@@ -41,6 +41,17 @@ After changing any of those, run the exporter and commit the refreshed
 `web/progress/public/progress.json`; CI's `--check` fails the deployment when
 the committed snapshot is stale.
 
+## Two levels, never conflated
+
+A process page separates **core kernels** -- the ones its Python class exposes
+for replacement, from the ledger's per-action list, each labeled with the
+class that owns it (for `cloud_macro_microphysics` that is `Macrophysics` and
+`Microphysics`, composed into `CloudMacroMicrophysics`) -- from the **candidate
+numerical functions**: everything the call-tree inventory reaches from the
+process recursively, per-point helpers and saturation/packing libraries
+included.  Candidates are statically reachable, not necessarily executed, and
+exposing a process does not expose every candidate inside it.
+
 ## Status vocabulary
 
 `available`, `not-implemented`, `needs-binding`, `not-assessed`, `verified`,

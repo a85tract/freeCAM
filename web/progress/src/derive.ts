@@ -196,7 +196,7 @@ export function overviewTiles(snapshot: Snapshot): { label: string; value: strin
     {
       label: "Tracked kernel records",
       value: `${tracked}`,
-      note: "kernels with implementation/validation records in the ledger",
+      note: "kernels exposed for replacement by the stage classes, with implementation/validation records",
     },
     {
       label: "Independently callable",

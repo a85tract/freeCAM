@@ -689,6 +689,20 @@ def build_progress_snapshot(root: Path | str) -> dict[str, Any]:
         pid = action["id"]
         entry = catalog_entries.get(pid) or {}
         members = sorted(members_by_pid.get(pid, []))
+        # the core kernels: what the process's Python class exposes for replacement
+        # (the ledger's per-action list), a far smaller set than the statically
+        # reachable candidates below -- the page must never conflate the two
+        core = []
+        for routine in action.get("kernels") or []:
+            tracked = next((k for k in ledger["kernels"]
+                            if (k.get("routine") or k["kernel"]) == routine
+                            and k.get("stage_action") == pid), None)
+            core.append({
+                "routine": routine,
+                "id": routine_to_q.get(routine),
+                "owner_class": (tracked or {}).get("owner_class"),
+                "status": (tracked or {}).get("status"),
+            })
         membership[pid] = {
             "kernels": members,
             "edges": process_edges(pid, members, procedures, candidates),
@@ -714,6 +728,7 @@ def build_progress_snapshot(root: Path | str) -> dict[str, Any]:
             "python_api": "available",
             "python_class": action.get("python_class"),
             "class_kind": "dedicated" if action.get("python_class") else "generic",
+            "core_kernels": core,
             "ledger_coverage": action.get("coverage"),
             "note": action.get("note"),
         })
@@ -769,6 +784,11 @@ def build_progress_snapshot(root: Path | str) -> dict[str, Any]:
                           "potentially reachable, not necessarily observed during execution.",
             "shared_kernels": "A kernel used by several processes is counted once globally; per-process totals "
                               "are not additive.",
+            "core_vs_candidates": "Core kernels are the ones a process's Python class exposes for replacement "
+                                  "today. Candidate numerical functions are everything the call-tree inventory "
+                                  "reaches from the process recursively -- drivers, per-point helpers, "
+                                  "saturation and packing libraries included. Exposing a process does not "
+                                  "expose every candidate inside it.",
             "replacement_scope": "A replacement gate is scoped to the process and call site actually tested; "
                                  "it does not verify the same kernel's other callers.",
             "bfb_meaning": "Original-kernel replacement BFB verified does not prove that an arbitrary "

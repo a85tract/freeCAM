@@ -23,6 +23,8 @@ function fixture(): Snapshot {
     cam_source_revision: "rev123456",
     inputs: {},
     notes: {
+      core_vs_candidates:
+        "Core kernels are exposed for replacement. Exposing a process does not expose every candidate inside it.",
       banner: "Some validated capabilities require an experimental image and are not enabled in the default build.",
       snapshot: "This is a published snapshot of committed records, not a live HPC job monitor.",
       process_vs_kernel: "A process is a workflow operation. It can contain many numerical kernels.",
@@ -47,6 +49,8 @@ function fixture(): Snapshot {
         granularity: "stage", parent_stage: null, enabled: true, activity: "active",
         activity_basis: "enabled in the plan", alternate_of: [], default_index: 0, in_default: true,
         python_api: "available", python_class: "freecam.physics.pausable.A", class_kind: "dedicated",
+        core_kernels: [{ routine: "alpha", id: "m::alpha", owner_class: "freecam.physics.sub.AlphaOwner",
+                         status: "complete" }],
         ledger_coverage: "partial", note: null,
       },
       {
@@ -54,7 +58,7 @@ function fixture(): Snapshot {
         description: "Process Z.", phase: "cam_run1", kind: "scheme", classification: "numeric_scheme",
         granularity: "stage", parent_stage: null, enabled: true, activity: "active",
         activity_basis: "enabled in the plan", alternate_of: [], default_index: 1, in_default: true,
-        python_api: "available", python_class: null, class_kind: "generic",
+        python_api: "available", python_class: null, class_kind: "generic", core_kernels: [],
         ledger_coverage: "gap", note: null,
       },
       {
@@ -62,7 +66,8 @@ function fixture(): Snapshot {
         description: "I/O.", phase: "coupling", kind: "io", classification: "io", granularity: "stage",
         parent_stage: null, enabled: true, activity: "active", activity_basis: "enabled in the plan",
         alternate_of: [], default_index: 2, in_default: true, python_api: "available",
-        python_class: null, class_kind: "generic", ledger_coverage: "not-applicable", note: null,
+        python_class: null, class_kind: "generic", core_kernels: [],
+        ledger_coverage: "not-applicable", note: null,
       },
     ],
     additional_apis: [
@@ -159,6 +164,7 @@ describe("the progress dashboard", () => {
     const browser = await screen.findByRole("navigation", { name: "Process browser" });
     const buttons = within(browser).getAllByRole("button").map((b) => b.textContent ?? "");
     const deep = buttons.findIndex((t) => t.includes("Deep-ish convection"));
+    expect(buttons[deep]).toContain("1 core · 2 candidates");
     const zeta = buttons.findIndex((t) => t.includes("Zeta scheme"));
     expect(deep).toBeGreaterThan(-1);
     expect(zeta).toBeGreaterThan(deep);
@@ -171,7 +177,13 @@ describe("the progress dashboard", () => {
     const user = userEvent.setup();
     render(<App load={loadFixture} />);
     await user.click(await screen.findByRole("button", { name: /Deep-ish convection/ }));
-    expect(screen.getByText("Kernel coverage")).toBeInTheDocument();
+    // the two levels are never conflated: the class's core kernels first, with their
+    // owner classes, then the recursive static candidates under their own heading
+    expect(screen.getByText(/Core kernels exposed for replacement \(1\)/)).toBeInTheDocument();
+    expect(screen.getAllByText("freecam.physics.sub.AlphaOwner").length).toBeGreaterThanOrEqual(2); // the facts row and the core list
+    expect(screen.getByText(/All candidate numerical functions \(statically reachable/)).toBeInTheDocument();
+    expect(screen.getByText(/Exposing a process does not expose every candidate/)).toBeInTheDocument();
+    expect(screen.getByText("Candidate kernel coverage")).toBeInTheDocument();
     expect(screen.getAllByText("Independently callable").length).toBeGreaterThan(0);
     // counts come from the records: 1 of 2 kernels verified
     const barTexts = Array.from(document.querySelectorAll(".bar-head")).map((n) => n.textContent ?? "");

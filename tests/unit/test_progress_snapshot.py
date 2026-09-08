@@ -187,6 +187,12 @@ def test_shared_kernels_are_counted_once_and_appear_in_both_processes(tmp_path: 
     # the disabled alternate stays discoverable, not a failure
     b = next(p for p in snapshot["processes"] if p["id"] == "cam_run1.b")
     assert not b["enabled"] and b["activity"] == "alternate" and b["alternate_of"] == ["cam_run1.a"]
+    # the class's core kernels are a separate, smaller list than the recursive candidates
+    a = next(p for p in snapshot["processes"] if p["id"] == "cam_run1.a")
+    assert a["core_kernels"] == [{"routine": "alpha", "id": "m::alpha",
+                                  "owner_class": "freecam.physics.pausable.Alpha", "status": "open"}]
+    assert b["core_kernels"] == []
+    assert len(snapshot["process_membership"]["cam_run1.a"]["kernels"]) > len(a["core_kernels"])
 
 
 def test_replacement_evidence_is_scoped_to_the_tested_process(tmp_path: Path) -> None:
@@ -346,6 +352,21 @@ def test_the_inspected_records_produce_the_known_counts() -> None:
     assert len(fice["processes"]) > 1
     verified = fice["capabilities"]["original_replacement_bfb"]["contexts"]
     assert verified == ["cam_run1.deep_convection"]
+
+
+def test_core_kernels_and_recursive_candidates_are_two_levels_in_the_real_records() -> None:
+    """CloudMacroMicrophysics exposes two core kernels; its candidate tree holds ~a hundred."""
+
+    snapshot = json.loads(SNAPSHOT.read_text())
+    stage7 = next(p for p in snapshot["processes"] if p["id"] == "cam_run1.cloud_macro_microphysics")
+    core = {c["routine"]: c for c in stage7["core_kernels"]}
+    assert sorted(core) == ["micro_mg_tend", "mmacro_pcond"]
+    # the core kernels are owned by the composed sub-classes, not the stage class itself
+    assert core["mmacro_pcond"]["owner_class"] == "freecam.physics.macrophysics.Macrophysics"
+    assert core["micro_mg_tend"]["owner_class"] == "freecam.physics.microphysics.Microphysics"
+    candidates = snapshot["process_membership"]["cam_run1.cloud_macro_microphysics"]["kernels"]
+    assert len(candidates) > 50 and {c["id"] for c in core.values()} <= set(candidates)
+    assert "Exposing a process does not expose every candidate" in snapshot["notes"]["core_vs_candidates"]
 
 
 def test_historical_failures_precede_the_scoped_success_in_the_real_records() -> None:

@@ -2648,7 +2648,7 @@
   "use_gw_oro": true,
   "use_subcol_microp": false
  },
- "content_hash": "400941d87f1dc168ccc1ffd9403dfad669b0015cd774f46cb8632af6deb906d7",
+ "content_hash": "635c7d78fd6fe4fe139beee356340869893c982a9c7c99e0cdff377064d90425",
  "evidence": {
   "pi_cam_cldfrc_fice_frame_replay.json": {
    "bfb": true,
@@ -38002,6 +38002,7 @@
   "bfb_meaning": "Original-kernel replacement BFB verified does not prove that an arbitrary replacement (for example a neural network) is scientifically correct.",
   "candidates": "Candidate kernels come from a static reading of the configured call tree: they are potentially reachable, not necessarily observed during execution.",
   "class_delegation": "A Python class may delegate numerical execution to the original Fortran; class availability does not mean the calculations were translated into Python.",
+  "core_vs_candidates": "Core kernels are the ones a process's Python class exposes for replacement today. Candidate numerical functions are everything the call-tree inventory reaches from the process recursively -- drivers, per-point helpers, saturation and packing libraries included. Exposing a process does not expose every candidate inside it.",
   "process_vs_kernel": "A process is a workflow operation. It can contain many numerical kernels. Calling the whole process does not mean every internal kernel is independently callable or replaceable.",
   "replacement_scope": "A replacement gate is scoped to the process and call site actually tested; it does not verify the same kernel's other callers.",
   "shared_kernels": "A kernel used by several processes is counted once globally; per-process totals are not additive.",
@@ -47749,6 +47750,7 @@
    "alternate_of": [],
    "class_kind": "generic",
    "classification": "boundary",
+   "core_kernels": [],
    "default_index": 0,
    "description": "A required control action of every CAM step.",
    "display_name": "boundary_import",
@@ -47772,6 +47774,7 @@
    "alternate_of": [],
    "class_kind": "generic",
    "classification": "process_control",
+   "core_kernels": [],
    "default_index": 1,
    "description": "Part of the step's control skeleton; runs every step, hidden from the canvas.",
    "display_name": "prepare",
@@ -47795,6 +47798,7 @@
    "alternate_of": [],
    "class_kind": "generic",
    "classification": "process_control",
+   "core_kernels": [],
    "default_index": 2,
    "description": "Original CAM process chem_emissions in cam_run2.",
    "display_name": "surface_fluxes_and_emissions",
@@ -47822,6 +47826,7 @@
    ],
    "class_kind": "generic",
    "classification": "numeric_scheme",
+   "core_kernels": [],
    "default_index": 3,
    "description": "Original CAM process tracers_chemistry in cam_run2.",
    "display_name": "tracers_and_chemistry",
@@ -47845,6 +47850,7 @@
    "alternate_of": [],
    "class_kind": "dedicated",
    "classification": "numeric_scheme",
+   "core_kernels": [],
    "default_index": 4,
    "description": "A leaf of cam_run2.tracers_and_chemistry; the parent and its leaves never run together.",
    "display_name": "tracer_tendencies",
@@ -47868,6 +47874,7 @@
    "alternate_of": [],
    "class_kind": "dedicated",
    "classification": "numeric_scheme",
+   "core_kernels": [],
    "default_index": 5,
    "description": "A leaf of cam_run2.tracers_and_chemistry; the parent and its leaves never run together.",
    "display_name": "age_of_air_tendencies",
@@ -47891,6 +47898,14 @@
    "alternate_of": [],
    "class_kind": "dedicated",
    "classification": "numeric_scheme",
+   "core_kernels": [
+    {
+     "id": "mo_gas_phase_chemdr::gas_phase_chemdr",
+     "owner_class": "freecam.physics.pausable.ChemistryTendencies",
+     "routine": "gas_phase_chemdr",
+     "status": "open"
+    }
+   ],
    "default_index": 6,
    "description": "A leaf of cam_run2.tracers_and_chemistry; the parent and its leaves never run together.",
    "display_name": "chemistry_tendencies",
@@ -47914,6 +47929,32 @@
    "alternate_of": [],
    "class_kind": "dedicated",
    "classification": "numeric_scheme",
+   "core_kernels": [
+    {
+     "id": "trb_mtn_stress::compute_tms",
+     "owner_class": "freecam.physics.pausable.VerticalDiffusion",
+     "routine": "compute_tms",
+     "status": "open"
+    },
+    {
+     "id": "eddy_diff::compute_eddy_diff",
+     "owner_class": "freecam.physics.pausable.VerticalDiffusion",
+     "routine": "compute_eddy_diff",
+     "status": "open"
+    },
+    {
+     "id": "diffusion_solver::compute_vdiff",
+     "owner_class": "freecam.physics.pausable.VerticalDiffusion",
+     "routine": "compute_vdiff",
+     "status": "open"
+    },
+    {
+     "id": "pbl_utils::virtem",
+     "owner_class": "freecam.physics.pausable.VerticalDiffusion",
+     "routine": "virtem",
+     "status": "complete"
+    }
+   ],
    "default_index": 7,
    "description": "Original CAM process vertical_diffusion_tend in cam_run2.",
    "display_name": "vertical_diffusion",
@@ -47937,6 +47978,7 @@
    "alternate_of": [],
    "class_kind": "dedicated",
    "classification": "numeric_scheme",
+   "core_kernels": [],
    "default_index": 8,
    "description": "Original CAM process rayleigh_friction_tend in cam_run2.",
    "display_name": "rayleigh_friction",
@@ -47963,6 +48005,7 @@
    ],
    "class_kind": "generic",
    "classification": "numeric_scheme",
+   "core_kernels": [],
    "default_index": 9,
    "description": "Original CAM process aero_model_drydep in cam_run2.",
    "display_name": "aerosol_dry_deposition",
@@ -47986,6 +48029,14 @@
    "alternate_of": [],
    "class_kind": "dedicated",
    "classification": "numeric_scheme",
+   "core_kernels": [
+    {
+     "id": "aero_model::modal_aero_depvel_part",
+     "owner_class": "freecam.physics.pausable.AerosolDryDeposition",
+     "routine": "modal_aero_depvel_part",
+     "status": "open"
+    }
+   ],
    "default_index": 10,
    "description": "A leaf of cam_run2.aerosol_dry_deposition; the parent and its leaves never run together.",
    "display_name": "aerosol_dry_deposition",
@@ -48009,6 +48060,7 @@
    "alternate_of": [],
    "class_kind": "dedicated",
    "classification": "numeric_scheme",
+   "core_kernels": [],
    "default_index": 11,
    "description": "A leaf of cam_run2.aerosol_dry_deposition; the parent and its leaves never run together.",
    "display_name": "carma_aerosol_tendencies",
@@ -48032,6 +48084,7 @@
    "alternate_of": [],
    "class_kind": "dedicated",
    "classification": "numeric_scheme",
+   "core_kernels": [],
    "default_index": 12,
    "description": "Original CAM process charge_fix in cam_run2.",
    "display_name": "charge_neutrality",
@@ -48055,6 +48108,14 @@
    "alternate_of": [],
    "class_kind": "dedicated",
    "classification": "numeric_scheme",
+   "core_kernels": [
+    {
+     "id": "gw_common::gw_drag_prof",
+     "owner_class": "freecam.physics.pausable.GravityWaveDrag",
+     "routine": "gw_drag_prof",
+     "status": "open"
+    }
+   ],
    "default_index": 13,
    "description": "Original CAM process gw_tend in cam_run2.",
    "display_name": "gravity_wave_drag",
@@ -48078,6 +48139,7 @@
    "alternate_of": [],
    "class_kind": "dedicated",
    "classification": "numeric_scheme",
+   "core_kernels": [],
    "default_index": 14,
    "description": "Original CAM process qbo_relax in cam_run2.",
    "display_name": "qbo_relaxation",
@@ -48101,6 +48163,7 @@
    "alternate_of": [],
    "class_kind": "dedicated",
    "classification": "numeric_scheme",
+   "core_kernels": [],
    "default_index": 15,
    "description": "Original CAM process iondrag_calc in cam_run2.",
    "display_name": "ion_drag",
@@ -48124,6 +48187,7 @@
    "alternate_of": [],
    "class_kind": "generic",
    "classification": "process_control",
+   "core_kernels": [],
    "default_index": 16,
    "description": "Original CAM process physics_dme_adjust in cam_run2.",
    "display_name": "state_finalize",
@@ -48152,6 +48216,7 @@
    ],
    "class_kind": "generic",
    "classification": "process_control",
+   "core_kernels": [],
    "default_index": 17,
    "description": "Part of the step's control skeleton; runs every step, hidden from the canvas.",
    "display_name": "finish",
@@ -48175,6 +48240,7 @@
    "alternate_of": [],
    "class_kind": "dedicated",
    "classification": "numeric_scheme",
+   "core_kernels": [],
    "default_index": 18,
    "description": "A leaf of cam_run2.finish; the parent and its leaves never run together.",
    "display_name": "carma_statistics",
@@ -48198,6 +48264,7 @@
    "alternate_of": [],
    "class_kind": "generic",
    "classification": "host_service",
+   "core_kernels": [],
    "default_index": 19,
    "description": "Part of the step's control skeleton; runs every step, hidden from the canvas.",
    "display_name": "physics_buffer_deallocate",
@@ -48221,6 +48288,7 @@
    "alternate_of": [],
    "class_kind": "generic",
    "classification": "host_service",
+   "core_kernels": [],
    "default_index": 20,
    "description": "Part of the step's control skeleton; runs every step, hidden from the canvas.",
    "display_name": "physics_buffer_time_advance",
@@ -48244,6 +48312,7 @@
    "alternate_of": [],
    "class_kind": "generic",
    "classification": "host_service",
+   "core_kernels": [],
    "default_index": 21,
    "description": "Part of the step's control skeleton; runs every step, hidden from the canvas.",
    "display_name": "diagnostics_deallocate",
@@ -48267,6 +48336,7 @@
    "alternate_of": [],
    "class_kind": "generic",
    "classification": "boundary",
+   "core_kernels": [],
    "default_index": 22,
    "description": "Original CAM process stepon_run2 in cam_run2.",
    "display_name": "physics_to_dynamics",
@@ -48290,6 +48360,7 @@
    "alternate_of": [],
    "class_kind": "generic",
    "classification": "dynamics",
+   "core_kernels": [],
    "default_index": 23,
    "description": "Original CAM process stepon_run3 in cam_run3.",
    "display_name": "dynamics",
@@ -48313,6 +48384,7 @@
    "alternate_of": [],
    "class_kind": "generic",
    "classification": "io",
+   "core_kernels": [],
    "default_index": 24,
    "description": "Part of the step's control skeleton; runs every step, hidden from the canvas.",
    "display_name": "history",
@@ -48336,6 +48408,7 @@
    "alternate_of": [],
    "class_kind": "generic",
    "classification": "io",
+   "core_kernels": [],
    "default_index": 25,
    "description": "Part of the step's control skeleton; runs every step, hidden from the canvas.",
    "display_name": "restart",
@@ -48363,6 +48436,7 @@
    ],
    "class_kind": "generic",
    "classification": "io",
+   "core_kernels": [],
    "default_index": 26,
    "description": "Part of the step's control skeleton; runs every step, hidden from the canvas.",
    "display_name": "finish",
@@ -48386,6 +48460,7 @@
    "alternate_of": [],
    "class_kind": "generic",
    "classification": "io",
+   "core_kernels": [],
    "default_index": 27,
    "description": "Part of the step's control skeleton; runs every step, hidden from the canvas.",
    "display_name": "wrapup",
@@ -48409,6 +48484,7 @@
    "alternate_of": [],
    "class_kind": "generic",
    "classification": "io",
+   "core_kernels": [],
    "default_index": 28,
    "description": "Part of the step's control skeleton; runs every step, hidden from the canvas.",
    "display_name": "step_cost",
@@ -48432,6 +48508,7 @@
    "alternate_of": [],
    "class_kind": "generic",
    "classification": "io",
+   "core_kernels": [],
    "default_index": 29,
    "description": "Part of the step's control skeleton; runs every step, hidden from the canvas.",
    "display_name": "flush",
@@ -48455,6 +48532,7 @@
    "alternate_of": [],
    "class_kind": "generic",
    "classification": "clock",
+   "core_kernels": [],
    "default_index": 30,
    "description": "A required control action of every CAM step.",
    "display_name": "advance_timestep",
@@ -48478,6 +48556,7 @@
    "alternate_of": [],
    "class_kind": "generic",
    "classification": "boundary",
+   "core_kernels": [],
    "default_index": 31,
    "description": "Original CAM process stepon_run1 in cam_run1.",
    "display_name": "dynamics_to_physics",
@@ -48501,6 +48580,7 @@
    "alternate_of": [],
    "class_kind": "generic",
    "classification": "process_control",
+   "core_kernels": [],
    "default_index": 32,
    "description": "Part of the step's control skeleton; runs every step, hidden from the canvas.",
    "display_name": "prepare",
@@ -48524,6 +48604,7 @@
    "alternate_of": [],
    "class_kind": "generic",
    "classification": "process_control",
+   "core_kernels": [],
    "default_index": 33,
    "description": "Original CAM process bc_init in cam_run1.",
    "display_name": "state_initialize",
@@ -48547,6 +48628,7 @@
    "alternate_of": [],
    "class_kind": "dedicated",
    "classification": "numeric_scheme",
+   "core_kernels": [],
    "default_index": 34,
    "description": "Original CAM process check_energy_fix in cam_run1.",
    "display_name": "energy_fixer",
@@ -48570,6 +48652,14 @@
    "alternate_of": [],
    "class_kind": "dedicated",
    "classification": "numeric_scheme",
+   "core_kernels": [
+    {
+     "id": "dadadj::dadadj",
+     "owner_class": "freecam.physics.pausable.DryAdjustment",
+     "routine": "dadadj",
+     "status": "complete"
+    }
+   ],
    "default_index": 35,
    "description": "Original CAM process dadadj in cam_run1.",
    "display_name": "dry_adjustment",
@@ -48593,6 +48683,32 @@
    "alternate_of": [],
    "class_kind": "dedicated",
    "classification": "numeric_scheme",
+   "core_kernels": [
+    {
+     "id": "zm_conv::zm_convr",
+     "owner_class": "freecam.physics.pausable.DeepConvection",
+     "routine": "zm_convr",
+     "status": "open"
+    },
+    {
+     "id": "zm_conv::zm_conv_evap",
+     "owner_class": "freecam.physics.pausable.DeepConvection",
+     "routine": "zm_conv_evap",
+     "status": "open"
+    },
+    {
+     "id": "zm_conv::momtran",
+     "owner_class": "freecam.physics.pausable.DeepConvection",
+     "routine": "momtran",
+     "status": "open"
+    },
+    {
+     "id": "cloud_fraction::cldfrc_fice",
+     "owner_class": "freecam.physics.pausable.DeepConvection",
+     "routine": "cldfrc_fice",
+     "status": "complete"
+    }
+   ],
    "default_index": 36,
    "description": "Original CAM process convect_deep_tend in cam_run1.",
    "display_name": "deep_convection",
@@ -48616,6 +48732,20 @@
    "alternate_of": [],
    "class_kind": "dedicated",
    "classification": "numeric_scheme",
+   "core_kernels": [
+    {
+     "id": "uwshcu::compute_uwshcu_inv",
+     "owner_class": "freecam.physics.pausable.ShallowConvection",
+     "routine": "compute_uwshcu_inv",
+     "status": "open"
+    },
+    {
+     "id": "uwshcu::fluxbelowinv",
+     "owner_class": "freecam.physics.pausable.ShallowConvection",
+     "routine": "fluxbelowinv",
+     "status": "complete"
+    }
+   ],
    "default_index": 37,
    "description": "Original CAM process convect_shallow_tend in cam_run1.",
    "display_name": "shallow_convection",
@@ -48639,6 +48769,7 @@
    "alternate_of": [],
    "class_kind": "dedicated",
    "classification": "numeric_scheme",
+   "core_kernels": [],
    "default_index": 38,
    "description": "Original CAM process sslt_rebin_adv in cam_run1.",
    "display_name": "sea_salt_rebin",
@@ -48662,6 +48793,20 @@
    "alternate_of": [],
    "class_kind": "dedicated",
    "classification": "numeric_scheme",
+   "core_kernels": [
+    {
+     "id": "cldwat2m_macro::mmacro_pcond",
+     "owner_class": "freecam.physics.macrophysics.Macrophysics",
+     "routine": "mmacro_pcond",
+     "status": "complete"
+    },
+    {
+     "id": "micro_mg1_0::micro_mg_tend",
+     "owner_class": "freecam.physics.microphysics.Microphysics",
+     "routine": "micro_mg_tend",
+     "status": "open"
+    }
+   ],
    "default_index": 39,
    "description": "Original CAM process macro_microphysics in cam_run1.",
    "display_name": "cloud_macro_microphysics",
@@ -48687,6 +48832,7 @@
    ],
    "class_kind": "generic",
    "classification": "numeric_scheme",
+   "core_kernels": [],
    "default_index": 40,
    "description": "A leaf of cam_run1.cloud_macro_microphysics; the parent and its leaves never run together.",
    "display_name": "macro_tend_pre",
@@ -48712,6 +48858,7 @@
    ],
    "class_kind": "generic",
    "classification": "numeric_scheme",
+   "core_kernels": [],
    "default_index": 41,
    "description": "A leaf of cam_run1.cloud_macro_microphysics; the parent and its leaves never run together.",
    "display_name": "macro_tend_post",
@@ -48740,6 +48887,7 @@
    ],
    "class_kind": "generic",
    "classification": "numeric_scheme",
+   "core_kernels": [],
    "default_index": 42,
    "description": "Original CAM process aero_model_wetdep in cam_run1.",
    "display_name": "wet_deposition",
@@ -48763,6 +48911,7 @@
    "alternate_of": [],
    "class_kind": "dedicated",
    "classification": "numeric_scheme",
+   "core_kernels": [],
    "default_index": 43,
    "description": "A leaf of cam_run1.wet_deposition; the parent and its leaves never run together.",
    "display_name": "modal_aerosol_preparation",
@@ -48786,6 +48935,14 @@
    "alternate_of": [],
    "class_kind": "dedicated",
    "classification": "numeric_scheme",
+   "core_kernels": [
+    {
+     "id": "wetdep::wetdepa_v2",
+     "owner_class": "freecam.physics.pausable.AerosolWetDeposition",
+     "routine": "wetdepa_v2",
+     "status": "open"
+    }
+   ],
    "default_index": 44,
    "description": "A leaf of cam_run1.wet_deposition; the parent and its leaves never run together.",
    "display_name": "aerosol_wet_deposition",
@@ -48809,6 +48966,7 @@
    "alternate_of": [],
    "class_kind": "dedicated",
    "classification": "numeric_scheme",
+   "core_kernels": [],
    "default_index": 45,
    "description": "A leaf of cam_run1.wet_deposition; the parent and its leaves never run together.",
    "display_name": "carma_wet_deposition",
@@ -48832,6 +48990,14 @@
    "alternate_of": [],
    "class_kind": "dedicated",
    "classification": "numeric_scheme",
+   "core_kernels": [
+    {
+     "id": "zm_conv::convtran",
+     "owner_class": "freecam.physics.pausable.ConvectiveTracerTransport",
+     "routine": "convtran",
+     "status": "open"
+    }
+   ],
    "default_index": 46,
    "description": "A leaf of cam_run1.wet_deposition; the parent and its leaves never run together.",
    "display_name": "convective_tracer_transport",
@@ -48858,6 +49024,7 @@
    ],
    "class_kind": "generic",
    "classification": "numeric_scheme",
+   "core_kernels": [],
    "default_index": 47,
    "description": "Original CAM process physics_diagnostics in cam_run1.",
    "display_name": "diagnostics",
@@ -48881,6 +49048,7 @@
    "alternate_of": [],
    "class_kind": "generic",
    "classification": "diagnostics",
+   "core_kernels": [],
    "default_index": 48,
    "description": "A leaf of cam_run1.diagnostics; the parent and its leaves never run together.",
    "display_name": "state_and_convection_diagnostics",
@@ -48904,6 +49072,7 @@
    "alternate_of": [],
    "class_kind": "generic",
    "classification": "diagnostics",
+   "core_kernels": [],
    "default_index": 49,
    "description": "A leaf of cam_run1.diagnostics; the parent and its leaves never run together.",
    "display_name": "cloud_diagnostics",
@@ -48927,6 +49096,20 @@
    "alternate_of": [],
    "class_kind": "dedicated",
    "classification": "numeric_scheme",
+   "core_kernels": [
+    {
+     "id": "radsw::rad_rrtmg_sw",
+     "owner_class": "freecam.physics.radiation.Radiation",
+     "routine": "rad_rrtmg_sw",
+     "status": "open"
+    },
+    {
+     "id": "radlw::rad_rrtmg_lw",
+     "owner_class": "freecam.physics.radiation.Radiation",
+     "routine": "rad_rrtmg_lw",
+     "status": "open"
+    }
+   ],
    "default_index": 50,
    "description": "Original CAM process radiation_tend in cam_run1.",
    "display_name": "radiation",
@@ -48952,6 +49135,7 @@
    ],
    "class_kind": "generic",
    "classification": "numeric_scheme",
+   "core_kernels": [],
    "default_index": 51,
    "description": "A leaf of cam_run1.radiation; the parent and its leaves never run together.",
    "display_name": "rad_tend_pre",
@@ -48977,6 +49161,7 @@
    ],
    "class_kind": "generic",
    "classification": "numeric_scheme",
+   "core_kernels": [],
    "default_index": 52,
    "description": "A leaf of cam_run1.radiation; the parent and its leaves never run together.",
    "display_name": "rad_tend_post",
@@ -49004,6 +49189,7 @@
    ],
    "class_kind": "generic",
    "classification": "numeric_scheme",
+   "core_kernels": [],
    "default_index": 53,
    "description": "Original CAM process cam_export in cam_run1.",
    "display_name": "state_export",
@@ -49027,6 +49213,7 @@
    "alternate_of": [],
    "class_kind": "generic",
    "classification": "diagnostics",
+   "core_kernels": [],
    "default_index": 54,
    "description": "A leaf of cam_run1.state_export; the parent and its leaves never run together.",
    "display_name": "tropopause",
@@ -49050,6 +49237,7 @@
    "alternate_of": [],
    "class_kind": "generic",
    "classification": "diagnostics",
+   "core_kernels": [],
    "default_index": 55,
    "description": "A leaf of cam_run1.state_export; the parent and its leaves never run together.",
    "display_name": "state_export",
@@ -49073,6 +49261,7 @@
    "alternate_of": [],
    "class_kind": "generic",
    "classification": "diagnostics",
+   "core_kernels": [],
    "default_index": 56,
    "description": "A leaf of cam_run1.state_export; the parent and its leaves never run together.",
    "display_name": "export_diagnostics",
@@ -49096,6 +49285,7 @@
    "alternate_of": [],
    "class_kind": "generic",
    "classification": "boundary",
+   "core_kernels": [],
    "default_index": 57,
    "description": "A required control action of every CAM step.",
    "display_name": "boundary_export",
@@ -49782,7 +49972,7 @@
  ],
  "volatile": {
   "branch": "physics-kernel-api-closure",
-  "commit": "dd59c9ba94a997c6f0db08d73132f9fdba9f0d22",
-  "generated_at": "2026-09-08T06:49:54+00:00"
+  "commit": "d438bdf1e5fd363fd4341f0e5e2623d26cee4b63",
+  "generated_at": "2026-09-08T20:01:29+00:00"
  }
 }

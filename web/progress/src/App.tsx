@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import {
   Bar,
   buildTree,
@@ -290,7 +290,7 @@ function ProcessLists({
                     <span className="chip">generic</span>
                   )}
                   <span className="chip">
-                    {snapshot.process_membership[process.id]?.kernels.length ?? 0} kernels
+                    {process.core_kernels.length} core · {snapshot.process_membership[process.id]?.kernels.length ?? 0} candidates
                   </span>
                 </span>
               </button>
@@ -356,6 +356,8 @@ function ProcessDetail({
   const [flat, setFlat] = useState(false);
   const membership = snapshot.process_membership[process.id];
   const tree = useMemo(() => (membership ? buildTree(membership) : []), [membership]);
+  const ownerClasses = [...new Set(process.core_kernels.map((c) => c.owner_class).filter(
+    (cls): cls is string => Boolean(cls) && cls !== process.python_class))];
   const bars = processBars(snapshot, process.id);
   return (
     <section aria-label={`Process ${process.display_name}`}>
@@ -370,14 +372,42 @@ function ProcessDetail({
           <dd>{process.python_class ? <code>{process.python_class}</code> : "generic interface (plan control; no dedicated class)"}</dd>
         </div>
         {process.activity_basis && <div><dt>Activity</dt><dd>{process.activity}: {process.activity_basis}</dd></div>}
+        {ownerClasses.length > 0 && (
+          <div>
+            <dt>Kernel owner classes</dt>
+            <dd>
+              {ownerClasses.map((cls) => <code key={cls}>{cls}</code>).reduce<React.ReactNode[]>(
+                (out, node, i) => (i ? [...out, ", ", node] : [node]), [])}
+              <span className="muted"> — composed into {process.display_name}; each owns its core kernel's contract</span>
+            </dd>
+          </div>
+        )}
         {process.description && <div><dt>Description</dt><dd>{process.description}</dd></div>}
       </dl>
-      <h3>Kernel coverage</h3>
+      <h3>Core kernels exposed for replacement ({process.core_kernels.length})</h3>
+      {process.core_kernels.length === 0 ? (
+        <p className="muted">This process's class exposes no replaceable kernel yet.</p>
+      ) : (
+        <ul className="kernel-list">
+          {process.core_kernels.map((core) => (
+            <li key={core.routine}>
+              {core.id ? (
+                <KernelLink snapshot={snapshot} kid={core.id} processId={process.id} onNavigate={onNavigate} />
+              ) : (
+                <code>{core.routine}</code>
+              )}
+              {core.owner_class && <span className="muted"> owned by <code>{core.owner_class}</code></span>}
+            </li>
+          ))}
+        </ul>
+      )}
+      <p className="muted">{snapshot.notes.core_vs_candidates}</p>
+      <h3>Candidate kernel coverage</h3>
       {bars.map((bar) => (
         <BarRow key={bar.key} bar={bar} />
       ))}
       <h3>
-        Internal numerical kernels{" "}
+        All candidate numerical functions (statically reachable, recursive){" "}
         <button type="button" onClick={() => setFlat(!flat)} aria-pressed={flat}>
           {flat ? "Tree view" : "Flat list"}
         </button>
