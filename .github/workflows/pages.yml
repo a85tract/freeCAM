@@ -1,15 +1,22 @@
-name: Workflow Builder
+name: Site
 
-# The builder's page: tested and built on every pull request, published from
-# main by pushing the build to the gh-pages branch, which Pages serves
-# (Settings > Pages > Deploy from a branch: gh-pages, root).  The page is the
-# preview -- it edits, checks, generates and downloads; it never runs CAM.
-# The catalog snapshot it reads is exported from the checkout's own records
-# and must be current.
+# One composite site, published in a single deployment so neither half can
+# delete the other:
+#   /freeCAM/           the Workflow Builder homepage, always built from main
+#   /freeCAM/progress/  the implementation-progress dashboard, always built
+#                       from the progress branch (a published snapshot of
+#                       committed records -- never a live job monitor)
+# Pushes to either branch and manual dispatch rebuild and publish the whole
+# site; pull requests build previews without publishing.  Production always
+# takes the homepage from main, never from whichever branch triggered the job.
+# This file must stay consistent on both triggering branches until they
+# converge.  If any required build or export fails the deployment fails and
+# the last successful public site stays up; development data is never
+# silently substituted.
 
 on:
   push:
-    branches: [main]
+    branches: [main, physics-kernel-api-closure]
   pull_request:
   workflow_dispatch:
 
@@ -21,10 +28,18 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  build:
+  homepage:
     runs-on: ubuntu-latest
+    outputs:
+      commit: ${{ steps.commit.outputs.sha }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          # a pull request against main previews its own homepage; everything
+          # else builds the homepage from main
+          ref: ${{ (github.event_name == 'pull_request' && github.base_ref == 'main') && github.sha || 'main' }}
+      - id: commit
+        run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
       - uses: astral-sh/setup-uv@v5
       - name: Install the Python package and its test extras
         run: uv sync --extra test --extra ui
@@ -43,21 +58,107 @@ jobs:
       - name: Type-check and test the page (the export contract tests spawn the checkout's Python)
         working-directory: web
         run: npm run typecheck && npm test
-      - name: Build the page for the project site path
+      - name: Build the homepage for the project site path
         working-directory: web
         run: npm run build:pages
+      - uses: actions/upload-artifact@v4
+        with:
+          name: site-homepage
+          path: web/dist-pages
+
+  progress:
+    runs-on: ubuntu-latest
+    outputs:
+      commit: ${{ steps.commit.outputs.sha }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # a pull request against the progress branch previews its own
+          # dashboard; everything else builds it from the progress branch
+          ref: ${{ (github.event_name == 'pull_request' && github.base_ref == 'physics-kernel-api-closure') && github.sha || 'physics-kernel-api-closure' }}
+      - id: commit
+        run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+      - uses: astral-sh/setup-uv@v5
+      - name: Install the Python package and its test extras
+        run: uv sync --extra test --extra ui
+      - name: The catalog snapshot the exporter joins is current
+        run: uv run python tools/export_workflow_catalog.py --check
+      - name: The committed progress snapshot is current (content hash)
+        run: uv run python tools/export_progress_snapshot.py --check
+      - name: Exporter tests
+        run: uv run pytest tests/unit/test_progress_snapshot.py -q
+      - name: Re-stamp the snapshot's volatile metadata with this build's commit
+        # the content hash was just proven current; only generated_at, commit
+        # and branch change, so the page displays the published build exactly
+        run: uv run python tools/export_progress_snapshot.py
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - name: Install the page's dependencies
+        working-directory: web
+        run: npm ci
+      - name: Type-check and test the pages
+        working-directory: web
+        run: npm run typecheck && npm test
+      - name: Build the progress dashboard for its subpath
+        working-directory: web
+        run: npm run build:progress
+      - uses: actions/upload-artifact@v4
+        with:
+          name: site-progress
+          path: web/dist-progress
+
+  publish:
+    needs: [homepage, progress]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: site-homepage
+          path: site
+      - uses: actions/download-artifact@v4
+        with:
+          name: site-progress
+          path: site/progress
+      - name: Record exactly which commits built this site
+        run: |
+          cat > site/site-manifest.json <<EOF
+          {
+            "homepage_commit": "${{ needs.homepage.outputs.commit }}",
+            "progress_commit": "${{ needs.progress.outputs.commit }}",
+            "workflow_run": "${{ github.run_id }}",
+            "trigger": "${{ github.event_name }} on ${{ github.ref_name }}"
+          }
+          EOF
+      - name: Serve the assembled site and check direct navigation and assets
+        run: |
+          python3 -m http.server 8123 --directory site &
+          sleep 2
+          set -e
+          for path in /index.html /progress/ /progress/index.html /progress/progress.json /site-manifest.json; do
+            code=$(curl -s -o /dev/null -w "%{http_code}" "http://127.0.0.1:8123${path}")
+            echo "${code} ${path}"
+            test "${code}" = "200"
+          done
+          asset=$(grep -o 'src="[^"]*assets/[^"]*"' site/progress/index.html | head -1 | sed 's/src="\/freeCAM//; s/"//g')
+          code=$(curl -s -o /dev/null -w "%{http_code}" "http://127.0.0.1:8123${asset}")
+          echo "${code} ${asset}"
+          test "${code}" = "200"
+          kill %1
       - name: Keep the preview build
         uses: actions/upload-artifact@v4
         with:
-          name: workflow-builder-preview
-          path: web/dist-pages
-      - name: Publish the preview to the gh-pages branch
+          name: site-preview
+          path: site
+      - name: Publish the composite site to the gh-pages branch
         if: github.event_name != 'pull_request'
         uses: peaceiris/actions-gh-pages@v4
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
-          publish_dir: web/dist-pages
+          publish_dir: site
           publish_branch: gh-pages
           force_orphan: true
           enable_jekyll: false
-          commit_message: "Publish the Workflow Builder preview from ${{ github.sha }}"
+          commit_message: "Publish the site: homepage ${{ needs.homepage.outputs.commit }}, progress ${{ needs.progress.outputs.commit }}"
