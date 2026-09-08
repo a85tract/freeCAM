@@ -112,13 +112,20 @@
   },
   {
    "bindable": true,
-   "evidence": [],
+   "evidence": [
+    "validation/pi_cam_pausable_flux-hook_50step.json",
+    "validation/pi_cam_pausable_flux-hook_vs_oracle_50step_bfb.json",
+    "validation/pi_cam_pausable_flux-capture_50step.json",
+    "validation/pi_cam_pausable_flux-capture_vs_oracle_50step_bfb.json",
+    "validation/pi_cam_pausable_hooks-everything_50step.json",
+    "validation/pi_cam_pausable_hooks-everything_vs_oracle_50step_bfb.json"
+   ],
    "kernel": "fluxbelowinv",
    "owner_class": "freecam.physics.pausable.ShallowConvection",
-   "reason": "bindable, but the pause path has not passed a bit-for-bit gate",
+   "reason": null,
    "stage_action": "cam_run1.shallow_convection",
    "stage_class": "freecam.physics.pausable.ShallowConvection",
-   "validated": false
+   "validated": true
   },
   {
    "bindable": true,
@@ -179,13 +186,20 @@
   },
   {
    "bindable": true,
-   "evidence": [],
+   "evidence": [
+    "validation/pi_cam_pausable_fice-hook_50step.json",
+    "validation/pi_cam_pausable_fice-hook_vs_oracle_50step_bfb.json",
+    "validation/pi_cam_pausable_fice-capture_50step.json",
+    "validation/pi_cam_pausable_fice-capture_vs_oracle_50step_bfb.json",
+    "validation/pi_cam_pausable_hooks-everything_50step.json",
+    "validation/pi_cam_pausable_hooks-everything_vs_oracle_50step_bfb.json"
+   ],
    "kernel": "cldfrc_fice",
    "owner_class": "freecam.physics.pausable.DeepConvection",
-   "reason": "bindable, but the pause path has not passed a bit-for-bit gate",
+   "reason": null,
    "stage_action": "cam_run1.deep_convection",
    "stage_class": "freecam.physics.pausable.DeepConvection",
-   "validated": false
+   "validated": true
   },
   {
    "bindable": true,
@@ -337,11 +351,11 @@
   "PI-atm-online": "configs/pi_cam_icesm131_online.yaml",
   "PI-atm-replay": "configs/pi_cam_icesm131_replay.yaml"
  },
- "catalog_hash": "308154bf3ce006dbd1fac7ce3807fa6de0c423c5d62649320a33456b2b4368f5",
- "commit": "3265a95a2f9753eb9c6b13f9655908c00fdd1090",
+ "catalog_hash": "4747f2fd6c45a2cb38c2e3e480749a95e86d06beb30667aa3d1da77b5cb239dd",
+ "commit": "dd59c9ba94a997c6f0db08d73132f9fdba9f0d22",
  "default_document": {
   "case": "PI-atm",
-  "catalog_version": "308154bf3ce006dbd1fac7ce3807fa6de0c423c5d62649320a33456b2b4368f5",
+  "catalog_version": "4747f2fd6c45a2cb38c2e3e480749a95e86d06beb30667aa3d1da77b5cb239dd",
   "experimental": false,
   "namelist": {},
   "nodes": [
@@ -1841,13 +1855,20 @@
       },
       {
        "bindable": true,
-       "evidence": [],
+       "evidence": [
+        "validation/pi_cam_pausable_fice-hook_50step.json",
+        "validation/pi_cam_pausable_fice-hook_vs_oracle_50step_bfb.json",
+        "validation/pi_cam_pausable_fice-capture_50step.json",
+        "validation/pi_cam_pausable_fice-capture_vs_oracle_50step_bfb.json",
+        "validation/pi_cam_pausable_hooks-everything_50step.json",
+        "validation/pi_cam_pausable_hooks-everything_vs_oracle_50step_bfb.json"
+       ],
        "kernel": "cldfrc_fice",
        "owner_class": "freecam.physics.pausable.DeepConvection",
-       "reason": "bindable, but the pause path has not passed a bit-for-bit gate",
+       "reason": null,
        "stage_action": "cam_run1.deep_convection",
        "stage_class": "freecam.physics.pausable.DeepConvection",
-       "validated": false
+       "validated": true
       }
      ],
      "parameters": [
@@ -1940,13 +1961,20 @@
       },
       {
        "bindable": true,
-       "evidence": [],
+       "evidence": [
+        "validation/pi_cam_pausable_flux-hook_50step.json",
+        "validation/pi_cam_pausable_flux-hook_vs_oracle_50step_bfb.json",
+        "validation/pi_cam_pausable_flux-capture_50step.json",
+        "validation/pi_cam_pausable_flux-capture_vs_oracle_50step_bfb.json",
+        "validation/pi_cam_pausable_hooks-everything_50step.json",
+        "validation/pi_cam_pausable_hooks-everything_vs_oracle_50step_bfb.json"
+       ],
        "kernel": "fluxbelowinv",
        "owner_class": "freecam.physics.pausable.ShallowConvection",
-       "reason": "bindable, but the pause path has not passed a bit-for-bit gate",
+       "reason": null,
        "stage_action": "cam_run1.shallow_convection",
        "stage_class": "freecam.physics.pausable.ShallowConvection",
-       "validated": false
+       "validated": true
       }
      ],
      "parameters": [
@@ -4327,13 +4355,20 @@
      },
      {
       "bindable": true,
-      "evidence": [],
+      "evidence": [
+       "validation/pi_cam_pausable_fice-hook_50step.json",
+       "validation/pi_cam_pausable_fice-hook_vs_oracle_50step_bfb.json",
+       "validation/pi_cam_pausable_fice-capture_50step.json",
+       "validation/pi_cam_pausable_fice-capture_vs_oracle_50step_bfb.json",
+       "validation/pi_cam_pausable_hooks-everything_50step.json",
+       "validation/pi_cam_pausable_hooks-everything_vs_oracle_50step_bfb.json"
+      ],
       "kernel": "cldfrc_fice",
       "owner_class": "freecam.physics.pausable.DeepConvection",
-      "reason": "bindable, but the pause path has not passed a bit-for-bit gate",
+      "reason": null,
       "stage_action": "cam_run1.deep_convection",
       "stage_class": "freecam.physics.pausable.DeepConvection",
-      "validated": false
+      "validated": true
      }
     ],
     "parameters": [
@@ -4426,13 +4461,20 @@
      },
      {
       "bindable": true,
-      "evidence": [],
+      "evidence": [
+       "validation/pi_cam_pausable_flux-hook_50step.json",
+       "validation/pi_cam_pausable_flux-hook_vs_oracle_50step_bfb.json",
+       "validation/pi_cam_pausable_flux-capture_50step.json",
+       "validation/pi_cam_pausable_flux-capture_vs_oracle_50step_bfb.json",
+       "validation/pi_cam_pausable_hooks-everything_50step.json",
+       "validation/pi_cam_pausable_hooks-everything_vs_oracle_50step_bfb.json"
+      ],
       "kernel": "fluxbelowinv",
       "owner_class": "freecam.physics.pausable.ShallowConvection",
-      "reason": "bindable, but the pause path has not passed a bit-for-bit gate",
+      "reason": null,
       "stage_action": "cam_run1.shallow_convection",
       "stage_class": "freecam.physics.pausable.ShallowConvection",
-      "validated": false
+      "validated": true
      }
     ],
     "parameters": [
@@ -7027,13 +7069,20 @@
      },
      {
       "bindable": true,
-      "evidence": [],
+      "evidence": [
+       "validation/pi_cam_pausable_fice-hook_50step.json",
+       "validation/pi_cam_pausable_fice-hook_vs_oracle_50step_bfb.json",
+       "validation/pi_cam_pausable_fice-capture_50step.json",
+       "validation/pi_cam_pausable_fice-capture_vs_oracle_50step_bfb.json",
+       "validation/pi_cam_pausable_hooks-everything_50step.json",
+       "validation/pi_cam_pausable_hooks-everything_vs_oracle_50step_bfb.json"
+      ],
       "kernel": "cldfrc_fice",
       "owner_class": "freecam.physics.pausable.DeepConvection",
-      "reason": "bindable, but the pause path has not passed a bit-for-bit gate",
+      "reason": null,
       "stage_action": "cam_run1.deep_convection",
       "stage_class": "freecam.physics.pausable.DeepConvection",
-      "validated": false
+      "validated": true
      }
     ],
     "parameters": [
@@ -7132,13 +7181,20 @@
      },
      {
       "bindable": true,
-      "evidence": [],
+      "evidence": [
+       "validation/pi_cam_pausable_flux-hook_50step.json",
+       "validation/pi_cam_pausable_flux-hook_vs_oracle_50step_bfb.json",
+       "validation/pi_cam_pausable_flux-capture_50step.json",
+       "validation/pi_cam_pausable_flux-capture_vs_oracle_50step_bfb.json",
+       "validation/pi_cam_pausable_hooks-everything_50step.json",
+       "validation/pi_cam_pausable_hooks-everything_vs_oracle_50step_bfb.json"
+      ],
       "kernel": "fluxbelowinv",
       "owner_class": "freecam.physics.pausable.ShallowConvection",
-      "reason": "bindable, but the pause path has not passed a bit-for-bit gate",
+      "reason": null,
       "stage_action": "cam_run1.shallow_convection",
       "stage_class": "freecam.physics.pausable.ShallowConvection",
-      "validated": false
+      "validated": true
      }
     ],
     "parameters": [
@@ -19772,7 +19828,7 @@
    "writes": []
   }
  ],
- "generated_at": "2026-09-07T19:52:09+00:00",
+ "generated_at": "2026-09-08T06:38:17+00:00",
  "parameters": {
   "cam_run1.cloud_macro_microphysics": [
    {

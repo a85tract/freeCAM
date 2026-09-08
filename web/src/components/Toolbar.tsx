@@ -84,6 +84,9 @@ export function Toolbar(props: Props) {
         />
       </label>
       <button className="secondary" onClick={props.onExport} title="Download workflow.json">Export</button>
+      <a className="nav-link" href="./progress/" title="Which processes and kernels are callable, replaceable, and verified">
+        Implementation progress
+      </a>
       <button className="secondary" onClick={props.onToggleTheme} aria-label="Toggle dark mode">{props.theme === "dark" ? "Light" : "Dark"}</button>
     </header>
   );

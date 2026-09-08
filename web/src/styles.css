@@ -47,6 +47,8 @@ code, pre, .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, m
 .banner { grid-column: 1 / -1; padding: 6px 12px; background: var(--warning); color: #1f1600; font-weight: 600; }
 .toolbar { grid-column: 1 / -1; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 8px 12px; background: var(--panel); border-bottom: 1px solid var(--border); }
 .toolbar .spacer { flex: 1; }
+.toolbar .nav-link { color: var(--accent); text-decoration: none; padding: 4px 6px; }
+.toolbar .nav-link:hover { text-decoration: underline; }
 .toolbar label { display: flex; align-items: center; gap: 6px; color: var(--muted); }
 .toolbar input[type="number"] { width: 5em; }
 .library, .inspector { background: var(--panel); border-right: 1px solid var(--border); overflow: auto; padding: 10px; }
