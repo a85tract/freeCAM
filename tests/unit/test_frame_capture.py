@@ -4,6 +4,7 @@ import json
 import sys
 
 import numpy as np
+import pytest
 
 from freecam.physics.segments import FrameArgument, FrameCapture, KernelFrame
 
@@ -61,3 +62,26 @@ def test_replay_samples_follow_the_spec_layout(tmp_path: Path) -> None:
     assert len(samples) == 3
     inputs, expected = samples[1]
     assert inputs == {"t": t[1], "q": q[1]} and set(expected) == {"result"} and expected["result"] == t[1] + q[1]
+
+
+def test_a_frame_without_a_column_count_is_live_in_full() -> None:
+    """A hook frame of a routine with no ncol dummy reports ncol 0: every element counts (capture 7343844)."""
+    from freecam.physics.segments import FrameArgument, FrameCapture, KernelFrame, OriginalAtPause
+
+    ps0 = np.linspace(1.0, 31.0, 31)
+    xflx = np.zeros(31)
+    frame = KernelFrame(kernel="fluxbelowinv", call_index=1, lchnk=1, ncol=0, substep=1, token=3,
+                        arguments=(FrameArgument("ps0", ps0, "in"), FrameArgument("xflx", xflx, "out")))
+    assert frame.batch() == {"ps0": pytest.approx(ps0)} and frame.batch()["ps0"].shape == (31,)
+
+    class Runner:
+        def run_original(self, cid, kernel):
+            xflx[...] = 2.0 * ps0                       # the original writes the whole profile
+
+    capture = FrameCapture("fluxbelowinv")
+    answer = capture(frame, Runner(), 1)
+    assert answer["xflx"].shape == (31,) and np.array_equal(answer["xflx"], 2.0 * ps0)
+    assert np.all(xflx == 0.0)                          # zeroed after the snapshot, as OriginalAtPause does
+    assert frame.write_back(answer) == ("xflx",) and np.array_equal(xflx, 2.0 * ps0)
+    assert capture.inputs[0]["ps0"].shape == (31,) and capture.outputs[0]["xflx"].shape == (31,)
+    assert OriginalAtPause()(frame, Runner(), 1)["xflx"].shape == (31,)

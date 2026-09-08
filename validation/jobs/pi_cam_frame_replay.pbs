@@ -3,7 +3,7 @@
 #   validation/jobs/submit.sh validation/jobs/pi_cam_frame_replay.pbs
 #PBS -N freecam-frame-replay
 #PBS -q main
-#PBS -l select=1:ncpus=8:mem=64GB
+#PBS -l select=1:ncpus=32:mem=128GB
 #PBS -l walltime=03:00:00
 #PBS -j oe
 #PBS -o logs/
@@ -15,7 +15,9 @@
 # node.  PYCAM_REPLAY_FUNCTION names the function spec and standalone image;
 # PYCAM_REPLAY_CAPTURE_DIR the capture directory a pausable gate wrote
 # (<run dir>/../frame-capture); PYCAM_REPLAY_KERNEL the kernel name in the
-# capture files when it differs from the function's.  The record lands in
+# capture files when it differs from the function's; PYCAM_REPLAY_SHARDS the
+# number of processes the rank files are split over (default 32), each writing
+# a shard record the last step merges.  The record lands in
 # validation/pi_cam_<function>_frame_replay.json unless PYCAM_REPLAY_OUTPUT
 # says otherwise.
 set -euo pipefail
@@ -39,4 +41,14 @@ fi
 if [ -n "${PYCAM_REPLAY_OUTPUT:-}" ]; then
   flags+=(--output "${PYCAM_REPLAY_OUTPUT}")
 fi
-"${python}" tools/replay_pi_cam_frame_capture.py "${flags[@]}"
+shards=${PYCAM_REPLAY_SHARDS:-32}
+status=0
+for ((i = 0; i < shards; i++)); do
+  "${python}" tools/replay_pi_cam_frame_capture.py "${flags[@]}" --shard "${i}/${shards}" &
+done
+for job in $(jobs -p); do
+  wait "${job}" || status=1
+done
+echo "shards finished (any mismatch: ${status})"
+"${python}" tools/replay_pi_cam_frame_capture.py "${flags[@]}" --merge-shards "${shards}" && \
+  rm -f "${PYCAM_REPLAY_OUTPUT:-validation/pi_cam_${PYCAM_REPLAY_FUNCTION}_frame_replay.json}".shard-*-of-"${shards}".json

@@ -1,0 +1,30 @@
+{
+  "atm_in_sha256": "6cf906571702ac0c912c22c42d7a5b4568ef2001697d59a05078538ed8bc3472",
+  "config": "configs/pi_cam_icesm131_replay.yaml",
+  "digest": "bf2c905f2d49289eb93836d2ce6649cbf2eeb1a4caed47628427a60e9ba027b4",
+  "drifted_after_one_step": [],
+  "entries": {
+    "uwshcu_mp_g_": {
+      "dtype": "float64",
+      "hex": [
+        "0x1.39cc100e6afcdp+3"
+      ],
+      "sha256": "7341442b4be7727cdbed7b80fe44d8c4c8becf2b6b3016893aa8317f95c9fd8e",
+      "shape": [],
+      "symbol": "uwshcu_mp_g_",
+      "values": [
+        9.80616
+      ],
+      "write": "snapshot"
+    }
+  },
+  "function": "fluxbelowinv",
+  "library_sha256": "67408edf794f5e40bac3a4701e9f7a2019b78c2ac1788239b7000701690d00bd",
+  "mpi_ranks": 512,
+  "native_manifest": "/glade/work/ruitong/pycam-sima-pi-cam-only/build/pi_cam_promoted_p10/native_cam_manifest.json",
+  "pbs_job_id": "7344821.desched1",
+  "qualified_name": "uwshcu::fluxbelowinv",
+  "schema_version": 1,
+  "spec_sha256": "09de4ce129fd6338a1363d398004199c0ca11694a587f8308b567e49bbd100b1",
+  "stable_after_one_step": true
+}

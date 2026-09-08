@@ -131,7 +131,7 @@ through `load_function`.
 | Routine | Shape | Standalone | In the model |
 | --- | --- | --- | --- |
 | `pbl_utils::virtem` | elemental scalar function reading module state (`zvir`) | image built; `result` returned as `outputs["result"]`, bitwise equal to the formula with the model's snapshot of `zvir`; every frame captured at the pause in a 50-step run (51200 calls, 691300 elements) replayed bit-for-bit through the standalone function | the vertical diffusion runner pauses at the assignment `thvs(:ncol) = virtem(...)`, serving the section actuals and the left-hand side as the frame; bit-for-bit, 100 pauses in 50 steps; the capture run itself bit-for-bit |
-| `uwshcu::fluxbelowinv` | private profile subroutine with `0:mkx` interface arrays | image built through the private procedure's ifort symbol behind an explicit interface, no module recompiled; the contract records the lower bounds | a hook (below): its definition in `uwshcu.o` is weakened and renamed, the hook takes the original name, and `compute_uwshcu`'s call sites reach the hook; the original answers at the hook bit-for-bit, 36733580 pauses in 50 steps |
+| `uwshcu::fluxbelowinv` | private profile subroutine with `0:mkx` interface arrays | image built through the private procedure's ifort symbol behind an explicit interface, no module recompiled; the contract records the lower bounds and, since the first replay, the module's gravity constant `g` as snapshot state (see below); every frame captured at its hook in a 50-step run (36733580 calls) replayed bit-for-bit | a hook (below): its definition in `uwshcu.o` is weakened and renamed, the hook takes the original name, and `compute_uwshcu`'s call sites reach the hook; the original answers at the hook bit-for-bit, 36733580 pauses in 50 steps |
 | `cloud_fraction::cldfrc_fice` | chunk subroutine called inside `zm_conv_evap`, itself a kernel | image built, `tmelt` verified against the model; every frame captured at its hook in a 50-step run (51200 calls) replayed bit-for-bit | first through a hoisted copy of `zm_conv_evap`: **not** bit-for-bit (one rank, a few ULP, step 7; the failure is kept as [`pi_cam_pausable_fice-pause_50step_failure.json`](../validation/pi_cam_pausable_fice-pause_50step_failure.json)); then a hook: `zm_conv.o`'s one reference is renamed to it, and the original answers at the hook bit-for-bit, 51200 pauses in 50 steps |
 
 The failure in the last row shaped what followed.  Hoisting a routine
@@ -182,7 +182,9 @@ all bit-for-bit with the oracle:
 | `fluxbelowinv` through its hook | 7343709 | a private routine's weakened definition, three call sites inside `compute_uwshcu` | 36733580 paused |
 
 | `cldfrc_fice` captured at its hook | 7343811 | every frame recorded (51200 calls); replayed through the standalone function: 691300 lanes, 41478000 values, bit-for-bit ([`pi_cam_cldfrc_fice_frame_replay.json`](../validation/pi_cam_cldfrc_fice_frame_replay.json)) | 51200 paused, 0 missed |
-| `fluxbelowinv` captured at its hook | 7343844 | every frame recorded (36733580 calls, 100 GB); the first attempt (7343812) was killed at the job's 256 GB memory limit, the rerun asked for 200 GB per node: holding 71000 frames per rank costs 680 MB per rank | 36733580 paused, 0 missed |
+| `fluxbelowinv` captured at its hook | 7343922 | every frame recorded (36733580 calls, 117 GB); the first attempt (7343812) was killed at the job's 256 GB memory limit and the second (7343844) recorded empty profiles -- a hook frame of a routine with no `ncol` dummy reports no column count, and the capture sliced its arrays to zero live lanes, a rule that also silenced a Python replacement's write-back for such frames; both fixed, the rerun asked for 200 GB per node: holding 71000 frames per rank costs 740 MB per rank | 36733580 paused, 0 missed |
+| `fluxbelowinv` frames replayed, first attempt | 7344048 | **not bit-for-bit**: every one of the 36733580 calls ran, and every recorded mismatch is `xflx(kinv-1)` off by a factor. The routine scales the mass flux by the module variable `g`, which `init_uwshcu` sets and the contract had not declared, so the standalone image computed with `g = 0`. Kept as [`pi_cam_fluxbelowinv_frame_replay_no_module_state_failure.json`](../validation/pi_cam_fluxbelowinv_frame_replay_no_module_state_failure.json); the contract now declares `g`, the model's value is snapshotted ([`pi_cam_fluxbelowinv_module_state.json`](../validation/pi_cam_fluxbelowinv_module_state.json), stable after a step), and the image is rebuilt against the contract | 36733580 calls replayed |
+| `fluxbelowinv` frames replayed, with the model's `g` | 7344823 | all 36733580 calls replayed through the rebuilt standalone function on one node in 32 shards (21 minutes): 1138740980 output values, bit-for-bit ([`pi_cam_fluxbelowinv_frame_replay.json`](../validation/pi_cam_fluxbelowinv_frame_replay.json)) | 36733580 calls replayed, 0 mismatches |
 | both hooks and every class at once | 7343813 | nine stage classes, radiation and the cloud stage installed, eighteen kernels answered by the original at their pauses and hooks in one run | 51200 and 36733580 paused, 0 missed |
 
 Records: [`pi_cam_hooks_unarmed_50step.json`](../validation/pi_cam_hooks_unarmed_50step.json),
@@ -201,10 +203,35 @@ to the advance).  Resident memory is unchanged within noise (804 MB per rank
 high-water mark unarmed, 775 and 821 MB with a hook armed); the fiber stack is
 reserved at 512 MB and touched only as deep as the Fortran needs.
 
+## Which candidates a hook can reach
+
 The hook path applies only to calls the linked objects reach through a
 relocation.  `compute_alpha`, the inlined function of `compute_uwshcu`, has
-none, and no hook can reach it; the inventory that follows the PoC records,
-for each candidate, whether such a relocation exists.
+none, and no hook can reach it.  [`tools/audit_pi_cam_call_relocations.py`](../tools/audit_pi_cam_call_relocations.py)
+reads the oracle archive the image links (`readelf` on every object) and
+records, for each of the inventory's 601 candidates, the objects
+defining its symbol and the objects whose text sections reference it:
+[`pi_cam_kernel_api_redirectable_calls.json`](../validation/pi_cam_kernel_api_redirectable_calls.json)
+(`--check` proves it current).
+
+| Classification | Count | Meaning |
+| --- | --- | --- |
+| rename-references | 332 | every reference comes from another object: the `cldfrc_fice` mode |
+| weaken-definition | 96 | a reference comes from the defining object itself: the `fluxbelowinv` mode |
+| no-call-relocation | 135 | the symbol is defined but no text section references it: inlined at every call site (123 of them have every source caller in the same file, where ifort inlines at `-O2`), like `compute_alpha` |
+| not-in-archive | 38 | an internal procedure the compiler absorbed into its host: no symbol of its own |
+
+So 428 of the 601 candidates have a call a hook can redirect, and
+173 do not.  This is a static reading of the linked
+objects: a relocation is a compiled call site, not proof this configuration
+executes it (the call-tree inventory says that), and a redirectable call is not
+yet a hooked kernel -- the hook needs a function contract the frame can serve,
+and 113 of the 428 take `state`, `pbuf` or a tendency
+derived type, which the contracts do not express yet.  Routines a hook cannot
+reach remain callable standalone where a contract exists, and a routine with
+no call of its own (`virtem`, inlined into its loop) is reached through the
+runner's pause at the enclosing statement.  None of this covers every routine
+at every depth; the record says which.
 
 ## Runtime evidence
 

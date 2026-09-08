@@ -58,7 +58,9 @@ class KernelFrame:
     and written, chunk-shaped (``pcols`` leading).  Only the first ``ncol``
     lanes are live; a model never sees a padding lane and never writes one.
     ``token`` identifies this pause: the frame is good for exactly one
-    write-back and one resume.
+    write-back and one resume.  ``ncol`` is the chunk's live column count,
+    the first axis of every array; a frame without one (``ncol <= 0``: a
+    routine with no ``ncol`` dummy, served at a hook) is live in full.
     """
 
     kernel: str
@@ -82,8 +84,7 @@ class KernelFrame:
         for argument in self.arguments:
             if not argument.is_input:
                 continue
-            array = argument.array
-            batch[argument.name] = array[:self.ncol].copy() if array.ndim else array.copy()
+            batch[argument.name] = _lanes(argument.array, self.ncol).copy()
         return batch
 
     def write_back(self, answer: Mapping[str, Any]) -> tuple[str, ...]:
@@ -103,7 +104,7 @@ class KernelFrame:
                 f"kernel also writes {missing}")
         written = []
         for argument in outputs:
-            target = argument.array[:self.ncol] if argument.array.ndim else argument.array
+            target = _lanes(argument.array, self.ncol)
             value = np.asarray(answer[argument.name])
             if target.size == 0:
                 # an output the routine has no room for -- a field this
@@ -163,7 +164,7 @@ class OriginalAtPause:
         for argument in frame.arguments:
             if not argument.is_output:
                 continue
-            target = argument.array[:frame.ncol] if argument.array.ndim else argument.array
+            target = _lanes(argument.array, frame.ncol)
             answer[argument.name] = np.array(target, copy=True)
             if target.size:
                 target[...] = 0
@@ -237,12 +238,24 @@ class FrameCapture:
         return f"FrameCapture({self.kernel!r}, calls={self.calls})"
 
 
-def _live(array: np.ndarray, ncol: int) -> np.ndarray:
-    """The live lanes of a frame array: the first ``ncol`` along the first axis."""
+def _lanes(array: np.ndarray, ncol: int) -> np.ndarray:
+    """The live lanes of a frame array: the first ``ncol`` along the first axis.
 
-    if array.ndim == 0:
+    A scalar has no lanes.  A frame without a column count (``ncol <= 0``)
+    is live in full: the routine has no ``ncol`` dummy and every element it
+    was given counts -- slicing to ``[:0]`` would drop the whole array, as it
+    did for ``fluxbelowinv``'s profiles in capture run 7343844.
+    """
+
+    if array.ndim == 0 or ncol <= 0:
         return array
     return array[:ncol] if array.shape[0] >= ncol else array
+
+
+def _live(array: np.ndarray, ncol: int) -> np.ndarray:
+    """The live lanes of a frame array (see :func:`_lanes`)."""
+
+    return _lanes(array, ncol)
 
 
 class SegmentRunner(Protocol):
@@ -282,7 +295,7 @@ class SegmentCounters:
 def _live_bytes(array: np.ndarray, ncol: int) -> int:
     """The bytes of an output's live lanes; a scalar served where it lives has no lanes."""
 
-    return (array[:ncol] if array.ndim else array).nbytes
+    return _lanes(array, ncol).nbytes
 
 
 class SegmentedStage:

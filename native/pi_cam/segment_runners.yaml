@@ -97,6 +97,8 @@ runners:
     validated_by:
     - validation/pi_cam_pausable_flux-hook_50step.json
     - validation/pi_cam_pausable_flux-hook_vs_oracle_50step_bfb.json
+    - validation/pi_cam_pausable_flux-capture_50step.json
+    - validation/pi_cam_pausable_flux-capture_vs_oracle_50step_bfb.json
     - validation/pi_cam_pausable_hooks-everything_50step.json
     - validation/pi_cam_pausable_hooks-everything_vs_oracle_50step_bfb.json
 - stage: cam_run1.radiation

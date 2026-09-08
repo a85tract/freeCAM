@@ -44,8 +44,8 @@
     },
     "kernels": 20,
     "kernels_by_status": {
-      "complete": 4,
-      "open": 16
+      "complete": 5,
+      "open": 15
     },
     "kernels_bindable": 20,
     "kernels_validated_through_runner": 20,
@@ -5202,20 +5202,38 @@
       "bindable": true,
       "validated_through_runner": true,
       "evidence": {
-        "capture": [],
+        "capture": [
+          "pi_cam_pausable_flux-capture_50step.json"
+        ],
         "standalone_build": [
           "pi_cam_fluxbelowinv_standalone_build.json"
         ],
-        "replay_full_chunk": [],
-        "replay_single_column": [],
-        "replay_public_api": [],
-        "module_state": []
+        "replay_full_chunk": [
+          "pi_cam_fluxbelowinv_frame_replay.json"
+        ],
+        "replay_single_column": [
+          "pi_cam_fluxbelowinv_frame_replay.json"
+        ],
+        "replay_public_api": [
+          "pi_cam_fluxbelowinv_frame_replay.json"
+        ],
+        "module_state": [
+          "pi_cam_fluxbelowinv_module_state.json"
+        ]
       },
       "in_model_gates": [
         {
           "path": "segmented, original kernel answered through the pause",
           "record": "pi_cam_pausable_flux-hook_50step.json",
           "bfb_record": "pi_cam_pausable_flux-hook_vs_oracle_50step_bfb.json",
+          "present": true,
+          "bfb": true,
+          "compared_files": 4
+        },
+        {
+          "path": "segmented, original kernel answered through the pause",
+          "record": "pi_cam_pausable_flux-capture_50step.json",
+          "bfb_record": "pi_cam_pausable_flux-capture_vs_oracle_50step_bfb.json",
           "present": true,
           "bfb": true,
           "compared_files": 4
@@ -5229,13 +5247,8 @@
           "compared_files": 4
         }
       ],
-      "status": "open",
-      "missing": [
-        "capture",
-        "replay_full_chunk",
-        "replay_single_column",
-        "replay_public_api"
-      ],
+      "status": "complete",
+      "missing": [],
       "note": null
     },
     {
@@ -6002,22 +6015,6 @@
       "why": "no record in validation/ for this step of the loop"
     },
     {
-      "what": "fluxbelowinv: capture",
-      "why": "no record in validation/ for this step of the loop"
-    },
-    {
-      "what": "fluxbelowinv: replay_full_chunk",
-      "why": "no record in validation/ for this step of the loop"
-    },
-    {
-      "what": "fluxbelowinv: replay_single_column",
-      "why": "no record in validation/ for this step of the loop"
-    },
-    {
-      "what": "fluxbelowinv: replay_public_api",
-      "why": "no record in validation/ for this step of the loop"
-    },
-    {
       "what": "zm_convr: capture",
       "why": "no record in validation/ for this step of the loop"
     },
@@ -6238,5 +6235,5 @@
       "why": "no record in validation/ for this step of the loop"
     }
   ],
-  "coverage_hash": "366759c2596e3d6713c1b7c580a66242095860b14ec5424c35c2bf68366764e8"
+  "coverage_hash": "bf6cef12a3d71cfd68e426dec7e813fc1c811d1b602317b7d12413864efdee94"
 }

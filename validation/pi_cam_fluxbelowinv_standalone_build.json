@@ -214,16 +214,16 @@
       "libgcc_s.so.1"
     ],
     "rpath": [
-      "/glade/u/apps/common/23.04/spack/opt/spack/intel-oneapi-compilers/2023.0.0/compiler/2023.0.0/linux/lib:/glade/u/apps/common/23.04/spack/opt/spack/intel-oneapi-compilers/2023.0.0/compiler/2023.0.0/linux/lib/x64:/glade/u/apps/common/23.04/spack/opt/spack/intel-oneapi-compilers/2023.0.0/compiler/2023.0.0/linux/lib/oclfpga/host/linux64/lib:/glade/u/apps/common/23.04/spack/opt/spack/intel-oneapi-compilers/2023.0.0/compiler/2023.0.0/linux/lib/oclfpga/linux64/lib:/glade/u/apps/common/23.04/spack/opt/spack/intel-oneapi-compilers/2023.0.0/compiler/2023.0.0/linux/compiler/lib/intel64_lin:/glade/u/apps/derecho/23.06/spack/opt/spack/parallel-netcdf/1.12.3/cray-mpich/8.1.25/oneapi/2023.0.0/blyr/lib:/glade/u/apps/derecho/23.06/spack/opt/spack/netcdf/4.9.2/cray-mpich/8.1.25/oneapi/2023.0.0/wzol/lib:/glade/u/apps/derecho/23.06/spack/opt/spack/intel-oneapi-mkl/2023.0.0/oneapi/2023.0.0/f2sh/mkl/2023.0.0/lib/intel64:/glade/u/apps/common/23.04/spack/opt/spack/intel-oneapi-compilers/2023.0.0/lib:/glade/u/apps/derecho/23.06/spack/opt/spack/hdf5/1.12.2/cray-mpich/8.1.25/oneapi/2023.0.0/ktun/lib:/glade/u/apps/derecho/23.06/opt/lib64:/glade/u/apps/derecho/23.06/opt/lib:/glade/u/apps/common/23.04/spack/opt/spack/intel-oneapi-compilers/2023.0.0/linux/compiler/lib/intel64:/opt/cray/pe/mpich/8.1.25/ofi/intel/19.0/lib:/opt/cray/pe/pmi/6.1.10/lib:/opt/cray/pe/pals/1.2.11/lib"
+      "/glade/u/apps/common/25.10/spack/opt/spack/intel-oneapi-compilers/2025.2.1/s4f2/compiler/2025.2/lib:/glade/u/apps/derecho/25.10/spack/opt/spack/netcdf/4.9.3/intel-oneapi-compilers/2025.2.1/2t5o/lib64:/glade/u/apps/derecho/25.10/spack/opt/spack/netcdf/4.9.3/intel-oneapi-compilers/2025.2.1/2t5o/lib:/opt/cray/libfabric/1.22.0/lib64:/glade/u/apps/derecho/25.10/spack/opt/spack/hdf5/1.14.6/intel-oneapi-compilers/2025.2.1/fr4a/lib:/glade/u/apps/derecho/25.10/opt/view/lib64:/glade/u/apps/derecho/25.10/opt/view/lib:/glade/u/apps/common/25.10/spack/opt/spack/intel-oneapi-compilers/2025.2.1/s4f2/linux/compiler/lib/intel64:/opt/cray/pe/mpich/8.1.32/ofi/intel/2022.1/lib:/opt/cray/pe/pmi/6.1.15/lib:/opt/cray/pals/1.6/lib"
     ]
   },
   "execution_model": "fixed-address-nonpic-standalone-function",
   "function": "fluxbelowinv",
-  "intel_math_library": "/glade/u/apps/common/23.04/spack/opt/spack/intel-oneapi-compilers/2023.0.0/compiler/2023.0.0/linux/compiler/lib/intel64_lin/libimf.so",
-  "intel_math_library_sha256": "165b270fcc422b05acd8e7cd52ae2dfb3c68609da6e1855fd6c0109e045943a3",
+  "intel_math_library": "/glade/u/apps/common/25.10/spack/opt/spack/intel-oneapi-compilers/2025.2.1/s4f2/compiler/2025.2/lib/libimf.so",
+  "intel_math_library_sha256": "f3433e8ed7a95fb17227e307f7a1ab07963b89e4af8150b0ef1811d06d71fdd7",
   "library": "/glade/work/ruitong/pycam-sima-pi-cam-only/build/pi_cam_standalone/fluxbelowinv/libfreecam_fluxbelowinv.so",
-  "library_bytes": 847704,
-  "library_sha256": "3c0ab6b06c66df5b02daa2c16296db08888266c0ae547572b0349214c6db62e8",
+  "library_bytes": 837760,
+  "library_sha256": "cabcb40e6e5eff0fbce5671501a21a910e1ff27fe9bed2ba04816abaa40f412d",
   "link": {
     "command": [
       "ftn",
@@ -275,49 +275,49 @@
       "/glade/work/ruitong/pycam-sima-pi-cam-only/build/pi_cam_standalone/fluxbelowinv/objects/water_types.o"
     ],
     "runtime_inputs": [
-      "/opt/cray/pe/pmi/6.1.10/lib/libpmi.so",
-      "/opt/cray/pe/pmi/6.1.10/lib/libpmi2.so",
-      "/usr/lib64/gcc/x86_64-suse-linux/7/../../../../lib64/libpthread.a",
-      "/opt/cray/pe/pals/1.2.11/lib/libpals.so",
-      "/opt/cray/pe/mpich/8.1.25/ofi/intel/19.0/lib/libmpifort_intel.so",
-      "/opt/cray/pe/mpich/8.1.25/ofi/intel/19.0/lib/libmpi_intel.so",
-      "/usr/lib64/gcc/x86_64-suse-linux/7/../../../../lib64/librt.a",
-      "/usr/lib64/gcc/x86_64-suse-linux/7/../../../../lib64/libpthread.a",
-      "/opt/cray/pe/pmi/6.1.10/lib/libpmi.so",
-      "/opt/cray/pe/pmi/6.1.10/lib/libpmi2.so",
-      "/glade/u/apps/common/23.04/spack/opt/spack/intel-oneapi-compilers/2023.0.0/compiler/2023.0.0/linux/compiler/lib/intel64_lin/libimf.so",
-      "/usr/lib64/gcc/x86_64-suse-linux/7/../../../../lib64/libm.so",
+      "/opt/cray/pe/pmi/6.1.15/lib/libpmi.so",
+      "/opt/cray/pe/pmi/6.1.15/lib/libpmi2.so",
+      "/usr/lib/../lib64/libpthread.a",
+      "/opt/cray/pals/1.6/lib/libpals.so",
+      "/opt/cray/pe/mpich/8.1.32/ofi/intel/2022.1/lib/libmpifort_intel.so",
+      "/opt/cray/pe/mpich/8.1.32/ofi/intel/2022.1/lib/libmpi_intel.so",
+      "/usr/lib/../lib64/librt.a",
+      "/usr/lib/../lib64/libpthread.a",
+      "/opt/cray/pe/pmi/6.1.15/lib/libpmi.so",
+      "/opt/cray/pe/pmi/6.1.15/lib/libpmi2.so",
+      "/glade/u/apps/common/25.10/spack/opt/spack/intel-oneapi-compilers/2025.2.1/s4f2/compiler/2025.2/lib/libimf.so",
+      "/usr/lib/../lib64/libm.so",
       "/lib64/libm.so.6",
       "/lib64/libmvec.so.1",
-      "/usr/lib64/gcc/x86_64-suse-linux/7/../../../../lib64/libpthread.a",
-      "/glade/u/apps/common/23.04/spack/opt/spack/intel-oneapi-compilers/2023.0.0/compiler/2023.0.0/linux/compiler/lib/intel64_lin/libifport.so",
-      "/glade/u/apps/common/23.04/spack/opt/spack/intel-oneapi-compilers/2023.0.0/compiler/2023.0.0/linux/compiler/lib/intel64_lin/libifport.so.5",
-      "/glade/u/apps/common/23.04/spack/opt/spack/intel-oneapi-compilers/2023.0.0/compiler/2023.0.0/linux/compiler/lib/intel64_lin/libifcoremt.so",
-      "/glade/u/apps/common/23.04/spack/opt/spack/intel-oneapi-compilers/2023.0.0/compiler/2023.0.0/linux/compiler/lib/intel64_lin/libifcoremt.so.5",
-      "/glade/u/apps/common/23.04/spack/opt/spack/intel-oneapi-compilers/2023.0.0/compiler/2023.0.0/linux/compiler/lib/intel64_lin/libimf.so",
-      "/glade/u/apps/common/23.04/spack/opt/spack/intel-oneapi-compilers/2023.0.0/compiler/2023.0.0/linux/compiler/lib/intel64_lin/libsvml.so",
-      "/usr/lib64/gcc/x86_64-suse-linux/7/../../../../lib64/libm.so",
+      "/usr/lib/../lib64/libpthread.a",
+      "/glade/u/apps/common/25.10/spack/opt/spack/intel-oneapi-compilers/2025.2.1/s4f2/compiler/2025.2/lib/libifport.so",
+      "/glade/u/apps/common/25.10/spack/opt/spack/intel-oneapi-compilers/2025.2.1/s4f2/compiler/2025.2/lib/libifport.so.5",
+      "/glade/u/apps/common/25.10/spack/opt/spack/intel-oneapi-compilers/2025.2.1/s4f2/compiler/2025.2/lib/libifcoremt.so",
+      "/glade/u/apps/common/25.10/spack/opt/spack/intel-oneapi-compilers/2025.2.1/s4f2/compiler/2025.2/lib/libifcoremt.so.5",
+      "/glade/u/apps/common/25.10/spack/opt/spack/intel-oneapi-compilers/2025.2.1/s4f2/compiler/2025.2/lib/libimf.so",
+      "/glade/u/apps/common/25.10/spack/opt/spack/intel-oneapi-compilers/2025.2.1/s4f2/compiler/2025.2/lib/libsvml.so",
+      "/usr/lib/../lib64/libm.so",
       "/lib64/libm.so.6",
       "/lib64/libmvec.so.1",
       "/lib64/libmvec.so.1",
-      "/glade/u/apps/common/23.04/spack/opt/spack/intel-oneapi-compilers/2023.0.0/compiler/2023.0.0/linux/compiler/lib/intel64_lin/libipgo.a",
-      "/glade/u/apps/common/23.04/spack/opt/spack/intel-oneapi-compilers/2023.0.0/compiler/2023.0.0/linux/compiler/lib/intel64_lin/libintlc.so",
-      "/glade/u/apps/common/23.04/spack/opt/spack/intel-oneapi-compilers/2023.0.0/compiler/2023.0.0/linux/compiler/lib/intel64_lin/libintlc.so.5",
-      "/usr/lib64/gcc/x86_64-suse-linux/7/../../../../lib64/libpthread.a",
-      "/glade/u/apps/common/23.04/spack/opt/spack/intel-oneapi-compilers/2023.0.0/compiler/2023.0.0/linux/compiler/lib/intel64_lin/libsvml.so",
-      "/usr/lib64/gcc/x86_64-suse-linux/7/../../../../lib64/libc.so",
+      "/glade/u/apps/common/25.10/spack/opt/spack/intel-oneapi-compilers/2025.2.1/s4f2/compiler/2025.2/lib/libipgo.a",
+      "/glade/u/apps/common/25.10/spack/opt/spack/intel-oneapi-compilers/2025.2.1/s4f2/compiler/2025.2/lib/libintlc.so",
+      "/glade/u/apps/common/25.10/spack/opt/spack/intel-oneapi-compilers/2025.2.1/s4f2/compiler/2025.2/lib/libintlc.so.5",
+      "/usr/lib/../lib64/libpthread.a",
+      "/glade/u/apps/common/25.10/spack/opt/spack/intel-oneapi-compilers/2025.2.1/s4f2/compiler/2025.2/lib/libsvml.so",
+      "/usr/lib/../lib64/libc.so",
       "/lib64/libc.so.6",
       "/usr/lib64/libc_nonshared.a",
       "/lib64/ld-linux-x86-64.so.2",
       "/usr/lib64/libc_nonshared.a",
       "/lib64/ld-linux-x86-64.so.2",
-      "/usr/lib64/gcc/x86_64-suse-linux/7//libgcc.a",
-      "/usr/lib64/gcc/x86_64-suse-linux/7//libgcc_s.so",
-      "/lib/../lib64/libgcc_s.so.1",
-      "/usr/lib64/gcc/x86_64-suse-linux/7//libgcc.a",
-      "/glade/u/apps/common/23.04/spack/opt/spack/intel-oneapi-compilers/2023.0.0/compiler/2023.0.0/linux/compiler/lib/intel64_lin/libirc_s.a",
-      "/usr/lib64/gcc/x86_64-suse-linux/7/../../../../lib64/libdl.a",
-      "/usr/lib64/gcc/x86_64-suse-linux/7/../../../../lib64/libc.so",
+      "/glade/u/apps/common/25.10/spack/opt/spack/gcc/12.5.0/hsbg/bin/../lib/gcc/x86_64-pc-linux-gnu/12.5.0//libgcc.a",
+      "/glade/u/apps/common/25.10/spack/opt/spack/gcc/12.5.0/hsbg/lib64/libgcc_s.so",
+      "/glade/u/apps/common/25.10/spack/opt/spack/gcc/12.5.0/hsbg/lib64/libgcc_s.so.1",
+      "/glade/u/apps/common/25.10/spack/opt/spack/gcc/12.5.0/hsbg/bin/../lib/gcc/x86_64-pc-linux-gnu/12.5.0//libgcc.a",
+      "/glade/u/apps/common/25.10/spack/opt/spack/intel-oneapi-compilers/2025.2.1/s4f2/compiler/2025.2/lib/libirc_s.a",
+      "/usr/lib/../lib64/libdl.a",
+      "/usr/lib/../lib64/libc.so",
       "/lib64/libc.so.6",
       "/usr/lib64/libc_nonshared.a",
       "/lib64/ld-linux-x86-64.so.2"
@@ -402,7 +402,7 @@
       "sha256": "ca4b330f182a54feafb321318b8dc745f3b08f4d0b66082d68585255462c4e13"
     }
   },
-  "original_call_proof": "5000861b:\te8 b0 d0 04 00       \tcall   500556d0 <uwshcu_mp_fluxbelowinv_>",
+  "original_call_proof": "500080be:\te8 3d d7 04 00       \tcall   50055800 <uwshcu_mp_fluxbelowinv_>",
   "pbs_job_id": null,
   "qualified_name": "uwshcu::fluxbelowinv",
   "schema_version": 1,
@@ -413,21 +413,21 @@
     },
     "base_matches": true,
     "fortran_runtime": [
-      "/glade/u/apps/common/23.04/spack/opt/spack/intel-oneapi-compilers/2023.0.0/compiler/2023.0.0/linux/compiler/lib/intel64_lin/libifcore.so.5",
-      "/glade/u/apps/common/23.04/spack/opt/spack/intel-oneapi-compilers/2023.0.0/compiler/2023.0.0/linux/compiler/lib/intel64_lin/libifcoremt.so.5"
+      "/glade/u/apps/common/25.10/spack/opt/spack/intel-oneapi-compilers/2025.2.1/s4f2/compiler/2025.2/lib/libifcore.so.5",
+      "/glade/u/apps/common/25.10/spack/opt/spack/intel-oneapi-compilers/2025.2.1/s4f2/compiler/2025.2/lib/libifcoremt.so.5"
     ],
     "initializers_returned": [],
-    "ld_preload": "/glade/u/apps/common/23.04/spack/opt/spack/intel-oneapi-compilers/2023.0.0/compiler/2023.0.0/linux/compiler/lib/intel64_lin/libimf.so",
+    "ld_preload": "/glade/u/apps/common/25.10/spack/opt/spack/intel-oneapi-compilers/2025.2.1/s4f2/compiler/2025.2/lib/libimf.so",
     "loaded_base": "0x50000000",
     "math_runtime": [
-      "/glade/u/apps/common/23.04/spack/opt/spack/intel-oneapi-compilers/2023.0.0/compiler/2023.0.0/linux/compiler/lib/intel64_lin/libimf.so"
+      "/glade/u/apps/common/25.10/spack/opt/spack/intel-oneapi-compilers/2025.2.1/s4f2/compiler/2025.2/lib/libimf.so"
     ],
     "mpi_initialized": false,
     "mxcsr_after": "0x9fc0",
     "mxcsr_before": "0x1fa0"
   },
   "spec": "/glade/work/ruitong/pycam-sima-pi-cam-only/native/pi_cam/functions/fluxbelowinv.yaml",
-  "spec_sha256": "1ce82138217b8ea5c62ffdc03e37facaf04189011f45660a7a606d2a02a86ca6",
+  "spec_sha256": "09de4ce129fd6338a1363d398004199c0ca11694a587f8308b567e49bbd100b1",
   "stubs": {
     "cesm_symbols_needed": [
       "cam_history_mp_add_default_",
@@ -485,7 +485,9 @@
       "cam_history_mp_addfld_",
       "cam_history_mp_outfld_"
     ],
-    "module_state_sizes": {}
+    "module_state_sizes": {
+      "uwshcu_mp_g_": 8
+    }
   },
   "wrapper": {
     "action_id": 1,

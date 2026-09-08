@@ -87,6 +87,11 @@ def test_every_kernel_row_is_a_kernel_a_stage_class_describes_and_two_have_close
     # through the replay record) replayed bit-for-bit through the standalone function
     assert rows["cldfrc_fice"]["status"] == "complete" and rows["cldfrc_fice"]["missing"] == []
     assert rows["cldfrc_fice"]["evidence"]["capture"] == ["pi_cam_pausable_fice-capture_50step.json"]
+    # fluxbelowinv too: 36733580 frames captured at its hook (7343922) replayed bit-for-bit through the
+    # standalone function with the model's snapshot of uwshcu's g (7344823); the first replay, without
+    # that module state, is kept as a failure record
+    assert rows["fluxbelowinv"]["status"] == "complete" and rows["fluxbelowinv"]["missing"] == []
+    assert rows["fluxbelowinv"]["evidence"]["module_state"] == ["pi_cam_fluxbelowinv_module_state.json"]
     assert "7343258" in (rows["cldfrc_fice"]["note"] or "")
     # the pausable stages: dadadj has a reviewed contract and the runner pauses at it
     assert rows["dadadj"]["bindable"] and rows["dadadj"]["contract"] == "reviewed"
@@ -121,7 +126,7 @@ def test_every_kernel_row_is_a_kernel_a_stage_class_describes_and_two_have_close
         assert "reviewed_contract" not in rows[name]["missing"] and "segment_runner" not in rows[name]["missing"]
         assert "in_model_replacement_bfb" not in rows[name]["missing"]
         assert [g["record"] for g in rows[name]["in_model_gates"][1:]][-1] == "pi_cam_pausable_everything_50step.json"
-    assert record["summary"]["kernels_by_status"] == {"complete": 4, "open": 16}     # P3-P5 kernels and fluxbelowinv await capture and replay
+    assert record["summary"]["kernels_by_status"] == {"complete": 5, "open": 15}     # the P3-P5 kernels await capture and replay
 
 
 def test_the_committed_record_is_what_the_builder_writes_now() -> None:

@@ -125,7 +125,9 @@ parameters: {}
 
 # fluxbelowinv reads no module state; the image carries uwshcu's object and
 # what it links against, exactly as compute_uwshcu_inv's image does.
-module_state: []
+# init_uwshcu copies gravit into the module's g; fluxbelowinv scales the mass flux by it
+module_state:
+  - {symbol: uwshcu_mp_g_, dtype: float64, shape: [], write: snapshot}
 
 image:
   archive_members:

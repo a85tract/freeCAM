@@ -34,14 +34,45 @@ def _bits(value: float) -> str:
 
 
 def _load_capture(path: Path) -> list[dict]:
+    """Every call in one rank's capture file: its meta, inputs and outputs."""
+
     with np.load(path) as bundle:
         meta = json.loads(str(bundle["meta"]))
+        keys: dict[int, dict[str, dict[str, str]]] = {}
+        for key in bundle.files:                      # indexed once: a rank holds up to 700000 arrays
+            parts = key.split("/", 2)
+            if len(parts) == 3 and parts[0] in ("in", "out"):
+                keys.setdefault(int(parts[1]), {"in": {}, "out": {}})[parts[0]][parts[2]] = key
         calls = []
         for index, item in enumerate(meta):
-            inputs = {key.split("/", 2)[2]: bundle[key] for key in bundle.files if key.startswith(f"in/{index}/")}
-            outputs = {key.split("/", 2)[2]: bundle[key] for key in bundle.files if key.startswith(f"out/{index}/")}
+            names = keys.get(index, {"in": {}, "out": {}})
+            inputs = {name: bundle[key] for name, key in names["in"].items()}
+            outputs = {name: bundle[key] for name, key in names["out"].items()}
             calls.append({"meta": item, "inputs": inputs, "outputs": outputs})
     return calls
+
+
+def merge_shards(records: list[dict], max_mismatches: int) -> dict:
+    """One record from the shards of a replay split over rank files."""
+
+    first = records[0]
+    merged = dict(first)
+    for key in ("rank_files", "calls", "samples", "compared_values"):
+        merged[key] = sum(int(r[key]) for r in records)
+    statuses: dict[str, int] = {}
+    for r in records:
+        for status, count in r["statuses"].items():
+            statuses[status] = statuses.get(status, 0) + int(count)
+    merged["statuses"] = statuses
+    merged["steps_covered"] = sorted({int(s) for r in records for s in r["steps_covered"]})
+    mismatches = [m for r in records for m in r["mismatches"]]
+    merged["mismatches"] = mismatches[:max_mismatches]
+    merged["mismatches_truncated"] = len(mismatches) > max_mismatches or any(r["mismatches_truncated"] for r in records)
+    merged["bfb"] = all(r["bfb"] for r in records) and merged["samples"] > 0
+    merged["seconds"] = round(sum(float(r["seconds"]) for r in records), 1)
+    merged["shards"] = len(records)
+    merged.pop("shard", None)
+    return merged
 
 
 def _samples(spec, call: dict):
@@ -79,16 +110,38 @@ def main() -> int:
     parser.add_argument("--output", type=Path, help="the replay record (default validation/pi_cam_<function>_frame_replay.json)")
     parser.add_argument("--max-ranks", type=int, default=0, help="replay this many rank files only (0 = all)")
     parser.add_argument("--max-mismatches", type=int, default=8)
+    parser.add_argument("--shard", help="I/N: replay every N-th rank file from the I-th (0-based); the record is "
+                                        "written as <output>.shard-I-of-N.json for --merge-shards")
+    parser.add_argument("--merge-shards", type=int, default=0,
+                        help="merge <output>.shard-*-of-N.json into the record instead of replaying")
     arguments = parser.parse_args()
 
     spec = load_function_spec(arguments.function)
     kernel = arguments.kernel or arguments.function
+    output = arguments.output or (REPO / "validation" / f"pi_cam_{arguments.function}_frame_replay.json")
+    if arguments.merge_shards:
+        parts = [output.with_name(f"{output.name}.shard-{i}-of-{arguments.merge_shards}.json") for i in range(arguments.merge_shards)]
+        absent = [str(p) for p in parts if not p.is_file()]
+        if absent:
+            print(f"shard records are absent: {absent}", file=sys.stderr)
+            return 1
+        record = merge_shards([json.loads(p.read_text()) for p in parts], arguments.max_mismatches)
+        output.write_text(json.dumps(record, indent=2) + "\n")
+        print(f"{kernel}: {record['calls']} calls, {record['samples']} samples, {record['compared_values']} values compared, "
+              f"bfb={record['bfb']}, {len(record['mismatches'])} mismatches recorded, {record['shards']} shards -> {output}")
+        return 0 if record["bfb"] else 1
     files = sorted(arguments.capture_dir.glob(f"{kernel}.rank-*.npz"))
     if not files:
         print(f"no capture files for {kernel} under {arguments.capture_dir}", file=sys.stderr)
         return 1
     if arguments.max_ranks:
         files = files[: arguments.max_ranks]
+    shard = None
+    if arguments.shard:
+        index, count = (int(x) for x in arguments.shard.split("/"))
+        files = files[index::count]
+        shard = f"{index}/{count}"
+        output = output.with_name(f"{output.name}.shard-{index}-of-{count}.json")
     provenance_path = arguments.capture_dir / "capture.json"
     provenance = json.loads(provenance_path.read_text()) if provenance_path.is_file() else {}
 
@@ -153,7 +206,8 @@ def main() -> int:
         "seconds": round(time.time() - started, 1),
         "pbs_job_id": os.environ.get("PBS_JOBID"),
     }
-    output = arguments.output or (REPO / "validation" / f"pi_cam_{arguments.function}_frame_replay.json")
+    if shard is not None:
+        record["shard"] = shard
     output.write_text(json.dumps(record, indent=2) + "\n")
     print(f"{kernel}: {calls} calls, {samples} samples, {compared_values} values compared, bfb={bfb}, "
           f"{len(record['mismatches'])} mismatches recorded -> {output}")
