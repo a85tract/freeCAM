@@ -191,18 +191,95 @@ class PICAMWorkflowView:
 
         return self[str(name)]
 
-    def __setitem__(self, index: int | slice, value: Any) -> None:
+    def __setitem__(self, index: int | slice | str, value: Any) -> None:
         """Apply normal list assignment as one remote reorder.
 
         The list afterwards is exactly what runs: ``workflow[:] = [process]``
         leaves one scientific process in the step, the way it would in a
         list.  Omitted processes follow :meth:`pop`: an original CAM process
         is disabled, a runtime one is uninstalled.
+
+        Assigning to a name changes one action's implementation instead:
+        ``workflow["cloud_macro_microphysics"] = CloudMacroMicrophysics(...)``
+        disables the original CAM action and runs the stage class in its
+        place; ``workflow[name] = None`` restores the original.  Assigning
+        again replaces the previous class, so a notebook cell can be re-run.
         """
 
+        if isinstance(index, str):
+            self._set_implementation(index, value)
+            return
         order = self[:]
         order[index] = value
         self.replace(order)
+
+    def _set_implementation(self, name: str, stage: Any) -> None:
+        """Run a Python stage class in one action's place, or restore the original."""
+
+        matches = tuple(
+            action
+            for action in self.actions(include_disabled=True)
+            if name
+            in {
+                action.name,
+                action.display_name,
+                action.operation,
+                action.qualified_name,
+            }
+        )
+        if len(matches) != 1:
+            raise KeyError(f"workflow action {name!r} is unknown or ambiguous")
+        action = matches[0]
+        python_name = f"{action.name}_python"
+        installed = any(
+            row.name == python_name
+            for row in PICAMWorkflowView(
+                self._session, include_internal=True
+            ).actions(include_disabled=True)
+        )
+        if stage is None:
+            if installed:
+                self._session.remove_python(python_name)
+            self._session.set_action_enabled(action.name, True, phase=action.phase)
+            return
+        tend = getattr(stage, "tend", None)
+        declared = str(getattr(stage, "STAGE", "") or "")
+        if isinstance(stage, type):
+            raise TypeError(
+                f"workflow[{name!r}] takes a stage instance, not the class; "
+                f"construct it first: workflow[{name!r}] = {stage.__name__}(...)"
+            )
+        if not callable(tend) or not declared:
+            raise TypeError(
+                f"workflow[{name!r}] takes a physics stage instance (a STAGE and a "
+                f"tend) or None to restore the original; got {stage!r}"
+            )
+        if declared != action.qualified_name:
+            raise ValueError(
+                f"{type(stage).__name__} drives {declared!r}, not {action.qualified_name!r}"
+            )
+        process_name = str(getattr(stage, "PROCESS_NAME", "") or "")
+        if process_name != action.name:
+            # a sub-walk (Macrophysics, Radiation's halves) does not drive the
+            # whole action; installing it alone would silently drop the rest
+            raise ValueError(
+                f"{type(stage).__name__} drives only part of {action.qualified_name!r} "
+                f"(its process is {process_name!r}); assign the class that owns the "
+                f"whole action instead"
+            )
+        if installed:
+            self._session.remove_python(python_name)
+        self._session.set_action_enabled(action.name, False, phase=action.phase)
+        self._session.install_python(
+            tend,
+            name=python_name,
+            phase=action.phase,
+            after=action.name,
+            native=True,
+            transactional=False,
+            trusted_native=True,
+            unsafe=True,
+        )
 
     def index(self, process: str | Any) -> int:
         """Return the current index of one enabled process."""

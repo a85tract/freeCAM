@@ -949,3 +949,77 @@ def test_every_way_of_reaching_a_process_spells_the_lookup_the_same() -> None:
 
     for owner in (PICAMWorkflowView, WorkflowTemplate, _SessionPhysicsCollection):
         assert callable(getattr(owner, "process", None)), owner.__name__
+
+
+def test_workflow_name_assignment_swaps_one_action_s_implementation() -> None:
+    """workflow[name] = stage runs the class in the action's place; None restores it."""
+
+    calls: list = []
+
+    class Session(FakeSession):
+        def set_action_enabled(self, name, enabled, *, phase=None):
+            calls.append(("enabled", name, enabled, phase))
+            for row in self._status["step_plan"]:
+                if row["name"] == name:
+                    row["enabled"] = bool(enabled)
+            return {}
+
+        def install_python(self, function, **kwargs):
+            calls.append(("install", kwargs["name"], kwargs))
+            self._status["step_plan"] = (*self._status["step_plan"], {
+                "index": len(self._status["step_plan"]), "phase": kwargs["phase"],
+                "name": kwargs["name"], "operation": kwargs["name"],
+                "kind": "python_process", "native_id": None, "enabled": True})
+            return {}
+
+        def remove_python(self, name):
+            calls.append(("remove", name))
+            self._status["step_plan"] = tuple(
+                row for row in self._status["step_plan"] if row["name"] != name)
+            return {}
+
+    session = Session()
+    workflow = PICAMWorkflowView(session)
+
+    class DryAdjustment:
+        STAGE = "cam_run1.dry_adjustment"
+        PROCESS_NAME = "dry_adjustment"
+
+        def tend(self, fields, context):
+            return None
+
+    stage = DryAdjustment()
+    workflow["dry_adjustment"] = stage
+    assert calls[0] == ("enabled", "dry_adjustment", False, "cam_run1")
+    assert calls[1][:2] == ("install", "dry_adjustment_python")
+    kwargs = calls[1][2]
+    assert kwargs["after"] == "dry_adjustment" and kwargs["phase"] == "cam_run1"
+    assert kwargs["native"] and kwargs["trusted_native"] and not kwargs["transactional"]
+
+    # assigning again replaces the previous class, so a notebook cell can re-run
+    workflow["dry_adjustment"] = stage
+    assert ("remove", "dry_adjustment_python") in calls
+
+    # None restores the original implementation
+    calls.clear()
+    workflow["dry_adjustment"] = None
+    assert calls == [("remove", "dry_adjustment_python"),
+                     ("enabled", "dry_adjustment", True, "cam_run1")]
+
+    # a sub-walk that drives only part of the action is refused, not half-installed
+    class MacroOnly(DryAdjustment):
+        PROCESS_NAME = "macro_tend"
+
+    with pytest.raises(ValueError, match="only part of"):
+        workflow["dry_adjustment"] = MacroOnly()
+    # the class itself, an instance of the wrong stage, and a non-stage are refused
+    with pytest.raises(TypeError, match="stage instance"):
+        workflow["dry_adjustment"] = DryAdjustment
+
+    class WrongStage(DryAdjustment):
+        STAGE = "cam_run1.radiation"
+
+    with pytest.raises(ValueError, match="drives"):
+        workflow["dry_adjustment"] = WrongStage()
+    with pytest.raises(TypeError, match="physics stage instance"):
+        workflow["dry_adjustment"] = object()
