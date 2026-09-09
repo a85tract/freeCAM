@@ -918,7 +918,7 @@ def test_a_split_stage_walks_under_auto_because_it_has_no_whole_action(widget) -
 
 
 def test_segmented_execution_drives_the_runner_the_image_offers(widget) -> None:
-    from tests.unit.test_physics_segments import FakeRunner, _original_a
+    from test_physics_segments import FakeRunner, _original_a
 
     widget.runner = FakeRunner()                      # what the image would offer for this stage
 
@@ -945,7 +945,7 @@ def test_segmented_execution_drives_the_runner_the_image_offers(widget) -> None:
 
 def test_an_original_kernel_marker_runs_the_direct_kernel_on_the_frame_s_lanes(widget) -> None:
     from freecam.physics.segments import OriginalKernel
-    from tests.unit.test_physics_segments import FakeRunner
+    from test_physics_segments import FakeRunner
 
     widget.runner = FakeRunner()
     ran: list[dict] = []
