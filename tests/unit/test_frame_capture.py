@@ -85,3 +85,31 @@ def test_a_frame_without_a_column_count_is_live_in_full() -> None:
     assert frame.write_back(answer) == ("xflx",) and np.array_equal(xflx, 2.0 * ps0)
     assert capture.inputs[0]["ps0"].shape == (31,) and capture.outputs[0]["xflx"].shape == (31,)
     assert OriginalAtPause()(frame, Runner(), 1)["xflx"].shape == (31,)
+
+
+def test_the_stage_hands_a_capture_the_frame_itself_never_a_batch_wrapper() -> None:
+    """A frame-taking model must reach the pause as-is (gate 7359288 captured nothing:
+    the cloud stage wrapped it through Microphysics.frame_kernel as a batch model)."""
+
+    from types import SimpleNamespace
+
+    from freecam.physics.microphysics import Microphysics
+    from freecam.physics.segments import OriginalAtPause, OriginalKernel
+
+    stage = Microphysics()
+    capture = FrameCapture("micro_mg_tend")
+    stage.kernels["micro_mg_tend"] = capture
+    resolved = stage._segment_kernels(native=None, runner=SimpleNamespace(runs_original=True))
+    assert resolved["micro_mg_tend"] is capture         # not wrapped, not copied
+
+    stage.kernels["micro_mg_tend"] = OriginalKernel()
+    resolved = stage._segment_kernels(native=None, runner=SimpleNamespace(runs_original=True))
+    assert isinstance(resolved["micro_mg_tend"], OriginalAtPause)
+
+    def model(batch):                                   # a plain batch model still gets the adapter
+        return {}
+
+    model.takes_packed_batch = True
+    stage.kernels["micro_mg_tend"] = model
+    resolved = stage._segment_kernels(native=None, runner=SimpleNamespace(runs_original=True))
+    assert resolved["micro_mg_tend"] is not model

@@ -1,0 +1,18 @@
+{
+  "schema_version": 1,
+  "what": "A pausable gate that aborted at its first pause, kept as evidence: cldfrc_fice was to be answered by the original at the cloud stage's own transcribed call site, but the runner's frame entry refused the pause.",
+  "pbs_job_id": "7359289.desched1",
+  "job": "validation/jobs/pi_cam_pausable_50step.pbs",
+  "run_tag": "cloud-fice",
+  "python_stages": ["cloud_macro_microphysics"],
+  "segmented_original_kernels": "cldfrc_fice",
+  "native_image": "build/pi_cam_promoted_p11",
+  "runner": "pycam_stage7 (first module revision with the cldfrc_fice pause)",
+  "outcome": "aborted at the first cloud_macro_microphysics call on all 512 ranks; the pause was reached, the frame was refused",
+  "ranks": 512,
+  "steps_completed": 0,
+  "error": "NativeCAMError: pycam_stage7 runner has no frame (2): stage 7 is not paused; there is no frame",
+  "bfb_record": "pi_cam_pausable_cloud-fice_vs_oracle_50step_bfb.json",
+  "diagnosis": "A generator defect, not a numerical failure: the module's advance machine paused at pc_at_fice and reported the pause, but pycam_stage7_frame_v1's pause guard still accepted only pc_at_pcond and pc_at_mg, so decoding the frame returned 'not paused'.  The resume and original_v1 guards already accepted the fice pause; only the frame guard was missed.  The single history file the aborted run had written compared bit-for-bit; the restart files were never written.",
+  "disposition": "The generator's frame guard now accepts pc_at_fice (one line in the emitted module); rebuild the image and resubmit the gate."
+}

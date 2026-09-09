@@ -351,7 +351,7 @@ contains
     if (.not. created .or. context /= context_id) then
       last_error = 'no stage 7 context'; return
     end if
-    if (pc /= pc_at_pcond .and. pc /= pc_at_mg) then
+    if (pc /= pc_at_pcond .and. pc /= pc_at_mg .and. pc /= pc_at_fice) then
       last_error = 'stage 7 is not paused; there is no frame'; status = 2_c_int; return
     end if
     if (count < frame_slots) then

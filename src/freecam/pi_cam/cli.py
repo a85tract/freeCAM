@@ -577,6 +577,9 @@ def main(argv: list[str] | None = None) -> int:
                 unsafe=True,
             )
         installed_kernels: set[str] = set()      # every swappable kernel of the classes installed this run
+        capture_kernels = [k.strip() for k in args.capture_kernels.split(",") if k.strip()]
+        if capture_kernels and args.capture_dir is None:
+            raise SystemExit("--capture-kernels needs --capture-dir")
         if args.radiation_python:
             # The same shape for radiation: Radiation.tend between the two
             # halves of the split stage, native and non-transactional for the
@@ -591,6 +594,10 @@ def main(argv: list[str] | None = None) -> int:
                 for kernel_name in [k.strip() for k in args.segmented_original_kernels.split(",") if k.strip()]:
                     if kernel_name in scheme.kernels:
                         scheme.kernels[kernel_name] = OriginalKernel()
+            for kernel_name in capture_kernels:
+                if kernel_name in scheme.kernels:
+                    from freecam.physics.segments import FrameCapture
+                    scheme.kernels[kernel_name] = FrameCapture(kernel_name)
             installed_kernels.update(scheme.kernels)
             cam.python_processes.install(
                 PythonProcessSpec.from_callable(
@@ -630,6 +637,12 @@ def main(argv: list[str] | None = None) -> int:
                 for kernel_name in [k.strip() for k in args.segmented_original_kernels.split(",") if k.strip()]:
                     if kernel_name in scheme.kernels:
                         scheme.kernels[kernel_name] = OriginalKernel()
+            for kernel_name in capture_kernels:
+                # the original at the pause with every frame recorded; a kernel
+                # in both lists is captured, which answers with the original too
+                if kernel_name in scheme.kernels:
+                    from freecam.physics.segments import FrameCapture
+                    scheme.kernels[kernel_name] = FrameCapture(kernel_name)
             installed_kernels.update(scheme.kernels)
             cam.step_plan.set_enabled("cloud_macro_microphysics", False, phase="cam_run1", experimental=True)
             cam.python_processes.install(
@@ -647,9 +660,6 @@ def main(argv: list[str] | None = None) -> int:
         for qualified in [s.strip() for s in args.disable_actions.split(",") if s.strip()]:
             phase, _, action_name = qualified.partition(".")
             cam.step_plan.set_enabled(action_name, False, phase=phase, experimental=True)
-        capture_kernels = [k.strip() for k in args.capture_kernels.split(",") if k.strip()]
-        if capture_kernels and args.capture_dir is None:
-            raise SystemExit("--capture-kernels needs --capture-dir")
         for stage_name in [s.strip() for s in args.python_stages.split(",") if s.strip()]:
             # a pausable stage class in its action's place: the original Fortran
             # whole, or the image's runner paused at a replaced kernel
@@ -1069,6 +1079,15 @@ def main(argv: list[str] | None = None) -> int:
         else:
             args.summary.parent.mkdir(parents=True, exist_ok=True)
             args.summary.write_text(text)
+        capture = summary.get("frame_capture") or {}
+        uncaptured = [name for name in capture.get("kernels") or []
+                      if not (capture.get("calls_total_by_kernel") or {}).get(name)]
+        if uncaptured:
+            # a capture run that recorded nothing must not pass silently: the
+            # summary above keeps the evidence, and the exit code fails the gate
+            print(f"--capture-kernels recorded zero calls for {uncaptured}; "
+                  f"the capture did not happen", file=sys.stderr)
+            return 1
     return 0
 
 

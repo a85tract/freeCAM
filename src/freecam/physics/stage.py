@@ -1426,22 +1426,7 @@ class NativeStage:
                     f"the image offers no segment runner for {self.STAGE!r}; segmented "
                     f"execution is not built for it yet")
             segmented = self._segmented = SegmentedStage(self.STAGE, runner)
-        kernels: dict[str, Callable[..., Any] | None] = {}
-        for name, kernel in self.kernels.items():
-            if kernel is None:
-                kernels[name] = None
-            elif isinstance(kernel, OriginalKernel):
-                owner = self._owner_of(name)
-                if getattr(segmented.runner, "runs_original", False):
-                    # the runner runs the paused call itself; the frame's
-                    # write-back is exercised with what it produced
-                    kernels[name] = OriginalAtPause()
-                elif type(owner).original_kernel_through_python is not NativeStage.original_kernel_through_python:
-                    kernels[name] = owner.original_kernel_through_python(native, name)
-                else:
-                    kernels[name] = self._original_through_python(native, name)
-            else:
-                kernels[name] = self._owner_of(name).frame_kernel(name, kernel, native)
+        kernels = self._segment_kernels(native, segmented.runner)
         for model in kernels.values():
             if hasattr(model, "current_step"):
                 model.current_step = getattr(self, "_current_step", None)
@@ -1451,6 +1436,31 @@ class NativeStage:
         self.execution.python_model_calls = counters.model_calls
         self.execution.model_calls_by_kernel = dict(counters.calls_by_kernel)
         self.execution.segment_pauses = counters.pauses
+
+    def _segment_kernels(self, native: Any, runner: Any) -> dict[str, Callable[..., Any] | None]:
+        """Each kernel slot resolved to what answers the runner's pause."""
+
+        kernels: dict[str, Callable[..., Any] | None] = {}
+        for name, kernel in self.kernels.items():
+            if kernel is None:
+                kernels[name] = None
+            elif isinstance(kernel, OriginalKernel):
+                owner = self._owner_of(name)
+                if getattr(runner, "runs_original", False):
+                    # the runner runs the paused call itself; the frame's
+                    # write-back is exercised with what it produced
+                    kernels[name] = OriginalAtPause()
+                elif type(owner).original_kernel_through_python is not NativeStage.original_kernel_through_python:
+                    kernels[name] = owner.original_kernel_through_python(native, name)
+                else:
+                    kernels[name] = self._original_through_python(native, name)
+            elif getattr(kernel, "takes_frame", False):
+                # a frame-taking model (OriginalAtPause, FrameCapture) reads the
+                # frame itself; wrapping it as a batch model would hide that
+                kernels[name] = kernel
+            else:
+                kernels[name] = self._owner_of(name).frame_kernel(name, kernel, native)
+        return kernels
 
     def original_kernel_through_python(self, native: Any, name: str) -> Callable[[Mapping[str, Any]], dict]:
         """The original kernel ``name`` as a model for the runner's frame.
