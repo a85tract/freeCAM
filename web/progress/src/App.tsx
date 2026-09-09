@@ -3,9 +3,12 @@ import {
   Bar,
   buildTree,
   CAPABILITY_LABELS,
+  defaultRunKey,
+  executionInventory,
   overviewTiles,
   processBars,
   processGroup,
+  processKernelStates,
   searchAll,
   stateLabel,
   TreeNode,
@@ -58,6 +61,7 @@ export default function App({ load }: { load?: () => Promise<Snapshot> }) {
   const [route, setRoute] = useState<Route>(() => parseHash(window.location.hash));
   const [query, setQuery] = useState("");
   const [theme, setTheme] = useState<Theme>(initialTheme);
+  const [runKey, setRunKey] = useState<string | null>(null);
 
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
@@ -88,6 +92,7 @@ export default function App({ load }: { load?: () => Promise<Snapshot> }) {
           throw new Error("the snapshot has an unsupported schema");
         }
         setSnapshot(payload);
+        setRunKey(defaultRunKey(payload));
       })
       .catch((cause) => setError(String(cause)));
   }, [load]);
@@ -127,8 +132,9 @@ export default function App({ load }: { load?: () => Promise<Snapshot> }) {
 
   return (
     <div className="page">
-      <Header snapshot={snapshot} theme={theme} onToggleTheme={() => setTheme(theme === "dark" ? "light" : "dark")} />
-      <Overview snapshot={snapshot} />
+      <Header snapshot={snapshot} theme={theme} onToggleTheme={() => setTheme(theme === "dark" ? "light" : "dark")}
+        runKey={runKey} onRunKey={setRunKey} />
+      <Overview snapshot={snapshot} runKey={runKey} />
       <div className="columns">
         <nav className="browser" aria-label="Process browser">
           <input
@@ -156,9 +162,10 @@ export default function App({ load }: { load?: () => Promise<Snapshot> }) {
               kernel={selectedKernel}
               processId={selectedProcess?.id}
               onNavigate={navigate}
+              runKey={runKey}
             />
           ) : selectedProcess ? (
-            <ProcessDetail snapshot={snapshot} process={selectedProcess} onNavigate={navigate} />
+            <ProcessDetail snapshot={snapshot} process={selectedProcess} onNavigate={navigate} runKey={runKey} />
           ) : route.view === "apis" ? (
             <AdditionalApis snapshot={snapshot} />
           ) : route.view === "unmapped" ? (
@@ -180,8 +187,16 @@ export default function App({ load }: { load?: () => Promise<Snapshot> }) {
   );
 }
 
-function Header({ snapshot, theme, onToggleTheme }: { snapshot: Snapshot; theme: Theme; onToggleTheme: () => void }) {
+function Header({ snapshot, theme, onToggleTheme, runKey, onRunKey }: {
+  snapshot: Snapshot;
+  theme: Theme;
+  onToggleTheme: () => void;
+  runKey: string | null;
+  onRunKey: (key: string | null) => void;
+}) {
   const v = snapshot.volatile;
+  const runs = snapshot.observation_runs ?? [];
+  const selected = runs.find((run) => run.key === runKey);
   return (
     <>
       <div className="banner" role="note">
@@ -208,6 +223,36 @@ function Header({ snapshot, theme, onToggleTheme }: { snapshot: Snapshot; theme:
             <dd className="mono">{(snapshot.cam_source_revision ?? "unknown").slice(0, 9)}</dd>
           </div>
         </dl>
+        <div className="run-select">
+          {runs.length === 0 ? (
+            <span className="chip warn">{snapshot.notes.no_observation_run}</span>
+          ) : (
+            <label>
+              Observation run{" "}
+              <select
+                aria-label="Observation run"
+                value={runKey ?? ""}
+                onChange={(event) => onRunKey(event.target.value || null)}
+              >
+                {runs.map((run) => (
+                  <option key={run.key} value={run.key} disabled={!run.validated}>
+                    {run.label}
+                    {run.validated ? "" : " (not validated)"}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
+          {selected && (
+            <span className="muted">
+              {String(selected.run["steps"] ?? "?")} steps
+              {selected.run["final_date"] ? ` to ${selected.run["final_date"]}` : ""} · bit-for-bit:{" "}
+              {selected.run["bfb"] ? "yes" : "no"} · image{" "}
+              <span className="mono">{String(selected.image["native_library_sha256"] ?? "").slice(0, 10)}</span> ·
+              job {String(selected.run["pbs_job"] ?? "?")}
+            </span>
+          )}
+        </div>
         <button type="button" onClick={onToggleTheme}>
           {theme === "dark" ? "Light theme" : "Dark theme"}
         </button>
@@ -216,11 +261,11 @@ function Header({ snapshot, theme, onToggleTheme }: { snapshot: Snapshot; theme:
   );
 }
 
-function Overview({ snapshot }: { snapshot: Snapshot }) {
+function Overview({ snapshot, runKey }: { snapshot: Snapshot; runKey: string | null }) {
   return (
     <section className="overview" aria-label="Coverage overview">
       <div className="tiles">
-        {overviewTiles(snapshot).map((tile) => (
+        {overviewTiles(snapshot, runKey).map((tile) => (
           <div className="tile" key={tile.label}>
             <div className="tile-value">{tile.value}</div>
             <div className="tile-label">{tile.label}</div>
@@ -290,7 +335,7 @@ function ProcessLists({
                     <span className="chip">generic</span>
                   )}
                   <span className="chip">
-                    {(process.core_kernels ?? []).length} core · {snapshot.process_membership[process.id]?.kernels.length ?? 0} candidates
+                    {(process.core_kernels ?? []).length} replaceable · {snapshot.process_membership[process.id]?.kernels.length ?? 0} candidates
                   </span>
                 </span>
               </button>
@@ -344,22 +389,39 @@ function BarRow({ bar }: { bar: Bar }) {
   );
 }
 
+type KernelFilter = "observed" | "not-observed" | "gaps" | "all";
+
+const FILTER_LABELS: Record<KernelFilter, string> = {
+  observed: "Observed",
+  "not-observed": "Not observed",
+  gaps: "Instrumentation gaps",
+  all: "Static candidates",
+};
+
 function ProcessDetail({
   snapshot,
   process,
   onNavigate,
+  runKey,
 }: {
   snapshot: Snapshot;
   process: ProcessRecord;
   onNavigate: (route: Route) => void;
+  runKey: string | null;
 }) {
   const [flat, setFlat] = useState(false);
+  const [filter, setFilter] = useState<KernelFilter | null>(null);
   const membership = snapshot.process_membership[process.id];
   const tree = useMemo(() => (membership ? buildTree(membership) : []), [membership]);
   const coreKernels = process.core_kernels ?? [];   // a cached pre-core snapshot degrades, never crashes
   const ownerClasses = [...new Set(coreKernels.map((c) => c.owner_class).filter(
     (cls): cls is string => Boolean(cls) && cls !== process.python_class))];
-  const bars = processBars(snapshot, process.id);
+  const bars = processBars(snapshot, process.id, runKey);
+  const states = runKey ? processKernelStates(snapshot, process.id, runKey) : null;
+  const inventory = runKey ? executionInventory(snapshot, process.id, runKey) : null;
+  const activeFilter: KernelFilter = filter ?? (runKey ? "observed" : "all");
+  const filtered = (want: "observed" | "not-observed-here" | "gap") =>
+    (membership?.kernels ?? []).filter((kid) => states?.get(kid) === want);
   return (
     <section aria-label={`Process ${process.display_name}`}>
       <h2>{process.display_name}</h2>
@@ -385,7 +447,7 @@ function ProcessDetail({
         )}
         {process.description && <div><dt>Description</dt><dd>{process.description}</dd></div>}
       </dl>
-      <h3>Core kernels exposed for replacement ({coreKernels.length})</h3>
+      <h3>Replaceable kernels ({coreKernels.length})</h3>
       {coreKernels.length === 0 ? (
         <p className="muted">This process's class exposes no replaceable kernel yet.</p>
       ) : (
@@ -403,17 +465,66 @@ function ProcessDetail({
         </ul>
       )}
       <p className="muted">{snapshot.notes.core_vs_candidates}</p>
-      <h3>Candidate kernel coverage</h3>
+      <h3>Execution inventory{runKey ? "" : " (no validated observation run)"}</h3>
+      {inventory ? (
+        <>
+          <dl className="facts">
+            <div><dt>Candidate kernels</dt><dd>{inventory.candidates}</dd></div>
+            <div><dt>Observed executing here</dt><dd>{inventory.observed}</dd></div>
+            <div><dt>Fully covered, not observed here</dt><dd>{inventory.coveredNotObserved}</dd></div>
+            <div><dt>Partially covered or uninstrumented</dt><dd>{inventory.gaps}</dd></div>
+          </dl>
+          <p className="muted">{snapshot.notes.observation}</p>
+        </>
+      ) : (
+        <p className="muted">{snapshot.notes.no_observation_run} The counts below fall back to static
+          candidates and say so; they are never presented as execution evidence.</p>
+      )}
+      <h3>Capability progress {runKey ? "(observed kernels)" : "(static candidates)"}</h3>
+      {inventory && inventory.gaps + inventory.coveredNotObserved > 0 && (
+        <p className="muted">
+          Observation coverage is incomplete; {inventory.gaps} candidates remain uninstrumented or
+          unknown here{inventory.coveredNotObserved > 0
+            ? ` and ${inventory.coveredNotObserved} covered candidates were not observed in this process`
+            : ""}. The bars below cover only the {inventory.observed} observed kernels, not the whole process.
+        </p>
+      )}
       {bars.map((bar) => (
         <BarRow key={bar.key} bar={bar} />
       ))}
-      <h3>
+      <h3>Internal kernels by evidence</h3>
+      <div className="tabs filter-tabs" role="tablist" aria-label="Kernel filters">
+        {(Object.keys(FILTER_LABELS) as KernelFilter[]).map((key) => (
+          <button key={key} role="tab" aria-selected={activeFilter === key}
+            disabled={!runKey && key !== "all"} onClick={() => setFilter(key)}>
+            {FILTER_LABELS[key]}
+            {states && key === "observed" && ` (${filtered("observed").length})`}
+            {states && key === "not-observed" && ` (${filtered("not-observed-here").length})`}
+            {states && key === "gaps" && ` (${filtered("gap").length})`}
+            {key === "all" && ` (${membership?.kernels.length ?? 0})`}
+          </button>
+        ))}
+      </div>
+      {activeFilter !== "all" && states ? (
+        <KernelStateList
+          snapshot={snapshot}
+          process={process}
+          runKey={runKey!}
+          kids={filtered(activeFilter === "observed" ? "observed"
+            : activeFilter === "not-observed" ? "not-observed-here" : "gap")}
+          filter={activeFilter}
+          onNavigate={onNavigate}
+        />
+      ) : null}
+      {activeFilter === "all" && (
+      <h4 className="subhead">
         All candidate numerical functions (statically reachable, recursive){" "}
         <button type="button" onClick={() => setFlat(!flat)} aria-pressed={flat}>
           {flat ? "Tree view" : "Flat list"}
         </button>
-      </h3>
-      {!membership || (!membership.kernels.length && !membership.inventoried) ? (
+      </h4>
+      )}
+      {activeFilter !== "all" ? null : !membership || (!membership.kernels.length && !membership.inventoried) ? (
         <p className="muted">Not inventoried: the call-tree inventory does not cover this process. That is a
           gap in the inventory, not proof the process has no internal kernels.</p>
       ) : membership.kernels.length === 0 ? (
@@ -435,6 +546,57 @@ function ProcessDetail({
       )}
       <p className="muted">Tree relationships are “Calls.” {snapshot.notes.shared_kernels}</p>
     </section>
+  );
+}
+
+function KernelStateList({
+  snapshot,
+  process,
+  runKey,
+  kids,
+  filter,
+  onNavigate,
+}: {
+  snapshot: Snapshot;
+  process: ProcessRecord;
+  runKey: string;
+  kids: string[];
+  filter: KernelFilter;
+  onNavigate: (route: Route) => void;
+}) {
+  if (!kids.length) {
+    return <p className="muted">No kernels in this category for the selected run.</p>;
+  }
+  const here = snapshot.process_observation?.[runKey]?.[process.id] ?? {};
+  return (
+    <ul className="kernel-list" aria-label={FILTER_LABELS[filter]}>
+      {kids.map((kid) => {
+        const kernel = snapshot.kernels[kid];
+        const observation = kernel?.observation?.[runKey];
+        return (
+          <li key={kid}>
+            <KernelLink snapshot={snapshot} kid={kid} processId={process.id} onNavigate={onNavigate} />
+            {filter === "observed" && here[kid] && (
+              <span className="muted">
+                {" "}{here[kid].calls.toLocaleString()} calls in this process
+                {here[kid].first_step >= 0 && ` (steps ${here[kid].first_step}–${here[kid].last_step})`}
+                {observation?.count_meaning ? "; lower bound" : ""}
+              </span>
+            )}
+            {filter === "not-observed" && (
+              <span className="muted"> fully counted; zero calls in this process in this run</span>
+            )}
+            {filter === "gaps" && (
+              <span className="muted">
+                {" "}{observation?.status_reason ?? (observation?.coverage === "partial"
+                  ? "partially counted; unobserved paths remain"
+                  : "no counting entry")}
+              </span>
+            )}
+          </li>
+        );
+      })}
+    </ul>
   );
 }
 
@@ -545,11 +707,13 @@ function KernelDetail({
   kernel,
   processId,
   onNavigate,
+  runKey,
 }: {
   snapshot: Snapshot;
   kernel: KernelRecord;
   processId?: string;
   onNavigate: (route: Route) => void;
+  runKey: string | null;
 }) {
   const replacements = snapshot.replacements.filter(
     (row) => row.kernel_routine === kernel.routine && kernel.processes.includes(row.process)
@@ -616,6 +780,50 @@ function KernelDetail({
         ) : null}
         {kernel.note && <div><dt>Note</dt><dd>{kernel.note}</dd></div>}
       </dl>
+      <h3>Execution observation</h3>
+      {(snapshot.observation_runs ?? []).length === 0 ? (
+        <p className="muted">{snapshot.notes.no_observation_run}</p>
+      ) : (
+        (snapshot.observation_runs ?? []).map((run) => {
+          const observation = kernel.observation?.[run.key];
+          if (!observation) {
+            return <p key={run.key} className="muted">{run.label}: no observation data.</p>;
+          }
+          return (
+            <div key={run.key} className="replacement">
+              <div>
+                {run.label}{run.key === runKey ? " (selected)" : ""}{" "}
+                <span className={`chip state-${observation.status === "observed" ? "verified"
+                  : observation.status === "not-observed-in-this-run" ? "not-verified" : "not-assessed"}`}>
+                  {observation.status === "observed" ? "Observed"
+                    : observation.status === "not-observed-in-this-run" ? "Not observed in this run" : "Unknown"}
+                </span>
+                {!run.validated && <span className="chip warn">run not validated</span>}
+              </div>
+              {observation.status === "observed" && (
+                <ul>
+                  {Object.entries(observation.calls_by_context ?? {}).map(([context, calls]) => (
+                    <li key={context} className="muted">
+                      <code>{context}</code>: {calls.toLocaleString()} calls
+                      {["initialization", "finalize", "run-unattributed"].includes(context) &&
+                        " (lifecycle; not counted toward any process's progress)"}
+                    </li>
+                  ))}
+                  <li className="muted">
+                    steps {observation.first_step}–{observation.last_step};{" "}
+                    {observation.ranks_with_calls} ranks called it
+                    {observation.count_meaning ? `; ${observation.count_meaning}` : ""}
+                    {observation.note ? `; ${observation.note}` : ""}
+                  </li>
+                </ul>
+              )}
+              {observation.status !== "observed" && observation.status_reason && (
+                <p className="muted">{observation.status_reason}</p>
+              )}
+            </div>
+          );
+        })
+      )}
       <h3>Capabilities</h3>
       <table className="capabilities">
         <tbody>

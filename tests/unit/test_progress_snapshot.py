@@ -326,6 +326,58 @@ def test_process_edges_nest_by_nearest_numeric_ancestor_and_survive_recursion() 
     assert all(e["kernel"] != e["parent"] for e in edges)         # recursion did not loop
 
 
+def _coverage_record(label: str) -> dict:
+    return {
+        "schema_version": 1,
+        "run": {"label": label, "bfb": True, "run_status": "passed", "steps": 50, "pbs_job": "77",
+                "final_date": "0001-01-03", "mpi_ranks": 4, "summary_record": "s.json", "bfb_record": "b.json"},
+        "image": {"native_library_sha256": "cafe", "kernel_counts": {"scope": "all"}},
+        "slots": {"0": "initialization"},
+        "kernels": [
+            {"qualified": "m::alpha", "index": 0, "entry": "trampoline", "coverage": "full",
+             "blind_spots": [], "processes": ["cam_run1.a", "cam_run1.b"], "status": "observed",
+             "calls_total": 100, "calls_by_context": {"cam_run1.a": 98, "initialization": 2},
+             "first_step": 1, "last_step": 50, "ranks_with_calls": 4,
+             "rank_calls_min": 25, "rank_calls_max": 25},
+            {"qualified": "m::shared", "index": 1, "entry": "trampoline", "coverage": "full",
+             "blind_spots": [], "processes": ["cam_run1.a", "cam_run1.b"],
+             "status": "not-observed-in-this-run", "calls_total": 0, "calls_by_context": {},
+             "first_step": -1, "last_step": -1, "ranks_with_calls": 0,
+             "rank_calls_min": 0, "rank_calls_max": 0},
+        ],
+        "process_calls": {"cam_run1.a": {"m::alpha": {"calls": 98, "first_step": 1, "last_step": 50}}},
+        "summary": {"candidates": 4, "instrumented": 2, "observed": 1,
+                    "not-observed-in-this-run": 1, "unknown": 2, "all_ranks_reported": True},
+    }
+
+
+def test_observation_runs_join_per_process_and_absence_stays_honest(tmp_path: Path) -> None:
+    root = mini_repo(tmp_path)
+    bare = build_progress_snapshot(root)
+    assert bare["observation_runs"] == [] and bare["totals"]["observed_by_run"] == {}
+    assert bare["kernels"]["m::alpha"]["observation"] == {}
+
+    _write(root, "validation/pi_cam_kernel_runtime_coverage_50step.json", _coverage_record("50step"))
+    snapshot = build_progress_snapshot(root)
+    runs = snapshot["observation_runs"]
+    assert [r["key"] for r in runs] == ["50step"] and runs[0]["validated"]
+    alpha = snapshot["kernels"]["m::alpha"]["observation"]["50step"]
+    assert alpha["status"] == "observed" and alpha["calls_by_context"]["cam_run1.a"] == 98
+    shared = snapshot["kernels"]["m::shared"]["observation"]["50step"]
+    assert shared["status"] == "not-observed-in-this-run"
+    # observation is attributed per process: alpha was observed in A only, and the
+    # per-process map carries exactly that -- nothing global marks it observed in B
+    assert snapshot["process_observation"]["50step"]["cam_run1.a"]["m::alpha"]["calls"] == 98
+    assert "cam_run1.b" not in snapshot["process_observation"]["50step"]
+    assert snapshot["totals"]["observed_by_run"] == {"50step": 1}
+    # a failed observation run is listed but never validated
+    failed = _coverage_record("50step")
+    failed["run"]["bfb"] = False
+    _write(root, "validation/pi_cam_kernel_runtime_coverage_50step.json", failed)
+    unvalidated = build_progress_snapshot(root)
+    assert unvalidated["observation_runs"][0]["validated"] is False
+
+
 # --------------------------------------------------------------------------- #
 # The committed snapshot is a regression fixture of the real records
 # --------------------------------------------------------------------------- #

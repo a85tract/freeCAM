@@ -384,8 +384,14 @@ def _apply_redirections(archive: Path, out_dir: Path, plans: dict[str, list[dict
                 flags.append(f"--redefine-sym={op['old']}={op['new']}")
             elif op["kind"] == "weaken-alias":
                 address = _definition_address(target, op["symbol"])
-                flags.append(f"--add-symbol={op['alias']}=.text:0x{address},global,function")
+                if op.get("alias"):
+                    flags.append(f"--add-symbol={op['alias']}=.text:0x{address},global,function")
                 flags.append(f"--weaken-symbol={op['symbol']}")
+            elif op["kind"] == "alias-at":
+                # a second global name at an existing definition's address; the
+                # definition itself is left exactly as it is
+                address = _definition_address(target, op["symbol"])
+                flags.append(f"--add-symbol={op['alias']}=.text:0x{address},global,function")
             else:
                 raise RuntimeError(f"unknown redirection kind {op['kind']!r}")
         _run(["objcopy", *flags, str(target)], cwd=out_dir)
@@ -394,7 +400,8 @@ def _apply_redirections(archive: Path, out_dir: Path, plans: dict[str, list[dict
             raise RuntimeError(f"{object_name}: the redirection changed .text ({before_text[:12]} -> {after_text[:12]})")
         object_sha = _sha256(target)
         for op in operations:
-            named = op["new"] if op["kind"] == "redefine" else op["symbol"]
+            named = op["new"] if op["kind"] == "redefine" else (
+                op["alias"] if op["kind"] == "alias-at" else op["symbol"])
             records.append({**op["record"], "mode": op["record"].get("mode", op["kind"]),
                             "object": object_name, "relocations": _relocations_naming(target, named),
                             "text_sha256": after_text, "object_sha256": object_sha})
@@ -890,10 +897,13 @@ def main() -> int:
     # ('all', process ids, routine names) drops the replacement hooks -- a
     # counting image counts, it does not replace.
     kcount_scope = args.kcount_scope.strip()
-    hooks_active = kcount_scope in ("", "batch-a")
-    plans = _hook_plans(hook_table) if hooks_active else {}
+    # the replacement hooks stay linked and redirected in every image (their
+    # module strongly defines the weaken-definition kernels' symbols, so an
+    # image without the redirection would resolve those symbols ambiguously)
+    hooks_active = True
+    plans = _hook_plans(hook_table)
     kcount_rows: list[dict] = []
-    kcount_excluded: list[dict] = []
+    kcount_chained: list[dict] = []
     trampoline_source_sha = None
     kcount_observability_sha = None
     if kcount_scope:
@@ -902,14 +912,29 @@ def main() -> int:
         kcount_observability_sha = observability["content_hash"]
         selection = kcount_gen.select_kernels(
             observability, "cldfrc_fice" if kcount_scope == "batch-a" else kcount_scope)
-        hook_symbols = {hook.symbol for hook in hook_table.hooks} if hooks_active else set()
+        hooks_by_symbol = {hook.callee_symbol: hook for hook in hook_table.hooks
+                           if hook.redirect == "weaken-definition"}
         for kernel in selection:
-            if kernel["symbol"] in hook_symbols:
-                kcount_excluded.append({"qualified": kernel["qualified"], "symbol": kernel["symbol"],
-                                        "reason": "a replacement hook owns this symbol in this image; "
-                                                  "its own call counter is the count"})
-            else:
+            hook = hooks_by_symbol.get(kernel["symbol"])
+            if hook is None:
                 kcount_rows.append(kernel)
+                continue
+            # the hook owns this kernel's symbol: chain the count between the
+            # hook and the original -- the trampoline takes the hook's alias
+            # name and jumps to a second alias at the same address, so every
+            # call (hooked, armed or not) is counted exactly once
+            chained = dict(kernel)
+            chained["symbol"] = hook.original_symbol
+            chained["chained_from"] = kernel["symbol"]
+            kcount_rows.append(chained)
+            kcount_chained.append({"qualified": kernel["qualified"], "kernel_symbol": kernel["symbol"],
+                                   "trampoline_symbol": hook.original_symbol,
+                                   "reason": "the replacement hook owns the kernel's symbol; the counting "
+                                             "trampoline sits between the hook and the original"})
+            for ops in plans.values():
+                for op in ops:
+                    if op["kind"] == "weaken-alias" and op.get("alias") == hook.original_symbol:
+                        op["alias"] = None      # the trampoline provides that name now
         if not kcount_rows:
             raise RuntimeError(f"kcount scope {kcount_scope!r} selects no instrumentable kernel")
         trampoline_rows = kcount_gen.trampoline_table(kcount_rows)
@@ -920,14 +945,25 @@ def main() -> int:
         trampoline_object = generated_objects / "pycam_kcount_trampolines.o"
         _run(["cc", "-c", str(trampoline_asm), "-o", str(trampoline_object)], cwd=work)
         _refuse_trampoline_collisions(trampoline_object, support_objects)
-        for object_name, ops in _kcount_plans(trampoline_rows).items():
+        plain_rows = [row for row, kernel in zip(trampoline_rows, kcount_rows) if "chained_from" not in kernel]
+        for object_name, ops in _kcount_plans(plain_rows).items():
             plans.setdefault(object_name, []).extend(ops)
+        for row, kernel in zip(trampoline_rows, kcount_rows):
+            if "chained_from" not in kernel:
+                continue
+            # the alias the chained trampoline jumps to sits at the real
+            # definition's address; the hook op already weakened that symbol
+            record = {"kernel": row["routine"], "qualified": row["qualified"], "mode": "count-alias-at",
+                      "callee_symbol": kernel["chained_from"], "hook_symbol": row["symbol"],
+                      "original_symbol": row["alias"], "index": row["index"]}
+            plans.setdefault(row["object"], []).append(
+                {"kind": "alias-at", "symbol": kernel["chained_from"], "alias": row["alias"], "record": record})
     else:
         trampoline_rows = []
         trampoline_object = None
     redirections, redirected_objects = _apply_redirections(base_atm_archive, generated_objects / "redirected", plans)
     hook_redirections = [r for r in redirections if r["mode"] in ("rename-references", "weaken-definition")]
-    count_redirections = [r for r in redirections if r["mode"] == "count-weaken-alias"]
+    count_redirections = [r for r in redirections if r["mode"] in ("count-weaken-alias", "count-alias-at")]
     if not hooks_active:
         hook_redirections = []
     replacement_objects = (*replacement_objects, *redirected_objects)
@@ -947,6 +983,10 @@ def main() -> int:
     capture_link = list(patched_link)
     capture_link.insert(capture_link.index("-o"), str(floating_environment_object))
     capture_link.insert(capture_link.index("-o"), str(fiber_object))
+    capture_link.insert(capture_link.index("-o"), str(kcount_object))
+    if trampoline_object is not None:
+        # the chained trampolines own names the hook module references
+        capture_link.insert(capture_link.index("-o"), str(trampoline_object))
     capture_link[capture_link.index("-o") + 1] = str(capture_executable)
     _run(capture_link, cwd=build / "cpl/obj")
     # Record the exact Intel math runtime used by the standalone executable.
@@ -1164,7 +1204,7 @@ def main() -> int:
             "instrumented": [{k: row[k] for k in ("index", "qualified", "routine", "symbol", "alias",
                                                   "object", "coverage", "processes")}
                              for row in trampoline_rows],
-            "excluded": kcount_excluded,
+            "chained_through_hooks": kcount_chained,
             "redirections": count_redirections,
         },
         "intel_math_library": str(imf_shared),

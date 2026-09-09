@@ -35,6 +35,57 @@ export function processGroup(classification: string | null): "physics" | "dynami
   return "control";
 }
 
+/** The run the page selects by default: one month when validated, else 50 steps, else none. */
+export function defaultRunKey(snapshot: Snapshot): string | null {
+  const validated = (snapshot.observation_runs ?? []).filter((run) => run.validated);
+  const month = validated.find((run) => run.key === "1month");
+  return (month ?? validated[0])?.key ?? null;
+}
+
+export type ProcessKernelState = "observed" | "not-observed-here" | "gap";
+
+/** One process's per-kernel execution state under the selected run.
+
+    Observation is strictly per process: calls recorded in another process never
+    mark a kernel observed here.  Zero calls mean "not observed here" only when
+    the kernel's counting coverage is complete and the run finished cleanly;
+    partial coverage and uninstrumented kernels stay gaps. */
+export function processKernelStates(snapshot: Snapshot, pid: string, runKey: string): Map<string, ProcessKernelState> {
+  const members = snapshot.process_membership[pid]?.kernels ?? [];
+  const here = snapshot.process_observation?.[runKey]?.[pid] ?? {};
+  const states = new Map<string, ProcessKernelState>();
+  for (const kid of members) {
+    if ((here[kid]?.calls ?? 0) > 0) {
+      states.set(kid, "observed");
+      continue;
+    }
+    const global = snapshot.kernels[kid]?.observation?.[runKey];
+    const settled = global && (global.status === "observed" || global.status === "not-observed-in-this-run");
+    states.set(kid, settled && global.coverage === "full" ? "not-observed-here" : "gap");
+  }
+  return states;
+}
+
+export interface ExecutionInventory {
+  candidates: number;
+  observed: number;
+  coveredNotObserved: number;
+  gaps: number;
+}
+
+export function executionInventory(snapshot: Snapshot, pid: string, runKey: string): ExecutionInventory {
+  const states = processKernelStates(snapshot, pid, runKey);
+  let observed = 0;
+  let covered = 0;
+  let gaps = 0;
+  for (const state of states.values()) {
+    if (state === "observed") observed += 1;
+    else if (state === "not-observed-here") covered += 1;
+    else gaps += 1;
+  }
+  return { candidates: states.size, observed, coveredNotObserved: covered, gaps };
+}
+
 export interface Bar {
   key: string;
   label: string;
@@ -44,20 +95,35 @@ export interface Bar {
   denominator: string;
 }
 
-/** The four per-process bars. Blocked and unassessed kernels stay in the denominator. */
-export function processBars(snapshot: Snapshot, pid: string): Bar[] {
+/** The four per-process capability bars.
+
+    With a validated observation run selected the denominator is the kernels
+    actually observed executing in this process during that run; candidates
+    never observed here cannot be verified here and are counted separately by
+    the execution inventory.  With no validated run the bars fall back to the
+    static candidates under an explicitly static label -- never silently.
+    Blocked and unassessed kernels stay in whichever denominator applies. */
+export function processBars(snapshot: Snapshot, pid: string, runKey: string | null): Bar[] {
   const membership: Membership | undefined = snapshot.process_membership[pid];
   const members = membership?.kernels ?? [];
   const inventoried = Boolean(membership?.inventoried && members.length > 0) || members.length > 0;
-  const kernels = members.map((k) => snapshot.kernels[k]).filter(Boolean) as KernelRecord[];
+  const allKernels = members.map((k) => snapshot.kernels[k]).filter(Boolean) as KernelRecord[];
+  const states = runKey ? processKernelStates(snapshot, pid, runKey) : null;
+  const kernels = states ? allKernels.filter((k) => states.get(k.id) === "observed") : allKernels;
   const rows = snapshot.replacements.filter((r) => r.process === pid);
   const routineRows = new Map<string, Replacement>();
   for (const row of rows) routineRows.set(row.kernel_routine, row);
-  const capCount = (name: string, states: string[]) =>
-    kernels.filter((k) => states.includes(k.capabilities[name]?.state)).length;
-  const denominator =
-    "of the process's candidate kernels (statically reachable in this configuration; " +
-    "blocked and unassessed candidates stay in the denominator)";
+  const capCount = (name: string, wanted: string[]) =>
+    kernels.filter((k) => wanted.includes(k.capabilities[name]?.state)).length;
+  const excluded = allKernels.length - kernels.length;
+  const denominator = states
+    ? "of the kernels observed executing in this process in the selected run" +
+      (excluded > 0
+        ? `; observation coverage is incomplete: ${excluded} candidates remain unobserved or uninstrumented here`
+        : "") +
+      "; blocked and unassessed kernels stay in the denominator"
+    : "of the process's static candidate kernels -- no validated observation run backs this denominator; " +
+      "blocked and unassessed candidates stay in it";
   return [
     {
       key: "independently_callable",
@@ -165,7 +231,7 @@ export function searchAll(snapshot: Snapshot, query: string, limit = 40): Search
 }
 
 /** Overview tiles, every number derived from the snapshot's own records. */
-export function overviewTiles(snapshot: Snapshot): { label: string; value: string; note: string }[] {
+export function overviewTiles(snapshot: Snapshot, runKey: string | null): { label: string; value: string; note: string }[] {
   const processes = snapshot.processes;
   const kernels = Object.values(snapshot.kernels);
   const enabled = processes.filter((p) => p.enabled).length;
@@ -192,6 +258,15 @@ export function overviewTiles(snapshot: Snapshot): { label: string; value: strin
       label: "Candidate numerical kernels",
       value: `${kernels.length}`,
       note: "unique, statically reachable in this configuration; shared kernels counted once",
+    },
+    {
+      label: "Observed executing",
+      value: runKey
+        ? `${kernels.filter((k) => k.observation?.[runKey]?.status === "observed").length} of ${kernels.length}`
+        : "no validated observation run",
+      note: runKey
+        ? "entered at least once in the selected validated run, counted in place by the counting image"
+        : "an instrumented run of the case records which candidates actually execute",
     },
     {
       label: "Tracked kernel records",

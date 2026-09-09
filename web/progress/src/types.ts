@@ -23,6 +23,34 @@ export interface Capability {
   historical_failures?: string[];
 }
 
+export interface KernelObservation {
+  status: "observed" | "not-observed-in-this-run" | "unknown";
+  status_reason?: string;
+  calls_total?: number;
+  calls_by_context?: Record<string, number>;
+  first_step?: number;
+  last_step?: number;
+  ranks_with_calls?: number;
+  count_meaning?: string;
+  note?: string;
+  coverage?: string;
+}
+
+export interface ObservationRun {
+  key: string;
+  label: string;
+  run: Record<string, unknown>;
+  image: Record<string, unknown>;
+  summary: Record<string, number | boolean>;
+  validated: boolean;
+}
+
+export interface ProcessCalls {
+  calls: number;
+  first_step: number;
+  last_step: number;
+}
+
 export interface KernelRecord {
   id: string;
   routine: string;
@@ -39,6 +67,7 @@ export interface KernelRecord {
   owner_class: string | null;
   note: string | null;
   module_state: string[];
+  observation: Record<string, KernelObservation>;
   capabilities: Record<string, Capability>;
   redirect: { classification: string | null; redirectable: boolean; reading: string; blocker?: string };
   adapter_hint: { adapter_status: string | null; blockers: string[] } | null;
@@ -129,6 +158,8 @@ export interface Snapshot {
   inputs: Record<string, string>;
   notes: Record<string, string>;
   capability_explanations: Record<string, string>;
+  observation_runs: ObservationRun[];
+  process_observation: Record<string, Record<string, Record<string, ProcessCalls>>>;
   processes: ProcessRecord[];
   additional_apis: AdditionalApi[];
   kernels: Record<string, KernelRecord>;

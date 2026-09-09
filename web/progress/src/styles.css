@@ -145,3 +145,11 @@ button:focus-visible, a:focus-visible, input:focus-visible, summary:focus-visibl
   .facts div { grid-template-columns: 1fr; gap: 0; }
   .capabilities th { width: auto; }
 }
+
+.run-select { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.run-select select { padding: 4px 6px; border: 1px solid var(--border); border-radius: 6px; background: var(--panel-2); }
+.filter-tabs { flex-direction: row; flex-wrap: wrap; gap: 4px; margin: 6px 0; }
+.filter-tabs button { border: 1px solid var(--border); }
+.filter-tabs button[aria-selected="true"] { border-color: var(--accent); }
+.filter-tabs button:disabled { color: var(--disabled); cursor: default; }
+h4.subhead { font-size: 13.5px; margin: 14px 0 6px; }

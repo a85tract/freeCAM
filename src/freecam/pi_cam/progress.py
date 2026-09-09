@@ -47,6 +47,14 @@ CLOSURE = "validation/pi_cam_kernel_api_closure.json"
 AUDIT = "validation/pi_cam_kernel_api_redirectable_calls.json"
 RUNNERS = "native/pi_cam/segment_runners.yaml"
 HOOKS = "native/pi_cam/hooks.yaml"
+#: Optional: the runtime coverage records of the counting image's observation
+#: runs.  With one, every candidate carries per-process execution evidence;
+#: without any there is no validated observation run, and the page says so
+#: rather than passing static candidates off under the same labels.
+OBSERVATION_RUNS = (
+    ("50step", "50-step validation", "validation/pi_cam_kernel_runtime_coverage_50step.json"),
+    ("1month", "One-month validation", "validation/pi_cam_kernel_runtime_coverage_1month.json"),
+)
 VALIDATION = "validation"
 FUNCTIONS = "native/pi_cam/functions"
 
@@ -115,6 +123,14 @@ def load_inputs(root: Path) -> dict[str, Any]:
     _require_schema(AUDIT, inputs["audit"], 1)
     _require_schema(RUNNERS, inputs["runners"], 1)
     _require_schema(HOOKS, inputs["hooks"], 1)
+    inputs["observation_runs"] = {}
+    for key, _label, rel in OBSERVATION_RUNS:
+        path = root / rel
+        if path.is_file():
+            payload = json.loads(path.read_text())
+            _require_schema(rel, payload, 1)
+            inputs["observation_runs"][key] = payload
+            inputs["hashes"][rel] = _sha256_file(path)
     return inputs
 
 
@@ -508,6 +524,25 @@ def build_progress_snapshot(root: Path | str) -> dict[str, Any]:
     catalog, ledger, closure = inputs["catalog"], inputs["ledger"], inputs["closure"]
     audit, runners, hooks = inputs["audit"], inputs["runners"], inputs["hooks"]
 
+    observation_runs = inputs["observation_runs"]
+
+    def observation_of(qualified: str) -> dict[str, Any]:
+        """Per-run execution evidence for one candidate; unknown is never success."""
+
+        out: dict[str, Any] = {}
+        for key, _label, _rel in OBSERVATION_RUNS:
+            record = observation_runs.get(key)
+            if record is None:
+                continue
+            row = next((r for r in record["kernels"] if r["qualified"] == qualified), None)
+            if row is None:
+                out[key] = {"status": "unknown", "status_reason": "not in the observation inventory"}
+                continue
+            out[key] = {k: row[k] for k in ("status", "status_reason", "calls_total", "calls_by_context",
+                                            "first_step", "last_step", "ranks_with_calls",
+                                            "count_meaning", "note", "coverage") if k in row}
+        return out
+
     procedures = _procedures_by_qualified(closure)
     candidates = _numeric_candidates(closure)
     contracts = _contract_index(root)
@@ -672,6 +707,7 @@ def build_progress_snapshot(root: Path | str) -> dict[str, Any]:
             "owner_class": (tracked or {}).get("owner_class"),
             "note": (tracked or {}).get("note"),
             "module_state": sorted((tracked or {}).get("evidence", {}).get("module_state") or []),
+            "observation": observation_of(qualified),
             "capabilities": capabilities,
             "redirect": redirect,
             "adapter_hint": adapter_hints.get(qualified),
@@ -763,6 +799,10 @@ def build_progress_snapshot(root: Path | str) -> dict[str, Any]:
             1 for k in kernels.values() if k["capabilities"]["in_model_replacement"]["state"] in ("available", "verified")),
         "original_replacement_bfb_verified": cap_count("original_replacement_bfb", "verified"),
         "redirectable_calls": sum(1 for k in kernels.values() if k["redirect"]["redirectable"]),
+        "observed_by_run": {
+            key: sum(1 for k in kernels.values() if (k["observation"].get(key) or {}).get("status") == "observed")
+            for key, _label, _rel in OBSERVATION_RUNS if key in observation_runs
+        },
         "unmapped_kernels": len(unmapped),
     }
 
@@ -784,9 +824,16 @@ def build_progress_snapshot(root: Path | str) -> dict[str, Any]:
                           "potentially reachable, not necessarily observed during execution.",
             "shared_kernels": "A kernel used by several processes is counted once globally; per-process totals "
                               "are not additive.",
-            "core_vs_candidates": "Core kernels are the ones a process's Python class exposes for replacement "
-                                  "today. Candidate numerical functions are everything the call-tree inventory "
-                                  "reaches from the process recursively -- drivers, per-point helpers, "
+            "observation": "Observed means the counting image recorded real calls in the selected validated "
+                           "run, attributed to the process they ran in; a kernel observed in one process is "
+                           "never marked observed in another. Zero calls count as not observed only where "
+                           "instrumentation coverage is complete and the run finished bit-for-bit; everything "
+                           "else stays unknown. Where coverage is partial, totals are lower bounds.",
+            "no_observation_run": "No validated observation run available.",
+            "core_vs_candidates": "Replaceable kernels are the ones a process's Python class exposes for "
+                                  "replacement today; an entry that exists but lacks a verified path shows its "
+                                  "unverified state. Candidate numerical functions are everything the call-tree "
+                                  "inventory reaches from the process recursively -- drivers, per-point helpers, "
                                   "saturation and packing libraries included. Exposing a process does not "
                                   "expose every candidate inside it.",
             "replacement_scope": "A replacement gate is scoped to the process and call site actually tested; "
@@ -795,6 +842,22 @@ def build_progress_snapshot(root: Path | str) -> dict[str, Any]:
                            "replacement (for example a neural network) is scientifically correct.",
         },
         "capability_explanations": CAPABILITY_EXPLANATIONS,
+        "observation_runs": [
+            {
+                "key": key,
+                "label": label,
+                "run": record["run"],
+                "image": record["image"],
+                "summary": record["summary"],
+                "validated": bool(record["run"].get("bfb")) and record["run"].get("run_status") == "passed",
+            }
+            for key, label, _rel in OBSERVATION_RUNS
+            if (record := observation_runs.get(key)) is not None
+        ],
+        "process_observation": {
+            key: observation_runs[key].get("process_calls", {})
+            for key, _label, _rel in OBSERVATION_RUNS if key in observation_runs
+        },
         "processes": processes,
         "additional_apis": additional_apis,
         "kernels": kernels,
