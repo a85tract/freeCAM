@@ -37,6 +37,8 @@ items:
   branch: physics-kernel-api-closure
   started_at: '2026-09-09'
   updated_at: '2026-09-09'
-  next_gate: capture replay + a 50-step run with the few-free-variables surrogate in the slot
-  note: 'Hook gate 7371011: the original answered at the hook on 9000 calls per rank (2 chunks x 30 levels
-    x 3 calls x 50 steps), bit-for-bit. Capture gate 7371012 running.'
+  next_gate: standalone replay of the 4,608,000 captured frames; a 50-step run with the few-free-variables
+    surrogate in the slot
+  note: 'Hook gate 7371011 and capture gate 7371232 both bit-for-bit (9000 pauses per rank); every frame
+    captured (512 ranks, 47 GB). The first capture (7371012) died out of memory at 4 x 64 GB, kept as
+    a failure record. Health counts of the original: zero BIG ERROR, zero QNEG3 over 50 steps.'

@@ -4932,6 +4932,14 @@
           "present": true,
           "bfb": true,
           "compared_files": 4
+        },
+        {
+          "path": "segmented, original kernel answered through the pause",
+          "record": "pi_cam_pausable_instratus-capture_50step.json",
+          "bfb_record": "pi_cam_pausable_instratus-capture_vs_oracle_50step_bfb.json",
+          "present": true,
+          "bfb": true,
+          "compared_files": 4
         }
       ],
       "status": "open",
@@ -6337,5 +6345,5 @@
       "why": "no record in validation/ for this step of the loop"
     }
   ],
-  "coverage_hash": "e61d1f702b0d225f7166ab2d048985c0344b846a85809c44c9a5f315f2610b63"
+  "coverage_hash": "119b8cc9a86381957f4fa617947ccbd31fc8877dc5ff870fd5231ce0be886873"
 }

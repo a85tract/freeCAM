@@ -2648,7 +2648,7 @@
   "use_gw_oro": true,
   "use_subcol_microp": false
  },
- "content_hash": "2051f186bf14ff9a0168f25528fd0bc77517a9cc435c528316a9bc8babf90171",
+ "content_hash": "1405975211b3ea5b783f9f41c9ec78f8b6d6e5e6085caaa57fe5628a6ed50f90",
  "evidence": {
   "pi_cam_cldfrc_fice_frame_replay.json": {
    "bfb": true,
@@ -4036,6 +4036,86 @@
    "pbs_job": null,
    "record": "pi_cam_pausable_hooks-everything_vs_oracle_50step_bfb.json"
   },
+  "pi_cam_pausable_instratus-capture_50step.json": {
+   "advance_seconds": 35.92,
+   "cloud_macro_micro_python": true,
+   "execution_mode": "fine_grained",
+   "frame_capture": {
+    "calls_total_by_kernel": {
+     "instratus_condensate": 4608000
+    },
+    "kernels": [
+     "instratus_condensate"
+    ],
+    "run_tag": "pi_cam_pausable_instratus-capture_50step"
+   },
+   "hooks": {
+    "cldfrc_fice": {
+     "calls": 53248,
+     "missed": 0,
+     "paused": 0,
+     "ranks_called": 512
+    },
+    "fluxbelowinv": {
+     "calls": 38152530,
+     "missed": 0,
+     "paused": 0,
+     "ranks_called": 512
+    },
+    "instratus_condensate": {
+     "calls": 4792320,
+     "missed": 0,
+     "paused": 4608000,
+     "ranks_called": 512
+    }
+   },
+   "image": {
+    "build": "pi_cam_promoted_p12",
+    "role": "development",
+    "sha256": "c294f2da4d7d55be819d90226eea2e2b9ea50305de5ea5110f10eab3ea99b13d"
+   },
+   "kind": "run-summary",
+   "mpi_ranks": 512,
+   "pbs_job": "7371232",
+   "python_stages": [],
+   "radiation_python": false,
+   "record": "pi_cam_pausable_instratus-capture_50step.json",
+   "replacement_calls": {
+    "cloud_macro_microphysics": {
+     "instratus_condensate": 9000
+    }
+   },
+   "run_status": "passed",
+   "segmented_original_kernels": "instratus_condensate",
+   "steps": 50
+  },
+  "pi_cam_pausable_instratus-capture_50step_failure.json": {
+   "diagnosis": "Memory, not numerics: resources_used.mem reached exactly the job's 256 GB request and the out-of-memory killer took one rank.  This kernel is called 9000 times per rank in 50 steps and its frame is 29 small arrays, so the capture holds about a quarter of a million NumPy objects per rank -- far more per-object overhead than the micro_mg_tend capture (100 large frames per rank) that fit the same request.  The hook gate without capture (7371011) ran at the same request and passed.",
+   "image": {
+    "build": "pi_cam_promoted_p12",
+    "role": "development",
+    "sha256": null
+   },
+   "kind": "gate-failure",
+   "outcome": "model run exited 137 (rank 1 killed by signal 9, the rest by SIGTERM) during _save_frame_captures; all 512 npz files truncated; no summary, no capture.json",
+   "pbs_job": "7371012",
+   "python_stages": [
+    "cloud_macro_microphysics"
+   ],
+   "ranks": 512,
+   "record": "pi_cam_pausable_instratus-capture_50step_failure.json",
+   "run_tag": "instratus-capture",
+   "segmented_original_kernels": "instratus_condensate",
+   "steps_completed": 50,
+   "what": "A capture gate that ran its 50 steps and was then killed while writing the captured frames: instratus_condensate answered by the original at its hook with every call's frame recorded, 9000 calls per rank."
+  },
+  "pi_cam_pausable_instratus-capture_vs_oracle_50step_bfb.json": {
+   "bfb": true,
+   "compared_files": 4,
+   "kind": "bfb-comparison",
+   "pbs_job": null,
+   "record": "pi_cam_pausable_instratus-capture_vs_oracle_50step_bfb.json"
+  },
   "pi_cam_pausable_instratus-hook_50step.json": {
    "advance_seconds": 45.3,
    "cloud_macro_micro_python": true,
@@ -4673,6 +4753,14 @@
    "contexts": [
     "cam_run1.cloud_macro_microphysics"
    ],
+   "kernel_routine": "instratus_condensate",
+   "record": "pi_cam_pausable_instratus-capture_50step_failure.json"
+  },
+  {
+   "capability": "original_replacement_bfb",
+   "contexts": [
+    "cam_run1.cloud_macro_microphysics"
+   ],
    "kernel_routine": "micro_mg_tend",
    "record": "pi_cam_pausable_micro-capture_50step_failure.json"
   }
@@ -4680,9 +4768,9 @@
  "inputs": {
   "native/pi_cam/hooks.yaml": "fe94bb020f505d5d2f532a607400dddc9b4c0feb3f9ba227f0e3d81faae63997",
   "native/pi_cam/kernel_classifications.yaml": "d6be2103c9bd0c86a0c8461a067d3b43eac6aa370e992fde9bf3096e55c8c5f4",
-  "native/pi_cam/kernel_work_items.yaml": "aba5b5758dde5197804e45dd5eb1da99384145f43d62bf9cd0c23b62bea8fa8d",
-  "native/pi_cam/segment_runners.yaml": "58dfba4c42e5a9019b367db0ea7d158b93239274f1d0cc4cc102e09e38bf795a",
-  "validation/physics_kernel_decoupling.json": "bac253e2d236c271b2df4c6cf65f2c52c4315a30eb97c686c18f6044c5587498",
+  "native/pi_cam/kernel_work_items.yaml": "4e335454fd1a17dd338586da9dbb613413e173addabd7f53dc51aea028d6a54b",
+  "native/pi_cam/segment_runners.yaml": "002ab5f622cb5c10c0d7fc45eead3ef708de6524602eda635b4c064649663acd",
+  "validation/physics_kernel_decoupling.json": "2a9ff0a6804a4e0d54b36b26c34f44a36e5eb6234ba53fe32d7d944973680462",
   "validation/pi_cam_kernel_api_closure.json": "96025214b3e4c41f6ba89c266da5dd27c51c42c81c31e1a0ac6f7b2e9cfa260a",
   "validation/pi_cam_kernel_api_redirectable_calls.json": "9ac016f0d242ceef054aa8a80ef074aa53b08c1f0f3042a81e76da4c75603273",
   "validation/pi_cam_kernel_runtime_coverage_1month.json": "48f77d6ec78b4026806d4ab6fb9517ef31c1d526481b4ad68e55f77af0d303bd",
@@ -9826,8 +9914,8 @@
    "development": {
     "blocker": null,
     "branch": "physics-kernel-api-closure",
-    "next_gate": "capture replay + a 50-step run with the few-free-variables surrogate in the slot",
-    "note": "Hook gate 7371011: the original answered at the hook on 9000 calls per rank (2 chunks x 30 levels x 3 calls x 50 steps), bit-for-bit. Capture gate 7371012 running.",
+    "next_gate": "standalone replay of the 4,608,000 captured frames; a 50-step run with the few-free-variables surrogate in the slot",
+    "note": "Hook gate 7371011 and capture gate 7371232 both bit-for-bit (9000 pauses per rank); every frame captured (512 ranks, 47 GB). The first capture (7371012) died out of memory at 4 x 64 GB, kept as a failure record. Health counts of the original: zero BIG ERROR, zero QNEG3 over 50 steps.",
     "owner": "claude",
     "owner_class": "freecam.physics.macrophysics.Macrophysics",
     "stage": "capture_replay",
@@ -9838,7 +9926,9 @@
     ],
     "updated_at": "2026-09-09"
    },
-   "failures": [],
+   "failures": [
+    "pi_cam_pausable_instratus-capture_50step_failure.json"
+   ],
    "host": null,
    "id": "cldwat2m_macro::instratus_condensate",
    "kind": "subroutine",
@@ -71621,9 +71711,17 @@
      "bfb_record": "pi_cam_pausable_instratus-hook_vs_oracle_50step_bfb.json",
      "record": "pi_cam_pausable_instratus-hook_50step.json",
      "replacement_calls": 9000
+    },
+    {
+     "bfb": true,
+     "bfb_record": "pi_cam_pausable_instratus-capture_vs_oracle_50step_bfb.json",
+     "record": "pi_cam_pausable_instratus-capture_50step.json",
+     "replacement_calls": 9000
     }
    ],
-   "historical_failures": [],
+   "historical_failures": [
+    "pi_cam_pausable_instratus-capture_50step_failure.json"
+   ],
    "kernel_routine": "instratus_condensate",
    "mechanism": "hook",
    "note": null,
@@ -72247,8 +72345,8 @@
  ],
  "volatile": {
   "branch": "physics-kernel-api-closure",
-  "commit": "e221dceac2eed809d0f8cfd6320a3bfd3f9bad80",
-  "generated_at": "2026-09-09T23:02:21+00:00"
+  "commit": "a0382ce80f22fda60eeab380ea2a628164bb108e",
+  "generated_at": "2026-09-09T23:20:46+00:00"
  },
  "work_items": [
   {
@@ -72285,8 +72383,8 @@
   {
    "branch": "physics-kernel-api-closure",
    "kernel": "cldwat2m_macro::instratus_condensate",
-   "next_gate": "capture replay + a 50-step run with the few-free-variables surrogate in the slot",
-   "note": "Hook gate 7371011: the original answered at the hook on 9000 calls per rank (2 chunks x 30 levels x 3 calls x 50 steps), bit-for-bit. Capture gate 7371012 running.",
+   "next_gate": "standalone replay of the 4,608,000 captured frames; a 50-step run with the few-free-variables surrogate in the slot",
+   "note": "Hook gate 7371011 and capture gate 7371232 both bit-for-bit (9000 pauses per rank); every frame captured (512 ranks, 47 GB). The first capture (7371012) died out of memory at 4 x 64 GB, kept as a failure record. Health counts of the original: zero BIG ERROR, zero QNEG3 over 50 steps.",
    "owner": "claude",
    "owner_class": "freecam.physics.macrophysics.Macrophysics",
    "stage": "capture_replay",
