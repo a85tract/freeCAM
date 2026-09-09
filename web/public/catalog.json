@@ -36,6 +36,16 @@
   },
   {
    "bindable": true,
+   "evidence": [],
+   "kernel": "instratus_condensate",
+   "owner_class": "freecam.physics.macrophysics.Macrophysics",
+   "reason": "bindable, but the pause path has not passed a bit-for-bit gate",
+   "stage_action": "cam_run1.cloud_macro_microphysics",
+   "stage_class": "freecam.physics.cloud_macro_microphysics.CloudMacroMicrophysics",
+   "validated": false
+  },
+  {
+   "bindable": true,
    "evidence": [
     "validation/pi_cam_stage7_segmented_micro_50step.json",
     "validation/pi_cam_stage7_segmented_micro_vs_oracle_50step_bfb.json",
@@ -368,11 +378,11 @@
   "PI-atm-online": "configs/pi_cam_icesm131_online.yaml",
   "PI-atm-replay": "configs/pi_cam_icesm131_replay.yaml"
  },
- "catalog_hash": "32f96cc2660163338e56ea14763a37bda7bd9390631175841e02e64eb283f28e",
- "commit": "f5045bc32c017787a1f3c82c8af841e432951eea",
+ "catalog_hash": "d339ac1d434e093ae975ab2e2cd39d935c4804445e4b79aab7bf882039514d53",
+ "commit": "5c230833febce9a67a9ee3f309b422b5ae9d51f5",
  "default_document": {
   "case": "PI-atm",
-  "catalog_version": "32f96cc2660163338e56ea14763a37bda7bd9390631175841e02e64eb283f28e",
+  "catalog_version": "d339ac1d434e093ae975ab2e2cd39d935c4804445e4b79aab7bf882039514d53",
   "experimental": false,
   "namelist": {},
   "nodes": [
@@ -2067,6 +2077,10 @@
        "kind": "original",
        "path": null
       },
+      "instratus_condensate": {
+       "kind": "original",
+       "path": null
+      },
       "micro_mg_tend": {
        "kind": "original",
        "path": null
@@ -2124,6 +2138,16 @@
        "stage_action": "cam_run1.cloud_macro_microphysics",
        "stage_class": "freecam.physics.cloud_macro_microphysics.CloudMacroMicrophysics",
        "validated": true
+      },
+      {
+       "bindable": true,
+       "evidence": [],
+       "kernel": "instratus_condensate",
+       "owner_class": "freecam.physics.macrophysics.Macrophysics",
+       "reason": "bindable, but the pause path has not passed a bit-for-bit gate",
+       "stage_action": "cam_run1.cloud_macro_microphysics",
+       "stage_class": "freecam.physics.cloud_macro_microphysics.CloudMacroMicrophysics",
+       "validated": false
       },
       {
        "bindable": true,
@@ -4588,6 +4612,10 @@
       "kind": "original",
       "path": null
      },
+     "instratus_condensate": {
+      "kind": "original",
+      "path": null
+     },
      "micro_mg_tend": {
       "kind": "original",
       "path": null
@@ -4645,6 +4673,16 @@
       "stage_action": "cam_run1.cloud_macro_microphysics",
       "stage_class": "freecam.physics.cloud_macro_microphysics.CloudMacroMicrophysics",
       "validated": true
+     },
+     {
+      "bindable": true,
+      "evidence": [],
+      "kernel": "instratus_condensate",
+      "owner_class": "freecam.physics.macrophysics.Macrophysics",
+      "reason": "bindable, but the pause path has not passed a bit-for-bit gate",
+      "stage_action": "cam_run1.cloud_macro_microphysics",
+      "stage_class": "freecam.physics.cloud_macro_microphysics.CloudMacroMicrophysics",
+      "validated": false
      },
      {
       "bindable": true,
@@ -7339,6 +7377,10 @@
       "kind": "original",
       "path": null
      },
+     "instratus_condensate": {
+      "kind": "original",
+      "path": null
+     },
      "micro_mg_tend": {
       "kind": "original",
       "path": null
@@ -7398,6 +7440,16 @@
       "stage_action": "cam_run1.cloud_macro_microphysics",
       "stage_class": "freecam.physics.cloud_macro_microphysics.CloudMacroMicrophysics",
       "validated": true
+     },
+     {
+      "bindable": true,
+      "evidence": [],
+      "kernel": "instratus_condensate",
+      "owner_class": "freecam.physics.macrophysics.Macrophysics",
+      "reason": "bindable, but the pause path has not passed a bit-for-bit gate",
+      "stage_action": "cam_run1.cloud_macro_microphysics",
+      "stage_class": "freecam.physics.cloud_macro_microphysics.CloudMacroMicrophysics",
+      "validated": false
      },
      {
       "bindable": true,
@@ -19908,7 +19960,7 @@
    "writes": []
   }
  ],
- "generated_at": "2026-09-09T07:31:32+00:00",
+ "generated_at": "2026-09-09T22:53:33+00:00",
  "parameters": {
   "cam_run1.cloud_macro_microphysics": [
    {

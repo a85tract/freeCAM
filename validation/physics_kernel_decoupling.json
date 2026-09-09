@@ -42,12 +42,12 @@
       "not-required-in-this-configuration": 11,
       "partial": 10
     },
-    "kernels": 21,
+    "kernels": 22,
     "kernels_by_status": {
       "complete": 6,
-      "open": 15
+      "open": 16
     },
-    "kernels_bindable": 21,
+    "kernels_bindable": 22,
     "kernels_validated_through_runner": 21,
     "catalog_procedures": 371
   },
@@ -3061,6 +3061,7 @@
       "kernels": [
         "mmacro_pcond",
         "cldfrc_fice",
+        "instratus_condensate",
         "micro_mg_tend"
       ],
       "kernel_candidates": [],
@@ -4907,6 +4908,35 @@
       "note": null
     },
     {
+      "kernel": "instratus_condensate",
+      "stage_action": "cam_run1.cloud_macro_microphysics",
+      "owner_class": "freecam.physics.macrophysics.Macrophysics",
+      "routine": "instratus_condensate",
+      "contract": "reviewed",
+      "contract_path": "native/pi_cam/functions/instratus_condensate.yaml",
+      "bindable": true,
+      "validated_through_runner": false,
+      "evidence": {
+        "capture": [],
+        "standalone_build": [],
+        "replay_full_chunk": [],
+        "replay_single_column": [],
+        "replay_public_api": [],
+        "module_state": []
+      },
+      "in_model_gates": [],
+      "status": "open",
+      "missing": [
+        "capture",
+        "standalone_build",
+        "replay_full_chunk",
+        "replay_single_column",
+        "replay_public_api",
+        "in_model_replacement_bfb"
+      ],
+      "note": null
+    },
+    {
       "kernel": "micro_mg_tend",
       "stage_action": "cam_run1.cloud_macro_microphysics",
       "owner_class": "freecam.physics.microphysics.Microphysics",
@@ -5983,6 +6013,30 @@
   ],
   "unresolved": [
     {
+      "what": "instratus_condensate: capture",
+      "why": "no record in validation/ for this step of the loop"
+    },
+    {
+      "what": "instratus_condensate: standalone_build",
+      "why": "no record in validation/ for this step of the loop"
+    },
+    {
+      "what": "instratus_condensate: replay_full_chunk",
+      "why": "no record in validation/ for this step of the loop"
+    },
+    {
+      "what": "instratus_condensate: replay_single_column",
+      "why": "no record in validation/ for this step of the loop"
+    },
+    {
+      "what": "instratus_condensate: replay_public_api",
+      "why": "no record in validation/ for this step of the loop"
+    },
+    {
+      "what": "instratus_condensate: in_model_replacement_bfb",
+      "why": "no record in validation/ for this step of the loop"
+    },
+    {
       "what": "micro_mg_tend: capture",
       "why": "no record in validation/ for this step of the loop"
     },
@@ -6279,5 +6333,5 @@
       "why": "no record in validation/ for this step of the loop"
     }
   ],
-  "coverage_hash": "f9aaa0da9cac143cae8f6ab0484924bd5d11464806c248840b4d471cc8f6462a"
+  "coverage_hash": "6006cbd249694bfe7acc513612d30e2a0a63d2107ca541c15c046d90e7913548"
 }

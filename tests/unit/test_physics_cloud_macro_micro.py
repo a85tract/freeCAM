@@ -413,7 +413,8 @@ def test_composed_both_walks_run_in_their_drivers_places(fake, monkeypatch) -> N
     assert scheme.components == {"macro": scheme.macro, "micro": scheme.micro,
                                  "aero": scheme.aero}
     # one kernels mapping: every sub-walk's swappable core is reachable from the stage
-    assert scheme.kernels == {"mmacro_pcond": None, "cldfrc_fice": None, "micro_mg_tend": None}
+    assert scheme.kernels == {"mmacro_pcond": None, "cldfrc_fice": None, "instratus_condensate": None,
+                              "micro_mg_tend": None}
     assert scheme.macro.kernels is scheme.kernels and scheme.micro.kernels is scheme.kernels
     scheme.tend(None, _Context(fake))
     assert scheme.calls == list(SEQUENCE) * 2
@@ -438,7 +439,8 @@ def test_whole_micro_keeps_gate_m2_s_form(fake, monkeypatch) -> None:
     scheme = CloudMacroMicrophysics(whole_micro=True)
     scheme.execution_policy = "legacy-python"   # these tests exercise the walk
     assert scheme.aero is None
-    assert scheme.micro is None and scheme.kernels == {"mmacro_pcond": None, "cldfrc_fice": None}
+    assert scheme.micro is None and scheme.kernels == {"mmacro_pcond": None, "cldfrc_fice": None,
+                                                       "instratus_condensate": None}
     scheme.tend(None, _Context(fake))
     assert scheme.calls == list(SEQUENCE_WHOLE_MICRO) * 2
     names = [d[0].removeprefix("pycam_mm_").removesuffix("_v1") for d in fake.library.drivers]

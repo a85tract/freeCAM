@@ -27,3 +27,17 @@ items:
   note: 'First capture attempt (7358831) aborted on manifest/image version skew: the p10 image exports
     no pycam_stage7_original_v1 (validation/pi_cam_pausable_micro-capture_50step_failure.json). Resubmit
     once the p11 image is built.'
+- kernel: cldwat2m_macro::instratus_condensate
+  target_processes:
+  - cam_run1.cloud_macro_microphysics
+  owner_class: freecam.physics.macrophysics.Macrophysics
+  state: in_progress
+  stage: adapter
+  owner: claude
+  branch: physics-kernel-api-closure
+  started_at: '2026-09-09'
+  updated_at: '2026-09-09'
+  next_gate: 512-rank 50-step BFB with the original answered at the hook, plus capture
+  note: 'The saturation-adjustment core inside mmacro_pcond, reached through a weaken-definition hook
+    (hooks.yaml #3); the stage-7 runner runs on the fiber while it is replaced. Target of the few-free-variables
+    surrogate: 3-phase water partition and two stratus fractions, the rest derived.'

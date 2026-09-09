@@ -33,7 +33,8 @@ def test_the_inventory_closes_over_the_step_plan_and_the_catalog() -> None:
     # the two stages Python drives, and what they expose
     stage7 = by_id["cam_run1.cloud_macro_microphysics"]
     assert stage7["python_class"].endswith("CloudMacroMicrophysics")
-    assert stage7["kernels"] == ["mmacro_pcond", "cldfrc_fice", "micro_mg_tend"] and stage7["coverage"] == "partial"
+    assert stage7["kernels"] == ["mmacro_pcond", "cldfrc_fice", "instratus_condensate", "micro_mg_tend"]
+    assert stage7["coverage"] == "partial"
     assert stage7["performance"] == ["performance_overhead.md", "pi_cam_native_whole_1month_median.json",
                                      "pi_cam_faster_than_fortran.json"]
     # every class-owned action points at the all-class pairs; an action without a class has no performance record
@@ -72,7 +73,9 @@ def test_every_kernel_row_is_a_kernel_a_stage_class_describes_and_two_have_close
                          "wetdepa_v2", "modal_aero_depvel_part", "gas_phase_chemdr",
                          # the kernel-API closure's first entries: a function inside an assignment, and
                          # two kernels inside compiled kernels reached through hooks
-                         "virtem", "cldfrc_fice", "fluxbelowinv"}
+                         "virtem", "cldfrc_fice", "fluxbelowinv",
+                         # the saturation-adjustment core inside mmacro_pcond, reached by a hook
+                         "instratus_condensate"}
     # virtem: gates 7343257 and 7343260 answered it through its assignment pause; cldfrc_fice's
     # pause runs a hoisted copy of zm_conv_evap, which gate 7343258 showed is not bit-for-bit
     # virtem has closed the loop: contract, image, snapshot, pause gates, and every captured frame
@@ -138,7 +141,7 @@ def test_every_kernel_row_is_a_kernel_a_stage_class_describes_and_two_have_close
         assert [g["record"] for g in rows[name]["in_model_gates"][1:]][-1] == "pi_cam_pausable_everything_50step.json"
     # the P3-P5 kernels await capture and replay; cldfrc_fice is complete in
     # both of its stage contexts
-    assert record["summary"]["kernels_by_status"] == {"complete": 6, "open": 15}
+    assert record["summary"]["kernels_by_status"] == {"complete": 6, "open": 16}
 
 
 def test_the_committed_record_is_what_the_builder_writes_now() -> None:

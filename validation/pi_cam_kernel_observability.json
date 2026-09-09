@@ -1,5 +1,5 @@
 {
- "content_hash": "9dfb865a750f1e3e71490fb0ef9d13e5163ca9d19d2f77855d2d8476796d3cee",
+ "content_hash": "641a5bf5a70f8c661df86a42f427da2ae161cb986f908bcc4c139c483574c021",
  "generator": "tools/build_pi_cam_kernel_observability.py",
  "inputs": {
   "audit_archive_sha256": "56eae2ed53b1fc529d149489e320b9cab83a0cf715c02745f211c3fdbc943930",
@@ -2522,8 +2522,8 @@
    "qualified": "cldwat2m_macro::instratus_condensate",
    "redirection": "weaken-definition",
    "relocation_classification": "weaken-definition",
-   "replaceable_in_runner": false,
-   "replacement_hook": false,
+   "replaceable_in_runner": true,
+   "replacement_hook": true,
    "routine": "instratus_condensate",
    "source": "components/cam/src/physics/cam/cldwat2m_macro.F90",
    "source_call_sites_by_object": {

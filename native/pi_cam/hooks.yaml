@@ -33,3 +33,15 @@ hooks:
     callee_symbol: uwshcu_mp_fluxbelowinv_
     callers:
       - {object: uwshcu.o, routine: compute_uwshcu}
+  - kernel: instratus_condensate
+    contract: native/pi_cam/functions/instratus_condensate.yaml
+    # the saturation-adjustment core of mmacro_pcond, a private procedure of
+    # cldwat2m_macro called twice per level inside it (the relaxation iteration
+    # and the final state); defined in the caller's own object, so, as for
+    # fluxbelowinv, the definition is weakened and the hook takes its name
+    # (two PC32 relocations in cldwat2m_macro.o)
+    redirect: weaken-definition
+    original: {symbol: cldwat2m_macro_mp_instratus_condensate_original_}
+    callee_symbol: cldwat2m_macro_mp_instratus_condensate_
+    callers:
+      - {object: cldwat2m_macro.o, routine: mmacro_pcond}

@@ -2648,7 +2648,7 @@
   "use_gw_oro": true,
   "use_subcol_microp": false
  },
- "content_hash": "339813861e06ab3813ebc4c1003b2370bfe053be585164f774e37bf279f2a211",
+ "content_hash": "054aa0a16b1e0d47bc3b91852e1daa5ad6cb194034cf77816d03d6a2e41aebc9",
  "evidence": {
   "pi_cam_cldfrc_fice_frame_replay.json": {
    "bfb": true,
@@ -4627,16 +4627,16 @@
   }
  ],
  "inputs": {
-  "native/pi_cam/hooks.yaml": "a7efa7d3a85e4ccf3afbeac436a682677c25c1c7d082b3c09f39e7463b863635",
+  "native/pi_cam/hooks.yaml": "fe94bb020f505d5d2f532a607400dddc9b4c0feb3f9ba227f0e3d81faae63997",
   "native/pi_cam/kernel_classifications.yaml": "d6be2103c9bd0c86a0c8461a067d3b43eac6aa370e992fde9bf3096e55c8c5f4",
-  "native/pi_cam/kernel_work_items.yaml": "9c18717ccb0d93bd827d1206b7c9997ed5e273916af58beaee073e445992e96c",
-  "native/pi_cam/segment_runners.yaml": "4e95aa4c2efc6bdd730c8241d24a068a9125c19f6a7215c15f88637959e77cfa",
-  "validation/physics_kernel_decoupling.json": "a32bac2d77dc4ca58b54a24bf98e2ae7267563f03b634984336bdc71021ba730",
+  "native/pi_cam/kernel_work_items.yaml": "ccdda512f8485e9a967a2db45603f8055aa7ab715c4dfce7433bce39c5322697",
+  "native/pi_cam/segment_runners.yaml": "e973193b1d6b435c2e605309d92468a586328b2676c037be4e12d564f4584721",
+  "validation/physics_kernel_decoupling.json": "f7ad70450e055976d3561efc24618f812db7e46aef3c1f8d6293e9d34c09b904",
   "validation/pi_cam_kernel_api_closure.json": "96025214b3e4c41f6ba89c266da5dd27c51c42c81c31e1a0ac6f7b2e9cfa260a",
   "validation/pi_cam_kernel_api_redirectable_calls.json": "9ac016f0d242ceef054aa8a80ef074aa53b08c1f0f3042a81e76da4c75603273",
   "validation/pi_cam_kernel_runtime_coverage_1month.json": "48f77d6ec78b4026806d4ab6fb9517ef31c1d526481b4ad68e55f77af0d303bd",
   "validation/pi_cam_kernel_runtime_coverage_50step.json": "222961fc5274dbaaf71c40f6c131a683536b5a85ef14cd047a2fd196d8ca38c5",
-  "web/public/catalog.json": "9ee013433efa7949bd3724129255f14e73678bdae61a275e7d92465133fb77ca"
+  "web/public/catalog.json": "74e33aa677f34aebce934445252f5e155c86a18f87cd7c9d06ca725e97ab5b5b"
  },
  "kernels": {
   "aer_rad_props::aer_rad_props_lw": {
@@ -9747,16 +9747,21 @@
      "state": "not-implemented"
     },
     "contract": {
-     "state": "not-implemented"
+     "path": "native/pi_cam/functions/instratus_condensate.yaml",
+     "review": "reviewed",
+     "state": "available"
     },
     "in_model_replacement": {
-     "state": "not-implemented"
+     "contexts": [
+      "cam_run1.cloud_macro_microphysics"
+     ],
+     "state": "available"
     },
     "independently_callable": {
      "state": "not-assessed"
     },
     "original_replacement_bfb": {
-     "state": "not-assessed"
+     "state": "not-verified"
     },
     "standalone_replay": {
      "state": "not-assessed"
@@ -9765,13 +9770,32 @@
    "category": "replaceable_numeric",
    "classification_basis": "in-stratus condensate solver called from mmacro_pcond",
    "development": {
-    "state": "unclaimed"
+    "blocker": null,
+    "branch": "physics-kernel-api-closure",
+    "next_gate": "512-rank 50-step BFB with the original answered at the hook, plus capture",
+    "note": "The saturation-adjustment core inside mmacro_pcond, reached through a weaken-definition hook (hooks.yaml #3); the stage-7 runner runs on the fiber while it is replaced. Target of the few-free-variables surrogate: 3-phase water partition and two stratus fractions, the rest derived.",
+    "owner": "claude",
+    "owner_class": "freecam.physics.macrophysics.Macrophysics",
+    "stage": "adapter",
+    "started_at": "2026-09-09",
+    "state": "in_progress",
+    "target_processes": [
+     "cam_run1.cloud_macro_microphysics"
+    ],
+    "updated_at": "2026-09-09"
    },
    "failures": [],
    "host": null,
    "id": "cldwat2m_macro::instratus_condensate",
    "kind": "subroutine",
-   "missing": null,
+   "missing": [
+    "capture",
+    "in_model_replacement_bfb",
+    "replay_full_chunk",
+    "replay_public_api",
+    "replay_single_column",
+    "standalone_build"
+   ],
    "module": "cldwat2m_macro",
    "module_state": [],
    "note": null,
@@ -9801,7 +9825,7 @@
      "status": "observed"
     }
    },
-   "owner_class": null,
+   "owner_class": "freecam.physics.macrophysics.Macrophysics",
    "processes": [
     "cam_run1.cloud_macro_microphysics"
    ],
@@ -9817,10 +9841,12 @@
     "line_end": 1819,
     "line_start": 1405
    },
-   "status": null,
+   "status": "open",
    "subsystem": "macrophysics",
-   "tracked": false,
-   "tracked_stages": {}
+   "tracked": true,
+   "tracked_stages": {
+    "cam_run1.cloud_macro_microphysics": "open"
+   }
   },
   "cldwat2m_macro::instratus_core": {
    "adapter_hint": null,
@@ -70936,6 +70962,12 @@
      "status": "complete"
     },
     {
+     "id": "cldwat2m_macro::instratus_condensate",
+     "owner_class": "freecam.physics.macrophysics.Macrophysics",
+     "routine": "instratus_condensate",
+     "status": "open"
+    },
+    {
      "id": "micro_mg1_0::micro_mg_tend",
      "owner_class": "freecam.physics.microphysics.Microphysics",
      "routine": "micro_mg_tend",
@@ -71530,6 +71562,17 @@
    "within": null
   },
   {
+   "gates": [],
+   "historical_failures": [],
+   "kernel_routine": "instratus_condensate",
+   "mechanism": "hook",
+   "note": null,
+   "process": "cam_run1.cloud_macro_microphysics",
+   "requires_development_image": true,
+   "state": "not-verified",
+   "within": "mmacro_pcond"
+  },
+  {
    "gates": [
     {
      "bfb": true,
@@ -72104,7 +72147,7 @@
   "additional_apis": 262,
   "additional_apis_runnable": 0,
   "candidate_kernels": 601,
-  "in_model_replacement_available": 20,
+  "in_model_replacement_available": 21,
   "independently_callable_verified": 5,
   "kernels_by_category": {
    "control": 5,
@@ -72127,12 +72170,12 @@
   "standalone_replay_verified": 5,
   "tracked_by_status": {
    "complete": 5,
-   "open": 15
+   "open": 16
   },
-  "tracked_kernels": 20,
+  "tracked_kernels": 21,
   "unmapped_kernels": 6,
   "work_blocked": 0,
-  "work_in_progress": 1
+  "work_in_progress": 2
  },
  "unmapped_kernels": [
   "cam_diagnostics::diag_allocate",
@@ -72144,8 +72187,8 @@
  ],
  "volatile": {
   "branch": "physics-kernel-api-closure",
-  "commit": "dcaa86f0f29635ce2b3848968889e3d45d261bfc",
-  "generated_at": "2026-09-09T08:27:02+00:00"
+  "commit": "5c230833febce9a67a9ee3f309b422b5ae9d51f5",
+  "generated_at": "2026-09-09T22:53:34+00:00"
  },
  "work_items": [
   {
@@ -72172,6 +72215,21 @@
    "owner": "claude",
    "owner_class": "freecam.physics.microphysics.Microphysics",
    "stage": "capture_replay",
+   "started_at": "2026-09-09",
+   "state": "in_progress",
+   "target_processes": [
+    "cam_run1.cloud_macro_microphysics"
+   ],
+   "updated_at": "2026-09-09"
+  },
+  {
+   "branch": "physics-kernel-api-closure",
+   "kernel": "cldwat2m_macro::instratus_condensate",
+   "next_gate": "512-rank 50-step BFB with the original answered at the hook, plus capture",
+   "note": "The saturation-adjustment core inside mmacro_pcond, reached through a weaken-definition hook (hooks.yaml #3); the stage-7 runner runs on the fiber while it is replaced. Target of the few-free-variables surrogate: 3-phase water partition and two stratus fractions, the rest derived.",
+   "owner": "claude",
+   "owner_class": "freecam.physics.macrophysics.Macrophysics",
+   "stage": "adapter",
    "started_at": "2026-09-09",
    "state": "in_progress",
    "target_processes": [

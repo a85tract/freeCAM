@@ -13,7 +13,11 @@ REPO = Path(__file__).resolve().parents[2]
 
 def test_the_committed_hook_table_names_its_kernels_and_redirections() -> None:
     table = load_hooks(REPO / "native/pi_cam/hooks.yaml")
-    assert table.kernel_names == ("cldfrc_fice", "fluxbelowinv") and table.fiber_stack_bytes >= (64 << 20)
+    assert table.kernel_names == ("cldfrc_fice", "fluxbelowinv", "instratus_condensate")
+    assert table.fiber_stack_bytes >= (64 << 20)
+    core = table.hook("instratus_condensate")              # inside mmacro_pcond, same object: weakened
+    assert core.redirect == "weaken-definition" and core.id == 3
+    assert core.original_symbol == "cldwat2m_macro_mp_instratus_condensate_original_"
     fice = table.hook("cldfrc_fice")
     assert fice.callee_symbol == "cloud_fraction_mp_cldfrc_fice_" and fice.original_module == "cloud_fraction"
     assert [c.object for c in fice.callers] == ["zm_conv.o"]
@@ -58,8 +62,8 @@ class _Library:
     """What ctypes shows of an image with two hooks."""
 
     def __init__(self) -> None:
-        names = {1: b"cldfrc_fice", 2: b"fluxbelowinv"}
-        counts = {1: (200, 100), 2: (600, 0)}
+        names = {1: b"cldfrc_fice", 2: b"fluxbelowinv", 3: b"instratus_condensate"}
+        counts = {1: (200, 100), 2: (600, 0), 3: (18000, 18000)}
 
         def name(hook, buffer, length):
             if hook not in names:
@@ -73,7 +77,7 @@ class _Library:
             calls._obj.value, paused._obj.value = counts[hook]
             return 0
 
-        self.pycam_hooks_count_v1 = _Entry(lambda: 2)
+        self.pycam_hooks_count_v1 = _Entry(lambda: 3)
         self.pycam_hooks_name_v1 = _Entry(name)
         self.pycam_hooks_counts_v1 = _Entry(count)
 
@@ -82,4 +86,5 @@ def test_hook_counts_are_read_by_name() -> None:
     assert read_hook_counts(None) == {}
     assert read_hook_counts(object()) == {}                              # an image without hooks
     assert read_hook_counts(_Library()) == {"cldfrc_fice": {"calls": 200, "paused": 100},
-                                            "fluxbelowinv": {"calls": 600, "paused": 0}}
+                                            "fluxbelowinv": {"calls": 600, "paused": 0},
+                                            "instratus_condensate": {"calls": 18000, "paused": 18000}}

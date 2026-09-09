@@ -12,12 +12,13 @@ module pycam_hooks
   public :: pycam_hooks_arm_v1, pycam_hooks_counts_v1, pycam_hooks_paused_v1, pycam_hooks_frame_v1, &
             pycam_hooks_original_v1, pycam_hooks_reset_v1, pycam_hooks_count_v1, pycam_hooks_name_v1
 
-  integer, parameter :: nhooks = 2
+  integer, parameter :: nhooks = 3
   integer(c_int), parameter :: ev_needs_kernel = 1_c_int
-  integer, parameter :: max_slots = 10
+  integer, parameter :: max_slots = 29
   integer, parameter :: max_rank = 5
   character(len=*), parameter :: name_1 = 'cldfrc_fice'
   character(len=*), parameter :: name_2 = 'fluxbelowinv'
+  character(len=*), parameter :: name_3 = 'instratus_condensate'
 
   logical, save :: armed(nhooks) = .false.
   integer(c_int64_t), save :: calls(nhooks) = 0_c_int64_t
@@ -50,6 +51,38 @@ module pycam_hooks
       real(c_double), intent(in) :: xbotin
       real(c_double), intent(out) :: xflx(*)
     end subroutine fluxbelowinv_by_symbol
+    subroutine instratus_condensate_by_symbol(lchnk, ncol, k, p_in, t0_in, qv0_in, ql0_in, qi0_in, ni0_in, a_dc_in, ql_dc_in, qi_dc_in, a_sc_in, ql_sc_in, qi_sc_in, landfrac, snowh, rhmini_in, rhminl_in, rhminl_adj_land_in, rhminh_in, t_out, qv_out, ql_out, qi_out, al_st_out, ai_st_out, ql_st_out, qi_st_out) bind(C, name='cldwat2m_macro_mp_instratus_condensate_original_')
+      import :: c_double, c_int, c_int64_t
+      integer(c_int), intent(in) :: lchnk
+      integer(c_int), intent(in) :: ncol
+      integer(c_int), intent(in) :: k
+      real(c_double), intent(in) :: p_in(*)
+      real(c_double), intent(in) :: t0_in(*)
+      real(c_double), intent(in) :: qv0_in(*)
+      real(c_double), intent(in) :: ql0_in(*)
+      real(c_double), intent(in) :: qi0_in(*)
+      real(c_double), intent(in) :: ni0_in(*)
+      real(c_double), intent(in) :: a_dc_in(*)
+      real(c_double), intent(in) :: ql_dc_in(*)
+      real(c_double), intent(in) :: qi_dc_in(*)
+      real(c_double), intent(in) :: a_sc_in(*)
+      real(c_double), intent(in) :: ql_sc_in(*)
+      real(c_double), intent(in) :: qi_sc_in(*)
+      real(c_double), intent(in) :: landfrac(*)
+      real(c_double), intent(in) :: snowh(*)
+      real(c_double), intent(in) :: rhmini_in(*)
+      real(c_double), intent(in) :: rhminl_in(*)
+      real(c_double), intent(in) :: rhminl_adj_land_in(*)
+      real(c_double), intent(in) :: rhminh_in(*)
+      real(c_double), intent(out) :: t_out(*)
+      real(c_double), intent(out) :: qv_out(*)
+      real(c_double), intent(out) :: ql_out(*)
+      real(c_double), intent(out) :: qi_out(*)
+      real(c_double), intent(out) :: al_st_out(*)
+      real(c_double), intent(out) :: ai_st_out(*)
+      real(c_double), intent(out) :: ql_st_out(*)
+      real(c_double), intent(out) :: qi_st_out(*)
+    end subroutine instratus_condensate_by_symbol
   end interface
 
 contains
@@ -216,6 +249,264 @@ contains
     call fluxbelowinv_by_symbol(cbmf, ps0, mkx, kinv, dt, xsrc, xmean, xtopin, xbotin, xflx)
   end subroutine original_fluxbelowinv
 
+  subroutine hook_instratus_condensate(lchnk, ncol, k, p_in, t0_in, qv0_in, ql0_in, qi0_in, ni0_in, a_dc_in, ql_dc_in, qi_dc_in, a_sc_in, ql_sc_in, qi_sc_in, landfrac, snowh, rhmini_in, rhminl_in, rhminl_adj_land_in, rhminh_in, t_out, qv_out, ql_out, qi_out, al_st_out, ai_st_out, ql_st_out, qi_st_out) bind(C, name='cldwat2m_macro_mp_instratus_condensate_')
+    ! cldwat2m_macro::instratus_condensate, as its redirected callers call it; weaken-definition
+    integer(c_int), intent(in), target :: lchnk
+    integer(c_int), intent(in), target :: ncol
+    integer(c_int), intent(in), target :: k
+    real(c_double), intent(in), target :: p_in(*)
+    real(c_double), intent(in), target :: t0_in(*)
+    real(c_double), intent(in), target :: qv0_in(*)
+    real(c_double), intent(in), target :: ql0_in(*)
+    real(c_double), intent(in), target :: qi0_in(*)
+    real(c_double), intent(in), target :: ni0_in(*)
+    real(c_double), intent(in), target :: a_dc_in(*)
+    real(c_double), intent(in), target :: ql_dc_in(*)
+    real(c_double), intent(in), target :: qi_dc_in(*)
+    real(c_double), intent(in), target :: a_sc_in(*)
+    real(c_double), intent(in), target :: ql_sc_in(*)
+    real(c_double), intent(in), target :: qi_sc_in(*)
+    real(c_double), intent(in), target :: landfrac(*)
+    real(c_double), intent(in), target :: snowh(*)
+    real(c_double), intent(in), target :: rhmini_in(*)
+    real(c_double), intent(in), target :: rhminl_in(*)
+    real(c_double), intent(in), target :: rhminl_adj_land_in(*)
+    real(c_double), intent(in), target :: rhminh_in(*)
+    real(c_double), intent(out), target :: t_out(*)
+    real(c_double), intent(out), target :: qv_out(*)
+    real(c_double), intent(out), target :: ql_out(*)
+    real(c_double), intent(out), target :: qi_out(*)
+    real(c_double), intent(out), target :: al_st_out(*)
+    real(c_double), intent(out), target :: ai_st_out(*)
+    real(c_double), intent(out), target :: ql_st_out(*)
+    real(c_double), intent(out), target :: qi_st_out(*)
+    integer :: slot
+    calls(3) = calls(3) + 1_c_int64_t
+    if (.not. armed(3)) then
+      call original_instratus_condensate(lchnk, ncol, k, p_in, t0_in, qv0_in, ql0_in, qi0_in, ni0_in, a_dc_in, ql_dc_in, qi_dc_in, a_sc_in, ql_sc_in, qi_sc_in, landfrac, snowh, rhmini_in, rhminl_in, rhminl_adj_land_in, rhminh_in, t_out, qv_out, ql_out, qi_out, al_st_out, ai_st_out, ql_st_out, qi_st_out)
+      return
+    end if
+    if (pycam_fiber_running_v1() == 0_c_int) then
+      ! armed, yet not on the owning runner's fiber: the original answers, and the miss is counted
+      missed(3) = missed(3) + 1_c_int64_t
+      call original_instratus_condensate(lchnk, ncol, k, p_in, t0_in, qv0_in, ql0_in, qi0_in, ni0_in, a_dc_in, ql_dc_in, qi_dc_in, a_sc_in, ql_sc_in, qi_sc_in, landfrac, snowh, rhmini_in, rhminl_in, rhminl_adj_land_in, rhminh_in, t_out, qv_out, ql_out, qi_out, al_st_out, ai_st_out, ql_st_out, qi_st_out)
+      return
+    end if
+    paused(3) = paused(3) + 1_c_int64_t
+    slot = 0
+    frame_shapes = 0_c_int64_t
+    slot = slot + 1
+    frame_ptrs(slot) = c_loc(lchnk)
+    frame_ndims(slot) = 0_c_int
+    frame_dtypes(slot) = 2_c_int
+    frame_intents(slot) = 0_c_int
+    slot = slot + 1
+    frame_ptrs(slot) = c_loc(ncol)
+    frame_ndims(slot) = 0_c_int
+    frame_dtypes(slot) = 2_c_int
+    frame_intents(slot) = 0_c_int
+    slot = slot + 1
+    frame_ptrs(slot) = c_loc(k)
+    frame_ndims(slot) = 0_c_int
+    frame_dtypes(slot) = 2_c_int
+    frame_intents(slot) = 0_c_int
+    slot = slot + 1
+    frame_ptrs(slot) = c_loc(p_in(1))
+    frame_ndims(slot) = 1_c_int
+    frame_shapes(1:1, slot) = (/ int(16, c_int64_t) /)
+    frame_dtypes(slot) = 1_c_int
+    frame_intents(slot) = 0_c_int
+    slot = slot + 1
+    frame_ptrs(slot) = c_loc(t0_in(1))
+    frame_ndims(slot) = 1_c_int
+    frame_shapes(1:1, slot) = (/ int(16, c_int64_t) /)
+    frame_dtypes(slot) = 1_c_int
+    frame_intents(slot) = 0_c_int
+    slot = slot + 1
+    frame_ptrs(slot) = c_loc(qv0_in(1))
+    frame_ndims(slot) = 1_c_int
+    frame_shapes(1:1, slot) = (/ int(16, c_int64_t) /)
+    frame_dtypes(slot) = 1_c_int
+    frame_intents(slot) = 0_c_int
+    slot = slot + 1
+    frame_ptrs(slot) = c_loc(ql0_in(1))
+    frame_ndims(slot) = 1_c_int
+    frame_shapes(1:1, slot) = (/ int(16, c_int64_t) /)
+    frame_dtypes(slot) = 1_c_int
+    frame_intents(slot) = 0_c_int
+    slot = slot + 1
+    frame_ptrs(slot) = c_loc(qi0_in(1))
+    frame_ndims(slot) = 1_c_int
+    frame_shapes(1:1, slot) = (/ int(16, c_int64_t) /)
+    frame_dtypes(slot) = 1_c_int
+    frame_intents(slot) = 0_c_int
+    slot = slot + 1
+    frame_ptrs(slot) = c_loc(ni0_in(1))
+    frame_ndims(slot) = 1_c_int
+    frame_shapes(1:1, slot) = (/ int(16, c_int64_t) /)
+    frame_dtypes(slot) = 1_c_int
+    frame_intents(slot) = 0_c_int
+    slot = slot + 1
+    frame_ptrs(slot) = c_loc(a_dc_in(1))
+    frame_ndims(slot) = 1_c_int
+    frame_shapes(1:1, slot) = (/ int(16, c_int64_t) /)
+    frame_dtypes(slot) = 1_c_int
+    frame_intents(slot) = 0_c_int
+    slot = slot + 1
+    frame_ptrs(slot) = c_loc(ql_dc_in(1))
+    frame_ndims(slot) = 1_c_int
+    frame_shapes(1:1, slot) = (/ int(16, c_int64_t) /)
+    frame_dtypes(slot) = 1_c_int
+    frame_intents(slot) = 0_c_int
+    slot = slot + 1
+    frame_ptrs(slot) = c_loc(qi_dc_in(1))
+    frame_ndims(slot) = 1_c_int
+    frame_shapes(1:1, slot) = (/ int(16, c_int64_t) /)
+    frame_dtypes(slot) = 1_c_int
+    frame_intents(slot) = 0_c_int
+    slot = slot + 1
+    frame_ptrs(slot) = c_loc(a_sc_in(1))
+    frame_ndims(slot) = 1_c_int
+    frame_shapes(1:1, slot) = (/ int(16, c_int64_t) /)
+    frame_dtypes(slot) = 1_c_int
+    frame_intents(slot) = 0_c_int
+    slot = slot + 1
+    frame_ptrs(slot) = c_loc(ql_sc_in(1))
+    frame_ndims(slot) = 1_c_int
+    frame_shapes(1:1, slot) = (/ int(16, c_int64_t) /)
+    frame_dtypes(slot) = 1_c_int
+    frame_intents(slot) = 0_c_int
+    slot = slot + 1
+    frame_ptrs(slot) = c_loc(qi_sc_in(1))
+    frame_ndims(slot) = 1_c_int
+    frame_shapes(1:1, slot) = (/ int(16, c_int64_t) /)
+    frame_dtypes(slot) = 1_c_int
+    frame_intents(slot) = 0_c_int
+    slot = slot + 1
+    frame_ptrs(slot) = c_loc(landfrac(1))
+    frame_ndims(slot) = 1_c_int
+    frame_shapes(1:1, slot) = (/ int(16, c_int64_t) /)
+    frame_dtypes(slot) = 1_c_int
+    frame_intents(slot) = 0_c_int
+    slot = slot + 1
+    frame_ptrs(slot) = c_loc(snowh(1))
+    frame_ndims(slot) = 1_c_int
+    frame_shapes(1:1, slot) = (/ int(16, c_int64_t) /)
+    frame_dtypes(slot) = 1_c_int
+    frame_intents(slot) = 0_c_int
+    slot = slot + 1
+    frame_ptrs(slot) = c_loc(rhmini_in(1))
+    frame_ndims(slot) = 1_c_int
+    frame_shapes(1:1, slot) = (/ int(16, c_int64_t) /)
+    frame_dtypes(slot) = 1_c_int
+    frame_intents(slot) = 0_c_int
+    slot = slot + 1
+    frame_ptrs(slot) = c_loc(rhminl_in(1))
+    frame_ndims(slot) = 1_c_int
+    frame_shapes(1:1, slot) = (/ int(16, c_int64_t) /)
+    frame_dtypes(slot) = 1_c_int
+    frame_intents(slot) = 0_c_int
+    slot = slot + 1
+    frame_ptrs(slot) = c_loc(rhminl_adj_land_in(1))
+    frame_ndims(slot) = 1_c_int
+    frame_shapes(1:1, slot) = (/ int(16, c_int64_t) /)
+    frame_dtypes(slot) = 1_c_int
+    frame_intents(slot) = 0_c_int
+    slot = slot + 1
+    frame_ptrs(slot) = c_loc(rhminh_in(1))
+    frame_ndims(slot) = 1_c_int
+    frame_shapes(1:1, slot) = (/ int(16, c_int64_t) /)
+    frame_dtypes(slot) = 1_c_int
+    frame_intents(slot) = 0_c_int
+    slot = slot + 1
+    frame_ptrs(slot) = c_loc(t_out(1))
+    frame_ndims(slot) = 1_c_int
+    frame_shapes(1:1, slot) = (/ int(16, c_int64_t) /)
+    frame_dtypes(slot) = 1_c_int
+    frame_intents(slot) = 1_c_int
+    slot = slot + 1
+    frame_ptrs(slot) = c_loc(qv_out(1))
+    frame_ndims(slot) = 1_c_int
+    frame_shapes(1:1, slot) = (/ int(16, c_int64_t) /)
+    frame_dtypes(slot) = 1_c_int
+    frame_intents(slot) = 1_c_int
+    slot = slot + 1
+    frame_ptrs(slot) = c_loc(ql_out(1))
+    frame_ndims(slot) = 1_c_int
+    frame_shapes(1:1, slot) = (/ int(16, c_int64_t) /)
+    frame_dtypes(slot) = 1_c_int
+    frame_intents(slot) = 1_c_int
+    slot = slot + 1
+    frame_ptrs(slot) = c_loc(qi_out(1))
+    frame_ndims(slot) = 1_c_int
+    frame_shapes(1:1, slot) = (/ int(16, c_int64_t) /)
+    frame_dtypes(slot) = 1_c_int
+    frame_intents(slot) = 1_c_int
+    slot = slot + 1
+    frame_ptrs(slot) = c_loc(al_st_out(1))
+    frame_ndims(slot) = 1_c_int
+    frame_shapes(1:1, slot) = (/ int(16, c_int64_t) /)
+    frame_dtypes(slot) = 1_c_int
+    frame_intents(slot) = 1_c_int
+    slot = slot + 1
+    frame_ptrs(slot) = c_loc(ai_st_out(1))
+    frame_ndims(slot) = 1_c_int
+    frame_shapes(1:1, slot) = (/ int(16, c_int64_t) /)
+    frame_dtypes(slot) = 1_c_int
+    frame_intents(slot) = 1_c_int
+    slot = slot + 1
+    frame_ptrs(slot) = c_loc(ql_st_out(1))
+    frame_ndims(slot) = 1_c_int
+    frame_shapes(1:1, slot) = (/ int(16, c_int64_t) /)
+    frame_dtypes(slot) = 1_c_int
+    frame_intents(slot) = 1_c_int
+    slot = slot + 1
+    frame_ptrs(slot) = c_loc(qi_st_out(1))
+    frame_ndims(slot) = 1_c_int
+    frame_shapes(1:1, slot) = (/ int(16, c_int64_t) /)
+    frame_dtypes(slot) = 1_c_int
+    frame_intents(slot) = 1_c_int
+    frame_nslots = 29_c_int
+    frame_ncol = int(ncol, c_int)
+    paused_hook = 3
+    call pycam_fiber_yield_v1(ev_needs_kernel)
+    ! resumed: Python wrote the outputs (or ran the original on this frame); the call is done
+    paused_hook = 0
+  end subroutine hook_instratus_condensate
+
+  subroutine original_instratus_condensate(lchnk, ncol, k, p_in, t0_in, qv0_in, ql0_in, qi0_in, ni0_in, a_dc_in, ql_dc_in, qi_dc_in, a_sc_in, ql_sc_in, qi_sc_in, landfrac, snowh, rhmini_in, rhminl_in, rhminl_adj_land_in, rhminh_in, t_out, qv_out, ql_out, qi_out, al_st_out, ai_st_out, ql_st_out, qi_st_out)
+    integer(c_int), intent(in) :: lchnk
+    integer(c_int), intent(in) :: ncol
+    integer(c_int), intent(in) :: k
+    real(c_double), intent(in) :: p_in(*)
+    real(c_double), intent(in) :: t0_in(*)
+    real(c_double), intent(in) :: qv0_in(*)
+    real(c_double), intent(in) :: ql0_in(*)
+    real(c_double), intent(in) :: qi0_in(*)
+    real(c_double), intent(in) :: ni0_in(*)
+    real(c_double), intent(in) :: a_dc_in(*)
+    real(c_double), intent(in) :: ql_dc_in(*)
+    real(c_double), intent(in) :: qi_dc_in(*)
+    real(c_double), intent(in) :: a_sc_in(*)
+    real(c_double), intent(in) :: ql_sc_in(*)
+    real(c_double), intent(in) :: qi_sc_in(*)
+    real(c_double), intent(in) :: landfrac(*)
+    real(c_double), intent(in) :: snowh(*)
+    real(c_double), intent(in) :: rhmini_in(*)
+    real(c_double), intent(in) :: rhminl_in(*)
+    real(c_double), intent(in) :: rhminl_adj_land_in(*)
+    real(c_double), intent(in) :: rhminh_in(*)
+    real(c_double), intent(out) :: t_out(*)
+    real(c_double), intent(out) :: qv_out(*)
+    real(c_double), intent(out) :: ql_out(*)
+    real(c_double), intent(out) :: qi_out(*)
+    real(c_double), intent(out) :: al_st_out(*)
+    real(c_double), intent(out) :: ai_st_out(*)
+    real(c_double), intent(out) :: ql_st_out(*)
+    real(c_double), intent(out) :: qi_st_out(*)
+    call instratus_condensate_by_symbol(lchnk, ncol, k, p_in, t0_in, qv0_in, ql0_in, qi0_in, ni0_in, a_dc_in, ql_dc_in, qi_dc_in, a_sc_in, ql_sc_in, qi_sc_in, landfrac, snowh, rhmini_in, rhminl_in, rhminl_adj_land_in, rhminh_in, t_out, qv_out, ql_out, qi_out, al_st_out, ai_st_out, ql_st_out, qi_st_out)
+  end subroutine original_instratus_condensate
+
   ! ------------------------------------------------------------------ !
   ! The ABI the runners and Python drive
   ! ------------------------------------------------------------------ !
@@ -236,6 +527,8 @@ contains
       name = name_1
     case (2)
       name = name_2
+    case (3)
+      name = name_3
     end select
     do i = 1, min(int(length) - 1, len_trim(name))
       buffer(i) = name(i:i)
@@ -322,6 +615,32 @@ contains
     real(c_double), pointer :: s8_f
     real(c_double), pointer :: s9_f
     real(c_double), pointer :: p10_f1(:)
+    integer(c_int), pointer :: s2_i
+    real(c_double), pointer :: p4_f1(:)
+    real(c_double), pointer :: p5_f1(:)
+    real(c_double), pointer :: p6_f1(:)
+    real(c_double), pointer :: p7_f1(:)
+    real(c_double), pointer :: p8_f1(:)
+    real(c_double), pointer :: p9_f1(:)
+    real(c_double), pointer :: p11_f1(:)
+    real(c_double), pointer :: p12_f1(:)
+    real(c_double), pointer :: p13_f1(:)
+    real(c_double), pointer :: p14_f1(:)
+    real(c_double), pointer :: p15_f1(:)
+    real(c_double), pointer :: p16_f1(:)
+    real(c_double), pointer :: p17_f1(:)
+    real(c_double), pointer :: p18_f1(:)
+    real(c_double), pointer :: p19_f1(:)
+    real(c_double), pointer :: p20_f1(:)
+    real(c_double), pointer :: p21_f1(:)
+    real(c_double), pointer :: p22_f1(:)
+    real(c_double), pointer :: p23_f1(:)
+    real(c_double), pointer :: p24_f1(:)
+    real(c_double), pointer :: p25_f1(:)
+    real(c_double), pointer :: p26_f1(:)
+    real(c_double), pointer :: p27_f1(:)
+    real(c_double), pointer :: p28_f1(:)
+    real(c_double), pointer :: p29_f1(:)
     status = 1_c_int
     if (paused_hook == 0) return
     select case (paused_hook)
@@ -343,6 +662,37 @@ contains
       call c_f_pointer(frame_ptrs(9), s9_f)
       call c_f_pointer(frame_ptrs(10), p10_f1, (/ 31 /))
       call original_fluxbelowinv(s1_f, p2_f1, s3_i, s4_i, s5_f, s6_f, s7_f, s8_f, s9_f, p10_f1)
+    case (3)
+      call c_f_pointer(frame_ptrs(1), s1_i)
+      call c_f_pointer(frame_ptrs(2), s2_i)
+      call c_f_pointer(frame_ptrs(3), s3_i)
+      call c_f_pointer(frame_ptrs(4), p4_f1, (/ 16 /))
+      call c_f_pointer(frame_ptrs(5), p5_f1, (/ 16 /))
+      call c_f_pointer(frame_ptrs(6), p6_f1, (/ 16 /))
+      call c_f_pointer(frame_ptrs(7), p7_f1, (/ 16 /))
+      call c_f_pointer(frame_ptrs(8), p8_f1, (/ 16 /))
+      call c_f_pointer(frame_ptrs(9), p9_f1, (/ 16 /))
+      call c_f_pointer(frame_ptrs(10), p10_f1, (/ 16 /))
+      call c_f_pointer(frame_ptrs(11), p11_f1, (/ 16 /))
+      call c_f_pointer(frame_ptrs(12), p12_f1, (/ 16 /))
+      call c_f_pointer(frame_ptrs(13), p13_f1, (/ 16 /))
+      call c_f_pointer(frame_ptrs(14), p14_f1, (/ 16 /))
+      call c_f_pointer(frame_ptrs(15), p15_f1, (/ 16 /))
+      call c_f_pointer(frame_ptrs(16), p16_f1, (/ 16 /))
+      call c_f_pointer(frame_ptrs(17), p17_f1, (/ 16 /))
+      call c_f_pointer(frame_ptrs(18), p18_f1, (/ 16 /))
+      call c_f_pointer(frame_ptrs(19), p19_f1, (/ 16 /))
+      call c_f_pointer(frame_ptrs(20), p20_f1, (/ 16 /))
+      call c_f_pointer(frame_ptrs(21), p21_f1, (/ 16 /))
+      call c_f_pointer(frame_ptrs(22), p22_f1, (/ 16 /))
+      call c_f_pointer(frame_ptrs(23), p23_f1, (/ 16 /))
+      call c_f_pointer(frame_ptrs(24), p24_f1, (/ 16 /))
+      call c_f_pointer(frame_ptrs(25), p25_f1, (/ 16 /))
+      call c_f_pointer(frame_ptrs(26), p26_f1, (/ 16 /))
+      call c_f_pointer(frame_ptrs(27), p27_f1, (/ 16 /))
+      call c_f_pointer(frame_ptrs(28), p28_f1, (/ 16 /))
+      call c_f_pointer(frame_ptrs(29), p29_f1, (/ 16 /))
+      call original_instratus_condensate(s1_i, s2_i, s3_i, p4_f1, p5_f1, p6_f1, p7_f1, p8_f1, p9_f1, p10_f1, p11_f1, p12_f1, p13_f1, p14_f1, p15_f1, p16_f1, p17_f1, p18_f1, p19_f1, p20_f1, p21_f1, p22_f1, p23_f1, p24_f1, p25_f1, p26_f1, p27_f1, p28_f1, p29_f1)
     end select
     status = 0_c_int
   end function pycam_hooks_original_v1

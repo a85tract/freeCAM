@@ -290,7 +290,7 @@ class Macrophysics(NativeStage):
     UNSCRATCHED = ("cloud_fraction_fice",)
     FALLBACK_EXTENTS = FALLBACK_EXTENTS
     CAM_IN = ("landfrac", "ocnfrac", "snowhland", "ts", "sst")
-    SWAPPABLE = (FUNCTION, "cldfrc_fice")
+    SWAPPABLE = (FUNCTION, "cldfrc_fice", "instratus_condensate")
     PRIMARY = FUNCTION
     #: What the driver keeps that no kernel declares.
     EXTRA_SCRATCH = tuple(

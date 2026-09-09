@@ -51,6 +51,16 @@ runners:
     validated_by:
     - validation/pi_cam_pausable_cloud-fice_50step.json
     - validation/pi_cam_pausable_cloud-fice_vs_oracle_50step_bfb.json
+  # the saturation-adjustment core inside mmacro_pcond: a private procedure of
+  # cldwat2m_macro reached through a hook (native/pi_cam/hooks.yaml) that yields
+  # the stage's fiber; the frame is the function contract's argument list, one
+  # level of pcols columns.  It and mmacro_pcond cannot be replaced together,
+  # and this revision runs no runner-level pause alongside it; its gates are owed
+  - name: instratus_condensate
+    owner: freecam.physics.macrophysics.Macrophysics
+    contract: native/pi_cam/functions/instratus_condensate.yaml
+    within: mmacro_pcond
+    validated_by: []
 # The pausable runners (tools/generate_pi_cam_pausable_runners.py): one per
 # process, the original driver hoisted verbatim and cut at its kernel calls.
 # Their frames are described in native/pi_cam/segment_frames.yaml, and each
