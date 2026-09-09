@@ -80,13 +80,15 @@ def test_every_kernel_row_is_a_kernel_a_stage_class_describes_and_two_have_close
     assert rows["virtem"]["bindable"] and rows["virtem"]["validated_through_runner"]
     assert rows["virtem"]["status"] == "complete" and rows["virtem"]["missing"] == []
     # cldfrc_fice is tracked once per stage context: complete at the deep-convection
-    # hook, open again at the cloud stage's transcribed call site until its own gate
+    # hook, and complete at the cloud stage's transcribed call site through its own
+    # pause gate (7359461: every call answered at the pause, bit-for-bit)
     by_stage = {(k["kernel"], k["stage_action"]): k for k in record["kernels"]}
     assert len(by_stage) == len(record["kernels"])          # (kernel, stage) is the row's identity
     fice_deep = by_stage[("cldfrc_fice", "cam_run1.deep_convection")]
     fice_cloud = by_stage[("cldfrc_fice", "cam_run1.cloud_macro_microphysics")]
-    assert fice_cloud["status"] == "open" and "in_model_replacement_bfb" in fice_cloud["missing"]
-    assert not fice_cloud["validated_through_runner"]
+    assert fice_cloud["status"] == "complete" and fice_cloud["missing"] == []
+    assert fice_cloud["validated_through_runner"]
+    assert [g["record"] for g in fice_cloud["in_model_gates"]] == ["pi_cam_pausable_cloud-fice_50step.json"]
     # the hooked kernels: answered by the original at their hooks, bit-for-bit (7343708, 7343709)
     for row in (fice_deep, rows["fluxbelowinv"]):
         assert row["bindable"] and row["validated_through_runner"]
@@ -113,7 +115,7 @@ def test_every_kernel_row_is_a_kernel_a_stage_class_describes_and_two_have_close
     assert micro["validated_through_runner"]                    # gate 7331040
     assert "segment_runner" not in micro["missing"] and "in_model_replacement_bfb" not in micro["missing"]
     assert "capture" in micro["missing"]                        # no captured calls replayed through its image yet
-    assert record["summary"]["kernels_validated_through_runner"] == 20     # every exposed kernel; the hooked two through 7343708/9
+    assert record["summary"]["kernels_validated_through_runner"] == 21     # every exposed row; fice in both its contexts
     assert micro["in_model_gates"][0]["bfb"] is True          # the walk with the core through its image
     # the pause gates the manifest names are in-model evidence too (7331040, 7331041)
     assert [g["record"] for g in micro["in_model_gates"][1:]] == [
@@ -134,9 +136,9 @@ def test_every_kernel_row_is_a_kernel_a_stage_class_describes_and_two_have_close
         assert "reviewed_contract" not in rows[name]["missing"] and "segment_runner" not in rows[name]["missing"]
         assert "in_model_replacement_bfb" not in rows[name]["missing"]
         assert [g["record"] for g in rows[name]["in_model_gates"][1:]][-1] == "pi_cam_pausable_everything_50step.json"
-    # the P3-P5 kernels await capture and replay; cldfrc_fice is open again in
-    # the cloud stage's context while complete in deep convection's
-    assert record["summary"]["kernels_by_status"] == {"complete": 5, "open": 16}
+    # the P3-P5 kernels await capture and replay; cldfrc_fice is complete in
+    # both of its stage contexts
+    assert record["summary"]["kernels_by_status"] == {"complete": 6, "open": 15}
 
 
 def test_the_committed_record_is_what_the_builder_writes_now() -> None:

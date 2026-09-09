@@ -398,17 +398,18 @@ def test_the_inspected_records_produce_the_known_counts() -> None:
     # 20 distinct tracked kernels over 21 ledger rows: cldfrc_fice is tracked
     # once per stage context (deep convection and the cloud stage)
     assert totals["tracked_kernels"] == 20 and ledger["summary"]["kernels"] == 21
-    # per kernel a status is complete only when every stage context is, so the
-    # snapshot's counts differ from the ledger's per-row counts by exactly fice
-    assert totals["tracked_by_status"] == {"complete": 4, "open": 16}
-    assert ledger["summary"]["kernels_by_status"] == {"complete": 5, "open": 16}
+    # per kernel a status is complete only when every stage context is; fice
+    # closed both of its contexts, so the counts differ only by its shared row
+    assert totals["tracked_by_status"] == {"complete": 5, "open": 15}
+    assert ledger["summary"]["kernels_by_status"] == {"complete": 6, "open": 15}
     assert totals["unmapped_kernels"] == len(snapshot["unmapped_kernels"]) == 6
     assert totals["processes"] == ledger["summary"]["actions"] == 58
-    # five complete tracked records do not mean five kernels replaceable in every caller
+    # complete tracked records do not mean a kernel is replaceable in every caller:
+    # verification is listed per tested process (fice has passed a gate in both)
     fice = snapshot["kernels"]["cloud_fraction::cldfrc_fice"]
     assert len(fice["processes"]) > 1
     verified = fice["capabilities"]["original_replacement_bfb"]["contexts"]
-    assert verified == ["cam_run1.deep_convection"]
+    assert verified == ["cam_run1.cloud_macro_microphysics", "cam_run1.deep_convection"]
 
 
 def test_core_kernels_and_recursive_candidates_are_two_levels_in_the_real_records() -> None:

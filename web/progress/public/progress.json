@@ -2648,7 +2648,7 @@
   "use_gw_oro": true,
   "use_subcol_microp": false
  },
- "content_hash": "b93fcce2fa1736806c77be14f35d2e66795206f9ec7c82dc4b18b1779a8d0748",
+ "content_hash": "339813861e06ab3813ebc4c1003b2370bfe053be585164f774e37bf279f2a211",
  "evidence": {
   "pi_cam_cldfrc_fice_frame_replay.json": {
    "bfb": true,
@@ -3347,6 +3347,44 @@
    "pbs_job": null,
    "record": "pi_cam_pausable_chem-pause_vs_oracle_50step_bfb.json"
   },
+  "pi_cam_pausable_cloud-fice_50step.json": {
+   "advance_seconds": 44.42,
+   "cloud_macro_micro_python": true,
+   "execution_mode": "fine_grained",
+   "hooks": {
+    "cldfrc_fice": {
+     "calls": 53248,
+     "missed": 0,
+     "paused": 0,
+     "ranks_called": 512
+    },
+    "fluxbelowinv": {
+     "calls": 38152530,
+     "missed": 0,
+     "paused": 0,
+     "ranks_called": 512
+    }
+   },
+   "image": {
+    "build": "pi_cam_promoted_p11",
+    "role": "development",
+    "sha256": "092e37fb15cc986c2240f8e0327a850d073c07d998ce600520d3b3410f5114ca"
+   },
+   "kind": "run-summary",
+   "mpi_ranks": 512,
+   "pbs_job": "7359461",
+   "python_stages": [],
+   "radiation_python": false,
+   "record": "pi_cam_pausable_cloud-fice_50step.json",
+   "replacement_calls": {
+    "cloud_macro_microphysics": {
+     "cldfrc_fice": 100
+    }
+   },
+   "run_status": "passed",
+   "segmented_original_kernels": "cldfrc_fice",
+   "steps": 50
+  },
   "pi_cam_pausable_cloud-fice_50step_failure.json": {
    "diagnosis": "A generator defect, not a numerical failure: the module's advance machine paused at pc_at_fice and reported the pause, but pycam_stage7_frame_v1's pause guard still accepted only pc_at_pcond and pc_at_mg, so decoding the frame returned 'not paused'.  The resume and original_v1 guards already accepted the fice pause; only the frame guard was missed.  The single history file the aborted run had written compared bit-for-bit; the restart files were never written.",
    "image": {
@@ -3366,6 +3404,13 @@
    "segmented_original_kernels": "cldfrc_fice",
    "steps_completed": 0,
    "what": "A pausable gate that aborted at its first pause, kept as evidence: cldfrc_fice was to be answered by the original at the cloud stage's own transcribed call site, but the runner's frame entry refused the pause."
+  },
+  "pi_cam_pausable_cloud-fice_vs_oracle_50step_bfb.json": {
+   "bfb": true,
+   "compared_files": 4,
+   "kind": "bfb-comparison",
+   "pbs_job": null,
+   "record": "pi_cam_pausable_cloud-fice_vs_oracle_50step_bfb.json"
   },
   "pi_cam_pausable_dadadj-pause_50step.json": {
    "advance_seconds": 17.03,
@@ -4584,9 +4629,9 @@
  "inputs": {
   "native/pi_cam/hooks.yaml": "a7efa7d3a85e4ccf3afbeac436a682677c25c1c7d082b3c09f39e7463b863635",
   "native/pi_cam/kernel_classifications.yaml": "d6be2103c9bd0c86a0c8461a067d3b43eac6aa370e992fde9bf3096e55c8c5f4",
-  "native/pi_cam/kernel_work_items.yaml": "53d2561a55907deef539bf060d2a2881a3612a3c536744c8c299c8f1e406a61c",
-  "native/pi_cam/segment_runners.yaml": "96ac718a58a546a216b91165c93040ed56edec779599c18d1c5d2e3fb88b7377",
-  "validation/physics_kernel_decoupling.json": "a5f3851b6a04873ceb2fc4a48d436d0e79f351b786a00e4b760f9f69254bacf0",
+  "native/pi_cam/kernel_work_items.yaml": "9c18717ccb0d93bd827d1206b7c9997ed5e273916af58beaee073e445992e96c",
+  "native/pi_cam/segment_runners.yaml": "4e95aa4c2efc6bdd730c8241d24a068a9125c19f6a7215c15f88637959e77cfa",
+  "validation/physics_kernel_decoupling.json": "a32bac2d77dc4ca58b54a24bf98e2ae7267563f03b634984336bdc71021ba730",
   "validation/pi_cam_kernel_api_closure.json": "96025214b3e4c41f6ba89c266da5dd27c51c42c81c31e1a0ac6f7b2e9cfa260a",
   "validation/pi_cam_kernel_api_redirectable_calls.json": "9ac016f0d242ceef054aa8a80ef074aa53b08c1f0f3042a81e76da4c75603273",
   "validation/pi_cam_kernel_runtime_coverage_1month.json": "48f77d6ec78b4026806d4ab6fb9517ef31c1d526481b4ad68e55f77af0d303bd",
@@ -10508,6 +10553,7 @@
     },
     "original_replacement_bfb": {
      "contexts": [
+      "cam_run1.cloud_macro_microphysics",
       "cam_run1.deep_convection"
      ],
      "state": "verified"
@@ -10523,19 +10569,7 @@
    "category": "replaceable_numeric",
    "classification_basis": "ice/liquid phase partition of cloud water (validated hook)",
    "development": {
-    "blocker": null,
-    "branch": "physics-kernel-api-closure",
-    "next_gate": "512-rank 50-step BFB",
-    "note": "Promote the validated hook into the process kernel registry.",
-    "owner": "claude",
-    "owner_class": "freecam.physics.macrophysics.Macrophysics",
-    "stage": "in_model_replacement",
-    "started_at": "2026-09-09",
-    "state": "in_progress",
-    "target_processes": [
-     "cam_run1.cloud_macro_microphysics"
-    ],
-    "updated_at": "2026-09-09"
+    "state": "unclaimed"
    },
    "failures": [
     "pi_cam_pausable_cloud-fice_50step_failure.json",
@@ -10545,14 +10579,12 @@
    "host": null,
    "id": "cloud_fraction::cldfrc_fice",
    "kind": "subroutine",
-   "missing": [
-    "in_model_replacement_bfb"
-   ],
+   "missing": [],
    "module": "cloud_fraction",
    "module_state": [
     "pi_cam_cldfrc_fice_module_state.json"
    ],
-   "note": "The first attempt, a pause inside a hoisted copy of zm_conv_evap, was not bit-for-bit (gate 7343258, validation/pi_cam_pausable_fice-pause_50step_failure.json): a recompiled copy of a numerical routine does not reproduce the oracle object's rounding. The hook leaves zm_conv.o's machine code untouched. Its first gate (7343594, validation/pi_cam_pausable_fice-hook_50step_failure.json) failed on a duplicate global symbol shared by two runners' fiber bodies; renamed, the gate is bit-for-bit.",
+   "note": null,
    "observation": {
     "1month": {
      "calls_by_context": {
@@ -10581,7 +10613,7 @@
      "status": "observed"
     }
    },
-   "owner_class": "freecam.physics.pausable.DeepConvection",
+   "owner_class": "freecam.physics.macrophysics.Macrophysics",
    "processes": [
     "cam_run1.cloud_macro_microphysics",
     "cam_run1.deep_convection"
@@ -10598,11 +10630,11 @@
     "line_end": 825,
     "line_start": 754
    },
-   "status": "open",
+   "status": "complete",
    "subsystem": "macrophysics",
    "tracked": true,
    "tracked_stages": {
-    "cam_run1.cloud_macro_microphysics": "open",
+    "cam_run1.cloud_macro_microphysics": "complete",
     "cam_run1.deep_convection": "complete"
    }
   },
@@ -70901,7 +70933,7 @@
      "id": "cloud_fraction::cldfrc_fice",
      "owner_class": "freecam.physics.macrophysics.Macrophysics",
      "routine": "cldfrc_fice",
-     "status": "open"
+     "status": "complete"
     },
     {
      "id": "micro_mg1_0::micro_mg_tend",
@@ -71478,7 +71510,14 @@
    "within": null
   },
   {
-   "gates": [],
+   "gates": [
+    {
+     "bfb": true,
+     "bfb_record": "pi_cam_pausable_cloud-fice_vs_oracle_50step_bfb.json",
+     "record": "pi_cam_pausable_cloud-fice_50step.json",
+     "replacement_calls": 100
+    }
+   ],
    "historical_failures": [
     "pi_cam_pausable_cloud-fice_50step_failure.json"
    ],
@@ -71487,7 +71526,7 @@
    "note": null,
    "process": "cam_run1.cloud_macro_microphysics",
    "requires_development_image": false,
-   "state": "failed",
+   "state": "verified",
    "within": null
   },
   {
@@ -72087,13 +72126,13 @@
   "redirectable_calls": 428,
   "standalone_replay_verified": 5,
   "tracked_by_status": {
-   "complete": 4,
-   "open": 16
+   "complete": 5,
+   "open": 15
   },
   "tracked_kernels": 20,
   "unmapped_kernels": 6,
   "work_blocked": 0,
-  "work_in_progress": 2
+  "work_in_progress": 1
  },
  "unmapped_kernels": [
   "cam_diagnostics::diag_allocate",
@@ -72105,12 +72144,13 @@
  ],
  "volatile": {
   "branch": "physics-kernel-api-closure",
-  "commit": "ddd50b0aed8ba5618b6ae4d963b7ca7ab1ee83d5",
-  "generated_at": "2026-09-09T08:03:07+00:00"
+  "commit": "dcaa86f0f29635ce2b3848968889e3d45d261bfc",
+  "generated_at": "2026-09-09T08:27:02+00:00"
  },
  "work_items": [
   {
    "branch": "physics-kernel-api-closure",
+   "closed_at": "2026-09-09",
    "kernel": "cloud_fraction::cldfrc_fice",
    "next_gate": "512-rank 50-step BFB",
    "note": "Promote the validated hook into the process kernel registry.",
@@ -72118,7 +72158,7 @@
    "owner_class": "freecam.physics.macrophysics.Macrophysics",
    "stage": "in_model_replacement",
    "started_at": "2026-09-09",
-   "state": "in_progress",
+   "state": "closed",
    "target_processes": [
     "cam_run1.cloud_macro_microphysics"
    ],

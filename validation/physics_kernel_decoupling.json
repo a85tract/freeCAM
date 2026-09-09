@@ -44,11 +44,11 @@
     },
     "kernels": 21,
     "kernels_by_status": {
-      "complete": 5,
-      "open": 16
+      "complete": 6,
+      "open": 15
     },
     "kernels_bindable": 21,
-    "kernels_validated_through_runner": 20,
+    "kernels_validated_through_runner": 21,
     "catalog_procedures": 371
   },
   "closure": {
@@ -4871,7 +4871,7 @@
       "contract": "reviewed",
       "contract_path": "native/pi_cam/functions/cldfrc_fice.yaml",
       "bindable": true,
-      "validated_through_runner": false,
+      "validated_through_runner": true,
       "evidence": {
         "capture": [
           "pi_cam_pausable_fice-capture_50step.json"
@@ -4892,11 +4892,18 @@
           "pi_cam_cldfrc_fice_module_state.json"
         ]
       },
-      "in_model_gates": [],
-      "status": "open",
-      "missing": [
-        "in_model_replacement_bfb"
+      "in_model_gates": [
+        {
+          "path": "segmented, original kernel answered through the pause",
+          "record": "pi_cam_pausable_cloud-fice_50step.json",
+          "bfb_record": "pi_cam_pausable_cloud-fice_vs_oracle_50step_bfb.json",
+          "present": true,
+          "bfb": true,
+          "compared_files": 4
+        }
       ],
+      "status": "complete",
+      "missing": [],
       "note": null
     },
     {
@@ -5976,10 +5983,6 @@
   ],
   "unresolved": [
     {
-      "what": "cldfrc_fice: in_model_replacement_bfb",
-      "why": "no record in validation/ for this step of the loop"
-    },
-    {
       "what": "micro_mg_tend: capture",
       "why": "no record in validation/ for this step of the loop"
     },
@@ -6276,5 +6279,5 @@
       "why": "no record in validation/ for this step of the loop"
     }
   ],
-  "coverage_hash": "19628d990a4c3657311a14f253a1eccc2a3bded8b7a4e6b88996ffe2637e8209"
+  "coverage_hash": "f9aaa0da9cac143cae8f6ab0484924bd5d11464806c248840b4d471cc8f6462a"
 }

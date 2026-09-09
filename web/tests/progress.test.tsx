@@ -496,6 +496,7 @@ describe("the committed snapshot", () => {
   it("scopes a shared kernel's replacement verification to the tested process", () => {
     const fice = snapshot.kernels["cloud_fraction::cldfrc_fice"];
     expect(fice.processes.length).toBeGreaterThan(1);
-    expect(fice.capabilities.original_replacement_bfb.contexts).toEqual(["cam_run1.deep_convection"]);
+    expect(fice.capabilities.original_replacement_bfb.contexts).toEqual(
+      ["cam_run1.cloud_macro_microphysics", "cam_run1.deep_convection"]);
   });
 });
