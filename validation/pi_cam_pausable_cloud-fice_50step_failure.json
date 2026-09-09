@@ -13,6 +13,7 @@
   "steps_completed": 0,
   "error": "NativeCAMError: pycam_stage7 runner has no frame (2): stage 7 is not paused; there is no frame",
   "bfb_record": "pi_cam_pausable_cloud-fice_vs_oracle_50step_bfb.json",
+  "bfb_record_note": "The resubmitted gate reuses this run tag, so that file holds the latest run's comparison; this record's own fields keep the aborted run's outcome (one history file compared bit-for-bit, restart files never written).",
   "diagnosis": "A generator defect, not a numerical failure: the module's advance machine paused at pc_at_fice and reported the pause, but pycam_stage7_frame_v1's pause guard still accepted only pc_at_pcond and pc_at_mg, so decoding the frame returned 'not paused'.  The resume and original_v1 guards already accepted the fice pause; only the frame guard was missed.  The single history file the aborted run had written compared bit-for-bit; the restart files were never written.",
   "disposition": "The generator's frame guard now accepts pc_at_fice (one line in the emitted module); rebuild the image and resubmit the gate."
 }
