@@ -20,6 +20,23 @@
   {
    "bindable": true,
    "evidence": [
+    "validation/pi_cam_pausable_fice-hook_50step.json",
+    "validation/pi_cam_pausable_fice-hook_vs_oracle_50step_bfb.json",
+    "validation/pi_cam_pausable_fice-capture_50step.json",
+    "validation/pi_cam_pausable_fice-capture_vs_oracle_50step_bfb.json",
+    "validation/pi_cam_pausable_hooks-everything_50step.json",
+    "validation/pi_cam_pausable_hooks-everything_vs_oracle_50step_bfb.json"
+   ],
+   "kernel": "cldfrc_fice",
+   "owner_class": "freecam.physics.macrophysics.Macrophysics",
+   "reason": null,
+   "stage_action": "cam_run1.cloud_macro_microphysics",
+   "stage_class": "freecam.physics.cloud_macro_microphysics.CloudMacroMicrophysics",
+   "validated": true
+  },
+  {
+   "bindable": true,
+   "evidence": [
     "validation/pi_cam_stage7_segmented_micro_50step.json",
     "validation/pi_cam_stage7_segmented_micro_vs_oracle_50step_bfb.json",
     "validation/pi_cam_stage7_segmented_both_50step.json",
@@ -351,11 +368,11 @@
   "PI-atm-online": "configs/pi_cam_icesm131_online.yaml",
   "PI-atm-replay": "configs/pi_cam_icesm131_replay.yaml"
  },
- "catalog_hash": "4747f2fd6c45a2cb38c2e3e480749a95e86d06beb30667aa3d1da77b5cb239dd",
- "commit": "dd59c9ba94a997c6f0db08d73132f9fdba9f0d22",
+ "catalog_hash": "32f96cc2660163338e56ea14763a37bda7bd9390631175841e02e64eb283f28e",
+ "commit": "f5045bc32c017787a1f3c82c8af841e432951eea",
  "default_document": {
   "case": "PI-atm",
-  "catalog_version": "4747f2fd6c45a2cb38c2e3e480749a95e86d06beb30667aa3d1da77b5cb239dd",
+  "catalog_version": "32f96cc2660163338e56ea14763a37bda7bd9390631175841e02e64eb283f28e",
   "experimental": false,
   "namelist": {},
   "nodes": [
@@ -2046,6 +2063,10 @@
    {
     "configuration": {
      "kernels": {
+      "cldfrc_fice": {
+       "kind": "original",
+       "path": null
+      },
       "micro_mg_tend": {
        "kind": "original",
        "path": null
@@ -2081,6 +2102,23 @@
         "validation/pi_cam_pausable_everything_vs_oracle_50step_bfb.json"
        ],
        "kernel": "mmacro_pcond",
+       "owner_class": "freecam.physics.macrophysics.Macrophysics",
+       "reason": null,
+       "stage_action": "cam_run1.cloud_macro_microphysics",
+       "stage_class": "freecam.physics.cloud_macro_microphysics.CloudMacroMicrophysics",
+       "validated": true
+      },
+      {
+       "bindable": true,
+       "evidence": [
+        "validation/pi_cam_pausable_fice-hook_50step.json",
+        "validation/pi_cam_pausable_fice-hook_vs_oracle_50step_bfb.json",
+        "validation/pi_cam_pausable_fice-capture_50step.json",
+        "validation/pi_cam_pausable_fice-capture_vs_oracle_50step_bfb.json",
+        "validation/pi_cam_pausable_hooks-everything_50step.json",
+        "validation/pi_cam_pausable_hooks-everything_vs_oracle_50step_bfb.json"
+       ],
+       "kernel": "cldfrc_fice",
        "owner_class": "freecam.physics.macrophysics.Macrophysics",
        "reason": null,
        "stage_action": "cam_run1.cloud_macro_microphysics",
@@ -4546,6 +4584,10 @@
   {
    "configuration": {
     "kernels": {
+     "cldfrc_fice": {
+      "kind": "original",
+      "path": null
+     },
      "micro_mg_tend": {
       "kind": "original",
       "path": null
@@ -4581,6 +4623,23 @@
        "validation/pi_cam_pausable_everything_vs_oracle_50step_bfb.json"
       ],
       "kernel": "mmacro_pcond",
+      "owner_class": "freecam.physics.macrophysics.Macrophysics",
+      "reason": null,
+      "stage_action": "cam_run1.cloud_macro_microphysics",
+      "stage_class": "freecam.physics.cloud_macro_microphysics.CloudMacroMicrophysics",
+      "validated": true
+     },
+     {
+      "bindable": true,
+      "evidence": [
+       "validation/pi_cam_pausable_fice-hook_50step.json",
+       "validation/pi_cam_pausable_fice-hook_vs_oracle_50step_bfb.json",
+       "validation/pi_cam_pausable_fice-capture_50step.json",
+       "validation/pi_cam_pausable_fice-capture_vs_oracle_50step_bfb.json",
+       "validation/pi_cam_pausable_hooks-everything_50step.json",
+       "validation/pi_cam_pausable_hooks-everything_vs_oracle_50step_bfb.json"
+      ],
+      "kernel": "cldfrc_fice",
       "owner_class": "freecam.physics.macrophysics.Macrophysics",
       "reason": null,
       "stage_action": "cam_run1.cloud_macro_microphysics",
@@ -7276,6 +7335,10 @@
    "category": "Physics",
    "configuration": {
     "kernels": {
+     "cldfrc_fice": {
+      "kind": "original",
+      "path": null
+     },
      "micro_mg_tend": {
       "kind": "original",
       "path": null
@@ -7313,6 +7376,23 @@
        "validation/pi_cam_pausable_everything_vs_oracle_50step_bfb.json"
       ],
       "kernel": "mmacro_pcond",
+      "owner_class": "freecam.physics.macrophysics.Macrophysics",
+      "reason": null,
+      "stage_action": "cam_run1.cloud_macro_microphysics",
+      "stage_class": "freecam.physics.cloud_macro_microphysics.CloudMacroMicrophysics",
+      "validated": true
+     },
+     {
+      "bindable": true,
+      "evidence": [
+       "validation/pi_cam_pausable_fice-hook_50step.json",
+       "validation/pi_cam_pausable_fice-hook_vs_oracle_50step_bfb.json",
+       "validation/pi_cam_pausable_fice-capture_50step.json",
+       "validation/pi_cam_pausable_fice-capture_vs_oracle_50step_bfb.json",
+       "validation/pi_cam_pausable_hooks-everything_50step.json",
+       "validation/pi_cam_pausable_hooks-everything_vs_oracle_50step_bfb.json"
+      ],
+      "kernel": "cldfrc_fice",
       "owner_class": "freecam.physics.macrophysics.Macrophysics",
       "reason": null,
       "stage_action": "cam_run1.cloud_macro_microphysics",
@@ -19828,7 +19908,7 @@
    "writes": []
   }
  ],
- "generated_at": "2026-09-08T06:38:17+00:00",
+ "generated_at": "2026-09-09T07:31:32+00:00",
  "parameters": {
   "cam_run1.cloud_macro_microphysics": [
    {

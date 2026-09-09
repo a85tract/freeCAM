@@ -66,9 +66,11 @@ module pycam_stage7_runner
   integer(c_int), parameter :: ev_done = 0_c_int, ev_needs_kernel = 1_c_int, ev_error = 2_c_int
   integer, parameter :: pc_idle = 0, pc_chunk_begin = 1, pc_substep = 2, pc_at_pcond = 3, &
                         pc_after_pcond = 4, pc_chunk_end = 5, pc_micro_substep = 6, &
-                        pc_at_mg = 7, pc_after_mg = 8, pc_micro_post = 9
-  integer(c_int), parameter :: kernel_mmacro_pcond = 1_c_int, kernel_micro_mg_tend = 2_c_int
-  integer, parameter :: nkernels = 2
+                        pc_at_mg = 7, pc_after_mg = 8, pc_micro_post = 9, &
+                        pc_at_fice = 10, pc_after_fice = 11
+  integer(c_int), parameter :: kernel_mmacro_pcond = 1_c_int, kernel_micro_mg_tend = 2_c_int, &
+                               kernel_cldfrc_fice = 3_c_int
+  integer, parameter :: nkernels = 3
   integer, parameter :: frame_slots = 115
   integer, parameter :: context_id = 1
 
@@ -77,7 +79,7 @@ module pycam_stage7_runner
   integer, save :: pc = pc_idle
   integer, save :: lchnk = 0, macmic_it = 0, ncol = 0, nstep = 0, micro_it = 0
   integer(c_int), save :: token = 0_c_int, call_index = 0_c_int
-  logical, save :: replace_pcond = .false., replace_mg = .false.
+  logical, save :: replace_pcond = .false., replace_mg = .false., replace_fice = .false.
   character(len=256), save :: last_error = ' '
 
   ! the configuration this transcription is admitted for, read once
@@ -284,6 +286,7 @@ contains
     end if
     replace_pcond = mask(kernel_mmacro_pcond) /= 0_c_int
     replace_mg = mask(kernel_micro_mg_tend) /= 0_c_int
+    replace_fice = mask(kernel_cldfrc_fice) /= 0_c_int
     ! tphysbc's per-call values
     ztodt = get_step_size()
     nstep = get_nstep()
@@ -304,7 +307,7 @@ contains
     if (.not. created .or. context /= context_id) then
       last_error = 'no stage 7 context'; return
     end if
-    if (pc /= pc_at_pcond .and. pc /= pc_at_mg) then
+    if (pc /= pc_at_pcond .and. pc /= pc_at_mg .and. pc /= pc_at_fice) then
       last_error = 'stage 7 is not paused'; status = 2_c_int; return
     end if
     if (pc == pc_at_pcond .and. kernel /= kernel_mmacro_pcond) then
@@ -313,12 +316,17 @@ contains
     if (pc == pc_at_mg .and. kernel /= kernel_micro_mg_tend) then
       last_error = 'stage 7 is paused on micro_mg_tend, not on the kernel resumed'; status = 3_c_int; return
     end if
+    if (pc == pc_at_fice .and. kernel /= kernel_cldfrc_fice) then
+      last_error = 'stage 7 is paused on cldfrc_fice, not on the kernel resumed'; status = 3_c_int; return
+    end if
     if (token_in /= token) then
       last_error = 'stale resume: the frame token does not match the pause'; status = 4_c_int; return
     end if
     token = token + 1_c_int
     if (pc == pc_at_pcond) then
       pc = pc_after_pcond
+    else if (pc == pc_at_fice) then
+      pc = pc_after_fice
     else
       pc = pc_after_mg
     end if
@@ -356,6 +364,22 @@ contains
       index_out = call_index
       lchnk_out = int(lchnk, c_int)
       substep_out = int((macmic_it - 1) * micro_num_steps() + micro_it, c_int)
+      token_out = token
+      status = 0_c_int
+      return
+    end if
+    if (pc == pc_at_fice) then
+      ! cldfrc_fice's four arguments, in the call's order (the contract's names)
+      frame_ncol = int(ncol, c_int32_t)
+      call scalar_slot(1, c_loc(frame_ncol), 2, 0, ptrs, ndims, shapes, dtypes, intents)
+      call slot2(2, state_loc%t, 1, 0, ptrs, ndims, shapes, dtypes, intents)
+      call slot2(3, fice, 1, 1, ptrs, ndims, shapes, dtypes, intents)
+      call slot2(4, fsnow, 1, 1, ptrs, ndims, shapes, dtypes, intents)
+      kernel = kernel_cldfrc_fice
+      index_out = call_index
+      lchnk_out = int(lchnk, c_int)
+      ncol_out = int(ncol, c_int)
+      substep_out = int(macmic_it, c_int)
       token_out = token
       status = 0_c_int
       return
@@ -433,6 +457,27 @@ contains
     status = 0_c_int
   end function pycam_stage7_frame_v1
 
+  integer(c_int) function pycam_stage7_original_v1(context, kernel) &
+       bind(C, name='pycam_stage7_original_v1') result(status)
+    ! Run the original call on the paused frame: the validation gate's
+    ! replacement, exercising the pause, the frame and the resume.
+    integer(c_int), value, intent(in) :: context, kernel
+    status = 1_c_int
+    if (.not. created .or. context /= context_id) then
+      last_error = 'no stage 7 context'; return
+    end if
+    if (pc == pc_at_fice .and. kernel == kernel_cldfrc_fice) then
+      call original_fice()
+    else if (pc == pc_at_pcond .and. kernel == kernel_mmacro_pcond) then
+      call original_pcond()
+    else if (pc == pc_at_mg .and. kernel == kernel_micro_mg_tend) then
+      call micro_core()
+    else
+      last_error = 'stage 7 is not paused on the kernel asked for'; status = 2_c_int; return
+    end if
+    status = 0_c_int
+  end function pycam_stage7_original_v1
+
   integer(c_int) function pycam_stage7_error_v1(context, buffer, length) &
        bind(C, name='pycam_stage7_error_v1') result(status)
     integer(c_int), value, intent(in) :: context, length
@@ -490,7 +535,22 @@ contains
           pc = pc_chunk_end
           cycle
         end if
-        call macro_before_pcond()
+        call macro_before_fice()
+        if (replace_fice) then
+          token = token + 1_c_int
+          pc = pc_at_fice
+          event = ev_needs_kernel
+          return
+        end if
+        call original_fice()
+        pc = pc_after_fice
+      case (pc_at_fice)
+        last_error = 'stage 7 is paused; only resume continues it'
+        event = ev_error
+        return
+      case (pc_after_fice)
+        call_index = call_index + 1_c_int
+        call macro_between_fice_and_pcond()
         if (replace_pcond) then
           token = token + 1_c_int
           pc = pc_at_pcond
@@ -599,7 +659,7 @@ contains
     snow_pcw_macmic = 0._r8
   end subroutine chunk_begin
 
-  subroutine macro_before_pcond()
+  subroutine macro_before_fice()
     ! macrop_driver.F90:374-1050: macrop_driver_tend from its top to the
     ! mmacro_pcond call, with tphysbc's macrop_tend timer around it as the
     ! glue has it (physpkg.F90:2239).  micro_do_icesupersat is false here
@@ -785,7 +845,14 @@ contains
     lchnk  = state_loc%lchnk
     ncol   = state_loc%ncol
     rdtime = 1._r8/cld_macmic_ztodt
+  end subroutine macro_before_fice
+
+  subroutine original_fice()
+    ! the original call, macrop_driver.F90, verbatim
     call cldfrc_fice( ncol, state_loc%t, fice, fsnow )
+  end subroutine original_fice
+
+  subroutine macro_between_fice_and_pcond()
     lq(:)        = .FALSE.
     lq(1)        = .true.
     lq(ixcldice) = .true.
@@ -849,7 +916,7 @@ contains
     qi_inout(:ncol,top_lev:pver) = iccwat(:ncol,top_lev:pver)
     nl_inout(:ncol,top_lev:pver) =  nlwat(:ncol,top_lev:pver)
     ni_inout(:ncol,top_lev:pver) =  niwat(:ncol,top_lev:pver)
-  end subroutine macro_before_pcond
+  end subroutine macro_between_fice_and_pcond
 
   subroutine original_pcond()
     ! macrop_driver.F90:1028-1037: the call itself, the original routine on

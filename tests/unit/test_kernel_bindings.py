@@ -32,7 +32,7 @@ def test_the_manifest_declares_the_stage_7_runner_and_the_module_exports_its_ent
     specs = runners.load_manifest()
     assert [spec.stage for spec in specs][0] == "cam_run1.cloud_macro_microphysics"
     spec = specs[0]
-    assert spec.kernel_names == ("mmacro_pcond", "micro_mg_tend")
+    assert spec.kernel_names == ("mmacro_pcond", "micro_mg_tend", "cldfrc_fice")
     assert spec.kernel_id("mmacro_pcond") == 1 and spec.kernel_id("micro_mg_tend") == 2
     module = (REPO / spec.module).read_text()
     exported = set(re.findall(r"bind\(C,\s*name='([^']+)'\)", module))
@@ -41,18 +41,26 @@ def test_the_manifest_declares_the_stage_7_runner_and_the_module_exports_its_ent
     assert spec.kernel("mmacro_pcond").validated          # every gate record named is in the checkout
     assert spec.kernel("micro_mg_tend").validated         # gate 7331040: the pause, bit-for-bit
     assert spec.kernel("micro_mg_tend").contract == "native/pi_cam/functions/micro_mg_tend.yaml"
-    assert runners.runner_kernels()["cam_run1.cloud_macro_microphysics"] == ("mmacro_pcond", "micro_mg_tend")
-    assert runners.bindable_kernels()[:2] == ("mmacro_pcond", "micro_mg_tend")
-    assert runners.KERNELS == ("mmacro_pcond", "micro_mg_tend") and runners.ENTRIES[0] == "pycam_stage7_create_v1"
+    assert runners.runner_kernels()["cam_run1.cloud_macro_microphysics"] == ("mmacro_pcond", "micro_mg_tend", "cldfrc_fice")
+    assert runners.bindable_kernels()[:3] == ("mmacro_pcond", "micro_mg_tend", "cldfrc_fice")
+    assert runners.KERNELS == ("mmacro_pcond", "micro_mg_tend", "cldfrc_fice") and runners.ENTRIES[0] == "pycam_stage7_create_v1"
     radiation = runners.runner_spec("cam_run1.radiation")          # the P2 runner covers the driver call
     assert radiation is not None and radiation.kernel_names == ("rad_rrtmg_sw", "rad_rrtmg_lw") and radiation.original
 
 
 def test_the_manifest_refuses_a_kernel_two_runners_claim_and_a_runner_that_pauses_nowhere(tmp_path) -> None:
     text = (REPO / "native/pi_cam/segment_runners.yaml").read_text()
+    # one pause per kernel per runner; the same kernel in two runners is legal,
+    # because a replacement is scoped to its stage (cldfrc_fice pauses in both
+    # the deep-convection hook and the cloud stage's transcription)
+    shared = {spec.stage for spec in runners.load_manifest() for k in spec.kernels if k.name == "cldfrc_fice"}
+    assert shared == {"cam_run1.deep_convection", "cam_run1.cloud_macro_microphysics"}
     twice = tmp_path / "twice.yaml"
-    twice.write_text(text + text[text.index("- stage:"):].replace("cam_run1.cloud_macro_microphysics", "cam_run1.other"))
-    with pytest.raises(Exception, match="claimed by two runners"):
+    head = text[: text.index("- stage:")]
+    block = text[text.index("- stage:"): text.index("# The pausable runners")]
+    duplicated_kernel = block.replace("- name: micro_mg_tend", "- name: mmacro_pcond", 1)
+    twice.write_text(head + duplicated_kernel)
+    with pytest.raises(Exception, match="appears twice"):
         runners.load_manifest(twice)
     none = tmp_path / "none.yaml"
     none.write_text(text[:text.index("  kernels:")] + "  kernels: []\n")
@@ -192,7 +200,7 @@ def test_describe_kernels_reports_contract_coverage_binding_and_calls() -> None:
 
     stage = CloudMacroMicrophysics()
     rows = {row["kernel"]: row for row in stage.describe_kernels()}
-    assert list(rows) == ["mmacro_pcond", "micro_mg_tend"]
+    assert list(rows) == ["mmacro_pcond", "cldfrc_fice", "micro_mg_tend"]
     pcond = rows["mmacro_pcond"]
     assert pcond["owner_class"].endswith("macrophysics.Macrophysics")
     assert pcond["stage_action"] == "cam_run1.cloud_macro_microphysics"
@@ -282,7 +290,7 @@ class _TwoKernelLibrary:
         self.intents = [2 if n in ("qc", "qi", "nc", "ni", "reff_rain", "reff_snow") else 1 if names.index(n) >= 19 and n not in
                         ("naai", "npccnin", "rndst", "nacon", "do_cldice", "tnd_qsnow", "tnd_nsnow", "re_ice", "frzimm", "frzcnt", "frzdep")
                         else 0 for n in names]
-        for suffix in runners.ENTRY_SUFFIXES:
+        for suffix in runners.ENTRY_SUFFIXES + ("original",):
             setattr(self, f"pycam_stage7_{suffix}_v1", _Entry(self, f"pycam_stage7_{suffix}_v1"))
 
 
@@ -296,7 +304,7 @@ def test_the_runner_decodes_a_pause_on_the_second_kernel_by_the_contract_s_names
     assert runner.slots == 115 and len(runner.names["mmacro_pcond"]) == 60
     context = runner.create("cam_run1.cloud_macro_microphysics")
     assert runner.start(context, {"mmacro_pcond": False, "micro_mg_tend": True}) == SegmentEvent.NEEDS_PYTHON_KERNEL
-    assert lib.mask == [0, 1]                       # the mask follows the manifest's order
+    assert lib.mask == [0, 1, 0]                    # the mask follows the manifest's order
     frame = runner.frame(context)
     assert frame.kernel == "micro_mg_tend" and frame.ncol == 5 and frame.token == 9 and frame.call_index == 5
     assert [a.name for a in frame.arguments][:6] == ["microp_uniform", "pcols", "pver", "ncol", "top_lev", "deltatin"]

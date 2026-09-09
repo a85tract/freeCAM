@@ -395,8 +395,13 @@ def test_the_inspected_records_produce_the_known_counts() -> None:
     totals = snapshot["totals"]
     # derived from data, and pinned as the regression fixture of this checkout
     assert totals["candidate_kernels"] == 601
-    assert totals["tracked_kernels"] == ledger["summary"]["kernels"] == 20
-    assert totals["tracked_by_status"] == ledger["summary"]["kernels_by_status"] == {"complete": 5, "open": 15}
+    # 20 distinct tracked kernels over 21 ledger rows: cldfrc_fice is tracked
+    # once per stage context (deep convection and the cloud stage)
+    assert totals["tracked_kernels"] == 20 and ledger["summary"]["kernels"] == 21
+    # per kernel a status is complete only when every stage context is, so the
+    # snapshot's counts differ from the ledger's per-row counts by exactly fice
+    assert totals["tracked_by_status"] == {"complete": 4, "open": 16}
+    assert ledger["summary"]["kernels_by_status"] == {"complete": 5, "open": 16}
     assert totals["unmapped_kernels"] == len(snapshot["unmapped_kernels"]) == 6
     assert totals["processes"] == ledger["summary"]["actions"] == 58
     # five complete tracked records do not mean five kernels replaceable in every caller
@@ -407,14 +412,15 @@ def test_the_inspected_records_produce_the_known_counts() -> None:
 
 
 def test_core_kernels_and_recursive_candidates_are_two_levels_in_the_real_records() -> None:
-    """CloudMacroMicrophysics exposes two core kernels; its candidate tree holds ~a hundred."""
+    """CloudMacroMicrophysics exposes three core kernels; its candidate tree holds ~a hundred."""
 
     snapshot = json.loads(SNAPSHOT.read_text())
     stage7 = next(p for p in snapshot["processes"] if p["id"] == "cam_run1.cloud_macro_microphysics")
     core = {c["routine"]: c for c in stage7["core_kernels"]}
-    assert sorted(core) == ["micro_mg_tend", "mmacro_pcond"]
+    assert sorted(core) == ["cldfrc_fice", "micro_mg_tend", "mmacro_pcond"]
     # the core kernels are owned by the composed sub-classes, not the stage class itself
     assert core["mmacro_pcond"]["owner_class"] == "freecam.physics.macrophysics.Macrophysics"
+    assert core["cldfrc_fice"]["owner_class"] == "freecam.physics.macrophysics.Macrophysics"
     assert core["micro_mg_tend"]["owner_class"] == "freecam.physics.microphysics.Microphysics"
     candidates = snapshot["process_membership"]["cam_run1.cloud_macro_microphysics"]["kernels"]
     assert len(candidates) > 50 and {c["id"] for c in core.values()} <= set(candidates)

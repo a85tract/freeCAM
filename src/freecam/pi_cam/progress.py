@@ -603,9 +603,17 @@ def build_progress_snapshot(root: Path | str) -> dict[str, Any]:
                                             "blockers": sorted(hint.get("blockers") or [])}
 
     # Tracked kernels resolved to qualified ids; the join must be unambiguous.
-    tracked_by_q: dict[str, Mapping[str, Any]] = {}
+    # One routine may be tracked in several stage contexts (cldfrc_fice pauses
+    # in both deep convection and the cloud stage), so each qualified id keeps
+    # every row; the primary row -- the one with evidence -- feeds the
+    # kernel-level capabilities, and the per-stage rows feed the contexts.
+    tracked_by_q: dict[str, list[Mapping[str, Any]]] = {}
     for kernel in ledger["kernels"]:
-        tracked_by_q[resolve_tracked_kernel(kernel, candidates, contracts)] = kernel
+        tracked_by_q.setdefault(resolve_tracked_kernel(kernel, candidates, contracts), []).append(kernel)
+
+    def primary_row(rows: list[Mapping[str, Any]]) -> Mapping[str, Any]:
+        return next((r for r in rows if r.get("status") == "complete"),
+                    next((r for r in rows if r.get("evidence")), rows[0]))
 
     # Every record any status claim names is opened, verified present, summarized.
     evidence: dict[str, dict[str, Any]] = {}
@@ -644,9 +652,15 @@ def build_progress_snapshot(root: Path | str) -> dict[str, Any]:
         stage = runner["stage"]
         for kernel_row in runner.get("kernels") or []:
             routine = kernel_row["name"]
-            mechanism = "hook" if routine in hook_kernels else "pause"
+            # a hook reaches the kernel inside a compiled routine (the row says
+            # `within`); the same routine paused at a transcribed call site in
+            # another stage is a plain pause
+            mechanism = "hook" if routine in hook_kernels and kernel_row.get("within") else "pause"
+            # the ledger row scoped to this stage; gates from another stage's
+            # row never count toward this context
             tracked = next((t for t in ledger["kernels"]
-                            if (t.get("routine") or t["kernel"]) == routine), None)
+                            if (t.get("routine") or t["kernel"]) == routine
+                            and t.get("stage_action") == stage), None)
             gate_rows: list[dict[str, Any]] = []
             seen_gates: set[tuple[str, str | None]] = set()
             for gate in (tracked or {}).get("in_model_gates") or []:
@@ -707,10 +721,12 @@ def build_progress_snapshot(root: Path | str) -> dict[str, Any]:
     # Kernel records.
     kernels: dict[str, dict[str, Any]] = {}
     routine_to_q = {}
-    for qualified, tracked in tracked_by_q.items():
-        routine_to_q[tracked.get("routine") or tracked["kernel"]] = qualified
+    for qualified, rows in tracked_by_q.items():
+        for tracked in rows:
+            routine_to_q[tracked.get("routine") or tracked["kernel"]] = qualified
     for qualified, procedure in sorted(candidates.items()):
-        tracked = tracked_by_q.get(qualified)
+        tracked_rows = tracked_by_q.get(qualified) or []
+        tracked = primary_row(tracked_rows) if tracked_rows else None
         routine = procedure["name"]
         contexts = [r for r in replacements if r["kernel_routine"] == routine
                     and routine_to_q.get(routine) == qualified]
@@ -743,11 +759,17 @@ def build_progress_snapshot(root: Path | str) -> dict[str, Any]:
             "processes": sorted(procedure.get("parent_actions") or []),
             "callers": callers,
             "tracked": tracked is not None,
-            "status": (tracked or {}).get("status"),
-            "missing": (tracked or {}).get("missing"),
+            # a kernel tracked in several stage contexts is complete only when
+            # every context is; per-stage detail lives in tracked_stages
+            "status": (("complete" if all(r.get("status") == "complete" for r in tracked_rows) else "open")
+                       if tracked_rows else None),
+            "missing": (sorted({m for r in tracked_rows for m in (r.get("missing") or [])})
+                        if tracked_rows else None),
+            "tracked_stages": {r["stage_action"]: r.get("status") for r in tracked_rows},
             "owner_class": (tracked or {}).get("owner_class"),
             "note": (tracked or {}).get("note"),
-            "module_state": sorted((tracked or {}).get("evidence", {}).get("module_state") or []),
+            "module_state": sorted({s for r in tracked_rows
+                                    for s in (r.get("evidence") or {}).get("module_state") or []}),
             "observation": observation_of(qualified),
             "development": development_of(qualified),
             "category": (classifications.get(qualified) or {}).get("category", "unclassified"),

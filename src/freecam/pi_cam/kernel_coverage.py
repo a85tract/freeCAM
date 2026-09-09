@@ -464,7 +464,10 @@ def build_coverage() -> dict[str, Any]:
         "every_disabled_action_is_an_alternate_form": all(a.alternate_of for a in actions if not a.enabled),
         "catalog_actions_all_in_the_plan": not unknown_parents,
         "unknown_catalog_actions": unknown_parents,
-        "kernel_owned_once": len({k.kernel for k in kernel_rows}) == len(kernel_rows),
+        # a kernel may be replaceable in several processes (cldfrc_fice pauses in
+        # the deep-convection hook and in the cloud stage's transcription), each
+        # scoped to its own stage; ownership is unique per (kernel, stage)
+        "kernel_owned_once": len({(k.kernel, k.stage_action) for k in kernel_rows}) == len(kernel_rows),
         "execution_records": execution_facts,
     }
     unresolved = [

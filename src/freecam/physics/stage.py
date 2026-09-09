@@ -1120,9 +1120,13 @@ class NativeStage:
             })
         return tuple(rows)
 
+    #: the kernel `.kernel` addresses when a stage exposes several; None means
+    #: the shorthand is only legal for a single-kernel stage
+    PRIMARY: str | None = None
+
     @property
     def kernel(self):
-        """The model in the one swappable kernel's place, for stages that have one."""
+        """The model in the stage's primary kernel's place."""
 
         return self.kernels[self._only_kernel()]
 
@@ -1131,11 +1135,13 @@ class NativeStage:
         self.kernels[self._only_kernel()] = value
 
     def _only_kernel(self) -> str:
-        if len(self.kernels) != 1:
-            raise PhysicsError(
-                f"{type(self).__name__} has {len(self.kernels)} swappable kernels "
-                f"{list(self.kernels)}; assign into .kernels[name] instead of .kernel")
-        return next(iter(self.kernels))
+        if len(self.kernels) == 1:
+            return next(iter(self.kernels))
+        if self.PRIMARY is not None and self.PRIMARY in self.kernels:
+            return self.PRIMARY
+        raise PhysicsError(
+            f"{type(self).__name__} has {len(self.kernels)} swappable kernels "
+            f"{list(self.kernels)}; assign into .kernels[name] instead of .kernel")
 
     # -- what a subclass supplies ------------------------------------------
 

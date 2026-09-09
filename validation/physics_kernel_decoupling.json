@@ -42,12 +42,12 @@
       "not-required-in-this-configuration": 11,
       "partial": 10
     },
-    "kernels": 20,
+    "kernels": 21,
     "kernels_by_status": {
       "complete": 5,
-      "open": 15
+      "open": 16
     },
-    "kernels_bindable": 20,
+    "kernels_bindable": 21,
     "kernels_validated_through_runner": 20,
     "catalog_procedures": 371
   },
@@ -3060,6 +3060,7 @@
       "python_class": "freecam.physics.cloud_macro_microphysics.CloudMacroMicrophysics",
       "kernels": [
         "mmacro_pcond",
+        "cldfrc_fice",
         "micro_mg_tend"
       ],
       "kernel_candidates": [],
@@ -4863,6 +4864,42 @@
       "note": null
     },
     {
+      "kernel": "cldfrc_fice",
+      "stage_action": "cam_run1.cloud_macro_microphysics",
+      "owner_class": "freecam.physics.macrophysics.Macrophysics",
+      "routine": "cldfrc_fice",
+      "contract": "reviewed",
+      "contract_path": "native/pi_cam/functions/cldfrc_fice.yaml",
+      "bindable": true,
+      "validated_through_runner": false,
+      "evidence": {
+        "capture": [
+          "pi_cam_pausable_fice-capture_50step.json"
+        ],
+        "standalone_build": [
+          "pi_cam_cldfrc_fice_standalone_build.json"
+        ],
+        "replay_full_chunk": [
+          "pi_cam_cldfrc_fice_frame_replay.json"
+        ],
+        "replay_single_column": [
+          "pi_cam_cldfrc_fice_frame_replay.json"
+        ],
+        "replay_public_api": [
+          "pi_cam_cldfrc_fice_frame_replay.json"
+        ],
+        "module_state": [
+          "pi_cam_cldfrc_fice_module_state.json"
+        ]
+      },
+      "in_model_gates": [],
+      "status": "open",
+      "missing": [
+        "in_model_replacement_bfb"
+      ],
+      "note": null
+    },
+    {
       "kernel": "micro_mg_tend",
       "stage_action": "cam_run1.cloud_macro_microphysics",
       "owner_class": "freecam.physics.microphysics.Microphysics",
@@ -5939,6 +5976,10 @@
   ],
   "unresolved": [
     {
+      "what": "cldfrc_fice: in_model_replacement_bfb",
+      "why": "no record in validation/ for this step of the loop"
+    },
+    {
       "what": "micro_mg_tend: capture",
       "why": "no record in validation/ for this step of the loop"
     },
@@ -6235,5 +6276,5 @@
       "why": "no record in validation/ for this step of the loop"
     }
   ],
-  "coverage_hash": "bf6cef12a3d71cfd68e426dec7e813fc1c811d1b602317b7d12413864efdee94"
+  "coverage_hash": "19628d990a4c3657311a14f253a1eccc2a3bded8b7a4e6b88996ffe2637e8209"
 }

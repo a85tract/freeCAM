@@ -14,6 +14,7 @@ runners:
 - stage: cam_run1.cloud_macro_microphysics
   prefix: pycam_stage7
   module: native/pi_cam/support/pycam_stage7_runner.F90
+  original: true
   generator: tools/generate_pi_cam_stage7_runner.py
   descriptors: native/pi_cam/direct_kernels_macrophysics.yaml
   # kernel ids are positions here plus one, as the module numbers them
@@ -40,6 +41,14 @@ runners:
     - validation/pi_cam_stage7_segmented_both_vs_oracle_50step_bfb.json
     - validation/pi_cam_pausable_everything_50step.json
     - validation/pi_cam_pausable_everything_vs_oracle_50step_bfb.json
+  # the ice/liquid phase partition, paused at the transcribed macrophysics
+  # driver's own `call cldfrc_fice` statement -- the same kernel the
+  # deep-convection hook reaches, replaceable here in the cloud stage's
+  # context; its gates are owed
+  - name: cldfrc_fice
+    owner: freecam.physics.macrophysics.Macrophysics
+    contract: native/pi_cam/functions/cldfrc_fice.yaml
+    validated_by: []
 # The pausable runners (tools/generate_pi_cam_pausable_runners.py): one per
 # process, the original driver hoisted verbatim and cut at its kernel calls.
 # Their frames are described in native/pi_cam/segment_frames.yaml, and each

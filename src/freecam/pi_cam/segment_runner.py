@@ -133,16 +133,21 @@ def load_manifest(path: str | Path | None = None) -> tuple[RunnerSpec, ...]:
         raise NativeCAMError(f"{source}: 'runners' must be a list")
     specs: list[RunnerSpec] = []
     seen_stages: set[str] = set()
-    seen_kernels: set[str] = set()
+    seen_kernels: set[tuple[str, str]] = set()
     for record in runners:
         if not isinstance(record, Mapping):
             raise NativeCAMError(f"{source}: every runner must be a mapping")
+        stage_name = str(record.get("stage", ""))
         kernels = []
         for item in record.get("kernels") or ():
             name = str(item["name"])
-            if name in seen_kernels:
-                raise NativeCAMError(f"{source}: kernel {name!r} is claimed by two runners")
-            seen_kernels.add(name)
+            # one pause per kernel per runner; the same kernel may pause in
+            # several processes (cldfrc_fice: the deep-convection hook and the
+            # cloud stage's transcribed call), each replacement scoped to its
+            # own stage
+            if (stage_name, name) in seen_kernels:
+                raise NativeCAMError(f"{source}: kernel {name!r} appears twice in {stage_name!r}")
+            seen_kernels.add((stage_name, name))
             kernels.append(RunnerKernel(
                 name=name, owner=str(item.get("owner", "")),
                 validated_by=tuple(str(p) for p in item.get("validated_by") or ()),

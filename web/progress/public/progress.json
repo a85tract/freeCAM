@@ -2648,7 +2648,7 @@
   "use_gw_oro": true,
   "use_subcol_microp": false
  },
- "content_hash": "8742d0b3de621e6b8b83f1ea8ec91ac90e463c8ffddffcf09c6b02dfe0f5f283",
+ "content_hash": "5615e1e3f809881e62391629d0068068b06d7f906236b120b8d2a2e0f4643280",
  "evidence": {
   "pi_cam_cldfrc_fice_frame_replay.json": {
    "bfb": true,
@@ -3971,6 +3971,26 @@
    "pbs_job": null,
    "record": "pi_cam_pausable_hooks-everything_vs_oracle_50step_bfb.json"
   },
+  "pi_cam_pausable_micro-capture_50step_failure.json": {
+   "diagnosis": "Version skew between the checked-out manifest and the queued image, not a numerical failure. While the job waited in the queue, native/pi_cam/segment_runners.yaml gained `original: true` for the stage-7 runner (the regenerated module exports pycam_stage7_original_v1 and pauses at cldfrc_fice); the job then ran the p10 image, whose module predates that entry, and the binding failed closed at construction as designed. The single history file the aborted run had written compared bit-for-bit; the restart files were never written.",
+   "image": {
+    "build": "pi_cam_promoted_p10",
+    "role": "development",
+    "sha256": null
+   },
+   "kind": "gate-failure",
+   "outcome": "aborted at the first cloud_macro_microphysics call on all 512 ranks; no capture written",
+   "pbs_job": "7358831",
+   "python_stages": [
+    "cloud_macro_microphysics"
+   ],
+   "ranks": 512,
+   "record": "pi_cam_pausable_micro-capture_50step_failure.json",
+   "run_tag": "micro-capture",
+   "segmented_original_kernels": "micro_mg_tend",
+   "steps_completed": 0,
+   "what": "A capture gate that aborted before its first pause, kept as evidence: micro_mg_tend was to be answered by the original at the stage-7 pause with every frame captured, but the runner binding refused the image at construction."
+  },
   "pi_cam_pausable_rad-both-pause_50step.json": {
    "advance_seconds": 16.3,
    "cloud_macro_micro_python": false,
@@ -4523,19 +4543,27 @@
    ],
    "kernel_routine": "cldfrc_fice",
    "record": "pi_cam_pausable_fice-pause_50step_failure.json"
+  },
+  {
+   "capability": "original_replacement_bfb",
+   "contexts": [
+    "cam_run1.cloud_macro_microphysics"
+   ],
+   "kernel_routine": "micro_mg_tend",
+   "record": "pi_cam_pausable_micro-capture_50step_failure.json"
   }
  ],
  "inputs": {
   "native/pi_cam/hooks.yaml": "a7efa7d3a85e4ccf3afbeac436a682677c25c1c7d082b3c09f39e7463b863635",
   "native/pi_cam/kernel_classifications.yaml": "d6be2103c9bd0c86a0c8461a067d3b43eac6aa370e992fde9bf3096e55c8c5f4",
-  "native/pi_cam/kernel_work_items.yaml": "0fe3d8d7b9c003ed6ea60a740c30af40a57a6bc2466fa201534b7e4bd9f8008d",
-  "native/pi_cam/segment_runners.yaml": "4b4d2cb439566c2cf11321011c49df31f4b5f733632a5a8a292e399b3242cfb1",
-  "validation/physics_kernel_decoupling.json": "0c22e27fb005ee8feb299048c8dcfd6490245ed0d8f31f64f975e3418d4192aa",
+  "native/pi_cam/kernel_work_items.yaml": "53d2561a55907deef539bf060d2a2881a3612a3c536744c8c299c8f1e406a61c",
+  "native/pi_cam/segment_runners.yaml": "96ac718a58a546a216b91165c93040ed56edec779599c18d1c5d2e3fb88b7377",
+  "validation/physics_kernel_decoupling.json": "a5f3851b6a04873ceb2fc4a48d436d0e79f351b786a00e4b760f9f69254bacf0",
   "validation/pi_cam_kernel_api_closure.json": "96025214b3e4c41f6ba89c266da5dd27c51c42c81c31e1a0ac6f7b2e9cfa260a",
   "validation/pi_cam_kernel_api_redirectable_calls.json": "9ac016f0d242ceef054aa8a80ef074aa53b08c1f0f3042a81e76da4c75603273",
-  "validation/pi_cam_kernel_runtime_coverage_1month.json": "899bb1875b046c93d24aef364957aea1daefedde805d5ab6f9bb9846945e65ff",
-  "validation/pi_cam_kernel_runtime_coverage_50step.json": "7da8e8cd579ecf1e24f95921633b7b4c93d051fabc9e2a323ba48aac8038aac2",
-  "web/public/catalog.json": "b29c6fef7cedd40d7fa103f7107505f88677e778adaaa2d83c755b776eafcb77"
+  "validation/pi_cam_kernel_runtime_coverage_1month.json": "48f77d6ec78b4026806d4ab6fb9517ef31c1d526481b4ad68e55f77af0d303bd",
+  "validation/pi_cam_kernel_runtime_coverage_50step.json": "222961fc5274dbaaf71c40f6c131a683536b5a85ef14cd047a2fd196d8ca38c5",
+  "web/public/catalog.json": "9ee013433efa7949bd3724129255f14e73678bdae61a275e7d92465133fb77ca"
  },
  "kernels": {
   "aer_rad_props::aer_rad_props_lw": {
@@ -4632,7 +4660,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "aer_rad_props::aer_rad_props_sw": {
    "adapter_hint": {
@@ -4728,7 +4757,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "aer_rad_props::aer_vis_diag_out": {
    "adapter_hint": {
@@ -4816,7 +4846,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "aer_rad_props::get_hygro_rad_props": {
    "adapter_hint": {
@@ -4895,7 +4926,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "aer_rad_props::get_nonhygro_rad_props": {
    "adapter_hint": {
@@ -4974,7 +5006,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "aer_rad_props::get_volcanic_rad_props": {
    "adapter_hint": {
@@ -5053,7 +5086,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "aer_rad_props::get_volcanic_radius_rad_props": {
    "adapter_hint": {
@@ -5138,7 +5172,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "aero_model::aero_model_drydep": {
    "adapter_hint": null,
@@ -5223,7 +5258,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "aero_model::aero_model_emissions": {
    "adapter_hint": null,
@@ -5307,7 +5343,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "aero_model::aero_model_gasaerexch": {
    "adapter_hint": null,
@@ -5392,7 +5429,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "aero_model::aero_model_strat_surfarea": {
    "adapter_hint": null,
@@ -5477,7 +5515,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "aero_model::aero_model_surfarea": {
    "adapter_hint": null,
@@ -5556,7 +5595,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "aero_model::aero_model_wetdep": {
    "adapter_hint": null,
@@ -5641,7 +5681,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "aero_model::modal_aero_bcscavcoef_get": {
    "adapter_hint": null,
@@ -5713,7 +5754,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "aero_model::modal_aero_depvel_part": {
    "adapter_hint": null,
@@ -5757,10 +5799,10 @@
    "kind": "subroutine",
    "missing": [
     "capture",
-    "standalone_build",
     "replay_full_chunk",
+    "replay_public_api",
     "replay_single_column",
-    "replay_public_api"
+    "standalone_build"
    ],
    "module": "aero_model",
    "module_state": [],
@@ -5810,7 +5852,10 @@
    },
    "status": "open",
    "subsystem": null,
-   "tracked": true
+   "tracked": true,
+   "tracked_stages": {
+    "cam_run2.aerosol_dry_deposition_leaf": "open"
+   }
   },
   "aero_model::qqcw2vmr": {
    "adapter_hint": null,
@@ -5882,7 +5927,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "aero_model::surf_area_dens": {
    "adapter_hint": null,
@@ -5955,7 +6001,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "aero_model::vmr2qqcw": {
    "adapter_hint": null,
@@ -6027,7 +6074,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "aoa_tracers::aoa_tracers_timestep_init": {
    "adapter_hint": null,
@@ -6111,7 +6159,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "aoa_tracers::aoa_tracers_timestep_tend": {
    "adapter_hint": null,
@@ -6196,7 +6245,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "cam_diagnostics::diag_allocate": {
    "adapter_hint": null,
@@ -6278,7 +6328,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "cam_diagnostics::diag_conv": {
    "adapter_hint": null,
@@ -6362,7 +6413,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "cam_diagnostics::diag_conv_tend_ini": {
    "adapter_hint": null,
@@ -6446,7 +6498,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "cam_diagnostics::diag_deallocate": {
    "adapter_hint": null,
@@ -6530,7 +6583,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "cam_diagnostics::diag_export": {
    "adapter_hint": null,
@@ -6615,7 +6669,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "cam_diagnostics::diag_phys_tend_writeout": {
    "adapter_hint": null,
@@ -6699,7 +6754,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "cam_diagnostics::diag_phys_writeout": {
    "adapter_hint": null,
@@ -6785,7 +6841,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "cam_diagnostics::diag_physvar_ic": {
    "adapter_hint": null,
@@ -6867,7 +6924,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "cam_diagnostics::diag_state_b4_phys_write": {
    "adapter_hint": null,
@@ -6951,7 +7009,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "cam_diagnostics::diag_surf": {
    "adapter_hint": null,
@@ -7033,7 +7092,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "carma_intr::carma_accumulate_stats": {
    "adapter_hint": null,
@@ -7117,7 +7177,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "carma_intr::carma_emission_tend": {
    "adapter_hint": null,
@@ -7195,7 +7256,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "carma_intr::carma_timestep_init": {
    "adapter_hint": null,
@@ -7279,7 +7341,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "carma_intr::carma_timestep_tend": {
    "adapter_hint": null,
@@ -7366,7 +7429,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "carma_intr::carma_wetdep_tend": {
    "adapter_hint": null,
@@ -7445,7 +7509,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "cfc11star::update_cfc11star": {
    "adapter_hint": null,
@@ -7529,7 +7594,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "charge_neutrality::charge_balance": {
    "adapter_hint": null,
@@ -7614,7 +7680,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "charge_neutrality::charge_fix": {
    "adapter_hint": null,
@@ -7699,7 +7766,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "check_energy::check_energy_chng": {
    "adapter_hint": null,
@@ -7818,7 +7886,8 @@
    },
    "status": null,
    "subsystem": "stage",
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "check_energy::check_energy_fix": {
    "adapter_hint": {
@@ -7913,7 +7982,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "check_energy::check_energy_get_integrals": {
    "adapter_hint": null,
@@ -7991,7 +8061,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "check_energy::check_energy_gmean": {
    "adapter_hint": null,
@@ -8073,7 +8144,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "check_energy::check_energy_timestep_init": {
    "adapter_hint": null,
@@ -8157,7 +8229,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "check_energy::check_tracers_chng": {
    "adapter_hint": null,
@@ -8255,7 +8328,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "check_energy::check_tracers_init": {
    "adapter_hint": null,
@@ -8343,7 +8417,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "chemistry::chem_emissions": {
    "adapter_hint": null,
@@ -8427,7 +8502,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "chemistry::chem_is": {
    "adapter_hint": null,
@@ -8512,7 +8588,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "chemistry::chem_is_active": {
    "adapter_hint": null,
@@ -8596,7 +8673,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "chemistry::chem_timestep_init": {
    "adapter_hint": null,
@@ -8680,7 +8758,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "chemistry::chem_timestep_tend": {
    "adapter_hint": null,
@@ -8765,7 +8844,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "cldaero_mod::cldaero_allocate": {
    "adapter_hint": null,
@@ -8850,7 +8930,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "cldaero_mod::cldaero_deallocate": {
    "adapter_hint": null,
@@ -8935,7 +9016,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "cldaero_mod::cldaero_uptakerate": {
    "adapter_hint": null,
@@ -9020,7 +9102,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "cldfrc2m::aist_single": {
    "adapter_hint": null,
@@ -9104,7 +9187,8 @@
    },
    "status": null,
    "subsystem": "macrophysics",
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "cldfrc2m::aist_vector": {
    "adapter_hint": null,
@@ -9189,7 +9273,8 @@
    },
    "status": null,
    "subsystem": "macrophysics",
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "cldfrc2m::astg_pdf": {
    "adapter_hint": null,
@@ -9274,7 +9359,8 @@
    },
    "status": null,
    "subsystem": "macrophysics",
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "cldfrc2m::astg_pdf_single": {
    "adapter_hint": null,
@@ -9359,7 +9445,8 @@
    },
    "status": null,
    "subsystem": "macrophysics",
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "cldwat2m_macro::funcd_instratus": {
    "adapter_hint": null,
@@ -9430,7 +9517,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "cldwat2m_macro::gaussj": {
    "adapter_hint": null,
@@ -9501,7 +9589,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "cldwat2m_macro::gridmean_rh": {
    "adapter_hint": null,
@@ -9572,7 +9661,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "cldwat2m_macro::instratus_condensate": {
    "adapter_hint": null,
@@ -9656,7 +9746,8 @@
    },
    "status": null,
    "subsystem": "macrophysics",
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "cldwat2m_macro::instratus_core": {
    "adapter_hint": null,
@@ -9742,7 +9833,8 @@
    },
    "status": null,
    "subsystem": "macrophysics",
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "cldwat2m_macro::mmacro_pcond": {
    "adapter_hint": null,
@@ -9846,7 +9938,10 @@
    },
    "status": "complete",
    "subsystem": "macrophysics",
-   "tracked": true
+   "tracked": true,
+   "tracked_stages": {
+    "cam_run1.cloud_macro_microphysics": "complete"
+   }
   },
   "cldwat2m_macro::positive_moisture": {
    "adapter_hint": null,
@@ -9930,7 +10025,8 @@
    },
    "status": null,
    "subsystem": "macrophysics",
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "cldwat2m_macro::rhcrit_calc": {
    "adapter_hint": null,
@@ -10001,7 +10097,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "cloud_cover_diags::cldsav": {
    "adapter_hint": {
@@ -10081,7 +10178,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "cloud_cover_diags::cloud_cover_diags_out": {
    "adapter_hint": {
@@ -10169,7 +10267,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "cloud_diagnostics::cloud_diagnostics_calc": {
    "adapter_hint": null,
@@ -10254,7 +10353,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "cloud_fraction::cldfrc": {
    "adapter_hint": null,
@@ -10339,7 +10439,8 @@
    },
    "status": null,
    "subsystem": "macrophysics",
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "cloud_fraction::cldfrc_fice": {
    "adapter_hint": {
@@ -10366,6 +10467,7 @@
     },
     "in_model_replacement": {
      "contexts": [
+      "cam_run1.cloud_macro_microphysics",
       "cam_run1.deep_convection"
      ],
      "state": "available"
@@ -10414,7 +10516,9 @@
    "host": null,
    "id": "cloud_fraction::cldfrc_fice",
    "kind": "subroutine",
-   "missing": [],
+   "missing": [
+    "in_model_replacement_bfb"
+   ],
    "module": "cloud_fraction",
    "module_state": [
     "pi_cam_cldfrc_fice_module_state.json"
@@ -10465,9 +10569,13 @@
     "line_end": 825,
     "line_start": 754
    },
-   "status": "complete",
+   "status": "open",
    "subsystem": "macrophysics",
-   "tracked": true
+   "tracked": true,
+   "tracked_stages": {
+    "cam_run1.cloud_macro_microphysics": "open",
+    "cam_run1.deep_convection": "complete"
+   }
   },
   "cloud_fraction::relhum_min": {
    "adapter_hint": null,
@@ -10551,7 +10659,8 @@
    },
    "status": null,
    "subsystem": "macrophysics",
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "cloud_rad_props::gam_liquid_lw": {
    "adapter_hint": {
@@ -10630,7 +10739,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "cloud_rad_props::gam_liquid_sw": {
    "adapter_hint": {
@@ -10716,7 +10826,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "cloud_rad_props::get_ice_optics_sw": {
    "adapter_hint": {
@@ -10812,7 +10923,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "cloud_rad_props::get_liquid_optics_sw": {
    "adapter_hint": {
@@ -10908,7 +11020,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "cloud_rad_props::get_mu_lambda_weights": {
    "adapter_hint": null,
@@ -10980,7 +11093,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "cloud_rad_props::get_snow_optics_sw": {
    "adapter_hint": {
@@ -11076,7 +11190,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "cloud_rad_props::ice_cloud_get_rad_props_lw": {
    "adapter_hint": {
@@ -11175,7 +11290,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "cloud_rad_props::interpolate_ice_optics_lw": {
    "adapter_hint": {
@@ -11255,7 +11371,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "cloud_rad_props::interpolate_ice_optics_sw": {
    "adapter_hint": {
@@ -11344,7 +11461,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "cloud_rad_props::liquid_cloud_get_rad_props_lw": {
    "adapter_hint": {
@@ -11443,7 +11561,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "cloud_rad_props::snow_cloud_get_rad_props_lw": {
    "adapter_hint": {
@@ -11539,7 +11658,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "clybry_fam::broy": {
    "adapter_hint": null,
@@ -11621,7 +11741,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "clybry_fam::cloy": {
    "adapter_hint": null,
@@ -11703,7 +11824,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "clybry_fam::clybry_fam_adj": {
    "adapter_hint": null,
@@ -11787,7 +11909,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "clybry_fam::clybry_fam_set": {
    "adapter_hint": null,
@@ -11871,7 +11994,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "co2_cycle::co2_transport": {
    "adapter_hint": null,
@@ -11968,7 +12092,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "constituent_burden::constituent_burden_comp": {
    "adapter_hint": null,
@@ -12053,7 +12178,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "conv_water::conv_water_4rad": {
    "adapter_hint": null,
@@ -12138,7 +12264,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "convect_deep::convect_deep_tend": {
    "adapter_hint": {
@@ -12234,7 +12361,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "convect_deep::convect_deep_tend_2": {
    "adapter_hint": null,
@@ -12319,7 +12447,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "convect_deep::deep_scheme_does_scav_trans": {
    "adapter_hint": null,
@@ -12409,7 +12538,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "convect_shallow::convect_shallow_tend": {
    "adapter_hint": {
@@ -12509,7 +12639,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "convect_shallow::convect_shallow_use_shfrc": {
    "adapter_hint": {
@@ -12601,7 +12732,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "coords_1d::allocate_coords": {
    "adapter_hint": null,
@@ -12675,7 +12807,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "coords_1d::finalize": {
    "adapter_hint": null,
@@ -12763,7 +12896,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "coords_1d::finalize.guarded_deallocate": {
    "adapter_hint": null,
@@ -12835,7 +12969,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "coords_1d::new_coords1d_from_fields": {
    "adapter_hint": null,
@@ -12908,7 +13043,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "coords_1d::new_coords1d_from_int": {
    "adapter_hint": null,
@@ -12996,7 +13132,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "coords_1d::section": {
    "adapter_hint": null,
@@ -13082,7 +13219,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "cospsimulator_intr::cospsimulator_intr_run": {
    "adapter_hint": {
@@ -13174,7 +13312,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "cpslec::cpslec": {
    "adapter_hint": null,
@@ -13259,7 +13398,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "dadadj::dadadj": {
    "adapter_hint": {
@@ -13368,7 +13508,10 @@
    },
    "status": "complete",
    "subsystem": null,
-   "tracked": true
+   "tracked": true,
+   "tracked_stages": {
+    "cam_run1.dry_adjustment": "complete"
+   }
   },
   "diffusion_solver::compute_vdiff": {
    "adapter_hint": {
@@ -13422,10 +13565,10 @@
    "kind": "subroutine",
    "missing": [
     "capture",
-    "standalone_build",
     "replay_full_chunk",
+    "replay_public_api",
     "replay_single_column",
-    "replay_public_api"
+    "standalone_build"
    ],
    "module": "diffusion_solver",
    "module_state": [],
@@ -13474,7 +13617,10 @@
    },
    "status": "open",
    "subsystem": null,
-   "tracked": true
+   "tracked": true,
+   "tracked_stages": {
+    "cam_run2.vertical_diffusion": "open"
+   }
   },
   "diffusion_solver::diffuse": {
    "adapter_hint": {
@@ -13576,7 +13722,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "diffusion_solver::my_any": {
    "adapter_hint": null,
@@ -13660,7 +13807,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "drydep_mod::calcram": {
    "adapter_hint": null,
@@ -13745,7 +13893,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "dust_model::dust_emis": {
    "adapter_hint": null,
@@ -13829,7 +13978,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "dust_sediment_mod::cfdotmc_pro": {
    "adapter_hint": null,
@@ -13914,7 +14064,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "dust_sediment_mod::cfint2": {
    "adapter_hint": null,
@@ -13999,7 +14150,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "dust_sediment_mod::dust_sediment_tend": {
    "adapter_hint": null,
@@ -14084,7 +14236,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "dust_sediment_mod::getflx": {
    "adapter_hint": null,
@@ -14156,7 +14309,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "eddy_diff::austausch_atm": {
    "adapter_hint": {
@@ -14235,7 +14389,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "eddy_diff::caleddy": {
    "adapter_hint": {
@@ -14333,7 +14488,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "eddy_diff::compute_cubic": {
    "adapter_hint": {
@@ -14427,7 +14583,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "eddy_diff::compute_eddy_diff": {
    "adapter_hint": {
@@ -14477,10 +14634,10 @@
    "kind": "subroutine",
    "missing": [
     "capture",
-    "standalone_build",
     "replay_full_chunk",
+    "replay_public_api",
     "replay_single_column",
-    "replay_public_api"
+    "standalone_build"
    ],
    "module": "eddy_diff",
    "module_state": [],
@@ -14529,7 +14686,10 @@
    },
    "status": "open",
    "subsystem": null,
-   "tracked": true
+   "tracked": true,
+   "tracked_stages": {
+    "cam_run2.vertical_diffusion": "open"
+   }
   },
   "eddy_diff::exacol": {
    "adapter_hint": {
@@ -14608,7 +14768,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "eddy_diff::sfdiag": {
    "adapter_hint": null,
@@ -14679,7 +14840,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "eddy_diff::trbintd": {
    "adapter_hint": {
@@ -14771,7 +14933,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "eddy_diff::zisocl": {
    "adapter_hint": {
@@ -14869,7 +15032,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "euvac::euvac_set_etf": {
    "adapter_hint": null,
@@ -14951,7 +15115,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "flux_avg::flux_avg_init": {
    "adapter_hint": null,
@@ -15027,7 +15192,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "flux_avg::flux_avg_run": {
    "adapter_hint": null,
@@ -15105,7 +15271,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "flux_avg::smooth": {
    "adapter_hint": null,
@@ -15183,7 +15350,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "gcr_ionization::gcr_ionization_adv": {
    "adapter_hint": null,
@@ -15267,7 +15435,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "gcr_ionization::gcr_ionization_get": {
    "adapter_hint": null,
@@ -15339,7 +15508,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "gcr_ionization::gcr_ionization_noxhox": {
    "adapter_hint": null,
@@ -15424,7 +15594,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "geopotential::geopotential_dse": {
    "adapter_hint": {
@@ -15530,7 +15701,8 @@
    },
    "status": null,
    "subsystem": "shared",
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "gw_common::energy_change": {
    "adapter_hint": {
@@ -15622,7 +15794,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "gw_common::gw_drag_prof": {
    "adapter_hint": {
@@ -15672,10 +15845,10 @@
    "kind": "subroutine",
    "missing": [
     "capture",
-    "standalone_build",
     "replay_full_chunk",
+    "replay_public_api",
     "replay_single_column",
-    "replay_public_api"
+    "standalone_build"
    ],
    "module": "gw_common",
    "module_state": [],
@@ -15724,7 +15897,10 @@
    },
    "status": "open",
    "subsystem": null,
-   "tracked": true
+   "tracked": true,
+   "tracked_stages": {
+    "cam_run2.gravity_wave_drag": "open"
+   }
   },
   "gw_common::gw_prof": {
    "adapter_hint": {
@@ -15816,7 +15992,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "gw_diffusion::gw_diff_tend": {
    "adapter_hint": {
@@ -15908,7 +16085,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "gw_diffusion::gw_ediff": {
    "adapter_hint": {
@@ -16002,7 +16180,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "gw_drag::gw_tend": {
    "adapter_hint": {
@@ -16098,7 +16277,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "gw_oro::gw_oro_src": {
    "adapter_hint": {
@@ -16190,7 +16370,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "gw_utils::dot_2d": {
    "adapter_hint": {
@@ -16284,7 +16465,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "gw_utils::get_unit_vector": {
    "adapter_hint": {
@@ -16373,7 +16555,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "gw_utils::midpoint_interp": {
    "adapter_hint": {
@@ -16469,7 +16652,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "hirsbt::btemp": {
    "adapter_hint": {
@@ -16550,7 +16734,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "hirsbt::hirsrtm": {
    "adapter_hint": {
@@ -16631,7 +16816,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "hirsbt::locate": {
    "adapter_hint": null,
@@ -16702,7 +16888,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "hirsbt::lookup": {
    "adapter_hint": {
@@ -16788,7 +16975,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "hirsbt::plnck": {
    "adapter_hint": {
@@ -16869,7 +17057,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "hirsbt::t_malk": {
    "adapter_hint": {
@@ -16950,7 +17139,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "horizontal_interpolate::xy_interp": {
    "adapter_hint": null,
@@ -17029,7 +17219,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "interpolate_data::get_timeinterp_factors": {
    "adapter_hint": null,
@@ -17109,7 +17300,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "interpolate_data::lininterp1d": {
    "adapter_hint": null,
@@ -17209,7 +17401,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "interpolate_data::lininterp2d1d": {
    "adapter_hint": null,
@@ -17309,7 +17502,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "interpolate_data::lininterp2d2d": {
    "adapter_hint": null,
@@ -17402,7 +17596,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "interpolate_data::lininterp3d2d": {
    "adapter_hint": null,
@@ -17500,7 +17695,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "interpolate_data::lininterp_finish": {
    "adapter_hint": null,
@@ -17599,7 +17795,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "interpolate_data::lininterp_full1d": {
    "adapter_hint": null,
@@ -17696,7 +17893,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "interpolate_data::lininterp_init": {
    "adapter_hint": null,
@@ -17792,7 +17990,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "interpolate_data::lininterp_original": {
    "adapter_hint": null,
@@ -17876,7 +18075,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "interpolate_data::valid_timeinterp_factors": {
    "adapter_hint": null,
@@ -17947,7 +18147,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "interpolate_data::vertinterp": {
    "adapter_hint": null,
@@ -18034,7 +18235,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "intp_util::findplb": {
    "adapter_hint": null,
@@ -18120,7 +18322,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "iondrag::iondrag_calc_ghg": {
    "adapter_hint": null,
@@ -18206,7 +18409,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "iondrag::iondrag_calc_ions": {
    "adapter_hint": null,
@@ -18277,7 +18481,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "ionosphere::ionos_tend": {
    "adapter_hint": null,
@@ -18355,7 +18560,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "lin_strat_chem::lin_strat_chem_solve": {
    "adapter_hint": null,
@@ -18434,7 +18640,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "linear_1d_operators::add_in_place_tridiag_ops": {
    "adapter_hint": null,
@@ -18519,7 +18726,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "linear_1d_operators::advection_operator": {
    "adapter_hint": null,
@@ -18598,7 +18806,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "linear_1d_operators::apply_left": {
    "adapter_hint": null,
@@ -18670,7 +18879,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "linear_1d_operators::apply_right": {
    "adapter_hint": null,
@@ -18742,7 +18952,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "linear_1d_operators::decomp_finalize": {
    "adapter_hint": null,
@@ -18830,7 +19041,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "linear_1d_operators::decomp_left_div": {
    "adapter_hint": null,
@@ -18918,7 +19130,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "linear_1d_operators::diagonal_add_tridiag": {
    "adapter_hint": null,
@@ -18990,7 +19203,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "linear_1d_operators::diagonal_lmult_tridiag": {
    "adapter_hint": null,
@@ -19034,20 +19248,22 @@
     "1month": {
      "calls_by_context": {},
      "calls_total": 0,
-     "coverage": "full",
+     "coverage": "partial",
      "first_step": -1,
      "last_step": -1,
      "ranks_with_calls": 0,
-     "status": "not-observed-in-this-run"
+     "status": "unknown",
+     "status_reason": "zero counted calls with uncounted paths remaining"
     },
     "50step": {
      "calls_by_context": {},
      "calls_total": 0,
-     "coverage": "full",
+     "coverage": "partial",
      "first_step": -1,
      "last_step": -1,
      "ranks_with_calls": 0,
-     "status": "not-observed-in-this-run"
+     "status": "unknown",
+     "status_reason": "zero counted calls with uncounted paths remaining"
     }
    },
    "owner_class": null,
@@ -19069,7 +19285,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "linear_1d_operators::diagonal_operator": {
    "adapter_hint": null,
@@ -19154,7 +19371,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "linear_1d_operators::diffusion_operator": {
    "adapter_hint": null,
@@ -19241,7 +19459,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "linear_1d_operators::make_tridiag_deriv_diag": {
    "adapter_hint": null,
@@ -19329,7 +19548,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "linear_1d_operators::new_boundarydata": {
    "adapter_hint": null,
@@ -19413,7 +19633,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "linear_1d_operators::new_boundaryfixedlayer": {
    "adapter_hint": null,
@@ -19497,7 +19718,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "linear_1d_operators::new_boundaryflux": {
    "adapter_hint": null,
@@ -19575,7 +19797,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "linear_1d_operators::new_tridiagdecomp": {
    "adapter_hint": null,
@@ -19662,7 +19885,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "linear_1d_operators::new_tridiagop": {
    "adapter_hint": null,
@@ -19713,7 +19937,8 @@
       "initialization": 17408
      },
      "calls_total": 25920512,
-     "coverage": "full",
+     "count_meaning": "lower bound: this kernel has uncounted call paths (see blind_spots)",
+     "coverage": "partial",
      "first_step": 1,
      "last_step": 1488,
      "ranks_with_calls": 512,
@@ -19726,7 +19951,8 @@
       "initialization": 17408
      },
      "calls_total": 887808,
-     "coverage": "full",
+     "count_meaning": "lower bound: this kernel has uncounted call paths (see blind_spots)",
+     "coverage": "partial",
      "first_step": 1,
      "last_step": 50,
      "ranks_with_calls": 512,
@@ -19752,7 +19978,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "linear_1d_operators::scalar_add_tridiag": {
    "adapter_hint": null,
@@ -19839,7 +20066,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "linear_1d_operators::scalar_lmult_tridiag": {
    "adapter_hint": null,
@@ -19928,7 +20156,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "linear_1d_operators::tridiag_finalize": {
    "adapter_hint": null,
@@ -20015,7 +20244,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "linear_1d_operators::zero_operator": {
    "adapter_hint": null,
@@ -20094,7 +20324,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "llnl_o1d_to_2oh_adj::o1d_to_2oh_adj": {
    "adapter_hint": null,
@@ -20179,7 +20410,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "macrop_driver::macrop_driver_tend": {
    "adapter_hint": null,
@@ -20263,7 +20495,8 @@
    },
    "status": null,
    "subsystem": "macrophysics",
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "mag_parms::get_mag_parms": {
    "adapter_hint": null,
@@ -20342,7 +20575,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "majorsp_diffusion::mspd_intr": {
    "adapter_hint": null,
@@ -20420,7 +20654,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "mcica_subcol_gen_lw::generate_stochastic_clouds": {
    "adapter_hint": null,
@@ -20504,7 +20739,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "mcica_subcol_gen_lw::kissvec": {
    "adapter_hint": null,
@@ -20588,7 +20824,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "mcica_subcol_gen_lw::kissvec.low_byte": {
    "adapter_hint": null,
@@ -20659,7 +20896,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "mcica_subcol_gen_lw::kissvec.m": {
    "adapter_hint": null,
@@ -20730,7 +20968,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "mcica_subcol_gen_lw::mcica_subcol_lw": {
    "adapter_hint": {
@@ -20817,7 +21056,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "mcica_subcol_gen_sw::generate_stochastic_clouds_sw": {
    "adapter_hint": null,
@@ -20901,7 +21141,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "mcica_subcol_gen_sw::kissvec": {
    "adapter_hint": null,
@@ -20985,7 +21226,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "mcica_subcol_gen_sw::kissvec.low_byte": {
    "adapter_hint": null,
@@ -21056,7 +21298,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "mcica_subcol_gen_sw::kissvec.m": {
    "adapter_hint": null,
@@ -21127,7 +21370,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "mcica_subcol_gen_sw::mcica_subcol_sw": {
    "adapter_hint": {
@@ -21214,7 +21458,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "mersennetwister::getrandomint": {
    "adapter_hint": null,
@@ -21285,7 +21530,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "mersennetwister::getrandomreal": {
    "adapter_hint": null,
@@ -21357,7 +21603,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "mersennetwister::initialize_scalar": {
    "adapter_hint": null,
@@ -21430,7 +21677,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "mersennetwister::initialize_vector": {
    "adapter_hint": null,
@@ -21502,7 +21750,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "mersennetwister::mixbits": {
    "adapter_hint": null,
@@ -21573,7 +21822,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "mersennetwister::nextstate": {
    "adapter_hint": null,
@@ -21644,7 +21894,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "mersennetwister::temper": {
    "adapter_hint": null,
@@ -21715,7 +21966,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "mersennetwister::twist": {
    "adapter_hint": null,
@@ -21786,7 +22038,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "micro_mg1_0::micro_mg_get_cols": {
    "adapter_hint": null,
@@ -21870,7 +22123,8 @@
    },
    "status": null,
    "subsystem": "microphysics",
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "micro_mg1_0::micro_mg_tend": {
    "adapter_hint": null,
@@ -21917,8 +22171,8 @@
    "development": {
     "blocker": null,
     "branch": "physics-kernel-api-closure",
-    "next_gate": "capture + full replay bit-for-bit, then 50-step in-model BFB",
-    "note": "Close the remaining capture and replay loop.",
+    "next_gate": "512-rank 50-step BFB with capture on the p11 image",
+    "note": "First capture attempt (7358831) aborted on manifest/image version skew: the p10 image exports no pycam_stage7_original_v1 (validation/pi_cam_pausable_micro-capture_50step_failure.json). Resubmit once the p11 image is built.",
     "owner": "claude",
     "owner_class": "freecam.physics.microphysics.Microphysics",
     "stage": "capture_replay",
@@ -21929,15 +22183,17 @@
     ],
     "updated_at": "2026-09-09"
    },
-   "failures": [],
+   "failures": [
+    "pi_cam_pausable_micro-capture_50step_failure.json"
+   ],
    "host": null,
    "id": "micro_mg1_0::micro_mg_tend",
    "kind": "subroutine",
    "missing": [
     "capture",
     "replay_full_chunk",
-    "replay_single_column",
-    "replay_public_api"
+    "replay_public_api",
+    "replay_single_column"
    ],
    "module": "micro_mg1_0",
    "module_state": [
@@ -21988,7 +22244,10 @@
    },
    "status": "open",
    "subsystem": "microphysics",
-   "tracked": true
+   "tracked": true,
+   "tracked_stages": {
+    "cam_run1.cloud_macro_microphysics": "open"
+   }
   },
   "micro_mg_cam::micro_mg_cam_tend": {
    "adapter_hint": null,
@@ -22072,7 +22331,8 @@
    },
    "status": null,
    "subsystem": "microphysics",
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "micro_mg_cam::p1": {
    "adapter_hint": null,
@@ -22158,7 +22418,8 @@
    },
    "status": null,
    "subsystem": "microphysics",
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "micro_mg_cam::p2": {
    "adapter_hint": null,
@@ -22244,7 +22505,8 @@
    },
    "status": null,
    "subsystem": "microphysics",
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "micro_mg_data::add_field_1d": {
    "adapter_hint": null,
@@ -22330,7 +22592,8 @@
    },
    "status": null,
    "subsystem": "microphysics",
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "micro_mg_data::add_field_2d": {
    "adapter_hint": null,
@@ -22416,7 +22679,8 @@
    },
    "status": null,
    "subsystem": "microphysics",
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "micro_mg_data::mgfieldpostproc_1d": {
    "adapter_hint": null,
@@ -22488,7 +22752,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "micro_mg_data::mgfieldpostproc_2d": {
    "adapter_hint": null,
@@ -22560,7 +22825,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "micro_mg_data::mgpostproc_accumulate": {
    "adapter_hint": null,
@@ -22644,7 +22910,8 @@
    },
    "status": null,
    "subsystem": "microphysics",
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "micro_mg_data::mgpostproc_finalize": {
    "adapter_hint": null,
@@ -22728,7 +22995,8 @@
    },
    "status": null,
    "subsystem": "microphysics",
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "micro_mg_data::mgpostproc_process_and_unpack": {
    "adapter_hint": null,
@@ -22812,7 +23080,8 @@
    },
    "status": null,
    "subsystem": "microphysics",
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "micro_mg_data::new_mgpacker": {
    "adapter_hint": null,
@@ -22896,7 +23165,8 @@
    },
    "status": null,
    "subsystem": "microphysics",
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "micro_mg_data::new_mgpostproc": {
    "adapter_hint": null,
@@ -22980,7 +23250,8 @@
    },
    "status": null,
    "subsystem": "microphysics",
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "micro_mg_data::pack_1d": {
    "adapter_hint": null,
@@ -23051,7 +23322,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "micro_mg_data::pack_2d": {
    "adapter_hint": null,
@@ -23137,7 +23409,8 @@
    },
    "status": null,
    "subsystem": "microphysics",
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "micro_mg_data::pack_3d": {
    "adapter_hint": null,
@@ -23223,7 +23496,8 @@
    },
    "status": null,
    "subsystem": "microphysics",
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "micro_mg_data::pack_interface": {
    "adapter_hint": null,
@@ -23307,7 +23581,8 @@
    },
    "status": null,
    "subsystem": "microphysics",
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "micro_mg_data::unpack_1d": {
    "adapter_hint": null,
@@ -23378,7 +23653,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "micro_mg_data::unpack_1d_array_fill": {
    "adapter_hint": null,
@@ -23449,7 +23725,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "micro_mg_data::unpack_2d": {
    "adapter_hint": null,
@@ -23496,7 +23773,8 @@
       "initialization": 167936
      },
      "calls_total": 125112320,
-     "coverage": "full",
+     "count_meaning": "lower bound: this kernel has uncounted call paths (see blind_spots)",
+     "coverage": "partial",
      "first_step": 1,
      "last_step": 1488,
      "ranks_with_calls": 512,
@@ -23508,7 +23786,8 @@
       "initialization": 167936
      },
      "calls_total": 4366336,
-     "coverage": "full",
+     "count_meaning": "lower bound: this kernel has uncounted call paths (see blind_spots)",
+     "coverage": "partial",
      "first_step": 1,
      "last_step": 50,
      "ranks_with_calls": 512,
@@ -23533,7 +23812,8 @@
    },
    "status": null,
    "subsystem": "microphysics",
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "micro_mg_data::unpack_2d_array_fill": {
    "adapter_hint": null,
@@ -23617,7 +23897,8 @@
    },
    "status": null,
    "subsystem": "microphysics",
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "micro_mg_data::unpack_3d": {
    "adapter_hint": null,
@@ -23688,7 +23969,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "micro_mg_data::unpack_3d_array_fill": {
    "adapter_hint": null,
@@ -23759,7 +24041,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "micro_mg_utils::avg_diameter": {
    "adapter_hint": null,
@@ -23844,7 +24127,8 @@
    },
    "status": null,
    "subsystem": "microphysics",
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "micro_mg_utils::limiter_is_on": {
    "adapter_hint": null,
@@ -23915,7 +24199,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "micro_mg_utils::size_dist_param_basic": {
    "adapter_hint": null,
@@ -24004,7 +24289,8 @@
    },
    "status": null,
    "subsystem": "microphysics",
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "micro_mg_utils::size_dist_param_liq": {
    "adapter_hint": null,
@@ -24089,7 +24375,8 @@
    },
    "status": null,
    "subsystem": "microphysics",
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "micro_mg_utils::size_dist_param_liq.rising_factorial": {
    "adapter_hint": null,
@@ -24160,7 +24447,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "microp_aero::microp_aero_run": {
    "adapter_hint": null,
@@ -24244,7 +24532,8 @@
    },
    "status": null,
    "subsystem": "microp_aero",
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "microp_driver::microp_driver_tend": {
    "adapter_hint": null,
@@ -24328,7 +24617,8 @@
    },
    "status": null,
    "subsystem": "microphysics",
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "mo_adjrxt::adjrxt": {
    "adapter_hint": null,
@@ -24413,7 +24703,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "mo_aero_settling::strat_aer_settling": {
    "adapter_hint": null,
@@ -24492,7 +24783,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "mo_airplane::airpl_set": {
    "adapter_hint": null,
@@ -24577,7 +24869,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "mo_chem_utls::get_extfrc_ndx": {
    "adapter_hint": null,
@@ -24660,7 +24953,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "mo_chem_utls::get_inv_ndx": {
    "adapter_hint": null,
@@ -24749,7 +25043,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "mo_chem_utls::get_spc_ndx": {
    "adapter_hint": null,
@@ -24838,7 +25133,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "mo_chm_diags::chm_diags": {
    "adapter_hint": null,
@@ -24923,7 +25219,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "mo_chm_diags::het_diags": {
    "adapter_hint": null,
@@ -25002,7 +25299,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "mo_drydep::chk_soilw": {
    "adapter_hint": null,
@@ -25074,7 +25372,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "mo_drydep::drydep_fromlnd": {
    "adapter_hint": null,
@@ -25161,7 +25460,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "mo_drydep::drydep_table": {
    "adapter_hint": null,
@@ -25242,7 +25542,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "mo_drydep::drydep_update": {
    "adapter_hint": null,
@@ -25327,7 +25628,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "mo_drydep::drydep_xactive": {
    "adapter_hint": null,
@@ -25415,7 +25717,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "mo_drydep::has_drydep": {
    "adapter_hint": null,
@@ -25498,7 +25801,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "mo_drydep::interpdvel": {
    "adapter_hint": null,
@@ -25570,7 +25874,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "mo_drydep::intp2d": {
    "adapter_hint": null,
@@ -25642,7 +25947,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "mo_drydep::set_soilw": {
    "adapter_hint": null,
@@ -25721,7 +26027,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "mo_exp_sol::exp_sol": {
    "adapter_hint": null,
@@ -25806,7 +26113,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "mo_fstrat::rebin": {
    "adapter_hint": null,
@@ -25878,7 +26186,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "mo_fstrat::set_fstrat_h2o": {
    "adapter_hint": null,
@@ -25963,7 +26272,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "mo_fstrat::set_fstrat_vals": {
    "adapter_hint": null,
@@ -26048,7 +26358,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "mo_gas_phase_chemdr::gas_phase_chemdr": {
    "adapter_hint": null,
@@ -26092,10 +26403,10 @@
    "kind": "subroutine",
    "missing": [
     "capture",
-    "standalone_build",
     "replay_full_chunk",
+    "replay_public_api",
     "replay_single_column",
-    "replay_public_api"
+    "standalone_build"
    ],
    "module": "mo_gas_phase_chemdr",
    "module_state": [],
@@ -26145,7 +26456,10 @@
    },
    "status": "open",
    "subsystem": null,
-   "tracked": true
+   "tracked": true,
+   "tracked_stages": {
+    "cam_run2.chemistry_tendencies_leaf": "open"
+   }
   },
   "mo_ghg_chem::ghg_chem_set_flbc": {
    "adapter_hint": null,
@@ -26224,7 +26538,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "mo_ghg_chem::ghg_chem_set_rates": {
    "adapter_hint": null,
@@ -26303,7 +26618,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "mo_ghg_chem::ghg_chem_timestep_init": {
    "adapter_hint": null,
@@ -26381,7 +26697,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "mo_imp_sol::imp_sol": {
    "adapter_hint": null,
@@ -26466,7 +26783,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "mo_indprd::indprd": {
    "adapter_hint": null,
@@ -26552,7 +26870,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "mo_jeuv::jeuv": {
    "adapter_hint": null,
@@ -26631,7 +26950,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "mo_jlong::interpolate_rsf": {
    "adapter_hint": null,
@@ -26713,7 +27033,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "mo_jlong::jlong_hrates": {
    "adapter_hint": null,
@@ -26794,7 +27115,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "mo_jlong::jlong_photo": {
    "adapter_hint": null,
@@ -26879,7 +27201,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "mo_jlong::jlong_timestep_init": {
    "adapter_hint": null,
@@ -26963,7 +27286,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "mo_jshort::calc_jno": {
    "adapter_hint": null,
@@ -27042,7 +27366,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "mo_jshort::calc_jno.pjno": {
    "adapter_hint": null,
@@ -27114,7 +27439,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "mo_jshort::calc_o2srb": {
    "adapter_hint": null,
@@ -27194,7 +27520,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "mo_jshort::calc_params": {
    "adapter_hint": null,
@@ -27273,7 +27600,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "mo_jshort::calc_params.jchebev": {
    "adapter_hint": null,
@@ -27345,7 +27673,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "mo_jshort::effxs": {
    "adapter_hint": null,
@@ -27417,7 +27746,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "mo_jshort::jshort_hrates": {
    "adapter_hint": null,
@@ -27498,7 +27828,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "mo_jshort::jshort_photo": {
    "adapter_hint": null,
@@ -27577,7 +27908,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "mo_jshort::jshort_timestep_init": {
    "adapter_hint": null,
@@ -27655,7 +27987,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "mo_jshort::lymana": {
    "adapter_hint": null,
@@ -27735,7 +28068,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "mo_jshort::slant_col": {
    "adapter_hint": null,
@@ -27816,7 +28150,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "mo_jshort::sphers": {
    "adapter_hint": null,
@@ -27897,7 +28232,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "mo_lightning::lightning_no_prod": {
    "adapter_hint": null,
@@ -27979,7 +28315,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "mo_lin_matrix::linmat": {
    "adapter_hint": null,
@@ -28064,7 +28401,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "mo_lin_matrix::linmat01": {
    "adapter_hint": null,
@@ -28136,7 +28474,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "mo_lu_factor::lu_fac": {
    "adapter_hint": null,
@@ -28221,7 +28560,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "mo_lu_factor::lu_fac01": {
    "adapter_hint": null,
@@ -28293,7 +28633,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "mo_lu_solve::lu_slv": {
    "adapter_hint": null,
@@ -28378,7 +28719,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "mo_lu_solve::lu_slv01": {
    "adapter_hint": null,
@@ -28450,7 +28792,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "mo_mass_xforms::h2o_to_vmr": {
    "adapter_hint": null,
@@ -28535,7 +28878,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "mo_mass_xforms::mmr2vmr": {
    "adapter_hint": null,
@@ -28620,7 +28964,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "mo_mass_xforms::mmr2vmri": {
    "adapter_hint": null,
@@ -28699,7 +29044,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "mo_mass_xforms::vmr2mmr": {
    "adapter_hint": null,
@@ -28784,7 +29130,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "mo_mean_mass::set_mean_mass": {
    "adapter_hint": null,
@@ -28869,7 +29216,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "mo_msis_ubc::msis_timestep_init": {
    "adapter_hint": null,
@@ -28947,7 +29295,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "mo_negtrc::negtrc": {
    "adapter_hint": null,
@@ -29032,7 +29381,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "mo_neu_wetdep::dempirical": {
    "adapter_hint": null,
@@ -29117,7 +29467,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "mo_neu_wetdep::disgas": {
    "adapter_hint": null,
@@ -29202,7 +29553,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "mo_neu_wetdep::neu_wetdep_tend": {
    "adapter_hint": null,
@@ -29287,7 +29639,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "mo_neu_wetdep::raingas": {
    "adapter_hint": null,
@@ -29372,7 +29725,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "mo_neu_wetdep::washgas": {
    "adapter_hint": null,
@@ -29451,7 +29805,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "mo_neu_wetdep::washo": {
    "adapter_hint": null,
@@ -29536,7 +29891,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "mo_nln_matrix::nlnmat": {
    "adapter_hint": null,
@@ -29621,7 +29977,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "mo_nln_matrix::nlnmat_finit": {
    "adapter_hint": null,
@@ -29693,7 +30050,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "mo_photo::cloud_mod": {
    "adapter_hint": null,
@@ -29765,7 +30123,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "mo_photo::p_interp": {
    "adapter_hint": null,
@@ -29837,7 +30196,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "mo_photo::photo_timestep_init": {
    "adapter_hint": null,
@@ -29921,7 +30281,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "mo_photo::set_ub_col": {
    "adapter_hint": null,
@@ -30006,7 +30367,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "mo_photo::set_xnox_photo": {
    "adapter_hint": null,
@@ -30092,7 +30454,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "mo_photo::setcol": {
    "adapter_hint": null,
@@ -30177,7 +30540,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "mo_photo::table_photo": {
    "adapter_hint": null,
@@ -30262,7 +30626,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "mo_phtadj::phtadj": {
    "adapter_hint": null,
@@ -30347,7 +30712,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "mo_prod_loss::exp_prod_loss": {
    "adapter_hint": null,
@@ -30432,7 +30798,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "mo_prod_loss::imp_prod_loss": {
    "adapter_hint": null,
@@ -30517,7 +30884,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "mo_rxt_rates_conv::set_rates": {
    "adapter_hint": null,
@@ -30602,7 +30970,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "mo_sad::calc_radius_lbs": {
    "adapter_hint": null,
@@ -30674,7 +31043,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "mo_sad::density": {
    "adapter_hint": null,
@@ -30746,7 +31116,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "mo_sad::equil": {
    "adapter_hint": null,
@@ -30825,7 +31196,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "mo_sad::ice_sad_calc": {
    "adapter_hint": null,
@@ -30897,7 +31269,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "mo_sad::nat_cond": {
    "adapter_hint": null,
@@ -30969,7 +31342,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "mo_sad::nat_sad_calc": {
    "adapter_hint": null,
@@ -31041,7 +31415,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "mo_sad::nat_sat_temp": {
    "adapter_hint": null,
@@ -31113,7 +31488,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "mo_sad::sad2h2so4": {
    "adapter_hint": null,
@@ -31185,7 +31561,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "mo_sad::sad_strat_calc": {
    "adapter_hint": null,
@@ -31264,7 +31641,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "mo_sad::sulfate_sad_calc": {
    "adapter_hint": null,
@@ -31343,7 +31721,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "mo_setext::setext": {
    "adapter_hint": null,
@@ -31428,7 +31807,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "mo_sethet::sethet": {
    "adapter_hint": null,
@@ -31507,7 +31887,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "mo_setinv::setinv": {
    "adapter_hint": null,
@@ -31592,7 +31973,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "mo_setrxt::setrxt": {
    "adapter_hint": null,
@@ -31677,7 +32059,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "mo_setsox::setsox": {
    "adapter_hint": null,
@@ -31762,7 +32145,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "mo_snoe::interpol": {
    "adapter_hint": null,
@@ -31833,7 +32217,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "mo_snoe::snoe_timestep_init": {
    "adapter_hint": null,
@@ -31911,7 +32296,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "mo_snoe::snoe_zm": {
    "adapter_hint": null,
@@ -31982,7 +32368,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "mo_snoe::snoe_zmto3d": {
    "adapter_hint": null,
@@ -32053,7 +32440,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "mo_solarproton::spe_prod": {
    "adapter_hint": null,
@@ -32138,7 +32526,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "mo_strato_rates::ratecon_sfstrat": {
    "adapter_hint": null,
@@ -32217,7 +32606,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "mo_sulf::set_sulf_time": {
    "adapter_hint": null,
@@ -32301,7 +32691,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "mo_sulf::sulf_interp": {
    "adapter_hint": null,
@@ -32386,7 +32777,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "mo_tgcm_ubc::tgcm_timestep_init": {
    "adapter_hint": null,
@@ -32464,7 +32856,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "mo_usrrxt::comp_exp": {
    "adapter_hint": null,
@@ -32549,7 +32942,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "mo_usrrxt::hetrxtrate": {
    "adapter_hint": null,
@@ -32628,7 +33022,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "mo_usrrxt::usrrxt": {
    "adapter_hint": null,
@@ -32713,7 +33108,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "mo_util::rebin": {
    "adapter_hint": null,
@@ -32803,7 +33199,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "modal_aer_opt::binterp": {
    "adapter_hint": null,
@@ -32888,7 +33285,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "modal_aer_opt::modal_aero_lw": {
    "adapter_hint": {
@@ -32986,7 +33384,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "modal_aer_opt::modal_aero_sw": {
    "adapter_hint": {
@@ -33084,7 +33483,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "modal_aer_opt::modal_size_parameters": {
    "adapter_hint": null,
@@ -33155,7 +33555,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "modal_aero_calcsize::modal_aero_calcsize_diag": {
    "adapter_hint": null,
@@ -33236,7 +33637,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "modal_aero_calcsize::modal_aero_calcsize_sub": {
    "adapter_hint": null,
@@ -33321,7 +33723,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "modal_aero_coag::getcoags": {
    "adapter_hint": null,
@@ -33393,7 +33796,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "modal_aero_coag::getcoags_wrapper_f": {
    "adapter_hint": null,
@@ -33465,7 +33869,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "modal_aero_coag::modal_aero_coag_sub": {
    "adapter_hint": null,
@@ -33550,7 +33955,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "modal_aero_data::qqcw_get_field": {
    "adapter_hint": null,
@@ -33648,7 +34054,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "modal_aero_deposition::set_srf_drydep": {
    "adapter_hint": null,
@@ -33735,7 +34142,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "modal_aero_deposition::set_srf_wetdep": {
    "adapter_hint": null,
@@ -33822,7 +34230,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "modal_aero_gasaerexch::gas_aer_uptkrates": {
    "adapter_hint": null,
@@ -33894,7 +34303,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "modal_aero_gasaerexch::modal_aero_gasaerexch_sub": {
    "adapter_hint": null,
@@ -33979,7 +34389,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "modal_aero_gasaerexch::modal_aero_soaexch": {
    "adapter_hint": null,
@@ -34051,7 +34462,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "modal_aero_newnuc::binary_nuc_vehk2002": {
    "adapter_hint": null,
@@ -34123,7 +34535,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "modal_aero_newnuc::mer07_veh02_nuc_mosaic_1box": {
    "adapter_hint": null,
@@ -34208,7 +34621,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "modal_aero_newnuc::modal_aero_newnuc_sub": {
    "adapter_hint": null,
@@ -34293,7 +34707,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "modal_aero_newnuc::pbl_nuc_wang2008": {
    "adapter_hint": null,
@@ -34365,7 +34780,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "modal_aero_newnuc::ternary_nuc_merik2007": {
    "adapter_hint": null,
@@ -34444,7 +34860,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "modal_aero_rename::modal_aero_rename_acc_crs_sub": {
    "adapter_hint": null,
@@ -34523,7 +34940,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "modal_aero_rename::modal_aero_rename_no_acc_crs_sub": {
    "adapter_hint": null,
@@ -34608,7 +35026,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "modal_aero_rename::modal_aero_rename_sub": {
    "adapter_hint": null,
@@ -34693,7 +35112,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "modal_aero_wateruptake::calc_h2so4_equilib_mixrat": {
    "adapter_hint": null,
@@ -34766,7 +35186,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "modal_aero_wateruptake::calc_h2so4_wtpct": {
    "adapter_hint": null,
@@ -34839,7 +35260,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "modal_aero_wateruptake::makoh_cubic": {
    "adapter_hint": null,
@@ -34912,7 +35334,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "modal_aero_wateruptake::makoh_quartic": {
    "adapter_hint": null,
@@ -34985,7 +35408,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "modal_aero_wateruptake::modal_aero_kohler": {
    "adapter_hint": null,
@@ -35071,7 +35495,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "modal_aero_wateruptake::modal_aero_wateruptake_dr": {
    "adapter_hint": null,
@@ -35160,7 +35585,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "modal_aero_wateruptake::modal_aero_wateruptake_sub": {
    "adapter_hint": null,
@@ -35233,7 +35659,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "molec_diff::init_timestep_molec_diff": {
    "adapter_hint": null,
@@ -35311,7 +35738,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "msise00::ccor": {
    "adapter_hint": null,
@@ -35382,7 +35810,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "msise00::densm": {
    "adapter_hint": null,
@@ -35426,20 +35855,22 @@
     "1month": {
      "calls_by_context": {},
      "calls_total": 0,
-     "coverage": "full",
+     "coverage": "partial",
      "first_step": -1,
      "last_step": -1,
      "ranks_with_calls": 0,
-     "status": "not-observed-in-this-run"
+     "status": "unknown",
+     "status_reason": "zero counted calls with uncounted paths remaining"
     },
     "50step": {
      "calls_by_context": {},
      "calls_total": 0,
-     "coverage": "full",
+     "coverage": "partial",
      "first_step": -1,
      "last_step": -1,
      "ranks_with_calls": 0,
-     "status": "not-observed-in-this-run"
+     "status": "unknown",
+     "status_reason": "zero counted calls with uncounted paths remaining"
     }
    },
    "owner_class": null,
@@ -35460,7 +35891,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "msise00::densu": {
    "adapter_hint": null,
@@ -35538,7 +35970,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "msise00::dnet": {
    "adapter_hint": null,
@@ -35616,7 +36049,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "msise00::ghp7": {
    "adapter_hint": null,
@@ -35694,7 +36128,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "msise00::glatf": {
    "adapter_hint": null,
@@ -35765,7 +36200,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "msise00::glob7s": {
    "adapter_hint": null,
@@ -35844,7 +36280,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "msise00::globe7": {
    "adapter_hint": null,
@@ -35922,7 +36359,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "msise00::gtd7": {
    "adapter_hint": null,
@@ -35993,7 +36431,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "msise00::gts7": {
    "adapter_hint": null,
@@ -36071,7 +36510,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "msise00::scalh": {
    "adapter_hint": null,
@@ -36142,7 +36582,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "msise00::spline": {
    "adapter_hint": null,
@@ -36221,7 +36662,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "msise00::splini": {
    "adapter_hint": null,
@@ -36293,7 +36735,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "msise00::splint": {
    "adapter_hint": null,
@@ -36365,7 +36808,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "msise00::tselec": {
    "adapter_hint": null,
@@ -36446,7 +36890,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "msise00::vtst7": {
    "adapter_hint": null,
@@ -36518,7 +36963,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "ndrop::activate_modal": {
    "adapter_hint": null,
@@ -36602,7 +37048,8 @@
    },
    "status": null,
    "subsystem": "microp_aero",
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "ndrop::ccncalc": {
    "adapter_hint": null,
@@ -36686,7 +37133,8 @@
    },
    "status": null,
    "subsystem": "microp_aero",
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "ndrop::dropmixnuc": {
    "adapter_hint": null,
@@ -36770,7 +37218,8 @@
    },
    "status": null,
    "subsystem": "microp_aero",
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "ndrop::explmix": {
    "adapter_hint": null,
@@ -36841,7 +37290,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "ndrop::loadaer": {
    "adapter_hint": null,
@@ -36928,7 +37378,8 @@
    },
    "status": null,
    "subsystem": "microp_aero",
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "ndrop::maxsat": {
    "adapter_hint": null,
@@ -36999,7 +37450,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "noy_ubc::noy_ubc_advance": {
    "adapter_hint": null,
@@ -37083,7 +37535,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "noy_ubc::noy_ubc_set": {
    "adapter_hint": null,
@@ -37168,7 +37621,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "nucleate_ice::frachom": {
    "adapter_hint": null,
@@ -37239,7 +37693,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "nucleate_ice::hetero": {
    "adapter_hint": null,
@@ -37310,7 +37765,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "nucleate_ice::hf": {
    "adapter_hint": null,
@@ -37381,7 +37837,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "nucleate_ice::nucleati": {
    "adapter_hint": null,
@@ -37465,7 +37922,8 @@
    },
    "status": null,
    "subsystem": "microp_aero",
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "nucleate_ice::vpreice": {
    "adapter_hint": null,
@@ -37536,7 +37994,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "nucleate_ice_cam::nucleate_ice_cam_calc": {
    "adapter_hint": null,
@@ -37620,7 +38079,8 @@
    },
    "status": null,
    "subsystem": "microp_aero",
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "pbl_utils::calc_obklen": {
    "adapter_hint": {
@@ -37708,7 +38168,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "pbl_utils::calc_ustar": {
    "adapter_hint": {
@@ -37796,7 +38257,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "pbl_utils::compute_radf": {
    "adapter_hint": {
@@ -37888,7 +38350,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "pbl_utils::virtem": {
    "adapter_hint": {
@@ -37999,7 +38462,10 @@
    },
    "status": "complete",
    "subsystem": null,
-   "tracked": true
+   "tracked": true,
+   "tracked_stages": {
+    "cam_run2.vertical_diffusion": "complete"
+   }
   },
   "photo_bkgrnd::photo_bkgrnd_calc": {
    "adapter_hint": null,
@@ -38078,7 +38544,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "photo_bkgrnd::qback": {
    "adapter_hint": null,
@@ -38150,7 +38617,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "phys_gmean::gmean_arr": {
    "adapter_hint": null,
@@ -38238,7 +38706,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "phys_gmean::gmean_fixed_repro": {
    "adapter_hint": null,
@@ -38322,7 +38791,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "phys_gmean::gmean_float_repro": {
    "adapter_hint": null,
@@ -38393,7 +38863,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "phys_gmean::gmean_scl": {
    "adapter_hint": null,
@@ -38474,7 +38945,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "phys_prop::physprop_get": {
    "adapter_hint": null,
@@ -38567,7 +39039,8 @@
    },
    "status": null,
    "subsystem": "microp_aero",
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "pkg_cldoptics::cldclw": {
    "adapter_hint": null,
@@ -38652,7 +39125,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "pkg_cldoptics::cldovrlap": {
    "adapter_hint": null,
@@ -38737,7 +39211,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "polar_avg::polar_average2d": {
    "adapter_hint": null,
@@ -38816,7 +39291,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "polar_avg::polar_average3d": {
    "adapter_hint": null,
@@ -38895,7 +39371,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "qbo::qbo_relax": {
    "adapter_hint": {
@@ -38991,7 +39468,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "qbo::qbo_timestep_init": {
    "adapter_hint": null,
@@ -39075,7 +39553,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "qneg3::qneg3": {
    "adapter_hint": {
@@ -39195,7 +39674,8 @@
    },
    "status": null,
    "subsystem": "shared",
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "qneg4::qneg4": {
    "adapter_hint": null,
@@ -39279,7 +39759,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "rad_solar_var::get_variability": {
    "adapter_hint": null,
@@ -39363,7 +39844,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "rad_solar_var::integrate_spectrum": {
    "adapter_hint": null,
@@ -39434,7 +39916,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "radconstants::rad_gas_index": {
    "adapter_hint": null,
@@ -39524,7 +40007,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "radheat::radheat_tend": {
    "adapter_hint": null,
@@ -39608,7 +40092,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "radheat::radheat_timestep_init": {
    "adapter_hint": null,
@@ -39692,7 +40177,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "radiation::calc_col_mean": {
    "adapter_hint": {
@@ -39777,7 +40263,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "radiation::radiation_do": {
    "adapter_hint": {
@@ -39874,7 +40361,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "radiation::radiation_tend": {
    "adapter_hint": {
@@ -39972,7 +40460,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "radiation::radinp": {
    "adapter_hint": {
@@ -40053,7 +40542,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "radiation_data::rad_data_write": {
    "adapter_hint": {
@@ -40149,7 +40639,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "radlw::rad_rrtmg_lw": {
    "adapter_hint": {
@@ -40200,10 +40691,10 @@
    "kind": "subroutine",
    "missing": [
     "capture",
-    "standalone_build",
     "replay_full_chunk",
+    "replay_public_api",
     "replay_single_column",
-    "replay_public_api"
+    "standalone_build"
    ],
    "module": "radlw",
    "module_state": [],
@@ -40252,7 +40743,10 @@
    },
    "status": "open",
    "subsystem": null,
-   "tracked": true
+   "tracked": true,
+   "tracked_stages": {
+    "cam_run1.radiation": "open"
+   }
   },
   "radsw::rad_rrtmg_sw": {
    "adapter_hint": {
@@ -40305,10 +40799,10 @@
    "kind": "subroutine",
    "missing": [
     "capture",
-    "standalone_build",
     "replay_full_chunk",
+    "replay_public_api",
     "replay_single_column",
-    "replay_public_api"
+    "standalone_build"
    ],
    "module": "radsw",
    "module_state": [],
@@ -40357,7 +40851,10 @@
    },
    "status": "open",
    "subsystem": null,
-   "tracked": true
+   "tracked": true,
+   "tracked_stages": {
+    "cam_run1.radiation": "open"
+   }
   },
   "rate_diags::rate_diags_calc": {
    "adapter_hint": null,
@@ -40442,7 +40939,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "rayleigh_friction::rayleigh_friction_tend": {
    "adapter_hint": {
@@ -40534,7 +41032,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "rrtmg_lw_cldprmc::cldprmc": {
    "adapter_hint": null,
@@ -40618,7 +41117,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "rrtmg_lw_rad::inatm": {
    "adapter_hint": null,
@@ -40702,7 +41202,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "rrtmg_lw_rad::rrtmg_lw": {
    "adapter_hint": null,
@@ -40786,7 +41287,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "rrtmg_lw_rtrnmc::rtrnmc": {
    "adapter_hint": null,
@@ -40870,7 +41372,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "rrtmg_lw_setcoef::setcoef": {
    "adapter_hint": null,
@@ -40954,7 +41457,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "rrtmg_lw_taumol::taumol": {
    "adapter_hint": null,
@@ -41038,7 +41542,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "rrtmg_lw_taumol::taumol.taugb1": {
    "adapter_hint": null,
@@ -41109,7 +41614,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "rrtmg_lw_taumol::taumol.taugb10": {
    "adapter_hint": null,
@@ -41180,7 +41686,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "rrtmg_lw_taumol::taumol.taugb11": {
    "adapter_hint": null,
@@ -41251,7 +41758,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "rrtmg_lw_taumol::taumol.taugb12": {
    "adapter_hint": null,
@@ -41322,7 +41830,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "rrtmg_lw_taumol::taumol.taugb13": {
    "adapter_hint": null,
@@ -41393,7 +41902,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "rrtmg_lw_taumol::taumol.taugb14": {
    "adapter_hint": null,
@@ -41464,7 +41974,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "rrtmg_lw_taumol::taumol.taugb15": {
    "adapter_hint": null,
@@ -41535,7 +42046,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "rrtmg_lw_taumol::taumol.taugb16": {
    "adapter_hint": null,
@@ -41606,7 +42118,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "rrtmg_lw_taumol::taumol.taugb2": {
    "adapter_hint": null,
@@ -41677,7 +42190,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "rrtmg_lw_taumol::taumol.taugb3": {
    "adapter_hint": null,
@@ -41748,7 +42262,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "rrtmg_lw_taumol::taumol.taugb4": {
    "adapter_hint": null,
@@ -41819,7 +42334,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "rrtmg_lw_taumol::taumol.taugb5": {
    "adapter_hint": null,
@@ -41890,7 +42406,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "rrtmg_lw_taumol::taumol.taugb6": {
    "adapter_hint": null,
@@ -41961,7 +42478,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "rrtmg_lw_taumol::taumol.taugb7": {
    "adapter_hint": null,
@@ -42032,7 +42550,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "rrtmg_lw_taumol::taumol.taugb8": {
    "adapter_hint": null,
@@ -42103,7 +42622,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "rrtmg_lw_taumol::taumol.taugb9": {
    "adapter_hint": null,
@@ -42174,7 +42694,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "rrtmg_state::rrtmg_state_create": {
    "adapter_hint": {
@@ -42268,7 +42789,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "rrtmg_state::rrtmg_state_destroy": {
    "adapter_hint": {
@@ -42364,7 +42886,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "rrtmg_state::rrtmg_state_update": {
    "adapter_hint": {
@@ -42460,7 +42983,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "rrtmg_sw_cldprmc::cldprmc_sw": {
    "adapter_hint": null,
@@ -42544,7 +43068,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "rrtmg_sw_rad::earth_sun": {
    "adapter_hint": null,
@@ -42615,7 +43140,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "rrtmg_sw_rad::inatm_sw": {
    "adapter_hint": null,
@@ -42699,7 +43225,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "rrtmg_sw_rad::rrtmg_sw": {
    "adapter_hint": null,
@@ -42783,7 +43310,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "rrtmg_sw_reftra::reftra_sw": {
    "adapter_hint": null,
@@ -42867,7 +43395,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "rrtmg_sw_setcoef::setcoef_sw": {
    "adapter_hint": null,
@@ -42951,7 +43480,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "rrtmg_sw_spcvmc::spcvmc_sw": {
    "adapter_hint": null,
@@ -43035,7 +43565,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "rrtmg_sw_taumol::taumol_sw": {
    "adapter_hint": null,
@@ -43119,7 +43650,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "rrtmg_sw_taumol::taumol_sw.taumol16": {
    "adapter_hint": null,
@@ -43190,7 +43722,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "rrtmg_sw_taumol::taumol_sw.taumol17": {
    "adapter_hint": null,
@@ -43261,7 +43794,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "rrtmg_sw_taumol::taumol_sw.taumol18": {
    "adapter_hint": null,
@@ -43332,7 +43866,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "rrtmg_sw_taumol::taumol_sw.taumol19": {
    "adapter_hint": null,
@@ -43403,7 +43938,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "rrtmg_sw_taumol::taumol_sw.taumol20": {
    "adapter_hint": null,
@@ -43474,7 +44010,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "rrtmg_sw_taumol::taumol_sw.taumol21": {
    "adapter_hint": null,
@@ -43545,7 +44082,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "rrtmg_sw_taumol::taumol_sw.taumol22": {
    "adapter_hint": null,
@@ -43616,7 +44154,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "rrtmg_sw_taumol::taumol_sw.taumol23": {
    "adapter_hint": null,
@@ -43687,7 +44226,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "rrtmg_sw_taumol::taumol_sw.taumol24": {
    "adapter_hint": null,
@@ -43758,7 +44298,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "rrtmg_sw_taumol::taumol_sw.taumol25": {
    "adapter_hint": null,
@@ -43829,7 +44370,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "rrtmg_sw_taumol::taumol_sw.taumol26": {
    "adapter_hint": null,
@@ -43900,7 +44442,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "rrtmg_sw_taumol::taumol_sw.taumol27": {
    "adapter_hint": null,
@@ -43971,7 +44514,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "rrtmg_sw_taumol::taumol_sw.taumol28": {
    "adapter_hint": null,
@@ -44042,7 +44586,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "rrtmg_sw_taumol::taumol_sw.taumol29": {
    "adapter_hint": null,
@@ -44113,7 +44658,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "rrtmg_sw_vrtqdr::vrtqdr_sw": {
    "adapter_hint": null,
@@ -44197,7 +44743,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "seasalt_model::seasalt_emis": {
    "adapter_hint": null,
@@ -44281,7 +44828,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "short_lived_species::slvd_index": {
    "adapter_hint": null,
@@ -44366,7 +44914,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "sox_cldaero_mod::sox_cldaero_create_obj": {
    "adapter_hint": null,
@@ -44451,7 +45000,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "sox_cldaero_mod::sox_cldaero_destroy_obj": {
    "adapter_hint": null,
@@ -44536,7 +45086,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "sox_cldaero_mod::sox_cldaero_update": {
    "adapter_hint": null,
@@ -44621,7 +45172,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "spehox::hox_prod_factor": {
    "adapter_hint": null,
@@ -44701,7 +45253,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "spehox::interp_factor_tbl": {
    "adapter_hint": null,
@@ -44773,7 +45326,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "sslt_rebin::sslt_rebin_adv": {
    "adapter_hint": {
@@ -44869,7 +45423,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "sslt_sections::fluxes": {
    "adapter_hint": null,
@@ -44953,7 +45508,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "tidal_diag::get_tidal_coeffs": {
    "adapter_hint": null,
@@ -45041,7 +45597,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "tidal_diag::tidal_diag_write": {
    "adapter_hint": null,
@@ -45126,7 +45683,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "time_utils::flt_date": {
    "adapter_hint": null,
@@ -45208,7 +45766,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "tracer_cnst::get_cnst_data": {
    "adapter_hint": null,
@@ -45293,7 +45852,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "tracer_cnst::tracer_cnst_adv": {
    "adapter_hint": null,
@@ -45377,7 +45937,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "tracer_srcs::get_srcs_data": {
    "adapter_hint": null,
@@ -45456,7 +46017,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "tracer_srcs::tracer_srcs_adv": {
    "adapter_hint": null,
@@ -45540,7 +46102,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "tracers::tracers_timestep_init": {
    "adapter_hint": null,
@@ -45624,7 +46187,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "tracers::tracers_timestep_tend": {
    "adapter_hint": null,
@@ -45709,7 +46273,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "tracers_suite::flux_tr": {
    "adapter_hint": null,
@@ -45788,7 +46353,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "tracers_suite::tend_hi": {
    "adapter_hint": null,
@@ -45860,7 +46426,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "tracers_suite::tend_lw": {
    "adapter_hint": null,
@@ -45932,7 +46499,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "tracers_suite::tend_md": {
    "adapter_hint": null,
@@ -46004,7 +46572,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "tracers_suite::tend_tr": {
    "adapter_hint": null,
@@ -46083,7 +46652,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "tracers_suite::tend_un": {
    "adapter_hint": null,
@@ -46155,7 +46725,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "tracers_suite::timestep_init_tr": {
    "adapter_hint": null,
@@ -46233,7 +46804,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "trb_mtn_stress::compute_tms": {
    "adapter_hint": {
@@ -46280,10 +46852,10 @@
    "kind": "subroutine",
    "missing": [
     "capture",
-    "standalone_build",
     "replay_full_chunk",
+    "replay_public_api",
     "replay_single_column",
-    "replay_public_api"
+    "standalone_build"
    ],
    "module": "trb_mtn_stress",
    "module_state": [],
@@ -46332,7 +46904,10 @@
    },
    "status": "open",
    "subsystem": null,
-   "tracked": true
+   "tracked": true,
+   "tracked_stages": {
+    "cam_run2.vertical_diffusion": "open"
+   }
   },
   "tropopause::tropopause_analytic": {
    "adapter_hint": null,
@@ -46410,7 +46985,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "tropopause::tropopause_climate": {
    "adapter_hint": null,
@@ -46488,7 +47064,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "tropopause::tropopause_find": {
    "adapter_hint": {
@@ -46600,7 +47177,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "tropopause::tropopause_findusing": {
    "adapter_hint": {
@@ -46709,7 +47287,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "tropopause::tropopause_hybridstobie": {
    "adapter_hint": null,
@@ -46794,7 +47373,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "tropopause::tropopause_interpolatet": {
    "adapter_hint": null,
@@ -46876,7 +47456,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "tropopause::tropopause_interpolatez": {
    "adapter_hint": null,
@@ -46971,7 +47552,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "tropopause::tropopause_output": {
    "adapter_hint": null,
@@ -47056,7 +47638,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "tropopause::tropopause_stobie": {
    "adapter_hint": null,
@@ -47134,7 +47717,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "tropopause::tropopause_twmo": {
    "adapter_hint": null,
@@ -47212,7 +47796,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "tropopause::tropopause_wmo": {
    "adapter_hint": null,
@@ -47297,7 +47882,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "tropopause::twmo": {
    "adapter_hint": null,
@@ -47392,7 +47978,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "upper_bc::ubc_timestep_init": {
    "adapter_hint": null,
@@ -47470,7 +48057,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "uwshcu::compute_alpha": {
    "adapter_hint": null,
@@ -47541,7 +48129,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "uwshcu::compute_mumin2": {
    "adapter_hint": null,
@@ -47612,7 +48201,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "uwshcu::compute_ppen": {
    "adapter_hint": null,
@@ -47683,7 +48273,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "uwshcu::compute_uwshcu": {
    "adapter_hint": {
@@ -47775,7 +48366,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "uwshcu::compute_uwshcu_inv": {
    "adapter_hint": {
@@ -47824,10 +48416,10 @@
    "kind": "subroutine",
    "missing": [
     "capture",
-    "standalone_build",
     "replay_full_chunk",
+    "replay_public_api",
     "replay_single_column",
-    "replay_public_api"
+    "standalone_build"
    ],
    "module": "uwshcu",
    "module_state": [],
@@ -47876,7 +48468,10 @@
    },
    "status": "open",
    "subsystem": null,
-   "tracked": true
+   "tracked": true,
+   "tracked_stages": {
+    "cam_run1.shallow_convection": "open"
+   }
   },
   "uwshcu::conden": {
    "adapter_hint": null,
@@ -47962,7 +48557,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "uwshcu::exnf": {
    "adapter_hint": null,
@@ -48051,7 +48647,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "uwshcu::fluxbelowinv": {
    "adapter_hint": null,
@@ -48159,7 +48756,10 @@
    },
    "status": "complete",
    "subsystem": null,
-   "tracked": true
+   "tracked": true,
+   "tracked_stages": {
+    "cam_run1.shallow_convection": "complete"
+   }
   },
   "uwshcu::getbuoy": {
    "adapter_hint": null,
@@ -48243,7 +48843,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "uwshcu::positive_moisture_single": {
    "adapter_hint": null,
@@ -48329,7 +48930,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "uwshcu::qsinvert": {
    "adapter_hint": null,
@@ -48400,7 +49002,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "uwshcu::roots": {
    "adapter_hint": null,
@@ -48484,7 +49087,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "uwshcu::single_cin": {
    "adapter_hint": null,
@@ -48568,7 +49172,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "uwshcu::slope": {
    "adapter_hint": null,
@@ -48652,7 +49257,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "vdiff_lu_solver::fin_vol_lu_decomp": {
    "adapter_hint": {
@@ -48752,7 +49358,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "vertical_diffusion::positive_moisture": {
    "adapter_hint": {
@@ -48833,7 +49440,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "vertical_diffusion::vertical_diffusion_tend": {
    "adapter_hint": {
@@ -48931,7 +49539,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "vertical_diffusion::vertical_diffusion_ts_init": {
    "adapter_hint": null,
@@ -49015,7 +49624,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "water_tracers::wtrc_add_rate": {
    "adapter_hint": null,
@@ -49086,7 +49696,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "water_tracers::wtrc_add_rates": {
    "adapter_hint": null,
@@ -49171,7 +49782,8 @@
    },
    "status": null,
    "subsystem": "shared",
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "water_tracers::wtrc_apply_rates": {
    "adapter_hint": null,
@@ -49256,7 +49868,8 @@
    },
    "status": null,
    "subsystem": "shared",
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "water_tracers::wtrc_check_h2o": {
    "adapter_hint": {
@@ -49368,7 +49981,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "water_tracers::wtrc_clear_precip": {
    "adapter_hint": null,
@@ -49452,7 +50066,8 @@
    },
    "status": null,
    "subsystem": "shared",
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "water_tracers::wtrc_diagnose_bulk_precip": {
    "adapter_hint": null,
@@ -49536,7 +50151,8 @@
    },
    "status": null,
    "subsystem": "shared",
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "water_tracers::wtrc_diagnose_precip": {
    "adapter_hint": null,
@@ -49620,7 +50236,8 @@
    },
    "status": null,
    "subsystem": "shared",
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "water_tracers::wtrc_dqequil": {
    "adapter_hint": null,
@@ -49693,7 +50310,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "water_tracers::wtrc_efac": {
    "adapter_hint": null,
@@ -49766,7 +50384,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "water_tracers::wtrc_equil_time": {
    "adapter_hint": null,
@@ -49858,7 +50477,8 @@
    },
    "status": null,
    "subsystem": "shared",
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "water_tracers::wtrc_get_alpha": {
    "adapter_hint": null,
@@ -49951,7 +50571,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "water_tracers::wtrc_get_rstd": {
    "adapter_hint": {
@@ -50056,7 +50677,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "water_tracers::wtrc_init_rates": {
    "adapter_hint": null,
@@ -50141,7 +50763,8 @@
    },
    "status": null,
    "subsystem": "shared",
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "water_tracers::wtrc_is_wtrc": {
    "adapter_hint": null,
@@ -50225,7 +50848,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "water_tracers::wtrc_liqvap_equil": {
    "adapter_hint": null,
@@ -50278,7 +50902,8 @@
       "initialization": 53444464
      },
      "calls_total": 39818646363,
-     "coverage": "full",
+     "count_meaning": "lower bound: this kernel has uncounted call paths (see blind_spots)",
+     "coverage": "partial",
      "first_step": 1,
      "last_step": 1488,
      "ranks_with_calls": 512,
@@ -50292,7 +50917,8 @@
       "initialization": 53444464
      },
      "calls_total": 1387610032,
-     "coverage": "full",
+     "count_meaning": "lower bound: this kernel has uncounted call paths (see blind_spots)",
+     "coverage": "partial",
      "first_step": 1,
      "last_step": 50,
      "ranks_with_calls": 512,
@@ -50319,7 +50945,8 @@
    },
    "status": null,
    "subsystem": "shared",
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "water_tracers::wtrc_mass_fixer": {
    "adapter_hint": null,
@@ -50412,7 +51039,8 @@
    },
    "status": null,
    "subsystem": "shared",
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "water_tracers::wtrc_output_precip": {
    "adapter_hint": null,
@@ -50496,7 +51124,8 @@
    },
    "status": null,
    "subsystem": "shared",
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "water_tracers::wtrc_precip_evap": {
    "adapter_hint": {
@@ -50590,7 +51219,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "water_tracers::wtrc_q1q2_pjr": {
    "adapter_hint": {
@@ -50684,7 +51314,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "water_tracers::wtrc_ratio": {
    "adapter_hint": null,
@@ -50791,7 +51422,8 @@
    },
    "status": null,
    "subsystem": "shared",
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "water_tracers::wtrc_sediment": {
    "adapter_hint": null,
@@ -50875,7 +51507,8 @@
    },
    "status": null,
    "subsystem": "shared",
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "wetdep::clddiag": {
    "adapter_hint": null,
@@ -50947,7 +51580,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "wetdep::wetdep_inputs_set": {
    "adapter_hint": null,
@@ -51032,7 +51666,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "wetdep::wetdepa_v2": {
    "adapter_hint": null,
@@ -51076,10 +51711,10 @@
    "kind": "subroutine",
    "missing": [
     "capture",
-    "standalone_build",
     "replay_full_chunk",
+    "replay_public_api",
     "replay_single_column",
-    "replay_public_api"
+    "standalone_build"
    ],
    "module": "wetdep",
    "module_state": [],
@@ -51129,7 +51764,10 @@
    },
    "status": "open",
    "subsystem": null,
-   "tracked": true
+   "tracked": true,
+   "tracked_stages": {
+    "cam_run1.aerosol_wet_deposition_leaf": "open"
+   }
   },
   "wv_sat_methods::bolton_svp_water": {
    "adapter_hint": null,
@@ -51208,7 +51846,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "wv_sat_methods::goffgratch_svp_ice": {
    "adapter_hint": null,
@@ -51281,7 +51920,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "wv_sat_methods::goffgratch_svp_water": {
    "adapter_hint": null,
@@ -51359,7 +51999,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "wv_sat_methods::murphykoop_svp_ice": {
    "adapter_hint": null,
@@ -51432,7 +52073,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "wv_sat_methods::murphykoop_svp_water": {
    "adapter_hint": null,
@@ -51510,7 +52152,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "wv_sat_methods::oldgoffgratch_svp_ice": {
    "adapter_hint": null,
@@ -51583,7 +52226,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "wv_sat_methods::oldgoffgratch_svp_water": {
    "adapter_hint": null,
@@ -51661,7 +52305,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "wv_sat_methods::wv_sat_qsat_ice": {
    "adapter_hint": null,
@@ -51742,7 +52387,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "wv_sat_methods::wv_sat_qsat_water": {
    "adapter_hint": null,
@@ -51839,7 +52485,8 @@
    },
    "status": null,
    "subsystem": "shared",
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "wv_sat_methods::wv_sat_svp_ice": {
    "adapter_hint": null,
@@ -51929,7 +52576,8 @@
    },
    "status": null,
    "subsystem": "shared",
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "wv_sat_methods::wv_sat_svp_to_qsat": {
    "adapter_hint": null,
@@ -52043,7 +52691,8 @@
    },
    "status": null,
    "subsystem": "shared",
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "wv_sat_methods::wv_sat_svp_water": {
    "adapter_hint": null,
@@ -52140,7 +52789,8 @@
    },
    "status": null,
    "subsystem": "shared",
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "wv_saturation::calc_hltalt": {
    "adapter_hint": {
@@ -52230,7 +52880,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "wv_saturation::deriv_outputs": {
    "adapter_hint": {
@@ -52323,7 +52974,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "wv_saturation::estblf": {
    "adapter_hint": {
@@ -52420,7 +53072,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "wv_saturation::findsp": {
    "adapter_hint": null,
@@ -52492,7 +53145,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "wv_saturation::findsp_vc": {
    "adapter_hint": null,
@@ -52581,7 +53235,8 @@
    },
    "status": null,
    "subsystem": "shared",
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "wv_saturation::no_ip_hltalt": {
    "adapter_hint": null,
@@ -52664,7 +53319,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "wv_saturation::qsat": {
    "adapter_hint": {
@@ -52802,7 +53458,8 @@
    },
    "status": null,
    "subsystem": "shared",
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "wv_saturation::qsat_ice": {
    "adapter_hint": null,
@@ -52880,7 +53537,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "wv_saturation::qsat_water": {
    "adapter_hint": {
@@ -52999,7 +53657,8 @@
    },
    "status": null,
    "subsystem": "shared",
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "wv_saturation::svp_ice": {
    "adapter_hint": null,
@@ -53093,7 +53752,8 @@
    },
    "status": null,
    "subsystem": "shared",
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "wv_saturation::svp_water": {
    "adapter_hint": null,
@@ -53181,7 +53841,8 @@
    },
    "status": null,
    "subsystem": "shared",
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "wv_saturation::tq_enthalpy": {
    "adapter_hint": {
@@ -53275,7 +53936,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "zenith::zenith": {
    "adapter_hint": {
@@ -53372,7 +54034,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "zm_conv::buoyan_dilute": {
    "adapter_hint": null,
@@ -53443,7 +54106,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "zm_conv::cldprp": {
    "adapter_hint": null,
@@ -53527,7 +54191,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "zm_conv::closure": {
    "adapter_hint": {
@@ -53621,7 +54286,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "zm_conv::convtran": {
    "adapter_hint": {
@@ -53673,10 +54339,10 @@
    "kind": "subroutine",
    "missing": [
     "capture",
-    "standalone_build",
     "replay_full_chunk",
+    "replay_public_api",
     "replay_single_column",
-    "replay_public_api"
+    "standalone_build"
    ],
    "module": "zm_conv",
    "module_state": [],
@@ -53729,7 +54395,10 @@
    },
    "status": "open",
    "subsystem": null,
-   "tracked": true
+   "tracked": true,
+   "tracked_stages": {
+    "cam_run1.convective_tracer_transport_leaf": "open"
+   }
   },
   "zm_conv::entropy": {
    "adapter_hint": null,
@@ -53801,7 +54470,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "zm_conv::ientropy": {
    "adapter_hint": null,
@@ -53885,7 +54555,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "zm_conv::momtran": {
    "adapter_hint": {
@@ -53935,10 +54606,10 @@
    "kind": "subroutine",
    "missing": [
     "capture",
-    "standalone_build",
     "replay_full_chunk",
+    "replay_public_api",
     "replay_single_column",
-    "replay_public_api"
+    "standalone_build"
    ],
    "module": "zm_conv",
    "module_state": [],
@@ -53987,7 +54658,10 @@
    },
    "status": "open",
    "subsystem": null,
-   "tracked": true
+   "tracked": true,
+   "tracked_stages": {
+    "cam_run1.deep_convection": "open"
+   }
   },
   "zm_conv::parcel_dilute": {
    "adapter_hint": null,
@@ -54071,7 +54745,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "zm_conv::q1q2_pjr": {
    "adapter_hint": null,
@@ -54142,7 +54817,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "zm_conv::qsat_hpa": {
    "adapter_hint": null,
@@ -54231,7 +54907,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "zm_conv::zm_conv_evap": {
    "adapter_hint": {
@@ -54279,10 +54956,10 @@
    "kind": "subroutine",
    "missing": [
     "capture",
-    "standalone_build",
     "replay_full_chunk",
+    "replay_public_api",
     "replay_single_column",
-    "replay_public_api"
+    "standalone_build"
    ],
    "module": "zm_conv",
    "module_state": [],
@@ -54331,7 +55008,10 @@
    },
    "status": "open",
    "subsystem": null,
-   "tracked": true
+   "tracked": true,
+   "tracked_stages": {
+    "cam_run1.deep_convection": "open"
+   }
   },
   "zm_conv::zm_convr": {
    "adapter_hint": {
@@ -54382,10 +55062,10 @@
    "kind": "subroutine",
    "missing": [
     "capture",
-    "standalone_build",
     "replay_full_chunk",
+    "replay_public_api",
     "replay_single_column",
-    "replay_public_api"
+    "standalone_build"
    ],
    "module": "zm_conv",
    "module_state": [],
@@ -54434,7 +55114,10 @@
    },
    "status": "open",
    "subsystem": null,
-   "tracked": true
+   "tracked": true,
+   "tracked_stages": {
+    "cam_run1.deep_convection": "open"
+   }
   },
   "zm_conv_intr::zm_conv_tend": {
    "adapter_hint": {
@@ -54532,7 +55215,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   },
   "zm_conv_intr::zm_conv_tend_2": {
    "adapter_hint": null,
@@ -54617,7 +55301,8 @@
    },
    "status": null,
    "subsystem": null,
-   "tracked": false
+   "tracked": false,
+   "tracked_stages": {}
   }
  },
  "notes": {
@@ -54639,25 +55324,25 @@
   {
    "image": {
     "kernel_counts": {
-     "observability_sha256": "729ab8cd4e5b5138974ebc34c71bc947b87e63ee647ed3350fe945327d32e6af",
+     "observability_sha256": "9dfb865a750f1e3e71490fb0ef9d13e5163ca9d19d2f77855d2d8476796d3cee",
      "scope": "all",
-     "trampolines_sha256": "b5c92a81e921402be05dbb84f3c570f38cf6ca5c1be4a6ec63e9f493895ab29a"
+     "trampolines_sha256": "2da614b74d76922ce82fb9398391c55e91ce09c455f2d458daca212cd79bd0db"
     },
-    "native_library_sha256": "d8d63b832d17f8df0750bc08ee1c1ef6d01ec77afa296dae9d16f88bee27010a",
-    "observability_content_hash": "729ab8cd4e5b5138974ebc34c71bc947b87e63ee647ed3350fe945327d32e6af"
+    "native_library_sha256": "c12a03198aa390a2fea34ef25e60aaee8c9be2cf7c5a665305210f03405c8e7a",
+    "observability_content_hash": "9dfb865a750f1e3e71490fb0ef9d13e5163ca9d19d2f77855d2d8476796d3cee"
    },
    "key": "50step",
    "label": "50-step validation",
    "run": {
-    "advance_seconds": 15.892613006999909,
+    "advance_seconds": 19.401957328000208,
     "bfb": true,
     "bfb_record": "pi_cam_kcount_all_vs_oracle_50step_bfb.json",
     "final_date": 10102,
     "final_model_step": 50,
     "label": "50step",
-    "maximum_rank_hwm_bytes": 844374016,
+    "maximum_rank_hwm_bytes": 837431296,
     "mpi_ranks": 512,
-    "pbs_job": "7355293",
+    "pbs_job": "7358790",
     "run_status": "passed",
     "steps": 50,
     "summary_record": "pi_cam_kcount_all_50step.json",
@@ -54667,34 +55352,34 @@
     "all_ranks_reported": true,
     "candidates": 601,
     "instrumented": 428,
-    "not-observed-in-this-run": 73,
+    "not-observed-in-this-run": 71,
     "observed": 343,
-    "unknown": 185
+    "unknown": 187
    },
    "validated": true
   },
   {
    "image": {
     "kernel_counts": {
-     "observability_sha256": "729ab8cd4e5b5138974ebc34c71bc947b87e63ee647ed3350fe945327d32e6af",
+     "observability_sha256": "9dfb865a750f1e3e71490fb0ef9d13e5163ca9d19d2f77855d2d8476796d3cee",
      "scope": "all",
-     "trampolines_sha256": "b5c92a81e921402be05dbb84f3c570f38cf6ca5c1be4a6ec63e9f493895ab29a"
+     "trampolines_sha256": "2da614b74d76922ce82fb9398391c55e91ce09c455f2d458daca212cd79bd0db"
     },
-    "native_library_sha256": "d8d63b832d17f8df0750bc08ee1c1ef6d01ec77afa296dae9d16f88bee27010a",
-    "observability_content_hash": "729ab8cd4e5b5138974ebc34c71bc947b87e63ee647ed3350fe945327d32e6af"
+    "native_library_sha256": "c12a03198aa390a2fea34ef25e60aaee8c9be2cf7c5a665305210f03405c8e7a",
+    "observability_content_hash": "9dfb865a750f1e3e71490fb0ef9d13e5163ca9d19d2f77855d2d8476796d3cee"
    },
    "key": "1month",
    "label": "One-month validation",
    "run": {
-    "advance_seconds": 602.196166573,
+    "advance_seconds": 487.43471532299964,
     "bfb": true,
     "bfb_record": "pi_cam_kcount_all_vs_fortran_1month_bfb.json",
     "final_date": 10201,
     "final_model_step": 1488,
     "label": "1month",
-    "maximum_rank_hwm_bytes": 924635136,
+    "maximum_rank_hwm_bytes": 921657344,
     "mpi_ranks": 512,
-    "pbs_job": "7356182",
+    "pbs_job": "7358791",
     "run_status": "passed",
     "steps": 1488,
     "summary_record": "pi_cam_kcount_all_1month.json",
@@ -54704,9 +55389,9 @@
     "all_ranks_reported": true,
     "candidates": 601,
     "instrumented": 428,
-    "not-observed-in-this-run": 73,
+    "not-observed-in-this-run": 71,
     "observed": 343,
-    "unknown": 185
+    "unknown": 187
    },
    "validated": true
   }
@@ -65274,8 +65959,8 @@
     },
     "interpolate_data::lininterp2d1d": {
      "calls": 102400,
-     "first_step": 2,
-     "last_step": 1488
+     "first_step": 671,
+     "last_step": 719
     },
     "interpolate_data::lininterp3d2d": {
      "calls": 61440,
@@ -65284,13 +65969,13 @@
     },
     "interpolate_data::lininterp_finish": {
      "calls": 327680,
-     "first_step": 2,
-     "last_step": 1488
+     "first_step": 671,
+     "last_step": 719
     },
     "interpolate_data::lininterp_init": {
      "calls": 327680,
-     "first_step": 2,
-     "last_step": 1488
+     "first_step": 671,
+     "last_step": 719
     },
     "intp_util::findplb": {
      "calls": 9216,
@@ -65476,7 +66161,7 @@
     },
     "mo_util::rebin": {
      "calls": 10665984,
-     "first_step": 1,
+     "first_step": 2,
      "last_step": 1488
     },
     "modal_aer_opt::binterp": {
@@ -65496,7 +66181,7 @@
     },
     "phys_prop::physprop_get": {
      "calls": 20318699520,
-     "first_step": 1,
+     "first_step": 2,
      "last_step": 1488
     },
     "rad_solar_var::get_variability": {
@@ -65621,27 +66306,27 @@
     },
     "tropopause::tropopause_find": {
      "calls": 1523712,
-     "first_step": 1,
+     "first_step": 2,
      "last_step": 1488
     },
     "tropopause::tropopause_findusing": {
      "calls": 3047424,
-     "first_step": 1,
+     "first_step": 2,
      "last_step": 1488
     },
     "tropopause::twmo": {
      "calls": 20573088,
-     "first_step": 1,
+     "first_step": 2,
      "last_step": 1488
     },
     "wv_sat_methods::wv_sat_svp_to_qsat": {
      "calls": 308596320,
-     "first_step": 1,
+     "first_step": 2,
      "last_step": 1488
     },
     "wv_saturation::qsat": {
      "calls": 308596320,
-     "first_step": 1,
+     "first_step": 2,
      "last_step": 1488
     },
     "zenith::zenith": {
@@ -66637,7 +67322,7 @@
     "water_tracers::wtrc_ratio": {
      "calls": 244,
      "first_step": 1,
-     "last_step": 1488
+     "last_step": 1074
     },
     "wv_sat_methods::wv_sat_svp_to_qsat": {
      "calls": 20573088,
@@ -66842,7 +67527,7 @@
    "cam_run4.restart": {
     "co2_cycle::co2_transport": {
      "calls": 1024,
-     "first_step": 1,
+     "first_step": 1488,
      "last_step": 1488
     },
     "radiation::radiation_do": {
@@ -66854,7 +67539,7 @@
    "coupling.boundary_import": {
     "co2_cycle::co2_transport": {
      "calls": 761344,
-     "first_step": 1,
+     "first_step": 2,
      "last_step": 1488
     }
    }
@@ -67742,7 +68427,7 @@
     },
     "mo_util::rebin": {
      "calls": 358400,
-     "first_step": 1,
+     "first_step": 2,
      "last_step": 50
     },
     "modal_aer_opt::binterp": {
@@ -67762,7 +68447,7 @@
     },
     "phys_prop::physprop_get": {
      "calls": 682752000,
-     "first_step": 1,
+     "first_step": 2,
      "last_step": 50
     },
     "rad_solar_var::get_variability": {
@@ -67887,27 +68572,27 @@
     },
     "tropopause::tropopause_find": {
      "calls": 51200,
-     "first_step": 1,
+     "first_step": 2,
      "last_step": 50
     },
     "tropopause::tropopause_findusing": {
      "calls": 102400,
-     "first_step": 1,
+     "first_step": 2,
      "last_step": 50
     },
     "tropopause::twmo": {
      "calls": 691300,
-     "first_step": 1,
+     "first_step": 2,
      "last_step": 50
     },
     "wv_sat_methods::wv_sat_svp_to_qsat": {
      "calls": 10369500,
-     "first_step": 1,
+     "first_step": 2,
      "last_step": 50
     },
     "wv_saturation::qsat": {
      "calls": 10369500,
-     "first_step": 1,
+     "first_step": 2,
      "last_step": 50
     },
     "zenith::zenith": {
@@ -68903,7 +69588,7 @@
     "water_tracers::wtrc_ratio": {
      "calls": 232,
      "first_step": 1,
-     "last_step": 50
+     "last_step": 1
     },
     "wv_sat_methods::wv_sat_svp_to_qsat": {
      "calls": 691300,
@@ -69108,7 +69793,7 @@
    "cam_run4.restart": {
     "co2_cycle::co2_transport": {
      "calls": 1024,
-     "first_step": 1,
+     "first_step": 50,
      "last_step": 50
     },
     "radiation::radiation_do": {
@@ -69120,7 +69805,7 @@
    "coupling.boundary_import": {
     "co2_cycle::co2_transport": {
      "calls": 25088,
-     "first_step": 1,
+     "first_step": 2,
      "last_step": 50
     }
    }
@@ -70184,6 +70869,12 @@
      "status": "complete"
     },
     {
+     "id": "cloud_fraction::cldfrc_fice",
+     "owner_class": "freecam.physics.macrophysics.Macrophysics",
+     "routine": "cldfrc_fice",
+     "status": "open"
+    },
+    {
      "id": "micro_mg1_0::micro_mg_tend",
      "owner_class": "freecam.physics.microphysics.Microphysics",
      "routine": "micro_mg_tend",
@@ -70746,13 +71437,26 @@
      "replacement_calls": 100
     }
    ],
-   "historical_failures": [],
+   "historical_failures": [
+    "pi_cam_pausable_micro-capture_50step_failure.json"
+   ],
    "kernel_routine": "micro_mg_tend",
    "mechanism": "pause",
    "note": null,
    "process": "cam_run1.cloud_macro_microphysics",
    "requires_development_image": false,
    "state": "verified",
+   "within": null
+  },
+  {
+   "gates": [],
+   "historical_failures": [],
+   "kernel_routine": "cldfrc_fice",
+   "mechanism": "pause",
+   "note": null,
+   "process": "cam_run1.cloud_macro_microphysics",
+   "requires_development_image": false,
+   "state": "not-verified",
    "within": null
   },
   {
@@ -71352,8 +72056,8 @@
   "redirectable_calls": 428,
   "standalone_replay_verified": 5,
   "tracked_by_status": {
-   "complete": 5,
-   "open": 15
+   "complete": 4,
+   "open": 16
   },
   "tracked_kernels": 20,
   "unmapped_kernels": 6,
@@ -71370,8 +72074,8 @@
  ],
  "volatile": {
   "branch": "physics-kernel-api-closure",
-  "commit": "0a533210feacc826d701c55d7bc553fc529a6a9c",
-  "generated_at": "2026-09-09T06:44:05+00:00"
+  "commit": "f5045bc32c017787a1f3c82c8af841e432951eea",
+  "generated_at": "2026-09-09T07:37:54+00:00"
  },
  "work_items": [
   {
@@ -71392,8 +72096,8 @@
   {
    "branch": "physics-kernel-api-closure",
    "kernel": "micro_mg1_0::micro_mg_tend",
-   "next_gate": "capture + full replay bit-for-bit, then 50-step in-model BFB",
-   "note": "Close the remaining capture and replay loop.",
+   "next_gate": "512-rank 50-step BFB with capture on the p11 image",
+   "note": "First capture attempt (7358831) aborted on manifest/image version skew: the p10 image exports no pycam_stage7_original_v1 (validation/pi_cam_pausable_micro-capture_50step_failure.json). Resubmit once the p11 image is built.",
    "owner": "claude",
    "owner_class": "freecam.physics.microphysics.Microphysics",
    "stage": "capture_replay",

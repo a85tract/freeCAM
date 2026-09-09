@@ -33,7 +33,7 @@ def test_the_inventory_closes_over_the_step_plan_and_the_catalog() -> None:
     # the two stages Python drives, and what they expose
     stage7 = by_id["cam_run1.cloud_macro_microphysics"]
     assert stage7["python_class"].endswith("CloudMacroMicrophysics")
-    assert stage7["kernels"] == ["mmacro_pcond", "micro_mg_tend"] and stage7["coverage"] == "partial"
+    assert stage7["kernels"] == ["mmacro_pcond", "cldfrc_fice", "micro_mg_tend"] and stage7["coverage"] == "partial"
     assert stage7["performance"] == ["performance_overhead.md", "pi_cam_native_whole_1month_median.json",
                                      "pi_cam_faster_than_fortran.json"]
     # every class-owned action points at the all-class pairs; an action without a class has no performance record
@@ -79,20 +79,28 @@ def test_every_kernel_row_is_a_kernel_a_stage_class_describes_and_two_have_close
     # replayed bit-for-bit through the standalone function (7343396, pi_cam_virtem_frame_replay.json)
     assert rows["virtem"]["bindable"] and rows["virtem"]["validated_through_runner"]
     assert rows["virtem"]["status"] == "complete" and rows["virtem"]["missing"] == []
+    # cldfrc_fice is tracked once per stage context: complete at the deep-convection
+    # hook, open again at the cloud stage's transcribed call site until its own gate
+    by_stage = {(k["kernel"], k["stage_action"]): k for k in record["kernels"]}
+    assert len(by_stage) == len(record["kernels"])          # (kernel, stage) is the row's identity
+    fice_deep = by_stage[("cldfrc_fice", "cam_run1.deep_convection")]
+    fice_cloud = by_stage[("cldfrc_fice", "cam_run1.cloud_macro_microphysics")]
+    assert fice_cloud["status"] == "open" and "in_model_replacement_bfb" in fice_cloud["missing"]
+    assert not fice_cloud["validated_through_runner"]
     # the hooked kernels: answered by the original at their hooks, bit-for-bit (7343708, 7343709)
-    for name in ("cldfrc_fice", "fluxbelowinv"):
-        assert rows[name]["bindable"] and rows[name]["validated_through_runner"]
-        assert "in_model_replacement_bfb" not in rows[name]["missing"]
-    # cldfrc_fice closed the loop: every frame captured at its hook (7343811, run tag fice-capture, found
-    # through the replay record) replayed bit-for-bit through the standalone function
-    assert rows["cldfrc_fice"]["status"] == "complete" and rows["cldfrc_fice"]["missing"] == []
-    assert rows["cldfrc_fice"]["evidence"]["capture"] == ["pi_cam_pausable_fice-capture_50step.json"]
+    for row in (fice_deep, rows["fluxbelowinv"]):
+        assert row["bindable"] and row["validated_through_runner"]
+        assert "in_model_replacement_bfb" not in row["missing"]
+    # cldfrc_fice closed the deep-convection loop: every frame captured at its hook (7343811, run tag
+    # fice-capture, found through the replay record) replayed bit-for-bit through the standalone function
+    assert fice_deep["status"] == "complete" and fice_deep["missing"] == []
+    assert fice_deep["evidence"]["capture"] == ["pi_cam_pausable_fice-capture_50step.json"]
     # fluxbelowinv too: 36733580 frames captured at its hook (7343922) replayed bit-for-bit through the
     # standalone function with the model's snapshot of uwshcu's g (7344823); the first replay, without
     # that module state, is kept as a failure record
     assert rows["fluxbelowinv"]["status"] == "complete" and rows["fluxbelowinv"]["missing"] == []
     assert rows["fluxbelowinv"]["evidence"]["module_state"] == ["pi_cam_fluxbelowinv_module_state.json"]
-    assert "7343258" in (rows["cldfrc_fice"]["note"] or "")
+    assert "7343258" in (fice_deep["note"] or "")
     # the pausable stages: dadadj has a reviewed contract and the runner pauses at it
     assert rows["dadadj"]["bindable"] and rows["dadadj"]["contract"] == "reviewed"
     pcond = rows["mmacro_pcond"]
@@ -126,7 +134,9 @@ def test_every_kernel_row_is_a_kernel_a_stage_class_describes_and_two_have_close
         assert "reviewed_contract" not in rows[name]["missing"] and "segment_runner" not in rows[name]["missing"]
         assert "in_model_replacement_bfb" not in rows[name]["missing"]
         assert [g["record"] for g in rows[name]["in_model_gates"][1:]][-1] == "pi_cam_pausable_everything_50step.json"
-    assert record["summary"]["kernels_by_status"] == {"complete": 5, "open": 15}     # the P3-P5 kernels await capture and replay
+    # the P3-P5 kernels await capture and replay; cldfrc_fice is open again in
+    # the cloud stage's context while complete in deep convection's
+    assert record["summary"]["kernels_by_status"] == {"complete": 5, "open": 16}
 
 
 def test_the_committed_record_is_what_the_builder_writes_now() -> None:
