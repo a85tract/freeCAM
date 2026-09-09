@@ -535,7 +535,7 @@
     "provider": "CESMOnlineBoundaryProvider",
     "python_owned_internal": false,
     "reverse_allocator_callbacks": false,
-    "run_dir": "/glade/derecho/scratch/ruitong/freeCAM/PI-cam/pair-1month-AC-7356002.desched1/C-freecam/cesm-provider-run",
+    "run_dir": "/glade/derecho/scratch/ruitong/freeCAM/PI-cam/pair-1month-AC-7356182.desched1/C-freecam/cesm-provider-run",
     "shadow_a2x_bfb_steps": 0,
     "shadow_atmosphere": false
   },
@@ -609,43 +609,43 @@
     "samples": [
       {
         "label": "python_ready",
-        "maximum_rank_hwm_bytes": 225656832,
-        "maximum_rank_rss_bytes": 225656832,
-        "maximum_rank_ru_maxrss_bytes": 225656832,
+        "maximum_rank_hwm_bytes": 225898496,
+        "maximum_rank_rss_bytes": 225898496,
+        "maximum_rank_ru_maxrss_bytes": 225898496,
         "step": 0,
-        "total_hwm_bytes": 113778851840,
-        "total_pss_bytes": 93804988416,
-        "total_rss_bytes": 113778851840
+        "total_hwm_bytes": 113691246592,
+        "total_pss_bytes": 93722779648,
+        "total_rss_bytes": 113691246592
       },
       {
         "label": "initialized",
-        "maximum_rank_hwm_bytes": 834494464,
-        "maximum_rank_rss_bytes": 834494464,
-        "maximum_rank_ru_maxrss_bytes": 834494464,
+        "maximum_rank_hwm_bytes": 836161536,
+        "maximum_rank_rss_bytes": 836161536,
+        "maximum_rank_ru_maxrss_bytes": 836161536,
         "step": 0,
-        "total_hwm_bytes": 247914590208,
-        "total_pss_bytes": 207577731072,
-        "total_rss_bytes": 247627689984
+        "total_hwm_bytes": 247298416640,
+        "total_pss_bytes": 207104100352,
+        "total_rss_bytes": 247103311872
       },
       {
         "label": "pre_finalize",
-        "maximum_rank_hwm_bytes": 925802496,
-        "maximum_rank_rss_bytes": 925802496,
-        "maximum_rank_ru_maxrss_bytes": 925802496,
+        "maximum_rank_hwm_bytes": 924635136,
+        "maximum_rank_rss_bytes": 924635136,
+        "maximum_rank_ru_maxrss_bytes": 924635136,
         "step": 1488,
-        "total_hwm_bytes": 269611192320,
-        "total_pss_bytes": 214993433600,
-        "total_rss_bytes": 269591621632
+        "total_hwm_bytes": 268465274880,
+        "total_pss_bytes": 214561916928,
+        "total_rss_bytes": 268363931648
       },
       {
         "label": "finalized",
-        "maximum_rank_hwm_bytes": 925802496,
-        "maximum_rank_rss_bytes": 920489984,
-        "maximum_rank_ru_maxrss_bytes": 925802496,
+        "maximum_rank_hwm_bytes": 924635136,
+        "maximum_rank_rss_bytes": 922750976,
+        "maximum_rank_ru_maxrss_bytes": 924635136,
         "step": 1488,
-        "total_hwm_bytes": 269697654784,
-        "total_pss_bytes": 215029042176,
-        "total_rss_bytes": 269627072512
+        "total_hwm_bytes": 268620587008,
+        "total_pss_bytes": 214598228992,
+        "total_rss_bytes": 268487569408
       }
     ]
   },
@@ -655,7 +655,7 @@
   "native_library_sha256": "d8d63b832d17f8df0750bc08ee1c1ef6d01ec77afa296dae9d16f88bee27010a",
   "native_manifest": "/glade/work/ruitong/pycam-sima-pi-cam-only/build/pi_cam_promoted_oall/native_cam_manifest.json",
   "native_state_ownership": "python-owned-zero-copy-derived-shell",
-  "pbs_job_id": "7356002.desched1",
+  "pbs_job_id": "7356182.desched1",
   "python_stages": [],
   "radiation_python": false,
   "radiation_split": false,
@@ -4012,14 +4012,14 @@
   "step_plan_actions": 48,
   "steps": 1488,
   "timing": {
-    "advance_seconds": 457.49436309,
-    "advance_sypd": 16.039721543710577,
+    "advance_seconds": 602.196166573,
+    "advance_sypd": 12.185534546891336,
     "aggregation": "maximum across all MPI ranks",
     "clock": "MPI.Wtime with MPI barriers",
-    "finalize_seconds": 0.4728959499999519,
-    "initialize_seconds": 15.994851311000005,
+    "finalize_seconds": 0.48681293199979336,
+    "initialize_seconds": 20.66666887500014,
     "simulated_days": 31.0,
-    "total_seconds": 474.02554409000004
+    "total_seconds": 623.4074586840002
   },
   "validation_scope": "online original-CESM components/coupler with per-boundary BFB oracle"
 }

@@ -2648,7 +2648,7 @@
   "use_gw_oro": true,
   "use_subcol_microp": false
  },
- "content_hash": "686a3a136b8c2e43c30f252d6af88ee7256f9ffa9f176be55cbed4e6b885b784",
+ "content_hash": "fa26c94f294e52ee65d4374d2b4d9456905f2596bf13746e7ef878882cc1d869",
  "evidence": {
   "pi_cam_cldfrc_fice_frame_replay.json": {
    "bfb": true,
@@ -4531,7 +4531,7 @@
   "validation/physics_kernel_decoupling.json": "0c22e27fb005ee8feb299048c8dcfd6490245ed0d8f31f64f975e3418d4192aa",
   "validation/pi_cam_kernel_api_closure.json": "96025214b3e4c41f6ba89c266da5dd27c51c42c81c31e1a0ac6f7b2e9cfa260a",
   "validation/pi_cam_kernel_api_redirectable_calls.json": "9ac016f0d242ceef054aa8a80ef074aa53b08c1f0f3042a81e76da4c75603273",
-  "validation/pi_cam_kernel_runtime_coverage_1month.json": "87512777c81df477f529574133ad39b1f6f1e030c9dbaefc01ccb0b1a1fd9095",
+  "validation/pi_cam_kernel_runtime_coverage_1month.json": "899bb1875b046c93d24aef364957aea1daefedde805d5ab6f9bb9846945e65ff",
   "validation/pi_cam_kernel_runtime_coverage_50step.json": "7da8e8cd579ecf1e24f95921633b7b4c93d051fabc9e2a323ba48aac8038aac2",
   "web/public/catalog.json": "b29c6fef7cedd40d7fa103f7107505f88677e778adaaa2d83c755b776eafcb77"
  },
@@ -7510,6 +7510,7 @@
    "observation": {
     "1month": {
      "calls_by_context": {
+      "cam_run1.cloud_macro_microphysics": 3047424,
       "cam_run1.deep_convection": 1523712,
       "cam_run1.energy_fixer": 1523712,
       "cam_run1.radiation": 1523712,
@@ -7520,8 +7521,7 @@
       "cam_run2.ion_drag": 1523712,
       "cam_run2.qbo_relaxation": 1523712,
       "cam_run2.rayleigh_friction": 1523712,
-      "initialization": 18432,
-      "run-unattributed": 3047424
+      "initialization": 18432
      },
      "calls_total": 18302976,
      "count_meaning": "lower bound: this kernel has uncounted call paths (see blind_spots)",
@@ -8738,8 +8738,8 @@
    "observation": {
     "1month": {
      "calls_by_context": {
-      "initialization": 390704,
-      "run-unattributed": 447738922
+      "cam_run1.cloud_macro_microphysics": 447738922,
+      "initialization": 390704
      },
      "calls_total": 448129626,
      "coverage": "full",
@@ -8817,8 +8817,8 @@
    "observation": {
     "1month": {
      "calls_by_context": {
-      "initialization": 307200,
-      "run-unattributed": 228556800
+      "cam_run1.cloud_macro_microphysics": 228556800,
+      "initialization": 307200
      },
      "calls_total": 228864000,
      "coverage": "full",
@@ -8896,8 +8896,8 @@
    "observation": {
     "1month": {
      "calls_by_context": {
-      "initialization": 307200,
-      "run-unattributed": 228556800
+      "cam_run1.cloud_macro_microphysics": 228556800,
+      "initialization": 307200
      },
      "calls_total": 228864000,
      "coverage": "full",
@@ -8975,8 +8975,8 @@
    "observation": {
     "1month": {
      "calls_by_context": {
-      "initialization": 1420270,
-      "run-unattributed": 1395895867
+      "cam_run1.cloud_macro_microphysics": 1395895867,
+      "initialization": 1420270
      },
      "calls_total": 1397316137,
      "coverage": "full",
@@ -9248,8 +9248,8 @@
    "observation": {
     "1month": {
      "calls_by_context": {
-      "initialization": 184320,
-      "run-unattributed": 137134080
+      "cam_run1.cloud_macro_microphysics": 137134080,
+      "initialization": 184320
      },
      "calls_total": 137318400,
      "coverage": "full",
@@ -9326,8 +9326,8 @@
    "observation": {
     "1month": {
      "calls_by_context": {
-      "initialization": 114926,
-      "run-unattributed": 82785705
+      "cam_run1.cloud_macro_microphysics": 82785705,
+      "initialization": 114926
      },
      "calls_total": 82900631,
      "count_meaning": "lower bound: this kernel has uncounted call paths (see blind_spots)",
@@ -9426,8 +9426,8 @@
    "observation": {
     "1month": {
      "calls_by_context": {
-      "initialization": 2048,
-      "run-unattributed": 1523712
+      "cam_run1.cloud_macro_microphysics": 1523712,
+      "initialization": 2048
      },
      "calls_total": 1525760,
      "coverage": "full",
@@ -9504,8 +9504,8 @@
    "observation": {
     "1month": {
      "calls_by_context": {
-      "initialization": 8192,
-      "run-unattributed": 6094848
+      "cam_run1.cloud_macro_microphysics": 6094848,
+      "initialization": 8192
      },
      "calls_total": 6103040,
      "coverage": "full",
@@ -9883,8 +9883,8 @@
    "observation": {
     "1month": {
      "calls_by_context": {
-      "initialization": 2048,
-      "run-unattributed": 1523712
+      "cam_run1.cloud_macro_microphysics": 1523712,
+      "initialization": 2048
      },
      "calls_total": 1525760,
      "coverage": "full",
@@ -9990,9 +9990,9 @@
    "observation": {
     "1month": {
      "calls_by_context": {
+      "cam_run1.cloud_macro_microphysics": 1523712,
       "cam_run1.deep_convection": 3047424,
-      "initialization": 6144,
-      "run-unattributed": 1523712
+      "initialization": 6144
      },
      "calls_total": 4577280,
      "coverage": "full",
@@ -10071,8 +10071,8 @@
    "observation": {
     "1month": {
      "calls_by_context": {
-      "initialization": 552618,
-      "run-unattributed": 411400833
+      "cam_run1.cloud_macro_microphysics": 411400833,
+      "initialization": 552618
      },
      "calls_total": 411953451,
      "coverage": "full",
@@ -14690,6 +14690,7 @@
    "observation": {
     "1month": {
      "calls_by_context": {
+      "cam_run1.cloud_macro_microphysics": 7618560,
       "cam_run1.deep_convection": 6094848,
       "cam_run1.dry_adjustment": 1523712,
       "cam_run1.energy_fixer": 1523712,
@@ -14698,8 +14699,7 @@
       "cam_run2.gravity_wave_drag": 1523712,
       "cam_run2.rayleigh_friction": 1523712,
       "cam_run2.vertical_diffusion": 1523712,
-      "initialization": 31744,
-      "run-unattributed": 7618560
+      "initialization": 31744
      },
      "calls_total": 25934848,
      "coverage": "full",
@@ -19111,8 +19111,8 @@
    "observation": {
     "1month": {
      "calls_by_context": {
-      "initialization": 2048,
-      "run-unattributed": 1523712
+      "cam_run1.cloud_macro_microphysics": 1523712,
+      "initialization": 2048
      },
      "calls_total": 1525760,
      "coverage": "full",
@@ -20592,8 +20592,8 @@
    "observation": {
     "1month": {
      "calls_by_context": {
-      "initialization": 2048,
-      "run-unattributed": 1523712
+      "cam_run1.cloud_macro_microphysics": 1523712,
+      "initialization": 2048
      },
      "calls_total": 1525760,
      "coverage": "full",
@@ -20692,8 +20692,8 @@
    "observation": {
     "1month": {
      "calls_by_context": {
-      "initialization": 2048,
-      "run-unattributed": 1523712
+      "cam_run1.cloud_macro_microphysics": 1523712,
+      "initialization": 2048
      },
      "calls_total": 1525760,
      "coverage": "full",
@@ -20770,8 +20770,8 @@
    "observation": {
     "1month": {
      "calls_by_context": {
-      "initialization": 2048,
-      "run-unattributed": 1523712
+      "cam_run1.cloud_macro_microphysics": 1523712,
+      "initialization": 2048
      },
      "calls_total": 1525760,
      "coverage": "full",
@@ -20848,8 +20848,8 @@
    "observation": {
     "1month": {
      "calls_by_context": {
-      "initialization": 8192,
-      "run-unattributed": 6094848
+      "cam_run1.cloud_macro_microphysics": 6094848,
+      "initialization": 8192
      },
      "calls_total": 6103040,
      "count_meaning": "lower bound: this kernel has uncounted call paths (see blind_spots)",
@@ -20928,8 +20928,8 @@
    "observation": {
     "1month": {
      "calls_by_context": {
-      "initialization": 317440,
-      "run-unattributed": 236175360
+      "cam_run1.cloud_macro_microphysics": 236175360,
+      "initialization": 317440
      },
      "calls_total": 236492800,
      "count_meaning": "lower bound: this kernel has uncounted call paths (see blind_spots)",
@@ -21008,8 +21008,8 @@
    "observation": {
     "1month": {
      "calls_by_context": {
-      "initialization": 4096,
-      "run-unattributed": 3047424
+      "cam_run1.cloud_macro_microphysics": 3047424,
+      "initialization": 4096
      },
      "calls_total": 3051520,
      "count_meaning": "lower bound: this kernel has uncounted call paths (see blind_spots)",
@@ -21088,8 +21088,8 @@
    "observation": {
     "1month": {
      "calls_by_context": {
-      "initialization": 159744,
-      "run-unattributed": 118849536
+      "cam_run1.cloud_macro_microphysics": 118849536,
+      "initialization": 159744
      },
      "calls_total": 119009280,
      "count_meaning": "lower bound: this kernel has uncounted call paths (see blind_spots)",
@@ -21300,8 +21300,8 @@
    "observation": {
     "1month": {
      "calls_by_context": {
-      "initialization": 2048,
-      "run-unattributed": 1523712
+      "cam_run1.cloud_macro_microphysics": 1523712,
+      "initialization": 2048
      },
      "calls_total": 1525760,
      "coverage": "full",
@@ -21378,8 +21378,8 @@
    "observation": {
     "1month": {
      "calls_by_context": {
-      "initialization": 2048,
-      "run-unattributed": 1523712
+      "cam_run1.cloud_macro_microphysics": 1523712,
+      "initialization": 2048
      },
      "calls_total": 1525760,
      "coverage": "full",
@@ -21456,8 +21456,8 @@
    "observation": {
     "1month": {
      "calls_by_context": {
-      "initialization": 2048,
-      "run-unattributed": 1523712
+      "cam_run1.cloud_macro_microphysics": 1523712,
+      "initialization": 2048
      },
      "calls_total": 1525760,
      "coverage": "full",
@@ -21534,8 +21534,8 @@
    "observation": {
     "1month": {
      "calls_by_context": {
-      "initialization": 2048,
-      "run-unattributed": 1523712
+      "cam_run1.cloud_macro_microphysics": 1523712,
+      "initialization": 2048
      },
      "calls_total": 1525760,
      "coverage": "full",
@@ -21612,8 +21612,8 @@
    "observation": {
     "1month": {
      "calls_by_context": {
-      "initialization": 2048,
-      "run-unattributed": 1523712
+      "cam_run1.cloud_macro_microphysics": 1523712,
+      "initialization": 2048
      },
      "calls_total": 1525760,
      "coverage": "full",
@@ -21755,8 +21755,8 @@
    "observation": {
     "1month": {
      "calls_by_context": {
-      "initialization": 30720,
-      "run-unattributed": 22855680
+      "cam_run1.cloud_macro_microphysics": 22855680,
+      "initialization": 30720
      },
      "calls_total": 22886400,
      "count_meaning": "lower bound: this kernel has uncounted call paths (see blind_spots)",
@@ -21835,8 +21835,8 @@
    "observation": {
     "1month": {
      "calls_by_context": {
-      "initialization": 4096,
-      "run-unattributed": 3047424
+      "cam_run1.cloud_macro_microphysics": 3047424,
+      "initialization": 4096
      },
      "calls_total": 3051520,
      "count_meaning": "lower bound: this kernel has uncounted call paths (see blind_spots)",
@@ -21915,8 +21915,8 @@
    "observation": {
     "1month": {
      "calls_by_context": {
-      "initialization": 2048,
-      "run-unattributed": 1523712
+      "cam_run1.cloud_macro_microphysics": 1523712,
+      "initialization": 2048
      },
      "calls_total": 1525760,
      "coverage": "full",
@@ -22123,8 +22123,8 @@
    "observation": {
     "1month": {
      "calls_by_context": {
-      "initialization": 167936,
-      "run-unattributed": 124944384
+      "cam_run1.cloud_macro_microphysics": 124944384,
+      "initialization": 167936
      },
      "calls_total": 125112320,
      "coverage": "full",
@@ -22201,8 +22201,8 @@
    "observation": {
     "1month": {
      "calls_by_context": {
-      "initialization": 4096,
-      "run-unattributed": 3047424
+      "cam_run1.cloud_macro_microphysics": 3047424,
+      "initialization": 4096
      },
      "calls_total": 3051520,
      "coverage": "full",
@@ -22410,8 +22410,8 @@
    "observation": {
     "1month": {
      "calls_by_context": {
-      "initialization": 147534,
-      "run-unattributed": 116036259
+      "cam_run1.cloud_macro_microphysics": 116036259,
+      "initialization": 147534
      },
      "calls_total": 116183793,
      "coverage": "full",
@@ -22556,8 +22556,8 @@
    "observation": {
     "1month": {
      "calls_by_context": {
-      "initialization": 829560,
-      "run-unattributed": 617192640
+      "cam_run1.cloud_macro_microphysics": 617192640,
+      "initialization": 829560
      },
      "calls_total": 618022200,
      "count_meaning": "lower bound: this kernel has uncounted call paths (see blind_spots)",
@@ -22637,8 +22637,8 @@
    "observation": {
     "1month": {
      "calls_by_context": {
-      "initialization": 1659120,
-      "run-unattributed": 1234385280
+      "cam_run1.cloud_macro_microphysics": 1234385280,
+      "initialization": 1659120
      },
      "calls_total": 1236044400,
      "coverage": "full",
@@ -22780,8 +22780,8 @@
    "observation": {
     "1month": {
      "calls_by_context": {
-      "initialization": 2048,
-      "run-unattributed": 1523712
+      "cam_run1.cloud_macro_microphysics": 1523712,
+      "initialization": 2048
      },
      "calls_total": 1525760,
      "coverage": "full",
@@ -22858,8 +22858,8 @@
    "observation": {
     "1month": {
      "calls_by_context": {
-      "initialization": 2048,
-      "run-unattributed": 1523712
+      "cam_run1.cloud_macro_microphysics": 1523712,
+      "initialization": 2048
      },
      "calls_total": 1525760,
      "coverage": "full",
@@ -34214,8 +34214,8 @@
    "observation": {
     "1month": {
      "calls_by_context": {
-      "initialization": 173578,
-      "run-unattributed": 128679705
+      "cam_run1.cloud_macro_microphysics": 128679705,
+      "initialization": 173578
      },
      "calls_total": 128853283,
      "coverage": "full",
@@ -34292,8 +34292,8 @@
    "observation": {
     "1month": {
      "calls_by_context": {
-      "initialization": 2048,
-      "run-unattributed": 1523712
+      "cam_run1.cloud_macro_microphysics": 1523712,
+      "initialization": 2048
      },
      "calls_total": 1525760,
      "coverage": "full",
@@ -34370,8 +34370,8 @@
    "observation": {
     "1month": {
      "calls_by_context": {
-      "initialization": 2048,
-      "run-unattributed": 1523712
+      "cam_run1.cloud_macro_microphysics": 1523712,
+      "initialization": 2048
      },
      "calls_total": 1525760,
      "coverage": "full",
@@ -34514,8 +34514,8 @@
    "observation": {
     "1month": {
      "calls_by_context": {
-      "initialization": 520734,
-      "run-unattributed": 386039115
+      "cam_run1.cloud_macro_microphysics": 386039115,
+      "initialization": 520734
      },
      "calls_total": 386559849,
      "count_meaning": "lower bound: this kernel has uncounted call paths (see blind_spots)",
@@ -35011,8 +35011,8 @@
    "observation": {
     "1month": {
      "calls_by_context": {
-      "initialization": 588934,
-      "run-unattributed": 440063086
+      "cam_run1.cloud_macro_microphysics": 440063086,
+      "initialization": 588934
      },
      "calls_total": 440652020,
      "coverage": "full",
@@ -35154,8 +35154,8 @@
    "observation": {
     "1month": {
      "calls_by_context": {
-      "initialization": 2048,
-      "run-unattributed": 1523712
+      "cam_run1.cloud_macro_microphysics": 1523712,
+      "initialization": 2048
      },
      "calls_total": 1525760,
      "coverage": "full",
@@ -36029,9 +36029,9 @@
     "1month": {
      "calls_by_context": {
       "cam_run1.aerosol_wet_deposition_leaf": 50282496,
+      "cam_run1.cloud_macro_microphysics": 4185385560,
       "cam_run1.radiation": 20318699520,
-      "initialization": 33049328,
-      "run-unattributed": 4185385560
+      "initialization": 33049328
      },
      "calls_total": 24587416904,
      "coverage": "full",
@@ -36597,6 +36597,7 @@
     "1month": {
      "calls_by_context": {
       "cam_run1.aerosol_wet_deposition_leaf": 22855680,
+      "cam_run1.cloud_macro_microphysics": 227033088,
       "cam_run1.convective_tracer_transport_leaf": 36569088,
       "cam_run1.deep_convection": 38092800,
       "cam_run1.dry_adjustment": 1523712,
@@ -36607,8 +36608,7 @@
       "cam_run2.chemistry_tendencies_leaf": 30474240,
       "cam_run2.gravity_wave_drag": 83804160,
       "cam_run2.vertical_diffusion": 83804160,
-      "initialization": 861184,
-      "run-unattributed": 227033088
+      "initialization": 861184
      },
      "calls_total": 752051200,
      "coverage": "full",
@@ -45865,8 +45865,8 @@
    "observation": {
     "1month": {
      "calls_by_context": {
-      "initialization": 40960,
-      "run-unattributed": 30474240
+      "cam_run1.cloud_macro_microphysics": 30474240,
+      "initialization": 40960
      },
      "calls_total": 30515200,
      "coverage": "full",
@@ -45944,8 +45944,8 @@
    "observation": {
     "1month": {
      "calls_by_context": {
-      "initialization": 4096,
-      "run-unattributed": 3047424
+      "cam_run1.cloud_macro_microphysics": 3047424,
+      "initialization": 4096
      },
      "calls_total": 3051520,
      "coverage": "full",
@@ -46128,8 +46128,8 @@
    "observation": {
     "1month": {
      "calls_by_context": {
-      "initialization": 4096,
-      "run-unattributed": 3047424
+      "cam_run1.cloud_macro_microphysics": 3047424,
+      "initialization": 4096
      },
      "calls_total": 3051520,
      "coverage": "full",
@@ -46206,8 +46206,8 @@
    "observation": {
     "1month": {
      "calls_by_context": {
-      "initialization": 4096,
-      "run-unattributed": 3047424
+      "cam_run1.cloud_macro_microphysics": 3047424,
+      "initialization": 4096
      },
      "calls_total": 3051520,
      "coverage": "full",
@@ -46284,8 +46284,8 @@
    "observation": {
     "1month": {
      "calls_by_context": {
-      "initialization": 4096,
-      "run-unattributed": 3047424
+      "cam_run1.cloud_macro_microphysics": 3047424,
+      "initialization": 4096
      },
      "calls_total": 3051520,
      "coverage": "full",
@@ -46498,10 +46498,10 @@
    "observation": {
     "1month": {
      "calls_by_context": {
+      "cam_run1.cloud_macro_microphysics": 214321373,
       "cam_run1.deep_convection": 145071909,
       "cam_run1.shallow_convection": 345800313,
-      "initialization": 921448,
-      "run-unattributed": 214321373
+      "initialization": 921448
      },
      "calls_total": 706115043,
      "coverage": "full",
@@ -46769,8 +46769,8 @@
    "observation": {
     "1month": {
      "calls_by_context": {
-      "initialization": 6144,
-      "run-unattributed": 4571136
+      "cam_run1.cloud_macro_microphysics": 4571136,
+      "initialization": 6144
      },
      "calls_total": 4577280,
      "coverage": "full",
@@ -46929,10 +46929,10 @@
    "observation": {
     "1month": {
      "calls_by_context": {
+      "cam_run1.cloud_macro_microphysics": 39097457693,
       "cam_run1.deep_convection": 321943893,
       "cam_run1.shallow_convection": 345800313,
-      "initialization": 53444464,
-      "run-unattributed": 39097457693
+      "initialization": 53444464
      },
      "calls_total": 39818646363,
      "coverage": "full",
@@ -47013,11 +47013,11 @@
    "observation": {
     "1month": {
      "calls_by_context": {
+      "cam_run1.cloud_macro_microphysics": 1523712,
       "cam_run1.convective_tracer_transport_leaf": 1523712,
       "cam_run1.shallow_convection": 1523712,
       "cam_run1.state_initialize": 1523712,
-      "initialization": 8192,
-      "run-unattributed": 1523712
+      "initialization": 8192
      },
      "calls_total": 6103040,
      "coverage": "full",
@@ -47100,8 +47100,8 @@
    "observation": {
     "1month": {
      "calls_by_context": {
-      "initialization": 2048,
-      "run-unattributed": 1523712
+      "cam_run1.cloud_macro_microphysics": 1523712,
+      "initialization": 2048
      },
      "calls_total": 1525760,
      "coverage": "full",
@@ -47363,11 +47363,11 @@
    "observation": {
     "1month": {
      "calls_by_context": {
+      "cam_run1.cloud_macro_microphysics": 83456503372,
       "cam_run1.deep_convection": 13492554484,
       "cam_run1.shallow_convection": 15958734640,
       "cam_run2.surface_fluxes_and_emissions": 244,
-      "initialization": 150547936,
-      "run-unattributed": 83456503372
+      "initialization": 150547936
      },
      "calls_total": 113058340676,
      "count_meaning": "lower bound: this kernel has uncounted call paths (see blind_spots)",
@@ -47455,8 +47455,8 @@
    "observation": {
     "1month": {
      "calls_by_context": {
-      "initialization": 2048,
-      "run-unattributed": 1523712
+      "cam_run1.cloud_macro_microphysics": 1523712,
+      "initialization": 2048
      },
      "calls_total": 1525760,
      "coverage": "full",
@@ -48337,9 +48337,9 @@
     "1month": {
      "calls_by_context": {
       "cam_run1.aerosol_wet_deposition_leaf": 617192640,
+      "cam_run1.cloud_macro_microphysics": 12872980994,
       "cam_run1.deep_convection": 12117842448,
-      "initialization": 33907182,
-      "run-unattributed": 12872980994
+      "initialization": 33907182
      },
      "calls_total": 25641923264,
      "coverage": "full",
@@ -48427,8 +48427,8 @@
    "observation": {
     "1month": {
      "calls_by_context": {
-      "initialization": 7826296,
-      "run-unattributed": 6182505095
+      "cam_run1.cloud_macro_microphysics": 6182505095,
+      "initialization": 7826296
      },
      "calls_total": 6190331391,
      "count_meaning": "lower bound: this kernel has uncounted call paths (see blind_spots)",
@@ -48513,6 +48513,7 @@
    "observation": {
     "1month": {
      "calls_by_context": {
+      "cam_run1.cloud_macro_microphysics": 4622645247,
       "cam_run1.deep_convection": 1379457189,
       "cam_run1.radiation": 308596320,
       "cam_run1.shallow_convection": 46305165574,
@@ -48520,8 +48521,7 @@
       "cam_run2.chemistry_tendencies_leaf": 1234385280,
       "cam_run2.surface_fluxes_and_emissions": 20573088,
       "cam_run2.vertical_diffusion": 9257889600,
-      "initialization": 75309211,
-      "run-unattributed": 4622645247
+      "initialization": 75309211
      },
      "calls_total": 63821214149,
      "count_meaning": "lower bound: this kernel has uncounted call paths (see blind_spots)",
@@ -48620,9 +48620,9 @@
     "1month": {
      "calls_by_context": {
       "cam_run1.aerosol_wet_deposition_leaf": 617192640,
+      "cam_run1.cloud_macro_microphysics": 20708993128,
       "cam_run1.deep_convection": 12117842448,
-      "initialization": 43944208,
-      "run-unattributed": 20708993128
+      "initialization": 43944208
      },
      "calls_total": 33487972424,
      "coverage": "full",
@@ -49038,9 +49038,9 @@
    "observation": {
     "1month": {
      "calls_by_context": {
+      "cam_run1.cloud_macro_microphysics": 45711360,
       "cam_run1.shallow_convection": 45711360,
-      "initialization": 122880,
-      "run-unattributed": 45711360
+      "initialization": 122880
      },
      "calls_total": 91545600,
      "coverage": "full",
@@ -49226,6 +49226,7 @@
    "observation": {
     "1month": {
      "calls_by_context": {
+      "cam_run1.cloud_macro_microphysics": 343001078,
       "cam_run1.deep_convection": 1379457189,
       "cam_run1.radiation": 308596320,
       "cam_run1.shallow_convection": 43778923111,
@@ -49233,8 +49234,7 @@
       "cam_run2.chemistry_tendencies_leaf": 1234385280,
       "cam_run2.surface_fluxes_and_emissions": 20573088,
       "cam_run2.vertical_diffusion": 9257889600,
-      "initialization": 66352972,
-      "run-unattributed": 343001078
+      "initialization": 66352972
      },
      "calls_total": 57006371278,
      "count_meaning": "lower bound: this kernel has uncounted call paths (see blind_spots)",
@@ -49423,9 +49423,9 @@
     "1month": {
      "calls_by_context": {
       "cam_run1.aerosol_wet_deposition_leaf": 617192640,
+      "cam_run1.cloud_macro_microphysics": 10377629325,
       "cam_run1.deep_convection": 12117842448,
-      "initialization": 30562621,
-      "run-unattributed": 10377629325
+      "initialization": 30562621
      },
      "calls_total": 23143227034,
      "count_meaning": "lower bound: this kernel has uncounted call paths (see blind_spots)",
@@ -49519,8 +49519,8 @@
    "observation": {
     "1month": {
      "calls_by_context": {
-      "initialization": 5638410,
-      "run-unattributed": 4514942158
+      "cam_run1.cloud_macro_microphysics": 4514942158,
+      "initialization": 5638410
      },
      "calls_total": 4520580568,
      "count_meaning": "lower bound: this kernel has uncounted call paths (see blind_spots)",
@@ -49605,8 +49605,8 @@
    "observation": {
     "1month": {
      "calls_by_context": {
-      "initialization": 4808850,
-      "run-unattributed": 3897749518
+      "cam_run1.cloud_macro_microphysics": 3897749518,
+      "initialization": 4808850
      },
      "calls_total": 3902558368,
      "coverage": "full",
@@ -51052,15 +51052,15 @@
    "key": "1month",
    "label": "One-month validation",
    "run": {
-    "advance_seconds": 457.49436309,
+    "advance_seconds": 602.196166573,
     "bfb": true,
     "bfb_record": "pi_cam_kcount_all_vs_fortran_1month_bfb.json",
     "final_date": 10201,
     "final_model_step": 1488,
     "label": "1month",
-    "maximum_rank_hwm_bytes": 925802496,
+    "maximum_rank_hwm_bytes": 924635136,
     "mpi_ranks": 512,
-    "pbs_job": "7356002",
+    "pbs_job": "7356182",
     "run_status": "passed",
     "steps": 1488,
     "summary_record": "pi_cam_kcount_all_1month.json",
@@ -60920,6 +60920,333 @@
      "last_step": 1488
     }
    },
+   "cam_run1.cloud_macro_microphysics": {
+    "check_energy::check_energy_chng": {
+     "calls": 3047424,
+     "first_step": 1,
+     "last_step": 1488
+    },
+    "cldfrc2m::aist_single": {
+     "calls": 447738922,
+     "first_step": 1,
+     "last_step": 1488
+    },
+    "cldfrc2m::aist_vector": {
+     "calls": 228556800,
+     "first_step": 1,
+     "last_step": 1488
+    },
+    "cldfrc2m::astg_pdf": {
+     "calls": 228556800,
+     "first_step": 1,
+     "last_step": 1488
+    },
+    "cldfrc2m::astg_pdf_single": {
+     "calls": 1395895867,
+     "first_step": 1,
+     "last_step": 1488
+    },
+    "cldwat2m_macro::instratus_condensate": {
+     "calls": 137134080,
+     "first_step": 1,
+     "last_step": 1488
+    },
+    "cldwat2m_macro::instratus_core": {
+     "calls": 82785705,
+     "first_step": 1,
+     "last_step": 1488
+    },
+    "cldwat2m_macro::mmacro_pcond": {
+     "calls": 1523712,
+     "first_step": 1,
+     "last_step": 1488
+    },
+    "cldwat2m_macro::positive_moisture": {
+     "calls": 6094848,
+     "first_step": 1,
+     "last_step": 1488
+    },
+    "cloud_fraction::cldfrc": {
+     "calls": 1523712,
+     "first_step": 1,
+     "last_step": 1488
+    },
+    "cloud_fraction::cldfrc_fice": {
+     "calls": 1523712,
+     "first_step": 1,
+     "last_step": 1488
+    },
+    "cloud_fraction::relhum_min": {
+     "calls": 411400833,
+     "first_step": 1,
+     "last_step": 1488
+    },
+    "geopotential::geopotential_dse": {
+     "calls": 7618560,
+     "first_step": 1,
+     "last_step": 1488
+    },
+    "macrop_driver::macrop_driver_tend": {
+     "calls": 1523712,
+     "first_step": 1,
+     "last_step": 1488
+    },
+    "micro_mg1_0::micro_mg_get_cols": {
+     "calls": 1523712,
+     "first_step": 1,
+     "last_step": 1488
+    },
+    "micro_mg1_0::micro_mg_tend": {
+     "calls": 1523712,
+     "first_step": 1,
+     "last_step": 1488
+    },
+    "micro_mg_cam::micro_mg_cam_tend": {
+     "calls": 1523712,
+     "first_step": 1,
+     "last_step": 1488
+    },
+    "micro_mg_cam::p1": {
+     "calls": 6094848,
+     "first_step": 1,
+     "last_step": 1488
+    },
+    "micro_mg_cam::p2": {
+     "calls": 236175360,
+     "first_step": 1,
+     "last_step": 1488
+    },
+    "micro_mg_data::add_field_1d": {
+     "calls": 3047424,
+     "first_step": 1,
+     "last_step": 1488
+    },
+    "micro_mg_data::add_field_2d": {
+     "calls": 118849536,
+     "first_step": 1,
+     "last_step": 1488
+    },
+    "micro_mg_data::mgpostproc_accumulate": {
+     "calls": 1523712,
+     "first_step": 1,
+     "last_step": 1488
+    },
+    "micro_mg_data::mgpostproc_finalize": {
+     "calls": 1523712,
+     "first_step": 1,
+     "last_step": 1488
+    },
+    "micro_mg_data::mgpostproc_process_and_unpack": {
+     "calls": 1523712,
+     "first_step": 1,
+     "last_step": 1488
+    },
+    "micro_mg_data::new_mgpacker": {
+     "calls": 1523712,
+     "first_step": 1,
+     "last_step": 1488
+    },
+    "micro_mg_data::new_mgpostproc": {
+     "calls": 1523712,
+     "first_step": 1,
+     "last_step": 1488
+    },
+    "micro_mg_data::pack_2d": {
+     "calls": 22855680,
+     "first_step": 1,
+     "last_step": 1488
+    },
+    "micro_mg_data::pack_3d": {
+     "calls": 3047424,
+     "first_step": 1,
+     "last_step": 1488
+    },
+    "micro_mg_data::pack_interface": {
+     "calls": 1523712,
+     "first_step": 1,
+     "last_step": 1488
+    },
+    "micro_mg_data::unpack_2d": {
+     "calls": 124944384,
+     "first_step": 1,
+     "last_step": 1488
+    },
+    "micro_mg_data::unpack_2d_array_fill": {
+     "calls": 3047424,
+     "first_step": 1,
+     "last_step": 1488
+    },
+    "micro_mg_utils::avg_diameter": {
+     "calls": 116036259,
+     "first_step": 1,
+     "last_step": 1488
+    },
+    "micro_mg_utils::size_dist_param_basic": {
+     "calls": 617192640,
+     "first_step": 1,
+     "last_step": 1488
+    },
+    "micro_mg_utils::size_dist_param_liq": {
+     "calls": 1234385280,
+     "first_step": 1,
+     "last_step": 1488
+    },
+    "microp_aero::microp_aero_run": {
+     "calls": 1523712,
+     "first_step": 1,
+     "last_step": 1488
+    },
+    "microp_driver::microp_driver_tend": {
+     "calls": 1523712,
+     "first_step": 1,
+     "last_step": 1488
+    },
+    "ndrop::activate_modal": {
+     "calls": 128679705,
+     "first_step": 1,
+     "last_step": 1488
+    },
+    "ndrop::ccncalc": {
+     "calls": 1523712,
+     "first_step": 1,
+     "last_step": 1488
+    },
+    "ndrop::dropmixnuc": {
+     "calls": 1523712,
+     "first_step": 1,
+     "last_step": 1488
+    },
+    "ndrop::loadaer": {
+     "calls": 386039115,
+     "first_step": 1,
+     "last_step": 1488
+    },
+    "nucleate_ice::nucleati": {
+     "calls": 440063086,
+     "first_step": 1,
+     "last_step": 1488
+    },
+    "nucleate_ice_cam::nucleate_ice_cam_calc": {
+     "calls": 1523712,
+     "first_step": 1,
+     "last_step": 1488
+    },
+    "phys_prop::physprop_get": {
+     "calls": 4185385560,
+     "first_step": 1,
+     "last_step": 1488
+    },
+    "qneg3::qneg3": {
+     "calls": 227033088,
+     "first_step": 1,
+     "last_step": 1488
+    },
+    "water_tracers::wtrc_add_rates": {
+     "calls": 30474240,
+     "first_step": 1,
+     "last_step": 1488
+    },
+    "water_tracers::wtrc_apply_rates": {
+     "calls": 3047424,
+     "first_step": 1,
+     "last_step": 1488
+    },
+    "water_tracers::wtrc_clear_precip": {
+     "calls": 3047424,
+     "first_step": 1,
+     "last_step": 1488
+    },
+    "water_tracers::wtrc_diagnose_bulk_precip": {
+     "calls": 3047424,
+     "first_step": 1,
+     "last_step": 1488
+    },
+    "water_tracers::wtrc_diagnose_precip": {
+     "calls": 3047424,
+     "first_step": 1,
+     "last_step": 1488
+    },
+    "water_tracers::wtrc_equil_time": {
+     "calls": 214321373,
+     "first_step": 1,
+     "last_step": 1488
+    },
+    "water_tracers::wtrc_init_rates": {
+     "calls": 4571136,
+     "first_step": 1,
+     "last_step": 1488
+    },
+    "water_tracers::wtrc_liqvap_equil": {
+     "calls": 39097457693,
+     "first_step": 1,
+     "last_step": 1488
+    },
+    "water_tracers::wtrc_mass_fixer": {
+     "calls": 1523712,
+     "first_step": 1,
+     "last_step": 1488
+    },
+    "water_tracers::wtrc_output_precip": {
+     "calls": 1523712,
+     "first_step": 1,
+     "last_step": 1488
+    },
+    "water_tracers::wtrc_ratio": {
+     "calls": 83456503372,
+     "first_step": 1,
+     "last_step": 1488
+    },
+    "water_tracers::wtrc_sediment": {
+     "calls": 1523712,
+     "first_step": 1,
+     "last_step": 1488
+    },
+    "wv_sat_methods::wv_sat_qsat_water": {
+     "calls": 12872980994,
+     "first_step": 1,
+     "last_step": 1488
+    },
+    "wv_sat_methods::wv_sat_svp_ice": {
+     "calls": 6182505095,
+     "first_step": 1,
+     "last_step": 1488
+    },
+    "wv_sat_methods::wv_sat_svp_to_qsat": {
+     "calls": 4622645247,
+     "first_step": 1,
+     "last_step": 1488
+    },
+    "wv_sat_methods::wv_sat_svp_water": {
+     "calls": 20708993128,
+     "first_step": 1,
+     "last_step": 1488
+    },
+    "wv_saturation::findsp_vc": {
+     "calls": 45711360,
+     "first_step": 1,
+     "last_step": 1488
+    },
+    "wv_saturation::qsat": {
+     "calls": 343001078,
+     "first_step": 1,
+     "last_step": 1488
+    },
+    "wv_saturation::qsat_water": {
+     "calls": 10377629325,
+     "first_step": 1,
+     "last_step": 1488
+    },
+    "wv_saturation::svp_ice": {
+     "calls": 4514942158,
+     "first_step": 1,
+     "last_step": 1488
+    },
+    "wv_saturation::svp_water": {
+     "calls": 3897749518,
+     "first_step": 1,
+     "last_step": 1488
+    }
+   },
    "cam_run1.convective_tracer_transport_leaf": {
     "check_energy::check_tracers_chng": {
      "calls": 1523712,
@@ -67277,7 +67604,7 @@
  ],
  "volatile": {
   "branch": "physics-kernel-api-closure",
-  "commit": "b43d02229871b558a09ffee28f1e199a4897fa05",
-  "generated_at": "2026-09-09T02:11:14+00:00"
+  "commit": "c4f057e70d62f98051d344ac6e46137087f5bf3d",
+  "generated_at": "2026-09-09T02:40:33+00:00"
  }
 }
