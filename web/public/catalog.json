@@ -36,13 +36,18 @@
   },
   {
    "bindable": true,
-   "evidence": [],
+   "evidence": [
+    "validation/pi_cam_pausable_instratus-hook_50step.json",
+    "validation/pi_cam_pausable_instratus-hook_vs_oracle_50step_bfb.json",
+    "validation/pi_cam_pausable_instratus-capture_50step.json",
+    "validation/pi_cam_pausable_instratus-capture_vs_oracle_50step_bfb.json"
+   ],
    "kernel": "instratus_condensate",
    "owner_class": "freecam.physics.macrophysics.Macrophysics",
-   "reason": "bindable, but the pause path has not passed a bit-for-bit gate",
+   "reason": null,
    "stage_action": "cam_run1.cloud_macro_microphysics",
    "stage_class": "freecam.physics.cloud_macro_microphysics.CloudMacroMicrophysics",
-   "validated": false
+   "validated": true
   },
   {
    "bindable": true,
@@ -378,11 +383,11 @@
   "PI-atm-online": "configs/pi_cam_icesm131_online.yaml",
   "PI-atm-replay": "configs/pi_cam_icesm131_replay.yaml"
  },
- "catalog_hash": "d339ac1d434e093ae975ab2e2cd39d935c4804445e4b79aab7bf882039514d53",
- "commit": "5c230833febce9a67a9ee3f309b422b5ae9d51f5",
+ "catalog_hash": "8c08455708333a3a91c7fef91a7785b31e458ce1a1be4dc458102fbbe431b365",
+ "commit": "38b1db5ae3af4dc99e915df8f4f7e812ef2bcfa6",
  "default_document": {
   "case": "PI-atm",
-  "catalog_version": "d339ac1d434e093ae975ab2e2cd39d935c4804445e4b79aab7bf882039514d53",
+  "catalog_version": "8c08455708333a3a91c7fef91a7785b31e458ce1a1be4dc458102fbbe431b365",
   "experimental": false,
   "namelist": {},
   "nodes": [
@@ -2141,13 +2146,18 @@
       },
       {
        "bindable": true,
-       "evidence": [],
+       "evidence": [
+        "validation/pi_cam_pausable_instratus-hook_50step.json",
+        "validation/pi_cam_pausable_instratus-hook_vs_oracle_50step_bfb.json",
+        "validation/pi_cam_pausable_instratus-capture_50step.json",
+        "validation/pi_cam_pausable_instratus-capture_vs_oracle_50step_bfb.json"
+       ],
        "kernel": "instratus_condensate",
        "owner_class": "freecam.physics.macrophysics.Macrophysics",
-       "reason": "bindable, but the pause path has not passed a bit-for-bit gate",
+       "reason": null,
        "stage_action": "cam_run1.cloud_macro_microphysics",
        "stage_class": "freecam.physics.cloud_macro_microphysics.CloudMacroMicrophysics",
-       "validated": false
+       "validated": true
       },
       {
        "bindable": true,
@@ -4676,13 +4686,18 @@
      },
      {
       "bindable": true,
-      "evidence": [],
+      "evidence": [
+       "validation/pi_cam_pausable_instratus-hook_50step.json",
+       "validation/pi_cam_pausable_instratus-hook_vs_oracle_50step_bfb.json",
+       "validation/pi_cam_pausable_instratus-capture_50step.json",
+       "validation/pi_cam_pausable_instratus-capture_vs_oracle_50step_bfb.json"
+      ],
       "kernel": "instratus_condensate",
       "owner_class": "freecam.physics.macrophysics.Macrophysics",
-      "reason": "bindable, but the pause path has not passed a bit-for-bit gate",
+      "reason": null,
       "stage_action": "cam_run1.cloud_macro_microphysics",
       "stage_class": "freecam.physics.cloud_macro_microphysics.CloudMacroMicrophysics",
-      "validated": false
+      "validated": true
      },
      {
       "bindable": true,
@@ -7443,13 +7458,18 @@
      },
      {
       "bindable": true,
-      "evidence": [],
+      "evidence": [
+       "validation/pi_cam_pausable_instratus-hook_50step.json",
+       "validation/pi_cam_pausable_instratus-hook_vs_oracle_50step_bfb.json",
+       "validation/pi_cam_pausable_instratus-capture_50step.json",
+       "validation/pi_cam_pausable_instratus-capture_vs_oracle_50step_bfb.json"
+      ],
       "kernel": "instratus_condensate",
       "owner_class": "freecam.physics.macrophysics.Macrophysics",
-      "reason": "bindable, but the pause path has not passed a bit-for-bit gate",
+      "reason": null,
       "stage_action": "cam_run1.cloud_macro_microphysics",
       "stage_class": "freecam.physics.cloud_macro_microphysics.CloudMacroMicrophysics",
-      "validated": false
+      "validated": true
      },
      {
       "bindable": true,
@@ -19960,7 +19980,7 @@
    "writes": []
   }
  ],
- "generated_at": "2026-09-09T22:53:33+00:00",
+ "generated_at": "2026-09-09T23:51:40+00:00",
  "parameters": {
   "cam_run1.cloud_macro_microphysics": [
    {
