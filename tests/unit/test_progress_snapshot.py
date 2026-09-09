@@ -421,6 +421,24 @@ def test_core_kernels_and_recursive_candidates_are_two_levels_in_the_real_record
     assert "Exposing a process does not expose every candidate" in snapshot["notes"]["core_vs_candidates"]
 
 
+def test_the_real_50step_observation_is_wired_per_process() -> None:
+    snapshot = json.loads(SNAPSHOT.read_text())
+    runs = {run["key"]: run for run in snapshot["observation_runs"]}
+    assert "50step" in runs and runs["50step"]["validated"]
+    coverage = json.loads((REPO / "validation/pi_cam_kernel_runtime_coverage_50step.json").read_text())
+    assert snapshot["totals"]["observed_by_run"]["50step"] == coverage["summary"]["observed"]
+    fice = snapshot["kernels"]["cloud_fraction::cldfrc_fice"]["observation"]["50step"]
+    assert fice["status"] == "observed"
+    # attribution is per process, reconciling exactly with the hook-gate evidence
+    assert fice["calls_by_context"]["cam_run1.deep_convection"] == 102400
+    assert fice["calls_by_context"]["cam_run1.cloud_macro_microphysics"] == 51200
+    flux = snapshot["kernels"]["uwshcu::fluxbelowinv"]["observation"]["50step"]
+    assert flux["calls_by_context"]["cam_run1.shallow_convection"] == 36733580   # == the hook gate's pauses
+    # zero calls on a fully counted path in a clean run: not observed, never unknown
+    statuses = {k["status"] for run in ("50step",) for k in coverage["kernels"]}
+    assert statuses == {"observed", "not-observed-in-this-run", "unknown"}
+
+
 def test_historical_failures_precede_the_scoped_success_in_the_real_records() -> None:
     snapshot = json.loads(SNAPSHOT.read_text())
     fice = snapshot["kernels"]["cloud_fraction::cldfrc_fice"]
