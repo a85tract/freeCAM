@@ -36,6 +36,8 @@ proving the content current.
 | Original-kernel replacement BFB, scoped per process | the gate records the ledger names, opened for their per-process replacement counts and their `_vs_oracle` companions | the 512-rank 50-step gates |
 | Symbol-redirection feasibility and blockers | `validation/pi_cam_kernel_api_redirectable_calls.json` | `tools/audit_pi_cam_call_relocations.py` |
 | Historical failures | `validation/*failure*.json`, attributed by their own `kernel` / `segmented_original_kernels` fields | kept forever; never deleted by a later success |
+| Counting entries and blind spots per candidate | `validation/pi_cam_kernel_observability.json` | `tools/build_pi_cam_kernel_observability.py` |
+| Observed / not-observed / unknown per run, per process | `validation/pi_cam_kernel_runtime_coverage_50step.json`, `_1month.json` | an observation gate (`PYCAM_OBSERVE_KERNELS=1` on a counting image) merged by `tools/record_kernel_runtime_coverage.py` |
 
 After changing any of those, run the exporter and commit the refreshed
 `web/progress/public/progress.json`; CI's `--check` fails the deployment when
@@ -51,6 +53,17 @@ numerical functions**: everything the call-tree inventory reaches from the
 process recursively, per-point helpers and saturation/packing libraries
 included.  Candidates are statically reachable, not necessarily executed, and
 exposing a process does not expose every candidate inside it.
+
+## Observation runs
+
+The page's run selector offers the validated observation runs (one month
+preferred).  Execution evidence is per process: a kernel observed in one
+process is never marked observed in another, per-process capability bars
+count only the kernels observed in that process in the selected run, and the
+execution inventory names the gaps (partially covered or uninstrumented
+candidates).  With no validated observation record the page says *No
+validated observation run available* and labels every fallback denominator as
+static -- never silently.
 
 ## Status vocabulary
 

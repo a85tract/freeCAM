@@ -203,6 +203,41 @@ to the advance).  Resident memory is unchanged within noise (804 MB per rank
 high-water mark unarmed, 775 and 821 MB with a hook armed); the fiber stack is
 reserved at 512 MB and touched only as deep as the Fortran needs.
 
+## The execution inventory: counting kernels in place
+
+Static reachability is not execution evidence, so a counting image measures
+the real thing.  [`tools/build_pi_cam_kernel_observability.py`](../tools/build_pi_cam_kernel_observability.py)
+classifies every candidate -- whether a count-only entry can take its symbol,
+which call paths that entry covers, and which stay blind spots (inlined call
+sites, internal procedures), each with its reason -- into
+[`pi_cam_kernel_observability.json`](../validation/pi_cam_kernel_observability.json).
+A counting image (`FREECAM_KCOUNT_SCOPE` at build time) weakens each counted
+kernel's definition and puts a three-instruction trampoline under its name:
+increment `counts[kernel][context]`, jump to the original.  A tail jump
+forwards every register and stack byte untouched, so no calling convention is
+guessed, nothing returns to Python, nothing allocates, and no floating-point
+operation changes; a kernel whose symbol a replacement hook owns is counted by
+chaining the trampoline between the hook and the original, so every call
+counts exactly once.  Python owns attribution: the driver sets the process
+slot around every workflow action (paired and exception-safe), initialization
+and finalize count separately, and per-step total diffs record first and last
+executing steps.  Counting is off in production images and refused outside
+the single-threaded configuration.
+
+`--observe-kernels` writes the raw observation;
+[`tools/record_kernel_runtime_coverage.py`](../tools/record_kernel_runtime_coverage.py)
+merges it with the observability inventory and the run's bit-for-bit record
+into `pi_cam_kernel_runtime_coverage_<label>.json`, keeping execution evidence
+and instrumentation coverage apart: *observed* (counted calls, lower bounds
+where coverage is partial), *not observed in this run* (complete coverage, a
+clean bit-for-bit run, zero calls), *unknown* (everything else -- absence of a
+count is never evidence).  Batch A gated the mechanism on `cldfrc_fice`: the
+counting image ran the 50-step case bit-for-bit with zero pauses (7355154),
+and the per-process counts reconcile exactly with the hook evidence (51200
+calls at the `zm_conv` site, 51200 more from the water-tracer path under deep
+convection, 51200 under the cloud stage, 6144 in initialization, uniform
+across all 512 ranks).
+
 ## Which candidates a hook can reach
 
 The hook path applies only to calls the linked objects reach through a
