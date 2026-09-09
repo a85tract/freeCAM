@@ -230,7 +230,8 @@ def test_the_builder_s_capabilities_come_from_the_manifest() -> None:
                                                "rad_rrtmg_sw", "rad_rrtmg_lw", "zm_convr", "zm_conv_evap", "momtran",
                                                "convtran", "compute_tms", "compute_eddy_diff", "compute_vdiff",
                                                "gw_drag_prof", "wetdepa_v2", "modal_aero_depvel_part", "gas_phase_chemdr",
-                                               "virtem"}                     # gates 7343257 and 7343260
+                                               "virtem",                     # gates 7343257 and 7343260
+                                               "instratus_condensate"}       # gate 7371011: the hook, bit-for-bit
     by_name = {c.kernel: c for c in kernel_capabilities()}
     # cldfrc_fice: its hoisted pause was not bit-for-bit; through its hook it is (gate 7343708)
     assert by_name["cldfrc_fice"].bindable and by_name["cldfrc_fice"].validated
