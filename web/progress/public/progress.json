@@ -2648,7 +2648,7 @@
   "use_gw_oro": true,
   "use_subcol_microp": false
  },
- "content_hash": "054aa0a16b1e0d47bc3b91852e1daa5ad6cb194034cf77816d03d6a2e41aebc9",
+ "content_hash": "2051f186bf14ff9a0168f25528fd0bc77517a9cc435c528316a9bc8babf90171",
  "evidence": {
   "pi_cam_cldfrc_fice_frame_replay.json": {
    "bfb": true,
@@ -4036,6 +4036,57 @@
    "pbs_job": null,
    "record": "pi_cam_pausable_hooks-everything_vs_oracle_50step_bfb.json"
   },
+  "pi_cam_pausable_instratus-hook_50step.json": {
+   "advance_seconds": 45.3,
+   "cloud_macro_micro_python": true,
+   "execution_mode": "fine_grained",
+   "hooks": {
+    "cldfrc_fice": {
+     "calls": 53248,
+     "missed": 0,
+     "paused": 0,
+     "ranks_called": 512
+    },
+    "fluxbelowinv": {
+     "calls": 38152530,
+     "missed": 0,
+     "paused": 0,
+     "ranks_called": 512
+    },
+    "instratus_condensate": {
+     "calls": 4792320,
+     "missed": 0,
+     "paused": 4608000,
+     "ranks_called": 512
+    }
+   },
+   "image": {
+    "build": "pi_cam_promoted_p12",
+    "role": "development",
+    "sha256": "c294f2da4d7d55be819d90226eea2e2b9ea50305de5ea5110f10eab3ea99b13d"
+   },
+   "kind": "run-summary",
+   "mpi_ranks": 512,
+   "pbs_job": "7371011",
+   "python_stages": [],
+   "radiation_python": false,
+   "record": "pi_cam_pausable_instratus-hook_50step.json",
+   "replacement_calls": {
+    "cloud_macro_microphysics": {
+     "instratus_condensate": 9000
+    }
+   },
+   "run_status": "passed",
+   "segmented_original_kernels": "instratus_condensate",
+   "steps": 50
+  },
+  "pi_cam_pausable_instratus-hook_vs_oracle_50step_bfb.json": {
+   "bfb": true,
+   "compared_files": 4,
+   "kind": "bfb-comparison",
+   "pbs_job": null,
+   "record": "pi_cam_pausable_instratus-hook_vs_oracle_50step_bfb.json"
+  },
   "pi_cam_pausable_micro-capture_50step_failure.json": {
    "diagnosis": "Version skew between the checked-out manifest and the queued image, not a numerical failure. While the job waited in the queue, native/pi_cam/segment_runners.yaml gained `original: true` for the stage-7 runner (the regenerated module exports pycam_stage7_original_v1 and pauses at cldfrc_fice); the job then ran the p10 image, whose module predates that entry, and the binding failed closed at construction as designed. The single history file the aborted run had written compared bit-for-bit; the restart files were never written.",
    "image": {
@@ -4629,9 +4680,9 @@
  "inputs": {
   "native/pi_cam/hooks.yaml": "fe94bb020f505d5d2f532a607400dddc9b4c0feb3f9ba227f0e3d81faae63997",
   "native/pi_cam/kernel_classifications.yaml": "d6be2103c9bd0c86a0c8461a067d3b43eac6aa370e992fde9bf3096e55c8c5f4",
-  "native/pi_cam/kernel_work_items.yaml": "ccdda512f8485e9a967a2db45603f8055aa7ab715c4dfce7433bce39c5322697",
-  "native/pi_cam/segment_runners.yaml": "e973193b1d6b435c2e605309d92468a586328b2676c037be4e12d564f4584721",
-  "validation/physics_kernel_decoupling.json": "f7ad70450e055976d3561efc24618f812db7e46aef3c1f8d6293e9d34c09b904",
+  "native/pi_cam/kernel_work_items.yaml": "aba5b5758dde5197804e45dd5eb1da99384145f43d62bf9cd0c23b62bea8fa8d",
+  "native/pi_cam/segment_runners.yaml": "58dfba4c42e5a9019b367db0ea7d158b93239274f1d0cc4cc102e09e38bf795a",
+  "validation/physics_kernel_decoupling.json": "bac253e2d236c271b2df4c6cf65f2c52c4315a30eb97c686c18f6044c5587498",
   "validation/pi_cam_kernel_api_closure.json": "96025214b3e4c41f6ba89c266da5dd27c51c42c81c31e1a0ac6f7b2e9cfa260a",
   "validation/pi_cam_kernel_api_redirectable_calls.json": "9ac016f0d242ceef054aa8a80ef074aa53b08c1f0f3042a81e76da4c75603273",
   "validation/pi_cam_kernel_runtime_coverage_1month.json": "48f77d6ec78b4026806d4ab6fb9517ef31c1d526481b4ad68e55f77af0d303bd",
@@ -9761,7 +9812,10 @@
      "state": "not-assessed"
     },
     "original_replacement_bfb": {
-     "state": "not-verified"
+     "contexts": [
+      "cam_run1.cloud_macro_microphysics"
+     ],
+     "state": "verified"
     },
     "standalone_replay": {
      "state": "not-assessed"
@@ -9772,11 +9826,11 @@
    "development": {
     "blocker": null,
     "branch": "physics-kernel-api-closure",
-    "next_gate": "512-rank 50-step BFB with the original answered at the hook, plus capture",
-    "note": "The saturation-adjustment core inside mmacro_pcond, reached through a weaken-definition hook (hooks.yaml #3); the stage-7 runner runs on the fiber while it is replaced. Target of the few-free-variables surrogate: 3-phase water partition and two stratus fractions, the rest derived.",
+    "next_gate": "capture replay + a 50-step run with the few-free-variables surrogate in the slot",
+    "note": "Hook gate 7371011: the original answered at the hook on 9000 calls per rank (2 chunks x 30 levels x 3 calls x 50 steps), bit-for-bit. Capture gate 7371012 running.",
     "owner": "claude",
     "owner_class": "freecam.physics.macrophysics.Macrophysics",
-    "stage": "adapter",
+    "stage": "capture_replay",
     "started_at": "2026-09-09",
     "state": "in_progress",
     "target_processes": [
@@ -9790,7 +9844,6 @@
    "kind": "subroutine",
    "missing": [
     "capture",
-    "in_model_replacement_bfb",
     "replay_full_chunk",
     "replay_public_api",
     "replay_single_column",
@@ -71562,14 +71615,21 @@
    "within": null
   },
   {
-   "gates": [],
+   "gates": [
+    {
+     "bfb": true,
+     "bfb_record": "pi_cam_pausable_instratus-hook_vs_oracle_50step_bfb.json",
+     "record": "pi_cam_pausable_instratus-hook_50step.json",
+     "replacement_calls": 9000
+    }
+   ],
    "historical_failures": [],
    "kernel_routine": "instratus_condensate",
    "mechanism": "hook",
    "note": null,
    "process": "cam_run1.cloud_macro_microphysics",
    "requires_development_image": true,
-   "state": "not-verified",
+   "state": "verified",
    "within": "mmacro_pcond"
   },
   {
@@ -72162,7 +72222,7 @@
    "1month": 343,
    "50step": 343
   },
-  "original_replacement_bfb_verified": 20,
+  "original_replacement_bfb_verified": 21,
   "processes": 58,
   "processes_enabled": 47,
   "processes_with_dedicated_class": 23,
@@ -72187,8 +72247,8 @@
  ],
  "volatile": {
   "branch": "physics-kernel-api-closure",
-  "commit": "5c230833febce9a67a9ee3f309b422b5ae9d51f5",
-  "generated_at": "2026-09-09T22:53:34+00:00"
+  "commit": "e221dceac2eed809d0f8cfd6320a3bfd3f9bad80",
+  "generated_at": "2026-09-09T23:02:21+00:00"
  },
  "work_items": [
   {
@@ -72225,11 +72285,11 @@
   {
    "branch": "physics-kernel-api-closure",
    "kernel": "cldwat2m_macro::instratus_condensate",
-   "next_gate": "512-rank 50-step BFB with the original answered at the hook, plus capture",
-   "note": "The saturation-adjustment core inside mmacro_pcond, reached through a weaken-definition hook (hooks.yaml #3); the stage-7 runner runs on the fiber while it is replaced. Target of the few-free-variables surrogate: 3-phase water partition and two stratus fractions, the rest derived.",
+   "next_gate": "capture replay + a 50-step run with the few-free-variables surrogate in the slot",
+   "note": "Hook gate 7371011: the original answered at the hook on 9000 calls per rank (2 chunks x 30 levels x 3 calls x 50 steps), bit-for-bit. Capture gate 7371012 running.",
    "owner": "claude",
    "owner_class": "freecam.physics.macrophysics.Macrophysics",
-   "stage": "adapter",
+   "stage": "capture_replay",
    "started_at": "2026-09-09",
    "state": "in_progress",
    "target_processes": [

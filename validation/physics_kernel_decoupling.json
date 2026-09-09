@@ -48,7 +48,7 @@
       "open": 16
     },
     "kernels_bindable": 22,
-    "kernels_validated_through_runner": 21,
+    "kernels_validated_through_runner": 22,
     "catalog_procedures": 371
   },
   "closure": {
@@ -4915,7 +4915,7 @@
       "contract": "reviewed",
       "contract_path": "native/pi_cam/functions/instratus_condensate.yaml",
       "bindable": true,
-      "validated_through_runner": false,
+      "validated_through_runner": true,
       "evidence": {
         "capture": [],
         "standalone_build": [],
@@ -4924,15 +4924,23 @@
         "replay_public_api": [],
         "module_state": []
       },
-      "in_model_gates": [],
+      "in_model_gates": [
+        {
+          "path": "segmented, original kernel answered through the pause",
+          "record": "pi_cam_pausable_instratus-hook_50step.json",
+          "bfb_record": "pi_cam_pausable_instratus-hook_vs_oracle_50step_bfb.json",
+          "present": true,
+          "bfb": true,
+          "compared_files": 4
+        }
+      ],
       "status": "open",
       "missing": [
         "capture",
         "standalone_build",
         "replay_full_chunk",
         "replay_single_column",
-        "replay_public_api",
-        "in_model_replacement_bfb"
+        "replay_public_api"
       ],
       "note": null
     },
@@ -6033,10 +6041,6 @@
       "why": "no record in validation/ for this step of the loop"
     },
     {
-      "what": "instratus_condensate: in_model_replacement_bfb",
-      "why": "no record in validation/ for this step of the loop"
-    },
-    {
       "what": "micro_mg_tend: capture",
       "why": "no record in validation/ for this step of the loop"
     },
@@ -6333,5 +6337,5 @@
       "why": "no record in validation/ for this step of the loop"
     }
   ],
-  "coverage_hash": "6006cbd249694bfe7acc513612d30e2a0a63d2107ca541c15c046d90e7913548"
+  "coverage_hash": "e61d1f702b0d225f7166ab2d048985c0344b846a85809c44c9a5f315f2610b63"
 }

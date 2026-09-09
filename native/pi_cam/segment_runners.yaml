@@ -60,7 +60,9 @@ runners:
     owner: freecam.physics.macrophysics.Macrophysics
     contract: native/pi_cam/functions/instratus_condensate.yaml
     within: mmacro_pcond
-    validated_by: []
+    validated_by:
+    - validation/pi_cam_pausable_instratus-hook_50step.json
+    - validation/pi_cam_pausable_instratus-hook_vs_oracle_50step_bfb.json
 # The pausable runners (tools/generate_pi_cam_pausable_runners.py): one per
 # process, the original driver hoisted verbatim and cut at its kernel calls.
 # Their frames are described in native/pi_cam/segment_frames.yaml, and each

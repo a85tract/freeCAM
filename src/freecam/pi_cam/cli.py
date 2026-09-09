@@ -120,6 +120,43 @@ def _frame_capture_summary(records, args, native_evidence) -> dict[str, object] 
     return provenance
 
 
+def _parse_kernel_models(values: list[str] | None) -> dict[str, Path]:
+    """``NAME=PATH`` pairs from --kernel-model, one model per kernel."""
+
+    models: dict[str, Path] = {}
+    for item in values or ():
+        name, sep, path = item.partition("=")
+        if not sep or not name.strip() or not path.strip():
+            raise SystemExit(f"--kernel-model takes NAME=PATH, got {item!r}")
+        if name.strip() in models:
+            raise SystemExit(f"--kernel-model names {name.strip()!r} twice")
+        models[name.strip()] = Path(path.strip()).expanduser()
+    return models
+
+
+def _load_kernel_model(path: Path):
+    """A cloudpickled callable to stand in a kernel's slot; anything else is refused."""
+
+    if not path.is_file():
+        raise SystemExit(f"--kernel-model: {path} is not a file")
+    with path.open("rb") as handle:
+        model = cloudpickle.load(handle)
+    if not callable(model):
+        raise SystemExit(f"--kernel-model: {path} holds a {type(model).__name__}, not a callable")
+    return model
+
+
+def _kernel_models_summary(models: dict[str, Path]) -> dict[str, dict[str, str]] | None:
+    """Which artifact stood in which slot: the record names it by path and content hash."""
+
+    import hashlib
+
+    if not models:
+        return None
+    return {name: {"path": str(path), "sha256": hashlib.sha256(path.read_bytes()).hexdigest()}
+            for name, path in models.items()}
+
+
 def _hook_summary(records) -> dict[str, object] | None:
     """Every hook's calls and pauses summed over the ranks, and the ranks that saw calls."""
 
@@ -387,6 +424,17 @@ def main(argv: list[str] | None = None) -> int:
         help="where --capture-kernels writes <kernel>.rank-NNNN.npz and capture.json",
     )
     parser.add_argument(
+        "--kernel-model",
+        action="append",
+        default=None,
+        metavar="NAME=PATH",
+        help=(
+            "put a model in a kernel's slot: NAME is a swappable kernel of an installed stage "
+            "class, PATH a cloudpickled callable answering the kernel's frame (batch in, the "
+            "kernel's outputs out); repeatable.  Not a bit-for-bit run and not evidence of one."
+        ),
+    )
+    parser.add_argument(
         "--observe-kernels",
         action="store_true",
         help=(
@@ -580,6 +628,14 @@ def main(argv: list[str] | None = None) -> int:
         capture_kernels = [k.strip() for k in args.capture_kernels.split(",") if k.strip()]
         if capture_kernels and args.capture_dir is None:
             raise SystemExit("--capture-kernels needs --capture-dir")
+        kernel_model_paths = _parse_kernel_models(args.kernel_model)
+        original_names = ([k.strip() for k in args.segmented_original_kernels.split(",") if k.strip()]
+                          if args.segmented_original else [])
+        clash = sorted(set(kernel_model_paths) & (set(capture_kernels) | set(original_names)))
+        if clash:
+            raise SystemExit(f"--kernel-model: {clash} are also named for the original or a capture; "
+                             f"one slot holds one thing")
+        kernel_models = {name: _load_kernel_model(path) for name, path in kernel_model_paths.items()}
         if args.radiation_python:
             # The same shape for radiation: Radiation.tend between the two
             # halves of the split stage, native and non-transactional for the
@@ -598,6 +654,9 @@ def main(argv: list[str] | None = None) -> int:
                 if kernel_name in scheme.kernels:
                     from freecam.physics.segments import FrameCapture
                     scheme.kernels[kernel_name] = FrameCapture(kernel_name)
+            for kernel_name, model in kernel_models.items():
+                if kernel_name in scheme.kernels:
+                    scheme.kernels[kernel_name] = model
             installed_kernels.update(scheme.kernels)
             cam.python_processes.install(
                 PythonProcessSpec.from_callable(
@@ -643,6 +702,9 @@ def main(argv: list[str] | None = None) -> int:
                 if kernel_name in scheme.kernels:
                     from freecam.physics.segments import FrameCapture
                     scheme.kernels[kernel_name] = FrameCapture(kernel_name)
+            for kernel_name, model in kernel_models.items():
+                if kernel_name in scheme.kernels:
+                    scheme.kernels[kernel_name] = model
             installed_kernels.update(scheme.kernels)
             cam.step_plan.set_enabled("cloud_macro_microphysics", False, phase="cam_run1", experimental=True)
             cam.python_processes.install(
@@ -693,6 +755,9 @@ def main(argv: list[str] | None = None) -> int:
                 ),
                 unsafe=True,
             )
+            for kernel_name, model in kernel_models.items():
+                if kernel_name in pausable_stage.kernels:
+                    pausable_stage.kernels[kernel_name] = model
             installed_kernels.update(pausable_stage.kernels)
         if args.segmented_original:
             # every replaced kernel must belong to a class installed this run: a name
@@ -705,6 +770,10 @@ def main(argv: list[str] | None = None) -> int:
         orphans = [k for k in capture_kernels if k not in installed_kernels]
         if orphans:
             raise SystemExit(f"--capture-kernels: {orphans} belong to no installed stage class; "
+                             f"installed classes own {sorted(installed_kernels)}")
+        orphans = [k for k in kernel_models if k not in installed_kernels]
+        if orphans:
+            raise SystemExit(f"--kernel-model: {orphans} belong to no installed stage class; "
                              f"installed classes own {sorted(installed_kernels)}")
         for request in history_streams:
             cam.install_history_stream(
@@ -1011,6 +1080,7 @@ def main(argv: list[str] | None = None) -> int:
             "disabled_actions": [s.strip() for s in args.disable_actions.split(",") if s.strip()],
             "stage_execution": _stage_executions(cam),
             "frame_capture": _frame_capture_summary(records, args, native_evidence),
+            "kernel_models": _kernel_models_summary(kernel_model_paths),
             "hooks": _hook_summary(records),
             "cloud_macro_micro_whole_drivers": bool(args.cloud_macro_micro_whole_drivers),
             "cloud_macro_micro_whole_micro": bool(args.cloud_macro_micro_whole_micro),
