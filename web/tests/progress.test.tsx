@@ -8,7 +8,8 @@ import { resolve } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import App from "../progress/src/App";
-import { buildTree, defaultRunKey, executionInventory, processBars, processKernelStates, searchAll } from "../progress/src/derive";
+import { buildTree, defaultRunKey, executionInventory, processBars, processKernelStates,
+         replaceableCompletion, searchAll } from "../progress/src/derive";
 import type { Snapshot } from "../progress/src/types";
 
 const REAL_SNAPSHOT_PATH = resolve(process.cwd(), "progress/public/progress.json");
@@ -112,6 +113,7 @@ function fixture(): Snapshot {
         source: { file: "components/m.F90", line_start: 400, line_end: 410 },
         processes: ["cam_run1.z"], callers: [], tracked: false, status: null, missing: null,
         owner_class: null, note: null, module_state: [],
+        category: "unclassified", subsystem: null, classification_basis: null,
         development: { state: "unclaimed" },
         observation: { "1month": { status: "observed", calls_total: 7, coverage: "full",
                                    calls_by_context: { "cam_run1.a": 7 }, first_step: 9, last_step: 9,
@@ -129,6 +131,7 @@ function fixture(): Snapshot {
         source: { file: "components/m.F90", line_start: 10, line_end: 90 },
         processes: ["cam_run1.a"], callers: ["drv::a_tend"], tracked: true, status: "complete",
         missing: [], owner_class: "freecam.physics.pausable.A", note: null, module_state: ["state.json"],
+        category: "replaceable_numeric", subsystem: "macrophysics", classification_basis: "the core",
         capabilities: {
           contract: capability("available", { path: "native/pi_cam/functions/alpha.yaml" }),
           adapter_build: capability("available", { evidence: ["alpha_build.json"] }),
@@ -155,6 +158,7 @@ function fixture(): Snapshot {
         source: { file: "components/m.F90", line_start: 100, line_end: 150 },
         processes: ["cam_run1.a", "cam_run1.z"], callers: ["m::alpha", "drv::z_tend"], tracked: false,
         status: null, missing: null, owner_class: null, note: null, module_state: [],
+        category: "unclassified", subsystem: null, classification_basis: null,
         capabilities: {
           contract: capability("not-implemented"),
           adapter_build: capability("not-implemented"),
@@ -448,6 +452,15 @@ describe("derivations", () => {
     expect([...statesZ.values()].every((s) => s !== "observed")).toBe(true);
     const inventory = executionInventory(snapshot, "cam_run1.a", "50step");
     expect(inventory).toEqual({ candidates: 2, observed: 1, coveredNotObserved: 0, gaps: 1, runtimeOnly: 0 });
+  });
+
+  it("computes the replaceable completion denominator from review and observation", () => {
+    const snapshot = fixture();
+    const completion = replaceableCompletion(snapshot, "cam_run1.a", "1month");
+    // alpha: observed + replaceable_numeric + replay verified + replacement verified here -> closed
+    // shared and the runtime-only kernel: observed but unclassified -> block completion
+    expect(completion).toEqual({ observedReplaceable: 1, closed: 1,
+                                 unclassifiedObserved: 2, excludedObserved: 0 });
   });
 
   it("defaults to the validated month run and falls back honestly", () => {

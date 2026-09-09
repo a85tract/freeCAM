@@ -48,6 +48,9 @@ AUDIT = "validation/pi_cam_kernel_api_redirectable_calls.json"
 RUNNERS = "native/pi_cam/segment_runners.yaml"
 HOOKS = "native/pi_cam/hooks.yaml"
 WORK_ITEMS = "native/pi_cam/kernel_work_items.yaml"
+CLASSIFICATIONS = "native/pi_cam/kernel_classifications.yaml"
+KERNEL_CATEGORIES = ("replaceable_numeric", "data_movement", "state_service",
+                     "diagnostic", "control", "inactive")
 #: Optional: the runtime coverage records of the counting image's observation
 #: runs.  With one, every candidate carries per-process execution evidence;
 #: without any there is no validated observation run, and the page says so
@@ -124,6 +127,18 @@ def load_inputs(root: Path) -> dict[str, Any]:
     _require_schema(AUDIT, inputs["audit"], 1)
     _require_schema(RUNNERS, inputs["runners"], 1)
     _require_schema(HOOKS, inputs["hooks"], 1)
+    classifications_path = root / CLASSIFICATIONS
+    if classifications_path.is_file():
+        payload = yaml.safe_load(classifications_path.read_text()) or {}
+        _require_schema(CLASSIFICATIONS, payload, 1)
+        inputs["classifications"] = payload.get("kernels") or {}
+        for qualified, entry in inputs["classifications"].items():
+            if entry.get("category") not in KERNEL_CATEGORIES:
+                raise ProgressExportError(f"{CLASSIFICATIONS}: {qualified} has category "
+                                          f"{entry.get('category')!r}, not one of {KERNEL_CATEGORIES}")
+        inputs["hashes"][CLASSIFICATIONS] = _sha256_file(classifications_path)
+    else:
+        inputs["classifications"] = {}
     work_items_path = root / WORK_ITEMS
     if work_items_path.is_file():
         payload = yaml.safe_load(work_items_path.read_text()) or {}
@@ -534,6 +549,7 @@ def build_progress_snapshot(root: Path | str) -> dict[str, Any]:
     audit, runners, hooks = inputs["audit"], inputs["runners"], inputs["hooks"]
 
     observation_runs = inputs["observation_runs"]
+    classifications = inputs["classifications"]
     work_items = inputs["work_items"]
     active_by_kernel = {item["kernel"]: item for item in work_items
                         if item.get("state") in ("in_progress", "blocked")}
@@ -734,6 +750,9 @@ def build_progress_snapshot(root: Path | str) -> dict[str, Any]:
             "module_state": sorted((tracked or {}).get("evidence", {}).get("module_state") or []),
             "observation": observation_of(qualified),
             "development": development_of(qualified),
+            "category": (classifications.get(qualified) or {}).get("category", "unclassified"),
+            "subsystem": (classifications.get(qualified) or {}).get("subsystem"),
+            "classification_basis": (classifications.get(qualified) or {}).get("basis"),
             "capabilities": capabilities,
             "redirect": redirect,
             "adapter_hint": adapter_hints.get(qualified),
@@ -839,6 +858,9 @@ def build_progress_snapshot(root: Path | str) -> dict[str, Any]:
             for key, _label, _rel in OBSERVATION_RUNS if key in observation_runs
         },
         "unmapped_kernels": len(unmapped),
+        "kernels_by_category": {
+            category: sum(1 for k in kernels.values() if k["category"] == category)
+            for category in (*KERNEL_CATEGORIES, "unclassified")},
         "work_in_progress": sum(1 for i in work_items if i.get("state") == "in_progress"),
         "work_blocked": sum(1 for i in work_items if i.get("state") == "blocked"),
     }
@@ -859,6 +881,11 @@ def build_progress_snapshot(root: Path | str) -> dict[str, Any]:
                                 "class availability does not mean the calculations were translated into Python.",
             "candidates": "Candidate kernels come from a static reading of the configured call tree: they are "
                           "potentially reachable, not necessarily observed during execution.",
+            "classification": "Every observed routine is classified by review: replaceable_numeric routines "
+                              "change scientific values and enter the completion denominator once observed; "
+                              "data movement, state services, diagnostics, drivers and stubs do not. An "
+                              "unclassified observed routine blocks its process from being marked complete. "
+                              "The denominator is computed from the records, never written by hand.",
             "shared_kernels": "A kernel used by several processes is counted once globally; per-process totals "
                               "are not additive.",
             "observation": "Observed means the counting image recorded real calls in the selected validated "

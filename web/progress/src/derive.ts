@@ -97,6 +97,43 @@ export function executionInventory(snapshot: Snapshot, pid: string, runKey: stri
   return { candidates: staticMembers.size, observed, coveredNotObserved: covered, gaps, runtimeOnly };
 }
 
+export interface ReplaceableCompletion {
+  observedReplaceable: number;
+  closed: number;
+  unclassifiedObserved: number;
+  excludedObserved: number;
+}
+
+/** The completion denominator of one process under one run: kernels observed
+    executing here AND reviewed as replaceable_numeric.  Closed means the full
+    loop -- standalone replay verified and the replacement gate bit-for-bit in
+    this process.  Unclassified observed routines block completion. */
+export function replaceableCompletion(snapshot: Snapshot, pid: string, runKey: string): ReplaceableCompletion {
+  const states = processKernelStates(snapshot, pid, runKey);
+  let observedReplaceable = 0;
+  let closed = 0;
+  let unclassifiedObserved = 0;
+  let excludedObserved = 0;
+  for (const [kid, state] of states.entries()) {
+    if (state !== "observed") continue;
+    const kernel = snapshot.kernels[kid];
+    if (!kernel) continue;
+    if (kernel.category === "unclassified") {
+      unclassifiedObserved += 1;
+      continue;
+    }
+    if (kernel.category !== "replaceable_numeric") {
+      excludedObserved += 1;
+      continue;
+    }
+    observedReplaceable += 1;
+    const replaced = snapshot.replacements.some(
+      (row) => row.kernel_routine === kernel.routine && row.process === pid && row.state === "verified");
+    if (replaced && kernel.capabilities.standalone_replay?.state === "verified") closed += 1;
+  }
+  return { observedReplaceable, closed, unclassifiedObserved, excludedObserved };
+}
+
 export interface Bar {
   key: string;
   label: string;

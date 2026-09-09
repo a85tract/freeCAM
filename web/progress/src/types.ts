@@ -99,6 +99,9 @@ export interface KernelRecord {
   module_state: string[];
   observation: Record<string, KernelObservation>;
   development: Development;
+  category: string;
+  subsystem: string | null;
+  classification_basis: string | null;
   capabilities: Record<string, Capability>;
   redirect: { classification: string | null; redirectable: boolean; reading: string; blocker?: string };
   adapter_hint: { adapter_status: string | null; blockers: string[] } | null;

@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import {
   Bar,
   buildTree,
+  replaceableCompletion,
   CAPABILITY_LABELS,
   defaultRunKey,
   executionInventory,
@@ -432,6 +433,7 @@ function ProcessDetail({
   const bars = processBars(snapshot, process.id, runKey);
   const states = runKey ? processKernelStates(snapshot, process.id, runKey) : null;
   const inventory = runKey ? executionInventory(snapshot, process.id, runKey) : null;
+  const completion = runKey ? replaceableCompletion(snapshot, process.id, runKey) : null;
   const activeFilter: KernelFilter = filter ?? (runKey ? "observed" : "all");
   const filtered = (want: "observed" | "not-observed-here" | "gap") =>
     (membership?.kernels ?? []).filter((kid) => states?.get(kid) === want);
@@ -490,8 +492,23 @@ function ProcessDetail({
               )}</dd></div>
             <div><dt>Fully covered, not observed here</dt><dd>{inventory.coveredNotObserved}</dd></div>
             <div><dt>Partially covered or uninstrumented</dt><dd>{inventory.gaps}</dd></div>
+            {completion && (
+              <div>
+                <dt>Replaceable completion</dt>
+                <dd>
+                  {completion.closed} of {completion.observedReplaceable} observed replaceable_numeric kernels
+                  fully closed{completion.excludedObserved > 0 &&
+                    `; ${completion.excludedObserved} observed routines are movement, services, diagnostics or drivers by review`}
+                  {completion.unclassifiedObserved > 0 && (
+                    <span className="chip warn">
+                      {completion.unclassifiedObserved} observed routines unclassified — this process cannot be marked complete
+                    </span>
+                  )}
+                </dd>
+              </div>
+            )}
           </dl>
-          <p className="muted">{snapshot.notes.observation}</p>
+          <p className="muted">{snapshot.notes.observation} {snapshot.notes.classification}</p>
         </>
       ) : (
         <p className="muted">{snapshot.notes.no_observation_run} The counts below fall back to static
@@ -845,6 +862,15 @@ function KernelDetail({
           <div><dt>Known blockers</dt><dd>{kernel.adapter_hint.blockers.join(", ")}</dd></div>
         ) : null}
         {kernel.note && <div><dt>Note</dt><dd>{kernel.note}</dd></div>}
+        <div>
+          <dt>Classification</dt>
+          <dd>
+            <span className={`chip ${kernel.category === "replaceable_numeric" ? "ok"
+              : kernel.category === "unclassified" ? "off" : "info"}`}>{kernel.category}</span>
+            {kernel.subsystem && <span className="muted"> {kernel.subsystem}</span>}
+            {kernel.classification_basis && <span className="muted"> — {kernel.classification_basis}</span>}
+          </dd>
+        </div>
       </dl>
       <h3>Development</h3>
       {kernel.development.state === "unclaimed" ? (
