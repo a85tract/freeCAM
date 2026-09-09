@@ -2648,7 +2648,7 @@
   "use_gw_oro": true,
   "use_subcol_microp": false
  },
- "content_hash": "fa26c94f294e52ee65d4374d2b4d9456905f2596bf13746e7ef878882cc1d869",
+ "content_hash": "db3a445165c95001a3e1328d499fb52d0cd1122f216fdaa5adb27f0d57b0e009",
  "evidence": {
   "pi_cam_cldfrc_fice_frame_replay.json": {
    "bfb": true,
@@ -4527,6 +4527,7 @@
  ],
  "inputs": {
   "native/pi_cam/hooks.yaml": "a7efa7d3a85e4ccf3afbeac436a682677c25c1c7d082b3c09f39e7463b863635",
+  "native/pi_cam/kernel_work_items.yaml": "0fe3d8d7b9c003ed6ea60a740c30af40a57a6bc2466fa201534b7e4bd9f8008d",
   "native/pi_cam/segment_runners.yaml": "4b4d2cb439566c2cf11321011c49df31f4b5f733632a5a8a292e399b3242cfb1",
   "validation/physics_kernel_decoupling.json": "0c22e27fb005ee8feb299048c8dcfd6490245ed0d8f31f64f975e3418d4192aa",
   "validation/pi_cam_kernel_api_closure.json": "96025214b3e4c41f6ba89c266da5dd27c51c42c81c31e1a0ac6f7b2e9cfa260a",
@@ -4572,6 +4573,9 @@
     "standalone_replay": {
      "state": "not-assessed"
     }
+   },
+   "development": {
+    "state": "unclaimed"
    },
    "failures": [],
    "host": null,
@@ -4663,6 +4667,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": null,
    "id": "aer_rad_props::aer_rad_props_sw",
@@ -4749,6 +4756,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": null,
    "id": "aer_rad_props::aer_vis_diag_out",
@@ -4831,6 +4841,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": null,
    "id": "aer_rad_props::get_hygro_rad_props",
@@ -4904,6 +4917,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": null,
    "id": "aer_rad_props::get_nonhygro_rad_props",
@@ -4976,6 +4992,9 @@
     "standalone_replay": {
      "state": "not-assessed"
     }
+   },
+   "development": {
+    "state": "unclaimed"
    },
    "failures": [],
    "host": null,
@@ -5056,6 +5075,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": null,
    "id": "aer_rad_props::get_volcanic_radius_rad_props",
@@ -5120,6 +5142,9 @@
     "standalone_replay": {
      "state": "not-assessed"
     }
+   },
+   "development": {
+    "state": "unclaimed"
    },
    "failures": [],
    "host": null,
@@ -5200,6 +5225,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": null,
    "id": "aero_model::aero_model_emissions",
@@ -5277,6 +5305,9 @@
     "standalone_replay": {
      "state": "not-assessed"
     }
+   },
+   "development": {
+    "state": "unclaimed"
    },
    "failures": [],
    "host": null,
@@ -5357,6 +5388,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": null,
    "id": "aero_model::aero_model_strat_surfarea",
@@ -5436,6 +5470,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": null,
    "id": "aero_model::aero_model_surfarea",
@@ -5508,6 +5545,9 @@
     "standalone_replay": {
      "state": "not-assessed"
     }
+   },
+   "development": {
+    "state": "unclaimed"
    },
    "failures": [],
    "host": null,
@@ -5588,6 +5628,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": null,
    "id": "aero_model::modal_aero_bcscavcoef_get",
@@ -5659,6 +5702,9 @@
     "standalone_replay": {
      "state": "not-assessed"
     }
+   },
+   "development": {
+    "state": "unclaimed"
    },
    "failures": [],
    "host": null,
@@ -5745,6 +5791,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": null,
    "id": "aero_model::qqcw2vmr",
@@ -5812,6 +5861,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": null,
    "id": "aero_model::surf_area_dens",
@@ -5878,6 +5930,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": null,
    "id": "aero_model::vmr2qqcw",
@@ -5943,6 +5998,9 @@
     "standalone_replay": {
      "state": "not-assessed"
     }
+   },
+   "development": {
+    "state": "unclaimed"
    },
    "failures": [],
    "host": null,
@@ -6021,6 +6079,9 @@
     "standalone_replay": {
      "state": "not-assessed"
     }
+   },
+   "development": {
+    "state": "unclaimed"
    },
    "failures": [],
    "host": null,
@@ -6101,6 +6162,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": null,
    "id": "cam_diagnostics::diag_allocate",
@@ -6176,6 +6240,9 @@
     "standalone_replay": {
      "state": "not-assessed"
     }
+   },
+   "development": {
+    "state": "unclaimed"
    },
    "failures": [],
    "host": null,
@@ -6255,6 +6322,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": null,
    "id": "cam_diagnostics::diag_conv_tend_ini",
@@ -6333,6 +6403,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": null,
    "id": "cam_diagnostics::diag_deallocate",
@@ -6410,6 +6483,9 @@
     "standalone_replay": {
      "state": "not-assessed"
     }
+   },
+   "development": {
+    "state": "unclaimed"
    },
    "failures": [],
    "host": null,
@@ -6490,6 +6566,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": null,
    "id": "cam_diagnostics::diag_phys_tend_writeout",
@@ -6568,6 +6647,9 @@
     "standalone_replay": {
      "state": "not-assessed"
     }
+   },
+   "development": {
+    "state": "unclaimed"
    },
    "failures": [],
    "host": null,
@@ -6648,6 +6730,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": null,
    "id": "cam_diagnostics::diag_physvar_ic",
@@ -6723,6 +6808,9 @@
     "standalone_replay": {
      "state": "not-assessed"
     }
+   },
+   "development": {
+    "state": "unclaimed"
    },
    "failures": [],
    "host": null,
@@ -6802,6 +6890,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": null,
    "id": "cam_diagnostics::diag_surf",
@@ -6877,6 +6968,9 @@
     "standalone_replay": {
      "state": "not-assessed"
     }
+   },
+   "development": {
+    "state": "unclaimed"
    },
    "failures": [],
    "host": null,
@@ -6956,6 +7050,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": null,
    "id": "carma_intr::carma_emission_tend",
@@ -7027,6 +7124,9 @@
     "standalone_replay": {
      "state": "not-assessed"
     }
+   },
+   "development": {
+    "state": "unclaimed"
    },
    "failures": [],
    "host": null,
@@ -7106,6 +7206,9 @@
     "standalone_replay": {
      "state": "not-assessed"
     }
+   },
+   "development": {
+    "state": "unclaimed"
    },
    "failures": [],
    "host": null,
@@ -7187,6 +7290,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": null,
    "id": "carma_intr::carma_wetdep_tend",
@@ -7259,6 +7365,9 @@
     "standalone_replay": {
      "state": "not-assessed"
     }
+   },
+   "development": {
+    "state": "unclaimed"
    },
    "failures": [],
    "host": null,
@@ -7338,6 +7447,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": null,
    "id": "charge_neutrality::charge_balance",
@@ -7416,6 +7528,9 @@
     "standalone_replay": {
      "state": "not-assessed"
     }
+   },
+   "development": {
+    "state": "unclaimed"
    },
    "failures": [],
    "host": null,
@@ -7498,6 +7613,9 @@
     "standalone_replay": {
      "state": "not-assessed"
     }
+   },
+   "development": {
+    "state": "unclaimed"
    },
    "failures": [],
    "host": null,
@@ -7620,6 +7738,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": null,
    "id": "check_energy::check_energy_fix",
@@ -7698,6 +7819,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": null,
    "id": "check_energy::check_energy_get_integrals",
@@ -7769,6 +7893,9 @@
     "standalone_replay": {
      "state": "not-assessed"
     }
+   },
+   "development": {
+    "state": "unclaimed"
    },
    "failures": [],
    "host": null,
@@ -7845,6 +7972,9 @@
     "standalone_replay": {
      "state": "not-assessed"
     }
+   },
+   "development": {
+    "state": "unclaimed"
    },
    "failures": [],
    "host": null,
@@ -7924,6 +8054,9 @@
     "standalone_replay": {
      "state": "not-assessed"
     }
+   },
+   "development": {
+    "state": "unclaimed"
    },
    "failures": [],
    "host": null,
@@ -8017,6 +8150,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": null,
    "id": "check_energy::check_tracers_init",
@@ -8098,6 +8234,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": null,
    "id": "chemistry::chem_emissions",
@@ -8175,6 +8314,9 @@
     "standalone_replay": {
      "state": "not-assessed"
     }
+   },
+   "development": {
+    "state": "unclaimed"
    },
    "failures": [],
    "host": null,
@@ -8255,6 +8397,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": null,
    "id": "chemistry::chem_is_active",
@@ -8333,6 +8478,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": null,
    "id": "chemistry::chem_timestep_init",
@@ -8410,6 +8558,9 @@
     "standalone_replay": {
      "state": "not-assessed"
     }
+   },
+   "development": {
+    "state": "unclaimed"
    },
    "failures": [],
    "host": null,
@@ -8490,6 +8641,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": null,
    "id": "cldaero_mod::cldaero_allocate",
@@ -8568,6 +8722,9 @@
     "standalone_replay": {
      "state": "not-assessed"
     }
+   },
+   "development": {
+    "state": "unclaimed"
    },
    "failures": [],
    "host": null,
@@ -8648,6 +8805,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": null,
    "id": "cldaero_mod::cldaero_uptakerate",
@@ -8726,6 +8886,9 @@
     "standalone_replay": {
      "state": "not-assessed"
     }
+   },
+   "development": {
+    "state": "unclaimed"
    },
    "failures": [],
    "host": null,
@@ -8806,6 +8969,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": null,
    "id": "cldfrc2m::aist_vector",
@@ -8884,6 +9050,9 @@
     "standalone_replay": {
      "state": "not-assessed"
     }
+   },
+   "development": {
+    "state": "unclaimed"
    },
    "failures": [],
    "host": null,
@@ -8964,6 +9133,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": null,
    "id": "cldfrc2m::astg_pdf_single",
@@ -9042,6 +9214,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": null,
    "id": "cldwat2m_macro::funcd_instratus",
@@ -9106,6 +9281,9 @@
     "standalone_replay": {
      "state": "not-assessed"
     }
+   },
+   "development": {
+    "state": "unclaimed"
    },
    "failures": [],
    "host": null,
@@ -9172,6 +9350,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": null,
    "id": "cldwat2m_macro::gridmean_rh",
@@ -9236,6 +9417,9 @@
     "standalone_replay": {
      "state": "not-assessed"
     }
+   },
+   "development": {
+    "state": "unclaimed"
    },
    "failures": [],
    "host": null,
@@ -9314,6 +9498,9 @@
     "standalone_replay": {
      "state": "not-assessed"
     }
+   },
+   "development": {
+    "state": "unclaimed"
    },
    "failures": [],
    "host": null,
@@ -9413,6 +9600,9 @@
      "state": "verified"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": null,
    "id": "cldwat2m_macro::mmacro_pcond",
@@ -9493,6 +9683,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": null,
    "id": "cldwat2m_macro::positive_moisture",
@@ -9571,6 +9764,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": null,
    "id": "cldwat2m_macro::rhcrit_calc",
@@ -9644,6 +9840,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": null,
    "id": "cloud_cover_diags::cldsav",
@@ -9712,6 +9911,9 @@
     "standalone_replay": {
      "state": "not-assessed"
     }
+   },
+   "development": {
+    "state": "unclaimed"
    },
    "failures": [],
    "host": null,
@@ -9792,6 +9994,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": null,
    "id": "cloud_diagnostics::cloud_diagnostics_calc",
@@ -9871,6 +10076,9 @@
     "standalone_replay": {
      "state": "not-assessed"
     }
+   },
+   "development": {
+    "state": "unclaimed"
    },
    "failures": [],
    "host": null,
@@ -9974,6 +10182,21 @@
      "state": "verified"
     }
    },
+   "development": {
+    "blocker": null,
+    "branch": "physics-kernel-api-closure",
+    "next_gate": "512-rank 50-step BFB",
+    "note": "Promote the validated hook into the process kernel registry.",
+    "owner": "claude",
+    "owner_class": "freecam.physics.macrophysics.Macrophysics",
+    "stage": "in_model_replacement",
+    "started_at": "2026-09-09",
+    "state": "in_progress",
+    "target_processes": [
+     "cam_run1.cloud_macro_microphysics"
+    ],
+    "updated_at": "2026-09-09"
+   },
    "failures": [
     "pi_cam_pausable_fice-hook_50step_failure.json",
     "pi_cam_pausable_fice-pause_50step_failure.json"
@@ -10059,6 +10282,9 @@
     "standalone_replay": {
      "state": "not-assessed"
     }
+   },
+   "development": {
+    "state": "unclaimed"
    },
    "failures": [],
    "host": null,
@@ -10146,6 +10372,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": null,
    "id": "cloud_rad_props::gam_liquid_lw",
@@ -10218,6 +10447,9 @@
     "standalone_replay": {
      "state": "not-assessed"
     }
+   },
+   "development": {
+    "state": "unclaimed"
    },
    "failures": [],
    "host": null,
@@ -10302,6 +10534,9 @@
     "standalone_replay": {
      "state": "not-assessed"
     }
+   },
+   "development": {
+    "state": "unclaimed"
    },
    "failures": [],
    "host": null,
@@ -10393,6 +10628,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": null,
    "id": "cloud_rad_props::get_liquid_optics_sw",
@@ -10472,6 +10710,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": null,
    "id": "cloud_rad_props::get_mu_lambda_weights",
@@ -10548,6 +10789,9 @@
     "standalone_replay": {
      "state": "not-assessed"
     }
+   },
+   "development": {
+    "state": "unclaimed"
    },
    "failures": [],
    "host": null,
@@ -10640,6 +10884,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": null,
    "id": "cloud_rad_props::ice_cloud_get_rad_props_lw",
@@ -10729,6 +10976,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": null,
    "id": "cloud_rad_props::interpolate_ice_optics_lw",
@@ -10802,6 +11052,9 @@
     "standalone_replay": {
      "state": "not-assessed"
     }
+   },
+   "development": {
+    "state": "unclaimed"
    },
    "failures": [],
    "host": null,
@@ -10889,6 +11142,9 @@
     "standalone_replay": {
      "state": "not-assessed"
     }
+   },
+   "development": {
+    "state": "unclaimed"
    },
    "failures": [],
    "host": null,
@@ -10982,6 +11238,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": null,
    "id": "cloud_rad_props::snow_cloud_get_rad_props_lw",
@@ -11061,6 +11320,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": null,
    "id": "clybry_fam::broy",
@@ -11137,6 +11399,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": null,
    "id": "clybry_fam::cloy",
@@ -11211,6 +11476,9 @@
     "standalone_replay": {
      "state": "not-assessed"
     }
+   },
+   "development": {
+    "state": "unclaimed"
    },
    "failures": [],
    "host": null,
@@ -11289,6 +11557,9 @@
     "standalone_replay": {
      "state": "not-assessed"
     }
+   },
+   "development": {
+    "state": "unclaimed"
    },
    "failures": [],
    "host": null,
@@ -11369,6 +11640,9 @@
     "standalone_replay": {
      "state": "not-assessed"
     }
+   },
+   "development": {
+    "state": "unclaimed"
    },
    "failures": [],
    "host": null,
@@ -11459,6 +11733,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": null,
    "id": "constituent_burden::constituent_burden_comp",
@@ -11537,6 +11814,9 @@
     "standalone_replay": {
      "state": "not-assessed"
     }
+   },
+   "development": {
+    "state": "unclaimed"
    },
    "failures": [],
    "host": null,
@@ -11629,6 +11909,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": null,
    "id": "convect_deep::convect_deep_tend",
@@ -11706,6 +11989,9 @@
     "standalone_replay": {
      "state": "not-assessed"
     }
+   },
+   "development": {
+    "state": "unclaimed"
    },
    "failures": [],
    "host": null,
@@ -11785,6 +12071,9 @@
     "standalone_replay": {
      "state": "not-assessed"
     }
+   },
+   "development": {
+    "state": "unclaimed"
    },
    "failures": [],
    "host": null,
@@ -11886,6 +12175,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": null,
    "id": "convect_shallow::convect_shallow_tend",
@@ -11972,6 +12264,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": null,
    "id": "convect_shallow::convect_shallow_use_shfrc",
@@ -12052,6 +12347,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": null,
    "id": "coords_1d::allocate_coords",
@@ -12118,6 +12416,9 @@
     "standalone_replay": {
      "state": "not-assessed"
     }
+   },
+   "development": {
+    "state": "unclaimed"
    },
    "failures": [],
    "host": null,
@@ -12200,6 +12501,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": "coords_1d::finalize",
    "id": "coords_1d::finalize.guarded_deallocate",
@@ -12267,6 +12571,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": null,
    "id": "coords_1d::new_coords1d_from_fields",
@@ -12333,6 +12640,9 @@
     "standalone_replay": {
      "state": "not-assessed"
     }
+   },
+   "development": {
+    "state": "unclaimed"
    },
    "failures": [],
    "host": null,
@@ -12415,6 +12725,9 @@
     "standalone_replay": {
      "state": "not-assessed"
     }
+   },
+   "development": {
+    "state": "unclaimed"
    },
    "failures": [],
    "host": null,
@@ -12509,6 +12822,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": null,
    "id": "cospsimulator_intr::cospsimulator_intr_run",
@@ -12580,6 +12896,9 @@
     "standalone_replay": {
      "state": "not-assessed"
     }
+   },
+   "development": {
+    "state": "unclaimed"
    },
    "failures": [],
    "host": null,
@@ -12683,6 +13002,9 @@
      "state": "verified"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": null,
    "id": "dadadj::dadadj",
@@ -12778,6 +13100,9 @@
     "standalone_replay": {
      "state": "not-assessed"
     }
+   },
+   "development": {
+    "state": "unclaimed"
    },
    "failures": [],
    "host": null,
@@ -12879,6 +13204,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": null,
    "id": "diffusion_solver::diffuse",
@@ -12959,6 +13287,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": null,
    "id": "diffusion_solver::my_any",
@@ -13036,6 +13367,9 @@
     "standalone_replay": {
      "state": "not-assessed"
     }
+   },
+   "development": {
+    "state": "unclaimed"
    },
    "failures": [],
    "host": null,
@@ -13116,6 +13450,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": null,
    "id": "dust_model::dust_emis",
@@ -13193,6 +13530,9 @@
     "standalone_replay": {
      "state": "not-assessed"
     }
+   },
+   "development": {
+    "state": "unclaimed"
    },
    "failures": [],
    "host": null,
@@ -13273,6 +13613,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": null,
    "id": "dust_sediment_mod::cfint2",
@@ -13351,6 +13694,9 @@
     "standalone_replay": {
      "state": "not-assessed"
     }
+   },
+   "development": {
+    "state": "unclaimed"
    },
    "failures": [],
    "host": null,
@@ -13431,6 +13777,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": null,
    "id": "dust_sediment_mod::getflx",
@@ -13504,6 +13853,9 @@
     "standalone_replay": {
      "state": "not-assessed"
     }
+   },
+   "development": {
+    "state": "unclaimed"
    },
    "failures": [],
    "host": null,
@@ -13583,6 +13935,9 @@
     "standalone_replay": {
      "state": "not-assessed"
     }
+   },
+   "development": {
+    "state": "unclaimed"
    },
    "failures": [],
    "host": null,
@@ -13671,6 +14026,9 @@
     "standalone_replay": {
      "state": "not-assessed"
     }
+   },
+   "development": {
+    "state": "unclaimed"
    },
    "failures": [],
    "host": null,
@@ -13761,6 +14119,9 @@
     "standalone_replay": {
      "state": "not-assessed"
     }
+   },
+   "development": {
+    "state": "unclaimed"
    },
    "failures": [],
    "host": null,
@@ -13854,6 +14215,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": null,
    "id": "eddy_diff::exacol",
@@ -13918,6 +14282,9 @@
     "standalone_replay": {
      "state": "not-assessed"
     }
+   },
+   "development": {
+    "state": "unclaimed"
    },
    "failures": [],
    "host": null,
@@ -13991,6 +14358,9 @@
     "standalone_replay": {
      "state": "not-assessed"
     }
+   },
+   "development": {
+    "state": "unclaimed"
    },
    "failures": [],
    "host": null,
@@ -14084,6 +14454,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": null,
    "id": "eddy_diff::zisocl",
@@ -14162,6 +14535,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": null,
    "id": "euvac::euvac_set_etf",
@@ -14238,6 +14614,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": null,
    "id": "flux_avg::flux_avg_init",
@@ -14307,6 +14686,9 @@
     "standalone_replay": {
      "state": "not-assessed"
     }
+   },
+   "development": {
+    "state": "unclaimed"
    },
    "failures": [],
    "host": null,
@@ -14380,6 +14762,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": null,
    "id": "flux_avg::smooth",
@@ -14451,6 +14836,9 @@
     "standalone_replay": {
      "state": "not-assessed"
     }
+   },
+   "development": {
+    "state": "unclaimed"
    },
    "failures": [],
    "host": null,
@@ -14530,6 +14918,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": null,
    "id": "gcr_ionization::gcr_ionization_get",
@@ -14595,6 +14986,9 @@
     "standalone_replay": {
      "state": "not-assessed"
     }
+   },
+   "development": {
+    "state": "unclaimed"
    },
    "failures": [],
    "host": null,
@@ -14678,6 +15072,9 @@
     "standalone_replay": {
      "state": "not-assessed"
     }
+   },
+   "development": {
+    "state": "unclaimed"
    },
    "failures": [],
    "host": null,
@@ -14783,6 +15180,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": null,
    "id": "gw_common::energy_change",
@@ -14872,6 +15272,9 @@
     "standalone_replay": {
      "state": "not-assessed"
     }
+   },
+   "development": {
+    "state": "unclaimed"
    },
    "failures": [],
    "host": null,
@@ -14965,6 +15368,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": null,
    "id": "gw_common::gw_prof",
@@ -15050,6 +15456,9 @@
     "standalone_replay": {
      "state": "not-assessed"
     }
+   },
+   "development": {
+    "state": "unclaimed"
    },
    "failures": [],
    "host": null,
@@ -15138,6 +15547,9 @@
     "standalone_replay": {
      "state": "not-assessed"
     }
+   },
+   "development": {
+    "state": "unclaimed"
    },
    "failures": [],
    "host": null,
@@ -15229,6 +15641,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": null,
    "id": "gw_drag::gw_tend",
@@ -15314,6 +15729,9 @@
     "standalone_replay": {
      "state": "not-assessed"
     }
+   },
+   "development": {
+    "state": "unclaimed"
    },
    "failures": [],
    "host": null,
@@ -15403,6 +15821,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": null,
    "id": "gw_utils::dot_2d",
@@ -15485,6 +15906,9 @@
     "standalone_replay": {
      "state": "not-assessed"
     }
+   },
+   "development": {
+    "state": "unclaimed"
    },
    "failures": [],
    "host": null,
@@ -15576,6 +16000,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": null,
    "id": "gw_utils::midpoint_interp",
@@ -15664,6 +16091,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": null,
    "id": "hirsbt::btemp",
@@ -15731,6 +16161,9 @@
     "standalone_replay": {
      "state": "not-assessed"
     }
+   },
+   "development": {
+    "state": "unclaimed"
    },
    "failures": [],
    "host": null,
@@ -15804,6 +16237,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": null,
    "id": "hirsbt::locate",
@@ -15876,6 +16312,9 @@
     "standalone_replay": {
      "state": "not-assessed"
     }
+   },
+   "development": {
+    "state": "unclaimed"
    },
    "failures": [],
    "host": null,
@@ -15959,6 +16398,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": null,
    "id": "hirsbt::plnck",
@@ -16034,6 +16476,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": null,
    "id": "hirsbt::t_malk",
@@ -16099,6 +16544,9 @@
     "standalone_replay": {
      "state": "not-assessed"
     }
+   },
+   "development": {
+    "state": "unclaimed"
    },
    "failures": [],
    "host": null,
@@ -16173,6 +16621,9 @@
     "standalone_replay": {
      "state": "not-assessed"
     }
+   },
+   "development": {
+    "state": "unclaimed"
    },
    "failures": [],
    "host": null,
@@ -16256,6 +16707,9 @@
     "standalone_replay": {
      "state": "not-assessed"
     }
+   },
+   "development": {
+    "state": "unclaimed"
    },
    "failures": [],
    "host": null,
@@ -16349,6 +16803,9 @@
     "standalone_replay": {
      "state": "not-assessed"
     }
+   },
+   "development": {
+    "state": "unclaimed"
    },
    "failures": [],
    "host": null,
@@ -16444,6 +16901,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": null,
    "id": "interpolate_data::lininterp2d2d",
@@ -16530,6 +16990,9 @@
     "standalone_replay": {
      "state": "not-assessed"
     }
+   },
+   "development": {
+    "state": "unclaimed"
    },
    "failures": [],
    "host": null,
@@ -16621,6 +17084,9 @@
     "standalone_replay": {
      "state": "not-assessed"
     }
+   },
+   "development": {
+    "state": "unclaimed"
    },
    "failures": [],
    "host": null,
@@ -16716,6 +17182,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": null,
    "id": "interpolate_data::lininterp_full1d",
@@ -16804,6 +17273,9 @@
     "standalone_replay": {
      "state": "not-assessed"
     }
+   },
+   "development": {
+    "state": "unclaimed"
    },
    "failures": [],
    "host": null,
@@ -16897,6 +17369,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": null,
    "id": "interpolate_data::lininterp_original",
@@ -16965,6 +17440,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": null,
    "id": "interpolate_data::valid_timeinterp_factors",
@@ -17030,6 +17508,9 @@
     "standalone_replay": {
      "state": "not-assessed"
     }
+   },
+   "development": {
+    "state": "unclaimed"
    },
    "failures": [],
    "host": null,
@@ -17112,6 +17593,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": null,
    "id": "intp_util::findplb",
@@ -17190,6 +17674,9 @@
     "standalone_replay": {
      "state": "not-assessed"
     }
+   },
+   "development": {
+    "state": "unclaimed"
    },
    "failures": [],
    "host": null,
@@ -17271,6 +17758,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": null,
    "id": "iondrag::iondrag_calc_ions",
@@ -17335,6 +17825,9 @@
     "standalone_replay": {
      "state": "not-assessed"
     }
+   },
+   "development": {
+    "state": "unclaimed"
    },
    "failures": [],
    "host": null,
@@ -17408,6 +17901,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": null,
    "id": "lin_strat_chem::lin_strat_chem_solve",
@@ -17480,6 +17976,9 @@
     "standalone_replay": {
      "state": "not-assessed"
     }
+   },
+   "development": {
+    "state": "unclaimed"
    },
    "failures": [],
    "host": null,
@@ -17560,6 +18059,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": null,
    "id": "linear_1d_operators::advection_operator",
@@ -17633,6 +18135,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": null,
    "id": "linear_1d_operators::apply_left",
@@ -17698,6 +18203,9 @@
     "standalone_replay": {
      "state": "not-assessed"
     }
+   },
+   "development": {
+    "state": "unclaimed"
    },
    "failures": [],
    "host": null,
@@ -17765,6 +18273,9 @@
     "standalone_replay": {
      "state": "not-assessed"
     }
+   },
+   "development": {
+    "state": "unclaimed"
    },
    "failures": [],
    "host": null,
@@ -17848,6 +18359,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": null,
    "id": "linear_1d_operators::decomp_left_div",
@@ -17929,6 +18443,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": null,
    "id": "linear_1d_operators::diagonal_add_tridiag",
@@ -17994,6 +18511,9 @@
     "standalone_replay": {
      "state": "not-assessed"
     }
+   },
+   "development": {
+    "state": "unclaimed"
    },
    "failures": [],
    "host": null,
@@ -18067,6 +18587,9 @@
     "standalone_replay": {
      "state": "not-assessed"
     }
+   },
+   "development": {
+    "state": "unclaimed"
    },
    "failures": [],
    "host": null,
@@ -18146,6 +18669,9 @@
     "standalone_replay": {
      "state": "not-assessed"
     }
+   },
+   "development": {
+    "state": "unclaimed"
    },
    "failures": [],
    "host": null,
@@ -18229,6 +18755,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": null,
    "id": "linear_1d_operators::make_tridiag_deriv_diag",
@@ -18310,6 +18839,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": null,
    "id": "linear_1d_operators::new_boundarydata",
@@ -18387,6 +18919,9 @@
     "standalone_replay": {
      "state": "not-assessed"
     }
+   },
+   "development": {
+    "state": "unclaimed"
    },
    "failures": [],
    "host": null,
@@ -18466,6 +19001,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": null,
    "id": "linear_1d_operators::new_boundaryflux",
@@ -18537,6 +19075,9 @@
     "standalone_replay": {
      "state": "not-assessed"
     }
+   },
+   "development": {
+    "state": "unclaimed"
    },
    "failures": [],
    "host": null,
@@ -18622,6 +19163,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": null,
    "id": "linear_1d_operators::new_tridiagop",
@@ -18703,6 +19247,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": null,
    "id": "linear_1d_operators::scalar_add_tridiag",
@@ -18783,6 +19330,9 @@
     "standalone_replay": {
      "state": "not-assessed"
     }
+   },
+   "development": {
+    "state": "unclaimed"
    },
    "failures": [],
    "host": null,
@@ -18867,6 +19417,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": null,
    "id": "linear_1d_operators::tridiag_finalize",
@@ -18948,6 +19501,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": null,
    "id": "linear_1d_operators::zero_operator",
@@ -19020,6 +19576,9 @@
     "standalone_replay": {
      "state": "not-assessed"
     }
+   },
+   "development": {
+    "state": "unclaimed"
    },
    "failures": [],
    "host": null,
@@ -19100,6 +19659,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": null,
    "id": "macrop_driver::macrop_driver_tend",
@@ -19179,6 +19741,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": null,
    "id": "mag_parms::get_mag_parms",
@@ -19251,6 +19816,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": null,
    "id": "majorsp_diffusion::mspd_intr",
@@ -19322,6 +19890,9 @@
     "standalone_replay": {
      "state": "not-assessed"
     }
+   },
+   "development": {
+    "state": "unclaimed"
    },
    "failures": [],
    "host": null,
@@ -19401,6 +19972,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": null,
    "id": "mcica_subcol_gen_lw::kissvec",
@@ -19479,6 +20053,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": "mcica_subcol_gen_lw::kissvec",
    "id": "mcica_subcol_gen_lw::kissvec.low_byte",
@@ -19543,6 +20120,9 @@
     "standalone_replay": {
      "state": "not-assessed"
     }
+   },
+   "development": {
+    "state": "unclaimed"
    },
    "failures": [],
    "host": "mcica_subcol_gen_lw::kissvec",
@@ -19611,6 +20191,9 @@
     "standalone_replay": {
      "state": "not-assessed"
     }
+   },
+   "development": {
+    "state": "unclaimed"
    },
    "failures": [],
    "host": null,
@@ -19690,6 +20273,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": null,
    "id": "mcica_subcol_gen_sw::generate_stochastic_clouds_sw",
@@ -19767,6 +20353,9 @@
     "standalone_replay": {
      "state": "not-assessed"
     }
+   },
+   "development": {
+    "state": "unclaimed"
    },
    "failures": [],
    "host": null,
@@ -19846,6 +20435,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": "mcica_subcol_gen_sw::kissvec",
    "id": "mcica_subcol_gen_sw::kissvec.low_byte",
@@ -19910,6 +20502,9 @@
     "standalone_replay": {
      "state": "not-assessed"
     }
+   },
+   "development": {
+    "state": "unclaimed"
    },
    "failures": [],
    "host": "mcica_subcol_gen_sw::kissvec",
@@ -19978,6 +20573,9 @@
     "standalone_replay": {
      "state": "not-assessed"
     }
+   },
+   "development": {
+    "state": "unclaimed"
    },
    "failures": [],
    "host": null,
@@ -20057,6 +20655,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": null,
    "id": "mersennetwister::getrandomint",
@@ -20122,6 +20723,9 @@
     "standalone_replay": {
      "state": "not-assessed"
     }
+   },
+   "development": {
+    "state": "unclaimed"
    },
    "failures": [],
    "host": null,
@@ -20190,6 +20794,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": null,
    "id": "mersennetwister::initialize_scalar",
@@ -20256,6 +20863,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": null,
    "id": "mersennetwister::initialize_vector",
@@ -20320,6 +20930,9 @@
     "standalone_replay": {
      "state": "not-assessed"
     }
+   },
+   "development": {
+    "state": "unclaimed"
    },
    "failures": [],
    "host": null,
@@ -20386,6 +20999,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": null,
    "id": "mersennetwister::nextstate",
@@ -20450,6 +21066,9 @@
     "standalone_replay": {
      "state": "not-assessed"
     }
+   },
+   "development": {
+    "state": "unclaimed"
    },
    "failures": [],
    "host": null,
@@ -20516,6 +21135,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": null,
    "id": "mersennetwister::twist",
@@ -20580,6 +21202,9 @@
     "standalone_replay": {
      "state": "not-assessed"
     }
+   },
+   "development": {
+    "state": "unclaimed"
    },
    "failures": [],
    "host": null,
@@ -20674,6 +21299,21 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "blocker": null,
+    "branch": "physics-kernel-api-closure",
+    "next_gate": "capture + full replay bit-for-bit, then 50-step in-model BFB",
+    "note": "Close the remaining capture and replay loop.",
+    "owner": "claude",
+    "owner_class": "freecam.physics.microphysics.Microphysics",
+    "stage": "capture_replay",
+    "started_at": "2026-09-09",
+    "state": "in_progress",
+    "target_processes": [
+     "cam_run1.cloud_macro_microphysics"
+    ],
+    "updated_at": "2026-09-09"
+   },
    "failures": [],
    "host": null,
    "id": "micro_mg1_0::micro_mg_tend",
@@ -20759,6 +21399,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": null,
    "id": "micro_mg_cam::micro_mg_cam_tend",
@@ -20836,6 +21479,9 @@
     "standalone_replay": {
      "state": "not-assessed"
     }
+   },
+   "development": {
+    "state": "unclaimed"
    },
    "failures": [],
    "host": null,
@@ -20917,6 +21563,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": null,
    "id": "micro_mg_cam::p2",
@@ -20997,6 +21646,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": null,
    "id": "micro_mg_data::add_field_1d",
@@ -21076,6 +21728,9 @@
     "standalone_replay": {
      "state": "not-assessed"
     }
+   },
+   "development": {
+    "state": "unclaimed"
    },
    "failures": [],
    "host": null,
@@ -21158,6 +21813,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": null,
    "id": "micro_mg_data::mgfieldpostproc_1d",
@@ -21224,6 +21882,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": null,
    "id": "micro_mg_data::mgfieldpostproc_2d",
@@ -21288,6 +21949,9 @@
     "standalone_replay": {
      "state": "not-assessed"
     }
+   },
+   "development": {
+    "state": "unclaimed"
    },
    "failures": [],
    "host": null,
@@ -21367,6 +22031,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": null,
    "id": "micro_mg_data::mgpostproc_finalize",
@@ -21444,6 +22111,9 @@
     "standalone_replay": {
      "state": "not-assessed"
     }
+   },
+   "development": {
+    "state": "unclaimed"
    },
    "failures": [],
    "host": null,
@@ -21523,6 +22193,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": null,
    "id": "micro_mg_data::new_mgpacker",
@@ -21600,6 +22273,9 @@
     "standalone_replay": {
      "state": "not-assessed"
     }
+   },
+   "development": {
+    "state": "unclaimed"
    },
    "failures": [],
    "host": null,
@@ -21679,6 +22355,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": null,
    "id": "micro_mg_data::pack_1d",
@@ -21743,6 +22422,9 @@
     "standalone_replay": {
      "state": "not-assessed"
     }
+   },
+   "development": {
+    "state": "unclaimed"
    },
    "failures": [],
    "host": null,
@@ -21824,6 +22506,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": null,
    "id": "micro_mg_data::pack_3d",
@@ -21904,6 +22589,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": null,
    "id": "micro_mg_data::pack_interface",
@@ -21982,6 +22670,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": null,
    "id": "micro_mg_data::unpack_1d",
@@ -22047,6 +22738,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": null,
    "id": "micro_mg_data::unpack_1d_array_fill",
@@ -22111,6 +22805,9 @@
     "standalone_replay": {
      "state": "not-assessed"
     }
+   },
+   "development": {
+    "state": "unclaimed"
    },
    "failures": [],
    "host": null,
@@ -22190,6 +22887,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": null,
    "id": "micro_mg_data::unpack_2d_array_fill",
@@ -22268,6 +22968,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": null,
    "id": "micro_mg_data::unpack_3d",
@@ -22332,6 +23035,9 @@
     "standalone_replay": {
      "state": "not-assessed"
     }
+   },
+   "development": {
+    "state": "unclaimed"
    },
    "failures": [],
    "host": null,
@@ -22398,6 +23104,9 @@
     "standalone_replay": {
      "state": "not-assessed"
     }
+   },
+   "development": {
+    "state": "unclaimed"
    },
    "failures": [],
    "host": null,
@@ -22477,6 +23186,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": null,
    "id": "micro_mg_utils::limiter_is_on",
@@ -22544,6 +23256,9 @@
     "standalone_replay": {
      "state": "not-assessed"
     }
+   },
+   "development": {
+    "state": "unclaimed"
    },
    "failures": [],
    "host": null,
@@ -22626,6 +23341,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": null,
    "id": "micro_mg_utils::size_dist_param_liq",
@@ -22704,6 +23422,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": "micro_mg_utils::size_dist_param_liq",
    "id": "micro_mg_utils::size_dist_param_liq.rising_factorial",
@@ -22768,6 +23489,9 @@
     "standalone_replay": {
      "state": "not-assessed"
     }
+   },
+   "development": {
+    "state": "unclaimed"
    },
    "failures": [],
    "host": null,
@@ -22847,6 +23571,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": null,
    "id": "microp_driver::microp_driver_tend",
@@ -22924,6 +23651,9 @@
     "standalone_replay": {
      "state": "not-assessed"
     }
+   },
+   "development": {
+    "state": "unclaimed"
    },
    "failures": [],
    "host": null,
@@ -23004,6 +23734,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": null,
    "id": "mo_aero_settling::strat_aer_settling",
@@ -23076,6 +23809,9 @@
     "standalone_replay": {
      "state": "not-assessed"
     }
+   },
+   "development": {
+    "state": "unclaimed"
    },
    "failures": [],
    "host": null,
@@ -23156,6 +23892,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": null,
    "id": "mo_chem_utls::get_extfrc_ndx",
@@ -23233,6 +23972,9 @@
     "standalone_replay": {
      "state": "not-assessed"
     }
+   },
+   "development": {
+    "state": "unclaimed"
    },
    "failures": [],
    "host": null,
@@ -23318,6 +24060,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": null,
    "id": "mo_chem_utls::get_spc_ndx",
@@ -23399,6 +24144,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": null,
    "id": "mo_chm_diags::chm_diags",
@@ -23478,6 +24226,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": null,
    "id": "mo_chm_diags::het_diags",
@@ -23551,6 +24302,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": null,
    "id": "mo_drydep::chk_soilw",
@@ -23616,6 +24370,9 @@
     "standalone_replay": {
      "state": "not-assessed"
     }
+   },
+   "development": {
+    "state": "unclaimed"
    },
    "failures": [],
    "host": null,
@@ -23698,6 +24455,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": null,
    "id": "mo_drydep::drydep_table",
@@ -23772,6 +24532,9 @@
     "standalone_replay": {
      "state": "not-assessed"
     }
+   },
+   "development": {
+    "state": "unclaimed"
    },
    "failures": [],
    "host": null,
@@ -23852,6 +24615,9 @@
     "standalone_replay": {
      "state": "not-assessed"
     }
+   },
+   "development": {
+    "state": "unclaimed"
    },
    "failures": [],
    "host": null,
@@ -23934,6 +24700,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": null,
    "id": "mo_drydep::has_drydep",
@@ -24011,6 +24780,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": null,
    "id": "mo_drydep::interpdvel",
@@ -24077,6 +24849,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": null,
    "id": "mo_drydep::intp2d",
@@ -24142,6 +24917,9 @@
     "standalone_replay": {
      "state": "not-assessed"
     }
+   },
+   "development": {
+    "state": "unclaimed"
    },
    "failures": [],
    "host": null,
@@ -24215,6 +24993,9 @@
     "standalone_replay": {
      "state": "not-assessed"
     }
+   },
+   "development": {
+    "state": "unclaimed"
    },
    "failures": [],
    "host": null,
@@ -24295,6 +25076,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": null,
    "id": "mo_fstrat::rebin",
@@ -24360,6 +25144,9 @@
     "standalone_replay": {
      "state": "not-assessed"
     }
+   },
+   "development": {
+    "state": "unclaimed"
    },
    "failures": [],
    "host": null,
@@ -24439,6 +25226,9 @@
     "standalone_replay": {
      "state": "not-assessed"
     }
+   },
+   "development": {
+    "state": "unclaimed"
    },
    "failures": [],
    "host": null,
@@ -24525,6 +25315,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": null,
    "id": "mo_gas_phase_chemdr::gas_phase_chemdr",
@@ -24610,6 +25403,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": null,
    "id": "mo_ghg_chem::ghg_chem_set_flbc",
@@ -24682,6 +25478,9 @@
     "standalone_replay": {
      "state": "not-assessed"
     }
+   },
+   "development": {
+    "state": "unclaimed"
    },
    "failures": [],
    "host": null,
@@ -24756,6 +25555,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": null,
    "id": "mo_ghg_chem::ghg_chem_timestep_init",
@@ -24827,6 +25629,9 @@
     "standalone_replay": {
      "state": "not-assessed"
     }
+   },
+   "development": {
+    "state": "unclaimed"
    },
    "failures": [],
    "host": null,
@@ -24908,6 +25713,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": null,
    "id": "mo_indprd::indprd",
@@ -24987,6 +25795,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": null,
    "id": "mo_jeuv::jeuv",
@@ -25060,6 +25871,9 @@
     "standalone_replay": {
      "state": "not-assessed"
     }
+   },
+   "development": {
+    "state": "unclaimed"
    },
    "failures": [],
    "host": null,
@@ -25136,6 +25950,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": null,
    "id": "mo_jlong::jlong_hrates",
@@ -25210,6 +26027,9 @@
     "standalone_replay": {
      "state": "not-assessed"
     }
+   },
+   "development": {
+    "state": "unclaimed"
    },
    "failures": [],
    "host": null,
@@ -25290,6 +26110,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": null,
    "id": "mo_jlong::jlong_timestep_init",
@@ -25368,6 +26191,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": null,
    "id": "mo_jshort::calc_jno",
@@ -25441,6 +26267,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": "mo_jshort::calc_jno",
    "id": "mo_jshort::calc_jno.pjno",
@@ -25507,6 +26336,9 @@
     "standalone_replay": {
      "state": "not-assessed"
     }
+   },
+   "development": {
+    "state": "unclaimed"
    },
    "failures": [],
    "host": null,
@@ -25581,6 +26413,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": null,
    "id": "mo_jshort::calc_params",
@@ -25654,6 +26489,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": "mo_jshort::calc_params",
    "id": "mo_jshort::calc_params.jchebev",
@@ -25720,6 +26558,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": null,
    "id": "mo_jshort::effxs",
@@ -25785,6 +26626,9 @@
     "standalone_replay": {
      "state": "not-assessed"
     }
+   },
+   "development": {
+    "state": "unclaimed"
    },
    "failures": [],
    "host": null,
@@ -25861,6 +26705,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": null,
    "id": "mo_jshort::jshort_photo",
@@ -25934,6 +26781,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": null,
    "id": "mo_jshort::jshort_timestep_init",
@@ -26006,6 +26856,9 @@
     "standalone_replay": {
      "state": "not-assessed"
     }
+   },
+   "development": {
+    "state": "unclaimed"
    },
    "failures": [],
    "host": null,
@@ -26082,6 +26935,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": null,
    "id": "mo_jshort::slant_col",
@@ -26157,6 +27013,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": null,
    "id": "mo_jshort::sphers",
@@ -26229,6 +27088,9 @@
     "standalone_replay": {
      "state": "not-assessed"
     }
+   },
+   "development": {
+    "state": "unclaimed"
    },
    "failures": [],
    "host": null,
@@ -26305,6 +27167,9 @@
     "standalone_replay": {
      "state": "not-assessed"
     }
+   },
+   "development": {
+    "state": "unclaimed"
    },
    "failures": [],
    "host": null,
@@ -26385,6 +27250,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": null,
    "id": "mo_lin_matrix::linmat01",
@@ -26450,6 +27318,9 @@
     "standalone_replay": {
      "state": "not-assessed"
     }
+   },
+   "development": {
+    "state": "unclaimed"
    },
    "failures": [],
    "host": null,
@@ -26530,6 +27401,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": null,
    "id": "mo_lu_factor::lu_fac01",
@@ -26595,6 +27469,9 @@
     "standalone_replay": {
      "state": "not-assessed"
     }
+   },
+   "development": {
+    "state": "unclaimed"
    },
    "failures": [],
    "host": null,
@@ -26675,6 +27552,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": null,
    "id": "mo_lu_solve::lu_slv01",
@@ -26740,6 +27620,9 @@
     "standalone_replay": {
      "state": "not-assessed"
     }
+   },
+   "development": {
+    "state": "unclaimed"
    },
    "failures": [],
    "host": null,
@@ -26820,6 +27703,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": null,
    "id": "mo_mass_xforms::mmr2vmr",
@@ -26899,6 +27785,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": null,
    "id": "mo_mass_xforms::mmr2vmri",
@@ -26971,6 +27860,9 @@
     "standalone_replay": {
      "state": "not-assessed"
     }
+   },
+   "development": {
+    "state": "unclaimed"
    },
    "failures": [],
    "host": null,
@@ -27051,6 +27943,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": null,
    "id": "mo_mean_mass::set_mean_mass",
@@ -27130,6 +28025,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": null,
    "id": "mo_msis_ubc::msis_timestep_init",
@@ -27201,6 +28099,9 @@
     "standalone_replay": {
      "state": "not-assessed"
     }
+   },
+   "development": {
+    "state": "unclaimed"
    },
    "failures": [],
    "host": null,
@@ -27281,6 +28182,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": null,
    "id": "mo_neu_wetdep::dempirical",
@@ -27359,6 +28263,9 @@
     "standalone_replay": {
      "state": "not-assessed"
     }
+   },
+   "development": {
+    "state": "unclaimed"
    },
    "failures": [],
    "host": null,
@@ -27439,6 +28346,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": null,
    "id": "mo_neu_wetdep::neu_wetdep_tend",
@@ -27517,6 +28427,9 @@
     "standalone_replay": {
      "state": "not-assessed"
     }
+   },
+   "development": {
+    "state": "unclaimed"
    },
    "failures": [],
    "host": null,
@@ -27597,6 +28510,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": null,
    "id": "mo_neu_wetdep::washgas",
@@ -27669,6 +28585,9 @@
     "standalone_replay": {
      "state": "not-assessed"
     }
+   },
+   "development": {
+    "state": "unclaimed"
    },
    "failures": [],
    "host": null,
@@ -27749,6 +28668,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": null,
    "id": "mo_nln_matrix::nlnmat",
@@ -27828,6 +28750,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": null,
    "id": "mo_nln_matrix::nlnmat_finit",
@@ -27893,6 +28818,9 @@
     "standalone_replay": {
      "state": "not-assessed"
     }
+   },
+   "development": {
+    "state": "unclaimed"
    },
    "failures": [],
    "host": null,
@@ -27960,6 +28888,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": null,
    "id": "mo_photo::p_interp",
@@ -28025,6 +28956,9 @@
     "standalone_replay": {
      "state": "not-assessed"
     }
+   },
+   "development": {
+    "state": "unclaimed"
    },
    "failures": [],
    "host": null,
@@ -28103,6 +29037,9 @@
     "standalone_replay": {
      "state": "not-assessed"
     }
+   },
+   "development": {
+    "state": "unclaimed"
    },
    "failures": [],
    "host": null,
@@ -28184,6 +29121,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": null,
    "id": "mo_photo::set_xnox_photo",
@@ -28262,6 +29202,9 @@
     "standalone_replay": {
      "state": "not-assessed"
     }
+   },
+   "development": {
+    "state": "unclaimed"
    },
    "failures": [],
    "host": null,
@@ -28342,6 +29285,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": null,
    "id": "mo_photo::table_photo",
@@ -28420,6 +29366,9 @@
     "standalone_replay": {
      "state": "not-assessed"
     }
+   },
+   "development": {
+    "state": "unclaimed"
    },
    "failures": [],
    "host": null,
@@ -28500,6 +29449,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": null,
    "id": "mo_prod_loss::exp_prod_loss",
@@ -28578,6 +29530,9 @@
     "standalone_replay": {
      "state": "not-assessed"
     }
+   },
+   "development": {
+    "state": "unclaimed"
    },
    "failures": [],
    "host": null,
@@ -28658,6 +29613,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": null,
    "id": "mo_rxt_rates_conv::set_rates",
@@ -28737,6 +29695,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": null,
    "id": "mo_sad::calc_radius_lbs",
@@ -28803,6 +29764,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": null,
    "id": "mo_sad::density",
@@ -28868,6 +29832,9 @@
     "standalone_replay": {
      "state": "not-assessed"
     }
+   },
+   "development": {
+    "state": "unclaimed"
    },
    "failures": [],
    "host": null,
@@ -28942,6 +29909,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": null,
    "id": "mo_sad::ice_sad_calc",
@@ -29007,6 +29977,9 @@
     "standalone_replay": {
      "state": "not-assessed"
     }
+   },
+   "development": {
+    "state": "unclaimed"
    },
    "failures": [],
    "host": null,
@@ -29074,6 +30047,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": null,
    "id": "mo_sad::nat_sad_calc",
@@ -29139,6 +30115,9 @@
     "standalone_replay": {
      "state": "not-assessed"
     }
+   },
+   "development": {
+    "state": "unclaimed"
    },
    "failures": [],
    "host": null,
@@ -29206,6 +30185,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": null,
    "id": "mo_sad::sad2h2so4",
@@ -29271,6 +30253,9 @@
     "standalone_replay": {
      "state": "not-assessed"
     }
+   },
+   "development": {
+    "state": "unclaimed"
    },
    "failures": [],
    "host": null,
@@ -29345,6 +30330,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": null,
    "id": "mo_sad::sulfate_sad_calc",
@@ -29417,6 +30405,9 @@
     "standalone_replay": {
      "state": "not-assessed"
     }
+   },
+   "development": {
+    "state": "unclaimed"
    },
    "failures": [],
    "host": null,
@@ -29497,6 +30488,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": null,
    "id": "mo_sethet::sethet",
@@ -29569,6 +30563,9 @@
     "standalone_replay": {
      "state": "not-assessed"
     }
+   },
+   "development": {
+    "state": "unclaimed"
    },
    "failures": [],
    "host": null,
@@ -29649,6 +30646,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": null,
    "id": "mo_setrxt::setrxt",
@@ -29727,6 +30727,9 @@
     "standalone_replay": {
      "state": "not-assessed"
     }
+   },
+   "development": {
+    "state": "unclaimed"
    },
    "failures": [],
    "host": null,
@@ -29807,6 +30810,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": null,
    "id": "mo_snoe::interpol",
@@ -29871,6 +30877,9 @@
     "standalone_replay": {
      "state": "not-assessed"
     }
+   },
+   "development": {
+    "state": "unclaimed"
    },
    "failures": [],
    "host": null,
@@ -29944,6 +30953,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": null,
    "id": "mo_snoe::snoe_zm",
@@ -30009,6 +31021,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": null,
    "id": "mo_snoe::snoe_zmto3d",
@@ -30073,6 +31088,9 @@
     "standalone_replay": {
      "state": "not-assessed"
     }
+   },
+   "development": {
+    "state": "unclaimed"
    },
    "failures": [],
    "host": null,
@@ -30153,6 +31171,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": null,
    "id": "mo_strato_rates::ratecon_sfstrat",
@@ -30225,6 +31246,9 @@
     "standalone_replay": {
      "state": "not-assessed"
     }
+   },
+   "development": {
+    "state": "unclaimed"
    },
    "failures": [],
    "host": null,
@@ -30303,6 +31327,9 @@
     "standalone_replay": {
      "state": "not-assessed"
     }
+   },
+   "development": {
+    "state": "unclaimed"
    },
    "failures": [],
    "host": null,
@@ -30383,6 +31410,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": null,
    "id": "mo_tgcm_ubc::tgcm_timestep_init",
@@ -30454,6 +31484,9 @@
     "standalone_replay": {
      "state": "not-assessed"
     }
+   },
+   "development": {
+    "state": "unclaimed"
    },
    "failures": [],
    "host": null,
@@ -30534,6 +31567,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": null,
    "id": "mo_usrrxt::hetrxtrate",
@@ -30606,6 +31642,9 @@
     "standalone_replay": {
      "state": "not-assessed"
     }
+   },
+   "development": {
+    "state": "unclaimed"
    },
    "failures": [],
    "host": null,
@@ -30689,6 +31728,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": null,
    "id": "mo_util::rebin",
@@ -30770,6 +31812,9 @@
     "standalone_replay": {
      "state": "not-assessed"
     }
+   },
+   "development": {
+    "state": "unclaimed"
    },
    "failures": [],
    "host": null,
@@ -30863,6 +31908,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": null,
    "id": "modal_aer_opt::modal_aero_lw",
@@ -30955,6 +32003,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": null,
    "id": "modal_aer_opt::modal_aero_sw",
@@ -31033,6 +32084,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": null,
    "id": "modal_aer_opt::modal_size_parameters",
@@ -31099,6 +32153,9 @@
     "standalone_replay": {
      "state": "not-assessed"
     }
+   },
+   "development": {
+    "state": "unclaimed"
    },
    "failures": [],
    "host": null,
@@ -31172,6 +32229,9 @@
     "standalone_replay": {
      "state": "not-assessed"
     }
+   },
+   "development": {
+    "state": "unclaimed"
    },
    "failures": [],
    "host": null,
@@ -31252,6 +32312,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": null,
    "id": "modal_aero_coag::getcoags",
@@ -31318,6 +32381,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": null,
    "id": "modal_aero_coag::getcoags_wrapper_f",
@@ -31383,6 +32449,9 @@
     "standalone_replay": {
      "state": "not-assessed"
     }
+   },
+   "development": {
+    "state": "unclaimed"
    },
    "failures": [],
    "host": null,
@@ -31467,6 +32536,9 @@
     "standalone_replay": {
      "state": "not-assessed"
     }
+   },
+   "development": {
+    "state": "unclaimed"
    },
    "failures": [],
    "host": null,
@@ -31556,6 +32628,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": null,
    "id": "modal_aero_deposition::set_srf_drydep",
@@ -31637,6 +32712,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": null,
    "id": "modal_aero_deposition::set_srf_wetdep",
@@ -31717,6 +32795,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": null,
    "id": "modal_aero_gasaerexch::gas_aer_uptkrates",
@@ -31782,6 +32863,9 @@
     "standalone_replay": {
      "state": "not-assessed"
     }
+   },
+   "development": {
+    "state": "unclaimed"
    },
    "failures": [],
    "host": null,
@@ -31862,6 +32946,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": null,
    "id": "modal_aero_gasaerexch::modal_aero_soaexch",
@@ -31928,6 +33015,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": null,
    "id": "modal_aero_newnuc::binary_nuc_vehk2002",
@@ -31993,6 +33083,9 @@
     "standalone_replay": {
      "state": "not-assessed"
     }
+   },
+   "development": {
+    "state": "unclaimed"
    },
    "failures": [],
    "host": null,
@@ -32073,6 +33166,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": null,
    "id": "modal_aero_newnuc::modal_aero_newnuc_sub",
@@ -32152,6 +33248,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": null,
    "id": "modal_aero_newnuc::pbl_nuc_wang2008",
@@ -32217,6 +33316,9 @@
     "standalone_replay": {
      "state": "not-assessed"
     }
+   },
+   "development": {
+    "state": "unclaimed"
    },
    "failures": [],
    "host": null,
@@ -32291,6 +33393,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": null,
    "id": "modal_aero_rename::modal_aero_rename_acc_crs_sub",
@@ -32363,6 +33468,9 @@
     "standalone_replay": {
      "state": "not-assessed"
     }
+   },
+   "development": {
+    "state": "unclaimed"
    },
    "failures": [],
    "host": null,
@@ -32443,6 +33551,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": null,
    "id": "modal_aero_rename::modal_aero_rename_sub",
@@ -32522,6 +33633,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": null,
    "id": "modal_aero_wateruptake::calc_h2so4_equilib_mixrat",
@@ -32588,6 +33702,9 @@
     "standalone_replay": {
      "state": "not-assessed"
     }
+   },
+   "development": {
+    "state": "unclaimed"
    },
    "failures": [],
    "host": null,
@@ -32656,6 +33773,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": null,
    "id": "modal_aero_wateruptake::makoh_cubic",
@@ -32723,6 +33843,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": null,
    "id": "modal_aero_wateruptake::makoh_quartic",
@@ -32789,6 +33912,9 @@
     "standalone_replay": {
      "state": "not-assessed"
     }
+   },
+   "development": {
+    "state": "unclaimed"
    },
    "failures": [],
    "host": null,
@@ -32873,6 +33999,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": null,
    "id": "modal_aero_wateruptake::modal_aero_wateruptake_dr",
@@ -32953,6 +34082,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": null,
    "id": "modal_aero_wateruptake::modal_aero_wateruptake_sub",
@@ -33019,6 +34151,9 @@
     "standalone_replay": {
      "state": "not-assessed"
     }
+   },
+   "development": {
+    "state": "unclaimed"
    },
    "failures": [],
    "host": null,
@@ -33092,6 +34227,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": null,
    "id": "msise00::ccor",
@@ -33156,6 +34294,9 @@
     "standalone_replay": {
      "state": "not-assessed"
     }
+   },
+   "development": {
+    "state": "unclaimed"
    },
    "failures": [],
    "host": null,
@@ -33229,6 +34370,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": null,
    "id": "msise00::densu",
@@ -33300,6 +34444,9 @@
     "standalone_replay": {
      "state": "not-assessed"
     }
+   },
+   "development": {
+    "state": "unclaimed"
    },
    "failures": [],
    "host": null,
@@ -33373,6 +34520,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": null,
    "id": "msise00::ghp7",
@@ -33445,6 +34595,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": null,
    "id": "msise00::glatf",
@@ -33510,6 +34663,9 @@
     "standalone_replay": {
      "state": "not-assessed"
     }
+   },
+   "development": {
+    "state": "unclaimed"
    },
    "failures": [],
    "host": null,
@@ -33583,6 +34739,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": null,
    "id": "msise00::globe7",
@@ -33655,6 +34814,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": null,
    "id": "msise00::gtd7",
@@ -33719,6 +34881,9 @@
     "standalone_replay": {
      "state": "not-assessed"
     }
+   },
+   "development": {
+    "state": "unclaimed"
    },
    "failures": [],
    "host": null,
@@ -33792,6 +34957,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": null,
    "id": "msise00::scalh",
@@ -33857,6 +35025,9 @@
     "standalone_replay": {
      "state": "not-assessed"
     }
+   },
+   "development": {
+    "state": "unclaimed"
    },
    "failures": [],
    "host": null,
@@ -33931,6 +35102,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": null,
    "id": "msise00::splini",
@@ -33997,6 +35171,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": null,
    "id": "msise00::splint",
@@ -34062,6 +35239,9 @@
     "standalone_replay": {
      "state": "not-assessed"
     }
+   },
+   "development": {
+    "state": "unclaimed"
    },
    "failures": [],
    "host": null,
@@ -34138,6 +35318,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": null,
    "id": "msise00::vtst7",
@@ -34202,6 +35385,9 @@
     "standalone_replay": {
      "state": "not-assessed"
     }
+   },
+   "development": {
+    "state": "unclaimed"
    },
    "failures": [],
    "host": null,
@@ -34281,6 +35467,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": null,
    "id": "ndrop::ccncalc",
@@ -34358,6 +35547,9 @@
     "standalone_replay": {
      "state": "not-assessed"
     }
+   },
+   "development": {
+    "state": "unclaimed"
    },
    "failures": [],
    "host": null,
@@ -34437,6 +35629,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": null,
    "id": "ndrop::explmix",
@@ -34502,6 +35697,9 @@
     "standalone_replay": {
      "state": "not-assessed"
     }
+   },
+   "development": {
+    "state": "unclaimed"
    },
    "failures": [],
    "host": null,
@@ -34583,6 +35781,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": null,
    "id": "ndrop::maxsat",
@@ -34647,6 +35848,9 @@
     "standalone_replay": {
      "state": "not-assessed"
     }
+   },
+   "development": {
+    "state": "unclaimed"
    },
    "failures": [],
    "host": null,
@@ -34725,6 +35929,9 @@
     "standalone_replay": {
      "state": "not-assessed"
     }
+   },
+   "development": {
+    "state": "unclaimed"
    },
    "failures": [],
    "host": null,
@@ -34805,6 +36012,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": null,
    "id": "nucleate_ice::frachom",
@@ -34869,6 +36079,9 @@
     "standalone_replay": {
      "state": "not-assessed"
     }
+   },
+   "development": {
+    "state": "unclaimed"
    },
    "failures": [],
    "host": null,
@@ -34935,6 +36148,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": null,
    "id": "nucleate_ice::hf",
@@ -34999,6 +36215,9 @@
     "standalone_replay": {
      "state": "not-assessed"
     }
+   },
+   "development": {
+    "state": "unclaimed"
    },
    "failures": [],
    "host": null,
@@ -35078,6 +36297,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": null,
    "id": "nucleate_ice::vpreice",
@@ -35142,6 +36364,9 @@
     "standalone_replay": {
      "state": "not-assessed"
     }
+   },
+   "development": {
+    "state": "unclaimed"
    },
    "failures": [],
    "host": null,
@@ -35225,6 +36450,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": null,
    "id": "pbl_utils::calc_obklen",
@@ -35306,6 +36534,9 @@
     "standalone_replay": {
      "state": "not-assessed"
     }
+   },
+   "development": {
+    "state": "unclaimed"
    },
    "failures": [],
    "host": null,
@@ -35392,6 +36623,9 @@
     "standalone_replay": {
      "state": "not-assessed"
     }
+   },
+   "development": {
+    "state": "unclaimed"
    },
    "failures": [],
    "host": null,
@@ -35496,6 +36730,9 @@
      "state": "verified"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": null,
    "id": "pbl_utils::virtem",
@@ -35576,6 +36813,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": null,
    "id": "photo_bkgrnd::photo_bkgrnd_calc",
@@ -35649,6 +36889,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": null,
    "id": "photo_bkgrnd::qback",
@@ -35716,6 +36959,9 @@
     "standalone_replay": {
      "state": "not-assessed"
     }
+   },
+   "development": {
+    "state": "unclaimed"
    },
    "failures": [],
    "host": null,
@@ -35797,6 +37043,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": null,
    "id": "phys_gmean::gmean_fixed_repro",
@@ -35875,6 +37124,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": null,
    "id": "phys_gmean::gmean_float_repro",
@@ -35940,6 +37192,9 @@
     "standalone_replay": {
      "state": "not-assessed"
     }
+   },
+   "development": {
+    "state": "unclaimed"
    },
    "failures": [],
    "host": null,
@@ -36016,6 +37271,9 @@
     "standalone_replay": {
      "state": "not-assessed"
     }
+   },
+   "development": {
+    "state": "unclaimed"
    },
    "failures": [],
    "host": null,
@@ -36102,6 +37360,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": null,
    "id": "pkg_cldoptics::cldclw",
@@ -36180,6 +37441,9 @@
     "standalone_replay": {
      "state": "not-assessed"
     }
+   },
+   "development": {
+    "state": "unclaimed"
    },
    "failures": [],
    "host": null,
@@ -36261,6 +37525,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": null,
    "id": "polar_avg::polar_average2d",
@@ -36333,6 +37600,9 @@
     "standalone_replay": {
      "state": "not-assessed"
     }
+   },
+   "development": {
+    "state": "unclaimed"
    },
    "failures": [],
    "host": null,
@@ -36418,6 +37688,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": null,
    "id": "qbo::qbo_relax",
@@ -36495,6 +37768,9 @@
     "standalone_replay": {
      "state": "not-assessed"
     }
+   },
+   "development": {
+    "state": "unclaimed"
    },
    "failures": [],
    "host": null,
@@ -36584,6 +37860,9 @@
     "standalone_replay": {
      "state": "not-assessed"
     }
+   },
+   "development": {
+    "state": "unclaimed"
    },
    "failures": [],
    "host": null,
@@ -36688,6 +37967,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": null,
    "id": "qneg4::qneg4",
@@ -36765,6 +38047,9 @@
     "standalone_replay": {
      "state": "not-assessed"
     }
+   },
+   "development": {
+    "state": "unclaimed"
    },
    "failures": [],
    "host": null,
@@ -36844,6 +38129,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": null,
    "id": "rad_solar_var::integrate_spectrum",
@@ -36909,6 +38197,9 @@
     "standalone_replay": {
      "state": "not-assessed"
     }
+   },
+   "development": {
+    "state": "unclaimed"
    },
    "failures": [],
    "host": null,
@@ -36993,6 +38284,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": null,
    "id": "radheat::radheat_tend",
@@ -37070,6 +38364,9 @@
     "standalone_replay": {
      "state": "not-assessed"
     }
+   },
+   "development": {
+    "state": "unclaimed"
    },
    "failures": [],
    "host": null,
@@ -37163,6 +38460,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": null,
    "id": "radiation::calc_col_mean",
@@ -37240,6 +38540,9 @@
     "standalone_replay": {
      "state": "not-assessed"
     }
+   },
+   "development": {
+    "state": "unclaimed"
    },
    "failures": [],
    "host": null,
@@ -37333,6 +38636,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": null,
    "id": "radiation::radiation_tend",
@@ -37421,6 +38727,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": null,
    "id": "radiation::radinp",
@@ -37497,6 +38806,9 @@
     "standalone_replay": {
      "state": "not-assessed"
     }
+   },
+   "development": {
+    "state": "unclaimed"
    },
    "failures": [],
    "host": null,
@@ -37588,6 +38900,9 @@
     "standalone_replay": {
      "state": "not-assessed"
     }
+   },
+   "development": {
+    "state": "unclaimed"
    },
    "failures": [],
    "host": null,
@@ -37688,6 +39003,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": null,
    "id": "radsw::rad_rrtmg_sw",
@@ -37771,6 +39089,9 @@
     "standalone_replay": {
      "state": "not-assessed"
     }
+   },
+   "development": {
+    "state": "unclaimed"
    },
    "failures": [],
    "host": null,
@@ -37859,6 +39180,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": null,
    "id": "rayleigh_friction::rayleigh_friction_tend",
@@ -37936,6 +39260,9 @@
     "standalone_replay": {
      "state": "not-assessed"
     }
+   },
+   "development": {
+    "state": "unclaimed"
    },
    "failures": [],
    "host": null,
@@ -38015,6 +39342,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": null,
    "id": "rrtmg_lw_rad::inatm",
@@ -38092,6 +39422,9 @@
     "standalone_replay": {
      "state": "not-assessed"
     }
+   },
+   "development": {
+    "state": "unclaimed"
    },
    "failures": [],
    "host": null,
@@ -38171,6 +39504,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": null,
    "id": "rrtmg_lw_rtrnmc::rtrnmc",
@@ -38248,6 +39584,9 @@
     "standalone_replay": {
      "state": "not-assessed"
     }
+   },
+   "development": {
+    "state": "unclaimed"
    },
    "failures": [],
    "host": null,
@@ -38327,6 +39666,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": null,
    "id": "rrtmg_lw_taumol::taumol",
@@ -38405,6 +39747,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": "rrtmg_lw_taumol::taumol",
    "id": "rrtmg_lw_taumol::taumol.taugb1",
@@ -38469,6 +39814,9 @@
     "standalone_replay": {
      "state": "not-assessed"
     }
+   },
+   "development": {
+    "state": "unclaimed"
    },
    "failures": [],
    "host": "rrtmg_lw_taumol::taumol",
@@ -38535,6 +39883,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": "rrtmg_lw_taumol::taumol",
    "id": "rrtmg_lw_taumol::taumol.taugb11",
@@ -38599,6 +39950,9 @@
     "standalone_replay": {
      "state": "not-assessed"
     }
+   },
+   "development": {
+    "state": "unclaimed"
    },
    "failures": [],
    "host": "rrtmg_lw_taumol::taumol",
@@ -38665,6 +40019,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": "rrtmg_lw_taumol::taumol",
    "id": "rrtmg_lw_taumol::taumol.taugb13",
@@ -38729,6 +40086,9 @@
     "standalone_replay": {
      "state": "not-assessed"
     }
+   },
+   "development": {
+    "state": "unclaimed"
    },
    "failures": [],
    "host": "rrtmg_lw_taumol::taumol",
@@ -38795,6 +40155,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": "rrtmg_lw_taumol::taumol",
    "id": "rrtmg_lw_taumol::taumol.taugb15",
@@ -38859,6 +40222,9 @@
     "standalone_replay": {
      "state": "not-assessed"
     }
+   },
+   "development": {
+    "state": "unclaimed"
    },
    "failures": [],
    "host": "rrtmg_lw_taumol::taumol",
@@ -38925,6 +40291,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": "rrtmg_lw_taumol::taumol",
    "id": "rrtmg_lw_taumol::taumol.taugb2",
@@ -38989,6 +40358,9 @@
     "standalone_replay": {
      "state": "not-assessed"
     }
+   },
+   "development": {
+    "state": "unclaimed"
    },
    "failures": [],
    "host": "rrtmg_lw_taumol::taumol",
@@ -39055,6 +40427,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": "rrtmg_lw_taumol::taumol",
    "id": "rrtmg_lw_taumol::taumol.taugb4",
@@ -39119,6 +40494,9 @@
     "standalone_replay": {
      "state": "not-assessed"
     }
+   },
+   "development": {
+    "state": "unclaimed"
    },
    "failures": [],
    "host": "rrtmg_lw_taumol::taumol",
@@ -39185,6 +40563,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": "rrtmg_lw_taumol::taumol",
    "id": "rrtmg_lw_taumol::taumol.taugb6",
@@ -39249,6 +40630,9 @@
     "standalone_replay": {
      "state": "not-assessed"
     }
+   },
+   "development": {
+    "state": "unclaimed"
    },
    "failures": [],
    "host": "rrtmg_lw_taumol::taumol",
@@ -39315,6 +40699,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": "rrtmg_lw_taumol::taumol",
    "id": "rrtmg_lw_taumol::taumol.taugb8",
@@ -39379,6 +40766,9 @@
     "standalone_replay": {
      "state": "not-assessed"
     }
+   },
+   "development": {
+    "state": "unclaimed"
    },
    "failures": [],
    "host": "rrtmg_lw_taumol::taumol",
@@ -39454,6 +40844,9 @@
     "standalone_replay": {
      "state": "not-assessed"
     }
+   },
+   "development": {
+    "state": "unclaimed"
    },
    "failures": [],
    "host": null,
@@ -39545,6 +40938,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": null,
    "id": "rrtmg_state::rrtmg_state_destroy",
@@ -39635,6 +41031,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": null,
    "id": "rrtmg_state::rrtmg_state_update",
@@ -39712,6 +41111,9 @@
     "standalone_replay": {
      "state": "not-assessed"
     }
+   },
+   "development": {
+    "state": "unclaimed"
    },
    "failures": [],
    "host": null,
@@ -39791,6 +41193,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": null,
    "id": "rrtmg_sw_rad::earth_sun",
@@ -39855,6 +41260,9 @@
     "standalone_replay": {
      "state": "not-assessed"
     }
+   },
+   "development": {
+    "state": "unclaimed"
    },
    "failures": [],
    "host": null,
@@ -39934,6 +41342,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": null,
    "id": "rrtmg_sw_rad::rrtmg_sw",
@@ -40011,6 +41422,9 @@
     "standalone_replay": {
      "state": "not-assessed"
     }
+   },
+   "development": {
+    "state": "unclaimed"
    },
    "failures": [],
    "host": null,
@@ -40090,6 +41504,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": null,
    "id": "rrtmg_sw_setcoef::setcoef_sw",
@@ -40167,6 +41584,9 @@
     "standalone_replay": {
      "state": "not-assessed"
     }
+   },
+   "development": {
+    "state": "unclaimed"
    },
    "failures": [],
    "host": null,
@@ -40246,6 +41666,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": null,
    "id": "rrtmg_sw_taumol::taumol_sw",
@@ -40324,6 +41747,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": "rrtmg_sw_taumol::taumol_sw",
    "id": "rrtmg_sw_taumol::taumol_sw.taumol16",
@@ -40388,6 +41814,9 @@
     "standalone_replay": {
      "state": "not-assessed"
     }
+   },
+   "development": {
+    "state": "unclaimed"
    },
    "failures": [],
    "host": "rrtmg_sw_taumol::taumol_sw",
@@ -40454,6 +41883,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": "rrtmg_sw_taumol::taumol_sw",
    "id": "rrtmg_sw_taumol::taumol_sw.taumol18",
@@ -40518,6 +41950,9 @@
     "standalone_replay": {
      "state": "not-assessed"
     }
+   },
+   "development": {
+    "state": "unclaimed"
    },
    "failures": [],
    "host": "rrtmg_sw_taumol::taumol_sw",
@@ -40584,6 +42019,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": "rrtmg_sw_taumol::taumol_sw",
    "id": "rrtmg_sw_taumol::taumol_sw.taumol20",
@@ -40648,6 +42086,9 @@
     "standalone_replay": {
      "state": "not-assessed"
     }
+   },
+   "development": {
+    "state": "unclaimed"
    },
    "failures": [],
    "host": "rrtmg_sw_taumol::taumol_sw",
@@ -40714,6 +42155,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": "rrtmg_sw_taumol::taumol_sw",
    "id": "rrtmg_sw_taumol::taumol_sw.taumol22",
@@ -40778,6 +42222,9 @@
     "standalone_replay": {
      "state": "not-assessed"
     }
+   },
+   "development": {
+    "state": "unclaimed"
    },
    "failures": [],
    "host": "rrtmg_sw_taumol::taumol_sw",
@@ -40844,6 +42291,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": "rrtmg_sw_taumol::taumol_sw",
    "id": "rrtmg_sw_taumol::taumol_sw.taumol24",
@@ -40908,6 +42358,9 @@
     "standalone_replay": {
      "state": "not-assessed"
     }
+   },
+   "development": {
+    "state": "unclaimed"
    },
    "failures": [],
    "host": "rrtmg_sw_taumol::taumol_sw",
@@ -40974,6 +42427,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": "rrtmg_sw_taumol::taumol_sw",
    "id": "rrtmg_sw_taumol::taumol_sw.taumol26",
@@ -41038,6 +42494,9 @@
     "standalone_replay": {
      "state": "not-assessed"
     }
+   },
+   "development": {
+    "state": "unclaimed"
    },
    "failures": [],
    "host": "rrtmg_sw_taumol::taumol_sw",
@@ -41104,6 +42563,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": "rrtmg_sw_taumol::taumol_sw",
    "id": "rrtmg_sw_taumol::taumol_sw.taumol28",
@@ -41169,6 +42631,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": "rrtmg_sw_taumol::taumol_sw",
    "id": "rrtmg_sw_taumol::taumol_sw.taumol29",
@@ -41233,6 +42698,9 @@
     "standalone_replay": {
      "state": "not-assessed"
     }
+   },
+   "development": {
+    "state": "unclaimed"
    },
    "failures": [],
    "host": null,
@@ -41312,6 +42780,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": null,
    "id": "seasalt_model::seasalt_emis",
@@ -41389,6 +42860,9 @@
     "standalone_replay": {
      "state": "not-assessed"
     }
+   },
+   "development": {
+    "state": "unclaimed"
    },
    "failures": [],
    "host": null,
@@ -41469,6 +42943,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": null,
    "id": "sox_cldaero_mod::sox_cldaero_create_obj",
@@ -41548,6 +43025,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": null,
    "id": "sox_cldaero_mod::sox_cldaero_destroy_obj",
@@ -41626,6 +43106,9 @@
     "standalone_replay": {
      "state": "not-assessed"
     }
+   },
+   "development": {
+    "state": "unclaimed"
    },
    "failures": [],
    "host": null,
@@ -41707,6 +43190,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": null,
    "id": "spehox::hox_prod_factor",
@@ -41779,6 +43265,9 @@
     "standalone_replay": {
      "state": "not-assessed"
     }
+   },
+   "development": {
+    "state": "unclaimed"
    },
    "failures": [],
    "host": null,
@@ -41858,6 +43347,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": null,
    "id": "sslt_rebin::sslt_rebin_adv",
@@ -41935,6 +43427,9 @@
     "standalone_replay": {
      "state": "not-assessed"
     }
+   },
+   "development": {
+    "state": "unclaimed"
    },
    "failures": [],
    "host": null,
@@ -42014,6 +43509,9 @@
     "standalone_replay": {
      "state": "not-assessed"
     }
+   },
+   "development": {
+    "state": "unclaimed"
    },
    "failures": [],
    "host": null,
@@ -42096,6 +43594,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": null,
    "id": "tidal_diag::tidal_diag_write",
@@ -42177,6 +43678,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": null,
    "id": "time_utils::flt_date",
@@ -42250,6 +43754,9 @@
     "standalone_replay": {
      "state": "not-assessed"
     }
+   },
+   "development": {
+    "state": "unclaimed"
    },
    "failures": [],
    "host": null,
@@ -42330,6 +43837,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": null,
    "id": "tracer_cnst::tracer_cnst_adv",
@@ -42408,6 +43918,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": null,
    "id": "tracer_srcs::get_srcs_data",
@@ -42480,6 +43993,9 @@
     "standalone_replay": {
      "state": "not-assessed"
     }
+   },
+   "development": {
+    "state": "unclaimed"
    },
    "failures": [],
    "host": null,
@@ -42559,6 +44075,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": null,
    "id": "tracers::tracers_timestep_init",
@@ -42636,6 +44155,9 @@
     "standalone_replay": {
      "state": "not-assessed"
     }
+   },
+   "development": {
+    "state": "unclaimed"
    },
    "failures": [],
    "host": null,
@@ -42716,6 +44238,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": null,
    "id": "tracers_suite::flux_tr",
@@ -42789,6 +44314,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": null,
    "id": "tracers_suite::tend_hi",
@@ -42854,6 +44382,9 @@
     "standalone_replay": {
      "state": "not-assessed"
     }
+   },
+   "development": {
+    "state": "unclaimed"
    },
    "failures": [],
    "host": null,
@@ -42921,6 +44452,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": null,
    "id": "tracers_suite::tend_md",
@@ -42986,6 +44520,9 @@
     "standalone_replay": {
      "state": "not-assessed"
     }
+   },
+   "development": {
+    "state": "unclaimed"
    },
    "failures": [],
    "host": null,
@@ -43060,6 +44597,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": null,
    "id": "tracers_suite::tend_un",
@@ -43125,6 +44665,9 @@
     "standalone_replay": {
      "state": "not-assessed"
     }
+   },
+   "development": {
+    "state": "unclaimed"
    },
    "failures": [],
    "host": null,
@@ -43206,6 +44749,9 @@
     "standalone_replay": {
      "state": "not-assessed"
     }
+   },
+   "development": {
+    "state": "unclaimed"
    },
    "failures": [],
    "host": null,
@@ -43291,6 +44837,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": null,
    "id": "tropopause::tropopause_analytic",
@@ -43362,6 +44911,9 @@
     "standalone_replay": {
      "state": "not-assessed"
     }
+   },
+   "development": {
+    "state": "unclaimed"
    },
    "failures": [],
    "host": null,
@@ -43451,6 +45003,9 @@
     "standalone_replay": {
      "state": "not-assessed"
     }
+   },
+   "development": {
+    "state": "unclaimed"
    },
    "failures": [],
    "host": null,
@@ -43555,6 +45110,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": null,
    "id": "tropopause::tropopause_findusing",
@@ -43644,6 +45202,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": null,
    "id": "tropopause::tropopause_hybridstobie",
@@ -43727,6 +45288,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": null,
    "id": "tropopause::tropopause_interpolatet",
@@ -43802,6 +45366,9 @@
     "standalone_replay": {
      "state": "not-assessed"
     }
+   },
+   "development": {
+    "state": "unclaimed"
    },
    "failures": [],
    "host": null,
@@ -43888,6 +45455,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": null,
    "id": "tropopause::tropopause_output",
@@ -43967,6 +45537,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": null,
    "id": "tropopause::tropopause_stobie",
@@ -44039,6 +45612,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": null,
    "id": "tropopause::tropopause_twmo",
@@ -44110,6 +45686,9 @@
     "standalone_replay": {
      "state": "not-assessed"
     }
+   },
+   "development": {
+    "state": "unclaimed"
    },
    "failures": [],
    "host": null,
@@ -44189,6 +45768,9 @@
     "standalone_replay": {
      "state": "not-assessed"
     }
+   },
+   "development": {
+    "state": "unclaimed"
    },
    "failures": [],
    "host": null,
@@ -44279,6 +45861,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": null,
    "id": "upper_bc::ubc_timestep_init",
@@ -44351,6 +45936,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": null,
    "id": "uwshcu::compute_alpha",
@@ -44416,6 +46004,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": null,
    "id": "uwshcu::compute_mumin2",
@@ -44480,6 +46071,9 @@
     "standalone_replay": {
      "state": "not-assessed"
     }
+   },
+   "development": {
+    "state": "unclaimed"
    },
    "failures": [],
    "host": null,
@@ -44553,6 +46147,9 @@
     "standalone_replay": {
      "state": "not-assessed"
     }
+   },
+   "development": {
+    "state": "unclaimed"
    },
    "failures": [],
    "host": null,
@@ -44643,6 +46240,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": null,
    "id": "uwshcu::compute_uwshcu_inv",
@@ -44727,6 +46327,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": null,
    "id": "uwshcu::conden",
@@ -44809,6 +46412,9 @@
     "standalone_replay": {
      "state": "not-assessed"
     }
+   },
+   "development": {
+    "state": "unclaimed"
    },
    "failures": [],
    "host": null,
@@ -44910,6 +46516,9 @@
      "state": "verified"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [
     "pi_cam_fluxbelowinv_frame_replay_no_module_state_failure.json"
    ],
@@ -44992,6 +46601,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": null,
    "id": "uwshcu::getbuoy",
@@ -45069,6 +46681,9 @@
     "standalone_replay": {
      "state": "not-assessed"
     }
+   },
+   "development": {
+    "state": "unclaimed"
    },
    "failures": [],
    "host": null,
@@ -45150,6 +46765,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": null,
    "id": "uwshcu::qsinvert",
@@ -45214,6 +46832,9 @@
     "standalone_replay": {
      "state": "not-assessed"
     }
+   },
+   "development": {
+    "state": "unclaimed"
    },
    "failures": [],
    "host": null,
@@ -45293,6 +46914,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": null,
    "id": "uwshcu::single_cin",
@@ -45370,6 +46994,9 @@
     "standalone_replay": {
      "state": "not-assessed"
     }
+   },
+   "development": {
+    "state": "unclaimed"
    },
    "failures": [],
    "host": null,
@@ -45462,6 +47089,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": null,
    "id": "vdiff_lu_solver::fin_vol_lu_decomp",
@@ -45553,6 +47183,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": null,
    "id": "vertical_diffusion::positive_moisture",
@@ -45632,6 +47265,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": null,
    "id": "vertical_diffusion::vertical_diffusion_tend",
@@ -45709,6 +47345,9 @@
     "standalone_replay": {
      "state": "not-assessed"
     }
+   },
+   "development": {
+    "state": "unclaimed"
    },
    "failures": [],
    "host": null,
@@ -45788,6 +47427,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": null,
    "id": "water_tracers::wtrc_add_rate",
@@ -45853,6 +47495,9 @@
     "standalone_replay": {
      "state": "not-assessed"
     }
+   },
+   "development": {
+    "state": "unclaimed"
    },
    "failures": [],
    "host": null,
@@ -45932,6 +47577,9 @@
     "standalone_replay": {
      "state": "not-assessed"
     }
+   },
+   "development": {
+    "state": "unclaimed"
    },
    "failures": [],
    "host": null,
@@ -46030,6 +47678,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": null,
    "id": "water_tracers::wtrc_check_h2o",
@@ -46117,6 +47768,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": null,
    "id": "water_tracers::wtrc_clear_precip",
@@ -46194,6 +47848,9 @@
     "standalone_replay": {
      "state": "not-assessed"
     }
+   },
+   "development": {
+    "state": "unclaimed"
    },
    "failures": [],
    "host": null,
@@ -46273,6 +47930,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": null,
    "id": "water_tracers::wtrc_diagnose_precip",
@@ -46351,6 +48011,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": null,
    "id": "water_tracers::wtrc_dqequil",
@@ -46417,6 +48080,9 @@
     "standalone_replay": {
      "state": "not-assessed"
     }
+   },
+   "development": {
+    "state": "unclaimed"
    },
    "failures": [],
    "host": null,
@@ -46486,6 +48152,9 @@
     "standalone_replay": {
      "state": "not-assessed"
     }
+   },
+   "development": {
+    "state": "unclaimed"
    },
    "failures": [],
    "host": null,
@@ -46575,6 +48244,9 @@
     "standalone_replay": {
      "state": "not-assessed"
     }
+   },
+   "development": {
+    "state": "unclaimed"
    },
    "failures": [],
    "host": null,
@@ -46669,6 +48341,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": null,
    "id": "water_tracers::wtrc_get_rstd",
@@ -46758,6 +48433,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": null,
    "id": "water_tracers::wtrc_init_rates",
@@ -46835,6 +48513,9 @@
     "standalone_replay": {
      "state": "not-assessed"
     }
+   },
+   "development": {
+    "state": "unclaimed"
    },
    "failures": [],
    "host": null,
@@ -46917,6 +48598,9 @@
     "standalone_replay": {
      "state": "not-assessed"
     }
+   },
+   "development": {
+    "state": "unclaimed"
    },
    "failures": [],
    "host": null,
@@ -47001,6 +48685,9 @@
     "standalone_replay": {
      "state": "not-assessed"
     }
+   },
+   "development": {
+    "state": "unclaimed"
    },
    "failures": [],
    "host": null,
@@ -47088,6 +48775,9 @@
     "standalone_replay": {
      "state": "not-assessed"
     }
+   },
+   "development": {
+    "state": "unclaimed"
    },
    "failures": [],
    "host": null,
@@ -47177,6 +48867,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": null,
    "id": "water_tracers::wtrc_precip_evap",
@@ -47265,6 +48958,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": null,
    "id": "water_tracers::wtrc_q1q2_pjr",
@@ -47351,6 +49047,9 @@
     "standalone_replay": {
      "state": "not-assessed"
     }
+   },
+   "development": {
+    "state": "unclaimed"
    },
    "failures": [],
    "host": null,
@@ -47444,6 +49143,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": null,
    "id": "water_tracers::wtrc_sediment",
@@ -47522,6 +49224,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": null,
    "id": "wetdep::clddiag",
@@ -47587,6 +49292,9 @@
     "standalone_replay": {
      "state": "not-assessed"
     }
+   },
+   "development": {
+    "state": "unclaimed"
    },
    "failures": [],
    "host": null,
@@ -47672,6 +49380,9 @@
     "standalone_replay": {
      "state": "not-assessed"
     }
+   },
+   "development": {
+    "state": "unclaimed"
    },
    "failures": [],
    "host": null,
@@ -47759,6 +49470,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": null,
    "id": "wv_sat_methods::bolton_svp_water",
@@ -47831,6 +49545,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": null,
    "id": "wv_sat_methods::goffgratch_svp_ice",
@@ -47897,6 +49614,9 @@
     "standalone_replay": {
      "state": "not-assessed"
     }
+   },
+   "development": {
+    "state": "unclaimed"
    },
    "failures": [],
    "host": null,
@@ -47970,6 +49690,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": null,
    "id": "wv_sat_methods::murphykoop_svp_ice",
@@ -48036,6 +49759,9 @@
     "standalone_replay": {
      "state": "not-assessed"
     }
+   },
+   "development": {
+    "state": "unclaimed"
    },
    "failures": [],
    "host": null,
@@ -48109,6 +49835,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": null,
    "id": "wv_sat_methods::oldgoffgratch_svp_ice",
@@ -48175,6 +49904,9 @@
     "standalone_replay": {
      "state": "not-assessed"
     }
+   },
+   "development": {
+    "state": "unclaimed"
    },
    "failures": [],
    "host": null,
@@ -48251,6 +49983,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": null,
    "id": "wv_sat_methods::wv_sat_qsat_ice",
@@ -48324,6 +50059,9 @@
     "standalone_replay": {
      "state": "not-assessed"
     }
+   },
+   "development": {
+    "state": "unclaimed"
    },
    "failures": [],
    "host": null,
@@ -48416,6 +50154,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": null,
    "id": "wv_sat_methods::wv_sat_svp_ice",
@@ -48501,6 +50242,9 @@
     "standalone_replay": {
      "state": "not-assessed"
     }
+   },
+   "development": {
+    "state": "unclaimed"
    },
    "failures": [],
    "host": null,
@@ -48608,6 +50352,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": null,
    "id": "wv_sat_methods::wv_sat_svp_water",
@@ -48708,6 +50455,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": null,
    "id": "wv_saturation::calc_hltalt",
@@ -48793,6 +50543,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": null,
    "id": "wv_saturation::deriv_outputs",
@@ -48877,6 +50630,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": null,
    "id": "wv_saturation::estblf",
@@ -48959,6 +50715,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": null,
    "id": "wv_saturation::findsp",
@@ -49026,6 +50785,9 @@
     "standalone_replay": {
      "state": "not-assessed"
     }
+   },
+   "development": {
+    "state": "unclaimed"
    },
    "failures": [],
    "host": null,
@@ -49109,6 +50871,9 @@
     "standalone_replay": {
      "state": "not-assessed"
     }
+   },
+   "development": {
+    "state": "unclaimed"
    },
    "failures": [],
    "host": null,
@@ -49215,6 +50980,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": null,
    "id": "wv_saturation::qsat",
@@ -49317,6 +51085,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": null,
    "id": "wv_saturation::qsat_ice",
@@ -49410,6 +51181,9 @@
     "standalone_replay": {
      "state": "not-assessed"
     }
+   },
+   "development": {
+    "state": "unclaimed"
    },
    "failures": [],
    "host": null,
@@ -49508,6 +51282,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": null,
    "id": "wv_saturation::svp_ice",
@@ -49593,6 +51370,9 @@
     "standalone_replay": {
      "state": "not-assessed"
     }
+   },
+   "development": {
+    "state": "unclaimed"
    },
    "failures": [],
    "host": null,
@@ -49685,6 +51465,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": null,
    "id": "wv_saturation::tq_enthalpy",
@@ -49769,6 +51552,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": null,
    "id": "zenith::zenith",
@@ -49851,6 +51637,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": null,
    "id": "zm_conv::buoyan_dilute",
@@ -49915,6 +51704,9 @@
     "standalone_replay": {
      "state": "not-assessed"
     }
+   },
+   "development": {
+    "state": "unclaimed"
    },
    "failures": [],
    "host": null,
@@ -50003,6 +51795,9 @@
     "standalone_replay": {
      "state": "not-assessed"
     }
+   },
+   "development": {
+    "state": "unclaimed"
    },
    "failures": [],
    "host": null,
@@ -50096,6 +51891,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": null,
    "id": "zm_conv::convtran",
@@ -50185,6 +51983,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": null,
    "id": "zm_conv::entropy",
@@ -50249,6 +52050,9 @@
     "standalone_replay": {
      "state": "not-assessed"
     }
+   },
+   "development": {
+    "state": "unclaimed"
    },
    "failures": [],
    "host": null,
@@ -50340,6 +52144,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": null,
    "id": "zm_conv::momtran",
@@ -50424,6 +52231,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": null,
    "id": "zm_conv::parcel_dilute",
@@ -50502,6 +52312,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": null,
    "id": "zm_conv::q1q2_pjr",
@@ -50569,6 +52382,9 @@
     "standalone_replay": {
      "state": "not-assessed"
     }
+   },
+   "development": {
+    "state": "unclaimed"
    },
    "failures": [],
    "host": null,
@@ -50659,6 +52475,9 @@
     "standalone_replay": {
      "state": "not-assessed"
     }
+   },
+   "development": {
+    "state": "unclaimed"
    },
    "failures": [],
    "host": null,
@@ -50756,6 +52575,9 @@
     "standalone_replay": {
      "state": "not-assessed"
     }
+   },
+   "development": {
+    "state": "unclaimed"
    },
    "failures": [],
    "host": null,
@@ -50855,6 +52677,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": null,
    "id": "zm_conv_intr::zm_conv_tend",
@@ -50933,6 +52758,9 @@
      "state": "not-assessed"
     }
    },
+   "development": {
+    "state": "unclaimed"
+   },
    "failures": [],
    "host": null,
    "id": "zm_conv_intr::zm_conv_tend_2",
@@ -50994,6 +52822,7 @@
   "candidates": "Candidate kernels come from a static reading of the configured call tree: they are potentially reachable, not necessarily observed during execution.",
   "class_delegation": "A Python class may delegate numerical execution to the original Fortran; class availability does not mean the calculations were translated into Python.",
   "core_vs_candidates": "Replaceable kernels are the ones a process's Python class exposes for replacement today; an entry that exists but lacks a verified path shows its unverified state. Candidate numerical functions are everything the call-tree inventory reaches from the process recursively -- drivers, per-point helpers, saturation and packing libraries included. Exposing a process does not expose every candidate inside it.",
+  "development_vs_evidence": "A work item records that a kernel is being implemented -- by whom, on which branch, at which stage, toward which gate. It is development coordination only: In progress never renders as Replaceable, Verified or Done, and completion is always computed from the validation records.",
   "no_observation_run": "No validated observation run available.",
   "observation": "Observed means the counting image recorded real calls in the selected validated run, attributed to the process they ran in; a kernel observed in one process is never marked observed in another. Zero calls count as not observed only where instrumentation coverage is complete and the run finished bit-for-bit; everything else stays unknown. Where coverage is partial, totals are lower bounds.",
   "process_vs_kernel": "A process is a workflow operation. It can contain many numerical kernels. Calling the whole process does not mean every internal kernel is independently callable or replaceable.",
@@ -67592,7 +69421,9 @@
    "open": 15
   },
   "tracked_kernels": 20,
-  "unmapped_kernels": 6
+  "unmapped_kernels": 6,
+  "work_blocked": 0,
+  "work_in_progress": 2
  },
  "unmapped_kernels": [
   "cam_diagnostics::diag_allocate",
@@ -67604,7 +69435,39 @@
  ],
  "volatile": {
   "branch": "physics-kernel-api-closure",
-  "commit": "c4f057e70d62f98051d344ac6e46137087f5bf3d",
-  "generated_at": "2026-09-09T02:40:33+00:00"
- }
+  "commit": "b7343ef2de3a1358c54dcd19b6d9213708cf4c11",
+  "generated_at": "2026-09-09T06:25:08+00:00"
+ },
+ "work_items": [
+  {
+   "branch": "physics-kernel-api-closure",
+   "kernel": "cloud_fraction::cldfrc_fice",
+   "next_gate": "512-rank 50-step BFB",
+   "note": "Promote the validated hook into the process kernel registry.",
+   "owner": "claude",
+   "owner_class": "freecam.physics.macrophysics.Macrophysics",
+   "stage": "in_model_replacement",
+   "started_at": "2026-09-09",
+   "state": "in_progress",
+   "target_processes": [
+    "cam_run1.cloud_macro_microphysics"
+   ],
+   "updated_at": "2026-09-09"
+  },
+  {
+   "branch": "physics-kernel-api-closure",
+   "kernel": "micro_mg1_0::micro_mg_tend",
+   "next_gate": "capture + full replay bit-for-bit, then 50-step in-model BFB",
+   "note": "Close the remaining capture and replay loop.",
+   "owner": "claude",
+   "owner_class": "freecam.physics.microphysics.Microphysics",
+   "stage": "capture_replay",
+   "started_at": "2026-09-09",
+   "state": "in_progress",
+   "target_processes": [
+    "cam_run1.cloud_macro_microphysics"
+   ],
+   "updated_at": "2026-09-09"
+  }
+ ]
 }

@@ -15,7 +15,7 @@ import {
 } from "./derive";
 import type { KernelRecord, ProcessRecord, Replacement, Snapshot } from "./types";
 
-type View = "physics" | "dynamics" | "control" | "apis" | "unmapped";
+type View = "physics" | "dynamics" | "control" | "apis" | "unmapped" | "kernels" | "inprogress" | "blocked";
 
 interface Route {
   view: View;
@@ -27,7 +27,7 @@ function parseHash(hash: string): Route {
   const parts = hash.replace(/^#\/?/, "").split("/").map(decodeURIComponent);
   if (parts[0] === "process" && parts[1]) return { view: "physics", process: parts[1], kernel: parts[3] };
   if (parts[0] === "kernel" && parts[1]) return { view: "physics", kernel: parts[1] };
-  if (["physics", "dynamics", "control", "apis", "unmapped"].includes(parts[0])) {
+  if (["physics", "dynamics", "control", "apis", "unmapped", "kernels", "inprogress", "blocked"].includes(parts[0])) {
     return { view: parts[0] as View };
   }
   return { view: "physics" };
@@ -166,6 +166,11 @@ export default function App({ load }: { load?: () => Promise<Snapshot> }) {
             />
           ) : selectedProcess ? (
             <ProcessDetail snapshot={snapshot} process={selectedProcess} onNavigate={navigate} runKey={runKey} />
+          ) : route.view === "inprogress" || route.view === "blocked" ? (
+            <WorkBoard snapshot={snapshot} state={route.view === "blocked" ? "blocked" : "in_progress"}
+              onNavigate={navigate} />
+          ) : route.view === "kernels" ? (
+            <KernelIndex snapshot={snapshot} runKey={runKey} onNavigate={navigate} />
           ) : route.view === "apis" ? (
             <AdditionalApis snapshot={snapshot} />
           ) : route.view === "unmapped" ? (
@@ -279,13 +284,21 @@ function Overview({ snapshot, runKey }: { snapshot: Snapshot; runKey: string | n
   );
 }
 
-const VIEW_LABELS: Record<View, string> = {
-  physics: "Physics (default order)",
-  dynamics: "Dynamics",
-  control: "Control, boundary, diagnostics and I/O",
-  apis: "Additional callable APIs",
-  unmapped: "Unmapped kernels",
-};
+function viewLabels(snapshot: Snapshot): Record<View, string> {
+  const items = snapshot.work_items ?? [];
+  const inProgress = items.filter((i) => i.state === "in_progress").length;
+  const blocked = items.filter((i) => i.state === "blocked").length;
+  return {
+    physics: "Physics (default order)",
+    dynamics: "Dynamics",
+    control: "Control, boundary, diagnostics and I/O",
+    kernels: "Kernels",
+    inprogress: `In progress (${inProgress})`,
+    blocked: `Blocked (${blocked})`,
+    apis: "Additional callable APIs",
+    unmapped: "Unmapped kernels",
+  };
+}
 
 function ProcessLists({
   snapshot,
@@ -304,18 +317,18 @@ function ProcessLists({
   return (
     <>
       <div className="tabs" role="tablist" aria-label="Views">
-        {(Object.keys(VIEW_LABELS) as View[]).map((view) => (
+        {(Object.entries(viewLabels(snapshot)) as [View, string][]).map(([view, label]) => (
           <button
             key={view}
             role="tab"
             aria-selected={route.view === view && !route.process && !route.kernel}
             onClick={() => onNavigate({ view })}
           >
-            {VIEW_LABELS[view]}
+            {label}
           </button>
         ))}
       </div>
-      {route.view === "apis" || route.view === "unmapped" ? (
+      {["apis", "unmapped", "kernels", "inprogress", "blocked"].includes(route.view) ? (
         <p className="muted">Shown in the main panel.</p>
       ) : (
         <ul className="process-list">
@@ -447,6 +460,7 @@ function ProcessDetail({
         )}
         {process.description && <div><dt>Description</dt><dd>{process.description}</dd></div>}
       </dl>
+      <CurrentImplementation snapshot={snapshot} pid={process.id} onNavigate={onNavigate} />
       <h3>Replaceable kernels ({coreKernels.length})</h3>
       {coreKernels.length === 0 ? (
         <p className="muted">This process's class exposes no replaceable kernel yet.</p>
@@ -597,6 +611,52 @@ function KernelStateList({
         );
       })}
     </ul>
+  );
+}
+
+function CurrentImplementation({
+  snapshot,
+  pid,
+  onNavigate,
+}: {
+  snapshot: Snapshot;
+  pid: string;
+  onNavigate: (route: Route) => void;
+}) {
+  const items = (snapshot.work_items ?? []).filter(
+    (item) => item.state !== "closed" && item.target_processes.includes(pid));
+  if (!items.length) return null;
+  const byClass = new Map<string, typeof items>();
+  for (const item of items) {
+    const cls = item.owner_class ?? "unassigned";
+    byClass.set(cls, [...(byClass.get(cls) ?? []), item]);
+  }
+  return (
+    <>
+      <h3>Current implementation</h3>
+      <ul className="kernel-list implementation">
+        {[...byClass.entries()].map(([cls, rows]) => (
+          <li key={cls}>
+            <code>{cls.split(".").pop()}</code>
+            <ul>
+              {rows.map((item) => (
+                <li key={item.kernel}>
+                  <button className="linkish" onClick={() => onNavigate({ view: "physics", process: pid, kernel: item.kernel })}>
+                    <code>{item.kernel}</code>
+                  </button>{" "}
+                  <span className={`chip ${item.state === "blocked" ? "state-failed" : "info"}`}>
+                    {item.state === "blocked" ? "Blocked" : "In progress"}
+                  </span>
+                  <span className="muted"> · {item.stage} · next: {item.next_gate}
+                    {item.blocker ? ` · blocker: ${item.blocker}` : ""}</span>
+                </li>
+              ))}
+            </ul>
+          </li>
+        ))}
+      </ul>
+      <p className="muted">{snapshot.notes.development_vs_evidence}</p>
+    </>
   );
 }
 
@@ -780,6 +840,22 @@ function KernelDetail({
         ) : null}
         {kernel.note && <div><dt>Note</dt><dd>{kernel.note}</dd></div>}
       </dl>
+      <h3>Development</h3>
+      {kernel.development.state === "unclaimed" ? (
+        <p className="muted"><span className="chip off">Unclaimed</span> no active work item for this kernel.</p>
+      ) : (
+        <div className="replacement">
+          <span className={`chip ${kernel.development.state === "blocked" ? "state-failed" : "info"}`}>
+            {kernel.development.state === "blocked" ? "Blocked" : "In progress"}
+          </span>{" "}
+          stage {kernel.development.stage} · owner {kernel.development.owner} · branch{" "}
+          <code>{kernel.development.branch}</code> · {kernel.development.started_at} →{" "}
+          {kernel.development.updated_at} · next gate: {kernel.development.next_gate}
+          {kernel.development.blocker && <p className="muted">blocker: {kernel.development.blocker}</p>}
+          {kernel.development.note && <p className="muted">{kernel.development.note}</p>}
+          <p className="muted">{snapshot.notes.development_vs_evidence}</p>
+        </div>
+      )}
       <h3>Execution observation</h3>
       {(snapshot.observation_runs ?? []).length === 0 ? (
         <p className="muted">{snapshot.notes.no_observation_run}</p>
@@ -824,7 +900,7 @@ function KernelDetail({
           );
         })
       )}
-      <h3>Capabilities</h3>
+      <h3>Scientific evidence</h3>
       <table className="capabilities">
         <tbody>
           {Object.entries(CAPABILITY_LABELS).map(([key, label]) => {
@@ -911,6 +987,103 @@ function ReplacementRow({ row }: { row: Replacement }) {
       </ul>
       {row.note && <p className="muted">{row.note}</p>}
     </div>
+  );
+}
+
+function WorkBoard({
+  snapshot,
+  state,
+  onNavigate,
+}: {
+  snapshot: Snapshot;
+  state: "in_progress" | "blocked";
+  onNavigate: (route: Route) => void;
+}) {
+  const items = (snapshot.work_items ?? []).filter((item) => item.state === state);
+  return (
+    <section aria-label={state === "blocked" ? "Blocked work items" : "Work in progress"}>
+      <h2>{state === "blocked" ? "Blocked" : "In progress"} ({items.length})</h2>
+      <p className="muted">{snapshot.notes.development_vs_evidence}</p>
+      {items.length === 0 ? (
+        <p className="muted">No {state === "blocked" ? "blocked" : "active"} work items.</p>
+      ) : (
+        <div className="board-scroll">
+        <table className="capabilities work-board">
+          <thead>
+            <tr>
+              <th>Process</th><th>Python class</th><th>Kernel</th><th>Stage</th><th>Owner</th>
+              <th>Branch</th><th>Started / updated</th><th>Next gate</th><th>Blocker</th>
+            </tr>
+          </thead>
+          <tbody>
+            {items.map((item) => (
+              <tr key={item.kernel}>
+                <td>{item.target_processes.map((pid) => (
+                  <button key={pid} className="linkish" onClick={() => onNavigate({ view: "physics", process: pid })}>
+                    {pid}
+                  </button>
+                ))}</td>
+                <td><code>{item.owner_class ?? "—"}</code></td>
+                <td>
+                  <button className="linkish" onClick={() => onNavigate({ view: "kernels", kernel: item.kernel })}>
+                    <code>{item.kernel}</code>
+                  </button>
+                </td>
+                <td>{item.stage}</td>
+                <td>{item.owner}</td>
+                <td><code>{item.branch}</code></td>
+                <td>{item.started_at} / {item.updated_at}</td>
+                <td>{item.next_gate}</td>
+                <td>{item.blocker ?? "—"}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        </div>
+      )}
+    </section>
+  );
+}
+
+function KernelIndex({
+  snapshot,
+  runKey,
+  onNavigate,
+}: {
+  snapshot: Snapshot;
+  runKey: string | null;
+  onNavigate: (route: Route) => void;
+}) {
+  const [filter, setFilter] = useState("");
+  const needle = filter.trim().toLowerCase();
+  const rows = Object.values(snapshot.kernels)
+    .filter((k) => !needle || k.id.toLowerCase().includes(needle))
+    .slice(0, 250);
+  return (
+    <section aria-label="All candidate kernels">
+      <h2>Candidate kernels ({Object.keys(snapshot.kernels).length})</h2>
+      <input type="search" aria-label="Filter kernels" placeholder="Filter by module::routine…"
+        value={filter} onChange={(event) => setFilter(event.target.value)} />
+      <ul className="kernel-list">
+        {rows.map((kernel) => (
+          <li key={kernel.id}>
+            <button className="kernel-link" onClick={() => onNavigate({ view: "kernels", kernel: kernel.id })}>
+              <code>{kernel.id}</code>
+            </button>
+            <span className="chips">
+              {kernel.development.state !== "unclaimed" && (
+                <span className="chip info">{kernel.development.state === "blocked" ? "blocked" : "in progress"}</span>
+              )}
+              {runKey && kernel.observation?.[runKey]?.status === "observed" && <span className="chip ok">observed</span>}
+              {kernel.tracked && <span className={`chip ${kernel.status === "complete" ? "ok" : "info"}`}>{kernel.status}</span>}
+            </span>
+          </li>
+        ))}
+        {Object.keys(snapshot.kernels).length > rows.length && (
+          <li className="muted">…filter to narrow the list.</li>
+        )}
+      </ul>
+    </section>
   );
 }
 

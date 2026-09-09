@@ -47,6 +47,7 @@ CLOSURE = "validation/pi_cam_kernel_api_closure.json"
 AUDIT = "validation/pi_cam_kernel_api_redirectable_calls.json"
 RUNNERS = "native/pi_cam/segment_runners.yaml"
 HOOKS = "native/pi_cam/hooks.yaml"
+WORK_ITEMS = "native/pi_cam/kernel_work_items.yaml"
 #: Optional: the runtime coverage records of the counting image's observation
 #: runs.  With one, every candidate carries per-process execution evidence;
 #: without any there is no validated observation run, and the page says so
@@ -123,6 +124,14 @@ def load_inputs(root: Path) -> dict[str, Any]:
     _require_schema(AUDIT, inputs["audit"], 1)
     _require_schema(RUNNERS, inputs["runners"], 1)
     _require_schema(HOOKS, inputs["hooks"], 1)
+    work_items_path = root / WORK_ITEMS
+    if work_items_path.is_file():
+        payload = yaml.safe_load(work_items_path.read_text()) or {}
+        _require_schema(WORK_ITEMS, payload, 1)
+        inputs["work_items"] = payload.get("items") or []
+        inputs["hashes"][WORK_ITEMS] = _sha256_file(work_items_path)
+    else:
+        inputs["work_items"] = []
     inputs["observation_runs"] = {}
     for key, _label, rel in OBSERVATION_RUNS:
         path = root / rel
@@ -525,6 +534,22 @@ def build_progress_snapshot(root: Path | str) -> dict[str, Any]:
     audit, runners, hooks = inputs["audit"], inputs["runners"], inputs["hooks"]
 
     observation_runs = inputs["observation_runs"]
+    work_items = inputs["work_items"]
+    active_by_kernel = {item["kernel"]: item for item in work_items
+                        if item.get("state") in ("in_progress", "blocked")}
+
+    def development_of(qualified: str) -> dict[str, Any]:
+        """Coordination state only: a claim never changes a scientific column."""
+
+        item = active_by_kernel.get(qualified)
+        if item is None:
+            return {"state": "unclaimed"}
+        return {"state": item["state"], "stage": item.get("stage"), "owner": item.get("owner"),
+                "branch": item.get("branch"), "next_gate": item.get("next_gate"),
+                "started_at": item.get("started_at"), "updated_at": item.get("updated_at"),
+                "blocker": item.get("blocker"), "note": item.get("note"),
+                "target_processes": item.get("target_processes") or [],
+                "owner_class": item.get("owner_class")}
 
     def observation_of(qualified: str) -> dict[str, Any]:
         """Per-run execution evidence for one candidate; unknown is never success."""
@@ -708,6 +733,7 @@ def build_progress_snapshot(root: Path | str) -> dict[str, Any]:
             "note": (tracked or {}).get("note"),
             "module_state": sorted((tracked or {}).get("evidence", {}).get("module_state") or []),
             "observation": observation_of(qualified),
+            "development": development_of(qualified),
             "capabilities": capabilities,
             "redirect": redirect,
             "adapter_hint": adapter_hints.get(qualified),
@@ -804,6 +830,8 @@ def build_progress_snapshot(root: Path | str) -> dict[str, Any]:
             for key, _label, _rel in OBSERVATION_RUNS if key in observation_runs
         },
         "unmapped_kernels": len(unmapped),
+        "work_in_progress": sum(1 for i in work_items if i.get("state") == "in_progress"),
+        "work_blocked": sum(1 for i in work_items if i.get("state") == "blocked"),
     }
 
     content = {
@@ -830,6 +858,10 @@ def build_progress_snapshot(root: Path | str) -> dict[str, Any]:
                            "instrumentation coverage is complete and the run finished bit-for-bit; everything "
                            "else stays unknown. Where coverage is partial, totals are lower bounds.",
             "no_observation_run": "No validated observation run available.",
+            "development_vs_evidence": "A work item records that a kernel is being implemented -- by whom, "
+                                       "on which branch, at which stage, toward which gate. It is development "
+                                       "coordination only: In progress never renders as Replaceable, Verified "
+                                       "or Done, and completion is always computed from the validation records.",
             "core_vs_candidates": "Replaceable kernels are the ones a process's Python class exposes for "
                                   "replacement today; an entry that exists but lacks a verified path shows its "
                                   "unverified state. Candidate numerical functions are everything the call-tree "
@@ -842,6 +874,7 @@ def build_progress_snapshot(root: Path | str) -> dict[str, Any]:
                            "replacement (for example a neural network) is scientifically correct.",
         },
         "capability_explanations": CAPABILITY_EXPLANATIONS,
+        "work_items": work_items,
         "observation_runs": [
             {
                 "key": key,

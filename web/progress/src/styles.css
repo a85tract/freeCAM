@@ -153,3 +153,9 @@ button:focus-visible, a:focus-visible, input:focus-visible, summary:focus-visibl
 .filter-tabs button[aria-selected="true"] { border-color: var(--accent); }
 .filter-tabs button:disabled { color: var(--disabled); cursor: default; }
 h4.subhead { font-size: 13.5px; margin: 14px 0 6px; }
+
+.board-scroll { overflow-x: auto; }
+.work-board th, .work-board td { white-space: nowrap; font-size: 13px; }
+.work-board td:nth-child(8) { white-space: normal; min-width: 180px; }
+.implementation > li { margin: 6px 0; }
+.implementation ul { list-style: none; padding-left: 16px; }

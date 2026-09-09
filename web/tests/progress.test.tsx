@@ -33,6 +33,8 @@ function fixture(): Snapshot {
       shared_kernels: "A kernel used by several processes is counted once globally.",
       replacement_scope: "A replacement gate is scoped to the process and call site actually tested.",
       bfb_meaning: "BFB verified does not prove an arbitrary replacement is scientifically correct.",
+      development_vs_evidence: "In progress never renders as Replaceable, Verified or Done.",
+      no_observation_run: "No validated observation run available.",
     },
     capability_explanations: {
       contract: "Contract explanation.",
@@ -69,6 +71,16 @@ function fixture(): Snapshot {
         python_class: null, class_kind: "generic", core_kernels: [],
         ledger_coverage: "not-applicable", note: null,
       },
+    ],
+    work_items: [
+      { kernel: "m::alpha", target_processes: ["cam_run1.a"], owner_class: "freecam.physics.sub.AlphaOwner",
+        state: "in_progress", stage: "in_model_replacement", owner: "claude", branch: "dev-branch",
+        started_at: "2026-09-09", updated_at: "2026-09-09", next_gate: "512-rank 50-step BFB",
+        note: "Promote the hook." },
+      { kernel: "m::shared", target_processes: ["cam_run1.a", "cam_run1.z"], owner_class: "freecam.physics.pausable.A",
+        state: "blocked", stage: "contract", owner: "claude", branch: "dev-branch",
+        started_at: "2026-09-08", updated_at: "2026-09-09", next_gate: "reviewed contract",
+        blocker: "derived-type boundary cannot be expressed safely yet" },
     ],
     observation_runs: [
       { key: "50step", label: "50-step validation", validated: true,
@@ -107,6 +119,10 @@ function fixture(): Snapshot {
           in_model_replacement: capability("available", { contexts: ["cam_run1.a"] }),
           original_replacement_bfb: capability("verified", { contexts: ["cam_run1.a"] }),
         },
+        development: { state: "in_progress", stage: "in_model_replacement", owner: "claude",
+                       branch: "dev-branch", next_gate: "512-rank 50-step BFB",
+                       started_at: "2026-09-09", updated_at: "2026-09-09",
+                       target_processes: ["cam_run1.a"], owner_class: "freecam.physics.sub.AlphaOwner" },
         observation: {
           "50step": { status: "observed", calls_total: 100, coverage: "full",
                       calls_by_context: { "cam_run1.a": 100 }, first_step: 1, last_step: 50, ranks_with_calls: 4 },
@@ -129,6 +145,10 @@ function fixture(): Snapshot {
           in_model_replacement: capability("not-implemented"),
           original_replacement_bfb: capability("not-assessed"),
         },
+        development: { state: "blocked", stage: "contract", owner: "claude", branch: "dev-branch",
+                       next_gate: "reviewed contract", started_at: "2026-09-08", updated_at: "2026-09-09",
+                       blocker: "derived-type boundary cannot be expressed safely yet",
+                       target_processes: ["cam_run1.a", "cam_run1.z"], owner_class: "freecam.physics.pausable.A" },
         observation: {
           "50step": { status: "unknown", status_reason: "no counting entry exists for this kernel" },
           "1month": { status: "observed", calls_total: 12, coverage: "partial",
@@ -309,6 +329,49 @@ describe("the progress dashboard", () => {
     await user.click(screen.getByRole("button", { name: "Light theme" }));
     expect(document.documentElement.dataset.theme).toBe("light");
     expect(localStorage.getItem("freecam-ui-theme")).toBe("light");
+  });
+});
+
+describe("the work-item board", () => {
+  it("counts and lists in-progress and blocked items, linked to processes and kernels", async () => {
+    const user = userEvent.setup();
+    render(<App load={loadFixture} />);
+    const browser = await screen.findByRole("navigation", { name: "Process browser" });
+    await user.click(within(browser).getByRole("tab", { name: "In progress (1)" }));
+    const board = screen.getByRole("table");
+    expect(within(board).getByText("m::alpha")).toBeInTheDocument();
+    expect(within(board).getByText("in_model_replacement")).toBeInTheDocument();
+    expect(within(board).getByText("512-rank 50-step BFB")).toBeInTheDocument();
+    await user.click(within(browser).getByRole("tab", { name: "Blocked (1)" }));
+    expect(screen.getByText(/derived-type boundary cannot be expressed/)).toBeInTheDocument();
+  });
+
+  it("shows the process's current implementation and the kernel's development axis separately", async () => {
+    const user = userEvent.setup();
+    render(<App load={loadFixture} />);
+    await user.click(await screen.findByRole("button", { name: /Deep-ish convection/ }));
+    expect(screen.getByText("Current implementation")).toBeInTheDocument();
+    expect(screen.getAllByText("In progress").length).toBeGreaterThan(0);
+    cleanup();
+    window.location.hash = "#/kernel/m::alpha";
+    render(<App load={loadFixture} />);
+    expect(await screen.findByRole("heading", { name: /m::alpha/ })).toBeInTheDocument();
+    expect(screen.getByText("Development")).toBeInTheDocument();
+    expect(screen.getByText("Scientific evidence")).toBeInTheDocument();
+    // a claim never upgrades the scientific column: the states come from capabilities only
+    expect(screen.getAllByText(/In progress never renders as Replaceable/).length).toBeGreaterThan(0);
+  });
+
+  it("an unclaimed kernel says so", async () => {
+    window.location.hash = "#/kernel/m::loner";
+    const snapshot = fixture();
+    snapshot.kernels["m::loner"] = {
+      ...snapshot.kernels["m::shared"],
+      id: "m::loner", routine: "loner", processes: [], callers: [], failures: [],
+      development: { state: "unclaimed" },
+    };
+    render(<App load={() => Promise.resolve(snapshot)} />);
+    expect(await screen.findByText("Unclaimed")).toBeInTheDocument();
   });
 });
 

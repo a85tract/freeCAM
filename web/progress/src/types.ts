@@ -23,6 +23,36 @@ export interface Capability {
   historical_failures?: string[];
 }
 
+export interface Development {
+  state: "in_progress" | "blocked" | "unclaimed";
+  stage?: string;
+  owner?: string;
+  branch?: string;
+  next_gate?: string;
+  started_at?: string;
+  updated_at?: string;
+  blocker?: string | null;
+  note?: string | null;
+  target_processes?: string[];
+  owner_class?: string | null;
+}
+
+export interface WorkItem {
+  kernel: string;
+  target_processes: string[];
+  owner_class: string | null;
+  state: "in_progress" | "blocked" | "closed";
+  stage: string;
+  owner: string;
+  branch: string;
+  started_at: string;
+  updated_at: string;
+  next_gate: string;
+  note?: string;
+  blocker?: string;
+  closed_at?: string;
+}
+
 export interface KernelObservation {
   status: "observed" | "not-observed-in-this-run" | "unknown";
   status_reason?: string;
@@ -68,6 +98,7 @@ export interface KernelRecord {
   note: string | null;
   module_state: string[];
   observation: Record<string, KernelObservation>;
+  development: Development;
   capabilities: Record<string, Capability>;
   redirect: { classification: string | null; redirectable: boolean; reading: string; blocker?: string };
   adapter_hint: { adapter_status: string | null; blockers: string[] } | null;
@@ -159,6 +190,7 @@ export interface Snapshot {
   notes: Record<string, string>;
   capability_explanations: Record<string, string>;
   observation_runs: ObservationRun[];
+  work_items: WorkItem[];
   process_observation: Record<string, Record<string, Record<string, ProcessCalls>>>;
   processes: ProcessRecord[];
   additional_apis: AdditionalApi[];

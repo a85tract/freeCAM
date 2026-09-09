@@ -1,0 +1,26 @@
+schema_version: 1
+items:
+- kernel: cloud_fraction::cldfrc_fice
+  target_processes:
+  - cam_run1.cloud_macro_microphysics
+  owner_class: freecam.physics.macrophysics.Macrophysics
+  state: in_progress
+  stage: in_model_replacement
+  owner: claude
+  branch: physics-kernel-api-closure
+  started_at: '2026-09-09'
+  updated_at: '2026-09-09'
+  next_gate: 512-rank 50-step BFB
+  note: Promote the validated hook into the process kernel registry.
+- kernel: micro_mg1_0::micro_mg_tend
+  target_processes:
+  - cam_run1.cloud_macro_microphysics
+  owner_class: freecam.physics.microphysics.Microphysics
+  state: in_progress
+  stage: capture_replay
+  owner: claude
+  branch: physics-kernel-api-closure
+  started_at: '2026-09-09'
+  updated_at: '2026-09-09'
+  next_gate: capture + full replay bit-for-bit, then 50-step in-model BFB
+  note: Close the remaining capture and replay loop.
