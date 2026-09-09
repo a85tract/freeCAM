@@ -94,17 +94,21 @@ def test_the_driver_restores_the_context_even_when_the_action_fails() -> None:
     assert state.context == SLOT_INITIALIZATION
 
 
-def test_step_tracking_records_first_and_last_step_from_total_diffs() -> None:
+def test_step_tracking_records_first_and_last_step_per_kernel_and_context() -> None:
     counters, _ = _counters(kernels=3)
     counters.begin_step_tracking()
-    counters.table[0, 3] += 5                          # kernel 0 runs in step 1
+    counters.table[0, 3] += 5                          # kernel 0 in context 3, step 1
     counters.note_step(1)
     counters.note_step(2)                              # nothing moved
-    counters.table[0, 4] += 1                          # kernel 0 again, step 3
+    counters.table[0, 4] += 1                          # kernel 0 in context 4, step 3
+    counters.table[0, 3] += 1                          # and again in context 3
     counters.table[2, 0] += 7                          # kernel 2 first moves in step 3
     counters.note_step(3)
-    assert counters.first_step.tolist() == [1, STEP_SENTINEL, 3]
-    assert counters.last_step.tolist() == [3, STEP_SENTINEL, 3]
+    # spans are per [kernel, context]: context 3 spans 1..3, context 4 only step 3
+    assert counters.first_step[0, 3] == 1 and counters.last_step[0, 3] == 3
+    assert counters.first_step[0, 4] == 3 and counters.last_step[0, 4] == 3
+    assert counters.first_step[1].tolist() == [STEP_SENTINEL] * 8
+    assert counters.first_step[2, 0] == 3 and counters.last_step[2, 0] == 3
 
 
 class _SingleRankWorld:
@@ -135,6 +139,7 @@ def test_reduction_and_the_observation_record_report_per_context_counts() -> Non
     rows = {row["qualified"]: row for row in record["kernels"]}
     assert rows["m::one"]["calls_total"] == 102
     assert rows["m::one"]["calls_by_context"] == {"initialization": 2, "cam_run1.a": 100}
+    assert rows["m::one"]["steps_by_context"]["cam_run1.a"] == [1, 1]
     assert rows["m::three"]["calls_by_context"] == {"cam_run1.b": 7}
     # zero calls stay zero: an uncalled instrumented kernel is reported, never dropped
     assert rows["m::silent"]["calls_total"] == 0 and rows["m::silent"]["calls_by_context"] == {}

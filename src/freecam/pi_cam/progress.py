@@ -765,8 +765,17 @@ def build_progress_snapshot(root: Path | str) -> dict[str, Any]:
                 "owner_class": (tracked or {}).get("owner_class"),
                 "status": (tracked or {}).get("status"),
             })
+        runtime_only = sorted({
+            kid
+            for record in observation_runs.values()
+            for kid in (record.get("process_calls", {}).get(pid) or {})
+            if kid not in members and kid in candidates
+        })
         membership[pid] = {
             "kernels": members,
+            # calls the counting image attributed to this process at run time
+            # that the static call tree does not: they are never hidden
+            "runtime_only": runtime_only,
             "edges": process_edges(pid, members, procedures, candidates),
             "inventoried": bool(members) or pid in {a["id"] for a in closure["actions"] if a.get("procedures")},
         }

@@ -51,9 +51,15 @@ export type ProcessKernelState = "observed" | "not-observed-here" | "gap";
     the kernel's counting coverage is complete and the run finished cleanly;
     partial coverage and uninstrumented kernels stay gaps. */
 export function processKernelStates(snapshot: Snapshot, pid: string, runKey: string): Map<string, ProcessKernelState> {
-  const members = snapshot.process_membership[pid]?.kernels ?? [];
+  const membership = snapshot.process_membership[pid];
+  const members = membership?.kernels ?? [];
   const here = snapshot.process_observation?.[runKey]?.[pid] ?? {};
   const states = new Map<string, ProcessKernelState>();
+  // calls observed in this process at run time that the static tree misses
+  // are shown, never hidden -- they count as observed when this run saw them
+  for (const kid of membership?.runtime_only ?? []) {
+    if ((here[kid]?.calls ?? 0) > 0) states.set(kid, "observed");
+  }
   for (const kid of members) {
     if ((here[kid]?.calls ?? 0) > 0) {
       states.set(kid, "observed");
@@ -71,19 +77,24 @@ export interface ExecutionInventory {
   observed: number;
   coveredNotObserved: number;
   gaps: number;
+  runtimeOnly: number;
 }
 
 export function executionInventory(snapshot: Snapshot, pid: string, runKey: string): ExecutionInventory {
   const states = processKernelStates(snapshot, pid, runKey);
+  const staticMembers = new Set(snapshot.process_membership[pid]?.kernels ?? []);
   let observed = 0;
   let covered = 0;
   let gaps = 0;
-  for (const state of states.values()) {
-    if (state === "observed") observed += 1;
-    else if (state === "not-observed-here") covered += 1;
+  let runtimeOnly = 0;
+  for (const [kid, state] of states.entries()) {
+    if (state === "observed") {
+      observed += 1;
+      if (!staticMembers.has(kid)) runtimeOnly += 1;
+    } else if (state === "not-observed-here") covered += 1;
     else gaps += 1;
   }
-  return { candidates: states.size, observed, coveredNotObserved: covered, gaps };
+  return { candidates: staticMembers.size, observed, coveredNotObserved: covered, gaps, runtimeOnly };
 }
 
 export interface Bar {
@@ -105,10 +116,15 @@ export interface Bar {
     Blocked and unassessed kernels stay in whichever denominator applies. */
 export function processBars(snapshot: Snapshot, pid: string, runKey: string | null): Bar[] {
   const membership: Membership | undefined = snapshot.process_membership[pid];
-  const members = membership?.kernels ?? [];
+  const states = runKey ? processKernelStates(snapshot, pid, runKey) : null;
+  // the denominator: static members, plus the calls the selected run observed
+  // here beyond the static tree; with no validated run, static members only
+  const members = [
+    ...(membership?.kernels ?? []),
+    ...(membership?.runtime_only ?? []).filter((kid) => states?.get(kid) === "observed"),
+  ];
   const inventoried = Boolean(membership?.inventoried && members.length > 0) || members.length > 0;
   const allKernels = members.map((k) => snapshot.kernels[k]).filter(Boolean) as KernelRecord[];
-  const states = runKey ? processKernelStates(snapshot, pid, runKey) : null;
   const kernels = states ? allKernels.filter((k) => states.get(k.id) === "observed") : allKernels;
   const rows = snapshot.replacements.filter((r) => r.process === pid);
   const routineRows = new Map<string, Replacement>();

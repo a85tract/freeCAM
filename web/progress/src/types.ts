@@ -145,6 +145,7 @@ export interface TreeEdge {
 
 export interface Membership {
   kernels: string[];
+  runtime_only?: string[];
   edges: TreeEdge[];
   inventoried: boolean;
 }

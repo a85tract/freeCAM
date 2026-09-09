@@ -484,7 +484,10 @@ function ProcessDetail({
         <>
           <dl className="facts">
             <div><dt>Candidate kernels</dt><dd>{inventory.candidates}</dd></div>
-            <div><dt>Observed executing here</dt><dd>{inventory.observed}</dd></div>
+            <div><dt>Observed executing here</dt><dd>{inventory.observed}
+              {inventory.runtimeOnly > 0 && (
+                <span className="muted"> ({inventory.runtimeOnly} observed at run time beyond the static tree)</span>
+              )}</dd></div>
             <div><dt>Fully covered, not observed here</dt><dd>{inventory.coveredNotObserved}</dd></div>
             <div><dt>Partially covered or uninstrumented</dt><dd>{inventory.gaps}</dd></div>
           </dl>
@@ -590,6 +593,9 @@ function KernelStateList({
         return (
           <li key={kid}>
             <KernelLink snapshot={snapshot} kid={kid} processId={process.id} onNavigate={onNavigate} />
+            {!(snapshot.process_membership[process.id]?.kernels ?? []).includes(kid) && (
+              <span className="chip warn">runtime-observed only; not in the static tree</span>
+            )}
             {filter === "observed" && here[kid] && (
               <span className="muted">
                 {" "}{here[kid].calls.toLocaleString()} calls in this process

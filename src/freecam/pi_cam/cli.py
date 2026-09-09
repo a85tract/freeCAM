@@ -865,6 +865,7 @@ def main(argv: list[str] | None = None) -> int:
         if reduced is not None:
             observation = kernel_counters.observation_record(reduced, observe_instrumented)
             observation.update({
+                "pbs_job": (os.environ.get("PBS_JOBID") or "").split(".", 1)[0] or None,
                 "steps": steps,
                 "final_model_step": int(cam.clock.nstep),
                 "native_manifest_kernel_counts": {

@@ -117,28 +117,31 @@ class KernelCounters:
         self.set_context(previous)
 
     # ------------------------------------------------------------------ #
-    # Step attribution: first and last executing step, tracked by diffing
-    # per-kernel totals at step boundaries (the hot path stays untouched).
+    # Step attribution: first and last executing step, tracked per
+    # [kernel, context] by diffing the whole table at step boundaries --
+    # a kernel's steps in one process are never its steps in another.
+    # The hot path stays untouched.
     # ------------------------------------------------------------------ #
 
     def rank_totals(self) -> np.ndarray:
         return self.table[: self.kernels].sum(axis=1)
 
     def begin_step_tracking(self) -> None:
-        self.first_step = np.full(self.kernels, STEP_SENTINEL, dtype=np.int64)
-        self.last_step = np.full(self.kernels, STEP_SENTINEL, dtype=np.int64)
-        self._step_baseline = self.rank_totals().copy()
+        shape = (self.kernels, self.slots)
+        self.first_step = np.full(shape, STEP_SENTINEL, dtype=np.int64)
+        self.last_step = np.full(shape, STEP_SENTINEL, dtype=np.int64)
+        self._step_baseline = self.table[: self.kernels].copy()
 
     def note_step(self, model_step: int) -> None:
         if self._step_baseline is None:
             return
-        totals = self.rank_totals()
-        moved = totals > self._step_baseline
+        active = self.table[: self.kernels]
+        moved = active > self._step_baseline
         if moved.any():
             assert self.first_step is not None and self.last_step is not None
             self.first_step[moved & (self.first_step == STEP_SENTINEL)] = model_step
             self.last_step[moved] = model_step
-        self._step_baseline = totals.copy()
+            self._step_baseline = active.copy()
 
     # ------------------------------------------------------------------ #
     # Global reduction: collective, so a completed reduction proves every
@@ -165,10 +168,11 @@ class KernelCounters:
         called = (totals > 0).astype(np.int64)
         ranks_with_calls = np.zeros_like(called)
         world.Reduce(called, ranks_with_calls, op=MPI.SUM, root=0)
+        shape = (self.kernels, self.slots)
         first = self.first_step if self.first_step is not None \
-            else np.full(self.kernels, STEP_SENTINEL, dtype=np.int64)
+            else np.full(shape, STEP_SENTINEL, dtype=np.int64)
         last = self.last_step if self.last_step is not None \
-            else np.full(self.kernels, STEP_SENTINEL, dtype=np.int64)
+            else np.full(shape, STEP_SENTINEL, dtype=np.int64)
         first_masked = np.where(first == STEP_SENTINEL, np.iinfo(np.int64).max, first)
         first_min = np.zeros_like(first_masked)
         last_max = np.zeros_like(last)
@@ -194,17 +198,25 @@ class KernelCounters:
         by_index = {int(row["index"]): row for row in instrumented}
         kernels = []
         table = reduced["table_sum"]
+        first = np.asarray(reduced["first_step"])
+        last = np.asarray(reduced["last_step"])
         for index in sorted(by_index):
             row = by_index[index]
             slots = {self.slot_names.get(slot, f"slot-{slot}"): int(count)
                      for slot, count in enumerate(table[index]) if count}
+            steps = {self.slot_names.get(slot, f"slot-{slot}"): [int(first[index, slot]), int(last[index, slot])]
+                     for slot in range(table.shape[1]) if table[index, slot]}
+            kernel_first = int(first[index][first[index] != STEP_SENTINEL].min()) \
+                if (first[index] != STEP_SENTINEL).any() else STEP_SENTINEL
+            kernel_last = int(last[index].max())
             kernels.append({
                 "index": index,
                 "qualified": row["qualified"],
                 "calls_total": int(reduced["totals_sum"][index]),
                 "calls_by_context": slots,
-                "first_step": int(reduced["first_step"][index]),
-                "last_step": int(reduced["last_step"][index]),
+                "steps_by_context": steps,
+                "first_step": kernel_first,
+                "last_step": kernel_last,
                 "ranks_with_calls": int(reduced["ranks_with_calls"][index]),
                 "rank_calls_min": int(reduced["totals_min"][index]),
                 "rank_calls_max": int(reduced["totals_max"][index]),

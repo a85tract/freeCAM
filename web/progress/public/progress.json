@@ -2648,7 +2648,7 @@
   "use_gw_oro": true,
   "use_subcol_microp": false
  },
- "content_hash": "db3a445165c95001a3e1328d499fb52d0cd1122f216fdaa5adb27f0d57b0e009",
+ "content_hash": "d22b048af915a5cb03a55c3dbb7a12797f374f22d61aadaa5aa9cdff1c6bc2bd",
  "evidence": {
   "pi_cam_cldfrc_fice_frame_replay.json": {
    "bfb": true,
@@ -53200,6 +53200,10 @@
     "wv_saturation::no_ip_hltalt",
     "wv_saturation::qsat_water",
     "wv_saturation::tq_enthalpy"
+   ],
+   "runtime_only": [
+    "convect_deep::deep_scheme_does_scav_trans",
+    "qneg3::qneg3"
    ]
   },
   "cam_run1.carma_wet_deposition_leaf": {
@@ -53213,6 +53217,9 @@
    "inventoried": true,
    "kernels": [
     "carma_intr::carma_wetdep_tend"
+   ],
+   "runtime_only": [
+    "convect_deep::deep_scheme_does_scav_trans"
    ]
   },
   "cam_run1.cloud_diagnostics_leaf": {
@@ -53256,7 +53263,8 @@
     "conv_water::conv_water_4rad",
     "pkg_cldoptics::cldclw",
     "pkg_cldoptics::cldovrlap"
-   ]
+   ],
+   "runtime_only": []
   },
   "cam_run1.cloud_macro_microphysics": {
    "edges": [
@@ -54229,7 +54237,8 @@
     "wv_saturation::svp_ice",
     "wv_saturation::svp_water",
     "wv_saturation::tq_enthalpy"
-   ]
+   ],
+   "runtime_only": []
   },
   "cam_run1.convective_tracer_transport_leaf": {
    "edges": [
@@ -54266,6 +54275,12 @@
     "water_tracers::wtrc_ratio",
     "zm_conv::convtran",
     "zm_conv_intr::zm_conv_tend_2"
+   ],
+   "runtime_only": [
+    "check_energy::check_tracers_chng",
+    "convect_deep::deep_scheme_does_scav_trans",
+    "qneg3::qneg3",
+    "water_tracers::wtrc_mass_fixer"
    ]
   },
   "cam_run1.deep_convection": {
@@ -54614,7 +54629,8 @@
     "zm_conv::zm_conv_evap",
     "zm_conv::zm_convr",
     "zm_conv_intr::zm_conv_tend"
-   ]
+   ],
+   "runtime_only": []
   },
   "cam_run1.diagnostics": {
    "edges": [
@@ -54849,7 +54865,8 @@
     "wv_saturation::qsat_water",
     "wv_saturation::svp_ice",
     "wv_saturation::tq_enthalpy"
-   ]
+   ],
+   "runtime_only": []
   },
   "cam_run1.dry_adjustment": {
    "edges": [
@@ -54862,12 +54879,20 @@
    "inventoried": true,
    "kernels": [
     "dadadj::dadadj"
+   ],
+   "runtime_only": [
+    "geopotential::geopotential_dse",
+    "qneg3::qneg3"
    ]
   },
   "cam_run1.dynamics_to_physics": {
    "edges": [],
    "inventoried": false,
-   "kernels": []
+   "kernels": [],
+   "runtime_only": [
+    "check_energy::check_energy_timestep_init",
+    "qneg3::qneg3"
+   ]
   },
   "cam_run1.energy_fixer": {
    "edges": [
@@ -54892,6 +54917,9 @@
     "cam_diagnostics::diag_conv_tend_ini",
     "check_energy::check_energy_chng",
     "check_energy::check_energy_fix"
+   ],
+   "runtime_only": [
+    "geopotential::geopotential_dse"
    ]
   },
   "cam_run1.export_diagnostics_leaf": {
@@ -54905,22 +54933,28 @@
    "inventoried": true,
    "kernels": [
     "cam_diagnostics::diag_export"
-   ]
+   ],
+   "runtime_only": []
   },
   "cam_run1.macro_tend_post_leaf": {
    "edges": [],
    "inventoried": false,
-   "kernels": []
+   "kernels": [],
+   "runtime_only": []
   },
   "cam_run1.macro_tend_pre_leaf": {
    "edges": [],
    "inventoried": false,
-   "kernels": []
+   "kernels": [],
+   "runtime_only": []
   },
   "cam_run1.modal_aerosol_preparation_leaf": {
    "edges": [],
    "inventoried": false,
-   "kernels": []
+   "kernels": [],
+   "runtime_only": [
+    "convect_deep::deep_scheme_does_scav_trans"
+   ]
   },
   "cam_run1.prepare": {
    "edges": [
@@ -56496,17 +56530,23 @@
     "tropopause::twmo",
     "upper_bc::ubc_timestep_init",
     "vertical_diffusion::vertical_diffusion_ts_init"
+   ],
+   "runtime_only": [
+    "cam_diagnostics::diag_allocate",
+    "check_energy::check_energy_gmean"
    ]
   },
   "cam_run1.rad_tend_post_leaf": {
    "edges": [],
    "inventoried": false,
-   "kernels": []
+   "kernels": [],
+   "runtime_only": []
   },
   "cam_run1.rad_tend_pre_leaf": {
    "edges": [],
    "inventoried": false,
-   "kernels": []
+   "kernels": [],
+   "runtime_only": []
   },
   "cam_run1.radiation": {
    "edges": [
@@ -57815,6 +57855,9 @@
     "wv_saturation::qsat_water",
     "wv_saturation::tq_enthalpy",
     "zenith::zenith"
+   ],
+   "runtime_only": [
+    "geopotential::geopotential_dse"
    ]
   },
   "cam_run1.sea_salt_rebin": {
@@ -57828,7 +57871,8 @@
    "inventoried": true,
    "kernels": [
     "sslt_rebin::sslt_rebin_adv"
-   ]
+   ],
+   "runtime_only": []
   },
   "cam_run1.shallow_convection": {
    "edges": [
@@ -58230,7 +58274,8 @@
     "wv_saturation::qsat",
     "wv_saturation::qsat_water",
     "wv_saturation::tq_enthalpy"
-   ]
+   ],
+   "runtime_only": []
   },
   "cam_run1.state_and_convection_diagnostics_leaf": {
    "edges": [
@@ -58418,6 +58463,9 @@
     "wv_saturation::qsat_water",
     "wv_saturation::svp_ice",
     "wv_saturation::tq_enthalpy"
+   ],
+   "runtime_only": [
+    "cam_diagnostics::diag_conv"
    ]
   },
   "cam_run1.state_export": {
@@ -58551,7 +58599,8 @@
     "tropopause::tropopause_twmo",
     "tropopause::tropopause_wmo",
     "tropopause::twmo"
-   ]
+   ],
+   "runtime_only": []
   },
   "cam_run1.state_export_leaf": {
    "edges": [
@@ -58566,7 +58615,8 @@
    "inventoried": true,
    "kernels": [
     "co2_cycle::co2_transport"
-   ]
+   ],
+   "runtime_only": []
   },
   "cam_run1.state_initialize": {
    "edges": [
@@ -58627,6 +58677,9 @@
     "water_tracers::wtrc_get_rstd",
     "water_tracers::wtrc_mass_fixer",
     "water_tracers::wtrc_ratio"
+   ],
+   "runtime_only": [
+    "cam_diagnostics::diag_physvar_ic"
    ]
   },
   "cam_run1.tropopause_leaf": {
@@ -58746,7 +58799,8 @@
     "tropopause::tropopause_twmo",
     "tropopause::tropopause_wmo",
     "tropopause::twmo"
-   ]
+   ],
+   "runtime_only": []
   },
   "cam_run1.wet_deposition": {
    "edges": [
@@ -59120,7 +59174,8 @@
     "wv_saturation::tq_enthalpy",
     "zm_conv::convtran",
     "zm_conv_intr::zm_conv_tend_2"
-   ]
+   ],
+   "runtime_only": []
   },
   "cam_run2.aerosol_dry_deposition": {
    "edges": [
@@ -59193,7 +59248,8 @@
     "dust_sediment_mod::getflx",
     "modal_aero_data::qqcw_get_field",
     "modal_aero_deposition::set_srf_drydep"
-   ]
+   ],
+   "runtime_only": []
   },
   "cam_run2.aerosol_dry_deposition_leaf": {
    "edges": [
@@ -59254,6 +59310,9 @@
     "dust_sediment_mod::getflx",
     "modal_aero_data::qqcw_get_field",
     "modal_aero_deposition::set_srf_drydep"
+   ],
+   "runtime_only": [
+    "qneg3::qneg3"
    ]
   },
   "cam_run2.age_of_air_tendencies_leaf": {
@@ -59267,6 +59326,9 @@
    "inventoried": true,
    "kernels": [
     "aoa_tracers::aoa_tracers_timestep_tend"
+   ],
+   "runtime_only": [
+    "check_energy::check_tracers_chng"
    ]
   },
   "cam_run2.carma_aerosol_tendencies_leaf": {
@@ -59280,6 +59342,9 @@
    "inventoried": true,
    "kernels": [
     "carma_intr::carma_timestep_tend"
+   ],
+   "runtime_only": [
+    "check_energy::check_energy_chng"
    ]
   },
   "cam_run2.carma_statistics_leaf": {
@@ -59293,7 +59358,8 @@
    "inventoried": true,
    "kernels": [
     "carma_intr::carma_accumulate_stats"
-   ]
+   ],
+   "runtime_only": []
   },
   "cam_run2.charge_neutrality": {
    "edges": [
@@ -59318,7 +59384,8 @@
     "charge_neutrality::charge_fix",
     "mo_chem_utls::get_spc_ndx",
     "short_lived_species::slvd_index"
-   ]
+   ],
+   "runtime_only": []
   },
   "cam_run2.chemistry_tendencies_leaf": {
    "edges": [
@@ -60444,6 +60511,13 @@
     "wv_saturation::qsat",
     "wv_saturation::tq_enthalpy",
     "zenith::zenith"
+   ],
+   "runtime_only": [
+    "check_energy::check_energy_chng",
+    "check_energy::check_tracers_chng",
+    "chemistry::chem_is_active",
+    "qneg3::qneg3",
+    "water_tracers::wtrc_check_h2o"
    ]
   },
   "cam_run2.diagnostics_deallocate_leaf": {
@@ -60457,12 +60531,14 @@
    "inventoried": true,
    "kernels": [
     "cam_diagnostics::diag_deallocate"
-   ]
+   ],
+   "runtime_only": []
   },
   "cam_run2.finish": {
    "edges": [],
    "inventoried": false,
-   "kernels": []
+   "kernels": [],
+   "runtime_only": []
   },
   "cam_run2.gravity_wave_drag": {
    "edges": [
@@ -60719,6 +60795,10 @@
     "linear_1d_operators::tridiag_finalize",
     "linear_1d_operators::zero_operator",
     "vdiff_lu_solver::fin_vol_lu_decomp"
+   ],
+   "runtime_only": [
+    "geopotential::geopotential_dse",
+    "qneg3::qneg3"
    ]
   },
   "cam_run2.ion_drag": {
@@ -60768,27 +60848,34 @@
     "ionosphere::ionos_tend",
     "mo_chem_utls::get_spc_ndx",
     "short_lived_species::slvd_index"
-   ]
+   ],
+   "runtime_only": []
   },
   "cam_run2.physics_buffer_deallocate_leaf": {
    "edges": [],
    "inventoried": true,
-   "kernels": []
+   "kernels": [],
+   "runtime_only": []
   },
   "cam_run2.physics_buffer_time_advance_leaf": {
    "edges": [],
    "inventoried": true,
-   "kernels": []
+   "kernels": [],
+   "runtime_only": []
   },
   "cam_run2.physics_to_dynamics": {
    "edges": [],
    "inventoried": false,
-   "kernels": []
+   "kernels": [],
+   "runtime_only": []
   },
   "cam_run2.prepare": {
    "edges": [],
    "inventoried": false,
-   "kernels": []
+   "kernels": [],
+   "runtime_only": [
+    "mo_lightning::lightning_no_prod"
+   ]
   },
   "cam_run2.qbo_relaxation": {
    "edges": [
@@ -60807,7 +60894,8 @@
    "kernels": [
     "check_energy::check_energy_chng",
     "qbo::qbo_relax"
-   ]
+   ],
+   "runtime_only": []
   },
   "cam_run2.rayleigh_friction": {
    "edges": [
@@ -60832,6 +60920,9 @@
     "check_energy::check_energy_chng",
     "check_energy::check_tracers_chng",
     "rayleigh_friction::rayleigh_friction_tend"
+   ],
+   "runtime_only": [
+    "geopotential::geopotential_dse"
    ]
   },
   "cam_run2.state_finalize": {
@@ -60869,7 +60960,8 @@
     "clybry_fam::broy",
     "clybry_fam::cloy",
     "clybry_fam::clybry_fam_set"
-   ]
+   ],
+   "runtime_only": []
   },
   "cam_run2.surface_fluxes_and_emissions": {
    "edges": [
@@ -60948,6 +61040,12 @@
     "sslt_sections::fluxes",
     "water_tracers::wtrc_get_rstd",
     "water_tracers::wtrc_ratio"
+   ],
+   "runtime_only": [
+    "cam_diagnostics::diag_surf",
+    "co2_cycle::co2_transport",
+    "wv_sat_methods::wv_sat_svp_to_qsat",
+    "wv_saturation::qsat"
    ]
   },
   "cam_run2.tracer_tendencies_leaf": {
@@ -60997,6 +61095,9 @@
     "tracers_suite::tend_md",
     "tracers_suite::tend_tr",
     "tracers_suite::tend_un"
+   ],
+   "runtime_only": [
+    "check_energy::check_tracers_chng"
    ]
   },
   "cam_run2.tracers_and_chemistry": {
@@ -62201,7 +62302,8 @@
     "wv_saturation::qsat",
     "wv_saturation::tq_enthalpy",
     "zenith::zenith"
-   ]
+   ],
+   "runtime_only": []
   },
   "cam_run2.vertical_diffusion": {
    "edges": [
@@ -62588,57 +62690,76 @@
     "wv_saturation::no_ip_hltalt",
     "wv_saturation::qsat",
     "wv_saturation::tq_enthalpy"
+   ],
+   "runtime_only": [
+    "geopotential::geopotential_dse",
+    "qneg3::qneg3"
    ]
   },
   "cam_run3.dynamics": {
    "edges": [],
    "inventoried": false,
-   "kernels": []
+   "kernels": [],
+   "runtime_only": []
   },
   "cam_run4.finish": {
    "edges": [],
    "inventoried": false,
-   "kernels": []
+   "kernels": [],
+   "runtime_only": []
   },
   "cam_run4.flush_leaf": {
    "edges": [],
    "inventoried": false,
-   "kernels": []
+   "kernels": [],
+   "runtime_only": []
   },
   "cam_run4.history": {
    "edges": [],
    "inventoried": false,
-   "kernels": []
+   "kernels": [],
+   "runtime_only": []
   },
   "cam_run4.restart": {
    "edges": [],
    "inventoried": false,
-   "kernels": []
+   "kernels": [],
+   "runtime_only": [
+    "co2_cycle::co2_transport",
+    "radiation::radiation_do"
+   ]
   },
   "cam_run4.step_cost_leaf": {
    "edges": [],
    "inventoried": false,
-   "kernels": []
+   "kernels": [],
+   "runtime_only": []
   },
   "cam_run4.wrapup_leaf": {
    "edges": [],
    "inventoried": false,
-   "kernels": []
+   "kernels": [],
+   "runtime_only": []
   },
   "clock.advance_timestep": {
    "edges": [],
    "inventoried": false,
-   "kernels": []
+   "kernels": [],
+   "runtime_only": []
   },
   "coupling.boundary_export": {
    "edges": [],
    "inventoried": false,
-   "kernels": []
+   "kernels": [],
+   "runtime_only": []
   },
   "coupling.boundary_import": {
    "edges": [],
    "inventoried": false,
-   "kernels": []
+   "kernels": [],
+   "runtime_only": [
+    "co2_cycle::co2_transport"
+   ]
   }
  },
  "process_observation": {
@@ -69435,8 +69556,8 @@
  ],
  "volatile": {
   "branch": "physics-kernel-api-closure",
-  "commit": "b7343ef2de3a1358c54dcd19b6d9213708cf4c11",
-  "generated_at": "2026-09-09T06:25:08+00:00"
+  "commit": "ce145bb17ede16b1327e506d09c65c96d8beeb72",
+  "generated_at": "2026-09-09T06:35:45+00:00"
  },
  "work_items": [
   {

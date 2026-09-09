@@ -36,7 +36,8 @@ def _observation(complete=True):
         return {"index": index, "qualified": qualified, "calls_total": total,
                 "calls_by_context": contexts, "first_step": first if total else -1,
                 "last_step": last if total else -1, "ranks_with_calls": 4 if total else 0,
-                "rank_calls_min": 0, "rank_calls_max": total}
+                "rank_calls_min": 0, "rank_calls_max": total,
+                "steps_by_context": {c: [first + i, last - i] for i, c in enumerate(contexts)}}
     return {
         "kernels": [
             row(0, "m::hot", 1000, {"cam_run1.a": 900, "cam_run1.b": 90, "initialization": 10}),
@@ -77,6 +78,9 @@ def test_observed_not_observed_and_unknown_are_kept_apart() -> None:
     # per-process attribution: a kernel observed in A and B counts in each, initialization stays out
     assert processes["cam_run1.a"]["m::hot"]["calls"] == 900
     assert processes["cam_run1.b"]["m::hot"]["calls"] == 90
+    # each process carries its own step span, never the kernel's global one
+    assert processes["cam_run1.a"]["m::hot"]["first_step"] == 1
+    assert processes["cam_run1.b"]["m::hot"]["first_step"] == 2
     assert "m::hot" not in processes.get("initialization", {})
 
 

@@ -28,6 +28,7 @@ decoupling ledger (for action activity).  Output:
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import sys
 from pathlib import Path
@@ -76,6 +77,7 @@ def kernel_rows(observation: Mapping[str, Any], observability: Mapping[str, Any]
                 "rank_calls_min": counted["rank_calls_min"],
                 "rank_calls_max": counted["rank_calls_max"],
             })
+            row["steps_by_context"] = counted.get("steps_by_context") or {}
             if calls > 0:
                 row["status"] = "observed"
                 if kernel["coverage"] == "partial":
@@ -86,10 +88,14 @@ def kernel_rows(observation: Mapping[str, Any], observability: Mapping[str, Any]
                 for context, count in counted["calls_by_context"].items():
                     if context.startswith(("initialization", "finalize", "run-unattributed", "slot-")):
                         continue
+                    # step spans are per [kernel, context]: this process's own
+                    # first and last executing step, never another process's
+                    span = (counted.get("steps_by_context") or {}).get(context)
+                    first, last = (span if span else (counted["first_step"], counted["last_step"]))
                     processes.setdefault(context, {})[kernel["qualified"]] = {
                         "calls": int(count),
-                        "first_step": counted["first_step"],
-                        "last_step": counted["last_step"],
+                        "first_step": int(first),
+                        "last_step": int(last),
                     }
             elif kernel["coverage"] == "full" and run_complete:
                 row["status"] = "not-observed-in-this-run"
@@ -126,10 +132,22 @@ def main(argv: list[str] | None = None) -> int:
     bfb = _read(VALIDATION / args.bfb)
     if observability.get("schema_version") != 1:
         raise SystemExit("unsupported observability schema")
+    # provenance must agree across the three records of one run, or nothing merges
+    mismatches = []
     if observation.get("native_manifest_kernel_counts", {}).get("observability_sha256") \
             != observability["content_hash"]:
-        raise SystemExit("the observation was made against a different observability inventory; "
-                         "refusing to merge mismatched provenance")
+        mismatches.append("observability inventory content hash")
+    if observation.get("native_library_sha256") != summary.get("native_library_sha256"):
+        mismatches.append("native library sha256 (observation vs run summary)")
+    if observation.get("mpi_ranks") != summary.get("mpi_ranks"):
+        mismatches.append("MPI rank count")
+    if observation.get("steps") != summary.get("steps"):
+        mismatches.append("step count")
+    summary_job = (summary.get("pbs_job_id") or "").split(".", 1)[0] or None
+    if observation.get("pbs_job") and summary_job and observation["pbs_job"] != summary_job:
+        mismatches.append("PBS job id")
+    if mismatches:
+        raise SystemExit("refusing to merge mismatched provenance: " + "; ".join(mismatches))
 
     instrumented_indexes = {int(r["index"]) for r in observation["kernels"]}
     inert_actions = {a["id"] for a in ledger["actions"] if a.get("activity") == "inert"}
@@ -162,6 +180,12 @@ def main(argv: list[str] | None = None) -> int:
             "maximum_rank_hwm_bytes": max((s.get("maximum_rank_hwm_bytes", 0)
                                            for s in (summary.get("memory") or {}).get("samples", [])),
                                           default=None),
+        },
+        "provenance": {
+            "run_id": observation.get("pbs_job") or summary_job,
+            "observation_sha256": hashlib.sha256(args.observation.read_bytes()).hexdigest(),
+            "summary_sha256": hashlib.sha256((VALIDATION / args.summary).read_bytes()).hexdigest(),
+            "bfb_sha256": hashlib.sha256((VALIDATION / args.bfb).read_bytes()).hexdigest(),
         },
         "image": {
             "native_library_sha256": observation.get("native_library_sha256"),

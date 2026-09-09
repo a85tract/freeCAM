@@ -98,6 +98,7 @@ function fixture(): Snapshot {
         "cam_run1.a": {
           "m::alpha": { calls: 2976, first_step: 1, last_step: 1488 },
           "m::shared": { calls: 12, first_step: 3, last_step: 1400 },
+          "m::runtimeonly": { calls: 7, first_step: 9, last_step: 9 },
         },
       },
     },
@@ -106,6 +107,23 @@ function fixture(): Snapshot {
         present: false, addable: false, reason: "not independently runnable (context_required)" },
     ],
     kernels: {
+      "m::runtimeonly": {
+        id: "m::runtimeonly", routine: "runtimeonly", module: "m", kind: "subroutine", host: null, public: true,
+        source: { file: "components/m.F90", line_start: 400, line_end: 410 },
+        processes: ["cam_run1.z"], callers: [], tracked: false, status: null, missing: null,
+        owner_class: null, note: null, module_state: [],
+        development: { state: "unclaimed" },
+        observation: { "1month": { status: "observed", calls_total: 7, coverage: "full",
+                                   calls_by_context: { "cam_run1.a": 7 }, first_step: 9, last_step: 9,
+                                   ranks_with_calls: 1 } },
+        capabilities: {
+          contract: { state: "not-implemented" }, adapter_build: { state: "not-implemented" },
+          independently_callable: { state: "not-assessed" }, standalone_replay: { state: "not-assessed" },
+          in_model_replacement: { state: "not-implemented" }, original_replacement_bfb: { state: "not-assessed" },
+        } as never,
+        redirect: { classification: "rename-references", redirectable: true, reading: "static" },
+        adapter_hint: null, failures: [],
+      },
       "m::alpha": {
         id: "m::alpha", routine: "alpha", module: "m", kind: "subroutine", host: null, public: true,
         source: { file: "components/m.F90", line_start: 10, line_end: 90 },
@@ -164,6 +182,7 @@ function fixture(): Snapshot {
     process_membership: {
       "cam_run1.a": {
         kernels: ["m::alpha", "m::shared"],
+        runtime_only: ["m::runtimeonly"],
         edges: [
           { parent: null, kernel: "m::alpha", via: ["drv::a_tend"] },
           { parent: "m::alpha", kernel: "m::shared", via: [] },
@@ -238,10 +257,11 @@ describe("the progress dashboard", () => {
     // the month run is selected by default; the execution inventory separates the axes
     expect(screen.getByText("Execution inventory")).toBeInTheDocument();
     const inventory = Array.from(document.querySelectorAll(".facts div")).map((n) => n.textContent ?? "");
-    expect(inventory.some((t) => t.includes("Observed executing here") && t.includes("2"))).toBe(true);
+    expect(inventory.some((t) => t.includes("Observed executing here") && t.includes("3")
+      && t.includes("beyond the static tree"))).toBe(true);
     // capability bars count only the kernels observed in this process, and say so
     const barTexts = Array.from(document.querySelectorAll(".bar-head")).map((n) => n.textContent ?? "");
-    expect(barTexts.some((t) => t.includes("Independently callable") && t.includes("1 / 2"))).toBe(true);
+    expect(barTexts.some((t) => t.includes("Independently callable") && t.includes("1 / 3"))).toBe(true);
     expect(document.body.textContent).toContain("observed executing in this process in the selected run");
     // the default kernel list is the observed one, with real per-process call counts
     const observed = screen.getByRole("list", { name: "Observed" });
@@ -401,6 +421,18 @@ describe("derivations", () => {
     expect(bars.find((b) => b.key === "original_replacement_bfb")?.done).toBe(1);
   });
 
+  it("shows runtime-observed calls the static tree misses, never hiding them", () => {
+    const snapshot = fixture();
+    const states = processKernelStates(snapshot, "cam_run1.a", "1month");
+    expect(states.get("m::runtimeonly")).toBe("observed");
+    const inventory = executionInventory(snapshot, "cam_run1.a", "1month");
+    expect(inventory.observed).toBe(3);
+    expect(inventory.runtimeOnly).toBe(1);
+    expect(inventory.candidates).toBe(2);            // the static denominator stays static
+    // absent from the selected run: the runtime-only kernel simply is not there
+    expect(processKernelStates(snapshot, "cam_run1.a", "50step").has("m::runtimeonly")).toBe(false);
+  });
+
   it("scopes the capability denominator to the kernels observed in this process and run", () => {
     const snapshot = fixture();
     // 50-step run: only alpha observed in process a -> 1/1 replaceable, never 100% of the process
@@ -408,14 +440,14 @@ describe("derivations", () => {
     expect(bars.every((bar) => bar.total === 1)).toBe(true);
     expect(bars.find((b) => b.key === "original_replacement_bfb")?.done).toBe(1);
     expect(bars[0].denominator).toContain("observation coverage is incomplete: 1 candidates remain");
-    // the month run also observed the shared helper here -> denominator grows to 2
+    // the month run also observed the shared helper and a runtime-only call here -> 3
     const month = processBars(snapshot, "cam_run1.a", "1month");
-    expect(month.every((bar) => bar.total === 2)).toBe(true);
+    expect(month.every((bar) => bar.total === 3)).toBe(true);
     // observation in process a never marks process z observed
     const statesZ = processKernelStates(snapshot, "cam_run1.z", "1month");
     expect([...statesZ.values()].every((s) => s !== "observed")).toBe(true);
     const inventory = executionInventory(snapshot, "cam_run1.a", "50step");
-    expect(inventory).toEqual({ candidates: 2, observed: 1, coveredNotObserved: 0, gaps: 1 });
+    expect(inventory).toEqual({ candidates: 2, observed: 1, coveredNotObserved: 0, gaps: 1, runtimeOnly: 0 });
   });
 
   it("defaults to the validated month run and falls back honestly", () => {
