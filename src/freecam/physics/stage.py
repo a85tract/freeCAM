@@ -865,6 +865,87 @@ class StageExecution:
         }
 
 
+def _canonical_kernel_aliases() -> "dict[str, str]":
+    """canonical ``module::routine`` -> routine, from the observability inventory.
+
+    The inventory names every candidate's canonical identity; a routine name
+    that is unique among the candidates doubles as the short alias the runner
+    manifests use.  A missing record (an installed wheel without the
+    repository) leaves the table empty and canonical lookups fail with a
+    clear message.
+    """
+
+    global _CANONICAL_ALIASES
+    if _CANONICAL_ALIASES is None:
+        table: dict[str, str] = {}
+        record = Path(__file__).resolve().parents[3] / "validation/pi_cam_kernel_observability.json"
+        try:
+            payload = json.loads(record.read_text())
+            for kernel in payload.get("kernels", []):
+                table[kernel["qualified"]] = kernel["routine"]
+        except (OSError, json.JSONDecodeError):
+            table = {}
+        _CANONICAL_ALIASES = table
+    return _CANONICAL_ALIASES
+
+
+_CANONICAL_ALIASES: "dict[str, str] | None" = None
+
+
+class KernelRegistry(dict):
+    """A stage's replaceable kernels, addressable canonically or by short name.
+
+    The canonical key is ``module::routine`` from the observability inventory;
+    the short routine name works exactly as before because it is unique within
+    the class.  Keys are stored and iterated as short names, so runner masks,
+    descriptions and existing callers see no change, and ``compose`` keeps
+    sharing one mapping between an outer stage and its sub-walks.  ``None`` or
+    ``OriginalKernel()`` restores the original Fortran.
+    """
+
+    def _resolve(self, key: Any) -> Any:
+        if isinstance(key, str) and "::" in key:
+            aliases = _canonical_kernel_aliases()
+            short = aliases.get(key)
+            if short is None:
+                known = sorted(q for q, s in aliases.items() if dict.__contains__(self, s))
+                raise PhysicsError(
+                    f"no swappable kernel with canonical id {key!r}"
+                    + (f"; this registry holds {known}" if known else
+                       "; the observability inventory is unavailable, use the short name"))
+            if not dict.__contains__(self, short):
+                raise PhysicsError(
+                    f"{key!r} resolves to {short!r}, which is not a swappable kernel here; "
+                    f"this registry holds {sorted(self)}")
+            return short
+        return key
+
+    def __getitem__(self, key: Any) -> Any:
+        return super().__getitem__(self._resolve(key))
+
+    def __setitem__(self, key: Any, value: Any) -> None:
+        super().__setitem__(self._resolve(key), value)
+
+    def __contains__(self, key: Any) -> bool:
+        try:
+            return super().__contains__(self._resolve(key))
+        except PhysicsError:
+            return False
+
+    def get(self, key: Any, default: Any = None) -> Any:
+        try:
+            return super().get(self._resolve(key), default)
+        except PhysicsError:
+            return default
+
+    def update(self, other=(), **kwargs: Any) -> None:      # type: ignore[override]
+        items = other.items() if hasattr(other, "items") else other
+        for key, value in items:
+            self[key] = value
+        for key, value in kwargs.items():
+            self[key] = value
+
+
 class NativeStage:
     """A CAM physics stage whose driver layer is Python.
 
@@ -929,9 +1010,9 @@ class NativeStage:
         #: takes its place entirely.  Every name in :attr:`SWAPPABLE` is
         #: present from the start, so a caller can assign into the mapping
         #: without knowing whether the stage has one kernel or several.
-        self.kernels: dict[str, Callable[..., Mapping[str, np.ndarray]] | None] = {
-            name: None for name in self.SWAPPABLE
-        }
+        self.kernels: KernelRegistry = KernelRegistry(
+            {name: None for name in self.SWAPPABLE}
+        )
         #: Which path :meth:`tend` takes; see :data:`EXECUTION_POLICIES`.  ``auto``
         #: runs the original Fortran stage whole while no kernel is replaced.
         self.execution_policy: str = "auto"

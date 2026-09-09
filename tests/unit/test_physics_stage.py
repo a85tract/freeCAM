@@ -997,3 +997,31 @@ def test_the_original_kernel_answers_in_the_frame_s_names_whatever_the_descripto
     answer = original({"ncol": np.int32(5), "x": np.full((5, PVER), 4.0)})
     assert list(answer) == ["y"] and np.all(answer["y"] == 9.0) and answer["y"].shape == (5, 2)
     assert np.all(ran[0]["other.x"][:5, :, 0] == 4.0)             # the input was found under its frame name
+
+
+def test_kernels_are_addressable_by_canonical_id_and_shared_through_compose() -> None:
+    """module::routine is the canonical key; the short name stays legal because it is
+    unique in the class; compose keeps one shared mapping, so the outer stage and the
+    sub-walk can never disagree about a replacement (plan: unified kernel API)."""
+    from freecam.physics.cloud_macro_microphysics import CloudMacroMicrophysics
+    from freecam.physics.segments import OriginalKernel
+
+    cloud = CloudMacroMicrophysics()
+    marker = OriginalKernel()
+    cloud.kernels["cldwat2m_macro::mmacro_pcond"] = marker
+    assert cloud.kernels["mmacro_pcond"] is marker
+    macro = cloud._owner_of("mmacro_pcond")
+    assert macro is not cloud and macro.kernels is cloud.kernels     # one mapping, several walkers
+    assert macro.kernels["cldwat2m_macro::mmacro_pcond"] is marker
+    cloud.kernels["micro_mg1_0::micro_mg_tend"] = marker
+    assert cloud.kernels["micro_mg_tend"] is marker
+    # None restores the original implementation
+    cloud.kernels["cldwat2m_macro::mmacro_pcond"] = None
+    assert cloud.kernels["mmacro_pcond"] is None
+    # a canonical id outside this class is refused, not guessed
+    with pytest.raises(PhysicsError, match="not a swappable kernel here"):
+        cloud.kernels["pbl_utils::virtem"] = marker
+    with pytest.raises(PhysicsError, match="no swappable kernel with canonical id"):
+        cloud.kernels["nope::nothere"] = marker
+    assert "cldwat2m_macro::mmacro_pcond" in cloud.kernels and "mmacro_pcond" in cloud.kernels
+    assert "pbl_utils::virtem" not in cloud.kernels
