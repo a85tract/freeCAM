@@ -180,6 +180,46 @@ The record names nothing outside the repository: contract paths, evidence
 files and catalog sources are relative, and there is no timestamp, so the
 committed file equals a fresh build or the test fails.
 
+### The core inside `mmacro_pcond`
+
+Every output of `mmacro_pcond` is derived from one internal call:
+`instratus_condensate`, the saturation adjustment and stratus-fraction closure,
+called twice per level (the relaxation iterations) and once more for the final
+state.  Its last lines are the routine's own algebra -- `ql = al_st * ql_st`,
+`qi = ai_st * qi_st`, `T = T0 - (latvap/cpair)(ql0 - ql) - ((latvap+latice)/cpair)(qi0 - qi)`,
+`qv = qv0 + ql0 - ql + qi0 - qi` -- so a model that answers only the free
+variables (the two stratus fractions and the two in-stratus condensates, each
+bounded by construction) and derives the rest by those lines conserves water
+and moist energy exactly and never hands the driver a fraction outside [0, 1].
+That is the cut for a surrogate of the macrophysics that the isotope budget
+cannot see; the outputs `mmacro_pcond` adds on top -- the tendencies, `qme`,
+the limiter's adjustments -- stay the original Fortran's.
+On 288,000 captured calls (32 ranks of gate 7371232) those four lines hold to
+round-off -- water and moist energy to a few 1e-16 relative, the in-stratus
+products exactly -- which `validation/pi_cam_instratus_condensate_identities.json`
+records.
+
+It is reached the way `fluxbelowinv` is: the definition in `cldwat2m_macro.o`
+is weakened and the hook takes its symbol (two PC32 relocations).  The stage-7
+runner, which transcribes tphysbc's stage and pauses at `mmacro_pcond`,
+`micro_mg_tend` and `cldfrc_fice` in its own state machine, gained the
+pausable runners' fiber: with the hooked kernel replaced it arms the hook and
+runs the whole stage on the fiber, the hook yields the frame from inside the
+compiled routine, and `frame`, `resume` and `original` are served by the hook
+table.  This revision refuses to combine the hooked kernel with a runner-level
+pause (the manifest's `within` already forbids it with `mmacro_pcond`).  A
+pause costs about a tenth of a millisecond: 9000 per rank per fifty steps
+added under a second to a run that pauses a hundred times.
+
+Any picklable callable can stand in any exposed slot from the command line:
+`--kernel-model NAME=PATH` (or `PYCAM_KERNEL_MODELS` for the gate job) loads a
+cloudpickled model into the named kernel of an installed stage class and records
+it by path and content hash; `PYCAM_NO_VERIFY_EXPORTS` lets such a run past the
+replay's export check, since a model's answer differs from the oracle's at the
+first export.  Every gate run now also counts the log's water-isotope errors and
+QNEG3 resets into `<summary>.health.json`: the original physics counts zero of
+each in fifty steps, so a model's number there is entirely its own.
+
 ## Where it stands
 
 | Kernel | Owner | Contract | Runner pause | In-model gate | Loop |
@@ -202,6 +242,7 @@ committed file equals a fresh build or the test fails.
 | `modal_aero_depvel_part` | AerosolDryDeposition (pausable, a leaf, four sites) | frame descriptor | yes, validated | segmented, bit-for-bit (800 pauses in 50 steps: the droplets and every mode at all four sites) | open: capture and replay |
 | `gas_phase_chemdr` | ChemistryTendencies (pausable, a leaf; the whole driver) | frame descriptor | yes, validated | segmented, bit-for-bit (100 pauses in 50 steps, the whole gas-phase driver answered as one kernel) | open: capture and replay |
 | `virtem` | VerticalDiffusion (pausable; a function inside an assignment of the driver) | frame descriptor; standalone contract | yes, validated | segmented, bit-for-bit (100 pauses in 50 steps; gate 7343257, and with every class installed, 7343260); every frame captured at the pause (7343396) replayed bit-for-bit through its standalone image | complete |
+| `instratus_condensate` | Macrophysics (in the cloud stage; hooked: a private procedure of `cldwat2m_macro` called inside the compiled `mmacro_pcond`) | reviewed | yes, validated | segmented, bit-for-bit: the stage-7 runner runs on the fiber and the hook yields at every call, 9000 pauses per rank in 50 steps (two chunks by thirty levels by three calls -- the two relaxation iterations and the final state -- by fifty steps; gate 7371011); every frame captured at the hook (4,608,000 over the 512 ranks, gate 7371232, bit-for-bit; the first capture died out of memory at 4 x 64 GB and is kept as a failure record) | open: standalone replay of the captured frames |
 | `cldfrc_fice` | DeepConvection (hooked; called inside the compiled `zm_conv_evap`) | function contract; standalone image | yes, validated | a hoisted copy of `zm_conv_evap` was not bit-for-bit (7343258, failure record kept); reached through a hook that redirects `zm_conv.o`'s call, machine code untouched: answered by the original at the hook, bit-for-bit, 51200 pauses in 50 steps (7343708); the first hook gate (7343594) failed on a duplicate fiber-body symbol, failure record kept; every frame captured at the hook (7343811) replayed bit-for-bit through its standalone image | complete |
 | `fluxbelowinv` | ShallowConvection (hooked; private, called inside the compiled `compute_uwshcu`) | function contract; standalone image through its own symbol | yes, validated | its weakened definition hands every call site to the hook: answered by the original at the hook, bit-for-bit, 36733580 pauses in 50 steps (7343709); every frame captured at the hook (7343922) replayed bit-for-bit through its standalone image with the model's snapshot of uwshcu's `g` (7344823) -- the first replay, without that module state, was not and is kept as a failure record | complete |
 

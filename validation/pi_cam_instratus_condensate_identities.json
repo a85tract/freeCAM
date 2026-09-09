@@ -1,0 +1,16 @@
+{
+  "schema_version": 1,
+  "what": "The closure of instratus_condensate checked on captured frames: the routine's own last lines (cldwat2m_macro.F90:1778-1801) hold to the bit, so a model that answers only the stratus fractions and in-stratus condensates and derives the rest by those lines conserves water and moist energy exactly.",
+  "capture": {"pbs_job_id": "7371232.desched1", "record": "pi_cam_pausable_instratus-capture_50step.json",
+              "bfb_record": "pi_cam_pausable_instratus-capture_vs_oracle_50step_bfb.json", "frames_total": 4608000},
+  "checked": {"ranks": 32, "calls": 288000, "columns": 4032000, "checker": "conservation residuals per live column, relative to the column's own magnitude"},
+  "identities": {
+    "water": {"expression": "qv_out + ql_out + qi_out == qv0_in + ql0_in + qi0_in", "relative_residual": {"p50": 0.0, "p99": 0.0, "max": 4.25e-16}},
+    "moist_energy": {"expression": "cpair*(t_out - t0_in) == latvap*(ql_out - ql0_in) + (latvap+latice)*(qi_out - qi0_in)", "relative_residual": {"p50": 0.0, "p99": 9.31e-17, "max": 2.68e-16}},
+    "in_stratus_liquid": {"expression": "ql_out == al_st_out * ql_st_out", "relative_residual": {"p50": 0.0, "p99": 0.0, "max": 0.0}},
+    "in_stratus_ice": {"expression": "qi_out == ai_st_out * qi_st_out", "relative_residual": {"p50": 0.0, "p99": 0.0, "max": 0.0}},
+    "fractions": {"al_st_out": [0.0, 1.0], "ai_st_out": [0.0, 0.999]},
+    "negative_water_columns": 0
+  },
+  "reading": "Water and moist energy close to floating-point round-off and the in-stratus products are exact: the derivation layer of a surrogate can be these four lines verbatim, and the free variables are al_st, ai_st, ql_st and qi_st.  al_st reaches 1.0 only where the cumulus fraction is zero; both are bounded by 1 - a_dc - a_sc."
+}
