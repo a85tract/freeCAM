@@ -20,7 +20,10 @@
 # PYCAM_CAPTURE_KERNELS records every call's frame of the named kernels for the
 # standalone replay (tools/replay_pi_cam_frame_capture.py).
 # PYCAM_KERNEL_MODELS=name=path[,name=path] puts cloudpickled models in kernel
-# slots (never bit-for-bit: the drift and the health of the run are the result).
+# slots (never bit-for-bit: the drift and the health of the run are the result);
+# PYCAM_NO_VERIFY_EXPORTS=1 lets such a run past the replay's export check.
+# Every run's log is counted for the model's health -- water-isotope BIG ERROR
+# lines, isotopic mass errors and QNEG3 resets -- into <summary>.health.json.
 # PYCAM_DISABLE_ACTIONS (qualified action names) is the inertness gate: those
 # actions switched off, the answer must still be the oracle's.
 # PYCAM_RADIATION_PYTHON=1 installs the split Radiation class between its two
@@ -96,6 +99,11 @@ if [ -n "${PYCAM_KERNEL_MODELS:-}" ]; then
     stage_flags+=(--kernel-model "${pair}")
   done
 fi
+if [ -n "${PYCAM_NO_VERIFY_EXPORTS:-}" ]; then
+  # a model's answer differs from the oracle's at the first export; the replay
+  # would otherwise stop there.  Only for runs whose result is drift, not bit-for-bit
+  stage_flags+=(--no-verify-exports)
+fi
 if [ ${#stage_flags[@]} -eq 0 ]; then
   echo "set PYCAM_PYTHON_STAGES, PYCAM_RADIATION_PYTHON, PYCAM_ORIGINAL_KERNELS or PYCAM_DISABLE_ACTIONS" >&2; exit 2
 fi
@@ -120,5 +128,26 @@ status=0
 import json
 s = json.load(open("${summary}"))
 print("stage execution:", json.dumps(s.get("stage_execution")))
+PY
+
+# the model's health, from the log: how often the physics had to be repaired
+health=${summary%.json}.health.json
+"${python}" - <<PY || true
+import json, re
+log = "${run_dir}/pi_cam_python.log"
+counts = {"big_error": 0, "isotopic_mass_error": 0, "qneg3_macro": 0, "qneg3_total": 0, "tracebacks": 0}
+with open(log, errors="replace") as fh:
+    for line in fh:
+        if "BIG ERROR" in line: counts["big_error"] += 1
+        if "isotopic stratiform precipitation mass error" in line: counts["isotopic_mass_error"] += 1
+        if "QNEG3 from" in line:
+            counts["qneg3_total"] += 1
+            if "QNEG3 from macro" in line: counts["qneg3_macro"] += 1
+        if "Traceback" in line: counts["tracebacks"] += 1
+steps = ${PYCAM_STEPS:-50}
+record = {"schema_version": 1, "log": log, "steps": steps, "counts": counts,
+          "per_step": {k: v / steps for k, v in counts.items()}}
+json.dump(record, open("${health}", "w"), indent=1)
+print("health:", json.dumps(counts))
 PY
 exit "${status}"
