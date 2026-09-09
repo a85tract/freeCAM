@@ -85,9 +85,19 @@ class KernelCounters:
         return int(self.table.shape[1])
 
     def assign_slots(self, action_ids: list[str]) -> None:
-        """One slot per workflow action, in sorted order: identical on every rank."""
+        """One slot per workflow action, in sorted order: identical on every rank.
 
-        ordered = sorted(set(action_ids))
+        A Python stage class wraps its native action under the plan name
+        ``<action>_python`` and runs the native action inside it; both names
+        map to one slot, named by the canonical action id, so the class's
+        kernels attribute to the process rather than to run-unattributed
+        (the month gate 7356002 lost stage 7 that way).
+        """
+
+        def canonical(action_id: str) -> str:
+            return action_id[: -len("_python")] if action_id.endswith("_python") else action_id
+
+        ordered = sorted({canonical(action_id) for action_id in action_ids})
         if FIRST_ACTION_SLOT + len(ordered) > self.slots:
             raise PICAMConfigurationError(
                 f"{len(ordered)} workflow actions do not fit the counting table's "
@@ -95,6 +105,7 @@ class KernelCounters:
         for offset, action_id in enumerate(ordered):
             slot = FIRST_ACTION_SLOT + offset
             self.slot_of_action[action_id] = slot
+            self.slot_of_action[action_id + "_python"] = slot
             self.slot_names[slot] = action_id
 
     def enter_action(self, qualified_name: str) -> int:

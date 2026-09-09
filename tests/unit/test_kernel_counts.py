@@ -30,10 +30,23 @@ def _counters(kernels=4, slots=8) -> tuple[KernelCounters, SimpleNamespace]:
 def test_slots_are_assigned_deterministically_and_overflow_is_refused() -> None:
     counters, _ = _counters(slots=8)
     counters.assign_slots(["cam_run1.b", "cam_run1.a", "cam_run1.b"])
-    assert counters.slot_of_action == {"cam_run1.a": 3, "cam_run1.b": 4}
+    assert counters.slot_of_action == {"cam_run1.a": 3, "cam_run1.a_python": 3,
+                                       "cam_run1.b": 4, "cam_run1.b_python": 4}
     assert counters.slot_names[3] == "cam_run1.a" and counters.slot_names[0] == "initialization"
     with pytest.raises(PICAMConfigurationError, match="do not fit"):
         counters.assign_slots([f"cam_run1.p{i}" for i in range(9)])
+
+
+def test_a_python_stage_wrapper_and_its_native_action_share_one_canonical_slot() -> None:
+    counters, state = _counters(slots=8)
+    counters.assign_slots(["cam_run1.cloud_python_stage_python", "cam_run1.a"])
+    assert counters.slot_names[4] == "cam_run1.cloud_python_stage"
+    outer = counters.enter_action("cam_run1.cloud_python_stage_python")
+    inner = counters.enter_action("cam_run1.cloud_python_stage")   # run_action inside the class
+    assert state.context == 4                                       # same slot, not unattributed
+    counters.restore(inner)
+    counters.restore(outer)
+    assert state.context == SLOT_INITIALIZATION
 
 
 def test_enter_and_restore_pair_and_nest_and_unknown_actions_stay_unattributed() -> None:
