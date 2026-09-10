@@ -1,4 +1,4 @@
-"""--kernel-model: a cloudpickled callable in a named kernel slot, recorded by path and hash."""
+"""--kernel-model: a cloudpickled callable in a named kernel slot, recorded by file name and hash."""
 
 from __future__ import annotations
 
@@ -31,7 +31,15 @@ def test_a_pickled_callable_loads_and_is_recorded_by_hash(tmp_path: Path) -> Non
     assert loaded({"t0_in": 3.0}) == {"t_out": 3.0}
     summary = _kernel_models_summary({"instratus_condensate": path})
     assert summary["instratus_condensate"]["sha256"] == hashlib.sha256(path.read_bytes()).hexdigest()
-    assert summary["instratus_condensate"]["path"] == str(path)
+    assert summary["instratus_condensate"]["file"] == "model.pkl"
+    assert "path" not in summary["instratus_condensate"]        # outside the checkout: no site directory in a record
+    inside = Path(__file__).resolve().parents[2] / "build" / "kernel-model-test.pkl"
+    inside.parent.mkdir(exist_ok=True)
+    inside.write_bytes(path.read_bytes())
+    try:
+        assert _kernel_models_summary({"k": inside})["k"]["path"] == "build/kernel-model-test.pkl"
+    finally:
+        inside.unlink()
     assert _kernel_models_summary({}) is None
     (tmp_path / "not_callable.pkl").write_bytes(cloudpickle.dumps({"weights": [1, 2]}))
     with pytest.raises(SystemExit, match="not a callable"):

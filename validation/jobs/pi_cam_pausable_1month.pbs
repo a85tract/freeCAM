@@ -1,24 +1,26 @@
 #!/bin/bash
-# Submit with: validation/jobs/submit.sh validation/jobs/pi_cam_pausable_50step.pbs
-#PBS -N pycam-pausable-50
-#PBS -q develop
-# Preserve the validated rank placement: 512 MPI ranks on four nodes while
-# charging the cpudev maximum of 256 physical CPUs.
-#PBS -l select=4:ncpus=64:mpiprocs=128:ompthreads=1:mem=64GB
-#PBS -l walltime=00:20:00
+# Submit with: validation/jobs/submit.sh validation/jobs/pi_cam_pausable_1month.pbs
+#PBS -N pycam-pausable-month
+#PBS -q main
+# 512 ranks on four nodes as every PI-atm run; 235GB a node because a rank
+# that carries a model in a kernel slot holds it beside CAM's state.
+#PBS -l select=4:ncpus=64:mpiprocs=128:ompthreads=1:mem=235GB
+#PBS -l walltime=02:00:00
 #PBS -j oe
 #PBS -o logs/
 #PBS -V
 
-# The pausable stages' gates.  PYCAM_PYTHON_STAGES names the classes to
+# The pausable stages over the PI-atm month (1488 steps, replay boundary): the
+# same knobs as pi_cam_pausable_50step.pbs, for the questions fifty steps cannot
+# answer -- whether a model in a kernel slot stays healthy, and how far its
+# history drifts from the oracle's month (report_pi_cam_surrogate_drift.py).
+# PYCAM_PYTHON_STAGES names the classes to
 # install (comma-separated action names, freecam.physics.pausable.STAGES);
 # with PYCAM_ORIGINAL_KERNELS empty they run the original Fortran action
 # whole, and with it set those kernels are replaced by the original run at
 # the runner's pause -- the pause, the frame, the write-back and the resume
 # exercised, the answer the oracle's or the path is wrong.  PYCAM_RUN_TAG
 # names the run's records.  PYCAM_NATIVE_MANIFEST points at the image.
-# PYCAM_CAPTURE_KERNELS records every call's frame of the named kernels for the
-# standalone replay (tools/replay_pi_cam_frame_capture.py).
 # PYCAM_KERNEL_MODELS=name=path[,name=path] puts cloudpickled models in kernel
 # slots (never bit-for-bit: the drift and the health of the run are the result);
 # PYCAM_NO_VERIFY_EXPORTS=1 lets such a run past the replay's export check.
@@ -37,14 +39,15 @@ source "${FREECAM_REPO:-${PBS_O_WORKDIR:-$PWD}}/validation/jobs/common.sh"
 
 repo=${FREECAM_REPO}
 python=${repo}/.venv/bin/python
-case_root=${FREECAM_STATE_CASE}
-oracle_run=${FREECAM_REFERENCE_RUN}
+case_root=${FREECAM_REFERENCE_CASE}
+oracle_run=${FREECAM_SCRATCH}/pyCESM/PI-atm/oracle-1month/run
 mode=${PYCAM_EXECUTION_MODE:-fine_grained}
-run_dir=${FREECAM_SCRATCH}/pyCAM/PI-cam/pausable-${PYCAM_RUN_TAG:-run}-${PBS_JOBID}/run
-boundary=${FREECAM_SCRATCH}/pyCAM/PI-cam/nonpic-boundary-capture-50step/boundary/replay
+run_dir=${FREECAM_SCRATCH}/pyCAM/PI-cam/pausable-${PYCAM_RUN_TAG:-run}-1month-${PBS_JOBID}/run
+boundary=${FREECAM_SCRATCH}/pyCAM/PI-cam/nonpic-boundary-capture-1month/boundary/replay
 manifest=${PYCAM_NATIVE_MANIFEST:-${repo}/build/pi_cam_promoted/native_cam_manifest.json}
-summary=${PYCAM_SUMMARY:-validation/pi_cam_pausable_${PYCAM_RUN_TAG:-run}_50step.json}
-bfb_output=${PYCAM_BFB_OUTPUT:-validation/pi_cam_pausable_${PYCAM_RUN_TAG:-run}_vs_oracle_50step_bfb.json}
+summary=${PYCAM_SUMMARY:-validation/pi_cam_pausable_${PYCAM_RUN_TAG:-run}_1month.json}
+bfb_output=${PYCAM_BFB_OUTPUT:-validation/pi_cam_pausable_${PYCAM_RUN_TAG:-run}_vs_oracle_1month_bfb.json}
+drift_output=${PYCAM_DRIFT_OUTPUT:-validation/pi_cam_pausable_${PYCAM_RUN_TAG:-run}_1month_drift.json}
 
 source "${case_root}/.env_mach_specific.sh" >/dev/null 2>&1
 mpi_root=${CRAY_MPICH_DIR:-/opt/cray/pe/mpich/8.1.25/ofi/intel/19.0}
@@ -59,8 +62,9 @@ export MPICH_MPIIO_HINTS='*:romio_cb_read=enable:romio_cb_write=enable:striping_
 
 mkdir -p "${run_dir}"
 rsync -a \
-  --exclude 'f.e13.F1850C5.ne16_g16.icesm131_ihesp.PI-cam-oracle.50step.*' \
-  --exclude '*.log.*' --exclude 'rpointer.*' --exclude 'timing/' \
+  --exclude '*.cam.*.nc' --exclude '*.clm2.*.nc' --exclude '*.cice.*.nc' \
+  --exclude '*.cpl.*.nc' --exclude '*.rtm.*.nc' --exclude '*.log.*' \
+  --exclude 'rpointer.*' --exclude 'timing/' \
   "${oracle_run}/" "${run_dir}/"
 mkdir -p "${run_dir}/timing/checkpoints"
 
@@ -86,11 +90,6 @@ if [ -n "${PYCAM_DISABLE_ACTIONS:-}" ]; then
   # the inertness gate: actions expected to do no numerical work, switched off
   stage_flags+=(--disable-actions "${PYCAM_DISABLE_ACTIONS}")
 fi
-if [ -n "${PYCAM_CAPTURE_KERNELS:-}" ]; then
-  # the named kernels answered by the original at their pauses with every call's
-  # frame recorded, for the standalone replay; the run must stay bit-for-bit
-  stage_flags+=(--capture-kernels "${PYCAM_CAPTURE_KERNELS}" --capture-dir "${run_dir}/../frame-capture")
-fi
 if [ -n "${PYCAM_KERNEL_MODELS:-}" ]; then
   # models in kernel slots, NAME=PATH pairs separated by commas: a cloudpickled
   # callable per slot.  NOT a bit-for-bit run and not evidence of one; the record
@@ -109,16 +108,17 @@ if [ -n "${PYCAM_NO_VERIFY_EXPORTS:-}" ]; then
   stage_flags+=(--no-verify-exports)
 fi
 if [ ${#stage_flags[@]} -eq 0 ]; then
-  echo "set PYCAM_PYTHON_STAGES, PYCAM_RADIATION_PYTHON, PYCAM_ORIGINAL_KERNELS or PYCAM_DISABLE_ACTIONS" >&2; exit 2
+  echo "set PYCAM_PYTHON_STAGES, PYCAM_RADIATION_PYTHON, PYCAM_CLOUD_PYTHON, PYCAM_ORIGINAL_KERNELS or PYCAM_DISABLE_ACTIONS" >&2; exit 2
 fi
 mpiexec --label -n 512 "${python}" -m freecam.pi_cam.cli \
-  --config configs/pi_cam_icesm131_replay.yaml \
+  --config configs/pi_cam_icesm131_1month.yaml \
   --native-manifest "${manifest}" \
   --boundary "${boundary}" \
   --run-dir "${run_dir}" \
   --execution-mode "${mode}" \
   "${stage_flags[@]}" \
-  --steps "${PYCAM_STEPS:-50}" \
+  --steps "${PYCAM_STEPS:-1488}" \
+  --memory-sample-every 200 \
   --summary "${summary}" \
   > "${run_dir}/pi_cam_python.log" 2>&1 || echo "model run exited $? (comparing the output anyway)"
 
@@ -127,6 +127,15 @@ status=0
   --reference "${oracle_run}" \
   --candidate "${run_dir}" \
   --output "${bfb_output}" || status=$?
+
+if [ -n "${PYCAM_KERNEL_MODELS:-}" ]; then
+  # a model's month is not bit-for-bit; how far each history field moved, in
+  # units of the field's own variability, and whether anything went non-finite
+  "${python}" tools/report_pi_cam_surrogate_drift.py \
+    --reference "${oracle_run}" \
+    --candidate "${run_dir}" \
+    --output "${drift_output}" || true
+fi
 
 "${python}" - <<PY || true
 import json
@@ -148,7 +157,7 @@ with open(log, errors="replace") as fh:
             counts["qneg3_total"] += 1
             if "QNEG3 from macro" in line: counts["qneg3_macro"] += 1
         if "Traceback" in line: counts["tracebacks"] += 1
-steps = ${PYCAM_STEPS:-50}
+steps = ${PYCAM_STEPS:-1488}
 # the record names the log under the scratch root: no site directory, no user
 record = {"schema_version": 1, "log": "${run_dir#${FREECAM_SCRATCH}/}/pi_cam_python.log",
           "steps": steps, "counts": counts,

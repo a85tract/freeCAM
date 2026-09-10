@@ -191,9 +191,10 @@ state.  Its last lines are the routine's own algebra -- `ql = al_st * ql_st`,
 variables (the two stratus fractions and the two in-stratus condensates, each
 bounded by construction) and derives the rest by those lines conserves water
 and moist energy exactly and never hands the driver a fraction outside [0, 1].
-That is the cut for a surrogate of the macrophysics that the isotope budget
-cannot see; the outputs `mmacro_pcond` adds on top -- the tendencies, `qme`,
-the limiter's adjustments -- stay the original Fortran's.
+That was the cut proposed for a surrogate of the macrophysics that the isotope
+budget would not see; the outputs `mmacro_pcond` adds on top -- the tendencies,
+`qme`, the limiter's adjustments -- stay the original Fortran's.  The first run
+with a model in the slot (below) shows the isotope budget does see it.
 On 288,000 captured calls (32 ranks of gate 7371232) those four lines hold to
 round-off -- water and moist energy to a few 1e-16 relative, the in-stratus
 products exactly -- which `validation/pi_cam_instratus_condensate_identities.json`
@@ -214,11 +215,34 @@ added under a second to a run that pauses a hundred times.
 Any picklable callable can stand in any exposed slot from the command line:
 `--kernel-model NAME=PATH` (or `PYCAM_KERNEL_MODELS` for the gate job) loads a
 cloudpickled model into the named kernel of an installed stage class and records
-it by path and content hash; `PYCAM_NO_VERIFY_EXPORTS` lets such a run past the
-replay's export check, since a model's answer differs from the oracle's at the
-first export.  Every gate run now also counts the log's water-isotope errors and
+it by file name and content hash; `PYCAM_NO_VERIFY_EXPORTS` lets such a run past
+the replay's export check, since a model's answer differs from the oracle's at the
+first export.  Every rank loads and re-pickles the model, and the install refuses
+a payload that hashes differently across ranks, so the model must pickle the same
+everywhere: a set of feature names pickles in per-process hash order and killed
+the first surrogate run at step 0 (`pi_cam_pausable_instratus-surrogate_50step_failure.json`);
+the gate job fixes `PYTHONHASHSEED` while models are loaded, and a model should
+use ordered containers regardless.  Every gate run now also counts the log's water-isotope errors and
 QNEG3 resets into `<summary>.health.json`: the original physics counts zero of
 each in fifty steps, so a model's number there is entirely its own.
+
+The first model in the slot ran the fifty steps (7371974,
+`pi_cam_pausable_instratus-surrogate_50step.json` and its `.health.json`): a
+NumPy multilayer perceptron of 72,454 parameters that predicts the two stratus
+fractions, the two in-stratus condensates and two gates, trained on eight
+million captured columns from 128 ranks of gate 7371232, with the closure's four
+lines verbatim after it.  It answered all 9000 calls per rank; the run needed
+no QNEG3 reset and reported no isotopic mass error; its step loop took 42 s
+against 45 s with the original answering at the same hook and 17 s with nothing
+paused, so the pause, not the network, is the cost at this size.  What the model
+did trip is the water-tracer check after the macrophysics (`wtrc_apply_rates`
+in water_tracers.F90): 6731 `BIG ERROR` lines in fifty steps where the original
+prints none -- in about four percent of the chunk-steps the tendency of the
+H2O copy tracers, rebuilt from the process rates, differs from the bulk
+tendency by 1e-3 to 0.17 relative, and the copies' state has already moved off
+the bulk water by up to 2e-3 kg/kg summed over a chunk.  Exact water and moist
+energy conservation is therefore not the whole constraint the isotope
+bookkeeping puts on this kernel.
 
 ## Where it stands
 

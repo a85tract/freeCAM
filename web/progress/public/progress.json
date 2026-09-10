@@ -2648,7 +2648,7 @@
   "use_gw_oro": true,
   "use_subcol_microp": false
  },
- "content_hash": "02a1d503923e6a39a33b246634b733c2eace49a21eb073665ed1bb0913f4d8cd",
+ "content_hash": "3dd174135f67abf131037a71644d67aee154a30501e645709cacbb8e94ef97a0",
  "evidence": {
   "pi_cam_cldfrc_fice_frame_replay.json": {
    "bfb": true,
@@ -4167,6 +4167,25 @@
    "pbs_job": null,
    "record": "pi_cam_pausable_instratus-hook_vs_oracle_50step_bfb.json"
   },
+  "pi_cam_pausable_instratus-surrogate_50step_failure.json": {
+   "diagnosis": "Not the physics and not the frame contract: the model's module kept its log-scaled feature names in a Python set.  Every rank loads the cloudpickled model and re-pickles it into the process payload, and a set of strings pickles in per-process hash order (PYTHONHASHSEED is randomised per process), so the 512 payloads hashed 512 ways and the install refused them.  Reproduced on the login node: two hash seeds give two different pickle hashes of the same model, one seed gives one.",
+   "image": {
+    "build": "pi_cam_promoted_p12",
+    "role": "development",
+    "sha256": null
+   },
+   "kind": "gate-failure",
+   "outcome": "model run exited 255 at step 0 on all 512 ranks: PythonProcessContractError 'Python process payload differs across MPI ranks' from the cloud stage's install; no history, no summary",
+   "pbs_job": "7371767",
+   "python_stages": [
+    "cloud_macro_microphysics"
+   ],
+   "ranks": 512,
+   "record": "pi_cam_pausable_instratus-surrogate_50step_failure.json",
+   "run_tag": "instratus-surrogate",
+   "steps_completed": 0,
+   "what": "The first run with a trained model in a kernel slot: the few-free-variables surrogate for instratus_condensate (an MLP predicting the two stratus fractions, the two in-stratus mixing ratios and two gates, the rest of the kernel's outputs derived by the routine's own closure) installed through --kernel-model in the cloud stage, 50 steps, replay boundary."
+  },
   "pi_cam_pausable_micro-capture_50step_failure.json": {
    "diagnosis": "Version skew between the checked-out manifest and the queued image, not a numerical failure. While the job waited in the queue, native/pi_cam/segment_runners.yaml gained `original: true` for the stage-7 runner (the regenerated module exports pycam_stage7_original_v1 and pauses at cldfrc_fice); the job then ran the p10 image, whose module predates that entry, and the binding failed closed at construction as designed. The single history file the aborted run had written compared bit-for-bit; the restart files were never written.",
    "image": {
@@ -4761,6 +4780,14 @@
    "contexts": [
     "cam_run1.cloud_macro_microphysics"
    ],
+   "kernel_routine": null,
+   "record": "pi_cam_pausable_instratus-surrogate_50step_failure.json"
+  },
+  {
+   "capability": "original_replacement_bfb",
+   "contexts": [
+    "cam_run1.cloud_macro_microphysics"
+   ],
    "kernel_routine": "micro_mg_tend",
    "record": "pi_cam_pausable_micro-capture_50step_failure.json"
   }
@@ -4768,14 +4795,14 @@
  "inputs": {
   "native/pi_cam/hooks.yaml": "fe94bb020f505d5d2f532a607400dddc9b4c0feb3f9ba227f0e3d81faae63997",
   "native/pi_cam/kernel_classifications.yaml": "d6be2103c9bd0c86a0c8461a067d3b43eac6aa370e992fde9bf3096e55c8c5f4",
-  "native/pi_cam/kernel_work_items.yaml": "4e335454fd1a17dd338586da9dbb613413e173addabd7f53dc51aea028d6a54b",
+  "native/pi_cam/kernel_work_items.yaml": "25a18315d213d56d198320bcf1a538d817d914ef31b4bbf6907d1f1e3ca7bc9f",
   "native/pi_cam/segment_runners.yaml": "002ab5f622cb5c10c0d7fc45eead3ef708de6524602eda635b4c064649663acd",
   "validation/physics_kernel_decoupling.json": "2a9ff0a6804a4e0d54b36b26c34f44a36e5eb6234ba53fe32d7d944973680462",
   "validation/pi_cam_kernel_api_closure.json": "96025214b3e4c41f6ba89c266da5dd27c51c42c81c31e1a0ac6f7b2e9cfa260a",
   "validation/pi_cam_kernel_api_redirectable_calls.json": "9ac016f0d242ceef054aa8a80ef074aa53b08c1f0f3042a81e76da4c75603273",
   "validation/pi_cam_kernel_runtime_coverage_1month.json": "48f77d6ec78b4026806d4ab6fb9517ef31c1d526481b4ad68e55f77af0d303bd",
   "validation/pi_cam_kernel_runtime_coverage_50step.json": "222961fc5274dbaaf71c40f6c131a683536b5a85ef14cd047a2fd196d8ca38c5",
-  "web/public/catalog.json": "7d23ac4f809d7c23a0b9281fdb7550365d0ce04d6129c3b139baab8a814f69e4"
+  "web/public/catalog.json": "2500b68099b54445abc0f5f5220a52ae0323bf8418354c8105082cca55a90915"
  },
  "kernels": {
   "aer_rad_props::aer_rad_props_lw": {
@@ -9914,8 +9941,8 @@
    "development": {
     "blocker": null,
     "branch": "physics-kernel-api-closure",
-    "next_gate": "standalone replay of the 4,608,000 captured frames; a 50-step run with the few-free-variables surrogate in the slot",
-    "note": "Hook gate 7371011 and capture gate 7371232 both bit-for-bit (9000 pauses per rank); every frame captured (512 ranks, 47 GB). The first capture (7371012) died out of memory at 4 x 64 GB, kept as a failure record. Health counts of the original: zero BIG ERROR, zero QNEG3 over 50 steps.",
+    "next_gate": "standalone replay of the 4,608,000 captured frames; the month run with the few-free-variables surrogate in the slot (health counts, drift)",
+    "note": "Hook gate 7371011 and capture gate 7371232 both bit-for-bit (9000 pauses per rank); every frame captured (512 ranks, 47 GB). The first capture (7371012) died out of memory at 4 x 64 GB, kept as a failure record. Health counts of the original: zero BIG ERROR, zero QNEG3 over 50 steps. The few-free-variables surrogate (MLP, 72,454 parameters, the closure verbatim) ran 50 steps in the slot (7371974): no crash, zero QNEG3, zero isotopic mass errors, 6731 water-tracer BIG ERROR lines; the first attempt (7371767) failed at step 0 because a set in the model pickled differently per rank, kept as a failure record.",
     "owner": "claude",
     "owner_class": "freecam.physics.macrophysics.Macrophysics",
     "stage": "capture_replay",
@@ -72345,8 +72372,8 @@
  ],
  "volatile": {
   "branch": "physics-kernel-api-closure",
-  "commit": "38b1db5ae3af4dc99e915df8f4f7e812ef2bcfa6",
-  "generated_at": "2026-09-09T23:51:41+00:00"
+  "commit": "ff2c404c8ed683bbda79fe84666ba947c83a0145",
+  "generated_at": "2026-09-10T00:53:37+00:00"
  },
  "work_items": [
   {
@@ -72383,8 +72410,8 @@
   {
    "branch": "physics-kernel-api-closure",
    "kernel": "cldwat2m_macro::instratus_condensate",
-   "next_gate": "standalone replay of the 4,608,000 captured frames; a 50-step run with the few-free-variables surrogate in the slot",
-   "note": "Hook gate 7371011 and capture gate 7371232 both bit-for-bit (9000 pauses per rank); every frame captured (512 ranks, 47 GB). The first capture (7371012) died out of memory at 4 x 64 GB, kept as a failure record. Health counts of the original: zero BIG ERROR, zero QNEG3 over 50 steps.",
+   "next_gate": "standalone replay of the 4,608,000 captured frames; the month run with the few-free-variables surrogate in the slot (health counts, drift)",
+   "note": "Hook gate 7371011 and capture gate 7371232 both bit-for-bit (9000 pauses per rank); every frame captured (512 ranks, 47 GB). The first capture (7371012) died out of memory at 4 x 64 GB, kept as a failure record. Health counts of the original: zero BIG ERROR, zero QNEG3 over 50 steps. The few-free-variables surrogate (MLP, 72,454 parameters, the closure verbatim) ran 50 steps in the slot (7371974): no crash, zero QNEG3, zero isotopic mass errors, 6731 water-tracer BIG ERROR lines; the first attempt (7371767) failed at step 0 because a set in the model pickled differently per rank, kept as a failure record.",
    "owner": "claude",
    "owner_class": "freecam.physics.macrophysics.Macrophysics",
    "stage": "capture_replay",

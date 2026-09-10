@@ -1,16 +1,16 @@
 {
  "schema_version": 1,
- "log": "pyCAM/PI-cam/pausable-instratus-capture-7371232.desched1/run/pi_cam_python.log",
+ "log": "pyCAM/PI-cam/pausable-instratus-surrogate-7371974.desched1/run/pi_cam_python.log",
  "steps": 50,
  "counts": {
-  "big_error": 0,
+  "big_error": 6731,
   "isotopic_mass_error": 0,
   "qneg3_macro": 0,
   "qneg3_total": 0,
   "tracebacks": 0
  },
  "per_step": {
-  "big_error": 0.0,
+  "big_error": 134.62,
   "isotopic_mass_error": 0.0,
   "qneg3_macro": 0.0,
   "qneg3_total": 0.0,

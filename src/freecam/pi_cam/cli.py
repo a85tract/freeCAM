@@ -147,14 +147,22 @@ def _load_kernel_model(path: Path):
 
 
 def _kernel_models_summary(models: dict[str, Path]) -> dict[str, dict[str, str]] | None:
-    """Which artifact stood in which slot: the record names it by path and content hash."""
+    """Which artifact stood in which slot: file name and content hash, and the path when
+    it lies inside this checkout (records name no site directory)."""
 
     import hashlib
 
     if not models:
         return None
-    return {name: {"path": str(path), "sha256": hashlib.sha256(path.read_bytes()).hexdigest()}
-            for name, path in models.items()}
+    repo = Path(__file__).resolve().parents[3]
+    summary: dict[str, dict[str, str]] = {}
+    for name, path in models.items():
+        row = {"file": path.name, "sha256": hashlib.sha256(path.read_bytes()).hexdigest()}
+        resolved = path.resolve()
+        if resolved.is_relative_to(repo):
+            row["path"] = str(resolved.relative_to(repo))
+        summary[name] = row
+    return summary
 
 
 def _hook_summary(records) -> dict[str, object] | None:
@@ -431,7 +439,9 @@ def main(argv: list[str] | None = None) -> int:
         help=(
             "put a model in a kernel's slot: NAME is a swappable kernel of an installed stage "
             "class, PATH a cloudpickled callable answering the kernel's frame (batch in, the "
-            "kernel's outputs out); repeatable.  Not a bit-for-bit run and not evidence of one."
+            "kernel's outputs out); repeatable.  Not a bit-for-bit run and not evidence of one.  "
+            "Every rank loads and re-pickles the model, so it must pickle identically on all of "
+            "them: ordered containers, no sets."
         ),
     )
     parser.add_argument(
