@@ -37,11 +37,17 @@ items:
   branch: physics-kernel-api-closure
   started_at: '2026-09-09'
   updated_at: '2026-09-09'
-  next_gate: standalone replay of the 4,608,000 captured frames; the month run with the few-free-variables
-    surrogate in the slot (health counts, drift)
+  next_gate: standalone replay of the 4,608,000 captured frames; a model that keeps saturation as well
+    as conservation (predict the stratus fractions, saturation adjustment for the condensates) over fifty
+    steps, then the month
   note: 'Hook gate 7371011 and capture gate 7371232 both bit-for-bit (9000 pauses per rank); every frame
-    captured (512 ranks, 47 GB). The first capture (7371012) died out of memory at 4 x 64 GB, kept as
-    a failure record. Health counts of the original: zero BIG ERROR, zero QNEG3 over 50 steps. The few-free-variables
-    surrogate (MLP, 72,454 parameters, the closure verbatim) ran 50 steps in the slot (7371974): no crash,
-    zero QNEG3, zero isotopic mass errors, 6731 water-tracer BIG ERROR lines; the first attempt (7371767)
-    failed at step 0 because a set in the model pickled differently per rank, kept as a failure record.'
+    captured (512 ranks, 47 GB); the first capture (7371012) died out of memory, kept as a failure record.
+    The few-free-variables surrogate (MLP, 72,454 parameters, the closure verbatim) ran fifty steps in
+    the slot (7371974: no crash, zero QNEG3, 6731 water-tracer BIG ERROR lines where the original prints
+    none) and 983 steps of the month (7373795: the water-tracer checks fired at a steady 108 lines per
+    step, shallow-convection dry-source warnings grew a thousandfold, 21 isotopic mass errors, then SIGSEGV
+    on all ranks at day 20.5; failure record, health and drift records committed). Cause found in the
+    source: the driver''s next-iteration linearisation takes the routine''s output as the saturated state;
+    a predicted condensate that is not the saturation adjustment''s drives the vapor negative, positive_moisture
+    repairs it, and the negative net water tendency is dropped from the H2O copies. The first surrogate
+    attempt (7371767) failed at step 0 because a set in the model pickled differently per rank.'

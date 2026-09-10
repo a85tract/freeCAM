@@ -1,0 +1,35 @@
+{
+  "bfb": false,
+  "reference_files": 18,
+  "candidate_files": 10,
+  "compared_files": 10,
+  "missing_in_candidate": [
+    "cam.h0.0001-01-21-72000.nc",
+    "cam.h0.0001-01-23-79200.nc",
+    "cam.h0.0001-01-26-00000.nc",
+    "cam.h0.0001-01-28-07200.nc",
+    "cam.h0.0001-01-30-14400.nc",
+    "cam.r.0001-02-01-00000.nc",
+    "cam.rh0.0001-02-01-00000.nc",
+    "cam.rs.0001-02-01-00000.nc"
+  ],
+  "extra_in_candidate": [],
+  "first_difference": {
+    "file": "cam.h0.0001-01-03-07200.nc",
+    "kind": "value",
+    "variable": "ADRAIN",
+    "index": [
+      0,
+      17,
+      3695
+    ],
+    "reference": {
+      "value": 0.0,
+      "bits": "0x00000000"
+    },
+    "candidate": {
+      "value": 5.997795597068034e-06,
+      "bits": "0x36c940ac"
+    }
+  }
+}

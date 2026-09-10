@@ -244,6 +244,40 @@ the bulk water by up to 2e-3 kg/kg summed over a chunk.  Exact water and moist
 energy conservation is therefore not the whole constraint the isotope
 bookkeeping puts on this kernel.
 
+Reading the two routines says why.  The tracer path takes only the three bulk
+tendencies (macrop_driver.F90, 1128-1133): the phase changes split by sign, and
+the net water tendency `qvlat + qcten + qiten` as a vapor self-rate.  A rate is
+applied only when positive (water_tracers.F90, 1190), so a level whose net
+water tendency is negative has that part dropped from its H2O copy -- the
+whole of `diff`.  Net water can only go negative through `positive_moisture`,
+which repairs a negative vapor by borrowing from the layer below
+(cldwat2m_macro.F90, 2250-2253); the original never triggers it in fifty
+steps.  The surrogate does, because the driver's linearisation of the next
+relaxation iteration (`QQ`, cldwat2m_macro.F90, 905) takes the routine's
+outputs as the saturated equilibrium state and caps the condensation with the
+frozen half-step vapor (914-918): a predicted in-stratus condensate that is
+not the saturation adjustment's lets that step drive the vapor negative, and
+the repair follows.  So the constraint the cut has to keep is saturation, not
+only conservation: the next model should predict the fractions and take the
+condensates from the saturation adjustment at the predicted fractions, which
+`instratus_condensate`'s own iteration defines.
+
+The month said the same thing at length (7373795,
+`pi_cam_pausable_instratus-surrogate_1month_failure.json`, run through
+`validation/jobs/pi_cam_pausable_1month.pbs`, the fifty-step job's knobs over
+the PI-atm month with the drift report added).  The model answered 983 steps,
+day 20.5 of 31, at about 0.7 s a step; the water-tracer check fired at a steady
+108 lines a step from the first day, the deep-convection tracer check and the
+shallow convection's "source air is too dry" warning grew from a handful to a
+thousand per three days, twenty-one isotopic precipitation mass errors were
+printed, and then every rank took a segmentation fault in the same step -- the
+fault itself left no backtrace and is not diagnosed.  Over the ten two-day
+history files before it (`pi_cam_pausable_instratus-surrogate_1month_drift.json`)
+1828 fields compared with nothing non-finite, the relative RMS difference from
+the oracle's month at a median of 0.71 of each field's own spread, the largest
+in the isotope precipitation and the aerosol number fields.  The health
+counts are the result here, and the health counts of the original are zero.
+
 ## Where it stands
 
 | Kernel | Owner | Contract | Runner pause | In-model gate | Loop |

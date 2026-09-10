@@ -1,0 +1,53 @@
+{
+ "schema_version": 1,
+ "what": "The few-free-variables surrogate for instratus_condensate over the PI-atm month: the same model as the fifty-step run 7371974 (MLP, 72,454 parameters, the routine's closure verbatim after it) in the slot through --kernel-model, 1488 steps requested, replay boundary.",
+ "pbs_job_id": "7373795.desched1",
+ "job": "validation/jobs/pi_cam_pausable_1month.pbs",
+ "run_tag": "instratus-surrogate",
+ "python_stages": [
+  "cloud_macro_microphysics"
+ ],
+ "kernel_models": {
+  "instratus_condensate": {
+   "file": "instratus_surrogate.pkl",
+   "sha256": "84629d3e268fae301538b597caf02061f295c42ce2fa3318a3cb26dbbb541ef4",
+   "parameters": 72454
+  }
+ },
+ "native_image": "build/pi_cam_promoted_p12",
+ "outcome": "model run exited 174: SIGSEGV on all 512 ranks at once during physics step 984 (day 20.5 of 31); 983 steps completed, ten two-day history files written (days 1 to 19); no Python traceback, no Fortran backtrace (the image is not built with traceback)",
+ "ranks": 512,
+ "steps_completed": 983,
+ "steps_requested": 1488,
+ "resources": {
+  "resources_used_mem_kb": 237471412,
+  "walltime": "00:13:30",
+  "queue": "develop"
+ },
+ "health": {
+  "record": "pi_cam_pausable_instratus-surrogate_1month.health.json",
+  "big_error_lines": 106487,
+  "big_error_per_step": 108,
+  "big_error_trend": "flat: about 16,000 per 3.3 days from the first day to the last",
+  "isotopic_mass_error_lines": 21,
+  "qneg3": 0,
+  "wtrc_q1q2_uqdiff_lines": 576639,
+  "uwshcu_source_air_too_dry_lines_per_3.3_days": [
+   1,
+   3,
+   166,
+   982,
+   945,
+   1075
+  ],
+  "note": "the original physics prints none of these in fifty steps; q1q2 uqdiff is the deep-convection water-tracer updraft check (water_tracers.F90 wtrc_q1q2_pjr), the uwshcu line says a column's source air was too dry for a lifting condensation level"
+ },
+ "history": {
+  "bfb_record": "pi_cam_pausable_instratus-surrogate_vs_oracle_1month_bfb.json",
+  "drift_record": "pi_cam_pausable_instratus-surrogate_1month_drift.json",
+  "files_written": 10,
+  "first_difference": "ADRAIN in cam.h0.0001-01-03-07200.nc, as a model in the slot must differ"
+ },
+ "diagnosis": "The state left the physical range before the fault.  The water-tracer check after the macrophysics fired at a steady rate from the first day (the mechanism is in docs/physics_kernel_decoupling.md: the surrogate's in-stratus state is not the saturation adjustment's, the driver's next-iteration linearisation drives the vapor negative, positive_moisture repairs it, and the negative net water tendency is dropped from the H2O copies), the deep-convection tracer check and the shallow-convection dry-source warnings grew from a handful to a thousand per three days, and twenty-one isotopic precipitation mass errors were printed.  The segmentation fault itself is not diagnosed: it struck every rank in the same step and left no backtrace.",
+ "disposition": "Kept as the month result of this model.  The next model keeps saturation as well as conservation: predict the stratus fractions only and take the in-stratus condensates from the saturation adjustment at the predicted fractions, then run the month again.  The health record, the bit-for-bit record and the drift record are committed with this file."
+}
