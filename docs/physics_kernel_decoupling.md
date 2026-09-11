@@ -533,9 +533,34 @@ the same, compiling once per rank.  The user's function takes the inputs then
 the outputs, arrays indexed `[column, level]`, scalars as floats, and writes
 the outputs in place -- `examples/plugins/numba_kernels/cldfrc_fice.py` is the
 ice-fraction kernel written that way, statement for statement the original's
-arithmetic.  Offline it answers bit-identically to its NumPy form; what it does
-in the model, and what the plugin path costs against the FTorch path on the
-same hook, is gated on the p20 image and recorded below when those runs land.
+arithmetic.  Offline it answers bit-identically to its NumPy form.
+
+In the model (the p20 image, fifty steps, four exclusive nodes) it answers
+bit-identically to the Fortran too: with the Python kernel bound live at the
+hook, every one of the 50,176 calls after the bind taken by it, the run is
+**bit-for-bit with the oracle** (7402505), at 8 microseconds a call.  In
+shadow (7402506) the same.  A zero-writing kernel with
+`instratus_condensate`'s 19 inputs and 8 outputs, in shadow with the core
+timed on the same calls (7402507), prices the mechanism against the two
+other ways of answering the same hook:
+
+| how the hook is answered | a call | for comparison |
+| --- | ---: | --- |
+| the original `instratus_condensate` | 5 µs | |
+| a compiled plugin (pointer tables, the adapter, the call) | 0.4 µs | |
+| the surrogate through FTorch, same hook | 350 µs | 7401311 and earlier |
+| a Python callable at the pause, same hook | 3 ms | `instratus-surrogate` runs |
+
+The step loop is unchanged by a plugin (7.62 to 7.77 s against 7.66 s with
+nothing bound).  For a kernel written in Python this is the path; the pause
+remains for frame capture and for the gates that answer with the original
+through Python, until a plugin does those too.  The first two attempts
+(7402090 to 7402092, 7402200 to 7402202) never stepped: a stage is
+cloudpickled into each rank's process registry when it is installed, so the
+plugin's compiled code must stay out of the pickle, and then the payload is
+compared across ranks, so the pickle may carry no address either -- an
+identity that is the same everywhere, resolved to the code in the process
+that compiled it.  Both are kept as failure records.
 
 ## Where it stands
 
@@ -560,7 +585,7 @@ same hook, is gated on the p20 image and recorded below when those runs land.
 | `gas_phase_chemdr` | ChemistryTendencies (pausable, a leaf; the whole driver) | frame descriptor | yes, validated | segmented, bit-for-bit (100 pauses in 50 steps, the whole gas-phase driver answered as one kernel) | open: capture and replay |
 | `virtem` | VerticalDiffusion (pausable; a function inside an assignment of the driver) | frame descriptor; standalone contract | yes, validated | segmented, bit-for-bit (100 pauses in 50 steps; gate 7343257, and with every class installed, 7343260); every frame captured at the pause (7343396) replayed bit-for-bit through its standalone image | complete |
 | `instratus_condensate` | Macrophysics (in the cloud stage; hooked: a private procedure of `cldwat2m_macro` called inside the compiled `mmacro_pcond`) | reviewed | yes, validated | segmented, bit-for-bit: the stage-7 runner runs on the fiber and the hook yields at every call, 9000 pauses per rank in 50 steps (two chunks by thirty levels by three calls -- the two relaxation iterations and the final state -- by fifty steps; gate 7371011); every frame captured at the hook (4,608,000 over the 512 ranks, gate 7371232, bit-for-bit; the first capture died out of memory at 4 x 64 GB and is kept as a failure record) | open: standalone replay of the captured frames |
-| `cldfrc_fice` | DeepConvection (hooked; called inside the compiled `zm_conv_evap`) | function contract; standalone image | yes, validated | a hoisted copy of `zm_conv_evap` was not bit-for-bit (7343258, failure record kept); reached through a hook that redirects `zm_conv.o`'s call, machine code untouched: answered by the original at the hook, bit-for-bit, 51200 pauses in 50 steps (7343708); the first hook gate (7343594) failed on a duplicate fiber-body symbol, failure record kept; every frame captured at the hook (7343811) replayed bit-for-bit through its standalone image | complete |
+| `cldfrc_fice` | Macrophysics in the cloud stage (hooked; called inside the compiled `zm_conv_evap`; a model block: `t` in, `fice` and `fsnow` out) | function contract; standalone image | yes, validated | a hoisted copy of `zm_conv_evap` was not bit-for-bit (7343258, failure record kept); reached through a hook that redirects `zm_conv.o`'s call, machine code untouched: answered by the original at the hook, bit-for-bit, 51200 pauses in 50 steps (7343708); the first hook gate (7343594) failed on a duplicate fiber-body symbol, failure record kept; every frame captured at the hook (7343811) replayed bit-for-bit through its standalone image; the kernel written in Python, compiled with Numba and bound at the hook answers every call bit-for-bit with the oracle (7402505; shadow 7402506) | complete |
 | `fluxbelowinv` | ShallowConvection (hooked; private, called inside the compiled `compute_uwshcu`) | function contract; standalone image through its own symbol | yes, validated | its weakened definition hands every call site to the hook: answered by the original at the hook, bit-for-bit, 36733580 pauses in 50 steps (7343709); every frame captured at the hook (7343922) replayed bit-for-bit through its standalone image with the model's snapshot of uwshcu's `g` (7344823) -- the first replay, without that module state, was not and is kept as a failure record | complete |
 
 One run installs everything: the nine pausable classes, the split radiation

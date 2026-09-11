@@ -2648,7 +2648,7 @@
   "use_gw_oro": true,
   "use_subcol_microp": false
  },
- "content_hash": "9faf8a30ed293d80b6b9b5cc8eb1c49b83706f60e061600be73748cef440841f",
+ "content_hash": "970e316dbaa8f2955c4c8a3691d7ab61acc987f3fbf21ec3128f8f39f785216d",
  "evidence": {
   "pi_cam_cldfrc_fice_frame_replay.json": {
    "bfb": true,
@@ -5038,14 +5038,14 @@
  "inputs": {
   "native/pi_cam/hooks.yaml": "13e21d599cdc066821c151e452973357a623d00c0997b7c6cb131725c9f55ba8",
   "native/pi_cam/kernel_classifications.yaml": "d6be2103c9bd0c86a0c8461a067d3b43eac6aa370e992fde9bf3096e55c8c5f4",
-  "native/pi_cam/kernel_work_items.yaml": "5fe3d92c7065b365964d9f9004ac93e384851e32582cbbcd88ff5c5a9ebb9c30",
+  "native/pi_cam/kernel_work_items.yaml": "723e49bccbf604660dac2d75b2f11c76bb7ba3e8e77cedb7a4ca1a8c77fadb33",
   "native/pi_cam/segment_runners.yaml": "002ab5f622cb5c10c0d7fc45eead3ef708de6524602eda635b4c064649663acd",
   "validation/physics_kernel_decoupling.json": "2a9ff0a6804a4e0d54b36b26c34f44a36e5eb6234ba53fe32d7d944973680462",
   "validation/pi_cam_kernel_api_closure.json": "96025214b3e4c41f6ba89c266da5dd27c51c42c81c31e1a0ac6f7b2e9cfa260a",
   "validation/pi_cam_kernel_api_redirectable_calls.json": "9ac016f0d242ceef054aa8a80ef074aa53b08c1f0f3042a81e76da4c75603273",
   "validation/pi_cam_kernel_runtime_coverage_1month.json": "48f77d6ec78b4026806d4ab6fb9517ef31c1d526481b4ad68e55f77af0d303bd",
   "validation/pi_cam_kernel_runtime_coverage_50step.json": "222961fc5274dbaaf71c40f6c131a683536b5a85ef14cd047a2fd196d8ca38c5",
-  "web/public/catalog.json": "87541997c959a01b96e8937b1582b0e8feb685a15e2d60dce6246349ee9b7d32"
+  "web/public/catalog.json": "aff3693dabf0cb2a2bd2df4592f32177f3a9dc8112d7e5b7e52a5be986f9890e"
  },
  "kernels": {
   "aer_rad_props::aer_rad_props_lw": {
@@ -10185,7 +10185,7 @@
     "blocker": null,
     "branch": "physics-kernel-api-closure",
     "next_gate": "standalone replay of the 4,608,000 captured frames; a model that keeps saturation as well as conservation, bound at the hook through FTorch",
-    "note": "Hook gate 7371011 and capture gate 7371232 both bit-for-bit (9000 pauses per rank); every frame captured (512 ranks, 47 GB); the first capture (7371012) died out of memory, kept as a failure record. The few-free-variables surrogate ran fifty steps from Python (7371974: 6731 water-tracer BIG ERROR lines, zero QNEG3) and 983 steps of the month (7373795: SIGSEGV at day 20.5; cause in the source: the driver's linearisation takes the routine's output as the saturated state). The same model exported as TorchScript and bound at the hook (FTorch, inside the image) answered all 4,608,000 calls of a fifty-step run with no Python in the step (7392240, exclusive nodes: 0.41 ms a call against 2.8 ms from Python; 6719 BIG ERROR lines); the p13 image with nothing replaced is bit-for-bit (7391564). First attempts: 7371767 (a set in the model pickled per rank) and 7391565 (a node without libfabric), both failure records. In shadow (the model runs, the original answers) the same TorchScript costs 0.35 ms a call on p17 (7399452) and 0.34 ms on p18 (7400409), both bit-for-bit. Direction paused by the maintainer on 2026-09-10.",
+    "note": "Hook gate 7371011 and capture gate 7371232 both bit-for-bit (9000 pauses per rank); every frame captured (512 ranks, 47 GB); the first capture (7371012) died out of memory, kept as a failure record. The few-free-variables surrogate ran fifty steps from Python (7371974: 6731 water-tracer BIG ERROR lines, zero QNEG3) and 983 steps of the month (7373795: SIGSEGV at day 20.5; cause in the source: the driver's linearisation takes the routine's output as the saturated state). The same model exported as TorchScript and bound at the hook (FTorch, inside the image) answered all 4,608,000 calls of a fifty-step run with no Python in the step (7392240, exclusive nodes: 0.41 ms a call against 2.8 ms from Python; 6719 BIG ERROR lines); the p13 image with nothing replaced is bit-for-bit (7391564). First attempts: 7371767 (a set in the model pickled per rank) and 7391565 (a node without libfabric), both failure records. In shadow (the model runs, the original answers) the same TorchScript costs 0.35 ms a call on p17 (7399452) and 0.34 ms on p18 (7400409), both bit-for-bit. A zero-writing compiled plugin with the hook's arguments, in shadow on p20 with the core timed (7402507), prices the plugin mechanism at 0.4 us a call against the core's 5 us. Direction paused by the maintainer on 2026-09-10.",
     "owner": "claude",
     "owner_class": "freecam.physics.macrophysics.Macrophysics",
     "stage": "capture_replay",
@@ -72615,8 +72615,8 @@
  ],
  "volatile": {
   "branch": "physics-kernel-api-closure",
-  "commit": "28026fbe04e7c7a23be94889c6ea7f034fe91ce2",
-  "generated_at": "2026-09-11T21:06:45+00:00"
+  "commit": "53dc5515b7c6d27ec783abf8b8a81762c857991b",
+  "generated_at": "2026-09-11T21:56:13+00:00"
  },
  "work_items": [
   {
@@ -72624,7 +72624,7 @@
    "closed_at": "2026-09-09",
    "kernel": "cloud_fraction::cldfrc_fice",
    "next_gate": "512-rank 50-step BFB",
-   "note": "Promote the validated hook into the process kernel registry.",
+   "note": "Promoted into the process kernel registry. On 2026-09-11 the hook gained a model block (t in, fice and fsnow out) and the kernel written in Python (examples/plugins/numba_kernels/cldfrc_fice.py), compiled with Numba and bound at the hook, answered every call bit-for-bit with the oracle on p20 (7402505 live, 7402506 shadow; 8 us a call). The first two attempts never stepped (pickling of the compiled plugin into the process registry, 7402090/7402091/7402092 and 7402200/7402201/7402202; failure records kept).",
    "owner": "claude",
    "owner_class": "freecam.physics.macrophysics.Macrophysics",
    "stage": "in_model_replacement",
@@ -72633,7 +72633,7 @@
    "target_processes": [
     "cam_run1.cloud_macro_microphysics"
    ],
-   "updated_at": "2026-09-09"
+   "updated_at": "2026-09-11"
   },
   {
    "branch": "physics-kernel-api-closure",
@@ -72654,7 +72654,7 @@
    "branch": "physics-kernel-api-closure",
    "kernel": "cldwat2m_macro::instratus_condensate",
    "next_gate": "standalone replay of the 4,608,000 captured frames; a model that keeps saturation as well as conservation, bound at the hook through FTorch",
-   "note": "Hook gate 7371011 and capture gate 7371232 both bit-for-bit (9000 pauses per rank); every frame captured (512 ranks, 47 GB); the first capture (7371012) died out of memory, kept as a failure record. The few-free-variables surrogate ran fifty steps from Python (7371974: 6731 water-tracer BIG ERROR lines, zero QNEG3) and 983 steps of the month (7373795: SIGSEGV at day 20.5; cause in the source: the driver's linearisation takes the routine's output as the saturated state). The same model exported as TorchScript and bound at the hook (FTorch, inside the image) answered all 4,608,000 calls of a fifty-step run with no Python in the step (7392240, exclusive nodes: 0.41 ms a call against 2.8 ms from Python; 6719 BIG ERROR lines); the p13 image with nothing replaced is bit-for-bit (7391564). First attempts: 7371767 (a set in the model pickled per rank) and 7391565 (a node without libfabric), both failure records. In shadow (the model runs, the original answers) the same TorchScript costs 0.35 ms a call on p17 (7399452) and 0.34 ms on p18 (7400409), both bit-for-bit. Direction paused by the maintainer on 2026-09-10.",
+   "note": "Hook gate 7371011 and capture gate 7371232 both bit-for-bit (9000 pauses per rank); every frame captured (512 ranks, 47 GB); the first capture (7371012) died out of memory, kept as a failure record. The few-free-variables surrogate ran fifty steps from Python (7371974: 6731 water-tracer BIG ERROR lines, zero QNEG3) and 983 steps of the month (7373795: SIGSEGV at day 20.5; cause in the source: the driver's linearisation takes the routine's output as the saturated state). The same model exported as TorchScript and bound at the hook (FTorch, inside the image) answered all 4,608,000 calls of a fifty-step run with no Python in the step (7392240, exclusive nodes: 0.41 ms a call against 2.8 ms from Python; 6719 BIG ERROR lines); the p13 image with nothing replaced is bit-for-bit (7391564). First attempts: 7371767 (a set in the model pickled per rank) and 7391565 (a node without libfabric), both failure records. In shadow (the model runs, the original answers) the same TorchScript costs 0.35 ms a call on p17 (7399452) and 0.34 ms on p18 (7400409), both bit-for-bit. A zero-writing compiled plugin with the hook's arguments, in shadow on p20 with the core timed (7402507), prices the plugin mechanism at 0.4 us a call against the core's 5 us. Direction paused by the maintainer on 2026-09-10.",
    "owner": "claude",
    "owner_class": "freecam.physics.macrophysics.Macrophysics",
    "stage": "capture_replay",

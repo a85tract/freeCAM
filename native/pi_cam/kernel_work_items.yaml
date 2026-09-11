@@ -9,9 +9,14 @@ items:
   owner: claude
   branch: physics-kernel-api-closure
   started_at: '2026-09-09'
-  updated_at: '2026-09-09'
+  updated_at: '2026-09-11'
   next_gate: 512-rank 50-step BFB
-  note: Promote the validated hook into the process kernel registry.
+  note: 'Promoted into the process kernel registry. On 2026-09-11 the hook gained a model block (t in,
+    fice and fsnow out) and the kernel written in Python (examples/plugins/numba_kernels/cldfrc_fice.py),
+    compiled with Numba and bound at the hook, answered every call bit-for-bit with the oracle on p20
+    (7402505 live, 7402506 shadow; 8 us a call). The first two attempts never stepped (pickling of the
+    compiled plugin into the process registry, 7402090/7402091/7402092 and 7402200/7402201/7402202;
+    failure records kept).'
   closed_at: '2026-09-09'
 - kernel: micro_mg1_0::micro_mg_tend
   target_processes:
@@ -65,5 +70,7 @@ items:
     from Python; 6719 BIG ERROR lines); the p13 image with nothing replaced is bit-for-bit (7391564).
     First attempts: 7371767 (a set in the model pickled per rank) and 7391565 (a node without libfabric),
     both failure records. In shadow (the model runs, the original answers) the same TorchScript costs
-    0.35 ms a call on p17 (7399452) and 0.34 ms on p18 (7400409), both bit-for-bit. Direction paused
-    by the maintainer on 2026-09-10.'
+    0.35 ms a call on p17 (7399452) and 0.34 ms on p18 (7400409), both bit-for-bit. A zero-writing
+    compiled plugin with the hook''s arguments, in shadow on p20 with the core timed (7402507), prices
+    the plugin mechanism at 0.4 us a call against the core''s 5 us. Direction paused by the maintainer
+    on 2026-09-10.'
