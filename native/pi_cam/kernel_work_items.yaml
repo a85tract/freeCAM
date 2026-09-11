@@ -23,19 +23,26 @@ items:
   branch: physics-kernel-api-closure
   started_at: '2026-09-09'
   updated_at: '2026-09-11'
-  next_gate: capture of the hook's 26 inputs and 89 outputs at every call, then a trained model bound
-    at the hook; a model must answer in well under the core's own cost to gain anything
+  next_gate: none for speed -- the core costs 1.4 ms a call (2.8 ms a step, 1.8 percent of the step loop)
+    and every network of a useful size costs more inside the image; a surrogate here is a science
+    question, not a performance one
   note: 'First capture attempt (7358831) aborted on manifest/image version skew: the p10 image exports
-    no pycam_stage7_original_v1 (validation/pi_cam_pausable_micro-capture_50step_failure.json). Hooked
-    on 2026-09-10 as a Fortran-bound hook (the callee''s own kinds, packed (mgncol, nlev) arrays sized by
-    its pcols/pver dummies, bindable to a model, not pausable); the first build sized the arrays by the
-    contract and corrupted memory (7394255, failure record). Images p14/p15 with nothing bound are
-    bit-for-bit (7393462, 7394422); a null model bound at the hook answered all 51,200 calls inside the
-    image (7394423, 7399102). Shadow runs (the model runs, the original answers, bit-for-bit) put the
-    mechanism at 1.63 ms a call on p17 (7399451) and 0.56 ms on p18 (7400408), after the stage stopped
-    re-reading hooks.yaml every step and the bind took the warm-up forward out of the step loop; the
-    placeholder MLP of the network''s real size costs another 1.4 ms a call (7394424, timing only). No
-    trained model exists yet.'
+    no pycam_stage7_original_v1 (validation/pi_cam_pausable_micro-capture_50step_failure.json); the p11
+    capture (7359460) is bit-for-bit and holds all 51,200 calls. Hooked on 2026-09-10 as a Fortran-bound
+    hook (the callee''s own kinds, packed (mgncol, nlev) arrays sized by its pcols/pver dummies, bindable
+    to a model, not pausable); the first build sized the arrays by the contract and corrupted memory
+    (7394255, failure record). Images p14/p15/p18/p19 with nothing bound are bit-for-bit (7393462,
+    7394422, 7400407, 7401310); a null model bound at the hook answered all 51,200 calls inside the image
+    (7394423, 7399102). Shadow runs put the mechanism at 0.56 ms a call on p18 (7400408) once the stage
+    stopped re-reading hooks.yaml every step and the bind took the warm-up out of the step loop. On
+    2026-09-11 four per-column MLP surrogates (64 to 512 wide, 0.9 to 7.6 MB of weights; qctend R2 0.73
+    to 0.89, tlat 0.52 to 0.72 on 64 held-out ranks) were trained on the p11 capture and exported as
+    TorchScript. In shadow on p19, which times the original on the same calls (7401282, 7401281,
+    7401311, 7400992 on p18; all bit-for-bit): the core costs 1.33 to 1.40 ms a call, the networks 1.47,
+    2.25, 3.71 and 6.71 ms -- their weights streamed from memory by 128 ranks at once (one-node bench
+    7401108: the 7.6 MB network 1.47 ms alone, 6.38 ms with 128 processes). Live (7400993, 7401059,
+    7401232; not bit-for-bit, 300,000 lines of water-tracer and QNEG3 messages) the step loop is 9.02,
+    8.67 and 8.55 s against 7.64 s with nothing bound. Not a speed target on these nodes.'
 - kernel: cldwat2m_macro::instratus_condensate
   target_processes:
   - cam_run1.cloud_macro_microphysics

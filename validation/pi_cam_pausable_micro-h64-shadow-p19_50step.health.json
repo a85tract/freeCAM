@@ -1,0 +1,19 @@
+{
+ "schema_version": 1,
+ "log": "pyCAM/PI-cam/pausable-micro-h64-shadow-p19-7401282.desched1/run/pi_cam_python.log",
+ "steps": 50,
+ "counts": {
+  "big_error": 0,
+  "isotopic_mass_error": 0,
+  "qneg3_macro": 0,
+  "qneg3_total": 0,
+  "tracebacks": 0
+ },
+ "per_step": {
+  "big_error": 0.0,
+  "isotopic_mass_error": 0.0,
+  "qneg3_macro": 0.0,
+  "qneg3_total": 0.0,
+  "tracebacks": 0.0
+ }
+}

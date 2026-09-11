@@ -345,12 +345,17 @@ it leaves the model's own arithmetic.
 ### The most expensive core, and what the mechanism costs there
 
 The deep GPTL profile of the original Fortran (fifty steps and a month, 512
-ranks) ranks the physics cores by what they cost per call: `micro_mg_tend`
+ranks) ranks the physics by what its timers cost per call: `microp_mg_tend`
 first at 10.7 ms on develop's shared half nodes (18 percent of the physics, 6
-percent of the step), the UW shallow-convection core next at 9.4 ms, the two
-RRTMG cores at about 6 ms, and `mmacro_pcond` at 2.4 ms -- less than a Python
+percent of the step), the UW shallow convection next at 9.4 ms, the two RRTMG
+timers at about 6 ms, and `mmacro_pcond` at 2.4 ms -- less than a Python
 pause, which is why the macrophysics surrogate could never pay back through
-the pause and why the next experiment moved to the microphysics.
+the pause and why the next experiment moved to the microphysics.  Those are
+the drivers' timers, though: `microp_mg_tend` (microp_driver.F90) wraps the
+whole of `micro_mg_cam_tend` -- the buffer reads, the packing, the core, the
+unpacking and about a hundred history fields -- and how much of it the core
+`micro_mg_tend` itself costs is measured further down: 1.4 ms a call on
+exclusive nodes.
 
 `micro_mg_tend` is called from one compiled site in `micro_mg_cam`, so it is
 hooked the same way as `instratus_condensate`, with two differences the hook
@@ -409,22 +414,106 @@ second call, and flushing the data caches between calls adds 55 us.  In the
 model it costs three times that: the call comes after forty milliseconds of
 other physics with the caches cold, on a node whose 128 ranks share memory
 bandwidth.  That 0.56 ms -- with 115 tensors wrapped and 89 outputs written
-back -- is the floor for replacing `micro_mg_tend` inside the image, against
-a core that costs about half of the 10.7 ms measured on shared half nodes
-(the whole step runs twice as fast on exclusive nodes).  A model has to
-answer in well under that to gain anything, and since the core is 6 percent
-of the step, the most a free model can take off a step is about that.  The
-placeholder MLP run (7394424, random weights, the network's real size:
-457,155 QNEG3 lines, kept for the timing only) says the network's own
-arithmetic at that size is another 1.4 ms a call; a trained model for this
-core is a research project of its own, not started.
+back -- is the floor for replacing `micro_mg_tend` inside the image.  What
+the core itself costs against it, and what trained networks cost in its
+place, is the next section.  The placeholder MLP run (7394424, random
+weights, the network's real size: 457,155 QNEG3 lines, kept for the timing
+only) already said the network's own arithmetic at that size is another
+1.4 ms a call standalone.
+
+### A trained surrogate for `micro_mg_tend`, and what it cost
+
+The training data were already there: the capture gate of 2026-09-09
+(7359460, bit-for-bit) holds every call of `micro_mg_tend` in fifty steps,
+51,200 calls with their 26 inputs and 89 outputs, 20 GB over the 512 ranks.
+Looking at them settled the model's shape.  The four `in_place` arrays
+(`qc`, `qi`, `nc`, `ni`) come back exactly as they went in, so the model
+passes them through; `reff_rain` and `reff_snow` arrive uninitialised and are
+outputs only; eight inputs are constants or never set in this configuration
+and are dropped.  What is left is a per-column map from 630 numbers to 2,494
+(85 outputs, most of them sparse: `tlat` is exactly zero in 56 percent of the
+levels, the process rates in 90 to 99 percent).  The surrogate is a two-layer
+MLP over standardised features and targets, trained on 448 ranks' columns
+(590,815) with the step's own tendencies weighted five times, validated on
+the other 64 ranks (83,445 columns), forty epochs each -- about six minutes
+on one node per size.  The exported TorchScript carries its own
+preprocessing: the standardisation folded into the first and last layers,
+the outputs clamped to their observed ranges, and the five tendencies
+floored so a step cannot drive water or number below zero.
+
+| width | parameters | weights | `qctend` R² | `tlat` | `nctend` | `prect` | median over the 85 outputs |
+| ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| 512 | 1,865,150 | 7.6 MB | 0.89 | 0.72 | 0.65 | 0.97 | 0.62 |
+| 256 | 868,286 | 3.6 MB | 0.86 | 0.66 | 0.60 | 0.96 | 0.57 |
+| 128 | 419,006 | 1.7 MB | 0.82 | 0.60 | 0.47 | 0.95 | 0.49 |
+| 64 | 206,654 | 0.9 MB | 0.73 | 0.52 | 0.21 | 0.94 | 0.44 |
+
+A crude emulator, then, and enough for the question at hand: what does a
+network of a realistic size cost in the model, against the core it replaces?
+Standalone on one login-node core the answer looked fine -- 1.47 ms a call
+for the 512-wide network, 0.38 ms for the 64-wide.  In the model it was not,
+and one benchmark on a compute node says why (`bench_concurrent2.pbs`,
+7401108): the same model run by 1, 8, 32 and 128 processes at once.
+
+| model | 1 process | 8 | 32 | 128 | in the model (shadow) |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| null, no weights | 0.20 ms | 0.21 | 0.22 | 0.23 | 0.56 |
+| 256 wide, 3.6 MB | 1.33 | 1.40 | 2.17 | 2.30 | 3.71 |
+| 512 wide, 7.6 MB | 1.47 | 3.87 | 6.21 | 6.38 | 6.71 |
+
+Eight ranks share one 32 MB slice of L3 on these nodes, so eight copies of a
+7.6 MB network already spill it; above 32 processes the memory bandwidth is
+the limit.  A network's cost inside the image is set by its weight bytes,
+which every call streams from memory again after forty milliseconds of other
+physics, not by its arithmetic.
+
+The shadow runs then priced the model and the core on the same calls, with
+the p19 image, which times the original too when a shadow model answers
+(fifty steps, four exclusive nodes, per-rank means, all bit-for-bit):
+
+| run | model, ms a call | the core `micro_mg_tend`, ms a call | cloud stage, s | step loop, s |
+| --- | ---: | ---: | ---: | ---: |
+| p19 nothing bound, 7401310 | | | 0.88 | 7.74 |
+| null model, 7401312 | 0.56 | 1.33 | 1.13 | 7.93 |
+| 64 wide, 7401282 | 1.47 | 1.35 | 1.22 | 8.16 |
+| 128 wide, 7401281 | 2.25 | 1.38 | 1.52 | 8.31 |
+| 256 wide, 7401311 (7401058 on p18: 3.74) | 3.71 | 1.40 | 1.59 | 8.35 |
+| 512 wide, 7400992 on p18 | 6.71 | | 1.98 | 8.77 |
+
+**The core costs 1.4 ms a call** -- 2.8 ms a step, 1.8 percent of the step
+loop -- not the 10.7 ms of the driver's timer.  The mechanism alone (the null
+model) costs 0.56 ms of that, and the smallest trained network, 64 wide with
+a fifth of the skill, costs exactly what the core costs.  No network that
+answers this call can make the step faster on these nodes, and a free one
+would save 1.8 percent.
+
+The live runs, with the model's answer taken (`--kernel-model`, no
+verification of exports), confirm it from the other side: 512 wide 9.02 s
+(7400993), 256 wide 8.67 s (7401059), 128 wide 8.55 s (7401232) for the step
+loop, against 7.64 s with nothing bound -- every one slower, and slower than
+its own shadow run, although the core is skipped.  Two things the surrogate
+changes cost more than the core it removes: the state it produces sends the
+rest of the physics down other paths (the UW `fluxbelowinv` ran 22 and 30
+million times instead of 38), and the water-tracer and QNEG3 checks write
+300,000 lines to the log (100,000 BIG ERROR lines in each run, 88 to 10,765
+QNEG3).  Those records are kept as they are, not bit-for-bit and not meant to
+be.
+
+What this leaves of the microphysics as a target is the driver around the
+core, 7 to 9 ms a call on shared half nodes, which is buffer handling and
+history output, not arithmetic, and not something a network replaces.  For
+the surrogate route the lesson is general: on 128-rank nodes a model pays
+only where the core costs several milliseconds a call *and* the network's
+weights fit the cache its eight neighbours leave it -- a few hundred
+kilobytes -- or where the inference runs on an accelerator the ranks do not
+share.
 
 ## Where it stands
 
 | Kernel | Owner | Contract | Runner pause | In-model gate | Loop |
 | --- | --- | --- | --- | --- | --- |
 | `mmacro_pcond` | Macrophysics (in the cloud stage) | reviewed | yes, validated | segmented, bit-for-bit; alone and together with `micro_mg_tend` | complete |
-| `micro_mg_tend` | Microphysics (in the cloud stage; hooked: a Fortran-bound hook over its packed arrays, bindable to a model, not pausable) | reviewed | yes, validated (the runner's pause) | segmented, bit-for-bit (100 pauses in 50 steps); alone and together with `mmacro_pcond` (200 pauses); a null model bound at the hook answered all 51,200 calls inside the image (7394423), and in shadow the p18 image stays bit-for-bit at 0.56 ms a call (7400408) | open: no captured calls replayed through its standalone image yet; no trained model |
+| `micro_mg_tend` | Microphysics (in the cloud stage; hooked: a Fortran-bound hook over its packed arrays, bindable to a model, not pausable) | reviewed | yes, validated (the runner's pause) | segmented, bit-for-bit (100 pauses in 50 steps); alone and together with `mmacro_pcond` (200 pauses); a null model bound at the hook answered all 51,200 calls inside the image (7394423), and in shadow the p18 image stays bit-for-bit at 0.56 ms a call (7400408); four trained MLP surrogates (64 to 512 wide) run in shadow on p19, bit-for-bit, pricing the core at 1.4 ms a call and every network at 1.5 to 6.7 ms (7401282, 7401281, 7401311, 7400992), and live (7400993, 7401059, 7401232, not bit-for-bit, slower than the original) | open: no captured calls replayed through its standalone image yet; as a speed target, closed: the core costs 1.4 ms a call |
 | `rad_rrtmg_sw` | Radiation (split, pausable) | frame descriptor | yes, validated | segmented, bit-for-bit (50 pauses in 50 steps); alone, with `rad_rrtmg_lw`, and with every other exposed kernel paused in one run | open: capture and replay |
 | `rad_rrtmg_lw` | Radiation (split, pausable) | frame descriptor | yes, validated | segmented, bit-for-bit (50 pauses in 50 steps); alone, with `rad_rrtmg_sw`, and with every other exposed kernel paused in one run | open: capture and replay |
 | `dadadj` | DryAdjustment (pausable) | reviewed | yes, validated | segmented, bit-for-bit (100 pauses in 50 steps); alone and together with `compute_uwshcu_inv` | complete |
