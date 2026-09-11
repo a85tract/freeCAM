@@ -157,6 +157,71 @@ def _load_kernel_model(path: Path, *, shadow: bool = False):
     return model
 
 
+def _parse_kernel_plugins(values: list[str] | None, flag: str) -> dict[str, str]:
+    """``NAME=MODULE:FUNCTION`` (or ``NAME=path.py:FUNCTION``) pairs, one plugin per kernel."""
+
+    plugins: dict[str, str] = {}
+    for item in values or ():
+        name, sep, spec = item.partition("=")
+        if not sep or not name.strip() or ":" not in spec or not spec.rsplit(":", 1)[1].strip():
+            raise SystemExit(f"{flag} takes NAME=MODULE:FUNCTION or NAME=path.py:FUNCTION, got {item!r}")
+        if name.strip() in plugins:
+            raise SystemExit(f"{flag} names {name.strip()!r} twice")
+        plugins[name.strip()] = spec.strip()
+    return plugins
+
+
+def _load_kernel_plugin(kernel: str, spec: str, *, shadow: bool = False):
+    """Compile the named Python function for the kernel's hook with Numba: a NativePlugin for the slot."""
+
+    import importlib
+    import importlib.util
+
+    from freecam.physics.numba_kernel import compile_kernel
+
+    module_name, _, function_name = spec.rpartition(":")
+    if module_name.endswith(".py"):
+        path = Path(module_name).expanduser().resolve()
+        if not path.is_file():
+            raise SystemExit(f"--kernel-plugin: {path} is not a file")
+        loader_spec = importlib.util.spec_from_file_location(f"freecam_plugin_{path.stem}", path)
+        module = importlib.util.module_from_spec(loader_spec)
+        sys.modules[loader_spec.name] = module
+        loader_spec.loader.exec_module(module)
+    else:
+        module = importlib.import_module(module_name)
+    function = getattr(module, function_name, None)
+    if function is None or not callable(function):
+        raise SystemExit(f"--kernel-plugin: {spec} names no callable")
+    return compile_kernel(kernel, function, shadow=shadow)
+
+
+def _kernel_plugins_summary(plugins: dict[str, str], shadow: dict[str, str] | None = None) -> dict[str, dict[str, Any]]:
+    """Which compiled function stood in which slot; a file's path only when it lies inside this checkout."""
+
+    import hashlib
+
+    repo = Path(__file__).resolve().parents[3]
+    summary: dict[str, dict[str, Any]] = {}
+    for specs, is_shadow in ((plugins, False), (shadow or {}, True)):
+        for name, spec in specs.items():
+            module_name, _, function_name = spec.rpartition(":")
+            row: dict[str, Any] = {"function": function_name, "binding": "numba"}
+            if module_name.endswith(".py"):
+                path = Path(module_name).expanduser().resolve()
+                row["file"] = path.name
+                if path.is_file():
+                    row["sha256"] = hashlib.sha256(path.read_bytes()).hexdigest()
+                if path.is_relative_to(repo):
+                    row["path"] = str(path.relative_to(repo))
+            else:
+                row["module"] = module_name
+            if is_shadow:
+                row["shadow"] = True
+            summary[name] = row
+    return summary
+
+
 def _kernel_models_summary(models: dict[str, Path], shadow: dict[str, Path] | None = None) -> dict[str, dict[str, Any]] | None:
     """Which artifact stood in which slot: file name and content hash, and the path when
     it lies inside this checkout (records name no site directory); shadow models say so."""
@@ -480,6 +545,26 @@ def main(argv: list[str] | None = None) -> int:
         ),
     )
     parser.add_argument(
+        "--kernel-plugin",
+        action="append",
+        default=None,
+        metavar="NAME=MODULE:FUNCTION",
+        help=(
+            "put a Python kernel in a kernel's slot, compiled with Numba and bound at the kernel's hook: "
+            "the image calls it directly on every call, no Python in the step.  MODULE is an importable "
+            "module or a .py file; FUNCTION takes the hook's model-block inputs then outputs (float64 "
+            "arrays indexed [column, level], scalars as floats) and writes the outputs in place; repeatable.  "
+            "Not evidence of bit-for-bit unless the run says so."
+        ),
+    )
+    parser.add_argument(
+        "--shadow-kernel-plugin",
+        action="append",
+        default=None,
+        metavar="NAME=MODULE:FUNCTION",
+        help="bind a compiled Python kernel in shadow: it runs on every call, the original answers; repeatable.",
+    )
+    parser.add_argument(
         "--observe-kernels",
         action="store_true",
         help=(
@@ -675,9 +760,17 @@ def main(argv: list[str] | None = None) -> int:
             raise SystemExit("--capture-kernels needs --capture-dir")
         kernel_model_paths = _parse_kernel_models(args.kernel_model)
         shadow_model_paths = _parse_kernel_models(args.shadow_kernel_model)
+        kernel_plugin_specs = _parse_kernel_plugins(args.kernel_plugin, "--kernel-plugin")
+        shadow_plugin_specs = _parse_kernel_plugins(args.shadow_kernel_plugin, "--shadow-kernel-plugin")
         original_names = ([k.strip() for k in args.segmented_original_kernels.split(",") if k.strip()]
                           if args.segmented_original else [])
-        clash = sorted((set(kernel_model_paths) | set(shadow_model_paths)) & (set(capture_kernels) | set(original_names)))
+        slots = [set(kernel_model_paths), set(shadow_model_paths), set(kernel_plugin_specs), set(shadow_plugin_specs)]
+        for i, first in enumerate(slots):
+            for second in slots[i + 1:]:
+                if first & second:
+                    raise SystemExit(f"--kernel-model/--kernel-plugin: {sorted(first & second)} are given twice; one slot holds one thing")
+        clash = sorted((set(kernel_model_paths) | set(shadow_model_paths) | set(kernel_plugin_specs) | set(shadow_plugin_specs))
+                       & (set(capture_kernels) | set(original_names)))
         if clash:
             raise SystemExit(f"--kernel-model: {clash} are also named for the original or a capture; "
                              f"one slot holds one thing")
@@ -686,6 +779,8 @@ def main(argv: list[str] | None = None) -> int:
             raise SystemExit(f"--shadow-kernel-model: {twice} are also given to --kernel-model; a model answers or shadows")
         kernel_models = {name: _load_kernel_model(path) for name, path in kernel_model_paths.items()}
         kernel_models.update({name: _load_kernel_model(path, shadow=True) for name, path in shadow_model_paths.items()})
+        kernel_models.update({name: _load_kernel_plugin(name, spec) for name, spec in kernel_plugin_specs.items()})
+        kernel_models.update({name: _load_kernel_plugin(name, spec, shadow=True) for name, spec in shadow_plugin_specs.items()})
         if args.radiation_python:
             # The same shape for radiation: Radiation.tend between the two
             # halves of the split stage, native and non-transactional for the
@@ -1130,7 +1225,8 @@ def main(argv: list[str] | None = None) -> int:
             "disabled_actions": [s.strip() for s in args.disable_actions.split(",") if s.strip()],
             "stage_execution": _stage_executions(cam),
             "frame_capture": _frame_capture_summary(records, args, native_evidence),
-            "kernel_models": _kernel_models_summary(kernel_model_paths, shadow_model_paths),
+            "kernel_models": ({**(_kernel_models_summary(kernel_model_paths, shadow_model_paths) or {}),
+                               **_kernel_plugins_summary(kernel_plugin_specs, shadow_plugin_specs)} or None),
             "hooks": _hook_summary(records),
             "cloud_macro_micro_whole_drivers": bool(args.cloud_macro_micro_whole_drivers),
             "cloud_macro_micro_whole_micro": bool(args.cloud_macro_micro_whole_micro),

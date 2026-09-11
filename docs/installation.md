@@ -183,3 +183,10 @@ a `#PBS -A` directive, because `qsub` does not expand variables in directives
 and a working one would have to name a project in a shared file. Every job
 resolves its paths through `validation/jobs/common.sh`, and so runs from any
 checkout.
+
+## Python kernels compiled with Numba
+
+`numba` is a core dependency (`uv sync` installs it).  A Python kernel given to
+`--kernel-plugin NAME=file.py:function` is compiled on every rank when the run
+starts, a few seconds each; no model file and no FTorch are involved, but the
+image must carry the plugin entry (images from p20 on).

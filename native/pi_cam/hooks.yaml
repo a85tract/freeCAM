@@ -24,6 +24,10 @@ hooks:
     redirect: rename-references
     callers:
       - {object: zm_conv.o, routine: zm_conv_evap}
+    # a model or a compiled plugin can answer it: temperature in, the two fractions out
+    model:
+      inputs: [t]
+      outputs: [fice, fsnow]
   - kernel: fluxbelowinv
     contract: native/pi_cam/functions/fluxbelowinv.yaml
     # the callee is defined in the caller's own object, so its references cannot be

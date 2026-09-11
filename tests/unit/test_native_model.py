@@ -54,7 +54,8 @@ def test_the_hook_table_says_which_hooks_take_a_model() -> None:
     assert core.takes_model
     assert core.model_inputs[:3] == ("k", "p_in", "t0_in") and len(core.model_inputs) == 19
     assert core.model_outputs == ("t_out", "qv_out", "ql_out", "qi_out", "al_st_out", "ai_st_out", "ql_st_out", "qi_st_out")
-    assert not table.hook("cldfrc_fice").takes_model and not table.hook("fluxbelowinv").takes_model
+    assert table.hook("cldfrc_fice").takes_model and not table.hook("fluxbelowinv").takes_model
+    assert table.hook("cldfrc_fice").model_inputs == ("t",) and table.hook("cldfrc_fice").model_outputs == ("fice", "fsnow")
 
 
 def _table(tmp_path: Path, model) -> Path:
@@ -88,8 +89,8 @@ def test_the_generated_module_answers_a_bound_model_inside_the_image() -> None:
     # the live columns are written back, the padding lanes left as CAM had them
     assert "n = min(int(ncol), 16)" in text and "t_out(1:n) = o_t_out(1:n)" in text
     # only the hooks with a model block have the branch; the others cannot be bound
-    assert text.count("call model_") == 2
-    assert "has_model(nhooks) = (/ .false., .false., .true., .true. /)" in text
+    assert text.count("call model_") == 3
+    assert "has_model(nhooks) = (/ .true., .false., .true., .true. /)" in text
     assert "can_pause(nhooks) = (/ .true., .true., .true., .false. /)" in text
     # a Fortran-bound hook: the callee's own kinds, no bind(C), no frame, a model over rank-2 and rank-3 arrays
     assert "subroutine hook_micro_mg_tend(microp_uniform, pcols, pver, ncol" in text and "bind(C, name='pycam_hooks_mp" not in text
@@ -115,11 +116,18 @@ def test_the_generated_module_answers_a_bound_model_inside_the_image() -> None:
     assert "if (flag /= 0_c_int .and. modeled(hook)) then" in text
     # the warm-up at bind: one forward on zeros of the contract's extents, timed apart from the calls
     assert "call torch_model_load(models(hook), filename(1:length), torch_kCPU)\n" in text
-    assert text.count("\n  subroutine warm_") == 3 and "      call warm_micro_mg_tend()" in text
+    assert text.count("\n  subroutine warm_") == 4 and "      call warm_micro_mg_tend()" in text
+    # a compiled plugin takes the same arrays as pointer and extent tables, in place of the forward
+    assert "bind(C, name='pycam_hooks_bind_plugin_v1')" in text and "type(c_funptr), save :: plugins(nhooks)" in text
+    assert "plugin_status = plugin(19_c_int, in_p, in_s, 8_c_int, out_p, out_s)" in text
+    assert "plugin_status = plugin(1_c_int, in_p, in_s, 2_c_int, out_p, out_s)" in text
+    assert "in_p(1) = c_loc(s_k); in_s(:, 1) = (/ 1_c_int64_t, 0_c_int64_t, 0_c_int64_t /)" in text
+    assert "out_p(1) = c_loc(o_qc); out_s(:, 1) = (/ int(pcols, c_int64_t), int(pver, c_int64_t), 0_c_int64_t /)" in text
+    assert "if (.not. plugged(4)) call torch_tensor_from_array(in_t(1), sp_deltatin, torch_kCPU)" in text
     assert "real(c_double), target :: z_tn(16, 30)" in text and "real(c_double), target :: y_rflx(16, 31)" in text
     assert "warm_ticks(hook) = w1 - w0" in text and "warm_seconds = real(warm_ticks(hook), c_double)" in text
     # in shadow the original is timed too, on the same calls: both prices from one run
-    assert "original_ticks(4) = original_ticks(4) + (h1 - h0)" in text and text.count("original_ticks(") == 6
+    assert "original_ticks(4) = original_ticks(4) + (h1 - h0)" in text and text.count("original_ticks(") == 8
     # per-rank timers: the whole model call as the hook sees it, and the first call alone
     assert "hook_ticks(4) = hook_ticks(4) + (h1 - h0)" in text
     assert "if (answered(4) == 1_c_int64_t) first_ticks(4) = h1 - h0" in text
@@ -139,6 +147,7 @@ class _Library:
     def __init__(self, status: int = 0) -> None:
         self.bound: dict[int, bytes] = {}
         self.unbound: list[int] = []
+        self.plugged: list[tuple[int, int, int]] = []
 
         def bind(hook, path, length, shadow):
             if status:
@@ -154,7 +163,14 @@ class _Library:
             out._obj.value = 4242
             return 0
 
+        def bind_plugin(hook, address, shadow):
+            if status:
+                return status
+            self.plugged.append((int(hook), int(getattr(address, "value", address)), int(shadow)))
+            return 0
+
         self.pycam_hooks_bind_model_v1 = _Entry(bind)
+        self.pycam_hooks_bind_plugin_v1 = _Entry(bind_plugin)
         self.pycam_hooks_unbind_model_v1 = _Entry(unbind)
         self.pycam_hooks_modeled_v1 = _Entry(modeled)
         names = {1: b"cldfrc_fice", 2: b"fluxbelowinv", 3: b"instratus_condensate", 4: b"micro_mg_tend"}
@@ -257,3 +273,62 @@ def test_the_run_record_sums_the_calls_a_model_answered_over_the_ranks() -> None
     summary = _hook_summary(timed)["micro_mg_tend"]
     assert summary["model_seconds"] == pytest.approx(0.40) and summary["model_seconds_max"] == pytest.approx(0.30)
     assert summary["first_call_seconds_max"] == pytest.approx(0.20) and summary["warm_seconds"] == pytest.approx(0.08)
+
+
+def _fice_module():
+    import importlib.util
+
+    path = Path(__file__).resolve().parents[2] / "examples/plugins/numba_kernels/cldfrc_fice.py"
+    spec = importlib.util.spec_from_file_location("fice_example", path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def test_a_python_kernel_compiles_to_the_hooks_plugin_interface_and_answers_like_the_formula() -> None:
+    pytest.importorskip("numba")
+    import numpy as np
+
+    from freecam.physics.native_model import NativePlugin
+    from freecam.physics.numba_kernel import adapter_source, call_plugin_from_python, compile_kernel, _model_arguments
+
+    hook, inputs, outputs = _model_arguments("cldfrc_fice")
+    source = adapter_source("cldfrc_fice", inputs, outputs)
+    assert "a0 = farray(in_ptrs[0], (in_shapes[0], in_shapes[1],), float64)" in source
+    assert "o1 = farray(out_ptrs[1], (out_shapes[3], out_shapes[4],), float64)" in source and "kernel(a0, o0, o1)" in source
+    module = _fice_module()
+    plugin = compile_kernel("cldfrc_fice", module.cldfrc_fice)
+    assert isinstance(plugin, NativePlugin) and plugin.address and plugin.describe()["binding"] == "numba"
+    rng = np.random.default_rng(0)
+    t = np.asfortranarray(rng.uniform(200.0, 300.0, size=(16, 30)))
+    fice, fsnow = np.zeros((16, 30), order="F"), np.zeros((16, 30), order="F")
+    assert call_plugin_from_python(plugin, [t], [fice, fsnow]) == 0
+    ref_fice, ref_fsnow = module.cldfrc_fice_reference(t)
+    assert np.array_equal(fice, ref_fice) and np.array_equal(fsnow, ref_fsnow)
+    # a wrong table is refused, not read
+    assert call_plugin_from_python(plugin, [t, t], [fice, fsnow]) == 1
+    with pytest.raises(PhysicsError, match="not called from Python"):
+        plugin(t)
+
+
+def test_a_stage_binds_a_compiled_plugin_at_the_hook_and_runs_whole(tmp_path: Path) -> None:
+    pytest.importorskip("numba")
+    from freecam.physics.cloud_macro_microphysics import CloudMacroMicrophysics
+    from freecam.physics.numba_kernel import compile_kernel
+
+    plugin = compile_kernel("cldfrc_fice", _fice_module().cldfrc_fice)
+    stage = CloudMacroMicrophysics()
+    stage.kernels["cldfrc_fice"] = plugin
+    assert stage.select_mode(None) == "native-model"
+    library = _Library()
+    ran: list[str] = []
+    native = SimpleNamespace(library=library, run_action=lambda name, phase=None: ran.append(name),
+                             segment_runner=lambda stage_name: None)
+    context = SimpleNamespace(native=native, step=1)
+    stage.tend(None, context)
+    stage.tend(None, context)
+    assert ran == [stage.STAGE, stage.STAGE]
+    assert library.plugged == [(1, plugin.address, 0)]              # fice is hook 1; bound once, live
+    stage.kernels["cldfrc_fice"] = compile_kernel("cldfrc_fice", _fice_module().cldfrc_fice, shadow=True)
+    stage.tend(None, context)
+    assert library.plugged[-1][2] == 1 and len(library.plugged) == 2

@@ -68,6 +68,15 @@ def _axis(hook: Hook, spec: FunctionSpec, axis: str) -> str:
     return str(spec.dimensions[axis])
 
 
+def _shape3(hook: Hook, spec: FunctionSpec, item) -> str:
+    """An argument's extents padded to three, as the plugin tables carry them (int64)."""
+
+    axes = [f"int({_axis(hook, spec, axis)}, c_int64_t)" for axis in item.native_shape] if item.rank else ["1_c_int64_t"]
+    while len(axes) < 3:
+        axes.append("0_c_int64_t")
+    return ", ".join(axes)
+
+
 def _extents(spec: FunctionSpec, item, hook: Hook | None = None) -> str:
     if hook is None:
         return ", ".join(str(spec.dimensions[axis]) for axis in item.native_shape)
@@ -246,6 +255,10 @@ def _model_procedure(hook: Hook, spec: FunctionSpec, index: int) -> str:
              f"    ! {spec.qualified_name} answered by the model bound at hook {index}, inside the image"]
     lines.extend(_declaration(hook, spec, item, target=True) for item in dummies)
     lines.append(f"    type(torch_tensor) :: in_t({len(inputs)}), out_t({len(outputs)})")
+    lines.append(f"    type(c_ptr) :: in_p({len(inputs)}), out_p({len(outputs)})")
+    lines.append(f"    integer(c_int64_t) :: in_s(3, {len(inputs)}), out_s(3, {len(outputs)})")
+    lines.append("    procedure(plugin_interface), pointer :: plugin => null()")
+    lines.append("    integer(c_int) :: plugin_status")
     for item in inputs:
         colons = ",".join(":" for _ in range(max(item.rank, 1)))
         if item.rank == 0:
@@ -269,7 +282,8 @@ def _model_procedure(hook: Hook, spec: FunctionSpec, index: int) -> str:
             value = item.name if item.dtype == "float64" else f"real({item.name}, c_double)"
             lines.append(f"    s_{item.name}(1) = {value}")
             lines.append(f"    sp_{item.name} => s_{item.name}")
-            lines.append(f"    call torch_tensor_from_array(in_t({slot}), sp_{item.name}, torch_kCPU)")
+            lines.append(f"    in_p({slot}) = c_loc(s_{item.name}); in_s(:, {slot}) = (/ 1_c_int64_t, 0_c_int64_t, 0_c_int64_t /)")
+            lines.append(f"    if (.not. plugged({index})) call torch_tensor_from_array(in_t({slot}), sp_{item.name}, torch_kCPU)")
         elif item.pointer:
             bounds = ", ".join(f"1:{_axis(hook, spec, axis)}" for axis in item.native_shape)
             lines.append(f"    if (associated({item.name})) then")
@@ -278,15 +292,27 @@ def _model_procedure(hook: Hook, spec: FunctionSpec, index: int) -> str:
             lines.append(f"      l_{item.name} = 0.0_c_double")
             lines.append("    end if")
             lines.append(f"    v_{item.name} => l_{item.name}")
-            lines.append(f"    call torch_tensor_from_array(in_t({slot}), v_{item.name}, torch_kCPU)")
+            lines.append(f"    in_p({slot}) = c_loc(l_{item.name}); in_s(:, {slot}) = (/ {_shape3(hook, spec, item)} /)")
+            lines.append(f"    if (.not. plugged({index})) call torch_tensor_from_array(in_t({slot}), v_{item.name}, torch_kCPU)")
         else:
             lines.append(f"    call c_f_pointer(c_loc({first(item)}), v_{item.name}, (/ {_extents(spec, item, hook)} /))")
-            lines.append(f"    call torch_tensor_from_array(in_t({slot}), v_{item.name}, torch_kCPU)")
+            lines.append(f"    in_p({slot}) = c_loc({first(item)}); in_s(:, {slot}) = (/ {_shape3(hook, spec, item)} /)")
+            lines.append(f"    if (.not. plugged({index})) call torch_tensor_from_array(in_t({slot}), v_{item.name}, torch_kCPU)")
     for slot, item in enumerate(outputs, start=1):
         lines.append(f"    op_{item.name} => o_{item.name}")
-        lines.append(f"    call torch_tensor_from_array(out_t({slot}), op_{item.name}, torch_kCPU)")
+        lines.append(f"    out_p({slot}) = c_loc(o_{item.name}); out_s(:, {slot}) = (/ {_shape3(hook, spec, item)} /)")
+        lines.append(f"    if (.not. plugged({index})) call torch_tensor_from_array(out_t({slot}), op_{item.name}, torch_kCPU)")
     lines.append("    call system_clock(t1)")
-    lines.append(f"    call torch_model_forward(models({index}), in_t, out_t)")
+    lines.append(f"    if (plugged({index})) then")
+    lines.append("      ! a compiled plugin: the same arrays as pointer and extent tables, outputs zeroed first")
+    for item in outputs:
+        lines.append(f"      o_{item.name} = 0.0_c_double")
+    lines.append(f"      call c_f_procpointer(plugins({index}), plugin)")
+    lines.append(f"      plugin_status = plugin({len(inputs)}_c_int, in_p, in_s, {len(outputs)}_c_int, out_p, out_s)")
+    lines.append(f"      if (plugin_status /= 0_c_int) error stop 'pycam_hooks: the plugin bound at {hook.kernel} returned a non-zero status'")
+    lines.append("    else")
+    lines.append(f"      call torch_model_forward(models({index}), in_t, out_t)")
+    lines.append("    end if")
     lines.append("    call system_clock(t2)")
     lines.append(f"    forward_ticks({index}) = forward_ticks({index}) + (t2 - t1)")
     lines.append(f"    if (.not. shadow({index})) then")
@@ -299,8 +325,10 @@ def _model_procedure(hook: Hook, spec: FunctionSpec, index: int) -> str:
         if item.carrier == "character" and ROLE_INTENT[item.role] != "in":
             lines.append(f"      {item.name} = ' '")
     lines.append("    end if")
-    lines.append("    call torch_delete(in_t)")
-    lines.append("    call torch_delete(out_t)")
+    lines.append(f"    if (.not. plugged({index})) then")
+    lines.append("      call torch_delete(in_t)")
+    lines.append("      call torch_delete(out_t)")
+    lines.append("    end if")
     lines.append("    call system_clock(t1)")
     lines.append(f"    model_ticks({index}) = model_ticks({index}) + (t1 - t0)")
     lines.append(f"  end subroutine model_{hook.kernel}")
@@ -459,7 +487,8 @@ def render(table: HookTable) -> str:
 ! GENERATED by tools/generate_pi_cam_hooks.py from native/pi_cam/hooks.yaml and
 ! the kernels' function contracts.  Do not edit by hand.
 module pycam_hooks
-  use, intrinsic :: iso_c_binding, only: c_int, c_int32_t, c_int64_t, c_double, c_ptr, c_loc, c_f_pointer, c_null_ptr, c_char, c_null_char
+  use, intrinsic :: iso_c_binding, only: c_int, c_int32_t, c_int64_t, c_double, c_ptr, c_loc, c_f_pointer, c_null_ptr, c_char, c_null_char, &
+                                         c_funptr, c_null_funptr, c_f_procpointer
   use ftorch, only: torch_model, torch_tensor, torch_kCPU, torch_model_load, torch_model_forward, &
                     torch_tensor_from_array, torch_delete
   implicit none
@@ -467,7 +496,7 @@ module pycam_hooks
   public :: pycam_hooks_arm_v1, pycam_hooks_counts_v1, pycam_hooks_paused_v1, pycam_hooks_frame_v1, &
             pycam_hooks_original_v1, pycam_hooks_reset_v1, pycam_hooks_count_v1, pycam_hooks_name_v1, &
             pycam_hooks_bind_model_v1, pycam_hooks_unbind_model_v1, pycam_hooks_modeled_v1, &
-            pycam_hooks_model_seconds_v1
+            pycam_hooks_model_seconds_v1, pycam_hooks_bind_plugin_v1
 
   integer, parameter :: nhooks = {len(table.hooks)}
   integer(c_int), parameter :: ev_needs_kernel = 1_c_int
@@ -497,6 +526,18 @@ module pycam_hooks
   ! calls a shadow model also answered
   integer(c_int64_t), save :: warm_ticks(nhooks) = 0_c_int64_t, original_ticks(nhooks) = 0_c_int64_t
   type(torch_model), save :: models(nhooks)
+  ! compiled plugins (a C function pointer, e.g. a Numba cfunc) bound at hooks with a model block:
+  ! the hook hands them the same arrays it would hand a model, as pointer and extent tables
+  logical, save :: plugged(nhooks) = .false.
+  type(c_funptr), save :: plugins(nhooks) = c_null_funptr
+  abstract interface
+    integer(c_int) function plugin_interface(n_in, in_ptrs, in_shapes, n_out, out_ptrs, out_shapes) bind(C)
+      import :: c_int, c_ptr, c_int64_t
+      integer(c_int), value, intent(in) :: n_in, n_out
+      type(c_ptr), intent(in) :: in_ptrs(*), out_ptrs(*)
+      integer(c_int64_t), intent(in) :: in_shapes(*), out_shapes(*)
+    end function plugin_interface
+  end interface
   integer, save :: paused_hook = 0
   type(c_ptr), save :: frame_ptrs(max_slots)
   integer(c_int), save :: frame_ndims(max_slots) = 0_c_int, frame_dtypes(max_slots) = 0_c_int, frame_intents(max_slots) = 0_c_int
@@ -581,7 +622,8 @@ contains
     do i = 1, length
       filename(i:i) = path(i)
     end do
-    if (modeled(hook)) call torch_delete(models(hook))
+    if (modeled(hook) .and. .not. plugged(hook)) call torch_delete(models(hook))
+    plugged(hook) = .false.; plugins(hook) = c_null_funptr
     call torch_model_load(models(hook), filename(1:length), torch_kCPU)
     ! one forward on zeros now: the first step does not pay the model's warm-up
     call system_clock(w0)
@@ -594,17 +636,42 @@ contains
   end function pycam_hooks_bind_model_v1
 
   integer(c_int) function pycam_hooks_unbind_model_v1(hook) bind(C, name='pycam_hooks_unbind_model_v1') result(status)
-    ! release the bound model: the hook answers with the original again
+    ! release the bound model or plugin: the hook answers with the original again
     integer(c_int), value, intent(in) :: hook
     status = 1_c_int
     if (hook < 1 .or. hook > nhooks) return
     if (modeled(hook)) then
-      call torch_delete(models(hook))
+      if (.not. plugged(hook)) call torch_delete(models(hook))
       modeled(hook) = .false.
+      plugged(hook) = .false.
+      plugins(hook) = c_null_funptr
       shadow(hook) = .false.
     end if
     status = 0_c_int
   end function pycam_hooks_unbind_model_v1
+
+  integer(c_int) function pycam_hooks_bind_plugin_v1(hook, plugin, shadow_flag) &
+       bind(C, name='pycam_hooks_bind_plugin_v1') result(status)
+    ! bind a compiled plugin (a C function of the plugin_interface, e.g. a Numba cfunc) at the
+    ! hook: from now on the hook hands it the model block's arrays as pointer and extent tables
+    ! and takes its outputs, with no Python in the step; shadow as for a model
+    integer(c_int), value, intent(in) :: hook, shadow_flag
+    type(c_funptr), value, intent(in) :: plugin
+    status = 1_c_int
+    if (hook < 1 .or. hook > nhooks) return
+    if (.not. has_model(hook)) then
+      status = 2_c_int; return
+    end if
+    if (armed(hook)) then
+      status = 3_c_int; return
+    end if
+    if (modeled(hook) .and. .not. plugged(hook)) call torch_delete(models(hook))
+    plugins(hook) = plugin
+    plugged(hook) = .true.
+    modeled(hook) = .true.
+    shadow(hook) = shadow_flag /= 0_c_int
+    status = 0_c_int
+  end function pycam_hooks_bind_plugin_v1
 
   integer(c_int) function pycam_hooks_model_seconds_v1(hook, model_seconds, forward_seconds, call_seconds, &
        first_seconds, warm_seconds, original_seconds) bind(C, name='pycam_hooks_model_seconds_v1') result(status)

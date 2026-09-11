@@ -508,6 +508,35 @@ weights fit the cache its eight neighbours leave it -- a few hundred
 kilobytes -- or where the inference runs on an accelerator the ranks do not
 share.
 
+### A kernel written in Python, compiled, called by Fortran
+
+The pause was the wrong tool for one thing the project wants: a kernel
+written in Python that runs at the original's speed.  Every pause costs
+about 3 ms -- the fiber switch, the frame, the write-back -- against cores
+of one or two milliseconds.  The hook now takes a third answerer beside the
+original and a TorchScript model: a *compiled plugin*, a C function of the
+hook's plugin interface, bound by address (`pycam_hooks_bind_plugin_v1`).
+On every call the hook hands it the model block's arguments as two tables --
+pointers and extents, the same `float64` arrays it would wrap as tensors for
+a model -- and takes its outputs from the same temporaries, writing the live
+columns back exactly as the model branch does.  Nothing pauses; a step
+crosses the boundary once.
+
+The Python side makes the plugin with Numba.  `compile_kernel(hook, function)`
+(`freecam.physics.numba_kernel`) reads the hook's model block and contract,
+generates the adapter that unpacks the tables into Fortran-ordered arrays with
+the callee's own extents, compiles the user's function with `numba.njit` and
+the adapter as a `numba.cfunc`, and returns a `NativePlugin` for the kernel
+slot; the stage binds its address like a model's file.  On the command line
+`--kernel-plugin NAME=file.py:function` (and `--shadow-kernel-plugin`) does
+the same, compiling once per rank.  The user's function takes the inputs then
+the outputs, arrays indexed `[column, level]`, scalars as floats, and writes
+the outputs in place -- `examples/plugins/numba_kernels/cldfrc_fice.py` is the
+ice-fraction kernel written that way, statement for statement the original's
+arithmetic.  Offline it answers bit-identically to its NumPy form; what it does
+in the model, and what the plugin path costs against the FTorch path on the
+same hook, is gated on the p20 image and recorded below when those runs land.
+
 ## Where it stands
 
 | Kernel | Owner | Contract | Runner pause | In-model gate | Loop |

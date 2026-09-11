@@ -215,7 +215,8 @@ def read_hook_counts(library: Any) -> dict[str, dict[str, int]]:
 
 BIND_STATUS = {1: "no such hook", 2: "the hook takes no model (hooks.yaml has no model block for it)",
                3: "the hook is armed for a Python replacement", 4: "the path is empty or too long",
-               5: "the image has no model entry: it was built without FTorch"}
+               5: "the image has no model entry: it was built without FTorch",
+               6: "the image has no plugin entry: it was built before plugins"}
 #: what pycam_hooks_arm_v1 answers when a hook cannot be armed
 ARM_STATUS = {1: "no such hook", 3: "a model is bound at the hook", 5: "the hook has no frame (a Fortran-bound hook cannot pause)"}
 
@@ -243,6 +244,25 @@ def bind_hook_model(library: Any, hook_id: int, path: str | Path, *, shadow: boo
             f"cannot bind {path} at hook {hook_id}: {BIND_STATUS.get(status, f'status {status}')}")
 
 
+def bind_hook_plugin(library: Any, hook_id: int, address: int, *, shadow: bool = False) -> None:
+    """Bind a compiled plugin (the address of a C function of the hook's plugin interface, e.g. a
+    Numba cfunc) at hook ``hook_id``: the hook hands it the model block's arrays as pointer and
+    extent tables and takes its outputs, inside Fortran, until :func:`unbind_hook_model`.
+    """
+
+    import ctypes
+
+    entry = getattr(library, "pycam_hooks_bind_plugin_v1", None)
+    if entry is None:
+        raise PICAMConfigurationError(f"cannot bind a plugin at hook {hook_id}: {BIND_STATUS[6]}")
+    entry.restype = ctypes.c_int32
+    entry.argtypes = [ctypes.c_int32, ctypes.c_void_p, ctypes.c_int32]
+    status = int(entry(int(hook_id), ctypes.c_void_p(int(address)), 1 if shadow else 0))
+    if status != 0:
+        raise PICAMConfigurationError(
+            f"cannot bind a plugin at hook {hook_id}: {BIND_STATUS.get(status, f'status {status}')}")
+
+
 def unbind_hook_model(library: Any, hook_id: int) -> None:
     """Release the model bound at ``hook_id``; the hook answers with the original again."""
 
@@ -256,4 +276,4 @@ def unbind_hook_model(library: Any, hook_id: int) -> None:
     entry(int(hook_id))
 
 
-__all__ += ["read_hook_counts", "bind_hook_model", "unbind_hook_model", "BIND_STATUS", "ARM_STATUS"]
+__all__ += ["read_hook_counts", "bind_hook_model", "bind_hook_plugin", "unbind_hook_model", "BIND_STATUS", "ARM_STATUS"]

@@ -57,4 +57,42 @@ class NativeModel:
         return f"NativeModel({str(self.path)!r}{', shadow=True' if self.shadow else ''})"
 
 
-__all__ = ["NativeModel"]
+class NativePlugin:
+    """A compiled kernel (a Numba cfunc of the hook's plugin interface) for a kernel slot.
+
+    Built by :func:`freecam.physics.numba_kernel.compile_kernel`; the stage binds its
+    address at the kernel's hook (``pycam_hooks_bind_plugin_v1``) and the image calls it
+    directly on every call, inside Fortran, with the model block's arrays.
+    """
+
+    takes_frame = False
+
+    def __init__(self, adapter: Any, *, label: str, kernel: str, shadow: bool = False,
+                 inputs: list[str] | None = None, outputs: list[str] | None = None) -> None:
+        self._adapter = adapter                      # keeps the compiled code alive
+        self.address = int(adapter.address)
+        self.label = str(label)
+        self.kernel = str(kernel)
+        self.shadow = bool(shadow)
+        self.inputs = list(inputs or ())
+        self.outputs = list(outputs or ())
+
+    @property
+    def key(self) -> str:
+        """What identifies this binding to the stage: the code's address and the mode."""
+
+        return f"numba:{self.address:#x}{':shadow' if self.shadow else ''}"
+
+    def __call__(self, *args: Any, **kwargs: Any) -> Any:
+        raise PhysicsError(
+            f"{self.label} is a compiled plugin: the image calls it at the hook; it is not called from Python")
+
+    def describe(self) -> dict[str, Any]:
+        return {"function": self.label, "binding": "numba", "kernel": self.kernel, "shadow": self.shadow,
+                "inputs": len(self.inputs), "outputs": len(self.outputs)}
+
+    def __repr__(self) -> str:
+        return f"NativePlugin({self.label!r}{', shadow=True' if self.shadow else ''})"
+
+
+__all__ = ["NativeModel", "NativePlugin"]

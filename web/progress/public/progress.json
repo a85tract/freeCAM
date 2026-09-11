@@ -2648,7 +2648,7 @@
   "use_gw_oro": true,
   "use_subcol_microp": false
  },
- "content_hash": "85f102a7f884df3918217a4ebfaf24b0a21248068e70ee8160769a4e1cbdecf3",
+ "content_hash": "cdf185d89ef473051c70deb414b7024c3736450f5bacc1c6c9ac437a2da681bf",
  "evidence": {
   "pi_cam_cldfrc_fice_frame_replay.json": {
    "bfb": true,
@@ -4874,7 +4874,7 @@
   }
  ],
  "inputs": {
-  "native/pi_cam/hooks.yaml": "514406710e9f777e3deae7161fb3644b8968fe5a2bbb024f70f5f1970bd5dfc9",
+  "native/pi_cam/hooks.yaml": "13e21d599cdc066821c151e452973357a623d00c0997b7c6cb131725c9f55ba8",
   "native/pi_cam/kernel_classifications.yaml": "d6be2103c9bd0c86a0c8461a067d3b43eac6aa370e992fde9bf3096e55c8c5f4",
   "native/pi_cam/kernel_work_items.yaml": "5fe3d92c7065b365964d9f9004ac93e384851e32582cbbcd88ff5c5a9ebb9c30",
   "native/pi_cam/segment_runners.yaml": "002ab5f622cb5c10c0d7fc45eead3ef708de6524602eda635b4c064649663acd",
@@ -4883,7 +4883,7 @@
   "validation/pi_cam_kernel_api_redirectable_calls.json": "9ac016f0d242ceef054aa8a80ef074aa53b08c1f0f3042a81e76da4c75603273",
   "validation/pi_cam_kernel_runtime_coverage_1month.json": "48f77d6ec78b4026806d4ab6fb9517ef31c1d526481b4ad68e55f77af0d303bd",
   "validation/pi_cam_kernel_runtime_coverage_50step.json": "222961fc5274dbaaf71c40f6c131a683536b5a85ef14cd047a2fd196d8ca38c5",
-  "web/public/catalog.json": "668ac2215fddf05901be9acb68314f555cd7b09d9745ec628b87fa5e43e3bdba"
+  "web/public/catalog.json": "0d47bad4fb9e04678b2c9881aa87bdec71f0b0c58e6af323d6bfdaa219cd1261"
  },
  "kernels": {
   "aer_rad_props::aer_rad_props_lw": {
@@ -72453,8 +72453,8 @@
  ],
  "volatile": {
   "branch": "physics-kernel-api-closure",
-  "commit": "9aa18ce3a1618bdfbbc7f4e58c5d10c9b5630dca",
-  "generated_at": "2026-09-11T19:03:05+00:00"
+  "commit": "92c24a74b6ba86ee57e3ade92c419bb22f779a06",
+  "generated_at": "2026-09-11T20:13:45+00:00"
  },
  "work_items": [
   {

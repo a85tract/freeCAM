@@ -22,6 +22,8 @@
 # PYCAM_KERNEL_MODELS=name=path[,name=path] puts cloudpickled models in kernel
 # slots (never bit-for-bit: the drift and the health of the run are the result);
 # PYCAM_NO_VERIFY_EXPORTS=1 lets such a run past the replay's export check.
+# PYCAM_KERNEL_PLUGINS=name=file.py:function[,...] binds Numba-compiled Python kernels at
+# their hooks; PYCAM_SHADOW_PLUGINS does the same in shadow.
 # PYCAM_SHADOW_MODELS=name=path[,...] binds TorchScript models in shadow: the model
 # runs, the original answers, the run stays bit-for-bit and the cost is measured.
 # Every run's log is counted for the model's health -- water-isotope BIG ERROR
@@ -111,6 +113,19 @@ if [ -n "${PYCAM_SHADOW_MODELS:-}" ]; then
   # extra time is the model path's cost in situ, and the hook counts carry its seconds.
   for pair in ${PYCAM_SHADOW_MODELS//,/ }; do
     stage_flags+=(--shadow-kernel-model "${pair}")
+  done
+fi
+if [ -n "${PYCAM_KERNEL_PLUGINS:-}" ]; then
+  # Python kernels compiled with Numba and bound at their hooks, NAME=path.py:FUNCTION pairs
+  # separated by commas: the image calls them directly, no Python in the step
+  for pair in ${PYCAM_KERNEL_PLUGINS//,/ }; do
+    stage_flags+=(--kernel-plugin "${pair}")
+  done
+fi
+if [ -n "${PYCAM_SHADOW_PLUGINS:-}" ]; then
+  # the same in shadow: the compiled kernel runs on every call, the original answers
+  for pair in ${PYCAM_SHADOW_PLUGINS//,/ }; do
+    stage_flags+=(--shadow-kernel-plugin "${pair}")
   done
 fi
 if [ -n "${PYCAM_NO_VERIFY_EXPORTS:-}" ]; then

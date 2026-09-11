@@ -40,7 +40,7 @@ from ..pi_cam.facade import Physics
 from ..pi_cam.kernel_codegen import load_direct_kernels
 from .capture import lane_sha256
 from .errors import PhysicsError
-from .native_model import NativeModel
+from .native_model import NativeModel, NativePlugin
 from .segments import OriginalAtPause, OriginalKernel, SegmentedStage
 
 REPO = Path(__file__).resolve().parents[3]
@@ -1309,10 +1309,10 @@ class NativeStage:
                 f"unknown stage execution policy {policy!r}; one of {EXECUTION_POLICIES}")
         replaced = self.replacements()
         whole = self.WHOLE_ACTION or self.SPLIT_RUNNER
-        natives = tuple(name for name in replaced if isinstance(self.kernels[name], NativeModel))
+        natives = tuple(name for name in replaced if isinstance(self.kernels[name], (NativeModel, NativePlugin)))
         if natives:
-            # a TorchScript model bound at the kernel's hook: the image answers the
-            # kernel itself, so the stage runs whole -- there is nothing to pause at
+            # a TorchScript model or a compiled plugin bound at the kernel's hook: the
+            # image answers the kernel itself, so the stage runs whole -- nothing to pause at
             if set(natives) != set(replaced):
                 raise PhysicsError(
                     f"{type(self).__name__}: native models {list(natives)} cannot share a step with "
@@ -1418,11 +1418,12 @@ class NativeStage:
         A slot whose model changed is rebound; a slot emptied is unbound.
         """
 
-        from freecam.pi_cam.hooks import bind_hook_model, load_hooks, unbind_hook_model
+        from freecam.pi_cam.hooks import bind_hook_model, bind_hook_plugin, load_hooks, unbind_hook_model
 
         bound: dict[str, str] = getattr(self, "_native_bound", {})
-        wanted = {name: kernel for name, kernel in self.kernels.items() if isinstance(kernel, NativeModel)}
-        keys = {name: f"{model.sha256}{':shadow' if model.shadow else ''}" for name, model in wanted.items()}
+        wanted = {name: kernel for name, kernel in self.kernels.items() if isinstance(kernel, (NativeModel, NativePlugin))}
+        keys = {name: (model.key if isinstance(model, NativePlugin) else f"{model.sha256}{':shadow' if model.shadow else ''}")
+                for name, model in wanted.items()}
         if keys == bound:
             # every step after the first: nothing to bind, and no hooks table to
             # read (parsing hooks.yaml cost about 10 ms a step in job 7399451)
@@ -1444,7 +1445,10 @@ class NativeStage:
                     f"hook {name!r} has no model block in native/pi_cam/hooks.yaml: the image does "
                     f"not know how to hand its arguments to a model")
             if bound.get(name) != keys[name]:
-                bind_hook_model(native.library, hook.id, model.path, shadow=model.shadow)
+                if isinstance(model, NativePlugin):
+                    bind_hook_plugin(native.library, hook.id, model.address, shadow=model.shadow)
+                else:
+                    bind_hook_model(native.library, hook.id, model.path, shadow=model.shadow)
                 bound[name] = keys[name]
         self._native_bound = bound
 
