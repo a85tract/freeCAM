@@ -194,3 +194,11 @@ def test_the_command_line_tells_a_torchscript_archive_from_a_pickle(tmp_path: Pa
     assert isinstance(_load_kernel_model(archive), NativeModel)
     summary = _kernel_models_summary({"instratus_condensate": archive})
     assert summary["instratus_condensate"]["binding"] == "torchscript"
+
+
+def test_the_run_record_sums_the_calls_a_model_answered_over_the_ranks() -> None:
+    from freecam.pi_cam.cli import _hook_summary
+
+    records = [{"hook_counts": {"instratus_condensate": {"calls": 9360, "paused": 0, "modeled": 9000}}},
+               {"hook_counts": {"instratus_condensate": {"calls": 9360, "paused": 0, "modeled": 9000}}}]
+    assert _hook_summary(records) == {"instratus_condensate": {"calls": 18720, "paused": 0, "ranks_called": 2, "modeled": 18000}}

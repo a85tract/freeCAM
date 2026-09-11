@@ -319,6 +319,29 @@ network is a few microseconds of arithmetic): fifteen times cheaper than the
 Python pause, still not free for a kernel called 180 times a step, and a
 rounding error for the cores that cost 6-10 ms a call.
 
+In the model it measures as follows (50 steps, 512 ranks, the p13 image that
+links FTorch; `pi_cam_pausable_p13-whole_50step.json`,
+`pi_cam_pausable_instratus-ftorch-excl_50step.json`, both on four exclusive
+nodes with one rank a core):
+
+| run | cloud stage, s per rank | step loop, s | instratus hook |
+| --- | ---: | ---: | --- |
+| nothing replaced (bit-for-bit with the oracle) | 0.89 | 7.70 | 4,792,320 calls, 0 answered by a model |
+| the surrogate bound at the hook | 4.59 | 11.49 | 4,608,000 answered by the model, 0 paused |
+
+Every other region is the same to the hundredth of a second; the cost is the
+model's 9000 calls per rank at 0.41 ms each, tensor wrapping and TorchScript
+dispatch included, against 2.8 ms for the same calls answered from Python
+(`pi_cam_pausable_instratus-surrogate_50step.json`, on develop's shared half
+nodes, where the FTorch path took 0.65 ms a call and the Python pause 2.8;
+`pi_cam_pausable_instratus-ftorch_50step.json`).  The health counts are the
+same model's -- 6719 water-tracer lines against 6731 from the NumPy form, the
+last bit of a matrix product deciding a gate here and there -- and the image
+with nothing replaced counts zero and stays bit-for-bit, so linking FTorch
+changed nothing the oracle can see.  What this leaves for a kernel called 180
+times a step is a 49 percent step; for the cores called twice a step at 6-10 ms
+it leaves the model's own arithmetic.
+
 ## Where it stands
 
 | Kernel | Owner | Contract | Runner pause | In-model gate | Loop |

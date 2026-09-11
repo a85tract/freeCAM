@@ -1,0 +1,29 @@
+{
+ "schema_version": 1,
+ "what": "The FTorch-bound instratus surrogate (TorchScript at the kernel's hook, the image answering inside Fortran) on exclusive main-queue nodes, 50 steps, the p13 image.",
+ "pbs_job_id": "7391565.desched1",
+ "job": "validation/jobs/pi_cam_pausable_50step.pbs",
+ "run_tag": "instratus-ftorch-excl",
+ "python_stages": [
+  "cloud_macro_microphysics"
+ ],
+ "kernel_models": {
+  "instratus_condensate": {
+   "file": "instratus_surrogate_ts.pt",
+   "sha256": "ad5ace71013367f9c84d00528d663bc30d257fbfdeb8ac0db831e6603da43cd5",
+   "binding": "torchscript"
+  }
+ },
+ "native_image": "build/pi_cam_promoted_p13",
+ "outcome": "every rank failed in mpi4py before the model was constructed: 'cannot load MPI library' (libfabric.so.1 and libmpi.so not found); 764 tracebacks, walltime 18 s, no history, no summary",
+ "ranks": 512,
+ "steps_completed": 0,
+ "resources": {
+  "queue": "main",
+  "placement": "4 exclusive nodes, 128 ranks each",
+  "walltime": "00:00:18"
+ },
+ "bfb_record_note": "pi_cam_pausable_instratus-ftorch-excl_vs_oracle_50step_bfb.json and the .health.json were written by the job's comparison of an empty run and are not evidence; the resubmitted run (7392240) reuses the tag and overwrites both.",
+ "diagnosis": "Not the model path: the failure is in loading the MPI library itself, before any freeCAM code ran, on a node set that included dec0011; the same job script with nothing replaced (7391564) ran and was bit-for-bit one minute earlier on other nodes, and the same command resubmitted (7392240) is the measurement.  A node whose environment lacks libfabric, not a defect in the image or the binding.",
+ "disposition": "Resubmitted unchanged as 7392240."
+}

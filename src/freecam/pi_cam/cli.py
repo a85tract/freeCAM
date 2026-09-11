@@ -186,6 +186,8 @@ def _hook_summary(records) -> dict[str, object] | None:
             entry["ranks_called"] += 1 if counts.get("calls") else 0
             if "missed" in counts:          # armed calls made off the fiber, answered by the original
                 entry["missed"] = entry.get("missed", 0) + int(counts["missed"])
+            if "modeled" in counts:         # calls a bound TorchScript model answered inside the image
+                entry["modeled"] = entry.get("modeled", 0) + int(counts["modeled"])
     return totals or None
 
 
