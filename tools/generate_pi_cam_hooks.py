@@ -48,8 +48,30 @@ def _dummies(spec: FunctionSpec):
     return [item for item in spec.arguments if item.role != "result"]
 
 
-def _extents(spec: FunctionSpec, item) -> str:
-    return ", ".join(str(spec.dimensions[axis]) for axis in item.native_shape)
+def _axis(hook: Hook, spec: FunctionSpec, axis: str) -> str:
+    """One extent as the hook must express it.
+
+    A bind(C) hook serves module arrays of the contract's fixed extents.  A
+    Fortran-bound hook may receive packed arrays whose leading extents are
+    the callee's own integer dummies (micro_mg_tend is told ``pcols`` and
+    ``pver`` for arrays of that very size), so an axis named like an integer
+    dummy is that dummy, ``<axis>p`` is ``<axis>+1``, and only the rest are
+    the contract's constants.
+    """
+
+    if hook.binding == "fortran":
+        ints = {item.name for item in _dummies(spec) if item.rank == 0 and item.dtype == "int32" and not item.carrier}
+        if axis in ints:
+            return axis
+        if axis.endswith("p") and axis[:-1] in ints:
+            return f"{axis[:-1]}+1"
+    return str(spec.dimensions[axis])
+
+
+def _extents(spec: FunctionSpec, item, hook: Hook | None = None) -> str:
+    if hook is None:
+        return ", ".join(str(spec.dimensions[axis]) for axis in item.native_shape)
+    return ", ".join(_axis(hook, spec, axis) for axis in item.native_shape)
 
 
 def _declaration(hook: Hook, spec: FunctionSpec, item, *, target: bool) -> str:
@@ -73,7 +95,7 @@ def _declaration(hook: Hook, spec: FunctionSpec, item, *, target: bool) -> str:
         colons = ",".join(":" for _ in range(item.rank))
         return f"    {C_TYPES[item.dtype]}, pointer, intent({intent}) :: {item.name}({colons})"
     if item.rank:
-        return f"    {C_TYPES[item.dtype]}, intent({intent}){', target' if target else ''} :: {item.name}({_extents(spec, item)})"
+        return f"    {C_TYPES[item.dtype]}, intent({intent}){', target' if target else ''} :: {item.name}({_extents(spec, item, hook)})"
     return f"    {C_TYPES[item.dtype]}, intent({intent}) :: {item.name}"
 
 
@@ -206,13 +228,13 @@ def _model_procedure(hook: Hook, spec: FunctionSpec, index: int) -> str:
             lines.append(f"    real(c_double), target :: s_{item.name}(1)")
             lines.append(f"    real(c_double), pointer, contiguous :: sp_{item.name}(:)")
         elif item.pointer:
-            lines.append(f"    real(c_double), target :: l_{item.name}({_extents(spec, item)})")
+            lines.append(f"    real(c_double), target :: l_{item.name}({_extents(spec, item, hook)})")
             lines.append(f"    real(c_double), pointer, contiguous :: v_{item.name}({colons})")
         else:
             lines.append(f"    real(c_double), pointer, contiguous :: v_{item.name}({colons})")
     for item in outputs:
         colons = ",".join(":" for _ in range(item.rank))
-        lines.append(f"    real(c_double), target :: o_{item.name}({_extents(spec, item)})")
+        lines.append(f"    real(c_double), target :: o_{item.name}({_extents(spec, item, hook)})")
         lines.append(f"    real(c_double), pointer, contiguous :: op_{item.name}({colons})")
         lines.append(f"    real(c_double), pointer, contiguous :: w_{item.name}({colons})")
     lines.append("    integer :: n")
@@ -223,7 +245,7 @@ def _model_procedure(hook: Hook, spec: FunctionSpec, index: int) -> str:
             lines.append(f"    sp_{item.name} => s_{item.name}")
             lines.append(f"    call torch_tensor_from_array(in_t({slot}), sp_{item.name}, torch_kCPU)")
         elif item.pointer:
-            bounds = ", ".join(f"1:{spec.dimensions[axis]}" for axis in item.native_shape)
+            bounds = ", ".join(f"1:{_axis(hook, spec, axis)}" for axis in item.native_shape)
             lines.append(f"    if (associated({item.name})) then")
             lines.append(f"      l_{item.name} = {item.name}({bounds})")
             lines.append("    else")
@@ -232,16 +254,16 @@ def _model_procedure(hook: Hook, spec: FunctionSpec, index: int) -> str:
             lines.append(f"    v_{item.name} => l_{item.name}")
             lines.append(f"    call torch_tensor_from_array(in_t({slot}), v_{item.name}, torch_kCPU)")
         else:
-            lines.append(f"    call c_f_pointer(c_loc({first(item)}), v_{item.name}, (/ {_extents(spec, item)} /))")
+            lines.append(f"    call c_f_pointer(c_loc({first(item)}), v_{item.name}, (/ {_extents(spec, item, hook)} /))")
             lines.append(f"    call torch_tensor_from_array(in_t({slot}), v_{item.name}, torch_kCPU)")
     for slot, item in enumerate(outputs, start=1):
         lines.append(f"    op_{item.name} => o_{item.name}")
         lines.append(f"    call torch_tensor_from_array(out_t({slot}), op_{item.name}, torch_kCPU)")
     lines.append(f"    call torch_model_forward(models({index}), in_t, out_t)")
     for item in outputs:
-        lead = int(spec.dimensions[item.native_shape[0]])
+        lead = _axis(hook, spec, item.native_shape[0])
         lines.append(f"    n = min(int({ncol}), {lead})" if ncol else f"    n = {lead}")
-        lines.append(f"    call c_f_pointer(c_loc({first(item)}), w_{item.name}, (/ {_extents(spec, item)} /))")
+        lines.append(f"    call c_f_pointer(c_loc({first(item)}), w_{item.name}, (/ {_extents(spec, item, hook)} /))")
         lines.append(f"    w_{item.name}{_section(item, '1:n')} = o_{item.name}{_section(item, '1:n')}")
     for item in dummies:
         if item.carrier == "character" and ROLE_INTENT[item.role] != "in":

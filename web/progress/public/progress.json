@@ -2648,7 +2648,7 @@
   "use_gw_oro": true,
   "use_subcol_microp": false
  },
- "content_hash": "8fb5b4eb1071295a622ba983bf3720bd6cae5db9322eb28df517b6ed73986296",
+ "content_hash": "408c85878fb1d247971168b4e59ccfe5386a0762ae15c98a17e9a45293d96a07",
  "evidence": {
   "pi_cam_cldfrc_fice_frame_replay.json": {
    "bfb": true,
@@ -4244,6 +4244,25 @@
    "steps_completed": 0,
    "what": "A capture gate that aborted before its first pause, kept as evidence: micro_mg_tend was to be answered by the original at the stage-7 pause with every frame captured, but the runner binding refused the image at construction."
   },
+  "pi_cam_pausable_micro-ftorch-excl_50step_failure.json": {
+   "diagnosis": "Memory corruption by the hook's model branch, not the model's numbers.  micro_mg_cam_tend packs the active columns before the call: micro_mg_tend receives arrays of shape (mgncol, nlev) and is told so through its pcols and pver dummies (14, 12, ... columns in the captured frames).  The generated hook sized every array by the contract's constants (16, 30): the tensors read past the packed arrays and the write-back of 89 outputs through (16, 30) views wrote over the memory after each packed array -- the MGFieldPostProc objects that hold the packer's fields -- so the next unpack found an impossible rank and aborted.  The original path is unaffected, which is why the nothing-replaced gate on the same image (7393462) is bit-for-bit: it only passes the pointers through.",
+   "image": {
+    "build": "pi_cam_promoted_p14",
+    "role": "development",
+    "sha256": null
+   },
+   "kind": "gate-failure",
+   "outcome": "three steps completed, then 692 QNEG3 resets from micro_mg, 'ERROR in micro_mg_data.F90 at line 448' (an unreachable case-default: an MGFieldPostProc object's rank field had been overwritten) on 227 ranks, MPI_Abort and segmentation faults; no summary",
+   "pbs_job": "7394255",
+   "python_stages": [
+    "cloud_macro_microphysics"
+   ],
+   "ranks": 512,
+   "record": "pi_cam_pausable_micro-ftorch-excl_50step_failure.json",
+   "run_tag": "micro-ftorch-excl",
+   "steps_completed": 3,
+   "what": "The first model bound at the micro_mg_tend hook: a placeholder MLP (no physics claim) exported as TorchScript, run for fifty steps on exclusive nodes to measure the FTorch path on the most expensive kernel (p14 image)."
+  },
   "pi_cam_pausable_rad-both-pause_50step.json": {
    "advance_seconds": 16.3,
    "cloud_macro_micro_python": false,
@@ -4844,6 +4863,14 @@
    ],
    "kernel_routine": "micro_mg_tend",
    "record": "pi_cam_pausable_micro-capture_50step_failure.json"
+  },
+  {
+   "capability": "original_replacement_bfb",
+   "contexts": [
+    "cam_run1.cloud_macro_microphysics"
+   ],
+   "kernel_routine": null,
+   "record": "pi_cam_pausable_micro-ftorch-excl_50step_failure.json"
   }
  ],
  "inputs": {
@@ -4856,7 +4883,7 @@
   "validation/pi_cam_kernel_api_redirectable_calls.json": "9ac016f0d242ceef054aa8a80ef074aa53b08c1f0f3042a81e76da4c75603273",
   "validation/pi_cam_kernel_runtime_coverage_1month.json": "48f77d6ec78b4026806d4ab6fb9517ef31c1d526481b4ad68e55f77af0d303bd",
   "validation/pi_cam_kernel_runtime_coverage_50step.json": "222961fc5274dbaaf71c40f6c131a683536b5a85ef14cd047a2fd196d8ca38c5",
-  "web/public/catalog.json": "676bcea0a0738b67c364a6987c36165439ef1a6ed8f3912ac4275bf47b765f92"
+  "web/public/catalog.json": "a9485edfae7865b7154015044b4fa5bd17bb7d2ec86fb434d225e72fbe3c44c0"
  },
  "kernels": {
   "aer_rad_props::aer_rad_props_lw": {
@@ -72426,8 +72453,8 @@
  ],
  "volatile": {
   "branch": "physics-kernel-api-closure",
-  "commit": "f0061cf703f24316774b3ad14d826c39a6c07635",
-  "generated_at": "2026-09-11T06:24:02+00:00"
+  "commit": "f489d516f3e57dbafeb89b65daeda9f66508364b",
+  "generated_at": "2026-09-11T08:00:46+00:00"
  },
  "work_items": [
   {

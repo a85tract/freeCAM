@@ -1,0 +1,29 @@
+{
+ "schema_version": 1,
+ "what": "The first model bound at the micro_mg_tend hook: a placeholder MLP (no physics claim) exported as TorchScript, run for fifty steps on exclusive nodes to measure the FTorch path on the most expensive kernel (p14 image).",
+ "pbs_job_id": "7394255.desched1",
+ "job": "validation/jobs/pi_cam_pausable_50step.pbs",
+ "run_tag": "micro-ftorch-excl",
+ "python_stages": [
+  "cloud_macro_microphysics"
+ ],
+ "kernel_models": {
+  "micro_mg_tend": {
+   "file": "micro_placeholder_ts.pt",
+   "binding": "torchscript",
+   "note": "placeholder MLP over the captured frames of gate 7359460; not kept"
+  }
+ },
+ "native_image": "build/pi_cam_promoted_p14",
+ "outcome": "three steps completed, then 692 QNEG3 resets from micro_mg, 'ERROR in micro_mg_data.F90 at line 448' (an unreachable case-default: an MGFieldPostProc object's rank field had been overwritten) on 227 ranks, MPI_Abort and segmentation faults; no summary",
+ "ranks": 512,
+ "steps_completed": 3,
+ "resources": {
+  "queue": "main",
+  "placement": "4 exclusive nodes, 128 ranks each",
+  "walltime": "00:01:01"
+ },
+ "bfb_record_note": "pi_cam_pausable_micro-ftorch-excl_vs_oracle_50step_bfb.json and the .health.json were written by the job's comparison of the aborted run; kept with this record, the tag is not reused.",
+ "diagnosis": "Memory corruption by the hook's model branch, not the model's numbers.  micro_mg_cam_tend packs the active columns before the call: micro_mg_tend receives arrays of shape (mgncol, nlev) and is told so through its pcols and pver dummies (14, 12, ... columns in the captured frames).  The generated hook sized every array by the contract's constants (16, 30): the tensors read past the packed arrays and the write-back of 89 outputs through (16, 30) views wrote over the memory after each packed array -- the MGFieldPostProc objects that hold the packer's fields -- so the next unpack found an impossible rank and aborted.  The original path is unaffected, which is why the nothing-replaced gate on the same image (7393462) is bit-for-bit: it only passes the pointers through.",
+ "disposition": "A Fortran-bound hook now sizes its arrays by the callee's own integer dummies (pcols, pver, pver+1 for pverp; constants only for axes that are not dummies), the models return outputs shaped like the call, and the image is rebuilt as p15 with its own gate before the runs are repeated under new tags (micro-null-excl for the mechanism alone, micro-mlp-excl for the placeholder)."
+}

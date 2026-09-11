@@ -96,8 +96,14 @@ def test_the_generated_module_answers_a_bound_model_inside_the_image() -> None:
     assert "    logical, intent(in) :: microp_uniform" in text and "    character(len=*), intent(out) :: errstring" in text
     assert "    real(c_double), pointer, intent(in) :: tnd_qsnow(:,:)" in text
     assert "type(torch_tensor) :: in_t(26), out_t(89)" in text
-    assert "call c_f_pointer(c_loc(rndst), v_rndst, (/ 16, 30, 4 /))" in text
+    # packed arrays: the callee's own pcols/pver dummies size every array, not the contract's constants
+    assert "real(c_double), intent(in), target :: tn(pcols, pver)" in text
+    assert "call c_f_pointer(c_loc(rndst), v_rndst, (/ pcols, pver, 4 /))" in text
+    assert "real(c_double), target :: o_rflx(pcols, pver+1)" in text and "n = min(int(ncol), pcols)" in text
+    assert "l_tnd_qsnow = tnd_qsnow(1:pcols, 1:pver)" in text
     assert "w_qc(1:n, :) = o_qc(1:n, :)" in text and "w_prect(1:n) = o_prect(1:n)" in text
+    # the bind(C) hook keeps the contract's fixed extents (module arrays of pcols)
+    assert "call c_f_pointer(c_loc(p_in(1)), v_p_in, (/ 16 /))" in text
     assert "if (associated(tnd_qsnow)) then" in text and "errstring = ' '" in text
     # arming refuses a hook without a frame
     assert "if (flag /= 0_c_int .and. .not. can_pause(hook)) then" in text
