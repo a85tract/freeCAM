@@ -342,12 +342,89 @@ changed nothing the oracle can see.  What this leaves for a kernel called 180
 times a step is a 49 percent step; for the cores called twice a step at 6-10 ms
 it leaves the model's own arithmetic.
 
+### The most expensive core, and what the mechanism costs there
+
+The deep GPTL profile of the original Fortran (fifty steps and a month, 512
+ranks) ranks the physics cores by what they cost per call: `micro_mg_tend`
+first at 10.7 ms on develop's shared half nodes (18 percent of the physics, 6
+percent of the step), the UW shallow-convection core next at 9.4 ms, the two
+RRTMG cores at about 6 ms, and `mmacro_pcond` at 2.4 ms -- less than a Python
+pause, which is why the macrophysics surrogate could never pay back through
+the pause and why the next experiment moved to the microphysics.
+
+`micro_mg_tend` is called from one compiled site in `micro_mg_cam`, so it is
+hooked the same way as `instratus_condensate`, with two differences the hook
+table now expresses.  It takes the callee's own kinds -- default logicals, an
+assumed-length character, pointer arrays -- so its hook is a plain module
+procedure (`binding: fortran`) with no C interface and no frame: it cannot be
+paused, only bound to a model, and arming it is refused.  And it receives
+*packed* arrays, `(mgncol, nlev)` for the columns that hold cloud, with
+`pcols` and `pver` set to those very extents; the first build sized the
+hook's arrays by the contract's constants and corrupted memory
+(`pi_cam_pausable_micro-ftorch-excl_50step_failure.json`, kept), so a
+Fortran-bound hook now sizes every array by the callee's integer dummies.
+The model block names 26 inputs and 89 outputs over its 116 arguments.
+
+Measuring the mechanism there needed two more things.  A model that answers
+changes the run, so a hook can bind a model *in shadow*: the model runs on
+every call for its cost and its answer is discarded while the original
+answers, and the run stays bit-for-bit.  And the hooks time themselves per
+rank: the model branch, the forward alone, the whole call as the hook sees
+it, the first call alone, and the warm-up; the record sums them over the
+ranks and keeps the slowest rank's own value beside each sum.  All runs below
+are fifty steps on four exclusive nodes with one rank a core; the per-rank
+region times come from the run's `timing/freecam_timing_stats`
+(`CAM:cloud_macro_microphysics_python`, mean over ranks).
+
+| image, run | step loop, s | cloud stage, s | model branch, ms a call | forward, ms a call | bit-for-bit |
+| --- | ---: | ---: | ---: | ---: | --- |
+| p15 nothing bound, 7394422 | 7.67 | 0.88 | | | yes |
+| p15 null model bound and answering, 7394423 | 8.50 | | | | no, as intended: zeros are the answer |
+| p16 (timers) null model answering, 7399102 | 8.51 | | 1.74 | 1.33 | no, as intended |
+| p17 null model in shadow, 7399451 | 9.45 | 1.74 | 1.63 | 1.45 | yes |
+| p17 instratus surrogate in shadow, 7399452 | 11.82 | 4.80 | 0.35 | 0.33 | yes |
+| p18 nothing bound, 7400407 | 7.64 | 0.88 | | | yes |
+| p18 null model in shadow, 7400408 | 7.97 | 1.11 | 0.56 | 0.38 | yes |
+| p18 instratus surrogate in shadow, 7400409 | 11.20 | 4.24 | 0.34 | 0.32 | yes |
+
+The p17 rows did not add up: the stage grew by 0.85 s a rank with the model
+branch at 0.16 s, and by 3.92 s with the branch at 3.19.  The timing tree
+placed the difference.  The Fortran region inside the stage grew by exactly
+the branch (0.15 s and 3.20 s); the rest sat in the stage's Python around
+it, and was the same 0.7 s in both runs whatever the call count: the stage
+re-read `hooks.yaml` every step to find the hooks' ids (7 to 10 ms a step),
+and the first step paid the model's load and first forward -- rank 0's first
+step took 0.23 s against 0.02 s, with 512 ranks faulting the 438 MB libtorch
+in from the work filesystem at once.  The p18 image binds once and runs one
+forward on zero tensors of the contract's extents at bind, before the step
+loop sees the model; the first-call and warm-up timers say what that moved:
+the first real call now takes 3.8 ms a rank (4.6 on the slowest) and the
+warm-up 83 ms (99), paid at bind.  What is left in the microphysics stage is
+the two calls a step at 0.56 ms and a first step 0.16 s longer for the bind.
+
+Standalone, the same null model costs 183 us a call from a Fortran program
+on a login-node core, of which the hook's tensor wrapping and write-back are
+1.4 us; a column count that changes between calls costs nothing after the
+second call, and flushing the data caches between calls adds 55 us.  In the
+model it costs three times that: the call comes after forty milliseconds of
+other physics with the caches cold, on a node whose 128 ranks share memory
+bandwidth.  That 0.56 ms -- with 115 tensors wrapped and 89 outputs written
+back -- is the floor for replacing `micro_mg_tend` inside the image, against
+a core that costs about half of the 10.7 ms measured on shared half nodes
+(the whole step runs twice as fast on exclusive nodes).  A model has to
+answer in well under that to gain anything, and since the core is 6 percent
+of the step, the most a free model can take off a step is about that.  The
+placeholder MLP run (7394424, random weights, the network's real size:
+457,155 QNEG3 lines, kept for the timing only) says the network's own
+arithmetic at that size is another 1.4 ms a call; a trained model for this
+core is a research project of its own, not started.
+
 ## Where it stands
 
 | Kernel | Owner | Contract | Runner pause | In-model gate | Loop |
 | --- | --- | --- | --- | --- | --- |
 | `mmacro_pcond` | Macrophysics (in the cloud stage) | reviewed | yes, validated | segmented, bit-for-bit; alone and together with `micro_mg_tend` | complete |
-| `micro_mg_tend` | Microphysics (in the cloud stage) | reviewed | yes, validated | segmented, bit-for-bit (100 pauses in 50 steps); alone and together with `mmacro_pcond` (200 pauses) | open: no captured calls replayed through its standalone image yet |
+| `micro_mg_tend` | Microphysics (in the cloud stage; hooked: a Fortran-bound hook over its packed arrays, bindable to a model, not pausable) | reviewed | yes, validated (the runner's pause) | segmented, bit-for-bit (100 pauses in 50 steps); alone and together with `mmacro_pcond` (200 pauses); a null model bound at the hook answered all 51,200 calls inside the image (7394423), and in shadow the p18 image stays bit-for-bit at 0.56 ms a call (7400408) | open: no captured calls replayed through its standalone image yet; no trained model |
 | `rad_rrtmg_sw` | Radiation (split, pausable) | frame descriptor | yes, validated | segmented, bit-for-bit (50 pauses in 50 steps); alone, with `rad_rrtmg_lw`, and with every other exposed kernel paused in one run | open: capture and replay |
 | `rad_rrtmg_lw` | Radiation (split, pausable) | frame descriptor | yes, validated | segmented, bit-for-bit (50 pauses in 50 steps); alone, with `rad_rrtmg_sw`, and with every other exposed kernel paused in one run | open: capture and replay |
 | `dadadj` | DryAdjustment (pausable) | reviewed | yes, validated | segmented, bit-for-bit (100 pauses in 50 steps); alone and together with `compute_uwshcu_inv` | complete |

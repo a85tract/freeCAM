@@ -22,11 +22,20 @@ items:
   owner: claude
   branch: physics-kernel-api-closure
   started_at: '2026-09-09'
-  updated_at: '2026-09-09'
-  next_gate: 512-rank 50-step BFB with capture on the p11 image
+  updated_at: '2026-09-11'
+  next_gate: capture of the hook's 26 inputs and 89 outputs at every call, then a trained model bound
+    at the hook; a model must answer in well under the core's own cost to gain anything
   note: 'First capture attempt (7358831) aborted on manifest/image version skew: the p10 image exports
-    no pycam_stage7_original_v1 (validation/pi_cam_pausable_micro-capture_50step_failure.json). Resubmit
-    once the p11 image is built.'
+    no pycam_stage7_original_v1 (validation/pi_cam_pausable_micro-capture_50step_failure.json). Hooked
+    on 2026-09-10 as a Fortran-bound hook (the callee''s own kinds, packed (mgncol, nlev) arrays sized by
+    its pcols/pver dummies, bindable to a model, not pausable); the first build sized the arrays by the
+    contract and corrupted memory (7394255, failure record). Images p14/p15 with nothing bound are
+    bit-for-bit (7393462, 7394422); a null model bound at the hook answered all 51,200 calls inside the
+    image (7394423, 7399102). Shadow runs (the model runs, the original answers, bit-for-bit) put the
+    mechanism at 1.63 ms a call on p17 (7399451) and 0.56 ms on p18 (7400408), after the stage stopped
+    re-reading hooks.yaml every step and the bind took the warm-up forward out of the step loop; the
+    placeholder MLP of the network''s real size costs another 1.4 ms a call (7394424, timing only). No
+    trained model exists yet.'
 - kernel: cldwat2m_macro::instratus_condensate
   target_processes:
   - cam_run1.cloud_macro_microphysics
@@ -36,7 +45,7 @@ items:
   owner: claude
   branch: physics-kernel-api-closure
   started_at: '2026-09-09'
-  updated_at: '2026-09-10'
+  updated_at: '2026-09-11'
   next_gate: standalone replay of the 4,608,000 captured frames; a model that keeps saturation as well
     as conservation, bound at the hook through FTorch
   note: 'Hook gate 7371011 and capture gate 7371232 both bit-for-bit (9000 pauses per rank); every frame
@@ -48,4 +57,6 @@ items:
     fifty-step run with no Python in the step (7392240, exclusive nodes: 0.41 ms a call against 2.8 ms
     from Python; 6719 BIG ERROR lines); the p13 image with nothing replaced is bit-for-bit (7391564).
     First attempts: 7371767 (a set in the model pickled per rank) and 7391565 (a node without libfabric),
-    both failure records.'
+    both failure records. In shadow (the model runs, the original answers) the same TorchScript costs
+    0.35 ms a call on p17 (7399452) and 0.34 ms on p18 (7400409), both bit-for-bit. Direction paused
+    by the maintainer on 2026-09-10.'
