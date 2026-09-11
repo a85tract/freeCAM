@@ -133,7 +133,12 @@ def _hook_procedure(hook: Hook, spec: FunctionSpec, index: int) -> str:
             lines.append(f"      hook_ticks({index}) = hook_ticks({index}) + (h1 - h0)")
             lines.append(f"      if (answered({index}) == 1_c_int64_t) first_ticks({index}) = h1 - h0")
             lines.append(f"      if (.not. shadow({index})) return")
-            lines.append("      ! shadow: the model ran for its cost alone; the original answers")
+            lines.append("      ! shadow: the model ran for its cost alone; the original answers, and is timed too")
+            lines.append("      call system_clock(h0)")
+            lines.append(f"      call original_{hook.kernel}({names})")
+            lines.append("      call system_clock(h1)")
+            lines.append(f"      original_ticks({index}) = original_ticks({index}) + (h1 - h0)")
+            lines.append("      return")
             lines.append("    end if")
         lines.append(f"    call original_{hook.kernel}({names})")
         lines.append(f"  end subroutine hook_{hook.kernel}")
@@ -155,7 +160,12 @@ def _hook_procedure(hook: Hook, spec: FunctionSpec, index: int) -> str:
         lines.append(f"      hook_ticks({index}) = hook_ticks({index}) + (h1 - h0)")
         lines.append(f"      if (answered({index}) == 1_c_int64_t) first_ticks({index}) = h1 - h0")
         lines.append(f"      if (.not. shadow({index})) return")
-        lines.append("      ! shadow: the model ran for its cost alone; the original answers")
+        lines.append("      ! shadow: the model ran for its cost alone; the original answers, and is timed too")
+        lines.append("      call system_clock(h0)")
+        lines.append(f"      call original_{hook.kernel}({names})")
+        lines.append("      call system_clock(h1)")
+        lines.append(f"      original_ticks({index}) = original_ticks({index}) + (h1 - h0)")
+        lines.append("      return")
         lines.append("    end if")
     lines.append(f"    if (.not. armed({index})) then")
     lines.append(f"      call original_{hook.kernel}({names})")
@@ -483,8 +493,9 @@ module pycam_hooks
   ! and around the whole call of the model procedure, its prologue and epilogue included;
   ! the first modeled call alone (the warm-up: code pages, TorchScript profiling and optimisation)
   integer(c_int64_t), save :: hook_ticks(nhooks) = 0_c_int64_t, first_ticks(nhooks) = 0_c_int64_t
-  ! the warm-up forward at bind (pycam_hooks_bind_model_v1)
-  integer(c_int64_t), save :: warm_ticks(nhooks) = 0_c_int64_t
+  ! the warm-up forward at bind (pycam_hooks_bind_model_v1), and the original's own time on the
+  ! calls a shadow model also answered
+  integer(c_int64_t), save :: warm_ticks(nhooks) = 0_c_int64_t, original_ticks(nhooks) = 0_c_int64_t
   type(torch_model), save :: models(nhooks)
   integer, save :: paused_hook = 0
   type(c_ptr), save :: frame_ptrs(max_slots)
@@ -596,15 +607,17 @@ contains
   end function pycam_hooks_unbind_model_v1
 
   integer(c_int) function pycam_hooks_model_seconds_v1(hook, model_seconds, forward_seconds, call_seconds, &
-       first_seconds, warm_seconds) bind(C, name='pycam_hooks_model_seconds_v1') result(status)
+       first_seconds, warm_seconds, original_seconds) bind(C, name='pycam_hooks_model_seconds_v1') result(status)
     ! wall seconds this rank spent in the hook's model branch, in the model's forward alone,
     ! around the whole model call as the hook sees it (prologue and epilogue included), in the
-    ! first modeled call alone, and in the warm-up forward at bind
+    ! first modeled call alone, in the warm-up forward at bind, and in the original on the calls
+    ! a shadow model also answered
     integer(c_int), value, intent(in) :: hook
     real(c_double), intent(out) :: model_seconds, forward_seconds, call_seconds, first_seconds, warm_seconds
+    real(c_double), intent(out) :: original_seconds
     integer(c_int64_t) :: rate
     model_seconds = 0.0_c_double; forward_seconds = 0.0_c_double; call_seconds = 0.0_c_double
-    first_seconds = 0.0_c_double; warm_seconds = 0.0_c_double
+    first_seconds = 0.0_c_double; warm_seconds = 0.0_c_double; original_seconds = 0.0_c_double
     status = 1_c_int
     if (hook < 1 .or. hook > nhooks) return
     call system_clock(count_rate=rate)
@@ -613,6 +626,7 @@ contains
     call_seconds = real(hook_ticks(hook), c_double) / real(rate, c_double)
     first_seconds = real(first_ticks(hook), c_double) / real(rate, c_double)
     warm_seconds = real(warm_ticks(hook), c_double) / real(rate, c_double)
+    original_seconds = real(original_ticks(hook), c_double) / real(rate, c_double)
     status = 0_c_int
   end function pycam_hooks_model_seconds_v1
 

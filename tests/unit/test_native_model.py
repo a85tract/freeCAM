@@ -118,6 +118,8 @@ def test_the_generated_module_answers_a_bound_model_inside_the_image() -> None:
     assert text.count("\n  subroutine warm_") == 3 and "      call warm_micro_mg_tend()" in text
     assert "real(c_double), target :: z_tn(16, 30)" in text and "real(c_double), target :: y_rflx(16, 31)" in text
     assert "warm_ticks(hook) = w1 - w0" in text and "warm_seconds = real(warm_ticks(hook), c_double)" in text
+    # in shadow the original is timed too, on the same calls: both prices from one run
+    assert "original_ticks(4) = original_ticks(4) + (h1 - h0)" in text and text.count("original_ticks(") == 6
     # per-rank timers: the whole model call as the hook sees it, and the first call alone
     assert "hook_ticks(4) = hook_ticks(4) + (h1 - h0)" in text
     assert "if (answered(4) == 1_c_int64_t) first_ticks(4) = h1 - h0" in text

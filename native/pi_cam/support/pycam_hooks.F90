@@ -45,8 +45,9 @@ module pycam_hooks
   ! and around the whole call of the model procedure, its prologue and epilogue included;
   ! the first modeled call alone (the warm-up: code pages, TorchScript profiling and optimisation)
   integer(c_int64_t), save :: hook_ticks(nhooks) = 0_c_int64_t, first_ticks(nhooks) = 0_c_int64_t
-  ! the warm-up forward at bind (pycam_hooks_bind_model_v1)
-  integer(c_int64_t), save :: warm_ticks(nhooks) = 0_c_int64_t
+  ! the warm-up forward at bind (pycam_hooks_bind_model_v1), and the original's own time on the
+  ! calls a shadow model also answered
+  integer(c_int64_t), save :: warm_ticks(nhooks) = 0_c_int64_t, original_ticks(nhooks) = 0_c_int64_t
   type(torch_model), save :: models(nhooks)
   integer, save :: paused_hook = 0
   type(c_ptr), save :: frame_ptrs(max_slots)
@@ -316,7 +317,12 @@ contains
       hook_ticks(3) = hook_ticks(3) + (h1 - h0)
       if (answered(3) == 1_c_int64_t) first_ticks(3) = h1 - h0
       if (.not. shadow(3)) return
-      ! shadow: the model ran for its cost alone; the original answers
+      ! shadow: the model ran for its cost alone; the original answers, and is timed too
+      call system_clock(h0)
+      call original_instratus_condensate(lchnk, ncol, k, p_in, t0_in, qv0_in, ql0_in, qi0_in, ni0_in, a_dc_in, ql_dc_in, qi_dc_in, a_sc_in, ql_sc_in, qi_sc_in, landfrac, snowh, rhmini_in, rhminl_in, rhminl_adj_land_in, rhminh_in, t_out, qv_out, ql_out, qi_out, al_st_out, ai_st_out, ql_st_out, qi_st_out)
+      call system_clock(h1)
+      original_ticks(3) = original_ticks(3) + (h1 - h0)
+      return
     end if
     if (.not. armed(3)) then
       call original_instratus_condensate(lchnk, ncol, k, p_in, t0_in, qv0_in, ql0_in, qi0_in, ni0_in, a_dc_in, ql_dc_in, qi_dc_in, a_sc_in, ql_sc_in, qi_sc_in, landfrac, snowh, rhmini_in, rhminl_in, rhminl_adj_land_in, rhminh_in, t_out, qv_out, ql_out, qi_out, al_st_out, ai_st_out, ql_st_out, qi_st_out)
@@ -976,7 +982,12 @@ contains
       hook_ticks(4) = hook_ticks(4) + (h1 - h0)
       if (answered(4) == 1_c_int64_t) first_ticks(4) = h1 - h0
       if (.not. shadow(4)) return
-      ! shadow: the model ran for its cost alone; the original answers
+      ! shadow: the model ran for its cost alone; the original answers, and is timed too
+      call system_clock(h0)
+      call original_micro_mg_tend(microp_uniform, pcols, pver, ncol, top_lev, deltatin, tn, qn, qc, qi, nc, ni, p, pdel, cldn, liqcldf, relvar, accre_enhan, icecldf, rate1ord_cw2pr_st, naai, npccnin, rndst, nacon, tlat, qvlat, qctend, qitend, nctend, nitend, effc, effc_fn, effi, prect, preci, nevapr, evapsnow, am_evp_st, prain, prodsnow, cmeout, deffi, pgamrad, lamcrad, qsout, dsout, rflx, sflx, qrout, reff_rain, reff_snow, qcsevap, qisevap, qvres, cmeiout, vtrmc, vtrmi, qcsedten, qisedten, prao, prco, mnuccco, mnuccto, msacwio, psacwso, bergso, bergo, melto, homoo, qcreso, prcio, praio, qireso, mnuccro, pracso, meltsdt, frzrdt, mnuccdo, nrout, nsout, refl, arefl, areflz, frefl, csrfl, acsrfl, fcsrfl, rercld, ncai, ncal, qrout2, qsout2, nrout2, nsout2, drout2, dsout2, freqs, freqr, nfice, prer_evap, do_cldice, errstring, tnd_qsnow, tnd_nsnow, re_ice, frzimm, frzcnt, frzdep, preo, prdso, frzro, meltso, wtfc, wtfi, wtprelat, wtpostlat)
+      call system_clock(h1)
+      original_ticks(4) = original_ticks(4) + (h1 - h0)
+      return
     end if
     call original_micro_mg_tend(microp_uniform, pcols, pver, ncol, top_lev, deltatin, tn, qn, qc, qi, nc, ni, p, pdel, cldn, liqcldf, relvar, accre_enhan, icecldf, rate1ord_cw2pr_st, naai, npccnin, rndst, nacon, tlat, qvlat, qctend, qitend, nctend, nitend, effc, effc_fn, effi, prect, preci, nevapr, evapsnow, am_evp_st, prain, prodsnow, cmeout, deffi, pgamrad, lamcrad, qsout, dsout, rflx, sflx, qrout, reff_rain, reff_snow, qcsevap, qisevap, qvres, cmeiout, vtrmc, vtrmi, qcsedten, qisedten, prao, prco, mnuccco, mnuccto, msacwio, psacwso, bergso, bergo, melto, homoo, qcreso, prcio, praio, qireso, mnuccro, pracso, meltsdt, frzrdt, mnuccdo, nrout, nsout, refl, arefl, areflz, frefl, csrfl, acsrfl, fcsrfl, rercld, ncai, ncal, qrout2, qsout2, nrout2, nsout2, drout2, dsout2, freqs, freqr, nfice, prer_evap, do_cldice, errstring, tnd_qsnow, tnd_nsnow, re_ice, frzimm, frzcnt, frzdep, preo, prdso, frzro, meltso, wtfc, wtfi, wtprelat, wtpostlat)
   end subroutine hook_micro_mg_tend
@@ -2666,15 +2677,17 @@ contains
   end function pycam_hooks_unbind_model_v1
 
   integer(c_int) function pycam_hooks_model_seconds_v1(hook, model_seconds, forward_seconds, call_seconds, &
-       first_seconds, warm_seconds) bind(C, name='pycam_hooks_model_seconds_v1') result(status)
+       first_seconds, warm_seconds, original_seconds) bind(C, name='pycam_hooks_model_seconds_v1') result(status)
     ! wall seconds this rank spent in the hook's model branch, in the model's forward alone,
     ! around the whole model call as the hook sees it (prologue and epilogue included), in the
-    ! first modeled call alone, and in the warm-up forward at bind
+    ! first modeled call alone, in the warm-up forward at bind, and in the original on the calls
+    ! a shadow model also answered
     integer(c_int), value, intent(in) :: hook
     real(c_double), intent(out) :: model_seconds, forward_seconds, call_seconds, first_seconds, warm_seconds
+    real(c_double), intent(out) :: original_seconds
     integer(c_int64_t) :: rate
     model_seconds = 0.0_c_double; forward_seconds = 0.0_c_double; call_seconds = 0.0_c_double
-    first_seconds = 0.0_c_double; warm_seconds = 0.0_c_double
+    first_seconds = 0.0_c_double; warm_seconds = 0.0_c_double; original_seconds = 0.0_c_double
     status = 1_c_int
     if (hook < 1 .or. hook > nhooks) return
     call system_clock(count_rate=rate)
@@ -2683,6 +2696,7 @@ contains
     call_seconds = real(hook_ticks(hook), c_double) / real(rate, c_double)
     first_seconds = real(first_ticks(hook), c_double) / real(rate, c_double)
     warm_seconds = real(warm_ticks(hook), c_double) / real(rate, c_double)
+    original_seconds = real(original_ticks(hook), c_double) / real(rate, c_double)
     status = 0_c_int
   end function pycam_hooks_model_seconds_v1
 

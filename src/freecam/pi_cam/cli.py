@@ -196,7 +196,7 @@ def _hook_summary(records) -> dict[str, object] | None:
                 entry["missed"] = entry.get("missed", 0) + int(counts["missed"])
             if "modeled" in counts:         # calls a bound TorchScript model answered inside the image
                 entry["modeled"] = entry.get("modeled", 0) + int(counts["modeled"])
-            for key in ("model_seconds", "forward_seconds", "call_seconds", "first_call_seconds", "warm_seconds"):
+            for key in ("model_seconds", "forward_seconds", "call_seconds", "first_call_seconds", "warm_seconds", "original_seconds"):
                 if key in counts:           # summed over ranks (divide by ranks_called for a rank's mean),
                     entry[key] = entry.get(key, 0.0) + float(counts[key])   # and the slowest rank's own
                     entry[key + "_max"] = max(entry.get(key + "_max", 0.0), float(counts[key]))
