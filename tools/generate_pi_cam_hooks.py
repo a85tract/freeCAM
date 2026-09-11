@@ -238,6 +238,8 @@ def _model_procedure(hook: Hook, spec: FunctionSpec, index: int) -> str:
         lines.append(f"    real(c_double), pointer, contiguous :: op_{item.name}({colons})")
         lines.append(f"    real(c_double), pointer, contiguous :: w_{item.name}({colons})")
     lines.append("    integer :: n")
+    lines.append("    integer(c_int64_t) :: t0, t1, t2")
+    lines.append("    call system_clock(t0)")
     for slot, item in enumerate(inputs, start=1):
         if item.rank == 0:
             value = item.name if item.dtype == "float64" else f"real({item.name}, c_double)"
@@ -259,7 +261,10 @@ def _model_procedure(hook: Hook, spec: FunctionSpec, index: int) -> str:
     for slot, item in enumerate(outputs, start=1):
         lines.append(f"    op_{item.name} => o_{item.name}")
         lines.append(f"    call torch_tensor_from_array(out_t({slot}), op_{item.name}, torch_kCPU)")
+    lines.append("    call system_clock(t1)")
     lines.append(f"    call torch_model_forward(models({index}), in_t, out_t)")
+    lines.append("    call system_clock(t2)")
+    lines.append(f"    forward_ticks({index}) = forward_ticks({index}) + (t2 - t1)")
     for item in outputs:
         lead = _axis(hook, spec, item.native_shape[0])
         lines.append(f"    n = min(int({ncol}), {lead})" if ncol else f"    n = {lead}")
@@ -270,6 +275,8 @@ def _model_procedure(hook: Hook, spec: FunctionSpec, index: int) -> str:
             lines.append(f"    {item.name} = ' '")
     lines.append("    call torch_delete(in_t)")
     lines.append("    call torch_delete(out_t)")
+    lines.append("    call system_clock(t1)")
+    lines.append(f"    model_ticks({index}) = model_ticks({index}) + (t1 - t0)")
     lines.append(f"  end subroutine model_{hook.kernel}")
     return "\n".join(lines)
 
@@ -383,7 +390,8 @@ module pycam_hooks
   private
   public :: pycam_hooks_arm_v1, pycam_hooks_counts_v1, pycam_hooks_paused_v1, pycam_hooks_frame_v1, &
             pycam_hooks_original_v1, pycam_hooks_reset_v1, pycam_hooks_count_v1, pycam_hooks_name_v1, &
-            pycam_hooks_bind_model_v1, pycam_hooks_unbind_model_v1, pycam_hooks_modeled_v1
+            pycam_hooks_bind_model_v1, pycam_hooks_unbind_model_v1, pycam_hooks_modeled_v1, &
+            pycam_hooks_model_seconds_v1
 
   integer, parameter :: nhooks = {len(table.hooks)}
   integer(c_int), parameter :: ev_needs_kernel = 1_c_int
@@ -401,6 +409,8 @@ module pycam_hooks
   logical, parameter :: can_pause(nhooks) = (/ {can_pause} /)
   logical, save :: modeled(nhooks) = .false.
   integer(c_int64_t), save :: answered(nhooks) = 0_c_int64_t
+  ! wall time inside the model branch (tensors, forward, write-back) and in the forward alone
+  integer(c_int64_t), save :: model_ticks(nhooks) = 0_c_int64_t, forward_ticks(nhooks) = 0_c_int64_t
   type(torch_model), save :: models(nhooks)
   integer, save :: paused_hook = 0
   type(c_ptr), save :: frame_ptrs(max_slots)
@@ -500,6 +510,21 @@ contains
     end if
     status = 0_c_int
   end function pycam_hooks_unbind_model_v1
+
+  integer(c_int) function pycam_hooks_model_seconds_v1(hook, model_seconds, forward_seconds) &
+       bind(C, name='pycam_hooks_model_seconds_v1') result(status)
+    ! wall seconds this rank spent in the hook's model branch, and in the model's forward alone
+    integer(c_int), value, intent(in) :: hook
+    real(c_double), intent(out) :: model_seconds, forward_seconds
+    integer(c_int64_t) :: rate
+    model_seconds = 0.0_c_double; forward_seconds = 0.0_c_double
+    status = 1_c_int
+    if (hook < 1 .or. hook > nhooks) return
+    call system_clock(count_rate=rate)
+    model_seconds = real(model_ticks(hook), c_double) / real(rate, c_double)
+    forward_seconds = real(forward_ticks(hook), c_double) / real(rate, c_double)
+    status = 0_c_int
+  end function pycam_hooks_model_seconds_v1
 
   integer(c_int) function pycam_hooks_modeled_v1(hook, answered_out) bind(C, name='pycam_hooks_modeled_v1') result(status)
     ! calls the bound model answered inside the image

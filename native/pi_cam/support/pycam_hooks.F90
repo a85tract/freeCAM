@@ -15,7 +15,8 @@ module pycam_hooks
   private
   public :: pycam_hooks_arm_v1, pycam_hooks_counts_v1, pycam_hooks_paused_v1, pycam_hooks_frame_v1, &
             pycam_hooks_original_v1, pycam_hooks_reset_v1, pycam_hooks_count_v1, pycam_hooks_name_v1, &
-            pycam_hooks_bind_model_v1, pycam_hooks_unbind_model_v1, pycam_hooks_modeled_v1
+            pycam_hooks_bind_model_v1, pycam_hooks_unbind_model_v1, pycam_hooks_modeled_v1, &
+            pycam_hooks_model_seconds_v1
 
   integer, parameter :: nhooks = 4
   integer(c_int), parameter :: ev_needs_kernel = 1_c_int
@@ -36,6 +37,8 @@ module pycam_hooks
   logical, parameter :: can_pause(nhooks) = (/ .true., .true., .true., .false. /)
   logical, save :: modeled(nhooks) = .false.
   integer(c_int64_t), save :: answered(nhooks) = 0_c_int64_t
+  ! wall time inside the model branch (tensors, forward, write-back) and in the forward alone
+  integer(c_int64_t), save :: model_ticks(nhooks) = 0_c_int64_t, forward_ticks(nhooks) = 0_c_int64_t
   type(torch_model), save :: models(nhooks)
   integer, save :: paused_hook = 0
   type(c_ptr), save :: frame_ptrs(max_slots)
@@ -603,6 +606,8 @@ contains
     real(c_double), pointer, contiguous :: op_qi_st_out(:)
     real(c_double), pointer, contiguous :: w_qi_st_out(:)
     integer :: n
+    integer(c_int64_t) :: t0, t1, t2
+    call system_clock(t0)
     s_k(1) = real(k, c_double)
     sp_k => s_k
     call torch_tensor_from_array(in_t(1), sp_k, torch_kCPU)
@@ -658,7 +663,10 @@ contains
     call torch_tensor_from_array(out_t(7), op_ql_st_out, torch_kCPU)
     op_qi_st_out => o_qi_st_out
     call torch_tensor_from_array(out_t(8), op_qi_st_out, torch_kCPU)
+    call system_clock(t1)
     call torch_model_forward(models(3), in_t, out_t)
+    call system_clock(t2)
+    forward_ticks(3) = forward_ticks(3) + (t2 - t1)
     n = min(int(ncol), 16)
     call c_f_pointer(c_loc(t_out(1)), w_t_out, (/ 16 /))
     w_t_out(1:n) = o_t_out(1:n)
@@ -685,6 +693,8 @@ contains
     w_qi_st_out(1:n) = o_qi_st_out(1:n)
     call torch_delete(in_t)
     call torch_delete(out_t)
+    call system_clock(t1)
+    model_ticks(3) = model_ticks(3) + (t1 - t0)
   end subroutine model_instratus_condensate
 
   subroutine hook_micro_mg_tend(microp_uniform, pcols, pver, ncol, top_lev, deltatin, tn, qn, qc, qi, nc, ni, p, pdel, cldn, liqcldf, relvar, accre_enhan, icecldf, rate1ord_cw2pr_st, naai, npccnin, rndst, nacon, tlat, qvlat, qctend, qitend, nctend, nitend, effc, effc_fn, effi, prect, preci, nevapr, evapsnow, am_evp_st, prain, prodsnow, cmeout, deffi, pgamrad, lamcrad, qsout, dsout, rflx, sflx, qrout, reff_rain, reff_snow, qcsevap, qisevap, qvres, cmeiout, vtrmc, vtrmi, qcsedten, qisedten, prao, prco, mnuccco, mnuccto, msacwio, psacwso, bergso, bergo, melto, homoo, qcreso, prcio, praio, qireso, mnuccro, pracso, meltsdt, frzrdt, mnuccdo, nrout, nsout, refl, arefl, areflz, frefl, csrfl, acsrfl, fcsrfl, rercld, ncai, ncal, qrout2, qsout2, nrout2, nsout2, drout2, dsout2, freqs, freqr, nfice, prer_evap, do_cldice, errstring, tnd_qsnow, tnd_nsnow, re_ice, frzimm, frzcnt, frzdep, preo, prdso, frzro, meltso, wtfc, wtfi, wtprelat, wtpostlat)
@@ -1355,6 +1365,8 @@ contains
     real(c_double), pointer, contiguous :: op_wtpostlat(:,:)
     real(c_double), pointer, contiguous :: w_wtpostlat(:,:)
     integer :: n
+    integer(c_int64_t) :: t0, t1, t2
+    call system_clock(t0)
     s_deltatin(1) = deltatin
     sp_deltatin => s_deltatin
     call torch_tensor_from_array(in_t(1), sp_deltatin, torch_kCPU)
@@ -1616,7 +1628,10 @@ contains
     call torch_tensor_from_array(out_t(88), op_wtprelat, torch_kCPU)
     op_wtpostlat => o_wtpostlat
     call torch_tensor_from_array(out_t(89), op_wtpostlat, torch_kCPU)
+    call system_clock(t1)
     call torch_model_forward(models(4), in_t, out_t)
+    call system_clock(t2)
+    forward_ticks(4) = forward_ticks(4) + (t2 - t1)
     n = min(int(ncol), pcols)
     call c_f_pointer(c_loc(qc), w_qc, (/ pcols, pver /))
     w_qc(1:n, :) = o_qc(1:n, :)
@@ -1887,6 +1902,8 @@ contains
     errstring = ' '
     call torch_delete(in_t)
     call torch_delete(out_t)
+    call system_clock(t1)
+    model_ticks(4) = model_ticks(4) + (t1 - t0)
   end subroutine model_micro_mg_tend
 
   ! ------------------------------------------------------------------ !
@@ -1974,6 +1991,21 @@ contains
     end if
     status = 0_c_int
   end function pycam_hooks_unbind_model_v1
+
+  integer(c_int) function pycam_hooks_model_seconds_v1(hook, model_seconds, forward_seconds) &
+       bind(C, name='pycam_hooks_model_seconds_v1') result(status)
+    ! wall seconds this rank spent in the hook's model branch, and in the model's forward alone
+    integer(c_int), value, intent(in) :: hook
+    real(c_double), intent(out) :: model_seconds, forward_seconds
+    integer(c_int64_t) :: rate
+    model_seconds = 0.0_c_double; forward_seconds = 0.0_c_double
+    status = 1_c_int
+    if (hook < 1 .or. hook > nhooks) return
+    call system_clock(count_rate=rate)
+    model_seconds = real(model_ticks(hook), c_double) / real(rate, c_double)
+    forward_seconds = real(forward_ticks(hook), c_double) / real(rate, c_double)
+    status = 0_c_int
+  end function pycam_hooks_model_seconds_v1
 
   integer(c_int) function pycam_hooks_modeled_v1(hook, answered_out) bind(C, name='pycam_hooks_modeled_v1') result(status)
     ! calls the bound model answered inside the image

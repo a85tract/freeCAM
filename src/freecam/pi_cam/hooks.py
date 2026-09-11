@@ -178,6 +178,10 @@ def read_hook_counts(library: Any) -> dict[str, dict[str, int]]:
     if modeled_entry is not None:
         modeled_entry.restype = ctypes.c_int32
         modeled_entry.argtypes = [ctypes.c_int32, ctypes.POINTER(ctypes.c_int64)]
+    seconds_entry = getattr(library, "pycam_hooks_model_seconds_v1", None)  # wall time in the model branch / forward
+    if seconds_entry is not None:
+        seconds_entry.restype = ctypes.c_int32
+        seconds_entry.argtypes = [ctypes.c_int32, ctypes.POINTER(ctypes.c_double), ctypes.POINTER(ctypes.c_double)]
     result: dict[str, dict[str, int]] = {}
     for hook in range(1, int(count_entry()) + 1):
         buffer = ctypes.create_string_buffer(64)
@@ -195,6 +199,11 @@ def read_hook_counts(library: Any) -> dict[str, dict[str, int]]:
             modeled = ctypes.c_int64(0)
             if modeled_entry(hook, ctypes.byref(modeled)) == 0:
                 record["modeled"] = int(modeled.value)
+        if seconds_entry is not None:
+            branch, forward = ctypes.c_double(0.0), ctypes.c_double(0.0)
+            if seconds_entry(hook, ctypes.byref(branch), ctypes.byref(forward)) == 0 and record.get("modeled"):
+                record["model_seconds"] = float(branch.value)
+                record["forward_seconds"] = float(forward.value)
         result[buffer.value.decode("ascii", errors="replace")] = record
     return result
 
