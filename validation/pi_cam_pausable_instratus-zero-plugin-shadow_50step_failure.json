@@ -1,0 +1,30 @@
+{
+ "schema_version": 1,
+ "what": "A zero-writing kernel with instratus_condensate's arguments in shadow: the plugin mechanism's cost alone on a 19-input, 8-output hook.",
+ "pbs_job_id": "7402092.desched1",
+ "run_tag": "instratus-zero-plugin-shadow",
+ "kernel_models": {
+  "instratus_condensate": {
+   "file": "instratus_zero.py",
+   "function": "instratus_zero",
+   "binding": "numba",
+   "shadow": true,
+   "path": "examples/plugins/numba_kernels/instratus_zero.py"
+  }
+ },
+ "job": "validation/jobs/pi_cam_pausable_50step.pbs",
+ "python_stages": [
+  "cloud_macro_microphysics"
+ ],
+ "native_image": "build/pi_cam_promoted_p20",
+ "ranks": 512,
+ "steps_completed": 0,
+ "resources": {
+  "queue": "main",
+  "placement": "4 exclusive nodes, 128 ranks each"
+ },
+ "outcome": "every rank raised at the stage's installation, before the first step: PythonProcessSpec.from_callable cloudpickles the stage into the rank's process registry, and the NativePlugin in the kernel slot carried a Numba cfunc, which cannot be pickled; no summary",
+ "diagnosis": "A compiled plugin's code is process-local and not picklable, and does not need to be: the address the hook binds stays valid in the process that compiled it.  NativePlugin now pickles without the compiled object (and refuses to be unpickled in another process), and numba_kernel keeps every compiled adapter alive for the life of the process.",
+ "disposition": "Resubmitted under new tags on the same p20 image (fice-numba-live, fice-numba-shadow, instratus-zero-numba-shadow); the job's comparison and health files of the aborted runs are kept with these records and the tags are not reused.",
+ "bfb_record_note": "pi_cam_pausable_instratus-zero-plugin-shadow_vs_oracle_50step_bfb.json and the .health.json were written by the job's comparison of the run that never started stepping (512 tracebacks); kept with this record."
+}

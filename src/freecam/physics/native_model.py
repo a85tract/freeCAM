@@ -69,8 +69,11 @@ class NativePlugin:
 
     def __init__(self, adapter: Any, *, label: str, kernel: str, shadow: bool = False,
                  inputs: list[str] | None = None, outputs: list[str] | None = None) -> None:
-        self._adapter = adapter                      # keeps the compiled code alive
+        import os
+
+        self._adapter = adapter                      # the compiled code; numba_kernel keeps it alive too
         self.address = int(adapter.address)
+        self.pid = os.getpid()                       # the address is this process's
         self.label = str(label)
         self.kernel = str(kernel)
         self.shadow = bool(shadow)
@@ -82,6 +85,24 @@ class NativePlugin:
         """What identifies this binding to the stage: the code's address and the mode."""
 
         return f"numba:{self.address:#x}{':shadow' if self.shadow else ''}"
+
+    def __getstate__(self) -> dict[str, Any]:
+        # a stage is cloudpickled into the rank's process registry when it is installed
+        # (job 7402090 died there): the compiled code is not picklable, and does not need
+        # to be -- its address stays valid in this process, and numba_kernel keeps it alive
+        state = dict(self.__dict__)
+        state.pop("_adapter", None)
+        return state
+
+    def __setstate__(self, state: dict[str, Any]) -> None:
+        import os
+
+        self.__dict__.update(state)
+        self._adapter = None
+        if os.getpid() != self.pid:
+            raise PhysicsError(
+                f"{self.label}: a compiled plugin cannot cross processes by pickle; its code lives in "
+                f"the process that compiled it (compile it on every rank with compile_kernel)")
 
     def __call__(self, *args: Any, **kwargs: Any) -> Any:
         raise PhysicsError(

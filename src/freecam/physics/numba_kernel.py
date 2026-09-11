@@ -33,6 +33,10 @@ REPO = Path(__file__).resolve().parents[3]
 #: the C signature of pycam_hooks' plugin_interface
 PLUGIN_SIGNATURE = "int32(int32, CPointer(voidptr), CPointer(int64), int32, CPointer(voidptr), CPointer(int64))"
 
+#: every compiled adapter by address, for the life of the process: a bound address must stay valid
+#: after the NativePlugin that carried it was pickled into the process registry and dropped
+_COMPILED: dict[int, Any] = {}
+
 
 def _model_arguments(hook_name: str):
     """The hook's model block as contract arguments: (inputs, outputs)."""
@@ -107,6 +111,7 @@ def compile_kernel(hook_name: str, function: Callable[..., Any], *, shadow: bool
         raise PhysicsError(
             f"the kernel for hook {hook_name!r} did not compile under Numba: {error}") from error
     label = f"{getattr(function, '__module__', '?')}:{getattr(function, '__name__', getattr(function, 'py_func', function).__class__.__name__)}"
+    _COMPILED[int(adapter.address)] = adapter
     return NativePlugin(adapter, label=label, kernel=hook_name, shadow=shadow,
                         inputs=[item.name for item in inputs], outputs=[item.name for item in outputs])
 
