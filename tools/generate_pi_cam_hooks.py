@@ -126,7 +126,8 @@ def _hook_procedure(hook: Hook, spec: FunctionSpec, index: int) -> str:
             lines.append(f"    if (modeled({index})) then")
             lines.append(f"      answered({index}) = answered({index}) + 1_c_int64_t")
             lines.append(f"      call model_{hook.kernel}({names})")
-            lines.append("      return")
+            lines.append(f"      if (.not. shadow({index})) return")
+            lines.append("      ! shadow: the model ran for its cost alone; the original answers")
             lines.append("    end if")
         lines.append(f"    call original_{hook.kernel}({names})")
         lines.append(f"  end subroutine hook_{hook.kernel}")
@@ -141,7 +142,8 @@ def _hook_procedure(hook: Hook, spec: FunctionSpec, index: int) -> str:
         lines.append("      ! a TorchScript model is bound here: the image answers the call itself")
         lines.append(f"      answered({index}) = answered({index}) + 1_c_int64_t")
         lines.append(f"      call model_{hook.kernel}({names})")
-        lines.append("      return")
+        lines.append(f"      if (.not. shadow({index})) return")
+        lines.append("      ! shadow: the model ran for its cost alone; the original answers")
         lines.append("    end if")
     lines.append(f"    if (.not. armed({index})) then")
     lines.append(f"      call original_{hook.kernel}({names})")
@@ -265,14 +267,16 @@ def _model_procedure(hook: Hook, spec: FunctionSpec, index: int) -> str:
     lines.append(f"    call torch_model_forward(models({index}), in_t, out_t)")
     lines.append("    call system_clock(t2)")
     lines.append(f"    forward_ticks({index}) = forward_ticks({index}) + (t2 - t1)")
+    lines.append(f"    if (.not. shadow({index})) then")
     for item in outputs:
         lead = _axis(hook, spec, item.native_shape[0])
-        lines.append(f"    n = min(int({ncol}), {lead})" if ncol else f"    n = {lead}")
-        lines.append(f"    call c_f_pointer(c_loc({first(item)}), w_{item.name}, (/ {_extents(spec, item, hook)} /))")
-        lines.append(f"    w_{item.name}{_section(item, '1:n')} = o_{item.name}{_section(item, '1:n')}")
+        lines.append(f"      n = min(int({ncol}), {lead})" if ncol else f"      n = {lead}")
+        lines.append(f"      call c_f_pointer(c_loc({first(item)}), w_{item.name}, (/ {_extents(spec, item, hook)} /))")
+        lines.append(f"      w_{item.name}{_section(item, '1:n')} = o_{item.name}{_section(item, '1:n')}")
     for item in dummies:
         if item.carrier == "character" and ROLE_INTENT[item.role] != "in":
-            lines.append(f"    {item.name} = ' '")
+            lines.append(f"      {item.name} = ' '")
+    lines.append("    end if")
     lines.append("    call torch_delete(in_t)")
     lines.append("    call torch_delete(out_t)")
     lines.append("    call system_clock(t1)")
@@ -408,6 +412,9 @@ module pycam_hooks
   ! bind(C) hooks carry a frame and can pause for Python; Fortran-bound hooks cannot
   logical, parameter :: can_pause(nhooks) = (/ {can_pause} /)
   logical, save :: modeled(nhooks) = .false.
+  ! shadow: the bound model runs on every call and its answer is discarded; the original answers.
+  ! The run stays bit-for-bit and the stage's extra time is the model path's cost alone.
+  logical, save :: shadow(nhooks) = .false.
   integer(c_int64_t), save :: answered(nhooks) = 0_c_int64_t
   ! wall time inside the model branch (tensors, forward, write-back) and in the forward alone
   integer(c_int64_t), save :: model_ticks(nhooks) = 0_c_int64_t, forward_ticks(nhooks) = 0_c_int64_t
@@ -472,9 +479,11 @@ contains
     status = 0_c_int
   end function pycam_hooks_arm_v1
 
-  integer(c_int) function pycam_hooks_bind_model_v1(hook, path, length) bind(C, name='pycam_hooks_bind_model_v1') result(status)
-    ! load the TorchScript file at path (length bytes) and answer the hook's calls with it from now on
-    integer(c_int), value, intent(in) :: hook, length
+  integer(c_int) function pycam_hooks_bind_model_v1(hook, path, length, shadow_flag) &
+       bind(C, name='pycam_hooks_bind_model_v1') result(status)
+    ! load the TorchScript file at path (length bytes) and answer the hook's calls with it from
+    ! now on; with shadow_flag /= 0 the model runs but the original keeps answering
+    integer(c_int), value, intent(in) :: hook, length, shadow_flag
     character(kind=c_char), intent(in) :: path(*)
     character(len=4096) :: filename
     integer :: i
@@ -496,6 +505,7 @@ contains
     if (modeled(hook)) call torch_delete(models(hook))
     call torch_model_load(models(hook), filename(1:length), torch_kCPU)
     modeled(hook) = .true.
+    shadow(hook) = shadow_flag /= 0_c_int
     status = 0_c_int
   end function pycam_hooks_bind_model_v1
 
@@ -507,6 +517,7 @@ contains
     if (modeled(hook)) then
       call torch_delete(models(hook))
       modeled(hook) = .false.
+      shadow(hook) = .false.
     end if
     status = 0_c_int
   end function pycam_hooks_unbind_model_v1
@@ -609,6 +620,7 @@ contains
       if (modeled(hook)) then
         call torch_delete(models(hook))
         modeled(hook) = .false.
+        shadow(hook) = .false.
       end if
     end do
   end subroutine pycam_hooks_reset_v1

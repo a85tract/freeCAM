@@ -215,9 +215,14 @@ BIND_STATUS = {1: "no such hook", 2: "the hook takes no model (hooks.yaml has no
 ARM_STATUS = {1: "no such hook", 3: "a model is bound at the hook", 5: "the hook has no frame (a Fortran-bound hook cannot pause)"}
 
 
-def bind_hook_model(library: Any, hook_id: int, path: str | Path) -> None:
+def bind_hook_model(library: Any, hook_id: int, path: str | Path, *, shadow: bool = False) -> None:
     """Load a TorchScript model into the image at hook ``hook_id``: from then on the hook
-    answers its calls with the model, inside Fortran, until :func:`unbind_hook_model`."""
+    answers its calls with the model, inside Fortran, until :func:`unbind_hook_model`.
+
+    With ``shadow`` the model runs on every call and its answer is discarded while the
+    original keeps answering: the run stays bit-for-bit and the model path's cost is
+    measured in situ.
+    """
 
     import ctypes
 
@@ -225,9 +230,9 @@ def bind_hook_model(library: Any, hook_id: int, path: str | Path) -> None:
     if entry is None:
         raise PICAMConfigurationError(f"cannot bind a model at hook {hook_id}: {BIND_STATUS[5]}")
     entry.restype = ctypes.c_int32
-    entry.argtypes = [ctypes.c_int32, ctypes.c_char_p, ctypes.c_int32]
+    entry.argtypes = [ctypes.c_int32, ctypes.c_char_p, ctypes.c_int32, ctypes.c_int32]
     encoded = str(Path(path)).encode()
-    status = int(entry(int(hook_id), encoded, len(encoded)))
+    status = int(entry(int(hook_id), encoded, len(encoded), 1 if shadow else 0))
     if status != 0:
         raise PICAMConfigurationError(
             f"cannot bind {path} at hook {hook_id}: {BIND_STATUS.get(status, f'status {status}')}")

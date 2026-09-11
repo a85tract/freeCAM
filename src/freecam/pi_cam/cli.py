@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 import argparse
 import json
 import os
@@ -134,7 +136,7 @@ def _parse_kernel_models(values: list[str] | None) -> dict[str, Path]:
     return models
 
 
-def _load_kernel_model(path: Path):
+def _load_kernel_model(path: Path, *, shadow: bool = False):
     """What stands in a kernel's slot: a TorchScript archive the image runs itself at the
     kernel's hook (no Python in the step), or a cloudpickled callable answering the
     kernel's frame at a pause; anything else is refused."""
@@ -144,7 +146,10 @@ def _load_kernel_model(path: Path):
     if not path.is_file():
         raise SystemExit(f"--kernel-model: {path} is not a file")
     if NativeModel.is_torchscript(path):
-        return NativeModel(path)
+        return NativeModel(path, shadow=shadow)
+    if shadow:
+        raise SystemExit(f"--shadow-kernel-model: {path} is not a TorchScript archive; only a model the image "
+                         f"runs itself can shadow the original")
     with path.open("rb") as handle:
         model = cloudpickle.load(handle)
     if not callable(model):
@@ -152,25 +157,28 @@ def _load_kernel_model(path: Path):
     return model
 
 
-def _kernel_models_summary(models: dict[str, Path]) -> dict[str, dict[str, str]] | None:
+def _kernel_models_summary(models: dict[str, Path], shadow: dict[str, Path] | None = None) -> dict[str, dict[str, Any]] | None:
     """Which artifact stood in which slot: file name and content hash, and the path when
-    it lies inside this checkout (records name no site directory)."""
+    it lies inside this checkout (records name no site directory); shadow models say so."""
 
     import hashlib
 
-    if not models:
-        return None
     from freecam.physics.native_model import NativeModel
 
+    if not models and not shadow:
+        return None
     repo = Path(__file__).resolve().parents[3]
-    summary: dict[str, dict[str, str]] = {}
-    for name, path in models.items():
-        row = {"file": path.name, "sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
-               "binding": "torchscript" if NativeModel.is_torchscript(path) else "cloudpickle"}
-        resolved = path.resolve()
-        if resolved.is_relative_to(repo):
-            row["path"] = str(resolved.relative_to(repo))
-        summary[name] = row
+    summary: dict[str, dict[str, Any]] = {}
+    for paths, is_shadow in ((models, False), (shadow or {}, True)):
+        for name, path in paths.items():
+            row: dict[str, Any] = {"file": path.name, "sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
+                                   "binding": "torchscript" if NativeModel.is_torchscript(path) else "cloudpickle"}
+            if is_shadow:
+                row["shadow"] = True
+            resolved = path.resolve()
+            if resolved.is_relative_to(repo):
+                row["path"] = str(resolved.relative_to(repo))
+            summary[name] = row
     return summary
 
 
@@ -460,6 +468,17 @@ def main(argv: list[str] | None = None) -> int:
         ),
     )
     parser.add_argument(
+        "--shadow-kernel-model",
+        action="append",
+        default=None,
+        metavar="NAME=PATH",
+        help=(
+            "bind a TorchScript model at the kernel's hook in shadow: the image runs the model on "
+            "every call and discards its answer while the original keeps answering, so the run "
+            "stays bit-for-bit and the model path's cost is measured in situ; repeatable."
+        ),
+    )
+    parser.add_argument(
         "--observe-kernels",
         action="store_true",
         help=(
@@ -654,13 +673,18 @@ def main(argv: list[str] | None = None) -> int:
         if capture_kernels and args.capture_dir is None:
             raise SystemExit("--capture-kernels needs --capture-dir")
         kernel_model_paths = _parse_kernel_models(args.kernel_model)
+        shadow_model_paths = _parse_kernel_models(args.shadow_kernel_model)
         original_names = ([k.strip() for k in args.segmented_original_kernels.split(",") if k.strip()]
                           if args.segmented_original else [])
-        clash = sorted(set(kernel_model_paths) & (set(capture_kernels) | set(original_names)))
+        clash = sorted((set(kernel_model_paths) | set(shadow_model_paths)) & (set(capture_kernels) | set(original_names)))
         if clash:
             raise SystemExit(f"--kernel-model: {clash} are also named for the original or a capture; "
                              f"one slot holds one thing")
+        twice = sorted(set(kernel_model_paths) & set(shadow_model_paths))
+        if twice:
+            raise SystemExit(f"--shadow-kernel-model: {twice} are also given to --kernel-model; a model answers or shadows")
         kernel_models = {name: _load_kernel_model(path) for name, path in kernel_model_paths.items()}
+        kernel_models.update({name: _load_kernel_model(path, shadow=True) for name, path in shadow_model_paths.items()})
         if args.radiation_python:
             # The same shape for radiation: Radiation.tend between the two
             # halves of the split stage, native and non-transactional for the
@@ -1105,7 +1129,7 @@ def main(argv: list[str] | None = None) -> int:
             "disabled_actions": [s.strip() for s in args.disable_actions.split(",") if s.strip()],
             "stage_execution": _stage_executions(cam),
             "frame_capture": _frame_capture_summary(records, args, native_evidence),
-            "kernel_models": _kernel_models_summary(kernel_model_paths),
+            "kernel_models": _kernel_models_summary(kernel_model_paths, shadow_model_paths),
             "hooks": _hook_summary(records),
             "cloud_macro_micro_whole_drivers": bool(args.cloud_macro_micro_whole_drivers),
             "cloud_macro_micro_whole_micro": bool(args.cloud_macro_micro_whole_micro),

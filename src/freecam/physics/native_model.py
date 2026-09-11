@@ -24,7 +24,9 @@ class NativeModel:
     #: the segment runner must never see this in a slot: it is not a frame callable
     takes_frame = False
 
-    def __init__(self, path: str | Path) -> None:
+    def __init__(self, path: str | Path, *, shadow: bool = False) -> None:
+        #: run the model on every call but let the original answer: bit-for-bit, cost measured
+        self.shadow = bool(shadow)
         self.path = Path(path).resolve()
         if not self.path.is_file():
             raise PhysicsError(f"native model {self.path} is not a file")
@@ -48,11 +50,11 @@ class NativeModel:
             f"{self.path.name} is a native model: the image answers the kernel with it; "
             f"it is not called from Python")
 
-    def describe(self) -> dict[str, str]:
-        return {"file": self.path.name, "sha256": self.sha256, "binding": "torchscript"}
+    def describe(self) -> dict[str, Any]:
+        return {"file": self.path.name, "sha256": self.sha256, "binding": "torchscript", "shadow": self.shadow}
 
     def __repr__(self) -> str:
-        return f"NativeModel({str(self.path)!r})"
+        return f"NativeModel({str(self.path)!r}{', shadow=True' if self.shadow else ''})"
 
 
 __all__ = ["NativeModel"]

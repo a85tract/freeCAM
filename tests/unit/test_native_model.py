@@ -107,6 +107,8 @@ def test_the_generated_module_answers_a_bound_model_inside_the_image() -> None:
     assert "if (associated(tnd_qsnow)) then" in text and "errstring = ' '" in text
     # arming refuses a hook without a frame
     assert "if (flag /= 0_c_int .and. .not. can_pause(hook)) then" in text
+    # shadow: the model runs, the original answers, nothing is written back
+    assert text.count("if (.not. shadow(") >= 4 and "shadow(hook) = shadow_flag /= 0_c_int" in text
     for entry in ("pycam_hooks_bind_model_v1", "pycam_hooks_unbind_model_v1", "pycam_hooks_modeled_v1"):
         assert f"bind(C, name='{entry}')" in text
     # a bound model and a Python replacement cannot share a hook
@@ -128,10 +130,10 @@ class _Library:
         self.bound: dict[int, bytes] = {}
         self.unbound: list[int] = []
 
-        def bind(hook, path, length):
+        def bind(hook, path, length, shadow):
             if status:
                 return status
-            self.bound[hook] = path[:length]
+            self.bound[hook] = (path[:length], int(shadow))
             return 0
 
         def unbind(hook):
@@ -165,7 +167,9 @@ class _Library:
 def test_binding_reaches_the_image_and_refusals_are_named(tmp_path: Path) -> None:
     library = _Library()
     bind_hook_model(library, 3, tmp_path / "m.pt")
-    assert library.bound == {3: str(tmp_path / "m.pt").encode()}
+    assert library.bound == {3: (str(tmp_path / "m.pt").encode(), 0)}
+    bind_hook_model(library, 4, tmp_path / "m.pt", shadow=True)
+    assert library.bound[4] == (str(tmp_path / "m.pt").encode(), 1)
     unbind_hook_model(library, 3)
     assert library.unbound == [3]
     with pytest.raises(PICAMConfigurationError, match=re.escape(BIND_STATUS[2])):
@@ -191,6 +195,11 @@ def test_a_stage_with_a_native_model_runs_whole_and_binds_once(tmp_path: Path, m
     stage.tend(None, context)
     assert ran == [stage.STAGE, stage.STAGE]                    # the whole original stage, twice
     assert list(library.bound) == [3]                          # bound at instratus's hook, once
+    # a shadow model binds with the flag and rebinds when the mode changes
+    shadowed = NativeModel(torchscript_archive(tmp_path / "instratus.pt"), shadow=True)
+    stage.kernels["instratus_condensate"] = shadowed
+    stage.tend(None, context)
+    assert library.bound[3][1] == 1 and shadowed.describe()["shadow"] is True
     assert stage.execution.describe()["execution_mode"] == "native-model"
     assert stage.execution.describe()["python_fortran_crossings_per_step"] == 1
     # a Python replacement next to a native model has no path
@@ -209,8 +218,13 @@ def test_the_command_line_tells_a_torchscript_archive_from_a_pickle(tmp_path: Pa
 
     archive = torchscript_archive(tmp_path / "m.pt")
     assert isinstance(_load_kernel_model(archive), NativeModel)
-    summary = _kernel_models_summary({"instratus_condensate": archive})
-    assert summary["instratus_condensate"]["binding"] == "torchscript"
+    assert _load_kernel_model(archive, shadow=True).shadow is True
+    summary = _kernel_models_summary({"instratus_condensate": archive}, {"micro_mg_tend": archive})
+    assert summary["instratus_condensate"]["binding"] == "torchscript" and "shadow" not in summary["instratus_condensate"]
+    assert summary["micro_mg_tend"]["shadow"] is True
+    plain = tmp_path / "weights.pkl"; plain.write_bytes(b"\x80\x04not a zip")
+    with pytest.raises(SystemExit):
+        _load_kernel_model(plain, shadow=True)                   # only a native model can shadow
 
 
 def test_the_run_record_sums_the_calls_a_model_answered_over_the_ranks() -> None:

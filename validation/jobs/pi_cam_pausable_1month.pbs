@@ -24,6 +24,8 @@
 # PYCAM_KERNEL_MODELS=name=path[,name=path] puts cloudpickled models in kernel
 # slots (never bit-for-bit: the drift and the health of the run are the result);
 # PYCAM_NO_VERIFY_EXPORTS=1 lets such a run past the replay's export check.
+# PYCAM_SHADOW_MODELS=name=path[,...] binds TorchScript models in shadow: the model
+# runs, the original answers, the run stays bit-for-bit and the cost is measured.
 # Every run's log is counted for the model's health -- water-isotope BIG ERROR
 # lines, isotopic mass errors and QNEG3 resets -- into <summary>.health.json.
 # PYCAM_DISABLE_ACTIONS (qualified action names) is the inertness gate: those
@@ -101,6 +103,14 @@ if [ -n "${PYCAM_KERNEL_MODELS:-}" ]; then
   # that hashes differently across ranks; a set or any hash-ordered container in
   # the model pickles in per-process order unless the hash seed is fixed (7371767)
   export PYTHONHASHSEED=0
+fi
+if [ -n "${PYCAM_SHADOW_MODELS:-}" ]; then
+  # TorchScript models bound in shadow at their hooks: the image runs them on every call and
+  # discards the answer while the original answers.  Bit-for-bit is expected; the stage's
+  # extra time is the model path's cost in situ, and the hook counts carry its seconds.
+  for pair in ${PYCAM_SHADOW_MODELS//,/ }; do
+    stage_flags+=(--shadow-kernel-model "${pair}")
+  done
 fi
 if [ -n "${PYCAM_NO_VERIFY_EXPORTS:-}" ]; then
   # a model's answer differs from the oracle's at the first export; the replay

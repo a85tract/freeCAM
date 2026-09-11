@@ -1438,9 +1438,10 @@ class NativeStage:
                 raise PhysicsError(
                     f"hook {name!r} has no model block in native/pi_cam/hooks.yaml: the image does "
                     f"not know how to hand its arguments to a model")
-            if bound.get(name) != model.sha256:
-                bind_hook_model(native.library, hook.id, model.path)
-                bound[name] = model.sha256
+            key = f"{model.sha256}{':shadow' if model.shadow else ''}"
+            if bound.get(name) != key:
+                bind_hook_model(native.library, hook.id, model.path, shadow=model.shadow)
+                bound[name] = key
         self._native_bound = bound
 
     def native_between_halves(self, native: Any) -> None:
