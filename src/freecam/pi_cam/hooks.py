@@ -181,7 +181,7 @@ def read_hook_counts(library: Any) -> dict[str, dict[str, int]]:
     seconds_entry = getattr(library, "pycam_hooks_model_seconds_v1", None)  # wall time in the model branch / forward
     if seconds_entry is not None:
         seconds_entry.restype = ctypes.c_int32
-        seconds_entry.argtypes = [ctypes.c_int32, ctypes.POINTER(ctypes.c_double), ctypes.POINTER(ctypes.c_double)]
+        seconds_entry.argtypes = [ctypes.c_int32] + [ctypes.POINTER(ctypes.c_double)] * 5
     result: dict[str, dict[str, int]] = {}
     for hook in range(1, int(count_entry()) + 1):
         buffer = ctypes.create_string_buffer(64)
@@ -200,10 +200,14 @@ def read_hook_counts(library: Any) -> dict[str, dict[str, int]]:
             if modeled_entry(hook, ctypes.byref(modeled)) == 0:
                 record["modeled"] = int(modeled.value)
         if seconds_entry is not None:
-            branch, forward = ctypes.c_double(0.0), ctypes.c_double(0.0)
-            if seconds_entry(hook, ctypes.byref(branch), ctypes.byref(forward)) == 0 and record.get("modeled"):
-                record["model_seconds"] = float(branch.value)
-                record["forward_seconds"] = float(forward.value)
+            branch, forward, whole, first, warm = (ctypes.c_double(0.0) for _ in range(5))
+            if seconds_entry(hook, ctypes.byref(branch), ctypes.byref(forward), ctypes.byref(whole),
+                             ctypes.byref(first), ctypes.byref(warm)) == 0 and record.get("modeled"):
+                record["model_seconds"] = float(branch.value)          # the hook's model branch
+                record["forward_seconds"] = float(forward.value)       # the model's forward alone
+                record["call_seconds"] = float(whole.value)            # the whole model call, as the hook sees it
+                record["first_call_seconds"] = float(first.value)      # the first modeled call alone
+                record["warm_seconds"] = float(warm.value)             # the warm-up forward at bind
         result[buffer.value.decode("ascii", errors="replace")] = record
     return result
 

@@ -42,6 +42,11 @@ module pycam_hooks
   integer(c_int64_t), save :: answered(nhooks) = 0_c_int64_t
   ! wall time inside the model branch (tensors, forward, write-back) and in the forward alone
   integer(c_int64_t), save :: model_ticks(nhooks) = 0_c_int64_t, forward_ticks(nhooks) = 0_c_int64_t
+  ! and around the whole call of the model procedure, its prologue and epilogue included;
+  ! the first modeled call alone (the warm-up: code pages, TorchScript profiling and optimisation)
+  integer(c_int64_t), save :: hook_ticks(nhooks) = 0_c_int64_t, first_ticks(nhooks) = 0_c_int64_t
+  ! the warm-up forward at bind (pycam_hooks_bind_model_v1)
+  integer(c_int64_t), save :: warm_ticks(nhooks) = 0_c_int64_t
   type(torch_model), save :: models(nhooks)
   integer, save :: paused_hook = 0
   type(c_ptr), save :: frame_ptrs(max_slots)
@@ -300,11 +305,16 @@ contains
     real(c_double), intent(out), target :: ql_st_out(*)
     real(c_double), intent(out), target :: qi_st_out(*)
     integer :: slot
+    integer(c_int64_t) :: h0, h1
     calls(3) = calls(3) + 1_c_int64_t
     if (modeled(3)) then
       ! a TorchScript model is bound here: the image answers the call itself
       answered(3) = answered(3) + 1_c_int64_t
+      call system_clock(h0)
       call model_instratus_condensate(lchnk, ncol, k, p_in, t0_in, qv0_in, ql0_in, qi0_in, ni0_in, a_dc_in, ql_dc_in, qi_dc_in, a_sc_in, ql_sc_in, qi_sc_in, landfrac, snowh, rhmini_in, rhminl_in, rhminl_adj_land_in, rhminh_in, t_out, qv_out, ql_out, qi_out, al_st_out, ai_st_out, ql_st_out, qi_st_out)
+      call system_clock(h1)
+      hook_ticks(3) = hook_ticks(3) + (h1 - h0)
+      if (answered(3) == 1_c_int64_t) first_ticks(3) = h1 - h0
       if (.not. shadow(3)) return
       ! shadow: the model ran for its cost alone; the original answers
     end if
@@ -703,6 +713,141 @@ contains
     model_ticks(3) = model_ticks(3) + (t1 - t0)
   end subroutine model_instratus_condensate
 
+  subroutine warm_instratus_condensate()
+    ! the model bound at hook 3 run once on zeros of the contract's extents
+    type(torch_tensor) :: in_t(19), out_t(8)
+    real(c_double), target :: z_k(1)
+    real(c_double), pointer, contiguous :: zp_k(:)
+    real(c_double), target :: z_p_in(16)
+    real(c_double), pointer, contiguous :: zp_p_in(:)
+    real(c_double), target :: z_t0_in(16)
+    real(c_double), pointer, contiguous :: zp_t0_in(:)
+    real(c_double), target :: z_qv0_in(16)
+    real(c_double), pointer, contiguous :: zp_qv0_in(:)
+    real(c_double), target :: z_ql0_in(16)
+    real(c_double), pointer, contiguous :: zp_ql0_in(:)
+    real(c_double), target :: z_qi0_in(16)
+    real(c_double), pointer, contiguous :: zp_qi0_in(:)
+    real(c_double), target :: z_ni0_in(16)
+    real(c_double), pointer, contiguous :: zp_ni0_in(:)
+    real(c_double), target :: z_a_dc_in(16)
+    real(c_double), pointer, contiguous :: zp_a_dc_in(:)
+    real(c_double), target :: z_ql_dc_in(16)
+    real(c_double), pointer, contiguous :: zp_ql_dc_in(:)
+    real(c_double), target :: z_qi_dc_in(16)
+    real(c_double), pointer, contiguous :: zp_qi_dc_in(:)
+    real(c_double), target :: z_a_sc_in(16)
+    real(c_double), pointer, contiguous :: zp_a_sc_in(:)
+    real(c_double), target :: z_ql_sc_in(16)
+    real(c_double), pointer, contiguous :: zp_ql_sc_in(:)
+    real(c_double), target :: z_qi_sc_in(16)
+    real(c_double), pointer, contiguous :: zp_qi_sc_in(:)
+    real(c_double), target :: z_landfrac(16)
+    real(c_double), pointer, contiguous :: zp_landfrac(:)
+    real(c_double), target :: z_snowh(16)
+    real(c_double), pointer, contiguous :: zp_snowh(:)
+    real(c_double), target :: z_rhmini_in(16)
+    real(c_double), pointer, contiguous :: zp_rhmini_in(:)
+    real(c_double), target :: z_rhminl_in(16)
+    real(c_double), pointer, contiguous :: zp_rhminl_in(:)
+    real(c_double), target :: z_rhminl_adj_land_in(16)
+    real(c_double), pointer, contiguous :: zp_rhminl_adj_land_in(:)
+    real(c_double), target :: z_rhminh_in(16)
+    real(c_double), pointer, contiguous :: zp_rhminh_in(:)
+    real(c_double), target :: y_t_out(16)
+    real(c_double), pointer, contiguous :: yp_t_out(:)
+    real(c_double), target :: y_qv_out(16)
+    real(c_double), pointer, contiguous :: yp_qv_out(:)
+    real(c_double), target :: y_ql_out(16)
+    real(c_double), pointer, contiguous :: yp_ql_out(:)
+    real(c_double), target :: y_qi_out(16)
+    real(c_double), pointer, contiguous :: yp_qi_out(:)
+    real(c_double), target :: y_al_st_out(16)
+    real(c_double), pointer, contiguous :: yp_al_st_out(:)
+    real(c_double), target :: y_ai_st_out(16)
+    real(c_double), pointer, contiguous :: yp_ai_st_out(:)
+    real(c_double), target :: y_ql_st_out(16)
+    real(c_double), pointer, contiguous :: yp_ql_st_out(:)
+    real(c_double), target :: y_qi_st_out(16)
+    real(c_double), pointer, contiguous :: yp_qi_st_out(:)
+    z_k = 0.0_c_double
+    zp_k => z_k
+    call torch_tensor_from_array(in_t(1), zp_k, torch_kCPU)
+    z_p_in = 0.0_c_double
+    zp_p_in => z_p_in
+    call torch_tensor_from_array(in_t(2), zp_p_in, torch_kCPU)
+    z_t0_in = 0.0_c_double
+    zp_t0_in => z_t0_in
+    call torch_tensor_from_array(in_t(3), zp_t0_in, torch_kCPU)
+    z_qv0_in = 0.0_c_double
+    zp_qv0_in => z_qv0_in
+    call torch_tensor_from_array(in_t(4), zp_qv0_in, torch_kCPU)
+    z_ql0_in = 0.0_c_double
+    zp_ql0_in => z_ql0_in
+    call torch_tensor_from_array(in_t(5), zp_ql0_in, torch_kCPU)
+    z_qi0_in = 0.0_c_double
+    zp_qi0_in => z_qi0_in
+    call torch_tensor_from_array(in_t(6), zp_qi0_in, torch_kCPU)
+    z_ni0_in = 0.0_c_double
+    zp_ni0_in => z_ni0_in
+    call torch_tensor_from_array(in_t(7), zp_ni0_in, torch_kCPU)
+    z_a_dc_in = 0.0_c_double
+    zp_a_dc_in => z_a_dc_in
+    call torch_tensor_from_array(in_t(8), zp_a_dc_in, torch_kCPU)
+    z_ql_dc_in = 0.0_c_double
+    zp_ql_dc_in => z_ql_dc_in
+    call torch_tensor_from_array(in_t(9), zp_ql_dc_in, torch_kCPU)
+    z_qi_dc_in = 0.0_c_double
+    zp_qi_dc_in => z_qi_dc_in
+    call torch_tensor_from_array(in_t(10), zp_qi_dc_in, torch_kCPU)
+    z_a_sc_in = 0.0_c_double
+    zp_a_sc_in => z_a_sc_in
+    call torch_tensor_from_array(in_t(11), zp_a_sc_in, torch_kCPU)
+    z_ql_sc_in = 0.0_c_double
+    zp_ql_sc_in => z_ql_sc_in
+    call torch_tensor_from_array(in_t(12), zp_ql_sc_in, torch_kCPU)
+    z_qi_sc_in = 0.0_c_double
+    zp_qi_sc_in => z_qi_sc_in
+    call torch_tensor_from_array(in_t(13), zp_qi_sc_in, torch_kCPU)
+    z_landfrac = 0.0_c_double
+    zp_landfrac => z_landfrac
+    call torch_tensor_from_array(in_t(14), zp_landfrac, torch_kCPU)
+    z_snowh = 0.0_c_double
+    zp_snowh => z_snowh
+    call torch_tensor_from_array(in_t(15), zp_snowh, torch_kCPU)
+    z_rhmini_in = 0.0_c_double
+    zp_rhmini_in => z_rhmini_in
+    call torch_tensor_from_array(in_t(16), zp_rhmini_in, torch_kCPU)
+    z_rhminl_in = 0.0_c_double
+    zp_rhminl_in => z_rhminl_in
+    call torch_tensor_from_array(in_t(17), zp_rhminl_in, torch_kCPU)
+    z_rhminl_adj_land_in = 0.0_c_double
+    zp_rhminl_adj_land_in => z_rhminl_adj_land_in
+    call torch_tensor_from_array(in_t(18), zp_rhminl_adj_land_in, torch_kCPU)
+    z_rhminh_in = 0.0_c_double
+    zp_rhminh_in => z_rhminh_in
+    call torch_tensor_from_array(in_t(19), zp_rhminh_in, torch_kCPU)
+    yp_t_out => y_t_out
+    call torch_tensor_from_array(out_t(1), yp_t_out, torch_kCPU)
+    yp_qv_out => y_qv_out
+    call torch_tensor_from_array(out_t(2), yp_qv_out, torch_kCPU)
+    yp_ql_out => y_ql_out
+    call torch_tensor_from_array(out_t(3), yp_ql_out, torch_kCPU)
+    yp_qi_out => y_qi_out
+    call torch_tensor_from_array(out_t(4), yp_qi_out, torch_kCPU)
+    yp_al_st_out => y_al_st_out
+    call torch_tensor_from_array(out_t(5), yp_al_st_out, torch_kCPU)
+    yp_ai_st_out => y_ai_st_out
+    call torch_tensor_from_array(out_t(6), yp_ai_st_out, torch_kCPU)
+    yp_ql_st_out => y_ql_st_out
+    call torch_tensor_from_array(out_t(7), yp_ql_st_out, torch_kCPU)
+    yp_qi_st_out => y_qi_st_out
+    call torch_tensor_from_array(out_t(8), yp_qi_st_out, torch_kCPU)
+    call torch_model_forward(models(3), in_t, out_t)
+    call torch_delete(in_t)
+    call torch_delete(out_t)
+  end subroutine warm_instratus_condensate
+
   subroutine hook_micro_mg_tend(microp_uniform, pcols, pver, ncol, top_lev, deltatin, tn, qn, qc, qi, nc, ni, p, pdel, cldn, liqcldf, relvar, accre_enhan, icecldf, rate1ord_cw2pr_st, naai, npccnin, rndst, nacon, tlat, qvlat, qctend, qitend, nctend, nitend, effc, effc_fn, effi, prect, preci, nevapr, evapsnow, am_evp_st, prain, prodsnow, cmeout, deffi, pgamrad, lamcrad, qsout, dsout, rflx, sflx, qrout, reff_rain, reff_snow, qcsevap, qisevap, qvres, cmeiout, vtrmc, vtrmi, qcsedten, qisedten, prao, prco, mnuccco, mnuccto, msacwio, psacwso, bergso, bergo, melto, homoo, qcreso, prcio, praio, qireso, mnuccro, pracso, meltsdt, frzrdt, mnuccdo, nrout, nsout, refl, arefl, areflz, frefl, csrfl, acsrfl, fcsrfl, rercld, ncai, ncal, qrout2, qsout2, nrout2, nsout2, drout2, dsout2, freqs, freqr, nfice, prer_evap, do_cldice, errstring, tnd_qsnow, tnd_nsnow, re_ice, frzimm, frzcnt, frzdep, preo, prdso, frzro, meltso, wtfc, wtfi, wtprelat, wtpostlat)
     ! micro_mg1_0::micro_mg_tend, as its redirected callers call it; rename-references, Fortran-bound
     logical, intent(in) :: microp_uniform
@@ -821,10 +966,15 @@ contains
     real(c_double), intent(out), target :: wtfi(pcols, pver)
     real(c_double), intent(out), target :: wtprelat(pcols, pver)
     real(c_double), intent(out), target :: wtpostlat(pcols, pver)
+    integer(c_int64_t) :: h0, h1
     calls(4) = calls(4) + 1_c_int64_t
     if (modeled(4)) then
       answered(4) = answered(4) + 1_c_int64_t
+      call system_clock(h0)
       call model_micro_mg_tend(microp_uniform, pcols, pver, ncol, top_lev, deltatin, tn, qn, qc, qi, nc, ni, p, pdel, cldn, liqcldf, relvar, accre_enhan, icecldf, rate1ord_cw2pr_st, naai, npccnin, rndst, nacon, tlat, qvlat, qctend, qitend, nctend, nitend, effc, effc_fn, effi, prect, preci, nevapr, evapsnow, am_evp_st, prain, prodsnow, cmeout, deffi, pgamrad, lamcrad, qsout, dsout, rflx, sflx, qrout, reff_rain, reff_snow, qcsevap, qisevap, qvres, cmeiout, vtrmc, vtrmi, qcsedten, qisedten, prao, prco, mnuccco, mnuccto, msacwio, psacwso, bergso, bergo, melto, homoo, qcreso, prcio, praio, qireso, mnuccro, pracso, meltsdt, frzrdt, mnuccdo, nrout, nsout, refl, arefl, areflz, frefl, csrfl, acsrfl, fcsrfl, rercld, ncai, ncal, qrout2, qsout2, nrout2, nsout2, drout2, dsout2, freqs, freqr, nfice, prer_evap, do_cldice, errstring, tnd_qsnow, tnd_nsnow, re_ice, frzimm, frzcnt, frzdep, preo, prdso, frzro, meltso, wtfc, wtfi, wtprelat, wtpostlat)
+      call system_clock(h1)
+      hook_ticks(4) = hook_ticks(4) + (h1 - h0)
+      if (answered(4) == 1_c_int64_t) first_ticks(4) = h1 - h0
       if (.not. shadow(4)) return
       ! shadow: the model ran for its cost alone; the original answers
     end if
@@ -1915,6 +2065,510 @@ contains
     model_ticks(4) = model_ticks(4) + (t1 - t0)
   end subroutine model_micro_mg_tend
 
+  subroutine warm_micro_mg_tend()
+    ! the model bound at hook 4 run once on zeros of the contract's extents
+    type(torch_tensor) :: in_t(26), out_t(89)
+    real(c_double), target :: z_deltatin(1)
+    real(c_double), pointer, contiguous :: zp_deltatin(:)
+    real(c_double), target :: z_tn(16, 30)
+    real(c_double), pointer, contiguous :: zp_tn(:,:)
+    real(c_double), target :: z_qn(16, 30)
+    real(c_double), pointer, contiguous :: zp_qn(:,:)
+    real(c_double), target :: z_qc(16, 30)
+    real(c_double), pointer, contiguous :: zp_qc(:,:)
+    real(c_double), target :: z_qi(16, 30)
+    real(c_double), pointer, contiguous :: zp_qi(:,:)
+    real(c_double), target :: z_nc(16, 30)
+    real(c_double), pointer, contiguous :: zp_nc(:,:)
+    real(c_double), target :: z_ni(16, 30)
+    real(c_double), pointer, contiguous :: zp_ni(:,:)
+    real(c_double), target :: z_p(16, 30)
+    real(c_double), pointer, contiguous :: zp_p(:,:)
+    real(c_double), target :: z_pdel(16, 30)
+    real(c_double), pointer, contiguous :: zp_pdel(:,:)
+    real(c_double), target :: z_cldn(16, 30)
+    real(c_double), pointer, contiguous :: zp_cldn(:,:)
+    real(c_double), target :: z_liqcldf(16, 30)
+    real(c_double), pointer, contiguous :: zp_liqcldf(:,:)
+    real(c_double), target :: z_relvar(16, 30)
+    real(c_double), pointer, contiguous :: zp_relvar(:,:)
+    real(c_double), target :: z_accre_enhan(16, 30)
+    real(c_double), pointer, contiguous :: zp_accre_enhan(:,:)
+    real(c_double), target :: z_icecldf(16, 30)
+    real(c_double), pointer, contiguous :: zp_icecldf(:,:)
+    real(c_double), target :: z_naai(16, 30)
+    real(c_double), pointer, contiguous :: zp_naai(:,:)
+    real(c_double), target :: z_npccnin(16, 30)
+    real(c_double), pointer, contiguous :: zp_npccnin(:,:)
+    real(c_double), target :: z_rndst(16, 30, 4)
+    real(c_double), pointer, contiguous :: zp_rndst(:,:,:)
+    real(c_double), target :: z_nacon(16, 30, 4)
+    real(c_double), pointer, contiguous :: zp_nacon(:,:,:)
+    real(c_double), target :: z_reff_rain(16, 30)
+    real(c_double), pointer, contiguous :: zp_reff_rain(:,:)
+    real(c_double), target :: z_reff_snow(16, 30)
+    real(c_double), pointer, contiguous :: zp_reff_snow(:,:)
+    real(c_double), target :: z_tnd_qsnow(16, 30)
+    real(c_double), pointer, contiguous :: zp_tnd_qsnow(:,:)
+    real(c_double), target :: z_tnd_nsnow(16, 30)
+    real(c_double), pointer, contiguous :: zp_tnd_nsnow(:,:)
+    real(c_double), target :: z_re_ice(16, 30)
+    real(c_double), pointer, contiguous :: zp_re_ice(:,:)
+    real(c_double), target :: z_frzimm(16, 30)
+    real(c_double), pointer, contiguous :: zp_frzimm(:,:)
+    real(c_double), target :: z_frzcnt(16, 30)
+    real(c_double), pointer, contiguous :: zp_frzcnt(:,:)
+    real(c_double), target :: z_frzdep(16, 30)
+    real(c_double), pointer, contiguous :: zp_frzdep(:,:)
+    real(c_double), target :: y_qc(16, 30)
+    real(c_double), pointer, contiguous :: yp_qc(:,:)
+    real(c_double), target :: y_qi(16, 30)
+    real(c_double), pointer, contiguous :: yp_qi(:,:)
+    real(c_double), target :: y_nc(16, 30)
+    real(c_double), pointer, contiguous :: yp_nc(:,:)
+    real(c_double), target :: y_ni(16, 30)
+    real(c_double), pointer, contiguous :: yp_ni(:,:)
+    real(c_double), target :: y_rate1ord_cw2pr_st(16, 30)
+    real(c_double), pointer, contiguous :: yp_rate1ord_cw2pr_st(:,:)
+    real(c_double), target :: y_tlat(16, 30)
+    real(c_double), pointer, contiguous :: yp_tlat(:,:)
+    real(c_double), target :: y_qvlat(16, 30)
+    real(c_double), pointer, contiguous :: yp_qvlat(:,:)
+    real(c_double), target :: y_qctend(16, 30)
+    real(c_double), pointer, contiguous :: yp_qctend(:,:)
+    real(c_double), target :: y_qitend(16, 30)
+    real(c_double), pointer, contiguous :: yp_qitend(:,:)
+    real(c_double), target :: y_nctend(16, 30)
+    real(c_double), pointer, contiguous :: yp_nctend(:,:)
+    real(c_double), target :: y_nitend(16, 30)
+    real(c_double), pointer, contiguous :: yp_nitend(:,:)
+    real(c_double), target :: y_effc(16, 30)
+    real(c_double), pointer, contiguous :: yp_effc(:,:)
+    real(c_double), target :: y_effc_fn(16, 30)
+    real(c_double), pointer, contiguous :: yp_effc_fn(:,:)
+    real(c_double), target :: y_effi(16, 30)
+    real(c_double), pointer, contiguous :: yp_effi(:,:)
+    real(c_double), target :: y_prect(16)
+    real(c_double), pointer, contiguous :: yp_prect(:)
+    real(c_double), target :: y_preci(16)
+    real(c_double), pointer, contiguous :: yp_preci(:)
+    real(c_double), target :: y_nevapr(16, 30)
+    real(c_double), pointer, contiguous :: yp_nevapr(:,:)
+    real(c_double), target :: y_evapsnow(16, 30)
+    real(c_double), pointer, contiguous :: yp_evapsnow(:,:)
+    real(c_double), target :: y_am_evp_st(16, 30)
+    real(c_double), pointer, contiguous :: yp_am_evp_st(:,:)
+    real(c_double), target :: y_prain(16, 30)
+    real(c_double), pointer, contiguous :: yp_prain(:,:)
+    real(c_double), target :: y_prodsnow(16, 30)
+    real(c_double), pointer, contiguous :: yp_prodsnow(:,:)
+    real(c_double), target :: y_cmeout(16, 30)
+    real(c_double), pointer, contiguous :: yp_cmeout(:,:)
+    real(c_double), target :: y_deffi(16, 30)
+    real(c_double), pointer, contiguous :: yp_deffi(:,:)
+    real(c_double), target :: y_pgamrad(16, 30)
+    real(c_double), pointer, contiguous :: yp_pgamrad(:,:)
+    real(c_double), target :: y_lamcrad(16, 30)
+    real(c_double), pointer, contiguous :: yp_lamcrad(:,:)
+    real(c_double), target :: y_qsout(16, 30)
+    real(c_double), pointer, contiguous :: yp_qsout(:,:)
+    real(c_double), target :: y_dsout(16, 30)
+    real(c_double), pointer, contiguous :: yp_dsout(:,:)
+    real(c_double), target :: y_rflx(16, 31)
+    real(c_double), pointer, contiguous :: yp_rflx(:,:)
+    real(c_double), target :: y_sflx(16, 31)
+    real(c_double), pointer, contiguous :: yp_sflx(:,:)
+    real(c_double), target :: y_qrout(16, 30)
+    real(c_double), pointer, contiguous :: yp_qrout(:,:)
+    real(c_double), target :: y_reff_rain(16, 30)
+    real(c_double), pointer, contiguous :: yp_reff_rain(:,:)
+    real(c_double), target :: y_reff_snow(16, 30)
+    real(c_double), pointer, contiguous :: yp_reff_snow(:,:)
+    real(c_double), target :: y_qcsevap(16, 30)
+    real(c_double), pointer, contiguous :: yp_qcsevap(:,:)
+    real(c_double), target :: y_qisevap(16, 30)
+    real(c_double), pointer, contiguous :: yp_qisevap(:,:)
+    real(c_double), target :: y_qvres(16, 30)
+    real(c_double), pointer, contiguous :: yp_qvres(:,:)
+    real(c_double), target :: y_cmeiout(16, 30)
+    real(c_double), pointer, contiguous :: yp_cmeiout(:,:)
+    real(c_double), target :: y_vtrmc(16, 30)
+    real(c_double), pointer, contiguous :: yp_vtrmc(:,:)
+    real(c_double), target :: y_vtrmi(16, 30)
+    real(c_double), pointer, contiguous :: yp_vtrmi(:,:)
+    real(c_double), target :: y_qcsedten(16, 30)
+    real(c_double), pointer, contiguous :: yp_qcsedten(:,:)
+    real(c_double), target :: y_qisedten(16, 30)
+    real(c_double), pointer, contiguous :: yp_qisedten(:,:)
+    real(c_double), target :: y_prao(16, 30)
+    real(c_double), pointer, contiguous :: yp_prao(:,:)
+    real(c_double), target :: y_prco(16, 30)
+    real(c_double), pointer, contiguous :: yp_prco(:,:)
+    real(c_double), target :: y_mnuccco(16, 30)
+    real(c_double), pointer, contiguous :: yp_mnuccco(:,:)
+    real(c_double), target :: y_mnuccto(16, 30)
+    real(c_double), pointer, contiguous :: yp_mnuccto(:,:)
+    real(c_double), target :: y_msacwio(16, 30)
+    real(c_double), pointer, contiguous :: yp_msacwio(:,:)
+    real(c_double), target :: y_psacwso(16, 30)
+    real(c_double), pointer, contiguous :: yp_psacwso(:,:)
+    real(c_double), target :: y_bergso(16, 30)
+    real(c_double), pointer, contiguous :: yp_bergso(:,:)
+    real(c_double), target :: y_bergo(16, 30)
+    real(c_double), pointer, contiguous :: yp_bergo(:,:)
+    real(c_double), target :: y_melto(16, 30)
+    real(c_double), pointer, contiguous :: yp_melto(:,:)
+    real(c_double), target :: y_homoo(16, 30)
+    real(c_double), pointer, contiguous :: yp_homoo(:,:)
+    real(c_double), target :: y_qcreso(16, 30)
+    real(c_double), pointer, contiguous :: yp_qcreso(:,:)
+    real(c_double), target :: y_prcio(16, 30)
+    real(c_double), pointer, contiguous :: yp_prcio(:,:)
+    real(c_double), target :: y_praio(16, 30)
+    real(c_double), pointer, contiguous :: yp_praio(:,:)
+    real(c_double), target :: y_qireso(16, 30)
+    real(c_double), pointer, contiguous :: yp_qireso(:,:)
+    real(c_double), target :: y_mnuccro(16, 30)
+    real(c_double), pointer, contiguous :: yp_mnuccro(:,:)
+    real(c_double), target :: y_pracso(16, 30)
+    real(c_double), pointer, contiguous :: yp_pracso(:,:)
+    real(c_double), target :: y_meltsdt(16, 30)
+    real(c_double), pointer, contiguous :: yp_meltsdt(:,:)
+    real(c_double), target :: y_frzrdt(16, 30)
+    real(c_double), pointer, contiguous :: yp_frzrdt(:,:)
+    real(c_double), target :: y_mnuccdo(16, 30)
+    real(c_double), pointer, contiguous :: yp_mnuccdo(:,:)
+    real(c_double), target :: y_nrout(16, 30)
+    real(c_double), pointer, contiguous :: yp_nrout(:,:)
+    real(c_double), target :: y_nsout(16, 30)
+    real(c_double), pointer, contiguous :: yp_nsout(:,:)
+    real(c_double), target :: y_refl(16, 30)
+    real(c_double), pointer, contiguous :: yp_refl(:,:)
+    real(c_double), target :: y_arefl(16, 30)
+    real(c_double), pointer, contiguous :: yp_arefl(:,:)
+    real(c_double), target :: y_areflz(16, 30)
+    real(c_double), pointer, contiguous :: yp_areflz(:,:)
+    real(c_double), target :: y_frefl(16, 30)
+    real(c_double), pointer, contiguous :: yp_frefl(:,:)
+    real(c_double), target :: y_csrfl(16, 30)
+    real(c_double), pointer, contiguous :: yp_csrfl(:,:)
+    real(c_double), target :: y_acsrfl(16, 30)
+    real(c_double), pointer, contiguous :: yp_acsrfl(:,:)
+    real(c_double), target :: y_fcsrfl(16, 30)
+    real(c_double), pointer, contiguous :: yp_fcsrfl(:,:)
+    real(c_double), target :: y_rercld(16, 30)
+    real(c_double), pointer, contiguous :: yp_rercld(:,:)
+    real(c_double), target :: y_ncai(16, 30)
+    real(c_double), pointer, contiguous :: yp_ncai(:,:)
+    real(c_double), target :: y_ncal(16, 30)
+    real(c_double), pointer, contiguous :: yp_ncal(:,:)
+    real(c_double), target :: y_qrout2(16, 30)
+    real(c_double), pointer, contiguous :: yp_qrout2(:,:)
+    real(c_double), target :: y_qsout2(16, 30)
+    real(c_double), pointer, contiguous :: yp_qsout2(:,:)
+    real(c_double), target :: y_nrout2(16, 30)
+    real(c_double), pointer, contiguous :: yp_nrout2(:,:)
+    real(c_double), target :: y_nsout2(16, 30)
+    real(c_double), pointer, contiguous :: yp_nsout2(:,:)
+    real(c_double), target :: y_drout2(16, 30)
+    real(c_double), pointer, contiguous :: yp_drout2(:,:)
+    real(c_double), target :: y_dsout2(16, 30)
+    real(c_double), pointer, contiguous :: yp_dsout2(:,:)
+    real(c_double), target :: y_freqs(16, 30)
+    real(c_double), pointer, contiguous :: yp_freqs(:,:)
+    real(c_double), target :: y_freqr(16, 30)
+    real(c_double), pointer, contiguous :: yp_freqr(:,:)
+    real(c_double), target :: y_nfice(16, 30)
+    real(c_double), pointer, contiguous :: yp_nfice(:,:)
+    real(c_double), target :: y_prer_evap(16, 30)
+    real(c_double), pointer, contiguous :: yp_prer_evap(:,:)
+    real(c_double), target :: y_preo(16, 30)
+    real(c_double), pointer, contiguous :: yp_preo(:,:)
+    real(c_double), target :: y_prdso(16, 30)
+    real(c_double), pointer, contiguous :: yp_prdso(:,:)
+    real(c_double), target :: y_frzro(16, 30)
+    real(c_double), pointer, contiguous :: yp_frzro(:,:)
+    real(c_double), target :: y_meltso(16, 30)
+    real(c_double), pointer, contiguous :: yp_meltso(:,:)
+    real(c_double), target :: y_wtfc(16, 30)
+    real(c_double), pointer, contiguous :: yp_wtfc(:,:)
+    real(c_double), target :: y_wtfi(16, 30)
+    real(c_double), pointer, contiguous :: yp_wtfi(:,:)
+    real(c_double), target :: y_wtprelat(16, 30)
+    real(c_double), pointer, contiguous :: yp_wtprelat(:,:)
+    real(c_double), target :: y_wtpostlat(16, 30)
+    real(c_double), pointer, contiguous :: yp_wtpostlat(:,:)
+    z_deltatin = 0.0_c_double
+    zp_deltatin => z_deltatin
+    call torch_tensor_from_array(in_t(1), zp_deltatin, torch_kCPU)
+    z_tn = 0.0_c_double
+    zp_tn => z_tn
+    call torch_tensor_from_array(in_t(2), zp_tn, torch_kCPU)
+    z_qn = 0.0_c_double
+    zp_qn => z_qn
+    call torch_tensor_from_array(in_t(3), zp_qn, torch_kCPU)
+    z_qc = 0.0_c_double
+    zp_qc => z_qc
+    call torch_tensor_from_array(in_t(4), zp_qc, torch_kCPU)
+    z_qi = 0.0_c_double
+    zp_qi => z_qi
+    call torch_tensor_from_array(in_t(5), zp_qi, torch_kCPU)
+    z_nc = 0.0_c_double
+    zp_nc => z_nc
+    call torch_tensor_from_array(in_t(6), zp_nc, torch_kCPU)
+    z_ni = 0.0_c_double
+    zp_ni => z_ni
+    call torch_tensor_from_array(in_t(7), zp_ni, torch_kCPU)
+    z_p = 0.0_c_double
+    zp_p => z_p
+    call torch_tensor_from_array(in_t(8), zp_p, torch_kCPU)
+    z_pdel = 0.0_c_double
+    zp_pdel => z_pdel
+    call torch_tensor_from_array(in_t(9), zp_pdel, torch_kCPU)
+    z_cldn = 0.0_c_double
+    zp_cldn => z_cldn
+    call torch_tensor_from_array(in_t(10), zp_cldn, torch_kCPU)
+    z_liqcldf = 0.0_c_double
+    zp_liqcldf => z_liqcldf
+    call torch_tensor_from_array(in_t(11), zp_liqcldf, torch_kCPU)
+    z_relvar = 0.0_c_double
+    zp_relvar => z_relvar
+    call torch_tensor_from_array(in_t(12), zp_relvar, torch_kCPU)
+    z_accre_enhan = 0.0_c_double
+    zp_accre_enhan => z_accre_enhan
+    call torch_tensor_from_array(in_t(13), zp_accre_enhan, torch_kCPU)
+    z_icecldf = 0.0_c_double
+    zp_icecldf => z_icecldf
+    call torch_tensor_from_array(in_t(14), zp_icecldf, torch_kCPU)
+    z_naai = 0.0_c_double
+    zp_naai => z_naai
+    call torch_tensor_from_array(in_t(15), zp_naai, torch_kCPU)
+    z_npccnin = 0.0_c_double
+    zp_npccnin => z_npccnin
+    call torch_tensor_from_array(in_t(16), zp_npccnin, torch_kCPU)
+    z_rndst = 0.0_c_double
+    zp_rndst => z_rndst
+    call torch_tensor_from_array(in_t(17), zp_rndst, torch_kCPU)
+    z_nacon = 0.0_c_double
+    zp_nacon => z_nacon
+    call torch_tensor_from_array(in_t(18), zp_nacon, torch_kCPU)
+    z_reff_rain = 0.0_c_double
+    zp_reff_rain => z_reff_rain
+    call torch_tensor_from_array(in_t(19), zp_reff_rain, torch_kCPU)
+    z_reff_snow = 0.0_c_double
+    zp_reff_snow => z_reff_snow
+    call torch_tensor_from_array(in_t(20), zp_reff_snow, torch_kCPU)
+    z_tnd_qsnow = 0.0_c_double
+    zp_tnd_qsnow => z_tnd_qsnow
+    call torch_tensor_from_array(in_t(21), zp_tnd_qsnow, torch_kCPU)
+    z_tnd_nsnow = 0.0_c_double
+    zp_tnd_nsnow => z_tnd_nsnow
+    call torch_tensor_from_array(in_t(22), zp_tnd_nsnow, torch_kCPU)
+    z_re_ice = 0.0_c_double
+    zp_re_ice => z_re_ice
+    call torch_tensor_from_array(in_t(23), zp_re_ice, torch_kCPU)
+    z_frzimm = 0.0_c_double
+    zp_frzimm => z_frzimm
+    call torch_tensor_from_array(in_t(24), zp_frzimm, torch_kCPU)
+    z_frzcnt = 0.0_c_double
+    zp_frzcnt => z_frzcnt
+    call torch_tensor_from_array(in_t(25), zp_frzcnt, torch_kCPU)
+    z_frzdep = 0.0_c_double
+    zp_frzdep => z_frzdep
+    call torch_tensor_from_array(in_t(26), zp_frzdep, torch_kCPU)
+    yp_qc => y_qc
+    call torch_tensor_from_array(out_t(1), yp_qc, torch_kCPU)
+    yp_qi => y_qi
+    call torch_tensor_from_array(out_t(2), yp_qi, torch_kCPU)
+    yp_nc => y_nc
+    call torch_tensor_from_array(out_t(3), yp_nc, torch_kCPU)
+    yp_ni => y_ni
+    call torch_tensor_from_array(out_t(4), yp_ni, torch_kCPU)
+    yp_rate1ord_cw2pr_st => y_rate1ord_cw2pr_st
+    call torch_tensor_from_array(out_t(5), yp_rate1ord_cw2pr_st, torch_kCPU)
+    yp_tlat => y_tlat
+    call torch_tensor_from_array(out_t(6), yp_tlat, torch_kCPU)
+    yp_qvlat => y_qvlat
+    call torch_tensor_from_array(out_t(7), yp_qvlat, torch_kCPU)
+    yp_qctend => y_qctend
+    call torch_tensor_from_array(out_t(8), yp_qctend, torch_kCPU)
+    yp_qitend => y_qitend
+    call torch_tensor_from_array(out_t(9), yp_qitend, torch_kCPU)
+    yp_nctend => y_nctend
+    call torch_tensor_from_array(out_t(10), yp_nctend, torch_kCPU)
+    yp_nitend => y_nitend
+    call torch_tensor_from_array(out_t(11), yp_nitend, torch_kCPU)
+    yp_effc => y_effc
+    call torch_tensor_from_array(out_t(12), yp_effc, torch_kCPU)
+    yp_effc_fn => y_effc_fn
+    call torch_tensor_from_array(out_t(13), yp_effc_fn, torch_kCPU)
+    yp_effi => y_effi
+    call torch_tensor_from_array(out_t(14), yp_effi, torch_kCPU)
+    yp_prect => y_prect
+    call torch_tensor_from_array(out_t(15), yp_prect, torch_kCPU)
+    yp_preci => y_preci
+    call torch_tensor_from_array(out_t(16), yp_preci, torch_kCPU)
+    yp_nevapr => y_nevapr
+    call torch_tensor_from_array(out_t(17), yp_nevapr, torch_kCPU)
+    yp_evapsnow => y_evapsnow
+    call torch_tensor_from_array(out_t(18), yp_evapsnow, torch_kCPU)
+    yp_am_evp_st => y_am_evp_st
+    call torch_tensor_from_array(out_t(19), yp_am_evp_st, torch_kCPU)
+    yp_prain => y_prain
+    call torch_tensor_from_array(out_t(20), yp_prain, torch_kCPU)
+    yp_prodsnow => y_prodsnow
+    call torch_tensor_from_array(out_t(21), yp_prodsnow, torch_kCPU)
+    yp_cmeout => y_cmeout
+    call torch_tensor_from_array(out_t(22), yp_cmeout, torch_kCPU)
+    yp_deffi => y_deffi
+    call torch_tensor_from_array(out_t(23), yp_deffi, torch_kCPU)
+    yp_pgamrad => y_pgamrad
+    call torch_tensor_from_array(out_t(24), yp_pgamrad, torch_kCPU)
+    yp_lamcrad => y_lamcrad
+    call torch_tensor_from_array(out_t(25), yp_lamcrad, torch_kCPU)
+    yp_qsout => y_qsout
+    call torch_tensor_from_array(out_t(26), yp_qsout, torch_kCPU)
+    yp_dsout => y_dsout
+    call torch_tensor_from_array(out_t(27), yp_dsout, torch_kCPU)
+    yp_rflx => y_rflx
+    call torch_tensor_from_array(out_t(28), yp_rflx, torch_kCPU)
+    yp_sflx => y_sflx
+    call torch_tensor_from_array(out_t(29), yp_sflx, torch_kCPU)
+    yp_qrout => y_qrout
+    call torch_tensor_from_array(out_t(30), yp_qrout, torch_kCPU)
+    yp_reff_rain => y_reff_rain
+    call torch_tensor_from_array(out_t(31), yp_reff_rain, torch_kCPU)
+    yp_reff_snow => y_reff_snow
+    call torch_tensor_from_array(out_t(32), yp_reff_snow, torch_kCPU)
+    yp_qcsevap => y_qcsevap
+    call torch_tensor_from_array(out_t(33), yp_qcsevap, torch_kCPU)
+    yp_qisevap => y_qisevap
+    call torch_tensor_from_array(out_t(34), yp_qisevap, torch_kCPU)
+    yp_qvres => y_qvres
+    call torch_tensor_from_array(out_t(35), yp_qvres, torch_kCPU)
+    yp_cmeiout => y_cmeiout
+    call torch_tensor_from_array(out_t(36), yp_cmeiout, torch_kCPU)
+    yp_vtrmc => y_vtrmc
+    call torch_tensor_from_array(out_t(37), yp_vtrmc, torch_kCPU)
+    yp_vtrmi => y_vtrmi
+    call torch_tensor_from_array(out_t(38), yp_vtrmi, torch_kCPU)
+    yp_qcsedten => y_qcsedten
+    call torch_tensor_from_array(out_t(39), yp_qcsedten, torch_kCPU)
+    yp_qisedten => y_qisedten
+    call torch_tensor_from_array(out_t(40), yp_qisedten, torch_kCPU)
+    yp_prao => y_prao
+    call torch_tensor_from_array(out_t(41), yp_prao, torch_kCPU)
+    yp_prco => y_prco
+    call torch_tensor_from_array(out_t(42), yp_prco, torch_kCPU)
+    yp_mnuccco => y_mnuccco
+    call torch_tensor_from_array(out_t(43), yp_mnuccco, torch_kCPU)
+    yp_mnuccto => y_mnuccto
+    call torch_tensor_from_array(out_t(44), yp_mnuccto, torch_kCPU)
+    yp_msacwio => y_msacwio
+    call torch_tensor_from_array(out_t(45), yp_msacwio, torch_kCPU)
+    yp_psacwso => y_psacwso
+    call torch_tensor_from_array(out_t(46), yp_psacwso, torch_kCPU)
+    yp_bergso => y_bergso
+    call torch_tensor_from_array(out_t(47), yp_bergso, torch_kCPU)
+    yp_bergo => y_bergo
+    call torch_tensor_from_array(out_t(48), yp_bergo, torch_kCPU)
+    yp_melto => y_melto
+    call torch_tensor_from_array(out_t(49), yp_melto, torch_kCPU)
+    yp_homoo => y_homoo
+    call torch_tensor_from_array(out_t(50), yp_homoo, torch_kCPU)
+    yp_qcreso => y_qcreso
+    call torch_tensor_from_array(out_t(51), yp_qcreso, torch_kCPU)
+    yp_prcio => y_prcio
+    call torch_tensor_from_array(out_t(52), yp_prcio, torch_kCPU)
+    yp_praio => y_praio
+    call torch_tensor_from_array(out_t(53), yp_praio, torch_kCPU)
+    yp_qireso => y_qireso
+    call torch_tensor_from_array(out_t(54), yp_qireso, torch_kCPU)
+    yp_mnuccro => y_mnuccro
+    call torch_tensor_from_array(out_t(55), yp_mnuccro, torch_kCPU)
+    yp_pracso => y_pracso
+    call torch_tensor_from_array(out_t(56), yp_pracso, torch_kCPU)
+    yp_meltsdt => y_meltsdt
+    call torch_tensor_from_array(out_t(57), yp_meltsdt, torch_kCPU)
+    yp_frzrdt => y_frzrdt
+    call torch_tensor_from_array(out_t(58), yp_frzrdt, torch_kCPU)
+    yp_mnuccdo => y_mnuccdo
+    call torch_tensor_from_array(out_t(59), yp_mnuccdo, torch_kCPU)
+    yp_nrout => y_nrout
+    call torch_tensor_from_array(out_t(60), yp_nrout, torch_kCPU)
+    yp_nsout => y_nsout
+    call torch_tensor_from_array(out_t(61), yp_nsout, torch_kCPU)
+    yp_refl => y_refl
+    call torch_tensor_from_array(out_t(62), yp_refl, torch_kCPU)
+    yp_arefl => y_arefl
+    call torch_tensor_from_array(out_t(63), yp_arefl, torch_kCPU)
+    yp_areflz => y_areflz
+    call torch_tensor_from_array(out_t(64), yp_areflz, torch_kCPU)
+    yp_frefl => y_frefl
+    call torch_tensor_from_array(out_t(65), yp_frefl, torch_kCPU)
+    yp_csrfl => y_csrfl
+    call torch_tensor_from_array(out_t(66), yp_csrfl, torch_kCPU)
+    yp_acsrfl => y_acsrfl
+    call torch_tensor_from_array(out_t(67), yp_acsrfl, torch_kCPU)
+    yp_fcsrfl => y_fcsrfl
+    call torch_tensor_from_array(out_t(68), yp_fcsrfl, torch_kCPU)
+    yp_rercld => y_rercld
+    call torch_tensor_from_array(out_t(69), yp_rercld, torch_kCPU)
+    yp_ncai => y_ncai
+    call torch_tensor_from_array(out_t(70), yp_ncai, torch_kCPU)
+    yp_ncal => y_ncal
+    call torch_tensor_from_array(out_t(71), yp_ncal, torch_kCPU)
+    yp_qrout2 => y_qrout2
+    call torch_tensor_from_array(out_t(72), yp_qrout2, torch_kCPU)
+    yp_qsout2 => y_qsout2
+    call torch_tensor_from_array(out_t(73), yp_qsout2, torch_kCPU)
+    yp_nrout2 => y_nrout2
+    call torch_tensor_from_array(out_t(74), yp_nrout2, torch_kCPU)
+    yp_nsout2 => y_nsout2
+    call torch_tensor_from_array(out_t(75), yp_nsout2, torch_kCPU)
+    yp_drout2 => y_drout2
+    call torch_tensor_from_array(out_t(76), yp_drout2, torch_kCPU)
+    yp_dsout2 => y_dsout2
+    call torch_tensor_from_array(out_t(77), yp_dsout2, torch_kCPU)
+    yp_freqs => y_freqs
+    call torch_tensor_from_array(out_t(78), yp_freqs, torch_kCPU)
+    yp_freqr => y_freqr
+    call torch_tensor_from_array(out_t(79), yp_freqr, torch_kCPU)
+    yp_nfice => y_nfice
+    call torch_tensor_from_array(out_t(80), yp_nfice, torch_kCPU)
+    yp_prer_evap => y_prer_evap
+    call torch_tensor_from_array(out_t(81), yp_prer_evap, torch_kCPU)
+    yp_preo => y_preo
+    call torch_tensor_from_array(out_t(82), yp_preo, torch_kCPU)
+    yp_prdso => y_prdso
+    call torch_tensor_from_array(out_t(83), yp_prdso, torch_kCPU)
+    yp_frzro => y_frzro
+    call torch_tensor_from_array(out_t(84), yp_frzro, torch_kCPU)
+    yp_meltso => y_meltso
+    call torch_tensor_from_array(out_t(85), yp_meltso, torch_kCPU)
+    yp_wtfc => y_wtfc
+    call torch_tensor_from_array(out_t(86), yp_wtfc, torch_kCPU)
+    yp_wtfi => y_wtfi
+    call torch_tensor_from_array(out_t(87), yp_wtfi, torch_kCPU)
+    yp_wtprelat => y_wtprelat
+    call torch_tensor_from_array(out_t(88), yp_wtprelat, torch_kCPU)
+    yp_wtpostlat => y_wtpostlat
+    call torch_tensor_from_array(out_t(89), yp_wtpostlat, torch_kCPU)
+    call torch_model_forward(models(4), in_t, out_t)
+    call torch_delete(in_t)
+    call torch_delete(out_t)
+  end subroutine warm_micro_mg_tend
+
+  subroutine warm_model(hook)
+    integer(c_int), intent(in) :: hook
+    select case (hook)
+    case (3)
+      call warm_instratus_condensate()
+    case (4)
+      call warm_micro_mg_tend()
+    end select
+  end subroutine warm_model
+
   ! ------------------------------------------------------------------ !
   ! The ABI the runners and Python drive
   ! ------------------------------------------------------------------ !
@@ -1970,6 +2624,7 @@ contains
     character(kind=c_char), intent(in) :: path(*)
     character(len=4096) :: filename
     integer :: i
+    integer(c_int64_t) :: w0, w1
     status = 1_c_int
     if (hook < 1 .or. hook > nhooks) return
     if (.not. has_model(hook)) then
@@ -1987,6 +2642,11 @@ contains
     end do
     if (modeled(hook)) call torch_delete(models(hook))
     call torch_model_load(models(hook), filename(1:length), torch_kCPU)
+    ! one forward on zeros now: the first step does not pay the model's warm-up
+    call system_clock(w0)
+    call warm_model(hook)
+    call system_clock(w1)
+    warm_ticks(hook) = w1 - w0
     modeled(hook) = .true.
     shadow(hook) = shadow_flag /= 0_c_int
     status = 0_c_int
@@ -2005,18 +2665,24 @@ contains
     status = 0_c_int
   end function pycam_hooks_unbind_model_v1
 
-  integer(c_int) function pycam_hooks_model_seconds_v1(hook, model_seconds, forward_seconds) &
-       bind(C, name='pycam_hooks_model_seconds_v1') result(status)
-    ! wall seconds this rank spent in the hook's model branch, and in the model's forward alone
+  integer(c_int) function pycam_hooks_model_seconds_v1(hook, model_seconds, forward_seconds, call_seconds, &
+       first_seconds, warm_seconds) bind(C, name='pycam_hooks_model_seconds_v1') result(status)
+    ! wall seconds this rank spent in the hook's model branch, in the model's forward alone,
+    ! around the whole model call as the hook sees it (prologue and epilogue included), in the
+    ! first modeled call alone, and in the warm-up forward at bind
     integer(c_int), value, intent(in) :: hook
-    real(c_double), intent(out) :: model_seconds, forward_seconds
+    real(c_double), intent(out) :: model_seconds, forward_seconds, call_seconds, first_seconds, warm_seconds
     integer(c_int64_t) :: rate
-    model_seconds = 0.0_c_double; forward_seconds = 0.0_c_double
+    model_seconds = 0.0_c_double; forward_seconds = 0.0_c_double; call_seconds = 0.0_c_double
+    first_seconds = 0.0_c_double; warm_seconds = 0.0_c_double
     status = 1_c_int
     if (hook < 1 .or. hook > nhooks) return
     call system_clock(count_rate=rate)
     model_seconds = real(model_ticks(hook), c_double) / real(rate, c_double)
     forward_seconds = real(forward_ticks(hook), c_double) / real(rate, c_double)
+    call_seconds = real(hook_ticks(hook), c_double) / real(rate, c_double)
+    first_seconds = real(first_ticks(hook), c_double) / real(rate, c_double)
+    warm_seconds = real(warm_ticks(hook), c_double) / real(rate, c_double)
     status = 0_c_int
   end function pycam_hooks_model_seconds_v1
 

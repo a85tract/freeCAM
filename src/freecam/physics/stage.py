@@ -1420,9 +1420,14 @@ class NativeStage:
 
         from freecam.pi_cam.hooks import bind_hook_model, load_hooks, unbind_hook_model
 
-        table = load_hooks()
         bound: dict[str, str] = getattr(self, "_native_bound", {})
         wanted = {name: kernel for name, kernel in self.kernels.items() if isinstance(kernel, NativeModel)}
+        keys = {name: f"{model.sha256}{':shadow' if model.shadow else ''}" for name, model in wanted.items()}
+        if keys == bound:
+            # every step after the first: nothing to bind, and no hooks table to
+            # read (parsing hooks.yaml cost about 10 ms a step in job 7399451)
+            return
+        table = load_hooks()
         for name in list(bound):
             if name not in wanted:
                 unbind_hook_model(native.library, table.hook(name).id)
@@ -1438,10 +1443,9 @@ class NativeStage:
                 raise PhysicsError(
                     f"hook {name!r} has no model block in native/pi_cam/hooks.yaml: the image does "
                     f"not know how to hand its arguments to a model")
-            key = f"{model.sha256}{':shadow' if model.shadow else ''}"
-            if bound.get(name) != key:
+            if bound.get(name) != keys[name]:
                 bind_hook_model(native.library, hook.id, model.path, shadow=model.shadow)
-                bound[name] = key
+                bound[name] = keys[name]
         self._native_bound = bound
 
     def native_between_halves(self, native: Any) -> None:

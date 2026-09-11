@@ -121,11 +121,17 @@ def _hook_procedure(hook: Hook, spec: FunctionSpec, index: int) -> str:
         lines = [f"  subroutine hook_{hook.kernel}({names})",
                  f"    ! {spec.qualified_name}, as its redirected callers call it; {hook.redirect}, Fortran-bound"]
         lines.extend(_declaration(hook, spec, item, target=True) for item in dummies)
+        if hook.takes_model:
+            lines.append("    integer(c_int64_t) :: h0, h1")
         lines.append(f"    calls({index}) = calls({index}) + 1_c_int64_t")
         if hook.takes_model:
             lines.append(f"    if (modeled({index})) then")
             lines.append(f"      answered({index}) = answered({index}) + 1_c_int64_t")
+            lines.append("      call system_clock(h0)")
             lines.append(f"      call model_{hook.kernel}({names})")
+            lines.append("      call system_clock(h1)")
+            lines.append(f"      hook_ticks({index}) = hook_ticks({index}) + (h1 - h0)")
+            lines.append(f"      if (answered({index}) == 1_c_int64_t) first_ticks({index}) = h1 - h0")
             lines.append(f"      if (.not. shadow({index})) return")
             lines.append("      ! shadow: the model ran for its cost alone; the original answers")
             lines.append("    end if")
@@ -136,12 +142,18 @@ def _hook_procedure(hook: Hook, spec: FunctionSpec, index: int) -> str:
              f"    ! {spec.qualified_name}, as its redirected callers call it; {hook.redirect}"]
     lines.extend(_declaration(hook, spec, item, target=True) for item in dummies)
     lines.append("    integer :: slot")
+    if hook.takes_model:
+        lines.append("    integer(c_int64_t) :: h0, h1")
     lines.append(f"    calls({index}) = calls({index}) + 1_c_int64_t")
     if hook.takes_model:
         lines.append(f"    if (modeled({index})) then")
         lines.append("      ! a TorchScript model is bound here: the image answers the call itself")
         lines.append(f"      answered({index}) = answered({index}) + 1_c_int64_t")
+        lines.append("      call system_clock(h0)")
         lines.append(f"      call model_{hook.kernel}({names})")
+        lines.append("      call system_clock(h1)")
+        lines.append(f"      hook_ticks({index}) = hook_ticks({index}) + (h1 - h0)")
+        lines.append(f"      if (answered({index}) == 1_c_int64_t) first_ticks({index}) = h1 - h0")
         lines.append(f"      if (.not. shadow({index})) return")
         lines.append("      ! shadow: the model ran for its cost alone; the original answers")
         lines.append("    end if")
@@ -285,6 +297,52 @@ def _model_procedure(hook: Hook, spec: FunctionSpec, index: int) -> str:
     return "\n".join(lines)
 
 
+def _warm_procedure(hook: Hook, spec: FunctionSpec, index: int) -> str:
+    """One forward on zero tensors of the contract's extents, at bind.
+
+    The first forward of a TorchScript model pays for its code pages, the
+    profiling run and the optimised graph (34 to 67 ms standalone, 0.2 s on
+    rank 0 of job 7399451 with 512 ranks faulting libtorch in at once).  Paid
+    here, at bind, it is out of the step loop and out of the per-call figures.
+    """
+
+    inputs, outputs = _model_arguments(hook, spec)
+    lines = [f"  subroutine warm_{hook.kernel}()",
+             f"    ! the model bound at hook {index} run once on zeros of the contract's extents"]
+    lines.append(f"    type(torch_tensor) :: in_t({len(inputs)}), out_t({len(outputs)})")
+    for prefix, items in (("z", inputs), ("y", outputs)):
+        for item in items:
+            colons = ",".join(":" for _ in range(max(item.rank, 1)))
+            extents = _extents(spec, item) if item.rank else "1"
+            lines.append(f"    real(c_double), target :: {prefix}_{item.name}({extents})")
+            lines.append(f"    real(c_double), pointer, contiguous :: {prefix}p_{item.name}({colons})")
+    for slot, item in enumerate(inputs, start=1):
+        lines.append(f"    z_{item.name} = 0.0_c_double")
+        lines.append(f"    zp_{item.name} => z_{item.name}")
+        lines.append(f"    call torch_tensor_from_array(in_t({slot}), zp_{item.name}, torch_kCPU)")
+    for slot, item in enumerate(outputs, start=1):
+        lines.append(f"    yp_{item.name} => y_{item.name}")
+        lines.append(f"    call torch_tensor_from_array(out_t({slot}), yp_{item.name}, torch_kCPU)")
+    lines.append(f"    call torch_model_forward(models({index}), in_t, out_t)")
+    lines.append("    call torch_delete(in_t)")
+    lines.append("    call torch_delete(out_t)")
+    lines.append(f"  end subroutine warm_{hook.kernel}")
+    return "\n".join(lines)
+
+
+def _warm_dispatch(table: HookTable) -> str:
+    """warm_model(hook): the bound model's warm-up by hook index."""
+
+    lines = ["  subroutine warm_model(hook)", "    integer(c_int), intent(in) :: hook", "    select case (hook)"]
+    for index, hook in enumerate(table.hooks, start=1):
+        if hook.takes_model:
+            lines.append(f"    case ({index})")
+            lines.append(f"      call warm_{hook.kernel}()")
+    lines.append("    end select")
+    lines.append("  end subroutine warm_model")
+    return "\n".join(lines)
+
+
 def _original_procedure(hook: Hook, spec: FunctionSpec) -> str:
     """The original callee, reached through its module or its own symbol."""
 
@@ -372,6 +430,10 @@ def render(table: HookTable) -> str:
         if hook.takes_model:
             procedures.append(_model_procedure(hook, spec, index))
             procedures.append("")
+            procedures.append(_warm_procedure(hook, spec, index))
+            procedures.append("")
+    procedures.append(_warm_dispatch(table))
+    procedures.append("")
     has_model = ", ".join(".true." if hook.takes_model else ".false." for hook in table.hooks)
     original_cases = "\n".join(_frame_original(hook, spec, index) for index, (hook, spec) in enumerate(zip(table.hooks, specs), start=1)
                                if hook.pausable)
@@ -418,6 +480,11 @@ module pycam_hooks
   integer(c_int64_t), save :: answered(nhooks) = 0_c_int64_t
   ! wall time inside the model branch (tensors, forward, write-back) and in the forward alone
   integer(c_int64_t), save :: model_ticks(nhooks) = 0_c_int64_t, forward_ticks(nhooks) = 0_c_int64_t
+  ! and around the whole call of the model procedure, its prologue and epilogue included;
+  ! the first modeled call alone (the warm-up: code pages, TorchScript profiling and optimisation)
+  integer(c_int64_t), save :: hook_ticks(nhooks) = 0_c_int64_t, first_ticks(nhooks) = 0_c_int64_t
+  ! the warm-up forward at bind (pycam_hooks_bind_model_v1)
+  integer(c_int64_t), save :: warm_ticks(nhooks) = 0_c_int64_t
   type(torch_model), save :: models(nhooks)
   integer, save :: paused_hook = 0
   type(c_ptr), save :: frame_ptrs(max_slots)
@@ -487,6 +554,7 @@ contains
     character(kind=c_char), intent(in) :: path(*)
     character(len=4096) :: filename
     integer :: i
+    integer(c_int64_t) :: w0, w1
     status = 1_c_int
     if (hook < 1 .or. hook > nhooks) return
     if (.not. has_model(hook)) then
@@ -504,6 +572,11 @@ contains
     end do
     if (modeled(hook)) call torch_delete(models(hook))
     call torch_model_load(models(hook), filename(1:length), torch_kCPU)
+    ! one forward on zeros now: the first step does not pay the model's warm-up
+    call system_clock(w0)
+    call warm_model(hook)
+    call system_clock(w1)
+    warm_ticks(hook) = w1 - w0
     modeled(hook) = .true.
     shadow(hook) = shadow_flag /= 0_c_int
     status = 0_c_int
@@ -522,18 +595,24 @@ contains
     status = 0_c_int
   end function pycam_hooks_unbind_model_v1
 
-  integer(c_int) function pycam_hooks_model_seconds_v1(hook, model_seconds, forward_seconds) &
-       bind(C, name='pycam_hooks_model_seconds_v1') result(status)
-    ! wall seconds this rank spent in the hook's model branch, and in the model's forward alone
+  integer(c_int) function pycam_hooks_model_seconds_v1(hook, model_seconds, forward_seconds, call_seconds, &
+       first_seconds, warm_seconds) bind(C, name='pycam_hooks_model_seconds_v1') result(status)
+    ! wall seconds this rank spent in the hook's model branch, in the model's forward alone,
+    ! around the whole model call as the hook sees it (prologue and epilogue included), in the
+    ! first modeled call alone, and in the warm-up forward at bind
     integer(c_int), value, intent(in) :: hook
-    real(c_double), intent(out) :: model_seconds, forward_seconds
+    real(c_double), intent(out) :: model_seconds, forward_seconds, call_seconds, first_seconds, warm_seconds
     integer(c_int64_t) :: rate
-    model_seconds = 0.0_c_double; forward_seconds = 0.0_c_double
+    model_seconds = 0.0_c_double; forward_seconds = 0.0_c_double; call_seconds = 0.0_c_double
+    first_seconds = 0.0_c_double; warm_seconds = 0.0_c_double
     status = 1_c_int
     if (hook < 1 .or. hook > nhooks) return
     call system_clock(count_rate=rate)
     model_seconds = real(model_ticks(hook), c_double) / real(rate, c_double)
     forward_seconds = real(forward_ticks(hook), c_double) / real(rate, c_double)
+    call_seconds = real(hook_ticks(hook), c_double) / real(rate, c_double)
+    first_seconds = real(first_ticks(hook), c_double) / real(rate, c_double)
+    warm_seconds = real(warm_ticks(hook), c_double) / real(rate, c_double)
     status = 0_c_int
   end function pycam_hooks_model_seconds_v1
 

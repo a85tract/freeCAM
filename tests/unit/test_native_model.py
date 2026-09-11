@@ -113,6 +113,14 @@ def test_the_generated_module_answers_a_bound_model_inside_the_image() -> None:
         assert f"bind(C, name='{entry}')" in text
     # a bound model and a Python replacement cannot share a hook
     assert "if (flag /= 0_c_int .and. modeled(hook)) then" in text
+    # the warm-up at bind: one forward on zeros of the contract's extents, timed apart from the calls
+    assert "call torch_model_load(models(hook), filename(1:length), torch_kCPU)\n" in text
+    assert text.count("\n  subroutine warm_") == 3 and "      call warm_micro_mg_tend()" in text
+    assert "real(c_double), target :: z_tn(16, 30)" in text and "real(c_double), target :: y_rflx(16, 31)" in text
+    assert "warm_ticks(hook) = w1 - w0" in text and "warm_seconds = real(warm_ticks(hook), c_double)" in text
+    # per-rank timers: the whole model call as the hook sees it, and the first call alone
+    assert "hook_ticks(4) = hook_ticks(4) + (h1 - h0)" in text
+    assert "if (answered(4) == 1_c_int64_t) first_ticks(4) = h1 - h0" in text
 
 
 class _Entry:
@@ -191,10 +199,16 @@ def test_a_stage_with_a_native_model_runs_whole_and_binds_once(tmp_path: Path, m
     native = SimpleNamespace(library=library, run_action=lambda name, phase=None: ran.append(name),
                              segment_runner=lambda stage_name: None)
     context = SimpleNamespace(native=native, step=1)
+    import freecam.pi_cam.hooks as hooks_module
+
+    table_loads: list[int] = []
+    real_load_hooks = hooks_module.load_hooks
+    monkeypatch.setattr(hooks_module, "load_hooks", lambda *a, **k: (table_loads.append(1), real_load_hooks(*a, **k))[1])
     stage.tend(None, context)
     stage.tend(None, context)
     assert ran == [stage.STAGE, stage.STAGE]                    # the whole original stage, twice
     assert list(library.bound) == [3]                          # bound at instratus's hook, once
+    assert len(table_loads) == 1                               # and the hooks table read once, not every step
     # a shadow model binds with the flag and rebinds when the mode changes
     shadowed = NativeModel(torchscript_archive(tmp_path / "instratus.pt"), shadow=True)
     stage.kernels["instratus_condensate"] = shadowed
@@ -233,3 +247,11 @@ def test_the_run_record_sums_the_calls_a_model_answered_over_the_ranks() -> None
     records = [{"hook_counts": {"instratus_condensate": {"calls": 9360, "paused": 0, "modeled": 9000}}},
                {"hook_counts": {"instratus_condensate": {"calls": 9360, "paused": 0, "modeled": 9000}}}]
     assert _hook_summary(records) == {"instratus_condensate": {"calls": 18720, "paused": 0, "ranks_called": 2, "modeled": 18000}}
+    # the timers are summed over the ranks, and the slowest rank's own value is kept beside the sum
+    timed = [{"hook_counts": {"micro_mg_tend": {"calls": 100, "paused": 0, "modeled": 100, "model_seconds": 0.10,
+                                                "forward_seconds": 0.08, "first_call_seconds": 0.04, "warm_seconds": 0.03}}},
+             {"hook_counts": {"micro_mg_tend": {"calls": 100, "paused": 0, "modeled": 100, "model_seconds": 0.30,
+                                                "forward_seconds": 0.20, "first_call_seconds": 0.20, "warm_seconds": 0.05}}}]
+    summary = _hook_summary(timed)["micro_mg_tend"]
+    assert summary["model_seconds"] == pytest.approx(0.40) and summary["model_seconds_max"] == pytest.approx(0.30)
+    assert summary["first_call_seconds_max"] == pytest.approx(0.20) and summary["warm_seconds"] == pytest.approx(0.08)
