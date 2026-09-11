@@ -440,9 +440,28 @@ def _kcount_plans(rows: list[dict]) -> dict[str, list[dict]]:
     return plans
 
 
+def _torch_lib_dir() -> Path:
+    """The libtorch directory of this interpreter's torch package, which FTorch links against."""
+
+    try:
+        import torch  # noqa: WPS433 - the build resolves the runtime it links
+    except ImportError as exc:
+        raise RuntimeError("--torch-lib was not given and torch is not importable here") from exc
+    return Path(torch.__file__).resolve().parent / "lib"
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--case", type=Path, required=True)
+    parser.add_argument(
+        "--ftorch-root", type=Path, default=REPO / "build/ftorch",
+        help="an FTorch installation (include/ftorch with the .mod files, lib64 with libftorch.so): "
+             "the hooks module runs bound TorchScript models through it",
+    )
+    parser.add_argument(
+        "--torch-lib", type=Path, default=None,
+        help="the libtorch directory FTorch was built against (default: the torch package of this interpreter)",
+    )
     parser.add_argument(
         "--source-root", type=Path,
         default=REPO / "build/iCESM1.3.1_PI_cam_only",
@@ -588,6 +607,18 @@ def main() -> int:
             command, source.name, source, destination, work, build / "atm/obj",
         )
         compile_logs[f"interface/{source.name}"] = str(log)
+    # FTorch, which the hooks module uses to run bound TorchScript models: its
+    # module files at compile time, its library (and libtorch) at link time
+    ftorch_root = args.ftorch_root.resolve()
+    ftorch_include = ftorch_root / "include/ftorch"
+    ftorch_lib = next((d for d in (ftorch_root / "lib64", ftorch_root / "lib") if (d / "libftorch.so").is_file()), None)
+    if not (ftorch_include / "ftorch.mod").is_file() or ftorch_lib is None:
+        raise RuntimeError(f"FTorch is not installed under {ftorch_root}: build it first (see docs/installation.md)")
+    torch_lib = args.torch_lib.resolve() if args.torch_lib is not None else _torch_lib_dir()
+    ftorch_link = [f"-L{ftorch_lib}", "-lftorch", f"-Wl,-rpath,{ftorch_lib}", f"-Wl,-rpath,{torch_lib}"]
+    cxx_runtime = ftorch_root / "cxx_runtime_dir"          # written by tools/build_ftorch.sh
+    if cxx_runtime.is_file() and cxx_runtime.read_text().strip():
+        ftorch_link.append(f"-Wl,-rpath,{cxx_runtime.read_text().strip()}")
     # The support modules first: physpkg and cam_comp `use` them, and ifort
     # writes their .mod files into the working directory, which -I. covers.
     support_objects: list[Path] = []
@@ -596,6 +627,9 @@ def main() -> int:
         if not source.is_file():
             raise RuntimeError(f"support module is absent from the prepared source: {source}")
         log, command = _compile_command(build, "macrop_driver.F90")
+        if source_name == "pycam_hooks.F90":
+            # the hooks call FTorch (bound TorchScript models): its module files
+            command = [*command, f"-I{ftorch_include}"]
         destination = work / f"{Path(source_name).stem}.o"
         compile_commands[source_name] = _compile_to(
             command, "macrop_driver.F90", source, destination, work, build / "atm/obj",
@@ -987,6 +1021,8 @@ def main() -> int:
     if trampoline_object is not None:
         # the chained trampolines own names the hook module references
         capture_link.insert(capture_link.index("-o"), str(trampoline_object))
+    for flag in ftorch_link:
+        capture_link.insert(capture_link.index("-o"), flag)
     capture_link[capture_link.index("-o") + 1] = str(capture_executable)
     _run(capture_link, cwd=build / "cpl/obj")
     # Record the exact Intel math runtime used by the standalone executable.
@@ -1028,6 +1064,7 @@ def main() -> int:
         str(fiber_object),
         str(kcount_object),
         *((str(trampoline_object),) if trampoline_object is not None else ()),
+        *ftorch_link,
         "-Wl,--unresolved-symbols=ignore-all",
         "-o", str(fixed_executable),
     ]
@@ -1245,6 +1282,8 @@ def main() -> int:
         "promoted_kernel_link_command": promoted_kernel_link,
         "capture_executable": str(capture_executable),
         "capture_executable_sha256": _sha256(capture_executable),
+        "ftorch": {"root": str(ftorch_root), "library": str(ftorch_lib / "libftorch.so"),
+                   "library_sha256": _sha256(ftorch_lib / "libftorch.so"), "torch_lib": str(torch_lib)},
         "capture_link_command": capture_link,
         "driver_link_objects": driver_objects,
         "fixed_link_command": fixed_link,

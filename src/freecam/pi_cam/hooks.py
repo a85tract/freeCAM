@@ -39,6 +39,17 @@ class Hook:
     original_routine: str | None
     original_symbol: str | None
     callers: tuple[HookCaller, ...] = field(default_factory=tuple)
+    #: contract arguments a bound TorchScript model takes, in its forward's order;
+    #: empty when the hook cannot be given a model
+    model_inputs: tuple[str, ...] = ()
+    #: the contract outputs the model returns, in order
+    model_outputs: tuple[str, ...] = ()
+
+    @property
+    def takes_model(self) -> bool:
+        """Whether the image can run a TorchScript model at this hook."""
+
+        return bool(self.model_inputs) and bool(self.model_outputs)
 
     @property
     def symbol(self) -> str:
@@ -99,11 +110,21 @@ def load_hooks(path: str | Path | None = None) -> HookTable:
         callers = tuple(HookCaller(object=str(c["object"]), routine=str(c["routine"])) for c in record.get("callers") or ())
         if not callers:
             raise PICAMConfigurationError(f"{source}: hook {kernel!r} names no callers")
+        model = dict(record.get("model") or {})
+        model_inputs = tuple(str(name) for name in model.get("inputs") or ())
+        model_outputs = tuple(str(name) for name in model.get("outputs") or ())
+        if model and (not model_inputs or not model_outputs):
+            raise PICAMConfigurationError(f"{source}: hook {kernel!r}: a model block names inputs and outputs")
+        if len(set(model_inputs)) != len(model_inputs) or len(set(model_outputs)) != len(model_outputs):
+            raise PICAMConfigurationError(f"{source}: hook {kernel!r}: a model argument is listed twice")
+        if set(model_inputs) & set(model_outputs):
+            raise PICAMConfigurationError(f"{source}: hook {kernel!r}: a model argument cannot be both input and output")
         HOOK_IDS[kernel] = index
         hooks.append(Hook(
             kernel=kernel, contract=str(record["contract"]), callee_symbol=str(record["callee_symbol"]),
             redirect=redirect, original_module=original.get("module"), original_routine=original.get("routine"),
             original_symbol=original.get("symbol"), callers=callers,
+            model_inputs=model_inputs, model_outputs=model_outputs,
         ))
     import hashlib
 
@@ -136,6 +157,10 @@ def read_hook_counts(library: Any) -> dict[str, dict[str, int]]:
     if missed_entry is not None:
         missed_entry.restype = ctypes.c_int32
         missed_entry.argtypes = [ctypes.c_int32, ctypes.POINTER(ctypes.c_int64)]
+    modeled_entry = getattr(library, "pycam_hooks_modeled_v1", None)   # calls a bound model answered in the image
+    if modeled_entry is not None:
+        modeled_entry.restype = ctypes.c_int32
+        modeled_entry.argtypes = [ctypes.c_int32, ctypes.POINTER(ctypes.c_int64)]
     result: dict[str, dict[str, int]] = {}
     for hook in range(1, int(count_entry()) + 1):
         buffer = ctypes.create_string_buffer(64)
@@ -149,8 +174,48 @@ def read_hook_counts(library: Any) -> dict[str, dict[str, int]]:
             missed = ctypes.c_int64(0)
             if missed_entry(hook, ctypes.byref(missed)) == 0:
                 record["missed"] = int(missed.value)
+        if modeled_entry is not None:
+            modeled = ctypes.c_int64(0)
+            if modeled_entry(hook, ctypes.byref(modeled)) == 0:
+                record["modeled"] = int(modeled.value)
         result[buffer.value.decode("ascii", errors="replace")] = record
     return result
 
 
-__all__ += ["read_hook_counts"]
+BIND_STATUS = {1: "no such hook", 2: "the hook takes no model (hooks.yaml has no model block for it)",
+               3: "the hook is armed for a Python replacement", 4: "the path is empty or too long",
+               5: "the image has no model entry: it was built without FTorch"}
+
+
+def bind_hook_model(library: Any, hook_id: int, path: str | Path) -> None:
+    """Load a TorchScript model into the image at hook ``hook_id``: from then on the hook
+    answers its calls with the model, inside Fortran, until :func:`unbind_hook_model`."""
+
+    import ctypes
+
+    entry = getattr(library, "pycam_hooks_bind_model_v1", None)
+    if entry is None:
+        raise PICAMConfigurationError(f"cannot bind a model at hook {hook_id}: {BIND_STATUS[5]}")
+    entry.restype = ctypes.c_int32
+    entry.argtypes = [ctypes.c_int32, ctypes.c_char_p, ctypes.c_int32]
+    encoded = str(Path(path)).encode()
+    status = int(entry(int(hook_id), encoded, len(encoded)))
+    if status != 0:
+        raise PICAMConfigurationError(
+            f"cannot bind {path} at hook {hook_id}: {BIND_STATUS.get(status, f'status {status}')}")
+
+
+def unbind_hook_model(library: Any, hook_id: int) -> None:
+    """Release the model bound at ``hook_id``; the hook answers with the original again."""
+
+    import ctypes
+
+    entry = getattr(library, "pycam_hooks_unbind_model_v1", None)
+    if entry is None:
+        return
+    entry.restype = ctypes.c_int32
+    entry.argtypes = [ctypes.c_int32]
+    entry(int(hook_id))
+
+
+__all__ += ["read_hook_counts", "bind_hook_model", "unbind_hook_model", "BIND_STATUS"]

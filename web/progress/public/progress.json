@@ -2648,7 +2648,7 @@
   "use_gw_oro": true,
   "use_subcol_microp": false
  },
- "content_hash": "2a714241ef7197bb8e7fde0f2c00b008b7018191a66f3666e0a51f80d4aba7f1",
+ "content_hash": "bd33951efc7312443967d64ad06fa743935f04d0a7972134fda2e415b540e16c",
  "evidence": {
   "pi_cam_cldfrc_fice_frame_replay.json": {
    "bfb": true,
@@ -4820,7 +4820,7 @@
   }
  ],
  "inputs": {
-  "native/pi_cam/hooks.yaml": "fe94bb020f505d5d2f532a607400dddc9b4c0feb3f9ba227f0e3d81faae63997",
+  "native/pi_cam/hooks.yaml": "cad8cc8951deaf89f5c2ddfddfc1739c454aaf364828cbe52c320d2beea2d6b2",
   "native/pi_cam/kernel_classifications.yaml": "d6be2103c9bd0c86a0c8461a067d3b43eac6aa370e992fde9bf3096e55c8c5f4",
   "native/pi_cam/kernel_work_items.yaml": "b2344fc5b9b55ab8a912500d9ef36b8e30cb7ad30c09eac241c657796e0f29ce",
   "native/pi_cam/segment_runners.yaml": "002ab5f622cb5c10c0d7fc45eead3ef708de6524602eda635b4c064649663acd",
@@ -72399,8 +72399,8 @@
  ],
  "volatile": {
   "branch": "physics-kernel-api-closure",
-  "commit": "13b2a3773636b43f5d20826109e9e093d486279d",
-  "generated_at": "2026-09-10T03:31:06+00:00"
+  "commit": "d5a58c77f5b96e96a996529efc4d563c73a6c050",
+  "generated_at": "2026-09-11T03:24:08+00:00"
  },
  "work_items": [
   {

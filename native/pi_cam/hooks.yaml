@@ -8,7 +8,9 @@
 # callee's own argument list, taken from the reviewed function contract: it
 # counts every call, calls the original when the kernel is not armed, and when
 # it is armed hands Python the frame by yielding the stage's fiber
-# (native/pi_cam/pycam_fiber.c).  Fortran never calls Python.
+# (native/pi_cam/pycam_fiber.c).  Fortran never calls Python.  A hook with a
+# `model` block can instead be bound to a TorchScript model that the image runs
+# itself through FTorch, with no Python in the step at all.
 schema_version: 1
 # the fiber stack every hooked stage runs on; reserved lazily
 fiber_stack_bytes: 536870912
@@ -45,3 +47,12 @@ hooks:
     callee_symbol: cldwat2m_macro_mp_instratus_condensate_
     callers:
       - {object: cldwat2m_macro.o, routine: mmacro_pcond}
+    # a TorchScript model the image runs itself at this hook (FTorch): the
+    # model's forward takes these contract arguments as tensors, in this order
+    # (a scalar integer such as k travels as a one-element real tensor), and
+    # returns these outputs in this order; the hook writes the live columns back
+    model:
+      inputs: [k, p_in, t0_in, qv0_in, ql0_in, qi0_in, ni0_in, a_dc_in, ql_dc_in, qi_dc_in,
+               a_sc_in, ql_sc_in, qi_sc_in, landfrac, snowh, rhmini_in, rhminl_in,
+               rhminl_adj_land_in, rhminh_in]
+      outputs: [t_out, qv_out, ql_out, qi_out, al_st_out, ai_st_out, ql_st_out, qi_st_out]

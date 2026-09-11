@@ -278,6 +278,47 @@ the oracle's month at a median of 0.71 of each field's own spread, the largest
 in the isotope precipitation and the aerosol number fields.  The health
 counts are the result here, and the health counts of the original are zero.
 
+### A model the image runs itself
+
+Every replacement above answered from Python: the hook or the runner stopped,
+Python built the frame, the model answered, Python wrote back and resumed.
+That round trip is what a replacement costs -- about 3 ms for the 29-argument
+instratus frame, 180 times a step, which is why the model run above took
+42 s for fifty steps against 16 s with nothing replaced -- and no amount of
+Python-side work removes it; the surveyed practice (FTorch in CAM and ICON,
+pytorch-fortran and FTorch in E3SM-MMF, Infero in the IFS, the
+Fortran-Keras Bridge in SPCAM) is to run the model inside the Fortran process
+and keep Python out of the step.
+
+The hook table now allows that.  A hook whose entry in `hooks.yaml` has a
+`model` block -- the contract arguments the model's forward takes, in order,
+and the outputs it returns -- can be *bound* to a TorchScript file
+(`pycam_hooks_bind_model_v1`).  From then on the hook answers every call
+itself: it wraps the kernel's arrays as tensors where they live (a scalar such
+as `k` travels as a one-element tensor), runs the model through
+[FTorch](https://github.com/Cambridge-ICCS/FTorch), and writes the live
+columns of the outputs back.  No fiber, no frame, no Python: the stage runs
+whole and a step crosses the boundary once, whatever is replaced.  On the
+command line the same `--kernel-model NAME=PATH` takes a TorchScript archive
+as the model; the stage sees a `NativeModel` in the slot, binds it at the hook
+on its first step and runs `native-model`.  A bound model and a Python
+replacement cannot share a hook, and a native model cannot stand at a kernel
+that is not a hook.  The Python path stays for what it is good at: frame
+capture, the original answering at the pause, and quick experiments.
+
+The image links FTorch and the libtorch of the checkout's own `torch`
+package (`build_pi_cam_devices.py --ftorch-root`, see the installation
+guide), so a rank needs no Python-side torch.  The model must be exported
+with its pre- and post-processing inside -- feature scaling, gates, the
+closure -- because the hook hands it the kernel's raw arguments; the
+instratus surrogate exported that way answers bit-for-bit what its NumPy
+form answered on captured frames.  A Fortran program calling it through
+FTorch takes about 200 microseconds per 16-column call on a login-node core,
+almost all of it TorchScript's per-operator dispatch (the 72,454-parameter
+network is a few microseconds of arithmetic): fifteen times cheaper than the
+Python pause, still not free for a kernel called 180 times a step, and a
+rounding error for the cores that cost 6-10 ms a call.
+
 ## Where it stands
 
 | Kernel | Owner | Contract | Runner pause | In-model gate | Loop |

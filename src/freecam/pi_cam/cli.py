@@ -135,10 +135,16 @@ def _parse_kernel_models(values: list[str] | None) -> dict[str, Path]:
 
 
 def _load_kernel_model(path: Path):
-    """A cloudpickled callable to stand in a kernel's slot; anything else is refused."""
+    """What stands in a kernel's slot: a TorchScript archive the image runs itself at the
+    kernel's hook (no Python in the step), or a cloudpickled callable answering the
+    kernel's frame at a pause; anything else is refused."""
+
+    from freecam.physics.native_model import NativeModel
 
     if not path.is_file():
         raise SystemExit(f"--kernel-model: {path} is not a file")
+    if NativeModel.is_torchscript(path):
+        return NativeModel(path)
     with path.open("rb") as handle:
         model = cloudpickle.load(handle)
     if not callable(model):
@@ -154,10 +160,13 @@ def _kernel_models_summary(models: dict[str, Path]) -> dict[str, dict[str, str]]
 
     if not models:
         return None
+    from freecam.physics.native_model import NativeModel
+
     repo = Path(__file__).resolve().parents[3]
     summary: dict[str, dict[str, str]] = {}
     for name, path in models.items():
-        row = {"file": path.name, "sha256": hashlib.sha256(path.read_bytes()).hexdigest()}
+        row = {"file": path.name, "sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
+               "binding": "torchscript" if NativeModel.is_torchscript(path) else "cloudpickle"}
         resolved = path.resolve()
         if resolved.is_relative_to(repo):
             row["path"] = str(resolved.relative_to(repo))
@@ -438,10 +447,11 @@ def main(argv: list[str] | None = None) -> int:
         metavar="NAME=PATH",
         help=(
             "put a model in a kernel's slot: NAME is a swappable kernel of an installed stage "
-            "class, PATH a cloudpickled callable answering the kernel's frame (batch in, the "
-            "kernel's outputs out); repeatable.  Not a bit-for-bit run and not evidence of one.  "
-            "Every rank loads and re-pickles the model, so it must pickle identically on all of "
-            "them: ordered containers, no sets."
+            "class; PATH is either a TorchScript archive, which the image binds at the kernel's "
+            "hook and runs itself (no Python in the step), or a cloudpickled callable answering "
+            "the kernel's frame at a pause (batch in, the kernel's outputs out); repeatable.  Not "
+            "a bit-for-bit run and not evidence of one.  A pickled model is loaded and re-pickled "
+            "on every rank, so it must pickle identically on all of them: ordered containers, no sets."
         ),
     )
     parser.add_argument(

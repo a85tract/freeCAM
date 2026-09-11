@@ -122,7 +122,24 @@ than producing its own.
    * the **python-state** case (`FREECAM_STATE_CASE`): supplies `.mod` files
      and the control shells, its `SourceMods/src.cam` written by
      [`tools/generate_pi_cam_python_state_source.py`](../tools/generate_pi_cam_python_state_source.py).
-3. One PBS job does the rest, so the parts cannot drift apart:
+3. FTorch, once, on a login node:
+
+   ```bash
+   tools/build_ftorch.sh
+   ```
+
+   It clones [FTorch](https://github.com/Cambridge-ICCS/FTorch), builds it
+   inside the CESM case's compiler environment (the image's own Intel
+   Fortran, so the module files it writes are readable there) against the
+   libtorch inside the checkout's own `torch` package, and installs it under
+   `build/ftorch`.  The torch headers need C++20: when the case environment's
+   `g++` is older than GCC 10, point `CXX` (and `CC`) at a newer GCC before
+   running the script.
+   The hooks module links it so a hooked kernel can be bound to a
+   TorchScript model that the image runs itself (see
+   [physics_kernel_decoupling.md](physics_kernel_decoupling.md)); a rank
+   needs no Python-side torch for that.
+4. One PBS job does the rest, so the parts cannot drift apart:
 
    ```bash
    validation/jobs/submit.sh validation/jobs/pi_cam_promoted_statepool_build.pbs
@@ -139,7 +156,8 @@ than producing its own.
    * `build_pi_cam_promoted_kernels.py` regenerates the descriptor of the
      direct kernels reached from Python.
    * `build_pi_cam_devices.py` generates the adapters, compiles them non-PIC,
-     links the fixed-address image, retypes it, and writes
+     links the fixed-address image (with FTorch and libtorch, from
+     `--ftorch-root`, default `build/ftorch`), retypes it, and writes
      `native_cam_manifest.json`: every compile and link command, and the
      sha256 of what they produced.
 

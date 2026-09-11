@@ -40,6 +40,7 @@ from ..pi_cam.facade import Physics
 from ..pi_cam.kernel_codegen import load_direct_kernels
 from .capture import lane_sha256
 from .errors import PhysicsError
+from .native_model import NativeModel
 from .segments import OriginalAtPause, OriginalKernel, SegmentedStage
 
 REPO = Path(__file__).resolve().parents[3]
@@ -851,7 +852,7 @@ class StageExecution:
         self.model_calls_by_kernel[kernel] = self.model_calls_by_kernel.get(kernel, 0) + 1
 
     def describe(self) -> dict[str, Any]:
-        crossings = 1 if self.mode == "native-whole" else None
+        crossings = 1 if self.mode in ("native-whole", "native-model") else None
         return {
             "execution_mode": self.mode,
             "active_replacements": list(self.replacements),
@@ -1308,6 +1309,23 @@ class NativeStage:
                 f"unknown stage execution policy {policy!r}; one of {EXECUTION_POLICIES}")
         replaced = self.replacements()
         whole = self.WHOLE_ACTION or self.SPLIT_RUNNER
+        natives = tuple(name for name in replaced if isinstance(self.kernels[name], NativeModel))
+        if natives:
+            # a TorchScript model bound at the kernel's hook: the image answers the
+            # kernel itself, so the stage runs whole -- there is nothing to pause at
+            if set(natives) != set(replaced):
+                raise PhysicsError(
+                    f"{type(self).__name__}: native models {list(natives)} cannot share a step with "
+                    f"Python replacements {sorted(set(replaced) - set(natives))}; one kind per stage")
+            if not self.WHOLE_ACTION:
+                raise PhysicsError(
+                    f"{type(self).__name__} is not the whole of {self.STAGE!r}; a native model needs "
+                    f"the whole Fortran stage to run around its hook")
+            if policy not in ("auto", "native-whole"):
+                raise PhysicsError(
+                    f"native models run the original stage whole around the bound hook; the "
+                    f"{policy!r} policy has no such path")
+            return "native-model"
         if policy == "legacy-python":
             return "legacy-python"
         if policy == "segmented":
@@ -1368,6 +1386,13 @@ class NativeStage:
             raise PhysicsError(
                 f"{type(self).__name__} was told to replace {unhonoured} but the kernel "
                 f"slots do not show it; the original Fortran will not be run in their place")
+        if mode == "native-model":
+            # the models are bound at their hooks once; then the original stage
+            # runs whole and the hooks answer inside the image: one crossing
+            self.bind_native_models(native)
+            native.run_action(self.STAGE)
+            self.execution.native_stage_calls += 1
+            return
         if mode == "native-whole":
             # nothing replaced: the original Fortran stage, once, through its
             # own (disabled) workflow action -- no walk, no views, no copies;
@@ -1384,6 +1409,39 @@ class NativeStage:
             return
         self.execution.legacy_steps += 1
         self._tend_walk(native, context)
+
+    def bind_native_models(self, native: Any) -> None:
+        """Bind every :class:`NativeModel` in a slot at its kernel's hook, once per file.
+
+        The kernel must be a hook with a ``model`` block in ``hooks.yaml``:
+        that is where the image knows how to hand the arguments to a model.
+        A slot whose model changed is rebound; a slot emptied is unbound.
+        """
+
+        from freecam.pi_cam.hooks import bind_hook_model, load_hooks, unbind_hook_model
+
+        table = load_hooks()
+        bound: dict[str, str] = getattr(self, "_native_bound", {})
+        wanted = {name: kernel for name, kernel in self.kernels.items() if isinstance(kernel, NativeModel)}
+        for name in list(bound):
+            if name not in wanted:
+                unbind_hook_model(native.library, table.hook(name).id)
+                del bound[name]
+        for name, model in wanted.items():
+            try:
+                hook = table.hook(name)
+            except KeyError:
+                raise PhysicsError(
+                    f"{name!r} is not a hooked kernel; a native model can only stand at a hook "
+                    f"(native/pi_cam/hooks.yaml)") from None
+            if not hook.takes_model:
+                raise PhysicsError(
+                    f"hook {name!r} has no model block in native/pi_cam/hooks.yaml: the image does "
+                    f"not know how to hand its arguments to a model")
+            if bound.get(name) != model.sha256:
+                bind_hook_model(native.library, hook.id, model.path)
+                bound[name] = model.sha256
+        self._native_bound = bound
 
     def native_between_halves(self, native: Any) -> None:
         """Native-whole for a split stage: what :meth:`tend` does so the resume half runs the driver."""
