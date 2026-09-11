@@ -342,6 +342,7 @@ def test_a_stage_binds_a_compiled_plugin_at_the_hook_and_runs_whole(tmp_path: Pa
     from freecam.physics.numba_kernel import call_plugin_from_python
 
     address = stage.kernels["cldfrc_fice"].address
+    payload = cloudpickle.dumps(stage.kernels["cldfrc_fice"])
     copy = cloudpickle.loads(cloudpickle.dumps(stage))
     del plugin, stage
     gc.collect()
@@ -350,3 +351,7 @@ def test_a_stage_binds_a_compiled_plugin_at_the_hook_and_runs_whole(tmp_path: Pa
     t = np.asfortranarray(np.full((16, 30), 250.0))
     fice, fsnow = np.zeros((16, 30), order="F"), np.zeros((16, 30), order="F")
     assert call_plugin_from_python(revived, [t], [fice, fsnow]) == 0 and fice[0, 0] == pytest.approx((263.15 - 250.0) / 30.0)
+    # the payload must hash the same on every rank: a second compilation of the same function pickles
+    # identically although its code sits at another address (7402200)
+    again = compile_kernel("cldfrc_fice", _fice_module().cldfrc_fice, shadow=True)
+    assert again.address != address and cloudpickle.dumps(again) == payload

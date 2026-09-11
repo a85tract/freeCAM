@@ -33,11 +33,6 @@ REPO = Path(__file__).resolve().parents[3]
 #: the C signature of pycam_hooks' plugin_interface
 PLUGIN_SIGNATURE = "int32(int32, CPointer(voidptr), CPointer(int64), int32, CPointer(voidptr), CPointer(int64))"
 
-#: every compiled adapter by address, for the life of the process: a bound address must stay valid
-#: after the NativePlugin that carried it was pickled into the process registry and dropped
-_COMPILED: dict[int, Any] = {}
-
-
 def _model_arguments(hook_name: str):
     """The hook's model block as contract arguments: (inputs, outputs)."""
 
@@ -110,10 +105,27 @@ def compile_kernel(hook_name: str, function: Callable[..., Any], *, shadow: bool
     except Exception as error:
         raise PhysicsError(
             f"the kernel for hook {hook_name!r} did not compile under Numba: {error}") from error
-    label = f"{getattr(function, '__module__', '?')}:{getattr(function, '__name__', getattr(function, 'py_func', function).__class__.__name__)}"
-    _COMPILED[int(adapter.address)] = adapter
-    return NativePlugin(adapter, label=label, kernel=hook_name, shadow=shadow,
+    py_function = getattr(function, "py_func", function)
+    label = f"{getattr(py_function, '__module__', '?')}:{getattr(py_function, '__name__', type(py_function).__name__)}"
+    identity = _identity(hook_name, py_function, shadow)
+    return NativePlugin(adapter, label=label, kernel=hook_name, identity=identity, shadow=shadow,
                         inputs=[item.name for item in inputs], outputs=[item.name for item in outputs])
+
+
+def _identity(hook_name: str, function: Any, shadow: bool) -> str:
+    """The same string on every rank for the same kernel: hook, source file, function, mode, source hash."""
+
+    import hashlib
+    import inspect
+
+    try:
+        source = inspect.getsource(function)
+        digest = hashlib.sha256(source.encode()).hexdigest()[:16]
+    except (OSError, TypeError):
+        digest = "nosource"
+    where = getattr(function, "__code__", None)
+    filename = Path(where.co_filename).name if where is not None else "?"
+    return f"{hook_name}:{filename}:{getattr(function, '__qualname__', '?')}:{digest}:{'shadow' if shadow else 'live'}"
 
 
 def call_plugin_from_python(plugin: NativePlugin, inputs: list, outputs: list) -> int:

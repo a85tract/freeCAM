@@ -2648,7 +2648,7 @@
   "use_gw_oro": true,
   "use_subcol_microp": false
  },
- "content_hash": "f03adb0456bdd4e4a5aa08e9280dcb04a8593cb6d476a3813c7d4e360a0830ea",
+ "content_hash": "9faf8a30ed293d80b6b9b5cc8eb1c49b83706f60e061600be73748cef440841f",
  "evidence": {
   "pi_cam_cldfrc_fice_frame_replay.json": {
    "bfb": true,
@@ -3780,6 +3780,44 @@
    "pbs_job": null,
    "record": "pi_cam_pausable_fice-hook_vs_oracle_50step_bfb.json"
   },
+  "pi_cam_pausable_fice-numba-live_50step_failure.json": {
+   "diagnosis": "The pickled NativePlugin carried the compiled code's address and the process id, which differ on every rank, and the install compares the payload hash across ranks.  The pickle now carries only a rank-invariant identity (hook, source file, function, source hash, mode); the address is found again in the process's own registry when the stage is unpickled.",
+   "image": {
+    "build": "pi_cam_promoted_p20",
+    "role": "development",
+    "sha256": null
+   },
+   "kind": "gate-failure",
+   "outcome": "every rank raised at the stage's installation, before the first step: the installed process's payload hashed differently across the ranks (PythonProcessContractError); no summary",
+   "pbs_job": "7402200",
+   "python_stages": [
+    "cloud_macro_microphysics"
+   ],
+   "ranks": 512,
+   "record": "pi_cam_pausable_fice-numba-live_50step_failure.json",
+   "run_tag": "fice-numba-live",
+   "steps_completed": 0,
+   "what": "The cldfrc_fice kernel written in Python, compiled with Numba and bound live at its hook (p20 image, second attempt)."
+  },
+  "pi_cam_pausable_fice-numba-shadow_50step_failure.json": {
+   "diagnosis": "The pickled NativePlugin carried the compiled code's address and the process id, which differ on every rank, and the install compares the payload hash across ranks.  The pickle now carries only a rank-invariant identity (hook, source file, function, source hash, mode); the address is found again in the process's own registry when the stage is unpickled.",
+   "image": {
+    "build": "pi_cam_promoted_p20",
+    "role": "development",
+    "sha256": null
+   },
+   "kind": "gate-failure",
+   "outcome": "every rank raised at the stage's installation, before the first step: the installed process's payload hashed differently across the ranks (PythonProcessContractError); no summary",
+   "pbs_job": "7402201",
+   "python_stages": [
+    "cloud_macro_microphysics"
+   ],
+   "ranks": 512,
+   "record": "pi_cam_pausable_fice-numba-shadow_50step_failure.json",
+   "run_tag": "fice-numba-shadow",
+   "steps_completed": 0,
+   "what": "The same kernel in shadow (second attempt)."
+  },
   "pi_cam_pausable_fice-pause_50step_failure.json": {
    "consequence": "cldfrc_fice stays bindable and blocked in native/pi_cam/segment_runners.yaml. No further numerical routine is hoisted; pauses inside compiled kernels need a mechanism that leaves their machine code untouched.",
    "diagnosis": "Reaching the pause runs the hoisted copy of zm_conv_evap's arithmetic (module pycam_zmdeep_evap) instead of the oracle object's zm_conv_evap. The two are the same Fortran text compiled with the same flags in different units; the copy does not reproduce the oracle's rounding. The same stage with zm_conv_evap itself answered through its pause (7343259) and with cldfrc_fice left native (7343260) is bit-for-bit, so the difference is the hoisted arithmetic, not the pause protocol.",
@@ -4261,6 +4299,25 @@
    "run_tag": "instratus-surrogate",
    "steps_completed": 0,
    "what": "The first run with a trained model in a kernel slot: the few-free-variables surrogate for instratus_condensate (an MLP predicting the two stratus fractions, the two in-stratus mixing ratios and two gates, the rest of the kernel's outputs derived by the routine's own closure) installed through --kernel-model in the cloud stage, 50 steps, replay boundary."
+  },
+  "pi_cam_pausable_instratus-zero-numba-shadow_50step_failure.json": {
+   "diagnosis": "The pickled NativePlugin carried the compiled code's address and the process id, which differ on every rank, and the install compares the payload hash across ranks.  The pickle now carries only a rank-invariant identity (hook, source file, function, source hash, mode); the address is found again in the process's own registry when the stage is unpickled.",
+   "image": {
+    "build": "pi_cam_promoted_p20",
+    "role": "development",
+    "sha256": null
+   },
+   "kind": "gate-failure",
+   "outcome": "every rank raised at the stage's installation, before the first step: the installed process's payload hashed differently across the ranks (PythonProcessContractError); no summary",
+   "pbs_job": "7402202",
+   "python_stages": [
+    "cloud_macro_microphysics"
+   ],
+   "ranks": 512,
+   "record": "pi_cam_pausable_instratus-zero-numba-shadow_50step_failure.json",
+   "run_tag": "instratus-zero-numba-shadow",
+   "steps_completed": 0,
+   "what": "A zero-writing kernel with instratus_condensate's arguments in shadow (second attempt)."
   },
   "pi_cam_pausable_instratus-zero-plugin-shadow_50step_failure.json": {
    "diagnosis": "A compiled plugin's code is process-local and not picklable, and does not need to be: the address the hook binds stays valid in the process that compiled it.  NativePlugin now pickles without the compiled object (and refuses to be unpickled in another process), and numba_kernel keeps every compiled adapter alive for the life of the process.",
@@ -4876,6 +4933,22 @@
   {
    "capability": "original_replacement_bfb",
    "contexts": [
+    "cam_run1.cloud_macro_microphysics"
+   ],
+   "kernel_routine": null,
+   "record": "pi_cam_pausable_fice-numba-live_50step_failure.json"
+  },
+  {
+   "capability": "original_replacement_bfb",
+   "contexts": [
+    "cam_run1.cloud_macro_microphysics"
+   ],
+   "kernel_routine": null,
+   "record": "pi_cam_pausable_fice-numba-shadow_50step_failure.json"
+  },
+  {
+   "capability": "original_replacement_bfb",
+   "contexts": [
     "cam_run1.deep_convection"
    ],
    "kernel_routine": "cldfrc_fice",
@@ -4935,6 +5008,14 @@
     "cam_run1.cloud_macro_microphysics"
    ],
    "kernel_routine": null,
+   "record": "pi_cam_pausable_instratus-zero-numba-shadow_50step_failure.json"
+  },
+  {
+   "capability": "original_replacement_bfb",
+   "contexts": [
+    "cam_run1.cloud_macro_microphysics"
+   ],
+   "kernel_routine": null,
    "record": "pi_cam_pausable_instratus-zero-plugin-shadow_50step_failure.json"
   },
   {
@@ -4964,7 +5045,7 @@
   "validation/pi_cam_kernel_api_redirectable_calls.json": "9ac016f0d242ceef054aa8a80ef074aa53b08c1f0f3042a81e76da4c75603273",
   "validation/pi_cam_kernel_runtime_coverage_1month.json": "48f77d6ec78b4026806d4ab6fb9517ef31c1d526481b4ad68e55f77af0d303bd",
   "validation/pi_cam_kernel_runtime_coverage_50step.json": "222961fc5274dbaaf71c40f6c131a683536b5a85ef14cd047a2fd196d8ca38c5",
-  "web/public/catalog.json": "d469e0627e9a8d021dfbff6a6869ef6fdf879d5bf0e375238a8015d832452f44"
+  "web/public/catalog.json": "87541997c959a01b96e8937b1582b0e8feb685a15e2d60dce6246349ee9b7d32"
  },
  "kernels": {
   "aer_rad_props::aer_rad_props_lw": {
@@ -72534,8 +72615,8 @@
  ],
  "volatile": {
   "branch": "physics-kernel-api-closure",
-  "commit": "682cd6c026a79b5815aa237c3de39fdfeb7b83bd",
-  "generated_at": "2026-09-11T20:36:57+00:00"
+  "commit": "28026fbe04e7c7a23be94889c6ea7f034fe91ce2",
+  "generated_at": "2026-09-11T21:06:45+00:00"
  },
  "work_items": [
   {

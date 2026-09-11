@@ -57,23 +57,32 @@ class NativeModel:
         return f"NativeModel({str(self.path)!r}{', shadow=True' if self.shadow else ''})"
 
 
+#: the compiled code of every plugin made in this process, by identity: kept alive for the
+#: life of the process, and how a plugin unpickled from the process registry finds its address
+_PLUGIN_CODE: dict[str, Any] = {}
+
+
 class NativePlugin:
     """A compiled kernel (a Numba cfunc of the hook's plugin interface) for a kernel slot.
 
     Built by :func:`freecam.physics.numba_kernel.compile_kernel`; the stage binds its
     address at the kernel's hook (``pycam_hooks_bind_plugin_v1``) and the image calls it
     directly on every call, inside Fortran, with the model block's arrays.
+
+    ``identity`` names the compiled function the same way on every rank (the hook, the
+    source file, the function, the mode): a stage is cloudpickled into each rank's process
+    registry and the payload must hash the same on all of them (7402200), so the pickle
+    carries the identity and never the address, which is this process's own.
     """
 
     takes_frame = False
 
-    def __init__(self, adapter: Any, *, label: str, kernel: str, shadow: bool = False,
+    def __init__(self, adapter: Any, *, label: str, kernel: str, identity: str, shadow: bool = False,
                  inputs: list[str] | None = None, outputs: list[str] | None = None) -> None:
-        import os
-
-        self._adapter = adapter                      # the compiled code; numba_kernel keeps it alive too
+        self._adapter = adapter
         self.address = int(adapter.address)
-        self.pid = os.getpid()                       # the address is this process's
+        self.identity = str(identity)
+        _PLUGIN_CODE[self.identity] = adapter
         self.label = str(label)
         self.kernel = str(kernel)
         self.shadow = bool(shadow)
@@ -87,22 +96,22 @@ class NativePlugin:
         return f"numba:{self.address:#x}{':shadow' if self.shadow else ''}"
 
     def __getstate__(self) -> dict[str, Any]:
-        # a stage is cloudpickled into the rank's process registry when it is installed
-        # (job 7402090 died there): the compiled code is not picklable, and does not need
-        # to be -- its address stays valid in this process, and numba_kernel keeps it alive
+        # the compiled code is not picklable and the address is this process's: the pickle
+        # carries the identity, identical on every rank, and the code is found again here
         state = dict(self.__dict__)
         state.pop("_adapter", None)
+        state.pop("address", None)
         return state
 
     def __setstate__(self, state: dict[str, Any]) -> None:
-        import os
-
         self.__dict__.update(state)
-        self._adapter = None
-        if os.getpid() != self.pid:
+        adapter = _PLUGIN_CODE.get(self.identity)
+        if adapter is None:
             raise PhysicsError(
                 f"{self.label}: a compiled plugin cannot cross processes by pickle; its code lives in "
                 f"the process that compiled it (compile it on every rank with compile_kernel)")
+        self._adapter = adapter
+        self.address = int(adapter.address)
 
     def __call__(self, *args: Any, **kwargs: Any) -> Any:
         raise PhysicsError(
