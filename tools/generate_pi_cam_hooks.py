@@ -48,18 +48,70 @@ def _dummies(spec: FunctionSpec):
     return [item for item in spec.arguments if item.role != "result"]
 
 
-def _hook_procedure(hook: Hook, spec: FunctionSpec, index: int) -> str:
+def _extents(spec: FunctionSpec, item) -> str:
+    return ", ".join(str(spec.dimensions[axis]) for axis in item.native_shape)
+
+
+def _declaration(hook: Hook, spec: FunctionSpec, item, *, target: bool) -> str:
+    """One dummy as the hook (or the original's wrapper) declares it.
+
+    A bind(C) hook declares interoperable scalars and assumed-size arrays; a
+    Fortran-bound hook declares the callee's own kinds -- default logical,
+    assumed-length character, pointer arrays -- and explicit-shape arrays with
+    the contract's extents so the model branch can copy sections.
+    """
+
+    intent = ROLE_INTENT[item.role]
+    if hook.binding == "c":
+        shape = "(*)" if item.rank else ""
+        return f"    {C_TYPES[item.dtype]}, intent({intent}){', target' if target else ''} :: {item.name}{shape}"
+    if item.carrier == "logical":
+        return f"    logical, intent({intent}) :: {item.name}"
+    if item.carrier == "character":
+        return f"    character(len=*), intent({intent}) :: {item.name}"
+    if item.pointer:
+        colons = ",".join(":" for _ in range(item.rank))
+        return f"    {C_TYPES[item.dtype]}, pointer, intent({intent}) :: {item.name}({colons})"
+    if item.rank:
+        return f"    {C_TYPES[item.dtype]}, intent({intent}){', target' if target else ''} :: {item.name}({_extents(spec, item)})"
+    return f"    {C_TYPES[item.dtype]}, intent({intent}) :: {item.name}"
+
+
+def _check_binding(hook: Hook, spec: FunctionSpec) -> None:
     dummies = _dummies(spec)
     if spec.result is not None:
         raise SystemExit(f"hook {hook.kernel}: function kernels are not hooked yet (the result needs a value slot)")
-    if any(item.optional or item.carrier or item.pointer for item in dummies):
-        raise SystemExit(f"hook {hook.kernel}: optional, logical, character or pointer dummies are not hooked yet")
+    if any(item.optional for item in dummies):
+        raise SystemExit(f"hook {hook.kernel}: optional dummies are not hooked yet")
+    awkward = [item.name for item in dummies if item.carrier or item.pointer]
+    if hook.binding == "c" and awkward:
+        raise SystemExit(f"hook {hook.kernel}: {awkward} are logical, character or pointer dummies; a bind(C) hook "
+                         f"cannot carry them -- declare the hook `binding: fortran`")
+
+
+def _hook_procedure(hook: Hook, spec: FunctionSpec, index: int) -> str:
+    _check_binding(hook, spec)
+    dummies = _dummies(spec)
     names = ", ".join(item.name for item in dummies)
+    if hook.binding == "fortran":
+        # a plain module procedure with the callee's own dummies: it answers with the
+        # original or with a bound model, and has no frame to hand Python
+        lines = [f"  subroutine hook_{hook.kernel}({names})",
+                 f"    ! {spec.qualified_name}, as its redirected callers call it; {hook.redirect}, Fortran-bound"]
+        lines.extend(_declaration(hook, spec, item, target=True) for item in dummies)
+        lines.append(f"    calls({index}) = calls({index}) + 1_c_int64_t")
+        if hook.takes_model:
+            lines.append(f"    if (modeled({index})) then")
+            lines.append(f"      answered({index}) = answered({index}) + 1_c_int64_t")
+            lines.append(f"      call model_{hook.kernel}({names})")
+            lines.append("      return")
+            lines.append("    end if")
+        lines.append(f"    call original_{hook.kernel}({names})")
+        lines.append(f"  end subroutine hook_{hook.kernel}")
+        return "\n".join(lines)
     lines = [f"  subroutine hook_{hook.kernel}({names}) bind(C, name='{hook.symbol}')",
              f"    ! {spec.qualified_name}, as its redirected callers call it; {hook.redirect}"]
-    for item in dummies:
-        shape = "(*)" if item.rank else ""
-        lines.append(f"    {C_TYPES[item.dtype]}, intent({ROLE_INTENT[item.role]}), target :: {item.name}{shape}")
+    lines.extend(_declaration(hook, spec, item, target=True) for item in dummies)
     lines.append("    integer :: slot")
     lines.append(f"    calls({index}) = calls({index}) + 1_c_int64_t")
     if hook.takes_model:
@@ -112,21 +164,27 @@ def _model_arguments(hook: Hook, spec: FunctionSpec):
         item = by_name.get(name)
         if item is None:
             raise SystemExit(f"hook {hook.kernel}: model input {name!r} is not an argument of the contract")
-        if item.rank > 1 or (item.rank == 1 and item.dtype != "float64"):
-            raise SystemExit(f"hook {hook.kernel}: model input {name!r} must be a scalar or a rank-1 real array")
+        if item.carrier or item.rank > FRAME_MAX_RANK or (item.rank and item.dtype != "float64"):
+            raise SystemExit(f"hook {hook.kernel}: model input {name!r} must be a numeric scalar or a real array")
         inputs.append(item)
     for name in hook.model_outputs:
         item = by_name.get(name)
         if item is None:
             raise SystemExit(f"hook {hook.kernel}: model output {name!r} is not an argument of the contract")
-        if item.rank != 1 or item.dtype != "float64" or ROLE_INTENT[item.role] == "in":
-            raise SystemExit(f"hook {hook.kernel}: model output {name!r} must be a rank-1 real output array")
+        if item.carrier or item.pointer or not item.rank or item.dtype != "float64" or ROLE_INTENT[item.role] == "in":
+            raise SystemExit(f"hook {hook.kernel}: model output {name!r} must be a real output (or inout) array")
         outputs.append(item)
+    both = {i.name for i in inputs} & {o.name for o in outputs}
+    for name in sorted(both):
+        if ROLE_INTENT[by_name[name].role] != "inout":
+            raise SystemExit(f"hook {hook.kernel}: {name!r} is listed as model input and output but is not inout")
     return inputs, outputs
 
 
-def _extent(spec: FunctionSpec, item) -> int:
-    return int(spec.dimensions[item.native_shape[0]])
+def _section(item, lead: str) -> str:
+    """``name(1:n, :, :)``-style section over the live columns of a rank-N array."""
+
+    return f"({lead}" + "".join(", :" for _ in range(item.rank - 1)) + ")"
 
 
 def _model_procedure(hook: Hook, spec: FunctionSpec, index: int) -> str:
@@ -136,38 +194,58 @@ def _model_procedure(hook: Hook, spec: FunctionSpec, index: int) -> str:
     inputs, outputs = _model_arguments(hook, spec)
     names = ", ".join(item.name for item in dummies)
     ncol = next((item.name for item in dummies if item.name.lower() == "ncol"), None)
+    plain = hook.binding == "fortran"
+    first = (lambda item: item.name) if plain else (lambda item: f"{item.name}(1)")
     lines = [f"  subroutine model_{hook.kernel}({names})",
              f"    ! {spec.qualified_name} answered by the model bound at hook {index}, inside the image"]
-    for item in dummies:
-        shape = "(*)" if item.rank else ""
-        lines.append(f"    {C_TYPES[item.dtype]}, intent({ROLE_INTENT[item.role]}), target :: {item.name}{shape}")
+    lines.extend(_declaration(hook, spec, item, target=True) for item in dummies)
     lines.append(f"    type(torch_tensor) :: in_t({len(inputs)}), out_t({len(outputs)})")
     for item in inputs:
+        colons = ",".join(":" for _ in range(max(item.rank, 1)))
         if item.rank == 0:
             lines.append(f"    real(c_double), target :: s_{item.name}(1)")
             lines.append(f"    real(c_double), pointer, contiguous :: sp_{item.name}(:)")
+        elif item.pointer:
+            lines.append(f"    real(c_double), target :: l_{item.name}({_extents(spec, item)})")
+            lines.append(f"    real(c_double), pointer, contiguous :: v_{item.name}({colons})")
         else:
-            lines.append(f"    real(c_double), pointer, contiguous :: v_{item.name}(:)")
+            lines.append(f"    real(c_double), pointer, contiguous :: v_{item.name}({colons})")
     for item in outputs:
-        lines.append(f"    real(c_double), target :: o_{item.name}({_extent(spec, item)})")
-        lines.append(f"    real(c_double), pointer, contiguous :: op_{item.name}(:)")
+        colons = ",".join(":" for _ in range(item.rank))
+        lines.append(f"    real(c_double), target :: o_{item.name}({_extents(spec, item)})")
+        lines.append(f"    real(c_double), pointer, contiguous :: op_{item.name}({colons})")
+        lines.append(f"    real(c_double), pointer, contiguous :: w_{item.name}({colons})")
     lines.append("    integer :: n")
     for slot, item in enumerate(inputs, start=1):
         if item.rank == 0:
-            lines.append(f"    s_{item.name}(1) = real({item.name}, c_double)")
+            value = item.name if item.dtype == "float64" else f"real({item.name}, c_double)"
+            lines.append(f"    s_{item.name}(1) = {value}")
             lines.append(f"    sp_{item.name} => s_{item.name}")
             lines.append(f"    call torch_tensor_from_array(in_t({slot}), sp_{item.name}, torch_kCPU)")
+        elif item.pointer:
+            bounds = ", ".join(f"1:{spec.dimensions[axis]}" for axis in item.native_shape)
+            lines.append(f"    if (associated({item.name})) then")
+            lines.append(f"      l_{item.name} = {item.name}({bounds})")
+            lines.append("    else")
+            lines.append(f"      l_{item.name} = 0.0_c_double")
+            lines.append("    end if")
+            lines.append(f"    v_{item.name} => l_{item.name}")
+            lines.append(f"    call torch_tensor_from_array(in_t({slot}), v_{item.name}, torch_kCPU)")
         else:
-            lines.append(f"    call c_f_pointer(c_loc({item.name}(1)), v_{item.name}, (/ {_extent(spec, item)} /))")
+            lines.append(f"    call c_f_pointer(c_loc({first(item)}), v_{item.name}, (/ {_extents(spec, item)} /))")
             lines.append(f"    call torch_tensor_from_array(in_t({slot}), v_{item.name}, torch_kCPU)")
     for slot, item in enumerate(outputs, start=1):
         lines.append(f"    op_{item.name} => o_{item.name}")
         lines.append(f"    call torch_tensor_from_array(out_t({slot}), op_{item.name}, torch_kCPU)")
     lines.append(f"    call torch_model_forward(models({index}), in_t, out_t)")
     for item in outputs:
-        extent = _extent(spec, item)
-        lines.append(f"    n = min(int({ncol}), {extent})" if ncol else f"    n = {extent}")
-        lines.append(f"    {item.name}(1:n) = o_{item.name}(1:n)")
+        lead = int(spec.dimensions[item.native_shape[0]])
+        lines.append(f"    n = min(int({ncol}), {lead})" if ncol else f"    n = {lead}")
+        lines.append(f"    call c_f_pointer(c_loc({first(item)}), w_{item.name}, (/ {_extents(spec, item)} /))")
+        lines.append(f"    w_{item.name}{_section(item, '1:n')} = o_{item.name}{_section(item, '1:n')}")
+    for item in dummies:
+        if item.carrier == "character" and ROLE_INTENT[item.role] != "in":
+            lines.append(f"    {item.name} = ' '")
     lines.append("    call torch_delete(in_t)")
     lines.append("    call torch_delete(out_t)")
     lines.append(f"  end subroutine model_{hook.kernel}")
@@ -182,9 +260,7 @@ def _original_procedure(hook: Hook, spec: FunctionSpec) -> str:
     lines = [f"  subroutine original_{hook.kernel}({names})"]
     if hook.original_module:
         lines.append(f"    use {hook.original_module}, only: {hook.original_routine}")
-    for item in dummies:
-        shape = "(*)" if item.rank else ""
-        lines.append(f"    {C_TYPES[item.dtype]}, intent({ROLE_INTENT[item.role]}) :: {item.name}{shape}")
+    lines.extend(_declaration(hook, spec, item, target=False) for item in dummies)
     if hook.original_module:
         lines.append(f"    call {hook.original_routine}({names})")
     else:
@@ -230,6 +306,8 @@ def _pointer_declarations(table: HookTable) -> list[str]:
     seen: set[str] = set()
     lines = []
     for hook in table.hooks:
+        if not hook.pausable:
+            continue
         spec = _contract(hook)
         for slot, item in enumerate(_dummies(spec), start=1):
             if item.rank:
@@ -246,7 +324,8 @@ def _pointer_declarations(table: HookTable) -> list[str]:
 
 def render(table: HookTable) -> str:
     specs = [_contract(hook) for hook in table.hooks]
-    max_slots = max(len(_dummies(spec)) for spec in specs) if specs else 1
+    framed = [len(_dummies(spec)) for hook, spec in zip(table.hooks, specs) if hook.pausable]
+    max_slots = max(framed) if framed else 1
     interfaces = []
     for hook, spec in zip(table.hooks, specs):
         interfaces.extend(_symbol_interface(hook, spec))
@@ -261,7 +340,9 @@ def render(table: HookTable) -> str:
             procedures.append(_model_procedure(hook, spec, index))
             procedures.append("")
     has_model = ", ".join(".true." if hook.takes_model else ".false." for hook in table.hooks)
-    original_cases = "\n".join(_frame_original(hook, spec, index) for index, (hook, spec) in enumerate(zip(table.hooks, specs), start=1))
+    original_cases = "\n".join(_frame_original(hook, spec, index) for index, (hook, spec) in enumerate(zip(table.hooks, specs), start=1)
+                               if hook.pausable)
+    can_pause = ", ".join(".true." if hook.pausable else ".false." for hook in table.hooks)
     kernel_names = "\n".join(f"  character(len=*), parameter :: name_{i} = '{hook.kernel}'" for i, hook in enumerate(table.hooks, start=1))
     return f'''! Hooks: kernels reached inside compiled routines, their callers' references
 ! redirected at link time to these procedures.  Each counts its calls, calls the
@@ -294,6 +375,8 @@ module pycam_hooks
   integer(c_int64_t), save :: missed(nhooks) = 0_c_int64_t
   ! TorchScript models bound at hooks whose table entry has a model block
   logical, parameter :: has_model(nhooks) = (/ {has_model} /)
+  ! bind(C) hooks carry a frame and can pause for Python; Fortran-bound hooks cannot
+  logical, parameter :: can_pause(nhooks) = (/ {can_pause} /)
   logical, save :: modeled(nhooks) = .false.
   integer(c_int64_t), save :: answered(nhooks) = 0_c_int64_t
   type(torch_model), save :: models(nhooks)
@@ -349,6 +432,9 @@ contains
     if (hook < 1 .or. hook > nhooks) return
     if (flag /= 0_c_int .and. modeled(hook)) then
       status = 3_c_int; return          ! a bound model and a Python replacement cannot share a hook
+    end if
+    if (flag /= 0_c_int .and. .not. can_pause(hook)) then
+      status = 5_c_int; return          ! a Fortran-bound hook has no frame to hand Python
     end if
     armed(hook) = flag /= 0_c_int
     status = 0_c_int

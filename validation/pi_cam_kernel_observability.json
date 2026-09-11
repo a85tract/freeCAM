@@ -1,5 +1,5 @@
 {
- "content_hash": "641a5bf5a70f8c661df86a42f427da2ae161cb986f908bcc4c139c483574c021",
+ "content_hash": "8189b4dcfc2b36e4d1336e1801e7de7d96904c796c0d856307d1998a2fb6795e",
  "generator": "tools/build_pi_cam_kernel_observability.py",
  "inputs": {
   "audit_archive_sha256": "56eae2ed53b1fc529d149489e320b9cab83a0cf715c02745f211c3fdbc943930",
@@ -9061,7 +9061,7 @@
    "redirection": "weaken-definition",
    "relocation_classification": "rename-references",
    "replaceable_in_runner": true,
-   "replacement_hook": false,
+   "replacement_hook": true,
    "routine": "micro_mg_tend",
    "source": "components/cam/src/physics/cam/micro_mg1_0.F90",
    "source_call_sites_by_object": {

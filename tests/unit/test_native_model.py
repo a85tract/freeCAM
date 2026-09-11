@@ -71,8 +71,8 @@ def test_the_loader_refuses_a_malformed_model_block(tmp_path: Path) -> None:
         load_hooks(_table(tmp_path, {"inputs": ["a"]}))                       # no outputs
     with pytest.raises(PICAMConfigurationError):
         load_hooks(_table(tmp_path, {"inputs": ["a", "a"], "outputs": ["b"]}))  # listed twice
-    with pytest.raises(PICAMConfigurationError):
-        load_hooks(_table(tmp_path, {"inputs": ["a"], "outputs": ["a"]}))       # both sides
+    # a name on both sides is the generator's to judge (an inout array may be both)
+    assert load_hooks(_table(tmp_path, {"inputs": ["a"], "outputs": ["a"]})).hook("toy").takes_model
     assert load_hooks(_table(tmp_path, {"inputs": ["a"], "outputs": ["b"]})).hook("toy").takes_model
 
 
@@ -87,9 +87,20 @@ def test_the_generated_module_answers_a_bound_model_inside_the_image() -> None:
     assert "call c_f_pointer(c_loc(p_in(1)), v_p_in, (/ 16 /))" in text
     # the live columns are written back, the padding lanes left as CAM had them
     assert "n = min(int(ncol), 16)" in text and "t_out(1:n) = o_t_out(1:n)" in text
-    # only the hook with a model block has the branch; the others cannot be bound
-    assert text.count("call model_") == 1
-    assert "has_model(nhooks) = (/ .false., .false., .true. /)" in text
+    # only the hooks with a model block have the branch; the others cannot be bound
+    assert text.count("call model_") == 2
+    assert "has_model(nhooks) = (/ .false., .false., .true., .true. /)" in text
+    assert "can_pause(nhooks) = (/ .true., .true., .true., .false. /)" in text
+    # a Fortran-bound hook: the callee's own kinds, no bind(C), no frame, a model over rank-2 and rank-3 arrays
+    assert "subroutine hook_micro_mg_tend(microp_uniform, pcols, pver, ncol" in text and "bind(C, name='pycam_hooks_mp" not in text
+    assert "    logical, intent(in) :: microp_uniform" in text and "    character(len=*), intent(out) :: errstring" in text
+    assert "    real(c_double), pointer, intent(in) :: tnd_qsnow(:,:)" in text
+    assert "type(torch_tensor) :: in_t(26), out_t(89)" in text
+    assert "call c_f_pointer(c_loc(rndst), v_rndst, (/ 16, 30, 4 /))" in text
+    assert "w_qc(1:n, :) = o_qc(1:n, :)" in text and "w_prect(1:n) = o_prect(1:n)" in text
+    assert "if (associated(tnd_qsnow)) then" in text and "errstring = ' '" in text
+    # arming refuses a hook without a frame
+    assert "if (flag /= 0_c_int .and. .not. can_pause(hook)) then" in text
     for entry in ("pycam_hooks_bind_model_v1", "pycam_hooks_unbind_model_v1", "pycam_hooks_modeled_v1"):
         assert f"bind(C, name='{entry}')" in text
     # a bound model and a Python replacement cannot share a hook
@@ -128,7 +139,7 @@ class _Library:
         self.pycam_hooks_bind_model_v1 = _Entry(bind)
         self.pycam_hooks_unbind_model_v1 = _Entry(unbind)
         self.pycam_hooks_modeled_v1 = _Entry(modeled)
-        names = {1: b"cldfrc_fice", 2: b"fluxbelowinv", 3: b"instratus_condensate"}
+        names = {1: b"cldfrc_fice", 2: b"fluxbelowinv", 3: b"instratus_condensate", 4: b"micro_mg_tend"}
 
         def name(hook, buffer, length):
             if hook not in names:
@@ -140,7 +151,7 @@ class _Library:
             calls._obj.value, paused._obj.value = (9, 0)
             return 0
 
-        self.pycam_hooks_count_v1 = _Entry(lambda: 3)
+        self.pycam_hooks_count_v1 = _Entry(lambda: 4)
         self.pycam_hooks_name_v1 = _Entry(name)
         self.pycam_hooks_counts_v1 = _Entry(count)
 

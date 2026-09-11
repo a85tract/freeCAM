@@ -13,7 +13,7 @@ REPO = Path(__file__).resolve().parents[2]
 
 def test_the_committed_hook_table_names_its_kernels_and_redirections() -> None:
     table = load_hooks(REPO / "native/pi_cam/hooks.yaml")
-    assert table.kernel_names == ("cldfrc_fice", "fluxbelowinv", "instratus_condensate")
+    assert table.kernel_names == ("cldfrc_fice", "fluxbelowinv", "instratus_condensate", "micro_mg_tend")
     assert table.fiber_stack_bytes >= (64 << 20)
     core = table.hook("instratus_condensate")              # inside mmacro_pcond, same object: weakened
     assert core.redirect == "weaken-definition" and core.id == 3
@@ -23,6 +23,9 @@ def test_the_committed_hook_table_names_its_kernels_and_redirections() -> None:
     assert [c.object for c in fice.callers] == ["zm_conv.o"]
     flux = table.hook("fluxbelowinv")
     assert flux.original_symbol == "uwshcu_mp_fluxbelowinv_original_" and flux.symbol == flux.callee_symbol
+    micro = table.hook("micro_mg_tend")                    # logical, character and pointer dummies: Fortran-bound
+    assert micro.binding == "fortran" and micro.symbol == "pycam_hooks_mp_hook_micro_mg_tend_" and not micro.pausable
+    assert micro.redirect == "rename-references" and micro.original_module == "micro_mg1_0" and micro.id == 4
     for hook in table.hooks:
         assert (REPO / hook.contract).is_file()
 
@@ -46,6 +49,11 @@ def test_the_loader_refuses_inconsistent_hooks(tmp_path: Path) -> None:
         load_hooks(_table(tmp_path, redirect="weaken-definition"))      # needs the second name
     with pytest.raises(PICAMConfigurationError):
         load_hooks(_table(tmp_path, callers=[]))
+    with pytest.raises(PICAMConfigurationError):
+        load_hooks(_table(tmp_path, binding="sideways"))
+    with pytest.raises(PICAMConfigurationError):                  # a Fortran-bound hook is reached by renamed references
+        load_hooks(_table(tmp_path, binding="fortran", redirect="weaken-definition", original={"symbol": "x_"}))
+    assert not load_hooks(_table(tmp_path, binding="fortran")).hook("toy").pausable
 
 
 class _Entry:
@@ -62,8 +70,8 @@ class _Library:
     """What ctypes shows of an image with two hooks."""
 
     def __init__(self) -> None:
-        names = {1: b"cldfrc_fice", 2: b"fluxbelowinv", 3: b"instratus_condensate"}
-        counts = {1: (200, 100), 2: (600, 0), 3: (18000, 18000)}
+        names = {1: b"cldfrc_fice", 2: b"fluxbelowinv", 3: b"instratus_condensate", 4: b"micro_mg_tend"}
+        counts = {1: (200, 100), 2: (600, 0), 3: (18000, 18000), 4: (200, 0)}
 
         def name(hook, buffer, length):
             if hook not in names:
@@ -77,7 +85,7 @@ class _Library:
             calls._obj.value, paused._obj.value = counts[hook]
             return 0
 
-        self.pycam_hooks_count_v1 = _Entry(lambda: 3)
+        self.pycam_hooks_count_v1 = _Entry(lambda: 4)
         self.pycam_hooks_name_v1 = _Entry(name)
         self.pycam_hooks_counts_v1 = _Entry(count)
 
@@ -87,4 +95,5 @@ def test_hook_counts_are_read_by_name() -> None:
     assert read_hook_counts(object()) == {}                              # an image without hooks
     assert read_hook_counts(_Library()) == {"cldfrc_fice": {"calls": 200, "paused": 100},
                                             "fluxbelowinv": {"calls": 600, "paused": 0},
-                                            "instratus_condensate": {"calls": 18000, "paused": 18000}}
+                                            "instratus_condensate": {"calls": 18000, "paused": 18000},
+                                            "micro_mg_tend": {"calls": 200, "paused": 0}}

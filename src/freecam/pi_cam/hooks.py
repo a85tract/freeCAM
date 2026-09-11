@@ -21,6 +21,10 @@ REPO = Path(__file__).resolve().parents[3]
 HOOKS = REPO / "native/pi_cam/hooks.yaml"
 HOOK_MODULE = REPO / "native/pi_cam/support/pycam_hooks.F90"
 REDIRECTS = ("rename-references", "weaken-definition")
+#: how the hook procedure is bound: ``c`` (bind(C), interoperable dummies, can pause for Python)
+#: or ``fortran`` (a plain module procedure with the callee's own logical, character and
+#: pointer dummies; it can answer with the original or a bound model, never pause)
+BINDINGS = ("c", "fortran")
 
 
 @dataclass(frozen=True, slots=True)
@@ -44,6 +48,8 @@ class Hook:
     model_inputs: tuple[str, ...] = ()
     #: the contract outputs the model returns, in order
     model_outputs: tuple[str, ...] = ()
+    #: ``c`` or ``fortran``, see :data:`BINDINGS`
+    binding: str = "c"
 
     @property
     def takes_model(self) -> bool:
@@ -57,7 +63,15 @@ class Hook:
 
         if self.redirect == "weaken-definition":
             return self.callee_symbol
+        if self.binding == "fortran":
+            return f"pycam_hooks_mp_hook_{self.kernel}_"       # the module procedure's own name
         return f"pycam_hook_{self.kernel}_"
+
+    @property
+    def pausable(self) -> bool:
+        """Whether the hook can hand Python a frame: only a bind(C) hook has one."""
+
+        return self.binding == "c"
 
     @property
     def id(self) -> int:  # noqa: A003 - the hook's number in the table, 1-based
@@ -117,14 +131,17 @@ def load_hooks(path: str | Path | None = None) -> HookTable:
             raise PICAMConfigurationError(f"{source}: hook {kernel!r}: a model block names inputs and outputs")
         if len(set(model_inputs)) != len(model_inputs) or len(set(model_outputs)) != len(model_outputs):
             raise PICAMConfigurationError(f"{source}: hook {kernel!r}: a model argument is listed twice")
-        if set(model_inputs) & set(model_outputs):
-            raise PICAMConfigurationError(f"{source}: hook {kernel!r}: a model argument cannot be both input and output")
+        binding = str(record.get("binding", "c"))
+        if binding not in BINDINGS:
+            raise PICAMConfigurationError(f"{source}: hook {kernel!r} binding must be one of {BINDINGS}")
+        if binding == "fortran" and redirect != "rename-references":
+            raise PICAMConfigurationError(f"{source}: hook {kernel!r}: a Fortran-bound hook is reached by renamed references")
         HOOK_IDS[kernel] = index
         hooks.append(Hook(
             kernel=kernel, contract=str(record["contract"]), callee_symbol=str(record["callee_symbol"]),
             redirect=redirect, original_module=original.get("module"), original_routine=original.get("routine"),
             original_symbol=original.get("symbol"), callers=callers,
-            model_inputs=model_inputs, model_outputs=model_outputs,
+            model_inputs=model_inputs, model_outputs=model_outputs, binding=binding,
         ))
     import hashlib
 
@@ -132,7 +149,7 @@ def load_hooks(path: str | Path | None = None) -> HookTable:
                      sha256=hashlib.sha256(text.encode()).hexdigest())
 
 
-__all__ = ["HOOKS", "HOOK_MODULE", "Hook", "HookCaller", "HookTable", "load_hooks"]
+__all__ = ["BINDINGS", "HOOKS", "HOOK_MODULE", "Hook", "HookCaller", "HookTable", "load_hooks"]
 
 
 def read_hook_counts(library: Any) -> dict[str, dict[str, int]]:
@@ -185,6 +202,8 @@ def read_hook_counts(library: Any) -> dict[str, dict[str, int]]:
 BIND_STATUS = {1: "no such hook", 2: "the hook takes no model (hooks.yaml has no model block for it)",
                3: "the hook is armed for a Python replacement", 4: "the path is empty or too long",
                5: "the image has no model entry: it was built without FTorch"}
+#: what pycam_hooks_arm_v1 answers when a hook cannot be armed
+ARM_STATUS = {1: "no such hook", 3: "a model is bound at the hook", 5: "the hook has no frame (a Fortran-bound hook cannot pause)"}
 
 
 def bind_hook_model(library: Any, hook_id: int, path: str | Path) -> None:
@@ -218,4 +237,4 @@ def unbind_hook_model(library: Any, hook_id: int) -> None:
     entry(int(hook_id))
 
 
-__all__ += ["read_hook_counts", "bind_hook_model", "unbind_hook_model", "BIND_STATUS"]
+__all__ += ["read_hook_counts", "bind_hook_model", "unbind_hook_model", "BIND_STATUS", "ARM_STATUS"]

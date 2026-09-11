@@ -56,3 +56,35 @@ hooks:
                a_sc_in, ql_sc_in, qi_sc_in, landfrac, snowh, rhmini_in, rhminl_in,
                rhminl_adj_land_in, rhminh_in]
       outputs: [t_out, qv_out, ql_out, qi_out, al_st_out, ai_st_out, ql_st_out, qi_st_out]
+  - kernel: micro_mg_tend
+    contract: native/pi_cam/functions/micro_mg_tend.yaml
+    # the MG1 microphysics core, the most expensive kernel of the physics (10.6 ms a
+    # call): a module routine of micro_mg1_0 called from micro_mg_cam_tend, so the
+    # caller's references are renamed.  Its argument list has two logicals, a
+    # character status and six pointer arrays, none of them interoperable, so the
+    # hook is a plain Fortran procedure with the callee's own dummies: it answers
+    # with the original or a bound model and has no frame to pause on (the
+    # stage-7 runner's own pause at this kernel is unchanged: the runner's call is
+    # not a renamed reference)
+    binding: fortran
+    redirect: rename-references
+    original: {module: micro_mg1_0, routine: micro_mg_tend}
+    callee_symbol: micro_mg1_0_mp_micro_mg_tend_
+    callers:
+      - {object: micro_mg_cam.o, routine: micro_mg_cam_tend}
+    # a model takes every real input (the six inout arrays among them) as tensors of
+    # the contract's shape, columns first, and returns the six inout arrays and every
+    # real output; errstring is left blank
+    model:
+      inputs: [deltatin, tn, qn, qc, qi, nc, ni, p, pdel, cldn, liqcldf, relvar, accre_enhan, icecldf,
+               naai, npccnin, rndst, nacon, reff_rain, reff_snow, tnd_qsnow, tnd_nsnow, re_ice,
+               frzimm, frzcnt, frzdep]
+      outputs: [qc, qi, nc, ni, rate1ord_cw2pr_st, tlat, qvlat, qctend, qitend, nctend, nitend, effc,
+                effc_fn, effi, prect, preci, nevapr, evapsnow, am_evp_st, prain, prodsnow, cmeout,
+                deffi, pgamrad, lamcrad, qsout, dsout, rflx, sflx, qrout, reff_rain, reff_snow,
+                qcsevap, qisevap, qvres, cmeiout, vtrmc, vtrmi, qcsedten, qisedten, prao, prco,
+                mnuccco, mnuccto, msacwio, psacwso, bergso, bergo, melto, homoo, qcreso, prcio, praio,
+                qireso, mnuccro, pracso, meltsdt, frzrdt, mnuccdo, nrout, nsout, refl, arefl, areflz,
+                frefl, csrfl, acsrfl, fcsrfl, rercld, ncai, ncal, qrout2, qsout2, nrout2, nsout2,
+                drout2, dsout2, freqs, freqr, nfice, prer_evap, preo, prdso, frzro, meltso, wtfc, wtfi,
+                wtprelat, wtpostlat]

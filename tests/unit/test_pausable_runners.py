@@ -435,7 +435,7 @@ def test_a_kernel_inside_a_compiled_kernel_is_reached_through_its_hook() -> None
     from freecam.pi_cam.segment_runner import load_manifest
 
     table = load_hooks()
-    assert table.kernel_names == ("cldfrc_fice", "fluxbelowinv", "instratus_condensate")
+    assert table.kernel_names == ("cldfrc_fice", "fluxbelowinv", "instratus_condensate", "micro_mg_tend")
     fice, flux = table.hook("cldfrc_fice"), table.hook("fluxbelowinv")
     assert fice.redirect == "rename-references" and fice.symbol == "pycam_hook_cldfrc_fice_"
     assert flux.redirect == "weaken-definition" and flux.symbol == "uwshcu_mp_fluxbelowinv_"
