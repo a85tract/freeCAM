@@ -627,9 +627,25 @@ flux, the copy into `netsw`.  Three things can stand in the slot:
   called once per chunk on radiative steps from the Python that already
   owns the step between the stage's two halves.
 
-What a model in the slot does not produce are the driver's history
-diagnostics of that branch -- the clear-sky fluxes, the aerosol-forcing
-diagnostic calls -- which the record must say.
+The slot was gated on 2026-09-12 (fifty steps, develop's half nodes, the
+p20 image).  With a capture in the slot the run is bit-for-bit with the
+oracle and every rank recorded its fifty radiative-step calls: 25,600
+records, 9.1 GB, forty inputs and twelve outputs (7417373).  With the replay
+of that capture in the slot -- the branch never computed, its outputs taken
+from the record -- every restart file and the history file are identical to
+the oracle's, and the history restart's accumulators differ in exactly the
+26 fields the branch writes to history that a model has no source for: the
+aerosol optical depths and burdens the aerosol optics writes inside the
+branch, the clear-sky and top-of-atmosphere fluxes, the cloud forcings and
+the incoming solar (7417486; `tools/compare_pi_cam_variables.py` lists them,
+file by file, in
+`pi_cam_pausable_rad-process-replay3_vs_oracle_50step_variables.json`).  The
+heating rates and the ten fluxes a model does produce are written to history
+by the slot as the driver writes them.  The first replay (7417422) also
+differed in those, before the slot wrote them; the one before it (7417389)
+never stepped, its replay pickled per rank -- both kept as records.  The
+model state, then, is exact through the slot; what a model owes the history
+is stated by that list.
 
 ## Where it stands
 
