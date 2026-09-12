@@ -681,14 +681,113 @@ oracle's in temperature, 0.08 g/kg in water vapour, 0.07 hPa in surface
 pressure.  Not bit-for-bit by design; the record's variable comparison lists
 what moved.
 
+A month of captures followed (7417573: the transcription with a capture in
+the slot ran the 1,488 steps bit-for-bit with the monthly oracle, recording
+every eighth radiative step of every rank -- 95,232 chunk records, 34 GB),
+and the Python that assembled the 1,029 features, which had cost most of the
+emulator's 4.7 ms a call in the model, became one function generated from
+the feature layout and compiled by Numba: the same matrix, bit-identically,
+in 0.1 ms.  Two networks trained on the month (1,129,764 columns; validated
+on 64 held-out ranks) answered fifty steps each (7417764, 7417763): no fault,
+every health count zero, the state a day later 0.14 and 0.12 K from the
+oracle's in temperature.
+
+| network, data | `qrs` R² | `qrl` | `fsnt` | `flnt` | `flwds` | `fsnt` RMSE, W/m² |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| 256 wide, 60 epochs, one month | 0.957 | 0.873 | 0.986 | 0.982 | 0.992 | 41 |
+| 512 wide, 60 epochs, one month | 0.965 | 0.891 | 0.988 | 0.985 | 0.993 | 39 |
+| 512 wide, 200 epochs, one month | 0.968 | 0.901 | 0.988 | 0.986 | 0.994 | 38 |
+
+In the model the 256-wide network cost 1.5 ms a chunk call and the 512-wide
+4.5 (its 3.3 MB of weights streamed by 128 ranks a node), against the
+driver's branch at 12 ms and more on the same nodes.  The gain did not reach
+the step: the slot lived in the Python transcription of the driver, whose
+own cost -- about 45 ms a step and rank for the walk -- exceeded what the
+network saved.  The emulator had to answer the branch from inside Fortran.
+
+#### The slot inside the image
+
+A control patch on `radiation.F90` was written and withdrawn: the image
+links the oracle's numerical objects unchanged, and the driver is one of
+them.  The slot went instead into the one copy of `radiation_tend` this
+repository owns -- the pausable runner's hoisted driver, generated from
+`native/pi_cam/pausable/radiation.yaml` -- as a *skeleton slot*: the spec
+marks the branch's `if (dosw .or. dolw)` node (`if: 875`, `slot:
+pycam_rad_process_answer(...)`), and the runner, when the condition holds,
+asks the slot first; a bound plugin answers the whole branch and the runner
+continues after it, otherwise the original pieces run as before.  A new
+support module, `pycam_rad_process`, hands the plugin what the driver has in
+hand as pointer and extent tables in a fixed order of 46 inputs -- the
+state's fields and constituents, the buffer's cloud fraction and the optics'
+inputs, the albedos and upward longwave, the zenith angle, the RRTMG state's
+gas profiles, which it builds itself -- through the same C interface the
+kernel hooks use, takes the two heating rates and the ten fluxes back,
+writes them where the driver writes them and their history as the driver
+does, and times its calls per rank; in shadow it runs the plugin for its
+cost and lets the branch answer.  Python's `TABLE_INPUTS` and
+`TABLE_OUTPUTS` mirror the order (a test pins them to the module), a table
+kernel compiles for it with Numba (`compile_radiation_plugin`), the
+`Radiation` stage binds it and runs the runner whole with no pause armed,
+and the command line takes `--radiation-plugin` and
+`--shadow-radiation-plugin`.  The emulator's table kernel
+(`examples/plugins/numba_kernels/rad_mlp.py`, the weights frozen into the
+compiled code) reproduces its Python path bit-identically offline.
+
+The p21 image carries the runner with the slot and the module.  Gated on
+2026-09-12 and 13 (fifty steps, 512 ranks, develop):
+
+- The image is bit-for-bit with the oracle with the cloud class installed
+  (7418221), with the `Radiation` class installed and nothing bound
+  (7418222), and with the runner running the driver whole through the slot,
+  unbound (7418303: 100 runner starts, no pause).
+- The first two plugin runs (7418223 shadow, 7418224 live) completed one
+  step and were killed for memory: every rank's Numba compilation and frozen
+  weights add about 0.35 GB, 268 GB over four half nodes' 256 GB.  Kept as
+  failure records; plugin runs take 235 GB a node (`-l select=4:ncpus=64:
+  mpiprocs=128:ompthreads=1:mem=235GB`).
+- The next two (7418304, 7418305) ran bit-for-bit with the plugin compiled
+  and never bound: `Radiation` defined `prepare_segmented` twice and the
+  later definition, which binds the runner's hosts, silently replaced the
+  one that bound the plugin.  The record shows it -- `radiation_process`
+  counts zero calls -- and a live plugin run can never be bit-for-bit, so
+  both were set aside as no evidence; the definitions are merged and a unit
+  test now forbids a class in `freecam` from defining a method twice.
+- In shadow, the month-trained 256-wide network bound at the slot ran on
+  every radiative step of every chunk -- 25,600 calls, 50 a rank -- while
+  the branch answered, and the run stays bit-for-bit (7418443).  The
+  plugin costs 1.4 ms a call inside the image (the slowest rank 1.8), the
+  price the Python path had measured, now without the Python.
+- Live, the same network answered all 25,600 calls (7418444).  The
+  radiation stage's region fell from 1.40 s a rank per fifty steps to 0.23
+  (its share of the step loop from 8.7 to 1.5 percent), and the step loop
+  from 16.07 s (7418303, the same image and mode with the branch computed)
+  to 14.72: 8 percent, on develop's shared nodes.  The state it produced is
+  bit-for-bit with the Python path's run of the same weights (7417764):
+  the two slots -- one in the transcription, one in Fortran -- compute the
+  same emulator on the same inputs.  Against the oracle it drifts as that
+  run did: a day later 0.14 K rms in temperature (5.5 K at worst), 0.08
+  g/kg in water vapour, 0.28 m/s in zonal wind, 0.08 hPa in surface
+  pressure; the 26 branch diagnostics are absent from the history restart
+  as before.  Every rank held 1.09 GB at most; the job used 328 GB.
+
+What the loop now shows: a process emulator can be trained on the model's
+own captures, compiled, and bound inside the image at the top of the branch
+it replaces, and it then saves what it saves -- here about seven percent of
+the step loop for a network whose science is not yet good enough to use.
+The next gate is a month with the emulator at the slot against a baseline
+month on the same nodes, and the drift over that month; the network itself
+(longwave heating near the surface, the clear-sky and top-of-atmosphere
+diagnostics it does not produce) is the open problem the mechanism now
+exposes cleanly.
+
 ## Where it stands
 
 | Kernel | Owner | Contract | Runner pause | In-model gate | Loop |
 | --- | --- | --- | --- | --- | --- |
 | `mmacro_pcond` | Macrophysics (in the cloud stage) | reviewed | yes, validated | segmented, bit-for-bit; alone and together with `micro_mg_tend` | complete |
 | `micro_mg_tend` | Microphysics (in the cloud stage; hooked: a Fortran-bound hook over its packed arrays, bindable to a model, not pausable) | reviewed | yes, validated (the runner's pause) | segmented, bit-for-bit (100 pauses in 50 steps); alone and together with `mmacro_pcond` (200 pauses); a null model bound at the hook answered all 51,200 calls inside the image (7394423), and in shadow the p18 image stays bit-for-bit at 0.56 ms a call (7400408); four trained MLP surrogates (64 to 512 wide) run in shadow on p19, bit-for-bit, pricing the core at 1.4 ms a call and every network at 1.5 to 6.7 ms (7401282, 7401281, 7401311, 7400992), and live (7400993, 7401059, 7401232, not bit-for-bit, slower than the original) | open: no captured calls replayed through its standalone image yet; as a speed target, closed: the core costs 1.4 ms a call |
-| `rad_rrtmg_sw` | Radiation (split, pausable) | frame descriptor | yes, validated | segmented, bit-for-bit (50 pauses in 50 steps); alone, with `rad_rrtmg_lw`, and with every other exposed kernel paused in one run | open: capture and replay |
-| `rad_rrtmg_lw` | Radiation (split, pausable) | frame descriptor | yes, validated | segmented, bit-for-bit (50 pauses in 50 steps); alone, with `rad_rrtmg_sw`, and with every other exposed kernel paused in one run | open: capture and replay |
+| `rad_rrtmg_sw` | Radiation (split, pausable) | frame descriptor | yes, validated | segmented, bit-for-bit (50 pauses in 50 steps); alone, with `rad_rrtmg_lw`, and with every other exposed kernel paused in one run; the whole radiative branch around it is a process slot: captured (7417373) and replayed (7417486) bit-for-bit in state through the transcription, and answered inside the image by a compiled emulator at the runner's skeleton slot (shadow 7418443 bit-for-bit; live 7418444, not bit-for-bit by design) | open: capture and replay of the core itself |
+| `rad_rrtmg_lw` | Radiation (split, pausable) | frame descriptor | yes, validated | segmented, bit-for-bit (50 pauses in 50 steps); alone, with `rad_rrtmg_sw`, and with every other exposed kernel paused in one run; the whole radiative branch around it is a process slot: captured (7417373) and replayed (7417486) bit-for-bit in state through the transcription, and answered inside the image by a compiled emulator at the runner's skeleton slot (shadow 7418443 bit-for-bit; live 7418444, not bit-for-bit by design) | open: capture and replay of the core itself |
 | `dadadj` | DryAdjustment (pausable) | reviewed | yes, validated | segmented, bit-for-bit (100 pauses in 50 steps); alone and together with `compute_uwshcu_inv` | complete |
 | `compute_uwshcu_inv` | ShallowConvection (pausable) | reviewed | yes, validated | segmented, bit-for-bit (100 pauses in 50 steps); alone and together with `dadadj` | open: no captured calls replayed through a standalone image yet |
 | `zm_convr` | DeepConvection (pausable) | frame descriptor | yes, validated | segmented, bit-for-bit (100 pauses in 50 steps); alone, with the stage's other kernels, and with the tracer leaf paused in the same run | open: capture and replay |

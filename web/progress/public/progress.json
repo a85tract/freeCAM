@@ -2648,7 +2648,7 @@
   "use_gw_oro": true,
   "use_subcol_microp": false
  },
- "content_hash": "5d2bb032fdc850c7c7cf2263d65f516fe4222d239100cc3a7b4d2d3b78bef78d",
+ "content_hash": "515f35f99bbbaf2a7aa569d75b9145cf3f0c5d4ea0454e72001835225f057b36",
  "evidence": {
   "pi_cam_cldfrc_fice_frame_replay.json": {
    "bfb": true,
@@ -5113,14 +5113,14 @@
  "inputs": {
   "native/pi_cam/hooks.yaml": "13e21d599cdc066821c151e452973357a623d00c0997b7c6cb131725c9f55ba8",
   "native/pi_cam/kernel_classifications.yaml": "d6be2103c9bd0c86a0c8461a067d3b43eac6aa370e992fde9bf3096e55c8c5f4",
-  "native/pi_cam/kernel_work_items.yaml": "4ea7162bb86d44165c5addea48be5fddc43b486a137e046a174c1501d824bc99",
+  "native/pi_cam/kernel_work_items.yaml": "b86aaa2e50d3d98714f6d4e07926f58237f57ab7cb62a9ed0cbc3040113b60d1",
   "native/pi_cam/segment_runners.yaml": "002ab5f622cb5c10c0d7fc45eead3ef708de6524602eda635b4c064649663acd",
   "validation/physics_kernel_decoupling.json": "2a9ff0a6804a4e0d54b36b26c34f44a36e5eb6234ba53fe32d7d944973680462",
   "validation/pi_cam_kernel_api_closure.json": "96025214b3e4c41f6ba89c266da5dd27c51c42c81c31e1a0ac6f7b2e9cfa260a",
   "validation/pi_cam_kernel_api_redirectable_calls.json": "9ac016f0d242ceef054aa8a80ef074aa53b08c1f0f3042a81e76da4c75603273",
   "validation/pi_cam_kernel_runtime_coverage_1month.json": "48f77d6ec78b4026806d4ab6fb9517ef31c1d526481b4ad68e55f77af0d303bd",
   "validation/pi_cam_kernel_runtime_coverage_50step.json": "222961fc5274dbaaf71c40f6c131a683536b5a85ef14cd047a2fd196d8ca38c5",
-  "web/public/catalog.json": "5b9aebf1f02080a0add89637572b352ffa157c01d6ec04f4732655040e022146"
+  "web/public/catalog.json": "ae9072d5478955ebb503a17ea8894eeee28d317302674dce51964b29d8f6387d"
  },
  "kernels": {
   "aer_rad_props::aer_rad_props_lw": {
@@ -40981,7 +40981,19 @@
    "category": "unclassified",
    "classification_basis": null,
    "development": {
-    "state": "unclaimed"
+    "blocker": null,
+    "branch": "physics-kernel-api-closure",
+    "next_gate": "a month with the emulator at the slot against a baseline month on the same nodes; month drift",
+    "note": "The whole radiative branch of radiation_tend (optics, both RRTMG cores, their diagnostics) is one process slot. In the Python transcription: capture (7417373, BFB), replay (7417486, state exact; 26 history diagnostics absent), trained emulators live (7417501, 7417608, 7417764, 7417763). Inside the image (p21): a skeleton slot in the pausable runner asks pycam_rad_process_answer; the runner with the slot unbound is BFB (7418303), the month-trained 256-wide emulator compiled with Numba and bound at the slot runs in shadow BFB at 1.4 ms a call (7418443) and live answers all 25,600 calls (7418444): rad_tend 0.23 s a rank per 50 steps against 1.40, the step loop 14.7 s against 16.1, the state the same as the Python path's. Two plugin runs OOM at 4 x 64 GB (7418223/7418224, failure records) and two ran with the slot never bound because prepare_segmented was defined twice (7418304/7418305, fixed, not evidence).",
+    "owner": "claude",
+    "owner_class": "freecam.physics.radiation.Radiation",
+    "stage": "in_model_replacement",
+    "started_at": "2026-09-12",
+    "state": "in_progress",
+    "target_processes": [
+     "cam_run1.radiation"
+    ],
+    "updated_at": "2026-09-12"
    },
    "failures": [],
    "host": null,
@@ -72678,7 +72690,7 @@
   "tracked_kernels": 21,
   "unmapped_kernels": 6,
   "work_blocked": 0,
-  "work_in_progress": 2
+  "work_in_progress": 3
  },
  "unmapped_kernels": [
   "cam_diagnostics::diag_allocate",
@@ -72690,8 +72702,8 @@
  ],
  "volatile": {
   "branch": "physics-kernel-api-closure",
-  "commit": "afcc5000d5ce9bf4be67edf2c0705ccb04583f16",
-  "generated_at": "2026-09-12T20:57:32+00:00"
+  "commit": "4e5bb8b53643783b79988ba545ed249b4300704b",
+  "generated_at": "2026-09-12T21:20:07+00:00"
  },
  "work_items": [
   {
@@ -72739,6 +72751,21 @@
     "cam_run1.cloud_macro_microphysics"
    ],
    "updated_at": "2026-09-11"
+  },
+  {
+   "branch": "physics-kernel-api-closure",
+   "kernel": "radiation::radiation_tend",
+   "next_gate": "a month with the emulator at the slot against a baseline month on the same nodes; month drift",
+   "note": "The whole radiative branch of radiation_tend (optics, both RRTMG cores, their diagnostics) is one process slot. In the Python transcription: capture (7417373, BFB), replay (7417486, state exact; 26 history diagnostics absent), trained emulators live (7417501, 7417608, 7417764, 7417763). Inside the image (p21): a skeleton slot in the pausable runner asks pycam_rad_process_answer; the runner with the slot unbound is BFB (7418303), the month-trained 256-wide emulator compiled with Numba and bound at the slot runs in shadow BFB at 1.4 ms a call (7418443) and live answers all 25,600 calls (7418444): rad_tend 0.23 s a rank per 50 steps against 1.40, the step loop 14.7 s against 16.1, the state the same as the Python path's. Two plugin runs OOM at 4 x 64 GB (7418223/7418224, failure records) and two ran with the slot never bound because prepare_segmented was defined twice (7418304/7418305, fixed, not evidence).",
+   "owner": "claude",
+   "owner_class": "freecam.physics.radiation.Radiation",
+   "stage": "in_model_replacement",
+   "started_at": "2026-09-12",
+   "state": "in_progress",
+   "target_processes": [
+    "cam_run1.radiation"
+   ],
+   "updated_at": "2026-09-12"
   }
  ]
 }
