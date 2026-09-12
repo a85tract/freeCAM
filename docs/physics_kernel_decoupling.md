@@ -738,8 +738,9 @@ The p21 image carries the runner with the slot and the module.  Gated on
 
 - The image is bit-for-bit with the oracle with the cloud class installed
   (7418221), with the `Radiation` class installed and nothing bound
-  (7418222), and with the runner running the driver whole through the slot,
-  unbound (7418303: 100 runner starts, no pause).
+  (7418222), and with the runner running the driver through the slot,
+  unbound, the shortwave core answered by the original at its pause
+  (7418303: 50 starts, 50 pauses).
 - The first two plugin runs (7418223 shadow, 7418224 live) completed one
   step and were killed for memory: every rank's Numba compilation and frozen
   weights add about 0.35 GB, 268 GB over four half nodes' 256 GB.  Kept as
@@ -760,8 +761,8 @@ The p21 image carries the runner with the slot and the module.  Gated on
 - Live, the same network answered all 25,600 calls (7418444).  The
   radiation stage's region fell from 1.40 s a rank per fifty steps to 0.23
   (its share of the step loop from 8.7 to 1.5 percent), and the step loop
-  from 16.07 s (7418303, the same image and mode with the branch computed)
-  to 14.72: 8 percent, on develop's shared nodes.  The state it produced is
+  from 16.07 s (7418303: the same image and runner with the branch computed
+  and one pause a step) to 14.72: 8 percent, on develop's shared nodes.  The state it produced is
   bit-for-bit with the Python path's run of the same weights (7417764):
   the two slots -- one in the transcription, one in Fortran -- compute the
   same emulator on the same inputs.  Against the oracle it drifts as that
