@@ -2648,7 +2648,7 @@
   "use_gw_oro": true,
   "use_subcol_microp": false
  },
- "content_hash": "0eda2dd3a7dc8fa1cb7df6415ecfcff3f02b9189cc66b3bef95f0b7261fa79b2",
+ "content_hash": "5d2bb032fdc850c7c7cf2263d65f516fe4222d239100cc3a7b4d2d3b78bef78d",
  "evidence": {
   "pi_cam_cldfrc_fice_frame_replay.json": {
    "bfb": true,
@@ -4459,6 +4459,44 @@
    "steps_completed": 0,
    "what": "The radiation process slot's replay gate: radiation_tend's computing branch answered with the outputs of the bit-for-bit capture 7417373 (p20 image, the Radiation transcription on the walk)."
   },
+  "pi_cam_pausable_rad-slot-live_50step_failure.json": {
+   "diagnosis": "Every rank compiles the emulator's table kernel with Numba at its first radiative step -- the LLVM compilation and the network's weights frozen into the code add about 0.35 GB a rank, 45 GB over 128 ranks a node -- and the job asked 64 GB a node.  Not a fault of the slot: the whole-image gates on the same build (7418221, 7418222) are bit-for-bit.",
+   "image": {
+    "build": "pi_cam_promoted_p21",
+    "role": "development",
+    "sha256": null
+   },
+   "kind": "gate-failure",
+   "outcome": "one step completed, then a rank died from signal 9 and the job was killed: the four nodes' 256 GB were exceeded (268 GB used; the same run with nothing bound uses 225 GB)",
+   "pbs_job": "7418224",
+   "python_stages": [
+    "rad_tend"
+   ],
+   "ranks": 512,
+   "record": "pi_cam_pausable_rad-slot-live_50step_failure.json",
+   "run_tag": "rad-slot-live",
+   "steps_completed": 1,
+   "what": "The same plugin answering the radiative branch live."
+  },
+  "pi_cam_pausable_rad-slot-shadow_50step_failure.json": {
+   "diagnosis": "Every rank compiles the emulator's table kernel with Numba at its first radiative step -- the LLVM compilation and the network's weights frozen into the code add about 0.35 GB a rank, 45 GB over 128 ranks a node -- and the job asked 64 GB a node.  Not a fault of the slot: the whole-image gates on the same build (7418221, 7418222) are bit-for-bit.",
+   "image": {
+    "build": "pi_cam_promoted_p21",
+    "role": "development",
+    "sha256": null
+   },
+   "kind": "gate-failure",
+   "outcome": "one step completed, then a rank died from signal 9 and the job was killed: the four nodes' 256 GB were exceeded (268 GB used; the same run with nothing bound uses 225 GB)",
+   "pbs_job": "7418223",
+   "python_stages": [
+    "rad_tend"
+   ],
+   "ranks": 512,
+   "record": "pi_cam_pausable_rad-slot-shadow_50step_failure.json",
+   "run_tag": "rad-slot-shadow",
+   "steps_completed": 1,
+   "what": "The month-trained 256-wide radiation emulator as a compiled plugin at the process slot inside the image (p21), in shadow."
+  },
   "pi_cam_pausable_rad-sw-pause_50step.json": {
    "advance_seconds": 16.18,
    "cloud_macro_micro_python": false,
@@ -5058,6 +5096,18 @@
    "contexts": [],
    "kernel_routine": null,
    "record": "pi_cam_pausable_rad-process-replay_50step_failure.json"
+  },
+  {
+   "capability": "original_replacement_bfb",
+   "contexts": [],
+   "kernel_routine": null,
+   "record": "pi_cam_pausable_rad-slot-live_50step_failure.json"
+  },
+  {
+   "capability": "original_replacement_bfb",
+   "contexts": [],
+   "kernel_routine": null,
+   "record": "pi_cam_pausable_rad-slot-shadow_50step_failure.json"
   }
  ],
  "inputs": {
@@ -5070,7 +5120,7 @@
   "validation/pi_cam_kernel_api_redirectable_calls.json": "9ac016f0d242ceef054aa8a80ef074aa53b08c1f0f3042a81e76da4c75603273",
   "validation/pi_cam_kernel_runtime_coverage_1month.json": "48f77d6ec78b4026806d4ab6fb9517ef31c1d526481b4ad68e55f77af0d303bd",
   "validation/pi_cam_kernel_runtime_coverage_50step.json": "222961fc5274dbaaf71c40f6c131a683536b5a85ef14cd047a2fd196d8ca38c5",
-  "web/public/catalog.json": "c8648dd36257be9a741676bff87222734cb6c09689cb834bb66fe2dd2456f145"
+  "web/public/catalog.json": "5b9aebf1f02080a0add89637572b352ffa157c01d6ec04f4732655040e022146"
  },
  "kernels": {
   "aer_rad_props::aer_rad_props_lw": {
@@ -72640,8 +72690,8 @@
  ],
  "volatile": {
   "branch": "physics-kernel-api-closure",
-  "commit": "ff081686510aac7e1b46cafdde8b0e67d07b0a2f",
-  "generated_at": "2026-09-12T20:05:54+00:00"
+  "commit": "afcc5000d5ce9bf4be67edf2c0705ccb04583f16",
+  "generated_at": "2026-09-12T20:57:32+00:00"
  },
  "work_items": [
   {

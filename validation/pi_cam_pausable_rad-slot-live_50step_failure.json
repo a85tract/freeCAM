@@ -1,0 +1,31 @@
+{
+ "schema_version": 1,
+ "what": "The same plugin answering the radiative branch live.",
+ "pbs_job_id": "7418224.desched1",
+ "run_tag": "rad-slot-live",
+ "kernel_models": {
+  "radiation_process": {
+   "file": "rad_mlp.py",
+   "function": "radiation_table_kernel",
+   "binding": "numba",
+   "weights": "rad_month_h256_weights.npz"
+  }
+ },
+ "job": "validation/jobs/pi_cam_pausable_50step.pbs",
+ "python_stages": [
+  "rad_tend"
+ ],
+ "native_image": "build/pi_cam_promoted_p21",
+ "ranks": 512,
+ "steps_completed": 1,
+ "resources": {
+  "queue": "develop",
+  "placement": "4 half nodes, 128 ranks each",
+  "memory_requested": "4 x 64 GB",
+  "memory_used": "268 GB"
+ },
+ "outcome": "one step completed, then a rank died from signal 9 and the job was killed: the four nodes' 256 GB were exceeded (268 GB used; the same run with nothing bound uses 225 GB)",
+ "diagnosis": "Every rank compiles the emulator's table kernel with Numba at its first radiative step -- the LLVM compilation and the network's weights frozen into the code add about 0.35 GB a rank, 45 GB over 128 ranks a node -- and the job asked 64 GB a node.  Not a fault of the slot: the whole-image gates on the same build (7418221, 7418222) are bit-for-bit.",
+ "disposition": "Resubmitted with 235 GB a node (rad-slot-shadow2, rad-slot-live2); the job's comparison and health files of the killed run are kept with this record and the tag is not reused.",
+ "bfb_record_note": "pi_cam_pausable_rad-slot-live_vs_oracle_50step_bfb.json and the .health.json were written by the job's comparison of the killed run; kept with this record."
+}
