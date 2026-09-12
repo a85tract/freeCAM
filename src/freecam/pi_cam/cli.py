@@ -609,6 +609,13 @@ def main(argv: list[str] | None = None) -> int:
         ),
     )
     parser.add_argument(
+        "--radiation-capture-every",
+        type=int,
+        default=1,
+        metavar="N",
+        help="with --radiation-capture: record every N-th radiative step of each rank (default every step)",
+    )
+    parser.add_argument(
         "--radiation-model",
         default=None,
         metavar="SPEC",
@@ -849,7 +856,7 @@ def main(argv: list[str] | None = None) -> int:
                 raise SystemExit("--radiation-capture and --radiation-model: the branch is recorded or answered, not both")
             if args.radiation_capture is not None:
                 from freecam.physics.radiation_process import RadiationProcessCapture
-                scheme.process = RadiationProcessCapture()
+                scheme.process = RadiationProcessCapture(every=args.radiation_capture_every)
             elif args.radiation_model is not None:
                 from freecam.physics.radiation_process import load_process_model
                 scheme.process = load_process_model(args.radiation_model, rank=world.Get_rank())

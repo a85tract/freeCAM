@@ -59,11 +59,26 @@ class RadiationProcessCapture:
     records = True
     answers = False
 
-    def __init__(self) -> None:
+    def __init__(self, *, every: int = 1) -> None:
+        #: record every ``every``-th radiative step of this rank (all of them by default): a month
+        #: of every call is 270 GB over 512 ranks, every eighth step a training set of 25 GB
+        self.every = max(1, int(every))
         self.inputs: list[dict[str, Any]] = []
         self.outputs: list[dict[str, np.ndarray]] = []
+        self._steps_seen: list[int] = []
+        self.skipped = 0
+
+    def wants(self, nstep: int) -> bool:
+        """Whether this radiative step is recorded: the first, then every ``every``-th distinct step."""
+
+        if not self._steps_seen or self._steps_seen[-1] != int(nstep):
+            self._steps_seen.append(int(nstep))
+        return (len(self._steps_seen) - 1) % self.every == 0
 
     def record(self, inputs: dict[str, Any], outputs: dict[str, np.ndarray]) -> None:
+        if not self.wants(int(inputs["nstep"])):
+            self.skipped += 1
+            return
         self.inputs.append({k: (np.array(v, copy=True) if isinstance(v, np.ndarray) else v) for k, v in inputs.items()})
         self.outputs.append({k: np.array(v, copy=True) for k, v in outputs.items()})
 
@@ -89,10 +104,13 @@ class RadiationProcessCapture:
         return target
 
     def describe(self) -> dict[str, Any]:
-        return {"kind": "capture", "calls": self.calls}
+        described: dict[str, Any] = {"kind": "capture", "calls": self.calls}
+        if self.every > 1:
+            described.update(every=self.every, skipped=self.skipped)
+        return described
 
     def __repr__(self) -> str:
-        return f"RadiationProcessCapture(calls={self.calls})"
+        return f"RadiationProcessCapture(calls={self.calls}{f', every={self.every}' if self.every > 1 else ''})"
 
 
 #: the replay tables this process loaded, by capture directory: a stage is cloudpickled into each

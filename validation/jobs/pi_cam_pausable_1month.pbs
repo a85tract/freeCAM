@@ -81,7 +81,7 @@ if [ -n "${PYCAM_RADIATION_PYTHON:-}" ]; then
   stage_flags+=(--split-radiation --radiation-python)
   if [ -n "${PYCAM_RAD_CAPTURE:-}" ]; then
     # the radiation process slot records the computing branch of every radiative step (bit-for-bit)
-    stage_flags+=(--radiation-capture "${PYCAM_RAD_CAPTURE}")
+    stage_flags+=(--radiation-capture "${PYCAM_RAD_CAPTURE}" --radiation-capture-every "${PYCAM_RAD_CAPTURE_EVERY:-1}")
   fi
   if [ -n "${PYCAM_RAD_MODEL:-}" ]; then
     # replay:DIR or file.py:function answers the branch in the driver's place

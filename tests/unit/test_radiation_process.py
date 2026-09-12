@@ -104,3 +104,12 @@ def test_a_process_slot_forces_the_walk_and_is_described(tmp_path: Path) -> None
     assert {"DEI", "MU", "LAMBDAC", "ICIWP", "ICLWP", "DGNUMWET", "QAERWAT"} <= names
     assert all(row[1].endswith("_") and "_mp_" in row[1] for row in PROCESS_INPUT_FIELDS)
     assert {row[3] for row in PROCESS_INPUT_FIELDS if row[0] in ("DGNUMWET", "QAERWAT")} == {3}
+
+
+def test_a_capture_can_keep_every_nth_radiative_step() -> None:
+    capture = RadiationProcessCapture(every=3)
+    for nstep in (1, 1, 1, 3, 3, 3, 5, 5, 5, 7, 7, 7):          # three chunks a radiative step
+        capture.record(*_call(nstep, nstep % 3))
+    assert capture.calls == 6 and capture.skipped == 6                 # steps 1 and 7 kept, 3 and 5 skipped
+    assert {int(record["nstep"]) for record in capture.inputs} == {1, 7}
+    assert capture.describe() == {"kind": "capture", "calls": 6, "every": 3, "skipped": 6}
