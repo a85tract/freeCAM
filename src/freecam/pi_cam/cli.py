@@ -126,6 +126,10 @@ def _radiation_process_summary(records) -> dict[str, object] | None:
     for key in ("function", "records"):
         if key in first:
             summary[key] = first[key]
+    for key in ("seconds", "first_call_seconds"):
+        if key in first:            # summed over ranks, and the slowest rank's own
+            summary[key] = sum(float(row.get(key, 0.0)) for row in rows)
+            summary[key + "_max"] = max(float(row.get(key, 0.0)) for row in rows)
     return summary
 
 

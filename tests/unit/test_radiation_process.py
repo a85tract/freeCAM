@@ -72,7 +72,9 @@ def test_a_process_model_wraps_a_function_and_insists_on_every_output() -> None:
     model = RadiationProcessModel(emulator, label="test:emulator")
     inputs, _ = _call(2, 0)
     assert set(model(inputs)) == set(OUTPUTS) and model.calls == 1
-    assert model.describe() == {"kind": "model", "function": "test:emulator", "calls": 1}
+    described = model.describe()
+    assert described["kind"] == "model" and described["function"] == "test:emulator" and described["calls"] == 1
+    assert described["seconds"] >= described["first_call_seconds"] > 0.0
     incomplete = RadiationProcessModel(lambda inputs: {"qrs": 0}, label="bad")
     with pytest.raises(PhysicsError, match="returned no"):
         incomplete(inputs)

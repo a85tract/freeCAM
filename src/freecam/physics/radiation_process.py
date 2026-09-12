@@ -186,17 +186,27 @@ class RadiationProcessModel:
         self.function = function
         self.label = str(label)
         self.calls = 0
+        self.seconds = 0.0          # wall time inside the function, this rank; the first call carries its compile
+        self.first_seconds = 0.0
 
     def __call__(self, inputs: dict[str, Any]) -> dict[str, np.ndarray]:
+        import time
+
+        started = time.perf_counter()
         answer = self.function(inputs)
+        elapsed = time.perf_counter() - started
         missing = [name for name in OUTPUTS if name not in answer]
         if missing:
             raise PhysicsError(f"the radiation process model {self.label} returned no {missing}")
+        if self.calls == 0:
+            self.first_seconds = elapsed
         self.calls += 1
+        self.seconds += elapsed
         return answer
 
     def describe(self) -> dict[str, Any]:
-        return {"kind": "model", "function": self.label, "calls": self.calls}
+        return {"kind": "model", "function": self.label, "calls": self.calls,
+                "seconds": self.seconds, "first_call_seconds": self.first_seconds}
 
     def __repr__(self) -> str:
         return f"RadiationProcessModel({self.label!r})"
