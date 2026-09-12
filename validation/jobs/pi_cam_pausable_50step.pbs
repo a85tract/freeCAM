@@ -22,6 +22,8 @@
 # PYCAM_KERNEL_MODELS=name=path[,name=path] puts cloudpickled models in kernel
 # slots (never bit-for-bit: the drift and the health of the run are the result);
 # PYCAM_NO_VERIFY_EXPORTS=1 lets such a run past the replay's export check.
+# PYCAM_RAD_CAPTURE=dir records radiation_tend's computing branch (with PYCAM_RADIATION_PYTHON=1);
+# PYCAM_RAD_MODEL=replay:dir or file.py:function answers it in the driver's place.
 # PYCAM_KERNEL_PLUGINS=name=file.py:function[,...] binds Numba-compiled Python kernels at
 # their hooks; PYCAM_SHADOW_PLUGINS does the same in shadow.
 # PYCAM_SHADOW_MODELS=name=path[,...] binds TorchScript models in shadow: the model
@@ -75,6 +77,14 @@ if [ -n "${PYCAM_PYTHON_STAGES:-}" ]; then
 fi
 if [ -n "${PYCAM_RADIATION_PYTHON:-}" ]; then
   stage_flags+=(--split-radiation --radiation-python)
+  if [ -n "${PYCAM_RAD_CAPTURE:-}" ]; then
+    # the radiation process slot records the computing branch of every radiative step (bit-for-bit)
+    stage_flags+=(--radiation-capture "${PYCAM_RAD_CAPTURE}")
+  fi
+  if [ -n "${PYCAM_RAD_MODEL:-}" ]; then
+    # replay:DIR (bit-for-bit expected) or file.py:function answers the branch in the driver's place
+    stage_flags+=(--radiation-model "${PYCAM_RAD_MODEL}")
+  fi
 fi
 if [ -n "${PYCAM_CLOUD_PYTHON:-}" ]; then
   # the cloud macro/microphysics class (stage 7) over its own runner

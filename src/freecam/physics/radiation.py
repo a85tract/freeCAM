@@ -98,6 +98,22 @@ RADIATION_FIELDS = (
     ("QRL", "qrl_idx", False),
 )
 
+#: What the cloud and aerosol optics read from the buffer inside the branch: the process slot
+#: records them as the inputs a process-level emulator would take.  Index symbols of other
+#: modules, given in full; the modal aerosol fields are rank 3 (columns, levels, modes).
+#: An unregistered field (index -1: DES and ICSWP without a snow field) is left out.
+PROCESS_INPUT_FIELDS = (
+    ("DEI", "cloud_rad_props_mp_i_dei_", False, 2),
+    ("MU", "cloud_rad_props_mp_i_mu_", False, 2),
+    ("LAMBDAC", "cloud_rad_props_mp_i_lambda_", False, 2),
+    ("ICIWP", "cloud_rad_props_mp_i_iciwp_", False, 2),
+    ("ICLWP", "cloud_rad_props_mp_i_iclwp_", False, 2),
+    ("DES", "cloud_rad_props_mp_i_des_", False, 2),
+    ("ICSWP", "cloud_rad_props_mp_i_icswp_", False, 2),
+    ("DGNUMWET", "modal_aer_opt_mp_dgnumwet_idx_", False, 3),
+    ("QAERWAT", "modal_aer_opt_mp_qaerwat_idx_", False, 3),
+)
+
 #: The direct kernels tend() runs; every one must be in the image and in the
 #: reviewed descriptors with the same field list.
 KERNELS = (
@@ -455,6 +471,73 @@ class Radiation(NativeStage):
 
     def __init__(self, *, kernels: Mapping[str, Callable | None] | None = None) -> None:
         super().__init__(kernels=kernels)
+        #: the process slot: a RadiationProcessCapture records the computing branch of every
+        #: radiative step, a RadiationReplay or RadiationProcessModel answers it in the driver's
+        #: place (freecam.physics.radiation_process); None runs the transcription as it is
+        self.process: Any = None
+        self._rstate_snapshot: dict[str, np.ndarray] | None = None
+
+    def select_mode(self, native: Any = None) -> str:
+        # a process slot lives inside the transcription: only the walk reaches it
+        if self.process is not None:
+            return "legacy-python"
+        return super().select_mode(native)
+
+    def describe_process(self) -> dict[str, Any] | None:
+        return self.process.describe() if self.process is not None else None
+
+    def _process_inputs(self, st: StageRuntime, lchnk: int, ncol: int, index: int, dt: float, nstep: int,
+                        calday: float, dosw: bool, dolw: bool, coszrs, S, cld, cldfsnow, cam_in) -> dict[str, Any]:
+        """Everything the driver has in hand before the computing branch, by the process contract's names."""
+
+        L, pb = st.local, st.pbuf
+        inputs: dict[str, Any] = {"nstep": int(nstep), "lchnk": int(lchnk), "ncol": int(ncol), "dt": float(dt),
+                                  "calday": float(calday), "dosw": bool(dosw), "dolw": bool(dolw),
+                                  "coszrs": coszrs, "clat": L["clat"], "clon": L["clon"],
+                                  "cld": cld, "cldfsnow": cldfsnow}
+        inputs.update(S)
+        inputs.update({f"cam_in_{k}": v for k, v in cam_in.items()})
+        try:
+            inputs["state_q"] = np.asarray(st.native.pool["phys_state.q"])[..., index]
+        except Exception:      # a pool without the constituent array exposed: the record says so by absence
+            pass
+        for name, _, _, _ in PROCESS_INPUT_FIELDS:
+            if name in pb:
+                try:
+                    inputs[name.lower()] = pb.view(name, lchnk)
+                except Exception:
+                    pass
+        return inputs
+
+    def _note_rstate(self, st: StageRuntime, lchnk: int) -> None:
+        """The RRTMG state as the driver has it after its update: the gas profiles, for the process slot."""
+
+        if self.process is None or self._rstate_snapshot is not None:
+            return
+        self._rstate_snapshot = {name: np.array(st.handles.view(lchnk, VIEW[name]), copy=True)
+                                 for name in VIEW if name.startswith("rstate_")}
+
+    def _process_model_step(self, st: StageRuntime, lchnk: int, ncol: int, inputs: dict[str, Any],
+                            qrs, qrl, cam_out, flux) -> None:
+        """The computing branch answered by the process slot: the RRTMG state for the gases, the
+        model, the outputs written where the driver writes them."""
+
+        H = st.handles
+        log = self.calls.append
+        H.rstate_create(lchnk); log("rrtmg_state_create")
+        H.rstate_update(lchnk, 0); log("rrtmg_state_update")
+        for name in VIEW:
+            if name.startswith("rstate_"):
+                inputs[name] = st.handles.view(lchnk, VIEW[name])
+        answer = self.process(inputs); log("radiation_process_model")
+        n = int(ncol)
+        qrs[:n, :] = np.asarray(answer["qrs"])[:n, :]
+        qrl[:n, :] = np.asarray(answer["qrl"])[:n, :]
+        for name in ("fsns", "fsnt", "flns", "flnt", "fsds"):
+            flux[name][:n] = np.asarray(answer[name])[:n]
+        for name in ("sols", "soll", "solsd", "solld", "flwds"):
+            cam_out[name][:n] = np.asarray(answer[name])[:n]
+        H.rstate_destroy(lchnk); log("rrtmg_state_destroy")
 
     # -- the split stage over the image's runner ----------------------------------
 
@@ -514,6 +597,14 @@ class Radiation(NativeStage):
                    for _, symbol, _ in RADIATION_FIELDS}
         fields = {name: PBufField(name, int(indices[symbol]), sliced)
                   for name, symbol, sliced in RADIATION_FIELDS}
+        if self.process is not None:
+            # the optics' inputs, only when a process slot records or answers the branch
+            for name, symbol, sliced, rank in PROCESS_INPUT_FIELDS:
+                try:
+                    index = int(module_view(library, symbol, "int32", ()))
+                except Exception:      # an image without that module symbol: the field is simply absent
+                    continue
+                fields[name] = PBufField(name, index, sliced, rank)
         buffer = PBuf(library, fields)
         lchnk, _ = runtime.native.chunks
         buffer.verify(int(lchnk[0]), pcols=runtime.pcols, pver=runtime.pver)
@@ -687,9 +778,23 @@ class Radiation(NativeStage):
         dolw = H.radiation_do("lw"); log("radiation_do:lw")
 
         if dosw or dolw:                                             # 875
-            self._radiative_step(st, lchnk, ncol, dt, dosw, dolw, nday, nnite,
-                                 idxday, idxnite, cld, cldfsnow, qrs, qrl,
-                                 coszrs, S, cam_in, cam_out, flux)
+            process = self.process
+            inputs = (self._process_inputs(st, lchnk, ncol, index, dt, nstep, calday, dosw, dolw,
+                                           coszrs, S, cld, cldfsnow, cam_in)
+                      if process is not None else None)
+            if process is not None and process.answers:
+                self._process_model_step(st, lchnk, ncol, inputs, qrs, qrl, cam_out, flux)
+            else:
+                self._rstate_snapshot = None
+                self._radiative_step(st, lchnk, ncol, dt, dosw, dolw, nday, nnite,
+                                     idxday, idxnite, cld, cldfsnow, qrs, qrl,
+                                     coszrs, S, cam_in, cam_out, flux)
+                if process is not None and process.records:
+                    inputs.update(self._rstate_snapshot or {})
+                    outputs = {"qrs": qrs, "qrl": qrl, **{k: flux[k] for k in ("fsns", "fsnt", "flns", "flnt", "fsds")},
+                               **{k: cam_out[k] for k in ("sols", "soll", "solsd", "solld", "flwds")}}
+                    process.record(inputs, outputs)
+                    self._rstate_snapshot = None
         else:                                                        # 1275
             # 1277-1287: the heating rates are kept as Q*dp between radiation
             # steps, so a quiet step only converts them back.
@@ -805,6 +910,7 @@ class Radiation(NativeStage):
             K("get_variability", {}, outputs={"sfac": None}); log("get_variability")
             # 1026: only the climate call is active, asserted at attach
             H.rstate_update(lchnk, 0); log("rrtmg_state_update")
+            self._note_rstate(st, lchnk)
             self.aer_props_sw(st, lchnk, nnite, idxnite); log("aer_rad_props_sw")
 
             # 1034-1051: the shortwave core
@@ -880,6 +986,7 @@ class Radiation(NativeStage):
               outputs={"lwupcgs": None})
             log("rad_lwup_cgs")
             H.rstate_update(lchnk, 0); log("rrtmg_state_update")
+            self._note_rstate(st, lchnk)
             self.aer_props_lw(st, lchnk); log("aer_rad_props_lw")
 
             # 1148-1154: the longwave core

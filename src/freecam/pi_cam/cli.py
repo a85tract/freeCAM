@@ -74,6 +74,9 @@ def _stage_executions(cam) -> dict[str, dict[str, object]]:
             describe_kernels = getattr(stage, "describe_kernels", None)
             if callable(describe_kernels):
                 described["kernels"] = list(describe_kernels())
+            describe_process = getattr(stage, "describe_process", None)
+            if callable(describe_process) and describe_process() is not None:
+                described["process"] = describe_process()
             executions[name] = described
     return executions
 
@@ -94,6 +97,36 @@ def _save_frame_captures(cam, directory: Path, rank: int) -> dict[str, int]:
                 model.save(Path(directory) / f"{name}.rank-{rank:04d}.npz")
                 calls[name] = model.calls
     return calls
+
+
+def _save_radiation_process(cam, directory: Path | None, rank: int) -> dict[str, object] | None:
+    """Save a radiation process capture (one file per rank) and describe the slot, whatever it holds."""
+
+    for record in getattr(cam.python_processes, "installed", {}).values():
+        stage = getattr(getattr(record, "function", None), "__self__", None)
+        process = getattr(stage, "process", None)
+        if process is None:
+            continue
+        described = dict(process.describe())
+        if getattr(process, "records", False) and directory is not None:
+            described["file"] = str(process.save(Path(directory) / f"radiation_tend.rank-{rank:04d}.npz").name)
+        return described
+    return None
+
+
+def _radiation_process_summary(records) -> dict[str, object] | None:
+    """The process slot over the ranks: what stood in it and how many calls it recorded or answered."""
+
+    rows = [record.get("radiation_process") for record in records if record.get("radiation_process")]
+    if not rows:
+        return None
+    first = rows[0]
+    summary: dict[str, object] = {"kind": first.get("kind"), "ranks": len(rows),
+                                  "calls": sum(int(row.get("calls", 0)) for row in rows)}
+    for key in ("function", "records"):
+        if key in first:
+            summary[key] = first[key]
+    return summary
 
 
 def _frame_capture_summary(records, args, native_evidence) -> dict[str, object] | None:
@@ -565,6 +598,28 @@ def main(argv: list[str] | None = None) -> int:
         help="bind a compiled Python kernel in shadow: it runs on every call, the original answers; repeatable.",
     )
     parser.add_argument(
+        "--radiation-capture",
+        type=Path,
+        default=None,
+        metavar="DIR",
+        help=(
+            "with --radiation-python: record the inputs and outputs of radiation_tend's computing branch "
+            "on every radiative step of every chunk, to DIR/radiation_tend.rank-NNNN.npz; the original "
+            "runs, the run stays bit-for-bit.  The dataset a process-level emulator is trained on."
+        ),
+    )
+    parser.add_argument(
+        "--radiation-model",
+        default=None,
+        metavar="SPEC",
+        help=(
+            "with --radiation-python: answer radiation_tend's computing branch with a process model "
+            "instead of the optics and the two cores.  replay:DIR replays a --radiation-capture "
+            "(bit-for-bit expected: the gate of the path); MODULE:FUNCTION or path.py:FUNCTION calls "
+            "a function taking the inputs by name and returning qrs, qrl and the surface fluxes."
+        ),
+    )
+    parser.add_argument(
         "--observe-kernels",
         action="store_true",
         help=(
@@ -790,6 +845,14 @@ def main(argv: list[str] | None = None) -> int:
 
             scheme = Radiation()
             scheme.execution_policy = args.stage_execution
+            if args.radiation_capture is not None and args.radiation_model is not None:
+                raise SystemExit("--radiation-capture and --radiation-model: the branch is recorded or answered, not both")
+            if args.radiation_capture is not None:
+                from freecam.physics.radiation_process import RadiationProcessCapture
+                scheme.process = RadiationProcessCapture()
+            elif args.radiation_model is not None:
+                from freecam.physics.radiation_process import load_process_model
+                scheme.process = load_process_model(args.radiation_model, rank=world.Get_rank())
             if args.segmented_original:
                 from freecam.physics.segments import OriginalKernel
                 for kernel_name in [k.strip() for k in args.segmented_original_kernels.split(",") if k.strip()]:
@@ -984,6 +1047,7 @@ def main(argv: list[str] | None = None) -> int:
         world.Barrier()
         advance_seconds = MPI.Wtime() - advance_started
         frame_capture_calls = _save_frame_captures(cam, args.capture_dir, world.Get_rank()) if capture_kernels else {}
+        radiation_process = _save_radiation_process(cam, args.radiation_capture, world.Get_rank())
         from freecam.pi_cam.hooks import read_hook_counts
         hook_counts = read_hook_counts(getattr(cam.backend, "_library", None))
         final_addresses = {
@@ -1060,6 +1124,7 @@ def main(argv: list[str] | None = None) -> int:
             "advance_seconds": advance_seconds,
             "memory_samples": memory_samples,
             "frame_capture_calls": frame_capture_calls,
+            "radiation_process": radiation_process,
             "hook_counts": hook_counts,
         }
         if kernel_counters is not None:
@@ -1227,6 +1292,7 @@ def main(argv: list[str] | None = None) -> int:
             "frame_capture": _frame_capture_summary(records, args, native_evidence),
             "kernel_models": ({**(_kernel_models_summary(kernel_model_paths, shadow_model_paths) or {}),
                                **_kernel_plugins_summary(kernel_plugin_specs, shadow_plugin_specs)} or None),
+            "radiation_process": _radiation_process_summary(records),
             "hooks": _hook_summary(records),
             "cloud_macro_micro_whole_drivers": bool(args.cloud_macro_micro_whole_drivers),
             "cloud_macro_micro_whole_micro": bool(args.cloud_macro_micro_whole_micro),
