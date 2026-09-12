@@ -115,3 +115,89 @@ def test_a_capture_can_keep_every_nth_radiative_step() -> None:
     assert capture.calls == 6 and capture.skipped == 6                 # steps 1 and 7 kept, 3 and 5 skipped
     assert {int(record["nstep"]) for record in capture.inputs} == {1, 7}
     assert capture.describe() == {"kind": "capture", "calls": 6, "every": 3, "skipped": 6}
+
+
+def test_the_fortran_slots_table_is_the_python_one() -> None:
+    """pycam_rad_process hands a plugin its inputs in TABLE_INPUTS' order, and takes TABLE_OUTPUTS back."""
+    import re
+
+    from freecam.physics.radiation_process import TABLE_INPUTS, TABLE_OUTPUTS
+
+    source = (Path(__file__).resolve().parents[2] / "native/pi_cam/support/pycam_rad_process.F90").read_text()
+    def names(parameter):
+        block = re.search(parameter + r"\(\w+\) = \[character\(len=16\) :: &\n(.*?)\]", source, re.S).group(1)
+        return re.findall(r"'([a-z0-9_]+)'", block)
+    assert names("table_inputs") == [name for name, _ in TABLE_INPUTS]
+    assert names("table_outputs") == [name for name, _ in TABLE_OUTPUTS]
+    assert "integer, parameter :: n_in = 46, n_out = 12" in source and len(TABLE_INPUTS) == 46 and len(TABLE_OUTPUTS) == 12
+    # the runner asks the slot at the top of the radiative branch, and continues after it when it answered
+    runner = (Path(__file__).resolve().parents[2] / "native/pi_cam/support/pycam_radt_runner.F90").read_text()
+    assert "if (pycam_rad_process_answer(state, pbuf, cam_in, cam_out, coszrs, dosw, dolw, qrs, qrl, fsns, fsnt, flns, flnt, fsds)) then" in runner
+    assert "use pycam_rad_process, only: pycam_rad_process_answer" in runner
+
+
+def test_a_table_kernel_compiles_to_the_slots_interface_and_writes_the_outputs() -> None:
+    pytest.importorskip("numba")
+    import numpy as np
+
+    from freecam.physics.native_model import NativePlugin
+    from freecam.physics.numba_kernel import call_plugin_from_python
+    from freecam.physics.radiation_process import TABLE_INPUTS, TABLE_OUTPUTS, compile_radiation_plugin
+
+    def kernel(nstep, lchnk, ncol, calday, dosw, dolw, coszrs, clat, clon, state_t, state_pmid, state_pint, state_pdel,
+               state_lnpint, state_lnpmid, state_q, cld, cldfsnow, dei, mu, lambdac, iciwp, iclwp, des, icswp, dgnumwet, qaerwat,
+               cam_in_lwup, cam_in_asdir, cam_in_asdif, cam_in_aldir, cam_in_aldif, rstate_h2ovmr, rstate_o3vmr, rstate_co2vmr,
+               rstate_ch4vmr, rstate_o2vmr, rstate_n2ovmr, rstate_cfc11vmr, rstate_cfc12vmr, rstate_cfc22vmr, rstate_ccl4vmr,
+               rstate_pmidmb, rstate_pintmb, rstate_tlay, rstate_tlev,
+               o_qrs, o_qrl, o_fsns, o_fsnt, o_flns, o_flnt, o_fsds, o_sols, o_soll, o_solsd, o_solld, o_flwds):
+        n = int(ncol)
+        for i in range(n):
+            for k in range(state_t.shape[1]):
+                o_qrs[i, k] = state_t[i, k] * 2.0 + state_q[i, k, 0]
+                o_qrl[i, k] = -rstate_o3vmr[i, k]
+            o_fsnt[i] = coszrs[i] * 100.0 + nstep
+            o_flwds[i] = cam_in_lwup[i] + dgnumwet[i, 0, 2]
+
+    plugin = compile_radiation_plugin(kernel)
+    assert isinstance(plugin, NativePlugin) and plugin.describe()["kernel"] == "radiation_process" and plugin.address
+    rng = np.random.default_rng(1)
+    shapes = {0: (), 1: (16,), 2: (16, 30), 3: (16, 30, 3)}
+    inputs = []
+    for name, rank in TABLE_INPUTS:
+        shape = (16, 30, 57) if name == "state_q" else shapes[rank]
+        inputs.append(np.asfortranarray(rng.random(shape)) if rank else float(rng.random()))
+    inputs[TABLE_INPUTS.index(("ncol", 0))] = 14.0
+    outputs = [np.zeros((16, 30), order="F") if rank == 2 else np.zeros(16) for _, rank in TABLE_OUTPUTS]
+    assert call_plugin_from_python(plugin, inputs, outputs) == 0
+    t, q, o3, cosz, nstep = (inputs[[n for n, _ in TABLE_INPUTS].index(k)] for k in ("state_t", "state_q", "rstate_o3vmr", "coszrs", "nstep"))
+    o = dict(zip([n for n, _ in TABLE_OUTPUTS], outputs))
+    assert np.array_equal(o["qrs"][:14], t[:14] * 2.0 + q[:14, :, 0]) and np.array_equal(o["qrl"][:14], -o3[:14]) and (o["qrs"][14:] == 0).all()
+    assert np.array_equal(o["fsnt"][:14], cosz[:14] * 100.0 + nstep) and o["fsns"].sum() == 0.0
+
+
+def test_a_compiled_plugin_in_the_slot_runs_the_driver_whole_through_the_runner() -> None:
+    pytest.importorskip("numba")
+    from types import SimpleNamespace
+
+    from freecam.physics.radiation_process import compile_radiation_plugin
+
+    def zeros(*args):
+        pass
+
+    plugin = compile_radiation_plugin(zeros, shadow=True)
+    stage = Radiation()
+    stage.process = plugin
+    assert stage.select_mode(None) == "segmented"                 # the runner, no pause armed
+    assert stage.describe_process()["kind"] == "native-plugin"
+    bound: list[tuple[int, int]] = []
+
+    class _Entry:
+        def __init__(self, f): self.f = f
+        def __call__(self, *a): return self.f(*a)
+
+    library = SimpleNamespace()
+    library.pycam_rad_process_bind_v1 = _Entry(lambda address, shadow: bound.append((int(getattr(address, "value", address)), int(shadow))) or 0)
+    library.pycam_rad_process_counts_v1 = None
+    from freecam.physics import radiation_process as rp
+    rp.bind_radiation_process(library, plugin.address, shadow=True)
+    assert bound == [(plugin.address, 1)]

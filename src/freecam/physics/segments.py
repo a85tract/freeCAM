@@ -322,8 +322,13 @@ class SegmentedStage:
     def idle(self) -> bool:
         return self.paused_on is None and self.tainted is None
 
-    def run(self, kernels: Mapping[str, Callable[..., Mapping[str, Any]] | None]) -> None:
-        """One step of the stage: the original Fortran with ``kernels`` at their pauses."""
+    def run(self, kernels: Mapping[str, Callable[..., Mapping[str, Any]] | None], *, whole: bool = False) -> None:
+        """One step of the stage: the original Fortran with ``kernels`` at their pauses.
+
+        ``whole`` runs the driver through the runner with no pause armed: for a stage whose
+        process slot inside the runner (a compiled plugin bound in the image) answers a
+        branch, so the run is one crossing and no Python in the step.
+        """
 
         if self.tainted is not None:
             raise PhysicsError(
@@ -334,7 +339,7 @@ class SegmentedStage:
                 f"{self.stage_name}: still paused on {self.paused_on.kernel!r}; a step "
                 f"cannot start inside another")
         mask = {name: kernel is not None for name, kernel in kernels.items()}
-        if not any(mask.values()):
+        if not any(mask.values()) and not whole:
             raise PhysicsError(
                 f"{self.stage_name}: nothing is replaced; run the original stage whole")
         spec = getattr(self.runner, "spec", None)

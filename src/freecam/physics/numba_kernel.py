@@ -79,6 +79,28 @@ def adapter_source(hook_name: str, inputs, outputs, *, kernel_name: str = "kerne
     return "\n".join(lines) + "\n"
 
 
+class TableItem:
+    """One argument of a plugin table: its name and rank (0 for a scalar)."""
+
+    __slots__ = ("name", "rank")
+
+    def __init__(self, name: str, rank: int) -> None:
+        self.name, self.rank = str(name), int(rank)
+
+
+def compile_table_kernel(inputs, outputs, function: Callable[..., Any], *, kernel: str, shadow: bool = False) -> NativePlugin:
+    """Compile ``function`` for a plugin table given as ``(name, rank)`` lists, not a hook's model block.
+
+    The radiation process slot hands its table this way (radiation_process.TABLE_INPUTS
+    and TABLE_OUTPUTS); the adapter, the compilation and the NativePlugin are the same
+    as :func:`compile_kernel`'s.
+    """
+
+    items_in = [TableItem(name, rank) for name, rank in inputs]
+    items_out = [TableItem(name, rank) for name, rank in outputs]
+    return _compile(kernel, items_in, items_out, function, shadow=shadow)
+
+
 def compile_kernel(hook_name: str, function: Callable[..., Any], *, shadow: bool = False) -> NativePlugin:
     """Compile ``function`` for hook ``hook_name`` and wrap it as a :class:`NativePlugin` for a kernel slot.
 
@@ -87,13 +109,17 @@ def compile_kernel(hook_name: str, function: Callable[..., Any], *, shadow: bool
     Numba dispatcher.  Compilation happens in this process, once per rank.
     """
 
+    hook, inputs, outputs = _model_arguments(hook_name)
+    return _compile(hook_name, inputs, outputs, function, shadow=shadow)
+
+
+def _compile(hook_name: str, inputs, outputs, function: Callable[..., Any], *, shadow: bool) -> NativePlugin:
     try:
         import numba
         from numba import carray, farray, float64, int32, int64, types  # noqa: F401
     except ImportError as error:                       # pragma: no cover - environment
         raise PhysicsError("a Numba kernel needs the numba package in this environment") from error
 
-    hook, inputs, outputs = _model_arguments(hook_name)
     kernel = function if isinstance(function, numba.core.registry.CPUDispatcher) else numba.njit(function)
     source = adapter_source(hook_name, inputs, outputs)
     namespace: dict[str, Any] = {"carray": carray, "farray": farray, "float64": float64, "kernel": kernel}
@@ -158,4 +184,4 @@ def call_plugin_from_python(plugin: NativePlugin, inputs: list, outputs: list) -
     return status
 
 
-__all__ = ["compile_kernel", "adapter_source", "call_plugin_from_python", "PLUGIN_SIGNATURE"]
+__all__ = ["compile_kernel", "compile_table_kernel", "adapter_source", "call_plugin_from_python", "PLUGIN_SIGNATURE", "TableItem"]

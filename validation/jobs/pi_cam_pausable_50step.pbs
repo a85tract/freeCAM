@@ -81,6 +81,13 @@ if [ -n "${PYCAM_RADIATION_PYTHON:-}" ]; then
     # the radiation process slot records the computing branch of every radiative step (bit-for-bit)
     stage_flags+=(--radiation-capture "${PYCAM_RAD_CAPTURE}" --radiation-capture-every "${PYCAM_RAD_CAPTURE_EVERY:-1}")
   fi
+  if [ -n "${PYCAM_RAD_PLUGIN:-}" ]; then
+    # a Numba-compiled kernel bound at the slot inside the image: the runner runs the driver whole
+    stage_flags+=(--radiation-plugin "${PYCAM_RAD_PLUGIN}")
+  fi
+  if [ -n "${PYCAM_SHADOW_RAD_PLUGIN:-}" ]; then
+    stage_flags+=(--shadow-radiation-plugin "${PYCAM_SHADOW_RAD_PLUGIN}")
+  fi
   if [ -n "${PYCAM_RAD_MODEL:-}" ]; then
     # replay:DIR (bit-for-bit expected) or file.py:function answers the branch in the driver's place
     stage_flags+=(--radiation-model "${PYCAM_RAD_MODEL}")

@@ -159,6 +159,8 @@ def test_the_two_leaves_are_wired_end_to_end_and_off_by_default() -> None:
 def test_the_support_modules_are_additions_the_image_links() -> None:
     assert SUPPORT_MODULES == ("pycam_macro_kernels.F90", "pycam_macro_handles.F90",
                                "pycam_rad_kernels.F90", "pycam_rad_handles.F90",
+                               # the radiation process slot the radiation runner asks
+                               "pycam_rad_process.F90",
                                "pycam_micro_kernels.F90", "pycam_mm_kernels.F90",
                                "pycam_aero_kernels.F90",
                                "pycam_micro_handles.F90", "pycam_aero_handles.F90",

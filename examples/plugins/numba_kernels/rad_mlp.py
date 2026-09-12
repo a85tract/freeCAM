@@ -150,3 +150,37 @@ def radiation_emulator(inputs):
             out = np.zeros(pcols, np.float64); out[:ncol] = y[:, lo]
         answer[name] = out
     return answer
+
+
+# -- the same emulator over the Fortran slot's table (radiation_process.TABLE_INPUTS/OUTPUTS) ----------
+# One Numba function with the table's 46 inputs and 12 outputs as positional arguments: features built
+# by the generated builder, the forward, the outputs written into the slot's arrays.  The weights are
+# module globals here, frozen into the compiled code (a minute of compilation per rank at start).
+
+def _generate_table_kernel_source():
+    import sys as _sys
+    _sys.path.insert(0, "/glade/work/ruitong/pycam-sima-pi-cam-only/src")
+    from freecam.physics.radiation_process import TABLE_INPUTS, TABLE_OUTPUTS
+    inputs = [name for name, _ in TABLE_INPUTS]
+    outputs = [f"o_{name}" for name, _ in TABLE_OUTPUTS]
+    lines = [f"def radiation_table_kernel({', '.join(inputs + outputs)}):",
+             "    n = int(ncol)",
+             f"    x64 = np.empty((n, {NF}), np.float64)",
+             "    _build_features(n, x64, " + ", ".join(src for src in _SOURCES) + ")",
+             "    x = x64.astype(np.float32)",
+             "    y = _forward(x, W1T, B1, W2T, B2, W3, B3, X_LO, X_HI, Y_MIN, Y_MAX, SW_COLS, COSZ_COL)",
+             "    for i in range(n):"]
+    for name, lo, hi in TARGETS:
+        if hi - lo > 1:
+            lines.append(f"        for k in range({hi - lo}):")
+            lines.append(f"            o_{name}[i, k] = y[i, {lo} + k]")
+        else:
+            lines.append(f"        o_{name}[i] = y[i, {lo}]")
+    return "\n".join(lines) + "\n"
+
+
+_table_namespace = {"np": np, "_build_features": _build_features, "_forward": _forward,
+                    "W1T": W1T, "B1": B1, "W2T": W2T, "B2": B2, "W3": W3, "B3": B3, "X_LO": X_LO, "X_HI": X_HI,
+                    "Y_MIN": Y_MIN, "Y_MAX": Y_MAX, "SW_COLS": SW_COLS, "COSZ_COL": COSZ_COL}
+exec(compile(_generate_table_kernel_source(), "<radiation table kernel>", "exec"), _table_namespace)
+radiation_table_kernel = _table_namespace["radiation_table_kernel"]

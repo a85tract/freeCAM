@@ -45,6 +45,8 @@ SUPPORT_SOURCES = (
      "src/physics/cam/pycam_rad_kernels.F90"),
     ("native/pi_cam/support/pycam_rad_handles.F90",
      "src/physics/cam/pycam_rad_handles.F90"),
+    ("native/pi_cam/support/pycam_rad_process.F90",
+     "src/physics/cam/pycam_rad_process.F90"),
     ("native/pi_cam/support/pycam_micro_kernels.F90",
      "src/physics/cam/pycam_micro_kernels.F90"),
     ("native/pi_cam/support/pycam_mm_kernels.F90",

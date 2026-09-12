@@ -208,6 +208,31 @@ def _parse_kernel_plugins(values: list[str] | None, flag: str) -> dict[str, str]
     return plugins
 
 
+def _import_function(spec: str, flag: str):
+    """``MODULE:FUNCTION`` or ``path.py:FUNCTION`` -> the function."""
+
+    import importlib
+    import importlib.util
+
+    module_name, _, function_name = spec.rpartition(":")
+    if not module_name or not function_name:
+        raise SystemExit(f"{flag} takes MODULE:FUNCTION or path.py:FUNCTION, got {spec!r}")
+    if module_name.endswith(".py"):
+        path = Path(module_name).expanduser().resolve()
+        if not path.is_file():
+            raise SystemExit(f"{flag}: {path} is not a file")
+        loader_spec = importlib.util.spec_from_file_location(f"freecam_plugin_{path.stem}", path)
+        module = importlib.util.module_from_spec(loader_spec)
+        sys.modules[loader_spec.name] = module
+        loader_spec.loader.exec_module(module)
+    else:
+        module = importlib.import_module(module_name)
+    function = getattr(module, function_name, None)
+    if function is None or not callable(function):
+        raise SystemExit(f"{flag}: {spec} names no callable")
+    return function
+
+
 def _load_kernel_plugin(kernel: str, spec: str, *, shadow: bool = False):
     """Compile the named Python function for the kernel's hook with Numba: a NativePlugin for the slot."""
 
@@ -631,6 +656,23 @@ def main(argv: list[str] | None = None) -> int:
         ),
     )
     parser.add_argument(
+        "--radiation-plugin",
+        default=None,
+        metavar="MODULE:FUNCTION",
+        help=(
+            "with --radiation-python: a Python kernel over the radiation process slot's table "
+            "(radiation_process.TABLE_INPUTS then TABLE_OUTPUTS, positional), compiled with Numba and "
+            "bound inside the image: the runner runs the driver whole and the plugin answers the "
+            "radiative branch in Fortran, no Python in the step.  MODULE is importable or a .py file."
+        ),
+    )
+    parser.add_argument(
+        "--shadow-radiation-plugin",
+        default=None,
+        metavar="MODULE:FUNCTION",
+        help="the same in shadow: the plugin runs for its cost at every radiative step, the driver's branch answers.",
+    )
+    parser.add_argument(
         "--observe-kernels",
         action="store_true",
         help=(
@@ -856,8 +898,17 @@ def main(argv: list[str] | None = None) -> int:
 
             scheme = Radiation()
             scheme.execution_policy = args.stage_execution
-            if args.radiation_capture is not None and args.radiation_model is not None:
-                raise SystemExit("--radiation-capture and --radiation-model: the branch is recorded or answered, not both")
+            slot_flags = [name for name, value in (("--radiation-capture", args.radiation_capture), ("--radiation-model", args.radiation_model),
+                                                    ("--radiation-plugin", args.radiation_plugin),
+                                                    ("--shadow-radiation-plugin", args.shadow_radiation_plugin)) if value is not None]
+            if len(slot_flags) > 1:
+                raise SystemExit(f"{' and '.join(slot_flags)}: the radiation branch has one slot")
+            if args.radiation_plugin is not None or args.shadow_radiation_plugin is not None:
+                from freecam.physics.radiation_process import compile_radiation_plugin
+
+                spec_text = args.radiation_plugin or args.shadow_radiation_plugin
+                scheme.process = compile_radiation_plugin(_import_function(spec_text, "--radiation-plugin"),
+                                                          shadow=args.radiation_plugin is None)
             if args.radiation_capture is not None:
                 from freecam.physics.radiation_process import RadiationProcessCapture
                 scheme.process = RadiationProcessCapture(every=args.radiation_capture_every)

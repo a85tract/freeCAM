@@ -41,6 +41,8 @@ from ..pi_cam.errors import PICAMConfigurationError
 from ..pi_cam.pbuf import PBuf, PBufField
 from .errors import PhysicsError
 from .image import module_view
+from .native_model import NativePlugin
+from .segments import SegmentedStage
 from .stage import (
     CORE_ENTRIES,
     HostEntries,
@@ -478,13 +480,56 @@ class Radiation(NativeStage):
         self._rstate_snapshot: dict[str, np.ndarray] | None = None
 
     def select_mode(self, native: Any = None) -> str:
-        # a process slot lives inside the transcription: only the walk reaches it
+        if isinstance(self.process, NativePlugin):
+            # a compiled plugin bound at the slot inside the image: the runner runs the
+            # driver whole and the plugin answers the radiative branch in Fortran
+            return "segmented"
         if self.process is not None:
+            # a Python capture, replay or model lives inside the transcription: only the walk reaches it
             return "legacy-python"
         return super().select_mode(native)
 
+    def prepare_segmented(self, native: Any) -> None:
+        super().prepare_segmented(native)
+        if isinstance(self.process, NativePlugin):
+            from .radiation_process import bind_radiation_process
+
+            key = self.process.key
+            if getattr(self, "_process_bound", None) != key:
+                bind_radiation_process(native.library, self.process.address, shadow=self.process.shadow)
+                self._process_bound = key
+                self._process_library = native.library
+
+    def _tend_segmented(self, native: Any) -> None:
+        if isinstance(self.process, NativePlugin):
+            # no pause armed: the runner runs the driver whole, the slot answers inside
+            self.prepare_segmented(native)
+            segmented = self._segmented
+            if segmented is None:
+                runner = native.segment_runner(self.STAGE)
+                if runner is None:
+                    raise PhysicsError(f"the image offers no segment runner for {self.STAGE!r}")
+                segmented = self._segmented = SegmentedStage(self.STAGE, runner)
+            segmented.run({name: None for name in self.kernels}, whole=True)
+            counters = segmented.counters
+            self.execution.native_segment_calls = counters.starts + counters.resumes
+            self.execution.segment_pauses = counters.pauses
+            return
+        super()._tend_segmented(native)
+
     def describe_process(self) -> dict[str, Any] | None:
-        return self.process.describe() if self.process is not None else None
+        if self.process is None:
+            return None
+        described = dict(self.process.describe())
+        if isinstance(self.process, NativePlugin):
+            from .radiation_process import read_radiation_process_counts
+
+            described["kind"] = "native-plugin"
+            library = getattr(self, "_process_library", None)
+            counts = read_radiation_process_counts(library) if library is not None else None
+            if counts:
+                described.update(counts)
+        return described
 
     def _process_inputs(self, st: StageRuntime, lchnk: int, ncol: int, index: int, dt: float, nstep: int,
                         calday: float, dosw: bool, dolw: bool, coszrs, S, cld, cldfsnow, cam_in) -> dict[str, Any]:

@@ -51,6 +51,25 @@ RSTATE_INPUTS = (
 #: (energy units, before the driver scales them for storage) and the surface and top fluxes
 OUTPUTS = ("qrs", "qrl", "fsns", "fsnt", "flns", "flnt", "fsds", "sols", "soll", "solsd", "solld", "flwds")
 
+#: The table the Fortran slot (pycam_rad_process, asked by the radiation runner at the top of the
+#: radiative branch) hands a compiled plugin: name and rank, in order.  A test pins this to the
+#: module's own list.  Scalars travel as one-element doubles; the constituent array is rank 3, as
+#: are the modal aerosol fields (columns, levels, modes); the RRTMG state's profiles have the
+#: RRTMG level count.  A rank-0 input reaches the kernel as a float.
+TABLE_INPUTS = (
+    ("nstep", 0), ("lchnk", 0), ("ncol", 0), ("calday", 0), ("dosw", 0), ("dolw", 0),
+    ("coszrs", 1), ("clat", 1), ("clon", 1),
+    ("state_t", 2), ("state_pmid", 2), ("state_pint", 2), ("state_pdel", 2), ("state_lnpint", 2), ("state_lnpmid", 2),
+    ("state_q", 3),
+    ("cld", 2), ("cldfsnow", 2), ("dei", 2), ("mu", 2), ("lambdac", 2), ("iciwp", 2), ("iclwp", 2), ("des", 2), ("icswp", 2),
+    ("dgnumwet", 3), ("qaerwat", 3),
+    ("cam_in_lwup", 1), ("cam_in_asdir", 1), ("cam_in_asdif", 1), ("cam_in_aldir", 1), ("cam_in_aldif", 1),
+    ("rstate_h2ovmr", 2), ("rstate_o3vmr", 2), ("rstate_co2vmr", 2), ("rstate_ch4vmr", 2), ("rstate_o2vmr", 2),
+    ("rstate_n2ovmr", 2), ("rstate_cfc11vmr", 2), ("rstate_cfc12vmr", 2), ("rstate_cfc22vmr", 2), ("rstate_ccl4vmr", 2),
+    ("rstate_pmidmb", 2), ("rstate_pintmb", 2), ("rstate_tlay", 2), ("rstate_tlev", 2),
+)
+TABLE_OUTPUTS = tuple((name, 2 if name in ("qrs", "qrl") else 1) for name in OUTPUTS)
+
 
 class RadiationProcessCapture:
     """Record the radiation branch's inputs and outputs on every radiative step of every chunk."""
@@ -242,3 +261,61 @@ def load_process_model(spec: str, *, rank: int):
 
 __all__ = ["ARRAY_INPUTS", "OUTPUTS", "RSTATE_INPUTS", "SCALAR_INPUTS", "RadiationProcessCapture",
            "RadiationProcessModel", "RadiationReplay", "load_process_model"]
+
+
+# -- the slot inside the image -----------------------------------------------------------------
+
+def compile_radiation_plugin(function: Callable[..., Any], *, shadow: bool = False):
+    """Compile a kernel over the Fortran slot's table (TABLE_INPUTS then TABLE_OUTPUTS, positional)
+    into a plugin the image calls at the top of the radiative branch: no Python in the step.
+
+    The kernel takes the 46 inputs (scalars as floats, arrays ``[column, ...]`` Fortran-ordered) and
+    the 12 output arrays, writing the outputs in place.
+    """
+
+    from .numba_kernel import compile_table_kernel
+
+    return compile_table_kernel(TABLE_INPUTS, TABLE_OUTPUTS, function, kernel="radiation_process", shadow=shadow)
+
+
+def bind_radiation_process(library: Any, address: int, *, shadow: bool = False) -> None:
+    """Bind a compiled plugin at the image's radiation process slot (``pycam_rad_process_bind_v1``)."""
+
+    import ctypes
+
+    entry = getattr(library, "pycam_rad_process_bind_v1", None)
+    if entry is None:
+        raise PhysicsError("this image has no radiation process slot (pycam_rad_process_bind_v1): built before it")
+    entry.restype = ctypes.c_int32
+    entry.argtypes = [ctypes.c_void_p, ctypes.c_int32]
+    status = int(entry(ctypes.c_void_p(int(address)), 1 if shadow else 0))
+    if status != 0:
+        raise PhysicsError(f"the radiation process slot refused the plugin (status {status})")
+
+
+def unbind_radiation_process(library: Any) -> None:
+    entry = getattr(library, "pycam_rad_process_unbind_v1", None)
+    if entry is not None:
+        entry.restype = __import__("ctypes").c_int32
+        entry.argtypes = []
+        entry()
+
+
+def read_radiation_process_counts(library: Any) -> dict[str, Any] | None:
+    """This rank's plugin calls at the slot, the wall seconds inside them, and the first call alone."""
+
+    import ctypes
+
+    entry = getattr(library, "pycam_rad_process_counts_v1", None)
+    if entry is None:
+        return None
+    entry.restype = ctypes.c_int32
+    entry.argtypes = [ctypes.POINTER(ctypes.c_int64), ctypes.POINTER(ctypes.c_double), ctypes.POINTER(ctypes.c_double)]
+    calls, seconds, first = ctypes.c_int64(0), ctypes.c_double(0.0), ctypes.c_double(0.0)
+    if entry(ctypes.byref(calls), ctypes.byref(seconds), ctypes.byref(first)) != 0:
+        return None
+    return {"calls": int(calls.value), "seconds": float(seconds.value), "first_call_seconds": float(first.value)}
+
+
+__all__ += ["TABLE_INPUTS", "TABLE_OUTPUTS", "compile_radiation_plugin", "bind_radiation_process",
+            "unbind_radiation_process", "read_radiation_process_counts"]

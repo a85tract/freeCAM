@@ -382,6 +382,9 @@ class Node:
     pause: Pause | None = None
     call: UnitCall | None = None
     name: str = ""                                        # piece name
+    #: if: a logical expression the runner asks when the condition holds; .true. means a bound
+    #: plugin answered the whole then-branch, and the runner continues after the if instead
+    slot: str = ""
 
 
 @dataclass
@@ -490,10 +493,13 @@ def _parse_body(items: list, unit: Unit) -> list[Node]:
             unit.unit_calls.append(c)
             nodes.append(Node("unit", first=first, last=last, call=c))
         elif "if" in item:
+            if item.get("slot") and item.get("elif"):
+                raise SystemExit(f"{unit.key}: line {item['if']}: a process slot goes on a plain if, not one with elif")
             nodes.append(Node("if", line=int(item["if"]),
                               children=_parse_body(item.get("then", []), unit),
                               orelse=_parse_body(item.get("else", []), unit),
-                              elifs=[(int(e["line"]), _parse_body(e.get("then", []), unit)) for e in item.get("elif") or []]))
+                              elifs=[(int(e["line"]), _parse_body(e.get("then", []), unit)) for e in item.get("elif") or []],
+                              slot=str(item.get("slot") or "")))
         elif "do" in item:
             nodes.append(Node("do", line=int(item["do"]), children=_parse_body(item.get("body", []), unit)))
         elif "select" in item:
@@ -1947,7 +1953,13 @@ def _node_pc(spec: Spec, unit: Unit, node: Node, states: list[State], after: str
             raise SystemExit(f"{unit.key}: line {node.line} is not `if (...) then`: {line}")
         then_pc = _flatten(spec, unit, node.children, states, after, counters, targets)
         else_pc = _flatten(spec, unit, node.orelse, states, after, counters, targets)
-        chain = [f"if ({condition.group(1)}) then\n          pc = {then_pc}"]
+        if node.slot:
+            # a process slot: when the condition holds, a bound plugin may answer the whole
+            # then-branch (the original's statements are skipped) and the runner continues after it
+            chain = [f"if ({condition.group(1)}) then\n          if ({node.slot}) then\n            pc = {after}\n"
+                     f"          else\n            pc = {then_pc}\n          end if"]
+        else:
+            chain = [f"if ({condition.group(1)}) then\n          pc = {then_pc}"]
         for line, body in node.elifs:
             text = strip_comment(unit.lines[line - 1]).strip()
             elif_condition = re.match(r"^else\s*if\s*\((.*)\)\s*then$", text, re.I)
@@ -2464,6 +2476,8 @@ def _skeleton_names(unit: Unit) -> set[str]:
             names |= identifiers(unit.lines[node.line - 1])
             for line, _ in node.elifs:
                 names |= identifiers(unit.lines[line - 1])
+            if node.slot:
+                names |= identifiers(node.slot)
     names -= KEYWORDS
     known = {n for n in names if n in unit.decls or n in unit.dummy_names or n in unit.carries
              or n in unit.records or n in unit.getopts}

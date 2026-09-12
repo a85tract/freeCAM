@@ -10,6 +10,8 @@ stage: cam_run1.radiation
 runner_uses:
   - "use pycam_rad_handles, only: rad_ptend"
   - "use rad_constituents, only: N_DIAG"
+  # the radiation process slot: a compiled plugin answering the whole radiative branch
+  - "use pycam_rad_process, only: pycam_rad_process_answer"
 refuse:
   - {when: ".not. allocated(rad_ptend)", message: "the radiation handles are not bound (pycam_rad_bind_hosts_v1 first)"}
   # spectralflux is private to the module and its getter cannot return it;
@@ -60,7 +62,9 @@ units:
       - "use radiation, only: radiation_do, cosp_cnt"
     body:
       - piece: [815, 874]
+      # the radiative branch; a plugin bound at the process slot (pycam_rad_process) answers it whole
       - if: 875
+        slot: "pycam_rad_process_answer(state, pbuf, cam_in, cam_out, coszrs, dosw, dolw, qrs, qrl, fsns, fsnt, flns, flnt, fsds)"
         then:
           - piece: [876, 1015]
           - if: 1016
