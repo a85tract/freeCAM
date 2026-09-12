@@ -30,6 +30,8 @@
 # lines, isotopic mass errors and QNEG3 resets -- into <summary>.health.json.
 # PYCAM_DISABLE_ACTIONS (qualified action names) is the inertness gate: those
 # actions switched off, the answer must still be the oracle's.
+# PYCAM_RAD_CAPTURE=dir records radiation_tend's computing branch (with PYCAM_RADIATION_PYTHON=1);
+# PYCAM_RAD_MODEL=replay:dir or file.py:function answers it in the driver's place.
 # PYCAM_RADIATION_PYTHON=1 installs the split Radiation class between its two
 # halves (--split-radiation --radiation-python); with the RRTMG cores in
 # PYCAM_ORIGINAL_KERNELS they are answered at the radt runner's pauses.
@@ -77,6 +79,14 @@ if [ -n "${PYCAM_PYTHON_STAGES:-}" ]; then
 fi
 if [ -n "${PYCAM_RADIATION_PYTHON:-}" ]; then
   stage_flags+=(--split-radiation --radiation-python)
+  if [ -n "${PYCAM_RAD_CAPTURE:-}" ]; then
+    # the radiation process slot records the computing branch of every radiative step (bit-for-bit)
+    stage_flags+=(--radiation-capture "${PYCAM_RAD_CAPTURE}")
+  fi
+  if [ -n "${PYCAM_RAD_MODEL:-}" ]; then
+    # replay:DIR or file.py:function answers the branch in the driver's place
+    stage_flags+=(--radiation-model "${PYCAM_RAD_MODEL}")
+  fi
 fi
 if [ -n "${PYCAM_CLOUD_PYTHON:-}" ]; then
   # the cloud macro/microphysics class (stage 7) over its own runner

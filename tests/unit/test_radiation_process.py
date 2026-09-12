@@ -50,6 +50,16 @@ def test_a_capture_saves_every_call_and_a_replay_answers_the_same_step_and_chunk
     with pytest.raises(PhysicsError, match="no radiation capture for rank 3"):
         RadiationReplay(tmp_path, rank=3)
     assert replay.calls == 1
+    # installing a stage cloudpickles it and compares the payload across ranks (7417389): a replay pickles
+    # without its rank's table and finds it again in this process
+    import cloudpickle
+
+    other = RadiationProcessCapture(); other.record(*_call(2, 5)); other.save(tmp_path / "b" / "radiation_tend.rank-0008.npz")
+    replay8 = RadiationReplay(tmp_path / "b", rank=8)          # one rank per process: one table per directory
+    payload7 = cloudpickle.dumps(RadiationReplay(tmp_path, rank=7))
+    assert payload7 == cloudpickle.dumps(RadiationReplay(tmp_path, rank=7)) and len(payload7) < 2000
+    revived = cloudpickle.loads(cloudpickle.dumps(replay8))
+    assert np.array_equal(revived({"nstep": 2, "lchnk": 5})["qrs"], _call(2, 5)[1]["qrs"])
 
 
 def test_a_process_model_wraps_a_function_and_insists_on_every_output() -> None:

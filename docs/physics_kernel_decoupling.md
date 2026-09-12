@@ -588,6 +588,49 @@ compared across ranks, so the pickle may carry no address either -- an
 identity that is the same everywhere, resolved to the code in the process
 that compiled it.  Both are kept as failure records.
 
+### The radiation process as one replaceable unit
+
+Kernel by kernel, a network cannot make this model faster on these nodes:
+the cores are cheap and a network's price is its bytes.  What remains open
+for a learned replacement is a *process* that is expensive as a whole, a
+column function with a small output set, and free of the water isotopes --
+radiation, the classic emulator target and the most expensive physics
+process here (7.5 percent of a step, called every other step).  The
+`Radiation` stage, which transcribes `radiation_tend` statement for
+statement and was gated bit-for-bit that way, now offers the computing
+branch of a radiative step -- the optics, the two RRTMG cores and their
+diagnostics -- as one *process slot* (`freecam.physics.radiation_process`).
+
+The contract is the driver's, not a model's.  Before the branch the driver
+has in hand the state (temperature, pressures, the constituent array), the
+buffer's cloud fraction and the optics' inputs (`DEI`, `MU`, `LAMBDAC`,
+`ICIWP`, `ICLWP`, `DES`, `ICSWP`, `DGNUMWET`, `QAERWAT`), the surface
+albedos and upward longwave from `cam_in`, the cosine of the zenith angle,
+and the RRTMG state's gas profiles once it is built; the branch leaves the
+two heating rates, in the driver's energy units before it scales them for
+storage, and the ten surface and top fluxes the coupler and the energy check
+read (`fsns`, `fsnt`, `flns`, `flnt`, `fsds`, `sols`, `soll`, `solsd`,
+`solld`, `flwds`).  Everything around the branch stays the driver's: the
+quiet-step conversions, `radheat_tend` building the tendency and the net
+flux, the copy into `netsw`.  Three things can stand in the slot:
+
+- `RadiationProcessCapture` records inputs and outputs on every radiative
+  step of every chunk and writes them per rank (`--radiation-capture DIR`):
+  the dataset a process-level emulator is trained on, taken from a run that
+  stays bit-for-bit.
+- `RadiationReplay` answers the branch with a capture's outputs for the same
+  step and chunk (`--radiation-model replay:DIR`): the gate of the write-back
+  path, which must itself be bit-for-bit.
+- `RadiationProcessModel` answers it with a function, the inputs by name in
+  and the outputs by name out (`--radiation-model path.py:function`) -- a
+  trained network's forward, compiled with Numba as the kernels above are,
+  called once per chunk on radiative steps from the Python that already
+  owns the step between the stage's two halves.
+
+What a model in the slot does not produce are the driver's history
+diagnostics of that branch -- the clear-sky fluxes, the aerosol-forcing
+diagnostic calls -- which the record must say.
+
 ## Where it stands
 
 | Kernel | Owner | Contract | Runner pause | In-model gate | Loop |

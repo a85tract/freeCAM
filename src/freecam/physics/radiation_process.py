@@ -95,6 +95,12 @@ class RadiationProcessCapture:
         return f"RadiationProcessCapture(calls={self.calls})"
 
 
+#: the replay tables this process loaded, by capture directory: a stage is cloudpickled into each
+#: rank's process registry at install and the payload must hash the same on every rank (7417389), so
+#: the pickle of a replay carries the directory alone and the rank's own table is found again here
+_REPLAY_TABLES: dict[str, tuple[Path, dict[tuple[int, int], dict[str, np.ndarray]]]] = {}
+
+
 class RadiationReplay:
     """Answer the radiation branch with the outputs a capture recorded for the same step and chunk."""
 
@@ -102,17 +108,37 @@ class RadiationReplay:
     answers = True
 
     def __init__(self, directory: str | Path, rank: int) -> None:
-        self.path = Path(directory) / f"radiation_tend.rank-{int(rank):04d}.npz"
-        if not self.path.is_file():
-            raise PhysicsError(f"no radiation capture for rank {rank} at {self.path}")
-        archive = np.load(self.path, allow_pickle=True)
+        self.directory = str(directory)
+        path = Path(directory) / f"radiation_tend.rank-{int(rank):04d}.npz"
+        if not path.is_file():
+            raise PhysicsError(f"no radiation capture for rank {rank} at {path}")
+        archive = np.load(path, allow_pickle=True)
         meta = json.loads(str(archive["meta"]))
-        self._by_call: dict[tuple[int, int], dict[str, np.ndarray]] = {}
+        table: dict[tuple[int, int], dict[str, np.ndarray]] = {}
         for index, record in enumerate(meta):
             key = (int(record["nstep"]), int(record["lchnk"]))
-            self._by_call[key] = {name: np.asarray(archive[f"out/{index}/{name}"]) for name in OUTPUTS
-                                  if f"out/{index}/{name}" in archive.files}
+            table[key] = {name: np.asarray(archive[f"out/{index}/{name}"]) for name in OUTPUTS
+                          if f"out/{index}/{name}" in archive.files}
+        _REPLAY_TABLES[self.directory] = (path, table)
         self.calls = 0
+
+    @property
+    def path(self) -> Path:
+        return _REPLAY_TABLES[self.directory][0]
+
+    @property
+    def _by_call(self) -> dict[tuple[int, int], dict[str, np.ndarray]]:
+        return _REPLAY_TABLES[self.directory][1]
+
+    def __getstate__(self) -> dict[str, Any]:
+        return {"directory": self.directory, "calls": self.calls}
+
+    def __setstate__(self, state: dict[str, Any]) -> None:
+        self.__dict__.update(state)
+        if self.directory not in _REPLAY_TABLES:
+            raise PhysicsError(
+                f"a radiation replay of {self.directory} cannot cross processes by pickle; its table lives in "
+                f"the process that loaded it")
 
     def __call__(self, inputs: dict[str, Any]) -> dict[str, np.ndarray]:
         key = (int(inputs["nstep"]), int(inputs["lchnk"]))

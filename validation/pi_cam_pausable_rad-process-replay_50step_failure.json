@@ -1,0 +1,25 @@
+{
+ "schema_version": 1,
+ "what": "The radiation process slot's replay gate: radiation_tend's computing branch answered with the outputs of the bit-for-bit capture 7417373 (p20 image, the Radiation transcription on the walk).",
+ "pbs_job_id": "7417389.desched1",
+ "run_tag": "rad-process-replay",
+ "job": "validation/jobs/pi_cam_pausable_50step.pbs",
+ "python_stages": [
+  "rad_tend"
+ ],
+ "radiation_process": {
+  "kind": "replay",
+  "capture_job": "7417373.desched1"
+ },
+ "native_image": "build/pi_cam_promoted_p20",
+ "ranks": 512,
+ "steps_completed": 0,
+ "resources": {
+  "queue": "develop",
+  "placement": "4 half nodes, 128 ranks each"
+ },
+ "outcome": "every rank raised at the stage's installation, before the first step: the installed process's payload hashed differently across the ranks (PythonProcessContractError); no summary",
+ "diagnosis": "The RadiationReplay in the process slot carried its rank's table of recorded outputs and the rank's file path, so the stage pickled differently on every rank, and the install compares the payload hash across ranks.  The replay now pickles as the capture directory alone; the rank's table is found again in the process that loaded it (the same fault, and fix, as the compiled plugins' 7402200).",
+ "disposition": "Resubmitted as rad-process-replay2 against the same capture; the job's comparison and health files of the aborted run are kept with this record and the tag is not reused.",
+ "bfb_record_note": "pi_cam_pausable_rad-process-replay_vs_oracle_50step_bfb.json and the .health.json were written by the job's comparison of a run that never started stepping; kept with this record."
+}
