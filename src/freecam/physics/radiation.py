@@ -517,12 +517,17 @@ class Radiation(NativeStage):
         self._rstate_snapshot = {name: np.array(st.handles.view(lchnk, VIEW[name]), copy=True)
                                  for name in VIEW if name.startswith("rstate_")}
 
-    def _process_model_step(self, st: StageRuntime, lchnk: int, ncol: int, inputs: dict[str, Any],
-                            qrs, qrl, cam_out, flux) -> None:
+    def _process_model_step(self, st: StageRuntime, lchnk: int, ncol: int, dosw: bool, dolw: bool,
+                            inputs: dict[str, Any], qrs, qrl, cam_out, flux) -> None:
         """The computing branch answered by the process slot: the RRTMG state for the gases, the
-        model, the outputs written where the driver writes them."""
+        model, the outputs written where the driver writes them, and the history fields of what
+        the model produced, as the driver writes them (radiation.F90:1061-1090, 1170-1187).  The
+        branch's other diagnostics -- the clear-sky and top-of-atmosphere fluxes, the aerosol
+        optical depths and burdens -- have no source when a model answers and are not written."""
 
         H = st.handles
+        L = st.local
+        pcols = st.pcols
         log = self.calls.append
         H.rstate_create(lchnk); log("rrtmg_state_create")
         H.rstate_update(lchnk, 0); log("rrtmg_state_update")
@@ -537,6 +542,20 @@ class Radiation(NativeStage):
             flux[name][:n] = np.asarray(answer[name])[:n]
         for name in ("sols", "soll", "solsd", "solld", "flwds"):
             cam_out[name][:n] = np.asarray(answer[name])[:n]
+        if dosw:                                                     # 1061-1090, what the model produced
+            st.kernel_on_chunk("rad_scale_by_cpair", {"ncol": ncol, "field": qrs, "cpair": CPAIR},
+                               outputs={"ftem": None}, ncol=ncol)
+            H.outfld("QRS     ", L["ftem"], pcols, lchnk)
+            for name, value in (("FSDS    ", flux["fsds"]), ("FSNT    ", flux["fsnt"]), ("FSNS    ", flux["fsns"]),
+                                ("SOLS    ", cam_out["sols"]), ("SOLL    ", cam_out["soll"]),
+                                ("SOLSD   ", cam_out["solsd"]), ("SOLLD   ", cam_out["solld"])):
+                H.outfld(name, value, pcols, lchnk)
+            log("outfld*")
+        if dolw:                                                     # 1170-1187
+            H.outfld_scaled(lchnk, ncol, "QRL     ", qrl, CPAIR); log("outfld_scaled")
+            for name, value in (("FLNT    ", flux["flnt"]), ("FLNS    ", flux["flns"]), ("FLDS    ", cam_out["flwds"])):
+                H.outfld(name, value, pcols, lchnk)
+            log("outfld*")
         H.rstate_destroy(lchnk); log("rrtmg_state_destroy")
 
     # -- the split stage over the image's runner ----------------------------------
@@ -783,7 +802,7 @@ class Radiation(NativeStage):
                                            coszrs, S, cld, cldfsnow, cam_in)
                       if process is not None else None)
             if process is not None and process.answers:
-                self._process_model_step(st, lchnk, ncol, inputs, qrs, qrl, cam_out, flux)
+                self._process_model_step(st, lchnk, ncol, dosw, dolw, inputs, qrs, qrl, cam_out, flux)
             else:
                 self._rstate_snapshot = None
                 self._radiative_step(st, lchnk, ncol, dt, dosw, dolw, nday, nnite,

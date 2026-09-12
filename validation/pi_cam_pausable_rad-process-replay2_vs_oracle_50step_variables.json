@@ -1,0 +1,113 @@
+{
+ "schema_version": 1,
+ "reference": "/glade/derecho/scratch/ruitong/pyCAM/PI-cam/f.e13.F1850C5.ne16_g16.icesm131_ihesp.PI-cam-oracle.50step/run",
+ "candidate": "/glade/derecho/scratch/ruitong/pyCAM/PI-cam/pausable-rad-process-replay2-7417422.desched1/run",
+ "state_files_identical": true,
+ "files": {
+  "SEMapping.nc": {
+   "identical": true,
+   "differing_variables": [],
+   "timestamp_variables": [],
+   "missing_variables": []
+  },
+  "f.e13.F1850C5.ne16_g16.icesm131_ihesp.PI-cam-oracle.50step.cam.h0.0001-01-01-00000.nc": {
+   "identical": true,
+   "differing_variables": [],
+   "timestamp_variables": [
+    "date_written",
+    "time_written"
+   ],
+   "missing_variables": []
+  },
+  "f.e13.F1850C5.ne16_g16.icesm131_ihesp.PI-cam-oracle.50step.cam.r.0001-01-02-03600.nc": {
+   "identical": true,
+   "differing_variables": [],
+   "timestamp_variables": [],
+   "missing_variables": []
+  },
+  "f.e13.F1850C5.ne16_g16.icesm131_ihesp.PI-cam-oracle.50step.cam.rh0.0001-01-02-03600.nc": {
+   "identical": false,
+   "differing_variables": [
+    "AEROD_v_nacs",
+    "AEROD_v",
+    "AODDUST1_nacs",
+    "AODDUST1",
+    "AODDUST3_nacs",
+    "AODDUST3",
+    "AODVIS_nacs",
+    "AODVIS",
+    "BURDEN1_nacs",
+    "BURDEN1",
+    "BURDEN2_nacs",
+    "BURDEN2",
+    "BURDEN3_nacs",
+    "BURDEN3",
+    "BURDENBC_nacs",
+    "BURDENBC",
+    "BURDENDUST_nacs",
+    "BURDENDUST",
+    "BURDENPOM_nacs",
+    "BURDENPOM",
+    "BURDENSEASALT_nacs",
+    "BURDENSEASALT",
+    "BURDENSO4_nacs",
+    "BURDENSO4",
+    "BURDENSOA_nacs",
+    "BURDENSOA",
+    "FLDS_nacs",
+    "FLDS",
+    "FLNS_nacs",
+    "FLNS",
+    "FLNSC_nacs",
+    "FLNSC",
+    "FLNT_nacs",
+    "FLNT",
+    "FLNTC_nacs",
+    "FLNTC",
+    "FLUT_nacs",
+    "FLUT",
+    "FLUTC_nacs",
+    "FLUTC",
+    "FSDS_nacs",
+    "FSDS",
+    "FSDSC_nacs",
+    "FSDSC",
+    "FSNS_nacs",
+    "FSNS",
+    "FSNSC_nacs",
+    "FSNSC",
+    "FSNT_nacs",
+    "FSNT",
+    "FSNTC_nacs",
+    "FSNTC",
+    "FSNTOA_nacs",
+    "FSNTOA",
+    "FSNTOAC_nacs",
+    "FSNTOAC",
+    "FSUTOA_nacs",
+    "FSUTOA",
+    "LWCF_nacs",
+    "LWCF",
+    "QRL_nacs",
+    "QRL",
+    "QRS_nacs",
+    "QRS",
+    "SOLIN_nacs",
+    "SOLIN",
+    "SWCF_nacs",
+    "SWCF"
+   ],
+   "timestamp_variables": [
+    "date_written",
+    "time_written"
+   ],
+   "missing_variables": []
+  },
+  "f.e13.F1850C5.ne16_g16.icesm131_ihesp.PI-cam-oracle.50step.cam.rs.0001-01-02-03600.nc": {
+   "identical": true,
+   "differing_variables": [],
+   "timestamp_variables": [],
+   "missing_variables": []
+  }
+ }
+}

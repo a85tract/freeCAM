@@ -1,0 +1,24 @@
+{
+  "bfb": false,
+  "reference_files": 4,
+  "candidate_files": 4,
+  "compared_files": 4,
+  "missing_in_candidate": [],
+  "extra_in_candidate": [],
+  "first_difference": {
+    "file": "cam.rh0.0001-01-02-03600.nc",
+    "kind": "value",
+    "variable": "AEROD_v",
+    "index": [
+      0
+    ],
+    "reference": {
+      "value": 1.747565148473941,
+      "bits": "0x3ffbf606df85330a"
+    },
+    "candidate": {
+      "value": 0.0,
+      "bits": "0x0000000000000000"
+    }
+  }
+}
