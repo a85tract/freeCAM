@@ -647,6 +647,40 @@ never stepped, its replay pickled per rank -- both kept as records.  The
 model state, then, is exact through the slot; what a model owes the history
 is stated by that list.
 
+The first emulator went into the slot the same afternoon, to prove the
+whole loop rather than the model: a per-column network over 1,029 features
+-- the 30-level profiles of temperature, pressure, water vapour, cloud
+fraction, in-cloud water and ice paths, the optics' effective sizes and
+snow, the fifteen modal aerosol mixing ratios with their wet diameters and
+aerosol water, the 31-level ozone, and the zenith angle, albedos, upward
+longwave and latitude -- to the 70 targets, trained on the day-1 capture's
+448 ranks (303,700 columns) and validated on the other 64
+(`examples/plugins/numba_kernels/train_rad.py`).  Positive heavy-tailed
+inputs enter as logarithms; shortwave targets are learned on lit columns and
+set to zero in the dark, where the physics has them exactly zero.  Training
+is cheap: 70 s for forty epochs of a 256-wide network on one node, 7 minutes
+for two hundred of a 512-wide one.
+
+| network, data | `qrs` R² | `qrl` | `fsnt` | `flnt` | `flwds` | `fsnt` RMSE, W/m² |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| 256 wide, 40 epochs, one day | 0.929 | 0.814 | 0.976 | 0.973 | 0.988 | 53 |
+| 256 wide, 200 epochs | 0.943 | 0.832 | 0.982 | 0.978 | 0.990 | 46 |
+| 512 wide, 200 epochs | 0.947 | 0.834 | 0.984 | 0.981 | 0.991 | 44 |
+
+The longwave heating near the surface is the weak point (RMSE up to 1.1
+K/day against 0.1-0.5 aloft); the shortwave error is the clouds' (39 W/m²
+RMSE in the top-of-atmosphere net flux, a +3 W/m² bias).  Two hundred epochs
+gain a little over forty and the training loss falls far below the
+validation loss: one day of one January is the limit, and a month's capture,
+every eighth radiative step, is the next dataset.  In the model
+(`examples/plugins/numba_kernels/rad_mlp.py`: the features built in Python,
+the forward compiled by Numba with the weights as arguments, 0.6 ms a chunk)
+the first network answered every radiative step of fifty steps (7417501): no
+fault, every health count zero, and a state a day later 0.11 K from the
+oracle's in temperature, 0.08 g/kg in water vapour, 0.07 hPa in surface
+pressure.  Not bit-for-bit by design; the record's variable comparison lists
+what moved.
+
 ## Where it stands
 
 | Kernel | Owner | Contract | Runner pause | In-model gate | Loop |
