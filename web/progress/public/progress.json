@@ -2648,7 +2648,7 @@
   "use_gw_oro": true,
   "use_subcol_microp": false
  },
- "content_hash": "970e316dbaa8f2955c4c8a3691d7ab61acc987f3fbf21ec3128f8f39f785216d",
+ "content_hash": "ee5c2cdef1a0f9f9d0810100c97fb73d63b5216bdd210a0408771acaf2991beb",
  "evidence": {
   "pi_cam_cldfrc_fice_frame_replay.json": {
    "bfb": true,
@@ -5038,14 +5038,14 @@
  "inputs": {
   "native/pi_cam/hooks.yaml": "13e21d599cdc066821c151e452973357a623d00c0997b7c6cb131725c9f55ba8",
   "native/pi_cam/kernel_classifications.yaml": "d6be2103c9bd0c86a0c8461a067d3b43eac6aa370e992fde9bf3096e55c8c5f4",
-  "native/pi_cam/kernel_work_items.yaml": "723e49bccbf604660dac2d75b2f11c76bb7ba3e8e77cedb7a4ca1a8c77fadb33",
+  "native/pi_cam/kernel_work_items.yaml": "4ea7162bb86d44165c5addea48be5fddc43b486a137e046a174c1501d824bc99",
   "native/pi_cam/segment_runners.yaml": "002ab5f622cb5c10c0d7fc45eead3ef708de6524602eda635b4c064649663acd",
   "validation/physics_kernel_decoupling.json": "2a9ff0a6804a4e0d54b36b26c34f44a36e5eb6234ba53fe32d7d944973680462",
   "validation/pi_cam_kernel_api_closure.json": "96025214b3e4c41f6ba89c266da5dd27c51c42c81c31e1a0ac6f7b2e9cfa260a",
   "validation/pi_cam_kernel_api_redirectable_calls.json": "9ac016f0d242ceef054aa8a80ef074aa53b08c1f0f3042a81e76da4c75603273",
   "validation/pi_cam_kernel_runtime_coverage_1month.json": "48f77d6ec78b4026806d4ab6fb9517ef31c1d526481b4ad68e55f77af0d303bd",
   "validation/pi_cam_kernel_runtime_coverage_50step.json": "222961fc5274dbaaf71c40f6c131a683536b5a85ef14cd047a2fd196d8ca38c5",
-  "web/public/catalog.json": "aff3693dabf0cb2a2bd2df4592f32177f3a9dc8112d7e5b7e52a5be986f9890e"
+  "web/public/catalog.json": "746c78c1513dbec1b940a103015042a16ed517693bf7a4269265a3845eb39c2b"
  },
  "kernels": {
   "aer_rad_props::aer_rad_props_lw": {
@@ -22672,7 +22672,7 @@
     "blocker": null,
     "branch": "physics-kernel-api-closure",
     "next_gate": "none for speed -- the core costs 1.4 ms a call (2.8 ms a step, 1.8 percent of the step loop) and every network of a useful size costs more inside the image; a surrogate here is a science question, not a performance one",
-    "note": "First capture attempt (7358831) aborted on manifest/image version skew: the p10 image exports no pycam_stage7_original_v1 (validation/pi_cam_pausable_micro-capture_50step_failure.json); the p11 capture (7359460) is bit-for-bit and holds all 51,200 calls. Hooked on 2026-09-10 as a Fortran-bound hook (the callee's own kinds, packed (mgncol, nlev) arrays sized by its pcols/pver dummies, bindable to a model, not pausable); the first build sized the arrays by the contract and corrupted memory (7394255, failure record). Images p14/p15/p18/p19 with nothing bound are bit-for-bit (7393462, 7394422, 7400407, 7401310); a null model bound at the hook answered all 51,200 calls inside the image (7394423, 7399102). Shadow runs put the mechanism at 0.56 ms a call on p18 (7400408) once the stage stopped re-reading hooks.yaml every step and the bind took the warm-up out of the step loop. On 2026-09-11 four per-column MLP surrogates (64 to 512 wide, 0.9 to 7.6 MB of weights; qctend R2 0.73 to 0.89, tlat 0.52 to 0.72 on 64 held-out ranks) were trained on the p11 capture and exported as TorchScript. In shadow on p19, which times the original on the same calls (7401282, 7401281, 7401311, 7400992 on p18; all bit-for-bit): the core costs 1.33 to 1.40 ms a call, the networks 1.47, 2.25, 3.71 and 6.71 ms -- their weights streamed from memory by 128 ranks at once (one-node bench 7401108: the 7.6 MB network 1.47 ms alone, 6.38 ms with 128 processes). Live (7400993, 7401059, 7401232; not bit-for-bit, 300,000 lines of water-tracer and QNEG3 messages) the step loop is 9.02, 8.67 and 8.55 s against 7.64 s with nothing bound. Not a speed target on these nodes.",
+    "note": "First capture attempt (7358831) aborted on manifest/image version skew: the p10 image exports no pycam_stage7_original_v1 (validation/pi_cam_pausable_micro-capture_50step_failure.json); the p11 capture (7359460) is bit-for-bit and holds all 51,200 calls. Hooked on 2026-09-10 as a Fortran-bound hook (the callee's own kinds, packed (mgncol, nlev) arrays sized by its pcols/pver dummies, bindable to a model, not pausable); the first build sized the arrays by the contract and corrupted memory (7394255, failure record). Images p14/p15/p18/p19 with nothing bound are bit-for-bit (7393462, 7394422, 7400407, 7401310); a null model bound at the hook answered all 51,200 calls inside the image (7394423, 7399102). Shadow runs put the mechanism at 0.56 ms a call on p18 (7400408) once the stage stopped re-reading hooks.yaml every step and the bind took the warm-up out of the step loop. On 2026-09-11 four per-column MLP surrogates (64 to 512 wide, 0.9 to 7.6 MB of weights; qctend R2 0.73 to 0.89, tlat 0.52 to 0.72 on 64 held-out ranks) were trained on the p11 capture and exported as TorchScript. In shadow on p19, which times the original on the same calls (7401282, 7401281, 7401311, 7400992 on p18; all bit-for-bit): the core costs 1.33 to 1.40 ms a call, the networks 1.47, 2.25, 3.71 and 6.71 ms -- their weights streamed from memory by 128 ranks at once (one-node bench 7401108: the 7.6 MB network 1.47 ms alone, 6.38 ms with 128 processes). Live (7400993, 7401059, 7401232; not bit-for-bit, 300,000 lines of water-tracer and QNEG3 messages) the step loop is 9.02, 8.67 and 8.55 s against 7.64 s with nothing bound. The same networks' forward written as a Numba plugin (no libtorch; examples/plugins/numba_kernels/micro_mlp.py), in shadow on p20 with the core timed (7404600, 7404599, 7404601; bit-for-bit): 0.87, 1.45 and 2.92 ms a call against the core's 1.43 to 1.47 -- the 64-wide network cheaper than the core, the 128-wide at parity, 0.6 to 0.8 ms below the FTorch path at every width. Not a speed target on these nodes: the core is 1.8 percent of the step.",
     "owner": "claude",
     "owner_class": "freecam.physics.microphysics.Microphysics",
     "stage": "capture_replay",
@@ -72615,8 +72615,8 @@
  ],
  "volatile": {
   "branch": "physics-kernel-api-closure",
-  "commit": "53dc5515b7c6d27ec783abf8b8a81762c857991b",
-  "generated_at": "2026-09-11T21:56:13+00:00"
+  "commit": "2359ec72e01730e3cb41f39098eb36a087f0421f",
+  "generated_at": "2026-09-12T18:17:14+00:00"
  },
  "work_items": [
   {
@@ -72639,7 +72639,7 @@
    "branch": "physics-kernel-api-closure",
    "kernel": "micro_mg1_0::micro_mg_tend",
    "next_gate": "none for speed -- the core costs 1.4 ms a call (2.8 ms a step, 1.8 percent of the step loop) and every network of a useful size costs more inside the image; a surrogate here is a science question, not a performance one",
-   "note": "First capture attempt (7358831) aborted on manifest/image version skew: the p10 image exports no pycam_stage7_original_v1 (validation/pi_cam_pausable_micro-capture_50step_failure.json); the p11 capture (7359460) is bit-for-bit and holds all 51,200 calls. Hooked on 2026-09-10 as a Fortran-bound hook (the callee's own kinds, packed (mgncol, nlev) arrays sized by its pcols/pver dummies, bindable to a model, not pausable); the first build sized the arrays by the contract and corrupted memory (7394255, failure record). Images p14/p15/p18/p19 with nothing bound are bit-for-bit (7393462, 7394422, 7400407, 7401310); a null model bound at the hook answered all 51,200 calls inside the image (7394423, 7399102). Shadow runs put the mechanism at 0.56 ms a call on p18 (7400408) once the stage stopped re-reading hooks.yaml every step and the bind took the warm-up out of the step loop. On 2026-09-11 four per-column MLP surrogates (64 to 512 wide, 0.9 to 7.6 MB of weights; qctend R2 0.73 to 0.89, tlat 0.52 to 0.72 on 64 held-out ranks) were trained on the p11 capture and exported as TorchScript. In shadow on p19, which times the original on the same calls (7401282, 7401281, 7401311, 7400992 on p18; all bit-for-bit): the core costs 1.33 to 1.40 ms a call, the networks 1.47, 2.25, 3.71 and 6.71 ms -- their weights streamed from memory by 128 ranks at once (one-node bench 7401108: the 7.6 MB network 1.47 ms alone, 6.38 ms with 128 processes). Live (7400993, 7401059, 7401232; not bit-for-bit, 300,000 lines of water-tracer and QNEG3 messages) the step loop is 9.02, 8.67 and 8.55 s against 7.64 s with nothing bound. Not a speed target on these nodes.",
+   "note": "First capture attempt (7358831) aborted on manifest/image version skew: the p10 image exports no pycam_stage7_original_v1 (validation/pi_cam_pausable_micro-capture_50step_failure.json); the p11 capture (7359460) is bit-for-bit and holds all 51,200 calls. Hooked on 2026-09-10 as a Fortran-bound hook (the callee's own kinds, packed (mgncol, nlev) arrays sized by its pcols/pver dummies, bindable to a model, not pausable); the first build sized the arrays by the contract and corrupted memory (7394255, failure record). Images p14/p15/p18/p19 with nothing bound are bit-for-bit (7393462, 7394422, 7400407, 7401310); a null model bound at the hook answered all 51,200 calls inside the image (7394423, 7399102). Shadow runs put the mechanism at 0.56 ms a call on p18 (7400408) once the stage stopped re-reading hooks.yaml every step and the bind took the warm-up out of the step loop. On 2026-09-11 four per-column MLP surrogates (64 to 512 wide, 0.9 to 7.6 MB of weights; qctend R2 0.73 to 0.89, tlat 0.52 to 0.72 on 64 held-out ranks) were trained on the p11 capture and exported as TorchScript. In shadow on p19, which times the original on the same calls (7401282, 7401281, 7401311, 7400992 on p18; all bit-for-bit): the core costs 1.33 to 1.40 ms a call, the networks 1.47, 2.25, 3.71 and 6.71 ms -- their weights streamed from memory by 128 ranks at once (one-node bench 7401108: the 7.6 MB network 1.47 ms alone, 6.38 ms with 128 processes). Live (7400993, 7401059, 7401232; not bit-for-bit, 300,000 lines of water-tracer and QNEG3 messages) the step loop is 9.02, 8.67 and 8.55 s against 7.64 s with nothing bound. The same networks' forward written as a Numba plugin (no libtorch; examples/plugins/numba_kernels/micro_mlp.py), in shadow on p20 with the core timed (7404600, 7404599, 7404601; bit-for-bit): 0.87, 1.45 and 2.92 ms a call against the core's 1.43 to 1.47 -- the 64-wide network cheaper than the core, the 128-wide at parity, 0.6 to 0.8 ms below the FTorch path at every width. Not a speed target on these nodes: the core is 1.8 percent of the step.",
    "owner": "claude",
    "owner_class": "freecam.physics.microphysics.Microphysics",
    "stage": "capture_replay",

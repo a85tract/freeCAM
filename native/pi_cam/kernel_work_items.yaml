@@ -47,7 +47,12 @@ items:
     2.25, 3.71 and 6.71 ms -- their weights streamed from memory by 128 ranks at once (one-node bench
     7401108: the 7.6 MB network 1.47 ms alone, 6.38 ms with 128 processes). Live (7400993, 7401059,
     7401232; not bit-for-bit, 300,000 lines of water-tracer and QNEG3 messages) the step loop is 9.02,
-    8.67 and 8.55 s against 7.64 s with nothing bound. Not a speed target on these nodes.'
+    8.67 and 8.55 s against 7.64 s with nothing bound. The same networks'' forward written as a Numba
+    plugin (no libtorch; examples/plugins/numba_kernels/micro_mlp.py), in shadow on p20 with the core
+    timed (7404600, 7404599, 7404601; bit-for-bit): 0.87, 1.45 and 2.92 ms a call against the core''s
+    1.43 to 1.47 -- the 64-wide network cheaper than the core, the 128-wide at parity, 0.6 to 0.8 ms
+    below the FTorch path at every width. Not a speed target on these nodes: the core is 1.8 percent
+    of the step.'
 - kernel: cldwat2m_macro::instratus_condensate
   target_processes:
   - cam_run1.cloud_macro_microphysics

@@ -554,7 +554,33 @@ other ways of answering the same hook:
 The step loop is unchanged by a plugin (7.62 to 7.77 s against 7.66 s with
 nothing bound).  For a kernel written in Python this is the path; the pause
 remains for frame capture and for the gates that answer with the original
-through Python, until a plugin does those too.  The first two attempts
+through Python, until a plugin does those too.
+
+The same path carries a trained network without libtorch.  The forward of
+the `micro_mg_tend` surrogates above -- the three dense layers with the
+standardisation folded into the first and last, the clamps, the floors --
+written as loops in `examples/plugins/numba_kernels/micro_mlp.py` over
+weights exported from the training checkpoint, and bound in shadow on p20
+with the core timed on the same calls (all bit-for-bit):
+
+| width, weights | compiled forward, ms a call | the core, ms a call | the same network through FTorch |
+| --- | ---: | ---: | ---: |
+| 64, 0.8 MB (7404600) | 0.87 | 1.43 | 1.47 |
+| 128, 1.7 MB (7404599) | 1.45 | 1.43 | 2.25 |
+| 256, 3.5 MB (7404601) | 2.92 | 1.47 | 3.71 |
+
+Taking libtorch out of the call saves 0.6 to 0.8 ms at every width -- the
+tensor objects, the operator dispatch, the output copies -- and leaves the
+arithmetic and the weights: the 64-wide network now costs less than the core
+it replaces, the 128-wide the same.  Standalone with hot caches the 64-wide
+forward takes 0.35 ms; the rest of its 0.87 ms in the model is the weights
+read again from memory on every call, which no code change removes.  What
+this buys the step is still bounded by the core's 1.8 percent, and the
+64-wide network has a fifth of the 512-wide network's skill; the finding is
+about the mechanism, not the surrogate: on these nodes a network's inference
+belongs in compiled code, and FTorch's in-image path costs 1.3 to 1.7 times
+more at these sizes.  Numba compiles the kernel on every rank at start,
+about 50 seconds, which the record's initialisation time carries.  The first two attempts
 (7402090 to 7402092, 7402200 to 7402202) never stepped: a stage is
 cloudpickled into each rank's process registry when it is installed, so the
 plugin's compiled code must stay out of the pickle, and then the payload is
