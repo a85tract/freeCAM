@@ -94,20 +94,45 @@ def _forward(x, W1T, B1, W2T, B2, W3, B3, X_LO, X_HI, Y_MIN, Y_MAX, SW_COLS, cos
     return y
 
 
+# -- the features, built in Numba: one generated function over the input arrays in the layout's order ----
+_SOURCES = []                       # distinct input names in the order the generated function takes them
+for _name, _src, _idx, _kind, _lo, _hi in FEATURES:
+    if _src not in _SOURCES:
+        _SOURCES.append(_src)
+_SCALAR_SOURCES = {"calday"}         # inputs the record carries as scalars, not per-column arrays
+
+
+def _generate_feature_builder():
+    lines = ["def _build(ncol, x, " + ", ".join(f"a_{src}" for src in _SOURCES) + "):",
+             "    for i in range(ncol):"]
+    for name, src, idx, kind, lo, hi in FEATURES:
+        width = hi - lo
+        if src in _SCALAR_SOURCES:
+            lines.append(f"        x[i, {lo}] = a_{src}")
+            continue
+        if width == 1:
+            expr = f"a_{src}[i]"
+            lines.append(f"        v = {expr}")
+            lines.append(f"        x[i, {lo}] = {'np.log10(max(v, 0.0) + LOG_FLOOR)' if kind == 'log' else 'v'}")
+            continue
+        index = f"a_{src}[i, k, {idx}]" if idx is not None else f"a_{src}[i, k]"
+        lines.append(f"        for k in range({width}):")
+        lines.append(f"            v = {index}")
+        lines.append(f"            x[i, {lo} + k] = {'np.log10(max(v, 0.0) + LOG_FLOOR)' if kind == 'log' else 'v'}")
+    return "\n".join(lines) + "\n"
+
+
+_namespace = {"np": np, "LOG_FLOOR": LOG_FLOOR}
+exec(compile(_generate_feature_builder(), "<radiation feature builder>", "exec"), _namespace)
+_build_features = njit(_namespace["_build"])
+
+
 def features(inputs, ncol):
-    """The feature matrix of one chunk's live columns, as train_rad.py built it."""
+    """The feature matrix of one chunk's live columns, as train_rad.py built it, filled by Numba."""
 
     x = np.empty((ncol, NF), np.float64)
-    for name, src, idx, kind, lo, hi in FEATURES:
-        value = inputs[src]
-        if np.ndim(value) == 0:
-            x[:, lo:hi] = float(value)
-            continue
-        a = np.asarray(value)[:ncol]
-        if idx is not None:
-            a = a[..., idx]
-        a = a.reshape(ncol, -1)
-        x[:, lo:hi] = np.log10(np.maximum(a, 0.0) + LOG_FLOOR) if kind == "log" else a
+    arrays = [float(inputs[src]) if src in _SCALAR_SOURCES else np.asarray(inputs[src], dtype=np.float64) for src in _SOURCES]
+    _build_features(ncol, x, *arrays)
     return x
 
 
