@@ -2648,7 +2648,7 @@
   "use_gw_oro": true,
   "use_subcol_microp": false
  },
- "content_hash": "2b7913ad5f3116bf1d83338f810a249453ea669fe03a07478da1915faad7d608",
+ "content_hash": "fbd78783eda61c61b5d62b8e8d097e877b521c3088b91cbd90f5d44241c2595f",
  "evidence": {
   "pi_cam_cldfrc_fice_frame_replay.json": {
    "bfb": true,
@@ -5070,7 +5070,7 @@
   "validation/pi_cam_kernel_api_redirectable_calls.json": "9ac016f0d242ceef054aa8a80ef074aa53b08c1f0f3042a81e76da4c75603273",
   "validation/pi_cam_kernel_runtime_coverage_1month.json": "48f77d6ec78b4026806d4ab6fb9517ef31c1d526481b4ad68e55f77af0d303bd",
   "validation/pi_cam_kernel_runtime_coverage_50step.json": "222961fc5274dbaaf71c40f6c131a683536b5a85ef14cd047a2fd196d8ca38c5",
-  "web/public/catalog.json": "7cb32aad06de900146b3563db5a856487089cf9cc79d848bd50201beea2a90f2"
+  "web/public/catalog.json": "4b291e2a29b1f1168e8e8546392dc9bfd4861df1c959540caa25934ec92cc7c5"
  },
  "kernels": {
   "aer_rad_props::aer_rad_props_lw": {
@@ -72640,8 +72640,8 @@
  ],
  "volatile": {
   "branch": "physics-kernel-api-closure",
-  "commit": "7dd01a1b641de6a5943b648d223b62b742c457ad",
-  "generated_at": "2026-09-12T19:43:28+00:00"
+  "commit": "ce25c0c36b9d422914d951a09e0c447911b97cc1",
+  "generated_at": "2026-09-12T19:44:21+00:00"
  },
  "work_items": [
   {
