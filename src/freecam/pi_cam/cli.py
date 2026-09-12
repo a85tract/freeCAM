@@ -107,7 +107,10 @@ def _save_radiation_process(cam, directory: Path | None, rank: int) -> dict[str,
         process = getattr(stage, "process", None)
         if process is None:
             continue
-        described = dict(process.describe())
+        describe_process = getattr(stage, "describe_process", None)
+        # the stage's description carries what the slot in the image counted (a compiled
+        # plugin's calls and seconds); the process object alone knows only what it is
+        described = dict(describe_process() if callable(describe_process) else process.describe())
         if getattr(process, "records", False) and directory is not None:
             described["file"] = str(process.save(Path(directory) / f"radiation_tend.rank-{rank:04d}.npz").name)
         return described

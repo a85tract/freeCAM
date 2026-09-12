@@ -177,9 +177,11 @@ def test_a_table_kernel_compiles_to_the_slots_interface_and_writes_the_outputs()
 
 def test_a_compiled_plugin_in_the_slot_runs_the_driver_whole_through_the_runner() -> None:
     pytest.importorskip("numba")
+    import ctypes
     from types import SimpleNamespace
 
     from freecam.physics.radiation_process import compile_radiation_plugin
+    from freecam.physics.segments import SegmentEvent
 
     def zeros(*args):
         pass
@@ -189,15 +191,42 @@ def test_a_compiled_plugin_in_the_slot_runs_the_driver_whole_through_the_runner(
     stage.process = plugin
     assert stage.select_mode(None) == "segmented"                 # the runner, no pause armed
     assert stage.describe_process()["kind"] == "native-plugin"
-    bound: list[tuple[int, int]] = []
+    calls: list = []
 
     class _Entry:
+        """A library entry: a callable object, so ctypes' restype/argtypes can be set on it."""
+
         def __init__(self, f): self.f = f
         def __call__(self, *a): return self.f(*a)
 
-    library = SimpleNamespace()
-    library.pycam_rad_process_bind_v1 = _Entry(lambda address, shadow: bound.append((int(getattr(address, "value", address)), int(shadow))) or 0)
-    library.pycam_rad_process_counts_v1 = None
-    from freecam.physics import radiation_process as rp
-    rp.bind_radiation_process(library, plugin.address, shadow=True)
-    assert bound == [(plugin.address, 1)]
+    def counts(calls_ref, seconds_ref, first_ref):
+        calls_ref._obj.value, seconds_ref._obj.value, first_ref._obj.value = 3, 0.25, 0.1
+        return 0
+
+    library = SimpleNamespace(
+        pycam_stagehost_bind_v1=_Entry(lambda: calls.append(("stage_hosts",)) or 0),
+        pycam_rad_bind_hosts_v1=_Entry(lambda: calls.append(("rad_hosts",)) or 0),
+        pycam_rad_set_owner_v1=_Entry(lambda owns: calls.append(("owner", owns.value if isinstance(owns, ctypes.c_int) else owns)) or 0),
+        pycam_rad_process_bind_v1=_Entry(lambda address, shadow: calls.append(("plugin", int(getattr(address, "value", address)), int(shadow))) or 0),
+        pycam_rad_process_counts_v1=_Entry(counts))
+    started: list = []
+
+    class Runner:
+        kernels = ("rad_rrtmg_sw", "rad_rrtmg_lw")
+        runs_original = True
+
+        def create(self, stage_name): return 7
+        def start(self, context, mask): started.append(dict(mask)); return SegmentEvent.DONE
+
+    native = SimpleNamespace(library=library, segment_runner=lambda name: Runner() if name == Radiation.STAGE else None,
+                             run_action=lambda *a, **k: pytest.fail("the runner, not the whole action, hosts the slot"))
+    stage.tend(None, SimpleNamespace(native=native))
+    stage.tend(None, SimpleNamespace(native=native))
+    # the hosts and the plugin are bound before the first start; the plugin once; the resume half then owns the result
+    assert calls[:3] == [("stage_hosts",), ("rad_hosts",), ("plugin", plugin.address, 1)]
+    assert calls.count(("plugin", plugin.address, 1)) == 1 and calls.count(("owner", 1)) == 2
+    assert started == [{"rad_rrtmg_sw": False, "rad_rrtmg_lw": False}] * 2   # whole: no pause armed
+    assert stage.execution.native_segment_calls == 2 and stage.execution.segment_pauses == 0
+    described = stage.describe_process()
+    assert (described["kind"], described["calls"], described["seconds"], described["first_call_seconds"]) == \
+        ("native-plugin", 3, 0.25, 0.1)

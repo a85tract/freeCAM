@@ -489,17 +489,6 @@ class Radiation(NativeStage):
             return "legacy-python"
         return super().select_mode(native)
 
-    def prepare_segmented(self, native: Any) -> None:
-        super().prepare_segmented(native)
-        if isinstance(self.process, NativePlugin):
-            from .radiation_process import bind_radiation_process
-
-            key = self.process.key
-            if getattr(self, "_process_bound", None) != key:
-                bind_radiation_process(native.library, self.process.address, shadow=self.process.shadow)
-                self._process_bound = key
-                self._process_library = native.library
-
     def _tend_segmented(self, native: Any) -> None:
         if isinstance(self.process, NativePlugin):
             # no pause armed: the runner runs the driver whole, the slot answers inside
@@ -621,7 +610,11 @@ class Radiation(NativeStage):
         self._set_owner(native, False)
 
     def prepare_segmented(self, native: Any) -> None:
-        """Bind the stage hosts and the radiation handles the runner's glue reads."""
+        """Bind the stage hosts and the radiation handles the runner's glue reads, and the process plugin.
+
+        One definition: a second ``prepare_segmented`` in this class once shadowed the plugin
+        binding, and two fifty-step runs (7418304, 7418305) ran with the slot unbound.
+        """
 
         from .pausable import bind_stage_hosts
 
@@ -632,6 +625,14 @@ class Radiation(NativeStage):
         status = int(binder())
         if status:
             raise PICAMConfigurationError(f"pycam_rad_bind_hosts_v1 refused ({status})")
+        if isinstance(self.process, NativePlugin):
+            from .radiation_process import bind_radiation_process
+
+            key = self.process.key
+            if getattr(self, "_process_bound", None) != key:
+                bind_radiation_process(native.library, self.process.address, shadow=self.process.shadow)
+                self._process_bound = key
+                self._process_library = native.library
 
     def after_segmented(self, native: Any) -> None:
         # the runner left every chunk's ptend and net flux in the handles'
