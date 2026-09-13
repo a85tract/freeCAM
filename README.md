@@ -122,8 +122,8 @@ Leaving the `with` block, or calling `driver.close()`, releases them.
   [docs/usage.md](docs/usage.md#the-workflow-builder).
 - Implementation progress at https://a85tract.github.io/freeCAM/progress/:
   which processes and kernels are callable, replaceable, and verified, built
-  by the Pages workflow from the committed records of the development branch
-  it names (see [docs/progress_dashboard.md](docs/progress_dashboard.md)).
+  by the Pages workflow from the records committed on `main` (see
+  [docs/progress_dashboard.md](docs/progress_dashboard.md)).
 - [docs/physics_kernel_decoupling.md](docs/physics_kernel_decoupling.md):
   the kernel slots, the segment-runner manifest, and the inventory that says
   which of the step's processes have a Python class and a validated kernel.
