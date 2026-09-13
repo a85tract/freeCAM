@@ -78,10 +78,10 @@ process without inventory shows *Not inventoried*, not 0/0 = 100 %.
 ## How it is published
 
 `.github/workflows/pages.yml` builds one composite site per deployment: the
-homepage from `main`, the dashboard from `physics-kernel-api-closure`,
-assembled and pushed to `gh-pages` together, so neither publication can delete
-the other.  Pushes to either branch (and manual dispatch) republish the whole
-site; pull requests build previews without publishing.  The workflow file must
-stay consistent on both branches until they converge; production always builds
-the homepage from `main`.  `site-manifest.json` at the site root records the
+homepage and the dashboard both from `main` (the development branch the
+dashboard followed until 2026-09-13 was merged and deleted), assembled and
+pushed to `gh-pages` together, so neither publication can delete the other.
+Pushes to `main` (and manual dispatch) republish the whole site; pull requests
+build previews of both halves from their own commit without publishing.
+`site-manifest.json` at the site root records the
 exact commits of both halves.

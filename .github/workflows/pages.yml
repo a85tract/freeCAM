@@ -3,20 +3,19 @@ name: Site
 # One composite site, published in a single deployment so neither half can
 # delete the other:
 #   /freeCAM/           the Workflow Builder homepage, always built from main
-#   /freeCAM/progress/  the implementation-progress dashboard, always built
-#                       from the progress branch (a published snapshot of
-#                       committed records -- never a live job monitor)
-# Pushes to either branch and manual dispatch rebuild and publish the whole
-# site; pull requests build previews without publishing.  Production always
-# takes the homepage from main, never from whichever branch triggered the job.
-# This file must stay consistent on both triggering branches until they
-# converge.  If any required build or export fails the deployment fails and
-# the last successful public site stays up; development data is never
-# silently substituted.
+#   /freeCAM/progress/  the implementation-progress dashboard, built from the
+#                       same main checkout (a published snapshot of committed
+#                       records -- never a live job monitor)
+# Pushes to main and manual dispatch rebuild and publish the whole site; pull
+# requests build previews of both halves from their own commit without
+# publishing.  The development branch the dashboard once followed was merged
+# into main and deleted (PR #13).  If any required build or export fails the
+# deployment fails and the last successful public site stays up; development
+# data is never silently substituted.
 
 on:
   push:
-    branches: [main, physics-kernel-api-closure]
+    branches: [main]
   pull_request:
   workflow_dispatch:
 
@@ -73,9 +72,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          # a pull request against the progress branch previews its own
-          # dashboard; everything else builds it from the progress branch
-          ref: ${{ (github.event_name == 'pull_request' && github.base_ref == 'physics-kernel-api-closure') && github.sha || 'physics-kernel-api-closure' }}
+          # a pull request previews its own dashboard; everything else builds it from main
+          ref: ${{ github.event_name == 'pull_request' && github.sha || 'main' }}
       - id: commit
         run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
       - uses: astral-sh/setup-uv@v5
