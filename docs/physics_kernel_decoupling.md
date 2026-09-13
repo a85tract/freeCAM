@@ -808,14 +808,59 @@ the clear-sky and top-of-atmosphere diagnostics.  The mechanism is closed;
 the network (more data, the longwave near the surface, the diagnostics) is
 the open problem it exposes cleanly.
 
+#### Any model at the slot: a transformer through FTorch
+
+The slot answers with a C function; a compiled Python kernel is one way to
+make one, and it suits small dense networks because Numba has no BLAS here.
+For anything larger the slot took a second answerer on 2026-09-13: a
+TorchScript file loaded through FTorch (`pycam_rad_process_bind_model_v1`,
+`--radiation-torch-model`), which sees the same 46 inputs as tensors -- a
+Fortran `(pcols, pver)` array is a `(pcols, pver)` tensor, FTorch's default
+layout -- and fills the same 12 outputs, the timers and the shadow mode
+shared with the plugin path.  The image p22 carries it and is bit-for-bit
+with the slot unbound (7431583 with the cloud class, 7431584 with the
+runner and the shortwave core at its pause).  To exercise it with a model
+the MLP path cannot express, `train_rad_tf.py` trains a level-token
+transformer: the thirty levels are the tokens, each carrying 34 features
+(the twelve profiles, ozone, the fifteen aerosol mixing ratios, their wet
+diameters and water) and eight column scalars, a learned position per
+level, two heads -- the heating rates per level, the ten fluxes from the
+mean token -- and the export wraps the network in the slot's 46-tensor
+signature, float64 in and out, frozen and optimised for inference.
+
+| network | parameters | training | `qrs` R² | `qrl` | `fsnt` | `flnt` | alone, 1 thread | in the image, steady | first call a rank |
+| --- | ---: | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| 64 wide, 2 layers | 72k | 12 epochs, 26 min | 0.956 | 0.872 | 0.974 | 0.975 | 2.1 ms | 7.1 ms | 0.28 s |
+| 96 wide, 3 layers | 233k | 10 epochs, 44 min | 0.965 | 0.892 | 0.982 | 0.985 | 4.6 ms | 18.7 ms | 0.36 s |
+| 256-wide MLP (the plugin) | 347k | 60 epochs | 0.957 | 0.873 | 0.986 | 0.982 | 0.4 ms | 1.3 ms | -- |
+
+The transformers match the MLPs' accuracy with a fifth of the parameters
+(the 64-wide one equals the 256-wide MLP; the 96-wide equals the 512-wide),
+and both were still improving when their epochs ran out.  Their price in
+the image is another matter.  Both ran in shadow on every radiative step
+of fifty steps, bit-for-bit (7431802, 7431990): 7.1 and 18.7 ms a call
+once warm, 3.4 and 4.1 times their single-thread cost alone -- the same
+factor the compiled MLP pays (0.4 to 1.3 ms) on a node running two ranks a
+core.  Live, the 64-wide network answered all 25,600 calls (7431803) and
+brought the radiation stage from 1.30 s a rank to 0.72, two percent of the
+fifty-step loop against the plugin's eight; the 96-wide one (7431991) costs
+more than the branch it replaces, 1.66 s against 1.30, and the loop gets
+slower.  Both drift from the oracle as the MLP does (0.17 and 0.14 K rms in
+temperature after a day) with every health count zero.  The lesson is not
+that transformers are out: the slot takes any TorchScript model, and the
+first call's 0.3 s and the per-operator overhead of a 30-token attention on
+sixteen columns are what a leaner export (fused preprocessing, one layer,
+an ONNX runtime) would attack.  On this node layout only the small one
+pays for itself, and the compiled MLP pays four times better.
+
 ## Where it stands
 
 | Kernel | Owner | Contract | Runner pause | In-model gate | Loop |
 | --- | --- | --- | --- | --- | --- |
 | `mmacro_pcond` | Macrophysics (in the cloud stage) | reviewed | yes, validated | segmented, bit-for-bit; alone and together with `micro_mg_tend` | complete |
 | `micro_mg_tend` | Microphysics (in the cloud stage; hooked: a Fortran-bound hook over its packed arrays, bindable to a model, not pausable) | reviewed | yes, validated (the runner's pause) | segmented, bit-for-bit (100 pauses in 50 steps); alone and together with `mmacro_pcond` (200 pauses); a null model bound at the hook answered all 51,200 calls inside the image (7394423), and in shadow the p18 image stays bit-for-bit at 0.56 ms a call (7400408); four trained MLP surrogates (64 to 512 wide) run in shadow on p19, bit-for-bit, pricing the core at 1.4 ms a call and every network at 1.5 to 6.7 ms (7401282, 7401281, 7401311, 7400992), and live (7400993, 7401059, 7401232, not bit-for-bit, slower than the original) | open: no captured calls replayed through its standalone image yet; as a speed target, closed: the core costs 1.4 ms a call |
-| `rad_rrtmg_sw` | Radiation (split, pausable) | frame descriptor | yes, validated | segmented, bit-for-bit (50 pauses in 50 steps); alone, with `rad_rrtmg_lw`, and with every other exposed kernel paused in one run; the whole radiative branch around it is a process slot: captured (7417373) and replayed (7417486) bit-for-bit in state through the transcription, and answered inside the image by a compiled emulator at the runner's skeleton slot (shadow 7418443 bit-for-bit; live 7418444, not bit-for-bit by design) | open: capture and replay of the core itself |
-| `rad_rrtmg_lw` | Radiation (split, pausable) | frame descriptor | yes, validated | segmented, bit-for-bit (50 pauses in 50 steps); alone, with `rad_rrtmg_sw`, and with every other exposed kernel paused in one run; the whole radiative branch around it is a process slot: captured (7417373) and replayed (7417486) bit-for-bit in state through the transcription, and answered inside the image by a compiled emulator at the runner's skeleton slot (shadow 7418443 bit-for-bit; live 7418444, not bit-for-bit by design) | open: capture and replay of the core itself |
+| `rad_rrtmg_sw` | Radiation (split, pausable) | frame descriptor | yes, validated | segmented, bit-for-bit (50 pauses in 50 steps); alone, with `rad_rrtmg_lw`, and with every other exposed kernel paused in one run; the whole radiative branch around it is a process slot: captured (7417373) and replayed (7417486) bit-for-bit in state through the transcription, and answered inside the image by a compiled emulator at the runner's skeleton slot (shadow 7418443 bit-for-bit; live 7418444, not bit-for-bit by design) and by TorchScript transformers through FTorch (shadow 7431802 and 7431990 bit-for-bit; live 7431803, 7431991) | open: capture and replay of the core itself |
+| `rad_rrtmg_lw` | Radiation (split, pausable) | frame descriptor | yes, validated | segmented, bit-for-bit (50 pauses in 50 steps); alone, with `rad_rrtmg_sw`, and with every other exposed kernel paused in one run; the whole radiative branch around it is a process slot: captured (7417373) and replayed (7417486) bit-for-bit in state through the transcription, and answered inside the image by a compiled emulator at the runner's skeleton slot (shadow 7418443 bit-for-bit; live 7418444, not bit-for-bit by design) and by TorchScript transformers through FTorch (shadow 7431802 and 7431990 bit-for-bit; live 7431803, 7431991) | open: capture and replay of the core itself |
 | `dadadj` | DryAdjustment (pausable) | reviewed | yes, validated | segmented, bit-for-bit (100 pauses in 50 steps); alone and together with `compute_uwshcu_inv` | complete |
 | `compute_uwshcu_inv` | ShallowConvection (pausable) | reviewed | yes, validated | segmented, bit-for-bit (100 pauses in 50 steps); alone and together with `dadadj` | open: no captured calls replayed through a standalone image yet |
 | `zm_convr` | DeepConvection (pausable) | frame descriptor | yes, validated | segmented, bit-for-bit (100 pauses in 50 steps); alone, with the stage's other kernels, and with the tracer leaf paused in the same run | open: capture and replay |
