@@ -2,7 +2,7 @@
   "libraries": 133,
   "loaded_libraries": 127,
   "loaded_processes": 240,
-  "native_manifest": "/glade/work/ruitong/pycam-sima-pi-cam-only/build/pi_cam_promoted/native_cam_manifest.json",
+  "native_manifest": "build/pi_cam_promoted/native_cam_manifest.json",
   "passed": false,
   "pbs_job_id": "7096522.desched1",
   "processes": 276,

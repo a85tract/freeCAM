@@ -155,7 +155,7 @@ status=0
   --candidate "${run_dir}" \
   --output "${bfb_output}" || status=$?
 
-if [ -n "${PYCAM_KERNEL_MODELS:-}" ]; then
+if [ -n "${PYCAM_KERNEL_MODELS:-}${PYCAM_RAD_MODEL:-}${PYCAM_RAD_PLUGIN:-}" ]; then
   # a model's month is not bit-for-bit; how far each history field moved, in
   # units of the field's own variability, and whether anything went non-finite
   "${python}" tools/report_pi_cam_surrogate_drift.py \

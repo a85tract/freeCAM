@@ -37,3 +37,14 @@ def test_no_class_defines_a_method_twice() -> None:
 
     duplicates = [line for path in sorted(SOURCE.rglob("*.py")) for line in _duplicate_methods(path)]
     assert not duplicates, "\n".join(duplicates)
+
+
+def test_every_record_names_the_image_by_a_repo_relative_manifest_path() -> None:
+    """A record's ``native_manifest`` is the image's manifest under ``build/``: no site directory, no user."""
+
+    offenders = []
+    for path in sorted((REPO / "validation").glob("*.json")):
+        for line in path.read_text().splitlines():
+            if '"native_manifest": "/' in line:
+                offenders.append(f"{path.relative_to(REPO)}: {line.strip()[:120]}")
+    assert not offenders, "\n".join(offenders)

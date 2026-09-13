@@ -1243,8 +1243,11 @@ def main(argv: list[str] | None = None) -> int:
             manifest_payload = json.loads(manifest_path.read_text())
             state_bridge = manifest_payload.get("state_bridge", {})
             leaf_device = manifest_payload.get("leaf_device", {})
+            repo_root = Path(__file__).resolve().parents[3]
             native_evidence = {
-                "native_manifest": str(manifest_path),
+                # repo-relative when the image lives under this checkout: a record names no site directory
+                "native_manifest": (str(manifest_path.relative_to(repo_root)) if manifest_path.is_relative_to(repo_root)
+                                    else str(manifest_path)),
                 "native_library_sha256": manifest_payload.get("library_sha256"),
                 "native_state_ownership": (
                     state_bridge.get("ownership")

@@ -159,7 +159,8 @@ def radiation_emulator(inputs):
 
 def _generate_table_kernel_source():
     import sys as _sys
-    _sys.path.insert(0, "/glade/work/ruitong/pycam-sima-pi-cam-only/src")
+    from pathlib import Path as _Path
+    _sys.path.insert(0, str(_Path(__file__).resolve().parents[3] / "src"))   # this checkout's package
     from freecam.physics.radiation_process import TABLE_INPUTS, TABLE_OUTPUTS
     inputs = [name for name, _ in TABLE_INPUTS]
     outputs = [f"o_{name}" for name, _ in TABLE_OUTPUTS]

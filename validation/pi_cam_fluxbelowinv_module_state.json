@@ -21,7 +21,7 @@
   "function": "fluxbelowinv",
   "library_sha256": "67408edf794f5e40bac3a4701e9f7a2019b78c2ac1788239b7000701690d00bd",
   "mpi_ranks": 512,
-  "native_manifest": "/glade/work/ruitong/pycam-sima-pi-cam-only/build/pi_cam_promoted_p10/native_cam_manifest.json",
+  "native_manifest": "build/pi_cam_promoted_p10/native_cam_manifest.json",
   "pbs_job_id": "7344821.desched1",
   "qualified_name": "uwshcu::fluxbelowinv",
   "schema_version": 1,
