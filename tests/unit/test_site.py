@@ -282,3 +282,16 @@ def test_no_image_is_nothing_to_collide_with() -> None:
     clear, where = site._interpreter_fits_beneath(None)
 
     assert clear and "no image" in where
+
+
+def test_site_relative_spells_paths_through_the_sites_variables(monkeypatch, tmp_path) -> None:
+    from freecam.site import repository_root, site_relative
+
+    monkeypatch.setenv("FREECAM_SCRATCH", str(tmp_path / "scratch"))
+    monkeypatch.setenv("WORK", str(tmp_path / "work"))
+    root = repository_root()
+    assert site_relative(root / "build" / "x" / "manifest.json") == "build/x/manifest.json"
+    assert site_relative(tmp_path / "scratch" / "pyCAM" / "PI-cam" / "run") == "${FREECAM_SCRATCH}/pyCAM/PI-cam/run"
+    assert site_relative(str(tmp_path / "scratch")) == "${FREECAM_SCRATCH}"
+    assert site_relative(tmp_path / "work" / "CESM_cases") == "${WORK}/CESM_cases"
+    assert site_relative("/glade/campaign/shared/inputdata") == "/glade/campaign/shared/inputdata"
