@@ -1,7 +1,7 @@
 {
  "schema_version": 1,
- "reference": "/glade/derecho/scratch/ruitong/pyCAM/PI-cam/f.e13.F1850C5.ne16_g16.icesm131_ihesp.PI-cam-oracle.50step/run",
- "candidate": "/glade/derecho/scratch/ruitong/pyCAM/PI-cam/pausable-rad-emulator-day1e200-7417608.desched1/run",
+ "reference": "${FREECAM_SCRATCH}/pyCAM/PI-cam/f.e13.F1850C5.ne16_g16.icesm131_ihesp.PI-cam-oracle.50step/run",
+ "candidate": "${FREECAM_SCRATCH}/pyCAM/PI-cam/pausable-rad-emulator-day1e200-7417608.desched1/run",
  "state_files_identical": false,
  "files": {
   "SEMapping.nc": {

@@ -10,6 +10,6 @@
   "job_id": "7125650.desched1",
   "mpi_ranks": 2,
   "passed": true,
-  "run_directory": "/glade/derecho/scratch/ruitong/freeCAM/timing-smoke-7125650.desched1",
+  "run_directory": "${FREECAM_SCRATCH}/freeCAM/timing-smoke-7125650.desched1",
   "timing_module_sha256": "6a9e45cf096bb5402c003f1bdee04cacc716042c656983685a90ce91ff105dc1"
 }

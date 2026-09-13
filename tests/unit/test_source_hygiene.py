@@ -48,3 +48,49 @@ def test_every_record_names_the_image_by_a_repo_relative_manifest_path() -> None
             if '"native_manifest": "/' in line:
                 offenders.append(f"{path.relative_to(REPO)}: {line.strip()[:120]}")
     assert not offenders, "\n".join(offenders)
+
+
+def _tracked_text_files() -> list[Path]:
+    import subprocess
+
+    names = subprocess.run(["git", "ls-files"], cwd=REPO, capture_output=True, text=True, check=True).stdout.split("\n")
+    return [REPO / name for name in names if name and (REPO / name).is_file()]
+
+
+def test_tracked_files_name_no_site_directory_user_or_allocation() -> None:
+    """No committed file names a user or an allocation, and no record names a site directory.
+
+    Records spell their paths through the site's variables (``${FREECAM_SCRATCH}``,
+    ``${FREECAM_CASES}``, ``${WORK}``) or relative to this checkout, as the health records
+    always did.  The login name and the account are site facts (``site.env``): they are
+    forbidden by value where a site is configured, and never appear in the source itself.
+    """
+
+    import getpass
+    import re
+
+    site = REPO / "site.env"
+    tokens: list[str] = []
+    if site.exists():
+        tokens.append(getpass.getuser())
+        for line in site.read_text().splitlines():
+            if line.startswith("FREECAM_ACCOUNT=") and line.split("=", 1)[1].strip().strip('"'):
+                tokens.append(line.split("=", 1)[1].strip().strip('"'))
+    allocation = re.compile(r"(?<![A-Za-z0-9])UCUB\d{4}(?![A-Za-z0-9])")
+    # a per-user root followed by a login name; "${USER}", "$USER", "<owner>" and "example_user" do not match
+    user_root = re.compile(r"/glade/(?:derecho/scratch|work|u/home)/([A-Za-z][A-Za-z0-9]*)(?![A-Za-z0-9_])")
+    offenders: list[str] = []
+    for path in _tracked_text_files():
+        try:
+            text = path.read_text()
+        except (UnicodeDecodeError, OSError):
+            continue
+        where = path.relative_to(REPO)
+        for match in user_root.finditer(text):
+            offenders.append(f"{where}: a site directory of a user ({match.group(1)})")
+        if allocation.search(text):
+            offenders.append(f"{where}: an allocation name")
+        for token in tokens:
+            if re.search(rf"(?<![A-Za-z0-9_-]){re.escape(token)}(?![A-Za-z0-9_-])", text):
+                offenders.append(f"{where}: names the site's user or account")
+    assert not offenders, "\n".join(sorted(set(offenders))[:40])

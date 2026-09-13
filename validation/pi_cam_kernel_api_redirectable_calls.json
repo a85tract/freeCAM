@@ -1,7 +1,7 @@
 {
   "archive": {
     "objects": 479,
-    "path": "/glade/derecho/scratch/ruitong/pyCAM/PI-cam/f.e13.F1850C5.ne16_g16.icesm131_ihesp.PI-cam-oracle.50step/bld/lib/libatm.a",
+    "path": "${FREECAM_SCRATCH}/pyCAM/PI-cam/f.e13.F1850C5.ne16_g16.icesm131_ihesp.PI-cam-oracle.50step/bld/lib/libatm.a",
     "sha256": "56eae2ed53b1fc529d149489e320b9cab83a0cf715c02745f211c3fdbc943930"
   },
   "classifications": {

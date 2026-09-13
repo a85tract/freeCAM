@@ -73,7 +73,7 @@
         "step_total_wallavg": 19.307721,
         "step_total_wallmax": 19.307895
       },
-      "run_dir": "/glade/derecho/scratch/ruitong/pyCAM/PI-cam/workflow-builder-50step-7325855.desched1/default/run",
+      "run_dir": "${FREECAM_SCRATCH}/pyCAM/PI-cam/workflow-builder-50step-7325855.desched1/default/run",
       "bfb": {
         "bfb": true,
         "reference_files": 4,
@@ -144,7 +144,7 @@
         "step_total_wallavg": 20.063236,
         "step_total_wallmax": 20.063363
       },
-      "run_dir": "/glade/derecho/scratch/ruitong/pyCAM/PI-cam/workflow-builder-50step-7325855.desched1/noop-python/run",
+      "run_dir": "${FREECAM_SCRATCH}/pyCAM/PI-cam/workflow-builder-50step-7325855.desched1/noop-python/run",
       "bfb": {
         "bfb": true,
         "reference_files": 4,

@@ -14,8 +14,8 @@
   ],
   "initial_global_temperature_mean": 242.86870659185382,
   "executed_actions": 2501,
-  "candidate_run": "/glade/derecho/scratch/ruitong/freeCAM/PI-cam/notebook-20260812-011403-6f88cda9/run",
-  "reference_run": "/glade/derecho/scratch/ruitong/pyCAM/PI-cam/f.e13.F1850C5.ne16_g16.icesm131_ihesp.PI-cam-oracle.50step/run",
+  "candidate_run": "${FREECAM_SCRATCH}/freeCAM/PI-cam/notebook-20260812-011403-6f88cda9/run",
+  "reference_run": "${FREECAM_SCRATCH}/pyCAM/PI-cam/f.e13.F1850C5.ne16_g16.icesm131_ihesp.PI-cam-oracle.50step/run",
   "comparison": {
     "bfb": true,
     "reference_files": 4,

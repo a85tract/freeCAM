@@ -1,5 +1,5 @@
 {
-  "anchor_column": "/glade/work/ruitong/pycam-sima-pi-cam-only/validation/pi_cam_mmacro_pcond_anchor_column.json",
+  "anchor_column": "validation/pi_cam_mmacro_pcond_anchor_column.json",
   "api": "sampling_space + generate_dataset + verify_sample + to_netcdf/open_dataset",
   "driver_free": true,
   "failed_samples_have_nan_outputs": true,
@@ -9,7 +9,7 @@
   "image_sha256": "75dcf6f2baac191bea036cd1e48072e7042c088a2d7950f42e8b3c01c66263e1",
   "module_state_digest": "dde42b747dc61d972dd2a9521d4ddd441527a6f064268c2eb7524f36aeaed95a",
   "mpi_initialized": false,
-  "netcdf": "/glade/derecho/scratch/ruitong/freecam-physics/mmacro_pcond_training.nc",
+  "netcdf": "${FREECAM_SCRATCH}/freecam-physics/mmacro_pcond_training.nc",
   "netcdf_round_trip": true,
   "passed": true,
   "pbs_job_id": null,

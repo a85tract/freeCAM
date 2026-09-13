@@ -1,9 +1,9 @@
 {
-  "bundle": "/glade/derecho/scratch/ruitong/pyCAM/PI-cam/function-capture-7218608.desched1/bundles/mmacro_pcond_capture.npz",
+  "bundle": "${FREECAM_SCRATCH}/pyCAM/PI-cam/function-capture-7218608.desched1/bundles/mmacro_pcond_capture.npz",
   "driver_free": true,
   "function": "mmacro_pcond",
   "gate": "pi_cam_mmacro_pcond_full_chunk_vs_capture",
-  "image": "/glade/work/ruitong/pycam-sima-pi-cam-only/build/pi_cam_standalone/mmacro_pcond/libfreecam_mmacro_pcond.so",
+  "image": "build/pi_cam_standalone/mmacro_pcond/libfreecam_mmacro_pcond.so",
   "image_sha256": "75dcf6f2baac191bea036cd1e48072e7042c088a2d7950f42e8b3c01c66263e1",
   "intel_math_library": "/glade/u/apps/common/23.04/spack/opt/spack/intel-oneapi-compilers/2023.0.0/compiler/2023.0.0/linux/compiler/lib/intel64_lin/libimf.so",
   "ld_preload": "/glade/u/apps/common/23.04/spack/opt/spack/intel-oneapi-compilers/2023.0.0/compiler/2023.0.0/linux/compiler/lib/intel64_lin/libimf.so",
@@ -163887,6 +163887,6 @@
   "records_compared": 2048,
   "records_equal": 2048,
   "schema_version": 1,
-  "snapshot": "/glade/work/ruitong/pycam-sima-pi-cam-only/validation/pi_cam_mmacro_pcond_module_state.json",
+  "snapshot": "validation/pi_cam_mmacro_pcond_module_state.json",
   "snapshot_digest": "dde42b747dc61d972dd2a9521d4ddd441527a6f064268c2eb7524f36aeaed95a"
 }

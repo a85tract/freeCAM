@@ -12,7 +12,7 @@
     "bfb": "All numeric variables in every CAM history and restart NetCDF file are compared byte for byte.",
     "performance": "FreeCAM uses the recorded x2a/a2x boundary bundle for the simulated duration; the original atmosphere timer excludes other component compute but includes its live coupler exchange. The ratio is therefore an end-to-end CAM-path comparison, not a kernel-only benchmark."
   },
-  "config": "/glade/work/ruitong/pycam-sima-pi-cam-only/configs/pi_cam_icesm131_1month.yaml",
+  "config": "configs/pi_cam_icesm131_1month.yaml",
   "config_sha256": "33ab1618a2b95fe8741a52f4461bf8c664acf354b33ebc171b89b7215cdea291",
   "freecam_seconds": {
     "advance": 404.60647614899995,

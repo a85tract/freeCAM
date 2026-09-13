@@ -1,9 +1,9 @@
 {
-  "bundle": "/glade/derecho/scratch/ruitong/pyCAM/PI-cam/function-capture-7218608.desched1/bundles/dadadj_capture.npz",
+  "bundle": "${FREECAM_SCRATCH}/pyCAM/PI-cam/function-capture-7218608.desched1/bundles/dadadj_capture.npz",
   "driver_free": true,
   "function": "dadadj",
   "gate": "pi_cam_dadadj_full_chunk_vs_capture",
-  "image": "/glade/work/ruitong/pycam-sima-pi-cam-only/build/pi_cam_standalone/dadadj/libfreecam_dadadj.so",
+  "image": "build/pi_cam_standalone/dadadj/libfreecam_dadadj.so",
   "image_sha256": "786dacbffc3523e33df23cc888802512ae3a928ccc3951292f1331f341cc2225",
   "intel_math_library": "/glade/u/apps/common/23.04/spack/opt/spack/intel-oneapi-compilers/2023.0.0/compiler/2023.0.0/linux/compiler/lib/intel64_lin/libimf.so",
   "ld_preload": "/glade/u/apps/common/23.04/spack/opt/spack/intel-oneapi-compilers/2023.0.0/compiler/2023.0.0/linux/compiler/lib/intel64_lin/libimf.so",
@@ -34842,6 +34842,6 @@
   "records_compared": 2048,
   "records_equal": 2048,
   "schema_version": 1,
-  "snapshot": "/glade/work/ruitong/pycam-sima-pi-cam-only/validation/pi_cam_dadadj_module_state.json",
+  "snapshot": "validation/pi_cam_dadadj_module_state.json",
   "snapshot_digest": "e796f5676467a68c7fd78e23544f25cb6aa630e87f9859bd12e883b3109bc054"
 }

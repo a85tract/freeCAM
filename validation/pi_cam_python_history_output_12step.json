@@ -41,7 +41,7 @@
   "nhtfrq": -1,
   "output_false_field_written_anywhere": false,
   "pbs_job_id": "7188336.desched1",
-  "run_dir": "/glade/derecho/scratch/ruitong/freeCAM/PI-cam/notebook-20260820-200622-5168ef9d/run",
+  "run_dir": "${FREECAM_SCRATCH}/freeCAM/PI-cam/notebook-20260820-200622-5168ef9d/run",
   "run_status": "passed",
   "samples_with_python_field": 6,
   "schema_version": 1,

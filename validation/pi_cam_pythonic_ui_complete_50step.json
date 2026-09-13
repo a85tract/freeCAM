@@ -55,7 +55,7 @@
       50
     ]
   },
-  "candidate_run": "/glade/derecho/scratch/ruitong/freeCAM/PI-cam/ui-validation-7103908.desched1/run",
+  "candidate_run": "${FREECAM_SCRATCH}/freeCAM/PI-cam/ui-validation-7103908.desched1/run",
   "case_registry_lookup": true,
   "comparison": {
     "bfb": true,
@@ -79,13 +79,13 @@
     "launch_mode": "local",
     "mpi_ranks": 512,
     "paths": {
-      "atm_in": "/glade/derecho/scratch/ruitong/pyCAM/PI-cam/f.e13.F1850C5.ne16_g16.icesm131_ihesp.PI-cam-oracle.50step/run/atm_in",
-      "boundary": "/glade/derecho/scratch/ruitong/pyCAM/PI-cam/nonpic-boundary-capture-50step/boundary/replay/manifest.json",
-      "config": "/glade/work/ruitong/pycam-sima-pi-cam-only/configs/pi_cam_icesm131.yaml",
-      "environment": "/glade/work/ruitong/CESM_cases/f.e13.F1850C5.ne16_g16.icesm131_ihesp.PI-cam-oracle.50step/.env_mach_specific.sh",
-      "python": "/glade/work/ruitong/pycam-sima-pi-cam-only/.venv/bin/python"
+      "atm_in": "${FREECAM_SCRATCH}/pyCAM/PI-cam/f.e13.F1850C5.ne16_g16.icesm131_ihesp.PI-cam-oracle.50step/run/atm_in",
+      "boundary": "${FREECAM_SCRATCH}/pyCAM/PI-cam/nonpic-boundary-capture-50step/boundary/replay/manifest.json",
+      "config": "configs/pi_cam_icesm131.yaml",
+      "environment": "${FREECAM_CASES}/f.e13.F1850C5.ne16_g16.icesm131_ihesp.PI-cam-oracle.50step/.env_mach_specific.sh",
+      "python": ".venv/bin/python"
     },
-    "pbs_account": "UCUB0188",
+    "pbs_account": "${FREECAM_ACCOUNT}",
     "ready": true
   },
   "distributed_numpy_expression": {
@@ -116,7 +116,7 @@
   "preview_debug_actions": 47,
   "preview_without_launch": true,
   "queue": "cpudev",
-  "reference_run": "/glade/derecho/scratch/ruitong/pyCAM/PI-cam/f.e13.F1850C5.ne16_g16.icesm131_ihesp.PI-cam-oracle.50step/run",
+  "reference_run": "${FREECAM_SCRATCH}/pyCAM/PI-cam/f.e13.F1850C5.ne16_g16.icesm131_ihesp.PI-cam-oracle.50step/run",
   "run_result": {
     "actions": 2350,
     "cancelled": false,
@@ -124,7 +124,7 @@
     "date": 10102,
     "end_step": 50,
     "requested_steps": 50,
-    "run_dir": "/glade/derecho/scratch/ruitong/freeCAM/PI-cam/ui-validation-7103908.desched1/run",
+    "run_dir": "${FREECAM_SCRATCH}/freeCAM/PI-cam/ui-validation-7103908.desched1/run",
     "start_step": 0
   },
   "schema_version": 1,
@@ -145,7 +145,7 @@
   },
   "xarray_output": {
     "history_files": [
-      "/glade/derecho/scratch/ruitong/freeCAM/PI-cam/ui-validation-7103908.desched1/run/f.e13.F1850C5.ne16_g16.icesm131_ihesp.PI-cam-oracle.50step.cam.h0.0001-01-01-00000.nc"
+      "${FREECAM_SCRATCH}/freeCAM/PI-cam/ui-validation-7103908.desched1/run/f.e13.F1850C5.ne16_g16.icesm131_ihesp.PI-cam-oracle.50step.cam.h0.0001-01-01-00000.nc"
     ],
     "history_streams": [
       "h0"

@@ -670,7 +670,7 @@
       "configuration": "cosp",
       "current_case_loadable": false,
       "identity": "mod_cosp_types::construct_cosp_gridbox@components/cam/src/physics/cosp/cosp_types.F90",
-      "load_error": "OSError: /glade/work/ruitong/pycam-sima-pi-cam-only/build/pi_cam/process_devices/f8ef5c3af9ff0353-cosp_types.so: undefined symbol: mod_cosp_constants_mp_hclass_apm_",
+      "load_error": "OSError: build/pi_cam/process_devices/f8ef5c3af9ff0353-cosp_types.so: undefined symbol: mod_cosp_constants_mp_hclass_apm_",
       "name": "construct_cosp_gridbox",
       "opaque_types": [
         "type:cosp_gridbox"
@@ -688,7 +688,7 @@
       "configuration": "cosp",
       "current_case_loadable": false,
       "identity": "mod_cosp_types::construct_cosp_isccp@components/cam/src/physics/cosp/cosp_types.F90",
-      "load_error": "OSError: /glade/work/ruitong/pycam-sima-pi-cam-only/build/pi_cam/process_devices/f8ef5c3af9ff0353-cosp_types.so: undefined symbol: mod_cosp_constants_mp_hclass_apm_",
+      "load_error": "OSError: build/pi_cam/process_devices/f8ef5c3af9ff0353-cosp_types.so: undefined symbol: mod_cosp_constants_mp_hclass_apm_",
       "name": "construct_cosp_isccp",
       "opaque_types": [
         "type:cosp_config",
@@ -707,7 +707,7 @@
       "configuration": "cosp",
       "current_case_loadable": false,
       "identity": "mod_cosp_types::construct_cosp_lidarstats@components/cam/src/physics/cosp/cosp_types.F90",
-      "load_error": "OSError: /glade/work/ruitong/pycam-sima-pi-cam-only/build/pi_cam/process_devices/f8ef5c3af9ff0353-cosp_types.so: undefined symbol: mod_cosp_constants_mp_hclass_apm_",
+      "load_error": "OSError: build/pi_cam/process_devices/f8ef5c3af9ff0353-cosp_types.so: undefined symbol: mod_cosp_constants_mp_hclass_apm_",
       "name": "construct_cosp_lidarstats",
       "opaque_types": [
         "type:cosp_config",
@@ -726,7 +726,7 @@
       "configuration": "cosp",
       "current_case_loadable": false,
       "identity": "mod_cosp_types::construct_cosp_misr@components/cam/src/physics/cosp/cosp_types.F90",
-      "load_error": "OSError: /glade/work/ruitong/pycam-sima-pi-cam-only/build/pi_cam/process_devices/f8ef5c3af9ff0353-cosp_types.so: undefined symbol: mod_cosp_constants_mp_hclass_apm_",
+      "load_error": "OSError: build/pi_cam/process_devices/f8ef5c3af9ff0353-cosp_types.so: undefined symbol: mod_cosp_constants_mp_hclass_apm_",
       "name": "construct_cosp_misr",
       "opaque_types": [
         "type:cosp_config",
@@ -764,7 +764,7 @@
       "configuration": "cosp",
       "current_case_loadable": false,
       "identity": "mod_cosp_types::construct_cosp_radarstats@components/cam/src/physics/cosp/cosp_types.F90",
-      "load_error": "OSError: /glade/work/ruitong/pycam-sima-pi-cam-only/build/pi_cam/process_devices/f8ef5c3af9ff0353-cosp_types.so: undefined symbol: mod_cosp_constants_mp_hclass_apm_",
+      "load_error": "OSError: build/pi_cam/process_devices/f8ef5c3af9ff0353-cosp_types.so: undefined symbol: mod_cosp_constants_mp_hclass_apm_",
       "name": "construct_cosp_radarstats",
       "opaque_types": [
         "type:cosp_config",
@@ -783,7 +783,7 @@
       "configuration": "cosp",
       "current_case_loadable": false,
       "identity": "mod_cosp_types::construct_cosp_sghydro@components/cam/src/physics/cosp/cosp_types.F90",
-      "load_error": "OSError: /glade/work/ruitong/pycam-sima-pi-cam-only/build/pi_cam/process_devices/f8ef5c3af9ff0353-cosp_types.so: undefined symbol: mod_cosp_constants_mp_hclass_apm_",
+      "load_error": "OSError: build/pi_cam/process_devices/f8ef5c3af9ff0353-cosp_types.so: undefined symbol: mod_cosp_constants_mp_hclass_apm_",
       "name": "construct_cosp_sghydro",
       "opaque_types": [
         "type:cosp_sghydro"
@@ -801,7 +801,7 @@
       "configuration": "cosp",
       "current_case_loadable": false,
       "identity": "mod_cosp_types::construct_cosp_sglidar@components/cam/src/physics/cosp/cosp_types.F90",
-      "load_error": "OSError: /glade/work/ruitong/pycam-sima-pi-cam-only/build/pi_cam/process_devices/f8ef5c3af9ff0353-cosp_types.so: undefined symbol: mod_cosp_constants_mp_hclass_apm_",
+      "load_error": "OSError: build/pi_cam/process_devices/f8ef5c3af9ff0353-cosp_types.so: undefined symbol: mod_cosp_constants_mp_hclass_apm_",
       "name": "construct_cosp_sglidar",
       "opaque_types": [
         "type:cosp_config",
@@ -820,7 +820,7 @@
       "configuration": "cosp",
       "current_case_loadable": false,
       "identity": "mod_cosp_types::construct_cosp_sgradar@components/cam/src/physics/cosp/cosp_types.F90",
-      "load_error": "OSError: /glade/work/ruitong/pycam-sima-pi-cam-only/build/pi_cam/process_devices/f8ef5c3af9ff0353-cosp_types.so: undefined symbol: mod_cosp_constants_mp_hclass_apm_",
+      "load_error": "OSError: build/pi_cam/process_devices/f8ef5c3af9ff0353-cosp_types.so: undefined symbol: mod_cosp_constants_mp_hclass_apm_",
       "name": "construct_cosp_sgradar",
       "opaque_types": [
         "type:cosp_config",
@@ -839,7 +839,7 @@
       "configuration": "cosp",
       "current_case_loadable": false,
       "identity": "mod_cosp_types::construct_cosp_subgrid@components/cam/src/physics/cosp/cosp_types.F90",
-      "load_error": "OSError: /glade/work/ruitong/pycam-sima-pi-cam-only/build/pi_cam/process_devices/f8ef5c3af9ff0353-cosp_types.so: undefined symbol: mod_cosp_constants_mp_hclass_apm_",
+      "load_error": "OSError: build/pi_cam/process_devices/f8ef5c3af9ff0353-cosp_types.so: undefined symbol: mod_cosp_constants_mp_hclass_apm_",
       "name": "construct_cosp_subgrid",
       "opaque_types": [
         "type:cosp_subgrid"
@@ -857,7 +857,7 @@
       "configuration": "cosp",
       "current_case_loadable": false,
       "identity": "mod_cosp_types::construct_cosp_vgrid@components/cam/src/physics/cosp/cosp_types.F90",
-      "load_error": "OSError: /glade/work/ruitong/pycam-sima-pi-cam-only/build/pi_cam/process_devices/f8ef5c3af9ff0353-cosp_types.so: undefined symbol: mod_cosp_constants_mp_hclass_apm_",
+      "load_error": "OSError: build/pi_cam/process_devices/f8ef5c3af9ff0353-cosp_types.so: undefined symbol: mod_cosp_constants_mp_hclass_apm_",
       "name": "construct_cosp_vgrid",
       "opaque_types": [
         "type:cosp_gridbox",
@@ -892,7 +892,7 @@
       "configuration": "cosp",
       "current_case_loadable": false,
       "identity": "mod_cosp::cosp@components/cam/src/physics/cosp/cosp.F90",
-      "load_error": "OSError: /glade/work/ruitong/pycam-sima-pi-cam-only/build/pi_cam/process_devices/04106dc9f6579d73-cosp.so: undefined symbol: mod_cosp_constants_mp_n_bx_",
+      "load_error": "OSError: build/pi_cam/process_devices/04106dc9f6579d73-cosp.so: undefined symbol: mod_cosp_constants_mp_n_bx_",
       "name": "cosp",
       "opaque_types": [
         "type:cosp_config",
@@ -936,7 +936,7 @@
       "configuration": "cosp",
       "current_case_loadable": false,
       "identity": "mod_cosp_types::cosp_gridbox_cphp@components/cam/src/physics/cosp/cosp_types.F90",
-      "load_error": "OSError: /glade/work/ruitong/pycam-sima-pi-cam-only/build/pi_cam/process_devices/f8ef5c3af9ff0353-cosp_types.so: undefined symbol: mod_cosp_constants_mp_hclass_apm_",
+      "load_error": "OSError: build/pi_cam/process_devices/f8ef5c3af9ff0353-cosp_types.so: undefined symbol: mod_cosp_constants_mp_hclass_apm_",
       "name": "cosp_gridbox_cphp",
       "opaque_types": [
         "type:cosp_gridbox"
@@ -954,7 +954,7 @@
       "configuration": "cosp",
       "current_case_loadable": false,
       "identity": "mod_cosp_types::cosp_gridbox_cpsection@components/cam/src/physics/cosp/cosp_types.F90",
-      "load_error": "OSError: /glade/work/ruitong/pycam-sima-pi-cam-only/build/pi_cam/process_devices/f8ef5c3af9ff0353-cosp_types.so: undefined symbol: mod_cosp_constants_mp_hclass_apm_",
+      "load_error": "OSError: build/pi_cam/process_devices/f8ef5c3af9ff0353-cosp_types.so: undefined symbol: mod_cosp_constants_mp_hclass_apm_",
       "name": "cosp_gridbox_cpsection",
       "opaque_types": [
         "type:cosp_gridbox"
@@ -972,7 +972,7 @@
       "configuration": "cosp",
       "current_case_loadable": false,
       "identity": "mod_cosp_types::cosp_isccp_cpsection@components/cam/src/physics/cosp/cosp_types.F90",
-      "load_error": "OSError: /glade/work/ruitong/pycam-sima-pi-cam-only/build/pi_cam/process_devices/f8ef5c3af9ff0353-cosp_types.so: undefined symbol: mod_cosp_constants_mp_hclass_apm_",
+      "load_error": "OSError: build/pi_cam/process_devices/f8ef5c3af9ff0353-cosp_types.so: undefined symbol: mod_cosp_constants_mp_hclass_apm_",
       "name": "cosp_isccp_cpsection",
       "opaque_types": [
         "type:cosp_isccp"
@@ -1010,7 +1010,7 @@
       "configuration": "cosp",
       "current_case_loadable": false,
       "identity": "mod_cosp::cosp_iter@components/cam/src/physics/cosp/cosp.F90",
-      "load_error": "OSError: /glade/work/ruitong/pycam-sima-pi-cam-only/build/pi_cam/process_devices/04106dc9f6579d73-cosp.so: undefined symbol: mod_cosp_constants_mp_n_bx_",
+      "load_error": "OSError: build/pi_cam/process_devices/04106dc9f6579d73-cosp.so: undefined symbol: mod_cosp_constants_mp_n_bx_",
       "name": "cosp_iter",
       "opaque_types": [
         "type:cosp_config",
@@ -1075,7 +1075,7 @@
       "configuration": "cosp",
       "current_case_loadable": false,
       "identity": "mod_cosp_types::cosp_lidarstats_cpsection@components/cam/src/physics/cosp/cosp_types.F90",
-      "load_error": "OSError: /glade/work/ruitong/pycam-sima-pi-cam-only/build/pi_cam/process_devices/f8ef5c3af9ff0353-cosp_types.so: undefined symbol: mod_cosp_constants_mp_hclass_apm_",
+      "load_error": "OSError: build/pi_cam/process_devices/f8ef5c3af9ff0353-cosp_types.so: undefined symbol: mod_cosp_constants_mp_hclass_apm_",
       "name": "cosp_lidarstats_cpsection",
       "opaque_types": [
         "type:cosp_lidarstats"
@@ -1093,7 +1093,7 @@
       "configuration": "cosp",
       "current_case_loadable": false,
       "identity": "mod_cosp_types::cosp_misr_cpsection@components/cam/src/physics/cosp/cosp_types.F90",
-      "load_error": "OSError: /glade/work/ruitong/pycam-sima-pi-cam-only/build/pi_cam/process_devices/f8ef5c3af9ff0353-cosp_types.so: undefined symbol: mod_cosp_constants_mp_hclass_apm_",
+      "load_error": "OSError: build/pi_cam/process_devices/f8ef5c3af9ff0353-cosp_types.so: undefined symbol: mod_cosp_constants_mp_hclass_apm_",
       "name": "cosp_misr_cpsection",
       "opaque_types": [
         "type:cosp_misr"
@@ -1187,7 +1187,7 @@
       "configuration": "cosp",
       "current_case_loadable": false,
       "identity": "mod_cosp_radar::cosp_radar@components/cam/src/physics/cosp/llnl/cosp_radar.F90",
-      "load_error": "OSError: /glade/work/ruitong/pycam-sima-pi-cam-only/build/pi_cam/process_devices/dd683cd9af419571-cosp_radar.so: undefined symbol: radar_simulator_types_mp_mt_ttl_",
+      "load_error": "OSError: build/pi_cam/process_devices/dd683cd9af419571-cosp_radar.so: undefined symbol: radar_simulator_types_mp_mt_ttl_",
       "name": "cosp_radar",
       "opaque_types": [
         "type:cosp_gridbox",
@@ -1208,7 +1208,7 @@
       "configuration": "cosp",
       "current_case_loadable": false,
       "identity": "mod_cosp_types::cosp_radarstats_cpsection@components/cam/src/physics/cosp/cosp_types.F90",
-      "load_error": "OSError: /glade/work/ruitong/pycam-sima-pi-cam-only/build/pi_cam/process_devices/f8ef5c3af9ff0353-cosp_types.so: undefined symbol: mod_cosp_constants_mp_hclass_apm_",
+      "load_error": "OSError: build/pi_cam/process_devices/f8ef5c3af9ff0353-cosp_types.so: undefined symbol: mod_cosp_constants_mp_hclass_apm_",
       "name": "cosp_radarstats_cpsection",
       "opaque_types": [
         "type:cosp_radarstats"
@@ -1226,7 +1226,7 @@
       "configuration": "cosp",
       "current_case_loadable": false,
       "identity": "mod_cosp_types::cosp_sglidar_cpsection@components/cam/src/physics/cosp/cosp_types.F90",
-      "load_error": "OSError: /glade/work/ruitong/pycam-sima-pi-cam-only/build/pi_cam/process_devices/f8ef5c3af9ff0353-cosp_types.so: undefined symbol: mod_cosp_constants_mp_hclass_apm_",
+      "load_error": "OSError: build/pi_cam/process_devices/f8ef5c3af9ff0353-cosp_types.so: undefined symbol: mod_cosp_constants_mp_hclass_apm_",
       "name": "cosp_sglidar_cpsection",
       "opaque_types": [
         "type:cosp_sglidar"
@@ -1244,7 +1244,7 @@
       "configuration": "cosp",
       "current_case_loadable": false,
       "identity": "mod_cosp_types::cosp_sgradar_cpsection@components/cam/src/physics/cosp/cosp_types.F90",
-      "load_error": "OSError: /glade/work/ruitong/pycam-sima-pi-cam-only/build/pi_cam/process_devices/f8ef5c3af9ff0353-cosp_types.so: undefined symbol: mod_cosp_constants_mp_hclass_apm_",
+      "load_error": "OSError: build/pi_cam/process_devices/f8ef5c3af9ff0353-cosp_types.so: undefined symbol: mod_cosp_constants_mp_hclass_apm_",
       "name": "cosp_sgradar_cpsection",
       "opaque_types": [
         "type:cosp_sgradar"
@@ -1316,7 +1316,7 @@
       "configuration": "cosp",
       "current_case_loadable": false,
       "identity": "mod_cosp_types::cosp_subgrid_cpsection@components/cam/src/physics/cosp/cosp_types.F90",
-      "load_error": "OSError: /glade/work/ruitong/pycam-sima-pi-cam-only/build/pi_cam/process_devices/f8ef5c3af9ff0353-cosp_types.so: undefined symbol: mod_cosp_constants_mp_hclass_apm_",
+      "load_error": "OSError: build/pi_cam/process_devices/f8ef5c3af9ff0353-cosp_types.so: undefined symbol: mod_cosp_constants_mp_hclass_apm_",
       "name": "cosp_subgrid_cpsection",
       "opaque_types": [
         "type:cosp_subgrid"
@@ -1639,7 +1639,7 @@
       "configuration": "cosp",
       "current_case_loadable": false,
       "identity": "mod_cosp_types::free_cosp_gridbox@components/cam/src/physics/cosp/cosp_types.F90",
-      "load_error": "OSError: /glade/work/ruitong/pycam-sima-pi-cam-only/build/pi_cam/process_devices/f8ef5c3af9ff0353-cosp_types.so: undefined symbol: mod_cosp_constants_mp_hclass_apm_",
+      "load_error": "OSError: build/pi_cam/process_devices/f8ef5c3af9ff0353-cosp_types.so: undefined symbol: mod_cosp_constants_mp_hclass_apm_",
       "name": "free_cosp_gridbox",
       "opaque_types": [
         "type:cosp_gridbox"
@@ -1657,7 +1657,7 @@
       "configuration": "cosp",
       "current_case_loadable": false,
       "identity": "mod_cosp_types::free_cosp_isccp@components/cam/src/physics/cosp/cosp_types.F90",
-      "load_error": "OSError: /glade/work/ruitong/pycam-sima-pi-cam-only/build/pi_cam/process_devices/f8ef5c3af9ff0353-cosp_types.so: undefined symbol: mod_cosp_constants_mp_hclass_apm_",
+      "load_error": "OSError: build/pi_cam/process_devices/f8ef5c3af9ff0353-cosp_types.so: undefined symbol: mod_cosp_constants_mp_hclass_apm_",
       "name": "free_cosp_isccp",
       "opaque_types": [
         "type:cosp_isccp"
@@ -1675,7 +1675,7 @@
       "configuration": "cosp",
       "current_case_loadable": false,
       "identity": "mod_cosp_types::free_cosp_lidarstats@components/cam/src/physics/cosp/cosp_types.F90",
-      "load_error": "OSError: /glade/work/ruitong/pycam-sima-pi-cam-only/build/pi_cam/process_devices/f8ef5c3af9ff0353-cosp_types.so: undefined symbol: mod_cosp_constants_mp_hclass_apm_",
+      "load_error": "OSError: build/pi_cam/process_devices/f8ef5c3af9ff0353-cosp_types.so: undefined symbol: mod_cosp_constants_mp_hclass_apm_",
       "name": "free_cosp_lidarstats",
       "opaque_types": [
         "type:cosp_lidarstats"
@@ -1693,7 +1693,7 @@
       "configuration": "cosp",
       "current_case_loadable": false,
       "identity": "mod_cosp_types::free_cosp_misr@components/cam/src/physics/cosp/cosp_types.F90",
-      "load_error": "OSError: /glade/work/ruitong/pycam-sima-pi-cam-only/build/pi_cam/process_devices/f8ef5c3af9ff0353-cosp_types.so: undefined symbol: mod_cosp_constants_mp_hclass_apm_",
+      "load_error": "OSError: build/pi_cam/process_devices/f8ef5c3af9ff0353-cosp_types.so: undefined symbol: mod_cosp_constants_mp_hclass_apm_",
       "name": "free_cosp_misr",
       "opaque_types": [
         "type:cosp_misr"
@@ -1729,7 +1729,7 @@
       "configuration": "cosp",
       "current_case_loadable": false,
       "identity": "mod_cosp_types::free_cosp_radarstats@components/cam/src/physics/cosp/cosp_types.F90",
-      "load_error": "OSError: /glade/work/ruitong/pycam-sima-pi-cam-only/build/pi_cam/process_devices/f8ef5c3af9ff0353-cosp_types.so: undefined symbol: mod_cosp_constants_mp_hclass_apm_",
+      "load_error": "OSError: build/pi_cam/process_devices/f8ef5c3af9ff0353-cosp_types.so: undefined symbol: mod_cosp_constants_mp_hclass_apm_",
       "name": "free_cosp_radarstats",
       "opaque_types": [
         "type:cosp_radarstats"
@@ -1747,7 +1747,7 @@
       "configuration": "cosp",
       "current_case_loadable": false,
       "identity": "mod_cosp_types::free_cosp_sghydro@components/cam/src/physics/cosp/cosp_types.F90",
-      "load_error": "OSError: /glade/work/ruitong/pycam-sima-pi-cam-only/build/pi_cam/process_devices/f8ef5c3af9ff0353-cosp_types.so: undefined symbol: mod_cosp_constants_mp_hclass_apm_",
+      "load_error": "OSError: build/pi_cam/process_devices/f8ef5c3af9ff0353-cosp_types.so: undefined symbol: mod_cosp_constants_mp_hclass_apm_",
       "name": "free_cosp_sghydro",
       "opaque_types": [
         "type:cosp_sghydro"
@@ -1765,7 +1765,7 @@
       "configuration": "cosp",
       "current_case_loadable": false,
       "identity": "mod_cosp_types::free_cosp_sglidar@components/cam/src/physics/cosp/cosp_types.F90",
-      "load_error": "OSError: /glade/work/ruitong/pycam-sima-pi-cam-only/build/pi_cam/process_devices/f8ef5c3af9ff0353-cosp_types.so: undefined symbol: mod_cosp_constants_mp_hclass_apm_",
+      "load_error": "OSError: build/pi_cam/process_devices/f8ef5c3af9ff0353-cosp_types.so: undefined symbol: mod_cosp_constants_mp_hclass_apm_",
       "name": "free_cosp_sglidar",
       "opaque_types": [
         "type:cosp_sglidar"
@@ -1783,7 +1783,7 @@
       "configuration": "cosp",
       "current_case_loadable": false,
       "identity": "mod_cosp_types::free_cosp_sgradar@components/cam/src/physics/cosp/cosp_types.F90",
-      "load_error": "OSError: /glade/work/ruitong/pycam-sima-pi-cam-only/build/pi_cam/process_devices/f8ef5c3af9ff0353-cosp_types.so: undefined symbol: mod_cosp_constants_mp_hclass_apm_",
+      "load_error": "OSError: build/pi_cam/process_devices/f8ef5c3af9ff0353-cosp_types.so: undefined symbol: mod_cosp_constants_mp_hclass_apm_",
       "name": "free_cosp_sgradar",
       "opaque_types": [
         "type:cosp_sgradar"
@@ -1801,7 +1801,7 @@
       "configuration": "cosp",
       "current_case_loadable": false,
       "identity": "mod_cosp_types::free_cosp_subgrid@components/cam/src/physics/cosp/cosp_types.F90",
-      "load_error": "OSError: /glade/work/ruitong/pycam-sima-pi-cam-only/build/pi_cam/process_devices/f8ef5c3af9ff0353-cosp_types.so: undefined symbol: mod_cosp_constants_mp_hclass_apm_",
+      "load_error": "OSError: build/pi_cam/process_devices/f8ef5c3af9ff0353-cosp_types.so: undefined symbol: mod_cosp_constants_mp_hclass_apm_",
       "name": "free_cosp_subgrid",
       "opaque_types": [
         "type:cosp_subgrid"
@@ -1819,7 +1819,7 @@
       "configuration": "cosp",
       "current_case_loadable": false,
       "identity": "mod_cosp_types::free_cosp_vgrid@components/cam/src/physics/cosp/cosp_types.F90",
-      "load_error": "OSError: /glade/work/ruitong/pycam-sima-pi-cam-only/build/pi_cam/process_devices/f8ef5c3af9ff0353-cosp_types.so: undefined symbol: mod_cosp_constants_mp_hclass_apm_",
+      "load_error": "OSError: build/pi_cam/process_devices/f8ef5c3af9ff0353-cosp_types.so: undefined symbol: mod_cosp_constants_mp_hclass_apm_",
       "name": "free_cosp_vgrid",
       "opaque_types": [
         "type:cosp_vgrid"
@@ -3406,7 +3406,7 @@
       "configuration": "cosp",
       "current_case_loadable": false,
       "identity": "radar_simulator::radar_simulator@components/cam/src/physics/cosp/quickbeam/radar_simulator.f90",
-      "load_error": "OSError: /glade/work/ruitong/pycam-sima-pi-cam-only/build/pi_cam/process_devices/ddc9c57d35941392-radar_simulator.so: undefined symbol: radar_simulator_types_mp_mt_qbsca_",
+      "load_error": "OSError: build/pi_cam/process_devices/ddc9c57d35941392-radar_simulator.so: undefined symbol: radar_simulator_types_mp_mt_qbsca_",
       "name": "radar_simulator",
       "opaque_types": [
         "type:class_param",
@@ -3441,7 +3441,7 @@
       "configuration": "legacy_radiation",
       "current_case_loadable": false,
       "identity": "radsw::radcswmx@components/cam/src/physics/cam/radsw.F90",
-      "load_error": "OSError: /glade/work/ruitong/pycam-sima-pi-cam-only/build/pi_cam/process_devices/99247cad7bcb9777-radsw.so: undefined symbol: radconstants_mp_ph2o_",
+      "load_error": "OSError: build/pi_cam/process_devices/99247cad7bcb9777-radsw.so: undefined symbol: radconstants_mp_ph2o_",
       "name": "radcswmx",
       "opaque_types": [],
       "qualified_name": "radsw::radcswmx",
@@ -3457,7 +3457,7 @@
       "configuration": "legacy_radiation",
       "current_case_loadable": false,
       "identity": "radsw::raddedmx@components/cam/src/physics/cam/radsw.F90",
-      "load_error": "OSError: /glade/work/ruitong/pycam-sima-pi-cam-only/build/pi_cam/process_devices/99247cad7bcb9777-radsw.so: undefined symbol: radconstants_mp_ph2o_",
+      "load_error": "OSError: build/pi_cam/process_devices/99247cad7bcb9777-radsw.so: undefined symbol: radconstants_mp_ph2o_",
       "name": "raddedmx",
       "opaque_types": [],
       "qualified_name": "radsw::raddedmx",
@@ -3864,7 +3864,7 @@
       "configuration": "carma",
       "current_case_loadable": false,
       "identity": "sulfnucrate::sulfnucrate@components/cam/src/physics/carma/base/sulfnucrate.F90",
-      "load_error": "OSError: /glade/work/ruitong/pycam-sima-pi-cam-only/build/pi_cam/process_devices/b03bf1e24ba43a0e-sulfnucrate.so: undefined symbol: sulfate_utils_mp_dnc1_",
+      "load_error": "OSError: build/pi_cam/process_devices/b03bf1e24ba43a0e-sulfnucrate.so: undefined symbol: sulfate_utils_mp_dnc1_",
       "name": "sulfnucrate",
       "opaque_types": [
         "type:carma_type",

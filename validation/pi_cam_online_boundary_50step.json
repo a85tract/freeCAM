@@ -522,7 +522,7 @@
   "boundary_mode": "online",
   "boundary_provider": "OnlineBoundaryProvider",
   "boundary_rank_zero": {
-    "bootstrap": "/glade/derecho/scratch/ruitong/pyCAM/PI-cam/online-boundary-bootstrap/boundary",
+    "bootstrap": "${FREECAM_SCRATCH}/pyCAM/PI-cam/online-boundary-bootstrap/boundary",
     "exports": 53,
     "generated_imports": 52,
     "imports": 53,
