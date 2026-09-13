@@ -1,0 +1,244 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>freeCAM Architecture</title>
+<meta name="description" content="How freeCAM runs the CAM atmosphere of iCESM1.3.1 under a Python control layer, with every physics process owned by a Python class and its numerical kernels replaceable behind a validated interface.">
+<style>
+  :root {
+    --bg: #f7f7f5; --panel: #ffffff; --ink: #1c1c1a; --muted: #5d5d58; --line: #d9d9d4;
+    --python: #2c5f8a; --python-bg: #e8f0f7; --abi: #8a5a2c; --abi-bg: #f7efe6;
+    --fortran: #3b7a4a; --fortran-bg: #e9f3eb; --cesm: #6b4c8a; --cesm-bg: #efe8f5;
+    --accent: #b8372a; --code-bg: #efefeb;
+    color-scheme: light dark;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #17171a; --panel: #1f1f24; --ink: #e8e8e3; --muted: #a3a39c; --line: #3a3a41;
+      --python: #7fb2dd; --python-bg: #1c2a38; --abi: #d6a271; --abi-bg: #2e2419;
+      --fortran: #7fc48f; --fortran-bg: #1c2d21; --cesm: #b99bd9; --cesm-bg: #2a2133;
+      --accent: #e0705f; --code-bg: #2a2a30;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 15px/1.55 -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
+  main { max-width: 1080px; margin: 0 auto; padding: 32px 20px 64px; }
+  header.top { display: flex; flex-wrap: wrap; gap: 8px 20px; align-items: baseline; justify-content: space-between; border-bottom: 1px solid var(--line); padding-bottom: 12px; margin-bottom: 24px; }
+  header.top h1 { margin: 0; font-size: 26px; letter-spacing: -0.01em; }
+  header.top nav a { color: var(--python); text-decoration: none; margin-left: 16px; font-size: 14px; }
+  header.top nav a:hover { text-decoration: underline; }
+  h2 { font-size: 20px; margin: 40px 0 12px; }
+  h3 { font-size: 16px; margin: 24px 0 8px; }
+  p { max-width: 78ch; }
+  code, pre { font: 13px/1.5 ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace; }
+  code { background: var(--code-bg); padding: 1px 5px; border-radius: 4px; }
+  pre { background: var(--code-bg); padding: 12px 14px; border-radius: 6px; overflow-x: auto; }
+  .lede { font-size: 17px; color: var(--muted); max-width: 78ch; }
+  .facts { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; margin: 20px 0 8px; }
+  .fact { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 12px 14px; }
+  .fact b { display: block; font-size: 24px; letter-spacing: -0.02em; }
+  .fact span { color: var(--muted); font-size: 13px; }
+
+  /* the layer diagram */
+  .diagram { display: flex; flex-direction: column; gap: 0; margin: 20px 0; }
+  .layer { border: 1.5px solid; border-radius: 10px; padding: 14px 16px 16px; background: var(--panel); }
+  .layer > .title { display: flex; flex-wrap: wrap; gap: 6px 14px; align-items: baseline; margin-bottom: 10px; }
+  .layer > .title b { font-size: 15px; }
+  .layer > .title span { color: var(--muted); font-size: 13px; }
+  .layer.python { border-color: var(--python); background: var(--python-bg); }
+  .layer.abi { border-color: var(--abi); background: var(--abi-bg); }
+  .layer.fortran { border-color: var(--fortran); background: var(--fortran-bg); }
+  .layer.cesm { border-color: var(--cesm); background: var(--cesm-bg); }
+  .layer.user { border-color: var(--line); }
+  .arrow { display: flex; justify-content: center; align-items: center; height: 34px; color: var(--muted); font-size: 12px; gap: 10px; }
+  .arrow::before { content: ""; width: 2px; height: 100%; background: var(--line); position: absolute; }
+  .arrow { position: relative; }
+  .arrow span { background: var(--bg); padding: 0 8px; position: relative; }
+  .boxes { display: grid; gap: 10px; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); }
+  .box { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; font-size: 13.5px; }
+  .box b { display: block; margin-bottom: 4px; }
+  .box .path { color: var(--muted); font-size: 12px; display: block; margin-top: 6px; }
+  .box.wide { grid-column: 1 / -1; }
+  .flow { display: grid; grid-template-columns: 1fr auto 1fr; gap: 10px; align-items: stretch; margin-top: 10px; }
+  .flow .or { display: flex; align-items: center; color: var(--muted); font-size: 12px; padding: 0 4px; }
+  .flow .box.whole { border-left: 4px solid var(--fortran); }
+  .flow .box.segmented { border-left: 4px solid var(--accent); }
+  .steps { margin: 6px 0 0; padding-left: 18px; font-size: 13px; }
+  .steps li { margin: 2px 0; }
+  @media (max-width: 640px) { .flow { grid-template-columns: 1fr; } .flow .or { justify-content: center; } }
+
+  table { border-collapse: collapse; width: 100%; margin: 12px 0 8px; font-size: 13.5px; background: var(--panel); }
+  .tablewrap { overflow-x: auto; border: 1px solid var(--line); border-radius: 8px; }
+  th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { background: var(--code-bg); font-weight: 600; white-space: nowrap; }
+  tr:last-child td { border-bottom: none; }
+  td.num, th.num { text-align: right; white-space: nowrap; }
+  .ok { color: var(--fortran); font-weight: 600; }
+  .note { color: var(--muted); font-size: 13px; }
+  ul.rules { padding-left: 20px; max-width: 80ch; }
+  ul.rules li { margin: 6px 0; }
+  footer { margin-top: 48px; border-top: 1px solid var(--line); padding-top: 14px; color: var(--muted); font-size: 13px; }
+  footer a { color: var(--python); }
+</style>
+</head>
+<body>
+<main>
+<header class="top">
+  <h1>freeCAM Architecture</h1>
+  <nav>
+    <a href="../">Workflow Builder</a>
+    <a href="https://github.com/a85tract/freeCAM">Repository</a>
+    <a href="https://github.com/a85tract/freeCAM/blob/main/docs/physics_kernel_decoupling.md">Decoupling notes</a>
+  </nav>
+</header>
+
+<p class="lede">freeCAM runs the CAM atmosphere component of iCESM1.3.1 under a Python control layer. Python owns the workflow, the clock, the coupling decisions and rank-local state; the original Fortran stays the numerical source of truth and is called through generated, C-interoperable adapters. Every exposed physics process is owned by a Python class, and inside each class the numerical cores are kernels that can be replaced, with the original run whole when nothing is replaced.</p>
+
+<div class="facts">
+  <div class="fact"><b>58</b><span>workflow actions per step, 32 of them numerical schemes</span></div>
+  <div class="fact"><b>23</b><span>enabled numerical actions, every one owned by a Python class</span></div>
+  <div class="fact"><b>17</b><span>replaceable kernels behind 11 runners, each validated bit-for-bit</span></div>
+  <div class="fact"><b>~1%</b><span>cost of the default path with every class installed, over a model year</span></div>
+</div>
+
+<h2 id="layers">The layers</h2>
+<p>One rank of the model, top to bottom. Control flows down, and only down: the Fortran never calls back into Python. A pause hands control back to Python and waits for a resume.</p>
+
+<div class="diagram">
+  <section class="layer user">
+    <div class="title"><b>User</b><span>notebook, script or command line</span></div>
+    <div class="boxes">
+      <div class="box"><b>Python API</b><code>fc.Driver</code> / <code>fc.FreeCAM</code>: prepares an isolated run directory; the first live operation launches one persistent MPI session.<span class="path">src/freecam/pi_cam/facade.py</span></div>
+      <div class="box"><b>Command line</b><code>--python-stages</code>, <code>--segmented-original-kernels</code>, <code>--disable-actions</code>, <code>--stage-execution</code>.<span class="path">src/freecam/pi_cam/cli.py</span></div>
+      <div class="box"><b>Workflow Builder</b>Edits, checks and generates a workflow in the browser; reads the same runner manifest to say which kernels are bindable and validated.<span class="path">web/, src/freecam/pi_cam/workflow_builder/</span></div>
+    </div>
+  </section>
+
+  <div class="arrow"><span>cloudpickled commands over multiprocessing.connection, one worker per MPI rank</span></div>
+
+  <section class="layer python">
+    <div class="title"><b>Python control layer</b><span>runs on every one of the 512 MPI ranks</span></div>
+    <div class="boxes">
+      <div class="box wide"><b>Workflow: one ordered list of actions per step</b>
+        boundary import &rarr; physics before the coupler (cam_run1) &rarr; dynamics &rarr; physics after the coupler (cam_run2) &rarr; history &rarr; clock &rarr; boundary export. Actions can be enabled, disabled, moved and run; a notebook-defined <code>fc.Physics</code> can be inserted without rebuilding CAM. Installing a stage class disables the original action and puts the class's <code>tend()</code> in its slot.
+        <span class="path">src/freecam/pi_cam/plan.py, runtime_processes.py, model/python_processes.py</span></div>
+      <div class="box"><b>9 pausable classes</b>DryAdjustment, ShallowConvection, DeepConvection, ConvectiveTracerTransport, VerticalDiffusion, GravityWaveDrag, AerosolWetDeposition, AerosolDryDeposition, ChemistryTendencies. Each is a declaration: its action, its runner prefix, its swappable kernels.<span class="path">src/freecam/physics/pausable.py</span></div>
+      <div class="box"><b>Radiation</b>A split stage: the plan stops before <code>radiation_tend</code> and resumes after it; the class runs between the halves over the <code>radt</code> runner.<span class="path">src/freecam/physics/radiation.py</span></div>
+      <div class="box"><b>CloudMacroMicrophysics</b>Stage 7, the first class built, over the <code>stage7</code> runner with <code>mmacro_pcond</code> and <code>micro_mg_tend</code>.<span class="path">src/freecam/physics/cloud_macro_microphysics.py</span></div>
+      <div class="box"><b>EnergyFixer and 11 InertStages</b>Own their actions whole and expose no kernel: the energy fixer because its core allocates its tendency inside the call; the inert eleven because their bodies do nothing in this configuration, proven by one gate with all of them disabled.<span class="path">src/freecam/physics/pausable.py</span></div>
+      <div class="box wide"><b>NativeStage.tend(): two paths, chosen by the kernel slots</b>
+        <div class="flow">
+          <div class="box whole"><b>native-whole</b>No kernel replaced. The class calls its original Fortran action once through <code>run_action()</code>: no runner, no views, no copies. This is the default path and costs about one percent.</div>
+          <div class="or">or</div>
+          <div class="box segmented"><b>segmented</b>Some kernel replaced. <code>SegmentedStage.run()</code> drives the image's runner:
+            <ol class="steps">
+              <li><code>create</code> once, then <code>start</code> with the replacement mask</li>
+              <li>on NEEDS_KERNEL: <code>frame</code> gives the paused call's arguments where they live</li>
+              <li>the model answers the batch, or <code>original</code> runs the very call for a gate</li>
+              <li>write-back into the live lanes of every output, then <code>resume</code></li>
+              <li>repeat until DONE, once per chunk this rank owns</li>
+            </ol></div>
+        </div>
+        <span class="path">src/freecam/physics/stage.py, segments.py; src/freecam/pi_cam/segment_runner.py</span></div>
+      <div class="box"><b>StatePool</b>Rank-local NumPy arrays that are zero-copy views of live Fortran state; distributed get, stats and mutation through the facade.<span class="path">src/freecam/pi_cam/state.py</span></div>
+      <div class="box"><b>Kernel coverage ledger</b>Every action's class, kernels, gates and performance evidence, rebuilt from the records and checked for staleness.<span class="path">validation/physics_kernel_decoupling.json, src/freecam/pi_cam/kernel_coverage.py</span></div>
+    </div>
+  </section>
+
+  <div class="arrow"><span>ctypes over a bind(C) ABI: pycam_&lt;prefix&gt;_{create, start, frame, resume, original, error, reset, destroy}_v1</span></div>
+
+  <section class="layer abi">
+    <div class="title"><b>Generated adapters</b><span>convert pointers, shapes, scalars and handles; copy no numerics</span></div>
+    <div class="boxes">
+      <div class="box"><b>Pausable runners</b>One state machine per process. The original driver is hoisted verbatim into a module (its locals become module state), cut into pieces at the kernel call sites; the runner re-expresses the if / do / select skeleton around the pauses and carries out a piece's return, cycle or exit.<span class="path">native/pi_cam/support/pycam_&lt;prefix&gt;_{glue,driver,runner}.F90 (31 modules)</span></div>
+      <div class="box"><b>Specs and generator</b>Ten YAML specs name the pinned source ranges, the pauses, the dummies, carries and options; the generator writes the modules and the frame table, and hashes every range so a moved source fails <code>--check</code>.<span class="path">native/pi_cam/pausable/*.yaml, tools/pi_cam_pausable.py</span></div>
+      <div class="box"><b>Frames</b>The paused call's arguments in the callee's order: address, rank, shape, dtype, intent. Derived types are served component by component; an optional a site omits is an empty slot.<span class="path">native/pi_cam/segment_frames.yaml</span></div>
+      <div class="box"><b>Manifest</b>Which stage has a runner, what its entries are called, which kernels it pauses at, and the gate records that validated each pause.<span class="path">native/pi_cam/segment_runners.yaml</span></div>
+      <div class="box"><b>Hosts and carries</b>Views of phys_state, phys_tend, pbuf, cam_in and cam_out for any stage; views of the locals tphysbc and tphysac carry between actions.<span class="path">pycam_stage_hosts.F90; control patches 0039, 0043</span></div>
+      <div class="box"><b>Module-state patches</b>One <code>public</code> statement each, naming the private variables a hoisted driver reads; the patched module is compiled for its interface only and the oracle's object is linked.<span class="path">control patches 0044 to 0048</span></div>
+    </div>
+  </section>
+
+  <div class="arrow"><span>one fixed-address image, linked from the oracle build's own objects</span></div>
+
+  <section class="layer fortran">
+    <div class="title"><b>Original iCESM1.3.1 Fortran</b><span>the numerical source of truth, byte for byte</span></div>
+    <div class="boxes">
+      <div class="box"><b>physpkg with control patches</b>Action dispatch, stage boundaries and carry accessors added around the original statements; no numerical statement changes.</div>
+      <div class="box"><b>The 17 kernels and everything around them</b>Convection, turbulence, radiation, microphysics, deposition, chemistry, the SE dynamical core: all compiled once in the oracle build and reused unchanged.</div>
+      <div class="box"><b>libfreecam_pi_cam.so</b>The image freeCAM loads; its manifest records every ABI symbol and the SHA-256 of the numerical library.<span class="path">build/pi_cam_promoted/</span></div>
+    </div>
+  </section>
+
+  <div class="arrow"><span>MCT x2a / a2x arrays as zero-copy views</span></div>
+
+  <section class="layer cesm">
+    <div class="title"><b>CESM coupler and the other components</b><span>online boundary provider: live CLM, CICE, DOCN, RTM</span></div>
+    <div class="boxes">
+      <div class="box wide">The default boundary is the real coupled system, run in the same job. An offline provider replays captured boundary datasets for the replay cases.<span class="path">src/freecam/pi_cam/boundary.py</span></div>
+    </div>
+  </section>
+</div>
+
+<h2 id="classes">The classes and their kernels</h2>
+<p>Every pause has been answered by the original kernel through Python in a 512-rank, 50-step run compared with the pinned iCESM reference with no numerical tolerance. The pause count is per 50 steps; radiation runs every other step, wet deposition pauses for every mode, phase and species.</p>
+<div class="tablewrap">
+<table>
+  <thead><tr><th>Class</th><th>Action</th><th>Runner</th><th>Kernels (frame slots)</th><th class="num">Pauses / 50 steps</th><th>Gate</th></tr></thead>
+  <tbody>
+    <tr><td>DryAdjustment</td><td>cam_run1.dry_adjustment</td><td><code>dadadj</code></td><td>dadadj (7)</td><td class="num">100</td><td class="ok">bit-for-bit</td></tr>
+    <tr><td>ShallowConvection</td><td>cam_run1.shallow_convection</td><td><code>shcu</code></td><td>compute_uwshcu_inv (54)</td><td class="num">100</td><td class="ok">bit-for-bit</td></tr>
+    <tr><td>DeepConvection</td><td>cam_run1.deep_convection</td><td><code>zmdeep</code></td><td>zm_convr (70), zm_conv_evap (22), momtran (25)</td><td class="num">100 each</td><td class="ok">bit-for-bit</td></tr>
+    <tr><td>ConvectiveTracerTransport</td><td>cam_run1.convective_tracer_transport_leaf</td><td><code>zmtran</code></td><td>convtran (21), transporting with the mass fluxes DeepConvection left in the module's own arrays</td><td class="num">100</td><td class="ok">bit-for-bit</td></tr>
+    <tr><td>CloudMacroMicrophysics</td><td>cam_run1.cloud_macro_microphysics</td><td><code>stage7</code></td><td>mmacro_pcond, micro_mg_tend (from their reviewed contracts)</td><td class="num">100 each</td><td class="ok">bit-for-bit</td></tr>
+    <tr><td>AerosolWetDeposition</td><td>cam_run1.aerosol_wet_deposition_leaf</td><td><code>awet</code></td><td>wetdepa_v2 (32), two call sites</td><td class="num">3000</td><td class="ok">bit-for-bit</td></tr>
+    <tr><td>Radiation</td><td>cam_run1.radiation (split)</td><td><code>radt</code></td><td>rad_rrtmg_sw (58), rad_rrtmg_lw (35)</td><td class="num">50 each</td><td class="ok">bit-for-bit</td></tr>
+    <tr><td>ChemistryTendencies</td><td>cam_run2.chemistry_tendencies_leaf</td><td><code>chem</code></td><td>gas_phase_chemdr (34), the whole gas-phase driver as one kernel</td><td class="num">100</td><td class="ok">bit-for-bit</td></tr>
+    <tr><td>VerticalDiffusion</td><td>cam_run2.vertical_diffusion</td><td><code>vdiff</code></td><td>compute_tms (14), compute_eddy_diff (55), compute_vdiff (42) at two call sites</td><td class="num">100, 100, 200</td><td class="ok">bit-for-bit</td></tr>
+    <tr><td>AerosolDryDeposition</td><td>cam_run2.aerosol_dry_deposition_leaf</td><td><code>adry</code></td><td>modal_aero_depvel_part (13), four call sites</td><td class="num">800</td><td class="ok">bit-for-bit</td></tr>
+    <tr><td>GravityWaveDrag</td><td>cam_run2.gravity_wave_drag</td><td><code>gwd</code></td><td>gw_drag_prof (33), the band and the pressure coordinates served by component</td><td class="num">100</td><td class="ok">bit-for-bit</td></tr>
+    <tr><td>EnergyFixer</td><td>cam_run1.energy_fixer</td><td>none</td><td>no kernel: check_energy_fix allocates its tendency inside the call and reads private module state</td><td class="num">0</td><td>owned whole</td></tr>
+    <tr><td>11 InertStages</td><td>rayleigh_friction, charge_neutrality, qbo_relaxation, ion_drag, sea_salt_rebin, modal_aerosol_preparation, carma (3), tracer and age-of-air tendencies</td><td>none</td><td>no kernel: the bodies do nothing in this configuration</td><td class="num">0</td><td class="ok">disabled at once, bit-for-bit</td></tr>
+  </tbody>
+</table>
+</div>
+<p class="note">One further run installed all eleven classes and paused every one of the 17 kernels in the same 50 steps (5300 pauses): bit-for-bit. The nine numerical actions that are disabled by default are alternate forms of the same work (a parent stage whose leaves run, or a leaf whose stage runs whole) and are owned through them.</p>
+
+<h2 id="performance">What the default path costs</h2>
+<p>Paired runs on one allocation: the original Fortran (A) followed by freeCAM with every class installed and nothing replaced (C), both against the online CESM coupling; C is compared with the oracle bit-for-bit.</p>
+<div class="tablewrap">
+<table>
+  <thead><tr><th>Pair</th><th class="num">Fortran (A)</th><th class="num">freeCAM, all classes (C)</th><th class="num">C / A</th><th>Bit-for-bit</th></tr></thead>
+  <tbody>
+    <tr><td>one month, A then C</td><td class="num">452.7 s</td><td class="num">451.0 s</td><td class="num">0.996</td><td class="ok">yes</td></tr>
+    <tr><td>one month, C then A</td><td class="num">455.1 s</td><td class="num">448.8 s</td><td class="num">0.986</td><td class="ok">yes</td></tr>
+    <tr><td>one year, A then C</td><td class="num">5135.0 s</td><td class="num">5183.6 s</td><td class="num">1.0095</td><td class="ok">yes</td></tr>
+  </tbody>
+</table>
+</div>
+<p class="note">With the cloud stage alone the month was 1.006 and the year 1.0125, so installing the other ten classes adds nothing measurable. The eleven Python wrappers together cost about 37 s of a year. An earlier set of pairs at 1.05 to 1.09 measured a flag in the boundary export that sent every step through a pickled gather once trusted classes were installed; the fix and both sets of pairs are in <code>validation/pi_cam_faster_than_fortran.json</code> and <code>validation/performance_overhead.md</code>.</p>
+
+<h2 id="rules">The rules the design keeps</h2>
+<ul class="rules">
+  <li><b>Floating-point algorithms stay in the original source.</b> Runners and glue are verbatim slices of the pinned Fortran; the generator moves and cuts, never rewrites an expression. Module-state patches add <code>public</code> statements and nothing else.</li>
+  <li><b>Nothing replaced means no runner.</b> A class with empty kernel slots calls its original action whole, so the control layer's cost is a few crossings per step.</li>
+  <li><b>Fortran never calls Python.</b> A pause returns to Python; the resume continues the state machine from where it stopped.</li>
+  <li><b>The frame is the contract.</b> A model sees the callee's own dummy names and shapes; write-back covers exactly the outputs' live columns and refuses a value that would need conversion.</li>
+  <li><b>A pause is validated or it is not offered.</b> The manifest names the bit-for-bit gate records behind every kernel; the ledger and the Workflow Builder read the same file, so a binding is offered only where the runner covers it and warned about until its gate has passed.</li>
+  <li><b>Fail closed.</b> A configuration the runner was not written for (another shallow scheme, spectral flux output, a deep scheme with its own scavenging) is refused when the runner is created, before a step runs.</li>
+</ul>
+
+<h2 id="open">What is still open</h2>
+<ul class="rules">
+  <li>A restart in the middle of a run: freeCAM starts every run as a startup run; continuing from CAM's restart files is a feature of its own.</li>
+  <li>The standalone capture-and-replay loop for the fifteen kernels that have only their pause gates; two kernels (mmacro_pcond, dadadj) have closed it.</li>
+  <li>A replaceable kernel for the energy fixer, which needs a different cut than a call-site pause.</li>
+</ul>
+
+<footer>
+  freeCAM on <a href="https://github.com/a85tract/freeCAM">GitHub</a>. The full record: <a href="https://github.com/a85tract/freeCAM/blob/main/docs/physics_kernel_decoupling.md">docs/physics_kernel_decoupling.md</a>, <a href="https://github.com/a85tract/freeCAM/blob/main/docs/validation.md">docs/validation.md</a>, <a href="https://github.com/a85tract/freeCAM/blob/main/validation/physics_kernel_decoupling.json">the coverage ledger</a>. Configuration: ne16 PI-atm, CAM5 physics, SE dynamics, 512 MPI ranks on NCAR Derecho.
+</footer>
+</main>
+</body>
+</html>
