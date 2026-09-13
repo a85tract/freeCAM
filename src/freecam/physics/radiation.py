@@ -41,7 +41,7 @@ from ..pi_cam.errors import PICAMConfigurationError
 from ..pi_cam.pbuf import PBuf, PBufField
 from .errors import PhysicsError
 from .image import module_view
-from .native_model import NativePlugin
+from .native_model import NativeModel, NativePlugin
 from .segments import SegmentedStage
 from .stage import (
     CORE_ENTRIES,
@@ -480,9 +480,9 @@ class Radiation(NativeStage):
         self._rstate_snapshot: dict[str, np.ndarray] | None = None
 
     def select_mode(self, native: Any = None) -> str:
-        if isinstance(self.process, NativePlugin):
-            # a compiled plugin bound at the slot inside the image: the runner runs the
-            # driver whole and the plugin answers the radiative branch in Fortran
+        if isinstance(self.process, (NativePlugin, NativeModel)):
+            # a compiled plugin or a TorchScript model bound at the slot inside the image: the
+            # runner runs the driver whole and the slot answers the radiative branch in Fortran
             return "segmented"
         if self.process is not None:
             # a Python capture, replay or model lives inside the transcription: only the walk reaches it
@@ -490,7 +490,7 @@ class Radiation(NativeStage):
         return super().select_mode(native)
 
     def _tend_segmented(self, native: Any) -> None:
-        if isinstance(self.process, NativePlugin):
+        if isinstance(self.process, (NativePlugin, NativeModel)):
             # no pause armed: the runner runs the driver whole, the slot answers inside
             self.prepare_segmented(native)
             segmented = self._segmented
@@ -510,10 +510,10 @@ class Radiation(NativeStage):
         if self.process is None:
             return None
         described = dict(self.process.describe())
-        if isinstance(self.process, NativePlugin):
+        if isinstance(self.process, (NativePlugin, NativeModel)):
             from .radiation_process import read_radiation_process_counts
 
-            described["kind"] = "native-plugin"
+            described["kind"] = "native-plugin" if isinstance(self.process, NativePlugin) else "native-model"
             library = getattr(self, "_process_library", None)
             counts = read_radiation_process_counts(library) if library is not None else None
             if counts:
@@ -631,6 +631,14 @@ class Radiation(NativeStage):
             key = self.process.key
             if getattr(self, "_process_bound", None) != key:
                 bind_radiation_process(native.library, self.process.address, shadow=self.process.shadow)
+                self._process_bound = key
+                self._process_library = native.library
+        elif isinstance(self.process, NativeModel):
+            from .radiation_process import bind_radiation_model
+
+            key = f"torchscript:{self.process.sha256}{':shadow' if self.process.shadow else ''}"
+            if getattr(self, "_process_bound", None) != key:
+                bind_radiation_model(native.library, self.process.path, shadow=self.process.shadow)
                 self._process_bound = key
                 self._process_library = native.library
 

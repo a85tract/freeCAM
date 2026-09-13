@@ -630,8 +630,8 @@ def main() -> int:
         if not source.is_file():
             raise RuntimeError(f"support module is absent from the prepared source: {source}")
         log, command = _compile_command(build, "macrop_driver.F90")
-        if source_name == "pycam_hooks.F90":
-            # the hooks call FTorch (bound TorchScript models): its module files
+        if source_name in ("pycam_hooks.F90", "pycam_rad_process.F90"):
+            # the hooks and the radiation process slot call FTorch (bound TorchScript models): its module files
             command = [*command, f"-I{ftorch_include}"]
         destination = work / f"{Path(source_name).stem}.o"
         compile_commands[source_name] = _compile_to(

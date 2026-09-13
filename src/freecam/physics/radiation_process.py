@@ -293,6 +293,24 @@ def bind_radiation_process(library: Any, address: int, *, shadow: bool = False) 
         raise PhysicsError(f"the radiation process slot refused the plugin (status {status})")
 
 
+def bind_radiation_model(library: Any, path: Any, *, shadow: bool = False) -> None:
+    """Load a TorchScript file at the image's radiation process slot (``pycam_rad_process_bind_model_v1``):
+    the slot answers the branch through FTorch with the same 46 inputs as tensors and the same 12 outputs."""
+
+    import ctypes
+    from pathlib import Path
+
+    entry = getattr(library, "pycam_rad_process_bind_model_v1", None)
+    if entry is None:
+        raise PhysicsError("this image cannot bind a TorchScript model at the radiation slot (pycam_rad_process_bind_model_v1): built before it")
+    entry.restype = ctypes.c_int32
+    entry.argtypes = [ctypes.c_char_p, ctypes.c_int32, ctypes.c_int32]
+    encoded = str(Path(path)).encode()
+    status = int(entry(encoded, len(encoded), 1 if shadow else 0))
+    if status != 0:
+        raise PhysicsError(f"the radiation process slot refused the model {path} (status {status})")
+
+
 def unbind_radiation_process(library: Any) -> None:
     entry = getattr(library, "pycam_rad_process_unbind_v1", None)
     if entry is not None:
@@ -317,5 +335,5 @@ def read_radiation_process_counts(library: Any) -> dict[str, Any] | None:
     return {"calls": int(calls.value), "seconds": float(seconds.value), "first_call_seconds": float(first.value)}
 
 
-__all__ += ["TABLE_INPUTS", "TABLE_OUTPUTS", "compile_radiation_plugin", "bind_radiation_process",
+__all__ += ["TABLE_INPUTS", "TABLE_OUTPUTS", "compile_radiation_plugin", "bind_radiation_process", "bind_radiation_model",
             "unbind_radiation_process", "read_radiation_process_counts"]

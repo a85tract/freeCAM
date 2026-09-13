@@ -130,6 +130,8 @@ def test_the_fortran_slots_table_is_the_python_one() -> None:
     assert names("table_inputs") == [name for name, _ in TABLE_INPUTS]
     assert names("table_outputs") == [name for name, _ in TABLE_OUTPUTS]
     assert "integer, parameter :: n_in = 46, n_out = 12" in source and len(TABLE_INPUTS) == 46 and len(TABLE_OUTPUTS) == 12
+    # a TorchScript model is the slot's second answerer, over the same tables as tensors
+    assert "pycam_rad_process_bind_model_v1" in source and "use ftorch" in source and "call torch_model_forward(model, in_t, out_t)" in source
     # the runner asks the slot at the top of the radiative branch, and continues after it when it answered
     runner = (Path(__file__).resolve().parents[2] / "native/pi_cam/support/pycam_radt_runner.F90").read_text()
     assert "if (pycam_rad_process_answer(state, pbuf, cam_in, cam_out, coszrs, dosw, dolw, qrs, qrl, fsns, fsnt, flns, flnt, fsds)) then" in runner
@@ -230,3 +232,57 @@ def test_a_compiled_plugin_in_the_slot_runs_the_driver_whole_through_the_runner(
     described = stage.describe_process()
     assert (described["kind"], described["calls"], described["seconds"], described["first_call_seconds"]) == \
         ("native-plugin", 3, 0.25, 0.1)
+
+
+def _torchscript_file(path: Path) -> Path:
+    torch = pytest.importorskip("torch")
+
+    class Zero(torch.nn.Module):
+        def forward(self, x):
+            return x * 0.0
+
+    torch.jit.script(Zero()).save(str(path))
+    return path
+
+
+def test_a_torchscript_model_in_the_slot_is_bound_through_the_image_and_runs_the_driver_whole(tmp_path: Path) -> None:
+    from types import SimpleNamespace
+
+    from freecam.physics.native_model import NativeModel
+    from freecam.physics.segments import SegmentEvent
+
+    model = NativeModel(_torchscript_file(tmp_path / "rad.pt"), shadow=True)
+    stage = Radiation()
+    stage.process = model
+    assert stage.select_mode(None) == "segmented"
+    assert stage.describe_process()["kind"] == "native-model"
+    calls: list = []
+
+    class _Entry:
+        def __init__(self, f): self.f = f
+        def __call__(self, *a): return self.f(*a)
+
+    def counts(calls_ref, seconds_ref, first_ref):
+        calls_ref._obj.value, seconds_ref._obj.value, first_ref._obj.value = 2, 0.5, 0.3
+        return 0
+
+    library = SimpleNamespace(
+        pycam_stagehost_bind_v1=_Entry(lambda: 0), pycam_rad_bind_hosts_v1=_Entry(lambda: 0),
+        pycam_rad_set_owner_v1=_Entry(lambda owns: 0),
+        pycam_rad_process_bind_model_v1=_Entry(lambda path, length, shadow: calls.append((bytes(path)[:int(length)].decode(), int(length), int(shadow))) or 0),
+        pycam_rad_process_counts_v1=_Entry(counts))
+
+    class Runner:
+        kernels = ("rad_rrtmg_sw", "rad_rrtmg_lw")
+        runs_original = True
+
+        def create(self, stage_name): return 3
+        def start(self, context, mask): return SegmentEvent.DONE
+
+    native = SimpleNamespace(library=library, segment_runner=lambda name: Runner() if name == Radiation.STAGE else None,
+                             run_action=lambda *a, **k: pytest.fail("the runner hosts the slot"))
+    stage.tend(None, SimpleNamespace(native=native))
+    stage.tend(None, SimpleNamespace(native=native))
+    assert calls == [(str(model.path), len(str(model.path)), 1)]          # bound once, in shadow
+    described = stage.describe_process()
+    assert (described["kind"], described["binding"], described["calls"], described["seconds"]) == ("native-model", "torchscript", 2, 0.5)

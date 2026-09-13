@@ -88,6 +88,12 @@ if [ -n "${PYCAM_RADIATION_PYTHON:-}" ]; then
   if [ -n "${PYCAM_SHADOW_RAD_PLUGIN:-}" ]; then
     stage_flags+=(--shadow-radiation-plugin "${PYCAM_SHADOW_RAD_PLUGIN}")
   fi
+  if [ -n "${PYCAM_RAD_TORCH_MODEL:-}" ]; then
+    stage_flags+=(--radiation-torch-model "${PYCAM_RAD_TORCH_MODEL}")
+  fi
+  if [ -n "${PYCAM_SHADOW_RAD_TORCH_MODEL:-}" ]; then
+    stage_flags+=(--shadow-radiation-torch-model "${PYCAM_SHADOW_RAD_TORCH_MODEL}")
+  fi
   if [ -n "${PYCAM_RAD_MODEL:-}" ]; then
     # replay:DIR (bit-for-bit expected) or file.py:function answers the branch in the driver's place
     stage_flags+=(--radiation-model "${PYCAM_RAD_MODEL}")

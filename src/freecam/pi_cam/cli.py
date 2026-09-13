@@ -676,6 +676,22 @@ def main(argv: list[str] | None = None) -> int:
         help="the same in shadow: the plugin runs for its cost at every radiative step, the driver's branch answers.",
     )
     parser.add_argument(
+        "--radiation-torch-model",
+        default=None,
+        metavar="FILE.pt",
+        help=(
+            "with --radiation-python: a TorchScript model bound at the radiation process slot inside the image "
+            "and run through FTorch; it takes the slot's 46 inputs as tensors (a (pcols, pver) array is a "
+            "(pcols, pver) tensor) and returns the 12 outputs, no Python in the step."
+        ),
+    )
+    parser.add_argument(
+        "--shadow-radiation-torch-model",
+        default=None,
+        metavar="FILE.pt",
+        help="the same in shadow: the model runs for its cost at every radiative step, the driver's branch answers.",
+    )
+    parser.add_argument(
         "--observe-kernels",
         action="store_true",
         help=(
@@ -903,7 +919,9 @@ def main(argv: list[str] | None = None) -> int:
             scheme.execution_policy = args.stage_execution
             slot_flags = [name for name, value in (("--radiation-capture", args.radiation_capture), ("--radiation-model", args.radiation_model),
                                                     ("--radiation-plugin", args.radiation_plugin),
-                                                    ("--shadow-radiation-plugin", args.shadow_radiation_plugin)) if value is not None]
+                                                    ("--shadow-radiation-plugin", args.shadow_radiation_plugin),
+                                                    ("--radiation-torch-model", args.radiation_torch_model),
+                                                    ("--shadow-radiation-torch-model", args.shadow_radiation_torch_model)) if value is not None]
             if len(slot_flags) > 1:
                 raise SystemExit(f"{' and '.join(slot_flags)}: the radiation branch has one slot")
             if args.radiation_plugin is not None or args.shadow_radiation_plugin is not None:
@@ -912,6 +930,11 @@ def main(argv: list[str] | None = None) -> int:
                 spec_text = args.radiation_plugin or args.shadow_radiation_plugin
                 scheme.process = compile_radiation_plugin(_import_function(spec_text, "--radiation-plugin"),
                                                           shadow=args.radiation_plugin is None)
+            if args.radiation_torch_model is not None or args.shadow_radiation_torch_model is not None:
+                from freecam.physics.native_model import NativeModel
+
+                scheme.process = NativeModel(args.radiation_torch_model or args.shadow_radiation_torch_model,
+                                             shadow=args.radiation_torch_model is None)
             if args.radiation_capture is not None:
                 from freecam.physics.radiation_process import RadiationProcessCapture
                 scheme.process = RadiationProcessCapture(every=args.radiation_capture_every)

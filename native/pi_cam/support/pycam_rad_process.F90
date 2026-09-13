@@ -10,11 +10,16 @@
 ! rates and the ten fluxes back, writes them where the driver writes them, and writes the history
 ! fields of what it produced as the driver does.  The branch's other diagnostics have no source
 ! and are not written.  In shadow the plugin runs for its cost and the original branch answers.
-! The plugin is a C function of the same interface the kernel hooks use (pycam_hooks).
+! Two answerers: a plugin -- a C function of the same interface the kernel hooks use
+! (pycam_hooks) -- or a TorchScript model loaded through FTorch, which sees the same 46 inputs
+! as tensors (a Fortran (pcols, pver) array is a (pcols, pver) tensor) and fills the same 12
+! outputs; either way no Python runs in the step.
 module pycam_rad_process
 
   use, intrinsic :: iso_c_binding, only: c_int, c_int64_t, c_double, c_ptr, c_loc, c_funptr, &
-                                         c_null_funptr, c_f_procpointer
+                                         c_null_funptr, c_f_procpointer, c_f_pointer, c_char
+  use ftorch, only: torch_model, torch_tensor, torch_kCPU, torch_model_load, torch_model_forward, &
+                    torch_tensor_from_array, torch_delete
   use shr_kind_mod,    only: r8 => shr_kind_r8
   use ppgrid,          only: pcols, pver, pverp
   use constituents,    only: pcnst
@@ -29,8 +34,8 @@ module pycam_rad_process
 
   implicit none
   private
-  public :: pycam_rad_process_answer, pycam_rad_process_bind_v1, pycam_rad_process_unbind_v1, &
-            pycam_rad_process_counts_v1
+  public :: pycam_rad_process_answer, pycam_rad_process_bind_v1, pycam_rad_process_bind_model_v1, &
+            pycam_rad_process_unbind_v1, pycam_rad_process_counts_v1
 
   integer, parameter :: n_in = 46, n_out = 12
   !> the table's order, for the test that pins it to Python's radiation_process.TABLE_INPUTS
@@ -50,6 +55,9 @@ module pycam_rad_process
   logical, save :: shadow = .false.
   logical, save :: indices_ready = .false.
   type(c_funptr), save :: plugin = c_null_funptr
+  ! the TorchScript answerer, when one is bound instead of a plugin
+  logical, save :: modeled = .false.
+  type(torch_model), save :: model
   integer(c_int64_t), save :: calls = 0_c_int64_t, ticks = 0_c_int64_t, first_ticks = 0_c_int64_t
 
   ! the optics' buffer fields; an unregistered one (index -1) is handed as zeros
@@ -119,6 +127,25 @@ contains
     in_s(:, slot) = (/ int(size(array, 1), c_int64_t), int(size(array, 2), c_int64_t), 0_c_int64_t /)
   end subroutine set2
 
+  subroutine tensor_from_slot(t, p, s)
+    ! a table entry as an FTorch tensor over the same memory: rank from the non-zero extents,
+    ! Fortran index order kept (a (pcols, pver) array is a (pcols, pver) tensor)
+    type(torch_tensor), intent(out) :: t
+    type(c_ptr), intent(in) :: p
+    integer(c_int64_t), intent(in) :: s(3)
+    real(c_double), pointer, contiguous :: a1(:), a2(:,:), a3(:,:,:)
+    if (s(3) > 0_c_int64_t) then
+      call c_f_pointer(p, a3, (/ int(s(1)), int(s(2)), int(s(3)) /))
+      call torch_tensor_from_array(t, a3, torch_kCPU)
+    else if (s(2) > 0_c_int64_t) then
+      call c_f_pointer(p, a2, (/ int(s(1)), int(s(2)) /))
+      call torch_tensor_from_array(t, a2, torch_kCPU)
+    else
+      call c_f_pointer(p, a1, (/ int(s(1)) /))
+      call torch_tensor_from_array(t, a1, torch_kCPU)
+    end if
+  end subroutine tensor_from_slot
+
   subroutine set1(slot, in_p, in_s, array)
     integer, intent(in) :: slot
     type(c_ptr), intent(inout) :: in_p(:)
@@ -148,6 +175,7 @@ contains
                          iclwp(:,:), des(:,:), icswp(:,:)
     real(r8), pointer :: dgnumwet(:,:,:), qaerwat(:,:,:)
     type(rrtmg_state_t), pointer :: r_state
+    type(torch_tensor) :: in_t(n_in), out_t(n_out)
     procedure(plugin_interface), pointer :: call_plugin => null()
     integer(c_int) :: status
     integer(c_int64_t) :: t0, t1
@@ -262,8 +290,22 @@ contains
     k = k + 1; call set1(k, out_p, out_s, o_flwds)
 
     call system_clock(t0)
-    call c_f_procpointer(plugin, call_plugin)
-    status = call_plugin(int(n_in, c_int), in_p, in_s, int(n_out, c_int), out_p, out_s)
+    if (modeled) then
+      ! the same tables as tensors over the same storage; the model's outputs land in o_*
+      do k = 1, n_in
+        call tensor_from_slot(in_t(k), in_p(k), in_s(:, k))
+      end do
+      do k = 1, n_out
+        call tensor_from_slot(out_t(k), out_p(k), out_s(:, k))
+      end do
+      call torch_model_forward(model, in_t, out_t)
+      call torch_delete(in_t)
+      call torch_delete(out_t)
+      status = 0_c_int
+    else
+      call c_f_procpointer(plugin, call_plugin)
+      status = call_plugin(int(n_in, c_int), in_p, in_s, int(n_out, c_int), out_p, out_s)
+    end if
     call system_clock(t1)
     if (calls == 0_c_int64_t) first_ticks = t1 - t0
     ticks = ticks + (t1 - t0)
@@ -307,13 +349,40 @@ contains
     ! process slot; shadow_flag /= 0 runs it for its cost while the driver's branch answers
     type(c_funptr), value, intent(in) :: funptr
     integer(c_int), value, intent(in) :: shadow_flag
+    if (modeled) call torch_delete(model)
+    modeled = .false.
     plugin = funptr
     shadow = shadow_flag /= 0_c_int
     bound = .true.
     status = 0_c_int
   end function pycam_rad_process_bind_v1
 
+  integer(c_int) function pycam_rad_process_bind_model_v1(path, length, shadow_flag) &
+       bind(C, name='pycam_rad_process_bind_model_v1') result(status)
+    ! load the TorchScript file at path (length bytes) and answer the branch with it through
+    ! FTorch; shadow_flag /= 0 runs it for its cost while the driver's branch answers
+    character(kind=c_char), intent(in) :: path(*)
+    integer(c_int), value, intent(in) :: length, shadow_flag
+    character(len=4096) :: filename
+    integer :: i
+    status = 1_c_int
+    if (length < 1 .or. length > len(filename)) return
+    filename = ' '
+    do i = 1, length
+      filename(i:i) = path(i)
+    end do
+    if (modeled) call torch_delete(model)
+    call torch_model_load(model, filename(1:length), torch_kCPU)
+    modeled = .true.
+    plugin = c_null_funptr
+    shadow = shadow_flag /= 0_c_int
+    bound = .true.
+    status = 0_c_int
+  end function pycam_rad_process_bind_model_v1
+
   integer(c_int) function pycam_rad_process_unbind_v1() bind(C, name='pycam_rad_process_unbind_v1') result(status)
+    if (modeled) call torch_delete(model)
+    modeled = .false.
     bound = .false.; shadow = .false.; plugin = c_null_funptr
     status = 0_c_int
   end function pycam_rad_process_unbind_v1
