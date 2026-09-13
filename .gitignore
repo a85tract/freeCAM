@@ -30,3 +30,4 @@ site.env
 /web/node_modules/
 /web/dist-pages/
 /src/freecam/pi_cam/workflow_builder/static/
+web/dist-progress/

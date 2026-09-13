@@ -40,6 +40,7 @@ from ..pi_cam.facade import Physics
 from ..pi_cam.kernel_codegen import load_direct_kernels
 from .capture import lane_sha256
 from .errors import PhysicsError
+from .native_model import NativeModel, NativePlugin
 from .segments import OriginalAtPause, OriginalKernel, SegmentedStage
 
 REPO = Path(__file__).resolve().parents[3]
@@ -851,7 +852,7 @@ class StageExecution:
         self.model_calls_by_kernel[kernel] = self.model_calls_by_kernel.get(kernel, 0) + 1
 
     def describe(self) -> dict[str, Any]:
-        crossings = 1 if self.mode == "native-whole" else None
+        crossings = 1 if self.mode in ("native-whole", "native-model") else None
         return {
             "execution_mode": self.mode,
             "active_replacements": list(self.replacements),
@@ -863,6 +864,87 @@ class StageExecution:
             "legacy_steps": self.legacy_steps,
             "python_fortran_crossings_per_step": crossings,
         }
+
+
+def _canonical_kernel_aliases() -> "dict[str, str]":
+    """canonical ``module::routine`` -> routine, from the observability inventory.
+
+    The inventory names every candidate's canonical identity; a routine name
+    that is unique among the candidates doubles as the short alias the runner
+    manifests use.  A missing record (an installed wheel without the
+    repository) leaves the table empty and canonical lookups fail with a
+    clear message.
+    """
+
+    global _CANONICAL_ALIASES
+    if _CANONICAL_ALIASES is None:
+        table: dict[str, str] = {}
+        record = Path(__file__).resolve().parents[3] / "validation/pi_cam_kernel_observability.json"
+        try:
+            payload = json.loads(record.read_text())
+            for kernel in payload.get("kernels", []):
+                table[kernel["qualified"]] = kernel["routine"]
+        except (OSError, json.JSONDecodeError):
+            table = {}
+        _CANONICAL_ALIASES = table
+    return _CANONICAL_ALIASES
+
+
+_CANONICAL_ALIASES: "dict[str, str] | None" = None
+
+
+class KernelRegistry(dict):
+    """A stage's replaceable kernels, addressable canonically or by short name.
+
+    The canonical key is ``module::routine`` from the observability inventory;
+    the short routine name works exactly as before because it is unique within
+    the class.  Keys are stored and iterated as short names, so runner masks,
+    descriptions and existing callers see no change, and ``compose`` keeps
+    sharing one mapping between an outer stage and its sub-walks.  ``None`` or
+    ``OriginalKernel()`` restores the original Fortran.
+    """
+
+    def _resolve(self, key: Any) -> Any:
+        if isinstance(key, str) and "::" in key:
+            aliases = _canonical_kernel_aliases()
+            short = aliases.get(key)
+            if short is None:
+                known = sorted(q for q, s in aliases.items() if dict.__contains__(self, s))
+                raise PhysicsError(
+                    f"no swappable kernel with canonical id {key!r}"
+                    + (f"; this registry holds {known}" if known else
+                       "; the observability inventory is unavailable, use the short name"))
+            if not dict.__contains__(self, short):
+                raise PhysicsError(
+                    f"{key!r} resolves to {short!r}, which is not a swappable kernel here; "
+                    f"this registry holds {sorted(self)}")
+            return short
+        return key
+
+    def __getitem__(self, key: Any) -> Any:
+        return super().__getitem__(self._resolve(key))
+
+    def __setitem__(self, key: Any, value: Any) -> None:
+        super().__setitem__(self._resolve(key), value)
+
+    def __contains__(self, key: Any) -> bool:
+        try:
+            return super().__contains__(self._resolve(key))
+        except PhysicsError:
+            return False
+
+    def get(self, key: Any, default: Any = None) -> Any:
+        try:
+            return super().get(self._resolve(key), default)
+        except PhysicsError:
+            return default
+
+    def update(self, other=(), **kwargs: Any) -> None:      # type: ignore[override]
+        items = other.items() if hasattr(other, "items") else other
+        for key, value in items:
+            self[key] = value
+        for key, value in kwargs.items():
+            self[key] = value
 
 
 class NativeStage:
@@ -929,9 +1011,9 @@ class NativeStage:
         #: takes its place entirely.  Every name in :attr:`SWAPPABLE` is
         #: present from the start, so a caller can assign into the mapping
         #: without knowing whether the stage has one kernel or several.
-        self.kernels: dict[str, Callable[..., Mapping[str, np.ndarray]] | None] = {
-            name: None for name in self.SWAPPABLE
-        }
+        self.kernels: KernelRegistry = KernelRegistry(
+            {name: None for name in self.SWAPPABLE}
+        )
         #: Which path :meth:`tend` takes; see :data:`EXECUTION_POLICIES`.  ``auto``
         #: runs the original Fortran stage whole while no kernel is replaced.
         self.execution_policy: str = "auto"
@@ -1039,9 +1121,13 @@ class NativeStage:
             })
         return tuple(rows)
 
+    #: the kernel `.kernel` addresses when a stage exposes several; None means
+    #: the shorthand is only legal for a single-kernel stage
+    PRIMARY: str | None = None
+
     @property
     def kernel(self):
-        """The model in the one swappable kernel's place, for stages that have one."""
+        """The model in the stage's primary kernel's place."""
 
         return self.kernels[self._only_kernel()]
 
@@ -1050,11 +1136,13 @@ class NativeStage:
         self.kernels[self._only_kernel()] = value
 
     def _only_kernel(self) -> str:
-        if len(self.kernels) != 1:
-            raise PhysicsError(
-                f"{type(self).__name__} has {len(self.kernels)} swappable kernels "
-                f"{list(self.kernels)}; assign into .kernels[name] instead of .kernel")
-        return next(iter(self.kernels))
+        if len(self.kernels) == 1:
+            return next(iter(self.kernels))
+        if self.PRIMARY is not None and self.PRIMARY in self.kernels:
+            return self.PRIMARY
+        raise PhysicsError(
+            f"{type(self).__name__} has {len(self.kernels)} swappable kernels "
+            f"{list(self.kernels)}; assign into .kernels[name] instead of .kernel")
 
     # -- what a subclass supplies ------------------------------------------
 
@@ -1221,6 +1309,23 @@ class NativeStage:
                 f"unknown stage execution policy {policy!r}; one of {EXECUTION_POLICIES}")
         replaced = self.replacements()
         whole = self.WHOLE_ACTION or self.SPLIT_RUNNER
+        natives = tuple(name for name in replaced if isinstance(self.kernels[name], (NativeModel, NativePlugin)))
+        if natives:
+            # a TorchScript model or a compiled plugin bound at the kernel's hook: the
+            # image answers the kernel itself, so the stage runs whole -- nothing to pause at
+            if set(natives) != set(replaced):
+                raise PhysicsError(
+                    f"{type(self).__name__}: native models {list(natives)} cannot share a step with "
+                    f"Python replacements {sorted(set(replaced) - set(natives))}; one kind per stage")
+            if not self.WHOLE_ACTION:
+                raise PhysicsError(
+                    f"{type(self).__name__} is not the whole of {self.STAGE!r}; a native model needs "
+                    f"the whole Fortran stage to run around its hook")
+            if policy not in ("auto", "native-whole"):
+                raise PhysicsError(
+                    f"native models run the original stage whole around the bound hook; the "
+                    f"{policy!r} policy has no such path")
+            return "native-model"
         if policy == "legacy-python":
             return "legacy-python"
         if policy == "segmented":
@@ -1269,6 +1374,7 @@ class NativeStage:
         native = context.native
         if native is None:
             raise PhysicsError(f"{type(self).__name__}.tend must run as a native process")
+        self._current_step = getattr(context, "step", getattr(context, "nstep", None))
         mode = self.select_mode(native)
         self.execution.mode = mode
         self.execution.replacements = self.replacements()
@@ -1280,6 +1386,13 @@ class NativeStage:
             raise PhysicsError(
                 f"{type(self).__name__} was told to replace {unhonoured} but the kernel "
                 f"slots do not show it; the original Fortran will not be run in their place")
+        if mode == "native-model":
+            # the models are bound at their hooks once; then the original stage
+            # runs whole and the hooks answer inside the image: one crossing
+            self.bind_native_models(native)
+            native.run_action(self.STAGE)
+            self.execution.native_stage_calls += 1
+            return
         if mode == "native-whole":
             # nothing replaced: the original Fortran stage, once, through its
             # own (disabled) workflow action -- no walk, no views, no copies;
@@ -1296,6 +1409,48 @@ class NativeStage:
             return
         self.execution.legacy_steps += 1
         self._tend_walk(native, context)
+
+    def bind_native_models(self, native: Any) -> None:
+        """Bind every :class:`NativeModel` in a slot at its kernel's hook, once per file.
+
+        The kernel must be a hook with a ``model`` block in ``hooks.yaml``:
+        that is where the image knows how to hand the arguments to a model.
+        A slot whose model changed is rebound; a slot emptied is unbound.
+        """
+
+        from freecam.pi_cam.hooks import bind_hook_model, bind_hook_plugin, load_hooks, unbind_hook_model
+
+        bound: dict[str, str] = getattr(self, "_native_bound", {})
+        wanted = {name: kernel for name, kernel in self.kernels.items() if isinstance(kernel, (NativeModel, NativePlugin))}
+        keys = {name: (model.key if isinstance(model, NativePlugin) else f"{model.sha256}{':shadow' if model.shadow else ''}")
+                for name, model in wanted.items()}
+        if keys == bound:
+            # every step after the first: nothing to bind, and no hooks table to
+            # read (parsing hooks.yaml cost about 10 ms a step in job 7399451)
+            return
+        table = load_hooks()
+        for name in list(bound):
+            if name not in wanted:
+                unbind_hook_model(native.library, table.hook(name).id)
+                del bound[name]
+        for name, model in wanted.items():
+            try:
+                hook = table.hook(name)
+            except KeyError:
+                raise PhysicsError(
+                    f"{name!r} is not a hooked kernel; a native model can only stand at a hook "
+                    f"(native/pi_cam/hooks.yaml)") from None
+            if not hook.takes_model:
+                raise PhysicsError(
+                    f"hook {name!r} has no model block in native/pi_cam/hooks.yaml: the image does "
+                    f"not know how to hand its arguments to a model")
+            if bound.get(name) != keys[name]:
+                if isinstance(model, NativePlugin):
+                    bind_hook_plugin(native.library, hook.id, model.address, shadow=model.shadow)
+                else:
+                    bind_hook_model(native.library, hook.id, model.path, shadow=model.shadow)
+                bound[name] = keys[name]
+        self._native_bound = bound
 
     def native_between_halves(self, native: Any) -> None:
         """Native-whole for a split stage: what :meth:`tend` does so the resume half runs the driver."""
@@ -1338,13 +1493,27 @@ class NativeStage:
                     f"the image offers no segment runner for {self.STAGE!r}; segmented "
                     f"execution is not built for it yet")
             segmented = self._segmented = SegmentedStage(self.STAGE, runner)
+        kernels = self._segment_kernels(native, segmented.runner)
+        for model in kernels.values():
+            if hasattr(model, "current_step"):
+                model.current_step = getattr(self, "_current_step", None)
+        segmented.run(kernels)
+        counters = segmented.counters
+        self.execution.native_segment_calls = counters.starts + counters.resumes
+        self.execution.python_model_calls = counters.model_calls
+        self.execution.model_calls_by_kernel = dict(counters.calls_by_kernel)
+        self.execution.segment_pauses = counters.pauses
+
+    def _segment_kernels(self, native: Any, runner: Any) -> dict[str, Callable[..., Any] | None]:
+        """Each kernel slot resolved to what answers the runner's pause."""
+
         kernels: dict[str, Callable[..., Any] | None] = {}
         for name, kernel in self.kernels.items():
             if kernel is None:
                 kernels[name] = None
             elif isinstance(kernel, OriginalKernel):
                 owner = self._owner_of(name)
-                if getattr(segmented.runner, "runs_original", False):
+                if getattr(runner, "runs_original", False):
                     # the runner runs the paused call itself; the frame's
                     # write-back is exercised with what it produced
                     kernels[name] = OriginalAtPause()
@@ -1352,14 +1521,13 @@ class NativeStage:
                     kernels[name] = owner.original_kernel_through_python(native, name)
                 else:
                     kernels[name] = self._original_through_python(native, name)
+            elif getattr(kernel, "takes_frame", False):
+                # a frame-taking model (OriginalAtPause, FrameCapture) reads the
+                # frame itself; wrapping it as a batch model would hide that
+                kernels[name] = kernel
             else:
                 kernels[name] = self._owner_of(name).frame_kernel(name, kernel, native)
-        segmented.run(kernels)
-        counters = segmented.counters
-        self.execution.native_segment_calls = counters.starts + counters.resumes
-        self.execution.python_model_calls = counters.model_calls
-        self.execution.model_calls_by_kernel = dict(counters.calls_by_kernel)
-        self.execution.segment_pauses = counters.pauses
+        return kernels
 
     def original_kernel_through_python(self, native: Any, name: str) -> Callable[[Mapping[str, Any]], dict]:
         """The original kernel ``name`` as a model for the runner's frame.

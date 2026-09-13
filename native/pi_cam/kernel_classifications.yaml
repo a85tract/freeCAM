@@ -1,0 +1,348 @@
+# Reviewed classification of candidate kernels: what kind of routine each one
+# is, which class owns its replacement, and the source basis for the call.
+#
+# Categories:
+#   replaceable_numeric  changes scientific values; belongs in the replaceable
+#                        completion denominator once observed executing
+#   data_movement        pack/unpack, pointer plumbing, field registration
+#   state_service        storage lookup, allocation, initialization of storage
+#   diagnostic           bookkeeping and output staging; no prognostic change
+#   control              drivers and dispatch the stage classes already own
+#   inactive             stubs of schemes disabled in this configuration
+#
+# A candidate absent from this file is unclassified; an unclassified observed
+# routine blocks its process from being marked complete.  The completion
+# denominator (runtime-observed AND replaceable_numeric) is computed by the
+# exporter, never written by hand.  Subsystem names the plan's grouping inside
+# cloud_macro_microphysics; owner_class is always an existing Python class.
+schema_version: 1
+kernels:
+  # ---- macrophysics (macrop_driver_tend subtree) --------------------------
+  macrop_driver::macrop_driver_tend:
+    category: control
+    subsystem: macrophysics
+    owner_class: freecam.physics.macrophysics.Macrophysics
+    basis: the Macrophysics walk itself; installed as a class, not replaced through the registry
+  cldwat2m_macro::mmacro_pcond:
+    category: replaceable_numeric
+    subsystem: macrophysics
+    owner_class: freecam.physics.macrophysics.Macrophysics
+    basis: Park macrophysics condensation core (cldwat2m_macro.F90)
+  cldwat2m_macro::instratus_condensate:
+    category: replaceable_numeric
+    subsystem: macrophysics
+    owner_class: freecam.physics.macrophysics.Macrophysics
+    basis: in-stratus condensate solver called from mmacro_pcond
+  cldwat2m_macro::instratus_core:
+    category: replaceable_numeric
+    subsystem: macrophysics
+    owner_class: freecam.physics.macrophysics.Macrophysics
+    basis: inner iteration of the in-stratus condensate solver
+  cldwat2m_macro::positive_moisture:
+    category: replaceable_numeric
+    subsystem: macrophysics
+    owner_class: freecam.physics.macrophysics.Macrophysics
+    basis: positivity enforcement that rewrites q and t
+  cldfrc2m::aist_single:
+    category: replaceable_numeric
+    subsystem: macrophysics
+    owner_class: freecam.physics.macrophysics.Macrophysics
+    basis: ice stratus fraction, single point (cldfrc2m.F90)
+  cldfrc2m::aist_vector:
+    category: replaceable_numeric
+    subsystem: macrophysics
+    owner_class: freecam.physics.macrophysics.Macrophysics
+    basis: ice stratus fraction over a chunk
+  cldfrc2m::astg_pdf:
+    category: replaceable_numeric
+    subsystem: macrophysics
+    owner_class: freecam.physics.macrophysics.Macrophysics
+    basis: liquid stratus fraction from the Gauss PDF closure
+  cldfrc2m::astg_pdf_single:
+    category: replaceable_numeric
+    subsystem: macrophysics
+    owner_class: freecam.physics.macrophysics.Macrophysics
+    basis: liquid stratus fraction, single point
+  cloud_fraction::cldfrc:
+    category: replaceable_numeric
+    subsystem: macrophysics
+    owner_class: freecam.physics.macrophysics.Macrophysics
+    basis: diagnostic cloud fraction scheme called by the macrophysics driver
+  cloud_fraction::cldfrc_fice:
+    category: replaceable_numeric
+    subsystem: macrophysics
+    owner_class: freecam.physics.macrophysics.Macrophysics
+    basis: ice/liquid phase partition of cloud water (validated hook)
+  cloud_fraction::relhum_min:
+    category: replaceable_numeric
+    subsystem: macrophysics
+    owner_class: freecam.physics.macrophysics.Macrophysics
+    basis: minimum relative-humidity thresholds entering the cloud fraction
+  # ---- microphysics (micro_mg_cam_tend / micro_mg_tend subtree) -----------
+  microp_driver::microp_driver_tend:
+    category: control
+    subsystem: microphysics
+    owner_class: freecam.physics.microphysics.Microphysics
+    basis: thin dispatch to micro_mg_cam_tend; the Microphysics walk owns it
+  micro_mg_cam::micro_mg_cam_tend:
+    category: control
+    subsystem: microphysics
+    owner_class: freecam.physics.microphysics.Microphysics
+    basis: CAM wrapper driver around micro_mg_tend; the Microphysics walk owns it
+  micro_mg1_0::micro_mg_tend:
+    category: replaceable_numeric
+    subsystem: microphysics
+    owner_class: freecam.physics.microphysics.Microphysics
+    basis: MG1 microphysics core (micro_mg1_0.F90)
+  micro_mg1_0::micro_mg_get_cols:
+    category: control
+    subsystem: microphysics
+    owner_class: freecam.physics.microphysics.Microphysics
+    basis: selects the columns with condensate for packing; no state change
+  micro_mg_cam::p1:
+    category: data_movement
+    subsystem: microphysics
+    owner_class: freecam.physics.microphysics.Microphysics
+    basis: pointer cast (pout => tin), micro_mg_cam.F90:3186
+  micro_mg_cam::p2:
+    category: data_movement
+    subsystem: microphysics
+    owner_class: freecam.physics.microphysics.Microphysics
+    basis: pointer cast (pout => tin), micro_mg_cam.F90:3192
+  micro_mg_data::add_field_1d:
+    category: data_movement
+    subsystem: microphysics
+    owner_class: freecam.physics.microphysics.Microphysics
+    basis: registers a field with the MG packer
+  micro_mg_data::add_field_2d:
+    category: data_movement
+    subsystem: microphysics
+    owner_class: freecam.physics.microphysics.Microphysics
+    basis: registers a field with the MG packer
+  micro_mg_data::new_mgpacker:
+    category: data_movement
+    subsystem: microphysics
+    owner_class: freecam.physics.microphysics.Microphysics
+    basis: packer constructor
+  micro_mg_data::new_mgpostproc:
+    category: data_movement
+    subsystem: microphysics
+    owner_class: freecam.physics.microphysics.Microphysics
+    basis: post-processor constructor
+  micro_mg_data::pack_2d:
+    category: data_movement
+    subsystem: microphysics
+    owner_class: freecam.physics.microphysics.Microphysics
+    basis: gathers active columns; values are copied, never transformed
+  micro_mg_data::pack_3d:
+    category: data_movement
+    subsystem: microphysics
+    owner_class: freecam.physics.microphysics.Microphysics
+    basis: gathers active columns; values are copied, never transformed
+  micro_mg_data::pack_interface:
+    category: data_movement
+    subsystem: microphysics
+    owner_class: freecam.physics.microphysics.Microphysics
+    basis: gathers interface levels; copy only
+  micro_mg_data::unpack_2d:
+    category: data_movement
+    subsystem: microphysics
+    owner_class: freecam.physics.microphysics.Microphysics
+    basis: scatters packed columns back; copy with a fill value
+  micro_mg_data::unpack_2d_array_fill:
+    category: data_movement
+    subsystem: microphysics
+    owner_class: freecam.physics.microphysics.Microphysics
+    basis: scatter with an array fill; copy only
+  micro_mg_data::mgpostproc_accumulate:
+    category: data_movement
+    subsystem: microphysics
+    owner_class: freecam.physics.microphysics.Microphysics
+    basis: substep-weighted accumulation scaffold of MG outputs; with cld_macmic_num_steps=1 it copies
+  micro_mg_data::mgpostproc_process_and_unpack:
+    category: data_movement
+    subsystem: microphysics
+    owner_class: freecam.physics.microphysics.Microphysics
+    basis: applies the accumulation average and scatters; harness scaffold, not a scheme
+  micro_mg_data::mgpostproc_finalize:
+    category: data_movement
+    subsystem: microphysics
+    owner_class: freecam.physics.microphysics.Microphysics
+    basis: releases the post-processor's buffers
+  micro_mg_utils::avg_diameter:
+    category: replaceable_numeric
+    subsystem: microphysics
+    owner_class: freecam.physics.microphysics.Microphysics
+    basis: hydrometeor mean diameter from the size distribution
+  micro_mg_utils::size_dist_param_basic:
+    category: replaceable_numeric
+    subsystem: microphysics
+    owner_class: freecam.physics.microphysics.Microphysics
+    basis: MG size-distribution parameters (basic species)
+  micro_mg_utils::size_dist_param_liq:
+    category: replaceable_numeric
+    subsystem: microphysics
+    owner_class: freecam.physics.microphysics.Microphysics
+    basis: MG size-distribution parameters for liquid
+  # ---- aerosol activation and ice nucleation (microp_aero_run subtree) ----
+  microp_aero::microp_aero_run:
+    category: control
+    subsystem: microp_aero
+    owner_class: freecam.physics.cloud_macro_microphysics.CloudMacroMicrophysics
+    basis: aerosol-microphysics coupling driver; a dedicated class is planned before its kernels close
+  ndrop::dropmixnuc:
+    category: replaceable_numeric
+    subsystem: microp_aero
+    owner_class: freecam.physics.cloud_macro_microphysics.CloudMacroMicrophysics
+    basis: droplet activation and vertical mixing of aerosol number
+  ndrop::activate_modal:
+    category: replaceable_numeric
+    subsystem: microp_aero
+    owner_class: freecam.physics.cloud_macro_microphysics.CloudMacroMicrophysics
+    basis: modal aerosol activation (Abdul-Razzak and Ghan)
+  ndrop::ccncalc:
+    category: replaceable_numeric
+    subsystem: microp_aero
+    owner_class: freecam.physics.cloud_macro_microphysics.CloudMacroMicrophysics
+    basis: CCN concentration diagnostics entering activation
+  ndrop::loadaer:
+    category: replaceable_numeric
+    subsystem: microp_aero
+    owner_class: freecam.physics.cloud_macro_microphysics.CloudMacroMicrophysics
+    basis: computes the aerosol number and mass concentrations activation consumes
+  nucleate_ice::nucleati:
+    category: replaceable_numeric
+    subsystem: microp_aero
+    owner_class: freecam.physics.cloud_macro_microphysics.CloudMacroMicrophysics
+    basis: ice nucleation rate (Liu and Penner)
+  nucleate_ice_cam::nucleate_ice_cam_calc:
+    category: replaceable_numeric
+    subsystem: microp_aero
+    owner_class: freecam.physics.cloud_macro_microphysics.CloudMacroMicrophysics
+    basis: CAM-side ice nucleation calculation feeding the MG core
+  phys_prop::physprop_get:
+    category: state_service
+    subsystem: microp_aero
+    owner_class: freecam.physics.cloud_macro_microphysics.CloudMacroMicrophysics
+    basis: physical-property table accessor; returns stored coefficients
+  # ---- stage-level and shared numerical utilities -------------------------
+  check_energy::check_energy_chng:
+    category: diagnostic
+    subsystem: stage
+    owner_class: freecam.physics.cloud_macro_microphysics.CloudMacroMicrophysics
+    basis: energy bookkeeping between parameterizations; no prognostic change
+  geopotential::geopotential_dse:
+    category: replaceable_numeric
+    subsystem: shared
+    owner_class: freecam.physics.cloud_macro_microphysics.CloudMacroMicrophysics
+    basis: recomputes geopotential heights and temperature from dry static energy
+  qneg3::qneg3:
+    category: replaceable_numeric
+    subsystem: shared
+    owner_class: freecam.physics.cloud_macro_microphysics.CloudMacroMicrophysics
+    basis: negative-constituent clipping that rewrites tracer values
+  wv_saturation::qsat:
+    category: replaceable_numeric
+    subsystem: shared
+    owner_class: freecam.physics.cloud_macro_microphysics.CloudMacroMicrophysics
+    basis: saturation vapor pressure and humidity
+  wv_saturation::qsat_water:
+    category: replaceable_numeric
+    subsystem: shared
+    owner_class: freecam.physics.cloud_macro_microphysics.CloudMacroMicrophysics
+    basis: saturation over liquid water
+  wv_saturation::svp_water:
+    category: replaceable_numeric
+    subsystem: shared
+    owner_class: freecam.physics.cloud_macro_microphysics.CloudMacroMicrophysics
+    basis: saturation vapor pressure over water
+  wv_saturation::svp_ice:
+    category: replaceable_numeric
+    subsystem: shared
+    owner_class: freecam.physics.cloud_macro_microphysics.CloudMacroMicrophysics
+    basis: saturation vapor pressure over ice
+  wv_saturation::findsp_vc:
+    category: replaceable_numeric
+    subsystem: shared
+    owner_class: freecam.physics.cloud_macro_microphysics.CloudMacroMicrophysics
+    basis: wet-bulb saturation point iteration
+  wv_sat_methods::wv_sat_qsat_water:
+    category: replaceable_numeric
+    subsystem: shared
+    owner_class: freecam.physics.cloud_macro_microphysics.CloudMacroMicrophysics
+    basis: saturation humidity kernel over water
+  wv_sat_methods::wv_sat_svp_water:
+    category: replaceable_numeric
+    subsystem: shared
+    owner_class: freecam.physics.cloud_macro_microphysics.CloudMacroMicrophysics
+    basis: Goff-Gratch style vapor pressure over water
+  wv_sat_methods::wv_sat_svp_ice:
+    category: replaceable_numeric
+    subsystem: shared
+    owner_class: freecam.physics.cloud_macro_microphysics.CloudMacroMicrophysics
+    basis: vapor pressure over ice
+  wv_sat_methods::wv_sat_svp_to_qsat:
+    category: replaceable_numeric
+    subsystem: shared
+    owner_class: freecam.physics.cloud_macro_microphysics.CloudMacroMicrophysics
+    basis: converts vapor pressure to saturation humidity
+  water_tracers::wtrc_ratio:
+    category: replaceable_numeric
+    subsystem: shared
+    owner_class: freecam.physics.cloud_macro_microphysics.CloudMacroMicrophysics
+    basis: isotope tracer ratio with guarded division
+  water_tracers::wtrc_liqvap_equil:
+    category: replaceable_numeric
+    subsystem: shared
+    owner_class: freecam.physics.cloud_macro_microphysics.CloudMacroMicrophysics
+    basis: liquid-vapor isotopic equilibrium fractionation
+  water_tracers::wtrc_equil_time:
+    category: replaceable_numeric
+    subsystem: shared
+    owner_class: freecam.physics.cloud_macro_microphysics.CloudMacroMicrophysics
+    basis: equilibration timescale of tracer exchange
+  water_tracers::wtrc_sediment:
+    category: replaceable_numeric
+    subsystem: shared
+    owner_class: freecam.physics.cloud_macro_microphysics.CloudMacroMicrophysics
+    basis: tracer sedimentation flux
+  water_tracers::wtrc_add_rates:
+    category: replaceable_numeric
+    subsystem: shared
+    owner_class: freecam.physics.cloud_macro_microphysics.CloudMacroMicrophysics
+    basis: accumulates production/loss process rates into the tracer rate matrix (water_tracers.F90:947)
+  water_tracers::wtrc_apply_rates:
+    category: replaceable_numeric
+    subsystem: shared
+    owner_class: freecam.physics.cloud_macro_microphysics.CloudMacroMicrophysics
+    basis: applies the accumulated rates to the tracer state
+  water_tracers::wtrc_mass_fixer:
+    category: replaceable_numeric
+    subsystem: shared
+    owner_class: freecam.physics.cloud_macro_microphysics.CloudMacroMicrophysics
+    basis: rescales tracer masses against bulk water
+  water_tracers::wtrc_diagnose_precip:
+    category: replaceable_numeric
+    subsystem: shared
+    owner_class: freecam.physics.cloud_macro_microphysics.CloudMacroMicrophysics
+    basis: computes the tracer precipitation the coupler export carries
+  water_tracers::wtrc_diagnose_bulk_precip:
+    category: replaceable_numeric
+    subsystem: shared
+    owner_class: freecam.physics.cloud_macro_microphysics.CloudMacroMicrophysics
+    basis: bulk-water counterpart of the tracer precipitation diagnosis
+  water_tracers::wtrc_init_rates:
+    category: state_service
+    subsystem: shared
+    owner_class: freecam.physics.cloud_macro_microphysics.CloudMacroMicrophysics
+    basis: zero-initializes the rate matrix storage
+  water_tracers::wtrc_clear_precip:
+    category: state_service
+    subsystem: shared
+    owner_class: freecam.physics.cloud_macro_microphysics.CloudMacroMicrophysics
+    basis: zeroes precipitation accumulators
+  water_tracers::wtrc_output_precip:
+    category: diagnostic
+    subsystem: shared
+    owner_class: freecam.physics.cloud_macro_microphysics.CloudMacroMicrophysics
+    basis: stages tracer precipitation into history output

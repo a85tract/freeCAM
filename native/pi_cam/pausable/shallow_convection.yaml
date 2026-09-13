@@ -67,9 +67,17 @@ kernels:
   compute_uwshcu_inv:
     source: components/cam/src/physics/cam/uwshcu.F90
     routine: compute_uwshcu_inv
+  # a private profile routine called three times per column inside compute_uwshcu: reached
+  # through the hook its weakened definition hands the call to (native/pi_cam/hooks.yaml)
+  fluxbelowinv:
+    source: components/cam/src/physics/cam/uwshcu.F90
+    routine: fluxbelowinv
+    within: compute_uwshcu_inv
+    hook: true
 anchors:
   'glue:physpkg.F90:2123-2152': 92d463e4a7737235
   'glue:physpkg.F90:declarations 1674-1874': 4e089ee70c947a21
   'driver:convect_shallow.F90:576-1039': c465e79d71b59721
   'driver:convect_shallow.F90:declarations 416-575': 929813f1e0c481fd
   'compute_uwshcu_inv:uwshcu.F90:242-496': d9b840fc8bb675d4
+  'fluxbelowinv:uwshcu.F90:6132-6197': a1c45bf4b0313915

@@ -20,6 +20,38 @@
   {
    "bindable": true,
    "evidence": [
+    "validation/pi_cam_pausable_fice-hook_50step.json",
+    "validation/pi_cam_pausable_fice-hook_vs_oracle_50step_bfb.json",
+    "validation/pi_cam_pausable_fice-capture_50step.json",
+    "validation/pi_cam_pausable_fice-capture_vs_oracle_50step_bfb.json",
+    "validation/pi_cam_pausable_hooks-everything_50step.json",
+    "validation/pi_cam_pausable_hooks-everything_vs_oracle_50step_bfb.json"
+   ],
+   "kernel": "cldfrc_fice",
+   "owner_class": "freecam.physics.macrophysics.Macrophysics",
+   "reason": null,
+   "stage_action": "cam_run1.cloud_macro_microphysics",
+   "stage_class": "freecam.physics.cloud_macro_microphysics.CloudMacroMicrophysics",
+   "validated": true
+  },
+  {
+   "bindable": true,
+   "evidence": [
+    "validation/pi_cam_pausable_instratus-hook_50step.json",
+    "validation/pi_cam_pausable_instratus-hook_vs_oracle_50step_bfb.json",
+    "validation/pi_cam_pausable_instratus-capture_50step.json",
+    "validation/pi_cam_pausable_instratus-capture_vs_oracle_50step_bfb.json"
+   ],
+   "kernel": "instratus_condensate",
+   "owner_class": "freecam.physics.macrophysics.Macrophysics",
+   "reason": null,
+   "stage_action": "cam_run1.cloud_macro_microphysics",
+   "stage_class": "freecam.physics.cloud_macro_microphysics.CloudMacroMicrophysics",
+   "validated": true
+  },
+  {
+   "bindable": true,
+   "evidence": [
     "validation/pi_cam_stage7_segmented_micro_50step.json",
     "validation/pi_cam_stage7_segmented_micro_vs_oracle_50step_bfb.json",
     "validation/pi_cam_stage7_segmented_both_50step.json",
@@ -113,6 +145,23 @@
   {
    "bindable": true,
    "evidence": [
+    "validation/pi_cam_pausable_flux-hook_50step.json",
+    "validation/pi_cam_pausable_flux-hook_vs_oracle_50step_bfb.json",
+    "validation/pi_cam_pausable_flux-capture_50step.json",
+    "validation/pi_cam_pausable_flux-capture_vs_oracle_50step_bfb.json",
+    "validation/pi_cam_pausable_hooks-everything_50step.json",
+    "validation/pi_cam_pausable_hooks-everything_vs_oracle_50step_bfb.json"
+   ],
+   "kernel": "fluxbelowinv",
+   "owner_class": "freecam.physics.pausable.ShallowConvection",
+   "reason": null,
+   "stage_action": "cam_run1.shallow_convection",
+   "stage_class": "freecam.physics.pausable.ShallowConvection",
+   "validated": true
+  },
+  {
+   "bindable": true,
+   "evidence": [
     "validation/pi_cam_pausable_deep-zmconvr_50step.json",
     "validation/pi_cam_pausable_deep-zmconvr_vs_oracle_50step_bfb.json",
     "validation/pi_cam_pausable_deep-all_50step.json",
@@ -161,6 +210,23 @@
     "validation/pi_cam_pausable_everything_vs_oracle_50step_bfb.json"
    ],
    "kernel": "momtran",
+   "owner_class": "freecam.physics.pausable.DeepConvection",
+   "reason": null,
+   "stage_action": "cam_run1.deep_convection",
+   "stage_class": "freecam.physics.pausable.DeepConvection",
+   "validated": true
+  },
+  {
+   "bindable": true,
+   "evidence": [
+    "validation/pi_cam_pausable_fice-hook_50step.json",
+    "validation/pi_cam_pausable_fice-hook_vs_oracle_50step_bfb.json",
+    "validation/pi_cam_pausable_fice-capture_50step.json",
+    "validation/pi_cam_pausable_fice-capture_vs_oracle_50step_bfb.json",
+    "validation/pi_cam_pausable_hooks-everything_50step.json",
+    "validation/pi_cam_pausable_hooks-everything_vs_oracle_50step_bfb.json"
+   ],
+   "kernel": "cldfrc_fice",
    "owner_class": "freecam.physics.pausable.DeepConvection",
    "reason": null,
    "stage_action": "cam_run1.deep_convection",
@@ -238,6 +304,21 @@
   {
    "bindable": true,
    "evidence": [
+    "validation/pi_cam_pausable_virtem-pause_50step.json",
+    "validation/pi_cam_pausable_virtem-pause_vs_oracle_50step_bfb.json",
+    "validation/pi_cam_pausable_everything_50step.json",
+    "validation/pi_cam_pausable_everything_vs_oracle_50step_bfb.json"
+   ],
+   "kernel": "virtem",
+   "owner_class": "freecam.physics.pausable.VerticalDiffusion",
+   "reason": null,
+   "stage_action": "cam_run2.vertical_diffusion",
+   "stage_class": "freecam.physics.pausable.VerticalDiffusion",
+   "validated": true
+  },
+  {
+   "bindable": true,
+   "evidence": [
     "validation/pi_cam_pausable_gwd-pause_50step.json",
     "validation/pi_cam_pausable_gwd-pause_vs_oracle_50step_bfb.json",
     "validation/pi_cam_pausable_everything_50step.json",
@@ -302,11 +383,11 @@
   "PI-atm-online": "configs/pi_cam_icesm131_online.yaml",
   "PI-atm-replay": "configs/pi_cam_icesm131_replay.yaml"
  },
- "catalog_hash": "15776020bd419dedbd27ec77bc5e113dcf36fdff1edd93106d1f342eea798f09",
- "commit": "c618a73740e8e0e8f6cc2a5029e66d28d273a2aa",
+ "catalog_hash": "8c08455708333a3a91c7fef91a7785b31e458ce1a1be4dc458102fbbe431b365",
+ "commit": "ccb5bafe48d17744b1a7baf3d516bf69540feb89",
  "default_document": {
   "case": "PI-atm",
-  "catalog_version": "15776020bd419dedbd27ec77bc5e113dcf36fdff1edd93106d1f342eea798f09",
+  "catalog_version": "8c08455708333a3a91c7fef91a7785b31e458ce1a1be4dc458102fbbe431b365",
   "experimental": false,
   "namelist": {},
   "nodes": [
@@ -583,6 +664,10 @@
       "compute_vdiff": {
        "kind": "original",
        "path": null
+      },
+      "virtem": {
+       "kind": "original",
+       "path": null
       }
      },
      "parameters": {},
@@ -645,6 +730,21 @@
         "validation/pi_cam_pausable_everything_vs_oracle_50step_bfb.json"
        ],
        "kernel": "compute_vdiff",
+       "owner_class": "freecam.physics.pausable.VerticalDiffusion",
+       "reason": null,
+       "stage_action": "cam_run2.vertical_diffusion",
+       "stage_class": "freecam.physics.pausable.VerticalDiffusion",
+       "validated": true
+      },
+      {
+       "bindable": true,
+       "evidence": [
+        "validation/pi_cam_pausable_virtem-pause_50step.json",
+        "validation/pi_cam_pausable_virtem-pause_vs_oracle_50step_bfb.json",
+        "validation/pi_cam_pausable_everything_50step.json",
+        "validation/pi_cam_pausable_everything_vs_oracle_50step_bfb.json"
+       ],
+       "kernel": "virtem",
        "owner_class": "freecam.physics.pausable.VerticalDiffusion",
        "reason": null,
        "stage_action": "cam_run2.vertical_diffusion",
@@ -1696,6 +1796,10 @@
    {
     "configuration": {
      "kernels": {
+      "cldfrc_fice": {
+       "kind": "original",
+       "path": null
+      },
       "momtran": {
        "kind": "original",
        "path": null
@@ -1780,6 +1884,23 @@
        "stage_action": "cam_run1.deep_convection",
        "stage_class": "freecam.physics.pausable.DeepConvection",
        "validated": true
+      },
+      {
+       "bindable": true,
+       "evidence": [
+        "validation/pi_cam_pausable_fice-hook_50step.json",
+        "validation/pi_cam_pausable_fice-hook_vs_oracle_50step_bfb.json",
+        "validation/pi_cam_pausable_fice-capture_50step.json",
+        "validation/pi_cam_pausable_fice-capture_vs_oracle_50step_bfb.json",
+        "validation/pi_cam_pausable_hooks-everything_50step.json",
+        "validation/pi_cam_pausable_hooks-everything_vs_oracle_50step_bfb.json"
+       ],
+       "kernel": "cldfrc_fice",
+       "owner_class": "freecam.physics.pausable.DeepConvection",
+       "reason": null,
+       "stage_action": "cam_run1.deep_convection",
+       "stage_class": "freecam.physics.pausable.DeepConvection",
+       "validated": true
       }
      ],
      "parameters": [
@@ -1830,6 +1951,10 @@
       "compute_uwshcu_inv": {
        "kind": "original",
        "path": null
+      },
+      "fluxbelowinv": {
+       "kind": "original",
+       "path": null
       }
      },
      "parameters": {},
@@ -1860,6 +1985,23 @@
         "validation/pi_cam_pausable_everything_vs_oracle_50step_bfb.json"
        ],
        "kernel": "compute_uwshcu_inv",
+       "owner_class": "freecam.physics.pausable.ShallowConvection",
+       "reason": null,
+       "stage_action": "cam_run1.shallow_convection",
+       "stage_class": "freecam.physics.pausable.ShallowConvection",
+       "validated": true
+      },
+      {
+       "bindable": true,
+       "evidence": [
+        "validation/pi_cam_pausable_flux-hook_50step.json",
+        "validation/pi_cam_pausable_flux-hook_vs_oracle_50step_bfb.json",
+        "validation/pi_cam_pausable_flux-capture_50step.json",
+        "validation/pi_cam_pausable_flux-capture_vs_oracle_50step_bfb.json",
+        "validation/pi_cam_pausable_hooks-everything_50step.json",
+        "validation/pi_cam_pausable_hooks-everything_vs_oracle_50step_bfb.json"
+       ],
+       "kernel": "fluxbelowinv",
        "owner_class": "freecam.physics.pausable.ShallowConvection",
        "reason": null,
        "stage_action": "cam_run1.shallow_convection",
@@ -1936,6 +2078,14 @@
    {
     "configuration": {
      "kernels": {
+      "cldfrc_fice": {
+       "kind": "original",
+       "path": null
+      },
+      "instratus_condensate": {
+       "kind": "original",
+       "path": null
+      },
       "micro_mg_tend": {
        "kind": "original",
        "path": null
@@ -1971,6 +2121,38 @@
         "validation/pi_cam_pausable_everything_vs_oracle_50step_bfb.json"
        ],
        "kernel": "mmacro_pcond",
+       "owner_class": "freecam.physics.macrophysics.Macrophysics",
+       "reason": null,
+       "stage_action": "cam_run1.cloud_macro_microphysics",
+       "stage_class": "freecam.physics.cloud_macro_microphysics.CloudMacroMicrophysics",
+       "validated": true
+      },
+      {
+       "bindable": true,
+       "evidence": [
+        "validation/pi_cam_pausable_fice-hook_50step.json",
+        "validation/pi_cam_pausable_fice-hook_vs_oracle_50step_bfb.json",
+        "validation/pi_cam_pausable_fice-capture_50step.json",
+        "validation/pi_cam_pausable_fice-capture_vs_oracle_50step_bfb.json",
+        "validation/pi_cam_pausable_hooks-everything_50step.json",
+        "validation/pi_cam_pausable_hooks-everything_vs_oracle_50step_bfb.json"
+       ],
+       "kernel": "cldfrc_fice",
+       "owner_class": "freecam.physics.macrophysics.Macrophysics",
+       "reason": null,
+       "stage_action": "cam_run1.cloud_macro_microphysics",
+       "stage_class": "freecam.physics.cloud_macro_microphysics.CloudMacroMicrophysics",
+       "validated": true
+      },
+      {
+       "bindable": true,
+       "evidence": [
+        "validation/pi_cam_pausable_instratus-hook_50step.json",
+        "validation/pi_cam_pausable_instratus-hook_vs_oracle_50step_bfb.json",
+        "validation/pi_cam_pausable_instratus-capture_50step.json",
+        "validation/pi_cam_pausable_instratus-capture_vs_oracle_50step_bfb.json"
+       ],
+       "kernel": "instratus_condensate",
        "owner_class": "freecam.physics.macrophysics.Macrophysics",
        "reason": null,
        "stage_action": "cam_run1.cloud_macro_microphysics",
@@ -3022,6 +3204,10 @@
      "compute_vdiff": {
       "kind": "original",
       "path": null
+     },
+     "virtem": {
+      "kind": "original",
+      "path": null
      }
     },
     "parameters": {},
@@ -3084,6 +3270,21 @@
        "validation/pi_cam_pausable_everything_vs_oracle_50step_bfb.json"
       ],
       "kernel": "compute_vdiff",
+      "owner_class": "freecam.physics.pausable.VerticalDiffusion",
+      "reason": null,
+      "stage_action": "cam_run2.vertical_diffusion",
+      "stage_class": "freecam.physics.pausable.VerticalDiffusion",
+      "validated": true
+     },
+     {
+      "bindable": true,
+      "evidence": [
+       "validation/pi_cam_pausable_virtem-pause_50step.json",
+       "validation/pi_cam_pausable_virtem-pause_vs_oracle_50step_bfb.json",
+       "validation/pi_cam_pausable_everything_50step.json",
+       "validation/pi_cam_pausable_everything_vs_oracle_50step_bfb.json"
+      ],
+      "kernel": "virtem",
       "owner_class": "freecam.physics.pausable.VerticalDiffusion",
       "reason": null,
       "stage_action": "cam_run2.vertical_diffusion",
@@ -4135,6 +4336,10 @@
   {
    "configuration": {
     "kernels": {
+     "cldfrc_fice": {
+      "kind": "original",
+      "path": null
+     },
      "momtran": {
       "kind": "original",
       "path": null
@@ -4219,6 +4424,23 @@
       "stage_action": "cam_run1.deep_convection",
       "stage_class": "freecam.physics.pausable.DeepConvection",
       "validated": true
+     },
+     {
+      "bindable": true,
+      "evidence": [
+       "validation/pi_cam_pausable_fice-hook_50step.json",
+       "validation/pi_cam_pausable_fice-hook_vs_oracle_50step_bfb.json",
+       "validation/pi_cam_pausable_fice-capture_50step.json",
+       "validation/pi_cam_pausable_fice-capture_vs_oracle_50step_bfb.json",
+       "validation/pi_cam_pausable_hooks-everything_50step.json",
+       "validation/pi_cam_pausable_hooks-everything_vs_oracle_50step_bfb.json"
+      ],
+      "kernel": "cldfrc_fice",
+      "owner_class": "freecam.physics.pausable.DeepConvection",
+      "reason": null,
+      "stage_action": "cam_run1.deep_convection",
+      "stage_class": "freecam.physics.pausable.DeepConvection",
+      "validated": true
      }
     ],
     "parameters": [
@@ -4269,6 +4491,10 @@
      "compute_uwshcu_inv": {
       "kind": "original",
       "path": null
+     },
+     "fluxbelowinv": {
+      "kind": "original",
+      "path": null
      }
     },
     "parameters": {},
@@ -4299,6 +4525,23 @@
        "validation/pi_cam_pausable_everything_vs_oracle_50step_bfb.json"
       ],
       "kernel": "compute_uwshcu_inv",
+      "owner_class": "freecam.physics.pausable.ShallowConvection",
+      "reason": null,
+      "stage_action": "cam_run1.shallow_convection",
+      "stage_class": "freecam.physics.pausable.ShallowConvection",
+      "validated": true
+     },
+     {
+      "bindable": true,
+      "evidence": [
+       "validation/pi_cam_pausable_flux-hook_50step.json",
+       "validation/pi_cam_pausable_flux-hook_vs_oracle_50step_bfb.json",
+       "validation/pi_cam_pausable_flux-capture_50step.json",
+       "validation/pi_cam_pausable_flux-capture_vs_oracle_50step_bfb.json",
+       "validation/pi_cam_pausable_hooks-everything_50step.json",
+       "validation/pi_cam_pausable_hooks-everything_vs_oracle_50step_bfb.json"
+      ],
+      "kernel": "fluxbelowinv",
       "owner_class": "freecam.physics.pausable.ShallowConvection",
       "reason": null,
       "stage_action": "cam_run1.shallow_convection",
@@ -4375,6 +4618,14 @@
   {
    "configuration": {
     "kernels": {
+     "cldfrc_fice": {
+      "kind": "original",
+      "path": null
+     },
+     "instratus_condensate": {
+      "kind": "original",
+      "path": null
+     },
      "micro_mg_tend": {
       "kind": "original",
       "path": null
@@ -4410,6 +4661,38 @@
        "validation/pi_cam_pausable_everything_vs_oracle_50step_bfb.json"
       ],
       "kernel": "mmacro_pcond",
+      "owner_class": "freecam.physics.macrophysics.Macrophysics",
+      "reason": null,
+      "stage_action": "cam_run1.cloud_macro_microphysics",
+      "stage_class": "freecam.physics.cloud_macro_microphysics.CloudMacroMicrophysics",
+      "validated": true
+     },
+     {
+      "bindable": true,
+      "evidence": [
+       "validation/pi_cam_pausable_fice-hook_50step.json",
+       "validation/pi_cam_pausable_fice-hook_vs_oracle_50step_bfb.json",
+       "validation/pi_cam_pausable_fice-capture_50step.json",
+       "validation/pi_cam_pausable_fice-capture_vs_oracle_50step_bfb.json",
+       "validation/pi_cam_pausable_hooks-everything_50step.json",
+       "validation/pi_cam_pausable_hooks-everything_vs_oracle_50step_bfb.json"
+      ],
+      "kernel": "cldfrc_fice",
+      "owner_class": "freecam.physics.macrophysics.Macrophysics",
+      "reason": null,
+      "stage_action": "cam_run1.cloud_macro_microphysics",
+      "stage_class": "freecam.physics.cloud_macro_microphysics.CloudMacroMicrophysics",
+      "validated": true
+     },
+     {
+      "bindable": true,
+      "evidence": [
+       "validation/pi_cam_pausable_instratus-hook_50step.json",
+       "validation/pi_cam_pausable_instratus-hook_vs_oracle_50step_bfb.json",
+       "validation/pi_cam_pausable_instratus-capture_50step.json",
+       "validation/pi_cam_pausable_instratus-capture_vs_oracle_50step_bfb.json"
+      ],
+      "kernel": "instratus_condensate",
       "owner_class": "freecam.physics.macrophysics.Macrophysics",
       "reason": null,
       "stage_action": "cam_run1.cloud_macro_microphysics",
@@ -5499,6 +5782,10 @@
      "compute_vdiff": {
       "kind": "original",
       "path": null
+     },
+     "virtem": {
+      "kind": "original",
+      "path": null
      }
     },
     "parameters": {},
@@ -5563,6 +5850,21 @@
        "validation/pi_cam_pausable_everything_vs_oracle_50step_bfb.json"
       ],
       "kernel": "compute_vdiff",
+      "owner_class": "freecam.physics.pausable.VerticalDiffusion",
+      "reason": null,
+      "stage_action": "cam_run2.vertical_diffusion",
+      "stage_class": "freecam.physics.pausable.VerticalDiffusion",
+      "validated": true
+     },
+     {
+      "bindable": true,
+      "evidence": [
+       "validation/pi_cam_pausable_virtem-pause_50step.json",
+       "validation/pi_cam_pausable_virtem-pause_vs_oracle_50step_bfb.json",
+       "validation/pi_cam_pausable_everything_50step.json",
+       "validation/pi_cam_pausable_everything_vs_oracle_50step_bfb.json"
+      ],
+      "kernel": "virtem",
       "owner_class": "freecam.physics.pausable.VerticalDiffusion",
       "reason": null,
       "stage_action": "cam_run2.vertical_diffusion",
@@ -6786,6 +7088,10 @@
    "category": "Physics",
    "configuration": {
     "kernels": {
+     "cldfrc_fice": {
+      "kind": "original",
+      "path": null
+     },
      "momtran": {
       "kind": "original",
       "path": null
@@ -6872,6 +7178,23 @@
       "stage_action": "cam_run1.deep_convection",
       "stage_class": "freecam.physics.pausable.DeepConvection",
       "validated": true
+     },
+     {
+      "bindable": true,
+      "evidence": [
+       "validation/pi_cam_pausable_fice-hook_50step.json",
+       "validation/pi_cam_pausable_fice-hook_vs_oracle_50step_bfb.json",
+       "validation/pi_cam_pausable_fice-capture_50step.json",
+       "validation/pi_cam_pausable_fice-capture_vs_oracle_50step_bfb.json",
+       "validation/pi_cam_pausable_hooks-everything_50step.json",
+       "validation/pi_cam_pausable_hooks-everything_vs_oracle_50step_bfb.json"
+      ],
+      "kernel": "cldfrc_fice",
+      "owner_class": "freecam.physics.pausable.DeepConvection",
+      "reason": null,
+      "stage_action": "cam_run1.deep_convection",
+      "stage_class": "freecam.physics.pausable.DeepConvection",
+      "validated": true
      }
     ],
     "parameters": [
@@ -6926,6 +7249,10 @@
      "compute_uwshcu_inv": {
       "kind": "original",
       "path": null
+     },
+     "fluxbelowinv": {
+      "kind": "original",
+      "path": null
      }
     },
     "parameters": {},
@@ -6958,6 +7285,23 @@
        "validation/pi_cam_pausable_everything_vs_oracle_50step_bfb.json"
       ],
       "kernel": "compute_uwshcu_inv",
+      "owner_class": "freecam.physics.pausable.ShallowConvection",
+      "reason": null,
+      "stage_action": "cam_run1.shallow_convection",
+      "stage_class": "freecam.physics.pausable.ShallowConvection",
+      "validated": true
+     },
+     {
+      "bindable": true,
+      "evidence": [
+       "validation/pi_cam_pausable_flux-hook_50step.json",
+       "validation/pi_cam_pausable_flux-hook_vs_oracle_50step_bfb.json",
+       "validation/pi_cam_pausable_flux-capture_50step.json",
+       "validation/pi_cam_pausable_flux-capture_vs_oracle_50step_bfb.json",
+       "validation/pi_cam_pausable_hooks-everything_50step.json",
+       "validation/pi_cam_pausable_hooks-everything_vs_oracle_50step_bfb.json"
+      ],
+      "kernel": "fluxbelowinv",
       "owner_class": "freecam.physics.pausable.ShallowConvection",
       "reason": null,
       "stage_action": "cam_run1.shallow_convection",
@@ -7044,6 +7388,14 @@
    "category": "Physics",
    "configuration": {
     "kernels": {
+     "cldfrc_fice": {
+      "kind": "original",
+      "path": null
+     },
+     "instratus_condensate": {
+      "kind": "original",
+      "path": null
+     },
      "micro_mg_tend": {
       "kind": "original",
       "path": null
@@ -7081,6 +7433,38 @@
        "validation/pi_cam_pausable_everything_vs_oracle_50step_bfb.json"
       ],
       "kernel": "mmacro_pcond",
+      "owner_class": "freecam.physics.macrophysics.Macrophysics",
+      "reason": null,
+      "stage_action": "cam_run1.cloud_macro_microphysics",
+      "stage_class": "freecam.physics.cloud_macro_microphysics.CloudMacroMicrophysics",
+      "validated": true
+     },
+     {
+      "bindable": true,
+      "evidence": [
+       "validation/pi_cam_pausable_fice-hook_50step.json",
+       "validation/pi_cam_pausable_fice-hook_vs_oracle_50step_bfb.json",
+       "validation/pi_cam_pausable_fice-capture_50step.json",
+       "validation/pi_cam_pausable_fice-capture_vs_oracle_50step_bfb.json",
+       "validation/pi_cam_pausable_hooks-everything_50step.json",
+       "validation/pi_cam_pausable_hooks-everything_vs_oracle_50step_bfb.json"
+      ],
+      "kernel": "cldfrc_fice",
+      "owner_class": "freecam.physics.macrophysics.Macrophysics",
+      "reason": null,
+      "stage_action": "cam_run1.cloud_macro_microphysics",
+      "stage_class": "freecam.physics.cloud_macro_microphysics.CloudMacroMicrophysics",
+      "validated": true
+     },
+     {
+      "bindable": true,
+      "evidence": [
+       "validation/pi_cam_pausable_instratus-hook_50step.json",
+       "validation/pi_cam_pausable_instratus-hook_vs_oracle_50step_bfb.json",
+       "validation/pi_cam_pausable_instratus-capture_50step.json",
+       "validation/pi_cam_pausable_instratus-capture_vs_oracle_50step_bfb.json"
+      ],
+      "kernel": "instratus_condensate",
       "owner_class": "freecam.physics.macrophysics.Macrophysics",
       "reason": null,
       "stage_action": "cam_run1.cloud_macro_microphysics",
@@ -19596,7 +19980,7 @@
    "writes": []
   }
  ],
- "generated_at": "2026-09-07T02:08:22+00:00",
+ "generated_at": "2026-09-13T03:21:42+00:00",
  "parameters": {
   "cam_run1.cloud_macro_microphysics": [
    {

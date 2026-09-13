@@ -95,6 +95,11 @@ SETTINGS: tuple[Setting, ...] = (
         "one completed run of the reference case",
     ),
     Setting(
+        "FREECAM_LONG_REFERENCE_RUN",
+        "run directory of the original CESM multi-year run the one-year and five-year bit-for-bit jobs compare against",
+        "no default: those two jobs refuse to run without it",
+    ),
+    Setting(
         "FREECAM_QUEUE",
         "PBS queue for interactive sessions",
         "defaults to develop",

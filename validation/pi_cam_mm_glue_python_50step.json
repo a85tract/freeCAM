@@ -614,7 +614,7 @@
   "mpi_ranks": 512,
   "native_leaf_library_sha256": "00eb5d2f2b9717a7962cbfcf77039b7e82afe50c99eb29da649c5d1551dcac6a",
   "native_library_sha256": "dc41dfff1d826af709b311602a2a0de1c9f9edf4ace31af18c87acf00fcc4dde",
-  "native_manifest": "/glade/work/ruitong/pycam-sima-pi-cam-only/build/pi_cam_promoted_m1/native_cam_manifest.json",
+  "native_manifest": "build/pi_cam_promoted_m1/native_cam_manifest.json",
   "native_state_ownership": "python-owned-zero-copy-derived-shell",
   "pbs_job_id": "7256192.desched1",
   "radiation_python": false,

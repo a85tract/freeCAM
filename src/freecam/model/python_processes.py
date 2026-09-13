@@ -40,6 +40,14 @@ def _safe_name(value: str, label: str) -> str:
     return text
 
 
+#: Why one payload can hash differently on ranks that loaded the same code.
+PAYLOAD_MISMATCH_HINT = (
+    "the payload pickled differently per process; a set or another hash-ordered "
+    "container in the process or in a kernel model does that -- use ordered "
+    "containers or fix PYTHONHASHSEED"
+)
+
+
 def _payload_hash(payload: bytes) -> str:
     return hashlib.sha256(payload).hexdigest()
 
@@ -715,7 +723,7 @@ class PythonProcessRegistry:
         hashes = self.driver.comm.allgather(spec.payload_hash)
         if len(set(hashes)) != 1:
             raise PythonProcessContractError(
-                f"Python process payload differs across MPI ranks: {hashes}"
+                f"Python process payload differs across MPI ranks ({PAYLOAD_MISMATCH_HINT}): {hashes}"
             )
 
         installed_scheme: SuiteScheme | None = None

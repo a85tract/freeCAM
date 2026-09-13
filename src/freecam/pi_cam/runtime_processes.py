@@ -16,6 +16,7 @@ from freecam.model.errors import (
     PythonProcessTaintedError,
 )
 from freecam.model.python_processes import (
+    PAYLOAD_MISMATCH_HINT,
     PythonFieldView,
     NativeAccess,
     PythonProcessContext,
@@ -121,7 +122,7 @@ class PICAMPythonProcessRegistry:
         hashes = self.driver.comm.allgather(spec.payload_hash)
         if len(set(hashes)) != 1:
             raise PythonProcessContractError(
-                f"Python process payload differs across MPI ranks: {hashes}"
+                f"Python process payload differs across MPI ranks ({PAYLOAD_MISMATCH_HINT}): {hashes}"
             )
 
         action = PICAMAction(
@@ -258,7 +259,7 @@ class PICAMPythonProcessRegistry:
         hashes = self.driver.comm.allgather(candidate.payload_hash)
         if len(set(hashes)) != 1:
             raise PythonProcessContractError(
-                f"Python process payload differs across MPI ranks: {hashes}"
+                f"Python process payload differs across MPI ranks ({PAYLOAD_MISMATCH_HINT}): {hashes}"
             )
 
         previous = (

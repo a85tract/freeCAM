@@ -159,17 +159,22 @@ def test_the_two_leaves_are_wired_end_to_end_and_off_by_default() -> None:
 def test_the_support_modules_are_additions_the_image_links() -> None:
     assert SUPPORT_MODULES == ("pycam_macro_kernels.F90", "pycam_macro_handles.F90",
                                "pycam_rad_kernels.F90", "pycam_rad_handles.F90",
+                               # the radiation process slot the radiation runner asks
+                               "pycam_rad_process.F90",
                                "pycam_micro_kernels.F90", "pycam_mm_kernels.F90",
                                "pycam_aero_kernels.F90",
                                "pycam_micro_handles.F90", "pycam_aero_handles.F90",
                                "pycam_mm_handles.F90",
+                               # the hooks precede the runners that use them
+                               "pycam_hooks.F90",
                                # the pausable runners: hosts, units, runners
                                "pycam_stage_hosts.F90",
                                "pycam_dadadj_glue.F90", "pycam_dadadj_runner.F90",
                                "pycam_shcu_driver.F90", "pycam_shcu_glue.F90", "pycam_shcu_runner.F90",
                                "pycam_radt_driver.F90", "pycam_radt_glue.F90", "pycam_radt_runner.F90",
                                "pycam_zmdeep_zm.F90", "pycam_zmdeep_deep.F90", "pycam_zmdeep_glue.F90",
-                               "pycam_zmdeep_runner.F90", "pycam_zmtran_zm2.F90", "pycam_zmtran_deep2.F90",
+                               "pycam_zmdeep_runner.F90",
+                               "pycam_zmtran_zm2.F90", "pycam_zmtran_deep2.F90",
                                "pycam_zmtran_glue.F90", "pycam_zmtran_runner.F90",
                                "pycam_vdiff_driver.F90", "pycam_vdiff_glue.F90", "pycam_vdiff_runner.F90",
                                "pycam_gwd_driver.F90", "pycam_gwd_glue.F90", "pycam_gwd_runner.F90",
@@ -178,6 +183,11 @@ def test_the_support_modules_are_additions_the_image_links() -> None:
                                "pycam_chem_driver.F90", "pycam_chem_glue.F90", "pycam_chem_runner.F90")
     for name in SUPPORT_MODULES:
         assert (REPO / "native/pi_cam/support" / name).is_file()
+    # a runner that reaches a hooked kernel uses the hook module (build 7343461 failed on the order)
+    hooked = [name for name in SUPPORT_MODULES
+              if "use pycam_hooks" in (REPO / "native/pi_cam/support" / name).read_text()]
+    assert hooked == ["pycam_shcu_runner.F90", "pycam_zmdeep_runner.F90"]
+    assert all(SUPPORT_MODULES.index("pycam_hooks.F90") < SUPPORT_MODULES.index(name) for name in hooked)
     builder = (REPO / "tools/build_pi_cam_devices.py").read_text()
     # compiled before the control objects that `use` them, linked into the
     # fixed image as explicit objects, never as archive replacements

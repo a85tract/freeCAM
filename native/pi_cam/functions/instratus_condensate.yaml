@@ -1,0 +1,386 @@
+# Standalone function specification for instratus_condensate, the saturation
+# adjustment and stratus-fraction closure at the core of mmacro_pcond
+# (cldwat2m_macro.F90): given one level's grid-mean state and the cumulus
+# condensate, it returns the adjusted state and the liquid/ice stratus
+# fractions and in-stratus condensate.  A private procedure of cldwat2m_macro,
+# called twice per level inside mmacro_pcond (the relaxation iteration and the
+# final state); here it is reached through its ifort symbol behind an explicit
+# interface, on the routine's own layout: one level, pcols columns per array.
+#
+# This file is the runtime's only source of truth for the function boundary.
+# tools/verify_pi_cam_function_spec.py checks it against the kernel inventory
+# and the pinned source; the runtime never parses Fortran.
+
+schema_version: 1
+function: instratus_condensate
+qualified_name: cldwat2m_macro::instratus_condensate
+routine: instratus_condensate
+source: components/cam/src/physics/cam/cldwat2m_macro.F90
+module: cldwat2m_macro
+binding: mangled
+layout: column
+dimensions:
+  pcols: 16
+public_axes: {}
+arguments:
+  - name: lchnk
+    role: structural
+    fortran_type: integer
+    dtype: int32
+    rank: 0
+    intent: in
+    native_shape: []
+    value: 1
+    description: Chunk identifier; only the log writes read it, which the standalone image stubs.
+  - name: ncol
+    role: structural
+    fortran_type: integer
+    dtype: int32
+    rank: 0
+    intent: in
+    native_shape: []
+    value: 1
+    description: Number of active columns; the public API always evaluates one.
+  - name: k
+    role: input
+    fortran_type: integer
+    dtype: int32
+    rank: 0
+    intent: in
+    native_shape: []
+    description: Layer index; the routine is called once per level on that level's columns.
+    public_shape: []
+  - name: p_in
+    role: input
+    fortran_type: real
+    dtype: float64
+    rank: 1
+    intent: in
+    native_shape:
+      - pcols
+    public_shape: []
+    units: Pa
+    description: Pressure.
+  - name: t0_in
+    role: input
+    fortran_type: real
+    dtype: float64
+    rank: 1
+    intent: in
+    native_shape:
+      - pcols
+    public_shape: []
+    units: K
+    description: Temperature before the saturation adjustment.
+  - name: qv0_in
+    role: input
+    fortran_type: real
+    dtype: float64
+    rank: 1
+    intent: in
+    native_shape:
+      - pcols
+    public_shape: []
+    units: kg/kg
+    description: Grid-mean water vapor.
+  - name: ql0_in
+    role: input
+    fortran_type: real
+    dtype: float64
+    rank: 1
+    intent: in
+    native_shape:
+      - pcols
+    public_shape: []
+    units: kg/kg
+    description: Grid-mean LWC.
+  - name: qi0_in
+    role: input
+    fortran_type: real
+    dtype: float64
+    rank: 1
+    intent: in
+    native_shape:
+      - pcols
+    public_shape: []
+    units: kg/kg
+    description: Grid-mean IWC.
+  - name: ni0_in
+    role: input
+    fortran_type: real
+    dtype: float64
+    rank: 1
+    intent: in
+    native_shape:
+      - pcols
+    public_shape: []
+    units: 1/kg
+    description: Grid-mean cloud ice number concentration.
+  - name: a_dc_in
+    role: input
+    fortran_type: real
+    dtype: float64
+    rank: 1
+    intent: in
+    native_shape:
+      - pcols
+    public_shape: []
+    units: fraction
+    description: Deep cumulus cloud fraction.
+  - name: ql_dc_in
+    role: input
+    fortran_type: real
+    dtype: float64
+    rank: 1
+    intent: in
+    native_shape:
+      - pcols
+    public_shape: []
+    units: kg/kg
+    description: In-deep-cumulus LWC.
+  - name: qi_dc_in
+    role: input
+    fortran_type: real
+    dtype: float64
+    rank: 1
+    intent: in
+    native_shape:
+      - pcols
+    public_shape: []
+    units: kg/kg
+    description: In-deep-cumulus IWC.
+  - name: a_sc_in
+    role: input
+    fortran_type: real
+    dtype: float64
+    rank: 1
+    intent: in
+    native_shape:
+      - pcols
+    public_shape: []
+    units: fraction
+    description: Shallow cumulus cloud fraction.
+  - name: ql_sc_in
+    role: input
+    fortran_type: real
+    dtype: float64
+    rank: 1
+    intent: in
+    native_shape:
+      - pcols
+    public_shape: []
+    units: kg/kg
+    description: In-shallow-cumulus LWC.
+  - name: qi_sc_in
+    role: input
+    fortran_type: real
+    dtype: float64
+    rank: 1
+    intent: in
+    native_shape:
+      - pcols
+    public_shape: []
+    units: kg/kg
+    description: In-shallow-cumulus IWC.
+  - name: landfrac
+    role: input
+    fortran_type: real
+    dtype: float64
+    rank: 1
+    intent: in
+    native_shape:
+      - pcols
+    public_shape: []
+    units: fraction
+    description: Land fraction.
+  - name: snowh
+    role: input
+    fortran_type: real
+    dtype: float64
+    rank: 1
+    intent: in
+    native_shape:
+      - pcols
+    public_shape: []
+    units: m
+    description: Snow depth, liquid water equivalent.
+  - name: rhmini_in
+    role: input
+    fortran_type: real
+    dtype: float64
+    rank: 1
+    intent: in
+    native_shape:
+      - pcols
+    public_shape: []
+    units: fraction
+    description: Critical RH for ice stratus.
+  - name: rhminl_in
+    role: input
+    fortran_type: real
+    dtype: float64
+    rank: 1
+    intent: in
+    native_shape:
+      - pcols
+    public_shape: []
+    units: fraction
+    description: Critical RH for low-level liquid stratus.
+  - name: rhminl_adj_land_in
+    role: input
+    fortran_type: real
+    dtype: float64
+    rank: 1
+    intent: in
+    native_shape:
+      - pcols
+    public_shape: []
+    units: fraction
+    description: rhminl adjustment over snow-free land.
+  - name: rhminh_in
+    role: input
+    fortran_type: real
+    dtype: float64
+    rank: 1
+    intent: in
+    native_shape:
+      - pcols
+    public_shape: []
+    units: fraction
+    description: Critical RH for high-level liquid stratus.
+  - name: t_out
+    role: output
+    fortran_type: real
+    dtype: float64
+    rank: 1
+    intent: out
+    native_shape:
+      - pcols
+    public_shape: []
+    units: K
+    description: Temperature after the saturation adjustment.
+  - name: qv_out
+    role: output
+    fortran_type: real
+    dtype: float64
+    rank: 1
+    intent: out
+    native_shape:
+      - pcols
+    public_shape: []
+    units: kg/kg
+    description: Grid-mean water vapor after the adjustment.
+  - name: ql_out
+    role: output
+    fortran_type: real
+    dtype: float64
+    rank: 1
+    intent: out
+    native_shape:
+      - pcols
+    public_shape: []
+    units: kg/kg
+    description: Grid-mean LWC after the adjustment.
+  - name: qi_out
+    role: output
+    fortran_type: real
+    dtype: float64
+    rank: 1
+    intent: out
+    native_shape:
+      - pcols
+    public_shape: []
+    units: kg/kg
+    description: Grid-mean IWC after the adjustment.
+  - name: al_st_out
+    role: output
+    fortran_type: real
+    dtype: float64
+    rank: 1
+    intent: out
+    native_shape:
+      - pcols
+    public_shape: []
+    units: fraction
+    description: Liquid stratus fraction.
+  - name: ai_st_out
+    role: output
+    fortran_type: real
+    dtype: float64
+    rank: 1
+    intent: out
+    native_shape:
+      - pcols
+    public_shape: []
+    units: fraction
+    description: Ice stratus fraction.
+  - name: ql_st_out
+    role: output
+    fortran_type: real
+    dtype: float64
+    rank: 1
+    intent: out
+    native_shape:
+      - pcols
+    public_shape: []
+    units: kg/kg
+    description: In-stratus LWC.
+  - name: qi_st_out
+    role: output
+    fortran_type: real
+    dtype: float64
+    rank: 1
+    intent: out
+    native_shape:
+      - pcols
+    public_shape: []
+    units: kg/kg
+    description: In-stratus IWC.
+parameters: {}
+module_state:
+  - symbol: physconst_mp_cpair_
+    dtype: float64
+    shape: []
+    write: verify
+  - symbol: physconst_mp_latvap_
+    dtype: float64
+    shape: []
+    write: verify
+  - symbol: physconst_mp_latice_
+    dtype: float64
+    shape: []
+    write: verify
+initializers: []
+image:
+  archive_members:
+    - cldwat2m_macro.o
+    - cldfrc2m.o
+    - wv_saturation.o
+    - wv_sat_methods.o
+    - constituents.o
+    - physconst.o
+    - ppgrid.o
+    - cam_logfile.o
+    - ref_pres.o
+    - error_messages.o
+  stubs:
+    inert:
+      - cam_history_mp_outfld_
+      - cam_history_mp_hist_fld_active_
+      - shr_assert_mod_mp_shr_assert_in_domain_0d_double_
+      - spmd_utils_mp_masterproc_
+      - mpishorthand_mp_mpicom_
+      - mpishorthand_mp_mpir8_
+      - mpishorthand_mp_mpichar_
+    fail_closed:
+      - cam_history_mp_addfld_
+      - cloud_fraction_mp_cldfrc_getparams_
+      - mpibcast_
+      - shr_nl_mod_mp_shr_nl_find_group_name_
+      - units_mp_getunit_
+      - units_mp_freeunit_
+      - dyn_grid_mp_dyn_grid_get_pref_
+      - netcdf_mp_nf90_strerror_
+    abort:
+      - shr_sys_mod_mp_shr_sys_abort_
+  base_address: 1342177280

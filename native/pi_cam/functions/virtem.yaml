@@ -1,0 +1,75 @@
+# Standalone function specification for virtem, pbl_utils' elemental virtual
+# temperature: the kernel-API closure's representative scalar function.  In
+# the model it is called inside an assignment of vertical_diffusion_tend
+# (thvs(:ncol) = virtem(th(:ncol,pver), state%q(:ncol,pver,1))), where the
+# vdiff runner pauses at it; here it is the same routine on one pair of
+# scalars, its result returned as `result`.
+#
+# This file is the runtime's only source of truth for the function boundary.
+# tools/verify_pi_cam_function_spec.py checks it against the kernel inventory
+# and the pinned source; the runtime never parses Fortran.
+
+schema_version: 1
+function: virtem
+qualified_name: pbl_utils::virtem
+routine: virtem
+source: components/cam/src/physics/cam/pbl_utils.F90
+module: pbl_utils
+# a public module procedure, reached through the module's interface; called
+# on scalars, which an elemental function accepts
+binding: module
+# the routine's own layout: two scalars in, one scalar out
+layout: direct
+
+dimensions: {}
+
+arguments:
+  - name: t
+    role: input
+    fortran_type: real
+    dtype: float64
+    rank: 0
+    intent: in
+    native_shape: []
+    units: K
+    range: [150.0, 350.0]
+    constraints: [positive]
+    description: Temperature.
+  - name: q
+    role: input
+    fortran_type: real
+    dtype: float64
+    rank: 0
+    intent: in
+    native_shape: []
+    units: kg/kg
+    range: [0.0, 0.1]
+    constraints: [non_negative]
+    description: Specific humidity.
+  - name: virtem
+    role: result
+    fortran_type: real
+    dtype: float64
+    rank: 0
+    intent: out
+    native_shape: []
+    units: K
+    description: Virtual temperature, t * (1 + zvir * q).
+
+parameters: {}
+
+# zvir = rh2o/rair - 1, set once by pbl_utils_init from the physical constants;
+# the standalone image takes the model's value and verifies it.
+module_state:
+  - {symbol: pbl_utils_mp_zvir_, dtype: float64, shape: [], write: snapshot}
+
+image:
+  archive_members:
+    - pbl_utils.o
+  stubs:
+    inert: []
+    fail_closed: []
+    # the abort probe every image carries
+    abort:
+      - shr_sys_mod_mp_shr_sys_abort_
+  base_address: 0x50000000

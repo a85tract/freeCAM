@@ -49,11 +49,17 @@ def coerce_inputs(spec: FunctionSpec, inputs: Mapping[str, Any]) -> dict[str, np
         resolved[item.name] = array
     missing = [
         item.name for item in spec.user_arguments
-        if item.name not in resolved and item.default is None
+        if item.name not in resolved and item.default is None and not item.optional
     ]
     if missing:
         raise InvalidInput("missing inputs without defaults: " + ", ".join(missing))
     return resolved
+
+
+def presence_field(spec: FunctionSpec, item: ArgumentSpec) -> str:
+    """The int32 pool field saying whether an optional argument is passed (1) or left out (0)."""
+
+    return f"{spec.function}.{item.name}.present"
 
 
 def empty_pool(spec: FunctionSpec, nchunks: int = 1) -> dict[str, np.ndarray]:
@@ -61,7 +67,51 @@ def empty_pool(spec: FunctionSpec, nchunks: int = 1) -> dict[str, np.ndarray]:
     for item in spec.arguments:
         shape = (*item.native_extent(spec.dimensions), nchunks)
         pool[f"{spec.function}.{item.name}"] = np.zeros(shape, dtype=np.dtype(item.dtype), order="F")
+        if item.optional:
+            pool[presence_field(spec, item)] = np.zeros((nchunks,), dtype=np.int32, order="F")
     return pool
+
+
+def pack_direct(spec: FunctionSpec, inputs: Mapping[str, np.ndarray]) -> dict[str, np.ndarray]:
+    """A one-chunk pool with every argument in its declared shape: the routine's own layout."""
+
+    pool = empty_pool(spec, 1)
+    for item in spec.arguments:
+        target = pool[f"{spec.function}.{item.name}"]
+        if item.role == "structural":
+            target[...] = item.value
+            continue
+        if item.role in ("output", "workspace", "result"):
+            continue
+        value = inputs.get(item.name)
+        if value is None:
+            value = item.default
+        if item.optional:
+            pool[presence_field(spec, item)][0] = 0 if value is None else 1
+            if value is None:
+                continue
+        if item.rank == 0:
+            target[0] = value
+        else:
+            target[..., 0] = value
+    return pool
+
+
+def unpack_direct(spec: FunctionSpec, pool: Mapping[str, np.ndarray]) -> tuple[dict[str, np.ndarray], dict[str, np.ndarray]]:
+    """Every returned argument in its declared shape: (outputs, updated in/outs); the result is ``result``."""
+
+    outputs: dict[str, np.ndarray] = {}
+    updated: dict[str, np.ndarray] = {}
+    for item in spec.arguments:
+        if not item.returned:
+            continue
+        array = pool[f"{spec.function}.{item.name}"]
+        value = array[0].copy() if item.rank == 0 else np.array(array[..., 0], copy=True, order="F")
+        if item.role == "result":
+            outputs["result"] = value
+        else:
+            (updated if item.role == "inout" else outputs)[item.name] = value
+    return outputs, updated
 
 
 def pack_column(spec: FunctionSpec, inputs: Mapping[str, np.ndarray]) -> dict[str, np.ndarray]:
@@ -73,11 +123,15 @@ def pack_column(spec: FunctionSpec, inputs: Mapping[str, np.ndarray]) -> dict[st
         if item.role == "structural":
             target[...] = item.value
             continue
-        if item.role in ("output", "workspace"):
+        if item.role in ("output", "workspace", "result"):
             continue
         value = inputs.get(item.name)
         if value is None:
             value = item.default
+        if item.optional:
+            pool[presence_field(spec, item)][0] = 0 if value is None else 1
+            if value is None:
+                continue
         if item.rank == 0:
             target[0] = value
         else:
@@ -95,8 +149,20 @@ def unpack_column(spec: FunctionSpec, pool: Mapping[str, np.ndarray]) -> tuple[d
             continue
         array = pool[f"{spec.function}.{item.name}"]
         value = array[0].copy() if item.rank == 0 else np.array(array[0, ..., 0], copy=True)
-        (updated if item.role == "inout" else outputs)[item.name] = value
+        if item.role == "result":
+            outputs["result"] = value
+        else:
+            (updated if item.role == "inout" else outputs)[item.name] = value
     return outputs, updated
 
 
-__all__ = ["InvalidInput", "coerce_inputs", "empty_pool", "pack_column", "unpack_column"]
+def pack(spec: FunctionSpec, inputs: Mapping[str, np.ndarray]) -> dict[str, np.ndarray]:
+    return pack_direct(spec, inputs) if spec.layout == "direct" else pack_column(spec, inputs)
+
+
+def unpack(spec: FunctionSpec, pool: Mapping[str, np.ndarray]) -> tuple[dict[str, np.ndarray], dict[str, np.ndarray]]:
+    return unpack_direct(spec, pool) if spec.layout == "direct" else unpack_column(spec, pool)
+
+
+__all__ = ["InvalidInput", "coerce_inputs", "empty_pool", "pack", "pack_column", "pack_direct",
+           "presence_field", "unpack", "unpack_column", "unpack_direct"]

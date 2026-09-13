@@ -52,6 +52,11 @@ class RunnerKernel:
     contract: str | None = None
     #: a frame descriptor table (segment_frames.yaml) the pausable generator wrote
     frame: str | None = None
+    #: the kernel whose hoisted unit this kernel's call sites live in; replacing both
+    #: at once is a conflict, since the outer replacement never reaches the inner call
+    within: str | None = None
+    #: why a bindable kernel is not validated, when a gate has shown the path is not bit-for-bit
+    note: str | None = None
 
     @property
     def validated(self) -> bool:
@@ -92,6 +97,29 @@ class RunnerSpec:
                 return kernel
         raise KeyError(name)
 
+    def ancestors(self, name: str) -> tuple[str, ...]:
+        """The kernels whose hoisted units enclose ``name``'s call sites, innermost first."""
+
+        chain: list[str] = []
+        current = self.kernel(name).within
+        while current is not None and current not in chain:
+            chain.append(current)
+            current = self.kernel(current).within if current in self.kernel_names else None
+        return tuple(chain)
+
+    def replacement_conflicts(self, mask: Mapping[str, bool]) -> list[tuple[str, str]]:
+        """(inner, outer) pairs replaced together: the outer replacement would never reach the inner call."""
+
+        replaced = {name for name, flag in mask.items() if flag}
+        conflicts: list[tuple[str, str]] = []
+        for name in sorted(replaced):
+            if name not in self.kernel_names:
+                continue
+            for outer in self.ancestors(name):
+                if outer in replaced:
+                    conflicts.append((name, outer))
+        return conflicts
+
 
 def load_manifest(path: str | Path | None = None) -> tuple[RunnerSpec, ...]:
     """Every runner the manifest declares, in its order."""
@@ -105,21 +133,28 @@ def load_manifest(path: str | Path | None = None) -> tuple[RunnerSpec, ...]:
         raise NativeCAMError(f"{source}: 'runners' must be a list")
     specs: list[RunnerSpec] = []
     seen_stages: set[str] = set()
-    seen_kernels: set[str] = set()
+    seen_kernels: set[tuple[str, str]] = set()
     for record in runners:
         if not isinstance(record, Mapping):
             raise NativeCAMError(f"{source}: every runner must be a mapping")
+        stage_name = str(record.get("stage", ""))
         kernels = []
         for item in record.get("kernels") or ():
             name = str(item["name"])
-            if name in seen_kernels:
-                raise NativeCAMError(f"{source}: kernel {name!r} is claimed by two runners")
-            seen_kernels.add(name)
+            # one pause per kernel per runner; the same kernel may pause in
+            # several processes (cldfrc_fice: the deep-convection hook and the
+            # cloud stage's transcribed call), each replacement scoped to its
+            # own stage
+            if (stage_name, name) in seen_kernels:
+                raise NativeCAMError(f"{source}: kernel {name!r} appears twice in {stage_name!r}")
+            seen_kernels.add((stage_name, name))
             kernels.append(RunnerKernel(
                 name=name, owner=str(item.get("owner", "")),
                 validated_by=tuple(str(p) for p in item.get("validated_by") or ()),
                 contract=None if item.get("contract") is None else str(item["contract"]),
                 frame=None if item.get("frame") is None else str(item["frame"]),
+                within=None if item.get("within") is None else str(item["within"]),
+                note=None if item.get("note") is None else " ".join(str(item["note"]).split()),
             ))
         stage = str(record["stage"])
         if stage in seen_stages:

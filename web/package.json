@@ -9,7 +9,9 @@
     "build": "tsc --noEmit -p tsconfig.json && vite build && node scripts/build-codegen.mjs",
     "build:pages": "tsc --noEmit -p tsconfig.json && vite build --base=/freeCAM/ --outDir dist-pages && node scripts/build-codegen.mjs",
     "test": "vitest run",
-    "typecheck": "tsc --noEmit -p tsconfig.json"
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "dev:progress": "vite --config vite.progress.config.ts",
+    "build:progress": "tsc --noEmit -p tsconfig.json && vite build --config vite.progress.config.ts --base=/freeCAM/progress/"
   },
   "dependencies": {
     "@codemirror/lang-python": "^6.1.6",

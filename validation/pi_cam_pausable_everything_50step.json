@@ -575,53 +575,53 @@
     "samples": [
       {
         "label": "python_ready",
-        "maximum_rank_hwm_bytes": 222949376,
-        "maximum_rank_rss_bytes": 222949376,
-        "maximum_rank_ru_maxrss_bytes": 222949376,
+        "maximum_rank_hwm_bytes": 223670272,
+        "maximum_rank_rss_bytes": 223670272,
+        "maximum_rank_ru_maxrss_bytes": 223670272,
         "step": 0,
-        "total_hwm_bytes": 111784296448,
-        "total_pss_bytes": 92560866304,
-        "total_rss_bytes": 111784296448
+        "total_hwm_bytes": 111720353792,
+        "total_pss_bytes": 92529900544,
+        "total_rss_bytes": 111720353792
       },
       {
         "label": "initialized",
-        "maximum_rank_hwm_bytes": 774701056,
-        "maximum_rank_rss_bytes": 774701056,
-        "maximum_rank_ru_maxrss_bytes": 774701056,
+        "maximum_rank_hwm_bytes": 782458880,
+        "maximum_rank_rss_bytes": 782458880,
+        "maximum_rank_ru_maxrss_bytes": 782458880,
         "step": 0,
-        "total_hwm_bytes": 230378930176,
-        "total_pss_bytes": 195176864768,
-        "total_rss_bytes": 230116089856
+        "total_hwm_bytes": 229159579648,
+        "total_pss_bytes": 194093479936,
+        "total_rss_bytes": 228893192192
       },
       {
         "label": "pre_finalize",
-        "maximum_rank_hwm_bytes": 873639936,
-        "maximum_rank_rss_bytes": 839016448,
-        "maximum_rank_ru_maxrss_bytes": 873639936,
+        "maximum_rank_hwm_bytes": 875696128,
+        "maximum_rank_rss_bytes": 842027008,
+        "maximum_rank_ru_maxrss_bytes": 875696128,
         "step": 50,
-        "total_hwm_bytes": 247936581632,
-        "total_pss_bytes": 207535351808,
-        "total_rss_bytes": 247892598784
+        "total_hwm_bytes": 246908985344,
+        "total_pss_bytes": 206553772032,
+        "total_rss_bytes": 246865080320
       },
       {
         "label": "finalized",
-        "maximum_rank_hwm_bytes": 873639936,
-        "maximum_rank_rss_bytes": 833605632,
-        "maximum_rank_ru_maxrss_bytes": 873639936,
+        "maximum_rank_hwm_bytes": 875696128,
+        "maximum_rank_rss_bytes": 837566464,
+        "maximum_rank_ru_maxrss_bytes": 875696128,
         "step": 50,
-        "total_hwm_bytes": 248022511616,
-        "total_pss_bytes": 207565851648,
-        "total_rss_bytes": 247930175488
+        "total_hwm_bytes": 246990749696,
+        "total_pss_bytes": 206581719040,
+        "total_rss_bytes": 246901895168
       }
     ]
   },
   "micro_core_standalone": false,
   "mpi_ranks": 512,
-  "native_leaf_library_sha256": "0ecde92e898868217f6308fd13a38b4be66a843dbd6f1b64373e09fd8808b5ba",
-  "native_library_sha256": "9788f8e76bfa1f2e8fc44631258196b77b06081b42867097f1af912021f32546",
-  "native_manifest": "/glade/work/ruitong/pycam-sima-pi-cam-only/build/pi_cam_promoted_p5/native_cam_manifest.json",
+  "native_leaf_library_sha256": "72c48117dc95bb01c180dbf12e239e41d9ab2b54281408ebd3922ca8021f1ec8",
+  "native_library_sha256": "9bfadfa167531de46f5299ebff645d44a0d86e3e59ce13af98a4c4f579ee83fe",
+  "native_manifest": "build/pi_cam_promoted_p7/native_cam_manifest.json",
   "native_state_ownership": "python-owned-zero-copy-derived-shell",
-  "pbs_job_id": "7335682.desched1",
+  "pbs_job_id": "7343260.desched1",
   "python_stages": [
     "dry_adjustment",
     "shallow_convection",
@@ -3724,7 +3724,7 @@
   "schema_version": 1,
   "scientific_bfb": null,
   "segmented_original": true,
-  "segmented_original_kernels": "dadadj,compute_uwshcu_inv,zm_convr,zm_conv_evap,momtran,convtran,compute_tms,compute_eddy_diff,compute_vdiff,gw_drag_prof,wetdepa_v2,modal_aero_depvel_part,gas_phase_chemdr,rad_rrtmg_sw,rad_rrtmg_lw,mmacro_pcond,micro_mg_tend",
+  "segmented_original_kernels": "dadadj,compute_uwshcu_inv,zm_convr,zm_conv_evap,momtran,convtran,compute_tms,compute_eddy_diff,compute_vdiff,virtem,gw_drag_prof,wetdepa_v2,modal_aero_depvel_part,gas_phase_chemdr,rad_rrtmg_sw,rad_rrtmg_lw,mmacro_pcond,micro_mg_tend",
   "stage_execution": {
     "aerosol_dry_deposition_leaf_python": {
       "active_replacements": [
@@ -3742,8 +3742,13 @@
           "owner_class": "freecam.physics.pausable.AerosolDryDeposition",
           "replaced": true,
           "stage_action": "cam_run2.aerosol_dry_deposition_leaf",
-          "validated": false,
-          "validated_by": []
+          "validated": true,
+          "validated_by": [
+            "validation/pi_cam_pausable_adry-pause_50step.json",
+            "validation/pi_cam_pausable_adry-pause_vs_oracle_50step_bfb.json",
+            "validation/pi_cam_pausable_everything_50step.json",
+            "validation/pi_cam_pausable_everything_vs_oracle_50step_bfb.json"
+          ]
         }
       ],
       "legacy_steps": 0,
@@ -3775,7 +3780,9 @@
           "validated": true,
           "validated_by": [
             "validation/pi_cam_pausable_awet-pause_50step.json",
-            "validation/pi_cam_pausable_awet-pause_vs_oracle_50step_bfb.json"
+            "validation/pi_cam_pausable_awet-pause_vs_oracle_50step_bfb.json",
+            "validation/pi_cam_pausable_everything_50step.json",
+            "validation/pi_cam_pausable_everything_vs_oracle_50step_bfb.json"
           ]
         }
       ],
@@ -3805,8 +3812,13 @@
           "owner_class": "freecam.physics.pausable.ChemistryTendencies",
           "replaced": true,
           "stage_action": "cam_run2.chemistry_tendencies_leaf",
-          "validated": false,
-          "validated_by": []
+          "validated": true,
+          "validated_by": [
+            "validation/pi_cam_pausable_chem-pause_50step.json",
+            "validation/pi_cam_pausable_chem-pause_vs_oracle_50step_bfb.json",
+            "validation/pi_cam_pausable_everything_50step.json",
+            "validation/pi_cam_pausable_everything_vs_oracle_50step_bfb.json"
+          ]
         }
       ],
       "legacy_steps": 0,
@@ -3920,7 +3932,9 @@
             "validation/pi_cam_stage7_segmented_original_50step.json",
             "validation/pi_cam_stage7_segmented_original_vs_oracle_50step_bfb.json",
             "validation/pi_cam_stage7_segmented_both_50step.json",
-            "validation/pi_cam_stage7_segmented_both_vs_oracle_50step_bfb.json"
+            "validation/pi_cam_stage7_segmented_both_vs_oracle_50step_bfb.json",
+            "validation/pi_cam_pausable_everything_50step.json",
+            "validation/pi_cam_pausable_everything_vs_oracle_50step_bfb.json"
           ]
         },
         {
@@ -4063,7 +4077,9 @@
             "validation/pi_cam_stage7_segmented_micro_50step.json",
             "validation/pi_cam_stage7_segmented_micro_vs_oracle_50step_bfb.json",
             "validation/pi_cam_stage7_segmented_both_50step.json",
-            "validation/pi_cam_stage7_segmented_both_vs_oracle_50step_bfb.json"
+            "validation/pi_cam_stage7_segmented_both_vs_oracle_50step_bfb.json",
+            "validation/pi_cam_pausable_everything_50step.json",
+            "validation/pi_cam_pausable_everything_vs_oracle_50step_bfb.json"
           ]
         }
       ],
@@ -4099,7 +4115,9 @@
             "validation/pi_cam_pausable_tran-pause_50step.json",
             "validation/pi_cam_pausable_tran-pause_vs_oracle_50step_bfb.json",
             "validation/pi_cam_pausable_chain-pause_50step.json",
-            "validation/pi_cam_pausable_chain-pause_vs_oracle_50step_bfb.json"
+            "validation/pi_cam_pausable_chain-pause_vs_oracle_50step_bfb.json",
+            "validation/pi_cam_pausable_everything_50step.json",
+            "validation/pi_cam_pausable_everything_vs_oracle_50step_bfb.json"
           ]
         }
       ],
@@ -4138,7 +4156,9 @@
             "validation/pi_cam_pausable_deep-all_50step.json",
             "validation/pi_cam_pausable_deep-all_vs_oracle_50step_bfb.json",
             "validation/pi_cam_pausable_chain-pause_50step.json",
-            "validation/pi_cam_pausable_chain-pause_vs_oracle_50step_bfb.json"
+            "validation/pi_cam_pausable_chain-pause_vs_oracle_50step_bfb.json",
+            "validation/pi_cam_pausable_everything_50step.json",
+            "validation/pi_cam_pausable_everything_vs_oracle_50step_bfb.json"
           ]
         },
         {
@@ -4158,7 +4178,9 @@
             "validation/pi_cam_pausable_deep-all_50step.json",
             "validation/pi_cam_pausable_deep-all_vs_oracle_50step_bfb.json",
             "validation/pi_cam_pausable_chain-pause_50step.json",
-            "validation/pi_cam_pausable_chain-pause_vs_oracle_50step_bfb.json"
+            "validation/pi_cam_pausable_chain-pause_vs_oracle_50step_bfb.json",
+            "validation/pi_cam_pausable_everything_50step.json",
+            "validation/pi_cam_pausable_everything_vs_oracle_50step_bfb.json"
           ]
         },
         {
@@ -4178,8 +4200,38 @@
             "validation/pi_cam_pausable_deep-all_50step.json",
             "validation/pi_cam_pausable_deep-all_vs_oracle_50step_bfb.json",
             "validation/pi_cam_pausable_chain-pause_50step.json",
-            "validation/pi_cam_pausable_chain-pause_vs_oracle_50step_bfb.json"
+            "validation/pi_cam_pausable_chain-pause_vs_oracle_50step_bfb.json",
+            "validation/pi_cam_pausable_everything_50step.json",
+            "validation/pi_cam_pausable_everything_vs_oracle_50step_bfb.json"
           ]
+        },
+        {
+          "bindable": true,
+          "binding": "original",
+          "contract": {
+            "in_place": [],
+            "inputs": [
+              "t"
+            ],
+            "module_state_inputs": {
+              "verify": 1
+            },
+            "outputs": [
+              "fice",
+              "fsnow"
+            ],
+            "parameters": [],
+            "path": "native/pi_cam/functions/cldfrc_fice.yaml",
+            "routine": "cloud_fraction::cldfrc_fice"
+          },
+          "execution_mode": "segmented",
+          "kernel": "cldfrc_fice",
+          "model_calls": 0,
+          "owner_class": "freecam.physics.pausable.DeepConvection",
+          "replaced": false,
+          "stage_action": "cam_run1.deep_convection",
+          "validated": false,
+          "validated_by": []
         }
       ],
       "legacy_steps": 0,
@@ -4237,7 +4289,9 @@
             "validation/pi_cam_pausable_both-pause_50step.json",
             "validation/pi_cam_pausable_both-pause_vs_oracle_50step_bfb.json",
             "validation/pi_cam_pausable_all-pause_50step.json",
-            "validation/pi_cam_pausable_all-pause_vs_oracle_50step_bfb.json"
+            "validation/pi_cam_pausable_all-pause_vs_oracle_50step_bfb.json",
+            "validation/pi_cam_pausable_everything_50step.json",
+            "validation/pi_cam_pausable_everything_vs_oracle_50step_bfb.json"
           ]
         }
       ],
@@ -4270,7 +4324,9 @@
           "validated": true,
           "validated_by": [
             "validation/pi_cam_pausable_gwd-pause_50step.json",
-            "validation/pi_cam_pausable_gwd-pause_vs_oracle_50step_bfb.json"
+            "validation/pi_cam_pausable_gwd-pause_vs_oracle_50step_bfb.json",
+            "validation/pi_cam_pausable_everything_50step.json",
+            "validation/pi_cam_pausable_everything_vs_oracle_50step_bfb.json"
           ]
         }
       ],
@@ -4308,7 +4364,9 @@
             "validation/pi_cam_pausable_rad-both-pause_50step.json",
             "validation/pi_cam_pausable_rad-both-pause_vs_oracle_50step_bfb.json",
             "validation/pi_cam_pausable_all-pause_50step.json",
-            "validation/pi_cam_pausable_all-pause_vs_oracle_50step_bfb.json"
+            "validation/pi_cam_pausable_all-pause_vs_oracle_50step_bfb.json",
+            "validation/pi_cam_pausable_everything_50step.json",
+            "validation/pi_cam_pausable_everything_vs_oracle_50step_bfb.json"
           ]
         },
         {
@@ -4328,7 +4386,9 @@
             "validation/pi_cam_pausable_rad-both-pause_50step.json",
             "validation/pi_cam_pausable_rad-both-pause_vs_oracle_50step_bfb.json",
             "validation/pi_cam_pausable_all-pause_50step.json",
-            "validation/pi_cam_pausable_all-pause_vs_oracle_50step_bfb.json"
+            "validation/pi_cam_pausable_all-pause_vs_oracle_50step_bfb.json",
+            "validation/pi_cam_pausable_everything_50step.json",
+            "validation/pi_cam_pausable_everything_vs_oracle_50step_bfb.json"
           ]
         }
       ],
@@ -4366,7 +4426,9 @@
             "validation/pi_cam_pausable_both-pause_50step.json",
             "validation/pi_cam_pausable_both-pause_vs_oracle_50step_bfb.json",
             "validation/pi_cam_pausable_all-pause_50step.json",
-            "validation/pi_cam_pausable_all-pause_vs_oracle_50step_bfb.json"
+            "validation/pi_cam_pausable_all-pause_vs_oracle_50step_bfb.json",
+            "validation/pi_cam_pausable_everything_50step.json",
+            "validation/pi_cam_pausable_everything_vs_oracle_50step_bfb.json"
           ]
         }
       ],
@@ -4384,7 +4446,8 @@
       "active_replacements": [
         "compute_tms",
         "compute_eddy_diff",
-        "compute_vdiff"
+        "compute_vdiff",
+        "virtem"
       ],
       "execution_mode": "segmented",
       "kernels": [
@@ -4403,7 +4466,9 @@
             "validation/pi_cam_pausable_vdiff-tms_50step.json",
             "validation/pi_cam_pausable_vdiff-tms_vs_oracle_50step_bfb.json",
             "validation/pi_cam_pausable_vdiff-all_50step.json",
-            "validation/pi_cam_pausable_vdiff-all_vs_oracle_50step_bfb.json"
+            "validation/pi_cam_pausable_vdiff-all_vs_oracle_50step_bfb.json",
+            "validation/pi_cam_pausable_everything_50step.json",
+            "validation/pi_cam_pausable_everything_vs_oracle_50step_bfb.json"
           ]
         },
         {
@@ -4421,7 +4486,9 @@
             "validation/pi_cam_pausable_vdiff-eddy_50step.json",
             "validation/pi_cam_pausable_vdiff-eddy_vs_oracle_50step_bfb.json",
             "validation/pi_cam_pausable_vdiff-all_50step.json",
-            "validation/pi_cam_pausable_vdiff-all_vs_oracle_50step_bfb.json"
+            "validation/pi_cam_pausable_vdiff-all_vs_oracle_50step_bfb.json",
+            "validation/pi_cam_pausable_everything_50step.json",
+            "validation/pi_cam_pausable_everything_vs_oracle_50step_bfb.json"
           ]
         },
         {
@@ -4439,35 +4506,64 @@
             "validation/pi_cam_pausable_vdiff-vdiff_50step.json",
             "validation/pi_cam_pausable_vdiff-vdiff_vs_oracle_50step_bfb.json",
             "validation/pi_cam_pausable_vdiff-all_50step.json",
-            "validation/pi_cam_pausable_vdiff-all_vs_oracle_50step_bfb.json"
+            "validation/pi_cam_pausable_vdiff-all_vs_oracle_50step_bfb.json",
+            "validation/pi_cam_pausable_everything_50step.json",
+            "validation/pi_cam_pausable_everything_vs_oracle_50step_bfb.json"
           ]
+        },
+        {
+          "bindable": true,
+          "binding": "original-through-python",
+          "contract": {
+            "in_place": [],
+            "inputs": [
+              "t",
+              "q"
+            ],
+            "module_state_inputs": {
+              "snapshot": 1
+            },
+            "outputs": [],
+            "parameters": [],
+            "path": "native/pi_cam/functions/virtem.yaml",
+            "routine": "pbl_utils::virtem"
+          },
+          "execution_mode": "segmented",
+          "kernel": "virtem",
+          "model_calls": 100,
+          "owner_class": "freecam.physics.pausable.VerticalDiffusion",
+          "replaced": true,
+          "stage_action": "cam_run2.vertical_diffusion",
+          "validated": false,
+          "validated_by": []
         }
       ],
       "legacy_steps": 0,
-      "native_segment_calls": 450,
+      "native_segment_calls": 550,
       "native_stage_calls": 0,
       "python_fortran_crossings_per_step": null,
-      "python_model_calls": 400,
+      "python_model_calls": 500,
       "python_model_calls_by_kernel": {
         "compute_eddy_diff": 100,
         "compute_tms": 100,
-        "compute_vdiff": 200
+        "compute_vdiff": 200,
+        "virtem": 100
       },
-      "segment_pauses": 400
+      "segment_pauses": 500
     }
   },
   "stage_execution_policy": "auto",
   "step_plan_actions": 50,
   "steps": 50,
   "timing": {
-    "advance_seconds": 72.89734398199971,
-    "advance_sypd": 3.382501048688954,
+    "advance_seconds": 71.34780090200002,
+    "advance_sypd": 3.455962753560376,
     "aggregation": "maximum across all MPI ranks",
     "clock": "MPI.Wtime with MPI barriers",
-    "finalize_seconds": 0.3304729730002691,
-    "initialize_seconds": 10.26242666500002,
+    "finalize_seconds": 0.3627242979999892,
+    "initialize_seconds": 17.659477066000022,
     "simulated_days": 1.0416666666666667,
-    "total_seconds": 83.51217350699972
+    "total_seconds": 89.39116624300004
   },
   "validation_scope": "configured CAM runtime"
 }

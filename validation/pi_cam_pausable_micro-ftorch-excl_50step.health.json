@@ -1,0 +1,19 @@
+{
+ "schema_version": 1,
+ "log": "pyCAM/PI-cam/pausable-micro-ftorch-excl-7394255.desched1/run/pi_cam_python.log",
+ "steps": 50,
+ "counts": {
+  "big_error": 56,
+  "isotopic_mass_error": 1,
+  "qneg3_macro": 0,
+  "qneg3_total": 692,
+  "tracebacks": 0
+ },
+ "per_step": {
+  "big_error": 1.12,
+  "isotopic_mass_error": 0.02,
+  "qneg3_macro": 0.0,
+  "qneg3_total": 13.84,
+  "tracebacks": 0.0
+ }
+}

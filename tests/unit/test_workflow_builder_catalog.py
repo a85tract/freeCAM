@@ -1,6 +1,7 @@
 """The library and the snapshot come from the model's own records."""
 
 import json
+from pathlib import Path
 
 import pytest
 
@@ -77,7 +78,11 @@ def test_the_snapshot_is_reproducible_and_carries_no_paths_or_accounts() -> None
     assert first["catalog_hash"] == second["catalog_hash"]
     assert first == second
     text = json.dumps(first)
-    for forbidden in ("/glade/", "UCUB", "ruitong", "$HOME"):
+    import getpass
+
+    site = Path(__file__).resolve().parents[2] / "site.env"
+    # the login name is a site fact: forbidden by name only where a site is configured
+    for forbidden in ("/glade/", "UCUB", "$HOME") + ((getpass.getuser(),) if site.exists() else ()):
         assert forbidden not in text, forbidden
     document = WorkflowDocument.from_payload(first["default_document"])
     assert document.catalog_version == first["catalog_hash"]

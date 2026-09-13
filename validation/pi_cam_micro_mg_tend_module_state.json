@@ -941,7 +941,7 @@
   "function": "micro_mg_tend",
   "library_sha256": "4d3879e280b191d564c5fe1277ebcfad70ac5cc9503e720c34e16c411f8bc54a",
   "mpi_ranks": 512,
-  "native_manifest": "/glade/work/ruitong/freeCAM/build/pi_cam_promoted/native_cam_manifest.json",
+  "native_manifest": "build/pi_cam_promoted/native_cam_manifest.json",
   "pbs_job_id": "7256596.desched1",
   "qualified_name": "micro_mg1_0::micro_mg_tend",
   "schema_version": 1,

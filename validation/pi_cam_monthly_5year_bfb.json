@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
-  "candidate_dir": "/glade/derecho/scratch/ruitong/freeCAM/PI-cam/monthly-5year-7149430.desched1/cam-run",
-  "reference_dir": "/glade/derecho/scratch/fengzhu/CESM_output/f.e13.F1850C5.ne16_g16.icesm131_ihesp.PI-atm.001/run",
+  "candidate_dir": "${FREECAM_SCRATCH}/freeCAM/PI-cam/monthly-5year-7149430.desched1/cam-run",
+  "reference_dir": "${FREECAM_LONG_REFERENCE_RUN}",
   "stream": "h0",
   "candidate_files": 60,
   "reference_files": 227,

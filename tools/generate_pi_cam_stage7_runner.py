@@ -183,20 +183,52 @@ module pycam_stage7_runner
   use convect_shallow, only: convect_shallow_use_shfrc
   use subcol_utils,    only: is_subcol_on
   use pycam_mm_handles, only: mm_ptend, mm_ptend_aero, host_state, host_tend, host_pbuf2d
+  use pycam_hooks, only: pycam_hooks_arm_v1, pycam_hooks_paused_v1, pycam_hooks_frame_v1, &
+       pycam_hooks_original_v1, pycam_hooks_reset_v1
+  use, intrinsic :: iso_c_binding, only: c_funloc, c_funptr
   use pycam_micro_handles, only: micro_runner_bind, micro_run_head, micro_runner_end, &
                                  micro_runner_ready, micro_substep, micro_num_steps, &
                                  micro_pack_prelude, micro_substep_pack, micro_core, &
                                  micro_substep_unpack, micro_post_proc, micro_tail, micro_core_frame
   implicit none
+  interface
+    integer(c_int) function pycam_fiber_start_v1(body, stack_bytes, event) bind(C, name='pycam_fiber_start_v1')
+      import :: c_int, c_int64_t, c_funptr
+      type(c_funptr), value :: body
+      integer(c_int64_t), value :: stack_bytes
+      integer(c_int), intent(out) :: event
+    end function pycam_fiber_start_v1
+    integer(c_int) function pycam_fiber_resume_v1(event) bind(C, name='pycam_fiber_resume_v1')
+      import :: c_int
+      integer(c_int), intent(out) :: event
+    end function pycam_fiber_resume_v1
+    subroutine pycam_fiber_yield_v1(event) bind(C, name='pycam_fiber_yield_v1')
+      import :: c_int
+      integer(c_int), value :: event
+    end subroutine pycam_fiber_yield_v1
+    subroutine pycam_fiber_finish_v1(event) bind(C, name='pycam_fiber_finish_v1')
+      import :: c_int
+      integer(c_int), value :: event
+    end subroutine pycam_fiber_finish_v1
+    subroutine pycam_fiber_abandon_v1() bind(C, name='pycam_fiber_abandon_v1')
+    end subroutine pycam_fiber_abandon_v1
+  end interface
   private
 
   ! events and program counters
   integer(c_int), parameter :: ev_done = 0_c_int, ev_needs_kernel = 1_c_int, ev_error = 2_c_int
   integer, parameter :: pc_idle = 0, pc_chunk_begin = 1, pc_substep = 2, pc_at_pcond = 3, &
                         pc_after_pcond = 4, pc_chunk_end = 5, pc_micro_substep = 6, &
-                        pc_at_mg = 7, pc_after_mg = 8, pc_micro_post = 9
-  integer(c_int), parameter :: kernel_mmacro_pcond = 1_c_int, kernel_micro_mg_tend = 2_c_int
-  integer, parameter :: nkernels = 2
+                        pc_at_mg = 7, pc_after_mg = 8, pc_micro_post = 9, &
+                        pc_at_fice = 10, pc_after_fice = 11
+  integer(c_int), parameter :: kernel_mmacro_pcond = 1_c_int, kernel_micro_mg_tend = 2_c_int, &
+                               kernel_cldfrc_fice = 3_c_int, kernel_instratus_condensate = 4_c_int
+  integer, parameter :: nkernels = 4
+  ! kernels reached inside compiled code: their hook ids (native/pi_cam/hooks.yaml),
+  ! and the fiber the stage runs on while one of them is replaced
+  integer, parameter :: hook_of(nkernels) = (/ 0, 0, 0, 3 /)
+  integer(c_int64_t), parameter :: fiber_stack_bytes = 536870912_c_int64_t
+  logical, save :: on_fiber = .false.
   integer, parameter :: frame_slots = {slots}
   integer, parameter :: context_id = 1
 
@@ -205,7 +237,8 @@ module pycam_stage7_runner
   integer, save :: pc = pc_idle
   integer, save :: lchnk = 0, macmic_it = 0, ncol = 0, nstep = 0, micro_it = 0
   integer(c_int), save :: token = 0_c_int, call_index = 0_c_int
-  logical, save :: replace_pcond = .false., replace_mg = .false.
+  logical, save :: replace_pcond = .false., replace_mg = .false., replace_fice = .false., &
+                   replace_instratus = .false.
   character(len=256), save :: last_error = ' '
 
   ! the configuration this transcription is admitted for, read once
@@ -395,7 +428,9 @@ contains
   integer(c_int) function pycam_stage7_start_v1(context, count, mask, event) &
        bind(C, name='pycam_stage7_start_v1') result(status)
     ! Run stage 7 from its top for every chunk of this rank; mask(1) says
-    ! whether mmacro_pcond is Python's, mask(2) whether micro_mg_tend is.
+    ! whether mmacro_pcond is Python's, mask(2) micro_mg_tend, mask(3) cldfrc_fice,
+    ! mask(4) instratus_condensate (a hook inside mmacro_pcond: the stage then runs
+    ! on the fiber, and no runner-level pause may be combined with it).
     integer(c_int), value, intent(in) :: context, count
     integer(c_int), intent(in) :: mask(count)
     integer(c_int), intent(out) :: event
@@ -412,6 +447,14 @@ contains
     end if
     replace_pcond = mask(kernel_mmacro_pcond) /= 0_c_int
     replace_mg = mask(kernel_micro_mg_tend) /= 0_c_int
+    replace_fice = mask(kernel_cldfrc_fice) /= 0_c_int
+    replace_instratus = mask(kernel_instratus_condensate) /= 0_c_int
+    if (replace_instratus .and. (replace_pcond .or. replace_mg .or. replace_fice)) then
+      ! the hooked kernel runs the stage on the fiber, where this revision has no
+      ! runner-level pause; the manifest's `within` already forbids it with mmacro_pcond
+      last_error = 'instratus_condensate cannot be replaced together with a runner pause'
+      status = 4_c_int; return
+    end if
     ! tphysbc's per-call values
     ztodt = get_step_size()
     nstep = get_nstep()
@@ -419,7 +462,7 @@ contains
     call_index = 0_c_int
     lchnk = begchunk
     pc = pc_chunk_begin
-    call advance(event)
+    call run_from_start(event)
     status = 0_c_int
   end function pycam_stage7_start_v1
 
@@ -432,7 +475,19 @@ contains
     if (.not. created .or. context /= context_id) then
       last_error = 'no stage 7 context'; return
     end if
-    if (pc /= pc_at_pcond .and. pc /= pc_at_mg) then
+    if (paused_in_hook()) then
+      if (hook_of(kernel) /= hooks_paused()) then
+        last_error = 'stage 7 is paused in a hook, not on the kernel resumed'; status = 3_c_int; return
+      end if
+      if (token_in /= token) then
+        last_error = 'stale resume: the frame token does not match the pause'; status = 4_c_int; return
+      end if
+      token = token + 1_c_int
+      call continue_fiber(event)
+      status = 0_c_int
+      return
+    end if
+    if (pc /= pc_at_pcond .and. pc /= pc_at_mg .and. pc /= pc_at_fice) then
       last_error = 'stage 7 is not paused'; status = 2_c_int; return
     end if
     if (pc == pc_at_pcond .and. kernel /= kernel_mmacro_pcond) then
@@ -441,12 +496,17 @@ contains
     if (pc == pc_at_mg .and. kernel /= kernel_micro_mg_tend) then
       last_error = 'stage 7 is paused on micro_mg_tend, not on the kernel resumed'; status = 3_c_int; return
     end if
+    if (pc == pc_at_fice .and. kernel /= kernel_cldfrc_fice) then
+      last_error = 'stage 7 is paused on cldfrc_fice, not on the kernel resumed'; status = 3_c_int; return
+    end if
     if (token_in /= token) then
       last_error = 'stale resume: the frame token does not match the pause'; status = 4_c_int; return
     end if
     token = token + 1_c_int
     if (pc == pc_at_pcond) then
       pc = pc_after_pcond
+    else if (pc == pc_at_fice) then
+      pc = pc_after_fice
     else
       pc = pc_after_mg
     end if
@@ -471,7 +531,19 @@ contains
     if (.not. created .or. context /= context_id) then
       last_error = 'no stage 7 context'; return
     end if
-    if (pc /= pc_at_pcond .and. pc /= pc_at_mg) then
+    if (paused_in_hook()) then
+      kernel = kernel_of_hook(hooks_paused())
+      if (pycam_hooks_frame_v1(count, ptrs, ndims, shapes, dtypes, intents, ncol_out) /= 0_c_int) then
+        last_error = 'stage 7: the hook frame could not be served'; status = 4_c_int; return
+      end if
+      index_out = call_index
+      lchnk_out = int(lchnk, c_int)
+      substep_out = int(macmic_it, c_int)
+      token_out = token
+      status = 0_c_int
+      return
+    end if
+    if (pc /= pc_at_pcond .and. pc /= pc_at_mg .and. pc /= pc_at_fice) then
       last_error = 'stage 7 is not paused; there is no frame'; status = 2_c_int; return
     end if
     if (count < frame_slots) then
@@ -484,6 +556,22 @@ contains
       index_out = call_index
       lchnk_out = int(lchnk, c_int)
       substep_out = int((macmic_it - 1) * micro_num_steps() + micro_it, c_int)
+      token_out = token
+      status = 0_c_int
+      return
+    end if
+    if (pc == pc_at_fice) then
+      ! cldfrc_fice's four arguments, in the call's order (the contract's names)
+      frame_ncol = int(ncol, c_int32_t)
+      call scalar_slot(1, c_loc(frame_ncol), 2, 0, ptrs, ndims, shapes, dtypes, intents)
+      call slot2(2, state_loc%t, 1, 0, ptrs, ndims, shapes, dtypes, intents)
+      call slot2(3, fice, 1, 1, ptrs, ndims, shapes, dtypes, intents)
+      call slot2(4, fsnow, 1, 1, ptrs, ndims, shapes, dtypes, intents)
+      kernel = kernel_cldfrc_fice
+      index_out = call_index
+      lchnk_out = int(lchnk, c_int)
+      ncol_out = int(ncol, c_int)
+      substep_out = int(macmic_it, c_int)
       token_out = token
       status = 0_c_int
       return
@@ -501,6 +589,35 @@ contains
     token_out = token
     status = 0_c_int
   end function pycam_stage7_frame_v1
+
+  integer(c_int) function pycam_stage7_original_v1(context, kernel) &
+       bind(C, name='pycam_stage7_original_v1') result(status)
+    ! Run the original call on the paused frame: the validation gate's
+    ! replacement, exercising the pause, the frame and the resume.
+    integer(c_int), value, intent(in) :: context, kernel
+    status = 1_c_int
+    if (.not. created .or. context /= context_id) then
+      last_error = 'no stage 7 context'; return
+    end if
+    if (paused_in_hook()) then
+      if (hook_of(kernel) /= hooks_paused()) then
+        last_error = 'stage 7 is paused in a hook, not on the kernel asked for'; status = 3_c_int; return
+      end if
+      status = pycam_hooks_original_v1()
+      if (status /= 0_c_int) last_error = 'stage 7: the hook could not run the original'
+      return
+    end if
+    if (pc == pc_at_fice .and. kernel == kernel_cldfrc_fice) then
+      call original_fice()
+    else if (pc == pc_at_pcond .and. kernel == kernel_mmacro_pcond) then
+      call original_pcond()
+    else if (pc == pc_at_mg .and. kernel == kernel_micro_mg_tend) then
+      call micro_core()
+    else
+      last_error = 'stage 7 is not paused on the kernel asked for'; status = 2_c_int; return
+    end if
+    status = 0_c_int
+  end function pycam_stage7_original_v1
 
   integer(c_int) function pycam_stage7_error_v1(context, buffer, length) &
        bind(C, name='pycam_stage7_error_v1') result(status)
@@ -523,6 +640,7 @@ contains
     integer(c_int), value, intent(in) :: context
     status = 1_c_int
     if (.not. created .or. context /= context_id) return
+    call abandon_fiber()
     pc = pc_idle
     status = 0_c_int
   end function pycam_stage7_reset_v1
@@ -532,10 +650,116 @@ contains
     integer(c_int), value, intent(in) :: context
     status = 1_c_int
     if (.not. created .or. context /= context_id) return
+    call abandon_fiber()
     created = .false.
     pc = pc_idle
     status = 0_c_int
   end function pycam_stage7_destroy_v1
+
+  ! ------------------------------------------------------------------ !
+  ! Hooked kernels: the stage runs on the fiber when one is replaced
+  ! ------------------------------------------------------------------ !
+
+  subroutine run_from_start(event)
+    ! arm the hooks the mask replaces; run on the fiber if any, else directly
+    integer(c_int), intent(out) :: event
+    integer :: k
+    logical :: use_fiber, replaced
+    use_fiber = .false.
+    do k = 1, nkernels
+      if (hook_of(k) == 0) cycle
+      replaced = k == kernel_instratus_condensate .and. replace_instratus
+      if (pycam_hooks_arm_v1(int(hook_of(k), c_int), merge(1_c_int, 0_c_int, replaced)) /= 0_c_int) then
+        last_error = 'stage 7: a hook could not be armed'; event = ev_error; return
+      end if
+      use_fiber = use_fiber .or. replaced
+    end do
+    if (.not. use_fiber) then
+      call advance(event)
+      return
+    end if
+    on_fiber = .true.
+    if (pycam_fiber_start_v1(c_funloc(fiber_body), fiber_stack_bytes, event) /= 0_c_int) then
+      last_error = 'stage 7: the fiber could not start'; event = ev_error; on_fiber = .false.
+      call disarm_hooks()
+      return
+    end if
+    if (event == ev_error .and. len_trim(last_error) == 0) then
+      last_error = 'stage 7: the fiber ended with an error event and no message'
+    end if
+    call after_fiber_event(event)
+  end subroutine run_from_start
+
+  subroutine fiber_body() bind(C, name='pycam_stage7_fiber_body_v1')
+    ! the state machine on the fiber: a hook yields from inside the compiled
+    ! routine, the end of the action finishes (runner-level pauses are refused
+    ! on the fiber by start_v1)
+    integer(c_int) :: ev
+    do
+      call advance(ev)
+      if (ev /= ev_needs_kernel) exit
+      call pycam_fiber_yield_v1(ev)
+    end do
+    call pycam_fiber_finish_v1(ev)
+  end subroutine fiber_body
+
+  subroutine continue_fiber(event)
+    integer(c_int), intent(out) :: event
+    if (pycam_fiber_resume_v1(event) /= 0_c_int) then
+      last_error = 'stage 7: the fiber could not be resumed'; event = ev_error; on_fiber = .false.
+      call disarm_hooks()
+      return
+    end if
+    if (event == ev_error .and. len_trim(last_error) == 0) then
+      last_error = 'stage 7: the fiber ended with an error event and no message'
+    end if
+    call after_fiber_event(event)
+  end subroutine continue_fiber
+
+  subroutine after_fiber_event(event)
+    ! a hook pause takes a token like a runner pause; the end of the run disarms the hooks
+    integer(c_int), intent(in) :: event
+    if (event == ev_needs_kernel) then
+      if (pycam_hooks_paused_v1() /= 0_c_int) token = token + 1_c_int
+    else
+      on_fiber = .false.
+      call disarm_hooks()
+    end if
+  end subroutine after_fiber_event
+
+  subroutine disarm_hooks()
+    integer :: k
+    do k = 1, nkernels
+      if (hook_of(k) /= 0) then
+        if (pycam_hooks_arm_v1(int(hook_of(k), c_int), 0_c_int) /= 0_c_int) continue
+      end if
+    end do
+  end subroutine disarm_hooks
+
+  subroutine abandon_fiber()
+    ! after an error: forget the suspended stack, disarm and clear the hooks
+    if (on_fiber) call pycam_fiber_abandon_v1()
+    on_fiber = .false.
+    call disarm_hooks()
+    call pycam_hooks_reset_v1()
+  end subroutine abandon_fiber
+
+  logical function paused_in_hook()
+    paused_in_hook = on_fiber .and. pycam_hooks_paused_v1() /= 0_c_int
+  end function paused_in_hook
+
+  integer function hooks_paused()
+    hooks_paused = int(pycam_hooks_paused_v1())
+  end function hooks_paused
+
+  integer(c_int) function kernel_of_hook(hook)
+    integer, intent(in) :: hook
+    integer :: k
+    kernel_of_hook = 0_c_int
+    do k = 1, nkernels
+      if (hook_of(k) == hook) kernel_of_hook = int(k, c_int)
+    end do
+  end function kernel_of_hook
 
   ! ------------------------------------------------------------------ !
   ! The state machine
@@ -559,7 +783,22 @@ contains
           pc = pc_chunk_end
           cycle
         end if
-        call macro_before_pcond()
+        call macro_before_fice()
+        if (replace_fice) then
+          token = token + 1_c_int
+          pc = pc_at_fice
+          event = ev_needs_kernel
+          return
+        end if
+        call original_fice()
+        pc = pc_after_fice
+      case (pc_at_fice)
+        last_error = 'stage 7 is paused; only resume continues it'
+        event = ev_error
+        return
+      case (pc_after_fice)
+        call_index = call_index + 1_c_int
+        call macro_between_fice_and_pcond()
         if (replace_pcond) then
           token = token + 1_c_int
           pc = pc_at_pcond
@@ -668,7 +907,7 @@ contains
     snow_pcw_macmic = 0._r8
   end subroutine chunk_begin
 
-  subroutine macro_before_pcond()
+  subroutine macro_before_fice()
     ! macrop_driver.F90:{macro[0]}-1050: macrop_driver_tend from its top to the
     ! mmacro_pcond call, with tphysbc's macrop_tend timer around it as the
     ! glue has it (physpkg.F90:2239).  micro_do_icesupersat is false here
@@ -854,7 +1093,14 @@ contains
     lchnk  = state_loc%lchnk
     ncol   = state_loc%ncol
     rdtime = 1._r8/cld_macmic_ztodt
+  end subroutine macro_before_fice
+
+  subroutine original_fice()
+    ! the original call, macrop_driver.F90, verbatim
     call cldfrc_fice( ncol, state_loc%t, fice, fsnow )
+  end subroutine original_fice
+
+  subroutine macro_between_fice_and_pcond()
     lq(:)        = .FALSE.
     lq(1)        = .true.
     lq(ixcldice) = .true.
@@ -918,7 +1164,7 @@ contains
     qi_inout(:ncol,top_lev:pver) = iccwat(:ncol,top_lev:pver)
     nl_inout(:ncol,top_lev:pver) =  nlwat(:ncol,top_lev:pver)
     ni_inout(:ncol,top_lev:pver) =  niwat(:ncol,top_lev:pver)
-  end subroutine macro_before_pcond
+  end subroutine macro_between_fice_and_pcond
 
   subroutine original_pcond()
     ! macrop_driver.F90:1028-1037: the call itself, the original routine on

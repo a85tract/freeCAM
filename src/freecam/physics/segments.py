@@ -17,6 +17,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from enum import IntEnum
+from pathlib import Path
 from typing import Any, Callable, Mapping, Protocol, Sequence
 
 import numpy as np
@@ -57,7 +58,9 @@ class KernelFrame:
     and written, chunk-shaped (``pcols`` leading).  Only the first ``ncol``
     lanes are live; a model never sees a padding lane and never writes one.
     ``token`` identifies this pause: the frame is good for exactly one
-    write-back and one resume.
+    write-back and one resume.  ``ncol`` is the chunk's live column count,
+    the first axis of every array; a frame without one (``ncol <= 0``: a
+    routine with no ``ncol`` dummy, served at a hook) is live in full.
     """
 
     kernel: str
@@ -81,8 +84,7 @@ class KernelFrame:
         for argument in self.arguments:
             if not argument.is_input:
                 continue
-            array = argument.array
-            batch[argument.name] = array[:self.ncol].copy() if array.ndim else array.copy()
+            batch[argument.name] = _lanes(argument.array, self.ncol).copy()
         return batch
 
     def write_back(self, answer: Mapping[str, Any]) -> tuple[str, ...]:
@@ -102,7 +104,7 @@ class KernelFrame:
                 f"kernel also writes {missing}")
         written = []
         for argument in outputs:
-            target = argument.array[:self.ncol] if argument.array.ndim else argument.array
+            target = _lanes(argument.array, self.ncol)
             value = np.asarray(answer[argument.name])
             if target.size == 0:
                 # an output the routine has no room for -- a field this
@@ -162,7 +164,7 @@ class OriginalAtPause:
         for argument in frame.arguments:
             if not argument.is_output:
                 continue
-            target = argument.array[:frame.ncol] if argument.array.ndim else argument.array
+            target = _lanes(argument.array, frame.ncol)
             answer[argument.name] = np.array(target, copy=True)
             if target.size:
                 target[...] = 0
@@ -170,6 +172,90 @@ class OriginalAtPause:
 
     def __repr__(self) -> str:
         return "OriginalAtPause()"
+
+
+class FrameCapture:
+    """Put in a kernel slot: the original at the pause, with every call's frame recorded.
+
+    Before the original runs, every input the frame declares is copied; after
+    it runs, every output is copied and answered exactly as
+    :class:`OriginalAtPause` does, so the stage stays bit-for-bit and the
+    record holds what the kernel was given and what it returned, call by
+    call.  :meth:`save` writes the rank's record as an ``.npz``: one array per
+    call and argument (``in/<call>/<name>``, ``out/<call>/<name>``, the live
+    lanes only) and a JSON ``meta`` array with the step, chunk column count
+    and token of each call.  ``step`` reports the model step when called.
+    """
+
+    takes_frame = True
+
+    def __init__(self, kernel: str) -> None:
+        self.kernel = kernel
+        #: the model step in flight, set by the stage before each run
+        self.current_step: int | None = None
+        self.inputs: list[dict[str, np.ndarray]] = []
+        self.outputs: list[dict[str, np.ndarray]] = []
+        self.meta: list[dict[str, Any]] = []
+        self._original = OriginalAtPause()
+
+    def __call__(self, frame: "KernelFrame", runner: "SegmentRunner", context: int) -> dict[str, np.ndarray]:
+        before: dict[str, np.ndarray] = {}
+        for argument in frame.arguments:
+            if argument.is_output and argument.intent == "out":
+                continue
+            before[argument.name] = np.array(_live(argument.array, frame.ncol), copy=True)
+        answer = self._original(frame, runner, context)
+        self.inputs.append(before)
+        self.outputs.append({name: np.array(value, copy=True) for name, value in answer.items()})
+        self.meta.append({
+            "step": None if self.current_step is None else int(self.current_step),
+            "ncol": int(frame.ncol),
+            "token": int(frame.token),
+            "kernel": frame.kernel,
+        })
+        return answer
+
+    @property
+    def calls(self) -> int:
+        return len(self.meta)
+
+    def save(self, path: str | Path) -> Path:
+        import json
+
+        arrays: dict[str, np.ndarray] = {}
+        for index, (before, after) in enumerate(zip(self.inputs, self.outputs)):
+            for name, value in before.items():
+                arrays[f"in/{index}/{name}"] = value
+            for name, value in after.items():
+                arrays[f"out/{index}/{name}"] = value
+        arrays["meta"] = np.array(json.dumps(self.meta))
+        target = Path(path)
+        target.parent.mkdir(parents=True, exist_ok=True)
+        np.savez(target, **arrays)
+        return target
+
+    def __repr__(self) -> str:
+        return f"FrameCapture({self.kernel!r}, calls={self.calls})"
+
+
+def _lanes(array: np.ndarray, ncol: int) -> np.ndarray:
+    """The live lanes of a frame array: the first ``ncol`` along the first axis.
+
+    A scalar has no lanes.  A frame without a column count (``ncol <= 0``)
+    is live in full: the routine has no ``ncol`` dummy and every element it
+    was given counts -- slicing to ``[:0]`` would drop the whole array, as it
+    did for ``fluxbelowinv``'s profiles in capture run 7343844.
+    """
+
+    if array.ndim == 0 or ncol <= 0:
+        return array
+    return array[:ncol] if array.shape[0] >= ncol else array
+
+
+def _live(array: np.ndarray, ncol: int) -> np.ndarray:
+    """The live lanes of a frame array (see :func:`_lanes`)."""
+
+    return _lanes(array, ncol)
 
 
 class SegmentRunner(Protocol):
@@ -209,7 +295,7 @@ class SegmentCounters:
 def _live_bytes(array: np.ndarray, ncol: int) -> int:
     """The bytes of an output's live lanes; a scalar served where it lives has no lanes."""
 
-    return (array[:ncol] if array.ndim else array).nbytes
+    return _lanes(array, ncol).nbytes
 
 
 class SegmentedStage:
@@ -236,8 +322,13 @@ class SegmentedStage:
     def idle(self) -> bool:
         return self.paused_on is None and self.tainted is None
 
-    def run(self, kernels: Mapping[str, Callable[..., Mapping[str, Any]] | None]) -> None:
-        """One step of the stage: the original Fortran with ``kernels`` at their pauses."""
+    def run(self, kernels: Mapping[str, Callable[..., Mapping[str, Any]] | None], *, whole: bool = False) -> None:
+        """One step of the stage: the original Fortran with ``kernels`` at their pauses.
+
+        ``whole`` runs the driver through the runner with no pause armed: for a stage whose
+        process slot inside the runner (a compiled plugin bound in the image) answers a
+        branch, so the run is one crossing and no Python in the step.
+        """
 
         if self.tainted is not None:
             raise PhysicsError(
@@ -248,14 +339,22 @@ class SegmentedStage:
                 f"{self.stage_name}: still paused on {self.paused_on.kernel!r}; a step "
                 f"cannot start inside another")
         mask = {name: kernel is not None for name, kernel in kernels.items()}
-        if not any(mask.values()):
+        if not any(mask.values()) and not whole:
             raise PhysicsError(
                 f"{self.stage_name}: nothing is replaced; run the original stage whole")
+        spec = getattr(self.runner, "spec", None)
+        conflicts = spec.replacement_conflicts(mask) if spec is not None and hasattr(spec, "replacement_conflicts") else []
+        if conflicts:
+            detail = "; ".join(f"{inner!r} is called inside {outer!r}" for inner, outer in conflicts)
+            raise PhysicsError(
+                f"{self.stage_name}: a kernel and the kernel it runs inside are both replaced: {detail}. "
+                f"Replace one or the other; a replaced outer kernel never reaches the inner call")
         if self.context is None:
             self.context = self.runner.create(self.stage_name)
             self.counters.crossings += 1
         self.generation += 1
         counters = self.counters
+        pauses_before = counters.pauses
         event = self.runner.start(self.context, mask)
         counters.starts += 1
         counters.crossings += 1
@@ -263,7 +362,9 @@ class SegmentedStage:
             while event != SegmentEvent.DONE:
                 if event == SegmentEvent.ERROR:
                     detail = self.runner.error(self.context)
-                    raise PhysicsError(f"{self.stage_name}: the runner failed: {detail}")
+                    raise PhysicsError(
+                        f"{self.stage_name}: the runner failed after {counters.pauses - pauses_before} "
+                        f"pause(s) this run: {detail}")
                 frame = self.runner.frame(self.context)
                 counters.crossings += 1
                 counters.pauses += 1

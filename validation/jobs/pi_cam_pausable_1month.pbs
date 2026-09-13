@@ -1,0 +1,195 @@
+#!/bin/bash
+# Submit with: validation/jobs/submit.sh validation/jobs/pi_cam_pausable_1month.pbs
+#PBS -N pycam-pausable-month
+#PBS -q main
+# 512 ranks on four nodes as every PI-atm run; 235GB a node because a rank
+# that carries a model in a kernel slot holds it beside CAM's state.
+#PBS -l select=4:ncpus=64:mpiprocs=128:ompthreads=1:mem=235GB
+#PBS -l walltime=02:00:00
+#PBS -j oe
+#PBS -o logs/
+#PBS -V
+
+# The pausable stages over the PI-atm month (1488 steps, replay boundary): the
+# same knobs as pi_cam_pausable_50step.pbs, for the questions fifty steps cannot
+# answer -- whether a model in a kernel slot stays healthy, and how far its
+# history drifts from the oracle's month (report_pi_cam_surrogate_drift.py).
+# PYCAM_PYTHON_STAGES names the classes to
+# install (comma-separated action names, freecam.physics.pausable.STAGES);
+# with PYCAM_ORIGINAL_KERNELS empty they run the original Fortran action
+# whole, and with it set those kernels are replaced by the original run at
+# the runner's pause -- the pause, the frame, the write-back and the resume
+# exercised, the answer the oracle's or the path is wrong.  PYCAM_RUN_TAG
+# names the run's records.  PYCAM_NATIVE_MANIFEST points at the image.
+# PYCAM_KERNEL_MODELS=name=path[,name=path] puts cloudpickled models in kernel
+# slots (never bit-for-bit: the drift and the health of the run are the result);
+# PYCAM_NO_VERIFY_EXPORTS=1 lets such a run past the replay's export check.
+# PYCAM_SHADOW_MODELS=name=path[,...] binds TorchScript models in shadow: the model
+# runs, the original answers, the run stays bit-for-bit and the cost is measured.
+# Every run's log is counted for the model's health -- water-isotope BIG ERROR
+# lines, isotopic mass errors and QNEG3 resets -- into <summary>.health.json.
+# PYCAM_DISABLE_ACTIONS (qualified action names) is the inertness gate: those
+# actions switched off, the answer must still be the oracle's.
+# PYCAM_RAD_CAPTURE=dir records radiation_tend's computing branch (with PYCAM_RADIATION_PYTHON=1);
+# PYCAM_RAD_MODEL=replay:dir or file.py:function answers it in the driver's place.
+# PYCAM_RADIATION_PYTHON=1 installs the split Radiation class between its two
+# halves (--split-radiation --radiation-python); with the RRTMG cores in
+# PYCAM_ORIGINAL_KERNELS they are answered at the radt runner's pauses.
+# PYCAM_CLOUD_PYTHON=1 installs the cloud macro/microphysics class over the
+# stage-7 runner (--cloud-macro-micro-python) for the same treatment.
+set -euo pipefail
+
+source "${FREECAM_REPO:-${PBS_O_WORKDIR:-$PWD}}/validation/jobs/common.sh"
+
+repo=${FREECAM_REPO}
+python=${repo}/.venv/bin/python
+case_root=${FREECAM_REFERENCE_CASE}
+oracle_run=${FREECAM_SCRATCH}/pyCESM/PI-atm/oracle-1month/run
+mode=${PYCAM_EXECUTION_MODE:-fine_grained}
+run_dir=${FREECAM_SCRATCH}/pyCAM/PI-cam/pausable-${PYCAM_RUN_TAG:-run}-1month-${PBS_JOBID}/run
+boundary=${FREECAM_SCRATCH}/pyCAM/PI-cam/nonpic-boundary-capture-1month/boundary/replay
+manifest=${PYCAM_NATIVE_MANIFEST:-${repo}/build/pi_cam_promoted/native_cam_manifest.json}
+summary=${PYCAM_SUMMARY:-validation/pi_cam_pausable_${PYCAM_RUN_TAG:-run}_1month.json}
+bfb_output=${PYCAM_BFB_OUTPUT:-validation/pi_cam_pausable_${PYCAM_RUN_TAG:-run}_vs_oracle_1month_bfb.json}
+drift_output=${PYCAM_DRIFT_OUTPUT:-validation/pi_cam_pausable_${PYCAM_RUN_TAG:-run}_1month_drift.json}
+
+source "${case_root}/.env_mach_specific.sh" >/dev/null 2>&1
+mpi_root=${CRAY_MPICH_DIR:-/opt/cray/pe/mpich/8.1.25/ofi/intel/19.0}
+export LD_LIBRARY_PATH="${mpi_root}/lib-abi-mpich:${mpi_root}/lib:${LD_LIBRARY_PATH:-}"
+export LD_PRELOAD=${FREECAM_LD_PRELOAD}${LD_PRELOAD:+:${LD_PRELOAD}}
+export PYTHONPATH=${repo}/src
+export OMP_NUM_THREADS=1
+export OMP_STACKSIZE=64M
+export FI_CXI_RX_MATCH_MODE=hybrid
+export FI_MR_CACHE_MONITOR=memhooks
+export MPICH_MPIIO_HINTS='*:romio_cb_read=enable:romio_cb_write=enable:striping_factor=24'
+
+mkdir -p "${run_dir}"
+rsync -a \
+  --exclude '*.cam.*.nc' --exclude '*.clm2.*.nc' --exclude '*.cice.*.nc' \
+  --exclude '*.cpl.*.nc' --exclude '*.rtm.*.nc' --exclude '*.log.*' \
+  --exclude 'rpointer.*' --exclude 'timing/' \
+  "${oracle_run}/" "${run_dir}/"
+mkdir -p "${run_dir}/timing/checkpoints"
+
+cd "${repo}"
+stage_flags=()
+if [ -n "${PYCAM_PYTHON_STAGES:-}" ]; then
+  stage_flags=(--python-stages "${PYCAM_PYTHON_STAGES}")
+fi
+if [ -n "${PYCAM_RADIATION_PYTHON:-}" ]; then
+  stage_flags+=(--split-radiation --radiation-python)
+  if [ -n "${PYCAM_RAD_CAPTURE:-}" ]; then
+    # the radiation process slot records the computing branch of every radiative step (bit-for-bit)
+    stage_flags+=(--radiation-capture "${PYCAM_RAD_CAPTURE}" --radiation-capture-every "${PYCAM_RAD_CAPTURE_EVERY:-1}")
+  fi
+  if [ -n "${PYCAM_RAD_PLUGIN:-}" ]; then
+    # a Numba-compiled kernel bound at the slot inside the image: the runner runs the driver whole
+    stage_flags+=(--radiation-plugin "${PYCAM_RAD_PLUGIN}")
+  fi
+  if [ -n "${PYCAM_SHADOW_RAD_PLUGIN:-}" ]; then
+    stage_flags+=(--shadow-radiation-plugin "${PYCAM_SHADOW_RAD_PLUGIN}")
+  fi
+  if [ -n "${PYCAM_RAD_MODEL:-}" ]; then
+    # replay:DIR or file.py:function answers the branch in the driver's place
+    stage_flags+=(--radiation-model "${PYCAM_RAD_MODEL}")
+  fi
+fi
+if [ -n "${PYCAM_CLOUD_PYTHON:-}" ]; then
+  # the cloud macro/microphysics class (stage 7) over its own runner
+  stage_flags+=(--cloud-macro-micro-python)
+fi
+if [ ${#stage_flags[@]} -gt 0 ]; then
+  stage_flags+=(--stage-execution "${PYCAM_STAGE_EXECUTION:-auto}")
+fi
+if [ -n "${PYCAM_ORIGINAL_KERNELS:-}" ]; then
+  stage_flags+=(--segmented-original --segmented-original-kernels "${PYCAM_ORIGINAL_KERNELS}")
+fi
+if [ -n "${PYCAM_DISABLE_ACTIONS:-}" ]; then
+  # the inertness gate: actions expected to do no numerical work, switched off
+  stage_flags+=(--disable-actions "${PYCAM_DISABLE_ACTIONS}")
+fi
+if [ -n "${PYCAM_KERNEL_MODELS:-}" ]; then
+  # models in kernel slots, NAME=PATH pairs separated by commas: a cloudpickled
+  # callable per slot.  NOT a bit-for-bit run and not evidence of one; the record
+  # names each artifact by path and content hash
+  for pair in ${PYCAM_KERNEL_MODELS//,/ }; do
+    stage_flags+=(--kernel-model "${pair}")
+  done
+  # every rank loads and re-pickles the model, and the install refuses a payload
+  # that hashes differently across ranks; a set or any hash-ordered container in
+  # the model pickles in per-process order unless the hash seed is fixed (7371767)
+  export PYTHONHASHSEED=0
+fi
+if [ -n "${PYCAM_SHADOW_MODELS:-}" ]; then
+  # TorchScript models bound in shadow at their hooks: the image runs them on every call and
+  # discards the answer while the original answers.  Bit-for-bit is expected; the stage's
+  # extra time is the model path's cost in situ, and the hook counts carry its seconds.
+  for pair in ${PYCAM_SHADOW_MODELS//,/ }; do
+    stage_flags+=(--shadow-kernel-model "${pair}")
+  done
+fi
+if [ -n "${PYCAM_NO_VERIFY_EXPORTS:-}" ]; then
+  # a model's answer differs from the oracle's at the first export; the replay
+  # would otherwise stop there.  Only for runs whose result is drift, not bit-for-bit
+  stage_flags+=(--no-verify-exports)
+fi
+if [ ${#stage_flags[@]} -eq 0 ]; then
+  echo "set PYCAM_PYTHON_STAGES, PYCAM_RADIATION_PYTHON, PYCAM_CLOUD_PYTHON, PYCAM_ORIGINAL_KERNELS or PYCAM_DISABLE_ACTIONS" >&2; exit 2
+fi
+mpiexec --label -n 512 "${python}" -m freecam.pi_cam.cli \
+  --config configs/pi_cam_icesm131_1month.yaml \
+  --native-manifest "${manifest}" \
+  --boundary "${boundary}" \
+  --run-dir "${run_dir}" \
+  --execution-mode "${mode}" \
+  "${stage_flags[@]}" \
+  --steps "${PYCAM_STEPS:-1488}" \
+  --memory-sample-every 200 \
+  --summary "${summary}" \
+  > "${run_dir}/pi_cam_python.log" 2>&1 || echo "model run exited $? (comparing the output anyway)"
+
+status=0
+"${python}" tools/verify_pi_cam.py \
+  --reference "${oracle_run}" \
+  --candidate "${run_dir}" \
+  --output "${bfb_output}" || status=$?
+
+if [ -n "${PYCAM_KERNEL_MODELS:-}${PYCAM_RAD_MODEL:-}${PYCAM_RAD_PLUGIN:-}" ]; then
+  # a model's month is not bit-for-bit; how far each history field moved, in
+  # units of the field's own variability, and whether anything went non-finite
+  "${python}" tools/report_pi_cam_surrogate_drift.py \
+    --reference "${oracle_run}" \
+    --candidate "${run_dir}" \
+    --output "${drift_output}" || true
+fi
+
+"${python}" - <<PY || true
+import json
+s = json.load(open("${summary}"))
+print("stage execution:", json.dumps(s.get("stage_execution")))
+PY
+
+# the model's health, from the log: how often the physics had to be repaired
+health=${summary%.json}.health.json
+"${python}" - <<PY || true
+import json, re
+log = "${run_dir}/pi_cam_python.log"
+counts = {"big_error": 0, "isotopic_mass_error": 0, "qneg3_macro": 0, "qneg3_total": 0, "tracebacks": 0}
+with open(log, errors="replace") as fh:
+    for line in fh:
+        if "BIG ERROR" in line: counts["big_error"] += 1
+        if "isotopic stratiform precipitation mass error" in line: counts["isotopic_mass_error"] += 1
+        if "QNEG3 from" in line:
+            counts["qneg3_total"] += 1
+            if "QNEG3 from macro" in line: counts["qneg3_macro"] += 1
+        if "Traceback" in line: counts["tracebacks"] += 1
+steps = ${PYCAM_STEPS:-1488}
+# the record names the log under the scratch root: no site directory, no user
+record = {"schema_version": 1, "log": "${run_dir#${FREECAM_SCRATCH}/}/pi_cam_python.log",
+          "steps": steps, "counts": counts,
+          "per_step": {k: v / steps for k, v in counts.items()}}
+json.dump(record, open("${health}", "w"), indent=1)
+print("health:", json.dumps(counts))
+PY
+exit "${status}"

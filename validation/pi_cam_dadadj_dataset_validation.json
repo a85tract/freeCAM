@@ -1,5 +1,5 @@
 {
-  "anchor_column": "/glade/work/ruitong/pycam-sima-pi-cam-only/validation/pi_cam_dadadj_anchor_column.json",
+  "anchor_column": "validation/pi_cam_dadadj_anchor_column.json",
   "api": "sampling_space + generate_dataset + verify_sample + to_netcdf/open_dataset",
   "driver_free": true,
   "failed_samples_have_nan_outputs": true,
@@ -9,7 +9,7 @@
   "image_sha256": "786dacbffc3523e33df23cc888802512ae3a928ccc3951292f1331f341cc2225",
   "module_state_digest": "e796f5676467a68c7fd78e23544f25cb6aa630e87f9859bd12e883b3109bc054",
   "mpi_initialized": false,
-  "netcdf": "/glade/derecho/scratch/ruitong/freecam-physics/dadadj_training.nc",
+  "netcdf": "${FREECAM_SCRATCH}/freecam-physics/dadadj_training.nc",
   "netcdf_round_trip": true,
   "passed": true,
   "pbs_job_id": null,

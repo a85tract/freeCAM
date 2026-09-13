@@ -23,7 +23,7 @@ def _profile_context(**overrides) -> CESMTimingContext:
         lid="7.desched1.260821-100000",
         machine="derecho",
         caseroot="/run/PI-atm",
-        user="ruitong",
+        user="someone",
         curr_date="Fri Aug 21 10:00:00 2026",
         driver="freeCAM",
         grid="a%ne16np4 cam5-se",

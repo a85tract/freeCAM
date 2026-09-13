@@ -19,9 +19,12 @@ module pycam_radt_runner
   use pycam_radt_driver, only: driver_piece_1, driver_piece_2, driver_piece_3, driver_piece_4, driver_piece_5, driver_piece_6, &
        driver_piece_7, driver_piece_8, driver_piece_9, driver_piece_10, driver_piece_11, driver_piece_12, &
        driver_piece_13, rad_rrtmg_sw_frame, rad_rrtmg_lw_frame, rad_rrtmg_sw_original, rad_rrtmg_lw_original, driver_resolve_indices, &
-       active_calls, dolw, dosw, icall, su_idx
+       active_calls, cam_in, cam_out, coszrs, dolw, dosw, &
+       flns, flnt, fsds, fsns, fsnt, icall, &
+       pbuf, qrl, qrs, state, su_idx
   use pycam_rad_handles, only: rad_ptend
   use rad_constituents, only: N_DIAG
+  use pycam_rad_process, only: pycam_rad_process_answer
   implicit none
   private
 
@@ -385,7 +388,11 @@ contains
         pc = pc_driver_piece_13_1
       case (pc_if_5)
         if (dosw .or. dolw) then
-          pc = pc_driver_piece_2_1
+          if (pycam_rad_process_answer(state, pbuf, cam_in, cam_out, coszrs, dosw, dolw, qrs, qrl, fsns, fsnt, flns, flnt, fsds)) then
+            pc = pc_driver_piece_13_1
+          else
+            pc = pc_driver_piece_2_1
+          end if
         else
           pc = pc_driver_piece_12_1
         end if

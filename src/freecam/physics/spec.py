@@ -22,7 +22,9 @@ import yaml
 
 from .errors import PhysicsSpecError
 
-ROLES = ("structural", "input", "inout", "output", "workspace")
+ROLES = ("structural", "input", "inout", "output", "workspace", "result")
+LAYOUTS = ("column", "direct")
+BINDINGS = ("module", "mangled", "external")
 USER_ROLES = ("input", "inout")
 INTENTS = ("in", "out", "inout")
 DTYPES = ("float64", "int32", "int64")
@@ -57,6 +59,10 @@ class ArgumentSpec:
     description: str = ""
     pointer: bool = False
     carrier: str | None = None
+    #: an OPTIONAL dummy: the caller may leave it out, and the routine tests present()
+    optional: bool = False
+    #: the declared lower bound of every axis (``ps0(0:mkx)`` is ``[0]``); 1 when unstated
+    lower_bounds: tuple[int, ...] = ()
 
     @property
     def user_visible(self) -> bool:
@@ -64,7 +70,7 @@ class ArgumentSpec:
 
     @property
     def returned(self) -> bool:
-        return self.role in ("inout", "output")
+        return self.role in ("inout", "output", "result")
 
     def native_extent(self, dimensions: Mapping[str, int]) -> tuple[int, ...]:
         return tuple(int(dimensions[axis]) for axis in self.native_shape)
@@ -154,6 +160,28 @@ class FunctionSpec:
     image: ImageSpec
     path: Path | None = None
     schema_version: int = 1
+    #: column: one column packed into lane 0 of (pcols, ...) chunks; direct: arguments
+    #: passed in their declared shapes, as a scalar or profile routine takes them
+    layout: str = "column"
+    #: module: ``use module, only: routine``; mangled: a private module procedure reached
+    #: through its ifort external symbol behind an explicit interface; external: a bare routine
+    binding: str = "module"
+
+    @property
+    def kind(self) -> str:
+        return "function" if any(item.role == "result" for item in self.arguments) else "subroutine"
+
+    @property
+    def result(self) -> ArgumentSpec | None:
+        return next((item for item in self.arguments if item.role == "result"), None)
+
+    @property
+    def bound_symbol(self) -> str:
+        """The external symbol a mangled binding calls: ifort's ``module_mp_routine_``."""
+
+        if self.binding == "mangled":
+            return f"{(self.module or '').lower()}_mp_{self.routine.lower()}_"
+        return f"{self.routine.lower()}_"
 
     def __iter__(self) -> Iterator[ArgumentSpec]:
         return iter(self.arguments)
@@ -178,7 +206,7 @@ class FunctionSpec:
 
     @property
     def outputs(self) -> tuple[ArgumentSpec, ...]:
-        return self._by_role("output")
+        return self._by_role("output", "result")
 
     @property
     def workspace(self) -> tuple[ArgumentSpec, ...]:
@@ -247,7 +275,7 @@ def _range(values: Any, where: str) -> tuple[float, float] | tuple[int, int] | N
     return (low, high)
 
 
-def _argument(entry: Mapping[str, Any], dimensions: Mapping[str, int]) -> ArgumentSpec:
+def _argument(entry: Mapping[str, Any], dimensions: Mapping[str, int], layout: str = "column") -> ArgumentSpec:
     name = str(entry.get("name", "")).strip()
     if not name:
         raise PhysicsSpecError("every argument needs a name")
@@ -271,14 +299,21 @@ def _argument(entry: Mapping[str, Any], dimensions: Mapping[str, int]) -> Argume
         if axis not in dimensions:
             raise PhysicsSpecError(f"{where} uses unknown dimension {axis!r}")
     public_shape: tuple[str, ...] | None = None
+    if layout == "direct":
+        # the routine's own layout is the public one: a profile is a profile, a scalar a scalar
+        expected = native_shape
+    else:
+        expected = tuple(axis for axis in native_shape if axis not in _NATIVE_ONLY_AXES)
     if "public_shape" in entry:
         public_shape = _tuple_of_str(entry["public_shape"], f"{where} public_shape")
-        expected = tuple(axis for axis in native_shape if axis not in _NATIVE_ONLY_AXES)
         if public_shape != expected:
             raise PhysicsSpecError(
-                f"{where} public_shape {list(public_shape)} must be native_shape "
-                f"without the column axis, {list(expected)}"
+                f"{where} public_shape {list(public_shape)} must be "
+                + ("the native shape" if layout == "direct" else "native_shape without the column axis")
+                + f", {list(expected)}"
             )
+    elif layout == "direct" and role != "structural":
+        public_shape = expected
     if role == "structural":
         if "value" not in entry:
             raise PhysicsSpecError(f"{where} is structural and needs a value")
@@ -292,9 +327,23 @@ def _argument(entry: Mapping[str, Any], dimensions: Mapping[str, int]) -> Argume
         "output": ("out",),
         "workspace": ("in", "inout"),
         "structural": ("in",),
+        "result": ("out",),
     }
     if intent not in role_intents[role]:
         raise PhysicsSpecError(f"{where} role {role!r} does not admit intent {intent!r}")
+    optional = bool(entry.get("optional", False))
+    if optional and role not in USER_ROLES:
+        raise PhysicsSpecError(f"{where} is optional but its role {role!r} is not a user input")
+    if optional and entry.get("default") is not None:
+        raise PhysicsSpecError(f"{where} is optional; leave it out rather than defaulting it")
+    raw_bounds = entry.get("lower_bounds")
+    if raw_bounds is None:
+        lower_bounds = tuple(1 for _ in range(rank))
+    else:
+        if not isinstance(raw_bounds, (list, tuple)) or len(raw_bounds) != rank \
+                or not all(isinstance(item, int) and not isinstance(item, bool) for item in raw_bounds):
+            raise PhysicsSpecError(f"{where} lower_bounds must list one integer per axis")
+        lower_bounds = tuple(int(item) for item in raw_bounds)
     return ArgumentSpec(
         name=name,
         role=role,
@@ -312,6 +361,8 @@ def _argument(entry: Mapping[str, Any], dimensions: Mapping[str, int]) -> Argume
         description=str(entry.get("description", "")).strip(),
         pointer=bool(entry.get("pointer", False)),
         carrier=None if entry.get("carrier") is None else str(entry["carrier"]),
+        optional=optional,
+        lower_bounds=lower_bounds,
     )
 
 
@@ -437,12 +488,36 @@ def parse_function_spec(document: Mapping[str, Any], *, path: Path | None = None
     if missing:
         raise PhysicsSpecError("function spec is missing: " + ", ".join(missing))
     dimensions = {str(key): int(value) for key, value in dict(document["dimensions"]).items()}
-    arguments = tuple(_argument(entry, dimensions) for entry in document["arguments"])
+    layout = str(document.get("layout", "column"))
+    if layout not in LAYOUTS:
+        raise PhysicsSpecError(f"layout must be one of {LAYOUTS}, not {layout!r}")
+    binding = str(document.get("binding", "module" if document.get("module") is not None else "external"))
+    if binding not in BINDINGS:
+        raise PhysicsSpecError(f"binding must be one of {BINDINGS}, not {binding!r}")
+    if binding == "mangled" and document.get("module") is None:
+        raise PhysicsSpecError("a mangled binding needs the module whose private procedure it calls")
+    if binding == "external" and document.get("module") is not None:
+        raise PhysicsSpecError("an external binding is for a routine outside any module")
+    arguments = tuple(_argument(entry, dimensions, layout) for entry in document["arguments"])
     if not arguments:
         raise PhysicsSpecError("function spec declares no arguments")
     names = [item.name.lower() for item in arguments]
     if len(set(names)) != len(names):
         raise PhysicsSpecError("argument names repeat")
+    results = [item for item in arguments if item.role == "result"]
+    if len(results) > 1:
+        raise PhysicsSpecError("a function has one result")
+    if results and results[0] is not arguments[-1]:
+        raise PhysicsSpecError("the result is listed last, after the dummies")
+    if binding == "mangled":
+        for item in arguments:
+            if item.carrier in ("logical", "character") or item.pointer:
+                raise PhysicsSpecError(
+                    f"argument {item.name!r}: a mangled binding passes plain scalars and explicit-shape "
+                    "arrays only; logical, character and pointer dummies need the module's interface")
+    optionals = [item for item in arguments if item.optional]
+    if len(optionals) > 2:
+        raise PhysicsSpecError("at most two optional arguments are supported (four call forms)")
     parameters = {
         str(name): _parameter(str(name), entry)
         for name, entry in dict(document.get("parameters") or {}).items()
@@ -496,6 +571,8 @@ def parse_function_spec(document: Mapping[str, Any], *, path: Path | None = None
         initializers=_tuple_of_str(document.get("initializers"), "initializers"),
         image=image,
         path=path,
+        layout=layout,
+        binding=binding,
     )
 
 

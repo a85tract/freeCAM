@@ -39,6 +39,12 @@ source "${FREECAM_REPO:-${PBS_O_WORKDIR:-$PWD}}/validation/jobs/common.sh"
 repo=${FREECAM_REPO}
 python=${repo}/.venv/bin/python
 order=${PYCAM_PAIR_ORDER:-AC}
+# PYCAM_OBSERVE_KERNELS=1 turns on the counting image's execution observation
+# for the freeCAM leg (the image must be built with FREECAM_KCOUNT_SCOPE)
+observe_flags=()
+if [ "${PYCAM_OBSERVE_KERNELS:-0}" = 1 ]; then
+  observe_flags=(--observe-kernels)
+fi
 policy=${PYCAM_STAGE_EXECUTION:-native-whole}
 # PYCAM_ALL_CLASSES=1 installs every stage class -- the nine pausable classes,
 # the split radiation class and the cloud stage -- with nothing replaced, so
@@ -135,6 +141,7 @@ PY
       --stage-execution "${policy}" \
       --steps "${steps}" \
       --memory-sample-every "${memory_sample}" \
+      "${observe_flags[@]}" \
       --summary "${summary}" \
       > "${cam_run}/freecam.log" 2>&1 )
   echo "C done ($(date))"

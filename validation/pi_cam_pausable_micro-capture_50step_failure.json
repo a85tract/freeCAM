@@ -1,0 +1,19 @@
+{
+  "schema_version": 1,
+  "what": "A capture gate that aborted before its first pause, kept as evidence: micro_mg_tend was to be answered by the original at the stage-7 pause with every frame captured, but the runner binding refused the image at construction.",
+  "pbs_job_id": "7358831.desched1",
+  "job": "validation/jobs/pi_cam_pausable_50step.pbs",
+  "run_tag": "micro-capture",
+  "python_stages": ["cloud_macro_microphysics"],
+  "segmented_original_kernels": "micro_mg_tend",
+  "capture_kernels": "micro_mg_tend",
+  "native_image": "build/pi_cam_promoted_p10",
+  "runner": "pycam_stage7 (the p10 image's module, without pycam_stage7_original_v1)",
+  "outcome": "aborted at the first cloud_macro_microphysics call on all 512 ranks; no capture written",
+  "ranks": 512,
+  "steps_completed": 0,
+  "error": "NativeCAMError: the manifest says the pycam_stage7 runner runs the original at a pause, but the image exports no pycam_stage7_original_v1",
+  "bfb_record": "pi_cam_pausable_micro-capture_vs_oracle_50step_bfb.json",
+  "diagnosis": "Version skew between the checked-out manifest and the queued image, not a numerical failure. While the job waited in the queue, native/pi_cam/segment_runners.yaml gained `original: true` for the stage-7 runner (the regenerated module exports pycam_stage7_original_v1 and pauses at cldfrc_fice); the job then ran the p10 image, whose module predates that entry, and the binding failed closed at construction as designed. The single history file the aborted run had written compared bit-for-bit; the restart files were never written.",
+  "disposition": "Resubmit the same gate on an image built from the regenerated stage-7 runner (p11); until then micro_mg_tend keeps `capture` in its missing steps."
+}

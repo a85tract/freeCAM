@@ -1,0 +1,28 @@
+{
+ "schema_version": 1,
+ "what": "The first run with a trained model in a kernel slot: the few-free-variables surrogate for instratus_condensate (an MLP predicting the two stratus fractions, the two in-stratus mixing ratios and two gates, the rest of the kernel's outputs derived by the routine's own closure) installed through --kernel-model in the cloud stage, 50 steps, replay boundary.",
+ "pbs_job_id": "7371767.desched1",
+ "job": "validation/jobs/pi_cam_pausable_50step.pbs",
+ "run_tag": "instratus-surrogate",
+ "python_stages": [
+  "cloud_macro_microphysics"
+ ],
+ "kernel_models": {
+  "instratus_condensate": {
+   "file": "instratus_surrogate.pkl",
+   "sha256": "30e1da9bea78160cd96b3ec40904c042e910f0ccfea65daccefd5098431250f6",
+   "parameters": 72454
+  }
+ },
+ "native_image": "build/pi_cam_promoted_p12",
+ "outcome": "model run exited 255 at step 0 on all 512 ranks: PythonProcessContractError 'Python process payload differs across MPI ranks' from the cloud stage's install; no history, no summary",
+ "ranks": 512,
+ "steps_completed": 0,
+ "resources": {
+  "resources_used_mem_kb": 194698692,
+  "walltime": "00:00:58"
+ },
+ "bfb_record_note": "pi_cam_pausable_instratus-surrogate_vs_oracle_50step_bfb.json and the .health.json (512 tracebacks, no physics counts) were written by the job's comparison of an empty run and are not evidence of anything; the resubmitted run reuses the tag and overwrites both.",
+ "diagnosis": "Not the physics and not the frame contract: the model's module kept its log-scaled feature names in a Python set.  Every rank loads the cloudpickled model and re-pickles it into the process payload, and a set of strings pickles in per-process hash order (PYTHONHASHSEED is randomised per process), so the 512 payloads hashed 512 ways and the install refused them.  Reproduced on the login node: two hash seeds give two different pickle hashes of the same model, one seed gives one.",
+ "disposition": "The set became a tuple and the model was re-exported from the same trained weights (bit-identical outputs on 30 captured frames; one pickle hash under three hash seeds); the gate job fixes PYTHONHASHSEED while models are loaded; the payload-mismatch error now says why it happens.  Resubmitted under the same tag."
+}

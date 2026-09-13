@@ -14,6 +14,7 @@ runners:
 - stage: cam_run1.cloud_macro_microphysics
   prefix: pycam_stage7
   module: native/pi_cam/support/pycam_stage7_runner.F90
+  original: true
   generator: tools/generate_pi_cam_stage7_runner.py
   descriptors: native/pi_cam/direct_kernels_macrophysics.yaml
   # kernel ids are positions here plus one, as the module numbers them
@@ -40,6 +41,30 @@ runners:
     - validation/pi_cam_stage7_segmented_both_vs_oracle_50step_bfb.json
     - validation/pi_cam_pausable_everything_50step.json
     - validation/pi_cam_pausable_everything_vs_oracle_50step_bfb.json
+  # the ice/liquid phase partition, paused at the transcribed macrophysics
+  # driver's own `call cldfrc_fice` statement -- the same kernel the
+  # deep-convection hook reaches, replaceable here in the cloud stage's
+  # context; gate 7359461 answered every call at the pause, bit-for-bit
+  - name: cldfrc_fice
+    owner: freecam.physics.macrophysics.Macrophysics
+    contract: native/pi_cam/functions/cldfrc_fice.yaml
+    validated_by:
+    - validation/pi_cam_pausable_cloud-fice_50step.json
+    - validation/pi_cam_pausable_cloud-fice_vs_oracle_50step_bfb.json
+  # the saturation-adjustment core inside mmacro_pcond: a private procedure of
+  # cldwat2m_macro reached through a hook (native/pi_cam/hooks.yaml) that yields
+  # the stage's fiber; the frame is the function contract's argument list, one
+  # level of pcols columns.  It and mmacro_pcond cannot be replaced together,
+  # and this revision runs no runner-level pause alongside it; its gates are owed
+  - name: instratus_condensate
+    owner: freecam.physics.macrophysics.Macrophysics
+    contract: native/pi_cam/functions/instratus_condensate.yaml
+    within: mmacro_pcond
+    validated_by:
+    - validation/pi_cam_pausable_instratus-hook_50step.json
+    - validation/pi_cam_pausable_instratus-hook_vs_oracle_50step_bfb.json
+    - validation/pi_cam_pausable_instratus-capture_50step.json
+    - validation/pi_cam_pausable_instratus-capture_vs_oracle_50step_bfb.json
 # The pausable runners (tools/generate_pi_cam_pausable_runners.py): one per
 # process, the original driver hoisted verbatim and cut at its kernel calls.
 # Their frames are described in native/pi_cam/segment_frames.yaml, and each
@@ -87,6 +112,20 @@ runners:
 # radiation handles' ptend and net flux, and the resume half takes them when
 # Python owns the step.  Both RRTMG cores are pauses inside the dosw / dolw
 # blocks and their icall loops.
+  - name: fluxbelowinv
+    owner: freecam.physics.pausable.ShallowConvection
+    # a private routine called inside the compiled compute_uwshcu: uwshcu.o's definition is
+    # weakened and the hook takes its name (native/pi_cam/hooks.yaml); the frame is the
+    # function contract's argument list.  It and compute_uwshcu_inv cannot be replaced together.
+    contract: native/pi_cam/functions/fluxbelowinv.yaml
+    within: compute_uwshcu_inv
+    validated_by:
+    - validation/pi_cam_pausable_flux-hook_50step.json
+    - validation/pi_cam_pausable_flux-hook_vs_oracle_50step_bfb.json
+    - validation/pi_cam_pausable_flux-capture_50step.json
+    - validation/pi_cam_pausable_flux-capture_vs_oracle_50step_bfb.json
+    - validation/pi_cam_pausable_hooks-everything_50step.json
+    - validation/pi_cam_pausable_hooks-everything_vs_oracle_50step_bfb.json
 - stage: cam_run1.radiation
   prefix: pycam_radt
   module: native/pi_cam/support/pycam_radt_runner.F90
@@ -164,6 +203,27 @@ runners:
     - validation/pi_cam_pausable_chain-pause_vs_oracle_50step_bfb.json
     - validation/pi_cam_pausable_everything_50step.json
     - validation/pi_cam_pausable_everything_vs_oracle_50step_bfb.json
+  - name: cldfrc_fice
+    owner: freecam.physics.pausable.DeepConvection
+    # called inside the compiled zm_conv_evap: zm_conv.o's reference is redirected to a
+    # hook (native/pi_cam/hooks.yaml) that yields the stage's fiber; the frame is the
+    # function contract's argument list.  It and zm_conv_evap cannot be replaced together.
+    contract: native/pi_cam/functions/cldfrc_fice.yaml
+    within: zm_conv_evap
+    validated_by:
+    - validation/pi_cam_pausable_fice-hook_50step.json
+    - validation/pi_cam_pausable_fice-hook_vs_oracle_50step_bfb.json
+    - validation/pi_cam_pausable_fice-capture_50step.json
+    - validation/pi_cam_pausable_fice-capture_vs_oracle_50step_bfb.json
+    - validation/pi_cam_pausable_hooks-everything_50step.json
+    - validation/pi_cam_pausable_hooks-everything_vs_oracle_50step_bfb.json
+    note: >-
+      The first attempt, a pause inside a hoisted copy of zm_conv_evap, was not bit-for-bit
+      (gate 7343258, validation/pi_cam_pausable_fice-pause_50step_failure.json): a recompiled
+      copy of a numerical routine does not reproduce the oracle object's rounding.  The hook
+      leaves zm_conv.o's machine code untouched.  Its first gate (7343594,
+      validation/pi_cam_pausable_fice-hook_50step_failure.json) failed on a duplicate global
+      symbol shared by two runners' fiber bodies; renamed, the gate is bit-for-bit.
 - stage: cam_run1.convective_tracer_transport_leaf
   prefix: pycam_zmtran
   module: native/pi_cam/support/pycam_zmtran_runner.F90
@@ -219,6 +279,16 @@ runners:
     - validation/pi_cam_pausable_vdiff-vdiff_vs_oracle_50step_bfb.json
     - validation/pi_cam_pausable_vdiff-all_50step.json
     - validation/pi_cam_pausable_vdiff-all_vs_oracle_50step_bfb.json
+    - validation/pi_cam_pausable_everything_50step.json
+    - validation/pi_cam_pausable_everything_vs_oracle_50step_bfb.json
+  - name: virtem
+    owner: freecam.physics.pausable.VerticalDiffusion
+    frame: native/pi_cam/segment_frames.yaml
+    # an elemental function inside an assignment of the driver; the frame serves
+    # the section actuals and the left-hand side
+    validated_by:
+    - validation/pi_cam_pausable_virtem-pause_50step.json
+    - validation/pi_cam_pausable_virtem-pause_vs_oracle_50step_bfb.json
     - validation/pi_cam_pausable_everything_50step.json
     - validation/pi_cam_pausable_everything_vs_oracle_50step_bfb.json
 - stage: cam_run2.gravity_wave_drag

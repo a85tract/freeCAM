@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 import argparse
 import json
 import os
@@ -72,8 +74,263 @@ def _stage_executions(cam) -> dict[str, dict[str, object]]:
             describe_kernels = getattr(stage, "describe_kernels", None)
             if callable(describe_kernels):
                 described["kernels"] = list(describe_kernels())
+            describe_process = getattr(stage, "describe_process", None)
+            if callable(describe_process) and describe_process() is not None:
+                described["process"] = describe_process()
             executions[name] = described
     return executions
+
+
+def _save_frame_captures(cam, directory: Path, rank: int) -> dict[str, int]:
+    """Write every FrameCapture kernel slot of the installed stages: calls by kernel."""
+
+    from freecam.physics.segments import FrameCapture
+
+    calls: dict[str, int] = {}
+    for record in getattr(cam.python_processes, "installed", {}).values():
+        stage = getattr(getattr(record, "function", None), "__self__", None)
+        kernels = getattr(stage, "kernels", None)
+        if not isinstance(kernels, dict):
+            continue
+        for name, model in kernels.items():
+            if isinstance(model, FrameCapture):
+                model.save(Path(directory) / f"{name}.rank-{rank:04d}.npz")
+                calls[name] = model.calls
+    return calls
+
+
+def _save_radiation_process(cam, directory: Path | None, rank: int) -> dict[str, object] | None:
+    """Save a radiation process capture (one file per rank) and describe the slot, whatever it holds."""
+
+    for record in getattr(cam.python_processes, "installed", {}).values():
+        stage = getattr(getattr(record, "function", None), "__self__", None)
+        process = getattr(stage, "process", None)
+        if process is None:
+            continue
+        describe_process = getattr(stage, "describe_process", None)
+        # the stage's description carries what the slot in the image counted (a compiled
+        # plugin's calls and seconds); the process object alone knows only what it is
+        described = dict(describe_process() if callable(describe_process) else process.describe())
+        if getattr(process, "records", False) and directory is not None:
+            described["file"] = str(process.save(Path(directory) / f"radiation_tend.rank-{rank:04d}.npz").name)
+        return described
+    return None
+
+
+def _radiation_process_summary(records) -> dict[str, object] | None:
+    """The process slot over the ranks: what stood in it and how many calls it recorded or answered."""
+
+    rows = [record.get("radiation_process") for record in records if record.get("radiation_process")]
+    if not rows:
+        return None
+    first = rows[0]
+    summary: dict[str, object] = {"kind": first.get("kind"), "ranks": len(rows),
+                                  "calls": sum(int(row.get("calls", 0)) for row in rows)}
+    for key in ("function", "records"):
+        if key in first:
+            summary[key] = first[key]
+    for key in ("seconds", "first_call_seconds"):
+        if key in first:            # summed over ranks, and the slowest rank's own
+            summary[key] = sum(float(row.get(key, 0.0)) for row in rows)
+            summary[key + "_max"] = max(float(row.get(key, 0.0)) for row in rows)
+    return summary
+
+
+def _frame_capture_summary(records, args, native_evidence) -> dict[str, object] | None:
+    """The capture run's provenance, written beside the capture files and into the summary."""
+
+    if not args.capture_kernels:
+        return None
+    totals: dict[str, int] = {}
+    for record in records:
+        for name, count in (record.get("frame_capture_calls") or {}).items():
+            totals[name] = totals.get(name, 0) + int(count)
+    provenance = {
+        "kernels": [k.strip() for k in args.capture_kernels.split(",") if k.strip()],
+        "calls_total_by_kernel": totals,
+        "ranks_with_calls_by_kernel": {
+            name: sum(1 for record in records if (record.get("frame_capture_calls") or {}).get(name))
+            for name in totals
+        },
+        "pbs_job_id": os.environ.get("PBS_JOBID"),
+        "native_library_sha256": native_evidence.get("native_library_sha256"),
+        "run_tag": Path(args.summary).stem if args.summary else None,
+        "bfb_record": None if args.summary is None else str(Path(args.summary).name).replace("_50step.json", "_vs_oracle_50step_bfb.json"),
+    }
+    Path(args.capture_dir).mkdir(parents=True, exist_ok=True)
+    (Path(args.capture_dir) / "capture.json").write_text(json.dumps(provenance, indent=2) + "\n")
+    return provenance
+
+
+def _parse_kernel_models(values: list[str] | None) -> dict[str, Path]:
+    """``NAME=PATH`` pairs from --kernel-model, one model per kernel."""
+
+    models: dict[str, Path] = {}
+    for item in values or ():
+        name, sep, path = item.partition("=")
+        if not sep or not name.strip() or not path.strip():
+            raise SystemExit(f"--kernel-model takes NAME=PATH, got {item!r}")
+        if name.strip() in models:
+            raise SystemExit(f"--kernel-model names {name.strip()!r} twice")
+        models[name.strip()] = Path(path.strip()).expanduser()
+    return models
+
+
+def _load_kernel_model(path: Path, *, shadow: bool = False):
+    """What stands in a kernel's slot: a TorchScript archive the image runs itself at the
+    kernel's hook (no Python in the step), or a cloudpickled callable answering the
+    kernel's frame at a pause; anything else is refused."""
+
+    from freecam.physics.native_model import NativeModel
+
+    if not path.is_file():
+        raise SystemExit(f"--kernel-model: {path} is not a file")
+    if NativeModel.is_torchscript(path):
+        return NativeModel(path, shadow=shadow)
+    if shadow:
+        raise SystemExit(f"--shadow-kernel-model: {path} is not a TorchScript archive; only a model the image "
+                         f"runs itself can shadow the original")
+    with path.open("rb") as handle:
+        model = cloudpickle.load(handle)
+    if not callable(model):
+        raise SystemExit(f"--kernel-model: {path} holds a {type(model).__name__}, not a callable")
+    return model
+
+
+def _parse_kernel_plugins(values: list[str] | None, flag: str) -> dict[str, str]:
+    """``NAME=MODULE:FUNCTION`` (or ``NAME=path.py:FUNCTION``) pairs, one plugin per kernel."""
+
+    plugins: dict[str, str] = {}
+    for item in values or ():
+        name, sep, spec = item.partition("=")
+        if not sep or not name.strip() or ":" not in spec or not spec.rsplit(":", 1)[1].strip():
+            raise SystemExit(f"{flag} takes NAME=MODULE:FUNCTION or NAME=path.py:FUNCTION, got {item!r}")
+        if name.strip() in plugins:
+            raise SystemExit(f"{flag} names {name.strip()!r} twice")
+        plugins[name.strip()] = spec.strip()
+    return plugins
+
+
+def _import_function(spec: str, flag: str):
+    """``MODULE:FUNCTION`` or ``path.py:FUNCTION`` -> the function."""
+
+    import importlib
+    import importlib.util
+
+    module_name, _, function_name = spec.rpartition(":")
+    if not module_name or not function_name:
+        raise SystemExit(f"{flag} takes MODULE:FUNCTION or path.py:FUNCTION, got {spec!r}")
+    if module_name.endswith(".py"):
+        path = Path(module_name).expanduser().resolve()
+        if not path.is_file():
+            raise SystemExit(f"{flag}: {path} is not a file")
+        loader_spec = importlib.util.spec_from_file_location(f"freecam_plugin_{path.stem}", path)
+        module = importlib.util.module_from_spec(loader_spec)
+        sys.modules[loader_spec.name] = module
+        loader_spec.loader.exec_module(module)
+    else:
+        module = importlib.import_module(module_name)
+    function = getattr(module, function_name, None)
+    if function is None or not callable(function):
+        raise SystemExit(f"{flag}: {spec} names no callable")
+    return function
+
+
+def _load_kernel_plugin(kernel: str, spec: str, *, shadow: bool = False):
+    """Compile the named Python function for the kernel's hook with Numba: a NativePlugin for the slot."""
+
+    import importlib
+    import importlib.util
+
+    from freecam.physics.numba_kernel import compile_kernel
+
+    module_name, _, function_name = spec.rpartition(":")
+    if module_name.endswith(".py"):
+        path = Path(module_name).expanduser().resolve()
+        if not path.is_file():
+            raise SystemExit(f"--kernel-plugin: {path} is not a file")
+        loader_spec = importlib.util.spec_from_file_location(f"freecam_plugin_{path.stem}", path)
+        module = importlib.util.module_from_spec(loader_spec)
+        sys.modules[loader_spec.name] = module
+        loader_spec.loader.exec_module(module)
+    else:
+        module = importlib.import_module(module_name)
+    function = getattr(module, function_name, None)
+    if function is None or not callable(function):
+        raise SystemExit(f"--kernel-plugin: {spec} names no callable")
+    return compile_kernel(kernel, function, shadow=shadow)
+
+
+def _kernel_plugins_summary(plugins: dict[str, str], shadow: dict[str, str] | None = None) -> dict[str, dict[str, Any]]:
+    """Which compiled function stood in which slot; a file's path only when it lies inside this checkout."""
+
+    import hashlib
+
+    repo = Path(__file__).resolve().parents[3]
+    summary: dict[str, dict[str, Any]] = {}
+    for specs, is_shadow in ((plugins, False), (shadow or {}, True)):
+        for name, spec in specs.items():
+            module_name, _, function_name = spec.rpartition(":")
+            row: dict[str, Any] = {"function": function_name, "binding": "numba"}
+            if module_name.endswith(".py"):
+                path = Path(module_name).expanduser().resolve()
+                row["file"] = path.name
+                if path.is_file():
+                    row["sha256"] = hashlib.sha256(path.read_bytes()).hexdigest()
+                if path.is_relative_to(repo):
+                    row["path"] = str(path.relative_to(repo))
+            else:
+                row["module"] = module_name
+            if is_shadow:
+                row["shadow"] = True
+            summary[name] = row
+    return summary
+
+
+def _kernel_models_summary(models: dict[str, Path], shadow: dict[str, Path] | None = None) -> dict[str, dict[str, Any]] | None:
+    """Which artifact stood in which slot: file name and content hash, and the path when
+    it lies inside this checkout (records name no site directory); shadow models say so."""
+
+    import hashlib
+
+    from freecam.physics.native_model import NativeModel
+
+    if not models and not shadow:
+        return None
+    repo = Path(__file__).resolve().parents[3]
+    summary: dict[str, dict[str, Any]] = {}
+    for paths, is_shadow in ((models, False), (shadow or {}, True)):
+        for name, path in paths.items():
+            row: dict[str, Any] = {"file": path.name, "sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
+                                   "binding": "torchscript" if NativeModel.is_torchscript(path) else "cloudpickle"}
+            if is_shadow:
+                row["shadow"] = True
+            resolved = path.resolve()
+            if resolved.is_relative_to(repo):
+                row["path"] = str(resolved.relative_to(repo))
+            summary[name] = row
+    return summary
+
+
+def _hook_summary(records) -> dict[str, object] | None:
+    """Every hook's calls and pauses summed over the ranks, and the ranks that saw calls."""
+
+    totals: dict[str, dict[str, int]] = {}
+    for record in records:
+        for name, counts in (record.get("hook_counts") or {}).items():
+            entry = totals.setdefault(name, {"calls": 0, "paused": 0, "ranks_called": 0})
+            entry["calls"] += int(counts.get("calls", 0))
+            entry["paused"] += int(counts.get("paused", 0))
+            entry["ranks_called"] += 1 if counts.get("calls") else 0
+            if "missed" in counts:          # armed calls made off the fiber, answered by the original
+                entry["missed"] = entry.get("missed", 0) + int(counts["missed"])
+            if "modeled" in counts:         # calls a bound TorchScript model answered inside the image
+                entry["modeled"] = entry.get("modeled", 0) + int(counts["modeled"])
+            for key in ("model_seconds", "forward_seconds", "call_seconds", "first_call_seconds", "warm_seconds", "original_seconds"):
+                if key in counts:           # summed over ranks (divide by ranks_called for a rank's mean),
+                    entry[key] = entry.get(key, 0.0) + float(counts[key])   # and the slowest rank's own
+                    entry[key + "_max"] = max(entry.get(key + "_max", 0.0), float(counts[key]))
+    return totals or None
 
 
 def _cprofile_for(rank: int):
@@ -313,6 +570,127 @@ def main(argv: list[str] | None = None) -> int:
         ),
     )
     parser.add_argument(
+        "--capture-kernels",
+        default="",
+        help=(
+            "validation: answer these kernels (comma-separated) with the original at their "
+            "pauses and record every call's frame -- inputs and outputs -- for the standalone "
+            "replay (tools/replay_pi_cam_frame_capture.py); the run stays bit-for-bit"
+        ),
+    )
+    parser.add_argument(
+        "--capture-dir",
+        type=Path,
+        default=None,
+        help="where --capture-kernels writes <kernel>.rank-NNNN.npz and capture.json",
+    )
+    parser.add_argument(
+        "--kernel-model",
+        action="append",
+        default=None,
+        metavar="NAME=PATH",
+        help=(
+            "put a model in a kernel's slot: NAME is a swappable kernel of an installed stage "
+            "class; PATH is either a TorchScript archive, which the image binds at the kernel's "
+            "hook and runs itself (no Python in the step), or a cloudpickled callable answering "
+            "the kernel's frame at a pause (batch in, the kernel's outputs out); repeatable.  Not "
+            "a bit-for-bit run and not evidence of one.  A pickled model is loaded and re-pickled "
+            "on every rank, so it must pickle identically on all of them: ordered containers, no sets."
+        ),
+    )
+    parser.add_argument(
+        "--shadow-kernel-model",
+        action="append",
+        default=None,
+        metavar="NAME=PATH",
+        help=(
+            "bind a TorchScript model at the kernel's hook in shadow: the image runs the model on "
+            "every call and discards its answer while the original keeps answering, so the run "
+            "stays bit-for-bit and the model path's cost is measured in situ; repeatable."
+        ),
+    )
+    parser.add_argument(
+        "--kernel-plugin",
+        action="append",
+        default=None,
+        metavar="NAME=MODULE:FUNCTION",
+        help=(
+            "put a Python kernel in a kernel's slot, compiled with Numba and bound at the kernel's hook: "
+            "the image calls it directly on every call, no Python in the step.  MODULE is an importable "
+            "module or a .py file; FUNCTION takes the hook's model-block inputs then outputs (float64 "
+            "arrays indexed [column, level], scalars as floats) and writes the outputs in place; repeatable.  "
+            "Not evidence of bit-for-bit unless the run says so."
+        ),
+    )
+    parser.add_argument(
+        "--shadow-kernel-plugin",
+        action="append",
+        default=None,
+        metavar="NAME=MODULE:FUNCTION",
+        help="bind a compiled Python kernel in shadow: it runs on every call, the original answers; repeatable.",
+    )
+    parser.add_argument(
+        "--radiation-capture",
+        type=Path,
+        default=None,
+        metavar="DIR",
+        help=(
+            "with --radiation-python: record the inputs and outputs of radiation_tend's computing branch "
+            "on every radiative step of every chunk, to DIR/radiation_tend.rank-NNNN.npz; the original "
+            "runs, the run stays bit-for-bit.  The dataset a process-level emulator is trained on."
+        ),
+    )
+    parser.add_argument(
+        "--radiation-capture-every",
+        type=int,
+        default=1,
+        metavar="N",
+        help="with --radiation-capture: record every N-th radiative step of each rank (default every step)",
+    )
+    parser.add_argument(
+        "--radiation-model",
+        default=None,
+        metavar="SPEC",
+        help=(
+            "with --radiation-python: answer radiation_tend's computing branch with a process model "
+            "instead of the optics and the two cores.  replay:DIR replays a --radiation-capture "
+            "(bit-for-bit expected: the gate of the path); MODULE:FUNCTION or path.py:FUNCTION calls "
+            "a function taking the inputs by name and returning qrs, qrl and the surface fluxes."
+        ),
+    )
+    parser.add_argument(
+        "--radiation-plugin",
+        default=None,
+        metavar="MODULE:FUNCTION",
+        help=(
+            "with --radiation-python: a Python kernel over the radiation process slot's table "
+            "(radiation_process.TABLE_INPUTS then TABLE_OUTPUTS, positional), compiled with Numba and "
+            "bound inside the image: the runner runs the driver whole and the plugin answers the "
+            "radiative branch in Fortran, no Python in the step.  MODULE is importable or a .py file."
+        ),
+    )
+    parser.add_argument(
+        "--shadow-radiation-plugin",
+        default=None,
+        metavar="MODULE:FUNCTION",
+        help="the same in shadow: the plugin runs for its cost at every radiative step, the driver's branch answers.",
+    )
+    parser.add_argument(
+        "--observe-kernels",
+        action="store_true",
+        help=(
+            "observation: attribute the counting image's kernel execution counters to workflow "
+            "processes, steps and lifecycle phases, and write the raw observation record; needs "
+            "an image built with FREECAM_KCOUNT_SCOPE and exactly one thread per rank"
+        ),
+    )
+    parser.add_argument(
+        "--observe-output",
+        type=Path,
+        default=None,
+        help="where --observe-kernels writes kernel_observation.json (default: <run-dir>/../kernel_observation.json)",
+    )
+    parser.add_argument(
         "--cloud-macro-micro-python",
         action="store_true",
         help=(
@@ -416,6 +794,20 @@ def main(argv: list[str] | None = None) -> int:
         if args.native_manifest is None
         else NativeCAMDevice(args.native_manifest)
     )
+    observe_instrumented: list[dict] = []
+    if args.observe_kernels:
+        # refused before initialization: a mismatched image or threading would
+        # produce wrong statistics, never a partial record
+        if os.environ.get("OMP_NUM_THREADS", "1").strip() not in ("", "1"):
+            raise SystemExit("--observe-kernels: the counters are single-threaded per rank; OMP_NUM_THREADS must be 1")
+        if args.native_manifest is None:
+            raise SystemExit("--observe-kernels needs --native-manifest naming a counting image")
+        counting_manifest = json.loads(Path(args.native_manifest).read_text())
+        kcount_section = counting_manifest.get("kernel_counts") or {}
+        observe_instrumented = list(kcount_section.get("instrumented") or [])
+        if not kcount_section.get("scope") or not observe_instrumented:
+            raise SystemExit("--observe-kernels: this image was not built with FREECAM_KCOUNT_SCOPE; "
+                             "it carries no counting trampolines")
     cam = case.runtime(
         boundary=boundary,
         backend=backend,
@@ -474,6 +866,32 @@ def main(argv: list[str] | None = None) -> int:
                 unsafe=True,
             )
         installed_kernels: set[str] = set()      # every swappable kernel of the classes installed this run
+        capture_kernels = [k.strip() for k in args.capture_kernels.split(",") if k.strip()]
+        if capture_kernels and args.capture_dir is None:
+            raise SystemExit("--capture-kernels needs --capture-dir")
+        kernel_model_paths = _parse_kernel_models(args.kernel_model)
+        shadow_model_paths = _parse_kernel_models(args.shadow_kernel_model)
+        kernel_plugin_specs = _parse_kernel_plugins(args.kernel_plugin, "--kernel-plugin")
+        shadow_plugin_specs = _parse_kernel_plugins(args.shadow_kernel_plugin, "--shadow-kernel-plugin")
+        original_names = ([k.strip() for k in args.segmented_original_kernels.split(",") if k.strip()]
+                          if args.segmented_original else [])
+        slots = [set(kernel_model_paths), set(shadow_model_paths), set(kernel_plugin_specs), set(shadow_plugin_specs)]
+        for i, first in enumerate(slots):
+            for second in slots[i + 1:]:
+                if first & second:
+                    raise SystemExit(f"--kernel-model/--kernel-plugin: {sorted(first & second)} are given twice; one slot holds one thing")
+        clash = sorted((set(kernel_model_paths) | set(shadow_model_paths) | set(kernel_plugin_specs) | set(shadow_plugin_specs))
+                       & (set(capture_kernels) | set(original_names)))
+        if clash:
+            raise SystemExit(f"--kernel-model: {clash} are also named for the original or a capture; "
+                             f"one slot holds one thing")
+        twice = sorted(set(kernel_model_paths) & set(shadow_model_paths))
+        if twice:
+            raise SystemExit(f"--shadow-kernel-model: {twice} are also given to --kernel-model; a model answers or shadows")
+        kernel_models = {name: _load_kernel_model(path) for name, path in kernel_model_paths.items()}
+        kernel_models.update({name: _load_kernel_model(path, shadow=True) for name, path in shadow_model_paths.items()})
+        kernel_models.update({name: _load_kernel_plugin(name, spec) for name, spec in kernel_plugin_specs.items()})
+        kernel_models.update({name: _load_kernel_plugin(name, spec, shadow=True) for name, spec in shadow_plugin_specs.items()})
         if args.radiation_python:
             # The same shape for radiation: Radiation.tend between the two
             # halves of the split stage, native and non-transactional for the
@@ -483,11 +901,35 @@ def main(argv: list[str] | None = None) -> int:
 
             scheme = Radiation()
             scheme.execution_policy = args.stage_execution
+            slot_flags = [name for name, value in (("--radiation-capture", args.radiation_capture), ("--radiation-model", args.radiation_model),
+                                                    ("--radiation-plugin", args.radiation_plugin),
+                                                    ("--shadow-radiation-plugin", args.shadow_radiation_plugin)) if value is not None]
+            if len(slot_flags) > 1:
+                raise SystemExit(f"{' and '.join(slot_flags)}: the radiation branch has one slot")
+            if args.radiation_plugin is not None or args.shadow_radiation_plugin is not None:
+                from freecam.physics.radiation_process import compile_radiation_plugin
+
+                spec_text = args.radiation_plugin or args.shadow_radiation_plugin
+                scheme.process = compile_radiation_plugin(_import_function(spec_text, "--radiation-plugin"),
+                                                          shadow=args.radiation_plugin is None)
+            if args.radiation_capture is not None:
+                from freecam.physics.radiation_process import RadiationProcessCapture
+                scheme.process = RadiationProcessCapture(every=args.radiation_capture_every)
+            elif args.radiation_model is not None:
+                from freecam.physics.radiation_process import load_process_model
+                scheme.process = load_process_model(args.radiation_model, rank=world.Get_rank())
             if args.segmented_original:
                 from freecam.physics.segments import OriginalKernel
                 for kernel_name in [k.strip() for k in args.segmented_original_kernels.split(",") if k.strip()]:
                     if kernel_name in scheme.kernels:
                         scheme.kernels[kernel_name] = OriginalKernel()
+            for kernel_name in capture_kernels:
+                if kernel_name in scheme.kernels:
+                    from freecam.physics.segments import FrameCapture
+                    scheme.kernels[kernel_name] = FrameCapture(kernel_name)
+            for kernel_name, model in kernel_models.items():
+                if kernel_name in scheme.kernels:
+                    scheme.kernels[kernel_name] = model
             installed_kernels.update(scheme.kernels)
             cam.python_processes.install(
                 PythonProcessSpec.from_callable(
@@ -527,6 +969,15 @@ def main(argv: list[str] | None = None) -> int:
                 for kernel_name in [k.strip() for k in args.segmented_original_kernels.split(",") if k.strip()]:
                     if kernel_name in scheme.kernels:
                         scheme.kernels[kernel_name] = OriginalKernel()
+            for kernel_name in capture_kernels:
+                # the original at the pause with every frame recorded; a kernel
+                # in both lists is captured, which answers with the original too
+                if kernel_name in scheme.kernels:
+                    from freecam.physics.segments import FrameCapture
+                    scheme.kernels[kernel_name] = FrameCapture(kernel_name)
+            for kernel_name, model in kernel_models.items():
+                if kernel_name in scheme.kernels:
+                    scheme.kernels[kernel_name] = model
             installed_kernels.update(scheme.kernels)
             cam.step_plan.set_enabled("cloud_macro_microphysics", False, phase="cam_run1", experimental=True)
             cam.python_processes.install(
@@ -559,6 +1010,10 @@ def main(argv: list[str] | None = None) -> int:
                 for kernel_name in [k.strip() for k in args.segmented_original_kernels.split(",") if k.strip()]:
                     if kernel_name in pausable_stage.kernels:
                         pausable_stage.kernels[kernel_name] = OriginalKernel()
+            for kernel_name in capture_kernels:
+                if kernel_name in pausable_stage.kernels:
+                    from freecam.physics.segments import FrameCapture
+                    pausable_stage.kernels[kernel_name] = FrameCapture(kernel_name)
             phase, _, action_name = pausable_stage.STAGE.partition(".")
             cam.step_plan.set_enabled(action_name, False, phase=phase, experimental=True)
             cam.python_processes.install(
@@ -573,6 +1028,9 @@ def main(argv: list[str] | None = None) -> int:
                 ),
                 unsafe=True,
             )
+            for kernel_name, model in kernel_models.items():
+                if kernel_name in pausable_stage.kernels:
+                    pausable_stage.kernels[kernel_name] = model
             installed_kernels.update(pausable_stage.kernels)
         if args.segmented_original:
             # every replaced kernel must belong to a class installed this run: a name
@@ -582,6 +1040,14 @@ def main(argv: list[str] | None = None) -> int:
             if orphans:
                 raise SystemExit(f"--segmented-original-kernels: {orphans} belong to no installed stage class; "
                                  f"installed classes own {sorted(installed_kernels)}")
+        orphans = [k for k in capture_kernels if k not in installed_kernels]
+        if orphans:
+            raise SystemExit(f"--capture-kernels: {orphans} belong to no installed stage class; "
+                             f"installed classes own {sorted(installed_kernels)}")
+        orphans = [k for k in kernel_models if k not in installed_kernels]
+        if orphans:
+            raise SystemExit(f"--kernel-model: {orphans} belong to no installed stage class; "
+                             f"installed classes own {sorted(installed_kernels)}")
         for request in history_streams:
             cam.install_history_stream(
                 str(request["name"]),
@@ -597,6 +1063,20 @@ def main(argv: list[str] | None = None) -> int:
                 precision=str(request.get("precision", "float32")),
             )
         memory_samples.append(_process_memory("initialized", cam.clock.nstep))
+        kernel_counters = None
+        if args.observe_kernels:
+            from freecam.pi_cam.kernel_counts import KernelCounters
+
+            kernel_counters = KernelCounters.from_library(getattr(cam.backend, "_library", None))
+            if kernel_counters is None:
+                raise SystemExit("--observe-kernels: the loaded image exports no counting ABI")
+            expected = 1 + max(int(row["index"]) for row in observe_instrumented)
+            if kernel_counters.kernels != expected:
+                raise SystemExit(f"--observe-kernels: the image reports {kernel_counters.kernels} counted "
+                                 f"kernels, the manifest {expected}; image and manifest do not match")
+            kernel_counters.assign_slots([action.qualified_name for action in cam.step_plan])
+            kernel_counters.begin_step_tracking()
+            cam.kernel_counters = kernel_counters
         world.Barrier()
         initialize_seconds = MPI.Wtime() - initialize_started
         python_initialized_addresses = cam.python_initialized_addresses
@@ -610,10 +1090,12 @@ def main(argv: list[str] | None = None) -> int:
         if profiler is not None:
             profiler.enable()
         try:
-            if args.memory_sample_every > 0:
+            if args.memory_sample_every > 0 or kernel_counters is not None:
                 for completed in range(1, steps + 1):
                     cam.step()
-                    if (
+                    if kernel_counters is not None:
+                        kernel_counters.note_step(cam.clock.nstep)
+                    if args.memory_sample_every > 0 and (
                         completed == 1
                         or completed == steps
                         or completed % args.memory_sample_every == 0
@@ -629,6 +1111,10 @@ def main(argv: list[str] | None = None) -> int:
                 _write_cprofile(profiler, Path(args.run_dir), world.Get_rank())
         world.Barrier()
         advance_seconds = MPI.Wtime() - advance_started
+        frame_capture_calls = _save_frame_captures(cam, args.capture_dir, world.Get_rank()) if capture_kernels else {}
+        radiation_process = _save_radiation_process(cam, args.radiation_capture, world.Get_rank())
+        from freecam.pi_cam.hooks import read_hook_counts
+        hook_counts = read_hook_counts(getattr(cam.backend, "_library", None))
         final_addresses = {
             name: int(values.ctypes.data) for name, values in cam.pool.items()
         }
@@ -702,7 +1188,15 @@ def main(argv: list[str] | None = None) -> int:
             "initialize_seconds": initialize_seconds,
             "advance_seconds": advance_seconds,
             "memory_samples": memory_samples,
+            "frame_capture_calls": frame_capture_calls,
+            "radiation_process": radiation_process,
+            "hook_counts": hook_counts,
         }
+        if kernel_counters is not None:
+            from freecam.pi_cam.kernel_counts import SLOT_FINALIZE
+
+            cam.kernel_counters = None
+            kernel_counters.set_context(SLOT_FINALIZE)
         memory_samples.append(_process_memory("pre_finalize", cam.clock.nstep))
         world.Barrier()
         finalize_started = MPI.Wtime()
@@ -718,6 +1212,24 @@ def main(argv: list[str] | None = None) -> int:
         for name in final_addresses
     ):
         raise RuntimeError("native finalization changed Python-owned array addresses")
+    if kernel_counters is not None:
+        reduced = kernel_counters.reduce(world)
+        observation_path = args.observe_output or (Path(args.run_dir).resolve().parent / "kernel_observation.json")
+        local["kernel_observation"] = {"enabled": True, "record": str(observation_path)}
+        if reduced is not None:
+            observation = kernel_counters.observation_record(reduced, observe_instrumented)
+            observation.update({
+                "pbs_job": (os.environ.get("PBS_JOBID") or "").split(".", 1)[0] or None,
+                "steps": steps,
+                "final_model_step": int(cam.clock.nstep),
+                "native_manifest_kernel_counts": {
+                    k: (counting_manifest.get("kernel_counts") or {}).get(k)
+                    for k in ("scope", "observability_sha256", "trampolines_sha256")},
+                "native_library_sha256": (counting_manifest or {}).get("library_sha256"),
+                "threads_per_rank": 1,
+            })
+            observation_path.parent.mkdir(parents=True, exist_ok=True)
+            observation_path.write_text(json.dumps(observation, indent=1, sort_keys=True) + "\n")
     records = world.gather(local, root=0)
     if world.Get_rank() == 0:
         manifest_path = (
@@ -731,8 +1243,11 @@ def main(argv: list[str] | None = None) -> int:
             manifest_payload = json.loads(manifest_path.read_text())
             state_bridge = manifest_payload.get("state_bridge", {})
             leaf_device = manifest_payload.get("leaf_device", {})
+            repo_root = Path(__file__).resolve().parents[3]
             native_evidence = {
-                "native_manifest": str(manifest_path),
+                # repo-relative when the image lives under this checkout: a record names no site directory
+                "native_manifest": (str(manifest_path.relative_to(repo_root)) if manifest_path.is_relative_to(repo_root)
+                                    else str(manifest_path)),
                 "native_library_sha256": manifest_payload.get("library_sha256"),
                 "native_state_ownership": (
                     state_bridge.get("ownership")
@@ -842,6 +1357,11 @@ def main(argv: list[str] | None = None) -> int:
             "python_stages": [s.strip() for s in args.python_stages.split(",") if s.strip()],
             "disabled_actions": [s.strip() for s in args.disable_actions.split(",") if s.strip()],
             "stage_execution": _stage_executions(cam),
+            "frame_capture": _frame_capture_summary(records, args, native_evidence),
+            "kernel_models": ({**(_kernel_models_summary(kernel_model_paths, shadow_model_paths) or {}),
+                               **_kernel_plugins_summary(kernel_plugin_specs, shadow_plugin_specs)} or None),
+            "radiation_process": _radiation_process_summary(records),
+            "hooks": _hook_summary(records),
             "cloud_macro_micro_whole_drivers": bool(args.cloud_macro_micro_whole_drivers),
             "cloud_macro_micro_whole_micro": bool(args.cloud_macro_micro_whole_micro),
             "cloud_macro_micro_whole_aero": bool(args.cloud_macro_micro_whole_aero),
@@ -909,6 +1429,15 @@ def main(argv: list[str] | None = None) -> int:
         else:
             args.summary.parent.mkdir(parents=True, exist_ok=True)
             args.summary.write_text(text)
+        capture = summary.get("frame_capture") or {}
+        uncaptured = [name for name in capture.get("kernels") or []
+                      if not (capture.get("calls_total_by_kernel") or {}).get(name)]
+        if uncaptured:
+            # a capture run that recorded nothing must not pass silently: the
+            # summary above keeps the evidence, and the exit code fails the gate
+            print(f"--capture-kernels recorded zero calls for {uncaptured}; "
+                  f"the capture did not happen", file=sys.stderr)
+            return 1
     return 0
 
 

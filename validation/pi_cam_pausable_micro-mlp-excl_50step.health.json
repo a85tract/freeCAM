@@ -1,0 +1,19 @@
+{
+ "schema_version": 1,
+ "log": "pyCAM/PI-cam/pausable-micro-mlp-excl-7394424.desched1/run/pi_cam_python.log",
+ "steps": 50,
+ "counts": {
+  "big_error": 102404,
+  "isotopic_mass_error": 14233,
+  "qneg3_macro": 0,
+  "qneg3_total": 457155,
+  "tracebacks": 0
+ },
+ "per_step": {
+  "big_error": 2048.08,
+  "isotopic_mass_error": 284.66,
+  "qneg3_macro": 0.0,
+  "qneg3_total": 9143.1,
+  "tracebacks": 0.0
+ }
+}

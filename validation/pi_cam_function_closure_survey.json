@@ -1,7 +1,7 @@
 {
  "schema_version": 1,
  "generator": "closure survey over libatm.a (nm -u iterated to a fixed point)",
- "archive": "/glade/derecho/scratch/ruitong/pyCAM/PI-cam/f.e13.F1850C5.ne16_g16.icesm131_ihesp.PI-cam-oracle.50step/bld/lib/libatm.a",
+ "archive": "${FREECAM_SCRATCH}/pyCAM/PI-cam/f.e13.F1850C5.ne16_g16.icesm131_ihesp.PI-cam-oracle.50step/bld/lib/libatm.a",
  "archive_sha256": "56eae2ed53b1fc529d149489e320b9cab83a0cf715c02745f211c3fdbc943930",
  "note": "Objects reachable from each physics object, cutting at host services. The cut set is the judgement call; the counts are an upper bound before a reviewer removes a reachable module by other means (mmacro_pcond reads 13 here and links 10).",
  "calibration": {

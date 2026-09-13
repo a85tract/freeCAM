@@ -105,10 +105,17 @@ def main() -> int:
                              "restart, i.e. the state at the end of the run")
     arguments = parser.parse_args()
 
+    # pair by the name after the case prefix (".cam.h0.0001-01-03-07200.nc"), as the
+    # bit-for-bit comparison does: a run replays the oracle's month under its own case name
+    def tail(path: Path) -> str:
+        marker = path.name.find(".cam.")
+        return path.name if marker < 0 else path.name[marker:]
+
+    candidates = {tail(path): path for path in history_files(arguments.candidate, arguments.pattern)}
     reports = []
     for path in history_files(arguments.reference, arguments.pattern):
-        other = arguments.candidate / path.name
-        if other.is_file():
+        other = candidates.get(tail(path))
+        if other is not None:
             reports.append(compare(path, other, whole_file_after_start=is_restart(path)))
     every = [field for report in reports for field in report["fields"]]
     if not every:

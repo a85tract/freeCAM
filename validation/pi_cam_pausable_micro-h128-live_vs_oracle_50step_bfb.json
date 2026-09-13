@@ -1,0 +1,24 @@
+{
+  "bfb": false,
+  "reference_files": 4,
+  "candidate_files": 4,
+  "compared_files": 4,
+  "missing_in_candidate": [],
+  "extra_in_candidate": [],
+  "first_difference": {
+    "file": "cam.r.0001-01-02-03600.nc",
+    "kind": "value",
+    "variable": "ACGCME",
+    "index": [
+      0
+    ],
+    "reference": {
+      "value": 4.41184255164821e-07,
+      "bits": "0x3e9d9b7cdfca5e7f"
+    },
+    "candidate": {
+      "value": 5.548858739212911e-07,
+      "bits": "0x3ea29e6ef0e0cd72"
+    }
+  }
+}

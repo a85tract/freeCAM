@@ -19,7 +19,8 @@ from .spec import FunctionSpec
 _UNIT_BRACKET = re.compile(r"\[([^\]]+)\]")
 _DECLARATION = re.compile(
     r"^\s*(?:real\s*\(\s*r8\s*\)|real|integer|logical|character\s*\(\s*[^)]*\s*\))"
-    r"\s*(?:,[^:]*)?::\s*(?P<names>[^!]*?)\s*(?:!(?P<comment>.*))?$",
+    # attributes: intent(in), optional, dimension(0:mkx) -- parentheses may hold colons
+    r"\s*(?:,\s*(?:[^:(!]|\([^)]*\))*)?::\s*(?P<names>[^!]*?)\s*(?:!(?P<comment>.*))?$",
     re.IGNORECASE,
 )
 _CONTINUED_COMMENT = re.compile(r"^\s*!(?P<comment>.*)$")
@@ -80,10 +81,29 @@ def verify_against_inventory(
         )
         return report
     arguments = [item for item in record.get("arguments", ()) if not item.get("procedure")]
-    if len(arguments) != len(spec.arguments):
-        report.fail(f"inventory declares {len(arguments)} arguments, spec {len(spec.arguments)}")
+    dummies = [item for item in spec.arguments if item.role != "result"]
+    if len(arguments) != len(dummies):
+        report.fail(f"inventory declares {len(arguments)} arguments, spec {len(dummies)}")
         return report
-    for index, (declared, reviewed) in enumerate(zip(arguments, spec.arguments), start=1):
+    result = spec.result
+    declared_result = record.get("result")
+    is_function = str(record.get("procedure_kind", "")).lower() == "function" or declared_result is not None
+    if (result is None) != (not is_function):
+        report.fail("inventory and spec disagree on whether the routine is a function")
+    elif result is not None and declared_result is None:
+        # the inventory saw a function whose result type sits in the function statement
+        # (an elemental prefix) and recorded none; the reviewed spec supplies it
+        report.ok(f"inventory: a function whose result the spec types as {result.dtype}")
+    elif result is not None:
+        dtype, _ = _inventory_dtype(declared_result)
+        if dtype != result.dtype or int(declared_result.get("rank", -1)) != result.rank:
+            report.fail(
+                f"result {result.name}: inventory dtype {declared_result.get('dtype')!r} rank "
+                f"{declared_result.get('rank')}, spec dtype {result.dtype!r} rank {result.rank}"
+            )
+        elif str(declared_result.get("name", "")).lower() != result.name.lower():
+            report.fail(f"result: inventory names it {declared_result.get('name')!r}, spec {result.name!r}")
+    for index, (declared, reviewed) in enumerate(zip(arguments, dummies), start=1):
         name = str(declared["name"])
         where = f"argument {index} ({reviewed.name})"
         if name.lower() != reviewed.name.lower():
@@ -166,7 +186,8 @@ def verify_against_source(
     report = report or VerificationReport(spec.function)
     block = source_lines[max(0, line_start - 1) : line_end]
     found = declaration_units(block, [item.name for item in spec.arguments])
-    missing = [item.name for item in spec.arguments if item.name.lower() not in found]
+    # a function's result may be typed in the function statement itself, with no declaration line
+    missing = [item.name for item in spec.arguments if item.name.lower() not in found and item.role != "result"]
     if missing:
         report.fail("no declaration found in the routine for: " + ", ".join(missing))
     compared = 0

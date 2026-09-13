@@ -8,8 +8,8 @@
     "t",
     "q"
   ],
-  "bundle": "/glade/derecho/scratch/ruitong/pyCAM/PI-cam/function-capture-7218608.desched1/bundles/dadadj_capture.npz",
-  "capture_prefix": "/glade/derecho/scratch/ruitong/pyCAM/PI-cam/function-capture-7218608.desched1/raw/function",
+  "bundle": "${FREECAM_SCRATCH}/pyCAM/PI-cam/function-capture-7218608.desched1/bundles/dadadj_capture.npz",
+  "capture_prefix": "${FREECAM_SCRATCH}/pyCAM/PI-cam/function-capture-7218608.desched1/raw/function",
   "dt": [
     1800.0
   ],

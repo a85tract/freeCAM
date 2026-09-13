@@ -45,8 +45,11 @@ def test_every_argument_of_the_kernel_has_a_home_in_the_frame_in_call_order() ->
     # the original call carries the same arguments in the same order
     call = text[text.index("call mmacro_pcond("):text.index("end subroutine original_pcond")]
     assert call.count(",") >= len(names) - 1
-    # no callback from Fortran into Python anywhere in the module
-    assert "c_funptr" not in text.lower() and "c_f_procpointer" not in text.lower()
+    # no callback from Fortran into Python anywhere in the module: the one procedure
+    # pointer is the fiber body handed to the C fiber library, as the hooked pausable
+    # runners do, and nothing dereferences a pointer handed in
+    assert "c_f_procpointer" not in text.lower()
+    assert text.count("c_funloc(") == 1 and "c_funloc(fiber_body)" in text
 
 
 class _FakeStageSevenLibrary:
@@ -58,7 +61,7 @@ class _FakeStageSevenLibrary:
         self.token = 41
         for name in ("pycam_stage7_create_v1", "pycam_stage7_start_v1", "pycam_stage7_frame_v1",
                      "pycam_stage7_resume_v1", "pycam_stage7_error_v1", "pycam_stage7_reset_v1",
-                     "pycam_stage7_destroy_v1"):
+                     "pycam_stage7_destroy_v1", "pycam_stage7_original_v1"):
             setattr(self, name, _Entry(self, name))
 
 
@@ -109,7 +112,7 @@ def test_the_binding_starts_decodes_a_frame_and_resumes_with_the_token() -> None
     runner = StageSevenRunner(lib, Macrophysics.DESCRIPTORS)
     names = runner.names["mmacro_pcond"]                  # one entry per kernel the runner pauses at
     lib.names = names
-    assert runner.kernels == ("mmacro_pcond", "micro_mg_tend")
+    assert runner.kernels == ("mmacro_pcond", "micro_mg_tend", "cldfrc_fice", "instratus_condensate")
     assert names[:5] == ("lchnk", "ncol", "dt", "p", "dp") and names[-1] == "do_cldice"
     context = runner.create(STAGE)
     assert runner.start(context, {"mmacro_pcond": True}) == SegmentEvent.NEEDS_PYTHON_KERNEL

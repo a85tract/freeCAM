@@ -621,7 +621,7 @@
   "function": "mmacro_pcond",
   "library_sha256": "8ca6c0d2bcbbd7702558599132f60a8ec3b4876720fedc621c35d08f03732128",
   "mpi_ranks": 512,
-  "native_manifest": "/glade/work/ruitong/freeCAM/build/pi_cam_promoted/native_cam_manifest.json",
+  "native_manifest": "build/pi_cam_promoted/native_cam_manifest.json",
   "pbs_job_id": "7218608.desched1",
   "qualified_name": "cldwat2m_macro::mmacro_pcond",
   "schema_version": 1,

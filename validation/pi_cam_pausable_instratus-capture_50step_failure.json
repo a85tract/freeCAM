@@ -1,0 +1,18 @@
+{
+  "schema_version": 1,
+  "what": "A capture gate that ran its 50 steps and was then killed while writing the captured frames: instratus_condensate answered by the original at its hook with every call's frame recorded, 9000 calls per rank.",
+  "pbs_job_id": "7371012.desched1",
+  "job": "validation/jobs/pi_cam_pausable_50step.pbs",
+  "run_tag": "instratus-capture",
+  "python_stages": ["cloud_macro_microphysics"],
+  "segmented_original_kernels": "instratus_condensate",
+  "capture_kernels": "instratus_condensate",
+  "native_image": "build/pi_cam_promoted_p12",
+  "outcome": "model run exited 137 (rank 1 killed by signal 9, the rest by SIGTERM) during _save_frame_captures; all 512 npz files truncated; no summary, no capture.json",
+  "ranks": 512,
+  "steps_completed": 50,
+  "resources": {"requested_mem": "4 x 64 GB", "resources_used_mem_kb": 268435464, "walltime_at_kill": "00:15:00"},
+  "bfb_record_note": "pi_cam_pausable_instratus-capture_vs_oracle_50step_bfb.json was written by the job's comparison of the history the run had finished before it died; it is not evidence of a capture, and the resubmitted gate reuses the name.",
+  "diagnosis": "Memory, not numerics: resources_used.mem reached exactly the job's 256 GB request and the out-of-memory killer took one rank.  This kernel is called 9000 times per rank in 50 steps and its frame is 29 small arrays, so the capture holds about a quarter of a million NumPy objects per rank -- far more per-object overhead than the micro_mg_tend capture (100 large frames per rank) that fit the same request.  The hook gate without capture (7371011) ran at the same request and passed.",
+  "disposition": "Resubmit the capture gate with 235 GB per node and a 30-minute walltime; consider a lighter capture layout (one contiguous array per argument) for high-frequency kernels."
+}

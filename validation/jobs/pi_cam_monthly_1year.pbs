@@ -77,7 +77,7 @@ mpiexec --label -n 512 "${python}" -m freecam.pi_cam.cli \
 
 "${python}" tools/compare_with_reference_case.py \
   --candidate "${cam_run}" \
-  --reference /glade/derecho/scratch/fengzhu/CESM_output/f.e13.F1850C5.ne16_g16.icesm131_ihesp.PI-atm.001/run \
+  --reference "${FREECAM_LONG_REFERENCE_RUN:?set FREECAM_LONG_REFERENCE_RUN in site.env: the original CESM multi-year run this job compares against}" \
   --stream h0 \
   --output "${root}/bfb.json"
 

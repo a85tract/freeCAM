@@ -15,6 +15,7 @@ import argparse
 import gzip
 import hashlib
 import json
+import os
 from pathlib import Path
 import re
 import shlex
@@ -30,6 +31,7 @@ from freecam.pi_cam.state_codegen import (  # noqa: E402
     instrument_cam_comp,
     load_state_bridge,
 )
+from freecam.pi_cam.hooks import HOOKS, load_hooks  # noqa: E402
 from freecam.pi_cam.kernel_codegen import (  # noqa: E402
     generate_direct_kernel_module,
     load_direct_kernels,
@@ -69,10 +71,16 @@ PBUF_FIELD_SYMBOL = "pycam_pbuf_field_v1"
 # objects the builder already replaces.
 SUPPORT_MODULES = ("pycam_macro_kernels.F90", "pycam_macro_handles.F90",
                    "pycam_rad_kernels.F90", "pycam_rad_handles.F90",
+                   # the radiation process slot: a compiled plugin answering the driver's
+                   # radiative branch, asked by the radiation runner (a skeleton slot)
+                   "pycam_rad_process.F90",
                    "pycam_micro_kernels.F90", "pycam_mm_kernels.F90",
                    "pycam_aero_kernels.F90",
                    "pycam_micro_handles.F90", "pycam_aero_handles.F90",
                    "pycam_mm_handles.F90",
+                   # the hooks: kernels reached inside compiled routines by symbol
+                   # redirection; the runners of hooked kernels use this module
+                   "pycam_hooks.F90",
                    # the pausable runners: hosts, then each process's units (a
                    # driver before the glue that binds it), then its runner
                    "pycam_stage_hosts.F90",
@@ -275,9 +283,188 @@ def _operations(state_bridge, direct_kernels=(), *, zero_copy_state: bool = Fals
     return operations
 
 
+def _text_sha256(path: Path, work: Path) -> str:
+    """The bytes of an object's .text section: the machine code a redirection must leave alone."""
+
+    dump = work / f"{path.name}.text.bin"
+    _run(["objcopy", "-O", "binary", "--only-section=.text", str(path), str(dump)], cwd=work)
+    return _sha256(dump)
+
+
+def _refuse_duplicate_globals(objects: list[Path]) -> None:
+    """Two support objects defining one global symbol is a build error.
+
+    Linked through the archive, the second definition would be dropped without
+    a word and every reference would reach the first: two runners whose fiber
+    bodies shared the bare C name ``fiber_body`` ran each other's state machine
+    (gate 7343594).
+    """
+
+    owners: dict[str, Path] = {}
+    duplicates: list[str] = []
+    for path in objects:
+        output = subprocess.run(["nm", "-g", "--defined-only", str(path)], check=True, capture_output=True, text=True).stdout
+        for line in output.splitlines():
+            parts = line.split()
+            if len(parts) != 3 or parts[1] not in ("T", "D", "B", "R"):
+                continue
+            symbol = parts[2]
+            if symbol in owners and owners[symbol] != path:
+                duplicates.append(f"{symbol} ({owners[symbol].name}, {path.name})")
+            owners.setdefault(symbol, path)
+    if duplicates:
+        raise RuntimeError("global symbols defined by more than one support object: " + "; ".join(sorted(duplicates)))
+
+
+def _relocations_naming(path: Path, symbol: str) -> int:
+    output = subprocess.run(["readelf", "-rW", str(path)], check=True, capture_output=True, text=True).stdout
+    return sum(1 for line in output.splitlines() if line.split() and symbol in line.split())
+
+
+def _load_tool(name: str):
+    import importlib.util
+    spec = importlib.util.spec_from_file_location(name, REPO / "tools" / f"{name}.py")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def _refuse_trampoline_collisions(trampoline_object: Path, support_objects) -> None:
+    """A trampoline symbol defined strongly anywhere else would win or lose the link silently.
+
+    The image links with --allow-multiple-definition, where the first strong
+    definition wins without a diagnostic; a counting trampoline must therefore
+    never share a symbol with a support module (a replacement hook included).
+    """
+
+    def strong_globals(path: Path) -> set[str]:
+        out = subprocess.run(["nm", "-g", "--defined-only", str(path)], check=True,
+                             capture_output=True, text=True).stdout
+        return {line.split()[-1] for line in out.splitlines() if line.split() and line.split()[-2] in ("T", "D", "B", "R")}
+
+    trampolines = strong_globals(trampoline_object) - {"pycam_kcount_kernel_count"}
+    for support in support_objects:
+        clash = trampolines & strong_globals(Path(support))
+        if clash:
+            raise RuntimeError(f"counting trampolines collide with {Path(support).name}: {sorted(clash)}")
+
+
+def _definition_address(target: Path, symbol: str) -> str:
+    symbols = subprocess.run(["nm", str(target)], check=True, capture_output=True, text=True).stdout
+    definition = next((line.split() for line in symbols.splitlines()
+                       if line.split() and line.split()[-1] == symbol and line.split()[-2] == "T"), None)
+    if definition is None:
+        raise RuntimeError(f"{target.name} does not define {symbol}; weaken-definition needs the definition")
+    return definition[0]
+
+
+def _apply_redirections(archive: Path, out_dir: Path, plans: dict[str, list[dict]]) -> tuple[list[dict], list[Path]]:
+    """Redirected copies of archive objects; one extraction and one objcopy per object.
+
+    Every operation on one object is applied in a single objcopy invocation so a
+    later redirection can never clobber an earlier one.  ``redefine`` renames a
+    reference (the hooks' rename-references mode); ``weaken-alias`` weakens a
+    definition and adds a second, global name at the same address -- the strong
+    definition elsewhere (a replacement hook or a counting trampoline) then wins
+    every reference, and forwards to the alias, never to itself.  The .text bytes
+    are proved unchanged either way.
+    """
+
+    out_dir.mkdir(parents=True, exist_ok=True)
+    records: list[dict] = []
+    objects: list[Path] = []
+    for object_name, operations in sorted(plans.items()):
+        target = out_dir / object_name
+        if target.exists():
+            target.unlink()
+        _run(["ar", "x", str(archive), object_name], cwd=out_dir)
+        before_text = _text_sha256(target, out_dir)
+        flags: list[str] = []
+        for op in operations:
+            if op["kind"] == "redefine":
+                if _relocations_naming(target, op["old"]) == 0:
+                    raise RuntimeError(f"{object_name} has no relocation naming {op['old']}; nothing to redirect")
+                flags.append(f"--redefine-sym={op['old']}={op['new']}")
+            elif op["kind"] == "weaken-alias":
+                address = _definition_address(target, op["symbol"])
+                if op.get("alias"):
+                    flags.append(f"--add-symbol={op['alias']}=.text:0x{address},global,function")
+                flags.append(f"--weaken-symbol={op['symbol']}")
+            elif op["kind"] == "alias-at":
+                # a second global name at an existing definition's address; the
+                # definition itself is left exactly as it is
+                address = _definition_address(target, op["symbol"])
+                flags.append(f"--add-symbol={op['alias']}=.text:0x{address},global,function")
+            else:
+                raise RuntimeError(f"unknown redirection kind {op['kind']!r}")
+        _run(["objcopy", *flags, str(target)], cwd=out_dir)
+        after_text = _text_sha256(target, out_dir)
+        if after_text != before_text:
+            raise RuntimeError(f"{object_name}: the redirection changed .text ({before_text[:12]} -> {after_text[:12]})")
+        object_sha = _sha256(target)
+        for op in operations:
+            named = op["new"] if op["kind"] == "redefine" else (
+                op["alias"] if op["kind"] == "alias-at" else op["symbol"])
+            records.append({**op["record"], "mode": op["record"].get("mode", op["kind"]),
+                            "object": object_name, "relocations": _relocations_naming(target, named),
+                            "text_sha256": after_text, "object_sha256": object_sha})
+        objects.append(target)
+    return records, objects
+
+
+def _hook_plans(table) -> dict[str, list[dict]]:
+    """The hook table's redirections as per-object operation plans."""
+
+    plans: dict[str, list[dict]] = {}
+    for hook in table.hooks:
+        for caller in hook.callers:
+            record = {"kernel": hook.kernel, "routine": caller.routine, "mode": hook.redirect,
+                      "callee_symbol": hook.callee_symbol, "hook_symbol": hook.symbol,
+                      "original_symbol": hook.original_symbol}
+            if hook.redirect == "rename-references":
+                op = {"kind": "redefine", "old": hook.callee_symbol, "new": hook.symbol, "record": record}
+            else:
+                op = {"kind": "weaken-alias", "symbol": hook.callee_symbol,
+                      "alias": hook.original_symbol, "record": record}
+            plans.setdefault(caller.object, []).append(op)
+    return plans
+
+
+def _kcount_plans(rows: list[dict]) -> dict[str, list[dict]]:
+    """The counting trampolines' weaken-and-alias operations, one per kernel."""
+
+    plans: dict[str, list[dict]] = {}
+    for row in rows:
+        record = {"kernel": row["routine"], "qualified": row["qualified"], "mode": "count-weaken-alias",
+                  "callee_symbol": row["symbol"], "hook_symbol": row["symbol"], "original_symbol": row["alias"],
+                  "index": row["index"]}
+        plans.setdefault(row["object"], []).append(
+            {"kind": "weaken-alias", "symbol": row["symbol"], "alias": row["alias"], "record": record})
+    return plans
+
+
+def _torch_lib_dir() -> Path:
+    """The libtorch directory of this interpreter's torch package, which FTorch links against."""
+
+    try:
+        import torch  # noqa: WPS433 - the build resolves the runtime it links
+    except ImportError as exc:
+        raise RuntimeError("--torch-lib was not given and torch is not importable here") from exc
+    return Path(torch.__file__).resolve().parent / "lib"
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--case", type=Path, required=True)
+    parser.add_argument(
+        "--ftorch-root", type=Path, default=REPO / "build/ftorch",
+        help="an FTorch installation (include/ftorch with the .mod files, lib64 with libftorch.so): "
+             "the hooks module runs bound TorchScript models through it",
+    )
+    parser.add_argument(
+        "--torch-lib", type=Path, default=None,
+        help="the libtorch directory FTorch was built against (default: the torch package of this interpreter)",
+    )
     parser.add_argument(
         "--source-root", type=Path,
         default=REPO / "build/iCESM1.3.1_PI_cam_only",
@@ -322,6 +509,11 @@ def main() -> int:
     parser.add_argument(
         "--manifest", type=Path,
         default=REPO / "build/pi_cam/native_cam_manifest.json",
+    )
+    parser.add_argument(
+        "--kcount-scope", default=os.environ.get("FREECAM_KCOUNT_SCOPE", ""),
+        help="build a counting image: 'all', 'batch-a', or comma-separated process ids / routine names; "
+             "empty (the default) builds the ordinary image with the replacement hooks",
     )
     args = parser.parse_args()
 
@@ -418,6 +610,18 @@ def main() -> int:
             command, source.name, source, destination, work, build / "atm/obj",
         )
         compile_logs[f"interface/{source.name}"] = str(log)
+    # FTorch, which the hooks module uses to run bound TorchScript models: its
+    # module files at compile time, its library (and libtorch) at link time
+    ftorch_root = args.ftorch_root.resolve()
+    ftorch_include = ftorch_root / "include/ftorch"
+    ftorch_lib = next((d for d in (ftorch_root / "lib64", ftorch_root / "lib") if (d / "libftorch.so").is_file()), None)
+    if not (ftorch_include / "ftorch.mod").is_file() or ftorch_lib is None:
+        raise RuntimeError(f"FTorch is not installed under {ftorch_root}: build it first (see docs/installation.md)")
+    torch_lib = args.torch_lib.resolve() if args.torch_lib is not None else _torch_lib_dir()
+    ftorch_link = [f"-L{ftorch_lib}", "-lftorch", f"-Wl,-rpath,{ftorch_lib}", f"-Wl,-rpath,{torch_lib}"]
+    cxx_runtime = ftorch_root / "cxx_runtime_dir"          # written by tools/build_ftorch.sh
+    if cxx_runtime.is_file() and cxx_runtime.read_text().strip():
+        ftorch_link.append(f"-Wl,-rpath,{cxx_runtime.read_text().strip()}")
     # The support modules first: physpkg and cam_comp `use` them, and ifort
     # writes their .mod files into the working directory, which -I. covers.
     support_objects: list[Path] = []
@@ -426,12 +630,16 @@ def main() -> int:
         if not source.is_file():
             raise RuntimeError(f"support module is absent from the prepared source: {source}")
         log, command = _compile_command(build, "macrop_driver.F90")
+        if source_name == "pycam_hooks.F90":
+            # the hooks call FTorch (bound TorchScript models): its module files
+            command = [*command, f"-I{ftorch_include}"]
         destination = work / f"{Path(source_name).stem}.o"
         compile_commands[source_name] = _compile_to(
             command, "macrop_driver.F90", source, destination, work, build / "atm/obj",
         )
         compile_logs[source_name] = str(log)
         support_objects.append(destination)
+    _refuse_duplicate_globals(support_objects)
     for source_name in (
         "physpkg.F90", "cam_comp.F90", "atm_comp_mct.F90",
     ):
@@ -677,6 +885,17 @@ def main() -> int:
         "-o", str(floating_environment_object),
     ]
     _run(floating_environment_compile, cwd=work)
+    # the fiber the hooked stages run on: a second stack the hooks yield from
+    fiber_source = REPO / "native/pi_cam/pycam_fiber.c"
+    fiber_object = work / "pycam_fiber.o"
+    fiber_compile = ["cc", "-c", "-O2", str(fiber_source), "-o", str(fiber_object)]
+    _run(fiber_compile, cwd=work)
+    # the kernel execution counters: the table and its context are linked into
+    # every image so the ABI is uniform; trampolines exist only in a counting image
+    kcount_source = REPO / "native/pi_cam/pycam_kcount.c"
+    kcount_object = work / "pycam_kcount.o"
+    kcount_compile = ["cc", "-c", "-O2", str(kcount_source), "-o", str(kcount_object)]
+    _run(kcount_compile, cwd=work)
 
     atm_archive = output.parent / "libatm_nonpic_python_control.a"
     base_atm_archive = build / "lib/libatm.a"
@@ -707,6 +926,84 @@ def main() -> int:
             generated_objects / "pycam_python_state_registry.o",
             *support_objects,
         )
+    hook_table = load_hooks()
+    # count-only observation: a scope selects kernels whose symbol a counting
+    # trampoline takes (weaken-and-alias on the defining object).  '' keeps
+    # today's image (hooks only); 'batch-a' keeps the hooks and adds the
+    # trampolines that do not collide with a hook-owned symbol; anything else
+    # ('all', process ids, routine names) drops the replacement hooks -- a
+    # counting image counts, it does not replace.
+    kcount_scope = args.kcount_scope.strip()
+    # the replacement hooks stay linked and redirected in every image (their
+    # module strongly defines the weaken-definition kernels' symbols, so an
+    # image without the redirection would resolve those symbols ambiguously)
+    hooks_active = True
+    plans = _hook_plans(hook_table)
+    kcount_rows: list[dict] = []
+    kcount_chained: list[dict] = []
+    trampoline_source_sha = None
+    kcount_observability_sha = None
+    if kcount_scope:
+        kcount_gen = _load_tool("generate_pi_cam_kcount_trampolines")
+        observability = kcount_gen.load_observability()
+        kcount_observability_sha = observability["content_hash"]
+        selection = kcount_gen.select_kernels(
+            observability, "cldfrc_fice" if kcount_scope == "batch-a" else kcount_scope)
+        hooks_by_symbol = {hook.callee_symbol: hook for hook in hook_table.hooks
+                           if hook.redirect == "weaken-definition"}
+        for kernel in selection:
+            hook = hooks_by_symbol.get(kernel["symbol"])
+            if hook is None:
+                kcount_rows.append(kernel)
+                continue
+            # the hook owns this kernel's symbol: chain the count between the
+            # hook and the original -- the trampoline takes the hook's alias
+            # name and jumps to a second alias at the same address, so every
+            # call (hooked, armed or not) is counted exactly once
+            chained = dict(kernel)
+            chained["symbol"] = hook.original_symbol
+            chained["chained_from"] = kernel["symbol"]
+            kcount_rows.append(chained)
+            kcount_chained.append({"qualified": kernel["qualified"], "kernel_symbol": kernel["symbol"],
+                                   "trampoline_symbol": hook.original_symbol,
+                                   "reason": "the replacement hook owns the kernel's symbol; the counting "
+                                             "trampoline sits between the hook and the original"})
+            for ops in plans.values():
+                for op in ops:
+                    if op["kind"] == "weaken-alias" and op.get("alias") == hook.original_symbol:
+                        op["alias"] = None      # the trampoline provides that name now
+        if not kcount_rows:
+            raise RuntimeError(f"kcount scope {kcount_scope!r} selects no instrumentable kernel")
+        trampoline_rows = kcount_gen.trampoline_table(kcount_rows)
+        trampoline_asm = generated_objects / "pycam_kcount_trampolines.S"
+        generated_objects.mkdir(parents=True, exist_ok=True)
+        trampoline_asm.write_text(kcount_gen.render(observability, kcount_rows, kcount_scope))
+        trampoline_source_sha = _sha256(trampoline_asm)
+        trampoline_object = generated_objects / "pycam_kcount_trampolines.o"
+        _run(["cc", "-c", str(trampoline_asm), "-o", str(trampoline_object)], cwd=work)
+        _refuse_trampoline_collisions(trampoline_object, support_objects)
+        plain_rows = [row for row, kernel in zip(trampoline_rows, kcount_rows) if "chained_from" not in kernel]
+        for object_name, ops in _kcount_plans(plain_rows).items():
+            plans.setdefault(object_name, []).extend(ops)
+        for row, kernel in zip(trampoline_rows, kcount_rows):
+            if "chained_from" not in kernel:
+                continue
+            # the alias the chained trampoline jumps to sits at the real
+            # definition's address; the hook op already weakened that symbol
+            record = {"kernel": row["routine"], "qualified": row["qualified"], "mode": "count-alias-at",
+                      "callee_symbol": kernel["chained_from"], "hook_symbol": row["symbol"],
+                      "original_symbol": row["alias"], "index": row["index"]}
+            plans.setdefault(row["object"], []).append(
+                {"kind": "alias-at", "symbol": kernel["chained_from"], "alias": row["alias"], "record": record})
+    else:
+        trampoline_rows = []
+        trampoline_object = None
+    redirections, redirected_objects = _apply_redirections(base_atm_archive, generated_objects / "redirected", plans)
+    hook_redirections = [r for r in redirections if r["mode"] in ("rename-references", "weaken-definition")]
+    count_redirections = [r for r in redirections if r["mode"] in ("count-weaken-alias", "count-alias-at")]
+    if not hooks_active:
+        hook_redirections = []
+    replacement_objects = (*replacement_objects, *redirected_objects)
     _replace_archive(
         base_atm_archive,
         atm_archive,
@@ -722,6 +1019,13 @@ def main() -> int:
     capture_executable = args.capture_executable.resolve()
     capture_link = list(patched_link)
     capture_link.insert(capture_link.index("-o"), str(floating_environment_object))
+    capture_link.insert(capture_link.index("-o"), str(fiber_object))
+    capture_link.insert(capture_link.index("-o"), str(kcount_object))
+    if trampoline_object is not None:
+        # the chained trampolines own names the hook module references
+        capture_link.insert(capture_link.index("-o"), str(trampoline_object))
+    for flag in ftorch_link:
+        capture_link.insert(capture_link.index("-o"), flag)
     capture_link[capture_link.index("-o") + 1] = str(capture_executable)
     _run(capture_link, cwd=build / "cpl/obj")
     # Record the exact Intel math runtime used by the standalone executable.
@@ -760,6 +1064,10 @@ def main() -> int:
         *(str(path) for path in support_objects),
         str(direct_kernel_object),
         str(floating_environment_object),
+        str(fiber_object),
+        str(kcount_object),
+        *((str(trampoline_object),) if trampoline_object is not None else ()),
+        *ftorch_link,
         "-Wl,--unresolved-symbols=ignore-all",
         "-o", str(fixed_executable),
     ]
@@ -921,6 +1229,24 @@ def main() -> int:
         "adapter": str(args.adapter.resolve()),
         "floating_environment": str(args.floating_environment.resolve()),
         "floating_environment_compile_command": floating_environment_compile,
+        "fiber": {"source": str(fiber_source), "source_sha256": _sha256(fiber_source), "compile_command": fiber_compile,
+                  "stack_bytes": hook_table.fiber_stack_bytes},
+        "hooks": {"table": str(HOOKS), "table_sha256": hook_table.sha256, "redirections": hook_redirections,
+                  "active": hooks_active},
+        "kernel_counts": {
+            "scope": kcount_scope or None,
+            "observability_sha256": kcount_observability_sha,
+            "table": {"slots": 64, "max_kernels": 1024, "dtype": "int64",
+                      "threading": "single-threaded per rank only; refuse OpenMP threads"},
+            "source": str(kcount_source), "source_sha256": _sha256(kcount_source),
+            "compile_command": kcount_compile,
+            "trampolines_sha256": trampoline_source_sha,
+            "instrumented": [{k: row[k] for k in ("index", "qualified", "routine", "symbol", "alias",
+                                                  "object", "coverage", "processes")}
+                             for row in trampoline_rows],
+            "chained_through_hooks": kcount_chained,
+            "redirections": count_redirections,
+        },
         "intel_math_library": str(imf_shared),
         "operations": _operations(
             state_bridge,
@@ -959,6 +1285,8 @@ def main() -> int:
         "promoted_kernel_link_command": promoted_kernel_link,
         "capture_executable": str(capture_executable),
         "capture_executable_sha256": _sha256(capture_executable),
+        "ftorch": {"root": str(ftorch_root), "library": str(ftorch_lib / "libftorch.so"),
+                   "library_sha256": _sha256(ftorch_lib / "libftorch.so"), "torch_lib": str(torch_lib)},
         "capture_link_command": capture_link,
         "driver_link_objects": driver_objects,
         "fixed_link_command": fixed_link,

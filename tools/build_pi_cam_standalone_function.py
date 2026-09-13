@@ -88,8 +88,15 @@ def standalone_kernel(spec: FunctionSpec) -> DirectKernel:
 
     arguments = []
     fields = set(DirectKernelArgument.__dataclass_fields__)
+    from freecam.physics.column import presence_field
+
     for item in spec.arguments:
         extra: dict[str, object] = {}
+        if item.optional:
+            extra["dummy"] = item.name
+            extra["presence"] = presence_field(spec, item)
+        if item.role == "result":
+            extra["result"] = True
         if item.pointer:
             if "pointer" not in fields:
                 raise RuntimeError(
@@ -119,12 +126,20 @@ def standalone_kernel(spec: FunctionSpec) -> DirectKernel:
                 **extra,
             )
         )
+        if item.optional:
+            # one int32 per chunk: whether the caller passed the optional argument
+            arguments.append(
+                DirectKernelArgument(
+                    field=presence_field(spec, item), dtype=np.dtype("int32").str, rank=1, intent="in",
+                    chunk_axis=1, extents=("chunks",), flag_for=f"{spec.function}.{item.name}",
+                )
+            )
     axes = tuple(
         axis for axis in _MODULE_AXES
         if any(axis in item.native_shape for item in spec.arguments)
     )
     modules: list[tuple[str, tuple[str, ...]]] = []
-    if spec.module:
+    if spec.module and spec.binding == "module":
         modules.append((spec.module, (spec.routine,)))
     if axes:
         modules.append(("ppgrid", axes))
@@ -135,7 +150,40 @@ def standalone_kernel(spec: FunctionSpec) -> DirectKernel:
         arguments=tuple(arguments),
         modules=tuple(modules),
         action_id=1,
+        kind=spec.kind,
+        interface=mangled_interface(spec) if spec.binding == "mangled" else (),
     )
+
+
+_INTERFACE_TYPES = {"float64": "real(c_double)", "int32": "integer(c_int32_t)", "int64": "integer(c_int64_t)"}
+
+
+def mangled_interface(spec: FunctionSpec) -> tuple[str, ...]:
+    """An explicit interface reaching a private module procedure by its ifort symbol.
+
+    The wrapper cannot ``use`` a private procedure, so it declares the routine
+    itself with ``bind(C, name='module_mp_routine_')``: scalars by reference,
+    explicit-shape arrays as assumed-size, optionals as optionals -- the same
+    argument passing the module's own callers compile to.  The routine's own
+    object is linked unchanged; the interface only names how to call it.
+    """
+
+    dummies = [item for item in spec.arguments if item.role != "result"]
+    names = ", ".join(item.name for item in dummies)
+    result = spec.result
+    if result is not None:
+        head = f"{_INTERFACE_TYPES[result.dtype]} function {spec.routine}({names}) bind(C, name='{spec.bound_symbol}')"
+    else:
+        head = f"subroutine {spec.routine}({names}) bind(C, name='{spec.bound_symbol}')"
+    lines = [head, "  use, intrinsic :: iso_c_binding, only: c_double, c_int32_t, c_int64_t"]
+    for item in dummies:
+        attributes = [f"intent({item.intent})"]
+        if item.optional:
+            attributes.append("optional")
+        shape = "(*)" if item.rank else ""
+        lines.append(f"  {_INTERFACE_TYPES[item.dtype]}, {', '.join(attributes)} :: {item.name}{shape}")
+    lines.append(f"end {'function' if result is not None else 'subroutine'} {spec.routine}")
+    return tuple(lines)
 
 
 def stub_list(spec: FunctionSpec) -> str:

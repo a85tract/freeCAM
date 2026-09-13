@@ -1,7 +1,14 @@
 from pathlib import Path
 import json
 
-from tools import report_pi_cam_perf as rp
+import importlib.util
+import sys
+
+_spec = importlib.util.spec_from_file_location(
+    "report_pi_cam_perf", Path(__file__).resolve().parents[2] / "tools/report_pi_cam_perf.py")
+rp = importlib.util.module_from_spec(_spec)
+sys.modules["report_pi_cam_perf"] = rp
+_spec.loader.exec_module(rp)
 
 
 def test_stat_csv_counters_are_read_by_event_name() -> None:

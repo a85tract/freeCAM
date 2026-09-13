@@ -109,13 +109,38 @@ STAGE_CLASSES = (
 #: Validation records per kernel, by the step of the delivery loop they prove.
 #: ``{name}`` is the kernel's name; a pattern that names no file is a gap.
 EVIDENCE_PATTERNS = {
-    "capture": ("pi_cam_{name}_capture_50step.json",),
+    # captured either by the Fortran instrumentation (pycam_function_capture) or at the
+    # runner's pause, every call's frame recorded in a bit-for-bit gate
+    "capture": ("pi_cam_{name}_capture_50step.json", "pi_cam_pausable_{name}-capture_50step.json"),
     "standalone_build": ("pi_cam_{name}_standalone_build.json", "pi_cam_{name}_standalone_manifest.json"),
-    "replay_full_chunk": ("pi_cam_{name}_full_chunk_vs_capture.json",),
-    "replay_single_column": ("pi_cam_{name}_single_column_vs_capture.json",),
-    "replay_public_api": ("pi_cam_{name}_public_api_vs_capture.json",),
+    # frame captures are replayed through the public function on every captured call and
+    # lane, which is at once the chunk, the column and the public-API replay
+    "replay_full_chunk": ("pi_cam_{name}_full_chunk_vs_capture.json", "pi_cam_{name}_frame_replay.json"),
+    "replay_single_column": ("pi_cam_{name}_single_column_vs_capture.json", "pi_cam_{name}_frame_replay.json"),
+    "replay_public_api": ("pi_cam_{name}_public_api_vs_capture.json", "pi_cam_{name}_frame_replay.json"),
     "module_state": ("pi_cam_{name}_module_state.json",),
 }
+def _capture_named_by_replay(name: str) -> list[str]:
+    """The capture run a kernel's frame-replay record names, when its records are here and bit-for-bit.
+
+    A capture run's tag need not spell the kernel's name (``fice-capture`` recorded
+    ``cldfrc_fice``); the replay record carries the run tag and the comparison it
+    was checked against, and the capture counts only when both are present and
+    the run was bit-for-bit.
+    """
+
+    replay = _record(f"pi_cam_{name}_frame_replay.json")
+    capture = (replay or {}).get("capture") or {}
+    run_tag, bfb_name = capture.get("run_tag"), capture.get("bfb_record")
+    if not run_tag or not bfb_name:
+        return []
+    record_name = f"{run_tag}.json"
+    bfb = _record(bfb_name)
+    if not (VALIDATION / record_name).is_file() or bfb is None or not bfb.get("bfb"):
+        return []
+    return [record_name]
+
+
 #: In-model replacement gates that are not named after the kernel: the record
 #: and the bit-for-bit comparison, and what path they prove.
 IN_MODEL_GATES = {
@@ -170,6 +195,7 @@ class KernelRow:
     in_model_gates: list[dict[str, Any]] = field(default_factory=list)
     status: str = "open"
     missing: list[str] = field(default_factory=list)
+    note: str | None = None
 
 
 @dataclass(slots=True)
@@ -258,6 +284,8 @@ def _kernel_rows(stage_classes: Iterable[str], runner_specs: Mapping[str, Any]) 
             contract = contracts.get(name)
             evidence = {step: [p.format(name=name) for p in patterns if (VALIDATION / p.format(name=name)).is_file()]
                         for step, patterns in EVIDENCE_PATTERNS.items()}
+            if not evidence["capture"]:
+                evidence["capture"] = _capture_named_by_replay(name)
             gates = []
             for path, record, bfb_record in (*IN_MODEL_GATES.get(name, ()), *_manifest_gates(spec, name)):
                 bfb = _record(bfb_record)
@@ -283,6 +311,7 @@ def _kernel_rows(stage_classes: Iterable[str], runner_specs: Mapping[str, Any]) 
                 bindable=bool(description["bindable"]),
                 validated_through_runner=bool(description["validated"]),
                 evidence=evidence, in_model_gates=gates, status=status, missing=missing,
+                note=(spec.kernel(name).note if spec is not None and name in spec.kernel_names else None),
             ))
         close = getattr(stage, "close", None)
         if callable(close):
@@ -435,7 +464,10 @@ def build_coverage() -> dict[str, Any]:
         "every_disabled_action_is_an_alternate_form": all(a.alternate_of for a in actions if not a.enabled),
         "catalog_actions_all_in_the_plan": not unknown_parents,
         "unknown_catalog_actions": unknown_parents,
-        "kernel_owned_once": len({k.kernel for k in kernel_rows}) == len(kernel_rows),
+        # a kernel may be replaceable in several processes (cldfrc_fice pauses in
+        # the deep-convection hook and in the cloud stage's transcription), each
+        # scoped to its own stage; ownership is unique per (kernel, stage)
+        "kernel_owned_once": len({(k.kernel, k.stage_action) for k in kernel_rows}) == len(kernel_rows),
         "execution_records": execution_facts,
     }
     unresolved = [
