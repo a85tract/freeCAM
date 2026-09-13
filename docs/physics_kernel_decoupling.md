@@ -771,15 +771,42 @@ The p21 image carries the runner with the slot and the module.  Gated on
   pressure; the 26 branch diagnostics are absent from the history restart
   as before.  Every rank held 1.09 GB at most; the job used 328 GB.
 
+The month followed on the main queue, full nodes, the replayed boundary
+(the surface prescribed, so no surface feedback), the same image and class
+in both runs:
+
+| run | step loop, 1,488 steps | radiation a rank | against the monthly oracle |
+| --- | ---: | ---: | --- |
+| `Radiation` installed, nothing bound (7418517) | 401.3 s | 34.2 s | bit-for-bit; every health count zero |
+| the 256-wide network at the slot (7418518) | 363.9 s | 2.9 s | not bit-for-bit by design |
+
+Nine percent of the month's step loop.  The plugin answered all 761,856
+calls (512 ranks, 744 radiative steps, two chunks) at 1.31 ms a call, the
+slowest rank 1.6; every rank held 1.09 GB at most.  The run stayed finite
+and the water-isotope checks fired thirteen times in the month -- two
+"BIG ERROR" lines at steps 825 and 1314, eleven stratiform isotopic mass
+errors on two ranks around step 1100 -- against none in the baseline and
+106,487 in the earlier instratus surrogate's month.  Against the oracle's
+history (`pi_cam_pausable_rad-month-slot_1month_drift.json`; median
+relative rms over 2,590 fields 0.64) the emulator's own error shows on day
+3, before the weather has diverged: net shortwave at the top of the
+atmosphere 0.4 W/m² low in the global mean with 9.4 W/m² rms over the
+columns, outgoing longwave 0.2 W/m² low with 4.7 rms, cloud fraction
+unmoved.  By day 30 the global means have drifted -- column water vapour
+1.5 kg/m² lower, net shortwave 4.8 W/m² lower, outgoing longwave 4.2 W/m²
+higher, the lowest level 0.9 K colder -- while the column-wise rms (surface
+pressure 13.9 hPa, temperature 6.6 K at the lowest level) is the scale at
+which any perturbed January diverges from the oracle in a month.  The
+state after the month is 5.3 K rms from the oracle's in temperature.
+
 What the loop now shows: a process emulator can be trained on the model's
 own captures, compiled, and bound inside the image at the top of the branch
-it replaces, and it then saves what it saves -- here about seven percent of
-the step loop for a network whose science is not yet good enough to use.
-The next gate is a month with the emulator at the slot against a baseline
-month on the same nodes, and the drift over that month; the network itself
-(longwave heating near the surface, the clear-sky and top-of-atmosphere
-diagnostics it does not produce) is the open problem the mechanism now
-exposes cleanly.
+it replaces, and it then saves what it saves -- nine percent of a month's
+step loop for a network whose science is not good enough to use: its
+radiation budget drifts by several W/m² in a month and it produces none of
+the clear-sky and top-of-atmosphere diagnostics.  The mechanism is closed;
+the network (more data, the longwave near the surface, the diagnostics) is
+the open problem it exposes cleanly.
 
 ## Where it stands
 

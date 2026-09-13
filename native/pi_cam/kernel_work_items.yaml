@@ -82,19 +82,16 @@ items:
   - cam_run1.radiation
   owner_class: freecam.physics.radiation.Radiation
   state: in_progress
-  stage: in_model_replacement
+  stage: performance_gate
   owner: claude
   branch: physics-kernel-api-closure
   started_at: '2026-09-12'
   updated_at: '2026-09-12'
-  next_gate: a month with the emulator at the slot against a baseline month on the same nodes; month drift
-  note: 'The whole radiative branch of radiation_tend (optics, both RRTMG cores, their diagnostics) is
-    one process slot. In the Python transcription: capture (7417373, BFB), replay (7417486, state exact;
-    26 history diagnostics absent), trained emulators live (7417501, 7417608, 7417764, 7417763). Inside
-    the image (p21): a skeleton slot in the pausable runner asks pycam_rad_process_answer; the runner
-    with the slot unbound is BFB (7418303), the month-trained 256-wide emulator compiled with Numba and
-    bound at the slot runs in shadow BFB at 1.4 ms a call (7418443) and live answers all 25,600 calls
-    (7418444): rad_tend 0.23 s a rank per 50 steps against 1.40, the step loop 14.7 s against 16.1, the
-    state the same as the Python path''s. Two plugin runs OOM at 4 x 64 GB (7418223/7418224, failure records)
-    and two ran with the slot never bound because prepare_segmented was defined twice (7418304/7418305,
-    fixed, not evidence).'
+  next_gate: 'a network good enough to use: more captured data, the longwave near the surface, the clear-sky
+    and TOA diagnostics; then a paired year'
+  note: 'Month pair on main (replayed boundary, same image and class): Radiation installed and nothing
+    bound 401.3 s over 1,488 steps, bit-for-bit with the monthly oracle (7418517); the 256-wide emulator
+    at the slot 363.9 s, nine percent shorter, 761,856 plugin calls at 1.31 ms each, radiation 2.9 s a
+    rank against 34.2 (7418518). Finite for the month; thirteen water-isotope check lines against none
+    in the baseline; the radiation budget drifts by 4 to 5 W/m2 in the global mean over the month (drift
+    record kept). The mechanism is closed; the network is the open problem.'
