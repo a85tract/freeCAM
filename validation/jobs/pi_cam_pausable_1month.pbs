@@ -100,6 +100,10 @@ if [ -n "${PYCAM_RADIATION_PYTHON:-}" ]; then
     # replay:DIR or file.py:function answers the branch in the driver's place
     stage_flags+=(--radiation-model "${PYCAM_RAD_MODEL}")
   fi
+  if [ -n "${PYCAM_RAD_BLOCK_MODEL:-}" ]; then
+    # replay:DIR or file.py:function answers the branch in the driver's place
+    stage_flags+=(--radiation-block-model "${PYCAM_RAD_BLOCK_MODEL}")
+  fi
 fi
 if [ -n "${PYCAM_CLOUD_PYTHON:-}" ]; then
   # the cloud macro/microphysics class (stage 7) over its own runner
@@ -161,7 +165,7 @@ status=0
   --candidate "${run_dir}" \
   --output "${bfb_output}" || status=$?
 
-if [ -n "${PYCAM_KERNEL_MODELS:-}${PYCAM_RAD_MODEL:-}${PYCAM_RAD_PLUGIN:-}${PYCAM_RAD_TORCH_MODEL:-}" ]; then
+if [ -n "${PYCAM_KERNEL_MODELS:-}${PYCAM_RAD_MODEL:-}${PYCAM_RAD_PLUGIN:-}${PYCAM_RAD_TORCH_MODEL:-}${PYCAM_RAD_BLOCK_MODEL:-}" ]; then
   # a model's month is not bit-for-bit; how far each history field moved, in
   # units of the field's own variability, and whether anything went non-finite
   "${python}" tools/report_pi_cam_surrogate_drift.py \

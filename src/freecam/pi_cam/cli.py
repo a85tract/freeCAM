@@ -681,6 +681,18 @@ def main(argv: list[str] | None = None) -> int:
         help="the same in shadow: the plugin runs for its cost at every radiative step, the driver's branch answers.",
     )
     parser.add_argument(
+        "--radiation-block-model",
+        default=None,
+        metavar="SPEC",
+        help=(
+            "with --radiation-python: a model of radiation_tend's whole compute block, called by the Python "
+            "driver: Python reads the block's inputs from memory (radiation_process.BLOCK_INPUTS), calls the "
+            "function, writes the heating rates and fluxes back; the tendency and the history are one Fortran "
+            "call each.  replay:DIR replays a capture's outputs (the bit-for-bit gate of the driver); "
+            "MODULE:FUNCTION or path.py:FUNCTION calls a function over the block's inputs."
+        ),
+    )
+    parser.add_argument(
         "--radiation-torch-model",
         default=None,
         metavar="FILE.pt",
@@ -925,6 +937,7 @@ def main(argv: list[str] | None = None) -> int:
             slot_flags = [name for name, value in (("--radiation-capture", args.radiation_capture), ("--radiation-model", args.radiation_model),
                                                     ("--radiation-plugin", args.radiation_plugin),
                                                     ("--shadow-radiation-plugin", args.shadow_radiation_plugin),
+                                                    ("--radiation-block-model", args.radiation_block_model),
                                                     ("--radiation-torch-model", args.radiation_torch_model),
                                                     ("--shadow-radiation-torch-model", args.shadow_radiation_torch_model)) if value is not None]
             if len(slot_flags) > 1:
@@ -940,6 +953,9 @@ def main(argv: list[str] | None = None) -> int:
 
                 scheme.process = NativeModel(args.radiation_torch_model or args.shadow_radiation_torch_model,
                                              shadow=args.radiation_torch_model is None)
+            if args.radiation_block_model is not None:
+                from freecam.physics.radiation_process import load_block_model
+                scheme.process = load_block_model(args.radiation_block_model, rank=world.Get_rank())
             if args.radiation_capture is not None:
                 from freecam.physics.radiation_process import RadiationProcessCapture
                 scheme.process = RadiationProcessCapture(every=args.radiation_capture_every)

@@ -35,7 +35,7 @@ module pycam_rad_process
   implicit none
   private
   public :: pycam_rad_process_answer, pycam_rad_process_bind_v1, pycam_rad_process_bind_model_v1, &
-            pycam_rad_process_unbind_v1, pycam_rad_process_counts_v1, &
+            pycam_rad_process_unbind_v1, pycam_rad_process_counts_v1, pycam_rad_process_history_v1, &
             pycam_rad_process_prepare, pycam_rad_process_frame, pycam_rad_process_finish, pycam_rad_process_discard
 
   integer, parameter :: n_in = 46, n_out = 12
@@ -425,6 +425,39 @@ contains
     if (associated(t_rstate)) call rrtmg_state_destroy(t_rstate)
     t_rstate => null()
   end subroutine pycam_rad_process_discard
+
+  integer(c_int) function pycam_rad_process_history_v1(lchnk, ncol, dosw, dolw, qrs, qrl, fsns, fsnt, flns, flnt, &
+       fsds, sols, soll, solsd, solld, flwds, hr, cldfsnow, has_snow) bind(C, name='pycam_rad_process_history_v1') result(status)
+    ! the history the driver writes around the block, in one call, for a Python driver that computed the block
+    ! itself: CLDFSNOW (radiation.F90:846) and HR (1304) every step, the heating rates and the ten fluxes when
+    ! the branch computed (1061-1090, 1170-1187).  qrs and qrl are in the branch's energy units, before scaling.
+    integer(c_int), value, intent(in) :: lchnk, ncol, dosw, dolw, has_snow
+    real(c_double), intent(in) :: qrs(pcols, pver), qrl(pcols, pver), hr(pcols, pver), cldfsnow(pcols, pver)
+    real(c_double), intent(in) :: fsns(pcols), fsnt(pcols), flns(pcols), flnt(pcols), fsds(pcols)
+    real(c_double), intent(in) :: sols(pcols), soll(pcols), solsd(pcols), solld(pcols), flwds(pcols)
+    integer :: n
+    n = min(int(ncol), pcols)
+    if (has_snow /= 0_c_int) call outfld('CLDFSNOW', cldfsnow, pcols, int(lchnk))
+    if (dosw /= 0_c_int) then
+      ftem(:n, :pver) = qrs(:n, :pver) / cpair
+      call outfld('QRS', ftem, pcols, int(lchnk))
+      call outfld('FSDS', fsds, pcols, int(lchnk))
+      call outfld('FSNT', fsnt, pcols, int(lchnk))
+      call outfld('FSNS', fsns, pcols, int(lchnk))
+      call outfld('SOLS', sols, pcols, int(lchnk))
+      call outfld('SOLL', soll, pcols, int(lchnk))
+      call outfld('SOLSD', solsd, pcols, int(lchnk))
+      call outfld('SOLLD', solld, pcols, int(lchnk))
+    end if
+    if (dolw /= 0_c_int) then
+      call outfld('QRL', qrl(:n, :) / cpair, n, int(lchnk))
+      call outfld('FLNT', flnt, pcols, int(lchnk))
+      call outfld('FLNS', flns, pcols, int(lchnk))
+      call outfld('FLDS', flwds, pcols, int(lchnk))
+    end if
+    call outfld('HR', hr, pcols, int(lchnk))
+    status = 0_c_int
+  end function pycam_rad_process_history_v1
 
   integer(c_int) function pycam_rad_process_bind_v1(funptr, shadow_flag) &
        bind(C, name='pycam_rad_process_bind_v1') result(status)

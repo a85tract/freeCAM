@@ -477,3 +477,42 @@ def test_the_image_runner_numbers_the_slot_after_the_kernels_and_decodes_its_fra
     runner.run_original(context, "radiation_process")
     assert lib.original == 3
     assert runner.resume(context, "radiation_process", frame.token) == SegmentEvent.DONE and lib.resumed == (3, 4)
+
+
+def test_the_block_contract_decides_radiative_steps_and_loads_its_answerers(tmp_path: Path) -> None:
+    from freecam.physics.radiation_process import (BLOCK_INPUTS, RadiationBlockModel, RadiationBlockReplay, load_block_model,
+                                                   radiation_steps)
+
+    # radiation.F90:240-246 with iradsw = iradlw = 2, irad_always = 0: step 0, then every odd step from 3
+    assert [radiation_steps(n, 2, 2, 0)[0] for n in range(0, 8)] == [True, False, False, True, False, True, False, True]
+    assert radiation_steps(5, 1, 3, 0) == (True, False) and radiation_steps(3, 4, 4, 10) == (True, True)
+    assert "coszrs" not in BLOCK_INPUTS and "rstate_o3vmr" not in BLOCK_INPUTS and "ozone" in BLOCK_INPUTS
+    module = tmp_path / "blk.py"; module.write_text("def f(inputs):\n    return {}\n")
+    model = load_block_model(f"{module}:f", rank=0)
+    assert isinstance(model, RadiationBlockModel) and model.block and model.describe()["kind"] == "block-model"
+    with pytest.raises(PhysicsError, match="returned no"):
+        model({"ncol": 1})
+    stage = Radiation()
+    stage.process = model
+    assert stage.select_mode(None) == "python-driver"
+    directory = tmp_path / "cap"; directory.mkdir()
+    capture = RadiationProcessCapture()
+    capture.record({"nstep": 2, "lchnk": 7, "ncol": 3}, {name: np.zeros(3) for name in OUTPUTS})
+    capture.save(directory / "radiation_tend.rank-0000.npz")
+    replay = load_block_model(f"replay:{directory}", rank=0)
+    assert isinstance(replay, RadiationBlockReplay) and replay.block and replay.describe()["kind"] == "block-replay"
+
+
+def test_the_block_trainers_features_are_block_inputs() -> None:
+    import importlib.util
+    import sys
+
+    from freecam.physics.radiation_process import BLOCK_INPUTS
+
+    root = Path(__file__).resolve().parents[2] / "examples/plugins/numba_kernels"
+    sys.path.insert(0, str(root))
+    spec = importlib.util.spec_from_file_location("train_rad_block", root / "train_rad_block.py")
+    module = importlib.util.module_from_spec(spec); spec.loader.exec_module(module)
+    sources = {src for _, src, _, _, _, _ in module.LAYOUT}
+    assert sources <= set(BLOCK_INPUTS), sources - set(BLOCK_INPUTS)
+    assert module.NF == 33 * 30 + 30 + 8

@@ -193,6 +193,80 @@ class RadiationReplay:
         return f"RadiationReplay({str(self.path)!r})"
 
 
+#: The block contract: what the driver has in memory before any arithmetic, by name.  A block model takes
+#: these and returns OUTPUTS; the zenith angle and the RRTMG gas profiles are inside the block it replaces.
+BLOCK_INPUTS = (
+    "nstep", "lchnk", "ncol", "dt", "calday", "dosw", "dolw", "clat", "clon",
+    "state_t", "state_pmid", "state_pint", "state_pdel", "state_lnpint", "state_lnpmid", "state_q",
+    "cld", "cldfsnow", "dei", "mu", "lambdac", "iciwp", "iclwp", "des", "icswp", "dgnumwet", "qaerwat", "ozone",
+    "cam_in_lwup", "cam_in_asdir", "cam_in_asdif", "cam_in_aldir", "cam_in_aldif",
+)
+
+
+def radiation_steps(nstep: int, iradsw: int, iradlw: int, irad_always: int) -> tuple[bool, bool]:
+    """``radiation_do('sw')`` and ``('lw')`` as radiation.F90:240-246 decide them, from the step count alone."""
+
+    def do(freq: int) -> bool:
+        return nstep == 0 or freq == 1 or ((nstep - 1) % freq == 0 and nstep != 1) or nstep <= irad_always
+    return do(int(iradsw)), do(int(iradlw))
+
+
+class RadiationBlockModel:
+    """Answer the whole compute block with a function over BLOCK_INPUTS: the Python driver calls it."""
+
+    records = False
+    answers = True
+    block = True
+
+    def __init__(self, function: Callable[[dict[str, Any]], dict[str, np.ndarray]], *, label: str) -> None:
+        if not callable(function):
+            raise PhysicsError(f"a radiation block model must be callable, got {type(function).__name__}")
+        self.function = function
+        self.label = str(label)
+        self.calls = 0
+        self.seconds = 0.0
+        self.first_seconds = 0.0
+
+    def __call__(self, inputs: dict[str, Any]) -> dict[str, np.ndarray]:
+        import time
+
+        started = time.perf_counter()
+        answer = self.function(inputs)
+        elapsed = time.perf_counter() - started
+        missing = [name for name in OUTPUTS if name not in answer]
+        if missing:
+            raise PhysicsError(f"the radiation block model {self.label} returned no {missing}")
+        if self.calls == 0:
+            self.first_seconds = elapsed
+        self.calls += 1
+        self.seconds += elapsed
+        return answer
+
+    def describe(self) -> dict[str, Any]:
+        return {"kind": "block-model", "function": self.label, "calls": self.calls,
+                "seconds": self.seconds, "first_call_seconds": self.first_seconds}
+
+
+class RadiationBlockReplay(RadiationReplay):
+    """A capture's recorded outputs answering the whole block from the Python driver: its bit-for-bit gate."""
+
+    block = True
+
+    def describe(self) -> dict[str, Any]:
+        return {**super().describe(), "kind": "block-replay"}
+
+
+def load_block_model(spec: str, *, rank: int):
+    """``replay:DIR`` -> :class:`RadiationBlockReplay`; ``MODULE:FUNCTION`` or ``path.py:FUNCTION`` -> :class:`RadiationBlockModel`."""
+
+    if spec.startswith("replay:"):
+        return RadiationBlockReplay(spec[len("replay:"):], rank)
+    model = load_process_model(spec, rank=rank)
+    if not isinstance(model, RadiationProcessModel):
+        raise PhysicsError(f"--radiation-block-model takes replay:DIR, MODULE:FUNCTION or path.py:FUNCTION, got {spec!r}")
+    return RadiationBlockModel(model.function, label=model.label)
+
+
 class OriginalProcess:
     """Put in the process slot: the runner pauses at the slot and runs the original branch itself.
 
@@ -294,8 +368,9 @@ def load_process_model(spec: str, *, rank: int):
     return RadiationProcessModel(function, label=f"{Path(module_name).name}:{function_name}")
 
 
-__all__ = ["ARRAY_INPUTS", "OUTPUTS", "RSTATE_INPUTS", "SCALAR_INPUTS", "OriginalProcess", "RadiationProcessCapture",
-           "RadiationProcessModel", "RadiationReplay", "answer_frame", "load_process_model"]
+__all__ = ["ARRAY_INPUTS", "BLOCK_INPUTS", "OUTPUTS", "RSTATE_INPUTS", "SCALAR_INPUTS", "OriginalProcess",
+           "RadiationBlockModel", "RadiationBlockReplay", "RadiationProcessCapture", "RadiationProcessModel",
+           "RadiationReplay", "answer_frame", "load_block_model", "load_process_model", "radiation_steps"]
 
 
 # -- the slot inside the image -----------------------------------------------------------------

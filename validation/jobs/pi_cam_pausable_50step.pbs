@@ -98,6 +98,10 @@ if [ -n "${PYCAM_RADIATION_PYTHON:-}" ]; then
     # replay:DIR (bit-for-bit expected) or file.py:function answers the branch in the driver's place
     stage_flags+=(--radiation-model "${PYCAM_RAD_MODEL}")
   fi
+  if [ -n "${PYCAM_RAD_BLOCK_MODEL:-}" ]; then
+    # replay:DIR (bit-for-bit expected) or file.py:function answers the branch in the driver's place
+    stage_flags+=(--radiation-block-model "${PYCAM_RAD_BLOCK_MODEL}")
+  fi
 fi
 if [ -n "${PYCAM_CLOUD_PYTHON:-}" ]; then
   # the cloud macro/microphysics class (stage 7) over its own runner
