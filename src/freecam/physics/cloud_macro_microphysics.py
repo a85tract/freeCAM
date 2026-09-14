@@ -43,8 +43,10 @@ from .cloud_block import (
     MACRO_BLOCK,
     MICRO_BLOCK,
     STATE_FIELDS,
+    CensusBlock,
     OriginalBlock,
     VerifiedOriginalBlock,
+    census_fields,
     dynamic_fields,
 )
 from .errors import PhysicsError
@@ -559,6 +561,16 @@ class CloudMacroMicrophysics(NativeStage):
             st.block_dynamic = dynamic
         return buffer
 
+    def _census_views(self, st: StageRuntime, lchnk: int) -> dict[str, np.ndarray]:
+        """Views of every census field this image registers, for a CensusBlock in a slot (built once a runtime)."""
+
+        buffer = getattr(st, "census_pbuf", None)
+        if buffer is None:
+            fields = {f.name: PBufField(f.name, f.index, f.time_sliced, f.rank, f.dtype) for f in census_fields(st.native.library)}
+            buffer = PBuf(st.native.library, {name: f for name, f in fields.items() if f.registered})
+            st.census_pbuf = buffer
+        return self._buffer_views(buffer, sorted(buffer.fields), lchnk)
+
     def _written_buffers(self, st: StageRuntime, block: BlockContract) -> tuple[str, ...]:
         """The buffer fields a block writes: its contract's, plus the ones this image registers per constituent."""
 
@@ -698,10 +710,14 @@ class CloudMacroMicrophysics(NativeStage):
         if self.process is None or isinstance(self.process, OriginalBlock):
             if isinstance(self.process, VerifiedOriginalBlock):
                 self.process.begin(inputs)
+            census = self._census_views(st, lchnk) if isinstance(self.process, CensusBlock) else None
+            before_census = CensusBlock.snapshot(census, n) if census is not None else None
             arrays = [V[f"cam_in_{name}"] if name in CAM_IN_FIELDS else V[name] for name in MACROP_ARGUMENTS]
             H.macrop_driver_tend(lchnk, sub_dt, arrays); log("macrop_driver_tend")
             if isinstance(self.process, VerifiedOriginalBlock):
                 self.process.compare(inputs, self._block_outputs(st, lchnk, n, MACRO_BLOCK, V))
+            if census is not None:
+                self.process.compare(before_census, census, n, set(self._written_buffers(st, MACRO_BLOCK)), nstep, lchnk)
         else:
             self._write_block(st, lchnk, n, MACRO_BLOCK, self.process(inputs), V); log("macro_block_model")
         if before is not None:
@@ -719,11 +735,15 @@ class CloudMacroMicrophysics(NativeStage):
         if self.micro_process is None or isinstance(self.micro_process, OriginalBlock):
             if isinstance(self.micro_process, VerifiedOriginalBlock):
                 self.micro_process.begin(inputs)
+            census = self._census_views(st, lchnk) if isinstance(self.micro_process, CensusBlock) else None
+            before_census = CensusBlock.snapshot(census, n) if census is not None else None
             H.microp_aero_run(lchnk, sub_dt); log("microp_aero_run")
             H.microp_driver_tend(lchnk, sub_dt); log("microp_driver_tend")
             H.ptend_sum_aero(lchnk, n); log("physics_ptend_sum:ptend_aero")
             if isinstance(self.micro_process, VerifiedOriginalBlock):
                 self.micro_process.compare(inputs, self._block_outputs(st, lchnk, n, MICRO_BLOCK, V))
+            if census is not None:
+                self.micro_process.compare(before_census, census, n, set(self._written_buffers(st, MICRO_BLOCK)), nstep, lchnk)
         else:
             self._write_block(st, lchnk, n, MICRO_BLOCK, self.micro_process(inputs), V); log("micro_block_model")
         if before is not None:

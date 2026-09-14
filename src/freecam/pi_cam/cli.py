@@ -144,7 +144,7 @@ def _cloud_process_summary(records) -> dict[str, object] | None:
         if not firsts:
             continue
         entry: dict[str, object] = {k: v for k, v in firsts[0].items() if k in ("kind", "block", "function", "records")}
-        for key in ("first_mismatch", "first_input_mismatch", "first_output_mismatch"):
+        for key in ("first_mismatch", "first_input_mismatch", "first_output_mismatch", "unlisted", "both_planes"):
             hit = next((row[key] for row in firsts if key in row), None)
             if hit is not None:
                 entry[key] = hit

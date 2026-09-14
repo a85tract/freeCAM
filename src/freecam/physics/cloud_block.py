@@ -540,12 +540,82 @@ class VerifiedOriginalBlock(OriginalBlock):
         return f"VerifiedOriginalBlock({self.block_name!r}, {self.replay.directory!r})"
 
 
+CENSUS = REPO / "native/pi_cam/pbuf_census.yaml"
+
+
+def census_fields(library: Any) -> tuple[BufferField, ...]:
+    """Every buffer field of the census this image registers: name, resolved index, rank and kind.  A field with
+    two time samples is served whole (both planes, rank one higher), so a write to either plane shows."""
+
+    from .image import module_view
+
+    fields = []
+    for row in load_table(CENSUS)["rows"]:
+        index = None
+        for symbol in row["symbols"]:
+            try:
+                index = int(module_view(library, symbol, "int32", ()))
+            except Exception:       # noqa: BLE001 -- a module this image does not link
+                continue
+            break
+        if index is None or index <= 0:
+            continue
+        fields.append(BufferField(str(row["name"]), str(row["symbols"][0]), False, int(row["rank"]), str(row["dtype"]), index))
+    return tuple(fields)
+
+
+class CensusBlock(OriginalBlock):
+    """Put in a block's slot: the original driver runs in place, and every buffer field of the census is compared
+    before and after it -- the diagnostic that names what a block writes beyond its contract.
+
+    ``unlisted`` counts, by name, the census fields the block changed that its contract does not list among the
+    written; ``both_planes`` the listed time-rotated fields whose two planes both changed.
+    """
+
+    def __init__(self, block: BlockContract) -> None:
+        super().__init__(block)
+        self.compared = 0
+        self.unlisted: dict[str, int] = {}
+        self.both_planes: dict[str, int] = {}
+
+    @staticmethod
+    def snapshot(views: dict[str, np.ndarray], ncol: int) -> dict[str, np.ndarray]:
+        return {name: np.array(view[:ncol], copy=True) for name, view in views.items()}
+
+    def compare(self, before: dict[str, np.ndarray], views: dict[str, np.ndarray], ncol: int, written: set[str], step: int, lchnk: int) -> None:
+        changed_unlisted = []
+        for name, old in before.items():
+            new = np.asarray(views[name][:ncol])
+            if np.array_equal(old, new):
+                continue
+            if name in written:
+                if old.ndim == 3 and old.shape[2] == 2 and all(not np.array_equal(old[:, :, k], new[:, :, k]) for k in range(2)):
+                    self.both_planes[name] = self.both_planes.get(name, 0) + 1
+                continue
+            changed_unlisted.append(name)
+            self.unlisted[name] = self.unlisted.get(name, 0) + 1
+        self.compared += 1
+        if changed_unlisted and self.compared <= 4:
+            print(f"[cloud census] {self.block_name} block, step {step} chunk {lchnk}: wrote {len(changed_unlisted)} fields its contract "
+                  f"does not list: {', '.join(sorted(changed_unlisted)[:20])}", flush=True)
+
+    def describe(self) -> dict[str, Any]:
+        return {"kind": "original-census", "block": self.block_name, "compared": self.compared,
+                "unlisted": dict(sorted(self.unlisted.items())), "both_planes": dict(sorted(self.both_planes.items()))}
+
+    def __repr__(self) -> str:
+        return f"CensusBlock({self.block_name!r})"
+
+
 def load_block_model(spec: str, *, block: BlockContract, rank: int):
-    """``original`` -> :class:`OriginalBlock`; ``verify:DIR`` -> :class:`VerifiedOriginalBlock`; ``replay:DIR`` ->
-    :class:`BlockReplay`; ``MODULE:FUNCTION`` or ``path.py:FUNCTION`` -> :class:`BlockModel`."""
+    """``original`` -> :class:`OriginalBlock`; ``census`` -> :class:`CensusBlock`; ``verify:DIR`` ->
+    :class:`VerifiedOriginalBlock`; ``replay:DIR`` -> :class:`BlockReplay`; ``MODULE:FUNCTION`` or
+    ``path.py:FUNCTION`` -> :class:`BlockModel`."""
 
     if spec == "original":
         return OriginalBlock(block)
+    if spec == "census":
+        return CensusBlock(block)
     if spec.startswith("verify:"):
         return VerifiedOriginalBlock(spec[len("verify:"):], rank, block)
     if spec.startswith("replay:"):
@@ -561,5 +631,5 @@ def load_block_model(spec: str, *, block: BlockContract, rank: int):
 __all__ = ["BLOCKS", "BlockCapture", "BlockContract", "BlockModel", "BlockReplay", "BufferField", "CAM_IN_FIELDS",
            "CloudBlockCapture", "FORCING_FIELDS", "MACRO_BLOCK", "MACRO_BUFFERS", "MACRO_INPUT_BUFFERS", "MICRO_BLOCK",
            "MICRO_BUFFERS", "MICRO_INPUT_BUFFERS", "OriginalBlock", "SCALARS", "STATE_FIELDS", "TENDENCY_OUTPUTS",
-           "VerifiedOriginalBlock", "cloud_borne_fields", "dynamic_fields", "input_digests", "load_block_model",
-           "tracer_precipitation_fields"]
+           "CENSUS", "CensusBlock", "VerifiedOriginalBlock", "census_fields", "cloud_borne_fields", "dynamic_fields",
+           "input_digests", "load_block_model", "tracer_precipitation_fields"]

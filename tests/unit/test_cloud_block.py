@@ -219,3 +219,32 @@ def test_a_replay_survives_the_pickle_into_a_rank_with_its_mismatch_list(tmp_pat
     copy = pickle.loads(pickle.dumps(replay))          # the table is already loaded in this process: no MPI needed
     copy(dict(inputs, state_t=inputs["state_t"] + 1.0))
     assert copy.mismatches == [(5, 1540, ("state_t",))]
+
+
+def test_the_census_is_current_and_names_the_familiar_fields() -> None:
+    import subprocess, sys
+    from freecam.pi_cam.tables import load_table
+
+    root = Path(__file__).resolve().parents[2]
+    result = subprocess.run([sys.executable, str(root / "tools/build_pi_cam_pbuf_census.py"), "--check"], capture_output=True, text=True)
+    assert result.returncode == 0, result.stderr[-2000:]
+    rows = {row["name"]: row for row in load_table(CB.CENSUS)["rows"]}
+    assert rows["CLD"]["time_sliced"] and rows["CLD"]["rank"] == 3 and "macrop_driver_mp_cld_idx_" in rows["CLD"]["symbols"]
+    assert rows["PREC_STR"]["rank"] == 1 and not rows["PREC_STR"]["time_sliced"]
+    assert rows["QME"]["symbols"][0] == "micro_mg_cam_mp_qme_idx_"
+
+
+def test_a_census_block_names_what_the_original_wrote_beyond_the_contract() -> None:
+    census = CB.load_block_model("census", block=CB.MACRO_BLOCK, rank=0)
+    assert isinstance(census, CB.CensusBlock) and isinstance(census, CB.OriginalBlock)
+    views = {"CLD": np.zeros((16, 30, 2), order="F"), "QME": np.zeros((16, 30), order="F"), "PREC_STR": np.zeros(16)}
+    before = CB.CensusBlock.snapshot(views, 14)
+    views["CLD"][:14, :, 0] += 1.0                 # the listed field, one plane: the driver's own write
+    views["QME"][:14] += 2.0                        # not in the macrophysics contract
+    views["PREC_STR"][14:] = 9.0                    # beyond ncol: not looked at
+    census.compare(before, views, 14, written={"CLD"}, step=1, lchnk=1540)
+    assert census.describe() == {"kind": "original-census", "block": "macro", "compared": 1, "unlisted": {"QME": 1}, "both_planes": {}}
+    before = CB.CensusBlock.snapshot(views, 14)
+    views["CLD"][:14, :, :] += 1.0
+    census.compare(before, views, 14, written={"CLD"}, step=2, lchnk=1540)
+    assert census.describe()["both_planes"] == {"CLD": 1}
