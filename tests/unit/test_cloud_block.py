@@ -170,3 +170,34 @@ def test_original_in_a_slot_runs_the_driver_around_the_original_block() -> None:
     stage = CloudMacroMicrophysics(whole_drivers=True)
     stage.micro_process = original
     assert stage.select_mode() == "python-driver"
+
+
+def test_the_tracer_precipitation_fields_come_from_the_index_array(monkeypatch) -> None:
+    flat = -np.ones(CB.WATER_TYPES * CB.TRACER_SETS, dtype=np.int32)
+    flat[0 * CB.WATER_TYPES + 3] = 61      # set 1, stratiform rain
+    flat[0 * CB.WATER_TYPES + 4] = 62      # set 1, stratiform snow
+    flat[2 * CB.WATER_TYPES + 5] = 70      # set 3, convective rain
+    import freecam.physics.image as image
+    monkeypatch.setattr(image, "module_view", lambda library, symbol, dtype, shape: flat)
+    fields = CB.tracer_precipitation_fields(object())
+    assert [(f.name, f.index, f.rank) for f in fields] == [("WTRC_P_strain_1", 61, 1), ("WTRC_P_stsnow_1", 62, 1), ("WTRC_P_cvrain_3", 70, 1)]
+    assert CB.MICRO_BLOCK.tracer_precipitation and not CB.MACRO_BLOCK.tracer_precipitation
+
+
+def test_a_verified_original_names_the_outputs_the_original_produced_differently(tmp_path: Path) -> None:
+    ncol, pver, pcnst = 14, 30, 57
+    capture = CB.CloudBlockCapture()
+    inputs = {"nstep": 5, "lchnk": 1540, "ncol": ncol, "dt": 1800.0, "state_t": np.full((16, pver), 250.0)}
+    answer = _answer(CB.MACRO_BLOCK, ncol, pver, pcnst, seed=3)
+    capture.of(CB.MACRO_BLOCK).finish(capture.of(CB.MACRO_BLOCK).begin(inputs), answer)
+    capture.of(CB.MICRO_BLOCK).finish(capture.of(CB.MICRO_BLOCK).begin(inputs), _answer(CB.MICRO_BLOCK, ncol, pver, pcnst, seed=4))
+    capture.save(tmp_path, rank=0)
+    verified = CB.load_block_model(f"verify:{tmp_path}", block=CB.MACRO_BLOCK, rank=0)
+    assert isinstance(verified, CB.VerifiedOriginalBlock) and isinstance(verified, CB.OriginalBlock)
+    verified.compare(inputs, answer)
+    assert verified.mismatches == [] and verified.compared == 1
+    changed = dict(answer); changed["det_s"] = answer["det_s"] + 1.0; changed[CB.MACRO_BLOCK.buffer_names[0]] = answer[CB.MACRO_BLOCK.buffer_names[0]] * 2
+    verified.compare(inputs, changed)
+    assert verified.mismatches == [(5, 1540, (CB.MACRO_BLOCK.buffer_names[0], "det_s"))] or verified.mismatches == [(5, 1540, ("det_s", CB.MACRO_BLOCK.buffer_names[0]))]
+    described = verified.describe()
+    assert described["kind"] == "original-verified" and described["output_mismatches"] == 1 and described["input_mismatches"] == 0

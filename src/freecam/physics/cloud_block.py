@@ -109,6 +109,10 @@ class BlockContract:
     #: whether the block also writes the cloud-borne aerosol fields, registered per constituent at run time
     #: (modal_aero_data's ``qqcw``): the activation inside the microphysics block updates them in place
     cloud_borne: bool = False
+    #: whether the block also writes the water tracers' surface precipitation fields (water_tracer_vars'
+    #: ``wtrc_srfpcp_indices``, one per precipitation type and tracer set): the microphysics driver's
+    #: ``wtrc_output_precip`` fills the stratiform ones
+    tracer_precipitation: bool = False
 
     @property
     def file_stem(self) -> str:
@@ -136,7 +140,8 @@ MICRO_BLOCK = BlockContract(
     inputs=SCALARS + tuple(f"state_{n}" for n in STATE_FIELDS) + tuple(f.name for f in MICRO_BUFFERS)
     + tuple(f.name for f in MICRO_INPUT_BUFFERS),
     outputs=TENDENCY_OUTPUTS + tuple(f.name for f in MICRO_BUFFERS),
-    buffers=MICRO_BUFFERS, ptend_name="cldwat", input_buffers=MICRO_INPUT_BUFFERS, cloud_borne=True)
+    buffers=MICRO_BUFFERS, ptend_name="cldwat", input_buffers=MICRO_INPUT_BUFFERS, cloud_borne=True,
+    tracer_precipitation=True)
 BLOCKS = {block.name: block for block in (MACRO_BLOCK, MICRO_BLOCK)}
 
 
@@ -156,6 +161,43 @@ def cloud_borne_fields(library: Any, pcnst: int) -> tuple[BufferField, ...]:
         name = names[m].tobytes().decode("ascii", "replace").strip() or f"QQCW_{m + 1}"
         fields.append(BufferField(name, f"modal_aero_data_mp_qqcw_[{m}]", False, 2, "float64", index))
     return tuple(fields)
+
+
+#: water_types.F90: the water types a surface precipitation field is registered for, by index
+WATER_TYPES = 7
+WATER_TYPE_NAMES = {4: "strain", 5: "stsnow", 6: "cvrain", 7: "cvsnow"}
+#: water_tracer_vars.F90: WTRC_MAX_CNST / pwtype tracer sets in the index array
+TRACER_SETS = 700 // WATER_TYPES
+
+
+def tracer_precipitation_fields(library: Any) -> tuple[BufferField, ...]:
+    """The water tracers' surface precipitation fields of this image: water_tracer_vars' ``wtrc_srfpcp_indices``
+    (a ``(pwtype, sets)`` array in Fortran order, -1 where nothing is registered), named by type and set."""
+
+    from .image import module_view
+
+    flat = np.asarray(module_view(library, "water_tracer_vars_mp_wtrc_srfpcp_indices_", "int32", (WATER_TYPES * TRACER_SETS,)))
+    fields = []
+    for iwset in range(TRACER_SETS):
+        for itype in range(WATER_TYPES):
+            index = int(flat[iwset * WATER_TYPES + itype])
+            if index <= 0:
+                continue
+            kind = WATER_TYPE_NAMES.get(itype + 1, f"type{itype + 1}")
+            fields.append(BufferField(f"WTRC_P_{kind}_{iwset + 1}", f"water_tracer_vars_mp_wtrc_srfpcp_indices_[{itype},{iwset}]",
+                                      False, 1, "float64", index))
+    return tuple(fields)
+
+
+def dynamic_fields(library: Any, pcnst: int, block: BlockContract) -> tuple[BufferField, ...]:
+    """The buffer fields a block writes that only the image can name: registered per constituent or tracer."""
+
+    fields: tuple[BufferField, ...] = ()
+    if block.cloud_borne:
+        fields += cloud_borne_fields(library, pcnst)
+    if block.tracer_precipitation:
+        fields += tracer_precipitation_fields(library)
+    return fields
 
 
 # -- recording the original blocks -------------------------------------------------------------------------------
@@ -439,12 +481,63 @@ class OriginalBlock:
         return f"OriginalBlock({self.block_name!r})"
 
 
+class VerifiedOriginalBlock(OriginalBlock):
+    """Put in a block's slot with a capture: the original driver runs in place, and what it left behind is compared,
+    field by field and exactly, with what the capture recorded for the same step and chunk.
+
+    The other half of the replay's input digests: where a replay says which of a block's inputs first differ from
+    the captured run, this says which of a block's outputs the original produced differently from the capture on
+    the same inputs -- a dependence the contract does not name.
+    """
+
+    def __init__(self, directory: str | Path, rank: int, block: BlockContract) -> None:
+        super().__init__(block)
+        self.replay = BlockReplay(directory, rank, block)
+        self.mismatches: list[tuple[int, int, tuple[str, ...]]] = []
+        self.compared = 0
+
+    def compare(self, inputs: dict[str, Any], outputs: dict[str, Any]) -> None:
+        recorded = self.replay(inputs)
+        ncol = int(inputs["ncol"])
+        differing = []
+        for name, value in outputs.items():
+            if name not in recorded:
+                continue
+            mine = np.asarray(value)[:ncol] if np.ndim(value) else np.asarray(value)
+            theirs = np.asarray(recorded[name])[:ncol] if np.ndim(recorded[name]) else np.asarray(recorded[name])
+            if mine.shape != theirs.shape or not np.array_equal(mine, theirs):
+                differing.append(name)
+        self.compared += 1
+        if differing:
+            key = (int(inputs["nstep"]), int(inputs["lchnk"]))
+            self.mismatches.append((key[0], key[1], tuple(differing)))
+            if len(self.mismatches) <= 8:
+                print(f"[cloud verify] {self.block_name} block, step {key[0]} chunk {key[1]}: {len(differing)} outputs differ "
+                      f"from the capture: {', '.join(differing[:12])}", flush=True)
+
+    def describe(self) -> dict[str, Any]:
+        described = {"kind": "original-verified", "block": self.block_name, "compared": self.compared,
+                     "input_mismatches": len(self.replay.mismatches), "output_mismatches": len(self.mismatches)}
+        if self.mismatches:
+            first = self.mismatches[0]
+            described["first_output_mismatch"] = {"nstep": first[0], "lchnk": first[1], "outputs": list(first[2][:12])}
+        if self.replay.mismatches:
+            first = self.replay.mismatches[0]
+            described["first_input_mismatch"] = {"nstep": first[0], "lchnk": first[1], "inputs": list(first[2][:12])}
+        return described
+
+    def __repr__(self) -> str:
+        return f"VerifiedOriginalBlock({self.block_name!r}, {self.replay.directory!r})"
+
+
 def load_block_model(spec: str, *, block: BlockContract, rank: int):
-    """``original`` -> :class:`OriginalBlock`; ``replay:DIR`` -> :class:`BlockReplay`; ``MODULE:FUNCTION`` or
-    ``path.py:FUNCTION`` -> :class:`BlockModel`."""
+    """``original`` -> :class:`OriginalBlock`; ``verify:DIR`` -> :class:`VerifiedOriginalBlock`; ``replay:DIR`` ->
+    :class:`BlockReplay`; ``MODULE:FUNCTION`` or ``path.py:FUNCTION`` -> :class:`BlockModel`."""
 
     if spec == "original":
         return OriginalBlock(block)
+    if spec.startswith("verify:"):
+        return VerifiedOriginalBlock(spec[len("verify:"):], rank, block)
     if spec.startswith("replay:"):
         return BlockReplay(spec[len("replay:"):], rank, block)
     from .radiation_process import RadiationProcessModel, load_process_model
@@ -458,4 +551,5 @@ def load_block_model(spec: str, *, block: BlockContract, rank: int):
 __all__ = ["BLOCKS", "BlockCapture", "BlockContract", "BlockModel", "BlockReplay", "BufferField", "CAM_IN_FIELDS",
            "CloudBlockCapture", "FORCING_FIELDS", "MACRO_BLOCK", "MACRO_BUFFERS", "MACRO_INPUT_BUFFERS", "MICRO_BLOCK",
            "MICRO_BUFFERS", "MICRO_INPUT_BUFFERS", "OriginalBlock", "SCALARS", "STATE_FIELDS", "TENDENCY_OUTPUTS",
-           "cloud_borne_fields", "input_digests", "load_block_model"]
+           "VerifiedOriginalBlock", "cloud_borne_fields", "dynamic_fields", "input_digests", "load_block_model",
+           "tracer_precipitation_fields"]

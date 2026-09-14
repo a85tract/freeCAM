@@ -44,7 +44,8 @@ from .cloud_block import (
     MICRO_BLOCK,
     STATE_FIELDS,
     OriginalBlock,
-    cloud_borne_fields,
+    VerifiedOriginalBlock,
+    dynamic_fields,
 )
 from .errors import PhysicsError
 from .image import module_view
@@ -545,7 +546,7 @@ class CloudMacroMicrophysics(NativeStage):
             fields: dict[str, PBufField] = {}
             dynamic: dict[str, tuple[str, ...]] = {}
             for block in (MACRO_BLOCK, MICRO_BLOCK):
-                extra = cloud_borne_fields(st.native.library, st.pcnst) if block.cloud_borne else ()
+                extra = dynamic_fields(st.native.library, st.pcnst, block)
                 dynamic[block.name] = tuple(field.name for field in extra)
                 for field in block.buffers + block.input_buffers + extra:
                     if field.name in fields:
@@ -697,6 +698,8 @@ class CloudMacroMicrophysics(NativeStage):
         if self.process is None or isinstance(self.process, OriginalBlock):
             arrays = [V[f"cam_in_{name}"] if name in CAM_IN_FIELDS else V[name] for name in MACROP_ARGUMENTS]
             H.macrop_driver_tend(lchnk, sub_dt, arrays); log("macrop_driver_tend")
+            if isinstance(self.process, VerifiedOriginalBlock):
+                self.process.compare(inputs, self._block_outputs(st, lchnk, n, MACRO_BLOCK, V))
         else:
             self._write_block(st, lchnk, n, MACRO_BLOCK, self.process(inputs), V); log("macro_block_model")
         if before is not None:
@@ -715,6 +718,8 @@ class CloudMacroMicrophysics(NativeStage):
             H.microp_aero_run(lchnk, sub_dt); log("microp_aero_run")
             H.microp_driver_tend(lchnk, sub_dt); log("microp_driver_tend")
             H.ptend_sum_aero(lchnk, n); log("physics_ptend_sum:ptend_aero")
+            if isinstance(self.micro_process, VerifiedOriginalBlock):
+                self.micro_process.compare(inputs, self._block_outputs(st, lchnk, n, MICRO_BLOCK, V))
         else:
             self._write_block(st, lchnk, n, MICRO_BLOCK, self.micro_process(inputs), V); log("micro_block_model")
         if before is not None:
