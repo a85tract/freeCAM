@@ -968,6 +968,18 @@ shortwave or none.  Giving the model the zenith angle -- twenty lines of
 trigonometry in Python, or one more Fortran call -- is the obvious repair;
 the driver does not change.
 
+The notebook's way in is the same path.  `driver.processes["radiation"]` is
+the `Radiation` stage bound to a run; put a model in its `process` slot (or
+a callable in a kernel's) and the next `advance` attaches the stage where
+its action runs, set the slot back to `None` and the Fortran runs again
+(`docs/usage.md`).  Gated on 2026-09-13 through `fc.Driver` on 512 ranks
+(`tools/run_process_table_gate.py`, `validation/jobs/pi_cam_process_table_50step.pbs`):
+the day-1 capture replayed through the block slot set from the table
+produced every file byte for byte the same as the command line's replay
+of it (7438656 against 7436003; `pi_cam_process-table-replay_50step.json`),
+and so is bit-for-bit in state with the oracle as that run is.  One path,
+two ways in.
+
 ## Where it stands
 
 | Kernel | Owner | Contract | Runner pause | In-model gate | Loop |
