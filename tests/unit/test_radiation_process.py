@@ -91,7 +91,7 @@ def test_the_loader_tells_a_replay_from_a_function(tmp_path: Path) -> None:
     source.write_text("def emulate(inputs):\n    return {}\n")
     model = load_process_model(f"{source}:emulate", rank=0)
     assert isinstance(model, RadiationProcessModel) and model.label == "emu.py:emulate"
-    with pytest.raises(PhysicsError, match="takes replay:DIR"):
+    with pytest.raises(PhysicsError, match="takes original, replay:DIR"):
         load_process_model("nonsense", rank=0)
 
 
@@ -286,3 +286,194 @@ def test_a_torchscript_model_in_the_slot_is_bound_through_the_image_and_runs_the
     assert calls == [(str(model.path), len(str(model.path)), 1)]          # bound once, in shadow
     described = stage.describe_process()
     assert (described["kind"], described["binding"], described["calls"], described["seconds"]) == ("native-model", "torchscript", 2, 0.5)
+
+
+def test_the_spec_and_the_frame_descriptor_carry_the_slots_table() -> None:
+    """The runner's Python pause at the slot hands the same 46 inputs and 12 outputs, in the same order."""
+    import yaml
+
+    from freecam.physics.radiation_process import TABLE_INPUTS, TABLE_OUTPUTS
+    from freecam.pi_cam.segment_runner import runner_spec
+
+    repo = Path(__file__).resolve().parents[2]
+    spec = yaml.safe_load((repo / "native/pi_cam/pausable/radiation.yaml").read_text())
+    slot = spec["process_slot"]
+    assert slot["name"] == "radiation_process"
+    assert [(n, r) for n, r in slot["inputs"]] == list(TABLE_INPUTS) and [(n, r) for n, r in slot["outputs"]] == list(TABLE_OUTPUTS)
+    frames = yaml.safe_load((repo / "native/pi_cam/segment_frames.yaml").read_text())["kernels"]["radiation_process"]
+    assert [(f["name"], f["rank"], f["intent"]) for f in frames] == \
+        [(n, r, "in") for n, r in TABLE_INPUTS] + [(n, r, "out") for n, r in TABLE_OUTPUTS]
+    assert all(f["dtype"] == "float64" for f in frames)
+    manifest = runner_spec("cam_run1.radiation")
+    assert manifest.process_slot == "radiation_process" and manifest.pause_names[-1] == "radiation_process"
+    assert manifest.kernel_names == ("rad_rrtmg_sw", "rad_rrtmg_lw")          # the slot is not a kernel of the ledger
+    runner = (repo / "native/pi_cam/support/pycam_radt_runner.F90").read_text()
+    assert "kernel_radiation_process = 3_c_int" in runner and "call pycam_rad_process_frame(ptrs, ndims, shapes, dtypes, intents, ncol_out)" in runner
+    assert "if (pycam_rad_process_prepare(state, pbuf, cam_in, coszrs, dosw, dolw)) then" in runner
+    assert "call pycam_rad_process_finish(cam_out, dosw, dolw, qrs, qrl, fsns, fsnt, flns, flnt, fsds)" in runner
+
+
+def _slot_frame(ncol: int, token: int):
+    """A paused slot's frame as the Python runner would decode it: 46 inputs, 12 outputs, live lanes ncol."""
+    from freecam.physics.radiation_process import TABLE_INPUTS, TABLE_OUTPUTS
+    from freecam.physics.segments import FrameArgument, KernelFrame
+
+    pcols, pver = 16, 30
+    arguments = []
+    for name, rank in TABLE_INPUTS:
+        if rank == 0:
+            array = np.array([float(ncol if name == "ncol" else 1.0)])       # the table's scalars: one-element arrays
+        elif rank == 1:
+            array = np.full(pcols, 0.5, order="F")
+        elif rank == 2:
+            array = np.full((pcols, pver + (1 if name in ("state_pint", "state_lnpint", "rstate_o3vmr", "rstate_pintmb", "rstate_tlev") else 0)), 2.0, order="F")
+        else:
+            array = np.full((pcols, pver, 57 if name == "state_q" else 3), 1e-6, order="F")
+        arguments.append(FrameArgument(name, array, "in"))
+    for name, rank in TABLE_OUTPUTS:
+        arguments.append(FrameArgument(name, np.zeros((pcols, pver) if rank == 2 else pcols, order="F"), "out"))
+    return KernelFrame(kernel="radiation_process", call_index=0, lchnk=1, ncol=ncol, substep=1, arguments=tuple(arguments), token=token)
+
+
+class _SlotRunner:
+    """A runner that pauses once per start at the process slot (kernel id 3) and runs the original on request."""
+
+    kernels = ("rad_rrtmg_sw", "rad_rrtmg_lw", "radiation_process")
+    runs_original = True
+
+    def __init__(self, ncol: int = 12) -> None:
+        self.ncol = ncol; self.frames: list = []; self.originals = 0; self.masks: list = []; self.token = 0
+
+    def create(self, stage_name): return 5
+    def start(self, context, mask):
+        from freecam.physics.segments import SegmentEvent
+        self.masks.append(dict(mask)); self.token += 1
+        return SegmentEvent.NEEDS_PYTHON_KERNEL
+    def frame(self, context):
+        frame = _slot_frame(self.ncol, self.token); self.frames.append(frame); return frame
+    def run_original(self, context, kernel): assert kernel == "radiation_process"; self.originals += 1
+    def resume(self, context, kernel, token):
+        from freecam.physics.segments import SegmentEvent
+        assert (kernel, token) == ("radiation_process", self.token); return SegmentEvent.DONE
+    def error(self, context): return ""
+    def destroy(self, context): pass
+
+
+def _slot_native(runner):
+    from types import SimpleNamespace
+
+    class _Entry:
+        def __init__(self, f): self.f = f
+        def __call__(self, *a): return self.f(*a)
+
+    library = SimpleNamespace(pycam_stagehost_bind_v1=_Entry(lambda: 0), pycam_rad_bind_hosts_v1=_Entry(lambda: 0),
+                              pycam_rad_set_owner_v1=_Entry(lambda owns: 0))
+    return SimpleNamespace(library=library, segment_runner=lambda name: runner if name == Radiation.STAGE else None,
+                           run_action=lambda *a, **k: pytest.fail("the runner hosts the slot"))
+
+
+def test_a_python_model_answers_the_slot_at_the_runners_pause() -> None:
+    from types import SimpleNamespace
+
+    from freecam.physics.radiation_process import OUTPUTS, RadiationProcessModel
+
+    seen: list = []
+
+    def model(inputs):
+        seen.append(inputs)
+        ncol = int(inputs["ncol"]); pcols = 16
+        answer = {}
+        for name in OUTPUTS:
+            out = np.zeros((pcols, 30), order="F") if name in ("qrs", "qrl") else np.zeros(pcols)
+            out[:ncol] = 3.0
+            answer[name] = out
+        return answer
+
+    stage = Radiation()
+    stage.process = RadiationProcessModel(model, label="test:model")
+    runner = _SlotRunner(ncol=12); native = _slot_native(runner)
+    assert stage.select_mode(native) == "segmented"                    # the pause, not the walk
+    assert stage.select_mode(SimpleNamespace(segment_runner=lambda name: None)) == "legacy-python"   # no runner: the walk
+    stage.tend(None, SimpleNamespace(native=native))
+    assert runner.masks == [{"rad_rrtmg_sw": False, "rad_rrtmg_lw": False, "radiation_process": True}]
+    inputs = seen[0]
+    assert isinstance(inputs["ncol"], float) and inputs["ncol"] == 12.0          # scalars as Python numbers
+    assert isinstance(inputs["calday"], float) and float(inputs["calday"]) == 1.0
+    assert inputs["state_t"].shape == (12, 30) and inputs["state_q"].shape == (12, 30, 57)    # live lanes only
+    frame = runner.frames[0]
+    qrs = frame.argument("qrs").array; fsnt = frame.argument("fsnt").array
+    assert np.all(qrs[:12] == 3.0) and np.all(qrs[12:] == 0.0) and np.all(fsnt[:12] == 3.0) and np.all(fsnt[12:] == 0.0)
+    assert stage.execution.segment_pauses == 1 and runner.originals == 0
+    described = stage.describe_process()
+    assert (described["kind"], described["pauses"], described["calls"]) == ("model-at-slot", 1, 1)
+
+
+def test_the_original_branch_answers_the_slot_at_the_runners_pause() -> None:
+    from types import SimpleNamespace
+
+    from freecam.physics.radiation_process import OriginalProcess, load_process_model
+
+    assert isinstance(load_process_model("original", rank=0), OriginalProcess)
+    stage = Radiation()
+    stage.process = OriginalProcess()
+    runner = _SlotRunner(); native = _slot_native(runner)
+    assert stage.select_mode(native) == "segmented"
+    stage.tend(None, SimpleNamespace(native=native))
+    assert runner.originals == 1 and stage.execution.segment_pauses == 1
+    assert stage.describe_process()["kind"] == "original-at-slot"
+    stage.execution_policy = "legacy-python"                                # the walk stays reachable on request
+    assert stage.select_mode(native) == "legacy-python"
+
+
+def test_the_image_runner_numbers_the_slot_after_the_kernels_and_decodes_its_frame() -> None:
+    """ImageSegmentRunner over a fake radt image paused at the process slot: id 3, the table's names, resume and original by id 3."""
+    from freecam.physics.radiation_process import TABLE_INPUTS, TABLE_OUTPUTS
+    from freecam.physics.segments import SegmentEvent
+    from freecam.pi_cam import segment_runner as runners
+
+    names = [n for n, _ in TABLE_INPUTS] + [n for n, _ in TABLE_OUTPUTS]
+    ranks = [r for _, r in TABLE_INPUTS] + [r for _, r in TABLE_OUTPUTS]
+    arrays = [np.zeros(() if r == 0 else (16,) if r == 1 else (16, 30) if r == 2 else (16, 30, 3), order="F") for r in ranks]
+
+    class Lib:
+        def __init__(self):
+            self.calls: list = []; self.mask = None; self.resumed = None; self.original = None
+            for suffix in runners.ENTRY_SUFFIXES + ("original",):
+                setattr(self, f"pycam_radt_{suffix}_v1", self._entry(f"pycam_radt_{suffix}_v1"))
+
+        def _entry(self, name):
+            lib = self
+
+            class E:
+                argtypes = None; restype = None
+                def __call__(self, *args):
+                    lib.calls.append(name)
+                    if name.endswith("_create_v1"): args[0]._obj.value = 1; return 0
+                    if name.endswith("_start_v1"): lib.mask = list(args[2]); args[3]._obj.value = 1; return 0
+                    if name.endswith("_frame_v1"):
+                        kernel, index, lchnk, ncol, substep, token, count, ptrs, ndims, shapes, dtypes, intents = args[1:]
+                        kernel._obj.value = 3; index._obj.value = 0; lchnk._obj.value = 2; ncol._obj.value = 9; substep._obj.value = 1; token._obj.value = 4
+                        assert count >= 58
+                        for i, a in enumerate(arrays):
+                            ptrs[i] = a.ctypes.data; ndims[i] = a.ndim
+                            for axis, extent in enumerate(a.shape): shapes[runners.FRAME_MAX_RANK * i + axis] = extent
+                            dtypes[i] = 1; intents[i] = 0 if i < 46 else 1
+                        return 0
+                    if name.endswith("_resume_v1"): lib.resumed = (args[1], args[2]); args[3]._obj.value = 0; return 0
+                    if name.endswith("_original_v1"): lib.original = args[1]; return 0
+                    return 0
+            return E()
+
+    lib = Lib()
+    spec = runners.runner_spec("cam_run1.radiation")
+    runner = runners.ImageSegmentRunner(lib, spec)
+    assert runner.kernels == ("rad_rrtmg_sw", "rad_rrtmg_lw", "radiation_process") and runner.slots == 58
+    context = runner.create("cam_run1.radiation")
+    assert runner.start(context, {"rad_rrtmg_sw": False, "rad_rrtmg_lw": False, "radiation_process": True}) == SegmentEvent.NEEDS_PYTHON_KERNEL
+    assert lib.mask == [0, 0, 1]
+    frame = runner.frame(context)
+    assert frame.kernel == "radiation_process" and frame.ncol == 9 and [a.name for a in frame.arguments] == names
+    assert frame.argument("state_q").array.shape == (16, 30, 3) and frame.argument("qrs").intent == "out" and frame.argument("nstep").array.shape == ()
+    runner.run_original(context, "radiation_process")
+    assert lib.original == 3
+    assert runner.resume(context, "radiation_process", frame.token) == SegmentEvent.DONE and lib.resumed == (3, 4)

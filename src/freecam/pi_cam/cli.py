@@ -129,6 +129,8 @@ def _radiation_process_summary(records) -> dict[str, object] | None:
     for key in ("function", "records"):
         if key in first:
             summary[key] = first[key]
+    if "pauses" in first:            # the runner's pauses at the slot Python answered, summed over ranks
+        summary["pauses"] = sum(int(row.get("pauses", 0)) for row in rows)
     for key in ("seconds", "first_call_seconds"):
         if key in first:            # summed over ranks, and the slowest rank's own
             summary[key] = sum(float(row.get(key, 0.0)) for row in rows)
@@ -655,7 +657,10 @@ def main(argv: list[str] | None = None) -> int:
             "with --radiation-python: answer radiation_tend's computing branch with a process model "
             "instead of the optics and the two cores.  replay:DIR replays a --radiation-capture "
             "(bit-for-bit expected: the gate of the path); MODULE:FUNCTION or path.py:FUNCTION calls "
-            "a function taking the inputs by name and returning qrs, qrl and the surface fluxes."
+            "a function taking the inputs by name and returning qrs, qrl and the surface fluxes; "
+            "original asks the runner for the original branch at its pause (bit-for-bit expected).  "
+            "On an image whose runner pauses at the process slot the answer is given at that pause "
+            "(the driver stays in Fortran, three crossings a chunk); otherwise inside the transcription."
         ),
     )
     parser.add_argument(

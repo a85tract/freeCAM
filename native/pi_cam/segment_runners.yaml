@@ -132,6 +132,11 @@ runners:
   generator: tools/generate_pi_cam_pausable_runners.py
   descriptors: native/pi_cam/direct_kernels_radiation.yaml
   original: true
+  # the radiation process slot: the runner also pauses at the top of the radiative branch
+  # for a Python answer (the slot's 46 inputs in, its 12 outputs back), kernel id 3
+  process_slot:
+    name: radiation_process
+    frame: native/pi_cam/segment_frames.yaml
   kernels:
   - name: rad_rrtmg_sw
     owner: freecam.physics.radiation.Radiation

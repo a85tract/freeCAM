@@ -77,19 +77,27 @@ class RunnerSpec:
     kernels: tuple[RunnerKernel, ...] = field(default_factory=tuple)
     #: whether the runner exports `<prefix>_original_v1`, running the paused call itself
     original: bool = False
+    #: a process slot the runner pauses at for Python, numbered after the kernels; its frame descriptor
+    process_slot: str | None = None
+    process_slot_frame: str | None = None
 
     @property
     def kernel_names(self) -> tuple[str, ...]:
         return tuple(kernel.name for kernel in self.kernels)
 
     @property
+    def pause_names(self) -> tuple[str, ...]:
+        """Every name the runner pauses at, in the module's numbering: the kernels, then the process slot."""
+        return self.kernel_names + ((self.process_slot,) if self.process_slot else ())
+
+    @property
     def entries(self) -> tuple[str, ...]:
         return tuple(f"{self.prefix}_{suffix}_v1" for suffix in ENTRY_SUFFIXES)
 
     def kernel_id(self, name: str) -> int:
-        """The module's number for ``name``: its position in the manifest plus one."""
+        """The module's number for ``name``: its position among the pauses plus one, the process slot last."""
 
-        return self.kernel_names.index(name) + 1
+        return self.pause_names.index(name) + 1
 
     def kernel(self, name: str) -> RunnerKernel:
         for kernel in self.kernels:
@@ -166,6 +174,8 @@ def load_manifest(path: str | Path | None = None) -> tuple[RunnerSpec, ...]:
             stage=stage, prefix=str(record["prefix"]), module=str(record["module"]),
             generator=str(record["generator"]), descriptors=str(record["descriptors"]),
             kernels=tuple(kernels), original=bool(record.get("original", False)),
+            process_slot=None if not record.get("process_slot") else str(record["process_slot"]["name"]),
+            process_slot_frame=None if not record.get("process_slot") else str(record["process_slot"]["frame"]),
         ))
     return tuple(specs)
 
@@ -228,7 +238,7 @@ class ImageSegmentRunner:
         self.spec = spec
         #: the kernels this runner can pause at; a stage chooses segmented
         #: execution under ``auto`` only when every replaced kernel is one
-        self.kernels = spec.kernel_names
+        self.kernels = spec.pause_names
         path = Path(descriptors) if descriptors is not None else REPO / spec.descriptors
         described = {k.name: k for k in load_direct_kernels(path)}
         #: kernel -> the frame's argument names in the call's order, without the stage prefix
@@ -244,6 +254,8 @@ class ImageSegmentRunner:
                 raise NativeCAMError(
                     f"{spec.descriptors} describes no kernel named {kernel.name!r} and the manifest "
                     f"names no contract; the runner for {spec.stage!r} cannot decode its frames")
+        if spec.process_slot is not None:
+            self.names[spec.process_slot] = frame_names_from_descriptor(REPO / str(spec.process_slot_frame), spec.process_slot)
         self.slots = max(len(names) for names in self.names.values())
         self._entry = {suffix: getattr(library, f"{spec.prefix}_{suffix}_v1") for suffix in ENTRY_SUFFIXES}
         self._original = getattr(library, f"{spec.prefix}_original_v1", None) if spec.original else None

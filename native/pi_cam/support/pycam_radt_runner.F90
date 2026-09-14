@@ -24,7 +24,8 @@ module pycam_radt_runner
        pbuf, qrl, qrs, state, su_idx
   use pycam_rad_handles, only: rad_ptend
   use rad_constituents, only: N_DIAG
-  use pycam_rad_process, only: pycam_rad_process_answer
+  use pycam_rad_process, only: pycam_rad_process_answer, pycam_rad_process_prepare
+  use pycam_rad_process, only: pycam_rad_process_finish, pycam_rad_process_discard, pycam_rad_process_frame
   implicit none
   private
 
@@ -60,13 +61,16 @@ module pycam_radt_runner
   integer, parameter :: pc_if_4 = 28
   integer, parameter :: pc_driver_piece_2_1 = 29
   integer, parameter :: pc_driver_piece_12_1 = 30
-  integer, parameter :: pc_if_5 = 31
-  integer, parameter :: pc_driver_piece_1_1 = 32
-  integer, parameter :: pc_leave_driver_1 = 33
-  integer, parameter :: pc_enter_driver_1 = 34
+  integer, parameter :: pc_at_radiation_process = 31
+  integer, parameter :: pc_after_radiation_process = 32
+  integer, parameter :: pc_if_5 = 33
+  integer, parameter :: pc_driver_piece_1_1 = 34
+  integer, parameter :: pc_leave_driver_1 = 35
+  integer, parameter :: pc_enter_driver_1 = 36
   integer(c_int), parameter :: kernel_rad_rrtmg_sw = 1_c_int
   integer(c_int), parameter :: kernel_rad_rrtmg_lw = 2_c_int
-  integer, parameter :: nkernels = 2
+  integer(c_int), parameter :: kernel_radiation_process = 3_c_int
+  integer, parameter :: nkernels = 3
   integer, parameter, public :: frame_slots = 58
   integer, parameter :: context_id = 1
 
@@ -76,6 +80,8 @@ module pycam_radt_runner
   integer(c_int), save :: token = 0_c_int, call_index = 0_c_int
   logical, save :: replace(nkernels) = .false.
   character(len=256), save :: last_error = ' '
+  ! the process slot paused for Python: whether Python asked for the original branch instead
+  logical, save :: slot_original = .false.
 
 contains
 
@@ -155,6 +161,16 @@ contains
         last_error = 'radt is paused on rad_rrtmg_lw, not on the kernel resumed'; status = 3_c_int; return
       end if
       pc = pc_after_rad_rrtmg_lw
+    case (pc_at_radiation_process)
+      if (kernel /= kernel_radiation_process) then
+        last_error = 'radt is paused on radiation_process, not on the kernel resumed'; status = 3_c_int; return
+      end if
+      if (slot_original) then
+        slot_original = .false.
+        pc = pc_driver_piece_2_1
+      else
+        pc = pc_after_radiation_process
+      end if
     case default
       last_error = 'radt is not paused'; status = 2_c_int; return
     end select
@@ -186,6 +202,9 @@ contains
     case (pc_at_rad_rrtmg_lw)
       call rad_rrtmg_lw_frame(ptrs, ndims, shapes, dtypes, intents, ncol_out)
       kernel = kernel_rad_rrtmg_lw
+    case (pc_at_radiation_process)
+      call pycam_rad_process_frame(ptrs, ndims, shapes, dtypes, intents, ncol_out)
+      kernel = kernel_radiation_process
     case default
       last_error = 'radt is not paused; there is no frame'; status = 2_c_int; return
     end select
@@ -215,6 +234,12 @@ contains
         last_error = 'radt is paused on rad_rrtmg_lw, not on the kernel asked for'; status = 3_c_int; return
       end if
       call rad_rrtmg_lw_original()
+    case (pc_at_radiation_process)
+      if (kernel /= kernel_radiation_process) then
+        last_error = 'radt is paused on radiation_process, not on the kernel asked for'; status = 3_c_int; return
+      end if
+      call pycam_rad_process_discard()
+      slot_original = .true.
     case default
       last_error = 'radt is not paused; there is nothing to run'; status = 2_c_int; return
     end select
@@ -386,8 +411,23 @@ contains
       case (pc_driver_piece_12_1)
         call driver_piece_12()
         pc = pc_driver_piece_13_1
+      case (pc_at_radiation_process)
+        last_error = 'radt is paused; only resume continues it'
+        event = ev_error
+        return
+      case (pc_after_radiation_process)
+        call pycam_rad_process_finish(cam_out, dosw, dolw, qrs, qrl, fsns, fsnt, flns, flnt, fsds)
+        pc = pc_driver_piece_13_1
       case (pc_if_5)
         if (dosw .or. dolw) then
+          if (replace(3)) then
+            if (pycam_rad_process_prepare(state, pbuf, cam_in, coszrs, dosw, dolw)) then
+              token = token + 1_c_int
+              pc = pc_at_radiation_process
+              event = ev_needs_kernel
+              return
+            end if
+          end if
           if (pycam_rad_process_answer(state, pbuf, cam_in, cam_out, coszrs, dosw, dolw, qrs, qrl, fsns, fsnt, flns, flnt, fsds)) then
             pc = pc_driver_piece_13_1
           else

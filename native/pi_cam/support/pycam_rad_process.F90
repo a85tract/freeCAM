@@ -35,7 +35,8 @@ module pycam_rad_process
   implicit none
   private
   public :: pycam_rad_process_answer, pycam_rad_process_bind_v1, pycam_rad_process_bind_model_v1, &
-            pycam_rad_process_unbind_v1, pycam_rad_process_counts_v1
+            pycam_rad_process_unbind_v1, pycam_rad_process_counts_v1, &
+            pycam_rad_process_prepare, pycam_rad_process_frame, pycam_rad_process_finish, pycam_rad_process_discard
 
   integer, parameter :: n_in = 46, n_out = 12
   !> the table's order, for the test that pins it to Python's radiation_process.TABLE_INPUTS
@@ -74,6 +75,11 @@ module pycam_rad_process
   real(r8), target, save :: o_fsns(pcols), o_fsnt(pcols), o_flns(pcols), o_flnt(pcols), o_fsds(pcols), &
                             o_sols(pcols), o_soll(pcols), o_solsd(pcols), o_solld(pcols), o_flwds(pcols)
   real(r8), save :: ftem(pcols, pver)
+  ! the slot's tables and RRTMG state while the runner is paused for Python at the slot
+  type(c_ptr), save :: t_in_p(n_in), t_out_p(n_out)
+  integer(c_int64_t), save :: t_in_s(3, n_in), t_out_s(3, n_out)
+  type(rrtmg_state_t), pointer, save :: t_rstate => null()
+  integer, save :: t_ncol = 0, t_lchnk = 0
 
   abstract interface
     integer(c_int) function plugin_interface(n_in, in_ptrs, in_shapes, n_out, out_ptrs, out_shapes) bind(C)
@@ -171,23 +177,67 @@ contains
 
     type(c_ptr) :: in_p(n_in), out_p(n_out)
     integer(c_int64_t) :: in_s(3, n_in), out_s(3, n_out)
-    real(r8), pointer :: cld(:,:), cldfsnow(:,:), dei(:,:), mu(:,:), lambdac(:,:), iciwp(:,:), &
-                         iclwp(:,:), des(:,:), icswp(:,:)
-    real(r8), pointer :: dgnumwet(:,:,:), qaerwat(:,:,:)
     type(rrtmg_state_t), pointer :: r_state
     type(torch_tensor) :: in_t(n_in), out_t(n_out)
     procedure(plugin_interface), pointer :: call_plugin => null()
     integer(c_int) :: status
     integer(c_int64_t) :: t0, t1
-    integer :: lchnk, ncol, itim, k
+    integer :: lchnk, ncol, k
 
     handled = .false.
     if (.not. bound) return
+    call build_tables(state, pbuf, cam_in, coszrs, dosw, dolw, in_p, in_s, out_p, out_s, r_state)
+    lchnk = state%lchnk
+    ncol = state%ncol
+
+    call system_clock(t0)
+    if (modeled) then
+      ! the same tables as tensors over the same storage; the model's outputs land in o_*
+      do k = 1, n_in
+        call tensor_from_slot(in_t(k), in_p(k), in_s(:, k))
+      end do
+      do k = 1, n_out
+        call tensor_from_slot(out_t(k), out_p(k), out_s(:, k))
+      end do
+      call torch_model_forward(model, in_t, out_t)
+      call torch_delete(in_t)
+      call torch_delete(out_t)
+      status = 0_c_int
+    else
+      call c_f_procpointer(plugin, call_plugin)
+      status = call_plugin(int(n_in, c_int), in_p, in_s, int(n_out, c_int), out_p, out_s)
+    end if
+    call system_clock(t1)
+    if (calls == 0_c_int64_t) first_ticks = t1 - t0
+    ticks = ticks + (t1 - t0)
+    calls = calls + 1_c_int64_t
+    call rrtmg_state_destroy(r_state)
+    if (status /= 0_c_int) error stop 'pycam_rad_process: the bound plugin returned a non-zero status'
+    if (shadow) return
+
+    call write_outputs(cam_out, dosw, dolw, qrs, qrl, fsns, fsnt, flns, flnt, fsds, ncol, lchnk)
+    handled = .true.
+  end function pycam_rad_process_answer
+
+  subroutine build_tables(state, pbuf, cam_in, coszrs, dosw, dolw, in_p, in_s, out_p, out_s, r_state)
+    ! everything the driver has in hand before the branch, as the slot's pointer and extent tables in
+    ! TABLE_INPUTS' order, the RRTMG state built as the driver builds it, the outputs zeroed
+    type(physics_state), target, intent(in) :: state
+    type(physics_buffer_desc), pointer :: pbuf(:)
+    type(cam_in_t), target, intent(in) :: cam_in
+    real(r8), target, intent(in) :: coszrs(pcols)
+    logical, intent(in) :: dosw, dolw
+    type(c_ptr), intent(out) :: in_p(n_in), out_p(n_out)
+    integer(c_int64_t), intent(out) :: in_s(3, n_in), out_s(3, n_out)
+    type(rrtmg_state_t), pointer :: r_state
+    real(r8), pointer :: cld(:,:), cldfsnow(:,:), dei(:,:), mu(:,:), lambdac(:,:), iciwp(:,:), &
+                         iclwp(:,:), des(:,:), icswp(:,:)
+    real(r8), pointer :: dgnumwet(:,:,:), qaerwat(:,:,:)
+    integer :: lchnk, ncol, itim, k
     call resolve_indices()
     lchnk = state%lchnk
     ncol = state%ncol
     itim = pbuf_old_tim_idx()
-
     ! the scalars, the geometry
     s_nstep(1) = real(get_nstep(), c_double); s_lchnk(1) = real(lchnk, c_double); s_ncol(1) = real(ncol, c_double)
     s_calday(1) = real(get_curr_calday(), c_double)
@@ -289,31 +339,15 @@ contains
     k = k + 1; call set1(k, out_p, out_s, o_solld)
     k = k + 1; call set1(k, out_p, out_s, o_flwds)
 
-    call system_clock(t0)
-    if (modeled) then
-      ! the same tables as tensors over the same storage; the model's outputs land in o_*
-      do k = 1, n_in
-        call tensor_from_slot(in_t(k), in_p(k), in_s(:, k))
-      end do
-      do k = 1, n_out
-        call tensor_from_slot(out_t(k), out_p(k), out_s(:, k))
-      end do
-      call torch_model_forward(model, in_t, out_t)
-      call torch_delete(in_t)
-      call torch_delete(out_t)
-      status = 0_c_int
-    else
-      call c_f_procpointer(plugin, call_plugin)
-      status = call_plugin(int(n_in, c_int), in_p, in_s, int(n_out, c_int), out_p, out_s)
-    end if
-    call system_clock(t1)
-    if (calls == 0_c_int64_t) first_ticks = t1 - t0
-    ticks = ticks + (t1 - t0)
-    calls = calls + 1_c_int64_t
-    call rrtmg_state_destroy(r_state)
-    if (status /= 0_c_int) error stop 'pycam_rad_process: the bound plugin returned a non-zero status'
-    if (shadow) return
+  end subroutine build_tables
 
+  subroutine write_outputs(cam_out, dosw, dolw, qrs, qrl, fsns, fsnt, flns, flnt, fsds, ncol, lchnk)
+    ! the slot's outputs into the driver's arrays and cam_out, and their history as the driver writes it
+    type(cam_out_t), target, intent(inout) :: cam_out
+    logical, intent(in) :: dosw, dolw
+    real(r8), intent(inout) :: qrs(:,:), qrl(:,:)
+    real(r8), intent(inout) :: fsns(pcols), fsnt(pcols), flns(pcols), flnt(pcols), fsds(pcols)
+    integer, intent(in) :: ncol, lchnk
     ! the outputs, where the driver's branch leaves them (radiation.F90:1034-1051, 1148-1154)
     qrs(:ncol, :) = o_qrs(:ncol, :)
     qrl(:ncol, :) = o_qrl(:ncol, :)
@@ -340,8 +374,57 @@ contains
       call outfld('FLNS', flns, pcols, lchnk)
       call outfld('FLDS', cam_out%flwds, pcols, lchnk)
     end if
-    handled = .true.
-  end function pycam_rad_process_answer
+  end subroutine write_outputs
+
+  ! -- the slot paused for Python (the runner's process_slot) ---------------------------------------
+  logical function pycam_rad_process_prepare(state, pbuf, cam_in, coszrs, dosw, dolw) result(ready)
+    ! the tables and the RRTMG state for a pause: the runner stops after this and Python fills o_*
+    type(physics_state), target, intent(in) :: state
+    type(physics_buffer_desc), pointer :: pbuf(:)
+    type(cam_in_t), target, intent(in) :: cam_in
+    real(r8), target, intent(in) :: coszrs(pcols)
+    logical, intent(in) :: dosw, dolw
+    call build_tables(state, pbuf, cam_in, coszrs, dosw, dolw, t_in_p, t_in_s, t_out_p, t_out_s, t_rstate)
+    t_ncol = state%ncol
+    t_lchnk = state%lchnk
+    ready = .true.
+  end function pycam_rad_process_prepare
+
+  subroutine pycam_rad_process_frame(ptrs, ndims, shapes, dtypes, intents, ncol_out)
+    ! the paused slot's frame in the runner ABI: the 46 inputs then the 12 outputs, all float64
+    type(c_ptr), intent(inout) :: ptrs(:)
+    integer(c_int), intent(inout) :: ndims(:), dtypes(:), intents(:)
+    integer(c_int64_t), intent(inout) :: shapes(:,:)
+    integer(c_int), intent(out) :: ncol_out
+    integer :: k, r
+    ncol_out = int(t_ncol, c_int)
+    do k = 1, n_in
+      r = count(t_in_s(:, k) > 0_c_int64_t)
+      ptrs(k) = t_in_p(k); ndims(k) = int(r, c_int); dtypes(k) = 1_c_int; intents(k) = 0_c_int
+      shapes(:, k) = 0_c_int64_t; shapes(1:r, k) = t_in_s(1:r, k)
+    end do
+    do k = 1, n_out
+      r = count(t_out_s(:, k) > 0_c_int64_t)
+      ptrs(n_in + k) = t_out_p(k); ndims(n_in + k) = int(r, c_int); dtypes(n_in + k) = 1_c_int; intents(n_in + k) = 1_c_int
+      shapes(:, n_in + k) = 0_c_int64_t; shapes(1:r, n_in + k) = t_out_s(1:r, k)
+    end do
+  end subroutine pycam_rad_process_frame
+
+  subroutine pycam_rad_process_finish(cam_out, dosw, dolw, qrs, qrl, fsns, fsnt, flns, flnt, fsds)
+    ! after Python's write-back into o_*: the outputs where the driver leaves them, and the RRTMG state gone
+    type(cam_out_t), target, intent(inout) :: cam_out
+    logical, intent(in) :: dosw, dolw
+    real(r8), intent(inout) :: qrs(:,:), qrl(:,:)
+    real(r8), intent(inout) :: fsns(pcols), fsnt(pcols), flns(pcols), flnt(pcols), fsds(pcols)
+    call write_outputs(cam_out, dosw, dolw, qrs, qrl, fsns, fsnt, flns, flnt, fsds, t_ncol, t_lchnk)
+    call pycam_rad_process_discard()
+  end subroutine pycam_rad_process_finish
+
+  subroutine pycam_rad_process_discard()
+    ! Python asked for the original branch, or finished: release the pause's RRTMG state
+    if (associated(t_rstate)) call rrtmg_state_destroy(t_rstate)
+    t_rstate => null()
+  end subroutine pycam_rad_process_discard
 
   integer(c_int) function pycam_rad_process_bind_v1(funptr, shadow_flag) &
        bind(C, name='pycam_rad_process_bind_v1') result(status)

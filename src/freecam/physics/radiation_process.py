@@ -193,6 +193,39 @@ class RadiationReplay:
         return f"RadiationReplay({str(self.path)!r})"
 
 
+class OriginalProcess:
+    """Put in the process slot: the runner pauses at the slot and runs the original branch itself.
+
+    The validation gate of the pause path: Python receives the frame, asks the runner for the
+    original branch, and resumes; the run must stay bit-for-bit.
+    """
+
+    records = False
+    answers = True
+
+    def describe(self) -> dict[str, Any]:
+        return {"kind": "original-at-slot"}
+
+
+def answer_frame(model: Callable[[dict[str, Any]], dict[str, np.ndarray]], batch: dict[str, Any], ncol: int) -> dict[str, np.ndarray]:
+    """Call a process model on a paused slot's frame batch and shape its answer for the write-back.
+
+    The frame hands the 46 inputs as live-lane views (the table's scalars as one-element arrays); the
+    model returns the 12 outputs, possibly padded to ``pcols`` rows; the write-back wants exactly the
+    live lanes, float64.
+    """
+
+    # the table carries its scalars as one-element arrays; the model reads them as numbers
+    scalars = {name for name, rank in TABLE_INPUTS if rank == 0}
+    inputs = {name: (float(np.asarray(value).reshape(-1)[0]) if name in scalars else value) for name, value in batch.items()}
+    answer = model(inputs)
+    shaped: dict[str, np.ndarray] = {}
+    for name in OUTPUTS:
+        value = np.asarray(answer[name], dtype=np.float64)
+        shaped[name] = np.asfortranarray(value[:ncol]) if value.ndim else value
+    return shaped
+
+
 class RadiationProcessModel:
     """Answer the radiation branch with a function: the inputs by name in, the outputs by name out."""
 
@@ -238,11 +271,13 @@ def load_process_model(spec: str, *, rank: int):
     import importlib.util
     import sys
 
+    if spec == "original":
+        return OriginalProcess()
     if spec.startswith("replay:"):
         return RadiationReplay(spec[len("replay:"):], rank)
     module_name, sep, function_name = spec.rpartition(":")
     if not sep or not module_name or not function_name:
-        raise PhysicsError(f"--radiation-model takes replay:DIR, MODULE:FUNCTION or path.py:FUNCTION, got {spec!r}")
+        raise PhysicsError(f"--radiation-model takes original, replay:DIR, MODULE:FUNCTION or path.py:FUNCTION, got {spec!r}")
     if module_name.endswith(".py"):
         path = Path(module_name).expanduser().resolve()
         if not path.is_file():
@@ -259,8 +294,8 @@ def load_process_model(spec: str, *, rank: int):
     return RadiationProcessModel(function, label=f"{Path(module_name).name}:{function_name}")
 
 
-__all__ = ["ARRAY_INPUTS", "OUTPUTS", "RSTATE_INPUTS", "SCALAR_INPUTS", "RadiationProcessCapture",
-           "RadiationProcessModel", "RadiationReplay", "load_process_model"]
+__all__ = ["ARRAY_INPUTS", "OUTPUTS", "RSTATE_INPUTS", "SCALAR_INPUTS", "OriginalProcess", "RadiationProcessCapture",
+           "RadiationProcessModel", "RadiationReplay", "answer_frame", "load_process_model"]
 
 
 # -- the slot inside the image -----------------------------------------------------------------

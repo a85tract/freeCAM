@@ -479,15 +479,59 @@ class Radiation(NativeStage):
         self.process: Any = None
         self._rstate_snapshot: dict[str, np.ndarray] | None = None
 
+    #: the name the runner gives its pause at the top of the radiative branch (segment_runners.yaml)
+    PROCESS_SLOT = "radiation_process"
+
+    def _runner_pauses_at_slot(self, native: Any) -> bool:
+        """Whether this image's runner can stop at the process slot for a Python answer."""
+
+        runner = native.segment_runner(self.STAGE) if native is not None and hasattr(native, "segment_runner") else None
+        return runner is not None and self.PROCESS_SLOT in tuple(getattr(runner, "kernels", ()))
+
+    def _python_at_slot(self, native: Any) -> bool:
+        """A Python answerer in the slot, and a runner that pauses there: the pause path, not the walk."""
+
+        process = self.process
+        if process is None or isinstance(process, (NativePlugin, NativeModel)) or getattr(process, "records", False):
+            return False
+        if self.execution_policy == "legacy-python":
+            return False
+        return self._runner_pauses_at_slot(native)
+
     def select_mode(self, native: Any = None) -> str:
         if isinstance(self.process, (NativePlugin, NativeModel)):
             # a compiled plugin or a TorchScript model bound at the slot inside the image: the
             # runner runs the driver whole and the slot answers the radiative branch in Fortran
             return "segmented"
+        if self.process is not None and self._python_at_slot(native):
+            # a Python answerer: the runner runs the driver, pauses at the top of the radiative
+            # branch, Python answers the frame (or asks for the original branch) and resumes
+            return "segmented"
         if self.process is not None:
-            # a Python capture, replay or model lives inside the transcription: only the walk reaches it
+            # a capture, or an image without the slot pause: the answerer lives inside the transcription
             return "legacy-python"
         return super().select_mode(native)
+
+    def _segment_kernels(self, native: Any, runner: Any) -> dict[str, Callable[..., Any] | None]:
+        kernels = super()._segment_kernels(native, runner)
+        if self._python_at_slot(native):
+            from .radiation_process import OriginalProcess, answer_frame
+            from .segments import OriginalAtPause, _lanes
+
+            process = self.process
+            if isinstance(process, OriginalProcess):
+                kernels[self.PROCESS_SLOT] = OriginalAtPause()
+            else:
+                class _AtSlot:
+                    takes_frame = True
+
+                    def __call__(self, frame, runner_, context):
+                        # the model reads the live lanes where they lie: no copy of the 46 inputs
+                        inputs = {a.name: _lanes(a.array, frame.ncol) for a in frame.arguments if a.is_input}
+                        return answer_frame(process, inputs, frame.ncol)
+
+                kernels[self.PROCESS_SLOT] = _AtSlot()
+        return kernels
 
     def _tend_segmented(self, native: Any) -> None:
         if isinstance(self.process, (NativePlugin, NativeModel)):
@@ -518,6 +562,10 @@ class Radiation(NativeStage):
             counts = read_radiation_process_counts(library) if library is not None else None
             if counts:
                 described.update(counts)
+        elif self.execution.mode == "segmented" and self._segmented is not None:
+            # a Python answerer at the runner's pause: the pauses it answered, from the stage's counters
+            described["kind"] = f"{described.get('kind', 'python')}-at-slot".replace("original-at-slot-at-slot", "original-at-slot")
+            described["pauses"] = int(self._segmented.counters.calls_by_kernel.get(self.PROCESS_SLOT, 0))
         return described
 
     def _process_inputs(self, st: StageRuntime, lchnk: int, ncol: int, index: int, dt: float, nstep: int,
