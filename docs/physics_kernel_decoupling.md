@@ -1138,7 +1138,7 @@ field tables and completed by the runs, each of which named what it missed.
 | 7451930 | both originals, through the Python driver | bit-for-bit | 2.33 s | 16.52 s |
 | 7453135 | both originals, the capture around them (51,200 calls a block, 19 GB compressed) | bit-for-bit | 2.7 s | 16.66 s |
 | 7452498 | the microphysics block replayed, the macrophysics original verifying itself | `cam.r`, `cam.rs`, `h0` bit-for-bit; `rh0` differs in the microphysics driver's 68 diagnostics | -- | 15.3 s |
-| 7453151 | the macrophysics block replayed, the microphysics original verifying itself | `cam.r`, `cam.rs`, `h0` bit-for-bit | -- | -- |
+| 7453151, 7453313 | the macrophysics block replayed, the microphysics original verifying itself | every file bit-for-bit, `rh0` included; the verified microphysics matched the capture's record on all 51,200 calls, inputs and outputs | 1.96 s | 15.77 s |
 | 7453150 | **both blocks replayed** | **`cam.r`, `cam.rs`, `h0` bit-for-bit**; `rh0` differs in the two drivers' diagnostics | 0.59 s | 14.37 s |
 | 7452704, 7452705 | each original with the census around it | bit-for-bit; the macrophysics block wrote `DP_FRAC` and `SH_FRAC` beyond its contract, the microphysics block nothing | -- | -- |
 
