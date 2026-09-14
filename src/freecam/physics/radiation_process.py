@@ -173,9 +173,16 @@ class RadiationReplay:
     def __setstate__(self, state: dict[str, Any]) -> None:
         self.__dict__.update(state)
         if self.directory not in _REPLAY_TABLES:
-            raise PhysicsError(
-                f"a radiation replay of {self.directory} cannot cross processes by pickle; its table lives in "
-                f"the process that loaded it")
+            # pickled into a rank worker from a notebook: load this rank's own capture file here
+            try:
+                from mpi4py import MPI
+                rank = int(MPI.COMM_WORLD.Get_rank())
+            except Exception as error:      # noqa: BLE001 -- no MPI here: the table cannot be found
+                raise PhysicsError(
+                    f"a radiation replay of {self.directory} cannot cross processes by pickle without MPI to "
+                    f"name the rank whose capture to load") from error
+            RadiationReplay.__init__(self, self.directory, rank)
+            self.calls = int(state.get("calls", 0))
 
     def __call__(self, inputs: dict[str, Any]) -> dict[str, np.ndarray]:
         key = (int(inputs["nstep"]), int(inputs["lchnk"]))

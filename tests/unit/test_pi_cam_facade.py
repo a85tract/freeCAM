@@ -1346,3 +1346,61 @@ def test_cam_parameters_view_reads_and_writes_collectively(tmp_path) -> None:
         driver.cam.parameters.unavailable["uwshcu_rpen"]
         == "not set in this run's atm_in"
     )
+
+
+
+def test_the_process_table_attaches_a_stage_when_its_slot_is_filled_and_detaches_it_when_emptied(tmp_path) -> None:
+    """driver.processes['radiation'].process = model; advance() installs it; = None; advance() restores the Fortran."""
+    calls: list = []
+
+    class Action:
+        def __init__(self, name): self.name = name
+        def enable(self): calls.append(("enable", self.name)); return {}
+        def disable(self): calls.append(("disable", self.name)); return {}
+        def remove(self): calls.append(("remove", self.name)); return {}
+
+    class Workflow:
+        def __init__(self): self.installed = {}
+        def process(self, name): return Action(name)
+        def insert(self, process, *, after=None, before=None):
+            calls.append(("insert", process.name, after)); self.installed[process.name] = Action(process.name)
+        def __getitem__(self, name): return self.installed[name]
+        def replace(self, processes): pass
+
+    class Session(FakeSession):
+        def __init__(self, config, **kwargs):
+            super().__init__(config, **kwargs)
+            self.workflow = Workflow()
+
+    paths = _driver_tree(tmp_path)
+    driver = Driver(case="PI-atm", nsteps=5, repo=paths["repo"], config=paths["config"], scratch=tmp_path / "scratch",
+                    reference_case=paths["reference_case"], reference_run=paths["reference_run"], boundary=paths["boundary"],
+                    session_factory=Session)
+    table = driver.processes
+    assert "radiation" in table and "cloud_macro_microphysics" in table and "dry_adjustment" in table
+    radiation = table["radiation"]
+    assert type(radiation).__name__ == "Radiation" and table["radiation"] is radiation
+    assert driver.processes.describe() == {"radiation": {"computed_by": "fortran", "installed": False}}
+    driver.advance(1)
+    assert calls == []                                            # a lookup installs nothing; a filled slot does
+
+    def model(inputs):
+        return {}
+
+    from freecam.physics.radiation_process import RadiationBlockModel
+    radiation.process = RadiationBlockModel(model, label="notebook:model")
+    driver.advance(1)
+    # the radiation action is disabled, its two halves enabled, the stage's process inserted after the first half
+    assert calls == [("disable", "cam_run1.radiation"), ("enable", "cam_run1.rad_tend_pre_leaf"), ("enable", "cam_run1.rad_tend_post_leaf"),
+                     ("insert", "rad_tend", "rad_tend_pre_leaf")]
+    described = driver.processes.describe()["radiation"]
+    assert (described["computed_by"], described["installed"], described["process"]["kind"]) == ("python", True, "block-model")
+    calls.clear()
+    driver.advance(1)
+    assert calls == []                                            # unchanged slots: nothing re-installed
+    radiation.process = None
+    driver.advance(1)
+    assert calls == [("remove", "rad_tend"), ("disable", "cam_run1.rad_tend_pre_leaf"), ("disable", "cam_run1.rad_tend_post_leaf"),
+                     ("enable", "cam_run1.radiation")]
+    assert driver.processes.describe()["radiation"] == {"computed_by": "fortran", "installed": False}
+    assert "processes" in driver.status

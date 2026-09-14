@@ -161,6 +161,38 @@ driver.cam.workflow["notebook_heating"].properties["rate"] = 0.03
 Values must be JSON-compatible scalars or small containers; large arrays
 belong in state fields.
 
+### Replacing a process the model already owns as a class
+
+`driver.processes` holds every physics process freeCAM owns as a Python
+class -- `radiation`, `cloud_macro_microphysics`, `dry_adjustment`,
+`shallow_convection`, `deep_convection`, `vertical_diffusion`, ... -- bound
+to this run.  Looking one up changes nothing; filling a slot on it does:
+
+```python
+rad = driver.processes["radiation"]        # the Radiation stage of this run
+
+def my_radiation(inputs):                  # the block contract: inputs by name in, the 12 outputs out
+    ...
+    return {"qrs": ..., "qrl": ..., "fsns": ..., "fsnt": ..., "flns": ..., "flnt": ..., "fsds": ...,
+            "sols": ..., "soll": ..., "solsd": ..., "solld": ..., "flwds": ...}
+
+rad.process = RadiationBlockModel(my_radiation, label="notebook")
+driver.advance(48)                         # the radiation block is my_radiation from here on
+
+rad.kernels["rad_rrtmg_sw"] = network      # or one kernel inside the driver instead
+rad.process = None                         # back to the original Fortran
+```
+
+The next `advance` or `run` attaches the stage where its action runs -- for
+radiation, between the two halves of the split stage; for a whole action,
+in its place -- and detaches it again when every slot is empty, so the
+Fortran path is exactly the original whenever nothing is replaced.  A
+changed slot re-attaches.  `driver.status["processes"]` says who computes
+each process asked for.  The block contract's inputs are
+`freecam.physics.radiation_process.BLOCK_INPUTS`; a capture's outputs replay
+through the same slot with `load_block_model("replay:DIR")`, which is how
+the path is gated (see `docs/physics_kernel_decoupling.md`).
+
 ## Parameters
 
 ### Namelist

@@ -1,0 +1,48 @@
+#!/bin/bash
+# Submit with: validation/jobs/submit.sh validation/jobs/pi_cam_process_table_50step.pbs
+#PBS -N freecam-processes-50
+#PBS -q develop
+#PBS -l select=4:ncpus=64:mpiprocs=128:ompthreads=1:mem=110GB
+#PBS -l walltime=00:40:00
+#PBS -j oe
+#PBS -o logs/
+#PBS -V
+# The notebook's way of replacing a process, on the model: fc.Driver with
+# driver.processes["radiation"].process set to a block replay of a radiation
+# capture, compared byte for byte with the oracle (state bit-for-bit expected)
+# and with the same replay made through the command line (identical expected).
+#   PYCAM_NATIVE_MANIFEST  the image (must carry pycam_rad_process_history_v1)
+#   PYCAM_BLOCK_REPLAY     the radiation process capture directory to replay
+#   PYCAM_CLI_RUN          the command-line replay's run directory, optional
+#   PYCAM_RUN_TAG          names the record (default process-table-replay)
+set -euo pipefail
+source "${FREECAM_REPO:-${PBS_O_WORKDIR:-$PWD}}/validation/jobs/common.sh"
+repo=${FREECAM_REPO}
+python=${repo}/.venv/bin/python
+case_root=${FREECAM_REFERENCE_CASE}
+cam_reference=${FREECAM_REFERENCE_RUN}
+boundary=${FREECAM_SCRATCH}/pyCAM/PI-cam/nonpic-boundary-capture-50step/boundary/replay
+manifest=${PYCAM_NATIVE_MANIFEST:-${repo}/build/pi_cam_promoted/native_cam_manifest.json}
+tag=${PYCAM_RUN_TAG:-process-table-replay}
+root=${FREECAM_SCRATCH}/pyCAM/PI-cam/process-table-${tag}-${PBS_JOBID}
+record=validation/pi_cam_${tag}_50step.json
+source "${case_root}/.env_mach_specific.sh" >/dev/null 2>&1
+mpi_root=${CRAY_MPICH_DIR:-/opt/cray/pe/mpich/8.1.25/ofi/intel/19.0}
+export LD_LIBRARY_PATH="${mpi_root}/lib-abi-mpich:${mpi_root}/lib:${LD_LIBRARY_PATH:-}"
+export LD_PRELOAD=${FREECAM_LD_PRELOAD}${LD_PRELOAD:+:${LD_PRELOAD}}
+export PYTHONPATH=${repo}/src
+export OMP_NUM_THREADS=1
+export OMP_STACKSIZE=64M
+export FI_CXI_RX_MATCH_MODE=hybrid
+export FI_MR_CACHE_MONITOR=memhooks
+export MPICH_MPIIO_HINTS='*:romio_cb_read=enable:romio_cb_write=enable:striping_factor=24'
+cd "${repo}"
+mkdir -p "${root}"
+echo "=== driver.processes['radiation'] replaced by a block replay, through fc.Driver ($(date)) ==="
+"${python}" tools/run_process_table_gate.py \
+  --root "${root}" --steps 50 --config configs/pi_cam_icesm131_replay.yaml \
+  --native-manifest "${manifest}" --boundary "${boundary}" \
+  --block-replay "${PYCAM_BLOCK_REPLAY:?set PYCAM_BLOCK_REPLAY to a radiation process capture directory}" \
+  --reference "${cam_reference}" ${PYCAM_CLI_RUN:+--cli-run "${PYCAM_CLI_RUN}"} \
+  --record "${record}" --pbs-job-id "${PBS_JOBID}" || echo "process table gate: not bit-for-bit or failed (recorded)"
+echo "root: ${root}"
