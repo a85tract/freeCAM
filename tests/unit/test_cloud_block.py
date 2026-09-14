@@ -261,3 +261,40 @@ def test_the_cloud_block_examples_answer_both_blocks_by_name() -> None:
     assert {"macro_block", "micro_block", "block_answer", "features"} <= names
     trainer = ast.parse((root / "train_cloud_block.py").read_text())
     assert any(isinstance(node, ast.FunctionDef) and node.name == "changed_fields" for node in trainer.body)
+
+
+def test_the_views_of_rotated_fields_are_kept_per_plane_and_probed_once_a_step() -> None:
+    """Two planes alternate; after both are seen, a step costs one accessor call for the probe, none for the rest."""
+    import numpy as np
+
+    class Buffer:
+        def __init__(self):
+            self.calls = 0
+            self.plane = 0
+            self.planes = [{"CLD": np.zeros((16, 30), order="F"), "AST": np.zeros((16, 30), order="F")} for _ in range(2)]
+            self.fields = {"CLD": type("F", (), {"time_sliced": True})(), "AST": type("F", (), {"time_sliced": True})(),
+                           "QME": type("F", (), {"time_sliced": False})()}
+            self.fixed = {"QME": np.zeros((16, 30), order="F")}
+
+        def __contains__(self, name):
+            return name in self.fields
+
+        def view(self, name, lchnk):
+            self.calls += 1
+            return self.planes[self.plane][name] if name in ("CLD", "AST") else self.fixed[name]
+
+    buffer = Buffer()
+    stage = CloudMacroMicrophysics(whole_drivers=True)
+    pool = {f"phys_state.{n}": np.zeros((16, 30, 2), order="F") for n in CB.STATE_FIELDS}
+    handles = type("H", (), {"forcing": lambda self, lchnk, name: np.zeros(16)})()
+    st = type("Runtime", (), {"block_pbuf": buffer, "block_dynamic": {"macro": (), "micro": ()}, "handles": handles,
+                             "native": type("N", (), {"pool": pool})(), "cam_in": lambda self, index: {n: np.zeros(16) for n in CB.CAM_IN_FIELDS}})()
+    import freecam.physics.cloud_macro_microphysics as M
+    names_fixed = set(CB.MACRO_BLOCK.buffer_names) | set(CB.MICRO_BLOCK.buffer_names)
+    v0 = stage._block_views(st, 1540, 14, 0); first = buffer.calls          # fixed fields once, rotated once, plus the probe
+    buffer.plane = 1
+    v1 = stage._block_views(st, 1540, 14, 0); second = buffer.calls - first  # the other plane: probe + the rotated fields
+    buffer.plane = 0
+    v2 = stage._block_views(st, 1540, 14, 0); third = buffer.calls - first - second
+    assert v0["CLD"] is buffer.planes[0]["CLD"] and v1["CLD"] is buffer.planes[1]["CLD"] and v2["CLD"] is v0["CLD"]
+    assert second == 3 and third == 1, (first, second, third)

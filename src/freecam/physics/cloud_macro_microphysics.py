@@ -610,7 +610,8 @@ class CloudMacroMicrophysics(NativeStage):
         for block in (MACRO_BLOCK, MICRO_BLOCK):
             names.update(self._written_buffers(st, block))
             names.update(field.name for field in block.input_buffers)
-        # a time-rotated field's older plane moves every step: those views are taken per call, the rest once
+        # a time-rotated field's older plane moves every step, between two planes: those views are kept per plane,
+        # and one call a step -- the first rotated field's address -- says which plane this step is on
         rotated = sorted(name for name in names if name in buffer and buffer.fields[name].time_sliced)
         if lchnk not in cache:
             H = st.handles
@@ -620,10 +621,17 @@ class CloudMacroMicrophysics(NativeStage):
             views.update({f"cam_in_{name}": cam_in[name] for name in CAM_IN_FIELDS})
             views.update({name: H.forcing(lchnk, name) for name in FORCING})
             views.update(self._buffer_views(buffer, sorted(names.difference(rotated)), lchnk))
-            cache[lchnk] = views
-        views = dict(cache[lchnk])
-        views.update(self._buffer_views(buffer, rotated, lchnk))
-        return views
+            cache[lchnk] = (views, {})
+        fixed, planes = cache[lchnk]
+        if not rotated:
+            return fixed
+        probe = buffer.view(rotated[0], lchnk)
+        key = probe.ctypes.data
+        if key not in planes:
+            plane = dict(fixed)
+            plane.update(self._buffer_views(buffer, rotated, lchnk))
+            planes[key] = plane
+        return planes[key]
 
     @staticmethod
     def _buffer_views(buffer: Any, names: Sequence[str], lchnk: int) -> dict[str, np.ndarray]:
@@ -719,7 +727,7 @@ class CloudMacroMicrophysics(NativeStage):
 
         V = self._block_views(st, lchnk, n, index)
         zero = L["zero"]
-        pbv = {name: pb.view(name, lchnk) for name in PBUF_FIELDS}
+        pbv = {} if H.has_finish else {name: pb.view(name, lchnk) for name in PBUF_FIELDS}
         # 2210: cld_macmic_ztodt = ztodt/cld_macmic_num_steps, with the count 1: the step itself
         sub_dt = dt
         for name in ("prec_sed_macmic", "snow_sed_macmic", "prec_pcw_macmic", "snow_pcw_macmic"):
