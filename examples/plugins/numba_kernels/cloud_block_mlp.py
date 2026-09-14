@@ -5,20 +5,21 @@ weights and layout named by FREECAM_CLOUD_BLOCK (a prefix: ``<prefix>_weights.np
 train_cloud_block.py).  Called once per chunk with the block contract's inputs by name; returns the tendency object
 (``ptend_s``, the full ``ptend_q`` with the flagged constituents filled, the flags), the detrainment integrals for
 the macrophysics block, and the buffer fields the block was seen to change -- the driver writes those where the
-original driver leaves them and keeps the rest.  Features as the trainer built them, the forward in Numba.
+original driver leaves them and keeps the rest.  Features as the trainer built them; the forward is three
+matrix products in NumPy through the single-threaded BLAS (OMP_NUM_THREADS=1 in the jobs) -- the Python driver
+calls any Python callable, and a compiled kernel is the plugin path's need, not this one's.
 """
 import json
 import os
 
 import numpy as np
-from numba import njit
 
 _PREFIX = os.environ["FREECAM_CLOUD_BLOCK"]
 _W = np.load(f"{_PREFIX}_weights.npz")
 _L = json.load(open(f"{_PREFIX}_layout.json"))
 W1T = np.ascontiguousarray(_W["W1T"], dtype=np.float32); B1 = np.ascontiguousarray(_W["b1"], dtype=np.float32)
 W2T = np.ascontiguousarray(_W["W2T"], dtype=np.float32); B2 = np.ascontiguousarray(_W["b2"], dtype=np.float32)
-W3 = np.ascontiguousarray(_W["W3T"].T, dtype=np.float32); B3 = np.ascontiguousarray(_W["b3"], dtype=np.float32)
+W3T = np.ascontiguousarray(_W["W3T"], dtype=np.float32); B3 = np.ascontiguousarray(_W["b3"], dtype=np.float32)
 X_MEAN = np.ascontiguousarray(_W["x_mean"], dtype=np.float64); X_STD = np.ascontiguousarray(_W["x_std"], dtype=np.float64)
 Y_MEAN = np.ascontiguousarray(_W["y_mean"], dtype=np.float64); Y_STD = np.ascontiguousarray(_W["y_std"], dtype=np.float64)
 Y_MIN = np.ascontiguousarray(_W["y_min"], dtype=np.float64); Y_MAX = np.ascontiguousarray(_W["y_max"], dtype=np.float64)
@@ -36,75 +37,20 @@ DERIVED = tuple(_L.get("derived", ()))
 CPAIR = 1004.64            # physconst: the driver's T update is its dry static energy update over cpair
 
 
-@njit(fastmath=True)
-def _dense_axpy(x, WT, b, out):
-    # out[n, m] = x[n, k] @ WT[k, m] + b, with the weight matrix read once a call: the column loop sits inside the
-    # loop over weight rows, so a row of WT (one input feature) serves every column while it is in cache, and the
-    # small out block stays in cache throughout.  Looping columns outside streams the whole matrix once a column,
-    # which on a node of 128 ranks sharing their caches turned a 2 ms forward into 36 (7453811).
-    n, k = x.shape
-    m = WT.shape[1]
-    for i in range(n):
-        for j in range(m):
-            out[i, j] = b[j]
-    for l in range(k):
-        for i in range(n):
-            xi = x[i, l]
-            for j in range(m):
-                out[i, j] += xi * WT[l, j]
+def forward(x64):
+    """The transform of every feature (log10 where the trainer decided), standardise and clamp, three dense layers,
+    de-standardise, clip to the training range."""
 
-
-@njit(fastmath=True)
-def _dense_wide(h, W, b, out):
-    n, k = h.shape
-    m = W.shape[0]
-    for j in range(m):
-        bj = b[j]
-        for i in range(n):
-            s = np.float32(0.0)
-            for l in range(k):
-                s += h[i, l] * W[j, l]
-            out[i, j] = s + bj
-
-
-@njit
-def _forward(x64, kinds, x_mean, x_std, W1T, B1, W2T, B2, W3, B3, y_mean, y_std, y_min, y_max):
-    n, nf = x64.shape
-    x = np.empty((n, nf), np.float32)
-    for i in range(n):
-        for f in range(nf):
-            v = x64[i, f]
-            if kinds[f] != 0:
-                v = np.log10(max(v, 0.0) + 1e-30)
-            v = (v - x_mean[f]) / x_std[f]
-            if not (v == v):
-                v = 0.0
-            if v < -20.0:
-                v = -20.0
-            elif v > 20.0:
-                v = 20.0
-            x[i, f] = v
-    h1 = np.empty((n, W1T.shape[1]), np.float32); _dense_axpy(x, W1T, B1, h1)
-    for i in range(n):
-        for j in range(h1.shape[1]):
-            if h1[i, j] < 0.0:
-                h1[i, j] = 0.0
-    h2 = np.empty((n, W2T.shape[1]), np.float32); _dense_axpy(h1, W2T, B2, h2)
-    for i in range(n):
-        for j in range(h2.shape[1]):
-            if h2[i, j] < 0.0:
-                h2[i, j] = 0.0
-    y32 = np.empty((n, W3.shape[0]), np.float32); _dense_wide(h2, W3, B3, y32)
-    y = np.empty((n, W3.shape[0]), np.float64)
-    for i in range(n):
-        for t in range(y.shape[1]):
-            v = np.float64(y32[i, t]) * y_std[t] + y_mean[t]
-            if v < y_min[t]:
-                v = y_min[t]
-            elif v > y_max[t]:
-                v = y_max[t]
-            y[i, t] = v
-    return y
+    x = x64.astype(np.float64, copy=True)
+    log = KINDS != 0
+    x[:, log] = np.log10(np.maximum(x[:, log], 0.0) + LOG_FLOOR)
+    x = np.nan_to_num((x - X_MEAN) / X_STD, nan=0.0, posinf=0.0, neginf=0.0)
+    np.clip(x, -20.0, 20.0, out=x)
+    x = x.astype(np.float32)
+    h1 = np.maximum(x @ W1T + B1, 0.0, dtype=np.float32)
+    h2 = np.maximum(h1 @ W2T + B2, 0.0, dtype=np.float32)
+    y32 = h2 @ W3T + B3
+    return np.clip(y32.astype(np.float64) * Y_STD + Y_MEAN, Y_MIN, Y_MAX)
 
 
 def features(inputs, ncol):
@@ -122,7 +68,7 @@ def features(inputs, ncol):
 def block_answer(inputs):
     ncol = int(inputs["ncol"])
     pcols = int(np.asarray(inputs["state_t"]).shape[0])
-    y = _forward(features(inputs, ncol), KINDS, X_MEAN, X_STD, W1T, B1, W2T, B2, W3, B3, Y_MEAN, Y_STD, Y_MIN, Y_MAX)
+    y = forward(features(inputs, ncol))
     answer = {"ptend_ls": 1, "ptend_lq": LQ}
     for name, lo, hi in TARGETS:
         block = y[:, lo:hi]
