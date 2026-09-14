@@ -1244,15 +1244,15 @@ class NativeStage:
         return dict(getattr(self, "_components", {}))
 
     def runtime(self, native: Any) -> StageRuntime:
-        """This rank's runtime, built on first use and kept per native access object.
+        """This rank's runtime, built on first use and kept per pool.
 
-        Keyed on the access object, not on ``native.pool``: the pool is a property that hands out a fresh
-        view object each time, so a key on its id missed on every step and rebuilt the runtime -- its
-        handles, its buffer tables, its scratch -- once a step (7 ms a step on 512 ranks, the whole of the
-        Python driver's overhead beyond its calls).
+        Keyed on the pool, which is one object for the run: the native access object handed to ``tend`` is
+        made anew each call, so a key on it would rebuild the runtime every step (7457242: a second a rank
+        per fifty steps).  The build itself -- handles, buffer tables, the reviewed descriptors read from
+        their YAML -- costs about 0.36 s a rank, once, inside the first step's timing.
         """
 
-        key = id(native)
+        key = id(native.pool)
         try:
             return self._runtimes[key]
         except KeyError:
