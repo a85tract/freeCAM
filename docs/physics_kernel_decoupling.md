@@ -1265,6 +1265,7 @@ would have clipped it a moment later, with a warning line each.
 | 7457385 | the same, the runtime cache keyed on the pool again | 2.28 s | 16.29 s | -- | bit-for-bit |
 | 7456791 | both blocks replayed, the finish entries | 0.51 s | 14.35 s | -- | state bit-for-bit; `rh0` differs in the diagnostics |
 | 7456895 | the macrophysics core network (NumPy, clamped), the microphysics original | 2.25 s | 18.83 s | 2.8 | 3.07 K rms in T; 402,000 `qneg3` lines, none from the macrophysics |
+| 7457487 | the same, on the round's final code | 2.30 s | 19.06 s | 2.9 | 3.07 K rms in T |
 | 7457386 | **both core networks** (macrophysics 256 wide, microphysics 128 wide), NumPy, clamped | **1.24 s** | 15.47 s | 3.1 and 3.3 | 6.12 K rms in T; one `qneg3` line |
 
 The driver's own cost is now measured rather than inferred.  A profile of
