@@ -2648,7 +2648,7 @@
   "use_gw_oro": true,
   "use_subcol_microp": false
  },
- "content_hash": "59abc3cab13a3c203c51cce9d9d8a82bf81d3c698e8e964f1b1451642fb84778",
+ "content_hash": "6b0042bfcf959b306121aaef81d74fd7e0582cf6f75c53a3d1e1499d62754fab",
  "evidence": {
   "pi_cam_cldfrc_fice_frame_replay.json": {
    "bfb": true,
@@ -4377,6 +4377,44 @@
    "steps_completed": 3,
    "what": "The first model bound at the micro_mg_tend hook: a placeholder MLP (no physics claim) exported as TorchScript, run for fifty steps on exclusive nodes to measure the FTorch path on the most expensive kernel (p14 image)."
   },
+  "pi_cam_pausable_p23-rad-original_50step_failure.json": {
+   "diagnosis": "ImageSegmentRunner.resume numbered the paused name with RunnerSpec.kernel_id, which indexed the manifest's kernels only; the process slot is numbered after them (id 3) and was not in that tuple.  run_original had been given the right numbering, resume had not.  Not a fault of the image or the pause: the frame was decoded and answered; the failure is in the Python runner's bookkeeping.",
+   "image": {
+    "build": "pi_cam_promoted_p23",
+    "role": "development",
+    "sha256": null
+   },
+   "kind": "gate-failure",
+   "outcome": "the runner paused at the process slot on the first radiative step and Python answered the frame; the resume then failed on every rank with ValueError: tuple.index(x): x not in tuple, and the stage was tainted",
+   "pbs_job": "7434628",
+   "python_stages": [
+    "rad_tend"
+   ],
+   "ranks": 512,
+   "record": "pi_cam_pausable_p23-rad-original_50step_failure.json",
+   "run_tag": "p23-rad-original",
+   "steps_completed": 3,
+   "what": "The original branch through the runner's pause at the process slot (bit-for-bit expected)."
+  },
+  "pi_cam_pausable_p23-rad-pymlp-live_50step_failure.json": {
+   "diagnosis": "ImageSegmentRunner.resume numbered the paused name with RunnerSpec.kernel_id, which indexed the manifest's kernels only; the process slot is numbered after them (id 3) and was not in that tuple.  run_original had been given the right numbering, resume had not.  Not a fault of the image or the pause: the frame was decoded and answered; the failure is in the Python runner's bookkeeping.",
+   "image": {
+    "build": "pi_cam_promoted_p23",
+    "role": "development",
+    "sha256": null
+   },
+   "kind": "gate-failure",
+   "outcome": "the runner paused at the process slot on the first radiative step and Python answered the frame; the resume then failed on every rank with ValueError: tuple.index(x): x not in tuple, and the stage was tainted",
+   "pbs_job": "7434629",
+   "python_stages": [
+    "rad_tend"
+   ],
+   "ranks": 512,
+   "record": "pi_cam_pausable_p23-rad-pymlp-live_50step_failure.json",
+   "run_tag": "p23-rad-pymlp-live",
+   "steps_completed": 3,
+   "what": "The compiled MLP emulator answering the slot from Python at the runner's pause."
+  },
   "pi_cam_pausable_rad-both-pause_50step.json": {
    "advance_seconds": 16.3,
    "cloud_macro_micro_python": false,
@@ -5092,6 +5130,18 @@
    "record": "pi_cam_pausable_micro-ftorch-excl_50step_failure.json"
   },
   {
+   "capability": "original_replacement_bfb",
+   "contexts": [],
+   "kernel_routine": null,
+   "record": "pi_cam_pausable_p23-rad-original_50step_failure.json"
+  },
+  {
+   "capability": "original_replacement_bfb",
+   "contexts": [],
+   "kernel_routine": null,
+   "record": "pi_cam_pausable_p23-rad-pymlp-live_50step_failure.json"
+  },
+  {
    "capability": "standalone_replay",
    "contexts": [],
    "kernel_routine": null,
@@ -5113,14 +5163,14 @@
  "inputs": {
   "native/pi_cam/hooks.yaml": "13e21d599cdc066821c151e452973357a623d00c0997b7c6cb131725c9f55ba8",
   "native/pi_cam/kernel_classifications.yaml": "d6be2103c9bd0c86a0c8461a067d3b43eac6aa370e992fde9bf3096e55c8c5f4",
-  "native/pi_cam/kernel_work_items.yaml": "0424e06330dc5135c6fc86320c8483e73f72efa8a8ddd78061f84d29085a3272",
-  "native/pi_cam/segment_runners.yaml": "002ab5f622cb5c10c0d7fc45eead3ef708de6524602eda635b4c064649663acd",
+  "native/pi_cam/kernel_work_items.yaml": "d9b2b5ae4e6bbac8041866d0ffb111273bfce5e0301cf45674b16749df58015e",
+  "native/pi_cam/segment_runners.yaml": "37fa35306070f0b5eea12a76c44ea6798b1a7f17521659bdc4761ff32208b38a",
   "validation/physics_kernel_decoupling.json": "2a9ff0a6804a4e0d54b36b26c34f44a36e5eb6234ba53fe32d7d944973680462",
   "validation/pi_cam_kernel_api_closure.json": "96025214b3e4c41f6ba89c266da5dd27c51c42c81c31e1a0ac6f7b2e9cfa260a",
   "validation/pi_cam_kernel_api_redirectable_calls.json": "b97f6f7f8f7099cb42e9cebcde6102f9d4d05d17852ba7a5495b29edb1d4fbaf",
   "validation/pi_cam_kernel_runtime_coverage_1month.json": "48f77d6ec78b4026806d4ab6fb9517ef31c1d526481b4ad68e55f77af0d303bd",
   "validation/pi_cam_kernel_runtime_coverage_50step.json": "222961fc5274dbaaf71c40f6c131a683536b5a85ef14cd047a2fd196d8ca38c5",
-  "web/public/catalog.json": "fbc026e6b78e58904a44d3c85a0fcbe992815646ed0acbae696e7a4ac9ba8fca"
+  "web/public/catalog.json": "9515073b74b09019937e938347feebe86bb9f9fb153563b96cb6d94c57467f87"
  },
  "kernels": {
   "aer_rad_props::aer_rad_props_lw": {
@@ -40984,7 +41034,7 @@
     "blocker": null,
     "branch": "physics-kernel-api-closure",
     "next_gate": "a network good enough to use: more captured data, the longwave near the surface, the clear-sky and TOA diagnostics; then a paired year",
-    "note": "Month pair on main (replayed boundary, same image and class): Radiation installed and nothing bound 401.3 s over 1,488 steps, bit-for-bit with the monthly oracle (7418517); the 256-wide emulator at the slot 363.9 s, nine percent shorter, 761,856 plugin calls at 1.31 ms each, radiation 2.9 s a rank against 34.2 (7418518). Finite for the month; thirteen water-isotope check lines against none in the baseline; the radiation budget drifts by 4 to 5 W/m2 in the global mean over the month (drift record kept). The slot's second answerer, a TorchScript model through FTorch (image p22, 7431583/7431584 bit-for-bit), ran two level-token transformers: 64 wide 2 layers (72k parameters, R2 as the 256-wide MLP) at 7.1 ms a call inside the image, shadow bit-for-bit (7431802), live radiation 0.72 s a rank against 1.40 (7431803); 96 wide 3 layers (233k, R2 as the 512-wide MLP) at 18.7 ms, more than the branch itself (7431990, 7431991). The mechanism takes any TorchScript model; on 128 ranks a node a transformer costs 3 to 4 times its single-thread price, as the MLP plugin does, and only the small one pays.",
+    "note": "Month pair on main (replayed boundary): Radiation installed and nothing bound 401.3 s over 1,488 steps, bit-for-bit with the monthly oracle (7418517); the 256-wide emulator at the slot 363.9 s, nine percent shorter, 761,856 plugin calls at 1.31 ms (7418518); finite for the month, thirteen isotope-check lines, the radiation budget drifting 4 to 5 W/m2 in the global mean. Three answerers at the slot now: a compiled Python kernel (plugin), a TorchScript model through FTorch (p22: 64-wide transformer 7.1 ms a call, radiation 0.72 s a rank against 1.30, 7431803; 96-wide 18.7 ms, slower than the branch, 7431991), and Python at the runner's pause (p23: the original branch through the pause bit-for-bit, 7434783; the same MLP called from Python 0.82 s a rank once compiled, 7434965, the pause costing about 15 ms a chunk of Python). The mechanism is closed in all three forms; the network is the open problem.",
     "owner": "claude",
     "owner_class": "freecam.physics.radiation.Radiation",
     "stage": "performance_gate",
@@ -72701,9 +72751,9 @@
   "mo_lightning::lightning_no_prod"
  ],
  "volatile": {
-  "branch": "main",
-  "commit": "cda7a4bb6de3e5d175f2ed8c1863da5df021527d",
-  "generated_at": "2026-09-13T20:37:59+00:00"
+  "branch": "radiation-torchscript-slot",
+  "commit": "4dbc6bb82bd13227eba28fd379c3090741dadae8",
+  "generated_at": "2026-09-14T00:19:22+00:00"
  },
  "work_items": [
   {
@@ -72756,7 +72806,7 @@
    "branch": "physics-kernel-api-closure",
    "kernel": "radiation::radiation_tend",
    "next_gate": "a network good enough to use: more captured data, the longwave near the surface, the clear-sky and TOA diagnostics; then a paired year",
-   "note": "Month pair on main (replayed boundary, same image and class): Radiation installed and nothing bound 401.3 s over 1,488 steps, bit-for-bit with the monthly oracle (7418517); the 256-wide emulator at the slot 363.9 s, nine percent shorter, 761,856 plugin calls at 1.31 ms each, radiation 2.9 s a rank against 34.2 (7418518). Finite for the month; thirteen water-isotope check lines against none in the baseline; the radiation budget drifts by 4 to 5 W/m2 in the global mean over the month (drift record kept). The slot's second answerer, a TorchScript model through FTorch (image p22, 7431583/7431584 bit-for-bit), ran two level-token transformers: 64 wide 2 layers (72k parameters, R2 as the 256-wide MLP) at 7.1 ms a call inside the image, shadow bit-for-bit (7431802), live radiation 0.72 s a rank against 1.40 (7431803); 96 wide 3 layers (233k, R2 as the 512-wide MLP) at 18.7 ms, more than the branch itself (7431990, 7431991). The mechanism takes any TorchScript model; on 128 ranks a node a transformer costs 3 to 4 times its single-thread price, as the MLP plugin does, and only the small one pays.",
+   "note": "Month pair on main (replayed boundary): Radiation installed and nothing bound 401.3 s over 1,488 steps, bit-for-bit with the monthly oracle (7418517); the 256-wide emulator at the slot 363.9 s, nine percent shorter, 761,856 plugin calls at 1.31 ms (7418518); finite for the month, thirteen isotope-check lines, the radiation budget drifting 4 to 5 W/m2 in the global mean. Three answerers at the slot now: a compiled Python kernel (plugin), a TorchScript model through FTorch (p22: 64-wide transformer 7.1 ms a call, radiation 0.72 s a rank against 1.30, 7431803; 96-wide 18.7 ms, slower than the branch, 7431991), and Python at the runner's pause (p23: the original branch through the pause bit-for-bit, 7434783; the same MLP called from Python 0.82 s a rank once compiled, 7434965, the pause costing about 15 ms a chunk of Python). The mechanism is closed in all three forms; the network is the open problem.",
    "owner": "claude",
    "owner_class": "freecam.physics.radiation.Radiation",
    "stage": "performance_gate",

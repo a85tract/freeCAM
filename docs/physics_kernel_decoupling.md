@@ -853,6 +853,57 @@ sixteen columns are what a leaner export (fused preprocessing, one layer,
 an ONNX runtime) would attack.  On this node layout only the small one
 pays for itself, and the compiled MLP pays four times better.
 
+#### Python answering the slot: the runner pauses at the branch
+
+Both answerers above are called by Fortran.  The other way round -- the
+driver's preparation and write-back in Fortran, the model call itself in
+Python, with as few crossings as the structure allows -- was built the same
+day as a third form of the slot: the runner *pauses* at the top of the
+radiative branch.  The radiation spec declares a `process_slot` beside the
+`slot` on its `if` node; when the slot is armed the runner asks
+`pycam_rad_process_prepare` to build the slot's tables and the RRTMG state,
+parks its program counter and returns to Python as a kernel pause does, with
+a frame of the 46 inputs and 12 outputs over the same storage
+(`radiation_process`, numbered after the runner's two kernels in the
+manifest's `process_slot`).  Python answers the frame -- a process model on
+the live-lane views, or the original branch on request -- and the resume
+runs `pycam_rad_process_finish`, which writes the outputs where the driver
+writes them and destroys the state, or, after the original was asked for,
+continues into the branch's own pieces.  Three crossings a chunk; the
+Python that owns the step is the same `Radiation` class, whose `process`
+slot now takes a Python model on any image whose runner pauses there
+(`--radiation-model path.py:function`, or `original` for the gate), and
+still falls back to the transcription on an older image.
+
+The p23 image carries the pause.  Its gates (fifty steps, 512 ranks,
+develop, whole-node memory, one run at a time; the first pair died at the
+resume on a Python-side numbering slip and the second Python run on a
+one-element scalar, both kept as failure records, and one bit-for-bit run
+shared its nodes with a neighbour and timed everything twice as slow):
+
+| run | what answered the slot | `rad_tend` a rank, 50 steps | step loop | against the oracle |
+| --- | --- | ---: | ---: | --- |
+| 7434627 | nothing (the cloud class installed) | -- | 16.00 s | bit-for-bit |
+| 7434783 | the original branch, asked for at the pause | 1.73 s | 16.40 s | bit-for-bit, 25,600 pauses |
+| 7434965 | the compiled MLP called from Python at the pause | 0.82 s (once compiled) | 15.5 s (once compiled) | drift as the plugin's: 0.137 K rms |
+| 7418444 (p21) | the same MLP as a plugin, called by Fortran | 0.23 s | 14.72 s | the same state, bit-for-bit with this run |
+| 7431584 (p22) | the branch, computed | 1.30 s | 15.96 s | bit-for-bit |
+
+The pause itself costs about 9 ms a chunk on top of the shortwave pause
+path (7434783 against 7431584), and with the model in Python 16 ms a chunk
+all told -- the model's own arithmetic is 1.3 ms of that, the same as in
+the plugin: the rest is the frame's 58 slots decoded into views, the
+write-back's checks and the resume, run by an interpreter sharing a core
+with another rank.  Handing the model views instead of copies of the 46
+inputs changed nothing measurable.  The Python path also compiles the
+model on its first call inside the step loop, 9 s a rank (the plugin
+compiles at install); the fifty-step loop reads 24.9 s for that reason and
+15.5 s without it.  The state the two paths produce from the same weights
+is identical, so what the pause buys is flexibility -- any Python model,
+no compilation step, a notebook can hand one in -- and what it costs is
+about two thirds of the saving: 0.5 s a rank of the branch's 1.3 against
+the plugin's 1.1.
+
 ## Where it stands
 
 | Kernel | Owner | Contract | Runner pause | In-model gate | Loop |

@@ -89,15 +89,12 @@ items:
   updated_at: '2026-09-13'
   next_gate: 'a network good enough to use: more captured data, the longwave near the surface, the clear-sky
     and TOA diagnostics; then a paired year'
-  note: 'Month pair on main (replayed boundary, same image and class): Radiation installed and nothing
-    bound 401.3 s over 1,488 steps, bit-for-bit with the monthly oracle (7418517); the 256-wide emulator
-    at the slot 363.9 s, nine percent shorter, 761,856 plugin calls at 1.31 ms each, radiation 2.9 s a
-    rank against 34.2 (7418518). Finite for the month; thirteen water-isotope check lines against none
-    in the baseline; the radiation budget drifts by 4 to 5 W/m2 in the global mean over the month (drift
-    record kept). The slot''s second answerer, a TorchScript model through FTorch (image p22, 7431583/7431584
-    bit-for-bit), ran two level-token transformers: 64 wide 2 layers (72k parameters, R2 as the 256-wide
-    MLP) at 7.1 ms a call inside the image, shadow bit-for-bit (7431802), live radiation 0.72 s a rank
-    against 1.40 (7431803); 96 wide 3 layers (233k, R2 as the 512-wide MLP) at 18.7 ms, more than the
-    branch itself (7431990, 7431991). The mechanism takes any TorchScript model; on 128 ranks a node a
-    transformer costs 3 to 4 times its single-thread price, as the MLP plugin does, and only the small
-    one pays.'
+  note: 'Month pair on main (replayed boundary): Radiation installed and nothing bound 401.3 s over 1,488
+    steps, bit-for-bit with the monthly oracle (7418517); the 256-wide emulator at the slot 363.9 s, nine
+    percent shorter, 761,856 plugin calls at 1.31 ms (7418518); finite for the month, thirteen isotope-check
+    lines, the radiation budget drifting 4 to 5 W/m2 in the global mean. Three answerers at the slot now:
+    a compiled Python kernel (plugin), a TorchScript model through FTorch (p22: 64-wide transformer 7.1
+    ms a call, radiation 0.72 s a rank against 1.30, 7431803; 96-wide 18.7 ms, slower than the branch,
+    7431991), and Python at the runner''s pause (p23: the original branch through the pause bit-for-bit,
+    7434783; the same MLP called from Python 0.82 s a rank once compiled, 7434965, the pause costing about
+    15 ms a chunk of Python). The mechanism is closed in all three forms; the network is the open problem.'
