@@ -249,3 +249,15 @@ def test_a_census_block_names_what_the_original_wrote_beyond_the_contract() -> N
     views["CLD"][:14, :, :] += 1.0
     census.compare(before, views, 14, written={"CLD"}, step=2, lchnk=1540)
     assert census.describe()["both_planes"] == {"CLD": 1}
+
+
+def test_the_cloud_block_examples_answer_both_blocks_by_name() -> None:
+    """The block network module exposes macro_block and micro_block (importing it loads weights, so read the source)."""
+    import ast
+
+    root = Path(__file__).resolve().parents[2] / "examples" / "plugins" / "numba_kernels"
+    tree = ast.parse((root / "cloud_block_mlp.py").read_text())
+    names = {node.name for node in tree.body if isinstance(node, ast.FunctionDef)}
+    assert {"macro_block", "micro_block", "block_answer", "features"} <= names
+    trainer = ast.parse((root / "train_cloud_block.py").read_text())
+    assert any(isinstance(node, ast.FunctionDef) and node.name == "changed_fields" for node in trainer.body)
