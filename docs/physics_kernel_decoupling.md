@@ -1059,6 +1059,7 @@ month; the plugin months repeat the p21 month pair's numbers (401.3 and
 | 7452666 | transformer as a Numba plugin | 385.4 s | -3.7% | 18.8 s (12.6 ms a call) | 15 ms | -4.4 W/m², -1.2 kg/m², -1.0 K |
 | 7452667 | transformer through the Python driver | 374.3 s | -6.5% | 10.3 s (6.9 ms a call) | 0.47 s | -243 W/m², -4.1 kg/m², -1.2 K; 45,308 "BIG ERROR" lines |
 | 7454279 | the same MLP through the Python driver, the forward in NumPy | **359.5 s** | **-10.2%** | 2.2 s (1.5 ms a call) | 2 ms | -55 W/m², -7.9 kg/m², -11.8 K (the same model) |
+| 7455413 | the same transformer through the Python driver, written out in NumPy | 373.9 s | -6.6% | 11.7 s (7.9 ms a call) | 10 ms | -243 W/m²; 45,069 "BIG ERROR" lines (the same model) |
 
 The two paths are a percent and a half apart on the loop with the same
 network when both run it in Numba: the driver's month costs its 6 s
@@ -1070,7 +1071,19 @@ products through the single-threaded BLAS (7454279) the first call costs
 2 ms instead of 6 s and the month runs in 359.5 s: the fastest of the
 five, ten percent under the original and seven seconds under the plugin.
 Over fifty steps the same run (7454278) puts the radiation stage at 0.32 s
-a rank against the plugin's 0.23 and the loop at 14.71 s against 14.72.  The drift column is
+a rank against the plugin's 0.23 and the loop at 14.71 s against 14.72.
+The transformer written out in NumPy (`rad_block_tf_np.py`: batched matrix
+products for the attention, NumPy's softmax and layer norm, an exact-erf
+GELU; 2e-6 from the scripted module) gains nothing of the kind: 7.9 ms a
+call against libtorch's 6.9, the month 373.9 s against 374.3 (7455413
+against 7452667; over fifty steps 7455411 against 7439603, 15.06 s against
+15.75 with the conversion's first-call cost gone).  What libtorch spends on
+operator dispatch and the copy of the inputs, NumPy spends on its own
+per-call overhead over some forty small array operations; the six-fold
+arithmetic of the transformer against the MLP is what both pay for.  The
+NumPy version keeps libtorch off the ranks (0.91 GB a rank against 1.03)
+and its first call costs 10 ms instead of 0.47 s; on speed the two are the
+same.  The drift column is
 the model's, not the path's: the slot models (given the zenith angle)
 drift as the month pair did; the block models, made to learn it, lose
 118 W/m² of net shortwave in the global mean by day 3 and 12 K at the
