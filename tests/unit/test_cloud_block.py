@@ -125,3 +125,18 @@ def test_the_write_back_puts_a_blocks_answer_where_the_driver_leaves_it() -> Non
     np.testing.assert_array_equal(handles.arrays[VIEW["det_ice"]][:14], answer["det_ice"])
     written = [name for name in CB.MACRO_BLOCK.buffer_names if views[name].any()]
     assert written == list(CB.MACRO_BLOCK.buffer_names[:5])
+
+
+def test_the_views_leave_out_buffer_fields_this_configuration_never_registered() -> None:
+    class Buffer:
+        declared = {"CLD": np.zeros((16, 30), order="F"), "NAAI": np.zeros((16, 30), order="F")}
+
+        def __contains__(self, name):
+            return name in self.declared
+
+        def view(self, name, lchnk):
+            return self.declared[name]
+
+    views = CloudMacroMicrophysics._buffer_views(Buffer(), ["CLD", "CMFR_DET", "NAAI", "QLR_DET"], 1540)
+    assert sorted(views) == ["CLD", "NAAI"]
+    assert views["CLD"] is Buffer.declared["CLD"]

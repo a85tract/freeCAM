@@ -567,13 +567,23 @@ class CloudMacroMicrophysics(NativeStage):
         cam_in = st.cam_in(index)
         views.update({f"cam_in_{name}": cam_in[name] for name in CAM_IN_FIELDS})
         views.update({name: H.forcing(lchnk, name) for name in FORCING})
-        buffer = self._block_pbuf(st)
-        for name in sorted(set(MACRO_BLOCK.buffer_names) | set(MICRO_BLOCK.buffer_names)):
+        views.update(self._buffer_views(self._block_pbuf(st), sorted(set(MACRO_BLOCK.buffer_names) | set(MICRO_BLOCK.buffer_names)), lchnk))
+        cache[lchnk] = views
+        return views
+
+    @staticmethod
+    def _buffer_views(buffer: Any, names: Sequence[str], lchnk: int) -> dict[str, np.ndarray]:
+        """Zero-copy views of the named buffer fields this configuration registered; a field it never registered
+        (UNICON's detrainment, say, whose index the driver reads as -1) is left out, as the driver's pointer is."""
+
+        views: dict[str, np.ndarray] = {}
+        for name in names:
+            if name not in buffer:
+                continue
             try:
                 views[name] = buffer.view(name, lchnk)
-            except (PBufFieldAbsent, KeyError):
+            except PBufFieldAbsent:
                 continue
-        cache[lchnk] = views
         return views
 
     @staticmethod
