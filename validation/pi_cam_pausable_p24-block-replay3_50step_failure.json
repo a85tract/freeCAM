@@ -1,0 +1,27 @@
+{
+ "schema_version": 1,
+ "what": "The block replay again, with the driver reporting a chunk's failure before Fortran aborts.",
+ "pbs_job_id": "7435919.desched1",
+ "run_tag": "p24-block-replay3",
+ "kernel_models": {
+  "radiation_process": {
+   "answerer": "block-replay"
+  }
+ },
+ "job": "validation/jobs/pi_cam_pausable_50step.pbs",
+ "python_stages": [
+  "rad_tend"
+ ],
+ "native_image": "build/pi_cam_promoted_p24",
+ "ranks": 512,
+ "resources": {
+  "queue": "develop",
+  "placement": "4 half nodes, 128 ranks each",
+  "memory_requested": "4 x 235 GB"
+ },
+ "bfb_record_note": "the job's comparison (.bfb.json) and health (.health.json) files of the failed run are kept with this record",
+ "outcome": "the Python driver's first chunk failed on its first step and the resume half of tphysbc stopped the run: TPHYSBC: Python claimed the radiation step but produced no tendency (512 ranks); this run's log names the cause: rad view(chunk, code 21) refused with status 2 on every chunk",
+ "diagnosis": "_block_views took a view of every radiation handle at the chunk's first visit, including the tendency (view code 21) and the net flux (71); rad_ptend(lchnk)%s is allocated by radheat_tend's first call and the view was refused (status 2), the chunk's Python raised, and Fortran aborted before Python's deferred report reached the log.  The driver now excludes those two views (radheat_tend fills them) and prints a chunk's failure at once.",
+ "disposition": "resubmitted as p24-block-replay4 and p24-block-live2",
+ "steps_completed": 2
+}

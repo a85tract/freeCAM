@@ -904,6 +904,70 @@ no compilation step, a notebook can hand one in -- and what it costs is
 about two thirds of the saving: 0.5 s a rank of the branch's 1.3 against
 the plugin's 1.1.
 
+#### The Python driver: the model replaces the whole block, Python does the rest from memory
+
+The user's own picture of the process was sharper than the slot: split
+`radiation_tend` into what is read from memory before any arithmetic, one
+compute block, and what is written to memory after; keep the block in
+Fortran or hand it to a model; let Python do the reading and the writing.
+Drawn on the driver, the block is everything numerical -- the zenith angle,
+the optics, the two cores, the heating-to-tendency step, the energy scaling
+-- and the model that replaces it must take only what the driver had in
+memory: the state and its constituents, the buffer's cloud fraction, optics
+inputs and ozone mass mixing ratio, the surface albedos and upward longwave,
+the calendar day and the column's latitude and longitude
+(`radiation_process.BLOCK_INPUTS`).  The zenith angle and the RRTMG gas
+profiles are learned; a thirteenth output, a lit-column logit, gates the
+shortwave to exact zeros in the dark.  The `Radiation` class gained the
+mode `python-driver` (`--radiation-block-model`): per chunk it reads its
+views -- taken once and kept, the state's arrays, the surface, the fluxes,
+the buffer's plain fields, the column geometry; the two time-sliced cloud
+fields per step -- decides the radiative step by the driver's own rule
+(`radiation_steps`, radiation.F90:240-246), calls the model, writes the
+heating rates and fluxes where the driver leaves them, and then does what
+the driver does after the branch: the tendency and net flux through the
+one Fortran call `radheat_tend` (which also allocates the tendency the
+resume half takes), the heating-rate diagnostic in NumPy, the step's
+history in one new call (`pycam_rad_process_history_v1`, image p24), the
+storage scaling by the layer mass, the copy into `netsw`; on a
+non-radiative step the same without the model.  Four small Fortran calls
+a chunk for bookkeeping; the compute is the model's alone.
+
+The gates (fifty steps, whole develop nodes):
+
+| run | what answered the block | `rad_tend` a rank | step loop | against the oracle |
+| --- | --- | ---: | ---: | --- |
+| 7435709 | nothing (the cloud class installed) | -- | 15.85 s | bit-for-bit |
+| 7436003 | the day-1 capture's recorded outputs, through the Python driver | 0.30 s | 14.77 s | **`cam.r`, `cam.rs`, `h0` bit-for-bit**; `rh0` differs in the same 26 diagnostics as through the transcription (7417486), HR included among the identical ones |
+| 7436082 | the block emulator (256 wide, trained on the month) | 0.38 s once compiled | 15.0 s once compiled (22.5 with the 7.5 s compile) | drift: 1.5 K rms in temperature after a day |
+| 7418444 (p21) | the slot emulator as a plugin, for comparison | 0.23 s | 14.72 s | 0.14 K rms |
+
+The replay is the proof of the driver: with the block's outputs given, the
+Python around them reproduces the state exactly, so the bookkeeping --
+which step radiates, the unscaling and rescaling by the layer mass, the
+tendency, the net flux, the surface copy -- is the driver's own.  Its cost
+is 0.30 s a rank per fifty steps, about 3 ms a chunk, and with the
+compiled network the stage runs at 0.38 s: a shade above the plugin's
+0.23, with the step loop within noise of it.  The first pair of runs
+(7435764, 7435791) died at the first chunk on a view of the tendency taken
+before `radheat_tend` had allocated it, a third (7435825) on the node
+fabric, and a fourth (7436004) on the constituent array the handles do not
+carry; all kept as failure records, and the driver now reports a chunk's
+failure before Fortran aborts on the missing tendency.
+
+The price is in the model.  Asked to learn the zenith angle and the gas
+conversions instead of being given them, the 256-wide network validates
+at R² 0.945 for the shortwave heating (0.957 with them) and 0.975 for the
+net shortwave at the top (0.986), and its lit-column gate is right on
+99.88 percent of columns -- and the run drifts ten times faster than the
+slot emulator's from the same weights and data: 1.5 K rms in temperature
+after a day against 0.14, 0.66 hPa in surface pressure against 0.08.  The
+geometry the physics computes in twenty lines is what the network learns
+worst, and the columns it gets wrong at the terminator get a full day's
+shortwave or none.  Giving the model the zenith angle -- twenty lines of
+trigonometry in Python, or one more Fortran call -- is the obvious repair;
+the driver does not change.
+
 ## Where it stands
 
 | Kernel | Owner | Contract | Runner pause | In-model gate | Loop |

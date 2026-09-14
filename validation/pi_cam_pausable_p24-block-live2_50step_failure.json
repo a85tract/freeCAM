@@ -1,0 +1,30 @@
+{
+ "schema_version": 1,
+ "what": "The block emulator called by the Python driver, after the tendency view was fixed.",
+ "pbs_job_id": "7436004.desched1",
+ "run_tag": "p24-block-live2",
+ "kernel_models": {
+  "radiation_process": {
+   "file": "rad_block_mlp.py",
+   "function": "radiation_block",
+   "binding": "python-driver",
+   "weights": "rad_block_h256_weights.npz"
+  }
+ },
+ "job": "validation/jobs/pi_cam_pausable_50step.pbs",
+ "python_stages": [
+  "rad_tend"
+ ],
+ "native_image": "build/pi_cam_promoted_p24",
+ "ranks": 512,
+ "steps_completed": 2,
+ "resources": {
+  "queue": "develop",
+  "placement": "4 half nodes, 128 ranks each",
+  "memory_requested": "4 x 235 GB"
+ },
+ "outcome": "the first radiative step failed on every rank: KeyError 'state_q' in the driver, reported by the driver itself, then TPHYSBC aborted for the missing tendency",
+ "diagnosis": "the driver's views came from the radiation handles' table, which has no constituent array; the block contract needs state_q (water vapour and the aerosol mixing ratios) and the walk had read it from the state pool by chunk index.  The driver now does the same.",
+ "disposition": "resubmitted as p24-block-live3",
+ "bfb_record_note": "the job's comparison and health files of the failed run are kept with this record"
+}

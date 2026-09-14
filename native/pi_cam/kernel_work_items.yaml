@@ -87,14 +87,15 @@ items:
   branch: physics-kernel-api-closure
   started_at: '2026-09-12'
   updated_at: '2026-09-13'
-  next_gate: 'a network good enough to use: more captured data, the longwave near the surface, the clear-sky
-    and TOA diagnostics; then a paired year'
+  next_gate: 'a network good enough to use: the zenith angle given back to the block model, more captured
+    data, the longwave near the surface, the clear-sky and TOA diagnostics; then a paired year'
   note: 'Month pair on main (replayed boundary): Radiation installed and nothing bound 401.3 s over 1,488
-    steps, bit-for-bit with the monthly oracle (7418517); the 256-wide emulator at the slot 363.9 s, nine
-    percent shorter, 761,856 plugin calls at 1.31 ms (7418518); finite for the month, thirteen isotope-check
-    lines, the radiation budget drifting 4 to 5 W/m2 in the global mean. Three answerers at the slot now:
-    a compiled Python kernel (plugin), a TorchScript model through FTorch (p22: 64-wide transformer 7.1
-    ms a call, radiation 0.72 s a rank against 1.30, 7431803; 96-wide 18.7 ms, slower than the branch,
-    7431991), and Python at the runner''s pause (p23: the original branch through the pause bit-for-bit,
-    7434783; the same MLP called from Python 0.82 s a rank once compiled, 7434965, the pause costing about
-    15 ms a chunk of Python). The mechanism is closed in all three forms; the network is the open problem.'
+    steps, bit-for-bit (7418517); the 256-wide emulator at the slot 363.9 s, nine percent shorter (7418518),
+    the radiation budget drifting 4 to 5 W/m2 over the month. Four ways to answer the radiation now, all
+    gated: a compiled Python kernel at the slot, called by Fortran (0.23 s a rank per 50 steps, 7418444);
+    a TorchScript model through FTorch (64-wide transformer 0.72 s, 7431803); Python at the runner''s
+    pause (the same MLP 0.82 s, 7434965; the original branch through the pause bit-for-bit, 7434783);
+    and the Python driver with a model of the whole compute block (p24: the day-1 capture replayed through
+    it bit-for-bit in state, 7436003; the block emulator 0.38 s a rank once compiled, 7436082, drifting
+    1.5 K/day because it must learn the zenith angle). The mechanism is closed in every form; the network
+    is the open problem.'
