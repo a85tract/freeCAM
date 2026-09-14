@@ -888,6 +888,7 @@ shared its nodes with a neighbour and timed everything twice as slow):
 | 7434965 | the compiled MLP called from Python at the pause | 0.82 s (once compiled) | 15.5 s (once compiled) | drift as the plugin's: 0.137 K rms |
 | 7418444 (p21) | the same MLP as a plugin, called by Fortran | 0.23 s | 14.72 s | the same state, bit-for-bit with this run |
 | 7431584 (p22) | the branch, computed | 1.30 s | 15.96 s | bit-for-bit |
+| 7439535 (p24) | the 64-wide transformer as a compiled plugin, called by Fortran (12.5 ms a call) | 0.84 s | 16.03 s | 0.17 K rms |
 
 The pause itself costs about 9 ms a chunk on top of the shortwave pause
 path (7434783 against 7431584), and with the model in Python 16 ms a chunk
@@ -941,6 +942,7 @@ The gates (fifty steps, whole develop nodes):
 | 7436003 | the day-1 capture's recorded outputs, through the Python driver | 0.30 s | 14.77 s | **`cam.r`, `cam.rs`, `h0` bit-for-bit**; `rh0` differs in the same 26 diagnostics as through the transcription (7417486), HR included among the identical ones |
 | 7436082 | the block emulator (256 wide, trained on the month) | 0.38 s once compiled | 15.0 s once compiled (22.5 with the 7.5 s compile) | drift: 1.5 K rms in temperature after a day |
 | 7418444 (p21) | the slot emulator as a plugin, for comparison | 0.23 s | 14.72 s | 0.14 K rms |
+| 7439603 | the 64-wide block transformer, TorchScript on one torch thread a rank, through the Python driver | 1.20 s | 15.75 s | drift: 1.27 K rms after a day |
 
 The replay is the proof of the driver: with the block's outputs given, the
 Python around them reproduces the state exactly, so the bookkeeping --
@@ -980,14 +982,71 @@ of it (7438656 against 7436003; `pi_cam_process-table-replay_50step.json`),
 and so is bit-for-bit in state with the oracle as that run is.  One path,
 two ways in.
 
+#### The same transformer on the other two paths
+
+The transformer had been priced on one path only, through FTorch.  The
+question that remained was what the compiled-plugin path and the Python
+driver pay for it, so on 2026-09-13 the 64-wide, 2-layer network was
+trained for both contracts on the same month of captured calls (12 epochs
+each, 72k parameters; the slot contract is given the zenith angle, the
+block contract learns it and a lit-column logit, and validates a little
+lower: R² 0.931 against 0.956 for the shortwave heating, the gate right on
+99.90 percent of columns) and gated on the p24 image, one run at a time on
+whole 235 GB nodes.  For the plugin path the network is written out in
+Numba (`examples/plugins/numba_kernels/rad_tf_plugin.py`): tokens,
+embedding and position, the pre-norm layers with their attention and GELU
+feed-forward, the heads, de-standardisation, clamps and day/night gate,
+the weights frozen into the compiled kernel from an export of the
+checkpoint.  There is no BLAS behind Numba in this environment, so every
+product is a loop; the compiled kernel agrees with PyTorch to 1e-6
+relative on a captured chunk and costs 3.6 ms a chunk on one login-node
+thread against 2.1 for the TorchScript module.  For the driver path the
+block-contract TorchScript is loaded in the rank's Python
+(`rad_block_tf.py`, one torch thread) and given the block's inputs as
+tensors.
+
+| run | path | who runs the arithmetic | model, ms a call | first call a rank | `rad_tend` a rank | step loop | against the oracle |
+| --- | --- | --- | ---: | ---: | ---: | ---: | --- |
+| 7431584 (p22) | the branch, computed | RRTMG | -- | -- | 1.30 s | 15.96 s | bit-for-bit |
+| 7431803 (p22) | TorchScript at the slot through FTorch | libtorch, called by Fortran | 7.1 | 0.28 s | 0.72 s | 15.65 s | 0.17 K rms |
+| 7439472 (p24) | the Numba plugin at the slot, in shadow | compiled loops, called by Fortran | 12.6 | 14 ms | 1.93 s | 17.45 s | bit-for-bit, 25,600 calls |
+| 7439535 (p24) | the Numba plugin at the slot, live | compiled loops, called by Fortran | 12.5 | 14 ms | 0.84 s | 16.03 s | 0.17 K rms |
+| 7439603 (p24) | the block transformer through the Python driver | libtorch, called by Python | 15.5 | 0.38 s | 1.20 s | 15.75 s | 1.27 K rms |
+| 7418444 (p21) | the 256-wide MLP as a plugin, for scale | compiled loops, called by Fortran | 1.3 | -- | 0.23 s | 14.72 s | 0.14 K rms |
+
+The three paths land within a factor of two of each other, and the order
+is set by what runs the arithmetic and what sits around it, not by which
+side makes the call.  libtorch inside Fortran is the cheapest at 7.1 ms.
+The Numba loops take 12.5: the linear layers run at about 20 GMAC/s, the
+30-token attention at a tenth of that, and no loop order tried on the login
+node closed the gap to a tensor library (the plugin compiles for 7 s at
+install, and its first call in the loop costs nothing more).  libtorch
+from Python takes 15.5 with the forward itself about 7 of it: the rest is
+turning thirty-three Fortran-ordered views into contiguous float64 tensors
+and back, on an interpreter sharing its core -- a conversion the FTorch path
+does not do, since it hands the arrays over as they lie, and one that
+`torch.from_numpy` over the views would mostly remove.  TorchScript's first
+call costs 0.38 s a rank for its profiling passes, once, against the 7.5 s
+the Numba block model spent compiling inside the loop.  Around the model
+the driver's own bookkeeping is the 0.42 s a rank measured with the replay
+(0.30) and the MLP (0.38).  The step-loop column is the noisier measure:
+the runs scatter by 0.3 s for reasons outside radiation -- the boundary
+export waits 0.88 s a rank in the baseline and 0.57 in the others, the
+cloud stage costs 0.17 s more on a drifted state -- so `rad_tend` is the
+number to read.  On it, none of the three transformer paths saves more than
+the FTorch one's 0.6 s a rank of the branch's 1.3, and the block model's
+drift (1.27 K rms against 0.17 for the same network given the zenith
+angle) repeats the MLP's lesson: what the driver path needs next is not a
+faster call but the twenty lines of geometry handed to the model.
+
 ## Where it stands
 
 | Kernel | Owner | Contract | Runner pause | In-model gate | Loop |
 | --- | --- | --- | --- | --- | --- |
 | `mmacro_pcond` | Macrophysics (in the cloud stage) | reviewed | yes, validated | segmented, bit-for-bit; alone and together with `micro_mg_tend` | complete |
 | `micro_mg_tend` | Microphysics (in the cloud stage; hooked: a Fortran-bound hook over its packed arrays, bindable to a model, not pausable) | reviewed | yes, validated (the runner's pause) | segmented, bit-for-bit (100 pauses in 50 steps); alone and together with `mmacro_pcond` (200 pauses); a null model bound at the hook answered all 51,200 calls inside the image (7394423), and in shadow the p18 image stays bit-for-bit at 0.56 ms a call (7400408); four trained MLP surrogates (64 to 512 wide) run in shadow on p19, bit-for-bit, pricing the core at 1.4 ms a call and every network at 1.5 to 6.7 ms (7401282, 7401281, 7401311, 7400992), and live (7400993, 7401059, 7401232, not bit-for-bit, slower than the original) | open: no captured calls replayed through its standalone image yet; as a speed target, closed: the core costs 1.4 ms a call |
-| `rad_rrtmg_sw` | Radiation (split, pausable) | frame descriptor | yes, validated | segmented, bit-for-bit (50 pauses in 50 steps); alone, with `rad_rrtmg_lw`, and with every other exposed kernel paused in one run; the whole radiative branch around it is a process slot: captured (7417373) and replayed (7417486) bit-for-bit in state through the transcription, and answered inside the image by a compiled emulator at the runner's skeleton slot (shadow 7418443 bit-for-bit; live 7418444, not bit-for-bit by design) and by TorchScript transformers through FTorch (shadow 7431802 and 7431990 bit-for-bit; live 7431803, 7431991) | open: capture and replay of the core itself |
-| `rad_rrtmg_lw` | Radiation (split, pausable) | frame descriptor | yes, validated | segmented, bit-for-bit (50 pauses in 50 steps); alone, with `rad_rrtmg_sw`, and with every other exposed kernel paused in one run; the whole radiative branch around it is a process slot: captured (7417373) and replayed (7417486) bit-for-bit in state through the transcription, and answered inside the image by a compiled emulator at the runner's skeleton slot (shadow 7418443 bit-for-bit; live 7418444, not bit-for-bit by design) and by TorchScript transformers through FTorch (shadow 7431802 and 7431990 bit-for-bit; live 7431803, 7431991) | open: capture and replay of the core itself |
+| `rad_rrtmg_sw` | Radiation (split, pausable) | frame descriptor | yes, validated | segmented, bit-for-bit (50 pauses in 50 steps); alone, with `rad_rrtmg_lw`, and with every other exposed kernel paused in one run; the whole radiative branch around it is a process slot: captured (7417373) and replayed (7417486) bit-for-bit in state through the transcription, and answered inside the image by a compiled emulator at the runner's skeleton slot (shadow 7418443 bit-for-bit; live 7418444, not bit-for-bit by design) and by TorchScript transformers through FTorch (shadow 7431802 and 7431990 bit-for-bit; live 7431803, 7431991), and by the 64-wide transformer written out in Numba as a plugin (shadow 7439472 bit-for-bit; live 7439535) and, for its block contract, through the Python driver (7439603) | open: capture and replay of the core itself |
+| `rad_rrtmg_lw` | Radiation (split, pausable) | frame descriptor | yes, validated | segmented, bit-for-bit (50 pauses in 50 steps); alone, with `rad_rrtmg_sw`, and with every other exposed kernel paused in one run; the whole radiative branch around it is a process slot: captured (7417373) and replayed (7417486) bit-for-bit in state through the transcription, and answered inside the image by a compiled emulator at the runner's skeleton slot (shadow 7418443 bit-for-bit; live 7418444, not bit-for-bit by design) and by TorchScript transformers through FTorch (shadow 7431802 and 7431990 bit-for-bit; live 7431803, 7431991), and by the 64-wide transformer written out in Numba as a plugin (shadow 7439472 bit-for-bit; live 7439535) and, for its block contract, through the Python driver (7439603) | open: capture and replay of the core itself |
 | `dadadj` | DryAdjustment (pausable) | reviewed | yes, validated | segmented, bit-for-bit (100 pauses in 50 steps); alone and together with `compute_uwshcu_inv` | complete |
 | `compute_uwshcu_inv` | ShallowConvection (pausable) | reviewed | yes, validated | segmented, bit-for-bit (100 pauses in 50 steps); alone and together with `dadadj` | open: no captured calls replayed through a standalone image yet |
 | `zm_convr` | DeepConvection (pausable) | frame descriptor | yes, validated | segmented, bit-for-bit (100 pauses in 50 steps); alone, with the stage's other kernels, and with the tracer leaf paused in the same run | open: capture and replay |

@@ -2648,7 +2648,7 @@
   "use_gw_oro": true,
   "use_subcol_microp": false
  },
- "content_hash": "a917903983ad1bc4420a7aff7033fe262669b21a88f83a01f8a5e64531f4bf07",
+ "content_hash": "a55b94455664008c588f6014f0f4607b96d1f5c649bc3d43fab595ae18102cbf",
  "evidence": {
   "pi_cam_cldfrc_fice_frame_replay.json": {
    "bfb": true,
@@ -5288,14 +5288,14 @@
  "inputs": {
   "native/pi_cam/hooks.yaml": "13e21d599cdc066821c151e452973357a623d00c0997b7c6cb131725c9f55ba8",
   "native/pi_cam/kernel_classifications.yaml": "d6be2103c9bd0c86a0c8461a067d3b43eac6aa370e992fde9bf3096e55c8c5f4",
-  "native/pi_cam/kernel_work_items.yaml": "a1f7b26e377b7e004acaaaf44767794f172df859a8b3c059f217da9539def0cf",
+  "native/pi_cam/kernel_work_items.yaml": "e4fa50473f7ee28bcbbddfc47c12c169edf623ba1fced38120d3e93e9f7ff550",
   "native/pi_cam/segment_runners.yaml": "37fa35306070f0b5eea12a76c44ea6798b1a7f17521659bdc4761ff32208b38a",
   "validation/physics_kernel_decoupling.json": "2a9ff0a6804a4e0d54b36b26c34f44a36e5eb6234ba53fe32d7d944973680462",
   "validation/pi_cam_kernel_api_closure.json": "96025214b3e4c41f6ba89c266da5dd27c51c42c81c31e1a0ac6f7b2e9cfa260a",
   "validation/pi_cam_kernel_api_redirectable_calls.json": "b97f6f7f8f7099cb42e9cebcde6102f9d4d05d17852ba7a5495b29edb1d4fbaf",
   "validation/pi_cam_kernel_runtime_coverage_1month.json": "48f77d6ec78b4026806d4ab6fb9517ef31c1d526481b4ad68e55f77af0d303bd",
   "validation/pi_cam_kernel_runtime_coverage_50step.json": "222961fc5274dbaaf71c40f6c131a683536b5a85ef14cd047a2fd196d8ca38c5",
-  "web/public/catalog.json": "283df50854b7995978a935f60360271c759951299c984061f1c71650b9ad227d"
+  "web/public/catalog.json": "4531fc7aeec8a9463d1a6950d264137a33151da2cfa314ec9ccbfb1f87e42187"
  },
  "kernels": {
   "aer_rad_props::aer_rad_props_lw": {
@@ -41159,7 +41159,7 @@
     "blocker": null,
     "branch": "physics-kernel-api-closure",
     "next_gate": "a network good enough to use: the zenith angle given back to the block model, more captured data, the longwave near the surface, the clear-sky and TOA diagnostics; then a paired year",
-    "note": "Month pair on main (replayed boundary): Radiation installed and nothing bound 401.3 s over 1,488 steps, bit-for-bit (7418517); the 256-wide emulator at the slot 363.9 s, nine percent shorter (7418518), the radiation budget drifting 4 to 5 W/m2 over the month. Four ways to answer the radiation now, all gated: a compiled Python kernel at the slot, called by Fortran (0.23 s a rank per 50 steps, 7418444); a TorchScript model through FTorch (64-wide transformer 0.72 s, 7431803); Python at the runner's pause (the same MLP 0.82 s, 7434965; the original branch through the pause bit-for-bit, 7434783); and the Python driver with a model of the whole compute block (p24: the day-1 capture replayed through it bit-for-bit in state, 7436003; the block emulator 0.38 s a rank once compiled, 7436082, drifting 1.5 K/day because it must learn the zenith angle). The mechanism is closed in every form; the network is the open problem.",
+    "note": "Month pair on main (replayed boundary): Radiation installed and nothing bound 401.3 s over 1,488 steps, bit-for-bit (7418517); the 256-wide emulator at the slot 363.9 s, nine percent shorter (7418518), the radiation budget drifting 4 to 5 W/m2 over the month. Four ways to answer the radiation now, all gated: a compiled Python kernel at the slot, called by Fortran (0.23 s a rank per 50 steps, 7418444); a TorchScript model through FTorch (64-wide transformer 0.72 s, 7431803); Python at the runner's pause (the same MLP 0.82 s, 7434965; the original branch through the pause bit-for-bit, 7434783); and the Python driver with a model of the whole compute block (p24: the day-1 capture replayed through it bit-for-bit in state, 7436003; the block emulator 0.38 s a rank once compiled, 7436082, drifting 1.5 K/day because it must learn the zenith angle). The 64-wide transformer priced on the other two paths (p24): written out in Numba as a plugin 12.5 ms a call, rad_tend 0.84 s a rank (shadow 7439472 bit-for-bit, live 7439535, 0.17 K rms); its block contract through the Python driver 15.5 ms a call, half of it the view-to-tensor conversion, rad_tend 1.20 s (7439603, 1.27 K rms); FTorch at the slot stays the cheapest at 7.1 ms. The mechanism is closed in every form; the network is the open problem.",
     "owner": "claude",
     "owner_class": "freecam.physics.radiation.Radiation",
     "stage": "performance_gate",
@@ -72877,8 +72877,8 @@
  ],
  "volatile": {
   "branch": "radiation-torchscript-slot",
-  "commit": "13669559aabca4f20e7fe471be222fe64112d641",
-  "generated_at": "2026-09-14T04:25:08+00:00"
+  "commit": "77d7e29ec924ef7b3509cf832dcc1b3c4ca7bea2",
+  "generated_at": "2026-09-14T05:42:46+00:00"
  },
  "work_items": [
   {
@@ -72931,7 +72931,7 @@
    "branch": "physics-kernel-api-closure",
    "kernel": "radiation::radiation_tend",
    "next_gate": "a network good enough to use: the zenith angle given back to the block model, more captured data, the longwave near the surface, the clear-sky and TOA diagnostics; then a paired year",
-   "note": "Month pair on main (replayed boundary): Radiation installed and nothing bound 401.3 s over 1,488 steps, bit-for-bit (7418517); the 256-wide emulator at the slot 363.9 s, nine percent shorter (7418518), the radiation budget drifting 4 to 5 W/m2 over the month. Four ways to answer the radiation now, all gated: a compiled Python kernel at the slot, called by Fortran (0.23 s a rank per 50 steps, 7418444); a TorchScript model through FTorch (64-wide transformer 0.72 s, 7431803); Python at the runner's pause (the same MLP 0.82 s, 7434965; the original branch through the pause bit-for-bit, 7434783); and the Python driver with a model of the whole compute block (p24: the day-1 capture replayed through it bit-for-bit in state, 7436003; the block emulator 0.38 s a rank once compiled, 7436082, drifting 1.5 K/day because it must learn the zenith angle). The mechanism is closed in every form; the network is the open problem.",
+   "note": "Month pair on main (replayed boundary): Radiation installed and nothing bound 401.3 s over 1,488 steps, bit-for-bit (7418517); the 256-wide emulator at the slot 363.9 s, nine percent shorter (7418518), the radiation budget drifting 4 to 5 W/m2 over the month. Four ways to answer the radiation now, all gated: a compiled Python kernel at the slot, called by Fortran (0.23 s a rank per 50 steps, 7418444); a TorchScript model through FTorch (64-wide transformer 0.72 s, 7431803); Python at the runner's pause (the same MLP 0.82 s, 7434965; the original branch through the pause bit-for-bit, 7434783); and the Python driver with a model of the whole compute block (p24: the day-1 capture replayed through it bit-for-bit in state, 7436003; the block emulator 0.38 s a rank once compiled, 7436082, drifting 1.5 K/day because it must learn the zenith angle). The 64-wide transformer priced on the other two paths (p24): written out in Numba as a plugin 12.5 ms a call, rad_tend 0.84 s a rank (shadow 7439472 bit-for-bit, live 7439535, 0.17 K rms); its block contract through the Python driver 15.5 ms a call, half of it the view-to-tensor conversion, rad_tend 1.20 s (7439603, 1.27 K rms); FTorch at the slot stays the cheapest at 7.1 ms. The mechanism is closed in every form; the network is the open problem.",
    "owner": "claude",
    "owner_class": "freecam.physics.radiation.Radiation",
    "stage": "performance_gate",

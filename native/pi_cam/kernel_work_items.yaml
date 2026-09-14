@@ -97,5 +97,8 @@ items:
     pause (the same MLP 0.82 s, 7434965; the original branch through the pause bit-for-bit, 7434783);
     and the Python driver with a model of the whole compute block (p24: the day-1 capture replayed through
     it bit-for-bit in state, 7436003; the block emulator 0.38 s a rank once compiled, 7436082, drifting
-    1.5 K/day because it must learn the zenith angle). The mechanism is closed in every form; the network
-    is the open problem.'
+    1.5 K/day because it must learn the zenith angle). The 64-wide transformer priced on the other two paths
+    (p24): written out in Numba as a plugin 12.5 ms a call, rad_tend 0.84 s a rank (shadow 7439472 bit-for-bit,
+    live 7439535, 0.17 K rms); its block contract through the Python driver 15.5 ms a call, half of it the
+    view-to-tensor conversion, rad_tend 1.20 s (7439603, 1.27 K rms); FTorch at the slot stays the cheapest at
+    7.1 ms. The mechanism is closed in every form; the network is the open problem.'
