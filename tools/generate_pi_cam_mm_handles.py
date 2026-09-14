@@ -79,7 +79,8 @@ module pycam_mm_handles
   use ppgrid,         only: pcols, pver, pverp, begchunk, endchunk
   use constituents,   only: pcnst
   use physics_types,  only: physics_state, physics_ptend, physics_tend, &
-       physics_update, physics_ptend_sum, physics_ptend_scale, physics_ptend_dealloc
+       physics_update, physics_ptend_sum, physics_ptend_scale, physics_ptend_dealloc, &
+       physics_ptend_init
   use physics_buffer, only: physics_buffer_desc, pbuf_get_chunk
   use check_energy,   only: check_energy_chng
   use microp_aero,    only: microp_aero_run
@@ -389,6 +390,69 @@ contains
     call physics_ptend_dealloc(mm_ptend_aero(lchnk))
     status = 0_c_int
   end function pycam_mm_ptend_sum_aero_v1
+
+  integer(c_int) function pycam_mm_ptend_init_v1(lchnk, which, name, name_len, ls, lq) &
+       bind(C, name='pycam_mm_ptend_init_v1') result(status)
+    ! The stage's tendency object initialised from Python, with the flags the driver it stands
+    ! for would have left on it: the Python driver's write-back of a block model's tendency needs
+    ! the object allocated and flagged before its arrays are filled through the views.  which=1
+    ! is ptend, 2 ptend_aero.  physics_ptend_init refuses an object still allocated: the previous
+    ! physics_update freed it, as the driver's own object was freed.
+    integer(c_int), value, intent(in) :: lchnk, which, name_len, ls
+    character(kind=c_char), intent(in) :: name(*)
+    integer(c_int), intent(in) :: lq(pcnst)
+    character(len=64) :: fname
+    logical :: lq_flags(pcnst)
+    integer :: i
+    status = 1_c_int
+    if (.not. chunk_ok(lchnk)) return
+    status = 2_c_int
+    if (name_len < 1 .or. name_len > len(fname)) return
+    fname = ''
+    do i = 1, name_len
+       fname(i:i) = name(i)
+    end do
+    lq_flags = lq /= 0_c_int
+    select case (which)
+    case (1)
+       call physics_ptend_init(mm_ptend(lchnk), host_state(lchnk)%psetcols, fname(1:name_len), &
+            ls=(ls /= 0_c_int), lq=lq_flags)
+    case (2)
+       call physics_ptend_init(mm_ptend_aero(lchnk), host_state(lchnk)%psetcols, fname(1:name_len), &
+            ls=(ls /= 0_c_int), lq=lq_flags)
+    case default
+       status = 3_c_int
+       return
+    end select
+    status = 0_c_int
+  end function pycam_mm_ptend_init_v1
+
+  integer(c_int) function pycam_mm_ptend_flags_v1(lchnk, which, ls, lq) &
+       bind(C, name='pycam_mm_ptend_flags_v1') result(status)
+    ! The flags on the stage's tendency object as the driver left them (1 where set): what a
+    ! capture of the block records beside the tendency arrays, so a replay can initialise the
+    ! object the same way.  which=1 is ptend, 2 ptend_aero; status 2 when the object is not live.
+    integer(c_int), value, intent(in) :: lchnk, which
+    integer(c_int), intent(out) :: ls
+    integer(c_int), intent(out) :: lq(pcnst)
+    status = 1_c_int
+    if (.not. chunk_ok(lchnk)) return
+    status = 2_c_int
+    select case (which)
+    case (1)
+       if (mm_ptend(lchnk)%psetcols < 1) return
+       ls = merge(1_c_int, 0_c_int, mm_ptend(lchnk)%ls)
+       lq = merge(1_c_int, 0_c_int, mm_ptend(lchnk)%lq)
+    case (2)
+       if (mm_ptend_aero(lchnk)%psetcols < 1) return
+       ls = merge(1_c_int, 0_c_int, mm_ptend_aero(lchnk)%ls)
+       lq = merge(1_c_int, 0_c_int, mm_ptend_aero(lchnk)%lq)
+    case default
+       status = 3_c_int
+       return
+    end select
+    status = 0_c_int
+  end function pycam_mm_ptend_flags_v1
 
   integer(c_int) function pycam_mm_wtrc_mass_fixer_v1(lchnk) &
        bind(C, name='pycam_mm_wtrc_mass_fixer_v1') result(status)

@@ -105,7 +105,7 @@ def _save_radiation_process(cam, directory: Path | None, rank: int) -> dict[str,
     for record in getattr(cam.python_processes, "installed", {}).values():
         stage = getattr(getattr(record, "function", None), "__self__", None)
         process = getattr(stage, "process", None)
-        if process is None:
+        if process is None or type(stage).__name__ != "Radiation":
             continue
         describe_process = getattr(stage, "describe_process", None)
         # the stage's description carries what the slot in the image counted (a compiled
@@ -115,6 +115,42 @@ def _save_radiation_process(cam, directory: Path | None, rank: int) -> dict[str,
             described["file"] = str(process.save(Path(directory) / f"radiation_tend.rank-{rank:04d}.npz").name)
         return described
     return None
+
+
+def _save_cloud_process(cam, directory: Path | None, rank: int) -> dict[str, object] | None:
+    """Save a cloud block capture (two files per rank) and describe the cloud stage's block slots."""
+
+    for record in getattr(cam.python_processes, "installed", {}).values():
+        stage = getattr(getattr(record, "function", None), "__self__", None)
+        if type(stage).__name__ != "CloudMacroMicrophysics" or not getattr(stage, "block_armed", False):
+            continue
+        described = dict(stage.describe_process() or {})
+        capture = getattr(stage, "block_capture", None)
+        if capture is not None and directory is not None:
+            described["files"] = capture.save(Path(directory), rank)
+        return described
+    return None
+
+
+def _cloud_process_summary(records) -> dict[str, object] | None:
+    """The cloud stage's block slots over the ranks: what stood in each and how many calls it answered or recorded."""
+
+    rows = [record.get("cloud_process") for record in records if record.get("cloud_process")]
+    if not rows:
+        return None
+    summary: dict[str, object] = {"ranks": len(rows)}
+    for slot in ("process", "micro_process", "capture"):
+        firsts = [row[slot] for row in rows if isinstance(row.get(slot), dict)]
+        if not firsts:
+            continue
+        entry: dict[str, object] = {k: v for k, v in firsts[0].items() if k in ("kind", "block", "function", "records")}
+        for key in ("calls", "macro_calls", "micro_calls", "seconds", "first_call_seconds"):
+            if key in firsts[0]:
+                entry[key] = sum(float(row.get(key, 0.0)) if "seconds" in key else int(row.get(key, 0)) for row in firsts)
+                if "seconds" in key:
+                    entry[key + "_max"] = max(float(row.get(key, 0.0)) for row in firsts)
+        summary[slot] = entry
+    return summary
 
 
 def _radiation_process_summary(records) -> dict[str, object] | None:
@@ -758,6 +794,37 @@ def main(argv: list[str] | None = None) -> int:
         ),
     )
     parser.add_argument(
+        "--cloud-block-model",
+        default=None,
+        metavar="SPEC",
+        help=(
+            "with --cloud-macro-micro-python, answer the macrophysics compute block (macrop_driver_tend, the "
+            "block mmacro_pcond lives in) from Python and run the stage as the Python driver: Python reads the "
+            "block's inputs from memory (cloud_block.MACRO_BLOCK), writes its answer where the driver leaves it, "
+            "and does the bookkeeping around it through the glue's own Fortran calls.  replay:DIR replays a "
+            "--cloud-block-capture; MODULE:FUNCTION or path.py:FUNCTION calls a model"
+        ),
+    )
+    parser.add_argument(
+        "--cloud-micro-block-model",
+        default=None,
+        metavar="SPEC",
+        help=(
+            "with --cloud-macro-micro-python, the same for the microphysics compute block (microp_aero_run, "
+            "micro_mg_cam_tend and the tendency sum; cloud_block.MICRO_BLOCK)"
+        ),
+    )
+    parser.add_argument(
+        "--cloud-block-capture",
+        default=None,
+        metavar="DIR",
+        help=(
+            "with --cloud-macro-micro-python, run both blocks' original drivers through the Python driver and "
+            "record each block's inputs and outputs, one file per block per rank under DIR (cloud_macro.rank-NNNN.npz, "
+            "cloud_micro.rank-NNNN.npz), for replay:DIR and for training"
+        ),
+    )
+    parser.add_argument(
         "--micro-core-standalone",
         action="store_true",
         help=(
@@ -1006,6 +1073,18 @@ def main(argv: list[str] | None = None) -> int:
                 # a trained network in mmacro_pcond's place, named by path
                 macro_surrogate=args.macro_kernel_surrogate)
             scheme.execution_policy = args.stage_execution
+            if args.cloud_block_model is not None or args.cloud_micro_block_model is not None or args.cloud_block_capture is not None:
+                # the Python driver: the blocks answered from their slots (or captured around the originals),
+                # the memory around them read and written from Python
+                from freecam.physics.cloud_block import MACRO_BLOCK, MICRO_BLOCK, CloudBlockCapture
+                from freecam.physics.cloud_block import load_block_model as load_cloud_block_model
+
+                if args.cloud_block_model is not None:
+                    scheme.process = load_cloud_block_model(args.cloud_block_model, block=MACRO_BLOCK, rank=world.Get_rank())
+                if args.cloud_micro_block_model is not None:
+                    scheme.micro_process = load_cloud_block_model(args.cloud_micro_block_model, block=MICRO_BLOCK, rank=world.Get_rank())
+                if args.cloud_block_capture is not None:
+                    scheme.block_capture = CloudBlockCapture()
             if args.segmented_original:
                 # the kernel list is shared by every class installed this run; a name that
                 # belongs to none of them is refused below, once all are installed
@@ -1157,6 +1236,7 @@ def main(argv: list[str] | None = None) -> int:
         advance_seconds = MPI.Wtime() - advance_started
         frame_capture_calls = _save_frame_captures(cam, args.capture_dir, world.Get_rank()) if capture_kernels else {}
         radiation_process = _save_radiation_process(cam, args.radiation_capture, world.Get_rank())
+        cloud_process = _save_cloud_process(cam, args.cloud_block_capture, world.Get_rank())
         from freecam.pi_cam.hooks import read_hook_counts
         hook_counts = read_hook_counts(getattr(cam.backend, "_library", None))
         final_addresses = {
@@ -1234,6 +1314,7 @@ def main(argv: list[str] | None = None) -> int:
             "memory_samples": memory_samples,
             "frame_capture_calls": frame_capture_calls,
             "radiation_process": radiation_process,
+            "cloud_process": cloud_process,
             "hook_counts": hook_counts,
         }
         if kernel_counters is not None:
@@ -1405,6 +1486,7 @@ def main(argv: list[str] | None = None) -> int:
             "kernel_models": ({**(_kernel_models_summary(kernel_model_paths, shadow_model_paths) or {}),
                                **_kernel_plugins_summary(kernel_plugin_specs, shadow_plugin_specs)} or None),
             "radiation_process": _radiation_process_summary(records),
+            "cloud_process": _cloud_process_summary(records),
             "hooks": _hook_summary(records),
             "cloud_macro_micro_whole_drivers": bool(args.cloud_macro_micro_whole_drivers),
             "cloud_macro_micro_whole_micro": bool(args.cloud_macro_micro_whole_micro),

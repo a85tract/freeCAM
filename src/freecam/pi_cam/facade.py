@@ -1268,15 +1268,21 @@ class ProcessTable(Mapping[str, Any]):
         return len(self.classes())
 
     @staticmethod
-    def _fingerprint(stage: Any) -> tuple:
-        kernels = getattr(stage, "kernels", {}) or {}
-        return (repr(getattr(stage, "process", None)), tuple((k, repr(v)) for k, v in kernels.items()),
-                str(getattr(stage, "execution_policy", "")))
+    def _slots(stage: Any) -> tuple[str, ...]:
+        """The process slots a stage declares (``SLOT_NAMES``); one, ``process``, unless it says otherwise."""
 
-    @staticmethod
-    def _armed(stage: Any) -> bool:
+        return tuple(getattr(stage, "SLOT_NAMES", ("process",)))
+
+    @classmethod
+    def _fingerprint(cls, stage: Any) -> tuple:
         kernels = getattr(stage, "kernels", {}) or {}
-        return getattr(stage, "process", None) is not None or any(v is not None for v in kernels.values())
+        return (tuple(repr(getattr(stage, slot, None)) for slot in cls._slots(stage)),
+                tuple((k, repr(v)) for k, v in kernels.items()), str(getattr(stage, "execution_policy", "")))
+
+    @classmethod
+    def _armed(cls, stage: Any) -> bool:
+        kernels = getattr(stage, "kernels", {}) or {}
+        return any(getattr(stage, slot, None) is not None for slot in cls._slots(stage)) or any(v is not None for v in kernels.values())
 
     def sync(self) -> None:
         """Attach, re-attach or detach every stage so the run matches what the slots say."""
