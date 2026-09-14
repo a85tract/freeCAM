@@ -193,6 +193,22 @@ each process asked for.  The block contract's inputs are
 through the same slot with `load_block_model("replay:DIR")`, which is how
 the path is gated (see `docs/physics_kernel_decoupling.md`).
 
+The cloud macro/microphysics stage has two such slots, one per compute
+block (`freecam.physics.cloud_block`): `process` is the macrophysics
+driver's block, the one `mmacro_pcond` lives in, and `micro_process` the
+microphysics driver's with its aerosol activation.  Either slot turns the
+stage into its Python driver, which reads the block's inputs from memory,
+writes the answer -- the tendency object with its flags, the detrainment,
+the buffer fields -- where the driver leaves it, and makes the glue's
+bookkeeping calls around it:
+
+```python
+cloud = driver.processes["cloud_macro_microphysics"]
+cloud.process = load_block_model("replay:DIR", block=MACRO_BLOCK, rank=rank)   # or BlockModel(f, label=..., block=MACRO_BLOCK)
+cloud.micro_process = None                 # the microphysics driver stays the original, in place
+driver.advance(48)
+```
+
 ## Parameters
 
 ### Namelist

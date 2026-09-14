@@ -1,0 +1,22 @@
+{
+ "schema_version": 1,
+ "job": "validation/jobs/pi_cam_pausable_50step.pbs",
+ "python_stages": [
+  "cloud_macro_microphysics"
+ ],
+ "native_image": "build/pi_cam_promoted_p26",
+ "ranks": 512,
+ "resources": {
+  "queue": "develop",
+  "placement": "4 whole nodes, 128 ranks each",
+  "memory_requested": "4 x 235 GB"
+ },
+ "bfb_record_note": "the job's comparison (.bfb.json) and health (.health.json) files of the failed run are kept with this record",
+ "run_tag": "p26-cloud-replay3",
+ "pbs_job_id": "7452063.desched1",
+ "what": "The capture of 7451996 (with the cloud-borne aerosol fields) replayed through both block slots of the cloud stage's Python driver.",
+ "outcome": "as 7451924: steps 1 and 2 exported bit-for-bit, the coupler export differed at step 3 on every rank (BoundaryReplayError on cam_out.a2x_rattr, differences of order 1e-15) and the run stopped",
+ "diagnosis": "the driver's views of the time-rotated buffer fields (CLD, AST, CONCLD, CLDO, the in-cloud water and its old-time copies, CLDFSNOW) were taken once a chunk and kept, while CAM moves the older plane every step; on even steps the capture recorded, and the replay wrote, the plane the driver was not using.  Those views are now taken per call, as the radiation driver's are; the capture records an exact digest of every input, and a replay reports the first input and step that differ from the captured run.",
+ "disposition": "recaptured as p26-cloud-capture4; replayed as p26-cloud-replay4 (both blocks), p26-cloud-replay4-macro and p26-cloud-replay4-micro (one block each)",
+ "steps_completed": 2
+}

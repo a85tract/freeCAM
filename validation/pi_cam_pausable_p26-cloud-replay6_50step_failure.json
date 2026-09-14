@@ -1,0 +1,22 @@
+{
+ "schema_version": 1,
+ "job": "validation/jobs/pi_cam_pausable_50step.pbs",
+ "python_stages": [
+  "cloud_macro_microphysics"
+ ],
+ "native_image": "build/pi_cam_promoted_p26",
+ "ranks": 512,
+ "resources": {
+  "queue": "develop",
+  "placement": "4 whole nodes, 128 ranks each",
+  "memory_requested": "4 x 235 GB"
+ },
+ "bfb_record_note": "the job's comparison (.bfb.json) and health (.health.json) files of the failed run are kept with this record",
+ "steps_completed": 2,
+ "run_tag": "p26-cloud-replay6",
+ "pbs_job_id": "7452496.desched1",
+ "what": "The capture of 7452381 replayed through both block slots.",
+ "outcome": "steps 1 and 2 exported bit-for-bit; at step 3 the coupler export differed on every rank, first in a2x attribute 26 (an aerosol dry-deposition flux), by about 1e-15",
+ "diagnosis": "the microphysics block's contract is now complete (p26-cloud-replay6-micro replays it bit-for-bit in cam.r and cam.rs); the macrophysics block's is not: every one of its contracted inputs hashes as the capture's on every call through step 3, the microphysics original that follows produces outputs identical to the capture's (verify:DIR, 7452498's pair), and the export still differs by 1e-15 in an aerosol dry-deposition flux at step 3.  The block writes something its contract does not list; the census runs (p26-cloud-census-macro) snapshot every registered buffer field around the original to name it.",
+ "disposition": "replayed again once the macrophysics contract is completed"
+}

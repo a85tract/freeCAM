@@ -1,0 +1,22 @@
+{
+ "schema_version": 1,
+ "job": "validation/jobs/pi_cam_pausable_50step.pbs",
+ "python_stages": [
+  "cloud_macro_microphysics"
+ ],
+ "native_image": "build/pi_cam_promoted_p26",
+ "ranks": 512,
+ "resources": {
+  "queue": "develop",
+  "placement": "4 whole nodes, 128 ranks each",
+  "memory_requested": "4 x 235 GB"
+ },
+ "bfb_record_note": "the job's comparison (.bfb.json) and health (.health.json) files of the failed run are kept with this record",
+ "pbs_job_id": "7452222.desched1",
+ "what": "The same capture replayed through the microphysics slot alone, the macrophysics driver original.",
+ "outcome": "as p26-cloud-replay4: step 3, the isotopic large-scale rain flux first",
+ "diagnosis": "every contracted input of both blocks hashed as the capture's on every call through step 3 (the replay's digests), so what differed was written by a block and read only outside it: the microphysics driver's wtrc_output_precip fills the water tracers' surface precipitation fields (water_tracer_vars' wtrc_srfpcp_indices, one per precipitation type and tracer set), which no field table sees; a replay left the isotopic large-scale rain at its previous value and the export of that flux differed.  The block now takes those fields from the image's index array as outputs.",
+ "disposition": "rerun as p26-cloud-replay5-micro with the macrophysics original verifying its outputs against the capture",
+ "steps_completed": 2,
+ "run_tag": "p26-cloud-replay4-micro"
+}

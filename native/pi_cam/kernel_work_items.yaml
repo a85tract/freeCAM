@@ -105,4 +105,8 @@ items:
     MLP through the Python driver 371.9 s (6 s of it the first call''s compile); the transformer 385.4 s as a plugin,
     374.3 s through the driver; the block models (no zenith angle given) are physically unusable over the month
     (-46 and -243 W/m2 of net shortwave), the slot models drift 4-5 W/m2 as before. The mechanism is closed in
-    every form; the network is the open problem.'
+    every form; the network is the open problem. The cloud macro/microphysics stage (mmacro_pcond''s) has the same
+    Python-driver form since 2026-09-14 (p26): two block contracts (cloud_block.MACRO_BLOCK, MICRO_BLOCK), captured
+    (7453135) and replayed bit-for-bit in state (7453150; the halves 7452498, 7453151), the driver 0.37 s a rank per
+    50 steps over native-whole; no model of either block yet, and no history entry (the drivers'' 141 outfld
+    diagnostics are not reproduced by a replay).'
