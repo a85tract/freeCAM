@@ -158,6 +158,9 @@ class _MMEntries(HostEntries):
         # flags a block's driver leaves on it, and those flags read for a capture
         "ptend_init": ("pycam_{prefix}_ptend_init_v1", [_INT, _INT, _STR, _INT, _INT, ctypes.POINTER(ctypes.c_int32)], True),
         "ptend_flags": ("pycam_{prefix}_ptend_flags_v1", [_INT, _INT, ctypes.POINTER(ctypes.c_int32), ctypes.POINTER(ctypes.c_int32)], True),
+        # the Python driver's bookkeeping after each block in one call each (image p27 onwards)
+        "finish_macro": ("pycam_{prefix}_finish_macro_v1", [_INT, _INT, _INT, _INT, _DBL, _P_DBL], True),
+        "finish_micro": ("pycam_{prefix}_finish_micro_v1", [_INT, _INT, _INT, _INT, _DBL, _INT], True),
         # optional: an image built for Gate M-1 predates it, and that image
         # still serves the whole-drivers form; the composed form refuses
         "take_macro": ("pycam_{prefix}_take_macro_v1", [_INT], True),
@@ -242,6 +245,23 @@ class _MMHandles(HostServices):
         _check(self.e.ptend_init(lchnk, int(which), name.encode("ascii"), len(name), int(bool(ls)),
                                  flags.ctypes.data_as(ctypes.POINTER(ctypes.c_int32))),
                f"physics_ptend_init({name!r})")
+
+    @property
+    def has_finish(self) -> bool:
+        """Whether this image offers the one-call bookkeeping after each block."""
+
+        return self.e.finish_macro is not None and self.e.finish_micro is not None
+
+    def finish_macro(self, lchnk: int, ncol: int, num_steps: int, nstep: int, ztodt: float, rliq: np.ndarray) -> None:
+        """physpkg.F90:2254-2266 in one call: flux terms, the tendency scaled and applied, the energy check."""
+
+        _check(self.e.finish_macro(lchnk, int(ncol), int(num_steps), int(nstep), float(ztodt), _ptr(rliq)), "finish_macro")
+
+    def finish_micro(self, lchnk: int, ncol: int, num_steps: int, nstep: int, ztodt: float, *, sum_aero: bool) -> None:
+        """physpkg.F90:2355-2393 in one call: the activation's tendency summed in (when the original produced one), the
+        tendency scaled and applied, the energy check, the precipitation means, the tracer mass fixer."""
+
+        _check(self.e.finish_micro(lchnk, int(ncol), int(num_steps), int(nstep), float(ztodt), int(bool(sum_aero))), "finish_micro")
 
     def ptend_flags(self, lchnk: int, which: int) -> tuple[bool, np.ndarray]:
         """The ``ls`` and ``lq`` flags on the stage's tendency object as the driver left them."""
@@ -722,24 +742,32 @@ class CloudMacroMicrophysics(NativeStage):
             self._write_block(st, lchnk, n, MACRO_BLOCK, self.process(inputs), V); log("macro_block_model")
         if before is not None:
             capture.of(MACRO_BLOCK).finish(before, self._block_outputs(st, lchnk, n, MACRO_BLOCK, V))
-        det_s, det_ice = H.view(lchnk, VIEW["det_s"]), H.view(lchnk, VIEW["det_ice"])
-        # 2254-2255, 2262-2266
-        K("mm_flux_terms", {"ncol": n, "rliq": V["rliq"], "det_s": det_s}, outputs={"flx_cnd": None, "flx_heat": None})
-        H.ptend_scale(lchnk, PTEND, 1, n); log("physics_ptend_scale")
-        H.update_tend(lchnk, PTEND, dt); log("physics_update")
-        H.check_energy(lchnk, "macrop_tend", nstep, dt, 1, zero, L["flx_cnd"], det_ice, L["flx_heat"], scaled=True)
-        log("check_energy_chng:macrop_tend")
+        if H.has_finish:
+            # 2254-2266 in one call
+            H.finish_macro(lchnk, n, 1, nstep, dt, V["rliq"]); log("finish_macro")
+        else:
+            det_s, det_ice = H.view(lchnk, VIEW["det_s"]), H.view(lchnk, VIEW["det_ice"])
+            # 2254-2255, 2262-2266
+            K("mm_flux_terms", {"ncol": n, "rliq": V["rliq"], "det_s": det_s}, outputs={"flx_cnd": None, "flx_heat": None})
+            H.ptend_scale(lchnk, PTEND, 1, n); log("physics_ptend_scale")
+            H.update_tend(lchnk, PTEND, dt); log("physics_update")
+            H.check_energy(lchnk, "macrop_tend", nstep, dt, 1, zero, L["flx_cnd"], det_ice, L["flx_heat"], scaled=True)
+            log("check_energy_chng:macrop_tend")
         # -- 2317-2357: the microphysics block: activation, driver, the tendency sum
         inputs = self._block_inputs(st, MICRO_BLOCK, V, nstep, lchnk, n, sub_dt)
         before = capture.of(MICRO_BLOCK).begin(inputs) if capture is not None else None
-        if self.micro_process is None or isinstance(self.micro_process, OriginalBlock):
+        micro_original = self.micro_process is None or isinstance(self.micro_process, OriginalBlock)
+        if micro_original:
             if isinstance(self.micro_process, VerifiedOriginalBlock):
                 self.micro_process.begin(inputs)
             census = self._census_views(st, lchnk) if isinstance(self.micro_process, CensusBlock) else None
             before_census = CensusBlock.snapshot(census, n) if census is not None else None
             H.microp_aero_run(lchnk, sub_dt); log("microp_aero_run")
             H.microp_driver_tend(lchnk, sub_dt); log("microp_driver_tend")
-            H.ptend_sum_aero(lchnk, n); log("physics_ptend_sum:ptend_aero")
+            if H.has_finish:
+                pass                                  # the sum joins the one finish call below, in the glue's order
+            else:
+                H.ptend_sum_aero(lchnk, n); log("physics_ptend_sum:ptend_aero")
             if isinstance(self.micro_process, VerifiedOriginalBlock):
                 self.micro_process.compare(inputs, self._block_outputs(st, lchnk, n, MICRO_BLOCK, V))
             if census is not None:
@@ -748,6 +776,10 @@ class CloudMacroMicrophysics(NativeStage):
             self._write_block(st, lchnk, n, MICRO_BLOCK, self.micro_process(inputs), V); log("micro_block_model")
         if before is not None:
             capture.of(MICRO_BLOCK).finish(before, self._block_outputs(st, lchnk, n, MICRO_BLOCK, V))
+        if H.has_finish:
+            # 2355-2393 in one call
+            H.finish_micro(lchnk, n, 1, nstep, dt, sum_aero=micro_original); log("finish_micro")
+            return
         # 2361-2366
         H.ptend_scale(lchnk, PTEND, 1, n); log("physics_ptend_scale")
         H.update_tend(lchnk, PTEND, dt); log("physics_update")

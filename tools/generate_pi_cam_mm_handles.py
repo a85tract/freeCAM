@@ -81,13 +81,13 @@ module pycam_mm_handles
   use physics_types,  only: physics_state, physics_ptend, physics_tend, &
        physics_update, physics_ptend_sum, physics_ptend_scale, physics_ptend_dealloc, &
        physics_ptend_init
-  use physics_buffer, only: physics_buffer_desc, pbuf_get_chunk
+  use physics_buffer, only: physics_buffer_desc, pbuf_get_chunk, pbuf_get_field, pbuf_get_index
   use check_energy,   only: check_energy_chng
   use microp_aero,    only: microp_aero_run
   use macrop_driver,  only: macrop_driver_tend
   use microp_driver,  only: microp_driver_tend
   use water_tracers,  only: wtrc_mass_fixer
-  use water_tracer_vars, only: wtrc_nwset
+  use water_tracer_vars, only: wtrc_nwset, trace_water
   use time_manager,   only: get_nstep, get_step_size
   use pycam_macro_handles, only: macro_ptend, macro_det_s, macro_det_ice
   use pycam_micro_handles, only: micro_ptend
@@ -453,6 +453,86 @@ contains
     end select
     status = 0_c_int
   end function pycam_mm_ptend_flags_v1
+
+  integer(c_int) function pycam_mm_finish_macro_v1(lchnk, ncol, num_steps, nstep, ztodt, rliq) &
+       bind(C, name='pycam_mm_finish_macro_v1') result(status)
+    ! physpkg.F90:2254-2266 in one call -- the Python driver's bookkeeping after the macrophysics block, as the
+    ! glue does it and in its order: the flux terms from the reserved liquid and the detrained static energy, the
+    ! tendency scaled by the substep count and applied against phys_tend, the energy check with the scaled fluxes.
+    integer(c_int), value, intent(in) :: lchnk, ncol, num_steps, nstep
+    real(c_double), value, intent(in) :: ztodt
+    real(c_double), intent(in) :: rliq(pcols)
+    real(r8) :: zero(pcols), flx_cnd(pcols), flx_heat(pcols)
+    status = 1_c_int
+    if (.not. chunk_ok(lchnk) .or. .not. associated(host_tend)) return
+    zero = 0._r8
+    flx_cnd(:ncol) = -1._r8*rliq(:ncol)
+    flx_heat(:ncol) = mm_det_s(:ncol,lchnk)
+    call physics_ptend_scale(mm_ptend(lchnk), 1._r8/num_steps, ncol)
+    call physics_update(host_state(lchnk), mm_ptend(lchnk), ztodt, host_tend(lchnk))
+    call check_energy_chng(host_state(lchnk), host_tend(lchnk), "macrop_tend", nstep, ztodt, &
+         zero, flx_cnd/num_steps, mm_det_ice(:,lchnk)/num_steps, flx_heat/num_steps)
+    status = 0_c_int
+  end function pycam_mm_finish_macro_v1
+
+  integer(c_int) function pycam_mm_finish_micro_v1(lchnk, ncol, num_steps, nstep, ztodt, sum_aero) &
+       bind(C, name='pycam_mm_finish_micro_v1') result(status)
+    ! physpkg.F90:2355-2393 in one call -- the bookkeeping after the microphysics block: the activation's tendency
+    ! summed in when the original produced one (a model's answer already carries the sum), the tendency scaled and
+    ! applied, the energy check with the surface precipitation, the substep accumulation and the means (one substep,
+    ! the count the Python driver admits), the water-tracer mass fixer.
+    integer(c_int), value, intent(in) :: lchnk, ncol, num_steps, nstep, sum_aero
+    real(c_double), value, intent(in) :: ztodt
+    type(physics_buffer_desc), pointer :: pbuf(:)
+    real(r8), pointer :: prec_str(:), snow_str(:), prec_sed(:), snow_sed(:), prec_pcw(:), snow_pcw(:)
+    real(r8) :: zero(pcols), prec_sed_macmic(pcols), snow_sed_macmic(pcols), prec_pcw_macmic(pcols), snow_pcw_macmic(pcols)
+    integer, save :: prec_str_idx = 0, snow_str_idx = 0, prec_sed_idx = 0, snow_sed_idx = 0, &
+                     prec_pcw_idx = 0, snow_pcw_idx = 0
+    status = 1_c_int
+    if (.not. chunk_ok(lchnk) .or. .not. associated(host_tend) .or. .not. associated(host_pbuf2d)) return
+    if (prec_str_idx == 0) then
+      prec_str_idx = pbuf_get_index('PREC_STR')
+      snow_str_idx = pbuf_get_index('SNOW_STR')
+      prec_sed_idx = pbuf_get_index('PREC_SED')
+      snow_sed_idx = pbuf_get_index('SNOW_SED')
+      prec_pcw_idx = pbuf_get_index('PREC_PCW')
+      snow_pcw_idx = pbuf_get_index('SNOW_PCW')
+    end if
+    pbuf => pbuf_get_chunk(host_pbuf2d, lchnk)
+    call pbuf_get_field(pbuf, prec_str_idx, prec_str)
+    call pbuf_get_field(pbuf, snow_str_idx, snow_str)
+    call pbuf_get_field(pbuf, prec_sed_idx, prec_sed)
+    call pbuf_get_field(pbuf, snow_sed_idx, snow_sed)
+    call pbuf_get_field(pbuf, prec_pcw_idx, prec_pcw)
+    call pbuf_get_field(pbuf, snow_pcw_idx, snow_pcw)
+    zero = 0._r8
+    if (sum_aero /= 0_c_int) then
+      call physics_ptend_sum(mm_ptend_aero(lchnk), mm_ptend(lchnk), ncol)
+      call physics_ptend_dealloc(mm_ptend_aero(lchnk))
+    end if
+    call physics_ptend_scale(mm_ptend(lchnk), 1._r8/num_steps, ncol)
+    call physics_update(host_state(lchnk), mm_ptend(lchnk), ztodt, host_tend(lchnk))
+    call check_energy_chng(host_state(lchnk), host_tend(lchnk), "microp_tend", nstep, ztodt, &
+         zero, prec_str/num_steps, snow_str/num_steps, zero)
+    prec_sed_macmic = 0._r8
+    snow_sed_macmic = 0._r8
+    prec_pcw_macmic = 0._r8
+    snow_pcw_macmic = 0._r8
+    prec_sed_macmic(:ncol) = prec_sed_macmic(:ncol) + prec_sed(:ncol)
+    snow_sed_macmic(:ncol) = snow_sed_macmic(:ncol) + snow_sed(:ncol)
+    prec_pcw_macmic(:ncol) = prec_pcw_macmic(:ncol) + prec_pcw(:ncol)
+    snow_pcw_macmic(:ncol) = snow_pcw_macmic(:ncol) + snow_pcw(:ncol)
+    prec_sed(:ncol) = prec_sed_macmic(:ncol)/num_steps
+    snow_sed(:ncol) = snow_sed_macmic(:ncol)/num_steps
+    prec_pcw(:ncol) = prec_pcw_macmic(:ncol)/num_steps
+    snow_pcw(:ncol) = snow_pcw_macmic(:ncol)/num_steps
+    prec_str(:ncol) = prec_pcw(:ncol) + prec_sed(:ncol)
+    snow_str(:ncol) = snow_pcw(:ncol) + snow_sed(:ncol)
+    if (trace_water) then
+      call wtrc_mass_fixer(host_state(lchnk))
+    end if
+    status = 0_c_int
+  end function pycam_mm_finish_micro_v1
 
   integer(c_int) function pycam_mm_wtrc_mass_fixer_v1(lchnk) &
        bind(C, name='pycam_mm_wtrc_mass_fixer_v1') result(status)

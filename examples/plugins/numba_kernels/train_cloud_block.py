@@ -38,6 +38,30 @@ CORE_INPUTS = ("state_t", "state_pmid", "state_pdel", "state_zm", "state_omega",
                "SH_FRAC", "DP_FRAC")
 CORE_BULK = (0, 1, 2, 3, 4)                 # vapour, cloud liquid, cloud ice, their numbers: the constituents the network predicts
 CORE_DERIVED = ("AST", "TCWAT", "QCWAT", "LCWAT", "ICCWAT", "NLWAT", "NIWAT")
+#: the microphysics block's core: the same thermodynamics and bulk water, and every buffer field the two drivers
+#: read except the cloud-borne aerosols (registered per constituent, ``*_c1``..) and the water tracers' surface
+#: precipitation (``WTRC_P_*``); learned outputs likewise without them, and without CLDO, which the activation sets to
+#: the cloud fraction it was given (CLDO = AST after the macrophysics).
+MICRO_CORE_STATE = ("state_t", "state_pmid", "state_pdel", "state_zm", "state_omega", "state_ps", "state_q")
+MICRO_CORE_DERIVED = ("CLDO",)
+import re as _re
+CLOUD_BORNE = _re.compile(r".*_c[0-9]$")
+
+
+def is_core_input(block, name):
+    if block == "macro":
+        return name in CORE_INPUTS
+    if name.startswith("state_"):
+        return name in MICRO_CORE_STATE
+    if name.startswith("WTRC_P_") or CLOUD_BORNE.match(name):
+        return False
+    return True
+
+
+def is_core_output(block, name):
+    if block == "macro":
+        return name not in CORE_DERIVED
+    return not (name.startswith("WTRC_P_") or CLOUD_BORNE.match(name) or name in MICRO_CORE_DERIVED)
 
 
 def input_names(z):
@@ -48,13 +72,13 @@ def output_names(z):
     return sorted({k.split("/", 2)[2] for k in z.files if k.startswith("out/0/")})
 
 
-def feature_layout(z, lq, core=False):
+def feature_layout(z, lq, core=False, block="macro"):
     """(name, source, index-or-None, lo, hi) per feature group, from the first record's shapes."""
 
     layout, lo = [], 0
     flagged = np.array(CORE_BULK) if core else np.nonzero(lq)[0]
     for name in input_names(z):
-        if core and name not in CORE_INPUTS:
+        if core and not is_core_input(block, name):
             continue
         a = z[f"in/0/{name}"]
         if a.ndim == 1:
@@ -79,7 +103,7 @@ def target_layout(z, block, changed, core=False):
         layout.append(("det_s", lo, lo + 1)); lo += 1
         layout.append(("det_ice", lo, lo + 1)); lo += 1
     for name in changed:
-        if core and name in CORE_DERIVED:
+        if core and not is_core_output(block, name):
             continue
         a = z[f"out/0/{name}"]
         width = int(np.prod(a.shape[1:])) if a.ndim > 1 else 1
@@ -152,12 +176,13 @@ def main():
     lq = np.asarray(z0["out/0/ptend_lq"]).reshape(-1)
     flagged = np.nonzero(lq)[0].tolist()
     q_out = [flagged.index(m) for m in CORE_BULK] if a.core else None      # positions of the bulk constituents among the flagged
-    layout, nf = feature_layout(z0, lq, core=a.core)
+    layout, nf = feature_layout(z0, lq, core=a.core, block=a.block)
     changed = changed_fields(files[:8], a.block)
     tlayout, nt = target_layout(z0, a.block, changed, core=a.core)
     learned = [n for n, _, _ in tlayout]
+    derived = [c for c in changed if c in (CORE_DERIVED if a.block == "macro" else MICRO_CORE_DERIVED)]
     print(f"{len(files)} ranks; {nf} features in {len(layout)} groups; {nt} targets: {learned}"
-          + (f"; derived, not learned: {[c for c in changed if c in CORE_DERIVED]}; tracer tendencies left zero" if a.core else ""), flush=True)
+          + (f"; derived, not learned: {derived}; left alone: {[c for c in changed if not is_core_output(a.block, c) and c not in derived]}; tracer tendencies left zero" if a.core else ""), flush=True)
     with Pool(a.workers) as pool:
         parts = pool.map(load_rank, [(f, layout, nf, tlayout, nt, q_out) for f in files])
     ntrain = max(1, len(parts) - a.val_ranks)
@@ -221,7 +246,7 @@ def main():
     json.dump({"block": a.block, "features": [(n_, s, i, int(lo), int(hi)) for n_, s, i, lo, hi in layout], "targets": [(n_, int(lo), int(hi)) for n_, lo, hi in tlayout],
                "NF": nf, "NT": nt, "hidden": H, "log_floor": LOG_FLOOR, "pver": 30, "flagged": flagged, "pcnst": int(lq.shape[0]),
                "core": bool(a.core), "q_out": list(CORE_BULK) if a.core else flagged,
-               "derived": [c for c in changed if c in CORE_DERIVED] if a.core else []},
+               "derived": derived if a.core else []},
               open(f"{a.out_prefix}_layout.json", "w"), indent=1)
     json.dump(report, open(f"{a.out_prefix}.report.json", "w"), indent=1)
     print(f"saved {a.out_prefix}_weights.npz ({nparam:,} parameters, {4*nparam/1e6:.1f} MB) and the layout ({time.time()-t0:.0f}s)", flush=True)

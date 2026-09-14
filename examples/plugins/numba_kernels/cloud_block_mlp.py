@@ -81,9 +81,22 @@ def block_answer(inputs):
         else:
             shape = np.asarray(inputs[name]).shape if name in inputs else (pcols, hi - lo)
             out = np.zeros(shape, np.float64, order="F"); out[:ncol] = block.reshape((ncol,) + tuple(shape[1:])); answer[name] = out
+    _clamp_water(inputs, answer, ncol)
     if DERIVED:
         _derive(inputs, answer, ncol, pcols)
     return answer
+
+
+def _clamp_water(inputs, answer, ncol):
+    """No constituent the network tends may go negative over the step: dq >= -q/dt.  The physics clips such values
+    afterwards (qneg3) with a warning a line each; a model that respects the floor keeps the log quiet and the mass
+    where the clip would have put it anyway."""
+
+    dt = float(inputs["dt"])
+    q = np.asarray(inputs["state_q"], dtype=np.float64)[:ncol]
+    dq = answer["ptend_q"]
+    for m in Q_OUT:
+        np.maximum(dq[:ncol, :, m], -q[:, :, m] / dt, out=dq[:ncol, :, m])
 
 
 def _derive(inputs, answer, ncol, pcols):
@@ -98,6 +111,8 @@ def _derive(inputs, answer, ncol, pcols):
         out = np.zeros((pcols, PVER), np.float64, order="F"); out[:ncol] = values[:ncol]; return out
     if "AST" in DERIVED and "ALST" in answer and "AIST" in answer:
         answer["AST"] = field(np.maximum(answer["ALST"], answer["AIST"]))
+    if "CLDO" in DERIVED and "AST" in inputs:
+        answer["CLDO"] = field(np.asarray(inputs["AST"], dtype=np.float64))     # microp_aero_run: cldo = cldn
     updated = {m: q[:, :, m] + dq[:, :, m] * dt for m in (0, 1, 2, 3, 4)}
     copies = {"TCWAT": t + ds * dt / CPAIR, "QCWAT": updated[0], "LCWAT": updated[1] + updated[2], "ICCWAT": updated[2],
               "NLWAT": updated[3], "NIWAT": updated[4]}
