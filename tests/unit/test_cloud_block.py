@@ -75,13 +75,19 @@ def test_a_capture_saves_both_blocks_and_a_replay_answers_the_same_step_and_chun
     for block in (CB.MACRO_BLOCK, CB.MICRO_BLOCK):
         replay = CB.load_block_model(f"replay:{tmp_path}", block=block, rank=3)
         assert isinstance(replay, CB.BlockReplay) and replay.block is block
-        answer = replay({"nstep": 5, "lchnk": 1540})
+        # the same live inputs hash as the capture's; a changed one is reported by name, not silently replayed over
+        answer = replay(inputs)
+        assert replay.mismatches == []
+        changed = dict(inputs, state_t=inputs["state_t"] + 1.0)
+        replay(changed)
+        assert replay.mismatches == [(5, 1540, ("state_t",))] and replay.describe()["first_mismatch"]["inputs"] == ["state_t"]
+        answer = replay({"nstep": 5, "lchnk": 1540, "ncol": ncol})
         for name, value in recorded[block.name].items():
             np.testing.assert_array_equal(np.asarray(answer[name]), np.asarray(value), err_msg=name)
         assert answer["ptend_q"].shape == (ncol, pver, pcnst)
         with pytest.raises(PhysicsError):
             replay({"nstep": 6, "lchnk": 1540})
-        assert replay.describe()["calls"] == 1
+        assert replay.describe()["calls"] == 3
     with pytest.raises(PhysicsError):
         CB.BlockReplay(tmp_path, 4, CB.MACRO_BLOCK)
 

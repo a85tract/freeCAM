@@ -19,6 +19,7 @@ does the bookkeeping through the same Fortran calls the glue makes.
 
 from __future__ import annotations
 
+import hashlib
 import json
 from dataclasses import dataclass
 from pathlib import Path
@@ -177,8 +178,11 @@ class BlockCapture:
         self.outputs: list[dict[str, Any]] = []
 
     def begin(self, inputs: dict[str, Any]) -> dict[str, Any]:
-        """Copy the inputs now: the block writes into some of this storage."""
+        """Copy the inputs now: the block writes into some of this storage.  Beside the single-precision
+        copies, an exact digest of every input's live lanes goes into the record, so a replay can tell the
+        first field and step at which its run has left the captured one."""
 
+        ncol = int(inputs["ncol"])
         copied: dict[str, Any] = {}
         for name, value in inputs.items():
             if isinstance(value, np.ndarray):
@@ -186,6 +190,7 @@ class BlockCapture:
                     copied[name] = np.array(value, dtype=np.float32 if value.dtype.kind == "f" else value.dtype, copy=True)
             else:
                 copied[name] = value
+        copied["digests"] = input_digests(inputs, ncol)
         return copied
 
     def finish(self, inputs: dict[str, Any], outputs: dict[str, Any]) -> None:
@@ -251,7 +256,14 @@ class CloudBlockCapture:
 #: the replay tables this process loaded, by (directory, block): a stage is cloudpickled into each rank's process
 #: registry and the payload must hash the same on every rank, so the pickle carries the directory and the rank's
 #: own table is found again here (radiation_process._REPLAY_TABLES's precedent)
-_REPLAY_TABLES: dict[tuple[str, str], tuple[Path, dict[tuple[int, int], dict[str, np.ndarray]]]] = {}
+_REPLAY_TABLES: dict[tuple[str, str], tuple[Path, dict[tuple[int, int], dict[str, np.ndarray]], dict[tuple[int, int], dict[str, str]]]] = {}
+
+
+def input_digests(inputs: dict[str, Any], ncol: int) -> dict[str, str]:
+    """An exact digest of every array input's live lanes, by name."""
+
+    return {name: hashlib.sha256(np.ascontiguousarray(np.asarray(value)[:ncol]).tobytes()).hexdigest()[:16]
+            for name, value in inputs.items() if isinstance(value, np.ndarray)}
 
 
 def _expand_q(q_flagged: np.ndarray, lq: np.ndarray) -> np.ndarray:
@@ -279,6 +291,7 @@ class BlockReplay:
         archive = np.load(path, allow_pickle=True)
         meta = json.loads(str(archive["meta"]))
         table: dict[tuple[int, int], dict[str, np.ndarray]] = {}
+        digests: dict[tuple[int, int], dict[str, str]] = {}
         for index, record in enumerate(meta):
             key = (int(record["nstep"]), int(record["lchnk"]))
             prefix = f"out/{index}/"
@@ -286,8 +299,12 @@ class BlockReplay:
             if "ptend_q" in answer:
                 answer["ptend_q"] = _expand_q(answer["ptend_q"], answer["ptend_lq"])
             table[key] = answer
-        _REPLAY_TABLES[(self.directory, self.block_name)] = (path, table)
+            if isinstance(record.get("digests"), dict):
+                digests[key] = dict(record["digests"])
+        _REPLAY_TABLES[(self.directory, self.block_name)] = (path, table, digests)
         self.calls = 0
+        #: inputs whose live lanes did not hash as the capture's, by (step, chunk): where this run left the captured one
+        self.mismatches: list[tuple[int, int, tuple[str, ...]]] = []
 
     @property
     def block(self) -> BlockContract:
@@ -323,12 +340,25 @@ class BlockReplay:
         except KeyError:
             raise PhysicsError(f"the {self.block_name} block capture at {self.path} has no record for step {key[0]}, "
                                f"chunk {key[1]}") from None
+        expected = _REPLAY_TABLES[(self.directory, self.block_name)][2].get(key)
+        if expected:
+            seen = input_digests(inputs, int(inputs["ncol"]))
+            differing = tuple(name for name, digest in expected.items() if name in seen and seen[name] != digest)
+            if differing:
+                self.mismatches.append((key[0], key[1], differing))
+                if len(self.mismatches) <= 8:
+                    print(f"[cloud replay] {self.block_name} block, step {key[0]} chunk {key[1]}: {len(differing)} inputs differ "
+                          f"from the capture: {', '.join(differing[:12])}", flush=True)
         self.calls += 1
         return answer
 
     def describe(self) -> dict[str, Any]:
-        return {"kind": "block-replay", "block": self.block_name, "file": self.path.name, "calls": self.calls,
-                "records": len(self._by_call)}
+        described = {"kind": "block-replay", "block": self.block_name, "file": self.path.name, "calls": self.calls,
+                     "records": len(self._by_call)}
+        if self.mismatches:
+            first = self.mismatches[0]
+            described.update(input_mismatches=len(self.mismatches), first_mismatch={"nstep": first[0], "lchnk": first[1], "inputs": list(first[2][:12])})
+        return described
 
     def __repr__(self) -> str:
         return f"BlockReplay({self.block_name!r}, {str(self.path)!r})"
@@ -428,4 +458,4 @@ def load_block_model(spec: str, *, block: BlockContract, rank: int):
 __all__ = ["BLOCKS", "BlockCapture", "BlockContract", "BlockModel", "BlockReplay", "BufferField", "CAM_IN_FIELDS",
            "CloudBlockCapture", "FORCING_FIELDS", "MACRO_BLOCK", "MACRO_BUFFERS", "MACRO_INPUT_BUFFERS", "MICRO_BLOCK",
            "MICRO_BUFFERS", "MICRO_INPUT_BUFFERS", "OriginalBlock", "SCALARS", "STATE_FIELDS", "TENDENCY_OUTPUTS",
-           "cloud_borne_fields", "load_block_model"]
+           "cloud_borne_fields", "input_digests", "load_block_model"]

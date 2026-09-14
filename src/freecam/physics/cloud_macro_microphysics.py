@@ -572,21 +572,24 @@ class CloudMacroMicrophysics(NativeStage):
         cache = getattr(self, "_block_view_cache", None)
         if cache is None:
             cache = self._block_view_cache = {}
-        if lchnk in cache:
-            return cache[lchnk]
-        H = st.handles
-        pool = st.native.pool
-        views: dict[str, np.ndarray] = {f"state_{name}": np.asarray(pool[f"phys_state.{name}"])[..., index] for name in STATE_FIELDS}
-        cam_in = st.cam_in(index)
-        views.update({f"cam_in_{name}": cam_in[name] for name in CAM_IN_FIELDS})
-        views.update({name: H.forcing(lchnk, name) for name in FORCING})
         buffer = self._block_pbuf(st)
-        names = set(buffer.fields) if hasattr(buffer, "fields") else set()
+        names: set[str] = set()
         for block in (MACRO_BLOCK, MICRO_BLOCK):
             names.update(self._written_buffers(st, block))
             names.update(field.name for field in block.input_buffers)
-        views.update(self._buffer_views(buffer, sorted(names), lchnk))
-        cache[lchnk] = views
+        # a time-rotated field's older plane moves every step: those views are taken per call, the rest once
+        rotated = sorted(name for name in names if name in buffer and buffer.fields[name].time_sliced)
+        if lchnk not in cache:
+            H = st.handles
+            pool = st.native.pool
+            views: dict[str, np.ndarray] = {f"state_{name}": np.asarray(pool[f"phys_state.{name}"])[..., index] for name in STATE_FIELDS}
+            cam_in = st.cam_in(index)
+            views.update({f"cam_in_{name}": cam_in[name] for name in CAM_IN_FIELDS})
+            views.update({name: H.forcing(lchnk, name) for name in FORCING})
+            views.update(self._buffer_views(buffer, sorted(names.difference(rotated)), lchnk))
+            cache[lchnk] = views
+        views = dict(cache[lchnk])
+        views.update(self._buffer_views(buffer, rotated, lchnk))
         return views
 
     @staticmethod
