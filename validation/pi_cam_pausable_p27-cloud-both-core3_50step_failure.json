@@ -1,0 +1,22 @@
+{
+ "schema_version": 1,
+ "job": "validation/jobs/pi_cam_pausable_50step.pbs",
+ "python_stages": [
+  "cloud_macro_microphysics"
+ ],
+ "native_image": "build/pi_cam_promoted_p27",
+ "ranks": 512,
+ "resources": {
+  "queue": "develop",
+  "placement": "4 whole nodes, 128 ranks each",
+  "memory_requested": "4 x 235 GB"
+ },
+ "bfb_record_note": "the job's comparison (.bfb.json) and health (.health.json) files of the failed run are kept with this record",
+ "pbs_job_id": "7456999.desched1",
+ "steps_completed": 0,
+ "what": "The same, with the driver's rotated views kept per plane.",
+ "outcome": "as p27-cloud-both-core2",
+ "diagnosis": "as p27-cloud-both-core2",
+ "disposition": "rerun as p27-cloud-both-core4",
+ "run_tag": "p27-cloud-both-core3"
+}

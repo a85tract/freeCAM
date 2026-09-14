@@ -1229,19 +1229,85 @@ tracer tendencies formed from them, as `cldwat2m_macro` forms them.
 What the driver does not yet have is the radiation driver's history entry:
 the two drivers write 141 history fields from inside their arithmetic, and
 a replay or a model does not, so `h0` differs in those diagnostics while
-the state and the restart buffer are what they are.  Nor is there a
-trained model of either block yet; the capture is its training set.  The
-bookkeeping is nine small Fortran calls a chunk where radiation's is four
--- one `finish` entry per block would make it two -- and the drivers'
-own cost is unchanged: the blocks are the original routines called
-whole, as `whole_drivers` called them.
+the state and the restart buffer are what they are.  The drivers' own cost
+is unchanged: the blocks are the original routines called whole, as
+`whole_drivers` called them.  The bookkeeping was nine small Fortran calls
+a chunk here where radiation's is four; the next round made it two.
+
+#### Both blocks as networks, and the bookkeeping as two calls
+
+Three things were done to the cloud driver on 2026-09-14 afternoon, on a
+new image (p27), and then measured.  The bookkeeping between and after the
+blocks -- the flux terms, the scaling and application of the tendency, the
+energy check, the precipitation means, the water-tracer fixer: nine small
+Fortran calls a chunk -- became two entries of the mm handles,
+`pycam_mm_finish_macro_v1` and `pycam_mm_finish_micro_v1`, each the glue's
+own lines for the one substep this configuration runs, so a chunk of the
+driver is now four Fortran calls when both blocks are the originals and two
+when both are answered from Python (the driver still makes the nine calls
+on an image without the entries).  The microphysics block got a core
+network of its own the way the macrophysics block had (`--core`: 2053
+features in, 1479 targets out, one field derived -- the old cloud
+fraction the activation copies -- the cloud-borne aerosols and the water
+tracers' precipitation left to the originals' record, 128 wide, 0.47M
+parameters), and the emulator module holds one network per block, named by
+`FREECAM_CLOUD_BLOCK_MACRO` and `FREECAM_CLOUD_BLOCK_MICRO`.  And a network's
+answer is clamped before it is written: no constituent it tends may be
+taken below zero over the step (`dq >= -q/dt`), which is where `qneg3`
+would have clipped it a moment later, with a warning line each.
+
+| run | in the slots | stage, a rank | step loop | model, ms a call | after 50 steps |
+| --- | --- | ---: | ---: | ---: | --- |
+| 7450698 | nothing armed (native-whole, p26) | 1.96 s | 15.95 s | -- | bit-for-bit |
+| 7451930 | both originals through the driver, nine bookkeeping calls (p26) | 2.33 s | 16.52 s | -- | bit-for-bit |
+| 7456732 | both originals, the two finish entries | 2.30 s | 16.16 s | -- | bit-for-bit |
+| 7456998 | the same, the rotated views kept per plane | 2.28 s | 16.17 s | -- | bit-for-bit |
+| 7457385 | the same, the runtime cache keyed on the pool again | 2.28 s | 16.29 s | -- | bit-for-bit |
+| 7456791 | both blocks replayed, the finish entries | 0.51 s | 14.35 s | -- | state bit-for-bit; `rh0` differs in the diagnostics |
+| 7456895 | the macrophysics core network (NumPy, clamped), the microphysics original | 2.25 s | 18.83 s | 2.8 | 3.07 K rms in T; 402,000 `qneg3` lines, none from the macrophysics |
+| 7457386 | **both core networks** (macrophysics 256 wide, microphysics 128 wide), NumPy, clamped | **1.24 s** | 15.47 s | 3.1 and 3.3 | 6.12 K rms in T; one `qneg3` line |
+
+The driver's own cost is now measured rather than inferred.  A profile of
+rank 0 over the fifty steps with both originals in place (7457073, the
+`FREECAM_CPROFILE_RANKS` knob) puts the stage at 2.40 s: 1.89 s inside the
+five Fortran calls a chunk (the microphysics driver 0.97, the macrophysics
+driver 0.60, the activation 0.25, the two finish entries 0.07), 0.36 s
+building the stage's runtime once at the first step (the handles, the
+buffer tables, the reviewed descriptors read from their YAML), and 0.15 s
+of Python across the hundred chunks -- the views, the input dictionaries,
+the write-back: 1.5 ms a chunk.  That profile was first misread as a runtime
+rebuilt every step, and the cache re-keyed on the access object the
+driver hands the stage; that object is made anew each call, so the change
+did what the misreading had feared and cost a second a rank (7457242,
+7457244, 7457245 -- kept as records of the wrong turn); the key is the pool
+again.
+
+With both blocks answered by the core networks the stage costs 1.24 s a
+rank against the original's 1.96 -- the two networks 0.74 s of it,
+3.1 and 3.3 ms a call against `macrop_tend`'s 6.6 and the microphysics'
+19.2 (`microp_aero_run` 3.7 and `microp_tend` 15.5 in the oracle's GPTL) --
+and the step loop is 15.47 s against 15.95: the loop's gain is less
+than the stage's because the drifted state costs the other processes time,
+as it did in the radiation months.  The health counters are clean (one
+`qneg3` line in fifty steps against 446,000 before the clamp) but the
+physics is not: the run drifts 6.1 K rms in temperature over fifty steps,
+the macrophysics network alone 3.1 K (5.78 before the clamp, 7454277).  The
+networks are the open problem, as they are for radiation: the bulk
+tendencies validate at R² 0.72 (macrophysics `ptend_s`) and 0.55
+(microphysics), the constituent tendencies at 0.46 and 0.23, the
+precipitation fluxes at 0.94, the effective radii at 0.1 to 0.3.  What a
+network for either block should learn and how -- the physics only, with
+the copies and integrals formed from it; per-level normalisation;
+a loss in the units the state feels -- is the next work, and the
+mechanism around it is complete: capture, replay, model, verify, census,
+two Fortran calls a chunk.
 
 ## Where it stands
 
 | Kernel | Owner | Contract | Runner pause | In-model gate | Loop |
 | --- | --- | --- | --- | --- | --- |
-| `mmacro_pcond` | Macrophysics (in the cloud stage) | reviewed | yes, validated | segmented, bit-for-bit; alone and together with `micro_mg_tend`; the whole macrophysics driver is a block of the cloud stage's Python driver (`cloud_block.MACRO_BLOCK`): captured (7453135) and replayed bit-for-bit in state (7453150, 7453151) | complete |
-| `micro_mg_tend` | Microphysics (in the cloud stage; hooked: a Fortran-bound hook over its packed arrays, bindable to a model, not pausable) | reviewed | yes, validated (the runner's pause) | segmented, bit-for-bit (100 pauses in 50 steps); alone and together with `mmacro_pcond` (200 pauses); a null model bound at the hook answered all 51,200 calls inside the image (7394423), and in shadow the p18 image stays bit-for-bit at 0.56 ms a call (7400408); four trained MLP surrogates (64 to 512 wide) run in shadow on p19, bit-for-bit, pricing the core at 1.4 ms a call and every network at 1.5 to 6.7 ms (7401282, 7401281, 7401311, 7400992), and live (7400993, 7401059, 7401232, not bit-for-bit, slower than the original); the driver with its activation and tendency sum is a block of the cloud stage's Python driver (`cloud_block.MICRO_BLOCK`): captured and replayed bit-for-bit in state (7452498, 7453150) | open: no captured calls replayed through its standalone image yet; as a speed target, closed: the core costs 1.4 ms a call |
+| `mmacro_pcond` | Macrophysics (in the cloud stage) | reviewed | yes, validated | segmented, bit-for-bit; alone and together with `micro_mg_tend`; the whole macrophysics driver is a block of the cloud stage's Python driver (`cloud_block.MACRO_BLOCK`): captured (7453135) and replayed bit-for-bit in state (7453150, 7453151); with the bookkeeping as one finish entry a block (p27) the originals through the driver stay bit-for-bit at 2.28 s a rank for the stage (7456732, 7457385) and the replay at 0.51 s (7456791); the block answered by a core NumPy network at 3.1 ms a call (7457386, with the microphysics network; 7456895 alone; not bit-for-bit by design) | complete |
+| `micro_mg_tend` | Microphysics (in the cloud stage; hooked: a Fortran-bound hook over its packed arrays, bindable to a model, not pausable) | reviewed | yes, validated (the runner's pause) | segmented, bit-for-bit (100 pauses in 50 steps); alone and together with `mmacro_pcond` (200 pauses); a null model bound at the hook answered all 51,200 calls inside the image (7394423), and in shadow the p18 image stays bit-for-bit at 0.56 ms a call (7400408); four trained MLP surrogates (64 to 512 wide) run in shadow on p19, bit-for-bit, pricing the core at 1.4 ms a call and every network at 1.5 to 6.7 ms (7401282, 7401281, 7401311, 7400992), and live (7400993, 7401059, 7401232, not bit-for-bit, slower than the original); the driver with its activation and tendency sum is a block of the cloud stage's Python driver (`cloud_block.MICRO_BLOCK`): captured and replayed bit-for-bit in state (7452498, 7453150, 7456791); the block answered by a core NumPy network at 3.3 ms a call against the two drivers' 19.2, both blocks as networks running the stage in 1.24 s a rank against the original's 1.96 (7457386, not bit-for-bit by design) | open: no captured calls replayed through its standalone image yet; as a speed target, closed: the core costs 1.4 ms a call |
 | `rad_rrtmg_sw` | Radiation (split, pausable) | frame descriptor | yes, validated | segmented, bit-for-bit (50 pauses in 50 steps); alone, with `rad_rrtmg_lw`, and with every other exposed kernel paused in one run; the whole radiative branch around it is a process slot: captured (7417373) and replayed (7417486) bit-for-bit in state through the transcription, and answered inside the image by a compiled emulator at the runner's skeleton slot (shadow 7418443 bit-for-bit; live 7418444, not bit-for-bit by design) and by TorchScript transformers through FTorch (shadow 7431802 and 7431990 bit-for-bit; live 7431803, 7431991), and by the 64-wide transformer written out in Numba as a plugin (shadow 7439472 bit-for-bit; live 7439535) and, for its block contract, through the Python driver (7439603) | open: capture and replay of the core itself |
 | `rad_rrtmg_lw` | Radiation (split, pausable) | frame descriptor | yes, validated | segmented, bit-for-bit (50 pauses in 50 steps); alone, with `rad_rrtmg_sw`, and with every other exposed kernel paused in one run; the whole radiative branch around it is a process slot: captured (7417373) and replayed (7417486) bit-for-bit in state through the transcription, and answered inside the image by a compiled emulator at the runner's skeleton slot (shadow 7418443 bit-for-bit; live 7418444, not bit-for-bit by design) and by TorchScript transformers through FTorch (shadow 7431802 and 7431990 bit-for-bit; live 7431803, 7431991), and by the 64-wide transformer written out in Numba as a plugin (shadow 7439472 bit-for-bit; live 7439535) and, for its block contract, through the Python driver (7439603) | open: capture and replay of the core itself |
 | `dadadj` | DryAdjustment (pausable) | reviewed | yes, validated | segmented, bit-for-bit (100 pauses in 50 steps); alone and together with `compute_uwshcu_inv` | complete |

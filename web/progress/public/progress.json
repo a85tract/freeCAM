@@ -2648,7 +2648,7 @@
   "use_gw_oro": true,
   "use_subcol_microp": false
  },
- "content_hash": "2b58856fff3bae427206438b80c038c23b6c4890dc2bca87697c57296096a63b",
+ "content_hash": "b5e4f07f7afbff4e9302293070ddf4fbf244a8c0185b10713c5df95a355251b2",
  "evidence": {
   "pi_cam_cldfrc_fice_frame_replay.json": {
    "bfb": true,
@@ -4415,6 +4415,44 @@
    "steps_completed": 3,
    "what": "The compiled MLP emulator answering the slot from Python at the runner's pause."
   },
+  "pi_cam_pausable_p24-block-live-np3_50step_failure.json": {
+   "diagnosis": "a fabric fault of one allocated node, nothing of freeCAM's; the same node failed all three jobs submitted together",
+   "image": {
+    "build": "pi_cam_promoted_p24",
+    "role": "development",
+    "sha256": null
+   },
+   "kind": "gate-failure",
+   "outcome": "no rank passed MPI_Init: OFI fi_getinfo() failed (No data available) on one of the four nodes given; the other ranks were then killed (signal 15) after 29 s",
+   "pbs_job": "7457332",
+   "python_stages": [
+    "rad_tend"
+   ],
+   "ranks": 512,
+   "record": "pi_cam_pausable_p24-block-live-np3_50step_failure.json",
+   "run_tag": "p24-block-live-np3",
+   "steps_completed": 0,
+   "what": "The radiation block answered by the NumPy MLP through the Python driver, first gate after the runtime cache was keyed on the pool again."
+  },
+  "pi_cam_pausable_p24-block-live-np4_50step_failure.json": {
+   "diagnosis": "a fabric fault of the allocated nodes, nothing of freeCAM's; the two jobs were placed on the same four nodes and both failed there, as the three before them had on one other node (7457330-7457332)",
+   "image": {
+    "build": "pi_cam_promoted_p24",
+    "role": "development",
+    "sha256": null
+   },
+   "kind": "gate-failure",
+   "outcome": "no rank passed MPI_Init: OFI fi_getinfo() failed (No data available) on one or two of the four nodes given; the other ranks were then killed (signal 15) within 29 s",
+   "pbs_job": "7457387",
+   "python_stages": [
+    "rad_tend"
+   ],
+   "ranks": 512,
+   "record": "pi_cam_pausable_p24-block-live-np4_50step_failure.json",
+   "run_tag": "p24-block-live-np4",
+   "steps_completed": 0,
+   "what": "The radiation block answered by the NumPy MLP through the Python driver, resubmission of p24-block-live-np3."
+  },
   "pi_cam_pausable_p24-block-live2_50step_failure.json": {
    "diagnosis": "the driver's views came from the radiation handles' table, which has no constituent array; the block contract needs state_q (water vapour and the aerosol mixing ratios) and the walk had read it from the state pool by chunk index.  The driver now does the same.",
    "image": {
@@ -4756,6 +4794,139 @@
    "run_tag": "p26-cloud-verify5",
    "steps_completed": 1,
    "what": "Both originals through the Python driver, each verifying its outputs against the record."
+  },
+  "pi_cam_pausable_p27-cloud-both-core2_50step_failure.json": {
+   "diagnosis": "a model named by path was imported from a bare file, so its function pickled by value, and the class the module now defines carried cloudpickle's per-process tracker id, which hashed differently on every rank.  load_process_model imports a path-named module by name from its directory, so the function pickles by reference.",
+   "image": {
+    "build": "pi_cam_promoted_p27",
+    "role": "development",
+    "sha256": null
+   },
+   "kind": "gate-failure",
+   "outcome": "refused at install on every rank: the Python process payload pickled differently per process (PythonProcessContractError)",
+   "pbs_job": "7456975",
+   "python_stages": [
+    "cloud_macro_microphysics"
+   ],
+   "ranks": 512,
+   "record": "pi_cam_pausable_p27-cloud-both-core2_50step_failure.json",
+   "run_tag": "p27-cloud-both-core2",
+   "steps_completed": 0,
+   "what": "The same, the module holding one network per block."
+  },
+  "pi_cam_pausable_p27-cloud-both-core3_50step_failure.json": {
+   "diagnosis": "as p27-cloud-both-core2",
+   "image": {
+    "build": "pi_cam_promoted_p27",
+    "role": "development",
+    "sha256": null
+   },
+   "kind": "gate-failure",
+   "outcome": "as p27-cloud-both-core2",
+   "pbs_job": "7456999",
+   "python_stages": [
+    "cloud_macro_microphysics"
+   ],
+   "ranks": 512,
+   "record": "pi_cam_pausable_p27-cloud-both-core3_50step_failure.json",
+   "run_tag": "p27-cloud-both-core3",
+   "steps_completed": 0,
+   "what": "The same, with the driver's rotated views kept per plane."
+  },
+  "pi_cam_pausable_p27-cloud-both-core5_50step_failure.json": {
+   "diagnosis": "a fabric fault of one allocated node, nothing of freeCAM's; the same node failed all three jobs submitted together",
+   "image": {
+    "build": "pi_cam_promoted_p27",
+    "role": "development",
+    "sha256": null
+   },
+   "kind": "gate-failure",
+   "outcome": "no rank passed MPI_Init: OFI fi_getinfo() failed (No data available) on one of the four nodes given; the other ranks were then killed (signal 15) after 29 s",
+   "pbs_job": "7457331",
+   "python_stages": [
+    "cloud_macro_microphysics"
+   ],
+   "ranks": 512,
+   "record": "pi_cam_pausable_p27-cloud-both-core5_50step_failure.json",
+   "run_tag": "p27-cloud-both-core5",
+   "steps_completed": 0,
+   "what": "Both cloud blocks answered by the core NumPy networks, first gate after the runtime cache was keyed on the pool again."
+  },
+  "pi_cam_pausable_p27-cloud-both-core_50step_failure.json": {
+   "diagnosis": "cloud_block_mlp.py held one network in module globals, named by one environment variable; with both slots filled the microphysics slot ran the macrophysics network's feature layout over the microphysics block's inputs.  The module now holds one network per block (FREECAM_CLOUD_BLOCK_MACRO, FREECAM_CLOUD_BLOCK_MICRO), each checked against the block it was trained for.",
+   "image": {
+    "build": "pi_cam_promoted_p27",
+    "role": "development",
+    "sha256": null
+   },
+   "kind": "gate-failure",
+   "outcome": "every rank's first chunk of step 2 failed: KeyError 'AIST' in the microphysics slot",
+   "pbs_job": "7456835",
+   "python_stages": [
+    "cloud_macro_microphysics"
+   ],
+   "ranks": 512,
+   "record": "pi_cam_pausable_p27-cloud-both-core_50step_failure.json",
+   "run_tag": "p27-cloud-both-core",
+   "steps_completed": 1,
+   "what": "Both blocks of the cloud stage answered by their core networks through the Python driver, with the one-call bookkeeping."
+  },
+  "pi_cam_pausable_p27-cloud-driver-original4_50step_failure.json": {
+   "diagnosis": "a fabric fault of one allocated node, nothing of freeCAM's; the same node failed all three jobs submitted together",
+   "image": {
+    "build": "pi_cam_promoted_p27",
+    "role": "development",
+    "sha256": null
+   },
+   "kind": "gate-failure",
+   "outcome": "no rank passed MPI_Init: OFI fi_getinfo() failed (No data available) on one of the four nodes given; the other ranks were then killed (signal 15) after 29 s",
+   "pbs_job": "7457330",
+   "python_stages": [
+    "cloud_macro_microphysics"
+   ],
+   "ranks": 512,
+   "record": "pi_cam_pausable_p27-cloud-driver-original4_50step_failure.json",
+   "run_tag": "p27-cloud-driver-original4",
+   "steps_completed": 0,
+   "what": "The cloud driver with both blocks answered by the originals, first gate after the runtime cache was keyed on the pool again."
+  },
+  "pi_cam_pausable_p27-cloud-macro-core3_50step_failure.json": {
+   "diagnosis": "a fabric fault of the allocated nodes, nothing of freeCAM's; the two jobs were placed on the same four nodes and both failed there, as the three before them had on one other node (7457330-7457332)",
+   "image": {
+    "build": "pi_cam_promoted_p27",
+    "role": "development",
+    "sha256": null
+   },
+   "kind": "gate-failure",
+   "outcome": "no rank passed MPI_Init: OFI fi_getinfo() failed (No data available) on one or two of the four nodes given; the other ranks were then killed (signal 15) within 29 s",
+   "pbs_job": "7457388",
+   "python_stages": [
+    "cloud_macro_microphysics"
+   ],
+   "ranks": 512,
+   "record": "pi_cam_pausable_p27-cloud-macro-core3_50step_failure.json",
+   "run_tag": "p27-cloud-macro-core3",
+   "steps_completed": 0,
+   "what": "The macrophysics block answered by the core NumPy network, the microphysics original, on the final code of the round."
+  },
+  "pi_cam_pausable_p27-cloud-macro-core4_50step_failure.json": {
+   "diagnosis": "a fabric fault of an allocated node, nothing of freeCAM's; the sixth such death of the afternoon (7457330-7457332, 7457387, 7457388) on three node groups",
+   "image": {
+    "build": "pi_cam_promoted_p27",
+    "role": "development",
+    "sha256": null
+   },
+   "kind": "gate-failure",
+   "outcome": "no rank passed MPI_Init: OFI fi_getinfo() failed (No data available) on one of the four nodes given; the other ranks were then killed (signal 15)",
+   "pbs_job": "7457444",
+   "python_stages": [
+    "cloud_macro_microphysics"
+   ],
+   "ranks": 512,
+   "record": "pi_cam_pausable_p27-cloud-macro-core4_50step_failure.json",
+   "run_tag": "p27-cloud-macro-core4",
+   "steps_completed": 0,
+   "what": "The macrophysics block answered by the core NumPy network, the microphysics original, on the final code of the round; resubmission of p27-cloud-macro-core3."
   },
   "pi_cam_pausable_rad-both-pause_50step.json": {
    "advance_seconds": 16.3,
@@ -5487,6 +5658,18 @@
    "capability": "original_replacement_bfb",
    "contexts": [],
    "kernel_routine": null,
+   "record": "pi_cam_pausable_p24-block-live-np3_50step_failure.json"
+  },
+  {
+   "capability": "original_replacement_bfb",
+   "contexts": [],
+   "kernel_routine": null,
+   "record": "pi_cam_pausable_p24-block-live-np4_50step_failure.json"
+  },
+  {
+   "capability": "original_replacement_bfb",
+   "contexts": [],
+   "kernel_routine": null,
    "record": "pi_cam_pausable_p24-block-live2_50step_failure.json"
   },
   {
@@ -5618,6 +5801,62 @@
    "record": "pi_cam_pausable_p26-cloud-verify5_50step_failure.json"
   },
   {
+   "capability": "original_replacement_bfb",
+   "contexts": [
+    "cam_run1.cloud_macro_microphysics"
+   ],
+   "kernel_routine": null,
+   "record": "pi_cam_pausable_p27-cloud-both-core2_50step_failure.json"
+  },
+  {
+   "capability": "original_replacement_bfb",
+   "contexts": [
+    "cam_run1.cloud_macro_microphysics"
+   ],
+   "kernel_routine": null,
+   "record": "pi_cam_pausable_p27-cloud-both-core3_50step_failure.json"
+  },
+  {
+   "capability": "original_replacement_bfb",
+   "contexts": [
+    "cam_run1.cloud_macro_microphysics"
+   ],
+   "kernel_routine": null,
+   "record": "pi_cam_pausable_p27-cloud-both-core5_50step_failure.json"
+  },
+  {
+   "capability": "original_replacement_bfb",
+   "contexts": [
+    "cam_run1.cloud_macro_microphysics"
+   ],
+   "kernel_routine": null,
+   "record": "pi_cam_pausable_p27-cloud-both-core_50step_failure.json"
+  },
+  {
+   "capability": "original_replacement_bfb",
+   "contexts": [
+    "cam_run1.cloud_macro_microphysics"
+   ],
+   "kernel_routine": null,
+   "record": "pi_cam_pausable_p27-cloud-driver-original4_50step_failure.json"
+  },
+  {
+   "capability": "original_replacement_bfb",
+   "contexts": [
+    "cam_run1.cloud_macro_microphysics"
+   ],
+   "kernel_routine": null,
+   "record": "pi_cam_pausable_p27-cloud-macro-core3_50step_failure.json"
+  },
+  {
+   "capability": "original_replacement_bfb",
+   "contexts": [
+    "cam_run1.cloud_macro_microphysics"
+   ],
+   "kernel_routine": null,
+   "record": "pi_cam_pausable_p27-cloud-macro-core4_50step_failure.json"
+  },
+  {
    "capability": "standalone_replay",
    "contexts": [],
    "kernel_routine": null,
@@ -5639,14 +5878,14 @@
  "inputs": {
   "native/pi_cam/hooks.yaml": "13e21d599cdc066821c151e452973357a623d00c0997b7c6cb131725c9f55ba8",
   "native/pi_cam/kernel_classifications.yaml": "d6be2103c9bd0c86a0c8461a067d3b43eac6aa370e992fde9bf3096e55c8c5f4",
-  "native/pi_cam/kernel_work_items.yaml": "53ae0e11a5fbcf7f3d2fa1ac8bb884160b1af9cab77a206bb675b68456bbdd11",
+  "native/pi_cam/kernel_work_items.yaml": "df952c627374c35a1f55b37ca65d67520d0dc38b33b248442d2c7b484f50aedc",
   "native/pi_cam/segment_runners.yaml": "37fa35306070f0b5eea12a76c44ea6798b1a7f17521659bdc4761ff32208b38a",
   "validation/physics_kernel_decoupling.json": "2a9ff0a6804a4e0d54b36b26c34f44a36e5eb6234ba53fe32d7d944973680462",
   "validation/pi_cam_kernel_api_closure.json": "96025214b3e4c41f6ba89c266da5dd27c51c42c81c31e1a0ac6f7b2e9cfa260a",
   "validation/pi_cam_kernel_api_redirectable_calls.json": "b97f6f7f8f7099cb42e9cebcde6102f9d4d05d17852ba7a5495b29edb1d4fbaf",
   "validation/pi_cam_kernel_runtime_coverage_1month.json": "48f77d6ec78b4026806d4ab6fb9517ef31c1d526481b4ad68e55f77af0d303bd",
   "validation/pi_cam_kernel_runtime_coverage_50step.json": "222961fc5274dbaaf71c40f6c131a683536b5a85ef14cd047a2fd196d8ca38c5",
-  "web/public/catalog.json": "beda7e8c8528e2923f300d0a48e94f11194e871221ab2be8a0d839326a45d9a9"
+  "web/public/catalog.json": "4f592190f54003119e9cf94943e15e9dfee6a3ee4b6eab7016e2f631ede05204"
  },
  "kernels": {
   "aer_rad_props::aer_rad_props_lw": {
@@ -41510,7 +41749,7 @@
     "blocker": null,
     "branch": "physics-kernel-api-closure",
     "next_gate": "a network good enough to use: the zenith angle given back to the block model, more captured data, the longwave near the surface, the clear-sky and TOA diagnostics; then a paired year",
-    "note": "Month pair on main (replayed boundary): Radiation installed and nothing bound 401.3 s over 1,488 steps, bit-for-bit (7418517); the 256-wide emulator at the slot 363.9 s, nine percent shorter (7418518), the radiation budget drifting 4 to 5 W/m2 over the month. Four ways to answer the radiation now, all gated: a compiled Python kernel at the slot, called by Fortran (0.23 s a rank per 50 steps, 7418444); a TorchScript model through FTorch (64-wide transformer 0.72 s, 7431803); Python at the runner's pause (the same MLP 0.82 s, 7434965; the original branch through the pause bit-for-bit, 7434783); and the Python driver with a model of the whole compute block (p24: the day-1 capture replayed through it bit-for-bit in state, 7436003; the block emulator 0.38 s a rank once compiled, 7436082, drifting 1.5 K/day because it must learn the zenith angle). The 64-wide transformer priced on the other two paths (p24): written out in Numba as a plugin 12.5 ms a call, rad_tend 0.84 s a rank (shadow 7439472 bit-for-bit, live 7439535, 0.17 K rms); its block contract through the Python driver 15.5 ms a call, half of it the view-to-tensor conversion, rad_tend 1.20 s (7439603, 1.27 K rms); FTorch at the slot stays the cheapest at 7.1 ms. A month on each path (p24, 7452662-7452667): the MLP plugin 366.2 s against 400.2 with nothing bound, the MLP through the Python driver 371.9 s (6 s of it the first call's compile); the transformer 385.4 s as a plugin, 374.3 s through the driver; the block models (no zenith angle given) are physically unusable over the month (-46 and -243 W/m2 of net shortwave), the slot models drift 4-5 W/m2 as before. The mechanism is closed in every form; the network is the open problem. The cloud macro/microphysics stage (mmacro_pcond's) has the same Python-driver form since 2026-09-14 (p26): two block contracts (cloud_block.MACRO_BLOCK, MICRO_BLOCK), captured (7453135) and replayed bit-for-bit in state (7453150; the halves 7452498, 7453151), the driver 0.37 s a rank per 50 steps over native-whole; no model of either block yet, and no history entry (the drivers' 141 outfld diagnostics are not reproduced by a replay). First networks for the macrophysics block (p26): a core MLP (969 in, 632 out, 0.48M) answers the block in 2.7 ms against macrop_tend's 6.6, the stage 2.34 s a rank against 1.96 (7454277), drifting 5.8 K in 50 steps; the radiation MLP through the Python driver with a NumPy forward runs the month in 359.5 s, the fastest path (7454279).",
+    "note": "Month pair on main (replayed boundary): Radiation installed and nothing bound 401.3 s over 1,488 steps, bit-for-bit (7418517); the 256-wide emulator at the slot 363.9 s, nine percent shorter (7418518), the radiation budget drifting 4 to 5 W/m2 over the month. Four ways to answer the radiation now, all gated: a compiled Python kernel at the slot, called by Fortran (0.23 s a rank per 50 steps, 7418444); a TorchScript model through FTorch (64-wide transformer 0.72 s, 7431803); Python at the runner's pause (the same MLP 0.82 s, 7434965; the original branch through the pause bit-for-bit, 7434783); and the Python driver with a model of the whole compute block (p24: the day-1 capture replayed through it bit-for-bit in state, 7436003; the block emulator 0.38 s a rank once compiled, 7436082, drifting 1.5 K/day because it must learn the zenith angle). The 64-wide transformer priced on the other two paths (p24): written out in Numba as a plugin 12.5 ms a call, rad_tend 0.84 s a rank (shadow 7439472 bit-for-bit, live 7439535, 0.17 K rms); its block contract through the Python driver 15.5 ms a call, half of it the view-to-tensor conversion, rad_tend 1.20 s (7439603, 1.27 K rms); FTorch at the slot stays the cheapest at 7.1 ms. A month on each path (p24, 7452662-7452667): the MLP plugin 366.2 s against 400.2 with nothing bound, the MLP through the Python driver 371.9 s (6 s of it the first call's compile); the transformer 385.4 s as a plugin, 374.3 s through the driver; the block models (no zenith angle given) are physically unusable over the month (-46 and -243 W/m2 of net shortwave), the slot models drift 4-5 W/m2 as before. The mechanism is closed in every form; the network is the open problem. The cloud macro/microphysics stage (mmacro_pcond's) has the same Python-driver form since 2026-09-14 (p26): two block contracts (cloud_block.MACRO_BLOCK, MICRO_BLOCK), captured (7453135) and replayed bit-for-bit in state (7453150; the halves 7452498, 7453151), the driver 0.37 s a rank per 50 steps over native-whole; no model of either block yet, and no history entry (the drivers' 141 outfld diagnostics are not reproduced by a replay). First networks for the macrophysics block (p26): a core MLP (969 in, 632 out, 0.48M) answers the block in 2.7 ms against macrop_tend's 6.6, the stage 2.34 s a rank against 1.96 (7454277), drifting 5.8 K in 50 steps; the radiation MLP through the Python driver with a NumPy forward runs the month in 359.5 s, the fastest path (7454279). Round 3 of the cloud driver (p27, 2026-09-14): the bookkeeping is one finish entry a block (pycam_mm_finish_macro_v1, pycam_mm_finish_micro_v1), the originals through the driver bit-for-bit at 2.28 s a rank for the stage (7457385), the replay 0.51 s (7456791); a core network for the microphysics block as well (2053 in, 1479 out, 0.47M) and the networks' water clamped at -q/dt; both blocks as NumPy networks run the stage in 1.24 s a rank against the original's 1.96 and the loop in 15.47 against 15.95 (7457386; 3.1 and 3.3 ms a call), drifting 6.1 K rms in 50 steps -- the networks, not the mechanism, are what is open.",
     "owner": "claude",
     "owner_class": "freecam.physics.radiation.Radiation",
     "stage": "performance_gate",
@@ -73228,8 +73467,8 @@
  ],
  "volatile": {
   "branch": "radiation-torchscript-slot",
-  "commit": "d4bfd3602f20dacbcbe07ab79427a0a6f90817cc",
-  "generated_at": "2026-09-14T20:06:24+00:00"
+  "commit": "36dde437ac5a7bc4ce7153dd2b9dd31a198e715b",
+  "generated_at": "2026-09-14T21:37:55+00:00"
  },
  "work_items": [
   {
@@ -73282,7 +73521,7 @@
    "branch": "physics-kernel-api-closure",
    "kernel": "radiation::radiation_tend",
    "next_gate": "a network good enough to use: the zenith angle given back to the block model, more captured data, the longwave near the surface, the clear-sky and TOA diagnostics; then a paired year",
-   "note": "Month pair on main (replayed boundary): Radiation installed and nothing bound 401.3 s over 1,488 steps, bit-for-bit (7418517); the 256-wide emulator at the slot 363.9 s, nine percent shorter (7418518), the radiation budget drifting 4 to 5 W/m2 over the month. Four ways to answer the radiation now, all gated: a compiled Python kernel at the slot, called by Fortran (0.23 s a rank per 50 steps, 7418444); a TorchScript model through FTorch (64-wide transformer 0.72 s, 7431803); Python at the runner's pause (the same MLP 0.82 s, 7434965; the original branch through the pause bit-for-bit, 7434783); and the Python driver with a model of the whole compute block (p24: the day-1 capture replayed through it bit-for-bit in state, 7436003; the block emulator 0.38 s a rank once compiled, 7436082, drifting 1.5 K/day because it must learn the zenith angle). The 64-wide transformer priced on the other two paths (p24): written out in Numba as a plugin 12.5 ms a call, rad_tend 0.84 s a rank (shadow 7439472 bit-for-bit, live 7439535, 0.17 K rms); its block contract through the Python driver 15.5 ms a call, half of it the view-to-tensor conversion, rad_tend 1.20 s (7439603, 1.27 K rms); FTorch at the slot stays the cheapest at 7.1 ms. A month on each path (p24, 7452662-7452667): the MLP plugin 366.2 s against 400.2 with nothing bound, the MLP through the Python driver 371.9 s (6 s of it the first call's compile); the transformer 385.4 s as a plugin, 374.3 s through the driver; the block models (no zenith angle given) are physically unusable over the month (-46 and -243 W/m2 of net shortwave), the slot models drift 4-5 W/m2 as before. The mechanism is closed in every form; the network is the open problem. The cloud macro/microphysics stage (mmacro_pcond's) has the same Python-driver form since 2026-09-14 (p26): two block contracts (cloud_block.MACRO_BLOCK, MICRO_BLOCK), captured (7453135) and replayed bit-for-bit in state (7453150; the halves 7452498, 7453151), the driver 0.37 s a rank per 50 steps over native-whole; no model of either block yet, and no history entry (the drivers' 141 outfld diagnostics are not reproduced by a replay). First networks for the macrophysics block (p26): a core MLP (969 in, 632 out, 0.48M) answers the block in 2.7 ms against macrop_tend's 6.6, the stage 2.34 s a rank against 1.96 (7454277), drifting 5.8 K in 50 steps; the radiation MLP through the Python driver with a NumPy forward runs the month in 359.5 s, the fastest path (7454279).",
+   "note": "Month pair on main (replayed boundary): Radiation installed and nothing bound 401.3 s over 1,488 steps, bit-for-bit (7418517); the 256-wide emulator at the slot 363.9 s, nine percent shorter (7418518), the radiation budget drifting 4 to 5 W/m2 over the month. Four ways to answer the radiation now, all gated: a compiled Python kernel at the slot, called by Fortran (0.23 s a rank per 50 steps, 7418444); a TorchScript model through FTorch (64-wide transformer 0.72 s, 7431803); Python at the runner's pause (the same MLP 0.82 s, 7434965; the original branch through the pause bit-for-bit, 7434783); and the Python driver with a model of the whole compute block (p24: the day-1 capture replayed through it bit-for-bit in state, 7436003; the block emulator 0.38 s a rank once compiled, 7436082, drifting 1.5 K/day because it must learn the zenith angle). The 64-wide transformer priced on the other two paths (p24): written out in Numba as a plugin 12.5 ms a call, rad_tend 0.84 s a rank (shadow 7439472 bit-for-bit, live 7439535, 0.17 K rms); its block contract through the Python driver 15.5 ms a call, half of it the view-to-tensor conversion, rad_tend 1.20 s (7439603, 1.27 K rms); FTorch at the slot stays the cheapest at 7.1 ms. A month on each path (p24, 7452662-7452667): the MLP plugin 366.2 s against 400.2 with nothing bound, the MLP through the Python driver 371.9 s (6 s of it the first call's compile); the transformer 385.4 s as a plugin, 374.3 s through the driver; the block models (no zenith angle given) are physically unusable over the month (-46 and -243 W/m2 of net shortwave), the slot models drift 4-5 W/m2 as before. The mechanism is closed in every form; the network is the open problem. The cloud macro/microphysics stage (mmacro_pcond's) has the same Python-driver form since 2026-09-14 (p26): two block contracts (cloud_block.MACRO_BLOCK, MICRO_BLOCK), captured (7453135) and replayed bit-for-bit in state (7453150; the halves 7452498, 7453151), the driver 0.37 s a rank per 50 steps over native-whole; no model of either block yet, and no history entry (the drivers' 141 outfld diagnostics are not reproduced by a replay). First networks for the macrophysics block (p26): a core MLP (969 in, 632 out, 0.48M) answers the block in 2.7 ms against macrop_tend's 6.6, the stage 2.34 s a rank against 1.96 (7454277), drifting 5.8 K in 50 steps; the radiation MLP through the Python driver with a NumPy forward runs the month in 359.5 s, the fastest path (7454279). Round 3 of the cloud driver (p27, 2026-09-14): the bookkeeping is one finish entry a block (pycam_mm_finish_macro_v1, pycam_mm_finish_micro_v1), the originals through the driver bit-for-bit at 2.28 s a rank for the stage (7457385), the replay 0.51 s (7456791); a core network for the microphysics block as well (2053 in, 1479 out, 0.47M) and the networks' water clamped at -q/dt; both blocks as NumPy networks run the stage in 1.24 s a rank against the original's 1.96 and the loop in 15.47 against 15.95 (7457386; 3.1 and 3.3 ms a call), drifting 6.1 K rms in 50 steps -- the networks, not the mechanism, are what is open.",
    "owner": "claude",
    "owner_class": "freecam.physics.radiation.Radiation",
    "stage": "performance_gate",

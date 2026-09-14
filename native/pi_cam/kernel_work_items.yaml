@@ -112,4 +112,9 @@ items:
     diagnostics are not reproduced by a replay). First networks for the macrophysics block (p26): a core MLP
     (969 in, 632 out, 0.48M) answers the block in 2.7 ms against macrop_tend''s 6.6, the stage 2.34 s a rank
     against 1.96 (7454277), drifting 5.8 K in 50 steps; the radiation MLP through the Python driver with a NumPy
-    forward runs the month in 359.5 s, the fastest path (7454279).'
+    forward runs the month in 359.5 s, the fastest path (7454279). Round 3 of the cloud driver (p27, 2026-09-14): the
+    bookkeeping is one finish entry a block (pycam_mm_finish_macro_v1, pycam_mm_finish_micro_v1), the originals through
+    the driver bit-for-bit at 2.28 s a rank for the stage (7457385), the replay 0.51 s (7456791); a core network for the
+    microphysics block as well (2053 in, 1479 out, 0.47M) and the networks'' water clamped at -q/dt; both blocks as NumPy
+    networks run the stage in 1.24 s a rank against the original''s 1.96 and the loop in 15.47 against 15.95 (7457386;
+    3.1 and 3.3 ms a call), drifting 6.1 K rms in 50 steps -- the networks, not the mechanism, are what is open.'

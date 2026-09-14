@@ -1,0 +1,19 @@
+{
+ "schema_version": 1,
+ "log": "pyCAM/PI-cam/pausable-p27-cloud-macro-core2-7457244.desched1/run/pi_cam_python.log",
+ "steps": 50,
+ "counts": {
+  "big_error": 102400,
+  "isotopic_mass_error": 14482,
+  "qneg3_macro": 0,
+  "qneg3_total": 402288,
+  "tracebacks": 0
+ },
+ "per_step": {
+  "big_error": 2048.0,
+  "isotopic_mass_error": 289.64,
+  "qneg3_macro": 0.0,
+  "qneg3_total": 8045.76,
+  "tracebacks": 0.0
+ }
+}
