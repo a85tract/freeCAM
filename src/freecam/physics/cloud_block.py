@@ -85,11 +85,13 @@ def _union(*groups: tuple[BufferField, ...]) -> tuple[BufferField, ...]:
     return tuple(by_name.values())
 
 
-#: buffer fields the blocks only read, fetched inside routines the drivers call (the field tables cover the
-#: drivers' own fetches): cldfrc's convective cloud fractions; the ice nucleation's dry diameters and the
-#: activation's eddy diffusivity.  Inputs to a model, never outputs.
-MACRO_INPUT_BUFFERS = (BufferField("SH_FRAC", "cloud_fraction_mp_sh_frac_idx_", False),
-                       BufferField("DP_FRAC", "cloud_fraction_mp_dp_frac_idx_", False))
+#: buffer fields fetched inside routines the drivers call (the field tables cover the drivers' own fetches).
+#: cldfrc, inside the macrophysics driver, computes the shallow and deep convective cloud fractions and writes them
+#: (the census of 7452704 named them: wet deposition reads them later in the step); the ice nucleation's dry
+#: diameters and the activation's eddy diffusivity are only read.
+MACRO_CALLEE_BUFFERS = (BufferField("SH_FRAC", "cloud_fraction_mp_sh_frac_idx_", False),
+                        BufferField("DP_FRAC", "cloud_fraction_mp_dp_frac_idx_", False))
+MACRO_INPUT_BUFFERS: tuple[BufferField, ...] = ()
 MICRO_INPUT_BUFFERS = (BufferField("DGNUM", "nucleate_ice_cam_mp_dgnum_idx_", False, 3),
                        BufferField("KVH", "microp_aero_mp_kvh_idx_", False))
 
@@ -123,7 +125,7 @@ class BlockContract:
         return tuple(field.name for field in self.buffers)
 
 
-MACRO_BUFFERS = _macro_buffers()
+MACRO_BUFFERS = _macro_buffers() + MACRO_CALLEE_BUFFERS
 MICRO_BUFFERS = _union(_table_buffers(AERO_TABLE), _table_buffers(MICRO_TABLE))
 
 #: macrop_driver_tend: the block mmacro_pcond lives in
@@ -629,7 +631,7 @@ def load_block_model(spec: str, *, block: BlockContract, rank: int):
 
 
 __all__ = ["BLOCKS", "BlockCapture", "BlockContract", "BlockModel", "BlockReplay", "BufferField", "CAM_IN_FIELDS",
-           "CloudBlockCapture", "FORCING_FIELDS", "MACRO_BLOCK", "MACRO_BUFFERS", "MACRO_INPUT_BUFFERS", "MICRO_BLOCK",
+           "CloudBlockCapture", "FORCING_FIELDS", "MACRO_BLOCK", "MACRO_BUFFERS", "MACRO_CALLEE_BUFFERS", "MACRO_INPUT_BUFFERS", "MICRO_BLOCK",
            "MICRO_BUFFERS", "MICRO_INPUT_BUFFERS", "OriginalBlock", "SCALARS", "STATE_FIELDS", "TENDENCY_OUTPUTS",
            "CENSUS", "CensusBlock", "VerifiedOriginalBlock", "census_fields", "cloud_borne_fields", "dynamic_fields",
            "input_digests", "load_block_model", "tracer_precipitation_fields"]

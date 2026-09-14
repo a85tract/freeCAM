@@ -28,7 +28,8 @@ def test_the_contracts_name_every_field_once_and_carry_the_tendency() -> None:
     assert CB.MACRO_BLOCK.ptend_name == "macrop" and CB.MICRO_BLOCK.ptend_name == "cldwat"
     # fields read inside the drivers' callees are inputs and never outputs; the cloud-borne aerosols are the
     # microphysics block's, registered per constituent at run time
-    assert {"SH_FRAC", "DP_FRAC"} <= set(CB.MACRO_BLOCK.inputs) and not {"SH_FRAC", "DP_FRAC"} & set(CB.MACRO_BLOCK.outputs)
+    # cldfrc writes the convective cloud fractions inside the macrophysics driver (the census of 7452704)
+    assert {"SH_FRAC", "DP_FRAC"} <= set(CB.MACRO_BLOCK.inputs) and {"SH_FRAC", "DP_FRAC"} <= set(CB.MACRO_BLOCK.outputs)
     assert {"DGNUM", "KVH"} <= set(CB.MICRO_BLOCK.inputs) and not {"DGNUM", "KVH"} & set(CB.MICRO_BLOCK.outputs)
     assert CB.MICRO_BLOCK.cloud_borne and not CB.MACRO_BLOCK.cloud_borne
 
