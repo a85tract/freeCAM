@@ -140,3 +140,12 @@ def test_the_views_leave_out_buffer_fields_this_configuration_never_registered()
     views = CloudMacroMicrophysics._buffer_views(Buffer(), ["CLD", "CMFR_DET", "NAAI", "QLR_DET"], 1540)
     assert sorted(views) == ["CLD", "NAAI"]
     assert views["CLD"] is Buffer.declared["CLD"]
+
+
+def test_original_in_a_slot_runs_the_driver_around_the_original_block() -> None:
+    original = CB.load_block_model("original", block=CB.MICRO_BLOCK, rank=0)
+    assert isinstance(original, CB.OriginalBlock) and original.block is CB.MICRO_BLOCK
+    assert original.describe() == {"kind": "original-in-driver", "block": "micro"}
+    stage = CloudMacroMicrophysics(whole_drivers=True)
+    stage.micro_process = original
+    assert stage.select_mode() == "python-driver"

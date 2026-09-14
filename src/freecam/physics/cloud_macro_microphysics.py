@@ -43,6 +43,7 @@ from .cloud_block import (
     MACRO_BLOCK,
     MICRO_BLOCK,
     STATE_FIELDS,
+    OriginalBlock,
 )
 from .errors import PhysicsError
 from .image import module_view
@@ -673,7 +674,7 @@ class CloudMacroMicrophysics(NativeStage):
         # -- 2242-2250: the macrophysics block
         inputs = self._block_inputs(MACRO_BLOCK, V, nstep, lchnk, n, sub_dt)
         before = capture.of(MACRO_BLOCK).begin(inputs) if capture is not None else None
-        if self.process is None:
+        if self.process is None or isinstance(self.process, OriginalBlock):
             arrays = [V[f"cam_in_{name}"] if name in CAM_IN_FIELDS else V[name] for name in MACROP_ARGUMENTS]
             H.macrop_driver_tend(lchnk, sub_dt, arrays); log("macrop_driver_tend")
         else:
@@ -690,7 +691,7 @@ class CloudMacroMicrophysics(NativeStage):
         # -- 2317-2357: the microphysics block: activation, driver, the tendency sum
         inputs = self._block_inputs(MICRO_BLOCK, V, nstep, lchnk, n, sub_dt)
         before = capture.of(MICRO_BLOCK).begin(inputs) if capture is not None else None
-        if self.micro_process is None:
+        if self.micro_process is None or isinstance(self.micro_process, OriginalBlock):
             H.microp_aero_run(lchnk, sub_dt); log("microp_aero_run")
             H.microp_driver_tend(lchnk, sub_dt); log("microp_driver_tend")
             H.ptend_sum_aero(lchnk, n); log("physics_ptend_sum:ptend_aero")

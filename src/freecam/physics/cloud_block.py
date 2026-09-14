@@ -348,9 +348,37 @@ class BlockModel:
         return f"BlockModel({self.block_name!r}, {self.label!r})"
 
 
-def load_block_model(spec: str, *, block: BlockContract, rank: int):
-    """``replay:DIR`` -> :class:`BlockReplay`; ``MODULE:FUNCTION`` or ``path.py:FUNCTION`` -> :class:`BlockModel`."""
+class OriginalBlock:
+    """Put in a block's slot: the Python driver runs, and the block is the original driver called in place.
 
+    The measure of the driver itself -- its views, its bookkeeping calls -- with nothing replaced and nothing
+    recorded; the run must stay bit-for-bit.
+    """
+
+    records = False
+    answers = False
+    block_model = True
+
+    def __init__(self, block: BlockContract) -> None:
+        self.block_name = block.name
+
+    @property
+    def block(self) -> BlockContract:
+        return BLOCKS[self.block_name]
+
+    def describe(self) -> dict[str, Any]:
+        return {"kind": "original-in-driver", "block": self.block_name}
+
+    def __repr__(self) -> str:
+        return f"OriginalBlock({self.block_name!r})"
+
+
+def load_block_model(spec: str, *, block: BlockContract, rank: int):
+    """``original`` -> :class:`OriginalBlock`; ``replay:DIR`` -> :class:`BlockReplay`; ``MODULE:FUNCTION`` or
+    ``path.py:FUNCTION`` -> :class:`BlockModel`."""
+
+    if spec == "original":
+        return OriginalBlock(block)
     if spec.startswith("replay:"):
         return BlockReplay(spec[len("replay:"):], rank, block)
     from .radiation_process import RadiationProcessModel, load_process_model
@@ -363,4 +391,4 @@ def load_block_model(spec: str, *, block: BlockContract, rank: int):
 
 __all__ = ["BLOCKS", "BlockCapture", "BlockContract", "BlockModel", "BlockReplay", "BufferField", "CAM_IN_FIELDS",
            "CloudBlockCapture", "FORCING_FIELDS", "MACRO_BLOCK", "MACRO_BUFFERS", "MICRO_BLOCK", "MICRO_BUFFERS",
-           "SCALARS", "STATE_FIELDS", "TENDENCY_OUTPUTS", "load_block_model"]
+           "OriginalBlock", "SCALARS", "STATE_FIELDS", "TENDENCY_OUTPUTS", "load_block_model"]
