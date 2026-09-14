@@ -1244,9 +1244,15 @@ class NativeStage:
         return dict(getattr(self, "_components", {}))
 
     def runtime(self, native: Any) -> StageRuntime:
-        """This rank's runtime, built on first use and kept per pool."""
+        """This rank's runtime, built on first use and kept per native access object.
 
-        key = id(native.pool)
+        Keyed on the access object, not on ``native.pool``: the pool is a property that hands out a fresh
+        view object each time, so a key on its id missed on every step and rebuilt the runtime -- its
+        handles, its buffer tables, its scratch -- once a step (7 ms a step on 512 ranks, the whole of the
+        Python driver's overhead beyond its calls).
+        """
+
+        key = id(native)
         try:
             return self._runtimes[key]
         except KeyError:

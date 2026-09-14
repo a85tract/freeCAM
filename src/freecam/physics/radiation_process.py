@@ -360,13 +360,18 @@ def load_process_model(spec: str, *, rank: int):
     if not sep or not module_name or not function_name:
         raise PhysicsError(f"--radiation-model takes original, replay:DIR, MODULE:FUNCTION or path.py:FUNCTION, got {spec!r}")
     if module_name.endswith(".py"):
+        # imported by name from its directory, so the function pickles by reference into every rank's process
+        # registry: a module loaded from a bare path pickles by value, and a class defined in it carries a
+        # per-process tracker id that hashes differently on every rank (7456975)
         path = Path(module_name).expanduser().resolve()
         if not path.is_file():
             raise PhysicsError(f"--radiation-model: {path} is not a file")
-        loader_spec = importlib.util.spec_from_file_location(f"freecam_radiation_model_{path.stem}", path)
-        module = importlib.util.module_from_spec(loader_spec)
-        sys.modules[loader_spec.name] = module
-        loader_spec.loader.exec_module(module)
+        directory = str(path.parent)
+        if directory not in sys.path:
+            sys.path.insert(0, directory)
+        module = importlib.import_module(path.stem)
+        if Path(getattr(module, "__file__", "")).resolve() != path:
+            raise PhysicsError(f"--radiation-model: importing {path.stem} found {getattr(module, '__file__', None)}, not {path}")
     else:
         module = importlib.import_module(module_name)
     function = getattr(module, function_name, None)
