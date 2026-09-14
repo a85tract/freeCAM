@@ -1039,6 +1039,43 @@ drift (1.27 K rms against 0.17 for the same network given the zenith
 angle) repeats the MLP's lesson: what the driver path needs next is not a
 faster call but the twenty lines of geometry handed to the model.
 
+#### A month on each path: the model's speed and its drift
+
+Fifty steps price a call; a month (1,488 steps, the replayed boundary,
+p24 image, whole 235 GB nodes) shows what the run keeps of it and how far
+the model's own error carries the state.  Five months were run on
+2026-09-14: the Radiation class installed with nothing bound, the 256-wide
+MLP at the slot as a Numba plugin and, trained for the block contract, as
+the block model through the Python driver; and the 64-wide transformer the
+same two ways.  Drift is the last day's global mean against the oracle's
+month; the plugin months repeat the p21 month pair's numbers (401.3 and
+363.9 s there) within a few seconds.
+
+| run | radiation | step loop | against the original | model, a rank over the month | first call | day 30: net shortwave at the top, column water vapour, lowest-level temperature |
+| --- | --- | ---: | ---: | ---: | ---: | --- |
+| 7452662 | nothing bound | 400.2 s | -- | -- | -- | bit-for-bit |
+| 7452663 | MLP as a Numba plugin | 366.2 s | -8.5% | 1.95 s (1.3 ms a call) | 3 ms | -4.8 W/m², -1.5 kg/m², -0.9 K |
+| 7452664 | MLP through the Python driver | 371.9 s | -7.1% | 7.6 s, 6.0 of it compiling at the first call | 6.0 s | -46 W/m², -7.7 kg/m², -12.3 K |
+| 7452666 | transformer as a Numba plugin | 385.4 s | -3.7% | 18.8 s (12.6 ms a call) | 15 ms | -4.4 W/m², -1.2 kg/m², -1.0 K |
+| 7452667 | transformer through the Python driver | 374.3 s | -6.5% | 10.3 s (6.9 ms a call) | 0.47 s | -243 W/m², -4.1 kg/m², -1.2 K; 45,308 "BIG ERROR" lines |
+
+The two paths are a percent and a half apart on the loop with the same
+network: the driver's month costs its 6 s compile on the first call and
+about 3 ms a chunk of bookkeeping, and nothing else.  The drift column is
+the model's, not the path's: the slot models (given the zenith angle)
+drift as the month pair did; the block models, made to learn it, lose
+118 W/m² of net shortwave in the global mean by day 3 and 12 K at the
+lowest level by day 30 -- a model that cannot be used, on a path that
+replays a capture bit-for-bit.  The health counters agree: two "BIG
+ERROR" lines and eleven isotopic mass errors in the plugin's month
+(7452663), twenty and six in the driver's (7452664), six in the
+transformer plugin's (7452666), none in the baseline -- and 45,308 "BIG
+ERROR" lines in the transformer block model's month (7452667), whose lit
+gate leaves the shortwave out over most of the globe: 243 W/m² of net
+shortwave missing from day 3 on.  The runtime numbers of that month stand
+(6.9 ms a call, the loop 6.5 percent under the original); its physics does
+not.
+
 ## Where it stands
 
 | Kernel | Owner | Contract | Runner pause | In-model gate | Loop |

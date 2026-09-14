@@ -1,0 +1,199 @@
+{
+  "schema_version": 2,
+  "files": [
+    "f.e13.F1850C5.ne16_g16.icesm131_ihesp.PI-atm.pycesm-ref.50step.cam.h0.0001-01-01-00000.nc",
+    "f.e13.F1850C5.ne16_g16.icesm131_ihesp.PI-atm.pycesm-ref.50step.cam.h0.0001-01-03-07200.nc",
+    "f.e13.F1850C5.ne16_g16.icesm131_ihesp.PI-atm.pycesm-ref.50step.cam.h0.0001-01-05-14400.nc",
+    "f.e13.F1850C5.ne16_g16.icesm131_ihesp.PI-atm.pycesm-ref.50step.cam.h0.0001-01-07-21600.nc",
+    "f.e13.F1850C5.ne16_g16.icesm131_ihesp.PI-atm.pycesm-ref.50step.cam.h0.0001-01-09-28800.nc",
+    "f.e13.F1850C5.ne16_g16.icesm131_ihesp.PI-atm.pycesm-ref.50step.cam.h0.0001-01-11-36000.nc",
+    "f.e13.F1850C5.ne16_g16.icesm131_ihesp.PI-atm.pycesm-ref.50step.cam.h0.0001-01-13-43200.nc",
+    "f.e13.F1850C5.ne16_g16.icesm131_ihesp.PI-atm.pycesm-ref.50step.cam.h0.0001-01-15-50400.nc",
+    "f.e13.F1850C5.ne16_g16.icesm131_ihesp.PI-atm.pycesm-ref.50step.cam.h0.0001-01-17-57600.nc",
+    "f.e13.F1850C5.ne16_g16.icesm131_ihesp.PI-atm.pycesm-ref.50step.cam.h0.0001-01-19-64800.nc",
+    "f.e13.F1850C5.ne16_g16.icesm131_ihesp.PI-atm.pycesm-ref.50step.cam.h0.0001-01-21-72000.nc",
+    "f.e13.F1850C5.ne16_g16.icesm131_ihesp.PI-atm.pycesm-ref.50step.cam.h0.0001-01-23-79200.nc",
+    "f.e13.F1850C5.ne16_g16.icesm131_ihesp.PI-atm.pycesm-ref.50step.cam.h0.0001-01-26-00000.nc",
+    "f.e13.F1850C5.ne16_g16.icesm131_ihesp.PI-atm.pycesm-ref.50step.cam.h0.0001-01-28-07200.nc",
+    "f.e13.F1850C5.ne16_g16.icesm131_ihesp.PI-atm.pycesm-ref.50step.cam.h0.0001-01-30-14400.nc"
+  ],
+  "fields_compared": 2838,
+  "fields_informative": 2590,
+  "informative": true,
+  "fields_identical": 500,
+  "fields_with_non_finite_values": [],
+  "relative_rms": {
+    "median": 1.106440044683895,
+    "p90": 5.3282402101600415,
+    "max": 42.0560837935171
+  },
+  "worst": [
+    {
+      "name": "ncl_a3_SRF",
+      "after_start": true,
+      "rms_difference": 6.412388680448725e-07,
+      "relative_rms": 42.0560837935171,
+      "max_difference": 9.693529264609424e-06,
+      "reference_spread": 1.524723203408965e-08,
+      "identical": false,
+      "candidate_non_finite": 0
+    },
+    {
+      "name": "ncl_a1_SRF",
+      "after_start": true,
+      "rms_difference": 3.6169187126017275e-08,
+      "relative_rms": 37.23341100256279,
+      "max_difference": 5.090815458075326e-07,
+      "reference_spread": 9.714175025094461e-10,
+      "identical": false,
+      "candidate_non_finite": 0
+    },
+    {
+      "name": "num_a3_SRF",
+      "after_start": true,
+      "rms_difference": 42752116.76812956,
+      "relative_rms": 36.320044568461014,
+      "max_difference": 639598155.5625,
+      "reference_spread": 1177094.2815762379,
+      "identical": false,
+      "candidate_non_finite": 0
+    },
+    {
+      "name": "ncl_a2_SRF",
+      "after_start": true,
+      "rms_difference": 1.230847369873251e-10,
+      "relative_rms": 33.40821503518597,
+      "max_difference": 1.2779853321431833e-09,
+      "reference_spread": 3.684265587302125e-12,
+      "identical": false,
+      "candidate_non_finite": 0
+    },
+    {
+      "name": "ncl_a1_SRF",
+      "after_start": true,
+      "rms_difference": 2.412053923194833e-08,
+      "relative_rms": 31.01247557364492,
+      "max_difference": 3.6319396645723145e-07,
+      "reference_spread": 7.777689070538597e-10,
+      "identical": false,
+      "candidate_non_finite": 0
+    },
+    {
+      "name": "ncl_a2_SRF",
+      "after_start": true,
+      "rms_difference": 8.787672951960573e-11,
+      "relative_rms": 29.596951670705494,
+      "max_difference": 7.741928901346812e-10,
+      "reference_spread": 2.9691142012636546e-12,
+      "identical": false,
+      "candidate_non_finite": 0
+    },
+    {
+      "name": "ncl_a2_SRF",
+      "after_start": true,
+      "rms_difference": 8.499811667573469e-11,
+      "relative_rms": 26.50885278747156,
+      "max_difference": 9.566751193318401e-10,
+      "reference_spread": 3.2064049454416954e-12,
+      "identical": false,
+      "candidate_non_finite": 0
+    },
+    {
+      "name": "ncl_a2_SRF",
+      "after_start": true,
+      "rms_difference": 7.325785257100114e-11,
+      "relative_rms": 26.275892512567086,
+      "max_difference": 7.211350444742692e-10,
+      "reference_spread": 2.7880252796727565e-12,
+      "identical": false,
+      "candidate_non_finite": 0
+    },
+    {
+      "name": "num_a3_SRF",
+      "after_start": true,
+      "rms_difference": 24281211.465679213,
+      "relative_rms": 24.97398432455716,
+      "max_difference": 378097027.75,
+      "reference_spread": 972260.2188791824,
+      "identical": false,
+      "candidate_non_finite": 0
+    },
+    {
+      "name": "ncl_a2_SRF",
+      "after_start": true,
+      "rms_difference": 7.526029999021187e-11,
+      "relative_rms": 23.03518550570625,
+      "max_difference": 7.493383561221756e-10,
+      "reference_spread": 3.2671887956608153e-12,
+      "identical": false,
+      "candidate_non_finite": 0
+    },
+    {
+      "name": "ncl_a3_SRF",
+      "after_start": true,
+      "rms_difference": 2.9241727449696257e-07,
+      "relative_rms": 22.93378711442984,
+      "max_difference": 4.868526648493798e-06,
+      "reference_spread": 1.275050095467987e-08,
+      "identical": false,
+      "candidate_non_finite": 0
+    },
+    {
+      "name": "ncl_a2_SRF",
+      "after_start": true,
+      "rms_difference": 8.033599479092732e-11,
+      "relative_rms": 21.1475647821446,
+      "max_difference": 8.240792995911628e-10,
+      "reference_spread": 3.7988295871663175e-12,
+      "identical": false,
+      "candidate_non_finite": 0
+    },
+    {
+      "name": "ncl_a2_SRF",
+      "after_start": true,
+      "rms_difference": 5.4800338342496655e-11,
+      "relative_rms": 17.132899670334684,
+      "max_difference": 5.837858879035457e-10,
+      "reference_spread": 3.198544285961266e-12,
+      "identical": false,
+      "candidate_non_finite": 0
+    },
+    {
+      "name": "ncl_a1_SRF",
+      "after_start": true,
+      "rms_difference": 1.2422281238876422e-08,
+      "relative_rms": 16.406716291221926,
+      "max_difference": 1.200918375854343e-07,
+      "reference_spread": 7.571460990961798e-10,
+      "identical": false,
+      "candidate_non_finite": 0
+    },
+    {
+      "name": "ncl_a2_SRF",
+      "after_start": true,
+      "rms_difference": 5.4207396138231556e-11,
+      "relative_rms": 15.294249175932348,
+      "max_difference": 6.26367456166288e-10,
+      "reference_spread": 3.5442992666507957e-12,
+      "identical": false,
+      "candidate_non_finite": 0
+    }
+  ],
+  "unchanged": [
+    "lev",
+    "hyam",
+    "hybm",
+    "P0",
+    "ilev",
+    "hyai",
+    "hybi",
+    "lat",
+    "area",
+    "lon",
+    "lev",
+    "hyam",
+    "hybm",
+    "P0",
+    "ilev"
+  ]
+}

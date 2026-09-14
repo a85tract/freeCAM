@@ -2648,7 +2648,7 @@
   "use_gw_oro": true,
   "use_subcol_microp": false
  },
- "content_hash": "a55b94455664008c588f6014f0f4607b96d1f5c649bc3d43fab595ae18102cbf",
+ "content_hash": "bcdbccfb46a1b048d5916cb07078e542ed43dd4c294f5b935afb238c6f51cee8",
  "evidence": {
   "pi_cam_cldfrc_fice_frame_replay.json": {
    "bfb": true,
@@ -4510,6 +4510,253 @@
    "steps_completed": 2,
    "what": "The day-1 capture's outputs answering the whole compute block from the Python driver (bit-for-bit in state expected)."
   },
+  "pi_cam_pausable_p26-cloud-capture_50step_failure.json": {
+   "diagnosis": "_block_views built the accessor over the registered fields only (CMFR_DET, QLR_DET, QIR_DET are UNICON's; this configuration reads their indices as -1) and then asked it for every field of both contracts by name.  The views now take the fields the accessor declares and leave the rest out, as the driver's own pointer stays unassociated.",
+   "image": {
+    "build": "pi_cam_promoted_p26",
+    "role": "development",
+    "sha256": null
+   },
+   "kind": "gate-failure",
+   "outcome": "every rank's first chunk failed on the first step: KeyError 'CMFR_DET' -- the buffer accessor refused a field it does not declare (PICAMConfigurationError), and the Python process was reported tainted on 511 ranks",
+   "pbs_job": "7450699",
+   "python_stages": [
+    "cloud_macro_microphysics"
+   ],
+   "ranks": 512,
+   "record": "pi_cam_pausable_p26-cloud-capture_50step_failure.json",
+   "run_tag": "p26-cloud-capture",
+   "steps_completed": 0,
+   "what": "Both compute blocks of the cloud macro/microphysics stage run as their original drivers through the stage's Python driver, with a capture of each block's inputs and outputs."
+  },
+  "pi_cam_pausable_p26-cloud-replay2_50step_failure.json": {
+   "diagnosis": "the microphysics block's output list was drawn from the two drivers' own pbuf_get_field calls; the aerosol activation inside it (dropmixnuc, ndrop.F90:1035-1036) rewrites the cloud-borne aerosol fields through modal_aero_data's qqcw registry, which no field table saw, so the replay left them a step behind and the difference reached the surface fluxes two steps later.  The block contract now includes the registry's fields (cloud_block.cloud_borne_fields, per constituent, from the image) among the microphysics block's outputs, and the fields the drivers' callees only read (cldfrc's convective fractions, the nucleation's dry diameters, the activation's eddy diffusivity) among the inputs.",
+   "image": {
+    "build": "pi_cam_promoted_p26",
+    "role": "development",
+    "sha256": null
+   },
+   "kind": "gate-failure",
+   "outcome": "steps 1 and 2 exported bit-for-bit; at step 3 every rank's coupler export differed from the replayed boundary dataset at the level of 1e-15 (BoundaryReplayError on cam_out.a2x_rattr) and the run stopped",
+   "pbs_job": "7451924",
+   "python_stages": [
+    "cloud_macro_microphysics"
+   ],
+   "ranks": 512,
+   "record": "pi_cam_pausable_p26-cloud-replay2_50step_failure.json",
+   "run_tag": "p26-cloud-replay2",
+   "steps_completed": 2,
+   "what": "The capture of 7451819 replayed through both block slots of the cloud stage's Python driver."
+  },
+  "pi_cam_pausable_p26-cloud-replay3_50step_failure.json": {
+   "diagnosis": "the driver's views of the time-rotated buffer fields (CLD, AST, CONCLD, CLDO, the in-cloud water and its old-time copies, CLDFSNOW) were taken once a chunk and kept, while CAM moves the older plane every step; on even steps the capture recorded, and the replay wrote, the plane the driver was not using.  Those views are now taken per call, as the radiation driver's are; the capture records an exact digest of every input, and a replay reports the first input and step that differ from the captured run.",
+   "image": {
+    "build": "pi_cam_promoted_p26",
+    "role": "development",
+    "sha256": null
+   },
+   "kind": "gate-failure",
+   "outcome": "as 7451924: steps 1 and 2 exported bit-for-bit, the coupler export differed at step 3 on every rank (BoundaryReplayError on cam_out.a2x_rattr, differences of order 1e-15) and the run stopped",
+   "pbs_job": "7452063",
+   "python_stages": [
+    "cloud_macro_microphysics"
+   ],
+   "ranks": 512,
+   "record": "pi_cam_pausable_p26-cloud-replay3_50step_failure.json",
+   "run_tag": "p26-cloud-replay3",
+   "steps_completed": 2,
+   "what": "The capture of 7451996 (with the cloud-borne aerosol fields) replayed through both block slots of the cloud stage's Python driver."
+  },
+  "pi_cam_pausable_p26-cloud-replay4-macro_50step_failure.json": {
+   "diagnosis": "not the tracer precipitation (the microphysics ran original here) and not any contracted input (the digests matched through step 3): a dependence the macrophysics contract does not name.  Under localisation: p26-cloud-replay5-macro runs the microphysics original comparing every output with the capture's record (verify:DIR), and p26-cloud-verify5 both originals.",
+   "image": {
+    "build": "pi_cam_promoted_p26",
+    "role": "development",
+    "sha256": null
+   },
+   "kind": "gate-failure",
+   "outcome": "steps 1 and 2 exported bit-for-bit; at step 3 the coupler export differed on every rank, first in an aerosol dry-deposition flux (a2x attribute 26), by about 1e-15",
+   "pbs_job": "7452221",
+   "python_stages": [
+    "cloud_macro_microphysics"
+   ],
+   "ranks": 512,
+   "record": "pi_cam_pausable_p26-cloud-replay4-macro_50step_failure.json",
+   "run_tag": "p26-cloud-replay4-macro",
+   "steps_completed": 2,
+   "what": "The same capture replayed through the macrophysics slot alone, the microphysics driver original."
+  },
+  "pi_cam_pausable_p26-cloud-replay4-micro_50step_failure.json": {
+   "diagnosis": "every contracted input of both blocks hashed as the capture's on every call through step 3 (the replay's digests), so what differed was written by a block and read only outside it: the microphysics driver's wtrc_output_precip fills the water tracers' surface precipitation fields (water_tracer_vars' wtrc_srfpcp_indices, one per precipitation type and tracer set), which no field table sees; a replay left the isotopic large-scale rain at its previous value and the export of that flux differed.  The block now takes those fields from the image's index array as outputs.",
+   "image": {
+    "build": "pi_cam_promoted_p26",
+    "role": "development",
+    "sha256": null
+   },
+   "kind": "gate-failure",
+   "outcome": "as p26-cloud-replay4: step 3, the isotopic large-scale rain flux first",
+   "pbs_job": "7452222",
+   "python_stages": [
+    "cloud_macro_microphysics"
+   ],
+   "ranks": 512,
+   "record": "pi_cam_pausable_p26-cloud-replay4-micro_50step_failure.json",
+   "run_tag": "p26-cloud-replay4-micro",
+   "steps_completed": 2,
+   "what": "The same capture replayed through the microphysics slot alone, the macrophysics driver original."
+  },
+  "pi_cam_pausable_p26-cloud-replay4_50step_failure.json": {
+   "diagnosis": "every contracted input of both blocks hashed as the capture's on every call through step 3 (the replay's digests), so what differed was written by a block and read only outside it: the microphysics driver's wtrc_output_precip fills the water tracers' surface precipitation fields (water_tracer_vars' wtrc_srfpcp_indices, one per precipitation type and tracer set), which no field table sees; a replay left the isotopic large-scale rain at its previous value and the export of that flux differed.  The block now takes those fields from the image's index array as outputs.",
+   "image": {
+    "build": "pi_cam_promoted_p26",
+    "role": "development",
+    "sha256": null
+   },
+   "kind": "gate-failure",
+   "outcome": "steps 1 and 2 exported bit-for-bit; at step 3 the coupler export differed on every rank, first in the isotopic large-scale rain flux (a2x attribute 39), by up to 1e-5 relative",
+   "pbs_job": "7452220",
+   "python_stages": [
+    "cloud_macro_microphysics"
+   ],
+   "ranks": 512,
+   "record": "pi_cam_pausable_p26-cloud-replay4_50step_failure.json",
+   "run_tag": "p26-cloud-replay4",
+   "steps_completed": 2,
+   "what": "The capture of 7452191 (rotated planes per step, input digests) replayed through both block slots."
+  },
+  "pi_cam_pausable_p26-cloud-replay5-macro_50step_failure.json": {
+   "diagnosis": "the replay object restored on each rank by pickle (the stage is cloudpickled into the process registry) carried its directory and count but not the mismatch list a fresh one has; __setstate__ now gives it one.  The finding itself -- an input differing at step 2 -- is what the rerun is to name.",
+   "image": {
+    "build": "pi_cam_promoted_p26",
+    "role": "development",
+    "sha256": null
+   },
+   "kind": "gate-failure",
+   "outcome": "step 1 ran; on step 2 the replay found an input whose live lanes did not hash as the capture's and fell over reporting it: AttributeError, 'BlockReplay' object has no attribute 'mismatches'",
+   "pbs_job": "7452423",
+   "python_stages": [
+    "cloud_macro_microphysics"
+   ],
+   "ranks": 512,
+   "record": "pi_cam_pausable_p26-cloud-replay5-macro_50step_failure.json",
+   "run_tag": "p26-cloud-replay5-macro",
+   "steps_completed": 1,
+   "what": "The same capture replayed through the macrophysics slot, the microphysics original verifying its outputs against the record."
+  },
+  "pi_cam_pausable_p26-cloud-replay5-micro_50step_failure.json": {
+   "diagnosis": "the replay object restored on each rank by pickle (the stage is cloudpickled into the process registry) carried its directory and count but not the mismatch list a fresh one has; __setstate__ now gives it one.  The finding itself -- an input differing at step 2 -- is what the rerun is to name.",
+   "image": {
+    "build": "pi_cam_promoted_p26",
+    "role": "development",
+    "sha256": null
+   },
+   "kind": "gate-failure",
+   "outcome": "step 1 ran; on step 2 the replay found an input whose live lanes did not hash as the capture's and fell over reporting it: AttributeError, 'BlockReplay' object has no attribute 'mismatches'",
+   "pbs_job": "7452424",
+   "python_stages": [
+    "cloud_macro_microphysics"
+   ],
+   "ranks": 512,
+   "record": "pi_cam_pausable_p26-cloud-replay5-micro_50step_failure.json",
+   "run_tag": "p26-cloud-replay5-micro",
+   "steps_completed": 1,
+   "what": "The same capture replayed through the microphysics slot, the macrophysics original verifying its outputs against the record."
+  },
+  "pi_cam_pausable_p26-cloud-replay5_50step_failure.json": {
+   "diagnosis": "the replay object restored on each rank by pickle (the stage is cloudpickled into the process registry) carried its directory and count but not the mismatch list a fresh one has; __setstate__ now gives it one.  The finding itself -- an input differing at step 2 -- is what the rerun is to name.",
+   "image": {
+    "build": "pi_cam_promoted_p26",
+    "role": "development",
+    "sha256": null
+   },
+   "kind": "gate-failure",
+   "outcome": "step 1 ran; on step 2 the replay found an input whose live lanes did not hash as the capture's and fell over reporting it: AttributeError, 'BlockReplay' object has no attribute 'mismatches'",
+   "pbs_job": "7452422",
+   "python_stages": [
+    "cloud_macro_microphysics"
+   ],
+   "ranks": 512,
+   "record": "pi_cam_pausable_p26-cloud-replay5_50step_failure.json",
+   "run_tag": "p26-cloud-replay5",
+   "steps_completed": 1,
+   "what": "The capture of 7452381 (with the water tracers' surface precipitation) replayed through both block slots."
+  },
+  "pi_cam_pausable_p26-cloud-replay6-macro_50step_failure.json": {
+   "diagnosis": "the microphysics block's contract is now complete (p26-cloud-replay6-micro replays it bit-for-bit in cam.r and cam.rs); the macrophysics block's is not: every one of its contracted inputs hashes as the capture's on every call through step 3, the microphysics original that follows produces outputs identical to the capture's (verify:DIR, 7452498's pair), and the export still differs by 1e-15 in an aerosol dry-deposition flux at step 3.  The block writes something its contract does not list; the census runs (p26-cloud-census-macro) snapshot every registered buffer field around the original to name it.",
+   "image": {
+    "build": "pi_cam_promoted_p26",
+    "role": "development",
+    "sha256": null
+   },
+   "kind": "gate-failure",
+   "outcome": "as p26-cloud-replay6: step 3, a2x attribute 26 first",
+   "pbs_job": "7452497",
+   "python_stages": [
+    "cloud_macro_microphysics"
+   ],
+   "ranks": 512,
+   "record": "pi_cam_pausable_p26-cloud-replay6-macro_50step_failure.json",
+   "run_tag": "p26-cloud-replay6-macro",
+   "steps_completed": 2,
+   "what": "The same capture replayed through the macrophysics slot, the microphysics original verifying its outputs against the record (no output mismatch reported)."
+  },
+  "pi_cam_pausable_p26-cloud-replay6_50step_failure.json": {
+   "diagnosis": "the microphysics block's contract is now complete (p26-cloud-replay6-micro replays it bit-for-bit in cam.r and cam.rs); the macrophysics block's is not: every one of its contracted inputs hashes as the capture's on every call through step 3, the microphysics original that follows produces outputs identical to the capture's (verify:DIR, 7452498's pair), and the export still differs by 1e-15 in an aerosol dry-deposition flux at step 3.  The block writes something its contract does not list; the census runs (p26-cloud-census-macro) snapshot every registered buffer field around the original to name it.",
+   "image": {
+    "build": "pi_cam_promoted_p26",
+    "role": "development",
+    "sha256": null
+   },
+   "kind": "gate-failure",
+   "outcome": "steps 1 and 2 exported bit-for-bit; at step 3 the coupler export differed on every rank, first in a2x attribute 26 (an aerosol dry-deposition flux), by about 1e-15",
+   "pbs_job": "7452496",
+   "python_stages": [
+    "cloud_macro_microphysics"
+   ],
+   "ranks": 512,
+   "record": "pi_cam_pausable_p26-cloud-replay6_50step_failure.json",
+   "run_tag": "p26-cloud-replay6",
+   "steps_completed": 2,
+   "what": "The capture of 7452381 replayed through both block slots."
+  },
+  "pi_cam_pausable_p26-cloud-replay_50step_failure.json": {
+   "diagnosis": "a consequence of the capture run's failure, not a fault of its own; the chain submitted the replay without checking the capture directory",
+   "image": {
+    "build": "pi_cam_promoted_p26",
+    "role": "development",
+    "sha256": null
+   },
+   "kind": "gate-failure",
+   "outcome": "no capture to replay: the capture run before it (7450699) had failed, so every rank refused at install -- no macro block capture for rank N",
+   "pbs_job": "7450844",
+   "python_stages": [
+    "cloud_macro_microphysics"
+   ],
+   "ranks": 512,
+   "record": "pi_cam_pausable_p26-cloud-replay_50step_failure.json",
+   "run_tag": "p26-cloud-replay",
+   "steps_completed": 0,
+   "what": "The capture replayed through both block slots of the cloud stage's Python driver."
+  },
+  "pi_cam_pausable_p26-cloud-verify5_50step_failure.json": {
+   "diagnosis": "the replay object restored on each rank by pickle (the stage is cloudpickled into the process registry) carried its directory and count but not the mismatch list a fresh one has; __setstate__ now gives it one.  The finding itself -- an input differing at step 2 -- is what the rerun is to name.",
+   "image": {
+    "build": "pi_cam_promoted_p26",
+    "role": "development",
+    "sha256": null
+   },
+   "kind": "gate-failure",
+   "outcome": "step 1 ran; on step 2 the replay found an input whose live lanes did not hash as the capture's and fell over reporting it: AttributeError, 'BlockReplay' object has no attribute 'mismatches'",
+   "pbs_job": "7452425",
+   "python_stages": [
+    "cloud_macro_microphysics"
+   ],
+   "ranks": 512,
+   "record": "pi_cam_pausable_p26-cloud-verify5_50step_failure.json",
+   "run_tag": "p26-cloud-verify5",
+   "steps_completed": 1,
+   "what": "Both originals through the Python driver, each verifying its outputs against the record."
+  },
   "pi_cam_pausable_rad-both-pause_50step.json": {
    "advance_seconds": 16.3,
    "cloud_macro_micro_python": false,
@@ -5267,6 +5514,110 @@
    "record": "pi_cam_pausable_p24-block-replay_50step_failure.json"
   },
   {
+   "capability": "original_replacement_bfb",
+   "contexts": [
+    "cam_run1.cloud_macro_microphysics"
+   ],
+   "kernel_routine": null,
+   "record": "pi_cam_pausable_p26-cloud-capture_50step_failure.json"
+  },
+  {
+   "capability": "standalone_replay",
+   "contexts": [
+    "cam_run1.cloud_macro_microphysics"
+   ],
+   "kernel_routine": null,
+   "record": "pi_cam_pausable_p26-cloud-replay2_50step_failure.json"
+  },
+  {
+   "capability": "standalone_replay",
+   "contexts": [
+    "cam_run1.cloud_macro_microphysics"
+   ],
+   "kernel_routine": null,
+   "record": "pi_cam_pausable_p26-cloud-replay3_50step_failure.json"
+  },
+  {
+   "capability": "standalone_replay",
+   "contexts": [
+    "cam_run1.cloud_macro_microphysics"
+   ],
+   "kernel_routine": null,
+   "record": "pi_cam_pausable_p26-cloud-replay4-macro_50step_failure.json"
+  },
+  {
+   "capability": "standalone_replay",
+   "contexts": [
+    "cam_run1.cloud_macro_microphysics"
+   ],
+   "kernel_routine": null,
+   "record": "pi_cam_pausable_p26-cloud-replay4-micro_50step_failure.json"
+  },
+  {
+   "capability": "standalone_replay",
+   "contexts": [
+    "cam_run1.cloud_macro_microphysics"
+   ],
+   "kernel_routine": null,
+   "record": "pi_cam_pausable_p26-cloud-replay4_50step_failure.json"
+  },
+  {
+   "capability": "standalone_replay",
+   "contexts": [
+    "cam_run1.cloud_macro_microphysics"
+   ],
+   "kernel_routine": null,
+   "record": "pi_cam_pausable_p26-cloud-replay5-macro_50step_failure.json"
+  },
+  {
+   "capability": "standalone_replay",
+   "contexts": [
+    "cam_run1.cloud_macro_microphysics"
+   ],
+   "kernel_routine": null,
+   "record": "pi_cam_pausable_p26-cloud-replay5-micro_50step_failure.json"
+  },
+  {
+   "capability": "standalone_replay",
+   "contexts": [
+    "cam_run1.cloud_macro_microphysics"
+   ],
+   "kernel_routine": null,
+   "record": "pi_cam_pausable_p26-cloud-replay5_50step_failure.json"
+  },
+  {
+   "capability": "standalone_replay",
+   "contexts": [
+    "cam_run1.cloud_macro_microphysics"
+   ],
+   "kernel_routine": null,
+   "record": "pi_cam_pausable_p26-cloud-replay6-macro_50step_failure.json"
+  },
+  {
+   "capability": "standalone_replay",
+   "contexts": [
+    "cam_run1.cloud_macro_microphysics"
+   ],
+   "kernel_routine": null,
+   "record": "pi_cam_pausable_p26-cloud-replay6_50step_failure.json"
+  },
+  {
+   "capability": "standalone_replay",
+   "contexts": [
+    "cam_run1.cloud_macro_microphysics"
+   ],
+   "kernel_routine": null,
+   "record": "pi_cam_pausable_p26-cloud-replay_50step_failure.json"
+  },
+  {
+   "capability": "original_replacement_bfb",
+   "contexts": [
+    "cam_run1.cloud_macro_microphysics"
+   ],
+   "kernel_routine": null,
+   "record": "pi_cam_pausable_p26-cloud-verify5_50step_failure.json"
+  },
+  {
    "capability": "standalone_replay",
    "contexts": [],
    "kernel_routine": null,
@@ -5288,14 +5639,14 @@
  "inputs": {
   "native/pi_cam/hooks.yaml": "13e21d599cdc066821c151e452973357a623d00c0997b7c6cb131725c9f55ba8",
   "native/pi_cam/kernel_classifications.yaml": "d6be2103c9bd0c86a0c8461a067d3b43eac6aa370e992fde9bf3096e55c8c5f4",
-  "native/pi_cam/kernel_work_items.yaml": "e4fa50473f7ee28bcbbddfc47c12c169edf623ba1fced38120d3e93e9f7ff550",
+  "native/pi_cam/kernel_work_items.yaml": "e435f6db5adddac88563ad1a2429e2e9b31245a7f517c60a2714a593ec013965",
   "native/pi_cam/segment_runners.yaml": "37fa35306070f0b5eea12a76c44ea6798b1a7f17521659bdc4761ff32208b38a",
   "validation/physics_kernel_decoupling.json": "2a9ff0a6804a4e0d54b36b26c34f44a36e5eb6234ba53fe32d7d944973680462",
   "validation/pi_cam_kernel_api_closure.json": "96025214b3e4c41f6ba89c266da5dd27c51c42c81c31e1a0ac6f7b2e9cfa260a",
   "validation/pi_cam_kernel_api_redirectable_calls.json": "b97f6f7f8f7099cb42e9cebcde6102f9d4d05d17852ba7a5495b29edb1d4fbaf",
   "validation/pi_cam_kernel_runtime_coverage_1month.json": "48f77d6ec78b4026806d4ab6fb9517ef31c1d526481b4ad68e55f77af0d303bd",
   "validation/pi_cam_kernel_runtime_coverage_50step.json": "222961fc5274dbaaf71c40f6c131a683536b5a85ef14cd047a2fd196d8ca38c5",
-  "web/public/catalog.json": "4531fc7aeec8a9463d1a6950d264137a33151da2cfa314ec9ccbfb1f87e42187"
+  "web/public/catalog.json": "46e874104fb285f252a35960775e1f36846b081a901f2a14a267a6185dad1ead"
  },
  "kernels": {
   "aer_rad_props::aer_rad_props_lw": {
@@ -41159,7 +41510,7 @@
     "blocker": null,
     "branch": "physics-kernel-api-closure",
     "next_gate": "a network good enough to use: the zenith angle given back to the block model, more captured data, the longwave near the surface, the clear-sky and TOA diagnostics; then a paired year",
-    "note": "Month pair on main (replayed boundary): Radiation installed and nothing bound 401.3 s over 1,488 steps, bit-for-bit (7418517); the 256-wide emulator at the slot 363.9 s, nine percent shorter (7418518), the radiation budget drifting 4 to 5 W/m2 over the month. Four ways to answer the radiation now, all gated: a compiled Python kernel at the slot, called by Fortran (0.23 s a rank per 50 steps, 7418444); a TorchScript model through FTorch (64-wide transformer 0.72 s, 7431803); Python at the runner's pause (the same MLP 0.82 s, 7434965; the original branch through the pause bit-for-bit, 7434783); and the Python driver with a model of the whole compute block (p24: the day-1 capture replayed through it bit-for-bit in state, 7436003; the block emulator 0.38 s a rank once compiled, 7436082, drifting 1.5 K/day because it must learn the zenith angle). The 64-wide transformer priced on the other two paths (p24): written out in Numba as a plugin 12.5 ms a call, rad_tend 0.84 s a rank (shadow 7439472 bit-for-bit, live 7439535, 0.17 K rms); its block contract through the Python driver 15.5 ms a call, half of it the view-to-tensor conversion, rad_tend 1.20 s (7439603, 1.27 K rms); FTorch at the slot stays the cheapest at 7.1 ms. The mechanism is closed in every form; the network is the open problem.",
+    "note": "Month pair on main (replayed boundary): Radiation installed and nothing bound 401.3 s over 1,488 steps, bit-for-bit (7418517); the 256-wide emulator at the slot 363.9 s, nine percent shorter (7418518), the radiation budget drifting 4 to 5 W/m2 over the month. Four ways to answer the radiation now, all gated: a compiled Python kernel at the slot, called by Fortran (0.23 s a rank per 50 steps, 7418444); a TorchScript model through FTorch (64-wide transformer 0.72 s, 7431803); Python at the runner's pause (the same MLP 0.82 s, 7434965; the original branch through the pause bit-for-bit, 7434783); and the Python driver with a model of the whole compute block (p24: the day-1 capture replayed through it bit-for-bit in state, 7436003; the block emulator 0.38 s a rank once compiled, 7436082, drifting 1.5 K/day because it must learn the zenith angle). The 64-wide transformer priced on the other two paths (p24): written out in Numba as a plugin 12.5 ms a call, rad_tend 0.84 s a rank (shadow 7439472 bit-for-bit, live 7439535, 0.17 K rms); its block contract through the Python driver 15.5 ms a call, half of it the view-to-tensor conversion, rad_tend 1.20 s (7439603, 1.27 K rms); FTorch at the slot stays the cheapest at 7.1 ms. A month on each path (p24, 7452662-7452667): the MLP plugin 366.2 s against 400.2 with nothing bound, the MLP through the Python driver 371.9 s (6 s of it the first call's compile); the transformer 385.4 s as a plugin, 374.3 s through the driver; the block models (no zenith angle given) are physically unusable over the month (-46 and -243 W/m2 of net shortwave), the slot models drift 4-5 W/m2 as before. The mechanism is closed in every form; the network is the open problem.",
     "owner": "claude",
     "owner_class": "freecam.physics.radiation.Radiation",
     "stage": "performance_gate",
@@ -72877,8 +73228,8 @@
  ],
  "volatile": {
   "branch": "radiation-torchscript-slot",
-  "commit": "77d7e29ec924ef7b3509cf832dcc1b3c4ca7bea2",
-  "generated_at": "2026-09-14T05:42:46+00:00"
+  "commit": "4c5a8e55839c0dd2b36c646c9cba4b00cf7d3746",
+  "generated_at": "2026-09-14T17:48:20+00:00"
  },
  "work_items": [
   {
@@ -72931,7 +73282,7 @@
    "branch": "physics-kernel-api-closure",
    "kernel": "radiation::radiation_tend",
    "next_gate": "a network good enough to use: the zenith angle given back to the block model, more captured data, the longwave near the surface, the clear-sky and TOA diagnostics; then a paired year",
-   "note": "Month pair on main (replayed boundary): Radiation installed and nothing bound 401.3 s over 1,488 steps, bit-for-bit (7418517); the 256-wide emulator at the slot 363.9 s, nine percent shorter (7418518), the radiation budget drifting 4 to 5 W/m2 over the month. Four ways to answer the radiation now, all gated: a compiled Python kernel at the slot, called by Fortran (0.23 s a rank per 50 steps, 7418444); a TorchScript model through FTorch (64-wide transformer 0.72 s, 7431803); Python at the runner's pause (the same MLP 0.82 s, 7434965; the original branch through the pause bit-for-bit, 7434783); and the Python driver with a model of the whole compute block (p24: the day-1 capture replayed through it bit-for-bit in state, 7436003; the block emulator 0.38 s a rank once compiled, 7436082, drifting 1.5 K/day because it must learn the zenith angle). The 64-wide transformer priced on the other two paths (p24): written out in Numba as a plugin 12.5 ms a call, rad_tend 0.84 s a rank (shadow 7439472 bit-for-bit, live 7439535, 0.17 K rms); its block contract through the Python driver 15.5 ms a call, half of it the view-to-tensor conversion, rad_tend 1.20 s (7439603, 1.27 K rms); FTorch at the slot stays the cheapest at 7.1 ms. The mechanism is closed in every form; the network is the open problem.",
+   "note": "Month pair on main (replayed boundary): Radiation installed and nothing bound 401.3 s over 1,488 steps, bit-for-bit (7418517); the 256-wide emulator at the slot 363.9 s, nine percent shorter (7418518), the radiation budget drifting 4 to 5 W/m2 over the month. Four ways to answer the radiation now, all gated: a compiled Python kernel at the slot, called by Fortran (0.23 s a rank per 50 steps, 7418444); a TorchScript model through FTorch (64-wide transformer 0.72 s, 7431803); Python at the runner's pause (the same MLP 0.82 s, 7434965; the original branch through the pause bit-for-bit, 7434783); and the Python driver with a model of the whole compute block (p24: the day-1 capture replayed through it bit-for-bit in state, 7436003; the block emulator 0.38 s a rank once compiled, 7436082, drifting 1.5 K/day because it must learn the zenith angle). The 64-wide transformer priced on the other two paths (p24): written out in Numba as a plugin 12.5 ms a call, rad_tend 0.84 s a rank (shadow 7439472 bit-for-bit, live 7439535, 0.17 K rms); its block contract through the Python driver 15.5 ms a call, half of it the view-to-tensor conversion, rad_tend 1.20 s (7439603, 1.27 K rms); FTorch at the slot stays the cheapest at 7.1 ms. A month on each path (p24, 7452662-7452667): the MLP plugin 366.2 s against 400.2 with nothing bound, the MLP through the Python driver 371.9 s (6 s of it the first call's compile); the transformer 385.4 s as a plugin, 374.3 s through the driver; the block models (no zenith angle given) are physically unusable over the month (-46 and -243 W/m2 of net shortwave), the slot models drift 4-5 W/m2 as before. The mechanism is closed in every form; the network is the open problem.",
    "owner": "claude",
    "owner_class": "freecam.physics.radiation.Radiation",
    "stage": "performance_gate",

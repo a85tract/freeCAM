@@ -101,4 +101,8 @@ items:
     (p24): written out in Numba as a plugin 12.5 ms a call, rad_tend 0.84 s a rank (shadow 7439472 bit-for-bit,
     live 7439535, 0.17 K rms); its block contract through the Python driver 15.5 ms a call, half of it the
     view-to-tensor conversion, rad_tend 1.20 s (7439603, 1.27 K rms); FTorch at the slot stays the cheapest at
-    7.1 ms. The mechanism is closed in every form; the network is the open problem.'
+    7.1 ms. A month on each path (p24, 7452662-7452667): the MLP plugin 366.2 s against 400.2 with nothing bound, the
+    MLP through the Python driver 371.9 s (6 s of it the first call''s compile); the transformer 385.4 s as a plugin,
+    374.3 s through the driver; the block models (no zenith angle given) are physically unusable over the month
+    (-46 and -243 W/m2 of net shortwave), the slot models drift 4-5 W/m2 as before. The mechanism is closed in
+    every form; the network is the open problem.'
