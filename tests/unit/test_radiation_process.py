@@ -516,3 +516,21 @@ def test_the_block_trainers_features_are_block_inputs() -> None:
     sources = {src for _, src, _, _, _, _ in module.LAYOUT}
     assert sources <= set(BLOCK_INPUTS), sources - set(BLOCK_INPUTS)
     assert module.NF == 33 * 30 + 30 + 8
+
+
+def test_the_transformer_examples_take_the_slots_table_and_the_blocks_inputs() -> None:
+    """The Numba transformer plugin's kernel has the slot's 46 inputs then 12 outputs by name, in the table's order;
+    the block transformer's callable names only block inputs as scalars.  Read from source: importing either loads weights."""
+    import ast
+
+    from freecam.physics.radiation_process import BLOCK_INPUTS, TABLE_INPUTS, TABLE_OUTPUTS
+
+    root = Path(__file__).resolve().parents[2] / "examples" / "plugins" / "numba_kernels"
+    tree = ast.parse((root / "rad_tf_plugin.py").read_text())
+    kernel = next(node for node in tree.body if isinstance(node, ast.FunctionDef) and node.name == "radiation_table_kernel")
+    assert [arg.arg for arg in kernel.args.args] == [name for name, _ in TABLE_INPUTS] + [f"o_{name}" for name, _ in TABLE_OUTPUTS]
+    tree = ast.parse((root / "rad_block_tf.py").read_text())
+    assert any(isinstance(node, ast.FunctionDef) and node.name == "radiation_block_tf" for node in tree.body)
+    scalars = next(node.value for node in tree.body if isinstance(node, ast.Assign) and node.targets[0].id == "SCALARS")
+    names = {ast.literal_eval(element) for element in scalars.args[0].elts}
+    assert names <= set(BLOCK_INPUTS)
