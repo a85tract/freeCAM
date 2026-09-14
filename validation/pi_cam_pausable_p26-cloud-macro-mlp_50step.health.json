@@ -1,0 +1,19 @@
+{
+ "schema_version": 1,
+ "log": "pyCAM/PI-cam/pausable-p26-cloud-macro-mlp-7453811.desched1/run/pi_cam_python.log",
+ "steps": 50,
+ "counts": {
+  "big_error": 102400,
+  "isotopic_mass_error": 66345,
+  "qneg3_macro": 283892,
+  "qneg3_total": 374960,
+  "tracebacks": 0
+ },
+ "per_step": {
+  "big_error": 2048.0,
+  "isotopic_mass_error": 1326.9,
+  "qneg3_macro": 5677.84,
+  "qneg3_total": 7499.2,
+  "tracebacks": 0.0
+ }
+}

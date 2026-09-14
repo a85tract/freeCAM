@@ -1058,10 +1058,19 @@ month; the plugin months repeat the p21 month pair's numbers (401.3 and
 | 7452664 | MLP through the Python driver | 371.9 s | -7.1% | 7.6 s, 6.0 of it compiling at the first call | 6.0 s | -46 W/m², -7.7 kg/m², -12.3 K |
 | 7452666 | transformer as a Numba plugin | 385.4 s | -3.7% | 18.8 s (12.6 ms a call) | 15 ms | -4.4 W/m², -1.2 kg/m², -1.0 K |
 | 7452667 | transformer through the Python driver | 374.3 s | -6.5% | 10.3 s (6.9 ms a call) | 0.47 s | -243 W/m², -4.1 kg/m², -1.2 K; 45,308 "BIG ERROR" lines |
+| 7454279 | the same MLP through the Python driver, the forward in NumPy | **359.5 s** | **-10.2%** | 2.2 s (1.5 ms a call) | 2 ms | -55 W/m², -7.9 kg/m², -11.8 K (the same model) |
 
 The two paths are a percent and a half apart on the loop with the same
-network: the driver's month costs its 6 s compile on the first call and
-about 3 ms a chunk of bookkeeping, and nothing else.  The drift column is
+network when both run it in Numba: the driver's month costs its 6 s
+compile on the first call and about 3 ms a chunk of bookkeeping, and
+nothing else.  The Python driver has no need of Numba -- it calls any
+Python callable; the compiled kernel is what the plugin path's C function
+pointer needs -- and with the forward written as three NumPy matrix
+products through the single-threaded BLAS (7454279) the first call costs
+2 ms instead of 6 s and the month runs in 359.5 s: the fastest of the
+five, ten percent under the original and seven seconds under the plugin.
+Over fifty steps the same run (7454278) puts the radiation stage at 0.32 s
+a rank against the plugin's 0.23 and the loop at 14.71 s against 14.72.  The drift column is
 the model's, not the path's: the slot models (given the zenith angle)
 drift as the month pair did; the block models, made to learn it, lose
 118 W/m² of net shortwave in the global mean by day 3 and 12 K at the
@@ -1163,6 +1172,46 @@ that its contract does not list.  The driver costs 0.37 s a rank per
 fifty steps over native-whole (about 3.7 ms a chunk: the views, nine small
 Fortran calls of bookkeeping); with both blocks replayed the stage is
 0.59 s.
+
+#### The first networks for the macrophysics block
+
+With the contract complete, the capture is a training set (19 GB, 51,200
+calls a block), and `train_cloud_block.py` fits an MLP to a block from it;
+`cloud_block_mlp.py` answers the block with it from a slot.  Two shapes
+were tried on the macrophysics block on 2026-09-14, and the first taught
+two lessons that have nothing to do with physics.
+
+| run | the network | parameters | model, ms a call (alone) | stage, a rank | step loop | after 50 steps |
+| --- | --- | ---: | ---: | ---: | ---: | --- |
+| 7450698 | the original | -- | 6.6 (GPTL `macrop_tend`) | 1.96 s | 15.95 s | bit-for-bit |
+| 7453811 | everything the contract names, 2322 in, 1682 out, Numba, columns outside the weight loop | 2.3M | 36 (2.3) | 10.3 s | 26.6 s | 1.53 K rms in T |
+| 7454183 | the same, weight rows outside the column loop | 2.3M | 8.3 (2.1) | 7.2 s | 24.1 s | 1.53 K |
+| 7453875 | the microphysics block the same way, 3963 in, 3257 out | 4.0M | 85 | 12.9 s | 30.4 s | 1.82 K |
+| 7454182 | the physics only (`--core`): 969 in, 632 learned, seven fields derived, Numba | 0.48M | 2.2 (0.57) | 6.6 s | 23.3 s | 5.78 K |
+| 7454277 | the same core network, the forward in NumPy | 0.48M | 2.7 (0.58) | 2.34 s | 19.27 s | 5.78 K |
+
+The first lesson is the loop order: the first network's forward took 36 ms
+a call in the image against 2.3 alone because its first-layer weights (4.75
+MB) were streamed once per column, and 128 ranks sharing their caches turned
+that into memory traffic; with the weight rows outside the column loop the
+same network costs 8.3 ms, and the core network 2.2.  The second is Numba
+itself: in the Numba runs the stage carries 4.3 s a rank of compilation at
+the first call inside the loop; with the forward as NumPy matrix products
+the first call costs 3 ms and the stage is 2.34 s a rank -- the original's
+1.96 plus the driver's 0.37 of bookkeeping, the network's 0.27 s replacing
+the original macrophysics' 0.66.  The core network answers the block in
+2.7 ms against `macrop_tend`'s 6.6; the step loop is still 3 s over the
+original because the model's negative water triggers 446,000 `qneg3`
+warnings that Fortran writes to the log.  What the model must learn is
+still open: the bulk tendencies validate at R² 0.72 (`ptend_s`) and 0.46
+(`ptend_q`), the cloud fractions at 0.84 to 0.94, the in-cloud water at
+0.3, and the run drifts 5.8 K rms in temperature over fifty steps (the
+tracer tendencies it leaves zero cost the isotopes their mass); the full
+network, which learned the tracer tendencies too, drifts 1.5 K.  The block
+contract's inputs and outputs are what the driver reads and writes; the
+network's own inputs and outputs should be the physics -- the bulk
+tendencies, the cloud fractions -- with the copies, the integrals and the
+tracer tendencies formed from them, as `cldwat2m_macro` forms them.
 
 What the driver does not yet have is the radiation driver's history entry:
 the two drivers write 141 history fields from inside their arithmetic, and
