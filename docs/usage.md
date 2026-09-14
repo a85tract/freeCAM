@@ -209,6 +209,10 @@ cloud.micro_process = None                 # the microphysics driver stays the o
 driver.advance(48)
 ```
 
+`examples/replace_process.ipynb` walks through both stages this way on a live
+run: the table, a replay in the radiation slot, a network in it, the original
+back, and the cloud stage's two slots.
+
 ## Parameters
 
 ### Namelist
