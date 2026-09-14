@@ -26,6 +26,19 @@ from freecam.physics.cloud_block import BLOCKS  # noqa: E402
 LOG_FLOOR = 1e-30
 SCALAR_META = ("nstep", "lchnk", "ncol", "dt")
 
+#: --core: the physics the network has to learn, and no more.  Inputs: the state's thermodynamics and geometry, the
+#: five bulk water constituents, the surface, the convection carries, the cloud fields the driver reads.  Outputs it
+#: learns: the bulk tendencies, the detrainment integrals, the cloud fractions and in-cloud water, the equilibrium
+#: fields.  Outputs derived exactly in the model module instead of learned: AST = max(ALST, AIST); the old-time-sample
+#: copies of the updated state (TCWAT, QCWAT, LCWAT, ICCWAT, NLWAT, NIWAT); the water tracers' tendencies (left zero).
+CORE_INPUTS = ("state_t", "state_pmid", "state_pdel", "state_zm", "state_omega", "state_ps", "state_phis", "state_q",
+               "cam_in_landfrac", "cam_in_ocnfrac", "cam_in_snowhland", "cam_in_ts", "cam_in_sst",
+               "dlf", "dlf2", "zdu", "cmfmc", "cmfmc2",
+               "CLD", "CONCLD", "AST", "ALST", "AIST", "QLST", "QIST", "CMELIQ", "FICE", "QCWAT", "TCWAT", "LCWAT", "ICCWAT", "NLWAT", "NIWAT",
+               "SH_FRAC", "DP_FRAC")
+CORE_BULK = (0, 1, 2, 3, 4)                 # vapour, cloud liquid, cloud ice, their numbers: the constituents the network predicts
+CORE_DERIVED = ("AST", "TCWAT", "QCWAT", "LCWAT", "ICCWAT", "NLWAT", "NIWAT")
+
 
 def input_names(z):
     return sorted({k.split("/", 2)[2] for k in z.files if k.startswith("in/0/")})
@@ -35,12 +48,14 @@ def output_names(z):
     return sorted({k.split("/", 2)[2] for k in z.files if k.startswith("out/0/")})
 
 
-def feature_layout(z, lq):
+def feature_layout(z, lq, core=False):
     """(name, source, index-or-None, lo, hi) per feature group, from the first record's shapes."""
 
     layout, lo = [], 0
-    flagged = np.nonzero(lq)[0]
+    flagged = np.array(CORE_BULK) if core else np.nonzero(lq)[0]
     for name in input_names(z):
+        if core and name not in CORE_INPUTS:
+            continue
         a = z[f"in/0/{name}"]
         if a.ndim == 1:
             layout.append((name, name, None, lo, lo + 1)); lo += 1
@@ -55,15 +70,17 @@ def feature_layout(z, lq):
     return layout, lo
 
 
-def target_layout(z, block, changed):
+def target_layout(z, block, changed, core=False):
     layout, lo = [], 0
     layout.append(("ptend_s", lo, lo + 30)); lo += 30
-    nflag = z["out/0/ptend_q"].shape[2]
+    nflag = len(CORE_BULK) if core else z["out/0/ptend_q"].shape[2]
     layout.append(("ptend_q", lo, lo + 30 * nflag)); lo += 30 * nflag
     if block == "macro":
         layout.append(("det_s", lo, lo + 1)); lo += 1
         layout.append(("det_ice", lo, lo + 1)); lo += 1
     for name in changed:
+        if core and name in CORE_DERIVED:
+            continue
         a = z[f"out/0/{name}"]
         width = int(np.prod(a.shape[1:])) if a.ndim > 1 else 1
         layout.append((name, lo, lo + width)); lo += width
@@ -93,7 +110,7 @@ def changed_fields(paths, block):
 
 
 def load_rank(args):
-    path, layout, nf, tlayout, nt = args
+    path, layout, nf, tlayout, nt, q_out = args
     z = np.load(path, allow_pickle=True); meta = json.loads(str(z["meta"]))
     Xs, Ys = [], []
     for i, m in enumerate(meta):
@@ -104,7 +121,10 @@ def load_rank(args):
                 a = a[..., idx]
             X[:, lo:hi] = a.reshape(ncol, -1)
         for name, lo, hi in tlayout:
-            Y[:, lo:hi] = np.asarray(z[f"out/{i}/{name}"])[:ncol].reshape(ncol, -1)
+            a = np.asarray(z[f"out/{i}/{name}"])[:ncol]
+            if name == "ptend_q" and q_out is not None:
+                a = a[:, :, q_out]              # the saved array holds the flagged constituents in flag order
+            Y[:, lo:hi] = a.reshape(ncol, -1)
         Xs.append(X); Ys.append(Y)
     return np.concatenate(Xs), np.concatenate(Ys)
 
@@ -121,6 +141,7 @@ def main():
     ap.add_argument("--threads", type=int, default=64); ap.add_argument("--val-ranks", type=int, default=64)
     ap.add_argument("--workers", type=int, default=32); ap.add_argument("--max-ranks", type=int, default=None)
     ap.add_argument("--batch", type=int, default=4096)
+    ap.add_argument("--core", action="store_true", help="learn the physics only: CORE_INPUTS in, the bulk tendencies and the non-derivable fields out")
     a = ap.parse_args()
     import torch
 
@@ -129,13 +150,16 @@ def main():
     files = sorted(glob.glob(f"{a.capture_dir}/cloud_{a.block}.rank-*.npz"))[: a.max_ranks]
     z0 = np.load(files[0], allow_pickle=True)
     lq = np.asarray(z0["out/0/ptend_lq"]).reshape(-1)
-    layout, nf = feature_layout(z0, lq)
+    flagged = np.nonzero(lq)[0].tolist()
+    q_out = [flagged.index(m) for m in CORE_BULK] if a.core else None      # positions of the bulk constituents among the flagged
+    layout, nf = feature_layout(z0, lq, core=a.core)
     changed = changed_fields(files[:8], a.block)
-    tlayout, nt = target_layout(z0, a.block, changed)
-    print(f"{len(files)} ranks; {nf} features in {len(layout)} groups; {nt} targets: ptend_s, ptend_q x{int(lq.sum())}, "
-          f"{'det_s, det_ice, ' if a.block == 'macro' else ''}{len(changed)} buffer fields {changed}", flush=True)
+    tlayout, nt = target_layout(z0, a.block, changed, core=a.core)
+    learned = [n for n, _, _ in tlayout]
+    print(f"{len(files)} ranks; {nf} features in {len(layout)} groups; {nt} targets: {learned}"
+          + (f"; derived, not learned: {[c for c in changed if c in CORE_DERIVED]}; tracer tendencies left zero" if a.core else ""), flush=True)
     with Pool(a.workers) as pool:
-        parts = pool.map(load_rank, [(f, layout, nf, tlayout, nt) for f in files])
+        parts = pool.map(load_rank, [(f, layout, nf, tlayout, nt, q_out) for f in files])
     ntrain = max(1, len(parts) - a.val_ranks)
     X = np.concatenate([p[0] for p in parts[:ntrain]]); Y = np.concatenate([p[1] for p in parts[:ntrain]])
     Xv = np.concatenate([p[0] for p in parts[ntrain:]]) if ntrain < len(parts) else X[:4096]
@@ -195,7 +219,9 @@ def main():
              W2T=np.ascontiguousarray(W[1].T, np.float32), b2=B[1].astype(np.float32), W3T=np.ascontiguousarray(W[2].T, np.float32), b3=B[2].astype(np.float32),
              x_mean=x_mean, x_std=x_std, y_mean=y_mean, y_std=y_std, y_min=y_min, y_max=y_max, kinds=kinds, lq=lq.astype(np.int32))
     json.dump({"block": a.block, "features": [(n_, s, i, int(lo), int(hi)) for n_, s, i, lo, hi in layout], "targets": [(n_, int(lo), int(hi)) for n_, lo, hi in tlayout],
-               "NF": nf, "NT": nt, "hidden": H, "log_floor": LOG_FLOOR, "pver": 30, "flagged": np.nonzero(lq)[0].tolist(), "pcnst": int(lq.shape[0])},
+               "NF": nf, "NT": nt, "hidden": H, "log_floor": LOG_FLOOR, "pver": 30, "flagged": flagged, "pcnst": int(lq.shape[0]),
+               "core": bool(a.core), "q_out": list(CORE_BULK) if a.core else flagged,
+               "derived": [c for c in changed if c in CORE_DERIVED] if a.core else []},
               open(f"{a.out_prefix}_layout.json", "w"), indent=1)
     json.dump(report, open(f"{a.out_prefix}.report.json", "w"), indent=1)
     print(f"saved {a.out_prefix}_weights.npz ({nparam:,} parameters, {4*nparam/1e6:.1f} MB) and the layout ({time.time()-t0:.0f}s)", flush=True)

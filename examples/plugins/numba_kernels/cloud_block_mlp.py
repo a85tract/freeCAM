@@ -29,6 +29,11 @@ LOG_FLOOR = float(_L["log_floor"])
 FEATURES = [(name, src, idx, int(lo), int(hi)) for name, src, idx, lo, hi in _L["features"]]
 TARGETS = [(name, int(lo), int(hi)) for name, lo, hi in _L["targets"]]
 FLAGGED = np.asarray(_L["flagged"], dtype=np.int64)
+#: the constituents the network's ptend_q covers (all flagged ones, or the five bulk ones of a --core network)
+Q_OUT = np.asarray(_L.get("q_out", _L["flagged"]), dtype=np.int64)
+#: fields a --core network leaves to arithmetic: AST from the stratus fractions, the old-time-sample copies from the updated state
+DERIVED = tuple(_L.get("derived", ()))
+CPAIR = 1004.64            # physconst: the driver's T update is its dry static energy update over cpair
 
 
 @njit(fastmath=True)
@@ -118,14 +123,36 @@ def block_answer(inputs):
         block = y[:, lo:hi]
         if name == "ptend_q":
             full = np.zeros((pcols, PVER, PCNST), np.float64, order="F")
-            full[:ncol, :, FLAGGED] = block.reshape(ncol, PVER, len(FLAGGED))
+            full[:ncol, :, Q_OUT] = block.reshape(ncol, PVER, len(Q_OUT))
             answer[name] = full
         elif hi - lo == 1:
             out = np.zeros(pcols, np.float64); out[:ncol] = block[:, 0]; answer[name] = out
         else:
             shape = np.asarray(inputs[name]).shape if name in inputs else (pcols, hi - lo)
             out = np.zeros(shape, np.float64, order="F"); out[:ncol] = block.reshape((ncol,) + tuple(shape[1:])); answer[name] = out
+    if DERIVED:
+        _derive(inputs, answer, ncol, pcols)
     return answer
+
+
+def _derive(inputs, answer, ncol, pcols):
+    """What the driver forms from its own results, formed here: AST = max(ALST, AIST), and the old-time-sample copies
+    of the state as the driver's two updates leave it (macrop_driver.F90:1210-1216): T from the static energy
+    tendency, the water constituents from theirs."""
+
+    dt = float(inputs["dt"])
+    q = np.asarray(inputs["state_q"], dtype=np.float64); t = np.asarray(inputs["state_t"], dtype=np.float64)
+    dq = answer["ptend_q"]; ds = answer["ptend_s"]
+    def field(values):
+        out = np.zeros((pcols, PVER), np.float64, order="F"); out[:ncol] = values[:ncol]; return out
+    if "AST" in DERIVED and "ALST" in answer and "AIST" in answer:
+        answer["AST"] = field(np.maximum(answer["ALST"], answer["AIST"]))
+    updated = {m: q[:, :, m] + dq[:, :, m] * dt for m in (0, 1, 2, 3, 4)}
+    copies = {"TCWAT": t + ds * dt / CPAIR, "QCWAT": updated[0], "LCWAT": updated[1] + updated[2], "ICCWAT": updated[2],
+              "NLWAT": updated[3], "NIWAT": updated[4]}
+    for name, values in copies.items():
+        if name in DERIVED:
+            answer[name] = field(values)
 
 
 def macro_block(inputs):
