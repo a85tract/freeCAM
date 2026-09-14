@@ -38,12 +38,17 @@ CPAIR = 1004.64            # physconst: the driver's T update is its dry static 
 
 @njit(fastmath=True)
 def _dense_axpy(x, WT, b, out):
+    # out[n, m] = x[n, k] @ WT[k, m] + b, with the weight matrix read once a call: the column loop sits inside the
+    # loop over weight rows, so a row of WT (one input feature) serves every column while it is in cache, and the
+    # small out block stays in cache throughout.  Looping columns outside streams the whole matrix once a column,
+    # which on a node of 128 ranks sharing their caches turned a 2 ms forward into 36 (7453811).
     n, k = x.shape
     m = WT.shape[1]
     for i in range(n):
         for j in range(m):
             out[i, j] = b[j]
-        for l in range(k):
+    for l in range(k):
+        for i in range(n):
             xi = x[i, l]
             for j in range(m):
                 out[i, j] += xi * WT[l, j]
