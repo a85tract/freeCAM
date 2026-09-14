@@ -696,6 +696,8 @@ class CloudMacroMicrophysics(NativeStage):
         inputs = self._block_inputs(st, MACRO_BLOCK, V, nstep, lchnk, n, sub_dt)
         before = capture.of(MACRO_BLOCK).begin(inputs) if capture is not None else None
         if self.process is None or isinstance(self.process, OriginalBlock):
+            if isinstance(self.process, VerifiedOriginalBlock):
+                self.process.begin(inputs)
             arrays = [V[f"cam_in_{name}"] if name in CAM_IN_FIELDS else V[name] for name in MACROP_ARGUMENTS]
             H.macrop_driver_tend(lchnk, sub_dt, arrays); log("macrop_driver_tend")
             if isinstance(self.process, VerifiedOriginalBlock):
@@ -715,6 +717,8 @@ class CloudMacroMicrophysics(NativeStage):
         inputs = self._block_inputs(st, MICRO_BLOCK, V, nstep, lchnk, n, sub_dt)
         before = capture.of(MICRO_BLOCK).begin(inputs) if capture is not None else None
         if self.micro_process is None or isinstance(self.micro_process, OriginalBlock):
+            if isinstance(self.micro_process, VerifiedOriginalBlock):
+                self.micro_process.begin(inputs)
             H.microp_aero_run(lchnk, sub_dt); log("microp_aero_run")
             H.microp_driver_tend(lchnk, sub_dt); log("microp_driver_tend")
             H.ptend_sum_aero(lchnk, n); log("physics_ptend_sum:ptend_aero")

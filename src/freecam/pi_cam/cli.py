@@ -144,7 +144,11 @@ def _cloud_process_summary(records) -> dict[str, object] | None:
         if not firsts:
             continue
         entry: dict[str, object] = {k: v for k, v in firsts[0].items() if k in ("kind", "block", "function", "records")}
-        for key in ("calls", "macro_calls", "micro_calls", "seconds", "first_call_seconds"):
+        for key in ("first_mismatch", "first_input_mismatch", "first_output_mismatch"):
+            hit = next((row[key] for row in firsts if key in row), None)
+            if hit is not None:
+                entry[key] = hit
+        for key in ("calls", "macro_calls", "micro_calls", "compared", "input_mismatches", "output_mismatches", "seconds", "first_call_seconds"):
             if key in firsts[0]:
                 entry[key] = sum(float(row.get(key, 0.0)) if "seconds" in key else int(row.get(key, 0)) for row in firsts)
                 if "seconds" in key:

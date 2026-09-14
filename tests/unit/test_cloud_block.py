@@ -194,8 +194,11 @@ def test_a_verified_original_names_the_outputs_the_original_produced_differently
     capture.save(tmp_path, rank=0)
     verified = CB.load_block_model(f"verify:{tmp_path}", block=CB.MACRO_BLOCK, rank=0)
     assert isinstance(verified, CB.VerifiedOriginalBlock) and isinstance(verified, CB.OriginalBlock)
+    verified.begin(inputs)
+    inputs["state_t"][:] = 1.0                          # the block writes into its inputs' storage after begin
     verified.compare(inputs, answer)
-    assert verified.mismatches == [] and verified.compared == 1
+    assert verified.mismatches == [] and verified.compared == 1 and verified.replay.mismatches == []
+    inputs["state_t"][:] = 250.0
     changed = dict(answer); changed["det_s"] = answer["det_s"] + 1.0; changed[CB.MACRO_BLOCK.buffer_names[0]] = answer[CB.MACRO_BLOCK.buffer_names[0]] * 2
     verified.compare(inputs, changed)
     assert verified.mismatches == [(5, 1540, (CB.MACRO_BLOCK.buffer_names[0], "det_s"))] or verified.mismatches == [(5, 1540, ("det_s", CB.MACRO_BLOCK.buffer_names[0]))]

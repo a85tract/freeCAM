@@ -497,9 +497,17 @@ class VerifiedOriginalBlock(OriginalBlock):
         self.replay = BlockReplay(directory, rank, block)
         self.mismatches: list[tuple[int, int, tuple[str, ...]]] = []
         self.compared = 0
+        self._recorded: dict[str, np.ndarray] | None = None
+
+    def begin(self, inputs: dict[str, Any]) -> None:
+        """Before the original runs: hash the inputs as they lie and fetch the record (the block writes into
+        some of this storage, so the inputs must be looked at now, not after)."""
+
+        self._recorded = self.replay(inputs)
 
     def compare(self, inputs: dict[str, Any], outputs: dict[str, Any]) -> None:
-        recorded = self.replay(inputs)
+        recorded = self._recorded if self._recorded is not None else self.replay(inputs)
+        self._recorded = None
         ncol = int(inputs["ncol"])
         differing = []
         for name, value in outputs.items():
