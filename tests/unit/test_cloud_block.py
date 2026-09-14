@@ -201,3 +201,18 @@ def test_a_verified_original_names_the_outputs_the_original_produced_differently
     assert verified.mismatches == [(5, 1540, (CB.MACRO_BLOCK.buffer_names[0], "det_s"))] or verified.mismatches == [(5, 1540, ("det_s", CB.MACRO_BLOCK.buffer_names[0]))]
     described = verified.describe()
     assert described["kind"] == "original-verified" and described["output_mismatches"] == 1 and described["input_mismatches"] == 0
+
+
+def test_a_replay_survives_the_pickle_into_a_rank_with_its_mismatch_list(tmp_path: Path) -> None:
+    import pickle
+
+    ncol, pver, pcnst = 14, 30, 57
+    capture = CB.CloudBlockCapture()
+    inputs = {"nstep": 5, "lchnk": 1540, "ncol": ncol, "dt": 1800.0, "state_t": np.full((16, pver), 250.0)}
+    for block in (CB.MACRO_BLOCK, CB.MICRO_BLOCK):
+        capture.of(block).finish(capture.of(block).begin(inputs), _answer(block, ncol, pver, pcnst, seed=7))
+    capture.save(tmp_path, rank=0)
+    replay = CB.BlockReplay(tmp_path, 0, CB.MICRO_BLOCK)
+    copy = pickle.loads(pickle.dumps(replay))          # the table is already loaded in this process: no MPI needed
+    copy(dict(inputs, state_t=inputs["state_t"] + 1.0))
+    assert copy.mismatches == [(5, 1540, ("state_t",))]

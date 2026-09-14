@@ -365,6 +365,8 @@ class BlockReplay:
 
     def __setstate__(self, state: dict[str, Any]) -> None:
         self.__dict__.update(state)
+        # the pickle carries the directory and the count; the table and the mismatch list are this process's own
+        self.mismatches = []
         if (self.directory, self.block_name) not in _REPLAY_TABLES:
             try:
                 from mpi4py import MPI
