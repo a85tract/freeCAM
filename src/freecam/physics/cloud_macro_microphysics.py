@@ -44,6 +44,7 @@ from .cloud_block import (
     MICRO_BLOCK,
     STATE_FIELDS,
     OriginalBlock,
+    cloud_borne_fields,
 )
 from .errors import PhysicsError
 from .image import module_view
@@ -542,15 +543,26 @@ class CloudMacroMicrophysics(NativeStage):
         buffer = getattr(st, "block_pbuf", None)
         if buffer is None:
             fields: dict[str, PBufField] = {}
+            dynamic: dict[str, tuple[str, ...]] = {}
             for block in (MACRO_BLOCK, MICRO_BLOCK):
-                for field in block.buffers:
+                extra = cloud_borne_fields(st.native.library, st.pcnst) if block.cloud_borne else ()
+                dynamic[block.name] = tuple(field.name for field in extra)
+                for field in block.buffers + block.input_buffers + extra:
                     if field.name in fields:
                         continue
-                    index = int(module_view(st.native.library, field.symbol, "int32", ()))
+                    index = field.index if field.index is not None else int(module_view(st.native.library, field.symbol, "int32", ()))
                     fields[field.name] = PBufField(field.name, index, field.time_sliced, field.rank, field.dtype)
             buffer = PBuf(st.native.library, {name: f for name, f in fields.items() if f.registered})
             st.block_pbuf = buffer
+            #: the buffer fields registered per constituent at run time, by block: written by the block too
+            st.block_dynamic = dynamic
         return buffer
+
+    def _written_buffers(self, st: StageRuntime, block: BlockContract) -> tuple[str, ...]:
+        """The buffer fields a block writes: its contract's, plus the ones this image registers per constituent."""
+
+        self._block_pbuf(st)
+        return block.buffer_names + tuple(getattr(st, "block_dynamic", {}).get(block.name, ()))
 
     def _block_views(self, st: StageRuntime, lchnk: int, ncol: int, index: int) -> dict[str, np.ndarray]:
         """The chunk's storage the blocks read and write, viewed once and kept: the state, the surface, the
@@ -568,7 +580,12 @@ class CloudMacroMicrophysics(NativeStage):
         cam_in = st.cam_in(index)
         views.update({f"cam_in_{name}": cam_in[name] for name in CAM_IN_FIELDS})
         views.update({name: H.forcing(lchnk, name) for name in FORCING})
-        views.update(self._buffer_views(self._block_pbuf(st), sorted(set(MACRO_BLOCK.buffer_names) | set(MICRO_BLOCK.buffer_names)), lchnk))
+        buffer = self._block_pbuf(st)
+        names = set(buffer.fields) if hasattr(buffer, "fields") else set()
+        for block in (MACRO_BLOCK, MICRO_BLOCK):
+            names.update(self._written_buffers(st, block))
+            names.update(field.name for field in block.input_buffers)
+        views.update(self._buffer_views(buffer, sorted(names), lchnk))
         cache[lchnk] = views
         return views
 
@@ -587,12 +604,12 @@ class CloudMacroMicrophysics(NativeStage):
                 continue
         return views
 
-    @staticmethod
-    def _block_inputs(block: BlockContract, views: dict[str, np.ndarray], nstep: int, lchnk: int, ncol: int, dt: float) -> dict[str, Any]:
+    def _block_inputs(self, st: StageRuntime, block: BlockContract, views: dict[str, np.ndarray], nstep: int, lchnk: int, ncol: int,
+                      dt: float) -> dict[str, Any]:
         """What the block has in memory before its arithmetic, by the contract's names (live views, not copies)."""
 
         inputs: dict[str, Any] = {"nstep": int(nstep), "lchnk": int(lchnk), "ncol": int(ncol), "dt": float(dt)}
-        inputs.update({name: views[name] for name in block.inputs if name in views})
+        inputs.update({name: views[name] for name in block.inputs + self._written_buffers(st, block) if name in views})
         return inputs
 
     def _block_outputs(self, st: StageRuntime, lchnk: int, ncol: int, block: BlockContract, views: dict[str, np.ndarray]) -> dict[str, Any]:
@@ -605,7 +622,7 @@ class CloudMacroMicrophysics(NativeStage):
         if block is MACRO_BLOCK:
             outputs["det_s"] = H.view(lchnk, VIEW["det_s"])[:ncol]
             outputs["det_ice"] = H.view(lchnk, VIEW["det_ice"])[:ncol]
-        outputs.update({name: views[name][:ncol] for name in block.buffer_names if name in views})
+        outputs.update({name: views[name][:ncol] for name in self._written_buffers(st, block) if name in views})
         return outputs
 
     def _write_block(self, st: StageRuntime, lchnk: int, ncol: int, block: BlockContract, answer: dict[str, Any],
@@ -621,7 +638,7 @@ class CloudMacroMicrophysics(NativeStage):
         if block is MACRO_BLOCK:
             H.view(lchnk, VIEW["det_s"])[:ncol] = np.asarray(answer["det_s"])[:ncol]
             H.view(lchnk, VIEW["det_ice"])[:ncol] = np.asarray(answer["det_ice"])[:ncol]
-        for name in block.buffer_names:
+        for name in self._written_buffers(st, block):
             if name in answer and name in views:
                 views[name][:ncol] = np.asarray(answer[name])[:ncol]
 
@@ -672,7 +689,7 @@ class CloudMacroMicrophysics(NativeStage):
         for name in ("prec_sed_macmic", "snow_sed_macmic", "prec_pcw_macmic", "snow_pcw_macmic"):
             st.scratch[name][...] = 0.0
         # -- 2242-2250: the macrophysics block
-        inputs = self._block_inputs(MACRO_BLOCK, V, nstep, lchnk, n, sub_dt)
+        inputs = self._block_inputs(st, MACRO_BLOCK, V, nstep, lchnk, n, sub_dt)
         before = capture.of(MACRO_BLOCK).begin(inputs) if capture is not None else None
         if self.process is None or isinstance(self.process, OriginalBlock):
             arrays = [V[f"cam_in_{name}"] if name in CAM_IN_FIELDS else V[name] for name in MACROP_ARGUMENTS]
@@ -689,7 +706,7 @@ class CloudMacroMicrophysics(NativeStage):
         H.check_energy(lchnk, "macrop_tend", nstep, dt, 1, zero, L["flx_cnd"], det_ice, L["flx_heat"], scaled=True)
         log("check_energy_chng:macrop_tend")
         # -- 2317-2357: the microphysics block: activation, driver, the tendency sum
-        inputs = self._block_inputs(MICRO_BLOCK, V, nstep, lchnk, n, sub_dt)
+        inputs = self._block_inputs(st, MICRO_BLOCK, V, nstep, lchnk, n, sub_dt)
         before = capture.of(MICRO_BLOCK).begin(inputs) if capture is not None else None
         if self.micro_process is None or isinstance(self.micro_process, OriginalBlock):
             H.microp_aero_run(lchnk, sub_dt); log("microp_aero_run")

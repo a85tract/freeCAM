@@ -56,6 +56,8 @@ class BufferField:
     time_sliced: bool
     rank: int = 2
     dtype: str = "float64"
+    #: the index itself when it was read from an array-valued registry rather than a scalar module integer
+    index: int | None = None
 
 
 def _macro_buffers() -> tuple[BufferField, ...]:
@@ -82,6 +84,15 @@ def _union(*groups: tuple[BufferField, ...]) -> tuple[BufferField, ...]:
     return tuple(by_name.values())
 
 
+#: buffer fields the blocks only read, fetched inside routines the drivers call (the field tables cover the
+#: drivers' own fetches): cldfrc's convective cloud fractions; the ice nucleation's dry diameters and the
+#: activation's eddy diffusivity.  Inputs to a model, never outputs.
+MACRO_INPUT_BUFFERS = (BufferField("SH_FRAC", "cloud_fraction_mp_sh_frac_idx_", False),
+                       BufferField("DP_FRAC", "cloud_fraction_mp_dp_frac_idx_", False))
+MICRO_INPUT_BUFFERS = (BufferField("DGNUM", "nucleate_ice_cam_mp_dgnum_idx_", False, 3),
+                       BufferField("KVH", "microp_aero_mp_kvh_idx_", False))
+
+
 @dataclass(frozen=True)
 class BlockContract:
     """A compute block by name: its inputs and outputs by name, and the buffer fields among them."""
@@ -92,6 +103,11 @@ class BlockContract:
     buffers: tuple[BufferField, ...]
     #: the physics_ptend name the driver gives its object
     ptend_name: str
+    #: buffer fields read but never written (in ``inputs``, not in ``outputs``)
+    input_buffers: tuple[BufferField, ...] = ()
+    #: whether the block also writes the cloud-borne aerosol fields, registered per constituent at run time
+    #: (modal_aero_data's ``qqcw``): the activation inside the microphysics block updates them in place
+    cloud_borne: bool = False
 
     @property
     def file_stem(self) -> str:
@@ -109,16 +125,36 @@ MICRO_BUFFERS = _union(_table_buffers(AERO_TABLE), _table_buffers(MICRO_TABLE))
 MACRO_BLOCK = BlockContract(
     "macro",
     inputs=SCALARS + tuple(f"state_{n}" for n in STATE_FIELDS) + tuple(f"cam_in_{n}" for n in CAM_IN_FIELDS)
-    + FORCING_FIELDS + tuple(f.name for f in MACRO_BUFFERS),
+    + FORCING_FIELDS + tuple(f.name for f in MACRO_BUFFERS) + tuple(f.name for f in MACRO_INPUT_BUFFERS),
     outputs=TENDENCY_OUTPUTS + ("det_s", "det_ice") + tuple(f.name for f in MACRO_BUFFERS),
-    buffers=MACRO_BUFFERS, ptend_name="macrop")
-#: microp_aero_run, micro_mg_cam_tend and the tendency sum: one block, the activation inside it
+    buffers=MACRO_BUFFERS, ptend_name="macrop", input_buffers=MACRO_INPUT_BUFFERS)
+#: microp_aero_run, micro_mg_cam_tend and the tendency sum: one block, the activation inside it -- which also
+#: rewrites the cloud-borne aerosol fields (dropmixnuc, ndrop.F90), named per constituent at run time
 MICRO_BLOCK = BlockContract(
     "micro",
-    inputs=SCALARS + tuple(f"state_{n}" for n in STATE_FIELDS) + tuple(f.name for f in MICRO_BUFFERS),
+    inputs=SCALARS + tuple(f"state_{n}" for n in STATE_FIELDS) + tuple(f.name for f in MICRO_BUFFERS)
+    + tuple(f.name for f in MICRO_INPUT_BUFFERS),
     outputs=TENDENCY_OUTPUTS + tuple(f.name for f in MICRO_BUFFERS),
-    buffers=MICRO_BUFFERS, ptend_name="cldwat")
+    buffers=MICRO_BUFFERS, ptend_name="cldwat", input_buffers=MICRO_INPUT_BUFFERS, cloud_borne=True)
 BLOCKS = {block.name: block for block in (MACRO_BLOCK, MICRO_BLOCK)}
+
+
+def cloud_borne_fields(library: Any, pcnst: int) -> tuple[BufferField, ...]:
+    """The cloud-borne aerosol fields of this image: modal_aero_data's ``qqcw`` registry, one buffer field per
+    constituent that has a cloud-borne phase, named as the module names them (``cnst_name_cw``)."""
+
+    from .image import module_view
+
+    indices = np.asarray(module_view(library, "modal_aero_data_mp_qqcw_", "int32", (int(pcnst),)))
+    names = np.asarray(module_view(library, "modal_aero_data_mp_cnst_name_cw_", "S16", (int(pcnst),)))
+    fields = []
+    for m in range(int(pcnst)):
+        index = int(indices[m])
+        if index <= 0:
+            continue
+        name = names[m].tobytes().decode("ascii", "replace").strip() or f"QQCW_{m + 1}"
+        fields.append(BufferField(name, f"modal_aero_data_mp_qqcw_[{m}]", False, 2, "float64", index))
+    return tuple(fields)
 
 
 # -- recording the original blocks -------------------------------------------------------------------------------
@@ -390,5 +426,6 @@ def load_block_model(spec: str, *, block: BlockContract, rank: int):
 
 
 __all__ = ["BLOCKS", "BlockCapture", "BlockContract", "BlockModel", "BlockReplay", "BufferField", "CAM_IN_FIELDS",
-           "CloudBlockCapture", "FORCING_FIELDS", "MACRO_BLOCK", "MACRO_BUFFERS", "MICRO_BLOCK", "MICRO_BUFFERS",
-           "OriginalBlock", "SCALARS", "STATE_FIELDS", "TENDENCY_OUTPUTS", "load_block_model"]
+           "CloudBlockCapture", "FORCING_FIELDS", "MACRO_BLOCK", "MACRO_BUFFERS", "MACRO_INPUT_BUFFERS", "MICRO_BLOCK",
+           "MICRO_BUFFERS", "MICRO_INPUT_BUFFERS", "OriginalBlock", "SCALARS", "STATE_FIELDS", "TENDENCY_OUTPUTS",
+           "cloud_borne_fields", "load_block_model"]

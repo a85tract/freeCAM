@@ -26,6 +26,21 @@ def test_the_contracts_name_every_field_once_and_carry_the_tendency() -> None:
     assert {"state_t", "state_q", "cam_in_landfrac", "dlf", "cmfmc", "CLD", "NAAI"} <= set(CB.MACRO_BLOCK.inputs)
     assert {"NPCCN", "PREC_STR", "QME", "CLDFSNOW", "NACON"} <= set(CB.MICRO_BLOCK.buffer_names)
     assert CB.MACRO_BLOCK.ptend_name == "macrop" and CB.MICRO_BLOCK.ptend_name == "cldwat"
+    # fields read inside the drivers' callees are inputs and never outputs; the cloud-borne aerosols are the
+    # microphysics block's, registered per constituent at run time
+    assert {"SH_FRAC", "DP_FRAC"} <= set(CB.MACRO_BLOCK.inputs) and not {"SH_FRAC", "DP_FRAC"} & set(CB.MACRO_BLOCK.outputs)
+    assert {"DGNUM", "KVH"} <= set(CB.MICRO_BLOCK.inputs) and not {"DGNUM", "KVH"} & set(CB.MICRO_BLOCK.outputs)
+    assert CB.MICRO_BLOCK.cloud_borne and not CB.MACRO_BLOCK.cloud_borne
+
+
+def test_the_cloud_borne_aerosol_fields_come_from_the_images_registry(monkeypatch) -> None:
+    pcnst = 6
+    tables = {"modal_aero_data_mp_qqcw_": np.array([0, 0, 41, 42, 0, 43], dtype=np.int32),
+              "modal_aero_data_mp_cnst_name_cw_": np.array([b"", b"", b"so4_c1", b"num_c1", b"", b"dst_c3"], dtype="S16")}
+    import freecam.physics.image as image
+    monkeypatch.setattr(image, "module_view", lambda library, symbol, dtype, shape: tables[symbol])
+    fields = CB.cloud_borne_fields(object(), pcnst)
+    assert [(f.name, f.index, f.time_sliced, f.rank) for f in fields] == [("so4_c1", 41, False, 2), ("num_c1", 42, False, 2), ("dst_c3", 43, False, 2)]
 
 
 def _answer(block: CB.BlockContract, ncol: int, pver: int, pcnst: int, seed: int) -> dict:
@@ -114,7 +129,7 @@ class _Handles:
 def test_the_write_back_puts_a_blocks_answer_where_the_driver_leaves_it() -> None:
     stage = CloudMacroMicrophysics(whole_drivers=True)
     handles = _Handles()
-    st = type("Runtime", (), {"handles": handles})()
+    st = type("Runtime", (), {"handles": handles, "block_pbuf": object(), "block_dynamic": {"macro": (), "micro": ("so4_c1",)}})()
     views = {name: np.zeros((16, 30), order="F") for name in CB.MACRO_BLOCK.buffer_names}
     answer = _answer(CB.MACRO_BLOCK, 14, 30, 57, seed=1)
     stage._write_block(st, 1540, 14, CB.MACRO_BLOCK, answer, views)
