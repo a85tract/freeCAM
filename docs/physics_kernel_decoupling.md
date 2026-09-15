@@ -1331,6 +1331,7 @@ Python.
 | 7475341 | the step's inverse and the tracer index slices kept as objects | 3.08 s | 17.06 s | 440 |
 | 7475430 | a buffer view kept per time plane, so the alternating plane is not a new object | 3.06 s | 16.98 s | 455 |
 | 7475549 | the step's scalar kept as an object at its two call sites; the record names what churns | 3.06 s | 17.20 s | 395 |
+| 7477432, 7477433 | the cyclic collector frozen after initialisation, and not, back to back | 3.04 s, 3.07 s | 17.26 s, 16.95 s | 376, 434 |
 
 Every run is bit-for-bit with the oracle.  What each change removed:
 
@@ -1417,6 +1418,29 @@ mpi4py initialised its own, and MPI_Init failed on scattered ranks -- a
 pattern that looked, for an afternoon, exactly like broken nodes.  The
 build script now uses the bare compiler and refuses a module that needs
 more than libc.
+
+**The collector, and what is left.**  A region profile with the per-step
+file writes taken out (7476940) puts the walk's own `tend` at 2.87 s a
+rank: 1.94 inside the Fortran regions, 0.05 of copies, 0.20 resolving
+call sites again, and 0.68 of Python between them -- 0.33 in the
+microphysics sub-walk, 0.19 in the macrophysics, 0.05 in the activation,
+0.12 in the stage's own glue.  Part of what the compiled trial could not
+touch was Python's cyclic garbage collector: the driver process holds a
+large heap (the catalogs, the descriptors, the installed processes), and
+each full collection during the loop walked all of it.  `gc.freeze()`
+after initialisation moves that heap out of the collector's reach; the
+first run with it read 2.93 s a rank against 3.06, bit-for-bit (7476941);
+a back-to-back pair on the same tree then put the difference where it
+belongs, 3.04 s frozen against 3.07 not (7477432, 7477433) -- a
+hundredth or three, the rest of that first reading being run-to-run
+scatter, which for this stage is about 0.1 s between runs of identical
+code (7475430, 7475549, 7476883, 7477301: 3.04 to 3.06) and larger for
+the step loop.  The command line freezes by default (`FREECAM_GC_FREEZE=0`
+leaves the heap alone); switching the collector off altogether slowed the
+rest of the step (7476942) and stays a knob.  The Python driver of the
+same stage, with both blocks the originals, read 2.15 s a rank in the
+same round (7477302) against 2.27 in the morning (7474688), a single pair
+of runs and so within the same caution.
 
 ## Where it stands
 

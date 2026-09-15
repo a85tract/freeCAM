@@ -536,7 +536,8 @@ class CloudMacroMicrophysics(NativeStage):
         runtime = stage.runtime(st.native)
         runtime.rank, runtime.nstep = st.rank, nstep
         del stage.calls[:]
-        stage.tend_chunk(runtime, lchnk, ncol, index, dt, nstep)
+        with st.profile.region(f"subwalk:{stage.PREFIX}"):
+            stage.tend_chunk(runtime, lchnk, ncol, index, dt, nstep)
 
     # -- the Python driver: two compute blocks, the memory around them read and written from Python ------
 

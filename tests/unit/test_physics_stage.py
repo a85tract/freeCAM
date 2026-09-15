@@ -1156,10 +1156,15 @@ def test_the_record_names_the_inputs_that_churn_at_a_call_site(widget) -> None:
     stage = Widget()
     runtime = stage.runtime(widget)
     x = np.zeros((PCOLS, PVER, 1), order="F")[:, :, 0]
+    other = np.zeros((PCOLS, PVER, 1), order="F")[:, :, 0]
     for step in range(4):                                     # the scalar is a new object every call
         runtime.kernel_on_chunk("widget_step", {"x": x, "ncol": np.int32(6)}, outputs={})
+        runtime.kernel_on_chunk("widget_step", {"x": other, "ncol": np.int32(5)}, outputs={})   # the other chunk
     sites = stage.describe_call_sites()
     row = sites["widget.widget_step"]
-    assert row["calls"] == 4 and row["prepared"] == 4 and row["churn"] == {"ncol": 3}
+    assert row["calls"] == 8 and row["prepared"] == 8
+    # against the nearest key: the other chunk's first call had only this chunk's key to compare with
+    # (x and ncol both new), every later call its own chunk's (ncol alone)
+    assert row["churn"] == {"ncol": 7, "x": 1}
     (plan,) = runtime._plans.values()
     assert plan.prepared and all(entry.run is not None for entry in plan.prepared.values())   # the kernel's own name, not an input's

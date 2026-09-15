@@ -447,9 +447,8 @@ class _KernelPlan:
     #: calls made, call sites prepared: how often the fast path was missed
     calls: int = 0
     prepares: int = 0
-    #: the last key seen and, per input name, how often a new object arrived
-    #: under it at a site already seen: what still churns, for the record
-    last_key: tuple | None = None
+    #: per input name, how often a new object arrived under it at a site
+    #: already prepared (against the nearest key): what still churns, for the record
     churn: dict[str, int] = field(default_factory=dict)
     #: whether this plan's bound calls can be pointed at other arrays (learned
     #: from the first one built); a plan whose calls cannot goes back to
@@ -710,12 +709,19 @@ class StageRuntime:
         if (entry is None or entry.epoch != plan.epoch
                 or (entry.bound is not None and plan.bound.get(entry.address_key) is not entry.bound)):
             plan.prepares += 1
-            last = plan.last_key
-            if last is not None and last[0] == key[0]:
-                for input_name, now, then in zip(key[0], key[1], last[1]):
+            # what changed, against the nearest key already prepared for this
+            # site (the same names): a walk alternates chunks, so the last key
+            # is usually the other chunk's and every view would look new
+            nearest, fewest = None, None
+            for seen in plan.prepared:
+                if seen[0] == key[0] and seen[2] == key[2]:
+                    differing = sum(1 for now, then in zip(key[1], seen[1]) if now != then)
+                    if fewest is None or differing < fewest:
+                        nearest, fewest = seen, differing
+            if nearest is not None:
+                for input_name, now, then in zip(key[0], key[1], nearest[1]):
                     if now != then:
                         plan.churn[input_name] = plan.churn.get(input_name, 0) + 1
-            plan.last_key = key
             with self.profile.region(plan.bind_region):
                 entry = self._prepare(plan, name, inputs, outputs, ncol, in_place)
                 if len(plan.prepared) >= PREPARED_PER_PLAN:

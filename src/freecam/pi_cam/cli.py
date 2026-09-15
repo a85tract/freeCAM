@@ -1216,6 +1216,20 @@ def main(argv: list[str] | None = None) -> int:
         world.Barrier()
         advance_started = MPI.Wtime()
         steps = args.steps if args.steps is not None else case.config.stop_n
+        # Everything allocated so far -- the catalogs, the descriptors, the
+        # installed processes -- is moved out of the cyclic collector's reach,
+        # so its full collections during the step loop scan only what the
+        # steps allocate: 0.13 s a rank per fifty steps of the cloud walk
+        # (7476941 against 7475430).  FREECAM_GC_FREEZE=0 leaves the heap as
+        # it is; FREECAM_GC_DISABLE=1 switches the collector off for the loop
+        # (a measurement knob: the rest of the step slowed with it, 7476942).
+        # Nothing computed changes either way.
+        import gc
+        if os.environ.get("FREECAM_GC_FREEZE", "1") != "0":
+            gc.collect()
+            gc.freeze()
+        if os.environ.get("FREECAM_GC_DISABLE"):
+            gc.disable()
         profiler = _cprofile_for(world.Get_rank())
         if profiler is not None:
             profiler.enable()
