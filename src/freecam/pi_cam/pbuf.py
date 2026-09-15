@@ -104,7 +104,11 @@ class PBuf:
                 ctypes.POINTER(ctypes.c_int64),
             ]
         self._entry_v2 = second
-        self._views: dict[tuple[str, int], tuple[int, tuple[int, ...], np.ndarray]] = {}
+        # views handed out, per (field, chunk) and then per address: a field
+        # with two time planes alternates between them every step, and a
+        # walk that is handed the same view object for the same plane keeps
+        # its kernel call sites resolved; a few addresses are kept per field
+        self._views: dict[tuple[str, int], dict[int, tuple[tuple[int, ...], np.ndarray]]] = {}
         # the accessors' out-arguments, made once: a field is asked for on
         # every call of every chunk and the image answers into these
         self._pointer = ctypes.c_void_p()
@@ -153,14 +157,25 @@ class PBuf:
             raise PICAMConfigurationError(
                 f"physics buffer returned {shape} for {name} on chunk {chunk}"
             )
-        # the same view while the buffer answers with the same storage; a
-        # field the buffer re-allocates gets a fresh one
-        hit = self._views.get((name, chunk))
-        if hit is not None and hit[0] == pointer.value and hit[1] == shape:
-            return hit[2]
-        buffer = (ctypes.c_double * (shape[0] * shape[1])).from_address(pointer.value)
-        view = np.ndarray(shape, dtype=np.float64, buffer=buffer, order="F")
-        self._views[(name, chunk)] = (pointer.value, shape, view)
+        # the same view while the buffer answers with the same storage (one
+        # per address, so a field's two planes keep theirs); a field the
+        # buffer re-allocates gets a fresh one
+        return self._kept(name, chunk, pointer.value, shape, np.float64)
+
+    def _kept(self, name: str, chunk: int, address: int, shape: tuple[int, ...], dtype) -> np.ndarray:
+        planes = self._views.setdefault((name, chunk), {})
+        hit = planes.get(address)
+        if hit is not None and hit[0] == shape:
+            return hit[1]
+        count = 1
+        for extent in shape:
+            count *= extent
+        ctype = ctypes.c_int32 if dtype is np.int32 else ctypes.c_double
+        buffer = (ctype * count).from_address(address)
+        view = np.ndarray(shape, dtype=dtype, buffer=buffer, order="F")
+        if len(planes) >= 4:
+            del planes[next(iter(planes))]
+        planes[address] = (shape, view)
         return view
 
     def _view_any(self, field: PBufField, chunk: int) -> np.ndarray:
@@ -192,16 +207,7 @@ class PBuf:
             raise PICAMConfigurationError(
                 f"physics buffer returned {shape} for {field.name} on chunk {chunk}"
             )
-        hit = self._views.get((field.name, chunk))
-        if hit is not None and hit[0] == pointer.value and hit[1] == shape:
-            return hit[2]
-        count = int(np.prod(shape))
-        ctype = ctypes.c_int32 if is_integer else ctypes.c_double
-        buffer = (ctype * count).from_address(pointer.value)
-        view = np.ndarray(shape, dtype=np.int32 if is_integer else np.float64,
-                          buffer=buffer, order="F")
-        self._views[(field.name, chunk)] = (pointer.value, shape, view)
-        return view
+        return self._kept(field.name, chunk, pointer.value, shape, np.int32 if is_integer else np.float64)
 
     def verify(self, chunk: int, *, pcols: int, pver: int) -> dict[str, tuple[int, int]]:
         """Fetch every registered field once and check its shape.

@@ -529,8 +529,8 @@ class Macrophysics(NativeStage):
         K("macrop_detrain_partition", {
             "ncol": ncol, "top_lev": top, "ixcldliq": C.ixcldliq, "ixcldice": C.ixcldice,
             "ixnumliq": C.ixnumliq, "ixnumice": C.ixnumice, "nwset": C.wtrc_nwset,
-            "iatype_liq": C.wtrc_iatype[:C.wtrc_nwset, IWTLIQ - 1],
-            "iatype_ice": C.wtrc_iatype[:C.wtrc_nwset, IWTICE - 1],
+            "iatype_liq": st.once("iatype_liq", lambda: C.wtrc_iatype[:C.wtrc_nwset, IWTLIQ - 1]),
+            "iatype_ice": st.once("iatype_ice", lambda: C.wtrc_iatype[:C.wtrc_nwset, IWTICE - 1]),
             "do_detrain": C.do_detrain, "cu_det_st": False,
             "do_wtrc_detrain": C.trace_water and C.wtrc_detrain_in_macrop,
             "gravit": C.gravit, "latice": C.latice, "cpair": C.cpair,
@@ -586,8 +586,8 @@ class Macrophysics(NativeStage):
         ], C.use_shfrc, 0)
         log("cldfrc")
 
-        # 927-929  [exact] one IEEE division
-        rdtime = 1.0 / dt
+        # 927-929  [exact] one IEEE division; the kept object while the value is the same
+        rdtime = st.kept("rdtime", 1.0 / dt)
 
         # 930
         K("cloud_fraction_fice", {"ncol": ncol, "t": S["state_t"]}, outputs={"fice": None, "fsnow": None},

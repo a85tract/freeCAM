@@ -384,8 +384,9 @@ RUNNER_API = """  subroutine micro_resolve_indices()
     pbuf => pbuf_get_chunk(host_pbuf2d, lchnk)
     dtime = dtime_in
     call release_locals()
-    if (state_live) call physics_state_dealloc(state_loc)
+    if (state_live .or. state_kept) call physics_state_dealloc(state_loc)
     state_live = .false.
+    state_kept = .false.
   end subroutine micro_runner_bind
 
   subroutine micro_run_head()
@@ -590,6 +591,7 @@ module pycam_micro_handles
   use physics_types,    only: physics_state, physics_ptend, physics_ptend_init, &
        physics_state_copy, physics_update, physics_state_dealloc, physics_ptend_sum, &
        physics_ptend_scale
+  use pycam_state_copy, only: pycam_state_copy_into
   use physics_buffer,   only: physics_buffer_desc, pbuf_get_chunk, pbuf_get_field, &
        pbuf_old_tim_idx, pbuf_col_type_index, pbuf_get_index
   use phys_control,     only: use_hetfrz_classnuc, phys_getopts
@@ -622,6 +624,10 @@ module pycam_micro_handles
   logical, save :: python_owns_micro = .false.
   logical, save :: python_owns_core = .false.
   logical, save :: state_live = .false.
+  ! the walk keeps the driver's state copy allocated between calls and rewrites
+  ! its live columns, so the views Python holds of it stay put; the runner,
+  ! whose hoisted head allocates the copy itself, frees a kept one first
+  logical, save :: state_kept = .false.
   type(physics_state), pointer, save :: host_state(:) => null()
   type(physics_buffer_desc), pointer, save :: host_pbuf2d(:,:) => null()
 
@@ -774,8 +780,13 @@ contains
     state => host_state(lchnk)
     ptend => micro_ptend(lchnk)
     call release_locals()
-    if (state_live) call physics_state_dealloc(state_loc)
-    call physics_state_copy(state, state_loc)
+    if (state_kept) then
+       call pycam_state_copy_into(state, state_loc)
+    else
+       if (state_live) call physics_state_dealloc(state_loc)
+       call physics_state_copy(state, state_loc)
+       state_kept = .true.
+    end if
     state_live = .true.
     status = 0_c_int
   end function pycam_micro_begin_v1
@@ -919,7 +930,8 @@ contains
     integer(c_int), value, intent(in) :: lchnk_in
     status = 1_c_int
     if (.not. chunk_ok(lchnk_in) .or. lchnk_in /= lchnk .or. .not. state_live) return
-    call physics_state_dealloc(state_loc)
+    ! the driver deallocates the copy here (physics_state_dealloc); the walk
+    ! keeps the storage for the next call and the copy is dead until then
     state_live = .false.
     call release_locals()
     status = 0_c_int

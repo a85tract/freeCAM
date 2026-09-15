@@ -523,6 +523,7 @@ class StageRuntime:
         self._plans: dict[tuple[str, frozenset | None], _KernelPlan] = {}
         self._columns: dict[tuple[str, int], tuple[np.ndarray, np.ndarray]] = {}
         self._lanes: dict[tuple[int, int], tuple[np.ndarray, np.ndarray]] = {}
+        self._kept: dict[str, Any] = {}
         stage.after_runtime(self)
         check(self.entries.set_owner(1), f"pycam_{stage.PREFIX}_set_owner_v1")
 
@@ -590,6 +591,30 @@ class StageRuntime:
         """The surface fields the stage reads, one chunk's lane each."""
 
         return {name: self.column(f"cam_in.{name}", index) for name in self.stage.CAM_IN}
+
+    def kept(self, key: str, value: Any) -> Any:
+        """``value``, or the equal object kept under ``key`` from an earlier call.
+
+        A scalar a walk forms on every call -- the inverse of the step, say
+        -- is a new float object each time even when its value never
+        changes, and a kernel call site handed it would be resolved again
+        each time.  The value is still formed by the caller as the source
+        forms it; only the object handed on is the kept one when equal.
+        """
+
+        hit = self._kept.get(key)
+        if hit is not None and type(hit) is type(value) and hit == value:
+            return hit
+        self._kept[key] = value
+        return value
+
+    def once(self, key: str, factory: Callable[[], Any]) -> Any:
+        """``factory()`` on the first call under ``key``, the same object afterwards: for constants."""
+
+        hit = self._kept.get(key)
+        if hit is None:
+            hit = self._kept[key] = factory()
+        return hit
 
     def lane(self, array: np.ndarray, index: int) -> np.ndarray:
         """``array[..., index]``, the same view object while ``array`` is the same object.

@@ -1303,6 +1303,91 @@ a loss in the units the state feels -- is the next work, and the
 mechanism around it is complete: capture, replay, model, verify, census,
 two Fortran calls a chunk.
 
+#### The walk, bound once: what the fine-grained path costs when nothing is rebuilt per call
+
+The statement-by-statement walk of the cloud stage -- the transliteration
+of tphysbc's stage 7 with the macrophysics, aerosol activation and
+microphysics drivers each walked in turn, the `legacy-python` policy -- was
+the path this document's earlier sections priced at a third more than the
+Fortran step and set aside.  On 2026-09-15 it was measured again and taken
+apart, on the premise that the cost was not the form but the work Python
+did around each of its fifty-one kernel calls a chunk.  The baseline on
+the p27 image (7473911) put the stage at 4.03 s a rank against
+native-whole's 1.96 and the step loop at 18.33 s against 16.3; the region
+profile of the same walk (7473829, every rank) split the 4.03 into 2.45 s
+inside the Fortran regions, 0.52 s of copies between views and scratch,
+and 1.05 s of Python between the regions, and a profile of rank 0 named the
+Python.
+
+| run | change | stage, a rank | step loop | call sites re-resolved, 50 steps |
+| --- | --- | ---: | ---: | ---: |
+| 7473911 | the walk as it was | 4.03 s | 18.33 s | -- |
+| 7474018 | call sites resolved once per set of objects handed; probe arguments and history addresses kept | 3.95 s | 18.09 s | -- |
+| 7474195 | the bound call's post-call check compares shapes, not addresses read through ctypes | 3.81 s | 17.86 s | -- |
+| 7474311 | the macrophysics tracer rates written in place (a 1.3 MB copy in and out, eleven times a chunk) | 3.33 s | 17.61 s | -- |
+| 7474414 | every output written in place, in all four walks | 3.22 s | 17.32 s | -- |
+| 7474655 | constituent lanes and the tracer sum kept per array; the bound-call table sized to the rate kernel | 3.22 s | 17.43 s | 830 |
+| 7474686 | the drivers' state copies kept between calls (image p28) | 3.09 s | 17.01 s | 486 |
+| 7475341 | the step's inverse and the tracer index slices kept as objects | 3.08 s | 17.06 s | 440 |
+| 7475430 | a buffer view kept per time plane, so the alternating plane is not a new object | 3.06 s | 16.98 s | 455 |
+
+Every run is bit-for-bit with the oracle.  What each change removed:
+
+- **The call site, resolved once.**  A kernel call decided on every call
+  which of its arguments could be read in place, copied the others into
+  scratch, keyed the bound call by every argument's address read through
+  `ndarray.ctypes` (a microsecond each, forty arguments), and copied the
+  outputs back.  The walk hands the same view objects on every call of a
+  chunk -- the runtime's view caches keep an array while its storage
+  stays -- so the decisions are made once per set of objects and kept on
+  the plan (`_PreparedCall`); a repeat call is the copies, the bound
+  invocation and the copies back.  The probe a view is fetched through and
+  the encoded name and address a history call hands over are kept too.
+- **The post-call check.**  The bound call verified after every call that
+  no array's address, shape or dtype had changed, reading each address
+  through ctypes: forty arguments, sixty microseconds, on a kernel whose
+  arithmetic takes five.  A view's address cannot move underneath it; its
+  shape can be reassigned, and that is what is checked now.  This was the
+  largest single item inside what the region profile had counted as
+  Fortran time.
+- **Outputs in place.**  Every output of a carved kernel went through
+  scratch and was copied back to its target, live lanes only, so that a
+  kernel writing every lane could not touch a view's padding.  But a
+  transliteration's output targets are, by construction, the storage the
+  source statements write -- the driver's locals through the handles, the
+  buffer fields it points into -- and the original writes every lane of
+  them that the kernel writes.  Handed the storage itself (`in_place`,
+  `ALL_OUTPUTS` in the four walks), the kernel leaves in every lane what
+  the original left; the copies fell from 0.52 s to 0.05, and the
+  macrophysics tracer rates alone, a six-dimensional array of 1.3 MB copied
+  in and out around each of six calls a chunk, were half a second.
+- **Objects that were new every call.**  A slice of a constituent out of a
+  kept view, a sum formed into a fresh array, and the state copy the
+  drivers allocate on entry and free on exit: each hands the kernel a new
+  object and has its call site resolved again (`prepared` in the record's
+  `call_sites` counts them).  The slices and the sum are kept per array;
+  the state copies are kept in the handles modules from call to call,
+  their live columns rewritten by the copy's own statements without the
+  allocation (`pycam_state_copy`, generated from `physics_state_copy`).
+
+What is left, and what the walk's floor is.  The region profile of the
+walk with every output in place (7474415) puts the Fortran regions at
+1.90 s a rank -- the original stage's own 1.96 -- and the copies at 0.05;
+everything above that is Python around fifty-one kernel calls and about
+two hundred and forty view probes a chunk: the call sites still resolved
+again (the tendency object the driver allocates and frees around each
+kernel, about 450 of the 5,100 calls a rank per fifty steps), the probe a view costs even when the storage
+has not moved (about 0.2 s), the driver's timer and trace record around
+each bound kernel (about 0.1 s), the walks' own statements (about 0.1 s).
+The walk stands at 3.06 s a rank for the stage against 1.96 and
+16.98 s for the step loop against 16.00 on the same image (7474687) --
+half of the fine-grained path's overhead removed (2.07 s to 1.10), the
+loop within six percent of the Fortran's where it was fourteen -- with every kernel call site still a slot a model can take.
+Two levers remain and are not free: one Fortran entry that answers every
+view of a chunk in one crossing (an image change), and a compiled glue
+(Cython, ahead of time) for the walk's own statements and the driver's
+timers, which is a policy decision rather than an engineering one.
+
 ## Where it stands
 
 | Kernel | Owner | Contract | Runner pause | In-model gate | Loop |

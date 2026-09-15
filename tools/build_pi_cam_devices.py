@@ -69,7 +69,8 @@ PBUF_FIELD_SYMBOL = "pycam_pbuf_field_v1"
 # They are compiled into the fixed image as additions -- no numerical object
 # is replaced -- and are reached only from Python or from the control
 # objects the builder already replaces.
-SUPPORT_MODULES = ("pycam_macro_kernels.F90", "pycam_macro_handles.F90",
+SUPPORT_MODULES = ("pycam_state_copy.F90",
+                   "pycam_macro_kernels.F90", "pycam_macro_handles.F90",
                    "pycam_rad_kernels.F90", "pycam_rad_handles.F90",
                    # the radiation process slot: a compiled plugin answering the driver's
                    # radiative branch, asked by the radiation runner (a skeleton slot)

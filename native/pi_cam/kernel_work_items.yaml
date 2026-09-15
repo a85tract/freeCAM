@@ -117,4 +117,9 @@ items:
     the driver bit-for-bit at 2.28 s a rank for the stage (7457385), the replay 0.51 s (7456791); a core network for the
     microphysics block as well (2053 in, 1479 out, 0.47M) and the networks'' water clamped at -q/dt; both blocks as NumPy
     networks run the stage in 1.24 s a rank against the original''s 1.96 and the loop in 15.47 against 15.95 (7457386;
-    3.1 and 3.3 ms a call), drifting 6.1 K rms in 50 steps -- the networks, not the mechanism, are what is open.'
+    3.1 and 3.3 ms a call), drifting 6.1 K rms in 50 steps -- the networks, not the mechanism, are what is open.
+    The fine-grained walk (legacy-python) bound once, 2026-09-15: kernel call sites resolved once per set of objects
+    handed, outputs written in place, the drivers'' state copies kept between calls (image p28, pycam_state_copy):
+    the cloud stage''s walk 4.03 -> 3.06 s a rank against 1.96 native-whole, the step loop 18.33 -> 16.98 against
+    16.00, bit-for-bit throughout (7473911 to 7475430); the Fortran regions are at the original''s cost and
+    about 1.1 s of Python around fifty-one kernel calls a chunk remain.'

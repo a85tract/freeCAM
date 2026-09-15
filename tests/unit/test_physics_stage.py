@@ -1137,3 +1137,15 @@ def test_a_lane_of_a_kept_array_is_the_same_view_while_the_array_is(widget) -> N
     assert np.all(cube[:, :, 1] == 4.0)                       # a view, not a copy
     other = np.zeros((PCOLS, PVER, 3), order="F")
     assert runtime.lane(other, 1) is not first                # another array, another view
+
+
+def test_a_kept_scalar_is_the_same_object_while_equal_and_a_constant_is_made_once(widget) -> None:
+    runtime = Widget().runtime(widget)
+    first = runtime.kept("rdtime", 1.0 / 1800.0)
+    assert runtime.kept("rdtime", 1.0 / 1800.0) is first
+    assert runtime.kept("rdtime", 1.0 / 900.0) is not first      # another value, another object
+    assert runtime.kept("rdtime", 1) == 1 and type(runtime.kept("rdtime", 1)) is int   # never an equal of another type
+    made: list[int] = []
+    cube = np.zeros((3, 4))
+    assert runtime.once("slice", lambda: (made.append(1), cube[:, 1])[1]) is runtime.once("slice", lambda: cube[:, 2])
+    assert made == [1]
