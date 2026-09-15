@@ -219,6 +219,12 @@ class PointerTableAdapter:
                 )
 
 
+try:  # the compiled direct callers, when built beside this module (a trial; the ctypes path is the default)
+    from . import _glue as _GLUE
+except ImportError:  # pragma: no cover - the pure path
+    _GLUE = None
+
+
 class BoundCall:
     """One operation, prepared once for arrays it will be handed again and again.
 
@@ -276,6 +282,15 @@ class BoundCall:
         # every call: a view's data pointer cannot move underneath it, but
         # its shape can be reassigned, and the extents table would then lie
         self._shapes = [array.shape for array in self.arrays]
+        # the same invocation without ctypes' per-call marshalling, when the
+        # compiled callers are built and the function is a real C entry
+        self._native = None
+        if _GLUE is not None and isinstance(function, ctypes._CFuncPtr):
+            self._native = _GLUE.KernelCall(
+                _GLUE.address_of(function), self.action_id, self.count,
+                ctypes.addressof(self.pointers), ctypes.addressof(self.ndims), ctypes.addressof(self.shapes),
+                self.max_rank, self.fcomm, ctypes.addressof(self.error_buffer), len(self.error_buffer),
+                (self.pointers, self.ndims, self.shapes, self.error_buffer))
 
     def retarget(self, index: int, array: np.ndarray) -> None:
         """Point argument ``index`` at ``array``, another array of the same form.
@@ -303,11 +318,14 @@ class BoundCall:
         self._shapes[index] = array.shape
 
     def __call__(self) -> None:
-        self.error_buffer[0] = b"\x00"
-        status = int(self.function(
-            self.action_id, self.count, self.pointers, self.ndims, self.shapes,
-            self.max_rank, self.fcomm, self.error_buffer, len(self.error_buffer),
-        ))
+        if self._native is not None:
+            status = self._native()
+        else:
+            self.error_buffer[0] = b"\x00"
+            status = int(self.function(
+                self.action_id, self.count, self.pointers, self.ndims, self.shapes,
+                self.max_rank, self.fcomm, self.error_buffer, len(self.error_buffer),
+            ))
         if status:
             detail = self.error_buffer.value.decode(errors="replace")
             raise FortranAdapterError(

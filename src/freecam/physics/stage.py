@@ -185,6 +185,22 @@ def check(status: int, what: str) -> None:
         raise PICAMConfigurationError(f"{what} refused with status {status}")
 
 
+try:  # the compiled direct callers, when built (a trial; the ctypes path is the default)
+    from ..core import _glue as _GLUE
+except ImportError:  # pragma: no cover - the pure path
+    _GLUE = None
+
+
+def as_view_at(address: int, shape: tuple[int, ...]) -> np.ndarray:
+    """A zero-copy F-ordered view of Fortran storage at ``address``."""
+
+    count = 1
+    for extent in shape:
+        count *= int(extent)
+    buffer = (ctypes.c_double * count).from_address(address)
+    return np.ndarray(shape, dtype=np.float64, buffer=buffer, order="F")
+
+
 def as_view(pointer: ctypes.c_void_p, ndims: int, extents: Sequence[int]) -> np.ndarray:
     """A zero-copy F-ordered view of Fortran storage at ``pointer``."""
 
@@ -264,6 +280,9 @@ class HostServices:
         self._probe_pointer, self._probe_ndims = ctypes.byref(pointer), ctypes.byref(ndims)
         # history calls prepared per (field, array): the encoded name and the address
         self._outfld: dict[tuple[str, int], tuple[bytes, int, Any, np.ndarray]] = {}
+        # the compiled direct callers per entry, when built and the entry is a C function
+        self._fast_probes: dict[int, Any] = {}
+        self._fast_outfld: Any = None
 
     def _entry(self, attribute: str):
         """The bound entry, or a refusal naming what the stage did not declare."""
@@ -288,18 +307,27 @@ class HostServices:
         """
 
         assert ndims_max <= 5, ndims_max
-        pointer, ndims, extents = self._probe
-        status = entry(*arguments, self._probe_pointer, self._probe_ndims, extents)
-        if status:
-            check(status, what)
-        rank = ndims.value
-        shape = tuple(extents[:rank])
         key = (id(entry), arguments)
+        fast = self._fast_probes.get(key[0])
+        if fast is None and _GLUE is not None and len(arguments) == 2 and isinstance(entry, ctypes._CFuncPtr):
+            fast = self._fast_probes[key[0]] = _GLUE.Probe2(_GLUE.address_of(entry))
+        if fast is not None:
+            status, address, rank, shape = fast(*arguments)
+            if status:
+                check(status, what)
+        else:
+            pointer, ndims, extents = self._probe
+            status = entry(*arguments, self._probe_pointer, self._probe_ndims, extents)
+            if status:
+                check(status, what)
+            rank = ndims.value
+            shape = tuple(extents[:rank])
+            address = pointer.value
         cached = self._views.get(key)
-        if cached is not None and cached[0] == pointer.value and cached[1] == shape:
+        if cached is not None and cached[0] == address and cached[1] == shape:
             return cached[2]
-        view = as_view(pointer, rank, extents)
-        self._views[key] = (pointer.value, shape, view)
+        view = as_view_at(address, shape)
+        self._views[key] = (address, shape, view)
         return view
 
     def view(self, lchnk: int, code: int) -> np.ndarray:
@@ -348,10 +376,17 @@ class HostServices:
         if hit is None or hit[3] is not array:
             plain = type(array) is np.ndarray and array.dtype == np.float64 and array.flags.f_contiguous
             given = array if plain else fortran(array)
-            hit = (name.encode("ascii"), len(name), pointer_of(given), array)
+            hit = (name.encode("ascii"), len(name), pointer_of(given), array, given.ctypes.data)
             if plain and array.base is not None:      # a kept view: worth remembering
                 self._outfld[key] = hit
-        status = self._entry("outfld")(hit[0], hit[1], hit[2], idim, lchnk)
+        fast = self._fast_outfld
+        if fast is None and _GLUE is not None:
+            entry = self._entry("outfld")
+            fast = self._fast_outfld = _GLUE.Outfld(_GLUE.address_of(entry)) if isinstance(entry, ctypes._CFuncPtr) else False
+        if fast:
+            status = fast(hit[0], hit[1], hit[4], idim, lchnk)
+        else:
+            status = self._entry("outfld")(hit[0], hit[1], hit[2], idim, lchnk)
         if status:
             check(status, f"outfld({name!r})")
 

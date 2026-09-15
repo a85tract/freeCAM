@@ -1392,6 +1392,32 @@ view of a chunk in one crossing (an image change), and a compiled glue
 (Cython, ahead of time) for the walk's own statements and the driver's
 timers, which is a policy decision rather than an engineering one.
 
+**The compiled glue, tried.**  The second lever was measured the same
+afternoon rather than argued.  `tools/build_glue_trial.py` compiles the
+modules the walk runs through -- the stage runtime, the Fortran adapter,
+the physics buffer, the four walks -- as they are, in Cython's pure-Python
+mode, and builds `freecam/core/_glue.pyx`: direct callers for the image's
+hottest entries (the bound kernel call, the two view probes, the buffer's
+two accessors, the history call), which the Python modules use when the
+extension is importable and fall back from otherwise.  The compiled
+objects sit beside the sources, ignored by git; nothing in the install
+changes, and every unit test passes either way.  With both layers built
+the walk ran bit-for-bit at 3.04 s a rank for the stage and 17.17 s for
+the step loop (7476883) against 3.06 and 16.98 to 17.20 uncompiled: the
+compiled glue changes nothing measurable.  On the login node the same
+paths had said as much -- a resolved kernel call site costs 2.3 µs
+compiled or not, because its time is already inside NumPy's and ctypes'
+C code; the direct callers took a forty-argument bound call from 4.5 to
+2.6 µs, which over 5,100 calls is a hundredth of a second.  The 1.1 s
+above the Fortran is therefore not the interpreter running these modules.
+The trial also cost sixteen dead gates (7475712 to 7476822, kept as
+failure records): built through the site's compiler wrappers, the
+extensions linked a second MPI and a libfabric into the process before
+mpi4py initialised its own, and MPI_Init failed on scattered ranks -- a
+pattern that looked, for an afternoon, exactly like broken nodes.  The
+build script now uses the bare compiler and refuses a module that needs
+more than libc.
+
 ## Where it stands
 
 | Kernel | Owner | Contract | Runner pause | In-model gate | Loop |
