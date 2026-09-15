@@ -272,6 +272,10 @@ class BoundCall:
         self.action_id = call.action_id
         self.count = len(self.arrays)
         self.fcomm = int(fcomm)
+        # the shapes the tables describe, checked against the arrays after
+        # every call: a view's data pointer cannot move underneath it, but
+        # its shape can be reassigned, and the extents table would then lie
+        self._shapes = [array.shape for array in self.arrays]
 
     def retarget(self, index: int, array: np.ndarray) -> None:
         """Point argument ``index`` at ``array``, another array of the same form.
@@ -296,6 +300,7 @@ class BoundCall:
         self.arrays[index] = array
         self.pointers[index] = address
         self.invariants[index] = (address, array.shape, array.dtype.str)
+        self._shapes[index] = array.shape
 
     def __call__(self) -> None:
         self.error_buffer[0] = b"\x00"
@@ -308,8 +313,11 @@ class BoundCall:
             raise FortranAdapterError(
                 f"native operation {self.operation!r} failed ({status}): {detail}"
             )
-        for array, invariant in zip(self.arrays, self.invariants):
-            if (int(array.ctypes.data), array.shape, array.dtype.str) != invariant:
+        # the post-call check the one-shot path makes, at the cost of a shape
+        # compare per argument: reading an array's address through ctypes is
+        # a microsecond each, and a kernel here takes up to sixty arguments
+        for array, shape in zip(self.arrays, self._shapes):
+            if array.shape != shape:
                 raise FortranAdapterError(
                     f"native operation {self.operation!r} changed a Python array descriptor"
                 )

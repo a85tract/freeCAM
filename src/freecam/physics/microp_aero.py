@@ -29,6 +29,7 @@ from ..pi_cam.pbuf import PBuf, load_pbuf_table
 from .image import module_view
 from freecam.pi_cam.tables import load_table
 from .stage import (
+    ALL_OUTPUTS,
     CORE_ENTRIES,
     HostEntries,
     HostServices,
@@ -269,7 +270,9 @@ class MicropAero(NativeStage):
         pcols = st.pcols
 
         def K(name, inputs, *, outputs):
-            st.kernel_on_chunk(name, inputs, outputs=outputs, ncol=None)
+            # every output target is the storage the source statement writes:
+            # the kernel writes it in place, as the original does
+            st.kernel_on_chunk(name, inputs, outputs=outputs, ncol=None, in_place=ALL_OUTPUTS)
 
         H.begin(lchnk)
         S = {name: H.view(lchnk, VIEW[name]) for name in ("state_t", "state_q", "state_pmid")}
@@ -319,7 +322,7 @@ class MicropAero(NativeStage):
         # 578-588: clim_modal_aero (refused otherwise)
         K("aero_cloud_fraction_split",
           {"ncol": ncol, "top_lev": top, "qsmall": C.qsmall,
-           "qc": S["state_q"][:, :, C.cldliq - 1], "qi": S["state_q"][:, :, C.cldice - 1],
+           "qc": st.lane(S["state_q"], C.cldliq - 1), "qi": st.lane(S["state_q"], C.cldice - 1),
            "cldn": cldn, "cldo": pbv["CLDO"]},
           outputs={"lcldn": None, "lcldo": None})
         log("aero_cloud_fraction_split")
@@ -340,7 +343,7 @@ class MicropAero(NativeStage):
            "coarse_nacl": coarse["coarse_nacl"], "num_coarse": coarse["num_coarse"],
            "rho": None,
            # 662 indexes one plane of the mode-resolved diameters
-           "dgnumwet_coarse": pbv["DGNUMWET"][:, :, C.mode_coarse_dst_idx - 1]},
+           "dgnumwet_coarse": st.lane(pbv["DGNUMWET"], C.mode_coarse_dst_idx - 1)},
           outputs={"nacon": pbv["NACON"], "rndst": pbv["RNDST"]})
         log("aero_contact_freezing")
         # 701-705

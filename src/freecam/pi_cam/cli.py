@@ -77,6 +77,9 @@ def _stage_executions(cam) -> dict[str, dict[str, object]]:
             describe_process = getattr(stage, "describe_process", None)
             if callable(describe_process) and describe_process() is not None:
                 described["process"] = describe_process()
+            describe_call_sites = getattr(stage, "describe_call_sites", None)
+            if callable(describe_call_sites) and describe_call_sites():
+                described["call_sites"] = describe_call_sites()
             executions[name] = described
     return executions
 

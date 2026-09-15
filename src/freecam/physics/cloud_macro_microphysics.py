@@ -56,6 +56,7 @@ from .microp_aero import MicropAero
 from .microphysics import Microphysics
 from freecam.pi_cam.tables import load_table
 from .stage import (
+    ALL_OUTPUTS,
     CORE_ENTRIES,
     HostEntries,
     HostServices,
@@ -436,7 +437,8 @@ class CloudMacroMicrophysics(NativeStage):
         log = self.calls.append
 
         def K(name, inputs, *, outputs):
-            st.kernel_on_chunk(name, inputs, outputs=outputs, ncol=ncol)
+            # the buffer fields the glue writes are written in place, as the glue does
+            st.kernel_on_chunk(name, inputs, outputs=outputs, ncol=ncol, in_place=ALL_OUTPUTS)
 
         n = C.cld_macmic_num_steps
         zero = L["zero"]                       # 2085: zero = 0; never written

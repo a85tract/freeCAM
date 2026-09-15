@@ -47,6 +47,7 @@ from .result import FunctionResult
 from .image import module_view
 from .spec import load_function_spec
 from .stage import (
+    ALL_OUTPUTS,
     HOST_ENTRIES,
     HostEntries,
     HostServices,
@@ -296,7 +297,7 @@ class Macrophysics(NativeStage):
     EXTRA_SCRATCH = tuple(
         (name, ("pcols", "pver", "chunks")) for name in (
             "concld_old", "rhcloud", "cldst", "rhu00", "icecldf", "liqcldf",
-            "relhum", "shfrc_zero")
+            "relhum", "shfrc_zero", "vapour")
     ) + (("clc", ("pcols", "chunks")),)
 
     entries_class = _MacroEntries
@@ -485,8 +486,11 @@ class Macrophysics(NativeStage):
         H, C, pb = st.handles, st.constants, st.pbuf
         L = st.local
 
-        def K(name, inputs, *, outputs, fields=None):
-            st.kernel_on_chunk(name, inputs, outputs=outputs, fields=fields, ncol=ncol)
+        def K(name, inputs, *, outputs, fields=None, in_place=ALL_OUTPUTS):
+            # every output target is the storage the source statement writes
+            # (the driver's locals through the handle, the buffer fields it
+            # points into): the kernel writes it in place, as the original does
+            st.kernel_on_chunk(name, inputs, outputs=outputs, fields=fields, ncol=ncol, in_place=in_place)
         top = C.top_lev
         pcols, pver, pverp = st.pcols, st.pver, st.pverp
         cols = slice(0, ncol)
@@ -653,8 +657,10 @@ class Macrophysics(NativeStage):
               outputs={"pqctn": None, "nqctn": None, "pqitn": None, "nqitn": None})
             log("macrop_tracer_rate_split")
             s = L
-            # [exact] two IEEE additions, left to right in both languages
-            vapour = (s["qvlat"] + s["qcten"]) + s["qiten"]
+            # [exact] two IEEE additions, left to right in both languages; the sum
+            # lands in a kept array so the rate kernel's call site stays resolved
+            vapour = s["vapour"]
+            np.add(np.add(s["qvlat"], s["qcten"]), s["qiten"], out=vapour)
             for src, dst, rtype, rate in ((IWTVAP, IWTVAP, IWTVAP, vapour), (IWTVAP, IWTLIQ, IWTVAP, s["pqctn"]),
                                           (IWTVAP, IWTLIQ, IWTLIQ, s["nqctn"]), (IWTVAP, IWTICE, IWTVAP, s["pqitn"]),
                                           (IWTVAP, IWTICE, IWTICE, s["nqitn"])):

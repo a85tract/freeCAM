@@ -105,6 +105,14 @@ class PBuf:
             ]
         self._entry_v2 = second
         self._views: dict[tuple[str, int], tuple[int, tuple[int, ...], np.ndarray]] = {}
+        # the accessors' out-arguments, made once: a field is asked for on
+        # every call of every chunk and the image answers into these
+        self._pointer = ctypes.c_void_p()
+        self._pointer_ref = ctypes.byref(self._pointer)
+        self._extents2 = (ctypes.c_int64 * 2)()
+        self._ndims = ctypes.c_int()
+        self._ndims_ref = ctypes.byref(self._ndims)
+        self._extents3 = (ctypes.c_int64 * 3)()
 
     def __contains__(self, name: str) -> bool:
         field = self.fields.get(name)
@@ -126,11 +134,10 @@ class PBuf:
             )
         if not field.plain_plane:
             return self._view_any(field, chunk)
-        pointer = ctypes.c_void_p()
-        extents = (ctypes.c_int64 * 2)()
+        pointer, extents = self._pointer, self._extents2
         status = self._entry(
             int(chunk), int(field.index), int(field.time_sliced),
-            ctypes.byref(pointer), extents,
+            self._pointer_ref, extents,
         )
         if status != 0:
             raise PICAMConfigurationError(
@@ -164,13 +171,11 @@ class PBuf:
                 f"{field.name} is a rank-{field.rank} {field.dtype} field and the loaded "
                 f"image exposes no {SYMBOL_V2}; it predates the rank-aware handle"
             )
-        pointer = ctypes.c_void_p()
-        ndims = ctypes.c_int()
-        extents = (ctypes.c_int64 * 3)()
+        pointer, ndims, extents = self._pointer, self._ndims, self._extents3
         is_integer = field.dtype in ("int32", "int64")
         status = self._entry_v2(
             int(chunk), int(field.index), int(field.time_sliced), int(field.rank),
-            int(is_integer), ctypes.byref(pointer), ctypes.byref(ndims), extents,
+            int(is_integer), self._pointer_ref, self._ndims_ref, extents,
         )
         if status != 0:
             raise PICAMConfigurationError(

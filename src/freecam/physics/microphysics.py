@@ -43,6 +43,7 @@ from .errors import PhysicsError
 from .result import FunctionResult
 from freecam.pi_cam.tables import load_table
 from .stage import (
+    ALL_OUTPUTS,
     CORE_ENTRIES,
     HostEntries,
     HostServices,
@@ -426,6 +427,8 @@ class Microphysics(NativeStage):
 
     def __init__(self, *, kernel=None, kernels=None, standalone_core: bool = False) -> None:
         super().__init__(kernel=kernel, kernels=kernels)
+        # call sites whose physics-buffer fields were all named, checked once each (see K in tend_chunk)
+        self._grid_checked: set[tuple] = set()
         self._standalone: Any = None
         self._scalars: dict[str, Any] = {}
         self._discarded: dict[str, np.ndarray] | None = None
@@ -575,24 +578,33 @@ class Microphysics(NativeStage):
         def V(name: str) -> np.ndarray:
             return H.view(lchnk, VIEW[name])
 
+        checked = self._grid_checked
+
         def K(name, inputs, *, outputs, fields=None):
             # A field the walk does not name keeps whatever its scratch holds,
             # which is right for a routine local the previous kernel wrote and
             # wrong for anything living in the physics buffer or a handle view:
             # that storage is never the scratch.  Refuse rather than read zeros.
+            # The names a call site passes never change, so each is checked once.
             if fields is None:
-                named = set(inputs) | set(outputs)
-                missing = [a.field.removeprefix(f"{self.PREFIX}.")
-                           for a in st.descriptors[name].arguments
-                           if a.field.removeprefix(f"{self.PREFIX}.") in GRID_PBUF
-                           and a.field.removeprefix(f"{self.PREFIX}.") not in named]
-                if missing:
-                    raise PhysicsError(
-                        f"{name} takes {missing} from the physics buffer; the walk "
-                        f"passes neither the value nor a target, so the kernel would "
-                        f"read this stage's scratch instead")
+                site = (name, frozenset(inputs), frozenset(outputs))
+                if site not in checked:
+                    named = set(inputs) | set(outputs)
+                    missing = [a.field.removeprefix(f"{self.PREFIX}.")
+                               for a in st.descriptors[name].arguments
+                               if a.field.removeprefix(f"{self.PREFIX}.") in GRID_PBUF
+                               and a.field.removeprefix(f"{self.PREFIX}.") not in named]
+                    if missing:
+                        raise PhysicsError(
+                            f"{name} takes {missing} from the physics buffer; the walk "
+                            f"passes neither the value nor a target, so the kernel would "
+                            f"read this stage's scratch instead")
+                    checked.add(site)
             merged = {**{k: v for k, v in outputs.items() if v is not None}, **inputs}
-            st.kernel_on_chunk(name, merged, outputs=outputs, fields=fields, ncol=None)
+            # every output target is the storage the source statement writes (a
+            # routine local through the handle, a buffer field the driver points
+            # into): the kernel writes it in place, as the original does
+            st.kernel_on_chunk(name, merged, outputs=outputs, fields=fields, ncol=None, in_place=ALL_OUTPUTS)
 
         def G(name: str) -> np.ndarray:
             """A ``_grid`` array: buffer storage where the source points into

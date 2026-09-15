@@ -145,7 +145,16 @@ class StageProfile:
     def region(self, key: str) -> "_Region":
         return self._Region(self, key)
 
+    #: after this many writes, the file is rewritten every tenth ``tend`` only:
+    #: 512 ranks rewriting a file on the shared filesystem every step cost
+    #: more than the stage they were measuring (7473829: 4 s a rank of 8)
+    EVERY_STEP_UNTIL = 5
+
     def write(self, rank: int) -> None:
+        written = self.calls.get("profile-write", 0)
+        if written >= self.EVERY_STEP_UNTIL and self.calls.get("tend", 0) % 10 != 0:
+            return
+        self.calls["profile-write"] = written + 1
         self.path.write_text(json.dumps({
             "rank": rank,
             "seconds": dict(sorted(self.seconds.items(), key=lambda kv: -kv[1])),
@@ -247,6 +256,14 @@ class HostServices:
         self.pcnst = pcnst
         # views handed out, by entry and arguments: (address, shape, array)
         self._views: dict[tuple, tuple[int, tuple[int, ...], np.ndarray]] = {}
+        # the probe's out-arguments, made once: a view is asked for on every
+        # call of every chunk, and the image answers into these (five extents
+        # is the most any view has)
+        pointer, ndims = ctypes.c_void_p(), ctypes.c_int()
+        self._probe = (pointer, ndims, (ctypes.c_int64 * 5)())
+        self._probe_pointer, self._probe_ndims = ctypes.byref(pointer), ctypes.byref(ndims)
+        # history calls prepared per (field, array): the encoded name and the address
+        self._outfld: dict[tuple[str, int], tuple[bytes, int, Any, np.ndarray]] = {}
 
     def _entry(self, attribute: str):
         """The bound entry, or a refusal naming what the stage did not declare."""
@@ -270,12 +287,13 @@ class HostServices:
         instead of a new one.
         """
 
-        pointer = ctypes.c_void_p()
-        ndims = ctypes.c_int()
-        extents = (ctypes.c_int64 * ndims_max)()
-        check(entry(*arguments, ctypes.byref(pointer), ctypes.byref(ndims), extents), what)
+        assert ndims_max <= 5, ndims_max
+        pointer, ndims, extents = self._probe
+        status = entry(*arguments, self._probe_pointer, self._probe_ndims, extents)
+        if status:
+            check(status, what)
         rank = ndims.value
-        shape = tuple(extents[i] for i in range(rank))
+        shape = tuple(extents[:rank])
         key = (id(entry), arguments)
         cached = self._views.get(key)
         if cached is not None and cached[0] == pointer.value and cached[1] == shape:
@@ -317,10 +335,25 @@ class HostServices:
     # -- history -------------------------------------------------------------
 
     def outfld(self, name: str, array: np.ndarray, idim: int, lchnk: int) -> None:
-        if not (type(array) is np.ndarray and array.dtype == np.float64 and array.flags.f_contiguous):
-            array = fortran(array)
-        check(self._entry("outfld")(name.encode("ascii"), len(name), pointer_of(array), idim, lchnk),
-              f"outfld({name!r})")
+        """``outfld(name, array, idim, lchnk)``: the field handed to history, by address.
+
+        A walk hands the same view object for the same field on every call
+        of a chunk, so the encoded name and the address are kept per (name,
+        array) with the array held; a temporary the walk formed, or an array
+        that is not Fortran-ordered, is converted per call as before.
+        """
+
+        key = (name, id(array))
+        hit = self._outfld.get(key)
+        if hit is None or hit[3] is not array:
+            plain = type(array) is np.ndarray and array.dtype == np.float64 and array.flags.f_contiguous
+            given = array if plain else fortran(array)
+            hit = (name.encode("ascii"), len(name), pointer_of(given), array)
+            if plain and array.base is not None:      # a kept view: worth remembering
+                self._outfld[key] = hit
+        status = self._entry("outfld")(hit[0], hit[1], hit[2], idim, lchnk)
+        if status:
+            check(status, f"outfld({name!r})")
 
 
 class Local(Mapping[str, np.ndarray]):
@@ -369,12 +402,65 @@ class _KernelPlan:
     bound: dict[tuple[int, ...], tuple[Callable[[], Any], list[np.ndarray]]]
     in_place: bool = True
     binds: int = 0
+    #: prepared call sites, keyed by the identity of the objects a caller hands
+    #: (see StageRuntime.kernel_on_chunk); each holds those objects
+    prepared: dict[tuple, "_PreparedCall"] = field(default_factory=dict)
+    #: bumped when the plan stops standing views in, so every prepared call
+    #: built before is dropped; a bound call pointed elsewhere drops only the
+    #: prepared calls that hold it (they check the table for their own entry)
+    epoch: int = 0
+    #: calls made, call sites prepared: how often the fast path was missed
+    calls: int = 0
+    prepares: int = 0
+    #: whether this plan's bound calls can be pointed at other arrays (learned
+    #: from the first one built); a plan whose calls cannot goes back to
+    #: copying after REBINDS_BEFORE_COPYING builds
+    retargetable: bool = True
+
+
+class _PreparedCall:
+    """One kernel call site, resolved once for the objects it is handed.
+
+    A walk hands a kernel the same view objects on every call of a chunk --
+    the runtime keeps a view while its storage stays -- so which slot is read
+    in place, which is copied into scratch, which scratch lane is copied back
+    to which live lanes, and which bound call to invoke, are all decided on
+    the first call and kept.  A call is then the copies, the invocation and
+    the copies back, nothing else.  The objects are held so their identities
+    cannot be reused by anything else while the entry lives.
+    """
+
+    __slots__ = ("copies_in", "run", "copies_out", "epoch", "held", "address_key", "bound")
+
+    def __init__(self, copies_in, run, copies_out, epoch, held, address_key, bound) -> None:
+        self.copies_in = copies_in
+        self.run = run
+        self.copies_out = copies_out
+        self.epoch = epoch
+        self.held = held
+        #: the plan's bound-table entry this call runs through, checked on
+        #: every call: pointed at other arrays, it is no longer this call's
+        self.address_key = address_key
+        self.bound = bound
 
 
 #: bound calls kept per kernel plan: one per set of arrays handed, which for
-#: a stage is one per chunk; when the set is new and the table is full, the
-#: oldest call is pointed at the new arrays instead of a new one being built
-BOUND_PER_PLAN = 8
+#: a stage is one per call site per chunk (the water-tracer rate kernel is
+#: called with five different rate arrays on each of two chunks); when the
+#: set is new and the table is full, the oldest call is pointed at the new
+#: arrays instead of a new one being built.  A table of eight thrashed on
+#: that kernel and re-prepared every call site of the plan each call
+#: (7474415); one of sixty-four rebuilt the tables for storage that moves
+#: every call where pointing an old call at it costs a few microseconds
+#: (7474482): sixteen holds the rate kernel's ten sets and keeps the pointing
+BOUND_PER_PLAN = 16
+#: prepared call sites kept per plan: one per chunk per call site normally;
+#: a caller handing new objects every call cycles through them harmlessly
+PREPARED_PER_PLAN = 64
+#: ``in_place=ALL_OUTPUTS``: every output whose target can be handed to the
+#: kernel is written in place -- the form for a transliteration, whose output
+#: targets are by construction the storage the original statements write
+ALL_OUTPUTS = ("*",)
 #: rebinds after which a plan whose binder cannot retarget goes back to
 #: copying into scratch, so a caller handing new storage every call does not
 #: pay a table-building per call
@@ -436,6 +522,7 @@ class StageRuntime:
         self._bound: dict[tuple, Callable[[], Any]] = {}
         self._plans: dict[tuple[str, frozenset | None], _KernelPlan] = {}
         self._columns: dict[tuple[str, int], tuple[np.ndarray, np.ndarray]] = {}
+        self._lanes: dict[tuple[int, int], tuple[np.ndarray, np.ndarray]] = {}
         stage.after_runtime(self)
         check(self.entries.set_owner(1), f"pycam_{stage.PREFIX}_set_owner_v1")
 
@@ -504,11 +591,28 @@ class StageRuntime:
 
         return {name: self.column(f"cam_in.{name}", index) for name in self.stage.CAM_IN}
 
+    def lane(self, array: np.ndarray, index: int) -> np.ndarray:
+        """``array[..., index]``, the same view object while ``array`` is the same object.
+
+        A walk that slices a constituent out of a kept view on every call
+        would hand a kernel a new object each time and have the call site
+        resolved again each time; this keeps the slice with the array it
+        was taken from.
+        """
+
+        key = (id(array), index)
+        hit = self._lanes.get(key)
+        if hit is not None and hit[0] is array:
+            return hit[1]
+        view = array[..., index]
+        self._lanes[key] = (array, view)
+        return view
+
     # -- running a kernel ----------------------------------------------------
 
     def kernel_on_chunk(self, name: str, inputs: Mapping[str, Any], *,
                         outputs: Mapping[str, Any], fields: Mapping[str, str] | None = None,
-                        ncol: int | None = None) -> None:
+                        ncol: int | None = None, in_place: Sequence[str] = ()) -> None:
         """Run one direct kernel on one chunk, copying views in and out exactly.
 
         Inputs that are handle or buffer views are copied into the kernel's
@@ -517,47 +621,116 @@ class StageRuntime:
         writes a padding lane and a view's padding must stay what CAM left
         there.  ``None`` means "the scratch array of the same name".  Every
         copy is a bit-exact move of doubles; no arithmetic happens here.
+
+        ``in_place`` names outputs whose target is the very storage the
+        original routine writes -- the driver's own local that a handle
+        serves, a buffer field the driver points into -- so the kernel is
+        handed that storage itself and nothing is copied either way: what
+        the routine leaves in every lane is what the original left there.
+        ``ALL_OUTPUTS`` says so of every output, which is true of a
+        transliteration by construction.  A target that cannot be handed
+        (another dtype, not Fortran-ordered, another shape) is copied as
+        before.
+
+        The call site is resolved once per set of objects handed (their
+        identities, which the runtime's view caches keep stable while the
+        storage stays) and the resolution kept on the plan, so a repeat call
+        is the copies, the bound invocation and the copies back.
         """
 
         plan = self._plan(name, fields)
-        handed: list[np.ndarray] = []
+        plan.calls += 1
+        key = (tuple(inputs), tuple(map(id, inputs.values())),
+               tuple(outputs), tuple(map(id, outputs.values())), ncol, tuple(in_place))
+        entry = plan.prepared.get(key)
+        if (entry is None or entry.epoch != plan.epoch
+                or (entry.bound is not None and plan.bound.get(entry.address_key) is not entry.bound)):
+            plan.prepares += 1
+            with self.profile.region(plan.bind_region):
+                entry = self._prepare(plan, name, inputs, outputs, ncol, in_place)
+                if len(plan.prepared) >= PREPARED_PER_PLAN:
+                    del plan.prepared[next(iter(plan.prepared))]
+                plan.prepared[key] = entry
         with self.profile.region(plan.copy_in_region):
-            for local, scratch, may_stand_in in plan.slots:
-                value = inputs.get(local)
-                if value is None:
-                    handed.append(scratch)
-                elif (may_stand_in and plan.in_place and type(value) is np.ndarray
-                      and value.base is not None            # a view of kept storage, not a temporary
-                      and local not in outputs and value.dtype == scratch.dtype
-                      and value.flags.f_contiguous and value.shape == scratch.shape[:-1]):
-                    handed.append(value)                # read in place: no copy
-                else:
-                    self._copy_in(scratch, value)
-                    handed.append(scratch)
+            for target, source in entry.copies_in:
+                target[...] = source
         with self.profile.region(plan.run_region):
-            # keyed by address for a caller's array -- the walks slice their
-            # views afresh each call -- and by identity for the scratch
-            key = tuple(id(array) if array is slot[1] else array.ctypes.data
-                        for array, slot in zip(handed, plan.slots))
-            hit = plan.bound.get(key)
-            run = None if hit is None else hit[0]
-            if hit is None:
-                binder = getattr(self.native, "bind_kernel", None)
-                given = [array if array.ndim == scratch.ndim
-                         else np.reshape(array, (*array.shape, 1), order="F")   # a chunk view: chunk axis on
-                         for array, (_, scratch, _) in zip(handed, plan.slots)]
-                if binder is None:                  # a native that cannot bind: the plain call
-                    self.native.run_kernel(name, dict(zip(plan.fields, given)))
-                else:
-                    with self.profile.region(plan.bind_region):
-                        run = self._bind_or_retarget(plan, binder, name, key, given)
-            if run is not None:
-                run()
+            entry.run()
         with self.profile.region(plan.copy_out_region):
-            for local, target in outputs.items():
-                if target is None:
-                    continue
-                self._copy_out(target, self.scratch[local], ncol)
+            for target, source in entry.copies_out:
+                target[...] = source
+
+    def _prepare(self, plan: "_KernelPlan", name: str, inputs: Mapping[str, Any],
+                 outputs: Mapping[str, Any], ncol: int | None,
+                 in_place: Sequence[str] = ()) -> "_PreparedCall":
+        """Resolve one call site: what is copied where, and the call to make."""
+
+        direct: dict[str, np.ndarray] = {}
+        if in_place is ALL_OUTPUTS or tuple(in_place) == ALL_OUTPUTS:
+            in_place = [local for local, target in outputs.items() if target is not None]
+        for local in in_place:
+            target = outputs.get(local)
+            if target is None:
+                raise PhysicsError(f"{name}: {local!r} is to be written in place but is not an output")
+            given = inputs.get(local)
+            if given is not None and given is not target:
+                raise PhysicsError(
+                    f"{name}: {local!r} is to be written in place, but the input handed for it is "
+                    f"not the output's storage")
+            scratch = self.scratch[local]
+            if (type(target) is np.ndarray and target.dtype == scratch.dtype
+                    and target.flags.f_contiguous and target.shape == scratch.shape[:-1]):
+                direct[local] = target
+        handed: list[np.ndarray] = []
+        copies_in: list[tuple[np.ndarray, Any]] = []
+        for local, scratch, may_stand_in in plan.slots:
+            value = inputs.get(local)
+            if local in direct:
+                handed.append(direct[local])        # the storage the original writes: no copies
+            elif value is None:
+                handed.append(scratch)
+            elif (may_stand_in and plan.in_place and type(value) is np.ndarray
+                  and value.base is not None            # a view of kept storage, not a temporary
+                  and local not in outputs and value.dtype == scratch.dtype
+                  and value.flags.f_contiguous and value.shape == scratch.shape[:-1]):
+                handed.append(value)                # read in place: no copy
+            else:
+                array = np.asarray(value)
+                # a scalar fills the whole (1,) scratch; an array fills the chunk lane
+                copies_in.append((scratch if array.ndim == 0 else scratch[..., 0], value))
+                handed.append(scratch)
+        # keyed by address for a caller's array -- the walks slice their
+        # views afresh each call -- and by identity for the scratch
+        address_key = tuple(id(array) if array is slot[1] else array.ctypes.data
+                            for array, slot in zip(handed, plan.slots))
+        hit = plan.bound.get(address_key)
+        run = None if hit is None else hit[0]
+        if hit is None:
+            binder = getattr(self.native, "bind_kernel", None)
+            given = [array if array.ndim == scratch.ndim
+                     else np.reshape(array, (*array.shape, 1), order="F")   # a chunk view: chunk axis on
+                     for array, (_, scratch, _) in zip(handed, plan.slots)]
+            if binder is None:                  # a native that cannot bind: the plain call each time
+                arrays = dict(zip(plan.fields, given))
+                native = self.native
+
+                def run() -> None:
+                    native.run_kernel(name, arrays)
+            else:
+                run = self._bind_or_retarget(plan, binder, name, address_key, given)
+                hit = plan.bound.get(address_key)
+        copies_out: list[tuple[np.ndarray, np.ndarray]] = []
+        for local, target in outputs.items():
+            if target is None or local in direct:
+                continue
+            scratch = self.scratch[local]
+            source = scratch if target.ndim == 0 or target.ndim == scratch.ndim else scratch[..., 0]
+            if ncol is None or target.ndim == 0 or target.shape[0] != self.pcols:
+                copies_out.append((target, source))
+            else:
+                copies_out.append((target[:ncol, ...], source[:ncol, ...]))
+        held = (tuple(inputs.values()), tuple(outputs.values()))
+        return _PreparedCall(tuple(copies_in), run, tuple(copies_out), plan.epoch, held, address_key, hit)
 
     def _bind_or_retarget(self, plan: "_KernelPlan", binder, name: str, key: tuple[int, ...],
                           given: list[np.ndarray]) -> Callable[[], Any]:
@@ -586,10 +759,12 @@ class StageRuntime:
                     current[index] = array
                 plan.bound[key] = (run, current)
                 return run
-            if plan.binds > REBINDS_BEFORE_COPYING and plan.in_place:
-                plan.in_place = False
-                plan.bound.clear()
+        if plan.binds > REBINDS_BEFORE_COPYING and plan.in_place and not plan.retargetable:
+            plan.in_place = False
+            plan.bound.clear()
+            plan.epoch += 1
         run = binder(name, dict(zip(plan.fields, given)))
+        plan.retargetable = getattr(run, "retarget", None) is not None
         plan.bound[key] = (run, list(given))
         return run
 
@@ -1125,6 +1300,21 @@ class NativeStage:
     #: the shorthand is only legal for a single-kernel stage
     PRIMARY: str | None = None
 
+    def describe_call_sites(self) -> dict[str, dict[str, int]]:
+        """Per direct kernel of this stage and its components: calls made,
+        call sites prepared (fast-path misses) and bound calls built."""
+
+        described: dict[str, dict[str, int]] = {}
+        stages = [self, *self.components.values()]
+        for stage in stages:
+            for runtime in stage._runtimes.values():
+                for (name, _), plan in runtime._plans.items():
+                    row = described.setdefault(f"{stage.PREFIX}.{name}", {"calls": 0, "prepared": 0, "binds": 0})
+                    row["calls"] += plan.calls
+                    row["prepared"] += plan.prepares
+                    row["binds"] += plan.binds
+        return described
+
     @property
     def kernel(self):
         """The model in the stage's primary kernel's place."""
@@ -1622,6 +1812,6 @@ class NativeStage:
 
 __all__ = [
     "CORE_ENTRIES", "DESCRIPTORS", "EXECUTION_POLICIES", "HOST_ENTRIES", "HostEntries",
-    "HostServices", "Local", "NativeStage", "PTEND_ENTRIES", "StageExecution", "StageProfile",
+    "ALL_OUTPUTS", "HostServices", "Local", "NativeStage", "PTEND_ENTRIES", "StageExecution", "StageProfile",
     "StageRuntime", "as_view", "check", "fortran", "pointer_of",
 ]
