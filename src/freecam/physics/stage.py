@@ -412,6 +412,10 @@ class _KernelPlan:
     #: calls made, call sites prepared: how often the fast path was missed
     calls: int = 0
     prepares: int = 0
+    #: the last key seen and, per input name, how often a new object arrived
+    #: under it at a site already seen: what still churns, for the record
+    last_key: tuple | None = None
+    churn: dict[str, int] = field(default_factory=dict)
     #: whether this plan's bound calls can be pointed at other arrays (learned
     #: from the first one built); a plan whose calls cannot goes back to
     #: copying after REBINDS_BEFORE_COPYING builds
@@ -671,6 +675,12 @@ class StageRuntime:
         if (entry is None or entry.epoch != plan.epoch
                 or (entry.bound is not None and plan.bound.get(entry.address_key) is not entry.bound)):
             plan.prepares += 1
+            last = plan.last_key
+            if last is not None and last[0] == key[0]:
+                for input_name, now, then in zip(key[0], key[1], last[1]):
+                    if now != then:
+                        plan.churn[input_name] = plan.churn.get(input_name, 0) + 1
+            plan.last_key = key
             with self.profile.region(plan.bind_region):
                 entry = self._prepare(plan, name, inputs, outputs, ncol, in_place)
                 if len(plan.prepared) >= PREPARED_PER_PLAN:
@@ -1338,6 +1348,10 @@ class NativeStage:
                     row["calls"] += plan.calls
                     row["prepared"] += plan.prepares
                     row["binds"] += plan.binds
+                    if plan.churn:
+                        churn = row.setdefault("churn", {})
+                        for input_name, count in plan.churn.items():
+                            churn[input_name] = churn.get(input_name, 0) + count
         return described
 
     @property

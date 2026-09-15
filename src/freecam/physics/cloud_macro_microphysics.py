@@ -449,7 +449,7 @@ class CloudMacroMicrophysics(NativeStage):
 
         # 2188-2208: microp_scheme == 'RK' is refused at attach
         # 2210: cld_macmic_ztodt = ztodt/cld_macmic_num_steps
-        K("mm_substep_dt", {"ztodt": dt, "cld_macmic_num_steps": n},
+        K("mm_substep_dt", {"ztodt": st.kept("ztodt", dt), "cld_macmic_num_steps": n},
           outputs={"cld_macmic_ztodt": None})
         log("mm_substep_dt")
         sub_dt = float(L["cld_macmic_ztodt"][()])

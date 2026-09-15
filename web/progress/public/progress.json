@@ -2648,7 +2648,7 @@
   "use_gw_oro": true,
   "use_subcol_microp": false
  },
- "content_hash": "0bab2b197a2e3179d1a442a7a22f61b0a3c6237e0736ab40c4c23eb7220b04a9",
+ "content_hash": "c5532533dae8cfdd6c2a9d52038d708f8f941fbcf5dbb5cf578751eb961c2a1e",
  "evidence": {
   "pi_cam_cldfrc_fice_frame_replay.json": {
    "bfb": true,
@@ -4928,6 +4928,25 @@
    "steps_completed": 0,
    "what": "The macrophysics block answered by the core NumPy network, the microphysics original, on the final code of the round; resubmission of p27-cloud-macro-core3."
   },
+  "pi_cam_pausable_p28-cloud-walk4_50step_failure.json": {
+   "diagnosis": "a Python error of the new churn attribution in StageRuntime.kernel_on_chunk: the loop over a call site's input names reused the method's own `name` variable, so the kernel bound afterwards was asked for under an input's name.  The unit tests caught it (8 failures) but the gate had been submitted on a guard that matched the word passed in a line that also said failed.",
+   "image": {
+    "build": "pi_cam_promoted_p28",
+    "role": "development",
+    "sha256": null
+   },
+   "kind": "gate-failure",
+   "outcome": "every rank failed at its first kernel call of step 1: NativeCAMError unknown direct CAM kernel (1022 tracebacks); no history, no summary",
+   "pbs_job": "7475521",
+   "python_stages": [
+    "cloud_macro_microphysics"
+   ],
+   "ranks": 512,
+   "record": "pi_cam_pausable_p28-cloud-walk4_50step_failure.json",
+   "run_tag": "p28-cloud-walk4",
+   "steps_completed": 0,
+   "what": "The walk on p28 with the step's scalar kept as an object at its two call sites and the record naming the inputs that churn at a re-resolved call site."
+  },
   "pi_cam_pausable_rad-both-pause_50step.json": {
    "advance_seconds": 16.3,
    "cloud_macro_micro_python": false,
@@ -5857,6 +5876,14 @@
    "record": "pi_cam_pausable_p27-cloud-macro-core4_50step_failure.json"
   },
   {
+   "capability": "original_replacement_bfb",
+   "contexts": [
+    "cam_run1.cloud_macro_microphysics"
+   ],
+   "kernel_routine": null,
+   "record": "pi_cam_pausable_p28-cloud-walk4_50step_failure.json"
+  },
+  {
    "capability": "standalone_replay",
    "contexts": [],
    "kernel_routine": null,
@@ -5885,7 +5912,7 @@
   "validation/pi_cam_kernel_api_redirectable_calls.json": "b97f6f7f8f7099cb42e9cebcde6102f9d4d05d17852ba7a5495b29edb1d4fbaf",
   "validation/pi_cam_kernel_runtime_coverage_1month.json": "48f77d6ec78b4026806d4ab6fb9517ef31c1d526481b4ad68e55f77af0d303bd",
   "validation/pi_cam_kernel_runtime_coverage_50step.json": "222961fc5274dbaaf71c40f6c131a683536b5a85ef14cd047a2fd196d8ca38c5",
-  "web/public/catalog.json": "3b686ff7539e8486391fc7f158a9fb5c8ae823645cdada6b86397f262768c550"
+  "web/public/catalog.json": "ab22875adc82bcf5f7aa746b343c2fec1669fae3524307c25d709882a0b301cd"
  },
  "kernels": {
   "aer_rad_props::aer_rad_props_lw": {
@@ -73467,8 +73494,8 @@
  ],
  "volatile": {
   "branch": "radiation-torchscript-slot",
-  "commit": "a3e71e6611e123153c70b695af2b1985631a37bc",
-  "generated_at": "2026-09-15T18:59:49+00:00"
+  "commit": "237dce3c3f53a0dca19ac22c2158d247de7e9c74",
+  "generated_at": "2026-09-15T19:06:15+00:00"
  },
  "work_items": [
   {

@@ -1330,6 +1330,7 @@ Python.
 | 7474686 | the drivers' state copies kept between calls (image p28) | 3.09 s | 17.01 s | 486 |
 | 7475341 | the step's inverse and the tracer index slices kept as objects | 3.08 s | 17.06 s | 440 |
 | 7475430 | a buffer view kept per time plane, so the alternating plane is not a new object | 3.06 s | 16.98 s | 455 |
+| 7475549 | the step's scalar kept as an object at its two call sites; the record names what churns | 3.06 s | 17.20 s | 395 |
 
 Every run is bit-for-bit with the oracle.  What each change removed:
 
@@ -1376,11 +1377,14 @@ walk with every output in place (7474415) puts the Fortran regions at
 everything above that is Python around fifty-one kernel calls and about
 two hundred and forty view probes a chunk: the call sites still resolved
 again (the tendency object the driver allocates and frees around each
-kernel, about 450 of the 5,100 calls a rank per fifty steps), the probe a view costs even when the storage
+kernel, and two sites handed the step counter and the surface lanes,
+which the record's `call_sites.churn` now names: about 400 of the 5,100
+calls a rank per fifty steps, a few hundredths of a second), the probe a view costs even when the storage
 has not moved (about 0.2 s), the driver's timer and trace record around
 each bound kernel (about 0.1 s), the walks' own statements (about 0.1 s).
 The walk stands at 3.06 s a rank for the stage against 1.96 and
-16.98 s for the step loop against 16.00 on the same image (7474687) --
+16.98 to 17.20 s for the step loop in two runs against 16.00 on the same
+image (7474687) --
 half of the fine-grained path's overhead removed (2.07 s to 1.10), the
 loop within six percent of the Fortran's where it was fourteen -- with every kernel call site still a slot a model can take.
 Two levers remain and are not free: one Fortran entry that answers every

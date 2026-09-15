@@ -1149,3 +1149,17 @@ def test_a_kept_scalar_is_the_same_object_while_equal_and_a_constant_is_made_onc
     cube = np.zeros((3, 4))
     assert runtime.once("slice", lambda: (made.append(1), cube[:, 1])[1]) is runtime.once("slice", lambda: cube[:, 2])
     assert made == [1]
+
+
+def test_the_record_names_the_inputs_that_churn_at_a_call_site(widget) -> None:
+    widget.bind_kernel = lambda name, arrays: (lambda: None)
+    stage = Widget()
+    runtime = stage.runtime(widget)
+    x = np.zeros((PCOLS, PVER, 1), order="F")[:, :, 0]
+    for step in range(4):                                     # the scalar is a new object every call
+        runtime.kernel_on_chunk("widget_step", {"x": x, "ncol": np.int32(6)}, outputs={})
+    sites = stage.describe_call_sites()
+    row = sites["widget.widget_step"]
+    assert row["calls"] == 4 and row["prepared"] == 4 and row["churn"] == {"ncol": 3}
+    (plan,) = runtime._plans.values()
+    assert plan.prepared and all(entry.run is not None for entry in plan.prepared.values())   # the kernel's own name, not an input's

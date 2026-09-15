@@ -715,7 +715,7 @@ class Macrophysics(NativeStage):
         state_pmid = S.view(lchnk, VIEW["state_pmid"])
         state_pdel = S.view(lchnk, VIEW["state_pdel"])
         inputs = {
-            "lchnk": lchnk, "ncol": ncol, "dt": dt, "p": state_pmid, "dp": state_pdel,
+            "lchnk": lchnk, "ncol": ncol, "dt": st.kept("dt", dt), "p": state_pmid, "dp": state_pdel,
             "t0": None, "qv0": None, "ql0": None, "qi0": None, "nl0": None, "ni0": None,
             "a_t": None, "a_qv": None, "a_ql": None, "a_qi": None, "a_nl": None, "a_ni": None,
             "c_t": pbv["CC_T"], "c_qv": pbv["CC_qv"], "c_ql": pbv["CC_ql"], "c_qi": pbv["CC_qi"],
