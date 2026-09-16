@@ -32,6 +32,41 @@ pause) still bit-for-bit; per hook, a null plugin bound in shadow (the
 original answers, the plugin's cost is timed) bit-for-bit.  `virtem` is a
 function, not a subroutine, and costs 13 µs a call; it keeps its pause.
 
+Batch A on image p29 (2026-09-16): nothing armed, bit-for-bit, step loop
+16.18 s a rank (`validation/pi_cam_pausable_p29-nothing-armed_50step.json`;
+the hooks cost nothing); everything through the pauses, bit-for-bit, 43.79 s,
+kernel costs as on p28 (`..._p29-everything-timers_50step.json`).  The shadow
+gates taught two things first: 512 ranks compiling a 57-argument plugin at
+once need about 30 GB a node more than the run, so the shadow jobs ask 200 GB
+a node (two runs killed at the 256 GB cap, failure records kept); and a
+shadow gate that is bit-for-bit can still test nothing -- the command line
+attached models to a pausable stage after installing its process, whose
+pickled copy kept empty slots, so the stage ran the original whole
+(`..._compute_uwshcu_inv-shadow_50step_failure.json`; fixed, with a test).
+Every shadow gate then passed bit-for-bit with the plugin running on every
+call of every chunk from the first step the class is attached (the stage in
+`native-model` mode, 51200 plugin calls over 512 ranks).  The plugin path's
+own cost -- the hook's argument tables, the Numba adapter, the call, the
+write-back, with a plugin that writes zeros -- summed over the ranks and
+divided by the calls:
+
+| hook | job | plugin calls | plugin path, µs a call | original, µs a call | overhead |
+| --- | --- | --- | --- | --- | --- |
+| `compute_tms` | 7484398 | 51200 | 3 | 17 | 19% |
+| `compute_uwshcu_inv` | 7484397 | 51200 | 686 | 6578 | 10% |
+| `mmacro_pcond` | 7484216 | 51200 | 88 | 1975 | 4% |
+| `zm_conv_evap` | 7484399 | 51200 | 40 | 37 | 108% |
+| `momtran` | 7484400 | 51200 | 26 | 30 | 86% |
+| `zm_convr` | 7484401 | 51200 | 152 | 1545 | 10% |
+| `compute_eddy_diff` | 7484402 | 51200 | 21 | 1383 | 1% |
+
+The path costs by the size of the argument list, not the kernel: a few
+microseconds for compute_tms's fourteen arguments, 0.7 ms for the shallow
+scheme's fifty (twenty-nine of them two- or three-dimensional).  Against the
+expensive kernels that is ten per cent or less; for the cheap ones the path
+costs as much as the kernel, which is the argument for replacing the process
+rather than a 30 µs kernel inside it.
+
 ## 2. History for the coarse slots
 
 A block model or a replay of `macro_microphysics` or of the radiation

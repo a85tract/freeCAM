@@ -2648,7 +2648,7 @@
   "use_gw_oro": true,
   "use_subcol_microp": false
  },
- "content_hash": "5f4f777a5b2c076aecd65ad4f42bec6a2ca20c777bce8467c55bc8e8651c39ae",
+ "content_hash": "fdac2a3741cd8a695930d89fd1f7e93f8154ecf1dd6dfaee77e40c5aa59348e3",
  "evidence": {
   "pi_cam_cldfrc_fice_frame_replay.json": {
    "bfb": true,
@@ -5251,6 +5251,93 @@
    "steps_completed": 0,
    "what": "The walk on p28 with the step's scalar kept as an object at its two call sites and the record naming the inputs that churn at a re-resolved call site."
   },
+  "pi_cam_pausable_p29-compute_uwshcu_inv-shadow_50step_failure.json": {
+   "diagnosis": "the command line attached kernel models to a pausable stage after installing its tend as a process; installing pickles the bound method, so the installed copy kept empty slots.  The cloud stage's branch attaches before installing, which is why every earlier shadow gate (all on the cloud stage) passed.  No pausable stage had run in native-model mode before this gate.",
+   "image": {
+    "build": "pi_cam_promoted_p29",
+    "role": "development",
+    "sha256": null
+   },
+   "kind": "gate-failure",
+   "outcome": "the gate did not test what it claims: the plugin was loaded (kernel_models) but the shallow_convection stage ran the original whole",
+   "pbs_job": "7484217",
+   "python_stages": [
+    "dry_adjustment",
+    "shallow_convection",
+    "deep_convection",
+    "convective_tracer_transport_leaf",
+    "vertical_diffusion",
+    "gravity_wave_drag",
+    "aerosol_wet_deposition_leaf",
+    "aerosol_dry_deposition_leaf",
+    "chemistry_tendencies_leaf",
+    "radiation",
+    "cloud_macro_microphysics"
+   ],
+   "ranks": 512,
+   "record": "pi_cam_pausable_p29-compute_uwshcu_inv-shadow_50step_failure.json",
+   "run_tag": "p29-compute_uwshcu_inv-shadow",
+   "steps_completed": 50,
+   "what": "50-step gate of a null Numba plugin bound in shadow at the compute_uwshcu_inv hook (the original answers; the plugin's cost is timed), rerun with 200 GB a node after the memory-capped attempt"
+  },
+  "pi_cam_pausable_p29-compute_uwshcu_inv-shadow_50step_failure_memory.json": {
+   "diagnosis": "the base run uses about 230 GB of the 256 GB requested (4 x 64 GB); the Numba compile of a plugin with 57 arguments peaks near 260 MB a process on the login node, about 30 GB more a node at 128 ranks, which crossed the limit.  Not a hook fault: the nothing-armed and everything gates on the same image are bit-for-bit.",
+   "image": {
+    "build": "pi_cam_promoted_p29",
+    "role": "development",
+    "sha256": null
+   },
+   "kind": "gate-failure",
+   "outcome": "killed at the memory limit during step 1, when every rank compiled the plugin (forrtl error 78, process killed; two ranks also hit an LLVM assertion in Value::getValueName)",
+   "pbs_job": "7484090",
+   "python_stages": [
+    "dry_adjustment",
+    "shallow_convection",
+    "deep_convection",
+    "convective_tracer_transport_leaf",
+    "vertical_diffusion",
+    "gravity_wave_drag",
+    "aerosol_wet_deposition_leaf",
+    "aerosol_dry_deposition_leaf",
+    "chemistry_tendencies_leaf",
+    "radiation",
+    "cloud_macro_microphysics"
+   ],
+   "ranks": 512,
+   "record": "pi_cam_pausable_p29-compute_uwshcu_inv-shadow_50step_failure_memory.json",
+   "run_tag": "p29-compute_uwshcu_inv-shadow",
+   "steps_completed": 1,
+   "what": "50-step gate of a null Numba plugin bound in shadow at the compute_uwshcu_inv hook (the original answers; the plugin's cost is timed), on the first image carrying the batch-A hooks"
+  },
+  "pi_cam_pausable_p29-mmacro_pcond-shadow_50step_failure.json": {
+   "diagnosis": "the base run uses about 230 GB of the 256 GB requested (4 x 64 GB); the Numba compile of a plugin with 57 arguments peaks near 260 MB a process on the login node, about 30 GB more a node at 128 ranks, which crossed the limit.  Not a hook fault: the nothing-armed and everything gates on the same image are bit-for-bit.",
+   "image": {
+    "build": "pi_cam_promoted_p29",
+    "role": "development",
+    "sha256": null
+   },
+   "kind": "gate-failure",
+   "outcome": "killed at the memory limit during step 1, when every rank compiled the plugin (forrtl error 78, process killed; two ranks also hit an LLVM assertion in Value::getValueName)",
+   "pbs_job": "7484089",
+   "python_stages": [
+    "dry_adjustment",
+    "shallow_convection",
+    "deep_convection",
+    "convective_tracer_transport_leaf",
+    "vertical_diffusion",
+    "gravity_wave_drag",
+    "aerosol_wet_deposition_leaf",
+    "aerosol_dry_deposition_leaf",
+    "chemistry_tendencies_leaf",
+    "radiation",
+    "cloud_macro_microphysics"
+   ],
+   "ranks": 512,
+   "record": "pi_cam_pausable_p29-mmacro_pcond-shadow_50step_failure.json",
+   "run_tag": "p29-mmacro_pcond-shadow",
+   "steps_completed": 1,
+   "what": "50-step gate of a null Numba plugin bound in shadow at the mmacro_pcond hook (the original answers; the plugin's cost is timed), on the first image carrying the batch-A hooks"
+  },
   "pi_cam_pausable_rad-both-pause_50step.json": {
    "advance_seconds": 16.3,
    "cloud_macro_micro_python": false,
@@ -6316,6 +6403,60 @@
    "record": "pi_cam_pausable_p28-cloud-walk4_50step_failure.json"
   },
   {
+   "capability": "original_replacement_bfb",
+   "contexts": [
+    "cam_run1.dry_adjustment",
+    "cam_run1.shallow_convection",
+    "cam_run1.deep_convection",
+    "cam_run1.convective_tracer_transport_leaf",
+    "cam_run2.vertical_diffusion",
+    "cam_run2.gravity_wave_drag",
+    "cam_run1.aerosol_wet_deposition_leaf",
+    "cam_run2.aerosol_dry_deposition_leaf",
+    "cam_run2.chemistry_tendencies_leaf",
+    "cam_run1.radiation",
+    "cam_run1.cloud_macro_microphysics"
+   ],
+   "kernel_routine": null,
+   "record": "pi_cam_pausable_p29-compute_uwshcu_inv-shadow_50step_failure.json"
+  },
+  {
+   "capability": "original_replacement_bfb",
+   "contexts": [
+    "cam_run1.dry_adjustment",
+    "cam_run1.shallow_convection",
+    "cam_run1.deep_convection",
+    "cam_run1.convective_tracer_transport_leaf",
+    "cam_run2.vertical_diffusion",
+    "cam_run2.gravity_wave_drag",
+    "cam_run1.aerosol_wet_deposition_leaf",
+    "cam_run2.aerosol_dry_deposition_leaf",
+    "cam_run2.chemistry_tendencies_leaf",
+    "cam_run1.radiation",
+    "cam_run1.cloud_macro_microphysics"
+   ],
+   "kernel_routine": null,
+   "record": "pi_cam_pausable_p29-compute_uwshcu_inv-shadow_50step_failure_memory.json"
+  },
+  {
+   "capability": "original_replacement_bfb",
+   "contexts": [
+    "cam_run1.dry_adjustment",
+    "cam_run1.shallow_convection",
+    "cam_run1.deep_convection",
+    "cam_run1.convective_tracer_transport_leaf",
+    "cam_run2.vertical_diffusion",
+    "cam_run2.gravity_wave_drag",
+    "cam_run1.aerosol_wet_deposition_leaf",
+    "cam_run2.aerosol_dry_deposition_leaf",
+    "cam_run2.chemistry_tendencies_leaf",
+    "cam_run1.radiation",
+    "cam_run1.cloud_macro_microphysics"
+   ],
+   "kernel_routine": null,
+   "record": "pi_cam_pausable_p29-mmacro_pcond-shadow_50step_failure.json"
+  },
+  {
    "capability": "standalone_replay",
    "contexts": [],
    "kernel_routine": null,
@@ -6344,7 +6485,7 @@
   "validation/pi_cam_kernel_api_redirectable_calls.json": "b97f6f7f8f7099cb42e9cebcde6102f9d4d05d17852ba7a5495b29edb1d4fbaf",
   "validation/pi_cam_kernel_runtime_coverage_1month.json": "48f77d6ec78b4026806d4ab6fb9517ef31c1d526481b4ad68e55f77af0d303bd",
   "validation/pi_cam_kernel_runtime_coverage_50step.json": "222961fc5274dbaaf71c40f6c131a683536b5a85ef14cd047a2fd196d8ca38c5",
-  "web/public/catalog.json": "c25ef1c4033aca4f306dc554a7d6910d5ca4df03ba1abdbd97aa44252d61d477"
+  "web/public/catalog.json": "5d20438e3af0ac18842aee054ebd884bd8edcaf514836851d48905675062d9fa"
  },
  "kernels": {
   "aer_rad_props::aer_rad_props_lw": {
@@ -73936,8 +74077,8 @@
  ],
  "volatile": {
   "branch": "radiation-torchscript-slot",
-  "commit": "19503f5fc1cd668d8836b57144b53283d1a5f243",
-  "generated_at": "2026-09-16T04:52:03+00:00"
+  "commit": "abb256a37b5278eaf20e818a473525f5ad682f98",
+  "generated_at": "2026-09-16T16:11:05+00:00"
  },
  "work_items": [
   {
