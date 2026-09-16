@@ -1,0 +1,170 @@
+# Function contract for compute_tms, the turbulent mountain stress
+# (trb_mtn_stress.F90): the surface drag coefficient and the two stress
+# components from the layer winds, temperature, pressure, Exner function,
+# height and the orographic standard deviation.
+#
+# Drawn from the source by tools/draft_pi_cam_function_spec.py and reviewed
+# for the hook the image puts on the routine (native/pi_cam/hooks.yaml): the
+# argument list, kinds, ranks, intents and extents are the routine's own, the
+# extents named by its integer dummies pcols and pver.  The routine reads the
+# module's tunables (the stress coefficient, the roughness parameters) from
+# their own storage, untouched by the hook; no standalone image is built from
+# this contract, so its parameter, module-state and image blocks are minimal.
+#
+schema_version: 1
+function: compute_tms
+qualified_name: trb_mtn_stress::compute_tms
+routine: compute_tms
+source: components/cam/src/physics/cam/trb_mtn_stress.F90
+module: trb_mtn_stress
+binding: module
+layout: column
+dimensions: {pcols: 16, pver: 30}
+public_axes: {pver: lev}
+arguments:
+- name: pcols
+  role: structural
+  fortran_type: integer
+  dtype: int32
+  rank: 0
+  intent: in
+  native_shape: []
+  description: Number of columns dimensioned
+  value: 16
+- name: pver
+  role: structural
+  fortran_type: integer
+  dtype: int32
+  rank: 0
+  intent: in
+  native_shape: []
+  description: Number of model layers
+  value: 30
+- name: ncol
+  role: input
+  fortran_type: integer
+  dtype: int32
+  rank: 0
+  intent: in
+  native_shape: []
+  description: Number of columns actually used; the live count, the hook takes it as an integer input.
+  public_shape: []
+- name: u
+  role: input
+  fortran_type: real
+  dtype: float64
+  rank: 2
+  intent: in
+  native_shape: [pcols, pver]
+  public_shape: [pver]
+  units: m/s
+  description: Layer mid-point zonal wind
+- name: v
+  role: input
+  fortran_type: real
+  dtype: float64
+  rank: 2
+  intent: in
+  native_shape: [pcols, pver]
+  public_shape: [pver]
+  units: m/s
+  description: Layer mid-point meridional wind
+- name: t
+  role: input
+  fortran_type: real
+  dtype: float64
+  rank: 2
+  intent: in
+  native_shape: [pcols, pver]
+  public_shape: [pver]
+  units: K
+  description: Layer mid-point temperature
+- name: pmid
+  role: input
+  fortran_type: real
+  dtype: float64
+  rank: 2
+  intent: in
+  native_shape: [pcols, pver]
+  public_shape: [pver]
+  units: Pa
+  description: Layer mid-point pressure
+- name: exner
+  role: input
+  fortran_type: real
+  dtype: float64
+  rank: 2
+  intent: in
+  native_shape: [pcols, pver]
+  public_shape: [pver]
+  units: no unit
+  description: Layer mid-point exner function
+- name: zm
+  role: input
+  fortran_type: real
+  dtype: float64
+  rank: 2
+  intent: in
+  native_shape: [pcols, pver]
+  public_shape: [pver]
+  units: m
+  description: Layer mid-point height
+- name: sgh
+  role: input
+  fortran_type: real
+  dtype: float64
+  rank: 1
+  intent: in
+  native_shape: [pcols]
+  public_shape: []
+  units: m
+  description: Standard deviation of orography
+- name: ksrf
+  role: output
+  fortran_type: real
+  dtype: float64
+  rank: 1
+  intent: out
+  native_shape: [pcols]
+  public_shape: []
+  units: kg/s/m2
+  description: Surface drag coefficient
+- name: taux
+  role: output
+  fortran_type: real
+  dtype: float64
+  rank: 1
+  intent: out
+  native_shape: [pcols]
+  public_shape: []
+  units: N/m2
+  description: Surface zonal      wind stress
+- name: tauy
+  role: output
+  fortran_type: real
+  dtype: float64
+  rank: 1
+  intent: out
+  native_shape: [pcols]
+  public_shape: []
+  units: N/m2
+  description: Surface meridional wind stress
+- name: landfrac
+  role: input
+  fortran_type: real
+  dtype: float64
+  rank: 1
+  intent: in
+  native_shape: [pcols]
+  public_shape: []
+  units: fraction
+  description: Land fraction
+parameters: {}
+module_state: []
+image:
+  archive_members: [trb_mtn_stress.o, physconst.o, ppgrid.o]
+  stubs:
+    inert: []
+    fail_closed: []
+    abort: []
+  base_address: 1342177280

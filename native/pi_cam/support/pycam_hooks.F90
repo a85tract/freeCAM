@@ -19,7 +19,7 @@ module pycam_hooks
             pycam_hooks_bind_model_v1, pycam_hooks_unbind_model_v1, pycam_hooks_modeled_v1, &
             pycam_hooks_model_seconds_v1, pycam_hooks_bind_plugin_v1
 
-  integer, parameter :: nhooks = 4
+  integer, parameter :: nhooks = 5
   integer(c_int), parameter :: ev_needs_kernel = 1_c_int
   integer, parameter :: max_slots = 29
   integer, parameter :: max_rank = 5
@@ -27,15 +27,16 @@ module pycam_hooks
   character(len=*), parameter :: name_2 = 'fluxbelowinv'
   character(len=*), parameter :: name_3 = 'instratus_condensate'
   character(len=*), parameter :: name_4 = 'micro_mg_tend'
+  character(len=*), parameter :: name_5 = 'compute_tms'
 
   logical, save :: armed(nhooks) = .false.
   integer(c_int64_t), save :: calls(nhooks) = 0_c_int64_t
   integer(c_int64_t), save :: paused(nhooks) = 0_c_int64_t
   integer(c_int64_t), save :: missed(nhooks) = 0_c_int64_t
   ! TorchScript models bound at hooks whose table entry has a model block
-  logical, parameter :: has_model(nhooks) = (/ .true., .false., .true., .true. /)
+  logical, parameter :: has_model(nhooks) = (/ .true., .false., .true., .true., .true. /)
   ! bind(C) hooks carry a frame and can pause for Python; Fortran-bound hooks cannot
-  logical, parameter :: can_pause(nhooks) = (/ .true., .true., .true., .false. /)
+  logical, parameter :: can_pause(nhooks) = (/ .true., .true., .true., .false., .false. /)
   logical, save :: modeled(nhooks) = .false.
   ! shadow: the bound model runs on every call and its answer is discarded; the original answers.
   ! The run stays bit-for-bit and the stage's extra time is the model path's cost alone.
@@ -2945,6 +2946,239 @@ contains
     call torch_delete(out_t)
   end subroutine warm_micro_mg_tend
 
+  subroutine hook_compute_tms(pcols, pver, ncol, u, v, t, pmid, exner, zm, sgh, ksrf, taux, tauy, landfrac)
+    ! trb_mtn_stress::compute_tms, as its redirected callers call it; rename-references, Fortran-bound
+    integer(c_int), intent(in) :: pcols
+    integer(c_int), intent(in) :: pver
+    integer(c_int), intent(in) :: ncol
+    real(c_double), intent(in), target :: u(pcols, pver)
+    real(c_double), intent(in), target :: v(pcols, pver)
+    real(c_double), intent(in), target :: t(pcols, pver)
+    real(c_double), intent(in), target :: pmid(pcols, pver)
+    real(c_double), intent(in), target :: exner(pcols, pver)
+    real(c_double), intent(in), target :: zm(pcols, pver)
+    real(c_double), intent(in), target :: sgh(pcols)
+    real(c_double), intent(out), target :: ksrf(pcols)
+    real(c_double), intent(out), target :: taux(pcols)
+    real(c_double), intent(out), target :: tauy(pcols)
+    real(c_double), intent(in), target :: landfrac(pcols)
+    integer(c_int64_t) :: h0, h1
+    calls(5) = calls(5) + 1_c_int64_t
+    if (modeled(5)) then
+      answered(5) = answered(5) + 1_c_int64_t
+      call system_clock(h0)
+      call model_compute_tms(pcols, pver, ncol, u, v, t, pmid, exner, zm, sgh, ksrf, taux, tauy, landfrac)
+      call system_clock(h1)
+      hook_ticks(5) = hook_ticks(5) + (h1 - h0)
+      if (answered(5) == 1_c_int64_t) first_ticks(5) = h1 - h0
+      if (.not. shadow(5)) return
+      ! shadow: the model ran for its cost alone; the original answers, and is timed too
+      call system_clock(h0)
+      call original_compute_tms(pcols, pver, ncol, u, v, t, pmid, exner, zm, sgh, ksrf, taux, tauy, landfrac)
+      call system_clock(h1)
+      original_ticks(5) = original_ticks(5) + (h1 - h0)
+      return
+    end if
+    call original_compute_tms(pcols, pver, ncol, u, v, t, pmid, exner, zm, sgh, ksrf, taux, tauy, landfrac)
+  end subroutine hook_compute_tms
+
+  subroutine original_compute_tms(pcols, pver, ncol, u, v, t, pmid, exner, zm, sgh, ksrf, taux, tauy, landfrac)
+    use trb_mtn_stress, only: compute_tms
+    integer(c_int), intent(in) :: pcols
+    integer(c_int), intent(in) :: pver
+    integer(c_int), intent(in) :: ncol
+    real(c_double), intent(in) :: u(pcols, pver)
+    real(c_double), intent(in) :: v(pcols, pver)
+    real(c_double), intent(in) :: t(pcols, pver)
+    real(c_double), intent(in) :: pmid(pcols, pver)
+    real(c_double), intent(in) :: exner(pcols, pver)
+    real(c_double), intent(in) :: zm(pcols, pver)
+    real(c_double), intent(in) :: sgh(pcols)
+    real(c_double), intent(out) :: ksrf(pcols)
+    real(c_double), intent(out) :: taux(pcols)
+    real(c_double), intent(out) :: tauy(pcols)
+    real(c_double), intent(in) :: landfrac(pcols)
+    call compute_tms(pcols, pver, ncol, u, v, t, pmid, exner, zm, sgh, ksrf, taux, tauy, landfrac)
+  end subroutine original_compute_tms
+
+  subroutine model_compute_tms(pcols, pver, ncol, u, v, t, pmid, exner, zm, sgh, ksrf, taux, tauy, landfrac)
+    ! trb_mtn_stress::compute_tms answered by the model bound at hook 5, inside the image
+    integer(c_int), intent(in) :: pcols
+    integer(c_int), intent(in) :: pver
+    integer(c_int), intent(in) :: ncol
+    real(c_double), intent(in), target :: u(pcols, pver)
+    real(c_double), intent(in), target :: v(pcols, pver)
+    real(c_double), intent(in), target :: t(pcols, pver)
+    real(c_double), intent(in), target :: pmid(pcols, pver)
+    real(c_double), intent(in), target :: exner(pcols, pver)
+    real(c_double), intent(in), target :: zm(pcols, pver)
+    real(c_double), intent(in), target :: sgh(pcols)
+    real(c_double), intent(out), target :: ksrf(pcols)
+    real(c_double), intent(out), target :: taux(pcols)
+    real(c_double), intent(out), target :: tauy(pcols)
+    real(c_double), intent(in), target :: landfrac(pcols)
+    type(torch_tensor) :: in_t(9), out_t(3)
+    type(c_ptr) :: in_p(9), out_p(3)
+    integer(c_int64_t) :: in_s(3, 9), out_s(3, 3)
+    procedure(plugin_interface), pointer :: plugin => null()
+    integer(c_int) :: plugin_status
+    real(c_double), target :: s_ncol(1)
+    real(c_double), pointer, contiguous :: sp_ncol(:)
+    real(c_double), pointer, contiguous :: v_u(:,:)
+    real(c_double), pointer, contiguous :: v_v(:,:)
+    real(c_double), pointer, contiguous :: v_t(:,:)
+    real(c_double), pointer, contiguous :: v_pmid(:,:)
+    real(c_double), pointer, contiguous :: v_exner(:,:)
+    real(c_double), pointer, contiguous :: v_zm(:,:)
+    real(c_double), pointer, contiguous :: v_sgh(:)
+    real(c_double), pointer, contiguous :: v_landfrac(:)
+    real(c_double), target :: o_ksrf(pcols)
+    real(c_double), pointer, contiguous :: op_ksrf(:)
+    real(c_double), pointer, contiguous :: w_ksrf(:)
+    real(c_double), target :: o_taux(pcols)
+    real(c_double), pointer, contiguous :: op_taux(:)
+    real(c_double), pointer, contiguous :: w_taux(:)
+    real(c_double), target :: o_tauy(pcols)
+    real(c_double), pointer, contiguous :: op_tauy(:)
+    real(c_double), pointer, contiguous :: w_tauy(:)
+    integer :: n
+    integer(c_int64_t) :: t0, t1, t2
+    call system_clock(t0)
+    s_ncol(1) = real(ncol, c_double)
+    sp_ncol => s_ncol
+    in_p(1) = c_loc(s_ncol); in_s(:, 1) = (/ 1_c_int64_t, 0_c_int64_t, 0_c_int64_t /)
+    if (.not. plugged(5)) call torch_tensor_from_array(in_t(1), sp_ncol, torch_kCPU)
+    call c_f_pointer(c_loc(u), v_u, (/ pcols, pver /))
+    in_p(2) = c_loc(u); in_s(:, 2) = (/ int(pcols, c_int64_t), int(pver, c_int64_t), 0_c_int64_t /)
+    if (.not. plugged(5)) call torch_tensor_from_array(in_t(2), v_u, torch_kCPU)
+    call c_f_pointer(c_loc(v), v_v, (/ pcols, pver /))
+    in_p(3) = c_loc(v); in_s(:, 3) = (/ int(pcols, c_int64_t), int(pver, c_int64_t), 0_c_int64_t /)
+    if (.not. plugged(5)) call torch_tensor_from_array(in_t(3), v_v, torch_kCPU)
+    call c_f_pointer(c_loc(t), v_t, (/ pcols, pver /))
+    in_p(4) = c_loc(t); in_s(:, 4) = (/ int(pcols, c_int64_t), int(pver, c_int64_t), 0_c_int64_t /)
+    if (.not. plugged(5)) call torch_tensor_from_array(in_t(4), v_t, torch_kCPU)
+    call c_f_pointer(c_loc(pmid), v_pmid, (/ pcols, pver /))
+    in_p(5) = c_loc(pmid); in_s(:, 5) = (/ int(pcols, c_int64_t), int(pver, c_int64_t), 0_c_int64_t /)
+    if (.not. plugged(5)) call torch_tensor_from_array(in_t(5), v_pmid, torch_kCPU)
+    call c_f_pointer(c_loc(exner), v_exner, (/ pcols, pver /))
+    in_p(6) = c_loc(exner); in_s(:, 6) = (/ int(pcols, c_int64_t), int(pver, c_int64_t), 0_c_int64_t /)
+    if (.not. plugged(5)) call torch_tensor_from_array(in_t(6), v_exner, torch_kCPU)
+    call c_f_pointer(c_loc(zm), v_zm, (/ pcols, pver /))
+    in_p(7) = c_loc(zm); in_s(:, 7) = (/ int(pcols, c_int64_t), int(pver, c_int64_t), 0_c_int64_t /)
+    if (.not. plugged(5)) call torch_tensor_from_array(in_t(7), v_zm, torch_kCPU)
+    call c_f_pointer(c_loc(sgh), v_sgh, (/ pcols /))
+    in_p(8) = c_loc(sgh); in_s(:, 8) = (/ int(pcols, c_int64_t), 0_c_int64_t, 0_c_int64_t /)
+    if (.not. plugged(5)) call torch_tensor_from_array(in_t(8), v_sgh, torch_kCPU)
+    call c_f_pointer(c_loc(landfrac), v_landfrac, (/ pcols /))
+    in_p(9) = c_loc(landfrac); in_s(:, 9) = (/ int(pcols, c_int64_t), 0_c_int64_t, 0_c_int64_t /)
+    if (.not. plugged(5)) call torch_tensor_from_array(in_t(9), v_landfrac, torch_kCPU)
+    op_ksrf => o_ksrf
+    out_p(1) = c_loc(o_ksrf); out_s(:, 1) = (/ int(pcols, c_int64_t), 0_c_int64_t, 0_c_int64_t /)
+    if (.not. plugged(5)) call torch_tensor_from_array(out_t(1), op_ksrf, torch_kCPU)
+    op_taux => o_taux
+    out_p(2) = c_loc(o_taux); out_s(:, 2) = (/ int(pcols, c_int64_t), 0_c_int64_t, 0_c_int64_t /)
+    if (.not. plugged(5)) call torch_tensor_from_array(out_t(2), op_taux, torch_kCPU)
+    op_tauy => o_tauy
+    out_p(3) = c_loc(o_tauy); out_s(:, 3) = (/ int(pcols, c_int64_t), 0_c_int64_t, 0_c_int64_t /)
+    if (.not. plugged(5)) call torch_tensor_from_array(out_t(3), op_tauy, torch_kCPU)
+    call system_clock(t1)
+    if (plugged(5)) then
+      ! a compiled plugin: the same arrays as pointer and extent tables, outputs zeroed first
+      o_ksrf = 0.0_c_double
+      o_taux = 0.0_c_double
+      o_tauy = 0.0_c_double
+      call c_f_procpointer(plugins(5), plugin)
+      plugin_status = plugin(9_c_int, in_p, in_s, 3_c_int, out_p, out_s)
+      if (plugin_status /= 0_c_int) error stop 'pycam_hooks: the plugin bound at compute_tms returned a non-zero status'
+    else
+      call torch_model_forward(models(5), in_t, out_t)
+    end if
+    call system_clock(t2)
+    forward_ticks(5) = forward_ticks(5) + (t2 - t1)
+    if (.not. shadow(5)) then
+      n = min(int(ncol), pcols)
+      call c_f_pointer(c_loc(ksrf), w_ksrf, (/ pcols /))
+      w_ksrf(1:n) = o_ksrf(1:n)
+      n = min(int(ncol), pcols)
+      call c_f_pointer(c_loc(taux), w_taux, (/ pcols /))
+      w_taux(1:n) = o_taux(1:n)
+      n = min(int(ncol), pcols)
+      call c_f_pointer(c_loc(tauy), w_tauy, (/ pcols /))
+      w_tauy(1:n) = o_tauy(1:n)
+    end if
+    if (.not. plugged(5)) then
+      call torch_delete(in_t)
+      call torch_delete(out_t)
+    end if
+    call system_clock(t1)
+    model_ticks(5) = model_ticks(5) + (t1 - t0)
+  end subroutine model_compute_tms
+
+  subroutine warm_compute_tms()
+    ! the model bound at hook 5 run once on zeros of the contract's extents
+    type(torch_tensor) :: in_t(9), out_t(3)
+    real(c_double), target :: z_ncol(1)
+    real(c_double), pointer, contiguous :: zp_ncol(:)
+    real(c_double), target :: z_u(16, 30)
+    real(c_double), pointer, contiguous :: zp_u(:,:)
+    real(c_double), target :: z_v(16, 30)
+    real(c_double), pointer, contiguous :: zp_v(:,:)
+    real(c_double), target :: z_t(16, 30)
+    real(c_double), pointer, contiguous :: zp_t(:,:)
+    real(c_double), target :: z_pmid(16, 30)
+    real(c_double), pointer, contiguous :: zp_pmid(:,:)
+    real(c_double), target :: z_exner(16, 30)
+    real(c_double), pointer, contiguous :: zp_exner(:,:)
+    real(c_double), target :: z_zm(16, 30)
+    real(c_double), pointer, contiguous :: zp_zm(:,:)
+    real(c_double), target :: z_sgh(16)
+    real(c_double), pointer, contiguous :: zp_sgh(:)
+    real(c_double), target :: z_landfrac(16)
+    real(c_double), pointer, contiguous :: zp_landfrac(:)
+    real(c_double), target :: y_ksrf(16)
+    real(c_double), pointer, contiguous :: yp_ksrf(:)
+    real(c_double), target :: y_taux(16)
+    real(c_double), pointer, contiguous :: yp_taux(:)
+    real(c_double), target :: y_tauy(16)
+    real(c_double), pointer, contiguous :: yp_tauy(:)
+    z_ncol = 0.0_c_double
+    zp_ncol => z_ncol
+    call torch_tensor_from_array(in_t(1), zp_ncol, torch_kCPU)
+    z_u = 0.0_c_double
+    zp_u => z_u
+    call torch_tensor_from_array(in_t(2), zp_u, torch_kCPU)
+    z_v = 0.0_c_double
+    zp_v => z_v
+    call torch_tensor_from_array(in_t(3), zp_v, torch_kCPU)
+    z_t = 0.0_c_double
+    zp_t => z_t
+    call torch_tensor_from_array(in_t(4), zp_t, torch_kCPU)
+    z_pmid = 0.0_c_double
+    zp_pmid => z_pmid
+    call torch_tensor_from_array(in_t(5), zp_pmid, torch_kCPU)
+    z_exner = 0.0_c_double
+    zp_exner => z_exner
+    call torch_tensor_from_array(in_t(6), zp_exner, torch_kCPU)
+    z_zm = 0.0_c_double
+    zp_zm => z_zm
+    call torch_tensor_from_array(in_t(7), zp_zm, torch_kCPU)
+    z_sgh = 0.0_c_double
+    zp_sgh => z_sgh
+    call torch_tensor_from_array(in_t(8), zp_sgh, torch_kCPU)
+    z_landfrac = 0.0_c_double
+    zp_landfrac => z_landfrac
+    call torch_tensor_from_array(in_t(9), zp_landfrac, torch_kCPU)
+    yp_ksrf => y_ksrf
+    call torch_tensor_from_array(out_t(1), yp_ksrf, torch_kCPU)
+    yp_taux => y_taux
+    call torch_tensor_from_array(out_t(2), yp_taux, torch_kCPU)
+    yp_tauy => y_tauy
+    call torch_tensor_from_array(out_t(3), yp_tauy, torch_kCPU)
+    call torch_model_forward(models(5), in_t, out_t)
+    call torch_delete(in_t)
+    call torch_delete(out_t)
+  end subroutine warm_compute_tms
+
   subroutine warm_model(hook)
     integer(c_int), intent(in) :: hook
     select case (hook)
@@ -2954,6 +3188,8 @@ contains
       call warm_instratus_condensate()
     case (4)
       call warm_micro_mg_tend()
+    case (5)
+      call warm_compute_tms()
     end select
   end subroutine warm_model
 
@@ -2981,6 +3217,8 @@ contains
       name = name_3
     case (4)
       name = name_4
+    case (5)
+      name = name_5
     end select
     do i = 1, min(int(length) - 1, len_trim(name))
       buffer(i) = name(i:i)

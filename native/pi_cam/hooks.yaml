@@ -92,3 +92,19 @@ hooks:
                 frefl, csrfl, acsrfl, fcsrfl, rercld, ncai, ncal, qrout2, qsout2, nrout2, nsout2,
                 drout2, dsout2, freqs, freqr, nfice, prer_evap, preo, prdso, frzro, meltso, wtfc, wtfi,
                 wtprelat, wtpostlat]
+  - kernel: compute_tms
+    contract: native/pi_cam/functions/compute_tms.yaml
+    # the turbulent mountain stress, a module routine of trb_mtn_stress called
+    # from vertical_diffusion_tend; clubb_intr references it too but is not on
+    # this configuration's path and keeps the original.  Plain arrays and
+    # integers, sized by the routine's own pcols and pver dummies: Fortran-bound
+    # so the extents follow those dummies, with a model block a plugin can take
+    binding: fortran
+    redirect: rename-references
+    original: {module: trb_mtn_stress, routine: compute_tms}
+    callee_symbol: trb_mtn_stress_mp_compute_tms_
+    callers:
+      - {object: vertical_diffusion.o, routine: vertical_diffusion_tend}
+    model:
+      inputs: [ncol, u, v, t, pmid, exner, zm, sgh, landfrac]
+      outputs: [ksrf, taux, tauy]
