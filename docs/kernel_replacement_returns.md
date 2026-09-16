@@ -7,7 +7,35 @@ configuration (512 ranks, ne16, 1488 steps a month).  The month of the
 original is 402 s of step loop a rank
 (`validation/pi_cam_1month_stage_fortran_performance.json`).
 
-## The table
+## The short table
+
+Month cost of the kernel, month cost of the hook path, and what is left: the expected return of a free model, as seconds and as a share of the 402 s month.
+
+| kernel | month cost, s | month path cost, s | expected return, s | return, % of the month |
+| --- | ---: | ---: | ---: | ---: |
+| `compute_uwshcu_inv` | 19.36 | 2.04 | 17.32 | 4.30% |
+| `rad_rrtmg_sw` | 9.70 | 1.14 | 8.56 | 2.13% |
+| `gas_phase_chemdr` | 9.16 | 0.68 | 8.48 | 2.11% |
+| `rad_rrtmg_lw` | 8.18 | 0.76 | 7.42 | 1.84% |
+| `mmacro_pcond` | 5.91 | 0.26 | 5.65 | 1.40% |
+| `zm_convr` | 4.64 | 0.45 | 4.19 | 1.04% |
+| `compute_eddy_diff` | 4.13 | 0.06 | 4.07 | 1.01% |
+| `micro_mg_tend` | 3.96 | 1.67 | 2.29 | 0.57% |
+| `wetdepa_v2` | 2.95 | 3.04 | 0.00 | 0.00% |
+| `modal_aero_depvel_part` | 1.50 | 0.60 | 0.90 | 0.22% |
+| `compute_vdiff` | 1.13 | 0.38 | 0.75 | 0.19% |
+| `gw_drag_prof` | 0.83 | 1.23 | 0.00 | 0.00% |
+| `convtran` | 0.45 | 0.12 | 0.32 | 0.08% |
+| `zm_conv_evap` | 0.11 | 0.12 | 0.00 | 0.00% |
+| `momtran` | 0.09 | 0.08 | 0.01 | 0.00% |
+| `compute_tms` | 0.05 | 0.01 | 0.04 | 0.01% |
+| `dadadj` | 0.04 | 0.06 | 0.00 | 0.00% |
+| `virtem` | 0.04 | 0.01 | 0.03 | 0.01% |
+| `cldfrc_fice` | 0.01 | 0.02 | 0.00 | 0.00% |
+| `instratus_condensate` | 1.37 | 0.11 | 1.26 | 0.31% |
+| **all** | **73.6** | **12.8** | **61.3** | **15.2%** |
+
+## The full table
 
 | # | kernel | process | calls a month | original, µs a call | plugin path, µs a call | month cost, s | ceiling, s | ceiling, % of month | with a 0.4 ms model, s | path source |
 | ---: | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |
