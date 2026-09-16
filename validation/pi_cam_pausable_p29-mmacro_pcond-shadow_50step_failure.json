@@ -1,0 +1,17 @@
+{
+ "schema_version": 1,
+ "what": "50-step gate of a null Numba plugin bound in shadow at the mmacro_pcond hook (the original answers; the plugin's cost is timed), on the first image carrying the batch-A hooks",
+ "pbs_job_id": "7484089.desched1",
+ "run_tag": "p29-mmacro_pcond-shadow",
+ "kernel_models": {"mmacro_pcond": {"binding": "numba", "path": "examples/plugins/numba_kernels/mmacro_pcond_zero.py", "function": "mmacro_pcond_zero", "shadow": true}},
+ "job": "validation/jobs/pi_cam_pausable_50step.pbs (derived script with export lines; 4 nodes x 64 GB requested)",
+ "python_stages": ["dry_adjustment", "shallow_convection", "deep_convection", "convective_tracer_transport_leaf", "vertical_diffusion", "gravity_wave_drag", "aerosol_wet_deposition_leaf", "aerosol_dry_deposition_leaf", "chemistry_tendencies_leaf", "radiation", "cloud_macro_microphysics"],
+ "native_image": "build/pi_cam_promoted_p29",
+ "ranks": 512,
+ "resources": {"requested_mem_kb": 268435456, "used_mem_kb": 268435456, "walltime": "00:01:30"},
+ "bfb_record_note": "the bfb file written by the job compares one candidate file against four and says false; the run never reached its restart, so the comparison is void",
+ "outcome": "killed at the memory limit during step 1, when every rank compiled the plugin (forrtl error 78, process killed; two ranks also hit an LLVM assertion in Value::getValueName)",
+ "diagnosis": "the base run uses about 230 GB of the 256 GB requested (4 x 64 GB); the Numba compile of a plugin with 57 arguments peaks near 260 MB a process on the login node, about 30 GB more a node at 128 ranks, which crossed the limit.  Not a hook fault: the nothing-armed and everything gates on the same image are bit-for-bit.",
+ "disposition": "rerun with 200 GB requested a node (the nodes have 240 GB); a compile once a node, shared through the Numba cache, is the durable fix if the larger request is not enough",
+ "steps_completed": 1
+}

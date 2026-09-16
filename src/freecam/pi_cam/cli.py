@@ -306,6 +306,36 @@ def _load_kernel_plugin(kernel: str, spec: str, *, shadow: bool = False):
     return compile_kernel(kernel, function, shadow=shadow)
 
 
+def _pausable_stage(stage_name: str, policy: str, *, original_kernels, capture_kernels, kernel_models):
+    """A pausable stage class with every slot filled before its ``tend`` is installed.
+
+    Installing pickles the bound method, so a slot filled afterwards never reaches
+    the process that runs: the original, a capture or a model must be in the slot
+    here, first.  (A model given for compute_uwshcu_inv once ran as the original,
+    silently, because it was attached after the install.)
+    """
+
+    from freecam.physics.pausable import STAGES
+
+    if stage_name not in STAGES:
+        raise SystemExit(f"--python-stages: {stage_name!r} is not one of {sorted(STAGES)}")
+    stage = STAGES[stage_name]()
+    stage.execution_policy = policy
+    if original_kernels:
+        from freecam.physics.segments import OriginalKernel
+        for kernel_name in original_kernels:
+            if kernel_name in stage.kernels:
+                stage.kernels[kernel_name] = OriginalKernel()
+    for kernel_name in capture_kernels:
+        if kernel_name in stage.kernels:
+            from freecam.physics.segments import FrameCapture
+            stage.kernels[kernel_name] = FrameCapture(kernel_name)
+    for kernel_name, model in kernel_models.items():
+        if kernel_name in stage.kernels:
+            stage.kernels[kernel_name] = model
+    return stage
+
+
 def _kernel_plugins_summary(plugins: dict[str, str], shadow: dict[str, str] | None = None) -> dict[str, dict[str, Any]]:
     """Which compiled function stood in which slot; a file's path only when it lies inside this checkout."""
 
@@ -1129,21 +1159,12 @@ def main(argv: list[str] | None = None) -> int:
             # a pausable stage class in its action's place: the original Fortran
             # whole, or the image's runner paused at a replaced kernel
             from freecam.model.python_processes import PythonProcessSpec
-            from freecam.physics.pausable import STAGES
 
-            if stage_name not in STAGES:
-                raise SystemExit(f"--python-stages: {stage_name!r} is not one of {sorted(STAGES)}")
-            pausable_stage = STAGES[stage_name]()
-            pausable_stage.execution_policy = args.stage_execution
-            if args.segmented_original:
-                from freecam.physics.segments import OriginalKernel
-                for kernel_name in [k.strip() for k in args.segmented_original_kernels.split(",") if k.strip()]:
-                    if kernel_name in pausable_stage.kernels:
-                        pausable_stage.kernels[kernel_name] = OriginalKernel()
-            for kernel_name in capture_kernels:
-                if kernel_name in pausable_stage.kernels:
-                    from freecam.physics.segments import FrameCapture
-                    pausable_stage.kernels[kernel_name] = FrameCapture(kernel_name)
+            pausable_stage = _pausable_stage(
+                stage_name, args.stage_execution,
+                original_kernels=[k.strip() for k in args.segmented_original_kernels.split(",") if k.strip()]
+                if args.segmented_original else [],
+                capture_kernels=capture_kernels, kernel_models=kernel_models)
             phase, _, action_name = pausable_stage.STAGE.partition(".")
             cam.step_plan.set_enabled(action_name, False, phase=phase, experimental=True)
             cam.python_processes.install(
@@ -1158,9 +1179,6 @@ def main(argv: list[str] | None = None) -> int:
                 ),
                 unsafe=True,
             )
-            for kernel_name, model in kernel_models.items():
-                if kernel_name in pausable_stage.kernels:
-                    pausable_stage.kernels[kernel_name] = model
             installed_kernels.update(pausable_stage.kernels)
         if args.segmented_original:
             # every replaced kernel must belong to a class installed this run: a name

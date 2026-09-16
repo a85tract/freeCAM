@@ -1,0 +1,17 @@
+{
+ "schema_version": 1,
+ "what": "50-step gate of a null Numba plugin bound in shadow at the compute_uwshcu_inv hook (the original answers; the plugin's cost is timed), rerun with 200 GB a node after the memory-capped attempt",
+ "pbs_job_id": "7484217.desched1",
+ "run_tag": "p29-compute_uwshcu_inv-shadow",
+ "kernel_models": {"compute_uwshcu_inv": {"binding": "numba", "path": "examples/plugins/numba_kernels/compute_uwshcu_inv_zero.py", "function": "compute_uwshcu_inv_zero", "shadow": true}},
+ "job": "validation/jobs/pi_cam_pausable_50step.pbs (derived script with export lines; 4 nodes x 200 GB requested)",
+ "python_stages": ["dry_adjustment", "shallow_convection", "deep_convection", "convective_tracer_transport_leaf", "vertical_diffusion", "gravity_wave_drag", "aerosol_wet_deposition_leaf", "aerosol_dry_deposition_leaf", "chemistry_tendencies_leaf", "radiation", "cloud_macro_microphysics"],
+ "native_image": "build/pi_cam_promoted_p29",
+ "ranks": 512,
+ "resources": {"requested_mem_kb": 838860800, "used_mem_kb": 289040288, "walltime": "00:00:54"},
+ "bfb_record_note": "the run is bit-for-bit with the oracle and its health counters are zero, but the record it wrote shows the shallow_convection stage in native-whole mode with no replacement and the hook with 53248 calls and 0 modeled: the plugin never ran, so the comparison proves nothing about the plugin path",
+ "outcome": "the gate did not test what it claims: the plugin was loaded (kernel_models) but the shallow_convection stage ran the original whole",
+ "diagnosis": "the command line attached kernel models to a pausable stage after installing its tend as a process; installing pickles the bound method, so the installed copy kept empty slots.  The cloud stage's branch attaches before installing, which is why every earlier shadow gate (all on the cloud stage) passed.  No pausable stage had run in native-model mode before this gate.",
+ "disposition": "fixed in the command line (slots filled before the install, _pausable_stage) with a unit test; the gate reruns on the fixed tree",
+ "steps_completed": 50
+}
