@@ -213,6 +213,29 @@ driver.advance(48)
 run: the table, a replay in the radiation slot, a network in it, the original
 back, and the cloud stage's two slots.
 
+### Replacing one kernel inside a process
+
+Each owned process also names the numerical kernels its driver calls, and
+each is a slot (`stage.kernels[name]`, `None` for the original):
+
+```python
+from freecam.physics.segments import OriginalKernel
+from freecam.physics.numba_kernel import compile_kernel
+
+vdiff = driver.processes["vertical_diffusion"]
+vdiff.kernels["compute_tms"] = OriginalKernel()      # the original, through the pause: the gate
+deep = driver.processes["deep_convection"]
+deep.kernels["cldfrc_fice"] = my_ice_fraction        # a callable: arguments in by dummy name, outputs out
+deep.kernels["cldfrc_fice"] = compile_kernel("cldfrc_fice", my_numba_kernel)   # compiled, called by Fortran at the hook
+```
+
+A callable runs at the kernel's pause (three crossings a call); a compiled
+plugin or a TorchScript model is bound at the kernel's hook and Fortran calls
+it with no Python in the step.  `stage.describe_kernels()` lists each
+kernel's contract and binding; `docs/contracts.md` is the generated reference
+of every contract.  `examples/replace_kernel.ipynb` walks through the three
+ways on a live run.
+
 ## Parameters
 
 ### Namelist

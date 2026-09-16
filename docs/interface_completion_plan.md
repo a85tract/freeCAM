@@ -48,8 +48,8 @@ per field of one CAM file of each run, in scaled units, as a table or a JSON
 record naming no directory), the generated `docs/contracts.md`
 (`tools/export_contracts_doc.py`, checked by a unit test: every function
 contract with the hook it serves, the two cloud blocks and the radiation
-branch), and the kernel-slot notebook beside `examples/replace_process.ipynb`
-(still to write).
+branch), and the kernel-slot notebook `examples/replace_kernel.ipynb` (the
+three ways a kernel is answered, on a live run).
 
 ## 4. Coarse contracts for the other ten numerical processes
 
