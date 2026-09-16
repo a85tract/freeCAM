@@ -1857,7 +1857,12 @@ class NativeStage:
                 arrays[argument.field] = array
                 if argument.intent in ("out", "inout"):
                     written.append((local, array))
-            native.run_kernel(name, arrays)
+            profiler = getattr(native, "profiler", None)
+            if profiler is None:
+                native.run_kernel(name, arrays)
+            else:
+                with profiler.region(f"FORTRAN:ORIGINAL:{name}"):
+                    native.run_kernel(name, arrays)
             ncol = int(np.asarray(batch["ncol"])) if "ncol" in batch else pcols
             return {local: (array[:ncol, ..., 0].copy() if array.ndim > 1 else array.copy())
                     for local, array in written}

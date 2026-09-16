@@ -466,7 +466,16 @@ class NativeAccess:
         """
 
         provider = getattr(self._driver.backend, "segment_runner", None)
-        return None if provider is None else provider(stage)
+        runner = None if provider is None else provider(stage)
+        if runner is not None and hasattr(runner, "run_original"):
+            runner.profiler = self.profiler          # the original at a pause becomes a timing row
+        return runner
+
+    @property
+    def profiler(self):
+        """The driver's timing tree, for a stage to time what it runs natively."""
+
+        return getattr(self._driver, "profiler", None)
 
     def run_action(self, name: str, *, phase: str | None = None):
         """Run one native workflow action whole, timed and recorded as the plan would.

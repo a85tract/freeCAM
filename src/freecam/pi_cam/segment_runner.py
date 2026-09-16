@@ -287,12 +287,22 @@ class ImageSegmentRunner:
 
         return self._original is not None
 
+    #: the driver's timing tree, when the driver hands the runner out: the
+    #: original call at a pause is then a row of its own, FORTRAN:ORIGINAL:<kernel>,
+    #: which over a run prices every exposed kernel by its own native cost
+    profiler: Any = None
+
     def run_original(self, context: int, kernel: str) -> None:
         """Run the original call on the paused frame's storage, in the runner."""
 
         if self._original is None:
             raise NativeCAMError(f"the {self.spec.prefix} runner does not run the original at a pause")
-        status = self._original(context, self.spec.kernel_id(kernel))
+        profiler = self.profiler
+        if profiler is None:
+            status = self._original(context, self.spec.kernel_id(kernel))
+        else:
+            with profiler.region(f"FORTRAN:ORIGINAL:{kernel}"):
+                status = self._original(context, self.spec.kernel_id(kernel))
         if status:
             raise NativeCAMError(f"{self.spec.prefix} runner refused to run the original ({status}): {self.error(context)}")
 
