@@ -96,6 +96,9 @@ gravity-wave drag, dry adjustment, the energy fixer, convective transport.
 
 ## What it costs, what it is worth
 
+What each kernel's replacement can return over a month, against the cost of
+its hook path, is tabulated in `docs/kernel_replacement_returns.md`.
+
 The all-paused month (7479754) prices the kernels: the seventeen sum to 17
 percent of the step; the walk that reaches them from Python costs 6 percent
 of the loop, the pause 1 to 2, a hook nothing.  Batch A is two days and an
