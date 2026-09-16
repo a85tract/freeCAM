@@ -119,6 +119,31 @@ slot even before the model's own cost.
   process-level replacement reaches more: `macro_microphysics` alone is
   about 12% of the step, `radiation` about 10%.
 
+## A first surrogate at the largest slot, measured
+
+A per-column MLP for `compute_uwshcu_inv` was trained on one 50-step frame
+capture (512 ranks, 100 calls each; 96 ranks for training, 16 for validation;
+1625 features -> 1722 targets, hidden 512, 1.98 M parameters, fifteen epochs;
+the 38 tracers the scheme transports included, the water-tracer outputs
+zero) and bound at the hook through FTorch on image p29.
+
+| run | job | step loop, s a rank | model, ms a call | state after 50 steps |
+| --- | --- | ---: | ---: | --- |
+| nothing armed | 7484081 | 16.18 | -- | the oracle's |
+| model in shadow (original answers) | 7493415 | 17.79 | 15.6 | bit-for-bit |
+| model live | 7493416 | 21.78 | 16.7 | T rms 0.37 K, Q 0.25 g/kg, CLDLIQ 11.5 mg/kg (ref rms 15.6); 214,801 QNEG3 resets |
+
+The path was right and the model was wrong twice over.  A 2 M-parameter
+network costs 15.6 ms a call on one core of a shared node -- 63 MFLOP per
+16-column call -- against the 6.5 ms of the scheme it replaces, so the run
+slowed by a third; and with validation R2 between 0.2 and 0.8 it drove the
+cloud water off within two days.  The returns table's "0.4 ms model" is a
+72 k-parameter network; at this slot a model must stay under about 1 M
+multiply-adds a column (hidden 256 without the tracers, roughly 2 ms a
+call) to give anything back, and must be trained on more than one 50-step
+capture to be worth running live.  Records:
+`validation/pi_cam_pausable_p29-uwshcu-mlp-{shadow,live}_50step.json`.
+
 ## Sources and caveats
 
 The month costs are one run on exclusive nodes; the plugin paths are
