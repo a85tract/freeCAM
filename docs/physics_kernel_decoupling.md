@@ -1442,6 +1442,47 @@ same stage, with both blocks the originals, read 2.15 s a rank in the
 same round (7477302) against 2.27 in the morning (7474688), a single pair
 of runs and so within the same caution.
 
+#### The kernels priced, over a month
+
+What each exposed kernel costs on its own was inferred until now from the
+drivers' timers and the deep profile of one image; on 2026-09-15 it was
+measured directly.  When a runner answers a pause with the original call
+itself, the native call is inside a `FORTRAN:ORIGINAL:<kernel>` region of
+the driver's timing tree, so a run with every exposed kernel paused and
+every pause answered by the original -- the form of the everything gate
+-- prices each kernel by its own call, with the driver's work around it
+excluded.  Fifty steps (7479753) and the PI-atm month (7479754, 1488
+steps) on the p28 image, bit-for-bit with the oracle both; rank 0's
+report, per call and summed:
+
+| kernel | action | calls a rank, the month | per call | month, a rank | of the native month (400 s) |
+| --- | --- | ---: | ---: | ---: | ---: |
+| `compute_uwshcu_inv` | convect_shallow_tend | 2,976 | 6.5 ms | 19.4 s | 4.8% |
+| `rad_rrtmg_sw` | radiation | 1,488 | 6.5 ms | 9.7 s | 2.4% |
+| `gas_phase_chemdr` | chem_timestep_tend | 2,976 | 3.1 ms | 9.2 s | 2.3% |
+| `rad_rrtmg_lw` | radiation | 1,488 | 5.5 ms | 8.2 s | 2.0% |
+| `mmacro_pcond` | macro_microphysics | 2,976 | 2.0 ms | 5.9 s | 1.5% |
+| `zm_convr` | convect_deep_tend | 2,976 | 1.6 ms | 4.6 s | 1.2% |
+| `compute_eddy_diff` | vertical_diffusion_tend | 2,976 | 1.4 ms | 4.1 s | 1.0% |
+| `wetdepa_v2` | aero_model_wetdep | 89,280 | 0.033 ms | 2.9 s | 0.7% |
+| `modal_aero_depvel_part` | aero_model_drydep | 23,808 | 0.063 ms | 1.5 s | 0.4% |
+| `compute_vdiff` | vertical_diffusion_tend | 5,952 | 0.19 ms | 1.1 s | 0.3% |
+| `gw_drag_prof` | gw_tend | 2,976 | 0.28 ms | 0.8 s | 0.2% |
+| `convtran` | convective transport leaf | 2,976 | 0.15 ms | 0.4 s | 0.1% |
+| `zm_conv_evap`, `momtran`, `compute_tms`, `dadadj`, `virtem` | | 2,976 each | 0.01 to 0.04 ms | 0.3 s together | 0.1% |
+| `micro_mg_tend` | macro_microphysics | 2,976 | 1.4 ms (the hook, in shadow, 7400408) | about 4.2 s | 1.0% |
+
+The seventeen paused kernels sum to 68 s a rank of the month's 400 --
+seventeen percent of the step; with the microphysics core, eighteen.
+Three kernels carry half of that: the UW shallow convection at 6.5 ms a
+call and the two RRTMG solvers at 6.5 and 5.5 ms, called every other
+step.  The most expensive action, `macro_microphysics` at fourteen
+percent of the step, holds two kernels worth 2.5 percent; the rest of it
+is the drivers' packing, buffer handling and history.  A kernel called
+after a Python pause runs with colder caches than in place, so these
+per-call figures sit a little above the in-situ cost; the fifty-step run
+gave the same numbers to within a few percent.
+
 ## Where it stands
 
 | Kernel | Owner | Contract | Runner pause | In-model gate | Loop |
