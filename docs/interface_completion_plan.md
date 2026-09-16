@@ -43,10 +43,13 @@ bit-for-bit in every file.
 
 ## 3. Verification and documentation as tools
 
-`tools/report_pi_cam_drift.py` (the drift comparison now in a scratch
-script), a generated `docs/contracts.md` from the function contracts and
-block contracts (names, shapes, units, planes), and the kernel-slot notebook
-beside `examples/replace_process.ipynb`.
+`tools/report_pi_cam_drift.py` (written: rms, largest and mean difference
+per field of one CAM file of each run, in scaled units, as a table or a JSON
+record naming no directory), the generated `docs/contracts.md`
+(`tools/export_contracts_doc.py`, checked by a unit test: every function
+contract with the hook it serves, the two cloud blocks and the radiation
+branch), and the kernel-slot notebook beside `examples/replace_process.ipynb`
+(still to write).
 
 ## 4. Coarse contracts for the other ten numerical processes
 
