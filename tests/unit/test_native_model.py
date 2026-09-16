@@ -87,11 +87,14 @@ def test_the_generated_module_answers_a_bound_model_inside_the_image() -> None:
     assert "s_k(1) = real(k, c_double)" in text
     assert "call c_f_pointer(c_loc(p_in(1)), v_p_in, (/ 16 /))" in text
     # the live columns are written back, the padding lanes left as CAM had them
-    assert "n = min(int(ncol), 16)" in text and "t_out(1:n) = o_t_out(1:n)" in text
+    assert "hk_n = min(int(ncol), 16)" in text and "t_out(1:hk_n) = o_t_out(1:hk_n)" in text
     # only the hooks with a model block have the branch; the others cannot be bound
-    assert text.count("call model_") == 3
-    assert "has_model(nhooks) = (/ .true., .false., .true., .true. /)" in text
-    assert "can_pause(nhooks) = (/ .true., .true., .true., .false. /)" in text
+    table = load_hooks()
+    flags = lambda values: "(/ " + ", ".join(".true." if v else ".false." for v in values) + " /)"  # noqa: E731
+    assert text.count("call model_") == sum(1 for hook in table.hooks if hook.takes_model)
+    assert not table.hook("fluxbelowinv").takes_model and table.hook("cldfrc_fice").takes_model
+    assert f"has_model(nhooks) = {flags(hook.takes_model for hook in table.hooks)}" in text
+    assert f"can_pause(nhooks) = {flags(hook.pausable for hook in table.hooks)}" in text
     # a Fortran-bound hook: the callee's own kinds, no bind(C), no frame, a model over rank-2 and rank-3 arrays
     assert "subroutine hook_micro_mg_tend(microp_uniform, pcols, pver, ncol" in text and "bind(C, name='pycam_hooks_mp" not in text
     assert "    logical, intent(in) :: microp_uniform" in text and "    character(len=*), intent(out) :: errstring" in text
@@ -100,9 +103,9 @@ def test_the_generated_module_answers_a_bound_model_inside_the_image() -> None:
     # packed arrays: the callee's own pcols/pver dummies size every array, not the contract's constants
     assert "real(c_double), intent(in), target :: tn(pcols, pver)" in text
     assert "call c_f_pointer(c_loc(rndst), v_rndst, (/ pcols, pver, 4 /))" in text
-    assert "real(c_double), target :: o_rflx(pcols, pver+1)" in text and "n = min(int(ncol), pcols)" in text
+    assert "real(c_double), target :: o_rflx(pcols, pver+1)" in text and "hk_n = min(int(ncol), pcols)" in text
     assert "l_tnd_qsnow = tnd_qsnow(1:pcols, 1:pver)" in text
-    assert "w_qc(1:n, :) = o_qc(1:n, :)" in text and "w_prect(1:n) = o_prect(1:n)" in text
+    assert "w_qc(1:hk_n, :) = o_qc(1:hk_n, :)" in text and "w_prect(1:hk_n) = o_prect(1:hk_n)" in text
     # the bind(C) hook keeps the contract's fixed extents (module arrays of pcols)
     assert "call c_f_pointer(c_loc(p_in(1)), v_p_in, (/ 16 /))" in text
     assert "if (associated(tnd_qsnow)) then" in text and "errstring = ' '" in text
@@ -116,7 +119,7 @@ def test_the_generated_module_answers_a_bound_model_inside_the_image() -> None:
     assert "if (flag /= 0_c_int .and. modeled(hook)) then" in text
     # the warm-up at bind: one forward on zeros of the contract's extents, timed apart from the calls
     assert "call torch_model_load(models(hook), filename(1:length), torch_kCPU)\n" in text
-    assert text.count("\n  subroutine warm_") == 4 and "      call warm_micro_mg_tend()" in text
+    assert text.count("\n  subroutine warm_") == len(table.hooks) and "      call warm_micro_mg_tend()" in text
     # a compiled plugin takes the same arrays as pointer and extent tables, in place of the forward
     assert "bind(C, name='pycam_hooks_bind_plugin_v1')" in text and "type(c_funptr), save :: plugins(nhooks)" in text
     assert "plugin_status = plugin(19_c_int, in_p, in_s, 8_c_int, out_p, out_s)" in text
@@ -127,7 +130,7 @@ def test_the_generated_module_answers_a_bound_model_inside_the_image() -> None:
     assert "real(c_double), target :: z_tn(16, 30)" in text and "real(c_double), target :: y_rflx(16, 31)" in text
     assert "warm_ticks(hook) = w1 - w0" in text and "warm_seconds = real(warm_ticks(hook), c_double)" in text
     # in shadow the original is timed too, on the same calls: both prices from one run
-    assert "original_ticks(4) = original_ticks(4) + (h1 - h0)" in text and text.count("original_ticks(") == 8
+    assert "original_ticks(4) = original_ticks(4) + (h1 - h0)" in text and text.count("original_ticks(") == 2 * len(table.hooks)
     # per-rank timers: the whole model call as the hook sees it, and the first call alone
     assert "hook_ticks(4) = hook_ticks(4) + (h1 - h0)" in text
     assert "if (answered(4) == 1_c_int64_t) first_ticks(4) = h1 - h0" in text
@@ -240,7 +243,7 @@ def test_a_stage_with_a_native_model_runs_whole_and_binds_once(tmp_path: Path, m
         stage.select_mode(None)
     # a kernel that is not a hook cannot take a native model
     other = CloudMacroMicrophysics()
-    other.kernels["mmacro_pcond"] = model
+    other.kernels["macrop_advective_forcing"] = model
     with pytest.raises(PhysicsError, match="not a hooked kernel"):
         other.tend(None, context)
 

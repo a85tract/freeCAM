@@ -5345,9 +5345,9 @@
       "kernel": "zm_convr",
       "stage_action": "cam_run1.deep_convection",
       "owner_class": "freecam.physics.pausable.DeepConvection",
-      "routine": null,
-      "contract": "frame",
-      "contract_path": "native/pi_cam/segment_frames.yaml",
+      "routine": "zm_convr",
+      "contract": "reviewed",
+      "contract_path": "native/pi_cam/functions/zm_convr.yaml",
       "bindable": true,
       "validated_through_runner": true,
       "evidence": {
@@ -5406,9 +5406,9 @@
       "kernel": "zm_conv_evap",
       "stage_action": "cam_run1.deep_convection",
       "owner_class": "freecam.physics.pausable.DeepConvection",
-      "routine": null,
-      "contract": "frame",
-      "contract_path": "native/pi_cam/segment_frames.yaml",
+      "routine": "zm_conv_evap",
+      "contract": "reviewed",
+      "contract_path": "native/pi_cam/functions/zm_conv_evap.yaml",
       "bindable": true,
       "validated_through_runner": true,
       "evidence": {
@@ -5467,9 +5467,9 @@
       "kernel": "momtran",
       "stage_action": "cam_run1.deep_convection",
       "owner_class": "freecam.physics.pausable.DeepConvection",
-      "routine": null,
-      "contract": "frame",
-      "contract_path": "native/pi_cam/segment_frames.yaml",
+      "routine": "momtran",
+      "contract": "reviewed",
+      "contract_path": "native/pi_cam/functions/momtran.yaml",
       "bindable": true,
       "validated_through_runner": true,
       "evidence": {
@@ -5640,9 +5640,9 @@
       "kernel": "compute_tms",
       "stage_action": "cam_run2.vertical_diffusion",
       "owner_class": "freecam.physics.pausable.VerticalDiffusion",
-      "routine": null,
-      "contract": "frame",
-      "contract_path": "native/pi_cam/segment_frames.yaml",
+      "routine": "compute_tms",
+      "contract": "reviewed",
+      "contract_path": "native/pi_cam/functions/compute_tms.yaml",
       "bindable": true,
       "validated_through_runner": true,
       "evidence": {
@@ -5693,9 +5693,9 @@
       "kernel": "compute_eddy_diff",
       "stage_action": "cam_run2.vertical_diffusion",
       "owner_class": "freecam.physics.pausable.VerticalDiffusion",
-      "routine": null,
-      "contract": "frame",
-      "contract_path": "native/pi_cam/segment_frames.yaml",
+      "routine": "compute_eddy_diff",
+      "contract": "reviewed",
+      "contract_path": "native/pi_cam/functions/compute_eddy_diff.yaml",
       "bindable": true,
       "validated_through_runner": true,
       "evidence": {
@@ -6345,5 +6345,5 @@
       "why": "no record in validation/ for this step of the loop"
     }
   ],
-  "coverage_hash": "119b8cc9a86381957f4fa617947ccbd31fc8877dc5ff870fd5231ce0be886873"
+  "coverage_hash": "94108f4a1b1f6e120eaa62c2cda37690ca919f049bacb7ee6bc1ae45a9ec1ab7"
 }

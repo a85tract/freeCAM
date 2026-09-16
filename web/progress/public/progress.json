@@ -2648,7 +2648,7 @@
   "use_gw_oro": true,
   "use_subcol_microp": false
  },
- "content_hash": "5b9528584133a7e89526a368ef7e7df6027c1f61891d8ae9ca9767b84658b9a4",
+ "content_hash": "5f4f777a5b2c076aecd65ad4f42bec6a2ca20c777bce8467c55bc8e8651c39ae",
  "evidence": {
   "pi_cam_cldfrc_fice_frame_replay.json": {
    "bfb": true,
@@ -6335,16 +6335,16 @@
   }
  ],
  "inputs": {
-  "native/pi_cam/hooks.yaml": "13e21d599cdc066821c151e452973357a623d00c0997b7c6cb131725c9f55ba8",
+  "native/pi_cam/hooks.yaml": "e7b1829605ef6602a80a1066d25d117d92e86c31ade0b5c46a43f072c43799de",
   "native/pi_cam/kernel_classifications.yaml": "d6be2103c9bd0c86a0c8461a067d3b43eac6aa370e992fde9bf3096e55c8c5f4",
   "native/pi_cam/kernel_work_items.yaml": "c92670beeae88b1fcf0bbe74525fe8489f425f9740b3f7dc6fe7eb4ea7496b44",
   "native/pi_cam/segment_runners.yaml": "37fa35306070f0b5eea12a76c44ea6798b1a7f17521659bdc4761ff32208b38a",
-  "validation/physics_kernel_decoupling.json": "2a9ff0a6804a4e0d54b36b26c34f44a36e5eb6234ba53fe32d7d944973680462",
+  "validation/physics_kernel_decoupling.json": "b30ba060aa45a351e86847c9255922524eb0557ff4e66720aa6db67aca1b9ece",
   "validation/pi_cam_kernel_api_closure.json": "96025214b3e4c41f6ba89c266da5dd27c51c42c81c31e1a0ac6f7b2e9cfa260a",
   "validation/pi_cam_kernel_api_redirectable_calls.json": "b97f6f7f8f7099cb42e9cebcde6102f9d4d05d17852ba7a5495b29edb1d4fbaf",
   "validation/pi_cam_kernel_runtime_coverage_1month.json": "48f77d6ec78b4026806d4ab6fb9517ef31c1d526481b4ad68e55f77af0d303bd",
   "validation/pi_cam_kernel_runtime_coverage_50step.json": "222961fc5274dbaaf71c40f6c131a683536b5a85ef14cd047a2fd196d8ca38c5",
-  "web/public/catalog.json": "83e19fb92c20b54e1637203f2f9cd7f7101731c3c430f321f8304e92bc736394"
+  "web/public/catalog.json": "c25ef1c4033aca4f306dc554a7d6910d5ca4df03ba1abdbd97aa44252d61d477"
  },
  "kernels": {
   "aer_rad_props::aer_rad_props_lw": {
@@ -16401,7 +16401,9 @@
      "state": "not-implemented"
     },
     "contract": {
-     "state": "not-implemented"
+     "path": "native/pi_cam/functions/compute_eddy_diff.yaml",
+     "review": "reviewed",
+     "state": "available"
     },
     "in_model_replacement": {
      "contexts": [
@@ -48631,7 +48633,9 @@
      "state": "not-implemented"
     },
     "contract": {
-     "state": "not-implemented"
+     "path": "native/pi_cam/functions/compute_tms.yaml",
+     "review": "reviewed",
+     "state": "available"
     },
     "in_model_replacement": {
      "contexts": [
@@ -56385,7 +56389,9 @@
      "state": "not-implemented"
     },
     "contract": {
-     "state": "not-implemented"
+     "path": "native/pi_cam/functions/momtran.yaml",
+     "review": "reviewed",
+     "state": "available"
     },
     "in_model_replacement": {
      "contexts": [
@@ -56735,7 +56741,9 @@
      "state": "not-implemented"
     },
     "contract": {
-     "state": "not-implemented"
+     "path": "native/pi_cam/functions/zm_conv_evap.yaml",
+     "review": "reviewed",
+     "state": "available"
     },
     "in_model_replacement": {
      "contexts": [
@@ -56841,7 +56849,9 @@
      "state": "not-implemented"
     },
     "contract": {
-     "state": "not-implemented"
+     "path": "native/pi_cam/functions/zm_convr.yaml",
+     "review": "reviewed",
+     "state": "available"
     },
     "in_model_replacement": {
      "contexts": [
@@ -73926,8 +73936,8 @@
  ],
  "volatile": {
   "branch": "radiation-torchscript-slot",
-  "commit": "84b571f7e9dda0444c901ebeda2138bba5336c1e",
-  "generated_at": "2026-09-16T00:23:56+00:00"
+  "commit": "19503f5fc1cd668d8836b57144b53283d1a5f243",
+  "generated_at": "2026-09-16T04:52:03+00:00"
  },
  "work_items": [
   {

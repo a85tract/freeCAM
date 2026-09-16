@@ -16,13 +16,15 @@ signature (`native/pi_cam/hooks.yaml`, `tools/generate_pi_cam_hooks.py`;
 `weaken-definition` when it lives in the caller's).  Unarmed, the wrapper
 counts and calls the original; bound, it hands a TorchScript model (FTorch)
 or a compiled plugin (a C-ABI function pointer) the arguments in place, with
-no Python in the step.  Four kernels have one; the runner's pause covers the
-rest at three crossings a call.
+no Python in the step.  Eleven kernels have one (the seven of batch A await
+the gates of the image that first carries them); the runner's pause covers
+the rest at three crossings a call.
 
 | batch | kernels | what each needs |
 | --- | --- | --- |
-| A, plain arrays | `rad_rrtmg_sw`, `rad_rrtmg_lw`, `compute_uwshcu_inv`, `zm_convr`, `zm_conv_evap`, `momtran`, `convtran`, `compute_eddy_diff`, `compute_tms`, `wetdepa_v2`, `mmacro_pcond`, `dadadj` | a function contract (reviewed: uwshcu, mmacro_pcond, dadadj; drafted: the rest), a `binding: fortran` hook entry naming the caller objects, one image |
-| B, awkward dummies | `gw_drag_prof` (a derived type, `GWBand`), `compute_vdiff` (procedure dummies), `gas_phase_chemdr` (`state`, `pbuf`), `modal_aero_depvel_part` (same object as its caller; not in the inventory) | the generator taught to declare derived-type and procedure dummies through the callee's own modules; `weaken-definition` for the last |
+| A, plain arrays (written) | `compute_tms`, `compute_uwshcu_inv`, `mmacro_pcond`, `zm_conv_evap`, `momtran`, `zm_convr`, `compute_eddy_diff` | a function contract (`tools/draft_pi_cam_hook_contract.py` turns the drafter's output into one: structural extents with the configuration's values, logical dummies as `int32` carriers, pointer dummies as workspace handed on, intent-less dummies both ways), a `binding: fortran` hook entry naming the caller objects, one image |
+| A, remaining | `convtran` (an extent read from a module array, `wtrc_ntype(iwtice)`), `wetdepa_v2` (not in the inventory), `dadadj` (its caller is the patched physpkg; 13 µs a call) | the first two need the contract loader to accept an extent that is a module variable, and the inventory to list the wet deposition kernel |
+| B, awkward dummies | `rad_rrtmg_sw`, `rad_rrtmg_lw` (a derived type, `rrtmg_state_t`; the shortwave also has five optional dummies and a `0:pver` lower bound), `gw_drag_prof` (a derived type, `GWBand`), `compute_vdiff` (procedure dummies), `gas_phase_chemdr` (`state`, `pbuf`), `modal_aero_depvel_part` (same object as its caller; not in the inventory) | the generator taught to declare derived-type, optional and procedure dummies through the callee's own modules; `weaken-definition` for the last |
 
 Gates per batch: the image with every hook unarmed, nothing replaced, fifty
 steps bit-for-bit; the everything form (every kernel answered through its

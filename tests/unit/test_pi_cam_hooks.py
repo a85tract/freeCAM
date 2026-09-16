@@ -13,7 +13,8 @@ REPO = Path(__file__).resolve().parents[2]
 
 def test_the_committed_hook_table_names_its_kernels_and_redirections() -> None:
     table = load_hooks(REPO / "native/pi_cam/hooks.yaml")
-    assert table.kernel_names == ("cldfrc_fice", "fluxbelowinv", "instratus_condensate", "micro_mg_tend", "compute_tms")
+    assert table.kernel_names[:5] == ("cldfrc_fice", "fluxbelowinv", "instratus_condensate", "micro_mg_tend", "compute_tms")
+    assert set(table.kernel_names[5:]) == {"compute_uwshcu_inv", "mmacro_pcond", "zm_conv_evap", "momtran", "zm_convr", "compute_eddy_diff"}
     assert table.fiber_stack_bytes >= (64 << 20)
     core = table.hook("instratus_condensate")              # inside mmacro_pcond, same object: weakened
     assert core.redirect == "weaken-definition" and core.id == 3

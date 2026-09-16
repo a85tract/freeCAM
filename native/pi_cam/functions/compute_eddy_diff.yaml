@@ -1,0 +1,567 @@
+# Function contract for compute_eddy_diff (eddy_diff), serving the hook the image puts on
+# the routine (native/pi_cam/hooks.yaml).  Written by
+# tools/draft_pi_cam_hook_contract.py from the argument list the source
+# declares: names, kinds, ranks, intents and extents are the routine's own, the
+# extents named by its integer dummies where it has them.  The routine's
+# tunables and module state stay in their own storage, untouched by the hook,
+# and no standalone image is built from this contract, so the parameter,
+# module-state and image blocks are minimal.
+#
+schema_version: 1
+function: compute_eddy_diff
+qualified_name: eddy_diff::compute_eddy_diff
+routine: compute_eddy_diff
+source: components/cam/src/physics/cam/eddy_diff.F90
+module: eddy_diff
+binding: module
+layout: column
+dimensions: {pcols: 16, pver: 30, pverp: 31, pcnst: 57}
+public_axes: {pver: lev, pverp: ilev}
+arguments:
+- name: lchnk
+  fortran_type: integer
+  dtype: int32
+  rank: 0
+  intent: in
+  native_shape: []
+  role: input
+  public_shape: []
+- name: pcols
+  fortran_type: integer
+  dtype: int32
+  rank: 0
+  intent: in
+  native_shape: []
+  role: structural
+  value: 16
+  description: Number of atmospheric columns
+- name: pver
+  fortran_type: integer
+  dtype: int32
+  rank: 0
+  intent: in
+  native_shape: []
+  role: structural
+  value: 30
+  description: Number of atmospheric layers
+- name: ncol
+  fortran_type: integer
+  dtype: int32
+  rank: 0
+  intent: in
+  native_shape: []
+  role: input
+  public_shape: []
+  description: Number of atmospheric columns
+- name: t
+  fortran_type: real
+  dtype: float64
+  rank: 2
+  intent: in
+  native_shape: [pcols, pver]
+  role: input
+  public_shape: [pver]
+  units: K
+  description: Temperature
+- name: qv
+  fortran_type: real
+  dtype: float64
+  rank: 2
+  intent: in
+  native_shape: [pcols, pver]
+  role: input
+  public_shape: [pver]
+  units: kg/kg
+  description: Water vapor  specific humidity
+- name: ztodt
+  fortran_type: real
+  dtype: float64
+  rank: 0
+  intent: in
+  native_shape: []
+  role: input
+  public_shape: []
+  units: s
+  description: Physics integration time step 2 delta-t
+- name: ql
+  fortran_type: real
+  dtype: float64
+  rank: 2
+  intent: in
+  native_shape: [pcols, pver]
+  role: input
+  public_shape: [pver]
+  units: kg/kg
+  description: Liquid water specific humidity
+- name: qi
+  fortran_type: real
+  dtype: float64
+  rank: 2
+  intent: in
+  native_shape: [pcols, pver]
+  role: input
+  public_shape: [pver]
+  units: kg/kg
+  description: Ice specific humidity
+- name: s
+  fortran_type: real
+  dtype: float64
+  rank: 2
+  intent: in
+  native_shape: [pcols, pver]
+  role: input
+  public_shape: [pver]
+  units: J/kg
+  description: Dry static energy
+- name: pdel
+  fortran_type: real
+  dtype: float64
+  rank: 2
+  intent: in
+  native_shape: [pcols, pver]
+  role: input
+  public_shape: [pver]
+  units: Pa
+  description: thickness of the layer
+- name: rpdel
+  fortran_type: real
+  dtype: float64
+  rank: 2
+  intent: in
+  native_shape: [pcols, pver]
+  role: input
+  public_shape: [pver]
+  units: 1/Pa
+  description: 1./pdel where 'pdel' is thickness of the layer
+- name: cldn
+  fortran_type: real
+  dtype: float64
+  rank: 2
+  intent: in
+  native_shape: [pcols, pver]
+  role: input
+  public_shape: [pver]
+  units: fraction
+  description: Stratiform cloud fraction
+- name: qrl
+  fortran_type: real
+  dtype: float64
+  rank: 2
+  intent: in
+  native_shape: [pcols, pver]
+  role: input
+  public_shape: [pver]
+  description: LW cooling rate
+- name: wsedl
+  fortran_type: real
+  dtype: float64
+  rank: 2
+  intent: in
+  native_shape: [pcols, pver]
+  role: input
+  public_shape: [pver]
+  units: m/s
+  description: Sedimentation velocity of liquid stratus cloud droplet
+- name: z
+  fortran_type: real
+  dtype: float64
+  rank: 2
+  intent: in
+  native_shape: [pcols, pver]
+  role: input
+  public_shape: [pver]
+  units: m
+  description: Layer mid-point height above surface
+- name: zi
+  fortran_type: real
+  dtype: float64
+  rank: 2
+  intent: in
+  native_shape: [pcols, pverp]
+  role: input
+  public_shape: [pverp]
+  units: m
+  description: Interface height above surface
+- name: pmid
+  fortran_type: real
+  dtype: float64
+  rank: 2
+  intent: in
+  native_shape: [pcols, pver]
+  role: input
+  public_shape: [pver]
+  units: Pa
+  description: Layer mid-point pressure
+- name: pi
+  fortran_type: real
+  dtype: float64
+  rank: 2
+  intent: in
+  native_shape: [pcols, pverp]
+  role: input
+  public_shape: [pverp]
+  units: Pa
+  description: Interface pressure
+- name: u
+  fortran_type: real
+  dtype: float64
+  rank: 2
+  intent: in
+  native_shape: [pcols, pver]
+  role: input
+  public_shape: [pver]
+  units: m/s
+  description: Zonal velocity
+- name: v
+  fortran_type: real
+  dtype: float64
+  rank: 2
+  intent: in
+  native_shape: [pcols, pver]
+  role: input
+  public_shape: [pver]
+  units: m/s
+  description: Meridional velocity
+- name: taux
+  fortran_type: real
+  dtype: float64
+  rank: 1
+  intent: in
+  native_shape: [pcols]
+  role: input
+  public_shape: []
+  units: N/m2
+  description: Zonal wind stress at surface
+- name: tauy
+  fortran_type: real
+  dtype: float64
+  rank: 1
+  intent: in
+  native_shape: [pcols]
+  role: input
+  public_shape: []
+  units: N/m2
+  description: Meridional wind stress at surface
+- name: shflx
+  fortran_type: real
+  dtype: float64
+  rank: 1
+  intent: in
+  native_shape: [pcols]
+  role: input
+  public_shape: []
+  units: unit ?
+  description: Sensible heat flux at surface
+- name: qflx
+  fortran_type: real
+  dtype: float64
+  rank: 1
+  intent: in
+  native_shape: [pcols]
+  role: input
+  public_shape: []
+  units: unit ?
+  description: Water vapor flux at surface
+- name: wstarent
+  fortran_type: logical
+  dtype: int32
+  rank: 0
+  intent: in
+  native_shape: []
+  role: input
+  public_shape: []
+  carrier: logical
+  description: true. means use the 'wstar' entrainment closure
+- name: nturb
+  fortran_type: integer
+  dtype: int32
+  rank: 0
+  intent: in
+  native_shape: []
+  role: input
+  public_shape: []
+  units: '#'
+  description: Number of iteration steps for calculating eddy diffusivity
+- name: rrho
+  fortran_type: real
+  dtype: float64
+  rank: 1
+  intent: out
+  native_shape: [pcols]
+  role: output
+  public_shape: []
+  description: Reciprocal of density at the lowest layer
+- name: ustar
+  fortran_type: real
+  dtype: float64
+  rank: 1
+  intent: out
+  native_shape: [pcols]
+  role: output
+  public_shape: []
+  units: m/s
+  description: Surface friction velocity
+- name: pblh
+  fortran_type: real
+  dtype: float64
+  rank: 1
+  intent: out
+  native_shape: [pcols]
+  role: output
+  public_shape: []
+  units: m
+  description: PBL top height
+- name: kvm_in
+  fortran_type: real
+  dtype: float64
+  rank: 2
+  intent: in
+  native_shape: [pcols, pverp]
+  role: input
+  public_shape: [pverp]
+  units: m2/s
+  description: kvm saved from last timestep
+- name: kvh_in
+  fortran_type: real
+  dtype: float64
+  rank: 2
+  intent: in
+  native_shape: [pcols, pverp]
+  role: input
+  public_shape: [pverp]
+  units: m2/s
+  description: kvh saved from last timestep
+- name: kvm_out
+  fortran_type: real
+  dtype: float64
+  rank: 2
+  intent: out
+  native_shape: [pcols, pverp]
+  role: output
+  public_shape: [pverp]
+  units: m2/s
+  description: Eddy diffusivity for momentum
+- name: kvh_out
+  fortran_type: real
+  dtype: float64
+  rank: 2
+  intent: out
+  native_shape: [pcols, pverp]
+  role: output
+  public_shape: [pverp]
+  units: m2/s
+  description: Eddy diffusivity for heat
+- name: kvq
+  fortran_type: real
+  dtype: float64
+  rank: 2
+  intent: out
+  native_shape: [pcols, pverp]
+  role: output
+  public_shape: [pverp]
+  units: m2/s
+  description: Eddy diffusivity for constituents, moisture and tracers (note not having '_out')
+- name: cgh
+  fortran_type: real
+  dtype: float64
+  rank: 2
+  intent: out
+  native_shape: [pcols, pverp]
+  role: output
+  public_shape: [pverp]
+  units: J/kg/m
+  description: Counter-gradient term for heat
+- name: cgs
+  fortran_type: real
+  dtype: float64
+  rank: 2
+  intent: out
+  native_shape: [pcols, pverp]
+  role: output
+  public_shape: [pverp]
+  units: cg/flux
+  description: Counter-gradient star
+- name: tpert
+  fortran_type: real
+  dtype: float64
+  rank: 1
+  intent: out
+  native_shape: [pcols]
+  role: output
+  public_shape: []
+  units: K
+  description: Convective temperature excess
+- name: qpert
+  fortran_type: real
+  dtype: float64
+  rank: 1
+  intent: out
+  native_shape: [pcols]
+  role: output
+  public_shape: []
+  units: kg/kg
+  description: Convective humidity excess
+- name: wpert
+  fortran_type: real
+  dtype: float64
+  rank: 1
+  intent: out
+  native_shape: [pcols]
+  role: output
+  public_shape: []
+  units: m/s
+  description: Turbulent velocity excess
+- name: tke
+  fortran_type: real
+  dtype: float64
+  rank: 2
+  intent: out
+  native_shape: [pcols, pverp]
+  role: output
+  public_shape: [pverp]
+  units: m2/s2
+  description: Turbulent kinetic energy
+- name: bprod
+  fortran_type: real
+  dtype: float64
+  rank: 2
+  intent: out
+  native_shape: [pcols, pverp]
+  role: output
+  public_shape: [pverp]
+  units: m2/s3
+  description: Buoyancy production
+- name: sprod
+  fortran_type: real
+  dtype: float64
+  rank: 2
+  intent: out
+  native_shape: [pcols, pverp]
+  role: output
+  public_shape: [pverp]
+  units: m2/s3
+  description: Shear production
+- name: sfi
+  fortran_type: real
+  dtype: float64
+  rank: 2
+  intent: out
+  native_shape: [pcols, pverp]
+  role: output
+  public_shape: [pverp]
+  units: fraction
+  description: Interfacial layer saturation fraction
+- name: kvinit
+  fortran_type: logical
+  dtype: int32
+  rank: 0
+  intent: in
+  native_shape: []
+  role: input
+  public_shape: []
+  carrier: logical
+  description: '''true'' means time step = 1 : used for initializing kvh, kvm (uses kvf or zero)'
+- name: tauresx
+  fortran_type: real
+  dtype: float64
+  rank: 1
+  intent: inout
+  native_shape: [pcols]
+  role: inout
+  public_shape: []
+  description: Residual stress to be added in vdiff to correct for turb
+- name: tauresy
+  fortran_type: real
+  dtype: float64
+  rank: 1
+  intent: inout
+  native_shape: [pcols]
+  role: inout
+  public_shape: []
+  description: Stress mismatch between sfc and atm accumulated in prior timesteps
+- name: ksrftms
+  fortran_type: real
+  dtype: float64
+  rank: 1
+  intent: in
+  native_shape: [pcols]
+  role: input
+  public_shape: []
+  units: unit ?
+  description: Surface drag coefficient of turbulent mountain stress
+- name: ipbl
+  fortran_type: integer
+  dtype: int32
+  rank: 1
+  intent: out
+  native_shape: [pcols]
+  role: output
+  public_shape: []
+  description: If 1, PBL is CL, while if 0, PBL is STL
+- name: kpblh
+  fortran_type: integer
+  dtype: int32
+  rank: 1
+  intent: out
+  native_shape: [pcols]
+  role: output
+  public_shape: []
+  description: Layer index containing PBL top within or at the base interface
+- name: wstarpbl
+  fortran_type: real
+  dtype: float64
+  rank: 1
+  intent: out
+  native_shape: [pcols]
+  role: output
+  public_shape: []
+- name: tkes
+  fortran_type: real
+  dtype: float64
+  rank: 1
+  intent: out
+  native_shape: [pcols]
+  role: output
+  public_shape: []
+  units: m2/s2
+  description: TKE at surface interface
+- name: went
+  fortran_type: real
+  dtype: float64
+  rank: 1
+  intent: out
+  native_shape: [pcols]
+  role: output
+  public_shape: []
+  units: m/s
+  description: Entrainment rate at the PBL top interface
+- name: turbtype
+  fortran_type: integer
+  dtype: int32
+  rank: 2
+  intent: out
+  native_shape: [pcols, pverp]
+  role: output
+  public_shape: [pverp]
+  units: no unit
+  description: Turbulence type identifier at all interfaces
+- name: sm_aw
+  fortran_type: real
+  dtype: float64
+  rank: 2
+  intent: out
+  native_shape: [pcols, pverp]
+  role: output
+  public_shape: [pverp]
+  units: no unit
+  description: Normalized Galperin instability function for momentum This is 1 when neutral condition
+    (Ri=0), 4.964 for maximum unstable case, and 0 when Ri > Ricrit=0.19
+parameters: {}
+module_state: []
+image:
+  archive_members: [eddy_diff.o]
+  stubs:
+    inert: []
+    fail_closed: []
+    abort: []
+  base_address: 1342177280

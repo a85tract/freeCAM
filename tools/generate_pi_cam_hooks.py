@@ -97,7 +97,8 @@ def _declaration(hook: Hook, spec: FunctionSpec, item, *, target: bool) -> str:
         shape = "(*)" if item.rank else ""
         return f"    {C_TYPES[item.dtype]}, intent({intent}){', target' if target else ''} :: {item.name}{shape}"
     if item.carrier == "logical":
-        return f"    logical, intent({intent}) :: {item.name}"
+        shape = f"({_extents(spec, item, hook)})" if item.rank else ""
+        return f"    logical, intent({intent}) :: {item.name}{shape}"
     if item.carrier == "character":
         return f"    character(len=*), intent({intent}) :: {item.name}"
     if item.pointer:
@@ -237,7 +238,7 @@ def _model_arguments(hook: Hook, spec: FunctionSpec):
 
 
 def _section(item, lead: str) -> str:
-    """``name(1:n, :, :)``-style section over the live columns of a rank-N array."""
+    """``name(1:hk_n, :, :)``-style section over the live columns of a rank-N array."""
 
     return f"({lead}" + "".join(", :" for _ in range(item.rank - 1)) + ")"
 
@@ -274,9 +275,9 @@ def _model_procedure(hook: Hook, spec: FunctionSpec, index: int) -> str:
         lines.append(f"    real(c_double), target :: o_{item.name}({_extents(spec, item, hook)})")
         lines.append(f"    real(c_double), pointer, contiguous :: op_{item.name}({colons})")
         lines.append(f"    real(c_double), pointer, contiguous :: w_{item.name}({colons})")
-    lines.append("    integer :: n")
-    lines.append("    integer(c_int64_t) :: t0, t1, t2")
-    lines.append("    call system_clock(t0)")
+    lines.append("    integer :: hk_n")
+    lines.append("    integer(c_int64_t) :: hk_t0, hk_t1, hk_t2")
+    lines.append("    call system_clock(hk_t0)")
     for slot, item in enumerate(inputs, start=1):
         if item.rank == 0:
             value = item.name if item.dtype == "float64" else f"real({item.name}, c_double)"
@@ -302,7 +303,7 @@ def _model_procedure(hook: Hook, spec: FunctionSpec, index: int) -> str:
         lines.append(f"    op_{item.name} => o_{item.name}")
         lines.append(f"    out_p({slot}) = c_loc(o_{item.name}); out_s(:, {slot}) = (/ {_shape3(hook, spec, item)} /)")
         lines.append(f"    if (.not. plugged({index})) call torch_tensor_from_array(out_t({slot}), op_{item.name}, torch_kCPU)")
-    lines.append("    call system_clock(t1)")
+    lines.append("    call system_clock(hk_t1)")
     lines.append(f"    if (plugged({index})) then")
     lines.append("      ! a compiled plugin: the same arrays as pointer and extent tables, outputs zeroed first")
     for item in outputs:
@@ -313,14 +314,14 @@ def _model_procedure(hook: Hook, spec: FunctionSpec, index: int) -> str:
     lines.append("    else")
     lines.append(f"      call torch_model_forward(models({index}), in_t, out_t)")
     lines.append("    end if")
-    lines.append("    call system_clock(t2)")
-    lines.append(f"    forward_ticks({index}) = forward_ticks({index}) + (t2 - t1)")
+    lines.append("    call system_clock(hk_t2)")
+    lines.append(f"    forward_ticks({index}) = forward_ticks({index}) + (hk_t2 - hk_t1)")
     lines.append(f"    if (.not. shadow({index})) then")
     for item in outputs:
         lead = _axis(hook, spec, item.native_shape[0])
-        lines.append(f"      n = min(int({ncol}), {lead})" if ncol else f"      n = {lead}")
+        lines.append(f"      hk_n = min(int({ncol}), {lead})" if ncol else f"      hk_n = {lead}")
         lines.append(f"      call c_f_pointer(c_loc({first(item)}), w_{item.name}, (/ {_extents(spec, item, hook)} /))")
-        lines.append(f"      w_{item.name}{_section(item, '1:n')} = o_{item.name}{_section(item, '1:n')}")
+        lines.append(f"      w_{item.name}{_section(item, '1:hk_n')} = o_{item.name}{_section(item, '1:hk_n')}")
     for item in dummies:
         if item.carrier == "character" and ROLE_INTENT[item.role] != "in":
             lines.append(f"      {item.name} = ' '")
@@ -329,8 +330,8 @@ def _model_procedure(hook: Hook, spec: FunctionSpec, index: int) -> str:
     lines.append("      call torch_delete(in_t)")
     lines.append("      call torch_delete(out_t)")
     lines.append("    end if")
-    lines.append("    call system_clock(t1)")
-    lines.append(f"    model_ticks({index}) = model_ticks({index}) + (t1 - t0)")
+    lines.append("    call system_clock(hk_t1)")
+    lines.append(f"    model_ticks({index}) = model_ticks({index}) + (hk_t1 - hk_t0)")
     lines.append(f"  end subroutine model_{hook.kernel}")
     return "\n".join(lines)
 

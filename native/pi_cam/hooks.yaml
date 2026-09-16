@@ -108,3 +108,76 @@ hooks:
     model:
       inputs: [ncol, u, v, t, pmid, exner, zm, sgh, landfrac]
       outputs: [ksrf, taux, tauy]
+  - kernel: compute_uwshcu_inv
+    contract: native/pi_cam/functions/uwshcu.yaml
+    # the UW shallow cumulus scheme, the most expensive single kernel of the physics (6.5 ms a call): a module routine of uwshcu called from convect_shallow_tend
+    binding: fortran
+    redirect: rename-references
+    original: {module: uwshcu, routine: compute_uwshcu_inv}
+    callee_symbol: uwshcu_mp_compute_uwshcu_inv_
+    callers:
+      - {object: convect_shallow.o, routine: convect_shallow_tend}
+    model:
+      inputs: [dt, ps0_inv, zs0_inv, p0_inv, z0_inv, dp0_inv, u0_inv, v0_inv, qv0_inv, ql0_inv, qi0_inv, t0_inv, s0_inv, tr0_inv, tke_inv, cldfrct_inv, concldfrct_inv, pblh, cush, dpdry0_inv]
+      outputs: [cush, umf_inv, slflx_inv, qtflx_inv, flxprc1_inv, flxsnow1_inv, qvten_inv, qlten_inv, qiten_inv, sten_inv, uten_inv, vten_inv, trten_inv, qrten_inv, qsten_inv, precip, snow, evapc_inv, cufrc_inv, qcu_inv, qlu_inv, qiu_inv, cbmf, qc_inv, rliq, cnt_inv, cnb_inv, wtprec, wtsnow, wtqc_inv]
+  - kernel: mmacro_pcond
+    contract: native/pi_cam/functions/mmacro_pcond.yaml
+    # the macrophysics condensation core, called from macrop_driver_tend; instratus_condensate inside it keeps its own hook.  A logical and six pointer dummies: Fortran-bound
+    binding: fortran
+    redirect: rename-references
+    original: {module: cldwat2m_macro, routine: mmacro_pcond}
+    callee_symbol: cldwat2m_macro_mp_mmacro_pcond_
+    callers:
+      - {object: macrop_driver.o, routine: macrop_driver_tend}
+    model:
+      inputs: [dt, p, dp, t0, qv0, ql0, qi0, nl0, ni0, a_t, a_qv, a_ql, a_qi, a_nl, a_ni, c_t, c_qv, c_ql, c_qi, c_nl, c_ni, c_qlst, d_t, d_qv, d_ql, d_qi, d_nl, d_ni, a_cud, a_cu0, clrw_old, clri_old, landfrac, snowh]
+      outputs: [t0, qv0, ql0, qi0, nl0, ni0, s_tendout, qv_tendout, ql_tendout, qi_tendout, nl_tendout, ni_tendout, qme, qvadj, qladj, qiadj, qllim, qilim, cld, al_st_star, ai_st_star, ql_st_star, qi_st_star]
+  - kernel: zm_conv_evap
+    contract: native/pi_cam/functions/zm_conv_evap.yaml
+    # the evaporation of convective precipitation, called by both the deep scheme's driver and the shallow one's
+    binding: fortran
+    redirect: rename-references
+    original: {module: zm_conv, routine: zm_conv_evap}
+    callee_symbol: zm_conv_mp_zm_conv_evap_
+    callers:
+      - {object: zm_conv_intr.o, routine: zm_conv_tend}
+      - {object: convect_shallow.o, routine: convect_shallow_tend}
+    model:
+      inputs: [ncol, lchnk, t, pmid, pdel, q, landfrac, tend_s, tend_q, prdprec, cldfrc, deltat, prec]
+      outputs: [tend_s, tend_s_snwprd, tend_s_snwevmlt, tend_q, prec, snow, evpstore, substore, ntprprd, ntsnprd, flxprec, flxsnow]
+  - kernel: momtran
+    contract: native/pi_cam/functions/momtran.yaml
+    # convective momentum transport, called from zm_conv_tend with the two wind components as its tracers
+    binding: fortran
+    redirect: rename-references
+    original: {module: zm_conv, routine: momtran}
+    callee_symbol: zm_conv_mp_momtran_
+    callers:
+      - {object: zm_conv_intr.o, routine: zm_conv_tend}
+    model:
+      inputs: [lchnk, ncol, q, mu, md, du, eu, ed, dp, dsubcld, il1g, il2g, nstep, dt]
+      outputs: [dqdt, pguall, pgdall, icwu, icwd, seten]
+  - kernel: zm_convr
+    contract: native/pi_cam/functions/zm_convr.yaml
+    # the Zhang-McFarlane deep convection core, called from zm_conv_tend; three pointer dummies, a logical array and six dummies without an intent: Fortran-bound
+    binding: fortran
+    redirect: rename-references
+    original: {module: zm_conv, routine: zm_convr}
+    callee_symbol: zm_conv_mp_zm_convr_
+    callers:
+      - {object: zm_conv_intr.o, routine: zm_conv_tend}
+    model:
+      inputs: [lchnk, ncol, t, qh, pblh, zm, geos, zi, pap, paph, dpp, delt, tpert, lengath, ql, landfrac]
+      outputs: [prec, jctop, jcbot, qtnd, heat, mcon, cme, cape, dlf, pflx, zdu, rprd, mu, md, du, eu, ed, dp, dsubcld, ql, rliq, qu, qd, dz, rppe, eps0, cu, evp, tu, td, qs, qsthat, hmn, hsat, hsthat, wteu, wted, wtdu, wtmu, wtmd, wtcu, c0mask, wtrpd, qds, wtevp]
+  - kernel: compute_eddy_diff
+    contract: native/pi_cam/functions/compute_eddy_diff.yaml
+    # the UW moist turbulence scheme's eddy diffusivities, called from vertical_diffusion_tend
+    binding: fortran
+    redirect: rename-references
+    original: {module: eddy_diff, routine: compute_eddy_diff}
+    callee_symbol: eddy_diff_mp_compute_eddy_diff_
+    callers:
+      - {object: vertical_diffusion.o, routine: vertical_diffusion_tend}
+    model:
+      inputs: [lchnk, ncol, t, qv, ztodt, ql, qi, s, pdel, rpdel, cldn, qrl, wsedl, z, zi, pmid, pi, u, v, taux, tauy, shflx, qflx, nturb, kvm_in, kvh_in, tauresx, tauresy, ksrftms]
+      outputs: [rrho, ustar, pblh, kvm_out, kvh_out, kvq, cgh, cgs, tpert, qpert, wpert, tke, bprod, sprod, sfi, tauresx, tauresy, wstarpbl, tkes, went, sm_aw]
