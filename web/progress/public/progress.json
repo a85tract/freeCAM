@@ -2648,7 +2648,7 @@
   "use_gw_oro": true,
   "use_subcol_microp": false
  },
- "content_hash": "96f5583402886c0f8233cce263ccf8c87b65ffec05b47b0a0c5c571a878960cc",
+ "content_hash": "42381a39cb33d123ddd3a24289c03dfde96adc7b79e00296b798f8b2c26cc827",
  "evidence": {
   "pi_cam_cldfrc_fice_frame_replay.json": {
    "bfb": true,
@@ -5338,6 +5338,33 @@
    "steps_completed": 1,
    "what": "50-step gate of a null Numba plugin bound in shadow at the mmacro_pcond hook (the original answers; the plugin's cost is timed), on the first image carrying the batch-A hooks"
   },
+  "pi_cam_pausable_p32-uwshcu-pyfn-shadow_50step_failure.json": {
+   "diagnosis": "The callback was built, bound (pycam_hooks_bind_plugin_v1) and reached: the hook took the plugged branch.  The generated module in image p32 still refuses a plugin at a packed block with an error stop; the branch that hands a plugin the one packed output (commit 167a71a1) was in the working tree but not in the image the job ran.  A live month with the same function (7511163) failed the same way and was deleted.",
+   "image": {
+    "build": "pi_cam_promoted_p32",
+    "role": "development",
+    "sha256": "6f1f626e8677a7d1c0fadda0ab3d67c81c41a3f1631cffd7e7687b6623e6b288"
+   },
+   "kind": "gate-failure",
+   "outcome": "every rank stopped at its first modeled call: `pycam_hooks: the packed model block of compute_uwshcu_inv takes TorchScript models only` (512 messages, one a rank); rank 45 exited with code 128 and the model run ended before the first step",
+   "pbs_job": "7511162",
+   "python_stages": [
+    "dry_adjustment",
+    "shallow_convection",
+    "deep_convection",
+    "convective_tracer_transport_leaf",
+    "vertical_diffusion",
+    "gravity_wave_drag",
+    "aerosol_wet_deposition_leaf",
+    "aerosol_dry_deposition_leaf",
+    "chemistry_tendencies_leaf"
+   ],
+   "ranks": 512,
+   "record": "pi_cam_pausable_p32-uwshcu-pyfn-shadow_50step_failure.json",
+   "run_tag": "p32-uwshcu-pyfn-shadow",
+   "steps_completed": 0,
+   "what": "A hook gate kept as evidence that the gate proves what ran: the first Python function bound at a hook (a TorchScript model run from the interpreter through a C callback, in shadow at compute_uwshcu_inv) on image p32, whose hooks module predates the packed plugin branch."
+  },
   "pi_cam_pausable_rad-both-pause_50step.json": {
    "advance_seconds": 16.3,
    "cloud_macro_micro_python": false,
@@ -6457,6 +6484,22 @@
    "record": "pi_cam_pausable_p29-mmacro_pcond-shadow_50step_failure.json"
   },
   {
+   "capability": "original_replacement_bfb",
+   "contexts": [
+    "cam_run1.dry_adjustment",
+    "cam_run1.shallow_convection",
+    "cam_run1.deep_convection",
+    "cam_run1.convective_tracer_transport_leaf",
+    "cam_run2.vertical_diffusion",
+    "cam_run2.gravity_wave_drag",
+    "cam_run1.aerosol_wet_deposition_leaf",
+    "cam_run2.aerosol_dry_deposition_leaf",
+    "cam_run2.chemistry_tendencies_leaf"
+   ],
+   "kernel_routine": null,
+   "record": "pi_cam_pausable_p32-uwshcu-pyfn-shadow_50step_failure.json"
+  },
+  {
    "capability": "standalone_replay",
    "contexts": [],
    "kernel_routine": null,
@@ -6485,7 +6528,7 @@
   "validation/pi_cam_kernel_api_redirectable_calls.json": "b97f6f7f8f7099cb42e9cebcde6102f9d4d05d17852ba7a5495b29edb1d4fbaf",
   "validation/pi_cam_kernel_runtime_coverage_1month.json": "48f77d6ec78b4026806d4ab6fb9517ef31c1d526481b4ad68e55f77af0d303bd",
   "validation/pi_cam_kernel_runtime_coverage_50step.json": "222961fc5274dbaaf71c40f6c131a683536b5a85ef14cd047a2fd196d8ca38c5",
-  "web/public/catalog.json": "0ea54e824ca52185dcf007657eef1cd77367084a09978e1e46f7572833be7e54"
+  "web/public/catalog.json": "4f1a6f39636181f3324f61a1b4295480a956bd08b227a5c3b07566b9ba0d4a02"
  },
  "kernels": {
   "aer_rad_props::aer_rad_props_lw": {
@@ -74077,8 +74120,8 @@
  ],
  "volatile": {
   "branch": "radiation-torchscript-slot",
-  "commit": "bca22eabb86f6fad9c66e83d75c261ea91b94463",
-  "generated_at": "2026-09-17T21:57:43+00:00"
+  "commit": "167a71a1f77586e9bedcb7bb48c55ee751451651",
+  "generated_at": "2026-09-17T22:00:45+00:00"
  },
  "work_items": [
   {

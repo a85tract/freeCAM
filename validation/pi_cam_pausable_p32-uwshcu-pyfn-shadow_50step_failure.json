@@ -1,0 +1,39 @@
+{
+ "schema_version": 1,
+ "what": "A hook gate kept as evidence that the gate proves what ran: the first Python function bound at a hook (a TorchScript model run from the interpreter through a C callback, in shadow at compute_uwshcu_inv) on image p32, whose hooks module predates the packed plugin branch.",
+ "pbs_job_id": "7511162.desched1",
+ "job": "validation/jobs/pi_cam_pausable_50step.pbs",
+ "run_tag": "p32-uwshcu-pyfn-shadow",
+ "python_stages": [
+  "dry_adjustment",
+  "shallow_convection",
+  "deep_convection",
+  "convective_tracer_transport_leaf",
+  "vertical_diffusion",
+  "gravity_wave_drag",
+  "aerosol_wet_deposition_leaf",
+  "aerosol_dry_deposition_leaf",
+  "chemistry_tendencies_leaf"
+ ],
+ "kernel_models": {
+  "compute_uwshcu_inv": {
+   "function": "answer",
+   "file": "torchscript_callback.py",
+   "path": "examples/plugins/python_kernels/torchscript_callback.py",
+   "binding": "python",
+   "shadow": true
+  }
+ },
+ "native_image": "build/pi_cam_promoted_p32",
+ "native_library_sha256": "6f1f626e8677a7d1c0fadda0ab3d67c81c41a3f1631cffd7e7687b6623e6b288",
+ "ranks": 512,
+ "steps_completed": 0,
+ "outcome": "every rank stopped at its first modeled call: `pycam_hooks: the packed model block of compute_uwshcu_inv takes TorchScript models only` (512 messages, one a rank); rank 45 exited with code 128 and the model run ended before the first step",
+ "resources_used": {
+  "walltime": "00:00:57",
+  "mem_kb": 223582164
+ },
+ "bfb_record_note": "no record of the run was written; the comparison the job ran anyway against the oracle was discarded with it",
+ "diagnosis": "The callback was built, bound (pycam_hooks_bind_plugin_v1) and reached: the hook took the plugged branch.  The generated module in image p32 still refuses a plugin at a packed block with an error stop; the branch that hands a plugin the one packed output (commit 167a71a1) was in the working tree but not in the image the job ran.  A live month with the same function (7511163) failed the same way and was deleted.",
+ "disposition": "Image p33 (build 7511224) carries the new module; the nothing-armed gate, the callback shadow gate and the callback month are queued on it (7511229-7511231)."
+}
