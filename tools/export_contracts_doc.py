@@ -50,9 +50,12 @@ def function_sections() -> list[str]:
             lines.append(f"Hook `{hook.kernel}`: `{hook.redirect}` on {callers or 'no caller object'}; "
                          f"binding `{hook.binding}`; callee `{hook.callee_symbol}`.")
             if hook.takes_model:
+                shape = " as one packed (columns, width) tensor" if hook.model_packed else ""
+                zeroed = (f"  Zeroed by the hook, not returned by the model: {', '.join(hook.model_zero_outputs)}."
+                          if hook.model_zero_outputs else "")
                 lines.append(f"Model block: {len(hook.model_inputs)} inputs "
-                             f"({', '.join(hook.model_inputs)}), {len(hook.model_outputs)} outputs "
-                             f"({', '.join(hook.model_outputs)}).\n")
+                             f"({', '.join(hook.model_inputs)}), {len(hook.model_outputs)} outputs{shape} "
+                             f"({', '.join(hook.model_outputs)}).{zeroed}\n")
             else:
                 lines.append("No model block: the hook counts and pauses only.\n")
         else:
