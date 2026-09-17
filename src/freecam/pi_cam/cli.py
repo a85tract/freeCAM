@@ -243,6 +243,15 @@ def _load_kernel_model(path: Path, *, shadow: bool = False):
     return model
 
 
+def _load_kernel_function(kernel: str, spec: str, *, shadow: bool = False):
+    """The named Python function as a hook callback for the kernel's slot: a PythonPlugin."""
+
+    from freecam.physics.native_model import PythonPlugin
+
+    flag = "--shadow-kernel-function" if shadow else "--kernel-function"
+    return PythonPlugin(_import_function(spec, flag), kernel, shadow=shadow, label=spec.rpartition(":")[2])
+
+
 def _parse_kernel_plugins(values: list[str] | None, flag: str) -> dict[str, str]:
     """``NAME=MODULE:FUNCTION`` (or ``NAME=path.py:FUNCTION``) pairs, one plugin per kernel."""
 
@@ -337,8 +346,10 @@ def _pausable_stage(stage_name: str, policy: str, *, original_kernels, capture_k
     return stage
 
 
-def _kernel_plugins_summary(plugins: dict[str, str], shadow: dict[str, str] | None = None) -> dict[str, dict[str, Any]]:
-    """Which compiled function stood in which slot; a file's path only when it lies inside this checkout."""
+def _kernel_plugins_summary(plugins: dict[str, str], shadow: dict[str, str] | None = None,
+                            binding: str = "numba") -> dict[str, dict[str, Any]]:
+    """Which function stood in which slot (compiled, or a Python callback at the hook); a file's
+    path only when it lies inside this checkout."""
 
     import hashlib
 
@@ -347,7 +358,7 @@ def _kernel_plugins_summary(plugins: dict[str, str], shadow: dict[str, str] | No
     for specs, is_shadow in ((plugins, False), (shadow or {}, True)):
         for name, spec in specs.items():
             module_name, _, function_name = spec.rpartition(":")
-            row: dict[str, Any] = {"function": function_name, "binding": "numba"}
+            row: dict[str, Any] = {"function": function_name, "binding": binding}
             if module_name.endswith(".py"):
                 path = Path(module_name).expanduser().resolve()
                 row["file"] = path.name
@@ -711,6 +722,25 @@ def main(argv: list[str] | None = None) -> int:
         help="bind a compiled Python kernel in shadow: it runs on every call, the original answers; repeatable.",
     )
     parser.add_argument(
+        "--kernel-function",
+        action="append",
+        default=None,
+        metavar="NAME=MODULE:FUNCTION",
+        help=(
+            "put a Python function in a kernel's slot, bound at the kernel's hook through a C callback: "
+            "the image calls it inside Fortran on every call and the interpreter answers.  FUNCTION takes "
+            "one dict, the hook's model-block inputs by name (float64 arrays indexed [column, level], "
+            "scalars as floats) and returns the outputs by name; repeatable.  Not a bit-for-bit run."
+        ),
+    )
+    parser.add_argument(
+        "--shadow-kernel-function",
+        action="append",
+        default=None,
+        metavar="NAME=MODULE:FUNCTION",
+        help="bind a Python function at the kernel's hook in shadow: it runs on every call, the original answers; repeatable.",
+    )
+    parser.add_argument(
         "--radiation-capture",
         type=Path,
         default=None,
@@ -1016,14 +1046,18 @@ def main(argv: list[str] | None = None) -> int:
         shadow_model_paths = _parse_kernel_models(args.shadow_kernel_model)
         kernel_plugin_specs = _parse_kernel_plugins(args.kernel_plugin, "--kernel-plugin")
         shadow_plugin_specs = _parse_kernel_plugins(args.shadow_kernel_plugin, "--shadow-kernel-plugin")
+        kernel_function_specs = _parse_kernel_plugins(args.kernel_function, "--kernel-function")
+        shadow_function_specs = _parse_kernel_plugins(args.shadow_kernel_function, "--shadow-kernel-function")
         original_names = ([k.strip() for k in args.segmented_original_kernels.split(",") if k.strip()]
                           if args.segmented_original else [])
-        slots = [set(kernel_model_paths), set(shadow_model_paths), set(kernel_plugin_specs), set(shadow_plugin_specs)]
+        slots = [set(kernel_model_paths), set(shadow_model_paths), set(kernel_plugin_specs), set(shadow_plugin_specs),
+                 set(kernel_function_specs), set(shadow_function_specs)]
         for i, first in enumerate(slots):
             for second in slots[i + 1:]:
                 if first & second:
                     raise SystemExit(f"--kernel-model/--kernel-plugin: {sorted(first & second)} are given twice; one slot holds one thing")
-        clash = sorted((set(kernel_model_paths) | set(shadow_model_paths) | set(kernel_plugin_specs) | set(shadow_plugin_specs))
+        clash = sorted((set(kernel_model_paths) | set(shadow_model_paths) | set(kernel_plugin_specs) | set(shadow_plugin_specs)
+                        | set(kernel_function_specs) | set(shadow_function_specs))
                        & (set(capture_kernels) | set(original_names)))
         if clash:
             raise SystemExit(f"--kernel-model: {clash} are also named for the original or a capture; "
@@ -1035,6 +1069,8 @@ def main(argv: list[str] | None = None) -> int:
         kernel_models.update({name: _load_kernel_model(path, shadow=True) for name, path in shadow_model_paths.items()})
         kernel_models.update({name: _load_kernel_plugin(name, spec) for name, spec in kernel_plugin_specs.items()})
         kernel_models.update({name: _load_kernel_plugin(name, spec, shadow=True) for name, spec in shadow_plugin_specs.items()})
+        kernel_models.update({name: _load_kernel_function(name, spec) for name, spec in kernel_function_specs.items()})
+        kernel_models.update({name: _load_kernel_function(name, spec, shadow=True) for name, spec in shadow_function_specs.items()})
         if args.radiation_python:
             # The same shape for radiation: Radiation.tend between the two
             # halves of the split stage, native and non-transactional for the
@@ -1529,7 +1565,8 @@ def main(argv: list[str] | None = None) -> int:
             "stage_execution": _stage_executions(cam),
             "frame_capture": _frame_capture_summary(records, args, native_evidence),
             "kernel_models": ({**(_kernel_models_summary(kernel_model_paths, shadow_model_paths) or {}),
-                               **_kernel_plugins_summary(kernel_plugin_specs, shadow_plugin_specs)} or None),
+                               **_kernel_plugins_summary(kernel_plugin_specs, shadow_plugin_specs),
+                               **_kernel_plugins_summary(kernel_function_specs, shadow_function_specs, binding="python")} or None),
             "radiation_process": _radiation_process_summary(records),
             "cloud_process": _cloud_process_summary(records),
             "hooks": _hook_summary(records),

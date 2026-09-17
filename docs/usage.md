@@ -226,15 +226,30 @@ vdiff = driver.processes["vertical_diffusion"]
 vdiff.kernels["compute_tms"] = OriginalKernel()      # the original, through the pause: the gate
 deep = driver.processes["deep_convection"]
 deep.kernels["cldfrc_fice"] = my_ice_fraction        # a callable: arguments in by dummy name, outputs out
+deep.kernels["cldfrc_fice"] = fc.HookCallback(my_ice_fraction, "cldfrc_fice")   # the same function, called by Fortran at the hook
 deep.kernels["cldfrc_fice"] = compile_kernel("cldfrc_fice", my_numba_kernel)   # compiled, called by Fortran at the hook
+deep.kernels["cldfrc_fice"] = fc.NativeModel("ice.pt")                          # TorchScript, run by the image through FTorch
 ```
 
-A callable runs at the kernel's pause (three crossings a call); a compiled
-plugin or a TorchScript model is bound at the kernel's hook and Fortran calls
-it with no Python in the step.  `stage.describe_kernels()` lists each
-kernel's contract and binding; `docs/contracts.md` is the generated reference
-of every contract.  `examples/replace_kernel.ipynb` walks through the three
-ways on a live run.
+A plain callable runs at the kernel's pause (three crossings a call and a
+per-step cost per stage).  The other three stand at the kernel's hook, inside
+the compiled routine, and the stage runs whole around them: a
+`HookCallback` is the same Python function reached through a C callback (the
+interpreter answers inside Fortran; the callback costs tens of microseconds a
+call, the function's own speed is the cost), a compiled plugin and a
+TorchScript model run with no Python in the step.  A hook callback receives
+one dict, the model block's inputs by name as Fortran-ordered views of the
+kernel's arrays (every column the chunk holds; a scalar as a float), and
+returns the outputs by name; an output it leaves out stays zero, and for an
+output the block returns at a subset of constituents either the whole array
+or the compact one is accepted.  `shadow=True` runs it on every call while
+the original answers, for a bit-for-bit cost measurement.  On the command
+line, `--kernel-function NAME=file.py:function` (and `--shadow-kernel-function`)
+does the same; `examples/plugins/python_kernels/torchscript_callback.py` runs
+a TorchScript model from Python that way.  `stage.describe_kernels()` lists
+each kernel's contract and binding; `docs/contracts.md` is the generated
+reference of every contract.  `examples/replace_kernel.ipynb` walks through
+the ways on a live run.
 
 ## Parameters
 

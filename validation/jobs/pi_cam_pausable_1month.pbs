@@ -137,6 +137,20 @@ if [ -n "${PYCAM_KERNEL_MODELS:-}" ]; then
   # the model pickles in per-process order unless the hash seed is fixed (7371767)
   export PYTHONHASHSEED=0
 fi
+if [ -n "${PYCAM_KERNEL_FUNCTIONS:-}" ]; then
+  # Python functions bound at their kernels' hooks through a C callback, NAME=MODULE:FUNCTION
+  # or NAME=path.py:FUNCTION pairs: the image calls the function inside Fortran on every call
+  # and takes its answer.  NOT a bit-for-bit run
+  for pair in ${PYCAM_KERNEL_FUNCTIONS//,/ }; do
+    stage_flags+=(--kernel-function "${pair}")
+  done
+fi
+if [ -n "${PYCAM_SHADOW_KERNEL_FUNCTIONS:-}" ]; then
+  # the same functions in shadow: called on every call, the original answers; bit-for-bit expected
+  for pair in ${PYCAM_SHADOW_KERNEL_FUNCTIONS//,/ }; do
+    stage_flags+=(--shadow-kernel-function "${pair}")
+  done
+fi
 if [ -n "${PYCAM_SHADOW_MODELS:-}" ]; then
   # TorchScript models bound in shadow at their hooks: the image runs them on every call and
   # discards the answer while the original answers.  Bit-for-bit is expected; the stage's
@@ -171,7 +185,7 @@ status=0
   --candidate "${run_dir}" \
   --output "${bfb_output}" || status=$?
 
-if [ -n "${PYCAM_KERNEL_MODELS:-}${PYCAM_RAD_MODEL:-}${PYCAM_RAD_PLUGIN:-}${PYCAM_RAD_TORCH_MODEL:-}${PYCAM_RAD_BLOCK_MODEL:-}" ]; then
+if [ -n "${PYCAM_KERNEL_MODELS:-}${PYCAM_KERNEL_FUNCTIONS:-}${PYCAM_RAD_MODEL:-}${PYCAM_RAD_PLUGIN:-}${PYCAM_RAD_TORCH_MODEL:-}${PYCAM_RAD_BLOCK_MODEL:-}" ]; then
   # a model's month is not bit-for-bit; how far each history field moved, in
   # units of the field's own variability, and whether anything went non-finite
   "${python}" tools/report_pi_cam_surrogate_drift.py \

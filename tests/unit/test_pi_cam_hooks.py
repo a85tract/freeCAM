@@ -130,6 +130,8 @@ def test_a_packed_model_block_is_read_and_rendered(tmp_path) -> None:
     assert "w_trten_inv(1:hk_n, hk_j, sub_trten_inv(hk_s)) = o_packed(1:hk_n, 582 + (hk_j - 1) * 12 + hk_s)" in body
     assert "w_wtprec(1:hk_n, sub_wtprec(hk_s)) = o_packed(1:hk_n, 1182 + hk_s)" in body
     assert "w_wtsnow(1:hk_n, sub_wtsnow(hk_s)) = o_packed(1:hk_n, 1186 + hk_s)" in body
-    assert "takes TorchScript models only" in body                         # no compiled-plugin branch for a packed block
+    # a plugin (compiled code or a Python callback) fills the one packed output through the same tables
+    assert "plugin_status = plugin(20_c_int, in_p, in_s, 1_c_int, out_p, out_s)" in body
+    assert "out_p(1) = c_loc(o_packed); out_s(:, 1) = (/ int(16, c_int64_t), int(1190, c_int64_t), 0_c_int64_t /)" in body
     assert subprocess.run([sys.executable, str(REPO / "tools/generate_pi_cam_hooks.py"), "--check"],
                           capture_output=True, text=True, cwd=REPO).returncode == 0

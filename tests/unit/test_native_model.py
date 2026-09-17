@@ -358,3 +358,90 @@ def test_a_stage_binds_a_compiled_plugin_at_the_hook_and_runs_whole(tmp_path: Pa
     # identically although its code sits at another address (7402200)
     again = compile_kernel("cldfrc_fice", _fice_module().cldfrc_fice, shadow=True)
     assert again.address != address and cloudpickle.dumps(again) == payload
+
+
+def test_a_python_function_answers_at_the_hook_through_a_c_callback() -> None:
+    import cloudpickle
+    import numpy as np
+
+    from freecam.physics.native_model import PythonPlugin, model_block, packed_layout
+    from freecam.physics.numba_kernel import call_plugin_from_python
+
+    module = _fice_module()
+    seen: list[list[str]] = []
+
+    def ice(batch):
+        seen.append(sorted(batch))
+        fice, fsnow = module.cldfrc_fice_reference(batch["t"])
+        return {"fice": fice, "fsnow": fsnow}
+
+    plugin = PythonPlugin(ice, "cldfrc_fice")
+    assert plugin.describe()["binding"] == "python" and plugin.key.startswith("python:cldfrc_fice:") and plugin.address
+    rng = np.random.default_rng(0)
+    t = np.asfortranarray(rng.uniform(200.0, 300.0, size=(16, 30)))
+    fice, fsnow = np.zeros((16, 30), order="F"), np.zeros((16, 30), order="F")
+    assert call_plugin_from_python(plugin, [t], [fice, fsnow]) == 0 and seen == [["t"]]
+    ref_fice, ref_fsnow = module.cldfrc_fice_reference(t)
+    assert np.array_equal(fice, ref_fice) and np.array_equal(fsnow, ref_fsnow)
+    # the batch holds views, not copies: the function saw the hook's own array
+    assert call_plugin_from_python(plugin, [t, t], [fice, fsnow]) == 1 and "2 inputs" in plugin.failures[-1]
+    # a failure inside the function is a non-zero status, not an exception through C
+    bad = PythonPlugin(lambda batch: {"nothing": batch["t"]}, "cldfrc_fice")
+    assert call_plugin_from_python(bad, [t], [fice, fsnow]) == 1 and "not outputs of the model block" in bad.failures[-1]
+    # cloudpickled to a rank (as a stage is), the same identity; the callback is that process's own
+    again = cloudpickle.loads(cloudpickle.dumps(plugin))
+    assert again.identity == plugin.identity and again.key == plugin.key and again._address == 0 and again.address
+    assert plugin({"t": t})["fice"].shape == (16, 30)
+
+
+def test_a_python_function_fills_a_packed_output_in_the_hooks_layout() -> None:
+    import numpy as np
+
+    from freecam.physics.native_model import PythonPlugin, model_block, packed_layout
+    from freecam.physics.numba_kernel import call_plugin_from_python
+
+    hook, spec, inputs, outputs = model_block("compute_uwshcu_inv")
+    layout = {entry["name"]: entry for entry in packed_layout(hook, spec, outputs)}
+    assert layout["cush"]["offset"] == 0 and layout["umf_inv"]["offset"] == 1 and layout["umf_inv"]["width"] == 31
+    assert layout["trten_inv"] == {"name": "trten_inv", "offset": 582, "width": 360, "dims": [30, 57],
+                                   "subset": (10, 11, 12, 17, 18, 19, 24, 25, 26, 31, 32, 33), "rank": 3}
+    assert layout["wtprec"]["offset"] == 1182 and layout["wtsnow"]["offset"] == 1186 and sum(e["width"] for e in layout.values()) == 1190
+
+    def answer(batch):
+        n = batch["t0_inv"].shape[0]
+        trten = np.zeros((n, 30, 57))
+        trten[:, :, 9] = 1.0                       # H2OV, constituent 10: the first of the subset
+        trten[:, 5, 32] = 2.0                      # H218OI, constituent 33: the last
+        return {"cush": np.full(n, 3.0), "umf_inv": np.full((n, 31), 4.0), "trten_inv": trten,
+                "wtprec": np.full((n, 4), 5.0), "cnb_inv": np.arange(n, dtype=float)}
+
+    plugin = PythonPlugin(answer, "compute_uwshcu_inv")
+    shapes = {item.name: [16] + [int(spec.dimensions[a]) if str(a) in spec.dimensions else int(a) for a in item.native_shape[1:]]
+              for item in inputs if item.rank}
+    ins = [np.zeros(shapes[item.name], order="F") + 1.0 if item.rank else 1800.0 for item in inputs]
+    packed = np.zeros((16, 1190), order="F")
+    assert call_plugin_from_python(plugin, ins, [packed]) == 0
+    assert np.all(packed[:, 0] == 3.0) and np.all(packed[:, 1:32] == 4.0) and np.all(packed[:, 32:582 - 1] == 0.0)
+    assert np.array_equal(packed[:, 581], np.arange(16.0))                       # cnb_inv is the last bulk column
+    tr = packed[:, 582:942].reshape(16, 30, 12)                                   # level-major, the subset's 12 slots
+    assert np.all(tr[:, :, 0] == 1.0) and tr[0, 5, 11] == 2.0 and tr[0, 4, 11] == 0.0 and np.all(tr[:, :, 1:11] == 0.0)
+    assert np.all(packed[:, 942:1182] == 0.0) and np.all(packed[:, 1182:1186] == 5.0) and np.all(packed[:, 1186:] == 0.0)
+
+
+def test_a_stage_binds_a_python_callback_at_the_hook_and_runs_whole() -> None:
+    from freecam.physics.cloud_macro_microphysics import CloudMacroMicrophysics
+    from freecam.physics.native_model import PythonPlugin
+
+    stage = CloudMacroMicrophysics()
+    stage.kernels["cldfrc_fice"] = PythonPlugin(lambda batch: {}, "cldfrc_fice", shadow=True)
+    assert stage.select_mode(None) == "native-model" and stage.binding_kind("cldfrc_fice") == "python-hook"
+    library = _Library()
+    ran: list[str] = []
+    native = SimpleNamespace(library=library, run_action=lambda name, phase=None: ran.append(name),
+                             segment_runner=lambda stage_name: None)
+    context = SimpleNamespace(native=native, step=1)
+    stage.tend(None, context)
+    plugin = stage.kernels["cldfrc_fice"]
+    assert ran == [stage.STAGE] and library.plugged == [(1, plugin.address, 1)]   # fice is hook 1; in shadow
+    stage.tend(None, context)
+    assert library.plugged == [(1, plugin.address, 1)]                            # bound once, not every step

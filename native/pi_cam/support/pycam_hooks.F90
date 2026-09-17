@@ -3507,7 +3507,11 @@ contains
     if (.not. plugged(6)) call torch_tensor_from_array(out_t(1), op_packed, torch_kCPU)
     call system_clock(hk_t1)
     if (plugged(6)) then
-      error stop 'pycam_hooks: the packed model block of compute_uwshcu_inv takes TorchScript models only'
+      o_packed = 0.0_c_double
+      out_p(1) = c_loc(o_packed); out_s(:, 1) = (/ int(16, c_int64_t), int(1190, c_int64_t), 0_c_int64_t /)
+      call c_f_procpointer(plugins(6), plugin)
+      plugin_status = plugin(20_c_int, in_p, in_s, 1_c_int, out_p, out_s)
+      if (plugin_status /= 0_c_int) error stop 'pycam_hooks: the plugin bound at compute_uwshcu_inv returned a non-zero status'
     else
       call torch_model_forward(models(6), in_t, out_t)
     end if

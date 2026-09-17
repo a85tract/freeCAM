@@ -414,7 +414,15 @@ def _model_procedure(hook: Hook, spec: FunctionSpec, index: int) -> str:
     lines.append("    call system_clock(hk_t1)")
     lines.append(f"    if (plugged({index})) then")
     if packed:
-        lines.append(f"      error stop 'pycam_hooks: the packed model block of {hook.kernel} takes TorchScript models only'")
+        # a plugin (a Python callback or compiled code) takes the inputs as pointer and extent
+        # tables and fills the one packed output, zeroed first; the write-back below is shared
+        lead = _axis(hook, spec, outputs[0].native_shape[0])
+        width = sum(_width(spec, o, hook) for o in outputs)
+        lines.append("      o_packed = 0.0_c_double")
+        lines.append(f"      out_p(1) = c_loc(o_packed); out_s(:, 1) = (/ int({lead}, c_int64_t), int({width}, c_int64_t), 0_c_int64_t /)")
+        lines.append(f"      call c_f_procpointer(plugins({index}), plugin)")
+        lines.append(f"      plugin_status = plugin({len(inputs)}_c_int, in_p, in_s, 1_c_int, out_p, out_s)")
+        lines.append(f"      if (plugin_status /= 0_c_int) error stop 'pycam_hooks: the plugin bound at {hook.kernel} returned a non-zero status'")
     else:
         lines.append("      ! a compiled plugin: the same arrays as pointer and extent tables, outputs zeroed first")
         for item in outputs:
