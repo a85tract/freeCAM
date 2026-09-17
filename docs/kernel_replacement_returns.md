@@ -152,6 +152,40 @@ call) to give anything back, and must be trained on more than one 50-step
 capture to be worth running live.  Records:
 `validation/pi_cam_pausable_p29-uwshcu-mlp-{shadow,live}_50step.json`.
 
+## Measured over a month: the FTorch floor and the first surrogate
+
+The plugin-path numbers above were fifty-step shadow gates of a compiled
+null function, scaled to the month.  The table below is the month itself
+(1488 steps, 512 ranks, image p29, the develop queue; one rank's figures):
+a TorchScript model that does no arithmetic, bound at each hook and run in
+shadow, bit for bit in every run.  This is what the FTorch path charges
+before a model computes anything, and it is an order of magnitude above the
+compiled null: TorchScript allocates and returns the output tensors inside
+its forward and FTorch wraps every argument.  The baseline month with
+nothing replaced is 402.7 s a rank (job 7500359).
+
+| kernel | calls a month | kernel, µs a call | kernel, s a month | FTorch floor, µs a call | floor, s a month | return with a free model | shadow month |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | --- |
+| `compute_uwshcu_inv` | 2,976 | 6,507.0 | 19.37 | 1,752 | 5.21 | 3.51 % | 7500362 |
+| `mmacro_pcond` | 2,976 | 1,985.0 | 5.91 | 618 | 1.84 | 1.01 % | 7500471 |
+| `zm_convr` | 2,976 | 1,560.0 | 4.64 | 661 | 1.97 | 0.66 % | 7500262 |
+| `compute_eddy_diff` | 2,976 | 1,388.0 | 4.13 | 284 | 0.85 | 0.82 % | 7500473 |
+| `micro_mg_tend` | 2,976 | 1,330.0 | 3.96 | 1,217 | 3.62 | 0.08 % | 7500474 |
+| `instratus_condensate` | 267,840 | 5.1 | 1.37 | 62 | 16.72 | none | 7500475 |
+| `zm_conv_evap` | 2,976 | 36.0 | 0.11 | 318 | 0.95 | none | 7500476 |
+| `momtran` | 2,976 | 30.0 | 0.09 | 236 | 0.70 | none | 7500477 |
+| `compute_tms` | 2,976 | 18.0 | 0.05 | 132 | 0.39 | none | 7500478 |
+| `cldfrc_fice` | 2,976 | 1.9 | 0.01 | 175 | 0.52 | none | 7500479 |
+| **the ten hooks** | | | **39.6** | | **32.8** | **6.1 %** | |
+
+The surrogate of `compute_uwshcu_inv` over the same month: in shadow the
+model costs 45.8 s a rank (15.4 ms a call) and the step loop is
+452.8 s (job 7500360, bit for bit); live, the step loop is
+606.9 s (job 7500361): the model's own 49.7 s plus what the rest
+of the physics spends on a wrong state (10.7 M QNEG3 resets; after the month
+T drifts 5.4 K rms, U 15 m/s, PS 16 hPa, CLDLIQ 25.7 mg/kg against a
+reference rms of 13.2).  Records: `validation/pi_cam_pausable_p29-*-1month*_1month.json`.
+
 ## Sources and caveats
 
 The month costs are one run on exclusive nodes; the plugin paths are
