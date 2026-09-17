@@ -209,9 +209,12 @@ against the kernel's 6.5 ms and 19.4 s: the first replacement at a kernel
 slot that costs less than what it replaces, a saving of 10 s a month, 2.5 %
 of it, if its answers were the kernel's.  They are not yet: live (job
 7504585) the step loop is 514.9 s against 402.7, 3.9 M QNEG3 resets, and
-after the month T drifts 5.1 K rms, U 15 m/s, PS 18 hPa.  The cost side of
-the kernel slot is settled; what remains is the model's skill, and that is
-training data and architecture, not the interface.  Records:
+after the month T drifts 5.1 K rms, U 15 m/s, PS 18 hPa.  The same network
+trained on twice the data (the fifty-step capture plus one call in 25 across
+a month, 296 k columns; job 7504871) is no faster live (514.5 s) and only a
+little closer (T 4.8 K rms, PS 12 hPa): more of the same data does not fix
+it.  The cost side of the kernel slot is settled; what remains is the model's
+skill, and that is architecture and targets, not the interface.  Records:
 `validation/pi_cam_pausable_p30-uwshcu-h256-{shadow,live}-1month_1month.json`.
 
 ## Sources and caveats
