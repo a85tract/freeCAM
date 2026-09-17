@@ -1,0 +1,40 @@
+{
+ "schema_version": 1,
+ "what": "The callback shadow gate on image p33 killed at the job's memory limit: the interpreter with torch loaded on every rank needs the memory of a torch process a rank.",
+ "pbs_job_id": "7511230.desched1",
+ "job": "validation/jobs/pi_cam_pausable_50step.pbs",
+ "run_tag": "p33-uwshcu-pyfn-shadow",
+ "python_stages": [
+  "dry_adjustment",
+  "shallow_convection",
+  "deep_convection",
+  "convective_tracer_transport_leaf",
+  "vertical_diffusion",
+  "gravity_wave_drag",
+  "aerosol_wet_deposition_leaf",
+  "aerosol_dry_deposition_leaf",
+  "chemistry_tendencies_leaf"
+ ],
+ "kernel_models": {
+  "compute_uwshcu_inv": {
+   "function": "answer",
+   "file": "torchscript_callback.py",
+   "path": "examples/plugins/python_kernels/torchscript_callback.py",
+   "binding": "python",
+   "shadow": true
+  }
+ },
+ "native_image": "build/pi_cam_promoted_p33",
+ "native_library_sha256": "15cb94f9cd96c99747b68b8da66d30ee7420cb1004d7a2149a900633dbc98708",
+ "ranks": 512,
+ "steps_completed": 0,
+ "outcome": "the ranks were killed (forrtl: error (78): process killed (SIGTERM)) before the first step completed; the model run exited 137",
+ "resources_used": {
+  "walltime": "00:08:55",
+  "mem_kb": 268435456,
+  "requested": "4 nodes x 64 GB"
+ },
+ "bfb_record_note": "no record of the run was written; the comparison the job ran anyway was discarded with it",
+ "diagnosis": "512 interpreters each importing torch and loading the TorchScript model, on top of the model's own memory, exceed the fifty-step job's 64 GB a node; the month jobs ask 200 GB a node and ran.",
+ "disposition": "Rerun at 200 GB a node: 7511790, bit for bit, 51 200 calls answered by the callback in shadow."
+}

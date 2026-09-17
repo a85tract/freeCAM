@@ -2648,7 +2648,7 @@
   "use_gw_oro": true,
   "use_subcol_microp": false
  },
- "content_hash": "500ca3f391cf3bb24cf0e7f6eb924b0fab89fbb723b0b43e5e3f6dab99aa6e19",
+ "content_hash": "2b4f1d5ddab893ae6057b5caede53539ac862470c6c7aa2679ece8df2f536f27",
  "evidence": {
   "pi_cam_cldfrc_fice_frame_replay.json": {
    "bfb": true,
@@ -5365,6 +5365,33 @@
    "steps_completed": 0,
    "what": "A hook gate kept as evidence that the gate proves what ran: the first Python function bound at a hook (a TorchScript model run from the interpreter through a C callback, in shadow at compute_uwshcu_inv) on image p32, whose hooks module predates the packed plugin branch."
   },
+  "pi_cam_pausable_p33-uwshcu-pyfn-shadow_50step_memory_failure.json": {
+   "diagnosis": "512 interpreters each importing torch and loading the TorchScript model, on top of the model's own memory, exceed the fifty-step job's 64 GB a node; the month jobs ask 200 GB a node and ran.",
+   "image": {
+    "build": "pi_cam_promoted_p33",
+    "role": "development",
+    "sha256": "15cb94f9cd96c99747b68b8da66d30ee7420cb1004d7a2149a900633dbc98708"
+   },
+   "kind": "gate-failure",
+   "outcome": "the ranks were killed (forrtl: error (78): process killed (SIGTERM)) before the first step completed; the model run exited 137",
+   "pbs_job": "7511230",
+   "python_stages": [
+    "dry_adjustment",
+    "shallow_convection",
+    "deep_convection",
+    "convective_tracer_transport_leaf",
+    "vertical_diffusion",
+    "gravity_wave_drag",
+    "aerosol_wet_deposition_leaf",
+    "aerosol_dry_deposition_leaf",
+    "chemistry_tendencies_leaf"
+   ],
+   "ranks": 512,
+   "record": "pi_cam_pausable_p33-uwshcu-pyfn-shadow_50step_memory_failure.json",
+   "run_tag": "p33-uwshcu-pyfn-shadow",
+   "steps_completed": 0,
+   "what": "The callback shadow gate on image p33 killed at the job's memory limit: the interpreter with torch loaded on every rank needs the memory of a torch process a rank."
+  },
   "pi_cam_pausable_rad-both-pause_50step.json": {
    "advance_seconds": 16.3,
    "cloud_macro_micro_python": false,
@@ -6500,6 +6527,22 @@
    "record": "pi_cam_pausable_p32-uwshcu-pyfn-shadow_50step_failure.json"
   },
   {
+   "capability": "original_replacement_bfb",
+   "contexts": [
+    "cam_run1.dry_adjustment",
+    "cam_run1.shallow_convection",
+    "cam_run1.deep_convection",
+    "cam_run1.convective_tracer_transport_leaf",
+    "cam_run2.vertical_diffusion",
+    "cam_run2.gravity_wave_drag",
+    "cam_run1.aerosol_wet_deposition_leaf",
+    "cam_run2.aerosol_dry_deposition_leaf",
+    "cam_run2.chemistry_tendencies_leaf"
+   ],
+   "kernel_routine": null,
+   "record": "pi_cam_pausable_p33-uwshcu-pyfn-shadow_50step_memory_failure.json"
+  },
+  {
    "capability": "standalone_replay",
    "contexts": [],
    "kernel_routine": null,
@@ -6528,7 +6571,7 @@
   "validation/pi_cam_kernel_api_redirectable_calls.json": "b97f6f7f8f7099cb42e9cebcde6102f9d4d05d17852ba7a5495b29edb1d4fbaf",
   "validation/pi_cam_kernel_runtime_coverage_1month.json": "48f77d6ec78b4026806d4ab6fb9517ef31c1d526481b4ad68e55f77af0d303bd",
   "validation/pi_cam_kernel_runtime_coverage_50step.json": "222961fc5274dbaaf71c40f6c131a683536b5a85ef14cd047a2fd196d8ca38c5",
-  "web/public/catalog.json": "f23cfd1524a6b45ac8167d3ef1dc6938d8fff2134e61638300c83a371bdd9fa7"
+  "web/public/catalog.json": "a00c2db8213b1f5a1bcdce01326b46b21f18f5a0c4d2bfe8fb58e6c85a375ae2"
  },
  "kernels": {
   "aer_rad_props::aer_rad_props_lw": {
@@ -74120,8 +74163,8 @@
  ],
  "volatile": {
   "branch": "radiation-torchscript-slot",
-  "commit": "d93a5803599f3eec29fb68d60f236b030ce99c2e",
-  "generated_at": "2026-09-17T22:35:58+00:00"
+  "commit": "fc61528fe48c3bf9a5c498d4f91efbeb3c98a340",
+  "generated_at": "2026-09-17T22:41:56+00:00"
  },
  "work_items": [
   {
