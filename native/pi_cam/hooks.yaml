@@ -122,8 +122,17 @@ hooks:
       outputs: [cush, umf_inv, slflx_inv, qtflx_inv, flxprc1_inv, flxsnow1_inv, qvten_inv, qlten_inv, qiten_inv, sten_inv, uten_inv, vten_inv, qrten_inv, qsten_inv, precip, snow, evapc_inv, cufrc_inv, qcu_inv, qlu_inv, qiu_inv, cbmf, qc_inv, rliq, cnt_inv, cnb_inv, trten_inv, wtqc_inv, wtprec, wtsnow]
       # one (columns, width) tensor back: the FTorch floor is the output tensors' allocation, so 30 tensors
       # become one.  The tracer arrays come last, so a model may derive the water-tracer tendencies from
-      # tr0_inv and its own water tendencies (the scheme carries the isotopes itself) and zero the rest
+      # tr0_inv and its own water tendencies (the scheme carries the isotopes itself)
       packed: true
+      # the water-isotope constituents the scheme carries: four species (bulk H2O, H216O, HDO, H218O) as
+      # vapour, liquid and ice.  The model returns the tracer arrays at these indices only and the hook
+      # zeroes the rest, so 608 values a column cross instead of 3534 (the kernel's number and aerosol
+      # tendencies are not modelled)
+      subset:
+        trten_inv: [10, 11, 12, 17, 18, 19, 24, 25, 26, 31, 32, 33]
+        wtqc_inv: [11, 12, 18, 19, 25, 26, 32, 33]
+        wtprec: [10, 17, 24, 31]
+        wtsnow: [10, 17, 24, 31]
   - kernel: mmacro_pcond
     contract: native/pi_cam/functions/mmacro_pcond.yaml
     # the macrophysics condensation core, called from macrop_driver_tend; instratus_condensate inside it keeps its own hook.  A logical and six pointer dummies: Fortran-bound

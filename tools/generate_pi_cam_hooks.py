@@ -252,12 +252,37 @@ def _zero_outputs(hook: Hook, spec: FunctionSpec):
     return zeros
 
 
-def _width(spec: FunctionSpec, item) -> int:
-    """Elements of one column of ``item``: the product of its extents after the first."""
+def _dim(spec: FunctionSpec, axis) -> int:
+    """One extent of a contract shape, by name in the contract's dimensions or as a literal."""
 
+    return int(spec.dimensions[axis]) if str(axis) in spec.dimensions else int(axis)
+
+
+def _subset(hook: Hook, spec: FunctionSpec, item):
+    """The 1-based last-axis indices the model returns for ``item``, checked against the contract; None for all."""
+
+    indices = hook.model_subset(item.name)
+    if indices is None:
+        return None
+    if item.rank not in (2, 3) or item.carrier or item.pointer or item.dtype != "float64" or ROLE_INTENT[item.role] != "out":
+        raise SystemExit(f"hook {hook.kernel}: subset output {item.name!r} must be a real intent(out) array of rank 2 or 3")
+    extent = _dim(spec, item.native_shape[-1])
+    if max(indices) > extent:
+        raise SystemExit(f"hook {hook.kernel}: the subset of {item.name!r} names index {max(indices)} beyond its extent {extent}")
+    return indices
+
+
+def _width(spec: FunctionSpec, item, hook: Hook) -> int:
+    """Elements of one column of ``item`` inside the packed tensor: the product of its extents after
+    the first, the last one replaced by the size of its subset when the model returns one."""
+
+    dims = [_dim(spec, axis) for axis in item.native_shape[1:]]
+    subset = _subset(hook, spec, item)
+    if subset is not None:
+        dims[-1] = len(subset)
     width = 1
-    for axis in item.native_shape[1:]:
-        width *= int(spec.dimensions[axis]) if str(axis) in spec.dimensions else int(axis)
+    for extent in dims:
+        width *= extent
     return width
 
 
@@ -267,8 +292,24 @@ def _packed_copies(spec: FunctionSpec, outputs, hook: Hook) -> list[str]:
 
     lines, offset = [], 0
     for item in outputs:
-        dims = [int(spec.dimensions[a]) if str(a) in spec.dimensions else int(a) for a in item.native_shape[1:]]
-        if item.rank == 1:
+        dims = [_dim(spec, a) for a in item.native_shape[1:]]
+        subset = _subset(hook, spec, item)
+        if subset is not None:
+            # the rest of the array is the hook's to zero; the subset's indices sit in sub_<name>
+            size = len(subset)
+            lines.append(f"      w_{item.name}{_section(item, '1:hk_n')} = 0.0_c_double")
+            if item.rank == 2:
+                lines.append(f"      do hk_s = 1, {size}")
+                lines.append(f"        w_{item.name}(1:hk_n, sub_{item.name}(hk_s)) = o_packed(1:hk_n, {offset} + hk_s)")
+                lines.append("      end do")
+            else:
+                lines.append(f"      do hk_j = 1, {dims[0]}")
+                lines.append(f"        do hk_s = 1, {size}")
+                lines.append(f"          w_{item.name}(1:hk_n, hk_j, sub_{item.name}(hk_s)) = "
+                             f"o_packed(1:hk_n, {offset} + (hk_j - 1) * {size} + hk_s)")
+                lines.append("        end do")
+                lines.append("      end do")
+        elif item.rank == 1:
             lines.append(f"      w_{item.name}(1:hk_n) = o_packed(1:hk_n, {offset + 1})")
         elif item.rank == 2:
             lines.append(f"      do hk_j = 1, {dims[0]}")
@@ -280,7 +321,7 @@ def _packed_copies(spec: FunctionSpec, outputs, hook: Hook) -> list[str]:
             lines.append(f"          w_{item.name}(1:hk_n, hk_j, hk_k) = o_packed(1:hk_n, {offset} + (hk_j - 1) * {dims[1]} + hk_k)")
             lines.append("        end do")
             lines.append("      end do")
-        offset += _width(spec, item)
+        offset += _width(spec, item, hook)
     return lines
 
 
@@ -310,9 +351,13 @@ def _model_procedure(hook: Hook, spec: FunctionSpec, index: int) -> str:
     lines.append(f"    integer(c_int64_t) :: in_s(3, {len(inputs)}), out_s(3, {max(len(outputs), 1)})")
     if packed:
         lead = _axis(hook, spec, outputs[0].native_shape[0])
-        lines.append(f"    real(c_double), target :: o_packed({lead}, {sum(_width(spec, o) for o in outputs)})")
+        lines.append(f"    real(c_double), target :: o_packed({lead}, {sum(_width(spec, o, hook) for o in outputs)})")
         lines.append("    real(c_double), pointer, contiguous :: op_packed(:,:)")
-        lines.append("    integer :: hk_j, hk_k")
+        lines.append("    integer :: hk_j, hk_k, hk_s")
+        for item in outputs:
+            subset = _subset(hook, spec, item)
+            if subset is not None:
+                lines.append(f"    integer, parameter :: sub_{item.name}({len(subset)}) = (/ {', '.join(str(i) for i in subset)} /)")
     lines.append("    procedure(plugin_interface), pointer :: plugin => null()")
     lines.append("    integer(c_int) :: plugin_status")
     for item in inputs:
@@ -430,7 +475,7 @@ def _warm_procedure(hook: Hook, spec: FunctionSpec, index: int) -> str:
     lines.append(f"    type(torch_tensor) :: in_t({len(inputs)}), out_t({1 if packed else len(outputs)})")
     if packed:
         lead = _axis(hook, spec, outputs[0].native_shape[0])
-        lines.append(f"    real(c_double), target :: y_packed({lead}, {sum(_width(spec, o) for o in outputs)})")
+        lines.append(f"    real(c_double), target :: y_packed({lead}, {sum(_width(spec, o, hook) for o in outputs)})")
         lines.append("    real(c_double), pointer, contiguous :: yp_packed(:,:)")
     for prefix, items in (("z", inputs), ("y", [] if packed else outputs)):
         for item in items:

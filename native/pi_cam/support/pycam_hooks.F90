@@ -3379,9 +3379,13 @@ contains
     type(torch_tensor) :: in_t(20), out_t(1)
     type(c_ptr) :: in_p(20), out_p(30)
     integer(c_int64_t) :: in_s(3, 20), out_s(3, 30)
-    real(c_double), target :: o_packed(16, 4116)
+    real(c_double), target :: o_packed(16, 1190)
     real(c_double), pointer, contiguous :: op_packed(:,:)
-    integer :: hk_j, hk_k
+    integer :: hk_j, hk_k, hk_s
+    integer, parameter :: sub_trten_inv(12) = (/ 10, 11, 12, 17, 18, 19, 24, 25, 26, 31, 32, 33 /)
+    integer, parameter :: sub_wtqc_inv(8) = (/ 11, 12, 18, 19, 25, 26, 32, 33 /)
+    integer, parameter :: sub_wtprec(4) = (/ 10, 17, 24, 31 /)
+    integer, parameter :: sub_wtsnow(4) = (/ 10, 17, 24, 31 /)
     procedure(plugin_interface), pointer :: plugin => null()
     integer(c_int) :: plugin_status
     real(c_double), target :: s_dt(1)
@@ -3605,21 +3609,25 @@ contains
       w_rliq(1:hk_n) = o_packed(1:hk_n, 580)
       w_cnt_inv(1:hk_n) = o_packed(1:hk_n, 581)
       w_cnb_inv(1:hk_n) = o_packed(1:hk_n, 582)
-      do hk_k = 1, 57
-        do hk_j = 1, 30
-          w_trten_inv(1:hk_n, hk_j, hk_k) = o_packed(1:hk_n, 582 + (hk_j - 1) * 57 + hk_k)
+      w_trten_inv(1:hk_n, :, :) = 0.0_c_double
+      do hk_j = 1, 30
+        do hk_s = 1, 12
+          w_trten_inv(1:hk_n, hk_j, sub_trten_inv(hk_s)) = o_packed(1:hk_n, 582 + (hk_j - 1) * 12 + hk_s)
         end do
       end do
-      do hk_k = 1, 57
-        do hk_j = 1, 30
-          w_wtqc_inv(1:hk_n, hk_j, hk_k) = o_packed(1:hk_n, 2292 + (hk_j - 1) * 57 + hk_k)
+      w_wtqc_inv(1:hk_n, :, :) = 0.0_c_double
+      do hk_j = 1, 30
+        do hk_s = 1, 8
+          w_wtqc_inv(1:hk_n, hk_j, sub_wtqc_inv(hk_s)) = o_packed(1:hk_n, 942 + (hk_j - 1) * 8 + hk_s)
         end do
       end do
-      do hk_j = 1, 57
-        w_wtprec(1:hk_n, hk_j) = o_packed(1:hk_n, 4002 + hk_j)
+      w_wtprec(1:hk_n, :) = 0.0_c_double
+      do hk_s = 1, 4
+        w_wtprec(1:hk_n, sub_wtprec(hk_s)) = o_packed(1:hk_n, 1182 + hk_s)
       end do
-      do hk_j = 1, 57
-        w_wtsnow(1:hk_n, hk_j) = o_packed(1:hk_n, 4059 + hk_j)
+      w_wtsnow(1:hk_n, :) = 0.0_c_double
+      do hk_s = 1, 4
+        w_wtsnow(1:hk_n, sub_wtsnow(hk_s)) = o_packed(1:hk_n, 1186 + hk_s)
       end do
     end if
     if (.not. plugged(6)) then
@@ -3633,7 +3641,7 @@ contains
   subroutine warm_compute_uwshcu_inv()
     ! the model bound at hook 6 run once on zeros of the contract's extents
     type(torch_tensor) :: in_t(20), out_t(1)
-    real(c_double), target :: y_packed(16, 4116)
+    real(c_double), target :: y_packed(16, 1190)
     real(c_double), pointer, contiguous :: yp_packed(:,:)
     real(c_double), target :: z_dt(1)
     real(c_double), pointer, contiguous :: zp_dt(:)

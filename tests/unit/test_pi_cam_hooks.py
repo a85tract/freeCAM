@@ -55,6 +55,14 @@ def test_the_loader_refuses_inconsistent_hooks(tmp_path: Path) -> None:
     with pytest.raises(PICAMConfigurationError):                  # a Fortran-bound hook is reached by renamed references
         load_hooks(_table(tmp_path, binding="fortran", redirect="weaken-definition", original={"symbol": "x_"}))
     assert not load_hooks(_table(tmp_path, binding="fortran")).hook("toy").pausable
+    with pytest.raises(PICAMConfigurationError):                  # a subset names an output the model does not return
+        load_hooks(_table(tmp_path, model={"inputs": ["a"], "outputs": ["b"], "packed": True, "subset": {"c": [1]}}))
+    with pytest.raises(PICAMConfigurationError):                  # a subset lives inside a packed tensor only
+        load_hooks(_table(tmp_path, model={"inputs": ["a"], "outputs": ["b"], "subset": {"b": [1, 2]}}))
+    with pytest.raises(PICAMConfigurationError):                  # its indices are 1-based and distinct
+        load_hooks(_table(tmp_path, model={"inputs": ["a"], "outputs": ["b"], "packed": True, "subset": {"b": [0, 1]}}))
+    table = load_hooks(_table(tmp_path, model={"inputs": ["a"], "outputs": ["b", "c"], "packed": True, "subset": {"c": [3, 1]}}))
+    assert table.hook("toy").model_subset("c") == (3, 1) and table.hook("toy").model_subset("b") is None
 
 
 class _Entry:
@@ -110,13 +118,18 @@ def test_a_packed_model_block_is_read_and_rendered(tmp_path) -> None:
     hook = table.hook("compute_uwshcu_inv")
     assert hook.model_packed and hook.model_zero_outputs == ()
     assert "tr0_inv" in hook.model_inputs and hook.model_outputs[-4:] == ("trten_inv", "wtqc_inv", "wtprec", "wtsnow")
+    assert hook.model_subset("trten_inv") == (10, 11, 12, 17, 18, 19, 24, 25, 26, 31, 32, 33)   # the isotope V/L/I constituents
+    assert hook.model_subset("wtprec") == (10, 17, 24, 31) and hook.model_subset("umf_inv") is None
     text = (REPO / "native/pi_cam/support/pycam_hooks.F90").read_text()
     body = text[text.index("subroutine model_compute_uwshcu_inv"):text.index("end subroutine model_compute_uwshcu_inv")]
-    assert "out_t(1)" in body and "o_packed(16, 4116)" in body           # one tensor, 30 outputs side by side
+    assert "out_t(1)" in body and "o_packed(16, 1190)" in body           # one tensor: 582 bulk columns + 360 + 240 + 4 + 4
     assert "w_umf_inv(1:hk_n, hk_j) = o_packed(1:hk_n, 1 + hk_j)" in body  # cush takes column 1, umf the next 31
-    # a rank-3 output is laid out level-major inside the packed tensor, after the 582 columns before it
-    assert "w_trten_inv(1:hk_n, hk_j, hk_k) = o_packed(1:hk_n, 582 + (hk_j - 1) * 57 + hk_k)" in body
-    assert "w_wtsnow(1:hk_n, hk_j) = o_packed(1:hk_n, 4059 + hk_j)" in body
+    # a subset output: the hook zeroes the live columns, then scatters the packed columns (level-major) to its indices
+    assert "integer, parameter :: sub_trten_inv(12) = (/ 10, 11, 12, 17, 18, 19, 24, 25, 26, 31, 32, 33 /)" in body
+    assert "w_trten_inv(1:hk_n, :, :) = 0.0_c_double" in body
+    assert "w_trten_inv(1:hk_n, hk_j, sub_trten_inv(hk_s)) = o_packed(1:hk_n, 582 + (hk_j - 1) * 12 + hk_s)" in body
+    assert "w_wtprec(1:hk_n, sub_wtprec(hk_s)) = o_packed(1:hk_n, 1182 + hk_s)" in body
+    assert "w_wtsnow(1:hk_n, sub_wtsnow(hk_s)) = o_packed(1:hk_n, 1186 + hk_s)" in body
     assert "takes TorchScript models only" in body                         # no compiled-plugin branch for a packed block
     assert subprocess.run([sys.executable, str(REPO / "tools/generate_pi_cam_hooks.py"), "--check"],
                           capture_output=True, text=True, cwd=REPO).returncode == 0

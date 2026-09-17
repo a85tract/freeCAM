@@ -53,6 +53,9 @@ class Hook:
     model_packed: bool = False
     #: contract outputs the hook zeroes itself instead of taking from the model
     model_zero_outputs: tuple[str, ...] = ()
+    #: outputs the model returns only at some 1-based indices of their last axis, in that order
+    #: inside the packed tensor; the hook zeroes the rest of the array.  Packed blocks only
+    model_subsets: tuple[tuple[str, tuple[int, ...]], ...] = ()
     #: ``c`` or ``fortran``, see :data:`BINDINGS`
     binding: str = "c"
 
@@ -61,6 +64,14 @@ class Hook:
         """Whether the image can run a TorchScript model at this hook."""
 
         return bool(self.model_inputs) and bool(self.model_outputs)
+
+    def model_subset(self, name: str) -> tuple[int, ...] | None:
+        """The last-axis indices the model returns for output ``name``; None for the whole array."""
+
+        for output, indices in self.model_subsets:
+            if output == name:
+                return indices
+        return None
 
     @property
     def symbol(self) -> str:
@@ -142,6 +153,16 @@ def load_hooks(path: str | Path | None = None) -> HookTable:
             raise PICAMConfigurationError(f"{source}: hook {kernel!r}: a zeroed output is listed twice or also returned by the model")
         if (model_packed or model_zero_outputs) and not model_outputs:
             raise PICAMConfigurationError(f"{source}: hook {kernel!r}: packed or zeroed outputs need a model block")
+        subsets = []
+        for name, indices in dict(model.get("subset") or {}).items():
+            if str(name) not in model_outputs:
+                raise PICAMConfigurationError(f"{source}: hook {kernel!r}: subset output {name!r} is not returned by the model")
+            values = tuple(int(i) for i in (indices or ()))
+            if not values or len(set(values)) != len(values) or min(values) < 1:
+                raise PICAMConfigurationError(f"{source}: hook {kernel!r}: the subset of {name!r} needs distinct 1-based indices")
+            subsets.append((str(name), values))
+        if subsets and not model_packed:
+            raise PICAMConfigurationError(f"{source}: hook {kernel!r}: a subset is returned inside a packed tensor only")
         binding = str(record.get("binding", "c"))
         if binding not in BINDINGS:
             raise PICAMConfigurationError(f"{source}: hook {kernel!r} binding must be one of {BINDINGS}")
@@ -153,7 +174,7 @@ def load_hooks(path: str | Path | None = None) -> HookTable:
             redirect=redirect, original_module=original.get("module"), original_routine=original.get("routine"),
             original_symbol=original.get("symbol"), callers=callers,
             model_inputs=model_inputs, model_outputs=model_outputs, binding=binding,
-            model_packed=model_packed, model_zero_outputs=model_zero_outputs,
+            model_packed=model_packed, model_zero_outputs=model_zero_outputs, model_subsets=tuple(subsets),
         ))
     import hashlib
 
