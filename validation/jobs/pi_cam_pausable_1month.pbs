@@ -119,6 +119,12 @@ if [ -n "${PYCAM_DISABLE_ACTIONS:-}" ]; then
   # the inertness gate: actions expected to do no numerical work, switched off
   stage_flags+=(--disable-actions "${PYCAM_DISABLE_ACTIONS}")
 fi
+if [ -n "${PYCAM_CAPTURE_KERNELS:-}" ]; then
+  # the named kernels answered by the original at their pauses with one call in
+  # PYCAM_CAPTURE_EVERY recorded (default every call), for training data that
+  # spans the month; the run must stay bit-for-bit
+  stage_flags+=(--capture-kernels "${PYCAM_CAPTURE_KERNELS}" --capture-dir "${run_dir}/../frame-capture" --capture-every "${PYCAM_CAPTURE_EVERY:-1}")
+fi
 if [ -n "${PYCAM_KERNEL_MODELS:-}" ]; then
   # models in kernel slots, NAME=PATH pairs separated by commas: a cloudpickled
   # callable per slot.  NOT a bit-for-bit run and not evidence of one; the record

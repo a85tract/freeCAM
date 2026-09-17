@@ -135,7 +135,7 @@ fi
 if [ -n "${PYCAM_CAPTURE_KERNELS:-}" ]; then
   # the named kernels answered by the original at their pauses with every call's
   # frame recorded, for the standalone replay; the run must stay bit-for-bit
-  stage_flags+=(--capture-kernels "${PYCAM_CAPTURE_KERNELS}" --capture-dir "${run_dir}/../frame-capture")
+  stage_flags+=(--capture-kernels "${PYCAM_CAPTURE_KERNELS}" --capture-dir "${run_dir}/../frame-capture" --capture-every "${PYCAM_CAPTURE_EVERY:-1}")
 fi
 if [ -n "${PYCAM_KERNEL_MODELS:-}" ]; then
   # models in kernel slots, NAME=PATH pairs separated by commas: a cloudpickled
