@@ -118,8 +118,12 @@ hooks:
     callers:
       - {object: convect_shallow.o, routine: convect_shallow_tend}
     model:
-      inputs: [dt, ps0_inv, zs0_inv, p0_inv, z0_inv, dp0_inv, u0_inv, v0_inv, qv0_inv, ql0_inv, qi0_inv, t0_inv, s0_inv, tr0_inv, tke_inv, cldfrct_inv, concldfrct_inv, pblh, cush, dpdry0_inv]
-      outputs: [cush, umf_inv, slflx_inv, qtflx_inv, flxprc1_inv, flxsnow1_inv, qvten_inv, qlten_inv, qiten_inv, sten_inv, uten_inv, vten_inv, trten_inv, qrten_inv, qsten_inv, precip, snow, evapc_inv, cufrc_inv, qcu_inv, qlu_inv, qiu_inv, cbmf, qc_inv, rliq, cnt_inv, cnb_inv, wtprec, wtsnow, wtqc_inv]
+      inputs: [dt, ps0_inv, zs0_inv, p0_inv, z0_inv, dp0_inv, u0_inv, v0_inv, qv0_inv, ql0_inv, qi0_inv, t0_inv, s0_inv, tke_inv, cldfrct_inv, concldfrct_inv, pblh, cush, dpdry0_inv]
+      outputs: [cush, umf_inv, slflx_inv, qtflx_inv, flxprc1_inv, flxsnow1_inv, qvten_inv, qlten_inv, qiten_inv, sten_inv, uten_inv, vten_inv, qrten_inv, qsten_inv, precip, snow, evapc_inv, cufrc_inv, qcu_inv, qlu_inv, qiu_inv, cbmf, qc_inv, rliq, cnt_inv, cnb_inv]
+      # one (columns, width) tensor back, the tracer outputs zeroed by the hook: the FTorch floor is
+      # the output tensors' allocation, so 30 tensors of 66k values become one of 9k
+      packed: true
+      zero_outputs: [trten_inv, wtqc_inv, wtprec, wtsnow]
   - kernel: mmacro_pcond
     contract: native/pi_cam/functions/mmacro_pcond.yaml
     # the macrophysics condensation core, called from macrop_driver_tend; instratus_condensate inside it keeps its own hook.  A logical and six pointer dummies: Fortran-bound

@@ -48,6 +48,11 @@ class Hook:
     model_inputs: tuple[str, ...] = ()
     #: the contract outputs the model returns, in order
     model_outputs: tuple[str, ...] = ()
+    #: whether the model returns its outputs as one (columns, width) tensor, the outputs
+    #: laid side by side in ``model_outputs`` order, each flattened per column
+    model_packed: bool = False
+    #: contract outputs the hook zeroes itself instead of taking from the model
+    model_zero_outputs: tuple[str, ...] = ()
     #: ``c`` or ``fortran``, see :data:`BINDINGS`
     binding: str = "c"
 
@@ -131,6 +136,12 @@ def load_hooks(path: str | Path | None = None) -> HookTable:
             raise PICAMConfigurationError(f"{source}: hook {kernel!r}: a model block names inputs and outputs")
         if len(set(model_inputs)) != len(model_inputs) or len(set(model_outputs)) != len(model_outputs):
             raise PICAMConfigurationError(f"{source}: hook {kernel!r}: a model argument is listed twice")
+        model_packed = bool(model.get("packed", False))
+        model_zero_outputs = tuple(str(name) for name in model.get("zero_outputs") or ())
+        if set(model_zero_outputs) & set(model_outputs) or len(set(model_zero_outputs)) != len(model_zero_outputs):
+            raise PICAMConfigurationError(f"{source}: hook {kernel!r}: a zeroed output is listed twice or also returned by the model")
+        if (model_packed or model_zero_outputs) and not model_outputs:
+            raise PICAMConfigurationError(f"{source}: hook {kernel!r}: packed or zeroed outputs need a model block")
         binding = str(record.get("binding", "c"))
         if binding not in BINDINGS:
             raise PICAMConfigurationError(f"{source}: hook {kernel!r} binding must be one of {BINDINGS}")
@@ -142,6 +153,7 @@ def load_hooks(path: str | Path | None = None) -> HookTable:
             redirect=redirect, original_module=original.get("module"), original_routine=original.get("routine"),
             original_symbol=original.get("symbol"), callers=callers,
             model_inputs=model_inputs, model_outputs=model_outputs, binding=binding,
+            model_packed=model_packed, model_zero_outputs=model_zero_outputs,
         ))
     import hashlib
 

@@ -3376,9 +3376,12 @@ contains
     real(c_double), intent(out), target :: wtprec(16, 57)
     real(c_double), intent(out), target :: wtsnow(16, 57)
     real(c_double), intent(out), target :: wtqc_inv(16, 30, 57)
-    type(torch_tensor) :: in_t(20), out_t(30)
-    type(c_ptr) :: in_p(20), out_p(30)
-    integer(c_int64_t) :: in_s(3, 20), out_s(3, 30)
+    type(torch_tensor) :: in_t(19), out_t(1)
+    type(c_ptr) :: in_p(19), out_p(26)
+    integer(c_int64_t) :: in_s(3, 19), out_s(3, 26)
+    real(c_double), target :: o_packed(16, 582)
+    real(c_double), pointer, contiguous :: op_packed(:,:)
+    integer :: hk_j, hk_k
     procedure(plugin_interface), pointer :: plugin => null()
     integer(c_int) :: plugin_status
     real(c_double), target :: s_dt(1)
@@ -3395,103 +3398,42 @@ contains
     real(c_double), pointer, contiguous :: v_qi0_inv(:,:)
     real(c_double), pointer, contiguous :: v_t0_inv(:,:)
     real(c_double), pointer, contiguous :: v_s0_inv(:,:)
-    real(c_double), pointer, contiguous :: v_tr0_inv(:,:,:)
     real(c_double), pointer, contiguous :: v_tke_inv(:,:)
     real(c_double), pointer, contiguous :: v_cldfrct_inv(:,:)
     real(c_double), pointer, contiguous :: v_concldfrct_inv(:,:)
     real(c_double), pointer, contiguous :: v_pblh(:)
     real(c_double), pointer, contiguous :: v_cush(:)
     real(c_double), pointer, contiguous :: v_dpdry0_inv(:,:)
-    real(c_double), target :: o_cush(16)
-    real(c_double), pointer, contiguous :: op_cush(:)
     real(c_double), pointer, contiguous :: w_cush(:)
-    real(c_double), target :: o_umf_inv(16, 31)
-    real(c_double), pointer, contiguous :: op_umf_inv(:,:)
     real(c_double), pointer, contiguous :: w_umf_inv(:,:)
-    real(c_double), target :: o_slflx_inv(16, 31)
-    real(c_double), pointer, contiguous :: op_slflx_inv(:,:)
     real(c_double), pointer, contiguous :: w_slflx_inv(:,:)
-    real(c_double), target :: o_qtflx_inv(16, 31)
-    real(c_double), pointer, contiguous :: op_qtflx_inv(:,:)
     real(c_double), pointer, contiguous :: w_qtflx_inv(:,:)
-    real(c_double), target :: o_flxprc1_inv(16, 31)
-    real(c_double), pointer, contiguous :: op_flxprc1_inv(:,:)
     real(c_double), pointer, contiguous :: w_flxprc1_inv(:,:)
-    real(c_double), target :: o_flxsnow1_inv(16, 31)
-    real(c_double), pointer, contiguous :: op_flxsnow1_inv(:,:)
     real(c_double), pointer, contiguous :: w_flxsnow1_inv(:,:)
-    real(c_double), target :: o_qvten_inv(16, 30)
-    real(c_double), pointer, contiguous :: op_qvten_inv(:,:)
     real(c_double), pointer, contiguous :: w_qvten_inv(:,:)
-    real(c_double), target :: o_qlten_inv(16, 30)
-    real(c_double), pointer, contiguous :: op_qlten_inv(:,:)
     real(c_double), pointer, contiguous :: w_qlten_inv(:,:)
-    real(c_double), target :: o_qiten_inv(16, 30)
-    real(c_double), pointer, contiguous :: op_qiten_inv(:,:)
     real(c_double), pointer, contiguous :: w_qiten_inv(:,:)
-    real(c_double), target :: o_sten_inv(16, 30)
-    real(c_double), pointer, contiguous :: op_sten_inv(:,:)
     real(c_double), pointer, contiguous :: w_sten_inv(:,:)
-    real(c_double), target :: o_uten_inv(16, 30)
-    real(c_double), pointer, contiguous :: op_uten_inv(:,:)
     real(c_double), pointer, contiguous :: w_uten_inv(:,:)
-    real(c_double), target :: o_vten_inv(16, 30)
-    real(c_double), pointer, contiguous :: op_vten_inv(:,:)
     real(c_double), pointer, contiguous :: w_vten_inv(:,:)
-    real(c_double), target :: o_trten_inv(16, 30, 57)
-    real(c_double), pointer, contiguous :: op_trten_inv(:,:,:)
-    real(c_double), pointer, contiguous :: w_trten_inv(:,:,:)
-    real(c_double), target :: o_qrten_inv(16, 30)
-    real(c_double), pointer, contiguous :: op_qrten_inv(:,:)
     real(c_double), pointer, contiguous :: w_qrten_inv(:,:)
-    real(c_double), target :: o_qsten_inv(16, 30)
-    real(c_double), pointer, contiguous :: op_qsten_inv(:,:)
     real(c_double), pointer, contiguous :: w_qsten_inv(:,:)
-    real(c_double), target :: o_precip(16)
-    real(c_double), pointer, contiguous :: op_precip(:)
     real(c_double), pointer, contiguous :: w_precip(:)
-    real(c_double), target :: o_snow(16)
-    real(c_double), pointer, contiguous :: op_snow(:)
     real(c_double), pointer, contiguous :: w_snow(:)
-    real(c_double), target :: o_evapc_inv(16, 30)
-    real(c_double), pointer, contiguous :: op_evapc_inv(:,:)
     real(c_double), pointer, contiguous :: w_evapc_inv(:,:)
-    real(c_double), target :: o_cufrc_inv(16, 30)
-    real(c_double), pointer, contiguous :: op_cufrc_inv(:,:)
     real(c_double), pointer, contiguous :: w_cufrc_inv(:,:)
-    real(c_double), target :: o_qcu_inv(16, 30)
-    real(c_double), pointer, contiguous :: op_qcu_inv(:,:)
     real(c_double), pointer, contiguous :: w_qcu_inv(:,:)
-    real(c_double), target :: o_qlu_inv(16, 30)
-    real(c_double), pointer, contiguous :: op_qlu_inv(:,:)
     real(c_double), pointer, contiguous :: w_qlu_inv(:,:)
-    real(c_double), target :: o_qiu_inv(16, 30)
-    real(c_double), pointer, contiguous :: op_qiu_inv(:,:)
     real(c_double), pointer, contiguous :: w_qiu_inv(:,:)
-    real(c_double), target :: o_cbmf(16)
-    real(c_double), pointer, contiguous :: op_cbmf(:)
     real(c_double), pointer, contiguous :: w_cbmf(:)
-    real(c_double), target :: o_qc_inv(16, 30)
-    real(c_double), pointer, contiguous :: op_qc_inv(:,:)
     real(c_double), pointer, contiguous :: w_qc_inv(:,:)
-    real(c_double), target :: o_rliq(16)
-    real(c_double), pointer, contiguous :: op_rliq(:)
     real(c_double), pointer, contiguous :: w_rliq(:)
-    real(c_double), target :: o_cnt_inv(16)
-    real(c_double), pointer, contiguous :: op_cnt_inv(:)
     real(c_double), pointer, contiguous :: w_cnt_inv(:)
-    real(c_double), target :: o_cnb_inv(16)
-    real(c_double), pointer, contiguous :: op_cnb_inv(:)
     real(c_double), pointer, contiguous :: w_cnb_inv(:)
-    real(c_double), target :: o_wtprec(16, 57)
-    real(c_double), pointer, contiguous :: op_wtprec(:,:)
-    real(c_double), pointer, contiguous :: w_wtprec(:,:)
-    real(c_double), target :: o_wtsnow(16, 57)
-    real(c_double), pointer, contiguous :: op_wtsnow(:,:)
-    real(c_double), pointer, contiguous :: w_wtsnow(:,:)
-    real(c_double), target :: o_wtqc_inv(16, 30, 57)
-    real(c_double), pointer, contiguous :: op_wtqc_inv(:,:,:)
+    real(c_double), pointer, contiguous :: w_trten_inv(:,:,:)
     real(c_double), pointer, contiguous :: w_wtqc_inv(:,:,:)
+    real(c_double), pointer, contiguous :: w_wtprec(:,:)
+    real(c_double), pointer, contiguous :: w_wtsnow(:,:)
     integer :: hk_n
     integer(c_int64_t) :: hk_t0, hk_t1, hk_t2
     call system_clock(hk_t0)
@@ -3535,153 +3477,29 @@ contains
     call c_f_pointer(c_loc(s0_inv), v_s0_inv, (/ 16, 30 /))
     in_p(13) = c_loc(s0_inv); in_s(:, 13) = (/ int(16, c_int64_t), int(30, c_int64_t), 0_c_int64_t /)
     if (.not. plugged(6)) call torch_tensor_from_array(in_t(13), v_s0_inv, torch_kCPU)
-    call c_f_pointer(c_loc(tr0_inv), v_tr0_inv, (/ 16, 30, 57 /))
-    in_p(14) = c_loc(tr0_inv); in_s(:, 14) = (/ int(16, c_int64_t), int(30, c_int64_t), int(57, c_int64_t) /)
-    if (.not. plugged(6)) call torch_tensor_from_array(in_t(14), v_tr0_inv, torch_kCPU)
     call c_f_pointer(c_loc(tke_inv), v_tke_inv, (/ 16, 31 /))
-    in_p(15) = c_loc(tke_inv); in_s(:, 15) = (/ int(16, c_int64_t), int(31, c_int64_t), 0_c_int64_t /)
-    if (.not. plugged(6)) call torch_tensor_from_array(in_t(15), v_tke_inv, torch_kCPU)
+    in_p(14) = c_loc(tke_inv); in_s(:, 14) = (/ int(16, c_int64_t), int(31, c_int64_t), 0_c_int64_t /)
+    if (.not. plugged(6)) call torch_tensor_from_array(in_t(14), v_tke_inv, torch_kCPU)
     call c_f_pointer(c_loc(cldfrct_inv), v_cldfrct_inv, (/ 16, 30 /))
-    in_p(16) = c_loc(cldfrct_inv); in_s(:, 16) = (/ int(16, c_int64_t), int(30, c_int64_t), 0_c_int64_t /)
-    if (.not. plugged(6)) call torch_tensor_from_array(in_t(16), v_cldfrct_inv, torch_kCPU)
+    in_p(15) = c_loc(cldfrct_inv); in_s(:, 15) = (/ int(16, c_int64_t), int(30, c_int64_t), 0_c_int64_t /)
+    if (.not. plugged(6)) call torch_tensor_from_array(in_t(15), v_cldfrct_inv, torch_kCPU)
     call c_f_pointer(c_loc(concldfrct_inv), v_concldfrct_inv, (/ 16, 30 /))
-    in_p(17) = c_loc(concldfrct_inv); in_s(:, 17) = (/ int(16, c_int64_t), int(30, c_int64_t), 0_c_int64_t /)
-    if (.not. plugged(6)) call torch_tensor_from_array(in_t(17), v_concldfrct_inv, torch_kCPU)
+    in_p(16) = c_loc(concldfrct_inv); in_s(:, 16) = (/ int(16, c_int64_t), int(30, c_int64_t), 0_c_int64_t /)
+    if (.not. plugged(6)) call torch_tensor_from_array(in_t(16), v_concldfrct_inv, torch_kCPU)
     call c_f_pointer(c_loc(pblh), v_pblh, (/ 16 /))
-    in_p(18) = c_loc(pblh); in_s(:, 18) = (/ int(16, c_int64_t), 0_c_int64_t, 0_c_int64_t /)
-    if (.not. plugged(6)) call torch_tensor_from_array(in_t(18), v_pblh, torch_kCPU)
+    in_p(17) = c_loc(pblh); in_s(:, 17) = (/ int(16, c_int64_t), 0_c_int64_t, 0_c_int64_t /)
+    if (.not. plugged(6)) call torch_tensor_from_array(in_t(17), v_pblh, torch_kCPU)
     call c_f_pointer(c_loc(cush), v_cush, (/ 16 /))
-    in_p(19) = c_loc(cush); in_s(:, 19) = (/ int(16, c_int64_t), 0_c_int64_t, 0_c_int64_t /)
-    if (.not. plugged(6)) call torch_tensor_from_array(in_t(19), v_cush, torch_kCPU)
+    in_p(18) = c_loc(cush); in_s(:, 18) = (/ int(16, c_int64_t), 0_c_int64_t, 0_c_int64_t /)
+    if (.not. plugged(6)) call torch_tensor_from_array(in_t(18), v_cush, torch_kCPU)
     call c_f_pointer(c_loc(dpdry0_inv), v_dpdry0_inv, (/ 16, 30 /))
-    in_p(20) = c_loc(dpdry0_inv); in_s(:, 20) = (/ int(16, c_int64_t), int(30, c_int64_t), 0_c_int64_t /)
-    if (.not. plugged(6)) call torch_tensor_from_array(in_t(20), v_dpdry0_inv, torch_kCPU)
-    op_cush => o_cush
-    out_p(1) = c_loc(o_cush); out_s(:, 1) = (/ int(16, c_int64_t), 0_c_int64_t, 0_c_int64_t /)
-    if (.not. plugged(6)) call torch_tensor_from_array(out_t(1), op_cush, torch_kCPU)
-    op_umf_inv => o_umf_inv
-    out_p(2) = c_loc(o_umf_inv); out_s(:, 2) = (/ int(16, c_int64_t), int(31, c_int64_t), 0_c_int64_t /)
-    if (.not. plugged(6)) call torch_tensor_from_array(out_t(2), op_umf_inv, torch_kCPU)
-    op_slflx_inv => o_slflx_inv
-    out_p(3) = c_loc(o_slflx_inv); out_s(:, 3) = (/ int(16, c_int64_t), int(31, c_int64_t), 0_c_int64_t /)
-    if (.not. plugged(6)) call torch_tensor_from_array(out_t(3), op_slflx_inv, torch_kCPU)
-    op_qtflx_inv => o_qtflx_inv
-    out_p(4) = c_loc(o_qtflx_inv); out_s(:, 4) = (/ int(16, c_int64_t), int(31, c_int64_t), 0_c_int64_t /)
-    if (.not. plugged(6)) call torch_tensor_from_array(out_t(4), op_qtflx_inv, torch_kCPU)
-    op_flxprc1_inv => o_flxprc1_inv
-    out_p(5) = c_loc(o_flxprc1_inv); out_s(:, 5) = (/ int(16, c_int64_t), int(31, c_int64_t), 0_c_int64_t /)
-    if (.not. plugged(6)) call torch_tensor_from_array(out_t(5), op_flxprc1_inv, torch_kCPU)
-    op_flxsnow1_inv => o_flxsnow1_inv
-    out_p(6) = c_loc(o_flxsnow1_inv); out_s(:, 6) = (/ int(16, c_int64_t), int(31, c_int64_t), 0_c_int64_t /)
-    if (.not. plugged(6)) call torch_tensor_from_array(out_t(6), op_flxsnow1_inv, torch_kCPU)
-    op_qvten_inv => o_qvten_inv
-    out_p(7) = c_loc(o_qvten_inv); out_s(:, 7) = (/ int(16, c_int64_t), int(30, c_int64_t), 0_c_int64_t /)
-    if (.not. plugged(6)) call torch_tensor_from_array(out_t(7), op_qvten_inv, torch_kCPU)
-    op_qlten_inv => o_qlten_inv
-    out_p(8) = c_loc(o_qlten_inv); out_s(:, 8) = (/ int(16, c_int64_t), int(30, c_int64_t), 0_c_int64_t /)
-    if (.not. plugged(6)) call torch_tensor_from_array(out_t(8), op_qlten_inv, torch_kCPU)
-    op_qiten_inv => o_qiten_inv
-    out_p(9) = c_loc(o_qiten_inv); out_s(:, 9) = (/ int(16, c_int64_t), int(30, c_int64_t), 0_c_int64_t /)
-    if (.not. plugged(6)) call torch_tensor_from_array(out_t(9), op_qiten_inv, torch_kCPU)
-    op_sten_inv => o_sten_inv
-    out_p(10) = c_loc(o_sten_inv); out_s(:, 10) = (/ int(16, c_int64_t), int(30, c_int64_t), 0_c_int64_t /)
-    if (.not. plugged(6)) call torch_tensor_from_array(out_t(10), op_sten_inv, torch_kCPU)
-    op_uten_inv => o_uten_inv
-    out_p(11) = c_loc(o_uten_inv); out_s(:, 11) = (/ int(16, c_int64_t), int(30, c_int64_t), 0_c_int64_t /)
-    if (.not. plugged(6)) call torch_tensor_from_array(out_t(11), op_uten_inv, torch_kCPU)
-    op_vten_inv => o_vten_inv
-    out_p(12) = c_loc(o_vten_inv); out_s(:, 12) = (/ int(16, c_int64_t), int(30, c_int64_t), 0_c_int64_t /)
-    if (.not. plugged(6)) call torch_tensor_from_array(out_t(12), op_vten_inv, torch_kCPU)
-    op_trten_inv => o_trten_inv
-    out_p(13) = c_loc(o_trten_inv); out_s(:, 13) = (/ int(16, c_int64_t), int(30, c_int64_t), int(57, c_int64_t) /)
-    if (.not. plugged(6)) call torch_tensor_from_array(out_t(13), op_trten_inv, torch_kCPU)
-    op_qrten_inv => o_qrten_inv
-    out_p(14) = c_loc(o_qrten_inv); out_s(:, 14) = (/ int(16, c_int64_t), int(30, c_int64_t), 0_c_int64_t /)
-    if (.not. plugged(6)) call torch_tensor_from_array(out_t(14), op_qrten_inv, torch_kCPU)
-    op_qsten_inv => o_qsten_inv
-    out_p(15) = c_loc(o_qsten_inv); out_s(:, 15) = (/ int(16, c_int64_t), int(30, c_int64_t), 0_c_int64_t /)
-    if (.not. plugged(6)) call torch_tensor_from_array(out_t(15), op_qsten_inv, torch_kCPU)
-    op_precip => o_precip
-    out_p(16) = c_loc(o_precip); out_s(:, 16) = (/ int(16, c_int64_t), 0_c_int64_t, 0_c_int64_t /)
-    if (.not. plugged(6)) call torch_tensor_from_array(out_t(16), op_precip, torch_kCPU)
-    op_snow => o_snow
-    out_p(17) = c_loc(o_snow); out_s(:, 17) = (/ int(16, c_int64_t), 0_c_int64_t, 0_c_int64_t /)
-    if (.not. plugged(6)) call torch_tensor_from_array(out_t(17), op_snow, torch_kCPU)
-    op_evapc_inv => o_evapc_inv
-    out_p(18) = c_loc(o_evapc_inv); out_s(:, 18) = (/ int(16, c_int64_t), int(30, c_int64_t), 0_c_int64_t /)
-    if (.not. plugged(6)) call torch_tensor_from_array(out_t(18), op_evapc_inv, torch_kCPU)
-    op_cufrc_inv => o_cufrc_inv
-    out_p(19) = c_loc(o_cufrc_inv); out_s(:, 19) = (/ int(16, c_int64_t), int(30, c_int64_t), 0_c_int64_t /)
-    if (.not. plugged(6)) call torch_tensor_from_array(out_t(19), op_cufrc_inv, torch_kCPU)
-    op_qcu_inv => o_qcu_inv
-    out_p(20) = c_loc(o_qcu_inv); out_s(:, 20) = (/ int(16, c_int64_t), int(30, c_int64_t), 0_c_int64_t /)
-    if (.not. plugged(6)) call torch_tensor_from_array(out_t(20), op_qcu_inv, torch_kCPU)
-    op_qlu_inv => o_qlu_inv
-    out_p(21) = c_loc(o_qlu_inv); out_s(:, 21) = (/ int(16, c_int64_t), int(30, c_int64_t), 0_c_int64_t /)
-    if (.not. plugged(6)) call torch_tensor_from_array(out_t(21), op_qlu_inv, torch_kCPU)
-    op_qiu_inv => o_qiu_inv
-    out_p(22) = c_loc(o_qiu_inv); out_s(:, 22) = (/ int(16, c_int64_t), int(30, c_int64_t), 0_c_int64_t /)
-    if (.not. plugged(6)) call torch_tensor_from_array(out_t(22), op_qiu_inv, torch_kCPU)
-    op_cbmf => o_cbmf
-    out_p(23) = c_loc(o_cbmf); out_s(:, 23) = (/ int(16, c_int64_t), 0_c_int64_t, 0_c_int64_t /)
-    if (.not. plugged(6)) call torch_tensor_from_array(out_t(23), op_cbmf, torch_kCPU)
-    op_qc_inv => o_qc_inv
-    out_p(24) = c_loc(o_qc_inv); out_s(:, 24) = (/ int(16, c_int64_t), int(30, c_int64_t), 0_c_int64_t /)
-    if (.not. plugged(6)) call torch_tensor_from_array(out_t(24), op_qc_inv, torch_kCPU)
-    op_rliq => o_rliq
-    out_p(25) = c_loc(o_rliq); out_s(:, 25) = (/ int(16, c_int64_t), 0_c_int64_t, 0_c_int64_t /)
-    if (.not. plugged(6)) call torch_tensor_from_array(out_t(25), op_rliq, torch_kCPU)
-    op_cnt_inv => o_cnt_inv
-    out_p(26) = c_loc(o_cnt_inv); out_s(:, 26) = (/ int(16, c_int64_t), 0_c_int64_t, 0_c_int64_t /)
-    if (.not. plugged(6)) call torch_tensor_from_array(out_t(26), op_cnt_inv, torch_kCPU)
-    op_cnb_inv => o_cnb_inv
-    out_p(27) = c_loc(o_cnb_inv); out_s(:, 27) = (/ int(16, c_int64_t), 0_c_int64_t, 0_c_int64_t /)
-    if (.not. plugged(6)) call torch_tensor_from_array(out_t(27), op_cnb_inv, torch_kCPU)
-    op_wtprec => o_wtprec
-    out_p(28) = c_loc(o_wtprec); out_s(:, 28) = (/ int(16, c_int64_t), int(57, c_int64_t), 0_c_int64_t /)
-    if (.not. plugged(6)) call torch_tensor_from_array(out_t(28), op_wtprec, torch_kCPU)
-    op_wtsnow => o_wtsnow
-    out_p(29) = c_loc(o_wtsnow); out_s(:, 29) = (/ int(16, c_int64_t), int(57, c_int64_t), 0_c_int64_t /)
-    if (.not. plugged(6)) call torch_tensor_from_array(out_t(29), op_wtsnow, torch_kCPU)
-    op_wtqc_inv => o_wtqc_inv
-    out_p(30) = c_loc(o_wtqc_inv); out_s(:, 30) = (/ int(16, c_int64_t), int(30, c_int64_t), int(57, c_int64_t) /)
-    if (.not. plugged(6)) call torch_tensor_from_array(out_t(30), op_wtqc_inv, torch_kCPU)
+    in_p(19) = c_loc(dpdry0_inv); in_s(:, 19) = (/ int(16, c_int64_t), int(30, c_int64_t), 0_c_int64_t /)
+    if (.not. plugged(6)) call torch_tensor_from_array(in_t(19), v_dpdry0_inv, torch_kCPU)
+    op_packed => o_packed
+    if (.not. plugged(6)) call torch_tensor_from_array(out_t(1), op_packed, torch_kCPU)
     call system_clock(hk_t1)
     if (plugged(6)) then
-      ! a compiled plugin: the same arrays as pointer and extent tables, outputs zeroed first
-      o_cush = 0.0_c_double
-      o_umf_inv = 0.0_c_double
-      o_slflx_inv = 0.0_c_double
-      o_qtflx_inv = 0.0_c_double
-      o_flxprc1_inv = 0.0_c_double
-      o_flxsnow1_inv = 0.0_c_double
-      o_qvten_inv = 0.0_c_double
-      o_qlten_inv = 0.0_c_double
-      o_qiten_inv = 0.0_c_double
-      o_sten_inv = 0.0_c_double
-      o_uten_inv = 0.0_c_double
-      o_vten_inv = 0.0_c_double
-      o_trten_inv = 0.0_c_double
-      o_qrten_inv = 0.0_c_double
-      o_qsten_inv = 0.0_c_double
-      o_precip = 0.0_c_double
-      o_snow = 0.0_c_double
-      o_evapc_inv = 0.0_c_double
-      o_cufrc_inv = 0.0_c_double
-      o_qcu_inv = 0.0_c_double
-      o_qlu_inv = 0.0_c_double
-      o_qiu_inv = 0.0_c_double
-      o_cbmf = 0.0_c_double
-      o_qc_inv = 0.0_c_double
-      o_rliq = 0.0_c_double
-      o_cnt_inv = 0.0_c_double
-      o_cnb_inv = 0.0_c_double
-      o_wtprec = 0.0_c_double
-      o_wtsnow = 0.0_c_double
-      o_wtqc_inv = 0.0_c_double
-      call c_f_procpointer(plugins(6), plugin)
-      plugin_status = plugin(20_c_int, in_p, in_s, 30_c_int, out_p, out_s)
-      if (plugin_status /= 0_c_int) error stop 'pycam_hooks: the plugin bound at compute_uwshcu_inv returned a non-zero status'
+      error stop 'pycam_hooks: the packed model block of compute_uwshcu_inv takes TorchScript models only'
     else
       call torch_model_forward(models(6), in_t, out_t)
     end if
@@ -3690,94 +3508,107 @@ contains
     if (.not. shadow(6)) then
       hk_n = 16
       call c_f_pointer(c_loc(cush), w_cush, (/ 16 /))
-      w_cush(1:hk_n) = o_cush(1:hk_n)
-      hk_n = 16
       call c_f_pointer(c_loc(umf_inv), w_umf_inv, (/ 16, 31 /))
-      w_umf_inv(1:hk_n, :) = o_umf_inv(1:hk_n, :)
-      hk_n = 16
       call c_f_pointer(c_loc(slflx_inv), w_slflx_inv, (/ 16, 31 /))
-      w_slflx_inv(1:hk_n, :) = o_slflx_inv(1:hk_n, :)
-      hk_n = 16
       call c_f_pointer(c_loc(qtflx_inv), w_qtflx_inv, (/ 16, 31 /))
-      w_qtflx_inv(1:hk_n, :) = o_qtflx_inv(1:hk_n, :)
-      hk_n = 16
       call c_f_pointer(c_loc(flxprc1_inv), w_flxprc1_inv, (/ 16, 31 /))
-      w_flxprc1_inv(1:hk_n, :) = o_flxprc1_inv(1:hk_n, :)
-      hk_n = 16
       call c_f_pointer(c_loc(flxsnow1_inv), w_flxsnow1_inv, (/ 16, 31 /))
-      w_flxsnow1_inv(1:hk_n, :) = o_flxsnow1_inv(1:hk_n, :)
-      hk_n = 16
       call c_f_pointer(c_loc(qvten_inv), w_qvten_inv, (/ 16, 30 /))
-      w_qvten_inv(1:hk_n, :) = o_qvten_inv(1:hk_n, :)
-      hk_n = 16
       call c_f_pointer(c_loc(qlten_inv), w_qlten_inv, (/ 16, 30 /))
-      w_qlten_inv(1:hk_n, :) = o_qlten_inv(1:hk_n, :)
-      hk_n = 16
       call c_f_pointer(c_loc(qiten_inv), w_qiten_inv, (/ 16, 30 /))
-      w_qiten_inv(1:hk_n, :) = o_qiten_inv(1:hk_n, :)
-      hk_n = 16
       call c_f_pointer(c_loc(sten_inv), w_sten_inv, (/ 16, 30 /))
-      w_sten_inv(1:hk_n, :) = o_sten_inv(1:hk_n, :)
-      hk_n = 16
       call c_f_pointer(c_loc(uten_inv), w_uten_inv, (/ 16, 30 /))
-      w_uten_inv(1:hk_n, :) = o_uten_inv(1:hk_n, :)
-      hk_n = 16
       call c_f_pointer(c_loc(vten_inv), w_vten_inv, (/ 16, 30 /))
-      w_vten_inv(1:hk_n, :) = o_vten_inv(1:hk_n, :)
+      call c_f_pointer(c_loc(qrten_inv), w_qrten_inv, (/ 16, 30 /))
+      call c_f_pointer(c_loc(qsten_inv), w_qsten_inv, (/ 16, 30 /))
+      call c_f_pointer(c_loc(precip), w_precip, (/ 16 /))
+      call c_f_pointer(c_loc(snow), w_snow, (/ 16 /))
+      call c_f_pointer(c_loc(evapc_inv), w_evapc_inv, (/ 16, 30 /))
+      call c_f_pointer(c_loc(cufrc_inv), w_cufrc_inv, (/ 16, 30 /))
+      call c_f_pointer(c_loc(qcu_inv), w_qcu_inv, (/ 16, 30 /))
+      call c_f_pointer(c_loc(qlu_inv), w_qlu_inv, (/ 16, 30 /))
+      call c_f_pointer(c_loc(qiu_inv), w_qiu_inv, (/ 16, 30 /))
+      call c_f_pointer(c_loc(cbmf), w_cbmf, (/ 16 /))
+      call c_f_pointer(c_loc(qc_inv), w_qc_inv, (/ 16, 30 /))
+      call c_f_pointer(c_loc(rliq), w_rliq, (/ 16 /))
+      call c_f_pointer(c_loc(cnt_inv), w_cnt_inv, (/ 16 /))
+      call c_f_pointer(c_loc(cnb_inv), w_cnb_inv, (/ 16 /))
+      w_cush(1:hk_n) = o_packed(1:hk_n, 1)
+      do hk_j = 1, 31
+        w_umf_inv(1:hk_n, hk_j) = o_packed(1:hk_n, 1 + hk_j)
+      end do
+      do hk_j = 1, 31
+        w_slflx_inv(1:hk_n, hk_j) = o_packed(1:hk_n, 32 + hk_j)
+      end do
+      do hk_j = 1, 31
+        w_qtflx_inv(1:hk_n, hk_j) = o_packed(1:hk_n, 63 + hk_j)
+      end do
+      do hk_j = 1, 31
+        w_flxprc1_inv(1:hk_n, hk_j) = o_packed(1:hk_n, 94 + hk_j)
+      end do
+      do hk_j = 1, 31
+        w_flxsnow1_inv(1:hk_n, hk_j) = o_packed(1:hk_n, 125 + hk_j)
+      end do
+      do hk_j = 1, 30
+        w_qvten_inv(1:hk_n, hk_j) = o_packed(1:hk_n, 156 + hk_j)
+      end do
+      do hk_j = 1, 30
+        w_qlten_inv(1:hk_n, hk_j) = o_packed(1:hk_n, 186 + hk_j)
+      end do
+      do hk_j = 1, 30
+        w_qiten_inv(1:hk_n, hk_j) = o_packed(1:hk_n, 216 + hk_j)
+      end do
+      do hk_j = 1, 30
+        w_sten_inv(1:hk_n, hk_j) = o_packed(1:hk_n, 246 + hk_j)
+      end do
+      do hk_j = 1, 30
+        w_uten_inv(1:hk_n, hk_j) = o_packed(1:hk_n, 276 + hk_j)
+      end do
+      do hk_j = 1, 30
+        w_vten_inv(1:hk_n, hk_j) = o_packed(1:hk_n, 306 + hk_j)
+      end do
+      do hk_j = 1, 30
+        w_qrten_inv(1:hk_n, hk_j) = o_packed(1:hk_n, 336 + hk_j)
+      end do
+      do hk_j = 1, 30
+        w_qsten_inv(1:hk_n, hk_j) = o_packed(1:hk_n, 366 + hk_j)
+      end do
+      w_precip(1:hk_n) = o_packed(1:hk_n, 397)
+      w_snow(1:hk_n) = o_packed(1:hk_n, 398)
+      do hk_j = 1, 30
+        w_evapc_inv(1:hk_n, hk_j) = o_packed(1:hk_n, 398 + hk_j)
+      end do
+      do hk_j = 1, 30
+        w_cufrc_inv(1:hk_n, hk_j) = o_packed(1:hk_n, 428 + hk_j)
+      end do
+      do hk_j = 1, 30
+        w_qcu_inv(1:hk_n, hk_j) = o_packed(1:hk_n, 458 + hk_j)
+      end do
+      do hk_j = 1, 30
+        w_qlu_inv(1:hk_n, hk_j) = o_packed(1:hk_n, 488 + hk_j)
+      end do
+      do hk_j = 1, 30
+        w_qiu_inv(1:hk_n, hk_j) = o_packed(1:hk_n, 518 + hk_j)
+      end do
+      w_cbmf(1:hk_n) = o_packed(1:hk_n, 549)
+      do hk_j = 1, 30
+        w_qc_inv(1:hk_n, hk_j) = o_packed(1:hk_n, 549 + hk_j)
+      end do
+      w_rliq(1:hk_n) = o_packed(1:hk_n, 580)
+      w_cnt_inv(1:hk_n) = o_packed(1:hk_n, 581)
+      w_cnb_inv(1:hk_n) = o_packed(1:hk_n, 582)
       hk_n = 16
       call c_f_pointer(c_loc(trten_inv), w_trten_inv, (/ 16, 30, 57 /))
-      w_trten_inv(1:hk_n, :, :) = o_trten_inv(1:hk_n, :, :)
-      hk_n = 16
-      call c_f_pointer(c_loc(qrten_inv), w_qrten_inv, (/ 16, 30 /))
-      w_qrten_inv(1:hk_n, :) = o_qrten_inv(1:hk_n, :)
-      hk_n = 16
-      call c_f_pointer(c_loc(qsten_inv), w_qsten_inv, (/ 16, 30 /))
-      w_qsten_inv(1:hk_n, :) = o_qsten_inv(1:hk_n, :)
-      hk_n = 16
-      call c_f_pointer(c_loc(precip), w_precip, (/ 16 /))
-      w_precip(1:hk_n) = o_precip(1:hk_n)
-      hk_n = 16
-      call c_f_pointer(c_loc(snow), w_snow, (/ 16 /))
-      w_snow(1:hk_n) = o_snow(1:hk_n)
-      hk_n = 16
-      call c_f_pointer(c_loc(evapc_inv), w_evapc_inv, (/ 16, 30 /))
-      w_evapc_inv(1:hk_n, :) = o_evapc_inv(1:hk_n, :)
-      hk_n = 16
-      call c_f_pointer(c_loc(cufrc_inv), w_cufrc_inv, (/ 16, 30 /))
-      w_cufrc_inv(1:hk_n, :) = o_cufrc_inv(1:hk_n, :)
-      hk_n = 16
-      call c_f_pointer(c_loc(qcu_inv), w_qcu_inv, (/ 16, 30 /))
-      w_qcu_inv(1:hk_n, :) = o_qcu_inv(1:hk_n, :)
-      hk_n = 16
-      call c_f_pointer(c_loc(qlu_inv), w_qlu_inv, (/ 16, 30 /))
-      w_qlu_inv(1:hk_n, :) = o_qlu_inv(1:hk_n, :)
-      hk_n = 16
-      call c_f_pointer(c_loc(qiu_inv), w_qiu_inv, (/ 16, 30 /))
-      w_qiu_inv(1:hk_n, :) = o_qiu_inv(1:hk_n, :)
-      hk_n = 16
-      call c_f_pointer(c_loc(cbmf), w_cbmf, (/ 16 /))
-      w_cbmf(1:hk_n) = o_cbmf(1:hk_n)
-      hk_n = 16
-      call c_f_pointer(c_loc(qc_inv), w_qc_inv, (/ 16, 30 /))
-      w_qc_inv(1:hk_n, :) = o_qc_inv(1:hk_n, :)
-      hk_n = 16
-      call c_f_pointer(c_loc(rliq), w_rliq, (/ 16 /))
-      w_rliq(1:hk_n) = o_rliq(1:hk_n)
-      hk_n = 16
-      call c_f_pointer(c_loc(cnt_inv), w_cnt_inv, (/ 16 /))
-      w_cnt_inv(1:hk_n) = o_cnt_inv(1:hk_n)
-      hk_n = 16
-      call c_f_pointer(c_loc(cnb_inv), w_cnb_inv, (/ 16 /))
-      w_cnb_inv(1:hk_n) = o_cnb_inv(1:hk_n)
-      hk_n = 16
-      call c_f_pointer(c_loc(wtprec), w_wtprec, (/ 16, 57 /))
-      w_wtprec(1:hk_n, :) = o_wtprec(1:hk_n, :)
-      hk_n = 16
-      call c_f_pointer(c_loc(wtsnow), w_wtsnow, (/ 16, 57 /))
-      w_wtsnow(1:hk_n, :) = o_wtsnow(1:hk_n, :)
+      w_trten_inv(1:hk_n, :, :) = 0.0_c_double
       hk_n = 16
       call c_f_pointer(c_loc(wtqc_inv), w_wtqc_inv, (/ 16, 30, 57 /))
-      w_wtqc_inv(1:hk_n, :, :) = o_wtqc_inv(1:hk_n, :, :)
+      w_wtqc_inv(1:hk_n, :, :) = 0.0_c_double
+      hk_n = 16
+      call c_f_pointer(c_loc(wtprec), w_wtprec, (/ 16, 57 /))
+      w_wtprec(1:hk_n, :) = 0.0_c_double
+      hk_n = 16
+      call c_f_pointer(c_loc(wtsnow), w_wtsnow, (/ 16, 57 /))
+      w_wtsnow(1:hk_n, :) = 0.0_c_double
     end if
     if (.not. plugged(6)) then
       call torch_delete(in_t)
@@ -3789,7 +3620,9 @@ contains
 
   subroutine warm_compute_uwshcu_inv()
     ! the model bound at hook 6 run once on zeros of the contract's extents
-    type(torch_tensor) :: in_t(20), out_t(30)
+    type(torch_tensor) :: in_t(19), out_t(1)
+    real(c_double), target :: y_packed(16, 582)
+    real(c_double), pointer, contiguous :: yp_packed(:,:)
     real(c_double), target :: z_dt(1)
     real(c_double), pointer, contiguous :: zp_dt(:)
     real(c_double), target :: z_ps0_inv(16, 31)
@@ -3816,8 +3649,6 @@ contains
     real(c_double), pointer, contiguous :: zp_t0_inv(:,:)
     real(c_double), target :: z_s0_inv(16, 30)
     real(c_double), pointer, contiguous :: zp_s0_inv(:,:)
-    real(c_double), target :: z_tr0_inv(16, 30, 57)
-    real(c_double), pointer, contiguous :: zp_tr0_inv(:,:,:)
     real(c_double), target :: z_tke_inv(16, 31)
     real(c_double), pointer, contiguous :: zp_tke_inv(:,:)
     real(c_double), target :: z_cldfrct_inv(16, 30)
@@ -3830,66 +3661,6 @@ contains
     real(c_double), pointer, contiguous :: zp_cush(:)
     real(c_double), target :: z_dpdry0_inv(16, 30)
     real(c_double), pointer, contiguous :: zp_dpdry0_inv(:,:)
-    real(c_double), target :: y_cush(16)
-    real(c_double), pointer, contiguous :: yp_cush(:)
-    real(c_double), target :: y_umf_inv(16, 31)
-    real(c_double), pointer, contiguous :: yp_umf_inv(:,:)
-    real(c_double), target :: y_slflx_inv(16, 31)
-    real(c_double), pointer, contiguous :: yp_slflx_inv(:,:)
-    real(c_double), target :: y_qtflx_inv(16, 31)
-    real(c_double), pointer, contiguous :: yp_qtflx_inv(:,:)
-    real(c_double), target :: y_flxprc1_inv(16, 31)
-    real(c_double), pointer, contiguous :: yp_flxprc1_inv(:,:)
-    real(c_double), target :: y_flxsnow1_inv(16, 31)
-    real(c_double), pointer, contiguous :: yp_flxsnow1_inv(:,:)
-    real(c_double), target :: y_qvten_inv(16, 30)
-    real(c_double), pointer, contiguous :: yp_qvten_inv(:,:)
-    real(c_double), target :: y_qlten_inv(16, 30)
-    real(c_double), pointer, contiguous :: yp_qlten_inv(:,:)
-    real(c_double), target :: y_qiten_inv(16, 30)
-    real(c_double), pointer, contiguous :: yp_qiten_inv(:,:)
-    real(c_double), target :: y_sten_inv(16, 30)
-    real(c_double), pointer, contiguous :: yp_sten_inv(:,:)
-    real(c_double), target :: y_uten_inv(16, 30)
-    real(c_double), pointer, contiguous :: yp_uten_inv(:,:)
-    real(c_double), target :: y_vten_inv(16, 30)
-    real(c_double), pointer, contiguous :: yp_vten_inv(:,:)
-    real(c_double), target :: y_trten_inv(16, 30, 57)
-    real(c_double), pointer, contiguous :: yp_trten_inv(:,:,:)
-    real(c_double), target :: y_qrten_inv(16, 30)
-    real(c_double), pointer, contiguous :: yp_qrten_inv(:,:)
-    real(c_double), target :: y_qsten_inv(16, 30)
-    real(c_double), pointer, contiguous :: yp_qsten_inv(:,:)
-    real(c_double), target :: y_precip(16)
-    real(c_double), pointer, contiguous :: yp_precip(:)
-    real(c_double), target :: y_snow(16)
-    real(c_double), pointer, contiguous :: yp_snow(:)
-    real(c_double), target :: y_evapc_inv(16, 30)
-    real(c_double), pointer, contiguous :: yp_evapc_inv(:,:)
-    real(c_double), target :: y_cufrc_inv(16, 30)
-    real(c_double), pointer, contiguous :: yp_cufrc_inv(:,:)
-    real(c_double), target :: y_qcu_inv(16, 30)
-    real(c_double), pointer, contiguous :: yp_qcu_inv(:,:)
-    real(c_double), target :: y_qlu_inv(16, 30)
-    real(c_double), pointer, contiguous :: yp_qlu_inv(:,:)
-    real(c_double), target :: y_qiu_inv(16, 30)
-    real(c_double), pointer, contiguous :: yp_qiu_inv(:,:)
-    real(c_double), target :: y_cbmf(16)
-    real(c_double), pointer, contiguous :: yp_cbmf(:)
-    real(c_double), target :: y_qc_inv(16, 30)
-    real(c_double), pointer, contiguous :: yp_qc_inv(:,:)
-    real(c_double), target :: y_rliq(16)
-    real(c_double), pointer, contiguous :: yp_rliq(:)
-    real(c_double), target :: y_cnt_inv(16)
-    real(c_double), pointer, contiguous :: yp_cnt_inv(:)
-    real(c_double), target :: y_cnb_inv(16)
-    real(c_double), pointer, contiguous :: yp_cnb_inv(:)
-    real(c_double), target :: y_wtprec(16, 57)
-    real(c_double), pointer, contiguous :: yp_wtprec(:,:)
-    real(c_double), target :: y_wtsnow(16, 57)
-    real(c_double), pointer, contiguous :: yp_wtsnow(:,:)
-    real(c_double), target :: y_wtqc_inv(16, 30, 57)
-    real(c_double), pointer, contiguous :: yp_wtqc_inv(:,:,:)
     z_dt = 0.0_c_double
     zp_dt => z_dt
     call torch_tensor_from_array(in_t(1), zp_dt, torch_kCPU)
@@ -3929,87 +3700,26 @@ contains
     z_s0_inv = 0.0_c_double
     zp_s0_inv => z_s0_inv
     call torch_tensor_from_array(in_t(13), zp_s0_inv, torch_kCPU)
-    z_tr0_inv = 0.0_c_double
-    zp_tr0_inv => z_tr0_inv
-    call torch_tensor_from_array(in_t(14), zp_tr0_inv, torch_kCPU)
     z_tke_inv = 0.0_c_double
     zp_tke_inv => z_tke_inv
-    call torch_tensor_from_array(in_t(15), zp_tke_inv, torch_kCPU)
+    call torch_tensor_from_array(in_t(14), zp_tke_inv, torch_kCPU)
     z_cldfrct_inv = 0.0_c_double
     zp_cldfrct_inv => z_cldfrct_inv
-    call torch_tensor_from_array(in_t(16), zp_cldfrct_inv, torch_kCPU)
+    call torch_tensor_from_array(in_t(15), zp_cldfrct_inv, torch_kCPU)
     z_concldfrct_inv = 0.0_c_double
     zp_concldfrct_inv => z_concldfrct_inv
-    call torch_tensor_from_array(in_t(17), zp_concldfrct_inv, torch_kCPU)
+    call torch_tensor_from_array(in_t(16), zp_concldfrct_inv, torch_kCPU)
     z_pblh = 0.0_c_double
     zp_pblh => z_pblh
-    call torch_tensor_from_array(in_t(18), zp_pblh, torch_kCPU)
+    call torch_tensor_from_array(in_t(17), zp_pblh, torch_kCPU)
     z_cush = 0.0_c_double
     zp_cush => z_cush
-    call torch_tensor_from_array(in_t(19), zp_cush, torch_kCPU)
+    call torch_tensor_from_array(in_t(18), zp_cush, torch_kCPU)
     z_dpdry0_inv = 0.0_c_double
     zp_dpdry0_inv => z_dpdry0_inv
-    call torch_tensor_from_array(in_t(20), zp_dpdry0_inv, torch_kCPU)
-    yp_cush => y_cush
-    call torch_tensor_from_array(out_t(1), yp_cush, torch_kCPU)
-    yp_umf_inv => y_umf_inv
-    call torch_tensor_from_array(out_t(2), yp_umf_inv, torch_kCPU)
-    yp_slflx_inv => y_slflx_inv
-    call torch_tensor_from_array(out_t(3), yp_slflx_inv, torch_kCPU)
-    yp_qtflx_inv => y_qtflx_inv
-    call torch_tensor_from_array(out_t(4), yp_qtflx_inv, torch_kCPU)
-    yp_flxprc1_inv => y_flxprc1_inv
-    call torch_tensor_from_array(out_t(5), yp_flxprc1_inv, torch_kCPU)
-    yp_flxsnow1_inv => y_flxsnow1_inv
-    call torch_tensor_from_array(out_t(6), yp_flxsnow1_inv, torch_kCPU)
-    yp_qvten_inv => y_qvten_inv
-    call torch_tensor_from_array(out_t(7), yp_qvten_inv, torch_kCPU)
-    yp_qlten_inv => y_qlten_inv
-    call torch_tensor_from_array(out_t(8), yp_qlten_inv, torch_kCPU)
-    yp_qiten_inv => y_qiten_inv
-    call torch_tensor_from_array(out_t(9), yp_qiten_inv, torch_kCPU)
-    yp_sten_inv => y_sten_inv
-    call torch_tensor_from_array(out_t(10), yp_sten_inv, torch_kCPU)
-    yp_uten_inv => y_uten_inv
-    call torch_tensor_from_array(out_t(11), yp_uten_inv, torch_kCPU)
-    yp_vten_inv => y_vten_inv
-    call torch_tensor_from_array(out_t(12), yp_vten_inv, torch_kCPU)
-    yp_trten_inv => y_trten_inv
-    call torch_tensor_from_array(out_t(13), yp_trten_inv, torch_kCPU)
-    yp_qrten_inv => y_qrten_inv
-    call torch_tensor_from_array(out_t(14), yp_qrten_inv, torch_kCPU)
-    yp_qsten_inv => y_qsten_inv
-    call torch_tensor_from_array(out_t(15), yp_qsten_inv, torch_kCPU)
-    yp_precip => y_precip
-    call torch_tensor_from_array(out_t(16), yp_precip, torch_kCPU)
-    yp_snow => y_snow
-    call torch_tensor_from_array(out_t(17), yp_snow, torch_kCPU)
-    yp_evapc_inv => y_evapc_inv
-    call torch_tensor_from_array(out_t(18), yp_evapc_inv, torch_kCPU)
-    yp_cufrc_inv => y_cufrc_inv
-    call torch_tensor_from_array(out_t(19), yp_cufrc_inv, torch_kCPU)
-    yp_qcu_inv => y_qcu_inv
-    call torch_tensor_from_array(out_t(20), yp_qcu_inv, torch_kCPU)
-    yp_qlu_inv => y_qlu_inv
-    call torch_tensor_from_array(out_t(21), yp_qlu_inv, torch_kCPU)
-    yp_qiu_inv => y_qiu_inv
-    call torch_tensor_from_array(out_t(22), yp_qiu_inv, torch_kCPU)
-    yp_cbmf => y_cbmf
-    call torch_tensor_from_array(out_t(23), yp_cbmf, torch_kCPU)
-    yp_qc_inv => y_qc_inv
-    call torch_tensor_from_array(out_t(24), yp_qc_inv, torch_kCPU)
-    yp_rliq => y_rliq
-    call torch_tensor_from_array(out_t(25), yp_rliq, torch_kCPU)
-    yp_cnt_inv => y_cnt_inv
-    call torch_tensor_from_array(out_t(26), yp_cnt_inv, torch_kCPU)
-    yp_cnb_inv => y_cnb_inv
-    call torch_tensor_from_array(out_t(27), yp_cnb_inv, torch_kCPU)
-    yp_wtprec => y_wtprec
-    call torch_tensor_from_array(out_t(28), yp_wtprec, torch_kCPU)
-    yp_wtsnow => y_wtsnow
-    call torch_tensor_from_array(out_t(29), yp_wtsnow, torch_kCPU)
-    yp_wtqc_inv => y_wtqc_inv
-    call torch_tensor_from_array(out_t(30), yp_wtqc_inv, torch_kCPU)
+    call torch_tensor_from_array(in_t(19), zp_dpdry0_inv, torch_kCPU)
+    yp_packed => y_packed
+    call torch_tensor_from_array(out_t(1), yp_packed, torch_kCPU)
     call torch_model_forward(models(6), in_t, out_t)
     call torch_delete(in_t)
     call torch_delete(out_t)

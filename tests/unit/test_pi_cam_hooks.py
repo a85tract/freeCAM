@@ -98,3 +98,23 @@ def test_hook_counts_are_read_by_name() -> None:
                                             "fluxbelowinv": {"calls": 600, "paused": 0},
                                             "instratus_condensate": {"calls": 18000, "paused": 18000},
                                             "micro_mg_tend": {"calls": 200, "paused": 0}}
+
+
+def test_a_packed_model_block_and_zeroed_outputs_are_read_and_rendered(tmp_path) -> None:
+    import subprocess
+    import sys
+
+    from freecam.pi_cam.hooks import load_hooks
+
+    table = load_hooks()
+    hook = table.hook("compute_uwshcu_inv")
+    assert hook.model_packed and hook.model_zero_outputs == ("trten_inv", "wtqc_inv", "wtprec", "wtsnow")
+    assert "tr0_inv" not in hook.model_inputs and not set(hook.model_zero_outputs) & set(hook.model_outputs)
+    text = (REPO / "native/pi_cam/support/pycam_hooks.F90").read_text()
+    body = text[text.index("subroutine model_compute_uwshcu_inv"):text.index("end subroutine model_compute_uwshcu_inv")]
+    assert "out_t(1)" in body and "o_packed(16, 582)" in body            # one tensor, 26 outputs side by side
+    assert "w_umf_inv(1:hk_n, hk_j) = o_packed(1:hk_n, 1 + hk_j)" in body  # cush takes column 1, umf the next 31
+    assert "w_trten_inv(1:hk_n, :, :) = 0.0_c_double" in body            # zeroed by the hook, not the model
+    assert "takes TorchScript models only" in body                         # no compiled-plugin branch for a packed block
+    assert subprocess.run([sys.executable, str(REPO / "tools/generate_pi_cam_hooks.py"), "--check"],
+                          capture_output=True, text=True, cwd=REPO).returncode == 0
