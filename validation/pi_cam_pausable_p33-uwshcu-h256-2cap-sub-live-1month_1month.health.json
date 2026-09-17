@@ -1,0 +1,19 @@
+{
+ "schema_version": 1,
+ "log": "pyCAM/PI-cam/pausable-p33-uwshcu-h256-2cap-sub-live-1month-1month-7511232.desched1/run/pi_cam_python.log",
+ "steps": 1488,
+ "counts": {
+  "big_error": 223,
+  "isotopic_mass_error": 38,
+  "qneg3_macro": 0,
+  "qneg3_total": 0,
+  "tracebacks": 0
+ },
+ "per_step": {
+  "big_error": 0.14986559139784947,
+  "isotopic_mass_error": 0.025537634408602152,
+  "qneg3_macro": 0.0,
+  "qneg3_total": 0.0,
+  "tracebacks": 0.0
+ }
+}
