@@ -186,6 +186,19 @@ of the physics spends on a wrong state (10.7 M QNEG3 resets; after the month
 T drifts 5.4 K rms, U 15 m/s, PS 16 hPa, CLDLIQ 25.7 mg/kg against a
 reference rms of 13.2).  Records: `validation/pi_cam_pausable_p29-*-1month*_1month.json`.
 
+### The floor, packed
+
+The floor is the output tensors: TorchScript allocates and returns them
+inside its forward, FTorch copies them out.  With `packed: true` the
+compute_uwshcu_inv model block returns its 26 outputs as one 16 x 582
+tensor and the hook zeroes the four tracer outputs itself, so nothing of
+the 55 k tracer values crosses the model.  Measured over the same month on
+image p30 with a do-nothing packed model in shadow (job 7504452, bit
+for bit): **0.37 ms a call**, 1.1 s a rank a month, against 1.75 ms and
+5.2 s unpacked -- 4.7 times less.  The budget at this slot becomes
+6.1 ms a call, 18.3 s a month.  The other hooks keep their unpacked
+blocks until a model is wanted there.
+
 ## Sources and caveats
 
 The month costs are one run on exclusive nodes; the plugin paths are
