@@ -68,11 +68,19 @@ the month in which every kernel was answered through its pause
 (`validation/pi_cam_pausable_p28-everything-timers-1month_1month.json`, job
 7479754, rank 0); for kernels under 50 µs that number includes the pause's
 own copies, so it is an upper bound -- the hook's timer puts `compute_tms` at
-2 µs, not 18.  *Plugin path*: the cost of the hook path with a plugin that
-writes zeros -- argument tables, adapter, call, write-back -- measured in
-the shadow gates on image p29 (`validation/pi_cam_pausable_p29-*-shadow_50step.json`)
-and on earlier images for the three older hooks; for kernels without a hook
-yet it is estimated from the fit below.  *Ceiling*: the month cost less the
+2 µs, not 18.  *Plugin path*: the whole cost of a Numba plugin that writes zeros, bound
+at the hook, measured in the shadow gates on image p29
+(`validation/pi_cam_pausable_p29-*-shadow_50step.json`) and on earlier
+images for the three older hooks; for kernels without a hook yet it is
+estimated from the fit below.  The hook's own part of it -- pointer tables
+for the inputs, copying the outputs' live columns back -- is about 10 µs
+(compute_uwshcu_inv: 0.686 ms in all, 0.010 outside the plugin call); the
+rest is the adapter building one array view per argument and the plugin
+writing every output value, which any plugin must do.  A TorchScript model
+pays about 0.3 ms outside its forward instead (FTorch tensor wrapping and
+output copies, compute_uwshcu_inv), and its own input assembly -- the
+concatenation and scaling of the raw arguments into a feature matrix --
+runs inside the forward and counts as model time.  *Ceiling*: the month cost less the
 path, the gain if the model itself were free.  *With a 0.4 ms model*: the
 same with a model that costs what a small MLP costs through FTorch inside
 the image (0.41 ms a call, measured on `micro_mg_tend`).
