@@ -30,10 +30,12 @@ def main() -> int:
     parser.add_argument("--file", default="r", help="which CAM file to compare: r (restart, default), h0, ...")
     parser.add_argument("--variables", nargs="*", metavar="NAME[:SCALE[:UNIT]]",
                         help="fields to measure (default: " + ", ".join(v[0] for v in DEFAULT_VARIABLES) + ")")
+    parser.add_argument("--pick", choices=("only", "last", "first"), default="only",
+                        help="which file when a run holds several of the kind: only (refuse), last, first")
     parser.add_argument("--output", type=Path, help="write the report as JSON here")
     args = parser.parse_args()
     variables = parse_variables(args.variables) if args.variables else DEFAULT_VARIABLES
-    payload = report(args.reference, args.candidate, args.file, variables)
+    payload = report(args.reference, args.candidate, args.file, variables, args.pick)
     rows = [DriftRow(f["name"], f["unit"], f["scale"], f["rms"], f["max"], f["mean"], f["reference_rms"],
                      f["count"], f["note"]) for f in payload["fields"]]
     print(f"{payload['reference_file']}  vs  {payload['candidate_file']}")

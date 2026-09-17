@@ -55,6 +55,8 @@ def test_an_identical_pair_reads_as_identical_and_the_file_must_be_unique(tmp_pa
     _write(reference / "case.cam.r.0001-01-04-00000.nc", [1.0], [1.0])
     with pytest.raises(FileNotFoundError, match="expected one"):
         cam_file(reference)
+    assert cam_file(reference, pick="last").name == "case.cam.r.0001-01-04-00000.nc"
+    assert cam_file(reference, pick="first").name == "case.cam.r.0001-01-03-00000.nc"
 
 
 def test_variables_parse_with_defaults_and_the_table_prints(tmp_path) -> None:

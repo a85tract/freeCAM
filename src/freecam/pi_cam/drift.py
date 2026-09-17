@@ -52,14 +52,24 @@ class DriftRow:
         }
 
 
-def cam_file(root: Path, kind: str = "r") -> Path:
-    """The one ``*.cam.<kind>.*.nc`` file under ``root``; ambiguity is an error."""
+def cam_file(root: Path, kind: str = "r", pick: str = "only") -> Path:
+    """The ``*.cam.<kind>.*.nc`` file under ``root``.
+
+    ``pick`` says which when several exist: ``only`` refuses ambiguity, ``last``
+    and ``first`` take the latest or earliest by name (CAM names carry the date).
+    """
 
     matches = sorted(Path(root).glob(f"*.cam.{kind}.*.nc"))
+    if not matches:
+        raise FileNotFoundError(f"{root}: expected a *.cam.{kind}.*.nc file, found none")
+    if pick == "last":
+        return matches[-1]
+    if pick == "first":
+        return matches[0]
     if len(matches) != 1:
         raise FileNotFoundError(
             f"{root}: expected one *.cam.{kind}.*.nc file, found {len(matches)}"
-            + (f" ({', '.join(m.name for m in matches)})" if matches else ""))
+            f" ({', '.join(m.name for m in matches)}); pass pick='last' or 'first'")
     return matches[0]
 
 
@@ -105,14 +115,14 @@ def variable_drift(reference: Path, candidate: Path,
 
 
 def report(reference_dir: Path, candidate_dir: Path, kind: str = "r",
-           variables: Iterable[tuple[str, float, str]] = DEFAULT_VARIABLES) -> dict[str, Any]:
+           variables: Iterable[tuple[str, float, str]] = DEFAULT_VARIABLES, pick: str = "only") -> dict[str, Any]:
     """The drift of ``candidate_dir`` from ``reference_dir`` on their ``cam.<kind>`` files.
 
     Names only the files' logical names, never their directories: a record
     written from this names no site.
     """
 
-    reference, candidate = cam_file(reference_dir, kind), cam_file(candidate_dir, kind)
+    reference, candidate = cam_file(reference_dir, kind, pick), cam_file(candidate_dir, kind, pick)
     rows = variable_drift(reference, candidate, variables)
     return {
         "schema_version": 1,
