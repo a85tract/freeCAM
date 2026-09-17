@@ -217,6 +217,49 @@ it.  The cost side of the kernel slot is settled; what remains is the model's
 skill, and that is architecture and targets, not the interface.  Records:
 `validation/pi_cam_pausable_p30-uwshcu-h256-{shadow,live}-1month_1month.json`.
 
+### The wrong answers' collateral cost, removed
+
+The 112 s the live month lost were not spent at the kernel.  The
+surrogate's tendencies took cloud water below zero (3.6 M QNEG3 resets,
+2.98 M water-tracer consistency warnings, 71 M lines of log), and with the
+four tracer outputs zeroed the isotope tracers stopped following the water
+they mirror.  One change to the hook block and two to the exported module
+remove that cost without touching the network (image p31, commit 1a12df3a;
+nothing armed, fifty steps bit for bit, job 7508625):
+
+- the model block hands `tr0_inv` to the model and takes `trten_inv`,
+  `wtqc_inv`, `wtprec` and `wtsnow` back inside the packed tensor, width
+  4116 instead of 582, so a model can answer them;
+- the module floors its water tendencies at `-q0/dt` and keeps snow within
+  precipitation;
+- it derives the twelve isotope tracer tendencies (four species, vapour,
+  liquid and ice) from its own water tendencies at the ratios the column
+  carries: the existing ratio for liquid and ice, the vapour ratio for
+  vapour, detrained condensate and precipitation.  Given the kernel's own
+  water tendencies, that rule reproduces the kernel's liquid and ice tracer
+  tendencies on the capture to about 1e-3 relative, and vapour to 2 %
+  (H218O) and 18 % (HDO): the fractionation it ignores.
+
+| what answers the kernel | job | ms a call | s a rank a month | step loop, s a rank | over the month |
+| --- | --- | ---: | ---: | ---: | --- |
+| the original kernel | 7500359 | 6.5 | 19.4 | 402.7 | the oracle's answers |
+| do-nothing model, tracer arrays returned too, shadow (p31) | 7508626 | 1.22 | 3.6 | 413.3 | bit for bit |
+| 340 k-parameter MLP, floors and derived tracers, shadow (p31) | 7508627 | 6.00 | 17.9 | 429.6 | bit for bit |
+| the same, live (p31) | 7508628 | 6.72 | 20.0 | **403.6** | 0 QNEG3 resets, 223 consistency warnings, 38 isotope precipitation errors |
+| the same network live before the change (p30) | 7504871 | 3.36 | 10.0 | 514.5 | 3.6 M QNEG3 resets, 2.98 M warnings, 121 k errors |
+
+Live, the month takes 403.6 s against the baseline's 402.7: the collateral
+cost is gone, and the model now costs what the kernel costs, 6.72 against
+6.5 ms a call.  The 3.6 ms a call it gained over the p30 model is the price
+of the wide tracer arrays, 3 534 more values a column to build, pack and
+write back on 128 ranks a node that share its memory bandwidth: the
+do-nothing model's floor rose from 0.37 to 1.22 ms.  Returning only the
+twelve isotope constituents, 608 values instead of 3 534, is the next step
+on the cost side.  The answers did not change: T 5.2 K rms after the month
+(4.8 before), PS 17 hPa (12), history relative rms median 0.59 (0.58); the
+skill of the network is what is left.  Records:
+`validation/pi_cam_pausable_p31-*_1month*.json`.
+
 ## Sources and caveats
 
 The month costs are one run on exclusive nodes; the plugin paths are
