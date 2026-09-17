@@ -192,6 +192,7 @@ def _frame_capture_summary(records, args, native_evidence) -> dict[str, object] 
             totals[name] = totals.get(name, 0) + int(count)
     provenance = {
         "kernels": [k.strip() for k in args.capture_kernels.split(",") if k.strip()],
+        "every": int(args.capture_every),
         "calls_total_by_kernel": totals,
         "ranks_with_calls_by_kernel": {
             name: sum(1 for record in records if (record.get("frame_capture_calls") or {}).get(name))
@@ -306,7 +307,7 @@ def _load_kernel_plugin(kernel: str, spec: str, *, shadow: bool = False):
     return compile_kernel(kernel, function, shadow=shadow)
 
 
-def _pausable_stage(stage_name: str, policy: str, *, original_kernels, capture_kernels, kernel_models):
+def _pausable_stage(stage_name: str, policy: str, *, original_kernels, capture_kernels, kernel_models, capture_every: int = 1):
     """A pausable stage class with every slot filled before its ``tend`` is installed.
 
     Installing pickles the bound method, so a slot filled afterwards never reaches
@@ -329,7 +330,7 @@ def _pausable_stage(stage_name: str, policy: str, *, original_kernels, capture_k
     for kernel_name in capture_kernels:
         if kernel_name in stage.kernels:
             from freecam.physics.segments import FrameCapture
-            stage.kernels[kernel_name] = FrameCapture(kernel_name)
+            stage.kernels[kernel_name] = FrameCapture(kernel_name, capture_every)
     for kernel_name, model in kernel_models.items():
         if kernel_name in stage.kernels:
             stage.kernels[kernel_name] = model
@@ -652,6 +653,11 @@ def main(argv: list[str] | None = None) -> int:
             "pauses and record every call's frame -- inputs and outputs -- for the standalone "
             "replay (tools/replay_pi_cam_frame_capture.py); the run stays bit-for-bit"
         ),
+    )
+    parser.add_argument(
+        "--capture-every", type=int, default=1, metavar="N",
+        help="record one call in N of each captured kernel (the others still run the original); "
+             "a month at N=25 is about the volume of fifty steps at N=1",
     )
     parser.add_argument(
         "--capture-dir",
@@ -1074,7 +1080,7 @@ def main(argv: list[str] | None = None) -> int:
             for kernel_name in capture_kernels:
                 if kernel_name in scheme.kernels:
                     from freecam.physics.segments import FrameCapture
-                    scheme.kernels[kernel_name] = FrameCapture(kernel_name)
+                    scheme.kernels[kernel_name] = FrameCapture(kernel_name, args.capture_every)
             for kernel_name, model in kernel_models.items():
                 if kernel_name in scheme.kernels:
                     scheme.kernels[kernel_name] = model
@@ -1134,7 +1140,7 @@ def main(argv: list[str] | None = None) -> int:
                 # in both lists is captured, which answers with the original too
                 if kernel_name in scheme.kernels:
                     from freecam.physics.segments import FrameCapture
-                    scheme.kernels[kernel_name] = FrameCapture(kernel_name)
+                    scheme.kernels[kernel_name] = FrameCapture(kernel_name, args.capture_every)
             for kernel_name, model in kernel_models.items():
                 if kernel_name in scheme.kernels:
                     scheme.kernels[kernel_name] = model
@@ -1164,7 +1170,7 @@ def main(argv: list[str] | None = None) -> int:
                 stage_name, args.stage_execution,
                 original_kernels=[k.strip() for k in args.segmented_original_kernels.split(",") if k.strip()]
                 if args.segmented_original else [],
-                capture_kernels=capture_kernels, kernel_models=kernel_models)
+                capture_kernels=capture_kernels, kernel_models=kernel_models, capture_every=args.capture_every)
             phase, _, action_name = pausable_stage.STAGE.partition(".")
             cam.step_plan.set_enabled(action_name, False, phase=phase, experimental=True)
             cam.python_processes.install(

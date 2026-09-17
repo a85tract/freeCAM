@@ -189,8 +189,11 @@ class FrameCapture:
 
     takes_frame = True
 
-    def __init__(self, kernel: str) -> None:
+    def __init__(self, kernel: str, every: int = 1) -> None:
         self.kernel = kernel
+        #: record one call in ``every``; the others are answered by the original and not kept
+        self.every = max(1, int(every))
+        self.seen = 0
         #: the model step in flight, set by the stage before each run
         self.current_step: int | None = None
         self.inputs: list[dict[str, np.ndarray]] = []
@@ -199,6 +202,9 @@ class FrameCapture:
         self._original = OriginalAtPause()
 
     def __call__(self, frame: "KernelFrame", runner: "SegmentRunner", context: int) -> dict[str, np.ndarray]:
+        self.seen += 1
+        if (self.seen - 1) % self.every:
+            return self._original(frame, runner, context)
         before: dict[str, np.ndarray] = {}
         for argument in frame.arguments:
             if argument.is_output and argument.intent == "out":
@@ -235,7 +241,7 @@ class FrameCapture:
         return target
 
     def __repr__(self) -> str:
-        return f"FrameCapture({self.kernel!r}, calls={self.calls})"
+        return f"FrameCapture({self.kernel!r}, calls={self.calls}, every={self.every})"
 
 
 def _lanes(array: np.ndarray, ncol: int) -> np.ndarray:
