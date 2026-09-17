@@ -199,6 +199,21 @@ for bit): **0.37 ms a call**, 1.1 s a rank a month, against 1.75 ms and
 6.1 ms a call, 18.3 s a month.  The other hooks keep their unpacked
 blocks until a model is wanted there.
 
+### A surrogate cheaper than the kernel, over a month
+
+The next network at the same slot: no tracers, 485 features to 582 targets,
+hidden 256, 340 k parameters, trained on the same fifty-step capture,
+returning its outputs packed on image p30.  In shadow over the month (job
+7504584, bit for bit) it costs **3.08 ms a call, 9.2 s a rank a month**,
+against the kernel's 6.5 ms and 19.4 s: the first replacement at a kernel
+slot that costs less than what it replaces, a saving of 10 s a month, 2.5 %
+of it, if its answers were the kernel's.  They are not yet: live (job
+7504585) the step loop is 514.9 s against 402.7, 3.9 M QNEG3 resets, and
+after the month T drifts 5.1 K rms, U 15 m/s, PS 18 hPa.  The cost side of
+the kernel slot is settled; what remains is the model's skill, and that is
+training data and architecture, not the interface.  Records:
+`validation/pi_cam_pausable_p30-uwshcu-h256-{shadow,live}-1month_1month.json`.
+
 ## Sources and caveats
 
 The month costs are one run on exclusive nodes; the plugin paths are
