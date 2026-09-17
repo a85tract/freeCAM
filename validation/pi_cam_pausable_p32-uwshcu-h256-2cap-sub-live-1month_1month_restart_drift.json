@@ -1,0 +1,87 @@
+{
+ "candidate_file": "cam.r.0001-02-01-00000.nc",
+ "fields": [
+  {
+   "count": 737280,
+   "max": 44.138582891680784,
+   "mean": -0.21631187024745022,
+   "name": "T",
+   "note": null,
+   "reference_rms": 244.55707130467653,
+   "rms": 5.192579926781211,
+   "scale": 1.0,
+   "unit": "K"
+  },
+  {
+   "count": 737280,
+   "max": 12.459032144957655,
+   "mean": -0.15802058669797314,
+   "name": "Q",
+   "note": null,
+   "reference_rms": 4.8187964330827775,
+   "rms": 1.7187755611752604,
+   "scale": 1000.0,
+   "unit": "g/kg"
+  },
+  {
+   "count": 737280,
+   "max": 84.00150739544182,
+   "mean": -1.313965695822827,
+   "name": "U",
+   "note": null,
+   "reference_rms": 17.844484659067668,
+   "rms": 14.57606339006285,
+   "scale": 1.0,
+   "unit": "m/s"
+  },
+  {
+   "count": 737280,
+   "max": 85.38279760813177,
+   "mean": 0.0692388390579521,
+   "name": "V",
+   "note": null,
+   "reference_rms": 8.528284236875315,
+   "rms": 11.903722535593205,
+   "scale": 1.0,
+   "unit": "m/s"
+  },
+  {
+   "count": 24576,
+   "max": 78.7701499581973,
+   "mean": 0.35620816995512294,
+   "name": "PS",
+   "note": null,
+   "reference_rms": 987.3120564597467,
+   "rms": 16.92362730550481,
+   "scale": 0.01,
+   "unit": "hPa"
+  },
+  {
+   "count": 737280,
+   "max": 802.0703734451993,
+   "mean": 3.226791940580205,
+   "name": "CLDLIQ",
+   "note": null,
+   "reference_rms": 13.226542040432776,
+   "rms": 28.829726819154505,
+   "scale": 1000000.0,
+   "unit": "mg/kg"
+  },
+  {
+   "count": 737280,
+   "max": 241.72542212892444,
+   "mean": 0.3642398009741821,
+   "name": "CLDICE",
+   "note": null,
+   "reference_rms": 5.092503209565207,
+   "rms": 7.644253517317425,
+   "scale": 1000000.0,
+   "unit": "mg/kg"
+  }
+ ],
+ "file_kind": "r",
+ "identical": false,
+ "reference_file": "cam.r.0001-02-01-00000.nc",
+ "schema_version": 1,
+ "what": "state drift of the candidate from the reference, candidate minus reference, per field: root-mean-square, largest absolute and mean difference in the scaled unit"
+}

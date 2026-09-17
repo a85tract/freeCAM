@@ -246,6 +246,9 @@ nothing armed, fifty steps bit for bit, job 7508625):
 | do-nothing model, tracer arrays returned too, shadow (p31) | 7508626 | 1.22 | 3.6 | 413.3 | bit for bit |
 | 340 k-parameter MLP, floors and derived tracers, shadow (p31) | 7508627 | 6.00 | 17.9 | 429.6 | bit for bit |
 | the same, live (p31) | 7508628 | 6.72 | 20.0 | **403.6** | 0 QNEG3 resets, 223 consistency warnings, 38 isotope precipitation errors |
+| do-nothing model, tracer arrays at the twelve isotope constituents only, shadow (p32) | 7510376 | 0.48 | 1.4 | 405.9 | bit for bit |
+| the MLP with floors and derived tracers, compact, shadow (p32) | 7510378 | 4.00 | 11.9 | 414.9 | bit for bit |
+| the same, live (p32) | 7510379 | 4.17 | 12.4 | **396.0** | the p31 answers to the bit; 1.7 % under the baseline |
 | the same network live before the change (p30) | 7504871 | 3.36 | 10.0 | 514.5 | 3.6 M QNEG3 resets, 2.98 M warnings, 121 k errors |
 
 Live, the month takes 403.6 s against the baseline's 402.7: the collateral
@@ -253,12 +256,22 @@ cost is gone, and the model now costs what the kernel costs, 6.72 against
 6.5 ms a call.  The 3.6 ms a call it gained over the p30 model is the price
 of the wide tracer arrays, 3 534 more values a column to build, pack and
 write back on 128 ranks a node that share its memory bandwidth: the
-do-nothing model's floor rose from 0.37 to 1.22 ms.  Returning only the
-twelve isotope constituents, 608 values instead of 3 534, is the next step
-on the cost side.  The answers did not change: T 5.2 K rms after the month
-(4.8 before), PS 17 hPa (12), history relative rms median 0.59 (0.58); the
-skill of the network is what is left.  Records:
-`validation/pi_cam_pausable_p31-*_1month*.json`.
+do-nothing model's floor rose from 0.37 to 1.22 ms.  The answers did not
+change: T 5.2 K rms after the month (4.8 before), PS 17 hPa (12), history
+relative rms median 0.59 (0.58).
+
+Returning only the twelve isotope constituents removes that traffic (image
+p32, commit 90d5e8c9).  A packed model block may now name, per output, the
+1-based indices of the last axis the model returns; they sit in that order
+inside the packed tensor and the hook zeroes the rest of the array before
+scattering them.  The tracer arrays cross at 608 values a column instead of
+3 534; nothing armed, fifty steps bit for bit (job 7510375).  Over the month
+the do-nothing floor is back to 0.48 ms a call, the model costs 4.00 ms in
+shadow and 4.17 ms live, and the live month takes **396.0 s against 402.7**,
+1.7 % under the baseline, with the p31 answers to the bit (the two restart
+files are identical).  At this slot the interface is settled: a 4.2 ms model
+at a 6.5 ms kernel, and the run shows the difference.  What is left is the
+network's skill.  Records: `validation/pi_cam_pausable_p3{1,2}-*_1month*.json`.
 
 ## Sources and caveats
 
