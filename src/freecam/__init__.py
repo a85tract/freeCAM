@@ -46,7 +46,6 @@ from .pi_cam import (
 
 __all__ = [
     "CASES",
-    "HookCallback",
     "NativeModel",
     "CAMBoundaryProvider",
     "CESMOnlineBoundaryProvider",
@@ -91,6 +90,6 @@ __all__ = [
 ]
 
 from . import physics  # noqa: E402  (single-column physics functions)
-from .physics.native_model import HookCallback, NativeModel  # noqa: E402  (what may stand at a kernel's hook)
+from .physics.native_model import NativeModel  # noqa: E402  (a TorchScript model for a kernel's hook)
 
 __version__ = "0.19.0"

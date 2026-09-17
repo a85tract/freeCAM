@@ -244,12 +244,16 @@ def _load_kernel_model(path: Path, *, shadow: bool = False):
 
 
 def _load_kernel_function(kernel: str, spec: str, *, shadow: bool = False):
-    """The named Python function as a hook callback for the kernel's slot: a PythonPlugin."""
+    """The named Python function for the kernel's slot.  The stage runs it at the kernel's hook
+    (the kernel has one with a model block) or at its pause; shadow needs the hook's wrapper."""
 
     from freecam.physics.native_model import PythonPlugin
 
     flag = "--shadow-kernel-function" if shadow else "--kernel-function"
-    return PythonPlugin(_import_function(spec, flag), kernel, shadow=shadow, label=spec.rpartition(":")[2])
+    function = _import_function(spec, flag)
+    if shadow:
+        return PythonPlugin(function, kernel, shadow=True, label=spec.rpartition(":")[2])
+    return function
 
 
 def _parse_kernel_plugins(values: list[str] | None, flag: str) -> dict[str, str]:

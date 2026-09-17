@@ -26,7 +26,7 @@ from .distributions import (
 from .column import InvalidInput
 from .function import PhysicsFunction, load_function
 from .macrophysics import Macrophysics
-from .native_model import HookCallback, NativeModel, PythonPlugin
+from .native_model import NativeModel
 from .radiation import Radiation
 from .result import FunctionResult
 from .spec import (
@@ -40,9 +40,7 @@ from .spec import (
 
 __all__ = [
     "Anchored",
-    "HookCallback",
     "NativeModel",
-    "PythonPlugin",
     "CapturedColumns",
     "ArgumentSpec",
     "Choice",

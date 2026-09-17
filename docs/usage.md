@@ -225,31 +225,34 @@ from freecam.physics.numba_kernel import compile_kernel
 vdiff = driver.processes["vertical_diffusion"]
 vdiff.kernels["compute_tms"] = OriginalKernel()      # the original, through the pause: the gate
 deep = driver.processes["deep_convection"]
-deep.kernels["cldfrc_fice"] = my_ice_fraction        # a callable: arguments in by dummy name, outputs out
-deep.kernels["cldfrc_fice"] = fc.HookCallback(my_ice_fraction, "cldfrc_fice")   # the same function, called by Fortran at the hook
+deep.kernels["cldfrc_fice"] = my_ice_fraction        # a function: inputs in by dummy name, outputs out by name
 deep.kernels["cldfrc_fice"] = compile_kernel("cldfrc_fice", my_numba_kernel)   # compiled, called by Fortran at the hook
 deep.kernels["cldfrc_fice"] = fc.NativeModel("ice.pt")                          # TorchScript, run by the image through FTorch
 ```
 
-A plain callable runs at the kernel's pause (three crossings a call and a
-per-step cost per stage).  The other three stand at the kernel's hook, inside
-the compiled routine, and the stage runs whole around them: a
-`HookCallback` is the same Python function reached through a C callback (the
-interpreter answers inside Fortran; the callback costs tens of microseconds a
-call, the function's own speed is the cost), a compiled plugin and a
-TorchScript model run with no Python in the step.  A hook callback receives
-one dict, the model block's inputs by name as Fortran-ordered views of the
-kernel's arrays (every column the chunk holds; a scalar as a float), and
-returns the outputs by name; an output it leaves out stays zero, and for an
-output the block returns at a subset of constituents either the whole array
-or the compact one is accepted.  `shadow=True` runs it on every call while
-the original answers, for a bit-for-bit cost measurement.  On the command
-line, `--kernel-function NAME=file.py:function` (and `--shadow-kernel-function`)
-does the same; `examples/plugins/python_kernels/torchscript_callback.py` runs
-a TorchScript model from Python that way.  `stage.describe_kernels()` lists
-each kernel's contract and binding; `docs/contracts.md` is the generated
-reference of every contract.  `examples/replace_kernel.ipynb` walks through
-the ways on a live run.
+A function takes one dict and returns one: the kernel's inputs by name,
+the outputs by name.  Where it runs is the stage's decision.  When the
+kernel has a hook with a model block (`docs/contracts.md` says which) and
+the stage is the whole of its action, the stage runs whole and Fortran calls
+the function at the hook through a C callback: the interpreter answers
+inside the compiled routine, with the model block's inputs as Fortran-ordered
+views of the kernel's arrays (every column the chunk holds; a scalar as a
+float); an output it leaves out stays zero, and an output the block returns
+at a subset of constituents may come whole or compact.  The callback itself
+costs tens of microseconds a call; the function's own speed is the cost.
+Otherwise, or under `stage.execution_policy = "segmented"`, the function
+answers at the kernel's pause: the runner stops at the call, hands Python the
+live columns, resumes after the write-back (three crossings a call and a
+per-step cost per stage).  A compiled plugin and a TorchScript model stand at
+the hook with no Python in the step.  On the command line,
+`--kernel-function NAME=file.py:function` puts a function in a slot and
+`--shadow-kernel-function` runs it on every call while the original answers,
+for a bit-for-bit cost measurement;
+`examples/plugins/python_kernels/torchscript_callback.py` runs a TorchScript
+model from Python that way.  `stage.describe_kernels()` lists each kernel's
+contract and binding; `docs/contracts.md` is the generated reference of every
+contract.  `examples/replace_kernel.ipynb` walks through the ways on a live
+run.
 
 ## Parameters
 

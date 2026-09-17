@@ -2,7 +2,8 @@
 
     PYCAM_CALLBACK_MODEL=/path/to/model.pt  freecam ... --kernel-function compute_uwshcu_inv=examples/plugins/python_kernels/torchscript_callback.py:answer
 
-The hook hands ``answer`` the model block's inputs by name as Fortran-ordered views of the
+Put in the kernel's slot (``stage.kernels["compute_uwshcu_inv"] = answer``, or the flag above), the
+function runs at the hook: it is handed the model block's inputs by name as Fortran-ordered views of the
 kernel's arrays; the function wraps them as tensors without a copy, runs the model the image
 would otherwise run through FTorch, and returns the outputs by name, cut from the model's one
 packed tensor along the hook's layout.  It measures what the Python detour costs against the

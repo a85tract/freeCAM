@@ -215,10 +215,10 @@ def test_describe_kernels_reports_contract_coverage_binding_and_calls() -> None:
     assert micro["owner_class"].endswith("microphysics.Microphysics")
     assert micro["bindable"] and micro["validated"] and len(micro["validated_by"]) == 6
     assert micro["contract"]["path"] == "native/pi_cam/functions/micro_mg_tend.yaml"
-    stage.kernels["mmacro_pcond"] = _answer
+    stage.kernels["mmacro_pcond"] = _answer                     # a function at a hooked kernel of a whole stage: the hook
     stage.execution.count_model_call("mmacro_pcond")
     again = {row["kernel"]: row for row in stage.describe_kernels()}
-    assert again["mmacro_pcond"]["binding"] == "callable" and again["mmacro_pcond"]["model_calls"] == 1
+    assert again["mmacro_pcond"]["binding"] == "python-hook" and again["mmacro_pcond"]["model_calls"] == 1
     assert stage.execution.describe()["python_model_calls_by_kernel"] == {"mmacro_pcond": 1}
 
 

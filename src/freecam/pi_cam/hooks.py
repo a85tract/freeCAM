@@ -182,7 +182,7 @@ def load_hooks(path: str | Path | None = None) -> HookTable:
                      sha256=hashlib.sha256(text.encode()).hexdigest())
 
 
-__all__ = ["BINDINGS", "HOOKS", "HOOK_MODULE", "Hook", "HookCaller", "HookTable", "load_hooks"]
+__all__ = ["BINDINGS", "HOOKS", "HOOK_MODULE", "Hook", "HookCaller", "HookTable", "hooked_model_kernels", "load_hooks"]
 
 
 def read_hook_counts(library: Any) -> dict[str, dict[str, int]]:
@@ -252,6 +252,21 @@ BIND_STATUS = {1: "no such hook", 2: "the hook takes no model (hooks.yaml has no
                6: "the image has no plugin entry: it was built before plugins"}
 #: what pycam_hooks_arm_v1 answers when a hook cannot be armed
 ARM_STATUS = {1: "no such hook", 3: "a model is bound at the hook", 5: "the hook has no frame (a Fortran-bound hook cannot pause)"}
+
+
+def hooked_model_kernels() -> frozenset[str]:
+    """The kernels whose hook has a model block: where a function or a model can stand inside the image.
+
+    Read once from the committed table; a stage asks every step.
+    """
+
+    global _HOOKED_MODEL_KERNELS
+    if _HOOKED_MODEL_KERNELS is None:
+        _HOOKED_MODEL_KERNELS = frozenset(hook.kernel for hook in load_hooks().hooks if hook.takes_model)
+    return _HOOKED_MODEL_KERNELS
+
+
+_HOOKED_MODEL_KERNELS: frozenset[str] | None = None
 
 
 def bind_hook_model(library: Any, hook_id: int, path: str | Path, *, shadow: bool = False) -> None:

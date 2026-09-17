@@ -186,8 +186,10 @@ def _python_identity(kernel: str, function: Any, shadow: bool) -> str:
 class PythonPlugin:
     """A Python callable the image calls at a kernel's hook, inside Fortran, through a C callback.
 
-    Put in a kernel slot, the stage binds a ``ctypes`` callback of the hook's plugin
-    interface at the kernel's hook and runs the original stage whole.  On every call the
+    The stage makes one of these for a plain function put in the slot of a hooked kernel
+    (``stage.kernels[name] = fn``); ``shadow=True`` is the reason to make one by hand.  The
+    stage binds a ``ctypes`` callback of the hook's plugin interface at the kernel's hook
+    and runs the original stage whole.  On every call the
     hook hands the model block's arrays to the callback; it re-enters the interpreter,
     builds NumPy views of them (Fortran order, every column the chunk holds, the contract's
     extents; a scalar as a float) and calls ``function(batch)`` with them by name.  The
@@ -336,7 +338,4 @@ class PythonPlugin:
         return callback, int(ctypes.cast(callback, ctypes.c_void_p).value)
 
 
-#: the name a notebook reads: a Python function stands at the kernel's hook
-HookCallback = PythonPlugin
-
-__all__ = ["HookCallback", "NativeModel", "NativePlugin", "PythonPlugin", "model_block", "packed_layout"]
+__all__ = ["NativeModel", "NativePlugin", "PythonPlugin", "model_block", "packed_layout"]

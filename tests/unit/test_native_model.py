@@ -237,10 +237,15 @@ def test_a_stage_with_a_native_model_runs_whole_and_binds_once(tmp_path: Path, m
     assert library.bound[3][1] == 1 and shadowed.describe()["shadow"] is True
     assert stage.execution.describe()["execution_mode"] == "native-model"
     assert stage.execution.describe()["python_fortran_crossings_per_step"] == 1
-    # a Python replacement next to a native model has no path
-    stage.kernels["cldfrc_fice"] = lambda batch: {}
+    # a Python replacement at a kernel without a hook, next to a native model, has no path
+    stage.kernels["macrop_advective_forcing"] = lambda batch: {}
     with pytest.raises(PhysicsError, match="one kind per stage"):
         stage.select_mode(None)
+    stage.kernels["macrop_advective_forcing"] = None
+    # a plain function at a hooked kernel stands at the hook like the model: one kind
+    stage.kernels["cldfrc_fice"] = lambda batch: {}
+    assert stage.select_mode(None) == "native-model" and stage.binding_kind("cldfrc_fice") == "python-hook"
+    stage.kernels["cldfrc_fice"] = None
     # a kernel that is not a hook cannot take a native model
     other = CloudMacroMicrophysics()
     other.kernels["macrop_advective_forcing"] = model
@@ -428,12 +433,15 @@ def test_a_python_function_fills_a_packed_output_in_the_hooks_layout() -> None:
     assert np.all(packed[:, 942:1182] == 0.0) and np.all(packed[:, 1182:1186] == 5.0) and np.all(packed[:, 1186:] == 0.0)
 
 
-def test_a_stage_binds_a_python_callback_at_the_hook_and_runs_whole() -> None:
+def test_a_plain_function_in_a_hooked_slot_runs_at_the_hook_and_the_stage_runs_whole() -> None:
     from freecam.physics.cloud_macro_microphysics import CloudMacroMicrophysics
     from freecam.physics.native_model import PythonPlugin
 
+    def ice(batch):
+        return {}
+
     stage = CloudMacroMicrophysics()
-    stage.kernels["cldfrc_fice"] = PythonPlugin(lambda batch: {}, "cldfrc_fice", shadow=True)
+    stage.kernels["cldfrc_fice"] = ice                                             # a function, as it is
     assert stage.select_mode(None) == "native-model" and stage.binding_kind("cldfrc_fice") == "python-hook"
     library = _Library()
     ran: list[str] = []
@@ -441,7 +449,18 @@ def test_a_stage_binds_a_python_callback_at_the_hook_and_runs_whole() -> None:
                              segment_runner=lambda stage_name: None)
     context = SimpleNamespace(native=native, step=1)
     stage.tend(None, context)
-    plugin = stage.kernels["cldfrc_fice"]
-    assert ran == [stage.STAGE] and library.plugged == [(1, plugin.address, 1)]   # fice is hook 1; in shadow
+    wrapper = stage._hook_bindings()["cldfrc_fice"]
+    assert isinstance(wrapper, PythonPlugin) and wrapper.function is ice and not wrapper.shadow
+    assert ran == [stage.STAGE] and library.plugged == [(1, wrapper.address, 0)]   # fice is hook 1, live
     stage.tend(None, context)
-    assert library.plugged == [(1, plugin.address, 1)]                            # bound once, not every step
+    assert library.plugged == [(1, wrapper.address, 0)] and stage._hook_bindings()["cldfrc_fice"] is wrapper   # once
+    # the same function under the segmented policy answers at the pause instead
+    stage.execution_policy = "segmented"
+    assert stage.binding_kind("cldfrc_fice") == "callable"
+    covering = SimpleNamespace(segment_runner=lambda stage_name: SimpleNamespace(kernels=("cldfrc_fice",)))
+    assert stage.select_mode(covering) == "segmented"
+    # a new function in the slot is a new wrapper; shadow is asked for by hand
+    stage.execution_policy = "auto"
+    stage.kernels["cldfrc_fice"] = PythonPlugin(ice, "cldfrc_fice", shadow=True)
+    stage.tend(None, context)
+    assert library.plugged[-1][2] == 1 and len(library.plugged) == 2

@@ -275,11 +275,11 @@ network's skill.  Records: `validation/pi_cam_pausable_p3{1,2}-*_1month*.json`.
 
 ### A Python function at the same hook
 
-The hook takes a Python function too (commit 167a71a1): `HookCallback(fn,
-kernel)` in a kernel slot binds a C callback of the hook's plugin interface,
-the hook hands it the model block's arrays as Fortran-ordered views by name,
-and the interpreter answers, inside the compiled routine, with the outputs by
-name.  Measured with the same TorchScript surrogate run from Python instead
+The hook takes a Python function too (commit 167a71a1): a function put in
+the slot of a hooked kernel (`stage.kernels[name] = fn`) is bound as a C
+callback of the hook's plugin interface, the hook hands it the model block's
+arrays as Fortran-ordered views by name, and the interpreter answers, inside
+the compiled routine, with the outputs by name.  Measured with the same TorchScript surrogate run from Python instead
 of through FTorch, on image p33: nothing armed, fifty steps bit for bit
 (7511229); the callback in shadow over fifty steps bit for bit with 51 200
 calls answered (7511790; the first call on each rank took 20 s, importing
