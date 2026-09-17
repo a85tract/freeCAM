@@ -100,7 +100,7 @@ def test_hook_counts_are_read_by_name() -> None:
                                             "micro_mg_tend": {"calls": 200, "paused": 0}}
 
 
-def test_a_packed_model_block_and_zeroed_outputs_are_read_and_rendered(tmp_path) -> None:
+def test_a_packed_model_block_is_read_and_rendered(tmp_path) -> None:
     import subprocess
     import sys
 
@@ -108,13 +108,15 @@ def test_a_packed_model_block_and_zeroed_outputs_are_read_and_rendered(tmp_path)
 
     table = load_hooks()
     hook = table.hook("compute_uwshcu_inv")
-    assert hook.model_packed and hook.model_zero_outputs == ("trten_inv", "wtqc_inv", "wtprec", "wtsnow")
-    assert "tr0_inv" not in hook.model_inputs and not set(hook.model_zero_outputs) & set(hook.model_outputs)
+    assert hook.model_packed and hook.model_zero_outputs == ()
+    assert "tr0_inv" in hook.model_inputs and hook.model_outputs[-4:] == ("trten_inv", "wtqc_inv", "wtprec", "wtsnow")
     text = (REPO / "native/pi_cam/support/pycam_hooks.F90").read_text()
     body = text[text.index("subroutine model_compute_uwshcu_inv"):text.index("end subroutine model_compute_uwshcu_inv")]
-    assert "out_t(1)" in body and "o_packed(16, 582)" in body            # one tensor, 26 outputs side by side
+    assert "out_t(1)" in body and "o_packed(16, 4116)" in body           # one tensor, 30 outputs side by side
     assert "w_umf_inv(1:hk_n, hk_j) = o_packed(1:hk_n, 1 + hk_j)" in body  # cush takes column 1, umf the next 31
-    assert "w_trten_inv(1:hk_n, :, :) = 0.0_c_double" in body            # zeroed by the hook, not the model
+    # a rank-3 output is laid out level-major inside the packed tensor, after the 582 columns before it
+    assert "w_trten_inv(1:hk_n, hk_j, hk_k) = o_packed(1:hk_n, 582 + (hk_j - 1) * 57 + hk_k)" in body
+    assert "w_wtsnow(1:hk_n, hk_j) = o_packed(1:hk_n, 4059 + hk_j)" in body
     assert "takes TorchScript models only" in body                         # no compiled-plugin branch for a packed block
     assert subprocess.run([sys.executable, str(REPO / "tools/generate_pi_cam_hooks.py"), "--check"],
                           capture_output=True, text=True, cwd=REPO).returncode == 0
