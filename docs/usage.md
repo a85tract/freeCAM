@@ -442,6 +442,12 @@ fc.physics.open_dataset("mmacro_pcond_training.nc").verify_sample(scheme).assert
 ```
 
 A sample the Fortran refuses keeps its status and is never written as data.
+`examples/generate_mmacro_pcond_dataset.py` is that route for `mmacro_pcond`
+with every knob drawn; for a kernel whose inputs cannot be drawn independently,
+`compute_uwshcu_inv` with its 57 tracers, `examples/generate_compute_uwshcu_inv_dataset.py`
+writes the same kind of file from the frames captured at the kernel's hook in a
+run of the model (`PYCAM_CAPTURE_KERNELS`, `PYCAM_CAPTURE_EVERY`), one sample a
+live column, with where each came from.
 [`examples/physics_function.ipynb`](../examples/physics_function.ipynb) walks
 through the function interface,
 [`examples/generate_training_data.ipynb`](../examples/generate_training_data.ipynb)
