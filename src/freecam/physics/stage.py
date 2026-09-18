@@ -40,7 +40,7 @@ from ..pi_cam.facade import Physics
 from ..pi_cam.kernel_codegen import load_direct_kernels
 from .capture import lane_sha256
 from .errors import PhysicsError
-from .native_model import NativeModel, NativePlugin, PythonPlugin
+from .native_model import NativeModel, NativePlugin
 from .segments import OriginalAtPause, OriginalKernel, SegmentedStage
 
 REPO = Path(__file__).resolve().parents[3]
@@ -1039,9 +1039,14 @@ class _StageProcess(Physics):
 EXECUTION_POLICIES = ("auto", "native-whole", "segmented", "legacy-python")
 
 
-def _plain_function(binding: Any) -> bool:
-    """A function put in a kernel slot as it is: not one of the slot's own kinds (the original
-    through the pause, a frame taker, a bound method, a surrogate, a native model or plugin)."""
+def _array_function(binding: Any, arity: int) -> bool:
+    """A function put in a kernel slot as it is, written over the kernel's arrays: one positional
+    parameter per argument of the hook's model block (inputs then outputs), or ``*args``.  A
+    function of one batch dict answers at the pause instead; the slot's own kinds (the original
+    through the pause, a frame taker, a bound method, a surrogate, a native model or plugin) are
+    neither."""
+
+    import inspect
 
     if binding is None or not callable(binding):
         return False
@@ -1049,9 +1054,17 @@ def _plain_function(binding: Any) -> bool:
     # the class is asked, not the instance: a pending surrogate loads its file on any attribute
     if kind.__name__ in ("PendingSurrogate", "SurrogateKernel"):
         return False
-    if issubclass(kind, (MethodKernel, OriginalKernel, NativeModel, NativePlugin, PythonPlugin)):
+    if issubclass(kind, (MethodKernel, OriginalKernel, NativeModel, NativePlugin)) or getattr(kind, "takes_frame", False):
         return False
-    return not getattr(kind, "takes_frame", False)
+    function = getattr(binding, "py_func", binding)            # a Numba dispatcher carries its Python function
+    try:
+        parameters = inspect.signature(function).parameters.values()
+    except (TypeError, ValueError):
+        return False
+    if any(item.kind is inspect.Parameter.VAR_POSITIONAL for item in parameters):
+        return True
+    positional = [item for item in parameters if item.kind in (inspect.Parameter.POSITIONAL_ONLY, inspect.Parameter.POSITIONAL_OR_KEYWORD)]
+    return len(positional) == arity
 
 
 class MethodKernel:
@@ -1327,8 +1340,9 @@ class NativeStage:
             return "original-through-python"
         if isinstance(binding, MethodKernel):
             return "method"
-        if isinstance(binding, PythonPlugin) or (_plain_function(binding) and self.hook_answerable(name)):
-            return "python-hook"
+        compiled = self.__dict__.get("_hook_compiled", {}).get(name)
+        if isinstance(binding, NativePlugin) or (compiled is not None and compiled[0] is binding and self.hook_answerable(name)):
+            return "numba"
         kind = type(binding).__name__
         if kind in ("PendingSurrogate", "SurrogateKernel"):
             return "surrogate"
@@ -1557,12 +1571,13 @@ class NativeStage:
         return tuple(name for name, kernel in self.kernels.items() if kernel is not None)
 
     def hook_answerable(self, name: str) -> bool:
-        """Whether a plain function in slot ``name`` runs at the kernel's hook, inside the image.
+        """Whether a function in slot ``name`` can stand at the kernel's hook, inside the image.
 
-        It does when the kernel has a hook with a model block and this stage is
+        It can when the kernel has a hook with a model block and this stage is
         the whole of its action, under the ``auto`` or ``native-whole`` policy:
-        the stage runs whole and the hook calls the function through a C callback.
-        Under ``segmented`` the same function answers at the kernel's pause instead.
+        the stage compiles the function with Numba and runs whole, Fortran
+        calling the compiled code at the hook.  Under ``segmented`` the slot's
+        function answers at the kernel's pause instead.
         """
 
         from ..pi_cam.hooks import hooked_model_kernels
@@ -1571,19 +1586,35 @@ class NativeStage:
                 and name in hooked_model_kernels())
 
     def _hook_bindings(self) -> dict[str, Any]:
-        """What stands at a hook this step: native models, plugins, and plain functions wrapped
-        for the hook's C callback (one wrapper per function, kept while the function stays)."""
+        """What stands at a hook this step: native models, compiled plugins, and the functions
+        over the kernel's arrays put in hooked slots as they are, compiled here once per
+        function (kept while the same function stays in the slot).  The interpreter never
+        runs inside a Fortran call: a function that does not compile is refused."""
 
-        wrappers: dict[str, PythonPlugin] = self.__dict__.setdefault("_hook_wrappers", {})
+        compiled: dict[str, tuple[Any, NativePlugin]] = self.__dict__.setdefault("_hook_compiled", {})
         bindings: dict[str, Any] = {}
         for name, binding in self.kernels.items():
-            if isinstance(binding, (NativeModel, NativePlugin, PythonPlugin)):
+            if isinstance(binding, (NativeModel, NativePlugin)):
                 bindings[name] = binding
-            elif _plain_function(binding) and self.hook_answerable(name):
-                wrapper = wrappers.get(name)
-                if wrapper is None or wrapper.function is not binding:
-                    wrapper = wrappers[name] = PythonPlugin(binding, name)
-                bindings[name] = wrapper
+                continue
+            if binding is None or not self.hook_answerable(name):
+                continue
+            cached = compiled.get(name)
+            if cached is not None and cached[0] is binding:
+                bindings[name] = cached[1]
+                continue
+            from .numba_kernel import block_arity, compile_kernel
+
+            if _array_function(binding, block_arity(name)):
+                try:
+                    plugin = compile_kernel(name, binding)
+                except PhysicsError as error:
+                    raise PhysicsError(
+                        f"{type(self).__name__}: the function in slot {name!r} stands at the kernel's hook and must "
+                        f"compile with Numba in nopython mode; a network goes in as a TorchScript NativeModel, and "
+                        f"execution_policy='segmented' answers at the pause instead.  {error}") from error
+                compiled[name] = (binding, plugin)
+                bindings[name] = plugin
         return bindings
 
     def configured_replacements(self) -> tuple[str, ...]:
@@ -1634,8 +1665,8 @@ class NativeStage:
         whole = self.WHOLE_ACTION or self.SPLIT_RUNNER
         natives = tuple(name for name in replaced if name in self._hook_bindings())
         if natives:
-            # a TorchScript model, a compiled plugin or a plain function bound at the kernel's
-            # hook: the image answers the kernel itself, so the stage runs whole -- nothing to pause at
+            # a TorchScript model or compiled code (a plugin, or the slot's function compiled here)
+            # bound at the kernel's hook: the image answers the kernel itself, so the stage runs whole
             if set(natives) != set(replaced):
                 raise PhysicsError(
                     f"{type(self).__name__}: native models {list(natives)} cannot share a step with "
@@ -1745,7 +1776,7 @@ class NativeStage:
 
         bound: dict[str, str] = getattr(self, "_native_bound", {})
         wanted = self._hook_bindings()
-        keys = {name: (model.key if isinstance(model, (NativePlugin, PythonPlugin)) else f"{model.sha256}{':shadow' if model.shadow else ''}")
+        keys = {name: (model.key if isinstance(model, NativePlugin) else f"{model.sha256}{':shadow' if model.shadow else ''}")
                 for name, model in wanted.items()}
         if keys == bound:
             # every step after the first: nothing to bind, and no hooks table to
@@ -1768,8 +1799,7 @@ class NativeStage:
                     f"hook {name!r} has no model block in native/pi_cam/hooks.yaml: the image does "
                     f"not know how to hand its arguments to a model")
             if bound.get(name) != keys[name]:
-                if isinstance(model, (NativePlugin, PythonPlugin)):
-                    # compiled code or this process's C callback into a Python function
+                if isinstance(model, NativePlugin):
                     bind_hook_plugin(native.library, hook.id, model.address, shadow=model.shadow)
                 else:
                     bind_hook_model(native.library, hook.id, model.path, shadow=model.shadow)

@@ -9,7 +9,9 @@ compiled function.  No interpreter runs during the call, no fiber pauses, no
 frame is copied: the step crosses the Python/Fortran boundary once, as with
 nothing replaced.
 
-The user writes the kernel over NumPy arrays and scalars, in the order of the
+Put in a kernel slot as it is (``stage.kernels[name] = fn``) at a kernel with such a hook,
+the stage compiles the function this way on every rank; the interpreter never runs inside
+a Fortran call.  The user writes the kernel over NumPy arrays and scalars, in the order of the
 ``model`` block, inputs first, then outputs, writing the outputs in place::
 
     def fice_kernel(t, fice, fsnow):          # t[ncol, pver] in, fice/fsnow[ncol, pver] out
@@ -33,8 +35,8 @@ REPO = Path(__file__).resolve().parents[3]
 #: the C signature of pycam_hooks' plugin_interface
 PLUGIN_SIGNATURE = "int32(int32, CPointer(voidptr), CPointer(int64), int32, CPointer(voidptr), CPointer(int64))"
 
-def _model_arguments(hook_name: str):
-    """The hook's model block as contract arguments: (inputs, outputs)."""
+def _model_block(hook_name: str):
+    """The hook's model block as contract arguments, with the contract: (hook, spec, inputs, outputs)."""
 
     from freecam.physics.spec import load_function_spec
     from freecam.pi_cam.hooks import load_hooks
@@ -48,14 +50,58 @@ def _model_arguments(hook_name: str):
     arguments = {item.name: item for item in spec.arguments}
     inputs = [arguments[name] for name in hook.model_inputs]
     outputs = [arguments[name] for name in hook.model_outputs]
+    return hook, spec, inputs, outputs
+
+
+def _model_arguments(hook_name: str):
+    """The hook's model block as contract arguments: (hook, inputs, outputs)."""
+
+    hook, _spec, inputs, outputs = _model_block(hook_name)
     return hook, inputs, outputs
 
 
-def adapter_source(hook_name: str, inputs, outputs, *, kernel_name: str = "kernel") -> str:
-    """The Numba cfunc that unpacks the hook's tables and calls ``kernel``, as source."""
+def block_arity(hook_name: str) -> int:
+    """How many arguments a kernel written for hook ``hook_name`` takes: the model block's inputs then outputs."""
 
+    hook, _spec, inputs, outputs = _model_block(hook_name)
+    return len(inputs) + len(outputs)
+
+
+def packed_layout(hook: Any, spec: Any, outputs: list) -> list[dict[str, Any]]:
+    """Where each output sits in the hook's packed tensor: offset, width, the extents after the
+    first (the last one full) and the 1-based subset indices when the model returns a subset.
+
+    The hook flattens each output per column with the last axis fastest and lays the outputs
+    side by side in the model block's order; a subset output holds the subset's slots only.
+    """
+
+    layout, offset = [], 0
+    for item in outputs:
+        dims = [int(spec.dimensions[axis]) if str(axis) in spec.dimensions else int(axis) for axis in item.native_shape[1:]]
+        subset = hook.model_subset(item.name)
+        packed = list(dims)
+        if subset is not None:
+            packed[-1] = len(subset)
+        width = 1
+        for extent in packed:
+            width *= extent
+        layout.append({"name": item.name, "offset": offset, "width": width, "dims": dims, "packed": packed,
+                       "subset": subset, "rank": item.rank})
+        offset += width
+    return layout
+
+
+def adapter_source(hook_name: str, inputs, outputs, *, kernel_name: str = "kernel", layout: list[dict[str, Any]] | None = None) -> str:
+    """The Numba cfunc that unpacks the hook's tables and calls ``kernel``, as source.
+
+    With ``layout`` (a packed model block) the hook offers one packed output; the kernel
+    writes each output into its own array of the contract's shape (a subset output over the
+    subset's slots) and the adapter copies them into the packed columns, level-major.
+    """
+
+    n_out = 1 if layout is not None else len(outputs)
     lines = ["def adapter(n_in, in_ptrs, in_shapes, n_out, out_ptrs, out_shapes):",
-             f"    if n_in != {len(inputs)} or n_out != {len(outputs)}:",
+             f"    if n_in != {len(inputs)} or n_out != {n_out}:",
              "        return 1"]
     names: list[str] = []
     for slot, item in enumerate(inputs):
@@ -66,15 +112,38 @@ def adapter_source(hook_name: str, inputs, outputs, *, kernel_name: str = "kerne
             dims = ", ".join(f"in_shapes[{base + axis}]" for axis in range(item.rank))
             lines.append(f"    a{slot} = farray(in_ptrs[{slot}], ({dims},), float64)")
         names.append(f"a{slot}")
-    for slot, item in enumerate(outputs):
-        base = 3 * slot
-        if item.rank == 0:
-            lines.append(f"    o{slot} = carray(out_ptrs[{slot}], (1,), float64)")
-        else:
-            dims = ", ".join(f"out_shapes[{base + axis}]" for axis in range(item.rank))
-            lines.append(f"    o{slot} = farray(out_ptrs[{slot}], ({dims},), float64)")
-        names.append(f"o{slot}")
-    lines.append(f"    {kernel_name}({', '.join(names)})")
+    if layout is None:
+        for slot, item in enumerate(outputs):
+            base = 3 * slot
+            if item.rank == 0:
+                lines.append(f"    o{slot} = carray(out_ptrs[{slot}], (1,), float64)")
+            else:
+                dims = ", ".join(f"out_shapes[{base + axis}]" for axis in range(item.rank))
+                lines.append(f"    o{slot} = farray(out_ptrs[{slot}], ({dims},), float64)")
+            names.append(f"o{slot}")
+        lines.append(f"    {kernel_name}({', '.join(names)})")
+    else:
+        lines.append("    n = out_shapes[0]")
+        lines.append("    packed = farray(out_ptrs[0], (out_shapes[0], out_shapes[1]), float64)")
+        for slot, entry in enumerate(layout):
+            shape = ", ".join(["n"] + [str(d) for d in entry["packed"]])
+            lines.append(f"    o{slot} = np.zeros(({shape},))" if entry["rank"] else f"    o{slot} = np.zeros((1,))")
+            names.append(f"o{slot}")
+        lines.append(f"    {kernel_name}({', '.join(names)})")
+        lines.append("    for i in range(n):")
+        for slot, entry in enumerate(layout):
+            off, dims = entry["offset"], entry["packed"]
+            if entry["rank"] == 0:
+                lines.append(f"        packed[i, {off}] = o{slot}[0]")
+            elif entry["rank"] == 1:
+                lines.append(f"        packed[i, {off}] = o{slot}[i]")
+            elif entry["rank"] == 2:
+                lines.append(f"        for j in range({dims[0]}):")
+                lines.append(f"            packed[i, {off} + j] = o{slot}[i, j]")
+            else:
+                lines.append(f"        for j in range({dims[0]}):")
+                lines.append(f"            for k in range({dims[1]}):")
+                lines.append(f"                packed[i, {off} + j * {dims[1]} + k] = o{slot}[i, j, k]")
     lines.append("    return 0")
     return "\n".join(lines) + "\n"
 
@@ -109,20 +178,24 @@ def compile_kernel(hook_name: str, function: Callable[..., Any], *, shadow: bool
     Numba dispatcher.  Compilation happens in this process, once per rank.
     """
 
-    hook, inputs, outputs = _model_arguments(hook_name)
-    return _compile(hook_name, inputs, outputs, function, shadow=shadow)
+    hook, spec, inputs, outputs = _model_block(hook_name)
+    layout = packed_layout(hook, spec, outputs) if hook.model_packed else None
+    return _compile(hook_name, inputs, outputs, function, shadow=shadow, layout=layout)
 
 
-def _compile(hook_name: str, inputs, outputs, function: Callable[..., Any], *, shadow: bool) -> NativePlugin:
+def _compile(hook_name: str, inputs, outputs, function: Callable[..., Any], *, shadow: bool,
+             layout: list[dict[str, Any]] | None = None) -> NativePlugin:
     try:
         import numba
         from numba import carray, farray, float64, int32, int64, types  # noqa: F401
     except ImportError as error:                       # pragma: no cover - environment
         raise PhysicsError("a Numba kernel needs the numba package in this environment") from error
 
+    import numpy as np
+
     kernel = function if isinstance(function, numba.core.registry.CPUDispatcher) else numba.njit(function)
-    source = adapter_source(hook_name, inputs, outputs)
-    namespace: dict[str, Any] = {"carray": carray, "farray": farray, "float64": float64, "kernel": kernel}
+    source = adapter_source(hook_name, inputs, outputs, layout=layout)
+    namespace: dict[str, Any] = {"carray": carray, "farray": farray, "float64": float64, "kernel": kernel, "np": np}
     exec(compile(source, f"<plugin adapter for {hook_name}>", "exec"), namespace)
     signature = types.int32(types.int32, types.CPointer(types.voidptr), types.CPointer(types.int64),
                             types.int32, types.CPointer(types.voidptr), types.CPointer(types.int64))

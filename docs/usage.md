@@ -225,34 +225,32 @@ from freecam.physics.numba_kernel import compile_kernel
 vdiff = driver.processes["vertical_diffusion"]
 vdiff.kernels["compute_tms"] = OriginalKernel()      # the original, through the pause: the gate
 deep = driver.processes["deep_convection"]
-deep.kernels["cldfrc_fice"] = my_ice_fraction        # a function: inputs in by dummy name, outputs out by name
+deep.kernels["cldfrc_fice"] = my_ice_fraction        # a function over the kernel's arrays: compiled, called by Fortran at the hook
 deep.kernels["cldfrc_fice"] = compile_kernel("cldfrc_fice", my_numba_kernel)   # compiled, called by Fortran at the hook
 deep.kernels["cldfrc_fice"] = fc.NativeModel("ice.pt")                          # TorchScript, run by the image through FTorch
 ```
 
-A function takes one dict and returns one: the kernel's inputs by name,
-the outputs by name.  Where it runs is the stage's decision.  When the
-kernel has a hook with a model block (`docs/contracts.md` says which) and
-the stage is the whole of its action, the stage runs whole and Fortran calls
-the function at the hook through a C callback: the interpreter answers
-inside the compiled routine, with the model block's inputs as Fortran-ordered
-views of the kernel's arrays (every column the chunk holds; a scalar as a
-float); an output it leaves out stays zero, and an output the block returns
-at a subset of constituents may come whole or compact.  The callback itself
-costs tens of microseconds a call; the function's own speed is the cost.
-Otherwise, or under `stage.execution_policy = "segmented"`, the function
-answers at the kernel's pause: the runner stops at the call, hands Python the
-live columns, resumes after the write-back (three crossings a call and a
-per-step cost per stage).  A compiled plugin and a TorchScript model stand at
-the hook with no Python in the step.  On the command line,
-`--kernel-function NAME=file.py:function` puts a function in a slot and
-`--shadow-kernel-function` runs it on every call while the original answers,
-for a bit-for-bit cost measurement;
-`examples/plugins/python_kernels/torchscript_callback.py` runs a TorchScript
-model from Python that way.  `stage.describe_kernels()` lists each kernel's
-contract and binding; `docs/contracts.md` is the generated reference of every
-contract.  `examples/replace_kernel.ipynb` walks through the ways on a live
-run.
+A function in a slot runs where the stage can run it.  Written over the
+kernel's arrays, one positional argument per input then per output of the
+kernel's model block (`docs/contracts.md` lists them; `float64` arrays indexed
+`[column, level]`, scalars as floats, outputs written in place, an output the
+block returns at a subset of constituents over the subset's slots), and put in
+the slot of a kernel that has a hook, the stage compiles it with Numba on every
+rank and Fortran calls the compiled code at the hook: the stage runs whole and
+the interpreter never runs inside a Fortran call.  A function that Numba cannot
+compile there is refused, not run from the interpreter; a network goes in as a
+TorchScript `NativeModel`.  Written over one batch dict (inputs by dummy name in,
+outputs by name out), or under `stage.execution_policy = "segmented"`, or at a
+kernel without a hook, the function answers at the kernel's pause: the runner
+stops at the call, hands Python the live columns, resumes after the write-back
+(three crossings a call and a per-step cost per stage).  `compile_kernel` is
+the same compilation by hand, with `shadow=True` to run the compiled function on
+every call while the original answers, for a bit-for-bit cost measurement; on
+the command line `--kernel-plugin NAME=file.py:function` and
+`--shadow-kernel-plugin` do the same.  `stage.describe_kernels()` lists each
+kernel's contract and binding; `docs/contracts.md` is the generated reference of
+every contract.  `examples/replace_kernel.ipynb` walks through the ways on a
+live run.
 
 ## Parameters
 

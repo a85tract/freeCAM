@@ -275,24 +275,23 @@ network's skill.  Records: `validation/pi_cam_pausable_p3{1,2}-*_1month*.json`.
 
 ### A Python function at the same hook
 
-The hook takes a Python function too (commit 167a71a1): a function put in
-the slot of a hooked kernel (`stage.kernels[name] = fn`) is bound as a C
-callback of the hook's plugin interface, the hook hands it the model block's
-arrays as Fortran-ordered views by name, and the interpreter answers, inside
-the compiled routine, with the outputs by name.  Measured with the same TorchScript surrogate run from Python instead
-of through FTorch, on image p33: nothing armed, fifty steps bit for bit
-(7511229); the callback in shadow over fifty steps bit for bit with 51 200
-calls answered (7511790; the first call on each rank took 20 s, importing
-torch and loading the model); live over the month the restart file is
-identical to the FTorch month's on the same image (7511232, 396.7 s) and to
-the p32 month's, the same answers to the bit, at **8.94 ms a call against
-FTorch's 4.18** and a step loop of 424.1 s against 396.7 (7511231).  The
-Python detour at this slot costs 4.8 ms a call, 14 s a rank a month, 3.5 %
-of the run, and the interpreter with torch loaded on every rank needs the
-memory of a torch process a rank: the fifty-step job at 64 GB a node was
-killed at its limit (7511230) and ran at 200 GB.  For a network the image
-should run it through FTorch; the callback is for a function that is not
-one.  Records: `validation/pi_cam_pausable_p33-*.json`.
+A function put in the slot of a hooked kernel (`stage.kernels[name] = fn`,
+written over the kernel's arrays) is compiled with Numba on every rank and
+Fortran calls the compiled code at the hook; the interpreter never runs inside
+a Fortran call.  A packed block takes compiled code as it takes a TorchScript
+model: the adapter fills the one packed output, subsets included; a compiled
+do-nothing kernel over the 50 arrays of compute_uwshcu_inv answered 51 200
+calls in shadow over fifty steps, bit for bit, at 0.37 ms a call (7512361, on
+the develop queue's shared nodes).  The other way, a C callback from the hook into the
+interpreter, was built and measured before being withdrawn as a design: with
+the same TorchScript surrogate run from Python instead of through FTorch on
+image p33, the restart file was identical to the FTorch month's (7511232,
+396.7 s) at 8.94 ms a call against FTorch's 4.18 and a step loop of 424.1 s
+(7511231; shadow gate 7511790, bit for bit, 51 200 calls), so the detour cost
+4.8 ms a call and 3.5 % of the run, and the interpreter with torch loaded on
+every rank needed 200 GB a node (7511230, killed at 64 GB).  The interface
+keeps the rule instead: Fortran calls compiled code or a model, never Python.
+Records: `validation/pi_cam_pausable_p33-*.json`.
 
 ## Sources and caveats
 
