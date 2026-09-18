@@ -808,14 +808,689 @@ the clear-sky and top-of-atmosphere diagnostics.  The mechanism is closed;
 the network (more data, the longwave near the surface, the diagnostics) is
 the open problem it exposes cleanly.
 
+#### Any model at the slot: a transformer through FTorch
+
+The slot answers with a C function; a compiled Python kernel is one way to
+make one, and it suits small dense networks because Numba has no BLAS here.
+For anything larger the slot took a second answerer on 2026-09-13: a
+TorchScript file loaded through FTorch (`pycam_rad_process_bind_model_v1`,
+`--radiation-torch-model`), which sees the same 46 inputs as tensors -- a
+Fortran `(pcols, pver)` array is a `(pcols, pver)` tensor, FTorch's default
+layout -- and fills the same 12 outputs, the timers and the shadow mode
+shared with the plugin path.  The image p22 carries it and is bit-for-bit
+with the slot unbound (7431583 with the cloud class, 7431584 with the
+runner and the shortwave core at its pause).  To exercise it with a model
+the MLP path cannot express, `train_rad_tf.py` trains a level-token
+transformer: the thirty levels are the tokens, each carrying 34 features
+(the twelve profiles, ozone, the fifteen aerosol mixing ratios, their wet
+diameters and water) and eight column scalars, a learned position per
+level, two heads -- the heating rates per level, the ten fluxes from the
+mean token -- and the export wraps the network in the slot's 46-tensor
+signature, float64 in and out, frozen and optimised for inference.
+
+| network | parameters | training | `qrs` R² | `qrl` | `fsnt` | `flnt` | alone, 1 thread | in the image, steady | first call a rank |
+| --- | ---: | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| 64 wide, 2 layers | 72k | 12 epochs, 26 min | 0.956 | 0.872 | 0.974 | 0.975 | 2.1 ms | 7.1 ms | 0.28 s |
+| 96 wide, 3 layers | 233k | 10 epochs, 44 min | 0.965 | 0.892 | 0.982 | 0.985 | 4.6 ms | 18.7 ms | 0.36 s |
+| 256-wide MLP (the plugin) | 347k | 60 epochs | 0.957 | 0.873 | 0.986 | 0.982 | 0.4 ms | 1.3 ms | -- |
+
+The transformers match the MLPs' accuracy with a fifth of the parameters
+(the 64-wide one equals the 256-wide MLP; the 96-wide equals the 512-wide),
+and both were still improving when their epochs ran out.  Their price in
+the image is another matter.  Both ran in shadow on every radiative step
+of fifty steps, bit-for-bit (7431802, 7431990): 7.1 and 18.7 ms a call
+once warm, 3.4 and 4.1 times their single-thread cost alone -- the same
+factor the compiled MLP pays (0.4 to 1.3 ms) on a node running two ranks a
+core.  Live, the 64-wide network answered all 25,600 calls (7431803) and
+brought the radiation stage from 1.30 s a rank to 0.72, two percent of the
+fifty-step loop against the plugin's eight; the 96-wide one (7431991) costs
+more than the branch it replaces, 1.66 s against 1.30, and the loop gets
+slower.  Both drift from the oracle as the MLP does (0.17 and 0.14 K rms in
+temperature after a day) with every health count zero.  The lesson is not
+that transformers are out: the slot takes any TorchScript model, and the
+first call's 0.3 s and the per-operator overhead of a 30-token attention on
+sixteen columns are what a leaner export (fused preprocessing, one layer,
+an ONNX runtime) would attack.  On this node layout only the small one
+pays for itself, and the compiled MLP pays four times better.
+
+#### Python answering the slot: the runner pauses at the branch
+
+Both answerers above are called by Fortran.  The other way round -- the
+driver's preparation and write-back in Fortran, the model call itself in
+Python, with as few crossings as the structure allows -- was built the same
+day as a third form of the slot: the runner *pauses* at the top of the
+radiative branch.  The radiation spec declares a `process_slot` beside the
+`slot` on its `if` node; when the slot is armed the runner asks
+`pycam_rad_process_prepare` to build the slot's tables and the RRTMG state,
+parks its program counter and returns to Python as a kernel pause does, with
+a frame of the 46 inputs and 12 outputs over the same storage
+(`radiation_process`, numbered after the runner's two kernels in the
+manifest's `process_slot`).  Python answers the frame -- a process model on
+the live-lane views, or the original branch on request -- and the resume
+runs `pycam_rad_process_finish`, which writes the outputs where the driver
+writes them and destroys the state, or, after the original was asked for,
+continues into the branch's own pieces.  Three crossings a chunk; the
+Python that owns the step is the same `Radiation` class, whose `process`
+slot now takes a Python model on any image whose runner pauses there
+(`--radiation-model path.py:function`, or `original` for the gate), and
+still falls back to the transcription on an older image.
+
+The p23 image carries the pause.  Its gates (fifty steps, 512 ranks,
+develop, whole-node memory, one run at a time; the first pair died at the
+resume on a Python-side numbering slip and the second Python run on a
+one-element scalar, both kept as failure records, and one bit-for-bit run
+shared its nodes with a neighbour and timed everything twice as slow):
+
+| run | what answered the slot | `rad_tend` a rank, 50 steps | step loop | against the oracle |
+| --- | --- | ---: | ---: | --- |
+| 7434627 | nothing (the cloud class installed) | -- | 16.00 s | bit-for-bit |
+| 7434783 | the original branch, asked for at the pause | 1.73 s | 16.40 s | bit-for-bit, 25,600 pauses |
+| 7434965 | the compiled MLP called from Python at the pause | 0.82 s (once compiled) | 15.5 s (once compiled) | drift as the plugin's: 0.137 K rms |
+| 7418444 (p21) | the same MLP as a plugin, called by Fortran | 0.23 s | 14.72 s | the same state, bit-for-bit with this run |
+| 7431584 (p22) | the branch, computed | 1.30 s | 15.96 s | bit-for-bit |
+| 7439535 (p24) | the 64-wide transformer as a compiled plugin, called by Fortran (12.5 ms a call) | 0.84 s | 16.03 s | 0.17 K rms |
+
+The pause itself costs about 9 ms a chunk on top of the shortwave pause
+path (7434783 against 7431584), and with the model in Python 16 ms a chunk
+all told -- the model's own arithmetic is 1.3 ms of that, the same as in
+the plugin: the rest is the frame's 58 slots decoded into views, the
+write-back's checks and the resume, run by an interpreter sharing a core
+with another rank.  Handing the model views instead of copies of the 46
+inputs changed nothing measurable.  The Python path also compiles the
+model on its first call inside the step loop, 9 s a rank (the plugin
+compiles at install); the fifty-step loop reads 24.9 s for that reason and
+15.5 s without it.  The state the two paths produce from the same weights
+is identical, so what the pause buys is flexibility -- any Python model,
+no compilation step, a notebook can hand one in -- and what it costs is
+about two thirds of the saving: 0.5 s a rank of the branch's 1.3 against
+the plugin's 1.1.
+
+#### The Python driver: the model replaces the whole block, Python does the rest from memory
+
+The user's own picture of the process was sharper than the slot: split
+`radiation_tend` into what is read from memory before any arithmetic, one
+compute block, and what is written to memory after; keep the block in
+Fortran or hand it to a model; let Python do the reading and the writing.
+Drawn on the driver, the block is everything numerical -- the zenith angle,
+the optics, the two cores, the heating-to-tendency step, the energy scaling
+-- and the model that replaces it must take only what the driver had in
+memory: the state and its constituents, the buffer's cloud fraction, optics
+inputs and ozone mass mixing ratio, the surface albedos and upward longwave,
+the calendar day and the column's latitude and longitude
+(`radiation_process.BLOCK_INPUTS`).  The zenith angle and the RRTMG gas
+profiles are learned; a thirteenth output, a lit-column logit, gates the
+shortwave to exact zeros in the dark.  The `Radiation` class gained the
+mode `python-driver` (`--radiation-block-model`): per chunk it reads its
+views -- taken once and kept, the state's arrays, the surface, the fluxes,
+the buffer's plain fields, the column geometry; the two time-sliced cloud
+fields per step -- decides the radiative step by the driver's own rule
+(`radiation_steps`, radiation.F90:240-246), calls the model, writes the
+heating rates and fluxes where the driver leaves them, and then does what
+the driver does after the branch: the tendency and net flux through the
+one Fortran call `radheat_tend` (which also allocates the tendency the
+resume half takes), the heating-rate diagnostic in NumPy, the step's
+history in one new call (`pycam_rad_process_history_v1`, image p24), the
+storage scaling by the layer mass, the copy into `netsw`; on a
+non-radiative step the same without the model.  Four small Fortran calls
+a chunk for bookkeeping; the compute is the model's alone.
+
+The gates (fifty steps, whole develop nodes):
+
+| run | what answered the block | `rad_tend` a rank | step loop | against the oracle |
+| --- | --- | ---: | ---: | --- |
+| 7435709 | nothing (the cloud class installed) | -- | 15.85 s | bit-for-bit |
+| 7436003 | the day-1 capture's recorded outputs, through the Python driver | 0.30 s | 14.77 s | **`cam.r`, `cam.rs`, `h0` bit-for-bit**; `rh0` differs in the same 26 diagnostics as through the transcription (7417486), HR included among the identical ones |
+| 7436082 | the block emulator (256 wide, trained on the month) | 0.38 s once compiled | 15.0 s once compiled (22.5 with the 7.5 s compile) | drift: 1.5 K rms in temperature after a day |
+| 7418444 (p21) | the slot emulator as a plugin, for comparison | 0.23 s | 14.72 s | 0.14 K rms |
+| 7439603 | the 64-wide block transformer, TorchScript on one torch thread a rank, through the Python driver | 1.20 s | 15.75 s | drift: 1.27 K rms after a day |
+
+The replay is the proof of the driver: with the block's outputs given, the
+Python around them reproduces the state exactly, so the bookkeeping --
+which step radiates, the unscaling and rescaling by the layer mass, the
+tendency, the net flux, the surface copy -- is the driver's own.  Its cost
+is 0.30 s a rank per fifty steps, about 3 ms a chunk, and with the
+compiled network the stage runs at 0.38 s: a shade above the plugin's
+0.23, with the step loop within noise of it.  The first pair of runs
+(7435764, 7435791) died at the first chunk on a view of the tendency taken
+before `radheat_tend` had allocated it, a third (7435825) on the node
+fabric, and a fourth (7436004) on the constituent array the handles do not
+carry; all kept as failure records, and the driver now reports a chunk's
+failure before Fortran aborts on the missing tendency.
+
+The price is in the model.  Asked to learn the zenith angle and the gas
+conversions instead of being given them, the 256-wide network validates
+at R² 0.945 for the shortwave heating (0.957 with them) and 0.975 for the
+net shortwave at the top (0.986), and its lit-column gate is right on
+99.88 percent of columns -- and the run drifts ten times faster than the
+slot emulator's from the same weights and data: 1.5 K rms in temperature
+after a day against 0.14, 0.66 hPa in surface pressure against 0.08.  The
+geometry the physics computes in twenty lines is what the network learns
+worst, and the columns it gets wrong at the terminator get a full day's
+shortwave or none.  Giving the model the zenith angle -- twenty lines of
+trigonometry in Python, or one more Fortran call -- is the obvious repair;
+the driver does not change.
+
+The notebook's way in is the same path.  `driver.processes["radiation"]` is
+the `Radiation` stage bound to a run; put a model in its `process` slot (or
+a callable in a kernel's) and the next `advance` attaches the stage where
+its action runs, set the slot back to `None` and the Fortran runs again
+(`docs/usage.md`).  Gated on 2026-09-13 through `fc.Driver` on 512 ranks
+(`tools/run_process_table_gate.py`, `validation/jobs/pi_cam_process_table_50step.pbs`):
+the day-1 capture replayed through the block slot set from the table
+produced every file byte for byte the same as the command line's replay
+of it (7438656 against 7436003; `pi_cam_process-table-replay_50step.json`),
+and so is bit-for-bit in state with the oracle as that run is.  One path,
+two ways in.
+
+#### The same transformer on the other two paths
+
+The transformer had been priced on one path only, through FTorch.  The
+question that remained was what the compiled-plugin path and the Python
+driver pay for it, so on 2026-09-13 the 64-wide, 2-layer network was
+trained for both contracts on the same month of captured calls (12 epochs
+each, 72k parameters; the slot contract is given the zenith angle, the
+block contract learns it and a lit-column logit, and validates a little
+lower: R² 0.931 against 0.956 for the shortwave heating, the gate right on
+99.90 percent of columns) and gated on the p24 image, one run at a time on
+whole 235 GB nodes.  For the plugin path the network is written out in
+Numba (`examples/plugins/numba_kernels/rad_tf_plugin.py`): tokens,
+embedding and position, the pre-norm layers with their attention and GELU
+feed-forward, the heads, de-standardisation, clamps and day/night gate,
+the weights frozen into the compiled kernel from an export of the
+checkpoint.  There is no BLAS behind Numba in this environment, so every
+product is a loop; the compiled kernel agrees with PyTorch to 1e-6
+relative on a captured chunk and costs 3.6 ms a chunk on one login-node
+thread against 2.1 for the TorchScript module.  For the driver path the
+block-contract TorchScript is loaded in the rank's Python
+(`rad_block_tf.py`, one torch thread) and given the block's inputs as
+tensors.
+
+| run | path | who runs the arithmetic | model, ms a call | first call a rank | `rad_tend` a rank | step loop | against the oracle |
+| --- | --- | --- | ---: | ---: | ---: | ---: | --- |
+| 7431584 (p22) | the branch, computed | RRTMG | -- | -- | 1.30 s | 15.96 s | bit-for-bit |
+| 7431803 (p22) | TorchScript at the slot through FTorch | libtorch, called by Fortran | 7.1 | 0.28 s | 0.72 s | 15.65 s | 0.17 K rms |
+| 7439472 (p24) | the Numba plugin at the slot, in shadow | compiled loops, called by Fortran | 12.6 | 14 ms | 1.93 s | 17.45 s | bit-for-bit, 25,600 calls |
+| 7439535 (p24) | the Numba plugin at the slot, live | compiled loops, called by Fortran | 12.5 | 14 ms | 0.84 s | 16.03 s | 0.17 K rms |
+| 7439603 (p24) | the block transformer through the Python driver | libtorch, called by Python | 15.5 | 0.38 s | 1.20 s | 15.75 s | 1.27 K rms |
+| 7418444 (p21) | the 256-wide MLP as a plugin, for scale | compiled loops, called by Fortran | 1.3 | -- | 0.23 s | 14.72 s | 0.14 K rms |
+
+The three paths land within a factor of two of each other, and the order
+is set by what runs the arithmetic and what sits around it, not by which
+side makes the call.  libtorch inside Fortran is the cheapest at 7.1 ms.
+The Numba loops take 12.5: the linear layers run at about 20 GMAC/s, the
+30-token attention at a tenth of that, and no loop order tried on the login
+node closed the gap to a tensor library (the plugin compiles for 7 s at
+install, and its first call in the loop costs nothing more).  libtorch
+from Python takes 15.5 with the forward itself about 7 of it: the rest is
+turning thirty-three Fortran-ordered views into contiguous float64 tensors
+and back, on an interpreter sharing its core -- a conversion the FTorch path
+does not do, since it hands the arrays over as they lie, and one that
+`torch.from_numpy` over the views would mostly remove.  TorchScript's first
+call costs 0.38 s a rank for its profiling passes, once, against the 7.5 s
+the Numba block model spent compiling inside the loop.  Around the model
+the driver's own bookkeeping is the 0.42 s a rank measured with the replay
+(0.30) and the MLP (0.38).  The step-loop column is the noisier measure:
+the runs scatter by 0.3 s for reasons outside radiation -- the boundary
+export waits 0.88 s a rank in the baseline and 0.57 in the others, the
+cloud stage costs 0.17 s more on a drifted state -- so `rad_tend` is the
+number to read.  On it, none of the three transformer paths saves more than
+the FTorch one's 0.6 s a rank of the branch's 1.3, and the block model's
+drift (1.27 K rms against 0.17 for the same network given the zenith
+angle) repeats the MLP's lesson: what the driver path needs next is not a
+faster call but the twenty lines of geometry handed to the model.
+
+#### A month on each path: the model's speed and its drift
+
+Fifty steps price a call; a month (1,488 steps, the replayed boundary,
+p24 image, whole 235 GB nodes) shows what the run keeps of it and how far
+the model's own error carries the state.  Five months were run on
+2026-09-14: the Radiation class installed with nothing bound, the 256-wide
+MLP at the slot as a Numba plugin and, trained for the block contract, as
+the block model through the Python driver; and the 64-wide transformer the
+same two ways.  Drift is the last day's global mean against the oracle's
+month; the plugin months repeat the p21 month pair's numbers (401.3 and
+363.9 s there) within a few seconds.
+
+| run | radiation | step loop | against the original | model, a rank over the month | first call | day 30: net shortwave at the top, column water vapour, lowest-level temperature |
+| --- | --- | ---: | ---: | ---: | ---: | --- |
+| 7452662 | nothing bound | 400.2 s | -- | -- | -- | bit-for-bit |
+| 7452663 | MLP as a Numba plugin | 366.2 s | -8.5% | 1.95 s (1.3 ms a call) | 3 ms | -4.8 W/m², -1.5 kg/m², -0.9 K |
+| 7452664 | MLP through the Python driver | 371.9 s | -7.1% | 7.6 s, 6.0 of it compiling at the first call | 6.0 s | -46 W/m², -7.7 kg/m², -12.3 K |
+| 7452666 | transformer as a Numba plugin | 385.4 s | -3.7% | 18.8 s (12.6 ms a call) | 15 ms | -4.4 W/m², -1.2 kg/m², -1.0 K |
+| 7452667 | transformer through the Python driver | 374.3 s | -6.5% | 10.3 s (6.9 ms a call) | 0.47 s | -243 W/m², -4.1 kg/m², -1.2 K; 45,308 "BIG ERROR" lines |
+| 7454279 | the same MLP through the Python driver, the forward in NumPy | **359.5 s** | **-10.2%** | 2.2 s (1.5 ms a call) | 2 ms | -55 W/m², -7.9 kg/m², -11.8 K (the same model) |
+| 7455413 | the same transformer through the Python driver, written out in NumPy | 373.9 s | -6.6% | 11.7 s (7.9 ms a call) | 10 ms | -243 W/m²; 45,069 "BIG ERROR" lines (the same model) |
+
+The two paths are a percent and a half apart on the loop with the same
+network when both run it in Numba: the driver's month costs its 6 s
+compile on the first call and about 3 ms a chunk of bookkeeping, and
+nothing else.  The Python driver has no need of Numba -- it calls any
+Python callable; the compiled kernel is what the plugin path's C function
+pointer needs -- and with the forward written as three NumPy matrix
+products through the single-threaded BLAS (7454279) the first call costs
+2 ms instead of 6 s and the month runs in 359.5 s: the fastest of the
+five, ten percent under the original and seven seconds under the plugin.
+Over fifty steps the same run (7454278) puts the radiation stage at 0.32 s
+a rank against the plugin's 0.23 and the loop at 14.71 s against 14.72.
+The transformer written out in NumPy (`rad_block_tf_np.py`: batched matrix
+products for the attention, NumPy's softmax and layer norm, an exact-erf
+GELU; 2e-6 from the scripted module) gains nothing of the kind: 7.9 ms a
+call against libtorch's 6.9, the month 373.9 s against 374.3 (7455413
+against 7452667; over fifty steps 7455411 against 7439603, 15.06 s against
+15.75 with the conversion's first-call cost gone).  What libtorch spends on
+operator dispatch and the copy of the inputs, NumPy spends on its own
+per-call overhead over some forty small array operations; the six-fold
+arithmetic of the transformer against the MLP is what both pay for.  The
+NumPy version keeps libtorch off the ranks (0.91 GB a rank against 1.03)
+and its first call costs 10 ms instead of 0.47 s; on speed the two are the
+same.  The drift column is
+the model's, not the path's: the slot models (given the zenith angle)
+drift as the month pair did; the block models, made to learn it, lose
+118 W/m² of net shortwave in the global mean by day 3 and 12 K at the
+lowest level by day 30 -- a model that cannot be used, on a path that
+replays a capture bit-for-bit.  The health counters agree: two "BIG
+ERROR" lines and eleven isotopic mass errors in the plugin's month
+(7452663), twenty and six in the driver's (7452664), six in the
+transformer plugin's (7452666), none in the baseline -- and 45,308 "BIG
+ERROR" lines in the transformer block model's month (7452667), whose lit
+gate leaves the shortwave out over most of the globe: 243 W/m² of net
+shortwave missing from day 3 on.  The runtime numbers of that month stand
+(6.9 ms a call, the loop 6.5 percent under the original); its physics does
+not.
+
+#### The cloud stage as the Python driver: two blocks, the memory around them in Python
+
+The stage `mmacro_pcond` lives in -- tphysbc's stage 7, the cloud
+macro/microphysics action -- got the same form on 2026-09-14.  Under the
+admitted configuration (one macro/micro substep) the stage is two compute
+blocks with bookkeeping between and after them: the macrophysics driver
+(`macrop_driver_tend`, with `mmacro_pcond` inside it), then the flux terms,
+the tendency scaling and application and the energy check; the
+microphysics driver with the aerosol activation that feeds it and the sum
+of their tendencies (`microp_aero_run`, `micro_mg_cam_tend`,
+`physics_ptend_sum`), then scaling, application, energy check, the
+precipitation means and the water-tracer mass fixer.  The split is drawn
+in `freecam.physics.cloud_block`: each block's contract names what the
+driver has in memory before its arithmetic and what it leaves behind.
+The macrophysics block takes 60 inputs -- the step, the state's thirteen
+components, the five surface fields, the six convection carries, its
+thirty buffer fields -- and leaves 38 outputs: the tendency object (its
+`s`, its `q` over every constituent, and the `ls`/`lq` flags
+`physics_update` reads), the two detrainment integrals, and the thirty
+buffer fields again, because the driver writes into most of them (the
+cloud fractions, the in-cloud water, the old-time-sample copies of the
+state), and the two convective cloud fractions `cldfrc` computes inside
+it.  The microphysics block takes 84 and leaves 71 over the two drivers'
+67 buffer fields -- plus, resolved from the image at run time because
+they are registered per constituent or tracer, the cloud-borne aerosol
+fields the activation rewrites (`modal_aero_data`'s `qqcw`, 15 here) and
+the water tracers' surface precipitation (`wtrc_srfpcp_indices`).  Everything numerical is inside the blocks;
+what is between them is the glue's own calls, made from Python through the
+stage's handles as the transliteration has made them since Gate M-1.
+
+`CloudMacroMicrophysics` gained two slots for the two blocks -- `process`
+(the macrophysics block) and `micro_process` -- a `block_capture`, and the
+mode `python-driver` they switch on.  Per chunk the driver takes its views
+once and keeps them (the state pool's arrays, the surface, the carries,
+every registered buffer field of both contracts; a field this
+configuration never registers, UNICON's detrainment, is left out as the
+driver's own pointer stays unassociated), then: the macrophysics block --
+the original driver in place, or the slot's answer written back: the
+tendency object allocated and flagged as the driver would have left it
+(`pycam_mm_ptend_init_v1`, one of two entries added to the mm handles; the
+other reads the flags for a capture), its arrays and the detrainment
+filled through the views, the buffer fields assigned -- then the four
+bookkeeping calls; the microphysics block the same way; the last five
+calls.  A capture around the original drivers records each block's inputs
+in single precision and its outputs exactly (the tendency's constituent
+array for the flagged constituents only), one file per block per rank; a
+replay writes them back; a model is any callable over the contract.  The
+command line takes `--cloud-block-model`, `--cloud-micro-block-model` and
+`--cloud-block-capture` beside `--cloud-macro-micro-python`; the notebook
+sets `driver.processes["cloud_macro_microphysics"].process` or
+`.micro_process`, and the process table arms the stage on either.
+
+The gates (p26 image, fifty steps, whole 235 GB nodes, one run at a time
+for the timed ones), and the road to them: the contract was drawn from the
+field tables and completed by the runs, each of which named what it missed.
+
+| run | in the slots | against the oracle | stage, a rank | step loop |
+| --- | --- | --- | ---: | ---: |
+| 7450698 | the class installed, nothing armed (native-whole) | bit-for-bit | 1.96 s | 15.95 s |
+| 7451930 | both originals, through the Python driver | bit-for-bit | 2.33 s | 16.52 s |
+| 7453135 | both originals, the capture around them (51,200 calls a block, 19 GB compressed) | bit-for-bit | 2.7 s | 16.66 s |
+| 7452498 | the microphysics block replayed, the macrophysics original verifying itself | `cam.r`, `cam.rs`, `h0` bit-for-bit; `rh0` differs in the microphysics driver's 68 diagnostics | -- | 15.3 s |
+| 7453151, 7453313 | the macrophysics block replayed, the microphysics original verifying itself | every file bit-for-bit, `rh0` included; the verified microphysics matched the capture's record on all 51,200 calls, inputs and outputs | 1.96 s | 15.77 s |
+| 7453150 | **both blocks replayed** | **`cam.r`, `cam.rs`, `h0` bit-for-bit**; `rh0` differs in the two drivers' diagnostics | 0.59 s | 14.37 s |
+| 7452704, 7452705 | each original with the census around it | bit-for-bit; the macrophysics block wrote `DP_FRAC` and `SH_FRAC` beyond its contract, the microphysics block nothing | -- | -- |
+
+Seven replays failed before the last one passed, and each failure is a
+record: the first capture asked the buffer for a field this configuration
+never registers (7450699); the first replay left the oracle at step 3
+because the aerosol activation inside the microphysics block rewrites the
+cloud-borne aerosol fields through a registry no field table sees
+(7451924); the second because the views of the time-rotated fields were
+taken once and CAM moves the older plane every step (7452063); the third
+and its half-replays because `wtrc_output_precip` fills the water
+tracers' surface precipitation through an index array (7452220, 7452222);
+the macrophysics half-replays because `cldfrc` writes the convective cloud
+fractions the wet deposition reads later in the step (7452221, 7452497),
+found not by reading but by the census; and one round fell over reporting
+its own finding (7452422-7452425).  Two tools came out of it and stay:
+the capture keeps an exact digest of every input, so a replay names the
+first input and step at which its run has left the captured one; and
+`verify:DIR` or `census` in a slot runs the original in place and names
+the outputs it produced differently, or every buffer field it changed
+that its contract does not list.  The driver costs 0.37 s a rank per
+fifty steps over native-whole (about 3.7 ms a chunk: the views, nine small
+Fortran calls of bookkeeping); with both blocks replayed the stage is
+0.59 s.
+
+#### The first networks for the macrophysics block
+
+With the contract complete, the capture is a training set (19 GB, 51,200
+calls a block), and `train_cloud_block.py` fits an MLP to a block from it;
+`cloud_block_mlp.py` answers the block with it from a slot.  Two shapes
+were tried on the macrophysics block on 2026-09-14, and the first taught
+two lessons that have nothing to do with physics.
+
+| run | the network | parameters | model, ms a call (alone) | stage, a rank | step loop | after 50 steps |
+| --- | --- | ---: | ---: | ---: | ---: | --- |
+| 7450698 | the original | -- | 6.6 (GPTL `macrop_tend`) | 1.96 s | 15.95 s | bit-for-bit |
+| 7453811 | everything the contract names, 2322 in, 1682 out, Numba, columns outside the weight loop | 2.3M | 36 (2.3) | 10.3 s | 26.6 s | 1.53 K rms in T |
+| 7454183 | the same, weight rows outside the column loop | 2.3M | 8.3 (2.1) | 7.2 s | 24.1 s | 1.53 K |
+| 7453875 | the microphysics block the same way, 3963 in, 3257 out | 4.0M | 85 | 12.9 s | 30.4 s | 1.82 K |
+| 7454182 | the physics only (`--core`): 969 in, 632 learned, seven fields derived, Numba | 0.48M | 2.2 (0.57) | 6.6 s | 23.3 s | 5.78 K |
+| 7454277 | the same core network, the forward in NumPy | 0.48M | 2.7 (0.58) | 2.34 s | 19.27 s | 5.78 K |
+
+The first lesson is the loop order: the first network's forward took 36 ms
+a call in the image against 2.3 alone because its first-layer weights (4.75
+MB) were streamed once per column, and 128 ranks sharing their caches turned
+that into memory traffic; with the weight rows outside the column loop the
+same network costs 8.3 ms, and the core network 2.2.  The second is Numba
+itself: in the Numba runs the stage carries 4.3 s a rank of compilation at
+the first call inside the loop; with the forward as NumPy matrix products
+the first call costs 3 ms and the stage is 2.34 s a rank -- the original's
+1.96 plus the driver's 0.37 of bookkeeping, the network's 0.27 s replacing
+the original macrophysics' 0.66.  The core network answers the block in
+2.7 ms against `macrop_tend`'s 6.6; the step loop is still 3 s over the
+original because the model's negative water triggers 446,000 `qneg3`
+warnings that Fortran writes to the log.  What the model must learn is
+still open: the bulk tendencies validate at R² 0.72 (`ptend_s`) and 0.46
+(`ptend_q`), the cloud fractions at 0.84 to 0.94, the in-cloud water at
+0.3, and the run drifts 5.8 K rms in temperature over fifty steps (the
+tracer tendencies it leaves zero cost the isotopes their mass); the full
+network, which learned the tracer tendencies too, drifts 1.5 K.  The block
+contract's inputs and outputs are what the driver reads and writes; the
+network's own inputs and outputs should be the physics -- the bulk
+tendencies, the cloud fractions -- with the copies, the integrals and the
+tracer tendencies formed from them, as `cldwat2m_macro` forms them.
+
+What the driver does not yet have is the radiation driver's history entry:
+the two drivers write 141 history fields from inside their arithmetic, and
+a replay or a model does not, so `h0` differs in those diagnostics while
+the state and the restart buffer are what they are.  The drivers' own cost
+is unchanged: the blocks are the original routines called whole, as
+`whole_drivers` called them.  The bookkeeping was nine small Fortran calls
+a chunk here where radiation's is four; the next round made it two.
+
+#### Both blocks as networks, and the bookkeeping as two calls
+
+Three things were done to the cloud driver on 2026-09-14 afternoon, on a
+new image (p27), and then measured.  The bookkeeping between and after the
+blocks -- the flux terms, the scaling and application of the tendency, the
+energy check, the precipitation means, the water-tracer fixer: nine small
+Fortran calls a chunk -- became two entries of the mm handles,
+`pycam_mm_finish_macro_v1` and `pycam_mm_finish_micro_v1`, each the glue's
+own lines for the one substep this configuration runs, so a chunk of the
+driver is now four Fortran calls when both blocks are the originals and two
+when both are answered from Python (the driver still makes the nine calls
+on an image without the entries).  The microphysics block got a core
+network of its own the way the macrophysics block had (`--core`: 2053
+features in, 1479 targets out, one field derived -- the old cloud
+fraction the activation copies -- the cloud-borne aerosols and the water
+tracers' precipitation left to the originals' record, 128 wide, 0.47M
+parameters), and the emulator module holds one network per block, named by
+`FREECAM_CLOUD_BLOCK_MACRO` and `FREECAM_CLOUD_BLOCK_MICRO`.  And a network's
+answer is clamped before it is written: no constituent it tends may be
+taken below zero over the step (`dq >= -q/dt`), which is where `qneg3`
+would have clipped it a moment later, with a warning line each.
+
+| run | in the slots | stage, a rank | step loop | model, ms a call | after 50 steps |
+| --- | --- | ---: | ---: | ---: | --- |
+| 7450698 | nothing armed (native-whole, p26) | 1.96 s | 15.95 s | -- | bit-for-bit |
+| 7451930 | both originals through the driver, nine bookkeeping calls (p26) | 2.33 s | 16.52 s | -- | bit-for-bit |
+| 7456732 | both originals, the two finish entries | 2.30 s | 16.16 s | -- | bit-for-bit |
+| 7456998 | the same, the rotated views kept per plane | 2.28 s | 16.17 s | -- | bit-for-bit |
+| 7457385 | the same, the runtime cache keyed on the pool again | 2.28 s | 16.29 s | -- | bit-for-bit |
+| 7456791 | both blocks replayed, the finish entries | 0.51 s | 14.35 s | -- | state bit-for-bit; `rh0` differs in the diagnostics |
+| 7456895 | the macrophysics core network (NumPy, clamped), the microphysics original | 2.25 s | 18.83 s | 2.8 | 3.07 K rms in T; 402,000 `qneg3` lines, none from the macrophysics |
+| 7457487 | the same, on the round's final code | 2.30 s | 19.06 s | 2.9 | 3.07 K rms in T |
+| 7457386 | **both core networks** (macrophysics 256 wide, microphysics 128 wide), NumPy, clamped | **1.24 s** | 15.47 s | 3.1 and 3.3 | 6.12 K rms in T; one `qneg3` line |
+
+The driver's own cost is now measured rather than inferred.  A profile of
+rank 0 over the fifty steps with both originals in place (7457073, the
+`FREECAM_CPROFILE_RANKS` knob) puts the stage at 2.40 s: 1.89 s inside the
+five Fortran calls a chunk (the microphysics driver 0.97, the macrophysics
+driver 0.60, the activation 0.25, the two finish entries 0.07), 0.36 s
+building the stage's runtime once at the first step (the handles, the
+buffer tables, the reviewed descriptors read from their YAML), and 0.15 s
+of Python across the hundred chunks -- the views, the input dictionaries,
+the write-back: 1.5 ms a chunk.  That profile was first misread as a runtime
+rebuilt every step, and the cache re-keyed on the access object the
+driver hands the stage; that object is made anew each call, so the change
+did what the misreading had feared and cost a second a rank (7457242,
+7457244, 7457245 -- kept as records of the wrong turn); the key is the pool
+again.
+
+With both blocks answered by the core networks the stage costs 1.24 s a
+rank against the original's 1.96 -- the two networks 0.74 s of it,
+3.1 and 3.3 ms a call against `macrop_tend`'s 6.6 and the microphysics'
+19.2 (`microp_aero_run` 3.7 and `microp_tend` 15.5 in the oracle's GPTL) --
+and the step loop is 15.47 s against 15.95: the loop's gain is less
+than the stage's because the drifted state costs the other processes time,
+as it did in the radiation months.  The health counters are clean (one
+`qneg3` line in fifty steps against 446,000 before the clamp) but the
+physics is not: the run drifts 6.1 K rms in temperature over fifty steps,
+the macrophysics network alone 3.1 K (5.78 before the clamp, 7454277).  The
+networks are the open problem, as they are for radiation: the bulk
+tendencies validate at R² 0.72 (macrophysics `ptend_s`) and 0.55
+(microphysics), the constituent tendencies at 0.46 and 0.23, the
+precipitation fluxes at 0.94, the effective radii at 0.1 to 0.3.  What a
+network for either block should learn and how -- the physics only, with
+the copies and integrals formed from it; per-level normalisation;
+a loss in the units the state feels -- is the next work, and the
+mechanism around it is complete: capture, replay, model, verify, census,
+two Fortran calls a chunk.
+
+#### The walk, bound once: what the fine-grained path costs when nothing is rebuilt per call
+
+The statement-by-statement walk of the cloud stage -- the transliteration
+of tphysbc's stage 7 with the macrophysics, aerosol activation and
+microphysics drivers each walked in turn, the `legacy-python` policy -- was
+the path this document's earlier sections priced at a third more than the
+Fortran step and set aside.  On 2026-09-15 it was measured again and taken
+apart, on the premise that the cost was not the form but the work Python
+did around each of its fifty-one kernel calls a chunk.  The baseline on
+the p27 image (7473911) put the stage at 4.03 s a rank against
+native-whole's 1.96 and the step loop at 18.33 s against 16.3; the region
+profile of the same walk (7473829, every rank) split the 4.03 into 2.45 s
+inside the Fortran regions, 0.52 s of copies between views and scratch,
+and 1.05 s of Python between the regions, and a profile of rank 0 named the
+Python.
+
+| run | change | stage, a rank | step loop | call sites re-resolved, 50 steps |
+| --- | --- | ---: | ---: | ---: |
+| 7473911 | the walk as it was | 4.03 s | 18.33 s | -- |
+| 7474018 | call sites resolved once per set of objects handed; probe arguments and history addresses kept | 3.95 s | 18.09 s | -- |
+| 7474195 | the bound call's post-call check compares shapes, not addresses read through ctypes | 3.81 s | 17.86 s | -- |
+| 7474311 | the macrophysics tracer rates written in place (a 1.3 MB copy in and out, eleven times a chunk) | 3.33 s | 17.61 s | -- |
+| 7474414 | every output written in place, in all four walks | 3.22 s | 17.32 s | -- |
+| 7474655 | constituent lanes and the tracer sum kept per array; the bound-call table sized to the rate kernel | 3.22 s | 17.43 s | 830 |
+| 7474686 | the drivers' state copies kept between calls (image p28) | 3.09 s | 17.01 s | 486 |
+| 7475341 | the step's inverse and the tracer index slices kept as objects | 3.08 s | 17.06 s | 440 |
+| 7475430 | a buffer view kept per time plane, so the alternating plane is not a new object | 3.06 s | 16.98 s | 455 |
+| 7475549 | the step's scalar kept as an object at its two call sites; the record names what churns | 3.06 s | 17.20 s | 395 |
+| 7477432, 7477433 | the cyclic collector frozen after initialisation, and not, back to back | 3.04 s, 3.07 s | 17.26 s, 16.95 s | 376, 434 |
+
+Every run is bit-for-bit with the oracle.  What each change removed:
+
+- **The call site, resolved once.**  A kernel call decided on every call
+  which of its arguments could be read in place, copied the others into
+  scratch, keyed the bound call by every argument's address read through
+  `ndarray.ctypes` (a microsecond each, forty arguments), and copied the
+  outputs back.  The walk hands the same view objects on every call of a
+  chunk -- the runtime's view caches keep an array while its storage
+  stays -- so the decisions are made once per set of objects and kept on
+  the plan (`_PreparedCall`); a repeat call is the copies, the bound
+  invocation and the copies back.  The probe a view is fetched through and
+  the encoded name and address a history call hands over are kept too.
+- **The post-call check.**  The bound call verified after every call that
+  no array's address, shape or dtype had changed, reading each address
+  through ctypes: forty arguments, sixty microseconds, on a kernel whose
+  arithmetic takes five.  A view's address cannot move underneath it; its
+  shape can be reassigned, and that is what is checked now.  This was the
+  largest single item inside what the region profile had counted as
+  Fortran time.
+- **Outputs in place.**  Every output of a carved kernel went through
+  scratch and was copied back to its target, live lanes only, so that a
+  kernel writing every lane could not touch a view's padding.  But a
+  transliteration's output targets are, by construction, the storage the
+  source statements write -- the driver's locals through the handles, the
+  buffer fields it points into -- and the original writes every lane of
+  them that the kernel writes.  Handed the storage itself (`in_place`,
+  `ALL_OUTPUTS` in the four walks), the kernel leaves in every lane what
+  the original left; the copies fell from 0.52 s to 0.05, and the
+  macrophysics tracer rates alone, a six-dimensional array of 1.3 MB copied
+  in and out around each of six calls a chunk, were half a second.
+- **Objects that were new every call.**  A slice of a constituent out of a
+  kept view, a sum formed into a fresh array, and the state copy the
+  drivers allocate on entry and free on exit: each hands the kernel a new
+  object and has its call site resolved again (`prepared` in the record's
+  `call_sites` counts them).  The slices and the sum are kept per array;
+  the state copies are kept in the handles modules from call to call,
+  their live columns rewritten by the copy's own statements without the
+  allocation (`pycam_state_copy`, generated from `physics_state_copy`).
+
+What is left, and what the walk's floor is.  The region profile of the
+walk with every output in place (7474415) puts the Fortran regions at
+1.90 s a rank -- the original stage's own 1.96 -- and the copies at 0.05;
+everything above that is Python around fifty-one kernel calls and about
+two hundred and forty view probes a chunk: the call sites still resolved
+again (the tendency object the driver allocates and frees around each
+kernel, and two sites handed the step counter and the surface lanes,
+which the record's `call_sites.churn` now names: about 400 of the 5,100
+calls a rank per fifty steps, a few hundredths of a second), the probe a view costs even when the storage
+has not moved (about 0.2 s), the driver's timer and trace record around
+each bound kernel (about 0.1 s), the walks' own statements (about 0.1 s).
+The walk stands at 3.06 s a rank for the stage against 1.96 and
+16.98 to 17.20 s for the step loop in two runs against 16.00 on the same
+image (7474687) --
+half of the fine-grained path's overhead removed (2.07 s to 1.10), the
+loop within six percent of the Fortran's where it was fourteen -- with every kernel call site still a slot a model can take.
+Two levers remain and are not free: one Fortran entry that answers every
+view of a chunk in one crossing (an image change), and a compiled glue
+(Cython, ahead of time) for the walk's own statements and the driver's
+timers, which is a policy decision rather than an engineering one.
+
+**The compiled glue, tried.**  The second lever was measured the same
+afternoon rather than argued.  `tools/build_glue_trial.py` compiles the
+modules the walk runs through -- the stage runtime, the Fortran adapter,
+the physics buffer, the four walks -- as they are, in Cython's pure-Python
+mode, and builds `freecam/core/_glue.pyx`: direct callers for the image's
+hottest entries (the bound kernel call, the two view probes, the buffer's
+two accessors, the history call), which the Python modules use when the
+extension is importable and fall back from otherwise.  The compiled
+objects sit beside the sources, ignored by git; nothing in the install
+changes, and every unit test passes either way.  With both layers built
+the walk ran bit-for-bit at 3.04 s a rank for the stage and 17.17 s for
+the step loop (7476883) against 3.06 and 16.98 to 17.20 uncompiled: the
+compiled glue changes nothing measurable.  On the login node the same
+paths had said as much -- a resolved kernel call site costs 2.3 µs
+compiled or not, because its time is already inside NumPy's and ctypes'
+C code; the direct callers took a forty-argument bound call from 4.5 to
+2.6 µs, which over 5,100 calls is a hundredth of a second.  The 1.1 s
+above the Fortran is therefore not the interpreter running these modules.
+The trial also cost sixteen dead gates (7475712 to 7476822, kept as
+failure records): built through the site's compiler wrappers, the
+extensions linked a second MPI and a libfabric into the process before
+mpi4py initialised its own, and MPI_Init failed on scattered ranks -- a
+pattern that looked, for an afternoon, exactly like broken nodes.  The
+build script now uses the bare compiler and refuses a module that needs
+more than libc.
+
+**The collector, and what is left.**  A region profile with the per-step
+file writes taken out (7476940) puts the walk's own `tend` at 2.87 s a
+rank: 1.94 inside the Fortran regions, 0.05 of copies, 0.20 resolving
+call sites again, and 0.68 of Python between them -- 0.33 in the
+microphysics sub-walk, 0.19 in the macrophysics, 0.05 in the activation,
+0.12 in the stage's own glue.  Part of what the compiled trial could not
+touch was Python's cyclic garbage collector: the driver process holds a
+large heap (the catalogs, the descriptors, the installed processes), and
+each full collection during the loop walked all of it.  `gc.freeze()`
+after initialisation moves that heap out of the collector's reach; the
+first run with it read 2.93 s a rank against 3.06, bit-for-bit (7476941);
+a back-to-back pair on the same tree then put the difference where it
+belongs, 3.04 s frozen against 3.07 not (7477432, 7477433) -- a
+hundredth or three, the rest of that first reading being run-to-run
+scatter, which for this stage is about 0.1 s between runs of identical
+code (7475430, 7475549, 7476883, 7477301: 3.04 to 3.06) and larger for
+the step loop.  The command line freezes by default (`FREECAM_GC_FREEZE=0`
+leaves the heap alone); switching the collector off altogether slowed the
+rest of the step (7476942) and stays a knob.  The Python driver of the
+same stage, with both blocks the originals, read 2.15 s a rank in the
+same round (7477302) against 2.27 in the morning (7474688), a single pair
+of runs and so within the same caution.
+
+#### The kernels priced, over a month
+
+What each exposed kernel costs on its own was inferred until now from the
+drivers' timers and the deep profile of one image; on 2026-09-15 it was
+measured directly.  When a runner answers a pause with the original call
+itself, the native call is inside a `FORTRAN:ORIGINAL:<kernel>` region of
+the driver's timing tree, so a run with every exposed kernel paused and
+every pause answered by the original -- the form of the everything gate
+-- prices each kernel by its own call, with the driver's work around it
+excluded.  Fifty steps (7479753) and the PI-atm month (7479754, 1488
+steps) on the p28 image, bit-for-bit with the oracle both; rank 0's
+report, per call and summed:
+
+| kernel | action | calls a rank, the month | per call | month, a rank | of the native month (400 s) |
+| --- | --- | ---: | ---: | ---: | ---: |
+| `compute_uwshcu_inv` | convect_shallow_tend | 2,976 | 6.5 ms | 19.4 s | 4.8% |
+| `rad_rrtmg_sw` | radiation | 1,488 | 6.5 ms | 9.7 s | 2.4% |
+| `gas_phase_chemdr` | chem_timestep_tend | 2,976 | 3.1 ms | 9.2 s | 2.3% |
+| `rad_rrtmg_lw` | radiation | 1,488 | 5.5 ms | 8.2 s | 2.0% |
+| `mmacro_pcond` | macro_microphysics | 2,976 | 2.0 ms | 5.9 s | 1.5% |
+| `zm_convr` | convect_deep_tend | 2,976 | 1.6 ms | 4.6 s | 1.2% |
+| `compute_eddy_diff` | vertical_diffusion_tend | 2,976 | 1.4 ms | 4.1 s | 1.0% |
+| `wetdepa_v2` | aero_model_wetdep | 89,280 | 0.033 ms | 2.9 s | 0.7% |
+| `modal_aero_depvel_part` | aero_model_drydep | 23,808 | 0.063 ms | 1.5 s | 0.4% |
+| `compute_vdiff` | vertical_diffusion_tend | 5,952 | 0.19 ms | 1.1 s | 0.3% |
+| `gw_drag_prof` | gw_tend | 2,976 | 0.28 ms | 0.8 s | 0.2% |
+| `convtran` | convective transport leaf | 2,976 | 0.15 ms | 0.4 s | 0.1% |
+| `zm_conv_evap`, `momtran`, `compute_tms`, `dadadj`, `virtem` | | 2,976 each | 0.01 to 0.04 ms | 0.3 s together | 0.1% |
+| `micro_mg_tend` | macro_microphysics | 2,976 | 1.4 ms (the hook, in shadow, 7400408) | about 4.2 s | 1.0% |
+
+The seventeen paused kernels sum to 68 s a rank of the month's 400 --
+seventeen percent of the step; with the microphysics core, eighteen.
+Three kernels carry half of that: the UW shallow convection at 6.5 ms a
+call and the two RRTMG solvers at 6.5 and 5.5 ms, called every other
+step.  The most expensive action, `macro_microphysics` at fourteen
+percent of the step, holds two kernels worth 2.5 percent; the rest of it
+is the drivers' packing, buffer handling and history.  A kernel called
+after a Python pause runs with colder caches than in place, so these
+per-call figures sit a little above the in-situ cost; the fifty-step run
+gave the same numbers to within a few percent.
+
 ## Where it stands
 
 | Kernel | Owner | Contract | Runner pause | In-model gate | Loop |
 | --- | --- | --- | --- | --- | --- |
-| `mmacro_pcond` | Macrophysics (in the cloud stage) | reviewed | yes, validated | segmented, bit-for-bit; alone and together with `micro_mg_tend` | complete |
-| `micro_mg_tend` | Microphysics (in the cloud stage; hooked: a Fortran-bound hook over its packed arrays, bindable to a model, not pausable) | reviewed | yes, validated (the runner's pause) | segmented, bit-for-bit (100 pauses in 50 steps); alone and together with `mmacro_pcond` (200 pauses); a null model bound at the hook answered all 51,200 calls inside the image (7394423), and in shadow the p18 image stays bit-for-bit at 0.56 ms a call (7400408); four trained MLP surrogates (64 to 512 wide) run in shadow on p19, bit-for-bit, pricing the core at 1.4 ms a call and every network at 1.5 to 6.7 ms (7401282, 7401281, 7401311, 7400992), and live (7400993, 7401059, 7401232, not bit-for-bit, slower than the original) | open: no captured calls replayed through its standalone image yet; as a speed target, closed: the core costs 1.4 ms a call |
-| `rad_rrtmg_sw` | Radiation (split, pausable) | frame descriptor | yes, validated | segmented, bit-for-bit (50 pauses in 50 steps); alone, with `rad_rrtmg_lw`, and with every other exposed kernel paused in one run; the whole radiative branch around it is a process slot: captured (7417373) and replayed (7417486) bit-for-bit in state through the transcription, and answered inside the image by a compiled emulator at the runner's skeleton slot (shadow 7418443 bit-for-bit; live 7418444, not bit-for-bit by design) | open: capture and replay of the core itself |
-| `rad_rrtmg_lw` | Radiation (split, pausable) | frame descriptor | yes, validated | segmented, bit-for-bit (50 pauses in 50 steps); alone, with `rad_rrtmg_sw`, and with every other exposed kernel paused in one run; the whole radiative branch around it is a process slot: captured (7417373) and replayed (7417486) bit-for-bit in state through the transcription, and answered inside the image by a compiled emulator at the runner's skeleton slot (shadow 7418443 bit-for-bit; live 7418444, not bit-for-bit by design) | open: capture and replay of the core itself |
+| `mmacro_pcond` | Macrophysics (in the cloud stage) | reviewed | yes, validated | segmented, bit-for-bit; alone and together with `micro_mg_tend`; the whole macrophysics driver is a block of the cloud stage's Python driver (`cloud_block.MACRO_BLOCK`): captured (7453135) and replayed bit-for-bit in state (7453150, 7453151); with the bookkeeping as one finish entry a block (p27) the originals through the driver stay bit-for-bit at 2.28 s a rank for the stage (7456732, 7457385) and the replay at 0.51 s (7456791); the block answered by a core NumPy network at 3.1 ms a call (7457386, with the microphysics network; 7456895 alone; not bit-for-bit by design) | complete |
+| `micro_mg_tend` | Microphysics (in the cloud stage; hooked: a Fortran-bound hook over its packed arrays, bindable to a model, not pausable) | reviewed | yes, validated (the runner's pause) | segmented, bit-for-bit (100 pauses in 50 steps); alone and together with `mmacro_pcond` (200 pauses); a null model bound at the hook answered all 51,200 calls inside the image (7394423), and in shadow the p18 image stays bit-for-bit at 0.56 ms a call (7400408); four trained MLP surrogates (64 to 512 wide) run in shadow on p19, bit-for-bit, pricing the core at 1.4 ms a call and every network at 1.5 to 6.7 ms (7401282, 7401281, 7401311, 7400992), and live (7400993, 7401059, 7401232, not bit-for-bit, slower than the original); the driver with its activation and tendency sum is a block of the cloud stage's Python driver (`cloud_block.MICRO_BLOCK`): captured and replayed bit-for-bit in state (7452498, 7453150, 7456791); the block answered by a core NumPy network at 3.3 ms a call against the two drivers' 19.2, both blocks as networks running the stage in 1.24 s a rank against the original's 1.96 (7457386, not bit-for-bit by design) | open: no captured calls replayed through its standalone image yet; as a speed target, closed: the core costs 1.4 ms a call |
+| `rad_rrtmg_sw` | Radiation (split, pausable) | frame descriptor | yes, validated | segmented, bit-for-bit (50 pauses in 50 steps); alone, with `rad_rrtmg_lw`, and with every other exposed kernel paused in one run; the whole radiative branch around it is a process slot: captured (7417373) and replayed (7417486) bit-for-bit in state through the transcription, and answered inside the image by a compiled emulator at the runner's skeleton slot (shadow 7418443 bit-for-bit; live 7418444, not bit-for-bit by design) and by TorchScript transformers through FTorch (shadow 7431802 and 7431990 bit-for-bit; live 7431803, 7431991), and by the 64-wide transformer written out in Numba as a plugin (shadow 7439472 bit-for-bit; live 7439535) and, for its block contract, through the Python driver (7439603) | open: capture and replay of the core itself |
+| `rad_rrtmg_lw` | Radiation (split, pausable) | frame descriptor | yes, validated | segmented, bit-for-bit (50 pauses in 50 steps); alone, with `rad_rrtmg_sw`, and with every other exposed kernel paused in one run; the whole radiative branch around it is a process slot: captured (7417373) and replayed (7417486) bit-for-bit in state through the transcription, and answered inside the image by a compiled emulator at the runner's skeleton slot (shadow 7418443 bit-for-bit; live 7418444, not bit-for-bit by design) and by TorchScript transformers through FTorch (shadow 7431802 and 7431990 bit-for-bit; live 7431803, 7431991), and by the 64-wide transformer written out in Numba as a plugin (shadow 7439472 bit-for-bit; live 7439535) and, for its block contract, through the Python driver (7439603) | open: capture and replay of the core itself |
 | `dadadj` | DryAdjustment (pausable) | reviewed | yes, validated | segmented, bit-for-bit (100 pauses in 50 steps); alone and together with `compute_uwshcu_inv` | complete |
 | `compute_uwshcu_inv` | ShallowConvection (pausable) | reviewed | yes, validated | segmented, bit-for-bit (100 pauses in 50 steps); alone and together with `dadadj` | open: no captured calls replayed through a standalone image yet |
 | `zm_convr` | DeepConvection (pausable) | frame descriptor | yes, validated | segmented, bit-for-bit (100 pauses in 50 steps); alone, with the stage's other kernels, and with the tracer leaf paused in the same run | open: capture and replay |

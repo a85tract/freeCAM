@@ -1215,6 +1215,124 @@ class _ParametersView(Mapping[str, float]):
         )
 
 
+class ProcessTable(Mapping[str, Any]):
+    """``driver.processes``: every physics process freeCAM owns as a Python class, bound to this run.
+
+    ``driver.processes["radiation"]`` is the :class:`~freecam.physics.radiation.Radiation` stage of this
+    run.  Put a model in its ``process`` slot, or a callable in one of its ``kernels``, and the next
+    step runs it there; set the slot back to ``None`` and the original Fortran runs again.  Nothing is
+    installed until a step is asked for: :meth:`sync` -- called by ``advance`` and ``run`` -- attaches
+    every stage whose slots are filled, re-attaches one whose slots changed, and detaches one whose slots
+    were emptied.  Keys are the stages' process names (``radiation``, ``cloud_macro_microphysics``,
+    ``dry_adjustment``, ...).
+    """
+
+    def __init__(self, driver: "Driver") -> None:
+        self._driver = driver
+        self._stages: dict[str, Any] = {}
+        self._installed: dict[str, tuple] = {}
+
+    @staticmethod
+    def classes() -> dict[str, type]:
+        """The stage classes by process name, from the coverage ledger's list."""
+
+        import importlib
+
+        from .kernel_coverage import STAGE_CLASSES
+
+        table: dict[str, type] = {}
+        for path in STAGE_CLASSES:
+            module_name, _, class_name = path.rpartition(".")
+            klass = getattr(importlib.import_module(module_name), class_name)
+            # keyed by the workflow action the class owns: "cam_run1.radiation" -> "radiation"
+            stage = str(getattr(klass, "STAGE", "") or "")
+            table[stage.split(".", 1)[1] if "." in stage else (stage or class_name)] = klass
+        return table
+
+    def __getitem__(self, name: str) -> Any:
+        if name not in self._stages:
+            classes = self.classes()
+            if name not in classes:
+                raise KeyError(f"{name!r} is not a process freeCAM owns as a class; the table has {sorted(classes)}")
+            self._stages[name] = classes[name]()
+        return self._stages[name]
+
+    def __contains__(self, name: object) -> bool:
+        # membership asks the class table; only a lookup binds a stage to the run
+        return name in self.classes()
+
+    def __iter__(self) -> Iterator[str]:
+        return iter(sorted(self.classes()))
+
+    def __len__(self) -> int:
+        return len(self.classes())
+
+    @staticmethod
+    def _slots(stage: Any) -> tuple[str, ...]:
+        """The process slots a stage declares (``SLOT_NAMES``); one, ``process``, unless it says otherwise."""
+
+        return tuple(getattr(stage, "SLOT_NAMES", ("process",)))
+
+    @classmethod
+    def _fingerprint(cls, stage: Any) -> tuple:
+        kernels = getattr(stage, "kernels", {}) or {}
+        return (tuple(repr(getattr(stage, slot, None)) for slot in cls._slots(stage)),
+                tuple((k, repr(v)) for k, v in kernels.items()), str(getattr(stage, "execution_policy", "")))
+
+    @classmethod
+    def _armed(cls, stage: Any) -> bool:
+        kernels = getattr(stage, "kernels", {}) or {}
+        return any(getattr(stage, slot, None) is not None for slot in cls._slots(stage)) or any(v is not None for v in kernels.values())
+
+    def sync(self) -> None:
+        """Attach, re-attach or detach every stage so the run matches what the slots say."""
+
+        for name, stage in self._stages.items():
+            armed = self._armed(stage)
+            fingerprint = self._fingerprint(stage)
+            if armed and self._installed.get(name) != fingerprint:
+                if name in self._installed:
+                    self._detach(stage)
+                stage.attach(self._driver.cam)
+                self._installed[name] = fingerprint
+            elif not armed and name in self._installed:
+                self._detach(stage)
+                del self._installed[name]
+
+    def _detach(self, stage: Any) -> None:
+        """Take the stage's process out and give the workflow its Fortran action back."""
+
+        workflow = self._driver.cam.workflow
+        handle = getattr(stage, "_process", None)
+        remove = getattr(handle, "remove", None)
+        if callable(remove):
+            remove()
+        else:
+            workflow.process(stage.PROCESS_NAME).remove()
+        stage._process = None
+        if not stage.replaces_whole_action:
+            for half in (stage.FIRST_HALF, stage.SECOND_HALF):
+                workflow.process(half).disable()
+        workflow.process(stage.STAGE).enable()
+
+    def describe(self) -> dict[str, Any]:
+        """Who computes each process this table has been asked for: the original Fortran, or what is in its slots."""
+
+        described: dict[str, Any] = {}
+        for name, stage in self._stages.items():
+            if not self._armed(stage):
+                described[name] = {"computed_by": "fortran", "installed": name in self._installed}
+                continue
+            process = getattr(stage, "process", None)
+            replaced = {k: repr(v) for k, v in (getattr(stage, "kernels", {}) or {}).items() if v is not None}
+            row: dict[str, Any] = {"computed_by": "python", "installed": name in self._installed, "kernels": replaced}
+            if process is not None:
+                describe = getattr(process, "describe", None)
+                row["process"] = describe() if callable(describe) else repr(process)
+            described[name] = row
+        return described
+
+
 class _CAMFacade:
     """Lazy FreeCAM handle exposed as ``driver.cam``."""
 
@@ -1761,6 +1879,8 @@ class Driver:
         self._active_lock = threading.Lock()
         self._active_run: RunHandle | None = None
         self.cam = _CAMFacade(self)
+        #: the physics processes as Python classes, bound to this run: see :class:`ProcessTable`
+        self.processes = ProcessTable(self)
 
     @property
     def running(self) -> bool:
@@ -1772,7 +1892,10 @@ class Driver:
 
     @property
     def status(self) -> Mapping[str, Any]:
-        return self._live_session().status
+        status = dict(self._live_session().status)
+        # who computes each process this run was asked about: the Fortran, or what its slots hold
+        status["processes"] = self.processes.describe()
+        return status
 
     @property
     def validation(self) -> Mapping[str, Any]:
@@ -1824,6 +1947,7 @@ class Driver:
             "case": self.case.name if isinstance(self.case, CaseConfig) else self.case.key,
             "mpi_ranks": self.config.mpi_size,
             "launch_mode": self.launch_mode,
+            "processes": self.processes.describe(),
             "pbs_account": self.account,
             "boundary": boundary_description,
             "checks": checks,
@@ -1842,7 +1966,9 @@ class Driver:
     def advance(self, steps: int = 1) -> Mapping[str, Any]:
         if int(steps) < 1:
             raise ValueError("steps must be positive")
-        return self._live_session().advance(steps=int(steps))
+        session = self._live_session()
+        self.processes.sync()
+        return session.advance(steps=int(steps))
 
     def execute(
         self,
@@ -1874,6 +2000,7 @@ class Driver:
             raise RuntimeError("this model already has a run in progress")
         try:
             session = self._live_session()
+            self.processes.sync()
             starting_status = dict(session.status)
             start_step = int(starting_status.get("step", 0))
             first = int(starting_status["actions"])
@@ -2227,6 +2354,7 @@ __all__ = [
     "CaseConfig",
     "CaseRegistry",
     "Driver",
+    "ProcessTable",
     "FreeCAM",
     "Physics",
     "Property",

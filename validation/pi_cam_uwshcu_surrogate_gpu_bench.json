@@ -1,0 +1,77 @@
+{
+ "schema_version": 1,
+ "what": "The compute_uwshcu_inv surrogate (340 k-parameter MLP with the packed subset block, uwshcu_h256_notr_2cap_sub.pt) timed offline on one A100 against one CPU thread of the same node, at the hook's granularity (16 columns a call, arrays in host memory, the packed output back in host memory) and in larger batches; float64 in and out.  Not a model run: an offline measurement deciding whether a GPU path for the hook is worth building.",
+ "pbs_job_id": "7513230.desched1",
+ "node": "one Derecho GPU node (main queue, select=1:ncpus=8:ngpus=1:gpu_type=a100)",
+ "gpu": "NVIDIA A100-SXM4-40GB",
+ "torch": "2.14.0+cu130",
+ "cuda": "13.0",
+ "model": "uwshcu_h256_notr_2cap_sub.pt",
+ "inputs_from": "one captured call of rank 0 (pausable-p29-uwshcu-capture-7493241), padded to 16 columns; batches stack consecutive captured calls",
+ "rows": {
+  "cpu 1 thread, 16 columns": {
+   "ms_per_call": 0.6007,
+   "us_per_column": 37.5459
+  },
+  "gpu, 16 columns, host in/out": {
+   "ms_per_call": 1.0331,
+   "us_per_column": 64.5703
+  },
+  "gpu, 16 columns, device resident": {
+   "ms_per_call": 0.6293,
+   "us_per_column": 39.3326
+  },
+  "gpu, 64 columns, host in/out": {
+   "ms_per_call": 1.1815,
+   "us_per_column": 18.4602
+  },
+  "gpu, 64 columns, device resident": {
+   "ms_per_call": 0.6548,
+   "us_per_column": 10.2313
+  },
+  "gpu, 256 columns, host in/out": {
+   "ms_per_call": 1.657,
+   "us_per_column": 6.4726
+  },
+  "gpu, 256 columns, device resident": {
+   "ms_per_call": 0.74,
+   "us_per_column": 2.8906
+  },
+  "gpu, 1024 columns, host in/out": {
+   "ms_per_call": 3.0153,
+   "us_per_column": 2.9447
+  },
+  "gpu, 1024 columns, device resident": {
+   "ms_per_call": 0.7382,
+   "us_per_column": 0.7209
+  },
+  "gpu, 4096 columns, host in/out": {
+   "ms_per_call": 4.1723,
+   "us_per_column": 1.0186
+  },
+  "gpu, 4096 columns, device resident": {
+   "ms_per_call": 0.7354,
+   "us_per_column": 0.1795
+  },
+  "gpu, 16384 columns, host in/out": {
+   "ms_per_call": 4.1801,
+   "us_per_column": 0.2551
+  },
+  "gpu, 16384 columns, device resident": {
+   "ms_per_call": 0.7352,
+   "us_per_column": 0.0449
+  },
+  "cpu 1 thread, 256 columns": {
+   "ms_per_call": 4.3224,
+   "us_per_column": 16.8844
+  },
+  "cpu 1 thread, 4096 columns": {
+   "ms_per_call": 28.6022,
+   "us_per_column": 6.983
+  }
+ },
+ "max_abs_diff_cpu_gpu_one_chunk": 0.881591796875,
+ "in_image_reference": "FTorch on the CPU nodes, 128 ranks a node sharing memory bandwidth: 4.17 ms a call live over the month (7510379)",
+ "conclusion": "At one chunk a call the A100 is slower than one CPU thread (1.03 ms with the copies, 0.63 ms resident, against 0.60 ms): the call is launch-latency bound.  The GPU pays only from about a thousand columns a call (1 us a column at 4 096, 0.26 us at 16 384 against 7 us on the CPU thread), which the hook never has; it would need the node's ranks to batch their chunks and wait for each other.  Not built.",
+ "tool": "tools/bench_model_on_device.py"
+}

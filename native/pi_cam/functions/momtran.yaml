@@ -1,0 +1,255 @@
+# Function contract for momtran (zm_conv), serving the hook the image puts on
+# the routine (native/pi_cam/hooks.yaml).  Written by
+# tools/draft_pi_cam_hook_contract.py from the argument list the source
+# declares: names, kinds, ranks, intents and extents are the routine's own, the
+# extents named by its integer dummies where it has them.  The routine's
+# tunables and module state stay in their own storage, untouched by the hook,
+# and no standalone image is built from this contract, so the parameter,
+# module-state and image blocks are minimal.
+#
+schema_version: 1
+function: momtran
+qualified_name: zm_conv::momtran
+routine: momtran
+source: components/cam/src/physics/cam/zm_conv.F90
+module: zm_conv
+binding: module
+layout: column
+dimensions: {pcols: 16, pver: 30, pverp: 31, pcnst: 57, ncnst: 2}
+public_axes: {pver: lev, pverp: ilev}
+arguments:
+- name: lchnk
+  fortran_type: integer
+  dtype: int32
+  rank: 0
+  intent: in
+  native_shape: []
+  role: input
+  public_shape: []
+  description: chunk identifier
+- name: ncol
+  fortran_type: integer
+  dtype: int32
+  rank: 0
+  intent: in
+  native_shape: []
+  role: input
+  public_shape: []
+  description: number of atmospheric columns
+- name: domomtran
+  fortran_type: logical
+  dtype: int32
+  rank: 1
+  intent: in
+  native_shape: [ncnst]
+  role: input
+  public_shape: [ncnst]
+  carrier: logical
+  description: flag for doing convective transport
+- name: q
+  fortran_type: real
+  dtype: float64
+  rank: 3
+  intent: in
+  native_shape: [pcols, pver, ncnst]
+  role: input
+  public_shape: [pver, ncnst]
+  description: Wind array
+- name: ncnst
+  fortran_type: integer
+  dtype: int32
+  rank: 0
+  intent: in
+  native_shape: []
+  role: structural
+  value: 2
+  description: number of tracers to transport
+- name: mu
+  fortran_type: real
+  dtype: float64
+  rank: 2
+  intent: in
+  native_shape: [pcols, pver]
+  role: input
+  public_shape: [pver]
+  description: Mass flux up
+- name: md
+  fortran_type: real
+  dtype: float64
+  rank: 2
+  intent: in
+  native_shape: [pcols, pver]
+  role: input
+  public_shape: [pver]
+  description: Mass flux down
+- name: du
+  fortran_type: real
+  dtype: float64
+  rank: 2
+  intent: in
+  native_shape: [pcols, pver]
+  role: input
+  public_shape: [pver]
+  description: Mass detraining from updraft
+- name: eu
+  fortran_type: real
+  dtype: float64
+  rank: 2
+  intent: in
+  native_shape: [pcols, pver]
+  role: input
+  public_shape: [pver]
+  description: Mass entraining from updraft
+- name: ed
+  fortran_type: real
+  dtype: float64
+  rank: 2
+  intent: in
+  native_shape: [pcols, pver]
+  role: input
+  public_shape: [pver]
+  description: Mass entraining from downdraft
+- name: dp
+  fortran_type: real
+  dtype: float64
+  rank: 2
+  intent: in
+  native_shape: [pcols, pver]
+  role: input
+  public_shape: [pver]
+  description: Delta pressure between interfaces
+- name: dsubcld
+  fortran_type: real
+  dtype: float64
+  rank: 1
+  intent: in
+  native_shape: [pcols]
+  role: input
+  public_shape: []
+  description: Delta pressure from cloud base to sfc
+- name: jt
+  fortran_type: integer
+  dtype: int32
+  rank: 1
+  intent: in
+  native_shape: [pcols]
+  role: input
+  public_shape: []
+  description: Index of cloud top for each column
+- name: mx
+  fortran_type: integer
+  dtype: int32
+  rank: 1
+  intent: in
+  native_shape: [pcols]
+  role: input
+  public_shape: []
+  description: Index of cloud top for each column
+- name: ideep
+  fortran_type: integer
+  dtype: int32
+  rank: 1
+  intent: in
+  native_shape: [pcols]
+  role: input
+  public_shape: []
+  description: Gathering array
+- name: il1g
+  fortran_type: integer
+  dtype: int32
+  rank: 0
+  intent: in
+  native_shape: []
+  role: input
+  public_shape: []
+  description: Gathered min lon indices over which to operate
+- name: il2g
+  fortran_type: integer
+  dtype: int32
+  rank: 0
+  intent: in
+  native_shape: []
+  role: input
+  public_shape: []
+  description: Gathered max lon indices over which to operate
+- name: nstep
+  fortran_type: integer
+  dtype: int32
+  rank: 0
+  intent: in
+  native_shape: []
+  role: input
+  public_shape: []
+  description: Time step index input/output
+- name: dqdt
+  fortran_type: real
+  dtype: float64
+  rank: 3
+  intent: out
+  native_shape: [pcols, pver, ncnst]
+  role: output
+  public_shape: [pver, ncnst]
+  description: Tracer tendency array
+- name: pguall
+  fortran_type: real
+  dtype: float64
+  rank: 3
+  intent: out
+  native_shape: [pcols, pver, ncnst]
+  role: output
+  public_shape: [pver, ncnst]
+  description: Apparent force from  updraft PG
+- name: pgdall
+  fortran_type: real
+  dtype: float64
+  rank: 3
+  intent: out
+  native_shape: [pcols, pver, ncnst]
+  role: output
+  public_shape: [pver, ncnst]
+  description: Apparent force from  downdraft PG
+- name: icwu
+  fortran_type: real
+  dtype: float64
+  rank: 3
+  intent: out
+  native_shape: [pcols, pver, ncnst]
+  role: output
+  public_shape: [pver, ncnst]
+  description: In-cloud winds in updraft
+- name: icwd
+  fortran_type: real
+  dtype: float64
+  rank: 3
+  intent: out
+  native_shape: [pcols, pver, ncnst]
+  role: output
+  public_shape: [pver, ncnst]
+  description: In-cloud winds in downdraft
+- name: dt
+  fortran_type: real
+  dtype: float64
+  rank: 0
+  intent: in
+  native_shape: []
+  role: input
+  public_shape: []
+  description: 'time step in seconds : 2*delta_t'
+- name: seten
+  fortran_type: real
+  dtype: float64
+  rank: 2
+  intent: out
+  native_shape: [pcols, pver]
+  role: output
+  public_shape: [pver]
+  description: Dry static energy tendency
+parameters: {}
+module_state: []
+image:
+  archive_members: [zm_conv.o]
+  stubs:
+    inert: []
+    fail_closed: []
+    abort: []
+  base_address: 1342177280

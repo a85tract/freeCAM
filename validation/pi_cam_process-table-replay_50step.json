@@ -1,0 +1,60 @@
+{
+ "schema_version": 1,
+ "what": "the radiation process replaced from driver.processes, the notebook's way in, on 512 ranks",
+ "pbs_job_id": "7438656.desched1",
+ "steps": 50,
+ "how": "fc.Driver; driver.processes['radiation'].process = load_block_model('replay:...'); driver.run()",
+ "native_manifest": "build/pi_cam_promoted_p24/native_cam_manifest.json",
+ "block_replay": "${FREECAM_SCRATCH}/pyCAM/PI-cam/rad-process-capture-20260912-1301",
+ "processes": {
+  "radiation": {
+   "computed_by": "python",
+   "installed": true,
+   "kernels": {},
+   "process": {
+    "kind": "block-replay",
+    "file": "radiation_tend.rank-0000.npz",
+    "calls": 0,
+    "records": 50
+   }
+  }
+ },
+ "seconds": {
+  "run": 32.778101205825806
+ },
+ "against_oracle": {
+  "bfb": false,
+  "reference_files": 4,
+  "candidate_files": 4,
+  "compared_files": 4,
+  "missing_in_candidate": [],
+  "extra_in_candidate": [],
+  "first_difference": {
+   "file": "cam.rh0.0001-01-02-03600.nc",
+   "kind": "value",
+   "variable": "AEROD_v",
+   "index": [
+    0
+   ],
+   "reference": {
+    "value": 1.747565148473941,
+    "bits": "0x3ffbf606df85330a"
+   },
+   "candidate": {
+    "value": 0.0,
+    "bits": "0x0000000000000000"
+   }
+  }
+ },
+ "against_cli_replay": {
+  "bfb": true,
+  "reference_files": 4,
+  "candidate_files": 4,
+  "compared_files": 4,
+  "missing_in_candidate": [],
+  "extra_in_candidate": [],
+  "first_difference": null
+ },
+ "cli_run": "${FREECAM_SCRATCH}/pyCAM/PI-cam/pausable-p24-block-replay4-7436003.desched1/run",
+ "run_dir": "${FREECAM_SCRATCH}/pyCAM/PI-cam/process-table-process-table-replay-7438656.desched1/run"
+}

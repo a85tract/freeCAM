@@ -227,14 +227,14 @@ def _format_rank_report(snapshot: Mapping[str, object]) -> str:
         f"MPI tasks: {size}",
         f"Detail rank: {rank}",
         "",
-        f"{'name':<68} {'called':>10} {'walltotal':>14} {'wallmax':>14} {'wallmin':>14}",
+        f"{'name':<104} {'called':>10} {'walltotal':>14} {'wallmax':>14} {'wallmin':>14}",
     ]
     for path, raw in timers.items():
         assert isinstance(raw, Mapping)
         parts = str(path).split("/")
         display_name = "  " * (len(parts) - 1) + parts[-1]
         lines.append(
-            f"{display_name:<68.68} "
+            f"{display_name:<104.104} "
             f"{int(raw['calls']):>10d} "
             f"{float(raw['walltotal']):>14.6f} "
             f"{float(raw['wallmax']):>14.6f} "
@@ -287,14 +287,14 @@ def _format_global_report(snapshots: Sequence[Mapping[str, object]]) -> str:
         f"MPI tasks: {size}",
         "",
         (
-            f"{'name':<72} {'processes':>9} {'count':>10} "
+            f"{'name':<108} {'processes':>9} {'count':>10} "
             f"{'walltotal':>14} {'wallmax':>14} {'max rank':>8} "
             f"{'wallmin':>14} {'min rank':>8} {'wallavg':>14}"
         ),
     ]
     for record in _aggregate(snapshots):
         lines.append(
-            f"{str(record['name']):<72.72} "
+            f"{str(record['name']):<108.108} "
             f"{int(record['processes']):>9d} "
             f"{int(record['count']):>10d} "
             f"{float(record['walltotal']):>14.6f} "

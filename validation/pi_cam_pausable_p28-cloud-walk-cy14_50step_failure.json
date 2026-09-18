@@ -1,0 +1,22 @@
+{
+ "schema_version": 1,
+ "what": "The walk on p28 with its Python glue compiled by Cython (pure-Python mode) and direct callers for the image's hottest entries; the .so files beside the .py files, not committed.",
+ "pbs_job_id": "7476701.desched1",
+ "run_tag": "p28-cloud-walk-cy14",
+ "job": "validation/jobs/pi_cam_pausable_50step.pbs",
+ "python_stages": [
+  "cloud_macro_microphysics"
+ ],
+ "native_image": "build/pi_cam_promoted_p28",
+ "ranks": 512,
+ "resources": {
+  "queue": "develop",
+  "placement": "4 whole nodes, 128 ranks each",
+  "memory_requested": "4 x 235 GB"
+ },
+ "bfb_record_note": "the job's comparison (.bfb.json) and health (.health.json) files of the failed run are kept with this record",
+ "outcome": "no rank passed MPI_Init: OFI fi_getinfo() failed (No data available) on one of the four nodes given; the other ranks were then killed",
+ "diagnosis": "NOT the nodes, as the first records of this series said: the trial's compiled modules had been built through the site's compiler wrapper, which linked a second MPI (libmpi_intel.so.12, libpmi, libpmi2, libpals) and an RPATH to another libfabric into every extension.  The command line imports those modules before mpi4py initialises the MPI it was built with, so two MPI runtimes met in one process and MPI_Init failed on some ranks of one node, a different node each time.  Sixteen submissions between 13:10 and 14:50 died this way, the pinned one on nodes that had run the morning's gates; every gate before the build passed and the p28 walk gates after it ran on the same queue.  Found by readelf on the .so files.",
+ "disposition": "the extensions rebuilt with the bare compiler, linking libc alone; p28-cloud-walk-cy16 (7476883) then ran bit-for-bit at 3.04 s a rank for the stage",
+ "steps_completed": 0
+}

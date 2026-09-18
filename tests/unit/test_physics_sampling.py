@@ -250,3 +250,32 @@ def test_captured_columns_fails_closed_on_a_malformed_anchor_set() -> None:
     with pytest.raises(PhysicsError, match=r"produces \['t', 'q'\], not 'pmid'"):
         SamplingSpace(load_function_spec("dadadj"),
                       inputs={"pmid": CapturedColumns(columns=columns, produces=("t", "q"))})
+
+
+def test_captured_columns_derive_consistent_arguments_from_the_unperturbed_anchor() -> None:
+    columns = {"t": np.array([[250.0, 260.0], [270.0, 280.0]]), "s": np.array([[1.0, 2.0], [3.0, 4.0]]),
+               "q": np.array([[1e-3, 2e-3], [3e-3, 4e-3]]), "tr": np.array([[[1e-3, 5e-4], [2e-3, 1e-3]], [[3e-3, 1.5e-3], [4e-3, 2e-3]]])}
+    seen = []
+
+    def static_energy(rng, anchor, drawn):
+        seen.append(sorted(anchor))
+        return anchor["s"] + 1000.0 * (drawn["t"] - anchor["t"])          # s follows the perturbed temperature
+
+    def tracers(rng, anchor, drawn):
+        out = anchor["tr"].copy()
+        out[:, 0] = drawn["q"]                                              # the water constituent is the drawn water
+        out[:, 1] = drawn["q"] * anchor["tr"][:, 1] / anchor["tr"][:, 0]   # the isotope keeps the column's ratio
+        return out
+
+    captured = CapturedColumns(columns=columns, produces=("t", "q", "s", "tr"), absolute_scale={"t": 1.0},
+                               relative_scale={"q": 0.1}, derived={"s": static_energy, "tr": tracers})
+    rng = np.random.default_rng(3)
+    for _ in range(5):
+        answer = captured.sample(rng, (), {})
+        index = 0 if answer["t"][0] < 265.0 else 1
+        assert np.allclose(answer["s"], columns["s"][index] + 1000.0 * (answer["t"] - columns["t"][index]))
+        assert np.array_equal(answer["tr"][:, 0], answer["q"]) and np.allclose(answer["tr"][:, 1] / answer["tr"][:, 0], 0.5)
+    assert seen and seen[0] == ["q", "s", "t", "tr"]                          # the rule sees every captured argument
+    assert "derived s, tr" in captured.describe()
+    with pytest.raises(PhysicsError):
+        CapturedColumns(columns=columns, produces=("t",), derived={"s": static_energy})   # a rule for what is not produced

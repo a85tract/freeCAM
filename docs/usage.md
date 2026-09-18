@@ -161,6 +161,97 @@ driver.cam.workflow["notebook_heating"].properties["rate"] = 0.03
 Values must be JSON-compatible scalars or small containers; large arrays
 belong in state fields.
 
+### Replacing a process the model already owns as a class
+
+`driver.processes` holds every physics process freeCAM owns as a Python
+class -- `radiation`, `cloud_macro_microphysics`, `dry_adjustment`,
+`shallow_convection`, `deep_convection`, `vertical_diffusion`, ... -- bound
+to this run.  Looking one up changes nothing; filling a slot on it does:
+
+```python
+rad = driver.processes["radiation"]        # the Radiation stage of this run
+
+def my_radiation(inputs):                  # the block contract: inputs by name in, the 12 outputs out
+    ...
+    return {"qrs": ..., "qrl": ..., "fsns": ..., "fsnt": ..., "flns": ..., "flnt": ..., "fsds": ...,
+            "sols": ..., "soll": ..., "solsd": ..., "solld": ..., "flwds": ...}
+
+rad.process = RadiationBlockModel(my_radiation, label="notebook")
+driver.advance(48)                         # the radiation block is my_radiation from here on
+
+rad.kernels["rad_rrtmg_sw"] = network      # or one kernel inside the driver instead
+rad.process = None                         # back to the original Fortran
+```
+
+The next `advance` or `run` attaches the stage where its action runs -- for
+radiation, between the two halves of the split stage; for a whole action,
+in its place -- and detaches it again when every slot is empty, so the
+Fortran path is exactly the original whenever nothing is replaced.  A
+changed slot re-attaches.  `driver.status["processes"]` says who computes
+each process asked for.  The block contract's inputs are
+`freecam.physics.radiation_process.BLOCK_INPUTS`; a capture's outputs replay
+through the same slot with `load_block_model("replay:DIR")`, which is how
+the path is gated (see `docs/physics_kernel_decoupling.md`).
+
+The cloud macro/microphysics stage has two such slots, one per compute
+block (`freecam.physics.cloud_block`): `process` is the macrophysics
+driver's block, the one `mmacro_pcond` lives in, and `micro_process` the
+microphysics driver's with its aerosol activation.  Either slot turns the
+stage into its Python driver, which reads the block's inputs from memory,
+writes the answer -- the tendency object with its flags, the detrainment,
+the buffer fields -- where the driver leaves it, and makes the glue's
+bookkeeping calls around it:
+
+```python
+cloud = driver.processes["cloud_macro_microphysics"]
+cloud.process = load_block_model("replay:DIR", block=MACRO_BLOCK, rank=rank)   # or BlockModel(f, label=..., block=MACRO_BLOCK)
+cloud.micro_process = None                 # the microphysics driver stays the original, in place
+driver.advance(48)
+```
+
+`examples/replace_process.ipynb` walks through both stages this way on a live
+run: the table, a replay in the radiation slot, a network in it, the original
+back, and the cloud stage's two slots.
+
+### Replacing one kernel inside a process
+
+Each owned process also names the numerical kernels its driver calls, and
+each is a slot (`stage.kernels[name]`, `None` for the original):
+
+```python
+from freecam.physics.segments import OriginalKernel
+from freecam.physics.numba_kernel import compile_kernel
+
+vdiff = driver.processes["vertical_diffusion"]
+vdiff.kernels["compute_tms"] = OriginalKernel()      # the original, through the pause: the gate
+deep = driver.processes["deep_convection"]
+deep.kernels["cldfrc_fice"] = my_ice_fraction        # a function over the kernel's arrays: compiled, called by Fortran at the hook
+deep.kernels["cldfrc_fice"] = compile_kernel("cldfrc_fice", my_numba_kernel)   # compiled, called by Fortran at the hook
+deep.kernels["cldfrc_fice"] = fc.NativeModel("ice.pt")                          # TorchScript, run by the image through FTorch
+```
+
+A function in a slot runs where the stage can run it.  Written over the
+kernel's arrays, one positional argument per input then per output of the
+kernel's model block (`docs/contracts.md` lists them; `float64` arrays indexed
+`[column, level]`, scalars as floats, outputs written in place, an output the
+block returns at a subset of constituents over the subset's slots), and put in
+the slot of a kernel that has a hook, the stage compiles it with Numba on every
+rank and Fortran calls the compiled code at the hook: the stage runs whole and
+the interpreter never runs inside a Fortran call.  A function that Numba cannot
+compile there is refused, not run from the interpreter; a network goes in as a
+TorchScript `NativeModel`.  Written over one batch dict (inputs by dummy name in,
+outputs by name out), or under `stage.execution_policy = "segmented"`, or at a
+kernel without a hook, the function answers at the kernel's pause: the runner
+stops at the call, hands Python the live columns, resumes after the write-back
+(three crossings a call and a per-step cost per stage).  `compile_kernel` is
+the same compilation by hand, with `shadow=True` to run the compiled function on
+every call while the original answers, for a bit-for-bit cost measurement; on
+the command line `--kernel-plugin NAME=file.py:function` and
+`--shadow-kernel-plugin` do the same.  `stage.describe_kernels()` lists each
+kernel's contract and binding; `docs/contracts.md` is the generated reference of
+every contract.  `examples/replace_kernel.ipynb` walks through the ways on a
+live run.
+
 ## Parameters
 
 ### Namelist
@@ -351,6 +442,17 @@ fc.physics.open_dataset("mmacro_pcond_training.nc").verify_sample(scheme).assert
 ```
 
 A sample the Fortran refuses keeps its status and is never written as data.
+`examples/generate_mmacro_pcond_dataset.py` is that route for `mmacro_pcond`
+with every knob drawn, and `examples/generate_compute_uwshcu_inv_dataset.py`
+for the UW shallow cumulus kernel: every one of its 20 inputs drawn per sample
+around a real column, the 57-constituent tracer array rebuilt so its water is
+the drawn water and its isotopes keep the column's ratios, the static energy
+following the temperature (`CapturedColumns(derived=...)`).  The anchors come
+from frames captured at the kernel's hook in a run of the model
+(`PYCAM_CAPTURE_KERNELS`, `PYCAM_CAPTURE_EVERY`;
+`tools/extract_pi_cam_anchor_columns.py --frame-capture`), and
+`examples/generate_compute_uwshcu_inv_training_data.ipynb` runs the whole
+route as `generate_training_data.ipynb` does for `mmacro_pcond`.
 [`examples/physics_function.ipynb`](../examples/physics_function.ipynb) walks
 through the function interface,
 [`examples/generate_training_data.ipynb`](../examples/generate_training_data.ipynb)

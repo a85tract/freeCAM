@@ -35,13 +35,28 @@ from typing import Any, Sequence
 import numpy as np
 
 from ..pi_cam.errors import PICAMConfigurationError
-from ..pi_cam.pbuf import PBuf, load_pbuf_table
+from ..pi_cam.pbuf import PBuf, PBufField, PBufFieldAbsent, load_pbuf_table
+from .cloud_block import (
+    BlockContract,
+    CAM_IN_FIELDS,
+    FORCING_FIELDS,
+    MACRO_BLOCK,
+    MICRO_BLOCK,
+    STATE_FIELDS,
+    CensusBlock,
+    OriginalBlock,
+    VerifiedOriginalBlock,
+    census_fields,
+    dynamic_fields,
+)
+from .errors import PhysicsError
 from .image import module_view
 from .macrophysics import FORCING, Macrophysics
 from .microp_aero import MicropAero
 from .microphysics import Microphysics
 from freecam.pi_cam.tables import load_table
 from .stage import (
+    ALL_OUTPUTS,
     CORE_ENTRIES,
     HostEntries,
     HostServices,
@@ -140,6 +155,13 @@ class _MMEntries(HostEntries):
                           _P_DBL, _P_DBL, _P_DBL, _P_DBL, _INT], False),
         "ptend_sum_aero": ("pycam_{prefix}_ptend_sum_aero_v1", [_INT, _INT], False),
         "wtrc_mass_fixer": ("pycam_{prefix}_wtrc_mass_fixer_v1", [_INT], False),
+        # the Python driver's block write-back: the stage's tendency object initialised with the
+        # flags a block's driver leaves on it, and those flags read for a capture
+        "ptend_init": ("pycam_{prefix}_ptend_init_v1", [_INT, _INT, _STR, _INT, _INT, ctypes.POINTER(ctypes.c_int32)], True),
+        "ptend_flags": ("pycam_{prefix}_ptend_flags_v1", [_INT, _INT, ctypes.POINTER(ctypes.c_int32), ctypes.POINTER(ctypes.c_int32)], True),
+        # the Python driver's bookkeeping after each block in one call each (image p27 onwards)
+        "finish_macro": ("pycam_{prefix}_finish_macro_v1", [_INT, _INT, _INT, _INT, _DBL, _P_DBL], True),
+        "finish_micro": ("pycam_{prefix}_finish_micro_v1", [_INT, _INT, _INT, _INT, _DBL, _INT], True),
         # optional: an image built for Gate M-1 predates it, and that image
         # still serves the whole-drivers form; the composed form refuses
         "take_macro": ("pycam_{prefix}_take_macro_v1", [_INT], True),
@@ -214,6 +236,42 @@ class _MMHandles(HostServices):
         """The aerosol sub-walk's ptend becomes the stage's ptend_aero."""
 
         _check(self.e.take_aero(lchnk), "take_aero (ptend_aero = aero_ptend(lchnk))")
+
+    def ptend_init(self, lchnk: int, which: int, name: str, *, ls: bool, lq: np.ndarray) -> None:
+        """``physics_ptend_init(ptend, psetcols, name, ls=, lq=)`` on the stage's own object (``which`` 1) or
+        its aerosol one (2): the Python driver allocates and flags it before writing a block's tendency."""
+
+        flags = np.ascontiguousarray(np.asarray(lq, dtype=np.int32))
+        assert flags.shape == (self.pcnst,), flags.shape
+        _check(self.e.ptend_init(lchnk, int(which), name.encode("ascii"), len(name), int(bool(ls)),
+                                 flags.ctypes.data_as(ctypes.POINTER(ctypes.c_int32))),
+               f"physics_ptend_init({name!r})")
+
+    @property
+    def has_finish(self) -> bool:
+        """Whether this image offers the one-call bookkeeping after each block."""
+
+        return self.e.finish_macro is not None and self.e.finish_micro is not None
+
+    def finish_macro(self, lchnk: int, ncol: int, num_steps: int, nstep: int, ztodt: float, rliq: np.ndarray) -> None:
+        """physpkg.F90:2254-2266 in one call: flux terms, the tendency scaled and applied, the energy check."""
+
+        _check(self.e.finish_macro(lchnk, int(ncol), int(num_steps), int(nstep), float(ztodt), _ptr(rliq)), "finish_macro")
+
+    def finish_micro(self, lchnk: int, ncol: int, num_steps: int, nstep: int, ztodt: float, *, sum_aero: bool) -> None:
+        """physpkg.F90:2355-2393 in one call: the activation's tendency summed in (when the original produced one), the
+        tendency scaled and applied, the energy check, the precipitation means, the tracer mass fixer."""
+
+        _check(self.e.finish_micro(lchnk, int(ncol), int(num_steps), int(nstep), float(ztodt), int(bool(sum_aero))), "finish_micro")
+
+    def ptend_flags(self, lchnk: int, which: int) -> tuple[bool, np.ndarray]:
+        """The ``ls`` and ``lq`` flags on the stage's tendency object as the driver left them."""
+
+        ls = ctypes.c_int32(0)
+        lq = np.zeros(self.pcnst, dtype=np.int32)
+        _check(self.e.ptend_flags(lchnk, int(which), ctypes.byref(ls), lq.ctypes.data_as(ctypes.POINTER(ctypes.c_int32))),
+               "ptend_flags")
+        return bool(ls.value), lq
 
 
 # -- module constants --------------------------------------------------------------
@@ -298,6 +356,9 @@ class CloudMacroMicrophysics(NativeStage):
 
     KERNELS = KERNELS
     CAM_IN = ("landfrac", "ocnfrac", "snowhland", "ts", "sst")
+    #: the process slots the Python driver reads: the macrophysics block (``process``, the block
+    #: mmacro_pcond lives in) and the microphysics block with its aerosol activation (``micro_process``)
+    SLOT_NAMES = ("process", "micro_process")
     #: tphysbc's ``zero(pcols)``: an all-zero flux argument to the energy checks.
     EXTRA_SCRATCH = (("zero", ("pcols", "chunks")),)
 
@@ -308,6 +369,12 @@ class CloudMacroMicrophysics(NativeStage):
                  whole_aero: bool = False, micro_core_standalone: bool = False,
                  macro_surrogate: "str | Path | None" = None, kernels=None) -> None:
         super().__init__(kernels=None)
+        #: the block slots (freecam.physics.cloud_block): None runs the original driver whole, in place;
+        #: a BlockReplay or BlockModel answers the block and the Python driver writes its outputs back
+        self.process: Any = None
+        self.micro_process: Any = None
+        #: a CloudBlockCapture records both blocks' inputs and outputs around the original drivers
+        self.block_capture: Any = None
         if macro_surrogate is not None and whole_drivers:
             raise PICAMConfigurationError(
                 "a surrogate stands in mmacro_pcond's place inside the macrophysics walk; "
@@ -370,7 +437,8 @@ class CloudMacroMicrophysics(NativeStage):
         log = self.calls.append
 
         def K(name, inputs, *, outputs):
-            st.kernel_on_chunk(name, inputs, outputs=outputs, ncol=ncol)
+            # the buffer fields the glue writes are written in place, as the glue does
+            st.kernel_on_chunk(name, inputs, outputs=outputs, ncol=ncol, in_place=ALL_OUTPUTS)
 
         n = C.cld_macmic_num_steps
         zero = L["zero"]                       # 2085: zero = 0; never written
@@ -381,7 +449,7 @@ class CloudMacroMicrophysics(NativeStage):
 
         # 2188-2208: microp_scheme == 'RK' is refused at attach
         # 2210: cld_macmic_ztodt = ztodt/cld_macmic_num_steps
-        K("mm_substep_dt", {"ztodt": dt, "cld_macmic_num_steps": n},
+        K("mm_substep_dt", {"ztodt": st.kept("ztodt", dt), "cld_macmic_num_steps": n},
           outputs={"cld_macmic_ztodt": None})
         log("mm_substep_dt")
         sub_dt = float(L["cld_macmic_ztodt"][()])
@@ -468,9 +536,286 @@ class CloudMacroMicrophysics(NativeStage):
         runtime = stage.runtime(st.native)
         runtime.rank, runtime.nstep = st.rank, nstep
         del stage.calls[:]
-        stage.tend_chunk(runtime, lchnk, ncol, index, dt, nstep)
+        with st.profile.region(f"subwalk:{stage.PREFIX}"):
+            stage.tend_chunk(runtime, lchnk, ncol, index, dt, nstep)
+
+    # -- the Python driver: two compute blocks, the memory around them read and written from Python ------
+
+    @property
+    def block_armed(self) -> bool:
+        """Whether a block slot or the capture is set: the stage then runs as the Python driver."""
+
+        return self.process is not None or self.micro_process is not None or self.block_capture is not None
+
+    def select_mode(self, native: Any = None) -> str:
+        if self.block_armed:
+            return "python-driver"
+        return super().select_mode(native)
+
+    def describe_process(self) -> dict[str, Any] | None:
+        if not self.block_armed:
+            return None
+        described: dict[str, Any] = {}
+        for slot in self.SLOT_NAMES:
+            value = getattr(self, slot)
+            described[slot] = dict(value.describe()) if value is not None else {"kind": "original", "block": slot}
+        if self.block_capture is not None:
+            described["capture"] = dict(self.block_capture.describe())
+        return described
+
+    def _block_pbuf(self, st: StageRuntime) -> PBuf:
+        """A physics-buffer accessor over every field the two blocks read or write, built once a runtime."""
+
+        buffer = getattr(st, "block_pbuf", None)
+        if buffer is None:
+            fields: dict[str, PBufField] = {}
+            dynamic: dict[str, tuple[str, ...]] = {}
+            for block in (MACRO_BLOCK, MICRO_BLOCK):
+                extra = dynamic_fields(st.native.library, st.pcnst, block)
+                dynamic[block.name] = tuple(field.name for field in extra)
+                for field in block.buffers + block.input_buffers + extra:
+                    if field.name in fields:
+                        continue
+                    index = field.index if field.index is not None else int(module_view(st.native.library, field.symbol, "int32", ()))
+                    fields[field.name] = PBufField(field.name, index, field.time_sliced, field.rank, field.dtype)
+            buffer = PBuf(st.native.library, {name: f for name, f in fields.items() if f.registered})
+            st.block_pbuf = buffer
+            #: the buffer fields registered per constituent at run time, by block: written by the block too
+            st.block_dynamic = dynamic
+        return buffer
+
+    def _census_views(self, st: StageRuntime, lchnk: int) -> dict[str, np.ndarray]:
+        """Views of every census field this image registers, for a CensusBlock in a slot (built once a runtime)."""
+
+        buffer = getattr(st, "census_pbuf", None)
+        if buffer is None:
+            fields = {f.name: PBufField(f.name, f.index, f.time_sliced, f.rank, f.dtype) for f in census_fields(st.native.library)}
+            buffer = PBuf(st.native.library, {name: f for name, f in fields.items() if f.registered})
+            st.census_pbuf = buffer
+        return self._buffer_views(buffer, sorted(buffer.fields), lchnk)
+
+    def _written_buffers(self, st: StageRuntime, block: BlockContract) -> tuple[str, ...]:
+        """The buffer fields a block writes: its contract's, plus the ones this image registers per constituent."""
+
+        self._block_pbuf(st)
+        return block.buffer_names + tuple(getattr(st, "block_dynamic", {}).get(block.name, ()))
+
+    def _block_views(self, st: StageRuntime, lchnk: int, ncol: int, index: int) -> dict[str, np.ndarray]:
+        """The chunk's storage the blocks read and write, viewed once and kept: the state, the surface, the
+        convection carries, every buffer field of both drivers (a field this configuration never registered is
+        left out, as the driver's own pointer would be unassociated)."""
+
+        cache = getattr(self, "_block_view_cache", None)
+        if cache is None:
+            cache = self._block_view_cache = {}
+        buffer = self._block_pbuf(st)
+        names: set[str] = set()
+        for block in (MACRO_BLOCK, MICRO_BLOCK):
+            names.update(self._written_buffers(st, block))
+            names.update(field.name for field in block.input_buffers)
+        # a time-rotated field's older plane moves every step, between two planes: those views are kept per plane,
+        # and one call a step -- the first rotated field's address -- says which plane this step is on
+        rotated = sorted(name for name in names if name in buffer and buffer.fields[name].time_sliced)
+        if lchnk not in cache:
+            H = st.handles
+            pool = st.native.pool
+            views: dict[str, np.ndarray] = {f"state_{name}": np.asarray(pool[f"phys_state.{name}"])[..., index] for name in STATE_FIELDS}
+            cam_in = st.cam_in(index)
+            views.update({f"cam_in_{name}": cam_in[name] for name in CAM_IN_FIELDS})
+            views.update({name: H.forcing(lchnk, name) for name in FORCING})
+            views.update(self._buffer_views(buffer, sorted(names.difference(rotated)), lchnk))
+            cache[lchnk] = (views, {})
+        fixed, planes = cache[lchnk]
+        if not rotated:
+            return fixed
+        probe = buffer.view(rotated[0], lchnk)
+        key = probe.ctypes.data
+        if key not in planes:
+            plane = dict(fixed)
+            plane.update(self._buffer_views(buffer, rotated, lchnk))
+            planes[key] = plane
+        return planes[key]
+
+    @staticmethod
+    def _buffer_views(buffer: Any, names: Sequence[str], lchnk: int) -> dict[str, np.ndarray]:
+        """Zero-copy views of the named buffer fields this configuration registered; a field it never registered
+        (UNICON's detrainment, say, whose index the driver reads as -1) is left out, as the driver's pointer is."""
+
+        views: dict[str, np.ndarray] = {}
+        for name in names:
+            if name not in buffer:
+                continue
+            try:
+                views[name] = buffer.view(name, lchnk)
+            except PBufFieldAbsent:
+                continue
+        return views
+
+    def _block_inputs(self, st: StageRuntime, block: BlockContract, views: dict[str, np.ndarray], nstep: int, lchnk: int, ncol: int,
+                      dt: float) -> dict[str, Any]:
+        """What the block has in memory before its arithmetic, by the contract's names (live views, not copies)."""
+
+        inputs: dict[str, Any] = {"nstep": int(nstep), "lchnk": int(lchnk), "ncol": int(ncol), "dt": float(dt)}
+        inputs.update({name: views[name] for name in block.inputs + self._written_buffers(st, block) if name in views})
+        return inputs
+
+    def _block_outputs(self, st: StageRuntime, lchnk: int, ncol: int, block: BlockContract, views: dict[str, np.ndarray]) -> dict[str, Any]:
+        """What the original block left behind, read from memory: the tendency object, the detrainment, the buffer fields."""
+
+        H = st.handles
+        ls, lq = H.ptend_flags(lchnk, PTEND)
+        outputs: dict[str, Any] = {"ptend_s": H.view(lchnk, VIEW["ptend_s"])[:ncol], "ptend_q": H.view(lchnk, VIEW["ptend_q"])[:ncol],
+                                   "ptend_ls": int(ls), "ptend_lq": lq}
+        if block is MACRO_BLOCK:
+            outputs["det_s"] = H.view(lchnk, VIEW["det_s"])[:ncol]
+            outputs["det_ice"] = H.view(lchnk, VIEW["det_ice"])[:ncol]
+        outputs.update({name: views[name][:ncol] for name in self._written_buffers(st, block) if name in views})
+        return outputs
+
+    def _write_block(self, st: StageRuntime, lchnk: int, ncol: int, block: BlockContract, answer: dict[str, Any],
+                     views: dict[str, np.ndarray]) -> None:
+        """Write a block's answer where the driver leaves it: the tendency object (allocated and flagged as the
+        driver would have left it), the detrainment, and every buffer field the answer carries."""
+
+        H = st.handles
+        lq = np.asarray(answer["ptend_lq"], dtype=np.int32).reshape(-1)
+        H.ptend_init(lchnk, PTEND, block.ptend_name, ls=bool(int(np.asarray(answer["ptend_ls"]).reshape(-1)[0])), lq=lq)
+        H.view(lchnk, VIEW["ptend_s"])[:ncol] = np.asarray(answer["ptend_s"])[:ncol]
+        H.view(lchnk, VIEW["ptend_q"])[:ncol] = np.asarray(answer["ptend_q"])[:ncol]
+        if block is MACRO_BLOCK:
+            H.view(lchnk, VIEW["det_s"])[:ncol] = np.asarray(answer["det_s"])[:ncol]
+            H.view(lchnk, VIEW["det_ice"])[:ncol] = np.asarray(answer["det_ice"])[:ncol]
+        for name in self._written_buffers(st, block):
+            if name in answer and name in views:
+                views[name][:ncol] = np.asarray(answer[name])[:ncol]
+
+    def _tend_python_driver(self, native: Any, context: Any) -> None:
+        """Stage 7 with its two compute blocks answered from their slots and everything around them done from memory.
+
+        Per chunk: the macrophysics block (the original driver in place, or the slot's answer written back), the
+        glue's flux terms, scaling, update and energy check; the microphysics block (activation, driver and the
+        tendency sum, or the slot's answer); scaling, update, energy check, the precipitation means, the tracer
+        mass fixer -- each of those the same Fortran call the glue makes.  Substepping is refused: the block
+        contract is drawn for ``cld_macmic_num_steps = 1``, the admitted configuration's value.
+        """
+
+        st = self.runtime(native)
+        C = st.constants
+        if C.cld_macmic_num_steps != 1:
+            raise PhysicsError(f"the Python driver of stage 7 takes cld_macmic_num_steps = 1, not {C.cld_macmic_num_steps}")
+        entries = st.entries
+        dt = float(entries.dt()) if entries.dt is not None else float(context.timestep_seconds)
+        nstep = int(entries.nstep()) if entries.nstep is not None else int(context.step)
+        st.nstep = nstep
+        for index, (lchnk, ncol) in enumerate(zip(*native.chunks)):
+            lchnk, n = int(lchnk), int(ncol)
+            try:
+                self._block_chunk(st, lchnk, n, index, dt, nstep)
+            except Exception as error:
+                print(f"[cloud python-driver] rank {getattr(st, 'rank', '?')} step {nstep} chunk {lchnk}: "
+                      f"{type(error).__name__}: {error}", flush=True)
+                raise
+        self.execution.legacy_steps += 1
+
+    def _block_chunk(self, st: StageRuntime, lchnk: int, n: int, index: int, dt: float, nstep: int) -> None:
+        """One chunk of the Python driver: see :meth:`_tend_python_driver`.  Line numbers are physpkg.F90's."""
+
+        H, C, pb = st.handles, st.constants, st.pbuf
+        L = st.local
+        log = self.calls.append
+        capture = self.block_capture
+
+        def K(name, inputs, *, outputs):
+            st.kernel_on_chunk(name, inputs, outputs=outputs, ncol=n)
+
+        V = self._block_views(st, lchnk, n, index)
+        zero = L["zero"]
+        pbv = {} if H.has_finish else {name: pb.view(name, lchnk) for name in PBUF_FIELDS}
+        # 2210: cld_macmic_ztodt = ztodt/cld_macmic_num_steps, with the count 1: the step itself
+        sub_dt = dt
+        for name in ("prec_sed_macmic", "snow_sed_macmic", "prec_pcw_macmic", "snow_pcw_macmic"):
+            st.scratch[name][...] = 0.0
+        # -- 2242-2250: the macrophysics block
+        inputs = self._block_inputs(st, MACRO_BLOCK, V, nstep, lchnk, n, sub_dt)
+        before = capture.of(MACRO_BLOCK).begin(inputs) if capture is not None else None
+        if self.process is None or isinstance(self.process, OriginalBlock):
+            if isinstance(self.process, VerifiedOriginalBlock):
+                self.process.begin(inputs)
+            census = self._census_views(st, lchnk) if isinstance(self.process, CensusBlock) else None
+            before_census = CensusBlock.snapshot(census, n) if census is not None else None
+            arrays = [V[f"cam_in_{name}"] if name in CAM_IN_FIELDS else V[name] for name in MACROP_ARGUMENTS]
+            H.macrop_driver_tend(lchnk, sub_dt, arrays); log("macrop_driver_tend")
+            if isinstance(self.process, VerifiedOriginalBlock):
+                self.process.compare(inputs, self._block_outputs(st, lchnk, n, MACRO_BLOCK, V))
+            if census is not None:
+                self.process.compare(before_census, census, n, set(self._written_buffers(st, MACRO_BLOCK)), nstep, lchnk)
+        else:
+            self._write_block(st, lchnk, n, MACRO_BLOCK, self.process(inputs), V); log("macro_block_model")
+        if before is not None:
+            capture.of(MACRO_BLOCK).finish(before, self._block_outputs(st, lchnk, n, MACRO_BLOCK, V))
+        if H.has_finish:
+            # 2254-2266 in one call
+            H.finish_macro(lchnk, n, 1, nstep, dt, V["rliq"]); log("finish_macro")
+        else:
+            det_s, det_ice = H.view(lchnk, VIEW["det_s"]), H.view(lchnk, VIEW["det_ice"])
+            # 2254-2255, 2262-2266
+            K("mm_flux_terms", {"ncol": n, "rliq": V["rliq"], "det_s": det_s}, outputs={"flx_cnd": None, "flx_heat": None})
+            H.ptend_scale(lchnk, PTEND, 1, n); log("physics_ptend_scale")
+            H.update_tend(lchnk, PTEND, dt); log("physics_update")
+            H.check_energy(lchnk, "macrop_tend", nstep, dt, 1, zero, L["flx_cnd"], det_ice, L["flx_heat"], scaled=True)
+            log("check_energy_chng:macrop_tend")
+        # -- 2317-2357: the microphysics block: activation, driver, the tendency sum
+        inputs = self._block_inputs(st, MICRO_BLOCK, V, nstep, lchnk, n, sub_dt)
+        before = capture.of(MICRO_BLOCK).begin(inputs) if capture is not None else None
+        micro_original = self.micro_process is None or isinstance(self.micro_process, OriginalBlock)
+        if micro_original:
+            if isinstance(self.micro_process, VerifiedOriginalBlock):
+                self.micro_process.begin(inputs)
+            census = self._census_views(st, lchnk) if isinstance(self.micro_process, CensusBlock) else None
+            before_census = CensusBlock.snapshot(census, n) if census is not None else None
+            H.microp_aero_run(lchnk, sub_dt); log("microp_aero_run")
+            H.microp_driver_tend(lchnk, sub_dt); log("microp_driver_tend")
+            if H.has_finish:
+                pass                                  # the sum joins the one finish call below, in the glue's order
+            else:
+                H.ptend_sum_aero(lchnk, n); log("physics_ptend_sum:ptend_aero")
+            if isinstance(self.micro_process, VerifiedOriginalBlock):
+                self.micro_process.compare(inputs, self._block_outputs(st, lchnk, n, MICRO_BLOCK, V))
+            if census is not None:
+                self.micro_process.compare(before_census, census, n, set(self._written_buffers(st, MICRO_BLOCK)), nstep, lchnk)
+        else:
+            self._write_block(st, lchnk, n, MICRO_BLOCK, self.micro_process(inputs), V); log("micro_block_model")
+        if before is not None:
+            capture.of(MICRO_BLOCK).finish(before, self._block_outputs(st, lchnk, n, MICRO_BLOCK, V))
+        if H.has_finish:
+            # 2355-2393 in one call
+            H.finish_micro(lchnk, n, 1, nstep, dt, sum_aero=micro_original); log("finish_micro")
+            return
+        # 2361-2366
+        H.ptend_scale(lchnk, PTEND, 1, n); log("physics_ptend_scale")
+        H.update_tend(lchnk, PTEND, dt); log("physics_update")
+        H.check_energy(lchnk, "microp_tend", nstep, dt, 1, zero, pbv["PREC_STR"], pbv["SNOW_STR"], zero, scaled=True)
+        log("check_energy_chng:microp_tend")
+        # 2369-2381
+        K("mm_precip_accumulate", {"ncol": n, "prec_sed": pbv["PREC_SED"], "snow_sed": pbv["SNOW_SED"],
+                                   "prec_pcw": pbv["PREC_PCW"], "snow_pcw": pbv["SNOW_PCW"]}, outputs={})
+        K("mm_precip_average", {"ncol": n, "cld_macmic_num_steps": 1},
+          outputs={"prec_sed": pbv["PREC_SED"], "snow_sed": pbv["SNOW_SED"], "prec_pcw": pbv["PREC_PCW"],
+                   "snow_pcw": pbv["SNOW_PCW"], "prec_str": pbv["PREC_STR"], "snow_str": pbv["SNOW_STR"]})
+        # 2391-2393
+        if C.trace_water:
+            H.wtrc_mass_fixer(lchnk); log("wtrc_mass_fixer")
 
     def tend(self, fields: Any, context: Any) -> None:
+        if self.block_armed:
+            native = context.native
+            if native is None:
+                raise PhysicsError(f"{type(self).__name__}.tend must run as a native process")
+            self._current_step = getattr(context, "step", getattr(context, "nstep", None))
+            self.execution.mode = "python-driver"
+            self.execution.replacements = self.replacements()
+            self._tend_python_driver(native, context)
+            return
         super().tend(fields, context)
         # the sub-walks' profiles are written with this stage's
         for stage in self.components.values():

@@ -97,7 +97,8 @@ def _declaration(hook: Hook, spec: FunctionSpec, item, *, target: bool) -> str:
         shape = "(*)" if item.rank else ""
         return f"    {C_TYPES[item.dtype]}, intent({intent}){', target' if target else ''} :: {item.name}{shape}"
     if item.carrier == "logical":
-        return f"    logical, intent({intent}) :: {item.name}"
+        shape = f"({_extents(spec, item, hook)})" if item.rank else ""
+        return f"    logical, intent({intent}) :: {item.name}{shape}"
     if item.carrier == "character":
         return f"    character(len=*), intent({intent}) :: {item.name}"
     if item.pointer:
@@ -236,8 +237,96 @@ def _model_arguments(hook: Hook, spec: FunctionSpec):
     return inputs, outputs
 
 
+def _zero_outputs(hook: Hook, spec: FunctionSpec):
+    """The outputs the hook zeroes itself: real output arrays the model does not return."""
+
+    by_name = {item.name: item for item in _dummies(spec)}
+    zeros = []
+    for name in hook.model_zero_outputs:
+        item = by_name.get(name)
+        if item is None:
+            raise SystemExit(f"hook {hook.kernel}: zeroed output {name!r} is not an argument of the contract")
+        if item.carrier or item.pointer or not item.rank or item.dtype != "float64" or ROLE_INTENT[item.role] != "out":
+            raise SystemExit(f"hook {hook.kernel}: zeroed output {name!r} must be a real intent(out) array")
+        zeros.append(item)
+    return zeros
+
+
+def _dim(spec: FunctionSpec, axis) -> int:
+    """One extent of a contract shape, by name in the contract's dimensions or as a literal."""
+
+    return int(spec.dimensions[axis]) if str(axis) in spec.dimensions else int(axis)
+
+
+def _subset(hook: Hook, spec: FunctionSpec, item):
+    """The 1-based last-axis indices the model returns for ``item``, checked against the contract; None for all."""
+
+    indices = hook.model_subset(item.name)
+    if indices is None:
+        return None
+    if item.rank not in (2, 3) or item.carrier or item.pointer or item.dtype != "float64" or ROLE_INTENT[item.role] != "out":
+        raise SystemExit(f"hook {hook.kernel}: subset output {item.name!r} must be a real intent(out) array of rank 2 or 3")
+    extent = _dim(spec, item.native_shape[-1])
+    if max(indices) > extent:
+        raise SystemExit(f"hook {hook.kernel}: the subset of {item.name!r} names index {max(indices)} beyond its extent {extent}")
+    return indices
+
+
+def _width(spec: FunctionSpec, item, hook: Hook) -> int:
+    """Elements of one column of ``item`` inside the packed tensor: the product of its extents after
+    the first, the last one replaced by the size of its subset when the model returns one."""
+
+    dims = [_dim(spec, axis) for axis in item.native_shape[1:]]
+    subset = _subset(hook, spec, item)
+    if subset is not None:
+        dims[-1] = len(subset)
+    width = 1
+    for extent in dims:
+        width *= extent
+    return width
+
+
+def _packed_copies(spec: FunctionSpec, outputs, hook: Hook) -> list[str]:
+    """Write-back of a packed output tensor: each output's columns, flattened per column as
+    TorchScript's reshape(n, -1) flattens them (the last axis fastest), into its live columns."""
+
+    lines, offset = [], 0
+    for item in outputs:
+        dims = [_dim(spec, a) for a in item.native_shape[1:]]
+        subset = _subset(hook, spec, item)
+        if subset is not None:
+            # the rest of the array is the hook's to zero; the subset's indices sit in sub_<name>
+            size = len(subset)
+            lines.append(f"      w_{item.name}{_section(item, '1:hk_n')} = 0.0_c_double")
+            if item.rank == 2:
+                lines.append(f"      do hk_s = 1, {size}")
+                lines.append(f"        w_{item.name}(1:hk_n, sub_{item.name}(hk_s)) = o_packed(1:hk_n, {offset} + hk_s)")
+                lines.append("      end do")
+            else:
+                lines.append(f"      do hk_j = 1, {dims[0]}")
+                lines.append(f"        do hk_s = 1, {size}")
+                lines.append(f"          w_{item.name}(1:hk_n, hk_j, sub_{item.name}(hk_s)) = "
+                             f"o_packed(1:hk_n, {offset} + (hk_j - 1) * {size} + hk_s)")
+                lines.append("        end do")
+                lines.append("      end do")
+        elif item.rank == 1:
+            lines.append(f"      w_{item.name}(1:hk_n) = o_packed(1:hk_n, {offset + 1})")
+        elif item.rank == 2:
+            lines.append(f"      do hk_j = 1, {dims[0]}")
+            lines.append(f"        w_{item.name}(1:hk_n, hk_j) = o_packed(1:hk_n, {offset} + hk_j)")
+            lines.append("      end do")
+        else:
+            lines.append(f"      do hk_k = 1, {dims[1]}")
+            lines.append(f"        do hk_j = 1, {dims[0]}")
+            lines.append(f"          w_{item.name}(1:hk_n, hk_j, hk_k) = o_packed(1:hk_n, {offset} + (hk_j - 1) * {dims[1]} + hk_k)")
+            lines.append("        end do")
+            lines.append("      end do")
+        offset += _width(spec, item, hook)
+    return lines
+
+
 def _section(item, lead: str) -> str:
-    """``name(1:n, :, :)``-style section over the live columns of a rank-N array."""
+    """``name(1:hk_n, :, :)``-style section over the live columns of a rank-N array."""
 
     return f"({lead}" + "".join(", :" for _ in range(item.rank - 1)) + ")"
 
@@ -247,6 +336,8 @@ def _model_procedure(hook: Hook, spec: FunctionSpec, index: int) -> str:
 
     dummies = _dummies(spec)
     inputs, outputs = _model_arguments(hook, spec)
+    zeros = _zero_outputs(hook, spec)
+    packed = hook.model_packed
     names = ", ".join(item.name for item in dummies)
     ncol = next((item.name for item in dummies if item.name.lower() == "ncol"), None)
     plain = hook.binding == "fortran"
@@ -254,9 +345,19 @@ def _model_procedure(hook: Hook, spec: FunctionSpec, index: int) -> str:
     lines = [f"  subroutine model_{hook.kernel}({names})",
              f"    ! {spec.qualified_name} answered by the model bound at hook {index}, inside the image"]
     lines.extend(_declaration(hook, spec, item, target=True) for item in dummies)
-    lines.append(f"    type(torch_tensor) :: in_t({len(inputs)}), out_t({len(outputs)})")
-    lines.append(f"    type(c_ptr) :: in_p({len(inputs)}), out_p({len(outputs)})")
-    lines.append(f"    integer(c_int64_t) :: in_s(3, {len(inputs)}), out_s(3, {len(outputs)})")
+    n_out_t = 1 if packed else len(outputs)
+    lines.append(f"    type(torch_tensor) :: in_t({len(inputs)}), out_t({n_out_t})")
+    lines.append(f"    type(c_ptr) :: in_p({len(inputs)}), out_p({max(len(outputs), 1)})")
+    lines.append(f"    integer(c_int64_t) :: in_s(3, {len(inputs)}), out_s(3, {max(len(outputs), 1)})")
+    if packed:
+        lead = _axis(hook, spec, outputs[0].native_shape[0])
+        lines.append(f"    real(c_double), target :: o_packed({lead}, {sum(_width(spec, o, hook) for o in outputs)})")
+        lines.append("    real(c_double), pointer, contiguous :: op_packed(:,:)")
+        lines.append("    integer :: hk_j, hk_k, hk_s")
+        for item in outputs:
+            subset = _subset(hook, spec, item)
+            if subset is not None:
+                lines.append(f"    integer, parameter :: sub_{item.name}({len(subset)}) = (/ {', '.join(str(i) for i in subset)} /)")
     lines.append("    procedure(plugin_interface), pointer :: plugin => null()")
     lines.append("    integer(c_int) :: plugin_status")
     for item in inputs:
@@ -271,12 +372,16 @@ def _model_procedure(hook: Hook, spec: FunctionSpec, index: int) -> str:
             lines.append(f"    real(c_double), pointer, contiguous :: v_{item.name}({colons})")
     for item in outputs:
         colons = ",".join(":" for _ in range(item.rank))
-        lines.append(f"    real(c_double), target :: o_{item.name}({_extents(spec, item, hook)})")
-        lines.append(f"    real(c_double), pointer, contiguous :: op_{item.name}({colons})")
+        if not packed:
+            lines.append(f"    real(c_double), target :: o_{item.name}({_extents(spec, item, hook)})")
+            lines.append(f"    real(c_double), pointer, contiguous :: op_{item.name}({colons})")
         lines.append(f"    real(c_double), pointer, contiguous :: w_{item.name}({colons})")
-    lines.append("    integer :: n")
-    lines.append("    integer(c_int64_t) :: t0, t1, t2")
-    lines.append("    call system_clock(t0)")
+    for item in zeros:
+        colons = ",".join(":" for _ in range(item.rank))
+        lines.append(f"    real(c_double), pointer, contiguous :: w_{item.name}({colons})")
+    lines.append("    integer :: hk_n")
+    lines.append("    integer(c_int64_t) :: hk_t0, hk_t1, hk_t2")
+    lines.append("    call system_clock(hk_t0)")
     for slot, item in enumerate(inputs, start=1):
         if item.rank == 0:
             value = item.name if item.dtype == "float64" else f"real({item.name}, c_double)"
@@ -298,29 +403,56 @@ def _model_procedure(hook: Hook, spec: FunctionSpec, index: int) -> str:
             lines.append(f"    call c_f_pointer(c_loc({first(item)}), v_{item.name}, (/ {_extents(spec, item, hook)} /))")
             lines.append(f"    in_p({slot}) = c_loc({first(item)}); in_s(:, {slot}) = (/ {_shape3(hook, spec, item)} /)")
             lines.append(f"    if (.not. plugged({index})) call torch_tensor_from_array(in_t({slot}), v_{item.name}, torch_kCPU)")
-    for slot, item in enumerate(outputs, start=1):
-        lines.append(f"    op_{item.name} => o_{item.name}")
-        lines.append(f"    out_p({slot}) = c_loc(o_{item.name}); out_s(:, {slot}) = (/ {_shape3(hook, spec, item)} /)")
-        lines.append(f"    if (.not. plugged({index})) call torch_tensor_from_array(out_t({slot}), op_{item.name}, torch_kCPU)")
-    lines.append("    call system_clock(t1)")
+    if packed:
+        lines.append("    op_packed => o_packed")
+        lines.append(f"    if (.not. plugged({index})) call torch_tensor_from_array(out_t(1), op_packed, torch_kCPU)")
+    else:
+        for slot, item in enumerate(outputs, start=1):
+            lines.append(f"    op_{item.name} => o_{item.name}")
+            lines.append(f"    out_p({slot}) = c_loc(o_{item.name}); out_s(:, {slot}) = (/ {_shape3(hook, spec, item)} /)")
+            lines.append(f"    if (.not. plugged({index})) call torch_tensor_from_array(out_t({slot}), op_{item.name}, torch_kCPU)")
+    lines.append("    call system_clock(hk_t1)")
     lines.append(f"    if (plugged({index})) then")
-    lines.append("      ! a compiled plugin: the same arrays as pointer and extent tables, outputs zeroed first")
-    for item in outputs:
-        lines.append(f"      o_{item.name} = 0.0_c_double")
-    lines.append(f"      call c_f_procpointer(plugins({index}), plugin)")
-    lines.append(f"      plugin_status = plugin({len(inputs)}_c_int, in_p, in_s, {len(outputs)}_c_int, out_p, out_s)")
-    lines.append(f"      if (plugin_status /= 0_c_int) error stop 'pycam_hooks: the plugin bound at {hook.kernel} returned a non-zero status'")
+    if packed:
+        # a plugin (a Python callback or compiled code) takes the inputs as pointer and extent
+        # tables and fills the one packed output, zeroed first; the write-back below is shared
+        lead = _axis(hook, spec, outputs[0].native_shape[0])
+        width = sum(_width(spec, o, hook) for o in outputs)
+        lines.append("      o_packed = 0.0_c_double")
+        lines.append(f"      out_p(1) = c_loc(o_packed); out_s(:, 1) = (/ int({lead}, c_int64_t), int({width}, c_int64_t), 0_c_int64_t /)")
+        lines.append(f"      call c_f_procpointer(plugins({index}), plugin)")
+        lines.append(f"      plugin_status = plugin({len(inputs)}_c_int, in_p, in_s, 1_c_int, out_p, out_s)")
+        lines.append(f"      if (plugin_status /= 0_c_int) error stop 'pycam_hooks: the plugin bound at {hook.kernel} returned a non-zero status'")
+    else:
+        lines.append("      ! a compiled plugin: the same arrays as pointer and extent tables, outputs zeroed first")
+        for item in outputs:
+            lines.append(f"      o_{item.name} = 0.0_c_double")
+        lines.append(f"      call c_f_procpointer(plugins({index}), plugin)")
+        lines.append(f"      plugin_status = plugin({len(inputs)}_c_int, in_p, in_s, {len(outputs)}_c_int, out_p, out_s)")
+        lines.append(f"      if (plugin_status /= 0_c_int) error stop 'pycam_hooks: the plugin bound at {hook.kernel} returned a non-zero status'")
     lines.append("    else")
     lines.append(f"      call torch_model_forward(models({index}), in_t, out_t)")
     lines.append("    end if")
-    lines.append("    call system_clock(t2)")
-    lines.append(f"    forward_ticks({index}) = forward_ticks({index}) + (t2 - t1)")
+    lines.append("    call system_clock(hk_t2)")
+    lines.append(f"    forward_ticks({index}) = forward_ticks({index}) + (hk_t2 - hk_t1)")
     lines.append(f"    if (.not. shadow({index})) then")
-    for item in outputs:
+    if packed:
+        lead = _axis(hook, spec, outputs[0].native_shape[0])
+        lines.append(f"      hk_n = min(int({ncol}), {lead})" if ncol else f"      hk_n = {lead}")
+        for item in outputs:
+            lines.append(f"      call c_f_pointer(c_loc({first(item)}), w_{item.name}, (/ {_extents(spec, item, hook)} /))")
+        lines.extend(_packed_copies(spec, outputs, hook))
+    else:
+        for item in outputs:
+            lead = _axis(hook, spec, item.native_shape[0])
+            lines.append(f"      hk_n = min(int({ncol}), {lead})" if ncol else f"      hk_n = {lead}")
+            lines.append(f"      call c_f_pointer(c_loc({first(item)}), w_{item.name}, (/ {_extents(spec, item, hook)} /))")
+            lines.append(f"      w_{item.name}{_section(item, '1:hk_n')} = o_{item.name}{_section(item, '1:hk_n')}")
+    for item in zeros:
         lead = _axis(hook, spec, item.native_shape[0])
-        lines.append(f"      n = min(int({ncol}), {lead})" if ncol else f"      n = {lead}")
+        lines.append(f"      hk_n = min(int({ncol}), {lead})" if ncol else f"      hk_n = {lead}")
         lines.append(f"      call c_f_pointer(c_loc({first(item)}), w_{item.name}, (/ {_extents(spec, item, hook)} /))")
-        lines.append(f"      w_{item.name}{_section(item, '1:n')} = o_{item.name}{_section(item, '1:n')}")
+        lines.append(f"      w_{item.name}{_section(item, '1:hk_n')} = 0.0_c_double")
     for item in dummies:
         if item.carrier == "character" and ROLE_INTENT[item.role] != "in":
             lines.append(f"      {item.name} = ' '")
@@ -329,8 +461,8 @@ def _model_procedure(hook: Hook, spec: FunctionSpec, index: int) -> str:
     lines.append("      call torch_delete(in_t)")
     lines.append("      call torch_delete(out_t)")
     lines.append("    end if")
-    lines.append("    call system_clock(t1)")
-    lines.append(f"    model_ticks({index}) = model_ticks({index}) + (t1 - t0)")
+    lines.append("    call system_clock(hk_t1)")
+    lines.append(f"    model_ticks({index}) = model_ticks({index}) + (hk_t1 - hk_t0)")
     lines.append(f"  end subroutine model_{hook.kernel}")
     return "\n".join(lines)
 
@@ -345,10 +477,15 @@ def _warm_procedure(hook: Hook, spec: FunctionSpec, index: int) -> str:
     """
 
     inputs, outputs = _model_arguments(hook, spec)
+    packed = hook.model_packed
     lines = [f"  subroutine warm_{hook.kernel}()",
              f"    ! the model bound at hook {index} run once on zeros of the contract's extents"]
-    lines.append(f"    type(torch_tensor) :: in_t({len(inputs)}), out_t({len(outputs)})")
-    for prefix, items in (("z", inputs), ("y", outputs)):
+    lines.append(f"    type(torch_tensor) :: in_t({len(inputs)}), out_t({1 if packed else len(outputs)})")
+    if packed:
+        lead = _axis(hook, spec, outputs[0].native_shape[0])
+        lines.append(f"    real(c_double), target :: y_packed({lead}, {sum(_width(spec, o, hook) for o in outputs)})")
+        lines.append("    real(c_double), pointer, contiguous :: yp_packed(:,:)")
+    for prefix, items in (("z", inputs), ("y", [] if packed else outputs)):
         for item in items:
             colons = ",".join(":" for _ in range(max(item.rank, 1)))
             extents = _extents(spec, item) if item.rank else "1"
@@ -358,9 +495,13 @@ def _warm_procedure(hook: Hook, spec: FunctionSpec, index: int) -> str:
         lines.append(f"    z_{item.name} = 0.0_c_double")
         lines.append(f"    zp_{item.name} => z_{item.name}")
         lines.append(f"    call torch_tensor_from_array(in_t({slot}), zp_{item.name}, torch_kCPU)")
-    for slot, item in enumerate(outputs, start=1):
-        lines.append(f"    yp_{item.name} => y_{item.name}")
-        lines.append(f"    call torch_tensor_from_array(out_t({slot}), yp_{item.name}, torch_kCPU)")
+    if packed:
+        lines.append("    yp_packed => y_packed")
+        lines.append("    call torch_tensor_from_array(out_t(1), yp_packed, torch_kCPU)")
+    else:
+        for slot, item in enumerate(outputs, start=1):
+            lines.append(f"    yp_{item.name} => y_{item.name}")
+            lines.append(f"    call torch_tensor_from_array(out_t({slot}), yp_{item.name}, torch_kCPU)")
     lines.append(f"    call torch_model_forward(models({index}), in_t, out_t)")
     lines.append("    call torch_delete(in_t)")
     lines.append("    call torch_delete(out_t)")

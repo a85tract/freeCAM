@@ -27,10 +27,20 @@ _CTYPES: dict[str, Any] = {
 }
 
 
+def _character_length(dtype: str) -> int | None:
+    """``S<n>``: a Fortran character(len=n) module variable; None for every other dtype."""
+
+    if dtype.startswith("S") and dtype[1:].isdigit():
+        return int(dtype[1:])
+    return None
+
+
 def module_view(library: ctypes.CDLL, symbol: str, dtype: str, shape: tuple[int, ...]) -> np.ndarray:
     """A live, writable NumPy view of one module variable in the image."""
 
     ctype = _CTYPES.get(dtype)
+    if ctype is None and _character_length(dtype):
+        ctype = ctypes.c_char * _character_length(dtype)
     if ctype is None:
         raise PhysicsError(f"module state dtype {dtype!r} is not supported")
     count = 1
@@ -40,13 +50,13 @@ def module_view(library: ctypes.CDLL, symbol: str, dtype: str, shape: tuple[int,
         storage = (ctype * count).in_dll(library, symbol)
     except ValueError as error:
         raise PhysicsError(f"image has no symbol {symbol!r}") from error
-    view = np.frombuffer(storage, dtype=np.dtype("S16") if dtype == "S16" else np.dtype(dtype), count=count)
+    view = np.frombuffer(storage, dtype=np.dtype(dtype), count=count)
     return view.reshape(shape, order="F") if shape else view.reshape(())
 
 
 def _values(view: np.ndarray, dtype: str) -> list[Any]:
     flat = view.reshape(-1, order="F")
-    if dtype == "S16":
+    if _character_length(dtype):
         return [item.decode("ascii", errors="replace") for item in flat.tolist()]
     if dtype == "float64":
         return [float(item) for item in flat.tolist()]
@@ -226,8 +236,9 @@ class StandaloneImage:
         items = list(values) if isinstance(values, (list, tuple)) else [values]
         if len(items) != flat.size:
             raise PhysicsError(f"{entry.symbol} takes {flat.size} values, got {len(items)}")
-        if entry.dtype == "S16":
-            flat[...] = np.array([str(item).ljust(16).encode("ascii") for item in items], dtype="S16")
+        width = _character_length(entry.dtype)
+        if width:
+            flat[...] = np.array([str(item).ljust(width).encode("ascii") for item in items], dtype=entry.dtype)
         else:
             flat[...] = np.asarray(items, dtype=np.dtype(entry.dtype))
 
@@ -249,7 +260,7 @@ class StandaloneImage:
             if entry.expected is not None:
                 expected = entry.expected if isinstance(entry.expected, list) else [entry.expected]
                 actual = list(recorded["values"])[: len(expected)]
-                if entry.dtype == "S16":
+                if _character_length(entry.dtype):
                     actual = [str(item).strip() for item in actual]
                 if actual != expected:
                     raise ModuleStateMismatch(

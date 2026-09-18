@@ -277,7 +277,9 @@ def audit_image_symbols(image: Path, spec: FunctionSpec, wrapper_symbol: str) ->
     for entry in spec.module_state:
         if entry.symbol not in defined:
             raise RuntimeError(f"image lacks module state symbol {entry.symbol}")
-        expected = ITEMSIZE[entry.dtype]
+        expected = ITEMSIZE[entry.dtype] if entry.dtype in ITEMSIZE else int(entry.dtype[1:]) if entry.dtype.startswith("S") else None
+        if expected is None:
+            raise RuntimeError(f"module state {entry.symbol}: no item size known for dtype {entry.dtype!r}")
         for extent in entry.shape:
             expected *= int(extent)
         actual = defined[entry.symbol][1]

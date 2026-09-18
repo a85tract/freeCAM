@@ -87,11 +87,14 @@ def test_the_generated_module_answers_a_bound_model_inside_the_image() -> None:
     assert "s_k(1) = real(k, c_double)" in text
     assert "call c_f_pointer(c_loc(p_in(1)), v_p_in, (/ 16 /))" in text
     # the live columns are written back, the padding lanes left as CAM had them
-    assert "n = min(int(ncol), 16)" in text and "t_out(1:n) = o_t_out(1:n)" in text
+    assert "hk_n = min(int(ncol), 16)" in text and "t_out(1:hk_n) = o_t_out(1:hk_n)" in text
     # only the hooks with a model block have the branch; the others cannot be bound
-    assert text.count("call model_") == 3
-    assert "has_model(nhooks) = (/ .true., .false., .true., .true. /)" in text
-    assert "can_pause(nhooks) = (/ .true., .true., .true., .false. /)" in text
+    table = load_hooks()
+    flags = lambda values: "(/ " + ", ".join(".true." if v else ".false." for v in values) + " /)"  # noqa: E731
+    assert text.count("call model_") == sum(1 for hook in table.hooks if hook.takes_model)
+    assert not table.hook("fluxbelowinv").takes_model and table.hook("cldfrc_fice").takes_model
+    assert f"has_model(nhooks) = {flags(hook.takes_model for hook in table.hooks)}" in text
+    assert f"can_pause(nhooks) = {flags(hook.pausable for hook in table.hooks)}" in text
     # a Fortran-bound hook: the callee's own kinds, no bind(C), no frame, a model over rank-2 and rank-3 arrays
     assert "subroutine hook_micro_mg_tend(microp_uniform, pcols, pver, ncol" in text and "bind(C, name='pycam_hooks_mp" not in text
     assert "    logical, intent(in) :: microp_uniform" in text and "    character(len=*), intent(out) :: errstring" in text
@@ -100,9 +103,9 @@ def test_the_generated_module_answers_a_bound_model_inside_the_image() -> None:
     # packed arrays: the callee's own pcols/pver dummies size every array, not the contract's constants
     assert "real(c_double), intent(in), target :: tn(pcols, pver)" in text
     assert "call c_f_pointer(c_loc(rndst), v_rndst, (/ pcols, pver, 4 /))" in text
-    assert "real(c_double), target :: o_rflx(pcols, pver+1)" in text and "n = min(int(ncol), pcols)" in text
+    assert "real(c_double), target :: o_rflx(pcols, pver+1)" in text and "hk_n = min(int(ncol), pcols)" in text
     assert "l_tnd_qsnow = tnd_qsnow(1:pcols, 1:pver)" in text
-    assert "w_qc(1:n, :) = o_qc(1:n, :)" in text and "w_prect(1:n) = o_prect(1:n)" in text
+    assert "w_qc(1:hk_n, :) = o_qc(1:hk_n, :)" in text and "w_prect(1:hk_n) = o_prect(1:hk_n)" in text
     # the bind(C) hook keeps the contract's fixed extents (module arrays of pcols)
     assert "call c_f_pointer(c_loc(p_in(1)), v_p_in, (/ 16 /))" in text
     assert "if (associated(tnd_qsnow)) then" in text and "errstring = ' '" in text
@@ -116,7 +119,7 @@ def test_the_generated_module_answers_a_bound_model_inside_the_image() -> None:
     assert "if (flag /= 0_c_int .and. modeled(hook)) then" in text
     # the warm-up at bind: one forward on zeros of the contract's extents, timed apart from the calls
     assert "call torch_model_load(models(hook), filename(1:length), torch_kCPU)\n" in text
-    assert text.count("\n  subroutine warm_") == 4 and "      call warm_micro_mg_tend()" in text
+    assert text.count("\n  subroutine warm_") == len(table.hooks) and "      call warm_micro_mg_tend()" in text
     # a compiled plugin takes the same arrays as pointer and extent tables, in place of the forward
     assert "bind(C, name='pycam_hooks_bind_plugin_v1')" in text and "type(c_funptr), save :: plugins(nhooks)" in text
     assert "plugin_status = plugin(19_c_int, in_p, in_s, 8_c_int, out_p, out_s)" in text
@@ -127,7 +130,7 @@ def test_the_generated_module_answers_a_bound_model_inside_the_image() -> None:
     assert "real(c_double), target :: z_tn(16, 30)" in text and "real(c_double), target :: y_rflx(16, 31)" in text
     assert "warm_ticks(hook) = w1 - w0" in text and "warm_seconds = real(warm_ticks(hook), c_double)" in text
     # in shadow the original is timed too, on the same calls: both prices from one run
-    assert "original_ticks(4) = original_ticks(4) + (h1 - h0)" in text and text.count("original_ticks(") == 8
+    assert "original_ticks(4) = original_ticks(4) + (h1 - h0)" in text and text.count("original_ticks(") == 2 * len(table.hooks)
     # per-rank timers: the whole model call as the hook sees it, and the first call alone
     assert "hook_ticks(4) = hook_ticks(4) + (h1 - h0)" in text
     assert "if (answered(4) == 1_c_int64_t) first_ticks(4) = h1 - h0" in text
@@ -240,7 +243,7 @@ def test_a_stage_with_a_native_model_runs_whole_and_binds_once(tmp_path: Path, m
         stage.select_mode(None)
     # a kernel that is not a hook cannot take a native model
     other = CloudMacroMicrophysics()
-    other.kernels["mmacro_pcond"] = model
+    other.kernels["macrop_advective_forcing"] = model
     with pytest.raises(PhysicsError, match="not a hooked kernel"):
         other.tend(None, context)
 
@@ -355,3 +358,92 @@ def test_a_stage_binds_a_compiled_plugin_at_the_hook_and_runs_whole(tmp_path: Pa
     # identically although its code sits at another address (7402200)
     again = compile_kernel("cldfrc_fice", _fice_module().cldfrc_fice, shadow=True)
     assert again.address != address and cloudpickle.dumps(again) == payload
+
+
+def test_a_function_over_the_kernels_arrays_in_a_hooked_slot_is_compiled_and_fortran_calls_it() -> None:
+    pytest.importorskip("numba")
+    import numpy as np
+
+    from freecam.physics.cloud_macro_microphysics import CloudMacroMicrophysics
+    from freecam.physics.native_model import NativePlugin
+    from freecam.physics.numba_kernel import call_plugin_from_python
+
+    module = _fice_module()
+    stage = CloudMacroMicrophysics()
+    stage.kernels["cldfrc_fice"] = module.cldfrc_fice                        # def cldfrc_fice(t, fice, fsnow): the arrays
+    assert stage.select_mode(None) == "native-model" and stage.binding_kind("cldfrc_fice") == "numba"
+    plugin = stage._hook_bindings()["cldfrc_fice"]
+    assert isinstance(plugin, NativePlugin) and plugin.describe()["binding"] == "numba" and not plugin.shadow
+    assert stage._hook_bindings()["cldfrc_fice"] is plugin                     # compiled once, while the function stays
+    rng = np.random.default_rng(0)
+    t = np.asfortranarray(rng.uniform(200.0, 300.0, size=(16, 30)))
+    fice, fsnow = np.zeros((16, 30), order="F"), np.zeros((16, 30), order="F")
+    assert call_plugin_from_python(plugin, [t], [fice, fsnow]) == 0             # what Fortran calls: compiled code, no interpreter
+    ref_fice, ref_fsnow = module.cldfrc_fice_reference(t)
+    assert np.array_equal(fice, ref_fice) and np.array_equal(fsnow, ref_fsnow)
+    library = _Library()
+    ran: list[str] = []
+    native = SimpleNamespace(library=library, run_action=lambda name, phase=None: ran.append(name),
+                             segment_runner=lambda stage_name: None)
+    context = SimpleNamespace(native=native, step=1)
+    stage.tend(None, context)
+    stage.tend(None, context)
+    assert ran == [stage.STAGE, stage.STAGE] and library.plugged == [(1, plugin.address, 0)]   # fice is hook 1, bound once
+    # the same function under the segmented policy answers at the pause; a function of one batch always does
+    stage.execution_policy = "segmented"
+    covering = SimpleNamespace(segment_runner=lambda stage_name: SimpleNamespace(kernels=("cldfrc_fice",)))
+    assert stage.select_mode(covering) == "segmented"
+    stage.execution_policy = "auto"
+    stage.kernels["cldfrc_fice"] = lambda batch: {}
+    assert stage.binding_kind("cldfrc_fice") == "callable" and stage.select_mode(covering) == "segmented"
+    # a function of the arrays that Numba cannot compile is refused, not run from the interpreter
+    def not_compilable(t, fice, fsnow):
+        fice[0, 0] = float(id(object()))                # a Python object: nopython mode has none
+
+    stage.kernels["cldfrc_fice"] = not_compilable
+    with pytest.raises(PhysicsError, match="must compile with Numba"):
+        stage.select_mode(None)
+
+
+def test_a_compiled_function_fills_a_packed_output_in_the_hooks_layout() -> None:
+    pytest.importorskip("numba")
+    import numpy as np
+
+    from freecam.physics.numba_kernel import _model_block, adapter_source, call_plugin_from_python, compile_kernel, packed_layout
+
+    hook, spec, inputs, outputs = _model_block("compute_uwshcu_inv")
+    layout = {entry["name"]: entry for entry in packed_layout(hook, spec, outputs)}
+    assert layout["cush"]["offset"] == 0 and layout["umf_inv"]["offset"] == 1 and layout["umf_inv"]["width"] == 31
+    assert layout["trten_inv"]["offset"] == 582 and layout["trten_inv"]["packed"] == [30, 12] and layout["trten_inv"]["subset"][0] == 10
+    assert layout["wtprec"]["offset"] == 1182 and layout["wtsnow"]["offset"] == 1186 and sum(e["width"] for e in layout.values()) == 1190
+    source = adapter_source("compute_uwshcu_inv", inputs, outputs, layout=packed_layout(hook, spec, outputs))
+    assert "packed = farray(out_ptrs[0], (out_shapes[0], out_shapes[1]), float64)" in source
+    assert "o26 = np.zeros((n, 30, 12,))" in source and "packed[i, 582 + j * 12 + k] = o26[i, j, k]" in source
+    names = [f"in_{item.name}" for item in inputs] + [f"out_{item.name}" for item in outputs]   # cush is in and out
+    body = "\n".join([
+        f"def constants({', '.join(names)}):",
+        "    n = in_t0_inv.shape[0]",
+        "    for i in range(n):",
+        "        out_cush[i] = 3.0",
+        "        out_cnb_inv[i] = float(i)",
+        "        for j in range(31):",
+        "            out_umf_inv[i, j] = 4.0",
+        "        for j in range(30):",
+        "            out_trten_inv[i, j, 0] = 1.0",       # H2OV, constituent 10: the first slot of the subset
+        "        out_trten_inv[i, 5, 11] = 2.0",          # H218OI, constituent 33: the last slot, one level
+        "        for s in range(4):",
+        "            out_wtprec[i, s] = 5.0",
+    ])
+    namespace: dict = {}
+    exec(body, namespace)
+    plugin = compile_kernel("compute_uwshcu_inv", namespace["constants"])
+    shapes = {item.name: [16] + [int(spec.dimensions[a]) if str(a) in spec.dimensions else int(a) for a in item.native_shape[1:]]
+              for item in inputs if item.rank}
+    ins = [np.zeros(shapes[item.name], order="F") + 1.0 if item.rank else 1800.0 for item in inputs]
+    packed = np.zeros((16, 1190), order="F")
+    assert call_plugin_from_python(plugin, ins, [packed]) == 0
+    assert np.all(packed[:, 0] == 3.0) and np.all(packed[:, 1:32] == 4.0) and np.all(packed[:, 32:581] == 0.0)
+    assert np.array_equal(packed[:, 581], np.arange(16.0))                       # cnb_inv is the last bulk column
+    tr = packed[:, 582:942].reshape(16, 30, 12)                                   # level-major, the subset's 12 slots
+    assert np.all(tr[:, :, 0] == 1.0) and tr[0, 5, 11] == 2.0 and tr[0, 4, 11] == 0.0 and np.all(tr[:, :, 1:11] == 0.0)
+    assert np.all(packed[:, 942:1182] == 0.0) and np.all(packed[:, 1182:1186] == 5.0) and np.all(packed[:, 1186:] == 0.0)

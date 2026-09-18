@@ -86,12 +86,40 @@ items:
   owner: claude
   branch: physics-kernel-api-closure
   started_at: '2026-09-12'
-  updated_at: '2026-09-12'
-  next_gate: 'a network good enough to use: more captured data, the longwave near the surface, the clear-sky
-    and TOA diagnostics; then a paired year'
-  note: 'Month pair on main (replayed boundary, same image and class): Radiation installed and nothing
-    bound 401.3 s over 1,488 steps, bit-for-bit with the monthly oracle (7418517); the 256-wide emulator
-    at the slot 363.9 s, nine percent shorter, 761,856 plugin calls at 1.31 ms each, radiation 2.9 s a
-    rank against 34.2 (7418518). Finite for the month; thirteen water-isotope check lines against none
-    in the baseline; the radiation budget drifts by 4 to 5 W/m2 in the global mean over the month (drift
-    record kept). The mechanism is closed; the network is the open problem.'
+  updated_at: '2026-09-13'
+  next_gate: 'a network good enough to use: the zenith angle given back to the block model, more captured
+    data, the longwave near the surface, the clear-sky and TOA diagnostics; then a paired year'
+  note: 'Month pair on main (replayed boundary): Radiation installed and nothing bound 401.3 s over 1,488
+    steps, bit-for-bit (7418517); the 256-wide emulator at the slot 363.9 s, nine percent shorter (7418518),
+    the radiation budget drifting 4 to 5 W/m2 over the month. Four ways to answer the radiation now, all
+    gated: a compiled Python kernel at the slot, called by Fortran (0.23 s a rank per 50 steps, 7418444);
+    a TorchScript model through FTorch (64-wide transformer 0.72 s, 7431803); Python at the runner''s
+    pause (the same MLP 0.82 s, 7434965; the original branch through the pause bit-for-bit, 7434783);
+    and the Python driver with a model of the whole compute block (p24: the day-1 capture replayed through
+    it bit-for-bit in state, 7436003; the block emulator 0.38 s a rank once compiled, 7436082, drifting
+    1.5 K/day because it must learn the zenith angle). The 64-wide transformer priced on the other two paths
+    (p24): written out in Numba as a plugin 12.5 ms a call, rad_tend 0.84 s a rank (shadow 7439472 bit-for-bit,
+    live 7439535, 0.17 K rms); its block contract through the Python driver 15.5 ms a call, half of it the
+    view-to-tensor conversion, rad_tend 1.20 s (7439603, 1.27 K rms); FTorch at the slot stays the cheapest at
+    7.1 ms. A month on each path (p24, 7452662-7452667): the MLP plugin 366.2 s against 400.2 with nothing bound, the
+    MLP through the Python driver 371.9 s (6 s of it the first call''s compile); the transformer 385.4 s as a plugin,
+    374.3 s through the driver; the block models (no zenith angle given) are physically unusable over the month
+    (-46 and -243 W/m2 of net shortwave), the slot models drift 4-5 W/m2 as before. The mechanism is closed in
+    every form; the network is the open problem. The cloud macro/microphysics stage (mmacro_pcond''s) has the same
+    Python-driver form since 2026-09-14 (p26): two block contracts (cloud_block.MACRO_BLOCK, MICRO_BLOCK), captured
+    (7453135) and replayed bit-for-bit in state (7453150; the halves 7452498, 7453151), the driver 0.37 s a rank per
+    50 steps over native-whole; no model of either block yet, and no history entry (the drivers'' 141 outfld
+    diagnostics are not reproduced by a replay). First networks for the macrophysics block (p26): a core MLP
+    (969 in, 632 out, 0.48M) answers the block in 2.7 ms against macrop_tend''s 6.6, the stage 2.34 s a rank
+    against 1.96 (7454277), drifting 5.8 K in 50 steps; the radiation MLP through the Python driver with a NumPy
+    forward runs the month in 359.5 s, the fastest path (7454279). Round 3 of the cloud driver (p27, 2026-09-14): the
+    bookkeeping is one finish entry a block (pycam_mm_finish_macro_v1, pycam_mm_finish_micro_v1), the originals through
+    the driver bit-for-bit at 2.28 s a rank for the stage (7457385), the replay 0.51 s (7456791); a core network for the
+    microphysics block as well (2053 in, 1479 out, 0.47M) and the networks'' water clamped at -q/dt; both blocks as NumPy
+    networks run the stage in 1.24 s a rank against the original''s 1.96 and the loop in 15.47 against 15.95 (7457386;
+    3.1 and 3.3 ms a call), drifting 6.1 K rms in 50 steps -- the networks, not the mechanism, are what is open.
+    The fine-grained walk (legacy-python) bound once, 2026-09-15: kernel call sites resolved once per set of objects
+    handed, outputs written in place, the drivers'' state copies kept between calls (image p28, pycam_state_copy):
+    the cloud stage''s walk 4.03 -> 3.06 s a rank against 1.96 native-whole, the step loop 18.33 -> 16.98 against
+    16.00, bit-for-bit throughout (7473911 to 7475430); the Fortran regions are at the original''s cost and
+    about 1.1 s of Python around fifty-one kernel calls a chunk remain.'

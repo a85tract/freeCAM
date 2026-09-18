@@ -202,6 +202,15 @@ class CapturedColumns(Distribution):
 
     ``columns`` maps an argument name to its captured values, leading axis the
     column.  ``produces`` names the arguments answered together.
+
+    ``derived`` keeps arguments consistent after the perturbation: it maps a
+    produced name to ``fn(rng, anchor, drawn)``, where ``anchor`` holds the
+    drawn column's captured values, unperturbed, and ``drawn`` the perturbed
+    answers so far, in ``produces`` order; the rule's return replaces the
+    argument.  It is how a static energy follows its perturbed temperature, or a
+    tracer array keeps its water constituents equal to the perturbed water and
+    its isotopes at the column's own ratios -- states a perturbation of the
+    arguments one by one would put off the manifold in a way the routine sees.
     """
 
     columns: Mapping[str, np.ndarray]
@@ -210,6 +219,7 @@ class CapturedColumns(Distribution):
     absolute_scale: Mapping[str, float] = field(default_factory=dict)
     absolute_probability: Mapping[str, float] = field(default_factory=dict)
     clip: Mapping[str, tuple[Any, Any]] = field(default_factory=dict)
+    derived: Mapping[str, Any] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         if not self.produces:
@@ -217,6 +227,9 @@ class CapturedColumns(Distribution):
         missing = [name for name in self.produces if name not in self.columns]
         if missing:
             raise PhysicsError("CapturedColumns has no captured values for: " + ", ".join(missing))
+        stray = [name for name in self.derived if name not in self.produces]
+        if stray:
+            raise PhysicsError("CapturedColumns derives arguments it does not produce: " + ", ".join(stray))
         lengths = {int(np.asarray(self.columns[name]).shape[0]) for name in self.produces}
         if len(lengths) != 1:
             raise PhysicsError(f"captured arguments disagree on how many columns they hold: {sorted(lengths)}")
@@ -235,7 +248,11 @@ class CapturedColumns(Distribution):
     def sample(self, rng, shape, drawn):
         index = int(rng.integers(0, self.length))
         answer: dict[str, np.ndarray] = {}
+        anchor = {name: np.array(values[index], dtype=np.float64) for name, values in self.columns.items()} if self.derived else {}
         for name in self.produces:
+            if name in self.derived:
+                answer[name] = _clip(np.asarray(self.derived[name](rng, anchor, answer), dtype=np.float64), self.clip.get(name))
+                continue
             value = np.array(self.columns[name][index], dtype=np.float64)
             relative = float(self.relative_scale.get(name, 0.0))
             if relative:
@@ -261,7 +278,8 @@ class CapturedColumns(Distribution):
         gated = ", ".join(f"{name}@{rate_of(rate)}"
                           for name, rate in sorted(self.absolute_probability.items()))
         return (f"CapturedColumns({self.length} columns, {len(self.produces)} arguments, "
-                f"{perturbed} perturbed" + (f", gated {gated}" if gated else "") + ")")
+                f"{perturbed} perturbed" + (f", gated {gated}" if gated else "")
+                + (f", derived {', '.join(sorted(self.derived))}" if self.derived else "") + ")")
 
 
 @dataclass(frozen=True, repr=False)

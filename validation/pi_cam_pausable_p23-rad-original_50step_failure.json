@@ -1,0 +1,26 @@
+{
+ "schema_version": 1,
+ "what": "The original branch through the runner's pause at the process slot (bit-for-bit expected).",
+ "pbs_job_id": "7434628.desched1",
+ "run_tag": "p23-rad-original",
+ "kernel_models": {
+  "radiation_process": {
+   "answerer": "original-at-slot"
+  }
+ },
+ "job": "validation/jobs/pi_cam_pausable_50step.pbs",
+ "python_stages": [
+  "rad_tend"
+ ],
+ "native_image": "build/pi_cam_promoted_p23",
+ "ranks": 512,
+ "steps_completed": 3,
+ "resources": {
+  "queue": "develop",
+  "placement": "4 half nodes, 128 ranks each"
+ },
+ "outcome": "the runner paused at the process slot on the first radiative step and Python answered the frame; the resume then failed on every rank with ValueError: tuple.index(x): x not in tuple, and the stage was tainted",
+ "diagnosis": "ImageSegmentRunner.resume numbered the paused name with RunnerSpec.kernel_id, which indexed the manifest's kernels only; the process slot is numbered after them (id 3) and was not in that tuple.  run_original had been given the right numbering, resume had not.  Not a fault of the image or the pause: the frame was decoded and answered; the failure is in the Python runner's bookkeeping.",
+ "disposition": "kernel_id now indexes the pauses (kernels, then the process slot); a fake-image test drives start, frame, original and resume through id 3; both gates resubmitted as p23-rad-original2 and p23-rad-pymlp-live2.",
+ "bfb_record_note": "the job's comparison (.bfb.json) and health (.health.json) files of the failed run are kept with this record"
+}

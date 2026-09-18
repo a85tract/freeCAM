@@ -2648,7 +2648,7 @@
   "use_gw_oro": true,
   "use_subcol_microp": false
  },
- "content_hash": "34223a6b148ce2767408085a5a19cc332a1126564800fe182f6ef6fcee0ef41a",
+ "content_hash": "52e4de4f2b5b752d68966abf6b14cc53a0c0a445d857b49e45159960ebaa864e",
  "evidence": {
   "pi_cam_cldfrc_fice_frame_replay.json": {
    "bfb": true,
@@ -4377,6 +4377,1021 @@
    "steps_completed": 3,
    "what": "The first model bound at the micro_mg_tend hook: a placeholder MLP (no physics claim) exported as TorchScript, run for fifty steps on exclusive nodes to measure the FTorch path on the most expensive kernel (p14 image)."
   },
+  "pi_cam_pausable_p23-rad-original_50step_failure.json": {
+   "diagnosis": "ImageSegmentRunner.resume numbered the paused name with RunnerSpec.kernel_id, which indexed the manifest's kernels only; the process slot is numbered after them (id 3) and was not in that tuple.  run_original had been given the right numbering, resume had not.  Not a fault of the image or the pause: the frame was decoded and answered; the failure is in the Python runner's bookkeeping.",
+   "image": {
+    "build": "pi_cam_promoted_p23",
+    "role": "development",
+    "sha256": null
+   },
+   "kind": "gate-failure",
+   "outcome": "the runner paused at the process slot on the first radiative step and Python answered the frame; the resume then failed on every rank with ValueError: tuple.index(x): x not in tuple, and the stage was tainted",
+   "pbs_job": "7434628",
+   "python_stages": [
+    "rad_tend"
+   ],
+   "ranks": 512,
+   "record": "pi_cam_pausable_p23-rad-original_50step_failure.json",
+   "run_tag": "p23-rad-original",
+   "steps_completed": 3,
+   "what": "The original branch through the runner's pause at the process slot (bit-for-bit expected)."
+  },
+  "pi_cam_pausable_p23-rad-pymlp-live_50step_failure.json": {
+   "diagnosis": "ImageSegmentRunner.resume numbered the paused name with RunnerSpec.kernel_id, which indexed the manifest's kernels only; the process slot is numbered after them (id 3) and was not in that tuple.  run_original had been given the right numbering, resume had not.  Not a fault of the image or the pause: the frame was decoded and answered; the failure is in the Python runner's bookkeeping.",
+   "image": {
+    "build": "pi_cam_promoted_p23",
+    "role": "development",
+    "sha256": null
+   },
+   "kind": "gate-failure",
+   "outcome": "the runner paused at the process slot on the first radiative step and Python answered the frame; the resume then failed on every rank with ValueError: tuple.index(x): x not in tuple, and the stage was tainted",
+   "pbs_job": "7434629",
+   "python_stages": [
+    "rad_tend"
+   ],
+   "ranks": 512,
+   "record": "pi_cam_pausable_p23-rad-pymlp-live_50step_failure.json",
+   "run_tag": "p23-rad-pymlp-live",
+   "steps_completed": 3,
+   "what": "The compiled MLP emulator answering the slot from Python at the runner's pause."
+  },
+  "pi_cam_pausable_p24-block-live-np3_50step_failure.json": {
+   "diagnosis": "a fabric fault of one allocated node, nothing of freeCAM's; the same node failed all three jobs submitted together",
+   "image": {
+    "build": "pi_cam_promoted_p24",
+    "role": "development",
+    "sha256": null
+   },
+   "kind": "gate-failure",
+   "outcome": "no rank passed MPI_Init: OFI fi_getinfo() failed (No data available) on one of the four nodes given; the other ranks were then killed (signal 15) after 29 s",
+   "pbs_job": "7457332",
+   "python_stages": [
+    "rad_tend"
+   ],
+   "ranks": 512,
+   "record": "pi_cam_pausable_p24-block-live-np3_50step_failure.json",
+   "run_tag": "p24-block-live-np3",
+   "steps_completed": 0,
+   "what": "The radiation block answered by the NumPy MLP through the Python driver, first gate after the runtime cache was keyed on the pool again."
+  },
+  "pi_cam_pausable_p24-block-live-np4_50step_failure.json": {
+   "diagnosis": "a fabric fault of the allocated nodes, nothing of freeCAM's; the two jobs were placed on the same four nodes and both failed there, as the three before them had on one other node (7457330-7457332)",
+   "image": {
+    "build": "pi_cam_promoted_p24",
+    "role": "development",
+    "sha256": null
+   },
+   "kind": "gate-failure",
+   "outcome": "no rank passed MPI_Init: OFI fi_getinfo() failed (No data available) on one or two of the four nodes given; the other ranks were then killed (signal 15) within 29 s",
+   "pbs_job": "7457387",
+   "python_stages": [
+    "rad_tend"
+   ],
+   "ranks": 512,
+   "record": "pi_cam_pausable_p24-block-live-np4_50step_failure.json",
+   "run_tag": "p24-block-live-np4",
+   "steps_completed": 0,
+   "what": "The radiation block answered by the NumPy MLP through the Python driver, resubmission of p24-block-live-np3."
+  },
+  "pi_cam_pausable_p24-block-live2_50step_failure.json": {
+   "diagnosis": "the driver's views came from the radiation handles' table, which has no constituent array; the block contract needs state_q (water vapour and the aerosol mixing ratios) and the walk had read it from the state pool by chunk index.  The driver now does the same.",
+   "image": {
+    "build": "pi_cam_promoted_p24",
+    "role": "development",
+    "sha256": null
+   },
+   "kind": "gate-failure",
+   "outcome": "the first radiative step failed on every rank: KeyError 'state_q' in the driver, reported by the driver itself, then TPHYSBC aborted for the missing tendency",
+   "pbs_job": "7436004",
+   "python_stages": [
+    "rad_tend"
+   ],
+   "ranks": 512,
+   "record": "pi_cam_pausable_p24-block-live2_50step_failure.json",
+   "run_tag": "p24-block-live2",
+   "steps_completed": 2,
+   "what": "The block emulator called by the Python driver, after the tendency view was fixed."
+  },
+  "pi_cam_pausable_p24-block-live_50step_failure.json": {
+   "diagnosis": "_block_views took a view of every radiation handle at the chunk's first visit, including the tendency (view code 21) and the net flux (71); rad_ptend(lchnk)%s is allocated by radheat_tend's first call and the view was refused (status 2), the chunk's Python raised, and Fortran aborted before Python's deferred report reached the log.  The driver now excludes those two views (radheat_tend fills them) and prints a chunk's failure at once.",
+   "image": {
+    "build": "pi_cam_promoted_p24",
+    "role": "development",
+    "sha256": null
+   },
+   "kind": "gate-failure",
+   "outcome": "the Python driver's first chunk failed on its first step and the resume half of tphysbc stopped the run: TPHYSBC: Python claimed the radiation step but produced no tendency (512 ranks)",
+   "pbs_job": "7435791",
+   "python_stages": [
+    "rad_tend"
+   ],
+   "ranks": 512,
+   "record": "pi_cam_pausable_p24-block-live_50step_failure.json",
+   "run_tag": "p24-block-live",
+   "steps_completed": 2,
+   "what": "The block emulator (256 wide, trained on the month's captures) called by the Python driver."
+  },
+  "pi_cam_pausable_p24-block-replay2_50step_failure.json": {
+   "diagnosis": "a fabric fault of the allocated nodes, nothing of freeCAM's",
+   "image": {
+    "build": "pi_cam_promoted_p24",
+    "role": "development",
+    "sha256": null
+   },
+   "kind": "gate-failure",
+   "outcome": "no rank passed MPI_Init: OFI fi_getinfo() failed (No data available) on the nodes given",
+   "pbs_job": "7435825",
+   "python_stages": [
+    "rad_tend"
+   ],
+   "ranks": 512,
+   "record": "pi_cam_pausable_p24-block-replay2_50step_failure.json",
+   "run_tag": "p24-block-replay2",
+   "steps_completed": 0,
+   "what": "The block replay again, with the driver reporting a chunk's failure before Fortran aborts."
+  },
+  "pi_cam_pausable_p24-block-replay3_50step_failure.json": {
+   "diagnosis": "_block_views took a view of every radiation handle at the chunk's first visit, including the tendency (view code 21) and the net flux (71); rad_ptend(lchnk)%s is allocated by radheat_tend's first call and the view was refused (status 2), the chunk's Python raised, and Fortran aborted before Python's deferred report reached the log.  The driver now excludes those two views (radheat_tend fills them) and prints a chunk's failure at once.",
+   "image": {
+    "build": "pi_cam_promoted_p24",
+    "role": "development",
+    "sha256": null
+   },
+   "kind": "gate-failure",
+   "outcome": "the Python driver's first chunk failed on its first step and the resume half of tphysbc stopped the run: TPHYSBC: Python claimed the radiation step but produced no tendency (512 ranks); this run's log names the cause: rad view(chunk, code 21) refused with status 2 on every chunk",
+   "pbs_job": "7435919",
+   "python_stages": [
+    "rad_tend"
+   ],
+   "ranks": 512,
+   "record": "pi_cam_pausable_p24-block-replay3_50step_failure.json",
+   "run_tag": "p24-block-replay3",
+   "steps_completed": 2,
+   "what": "The block replay again, with the driver reporting a chunk's failure before Fortran aborts."
+  },
+  "pi_cam_pausable_p24-block-replay_50step_failure.json": {
+   "diagnosis": "_block_views took a view of every radiation handle at the chunk's first visit, including the tendency (view code 21) and the net flux (71); rad_ptend(lchnk)%s is allocated by radheat_tend's first call and the view was refused (status 2), the chunk's Python raised, and Fortran aborted before Python's deferred report reached the log.  The driver now excludes those two views (radheat_tend fills them) and prints a chunk's failure at once.",
+   "image": {
+    "build": "pi_cam_promoted_p24",
+    "role": "development",
+    "sha256": null
+   },
+   "kind": "gate-failure",
+   "outcome": "the Python driver's first chunk failed on its first step and the resume half of tphysbc stopped the run: TPHYSBC: Python claimed the radiation step but produced no tendency (512 ranks)",
+   "pbs_job": "7435764",
+   "python_stages": [
+    "rad_tend"
+   ],
+   "ranks": 512,
+   "record": "pi_cam_pausable_p24-block-replay_50step_failure.json",
+   "run_tag": "p24-block-replay",
+   "steps_completed": 2,
+   "what": "The day-1 capture's outputs answering the whole compute block from the Python driver (bit-for-bit in state expected)."
+  },
+  "pi_cam_pausable_p26-cloud-capture_50step_failure.json": {
+   "diagnosis": "_block_views built the accessor over the registered fields only (CMFR_DET, QLR_DET, QIR_DET are UNICON's; this configuration reads their indices as -1) and then asked it for every field of both contracts by name.  The views now take the fields the accessor declares and leave the rest out, as the driver's own pointer stays unassociated.",
+   "image": {
+    "build": "pi_cam_promoted_p26",
+    "role": "development",
+    "sha256": null
+   },
+   "kind": "gate-failure",
+   "outcome": "every rank's first chunk failed on the first step: KeyError 'CMFR_DET' -- the buffer accessor refused a field it does not declare (PICAMConfigurationError), and the Python process was reported tainted on 511 ranks",
+   "pbs_job": "7450699",
+   "python_stages": [
+    "cloud_macro_microphysics"
+   ],
+   "ranks": 512,
+   "record": "pi_cam_pausable_p26-cloud-capture_50step_failure.json",
+   "run_tag": "p26-cloud-capture",
+   "steps_completed": 0,
+   "what": "Both compute blocks of the cloud macro/microphysics stage run as their original drivers through the stage's Python driver, with a capture of each block's inputs and outputs."
+  },
+  "pi_cam_pausable_p26-cloud-replay2_50step_failure.json": {
+   "diagnosis": "the microphysics block's output list was drawn from the two drivers' own pbuf_get_field calls; the aerosol activation inside it (dropmixnuc, ndrop.F90:1035-1036) rewrites the cloud-borne aerosol fields through modal_aero_data's qqcw registry, which no field table saw, so the replay left them a step behind and the difference reached the surface fluxes two steps later.  The block contract now includes the registry's fields (cloud_block.cloud_borne_fields, per constituent, from the image) among the microphysics block's outputs, and the fields the drivers' callees only read (cldfrc's convective fractions, the nucleation's dry diameters, the activation's eddy diffusivity) among the inputs.",
+   "image": {
+    "build": "pi_cam_promoted_p26",
+    "role": "development",
+    "sha256": null
+   },
+   "kind": "gate-failure",
+   "outcome": "steps 1 and 2 exported bit-for-bit; at step 3 every rank's coupler export differed from the replayed boundary dataset at the level of 1e-15 (BoundaryReplayError on cam_out.a2x_rattr) and the run stopped",
+   "pbs_job": "7451924",
+   "python_stages": [
+    "cloud_macro_microphysics"
+   ],
+   "ranks": 512,
+   "record": "pi_cam_pausable_p26-cloud-replay2_50step_failure.json",
+   "run_tag": "p26-cloud-replay2",
+   "steps_completed": 2,
+   "what": "The capture of 7451819 replayed through both block slots of the cloud stage's Python driver."
+  },
+  "pi_cam_pausable_p26-cloud-replay3_50step_failure.json": {
+   "diagnosis": "the driver's views of the time-rotated buffer fields (CLD, AST, CONCLD, CLDO, the in-cloud water and its old-time copies, CLDFSNOW) were taken once a chunk and kept, while CAM moves the older plane every step; on even steps the capture recorded, and the replay wrote, the plane the driver was not using.  Those views are now taken per call, as the radiation driver's are; the capture records an exact digest of every input, and a replay reports the first input and step that differ from the captured run.",
+   "image": {
+    "build": "pi_cam_promoted_p26",
+    "role": "development",
+    "sha256": null
+   },
+   "kind": "gate-failure",
+   "outcome": "as 7451924: steps 1 and 2 exported bit-for-bit, the coupler export differed at step 3 on every rank (BoundaryReplayError on cam_out.a2x_rattr, differences of order 1e-15) and the run stopped",
+   "pbs_job": "7452063",
+   "python_stages": [
+    "cloud_macro_microphysics"
+   ],
+   "ranks": 512,
+   "record": "pi_cam_pausable_p26-cloud-replay3_50step_failure.json",
+   "run_tag": "p26-cloud-replay3",
+   "steps_completed": 2,
+   "what": "The capture of 7451996 (with the cloud-borne aerosol fields) replayed through both block slots of the cloud stage's Python driver."
+  },
+  "pi_cam_pausable_p26-cloud-replay4-macro_50step_failure.json": {
+   "diagnosis": "not the tracer precipitation (the microphysics ran original here) and not any contracted input (the digests matched through step 3): a dependence the macrophysics contract does not name.  Under localisation: p26-cloud-replay5-macro runs the microphysics original comparing every output with the capture's record (verify:DIR), and p26-cloud-verify5 both originals.",
+   "image": {
+    "build": "pi_cam_promoted_p26",
+    "role": "development",
+    "sha256": null
+   },
+   "kind": "gate-failure",
+   "outcome": "steps 1 and 2 exported bit-for-bit; at step 3 the coupler export differed on every rank, first in an aerosol dry-deposition flux (a2x attribute 26), by about 1e-15",
+   "pbs_job": "7452221",
+   "python_stages": [
+    "cloud_macro_microphysics"
+   ],
+   "ranks": 512,
+   "record": "pi_cam_pausable_p26-cloud-replay4-macro_50step_failure.json",
+   "run_tag": "p26-cloud-replay4-macro",
+   "steps_completed": 2,
+   "what": "The same capture replayed through the macrophysics slot alone, the microphysics driver original."
+  },
+  "pi_cam_pausable_p26-cloud-replay4-micro_50step_failure.json": {
+   "diagnosis": "every contracted input of both blocks hashed as the capture's on every call through step 3 (the replay's digests), so what differed was written by a block and read only outside it: the microphysics driver's wtrc_output_precip fills the water tracers' surface precipitation fields (water_tracer_vars' wtrc_srfpcp_indices, one per precipitation type and tracer set), which no field table sees; a replay left the isotopic large-scale rain at its previous value and the export of that flux differed.  The block now takes those fields from the image's index array as outputs.",
+   "image": {
+    "build": "pi_cam_promoted_p26",
+    "role": "development",
+    "sha256": null
+   },
+   "kind": "gate-failure",
+   "outcome": "as p26-cloud-replay4: step 3, the isotopic large-scale rain flux first",
+   "pbs_job": "7452222",
+   "python_stages": [
+    "cloud_macro_microphysics"
+   ],
+   "ranks": 512,
+   "record": "pi_cam_pausable_p26-cloud-replay4-micro_50step_failure.json",
+   "run_tag": "p26-cloud-replay4-micro",
+   "steps_completed": 2,
+   "what": "The same capture replayed through the microphysics slot alone, the macrophysics driver original."
+  },
+  "pi_cam_pausable_p26-cloud-replay4_50step_failure.json": {
+   "diagnosis": "every contracted input of both blocks hashed as the capture's on every call through step 3 (the replay's digests), so what differed was written by a block and read only outside it: the microphysics driver's wtrc_output_precip fills the water tracers' surface precipitation fields (water_tracer_vars' wtrc_srfpcp_indices, one per precipitation type and tracer set), which no field table sees; a replay left the isotopic large-scale rain at its previous value and the export of that flux differed.  The block now takes those fields from the image's index array as outputs.",
+   "image": {
+    "build": "pi_cam_promoted_p26",
+    "role": "development",
+    "sha256": null
+   },
+   "kind": "gate-failure",
+   "outcome": "steps 1 and 2 exported bit-for-bit; at step 3 the coupler export differed on every rank, first in the isotopic large-scale rain flux (a2x attribute 39), by up to 1e-5 relative",
+   "pbs_job": "7452220",
+   "python_stages": [
+    "cloud_macro_microphysics"
+   ],
+   "ranks": 512,
+   "record": "pi_cam_pausable_p26-cloud-replay4_50step_failure.json",
+   "run_tag": "p26-cloud-replay4",
+   "steps_completed": 2,
+   "what": "The capture of 7452191 (rotated planes per step, input digests) replayed through both block slots."
+  },
+  "pi_cam_pausable_p26-cloud-replay5-macro_50step_failure.json": {
+   "diagnosis": "the replay object restored on each rank by pickle (the stage is cloudpickled into the process registry) carried its directory and count but not the mismatch list a fresh one has; __setstate__ now gives it one.  The finding itself -- an input differing at step 2 -- is what the rerun is to name.",
+   "image": {
+    "build": "pi_cam_promoted_p26",
+    "role": "development",
+    "sha256": null
+   },
+   "kind": "gate-failure",
+   "outcome": "step 1 ran; on step 2 the replay found an input whose live lanes did not hash as the capture's and fell over reporting it: AttributeError, 'BlockReplay' object has no attribute 'mismatches'",
+   "pbs_job": "7452423",
+   "python_stages": [
+    "cloud_macro_microphysics"
+   ],
+   "ranks": 512,
+   "record": "pi_cam_pausable_p26-cloud-replay5-macro_50step_failure.json",
+   "run_tag": "p26-cloud-replay5-macro",
+   "steps_completed": 1,
+   "what": "The same capture replayed through the macrophysics slot, the microphysics original verifying its outputs against the record."
+  },
+  "pi_cam_pausable_p26-cloud-replay5-micro_50step_failure.json": {
+   "diagnosis": "the replay object restored on each rank by pickle (the stage is cloudpickled into the process registry) carried its directory and count but not the mismatch list a fresh one has; __setstate__ now gives it one.  The finding itself -- an input differing at step 2 -- is what the rerun is to name.",
+   "image": {
+    "build": "pi_cam_promoted_p26",
+    "role": "development",
+    "sha256": null
+   },
+   "kind": "gate-failure",
+   "outcome": "step 1 ran; on step 2 the replay found an input whose live lanes did not hash as the capture's and fell over reporting it: AttributeError, 'BlockReplay' object has no attribute 'mismatches'",
+   "pbs_job": "7452424",
+   "python_stages": [
+    "cloud_macro_microphysics"
+   ],
+   "ranks": 512,
+   "record": "pi_cam_pausable_p26-cloud-replay5-micro_50step_failure.json",
+   "run_tag": "p26-cloud-replay5-micro",
+   "steps_completed": 1,
+   "what": "The same capture replayed through the microphysics slot, the macrophysics original verifying its outputs against the record."
+  },
+  "pi_cam_pausable_p26-cloud-replay5_50step_failure.json": {
+   "diagnosis": "the replay object restored on each rank by pickle (the stage is cloudpickled into the process registry) carried its directory and count but not the mismatch list a fresh one has; __setstate__ now gives it one.  The finding itself -- an input differing at step 2 -- is what the rerun is to name.",
+   "image": {
+    "build": "pi_cam_promoted_p26",
+    "role": "development",
+    "sha256": null
+   },
+   "kind": "gate-failure",
+   "outcome": "step 1 ran; on step 2 the replay found an input whose live lanes did not hash as the capture's and fell over reporting it: AttributeError, 'BlockReplay' object has no attribute 'mismatches'",
+   "pbs_job": "7452422",
+   "python_stages": [
+    "cloud_macro_microphysics"
+   ],
+   "ranks": 512,
+   "record": "pi_cam_pausable_p26-cloud-replay5_50step_failure.json",
+   "run_tag": "p26-cloud-replay5",
+   "steps_completed": 1,
+   "what": "The capture of 7452381 (with the water tracers' surface precipitation) replayed through both block slots."
+  },
+  "pi_cam_pausable_p26-cloud-replay6-macro_50step_failure.json": {
+   "diagnosis": "the microphysics block's contract is now complete (p26-cloud-replay6-micro replays it bit-for-bit in cam.r and cam.rs); the macrophysics block's is not: every one of its contracted inputs hashes as the capture's on every call through step 3, the microphysics original that follows produces outputs identical to the capture's (verify:DIR, 7452498's pair), and the export still differs by 1e-15 in an aerosol dry-deposition flux at step 3.  The block writes something its contract does not list; the census runs (p26-cloud-census-macro) snapshot every registered buffer field around the original to name it.",
+   "image": {
+    "build": "pi_cam_promoted_p26",
+    "role": "development",
+    "sha256": null
+   },
+   "kind": "gate-failure",
+   "outcome": "as p26-cloud-replay6: step 3, a2x attribute 26 first",
+   "pbs_job": "7452497",
+   "python_stages": [
+    "cloud_macro_microphysics"
+   ],
+   "ranks": 512,
+   "record": "pi_cam_pausable_p26-cloud-replay6-macro_50step_failure.json",
+   "run_tag": "p26-cloud-replay6-macro",
+   "steps_completed": 2,
+   "what": "The same capture replayed through the macrophysics slot, the microphysics original verifying its outputs against the record (no output mismatch reported)."
+  },
+  "pi_cam_pausable_p26-cloud-replay6_50step_failure.json": {
+   "diagnosis": "the microphysics block's contract is now complete (p26-cloud-replay6-micro replays it bit-for-bit in cam.r and cam.rs); the macrophysics block's is not: every one of its contracted inputs hashes as the capture's on every call through step 3, the microphysics original that follows produces outputs identical to the capture's (verify:DIR, 7452498's pair), and the export still differs by 1e-15 in an aerosol dry-deposition flux at step 3.  The block writes something its contract does not list; the census runs (p26-cloud-census-macro) snapshot every registered buffer field around the original to name it.",
+   "image": {
+    "build": "pi_cam_promoted_p26",
+    "role": "development",
+    "sha256": null
+   },
+   "kind": "gate-failure",
+   "outcome": "steps 1 and 2 exported bit-for-bit; at step 3 the coupler export differed on every rank, first in a2x attribute 26 (an aerosol dry-deposition flux), by about 1e-15",
+   "pbs_job": "7452496",
+   "python_stages": [
+    "cloud_macro_microphysics"
+   ],
+   "ranks": 512,
+   "record": "pi_cam_pausable_p26-cloud-replay6_50step_failure.json",
+   "run_tag": "p26-cloud-replay6",
+   "steps_completed": 2,
+   "what": "The capture of 7452381 replayed through both block slots."
+  },
+  "pi_cam_pausable_p26-cloud-replay_50step_failure.json": {
+   "diagnosis": "a consequence of the capture run's failure, not a fault of its own; the chain submitted the replay without checking the capture directory",
+   "image": {
+    "build": "pi_cam_promoted_p26",
+    "role": "development",
+    "sha256": null
+   },
+   "kind": "gate-failure",
+   "outcome": "no capture to replay: the capture run before it (7450699) had failed, so every rank refused at install -- no macro block capture for rank N",
+   "pbs_job": "7450844",
+   "python_stages": [
+    "cloud_macro_microphysics"
+   ],
+   "ranks": 512,
+   "record": "pi_cam_pausable_p26-cloud-replay_50step_failure.json",
+   "run_tag": "p26-cloud-replay",
+   "steps_completed": 0,
+   "what": "The capture replayed through both block slots of the cloud stage's Python driver."
+  },
+  "pi_cam_pausable_p26-cloud-verify5_50step_failure.json": {
+   "diagnosis": "the replay object restored on each rank by pickle (the stage is cloudpickled into the process registry) carried its directory and count but not the mismatch list a fresh one has; __setstate__ now gives it one.  The finding itself -- an input differing at step 2 -- is what the rerun is to name.",
+   "image": {
+    "build": "pi_cam_promoted_p26",
+    "role": "development",
+    "sha256": null
+   },
+   "kind": "gate-failure",
+   "outcome": "step 1 ran; on step 2 the replay found an input whose live lanes did not hash as the capture's and fell over reporting it: AttributeError, 'BlockReplay' object has no attribute 'mismatches'",
+   "pbs_job": "7452425",
+   "python_stages": [
+    "cloud_macro_microphysics"
+   ],
+   "ranks": 512,
+   "record": "pi_cam_pausable_p26-cloud-verify5_50step_failure.json",
+   "run_tag": "p26-cloud-verify5",
+   "steps_completed": 1,
+   "what": "Both originals through the Python driver, each verifying its outputs against the record."
+  },
+  "pi_cam_pausable_p27-cloud-both-core2_50step_failure.json": {
+   "diagnosis": "a model named by path was imported from a bare file, so its function pickled by value, and the class the module now defines carried cloudpickle's per-process tracker id, which hashed differently on every rank.  load_process_model imports a path-named module by name from its directory, so the function pickles by reference.",
+   "image": {
+    "build": "pi_cam_promoted_p27",
+    "role": "development",
+    "sha256": null
+   },
+   "kind": "gate-failure",
+   "outcome": "refused at install on every rank: the Python process payload pickled differently per process (PythonProcessContractError)",
+   "pbs_job": "7456975",
+   "python_stages": [
+    "cloud_macro_microphysics"
+   ],
+   "ranks": 512,
+   "record": "pi_cam_pausable_p27-cloud-both-core2_50step_failure.json",
+   "run_tag": "p27-cloud-both-core2",
+   "steps_completed": 0,
+   "what": "The same, the module holding one network per block."
+  },
+  "pi_cam_pausable_p27-cloud-both-core3_50step_failure.json": {
+   "diagnosis": "as p27-cloud-both-core2",
+   "image": {
+    "build": "pi_cam_promoted_p27",
+    "role": "development",
+    "sha256": null
+   },
+   "kind": "gate-failure",
+   "outcome": "as p27-cloud-both-core2",
+   "pbs_job": "7456999",
+   "python_stages": [
+    "cloud_macro_microphysics"
+   ],
+   "ranks": 512,
+   "record": "pi_cam_pausable_p27-cloud-both-core3_50step_failure.json",
+   "run_tag": "p27-cloud-both-core3",
+   "steps_completed": 0,
+   "what": "The same, with the driver's rotated views kept per plane."
+  },
+  "pi_cam_pausable_p27-cloud-both-core5_50step_failure.json": {
+   "diagnosis": "a fabric fault of one allocated node, nothing of freeCAM's; the same node failed all three jobs submitted together",
+   "image": {
+    "build": "pi_cam_promoted_p27",
+    "role": "development",
+    "sha256": null
+   },
+   "kind": "gate-failure",
+   "outcome": "no rank passed MPI_Init: OFI fi_getinfo() failed (No data available) on one of the four nodes given; the other ranks were then killed (signal 15) after 29 s",
+   "pbs_job": "7457331",
+   "python_stages": [
+    "cloud_macro_microphysics"
+   ],
+   "ranks": 512,
+   "record": "pi_cam_pausable_p27-cloud-both-core5_50step_failure.json",
+   "run_tag": "p27-cloud-both-core5",
+   "steps_completed": 0,
+   "what": "Both cloud blocks answered by the core NumPy networks, first gate after the runtime cache was keyed on the pool again."
+  },
+  "pi_cam_pausable_p27-cloud-both-core_50step_failure.json": {
+   "diagnosis": "cloud_block_mlp.py held one network in module globals, named by one environment variable; with both slots filled the microphysics slot ran the macrophysics network's feature layout over the microphysics block's inputs.  The module now holds one network per block (FREECAM_CLOUD_BLOCK_MACRO, FREECAM_CLOUD_BLOCK_MICRO), each checked against the block it was trained for.",
+   "image": {
+    "build": "pi_cam_promoted_p27",
+    "role": "development",
+    "sha256": null
+   },
+   "kind": "gate-failure",
+   "outcome": "every rank's first chunk of step 2 failed: KeyError 'AIST' in the microphysics slot",
+   "pbs_job": "7456835",
+   "python_stages": [
+    "cloud_macro_microphysics"
+   ],
+   "ranks": 512,
+   "record": "pi_cam_pausable_p27-cloud-both-core_50step_failure.json",
+   "run_tag": "p27-cloud-both-core",
+   "steps_completed": 1,
+   "what": "Both blocks of the cloud stage answered by their core networks through the Python driver, with the one-call bookkeeping."
+  },
+  "pi_cam_pausable_p27-cloud-driver-original4_50step_failure.json": {
+   "diagnosis": "a fabric fault of one allocated node, nothing of freeCAM's; the same node failed all three jobs submitted together",
+   "image": {
+    "build": "pi_cam_promoted_p27",
+    "role": "development",
+    "sha256": null
+   },
+   "kind": "gate-failure",
+   "outcome": "no rank passed MPI_Init: OFI fi_getinfo() failed (No data available) on one of the four nodes given; the other ranks were then killed (signal 15) after 29 s",
+   "pbs_job": "7457330",
+   "python_stages": [
+    "cloud_macro_microphysics"
+   ],
+   "ranks": 512,
+   "record": "pi_cam_pausable_p27-cloud-driver-original4_50step_failure.json",
+   "run_tag": "p27-cloud-driver-original4",
+   "steps_completed": 0,
+   "what": "The cloud driver with both blocks answered by the originals, first gate after the runtime cache was keyed on the pool again."
+  },
+  "pi_cam_pausable_p27-cloud-macro-core3_50step_failure.json": {
+   "diagnosis": "a fabric fault of the allocated nodes, nothing of freeCAM's; the two jobs were placed on the same four nodes and both failed there, as the three before them had on one other node (7457330-7457332)",
+   "image": {
+    "build": "pi_cam_promoted_p27",
+    "role": "development",
+    "sha256": null
+   },
+   "kind": "gate-failure",
+   "outcome": "no rank passed MPI_Init: OFI fi_getinfo() failed (No data available) on one or two of the four nodes given; the other ranks were then killed (signal 15) within 29 s",
+   "pbs_job": "7457388",
+   "python_stages": [
+    "cloud_macro_microphysics"
+   ],
+   "ranks": 512,
+   "record": "pi_cam_pausable_p27-cloud-macro-core3_50step_failure.json",
+   "run_tag": "p27-cloud-macro-core3",
+   "steps_completed": 0,
+   "what": "The macrophysics block answered by the core NumPy network, the microphysics original, on the final code of the round."
+  },
+  "pi_cam_pausable_p27-cloud-macro-core4_50step_failure.json": {
+   "diagnosis": "a fabric fault of an allocated node, nothing of freeCAM's; the sixth such death of the afternoon (7457330-7457332, 7457387, 7457388) on three node groups",
+   "image": {
+    "build": "pi_cam_promoted_p27",
+    "role": "development",
+    "sha256": null
+   },
+   "kind": "gate-failure",
+   "outcome": "no rank passed MPI_Init: OFI fi_getinfo() failed (No data available) on one of the four nodes given; the other ranks were then killed (signal 15)",
+   "pbs_job": "7457444",
+   "python_stages": [
+    "cloud_macro_microphysics"
+   ],
+   "ranks": 512,
+   "record": "pi_cam_pausable_p27-cloud-macro-core4_50step_failure.json",
+   "run_tag": "p27-cloud-macro-core4",
+   "steps_completed": 0,
+   "what": "The macrophysics block answered by the core NumPy network, the microphysics original, on the final code of the round; resubmission of p27-cloud-macro-core3."
+  },
+  "pi_cam_pausable_p28-cloud-walk-cy10_50step_failure.json": {
+   "diagnosis": "NOT the nodes, as the first records of this series said: the trial's compiled modules had been built through the site's compiler wrapper, which linked a second MPI (libmpi_intel.so.12, libpmi, libpmi2, libpals) and an RPATH to another libfabric into every extension.  The command line imports those modules before mpi4py initialises the MPI it was built with, so two MPI runtimes met in one process and MPI_Init failed on some ranks of one node, a different node each time.  Sixteen submissions between 13:10 and 14:50 died this way, the pinned one on nodes that had run the morning's gates; every gate before the build passed and the p28 walk gates after it ran on the same queue.  Found by readelf on the .so files.",
+   "image": {
+    "build": "pi_cam_promoted_p28",
+    "role": "development",
+    "sha256": null
+   },
+   "kind": "gate-failure",
+   "outcome": "no rank passed MPI_Init: OFI fi_getinfo() failed (No data available) on one of the four nodes given; the other ranks were then killed",
+   "pbs_job": "7476244",
+   "python_stages": [
+    "cloud_macro_microphysics"
+   ],
+   "ranks": 512,
+   "record": "pi_cam_pausable_p28-cloud-walk-cy10_50step_failure.json",
+   "run_tag": "p28-cloud-walk-cy10",
+   "steps_completed": 0,
+   "what": "The walk on p28 with its Python glue compiled by Cython (pure-Python mode) and direct callers for the image's hottest entries; the .so files beside the .py files, not committed."
+  },
+  "pi_cam_pausable_p28-cloud-walk-cy11_50step_failure.json": {
+   "diagnosis": "NOT the nodes, as the first records of this series said: the trial's compiled modules had been built through the site's compiler wrapper, which linked a second MPI (libmpi_intel.so.12, libpmi, libpmi2, libpals) and an RPATH to another libfabric into every extension.  The command line imports those modules before mpi4py initialises the MPI it was built with, so two MPI runtimes met in one process and MPI_Init failed on some ranks of one node, a different node each time.  Sixteen submissions between 13:10 and 14:50 died this way, the pinned one on nodes that had run the morning's gates; every gate before the build passed and the p28 walk gates after it ran on the same queue.  Found by readelf on the .so files.",
+   "image": {
+    "build": "pi_cam_promoted_p28",
+    "role": "development",
+    "sha256": null
+   },
+   "kind": "gate-failure",
+   "outcome": "no rank passed MPI_Init: OFI fi_getinfo() failed (No data available) on one of the four nodes given; the other ranks were then killed",
+   "pbs_job": "7476345",
+   "python_stages": [
+    "cloud_macro_microphysics"
+   ],
+   "ranks": 512,
+   "record": "pi_cam_pausable_p28-cloud-walk-cy11_50step_failure.json",
+   "run_tag": "p28-cloud-walk-cy11",
+   "steps_completed": 0,
+   "what": "The walk on p28 with its Python glue compiled by Cython (pure-Python mode) and direct callers for the image's hottest entries; the .so files beside the .py files, not committed."
+  },
+  "pi_cam_pausable_p28-cloud-walk-cy12_50step_failure.json": {
+   "diagnosis": "NOT the nodes, as the first records of this series said: the trial's compiled modules had been built through the site's compiler wrapper, which linked a second MPI (libmpi_intel.so.12, libpmi, libpmi2, libpals) and an RPATH to another libfabric into every extension.  The command line imports those modules before mpi4py initialises the MPI it was built with, so two MPI runtimes met in one process and MPI_Init failed on some ranks of one node, a different node each time.  Sixteen submissions between 13:10 and 14:50 died this way, the pinned one on nodes that had run the morning's gates; every gate before the build passed and the p28 walk gates after it ran on the same queue.  Found by readelf on the .so files.",
+   "image": {
+    "build": "pi_cam_promoted_p28",
+    "role": "development",
+    "sha256": null
+   },
+   "kind": "gate-failure",
+   "outcome": "no rank passed MPI_Init: OFI fi_getinfo() failed (No data available) on one of the four nodes given; the other ranks were then killed",
+   "pbs_job": "7476485",
+   "python_stages": [
+    "cloud_macro_microphysics"
+   ],
+   "ranks": 512,
+   "record": "pi_cam_pausable_p28-cloud-walk-cy12_50step_failure.json",
+   "run_tag": "p28-cloud-walk-cy12",
+   "steps_completed": 0,
+   "what": "The walk on p28 with its Python glue compiled by Cython (pure-Python mode) and direct callers for the image's hottest entries; the .so files beside the .py files, not committed."
+  },
+  "pi_cam_pausable_p28-cloud-walk-cy13_50step_failure.json": {
+   "diagnosis": "NOT the nodes, as the first records of this series said: the trial's compiled modules had been built through the site's compiler wrapper, which linked a second MPI (libmpi_intel.so.12, libpmi, libpmi2, libpals) and an RPATH to another libfabric into every extension.  The command line imports those modules before mpi4py initialises the MPI it was built with, so two MPI runtimes met in one process and MPI_Init failed on some ranks of one node, a different node each time.  Sixteen submissions between 13:10 and 14:50 died this way, the pinned one on nodes that had run the morning's gates; every gate before the build passed and the p28 walk gates after it ran on the same queue.  Found by readelf on the .so files.",
+   "image": {
+    "build": "pi_cam_promoted_p28",
+    "role": "development",
+    "sha256": null
+   },
+   "kind": "gate-failure",
+   "outcome": "no rank passed MPI_Init: OFI fi_getinfo() failed (No data available) on one of the four nodes given; the other ranks were then killed",
+   "pbs_job": "7476583",
+   "python_stages": [
+    "cloud_macro_microphysics"
+   ],
+   "ranks": 512,
+   "record": "pi_cam_pausable_p28-cloud-walk-cy13_50step_failure.json",
+   "run_tag": "p28-cloud-walk-cy13",
+   "steps_completed": 0,
+   "what": "The walk on p28 with its Python glue compiled by Cython (pure-Python mode) and direct callers for the image's hottest entries; the .so files beside the .py files, not committed."
+  },
+  "pi_cam_pausable_p28-cloud-walk-cy14_50step_failure.json": {
+   "diagnosis": "NOT the nodes, as the first records of this series said: the trial's compiled modules had been built through the site's compiler wrapper, which linked a second MPI (libmpi_intel.so.12, libpmi, libpmi2, libpals) and an RPATH to another libfabric into every extension.  The command line imports those modules before mpi4py initialises the MPI it was built with, so two MPI runtimes met in one process and MPI_Init failed on some ranks of one node, a different node each time.  Sixteen submissions between 13:10 and 14:50 died this way, the pinned one on nodes that had run the morning's gates; every gate before the build passed and the p28 walk gates after it ran on the same queue.  Found by readelf on the .so files.",
+   "image": {
+    "build": "pi_cam_promoted_p28",
+    "role": "development",
+    "sha256": null
+   },
+   "kind": "gate-failure",
+   "outcome": "no rank passed MPI_Init: OFI fi_getinfo() failed (No data available) on one of the four nodes given; the other ranks were then killed",
+   "pbs_job": "7476701",
+   "python_stages": [
+    "cloud_macro_microphysics"
+   ],
+   "ranks": 512,
+   "record": "pi_cam_pausable_p28-cloud-walk-cy14_50step_failure.json",
+   "run_tag": "p28-cloud-walk-cy14",
+   "steps_completed": 0,
+   "what": "The walk on p28 with its Python glue compiled by Cython (pure-Python mode) and direct callers for the image's hottest entries; the .so files beside the .py files, not committed."
+  },
+  "pi_cam_pausable_p28-cloud-walk-cy15_50step_failure.json": {
+   "diagnosis": "NOT the nodes, as the first records of this series said: the trial's compiled modules had been built through the site's compiler wrapper, which linked a second MPI (libmpi_intel.so.12, libpmi, libpmi2, libpals) and an RPATH to another libfabric into every extension.  The command line imports those modules before mpi4py initialises the MPI it was built with, so two MPI runtimes met in one process and MPI_Init failed on some ranks of one node, a different node each time.  Sixteen submissions between 13:10 and 14:50 died this way, the pinned one on nodes that had run the morning's gates; every gate before the build passed and the p28 walk gates after it ran on the same queue.  Found by readelf on the .so files.",
+   "image": {
+    "build": "pi_cam_promoted_p28",
+    "role": "development",
+    "sha256": null
+   },
+   "kind": "gate-failure",
+   "outcome": "no rank passed MPI_Init: OFI fi_getinfo() failed (No data available) on one of the four nodes given; the other ranks were then killed",
+   "pbs_job": "7476822",
+   "python_stages": [
+    "cloud_macro_microphysics"
+   ],
+   "ranks": 512,
+   "record": "pi_cam_pausable_p28-cloud-walk-cy15_50step_failure.json",
+   "run_tag": "p28-cloud-walk-cy15",
+   "steps_completed": 0,
+   "what": "The walk on p28 with its Python glue compiled by Cython (pure-Python mode) and direct callers for the image's hottest entries; the .so files beside the .py files, not committed."
+  },
+  "pi_cam_pausable_p28-cloud-walk-cy2_50step_failure.json": {
+   "diagnosis": "NOT the nodes, as the first records of this series said: the trial's compiled modules had been built through the site's compiler wrapper, which linked a second MPI (libmpi_intel.so.12, libpmi, libpmi2, libpals) and an RPATH to another libfabric into every extension.  The command line imports those modules before mpi4py initialises the MPI it was built with, so two MPI runtimes met in one process and MPI_Init failed on some ranks of one node, a different node each time.  Sixteen submissions between 13:10 and 14:50 died this way, the pinned one on nodes that had run the morning's gates; every gate before the build passed and the p28 walk gates after it ran on the same queue.  Found by readelf on the .so files.",
+   "image": {
+    "build": "pi_cam_promoted_p28",
+    "role": "development",
+    "sha256": null
+   },
+   "kind": "gate-failure",
+   "outcome": "no rank passed MPI_Init: OFI fi_getinfo() failed (No data available) on one of the four nodes given; the other ranks were then killed",
+   "pbs_job": "7475740",
+   "python_stages": [
+    "cloud_macro_microphysics"
+   ],
+   "ranks": 512,
+   "record": "pi_cam_pausable_p28-cloud-walk-cy2_50step_failure.json",
+   "run_tag": "p28-cloud-walk-cy2",
+   "steps_completed": 0,
+   "what": "The walk on p28 with its Python glue compiled by Cython (pure-Python mode) and direct callers for the image's hottest entries; the .so files beside the .py files, not committed."
+  },
+  "pi_cam_pausable_p28-cloud-walk-cy3_50step_failure.json": {
+   "diagnosis": "NOT the nodes, as the first records of this series said: the trial's compiled modules had been built through the site's compiler wrapper, which linked a second MPI (libmpi_intel.so.12, libpmi, libpmi2, libpals) and an RPATH to another libfabric into every extension.  The command line imports those modules before mpi4py initialises the MPI it was built with, so two MPI runtimes met in one process and MPI_Init failed on some ranks of one node, a different node each time.  Sixteen submissions between 13:10 and 14:50 died this way, the pinned one on nodes that had run the morning's gates; every gate before the build passed and the p28 walk gates after it ran on the same queue.  Found by readelf on the .so files.",
+   "image": {
+    "build": "pi_cam_promoted_p28",
+    "role": "development",
+    "sha256": null
+   },
+   "kind": "gate-failure",
+   "outcome": "no rank passed MPI_Init: OFI fi_getinfo() failed (No data available) on one of the four nodes given; the other ranks were then killed",
+   "pbs_job": "7475787",
+   "python_stages": [
+    "cloud_macro_microphysics"
+   ],
+   "ranks": 512,
+   "record": "pi_cam_pausable_p28-cloud-walk-cy3_50step_failure.json",
+   "run_tag": "p28-cloud-walk-cy3",
+   "steps_completed": 0,
+   "what": "The walk on p28 with its Python glue compiled by Cython (pure-Python mode) and direct callers for the image's hottest entries; the .so files beside the .py files, not committed."
+  },
+  "pi_cam_pausable_p28-cloud-walk-cy4_50step_failure.json": {
+   "diagnosis": "NOT the nodes, as the first records of this series said: the trial's compiled modules had been built through the site's compiler wrapper, which linked a second MPI (libmpi_intel.so.12, libpmi, libpmi2, libpals) and an RPATH to another libfabric into every extension.  The command line imports those modules before mpi4py initialises the MPI it was built with, so two MPI runtimes met in one process and MPI_Init failed on some ranks of one node, a different node each time.  Sixteen submissions between 13:10 and 14:50 died this way, the pinned one on nodes that had run the morning's gates; every gate before the build passed and the p28 walk gates after it ran on the same queue.  Found by readelf on the .so files.",
+   "image": {
+    "build": "pi_cam_promoted_p28",
+    "role": "development",
+    "sha256": null
+   },
+   "kind": "gate-failure",
+   "outcome": "no rank passed MPI_Init: OFI fi_getinfo() failed (No data available) on one of the four nodes given; the other ranks were then killed",
+   "pbs_job": "7475795",
+   "python_stages": [
+    "cloud_macro_microphysics"
+   ],
+   "ranks": 512,
+   "record": "pi_cam_pausable_p28-cloud-walk-cy4_50step_failure.json",
+   "run_tag": "p28-cloud-walk-cy4",
+   "steps_completed": 0,
+   "what": "The walk on p28 with its Python glue compiled by Cython (pure-Python mode) and direct callers for the image's hottest entries; the .so files beside the .py files, not committed."
+  },
+  "pi_cam_pausable_p28-cloud-walk-cy5_50step_failure.json": {
+   "diagnosis": "NOT the nodes, as the first records of this series said: the trial's compiled modules had been built through the site's compiler wrapper, which linked a second MPI (libmpi_intel.so.12, libpmi, libpmi2, libpals) and an RPATH to another libfabric into every extension.  The command line imports those modules before mpi4py initialises the MPI it was built with, so two MPI runtimes met in one process and MPI_Init failed on some ranks of one node, a different node each time.  Sixteen submissions between 13:10 and 14:50 died this way, the pinned one on nodes that had run the morning's gates; every gate before the build passed and the p28 walk gates after it ran on the same queue.  Found by readelf on the .so files.",
+   "image": {
+    "build": "pi_cam_promoted_p28",
+    "role": "development",
+    "sha256": null
+   },
+   "kind": "gate-failure",
+   "outcome": "no rank passed MPI_Init: OFI fi_getinfo() failed (No data available) on one of the four nodes given; the other ranks were then killed",
+   "pbs_job": "7475829",
+   "python_stages": [
+    "cloud_macro_microphysics"
+   ],
+   "ranks": 512,
+   "record": "pi_cam_pausable_p28-cloud-walk-cy5_50step_failure.json",
+   "run_tag": "p28-cloud-walk-cy5",
+   "steps_completed": 0,
+   "what": "The walk on p28 with its Python glue compiled by Cython (pure-Python mode) and direct callers for the image's hottest entries; the .so files beside the .py files, not committed."
+  },
+  "pi_cam_pausable_p28-cloud-walk-cy5m_50step_failure.json": {
+   "diagnosis": "NOT the nodes, as the first records of this series said: the trial's compiled modules had been built through the site's compiler wrapper, which linked a second MPI (libmpi_intel.so.12, libpmi, libpmi2, libpals) and an RPATH to another libfabric into every extension.  The command line imports those modules before mpi4py initialises the MPI it was built with, so two MPI runtimes met in one process and MPI_Init failed on some ranks of one node, a different node each time.  Sixteen submissions between 13:10 and 14:50 died this way, the pinned one on nodes that had run the morning's gates; every gate before the build passed and the p28 walk gates after it ran on the same queue.  Found by readelf on the .so files.",
+   "image": {
+    "build": "pi_cam_promoted_p28",
+    "role": "development",
+    "sha256": null
+   },
+   "kind": "gate-failure",
+   "outcome": "no rank passed MPI_Init: OFI fi_getinfo() failed (No data available) on one of the four nodes given; the other ranks were then killed",
+   "pbs_job": "7475830",
+   "python_stages": [
+    "cloud_macro_microphysics"
+   ],
+   "ranks": 512,
+   "record": "pi_cam_pausable_p28-cloud-walk-cy5m_50step_failure.json",
+   "run_tag": "p28-cloud-walk-cy5m",
+   "steps_completed": 0,
+   "what": "The walk on p28 with its Python glue compiled by Cython (pure-Python mode) and direct callers for the image's hottest entries; the .so files beside the .py files, not committed."
+  },
+  "pi_cam_pausable_p28-cloud-walk-cy6_50step_failure.json": {
+   "diagnosis": "NOT the nodes, as the first records of this series said: the trial's compiled modules had been built through the site's compiler wrapper, which linked a second MPI (libmpi_intel.so.12, libpmi, libpmi2, libpals) and an RPATH to another libfabric into every extension.  The command line imports those modules before mpi4py initialises the MPI it was built with, so two MPI runtimes met in one process and MPI_Init failed on some ranks of one node, a different node each time.  Sixteen submissions between 13:10 and 14:50 died this way, the pinned one on nodes that had run the morning's gates; every gate before the build passed and the p28 walk gates after it ran on the same queue.  Found by readelf on the .so files.",
+   "image": {
+    "build": "pi_cam_promoted_p28",
+    "role": "development",
+    "sha256": null
+   },
+   "kind": "gate-failure",
+   "outcome": "no rank passed MPI_Init: OFI fi_getinfo() failed (No data available) on one of the four nodes given; the other ranks were then killed",
+   "pbs_job": "7475888",
+   "python_stages": [
+    "cloud_macro_microphysics"
+   ],
+   "ranks": 512,
+   "record": "pi_cam_pausable_p28-cloud-walk-cy6_50step_failure.json",
+   "run_tag": "p28-cloud-walk-cy6",
+   "steps_completed": 0,
+   "what": "The walk on p28 with its Python glue compiled by Cython (pure-Python mode) and direct callers for the image's hottest entries; the .so files beside the .py files, not committed."
+  },
+  "pi_cam_pausable_p28-cloud-walk-cy7_50step_failure.json": {
+   "diagnosis": "NOT the nodes, as the first records of this series said: the trial's compiled modules had been built through the site's compiler wrapper, which linked a second MPI (libmpi_intel.so.12, libpmi, libpmi2, libpals) and an RPATH to another libfabric into every extension.  The command line imports those modules before mpi4py initialises the MPI it was built with, so two MPI runtimes met in one process and MPI_Init failed on some ranks of one node, a different node each time.  Sixteen submissions between 13:10 and 14:50 died this way, the pinned one on nodes that had run the morning's gates; every gate before the build passed and the p28 walk gates after it ran on the same queue.  Found by readelf on the .so files.",
+   "image": {
+    "build": "pi_cam_promoted_p28",
+    "role": "development",
+    "sha256": null
+   },
+   "kind": "gate-failure",
+   "outcome": "no rank passed MPI_Init: OFI fi_getinfo() failed (No data available) on one of the four nodes given; the other ranks were then killed",
+   "pbs_job": "7475916",
+   "python_stages": [
+    "cloud_macro_microphysics"
+   ],
+   "ranks": 512,
+   "record": "pi_cam_pausable_p28-cloud-walk-cy7_50step_failure.json",
+   "run_tag": "p28-cloud-walk-cy7",
+   "steps_completed": 0,
+   "what": "The walk on p28 with its Python glue compiled by Cython (pure-Python mode) and direct callers for the image's hottest entries; the .so files beside the .py files, not committed."
+  },
+  "pi_cam_pausable_p28-cloud-walk-cy8_50step_failure.json": {
+   "diagnosis": "NOT the nodes, as the first records of this series said: the trial's compiled modules had been built through the site's compiler wrapper, which linked a second MPI (libmpi_intel.so.12, libpmi, libpmi2, libpals) and an RPATH to another libfabric into every extension.  The command line imports those modules before mpi4py initialises the MPI it was built with, so two MPI runtimes met in one process and MPI_Init failed on some ranks of one node, a different node each time.  Sixteen submissions between 13:10 and 14:50 died this way, the pinned one on nodes that had run the morning's gates; every gate before the build passed and the p28 walk gates after it ran on the same queue.  Found by readelf on the .so files.",
+   "image": {
+    "build": "pi_cam_promoted_p28",
+    "role": "development",
+    "sha256": null
+   },
+   "kind": "gate-failure",
+   "outcome": "no rank passed MPI_Init: OFI fi_getinfo() failed (No data available) on one of the four nodes given; the other ranks were then killed",
+   "pbs_job": "7475956",
+   "python_stages": [
+    "cloud_macro_microphysics"
+   ],
+   "ranks": 512,
+   "record": "pi_cam_pausable_p28-cloud-walk-cy8_50step_failure.json",
+   "run_tag": "p28-cloud-walk-cy8",
+   "steps_completed": 0,
+   "what": "The walk on p28 with its Python glue compiled by Cython (pure-Python mode) and direct callers for the image's hottest entries; the .so files beside the .py files, not committed."
+  },
+  "pi_cam_pausable_p28-cloud-walk-cy9_50step_failure.json": {
+   "diagnosis": "NOT the nodes, as the first records of this series said: the trial's compiled modules had been built through the site's compiler wrapper, which linked a second MPI (libmpi_intel.so.12, libpmi, libpmi2, libpals) and an RPATH to another libfabric into every extension.  The command line imports those modules before mpi4py initialises the MPI it was built with, so two MPI runtimes met in one process and MPI_Init failed on some ranks of one node, a different node each time.  Sixteen submissions between 13:10 and 14:50 died this way, the pinned one on nodes that had run the morning's gates; every gate before the build passed and the p28 walk gates after it ran on the same queue.  Found by readelf on the .so files.",
+   "image": {
+    "build": "pi_cam_promoted_p28",
+    "role": "development",
+    "sha256": null
+   },
+   "kind": "gate-failure",
+   "outcome": "no rank passed MPI_Init: OFI fi_getinfo() failed (No data available) on one of the four nodes given; the other ranks were then killed",
+   "pbs_job": "7475968",
+   "python_stages": [
+    "cloud_macro_microphysics"
+   ],
+   "ranks": 512,
+   "record": "pi_cam_pausable_p28-cloud-walk-cy9_50step_failure.json",
+   "run_tag": "p28-cloud-walk-cy9",
+   "steps_completed": 0,
+   "what": "The walk on p28 with its Python glue compiled by Cython (pure-Python mode) and direct callers for the image's hottest entries; the .so files beside the .py files, not committed."
+  },
+  "pi_cam_pausable_p28-cloud-walk-cy_50step_failure.json": {
+   "diagnosis": "NOT the nodes, as the first records of this series said: the trial's compiled modules had been built through the site's compiler wrapper, which linked a second MPI (libmpi_intel.so.12, libpmi, libpmi2, libpals) and an RPATH to another libfabric into every extension.  The command line imports those modules before mpi4py initialises the MPI it was built with, so two MPI runtimes met in one process and MPI_Init failed on some ranks of one node, a different node each time.  Sixteen submissions between 13:10 and 14:50 died this way, the pinned one on nodes that had run the morning's gates; every gate before the build passed and the p28 walk gates after it ran on the same queue.  Found by readelf on the .so files.",
+   "image": {
+    "build": "pi_cam_promoted_p28",
+    "role": "development",
+    "sha256": null
+   },
+   "kind": "gate-failure",
+   "outcome": "no rank passed MPI_Init: OFI fi_getinfo() failed (No data available) on one of the four nodes given; the other ranks were then killed",
+   "pbs_job": "7475712",
+   "python_stages": [
+    "cloud_macro_microphysics"
+   ],
+   "ranks": 512,
+   "record": "pi_cam_pausable_p28-cloud-walk-cy_50step_failure.json",
+   "run_tag": "p28-cloud-walk-cy",
+   "steps_completed": 0,
+   "what": "The walk on p28 with its Python glue compiled by Cython (pure-Python mode) and direct callers for the image's hottest entries; the .so files beside the .py files, not committed."
+  },
+  "pi_cam_pausable_p28-cloud-walk4_50step_failure.json": {
+   "diagnosis": "a Python error of the new churn attribution in StageRuntime.kernel_on_chunk: the loop over a call site's input names reused the method's own `name` variable, so the kernel bound afterwards was asked for under an input's name.  The unit tests caught it (8 failures) but the gate had been submitted on a guard that matched the word passed in a line that also said failed.",
+   "image": {
+    "build": "pi_cam_promoted_p28",
+    "role": "development",
+    "sha256": null
+   },
+   "kind": "gate-failure",
+   "outcome": "every rank failed at its first kernel call of step 1: NativeCAMError unknown direct CAM kernel (1022 tracebacks); no history, no summary",
+   "pbs_job": "7475521",
+   "python_stages": [
+    "cloud_macro_microphysics"
+   ],
+   "ranks": 512,
+   "record": "pi_cam_pausable_p28-cloud-walk4_50step_failure.json",
+   "run_tag": "p28-cloud-walk4",
+   "steps_completed": 0,
+   "what": "The walk on p28 with the step's scalar kept as an object at its two call sites and the record naming the inputs that churn at a re-resolved call site."
+  },
+  "pi_cam_pausable_p29-compute_uwshcu_inv-shadow_50step_failure.json": {
+   "diagnosis": "the command line attached kernel models to a pausable stage after installing its tend as a process; installing pickles the bound method, so the installed copy kept empty slots.  The cloud stage's branch attaches before installing, which is why every earlier shadow gate (all on the cloud stage) passed.  No pausable stage had run in native-model mode before this gate.",
+   "image": {
+    "build": "pi_cam_promoted_p29",
+    "role": "development",
+    "sha256": null
+   },
+   "kind": "gate-failure",
+   "outcome": "the gate did not test what it claims: the plugin was loaded (kernel_models) but the shallow_convection stage ran the original whole",
+   "pbs_job": "7484217",
+   "python_stages": [
+    "dry_adjustment",
+    "shallow_convection",
+    "deep_convection",
+    "convective_tracer_transport_leaf",
+    "vertical_diffusion",
+    "gravity_wave_drag",
+    "aerosol_wet_deposition_leaf",
+    "aerosol_dry_deposition_leaf",
+    "chemistry_tendencies_leaf",
+    "radiation",
+    "cloud_macro_microphysics"
+   ],
+   "ranks": 512,
+   "record": "pi_cam_pausable_p29-compute_uwshcu_inv-shadow_50step_failure.json",
+   "run_tag": "p29-compute_uwshcu_inv-shadow",
+   "steps_completed": 50,
+   "what": "50-step gate of a null Numba plugin bound in shadow at the compute_uwshcu_inv hook (the original answers; the plugin's cost is timed), rerun with 200 GB a node after the memory-capped attempt"
+  },
+  "pi_cam_pausable_p29-compute_uwshcu_inv-shadow_50step_failure_memory.json": {
+   "diagnosis": "the base run uses about 230 GB of the 256 GB requested (4 x 64 GB); the Numba compile of a plugin with 57 arguments peaks near 260 MB a process on the login node, about 30 GB more a node at 128 ranks, which crossed the limit.  Not a hook fault: the nothing-armed and everything gates on the same image are bit-for-bit.",
+   "image": {
+    "build": "pi_cam_promoted_p29",
+    "role": "development",
+    "sha256": null
+   },
+   "kind": "gate-failure",
+   "outcome": "killed at the memory limit during step 1, when every rank compiled the plugin (forrtl error 78, process killed; two ranks also hit an LLVM assertion in Value::getValueName)",
+   "pbs_job": "7484090",
+   "python_stages": [
+    "dry_adjustment",
+    "shallow_convection",
+    "deep_convection",
+    "convective_tracer_transport_leaf",
+    "vertical_diffusion",
+    "gravity_wave_drag",
+    "aerosol_wet_deposition_leaf",
+    "aerosol_dry_deposition_leaf",
+    "chemistry_tendencies_leaf",
+    "radiation",
+    "cloud_macro_microphysics"
+   ],
+   "ranks": 512,
+   "record": "pi_cam_pausable_p29-compute_uwshcu_inv-shadow_50step_failure_memory.json",
+   "run_tag": "p29-compute_uwshcu_inv-shadow",
+   "steps_completed": 1,
+   "what": "50-step gate of a null Numba plugin bound in shadow at the compute_uwshcu_inv hook (the original answers; the plugin's cost is timed), on the first image carrying the batch-A hooks"
+  },
+  "pi_cam_pausable_p29-mmacro_pcond-shadow_50step_failure.json": {
+   "diagnosis": "the base run uses about 230 GB of the 256 GB requested (4 x 64 GB); the Numba compile of a plugin with 57 arguments peaks near 260 MB a process on the login node, about 30 GB more a node at 128 ranks, which crossed the limit.  Not a hook fault: the nothing-armed and everything gates on the same image are bit-for-bit.",
+   "image": {
+    "build": "pi_cam_promoted_p29",
+    "role": "development",
+    "sha256": null
+   },
+   "kind": "gate-failure",
+   "outcome": "killed at the memory limit during step 1, when every rank compiled the plugin (forrtl error 78, process killed; two ranks also hit an LLVM assertion in Value::getValueName)",
+   "pbs_job": "7484089",
+   "python_stages": [
+    "dry_adjustment",
+    "shallow_convection",
+    "deep_convection",
+    "convective_tracer_transport_leaf",
+    "vertical_diffusion",
+    "gravity_wave_drag",
+    "aerosol_wet_deposition_leaf",
+    "aerosol_dry_deposition_leaf",
+    "chemistry_tendencies_leaf",
+    "radiation",
+    "cloud_macro_microphysics"
+   ],
+   "ranks": 512,
+   "record": "pi_cam_pausable_p29-mmacro_pcond-shadow_50step_failure.json",
+   "run_tag": "p29-mmacro_pcond-shadow",
+   "steps_completed": 1,
+   "what": "50-step gate of a null Numba plugin bound in shadow at the mmacro_pcond hook (the original answers; the plugin's cost is timed), on the first image carrying the batch-A hooks"
+  },
+  "pi_cam_pausable_p32-uwshcu-pyfn-shadow_50step_failure.json": {
+   "diagnosis": "The callback was built, bound (pycam_hooks_bind_plugin_v1) and reached: the hook took the plugged branch.  The generated module in image p32 still refuses a plugin at a packed block with an error stop; the branch that hands a plugin the one packed output (commit 167a71a1) was in the working tree but not in the image the job ran.  A live month with the same function (7511163) failed the same way and was deleted.",
+   "image": {
+    "build": "pi_cam_promoted_p32",
+    "role": "development",
+    "sha256": "6f1f626e8677a7d1c0fadda0ab3d67c81c41a3f1631cffd7e7687b6623e6b288"
+   },
+   "kind": "gate-failure",
+   "outcome": "every rank stopped at its first modeled call: `pycam_hooks: the packed model block of compute_uwshcu_inv takes TorchScript models only` (512 messages, one a rank); rank 45 exited with code 128 and the model run ended before the first step",
+   "pbs_job": "7511162",
+   "python_stages": [
+    "dry_adjustment",
+    "shallow_convection",
+    "deep_convection",
+    "convective_tracer_transport_leaf",
+    "vertical_diffusion",
+    "gravity_wave_drag",
+    "aerosol_wet_deposition_leaf",
+    "aerosol_dry_deposition_leaf",
+    "chemistry_tendencies_leaf"
+   ],
+   "ranks": 512,
+   "record": "pi_cam_pausable_p32-uwshcu-pyfn-shadow_50step_failure.json",
+   "run_tag": "p32-uwshcu-pyfn-shadow",
+   "steps_completed": 0,
+   "what": "A hook gate kept as evidence that the gate proves what ran: the first Python function bound at a hook (a TorchScript model run from the interpreter through a C callback, in shadow at compute_uwshcu_inv) on image p32, whose hooks module predates the packed plugin branch."
+  },
+  "pi_cam_pausable_p33-uwshcu-pyfn-shadow_50step_memory_failure.json": {
+   "diagnosis": "512 interpreters each importing torch and loading the TorchScript model, on top of the model's own memory, exceed the fifty-step job's 64 GB a node; the month jobs ask 200 GB a node and ran.",
+   "image": {
+    "build": "pi_cam_promoted_p33",
+    "role": "development",
+    "sha256": "15cb94f9cd96c99747b68b8da66d30ee7420cb1004d7a2149a900633dbc98708"
+   },
+   "kind": "gate-failure",
+   "outcome": "the ranks were killed (forrtl: error (78): process killed (SIGTERM)) before the first step completed; the model run exited 137",
+   "pbs_job": "7511230",
+   "python_stages": [
+    "dry_adjustment",
+    "shallow_convection",
+    "deep_convection",
+    "convective_tracer_transport_leaf",
+    "vertical_diffusion",
+    "gravity_wave_drag",
+    "aerosol_wet_deposition_leaf",
+    "aerosol_dry_deposition_leaf",
+    "chemistry_tendencies_leaf"
+   ],
+   "ranks": 512,
+   "record": "pi_cam_pausable_p33-uwshcu-pyfn-shadow_50step_memory_failure.json",
+   "run_tag": "p33-uwshcu-pyfn-shadow",
+   "steps_completed": 0,
+   "what": "The callback shadow gate on image p33 killed at the job's memory limit: the interpreter with torch loaded on every rank needs the memory of a torch process a rank."
+  },
   "pi_cam_pausable_rad-both-pause_50step.json": {
    "advance_seconds": 16.3,
    "cloud_macro_micro_python": false,
@@ -5092,6 +6107,442 @@
    "record": "pi_cam_pausable_micro-ftorch-excl_50step_failure.json"
   },
   {
+   "capability": "original_replacement_bfb",
+   "contexts": [],
+   "kernel_routine": null,
+   "record": "pi_cam_pausable_p23-rad-original_50step_failure.json"
+  },
+  {
+   "capability": "original_replacement_bfb",
+   "contexts": [],
+   "kernel_routine": null,
+   "record": "pi_cam_pausable_p23-rad-pymlp-live_50step_failure.json"
+  },
+  {
+   "capability": "original_replacement_bfb",
+   "contexts": [],
+   "kernel_routine": null,
+   "record": "pi_cam_pausable_p24-block-live-np3_50step_failure.json"
+  },
+  {
+   "capability": "original_replacement_bfb",
+   "contexts": [],
+   "kernel_routine": null,
+   "record": "pi_cam_pausable_p24-block-live-np4_50step_failure.json"
+  },
+  {
+   "capability": "original_replacement_bfb",
+   "contexts": [],
+   "kernel_routine": null,
+   "record": "pi_cam_pausable_p24-block-live2_50step_failure.json"
+  },
+  {
+   "capability": "original_replacement_bfb",
+   "contexts": [],
+   "kernel_routine": null,
+   "record": "pi_cam_pausable_p24-block-live_50step_failure.json"
+  },
+  {
+   "capability": "standalone_replay",
+   "contexts": [],
+   "kernel_routine": null,
+   "record": "pi_cam_pausable_p24-block-replay2_50step_failure.json"
+  },
+  {
+   "capability": "standalone_replay",
+   "contexts": [],
+   "kernel_routine": null,
+   "record": "pi_cam_pausable_p24-block-replay3_50step_failure.json"
+  },
+  {
+   "capability": "standalone_replay",
+   "contexts": [],
+   "kernel_routine": null,
+   "record": "pi_cam_pausable_p24-block-replay_50step_failure.json"
+  },
+  {
+   "capability": "original_replacement_bfb",
+   "contexts": [
+    "cam_run1.cloud_macro_microphysics"
+   ],
+   "kernel_routine": null,
+   "record": "pi_cam_pausable_p26-cloud-capture_50step_failure.json"
+  },
+  {
+   "capability": "standalone_replay",
+   "contexts": [
+    "cam_run1.cloud_macro_microphysics"
+   ],
+   "kernel_routine": null,
+   "record": "pi_cam_pausable_p26-cloud-replay2_50step_failure.json"
+  },
+  {
+   "capability": "standalone_replay",
+   "contexts": [
+    "cam_run1.cloud_macro_microphysics"
+   ],
+   "kernel_routine": null,
+   "record": "pi_cam_pausable_p26-cloud-replay3_50step_failure.json"
+  },
+  {
+   "capability": "standalone_replay",
+   "contexts": [
+    "cam_run1.cloud_macro_microphysics"
+   ],
+   "kernel_routine": null,
+   "record": "pi_cam_pausable_p26-cloud-replay4-macro_50step_failure.json"
+  },
+  {
+   "capability": "standalone_replay",
+   "contexts": [
+    "cam_run1.cloud_macro_microphysics"
+   ],
+   "kernel_routine": null,
+   "record": "pi_cam_pausable_p26-cloud-replay4-micro_50step_failure.json"
+  },
+  {
+   "capability": "standalone_replay",
+   "contexts": [
+    "cam_run1.cloud_macro_microphysics"
+   ],
+   "kernel_routine": null,
+   "record": "pi_cam_pausable_p26-cloud-replay4_50step_failure.json"
+  },
+  {
+   "capability": "standalone_replay",
+   "contexts": [
+    "cam_run1.cloud_macro_microphysics"
+   ],
+   "kernel_routine": null,
+   "record": "pi_cam_pausable_p26-cloud-replay5-macro_50step_failure.json"
+  },
+  {
+   "capability": "standalone_replay",
+   "contexts": [
+    "cam_run1.cloud_macro_microphysics"
+   ],
+   "kernel_routine": null,
+   "record": "pi_cam_pausable_p26-cloud-replay5-micro_50step_failure.json"
+  },
+  {
+   "capability": "standalone_replay",
+   "contexts": [
+    "cam_run1.cloud_macro_microphysics"
+   ],
+   "kernel_routine": null,
+   "record": "pi_cam_pausable_p26-cloud-replay5_50step_failure.json"
+  },
+  {
+   "capability": "standalone_replay",
+   "contexts": [
+    "cam_run1.cloud_macro_microphysics"
+   ],
+   "kernel_routine": null,
+   "record": "pi_cam_pausable_p26-cloud-replay6-macro_50step_failure.json"
+  },
+  {
+   "capability": "standalone_replay",
+   "contexts": [
+    "cam_run1.cloud_macro_microphysics"
+   ],
+   "kernel_routine": null,
+   "record": "pi_cam_pausable_p26-cloud-replay6_50step_failure.json"
+  },
+  {
+   "capability": "standalone_replay",
+   "contexts": [
+    "cam_run1.cloud_macro_microphysics"
+   ],
+   "kernel_routine": null,
+   "record": "pi_cam_pausable_p26-cloud-replay_50step_failure.json"
+  },
+  {
+   "capability": "original_replacement_bfb",
+   "contexts": [
+    "cam_run1.cloud_macro_microphysics"
+   ],
+   "kernel_routine": null,
+   "record": "pi_cam_pausable_p26-cloud-verify5_50step_failure.json"
+  },
+  {
+   "capability": "original_replacement_bfb",
+   "contexts": [
+    "cam_run1.cloud_macro_microphysics"
+   ],
+   "kernel_routine": null,
+   "record": "pi_cam_pausable_p27-cloud-both-core2_50step_failure.json"
+  },
+  {
+   "capability": "original_replacement_bfb",
+   "contexts": [
+    "cam_run1.cloud_macro_microphysics"
+   ],
+   "kernel_routine": null,
+   "record": "pi_cam_pausable_p27-cloud-both-core3_50step_failure.json"
+  },
+  {
+   "capability": "original_replacement_bfb",
+   "contexts": [
+    "cam_run1.cloud_macro_microphysics"
+   ],
+   "kernel_routine": null,
+   "record": "pi_cam_pausable_p27-cloud-both-core5_50step_failure.json"
+  },
+  {
+   "capability": "original_replacement_bfb",
+   "contexts": [
+    "cam_run1.cloud_macro_microphysics"
+   ],
+   "kernel_routine": null,
+   "record": "pi_cam_pausable_p27-cloud-both-core_50step_failure.json"
+  },
+  {
+   "capability": "original_replacement_bfb",
+   "contexts": [
+    "cam_run1.cloud_macro_microphysics"
+   ],
+   "kernel_routine": null,
+   "record": "pi_cam_pausable_p27-cloud-driver-original4_50step_failure.json"
+  },
+  {
+   "capability": "original_replacement_bfb",
+   "contexts": [
+    "cam_run1.cloud_macro_microphysics"
+   ],
+   "kernel_routine": null,
+   "record": "pi_cam_pausable_p27-cloud-macro-core3_50step_failure.json"
+  },
+  {
+   "capability": "original_replacement_bfb",
+   "contexts": [
+    "cam_run1.cloud_macro_microphysics"
+   ],
+   "kernel_routine": null,
+   "record": "pi_cam_pausable_p27-cloud-macro-core4_50step_failure.json"
+  },
+  {
+   "capability": "original_replacement_bfb",
+   "contexts": [
+    "cam_run1.cloud_macro_microphysics"
+   ],
+   "kernel_routine": null,
+   "record": "pi_cam_pausable_p28-cloud-walk-cy10_50step_failure.json"
+  },
+  {
+   "capability": "original_replacement_bfb",
+   "contexts": [
+    "cam_run1.cloud_macro_microphysics"
+   ],
+   "kernel_routine": null,
+   "record": "pi_cam_pausable_p28-cloud-walk-cy11_50step_failure.json"
+  },
+  {
+   "capability": "original_replacement_bfb",
+   "contexts": [
+    "cam_run1.cloud_macro_microphysics"
+   ],
+   "kernel_routine": null,
+   "record": "pi_cam_pausable_p28-cloud-walk-cy12_50step_failure.json"
+  },
+  {
+   "capability": "original_replacement_bfb",
+   "contexts": [
+    "cam_run1.cloud_macro_microphysics"
+   ],
+   "kernel_routine": null,
+   "record": "pi_cam_pausable_p28-cloud-walk-cy13_50step_failure.json"
+  },
+  {
+   "capability": "original_replacement_bfb",
+   "contexts": [
+    "cam_run1.cloud_macro_microphysics"
+   ],
+   "kernel_routine": null,
+   "record": "pi_cam_pausable_p28-cloud-walk-cy14_50step_failure.json"
+  },
+  {
+   "capability": "original_replacement_bfb",
+   "contexts": [
+    "cam_run1.cloud_macro_microphysics"
+   ],
+   "kernel_routine": null,
+   "record": "pi_cam_pausable_p28-cloud-walk-cy15_50step_failure.json"
+  },
+  {
+   "capability": "original_replacement_bfb",
+   "contexts": [
+    "cam_run1.cloud_macro_microphysics"
+   ],
+   "kernel_routine": null,
+   "record": "pi_cam_pausable_p28-cloud-walk-cy2_50step_failure.json"
+  },
+  {
+   "capability": "original_replacement_bfb",
+   "contexts": [
+    "cam_run1.cloud_macro_microphysics"
+   ],
+   "kernel_routine": null,
+   "record": "pi_cam_pausable_p28-cloud-walk-cy3_50step_failure.json"
+  },
+  {
+   "capability": "original_replacement_bfb",
+   "contexts": [
+    "cam_run1.cloud_macro_microphysics"
+   ],
+   "kernel_routine": null,
+   "record": "pi_cam_pausable_p28-cloud-walk-cy4_50step_failure.json"
+  },
+  {
+   "capability": "original_replacement_bfb",
+   "contexts": [
+    "cam_run1.cloud_macro_microphysics"
+   ],
+   "kernel_routine": null,
+   "record": "pi_cam_pausable_p28-cloud-walk-cy5_50step_failure.json"
+  },
+  {
+   "capability": "original_replacement_bfb",
+   "contexts": [
+    "cam_run1.cloud_macro_microphysics"
+   ],
+   "kernel_routine": null,
+   "record": "pi_cam_pausable_p28-cloud-walk-cy5m_50step_failure.json"
+  },
+  {
+   "capability": "original_replacement_bfb",
+   "contexts": [
+    "cam_run1.cloud_macro_microphysics"
+   ],
+   "kernel_routine": null,
+   "record": "pi_cam_pausable_p28-cloud-walk-cy6_50step_failure.json"
+  },
+  {
+   "capability": "original_replacement_bfb",
+   "contexts": [
+    "cam_run1.cloud_macro_microphysics"
+   ],
+   "kernel_routine": null,
+   "record": "pi_cam_pausable_p28-cloud-walk-cy7_50step_failure.json"
+  },
+  {
+   "capability": "original_replacement_bfb",
+   "contexts": [
+    "cam_run1.cloud_macro_microphysics"
+   ],
+   "kernel_routine": null,
+   "record": "pi_cam_pausable_p28-cloud-walk-cy8_50step_failure.json"
+  },
+  {
+   "capability": "original_replacement_bfb",
+   "contexts": [
+    "cam_run1.cloud_macro_microphysics"
+   ],
+   "kernel_routine": null,
+   "record": "pi_cam_pausable_p28-cloud-walk-cy9_50step_failure.json"
+  },
+  {
+   "capability": "original_replacement_bfb",
+   "contexts": [
+    "cam_run1.cloud_macro_microphysics"
+   ],
+   "kernel_routine": null,
+   "record": "pi_cam_pausable_p28-cloud-walk-cy_50step_failure.json"
+  },
+  {
+   "capability": "original_replacement_bfb",
+   "contexts": [
+    "cam_run1.cloud_macro_microphysics"
+   ],
+   "kernel_routine": null,
+   "record": "pi_cam_pausable_p28-cloud-walk4_50step_failure.json"
+  },
+  {
+   "capability": "original_replacement_bfb",
+   "contexts": [
+    "cam_run1.dry_adjustment",
+    "cam_run1.shallow_convection",
+    "cam_run1.deep_convection",
+    "cam_run1.convective_tracer_transport_leaf",
+    "cam_run2.vertical_diffusion",
+    "cam_run2.gravity_wave_drag",
+    "cam_run1.aerosol_wet_deposition_leaf",
+    "cam_run2.aerosol_dry_deposition_leaf",
+    "cam_run2.chemistry_tendencies_leaf",
+    "cam_run1.radiation",
+    "cam_run1.cloud_macro_microphysics"
+   ],
+   "kernel_routine": null,
+   "record": "pi_cam_pausable_p29-compute_uwshcu_inv-shadow_50step_failure.json"
+  },
+  {
+   "capability": "original_replacement_bfb",
+   "contexts": [
+    "cam_run1.dry_adjustment",
+    "cam_run1.shallow_convection",
+    "cam_run1.deep_convection",
+    "cam_run1.convective_tracer_transport_leaf",
+    "cam_run2.vertical_diffusion",
+    "cam_run2.gravity_wave_drag",
+    "cam_run1.aerosol_wet_deposition_leaf",
+    "cam_run2.aerosol_dry_deposition_leaf",
+    "cam_run2.chemistry_tendencies_leaf",
+    "cam_run1.radiation",
+    "cam_run1.cloud_macro_microphysics"
+   ],
+   "kernel_routine": null,
+   "record": "pi_cam_pausable_p29-compute_uwshcu_inv-shadow_50step_failure_memory.json"
+  },
+  {
+   "capability": "original_replacement_bfb",
+   "contexts": [
+    "cam_run1.dry_adjustment",
+    "cam_run1.shallow_convection",
+    "cam_run1.deep_convection",
+    "cam_run1.convective_tracer_transport_leaf",
+    "cam_run2.vertical_diffusion",
+    "cam_run2.gravity_wave_drag",
+    "cam_run1.aerosol_wet_deposition_leaf",
+    "cam_run2.aerosol_dry_deposition_leaf",
+    "cam_run2.chemistry_tendencies_leaf",
+    "cam_run1.radiation",
+    "cam_run1.cloud_macro_microphysics"
+   ],
+   "kernel_routine": null,
+   "record": "pi_cam_pausable_p29-mmacro_pcond-shadow_50step_failure.json"
+  },
+  {
+   "capability": "original_replacement_bfb",
+   "contexts": [
+    "cam_run1.dry_adjustment",
+    "cam_run1.shallow_convection",
+    "cam_run1.deep_convection",
+    "cam_run1.convective_tracer_transport_leaf",
+    "cam_run2.vertical_diffusion",
+    "cam_run2.gravity_wave_drag",
+    "cam_run1.aerosol_wet_deposition_leaf",
+    "cam_run2.aerosol_dry_deposition_leaf",
+    "cam_run2.chemistry_tendencies_leaf"
+   ],
+   "kernel_routine": null,
+   "record": "pi_cam_pausable_p32-uwshcu-pyfn-shadow_50step_failure.json"
+  },
+  {
+   "capability": "original_replacement_bfb",
+   "contexts": [
+    "cam_run1.dry_adjustment",
+    "cam_run1.shallow_convection",
+    "cam_run1.deep_convection",
+    "cam_run1.convective_tracer_transport_leaf",
+    "cam_run2.vertical_diffusion",
+    "cam_run2.gravity_wave_drag",
+    "cam_run1.aerosol_wet_deposition_leaf",
+    "cam_run2.aerosol_dry_deposition_leaf",
+    "cam_run2.chemistry_tendencies_leaf"
+   ],
+   "kernel_routine": null,
+   "record": "pi_cam_pausable_p33-uwshcu-pyfn-shadow_50step_memory_failure.json"
+  },
+  {
    "capability": "standalone_replay",
    "contexts": [],
    "kernel_routine": null,
@@ -5111,16 +6562,16 @@
   }
  ],
  "inputs": {
-  "native/pi_cam/hooks.yaml": "13e21d599cdc066821c151e452973357a623d00c0997b7c6cb131725c9f55ba8",
+  "native/pi_cam/hooks.yaml": "42ae0aa3552db8dc0b960c9f2dea36b62f6d361071712b313eb116a28d52eb97",
   "native/pi_cam/kernel_classifications.yaml": "d6be2103c9bd0c86a0c8461a067d3b43eac6aa370e992fde9bf3096e55c8c5f4",
-  "native/pi_cam/kernel_work_items.yaml": "66ccc23cd609370169e6f0e81897f2cf1ae71dd75636a41119cd9e476031851b",
-  "native/pi_cam/segment_runners.yaml": "002ab5f622cb5c10c0d7fc45eead3ef708de6524602eda635b4c064649663acd",
-  "validation/physics_kernel_decoupling.json": "2a9ff0a6804a4e0d54b36b26c34f44a36e5eb6234ba53fe32d7d944973680462",
+  "native/pi_cam/kernel_work_items.yaml": "c92670beeae88b1fcf0bbe74525fe8489f425f9740b3f7dc6fe7eb4ea7496b44",
+  "native/pi_cam/segment_runners.yaml": "37fa35306070f0b5eea12a76c44ea6798b1a7f17521659bdc4761ff32208b38a",
+  "validation/physics_kernel_decoupling.json": "b30ba060aa45a351e86847c9255922524eb0557ff4e66720aa6db67aca1b9ece",
   "validation/pi_cam_kernel_api_closure.json": "96025214b3e4c41f6ba89c266da5dd27c51c42c81c31e1a0ac6f7b2e9cfa260a",
   "validation/pi_cam_kernel_api_redirectable_calls.json": "b97f6f7f8f7099cb42e9cebcde6102f9d4d05d17852ba7a5495b29edb1d4fbaf",
   "validation/pi_cam_kernel_runtime_coverage_1month.json": "48f77d6ec78b4026806d4ab6fb9517ef31c1d526481b4ad68e55f77af0d303bd",
   "validation/pi_cam_kernel_runtime_coverage_50step.json": "222961fc5274dbaaf71c40f6c131a683536b5a85ef14cd047a2fd196d8ca38c5",
-  "web/public/catalog.json": "4453bbea4717065cbaf30b0b9a44541847b4145468fad30a3832b9f37340d9f6"
+  "web/public/catalog.json": "0b67d312cbb7fb38820d00897b42e41ba88b09c9b5f4cdbef0a2421b342c9ed0"
  },
  "kernels": {
   "aer_rad_props::aer_rad_props_lw": {
@@ -15177,7 +16628,9 @@
      "state": "not-implemented"
     },
     "contract": {
-     "state": "not-implemented"
+     "path": "native/pi_cam/functions/compute_eddy_diff.yaml",
+     "review": "reviewed",
+     "state": "available"
     },
     "in_model_replacement": {
      "contexts": [
@@ -40983,8 +42436,8 @@
    "development": {
     "blocker": null,
     "branch": "physics-kernel-api-closure",
-    "next_gate": "a network good enough to use: more captured data, the longwave near the surface, the clear-sky and TOA diagnostics; then a paired year",
-    "note": "Month pair on main (replayed boundary, same image and class): Radiation installed and nothing bound 401.3 s over 1,488 steps, bit-for-bit with the monthly oracle (7418517); the 256-wide emulator at the slot 363.9 s, nine percent shorter, 761,856 plugin calls at 1.31 ms each, radiation 2.9 s a rank against 34.2 (7418518). Finite for the month; thirteen water-isotope check lines against none in the baseline; the radiation budget drifts by 4 to 5 W/m2 in the global mean over the month (drift record kept). The mechanism is closed; the network is the open problem.",
+    "next_gate": "a network good enough to use: the zenith angle given back to the block model, more captured data, the longwave near the surface, the clear-sky and TOA diagnostics; then a paired year",
+    "note": "Month pair on main (replayed boundary): Radiation installed and nothing bound 401.3 s over 1,488 steps, bit-for-bit (7418517); the 256-wide emulator at the slot 363.9 s, nine percent shorter (7418518), the radiation budget drifting 4 to 5 W/m2 over the month. Four ways to answer the radiation now, all gated: a compiled Python kernel at the slot, called by Fortran (0.23 s a rank per 50 steps, 7418444); a TorchScript model through FTorch (64-wide transformer 0.72 s, 7431803); Python at the runner's pause (the same MLP 0.82 s, 7434965; the original branch through the pause bit-for-bit, 7434783); and the Python driver with a model of the whole compute block (p24: the day-1 capture replayed through it bit-for-bit in state, 7436003; the block emulator 0.38 s a rank once compiled, 7436082, drifting 1.5 K/day because it must learn the zenith angle). The 64-wide transformer priced on the other two paths (p24): written out in Numba as a plugin 12.5 ms a call, rad_tend 0.84 s a rank (shadow 7439472 bit-for-bit, live 7439535, 0.17 K rms); its block contract through the Python driver 15.5 ms a call, half of it the view-to-tensor conversion, rad_tend 1.20 s (7439603, 1.27 K rms); FTorch at the slot stays the cheapest at 7.1 ms. A month on each path (p24, 7452662-7452667): the MLP plugin 366.2 s against 400.2 with nothing bound, the MLP through the Python driver 371.9 s (6 s of it the first call's compile); the transformer 385.4 s as a plugin, 374.3 s through the driver; the block models (no zenith angle given) are physically unusable over the month (-46 and -243 W/m2 of net shortwave), the slot models drift 4-5 W/m2 as before. The mechanism is closed in every form; the network is the open problem. The cloud macro/microphysics stage (mmacro_pcond's) has the same Python-driver form since 2026-09-14 (p26): two block contracts (cloud_block.MACRO_BLOCK, MICRO_BLOCK), captured (7453135) and replayed bit-for-bit in state (7453150; the halves 7452498, 7453151), the driver 0.37 s a rank per 50 steps over native-whole; no model of either block yet, and no history entry (the drivers' 141 outfld diagnostics are not reproduced by a replay). First networks for the macrophysics block (p26): a core MLP (969 in, 632 out, 0.48M) answers the block in 2.7 ms against macrop_tend's 6.6, the stage 2.34 s a rank against 1.96 (7454277), drifting 5.8 K in 50 steps; the radiation MLP through the Python driver with a NumPy forward runs the month in 359.5 s, the fastest path (7454279). Round 3 of the cloud driver (p27, 2026-09-14): the bookkeeping is one finish entry a block (pycam_mm_finish_macro_v1, pycam_mm_finish_micro_v1), the originals through the driver bit-for-bit at 2.28 s a rank for the stage (7457385), the replay 0.51 s (7456791); a core network for the microphysics block as well (2053 in, 1479 out, 0.47M) and the networks' water clamped at -q/dt; both blocks as NumPy networks run the stage in 1.24 s a rank against the original's 1.96 and the loop in 15.47 against 15.95 (7457386; 3.1 and 3.3 ms a call), drifting 6.1 K rms in 50 steps -- the networks, not the mechanism, are what is open. The fine-grained walk (legacy-python) bound once, 2026-09-15: kernel call sites resolved once per set of objects handed, outputs written in place, the drivers' state copies kept between calls (image p28, pycam_state_copy): the cloud stage's walk 4.03 -> 3.06 s a rank against 1.96 native-whole, the step loop 18.33 -> 16.98 against 16.00, bit-for-bit throughout (7473911 to 7475430); the Fortran regions are at the original's cost and about 1.1 s of Python around fifty-one kernel calls a chunk remain.",
     "owner": "claude",
     "owner_class": "freecam.physics.radiation.Radiation",
     "stage": "performance_gate",
@@ -40993,7 +42446,7 @@
     "target_processes": [
      "cam_run1.radiation"
     ],
-    "updated_at": "2026-09-12"
+    "updated_at": "2026-09-13"
    },
    "failures": [],
    "host": null,
@@ -47407,7 +48860,9 @@
      "state": "not-implemented"
     },
     "contract": {
-     "state": "not-implemented"
+     "path": "native/pi_cam/functions/compute_tms.yaml",
+     "review": "reviewed",
+     "state": "available"
     },
     "in_model_replacement": {
      "contexts": [
@@ -55161,7 +56616,9 @@
      "state": "not-implemented"
     },
     "contract": {
-     "state": "not-implemented"
+     "path": "native/pi_cam/functions/momtran.yaml",
+     "review": "reviewed",
+     "state": "available"
     },
     "in_model_replacement": {
      "contexts": [
@@ -55511,7 +56968,9 @@
      "state": "not-implemented"
     },
     "contract": {
-     "state": "not-implemented"
+     "path": "native/pi_cam/functions/zm_conv_evap.yaml",
+     "review": "reviewed",
+     "state": "available"
     },
     "in_model_replacement": {
      "contexts": [
@@ -55617,7 +57076,9 @@
      "state": "not-implemented"
     },
     "contract": {
-     "state": "not-implemented"
+     "path": "native/pi_cam/functions/zm_convr.yaml",
+     "review": "reviewed",
+     "state": "available"
     },
     "in_model_replacement": {
      "contexts": [
@@ -72701,9 +74162,9 @@
   "mo_lightning::lightning_no_prod"
  ],
  "volatile": {
-  "branch": "physics-kernel-api-closure",
-  "commit": "ccb5bafe48d17744b1a7baf3d516bf69540feb89",
-  "generated_at": "2026-09-13T03:21:43+00:00"
+  "branch": "radiation-torchscript-slot",
+  "commit": "42317faf8cd72e824640b7a963f3ed2b1127fc6c",
+  "generated_at": "2026-09-18T03:37:49+00:00"
  },
  "work_items": [
   {
@@ -72755,8 +74216,8 @@
   {
    "branch": "physics-kernel-api-closure",
    "kernel": "radiation::radiation_tend",
-   "next_gate": "a network good enough to use: more captured data, the longwave near the surface, the clear-sky and TOA diagnostics; then a paired year",
-   "note": "Month pair on main (replayed boundary, same image and class): Radiation installed and nothing bound 401.3 s over 1,488 steps, bit-for-bit with the monthly oracle (7418517); the 256-wide emulator at the slot 363.9 s, nine percent shorter, 761,856 plugin calls at 1.31 ms each, radiation 2.9 s a rank against 34.2 (7418518). Finite for the month; thirteen water-isotope check lines against none in the baseline; the radiation budget drifts by 4 to 5 W/m2 in the global mean over the month (drift record kept). The mechanism is closed; the network is the open problem.",
+   "next_gate": "a network good enough to use: the zenith angle given back to the block model, more captured data, the longwave near the surface, the clear-sky and TOA diagnostics; then a paired year",
+   "note": "Month pair on main (replayed boundary): Radiation installed and nothing bound 401.3 s over 1,488 steps, bit-for-bit (7418517); the 256-wide emulator at the slot 363.9 s, nine percent shorter (7418518), the radiation budget drifting 4 to 5 W/m2 over the month. Four ways to answer the radiation now, all gated: a compiled Python kernel at the slot, called by Fortran (0.23 s a rank per 50 steps, 7418444); a TorchScript model through FTorch (64-wide transformer 0.72 s, 7431803); Python at the runner's pause (the same MLP 0.82 s, 7434965; the original branch through the pause bit-for-bit, 7434783); and the Python driver with a model of the whole compute block (p24: the day-1 capture replayed through it bit-for-bit in state, 7436003; the block emulator 0.38 s a rank once compiled, 7436082, drifting 1.5 K/day because it must learn the zenith angle). The 64-wide transformer priced on the other two paths (p24): written out in Numba as a plugin 12.5 ms a call, rad_tend 0.84 s a rank (shadow 7439472 bit-for-bit, live 7439535, 0.17 K rms); its block contract through the Python driver 15.5 ms a call, half of it the view-to-tensor conversion, rad_tend 1.20 s (7439603, 1.27 K rms); FTorch at the slot stays the cheapest at 7.1 ms. A month on each path (p24, 7452662-7452667): the MLP plugin 366.2 s against 400.2 with nothing bound, the MLP through the Python driver 371.9 s (6 s of it the first call's compile); the transformer 385.4 s as a plugin, 374.3 s through the driver; the block models (no zenith angle given) are physically unusable over the month (-46 and -243 W/m2 of net shortwave), the slot models drift 4-5 W/m2 as before. The mechanism is closed in every form; the network is the open problem. The cloud macro/microphysics stage (mmacro_pcond's) has the same Python-driver form since 2026-09-14 (p26): two block contracts (cloud_block.MACRO_BLOCK, MICRO_BLOCK), captured (7453135) and replayed bit-for-bit in state (7453150; the halves 7452498, 7453151), the driver 0.37 s a rank per 50 steps over native-whole; no model of either block yet, and no history entry (the drivers' 141 outfld diagnostics are not reproduced by a replay). First networks for the macrophysics block (p26): a core MLP (969 in, 632 out, 0.48M) answers the block in 2.7 ms against macrop_tend's 6.6, the stage 2.34 s a rank against 1.96 (7454277), drifting 5.8 K in 50 steps; the radiation MLP through the Python driver with a NumPy forward runs the month in 359.5 s, the fastest path (7454279). Round 3 of the cloud driver (p27, 2026-09-14): the bookkeeping is one finish entry a block (pycam_mm_finish_macro_v1, pycam_mm_finish_micro_v1), the originals through the driver bit-for-bit at 2.28 s a rank for the stage (7457385), the replay 0.51 s (7456791); a core network for the microphysics block as well (2053 in, 1479 out, 0.47M) and the networks' water clamped at -q/dt; both blocks as NumPy networks run the stage in 1.24 s a rank against the original's 1.96 and the loop in 15.47 against 15.95 (7457386; 3.1 and 3.3 ms a call), drifting 6.1 K rms in 50 steps -- the networks, not the mechanism, are what is open. The fine-grained walk (legacy-python) bound once, 2026-09-15: kernel call sites resolved once per set of objects handed, outputs written in place, the drivers' state copies kept between calls (image p28, pycam_state_copy): the cloud stage's walk 4.03 -> 3.06 s a rank against 1.96 native-whole, the step loop 18.33 -> 16.98 against 16.00, bit-for-bit throughout (7473911 to 7475430); the Fortran regions are at the original's cost and about 1.1 s of Python around fifty-one kernel calls a chunk remain.",
    "owner": "claude",
    "owner_class": "freecam.physics.radiation.Radiation",
    "stage": "performance_gate",
@@ -72765,7 +74226,7 @@
    "target_processes": [
     "cam_run1.radiation"
    ],
-   "updated_at": "2026-09-12"
+   "updated_at": "2026-09-13"
   }
  ]
 }

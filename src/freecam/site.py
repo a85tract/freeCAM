@@ -46,6 +46,7 @@ __all__ = [
     "resolved",
     "setting",
     "site_file",
+    "site_relative",
 ]
 
 SITE_FILE_NAME = "site.env"
@@ -162,6 +163,43 @@ def repository_root(start: str | Path | None = None) -> Path:
     raise FileNotFoundError(
         f"no freeCAM checkout above {here}: no pyproject.toml found"
     )
+
+
+def site_relative(target: str | Path, *, repo: str | Path | None = None) -> str:
+    """Spell a path for a committed record: through the site's variables, never a user's directory.
+
+    A path under this checkout becomes repo-relative; one under the scratch root (``FREECAM_SCRATCH``,
+    else ``SCRATCH``, else the site's default for this login) becomes ``${FREECAM_SCRATCH}/...``; one
+    under ``$WORK`` (or the login's work directory) becomes ``${WORK}/...``; anything else is returned
+    as given.  Records name no user and no allocation; the health records set the convention.
+    """
+
+    text = str(target)
+    resolved_target = Path(text).expanduser()
+    try:
+        root = repository_root(repo) if repo is not None else repository_root()
+    except FileNotFoundError:
+        root = None
+    if root is not None:
+        try:
+            return str(resolved_target.resolve().relative_to(root.resolve()))
+        except ValueError:
+            pass
+    user = os.environ.get("USER", "")
+    roots = [
+        (os.environ.get("FREECAM_SCRATCH") or os.environ.get("SCRATCH") or (f"/glade/derecho/scratch/{user}" if user else ""), "${FREECAM_SCRATCH}"),
+        (os.environ.get("WORK") or (f"/glade/work/{user}" if user else ""), "${WORK}"),
+    ]
+    for prefix, variable in roots:
+        if not prefix:
+            continue
+        for spelled in {prefix, str(Path(prefix).resolve())}:
+            spelled = spelled.rstrip("/")
+            if text == spelled:
+                return variable
+            if text.startswith(spelled + "/"):
+                return variable + text[len(spelled):]
+    return text
 
 
 def site_file(repo: str | Path | None = None) -> Path:

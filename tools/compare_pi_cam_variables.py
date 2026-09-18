@@ -57,7 +57,9 @@ def main(argv: list[str] | None = None) -> int:
                        "timestamp_variables": timestamps, "missing_variables": missing}
         verdict = "identical" if files[name]["identical"] else f"{len(differing)} differing"
         print(f"{name}: {verdict}" + (f" ({', '.join(differing[:12])}{', ...' if len(differing) > 12 else ''})" if differing else ""))
-    record = {"schema_version": 1, "reference": str(args.reference), "candidate": str(args.candidate),
+    from freecam.site import site_relative
+
+    record = {"schema_version": 1, "reference": site_relative(args.reference), "candidate": site_relative(args.candidate),
               "state_files_identical": all(v.get("identical") for n, v in files.items() if ".cam.r." in n or ".cam.rs." in n),
               "files": files}
     if args.output:

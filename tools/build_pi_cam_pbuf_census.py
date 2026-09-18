@@ -1,0 +1,128 @@
+#!/usr/bin/env python3
+"""Emit a census of the physics-buffer fields the pinned CAM source registers by literal name.
+
+Every ``pbuf_add_field('NAME', scope, dtype, (/dims/), index)`` whose name is a literal and whose index is a scalar
+module variable becomes one row: the name, the module symbol holding the index (``<module>_mp_<variable>_``), the
+declared rank, whether the field carries the two time samples (``pbuf_times`` or ``dyn_time_lvls`` among its dims;
+such a field is served whole, both planes, rank one higher), and its kind.  Modules that look the index up by name
+(``x_idx = pbuf_get_index('NAME')``) add their symbols as aliases, so a field registered through a local variable is
+still reachable.  The census is what a diagnostic needs to snapshot the whole buffer around a block and name every
+field the block wrote; it is not a contract.
+
+    tools/build_pi_cam_pbuf_census.py                 # write native/pi_cam/pbuf_census.yaml
+    tools/build_pi_cam_pbuf_census.py --check         # fail if stale
+"""
+from __future__ import annotations
+
+import argparse
+import difflib
+import re
+import sys
+from pathlib import Path
+
+REPO = Path(__file__).resolve().parents[1]
+CAM_SRC = REPO / "external/iCESM1.3.1_fzhu/components/cam/src"
+OUTPUT = REPO / "native/pi_cam/pbuf_census.yaml"
+TIME_DIMS = ("pbuf_times", "dyn_time_lvls")
+ADD = re.compile(r"call\s+pbuf_add_field\s*\(\s*'([^']+)'\s*,\s*'[^']*'\s*,\s*(dtype_\w+)\s*,\s*\(/([^)]*)/\)\s*,\s*([A-Za-z_][A-Za-z_0-9]*)\s*[,)]",
+                 re.IGNORECASE)
+ADD_DQ = re.compile(r'call\s+pbuf_add_field\s*\(\s*"([^"]+)"\s*,\s*"[^"]*"\s*,\s*(dtype_\w+)\s*,\s*\(/([^)]*)/\)\s*,\s*([A-Za-z_][A-Za-z_0-9]*)\s*[,)]',
+                    re.IGNORECASE)
+LOOKUP = re.compile(r"^\s*([A-Za-z_][A-Za-z_0-9]*)\s*=\s*pbuf_get_index\s*\(\s*'([^']+)'", re.IGNORECASE | re.MULTILINE)
+MODULE = re.compile(r"^\s*module\s+([A-Za-z_][A-Za-z_0-9]*)\s*$", re.IGNORECASE | re.MULTILINE)
+
+
+def _joined(text: str) -> str:
+    """Fortran continuation lines joined, comments dropped."""
+
+    lines = []
+    for line in text.splitlines():
+        stripped = line.split("!", 1)[0] if not line.lstrip().startswith("!") else ""
+        lines.append(stripped)
+    return re.sub(r"&\s*\n\s*&?", " ", "\n".join(lines))
+
+
+def _module_variables(text: str) -> set[str]:
+    """Names declared at module level (before ``contains``), lower-cased: what has a symbol in the image."""
+
+    head = re.split(r"^\s*contains\s*$", text, maxsplit=1, flags=re.IGNORECASE | re.MULTILINE)[0]
+    names: set[str] = set()
+    for line in _joined(head).splitlines():
+        if "::" not in line or not re.match(r"\s*(integer|real|logical|character|type)", line, re.IGNORECASE):
+            continue
+        for item in line.split("::", 1)[1].split(","):
+            name = item.split("=")[0].split("(")[0].strip().lower()
+            if re.fullmatch(r"[a-z_][a-z_0-9]*", name):
+                names.add(name)
+    return names
+
+
+def census(root: Path = CAM_SRC) -> list[dict]:
+    rows: dict[str, dict] = {}
+    aliases: dict[str, list[str]] = {}
+    for path in sorted(root.rglob("*.F90")):
+        text = path.read_text(errors="replace")
+        module = MODULE.search(text)
+        if not module:
+            continue
+        module_name = module.group(1).lower()
+        module_vars = _module_variables(text)
+        joined = _joined(text)
+        for pattern in (ADD, ADD_DQ):
+            for name, dtype, dims, index in pattern.findall(joined):
+                dims_list = [d.strip() for d in dims.split(",") if d.strip()]
+                sliced = any(any(t in d.lower() for t in TIME_DIMS) for d in dims_list)
+                symbol = f"{module_name}_mp_{index.lower()}_" if index.lower() in module_vars else None
+                row = {"name": name, "rank": len(dims_list), "time_sliced": sliced,
+                       "dtype": "int32" if dtype.lower() == "dtype_i4" else "float64", "dims": dims_list,
+                       "registered_in": str(path.relative_to(root)), "symbol": symbol}
+                rows.setdefault(name, row)
+                # a field several modules register (one of them at a time, by configuration): every registering
+                # module's symbol is an alias
+                if symbol:
+                    aliases.setdefault(name, []).append(symbol)
+        for index, name in LOOKUP.findall(joined):
+            if index.lower() in module_vars:
+                aliases.setdefault(name, []).append(f"{module_name}_mp_{index.lower()}_")
+    out = []
+    for name in sorted(rows):
+        row = rows[name]
+        symbols = ([row["symbol"]] if row["symbol"] else []) + sorted(set(aliases.get(name, [])) - {row["symbol"]})
+        out.append({"name": name, "symbols": symbols, "rank": row["rank"], "time_sliced": row["time_sliced"], "dtype": row["dtype"],
+                    "dims": row["dims"], "registered_in": row["registered_in"]})
+    return out
+
+
+def render(rows: list[dict]) -> str:
+    lines = ["# GENERATED by tools/build_pi_cam_pbuf_census.py -- do not edit.", "#",
+             "# Every physics-buffer field the pinned CAM source registers by literal name, with the module symbols that",
+             "# hold its index (the registering module's, then any that look it up by name), its declared rank, whether it",
+             "# carries the two time samples, and its kind.  A diagnostic's census, not a contract.",
+             "schema_version: 1", f"fields: {len(rows)}", "rows:"]
+    for row in rows:
+        symbols = "[" + ", ".join(row["symbols"]) + "]"
+        dims = "[" + ", ".join(row["dims"]) + "]"
+        lines.append(f"- {{name: {row['name']}, symbols: {symbols}, rank: {row['rank']}, time_sliced: {str(row['time_sliced']).lower()}, "
+                     f"dtype: {row['dtype']}, dims: {dims}, registered_in: {row['registered_in']}}}")
+    return "\n".join(lines) + "\n"
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--check", action="store_true")
+    arguments = parser.parse_args()
+    rendered = render(census())
+    if arguments.check:
+        current = OUTPUT.read_text() if OUTPUT.is_file() else ""
+        if current != rendered:
+            sys.stderr.write("".join(difflib.unified_diff(current.splitlines(keepends=True), rendered.splitlines(keepends=True)))[:3000])
+            sys.stderr.write(f"\nstale: {OUTPUT.relative_to(REPO)}\n")
+            return 1
+        return 0
+    OUTPUT.write_text(rendered)
+    print(f"wrote {OUTPUT.relative_to(REPO)} ({rendered.count(chr(10)) - 7} fields)")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

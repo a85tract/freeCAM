@@ -1,0 +1,19 @@
+{
+ "schema_version": 1,
+ "log": "pyCAM/PI-cam/pausable-p29-uwshcu-mlp-live-1month-dev-1month-7500361.desched1/run/pi_cam_python.log",
+ "steps": 1488,
+ "counts": {
+  "big_error": 2944450,
+  "isotopic_mass_error": 66807,
+  "qneg3_macro": 1932585,
+  "qneg3_total": 10652382,
+  "tracebacks": 0
+ },
+ "per_step": {
+  "big_error": 1978.7970430107528,
+  "isotopic_mass_error": 44.89717741935484,
+  "qneg3_macro": 1298.780241935484,
+  "qneg3_total": 7158.8588709677415,
+  "tracebacks": 0.0
+ }
+}

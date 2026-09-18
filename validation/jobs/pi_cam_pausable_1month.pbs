@@ -90,9 +90,19 @@ if [ -n "${PYCAM_RADIATION_PYTHON:-}" ]; then
   if [ -n "${PYCAM_SHADOW_RAD_PLUGIN:-}" ]; then
     stage_flags+=(--shadow-radiation-plugin "${PYCAM_SHADOW_RAD_PLUGIN}")
   fi
+  if [ -n "${PYCAM_RAD_TORCH_MODEL:-}" ]; then
+    stage_flags+=(--radiation-torch-model "${PYCAM_RAD_TORCH_MODEL}")
+  fi
+  if [ -n "${PYCAM_SHADOW_RAD_TORCH_MODEL:-}" ]; then
+    stage_flags+=(--shadow-radiation-torch-model "${PYCAM_SHADOW_RAD_TORCH_MODEL}")
+  fi
   if [ -n "${PYCAM_RAD_MODEL:-}" ]; then
     # replay:DIR or file.py:function answers the branch in the driver's place
     stage_flags+=(--radiation-model "${PYCAM_RAD_MODEL}")
+  fi
+  if [ -n "${PYCAM_RAD_BLOCK_MODEL:-}" ]; then
+    # replay:DIR or file.py:function answers the branch in the driver's place
+    stage_flags+=(--radiation-block-model "${PYCAM_RAD_BLOCK_MODEL}")
   fi
 fi
 if [ -n "${PYCAM_CLOUD_PYTHON:-}" ]; then
@@ -108,6 +118,12 @@ fi
 if [ -n "${PYCAM_DISABLE_ACTIONS:-}" ]; then
   # the inertness gate: actions expected to do no numerical work, switched off
   stage_flags+=(--disable-actions "${PYCAM_DISABLE_ACTIONS}")
+fi
+if [ -n "${PYCAM_CAPTURE_KERNELS:-}" ]; then
+  # the named kernels answered by the original at their pauses with one call in
+  # PYCAM_CAPTURE_EVERY recorded (default every call), for training data that
+  # spans the month; the run must stay bit-for-bit
+  stage_flags+=(--capture-kernels "${PYCAM_CAPTURE_KERNELS}" --capture-dir "${run_dir}/../frame-capture" --capture-every "${PYCAM_CAPTURE_EVERY:-1}")
 fi
 if [ -n "${PYCAM_KERNEL_MODELS:-}" ]; then
   # models in kernel slots, NAME=PATH pairs separated by commas: a cloudpickled
@@ -155,7 +171,7 @@ status=0
   --candidate "${run_dir}" \
   --output "${bfb_output}" || status=$?
 
-if [ -n "${PYCAM_KERNEL_MODELS:-}${PYCAM_RAD_MODEL:-}${PYCAM_RAD_PLUGIN:-}" ]; then
+if [ -n "${PYCAM_KERNEL_MODELS:-}${PYCAM_RAD_MODEL:-}${PYCAM_RAD_PLUGIN:-}${PYCAM_RAD_TORCH_MODEL:-}${PYCAM_RAD_BLOCK_MODEL:-}" ]; then
   # a model's month is not bit-for-bit; how far each history field moved, in
   # units of the field's own variability, and whether anything went non-finite
   "${python}" tools/report_pi_cam_surrogate_drift.py \

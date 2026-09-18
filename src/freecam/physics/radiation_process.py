@@ -173,9 +173,16 @@ class RadiationReplay:
     def __setstate__(self, state: dict[str, Any]) -> None:
         self.__dict__.update(state)
         if self.directory not in _REPLAY_TABLES:
-            raise PhysicsError(
-                f"a radiation replay of {self.directory} cannot cross processes by pickle; its table lives in "
-                f"the process that loaded it")
+            # pickled into a rank worker from a notebook: load this rank's own capture file here
+            try:
+                from mpi4py import MPI
+                rank = int(MPI.COMM_WORLD.Get_rank())
+            except Exception as error:      # noqa: BLE001 -- no MPI here: the table cannot be found
+                raise PhysicsError(
+                    f"a radiation replay of {self.directory} cannot cross processes by pickle without MPI to "
+                    f"name the rank whose capture to load") from error
+            RadiationReplay.__init__(self, self.directory, rank)
+            self.calls = int(state.get("calls", 0))
 
     def __call__(self, inputs: dict[str, Any]) -> dict[str, np.ndarray]:
         key = (int(inputs["nstep"]), int(inputs["lchnk"]))
@@ -191,6 +198,113 @@ class RadiationReplay:
 
     def __repr__(self) -> str:
         return f"RadiationReplay({str(self.path)!r})"
+
+
+#: The block contract: what the driver has in memory before any arithmetic, by name.  A block model takes
+#: these and returns OUTPUTS; the zenith angle and the RRTMG gas profiles are inside the block it replaces.
+BLOCK_INPUTS = (
+    "nstep", "lchnk", "ncol", "dt", "calday", "dosw", "dolw", "clat", "clon",
+    "state_t", "state_pmid", "state_pint", "state_pdel", "state_lnpint", "state_lnpmid", "state_q",
+    "cld", "cldfsnow", "dei", "mu", "lambdac", "iciwp", "iclwp", "des", "icswp", "dgnumwet", "qaerwat", "ozone",
+    "cam_in_lwup", "cam_in_asdir", "cam_in_asdif", "cam_in_aldir", "cam_in_aldif",
+)
+
+
+def radiation_steps(nstep: int, iradsw: int, iradlw: int, irad_always: int) -> tuple[bool, bool]:
+    """``radiation_do('sw')`` and ``('lw')`` as radiation.F90:240-246 decide them, from the step count alone."""
+
+    def do(freq: int) -> bool:
+        return nstep == 0 or freq == 1 or ((nstep - 1) % freq == 0 and nstep != 1) or nstep <= irad_always
+    return do(int(iradsw)), do(int(iradlw))
+
+
+class RadiationBlockModel:
+    """Answer the whole compute block with a function over BLOCK_INPUTS: the Python driver calls it."""
+
+    records = False
+    answers = True
+    block = True
+
+    def __init__(self, function: Callable[[dict[str, Any]], dict[str, np.ndarray]], *, label: str) -> None:
+        if not callable(function):
+            raise PhysicsError(f"a radiation block model must be callable, got {type(function).__name__}")
+        self.function = function
+        self.label = str(label)
+        self.calls = 0
+        self.seconds = 0.0
+        self.first_seconds = 0.0
+
+    def __call__(self, inputs: dict[str, Any]) -> dict[str, np.ndarray]:
+        import time
+
+        started = time.perf_counter()
+        answer = self.function(inputs)
+        elapsed = time.perf_counter() - started
+        missing = [name for name in OUTPUTS if name not in answer]
+        if missing:
+            raise PhysicsError(f"the radiation block model {self.label} returned no {missing}")
+        if self.calls == 0:
+            self.first_seconds = elapsed
+        self.calls += 1
+        self.seconds += elapsed
+        return answer
+
+    def describe(self) -> dict[str, Any]:
+        return {"kind": "block-model", "function": self.label, "calls": self.calls,
+                "seconds": self.seconds, "first_call_seconds": self.first_seconds}
+
+
+class RadiationBlockReplay(RadiationReplay):
+    """A capture's recorded outputs answering the whole block from the Python driver: its bit-for-bit gate."""
+
+    block = True
+
+    def describe(self) -> dict[str, Any]:
+        return {**super().describe(), "kind": "block-replay"}
+
+
+def load_block_model(spec: str, *, rank: int):
+    """``replay:DIR`` -> :class:`RadiationBlockReplay`; ``MODULE:FUNCTION`` or ``path.py:FUNCTION`` -> :class:`RadiationBlockModel`."""
+
+    if spec.startswith("replay:"):
+        return RadiationBlockReplay(spec[len("replay:"):], rank)
+    model = load_process_model(spec, rank=rank)
+    if not isinstance(model, RadiationProcessModel):
+        raise PhysicsError(f"--radiation-block-model takes replay:DIR, MODULE:FUNCTION or path.py:FUNCTION, got {spec!r}")
+    return RadiationBlockModel(model.function, label=model.label)
+
+
+class OriginalProcess:
+    """Put in the process slot: the runner pauses at the slot and runs the original branch itself.
+
+    The validation gate of the pause path: Python receives the frame, asks the runner for the
+    original branch, and resumes; the run must stay bit-for-bit.
+    """
+
+    records = False
+    answers = True
+
+    def describe(self) -> dict[str, Any]:
+        return {"kind": "original-at-slot"}
+
+
+def answer_frame(model: Callable[[dict[str, Any]], dict[str, np.ndarray]], batch: dict[str, Any], ncol: int) -> dict[str, np.ndarray]:
+    """Call a process model on a paused slot's frame batch and shape its answer for the write-back.
+
+    The frame hands the 46 inputs as live-lane views (the table's scalars as one-element arrays); the
+    model returns the 12 outputs, possibly padded to ``pcols`` rows; the write-back wants exactly the
+    live lanes, float64.
+    """
+
+    # the table carries its scalars as one-element arrays; the model reads them as numbers
+    scalars = {name for name, rank in TABLE_INPUTS if rank == 0}
+    inputs = {name: (float(np.asarray(value).reshape(-1)[0]) if name in scalars else value) for name, value in batch.items()}
+    answer = model(inputs)
+    shaped: dict[str, np.ndarray] = {}
+    for name in OUTPUTS:
+        value = np.asarray(answer[name], dtype=np.float64)
+        shaped[name] = np.asfortranarray(value[:ncol]) if value.ndim else value
+    return shaped
 
 
 class RadiationProcessModel:
@@ -238,19 +352,26 @@ def load_process_model(spec: str, *, rank: int):
     import importlib.util
     import sys
 
+    if spec == "original":
+        return OriginalProcess()
     if spec.startswith("replay:"):
         return RadiationReplay(spec[len("replay:"):], rank)
     module_name, sep, function_name = spec.rpartition(":")
     if not sep or not module_name or not function_name:
-        raise PhysicsError(f"--radiation-model takes replay:DIR, MODULE:FUNCTION or path.py:FUNCTION, got {spec!r}")
+        raise PhysicsError(f"--radiation-model takes original, replay:DIR, MODULE:FUNCTION or path.py:FUNCTION, got {spec!r}")
     if module_name.endswith(".py"):
+        # imported by name from its directory, so the function pickles by reference into every rank's process
+        # registry: a module loaded from a bare path pickles by value, and a class defined in it carries a
+        # per-process tracker id that hashes differently on every rank (7456975)
         path = Path(module_name).expanduser().resolve()
         if not path.is_file():
             raise PhysicsError(f"--radiation-model: {path} is not a file")
-        loader_spec = importlib.util.spec_from_file_location(f"freecam_radiation_model_{path.stem}", path)
-        module = importlib.util.module_from_spec(loader_spec)
-        sys.modules[loader_spec.name] = module
-        loader_spec.loader.exec_module(module)
+        directory = str(path.parent)
+        if directory not in sys.path:
+            sys.path.insert(0, directory)
+        module = importlib.import_module(path.stem)
+        if Path(getattr(module, "__file__", "")).resolve() != path:
+            raise PhysicsError(f"--radiation-model: importing {path.stem} found {getattr(module, '__file__', None)}, not {path}")
     else:
         module = importlib.import_module(module_name)
     function = getattr(module, function_name, None)
@@ -259,8 +380,9 @@ def load_process_model(spec: str, *, rank: int):
     return RadiationProcessModel(function, label=f"{Path(module_name).name}:{function_name}")
 
 
-__all__ = ["ARRAY_INPUTS", "OUTPUTS", "RSTATE_INPUTS", "SCALAR_INPUTS", "RadiationProcessCapture",
-           "RadiationProcessModel", "RadiationReplay", "load_process_model"]
+__all__ = ["ARRAY_INPUTS", "BLOCK_INPUTS", "OUTPUTS", "RSTATE_INPUTS", "SCALAR_INPUTS", "OriginalProcess",
+           "RadiationBlockModel", "RadiationBlockReplay", "RadiationProcessCapture", "RadiationProcessModel",
+           "RadiationReplay", "answer_frame", "load_block_model", "load_process_model", "radiation_steps"]
 
 
 # -- the slot inside the image -----------------------------------------------------------------
@@ -293,6 +415,24 @@ def bind_radiation_process(library: Any, address: int, *, shadow: bool = False) 
         raise PhysicsError(f"the radiation process slot refused the plugin (status {status})")
 
 
+def bind_radiation_model(library: Any, path: Any, *, shadow: bool = False) -> None:
+    """Load a TorchScript file at the image's radiation process slot (``pycam_rad_process_bind_model_v1``):
+    the slot answers the branch through FTorch with the same 46 inputs as tensors and the same 12 outputs."""
+
+    import ctypes
+    from pathlib import Path
+
+    entry = getattr(library, "pycam_rad_process_bind_model_v1", None)
+    if entry is None:
+        raise PhysicsError("this image cannot bind a TorchScript model at the radiation slot (pycam_rad_process_bind_model_v1): built before it")
+    entry.restype = ctypes.c_int32
+    entry.argtypes = [ctypes.c_char_p, ctypes.c_int32, ctypes.c_int32]
+    encoded = str(Path(path)).encode()
+    status = int(entry(encoded, len(encoded), 1 if shadow else 0))
+    if status != 0:
+        raise PhysicsError(f"the radiation process slot refused the model {path} (status {status})")
+
+
 def unbind_radiation_process(library: Any) -> None:
     entry = getattr(library, "pycam_rad_process_unbind_v1", None)
     if entry is not None:
@@ -317,5 +457,5 @@ def read_radiation_process_counts(library: Any) -> dict[str, Any] | None:
     return {"calls": int(calls.value), "seconds": float(seconds.value), "first_call_seconds": float(first.value)}
 
 
-__all__ += ["TABLE_INPUTS", "TABLE_OUTPUTS", "compile_radiation_plugin", "bind_radiation_process",
+__all__ += ["TABLE_INPUTS", "TABLE_OUTPUTS", "compile_radiation_plugin", "bind_radiation_process", "bind_radiation_model",
             "unbind_radiation_process", "read_radiation_process_counts"]

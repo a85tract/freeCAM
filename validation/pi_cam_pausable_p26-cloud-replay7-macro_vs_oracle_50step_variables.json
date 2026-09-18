@@ -1,0 +1,14 @@
+{
+ "schema_version": 1,
+ "reference": "${FREECAM_SCRATCH}/pyCAM/PI-cam/f.e13.F1850C5.ne16_g16.icesm131_ihesp.PI-cam-oracle.50step/run",
+ "candidate": "${FREECAM_SCRATCH}/pyCAM/PI-cam/pausable-p26-cloud-replay7-macro-7453151.desched1/run",
+ "state_files_identical": true,
+ "files": {
+  "SEMapping.nc": {
+   "identical": true,
+   "differing_variables": [],
+   "timestamp_variables": [],
+   "missing_variables": []
+  }
+ }
+}

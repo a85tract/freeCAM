@@ -11,7 +11,77 @@ runner_uses:
   - "use pycam_rad_handles, only: rad_ptend"
   - "use rad_constituents, only: N_DIAG"
   # the radiation process slot: a compiled plugin answering the whole radiative branch
-  - "use pycam_rad_process, only: pycam_rad_process_answer"
+  - "use pycam_rad_process, only: pycam_rad_process_answer, pycam_rad_process_prepare"
+  - "use pycam_rad_process, only: pycam_rad_process_finish, pycam_rad_process_discard, pycam_rad_process_frame"
+# the same slot paused for Python: the runner prepares the slot's tables (the 46 inputs, the RRTMG
+# state built), stops, Python answers the 12 outputs into the frame, and resume writes them back
+# where the driver writes them; Python may ask for the original branch instead (the validation gate)
+process_slot:
+  name: radiation_process
+  prepare: "pycam_rad_process_prepare(state, pbuf, cam_in, coszrs, dosw, dolw)"
+  finish: "pycam_rad_process_finish(cam_out, dosw, dolw, qrs, qrl, fsns, fsnt, flns, flnt, fsds)"
+  discard: "pycam_rad_process_discard()"
+  frame: pycam_rad_process_frame
+  inputs:
+  - [nstep, 0]
+  - [lchnk, 0]
+  - [ncol, 0]
+  - [calday, 0]
+  - [dosw, 0]
+  - [dolw, 0]
+  - [coszrs, 1]
+  - [clat, 1]
+  - [clon, 1]
+  - [state_t, 2]
+  - [state_pmid, 2]
+  - [state_pint, 2]
+  - [state_pdel, 2]
+  - [state_lnpint, 2]
+  - [state_lnpmid, 2]
+  - [state_q, 3]
+  - [cld, 2]
+  - [cldfsnow, 2]
+  - [dei, 2]
+  - [mu, 2]
+  - [lambdac, 2]
+  - [iciwp, 2]
+  - [iclwp, 2]
+  - [des, 2]
+  - [icswp, 2]
+  - [dgnumwet, 3]
+  - [qaerwat, 3]
+  - [cam_in_lwup, 1]
+  - [cam_in_asdir, 1]
+  - [cam_in_asdif, 1]
+  - [cam_in_aldir, 1]
+  - [cam_in_aldif, 1]
+  - [rstate_h2ovmr, 2]
+  - [rstate_o3vmr, 2]
+  - [rstate_co2vmr, 2]
+  - [rstate_ch4vmr, 2]
+  - [rstate_o2vmr, 2]
+  - [rstate_n2ovmr, 2]
+  - [rstate_cfc11vmr, 2]
+  - [rstate_cfc12vmr, 2]
+  - [rstate_cfc22vmr, 2]
+  - [rstate_ccl4vmr, 2]
+  - [rstate_pmidmb, 2]
+  - [rstate_pintmb, 2]
+  - [rstate_tlay, 2]
+  - [rstate_tlev, 2]
+  outputs:
+  - [qrs, 2]
+  - [qrl, 2]
+  - [fsns, 1]
+  - [fsnt, 1]
+  - [flns, 1]
+  - [flnt, 1]
+  - [fsds, 1]
+  - [sols, 1]
+  - [soll, 1]
+  - [solsd, 1]
+  - [solld, 1]
+  - [flwds, 1]
 refuse:
   - {when: ".not. allocated(rad_ptend)", message: "the radiation handles are not bound (pycam_rad_bind_hosts_v1 first)"}
   # spectralflux is private to the module and its getter cannot return it;

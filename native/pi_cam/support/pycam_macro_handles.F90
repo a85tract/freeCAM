@@ -32,6 +32,7 @@ module pycam_macro_handles
   use water_types,    only: pwtype
   use physics_types,  only: physics_state, physics_ptend, physics_state_copy, &
        physics_state_dealloc, physics_ptend_init, physics_ptend_sum, physics_update
+  use pycam_state_copy, only: pycam_state_copy_into
   use physics_buffer, only: physics_buffer_desc, pbuf_get_chunk
   use cloud_fraction, only: cldfrc
   use water_tracers,  only: wtrc_apply_rates
@@ -61,6 +62,11 @@ module pycam_macro_handles
   ! ASSOCIATED is portable across the two.  Liveness is tracked here instead:
   ! set by the copy, cleared by the deallocation, as the driver's local was.
   logical, allocatable, save :: state_live(:)
+  ! Whether the chunk's copy has been allocated by an earlier call.  The driver
+  ! allocates its copy on entry and frees it on exit; here the storage is kept
+  ! from call to call and only its live columns are rewritten, so the views a
+  ! Python walk holds of it stay where they point.  Memory placement only.
+  logical, allocatable, save :: state_kept(:)
 
   ! What the driver reached through its caller.
   type(physics_state), pointer, save :: host_state(:) => null()
@@ -111,6 +117,8 @@ contains
     allocate(macro_process_rates(pcols, pver, pwtype, pwtype, pwtype, begchunk:endchunk))
     allocate(state_live(begchunk:endchunk))
     state_live = .false.
+    allocate(state_kept(begchunk:endchunk))
+    state_kept = .false.
     macro_det_s = 0._r8
     macro_det_ice = 0._r8
     macro_process_rates = 0._r8
@@ -159,7 +167,14 @@ contains
     integer(c_int), value, intent(in) :: lchnk
     status = 1_c_int
     if (.not. chunk_ok(lchnk)) return
-    call physics_state_copy(host_state(lchnk), macro_state_loc(lchnk))
+    if (state_kept(lchnk)) then
+       ! the copy from an earlier call, still allocated: the same statements
+       ! physics_state_copy makes, into the storage the walk's views point at
+       call pycam_state_copy_into(host_state(lchnk), macro_state_loc(lchnk))
+    else
+       call physics_state_copy(host_state(lchnk), macro_state_loc(lchnk))
+       state_kept(lchnk) = .true.
+    end if
     state_live(lchnk) = .true.
     status = 0_c_int
   end function pycam_macro_state_copy_v1
@@ -173,7 +188,8 @@ contains
        status = 2_c_int
        return
     end if
-    call physics_state_dealloc(macro_state_loc(lchnk))
+    ! the driver deallocates here (physics_state_dealloc); the storage is kept
+    ! for the next call's copy and the copy is dead until then
     state_live(lchnk) = .false.
     status = 0_c_int
   end function pycam_macro_state_dealloc_v1

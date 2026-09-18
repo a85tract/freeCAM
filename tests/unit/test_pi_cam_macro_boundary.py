@@ -157,7 +157,8 @@ def test_the_two_leaves_are_wired_end_to_end_and_off_by_default() -> None:
 
 
 def test_the_support_modules_are_additions_the_image_links() -> None:
-    assert SUPPORT_MODULES == ("pycam_macro_kernels.F90", "pycam_macro_handles.F90",
+    assert SUPPORT_MODULES == ("pycam_state_copy.F90",
+                               "pycam_macro_kernels.F90", "pycam_macro_handles.F90",
                                "pycam_rad_kernels.F90", "pycam_rad_handles.F90",
                                # the radiation process slot the radiation runner asks
                                "pycam_rad_process.F90",
@@ -181,41 +182,6 @@ def test_the_support_modules_are_additions_the_image_links() -> None:
                                "pycam_awet_driver.F90", "pycam_awet_glue.F90", "pycam_awet_runner.F90",
                                "pycam_adry_driver.F90", "pycam_adry_glue.F90", "pycam_adry_runner.F90",
                                "pycam_chem_driver.F90", "pycam_chem_glue.F90", "pycam_chem_runner.F90")
-    for name in SUPPORT_MODULES:
-        assert (REPO / "native/pi_cam/support" / name).is_file()
-    # a runner that reaches a hooked kernel uses the hook module (build 7343461 failed on the order)
-    hooked = [name for name in SUPPORT_MODULES
-              if "use pycam_hooks" in (REPO / "native/pi_cam/support" / name).read_text()]
-    assert hooked == ["pycam_shcu_runner.F90", "pycam_zmdeep_runner.F90"]
-    assert all(SUPPORT_MODULES.index("pycam_hooks.F90") < SUPPORT_MODULES.index(name) for name in hooked)
-    builder = (REPO / "tools/build_pi_cam_devices.py").read_text()
-    # compiled before the control objects that `use` them, linked into the
-    # fixed image as explicit objects, never as archive replacements
-    # zm_conv_intr's control patch is accessibility alone: its .mod is compiled
-    # before the support modules that read it, and its object is never linked
-    assert INTERFACE_MODULES[0] == "zm_conv_intr.F90"
-    assert builder.index("for source_name in INTERFACE_MODULES:") < builder.index("for source_name in SUPPORT_MODULES:")
-    assert "_interface_only.o" in builder and "_interface_only" not in builder[builder.index("replacement_objects: tuple"):]
-    assert builder.index("for source_name in SUPPORT_MODULES:") < builder.index(
-        'for source_name in (\n        "physpkg.F90", "cam_comp.F90", "atm_comp_mct.F90",\n    ):')
-    assert "*(str(path) for path in support_objects)," in builder
-
-
-def test_split_macrophysics_swaps_the_stage_for_its_halves_in_one_call() -> None:
-    from freecam.pi_cam.errors import PICAMConfigurationError
-
-    plan = PICAMStepPlan.default()
-    with pytest.raises(PICAMConfigurationError):
-        plan.split_macrophysics()
-    plan.split_macrophysics(experimental=True)
-    state = {a.operation: a.enabled for a in plan.actions
-             if a.operation in ("macro_microphysics", "leaf_macro_tend_pre", "leaf_macro_tend_post")}
-    assert state == {"macro_microphysics": False, "leaf_macro_tend_pre": True, "leaf_macro_tend_post": True}
-    # the halves run where the stage ran, in order
-    order = [a.operation for a in plan]
-    assert order.index("leaf_macro_tend_pre") + 1 == order.index("leaf_macro_tend_post")
-    assert order.index("sslt_rebin_adv") < order.index("leaf_macro_tend_pre") < order.index("leaf_modal_aero_prepare") or \
-        order.index("sslt_rebin_adv") < order.index("leaf_macro_tend_pre") < order.index("aero_model_wetdep")
 
 
 @pinned

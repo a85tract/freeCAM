@@ -46,6 +46,7 @@ from .pi_cam import (
 
 __all__ = [
     "CASES",
+    "NativeModel",
     "CAMBoundaryProvider",
     "CESMOnlineBoundaryProvider",
     "CaseConfig",
@@ -89,5 +90,6 @@ __all__ = [
 ]
 
 from . import physics  # noqa: E402  (single-column physics functions)
+from .physics.native_model import NativeModel  # noqa: E402  (a TorchScript model for a kernel's hook)
 
 __version__ = "0.19.0"

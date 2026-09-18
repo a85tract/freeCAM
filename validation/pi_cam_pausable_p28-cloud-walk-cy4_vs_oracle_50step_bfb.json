@@ -1,0 +1,14 @@
+{
+  "bfb": false,
+  "reference_files": 4,
+  "candidate_files": 0,
+  "compared_files": 0,
+  "missing_in_candidate": [
+    "cam.h0.0001-01-01-00000.nc",
+    "cam.r.0001-01-02-03600.nc",
+    "cam.rh0.0001-01-02-03600.nc",
+    "cam.rs.0001-01-02-03600.nc"
+  ],
+  "extra_in_candidate": [],
+  "first_difference": null
+}

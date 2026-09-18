@@ -53,7 +53,10 @@ def test_every_record_names_the_image_by_a_repo_relative_manifest_path() -> None
 def _tracked_text_files() -> list[Path]:
     import subprocess
 
+    # tracked files, and the untracked ones git would let in (a record written but not yet added)
     names = subprocess.run(["git", "ls-files"], cwd=REPO, capture_output=True, text=True, check=True).stdout.split("\n")
+    names += subprocess.run(["git", "ls-files", "--others", "--exclude-standard"], cwd=REPO,
+                            capture_output=True, text=True, check=True).stdout.split("\n")
     return [REPO / name for name in names if name and (REPO / name).is_file()]
 
 

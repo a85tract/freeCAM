@@ -10,11 +10,16 @@
 ! rates and the ten fluxes back, writes them where the driver writes them, and writes the history
 ! fields of what it produced as the driver does.  The branch's other diagnostics have no source
 ! and are not written.  In shadow the plugin runs for its cost and the original branch answers.
-! The plugin is a C function of the same interface the kernel hooks use (pycam_hooks).
+! Two answerers: a plugin -- a C function of the same interface the kernel hooks use
+! (pycam_hooks) -- or a TorchScript model loaded through FTorch, which sees the same 46 inputs
+! as tensors (a Fortran (pcols, pver) array is a (pcols, pver) tensor) and fills the same 12
+! outputs; either way no Python runs in the step.
 module pycam_rad_process
 
   use, intrinsic :: iso_c_binding, only: c_int, c_int64_t, c_double, c_ptr, c_loc, c_funptr, &
-                                         c_null_funptr, c_f_procpointer
+                                         c_null_funptr, c_f_procpointer, c_f_pointer, c_char
+  use ftorch, only: torch_model, torch_tensor, torch_kCPU, torch_model_load, torch_model_forward, &
+                    torch_tensor_from_array, torch_delete
   use shr_kind_mod,    only: r8 => shr_kind_r8
   use ppgrid,          only: pcols, pver, pverp
   use constituents,    only: pcnst
@@ -29,8 +34,9 @@ module pycam_rad_process
 
   implicit none
   private
-  public :: pycam_rad_process_answer, pycam_rad_process_bind_v1, pycam_rad_process_unbind_v1, &
-            pycam_rad_process_counts_v1
+  public :: pycam_rad_process_answer, pycam_rad_process_bind_v1, pycam_rad_process_bind_model_v1, &
+            pycam_rad_process_unbind_v1, pycam_rad_process_counts_v1, pycam_rad_process_history_v1, &
+            pycam_rad_process_prepare, pycam_rad_process_frame, pycam_rad_process_finish, pycam_rad_process_discard
 
   integer, parameter :: n_in = 46, n_out = 12
   !> the table's order, for the test that pins it to Python's radiation_process.TABLE_INPUTS
@@ -50,6 +56,9 @@ module pycam_rad_process
   logical, save :: shadow = .false.
   logical, save :: indices_ready = .false.
   type(c_funptr), save :: plugin = c_null_funptr
+  ! the TorchScript answerer, when one is bound instead of a plugin
+  logical, save :: modeled = .false.
+  type(torch_model), save :: model
   integer(c_int64_t), save :: calls = 0_c_int64_t, ticks = 0_c_int64_t, first_ticks = 0_c_int64_t
 
   ! the optics' buffer fields; an unregistered one (index -1) is handed as zeros
@@ -66,6 +75,11 @@ module pycam_rad_process
   real(r8), target, save :: o_fsns(pcols), o_fsnt(pcols), o_flns(pcols), o_flnt(pcols), o_fsds(pcols), &
                             o_sols(pcols), o_soll(pcols), o_solsd(pcols), o_solld(pcols), o_flwds(pcols)
   real(r8), save :: ftem(pcols, pver)
+  ! the slot's tables and RRTMG state while the runner is paused for Python at the slot
+  type(c_ptr), save :: t_in_p(n_in), t_out_p(n_out)
+  integer(c_int64_t), save :: t_in_s(3, n_in), t_out_s(3, n_out)
+  type(rrtmg_state_t), pointer, save :: t_rstate => null()
+  integer, save :: t_ncol = 0, t_lchnk = 0
 
   abstract interface
     integer(c_int) function plugin_interface(n_in, in_ptrs, in_shapes, n_out, out_ptrs, out_shapes) bind(C)
@@ -119,6 +133,25 @@ contains
     in_s(:, slot) = (/ int(size(array, 1), c_int64_t), int(size(array, 2), c_int64_t), 0_c_int64_t /)
   end subroutine set2
 
+  subroutine tensor_from_slot(t, p, s)
+    ! a table entry as an FTorch tensor over the same memory: rank from the non-zero extents,
+    ! Fortran index order kept (a (pcols, pver) array is a (pcols, pver) tensor)
+    type(torch_tensor), intent(out) :: t
+    type(c_ptr), intent(in) :: p
+    integer(c_int64_t), intent(in) :: s(3)
+    real(c_double), pointer, contiguous :: a1(:), a2(:,:), a3(:,:,:)
+    if (s(3) > 0_c_int64_t) then
+      call c_f_pointer(p, a3, (/ int(s(1)), int(s(2)), int(s(3)) /))
+      call torch_tensor_from_array(t, a3, torch_kCPU)
+    else if (s(2) > 0_c_int64_t) then
+      call c_f_pointer(p, a2, (/ int(s(1)), int(s(2)) /))
+      call torch_tensor_from_array(t, a2, torch_kCPU)
+    else
+      call c_f_pointer(p, a1, (/ int(s(1)) /))
+      call torch_tensor_from_array(t, a1, torch_kCPU)
+    end if
+  end subroutine tensor_from_slot
+
   subroutine set1(slot, in_p, in_s, array)
     integer, intent(in) :: slot
     type(c_ptr), intent(inout) :: in_p(:)
@@ -144,22 +177,67 @@ contains
 
     type(c_ptr) :: in_p(n_in), out_p(n_out)
     integer(c_int64_t) :: in_s(3, n_in), out_s(3, n_out)
-    real(r8), pointer :: cld(:,:), cldfsnow(:,:), dei(:,:), mu(:,:), lambdac(:,:), iciwp(:,:), &
-                         iclwp(:,:), des(:,:), icswp(:,:)
-    real(r8), pointer :: dgnumwet(:,:,:), qaerwat(:,:,:)
     type(rrtmg_state_t), pointer :: r_state
+    type(torch_tensor) :: in_t(n_in), out_t(n_out)
     procedure(plugin_interface), pointer :: call_plugin => null()
     integer(c_int) :: status
     integer(c_int64_t) :: t0, t1
-    integer :: lchnk, ncol, itim, k
+    integer :: lchnk, ncol, k
 
     handled = .false.
     if (.not. bound) return
+    call build_tables(state, pbuf, cam_in, coszrs, dosw, dolw, in_p, in_s, out_p, out_s, r_state)
+    lchnk = state%lchnk
+    ncol = state%ncol
+
+    call system_clock(t0)
+    if (modeled) then
+      ! the same tables as tensors over the same storage; the model's outputs land in o_*
+      do k = 1, n_in
+        call tensor_from_slot(in_t(k), in_p(k), in_s(:, k))
+      end do
+      do k = 1, n_out
+        call tensor_from_slot(out_t(k), out_p(k), out_s(:, k))
+      end do
+      call torch_model_forward(model, in_t, out_t)
+      call torch_delete(in_t)
+      call torch_delete(out_t)
+      status = 0_c_int
+    else
+      call c_f_procpointer(plugin, call_plugin)
+      status = call_plugin(int(n_in, c_int), in_p, in_s, int(n_out, c_int), out_p, out_s)
+    end if
+    call system_clock(t1)
+    if (calls == 0_c_int64_t) first_ticks = t1 - t0
+    ticks = ticks + (t1 - t0)
+    calls = calls + 1_c_int64_t
+    call rrtmg_state_destroy(r_state)
+    if (status /= 0_c_int) error stop 'pycam_rad_process: the bound plugin returned a non-zero status'
+    if (shadow) return
+
+    call write_outputs(cam_out, dosw, dolw, qrs, qrl, fsns, fsnt, flns, flnt, fsds, ncol, lchnk)
+    handled = .true.
+  end function pycam_rad_process_answer
+
+  subroutine build_tables(state, pbuf, cam_in, coszrs, dosw, dolw, in_p, in_s, out_p, out_s, r_state)
+    ! everything the driver has in hand before the branch, as the slot's pointer and extent tables in
+    ! TABLE_INPUTS' order, the RRTMG state built as the driver builds it, the outputs zeroed
+    type(physics_state), target, intent(in) :: state
+    type(physics_buffer_desc), pointer :: pbuf(:)
+    type(cam_in_t), target, intent(in) :: cam_in
+    real(r8), target, intent(in) :: coszrs(pcols)
+    logical, intent(in) :: dosw, dolw
+    type(c_ptr), intent(out) :: in_p(n_in), out_p(n_out)
+    integer(c_int64_t), intent(out) :: in_s(3, n_in), out_s(3, n_out)
+    type(rrtmg_state_t), pointer :: r_state
+    real(r8), pointer :: cld(:,:), cldfsnow(:,:), dei(:,:), mu(:,:), lambdac(:,:), iciwp(:,:), &
+                         iclwp(:,:), des(:,:), icswp(:,:)
+    real(r8), pointer :: dgnumwet(:,:,:), qaerwat(:,:,:)
+    integer :: lchnk, ncol, itim, k
     call resolve_indices()
     lchnk = state%lchnk
     ncol = state%ncol
     itim = pbuf_old_tim_idx()
-
     ! the scalars, the geometry
     s_nstep(1) = real(get_nstep(), c_double); s_lchnk(1) = real(lchnk, c_double); s_ncol(1) = real(ncol, c_double)
     s_calday(1) = real(get_curr_calday(), c_double)
@@ -261,17 +339,15 @@ contains
     k = k + 1; call set1(k, out_p, out_s, o_solld)
     k = k + 1; call set1(k, out_p, out_s, o_flwds)
 
-    call system_clock(t0)
-    call c_f_procpointer(plugin, call_plugin)
-    status = call_plugin(int(n_in, c_int), in_p, in_s, int(n_out, c_int), out_p, out_s)
-    call system_clock(t1)
-    if (calls == 0_c_int64_t) first_ticks = t1 - t0
-    ticks = ticks + (t1 - t0)
-    calls = calls + 1_c_int64_t
-    call rrtmg_state_destroy(r_state)
-    if (status /= 0_c_int) error stop 'pycam_rad_process: the bound plugin returned a non-zero status'
-    if (shadow) return
+  end subroutine build_tables
 
+  subroutine write_outputs(cam_out, dosw, dolw, qrs, qrl, fsns, fsnt, flns, flnt, fsds, ncol, lchnk)
+    ! the slot's outputs into the driver's arrays and cam_out, and their history as the driver writes it
+    type(cam_out_t), target, intent(inout) :: cam_out
+    logical, intent(in) :: dosw, dolw
+    real(r8), intent(inout) :: qrs(:,:), qrl(:,:)
+    real(r8), intent(inout) :: fsns(pcols), fsnt(pcols), flns(pcols), flnt(pcols), fsds(pcols)
+    integer, intent(in) :: ncol, lchnk
     ! the outputs, where the driver's branch leaves them (radiation.F90:1034-1051, 1148-1154)
     qrs(:ncol, :) = o_qrs(:ncol, :)
     qrl(:ncol, :) = o_qrl(:ncol, :)
@@ -298,8 +374,90 @@ contains
       call outfld('FLNS', flns, pcols, lchnk)
       call outfld('FLDS', cam_out%flwds, pcols, lchnk)
     end if
-    handled = .true.
-  end function pycam_rad_process_answer
+  end subroutine write_outputs
+
+  ! -- the slot paused for Python (the runner's process_slot) ---------------------------------------
+  logical function pycam_rad_process_prepare(state, pbuf, cam_in, coszrs, dosw, dolw) result(ready)
+    ! the tables and the RRTMG state for a pause: the runner stops after this and Python fills o_*
+    type(physics_state), target, intent(in) :: state
+    type(physics_buffer_desc), pointer :: pbuf(:)
+    type(cam_in_t), target, intent(in) :: cam_in
+    real(r8), target, intent(in) :: coszrs(pcols)
+    logical, intent(in) :: dosw, dolw
+    call build_tables(state, pbuf, cam_in, coszrs, dosw, dolw, t_in_p, t_in_s, t_out_p, t_out_s, t_rstate)
+    t_ncol = state%ncol
+    t_lchnk = state%lchnk
+    ready = .true.
+  end function pycam_rad_process_prepare
+
+  subroutine pycam_rad_process_frame(ptrs, ndims, shapes, dtypes, intents, ncol_out)
+    ! the paused slot's frame in the runner ABI: the 46 inputs then the 12 outputs, all float64
+    type(c_ptr), intent(inout) :: ptrs(:)
+    integer(c_int), intent(inout) :: ndims(:), dtypes(:), intents(:)
+    integer(c_int64_t), intent(inout) :: shapes(:,:)
+    integer(c_int), intent(out) :: ncol_out
+    integer :: k, r
+    ncol_out = int(t_ncol, c_int)
+    do k = 1, n_in
+      r = count(t_in_s(:, k) > 0_c_int64_t)
+      ptrs(k) = t_in_p(k); ndims(k) = int(r, c_int); dtypes(k) = 1_c_int; intents(k) = 0_c_int
+      shapes(:, k) = 0_c_int64_t; shapes(1:r, k) = t_in_s(1:r, k)
+    end do
+    do k = 1, n_out
+      r = count(t_out_s(:, k) > 0_c_int64_t)
+      ptrs(n_in + k) = t_out_p(k); ndims(n_in + k) = int(r, c_int); dtypes(n_in + k) = 1_c_int; intents(n_in + k) = 1_c_int
+      shapes(:, n_in + k) = 0_c_int64_t; shapes(1:r, n_in + k) = t_out_s(1:r, k)
+    end do
+  end subroutine pycam_rad_process_frame
+
+  subroutine pycam_rad_process_finish(cam_out, dosw, dolw, qrs, qrl, fsns, fsnt, flns, flnt, fsds)
+    ! after Python's write-back into o_*: the outputs where the driver leaves them, and the RRTMG state gone
+    type(cam_out_t), target, intent(inout) :: cam_out
+    logical, intent(in) :: dosw, dolw
+    real(r8), intent(inout) :: qrs(:,:), qrl(:,:)
+    real(r8), intent(inout) :: fsns(pcols), fsnt(pcols), flns(pcols), flnt(pcols), fsds(pcols)
+    call write_outputs(cam_out, dosw, dolw, qrs, qrl, fsns, fsnt, flns, flnt, fsds, t_ncol, t_lchnk)
+    call pycam_rad_process_discard()
+  end subroutine pycam_rad_process_finish
+
+  subroutine pycam_rad_process_discard()
+    ! Python asked for the original branch, or finished: release the pause's RRTMG state
+    if (associated(t_rstate)) call rrtmg_state_destroy(t_rstate)
+    t_rstate => null()
+  end subroutine pycam_rad_process_discard
+
+  integer(c_int) function pycam_rad_process_history_v1(lchnk, ncol, dosw, dolw, qrs, qrl, fsns, fsnt, flns, flnt, &
+       fsds, sols, soll, solsd, solld, flwds, hr, cldfsnow, has_snow) bind(C, name='pycam_rad_process_history_v1') result(status)
+    ! the history the driver writes around the block, in one call, for a Python driver that computed the block
+    ! itself: CLDFSNOW (radiation.F90:846) and HR (1304) every step, the heating rates and the ten fluxes when
+    ! the branch computed (1061-1090, 1170-1187).  qrs and qrl are in the branch's energy units, before scaling.
+    integer(c_int), value, intent(in) :: lchnk, ncol, dosw, dolw, has_snow
+    real(c_double), intent(in) :: qrs(pcols, pver), qrl(pcols, pver), hr(pcols, pver), cldfsnow(pcols, pver)
+    real(c_double), intent(in) :: fsns(pcols), fsnt(pcols), flns(pcols), flnt(pcols), fsds(pcols)
+    real(c_double), intent(in) :: sols(pcols), soll(pcols), solsd(pcols), solld(pcols), flwds(pcols)
+    integer :: n
+    n = min(int(ncol), pcols)
+    if (has_snow /= 0_c_int) call outfld('CLDFSNOW', cldfsnow, pcols, int(lchnk))
+    if (dosw /= 0_c_int) then
+      ftem(:n, :pver) = qrs(:n, :pver) / cpair
+      call outfld('QRS', ftem, pcols, int(lchnk))
+      call outfld('FSDS', fsds, pcols, int(lchnk))
+      call outfld('FSNT', fsnt, pcols, int(lchnk))
+      call outfld('FSNS', fsns, pcols, int(lchnk))
+      call outfld('SOLS', sols, pcols, int(lchnk))
+      call outfld('SOLL', soll, pcols, int(lchnk))
+      call outfld('SOLSD', solsd, pcols, int(lchnk))
+      call outfld('SOLLD', solld, pcols, int(lchnk))
+    end if
+    if (dolw /= 0_c_int) then
+      call outfld('QRL', qrl(:n, :) / cpair, n, int(lchnk))
+      call outfld('FLNT', flnt, pcols, int(lchnk))
+      call outfld('FLNS', flns, pcols, int(lchnk))
+      call outfld('FLDS', flwds, pcols, int(lchnk))
+    end if
+    call outfld('HR', hr, pcols, int(lchnk))
+    status = 0_c_int
+  end function pycam_rad_process_history_v1
 
   integer(c_int) function pycam_rad_process_bind_v1(funptr, shadow_flag) &
        bind(C, name='pycam_rad_process_bind_v1') result(status)
@@ -307,13 +465,40 @@ contains
     ! process slot; shadow_flag /= 0 runs it for its cost while the driver's branch answers
     type(c_funptr), value, intent(in) :: funptr
     integer(c_int), value, intent(in) :: shadow_flag
+    if (modeled) call torch_delete(model)
+    modeled = .false.
     plugin = funptr
     shadow = shadow_flag /= 0_c_int
     bound = .true.
     status = 0_c_int
   end function pycam_rad_process_bind_v1
 
+  integer(c_int) function pycam_rad_process_bind_model_v1(path, length, shadow_flag) &
+       bind(C, name='pycam_rad_process_bind_model_v1') result(status)
+    ! load the TorchScript file at path (length bytes) and answer the branch with it through
+    ! FTorch; shadow_flag /= 0 runs it for its cost while the driver's branch answers
+    character(kind=c_char), intent(in) :: path(*)
+    integer(c_int), value, intent(in) :: length, shadow_flag
+    character(len=4096) :: filename
+    integer :: i
+    status = 1_c_int
+    if (length < 1 .or. length > len(filename)) return
+    filename = ' '
+    do i = 1, length
+      filename(i:i) = path(i)
+    end do
+    if (modeled) call torch_delete(model)
+    call torch_model_load(model, filename(1:length), torch_kCPU)
+    modeled = .true.
+    plugin = c_null_funptr
+    shadow = shadow_flag /= 0_c_int
+    bound = .true.
+    status = 0_c_int
+  end function pycam_rad_process_bind_model_v1
+
   integer(c_int) function pycam_rad_process_unbind_v1() bind(C, name='pycam_rad_process_unbind_v1') result(status)
+    if (modeled) call torch_delete(model)
+    modeled = .false.
     bound = .false.; shadow = .false.; plugin = c_null_funptr
     status = 0_c_int
   end function pycam_rad_process_unbind_v1

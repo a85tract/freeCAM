@@ -69,7 +69,8 @@ PBUF_FIELD_SYMBOL = "pycam_pbuf_field_v1"
 # They are compiled into the fixed image as additions -- no numerical object
 # is replaced -- and are reached only from Python or from the control
 # objects the builder already replaces.
-SUPPORT_MODULES = ("pycam_macro_kernels.F90", "pycam_macro_handles.F90",
+SUPPORT_MODULES = ("pycam_state_copy.F90",
+                   "pycam_macro_kernels.F90", "pycam_macro_handles.F90",
                    "pycam_rad_kernels.F90", "pycam_rad_handles.F90",
                    # the radiation process slot: a compiled plugin answering the driver's
                    # radiative branch, asked by the radiation runner (a skeleton slot)
@@ -630,8 +631,8 @@ def main() -> int:
         if not source.is_file():
             raise RuntimeError(f"support module is absent from the prepared source: {source}")
         log, command = _compile_command(build, "macrop_driver.F90")
-        if source_name == "pycam_hooks.F90":
-            # the hooks call FTorch (bound TorchScript models): its module files
+        if source_name in ("pycam_hooks.F90", "pycam_rad_process.F90"):
+            # the hooks and the radiation process slot call FTorch (bound TorchScript models): its module files
             command = [*command, f"-I{ftorch_include}"]
         destination = work / f"{Path(source_name).stem}.o"
         compile_commands[source_name] = _compile_to(

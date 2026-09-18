@@ -1,0 +1,26 @@
+{
+  "bfb": false,
+  "reference_files": 18,
+  "candidate_files": 18,
+  "compared_files": 18,
+  "missing_in_candidate": [],
+  "extra_in_candidate": [],
+  "first_difference": {
+    "file": "cam.h0.0001-01-03-07200.nc",
+    "kind": "value",
+    "variable": "ADRAIN",
+    "index": [
+      0,
+      18,
+      183
+    ],
+    "reference": {
+      "value": 0.0,
+      "bits": "0x00000000"
+    },
+    "candidate": {
+      "value": 8.690363756613806e-06,
+      "bits": "0x3711ccd4"
+    }
+  }
+}

@@ -1,0 +1,28 @@
+{
+ "schema_version": 1,
+ "what": "The macrophysics block answered by the core NumPy network, the microphysics original, on the final code of the round; resubmission of p27-cloud-macro-core3.",
+ "pbs_job_id": "7457444.desched1",
+ "run_tag": "p27-cloud-macro-core4",
+ "kernel_models": {
+  "cloud_process": {
+   "process": "cloud_block_mlp.py:macro_block (cloud_macro_core_h256)",
+   "micro_process": "original"
+  }
+ },
+ "job": "validation/jobs/pi_cam_pausable_50step.pbs",
+ "python_stages": [
+  "cloud_macro_microphysics"
+ ],
+ "native_image": "build/pi_cam_promoted_p27",
+ "ranks": 512,
+ "resources": {
+  "queue": "develop",
+  "placement": "4 whole nodes, 128 ranks each",
+  "memory_requested": "4 x 235 GB"
+ },
+ "bfb_record_note": "the job's comparison (.bfb.json) and health (.health.json) files of the failed run are kept with this record",
+ "outcome": "no rank passed MPI_Init: OFI fi_getinfo() failed (No data available) on one of the four nodes given; the other ranks were then killed (signal 15)",
+ "diagnosis": "a fabric fault of an allocated node, nothing of freeCAM's; the sixth such death of the afternoon (7457330-7457332, 7457387, 7457388) on three node groups",
+ "disposition": "resubmitted as p27-cloud-macro-core5; the measurement of this configuration on the round's earlier code stands (7456895)",
+ "steps_completed": 0
+}

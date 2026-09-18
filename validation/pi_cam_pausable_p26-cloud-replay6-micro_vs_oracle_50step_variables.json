@@ -1,0 +1,113 @@
+{
+ "schema_version": 1,
+ "reference": "${FREECAM_SCRATCH}/pyCAM/PI-cam/f.e13.F1850C5.ne16_g16.icesm131_ihesp.PI-cam-oracle.50step/run",
+ "candidate": "${FREECAM_SCRATCH}/pyCAM/PI-cam/pausable-p26-cloud-replay6-micro-7452498.desched1/run",
+ "state_files_identical": true,
+ "files": {
+  "SEMapping.nc": {
+   "identical": true,
+   "differing_variables": [],
+   "timestamp_variables": [],
+   "missing_variables": []
+  },
+  "f.e13.F1850C5.ne16_g16.icesm131_ihesp.PI-cam-oracle.50step.cam.h0.0001-01-01-00000.nc": {
+   "identical": true,
+   "differing_variables": [],
+   "timestamp_variables": [
+    "date_written",
+    "time_written"
+   ],
+   "missing_variables": []
+  },
+  "f.e13.F1850C5.ne16_g16.icesm131_ihesp.PI-cam-oracle.50step.cam.r.0001-01-02-03600.nc": {
+   "identical": true,
+   "differing_variables": [],
+   "timestamp_variables": [],
+   "missing_variables": []
+  },
+  "f.e13.F1850C5.ne16_g16.icesm131_ihesp.PI-cam-oracle.50step.cam.rh0.0001-01-02-03600.nc": {
+   "identical": false,
+   "differing_variables": [
+    "ADRAIN_nacs",
+    "ADRAIN",
+    "ADSNOW_nacs",
+    "ADSNOW",
+    "ANRAIN_nacs",
+    "ANRAIN",
+    "ANSNOW_nacs",
+    "ANSNOW",
+    "AQRAIN_nacs",
+    "AQRAIN",
+    "AQSNOW_nacs",
+    "AQSNOW",
+    "AREI_nacs",
+    "AREI",
+    "AREL_nacs",
+    "AREL",
+    "AWNC_nacs",
+    "AWNC",
+    "AWNI_nacs",
+    "AWNI",
+    "CCN3_nacs",
+    "CCN3",
+    "CDNUMC_nacs",
+    "CDNUMC",
+    "FICE_nacs",
+    "FICE",
+    "FREQI_nacs",
+    "FREQI",
+    "FREQL_nacs",
+    "FREQL",
+    "FREQR_nacs",
+    "FREQR",
+    "FREQS_nacs",
+    "FREQS",
+    "PRECRC_H216Or_nacs",
+    "PRECRC_H216Or",
+    "PRECRC_H218Or_nacs",
+    "PRECRC_H218Or",
+    "PRECRC_H2Or_nacs",
+    "PRECRC_H2Or",
+    "PRECRC_HDOr_nacs",
+    "PRECRC_HDOr",
+    "PRECRL_H216OR_nacs",
+    "PRECRL_H216OR",
+    "PRECRL_H218OR_nacs",
+    "PRECRL_H218OR",
+    "PRECRL_H2OR_nacs",
+    "PRECRL_H2OR",
+    "PRECRL_HDOR_nacs",
+    "PRECRL_HDOR",
+    "PRECSC_H216Os_nacs",
+    "PRECSC_H216Os",
+    "PRECSC_H218Os_nacs",
+    "PRECSC_H218Os",
+    "PRECSC_H2Os_nacs",
+    "PRECSC_H2Os",
+    "PRECSC_HDOs_nacs",
+    "PRECSC_HDOs",
+    "PRECSL_H216OS_nacs",
+    "PRECSL_H216OS",
+    "PRECSL_H218OS_nacs",
+    "PRECSL_H218OS",
+    "PRECSL_H2OS_nacs",
+    "PRECSL_H2OS",
+    "PRECSL_HDOS_nacs",
+    "PRECSL_HDOS",
+    "WSUB_nacs",
+    "WSUB"
+   ],
+   "timestamp_variables": [
+    "date_written",
+    "time_written"
+   ],
+   "missing_variables": []
+  },
+  "f.e13.F1850C5.ne16_g16.icesm131_ihesp.PI-cam-oracle.50step.cam.rs.0001-01-02-03600.nc": {
+   "identical": true,
+   "differing_variables": [],
+   "timestamp_variables": [],
+   "missing_variables": []
+  }
+ }
+}

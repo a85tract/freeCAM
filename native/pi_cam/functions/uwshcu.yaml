@@ -665,7 +665,7 @@ module_state:
     shape: [57]
     write: snapshot
     expected: [Q, CLDLIQ, CLDICE, NUMLIQ, NUMICE]
-  - {symbol: constituents_mp_cnst_type_, dtype: S8, shape: [57], write: snapshot}
+  - {symbol: constituents_mp_cnst_type_, dtype: S3, shape: [57], write: snapshot}
   - {symbol: constituents_mp_qmin_, dtype: float64, shape: [57], write: snapshot}
 
   # Water isotope tracing.  Every runtime-set value in water_tracer_vars is
@@ -673,20 +673,70 @@ module_state:
   # water_tracers entry points uwshcu calls read wisotope, wtrc_alpha_kinetic,
   # wtrc_fixed_alpha, wtrc_fixed_rstd and wtrc_qmin, and uwshcu itself reads
   # iwspec, trace_water, wtrc_iatype and wtrc_nwset.
-  - {symbol: water_tracer_vars_mp_trace_water_, dtype: int32, shape: [], write: snapshot, expected: 1}
-  - {symbol: water_tracer_vars_mp_wisotope_, dtype: int32, shape: [], write: snapshot, expected: 1}
+  # both logicals are .true. in the model; ifort stores .true. as -1 in this build
+  - {symbol: water_tracer_vars_mp_trace_water_, dtype: int32, shape: [], write: snapshot, expected: -1}
+  - {symbol: water_tracer_vars_mp_wisotope_, dtype: int32, shape: [], write: snapshot, expected: -1}
   - {symbol: water_tracer_vars_mp_wtrc_ncnst_, dtype: int32, shape: [], write: snapshot}
   - {symbol: water_tracer_vars_mp_wtrc_nwset_, dtype: int32, shape: [], write: snapshot}
-  - {symbol: water_tracer_vars_mp_wtrc_nspec_, dtype: int32, shape: [], write: snapshot}
-  - {symbol: water_tracer_vars_mp_wtrc_ntype_, dtype: int32, shape: [], write: snapshot}
-  - {symbol: water_tracer_vars_mp_iwspec_, dtype: int32, shape: [4], write: snapshot}
-  - {symbol: water_tracer_vars_mp_iwater_, dtype: int32, shape: [], write: snapshot}
-  - {symbol: water_tracer_vars_mp_iwistag_, dtype: int32, shape: [], write: snapshot}
+  - {symbol: water_tracer_vars_mp_wtrc_nspec_, dtype: int32, shape: [4], write: snapshot}
+  - {symbol: water_tracer_vars_mp_wtrc_ntype_, dtype: int32, shape: [7], write: snapshot}
+  - {symbol: water_tracer_vars_mp_iwspec_, dtype: int32, shape: [57], write: snapshot}
+  - {symbol: water_tracer_vars_mp_iwater_, dtype: int32, shape: [57], write: snapshot}
+  - {symbol: water_tracer_vars_mp_iwistag_, dtype: int32, shape: [57], write: snapshot}
   - {symbol: water_tracer_vars_mp_wtrc_alpha_kinetic_, dtype: int32, shape: [], write: snapshot}
   - {symbol: water_tracer_vars_mp_wtrc_lh2oadj_, dtype: int32, shape: [], write: snapshot}
   - {symbol: water_tracer_vars_mp_wtrc_fixed_alpha_, dtype: float64, shape: [4], write: verify}
   - {symbol: water_tracer_vars_mp_wtrc_fixed_rstd_, dtype: float64, shape: [4], write: verify}
   - {symbol: water_tracer_vars_mp_wtrc_qmin_, dtype: float64, shape: [], write: verify}
+  # the index tables uwshcu and the water_tracers helpers walk: which constituent is which
+  # species and phase (WTRC_MAX_CNST = 700 slots, pwtype = 7 phases, pwtspec = 4 species)
+  - {symbol: water_tracer_vars_mp_wtrc_iatype_, dtype: int32, shape: [700, 7], write: snapshot}
+  - {symbol: water_tracer_vars_mp_wtrc_iaspec_, dtype: int32, shape: [700, 4], write: snapshot}
+  - {symbol: water_tracer_vars_mp_wtrc_iawset_, dtype: int32, shape: [7, 100], write: snapshot}
+  - {symbol: water_tracer_vars_mp_wtrc_indices_, dtype: int32, shape: [700], write: snapshot}
+  - {symbol: water_tracer_vars_mp_wtrc_species_, dtype: int32, shape: [700], write: snapshot}
+  - {symbol: water_tracer_vars_mp_wtrc_types_, dtype: int32, shape: [700], write: snapshot}
+  - {symbol: water_tracer_vars_mp_wtrc_is_tag_, dtype: int32, shape: [700], write: snapshot}
+  - {symbol: water_tracer_vars_mp_wtrc_bulk_indices_, dtype: int32, shape: [7], write: snapshot}
+  - {symbol: water_tracer_vars_mp_wtrc_iasrfvap_, dtype: int32, shape: [700], write: snapshot}
+  - {symbol: water_tracer_vars_mp_wtrc_iasrfpcp_, dtype: int32, shape: [700], write: snapshot}
+  - {symbol: water_tracer_vars_mp_wtrc_nsrfvap_, dtype: int32, shape: [], write: snapshot}
+  - {symbol: water_tracer_vars_mp_wtrc_nsrfpcp_, dtype: int32, shape: [], write: snapshot}
+  - {symbol: water_tracer_vars_mp_wtrc_niter_, dtype: int32, shape: [], write: snapshot}
+  - {symbol: water_tracer_vars_mp_wtrc_citer_, dtype: int32, shape: [], write: snapshot}
+  - {symbol: water_tracer_vars_mp_wtrc_lzmlin_, dtype: int32, shape: [], write: snapshot}
+  - {symbol: water_tracer_vars_mp_wtrc_warn_only_, dtype: int32, shape: [], write: snapshot}
+  - {symbol: water_tracer_vars_mp_wtrc_add_cvprecip_, dtype: int32, shape: [], write: snapshot}
+  - {symbol: water_tracer_vars_mp_wtrc_add_stprecip_, dtype: int32, shape: [], write: snapshot}
+  - {symbol: water_tracer_vars_mp_wtrc_check_total_h2o_, dtype: int32, shape: [], write: snapshot}
+  - {symbol: water_tracer_vars_mp_wtrc_check_show_types_, dtype: int32, shape: [], write: snapshot}
+  - {symbol: water_tracer_vars_mp_wtrc_detrain_in_macrop_, dtype: int32, shape: [], write: snapshot}
+  - {symbol: water_tracer_vars_mp_wtrc_srf_bucket_mode_, dtype: int32, shape: [], write: snapshot}
+  - {symbol: water_tracer_vars_mp_wtrc_qchkmin_, dtype: float64, shape: [], write: snapshot}
+  - {symbol: water_tracer_vars_mp_wtrc_limiter_18o_hgh_, dtype: float64, shape: [], write: snapshot}
+  - {symbol: water_tracer_vars_mp_wtrc_limiter_18o_low_, dtype: float64, shape: [], write: snapshot}
+  - {symbol: water_tracer_vars_mp_wtrc_limiter_hdo_hgh_, dtype: float64, shape: [], write: snapshot}
+  - {symbol: water_tracer_vars_mp_wtrc_limiter_hdo_low_, dtype: float64, shape: [], write: snapshot}
+  - {symbol: water_tracer_vars_mp_wtrc_limiter_phis_crit_, dtype: float64, shape: [], write: snapshot}
+  # the isotope physics constants of water_isotopes (four species each), taken from the model too
+  - {symbol: water_isotopes_mp_akrfa_, dtype: float64, shape: [4], write: snapshot}
+  - {symbol: water_isotopes_mp_akrfb_, dtype: float64, shape: [4], write: snapshot}
+  - {symbol: water_isotopes_mp_aksmc_, dtype: float64, shape: [4], write: snapshot}
+  - {symbol: water_isotopes_mp_alpai_, dtype: float64, shape: [4], write: snapshot}
+  - {symbol: water_isotopes_mp_alpal_, dtype: float64, shape: [4], write: snapshot}
+  - {symbol: water_isotopes_mp_alpbi_, dtype: float64, shape: [4], write: snapshot}
+  - {symbol: water_isotopes_mp_alpbl_, dtype: float64, shape: [4], write: snapshot}
+  - {symbol: water_isotopes_mp_alpci_, dtype: float64, shape: [4], write: snapshot}
+  - {symbol: water_isotopes_mp_alpcl_, dtype: float64, shape: [4], write: snapshot}
+  - {symbol: water_isotopes_mp_alpdl_, dtype: float64, shape: [4], write: snapshot}
+  - {symbol: water_isotopes_mp_alpel_, dtype: float64, shape: [4], write: snapshot}
+  - {symbol: water_isotopes_mp_boce_, dtype: float64, shape: [4], write: snapshot}
+  - {symbol: water_isotopes_mp_difrm_, dtype: float64, shape: [4], write: snapshot}
+  - {symbol: water_isotopes_mp_epsmw_, dtype: float64, shape: [4], write: snapshot}
+  - {symbol: water_isotopes_mp_fisub_, dtype: float64, shape: [4], write: snapshot}
+  - {symbol: water_isotopes_mp_mwisp_, dtype: float64, shape: [4], write: snapshot}
+  - {symbol: water_isotopes_mp_rnat_, dtype: float64, shape: [4], write: snapshot}
+  - {symbol: water_isotopes_mp_rstd_, dtype: float64, shape: [4], write: snapshot}
 
   # Saturation, built by the initializer below and then verified.
   - {symbol: wv_saturation_mp_c3_, dtype: float64, shape: [], write: initializer}
@@ -706,9 +756,7 @@ module_state:
   - {symbol: physconst_mp_rh2o_, dtype: float64, shape: [], write: verify}
   - {symbol: physconst_mp_epsilo_, dtype: float64, shape: [], write: verify}
   - {symbol: physconst_mp_tmelt_, dtype: float64, shape: [], write: verify}
-  - {symbol: physconst_mp_cpair_, dtype: float64, shape: [], write: verify}
-  - {symbol: physconst_mp_latvap_, dtype: float64, shape: [], write: verify}
-  - {symbol: physconst_mp_latice_, dtype: float64, shape: [], write: verify}
+  # cpair, latvap and latice are compile-time parameters of physconst: no storage in the image to verify
   - {symbol: cam_logfile_mp_iulog_, dtype: int32, shape: [], write: verify, expected: 6}
 
 initializers:

@@ -77,6 +77,9 @@ def _stage_executions(cam) -> dict[str, dict[str, object]]:
             describe_process = getattr(stage, "describe_process", None)
             if callable(describe_process) and describe_process() is not None:
                 described["process"] = describe_process()
+            describe_call_sites = getattr(stage, "describe_call_sites", None)
+            if callable(describe_call_sites) and describe_call_sites():
+                described["call_sites"] = describe_call_sites()
             executions[name] = described
     return executions
 
@@ -105,7 +108,7 @@ def _save_radiation_process(cam, directory: Path | None, rank: int) -> dict[str,
     for record in getattr(cam.python_processes, "installed", {}).values():
         stage = getattr(getattr(record, "function", None), "__self__", None)
         process = getattr(stage, "process", None)
-        if process is None:
+        if process is None or type(stage).__name__ != "Radiation":
             continue
         describe_process = getattr(stage, "describe_process", None)
         # the stage's description carries what the slot in the image counted (a compiled
@@ -115,6 +118,46 @@ def _save_radiation_process(cam, directory: Path | None, rank: int) -> dict[str,
             described["file"] = str(process.save(Path(directory) / f"radiation_tend.rank-{rank:04d}.npz").name)
         return described
     return None
+
+
+def _save_cloud_process(cam, directory: Path | None, rank: int) -> dict[str, object] | None:
+    """Save a cloud block capture (two files per rank) and describe the cloud stage's block slots."""
+
+    for record in getattr(cam.python_processes, "installed", {}).values():
+        stage = getattr(getattr(record, "function", None), "__self__", None)
+        if type(stage).__name__ != "CloudMacroMicrophysics" or not getattr(stage, "block_armed", False):
+            continue
+        described = dict(stage.describe_process() or {})
+        capture = getattr(stage, "block_capture", None)
+        if capture is not None and directory is not None:
+            described["files"] = capture.save(Path(directory), rank)
+        return described
+    return None
+
+
+def _cloud_process_summary(records) -> dict[str, object] | None:
+    """The cloud stage's block slots over the ranks: what stood in each and how many calls it answered or recorded."""
+
+    rows = [record.get("cloud_process") for record in records if record.get("cloud_process")]
+    if not rows:
+        return None
+    summary: dict[str, object] = {"ranks": len(rows)}
+    for slot in ("process", "micro_process", "capture"):
+        firsts = [row[slot] for row in rows if isinstance(row.get(slot), dict)]
+        if not firsts:
+            continue
+        entry: dict[str, object] = {k: v for k, v in firsts[0].items() if k in ("kind", "block", "function", "records")}
+        for key in ("first_mismatch", "first_input_mismatch", "first_output_mismatch", "unlisted", "both_planes"):
+            hit = next((row[key] for row in firsts if key in row), None)
+            if hit is not None:
+                entry[key] = hit
+        for key in ("calls", "macro_calls", "micro_calls", "compared", "input_mismatches", "output_mismatches", "seconds", "first_call_seconds"):
+            if key in firsts[0]:
+                entry[key] = sum(float(row.get(key, 0.0)) if "seconds" in key else int(row.get(key, 0)) for row in firsts)
+                if "seconds" in key:
+                    entry[key + "_max"] = max(float(row.get(key, 0.0)) for row in firsts)
+        summary[slot] = entry
+    return summary
 
 
 def _radiation_process_summary(records) -> dict[str, object] | None:
@@ -129,6 +172,8 @@ def _radiation_process_summary(records) -> dict[str, object] | None:
     for key in ("function", "records"):
         if key in first:
             summary[key] = first[key]
+    if "pauses" in first:            # the runner's pauses at the slot Python answered, summed over ranks
+        summary["pauses"] = sum(int(row.get("pauses", 0)) for row in rows)
     for key in ("seconds", "first_call_seconds"):
         if key in first:            # summed over ranks, and the slowest rank's own
             summary[key] = sum(float(row.get(key, 0.0)) for row in rows)
@@ -147,6 +192,7 @@ def _frame_capture_summary(records, args, native_evidence) -> dict[str, object] 
             totals[name] = totals.get(name, 0) + int(count)
     provenance = {
         "kernels": [k.strip() for k in args.capture_kernels.split(",") if k.strip()],
+        "every": int(args.capture_every),
         "calls_total_by_kernel": totals,
         "ranks_with_calls_by_kernel": {
             name: sum(1 for record in records if (record.get("frame_capture_calls") or {}).get(name))
@@ -261,7 +307,38 @@ def _load_kernel_plugin(kernel: str, spec: str, *, shadow: bool = False):
     return compile_kernel(kernel, function, shadow=shadow)
 
 
-def _kernel_plugins_summary(plugins: dict[str, str], shadow: dict[str, str] | None = None) -> dict[str, dict[str, Any]]:
+def _pausable_stage(stage_name: str, policy: str, *, original_kernels, capture_kernels, kernel_models, capture_every: int = 1):
+    """A pausable stage class with every slot filled before its ``tend`` is installed.
+
+    Installing pickles the bound method, so a slot filled afterwards never reaches
+    the process that runs: the original, a capture or a model must be in the slot
+    here, first.  (A model given for compute_uwshcu_inv once ran as the original,
+    silently, because it was attached after the install.)
+    """
+
+    from freecam.physics.pausable import STAGES
+
+    if stage_name not in STAGES:
+        raise SystemExit(f"--python-stages: {stage_name!r} is not one of {sorted(STAGES)}")
+    stage = STAGES[stage_name]()
+    stage.execution_policy = policy
+    if original_kernels:
+        from freecam.physics.segments import OriginalKernel
+        for kernel_name in original_kernels:
+            if kernel_name in stage.kernels:
+                stage.kernels[kernel_name] = OriginalKernel()
+    for kernel_name in capture_kernels:
+        if kernel_name in stage.kernels:
+            from freecam.physics.segments import FrameCapture
+            stage.kernels[kernel_name] = FrameCapture(kernel_name, capture_every)
+    for kernel_name, model in kernel_models.items():
+        if kernel_name in stage.kernels:
+            stage.kernels[kernel_name] = model
+    return stage
+
+
+def _kernel_plugins_summary(plugins: dict[str, str], shadow: dict[str, str] | None = None,
+                            binding: str = "numba") -> dict[str, dict[str, Any]]:
     """Which compiled function stood in which slot; a file's path only when it lies inside this checkout."""
 
     import hashlib
@@ -271,7 +348,7 @@ def _kernel_plugins_summary(plugins: dict[str, str], shadow: dict[str, str] | No
     for specs, is_shadow in ((plugins, False), (shadow or {}, True)):
         for name, spec in specs.items():
             module_name, _, function_name = spec.rpartition(":")
-            row: dict[str, Any] = {"function": function_name, "binding": "numba"}
+            row: dict[str, Any] = {"function": function_name, "binding": binding}
             if module_name.endswith(".py"):
                 path = Path(module_name).expanduser().resolve()
                 row["file"] = path.name
@@ -579,6 +656,11 @@ def main(argv: list[str] | None = None) -> int:
         ),
     )
     parser.add_argument(
+        "--capture-every", type=int, default=1, metavar="N",
+        help="record one call in N of each captured kernel (the others still run the original); "
+             "a month at N=25 is about the volume of fifty steps at N=1",
+    )
+    parser.add_argument(
         "--capture-dir",
         type=Path,
         default=None,
@@ -655,7 +737,10 @@ def main(argv: list[str] | None = None) -> int:
             "with --radiation-python: answer radiation_tend's computing branch with a process model "
             "instead of the optics and the two cores.  replay:DIR replays a --radiation-capture "
             "(bit-for-bit expected: the gate of the path); MODULE:FUNCTION or path.py:FUNCTION calls "
-            "a function taking the inputs by name and returning qrs, qrl and the surface fluxes."
+            "a function taking the inputs by name and returning qrs, qrl and the surface fluxes; "
+            "original asks the runner for the original branch at its pause (bit-for-bit expected).  "
+            "On an image whose runner pauses at the process slot the answer is given at that pause "
+            "(the driver stays in Fortran, three crossings a chunk); otherwise inside the transcription."
         ),
     )
     parser.add_argument(
@@ -674,6 +759,34 @@ def main(argv: list[str] | None = None) -> int:
         default=None,
         metavar="MODULE:FUNCTION",
         help="the same in shadow: the plugin runs for its cost at every radiative step, the driver's branch answers.",
+    )
+    parser.add_argument(
+        "--radiation-block-model",
+        default=None,
+        metavar="SPEC",
+        help=(
+            "with --radiation-python: a model of radiation_tend's whole compute block, called by the Python "
+            "driver: Python reads the block's inputs from memory (radiation_process.BLOCK_INPUTS), calls the "
+            "function, writes the heating rates and fluxes back; the tendency and the history are one Fortran "
+            "call each.  replay:DIR replays a capture's outputs (the bit-for-bit gate of the driver); "
+            "MODULE:FUNCTION or path.py:FUNCTION calls a function over the block's inputs."
+        ),
+    )
+    parser.add_argument(
+        "--radiation-torch-model",
+        default=None,
+        metavar="FILE.pt",
+        help=(
+            "with --radiation-python: a TorchScript model bound at the radiation process slot inside the image "
+            "and run through FTorch; it takes the slot's 46 inputs as tensors (a (pcols, pver) array is a "
+            "(pcols, pver) tensor) and returns the 12 outputs, no Python in the step."
+        ),
+    )
+    parser.add_argument(
+        "--shadow-radiation-torch-model",
+        default=None,
+        metavar="FILE.pt",
+        help="the same in shadow: the model runs for its cost at every radiative step, the driver's branch answers.",
     )
     parser.add_argument(
         "--observe-kernels",
@@ -722,6 +835,37 @@ def main(argv: list[str] | None = None) -> int:
         help=(
             "with --cloud-macro-micro-python, call microp_aero_run whole instead "
             "of running the MicropAero sub-walk in its place (Gate M-3's form)"
+        ),
+    )
+    parser.add_argument(
+        "--cloud-block-model",
+        default=None,
+        metavar="SPEC",
+        help=(
+            "with --cloud-macro-micro-python, answer the macrophysics compute block (macrop_driver_tend, the "
+            "block mmacro_pcond lives in) from Python and run the stage as the Python driver: Python reads the "
+            "block's inputs from memory (cloud_block.MACRO_BLOCK), writes its answer where the driver leaves it, "
+            "and does the bookkeeping around it through the glue's own Fortran calls.  replay:DIR replays a "
+            "--cloud-block-capture; MODULE:FUNCTION or path.py:FUNCTION calls a model"
+        ),
+    )
+    parser.add_argument(
+        "--cloud-micro-block-model",
+        default=None,
+        metavar="SPEC",
+        help=(
+            "with --cloud-macro-micro-python, the same for the microphysics compute block (microp_aero_run, "
+            "micro_mg_cam_tend and the tendency sum; cloud_block.MICRO_BLOCK)"
+        ),
+    )
+    parser.add_argument(
+        "--cloud-block-capture",
+        default=None,
+        metavar="DIR",
+        help=(
+            "with --cloud-macro-micro-python, run both blocks' original drivers through the Python driver and "
+            "record each block's inputs and outputs, one file per block per rank under DIR (cloud_macro.rank-NNNN.npz, "
+            "cloud_micro.rank-NNNN.npz), for replay:DIR and for training"
         ),
     )
     parser.add_argument(
@@ -903,7 +1047,10 @@ def main(argv: list[str] | None = None) -> int:
             scheme.execution_policy = args.stage_execution
             slot_flags = [name for name, value in (("--radiation-capture", args.radiation_capture), ("--radiation-model", args.radiation_model),
                                                     ("--radiation-plugin", args.radiation_plugin),
-                                                    ("--shadow-radiation-plugin", args.shadow_radiation_plugin)) if value is not None]
+                                                    ("--shadow-radiation-plugin", args.shadow_radiation_plugin),
+                                                    ("--radiation-block-model", args.radiation_block_model),
+                                                    ("--radiation-torch-model", args.radiation_torch_model),
+                                                    ("--shadow-radiation-torch-model", args.shadow_radiation_torch_model)) if value is not None]
             if len(slot_flags) > 1:
                 raise SystemExit(f"{' and '.join(slot_flags)}: the radiation branch has one slot")
             if args.radiation_plugin is not None or args.shadow_radiation_plugin is not None:
@@ -912,6 +1059,14 @@ def main(argv: list[str] | None = None) -> int:
                 spec_text = args.radiation_plugin or args.shadow_radiation_plugin
                 scheme.process = compile_radiation_plugin(_import_function(spec_text, "--radiation-plugin"),
                                                           shadow=args.radiation_plugin is None)
+            if args.radiation_torch_model is not None or args.shadow_radiation_torch_model is not None:
+                from freecam.physics.native_model import NativeModel
+
+                scheme.process = NativeModel(args.radiation_torch_model or args.shadow_radiation_torch_model,
+                                             shadow=args.radiation_torch_model is None)
+            if args.radiation_block_model is not None:
+                from freecam.physics.radiation_process import load_block_model
+                scheme.process = load_block_model(args.radiation_block_model, rank=world.Get_rank())
             if args.radiation_capture is not None:
                 from freecam.physics.radiation_process import RadiationProcessCapture
                 scheme.process = RadiationProcessCapture(every=args.radiation_capture_every)
@@ -926,7 +1081,7 @@ def main(argv: list[str] | None = None) -> int:
             for kernel_name in capture_kernels:
                 if kernel_name in scheme.kernels:
                     from freecam.physics.segments import FrameCapture
-                    scheme.kernels[kernel_name] = FrameCapture(kernel_name)
+                    scheme.kernels[kernel_name] = FrameCapture(kernel_name, args.capture_every)
             for kernel_name, model in kernel_models.items():
                 if kernel_name in scheme.kernels:
                     scheme.kernels[kernel_name] = model
@@ -962,6 +1117,18 @@ def main(argv: list[str] | None = None) -> int:
                 # a trained network in mmacro_pcond's place, named by path
                 macro_surrogate=args.macro_kernel_surrogate)
             scheme.execution_policy = args.stage_execution
+            if args.cloud_block_model is not None or args.cloud_micro_block_model is not None or args.cloud_block_capture is not None:
+                # the Python driver: the blocks answered from their slots (or captured around the originals),
+                # the memory around them read and written from Python
+                from freecam.physics.cloud_block import MACRO_BLOCK, MICRO_BLOCK, CloudBlockCapture
+                from freecam.physics.cloud_block import load_block_model as load_cloud_block_model
+
+                if args.cloud_block_model is not None:
+                    scheme.process = load_cloud_block_model(args.cloud_block_model, block=MACRO_BLOCK, rank=world.Get_rank())
+                if args.cloud_micro_block_model is not None:
+                    scheme.micro_process = load_cloud_block_model(args.cloud_micro_block_model, block=MICRO_BLOCK, rank=world.Get_rank())
+                if args.cloud_block_capture is not None:
+                    scheme.block_capture = CloudBlockCapture()
             if args.segmented_original:
                 # the kernel list is shared by every class installed this run; a name that
                 # belongs to none of them is refused below, once all are installed
@@ -974,7 +1141,7 @@ def main(argv: list[str] | None = None) -> int:
                 # in both lists is captured, which answers with the original too
                 if kernel_name in scheme.kernels:
                     from freecam.physics.segments import FrameCapture
-                    scheme.kernels[kernel_name] = FrameCapture(kernel_name)
+                    scheme.kernels[kernel_name] = FrameCapture(kernel_name, args.capture_every)
             for kernel_name, model in kernel_models.items():
                 if kernel_name in scheme.kernels:
                     scheme.kernels[kernel_name] = model
@@ -999,21 +1166,12 @@ def main(argv: list[str] | None = None) -> int:
             # a pausable stage class in its action's place: the original Fortran
             # whole, or the image's runner paused at a replaced kernel
             from freecam.model.python_processes import PythonProcessSpec
-            from freecam.physics.pausable import STAGES
 
-            if stage_name not in STAGES:
-                raise SystemExit(f"--python-stages: {stage_name!r} is not one of {sorted(STAGES)}")
-            pausable_stage = STAGES[stage_name]()
-            pausable_stage.execution_policy = args.stage_execution
-            if args.segmented_original:
-                from freecam.physics.segments import OriginalKernel
-                for kernel_name in [k.strip() for k in args.segmented_original_kernels.split(",") if k.strip()]:
-                    if kernel_name in pausable_stage.kernels:
-                        pausable_stage.kernels[kernel_name] = OriginalKernel()
-            for kernel_name in capture_kernels:
-                if kernel_name in pausable_stage.kernels:
-                    from freecam.physics.segments import FrameCapture
-                    pausable_stage.kernels[kernel_name] = FrameCapture(kernel_name)
+            pausable_stage = _pausable_stage(
+                stage_name, args.stage_execution,
+                original_kernels=[k.strip() for k in args.segmented_original_kernels.split(",") if k.strip()]
+                if args.segmented_original else [],
+                capture_kernels=capture_kernels, kernel_models=kernel_models, capture_every=args.capture_every)
             phase, _, action_name = pausable_stage.STAGE.partition(".")
             cam.step_plan.set_enabled(action_name, False, phase=phase, experimental=True)
             cam.python_processes.install(
@@ -1028,9 +1186,6 @@ def main(argv: list[str] | None = None) -> int:
                 ),
                 unsafe=True,
             )
-            for kernel_name, model in kernel_models.items():
-                if kernel_name in pausable_stage.kernels:
-                    pausable_stage.kernels[kernel_name] = model
             installed_kernels.update(pausable_stage.kernels)
         if args.segmented_original:
             # every replaced kernel must belong to a class installed this run: a name
@@ -1086,6 +1241,20 @@ def main(argv: list[str] | None = None) -> int:
         world.Barrier()
         advance_started = MPI.Wtime()
         steps = args.steps if args.steps is not None else case.config.stop_n
+        # Everything allocated so far -- the catalogs, the descriptors, the
+        # installed processes -- is moved out of the cyclic collector's reach,
+        # so its full collections during the step loop scan only what the
+        # steps allocate: 0.13 s a rank per fifty steps of the cloud walk
+        # (7476941 against 7475430).  FREECAM_GC_FREEZE=0 leaves the heap as
+        # it is; FREECAM_GC_DISABLE=1 switches the collector off for the loop
+        # (a measurement knob: the rest of the step slowed with it, 7476942).
+        # Nothing computed changes either way.
+        import gc
+        if os.environ.get("FREECAM_GC_FREEZE", "1") != "0":
+            gc.collect()
+            gc.freeze()
+        if os.environ.get("FREECAM_GC_DISABLE"):
+            gc.disable()
         profiler = _cprofile_for(world.Get_rank())
         if profiler is not None:
             profiler.enable()
@@ -1113,6 +1282,7 @@ def main(argv: list[str] | None = None) -> int:
         advance_seconds = MPI.Wtime() - advance_started
         frame_capture_calls = _save_frame_captures(cam, args.capture_dir, world.Get_rank()) if capture_kernels else {}
         radiation_process = _save_radiation_process(cam, args.radiation_capture, world.Get_rank())
+        cloud_process = _save_cloud_process(cam, args.cloud_block_capture, world.Get_rank())
         from freecam.pi_cam.hooks import read_hook_counts
         hook_counts = read_hook_counts(getattr(cam.backend, "_library", None))
         final_addresses = {
@@ -1190,6 +1360,7 @@ def main(argv: list[str] | None = None) -> int:
             "memory_samples": memory_samples,
             "frame_capture_calls": frame_capture_calls,
             "radiation_process": radiation_process,
+            "cloud_process": cloud_process,
             "hook_counts": hook_counts,
         }
         if kernel_counters is not None:
@@ -1361,6 +1532,7 @@ def main(argv: list[str] | None = None) -> int:
             "kernel_models": ({**(_kernel_models_summary(kernel_model_paths, shadow_model_paths) or {}),
                                **_kernel_plugins_summary(kernel_plugin_specs, shadow_plugin_specs)} or None),
             "radiation_process": _radiation_process_summary(records),
+            "cloud_process": _cloud_process_summary(records),
             "hooks": _hook_summary(records),
             "cloud_macro_micro_whole_drivers": bool(args.cloud_macro_micro_whole_drivers),
             "cloud_macro_micro_whole_micro": bool(args.cloud_macro_micro_whole_micro),

@@ -450,6 +450,9 @@ class Spec:
     kernels: dict[str, Kernel]
     hosts: str = "pycam_stage_hosts"
     runner_uses: list[str] = field(default_factory=list)      # modules the runner's skeleton and refusals need
+    #: a process slot the runner can pause at for Python (keys: name, prepare, finish, discard,
+    #: frame, inputs, outputs); the render records its program counters here
+    process_slot: dict | None = None
 
     @property
     def runner_module(self) -> str:
@@ -458,6 +461,21 @@ class Spec:
     @property
     def entry_prefix(self) -> str:
         return f"pycam_{self.prefix}"
+
+
+def _parse_process_slot(record: dict | None) -> dict | None:
+    """The process slot a runner may pause at for Python, checked for its keys."""
+
+    if record is None:
+        return None
+    required = ("name", "prepare", "finish", "discard", "frame", "inputs", "outputs")
+    missing = [key for key in required if key not in record]
+    if missing:
+        raise SystemExit(f"process_slot lacks {missing}")
+    slot = {key: record[key] for key in required}
+    slot["inputs"] = [(str(name), int(rank)) for name, rank in record["inputs"]]
+    slot["outputs"] = [(str(name), int(rank)) for name, rank in record["outputs"]]
+    return slot
 
 
 def _parse_body(items: list, unit: Unit) -> list[Node]:
@@ -568,7 +586,8 @@ def load_spec(path: Path) -> Spec:
     spec = Spec(path=path, prefix=prefix, stage=str(payload["stage"]),
                 refuse=list(payload.get("refuse") or []), getopts=[str(x) for x in payload.get("getopts") or []],
                 units=units, kernels=kernels, hosts=str(payload.get("hosts", "pycam_stage_hosts")),
-                runner_uses=[str(x) for x in payload.get("runner_uses") or []])
+                runner_uses=[str(x) for x in payload.get("runner_uses") or []],
+                process_slot=_parse_process_slot(payload.get("process_slot")))
     _resolve(spec)
     return spec
 
@@ -1953,7 +1972,27 @@ def _node_pc(spec: Spec, unit: Unit, node: Node, states: list[State], after: str
             raise SystemExit(f"{unit.key}: line {node.line} is not `if (...) then`: {line}")
         then_pc = _flatten(spec, unit, node.children, states, after, counters, targets)
         else_pc = _flatten(spec, unit, node.orelse, states, after, counters, targets)
-        if node.slot:
+        if node.slot and spec.process_slot is not None:
+            # a process slot with a Python pause: when the condition holds and the slot is
+            # armed, the runner prepares the slot's tables and pauses; Python answers the whole
+            # then-branch and resume finishes the write-back before continuing after the branch.
+            # Otherwise a bound plugin or model may answer, or the original statements run.
+            slot = spec.process_slot
+            name = slot["name"]
+            slot["pc_at"], slot["pc_after"], slot["then_pc"] = f"pc_at_{name}", f"pc_after_{name}", then_pc
+            slot["kernel_id"] = len(spec.kernels) + 1
+            states.append(State(slot["pc_at"], f"last_error = '{spec.prefix} is paused; only resume continues it'\n"
+                                                f"        event = ev_error\n        return"))
+            states.append(State(slot["pc_after"], f"call {slot['finish']}\n        pc = {after}"))
+            chain = [f"if ({condition.group(1)}) then\n"
+                     f"          if (replace({slot['kernel_id']})) then\n"
+                     f"            if ({slot['prepare']}) then\n"
+                     f"              token = token + 1_c_int\n              pc = {slot['pc_at']}\n"
+                     f"              event = ev_needs_kernel\n              return\n            end if\n"
+                     f"          end if\n"
+                     f"          if ({node.slot}) then\n            pc = {after}\n"
+                     f"          else\n            pc = {then_pc}\n          end if"]
+        elif node.slot:
             # a process slot: when the condition holds, a bound plugin may answer the whole
             # then-branch (the original's statements are skipped) and the runner continues after it
             chain = [f"if ({condition.group(1)}) then\n          if ({node.slot}) then\n            pc = {after}\n"
@@ -2173,12 +2212,16 @@ def render_runner(spec: Spec) -> str:
     counters: dict = {}
     first_pc = _flatten(spec, glue, glue.body, states, "pc_chunk_end", counters)
     kernels = list(spec.kernels)
-    kernel_constants = "\n".join(f"  integer(c_int), parameter :: kernel_{k} = {i}_c_int" for i, k in enumerate(kernels, start=1))
+    slot = spec.process_slot
+    kernel_constants = "\n".join(f"  integer(c_int), parameter :: kernel_{k} = {i}_c_int"
+                                 for i, k in enumerate(kernels + ([slot["name"]] if slot else []), start=1))
     pause_states = [s for s in states]
     pc_names = ["pc_idle", "pc_chunk_begin", "pc_chunk_end"] + [s.name for s in pause_states]
     pc_params = "\n".join(f"  integer, parameter :: {name} = {i}" for i, name in enumerate(pc_names))
     all_pauses = [p for u in spec.units.values() for p in u.pauses]
     frame_slots_max = max(len(frame_slots(p, spec.kernels[p.kernel])) for p in all_pauses) if all_pauses else 1
+    if slot:
+        frame_slots_max = max(frame_slots_max, len(slot["inputs"]) + len(slot["outputs"]))
     hooked = [k for k in kernels if spec.kernels[k].hook]
     if hooked:
         table = _hook_table()
@@ -2204,7 +2247,7 @@ def render_runner(spec: Spec) -> str:
             names.append(f"{unit.key}_configure")
         # the skeleton's conditions and loop variables live in the unit, as do
         # the indices and options the refusals test
-        names += sorted(_skeleton_names(unit) | set(unit.getopts) | _refusal_names(spec, unit))
+        names += sorted(_skeleton_names(unit, spec) | set(unit.getopts) | _refusal_names(spec, unit))
         unit_uses.append(f"  use {unit.module}, only: " + ", &\n       ".join(", ".join(names[i:i + 6]) for i in range(0, len(names), 6)))
     unit_uses += ["  " + use for use in spec.runner_uses]
     getopts = "".join(f"    call {u.key}_configure()\n" for u in spec.units.values() if u.getopts)
@@ -2219,6 +2262,18 @@ def render_runner(spec: Spec) -> str:
     original_cases = "\n".join(f"    case ({p.pc_at})\n      if (kernel /= kernel_{p.kernel}) then\n"
                                f"        last_error = '{spec.prefix} is paused on {p.kernel}, not on the kernel asked for'; status = 3_c_int; return\n"
                                f"      end if\n      call {p.tag}_original()" for p in all_pauses)
+    if slot:
+        if "pc_at" not in slot:
+            raise SystemExit(f"{spec.prefix}: process_slot {slot['name']!r} is declared but no if node carries a slot")
+        frame_cases += (f"\n    case ({slot['pc_at']})\n      call {slot['frame']}(ptrs, ndims, shapes, dtypes, intents, ncol_out)\n"
+                        f"      kernel = kernel_{slot['name']}")
+        resume_cases += (f"\n    case ({slot['pc_at']})\n      if (kernel /= kernel_{slot['name']}) then\n"
+                         f"        last_error = '{spec.prefix} is paused on {slot['name']}, not on the kernel resumed'; status = 3_c_int; return\n"
+                         f"      end if\n      if (slot_original) then\n        slot_original = .false.\n        pc = {slot['then_pc']}\n"
+                         f"      else\n        pc = {slot['pc_after']}\n      end if")
+        original_cases += (f"\n    case ({slot['pc_at']})\n      if (kernel /= kernel_{slot['name']}) then\n"
+                           f"        last_error = '{spec.prefix} is paused on {slot['name']}, not on the kernel asked for'; status = 3_c_int; return\n"
+                           f"      end if\n      call {slot['discard']}\n      slot_original = .true.")
     paused_pcs = ", ".join(p.pc_at for p in all_pauses) or "-1"
     advance_cases = "\n".join(f"      case ({s.name})\n        {s.code}" for s in states)
     ep = spec.entry_prefix
@@ -2269,7 +2324,7 @@ module {spec.runner_module}
   integer(c_int), parameter :: ev_done = 0_c_int, ev_needs_kernel = 1_c_int, ev_error = 2_c_int
 {pc_params}
 {kernel_constants}
-  integer, parameter :: nkernels = {len(kernels)}
+  integer, parameter :: nkernels = {len(kernels) + (1 if slot else 0)}
   integer, parameter, public :: frame_slots = {frame_slots_max}
   integer, parameter :: context_id = 1
 
@@ -2279,7 +2334,7 @@ module {spec.runner_module}
   integer(c_int), save :: token = 0_c_int, call_index = 0_c_int
   logical, save :: replace(nkernels) = .false.
   character(len=256), save :: last_error = ' '
-{hook_state}{getopt_decls}
+{"  ! the process slot paused for Python: whether Python asked for the original branch instead" + chr(10) + "  logical, save :: slot_original = .false." + chr(10) if slot else ""}{hook_state}{getopt_decls}
 contains
 {hook_procedures}
   ! ------------------------------------------------------------------ !
@@ -2467,7 +2522,7 @@ def _refusal_names(spec: Spec, unit: Unit) -> set[str]:
     return {n for n in names if n in unit.getopts or n in indices or n in unit.decls}
 
 
-def _skeleton_names(unit: Unit) -> set[str]:
+def _skeleton_names(unit: Unit, spec: "Spec | None" = None) -> set[str]:
     """Names the runner's skeleton statements reference, which must be public in the unit."""
 
     names: set[str] = set()
@@ -2478,6 +2533,8 @@ def _skeleton_names(unit: Unit) -> set[str]:
                 names |= identifiers(unit.lines[line - 1])
             if node.slot:
                 names |= identifiers(node.slot)
+                if spec is not None and spec.process_slot is not None:
+                    names |= identifiers(str(spec.process_slot["prepare"])) | identifiers(str(spec.process_slot["finish"]))
     names -= KEYWORDS
     known = {n for n in names if n in unit.decls or n in unit.dummy_names or n in unit.carries
              or n in unit.records or n in unit.getopts}
@@ -2497,6 +2554,11 @@ def frame_descriptors(spec: Spec) -> dict[str, list[dict]]:
                 "name": s.dummy, "actual": s.actual, "rank": s.rank, "dtype": "float64" if s.dtype == 1 else "int32",
                 "intent": s.intent, "kind": s.kind,
             } for s in frame_slots(pause, spec.kernels[pause.kernel])]
+    if spec.process_slot is not None:
+        slot = spec.process_slot
+        out[slot["name"]] = [{"name": name, "actual": name, "rank": rank, "dtype": "float64", "intent": intent,
+                              "kind": "scalar" if rank == 0 else "array"}
+                             for items, intent in ((slot["inputs"], "in"), (slot["outputs"], "out")) for name, rank in items]
     return out
 
 

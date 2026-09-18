@@ -75,6 +75,12 @@ class PBufField:
         return self.index > 0
 
 
+try:  # the compiled direct callers, when built (a trial; the ctypes path is the default)
+    from ..core import _glue as _GLUE
+except ImportError:  # pragma: no cover - the pure path
+    _GLUE = None
+
+
 class PBuf:
     """The physics buffer of one rank, seen through CAM's own indices."""
 
@@ -104,7 +110,23 @@ class PBuf:
                 ctypes.POINTER(ctypes.c_int64),
             ]
         self._entry_v2 = second
-        self._views: dict[tuple[str, int], tuple[int, tuple[int, ...], np.ndarray]] = {}
+        # views handed out, per (field, chunk) and then per address: a field
+        # with two time planes alternates between them every step, and a
+        # walk that is handed the same view object for the same plane keeps
+        # its kernel call sites resolved; a few addresses are kept per field
+        self._views: dict[tuple[str, int], dict[int, tuple[tuple[int, ...], np.ndarray]]] = {}
+        # the accessors' out-arguments, made once: a field is asked for on
+        # every call of every chunk and the image answers into these
+        self._pointer = ctypes.c_void_p()
+        self._pointer_ref = ctypes.byref(self._pointer)
+        self._extents2 = (ctypes.c_int64 * 2)()
+        self._ndims = ctypes.c_int()
+        self._ndims_ref = ctypes.byref(self._ndims)
+        self._extents3 = (ctypes.c_int64 * 3)()
+        self._fast = None
+        if _GLUE is not None and isinstance(entry, ctypes._CFuncPtr):
+            self._fast = _GLUE.PBufProbe(_GLUE.address_of(entry),
+                                         _GLUE.address_of(second) if isinstance(second, ctypes._CFuncPtr) else 0)
 
     def __contains__(self, name: str) -> bool:
         field = self.fields.get(name)
@@ -126,34 +148,48 @@ class PBuf:
             )
         if not field.plain_plane:
             return self._view_any(field, chunk)
-        pointer = ctypes.c_void_p()
-        extents = (ctypes.c_int64 * 2)()
-        status = self._entry(
-            int(chunk), int(field.index), int(field.time_sliced),
-            ctypes.byref(pointer), extents,
-        )
+        if self._fast is not None:
+            status, address, shape = self._fast.plane(int(chunk), int(field.index), int(field.time_sliced))
+        else:
+            pointer, extents = self._pointer, self._extents2
+            status = self._entry(
+                int(chunk), int(field.index), int(field.time_sliced),
+                self._pointer_ref, extents,
+            )
+            address = pointer.value
+            shape = (int(extents[0]), int(extents[1]))
         if status != 0:
             raise PICAMConfigurationError(
                 f"physics buffer refused {name} on chunk {chunk}: "
                 f"{STATUS.get(status, f'status {status}')}"
             )
-        if not pointer.value:
+        if not address:
             raise PICAMConfigurationError(
                 f"physics buffer returned a null address for {name} on chunk {chunk}"
             )
-        shape = (int(extents[0]), int(extents[1]))
         if shape[0] < 1 or shape[1] < 1:
             raise PICAMConfigurationError(
                 f"physics buffer returned {shape} for {name} on chunk {chunk}"
             )
-        # the same view while the buffer answers with the same storage; a
-        # field the buffer re-allocates gets a fresh one
-        hit = self._views.get((name, chunk))
-        if hit is not None and hit[0] == pointer.value and hit[1] == shape:
-            return hit[2]
-        buffer = (ctypes.c_double * (shape[0] * shape[1])).from_address(pointer.value)
-        view = np.ndarray(shape, dtype=np.float64, buffer=buffer, order="F")
-        self._views[(name, chunk)] = (pointer.value, shape, view)
+        # the same view while the buffer answers with the same storage (one
+        # per address, so a field's two planes keep theirs); a field the
+        # buffer re-allocates gets a fresh one
+        return self._kept(name, chunk, address, shape, np.float64)
+
+    def _kept(self, name: str, chunk: int, address: int, shape: tuple[int, ...], dtype) -> np.ndarray:
+        planes = self._views.setdefault((name, chunk), {})
+        hit = planes.get(address)
+        if hit is not None and hit[0] == shape:
+            return hit[1]
+        count = 1
+        for extent in shape:
+            count *= extent
+        ctype = ctypes.c_int32 if dtype is np.int32 else ctypes.c_double
+        buffer = (ctype * count).from_address(address)
+        view = np.ndarray(shape, dtype=dtype, buffer=buffer, order="F")
+        if len(planes) >= 4:
+            del planes[next(iter(planes))]
+        planes[address] = (shape, view)
         return view
 
     def _view_any(self, field: PBufField, chunk: int) -> np.ndarray:
@@ -164,39 +200,33 @@ class PBuf:
                 f"{field.name} is a rank-{field.rank} {field.dtype} field and the loaded "
                 f"image exposes no {SYMBOL_V2}; it predates the rank-aware handle"
             )
-        pointer = ctypes.c_void_p()
-        ndims = ctypes.c_int()
-        extents = (ctypes.c_int64 * 3)()
         is_integer = field.dtype in ("int32", "int64")
-        status = self._entry_v2(
-            int(chunk), int(field.index), int(field.time_sliced), int(field.rank),
-            int(is_integer), ctypes.byref(pointer), ctypes.byref(ndims), extents,
-        )
+        if self._fast is not None and self._entry_v2 is not None:
+            status, address, rank, shape = self._fast.any(
+                int(chunk), int(field.index), int(field.time_sliced), int(field.rank), int(is_integer))
+        else:
+            pointer, ndims, extents = self._pointer, self._ndims, self._extents3
+            status = self._entry_v2(
+                int(chunk), int(field.index), int(field.time_sliced), int(field.rank),
+                int(is_integer), self._pointer_ref, self._ndims_ref, extents,
+            )
+            address, rank = pointer.value, ndims.value
+            shape = tuple(int(extents[i]) for i in range(rank))
         if status != 0:
             raise PICAMConfigurationError(
                 f"physics buffer refused {field.name} (rank {field.rank}, {field.dtype}) "
                 f"on chunk {chunk}: {STATUS.get(status, f'status {status}')}"
             )
-        if not pointer.value or ndims.value != field.rank:
+        if not address or rank != field.rank:
             raise PICAMConfigurationError(
-                f"physics buffer returned rank {ndims.value} for {field.name}, "
+                f"physics buffer returned rank {rank} for {field.name}, "
                 f"declared rank {field.rank}, on chunk {chunk}"
             )
-        shape = tuple(int(extents[i]) for i in range(ndims.value))
         if any(n < 1 for n in shape):
             raise PICAMConfigurationError(
                 f"physics buffer returned {shape} for {field.name} on chunk {chunk}"
             )
-        hit = self._views.get((field.name, chunk))
-        if hit is not None and hit[0] == pointer.value and hit[1] == shape:
-            return hit[2]
-        count = int(np.prod(shape))
-        ctype = ctypes.c_int32 if is_integer else ctypes.c_double
-        buffer = (ctype * count).from_address(pointer.value)
-        view = np.ndarray(shape, dtype=np.int32 if is_integer else np.float64,
-                          buffer=buffer, order="F")
-        self._views[(field.name, chunk)] = (pointer.value, shape, view)
-        return view
+        return self._kept(field.name, chunk, address, shape, np.int32 if is_integer else np.float64)
 
     def verify(self, chunk: int, *, pcols: int, pver: int) -> dict[str, tuple[int, int]]:
         """Fetch every registered field once and check its shape.

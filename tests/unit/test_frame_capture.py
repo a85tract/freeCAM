@@ -113,3 +113,28 @@ def test_the_stage_hands_a_capture_the_frame_itself_never_a_batch_wrapper() -> N
     stage.kernels["micro_mg_tend"] = model
     resolved = stage._segment_kernels(native=None, runner=SimpleNamespace(runs_original=True))
     assert resolved["micro_mg_tend"] is not model
+
+
+def test_a_stride_keeps_one_call_in_n_and_answers_every_call() -> None:
+    from freecam.physics.segments import FrameCapture, OriginalAtPause
+
+    calls = []
+
+    class _Original(OriginalAtPause):
+        def __call__(self, frame, runner, context):
+            calls.append(frame)
+            return {}
+
+    class _Frame:
+        kernel = "k"
+        ncol = 1
+        token = 0
+        arguments = ()
+
+    capture = FrameCapture("k", every=3)
+    capture._original = _Original()
+    for _ in range(7):
+        capture(_Frame(), None, 0)
+    assert len(calls) == 7                     # the original answered every call
+    assert capture.calls == 3                  # calls 1, 4 and 7 were kept
+    assert "every=3" in repr(capture)

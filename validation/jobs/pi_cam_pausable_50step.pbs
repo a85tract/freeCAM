@@ -36,7 +36,10 @@
 # halves (--split-radiation --radiation-python); with the RRTMG cores in
 # PYCAM_ORIGINAL_KERNELS they are answered at the radt runner's pauses.
 # PYCAM_CLOUD_PYTHON=1 installs the cloud macro/microphysics class over the
-# stage-7 runner (--cloud-macro-micro-python) for the same treatment.
+# stage-7 runner (--cloud-macro-micro-python) for the same treatment; with it,
+# PYCAM_CLOUD_BLOCK_MODEL / PYCAM_CLOUD_MICRO_BLOCK_MODEL answer a compute block
+# from Python (replay:DIR, path.py:function) through the stage's Python driver,
+# and PYCAM_CLOUD_BLOCK_CAPTURE=dir records both blocks around the originals.
 set -euo pipefail
 
 source "${FREECAM_REPO:-${PBS_O_WORKDIR:-$PWD}}/validation/jobs/common.sh"
@@ -88,14 +91,36 @@ if [ -n "${PYCAM_RADIATION_PYTHON:-}" ]; then
   if [ -n "${PYCAM_SHADOW_RAD_PLUGIN:-}" ]; then
     stage_flags+=(--shadow-radiation-plugin "${PYCAM_SHADOW_RAD_PLUGIN}")
   fi
+  if [ -n "${PYCAM_RAD_TORCH_MODEL:-}" ]; then
+    stage_flags+=(--radiation-torch-model "${PYCAM_RAD_TORCH_MODEL}")
+  fi
+  if [ -n "${PYCAM_SHADOW_RAD_TORCH_MODEL:-}" ]; then
+    stage_flags+=(--shadow-radiation-torch-model "${PYCAM_SHADOW_RAD_TORCH_MODEL}")
+  fi
   if [ -n "${PYCAM_RAD_MODEL:-}" ]; then
     # replay:DIR (bit-for-bit expected) or file.py:function answers the branch in the driver's place
     stage_flags+=(--radiation-model "${PYCAM_RAD_MODEL}")
+  fi
+  if [ -n "${PYCAM_RAD_BLOCK_MODEL:-}" ]; then
+    # replay:DIR (bit-for-bit expected) or file.py:function answers the branch in the driver's place
+    stage_flags+=(--radiation-block-model "${PYCAM_RAD_BLOCK_MODEL}")
   fi
 fi
 if [ -n "${PYCAM_CLOUD_PYTHON:-}" ]; then
   # the cloud macro/microphysics class (stage 7) over its own runner
   stage_flags+=(--cloud-macro-micro-python)
+  # the Python driver of stage 7: a block answered from Python (replay:DIR or path.py:function), or both
+  # blocks' originals captured under a directory
+  if [ -n "${PYCAM_CLOUD_BLOCK_MODEL:-}" ]; then
+    stage_flags+=(--cloud-block-model "${PYCAM_CLOUD_BLOCK_MODEL}")
+  fi
+  if [ -n "${PYCAM_CLOUD_MICRO_BLOCK_MODEL:-}" ]; then
+    stage_flags+=(--cloud-micro-block-model "${PYCAM_CLOUD_MICRO_BLOCK_MODEL}")
+  fi
+  if [ -n "${PYCAM_CLOUD_BLOCK_CAPTURE:-}" ]; then
+    mkdir -p "${PYCAM_CLOUD_BLOCK_CAPTURE}"
+    stage_flags+=(--cloud-block-capture "${PYCAM_CLOUD_BLOCK_CAPTURE}")
+  fi
 fi
 if [ ${#stage_flags[@]} -gt 0 ]; then
   stage_flags+=(--stage-execution "${PYCAM_STAGE_EXECUTION:-auto}")
@@ -110,7 +135,7 @@ fi
 if [ -n "${PYCAM_CAPTURE_KERNELS:-}" ]; then
   # the named kernels answered by the original at their pauses with every call's
   # frame recorded, for the standalone replay; the run must stay bit-for-bit
-  stage_flags+=(--capture-kernels "${PYCAM_CAPTURE_KERNELS}" --capture-dir "${run_dir}/../frame-capture")
+  stage_flags+=(--capture-kernels "${PYCAM_CAPTURE_KERNELS}" --capture-dir "${run_dir}/../frame-capture" --capture-every "${PYCAM_CAPTURE_EVERY:-1}")
 fi
 if [ -n "${PYCAM_KERNEL_MODELS:-}" ]; then
   # models in kernel slots, NAME=PATH pairs separated by commas: a cloudpickled

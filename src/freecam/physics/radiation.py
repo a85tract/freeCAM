@@ -41,7 +41,7 @@ from ..pi_cam.errors import PICAMConfigurationError
 from ..pi_cam.pbuf import PBuf, PBufField
 from .errors import PhysicsError
 from .image import module_view
-from .native_model import NativePlugin
+from .native_model import NativeModel, NativePlugin
 from .segments import SegmentedStage
 from .stage import (
     CORE_ENTRIES,
@@ -114,6 +114,9 @@ PROCESS_INPUT_FIELDS = (
     ("ICSWP", "cloud_rad_props_mp_i_icswp_", False, 2),
     ("DGNUMWET", "modal_aer_opt_mp_dgnumwet_idx_", False, 3),
     ("QAERWAT", "modal_aer_opt_mp_qaerwat_idx_", False, 3),
+    # the prescribed ozone mass mixing ratio the RRTMG state is built from (prescribed_ozone.F90): the block
+    # contract takes it raw, the gas profiles being inside the block a model replaces
+    ("OZONE", "prescribed_ozone_mp_oz_idx_", False, 2),
 )
 
 #: The direct kernels tend() runs; every one must be in the image and in the
@@ -479,18 +482,202 @@ class Radiation(NativeStage):
         self.process: Any = None
         self._rstate_snapshot: dict[str, np.ndarray] | None = None
 
+    #: the name the runner gives its pause at the top of the radiative branch (segment_runners.yaml)
+    PROCESS_SLOT = "radiation_process"
+
+    def _runner_pauses_at_slot(self, native: Any) -> bool:
+        """Whether this image's runner can stop at the process slot for a Python answer."""
+
+        runner = native.segment_runner(self.STAGE) if native is not None and hasattr(native, "segment_runner") else None
+        return runner is not None and self.PROCESS_SLOT in tuple(getattr(runner, "kernels", ()))
+
+    def _python_at_slot(self, native: Any) -> bool:
+        """A Python answerer in the slot, and a runner that pauses there: the pause path, not the walk."""
+
+        process = self.process
+        if process is None or isinstance(process, (NativePlugin, NativeModel)) or getattr(process, "records", False):
+            return False
+        if self.execution_policy == "legacy-python":
+            return False
+        return self._runner_pauses_at_slot(native)
+
     def select_mode(self, native: Any = None) -> str:
-        if isinstance(self.process, NativePlugin):
-            # a compiled plugin bound at the slot inside the image: the runner runs the
-            # driver whole and the plugin answers the radiative branch in Fortran
+        if getattr(self.process, "block", False):
+            # a model of the whole compute block: the Python driver reads the inputs from memory, calls
+            # it, and writes the outputs back; the runner is not used
+            return "python-driver"
+        if isinstance(self.process, (NativePlugin, NativeModel)):
+            # a compiled plugin or a TorchScript model bound at the slot inside the image: the
+            # runner runs the driver whole and the slot answers the radiative branch in Fortran
+            return "segmented"
+        if self.process is not None and self._python_at_slot(native):
+            # a Python answerer: the runner runs the driver, pauses at the top of the radiative
+            # branch, Python answers the frame (or asks for the original branch) and resumes
             return "segmented"
         if self.process is not None:
-            # a Python capture, replay or model lives inside the transcription: only the walk reaches it
+            # a capture, or an image without the slot pause: the answerer lives inside the transcription
             return "legacy-python"
         return super().select_mode(native)
 
+    def _segment_kernels(self, native: Any, runner: Any) -> dict[str, Callable[..., Any] | None]:
+        kernels = super()._segment_kernels(native, runner)
+        if self._python_at_slot(native):
+            from .radiation_process import OriginalProcess, answer_frame
+            from .segments import OriginalAtPause, _lanes
+
+            process = self.process
+            if isinstance(process, OriginalProcess):
+                kernels[self.PROCESS_SLOT] = OriginalAtPause()
+            else:
+                class _AtSlot:
+                    takes_frame = True
+
+                    def __call__(self, frame, runner_, context):
+                        # the model reads the live lanes where they lie: no copy of the 46 inputs
+                        inputs = {a.name: _lanes(a.array, frame.ncol) for a in frame.arguments if a.is_input}
+                        return answer_frame(process, inputs, frame.ncol)
+
+                kernels[self.PROCESS_SLOT] = _AtSlot()
+        return kernels
+
+    def tend(self, fields: Any, context: Any) -> None:
+        if getattr(self.process, "block", False):
+            native = context.native
+            if native is None:
+                raise PhysicsError(f"{type(self).__name__}.tend must run as a native process")
+            self._current_step = getattr(context, "step", getattr(context, "nstep", None))
+            self.execution.mode = "python-driver"
+            self.execution.replacements = self.replacements()
+            self._tend_python_driver(native, context)
+            return
+        super().tend(fields, context)
+
+    # -- the Python driver: the block computed by a model, everything around it from memory ----------
+
+    def _block_views(self, st: StageRuntime, lchnk: int, ncol: int, index: int) -> dict[str, np.ndarray]:
+        """The chunk's storage the driver reads and writes, viewed once and kept: the state, the surface,
+        the fluxes, the tendency, the net flux, the buffer's plain fields, the column geometry."""
+
+        cache = getattr(self, "_block_view_cache", None)
+        if cache is None:
+            cache = self._block_view_cache = {}
+        if lchnk in cache:
+            return cache[lchnk]
+        H, pb = st.handles, st.pbuf
+        # not the RRTMG state (inside the block), nor the tendency and net flux: radheat_tend allocates and
+        # fills those in Fortran, and their storage does not exist before its first call
+        views: dict[str, np.ndarray] = {name: H.view(lchnk, code) for name, code in VIEW.items()
+                                        if not name.startswith("rstate_") and name not in ("ptend_s", "net_flx")}
+        # the constituent array is not a radiation handle: the state pool's view of phys_state%q, this chunk
+        views["state_q"] = np.asarray(st.native.pool["phys_state.q"])[..., index]
+        for field in ("QRS", "QRL"):
+            views[field.lower()] = pb.view(field, lchnk)
+        zeros2 = np.zeros((st.pcols, st.pver), order="F")
+        for name, _, _, rank in PROCESS_INPUT_FIELDS:
+            try:
+                views[name.lower()] = pb.view(name, lchnk)
+            except Exception:              # a field this configuration never registered: zeros, as the slot hands them
+                views[name.lower()] = zeros2 if rank == 2 else np.zeros((st.pcols, st.pver, 3), order="F")
+        clat = np.zeros(st.pcols); clon = np.zeros(st.pcols)
+        H.latlon(lchnk, ncol, clat, clon)
+        views["clat"], views["clon"] = clat, clon
+        cache[lchnk] = views
+        return views
+
+    def _history_entry(self, native: Any) -> Any:
+        entry = getattr(self, "_history", None)
+        if entry is None:
+            entry = getattr(native.library, "pycam_rad_process_history_v1", None)
+            if entry is None:
+                raise PICAMConfigurationError("this image has no pycam_rad_process_history_v1: built before the Python driver")
+            entry.restype = ctypes.c_int32
+            entry.argtypes = [ctypes.c_int32] * 4 + [ctypes.c_void_p] * 14 + [ctypes.c_int32]
+            self._history = entry
+        return entry
+
+    def _tend_python_driver(self, native: Any, context: Any) -> None:
+        """``radiation_tend`` with the compute block answered by a Python model.
+
+        Python reads what the driver reads -- the state, the buffer, the surface, the calendar day, the
+        column geometry -- from memory, calls the model, and writes the two heating rates and the ten
+        fluxes where the driver leaves them; the tendency and net flux the resume half takes come from
+        ``radheat_tend`` (one call, which also initialises the tendency), the history from one call.
+        The heating rates are kept scaled by the layer mass between radiative steps as the driver keeps
+        them (radiation.F90:1276-1288, 1306-1316).
+        """
+
+        from .radiation_process import radiation_steps
+
+        st = self.runtime(native)
+        H, C = st.handles, st.constants
+        entries = st.entries
+        dt = float(entries.dt()) if entries.dt is not None else float(context.timestep_seconds)
+        nstep = int(entries.nstep()) if entries.nstep is not None else int(context.step)
+        calday = H.calday()
+        dosw, dolw = radiation_steps(nstep, C.iradsw, C.iradlw, C.irad_always)
+        history = self._history_entry(native)
+        has_snow = C.cldfsnow_idx > 0
+        hr = getattr(self, "_block_hr", None)
+        if hr is None:
+            hr = self._block_hr = np.zeros((st.pcols, st.pver), order="F")
+        model = self.process
+        for index, (lchnk, ncol) in enumerate(zip(*native.chunks)):
+            lchnk, n = int(lchnk), int(ncol)
+            try:
+                self._block_chunk(st, native, lchnk, n, index, nstep, dt, calday, dosw, dolw, history, has_snow, hr, model)
+            except Exception as error:
+                # the resume half aborts the run if a chunk's tendency is missing, before Python's own
+                # report of the failure would reach the log: say what went wrong here, first
+                print(f"[radiation python-driver] rank {getattr(st, 'rank', '?')} step {nstep} chunk {lchnk}: "
+                      f"{type(error).__name__}: {error}", flush=True)
+                raise
+        self.execution.legacy_steps += 1
+
+    def _block_chunk(self, st: StageRuntime, native: Any, lchnk: int, n: int, index: int, nstep: int, dt: float, calday: float,
+                     dosw: bool, dolw: bool, history: Any, has_snow: bool, hr: np.ndarray, model: Any) -> None:
+        """One chunk of the Python driver: see :meth:`_tend_python_driver`."""
+
+        H, C = st.handles, st.constants
+        pointer = lambda a: a.ctypes.data_as(ctypes.c_void_p)
+        if True:
+            V = self._block_views(st, lchnk, n, index)
+            cld = st.pbuf.view("CLD", lchnk)
+            cldfsnow = st.pbuf.view("CLDFSNOW", lchnk) if has_snow else V["dei"] * 0.0
+            qrs, qrl, pdel = V["qrs"], V["qrl"], V["state_pdel"]
+            if dosw or dolw:
+                inputs = {"nstep": nstep, "lchnk": lchnk, "ncol": n, "dt": dt, "calday": calday, "dosw": dosw, "dolw": dolw,
+                          "clat": V["clat"], "clon": V["clon"], "cld": cld, "cldfsnow": cldfsnow}
+                inputs.update({name: V[name] for name in V if name.startswith(("state_", "cam_in_"))})
+                inputs.update({name.lower(): V[name.lower()] for name, _, _, _ in PROCESS_INPUT_FIELDS})
+                answer = model(inputs)
+                qrs[:n] = np.asarray(answer["qrs"])[:n]
+                qrl[:n] = np.asarray(answer["qrl"])[:n]
+                for name in ("fsns", "fsnt", "flns", "flnt", "fsds"):
+                    V[name][:n] = np.asarray(answer[name])[:n]
+                for name in ("sols", "soll", "solsd", "solld", "flwds"):
+                    V["cam_out_" + name][:n] = np.asarray(answer[name])[:n]
+            else:
+                # 1276-1288: the stored heating back to a rate for this step's tendency
+                qrs[:n] /= pdel[:n]
+                qrl[:n] /= pdel[:n]
+            # 1295-1296: the tendency and the net flux the resume half of tphysbc takes back
+            H.radheat(lchnk, qrl, qrs)
+            # 1298-1304: the heating rate for dtheta/dt, and the history of the step in one call
+            hr[:n] = (qrs[:n] + qrl[:n]) / CPAIR * (1e5 / V["state_pmid"][:n]) ** C.cappa
+            status = history(lchnk, n, int(dosw), int(dolw), pointer(qrs), pointer(qrl), pointer(V["fsns"]), pointer(V["fsnt"]),
+                             pointer(V["flns"]), pointer(V["flnt"]), pointer(V["fsds"]), pointer(V["cam_out_sols"]),
+                             pointer(V["cam_out_soll"]), pointer(V["cam_out_solsd"]), pointer(V["cam_out_solld"]),
+                             pointer(V["cam_out_flwds"]), pointer(hr), pointer(cldfsnow), int(has_snow))
+            if status:
+                raise PhysicsError(f"pycam_rad_process_history_v1 refused ({status})")
+            # 1306-1316: stored scaled by the layer mass
+            qrs[:n] *= pdel[:n]
+            qrl[:n] *= pdel[:n]
+            # 1318
+            V["cam_out_netsw"][:n] = V["fsns"][:n]
+
     def _tend_segmented(self, native: Any) -> None:
-        if isinstance(self.process, NativePlugin):
+        if isinstance(self.process, (NativePlugin, NativeModel)):
             # no pause armed: the runner runs the driver whole, the slot answers inside
             self.prepare_segmented(native)
             segmented = self._segmented
@@ -510,14 +697,20 @@ class Radiation(NativeStage):
         if self.process is None:
             return None
         described = dict(self.process.describe())
-        if isinstance(self.process, NativePlugin):
+        if isinstance(self.process, (NativePlugin, NativeModel)):
             from .radiation_process import read_radiation_process_counts
 
-            described["kind"] = "native-plugin"
+            described["kind"] = "native-plugin" if isinstance(self.process, NativePlugin) else "native-model"
             library = getattr(self, "_process_library", None)
             counts = read_radiation_process_counts(library) if library is not None else None
             if counts:
                 described.update(counts)
+        elif getattr(self.process, "block", False):
+            described["kind"] = described.get("kind", "block-model")
+        elif self.execution.mode == "segmented" and self._segmented is not None:
+            # a Python answerer at the runner's pause: the pauses it answered, from the stage's counters
+            described["kind"] = f"{described.get('kind', 'python')}-at-slot".replace("original-at-slot-at-slot", "original-at-slot")
+            described["pauses"] = int(self._segmented.counters.calls_by_kernel.get(self.PROCESS_SLOT, 0))
         return described
 
     def _process_inputs(self, st: StageRuntime, lchnk: int, ncol: int, index: int, dt: float, nstep: int,
@@ -631,6 +824,14 @@ class Radiation(NativeStage):
             key = self.process.key
             if getattr(self, "_process_bound", None) != key:
                 bind_radiation_process(native.library, self.process.address, shadow=self.process.shadow)
+                self._process_bound = key
+                self._process_library = native.library
+        elif isinstance(self.process, NativeModel):
+            from .radiation_process import bind_radiation_model
+
+            key = f"torchscript:{self.process.sha256}{':shadow' if self.process.shadow else ''}"
+            if getattr(self, "_process_bound", None) != key:
+                bind_radiation_model(native.library, self.process.path, shadow=self.process.shadow)
                 self._process_bound = key
                 self._process_library = native.library
 

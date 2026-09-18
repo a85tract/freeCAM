@@ -37,6 +37,9 @@ PATCHES = (
 # call them, so the oracle's machine code is untouched and they are reached
 # only from Python.
 SUPPORT_SOURCES = (
+    # the state copy into kept storage, used by the macro and micro handles
+    ("native/pi_cam/support/pycam_state_copy.F90",
+     "src/physics/cam/pycam_state_copy.F90"),
     ("native/pi_cam/support/pycam_macro_kernels.F90",
      "src/physics/cam/pycam_macro_kernels.F90"),
     ("native/pi_cam/support/pycam_macro_handles.F90",

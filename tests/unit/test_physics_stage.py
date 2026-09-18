@@ -1025,3 +1025,146 @@ def test_kernels_are_addressable_by_canonical_id_and_shared_through_compose() ->
         cloud.kernels["nope::nothere"] = marker
     assert "cldwat2m_macro::mmacro_pcond" in cloud.kernels and "mmacro_pcond" in cloud.kernels
     assert "pbl_utils::virtem" not in cloud.kernels
+
+
+# -- a call site is resolved once and the objects it was handed are held ---------
+
+
+def test_a_call_site_handed_the_same_objects_is_prepared_once_and_still_copies_every_call(widget) -> None:
+    seen: list[float] = []
+
+    def bind_kernel(name, arrays):
+        x = arrays["widget.x"]
+
+        def run():
+            seen.append(float(x[0, 0, 0]))
+            arrays["widget.y"][...] = x[0, 0, 0] * 2.0
+        return run
+
+    widget.bind_kernel = bind_kernel
+    runtime = Widget().runtime(widget)
+    x = np.zeros((PCOLS, PVER, 1), order="F")[:, :, 0]        # a kept view, as a walk hands
+    y = np.zeros((PCOLS, 2), order="F")                   # y's extents are (pcols, widgets)
+    for value in (1.0, 2.0, 3.0):
+        x[...] = value
+        runtime.kernel_on_chunk("widget_step", {"x": x.astype(np.float32), "ncol": np.int32(6)}, outputs={"y": y}, ncol=6)
+    (plan,) = runtime._plans.values()
+    # a fresh float32 temporary every call: each call resolved anew, none reused, the table bounded
+    assert 1 <= len(plan.prepared) <= 3
+    assert seen == [1.0, 2.0, 3.0]                            # the copy in happened every call
+    assert np.all(y[:6] == 6.0) and np.all(y[6:] == 0.0)     # and the copy out, live lanes only
+    # the same objects handed again and again: one prepared entry, the copies still made each call
+    plan.prepared.clear()
+    fixed, n = x.astype(np.float32), np.int32(6)              # one object each, as a walk's are
+    for value in (4.0, 5.0, 6.0):
+        fixed[...] = value
+        runtime.kernel_on_chunk("widget_step", {"x": fixed, "ncol": n}, outputs={"y": y}, ncol=6)
+    assert len(plan.prepared) == 1
+    (entry,) = plan.prepared.values()
+    assert entry.held[0][0] is fixed                          # the objects are held with the entry
+    assert seen[-3:] == [4.0, 5.0, 6.0] and np.all(y[:6] == 12.0) and np.all(y[6:] == 0.0)
+
+
+def test_a_prepared_call_is_dropped_when_its_bound_call_is_pointed_elsewhere(widget) -> None:
+    from freecam.physics.stage import BOUND_PER_PLAN
+
+    log: list = []
+    widget.bind_kernel = lambda name, arrays: _Retargetable(log, name, arrays)
+    runtime = Widget().runtime(widget)
+    block = np.zeros((PCOLS, PVER, BOUND_PER_PLAN + 2), order="F")
+    first = block[:, :, 0]
+    runtime.kernel_on_chunk("widget_step", {"x": first, "ncol": np.int32(6)}, outputs={})
+    (plan,) = runtime._plans.values()
+    first_entry = next(iter(plan.prepared.values()))
+    for i in range(1, BOUND_PER_PLAN + 1):                    # fill the table, then one more
+        runtime.kernel_on_chunk("widget_step", {"x": block[:, :, i], "ncol": np.int32(6)}, outputs={})
+    assert plan.bound.get(first_entry.address_key) is not first_entry.bound   # first's call was pointed elsewhere
+    before = len([e for e in log if e[0] == "run"])
+    runtime.kernel_on_chunk("widget_step", {"x": first, "ncol": np.int32(6)}, outputs={})
+    runs = [e for e in log if e[0] == "run"]
+    assert len(runs) == before + 1
+    assert runs[-1][2] == first.ctypes.data                   # it ran on first's storage, not a stale pointer
+
+
+def test_a_history_call_keeps_the_address_of_a_kept_view_and_converts_a_temporary_each_time(widget) -> None:
+    runtime = Widget().runtime(widget)
+    handles = runtime.handles
+    kept = np.zeros((PCOLS, PVER, 1), order="F")[:, :, 0]
+    handles.outfld("KEPT    ", kept, PCOLS, 10)
+    handles.outfld("KEPT    ", kept, PCOLS, 10)
+    assert len(handles._outfld) == 1
+    (hit,) = handles._outfld.values()
+    assert hit[3] is kept and hit[0] == b"KEPT    "
+    c_ordered = np.ones((PCOLS, PVER))                        # a temporary the walk formed: converted, not kept
+    handles.outfld("TEMP    ", c_ordered, PCOLS, 10)
+    handles.outfld("TEMP    ", c_ordered, PCOLS, 10)
+    assert len(handles._outfld) == 1
+    assert [name for name, _ in widget.library.history] == ["KEPT    "] * 2 + ["TEMP    "] * 2
+
+
+def test_an_output_declared_in_place_is_handed_to_the_kernel_itself_and_never_copied(widget) -> None:
+    seen: list[dict] = []
+
+    def bind_kernel(name, arrays):
+        seen.append(dict(arrays))
+
+        def run():
+            arrays["widget.y"][...] = 5.0                     # every lane, as a routine may
+        return run
+
+    widget.bind_kernel = bind_kernel
+    runtime = Widget().runtime(widget)
+    y = np.zeros((PCOLS, 2, 1), order="F")[:, :, 0]           # a kept view of the shape the kernel takes
+    runtime.kernel_on_chunk("widget_step", {"ncol": np.int32(6)}, outputs={"y": y}, ncol=6, in_place=("y",))
+    assert seen[-1]["widget.y"].ctypes.data == y.ctypes.data  # the storage itself, chunk axis on
+    assert np.all(y == 5.0) and np.all(runtime.scratch["y"] == 0.0)   # written in place, padding lanes included
+    # a target the kernel cannot take directly is copied as before, live lanes only
+    z = np.zeros((PCOLS, 2))                                  # C-ordered
+    runtime.kernel_on_chunk("widget_step", {"ncol": np.int32(6)}, outputs={"y": z}, ncol=6, in_place=("y",))
+    assert seen[-1]["widget.y"] is runtime.scratch["y"] and np.all(z[:6] == 5.0) and np.all(z[6:] == 0.0)
+    # an input handed for the same name must be that storage
+    with pytest.raises(PhysicsError, match="in place"):
+        runtime.kernel_on_chunk("widget_step", {"ncol": np.int32(6), "y": z}, outputs={"y": y}, in_place=("y",))
+
+
+def test_a_lane_of_a_kept_array_is_the_same_view_while_the_array_is(widget) -> None:
+    runtime = Widget().runtime(widget)
+    cube = np.zeros((PCOLS, PVER, 3), order="F")
+    first = runtime.lane(cube, 1)
+    assert runtime.lane(cube, 1) is first and first.base is cube and first.shape == (PCOLS, PVER)
+    assert runtime.lane(cube, 2) is not first
+    first[...] = 4.0
+    assert np.all(cube[:, :, 1] == 4.0)                       # a view, not a copy
+    other = np.zeros((PCOLS, PVER, 3), order="F")
+    assert runtime.lane(other, 1) is not first                # another array, another view
+
+
+def test_a_kept_scalar_is_the_same_object_while_equal_and_a_constant_is_made_once(widget) -> None:
+    runtime = Widget().runtime(widget)
+    first = runtime.kept("rdtime", 1.0 / 1800.0)
+    assert runtime.kept("rdtime", 1.0 / 1800.0) is first
+    assert runtime.kept("rdtime", 1.0 / 900.0) is not first      # another value, another object
+    assert runtime.kept("rdtime", 1) == 1 and type(runtime.kept("rdtime", 1)) is int   # never an equal of another type
+    made: list[int] = []
+    cube = np.zeros((3, 4))
+    assert runtime.once("slice", lambda: (made.append(1), cube[:, 1])[1]) is runtime.once("slice", lambda: cube[:, 2])
+    assert made == [1]
+
+
+def test_the_record_names_the_inputs_that_churn_at_a_call_site(widget) -> None:
+    widget.bind_kernel = lambda name, arrays: (lambda: None)
+    stage = Widget()
+    runtime = stage.runtime(widget)
+    x = np.zeros((PCOLS, PVER, 1), order="F")[:, :, 0]
+    other = np.zeros((PCOLS, PVER, 1), order="F")[:, :, 0]
+    for step in range(4):                                     # the scalar is a new object every call
+        runtime.kernel_on_chunk("widget_step", {"x": x, "ncol": np.int32(6)}, outputs={})
+        runtime.kernel_on_chunk("widget_step", {"x": other, "ncol": np.int32(5)}, outputs={})   # the other chunk
+    sites = stage.describe_call_sites()
+    row = sites["widget.widget_step"]
+    assert row["calls"] == 8 and row["prepared"] == 8
+    # against the nearest key: the other chunk's first call had only this chunk's key to compare with
+    # (x and ncol both new), every later call its own chunk's (ncol alone)
+    assert row["churn"] == {"ncol": 7, "x": 1}
+    (plan,) = runtime._plans.values()
+    assert plan.prepared and all(entry.run is not None for entry in plan.prepared.values())   # the kernel's own name, not an input's
