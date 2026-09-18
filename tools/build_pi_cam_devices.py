@@ -618,7 +618,13 @@ def main() -> int:
     ftorch_lib = next((d for d in (ftorch_root / "lib64", ftorch_root / "lib") if (d / "libftorch.so").is_file()), None)
     if not (ftorch_include / "ftorch.mod").is_file() or ftorch_lib is None:
         raise RuntimeError(f"FTorch is not installed under {ftorch_root}: build it first (see docs/installation.md)")
-    torch_lib = args.torch_lib.resolve() if args.torch_lib is not None else _torch_lib_dir()
+    recorded_torch_lib = ftorch_root / "torch_lib_dir"          # written by tools/build_ftorch.sh
+    if args.torch_lib is not None:
+        torch_lib = args.torch_lib.resolve()
+    elif recorded_torch_lib.is_file() and recorded_torch_lib.read_text().strip():
+        torch_lib = Path(recorded_torch_lib.read_text().strip())   # the libtorch FTorch was built against
+    else:
+        torch_lib = _torch_lib_dir()
     ftorch_link = [f"-L{ftorch_lib}", "-lftorch", f"-Wl,-rpath,{ftorch_lib}", f"-Wl,-rpath,{torch_lib}"]
     cxx_runtime = ftorch_root / "cxx_runtime_dir"          # written by tools/build_ftorch.sh
     if cxx_runtime.is_file() and cxx_runtime.read_text().strip():

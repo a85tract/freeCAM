@@ -135,6 +135,25 @@ than producing its own.
    `build/ftorch`.  The torch headers need C++20: when the case environment's
    `g++` is older than GCC 10, point `CXX` (and `CC`) at a newer GCC before
    running the script.
+   For an image that runs the models on a GPU, build a second FTorch against
+   a CUDA libtorch, with FTorch's CUDA support on, into its own prefix:
+
+   ```bash
+   FTORCH_PYTHON=/path/to/venv-with-cuda-torch/bin/python \
+   FTORCH_GPU_DEVICE=CUDA FTORCH_PREFIX=$PWD/build/ftorch-cuda \
+   PATH=/path/to/cuda-toolkit/bin:$PATH CUDAToolkit_ROOT=/path/to/cuda-toolkit \
+   tools/build_ftorch.sh
+   ```
+
+   (a CUDA torch wheel of the same torch version as the checkout's, e.g. from
+   the `cu126` index; the toolkit's major version must be the wheel's).  The
+   prefix records the libtorch it was built against, and an image built with
+   `FREECAM_FTORCH_ROOT=$PWD/build/ftorch-cuda` links and rpaths that one, so
+   it runs on GPU nodes only.  `--model-device cuda` (job knob
+   `PYCAM_MODEL_DEVICE=cuda`) then loads the bound models on each rank's share
+   of the node's GPUs, the node-local rank over `CUDA_VISIBLE_DEVICES`; the
+   hook's input tensors are made on the device and the answer comes back on
+   the host.
    The hooks module links it so a hooked kernel can be bound to a
    TorchScript model that the image runs itself (see
    [physics_kernel_decoupling.md](physics_kernel_decoupling.md)); a rank

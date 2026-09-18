@@ -1776,7 +1776,7 @@ class NativeStage:
 
         bound: dict[str, str] = getattr(self, "_native_bound", {})
         wanted = self._hook_bindings()
-        keys = {name: (model.key if isinstance(model, NativePlugin) else f"{model.sha256}{':shadow' if model.shadow else ''}")
+        keys = {name: model.key
                 for name, model in wanted.items()}
         if keys == bound:
             # every step after the first: nothing to bind, and no hooks table to
@@ -1802,7 +1802,8 @@ class NativeStage:
                 if isinstance(model, NativePlugin):
                     bind_hook_plugin(native.library, hook.id, model.address, shadow=model.shadow)
                 else:
-                    bind_hook_model(native.library, hook.id, model.path, shadow=model.shadow)
+                    bind_hook_model(native.library, hook.id, model.path, shadow=model.shadow,
+                                    device=model.device, device_index=model.resolved_device_index())
                 bound[name] = keys[name]
         self._native_bound = bound
 

@@ -137,6 +137,11 @@ if [ -n "${PYCAM_KERNEL_MODELS:-}" ]; then
   # the model pickles in per-process order unless the hash seed is fixed (7371767)
   export PYTHONHASHSEED=0
 fi
+if [ -n "${PYCAM_MODEL_DEVICE:-}" ]; then
+  # where the image runs the bound TorchScript models: cpu (default) or cuda, one GPU per
+  # node-local rank share; the image must be linked with a CUDA FTorch and run on GPU nodes
+  stage_flags+=(--model-device "${PYCAM_MODEL_DEVICE}")
+fi
 if [ -n "${PYCAM_SHADOW_MODELS:-}" ]; then
   # TorchScript models bound in shadow at their hooks: the image runs them on every call and
   # discards the answer while the original answers.  Bit-for-bit is expected; the stage's

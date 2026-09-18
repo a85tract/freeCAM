@@ -228,6 +228,7 @@ deep = driver.processes["deep_convection"]
 deep.kernels["cldfrc_fice"] = my_ice_fraction        # a function over the kernel's arrays: compiled, called by Fortran at the hook
 deep.kernels["cldfrc_fice"] = compile_kernel("cldfrc_fice", my_numba_kernel)   # compiled, called by Fortran at the hook
 deep.kernels["cldfrc_fice"] = fc.NativeModel("ice.pt")                          # TorchScript, run by the image through FTorch
+deep.kernels["cldfrc_fice"] = fc.NativeModel("ice.pt", device="cuda")           # the same, on this rank's GPU (a CUDA-linked image)
 ```
 
 A function in a slot runs where the stage can run it.  Written over the

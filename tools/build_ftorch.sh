@@ -5,6 +5,15 @@
 #
 #   tools/build_ftorch.sh [<FTorch git ref>]
 #
+# Environment overrides, for an FTorch that runs models on a GPU:
+#   FTORCH_PYTHON      the interpreter whose torch package supplies libtorch (default .venv);
+#                      a CUDA torch build gives a CUDA libtorch
+#   FTORCH_GPU_DEVICE  FTorch's GPU_DEVICE option, e.g. CUDA (default NONE); a CUDA libtorch's
+#                      cmake also needs a CUDA toolkit in the environment (module load cuda)
+#   FTORCH_PREFIX      where to install (default build/ftorch; use build/ftorch-cuda for the GPU one)
+# The prefix records the libtorch directory it was built against (torch_lib_dir), which the image
+# build links and rpaths, so a CUDA image finds the CUDA libtorch and not the checkout's CPU one.
+#
 # The Fortran side is compiled inside the CESM case environment the image build
 # uses (the same Intel compiler: a .mod file written by a newer compiler is not
 # readable by an older one), the C++ side by a GCC that speaks C++20, which the
@@ -14,9 +23,10 @@ set -euo pipefail
 repo=$(cd "$(dirname "$0")/.." && pwd)
 ref=${1:-main}
 src=${repo}/build/ftorch-src
-work=${repo}/build/ftorch-build
-prefix=${repo}/build/ftorch
-python=${repo}/.venv/bin/python
+prefix=${FTORCH_PREFIX:-${repo}/build/ftorch}
+work=${prefix}-build
+python=${FTORCH_PYTHON:-${repo}/.venv/bin/python}
+gpu_device=${FTORCH_GPU_DEVICE:-NONE}
 
 # the caller's compiler choice, kept across the case environment (which sets CXX itself)
 requested_cxx=${CXX:-}
@@ -35,6 +45,7 @@ if [ ! -e "${cxx_runtime}/libstdc++.so.6" ] && [ -e "${cxx_runtime}/../lib64/lib
   cxx_runtime=$(realpath "${cxx_runtime}/../lib64")     # the 64-bit runtime beside a 32-bit lib/
 fi
 torch_cmake=$("${python}" -c 'import torch; print(torch.utils.cmake_prefix_path)')
+torch_lib=$("${python}" -c 'import torch, pathlib; print(pathlib.Path(torch.__file__).resolve().parent / "lib")')
 
 if [ ! -d "${src}/.git" ]; then
   git clone --depth 1 --branch "${ref}" https://github.com/Cambridge-ICCS/FTorch.git "${src}"
@@ -45,12 +56,16 @@ cmake -S "${src}" -B "${work}" \
   -DCMAKE_BUILD_TYPE=Release \
   -DCMAKE_Fortran_COMPILER=ifort -DCMAKE_CXX_COMPILER="${cxx}" -DCMAKE_C_COMPILER="${cc}" \
   -DCMAKE_PREFIX_PATH="${torch_cmake}" \
-  -DCMAKE_INSTALL_RPATH="${cxx_runtime}" -DCMAKE_BUILD_RPATH="${cxx_runtime}" \
+  -DGPU_DEVICE="${gpu_device}" \
+  -DCMAKE_INSTALL_RPATH="${cxx_runtime};${torch_lib}" -DCMAKE_BUILD_RPATH="${cxx_runtime};${torch_lib}" \
   -DCMAKE_INSTALL_PREFIX="${prefix}"
 cmake --build "${work}" -j 8
 cmake --install "${work}"
 # the C++ runtime the library was built with, for the image's own rpath
 echo "${cxx_runtime}" > "${prefix}/cxx_runtime_dir"
+# the libtorch this FTorch was built against, for the image's own link and rpath
+echo "${torch_lib}" > "${prefix}/torch_lib_dir"
+echo "${gpu_device}" > "${prefix}/gpu_device"
 ls "${prefix}"/lib*/libftorch.so "${prefix}/include/ftorch/ftorch.mod"
 echo "Fortran: $(ifort --version | head -1); C++: $("${cxx}" --version | head -1); C++ runtime: ${cxx_runtime}"
 echo "FTorch installed under ${prefix}"

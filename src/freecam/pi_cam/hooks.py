@@ -249,7 +249,8 @@ def read_hook_counts(library: Any) -> dict[str, dict[str, int]]:
 BIND_STATUS = {1: "no such hook", 2: "the hook takes no model (hooks.yaml has no model block for it)",
                3: "the hook is armed for a Python replacement", 4: "the path is empty or too long",
                5: "the image has no model entry: it was built without FTorch",
-               6: "the image has no plugin entry: it was built before plugins"}
+               6: "the image has no plugin entry: it was built before plugins",
+               7: "the device is neither the host nor CUDA"}
 #: what pycam_hooks_arm_v1 answers when a hook cannot be armed
 ARM_STATUS = {1: "no such hook", 3: "a model is bound at the hook", 5: "the hook has no frame (a Fortran-bound hook cannot pause)"}
 
@@ -269,17 +270,39 @@ def hooked_model_kernels() -> frozenset[str]:
 _HOOKED_MODEL_KERNELS: frozenset[str] | None = None
 
 
-def bind_hook_model(library: Any, hook_id: int, path: str | Path, *, shadow: bool = False) -> None:
+#: FTorch's device codes: torch_kCPU and torch_kCUDA
+MODEL_DEVICES = {"cpu": 0, "cuda": 1}
+
+
+def bind_hook_model(library: Any, hook_id: int, path: str | Path, *, shadow: bool = False,
+                    device: str = "cpu", device_index: int = -1) -> None:
     """Load a TorchScript model into the image at hook ``hook_id``: from then on the hook
     answers its calls with the model, inside Fortran, until :func:`unbind_hook_model`.
 
     With ``shadow`` the model runs on every call and its answer is discarded while the
     original keeps answering: the run stays bit-for-bit and the model path's cost is
-    measured in situ.
+    measured in situ.  ``device`` is where the model lives and runs, ``cpu`` or ``cuda``
+    with this rank's ``device_index``; the hook makes its input tensors there and takes
+    the answer back on the host.
     """
 
     import ctypes
 
+    if device not in MODEL_DEVICES:
+        raise PICAMConfigurationError(f"model device must be one of {sorted(MODEL_DEVICES)}, not {device!r}")
+    if device != "cpu":
+        entry = getattr(library, "pycam_hooks_bind_model_v2", None)
+        if entry is None:
+            raise PICAMConfigurationError(f"cannot bind a model on {device!r} at hook {hook_id}: the image has no "
+                                          f"device-aware bind entry (pycam_hooks_bind_model_v2); rebuild it")
+        encoded = str(Path(path)).encode()
+        entry.restype = ctypes.c_int32
+        entry.argtypes = [ctypes.c_int32, ctypes.c_char_p, ctypes.c_int32, ctypes.c_int32, ctypes.c_int32, ctypes.c_int32]
+        status = int(entry(int(hook_id), encoded, len(encoded), 1 if shadow else 0, MODEL_DEVICES[device], int(device_index)))
+        if status != 0:
+            raise PICAMConfigurationError(f"binding a model on {device}:{device_index} at hook {hook_id} failed: "
+                                          f"{BIND_STATUS.get(status, status)}")
+        return
     entry = getattr(library, "pycam_hooks_bind_model_v1", None)
     if entry is None:
         raise PICAMConfigurationError(f"cannot bind a model at hook {hook_id}: {BIND_STATUS[5]}")

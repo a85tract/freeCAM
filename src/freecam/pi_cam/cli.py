@@ -222,17 +222,17 @@ def _parse_kernel_models(values: list[str] | None) -> dict[str, Path]:
     return models
 
 
-def _load_kernel_model(path: Path, *, shadow: bool = False):
+def _load_kernel_model(path: Path, *, shadow: bool = False, device: str = "cpu"):
     """What stands in a kernel's slot: a TorchScript archive the image runs itself at the
-    kernel's hook (no Python in the step), or a cloudpickled callable answering the
-    kernel's frame at a pause; anything else is refused."""
+    kernel's hook (no Python in the step; on ``device``), or a cloudpickled callable
+    answering the kernel's frame at a pause; anything else is refused."""
 
     from freecam.physics.native_model import NativeModel
 
     if not path.is_file():
         raise SystemExit(f"--kernel-model: {path} is not a file")
     if NativeModel.is_torchscript(path):
-        return NativeModel(path, shadow=shadow)
+        return NativeModel(path, shadow=shadow, device=device)
     if shadow:
         raise SystemExit(f"--shadow-kernel-model: {path} is not a TorchScript archive; only a model the image "
                          f"runs itself can shadow the original")
@@ -681,6 +681,16 @@ def main(argv: list[str] | None = None) -> int:
         ),
     )
     parser.add_argument(
+        "--model-device",
+        choices=("cpu", "cuda"),
+        default="cpu",
+        help=(
+            "where the image runs the TorchScript models of --kernel-model and --shadow-kernel-model: the host, "
+            "or this rank's share of the node's GPUs (the node-local rank over CUDA_VISIBLE_DEVICES); the image "
+            "must have been linked with a CUDA FTorch (default cpu)"
+        ),
+    )
+    parser.add_argument(
         "--shadow-kernel-model",
         action="append",
         default=None,
@@ -1032,8 +1042,8 @@ def main(argv: list[str] | None = None) -> int:
         twice = sorted(set(kernel_model_paths) & set(shadow_model_paths))
         if twice:
             raise SystemExit(f"--shadow-kernel-model: {twice} are also given to --kernel-model; a model answers or shadows")
-        kernel_models = {name: _load_kernel_model(path) for name, path in kernel_model_paths.items()}
-        kernel_models.update({name: _load_kernel_model(path, shadow=True) for name, path in shadow_model_paths.items()})
+        kernel_models = {name: _load_kernel_model(path, device=args.model_device) for name, path in kernel_model_paths.items()}
+        kernel_models.update({name: _load_kernel_model(path, shadow=True, device=args.model_device) for name, path in shadow_model_paths.items()})
         kernel_models.update({name: _load_kernel_plugin(name, spec) for name, spec in kernel_plugin_specs.items()})
         kernel_models.update({name: _load_kernel_plugin(name, spec, shadow=True) for name, spec in shadow_plugin_specs.items()})
         if args.radiation_python:

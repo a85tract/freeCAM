@@ -10,13 +10,13 @@
 module pycam_hooks
   use, intrinsic :: iso_c_binding, only: c_int, c_int32_t, c_int64_t, c_double, c_ptr, c_loc, c_f_pointer, c_null_ptr, c_char, c_null_char, &
                                          c_funptr, c_null_funptr, c_f_procpointer
-  use ftorch, only: torch_model, torch_tensor, torch_kCPU, torch_model_load, torch_model_forward, &
+  use ftorch, only: torch_model, torch_tensor, torch_kCPU, torch_kCUDA, torch_model_load, torch_model_forward, &
                     torch_tensor_from_array, torch_delete
   implicit none
   private
   public :: pycam_hooks_arm_v1, pycam_hooks_counts_v1, pycam_hooks_paused_v1, pycam_hooks_frame_v1, &
             pycam_hooks_original_v1, pycam_hooks_reset_v1, pycam_hooks_count_v1, pycam_hooks_name_v1, &
-            pycam_hooks_bind_model_v1, pycam_hooks_unbind_model_v1, pycam_hooks_modeled_v1, &
+            pycam_hooks_bind_model_v1, pycam_hooks_bind_model_v2, pycam_hooks_unbind_model_v1, pycam_hooks_modeled_v1, &
             pycam_hooks_model_seconds_v1, pycam_hooks_bind_plugin_v1
 
   integer, parameter :: nhooks = 11
@@ -57,6 +57,11 @@ module pycam_hooks
   ! calls a shadow model also answered
   integer(c_int64_t), save :: warm_ticks(nhooks) = 0_c_int64_t, original_ticks(nhooks) = 0_c_int64_t
   type(torch_model), save :: models(nhooks)
+  ! where a bound model lives and runs: torch_kCPU, or torch_kCUDA with the device index this rank
+  ! was given.  Input tensors are made on that device (FTorch copies the host arrays over); the
+  ! output tensor stays on the host and the forward copies the answer back into it
+  integer(c_int), save :: model_device(nhooks) = torch_kCPU
+  integer, save :: model_device_index(nhooks) = -1
   ! compiled plugins (a C function pointer, e.g. a Numba cfunc) bound at hooks with a model block:
   ! the hook hands them the same arrays it would hand a model, as pointer and extent tables
   logical, save :: plugged(nhooks) = .false.
@@ -233,7 +238,7 @@ contains
     call system_clock(hk_t0)
     call c_f_pointer(c_loc(t(1)), v_t, (/ 16, 30 /))
     in_p(1) = c_loc(t(1)); in_s(:, 1) = (/ int(16, c_int64_t), int(30, c_int64_t), 0_c_int64_t /)
-    if (.not. plugged(1)) call torch_tensor_from_array(in_t(1), v_t, torch_kCPU)
+    if (.not. plugged(1)) call torch_tensor_from_array(in_t(1), v_t, model_device(1), model_device_index(1))
     op_fice => o_fice
     out_p(1) = c_loc(o_fice); out_s(:, 1) = (/ int(16, c_int64_t), int(30, c_int64_t), 0_c_int64_t /)
     if (.not. plugged(1)) call torch_tensor_from_array(out_t(1), op_fice, torch_kCPU)
@@ -280,7 +285,7 @@ contains
     real(c_double), pointer, contiguous :: yp_fsnow(:,:)
     z_t = 0.0_c_double
     zp_t => z_t
-    call torch_tensor_from_array(in_t(1), zp_t, torch_kCPU)
+    call torch_tensor_from_array(in_t(1), zp_t, model_device(1), model_device_index(1))
     yp_fice => y_fice
     call torch_tensor_from_array(out_t(1), yp_fice, torch_kCPU)
     yp_fsnow => y_fsnow
@@ -752,61 +757,61 @@ contains
     s_k(1) = real(k, c_double)
     sp_k => s_k
     in_p(1) = c_loc(s_k); in_s(:, 1) = (/ 1_c_int64_t, 0_c_int64_t, 0_c_int64_t /)
-    if (.not. plugged(3)) call torch_tensor_from_array(in_t(1), sp_k, torch_kCPU)
+    if (.not. plugged(3)) call torch_tensor_from_array(in_t(1), sp_k, model_device(3), model_device_index(3))
     call c_f_pointer(c_loc(p_in(1)), v_p_in, (/ 16 /))
     in_p(2) = c_loc(p_in(1)); in_s(:, 2) = (/ int(16, c_int64_t), 0_c_int64_t, 0_c_int64_t /)
-    if (.not. plugged(3)) call torch_tensor_from_array(in_t(2), v_p_in, torch_kCPU)
+    if (.not. plugged(3)) call torch_tensor_from_array(in_t(2), v_p_in, model_device(3), model_device_index(3))
     call c_f_pointer(c_loc(t0_in(1)), v_t0_in, (/ 16 /))
     in_p(3) = c_loc(t0_in(1)); in_s(:, 3) = (/ int(16, c_int64_t), 0_c_int64_t, 0_c_int64_t /)
-    if (.not. plugged(3)) call torch_tensor_from_array(in_t(3), v_t0_in, torch_kCPU)
+    if (.not. plugged(3)) call torch_tensor_from_array(in_t(3), v_t0_in, model_device(3), model_device_index(3))
     call c_f_pointer(c_loc(qv0_in(1)), v_qv0_in, (/ 16 /))
     in_p(4) = c_loc(qv0_in(1)); in_s(:, 4) = (/ int(16, c_int64_t), 0_c_int64_t, 0_c_int64_t /)
-    if (.not. plugged(3)) call torch_tensor_from_array(in_t(4), v_qv0_in, torch_kCPU)
+    if (.not. plugged(3)) call torch_tensor_from_array(in_t(4), v_qv0_in, model_device(3), model_device_index(3))
     call c_f_pointer(c_loc(ql0_in(1)), v_ql0_in, (/ 16 /))
     in_p(5) = c_loc(ql0_in(1)); in_s(:, 5) = (/ int(16, c_int64_t), 0_c_int64_t, 0_c_int64_t /)
-    if (.not. plugged(3)) call torch_tensor_from_array(in_t(5), v_ql0_in, torch_kCPU)
+    if (.not. plugged(3)) call torch_tensor_from_array(in_t(5), v_ql0_in, model_device(3), model_device_index(3))
     call c_f_pointer(c_loc(qi0_in(1)), v_qi0_in, (/ 16 /))
     in_p(6) = c_loc(qi0_in(1)); in_s(:, 6) = (/ int(16, c_int64_t), 0_c_int64_t, 0_c_int64_t /)
-    if (.not. plugged(3)) call torch_tensor_from_array(in_t(6), v_qi0_in, torch_kCPU)
+    if (.not. plugged(3)) call torch_tensor_from_array(in_t(6), v_qi0_in, model_device(3), model_device_index(3))
     call c_f_pointer(c_loc(ni0_in(1)), v_ni0_in, (/ 16 /))
     in_p(7) = c_loc(ni0_in(1)); in_s(:, 7) = (/ int(16, c_int64_t), 0_c_int64_t, 0_c_int64_t /)
-    if (.not. plugged(3)) call torch_tensor_from_array(in_t(7), v_ni0_in, torch_kCPU)
+    if (.not. plugged(3)) call torch_tensor_from_array(in_t(7), v_ni0_in, model_device(3), model_device_index(3))
     call c_f_pointer(c_loc(a_dc_in(1)), v_a_dc_in, (/ 16 /))
     in_p(8) = c_loc(a_dc_in(1)); in_s(:, 8) = (/ int(16, c_int64_t), 0_c_int64_t, 0_c_int64_t /)
-    if (.not. plugged(3)) call torch_tensor_from_array(in_t(8), v_a_dc_in, torch_kCPU)
+    if (.not. plugged(3)) call torch_tensor_from_array(in_t(8), v_a_dc_in, model_device(3), model_device_index(3))
     call c_f_pointer(c_loc(ql_dc_in(1)), v_ql_dc_in, (/ 16 /))
     in_p(9) = c_loc(ql_dc_in(1)); in_s(:, 9) = (/ int(16, c_int64_t), 0_c_int64_t, 0_c_int64_t /)
-    if (.not. plugged(3)) call torch_tensor_from_array(in_t(9), v_ql_dc_in, torch_kCPU)
+    if (.not. plugged(3)) call torch_tensor_from_array(in_t(9), v_ql_dc_in, model_device(3), model_device_index(3))
     call c_f_pointer(c_loc(qi_dc_in(1)), v_qi_dc_in, (/ 16 /))
     in_p(10) = c_loc(qi_dc_in(1)); in_s(:, 10) = (/ int(16, c_int64_t), 0_c_int64_t, 0_c_int64_t /)
-    if (.not. plugged(3)) call torch_tensor_from_array(in_t(10), v_qi_dc_in, torch_kCPU)
+    if (.not. plugged(3)) call torch_tensor_from_array(in_t(10), v_qi_dc_in, model_device(3), model_device_index(3))
     call c_f_pointer(c_loc(a_sc_in(1)), v_a_sc_in, (/ 16 /))
     in_p(11) = c_loc(a_sc_in(1)); in_s(:, 11) = (/ int(16, c_int64_t), 0_c_int64_t, 0_c_int64_t /)
-    if (.not. plugged(3)) call torch_tensor_from_array(in_t(11), v_a_sc_in, torch_kCPU)
+    if (.not. plugged(3)) call torch_tensor_from_array(in_t(11), v_a_sc_in, model_device(3), model_device_index(3))
     call c_f_pointer(c_loc(ql_sc_in(1)), v_ql_sc_in, (/ 16 /))
     in_p(12) = c_loc(ql_sc_in(1)); in_s(:, 12) = (/ int(16, c_int64_t), 0_c_int64_t, 0_c_int64_t /)
-    if (.not. plugged(3)) call torch_tensor_from_array(in_t(12), v_ql_sc_in, torch_kCPU)
+    if (.not. plugged(3)) call torch_tensor_from_array(in_t(12), v_ql_sc_in, model_device(3), model_device_index(3))
     call c_f_pointer(c_loc(qi_sc_in(1)), v_qi_sc_in, (/ 16 /))
     in_p(13) = c_loc(qi_sc_in(1)); in_s(:, 13) = (/ int(16, c_int64_t), 0_c_int64_t, 0_c_int64_t /)
-    if (.not. plugged(3)) call torch_tensor_from_array(in_t(13), v_qi_sc_in, torch_kCPU)
+    if (.not. plugged(3)) call torch_tensor_from_array(in_t(13), v_qi_sc_in, model_device(3), model_device_index(3))
     call c_f_pointer(c_loc(landfrac(1)), v_landfrac, (/ 16 /))
     in_p(14) = c_loc(landfrac(1)); in_s(:, 14) = (/ int(16, c_int64_t), 0_c_int64_t, 0_c_int64_t /)
-    if (.not. plugged(3)) call torch_tensor_from_array(in_t(14), v_landfrac, torch_kCPU)
+    if (.not. plugged(3)) call torch_tensor_from_array(in_t(14), v_landfrac, model_device(3), model_device_index(3))
     call c_f_pointer(c_loc(snowh(1)), v_snowh, (/ 16 /))
     in_p(15) = c_loc(snowh(1)); in_s(:, 15) = (/ int(16, c_int64_t), 0_c_int64_t, 0_c_int64_t /)
-    if (.not. plugged(3)) call torch_tensor_from_array(in_t(15), v_snowh, torch_kCPU)
+    if (.not. plugged(3)) call torch_tensor_from_array(in_t(15), v_snowh, model_device(3), model_device_index(3))
     call c_f_pointer(c_loc(rhmini_in(1)), v_rhmini_in, (/ 16 /))
     in_p(16) = c_loc(rhmini_in(1)); in_s(:, 16) = (/ int(16, c_int64_t), 0_c_int64_t, 0_c_int64_t /)
-    if (.not. plugged(3)) call torch_tensor_from_array(in_t(16), v_rhmini_in, torch_kCPU)
+    if (.not. plugged(3)) call torch_tensor_from_array(in_t(16), v_rhmini_in, model_device(3), model_device_index(3))
     call c_f_pointer(c_loc(rhminl_in(1)), v_rhminl_in, (/ 16 /))
     in_p(17) = c_loc(rhminl_in(1)); in_s(:, 17) = (/ int(16, c_int64_t), 0_c_int64_t, 0_c_int64_t /)
-    if (.not. plugged(3)) call torch_tensor_from_array(in_t(17), v_rhminl_in, torch_kCPU)
+    if (.not. plugged(3)) call torch_tensor_from_array(in_t(17), v_rhminl_in, model_device(3), model_device_index(3))
     call c_f_pointer(c_loc(rhminl_adj_land_in(1)), v_rhminl_adj_land_in, (/ 16 /))
     in_p(18) = c_loc(rhminl_adj_land_in(1)); in_s(:, 18) = (/ int(16, c_int64_t), 0_c_int64_t, 0_c_int64_t /)
-    if (.not. plugged(3)) call torch_tensor_from_array(in_t(18), v_rhminl_adj_land_in, torch_kCPU)
+    if (.not. plugged(3)) call torch_tensor_from_array(in_t(18), v_rhminl_adj_land_in, model_device(3), model_device_index(3))
     call c_f_pointer(c_loc(rhminh_in(1)), v_rhminh_in, (/ 16 /))
     in_p(19) = c_loc(rhminh_in(1)); in_s(:, 19) = (/ int(16, c_int64_t), 0_c_int64_t, 0_c_int64_t /)
-    if (.not. plugged(3)) call torch_tensor_from_array(in_t(19), v_rhminh_in, torch_kCPU)
+    if (.not. plugged(3)) call torch_tensor_from_array(in_t(19), v_rhminh_in, model_device(3), model_device_index(3))
     op_t_out => o_t_out
     out_p(1) = c_loc(o_t_out); out_s(:, 1) = (/ int(16, c_int64_t), 0_c_int64_t, 0_c_int64_t /)
     if (.not. plugged(3)) call torch_tensor_from_array(out_t(1), op_t_out, torch_kCPU)
@@ -943,61 +948,61 @@ contains
     real(c_double), pointer, contiguous :: yp_qi_st_out(:)
     z_k = 0.0_c_double
     zp_k => z_k
-    call torch_tensor_from_array(in_t(1), zp_k, torch_kCPU)
+    call torch_tensor_from_array(in_t(1), zp_k, model_device(3), model_device_index(3))
     z_p_in = 0.0_c_double
     zp_p_in => z_p_in
-    call torch_tensor_from_array(in_t(2), zp_p_in, torch_kCPU)
+    call torch_tensor_from_array(in_t(2), zp_p_in, model_device(3), model_device_index(3))
     z_t0_in = 0.0_c_double
     zp_t0_in => z_t0_in
-    call torch_tensor_from_array(in_t(3), zp_t0_in, torch_kCPU)
+    call torch_tensor_from_array(in_t(3), zp_t0_in, model_device(3), model_device_index(3))
     z_qv0_in = 0.0_c_double
     zp_qv0_in => z_qv0_in
-    call torch_tensor_from_array(in_t(4), zp_qv0_in, torch_kCPU)
+    call torch_tensor_from_array(in_t(4), zp_qv0_in, model_device(3), model_device_index(3))
     z_ql0_in = 0.0_c_double
     zp_ql0_in => z_ql0_in
-    call torch_tensor_from_array(in_t(5), zp_ql0_in, torch_kCPU)
+    call torch_tensor_from_array(in_t(5), zp_ql0_in, model_device(3), model_device_index(3))
     z_qi0_in = 0.0_c_double
     zp_qi0_in => z_qi0_in
-    call torch_tensor_from_array(in_t(6), zp_qi0_in, torch_kCPU)
+    call torch_tensor_from_array(in_t(6), zp_qi0_in, model_device(3), model_device_index(3))
     z_ni0_in = 0.0_c_double
     zp_ni0_in => z_ni0_in
-    call torch_tensor_from_array(in_t(7), zp_ni0_in, torch_kCPU)
+    call torch_tensor_from_array(in_t(7), zp_ni0_in, model_device(3), model_device_index(3))
     z_a_dc_in = 0.0_c_double
     zp_a_dc_in => z_a_dc_in
-    call torch_tensor_from_array(in_t(8), zp_a_dc_in, torch_kCPU)
+    call torch_tensor_from_array(in_t(8), zp_a_dc_in, model_device(3), model_device_index(3))
     z_ql_dc_in = 0.0_c_double
     zp_ql_dc_in => z_ql_dc_in
-    call torch_tensor_from_array(in_t(9), zp_ql_dc_in, torch_kCPU)
+    call torch_tensor_from_array(in_t(9), zp_ql_dc_in, model_device(3), model_device_index(3))
     z_qi_dc_in = 0.0_c_double
     zp_qi_dc_in => z_qi_dc_in
-    call torch_tensor_from_array(in_t(10), zp_qi_dc_in, torch_kCPU)
+    call torch_tensor_from_array(in_t(10), zp_qi_dc_in, model_device(3), model_device_index(3))
     z_a_sc_in = 0.0_c_double
     zp_a_sc_in => z_a_sc_in
-    call torch_tensor_from_array(in_t(11), zp_a_sc_in, torch_kCPU)
+    call torch_tensor_from_array(in_t(11), zp_a_sc_in, model_device(3), model_device_index(3))
     z_ql_sc_in = 0.0_c_double
     zp_ql_sc_in => z_ql_sc_in
-    call torch_tensor_from_array(in_t(12), zp_ql_sc_in, torch_kCPU)
+    call torch_tensor_from_array(in_t(12), zp_ql_sc_in, model_device(3), model_device_index(3))
     z_qi_sc_in = 0.0_c_double
     zp_qi_sc_in => z_qi_sc_in
-    call torch_tensor_from_array(in_t(13), zp_qi_sc_in, torch_kCPU)
+    call torch_tensor_from_array(in_t(13), zp_qi_sc_in, model_device(3), model_device_index(3))
     z_landfrac = 0.0_c_double
     zp_landfrac => z_landfrac
-    call torch_tensor_from_array(in_t(14), zp_landfrac, torch_kCPU)
+    call torch_tensor_from_array(in_t(14), zp_landfrac, model_device(3), model_device_index(3))
     z_snowh = 0.0_c_double
     zp_snowh => z_snowh
-    call torch_tensor_from_array(in_t(15), zp_snowh, torch_kCPU)
+    call torch_tensor_from_array(in_t(15), zp_snowh, model_device(3), model_device_index(3))
     z_rhmini_in = 0.0_c_double
     zp_rhmini_in => z_rhmini_in
-    call torch_tensor_from_array(in_t(16), zp_rhmini_in, torch_kCPU)
+    call torch_tensor_from_array(in_t(16), zp_rhmini_in, model_device(3), model_device_index(3))
     z_rhminl_in = 0.0_c_double
     zp_rhminl_in => z_rhminl_in
-    call torch_tensor_from_array(in_t(17), zp_rhminl_in, torch_kCPU)
+    call torch_tensor_from_array(in_t(17), zp_rhminl_in, model_device(3), model_device_index(3))
     z_rhminl_adj_land_in = 0.0_c_double
     zp_rhminl_adj_land_in => z_rhminl_adj_land_in
-    call torch_tensor_from_array(in_t(18), zp_rhminl_adj_land_in, torch_kCPU)
+    call torch_tensor_from_array(in_t(18), zp_rhminl_adj_land_in, model_device(3), model_device_index(3))
     z_rhminh_in = 0.0_c_double
     zp_rhminh_in => z_rhminh_in
-    call torch_tensor_from_array(in_t(19), zp_rhminh_in, torch_kCPU)
+    call torch_tensor_from_array(in_t(19), zp_rhminh_in, model_device(3), model_device_index(3))
     yp_t_out => y_t_out
     call torch_tensor_from_array(out_t(1), yp_t_out, torch_kCPU)
     yp_qv_out => y_qv_out
@@ -1707,64 +1712,64 @@ contains
     s_deltatin(1) = deltatin
     sp_deltatin => s_deltatin
     in_p(1) = c_loc(s_deltatin); in_s(:, 1) = (/ 1_c_int64_t, 0_c_int64_t, 0_c_int64_t /)
-    if (.not. plugged(4)) call torch_tensor_from_array(in_t(1), sp_deltatin, torch_kCPU)
+    if (.not. plugged(4)) call torch_tensor_from_array(in_t(1), sp_deltatin, model_device(4), model_device_index(4))
     call c_f_pointer(c_loc(tn), v_tn, (/ pcols, pver /))
     in_p(2) = c_loc(tn); in_s(:, 2) = (/ int(pcols, c_int64_t), int(pver, c_int64_t), 0_c_int64_t /)
-    if (.not. plugged(4)) call torch_tensor_from_array(in_t(2), v_tn, torch_kCPU)
+    if (.not. plugged(4)) call torch_tensor_from_array(in_t(2), v_tn, model_device(4), model_device_index(4))
     call c_f_pointer(c_loc(qn), v_qn, (/ pcols, pver /))
     in_p(3) = c_loc(qn); in_s(:, 3) = (/ int(pcols, c_int64_t), int(pver, c_int64_t), 0_c_int64_t /)
-    if (.not. plugged(4)) call torch_tensor_from_array(in_t(3), v_qn, torch_kCPU)
+    if (.not. plugged(4)) call torch_tensor_from_array(in_t(3), v_qn, model_device(4), model_device_index(4))
     call c_f_pointer(c_loc(qc), v_qc, (/ pcols, pver /))
     in_p(4) = c_loc(qc); in_s(:, 4) = (/ int(pcols, c_int64_t), int(pver, c_int64_t), 0_c_int64_t /)
-    if (.not. plugged(4)) call torch_tensor_from_array(in_t(4), v_qc, torch_kCPU)
+    if (.not. plugged(4)) call torch_tensor_from_array(in_t(4), v_qc, model_device(4), model_device_index(4))
     call c_f_pointer(c_loc(qi), v_qi, (/ pcols, pver /))
     in_p(5) = c_loc(qi); in_s(:, 5) = (/ int(pcols, c_int64_t), int(pver, c_int64_t), 0_c_int64_t /)
-    if (.not. plugged(4)) call torch_tensor_from_array(in_t(5), v_qi, torch_kCPU)
+    if (.not. plugged(4)) call torch_tensor_from_array(in_t(5), v_qi, model_device(4), model_device_index(4))
     call c_f_pointer(c_loc(nc), v_nc, (/ pcols, pver /))
     in_p(6) = c_loc(nc); in_s(:, 6) = (/ int(pcols, c_int64_t), int(pver, c_int64_t), 0_c_int64_t /)
-    if (.not. plugged(4)) call torch_tensor_from_array(in_t(6), v_nc, torch_kCPU)
+    if (.not. plugged(4)) call torch_tensor_from_array(in_t(6), v_nc, model_device(4), model_device_index(4))
     call c_f_pointer(c_loc(ni), v_ni, (/ pcols, pver /))
     in_p(7) = c_loc(ni); in_s(:, 7) = (/ int(pcols, c_int64_t), int(pver, c_int64_t), 0_c_int64_t /)
-    if (.not. plugged(4)) call torch_tensor_from_array(in_t(7), v_ni, torch_kCPU)
+    if (.not. plugged(4)) call torch_tensor_from_array(in_t(7), v_ni, model_device(4), model_device_index(4))
     call c_f_pointer(c_loc(p), v_p, (/ pcols, pver /))
     in_p(8) = c_loc(p); in_s(:, 8) = (/ int(pcols, c_int64_t), int(pver, c_int64_t), 0_c_int64_t /)
-    if (.not. plugged(4)) call torch_tensor_from_array(in_t(8), v_p, torch_kCPU)
+    if (.not. plugged(4)) call torch_tensor_from_array(in_t(8), v_p, model_device(4), model_device_index(4))
     call c_f_pointer(c_loc(pdel), v_pdel, (/ pcols, pver /))
     in_p(9) = c_loc(pdel); in_s(:, 9) = (/ int(pcols, c_int64_t), int(pver, c_int64_t), 0_c_int64_t /)
-    if (.not. plugged(4)) call torch_tensor_from_array(in_t(9), v_pdel, torch_kCPU)
+    if (.not. plugged(4)) call torch_tensor_from_array(in_t(9), v_pdel, model_device(4), model_device_index(4))
     call c_f_pointer(c_loc(cldn), v_cldn, (/ pcols, pver /))
     in_p(10) = c_loc(cldn); in_s(:, 10) = (/ int(pcols, c_int64_t), int(pver, c_int64_t), 0_c_int64_t /)
-    if (.not. plugged(4)) call torch_tensor_from_array(in_t(10), v_cldn, torch_kCPU)
+    if (.not. plugged(4)) call torch_tensor_from_array(in_t(10), v_cldn, model_device(4), model_device_index(4))
     call c_f_pointer(c_loc(liqcldf), v_liqcldf, (/ pcols, pver /))
     in_p(11) = c_loc(liqcldf); in_s(:, 11) = (/ int(pcols, c_int64_t), int(pver, c_int64_t), 0_c_int64_t /)
-    if (.not. plugged(4)) call torch_tensor_from_array(in_t(11), v_liqcldf, torch_kCPU)
+    if (.not. plugged(4)) call torch_tensor_from_array(in_t(11), v_liqcldf, model_device(4), model_device_index(4))
     call c_f_pointer(c_loc(relvar), v_relvar, (/ pcols, pver /))
     in_p(12) = c_loc(relvar); in_s(:, 12) = (/ int(pcols, c_int64_t), int(pver, c_int64_t), 0_c_int64_t /)
-    if (.not. plugged(4)) call torch_tensor_from_array(in_t(12), v_relvar, torch_kCPU)
+    if (.not. plugged(4)) call torch_tensor_from_array(in_t(12), v_relvar, model_device(4), model_device_index(4))
     call c_f_pointer(c_loc(accre_enhan), v_accre_enhan, (/ pcols, pver /))
     in_p(13) = c_loc(accre_enhan); in_s(:, 13) = (/ int(pcols, c_int64_t), int(pver, c_int64_t), 0_c_int64_t /)
-    if (.not. plugged(4)) call torch_tensor_from_array(in_t(13), v_accre_enhan, torch_kCPU)
+    if (.not. plugged(4)) call torch_tensor_from_array(in_t(13), v_accre_enhan, model_device(4), model_device_index(4))
     call c_f_pointer(c_loc(icecldf), v_icecldf, (/ pcols, pver /))
     in_p(14) = c_loc(icecldf); in_s(:, 14) = (/ int(pcols, c_int64_t), int(pver, c_int64_t), 0_c_int64_t /)
-    if (.not. plugged(4)) call torch_tensor_from_array(in_t(14), v_icecldf, torch_kCPU)
+    if (.not. plugged(4)) call torch_tensor_from_array(in_t(14), v_icecldf, model_device(4), model_device_index(4))
     call c_f_pointer(c_loc(naai), v_naai, (/ pcols, pver /))
     in_p(15) = c_loc(naai); in_s(:, 15) = (/ int(pcols, c_int64_t), int(pver, c_int64_t), 0_c_int64_t /)
-    if (.not. plugged(4)) call torch_tensor_from_array(in_t(15), v_naai, torch_kCPU)
+    if (.not. plugged(4)) call torch_tensor_from_array(in_t(15), v_naai, model_device(4), model_device_index(4))
     call c_f_pointer(c_loc(npccnin), v_npccnin, (/ pcols, pver /))
     in_p(16) = c_loc(npccnin); in_s(:, 16) = (/ int(pcols, c_int64_t), int(pver, c_int64_t), 0_c_int64_t /)
-    if (.not. plugged(4)) call torch_tensor_from_array(in_t(16), v_npccnin, torch_kCPU)
+    if (.not. plugged(4)) call torch_tensor_from_array(in_t(16), v_npccnin, model_device(4), model_device_index(4))
     call c_f_pointer(c_loc(rndst), v_rndst, (/ pcols, pver, 4 /))
     in_p(17) = c_loc(rndst); in_s(:, 17) = (/ int(pcols, c_int64_t), int(pver, c_int64_t), int(4, c_int64_t) /)
-    if (.not. plugged(4)) call torch_tensor_from_array(in_t(17), v_rndst, torch_kCPU)
+    if (.not. plugged(4)) call torch_tensor_from_array(in_t(17), v_rndst, model_device(4), model_device_index(4))
     call c_f_pointer(c_loc(nacon), v_nacon, (/ pcols, pver, 4 /))
     in_p(18) = c_loc(nacon); in_s(:, 18) = (/ int(pcols, c_int64_t), int(pver, c_int64_t), int(4, c_int64_t) /)
-    if (.not. plugged(4)) call torch_tensor_from_array(in_t(18), v_nacon, torch_kCPU)
+    if (.not. plugged(4)) call torch_tensor_from_array(in_t(18), v_nacon, model_device(4), model_device_index(4))
     call c_f_pointer(c_loc(reff_rain), v_reff_rain, (/ pcols, pver /))
     in_p(19) = c_loc(reff_rain); in_s(:, 19) = (/ int(pcols, c_int64_t), int(pver, c_int64_t), 0_c_int64_t /)
-    if (.not. plugged(4)) call torch_tensor_from_array(in_t(19), v_reff_rain, torch_kCPU)
+    if (.not. plugged(4)) call torch_tensor_from_array(in_t(19), v_reff_rain, model_device(4), model_device_index(4))
     call c_f_pointer(c_loc(reff_snow), v_reff_snow, (/ pcols, pver /))
     in_p(20) = c_loc(reff_snow); in_s(:, 20) = (/ int(pcols, c_int64_t), int(pver, c_int64_t), 0_c_int64_t /)
-    if (.not. plugged(4)) call torch_tensor_from_array(in_t(20), v_reff_snow, torch_kCPU)
+    if (.not. plugged(4)) call torch_tensor_from_array(in_t(20), v_reff_snow, model_device(4), model_device_index(4))
     if (associated(tnd_qsnow)) then
       l_tnd_qsnow = tnd_qsnow(1:pcols, 1:pver)
     else
@@ -1772,7 +1777,7 @@ contains
     end if
     v_tnd_qsnow => l_tnd_qsnow
     in_p(21) = c_loc(l_tnd_qsnow); in_s(:, 21) = (/ int(pcols, c_int64_t), int(pver, c_int64_t), 0_c_int64_t /)
-    if (.not. plugged(4)) call torch_tensor_from_array(in_t(21), v_tnd_qsnow, torch_kCPU)
+    if (.not. plugged(4)) call torch_tensor_from_array(in_t(21), v_tnd_qsnow, model_device(4), model_device_index(4))
     if (associated(tnd_nsnow)) then
       l_tnd_nsnow = tnd_nsnow(1:pcols, 1:pver)
     else
@@ -1780,7 +1785,7 @@ contains
     end if
     v_tnd_nsnow => l_tnd_nsnow
     in_p(22) = c_loc(l_tnd_nsnow); in_s(:, 22) = (/ int(pcols, c_int64_t), int(pver, c_int64_t), 0_c_int64_t /)
-    if (.not. plugged(4)) call torch_tensor_from_array(in_t(22), v_tnd_nsnow, torch_kCPU)
+    if (.not. plugged(4)) call torch_tensor_from_array(in_t(22), v_tnd_nsnow, model_device(4), model_device_index(4))
     if (associated(re_ice)) then
       l_re_ice = re_ice(1:pcols, 1:pver)
     else
@@ -1788,7 +1793,7 @@ contains
     end if
     v_re_ice => l_re_ice
     in_p(23) = c_loc(l_re_ice); in_s(:, 23) = (/ int(pcols, c_int64_t), int(pver, c_int64_t), 0_c_int64_t /)
-    if (.not. plugged(4)) call torch_tensor_from_array(in_t(23), v_re_ice, torch_kCPU)
+    if (.not. plugged(4)) call torch_tensor_from_array(in_t(23), v_re_ice, model_device(4), model_device_index(4))
     if (associated(frzimm)) then
       l_frzimm = frzimm(1:pcols, 1:pver)
     else
@@ -1796,7 +1801,7 @@ contains
     end if
     v_frzimm => l_frzimm
     in_p(24) = c_loc(l_frzimm); in_s(:, 24) = (/ int(pcols, c_int64_t), int(pver, c_int64_t), 0_c_int64_t /)
-    if (.not. plugged(4)) call torch_tensor_from_array(in_t(24), v_frzimm, torch_kCPU)
+    if (.not. plugged(4)) call torch_tensor_from_array(in_t(24), v_frzimm, model_device(4), model_device_index(4))
     if (associated(frzcnt)) then
       l_frzcnt = frzcnt(1:pcols, 1:pver)
     else
@@ -1804,7 +1809,7 @@ contains
     end if
     v_frzcnt => l_frzcnt
     in_p(25) = c_loc(l_frzcnt); in_s(:, 25) = (/ int(pcols, c_int64_t), int(pver, c_int64_t), 0_c_int64_t /)
-    if (.not. plugged(4)) call torch_tensor_from_array(in_t(25), v_frzcnt, torch_kCPU)
+    if (.not. plugged(4)) call torch_tensor_from_array(in_t(25), v_frzcnt, model_device(4), model_device_index(4))
     if (associated(frzdep)) then
       l_frzdep = frzdep(1:pcols, 1:pver)
     else
@@ -1812,7 +1817,7 @@ contains
     end if
     v_frzdep => l_frzdep
     in_p(26) = c_loc(l_frzdep); in_s(:, 26) = (/ int(pcols, c_int64_t), int(pver, c_int64_t), 0_c_int64_t /)
-    if (.not. plugged(4)) call torch_tensor_from_array(in_t(26), v_frzdep, torch_kCPU)
+    if (.not. plugged(4)) call torch_tensor_from_array(in_t(26), v_frzdep, model_device(4), model_device_index(4))
     op_qc => o_qc
     out_p(1) = c_loc(o_qc); out_s(:, 1) = (/ int(pcols, c_int64_t), int(pver, c_int64_t), 0_c_int64_t /)
     if (.not. plugged(4)) call torch_tensor_from_array(out_t(1), op_qc, torch_kCPU)
@@ -2693,82 +2698,82 @@ contains
     real(c_double), pointer, contiguous :: yp_wtpostlat(:,:)
     z_deltatin = 0.0_c_double
     zp_deltatin => z_deltatin
-    call torch_tensor_from_array(in_t(1), zp_deltatin, torch_kCPU)
+    call torch_tensor_from_array(in_t(1), zp_deltatin, model_device(4), model_device_index(4))
     z_tn = 0.0_c_double
     zp_tn => z_tn
-    call torch_tensor_from_array(in_t(2), zp_tn, torch_kCPU)
+    call torch_tensor_from_array(in_t(2), zp_tn, model_device(4), model_device_index(4))
     z_qn = 0.0_c_double
     zp_qn => z_qn
-    call torch_tensor_from_array(in_t(3), zp_qn, torch_kCPU)
+    call torch_tensor_from_array(in_t(3), zp_qn, model_device(4), model_device_index(4))
     z_qc = 0.0_c_double
     zp_qc => z_qc
-    call torch_tensor_from_array(in_t(4), zp_qc, torch_kCPU)
+    call torch_tensor_from_array(in_t(4), zp_qc, model_device(4), model_device_index(4))
     z_qi = 0.0_c_double
     zp_qi => z_qi
-    call torch_tensor_from_array(in_t(5), zp_qi, torch_kCPU)
+    call torch_tensor_from_array(in_t(5), zp_qi, model_device(4), model_device_index(4))
     z_nc = 0.0_c_double
     zp_nc => z_nc
-    call torch_tensor_from_array(in_t(6), zp_nc, torch_kCPU)
+    call torch_tensor_from_array(in_t(6), zp_nc, model_device(4), model_device_index(4))
     z_ni = 0.0_c_double
     zp_ni => z_ni
-    call torch_tensor_from_array(in_t(7), zp_ni, torch_kCPU)
+    call torch_tensor_from_array(in_t(7), zp_ni, model_device(4), model_device_index(4))
     z_p = 0.0_c_double
     zp_p => z_p
-    call torch_tensor_from_array(in_t(8), zp_p, torch_kCPU)
+    call torch_tensor_from_array(in_t(8), zp_p, model_device(4), model_device_index(4))
     z_pdel = 0.0_c_double
     zp_pdel => z_pdel
-    call torch_tensor_from_array(in_t(9), zp_pdel, torch_kCPU)
+    call torch_tensor_from_array(in_t(9), zp_pdel, model_device(4), model_device_index(4))
     z_cldn = 0.0_c_double
     zp_cldn => z_cldn
-    call torch_tensor_from_array(in_t(10), zp_cldn, torch_kCPU)
+    call torch_tensor_from_array(in_t(10), zp_cldn, model_device(4), model_device_index(4))
     z_liqcldf = 0.0_c_double
     zp_liqcldf => z_liqcldf
-    call torch_tensor_from_array(in_t(11), zp_liqcldf, torch_kCPU)
+    call torch_tensor_from_array(in_t(11), zp_liqcldf, model_device(4), model_device_index(4))
     z_relvar = 0.0_c_double
     zp_relvar => z_relvar
-    call torch_tensor_from_array(in_t(12), zp_relvar, torch_kCPU)
+    call torch_tensor_from_array(in_t(12), zp_relvar, model_device(4), model_device_index(4))
     z_accre_enhan = 0.0_c_double
     zp_accre_enhan => z_accre_enhan
-    call torch_tensor_from_array(in_t(13), zp_accre_enhan, torch_kCPU)
+    call torch_tensor_from_array(in_t(13), zp_accre_enhan, model_device(4), model_device_index(4))
     z_icecldf = 0.0_c_double
     zp_icecldf => z_icecldf
-    call torch_tensor_from_array(in_t(14), zp_icecldf, torch_kCPU)
+    call torch_tensor_from_array(in_t(14), zp_icecldf, model_device(4), model_device_index(4))
     z_naai = 0.0_c_double
     zp_naai => z_naai
-    call torch_tensor_from_array(in_t(15), zp_naai, torch_kCPU)
+    call torch_tensor_from_array(in_t(15), zp_naai, model_device(4), model_device_index(4))
     z_npccnin = 0.0_c_double
     zp_npccnin => z_npccnin
-    call torch_tensor_from_array(in_t(16), zp_npccnin, torch_kCPU)
+    call torch_tensor_from_array(in_t(16), zp_npccnin, model_device(4), model_device_index(4))
     z_rndst = 0.0_c_double
     zp_rndst => z_rndst
-    call torch_tensor_from_array(in_t(17), zp_rndst, torch_kCPU)
+    call torch_tensor_from_array(in_t(17), zp_rndst, model_device(4), model_device_index(4))
     z_nacon = 0.0_c_double
     zp_nacon => z_nacon
-    call torch_tensor_from_array(in_t(18), zp_nacon, torch_kCPU)
+    call torch_tensor_from_array(in_t(18), zp_nacon, model_device(4), model_device_index(4))
     z_reff_rain = 0.0_c_double
     zp_reff_rain => z_reff_rain
-    call torch_tensor_from_array(in_t(19), zp_reff_rain, torch_kCPU)
+    call torch_tensor_from_array(in_t(19), zp_reff_rain, model_device(4), model_device_index(4))
     z_reff_snow = 0.0_c_double
     zp_reff_snow => z_reff_snow
-    call torch_tensor_from_array(in_t(20), zp_reff_snow, torch_kCPU)
+    call torch_tensor_from_array(in_t(20), zp_reff_snow, model_device(4), model_device_index(4))
     z_tnd_qsnow = 0.0_c_double
     zp_tnd_qsnow => z_tnd_qsnow
-    call torch_tensor_from_array(in_t(21), zp_tnd_qsnow, torch_kCPU)
+    call torch_tensor_from_array(in_t(21), zp_tnd_qsnow, model_device(4), model_device_index(4))
     z_tnd_nsnow = 0.0_c_double
     zp_tnd_nsnow => z_tnd_nsnow
-    call torch_tensor_from_array(in_t(22), zp_tnd_nsnow, torch_kCPU)
+    call torch_tensor_from_array(in_t(22), zp_tnd_nsnow, model_device(4), model_device_index(4))
     z_re_ice = 0.0_c_double
     zp_re_ice => z_re_ice
-    call torch_tensor_from_array(in_t(23), zp_re_ice, torch_kCPU)
+    call torch_tensor_from_array(in_t(23), zp_re_ice, model_device(4), model_device_index(4))
     z_frzimm = 0.0_c_double
     zp_frzimm => z_frzimm
-    call torch_tensor_from_array(in_t(24), zp_frzimm, torch_kCPU)
+    call torch_tensor_from_array(in_t(24), zp_frzimm, model_device(4), model_device_index(4))
     z_frzcnt = 0.0_c_double
     zp_frzcnt => z_frzcnt
-    call torch_tensor_from_array(in_t(25), zp_frzcnt, torch_kCPU)
+    call torch_tensor_from_array(in_t(25), zp_frzcnt, model_device(4), model_device_index(4))
     z_frzdep = 0.0_c_double
     zp_frzdep => z_frzdep
-    call torch_tensor_from_array(in_t(26), zp_frzdep, torch_kCPU)
+    call torch_tensor_from_array(in_t(26), zp_frzdep, model_device(4), model_device_index(4))
     yp_qc => y_qc
     call torch_tensor_from_array(out_t(1), yp_qc, torch_kCPU)
     yp_qi => y_qi
@@ -3053,31 +3058,31 @@ contains
     s_ncol(1) = real(ncol, c_double)
     sp_ncol => s_ncol
     in_p(1) = c_loc(s_ncol); in_s(:, 1) = (/ 1_c_int64_t, 0_c_int64_t, 0_c_int64_t /)
-    if (.not. plugged(5)) call torch_tensor_from_array(in_t(1), sp_ncol, torch_kCPU)
+    if (.not. plugged(5)) call torch_tensor_from_array(in_t(1), sp_ncol, model_device(5), model_device_index(5))
     call c_f_pointer(c_loc(u), v_u, (/ pcols, pver /))
     in_p(2) = c_loc(u); in_s(:, 2) = (/ int(pcols, c_int64_t), int(pver, c_int64_t), 0_c_int64_t /)
-    if (.not. plugged(5)) call torch_tensor_from_array(in_t(2), v_u, torch_kCPU)
+    if (.not. plugged(5)) call torch_tensor_from_array(in_t(2), v_u, model_device(5), model_device_index(5))
     call c_f_pointer(c_loc(v), v_v, (/ pcols, pver /))
     in_p(3) = c_loc(v); in_s(:, 3) = (/ int(pcols, c_int64_t), int(pver, c_int64_t), 0_c_int64_t /)
-    if (.not. plugged(5)) call torch_tensor_from_array(in_t(3), v_v, torch_kCPU)
+    if (.not. plugged(5)) call torch_tensor_from_array(in_t(3), v_v, model_device(5), model_device_index(5))
     call c_f_pointer(c_loc(t), v_t, (/ pcols, pver /))
     in_p(4) = c_loc(t); in_s(:, 4) = (/ int(pcols, c_int64_t), int(pver, c_int64_t), 0_c_int64_t /)
-    if (.not. plugged(5)) call torch_tensor_from_array(in_t(4), v_t, torch_kCPU)
+    if (.not. plugged(5)) call torch_tensor_from_array(in_t(4), v_t, model_device(5), model_device_index(5))
     call c_f_pointer(c_loc(pmid), v_pmid, (/ pcols, pver /))
     in_p(5) = c_loc(pmid); in_s(:, 5) = (/ int(pcols, c_int64_t), int(pver, c_int64_t), 0_c_int64_t /)
-    if (.not. plugged(5)) call torch_tensor_from_array(in_t(5), v_pmid, torch_kCPU)
+    if (.not. plugged(5)) call torch_tensor_from_array(in_t(5), v_pmid, model_device(5), model_device_index(5))
     call c_f_pointer(c_loc(exner), v_exner, (/ pcols, pver /))
     in_p(6) = c_loc(exner); in_s(:, 6) = (/ int(pcols, c_int64_t), int(pver, c_int64_t), 0_c_int64_t /)
-    if (.not. plugged(5)) call torch_tensor_from_array(in_t(6), v_exner, torch_kCPU)
+    if (.not. plugged(5)) call torch_tensor_from_array(in_t(6), v_exner, model_device(5), model_device_index(5))
     call c_f_pointer(c_loc(zm), v_zm, (/ pcols, pver /))
     in_p(7) = c_loc(zm); in_s(:, 7) = (/ int(pcols, c_int64_t), int(pver, c_int64_t), 0_c_int64_t /)
-    if (.not. plugged(5)) call torch_tensor_from_array(in_t(7), v_zm, torch_kCPU)
+    if (.not. plugged(5)) call torch_tensor_from_array(in_t(7), v_zm, model_device(5), model_device_index(5))
     call c_f_pointer(c_loc(sgh), v_sgh, (/ pcols /))
     in_p(8) = c_loc(sgh); in_s(:, 8) = (/ int(pcols, c_int64_t), 0_c_int64_t, 0_c_int64_t /)
-    if (.not. plugged(5)) call torch_tensor_from_array(in_t(8), v_sgh, torch_kCPU)
+    if (.not. plugged(5)) call torch_tensor_from_array(in_t(8), v_sgh, model_device(5), model_device_index(5))
     call c_f_pointer(c_loc(landfrac), v_landfrac, (/ pcols /))
     in_p(9) = c_loc(landfrac); in_s(:, 9) = (/ int(pcols, c_int64_t), 0_c_int64_t, 0_c_int64_t /)
-    if (.not. plugged(5)) call torch_tensor_from_array(in_t(9), v_landfrac, torch_kCPU)
+    if (.not. plugged(5)) call torch_tensor_from_array(in_t(9), v_landfrac, model_device(5), model_device_index(5))
     op_ksrf => o_ksrf
     out_p(1) = c_loc(o_ksrf); out_s(:, 1) = (/ int(pcols, c_int64_t), 0_c_int64_t, 0_c_int64_t /)
     if (.not. plugged(5)) call torch_tensor_from_array(out_t(1), op_ksrf, torch_kCPU)
@@ -3149,31 +3154,31 @@ contains
     real(c_double), pointer, contiguous :: yp_tauy(:)
     z_ncol = 0.0_c_double
     zp_ncol => z_ncol
-    call torch_tensor_from_array(in_t(1), zp_ncol, torch_kCPU)
+    call torch_tensor_from_array(in_t(1), zp_ncol, model_device(5), model_device_index(5))
     z_u = 0.0_c_double
     zp_u => z_u
-    call torch_tensor_from_array(in_t(2), zp_u, torch_kCPU)
+    call torch_tensor_from_array(in_t(2), zp_u, model_device(5), model_device_index(5))
     z_v = 0.0_c_double
     zp_v => z_v
-    call torch_tensor_from_array(in_t(3), zp_v, torch_kCPU)
+    call torch_tensor_from_array(in_t(3), zp_v, model_device(5), model_device_index(5))
     z_t = 0.0_c_double
     zp_t => z_t
-    call torch_tensor_from_array(in_t(4), zp_t, torch_kCPU)
+    call torch_tensor_from_array(in_t(4), zp_t, model_device(5), model_device_index(5))
     z_pmid = 0.0_c_double
     zp_pmid => z_pmid
-    call torch_tensor_from_array(in_t(5), zp_pmid, torch_kCPU)
+    call torch_tensor_from_array(in_t(5), zp_pmid, model_device(5), model_device_index(5))
     z_exner = 0.0_c_double
     zp_exner => z_exner
-    call torch_tensor_from_array(in_t(6), zp_exner, torch_kCPU)
+    call torch_tensor_from_array(in_t(6), zp_exner, model_device(5), model_device_index(5))
     z_zm = 0.0_c_double
     zp_zm => z_zm
-    call torch_tensor_from_array(in_t(7), zp_zm, torch_kCPU)
+    call torch_tensor_from_array(in_t(7), zp_zm, model_device(5), model_device_index(5))
     z_sgh = 0.0_c_double
     zp_sgh => z_sgh
-    call torch_tensor_from_array(in_t(8), zp_sgh, torch_kCPU)
+    call torch_tensor_from_array(in_t(8), zp_sgh, model_device(5), model_device_index(5))
     z_landfrac = 0.0_c_double
     zp_landfrac => z_landfrac
-    call torch_tensor_from_array(in_t(9), zp_landfrac, torch_kCPU)
+    call torch_tensor_from_array(in_t(9), zp_landfrac, model_device(5), model_device_index(5))
     yp_ksrf => y_ksrf
     call torch_tensor_from_array(out_t(1), yp_ksrf, torch_kCPU)
     yp_taux => y_taux
@@ -3445,64 +3450,64 @@ contains
     s_dt(1) = dt
     sp_dt => s_dt
     in_p(1) = c_loc(s_dt); in_s(:, 1) = (/ 1_c_int64_t, 0_c_int64_t, 0_c_int64_t /)
-    if (.not. plugged(6)) call torch_tensor_from_array(in_t(1), sp_dt, torch_kCPU)
+    if (.not. plugged(6)) call torch_tensor_from_array(in_t(1), sp_dt, model_device(6), model_device_index(6))
     call c_f_pointer(c_loc(ps0_inv), v_ps0_inv, (/ 16, 31 /))
     in_p(2) = c_loc(ps0_inv); in_s(:, 2) = (/ int(16, c_int64_t), int(31, c_int64_t), 0_c_int64_t /)
-    if (.not. plugged(6)) call torch_tensor_from_array(in_t(2), v_ps0_inv, torch_kCPU)
+    if (.not. plugged(6)) call torch_tensor_from_array(in_t(2), v_ps0_inv, model_device(6), model_device_index(6))
     call c_f_pointer(c_loc(zs0_inv), v_zs0_inv, (/ 16, 31 /))
     in_p(3) = c_loc(zs0_inv); in_s(:, 3) = (/ int(16, c_int64_t), int(31, c_int64_t), 0_c_int64_t /)
-    if (.not. plugged(6)) call torch_tensor_from_array(in_t(3), v_zs0_inv, torch_kCPU)
+    if (.not. plugged(6)) call torch_tensor_from_array(in_t(3), v_zs0_inv, model_device(6), model_device_index(6))
     call c_f_pointer(c_loc(p0_inv), v_p0_inv, (/ 16, 30 /))
     in_p(4) = c_loc(p0_inv); in_s(:, 4) = (/ int(16, c_int64_t), int(30, c_int64_t), 0_c_int64_t /)
-    if (.not. plugged(6)) call torch_tensor_from_array(in_t(4), v_p0_inv, torch_kCPU)
+    if (.not. plugged(6)) call torch_tensor_from_array(in_t(4), v_p0_inv, model_device(6), model_device_index(6))
     call c_f_pointer(c_loc(z0_inv), v_z0_inv, (/ 16, 30 /))
     in_p(5) = c_loc(z0_inv); in_s(:, 5) = (/ int(16, c_int64_t), int(30, c_int64_t), 0_c_int64_t /)
-    if (.not. plugged(6)) call torch_tensor_from_array(in_t(5), v_z0_inv, torch_kCPU)
+    if (.not. plugged(6)) call torch_tensor_from_array(in_t(5), v_z0_inv, model_device(6), model_device_index(6))
     call c_f_pointer(c_loc(dp0_inv), v_dp0_inv, (/ 16, 30 /))
     in_p(6) = c_loc(dp0_inv); in_s(:, 6) = (/ int(16, c_int64_t), int(30, c_int64_t), 0_c_int64_t /)
-    if (.not. plugged(6)) call torch_tensor_from_array(in_t(6), v_dp0_inv, torch_kCPU)
+    if (.not. plugged(6)) call torch_tensor_from_array(in_t(6), v_dp0_inv, model_device(6), model_device_index(6))
     call c_f_pointer(c_loc(u0_inv), v_u0_inv, (/ 16, 30 /))
     in_p(7) = c_loc(u0_inv); in_s(:, 7) = (/ int(16, c_int64_t), int(30, c_int64_t), 0_c_int64_t /)
-    if (.not. plugged(6)) call torch_tensor_from_array(in_t(7), v_u0_inv, torch_kCPU)
+    if (.not. plugged(6)) call torch_tensor_from_array(in_t(7), v_u0_inv, model_device(6), model_device_index(6))
     call c_f_pointer(c_loc(v0_inv), v_v0_inv, (/ 16, 30 /))
     in_p(8) = c_loc(v0_inv); in_s(:, 8) = (/ int(16, c_int64_t), int(30, c_int64_t), 0_c_int64_t /)
-    if (.not. plugged(6)) call torch_tensor_from_array(in_t(8), v_v0_inv, torch_kCPU)
+    if (.not. plugged(6)) call torch_tensor_from_array(in_t(8), v_v0_inv, model_device(6), model_device_index(6))
     call c_f_pointer(c_loc(qv0_inv), v_qv0_inv, (/ 16, 30 /))
     in_p(9) = c_loc(qv0_inv); in_s(:, 9) = (/ int(16, c_int64_t), int(30, c_int64_t), 0_c_int64_t /)
-    if (.not. plugged(6)) call torch_tensor_from_array(in_t(9), v_qv0_inv, torch_kCPU)
+    if (.not. plugged(6)) call torch_tensor_from_array(in_t(9), v_qv0_inv, model_device(6), model_device_index(6))
     call c_f_pointer(c_loc(ql0_inv), v_ql0_inv, (/ 16, 30 /))
     in_p(10) = c_loc(ql0_inv); in_s(:, 10) = (/ int(16, c_int64_t), int(30, c_int64_t), 0_c_int64_t /)
-    if (.not. plugged(6)) call torch_tensor_from_array(in_t(10), v_ql0_inv, torch_kCPU)
+    if (.not. plugged(6)) call torch_tensor_from_array(in_t(10), v_ql0_inv, model_device(6), model_device_index(6))
     call c_f_pointer(c_loc(qi0_inv), v_qi0_inv, (/ 16, 30 /))
     in_p(11) = c_loc(qi0_inv); in_s(:, 11) = (/ int(16, c_int64_t), int(30, c_int64_t), 0_c_int64_t /)
-    if (.not. plugged(6)) call torch_tensor_from_array(in_t(11), v_qi0_inv, torch_kCPU)
+    if (.not. plugged(6)) call torch_tensor_from_array(in_t(11), v_qi0_inv, model_device(6), model_device_index(6))
     call c_f_pointer(c_loc(t0_inv), v_t0_inv, (/ 16, 30 /))
     in_p(12) = c_loc(t0_inv); in_s(:, 12) = (/ int(16, c_int64_t), int(30, c_int64_t), 0_c_int64_t /)
-    if (.not. plugged(6)) call torch_tensor_from_array(in_t(12), v_t0_inv, torch_kCPU)
+    if (.not. plugged(6)) call torch_tensor_from_array(in_t(12), v_t0_inv, model_device(6), model_device_index(6))
     call c_f_pointer(c_loc(s0_inv), v_s0_inv, (/ 16, 30 /))
     in_p(13) = c_loc(s0_inv); in_s(:, 13) = (/ int(16, c_int64_t), int(30, c_int64_t), 0_c_int64_t /)
-    if (.not. plugged(6)) call torch_tensor_from_array(in_t(13), v_s0_inv, torch_kCPU)
+    if (.not. plugged(6)) call torch_tensor_from_array(in_t(13), v_s0_inv, model_device(6), model_device_index(6))
     call c_f_pointer(c_loc(tr0_inv), v_tr0_inv, (/ 16, 30, 57 /))
     in_p(14) = c_loc(tr0_inv); in_s(:, 14) = (/ int(16, c_int64_t), int(30, c_int64_t), int(57, c_int64_t) /)
-    if (.not. plugged(6)) call torch_tensor_from_array(in_t(14), v_tr0_inv, torch_kCPU)
+    if (.not. plugged(6)) call torch_tensor_from_array(in_t(14), v_tr0_inv, model_device(6), model_device_index(6))
     call c_f_pointer(c_loc(tke_inv), v_tke_inv, (/ 16, 31 /))
     in_p(15) = c_loc(tke_inv); in_s(:, 15) = (/ int(16, c_int64_t), int(31, c_int64_t), 0_c_int64_t /)
-    if (.not. plugged(6)) call torch_tensor_from_array(in_t(15), v_tke_inv, torch_kCPU)
+    if (.not. plugged(6)) call torch_tensor_from_array(in_t(15), v_tke_inv, model_device(6), model_device_index(6))
     call c_f_pointer(c_loc(cldfrct_inv), v_cldfrct_inv, (/ 16, 30 /))
     in_p(16) = c_loc(cldfrct_inv); in_s(:, 16) = (/ int(16, c_int64_t), int(30, c_int64_t), 0_c_int64_t /)
-    if (.not. plugged(6)) call torch_tensor_from_array(in_t(16), v_cldfrct_inv, torch_kCPU)
+    if (.not. plugged(6)) call torch_tensor_from_array(in_t(16), v_cldfrct_inv, model_device(6), model_device_index(6))
     call c_f_pointer(c_loc(concldfrct_inv), v_concldfrct_inv, (/ 16, 30 /))
     in_p(17) = c_loc(concldfrct_inv); in_s(:, 17) = (/ int(16, c_int64_t), int(30, c_int64_t), 0_c_int64_t /)
-    if (.not. plugged(6)) call torch_tensor_from_array(in_t(17), v_concldfrct_inv, torch_kCPU)
+    if (.not. plugged(6)) call torch_tensor_from_array(in_t(17), v_concldfrct_inv, model_device(6), model_device_index(6))
     call c_f_pointer(c_loc(pblh), v_pblh, (/ 16 /))
     in_p(18) = c_loc(pblh); in_s(:, 18) = (/ int(16, c_int64_t), 0_c_int64_t, 0_c_int64_t /)
-    if (.not. plugged(6)) call torch_tensor_from_array(in_t(18), v_pblh, torch_kCPU)
+    if (.not. plugged(6)) call torch_tensor_from_array(in_t(18), v_pblh, model_device(6), model_device_index(6))
     call c_f_pointer(c_loc(cush), v_cush, (/ 16 /))
     in_p(19) = c_loc(cush); in_s(:, 19) = (/ int(16, c_int64_t), 0_c_int64_t, 0_c_int64_t /)
-    if (.not. plugged(6)) call torch_tensor_from_array(in_t(19), v_cush, torch_kCPU)
+    if (.not. plugged(6)) call torch_tensor_from_array(in_t(19), v_cush, model_device(6), model_device_index(6))
     call c_f_pointer(c_loc(dpdry0_inv), v_dpdry0_inv, (/ 16, 30 /))
     in_p(20) = c_loc(dpdry0_inv); in_s(:, 20) = (/ int(16, c_int64_t), int(30, c_int64_t), 0_c_int64_t /)
-    if (.not. plugged(6)) call torch_tensor_from_array(in_t(20), v_dpdry0_inv, torch_kCPU)
+    if (.not. plugged(6)) call torch_tensor_from_array(in_t(20), v_dpdry0_inv, model_device(6), model_device_index(6))
     op_packed => o_packed
     if (.not. plugged(6)) call torch_tensor_from_array(out_t(1), op_packed, torch_kCPU)
     call system_clock(hk_t1)
@@ -3689,64 +3694,64 @@ contains
     real(c_double), pointer, contiguous :: zp_dpdry0_inv(:,:)
     z_dt = 0.0_c_double
     zp_dt => z_dt
-    call torch_tensor_from_array(in_t(1), zp_dt, torch_kCPU)
+    call torch_tensor_from_array(in_t(1), zp_dt, model_device(6), model_device_index(6))
     z_ps0_inv = 0.0_c_double
     zp_ps0_inv => z_ps0_inv
-    call torch_tensor_from_array(in_t(2), zp_ps0_inv, torch_kCPU)
+    call torch_tensor_from_array(in_t(2), zp_ps0_inv, model_device(6), model_device_index(6))
     z_zs0_inv = 0.0_c_double
     zp_zs0_inv => z_zs0_inv
-    call torch_tensor_from_array(in_t(3), zp_zs0_inv, torch_kCPU)
+    call torch_tensor_from_array(in_t(3), zp_zs0_inv, model_device(6), model_device_index(6))
     z_p0_inv = 0.0_c_double
     zp_p0_inv => z_p0_inv
-    call torch_tensor_from_array(in_t(4), zp_p0_inv, torch_kCPU)
+    call torch_tensor_from_array(in_t(4), zp_p0_inv, model_device(6), model_device_index(6))
     z_z0_inv = 0.0_c_double
     zp_z0_inv => z_z0_inv
-    call torch_tensor_from_array(in_t(5), zp_z0_inv, torch_kCPU)
+    call torch_tensor_from_array(in_t(5), zp_z0_inv, model_device(6), model_device_index(6))
     z_dp0_inv = 0.0_c_double
     zp_dp0_inv => z_dp0_inv
-    call torch_tensor_from_array(in_t(6), zp_dp0_inv, torch_kCPU)
+    call torch_tensor_from_array(in_t(6), zp_dp0_inv, model_device(6), model_device_index(6))
     z_u0_inv = 0.0_c_double
     zp_u0_inv => z_u0_inv
-    call torch_tensor_from_array(in_t(7), zp_u0_inv, torch_kCPU)
+    call torch_tensor_from_array(in_t(7), zp_u0_inv, model_device(6), model_device_index(6))
     z_v0_inv = 0.0_c_double
     zp_v0_inv => z_v0_inv
-    call torch_tensor_from_array(in_t(8), zp_v0_inv, torch_kCPU)
+    call torch_tensor_from_array(in_t(8), zp_v0_inv, model_device(6), model_device_index(6))
     z_qv0_inv = 0.0_c_double
     zp_qv0_inv => z_qv0_inv
-    call torch_tensor_from_array(in_t(9), zp_qv0_inv, torch_kCPU)
+    call torch_tensor_from_array(in_t(9), zp_qv0_inv, model_device(6), model_device_index(6))
     z_ql0_inv = 0.0_c_double
     zp_ql0_inv => z_ql0_inv
-    call torch_tensor_from_array(in_t(10), zp_ql0_inv, torch_kCPU)
+    call torch_tensor_from_array(in_t(10), zp_ql0_inv, model_device(6), model_device_index(6))
     z_qi0_inv = 0.0_c_double
     zp_qi0_inv => z_qi0_inv
-    call torch_tensor_from_array(in_t(11), zp_qi0_inv, torch_kCPU)
+    call torch_tensor_from_array(in_t(11), zp_qi0_inv, model_device(6), model_device_index(6))
     z_t0_inv = 0.0_c_double
     zp_t0_inv => z_t0_inv
-    call torch_tensor_from_array(in_t(12), zp_t0_inv, torch_kCPU)
+    call torch_tensor_from_array(in_t(12), zp_t0_inv, model_device(6), model_device_index(6))
     z_s0_inv = 0.0_c_double
     zp_s0_inv => z_s0_inv
-    call torch_tensor_from_array(in_t(13), zp_s0_inv, torch_kCPU)
+    call torch_tensor_from_array(in_t(13), zp_s0_inv, model_device(6), model_device_index(6))
     z_tr0_inv = 0.0_c_double
     zp_tr0_inv => z_tr0_inv
-    call torch_tensor_from_array(in_t(14), zp_tr0_inv, torch_kCPU)
+    call torch_tensor_from_array(in_t(14), zp_tr0_inv, model_device(6), model_device_index(6))
     z_tke_inv = 0.0_c_double
     zp_tke_inv => z_tke_inv
-    call torch_tensor_from_array(in_t(15), zp_tke_inv, torch_kCPU)
+    call torch_tensor_from_array(in_t(15), zp_tke_inv, model_device(6), model_device_index(6))
     z_cldfrct_inv = 0.0_c_double
     zp_cldfrct_inv => z_cldfrct_inv
-    call torch_tensor_from_array(in_t(16), zp_cldfrct_inv, torch_kCPU)
+    call torch_tensor_from_array(in_t(16), zp_cldfrct_inv, model_device(6), model_device_index(6))
     z_concldfrct_inv = 0.0_c_double
     zp_concldfrct_inv => z_concldfrct_inv
-    call torch_tensor_from_array(in_t(17), zp_concldfrct_inv, torch_kCPU)
+    call torch_tensor_from_array(in_t(17), zp_concldfrct_inv, model_device(6), model_device_index(6))
     z_pblh = 0.0_c_double
     zp_pblh => z_pblh
-    call torch_tensor_from_array(in_t(18), zp_pblh, torch_kCPU)
+    call torch_tensor_from_array(in_t(18), zp_pblh, model_device(6), model_device_index(6))
     z_cush = 0.0_c_double
     zp_cush => z_cush
-    call torch_tensor_from_array(in_t(19), zp_cush, torch_kCPU)
+    call torch_tensor_from_array(in_t(19), zp_cush, model_device(6), model_device_index(6))
     z_dpdry0_inv = 0.0_c_double
     zp_dpdry0_inv => z_dpdry0_inv
-    call torch_tensor_from_array(in_t(20), zp_dpdry0_inv, torch_kCPU)
+    call torch_tensor_from_array(in_t(20), zp_dpdry0_inv, model_device(6), model_device_index(6))
     yp_packed => y_packed
     call torch_tensor_from_array(out_t(1), yp_packed, torch_kCPU)
     call torch_model_forward(models(6), in_t, out_t)
@@ -4078,106 +4083,106 @@ contains
     s_dt(1) = dt
     sp_dt => s_dt
     in_p(1) = c_loc(s_dt); in_s(:, 1) = (/ 1_c_int64_t, 0_c_int64_t, 0_c_int64_t /)
-    if (.not. plugged(7)) call torch_tensor_from_array(in_t(1), sp_dt, torch_kCPU)
+    if (.not. plugged(7)) call torch_tensor_from_array(in_t(1), sp_dt, model_device(7), model_device_index(7))
     call c_f_pointer(c_loc(p), v_p, (/ 16, 30 /))
     in_p(2) = c_loc(p); in_s(:, 2) = (/ int(16, c_int64_t), int(30, c_int64_t), 0_c_int64_t /)
-    if (.not. plugged(7)) call torch_tensor_from_array(in_t(2), v_p, torch_kCPU)
+    if (.not. plugged(7)) call torch_tensor_from_array(in_t(2), v_p, model_device(7), model_device_index(7))
     call c_f_pointer(c_loc(dp), v_dp, (/ 16, 30 /))
     in_p(3) = c_loc(dp); in_s(:, 3) = (/ int(16, c_int64_t), int(30, c_int64_t), 0_c_int64_t /)
-    if (.not. plugged(7)) call torch_tensor_from_array(in_t(3), v_dp, torch_kCPU)
+    if (.not. plugged(7)) call torch_tensor_from_array(in_t(3), v_dp, model_device(7), model_device_index(7))
     call c_f_pointer(c_loc(t0), v_t0, (/ 16, 30 /))
     in_p(4) = c_loc(t0); in_s(:, 4) = (/ int(16, c_int64_t), int(30, c_int64_t), 0_c_int64_t /)
-    if (.not. plugged(7)) call torch_tensor_from_array(in_t(4), v_t0, torch_kCPU)
+    if (.not. plugged(7)) call torch_tensor_from_array(in_t(4), v_t0, model_device(7), model_device_index(7))
     call c_f_pointer(c_loc(qv0), v_qv0, (/ 16, 30 /))
     in_p(5) = c_loc(qv0); in_s(:, 5) = (/ int(16, c_int64_t), int(30, c_int64_t), 0_c_int64_t /)
-    if (.not. plugged(7)) call torch_tensor_from_array(in_t(5), v_qv0, torch_kCPU)
+    if (.not. plugged(7)) call torch_tensor_from_array(in_t(5), v_qv0, model_device(7), model_device_index(7))
     call c_f_pointer(c_loc(ql0), v_ql0, (/ 16, 30 /))
     in_p(6) = c_loc(ql0); in_s(:, 6) = (/ int(16, c_int64_t), int(30, c_int64_t), 0_c_int64_t /)
-    if (.not. plugged(7)) call torch_tensor_from_array(in_t(6), v_ql0, torch_kCPU)
+    if (.not. plugged(7)) call torch_tensor_from_array(in_t(6), v_ql0, model_device(7), model_device_index(7))
     call c_f_pointer(c_loc(qi0), v_qi0, (/ 16, 30 /))
     in_p(7) = c_loc(qi0); in_s(:, 7) = (/ int(16, c_int64_t), int(30, c_int64_t), 0_c_int64_t /)
-    if (.not. plugged(7)) call torch_tensor_from_array(in_t(7), v_qi0, torch_kCPU)
+    if (.not. plugged(7)) call torch_tensor_from_array(in_t(7), v_qi0, model_device(7), model_device_index(7))
     call c_f_pointer(c_loc(nl0), v_nl0, (/ 16, 30 /))
     in_p(8) = c_loc(nl0); in_s(:, 8) = (/ int(16, c_int64_t), int(30, c_int64_t), 0_c_int64_t /)
-    if (.not. plugged(7)) call torch_tensor_from_array(in_t(8), v_nl0, torch_kCPU)
+    if (.not. plugged(7)) call torch_tensor_from_array(in_t(8), v_nl0, model_device(7), model_device_index(7))
     call c_f_pointer(c_loc(ni0), v_ni0, (/ 16, 30 /))
     in_p(9) = c_loc(ni0); in_s(:, 9) = (/ int(16, c_int64_t), int(30, c_int64_t), 0_c_int64_t /)
-    if (.not. plugged(7)) call torch_tensor_from_array(in_t(9), v_ni0, torch_kCPU)
+    if (.not. plugged(7)) call torch_tensor_from_array(in_t(9), v_ni0, model_device(7), model_device_index(7))
     call c_f_pointer(c_loc(a_t), v_a_t, (/ 16, 30 /))
     in_p(10) = c_loc(a_t); in_s(:, 10) = (/ int(16, c_int64_t), int(30, c_int64_t), 0_c_int64_t /)
-    if (.not. plugged(7)) call torch_tensor_from_array(in_t(10), v_a_t, torch_kCPU)
+    if (.not. plugged(7)) call torch_tensor_from_array(in_t(10), v_a_t, model_device(7), model_device_index(7))
     call c_f_pointer(c_loc(a_qv), v_a_qv, (/ 16, 30 /))
     in_p(11) = c_loc(a_qv); in_s(:, 11) = (/ int(16, c_int64_t), int(30, c_int64_t), 0_c_int64_t /)
-    if (.not. plugged(7)) call torch_tensor_from_array(in_t(11), v_a_qv, torch_kCPU)
+    if (.not. plugged(7)) call torch_tensor_from_array(in_t(11), v_a_qv, model_device(7), model_device_index(7))
     call c_f_pointer(c_loc(a_ql), v_a_ql, (/ 16, 30 /))
     in_p(12) = c_loc(a_ql); in_s(:, 12) = (/ int(16, c_int64_t), int(30, c_int64_t), 0_c_int64_t /)
-    if (.not. plugged(7)) call torch_tensor_from_array(in_t(12), v_a_ql, torch_kCPU)
+    if (.not. plugged(7)) call torch_tensor_from_array(in_t(12), v_a_ql, model_device(7), model_device_index(7))
     call c_f_pointer(c_loc(a_qi), v_a_qi, (/ 16, 30 /))
     in_p(13) = c_loc(a_qi); in_s(:, 13) = (/ int(16, c_int64_t), int(30, c_int64_t), 0_c_int64_t /)
-    if (.not. plugged(7)) call torch_tensor_from_array(in_t(13), v_a_qi, torch_kCPU)
+    if (.not. plugged(7)) call torch_tensor_from_array(in_t(13), v_a_qi, model_device(7), model_device_index(7))
     call c_f_pointer(c_loc(a_nl), v_a_nl, (/ 16, 30 /))
     in_p(14) = c_loc(a_nl); in_s(:, 14) = (/ int(16, c_int64_t), int(30, c_int64_t), 0_c_int64_t /)
-    if (.not. plugged(7)) call torch_tensor_from_array(in_t(14), v_a_nl, torch_kCPU)
+    if (.not. plugged(7)) call torch_tensor_from_array(in_t(14), v_a_nl, model_device(7), model_device_index(7))
     call c_f_pointer(c_loc(a_ni), v_a_ni, (/ 16, 30 /))
     in_p(15) = c_loc(a_ni); in_s(:, 15) = (/ int(16, c_int64_t), int(30, c_int64_t), 0_c_int64_t /)
-    if (.not. plugged(7)) call torch_tensor_from_array(in_t(15), v_a_ni, torch_kCPU)
+    if (.not. plugged(7)) call torch_tensor_from_array(in_t(15), v_a_ni, model_device(7), model_device_index(7))
     call c_f_pointer(c_loc(c_t), v_c_t, (/ 16, 30 /))
     in_p(16) = c_loc(c_t); in_s(:, 16) = (/ int(16, c_int64_t), int(30, c_int64_t), 0_c_int64_t /)
-    if (.not. plugged(7)) call torch_tensor_from_array(in_t(16), v_c_t, torch_kCPU)
+    if (.not. plugged(7)) call torch_tensor_from_array(in_t(16), v_c_t, model_device(7), model_device_index(7))
     call c_f_pointer(c_loc(c_qv), v_c_qv, (/ 16, 30 /))
     in_p(17) = c_loc(c_qv); in_s(:, 17) = (/ int(16, c_int64_t), int(30, c_int64_t), 0_c_int64_t /)
-    if (.not. plugged(7)) call torch_tensor_from_array(in_t(17), v_c_qv, torch_kCPU)
+    if (.not. plugged(7)) call torch_tensor_from_array(in_t(17), v_c_qv, model_device(7), model_device_index(7))
     call c_f_pointer(c_loc(c_ql), v_c_ql, (/ 16, 30 /))
     in_p(18) = c_loc(c_ql); in_s(:, 18) = (/ int(16, c_int64_t), int(30, c_int64_t), 0_c_int64_t /)
-    if (.not. plugged(7)) call torch_tensor_from_array(in_t(18), v_c_ql, torch_kCPU)
+    if (.not. plugged(7)) call torch_tensor_from_array(in_t(18), v_c_ql, model_device(7), model_device_index(7))
     call c_f_pointer(c_loc(c_qi), v_c_qi, (/ 16, 30 /))
     in_p(19) = c_loc(c_qi); in_s(:, 19) = (/ int(16, c_int64_t), int(30, c_int64_t), 0_c_int64_t /)
-    if (.not. plugged(7)) call torch_tensor_from_array(in_t(19), v_c_qi, torch_kCPU)
+    if (.not. plugged(7)) call torch_tensor_from_array(in_t(19), v_c_qi, model_device(7), model_device_index(7))
     call c_f_pointer(c_loc(c_nl), v_c_nl, (/ 16, 30 /))
     in_p(20) = c_loc(c_nl); in_s(:, 20) = (/ int(16, c_int64_t), int(30, c_int64_t), 0_c_int64_t /)
-    if (.not. plugged(7)) call torch_tensor_from_array(in_t(20), v_c_nl, torch_kCPU)
+    if (.not. plugged(7)) call torch_tensor_from_array(in_t(20), v_c_nl, model_device(7), model_device_index(7))
     call c_f_pointer(c_loc(c_ni), v_c_ni, (/ 16, 30 /))
     in_p(21) = c_loc(c_ni); in_s(:, 21) = (/ int(16, c_int64_t), int(30, c_int64_t), 0_c_int64_t /)
-    if (.not. plugged(7)) call torch_tensor_from_array(in_t(21), v_c_ni, torch_kCPU)
+    if (.not. plugged(7)) call torch_tensor_from_array(in_t(21), v_c_ni, model_device(7), model_device_index(7))
     call c_f_pointer(c_loc(c_qlst), v_c_qlst, (/ 16, 30 /))
     in_p(22) = c_loc(c_qlst); in_s(:, 22) = (/ int(16, c_int64_t), int(30, c_int64_t), 0_c_int64_t /)
-    if (.not. plugged(7)) call torch_tensor_from_array(in_t(22), v_c_qlst, torch_kCPU)
+    if (.not. plugged(7)) call torch_tensor_from_array(in_t(22), v_c_qlst, model_device(7), model_device_index(7))
     call c_f_pointer(c_loc(d_t), v_d_t, (/ 16, 30 /))
     in_p(23) = c_loc(d_t); in_s(:, 23) = (/ int(16, c_int64_t), int(30, c_int64_t), 0_c_int64_t /)
-    if (.not. plugged(7)) call torch_tensor_from_array(in_t(23), v_d_t, torch_kCPU)
+    if (.not. plugged(7)) call torch_tensor_from_array(in_t(23), v_d_t, model_device(7), model_device_index(7))
     call c_f_pointer(c_loc(d_qv), v_d_qv, (/ 16, 30 /))
     in_p(24) = c_loc(d_qv); in_s(:, 24) = (/ int(16, c_int64_t), int(30, c_int64_t), 0_c_int64_t /)
-    if (.not. plugged(7)) call torch_tensor_from_array(in_t(24), v_d_qv, torch_kCPU)
+    if (.not. plugged(7)) call torch_tensor_from_array(in_t(24), v_d_qv, model_device(7), model_device_index(7))
     call c_f_pointer(c_loc(d_ql), v_d_ql, (/ 16, 30 /))
     in_p(25) = c_loc(d_ql); in_s(:, 25) = (/ int(16, c_int64_t), int(30, c_int64_t), 0_c_int64_t /)
-    if (.not. plugged(7)) call torch_tensor_from_array(in_t(25), v_d_ql, torch_kCPU)
+    if (.not. plugged(7)) call torch_tensor_from_array(in_t(25), v_d_ql, model_device(7), model_device_index(7))
     call c_f_pointer(c_loc(d_qi), v_d_qi, (/ 16, 30 /))
     in_p(26) = c_loc(d_qi); in_s(:, 26) = (/ int(16, c_int64_t), int(30, c_int64_t), 0_c_int64_t /)
-    if (.not. plugged(7)) call torch_tensor_from_array(in_t(26), v_d_qi, torch_kCPU)
+    if (.not. plugged(7)) call torch_tensor_from_array(in_t(26), v_d_qi, model_device(7), model_device_index(7))
     call c_f_pointer(c_loc(d_nl), v_d_nl, (/ 16, 30 /))
     in_p(27) = c_loc(d_nl); in_s(:, 27) = (/ int(16, c_int64_t), int(30, c_int64_t), 0_c_int64_t /)
-    if (.not. plugged(7)) call torch_tensor_from_array(in_t(27), v_d_nl, torch_kCPU)
+    if (.not. plugged(7)) call torch_tensor_from_array(in_t(27), v_d_nl, model_device(7), model_device_index(7))
     call c_f_pointer(c_loc(d_ni), v_d_ni, (/ 16, 30 /))
     in_p(28) = c_loc(d_ni); in_s(:, 28) = (/ int(16, c_int64_t), int(30, c_int64_t), 0_c_int64_t /)
-    if (.not. plugged(7)) call torch_tensor_from_array(in_t(28), v_d_ni, torch_kCPU)
+    if (.not. plugged(7)) call torch_tensor_from_array(in_t(28), v_d_ni, model_device(7), model_device_index(7))
     call c_f_pointer(c_loc(a_cud), v_a_cud, (/ 16, 30 /))
     in_p(29) = c_loc(a_cud); in_s(:, 29) = (/ int(16, c_int64_t), int(30, c_int64_t), 0_c_int64_t /)
-    if (.not. plugged(7)) call torch_tensor_from_array(in_t(29), v_a_cud, torch_kCPU)
+    if (.not. plugged(7)) call torch_tensor_from_array(in_t(29), v_a_cud, model_device(7), model_device_index(7))
     call c_f_pointer(c_loc(a_cu0), v_a_cu0, (/ 16, 30 /))
     in_p(30) = c_loc(a_cu0); in_s(:, 30) = (/ int(16, c_int64_t), int(30, c_int64_t), 0_c_int64_t /)
-    if (.not. plugged(7)) call torch_tensor_from_array(in_t(30), v_a_cu0, torch_kCPU)
+    if (.not. plugged(7)) call torch_tensor_from_array(in_t(30), v_a_cu0, model_device(7), model_device_index(7))
     call c_f_pointer(c_loc(clrw_old), v_clrw_old, (/ 16, 30 /))
     in_p(31) = c_loc(clrw_old); in_s(:, 31) = (/ int(16, c_int64_t), int(30, c_int64_t), 0_c_int64_t /)
-    if (.not. plugged(7)) call torch_tensor_from_array(in_t(31), v_clrw_old, torch_kCPU)
+    if (.not. plugged(7)) call torch_tensor_from_array(in_t(31), v_clrw_old, model_device(7), model_device_index(7))
     call c_f_pointer(c_loc(clri_old), v_clri_old, (/ 16, 30 /))
     in_p(32) = c_loc(clri_old); in_s(:, 32) = (/ int(16, c_int64_t), int(30, c_int64_t), 0_c_int64_t /)
-    if (.not. plugged(7)) call torch_tensor_from_array(in_t(32), v_clri_old, torch_kCPU)
+    if (.not. plugged(7)) call torch_tensor_from_array(in_t(32), v_clri_old, model_device(7), model_device_index(7))
     call c_f_pointer(c_loc(landfrac), v_landfrac, (/ 16 /))
     in_p(33) = c_loc(landfrac); in_s(:, 33) = (/ int(16, c_int64_t), 0_c_int64_t, 0_c_int64_t /)
-    if (.not. plugged(7)) call torch_tensor_from_array(in_t(33), v_landfrac, torch_kCPU)
+    if (.not. plugged(7)) call torch_tensor_from_array(in_t(33), v_landfrac, model_device(7), model_device_index(7))
     call c_f_pointer(c_loc(snowh), v_snowh, (/ 16 /))
     in_p(34) = c_loc(snowh); in_s(:, 34) = (/ int(16, c_int64_t), 0_c_int64_t, 0_c_int64_t /)
-    if (.not. plugged(7)) call torch_tensor_from_array(in_t(34), v_snowh, torch_kCPU)
+    if (.not. plugged(7)) call torch_tensor_from_array(in_t(34), v_snowh, model_device(7), model_device_index(7))
     op_t0 => o_t0
     out_p(1) = c_loc(o_t0); out_s(:, 1) = (/ int(16, c_int64_t), int(30, c_int64_t), 0_c_int64_t /)
     if (.not. plugged(7)) call torch_tensor_from_array(out_t(1), op_t0, torch_kCPU)
@@ -4479,106 +4484,106 @@ contains
     real(c_double), pointer, contiguous :: yp_qi_st_star(:,:)
     z_dt = 0.0_c_double
     zp_dt => z_dt
-    call torch_tensor_from_array(in_t(1), zp_dt, torch_kCPU)
+    call torch_tensor_from_array(in_t(1), zp_dt, model_device(7), model_device_index(7))
     z_p = 0.0_c_double
     zp_p => z_p
-    call torch_tensor_from_array(in_t(2), zp_p, torch_kCPU)
+    call torch_tensor_from_array(in_t(2), zp_p, model_device(7), model_device_index(7))
     z_dp = 0.0_c_double
     zp_dp => z_dp
-    call torch_tensor_from_array(in_t(3), zp_dp, torch_kCPU)
+    call torch_tensor_from_array(in_t(3), zp_dp, model_device(7), model_device_index(7))
     z_t0 = 0.0_c_double
     zp_t0 => z_t0
-    call torch_tensor_from_array(in_t(4), zp_t0, torch_kCPU)
+    call torch_tensor_from_array(in_t(4), zp_t0, model_device(7), model_device_index(7))
     z_qv0 = 0.0_c_double
     zp_qv0 => z_qv0
-    call torch_tensor_from_array(in_t(5), zp_qv0, torch_kCPU)
+    call torch_tensor_from_array(in_t(5), zp_qv0, model_device(7), model_device_index(7))
     z_ql0 = 0.0_c_double
     zp_ql0 => z_ql0
-    call torch_tensor_from_array(in_t(6), zp_ql0, torch_kCPU)
+    call torch_tensor_from_array(in_t(6), zp_ql0, model_device(7), model_device_index(7))
     z_qi0 = 0.0_c_double
     zp_qi0 => z_qi0
-    call torch_tensor_from_array(in_t(7), zp_qi0, torch_kCPU)
+    call torch_tensor_from_array(in_t(7), zp_qi0, model_device(7), model_device_index(7))
     z_nl0 = 0.0_c_double
     zp_nl0 => z_nl0
-    call torch_tensor_from_array(in_t(8), zp_nl0, torch_kCPU)
+    call torch_tensor_from_array(in_t(8), zp_nl0, model_device(7), model_device_index(7))
     z_ni0 = 0.0_c_double
     zp_ni0 => z_ni0
-    call torch_tensor_from_array(in_t(9), zp_ni0, torch_kCPU)
+    call torch_tensor_from_array(in_t(9), zp_ni0, model_device(7), model_device_index(7))
     z_a_t = 0.0_c_double
     zp_a_t => z_a_t
-    call torch_tensor_from_array(in_t(10), zp_a_t, torch_kCPU)
+    call torch_tensor_from_array(in_t(10), zp_a_t, model_device(7), model_device_index(7))
     z_a_qv = 0.0_c_double
     zp_a_qv => z_a_qv
-    call torch_tensor_from_array(in_t(11), zp_a_qv, torch_kCPU)
+    call torch_tensor_from_array(in_t(11), zp_a_qv, model_device(7), model_device_index(7))
     z_a_ql = 0.0_c_double
     zp_a_ql => z_a_ql
-    call torch_tensor_from_array(in_t(12), zp_a_ql, torch_kCPU)
+    call torch_tensor_from_array(in_t(12), zp_a_ql, model_device(7), model_device_index(7))
     z_a_qi = 0.0_c_double
     zp_a_qi => z_a_qi
-    call torch_tensor_from_array(in_t(13), zp_a_qi, torch_kCPU)
+    call torch_tensor_from_array(in_t(13), zp_a_qi, model_device(7), model_device_index(7))
     z_a_nl = 0.0_c_double
     zp_a_nl => z_a_nl
-    call torch_tensor_from_array(in_t(14), zp_a_nl, torch_kCPU)
+    call torch_tensor_from_array(in_t(14), zp_a_nl, model_device(7), model_device_index(7))
     z_a_ni = 0.0_c_double
     zp_a_ni => z_a_ni
-    call torch_tensor_from_array(in_t(15), zp_a_ni, torch_kCPU)
+    call torch_tensor_from_array(in_t(15), zp_a_ni, model_device(7), model_device_index(7))
     z_c_t = 0.0_c_double
     zp_c_t => z_c_t
-    call torch_tensor_from_array(in_t(16), zp_c_t, torch_kCPU)
+    call torch_tensor_from_array(in_t(16), zp_c_t, model_device(7), model_device_index(7))
     z_c_qv = 0.0_c_double
     zp_c_qv => z_c_qv
-    call torch_tensor_from_array(in_t(17), zp_c_qv, torch_kCPU)
+    call torch_tensor_from_array(in_t(17), zp_c_qv, model_device(7), model_device_index(7))
     z_c_ql = 0.0_c_double
     zp_c_ql => z_c_ql
-    call torch_tensor_from_array(in_t(18), zp_c_ql, torch_kCPU)
+    call torch_tensor_from_array(in_t(18), zp_c_ql, model_device(7), model_device_index(7))
     z_c_qi = 0.0_c_double
     zp_c_qi => z_c_qi
-    call torch_tensor_from_array(in_t(19), zp_c_qi, torch_kCPU)
+    call torch_tensor_from_array(in_t(19), zp_c_qi, model_device(7), model_device_index(7))
     z_c_nl = 0.0_c_double
     zp_c_nl => z_c_nl
-    call torch_tensor_from_array(in_t(20), zp_c_nl, torch_kCPU)
+    call torch_tensor_from_array(in_t(20), zp_c_nl, model_device(7), model_device_index(7))
     z_c_ni = 0.0_c_double
     zp_c_ni => z_c_ni
-    call torch_tensor_from_array(in_t(21), zp_c_ni, torch_kCPU)
+    call torch_tensor_from_array(in_t(21), zp_c_ni, model_device(7), model_device_index(7))
     z_c_qlst = 0.0_c_double
     zp_c_qlst => z_c_qlst
-    call torch_tensor_from_array(in_t(22), zp_c_qlst, torch_kCPU)
+    call torch_tensor_from_array(in_t(22), zp_c_qlst, model_device(7), model_device_index(7))
     z_d_t = 0.0_c_double
     zp_d_t => z_d_t
-    call torch_tensor_from_array(in_t(23), zp_d_t, torch_kCPU)
+    call torch_tensor_from_array(in_t(23), zp_d_t, model_device(7), model_device_index(7))
     z_d_qv = 0.0_c_double
     zp_d_qv => z_d_qv
-    call torch_tensor_from_array(in_t(24), zp_d_qv, torch_kCPU)
+    call torch_tensor_from_array(in_t(24), zp_d_qv, model_device(7), model_device_index(7))
     z_d_ql = 0.0_c_double
     zp_d_ql => z_d_ql
-    call torch_tensor_from_array(in_t(25), zp_d_ql, torch_kCPU)
+    call torch_tensor_from_array(in_t(25), zp_d_ql, model_device(7), model_device_index(7))
     z_d_qi = 0.0_c_double
     zp_d_qi => z_d_qi
-    call torch_tensor_from_array(in_t(26), zp_d_qi, torch_kCPU)
+    call torch_tensor_from_array(in_t(26), zp_d_qi, model_device(7), model_device_index(7))
     z_d_nl = 0.0_c_double
     zp_d_nl => z_d_nl
-    call torch_tensor_from_array(in_t(27), zp_d_nl, torch_kCPU)
+    call torch_tensor_from_array(in_t(27), zp_d_nl, model_device(7), model_device_index(7))
     z_d_ni = 0.0_c_double
     zp_d_ni => z_d_ni
-    call torch_tensor_from_array(in_t(28), zp_d_ni, torch_kCPU)
+    call torch_tensor_from_array(in_t(28), zp_d_ni, model_device(7), model_device_index(7))
     z_a_cud = 0.0_c_double
     zp_a_cud => z_a_cud
-    call torch_tensor_from_array(in_t(29), zp_a_cud, torch_kCPU)
+    call torch_tensor_from_array(in_t(29), zp_a_cud, model_device(7), model_device_index(7))
     z_a_cu0 = 0.0_c_double
     zp_a_cu0 => z_a_cu0
-    call torch_tensor_from_array(in_t(30), zp_a_cu0, torch_kCPU)
+    call torch_tensor_from_array(in_t(30), zp_a_cu0, model_device(7), model_device_index(7))
     z_clrw_old = 0.0_c_double
     zp_clrw_old => z_clrw_old
-    call torch_tensor_from_array(in_t(31), zp_clrw_old, torch_kCPU)
+    call torch_tensor_from_array(in_t(31), zp_clrw_old, model_device(7), model_device_index(7))
     z_clri_old = 0.0_c_double
     zp_clri_old => z_clri_old
-    call torch_tensor_from_array(in_t(32), zp_clri_old, torch_kCPU)
+    call torch_tensor_from_array(in_t(32), zp_clri_old, model_device(7), model_device_index(7))
     z_landfrac = 0.0_c_double
     zp_landfrac => z_landfrac
-    call torch_tensor_from_array(in_t(33), zp_landfrac, torch_kCPU)
+    call torch_tensor_from_array(in_t(33), zp_landfrac, model_device(7), model_device_index(7))
     z_snowh = 0.0_c_double
     zp_snowh => z_snowh
-    call torch_tensor_from_array(in_t(34), zp_snowh, torch_kCPU)
+    call torch_tensor_from_array(in_t(34), zp_snowh, model_device(7), model_device_index(7))
     yp_t0 => y_t0
     call torch_tensor_from_array(out_t(1), yp_t0, torch_kCPU)
     yp_qv0 => y_qv0
@@ -4788,45 +4793,45 @@ contains
     s_ncol(1) = real(ncol, c_double)
     sp_ncol => s_ncol
     in_p(1) = c_loc(s_ncol); in_s(:, 1) = (/ 1_c_int64_t, 0_c_int64_t, 0_c_int64_t /)
-    if (.not. plugged(8)) call torch_tensor_from_array(in_t(1), sp_ncol, torch_kCPU)
+    if (.not. plugged(8)) call torch_tensor_from_array(in_t(1), sp_ncol, model_device(8), model_device_index(8))
     s_lchnk(1) = real(lchnk, c_double)
     sp_lchnk => s_lchnk
     in_p(2) = c_loc(s_lchnk); in_s(:, 2) = (/ 1_c_int64_t, 0_c_int64_t, 0_c_int64_t /)
-    if (.not. plugged(8)) call torch_tensor_from_array(in_t(2), sp_lchnk, torch_kCPU)
+    if (.not. plugged(8)) call torch_tensor_from_array(in_t(2), sp_lchnk, model_device(8), model_device_index(8))
     call c_f_pointer(c_loc(t), v_t, (/ 16, 30 /))
     in_p(3) = c_loc(t); in_s(:, 3) = (/ int(16, c_int64_t), int(30, c_int64_t), 0_c_int64_t /)
-    if (.not. plugged(8)) call torch_tensor_from_array(in_t(3), v_t, torch_kCPU)
+    if (.not. plugged(8)) call torch_tensor_from_array(in_t(3), v_t, model_device(8), model_device_index(8))
     call c_f_pointer(c_loc(pmid), v_pmid, (/ 16, 30 /))
     in_p(4) = c_loc(pmid); in_s(:, 4) = (/ int(16, c_int64_t), int(30, c_int64_t), 0_c_int64_t /)
-    if (.not. plugged(8)) call torch_tensor_from_array(in_t(4), v_pmid, torch_kCPU)
+    if (.not. plugged(8)) call torch_tensor_from_array(in_t(4), v_pmid, model_device(8), model_device_index(8))
     call c_f_pointer(c_loc(pdel), v_pdel, (/ 16, 30 /))
     in_p(5) = c_loc(pdel); in_s(:, 5) = (/ int(16, c_int64_t), int(30, c_int64_t), 0_c_int64_t /)
-    if (.not. plugged(8)) call torch_tensor_from_array(in_t(5), v_pdel, torch_kCPU)
+    if (.not. plugged(8)) call torch_tensor_from_array(in_t(5), v_pdel, model_device(8), model_device_index(8))
     call c_f_pointer(c_loc(q), v_q, (/ 16, 30 /))
     in_p(6) = c_loc(q); in_s(:, 6) = (/ int(16, c_int64_t), int(30, c_int64_t), 0_c_int64_t /)
-    if (.not. plugged(8)) call torch_tensor_from_array(in_t(6), v_q, torch_kCPU)
+    if (.not. plugged(8)) call torch_tensor_from_array(in_t(6), v_q, model_device(8), model_device_index(8))
     call c_f_pointer(c_loc(landfrac), v_landfrac, (/ 16 /))
     in_p(7) = c_loc(landfrac); in_s(:, 7) = (/ int(16, c_int64_t), 0_c_int64_t, 0_c_int64_t /)
-    if (.not. plugged(8)) call torch_tensor_from_array(in_t(7), v_landfrac, torch_kCPU)
+    if (.not. plugged(8)) call torch_tensor_from_array(in_t(7), v_landfrac, model_device(8), model_device_index(8))
     call c_f_pointer(c_loc(tend_s), v_tend_s, (/ 16, 30 /))
     in_p(8) = c_loc(tend_s); in_s(:, 8) = (/ int(16, c_int64_t), int(30, c_int64_t), 0_c_int64_t /)
-    if (.not. plugged(8)) call torch_tensor_from_array(in_t(8), v_tend_s, torch_kCPU)
+    if (.not. plugged(8)) call torch_tensor_from_array(in_t(8), v_tend_s, model_device(8), model_device_index(8))
     call c_f_pointer(c_loc(tend_q), v_tend_q, (/ 16, 30 /))
     in_p(9) = c_loc(tend_q); in_s(:, 9) = (/ int(16, c_int64_t), int(30, c_int64_t), 0_c_int64_t /)
-    if (.not. plugged(8)) call torch_tensor_from_array(in_t(9), v_tend_q, torch_kCPU)
+    if (.not. plugged(8)) call torch_tensor_from_array(in_t(9), v_tend_q, model_device(8), model_device_index(8))
     call c_f_pointer(c_loc(prdprec), v_prdprec, (/ 16, 30 /))
     in_p(10) = c_loc(prdprec); in_s(:, 10) = (/ int(16, c_int64_t), int(30, c_int64_t), 0_c_int64_t /)
-    if (.not. plugged(8)) call torch_tensor_from_array(in_t(10), v_prdprec, torch_kCPU)
+    if (.not. plugged(8)) call torch_tensor_from_array(in_t(10), v_prdprec, model_device(8), model_device_index(8))
     call c_f_pointer(c_loc(cldfrc), v_cldfrc, (/ 16, 30 /))
     in_p(11) = c_loc(cldfrc); in_s(:, 11) = (/ int(16, c_int64_t), int(30, c_int64_t), 0_c_int64_t /)
-    if (.not. plugged(8)) call torch_tensor_from_array(in_t(11), v_cldfrc, torch_kCPU)
+    if (.not. plugged(8)) call torch_tensor_from_array(in_t(11), v_cldfrc, model_device(8), model_device_index(8))
     s_deltat(1) = deltat
     sp_deltat => s_deltat
     in_p(12) = c_loc(s_deltat); in_s(:, 12) = (/ 1_c_int64_t, 0_c_int64_t, 0_c_int64_t /)
-    if (.not. plugged(8)) call torch_tensor_from_array(in_t(12), sp_deltat, torch_kCPU)
+    if (.not. plugged(8)) call torch_tensor_from_array(in_t(12), sp_deltat, model_device(8), model_device_index(8))
     call c_f_pointer(c_loc(prec), v_prec, (/ 16 /))
     in_p(13) = c_loc(prec); in_s(:, 13) = (/ int(16, c_int64_t), 0_c_int64_t, 0_c_int64_t /)
-    if (.not. plugged(8)) call torch_tensor_from_array(in_t(13), v_prec, torch_kCPU)
+    if (.not. plugged(8)) call torch_tensor_from_array(in_t(13), v_prec, model_device(8), model_device_index(8))
     op_tend_s => o_tend_s
     out_p(1) = c_loc(o_tend_s); out_s(:, 1) = (/ int(16, c_int64_t), int(30, c_int64_t), 0_c_int64_t /)
     if (.not. plugged(8)) call torch_tensor_from_array(out_t(1), op_tend_s, torch_kCPU)
@@ -4987,43 +4992,43 @@ contains
     real(c_double), pointer, contiguous :: yp_flxsnow(:,:)
     z_ncol = 0.0_c_double
     zp_ncol => z_ncol
-    call torch_tensor_from_array(in_t(1), zp_ncol, torch_kCPU)
+    call torch_tensor_from_array(in_t(1), zp_ncol, model_device(8), model_device_index(8))
     z_lchnk = 0.0_c_double
     zp_lchnk => z_lchnk
-    call torch_tensor_from_array(in_t(2), zp_lchnk, torch_kCPU)
+    call torch_tensor_from_array(in_t(2), zp_lchnk, model_device(8), model_device_index(8))
     z_t = 0.0_c_double
     zp_t => z_t
-    call torch_tensor_from_array(in_t(3), zp_t, torch_kCPU)
+    call torch_tensor_from_array(in_t(3), zp_t, model_device(8), model_device_index(8))
     z_pmid = 0.0_c_double
     zp_pmid => z_pmid
-    call torch_tensor_from_array(in_t(4), zp_pmid, torch_kCPU)
+    call torch_tensor_from_array(in_t(4), zp_pmid, model_device(8), model_device_index(8))
     z_pdel = 0.0_c_double
     zp_pdel => z_pdel
-    call torch_tensor_from_array(in_t(5), zp_pdel, torch_kCPU)
+    call torch_tensor_from_array(in_t(5), zp_pdel, model_device(8), model_device_index(8))
     z_q = 0.0_c_double
     zp_q => z_q
-    call torch_tensor_from_array(in_t(6), zp_q, torch_kCPU)
+    call torch_tensor_from_array(in_t(6), zp_q, model_device(8), model_device_index(8))
     z_landfrac = 0.0_c_double
     zp_landfrac => z_landfrac
-    call torch_tensor_from_array(in_t(7), zp_landfrac, torch_kCPU)
+    call torch_tensor_from_array(in_t(7), zp_landfrac, model_device(8), model_device_index(8))
     z_tend_s = 0.0_c_double
     zp_tend_s => z_tend_s
-    call torch_tensor_from_array(in_t(8), zp_tend_s, torch_kCPU)
+    call torch_tensor_from_array(in_t(8), zp_tend_s, model_device(8), model_device_index(8))
     z_tend_q = 0.0_c_double
     zp_tend_q => z_tend_q
-    call torch_tensor_from_array(in_t(9), zp_tend_q, torch_kCPU)
+    call torch_tensor_from_array(in_t(9), zp_tend_q, model_device(8), model_device_index(8))
     z_prdprec = 0.0_c_double
     zp_prdprec => z_prdprec
-    call torch_tensor_from_array(in_t(10), zp_prdprec, torch_kCPU)
+    call torch_tensor_from_array(in_t(10), zp_prdprec, model_device(8), model_device_index(8))
     z_cldfrc = 0.0_c_double
     zp_cldfrc => z_cldfrc
-    call torch_tensor_from_array(in_t(11), zp_cldfrc, torch_kCPU)
+    call torch_tensor_from_array(in_t(11), zp_cldfrc, model_device(8), model_device_index(8))
     z_deltat = 0.0_c_double
     zp_deltat => z_deltat
-    call torch_tensor_from_array(in_t(12), zp_deltat, torch_kCPU)
+    call torch_tensor_from_array(in_t(12), zp_deltat, model_device(8), model_device_index(8))
     z_prec = 0.0_c_double
     zp_prec => z_prec
-    call torch_tensor_from_array(in_t(13), zp_prec, torch_kCPU)
+    call torch_tensor_from_array(in_t(13), zp_prec, model_device(8), model_device_index(8))
     yp_tend_s => y_tend_s
     call torch_tensor_from_array(out_t(1), yp_tend_s, torch_kCPU)
     yp_tend_s_snwprd => y_tend_s_snwprd
@@ -5206,51 +5211,51 @@ contains
     s_lchnk(1) = real(lchnk, c_double)
     sp_lchnk => s_lchnk
     in_p(1) = c_loc(s_lchnk); in_s(:, 1) = (/ 1_c_int64_t, 0_c_int64_t, 0_c_int64_t /)
-    if (.not. plugged(9)) call torch_tensor_from_array(in_t(1), sp_lchnk, torch_kCPU)
+    if (.not. plugged(9)) call torch_tensor_from_array(in_t(1), sp_lchnk, model_device(9), model_device_index(9))
     s_ncol(1) = real(ncol, c_double)
     sp_ncol => s_ncol
     in_p(2) = c_loc(s_ncol); in_s(:, 2) = (/ 1_c_int64_t, 0_c_int64_t, 0_c_int64_t /)
-    if (.not. plugged(9)) call torch_tensor_from_array(in_t(2), sp_ncol, torch_kCPU)
+    if (.not. plugged(9)) call torch_tensor_from_array(in_t(2), sp_ncol, model_device(9), model_device_index(9))
     call c_f_pointer(c_loc(q), v_q, (/ 16, 30, ncnst /))
     in_p(3) = c_loc(q); in_s(:, 3) = (/ int(16, c_int64_t), int(30, c_int64_t), int(ncnst, c_int64_t) /)
-    if (.not. plugged(9)) call torch_tensor_from_array(in_t(3), v_q, torch_kCPU)
+    if (.not. plugged(9)) call torch_tensor_from_array(in_t(3), v_q, model_device(9), model_device_index(9))
     call c_f_pointer(c_loc(mu), v_mu, (/ 16, 30 /))
     in_p(4) = c_loc(mu); in_s(:, 4) = (/ int(16, c_int64_t), int(30, c_int64_t), 0_c_int64_t /)
-    if (.not. plugged(9)) call torch_tensor_from_array(in_t(4), v_mu, torch_kCPU)
+    if (.not. plugged(9)) call torch_tensor_from_array(in_t(4), v_mu, model_device(9), model_device_index(9))
     call c_f_pointer(c_loc(md), v_md, (/ 16, 30 /))
     in_p(5) = c_loc(md); in_s(:, 5) = (/ int(16, c_int64_t), int(30, c_int64_t), 0_c_int64_t /)
-    if (.not. plugged(9)) call torch_tensor_from_array(in_t(5), v_md, torch_kCPU)
+    if (.not. plugged(9)) call torch_tensor_from_array(in_t(5), v_md, model_device(9), model_device_index(9))
     call c_f_pointer(c_loc(du), v_du, (/ 16, 30 /))
     in_p(6) = c_loc(du); in_s(:, 6) = (/ int(16, c_int64_t), int(30, c_int64_t), 0_c_int64_t /)
-    if (.not. plugged(9)) call torch_tensor_from_array(in_t(6), v_du, torch_kCPU)
+    if (.not. plugged(9)) call torch_tensor_from_array(in_t(6), v_du, model_device(9), model_device_index(9))
     call c_f_pointer(c_loc(eu), v_eu, (/ 16, 30 /))
     in_p(7) = c_loc(eu); in_s(:, 7) = (/ int(16, c_int64_t), int(30, c_int64_t), 0_c_int64_t /)
-    if (.not. plugged(9)) call torch_tensor_from_array(in_t(7), v_eu, torch_kCPU)
+    if (.not. plugged(9)) call torch_tensor_from_array(in_t(7), v_eu, model_device(9), model_device_index(9))
     call c_f_pointer(c_loc(ed), v_ed, (/ 16, 30 /))
     in_p(8) = c_loc(ed); in_s(:, 8) = (/ int(16, c_int64_t), int(30, c_int64_t), 0_c_int64_t /)
-    if (.not. plugged(9)) call torch_tensor_from_array(in_t(8), v_ed, torch_kCPU)
+    if (.not. plugged(9)) call torch_tensor_from_array(in_t(8), v_ed, model_device(9), model_device_index(9))
     call c_f_pointer(c_loc(dp), v_dp, (/ 16, 30 /))
     in_p(9) = c_loc(dp); in_s(:, 9) = (/ int(16, c_int64_t), int(30, c_int64_t), 0_c_int64_t /)
-    if (.not. plugged(9)) call torch_tensor_from_array(in_t(9), v_dp, torch_kCPU)
+    if (.not. plugged(9)) call torch_tensor_from_array(in_t(9), v_dp, model_device(9), model_device_index(9))
     call c_f_pointer(c_loc(dsubcld), v_dsubcld, (/ 16 /))
     in_p(10) = c_loc(dsubcld); in_s(:, 10) = (/ int(16, c_int64_t), 0_c_int64_t, 0_c_int64_t /)
-    if (.not. plugged(9)) call torch_tensor_from_array(in_t(10), v_dsubcld, torch_kCPU)
+    if (.not. plugged(9)) call torch_tensor_from_array(in_t(10), v_dsubcld, model_device(9), model_device_index(9))
     s_il1g(1) = real(il1g, c_double)
     sp_il1g => s_il1g
     in_p(11) = c_loc(s_il1g); in_s(:, 11) = (/ 1_c_int64_t, 0_c_int64_t, 0_c_int64_t /)
-    if (.not. plugged(9)) call torch_tensor_from_array(in_t(11), sp_il1g, torch_kCPU)
+    if (.not. plugged(9)) call torch_tensor_from_array(in_t(11), sp_il1g, model_device(9), model_device_index(9))
     s_il2g(1) = real(il2g, c_double)
     sp_il2g => s_il2g
     in_p(12) = c_loc(s_il2g); in_s(:, 12) = (/ 1_c_int64_t, 0_c_int64_t, 0_c_int64_t /)
-    if (.not. plugged(9)) call torch_tensor_from_array(in_t(12), sp_il2g, torch_kCPU)
+    if (.not. plugged(9)) call torch_tensor_from_array(in_t(12), sp_il2g, model_device(9), model_device_index(9))
     s_nstep(1) = real(nstep, c_double)
     sp_nstep => s_nstep
     in_p(13) = c_loc(s_nstep); in_s(:, 13) = (/ 1_c_int64_t, 0_c_int64_t, 0_c_int64_t /)
-    if (.not. plugged(9)) call torch_tensor_from_array(in_t(13), sp_nstep, torch_kCPU)
+    if (.not. plugged(9)) call torch_tensor_from_array(in_t(13), sp_nstep, model_device(9), model_device_index(9))
     s_dt(1) = dt
     sp_dt => s_dt
     in_p(14) = c_loc(s_dt); in_s(:, 14) = (/ 1_c_int64_t, 0_c_int64_t, 0_c_int64_t /)
-    if (.not. plugged(9)) call torch_tensor_from_array(in_t(14), sp_dt, torch_kCPU)
+    if (.not. plugged(9)) call torch_tensor_from_array(in_t(14), sp_dt, model_device(9), model_device_index(9))
     op_dqdt => o_dqdt
     out_p(1) = c_loc(o_dqdt); out_s(:, 1) = (/ int(16, c_int64_t), int(30, c_int64_t), int(ncnst, c_int64_t) /)
     if (.not. plugged(9)) call torch_tensor_from_array(out_t(1), op_dqdt, torch_kCPU)
@@ -5359,46 +5364,46 @@ contains
     real(c_double), pointer, contiguous :: yp_seten(:,:)
     z_lchnk = 0.0_c_double
     zp_lchnk => z_lchnk
-    call torch_tensor_from_array(in_t(1), zp_lchnk, torch_kCPU)
+    call torch_tensor_from_array(in_t(1), zp_lchnk, model_device(9), model_device_index(9))
     z_ncol = 0.0_c_double
     zp_ncol => z_ncol
-    call torch_tensor_from_array(in_t(2), zp_ncol, torch_kCPU)
+    call torch_tensor_from_array(in_t(2), zp_ncol, model_device(9), model_device_index(9))
     z_q = 0.0_c_double
     zp_q => z_q
-    call torch_tensor_from_array(in_t(3), zp_q, torch_kCPU)
+    call torch_tensor_from_array(in_t(3), zp_q, model_device(9), model_device_index(9))
     z_mu = 0.0_c_double
     zp_mu => z_mu
-    call torch_tensor_from_array(in_t(4), zp_mu, torch_kCPU)
+    call torch_tensor_from_array(in_t(4), zp_mu, model_device(9), model_device_index(9))
     z_md = 0.0_c_double
     zp_md => z_md
-    call torch_tensor_from_array(in_t(5), zp_md, torch_kCPU)
+    call torch_tensor_from_array(in_t(5), zp_md, model_device(9), model_device_index(9))
     z_du = 0.0_c_double
     zp_du => z_du
-    call torch_tensor_from_array(in_t(6), zp_du, torch_kCPU)
+    call torch_tensor_from_array(in_t(6), zp_du, model_device(9), model_device_index(9))
     z_eu = 0.0_c_double
     zp_eu => z_eu
-    call torch_tensor_from_array(in_t(7), zp_eu, torch_kCPU)
+    call torch_tensor_from_array(in_t(7), zp_eu, model_device(9), model_device_index(9))
     z_ed = 0.0_c_double
     zp_ed => z_ed
-    call torch_tensor_from_array(in_t(8), zp_ed, torch_kCPU)
+    call torch_tensor_from_array(in_t(8), zp_ed, model_device(9), model_device_index(9))
     z_dp = 0.0_c_double
     zp_dp => z_dp
-    call torch_tensor_from_array(in_t(9), zp_dp, torch_kCPU)
+    call torch_tensor_from_array(in_t(9), zp_dp, model_device(9), model_device_index(9))
     z_dsubcld = 0.0_c_double
     zp_dsubcld => z_dsubcld
-    call torch_tensor_from_array(in_t(10), zp_dsubcld, torch_kCPU)
+    call torch_tensor_from_array(in_t(10), zp_dsubcld, model_device(9), model_device_index(9))
     z_il1g = 0.0_c_double
     zp_il1g => z_il1g
-    call torch_tensor_from_array(in_t(11), zp_il1g, torch_kCPU)
+    call torch_tensor_from_array(in_t(11), zp_il1g, model_device(9), model_device_index(9))
     z_il2g = 0.0_c_double
     zp_il2g => z_il2g
-    call torch_tensor_from_array(in_t(12), zp_il2g, torch_kCPU)
+    call torch_tensor_from_array(in_t(12), zp_il2g, model_device(9), model_device_index(9))
     z_nstep = 0.0_c_double
     zp_nstep => z_nstep
-    call torch_tensor_from_array(in_t(13), zp_nstep, torch_kCPU)
+    call torch_tensor_from_array(in_t(13), zp_nstep, model_device(9), model_device_index(9))
     z_dt = 0.0_c_double
     zp_dt => z_dt
-    call torch_tensor_from_array(in_t(14), zp_dt, torch_kCPU)
+    call torch_tensor_from_array(in_t(14), zp_dt, model_device(9), model_device_index(9))
     yp_dqdt => y_dqdt
     call torch_tensor_from_array(out_t(1), yp_dqdt, torch_kCPU)
     yp_pguall => y_pguall
@@ -5821,55 +5826,55 @@ contains
     s_lchnk(1) = real(lchnk, c_double)
     sp_lchnk => s_lchnk
     in_p(1) = c_loc(s_lchnk); in_s(:, 1) = (/ 1_c_int64_t, 0_c_int64_t, 0_c_int64_t /)
-    if (.not. plugged(10)) call torch_tensor_from_array(in_t(1), sp_lchnk, torch_kCPU)
+    if (.not. plugged(10)) call torch_tensor_from_array(in_t(1), sp_lchnk, model_device(10), model_device_index(10))
     s_ncol(1) = real(ncol, c_double)
     sp_ncol => s_ncol
     in_p(2) = c_loc(s_ncol); in_s(:, 2) = (/ 1_c_int64_t, 0_c_int64_t, 0_c_int64_t /)
-    if (.not. plugged(10)) call torch_tensor_from_array(in_t(2), sp_ncol, torch_kCPU)
+    if (.not. plugged(10)) call torch_tensor_from_array(in_t(2), sp_ncol, model_device(10), model_device_index(10))
     call c_f_pointer(c_loc(t), v_t, (/ 16, 30 /))
     in_p(3) = c_loc(t); in_s(:, 3) = (/ int(16, c_int64_t), int(30, c_int64_t), 0_c_int64_t /)
-    if (.not. plugged(10)) call torch_tensor_from_array(in_t(3), v_t, torch_kCPU)
+    if (.not. plugged(10)) call torch_tensor_from_array(in_t(3), v_t, model_device(10), model_device_index(10))
     call c_f_pointer(c_loc(qh), v_qh, (/ 16, 30 /))
     in_p(4) = c_loc(qh); in_s(:, 4) = (/ int(16, c_int64_t), int(30, c_int64_t), 0_c_int64_t /)
-    if (.not. plugged(10)) call torch_tensor_from_array(in_t(4), v_qh, torch_kCPU)
+    if (.not. plugged(10)) call torch_tensor_from_array(in_t(4), v_qh, model_device(10), model_device_index(10))
     call c_f_pointer(c_loc(pblh), v_pblh, (/ 16 /))
     in_p(5) = c_loc(pblh); in_s(:, 5) = (/ int(16, c_int64_t), 0_c_int64_t, 0_c_int64_t /)
-    if (.not. plugged(10)) call torch_tensor_from_array(in_t(5), v_pblh, torch_kCPU)
+    if (.not. plugged(10)) call torch_tensor_from_array(in_t(5), v_pblh, model_device(10), model_device_index(10))
     call c_f_pointer(c_loc(zm), v_zm, (/ 16, 30 /))
     in_p(6) = c_loc(zm); in_s(:, 6) = (/ int(16, c_int64_t), int(30, c_int64_t), 0_c_int64_t /)
-    if (.not. plugged(10)) call torch_tensor_from_array(in_t(6), v_zm, torch_kCPU)
+    if (.not. plugged(10)) call torch_tensor_from_array(in_t(6), v_zm, model_device(10), model_device_index(10))
     call c_f_pointer(c_loc(geos), v_geos, (/ 16 /))
     in_p(7) = c_loc(geos); in_s(:, 7) = (/ int(16, c_int64_t), 0_c_int64_t, 0_c_int64_t /)
-    if (.not. plugged(10)) call torch_tensor_from_array(in_t(7), v_geos, torch_kCPU)
+    if (.not. plugged(10)) call torch_tensor_from_array(in_t(7), v_geos, model_device(10), model_device_index(10))
     call c_f_pointer(c_loc(zi), v_zi, (/ 16, 31 /))
     in_p(8) = c_loc(zi); in_s(:, 8) = (/ int(16, c_int64_t), int(31, c_int64_t), 0_c_int64_t /)
-    if (.not. plugged(10)) call torch_tensor_from_array(in_t(8), v_zi, torch_kCPU)
+    if (.not. plugged(10)) call torch_tensor_from_array(in_t(8), v_zi, model_device(10), model_device_index(10))
     call c_f_pointer(c_loc(pap), v_pap, (/ 16, 30 /))
     in_p(9) = c_loc(pap); in_s(:, 9) = (/ int(16, c_int64_t), int(30, c_int64_t), 0_c_int64_t /)
-    if (.not. plugged(10)) call torch_tensor_from_array(in_t(9), v_pap, torch_kCPU)
+    if (.not. plugged(10)) call torch_tensor_from_array(in_t(9), v_pap, model_device(10), model_device_index(10))
     call c_f_pointer(c_loc(paph), v_paph, (/ 16, 31 /))
     in_p(10) = c_loc(paph); in_s(:, 10) = (/ int(16, c_int64_t), int(31, c_int64_t), 0_c_int64_t /)
-    if (.not. plugged(10)) call torch_tensor_from_array(in_t(10), v_paph, torch_kCPU)
+    if (.not. plugged(10)) call torch_tensor_from_array(in_t(10), v_paph, model_device(10), model_device_index(10))
     call c_f_pointer(c_loc(dpp), v_dpp, (/ 16, 30 /))
     in_p(11) = c_loc(dpp); in_s(:, 11) = (/ int(16, c_int64_t), int(30, c_int64_t), 0_c_int64_t /)
-    if (.not. plugged(10)) call torch_tensor_from_array(in_t(11), v_dpp, torch_kCPU)
+    if (.not. plugged(10)) call torch_tensor_from_array(in_t(11), v_dpp, model_device(10), model_device_index(10))
     s_delt(1) = delt
     sp_delt => s_delt
     in_p(12) = c_loc(s_delt); in_s(:, 12) = (/ 1_c_int64_t, 0_c_int64_t, 0_c_int64_t /)
-    if (.not. plugged(10)) call torch_tensor_from_array(in_t(12), sp_delt, torch_kCPU)
+    if (.not. plugged(10)) call torch_tensor_from_array(in_t(12), sp_delt, model_device(10), model_device_index(10))
     call c_f_pointer(c_loc(tpert), v_tpert, (/ 16 /))
     in_p(13) = c_loc(tpert); in_s(:, 13) = (/ int(16, c_int64_t), 0_c_int64_t, 0_c_int64_t /)
-    if (.not. plugged(10)) call torch_tensor_from_array(in_t(13), v_tpert, torch_kCPU)
+    if (.not. plugged(10)) call torch_tensor_from_array(in_t(13), v_tpert, model_device(10), model_device_index(10))
     s_lengath(1) = real(lengath, c_double)
     sp_lengath => s_lengath
     in_p(14) = c_loc(s_lengath); in_s(:, 14) = (/ 1_c_int64_t, 0_c_int64_t, 0_c_int64_t /)
-    if (.not. plugged(10)) call torch_tensor_from_array(in_t(14), sp_lengath, torch_kCPU)
+    if (.not. plugged(10)) call torch_tensor_from_array(in_t(14), sp_lengath, model_device(10), model_device_index(10))
     call c_f_pointer(c_loc(ql), v_ql, (/ 16, 30 /))
     in_p(15) = c_loc(ql); in_s(:, 15) = (/ int(16, c_int64_t), int(30, c_int64_t), 0_c_int64_t /)
-    if (.not. plugged(10)) call torch_tensor_from_array(in_t(15), v_ql, torch_kCPU)
+    if (.not. plugged(10)) call torch_tensor_from_array(in_t(15), v_ql, model_device(10), model_device_index(10))
     call c_f_pointer(c_loc(landfrac), v_landfrac, (/ 16 /))
     in_p(16) = c_loc(landfrac); in_s(:, 16) = (/ int(16, c_int64_t), 0_c_int64_t, 0_c_int64_t /)
-    if (.not. plugged(10)) call torch_tensor_from_array(in_t(16), v_landfrac, torch_kCPU)
+    if (.not. plugged(10)) call torch_tensor_from_array(in_t(16), v_landfrac, model_device(10), model_device_index(10))
     op_prec => o_prec
     out_p(1) = c_loc(o_prec); out_s(:, 1) = (/ int(16, c_int64_t), 0_c_int64_t, 0_c_int64_t /)
     if (.not. plugged(10)) call torch_tensor_from_array(out_t(1), op_prec, torch_kCPU)
@@ -6333,52 +6338,52 @@ contains
     real(c_double), pointer, contiguous :: yp_wtevp(:,:)
     z_lchnk = 0.0_c_double
     zp_lchnk => z_lchnk
-    call torch_tensor_from_array(in_t(1), zp_lchnk, torch_kCPU)
+    call torch_tensor_from_array(in_t(1), zp_lchnk, model_device(10), model_device_index(10))
     z_ncol = 0.0_c_double
     zp_ncol => z_ncol
-    call torch_tensor_from_array(in_t(2), zp_ncol, torch_kCPU)
+    call torch_tensor_from_array(in_t(2), zp_ncol, model_device(10), model_device_index(10))
     z_t = 0.0_c_double
     zp_t => z_t
-    call torch_tensor_from_array(in_t(3), zp_t, torch_kCPU)
+    call torch_tensor_from_array(in_t(3), zp_t, model_device(10), model_device_index(10))
     z_qh = 0.0_c_double
     zp_qh => z_qh
-    call torch_tensor_from_array(in_t(4), zp_qh, torch_kCPU)
+    call torch_tensor_from_array(in_t(4), zp_qh, model_device(10), model_device_index(10))
     z_pblh = 0.0_c_double
     zp_pblh => z_pblh
-    call torch_tensor_from_array(in_t(5), zp_pblh, torch_kCPU)
+    call torch_tensor_from_array(in_t(5), zp_pblh, model_device(10), model_device_index(10))
     z_zm = 0.0_c_double
     zp_zm => z_zm
-    call torch_tensor_from_array(in_t(6), zp_zm, torch_kCPU)
+    call torch_tensor_from_array(in_t(6), zp_zm, model_device(10), model_device_index(10))
     z_geos = 0.0_c_double
     zp_geos => z_geos
-    call torch_tensor_from_array(in_t(7), zp_geos, torch_kCPU)
+    call torch_tensor_from_array(in_t(7), zp_geos, model_device(10), model_device_index(10))
     z_zi = 0.0_c_double
     zp_zi => z_zi
-    call torch_tensor_from_array(in_t(8), zp_zi, torch_kCPU)
+    call torch_tensor_from_array(in_t(8), zp_zi, model_device(10), model_device_index(10))
     z_pap = 0.0_c_double
     zp_pap => z_pap
-    call torch_tensor_from_array(in_t(9), zp_pap, torch_kCPU)
+    call torch_tensor_from_array(in_t(9), zp_pap, model_device(10), model_device_index(10))
     z_paph = 0.0_c_double
     zp_paph => z_paph
-    call torch_tensor_from_array(in_t(10), zp_paph, torch_kCPU)
+    call torch_tensor_from_array(in_t(10), zp_paph, model_device(10), model_device_index(10))
     z_dpp = 0.0_c_double
     zp_dpp => z_dpp
-    call torch_tensor_from_array(in_t(11), zp_dpp, torch_kCPU)
+    call torch_tensor_from_array(in_t(11), zp_dpp, model_device(10), model_device_index(10))
     z_delt = 0.0_c_double
     zp_delt => z_delt
-    call torch_tensor_from_array(in_t(12), zp_delt, torch_kCPU)
+    call torch_tensor_from_array(in_t(12), zp_delt, model_device(10), model_device_index(10))
     z_tpert = 0.0_c_double
     zp_tpert => z_tpert
-    call torch_tensor_from_array(in_t(13), zp_tpert, torch_kCPU)
+    call torch_tensor_from_array(in_t(13), zp_tpert, model_device(10), model_device_index(10))
     z_lengath = 0.0_c_double
     zp_lengath => z_lengath
-    call torch_tensor_from_array(in_t(14), zp_lengath, torch_kCPU)
+    call torch_tensor_from_array(in_t(14), zp_lengath, model_device(10), model_device_index(10))
     z_ql = 0.0_c_double
     zp_ql => z_ql
-    call torch_tensor_from_array(in_t(15), zp_ql, torch_kCPU)
+    call torch_tensor_from_array(in_t(15), zp_ql, model_device(10), model_device_index(10))
     z_landfrac = 0.0_c_double
     zp_landfrac => z_landfrac
-    call torch_tensor_from_array(in_t(16), zp_landfrac, torch_kCPU)
+    call torch_tensor_from_array(in_t(16), zp_landfrac, model_device(10), model_device_index(10))
     yp_prec => y_prec
     call torch_tensor_from_array(out_t(1), yp_prec, torch_kCPU)
     yp_jctop => y_jctop
@@ -6775,94 +6780,94 @@ contains
     s_lchnk(1) = real(lchnk, c_double)
     sp_lchnk => s_lchnk
     in_p(1) = c_loc(s_lchnk); in_s(:, 1) = (/ 1_c_int64_t, 0_c_int64_t, 0_c_int64_t /)
-    if (.not. plugged(11)) call torch_tensor_from_array(in_t(1), sp_lchnk, torch_kCPU)
+    if (.not. plugged(11)) call torch_tensor_from_array(in_t(1), sp_lchnk, model_device(11), model_device_index(11))
     s_ncol(1) = real(ncol, c_double)
     sp_ncol => s_ncol
     in_p(2) = c_loc(s_ncol); in_s(:, 2) = (/ 1_c_int64_t, 0_c_int64_t, 0_c_int64_t /)
-    if (.not. plugged(11)) call torch_tensor_from_array(in_t(2), sp_ncol, torch_kCPU)
+    if (.not. plugged(11)) call torch_tensor_from_array(in_t(2), sp_ncol, model_device(11), model_device_index(11))
     call c_f_pointer(c_loc(t), v_t, (/ pcols, pver /))
     in_p(3) = c_loc(t); in_s(:, 3) = (/ int(pcols, c_int64_t), int(pver, c_int64_t), 0_c_int64_t /)
-    if (.not. plugged(11)) call torch_tensor_from_array(in_t(3), v_t, torch_kCPU)
+    if (.not. plugged(11)) call torch_tensor_from_array(in_t(3), v_t, model_device(11), model_device_index(11))
     call c_f_pointer(c_loc(qv), v_qv, (/ pcols, pver /))
     in_p(4) = c_loc(qv); in_s(:, 4) = (/ int(pcols, c_int64_t), int(pver, c_int64_t), 0_c_int64_t /)
-    if (.not. plugged(11)) call torch_tensor_from_array(in_t(4), v_qv, torch_kCPU)
+    if (.not. plugged(11)) call torch_tensor_from_array(in_t(4), v_qv, model_device(11), model_device_index(11))
     s_ztodt(1) = ztodt
     sp_ztodt => s_ztodt
     in_p(5) = c_loc(s_ztodt); in_s(:, 5) = (/ 1_c_int64_t, 0_c_int64_t, 0_c_int64_t /)
-    if (.not. plugged(11)) call torch_tensor_from_array(in_t(5), sp_ztodt, torch_kCPU)
+    if (.not. plugged(11)) call torch_tensor_from_array(in_t(5), sp_ztodt, model_device(11), model_device_index(11))
     call c_f_pointer(c_loc(ql), v_ql, (/ pcols, pver /))
     in_p(6) = c_loc(ql); in_s(:, 6) = (/ int(pcols, c_int64_t), int(pver, c_int64_t), 0_c_int64_t /)
-    if (.not. plugged(11)) call torch_tensor_from_array(in_t(6), v_ql, torch_kCPU)
+    if (.not. plugged(11)) call torch_tensor_from_array(in_t(6), v_ql, model_device(11), model_device_index(11))
     call c_f_pointer(c_loc(qi), v_qi, (/ pcols, pver /))
     in_p(7) = c_loc(qi); in_s(:, 7) = (/ int(pcols, c_int64_t), int(pver, c_int64_t), 0_c_int64_t /)
-    if (.not. plugged(11)) call torch_tensor_from_array(in_t(7), v_qi, torch_kCPU)
+    if (.not. plugged(11)) call torch_tensor_from_array(in_t(7), v_qi, model_device(11), model_device_index(11))
     call c_f_pointer(c_loc(s), v_s, (/ pcols, pver /))
     in_p(8) = c_loc(s); in_s(:, 8) = (/ int(pcols, c_int64_t), int(pver, c_int64_t), 0_c_int64_t /)
-    if (.not. plugged(11)) call torch_tensor_from_array(in_t(8), v_s, torch_kCPU)
+    if (.not. plugged(11)) call torch_tensor_from_array(in_t(8), v_s, model_device(11), model_device_index(11))
     call c_f_pointer(c_loc(pdel), v_pdel, (/ pcols, pver /))
     in_p(9) = c_loc(pdel); in_s(:, 9) = (/ int(pcols, c_int64_t), int(pver, c_int64_t), 0_c_int64_t /)
-    if (.not. plugged(11)) call torch_tensor_from_array(in_t(9), v_pdel, torch_kCPU)
+    if (.not. plugged(11)) call torch_tensor_from_array(in_t(9), v_pdel, model_device(11), model_device_index(11))
     call c_f_pointer(c_loc(rpdel), v_rpdel, (/ pcols, pver /))
     in_p(10) = c_loc(rpdel); in_s(:, 10) = (/ int(pcols, c_int64_t), int(pver, c_int64_t), 0_c_int64_t /)
-    if (.not. plugged(11)) call torch_tensor_from_array(in_t(10), v_rpdel, torch_kCPU)
+    if (.not. plugged(11)) call torch_tensor_from_array(in_t(10), v_rpdel, model_device(11), model_device_index(11))
     call c_f_pointer(c_loc(cldn), v_cldn, (/ pcols, pver /))
     in_p(11) = c_loc(cldn); in_s(:, 11) = (/ int(pcols, c_int64_t), int(pver, c_int64_t), 0_c_int64_t /)
-    if (.not. plugged(11)) call torch_tensor_from_array(in_t(11), v_cldn, torch_kCPU)
+    if (.not. plugged(11)) call torch_tensor_from_array(in_t(11), v_cldn, model_device(11), model_device_index(11))
     call c_f_pointer(c_loc(qrl), v_qrl, (/ pcols, pver /))
     in_p(12) = c_loc(qrl); in_s(:, 12) = (/ int(pcols, c_int64_t), int(pver, c_int64_t), 0_c_int64_t /)
-    if (.not. plugged(11)) call torch_tensor_from_array(in_t(12), v_qrl, torch_kCPU)
+    if (.not. plugged(11)) call torch_tensor_from_array(in_t(12), v_qrl, model_device(11), model_device_index(11))
     call c_f_pointer(c_loc(wsedl), v_wsedl, (/ pcols, pver /))
     in_p(13) = c_loc(wsedl); in_s(:, 13) = (/ int(pcols, c_int64_t), int(pver, c_int64_t), 0_c_int64_t /)
-    if (.not. plugged(11)) call torch_tensor_from_array(in_t(13), v_wsedl, torch_kCPU)
+    if (.not. plugged(11)) call torch_tensor_from_array(in_t(13), v_wsedl, model_device(11), model_device_index(11))
     call c_f_pointer(c_loc(z), v_z, (/ pcols, pver /))
     in_p(14) = c_loc(z); in_s(:, 14) = (/ int(pcols, c_int64_t), int(pver, c_int64_t), 0_c_int64_t /)
-    if (.not. plugged(11)) call torch_tensor_from_array(in_t(14), v_z, torch_kCPU)
+    if (.not. plugged(11)) call torch_tensor_from_array(in_t(14), v_z, model_device(11), model_device_index(11))
     call c_f_pointer(c_loc(zi), v_zi, (/ pcols, pver+1 /))
     in_p(15) = c_loc(zi); in_s(:, 15) = (/ int(pcols, c_int64_t), int(pver+1, c_int64_t), 0_c_int64_t /)
-    if (.not. plugged(11)) call torch_tensor_from_array(in_t(15), v_zi, torch_kCPU)
+    if (.not. plugged(11)) call torch_tensor_from_array(in_t(15), v_zi, model_device(11), model_device_index(11))
     call c_f_pointer(c_loc(pmid), v_pmid, (/ pcols, pver /))
     in_p(16) = c_loc(pmid); in_s(:, 16) = (/ int(pcols, c_int64_t), int(pver, c_int64_t), 0_c_int64_t /)
-    if (.not. plugged(11)) call torch_tensor_from_array(in_t(16), v_pmid, torch_kCPU)
+    if (.not. plugged(11)) call torch_tensor_from_array(in_t(16), v_pmid, model_device(11), model_device_index(11))
     call c_f_pointer(c_loc(pi), v_pi, (/ pcols, pver+1 /))
     in_p(17) = c_loc(pi); in_s(:, 17) = (/ int(pcols, c_int64_t), int(pver+1, c_int64_t), 0_c_int64_t /)
-    if (.not. plugged(11)) call torch_tensor_from_array(in_t(17), v_pi, torch_kCPU)
+    if (.not. plugged(11)) call torch_tensor_from_array(in_t(17), v_pi, model_device(11), model_device_index(11))
     call c_f_pointer(c_loc(u), v_u, (/ pcols, pver /))
     in_p(18) = c_loc(u); in_s(:, 18) = (/ int(pcols, c_int64_t), int(pver, c_int64_t), 0_c_int64_t /)
-    if (.not. plugged(11)) call torch_tensor_from_array(in_t(18), v_u, torch_kCPU)
+    if (.not. plugged(11)) call torch_tensor_from_array(in_t(18), v_u, model_device(11), model_device_index(11))
     call c_f_pointer(c_loc(v), v_v, (/ pcols, pver /))
     in_p(19) = c_loc(v); in_s(:, 19) = (/ int(pcols, c_int64_t), int(pver, c_int64_t), 0_c_int64_t /)
-    if (.not. plugged(11)) call torch_tensor_from_array(in_t(19), v_v, torch_kCPU)
+    if (.not. plugged(11)) call torch_tensor_from_array(in_t(19), v_v, model_device(11), model_device_index(11))
     call c_f_pointer(c_loc(taux), v_taux, (/ pcols /))
     in_p(20) = c_loc(taux); in_s(:, 20) = (/ int(pcols, c_int64_t), 0_c_int64_t, 0_c_int64_t /)
-    if (.not. plugged(11)) call torch_tensor_from_array(in_t(20), v_taux, torch_kCPU)
+    if (.not. plugged(11)) call torch_tensor_from_array(in_t(20), v_taux, model_device(11), model_device_index(11))
     call c_f_pointer(c_loc(tauy), v_tauy, (/ pcols /))
     in_p(21) = c_loc(tauy); in_s(:, 21) = (/ int(pcols, c_int64_t), 0_c_int64_t, 0_c_int64_t /)
-    if (.not. plugged(11)) call torch_tensor_from_array(in_t(21), v_tauy, torch_kCPU)
+    if (.not. plugged(11)) call torch_tensor_from_array(in_t(21), v_tauy, model_device(11), model_device_index(11))
     call c_f_pointer(c_loc(shflx), v_shflx, (/ pcols /))
     in_p(22) = c_loc(shflx); in_s(:, 22) = (/ int(pcols, c_int64_t), 0_c_int64_t, 0_c_int64_t /)
-    if (.not. plugged(11)) call torch_tensor_from_array(in_t(22), v_shflx, torch_kCPU)
+    if (.not. plugged(11)) call torch_tensor_from_array(in_t(22), v_shflx, model_device(11), model_device_index(11))
     call c_f_pointer(c_loc(qflx), v_qflx, (/ pcols /))
     in_p(23) = c_loc(qflx); in_s(:, 23) = (/ int(pcols, c_int64_t), 0_c_int64_t, 0_c_int64_t /)
-    if (.not. plugged(11)) call torch_tensor_from_array(in_t(23), v_qflx, torch_kCPU)
+    if (.not. plugged(11)) call torch_tensor_from_array(in_t(23), v_qflx, model_device(11), model_device_index(11))
     s_nturb(1) = real(nturb, c_double)
     sp_nturb => s_nturb
     in_p(24) = c_loc(s_nturb); in_s(:, 24) = (/ 1_c_int64_t, 0_c_int64_t, 0_c_int64_t /)
-    if (.not. plugged(11)) call torch_tensor_from_array(in_t(24), sp_nturb, torch_kCPU)
+    if (.not. plugged(11)) call torch_tensor_from_array(in_t(24), sp_nturb, model_device(11), model_device_index(11))
     call c_f_pointer(c_loc(kvm_in), v_kvm_in, (/ pcols, pver+1 /))
     in_p(25) = c_loc(kvm_in); in_s(:, 25) = (/ int(pcols, c_int64_t), int(pver+1, c_int64_t), 0_c_int64_t /)
-    if (.not. plugged(11)) call torch_tensor_from_array(in_t(25), v_kvm_in, torch_kCPU)
+    if (.not. plugged(11)) call torch_tensor_from_array(in_t(25), v_kvm_in, model_device(11), model_device_index(11))
     call c_f_pointer(c_loc(kvh_in), v_kvh_in, (/ pcols, pver+1 /))
     in_p(26) = c_loc(kvh_in); in_s(:, 26) = (/ int(pcols, c_int64_t), int(pver+1, c_int64_t), 0_c_int64_t /)
-    if (.not. plugged(11)) call torch_tensor_from_array(in_t(26), v_kvh_in, torch_kCPU)
+    if (.not. plugged(11)) call torch_tensor_from_array(in_t(26), v_kvh_in, model_device(11), model_device_index(11))
     call c_f_pointer(c_loc(tauresx), v_tauresx, (/ pcols /))
     in_p(27) = c_loc(tauresx); in_s(:, 27) = (/ int(pcols, c_int64_t), 0_c_int64_t, 0_c_int64_t /)
-    if (.not. plugged(11)) call torch_tensor_from_array(in_t(27), v_tauresx, torch_kCPU)
+    if (.not. plugged(11)) call torch_tensor_from_array(in_t(27), v_tauresx, model_device(11), model_device_index(11))
     call c_f_pointer(c_loc(tauresy), v_tauresy, (/ pcols /))
     in_p(28) = c_loc(tauresy); in_s(:, 28) = (/ int(pcols, c_int64_t), 0_c_int64_t, 0_c_int64_t /)
-    if (.not. plugged(11)) call torch_tensor_from_array(in_t(28), v_tauresy, torch_kCPU)
+    if (.not. plugged(11)) call torch_tensor_from_array(in_t(28), v_tauresy, model_device(11), model_device_index(11))
     call c_f_pointer(c_loc(ksrftms), v_ksrftms, (/ pcols /))
     in_p(29) = c_loc(ksrftms); in_s(:, 29) = (/ int(pcols, c_int64_t), 0_c_int64_t, 0_c_int64_t /)
-    if (.not. plugged(11)) call torch_tensor_from_array(in_t(29), v_ksrftms, torch_kCPU)
+    if (.not. plugged(11)) call torch_tensor_from_array(in_t(29), v_ksrftms, model_device(11), model_device_index(11))
     op_rrho => o_rrho
     out_p(1) = c_loc(o_rrho); out_s(:, 1) = (/ int(pcols, c_int64_t), 0_c_int64_t, 0_c_int64_t /)
     if (.not. plugged(11)) call torch_tensor_from_array(out_t(1), op_rrho, torch_kCPU)
@@ -7136,91 +7141,91 @@ contains
     real(c_double), pointer, contiguous :: yp_sm_aw(:,:)
     z_lchnk = 0.0_c_double
     zp_lchnk => z_lchnk
-    call torch_tensor_from_array(in_t(1), zp_lchnk, torch_kCPU)
+    call torch_tensor_from_array(in_t(1), zp_lchnk, model_device(11), model_device_index(11))
     z_ncol = 0.0_c_double
     zp_ncol => z_ncol
-    call torch_tensor_from_array(in_t(2), zp_ncol, torch_kCPU)
+    call torch_tensor_from_array(in_t(2), zp_ncol, model_device(11), model_device_index(11))
     z_t = 0.0_c_double
     zp_t => z_t
-    call torch_tensor_from_array(in_t(3), zp_t, torch_kCPU)
+    call torch_tensor_from_array(in_t(3), zp_t, model_device(11), model_device_index(11))
     z_qv = 0.0_c_double
     zp_qv => z_qv
-    call torch_tensor_from_array(in_t(4), zp_qv, torch_kCPU)
+    call torch_tensor_from_array(in_t(4), zp_qv, model_device(11), model_device_index(11))
     z_ztodt = 0.0_c_double
     zp_ztodt => z_ztodt
-    call torch_tensor_from_array(in_t(5), zp_ztodt, torch_kCPU)
+    call torch_tensor_from_array(in_t(5), zp_ztodt, model_device(11), model_device_index(11))
     z_ql = 0.0_c_double
     zp_ql => z_ql
-    call torch_tensor_from_array(in_t(6), zp_ql, torch_kCPU)
+    call torch_tensor_from_array(in_t(6), zp_ql, model_device(11), model_device_index(11))
     z_qi = 0.0_c_double
     zp_qi => z_qi
-    call torch_tensor_from_array(in_t(7), zp_qi, torch_kCPU)
+    call torch_tensor_from_array(in_t(7), zp_qi, model_device(11), model_device_index(11))
     z_s = 0.0_c_double
     zp_s => z_s
-    call torch_tensor_from_array(in_t(8), zp_s, torch_kCPU)
+    call torch_tensor_from_array(in_t(8), zp_s, model_device(11), model_device_index(11))
     z_pdel = 0.0_c_double
     zp_pdel => z_pdel
-    call torch_tensor_from_array(in_t(9), zp_pdel, torch_kCPU)
+    call torch_tensor_from_array(in_t(9), zp_pdel, model_device(11), model_device_index(11))
     z_rpdel = 0.0_c_double
     zp_rpdel => z_rpdel
-    call torch_tensor_from_array(in_t(10), zp_rpdel, torch_kCPU)
+    call torch_tensor_from_array(in_t(10), zp_rpdel, model_device(11), model_device_index(11))
     z_cldn = 0.0_c_double
     zp_cldn => z_cldn
-    call torch_tensor_from_array(in_t(11), zp_cldn, torch_kCPU)
+    call torch_tensor_from_array(in_t(11), zp_cldn, model_device(11), model_device_index(11))
     z_qrl = 0.0_c_double
     zp_qrl => z_qrl
-    call torch_tensor_from_array(in_t(12), zp_qrl, torch_kCPU)
+    call torch_tensor_from_array(in_t(12), zp_qrl, model_device(11), model_device_index(11))
     z_wsedl = 0.0_c_double
     zp_wsedl => z_wsedl
-    call torch_tensor_from_array(in_t(13), zp_wsedl, torch_kCPU)
+    call torch_tensor_from_array(in_t(13), zp_wsedl, model_device(11), model_device_index(11))
     z_z = 0.0_c_double
     zp_z => z_z
-    call torch_tensor_from_array(in_t(14), zp_z, torch_kCPU)
+    call torch_tensor_from_array(in_t(14), zp_z, model_device(11), model_device_index(11))
     z_zi = 0.0_c_double
     zp_zi => z_zi
-    call torch_tensor_from_array(in_t(15), zp_zi, torch_kCPU)
+    call torch_tensor_from_array(in_t(15), zp_zi, model_device(11), model_device_index(11))
     z_pmid = 0.0_c_double
     zp_pmid => z_pmid
-    call torch_tensor_from_array(in_t(16), zp_pmid, torch_kCPU)
+    call torch_tensor_from_array(in_t(16), zp_pmid, model_device(11), model_device_index(11))
     z_pi = 0.0_c_double
     zp_pi => z_pi
-    call torch_tensor_from_array(in_t(17), zp_pi, torch_kCPU)
+    call torch_tensor_from_array(in_t(17), zp_pi, model_device(11), model_device_index(11))
     z_u = 0.0_c_double
     zp_u => z_u
-    call torch_tensor_from_array(in_t(18), zp_u, torch_kCPU)
+    call torch_tensor_from_array(in_t(18), zp_u, model_device(11), model_device_index(11))
     z_v = 0.0_c_double
     zp_v => z_v
-    call torch_tensor_from_array(in_t(19), zp_v, torch_kCPU)
+    call torch_tensor_from_array(in_t(19), zp_v, model_device(11), model_device_index(11))
     z_taux = 0.0_c_double
     zp_taux => z_taux
-    call torch_tensor_from_array(in_t(20), zp_taux, torch_kCPU)
+    call torch_tensor_from_array(in_t(20), zp_taux, model_device(11), model_device_index(11))
     z_tauy = 0.0_c_double
     zp_tauy => z_tauy
-    call torch_tensor_from_array(in_t(21), zp_tauy, torch_kCPU)
+    call torch_tensor_from_array(in_t(21), zp_tauy, model_device(11), model_device_index(11))
     z_shflx = 0.0_c_double
     zp_shflx => z_shflx
-    call torch_tensor_from_array(in_t(22), zp_shflx, torch_kCPU)
+    call torch_tensor_from_array(in_t(22), zp_shflx, model_device(11), model_device_index(11))
     z_qflx = 0.0_c_double
     zp_qflx => z_qflx
-    call torch_tensor_from_array(in_t(23), zp_qflx, torch_kCPU)
+    call torch_tensor_from_array(in_t(23), zp_qflx, model_device(11), model_device_index(11))
     z_nturb = 0.0_c_double
     zp_nturb => z_nturb
-    call torch_tensor_from_array(in_t(24), zp_nturb, torch_kCPU)
+    call torch_tensor_from_array(in_t(24), zp_nturb, model_device(11), model_device_index(11))
     z_kvm_in = 0.0_c_double
     zp_kvm_in => z_kvm_in
-    call torch_tensor_from_array(in_t(25), zp_kvm_in, torch_kCPU)
+    call torch_tensor_from_array(in_t(25), zp_kvm_in, model_device(11), model_device_index(11))
     z_kvh_in = 0.0_c_double
     zp_kvh_in => z_kvh_in
-    call torch_tensor_from_array(in_t(26), zp_kvh_in, torch_kCPU)
+    call torch_tensor_from_array(in_t(26), zp_kvh_in, model_device(11), model_device_index(11))
     z_tauresx = 0.0_c_double
     zp_tauresx => z_tauresx
-    call torch_tensor_from_array(in_t(27), zp_tauresx, torch_kCPU)
+    call torch_tensor_from_array(in_t(27), zp_tauresx, model_device(11), model_device_index(11))
     z_tauresy = 0.0_c_double
     zp_tauresy => z_tauresy
-    call torch_tensor_from_array(in_t(28), zp_tauresy, torch_kCPU)
+    call torch_tensor_from_array(in_t(28), zp_tauresy, model_device(11), model_device_index(11))
     z_ksrftms = 0.0_c_double
     zp_ksrftms => z_ksrftms
-    call torch_tensor_from_array(in_t(29), zp_ksrftms, torch_kCPU)
+    call torch_tensor_from_array(in_t(29), zp_ksrftms, model_device(11), model_device_index(11))
     yp_rrho => y_rrho
     call torch_tensor_from_array(out_t(1), yp_rrho, torch_kCPU)
     yp_ustar => y_ustar
@@ -7358,8 +7363,17 @@ contains
   integer(c_int) function pycam_hooks_bind_model_v1(hook, path, length, shadow_flag) &
        bind(C, name='pycam_hooks_bind_model_v1') result(status)
     ! load the TorchScript file at path (length bytes) and answer the hook's calls with it from
-    ! now on; with shadow_flag /= 0 the model runs but the original keeps answering
+    ! now on, on the host; with shadow_flag /= 0 the model runs but the original keeps answering
     integer(c_int), value, intent(in) :: hook, length, shadow_flag
+    character(kind=c_char), intent(in) :: path(*)
+    status = pycam_hooks_bind_model_v2(hook, path, length, shadow_flag, torch_kCPU, -1_c_int)
+  end function pycam_hooks_bind_model_v1
+
+  integer(c_int) function pycam_hooks_bind_model_v2(hook, path, length, shadow_flag, device_type, device_index) &
+       bind(C, name='pycam_hooks_bind_model_v2') result(status)
+    ! as v1, with the device the model lives and runs on: torch_kCPU, or torch_kCUDA and the
+    ! index of this rank's GPU.  The output tensor stays on the host either way
+    integer(c_int), value, intent(in) :: hook, length, shadow_flag, device_type, device_index
     character(kind=c_char), intent(in) :: path(*)
     character(len=4096) :: filename
     integer :: i
@@ -7379,9 +7393,14 @@ contains
     do i = 1, length
       filename(i:i) = path(i)
     end do
+    if (device_type /= torch_kCPU .and. device_type /= torch_kCUDA) then
+      status = 7_c_int; return
+    end if
     if (modeled(hook) .and. .not. plugged(hook)) call torch_delete(models(hook))
     plugged(hook) = .false.; plugins(hook) = c_null_funptr
-    call torch_model_load(models(hook), filename(1:length), torch_kCPU)
+    model_device(hook) = device_type
+    model_device_index(hook) = int(device_index)
+    call torch_model_load(models(hook), filename(1:length), device_type, int(device_index))
     ! one forward on zeros now: the first step does not pay the model's warm-up
     call system_clock(w0)
     call warm_model(hook)
@@ -7390,7 +7409,7 @@ contains
     modeled(hook) = .true.
     shadow(hook) = shadow_flag /= 0_c_int
     status = 0_c_int
-  end function pycam_hooks_bind_model_v1
+  end function pycam_hooks_bind_model_v2
 
   integer(c_int) function pycam_hooks_unbind_model_v1(hook) bind(C, name='pycam_hooks_unbind_model_v1') result(status)
     ! release the bound model or plugin: the hook answers with the original again
@@ -7400,6 +7419,7 @@ contains
     if (modeled(hook)) then
       if (.not. plugged(hook)) call torch_delete(models(hook))
       modeled(hook) = .false.
+    model_device(hook) = torch_kCPU; model_device_index(hook) = -1
       plugged(hook) = .false.
       plugins(hook) = c_null_funptr
       shadow(hook) = .false.
