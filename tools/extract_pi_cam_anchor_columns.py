@@ -15,6 +15,10 @@ coherent atmospheric state rather than a mix of six unrelated ones.
     tools/extract_pi_cam_anchor_columns.py \\
         --function mmacro_pcond --bundle <capture>.npz \\
         --columns 200000 --output anchors.npz
+
+    tools/extract_pi_cam_anchor_columns.py \\
+        --function uwshcu --kernel compute_uwshcu_inv --frame-capture <run>/frame-capture \\
+        --columns 200000 --output anchors.npz
 """
 
 from __future__ import annotations
@@ -80,17 +84,98 @@ def extract(function: str, bundle_path: Path, columns: int, output: Path,
             "arguments": len(spec.user_arguments)}
 
 
+def extract_frames(function: str, capture: Path, kernel: str, columns: int, output: Path,
+                   seed: int) -> dict:
+    """The same anchors from frames captured at a kernel's hook: ``<capture>/<kernel>.rank-NNNN.npz``
+    holding ``in/<call>/<argument>`` with the live columns as the leading axis and a ``meta`` list
+    per call (step, ncol, token).  Every rank file is read once; the anchors are a seeded random
+    subset of all live columns, sorted by rank, call and lane.
+    """
+
+    import re
+
+    spec = load_function_spec(function)
+    files = sorted(capture.glob(f"{kernel}.rank-*.npz"))
+    if not files:
+        raise SystemExit(f"{capture}: no {kernel}.rank-NNNN.npz files")
+    counts = []                                  # (rank, call, ncol)
+    for path in files:
+        rank = int(re.search(r"rank-(\d+)\.npz$", path.name).group(1))
+        with np.load(path, allow_pickle=True) as z:
+            meta = json.loads(str(z["meta"])) if "meta" in z.files else []
+            calls = sorted({int(k.split("/")[1]) for k in z.files if k.startswith("in/")})
+            for call in calls:
+                ncol = int(meta[call]["ncol"]) if call < len(meta) else int(np.asarray(z[f"in/{call}/{spec.user_arguments[1].name}"]).shape[0])
+                counts.append((rank, call, ncol))
+    live = sum(n for _, _, n in counts)
+    take = min(columns, live)
+    rng = np.random.default_rng(seed)
+    chosen = np.sort(rng.choice(live, take, replace=False)) if take < live else np.arange(live)
+    # which (rank, call, lane) each chosen global column index is
+    starts = np.cumsum([0] + [n for _, _, n in counts])
+    owner = np.searchsorted(starts, chosen, side="right") - 1
+    lane = chosen - starts[owner]
+    out: dict[str, list] = {item.name: [] for item in spec.user_arguments}
+    meta_out: dict[str, list] = {"nstep": [], "lchnk": [], "mpi_rank": [], "dt": []}
+    by_entry: dict[int, list[int]] = {}
+    for position, entry in enumerate(owner):
+        by_entry.setdefault(int(entry), []).append(position)
+    by_rank: dict[int, list[int]] = {}                       # one open per rank file, its calls in order
+    for entry in sorted(by_entry):
+        by_rank.setdefault(counts[entry][0], []).append(entry)
+    for rank, entries in sorted(by_rank.items()):
+        path = next(p for p in files if p.name.endswith(f"rank-{rank:04d}.npz"))
+        with np.load(path, allow_pickle=True) as z:
+            names = set(z.files)
+            meta = json.loads(str(z["meta"])) if "meta" in names else []
+            for entry in entries:
+                _, call, _ = counts[entry]
+                record = meta[call] if call < len(meta) else {}
+                lanes = np.asarray([lane[p] for p in by_entry[entry]])
+                for item in spec.user_arguments:
+                    key = f"in/{call}/{item.name}"
+                    if key not in names:
+                        raise SystemExit(f"{path.name}: call {call} has no input {item.name!r}")
+                    array = np.asarray(z[key], dtype=np.float64)
+                    out[item.name].append(array[lanes] if item.rank >= 1 else np.repeat(array.reshape(-1)[:1], lanes.size))
+                meta_out["nstep"].append(np.full(lanes.size, int(record.get("step", -1))))
+                meta_out["lchnk"].append(np.full(lanes.size, int(np.asarray(z[f"in/{call}/lchnk"]).reshape(-1)[0]) if f"in/{call}/lchnk" in names else -1))
+                meta_out["mpi_rank"].append(np.full(lanes.size, rank))
+                meta_out["dt"].append(np.full(lanes.size, float(np.asarray(z[f"in/{call}/dt"]).reshape(-1)[0]) if f"in/{call}/dt" in names else np.nan))
+    result: dict[str, np.ndarray] = {name: np.concatenate(parts, axis=0) for name, parts in out.items()}
+    for item in spec.user_arguments:
+        print(f"  {item.name:14s} {result[item.name].shape}", flush=True)
+    for key, parts in meta_out.items():
+        result[f"meta_{key}"] = np.concatenate(parts)
+    result["provenance"] = np.array(json.dumps({
+        "function": function, "kernel": kernel, "frame_capture": str(capture),
+        "live_columns": int(live), "columns": int(take), "seed": seed,
+    }))
+    output.parent.mkdir(parents=True, exist_ok=True)
+    np.savez(output, **result)
+    return {"live": int(live), "taken": int(take), "arguments": len(spec.user_arguments)}
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--function", default="mmacro_pcond")
-    parser.add_argument("--bundle", type=Path, required=True)
+    parser.add_argument("--bundle", type=Path, default=None, help="a function-capture bundle (<fn>_capture.npz)")
+    parser.add_argument("--frame-capture", type=Path, default=None,
+                        help="a run's frame-capture directory instead of a bundle: frames recorded at a kernel's hook")
+    parser.add_argument("--kernel", default=None, help="the kernel whose frames to read (default: the function's name)")
     parser.add_argument("--columns", type=int, default=200000)
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--output", type=Path, required=True)
     arguments = parser.parse_args()
 
-    summary = extract(arguments.function, arguments.bundle,
-                      arguments.columns, arguments.output, arguments.seed)
+    if (arguments.bundle is None) == (arguments.frame_capture is None):
+        raise SystemExit("give --bundle or --frame-capture, not both")
+    if arguments.frame_capture is not None:
+        summary = extract_frames(arguments.function, arguments.frame_capture, arguments.kernel or arguments.function,
+                                 arguments.columns, arguments.output, arguments.seed)
+    else:
+        summary = extract(arguments.function, arguments.bundle,
+                          arguments.columns, arguments.output, arguments.seed)
     print(f"  {summary['taken']} of {summary['live']} live columns, "
           f"{summary['arguments']} arguments -> {arguments.output}")
     return 0

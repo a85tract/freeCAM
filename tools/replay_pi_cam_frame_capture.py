@@ -91,10 +91,11 @@ def _samples(spec, call: dict):
             yield sample, expected
         return
     if spec.layout == "column":
-        # a chunk routine: the frame holds (pcols, ...) arrays with ncol live lanes
+        # a chunk routine: the frame holds (pcols, ...) arrays with ncol live lanes; a scalar
+        # argument (dt) is the call's, the same for every lane
         for lane in range(ncol):
-            sample = {name: inputs[name][lane] for name in names if name in inputs}
-            expected = {name: np.asarray(value[lane]) for name, value in outputs.items()}
+            sample = {name: (inputs[name] if inputs[name].ndim == 0 else inputs[name][lane]) for name in names if name in inputs}
+            expected = {name: np.asarray(value if np.ndim(value) == 0 else value[lane]) for name, value in outputs.items()}
             yield sample, expected
         return
     sample = {name: inputs[name] for name in names if name in inputs}

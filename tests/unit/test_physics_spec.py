@@ -214,9 +214,13 @@ def test_uwshcu_boundary_is_single_column_and_complete() -> None:
     assert spec.argument("tr0_inv").public_shape == ("pver", "pcnst")
     assert spec.argument("trten_inv").public_shape == ("pver", "pcnst")
     assert set(spec.parameters) == {"uwshcu_rpen"}
-    # Water isotope tracing is live in this configuration, so it is pinned.
+    # Water isotope tracing is live in this configuration, so it is pinned: the model's
+    # logicals read -1 (ifort's .true. in this build), and the constituent index table the
+    # kernel walks is snapshotted with them -- without it the standalone image answers wrongly
     pinned = {entry.symbol: entry for entry in spec.module_state}
-    assert pinned["water_tracer_vars_mp_trace_water_"].expected == 1
-    assert pinned["water_tracer_vars_mp_wisotope_"].expected == 1
+    assert pinned["water_tracer_vars_mp_trace_water_"].expected == -1
+    assert pinned["water_tracer_vars_mp_wisotope_"].expected == -1
+    assert pinned["water_tracer_vars_mp_wtrc_iatype_"].shape == (700, 7) and pinned["water_tracer_vars_mp_wtrc_iatype_"].write == "snapshot"
+    assert pinned["constituents_mp_cnst_type_"].dtype == "S3"
     assert pinned["uwshcu_mp_rpen_"].write == "parameter"
     assert pinned["uwshcu_mp_xlv_"].write == "snapshot"

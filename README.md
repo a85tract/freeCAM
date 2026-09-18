@@ -114,7 +114,10 @@ Leaving the `with` block, or calling `driver.close()`, releases them.
   [physics_function.ipynb](examples/physics_function.ipynb) and
   [kernel_surrogate.ipynb](examples/kernel_surrogate.ipynb) cover one stage as
   a Python class, a scheme as a function, and a trained kernel in a scheme's
-  place.
+  place; [generate_training_data.ipynb](examples/generate_training_data.ipynb)
+  and [generate_compute_uwshcu_inv_training_data.ipynb](examples/generate_compute_uwshcu_inv_training_data.ipynb)
+  generate training data for `mmacro_pcond` and for the shallow cumulus kernel
+  from real columns, answered by the original Fortran.
 - [validation/performance_overhead.md](validation/performance_overhead.md):
   the measured time and memory cost of the Python control layer.
 - The Workflow Builder preview at https://a85tract.github.io/freeCAM/: the

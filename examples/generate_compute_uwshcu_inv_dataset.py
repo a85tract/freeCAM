@@ -1,264 +1,282 @@
-"""Assemble the training dataset of compute_uwshcu_inv from captures of the running model.
+"""Generate one compute_uwshcu_inv training dataset: real columns, perturbed, answered by the Fortran.
 
-The UW shallow cumulus kernel takes the whole constituent array (57 tracers, the
-water isotopes among them, each isotope a fixed ratio of the water it mirrors) and
-returns their tendencies with its own fractionation.  Drawing those inputs from
-distributions, as ``generate_mmacro_pcond_dataset.py`` does for its kernel, would
-put the isotopes off their water; the kernel's own calls inside the running model
-are the states it will be asked about.  So this script does not sample: it reads
-the frames captured at the kernel's hook -- every argument of every call, live
-columns only -- and writes them, one sample per column, as one NetCDF file in the
-layout the physics-function datasets use (``input__<name>``, ``output__<name>``
-over ``sample`` and the contract's axes ``lev``, ``ilev``, ``cnst``; ``sample_id``,
-``status``; the provenance of every capture as attributes), plus where each sample
-came from (``sample_step``, ``sample_rank``, ``sample_column``, ``sample_call``)
-and the constituent names on the ``cnst`` axis.
+The UW shallow cumulus kernel (``uwshcu::compute_uwshcu_inv``, the most expensive kernel
+of the physics) runs here as a Python function in a standalone image linked from the
+pinned iCESM object code, so every answer is the model's own arithmetic.  Each sample
+draws one real column the model computed, perturbs it, draws the tunable parameter,
+and calls the Fortran.  Every one of the kernel's 20 inputs is drawn for every sample
+and every one of its 30 outputs is written: the 57-constituent tracer array among
+them, with the water isotopes on their water at the column's own ratios.
 
-A capture is a run of the model with the kernel's frames recorded::
+Two ways to place the state, as for ``generate_mmacro_pcond_dataset.py``.  Without
+``--anchor-bundle`` the samples are perturbed around the shipped example column, a
+demonstration space.  With ``--anchor-bundle`` (``tools/extract_pi_cam_anchor_columns.py
+--frame-capture``) the anchor is drawn per sample from the columns the model actually
+gave the kernel, and the perturbation adds a stated budget of states the kernel would
+meet through a surrogate's own error.
 
-    PYCAM_CAPTURE_KERNELS=compute_uwshcu_inv PYCAM_CAPTURE_EVERY=25 \\
-        validation/jobs/submit.sh validation/jobs/pi_cam_pausable_1month.pbs
-
-(with the Python stage classes installed as the job does by default; ``every``
-records one call in N of each rank's, 1 for all of them).  The run stays
-bit-for-bit -- the capture only reads -- and leaves ``<run>/frame-capture/`` with
-``compute_uwshcu_inv.rank-NNNN.npz`` per rank and ``capture.json``.  Then::
+Run it with::
 
     uv run python examples/generate_compute_uwshcu_inv_dataset.py \\
-        --capture <run>/frame-capture --output compute_uwshcu_inv_training.nc
+        --samples 2000 --seed 42 --output compute_uwshcu_inv_example.nc
 
     uv run python examples/generate_compute_uwshcu_inv_dataset.py \\
-        --capture <run-a>/frame-capture --capture <run-b>/frame-capture \\
-        --ranks 0:512:4 --no-tracers --output compute_uwshcu_inv_small.nc
-
-The dataset holds the kernel's model block: 20 inputs (``dt`` per column, the
-column's pressure, height, wind, water, temperature, static energy, tracers,
-turbulence, cloud fractions, boundary-layer height and cumulus scale height) and
-30 outputs (the fluxes, tendencies, precipitation, cumulus properties, cloud top
-and base levels, the tracer tendencies and the water-tracer precipitation and
-detrainment).  ``cush`` is both: ``input__cush`` before the call, ``output__cush``
-after.  Level axes run top down as CAM stores them (the ``_inv`` names); a month
-capture of every 25th call is about 0.9 million columns and 45 GB uncompressed.
+        --samples 200000 --anchor-bundle anchors.npz \\
+        --output compute_uwshcu_inv_capture_anchored.nc
 """
 
 from __future__ import annotations
 
 import argparse
-import json
-import re
-import sys
 import time
 from pathlib import Path
 
 import numpy as np
 
-REPO = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(REPO / "src"))
+import freecam as fc
 
-from freecam.physics.spec import load_function_spec  # noqa: E402
-from freecam.pi_cam.hooks import load_hooks  # noqa: E402
-
+FUNCTION = "uwshcu"
 KERNEL = "compute_uwshcu_inv"
-CONTRACT = REPO / "native/pi_cam/functions/uwshcu.yaml"
 
-#: the water-tracer arrays: the 57-constituent tracer state and what the kernel returns for it
-TRACER_ARGUMENTS = ("tr0_inv", "trten_inv", "wtqc_inv", "wtprec", "wtsnow")
+#: CAM's constants (physconst): dry static energy is cp*T + g*z + phis
+CP = 1004.64
+GRAVITY = 9.80616
 
-#: the advected constituents of the PI-atm configuration in the kernel's order (CAM's
-#: constituent list as its log prints it): bulk water, the pseudo-prognostic precipitation,
-#: four water-isotope species in seven phases each, then the chemistry and MAM3 aerosols
-CONSTITUENTS = (
-    "Q", "CLDLIQ", "CLDICE", "NUMLIQ", "NUMICE", "QRAINC", "QSNOWC", "QRAINS", "QSNOWS",
-    "H2OV", "H2OL", "H2OI", "H2OR", "H2OS", "H2Or", "H2Os",
-    "H216OV", "H216OL", "H216OI", "H216OR", "H216OS", "H216Or", "H216Os",
-    "HDOV", "HDOL", "HDOI", "HDOR", "HDOS", "HDOr", "HDOs",
-    "H218OV", "H218OL", "H218OI", "H218OR", "H218OS", "H218Or", "H218Os",
-    "H2O2", "H2SO4", "SO2", "DMS", "SOAG", "so4_a1", "pom_a1", "soa_a1", "bc_a1", "dst_a1", "ncl_a1", "num_a1",
-    "so4_a2", "soa_a2", "ncl_a2", "num_a2", "dst_a3", "ncl_a3", "so4_a3", "num_a3",
-)
+#: where the bulk water sits in the tracer array (0-based constituents Q, CLDLIQ, CLDICE)
+WATER = {"qv0_inv": 0, "ql0_inv": 1, "qi0_inv": 2}
+#: the water-isotope species (bulk H2O, H216O, HDO, H218O) as vapour, liquid, ice
+ISOTOPE_SETS = ((9, 10, 11), (16, 17, 18), (23, 24, 25), (30, 31, 32))
+#: the cloud droplet and crystal numbers ride with their condensate
+NUMBERS = {3: ("ql0_inv", 1.0 / (4.0 / 3.0 * np.pi * 1.0e-5 ** 3 * 1000.0)),     # 10 um droplets
+           4: ("qi0_inv", 1.0 / (4.0 / 3.0 * np.pi * 2.5e-5 ** 3 * 500.0))}      # 25 um crystals
 
-AXIS_NAMES = {"pver": "lev", "pverp": "ilev", "pcnst": "cnst"}
+#: the hydrostatic set comes from the anchor as one piece: interface and mid-level
+#: pressure and height, the layer's pressure thickness wet and dry
+HYDROSTATIC = ("ps0_inv", "zs0_inv", "p0_inv", "z0_inv", "dp0_inv", "dpdry0_inv")
 
-NOTES = """\
-One sample is one live column of one call of compute_uwshcu_inv inside the running
-model, every argument taken from that call: the states are the model's own and the
-isotope tracers sit on their water at the model's ratios.  Nothing is sampled or
-perturbed; dt is the run's timestep.  The dead columns a chunk may hold beyond its
-live count are not written.  A model trained on these must be used inside the model
-at the same slot, or on columns from the same configuration.
+#: perturbation of the state a surrogate's own error would move: a relative term keeps
+#: an exact zero exactly zero, an absolute term lets a clear level take on condensate
+#: at the gated rate, temperature and wind take an absolute nudge everywhere
+RELATIVE = {"qv0_inv": 0.02, "ql0_inv": 0.05, "qi0_inv": 0.05, "tke_inv": 0.05, "cldfrct_inv": 0.05, "pblh": 0.05}
+ABSOLUTE = {"t0_inv": 0.5, "u0_inv": 0.5, "v0_inv": 0.5, "ql0_inv": 1.0e-6, "qi0_inv": 1.0e-7}
+GATE = {"ql0_inv": 0.03, "qi0_inv": 0.03}
+CLIP = {"t0_inv": (150.0, 330.0), "qv0_inv": (0.0, 0.04), "ql0_inv": (0.0, 0.01), "qi0_inv": (0.0, 0.01),
+        "tke_inv": (0.0, 100.0), "cldfrct_inv": (0.0, 1.0), "concldfrct_inv": (0.0, 1.0), "pblh": (10.0, 6000.0),
+        "u0_inv": (-150.0, 150.0), "v0_inv": (-150.0, 150.0)}
+#: the perturbation of the two arguments the rules below rebuild themselves
+CUSH_RELATIVE = 0.05
+CONCLD_RELATIVE = 0.05
+
+SAMPLING_NOTES = """\
+Every one of the kernel's 20 inputs is drawn for every sample and its one tunable
+parameter with them; every one of its 30 outputs is written, the tracer arrays
+included.
+
+The state is one real column per sample -- the model's own, taken whole from a
+capture of the kernel's calls (or, without an anchor bundle, the shipped example
+column) -- perturbed at a stated budget: temperature and wind by half a unit
+everywhere, water vapour by 2 % of itself, condensate by 5 % of itself plus a
+seed of cloud at 3 % of clear levels, turbulence, cloud fraction and boundary
+layer height by 5 % of themselves.  Relative terms leave the model's exact
+zeros zero.
+
+Four arguments are not perturbed on their own but rebuilt so the column stays
+one the kernel recognises:
+
+  s0_inv        the dry static energy follows the perturbed temperature,
+                s0 = s0_anchor + cp (t0 - t0_anchor), with cp = 1004.64 J/kg/K;
+                the anchor's own s0 - cp t0 - g z0 is the surface geopotential,
+                constant over the column to 1e-10 in every captured column.
+  tr0_inv       the tracer array's Q, CLDLIQ and CLDICE are the drawn water; each
+                water-isotope species (bulk H2O, H216O, HDO, H218O; constituents
+                10-12, 17-19, 24-26, 31-33) keeps the anchor's ratio to its water
+                at every level (the vapour ratio where the anchor holds no
+                condensate); the droplet and crystal numbers scale with their
+                condensate (a seeded cloud gets 10 um droplets or 25 um crystals);
+                every other constituent is the anchor's.
+  concldfrct_inv perturbed by 5 % then held at or below the drawn cloud fraction.
+  cush          the cumulus scale height is -1 where the anchor had no cumulus
+                (56 % of columns) and stays so; elsewhere perturbed by 5 %.
+
+The hydrostatic set (ps0, zs0, p0, z0, dp0, dpdry0) is the anchor's, unperturbed,
+so pressure and height never contradict each other.  dt is drawn over 900-3600 s,
+the timesteps CAM runs at; the capture ran at one.  uwshcu_rpen, the penetrative
+entrainment efficiency, is drawn over its reviewed range [1, 20].
 """
 
 
-def parse_ranks(text: str | None) -> slice:
-    if not text:
-        return slice(None)
-    parts = [int(p) if p else None for p in text.split(":")]
-    if len(parts) > 3:
-        raise SystemExit(f"--ranks takes START:STOP:STEP, got {text!r}")
-    return slice(*parts)
+def _ratio(numerator: np.ndarray, denominator: np.ndarray, fallback: np.ndarray) -> np.ndarray:
+    with np.errstate(divide="ignore", invalid="ignore"):
+        ratio = np.where(denominator > 0.0, numerator / np.where(denominator > 0.0, denominator, 1.0), fallback)
+    return ratio
 
 
-def rank_files(capture: Path) -> list[tuple[int, Path]]:
-    files = []
-    for path in sorted(capture.glob(f"{KERNEL}.rank-*.npz")):
-        match = re.search(r"rank-(\d+)\.npz$", path.name)
-        if match:
-            files.append((int(match.group(1)), path))
-    if not files:
-        raise SystemExit(f"{capture}: no {KERNEL}.rank-NNNN.npz files")
-    return files
+def rebuild_tracers(anchor: dict, drawn: dict) -> np.ndarray:
+    """The tracer array of the perturbed column: water from the draw, isotopes at the anchor's ratios."""
+
+    tracers = np.array(anchor["tr0_inv"], dtype=np.float64)
+    for name, index in WATER.items():
+        tracers[:, index] = drawn[name]
+    vapour_ratio = {}
+    for vapour, liquid, ice in ISOTOPE_SETS:
+        ones = np.ones_like(anchor["qv0_inv"])
+        r_v = _ratio(anchor["tr0_inv"][:, vapour], anchor["qv0_inv"], ones)
+        r_l = _ratio(anchor["tr0_inv"][:, liquid], anchor["ql0_inv"], r_v)
+        r_i = _ratio(anchor["tr0_inv"][:, ice], anchor["qi0_inv"], r_v)
+        tracers[:, vapour] = r_v * drawn["qv0_inv"]
+        tracers[:, liquid] = r_l * drawn["ql0_inv"]
+        tracers[:, ice] = r_i * drawn["qi0_inv"]
+        vapour_ratio[vapour] = r_v
+    for index, (water, per_kg) in NUMBERS.items():
+        seeded = np.full_like(anchor[water], per_kg) * drawn[water]
+        tracers[:, index] = _ratio(anchor["tr0_inv"][:, index], anchor[water], np.zeros_like(seeded)) * drawn[water]
+        tracers[:, index] = np.where(anchor[water] > 0.0, tracers[:, index], seeded)
+    return tracers
 
 
-def capture_provenance(capture: Path) -> dict:
-    record = {}
-    meta = capture / "capture.json"
-    if meta.is_file():
-        record = json.loads(meta.read_text())
-    keep = ("run_tag", "pbs_job_id", "native_library_sha256", "every", "calls_total_by_kernel", "bfb_record")
-    return {"directory": capture.name, **{k: record[k] for k in keep if k in record}}
+def static_energy(rng, anchor: dict, drawn: dict) -> np.ndarray:
+    return anchor["s0_inv"] + CP * (drawn["t0_inv"] - anchor["t0_inv"])
 
 
-def main(argv: list[str] | None = None) -> int:
+def tracers(rng, anchor: dict, drawn: dict) -> np.ndarray:
+    return rebuild_tracers(anchor, drawn)
+
+
+def concld(rng, anchor: dict, drawn: dict) -> np.ndarray:
+    value = anchor["concldfrct_inv"] * (1.0 + rng.standard_normal(anchor["concldfrct_inv"].shape) * CONCLD_RELATIVE)
+    return np.minimum(np.clip(value, 0.0, 1.0), drawn["cldfrct_inv"])
+
+
+def cush(rng, anchor: dict, drawn: dict) -> np.ndarray:
+    value = np.asarray(anchor["cush"], dtype=np.float64)
+    if value <= 0.0:
+        return value
+    return np.maximum(value * (1.0 + rng.standard_normal() * CUSH_RELATIVE), 1.0)
+
+
+def build_parameters():
+    return {"uwshcu_rpen": fc.physics.Uniform(1.0, 20.0)}
+
+
+def build_capture_space(scheme, anchors, column, *, gate_scale: float,
+                        part: int = 0, parts: int = 1, limit: int | None = None):
+    """Distributions anchored on a capture: real columns, drawn whole, with the rules above.
+
+    ``limit`` takes a seeded random ``limit`` of the anchors; ``part``/``parts`` split
+    them between processes so each holds its share only.
+    """
+
+    names = [item.name for item in scheme.spec.user_arguments if item.name != "dt"]
+    held = int(np.asarray(anchors[names[0]]).shape[0])
+    take = slice(None) if limit is None or limit >= held else \
+        np.sort(np.random.default_rng(limit).choice(held, limit, replace=False))
+    columns = {name: np.array(anchors[name][take][part::parts], copy=True) for name in names}
+    gate = {}
+    for name, rate in GATE.items():
+        clouds = (columns[name] > 1.0e-12).any(axis=0)          # levels the model ever clouds
+        gate[name] = clouds.astype(np.float64) * rate * gate_scale
+    # the order matters: the rules read what was drawn before them
+    produces = tuple(n for n in names if n not in ("s0_inv", "tr0_inv", "concldfrct_inv", "cush")) + \
+        ("concldfrct_inv", "cush", "s0_inv", "tr0_inv")
+    captured = fc.physics.CapturedColumns(
+        columns=columns, produces=produces,
+        relative_scale={k: v for k, v in RELATIVE.items() if k in names},
+        absolute_scale={k: v for k, v in ABSOLUTE.items() if k in names},
+        absolute_probability=gate,
+        clip={k: v for k, v in CLIP.items() if k in names},
+        derived={"s0_inv": static_energy, "tr0_inv": tracers, "concldfrct_inv": concld, "cush": cush},
+    )
+    inputs = {produces[0]: captured, "dt": fc.physics.Uniform(900.0, 3600.0)}
+    return scheme.sampling_space(base=column, inputs=inputs, parameters=build_parameters())
+
+
+def build_space(scheme, column):
+    """The demonstration space: the shipped example column perturbed the same way."""
+
+    anchor = {name: np.asarray(column[name], dtype=np.float64) for name in column}
+    inputs = {"dt": fc.physics.Uniform(900.0, 3600.0)}
+    for name in ("t0_inv", "u0_inv", "v0_inv", "qv0_inv", "ql0_inv", "qi0_inv", "tke_inv", "cldfrct_inv", "pblh"):
+        inputs[name] = fc.physics.Anchored(anchor[name], relative_scale=RELATIVE.get(name, 0.0),
+                                           absolute_scale=ABSOLUTE.get(name, 0.0), clip=CLIP.get(name))
+    inputs["s0_inv"] = fc.physics.Derived(lambda rng, t0_inv: static_energy(rng, anchor, {"t0_inv": t0_inv}), depends=("t0_inv",))
+    inputs["tr0_inv"] = fc.physics.Derived(lambda rng, **drawn: rebuild_tracers(anchor, drawn),
+                                           depends=("qv0_inv", "ql0_inv", "qi0_inv"))
+    inputs["concldfrct_inv"] = fc.physics.Derived(lambda rng, cldfrct_inv: concld(rng, anchor, {"cldfrct_inv": cldfrct_inv}),
+                                                  depends=("cldfrct_inv",))
+    inputs["cush"] = fc.physics.Derived(lambda rng: cush(rng, anchor, {}), depends=())
+    for name in HYDROSTATIC:
+        inputs[name] = fc.physics.Constant(anchor[name])
+    return scheme.sampling_space(base=column, inputs=inputs, parameters=build_parameters())
+
+
+def _cover(space, spec) -> None:
+    """Fail closed if any input or parameter is left un-drawn."""
+
+    drawn = set(space.distributions) | set(space.produced)
+    missing = [item.name for item in spec.user_arguments if item.name not in drawn]
+    missing += [name for name in spec.parameters if name not in drawn]
+    if missing:
+        raise SystemExit("not every knob is drawn; missing: " + ", ".join(missing))
+
+
+def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--capture", type=Path, action="append", required=True, metavar="DIR",
-                        help="a run's frame-capture directory; repeatable, the samples are concatenated")
-    parser.add_argument("--output", type=Path, default=Path("compute_uwshcu_inv_training.nc"), help="the NetCDF file to write")
-    parser.add_argument("--ranks", default=None, metavar="START:STOP:STEP", help="which rank files to take, as a Python slice (default all)")
-    parser.add_argument("--every-call", type=int, default=1, metavar="N", help="keep one captured call in N of each rank (default 1)")
-    parser.add_argument("--max-samples", type=int, default=None, help="stop after this many columns")
-    parser.add_argument("--no-tracers", action="store_true",
-                        help=f"leave out the tracer arrays {', '.join(TRACER_ARGUMENTS)} (the file shrinks about fourfold)")
-    parser.add_argument("--arguments", default=None, metavar="NAME,...",
-                        help="only these arguments of the model block (default: all of them)")
-    parser.add_argument("--compress", action="store_true", help="zlib level 1 on every array (smaller, slower to write)")
-    parser.add_argument("--list", action="store_true", help="print what each capture holds and exit")
-    arguments = parser.parse_args(argv)
+    parser.add_argument("--samples", type=int, default=2000, help="number of samples (default 2000)")
+    parser.add_argument("--seed", type=int, default=42, help="seed for the sampling generator (default 42)")
+    parser.add_argument("--output", type=Path, default=Path("compute_uwshcu_inv_training.nc"), help="the single NetCDF file to write")
+    parser.add_argument("--example", default="captured-anchor", help="the example column to perturb around")
+    parser.add_argument("--anchor-bundle", type=Path, default=None,
+                        help="anchor on a capture's real columns (tools/extract_pi_cam_anchor_columns.py --frame-capture)")
+    parser.add_argument("--gate-scale", type=float, default=1.0,
+                        help="multiplies the rate at which a clear level is seeded with condensate (default 1.0)")
+    parser.add_argument("--anchor-columns", type=int, default=None, help="use only a random this many anchors (default: all)")
+    parser.add_argument("--anchor-part", type=int, default=0, help="which share of the anchors this process takes (default 0)")
+    parser.add_argument("--anchor-parts", type=int, default=1, help="how many shares the anchors are split into, one per process (default 1)")
+    arguments = parser.parse_args()
 
-    from netCDF4 import Dataset as NetCDF
+    scheme = fc.physics.load_function(FUNCTION, max_restarts=max(100, arguments.samples))
+    anchors = None
+    try:
+        column = scheme.example_input(arguments.example)
+        if arguments.anchor_bundle is not None:
+            anchors = np.load(arguments.anchor_bundle, allow_pickle=True)
+            space = build_capture_space(scheme, anchors, column, gate_scale=arguments.gate_scale,
+                                        part=arguments.anchor_part, parts=arguments.anchor_parts,
+                                        limit=arguments.anchor_columns)
+        else:
+            space = build_space(scheme, column)
+        _cover(space, scheme.spec)
+        print(space.describe(), flush=True)
 
-    spec = load_function_spec(str(CONTRACT))
-    hook = load_hooks().hook(KERNEL)
-    by_name = {item.name: item for item in spec.arguments}
-    inputs, outputs = list(hook.model_inputs), list(hook.model_outputs)
-    if arguments.no_tracers:
-        inputs = [n for n in inputs if n not in TRACER_ARGUMENTS]
-        outputs = [n for n in outputs if n not in TRACER_ARGUMENTS]
-    if arguments.arguments:
-        wanted = {n.strip() for n in arguments.arguments.split(",") if n.strip()}
-        unknown = sorted(wanted - set(inputs) - set(outputs))
-        if unknown:
-            raise SystemExit(f"--arguments: {unknown} are not in the model block ({', '.join(inputs + outputs)})")
-        inputs = [n for n in inputs if n in wanted]
-        outputs = [n for n in outputs if n in wanted]
-    provenance = [capture_provenance(c) for c in arguments.capture]
-    if arguments.list:
-        for capture, record in zip(arguments.capture, provenance):
-            files = rank_files(capture)
-            print(f"{capture}: {len(files)} rank files, {json.dumps(record)}")
-        return 0
+        started = time.monotonic()
+        step = max(1, arguments.samples // 20)
 
-    def public_dims(name: str) -> list[tuple[str, int]]:
-        item = by_name[name]
-        return [(AXIS_NAMES.get(str(axis), f"dim_{axis}"), int(spec.dimensions[str(axis)]) if str(axis) in spec.dimensions else int(axis))
-                for axis in item.native_shape[1:]]
+        def progress(done: int, total: int, status: str) -> None:
+            if done % step and done != total:
+                return
+            elapsed = time.monotonic() - started
+            print(f"  {done:6d}/{total}  {elapsed:7.1f} s  {done / max(elapsed, 1e-9):6.1f} samples/s  last={status}", flush=True)
 
-    probe = [("in", n) for n in inputs if by_name[n].rank >= 1] + [("out", n) for n in outputs if by_name[n].rank >= 1]
-    if not probe:
-        raise SystemExit("at least one array argument is needed to know a call's live column count")
-    arguments.output.parent.mkdir(parents=True, exist_ok=True)
-    started = time.monotonic()
-    written = 0
-    with NetCDF(str(arguments.output), "w") as handle:
-        handle.createDimension("sample", None)
-        declared: set[str] = set()
-        variables = {}
+        dataset = scheme.generate_dataset(arguments.samples, space, seed=arguments.seed, progress=progress)
+    finally:
+        scheme.close()
 
-        def declare(prefix: str, names: list[str]) -> None:
-            for name in names:
-                dims = ["sample"]
-                for axis, extent in public_dims(name):
-                    if axis not in declared:
-                        handle.createDimension(axis, extent)
-                        declared.add(axis)
-                    dims.append(axis)
-                chunk = (1024,) + tuple(extent for _, extent in public_dims(name))
-                variable = handle.createVariable(f"{prefix}__{name}", "f8", tuple(dims), zlib=arguments.compress,
-                                                 complevel=1 if arguments.compress else 0, chunksizes=chunk)
-                variable.units = by_name[name].units or ""
-                variable.long_name = by_name[name].description or name
-                variables[(prefix, name)] = variable
+    dataset.attributes["generator"] = "examples/generate_compute_uwshcu_inv_dataset.py"
+    dataset.attributes["kernel"] = KERNEL
+    dataset.attributes["example_column"] = str(arguments.example)
+    if anchors is not None:
+        dataset.attributes["anchor_bundle"] = str(arguments.anchor_bundle)
+        dataset.attributes["anchor_provenance"] = str(anchors["provenance"])
+        dataset.attributes["gate_scale"] = float(arguments.gate_scale)
+        dataset.attributes["anchor_share"] = f"{arguments.anchor_part}/{arguments.anchor_parts}"
+    dataset.attributes["sampling_notes"] = SAMPLING_NOTES
+    dataset.attributes["worker_restarts"] = int(getattr(scheme.host, "restarts", 0))
 
-        declare("input", inputs)
-        declare("output", outputs)
-        if "cnst" in declared:
-            names = handle.createVariable("constituent", str, ("cnst",))
-            for index, name in enumerate(CONSTITUENTS):
-                names[index] = name
-        for name, kind in (("sample_id", "i8"), ("sample_step", "i8"), ("sample_call", "i8"), ("sample_token", "i8"),
-                           ("sample_rank", "i4"), ("sample_column", "i4"), ("sample_capture", "i4")):
-            handle.createVariable(name, kind, ("sample",), chunksizes=(4096,))
-        handle.createVariable("status", str, ("sample",))
-        handle.createVariable("message", str, ("sample",))
-
-        for capture_index, capture in enumerate(arguments.capture):
-            files = rank_files(capture)[parse_ranks(arguments.ranks)]
-            for rank, path in files:
-                z = np.load(path, allow_pickle=True)
-                meta = json.loads(str(z["meta"])) if "meta" in z.files else []
-                calls = sorted({int(k.split("/")[1]) for k in z.files if k.startswith("in/")})
-                for call in calls[:: max(1, arguments.every_call)]:
-                    record = meta[call] if call < len(meta) else {}
-                    if "ncol" in record:
-                        ncol = int(record["ncol"])
-                    else:                                   # the live count from the first array asked for
-                        side, name = probe[0]
-                        ncol = int(np.asarray(z[f"{side}/{call}/{name}"]).shape[0])
-                    if ncol <= 0:
-                        continue
-                    if arguments.max_samples is not None:
-                        ncol = min(ncol, arguments.max_samples - written)
-                        if ncol <= 0:
-                            break
-                    lo, hi = written, written + ncol
-                    for prefix, names, side in (("input", inputs, "in"), ("output", outputs, "out")):
-                        for name in names:
-                            values = np.asarray(z[f"{side}/{call}/{name}"], dtype=np.float64)
-                            if values.ndim == 0:
-                                values = np.full(ncol, float(values))
-                            variables[(prefix, name)][lo:hi, ...] = values[:ncol]
-                    handle.variables["sample_id"][lo:hi] = np.arange(lo, hi)
-                    handle.variables["sample_step"][lo:hi] = int(record.get("step", -1))
-                    handle.variables["sample_call"][lo:hi] = call
-                    handle.variables["sample_token"][lo:hi] = int(record.get("token", -1))
-                    handle.variables["sample_rank"][lo:hi] = rank
-                    handle.variables["sample_column"][lo:hi] = np.arange(ncol)
-                    handle.variables["sample_capture"][lo:hi] = capture_index
-                    for index in range(lo, hi):
-                        handle.variables["status"][index] = "ok"
-                        handle.variables["message"][index] = ""
-                    written = hi
-                if arguments.max_samples is not None and written >= arguments.max_samples:
-                    break
-                elapsed = time.monotonic() - started
-                print(f"  {capture.name} rank {rank:4d}: {written:9d} columns  {elapsed:7.1f} s", flush=True)
-            if arguments.max_samples is not None and written >= arguments.max_samples:
-                break
-
-        handle.function = spec.qualified_name
-        handle.kernel = KERNEL
-        handle.generator = "examples/generate_compute_uwshcu_inv_dataset.py"
-        handle.captures = json.dumps(provenance)
-        handle.inputs = ",".join(inputs)
-        handle.outputs = ",".join(outputs)
-        handle.tracers = "left out" if arguments.no_tracers else "included"
-        handle.every_call = int(arguments.every_call)
-        handle.ranks = arguments.ranks or "all"
-        handle.constituents = ",".join(CONSTITUENTS)
-        handle.notes = NOTES
-    size = arguments.output.stat().st_size
-    print(f"{arguments.output}: {written} samples, {len(inputs)} inputs, {len(outputs)} outputs, {size / 1e9:.2f} GB, {time.monotonic() - started:.0f} s")
+    path = dataset.save(arguments.output)
+    print(dataset)
+    print(f"{path} ({path.stat().st_size / 1e6:.1f} MB)")
     return 0
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    raise SystemExit(main())
