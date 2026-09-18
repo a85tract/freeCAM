@@ -293,6 +293,33 @@ every rank needed 200 GB a node (7511230, killed at 64 GB).  The interface
 keeps the rule instead: Fortran calls compiled code or a model, never Python.
 Records: `validation/pi_cam_pausable_p33-*.json`.
 
+### The surrogate on a GPU, offline
+
+Would the model be faster on a GPU?  Measured offline on one A100 against one
+CPU thread of the same node, with the same 340 k-parameter packed model and
+the arrays as the hook hands them, float64 in and out (job 7513230,
+`validation/pi_cam_uwshcu_surrogate_gpu_bench.json`):
+
+| columns a call | CPU, one thread | A100, arrays copied in and the output back | A100, device resident |
+| ---: | ---: | ---: | ---: |
+| 16 (one chunk, the hook's call) | 0.60 ms | 1.03 ms | 0.63 ms |
+| 256 | 4.3 ms | 1.66 ms | 0.74 ms |
+| 4 096 | 28.6 ms | 4.17 ms | 0.74 ms |
+| 16 384 | -- | 4.18 ms | 0.74 ms |
+
+At the hook's granularity the GPU is slower than a CPU thread: a chunk's
+forward is a few dozen kernel launches, and launching them costs more than
+computing 16 columns.  The GPU only pays from about a thousand columns a
+call, 1 µs a column at 4 096 against 7 µs on the CPU thread, and no hook
+ever has that: it would take the node's ranks batching their chunks into one
+call and waiting for one another, for at most the difference between the
+in-image 4.2 ms and a shared batched call, about a percent of the month.
+The in-image CPU figure itself (4.17 ms a call) is seven times this CPU
+thread's 0.60 ms because 128 ranks a node share the memory bandwidth; a
+GPU node's 64 cores would change that number before any GPU did.  The GPU
+path (a CUDA libtorch under FTorch, device placement in the hooks) is not
+built.
+
 ## Sources and caveats
 
 The month costs are one run on exclusive nodes; the plugin paths are
