@@ -489,3 +489,15 @@ def test_a_native_model_on_a_gpu_is_bound_on_this_ranks_device(tmp_path: Path, m
     old = _Library(); del old.pycam_hooks_bind_model_v2
     with pytest.raises(Exception, match="device-aware bind entry"):
         bind_hook_model(old, 3, pinned.path, shadow=True, device="cuda", device_index=3)
+    # a CPU-only torch imported into this process loaded its libtorch first under the names the
+    # image's CUDA libtorch uses; the image would see no device, so the bind is refused up front
+    fresh = _Library()
+    monkeypatch.setitem(sys.modules, "torch", SimpleNamespace(__version__="2.14.0+cpu", __file__="/venv/torch/__init__.py",
+                                                              version=SimpleNamespace(cuda=None)))
+    with pytest.raises(PICAMConfigurationError, match="CPU-only torch"):
+        bind_hook_model(fresh, 3, pinned.path, shadow=True, device="cuda", device_index=3)
+    assert 3 not in fresh.bound
+    bind_hook_model(fresh, 3, pinned.path, shadow=True, device="cpu")       # the host path does not care
+    monkeypatch.setitem(sys.modules, "torch", SimpleNamespace(__version__="2.14.0+cu126", version=SimpleNamespace(cuda="12.6")))
+    bind_hook_model(fresh, 3, pinned.path, shadow=True, device="cuda", device_index=3)
+    assert fresh.bound[3][1:] == (1, 1, 3)

@@ -295,6 +295,7 @@ def bind_hook_model(library: Any, hook_id: int, path: str | Path, *, shadow: boo
         if entry is None:
             raise PICAMConfigurationError(f"cannot bind a model on {device!r} at hook {hook_id}: the image has no "
                                           f"device-aware bind entry (pycam_hooks_bind_model_v2); rebuild it")
+        _refuse_shadowing_torch(device, hook_id)
         encoded = str(Path(path)).encode()
         entry.restype = ctypes.c_int32
         entry.argtypes = [ctypes.c_int32, ctypes.c_char_p, ctypes.c_int32, ctypes.c_int32, ctypes.c_int32, ctypes.c_int32]
@@ -313,6 +314,24 @@ def bind_hook_model(library: Any, hook_id: int, path: str | Path, *, shadow: boo
     if status != 0:
         raise PICAMConfigurationError(
             f"cannot bind {path} at hook {hook_id}: {BIND_STATUS.get(status, f'status {status}')}")
+
+
+def _refuse_shadowing_torch(device: str, hook_id: int) -> None:
+    """A device model needs the image's own libtorch.  A ``torch`` already imported into this
+    process loaded its libraries under the same names first, and the loader hands those to the
+    image's FTorch (first loaded wins): a CPU-only wheel then answers ``device_count`` with zero
+    and FTorch exits the process from inside Fortran.  Refuse here, with the cause named."""
+
+    import sys
+
+    loaded = sys.modules.get("torch")
+    if loaded is None or getattr(getattr(loaded, "version", None), "cuda", None) is not None:
+        return
+    raise PICAMConfigurationError(
+        f"cannot bind a model on {device} at hook {hook_id}: this process has imported a CPU-only torch "
+        f"({getattr(loaded, '__version__', '?')} from {getattr(loaded, '__file__', '?')}); its libtorch was loaded "
+        f"first under the names the image's CUDA libtorch uses, so the image would see no device.  Keep torch out "
+        f"of the rank processes, or install the CUDA torch the image's FTorch was built against")
 
 
 def bind_hook_plugin(library: Any, hook_id: int, address: int, *, shadow: bool = False) -> None:
