@@ -1,0 +1,36 @@
+{
+ "schema_version": 1,
+ "what": "The first attempt to run the 512-rank PI-atm case on Derecho's GPU nodes (8 nodes x 64 ranks) failed at initialisation for the CPU image with nothing armed as much as for the CUDA image; the same layout on CPU nodes fails the same way.  Kept as evidence that the model, as built, depends on 128 ranks a node.",
+ "jobs": {
+  "gpu_nodes_cpu_image_p33": {
+   "nothing_armed": "7516731.desched1",
+   "shadow_cpu": "7516732.desched1",
+   "live_cpu": "7516733.desched1"
+  },
+  "gpu_nodes_cuda_image_p34": {
+   "nothing_armed": "7516749.desched1",
+   "shadow_gpu": "7516750.desched1",
+   "live_gpu": "7516751.desched1"
+  },
+  "cpu_nodes_8x64_p33": {
+   "nothing_armed": "7538643.desched1",
+   "nothing_armed_core_dump_attempt": "7539071.desched1"
+  }
+ },
+ "layout": "select=8:ncpus=64:mpiprocs=64 (GPU nodes: ngpus=4:gpu_type=a100); every validated run of this case uses select=4:ncpus=64:mpiprocs=128",
+ "native_image": {
+  "p33": "build/pi_cam_promoted_p33 (FTorch on the CPU libtorch)",
+  "p34": "build/pi_cam_promoted_p34 (FTorch on a CUDA libtorch, commit ddff0d18)"
+ },
+ "native_library_sha256_p33": "15cb94f9cd96c99747b68b8da66d30ee7420cb1004d7a2149a900633dbc98708",
+ "ranks": 512,
+ "steps_completed": 0,
+ "outcome": [
+  "GPU nodes, both images: a handful of ranks (4, 5, 13 on the first node; 453, 485 on the last) died of SIGSEGV in Fortran during CAM initialisation, right after the initial-condition field listing, before cam_history's BLDFLD; one run showed glibc 'corrupted size vs. prev_size'; the other ranks raised the collective BoundaryReplayError and exited 255.",
+  "CPU nodes, 8 x 64, p33: rank 0 died of the same SIGSEGV at the same point and the job hung until qdel (7538643).",
+  "CPU nodes, 8 x 64, p33, FOR_IGNORE_EXCEPTIONS=TRUE (7539071): no fault, but the initial CAM export differed from the recorded replay boundary on 122 of 512 ranks (cam_out.a2x_rattr hashes; ranks 89-108 among them), so the run refused to start."
+ ],
+ "probe": "a GPU node (7538626): stack unlimited, 512 GB, driver 580.65, four A100s, CUDA_VISIBLE_DEVICES set by PBS; the p34 image dlopens there.",
+ "diagnosis": "Not the GPU nodes: the same failures appear on CPU nodes once the layout is 64 ranks a node.  What changes with the layout is memory placement, not the decomposition, so a layout-dependent memory fault in the image or the control layer is the likely cause (uninitialised or fixed-address memory whose content the 128-a-node layout happened to make consistent).  Not resolved here.",
+ "disposition": "The GPU measurement is retried on the validated layout: 4 GPU nodes with 128 ranks over the 64 cores' two hardware threads each, the same for the CPU-path comparison.  The 64-a-node fault is a separate finding to chase."
+}

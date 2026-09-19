@@ -2648,7 +2648,7 @@
   "use_gw_oro": true,
   "use_subcol_microp": false
  },
- "content_hash": "cfe7ba8080e3c12a5ac1830375a04542d37a3f3d584b18c78fc52659b58718c9",
+ "content_hash": "c854222621a039be125ebc36193ccdb98f6f416c9ce6f1bdea58434c8e2f8021",
  "evidence": {
   "pi_cam_cldfrc_fice_frame_replay.json": {
    "bfb": true,
@@ -3986,6 +3986,20 @@
    "kind": "bfb-comparison",
    "pbs_job": null,
    "record": "pi_cam_pausable_flux-hook_vs_oracle_50step_bfb.json"
+  },
+  "pi_cam_pausable_gpu-nodes-8x64_50step_failure.json": {
+   "diagnosis": "Not the GPU nodes: the same failures appear on CPU nodes once the layout is 64 ranks a node.  What changes with the layout is memory placement, not the decomposition, so a layout-dependent memory fault in the image or the control layer is the likely cause (uninitialised or fixed-address memory whose content the 128-a-node layout happened to make consistent).  Not resolved here.",
+   "kind": "gate-failure",
+   "outcome": [
+    "GPU nodes, both images: a handful of ranks (4, 5, 13 on the first node; 453, 485 on the last) died of SIGSEGV in Fortran during CAM initialisation, right after the initial-condition field listing, before cam_history's BLDFLD; one run showed glibc 'corrupted size vs. prev_size'; the other ranks raised the collective BoundaryReplayError and exited 255.",
+    "CPU nodes, 8 x 64, p33: rank 0 died of the same SIGSEGV at the same point and the job hung until qdel (7538643).",
+    "CPU nodes, 8 x 64, p33, FOR_IGNORE_EXCEPTIONS=TRUE (7539071): no fault, but the initial CAM export differed from the recorded replay boundary on 122 of 512 ranks (cam_out.a2x_rattr hashes; ranks 89-108 among them), so the run refused to start."
+   ],
+   "pbs_job": null,
+   "ranks": 512,
+   "record": "pi_cam_pausable_gpu-nodes-8x64_50step_failure.json",
+   "steps_completed": 0,
+   "what": "The first attempt to run the 512-rank PI-atm case on Derecho's GPU nodes (8 nodes x 64 ranks) failed at initialisation for the CPU image with nothing armed as much as for the CUDA image; the same layout on CPU nodes fails the same way.  Kept as evidence that the model, as built, depends on 128 ranks a node."
   },
   "pi_cam_pausable_gwd-pause_50step.json": {
    "advance_seconds": 17.44,
@@ -6044,6 +6058,12 @@
   },
   {
    "capability": "original_replacement_bfb",
+   "contexts": [],
+   "kernel_routine": null,
+   "record": "pi_cam_pausable_gpu-nodes-8x64_50step_failure.json"
+  },
+  {
+   "capability": "original_replacement_bfb",
    "contexts": [
     "cam_run1.cloud_macro_microphysics"
    ],
@@ -6571,7 +6591,7 @@
   "validation/pi_cam_kernel_api_redirectable_calls.json": "b97f6f7f8f7099cb42e9cebcde6102f9d4d05d17852ba7a5495b29edb1d4fbaf",
   "validation/pi_cam_kernel_runtime_coverage_1month.json": "48f77d6ec78b4026806d4ab6fb9517ef31c1d526481b4ad68e55f77af0d303bd",
   "validation/pi_cam_kernel_runtime_coverage_50step.json": "222961fc5274dbaaf71c40f6c131a683536b5a85ef14cd047a2fd196d8ca38c5",
-  "web/public/catalog.json": "22c2c4a3d5fcb50db22e0cc8c817e53b6f74e2d8d5d91a958ad5edc652f7af0a"
+  "web/public/catalog.json": "b77d5bfa211e09a886bb66d7d9e92f9eaff1f0e6a7671cb212916ac48e314dc9"
  },
  "kernels": {
   "aer_rad_props::aer_rad_props_lw": {
@@ -74163,8 +74183,8 @@
  ],
  "volatile": {
   "branch": "gpu",
-  "commit": "5863a2f02a575affacc7c2e37f5ae64fb951e957",
-  "generated_at": "2026-09-18T05:21:43+00:00"
+  "commit": "ddff0d1841bc1c0cf1d31db0c8efd9f53603b13c",
+  "generated_at": "2026-09-19T21:07:08+00:00"
  },
  "work_items": [
   {
