@@ -137,10 +137,26 @@ if [ -n "${PYCAM_KERNEL_MODELS:-}" ]; then
   # the model pickles in per-process order unless the hash seed is fixed (7371767)
   export PYTHONHASHSEED=0
 fi
+launch=(mpiexec)
+rank_env=()
 if [ -n "${PYCAM_MODEL_DEVICE:-}" ]; then
   # where the image runs the bound TorchScript models: cpu (default) or cuda, one GPU per
   # node-local rank share; the image must be linked with a CUDA FTorch and run on GPU nodes
+  # (select=4:ncpus=64:mpiprocs=128:ompthreads=1:ngpus=4:gpu_type=a100:mem=400GB)
   stage_flags+=(--model-device "${PYCAM_MODEL_DEVICE}")
+  if [ "${PYCAM_MODEL_DEVICE}" = cuda ]; then
+    # every rank takes its node-local GPU by index (one CUDA context a rank; 32 ranks fit a
+    # 40 GB A100 with lazy module loading and a small cuBLAS workspace); the job shell's
+    # CUDA_VISIBLE_DEVICES names the head node's GPUs and must not reach the other nodes.
+    # PYCAM_GPU_MPS=1 starts one MPS server a GPU on every node instead, for layouts with few
+    # enough ranks a GPU (an MPS client costs about 2.3 GB of the device).  See
+    # validation/jobs/gpu_*.sh.
+    launch=(env -u CUDA_VISIBLE_DEVICES mpiexec)
+    rank_env=(bash "${repo}/validation/jobs/gpu_rank_env.sh")
+    if [ "${PYCAM_GPU_MPS:-0}" = 1 ]; then
+      "${launch[@]}" -ppn 1 -n 4 bash "${repo}/validation/jobs/gpu_mps_per_gpu.sh" start
+    fi
+  fi
 fi
 if [ -n "${PYCAM_SHADOW_MODELS:-}" ]; then
   # TorchScript models bound in shadow at their hooks: the image runs them on every call and
@@ -158,7 +174,7 @@ fi
 if [ ${#stage_flags[@]} -eq 0 ]; then
   echo "set PYCAM_PYTHON_STAGES, PYCAM_RADIATION_PYTHON, PYCAM_CLOUD_PYTHON, PYCAM_ORIGINAL_KERNELS or PYCAM_DISABLE_ACTIONS" >&2; exit 2
 fi
-mpiexec --label -n 512 "${python}" -m freecam.pi_cam.cli \
+"${launch[@]}" --label -n 512 "${rank_env[@]}" "${python}" -m freecam.pi_cam.cli \
   --config configs/pi_cam_icesm131_1month.yaml \
   --native-manifest "${manifest}" \
   --boundary "${boundary}" \
@@ -169,6 +185,9 @@ mpiexec --label -n 512 "${python}" -m freecam.pi_cam.cli \
   --memory-sample-every 200 \
   --summary "${summary}" \
   > "${run_dir}/pi_cam_python.log" 2>&1 || echo "model run exited $? (comparing the output anyway)"
+if [ "${PYCAM_MODEL_DEVICE:-}" = cuda ] && [ "${PYCAM_GPU_MPS:-0}" = 1 ]; then
+  "${launch[@]}" -ppn 1 -n 4 bash "${repo}/validation/jobs/gpu_mps_per_gpu.sh" stop
+fi
 
 status=0
 "${python}" tools/verify_pi_cam.py \

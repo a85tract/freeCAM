@@ -2648,7 +2648,7 @@
   "use_gw_oro": true,
   "use_subcol_microp": false
  },
- "content_hash": "7683ab0f3bce7039dfd0ac6451270d2ce07f2828e207a465e1f2137a5164fb5b",
+ "content_hash": "08828f44c4cde6fd2addda3d3a902b88b251b96b959b19cc1f21c50e9179564c",
  "evidence": {
   "pi_cam_cldfrc_fice_frame_replay.json": {
    "bfb": true,
@@ -3988,7 +3988,7 @@
    "record": "pi_cam_pausable_flux-hook_vs_oracle_50step_bfb.json"
   },
   "pi_cam_pausable_g34-uwshcu-sub-gpu-4x128_50step_failure.json": {
-   "diagnosis": "One CUDA context per rank does not fit 32 ranks on a 40 GB device.  Derecho's GPU nodes offer NVIDIA MPS as a PBS chunk resource (mps=1), which puts every rank's work into one shared server context per device.",
+   "diagnosis": "Node-level facts, none of them the model's: CUDA_VISIBLE_DEVICES must be set per node and per rank (unset before mpiexec, then the node-local rank's GPU index); the site's mps=1 is one server a node and a server serves at most 48 clients; a per-GPU MPS client costs about 2.3 GB of the device, so at 32 ranks a GPU MPS does not fit; one CUDA context a rank fits a 40 GB A100 32 times over with lazy module loading and a 32 MB cuBLAS workspace.",
    "image": {
     "build": "pi_cam_promoted_p34 (FTorch on torch 2.14.0+cu126, commit ddff0d18); p35 = p34 with the wheel's CUDA libraries on the rpath (commit 556c0fb1)",
     "role": "development",
@@ -3996,9 +3996,12 @@
    },
    "kind": "gate-failure",
    "outcome": [
-    "device_count_zero: at the bind (first shallow-convection step) FTorch exited every rank with 'invalid device index N for device count 0'.  One-node probes binding the same model the same way saw four devices on 4 and 128 ranks, with MPI initialised first, with and without LD_PRELOAD; importing the checkout's CPU torch first reproduces the message exactly (its libtorch_cpu.so takes the name first), but the traced run imported no torch and loaded only libmpi, libifcore, the image and the leaf library.  Asking the image's own CUDA runtime for the device count from Python before the bind (commits 6916fed8, 23ee6c2c, 627ff629) made FTorch's count right on all 512 ranks; the mechanism was not found.",
+    "device_count_zero: at the bind (first shallow-convection step) FTorch exited 384 ranks with 'invalid device index N for device count 0' -- the 128 ranks of each of the three nodes other than the job's head node, never the head node's.  Cause (found with the 512-rank bind probe inside 7545429): mpiexec hands every rank the job shell's environment, and PBS had set CUDA_VISIBLE_DEVICES there to the HEAD node's GPU UUIDs; on the other nodes those UUIDs match no device (cudaGetDeviceCount status 100, no CUDA-capable device is detected).  One-node probes could not show it: their only node is the head node.  The Python-side device count before the bind (23ee6c2c, 627ff629) names this now instead of letting FTorch exit; it does not repair it.",
     "nvrtc_builtins: the first forward on the device failed on every rank of a node: TorchScript's fuser compiles with NVRTC, libftorch's runpath resolved the CUDA 12.9 toolkit's libnvrtc.so.12, and that copy wants libnvrtc-builtins.so.12.9, which no run can see; the wheel's NVRTC is 12.6 with its builtins beside it.  Fixed in the build tools (556c0fb1): FTorch's install rpath and the image rpath list the wheel's nvidia/<component>/lib directories ahead of the toolkit; image p35.",
-    "cuda_out_of_memory: with the wheel's NVRTC on the library path (p34), 72 and 76 ranks reported 'CUDA error: out of memory' at the first forward: 32 ranks share one 40 GB A100 and each carries its own CUDA context, libtorch's kernels and cuBLAS workspaces.  Nothing else was wrong: no device error, no NVRTC error, no traceback."
+    "cuda_out_of_memory: with the wheel's NVRTC on the library path (p34), 72 and 76 ranks reported 'CUDA error: out of memory' at the first forward: 32 ranks share one 40 GB A100 and each carries its own CUDA context, libtorch's kernels and cuBLAS workspaces.  Nothing else was wrong: no device error, no NVRTC error, no traceback.",
+    "mps_one_server_a_node: with mps=1 (one MPS server a node serving the four GPUs, exclusive-process mode) exactly 48 of the head node's 128 ranks bound and the rest got 'CUDA-capable device(s) is/are busy or unavailable': an MPS server serves at most 48 client contexts, and one server was serving all four GPUs.  A user-started daemon in default compute mode works the same way on one node (probe 7545287).",
+    "mps_one_server_a_gpu: with one user MPS daemon a GPU on every node, a client naming its GPU by index k>0 found no device (an MPS client's CUDA_VISIBLE_DEVICES is read against its server's devices, one); naming index 0 and choosing the server by pipe directory reached every device, and then 409 of 512 ranks hit CUDA out of memory: an MPS client costs about 2.3 GB of the device (probe 7546067: 8 clients a GPU use 18.8 GB, lazy module loading or not), so 32 a GPU cannot use MPS at all.",
+    "one_context_a_rank: without MPS, CUDA_VISIBLE_DEVICES unset for mpiexec and set per rank to the node-local GPU index, CUDA_MODULE_LOADING=LAZY and CUBLAS_WORKSPACE_CONFIG=:4096:8, all 512 ranks bound and ran: shadow bit-for-bit (pi_cam_pausable_g35-uwshcu-sub-shadow-gpu-4x128-repo3), live with the CPU model's health signature (pi_cam_pausable_g35-uwshcu-sub-live-gpu-4x128-repo3)."
    ],
    "pbs_job": null,
    "ranks": 512,
@@ -6616,7 +6619,7 @@
   "validation/pi_cam_kernel_api_redirectable_calls.json": "b97f6f7f8f7099cb42e9cebcde6102f9d4d05d17852ba7a5495b29edb1d4fbaf",
   "validation/pi_cam_kernel_runtime_coverage_1month.json": "48f77d6ec78b4026806d4ab6fb9517ef31c1d526481b4ad68e55f77af0d303bd",
   "validation/pi_cam_kernel_runtime_coverage_50step.json": "222961fc5274dbaaf71c40f6c131a683536b5a85ef14cd047a2fd196d8ca38c5",
-  "web/public/catalog.json": "ad8383e53c55fb0fbe39b541ab950c3d0ac19bb3da1c79d8c3122e9956ca6d30"
+  "web/public/catalog.json": "94088b56dbc1c3a92aa3021b60e132a579dd7348d468df7403e27c243730d12a"
  },
  "kernels": {
   "aer_rad_props::aer_rad_props_lw": {
@@ -74208,8 +74211,8 @@
  ],
  "volatile": {
   "branch": "gpu",
-  "commit": "556c0fb12e32668fc87cbe21f7845f52b11a6dac",
-  "generated_at": "2026-09-20T03:14:49+00:00"
+  "commit": "eddc7b13a603d8b7f5383a4b4ee497f07c7984c5",
+  "generated_at": "2026-09-20T10:00:36+00:00"
  },
  "work_items": [
   {

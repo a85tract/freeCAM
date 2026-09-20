@@ -157,7 +157,19 @@ than producing its own.
    `PYCAM_MODEL_DEVICE=cuda`) then loads the bound models on each rank's share
    of the node's GPUs, the node-local rank over `CUDA_VISIBLE_DEVICES`; the
    hook's input tensors are made on the device and the answer comes back on
-   the host.
+   the host.  The jobs launch that path as `env -u CUDA_VISIBLE_DEVICES
+   mpiexec ... bash validation/jobs/gpu_rank_env.sh python -m
+   freecam.pi_cam.cli ...`: `mpiexec` hands every node the launching shell's
+   environment, and PBS's `CUDA_VISIBLE_DEVICES` there names the head node's
+   GPUs by UUID, which match nothing elsewhere; the wrapper gives each rank its
+   node-local GPU by index, one CUDA context a rank, with
+   `CUDA_MODULE_LOADING=LAZY` and a 32 MB cuBLAS workspace so that 32 contexts
+   fit a 40 GB A100.  `PYCAM_GPU_MPS=1` starts one NVIDIA MPS server a GPU on
+   every node instead (`validation/jobs/gpu_mps_per_gpu.sh`); an MPS client
+   costs about 2.3 GB of the device, so that is for layouts with few ranks a
+   GPU -- the site's `mps=1` (one server a node, at most 48 clients) does not
+   serve 128 ranks a node.  The record of what went wrong before this worked
+   is `validation/pi_cam_pausable_g34-uwshcu-sub-gpu-4x128_50step_failure.json`.
    The hooks module links it so a hooked kernel can be bound to a
    TorchScript model that the image runs itself (see
    [physics_kernel_decoupling.md](physics_kernel_decoupling.md)); a rank

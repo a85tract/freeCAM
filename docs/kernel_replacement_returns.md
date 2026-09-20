@@ -316,9 +316,42 @@ call and waiting for one another, for at most the difference between the
 in-image 4.2 ms and a shared batched call, about a percent of the month.
 The in-image CPU figure itself (4.17 ms a call) is seven times this CPU
 thread's 0.60 ms because 128 ranks a node share the memory bandwidth; a
-GPU node's 64 cores would change that number before any GPU did.  The GPU
-path (a CUDA libtorch under FTorch, device placement in the hooks) is not
-built.
+GPU node's 64 cores would change that number before any GPU did.
+
+### The surrogate on a GPU, inside the image
+
+The GPU path was then built (a CUDA libtorch under FTorch, the model bound
+on each rank's GPU, image p35) and measured on the same case at the
+validated layout moved to GPU nodes: four A100 nodes, 128 ranks a node, 32
+ranks a GPU, one CUDA context a rank.  Fifty steps, the compact-subset
+`compute_uwshcu_inv` model, 51 200 modelled calls; the CPU-path numbers are
+the same image family on the same nodes (records
+`pi_cam_pausable_g33-*-4x128`, `g35-*-gpu-4x128-repo3`):
+
+| 50 steps, four A100 nodes x 128 ranks | nothing armed | model on the host, shadow | model on the GPU, shadow | model on the host, live | model on the GPU, live |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| step loop, rank 0 | 17.2 s | 17.8 s | 87.0 s | 17.6 s | 86.6 s |
+| model, a call (sum over ranks / calls) | -- | 4.08 ms | 216 ms | 4.31 ms | 220 ms |
+| of which the forward | -- | 3.93 ms | 126 ms | 3.83 ms | 127 ms |
+| first call, a rank (context, model load, fuser compile) | -- | 22 ms | 12.0 s | 24 ms | 12.0 s |
+| a call after the first | -- | 3.86 ms | 96.6 ms | 4.07 ms | 100 ms |
+| bit-for-bit / health | yes | yes | yes | 60 big-error lines | 60 big-error lines |
+
+The GPU answers the same model 25 times slower than the host thread that
+would otherwise be idle, and the step loop takes five times longer: 32
+ranks share one device, each with its own context, so their calls are
+time-sliced and a rank waits for the 31 others' launches before its own
+few dozen run; the first call costs each rank twelve seconds of context
+creation, model load and fuser compilation on top.  No month was run on the
+GPU: at this rate a month would take about 45 minutes of four GPU nodes to
+confirm a result the 50-step gate already settles.  The measurement cost
+about five GPU-node-hours (twenty GPU-hours), most of it in the runs that failed first
+(`validation/pi_cam_pausable_g34-uwshcu-sub-gpu-4x128_50step_failure.json`
+records them: the launcher spreading the head node's device list, MPS
+limits and footprints, CUDA memory).  The conclusion of the offline bench
+stands: at this layout a GPU only pays for a model if the node's ranks
+batch their chunks into one call -- a different design, whose upper bound
+is the difference between the in-image host call and a shared batched call.
 
 ## Sources and caveats
 
