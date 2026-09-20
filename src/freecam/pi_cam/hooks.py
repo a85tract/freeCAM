@@ -296,6 +296,10 @@ def bind_hook_model(library: Any, hook_id: int, path: str | Path, *, shadow: boo
             raise PICAMConfigurationError(f"cannot bind a model on {device!r} at hook {hook_id}: the image has no "
                                           f"device-aware bind entry (pycam_hooks_bind_model_v2); rebuild it")
         _refuse_shadowing_torch(device, hook_id)
+        count, report = _cuda_device_report()
+        if count <= 0 or (device_index >= 0 and device_index >= count):
+            raise PICAMConfigurationError(f"cannot bind a model on {device}:{device_index} at hook {hook_id}: the CUDA "
+                                          f"runtime the image loaded sees {max(count, 0)} device(s); {report}")
         encoded = str(Path(path)).encode()
         entry.restype = ctypes.c_int32
         entry.argtypes = [ctypes.c_int32, ctypes.c_char_p, ctypes.c_int32, ctypes.c_int32, ctypes.c_int32, ctypes.c_int32]
@@ -314,6 +318,35 @@ def bind_hook_model(library: Any, hook_id: int, path: str | Path, *, shadow: boo
     if status != 0:
         raise PICAMConfigurationError(
             f"cannot bind {path} at hook {hook_id}: {BIND_STATUS.get(status, f'status {status}')}")
+
+
+def _cuda_device_report() -> tuple[int, str]:
+    """How many devices the CUDA runtime the image loaded can see, and the facts behind the
+    number (runtime status, driver and runtime versions, the visible-devices variable, the CUDA
+    libraries mapped): the bind fails closed on zero instead of letting FTorch exit the process."""
+
+    import ctypes
+    import os
+
+    try:
+        cudart = ctypes.CDLL("libcudart.so.12")
+    except OSError as exc:
+        return -1, f"no CUDA runtime is loaded in this process ({exc})"
+    count = ctypes.c_int(0)
+    status = int(cudart.cudaGetDeviceCount(ctypes.byref(count)))
+    cudart.cudaGetErrorString.restype = ctypes.c_char_p
+    message = cudart.cudaGetErrorString(status).decode(errors="replace")
+    driver, runtime = ctypes.c_int(0), ctypes.c_int(0)
+    cudart.cudaDriverGetVersion(ctypes.byref(driver))
+    cudart.cudaRuntimeGetVersion(ctypes.byref(runtime))
+    try:
+        with open("/proc/self/maps") as maps:
+            mapped = sorted({line.split()[-1] for line in maps if "libcuda" in line})
+    except OSError:
+        mapped = []
+    report = (f"cudaGetDeviceCount status {status} ({message}), driver {driver.value}, runtime {runtime.value}, "
+              f"CUDA_VISIBLE_DEVICES={os.environ.get('CUDA_VISIBLE_DEVICES', '<unset>')!r}, mapped {mapped}")
+    return (int(count.value) if status == 0 else 0), report
 
 
 def _refuse_shadowing_torch(device: str, hook_id: int) -> None:

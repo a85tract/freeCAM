@@ -479,6 +479,9 @@ def test_a_native_model_on_a_gpu_is_bound_on_this_ranks_device(tmp_path: Path, m
     with pytest.raises(PhysicsError):
         NativeModel(torchscript_archive(tmp_path / "m.pt"), device="tpu")
     # the stage binds it through the device-aware entry with the rank's index; the host model through v1
+    # (the CUDA runtime's own count is asked first; here it is stood in for)
+    import freecam.pi_cam.hooks as hooks_module
+    monkeypatch.setattr(hooks_module, "_cuda_device_report", lambda: (4, "four devices"))
     stage = CloudMacroMicrophysics()
     stage.kernels["instratus_condensate"] = pinned
     library = _Library()
@@ -501,3 +504,11 @@ def test_a_native_model_on_a_gpu_is_bound_on_this_ranks_device(tmp_path: Path, m
     monkeypatch.setitem(sys.modules, "torch", SimpleNamespace(__version__="2.14.0+cu126", version=SimpleNamespace(cuda="12.6")))
     bind_hook_model(fresh, 3, pinned.path, shadow=True, device="cuda", device_index=3)
     assert fresh.bound[3][1:] == (1, 1, 3)
+    # a runtime that sees no device, or fewer than the index asks for, refuses with the facts
+    monkeypatch.setattr(hooks_module, "_cuda_device_report", lambda: (0, "cudaGetDeviceCount status 100 (no CUDA-capable device is detected)"))
+    with pytest.raises(PICAMConfigurationError, match="sees 0 device.*no CUDA-capable device"):
+        bind_hook_model(_Library(), 3, pinned.path, shadow=True, device="cuda", device_index=0)
+    monkeypatch.setattr(hooks_module, "_cuda_device_report", lambda: (2, "two devices"))
+    with pytest.raises(PICAMConfigurationError, match="sees 2 device"):
+        bind_hook_model(_Library(), 3, pinned.path, shadow=True, device="cuda", device_index=3)
+    bind_hook_model(_Library(), 3, pinned.path, shadow=True, device="cuda", device_index=-1)   # FTorch picks device 0
