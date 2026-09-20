@@ -1,0 +1,34 @@
+{
+ "schema_version": 1,
+ "what": "The first runs of the compute_uwshcu_inv TorchScript model on the GPU inside the image (four A100 nodes x 128 ranks, the validated layout) failed three times over, each fault behind the previous one; the CPU path of the same image and layout passed (records pi_cam_pausable_g33-*-4x128, g34-nothing-armed-4x128).",
+ "jobs": {
+  "device_count_zero": {
+   "shadow_gpu": "7541268.desched1",
+   "live_gpu": "7541269.desched1",
+   "shadow_gpu_traced": "7542757.desched1"
+  },
+  "nvrtc_builtins": {
+   "shadow_gpu_traced": "7543558.desched1"
+  },
+  "cuda_out_of_memory": {
+   "shadow_gpu": "7544228.desched1",
+   "live_gpu": "7544229.desched1"
+  },
+  "probes_one_node": {
+   "bind_as_the_run_does": "7542680.desched1",
+   "mpi_initialised_first": "7543557.desched1"
+  }
+ },
+ "layout": "select=4:ncpus=64:mpiprocs=128:ngpus=4:gpu_type=a100:mem=400GB; 32 ranks a GPU",
+ "native_image": "build/pi_cam_promoted_p34 (FTorch on torch 2.14.0+cu126, commit ddff0d18); p35 = p34 with the wheel's CUDA libraries on the rpath (commit 556c0fb1)",
+ "model": "compute_uwshcu_inv, h256, compact subset, bound in shadow (bit-for-bit) and live, --model-device cuda",
+ "ranks": 512,
+ "steps_completed": 2,
+ "outcome": [
+  "device_count_zero: at the bind (first shallow-convection step) FTorch exited every rank with 'invalid device index N for device count 0'.  One-node probes binding the same model the same way saw four devices on 4 and 128 ranks, with MPI initialised first, with and without LD_PRELOAD; importing the checkout's CPU torch first reproduces the message exactly (its libtorch_cpu.so takes the name first), but the traced run imported no torch and loaded only libmpi, libifcore, the image and the leaf library.  Asking the image's own CUDA runtime for the device count from Python before the bind (commits 6916fed8, 23ee6c2c, 627ff629) made FTorch's count right on all 512 ranks; the mechanism was not found.",
+  "nvrtc_builtins: the first forward on the device failed on every rank of a node: TorchScript's fuser compiles with NVRTC, libftorch's runpath resolved the CUDA 12.9 toolkit's libnvrtc.so.12, and that copy wants libnvrtc-builtins.so.12.9, which no run can see; the wheel's NVRTC is 12.6 with its builtins beside it.  Fixed in the build tools (556c0fb1): FTorch's install rpath and the image rpath list the wheel's nvidia/<component>/lib directories ahead of the toolkit; image p35.",
+  "cuda_out_of_memory: with the wheel's NVRTC on the library path (p34), 72 and 76 ranks reported 'CUDA error: out of memory' at the first forward: 32 ranks share one 40 GB A100 and each carries its own CUDA context, libtorch's kernels and cuBLAS workspaces.  Nothing else was wrong: no device error, no NVRTC error, no traceback."
+ ],
+ "diagnosis": "One CUDA context per rank does not fit 32 ranks on a 40 GB device.  Derecho's GPU nodes offer NVIDIA MPS as a PBS chunk resource (mps=1), which puts every rank's work into one shared server context per device.",
+ "disposition": "The gates are rerun on image p35 with mps=1 in the select statement: 7544558 (shadow), 7544559 (live); the nothing-armed p35 gate 7544284 runs without MPS.  The one-rank-a-GPU alternative (64 ranks a node) is the layout that fails at initialisation (pi_cam_pausable_gpu-nodes-8x64_50step_failure.json)."
+}

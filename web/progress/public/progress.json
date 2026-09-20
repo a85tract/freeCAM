@@ -2648,7 +2648,7 @@
   "use_gw_oro": true,
   "use_subcol_microp": false
  },
- "content_hash": "41a7a8167f5d6e2cabcf18b2a6c920e4b31c3bb5f19147bd0acfa83a85d788c5",
+ "content_hash": "7683ab0f3bce7039dfd0ac6451270d2ce07f2828e207a465e1f2137a5164fb5b",
  "evidence": {
   "pi_cam_cldfrc_fice_frame_replay.json": {
    "bfb": true,
@@ -3986,6 +3986,25 @@
    "kind": "bfb-comparison",
    "pbs_job": null,
    "record": "pi_cam_pausable_flux-hook_vs_oracle_50step_bfb.json"
+  },
+  "pi_cam_pausable_g34-uwshcu-sub-gpu-4x128_50step_failure.json": {
+   "diagnosis": "One CUDA context per rank does not fit 32 ranks on a 40 GB device.  Derecho's GPU nodes offer NVIDIA MPS as a PBS chunk resource (mps=1), which puts every rank's work into one shared server context per device.",
+   "image": {
+    "build": "pi_cam_promoted_p34 (FTorch on torch 2.14.0+cu126, commit ddff0d18); p35 = p34 with the wheel's CUDA libraries on the rpath (commit 556c0fb1)",
+    "role": "development",
+    "sha256": null
+   },
+   "kind": "gate-failure",
+   "outcome": [
+    "device_count_zero: at the bind (first shallow-convection step) FTorch exited every rank with 'invalid device index N for device count 0'.  One-node probes binding the same model the same way saw four devices on 4 and 128 ranks, with MPI initialised first, with and without LD_PRELOAD; importing the checkout's CPU torch first reproduces the message exactly (its libtorch_cpu.so takes the name first), but the traced run imported no torch and loaded only libmpi, libifcore, the image and the leaf library.  Asking the image's own CUDA runtime for the device count from Python before the bind (commits 6916fed8, 23ee6c2c, 627ff629) made FTorch's count right on all 512 ranks; the mechanism was not found.",
+    "nvrtc_builtins: the first forward on the device failed on every rank of a node: TorchScript's fuser compiles with NVRTC, libftorch's runpath resolved the CUDA 12.9 toolkit's libnvrtc.so.12, and that copy wants libnvrtc-builtins.so.12.9, which no run can see; the wheel's NVRTC is 12.6 with its builtins beside it.  Fixed in the build tools (556c0fb1): FTorch's install rpath and the image rpath list the wheel's nvidia/<component>/lib directories ahead of the toolkit; image p35.",
+    "cuda_out_of_memory: with the wheel's NVRTC on the library path (p34), 72 and 76 ranks reported 'CUDA error: out of memory' at the first forward: 32 ranks share one 40 GB A100 and each carries its own CUDA context, libtorch's kernels and cuBLAS workspaces.  Nothing else was wrong: no device error, no NVRTC error, no traceback."
+   ],
+   "pbs_job": null,
+   "ranks": 512,
+   "record": "pi_cam_pausable_g34-uwshcu-sub-gpu-4x128_50step_failure.json",
+   "steps_completed": 2,
+   "what": "The first runs of the compute_uwshcu_inv TorchScript model on the GPU inside the image (four A100 nodes x 128 ranks, the validated layout) failed three times over, each fault behind the previous one; the CPU path of the same image and layout passed (records pi_cam_pausable_g33-*-4x128, g34-nothing-armed-4x128)."
   },
   "pi_cam_pausable_gpu-nodes-8x64_50step_failure.json": {
    "diagnosis": "Not the GPU nodes: the same failures appear on CPU nodes once the layout is 64 ranks a node.  What changes with the layout is memory placement, not the decomposition, so a layout-dependent memory fault in the image or the control layer is the likely cause (uninitialised or fixed-address memory whose content the 128-a-node layout happened to make consistent).  Not resolved here.",
@@ -6060,6 +6079,12 @@
    "capability": "original_replacement_bfb",
    "contexts": [],
    "kernel_routine": null,
+   "record": "pi_cam_pausable_g34-uwshcu-sub-gpu-4x128_50step_failure.json"
+  },
+  {
+   "capability": "original_replacement_bfb",
+   "contexts": [],
+   "kernel_routine": null,
    "record": "pi_cam_pausable_gpu-nodes-8x64_50step_failure.json"
   },
   {
@@ -6591,7 +6616,7 @@
   "validation/pi_cam_kernel_api_redirectable_calls.json": "b97f6f7f8f7099cb42e9cebcde6102f9d4d05d17852ba7a5495b29edb1d4fbaf",
   "validation/pi_cam_kernel_runtime_coverage_1month.json": "48f77d6ec78b4026806d4ab6fb9517ef31c1d526481b4ad68e55f77af0d303bd",
   "validation/pi_cam_kernel_runtime_coverage_50step.json": "222961fc5274dbaaf71c40f6c131a683536b5a85ef14cd047a2fd196d8ca38c5",
-  "web/public/catalog.json": "de315e6212404298427ce8b9decb91d9151bb926d0a074d4e2b611df0193b656"
+  "web/public/catalog.json": "ad8383e53c55fb0fbe39b541ab950c3d0ac19bb3da1c79d8c3122e9956ca6d30"
  },
  "kernels": {
   "aer_rad_props::aer_rad_props_lw": {
@@ -74183,8 +74208,8 @@
  ],
  "volatile": {
   "branch": "gpu",
-  "commit": "1646c71c46902392a2b76b009461b60ad961fa87",
-  "generated_at": "2026-09-19T23:08:39+00:00"
+  "commit": "556c0fb12e32668fc87cbe21f7845f52b11a6dac",
+  "generated_at": "2026-09-20T03:14:49+00:00"
  },
  "work_items": [
   {
