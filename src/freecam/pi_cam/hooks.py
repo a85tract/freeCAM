@@ -339,14 +339,39 @@ def _cuda_device_report() -> tuple[int, str]:
     driver, runtime = ctypes.c_int(0), ctypes.c_int(0)
     cudart.cudaDriverGetVersion(ctypes.byref(driver))
     cudart.cudaRuntimeGetVersion(ctypes.byref(runtime))
+    report = (f"cudaGetDeviceCount status {status} ({message}), driver {driver.value}, runtime {runtime.value}, "
+              f"CUDA_VISIBLE_DEVICES={os.environ.get('CUDA_VISIBLE_DEVICES', '<unset>')!r}, {_process_state()}")
+    return (int(count.value) if status == 0 else 0), report
+
+
+def _process_state() -> str:
+    """The process facts a failing CUDA driver load turns on: the CUDA libraries mapped, the
+    number of memory mappings against the kernel's limit, resident and virtual size, open
+    descriptors against their limit."""
+
+    import os
+    import resource
+
+    facts = []
     try:
         with open("/proc/self/maps") as maps:
-            mapped = sorted({line.split()[-1] for line in maps if "libcuda" in line})
+            lines = maps.readlines()
+        mapped = sorted({line.split()[-1] for line in lines if "libcuda" in line})
+        limit = Path("/proc/sys/vm/max_map_count").read_text().strip()
+        facts.append(f"mapped {mapped}, {len(lines)} mappings of {limit}")
     except OSError:
-        mapped = []
-    report = (f"cudaGetDeviceCount status {status} ({message}), driver {driver.value}, runtime {runtime.value}, "
-              f"CUDA_VISIBLE_DEVICES={os.environ.get('CUDA_VISIBLE_DEVICES', '<unset>')!r}, mapped {mapped}")
-    return (int(count.value) if status == 0 else 0), report
+        pass
+    try:
+        status = dict(line.split(":", 1) for line in Path("/proc/self/status").read_text().splitlines() if ":" in line)
+        facts.append(f"VmRSS {status.get('VmRSS', '?').strip()}, VmSize {status.get('VmSize', '?').strip()}")
+    except OSError:
+        pass
+    try:
+        soft, _hard = resource.getrlimit(resource.RLIMIT_NOFILE)
+        facts.append(f"{len(os.listdir('/proc/self/fd'))} open descriptors of {soft}")
+    except OSError:
+        pass
+    return ", ".join(facts)
 
 
 def _refuse_shadowing_torch(device: str, hook_id: int) -> None:
