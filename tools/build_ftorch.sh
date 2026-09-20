@@ -46,18 +46,29 @@ if [ ! -e "${cxx_runtime}/libstdc++.so.6" ] && [ -e "${cxx_runtime}/../lib64/lib
 fi
 torch_cmake=$("${python}" -c 'import torch; print(torch.utils.cmake_prefix_path)')
 torch_lib=$("${python}" -c 'import torch, pathlib; print(pathlib.Path(torch.__file__).resolve().parent / "lib")')
+# the CUDA libraries a CUDA wheel bundles (nvidia/<component>/lib), ahead of the toolkit CMake adds
+# to the runpath: the NVRTC found there must be the one whose builtins the run can load
+cuda_libs=
+if [ "${gpu_device}" != "NONE" ]; then
+  cuda_libs=$("${python}" -c 'import torch, pathlib; n = pathlib.Path(torch.__file__).resolve().parent.parent / "nvidia"; print(";".join(str(d) for d in sorted(n.glob("*/lib")) if d.is_dir()) if n.is_dir() else "")')
+fi
+rpath="${cxx_runtime};${torch_lib}${cuda_libs:+;${cuda_libs}}"
 
 if [ ! -d "${src}/.git" ]; then
   git clone --depth 1 --branch "${ref}" https://github.com/Cambridge-ICCS/FTorch.git "${src}"
 fi
 sed -i -E 's/^set\(CMAKE_CXX_STANDARD 17\)/set(CMAKE_CXX_STANDARD 20)/' "${src}/CMakeLists.txt"
+# FTorch sets its install rpath itself ($ORIGIN and the libtorch directory); a device build
+# needs the wheel's CUDA libraries on it too, ahead of the toolkit CMake appends from the link path
+sed -i -E 's|^set\(CMAKE_INSTALL_RPATH "\$ORIGIN/\$\{relDir\};\$\{TORCH_LIBRARY_DIR\}"\)|set(CMAKE_INSTALL_RPATH "$ORIGIN/${relDir};${TORCH_LIBRARY_DIR};${FREECAM_EXTRA_RPATH}")|' "${src}/CMakeLists.txt"
+grep -q 'FREECAM_EXTRA_RPATH' "${src}/CMakeLists.txt" || { echo "FTorch's CMakeLists no longer sets CMAKE_INSTALL_RPATH as expected; adjust tools/build_ftorch.sh" >&2; exit 2; }
 rm -rf "${work}" "${prefix}" && mkdir -p "${work}"
 cmake -S "${src}" -B "${work}" \
   -DCMAKE_BUILD_TYPE=Release \
   -DCMAKE_Fortran_COMPILER=ifort -DCMAKE_CXX_COMPILER="${cxx}" -DCMAKE_C_COMPILER="${cc}" \
   -DCMAKE_PREFIX_PATH="${torch_cmake}" \
   -DGPU_DEVICE="${gpu_device}" \
-  -DCMAKE_INSTALL_RPATH="${cxx_runtime};${torch_lib}" -DCMAKE_BUILD_RPATH="${cxx_runtime};${torch_lib}" \
+  -DCMAKE_INSTALL_RPATH="${rpath}" -DCMAKE_BUILD_RPATH="${rpath}" -DFREECAM_EXTRA_RPATH="${cuda_libs}" \
   -DCMAKE_INSTALL_PREFIX="${prefix}"
 cmake --build "${work}" -j 8
 cmake --install "${work}"

@@ -149,7 +149,11 @@ than producing its own.
    the `cu126` index; the toolkit's major version must be the wheel's).  The
    prefix records the libtorch it was built against, and an image built with
    `FREECAM_FTORCH_ROOT=$PWD/build/ftorch-cuda` links and rpaths that one, so
-   it runs on GPU nodes only.  `--model-device cuda` (job knob
+   it runs on GPU nodes only.  Both rpaths list the CUDA libraries the wheel
+   bundles (`nvidia/<component>/lib`) ahead of the toolkit CMake appends, so
+   NVRTC -- which TorchScript's fuser calls at the first forward -- and its
+   builtins come from the wheel, in one version; the toolkit's NVRTC found
+   first wants builtins of its own version that a run cannot see.  `--model-device cuda` (job knob
    `PYCAM_MODEL_DEVICE=cuda`) then loads the bound models on each rank's share
    of the node's GPUs, the node-local rank over `CUDA_VISIBLE_DEVICES`; the
    hook's input tensors are made on the device and the answer comes back on
