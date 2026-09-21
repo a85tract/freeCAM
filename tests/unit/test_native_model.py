@@ -512,3 +512,35 @@ def test_a_native_model_on_a_gpu_is_bound_on_this_ranks_device(tmp_path: Path, m
     with pytest.raises(PICAMConfigurationError, match="sees 2 device"):
         bind_hook_model(_Library(), 3, pinned.path, shadow=True, device="cuda", device_index=3)
     bind_hook_model(_Library(), 3, pinned.path, shadow=True, device="cuda", device_index=-1)   # FTorch picks device 0
+
+
+def test_a_plugin_from_a_shared_library_is_bound_as_it_is(tmp_path: Path) -> None:
+    """A C library's entry stands in a kernel slot through NativePlugin.from_library, and a
+    module may hand such a plugin to the CLI, which sets the mode and binds it unchanged."""
+    import ctypes
+    import pickle
+
+    from freecam.physics.native_model import NativePlugin
+    from freecam.pi_cam.cli import _load_kernel_plugin
+
+    libc = ctypes.CDLL(None)
+    plugin = NativePlugin.from_library(libc, "strlen", kernel="compute_uwshcu_inv")
+    assert plugin.address == ctypes.cast(libc.strlen, ctypes.c_void_p).value and plugin.kernel == "compute_uwshcu_inv"
+    assert plugin.identity.startswith("library:") and plugin.label.endswith(":strlen") and not plugin.shadow
+    # the pickle carries the identity and the code is found again in this process
+    twin = pickle.loads(pickle.dumps(plugin))
+    assert twin.address == plugin.address and twin.identity == plugin.identity
+    with pytest.raises(PhysicsError, match="no symbol"):
+        NativePlugin.from_library(libc, "no_such_symbol_in_libc", kernel="compute_uwshcu_inv")
+    with pytest.raises(PhysicsError, match="not a file"):
+        NativePlugin.from_library(tmp_path / "missing.so", "f", kernel="compute_uwshcu_inv")
+    # a module that hands the plugin over: bound as it is, in the mode the flag names
+    module = tmp_path / "handover.py"
+    module.write_text(
+        "import ctypes\nfrom freecam.physics.native_model import NativePlugin\n"
+        "plugin = NativePlugin.from_library(ctypes.CDLL(None), 'strlen', kernel='compute_uwshcu_inv')\n"
+        "other = NativePlugin.from_library(ctypes.CDLL(None), 'strlen', kernel='cldfrc_fice')\n")
+    bound = _load_kernel_plugin("compute_uwshcu_inv", f"{module}:plugin", shadow=True)
+    assert isinstance(bound, NativePlugin) and bound.shadow and bound.address == plugin.address
+    with pytest.raises(SystemExit, match="plugin for 'cldfrc_fice'"):
+        _load_kernel_plugin("compute_uwshcu_inv", f"{module}:other")

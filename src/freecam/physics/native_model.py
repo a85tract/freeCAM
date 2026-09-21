@@ -13,6 +13,7 @@ from __future__ import annotations
 import hashlib
 import zipfile
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 
 from .errors import PhysicsError
@@ -130,6 +131,36 @@ class NativePlugin:
         self.shadow = bool(shadow)
         self.inputs = list(inputs or ())
         self.outputs = list(outputs or ())
+
+    @classmethod
+    def from_library(cls, library: Any, symbol: str, *, kernel: str, shadow: bool = False,
+                     inputs: list[str] | None = None, outputs: list[str] | None = None) -> "NativePlugin":
+        """A compiled plugin from a shared library: ``symbol`` in ``library`` (a path, or a
+        ``ctypes.CDLL`` already loaded) must be a C function of the hook's plugin interface.
+        The library stays loaded for the life of the process; a plugin that needs setting up
+        (a communicator, a model file) does that in the module that hands the plugin over."""
+
+        import ctypes
+        import hashlib
+
+        if isinstance(library, (str, Path)):
+            path = Path(library).resolve()
+            if not path.is_file():
+                raise PhysicsError(f"plugin library {path} is not a file")
+            digest = hashlib.sha256(path.read_bytes()).hexdigest()[:16]
+            handle = ctypes.CDLL(str(path), mode=ctypes.RTLD_GLOBAL)
+            name = path.name
+        else:
+            handle, digest, name = library, "loaded", getattr(library, "_name", None) or "library"
+        entry = getattr(handle, symbol, None)
+        if entry is None:
+            raise PhysicsError(f"plugin library {name} has no symbol {symbol!r}")
+        address = ctypes.cast(entry, ctypes.c_void_p).value
+        if not address:
+            raise PhysicsError(f"plugin library {name}: {symbol!r} has no address")
+        adapter = SimpleNamespace(address=int(address), library=handle)
+        return cls(adapter, label=f"{name}:{symbol}", kernel=kernel, identity=f"library:{digest}:{symbol}:{kernel}",
+                   shadow=shadow, inputs=inputs, outputs=outputs)
 
     @property
     def key(self) -> str:

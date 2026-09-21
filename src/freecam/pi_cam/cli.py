@@ -288,6 +288,7 @@ def _load_kernel_plugin(kernel: str, spec: str, *, shadow: bool = False):
     import importlib
     import importlib.util
 
+    from freecam.physics.native_model import NativePlugin
     from freecam.physics.numba_kernel import compile_kernel
 
     module_name, _, function_name = spec.rpartition(":")
@@ -302,6 +303,13 @@ def _load_kernel_plugin(kernel: str, spec: str, *, shadow: bool = False):
     else:
         module = importlib.import_module(module_name)
     function = getattr(module, function_name, None)
+    if isinstance(function, NativePlugin):
+        # the module hands over a compiled plugin as it is (e.g. a C library's entry through
+        # NativePlugin.from_library, set up by the module); the flag decides the mode
+        if function.kernel != kernel:
+            raise SystemExit(f"--kernel-plugin: {spec} is a plugin for {function.kernel!r}, not {kernel!r}")
+        function.shadow = shadow
+        return function
     if function is None or not callable(function):
         raise SystemExit(f"--kernel-plugin: {spec} names no callable")
     return compile_kernel(kernel, function, shadow=shadow)
