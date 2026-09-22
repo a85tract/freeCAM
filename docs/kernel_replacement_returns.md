@@ -359,6 +359,42 @@ stands: at this layout a GPU only pays for a model if the node's ranks
 batch their chunks into one call -- a different design, whose upper bound
 is the difference between the in-image host call and a shared batched call.
 
+### Batching a GPU's ranks into one call, measured
+
+The remedy the per-rank result points at was built and measured: a plugin at
+the hook (`tools/gpu_batch/`, bound through `--kernel-plugin` as a compiled
+library entry) in which the 32 ranks sharing a GPU write their 16 columns
+into a node-shared window, the group's leader runs one forward of the model
+over the 512 columns on the GPU, and every rank takes its 16 columns of the
+answer back.  Alone on a node, with the ranks calling in lockstep on real
+columns, a call costs 6.6 ms with the twenty inputs copied (5.6 ms of it the
+leader's forward, most of that the 7 MB of `tr0_inv` a call) and 3.7 ms with
+`tr0_inv` left out (the model uses a few of its values, so that is a cost
+bound, not a faithful answer); the waits and copies together take under a
+millisecond, and 1 ms of arrival jitter is absorbed.  Inside the model the
+same plugin measures very differently (records
+`pi_cam_pausable_g35-uwshcu-sub-shadow-gpu-batch_50step`, `...-batchskip...`,
+both bit-for-bit):
+
+| 50 steps, four A100 nodes x 128 ranks, shadow | model on the host | batched, all inputs | batched, `tr0_inv` not copied | one context a rank |
+| --- | ---: | ---: | ---: | ---: |
+| step loop, rank 0 | 17.8 s | 46.3 s | 32.4 s | 87.0 s |
+| in the plugin or model, a call after the first | 3.86 ms | 120.6 ms | 113.2 ms | 96.6 ms |
+| first call, a rank | 22 ms | 4.5 s | 4.4 s | 12.0 s |
+
+The cost is not the forward but the rendezvous: the 32 ranks of a group reach
+the hook up to a tenth of a second apart, because a step's physics is
+load-imbalanced across ranks (deep convection, radiation and microphysics
+cost what their columns' state dictates), and a batched call waits for the
+slowest of them, twice a step, in the middle of physics where nothing else
+would have waited.  The step loop pays that wait and then the collectives'
+own.  A continuous-batching worker (one process a GPU serving whoever has
+arrived after a short timeout) would remove the rendezvous and could reach
+about 2 ms a call on this model, about 1 % of the month, for a design with a
+process a GPU on hardware threads the ranks already use.  Not pursued: at
+this layout and model size the GPU has no return to give; what it can give a
+heavier model is a separate question.
+
 ## Sources and caveats
 
 The month costs are one run on exclusive nodes; the plugin paths are
