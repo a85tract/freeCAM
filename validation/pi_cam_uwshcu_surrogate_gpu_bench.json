@@ -1,77 +1,79 @@
 {
  "schema_version": 1,
- "what": "The compute_uwshcu_inv surrogate (340 k-parameter MLP with the packed subset block, uwshcu_h256_notr_2cap_sub.pt) timed offline on one A100 against one CPU thread of the same node, at the hook's granularity (16 columns a call, arrays in host memory, the packed output back in host memory) and in larger batches; float64 in and out.  Not a model run: an offline measurement deciding whether a GPU path for the hook is worth building.",
- "pbs_job_id": "7513230.desched1",
+ "what": "The compute_uwshcu_inv surrogate (340 k-parameter MLP with the packed subset block, uwshcu_h256_notr_2cap_sub.pt) timed offline on one A100 against one CPU thread of the same node, at the hook's granularity (16 columns a call, arrays in host memory, the packed output back in host memory) and in larger batches of real columns; float64 in and out, the arrays Fortran-ordered as the hook hands them.  Not a model run: an offline measurement of what batching columns across ranks could give a GPU.",
+ "pbs_job_id": "7563406.desched1",
+ "supersedes": "the 2026-09-17 record (job 7513230), whose batches above 1,600 columns were capped by the number of captured calls it stacked (the tool sliced a shorter stack to the labelled size), so its rows for 4,096 and 16,384 columns timed 1,600 columns; the tool now refuses a batch larger than its source",
  "node": "one Derecho GPU node (main queue, select=1:ncpus=8:ngpus=1:gpu_type=a100)",
  "gpu": "NVIDIA A100-SXM4-40GB",
- "torch": "2.14.0+cu130",
- "cuda": "13.0",
+ "torch": "2.14.0+cu126",
+ "cuda": "12.6",
  "model": "uwshcu_h256_notr_2cap_sub.pt",
- "inputs_from": "one captured call of rank 0 (pausable-p29-uwshcu-capture-7493241), padded to 16 columns; batches stack consecutive captured calls",
+ "inputs_from": "the compute_uwshcu_inv anchor dataset: the first 16,384 of 200,000 real columns captured from the model (tools/extract_pi_cam_anchor_columns.py), every batch a distinct set of columns",
+ "columns_available": 16384,
  "rows": {
   "cpu 1 thread, 16 columns": {
-   "ms_per_call": 0.6007,
-   "us_per_column": 37.5459
+   "ms_per_call": 0.6063783506397158,
+   "us_per_column": 37.89864691498224
   },
-  "gpu, 16 columns, host in/out": {
-   "ms_per_call": 1.0331,
-   "us_per_column": 64.5703
+  "gpu, 16 columns, host in and out": {
+   "ms_per_call": 1.00534840952605,
+   "us_per_column": 62.83427559537813
   },
   "gpu, 16 columns, device resident": {
-   "ms_per_call": 0.6293,
-   "us_per_column": 39.3326
+   "ms_per_call": 0.6025540200062096,
+   "us_per_column": 37.6596262503881
   },
-  "gpu, 64 columns, host in/out": {
-   "ms_per_call": 1.1815,
-   "us_per_column": 18.4602
+  "gpu, 64 columns, host in and out": {
+   "ms_per_call": 1.1660562711767852,
+   "us_per_column": 18.21962923713727
   },
   "gpu, 64 columns, device resident": {
-   "ms_per_call": 0.6548,
-   "us_per_column": 10.2313
+   "ms_per_call": 0.6180471205152571,
+   "us_per_column": 9.656986258050893
   },
-  "gpu, 256 columns, host in/out": {
-   "ms_per_call": 1.657,
-   "us_per_column": 6.4726
+  "gpu, 256 columns, host in and out": {
+   "ms_per_call": 1.6394692519679666,
+   "us_per_column": 6.404176765499869
   },
   "gpu, 256 columns, device resident": {
-   "ms_per_call": 0.74,
-   "us_per_column": 2.8906
+   "ms_per_call": 0.7067722710780799,
+   "us_per_column": 2.7608291838987498
   },
-  "gpu, 1024 columns, host in/out": {
-   "ms_per_call": 3.0153,
-   "us_per_column": 2.9447
+  "gpu, 1024 columns, host in and out": {
+   "ms_per_call": 2.985813678242266,
+   "us_per_column": 2.915833670158463
   },
   "gpu, 1024 columns, device resident": {
-   "ms_per_call": 0.7382,
-   "us_per_column": 0.7209
+   "ms_per_call": 0.7167426985688508,
+   "us_per_column": 0.6999440415711433
   },
-  "gpu, 4096 columns, host in/out": {
-   "ms_per_call": 4.1723,
-   "us_per_column": 1.0186
+  "gpu, 4096 columns, host in and out": {
+   "ms_per_call": 14.445504600492617,
+   "us_per_column": 3.526734521604643
   },
   "gpu, 4096 columns, device resident": {
-   "ms_per_call": 0.7354,
-   "us_per_column": 0.1795
+   "ms_per_call": 0.8793708325053256,
+   "us_per_column": 0.2146901446546205
   },
-  "gpu, 16384 columns, host in/out": {
-   "ms_per_call": 4.1801,
-   "us_per_column": 0.2551
+  "gpu, 16384 columns, host in and out": {
+   "ms_per_call": 47.39666993264109,
+   "us_per_column": 2.892863155068426
   },
   "gpu, 16384 columns, device resident": {
-   "ms_per_call": 0.7352,
-   "us_per_column": 0.0449
+   "ms_per_call": 3.285163330535094,
+   "us_per_column": 0.20051045718597985
   },
   "cpu 1 thread, 256 columns": {
-   "ms_per_call": 4.3224,
-   "us_per_column": 16.8844
+   "ms_per_call": 4.3620732496492565,
+   "us_per_column": 17.039348631442408
   },
   "cpu 1 thread, 4096 columns": {
-   "ms_per_call": 28.6022,
-   "us_per_column": 6.983
+   "ms_per_call": 170.53115179296583,
+   "us_per_column": 41.63358198070455
   }
  },
- "max_abs_diff_cpu_gpu_one_chunk": 0.881591796875,
+ "max_abs_diff_cpu_gpu_one_chunk": 0.671875,
  "in_image_reference": "FTorch on the CPU nodes, 128 ranks a node sharing memory bandwidth: 4.17 ms a call live over the month (7510379)",
- "conclusion": "At one chunk a call the A100 is slower than one CPU thread (1.03 ms with the copies, 0.63 ms resident, against 0.60 ms): the call is launch-latency bound.  The GPU pays only from about a thousand columns a call (1 us a column at 4 096, 0.26 us at 16 384 against 7 us on the CPU thread), which the hook never has; it would need the node's ranks to batch their chunks and wait for each other.  Not built.",
+ "conclusion": "At one chunk a call the A100 is slower than one CPU thread (1.01 ms with the copies, 0.60 ms resident, against 0.61 ms): the call is launch-latency bound.  With the copies the GPU costs 6.4 us a column at 256 and about 3 us from 1,024 upwards (2.9 us at 16,384), against 17 us for the CPU thread at 256 and 42 us at 4,096 (the strided Fortran arrays stop fitting its caches); so a batched call pays from a few hundred columns, and its cost is the host-to-device traffic of the twenty input arrays, not the arithmetic (resident, 16,384 columns take 3.3 ms).  The hook never has that many columns a call; the batching plugin (validation/pi_cam_pausable_g35-uwshcu-sub-*-gpu-batch*) measures what gathering a GPU's 32 ranks gives inside the model.",
  "tool": "tools/bench_model_on_device.py"
 }

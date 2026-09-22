@@ -296,27 +296,33 @@ Records: `validation/pi_cam_pausable_p33-*.json`.
 ### The surrogate on a GPU, offline
 
 Would the model be faster on a GPU?  Measured offline on one A100 against one
-CPU thread of the same node, with the same 340 k-parameter packed model and
-the arrays as the hook hands them, float64 in and out (job 7513230,
-`validation/pi_cam_uwshcu_surrogate_gpu_bench.json`):
+CPU thread of the same node, with the same 340 k-parameter packed model, real
+captured columns, and the arrays as the hook hands them, float64 in and out
+(job 7563406, `validation/pi_cam_uwshcu_surrogate_gpu_bench.json`; it
+supersedes the first record, whose batches above 1 600 columns were capped by
+the captured calls it stacked):
 
 | columns a call | CPU, one thread | A100, arrays copied in and the output back | A100, device resident |
 | ---: | ---: | ---: | ---: |
-| 16 (one chunk, the hook's call) | 0.60 ms | 1.03 ms | 0.63 ms |
-| 256 | 4.3 ms | 1.66 ms | 0.74 ms |
-| 4 096 | 28.6 ms | 4.17 ms | 0.74 ms |
-| 16 384 | -- | 4.18 ms | 0.74 ms |
+| 16 (one chunk, the hook's call) | 0.61 ms | 1.01 ms | 0.60 ms |
+| 256 | 4.36 ms | 1.64 ms | 0.71 ms |
+| 1 024 | -- | 2.99 ms | 0.72 ms |
+| 4 096 | 170.5 ms | 14.4 ms | 0.88 ms |
+| 16 384 | -- | 47.4 ms | 3.3 ms |
 
 At the hook's granularity the GPU is slower than a CPU thread: a chunk's
 forward is a few dozen kernel launches, and launching them costs more than
-computing 16 columns.  The GPU only pays from about a thousand columns a
-call, 1 µs a column at 4 096 against 7 µs on the CPU thread, and no hook
-ever has that: it would take the node's ranks batching their chunks into one
-call and waiting for one another, for at most the difference between the
-in-image 4.2 ms and a shared batched call, about a percent of the month.
-The in-image CPU figure itself (4.17 ms a call) is seven times this CPU
-thread's 0.60 ms because 128 ranks a node share the memory bandwidth; a
-GPU node's 64 cores would change that number before any GPU did.
+computing 16 columns.  A batched call pays from a few hundred columns (6.4 µs
+a column at 256, about 3 µs from 1 024 upwards, against 17 µs on the CPU
+thread at 256 and 42 µs at 4 096, where the strided Fortran arrays stop
+fitting its caches), and what it pays for is the traffic of the twenty input
+arrays to the device, not the arithmetic: resident, 16 384 columns take
+3.3 ms.  No hook has hundreds of columns a call; it takes the node's ranks
+batching their chunks into one call and waiting for one another, which the
+batching plugin below measures inside the model.  The in-image CPU figure
+itself (4.17 ms a call) is seven times this CPU thread's 0.61 ms because 128
+ranks a node share the memory bandwidth; a GPU node's 64 cores would change
+that number before any GPU did.
 
 ### The surrogate on a GPU, inside the image
 
