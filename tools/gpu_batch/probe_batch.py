@@ -60,6 +60,8 @@ def main() -> int:
     ap.add_argument("--warm", type=int, default=10)
     ap.add_argument("--jitter-ms", type=float, default=0.0, help="uniform random CPU busy time before each call, per rank")
     ap.add_argument("--skip-cpu", action="store_true")
+    ap.add_argument("--mode", choices=("batched", "gpu-ref"), default="batched",
+                    help="batched: the group plugin; gpu-ref: every rank runs its own 16 columns on its GPU (one context a rank, or MPS)")
     ap.add_argument("--anchors", default=None, help="anchor dataset (.npz keyed by input name) for real columns")
     ap.add_argument("--device-index", type=int, default=0, help="-1 runs the leader's forward on the host (a login-node check)")
     args = ap.parse_args()
@@ -89,6 +91,41 @@ def main() -> int:
             in_shapes[3 * j + k] = d
     out_ptrs = (ctypes.c_void_p * 1)(packed.ctypes.data)
     out_shapes = (ctypes.c_int64 * 3)(NCOL, NOUT_W, 0)
+
+    if args.mode == "gpu-ref":
+        lib.fcb_gpu_reference.argtypes = [ctypes.c_int, ctypes.POINTER(ctypes.c_void_p), ctypes.c_void_p, ctypes.c_char_p]
+        lib.fcb_gpu_reference.restype = ctypes.c_int
+        gpu_out = np.zeros((NCOL, NOUT_W), order="F")
+        t_first0 = time.perf_counter()
+        st = lib.fcb_gpu_reference(20, in_ptrs, gpu_out.ctypes.data, args.model.encode())
+        t_first = time.perf_counter() - t_first0
+        if st != 0:
+            print(f"[r{rank}] gpu reference status {st}", flush=True)
+            comm.Abort(3)
+        for _ in range(args.warm):
+            lib.fcb_gpu_reference(20, in_ptrs, gpu_out.ctypes.data, args.model.encode())
+        comm.Barrier()
+        gw = []
+        t0 = time.perf_counter()
+        for _ in range(args.calls):
+            if args.jitter_ms > 0:
+                busy_wait(rng.uniform(0, args.jitter_ms) * 1e-3)
+            s = time.perf_counter()
+            lib.fcb_gpu_reference(20, in_ptrs, gpu_out.ctypes.data, args.model.encode())
+            gw.append(time.perf_counter() - s)
+        loop = (time.perf_counter() - t0) / args.calls * 1e3
+        gw = np.array(gw) * 1e3
+        rows = comm.gather(dict(first_s=t_first, mean_ms=float(gw.mean()), p95_ms=float(np.percentile(gw, 95)), max_ms=float(gw.max()),
+                               loop_ms=loop, finite=bool(np.isfinite(gpu_out).all()),
+                               mps=bool(os.environ.get("CUDA_MPS_PIPE_DIRECTORY"))), root=0)
+        if rank == 0:
+            means = np.array([r["mean_ms"] for r in rows])
+            print(f"per-rank GPU reference: {size} ranks, {size // args.gpus_per_node} a GPU, MPS {rows[0]['mps']}, {args.calls} calls a rank, jitter {args.jitter_ms} ms")
+            print(f"  first call (context, model load, fuser): mean {np.mean([r['first_s'] for r in rows]):.1f} s, max {max(r['first_s'] for r in rows):.1f} s")
+            print(f"  a call: mean over ranks {means.mean():.2f} ms, min-rank {means.min():.2f}, max-rank {means.max():.2f}, "
+                  f"p95 {np.mean([r['p95_ms'] for r in rows]):.2f} ms, max {max(r['max_ms'] for r in rows):.1f} ms; loop {np.mean([r['loop_ms'] for r in rows]):.2f} ms a call")
+            print(f"  outputs finite on all ranks: {all(r['finite'] for r in rows)}")
+        return 0
 
     t_init0 = time.perf_counter()
     status = lib.fcb_init(comm.py2f(), args.gpus_per_node, args.model.encode(), args.device_index)

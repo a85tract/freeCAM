@@ -202,6 +202,38 @@ int fcb_cpu_reference(int n_in, void **in_ptrs, void *out_ptr, const char *model
   return 0;
 }
 
+/* the per-rank device reference: this rank alone loads the model on its GPU (index 0 of what it
+ * sees) and runs its own 16 columns there, inputs copied in and the packed output back, as the
+ * FTorch hook does on the device path; timed under whatever sharing the node imposes (one
+ * context a rank, or MPS) */
+static torch_jit_script_module_t gpu_model = NULL;
+static torch_tensor_t gpu_out_tensor = NULL;
+static double gpu_out[NCOL * NOUT_W];
+
+int fcb_gpu_reference(int n_in, void **in_ptrs, void *out_ptr, const char *model_path) {
+  if (n_in != NIN) return 10;
+  if (!gpu_model) {
+    gpu_model = torch_jit_load(model_path, torch_kCUDA, 0, false, false);
+    if (!gpu_model) return 2;
+    int64_t shape[2] = {NCOL, NOUT_W}, strides[2] = {1, NCOL};
+    gpu_out_tensor = torch_from_blob(gpu_out, 2, shape, strides, torch_kFloat64, torch_kCPU, -1, false);
+  }
+  torch_tensor_t in_t[NIN];
+  for (int j = 0; j < NIN; j++) {
+    int64_t shape[3], strides[3]; int nd;
+    if (j == 0) { nd = 1; shape[0] = 1; strides[0] = 1; }
+    else if (IN_D2[j]) { nd = 3; shape[0] = NCOL; shape[1] = IN_D1[j]; shape[2] = IN_D2[j]; strides[0] = 1; strides[1] = NCOL; strides[2] = NCOL * IN_D1[j]; }
+    else if (IN_D1[j]) { nd = 2; shape[0] = NCOL; shape[1] = IN_D1[j]; strides[0] = 1; strides[1] = NCOL; }
+    else { nd = 1; shape[0] = NCOL; strides[0] = 1; }
+    in_t[j] = torch_from_blob(in_ptrs[j], nd, shape, strides, torch_kFloat64, torch_kCUDA, 0, false);
+    if (!in_t[j]) return 20 + j;
+  }
+  torch_jit_module_forward(gpu_model, in_t, NIN, &gpu_out_tensor, 1, false);
+  for (int j = 0; j < NIN; j++) torch_tensor_delete(in_t[j]);
+  memcpy(out_ptr, gpu_out, sizeof(gpu_out));
+  return 0;
+}
+
 /* means in milliseconds: gather, wait for the group, forward (leader; others ~0), wait for
  * the result, scatter, total; then the call count */
 void fcb_stats(double *out7) {

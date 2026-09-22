@@ -10,7 +10,7 @@
 # is read against the devices its server has (one), so index k>0 would find no device.
 # Either way the model's device index inside the rank is 0.
 local_rank=${PMI_LOCAL_RANK:-${SLURM_LOCALID:-${OMPI_COMM_WORLD_LOCAL_RANK:-0}}}
-base=${TMPDIR:-/tmp}/freecam-mps-${PBS_JOBID%%.*}
+base=${FREECAM_MPS_BASE:-/tmp/freecam-mps-${PBS_JOBID%%.*}}     # the same path the daemons were started with, on every node
 n=${FREECAM_GPUS_PER_NODE:-4}
 if [ -f "${base}/gpus" ]; then
   n=$(cat "${base}/gpus")
