@@ -1,0 +1,63 @@
+{
+ "schema_version": 1,
+ "what": "Cost of the optional per-rank action timeline (--timeline-dir): two paired 50-step gates of the 512-rank PI-atm case on CPU main-queue nodes (4 x 128 ranks), image p33 with the Python stage classes installed and nothing replaced, timeline on (flush every 10 steps) and off, the second pair in the opposite order; each run bit-for-bit with the oracle.",
+ "runs": [
+  {
+   "timeline": "on",
+   "tag": "t33-nothing-armed-timeline-on",
+   "pbs_job_id": "7574596.desched1",
+   "record": "validation/pi_cam_pausable_t33-nothing-armed-timeline-on_50step.json",
+   "advance_seconds_rank0": 16.507,
+   "step_loop_seconds_mean_over_ranks": 16.32,
+   "bit_for_bit": true
+  },
+  {
+   "timeline": "off",
+   "tag": "t33-nothing-armed-timeline-off",
+   "pbs_job_id": "7574597.desched1",
+   "record": "validation/pi_cam_pausable_t33-nothing-armed-timeline-off_50step.json",
+   "advance_seconds_rank0": 16.061,
+   "step_loop_seconds_mean_over_ranks": 15.983,
+   "bit_for_bit": true
+  },
+  {
+   "timeline": "off",
+   "tag": "t33-nothing-armed-timeline-off-b",
+   "pbs_job_id": "7575254.desched1",
+   "record": "validation/pi_cam_pausable_t33-nothing-armed-timeline-off-b_50step.json",
+   "advance_seconds_rank0": 16.347,
+   "step_loop_seconds_mean_over_ranks": 16.268,
+   "bit_for_bit": true
+  },
+  {
+   "timeline": "on",
+   "tag": "t33-nothing-armed-timeline-on-b",
+   "pbs_job_id": "7575255.desched1",
+   "record": "validation/pi_cam_pausable_t33-nothing-armed-timeline-on-b_50step.json",
+   "advance_seconds_rank0": 16.554,
+   "step_loop_seconds_mean_over_ranks": 16.324,
+   "bit_for_bit": true
+  }
+ ],
+ "regions_on_minus_off_s": {
+  "CAM:boundary_import": 0.079,
+  "CAM:stepon_run2": 0.014,
+  "CAM:stepon_run3": 0.083,
+  "CAM:restart": -0.085,
+  "CAM:stepon_run1": 0.019,
+  "CAM:prepare_cam_run1": 0.011,
+  "CAM:boundary_export": 0.054
+ },
+ "step_loop_mean_on_s": 16.322,
+ "step_loop_mean_off_s": 16.126,
+ "difference_percent": 1.22,
+ "spread_between_the_two_off_runs_percent": 1.75,
+ "recording_cost": {
+  "per_action_us": 0.58,
+  "records_a_step": 63,
+  "per_step_ms": 0.037,
+  "share_of_a_288_ms_step_percent": 0.013,
+  "measured": "login node, 200,000 recorder.action() calls; a flush of 6,300 records about 2 ms"
+ },
+ "reading": "The compute regions are unchanged between on and off (every Python stage and physics action within 0.004 s over 50 steps); the on-minus-off difference sits in the dynamics and the boundary import and export, which depend on the network and the file system of the node set, and the restart write goes the other way.  The difference of the means is smaller than the spread between the two runs with the timeline off, and the recording itself costs 0.013 % of a step: no cost is resolvable at this length."
+}
