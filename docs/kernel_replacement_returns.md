@@ -359,6 +359,36 @@ stands: at this layout a GPU only pays for a model if the node's ranks
 batch their chunks into one call -- a different design, whose upper bound
 is the difference between the in-image host call and a shared batched call.
 
+### One context a rank, with MPS
+
+NVIDIA's Multi-Process Service puts the contexts of every rank on a GPU into
+one server context, so their kernels run side by side instead of in turns.
+The first measurement of an MPS client's device footprint (2.3 GB, which
+would not fit 32 on a 40 GB device) was wrong: the helper scripts' pipe
+directory did not reach the ranks, and the node kept stale servers.  With
+them fixed (`validation/jobs/gpu_mps_per_gpu.sh`, one server a GPU started
+by the job, `PYCAM_GPU_MPS=1`) a client costs about 0.6 GB, and 32 fit in
+15 GB.  On one node, a rank's own 16-column call through its GPU's server
+costs 1.02 ms at 8 ranks a GPU and 1.57 ms at 16, against 25.8 and 51.8 ms
+without MPS.  Inside the model, at 32 ranks a GPU (records
+`pi_cam_pausable_g35-uwshcu-sub-{shadow,live}-gpu-4x128-mps32_50step`):
+
+| 50 steps, four A100 nodes x 128 ranks | model on the host | one context a rank | one context a rank, MPS |
+| --- | ---: | ---: | ---: |
+| a call after the first | 3.90 ms | 97.6 ms | 3.98 ms |
+| first call, a rank | 0.02 s | 12.0 s | 11.1 s |
+| warm-up forward at the bind, a rank | 0.18 s | 7.5 s | 6.6 s |
+| step loop, rank 0 | 17.8 s | 87.0 s | 68.6 s |
+| shadow bit-for-bit; live health | yes; 60 big-error lines | yes; 60 | yes; 60 |
+
+MPS removes the queue, and the call then costs what it costs on the host:
+the hook's packing and writing back stay on the host, and what the device
+saves on the forward the 32 concurrent clients spend again.  The step loop's
+excess over the host path is start-up, paid once a run (context, model load,
+warm-up, the first call's fuser compilation), with nothing in the steady
+state to earn it back.  Sixteen ranks a GPU would need the eight-node
+layout, which fails at initialization (see the 64-a-node failure record).
+
 ### Batching a GPU's ranks into one call, measured
 
 The remedy the per-rank result points at was built and measured: a plugin at

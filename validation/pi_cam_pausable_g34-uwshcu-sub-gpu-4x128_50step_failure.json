@@ -34,6 +34,11 @@
   "one_context_a_rank_passed": {
    "shadow_gpu": "7546109.desched1",
    "live_gpu": "7546110.desched1"
+  },
+  "mps_one_server_a_gpu_32_a_gpu_passed": {
+   "shadow_gpu": "7573341.desched1",
+   "live_gpu": "7573342.desched1",
+   "footprint_probe": "7572615.desched1"
   }
  },
  "layout": "select=4:ncpus=64:mpiprocs=128:ngpus=4:gpu_type=a100:mem=400GB; 32 ranks a GPU",
@@ -50,5 +55,6 @@
   "one_context_a_rank: without MPS, CUDA_VISIBLE_DEVICES unset for mpiexec and set per rank to the node-local GPU index, CUDA_MODULE_LOADING=LAZY and CUBLAS_WORKSPACE_CONFIG=:4096:8, all 512 ranks bound and ran: shadow bit-for-bit (pi_cam_pausable_g35-uwshcu-sub-shadow-gpu-4x128-repo3), live with the CPU model's health signature (pi_cam_pausable_g35-uwshcu-sub-live-gpu-4x128-repo3)."
  ],
  "diagnosis": "Node-level facts, none of them the model's: CUDA_VISIBLE_DEVICES must be set per node and per rank (unset before mpiexec, then the node-local rank's GPU index); the site's mps=1 is one server a node and a server serves at most 48 clients; a per-GPU MPS client costs about 2.3 GB of the device, so at 32 ranks a GPU MPS does not fit; one CUDA context a rank fits a 40 GB A100 32 times over with lazy module loading and a 32 MB cuBLAS workspace.",
- "disposition": "validation/jobs/pi_cam_pausable_{50step,1month}.pbs launch the CUDA path with CUDA_VISIBLE_DEVICES unset for mpiexec and validation/jobs/gpu_rank_env.sh a rank (one context a rank by default; PYCAM_GPU_MPS=1 starts one MPS server a GPU through validation/jobs/gpu_mps_per_gpu.sh for layouts with few ranks a GPU).  The passing gates are 7546109 (shadow) and 7546110 (live) on image p35; the nothing-armed p35 gate 7544284 passed without any of this.  The one-rank-a-GPU alternative (64 ranks a node) is the layout that fails at initialisation (pi_cam_pausable_gpu-nodes-8x64_50step_failure.json)."
+ "disposition": "validation/jobs/pi_cam_pausable_{50step,1month}.pbs launch the CUDA path with CUDA_VISIBLE_DEVICES unset for mpiexec and validation/jobs/gpu_rank_env.sh a rank (one context a rank by default; PYCAM_GPU_MPS=1 starts one MPS server a GPU through validation/jobs/gpu_mps_per_gpu.sh for layouts with few ranks a GPU).  The passing gates are 7546109 (shadow) and 7546110 (live) on image p35; the nothing-armed p35 gate 7544284 passed without any of this.  The one-rank-a-GPU alternative (64 ranks a node) is the layout that fails at initialisation (pi_cam_pausable_gpu-nodes-8x64_50step_failure.json).",
+ "correction": "The MPS footprint above (2.3 GB a client, from probe 7546067) was wrong: that probe's daemons were started through a pipe directory the ranks did not see, and the node held stale servers.  With the helper scripts fixed (one explicit base path on every node, the daemons detached; commit 3aaacaae) a client costs about 0.6 GB (probe 7572615: 32 a GPU in 15.2 GB), and the 4 x 128 gates with one MPS server a GPU ran: 3.98 ms a call after the first against 3.90 ms on the host (pi_cam_pausable_g35-uwshcu-sub-{shadow,live}-gpu-4x128-mps32_50step)."
 }
