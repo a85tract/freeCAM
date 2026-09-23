@@ -372,9 +372,11 @@ def _kernel_plugins_summary(plugins: dict[str, str], shadow: dict[str, str] | No
     return summary
 
 
-def _kernel_models_summary(models: dict[str, Path], shadow: dict[str, Path] | None = None) -> dict[str, dict[str, Any]] | None:
+def _kernel_models_summary(models: dict[str, Path], shadow: dict[str, Path] | None = None,
+                           device: str = "cpu") -> dict[str, dict[str, Any]] | None:
     """Which artifact stood in which slot: file name and content hash, and the path when
-    it lies inside this checkout (records name no site directory); shadow models say so."""
+    it lies inside this checkout (records name no site directory); shadow models say so,
+    and a TorchScript model names the device the image ran it on."""
 
     import hashlib
 
@@ -386,8 +388,11 @@ def _kernel_models_summary(models: dict[str, Path], shadow: dict[str, Path] | No
     summary: dict[str, dict[str, Any]] = {}
     for paths, is_shadow in ((models, False), (shadow or {}, True)):
         for name, path in paths.items():
+            torchscript = NativeModel.is_torchscript(path)
             row: dict[str, Any] = {"file": path.name, "sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
-                                   "binding": "torchscript" if NativeModel.is_torchscript(path) else "cloudpickle"}
+                                   "binding": "torchscript" if torchscript else "cloudpickle"}
+            if torchscript:
+                row["device"] = device
             if is_shadow:
                 row["shadow"] = True
             resolved = path.resolve()
@@ -1574,7 +1579,8 @@ def main(argv: list[str] | None = None) -> int:
             "disabled_actions": [s.strip() for s in args.disable_actions.split(",") if s.strip()],
             "stage_execution": _stage_executions(cam),
             "frame_capture": _frame_capture_summary(records, args, native_evidence),
-            "kernel_models": ({**(_kernel_models_summary(kernel_model_paths, shadow_model_paths) or {}),
+            "kernel_models": ({**(_kernel_models_summary(kernel_model_paths, shadow_model_paths,
+                                                         args.model_device) or {}),
                                **_kernel_plugins_summary(kernel_plugin_specs, shadow_plugin_specs)} or None),
             "radiation_process": _radiation_process_summary(records),
             "cloud_process": _cloud_process_summary(records),

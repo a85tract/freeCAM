@@ -269,6 +269,8 @@ def test_the_command_line_tells_a_torchscript_archive_from_a_pickle(tmp_path: Pa
     summary = _kernel_models_summary({"instratus_condensate": archive}, {"micro_mg_tend": archive})
     assert summary["instratus_condensate"]["binding"] == "torchscript" and "shadow" not in summary["instratus_condensate"]
     assert summary["micro_mg_tend"]["shadow"] is True
+    assert summary["instratus_condensate"]["device"] == "cpu"               # where the image ran it
+    assert _kernel_models_summary({"k": archive}, device="cuda")["k"]["device"] == "cuda"
     plain = tmp_path / "weights.pkl"; plain.write_bytes(b"\x80\x04not a zip")
     with pytest.raises(SystemExit):
         _load_kernel_model(plain, shadow=True)                   # only a native model can shadow
