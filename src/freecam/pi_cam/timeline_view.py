@@ -92,6 +92,7 @@ class TimelineData:
         self.step = np.empty(n, dtype=np.int32)
         self.action = np.empty(n, dtype=np.int32)
         self.kind = np.empty(n, dtype=np.int8)
+        self.depth = np.empty(n, dtype=np.int8)
         self.t0 = np.empty(n, dtype=np.float64)
         self.t1 = np.empty(n, dtype=np.float64)
         at = 0
@@ -101,6 +102,7 @@ class TimelineData:
             self.step[at:at + k] = records["step"]
             self.action[at:at + k] = mapping[records["action"]]
             self.kind[at:at + k] = records["kind"]
+            self.depth[at:at + k] = records[records.dtype.names[3]]      # "depth" (called "pad" before it had a use)
             self.t0[at:at + k] = records["t0"]
             self.t1[at:at + k] = records["t1"]
             at += k
@@ -125,14 +127,26 @@ class TimelineData:
         action_mask = self.kind == KIND_ACTION
         order: list[int] = []
         if nsteps:
-            first = (self.step == self.steps[0]) & action_mask & (self.rank == (self.ranks_present[0] if self.ranks_present else 0))
-            order = [int(a) for a in self.action[first][np.argsort(self.t0[first], kind="stable")]]
+            # the step, among the first few, that runs the most actions (Python stages may be
+            # installed after the first step), on the lowest rank
+            low = self.ranks_present[0] if self.ranks_present else 0
+            candidates = [int(s) for s in self.steps[:4]]
+            counts = [int(((self.step == s) & action_mask & (self.rank == low)).sum()) for s in candidates]
+            reference = candidates[int(np.argmax(counts))]
+            first = (self.step == reference) & action_mask & (self.rank == low)
+            # by start time, and a parent before the actions it runs (they start with it or after)
+            idx = np.lexsort((self.depth[first], self.t0[first]))
+            order = [int(a) for a in self.action[first][idx]]
             seen = set()
             order = [a for a in order if not (a in seen or seen.add(a))]
         others = sorted(set(int(a) for a in np.unique(self.action[action_mask])) - set(order))
         self.action_order = order + others
         pos = {a: i for i, a in enumerate(self.action_order)}
         nact = len(self.action_order)
+        self.action_depth = []
+        for a in self.action_order:
+            sel = action_mask & (self.action == a)
+            self.action_depth.append(int(np.median(self.depth[sel])) if sel.any() else 0)
         ranks = np.asarray(self.ranks_present, dtype=np.int64)
         rank_pos = np.full(self.nranks, -1, dtype=np.int64)
         rank_pos[ranks] = np.arange(len(ranks))
@@ -182,10 +196,19 @@ class TimelineData:
             else:
                 z = np.load(path, allow_pickle=False)
                 phis = z["phis"] if "phis" in z.files else np.zeros_like(z["lat"])
+                surface = self.directory / "surface.npz"
+                landfrac = None
+                if surface.is_file():
+                    s = np.load(surface, allow_pickle=False)
+                    if s["landfrac"].shape == z["lat"].shape:
+                        landfrac = s["landfrac"]
+                # the land fraction after the first step's import; failing that, the surface
+                # geopotential, whose smoothed topography leaks over the sea: above ~100 m only
+                land = landfrac > 0.5 if landfrac is not None else phis > 1000.0
                 self._columns = {
                     "rank": z["rank"].astype(int).tolist(),
                     "lat": _round(z["lat"], 3), "lon": _round(z["lon"], 3),
-                    "land": (np.abs(phis) > 1.0).astype(int).tolist(),
+                    "land": land.astype(int).tolist(),
                     "host": [str(h) for h in z["host"]], "local_rank": z["local_rank"].astype(int).tolist(),
                 }
         return self._columns
@@ -206,6 +229,7 @@ class TimelineData:
             "updated_utc": self.manifest.get("updated_utc", ""),
             "steps": self.steps.tolist(),
             "actions": [self.names[a] for a in self.action_order],
+            "depth": self.action_depth,
             "phases": {k: round(v, 3) for k, v in self.phases.items()},
             "step_max_ms": _round(self.step_max * MS),
             "step_mean_ms": _round(self.step_mean * MS),
@@ -230,6 +254,7 @@ class TimelineData:
             "rank": self.rank[m][order].tolist(),
             "action": action[order].tolist(),
             "wait": (self.kind[m][order] == KIND_WAIT).astype(int).tolist(),
+            "depth": self.depth[m][order].astype(int).tolist(),
             "t0": _round((self.t0[m][order] - origin) * MS),
             "t1": _round((self.t1[m][order] - origin) * MS),
         }

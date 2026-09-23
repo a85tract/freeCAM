@@ -1393,13 +1393,16 @@ class PICAMDriver:
             return PICAMDriver._execute_counted(self, action)
         name = action.qualified_name
         outer = timeline.current_action
+        depth = timeline.depth
         timeline.current_action = name
+        timeline.depth = depth + 1
         started = timeline.clock()
         try:
             return PICAMDriver._execute_counted(self, action)
         finally:
-            timeline.action(self.coupling_step, name, started)
+            timeline.action(self.coupling_step, name, started, depth)
             timeline.current_action = outer
+            timeline.depth = depth
 
     def _execute_counted(self, action: PICAMAction) -> PICAMActionTrace:
         counters = self.kernel_counters
@@ -2289,6 +2292,9 @@ class PICAMDriver:
         with self.profiler.region("FREECAM:STEP"):
             result = self._step()
         timeline.step_done(step, started)
+        if step == 0:
+            # the land fraction exists once the first import has run; gathered once, collectively
+            timeline.write_surface(self.pool)
         return result
 
     def _step(self) -> tuple[PICAMActionTrace, ...]:

@@ -88,6 +88,7 @@
   .labels div, .totals div { height: 14px; line-height: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: pointer; }
   .labels div { color: var(--ink); }
   .labels div small { color: var(--faint); }
+  .labels div.nested { padding-left: 14px; color: var(--muted); }
   .labels div.sel, .totals div.sel { font-weight: 600; }
   .totals div { position: relative; font-family: "IBM Plex Mono", ui-monospace, monospace; color: var(--muted); text-align: right; }
   .totals i { position: absolute; left: 0; top: 3px; height: 8px; background: var(--grid); z-index: 0; }
@@ -299,7 +300,8 @@ function renderHeat() {
   g.strokeStyle = css("--sel"); g.lineWidth = 1.5;
   if (si >= 0) g.strokeRect(si * cellW + 0.75, 0.75, Math.max(cellW - 1.5, 1.5), na * rowH - 1.5);
   g.strokeRect(0.75, S.action * rowH + 0.75, width - 1.5, rowH - 1.5);
-  labels.innerHTML = o.actions.map((n, i) => `<div data-a="${i}" class="${i === S.action ? "sel" : ""}" title="${n}"><small>${phaseOf(n)}.</small>${shortName(n)}</div>`).join("");
+  const depth = o.depth || [];
+  labels.innerHTML = o.actions.map((n, i) => `<div data-a="${i}" class="${i === S.action ? "sel" : ""}${depth[i] > 0 ? " nested" : ""}" title="${n}${depth[i] > 0 ? " (runs inside the action above it)" : ""}"><small>${phaseOf(n)}.</small>${shortName(n)}</div>`).join("");
   const tmax = Math.max(...o.total_s, 1e-9);
   totals.innerHTML = o.total_s.map((v, i) => `<div data-a="${i}" class="${i === S.action ? "sel" : ""}"><i style="width:${(100 * v / tmax).toFixed(1)}%"></i><span>${v.toFixed(2)}</span></div>`).join("");
   drawRamp($("ramp"), "ramp-lo", "ramp-hi", S.scale === "pct" ? "0%" : fmtMs(lo), S.scale === "pct" ? hi.toFixed(0) + "%" : fmtMs(hi));
@@ -365,12 +367,18 @@ async function renderRanks() {
     }
   }
   const colors = S.ov.actions.map((_, i) => actionColor(i)), selCol = css("--sel"), waitCol = css("--wait");
-  for (let k = 0; k < d.rank.length; k++) {
-    const r = d.rank[k], a = d.action[k], y = r * rowH, x0 = x(d.t0[k]), w = Math.max(x(d.t1[k]) - x0, 0.5);
-    if (d.wait[k]) { g.fillStyle = waitCol; g.fillRect(x0, y, w, rowH); continue; }
-    const col = colors[a] || [128, 128, 128];
-    g.fillStyle = a === S.action ? selCol : `rgba(${col[0]},${col[1]},${col[2]},${a === S.action ? 1 : 0.9})`;
-    g.fillRect(x0, y, w, rowH);
+  const depthOf = d.depth || [];
+  for (const pass of [0, 1, 2]) {           // plan actions, then nested ones, then the waits on top
+    for (let k = 0; k < d.rank.length; k++) {
+      const nested = (depthOf[k] || 0) > 0, isWait = !!d.wait[k];
+      if ((pass === 2) !== isWait || (!isWait && (pass === 1) !== nested)) continue;
+      const r = d.rank[k], a = d.action[k], y = r * rowH, x0 = x(d.t0[k]), w = Math.max(x(d.t1[k]) - x0, 0.5);
+      if (isWait) { g.fillStyle = waitCol; g.fillRect(x0, y, w, rowH); continue; }
+      if (nested && rowH < 4 && a !== S.action) continue;
+      const col = colors[a] || [128, 128, 128];
+      g.fillStyle = a === S.action ? selCol : rgb(col);
+      if (nested && rowH >= 4) g.fillRect(x0, y + rowH / 2, w, rowH / 2); else g.fillRect(x0, y, w, rowH);
+    }
   }
   // time axis
   g.fillStyle = css("--muted"); g.strokeStyle = css("--line"); const ticks = 5;
@@ -381,17 +389,22 @@ async function renderRanks() {
   c.onmousemove = (e) => {
     const rc = c.getBoundingClientRect(), r = Math.floor((e.clientY - rc.top) / rowH), t = (e.clientX - rc.left - left) / plotW * tmax;
     if (r < 0 || r >= n || t < 0) return hideTip();
-    let hit = -1;
-    for (let k = 0; k < d.rank.length; k++) if (d.rank[k] === r && d.t0[k] <= t && t <= d.t1[k]) { hit = k; if (d.wait[k]) break; }
+    let hit = -1, best = -1;
+    for (let k = 0; k < d.rank.length; k++) if (d.rank[k] === r && d.t0[k] <= t && t <= d.t1[k]) {
+      const score = d.wait[k] ? 99 : (d.depth ? d.depth[k] : 0); if (score > best) { best = score; hit = k; } }
     if (hit < 0) return showTip(e, `rank ${r} (${hosts[r] || "?"})\n${fmtMs(t)}: between actions`);
     showTip(e, `rank ${r} (${hosts[r] || "?"})\n${S.ov.actions[d.action[hit]] || "?"}${d.wait[hit] ? "  (waiting)" : ""}\n${fmtMs(d.t0[hit])} → ${fmtMs(d.t1[hit])}  (${fmtMs(d.t1[hit] - d.t0[hit])})`);
   };
   c.onmouseleave = hideTip;
   c.onclick = (e) => { const rc = c.getBoundingClientRect(), r = Math.floor((e.clientY - rc.top) / rowH), t = (e.clientX - rc.left - left) / plotW * tmax;
-    for (let k = 0; k < d.rank.length; k++) if (d.rank[k] === r && !d.wait[k] && d.t0[k] <= t && t <= d.t1[k]) { S.action = d.action[k]; renderAll(); break; } };
+    let pick = -1, deepest = -1;
+    for (let k = 0; k < d.rank.length; k++) if (d.rank[k] === r && !d.wait[k] && d.t0[k] <= t && t <= d.t1[k]) {
+      const dep = d.depth ? d.depth[k] : 0; if (dep > deepest) { deepest = dep; pick = k; } }
+    if (pick >= 0) { S.action = d.action[pick]; renderAll(); } };
   const phases = [...new Set(S.ov.actions.map(phaseOf))];
   $("phase-legend").innerHTML = phases.map((p) => `<span><i style="background:${css(PHASE_VAR[p] || "--ph-other")}"></i>${PHASE_LABEL[p] || p}</span>`).join("")
-    + `<span><i style="background:${css("--wait")}"></i>waiting in a collective</span><span><i style="background:${css("--sel")}"></i>the chosen action</span>`;
+    + `<span><i style="background:${css("--wait")}"></i>waiting in a collective</span><span><i style="background:${css("--sel")}"></i>the chosen action</span>`
+    + `<span>an action run inside another is drawn in the lower half of its rank's row</span>`;
 }
 
 // ---- globe ----
@@ -411,7 +424,7 @@ async function renderGlobe() {
   const nodes = Math.max(1, Object.keys(hostIndex).length);
   const lam0 = S.rotLon * Math.PI / 180, phi0 = S.rotLat * Math.PI / 180, sp0 = Math.sin(phi0), cp0 = Math.cos(phi0);
   g.fillStyle = css("--grid"); g.beginPath(); g.arc(cx, cy, R, 0, 2 * Math.PI); g.fill();
-  const dot = Math.max(2, R * 0.034);
+  const dot = Math.max(2, R * Math.sqrt(4 * Math.PI / cols.lat.length) * 1.5);     // a little over one column's spacing
   const pts = [];
   for (let i = 0; i < cols.lat.length; i++) {
     const phi = cols.lat[i] * Math.PI / 180, lam = cols.lon[i] * Math.PI / 180 - lam0;
@@ -464,6 +477,19 @@ function wireGlobeDrag() {
   c.addEventListener("pointerup", () => { drag = null; });
 }
 
+// the action whose slowest rank most outruns its mean, summed over the steps: where imbalance lives
+// (an action that is mostly waiting is where the imbalance shows up, not where it comes from: skipped)
+function mostImbalanced() {
+  const o = S.ov; let best = 0, bestV = -1;
+  o.actions.forEach((_, a) => {
+    let v = 0, total = 0, waited = 0;
+    o.max_ms[a].forEach((m, s) => { v += m - o.mean_ms[a][s]; total += m; waited += o.wait_ms[a][s]; });
+    if (total > 0 && waited > 0.3 * total) return;
+    if (v > bestV) { bestV = v; best = a; }
+  });
+  return best;
+}
+
 // ---- wiring ----
 function wireSeg(id, key, after) {
   $(id).addEventListener("click", (e) => { const b = e.target.closest("button"); if (!b) return; S[key] = b.dataset.v;
@@ -486,10 +512,13 @@ async function boot() {
     S.ov = EMBEDDED ? EMBEDDED.overview : await api("/api/overview");
     S.cols = EMBEDDED ? EMBEDDED.columns : await api("/api/columns");
   } catch (err) { document.querySelector("main").innerHTML = `<div class="empty">could not load the timeline: ${String(err.message || err)}</div>`; return; }
-  let top = 0; S.ov.total_s.forEach((v, i) => { if (v > S.ov.total_s[top]) top = i; }); S.action = top;
+  S.action = mostImbalanced();
   if (S.ov.steps.length) {
-    const embeddedSteps = EMBEDDED ? Object.keys(EMBEDDED.steps).map(Number) : [];
-    S.step = embeddedSteps.length ? embeddedSteps[0] : S.ov.steps[0];
+    // a typical step: the one of median duration (the first carries start-up costs)
+    const order = S.ov.steps.map((s, i) => i).sort((a, b) => S.ov.step_max_ms[a] - S.ov.step_max_ms[b]);
+    let pick = S.ov.steps[order[Math.floor(order.length / 2)]];
+    if (EMBEDDED && !EMBEDDED.steps[String(pick)]) pick = Number(Object.keys(EMBEDDED.steps)[0] ?? S.ov.steps[0]);
+    S.step = pick;
     $("stepin").value = S.step;
   }
   wireSeg("metric", "metric", renderHeat); wireSeg("scale", "scale", renderHeat);

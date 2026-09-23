@@ -37,7 +37,7 @@ RECORD_DTYPE = np.dtype([
     ("step", "<i4"),        # coupling step (0 = the first step); -1 = initialization
     ("action", "<i2"),      # index into this rank's names table
     ("kind", "<i1"),        # KIND_*
-    ("pad", "<i1"),
+    ("depth", "<i1"),       # nesting: 0 for a plan action, 1 for an action run inside another, ...
     ("t0", "<f8"),          # seconds from the common origin
     ("t1", "<f8"),
 ])
@@ -84,8 +84,10 @@ class TimelineRecorder:
         self._records_written = 0
         self._started = False
         self._closed = False
-        #: the action whose collectives are being timed (set by the driver around each action)
+        #: the action whose collectives are being timed, and how many actions are open (set by
+        #: the driver around each action: a Python stage runs its native action inside its own)
         self.current_action = ""
+        self.depth = 0
 
     # -- paths -------------------------------------------------------------
     @property
@@ -126,16 +128,16 @@ class TimelineRecorder:
                 raise ValueError("too many distinct timeline names")
         return index
 
-    def record(self, step: int, name: str, kind: int, t0: float, t1: float) -> None:
+    def record(self, step: int, name: str, kind: int, t0: float, t1: float, depth: int = 0) -> None:
         """Append one record; ``t0``/``t1`` are raw ``clock()`` readings."""
 
-        self._pending.append((int(step), self._id(name), int(kind), 0, t0 - self._origin, t1 - self._origin))
+        self._pending.append((int(step), self._id(name), int(kind), min(int(depth), 127), t0 - self._origin, t1 - self._origin))
 
-    def action(self, step: int, name: str, started: float) -> None:
-        self.record(step, name, KIND_ACTION, started, self.clock())
+    def action(self, step: int, name: str, started: float, depth: int = 0) -> None:
+        self.record(step, name, KIND_ACTION, started, self.clock(), depth)
 
     def wait(self, step: int, started: float) -> None:
-        self.record(step, self.current_action or "outside the plan", KIND_WAIT, started, self.clock())
+        self.record(step, self.current_action or "outside the plan", KIND_WAIT, started, self.clock(), max(self.depth - 1, 0))
 
     def phase(self, name: str, started: float) -> None:
         self.record(-1, name, KIND_PHASE, started, self.clock())
@@ -177,6 +179,28 @@ class TimelineRecorder:
             self._write_manifest(complete=True)
 
     # -- metadata ----------------------------------------------------------
+    def write_surface(self, pool: Mapping[str, Any]) -> None:
+        """Gather every rank's land fraction to rank 0 (one collective, after the first step's
+        boundary import has filled it) and write ``surface.npz``, in the column order of
+        ``columns.npz``."""
+
+        try:
+            shape = np.asarray(pool["phys_state.lat"]).shape
+        except (KeyError, TypeError):
+            return
+        values = _column_values(pool, "cam_in.landfrac", shape)
+        lat = _column_values(pool, "phys_state.lat", shape)
+        if values is None or lat is None:
+            values = np.zeros(0)
+        else:
+            values = values[np.isfinite(lat)]
+        gather = getattr(self.comm, "gather", None)
+        gathered = gather(values, root=0) if callable(gather) else [values]
+        if self.rank != 0:
+            return
+        landfrac = np.concatenate([np.asarray(v, dtype=np.float64) for v in gathered]) if gathered else np.zeros(0)
+        np.savez(self.directory / "surface.npz", landfrac=np.where(np.isfinite(landfrac), landfrac, 0.0))
+
     def _write_manifest(self, *, complete: bool) -> None:
         manifest = {
             "schema_version": SCHEMA_VERSION,
@@ -221,6 +245,19 @@ class TimelineRecorder:
         np.savez(self.directory / "columns.npz", rank=np.concatenate(ranks) if ranks else np.zeros(0, np.int32),
                  lat=lat_all, lon=lon_all, phis=np.concatenate(phiss) if phiss else np.zeros(0),
                  host=np.array(hosts), local_rank=np.array(local_ranks, dtype=np.int32))
+
+
+def _column_values(pool: Mapping[str, Any], name: str, lat_shape: tuple) -> np.ndarray | None:
+    """One (pcols, chunks) field over this rank's real columns, in the order of _columns."""
+
+    try:
+        values = np.asarray(pool[name], dtype=np.float64)
+        ncol = np.asarray(pool["phys_state.ncol"], dtype=np.int64).reshape(-1)
+    except (KeyError, TypeError):
+        return None
+    if values.ndim != 2 or values.shape != lat_shape or ncol.size != values.shape[1]:
+        return None
+    return np.concatenate([values[: int(n), c] for c, n in enumerate(ncol)])
 
 
 def _columns(pool: Mapping[str, Any]) -> tuple[np.ndarray, np.ndarray, np.ndarray]:

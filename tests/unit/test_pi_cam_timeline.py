@@ -44,7 +44,7 @@ def test_every_action_and_step_is_recorded_and_written_to_the_rank_file(tmp_path
     directory = _run(tmp_path, steps=3, flush_every=2)
     manifest = json.loads((directory / "manifest.json").read_text())
     assert manifest["ranks"] == 1 and manifest["complete"] is True and manifest["last_step_flushed"] == 2
-    assert manifest["run"] == "unit" and manifest["record_dtype"][0] == ["step", "<i4"]
+    assert manifest["run"] == "unit" and manifest["record_dtype"][0] == ["step", "<i4"] and manifest["record_dtype"][3][0] == "depth"
     records = np.fromfile(directory / "ranks" / "rank-0000.bin", dtype=RECORD_DTYPE)
     names = json.loads((directory / "ranks" / "rank-0000.names.json").read_text())
     kinds = records["kind"]
@@ -55,6 +55,7 @@ def test_every_action_and_step_is_recorded_and_written_to_the_rank_file(tmp_path
     # every plan action of every step, each inside its step's span
     per_step = [records[(kinds == KIND_ACTION) & (records["step"] == s)] for s in range(3)]
     assert len({len(p) for p in per_step}) == 1 and len(per_step[0]) >= 40
+    assert np.all(per_step[0]["depth"] == 0)                                          # no action runs inside another here
     action_names = [names[a] for a in per_step[0]["action"][np.argsort(per_step[0]["t0"])]]
     assert action_names[0] == "coupling.boundary_import" and action_names[-1] == "coupling.boundary_export"
     for s in range(3):
@@ -204,3 +205,32 @@ def test_the_notebook_driver_passes_its_timeline_to_the_rank_workers(tmp_path: P
     driver.timeline = tmp_path / "elsewhere"
     assert driver.timeline_dir == (tmp_path / "elsewhere").resolve()
     assert "timeline_dir" in inspect.getsource(facade.Driver._live_session)
+
+
+def test_an_action_run_inside_another_is_recorded_one_level_deeper(tmp_path: Path) -> None:
+    recorder = TimelineRecorder(tmp_path / "t", rank=0, size=1, flush_every=100)
+    recorder.start()
+    recorder._origin = 0.0
+    recorder.record(0, "cam_run1.deep_convection_python", KIND_ACTION, 1.0, 4.0, depth=0)
+    recorder.record(0, "cam_run1.deep_convection", KIND_ACTION, 1.5, 3.5, depth=1)
+    recorder.record(0, "step", KIND_STEP, 0.0, 5.0)
+    recorder.close()
+    data = TimelineData(tmp_path / "t")
+    ov = data.overview()
+    assert ov["actions"] == ["cam_run1.deep_convection_python", "cam_run1.deep_convection"] and ov["depth"] == [0, 1]
+    assert data.step_view(0)["depth"] == [0, 1]
+
+
+def test_the_land_fraction_is_gathered_in_the_column_order(tmp_path: Path) -> None:
+    class Comm:
+        def gather(self, value, root=0):
+            return [value, np.array([0.25])]
+
+    recorder = TimelineRecorder(tmp_path / "t", rank=0, size=2, comm=Comm())
+    recorder.start()
+    pool = {"phys_state.lat": np.array([[0.1, 0.2], [0.3, 0.0], [np.inf, np.inf]]),
+            "phys_state.ncol": np.array([2, 1]),
+            "cam_in.landfrac": np.array([[1.0, 0.0], [0.5, 9.0], [7.0, 7.0]])}
+    recorder.write_surface(pool)
+    z = np.load(tmp_path / "t" / "surface.npz")
+    assert z["landfrac"].tolist() == [1.0, 0.5, 0.0, 0.25]            # chunk by chunk, ncol columns each, then rank 1
