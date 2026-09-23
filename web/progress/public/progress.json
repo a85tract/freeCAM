@@ -2648,7 +2648,7 @@
   "use_gw_oro": true,
   "use_subcol_microp": false
  },
- "content_hash": "bb5b315b771a6ab581c24e57830a8fc1a2bb5d5231ae313975ab3d191437f0ab",
+ "content_hash": "d99a54b7f522daf3c084195039982f7f000054a5c82cd1c54b5340b0ee84edab",
  "evidence": {
   "pi_cam_cldfrc_fice_frame_replay.json": {
    "bfb": true,
@@ -4010,12 +4010,15 @@
    "what": "The first runs of the compute_uwshcu_inv TorchScript model on the GPU inside the image (four A100 nodes x 128 ranks, the validated layout) failed three times over, each fault behind the previous one; the CPU path of the same image and layout passed (records pi_cam_pausable_g33-*-4x128, g34-nothing-armed-4x128)."
   },
   "pi_cam_pausable_gpu-nodes-8x64_50step_failure.json": {
-   "diagnosis": "Not the GPU nodes: the same failures appear on CPU nodes once the layout is 64 ranks a node.  What changes with the layout is memory placement, not the decomposition, so a layout-dependent memory fault in the image or the control layer is the likely cause (uninitialised or fixed-address memory whose content the 128-a-node layout happened to make consistent).  Not resolved here.",
+   "diagnosis": "Not the GPU nodes: the same failures appear on CPU nodes once the layout is 64 ranks a node.  What changes with the layout is memory placement, not the decomposition, so a layout-dependent memory fault in the image or the control layer is the likely cause (uninitialised or fixed-address memory whose content the 128-a-node layout happened to make consistent).  Not resolved here.  The export difference comes from memory CAM reads before it writes, off the malloc heap (static or stack storage); the faults are its other symptoms.  16 ranks a GPU with MPS, which needs this layout, is measured only outside the model (1.57 ms a call on one node).",
    "kind": "gate-failure",
    "outcome": [
     "GPU nodes, both images: a handful of ranks (4, 5, 13 on the first node; 453, 485 on the last) died of SIGSEGV in Fortran during CAM initialisation, right after the initial-condition field listing, before cam_history's BLDFLD; one run showed glibc 'corrupted size vs. prev_size'; the other ranks raised the collective BoundaryReplayError and exited 255.",
     "CPU nodes, 8 x 64, p33: rank 0 died of the same SIGSEGV at the same point and the job hung until qdel (7538643).",
-    "CPU nodes, 8 x 64, p33, FOR_IGNORE_EXCEPTIONS=TRUE (7539071): no fault, but the initial CAM export differed from the recorded replay boundary on 122 of 512 ranks (cam_out.a2x_rattr hashes; ranks 89-108 among them), so the run refused to start."
+    "CPU nodes, 8 x 64, p33, FOR_IGNORE_EXCEPTIONS=TRUE (7539071): no fault, but the initial CAM export differed from the recorded replay boundary on 122 of 512 ranks (cam_out.a2x_rattr hashes; ranks 89-108 among them), so the run refused to start.",
+    "Rank 0 under gdb (7569084): no fault (the layout under the debugger changes), but the initial CAM export differed from the recording on 8 ranks: attribute 3 of cam_out.a2x_rattr is inf in the 128-a-node recording and 0.0 here -- a value computed from memory CAM leaves uninitialised, which the two layouts happen to fill differently.",
+    "MALLOC_PERTURB_=255, every malloc block zero-filled (7569202): the same export difference; the uninitialised value is not on the malloc heap.",
+    "With the export check off (7572486 CPU, 7575839 and 7575840 GPU): the model dies at initialization or at step 0 on a few ranks (SIGSEGV at rank 499 while reading the DMS tracer data; an abort with a core on rank 456 after the initial-condition listing); 7575840 then hung until its walltime.  The node's core_pattern pipes cores to systemd-coredump, out of reach."
    ],
    "pbs_job": null,
    "ranks": 512,
@@ -6619,7 +6622,7 @@
   "validation/pi_cam_kernel_api_redirectable_calls.json": "b97f6f7f8f7099cb42e9cebcde6102f9d4d05d17852ba7a5495b29edb1d4fbaf",
   "validation/pi_cam_kernel_runtime_coverage_1month.json": "48f77d6ec78b4026806d4ab6fb9517ef31c1d526481b4ad68e55f77af0d303bd",
   "validation/pi_cam_kernel_runtime_coverage_50step.json": "222961fc5274dbaaf71c40f6c131a683536b5a85ef14cd047a2fd196d8ca38c5",
-  "web/public/catalog.json": "7179f831dc69f30a379b50c05a71b344af8fd59b77f72922539b6dcf3538728b"
+  "web/public/catalog.json": "3dddbc3afe26d559729a4cfa75f1f843b18b119c59ae85c55fcea00796a051b8"
  },
  "kernels": {
   "aer_rad_props::aer_rad_props_lw": {
@@ -74210,9 +74213,9 @@
   "mo_lightning::lightning_no_prod"
  ],
  "volatile": {
-  "branch": "timeline-viewer",
-  "commit": "a07f23bcd3758d75be8eeb274d15f399c856d39a",
-  "generated_at": "2026-09-23T08:34:19+00:00"
+  "branch": "online-model-month",
+  "commit": "4d1363fd8fc9adeb1d394e70dcb092bb0b670eef",
+  "generated_at": "2026-09-23T16:34:47+00:00"
  },
  "work_items": [
   {
