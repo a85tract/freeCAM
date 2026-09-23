@@ -1705,6 +1705,7 @@ class Driver:
         session_factory: Any = PICAMNotebookSession,
         trace_limit: int | None = DEFAULT_TRACE_LIMIT,
         namelist: Mapping[str, Any] | None = None,
+        timeline: bool | str | Path = False,
     ) -> None:
         if int(nsteps) < 1:
             raise ValueError("nsteps must be positive")
@@ -1867,6 +1868,9 @@ class Driver:
         )
         self.verify_boundary_exports = bool(verify_boundary_exports)
         self.trace_limit = validate_trace_limit(trace_limit)
+        #: record every rank's action timeline: False (off, the default), True (into the run
+        #: directory's ``timeline``), or a directory; view it with ``freecam timeline DIR``
+        self.timeline = timeline if isinstance(timeline, bool) else Path(timeline).expanduser()
         # Do not resolve the final ``.venv/bin/python`` symlink: Python uses
         # that invocation path to select the virtual environment's site-packages.
         self.python_executable = Path(
@@ -2186,10 +2190,22 @@ class Driver:
     def __exit__(self, exc_type: object, exc: object, traceback: object) -> None:
         self.close()
 
+    @property
+    def timeline_dir(self) -> Path | None:
+        """Where the rank workers record their action timeline, or None when it is off."""
+
+        if self.timeline is False:
+            return None
+        if self.timeline is True:
+            return None if self.run_dir is None else self.run_dir / "timeline"
+        return Path(self.timeline).resolve()
+
     def _live_session(self) -> PICAMNotebookSession:
         if self._session is None:
             run_dir = self._prepare_run_dir()
             boundary = self._prepare_online_boundary(run_dir)
+            timeline_options = {} if self.timeline is False else {
+                "timeline_dir": (Path(run_dir) / "timeline") if self.timeline is True else Path(self.timeline).resolve()}
             session = self._session_factory(
                 self.config_path,
                 boundary=boundary,
@@ -2203,6 +2219,7 @@ class Driver:
                 pbs_memory_per_node=self.memory_per_node,
                 verify_boundary_exports=self.verify_boundary_exports,
                 trace_limit=self.trace_limit,
+                **timeline_options,
             )
             try:
                 session.start()

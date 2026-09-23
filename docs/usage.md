@@ -330,6 +330,51 @@ rank by default. Run results always report exact action counts and state
 whether the trace was truncated; pass `trace_limit=None` to `fc.Driver` only
 when a complete in-memory trace is explicitly needed.
 
+### The action timeline
+
+The reports above say how long each region took in total. The timeline says
+when, on every rank, step by step: which action ran, how long it took, and how
+long the rank then waited for the others. It is off unless asked for:
+
+```bash
+# the rank command line (the job knob is PYCAM_TIMELINE=1)
+mpiexec -n 512 python -m freecam.pi_cam.cli ... --timeline-dir <run>/timeline
+```
+
+```python
+fc.Driver(case="PI-atm", timeline=True)   # into the run directory's timeline/
+```
+
+Each rank keeps one record per action in memory (two clock readings and an
+append), plus the time spent inside the driver's collective agreement calls,
+and appends them to its own file every `--timeline-flush-every` steps
+(default 100). Nothing is exchanged between ranks while the model steps; the
+only collectives are a barrier that sets a common time origin and one gather,
+after initialization, of each rank's host and column coordinates.
+
+```bash
+freecam timeline <run>/timeline                  # serve the viewer on loopback; it follows a running model
+freecam timeline <run>/timeline --html view.html # one self-contained page instead
+```
+
+The server prints an address with a token; from a login node, forward the
+port (`ssh -L`, or the editor's port forwarding). The page has three views:
+
+- **Where the time goes**: actions by steps, each cell the slowest rank's
+  time in that action (or the mean, the imbalance between the two, or the
+  time spent waiting), with each step's duration above. The step waits for
+  its slowest rank, so that is the default colour.
+- **One step, every rank**: the ranks, grouped by node, against time within
+  the chosen step. Load imbalance shows as a ragged edge; waiting in a
+  collective is grey.
+- **Where on Earth**: the chosen action's time on each rank, painted on the
+  columns that rank computes. The cost of physics follows the weather, so
+  this is where imbalance gets its physical reason: deep convection in the
+  tropics, the shortwave on the day side.
+
+A snapshot embeds the overview, the globe for every action, and the timelines
+of the first, slowest, a typical and the last step (`--steps` chooses others).
+
 ## The Workflow Builder
 
 A browser page edits the step -- add, remove, replace, move, enable and

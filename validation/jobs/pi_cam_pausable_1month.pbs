@@ -171,6 +171,11 @@ if [ -n "${PYCAM_NO_VERIFY_EXPORTS:-}" ]; then
   # would otherwise stop there.  Only for runs whose result is drift, not bit-for-bit
   stage_flags+=(--no-verify-exports)
 fi
+if [ -n "${PYCAM_TIMELINE:-}" ]; then
+  # every rank's action timeline, for `freecam timeline <dir>`: in memory, appended to one
+  # file a rank every PYCAM_TIMELINE_FLUSH steps (default 100); off unless set
+  stage_flags+=(--timeline-dir "${run_dir}/../timeline" --timeline-flush-every "${PYCAM_TIMELINE_FLUSH:-100}")
+fi
 if [ ${#stage_flags[@]} -eq 0 ]; then
   echo "set PYCAM_PYTHON_STAGES, PYCAM_RADIATION_PYTHON, PYCAM_CLOUD_PYTHON, PYCAM_ORIGINAL_KERNELS or PYCAM_DISABLE_ACTIONS" >&2; exit 2
 fi

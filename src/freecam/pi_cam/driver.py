@@ -1092,6 +1092,9 @@ class PICAMDriver:
         # native process run since the last boundary collective
         self._deferred_process_errors: list[tuple[str, str | None]] = []
         self._in_step = False
+        #: the per-rank action timeline (freecam.pi_cam.timeline.TimelineRecorder), or None;
+        #: attach it before initialize with attach_timeline
+        self.timeline = None
         self.module_parameters = PICAMModuleParameterRegistry(self)
         self.history_streams = PICAMHistoryStreamRegistry(self)
         self.default_history_stream = bool(default_history_stream)
@@ -1178,8 +1181,14 @@ class PICAMDriver:
         if self.lifecycle != PICAMLifecycle.CREATED:
             raise PICAMStateError(f"initialize from {self.lifecycle.value}")
         self.profiler.start_total()
+        timeline = self.timeline
+        started = timeline.clock() if timeline is not None else 0.0
         with self.profiler.region("FREECAM:INITIALIZE"):
             self._initialize()
+        if timeline is not None:
+            timeline.phase("initialize", started)
+            timeline.write_columns(self.pool)
+            timeline.flush()
 
     def _initialize(self) -> None:
         if self.lifecycle != PICAMLifecycle.CREATED:
@@ -1379,6 +1388,20 @@ class PICAMDriver:
         return trace
 
     def _execute(self, action: PICAMAction) -> PICAMActionTrace:
+        timeline = getattr(self, "timeline", None)
+        if timeline is None:
+            return PICAMDriver._execute_counted(self, action)
+        name = action.qualified_name
+        outer = timeline.current_action
+        timeline.current_action = name
+        started = timeline.clock()
+        try:
+            return PICAMDriver._execute_counted(self, action)
+        finally:
+            timeline.action(self.coupling_step, name, started)
+            timeline.current_action = outer
+
+    def _execute_counted(self, action: PICAMAction) -> PICAMActionTrace:
         counters = self.kernel_counters
         if counters is None:
             with self.profiler.region(f"CAM:{action.operation}"):
@@ -2247,9 +2270,26 @@ class PICAMDriver:
             run.retarget = retarget  # type: ignore[attr-defined]
         return run
 
+    def attach_timeline(self, recorder: Any) -> None:
+        """Record this rank's action timeline with ``recorder`` (a TimelineRecorder), from
+        initialization on; it is started here, collectively."""
+
+        if self.lifecycle != PICAMLifecycle.CREATED:
+            raise PICAMStateError("attach the timeline before initialize")
+        recorder.start()
+        self.timeline = recorder
+
     def step(self) -> tuple[PICAMActionTrace, ...]:
+        timeline = self.timeline
+        if timeline is None:
+            with self.profiler.region("FREECAM:STEP"):
+                return self._step()
+        step = self.coupling_step
+        started = timeline.clock()
         with self.profiler.region("FREECAM:STEP"):
-            return self._step()
+            result = self._step()
+        timeline.step_done(step, started)
+        return result
 
     def _step(self) -> tuple[PICAMActionTrace, ...]:
         if self.lifecycle not in {PICAMLifecycle.INITIALIZED, PICAMLifecycle.RUNNING}:
@@ -2365,10 +2405,15 @@ class PICAMDriver:
     def finalize(self) -> None:
         if self.lifecycle == PICAMLifecycle.FINALIZED:
             return
+        timeline = self.timeline
+        started = timeline.clock() if timeline is not None else 0.0
         try:
             with self.profiler.region("FREECAM:FINALIZE"):
                 self._finalize()
         finally:
+            if timeline is not None:
+                timeline.phase("finalize", started)
+                timeline.close()
             self.profiler.stop_total()
             if self.run_dir is not None:
                 self.profiler.write(
@@ -2573,7 +2618,14 @@ class PICAMDriver:
         if allreduce is not None:
             failed = local_error is not None or any(error is not None for _, error in deferred)
             self._flag_send[0] = 1 if failed else 0
-            allreduce(self._flag_send, self._flag_recv)
+            timeline = self.timeline
+            if timeline is None:
+                allreduce(self._flag_send, self._flag_recv)
+            else:
+                waited = timeline.clock()
+                allreduce(self._flag_send, self._flag_recv)
+                # outside the step loop (initialization) a wait belongs to no step
+                timeline.wait(self.coupling_step if self._in_step else -1, waited)
             if not int(self._flag_recv[0]):
                 return result
         gathered = self.comm.allgather((local_error, deferred))

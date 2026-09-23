@@ -482,6 +482,8 @@ def test_a_native_model_on_a_gpu_is_bound_on_this_ranks_device(tmp_path: Path, m
     # (the CUDA runtime's own count is asked first; here it is stood in for)
     import freecam.pi_cam.hooks as hooks_module
     monkeypatch.setattr(hooks_module, "_cuda_device_report", lambda: (4, "four devices"))
+    # a CPU-only torch another test imported would be refused (below); stand in a CUDA one
+    monkeypatch.setitem(sys.modules, "torch", SimpleNamespace(__version__="2.14.0+cu126", version=SimpleNamespace(cuda="12.6")))
     stage = CloudMacroMicrophysics()
     stage.kernels["instratus_condensate"] = pinned
     library = _Library()

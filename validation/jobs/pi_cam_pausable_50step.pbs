@@ -24,6 +24,8 @@
 # PYCAM_NO_VERIFY_EXPORTS=1 lets such a run past the replay's export check.
 # PYCAM_RAD_CAPTURE=dir records radiation_tend's computing branch (with PYCAM_RADIATION_PYTHON=1);
 # PYCAM_RAD_MODEL=replay:dir or file.py:function answers it in the driver's place.
+# PYCAM_TIMELINE=1 records every rank's action timeline into <run>/../timeline (see
+# `freecam timeline`); PYCAM_TIMELINE_FLUSH sets the steps between its writes.
 # PYCAM_KERNEL_PLUGINS=name=file.py:function[,...] binds Numba-compiled Python kernels at
 # their hooks; PYCAM_SHADOW_PLUGINS does the same in shadow.
 # PYCAM_SHADOW_MODELS=name=path[,...] binds TorchScript models in shadow: the model
@@ -195,6 +197,11 @@ if [ -n "${PYCAM_NO_VERIFY_EXPORTS:-}" ]; then
   # a model's answer differs from the oracle's at the first export; the replay
   # would otherwise stop there.  Only for runs whose result is drift, not bit-for-bit
   stage_flags+=(--no-verify-exports)
+fi
+if [ -n "${PYCAM_TIMELINE:-}" ]; then
+  # every rank's action timeline, for `freecam timeline <dir>`: in memory, appended to one
+  # file a rank every PYCAM_TIMELINE_FLUSH steps (default 100); off unless set
+  stage_flags+=(--timeline-dir "${run_dir}/../timeline" --timeline-flush-every "${PYCAM_TIMELINE_FLUSH:-100}")
 fi
 if [ ${#stage_flags[@]} -eq 0 ]; then
   echo "set PYCAM_PYTHON_STAGES, PYCAM_RADIATION_PYTHON, PYCAM_ORIGINAL_KERNELS or PYCAM_DISABLE_ACTIONS" >&2; exit 2

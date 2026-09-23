@@ -1,0 +1,502 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>freeCAM Timeline</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+  :root {
+    --bg: #f3f5f8;
+    --panel: #ffffff;
+    --ink: #1a2130;
+    --muted: #5b6678;
+    --faint: #8b95a5;
+    --line: #d5dbe3;
+    --grid: #e9edf2;
+    --accent: #2f5d9e;
+    --sel: #111827;
+    --wait: #a7b0bc;
+    --ph-coupling: #7c5cc4;
+    --ph-run1: #d97b29;
+    --ph-run2: #2a9a8c;
+    --ph-run3: #3b6fb4;
+    --ph-run4: #8d7866;
+    --ph-other: #7d8795;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #12161d;
+      --panel: #1a2029;
+      --ink: #e6eaf0;
+      --muted: #9aa5b5;
+      --faint: #6f7a8b;
+      --line: #2b3441;
+      --grid: #222a35;
+      --accent: #8db2ea;
+      --sel: #f5f7fa;
+      --wait: #56606d;
+      --ph-coupling: #a38bea;
+      --ph-run1: #f0a14f;
+      --ph-run2: #46c2b2;
+      --ph-run3: #6f9ee0;
+      --ph-run4: #b39e8b;
+      --ph-other: #9aa4b2;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #12161d; --panel: #1a2029; --ink: #e6eaf0; --muted: #9aa5b5; --faint: #6f7a8b; --line: #2b3441;
+    --grid: #222a35; --accent: #8db2ea; --sel: #f5f7fa; --wait: #56606d; --ph-coupling: #a38bea; --ph-run1: #f0a14f;
+    --ph-run2: #46c2b2; --ph-run3: #6f9ee0; --ph-run4: #b39e8b; --ph-other: #9aa4b2;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--ink);
+    font-family: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif; font-size: 14px; line-height: 1.5;
+    padding-inline: 16px; padding-block: 16px 48px;
+  }
+  main { max-width: 1280px; margin: 0 auto; display: flex; flex-direction: column; gap: 16px; }
+  header { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px 20px; }
+  h1 { font-size: 1.35rem; font-weight: 600; margin: 0; }
+  h2 { font-size: 1.02rem; font-weight: 600; margin: 0; }
+  .meta { color: var(--muted); font-family: "IBM Plex Mono", ui-monospace, monospace; font-size: .8rem; word-break: break-all; }
+  .status { font-size: .78rem; padding: 2px 8px; border: 1px solid var(--line); color: var(--muted); }
+  .status.live { color: var(--ph-run2); border-color: var(--ph-run2); }
+  .tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 10px; }
+  .tile { background: var(--panel); border: 1px solid var(--line); padding: 10px 12px; }
+  .tile b { display: block; font-family: "IBM Plex Mono", ui-monospace, monospace; font-size: 1.15rem; font-weight: 500; font-variant-numeric: tabular-nums; }
+  .tile span { color: var(--muted); font-size: .82rem; }
+  section { background: var(--panel); border: 1px solid var(--line); padding: 14px; display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+  .bar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; }
+  .bar .spacer { flex: 1; }
+  .hint { color: var(--muted); font-size: .82rem; }
+  .seg { display: inline-flex; border: 1px solid var(--line); }
+  .seg button { font: inherit; font-size: .8rem; background: transparent; color: var(--muted); border: 0; border-right: 1px solid var(--line); padding: 3px 10px; cursor: pointer; }
+  .seg button:last-child { border-right: 0; }
+  .seg button[aria-pressed="true"] { background: var(--accent); color: var(--panel); }
+  button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+  .stepper { display: inline-flex; align-items: center; gap: 4px; font-size: .82rem; }
+  .stepper button { font: inherit; border: 1px solid var(--line); background: var(--panel); color: var(--ink); padding: 1px 8px; cursor: pointer; }
+  .stepper input { width: 70px; font: inherit; font-family: "IBM Plex Mono", ui-monospace, monospace; padding: 1px 4px; border: 1px solid var(--line); background: var(--panel); color: var(--ink); }
+  .heat { display: grid; grid-template-columns: minmax(150px, 260px) minmax(0, 1fr) 90px; gap: 0 8px; align-items: start; }
+  .labels, .totals { font-size: .74rem; line-height: 0; }
+  .labels div, .totals div { height: 14px; line-height: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: pointer; }
+  .labels div { color: var(--ink); }
+  .labels div small { color: var(--faint); }
+  .labels div.sel, .totals div.sel { font-weight: 600; }
+  .totals div { position: relative; font-family: "IBM Plex Mono", ui-monospace, monospace; color: var(--muted); text-align: right; }
+  .totals i { position: absolute; left: 0; top: 3px; height: 8px; background: var(--grid); z-index: 0; }
+  .totals span { position: relative; z-index: 1; }
+  .scroll { overflow-x: auto; }
+  canvas { display: block; max-width: 100%; }
+  .legend { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 14px; font-size: .78rem; color: var(--muted); }
+  .legend i { display: inline-block; width: 12px; height: 10px; vertical-align: -1px; margin-right: 4px; }
+  .ramp { display: inline-flex; align-items: center; gap: 6px; font-family: "IBM Plex Mono", ui-monospace, monospace; font-size: .74rem; color: var(--muted); }
+  .ramp canvas { width: 160px; height: 10px; }
+  .row2 { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr); gap: 16px; }
+  @media (max-width: 900px) { .row2 { grid-template-columns: 1fr; } .heat { grid-template-columns: 120px minmax(0, 1fr); } .totals { display: none; } }
+  #tip { position: fixed; pointer-events: none; background: var(--sel); color: var(--panel); font-size: .78rem; padding: 5px 8px; max-width: 360px; z-index: 10; display: none; font-family: "IBM Plex Mono", ui-monospace, monospace; white-space: pre; }
+  .empty { color: var(--muted); padding: 24px 0; text-align: center; }
+  @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>freeCAM timeline</h1>
+    <span class="meta" id="run"></span>
+    <span class="status" id="status">loading</span>
+  </header>
+  <div class="tiles" id="tiles"></div>
+
+  <section aria-labelledby="h-heat">
+    <div class="bar">
+      <h2 id="h-heat">Where the time goes</h2>
+      <span class="hint">actions × steps; click a cell to open that step and action below</span>
+      <span class="spacer"></span>
+      <span class="seg" id="metric" role="group" aria-label="colour">
+        <button data-v="max" aria-pressed="true" title="the slowest rank's time: what the step waits for">slowest rank</button>
+        <button data-v="mean" aria-pressed="false">mean rank</button>
+        <button data-v="imb" aria-pressed="false" title="slowest minus mean: load imbalance">imbalance</button>
+        <button data-v="wait" aria-pressed="false" title="time inside the driver's collective agreement calls">waiting</button>
+      </span>
+      <span class="seg" id="scale" role="group" aria-label="scale">
+        <button data-v="ms" aria-pressed="true">ms (log)</button>
+        <button data-v="pct" aria-pressed="false">% of step</button>
+      </span>
+    </div>
+    <div class="scroll"><canvas id="strip" height="46" aria-label="each step's duration, slowest rank"></canvas></div>
+    <div class="heat">
+      <div class="labels" id="labels"></div>
+      <div class="scroll"><canvas id="heat" aria-label="heat map of action times by step"></canvas></div>
+      <div class="totals" id="totals" title="the slowest rank's total over the steps shown, s"></div>
+    </div>
+    <div class="legend"><span class="ramp"><span id="ramp-lo"></span><canvas id="ramp" width="160" height="10"></canvas><span id="ramp-hi"></span></span><span id="heat-note"></span></div>
+  </section>
+
+  <div class="row2">
+    <section aria-labelledby="h-step">
+      <div class="bar">
+        <h2 id="h-step">One step, every rank</h2>
+        <span class="spacer"></span>
+        <span class="stepper"><button id="prev" aria-label="previous step">‹</button><label for="stepin">step</label><input id="stepin" type="number"><button id="next" aria-label="next step">›</button></span>
+      </div>
+      <div class="hint" id="step-note">ranks top to bottom, grouped by node; time left to right from the step's first start. Grey: waiting in a collective.</div>
+      <canvas id="ranks" aria-label="every rank's actions in the chosen step"></canvas>
+      <div class="legend" id="phase-legend"></div>
+    </section>
+    <section aria-labelledby="h-globe">
+      <div class="bar">
+        <h2 id="h-globe">Where on Earth</h2>
+        <span class="spacer"></span>
+        <span class="seg" id="gstep" role="group" aria-label="which steps">
+          <button data-v="all" aria-pressed="true">mean of all steps</button>
+          <button data-v="step" aria-pressed="false">this step</button>
+        </span>
+        <span class="seg" id="gmode" role="group" aria-label="colour by">
+          <button data-v="time" aria-pressed="true">action time</button>
+          <button data-v="rank" aria-pressed="false">rank</button>
+          <button data-v="node" aria-pressed="false">node</button>
+        </span>
+      </div>
+      <div class="hint" id="globe-note">each column coloured by the time its rank spent in the chosen action; drag to turn the globe</div>
+      <canvas id="globe" aria-label="globe of the columns coloured by their rank's time"></canvas>
+      <div class="legend"><span class="ramp"><span id="gramp-lo"></span><canvas id="gramp" width="160" height="10"></canvas><span id="gramp-hi"></span></span><span id="globe-sel"></span></div>
+    </section>
+  </div>
+</main>
+<div id="tip"></div>
+<script>
+"use strict";
+const EMBEDDED = /*TIMELINE_DATA*/null;
+const TOKEN = new URLSearchParams(location.search).get("token") || "";
+const $ = (id) => document.getElementById(id);
+const css = (name) => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+const S = { ov: null, cols: null, action: 0, step: null, metric: "max", scale: "ms", gstep: "all", gmode: "time",
+            stepData: {}, globe: {}, rotLon: -100, rotLat: 15 };
+
+// ---- data access: embedded snapshot or the local server ----
+async function api(path, params = {}) {
+  const q = new URLSearchParams({ token: TOKEN, ...params });
+  const r = await fetch(`${path}?${q}`, { cache: "no-store" });
+  if (!r.ok) throw new Error(await r.text());
+  return r.json();
+}
+async function getStep(n) {
+  if (S.stepData[n]) return S.stepData[n];
+  if (EMBEDDED) return EMBEDDED.steps[String(n)] || null;
+  return (S.stepData[n] = await api("/api/step", { n }));
+}
+async function getGlobe(key) {
+  if (S.globe[key]) return S.globe[key];
+  if (EMBEDDED) return EMBEDDED.globe[key] || null;
+  return (S.globe[key] = await api("/api/globe", { step: key }));
+}
+
+// ---- colour ----
+const HEAT = [[0, [247, 244, 234]], [0.3, [243, 199, 98]], [0.55, [229, 120, 52]], [0.8, [176, 38, 44]], [1, [70, 12, 48]]];
+function heat(t) {
+  t = Math.max(0, Math.min(1, t));
+  for (let i = 1; i < HEAT.length; i++) {
+    if (t <= HEAT[i][0]) {
+      const [a, ca] = HEAT[i - 1], [b, cb] = HEAT[i], u = (t - a) / (b - a);
+      return ca.map((c, k) => Math.round(c + (cb[k] - c) * u));
+    }
+  }
+  return HEAT[HEAT.length - 1][1];
+}
+const rgb = (c) => `rgb(${c[0]},${c[1]},${c[2]})`;
+function hexToRgb(h) { h = h.replace("#", ""); if (h.length === 3) h = h.split("").map((x) => x + x).join(""); const n = parseInt(h, 16); return [(n >> 16) & 255, (n >> 8) & 255, n & 255]; }
+function phaseOf(name) { return name.split(".")[0]; }
+const PHASE_VAR = { coupling: "--ph-coupling", cam_run1: "--ph-run1", cam_run2: "--ph-run2", cam_run3: "--ph-run3", cam_run4: "--ph-run4" };
+const PHASE_LABEL = { coupling: "boundary (import, export)", cam_run1: "physics before the coupler", cam_run2: "physics after the coupler",
+                      cam_run3: "dynamics", cam_run4: "history and restart" };
+function actionColor(i) {
+  const name = S.ov.actions[i] || "", base = hexToRgb(css(PHASE_VAR[phaseOf(name)] || "--ph-other"));
+  const same = S.ov.actions.map((n, k) => [n, k]).filter(([n]) => phaseOf(n) === phaseOf(name)).map(([, k]) => k);
+  const j = same.indexOf(i), f = same.length > 1 ? (j / (same.length - 1)) * 0.5 - 0.25 : 0;
+  return base.map((c) => Math.round(f > 0 ? c + (255 - c) * f : c * (1 + f)));
+}
+function drawRamp(canvas, lo, hi, loLabel, hiLabel) {
+  const g = canvas.getContext("2d");
+  for (let x = 0; x < canvas.width; x++) { g.fillStyle = rgb(heat(x / (canvas.width - 1))); g.fillRect(x, 0, 1, canvas.height); }
+  $(lo).textContent = loLabel; $(hi).textContent = hiLabel;
+}
+function sizeCanvas(c, w, h) {
+  const r = window.devicePixelRatio || 1;
+  c.width = Math.max(1, Math.round(w * r)); c.height = Math.max(1, Math.round(h * r));
+  c.style.width = w + "px"; c.style.height = h + "px";
+  const g = c.getContext("2d"); g.setTransform(r, 0, 0, r, 0, 0); return g;
+}
+const fmtMs = (v) => v >= 1000 ? (v / 1000).toFixed(2) + " s" : v >= 10 ? v.toFixed(1) + " ms" : v >= 0.1 ? v.toFixed(2) + " ms" : (v * 1000).toFixed(0) + " µs";
+function shortName(n) { const p = n.split("."); return p.length > 1 ? p.slice(1).join(".") : n; }
+
+// ---- tooltip ----
+const tip = $("tip");
+function showTip(e, text) { tip.textContent = text; tip.style.display = "block";
+  const x = Math.min(e.clientX + 14, innerWidth - tip.offsetWidth - 8), y = Math.min(e.clientY + 14, innerHeight - tip.offsetHeight - 8);
+  tip.style.left = x + "px"; tip.style.top = y + "px"; }
+function hideTip() { tip.style.display = "none"; }
+
+// ---- header and tiles ----
+function renderHeader() {
+  const o = S.ov;
+  $("run").textContent = o.run || "";
+  const st = $("status");
+  st.textContent = o.complete ? "complete" : (EMBEDDED ? "snapshot" : `live · updated ${o.updated_utc.replace("T", " ").replace("Z", " UTC")}`);
+  st.className = "status" + (!o.complete && !EMBEDDED ? " live" : "");
+  const n = o.steps.length, mean = n ? o.step_max_ms.reduce((a, b) => a + b, 0) / n : 0;
+  let slow = 0; o.step_max_ms.forEach((v, i) => { if (v > o.step_max_ms[slow]) slow = i; });
+  let top = 0; o.total_s.forEach((v, i) => { if (v > o.total_s[top]) top = i; });
+  const tiles = [
+    [`${o.ranks_present}${o.ranks_present !== o.ranks ? " of " + o.ranks : ""}`, "ranks recorded"],
+    [n ? `${o.steps[0]} – ${o.steps[n - 1]}` : "none yet", `steps (${n})`],
+    [n ? fmtMs(mean) : "–", "mean step, slowest rank"],
+    [n ? `${fmtMs(o.step_max_ms[slow])} @ ${o.steps[slow]}` : "–", "slowest step"],
+    [o.actions.length ? `${o.total_s[top].toFixed(2)} s` : "–", `most time: ${o.actions.length ? shortName(o.actions[top]) : "–"}`],
+    [o.phases.initialize != null ? `${o.phases.initialize.toFixed(1)} s` : "–", "initialization"],
+  ];
+  $("tiles").innerHTML = tiles.map(([b, s]) => `<div class="tile"><b>${b}</b><span>${s}</span></div>`).join("");
+}
+
+// ---- overview: step strip + heat map ----
+function metricMatrix() {
+  const o = S.ov;
+  if (S.metric === "max") return o.max_ms;
+  if (S.metric === "mean") return o.mean_ms;
+  if (S.metric === "wait") return o.wait_ms;
+  return o.max_ms.map((row, a) => row.map((v, s) => Math.max(0, v - o.mean_ms[a][s])));
+}
+function renderHeat() {
+  const o = S.ov, na = o.actions.length, ns = o.steps.length;
+  const labels = $("labels"), totals = $("totals"), wrap = $("heat").parentElement;
+  if (!na || !ns) { labels.innerHTML = ""; totals.innerHTML = ""; $("heat").getContext("2d").clearRect(0, 0, 9999, 9999); return; }
+  const rowH = 14, width = Math.max(wrap.clientWidth, Math.min(ns * 3, 4000)), cellW = width / ns;
+  const M = metricMatrix();
+  let lo = Infinity, hi = 0;
+  const val = (a, s) => S.scale === "pct" ? (o.step_max_ms[s] > 0 ? 100 * M[a][s] / o.step_max_ms[s] : 0) : M[a][s];
+  for (let a = 0; a < na; a++) for (let s = 0; s < ns; s++) { const v = val(a, s); if (v > 0) { lo = Math.min(lo, v); hi = Math.max(hi, v); } }
+  if (!isFinite(lo)) { lo = 0.001; hi = 1; }
+  const logLo = Math.log10(Math.max(lo, 1e-3)), logHi = Math.log10(Math.max(hi, lo * 1.0001));
+  const norm = (v) => S.scale === "pct" ? v / Math.max(hi, 1e-9) : (v <= 0 ? 0 : (Math.log10(Math.max(v, 1e-3)) - logLo) / Math.max(logHi - logLo, 1e-9));
+  const g = sizeCanvas($("heat"), width, na * rowH);
+  const img = document.createElement("canvas"); img.width = ns; img.height = na;
+  const ig = img.getContext("2d"), id = ig.createImageData(ns, na);
+  for (let a = 0; a < na; a++) for (let s = 0; s < ns; s++) {
+    const c = heat(norm(val(a, s))), k = 4 * (a * ns + s);
+    id.data[k] = c[0]; id.data[k + 1] = c[1]; id.data[k + 2] = c[2]; id.data[k + 3] = 255;
+  }
+  ig.putImageData(id, 0, 0);
+  g.imageSmoothingEnabled = false; g.drawImage(img, 0, 0, width, na * rowH);
+  const si = S.step == null ? -1 : o.steps.indexOf(S.step);
+  g.strokeStyle = css("--sel"); g.lineWidth = 1.5;
+  if (si >= 0) g.strokeRect(si * cellW + 0.75, 0.75, Math.max(cellW - 1.5, 1.5), na * rowH - 1.5);
+  g.strokeRect(0.75, S.action * rowH + 0.75, width - 1.5, rowH - 1.5);
+  labels.innerHTML = o.actions.map((n, i) => `<div data-a="${i}" class="${i === S.action ? "sel" : ""}" title="${n}"><small>${phaseOf(n)}.</small>${shortName(n)}</div>`).join("");
+  const tmax = Math.max(...o.total_s, 1e-9);
+  totals.innerHTML = o.total_s.map((v, i) => `<div data-a="${i}" class="${i === S.action ? "sel" : ""}"><i style="width:${(100 * v / tmax).toFixed(1)}%"></i><span>${v.toFixed(2)}</span></div>`).join("");
+  drawRamp($("ramp"), "ramp-lo", "ramp-hi", S.scale === "pct" ? "0%" : fmtMs(lo), S.scale === "pct" ? hi.toFixed(0) + "%" : fmtMs(hi));
+  $("heat-note").textContent = { max: "the slowest rank's time in each action", mean: "the mean over ranks",
+    imb: "slowest minus mean: how much the step waits for its slowest rank", wait: "the slowest rank's time inside collective agreement calls" }[S.metric]
+    + (S.scale === "pct" ? ", as a share of that step" : "") + "; right: the slowest rank's total over these steps, s";
+  const heatCanvas = $("heat");
+  heatCanvas.onmousemove = (e) => {
+    const r = heatCanvas.getBoundingClientRect(), s = Math.floor((e.clientX - r.left) / cellW), a = Math.floor((e.clientY - r.top) / rowH);
+    if (a < 0 || a >= na || s < 0 || s >= ns) return hideTip();
+    showTip(e, `${o.actions[a]}\nstep ${o.steps[s]}\nslowest ${fmtMs(o.max_ms[a][s])}  mean ${fmtMs(o.mean_ms[a][s])}\nwaiting ${fmtMs(o.wait_ms[a][s])}  step ${fmtMs(o.step_max_ms[s])}`);
+  };
+  heatCanvas.onmouseleave = hideTip;
+  heatCanvas.onclick = (e) => {
+    const r = heatCanvas.getBoundingClientRect(), s = Math.floor((e.clientX - r.left) / cellW), a = Math.floor((e.clientY - r.top) / rowH);
+    if (a >= 0 && a < na) S.action = a;
+    if (s >= 0 && s < ns) selectStep(o.steps[s]); else renderAll();
+  };
+  for (const el of [labels, totals]) el.onclick = (e) => { const d = e.target.closest("[data-a]"); if (d) { S.action = +d.dataset.a; renderAll(); } };
+  renderStrip(width, cellW);
+}
+function renderStrip(width, cellW) {
+  const o = S.ov, ns = o.steps.length, h = 46, g = sizeCanvas($("strip"), width, h);
+  const hi = Math.max(...o.step_max_ms, 1e-9);
+  g.fillStyle = css("--grid"); g.fillRect(0, 0, width, h);
+  for (let s = 0; s < ns; s++) {
+    const v = o.step_max_ms[s], bh = Math.max(1, (h - 12) * v / hi);
+    g.fillStyle = o.steps[s] === S.step ? css("--sel") : css("--accent");
+    g.fillRect(s * cellW, h - bh, Math.max(cellW - (cellW > 3 ? 1 : 0), 0.6), bh);
+  }
+  g.fillStyle = css("--muted"); g.font = "11px IBM Plex Mono, monospace"; g.fillText(`step, slowest rank · max ${fmtMs(hi)}`, 4, 11);
+  const c = $("strip");
+  c.onmousemove = (e) => { const r = c.getBoundingClientRect(), s = Math.floor((e.clientX - r.left) / cellW);
+    if (s < 0 || s >= ns) return hideTip(); showTip(e, `step ${o.steps[s]}: ${fmtMs(o.step_max_ms[s])} (mean rank ${fmtMs(o.step_mean_ms[s])})`); };
+  c.onmouseleave = hideTip;
+  c.onclick = (e) => { const r = c.getBoundingClientRect(), s = Math.floor((e.clientX - r.left) / cellW); if (s >= 0 && s < ns) selectStep(o.steps[s]); };
+}
+
+// ---- one step, every rank ----
+function hostsOfRanks() {
+  const cols = S.cols, n = S.ov.ranks, host = new Array(n).fill("");
+  if (cols && cols.host && cols.host.length) for (let r = 0; r < n; r++) host[r] = cols.host[r] || "";
+  return host;
+}
+async function renderRanks() {
+  const c = $("ranks"), wrap = c.parentElement, width = Math.max(320, wrap.clientWidth - 2);
+  const n = S.ov.ranks, rowH = n > 300 ? 1 : n > 120 ? 2 : n > 40 ? 4 : 10, left = 44, h = n * rowH + 22;
+  const g = sizeCanvas(c, width, h);
+  g.fillStyle = css("--panel"); g.fillRect(0, 0, width, h);
+  const d = S.step == null ? null : await getStep(S.step);
+  if (!d) { g.fillStyle = css("--muted"); g.font = "13px IBM Plex Sans, sans-serif";
+    g.fillText(EMBEDDED ? "this snapshot does not hold that step (write the snapshot with --steps)" : "no step selected", 12, 30); return; }
+  let tmax = 0; for (const t of d.t1) tmax = Math.max(tmax, t);
+  const plotW = width - left - 8, x = (t) => left + plotW * t / Math.max(tmax, 1e-9);
+  const hosts = hostsOfRanks();
+  // node bands
+  let start = 0; g.font = "10px IBM Plex Mono, monospace";
+  for (let r = 1; r <= n; r++) {
+    if (r === n || hosts[r] !== hosts[start]) {
+      if (((start / Math.max(1, r - start)) | 0) % 2 === 0) { g.fillStyle = css("--grid"); g.fillRect(0, start * rowH, left - 4, (r - start) * rowH); }
+      g.fillStyle = css("--muted"); if ((r - start) * rowH >= 12) g.fillText(hosts[start] || `r${start}`, 2, start * rowH + 10);
+      start = r;
+    }
+  }
+  const colors = S.ov.actions.map((_, i) => actionColor(i)), selCol = css("--sel"), waitCol = css("--wait");
+  for (let k = 0; k < d.rank.length; k++) {
+    const r = d.rank[k], a = d.action[k], y = r * rowH, x0 = x(d.t0[k]), w = Math.max(x(d.t1[k]) - x0, 0.5);
+    if (d.wait[k]) { g.fillStyle = waitCol; g.fillRect(x0, y, w, rowH); continue; }
+    const col = colors[a] || [128, 128, 128];
+    g.fillStyle = a === S.action ? selCol : `rgba(${col[0]},${col[1]},${col[2]},${a === S.action ? 1 : 0.9})`;
+    g.fillRect(x0, y, w, rowH);
+  }
+  // time axis
+  g.fillStyle = css("--muted"); g.strokeStyle = css("--line"); const ticks = 5;
+  for (let i = 0; i <= ticks; i++) { const t = tmax * i / ticks, xx = x(t); g.beginPath(); g.moveTo(xx, n * rowH); g.lineTo(xx, n * rowH + 4); g.stroke();
+    g.fillText(fmtMs(t), Math.min(xx - 10, width - 50), n * rowH + 16); }
+  $("step-note").textContent = `step ${d.step}: ranks top to bottom, grouped by node; time left to right from the step's first start (${fmtMs(tmax)} to the last end). `
+    + `Highlighted: ${shortName(S.ov.actions[S.action] || "")}. Grey: waiting in a collective.`;
+  c.onmousemove = (e) => {
+    const rc = c.getBoundingClientRect(), r = Math.floor((e.clientY - rc.top) / rowH), t = (e.clientX - rc.left - left) / plotW * tmax;
+    if (r < 0 || r >= n || t < 0) return hideTip();
+    let hit = -1;
+    for (let k = 0; k < d.rank.length; k++) if (d.rank[k] === r && d.t0[k] <= t && t <= d.t1[k]) { hit = k; if (d.wait[k]) break; }
+    if (hit < 0) return showTip(e, `rank ${r} (${hosts[r] || "?"})\n${fmtMs(t)}: between actions`);
+    showTip(e, `rank ${r} (${hosts[r] || "?"})\n${S.ov.actions[d.action[hit]] || "?"}${d.wait[hit] ? "  (waiting)" : ""}\n${fmtMs(d.t0[hit])} → ${fmtMs(d.t1[hit])}  (${fmtMs(d.t1[hit] - d.t0[hit])})`);
+  };
+  c.onmouseleave = hideTip;
+  c.onclick = (e) => { const rc = c.getBoundingClientRect(), r = Math.floor((e.clientY - rc.top) / rowH), t = (e.clientX - rc.left - left) / plotW * tmax;
+    for (let k = 0; k < d.rank.length; k++) if (d.rank[k] === r && !d.wait[k] && d.t0[k] <= t && t <= d.t1[k]) { S.action = d.action[k]; renderAll(); break; } };
+  const phases = [...new Set(S.ov.actions.map(phaseOf))];
+  $("phase-legend").innerHTML = phases.map((p) => `<span><i style="background:${css(PHASE_VAR[p] || "--ph-other")}"></i>${PHASE_LABEL[p] || p}</span>`).join("")
+    + `<span><i style="background:${css("--wait")}"></i>waiting in a collective</span><span><i style="background:${css("--sel")}"></i>the chosen action</span>`;
+}
+
+// ---- globe ----
+async function renderGlobe() {
+  const c = $("globe"), wrap = c.parentElement, size = Math.max(260, Math.min(wrap.clientWidth - 2, 560));
+  const g = sizeCanvas(c, size, size), cx = size / 2, cy = size / 2, R = size / 2 - 8;
+  g.fillStyle = css("--panel"); g.fillRect(0, 0, size, size);
+  const cols = S.cols;
+  if (!cols || !cols.lat.length) { g.fillStyle = css("--muted"); g.font = "13px IBM Plex Sans, sans-serif"; g.fillText("no column coordinates recorded", 12, 24); return; }
+  const key = S.gstep === "all" || S.step == null ? "all" : String(S.step);
+  const gv = S.gmode === "time" ? await getGlobe(key) : null;
+  const perRank = gv ? gv.ms[S.action] || [] : [];
+  let lo = Infinity, hi = 0; for (const v of perRank) { if (v > 0) { lo = Math.min(lo, v); hi = Math.max(hi, v); } }
+  if (!isFinite(lo)) { lo = 0; hi = 1; }
+  const hosts = hostsOfRanks(), hostIndex = {}; hosts.forEach((h) => { if (!(h in hostIndex)) hostIndex[h] = Object.keys(hostIndex).length; });
+  const nodes = Math.max(1, Object.keys(hostIndex).length);
+  const lam0 = S.rotLon * Math.PI / 180, phi0 = S.rotLat * Math.PI / 180, sp0 = Math.sin(phi0), cp0 = Math.cos(phi0);
+  g.fillStyle = css("--grid"); g.beginPath(); g.arc(cx, cy, R, 0, 2 * Math.PI); g.fill();
+  const dot = Math.max(2, R * 0.034);
+  const pts = [];
+  for (let i = 0; i < cols.lat.length; i++) {
+    const phi = cols.lat[i] * Math.PI / 180, lam = cols.lon[i] * Math.PI / 180 - lam0;
+    const cph = Math.cos(phi), z = sp0 * Math.sin(phi) + cp0 * cph * Math.cos(lam);
+    if (z <= 0) continue;
+    pts.push([cx + R * cph * Math.sin(lam), cy - R * (cp0 * Math.sin(phi) - sp0 * cph * Math.cos(lam)), z, i]);
+  }
+  pts.sort((a, b) => a[2] - b[2]);
+  for (const [x, y, z, i] of pts) {
+    const r = cols.rank[i]; let col;
+    if (S.gmode === "rank") col = heat(((r * 0.6180339) % 1));
+    else if (S.gmode === "node") col = heat((hostIndex[hosts[r]] + 0.5) / nodes);
+    else { const v = perRank[r] || 0; col = heat(hi > lo ? (v - lo) / (hi - lo) : 0.5); }
+    const s = dot * (0.45 + 0.55 * z);
+    g.fillStyle = rgb(col); g.fillRect(x - s / 2, y - s / 2, s, s);
+    if (cols.land[i]) { g.fillStyle = "rgba(20,24,32,0.55)"; g.fillRect(x - 0.9, y - 0.9, 1.8, 1.8); }
+  }
+  // graticule
+  g.strokeStyle = css("--line"); g.lineWidth = 1; g.beginPath(); g.arc(cx, cy, R, 0, 2 * Math.PI); g.stroke();
+  g.strokeStyle = "rgba(128,140,155,0.35)";
+  for (const latLine of [-60, -30, 0, 30, 60]) {
+    g.beginPath(); let pen = false;
+    for (let lonD = -180; lonD <= 180; lonD += 4) {
+      const phi = latLine * Math.PI / 180, lam = lonD * Math.PI / 180 - lam0, cph = Math.cos(phi), z = sp0 * Math.sin(phi) + cp0 * cph * Math.cos(lam);
+      const x = cx + R * cph * Math.sin(lam), y = cy - R * (cp0 * Math.sin(phi) - sp0 * cph * Math.cos(lam));
+      if (z > 0) { pen ? g.lineTo(x, y) : g.moveTo(x, y); pen = true; } else pen = false;
+    }
+    g.stroke();
+  }
+  if (S.gmode === "time") drawRamp($("gramp"), "gramp-lo", "gramp-hi", fmtMs(lo), fmtMs(hi));
+  else { drawRamp($("gramp"), "gramp-lo", "gramp-hi", S.gmode === "rank" ? "ranks" : "node", ""); }
+  $("globe-sel").textContent = S.gmode === "time"
+    ? `${S.ov.actions[S.action] || ""} · ${key === "all" ? "mean of all steps" : "step " + key}${EMBEDDED && !gv ? " (not in this snapshot)" : ""} · dark dots: land`
+    : `${S.gmode === "rank" ? "each rank" : "each node"} its own colour · dark dots: land`;
+  c.onmousemove = (e) => {
+    if (drag) return;
+    const rc = c.getBoundingClientRect(), mx = e.clientX - rc.left, my = e.clientY - rc.top;
+    let best = null, bd = 1e9; for (const p of pts) { const dd = (p[0] - mx) ** 2 + (p[1] - my) ** 2; if (dd < bd) { bd = dd; best = p; } }
+    if (!best || bd > (dot * 2) ** 2) return hideTip();
+    const i = best[3], r = cols.rank[i];
+    showTip(e, `lat ${cols.lat[i].toFixed(1)}  lon ${cols.lon[i].toFixed(1)}\nrank ${r} (${hosts[r] || "?"})${S.gmode === "time" ? `\n${shortName(S.ov.actions[S.action] || "")}: ${fmtMs(perRank[r] || 0)}` : ""}`);
+  };
+  c.onmouseleave = hideTip;
+}
+let drag = null;
+function wireGlobeDrag() {
+  const c = $("globe");
+  c.addEventListener("pointerdown", (e) => { drag = { x: e.clientX, y: e.clientY, lon: S.rotLon, lat: S.rotLat }; c.setPointerCapture(e.pointerId); hideTip(); });
+  c.addEventListener("pointermove", (e) => { if (!drag) return; S.rotLon = drag.lon - (e.clientX - drag.x) * 0.4; S.rotLat = Math.max(-89, Math.min(89, drag.lat + (e.clientY - drag.y) * 0.4)); renderGlobe(); });
+  c.addEventListener("pointerup", () => { drag = null; });
+}
+
+// ---- wiring ----
+function wireSeg(id, key, after) {
+  $(id).addEventListener("click", (e) => { const b = e.target.closest("button"); if (!b) return; S[key] = b.dataset.v;
+    for (const x of $(id).querySelectorAll("button")) x.setAttribute("aria-pressed", x === b ? "true" : "false"); after(); });
+}
+function selectStep(n) { S.step = n; $("stepin").value = n; renderAll(); }
+function moveStep(d) { const st = S.ov.steps; if (!st.length) return; let i = st.indexOf(S.step); i = Math.max(0, Math.min(st.length - 1, (i < 0 ? 0 : i) + d)); selectStep(st[i]); }
+function renderAll() { renderHeader(); renderHeat(); renderRanks(); renderGlobe(); }
+async function refresh() {
+  if (EMBEDDED) return;
+  try {
+    const ov = await api("/api/overview");
+    const grew = ov.steps.length !== S.ov.steps.length || ov.complete !== S.ov.complete;
+    if (grew) { S.ov = ov; S.globe = {}; if (S.step == null && ov.steps.length) S.step = ov.steps[0]; renderAll(); }
+    if (!ov.complete) setTimeout(refresh, 3000);
+  } catch (err) { $("status").textContent = "disconnected"; setTimeout(refresh, 6000); }
+}
+async function boot() {
+  try {
+    S.ov = EMBEDDED ? EMBEDDED.overview : await api("/api/overview");
+    S.cols = EMBEDDED ? EMBEDDED.columns : await api("/api/columns");
+  } catch (err) { document.querySelector("main").innerHTML = `<div class="empty">could not load the timeline: ${String(err.message || err)}</div>`; return; }
+  let top = 0; S.ov.total_s.forEach((v, i) => { if (v > S.ov.total_s[top]) top = i; }); S.action = top;
+  if (S.ov.steps.length) {
+    const embeddedSteps = EMBEDDED ? Object.keys(EMBEDDED.steps).map(Number) : [];
+    S.step = embeddedSteps.length ? embeddedSteps[0] : S.ov.steps[0];
+    $("stepin").value = S.step;
+  }
+  wireSeg("metric", "metric", renderHeat); wireSeg("scale", "scale", renderHeat);
+  wireSeg("gstep", "gstep", renderGlobe); wireSeg("gmode", "gmode", renderGlobe);
+  $("prev").onclick = () => moveStep(-1); $("next").onclick = () => moveStep(1);
+  $("stepin").onchange = () => { const v = +$("stepin").value; if (S.ov.steps.includes(v)) selectStep(v); };
+  document.addEventListener("keydown", (e) => { if (e.target.tagName === "INPUT") return; if (e.key === "ArrowLeft") moveStep(-1); if (e.key === "ArrowRight") moveStep(1);
+    if (e.key === "ArrowUp") { S.action = Math.max(0, S.action - 1); renderAll(); } if (e.key === "ArrowDown") { S.action = Math.min(S.ov.actions.length - 1, S.action + 1); renderAll(); } });
+  wireGlobeDrag();
+  let resizeTimer = 0; addEventListener("resize", () => { clearTimeout(resizeTimer); resizeTimer = setTimeout(renderAll, 150); });
+  matchMedia("(prefers-color-scheme: dark)").addEventListener("change", renderAll);
+  renderAll();
+  if (!S.ov.complete) setTimeout(refresh, 3000);
+}
+boot();
+</script>
+</body>
+</html>

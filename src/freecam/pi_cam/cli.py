@@ -909,6 +909,24 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument("--summary", type=Path)
     parser.add_argument(
+        "--timeline-dir",
+        type=Path,
+        default=None,
+        help=(
+            "record every rank's action timeline (each action's start and end, the time spent in the "
+            "driver's collective agreement calls) into DIR, for `freecam timeline DIR`; off by default. "
+            "Records stay in memory and each rank appends them to its own file every "
+            "--timeline-flush-every steps"
+        ),
+    )
+    parser.add_argument(
+        "--timeline-flush-every",
+        type=int,
+        default=100,
+        metavar="STEPS",
+        help="steps between the timeline's writes to disk (default 100)",
+    )
+    parser.add_argument(
         "--memory-sample-every",
         type=int,
         default=0,
@@ -991,6 +1009,15 @@ def main(argv: list[str] | None = None) -> int:
         cam.step_plan.split_radiation(experimental=True)
     if args.radiation_python and not args.split_radiation:
         raise SystemExit("--radiation-python requires --split-radiation")
+    if args.timeline_dir is not None:
+        from .timeline import TimelineRecorder
+
+        if args.timeline_flush_every < 1:
+            raise SystemExit("--timeline-flush-every must be at least 1")
+        cam.attach_timeline(TimelineRecorder(
+            args.timeline_dir, rank=world.Get_rank(), size=world.Get_size(), comm=world,
+            flush_every=args.timeline_flush_every, run_label=str(args.run_dir),
+        ))
     created_addresses = {
         name: int(values.ctypes.data) for name, values in cam.pool.items()
     }
