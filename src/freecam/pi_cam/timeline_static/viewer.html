@@ -78,7 +78,12 @@
   .stepper { display: inline-flex; align-items: center; gap: 4px; font-size: .82rem; }
   .stepper button { font: inherit; border: 1px solid var(--line); background: var(--panel); color: var(--ink); padding: 1px 8px; cursor: pointer; }
   .stepper input { width: 70px; font: inherit; font-family: "IBM Plex Mono", ui-monospace, monospace; padding: 1px 4px; border: 1px solid var(--line); background: var(--panel); color: var(--ink); }
-  .heat { display: grid; grid-template-columns: minmax(150px, 260px) minmax(0, 1fr) 90px; gap: 0 8px; align-items: start; }
+  .heat { display: grid; grid-template-columns: minmax(150px, 260px) minmax(0, 1fr) 90px; grid-template-rows: auto auto; gap: 0 8px; align-items: start; }
+  .heat #heatwrap { grid-column: 2; grid-row: 1 / span 2; display: flex; flex-direction: column; gap: 6px; }
+  .heat .strip-label { grid-column: 1; grid-row: 1; height: 52px; font-size: .74rem; color: var(--muted); text-align: right; padding-top: 18px; line-height: 1.2; }
+  .heat .totals-head { grid-column: 3; grid-row: 1; height: 52px; font-size: .74rem; color: var(--muted); text-align: right; padding-top: 32px; }
+  .heat .labels { grid-column: 1; grid-row: 2; }
+  .heat .totals { grid-column: 3; grid-row: 2; }
   .labels, .totals { font-size: .74rem; line-height: 0; }
   .labels div, .totals div { height: 14px; line-height: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: pointer; }
   .labels div { color: var(--ink); }
@@ -94,7 +99,7 @@
   .ramp { display: inline-flex; align-items: center; gap: 6px; font-family: "IBM Plex Mono", ui-monospace, monospace; font-size: .74rem; color: var(--muted); }
   .ramp canvas { width: 160px; height: 10px; }
   .row2 { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr); gap: 16px; }
-  @media (max-width: 900px) { .row2 { grid-template-columns: 1fr; } .heat { grid-template-columns: 120px minmax(0, 1fr); } .totals { display: none; } }
+  @media (max-width: 900px) { .row2 { grid-template-columns: 1fr; } .heat { grid-template-columns: 120px minmax(0, 1fr); } .heat .totals, .heat .totals-head { display: none; } }
   #tip { position: fixed; pointer-events: none; background: var(--sel); color: var(--panel); font-size: .78rem; padding: 5px 8px; max-width: 360px; z-index: 10; display: none; font-family: "IBM Plex Mono", ui-monospace, monospace; white-space: pre; }
   .empty { color: var(--muted); padding: 24px 0; text-align: center; }
   @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
@@ -125,10 +130,12 @@
         <button data-v="pct" aria-pressed="false">% of step</button>
       </span>
     </div>
-    <div class="scroll"><canvas id="strip" height="46" aria-label="each step's duration, slowest rank"></canvas></div>
     <div class="heat">
+      <div class="strip-label">step duration<br><small>slowest rank</small></div>
+      <div class="scroll" id="heatwrap"><canvas id="strip" height="46" aria-label="each step's duration, slowest rank"></canvas>
+        <canvas id="heat" aria-label="heat map of action times by step"></canvas></div>
+      <div class="totals-head">total, s</div>
       <div class="labels" id="labels"></div>
-      <div class="scroll"><canvas id="heat" aria-label="heat map of action times by step"></canvas></div>
       <div class="totals" id="totals" title="the slowest rank's total over the steps shown, s"></div>
     </div>
     <div class="legend"><span class="ramp"><span id="ramp-lo"></span><canvas id="ramp" width="160" height="10"></canvas><span id="ramp-hi"></span></span><span id="heat-note"></span></div>
@@ -269,7 +276,7 @@ function metricMatrix() {
 }
 function renderHeat() {
   const o = S.ov, na = o.actions.length, ns = o.steps.length;
-  const labels = $("labels"), totals = $("totals"), wrap = $("heat").parentElement;
+  const labels = $("labels"), totals = $("totals"), wrap = $("heatwrap");
   if (!na || !ns) { labels.innerHTML = ""; totals.innerHTML = ""; $("heat").getContext("2d").clearRect(0, 0, 9999, 9999); return; }
   const rowH = 14, width = Math.max(wrap.clientWidth, Math.min(ns * 3, 4000)), cellW = width / ns;
   const M = metricMatrix();
@@ -323,7 +330,7 @@ function renderStrip(width, cellW) {
     g.fillStyle = o.steps[s] === S.step ? css("--sel") : css("--accent");
     g.fillRect(s * cellW, h - bh, Math.max(cellW - (cellW > 3 ? 1 : 0), 0.6), bh);
   }
-  g.fillStyle = css("--muted"); g.font = "11px IBM Plex Mono, monospace"; g.fillText(`step, slowest rank · max ${fmtMs(hi)}`, 4, 11);
+  g.fillStyle = css("--muted"); g.font = "11px IBM Plex Mono, monospace"; g.fillText(`max ${fmtMs(hi)}`, 4, 11);
   const c = $("strip");
   c.onmousemove = (e) => { const r = c.getBoundingClientRect(), s = Math.floor((e.clientX - r.left) / cellW);
     if (s < 0 || s >= ns) return hideTip(); showTip(e, `step ${o.steps[s]}: ${fmtMs(o.step_max_ms[s])} (mean rank ${fmtMs(o.step_mean_ms[s])})`); };
@@ -397,8 +404,9 @@ async function renderGlobe() {
   const key = S.gstep === "all" || S.step == null ? "all" : String(S.step);
   const gv = S.gmode === "time" ? await getGlobe(key) : null;
   const perRank = gv ? gv.ms[S.action] || [] : [];
-  let lo = Infinity, hi = 0; for (const v of perRank) { if (v > 0) { lo = Math.min(lo, v); hi = Math.max(hi, v); } }
-  if (!isFinite(lo)) { lo = 0; hi = 1; }
+  // the scale starts at zero: a balanced action reads as one colour, not as noise stretched over the ramp
+  let lo = 0, hi = 0; for (const v of perRank) hi = Math.max(hi, v);
+  if (!(hi > 0)) hi = 1;
   const hosts = hostsOfRanks(), hostIndex = {}; hosts.forEach((h) => { if (!(h in hostIndex)) hostIndex[h] = Object.keys(hostIndex).length; });
   const nodes = Math.max(1, Object.keys(hostIndex).length);
   const lam0 = S.rotLon * Math.PI / 180, phi0 = S.rotLat * Math.PI / 180, sp0 = Math.sin(phi0), cp0 = Math.cos(phi0);
