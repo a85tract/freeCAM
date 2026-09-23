@@ -15,6 +15,17 @@
   "cpu_nodes_8x64_p33": {
    "nothing_armed": "7538643.desched1",
    "nothing_armed_core_dump_attempt": "7539071.desched1"
+  },
+  "later_attempts_2026_09_22_23": {
+   "cpu_nodes_rank0_under_gdb": "7569084.desched1",
+   "cpu_nodes_malloc_perturb": "7569202.desched1",
+   "cpu_nodes_export_check_off": "7572486.desched1",
+   "gpu_nodes_export_check_on": [
+    "7572487.desched1",
+    "7572488.desched1"
+   ],
+   "gpu_nodes_export_check_off_nothing_armed": "7575839.desched1",
+   "gpu_nodes_export_check_off_mps_16_a_gpu_shadow": "7575840.desched1"
   }
  },
  "layout": "select=8:ncpus=64:mpiprocs=64 (GPU nodes: ngpus=4:gpu_type=a100); every validated run of this case uses select=4:ncpus=64:mpiprocs=128",
@@ -28,9 +39,12 @@
  "outcome": [
   "GPU nodes, both images: a handful of ranks (4, 5, 13 on the first node; 453, 485 on the last) died of SIGSEGV in Fortran during CAM initialisation, right after the initial-condition field listing, before cam_history's BLDFLD; one run showed glibc 'corrupted size vs. prev_size'; the other ranks raised the collective BoundaryReplayError and exited 255.",
   "CPU nodes, 8 x 64, p33: rank 0 died of the same SIGSEGV at the same point and the job hung until qdel (7538643).",
-  "CPU nodes, 8 x 64, p33, FOR_IGNORE_EXCEPTIONS=TRUE (7539071): no fault, but the initial CAM export differed from the recorded replay boundary on 122 of 512 ranks (cam_out.a2x_rattr hashes; ranks 89-108 among them), so the run refused to start."
+  "CPU nodes, 8 x 64, p33, FOR_IGNORE_EXCEPTIONS=TRUE (7539071): no fault, but the initial CAM export differed from the recorded replay boundary on 122 of 512 ranks (cam_out.a2x_rattr hashes; ranks 89-108 among them), so the run refused to start.",
+  "Rank 0 under gdb (7569084): no fault (the layout under the debugger changes), but the initial CAM export differed from the recording on 8 ranks: attribute 3 of cam_out.a2x_rattr is inf in the 128-a-node recording and 0.0 here -- a value computed from memory CAM leaves uninitialised, which the two layouts happen to fill differently.",
+  "MALLOC_PERTURB_=255, every malloc block zero-filled (7569202): the same export difference; the uninitialised value is not on the malloc heap.",
+  "With the export check off (7572486 CPU, 7575839 and 7575840 GPU): the model dies at initialization or at step 0 on a few ranks (SIGSEGV at rank 499 while reading the DMS tracer data; an abort with a core on rank 456 after the initial-condition listing); 7575840 then hung until its walltime.  The node's core_pattern pipes cores to systemd-coredump, out of reach."
  ],
  "probe": "a GPU node (7538626): stack unlimited, 512 GB, driver 580.65, four A100s, CUDA_VISIBLE_DEVICES set by PBS; the p34 image dlopens there.",
- "diagnosis": "Not the GPU nodes: the same failures appear on CPU nodes once the layout is 64 ranks a node.  What changes with the layout is memory placement, not the decomposition, so a layout-dependent memory fault in the image or the control layer is the likely cause (uninitialised or fixed-address memory whose content the 128-a-node layout happened to make consistent).  Not resolved here.",
+ "diagnosis": "Not the GPU nodes: the same failures appear on CPU nodes once the layout is 64 ranks a node.  What changes with the layout is memory placement, not the decomposition, so a layout-dependent memory fault in the image or the control layer is the likely cause (uninitialised or fixed-address memory whose content the 128-a-node layout happened to make consistent).  Not resolved here.  The export difference comes from memory CAM reads before it writes, off the malloc heap (static or stack storage); the faults are its other symptoms.  16 ranks a GPU with MPS, which needs this layout, is measured only outside the model (1.57 ms a call on one node).",
  "disposition": "The GPU measurement is retried on the validated layout: 4 GPU nodes with 128 ranks over the 64 cores' two hardware threads each, the same for the CPU-path comparison.  The 64-a-node fault is a separate finding to chase."
 }
