@@ -194,14 +194,17 @@ for (( i = 0; i < ${#legs}; i++ )); do
 done
 
 cd "${repo}"
-select=$(qstat -f "${PBS_JOBID}" 2>/dev/null | awk -F' = ' '/Resource_List.select/{print $2}')
-place=$(qstat -f "${PBS_JOBID}" 2>/dev/null | awk -F' = ' '/Resource_List.place/{print $2}')
+# qstat -f folds long values over lines; its JSON form does not
+resources=$(qstat -f -F json "${PBS_JOBID}" 2>/dev/null | "${python}" -c '
+import json, sys
+job = next(iter(json.load(sys.stdin)["Jobs"].values()))["Resource_List"]
+print("select=" + job.get("select", "") + " place=" + job.get("place", ""))' || true)
 "${python}" tools/report_pi_cam_online_legs.py \
   --root "${root}" \
   --legs "${legs}" \
   --kernel "${kernel}" \
   --a-executable "${executable}" \
-  --hardware "select=${select} place=${place}" \
+  --hardware "${resources}" \
   --root-label "${root#${FREECAM_SCRATCH}/}" \
   --pbs-job-id "${PBS_JOBID}" \
   --git-commit "$(git rev-parse HEAD)" \
