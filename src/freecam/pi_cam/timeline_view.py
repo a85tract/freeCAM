@@ -11,7 +11,8 @@ The viewer answers three questions, one view each:
   (or the mean, the imbalance, or the time spent waiting in collectives);
 * who is slow and who waits, in one step: ranks x time within the step;
 * where on Earth: the chosen action's time on each rank, painted on the
-  columns that rank computes.
+  columns that rank computes (CAM's load balancing spreads those columns, in
+  pairs, over a wide area, so this locates slow ranks, not costly places).
 """
 
 from __future__ import annotations

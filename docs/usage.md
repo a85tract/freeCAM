@@ -368,9 +368,12 @@ port (`ssh -L`, or the editor's port forwarding). The page has three views:
   the chosen step. Load imbalance shows as a ragged edge; waiting in a
   collective is grey.
 - **Where on Earth**: the chosen action's time on each rank, painted on the
-  columns that rank computes. The cost of physics follows the weather, so
-  this is where imbalance gets its physical reason: deep convection in the
-  tropics, the shortwave on the day side.
+  columns that rank computes. CAM's physics load balancing gives each rank
+  pairs of columns spread over a wide area (at ne16, a rank's 28 columns span
+  some 80 degrees of latitude), so the globe shows which ranks are slow and
+  where their columns lie, not a map of cost by place; the `rank` and `node`
+  colourings show that decomposition itself. A per-place cost would need
+  timing per column, which the chunked kernels do not have.
 
 A snapshot embeds the overview, the globe for every action, and the timelines
 of the first, slowest, a typical and the last step (`--steps` chooses others).
