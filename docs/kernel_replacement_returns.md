@@ -368,8 +368,9 @@ The first measurement of an MPS client's device footprint (2.3 GB, which
 would not fit 32 on a 40 GB device) was wrong: the helper scripts' pipe
 directory did not reach the ranks, and the node kept stale servers.  With
 them fixed (`validation/jobs/gpu_mps_per_gpu.sh`, one server a GPU started
-by the job, `PYCAM_GPU_MPS=1`) a client costs about 0.6 GB, and 32 fit in
-15 GB.  On one node, a rank's own 16-column call through its GPU's server
+by the job, `PYCAM_GPU_MPS=1`) a client costs about 0.6 GB at the default
+thread stack -- each keeps context storage of its own, sized by the threads it
+may use -- and 32 take about 19 GB.  On one node, a rank's own 16-column call through its GPU's server
 costs 1.02 ms at 8 ranks a GPU and 1.57 ms at 16, against 25.8 and 51.8 ms
 without MPS.  Inside the model, at 32 ranks a GPU (records
 `pi_cam_pausable_g35-uwshcu-sub-{shadow,live}-gpu-4x128-mps32_50step`):

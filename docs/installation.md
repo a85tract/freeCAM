@@ -166,8 +166,9 @@ than producing its own.
    `CUDA_MODULE_LOADING=LAZY` and a 32 MB cuBLAS workspace so that 32 contexts
    fit a 40 GB A100.  `PYCAM_GPU_MPS=1` starts one NVIDIA MPS server a GPU on
    every node instead (`validation/jobs/gpu_mps_per_gpu.sh`), each rank then
-   seeing its own GPU only; an MPS client costs about 0.6 GB of the device, so
-   32 a GPU fit in 15 GB.  NVIDIA limits an MPS server's clients per device (48
+   seeing its own GPU only; an MPS client costs about 0.6 GB of the device at
+   the default thread stack (each client keeps context storage of its own,
+   sized by the threads it may use), so 32 a GPU take about 19 GB.  NVIDIA limits an MPS server's clients per device (48
    in older releases, 60 now), not per server: the site's `mps=1` (one server
    a node for its four GPUs) refusing 80 of a node's 128 ranks in an early run
    was a device-mapping fault (every refused rank was on GPUs 1-3), not a client
