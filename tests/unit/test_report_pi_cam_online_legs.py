@@ -64,7 +64,9 @@ def test_every_leg_is_recorded_with_its_position_cost_and_ratios(tmp_path: Path)
     cost = legs["M"]["model"]
     assert abs(cost["ms_per_call_after_first"] - 4.0) < 1e-9 and cost["first_call_seconds_per_rank"] == 2.0
     assert cost["original"] == 0                                 # every call the model's
-    assert legs["G"]["mps"] == {"gpus": 16, "servers_running": 16, "client_disconnects": 512, "log_faults": 0}
+    assert legs["G"]["mps"] == {"server": "own, one a GPU", "gpus": 16, "servers_running": 16,
+                                "client_disconnects": 512, "log_faults": 0}
+    assert record["gpu_mps"] == "own"
     assert legs["M"]["mps"] is None and legs["M"]["health"] == {"big_error": 3}
     assert record["ratios"] == {"M/A": 1.05, "G/A": 1.2, "G/M": 480.0 / 420.0}
 
@@ -80,3 +82,12 @@ def test_a_leg_that_did_not_finish_is_named_and_left_out_of_the_ratios(tmp_path:
     assert legs["C"]["completed"] is True and legs["C"]["bfb"] is True and legs["C"]["model"]["modeled"] == 0
     assert legs["M"] == {"completed": False} and legs["A"] == {"completed": False}
     assert rl.ratios(legs) == {}
+
+
+def test_the_site_servers_evidence_is_read_from_its_own_lines(tmp_path: Path) -> None:
+    import report_pi_cam_online_legs as rl
+
+    path = tmp_path / "mps.txt"
+    path.write_text("".join(f"deg00{n}: site MPS exclusive GPUs 4 of 4\n" for n in range(4)) + "refused ranks 0\n")
+    assert rl.mps_evidence(path) == {"server": "site", "nodes": 4, "gpus": 16, "exclusive_process_gpus": 16,
+                                     "refused_ranks": 0}

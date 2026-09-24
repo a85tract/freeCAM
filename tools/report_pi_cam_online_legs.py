@@ -6,7 +6,8 @@ The legs are the ones ``validation/jobs/pi_cam_online_model_1month.pbs`` runs:
     A  the original Fortran model, every component live (GPTL ``CPL:RUN_LOOP``);
     C  freeCAM online, the stage classes installed, nothing replaced;
     M  C with the kernel answered by a TorchScript model inside the image, on the host;
-    G  C with the same model on the node's GPUs, one MPS server a GPU.
+    G  C with the same model on the node's GPUs through MPS: one server of the job's own a
+       GPU, or the site's server of a node (``--gpu-mps``).
 
 Every leg is timed over the same coupling loop (freeCAM's ``advance_seconds``
 against A's ``CPL:RUN_LOOP``); the record keeps each leg's position in the
@@ -36,11 +37,13 @@ LEGS = {
     "A": "the original Fortran model (the pyCESM case executable), every component live",
     "C": "freeCAM online (live CLM, CICE, DOCN, RTM and coupler), the stage classes installed, nothing replaced",
     "M": "freeCAM online, the kernel answered by the TorchScript model inside the image on the host CPU",
-    "G": "freeCAM online, the kernel answered by the TorchScript model inside the image on the node's GPUs, "
-         "one MPS server a GPU",
+    "G": "freeCAM online, the kernel answered by the TorchScript model inside the image on the node's GPUs "
+         "through MPS",
 }
 _MPS_LINE = re.compile(r"GPU (?P<gpu>\d+) servers \[(?P<servers>[^\]]*)\] client disconnects (?P<clients>\d+) "
                        r"log faults (?P<faults>\d+)")
+_SITE_LINE = re.compile(r"site MPS exclusive GPUs (?P<exclusive>\d+) of (?P<gpus>\d+)")
+_REFUSED_LINE = re.compile(r"refused ranks (?P<refused>\d+)")
 
 
 def _load(path: Path) -> dict[str, Any] | None:
@@ -73,8 +76,18 @@ def mps_evidence(path: Path) -> dict[str, Any] | None:
 
     if not path.is_file():
         return None
-    gpus = [m.groupdict() for m in map(_MPS_LINE.search, path.read_text().splitlines()) if m]
-    return {"gpus": len(gpus),
+    lines = path.read_text().splitlines()
+    nodes = [m.groupdict() for m in map(_SITE_LINE.search, lines) if m]
+    if nodes:
+        # the site's server of each node: its GPUs in Exclusive_Process mode refuse any rank that
+        # missed MPS, so all of them in that mode and no rank refused mean every rank used it
+        refused = [int(m.group("refused")) for m in map(_REFUSED_LINE.search, lines) if m]
+        return {"server": "site", "nodes": len(nodes),
+                "gpus": sum(int(n["gpus"]) for n in nodes),
+                "exclusive_process_gpus": sum(int(n["exclusive"]) for n in nodes),
+                "refused_ranks": refused[-1] if refused else None}
+    gpus = [m.groupdict() for m in map(_MPS_LINE.search, lines) if m]
+    return {"server": "own, one a GPU", "gpus": len(gpus),
             "servers_running": sum(1 for g in gpus if g["servers"].strip()),
             "client_disconnects": sum(int(g["clients"]) for g in gpus),
             "log_faults": sum(int(g["faults"]) for g in gpus)}
@@ -150,6 +163,8 @@ def main() -> int:
     parser.add_argument("--kernel", default="compute_uwshcu_inv")
     parser.add_argument("--a-executable", type=Path)
     parser.add_argument("--hardware", default="", help="the nodes and layout the legs shared")
+    parser.add_argument("--gpu-mps", choices=("own", "site"), default="own",
+                        help="whose MPS server G's ranks reached: the job's own, one a GPU, or the site's")
     parser.add_argument("--root-label", default="", help="the root as the record names it (no site directory)")
     parser.add_argument("--pbs-job-id")
     parser.add_argument("--git-commit")
@@ -176,6 +191,7 @@ def main() -> int:
         "pbs_job_id": arguments.pbs_job_id,
         "git_commit": arguments.git_commit,
         "hardware": arguments.hardware,
+        "gpu_mps": arguments.gpu_mps if "G" in arguments.legs else None,
         "root": arguments.root_label or None,
         "order": arguments.legs,
         "kernel": arguments.kernel,
