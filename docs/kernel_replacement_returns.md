@@ -426,6 +426,40 @@ process a GPU on hardware threads the ranks already use.  Not pursued: at
 this layout and model size the GPU has no return to give; what it can give a
 heavier model is a separate question.
 
+### Online, a month: the default, the model on the host, the model on a GPU
+
+The runs above are offline replays.  freeCAM runs online by default -- CLM,
+CICE, DOCN, RTM and the coupler live -- so the three answers that matter were
+measured online over the month (1,488 steps), each job running its legs back
+to back on the same four nodes, in both orders
+(`validation/jobs/pi_cam_online_model_1month.pbs`, records
+`validation/pi_cam_online_model_1month_{cpu-develop-ACM,cpu-develop-MCA,gpu-AMG,gpu-GMA}.json`):
+A the original Fortran, C freeCAM with nothing replaced, M the
+compute_uwshcu_inv model in the image on the host, G the same model on the
+node's GPUs through MPS.
+
+| step loop, one online month | A original | C default | M model on the host | G model on the GPU |
+| --- | ---: | ---: | ---: | ---: |
+| CPU nodes (develop, half nodes), A→C→M, 7580687 | 442.4 s | 440.6 s (0.996) | 432.0 s (0.977) | |
+| CPU nodes, M→C→A, 7580688 | 437.9 s | 440.8 s (1.007) | 432.7 s (0.988) | |
+| GPU nodes (64 cores, 128 ranks), A→M→G, 7579235 | 469.8 s | | 472.5 s (1.006) | 523.1 s (1.114) |
+| GPU nodes, G→M→A, 7579236 | 475.8 s | | 476.6 s (1.002) | 532.3 s (1.119) |
+
+C is bit-for-bit with the oracle month in both orders (18 files) and ties the
+original (C/A 0.996 and 1.007).  The model on the host takes 1.8 to 1.9% off
+the default's month on the same nodes (M/C 0.981 and 0.982): its 4.27 ms a
+call costs less than the kernel it answers for.  Its health and drift are the
+same on either kind of node (147 big-error lines, relative rms median 0.54).
+On the GPU the call costs what it costs on the host (4.31-4.34 ms against
+4.18-4.20 ms), and the 51 to 56 s the month gains are start-up paid once: 33
+to 40 s binding the model in the first step (context through MPS, model into
+device memory, warm-up) and 12.6 to 13.0 s each rank's first call; the
+50-step MPS gate paid about the same.  A year would carry the same start-up,
+under 1%.  The site's `mps=1` serves this layout as well as one server a GPU
+once each rank sees only its own GPU (gate
+`pi_cam_pausable_g35-uwshcu-sub-live-gpu-4x128-sitemps_50step`, 4.20 ms a
+call).
+
 ## Sources and caveats
 
 The month costs are one run on exclusive nodes; the plugin paths are

@@ -171,7 +171,11 @@ than producing its own.
    in older releases, 60 now), not per server: the site's `mps=1` (one server
    a node for its four GPUs) refusing 80 of a node's 128 ranks in an early run
    was a device-mapping fault (every refused rank was on GPUs 1-3), not a client
-   limit.  The record of what went wrong before this worked is
+   limit: with the per-rank binding above it serves all 128 ranks of a node
+   (gate `pi_cam_pausable_g35-uwshcu-sub-live-gpu-4x128-sitemps_50step`,
+   4.20 ms a call), so requesting `:mps=1` in the select and leaving
+   `PYCAM_GPU_MPS` unset works as well.  The record of what went wrong before
+   this worked is
    `validation/pi_cam_pausable_g34-uwshcu-sub-gpu-4x128_50step_failure.json`.
    The hooks module links it so a hooked kernel can be bound to a
    TorchScript model that the image runs itself (see
