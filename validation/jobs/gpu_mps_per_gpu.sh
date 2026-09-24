@@ -1,8 +1,9 @@
 #!/bin/bash
 # One NVIDIA MPS control daemon per GPU on this node, in the node's default compute mode.
-# An MPS server serves at most 48 client contexts, so 128 ranks over four GPUs need four
-# servers, each seeing one device; without MPS, one CUDA context per rank does not fit 32
-# ranks on a 40 GB device.  Run once per node (mpiexec -ppn 1), with CUDA_VISIBLE_DEVICES
+# Each server sees one device, so each of its clients (a rank, CUDA_VISIBLE_DEVICES=0 through
+# its GPU's pipe) can reach that GPU only; NVIDIA's client limit is per device (48, 60 in
+# current releases), and 32 ranks a GPU are well inside it.  Without MPS the GPU runs the 32
+# ranks' contexts in turns.  Run once per node (mpiexec -ppn 1), with CUDA_VISIBLE_DEVICES
 # unset so the daemon sees the node's own GPUs.
 #   gpu_mps_per_gpu.sh start | stop
 action=${1:?start or stop}

@@ -353,8 +353,9 @@ GPU: at this rate a month would take about 45 minutes of four GPU nodes to
 confirm a result the 50-step gate already settles.  The measurement cost
 about five GPU-node-hours (twenty GPU-hours), most of it in the runs that failed first
 (`validation/pi_cam_pausable_g34-uwshcu-sub-gpu-4x128_50step_failure.json`
-records them: the launcher spreading the head node's device list, MPS
-limits and footprints, CUDA memory).  The conclusion of the offline bench
+records them: the launcher spreading the head node's device list, an MPS
+device-mapping fault first read as a client limit, a mismeasured MPS
+footprint, CUDA memory).  The conclusion of the offline bench
 stands: at this layout a GPU only pays for a model if the node's ranks
 batch their chunks into one call -- a different design, whose upper bound
 is the difference between the in-image host call and a shared batched call.

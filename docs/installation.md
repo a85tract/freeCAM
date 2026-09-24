@@ -165,11 +165,14 @@ than producing its own.
    node-local GPU by index, one CUDA context a rank, with
    `CUDA_MODULE_LOADING=LAZY` and a 32 MB cuBLAS workspace so that 32 contexts
    fit a 40 GB A100.  `PYCAM_GPU_MPS=1` starts one NVIDIA MPS server a GPU on
-   every node instead (`validation/jobs/gpu_mps_per_gpu.sh`); an MPS client
-   costs about 2.3 GB of the device, so that is for layouts with few ranks a
-   GPU -- the site's `mps=1` (one server a node, at most 48 clients) does not
-   serve 128 ranks a node.  The record of what went wrong before this worked
-   is `validation/pi_cam_pausable_g34-uwshcu-sub-gpu-4x128_50step_failure.json`.
+   every node instead (`validation/jobs/gpu_mps_per_gpu.sh`), each rank then
+   seeing its own GPU only; an MPS client costs about 0.6 GB of the device, so
+   32 a GPU fit in 15 GB.  NVIDIA limits an MPS server's clients per device (48
+   in older releases, 60 now), not per server: the site's `mps=1` (one server
+   a node for its four GPUs) refusing 80 of a node's 128 ranks in an early run
+   was a device-mapping fault (every refused rank was on GPUs 1-3), not a client
+   limit.  The record of what went wrong before this worked is
+   `validation/pi_cam_pausable_g34-uwshcu-sub-gpu-4x128_50step_failure.json`.
    The hooks module links it so a hooked kernel can be bound to a
    TorchScript model that the image runs itself (see
    [physics_kernel_decoupling.md](physics_kernel_decoupling.md)); a rank
