@@ -2648,7 +2648,7 @@
   "use_gw_oro": true,
   "use_subcol_microp": false
  },
- "content_hash": "252960175a5a90775fcf385089d3c447c1947baaaa7cf67638d09ab02e67f0f9",
+ "content_hash": "9ab91e57c52afac44b7c422f85c35a25cdf692c14e272990e9f73e9dd4c4143a",
  "evidence": {
   "pi_cam_cldfrc_fice_frame_replay.json": {
    "bfb": true,
@@ -3130,6 +3130,13 @@
    "pbs_job": "7218861",
    "record": "pi_cam_mmacro_pcond_standalone_build.json",
    "spec_sha256": "ce1ea54722f250b8adaf52eecf73b78ef5fdcd527ded1d06006990e5890e6f64"
+  },
+  "pi_cam_online_model_1month_gpu-site-AMG_failure.json": {
+   "diagnosis": "A node-level filesystem fault (a stale GLADE handle on deg0022), not the model, the image or MPS: the mirror job 7588126 (G->M->A, other nodes) ran all three legs to the end.",
+   "kind": "gate-failure",
+   "pbs_job": "7588125",
+   "record": "pi_cam_online_model_1month_gpu-site-AMG_failure.json",
+   "what": "The first A->M->G online month with the site's MPS (tag gpu-site-AMG) lost every leg to one node: deg0022 of the four GPU nodes could not read the GLADE work filesystem."
   },
   "pi_cam_pausable_adry-pause_50step.json": {
    "advance_seconds": 17.47,
@@ -6024,6 +6031,12 @@
    "contexts": [],
    "kernel_routine": "fluxbelowinv",
    "record": "pi_cam_fluxbelowinv_frame_replay_no_module_state_failure.json"
+  },
+  {
+   "capability": "original_replacement_bfb",
+   "contexts": [],
+   "kernel_routine": null,
+   "record": "pi_cam_online_model_1month_gpu-site-AMG_failure.json"
   },
   {
    "capability": "original_replacement_bfb",
@@ -74214,8 +74227,8 @@
  ],
  "volatile": {
   "branch": "online-model-month",
-  "commit": "7a8869fbb7c32c99c40358f73494426dcf7e44f5",
-  "generated_at": "2026-09-24T18:05:41+00:00"
+  "commit": "e3a5f4b5fd1b1d45150ffbad7a2e0827d5677faf",
+  "generated_at": "2026-09-25T00:56:46+00:00"
  },
  "work_items": [
   {
