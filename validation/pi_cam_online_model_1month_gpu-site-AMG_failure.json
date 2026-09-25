@@ -1,0 +1,19 @@
+{
+ "schema_version": 1,
+ "what": "The first A->M->G online month with the site's MPS (tag gpu-site-AMG) lost every leg to one node: deg0022 of the four GPU nodes could not read the GLADE work filesystem.",
+ "pbs_job_id": "7588125.desched1",
+ "nodes": [
+  "deg0011",
+  "deg0017",
+  "deg0018",
+  "deg0022"
+ ],
+ "failing_node": "deg0022",
+ "symptoms": {
+  "A": "ranks 384-511 of the original Fortran: 'error while loading shared libraries: libblosc.so.1: cannot open' (exited 143 after six minutes)",
+  "M": "128 ranks on deg0022: \"Couldn't change directory to <repo>: Stale file handle\"",
+  "G": "the same on deg0022; the site's MPS reported no refused rank"
+ },
+ "diagnosis": "A node-level filesystem fault (a stale GLADE handle on deg0022), not the model, the image or MPS: the mirror job 7588126 (G->M->A, other nodes) ran all three legs to the end.",
+ "disposition": "The A->M->G order was submitted again under the same tag; the incomplete record it wrote was replaced by that run's."
+}

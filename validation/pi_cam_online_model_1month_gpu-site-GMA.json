@@ -1,0 +1,166 @@
+{
+  "schema_version": 1,
+  "what": "One allocation's online PI-atm month (1488 steps, 512 ranks), legs back to back: the original Fortran, freeCAM with nothing replaced, and freeCAM with a model in the kernel's slot. Every component is live in every leg (online coupling, not the offline replay). Times are the coupling loop; the model legs are not bit-for-bit by construction, their drift and health are recorded instead.",
+  "boundary": "online",
+  "pbs_job_id": "7588126.desched1",
+  "git_commit": "03012bc9ec597d5a31bfc4e3b32386889b7b60bb",
+  "hardware": "select=4:ncpus=64:mpiprocs=128:ompthreads=1:ngpus=4:gpu_type=a100:mem=400GB:mps=1 place=scatter:exclhost",
+  "gpu_mps": "site",
+  "root": "freeCAM/PI-cam/online-model-1month-gpu-site-GMA-7588126.desched1",
+  "order": "GMA",
+  "kernel": "compute_uwshcu_inv",
+  "legs": {
+    "G": {
+      "what": "freeCAM online, the kernel answered by the TorchScript model inside the image on the node's GPUs through MPS",
+      "position": 1,
+      "completed": true,
+      "steps": 1488,
+      "coupling_loop_seconds": 520.2917839360002,
+      "init_seconds": 23.01072792299965,
+      "final_seconds": 0.37301281600002767,
+      "lifecycle_seconds": 543.7188637929999,
+      "sypd": 14.10378256652129,
+      "boundary_mode": "online",
+      "boundary_provider": "CESMOnlineBoundaryProvider",
+      "native_manifest": "build/pi_cam_promoted_p35/native_cam_manifest.json",
+      "native_library_sha256": "3356887a0ba3a23ca50a4528a92dff8a9ed89bf9e7f708028cb410e87182a1f7",
+      "python_stages": [
+        "shallow_convection"
+      ],
+      "cloud_macro_micro_python": true,
+      "stage_execution_modes": {
+        "cloud_macro_microphysics_python": "native-whole",
+        "shallow_convection_python": "native-model"
+      },
+      "kernel_models": {
+        "compute_uwshcu_inv": {
+          "binding": "torchscript",
+          "device": "cuda",
+          "file": "uwshcu_h256_notr_2cap_sub.pt",
+          "sha256": "f0f4e1bed46ecf19a29b122ba67f1ace75596fbe4c0a9378ba4246b8b32154f0"
+        }
+      },
+      "model": {
+        "calls": 1525760,
+        "modeled": 1523712,
+        "original": 2048,
+        "ranks": 512,
+        "ms_per_call_after_first": 4.314121711528361,
+        "first_call_seconds_per_rank": 11.825677873046864,
+        "first_call_seconds_slowest_rank": 12.558474,
+        "warm_up_seconds_per_rank": 7.436747025390625,
+        "model_seconds_per_rank": 24.660189964843738,
+        "model_seconds_slowest_rank": 26.045198
+      },
+      "mps": {
+        "server": "site",
+        "nodes": 4,
+        "gpus": 16,
+        "exclusive_process_gpus": 16,
+        "refused_ranks": 0
+      },
+      "bfb": null,
+      "bfb_files": null,
+      "peak_rank_rss_bytes": 1822068736,
+      "total_rss_bytes": 739577016320,
+      "health": {
+        "big_error": 223,
+        "isotopic_mass_error": 0,
+        "qneg3_macro": 0,
+        "qneg3_total": 0,
+        "tracebacks": 0
+      },
+      "drift": {
+        "fields_compared": 2838,
+        "fields_identical": 332,
+        "fields_with_non_finite_values": [],
+        "relative_rms": {
+          "median": 0.5014599105595468,
+          "p90": 1.209286779808084,
+          "max": 3.340583232758085
+        }
+      }
+    },
+    "M": {
+      "what": "freeCAM online, the kernel answered by the TorchScript model inside the image on the host CPU",
+      "position": 2,
+      "completed": true,
+      "steps": 1488,
+      "coupling_loop_seconds": 480.550777444,
+      "init_seconds": 13.113542717999962,
+      "final_seconds": 0.37788750699996854,
+      "lifecycle_seconds": 494.07818804,
+      "sypd": 15.270149453948079,
+      "boundary_mode": "online",
+      "boundary_provider": "CESMOnlineBoundaryProvider",
+      "native_manifest": "build/pi_cam_promoted_p35/native_cam_manifest.json",
+      "native_library_sha256": "3356887a0ba3a23ca50a4528a92dff8a9ed89bf9e7f708028cb410e87182a1f7",
+      "python_stages": [
+        "shallow_convection"
+      ],
+      "cloud_macro_micro_python": true,
+      "stage_execution_modes": {
+        "cloud_macro_microphysics_python": "native-whole",
+        "shallow_convection_python": "native-model"
+      },
+      "kernel_models": {
+        "compute_uwshcu_inv": {
+          "binding": "torchscript",
+          "device": "cpu",
+          "file": "uwshcu_h256_notr_2cap_sub.pt",
+          "sha256": "f0f4e1bed46ecf19a29b122ba67f1ace75596fbe4c0a9378ba4246b8b32154f0"
+        }
+      },
+      "model": {
+        "calls": 1525760,
+        "modeled": 1523712,
+        "original": 2048,
+        "ranks": 512,
+        "ms_per_call_after_first": 4.182817295168066,
+        "first_call_seconds_per_rank": 0.024840494140625037,
+        "first_call_seconds_slowest_rank": 0.029219,
+        "warm_up_seconds_per_rank": 0.8682608378906255,
+        "model_seconds_per_rank": 12.468721947265623,
+        "model_seconds_slowest_rank": 13.588993
+      },
+      "mps": null,
+      "bfb": null,
+      "bfb_files": null,
+      "peak_rank_rss_bytes": 1262714880,
+      "total_rss_bytes": 445080236032,
+      "health": {
+        "big_error": 147,
+        "isotopic_mass_error": 0,
+        "qneg3_macro": 0,
+        "qneg3_total": 0,
+        "tracebacks": 0
+      },
+      "drift": {
+        "fields_compared": 2838,
+        "fields_identical": 332,
+        "fields_with_non_finite_values": [],
+        "relative_rms": {
+          "median": 0.5397434102027656,
+          "p90": 1.2490719057032342,
+          "max": 2.856094650029751
+        }
+      }
+    },
+    "A": {
+      "what": "the original Fortran model (the pyCESM case executable), every component live",
+      "position": 3,
+      "completed": true,
+      "coupling_loop_seconds": 471.568268,
+      "init_seconds": 11.083735,
+      "final_seconds": 0.017642,
+      "lifecycle_seconds": 482.669645,
+      "executable_sha256": "accd9860c1a29b32415d1fecd86d5728c8cd5c4204ad41e9d93e2db6b0077d7e",
+      "timing_source": "GPTL CPL:RUN_LOOP in timing/cesm_timing.000"
+    }
+  },
+  "ratios": {
+    "M/A": 1.01904816344428,
+    "G/A": 1.1033222955027167,
+    "G/M": 1.0826988704573084
+  }
+}
