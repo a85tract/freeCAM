@@ -1,0 +1,33 @@
+#!/bin/bash
+# One NVIDIA MPS control daemon per GPU on this node, in the node's default compute mode.
+# Each server sees one device, so each of its clients (a rank, CUDA_VISIBLE_DEVICES=0 through
+# its GPU's pipe) can reach that GPU only; NVIDIA's client limit is per device (48, 60 in
+# current releases), and 32 ranks a GPU are well inside it.  Without MPS the GPU runs the 32
+# ranks' contexts in turns.  Run once per node (mpiexec -ppn 1), with CUDA_VISIBLE_DEVICES
+# unset so the daemon sees the node's own GPUs.
+#   gpu_mps_per_gpu.sh start | stop
+action=${1:?start or stop}
+base=${FREECAM_MPS_BASE:-/tmp/freecam-mps-${PBS_JOBID%%.*}}     # node-local; the rank wrapper computes the same
+n=$(nvidia-smi --query-gpu=index --format=csv,noheader | wc -l)
+for k in $(seq 0 $((n - 1))); do
+  export CUDA_MPS_PIPE_DIRECTORY=${base}/pipe-${k} CUDA_MPS_LOG_DIRECTORY=${base}/log-${k}
+  if [ "${action}" = start ]; then
+    mkdir -p "${CUDA_MPS_PIPE_DIRECTORY}" "${CUDA_MPS_LOG_DIRECTORY}"
+    echo "${n}" > "${base}/gpus"
+    # the daemon must not keep the launcher's stdio, or the launcher waits for it
+    # setsid: the daemon must outlive the launcher that started it (mpiexec -ppn 1) and not hold its stdio
+    if CUDA_VISIBLE_DEVICES=${k} setsid nvidia-cuda-mps-control -d >/dev/null 2>&1 </dev/null; then
+      sleep 0.5; echo "$(hostname): MPS daemon for GPU ${k} started ($(echo get_server_list | nvidia-cuda-mps-control 2>/dev/null | wc -l) server(s) listed, pipe ${CUDA_MPS_PIPE_DIRECTORY})"
+    else
+      echo "$(hostname): MPS daemon for GPU ${k} FAILED"
+    fi
+  else
+    servers=$(echo get_server_list | nvidia-cuda-mps-control 2>&1 | tr '\n' ' ')
+    disconnects=$(grep -c disconnected "${CUDA_MPS_LOG_DIRECTORY}/server.log" 2>/dev/null || echo 0)
+    faults=$(grep -c -i 'error\|fail' "${CUDA_MPS_LOG_DIRECTORY}/server.log" 2>/dev/null || echo 0)
+    echo "$(hostname): GPU ${k} servers [${servers}] client disconnects ${disconnects} log faults ${faults}"
+    echo quit | nvidia-cuda-mps-control >/dev/null 2>&1
+  fi
+done
+if [ "${action}" = stop ]; then sleep 1; rm -rf "${base}"; fi
+exit 0

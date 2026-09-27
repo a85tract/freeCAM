@@ -444,6 +444,18 @@ def _kcount_plans(rows: list[dict]) -> dict[str, list[dict]]:
     return plans
 
 
+def _wheel_cuda_lib_dirs(torch_lib: Path) -> list[Path]:
+    """The CUDA libraries a torch wheel bundles beside itself (``nvidia/<component>/lib``: the
+    runtime, NVRTC with its builtins, cuBLAS, cuDNN, ...), for the image's rpath.  The image's
+    rpath is searched first for every library the process loads, so listing them keeps the
+    whole CUDA stack the one libtorch was built with: FTorch's own runpath ends with the CUDA
+    toolkit it was configured against, and a toolkit NVRTC found there wants builtins of its
+    own version that the run cannot see.  Only a device build of FTorch asks for them."""
+
+    nvidia = torch_lib.resolve().parent.parent / "nvidia"
+    return sorted(d for d in nvidia.glob("*/lib") if d.is_dir()) if nvidia.is_dir() else []
+
+
 def _torch_lib_dir() -> Path:
     """The libtorch directory of this interpreter's torch package, which FTorch links against."""
 
@@ -618,8 +630,17 @@ def main() -> int:
     ftorch_lib = next((d for d in (ftorch_root / "lib64", ftorch_root / "lib") if (d / "libftorch.so").is_file()), None)
     if not (ftorch_include / "ftorch.mod").is_file() or ftorch_lib is None:
         raise RuntimeError(f"FTorch is not installed under {ftorch_root}: build it first (see docs/installation.md)")
-    torch_lib = args.torch_lib.resolve() if args.torch_lib is not None else _torch_lib_dir()
+    recorded_torch_lib = ftorch_root / "torch_lib_dir"          # written by tools/build_ftorch.sh
+    if args.torch_lib is not None:
+        torch_lib = args.torch_lib.resolve()
+    elif recorded_torch_lib.is_file() and recorded_torch_lib.read_text().strip():
+        torch_lib = Path(recorded_torch_lib.read_text().strip())   # the libtorch FTorch was built against
+    else:
+        torch_lib = _torch_lib_dir()
     ftorch_link = [f"-L{ftorch_lib}", "-lftorch", f"-Wl,-rpath,{ftorch_lib}", f"-Wl,-rpath,{torch_lib}"]
+    gpu_device = ftorch_root / "gpu_device"                  # written by tools/build_ftorch.sh
+    if gpu_device.is_file() and gpu_device.read_text().strip() not in ("", "NONE"):
+        ftorch_link.extend(f"-Wl,-rpath,{directory}" for directory in _wheel_cuda_lib_dirs(torch_lib))
     cxx_runtime = ftorch_root / "cxx_runtime_dir"          # written by tools/build_ftorch.sh
     if cxx_runtime.is_file() and cxx_runtime.read_text().strip():
         ftorch_link.append(f"-Wl,-rpath,{cxx_runtime.read_text().strip()}")

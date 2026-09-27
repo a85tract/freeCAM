@@ -249,7 +249,8 @@ def read_hook_counts(library: Any) -> dict[str, dict[str, int]]:
 BIND_STATUS = {1: "no such hook", 2: "the hook takes no model (hooks.yaml has no model block for it)",
                3: "the hook is armed for a Python replacement", 4: "the path is empty or too long",
                5: "the image has no model entry: it was built without FTorch",
-               6: "the image has no plugin entry: it was built before plugins"}
+               6: "the image has no plugin entry: it was built before plugins",
+               7: "the device is neither the host nor CUDA"}
 #: what pycam_hooks_arm_v1 answers when a hook cannot be armed
 ARM_STATUS = {1: "no such hook", 3: "a model is bound at the hook", 5: "the hook has no frame (a Fortran-bound hook cannot pause)"}
 
@@ -269,17 +270,44 @@ def hooked_model_kernels() -> frozenset[str]:
 _HOOKED_MODEL_KERNELS: frozenset[str] | None = None
 
 
-def bind_hook_model(library: Any, hook_id: int, path: str | Path, *, shadow: bool = False) -> None:
+#: FTorch's device codes: torch_kCPU and torch_kCUDA
+MODEL_DEVICES = {"cpu": 0, "cuda": 1}
+
+
+def bind_hook_model(library: Any, hook_id: int, path: str | Path, *, shadow: bool = False,
+                    device: str = "cpu", device_index: int = -1) -> None:
     """Load a TorchScript model into the image at hook ``hook_id``: from then on the hook
     answers its calls with the model, inside Fortran, until :func:`unbind_hook_model`.
 
     With ``shadow`` the model runs on every call and its answer is discarded while the
     original keeps answering: the run stays bit-for-bit and the model path's cost is
-    measured in situ.
+    measured in situ.  ``device`` is where the model lives and runs, ``cpu`` or ``cuda``
+    with this rank's ``device_index``; the hook makes its input tensors there and takes
+    the answer back on the host.
     """
 
     import ctypes
 
+    if device not in MODEL_DEVICES:
+        raise PICAMConfigurationError(f"model device must be one of {sorted(MODEL_DEVICES)}, not {device!r}")
+    if device != "cpu":
+        entry = getattr(library, "pycam_hooks_bind_model_v2", None)
+        if entry is None:
+            raise PICAMConfigurationError(f"cannot bind a model on {device!r} at hook {hook_id}: the image has no "
+                                          f"device-aware bind entry (pycam_hooks_bind_model_v2); rebuild it")
+        _refuse_shadowing_torch(device, hook_id)
+        count, report = _cuda_device_report()
+        if count <= 0 or (device_index >= 0 and device_index >= count):
+            raise PICAMConfigurationError(f"cannot bind a model on {device}:{device_index} at hook {hook_id}: the CUDA "
+                                          f"runtime the image loaded sees {max(count, 0)} device(s); {report}")
+        encoded = str(Path(path)).encode()
+        entry.restype = ctypes.c_int32
+        entry.argtypes = [ctypes.c_int32, ctypes.c_char_p, ctypes.c_int32, ctypes.c_int32, ctypes.c_int32, ctypes.c_int32]
+        status = int(entry(int(hook_id), encoded, len(encoded), 1 if shadow else 0, MODEL_DEVICES[device], int(device_index)))
+        if status != 0:
+            raise PICAMConfigurationError(f"binding a model on {device}:{device_index} at hook {hook_id} failed: "
+                                          f"{BIND_STATUS.get(status, status)}")
+        return
     entry = getattr(library, "pycam_hooks_bind_model_v1", None)
     if entry is None:
         raise PICAMConfigurationError(f"cannot bind a model at hook {hook_id}: {BIND_STATUS[5]}")
@@ -290,6 +318,78 @@ def bind_hook_model(library: Any, hook_id: int, path: str | Path, *, shadow: boo
     if status != 0:
         raise PICAMConfigurationError(
             f"cannot bind {path} at hook {hook_id}: {BIND_STATUS.get(status, f'status {status}')}")
+
+
+def _cuda_device_report() -> tuple[int, str]:
+    """How many devices the CUDA runtime the image loaded can see, and the facts behind the
+    number (runtime status, driver and runtime versions, the visible-devices variable, the CUDA
+    libraries mapped): the bind fails closed on zero instead of letting FTorch exit the process."""
+
+    import ctypes
+    import os
+
+    try:
+        cudart = ctypes.CDLL("libcudart.so.12")
+    except OSError as exc:
+        return -1, f"no CUDA runtime is loaded in this process ({exc})"
+    count = ctypes.c_int(0)
+    status = int(cudart.cudaGetDeviceCount(ctypes.byref(count)))
+    cudart.cudaGetErrorString.restype = ctypes.c_char_p
+    message = cudart.cudaGetErrorString(status).decode(errors="replace")
+    driver, runtime = ctypes.c_int(0), ctypes.c_int(0)
+    cudart.cudaDriverGetVersion(ctypes.byref(driver))
+    cudart.cudaRuntimeGetVersion(ctypes.byref(runtime))
+    report = (f"cudaGetDeviceCount status {status} ({message}), driver {driver.value}, runtime {runtime.value}, "
+              f"CUDA_VISIBLE_DEVICES={os.environ.get('CUDA_VISIBLE_DEVICES', '<unset>')!r}, {_process_state()}")
+    return (int(count.value) if status == 0 else 0), report
+
+
+def _process_state() -> str:
+    """The process facts a failing CUDA driver load turns on: the CUDA libraries mapped, the
+    number of memory mappings against the kernel's limit, resident and virtual size, open
+    descriptors against their limit."""
+
+    import os
+    import resource
+
+    facts = []
+    try:
+        with open("/proc/self/maps") as maps:
+            lines = maps.readlines()
+        mapped = sorted({line.split()[-1] for line in lines if "libcuda" in line})
+        limit = Path("/proc/sys/vm/max_map_count").read_text().strip()
+        facts.append(f"mapped {mapped}, {len(lines)} mappings of {limit}")
+    except OSError:
+        pass
+    try:
+        status = dict(line.split(":", 1) for line in Path("/proc/self/status").read_text().splitlines() if ":" in line)
+        facts.append(f"VmRSS {status.get('VmRSS', '?').strip()}, VmSize {status.get('VmSize', '?').strip()}")
+    except OSError:
+        pass
+    try:
+        soft, _hard = resource.getrlimit(resource.RLIMIT_NOFILE)
+        facts.append(f"{len(os.listdir('/proc/self/fd'))} open descriptors of {soft}")
+    except OSError:
+        pass
+    return ", ".join(facts)
+
+
+def _refuse_shadowing_torch(device: str, hook_id: int) -> None:
+    """A device model needs the image's own libtorch.  A ``torch`` already imported into this
+    process loaded its libraries under the same names first, and the loader hands those to the
+    image's FTorch (first loaded wins): a CPU-only wheel then answers ``device_count`` with zero
+    and FTorch exits the process from inside Fortran.  Refuse here, with the cause named."""
+
+    import sys
+
+    loaded = sys.modules.get("torch")
+    if loaded is None or getattr(getattr(loaded, "version", None), "cuda", None) is not None:
+        return
+    raise PICAMConfigurationError(
+        f"cannot bind a model on {device} at hook {hook_id}: this process has imported a CPU-only torch "
+        f"({getattr(loaded, '__version__', '?')} from {getattr(loaded, '__file__', '?')}); its libtorch was loaded "
+        f"first under the names the image's CUDA libtorch uses, so the image would see no device.  Keep torch out "
+        f"of the rank processes, or install the CUDA torch the image's FTorch was built against")
 
 
 def bind_hook_plugin(library: Any, hook_id: int, address: int, *, shadow: bool = False) -> None:

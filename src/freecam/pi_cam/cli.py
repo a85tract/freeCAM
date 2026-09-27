@@ -222,17 +222,17 @@ def _parse_kernel_models(values: list[str] | None) -> dict[str, Path]:
     return models
 
 
-def _load_kernel_model(path: Path, *, shadow: bool = False):
+def _load_kernel_model(path: Path, *, shadow: bool = False, device: str = "cpu"):
     """What stands in a kernel's slot: a TorchScript archive the image runs itself at the
-    kernel's hook (no Python in the step), or a cloudpickled callable answering the
-    kernel's frame at a pause; anything else is refused."""
+    kernel's hook (no Python in the step; on ``device``), or a cloudpickled callable
+    answering the kernel's frame at a pause; anything else is refused."""
 
     from freecam.physics.native_model import NativeModel
 
     if not path.is_file():
         raise SystemExit(f"--kernel-model: {path} is not a file")
     if NativeModel.is_torchscript(path):
-        return NativeModel(path, shadow=shadow)
+        return NativeModel(path, shadow=shadow, device=device)
     if shadow:
         raise SystemExit(f"--shadow-kernel-model: {path} is not a TorchScript archive; only a model the image "
                          f"runs itself can shadow the original")
@@ -288,6 +288,7 @@ def _load_kernel_plugin(kernel: str, spec: str, *, shadow: bool = False):
     import importlib
     import importlib.util
 
+    from freecam.physics.native_model import NativePlugin
     from freecam.physics.numba_kernel import compile_kernel
 
     module_name, _, function_name = spec.rpartition(":")
@@ -302,6 +303,13 @@ def _load_kernel_plugin(kernel: str, spec: str, *, shadow: bool = False):
     else:
         module = importlib.import_module(module_name)
     function = getattr(module, function_name, None)
+    if isinstance(function, NativePlugin):
+        # the module hands over a compiled plugin as it is (e.g. a C library's entry through
+        # NativePlugin.from_library, set up by the module); the flag decides the mode
+        if function.kernel != kernel:
+            raise SystemExit(f"--kernel-plugin: {spec} is a plugin for {function.kernel!r}, not {kernel!r}")
+        function.shadow = shadow
+        return function
     if function is None or not callable(function):
         raise SystemExit(f"--kernel-plugin: {spec} names no callable")
     return compile_kernel(kernel, function, shadow=shadow)
@@ -364,9 +372,11 @@ def _kernel_plugins_summary(plugins: dict[str, str], shadow: dict[str, str] | No
     return summary
 
 
-def _kernel_models_summary(models: dict[str, Path], shadow: dict[str, Path] | None = None) -> dict[str, dict[str, Any]] | None:
+def _kernel_models_summary(models: dict[str, Path], shadow: dict[str, Path] | None = None,
+                           device: str = "cpu") -> dict[str, dict[str, Any]] | None:
     """Which artifact stood in which slot: file name and content hash, and the path when
-    it lies inside this checkout (records name no site directory); shadow models say so."""
+    it lies inside this checkout (records name no site directory); shadow models say so,
+    and a TorchScript model names the device the image ran it on."""
 
     import hashlib
 
@@ -378,8 +388,11 @@ def _kernel_models_summary(models: dict[str, Path], shadow: dict[str, Path] | No
     summary: dict[str, dict[str, Any]] = {}
     for paths, is_shadow in ((models, False), (shadow or {}, True)):
         for name, path in paths.items():
+            torchscript = NativeModel.is_torchscript(path)
             row: dict[str, Any] = {"file": path.name, "sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
-                                   "binding": "torchscript" if NativeModel.is_torchscript(path) else "cloudpickle"}
+                                   "binding": "torchscript" if torchscript else "cloudpickle"}
+            if torchscript:
+                row["device"] = device
             if is_shadow:
                 row["shadow"] = True
             resolved = path.resolve()
@@ -681,6 +694,16 @@ def main(argv: list[str] | None = None) -> int:
         ),
     )
     parser.add_argument(
+        "--model-device",
+        choices=("cpu", "cuda"),
+        default="cpu",
+        help=(
+            "where the image runs the TorchScript models of --kernel-model and --shadow-kernel-model: the host, "
+            "or this rank's share of the node's GPUs (the node-local rank over CUDA_VISIBLE_DEVICES); the image "
+            "must have been linked with a CUDA FTorch (default cpu)"
+        ),
+    )
+    parser.add_argument(
         "--shadow-kernel-model",
         action="append",
         default=None,
@@ -891,6 +914,24 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument("--summary", type=Path)
     parser.add_argument(
+        "--timeline-dir",
+        type=Path,
+        default=None,
+        help=(
+            "record every rank's action timeline (each action's start and end, the time spent in the "
+            "driver's collective agreement calls) into DIR, for `freecam timeline DIR`; off by default. "
+            "Records stay in memory and each rank appends them to its own file every "
+            "--timeline-flush-every steps"
+        ),
+    )
+    parser.add_argument(
+        "--timeline-flush-every",
+        type=int,
+        default=100,
+        metavar="STEPS",
+        help="steps between the timeline's writes to disk (default 100)",
+    )
+    parser.add_argument(
         "--memory-sample-every",
         type=int,
         default=0,
@@ -973,6 +1014,15 @@ def main(argv: list[str] | None = None) -> int:
         cam.step_plan.split_radiation(experimental=True)
     if args.radiation_python and not args.split_radiation:
         raise SystemExit("--radiation-python requires --split-radiation")
+    if args.timeline_dir is not None:
+        from .timeline import TimelineRecorder
+
+        if args.timeline_flush_every < 1:
+            raise SystemExit("--timeline-flush-every must be at least 1")
+        cam.attach_timeline(TimelineRecorder(
+            args.timeline_dir, rank=world.Get_rank(), size=world.Get_size(), comm=world,
+            flush_every=args.timeline_flush_every, run_label=str(args.run_dir),
+        ))
     created_addresses = {
         name: int(values.ctypes.data) for name, values in cam.pool.items()
     }
@@ -1032,8 +1082,8 @@ def main(argv: list[str] | None = None) -> int:
         twice = sorted(set(kernel_model_paths) & set(shadow_model_paths))
         if twice:
             raise SystemExit(f"--shadow-kernel-model: {twice} are also given to --kernel-model; a model answers or shadows")
-        kernel_models = {name: _load_kernel_model(path) for name, path in kernel_model_paths.items()}
-        kernel_models.update({name: _load_kernel_model(path, shadow=True) for name, path in shadow_model_paths.items()})
+        kernel_models = {name: _load_kernel_model(path, device=args.model_device) for name, path in kernel_model_paths.items()}
+        kernel_models.update({name: _load_kernel_model(path, shadow=True, device=args.model_device) for name, path in shadow_model_paths.items()})
         kernel_models.update({name: _load_kernel_plugin(name, spec) for name, spec in kernel_plugin_specs.items()})
         kernel_models.update({name: _load_kernel_plugin(name, spec, shadow=True) for name, spec in shadow_plugin_specs.items()})
         if args.radiation_python:
@@ -1529,7 +1579,8 @@ def main(argv: list[str] | None = None) -> int:
             "disabled_actions": [s.strip() for s in args.disable_actions.split(",") if s.strip()],
             "stage_execution": _stage_executions(cam),
             "frame_capture": _frame_capture_summary(records, args, native_evidence),
-            "kernel_models": ({**(_kernel_models_summary(kernel_model_paths, shadow_model_paths) or {}),
+            "kernel_models": ({**(_kernel_models_summary(kernel_model_paths, shadow_model_paths,
+                                                         args.model_device) or {}),
                                **_kernel_plugins_summary(kernel_plugin_specs, shadow_plugin_specs)} or None),
             "radiation_process": _radiation_process_summary(records),
             "cloud_process": _cloud_process_summary(records),

@@ -37,7 +37,9 @@ def main(argv: list[str]) -> int:
     out_json = argv[argv.index("--json") + 1] if "--json" in argv else None
     names = model_inputs(kernel)
     z = np.load(capture, allow_pickle=True)
-    calls = sorted({int(k.split("/")[1]) for k in z.files if k.startswith("in/")})
+    anchors = all(name in z.files for name in names)     # an anchor dataset: one row a column, keyed by input name
+    calls = [] if anchors else sorted({int(k.split("/")[1]) for k in z.files if k.startswith("in/")})
+    rows_available = int(z[names[1]].shape[0]) if anchors else ROWS * len(calls)
 
     def chunk(c: int) -> list[np.ndarray]:
         arrays = []
@@ -52,6 +54,12 @@ def main(argv: list[str]) -> int:
         return arrays
 
     def batch(n_cols: int) -> list[np.ndarray]:
+        """n_cols real columns stacked into the hook's arrays; refused when the source has fewer
+        (a batch labelled with more rows than it holds would time the wrong thing)."""
+        if n_cols > rows_available:
+            raise SystemExit(f"{n_cols} columns asked, {rows_available} available in {capture}")
+        if anchors:
+            return [np.array([float(z[names[0]][0])])] + [np.asfortranarray(np.asarray(z[name][:n_cols], dtype=np.float64)) for name in names[1:]]
         parts = [chunk(c) for c in calls[: max(1, n_cols // ROWS)]]
         return [parts[0][0]] + [np.asfortranarray(np.concatenate([p[i] for p in parts], 0)[:n_cols]) for i in range(1, len(names))]
 
@@ -68,10 +76,10 @@ def main(argv: list[str]) -> int:
         return (time.perf_counter() - t0) / n * 1e3
 
     results = {"schema_version": 1, "what": __doc__.strip().splitlines()[0], "kernel": kernel, "model": Path(model_path).name,
-               "torch": torch.__version__, "cuda": torch.version.cuda, "rows": {}}
+               "torch": torch.__version__, "cuda": torch.version.cuda, "columns_available": rows_available, "rows": {}}
     torch.set_num_threads(1)
     cpu = torch.jit.load(model_path, map_location="cpu").eval()
-    ins16 = chunk(calls[0])
+    ins16 = batch(ROWS)
     t_cpu = [torch.from_numpy(a) for a in ins16]
     with torch.no_grad():
         ms = timed(lambda: cpu(*t_cpu))

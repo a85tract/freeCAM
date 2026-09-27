@@ -296,29 +296,170 @@ Records: `validation/pi_cam_pausable_p33-*.json`.
 ### The surrogate on a GPU, offline
 
 Would the model be faster on a GPU?  Measured offline on one A100 against one
-CPU thread of the same node, with the same 340 k-parameter packed model and
-the arrays as the hook hands them, float64 in and out (job 7513230,
-`validation/pi_cam_uwshcu_surrogate_gpu_bench.json`):
+CPU thread of the same node, with the same 340 k-parameter packed model, real
+captured columns, and the arrays as the hook hands them, float64 in and out
+(job 7563406, `validation/pi_cam_uwshcu_surrogate_gpu_bench.json`; it
+supersedes the first record, whose batches above 1 600 columns were capped by
+the captured calls it stacked):
 
 | columns a call | CPU, one thread | A100, arrays copied in and the output back | A100, device resident |
 | ---: | ---: | ---: | ---: |
-| 16 (one chunk, the hook's call) | 0.60 ms | 1.03 ms | 0.63 ms |
-| 256 | 4.3 ms | 1.66 ms | 0.74 ms |
-| 4 096 | 28.6 ms | 4.17 ms | 0.74 ms |
-| 16 384 | -- | 4.18 ms | 0.74 ms |
+| 16 (one chunk, the hook's call) | 0.61 ms | 1.01 ms | 0.60 ms |
+| 256 | 4.36 ms | 1.64 ms | 0.71 ms |
+| 1 024 | -- | 2.99 ms | 0.72 ms |
+| 4 096 | 170.5 ms | 14.4 ms | 0.88 ms |
+| 16 384 | -- | 47.4 ms | 3.3 ms |
 
 At the hook's granularity the GPU is slower than a CPU thread: a chunk's
 forward is a few dozen kernel launches, and launching them costs more than
-computing 16 columns.  The GPU only pays from about a thousand columns a
-call, 1 µs a column at 4 096 against 7 µs on the CPU thread, and no hook
-ever has that: it would take the node's ranks batching their chunks into one
-call and waiting for one another, for at most the difference between the
-in-image 4.2 ms and a shared batched call, about a percent of the month.
-The in-image CPU figure itself (4.17 ms a call) is seven times this CPU
-thread's 0.60 ms because 128 ranks a node share the memory bandwidth; a
-GPU node's 64 cores would change that number before any GPU did.  The GPU
-path (a CUDA libtorch under FTorch, device placement in the hooks) is not
-built.
+computing 16 columns.  A batched call pays from a few hundred columns (6.4 µs
+a column at 256, about 3 µs from 1 024 upwards, against 17 µs on the CPU
+thread at 256 and 42 µs at 4 096, where the strided Fortran arrays stop
+fitting its caches), and what it pays for is the traffic of the twenty input
+arrays to the device, not the arithmetic: resident, 16 384 columns take
+3.3 ms.  No hook has hundreds of columns a call; it takes the node's ranks
+batching their chunks into one call and waiting for one another, which the
+batching plugin below measures inside the model.  The in-image CPU figure
+itself (4.17 ms a call) is seven times this CPU thread's 0.61 ms because 128
+ranks a node share the memory bandwidth; a GPU node's 64 cores would change
+that number before any GPU did.
+
+### The surrogate on a GPU, inside the image
+
+The GPU path was then built (a CUDA libtorch under FTorch, the model bound
+on each rank's GPU, image p35) and measured on the same case at the
+validated layout moved to GPU nodes: four A100 nodes, 128 ranks a node, 32
+ranks a GPU, one CUDA context a rank.  Fifty steps, the compact-subset
+`compute_uwshcu_inv` model, 51 200 modelled calls; the CPU-path numbers are
+the same image family on the same nodes (records
+`pi_cam_pausable_g33-*-4x128`, `g35-*-gpu-4x128-repo3`):
+
+| 50 steps, four A100 nodes x 128 ranks | nothing armed | model on the host, shadow | model on the GPU, shadow | model on the host, live | model on the GPU, live |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| step loop, rank 0 | 17.2 s | 17.8 s | 87.0 s | 17.6 s | 86.6 s |
+| model, a call (sum over ranks / calls) | -- | 4.08 ms | 216 ms | 4.31 ms | 220 ms |
+| of which the forward | -- | 3.93 ms | 126 ms | 3.83 ms | 127 ms |
+| first call, a rank (context, model load, fuser compile) | -- | 22 ms | 12.0 s | 24 ms | 12.0 s |
+| a call after the first | -- | 3.86 ms | 96.6 ms | 4.07 ms | 100 ms |
+| bit-for-bit / health | yes | yes | yes | 60 big-error lines | 60 big-error lines |
+
+The GPU answers the same model 25 times slower than the host thread that
+would otherwise be idle, and the step loop takes five times longer: 32
+ranks share one device, each with its own context, so their calls are
+time-sliced and a rank waits for the 31 others' launches before its own
+few dozen run; the first call costs each rank twelve seconds of context
+creation, model load and fuser compilation on top.  No month was run on the
+GPU: at this rate a month would take about 45 minutes of four GPU nodes to
+confirm a result the 50-step gate already settles.  The measurement cost
+about five GPU-node-hours (twenty GPU-hours), most of it in the runs that failed first
+(`validation/pi_cam_pausable_g34-uwshcu-sub-gpu-4x128_50step_failure.json`
+records them: the launcher spreading the head node's device list, an MPS
+device-mapping fault first read as a client limit, a mismeasured MPS
+footprint, CUDA memory).  The conclusion of the offline bench
+stands: at this layout a GPU only pays for a model if the node's ranks
+batch their chunks into one call -- a different design, whose upper bound
+is the difference between the in-image host call and a shared batched call.
+
+### One context a rank, with MPS
+
+NVIDIA's Multi-Process Service puts the contexts of every rank on a GPU into
+one server context, so their kernels run side by side instead of in turns.
+The first measurement of an MPS client's device footprint (2.3 GB, which
+would not fit 32 on a 40 GB device) was wrong: the helper scripts' pipe
+directory did not reach the ranks, and the node kept stale servers.  With
+them fixed (`validation/jobs/gpu_mps_per_gpu.sh`, one server a GPU started
+by the job, `PYCAM_GPU_MPS=1`) a client costs about 0.6 GB at the default
+thread stack -- each keeps context storage of its own, sized by the threads it
+may use -- and 32 take about 19 GB.  On one node, a rank's own 16-column call through its GPU's server
+costs 1.02 ms at 8 ranks a GPU and 1.57 ms at 16, against 25.8 and 51.8 ms
+without MPS.  Inside the model, at 32 ranks a GPU (records
+`pi_cam_pausable_g35-uwshcu-sub-{shadow,live}-gpu-4x128-mps32_50step`):
+
+| 50 steps, four A100 nodes x 128 ranks | model on the host | one context a rank | one context a rank, MPS |
+| --- | ---: | ---: | ---: |
+| a call after the first | 3.90 ms | 97.6 ms | 3.98 ms |
+| first call, a rank | 0.02 s | 12.0 s | 11.1 s |
+| warm-up forward at the bind, a rank | 0.18 s | 7.5 s | 6.6 s |
+| step loop, rank 0 | 17.8 s | 87.0 s | 68.6 s |
+| shadow bit-for-bit; live health | yes; 60 big-error lines | yes; 60 | yes; 60 |
+
+MPS removes the queue, and the call then costs what it costs on the host:
+the hook's packing and writing back stay on the host, and what the device
+saves on the forward the 32 concurrent clients spend again.  The step loop's
+excess over the host path is start-up, paid once a run (context, model load,
+warm-up, the first call's fuser compilation), with nothing in the steady
+state to earn it back.  Sixteen ranks a GPU would need the eight-node
+layout, which fails at initialization (see the 64-a-node failure record).
+
+### Batching a GPU's ranks into one call, measured
+
+The remedy the per-rank result points at was built and measured: a plugin at
+the hook (`tools/gpu_batch/`, bound through `--kernel-plugin` as a compiled
+library entry) in which the 32 ranks sharing a GPU write their 16 columns
+into a node-shared window, the group's leader runs one forward of the model
+over the 512 columns on the GPU, and every rank takes its 16 columns of the
+answer back.  Alone on a node, with the ranks calling in lockstep on real
+columns, a call costs 6.6 ms with the twenty inputs copied (5.6 ms of it the
+leader's forward, most of that the 7 MB of `tr0_inv` a call) and 3.7 ms with
+`tr0_inv` left out (the model uses a few of its values, so that is a cost
+bound, not a faithful answer); the waits and copies together take under a
+millisecond, and 1 ms of arrival jitter is absorbed.  Inside the model the
+same plugin measures very differently (records
+`pi_cam_pausable_g35-uwshcu-sub-shadow-gpu-batch_50step`, `...-batchskip...`,
+both bit-for-bit):
+
+| 50 steps, four A100 nodes x 128 ranks, shadow | model on the host | batched, all inputs | batched, `tr0_inv` not copied | one context a rank |
+| --- | ---: | ---: | ---: | ---: |
+| step loop, rank 0 | 17.8 s | 46.3 s | 32.4 s | 87.0 s |
+| in the plugin or model, a call after the first | 3.86 ms | 120.6 ms | 113.2 ms | 96.6 ms |
+| first call, a rank | 22 ms | 4.5 s | 4.4 s | 12.0 s |
+
+The cost is not the forward but the rendezvous: the 32 ranks of a group reach
+the hook up to a tenth of a second apart, because a step's physics is
+load-imbalanced across ranks (deep convection, radiation and microphysics
+cost what their columns' state dictates), and a batched call waits for the
+slowest of them, twice a step, in the middle of physics where nothing else
+would have waited.  The step loop pays that wait and then the collectives'
+own.  A continuous-batching worker (one process a GPU serving whoever has
+arrived after a short timeout) would remove the rendezvous and could reach
+about 2 ms a call on this model, about 1 % of the month, for a design with a
+process a GPU on hardware threads the ranks already use.  Not pursued: at
+this layout and model size the GPU has no return to give; what it can give a
+heavier model is a separate question.
+
+### Online, a month: the default, the model on the host, the model on a GPU
+
+The runs above are offline replays.  freeCAM runs online by default -- CLM,
+CICE, DOCN, RTM and the coupler live -- so the three answers that matter were
+measured online over the month (1,488 steps), each job running its legs back
+to back on the same four nodes, in both orders
+(`validation/jobs/pi_cam_online_model_1month.pbs`, records
+`validation/pi_cam_online_model_1month_{cpu-develop-ACM,cpu-develop-MCA,gpu-AMG,gpu-GMA}.json`):
+A the original Fortran, C freeCAM with nothing replaced, M the
+compute_uwshcu_inv model in the image on the host, G the same model on the
+node's GPUs through MPS.
+
+| step loop, one online month | A original | C default | M model on the host | G model on the GPU |
+| --- | ---: | ---: | ---: | ---: |
+| CPU nodes (develop, half nodes), A→C→M, 7580687 | 442.4 s | 440.6 s (0.996) | 432.0 s (0.977) | |
+| CPU nodes, M→C→A, 7580688 | 437.9 s | 440.8 s (1.007) | 432.7 s (0.988) | |
+| GPU nodes (64 cores, 128 ranks), A→M→G, 7579235 | 469.8 s | | 472.5 s (1.006) | 523.1 s (1.114) |
+| GPU nodes, G→M→A, 7579236 | 475.8 s | | 476.6 s (1.002) | 532.3 s (1.119) |
+
+C is bit-for-bit with the oracle month in both orders (18 files) and ties the
+original (C/A 0.996 and 1.007).  The model on the host takes 1.8 to 1.9% off
+the default's month on the same nodes (M/C 0.981 and 0.982): its 4.27 ms a
+call costs less than the kernel it answers for.  Its health and drift are the
+same on either kind of node (147 big-error lines, relative rms median 0.54).
+On the GPU the call costs what it costs on the host (4.31-4.34 ms against
+4.18-4.20 ms), and the 51 to 56 s the month gains are start-up paid once: 33
+to 40 s binding the model in the first step (context through MPS, model into
+device memory, warm-up) and 12.6 to 13.0 s each rank's first call; the
+50-step MPS gate paid about the same.  A year would carry the same start-up,
+under 1%.  The site's `mps=1` serves this layout as well as one server a GPU
+once each rank sees only its own GPU (gate
+`pi_cam_pausable_g35-uwshcu-sub-live-gpu-4x128-sitemps_50step`, 4.20 ms a
+call).
 
 ## Sources and caveats
 

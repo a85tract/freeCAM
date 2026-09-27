@@ -135,6 +135,49 @@ than producing its own.
    `build/ftorch`.  The torch headers need C++20: when the case environment's
    `g++` is older than GCC 10, point `CXX` (and `CC`) at a newer GCC before
    running the script.
+   For an image that runs the models on a GPU, build a second FTorch against
+   a CUDA libtorch, with FTorch's CUDA support on, into its own prefix:
+
+   ```bash
+   FTORCH_PYTHON=/path/to/venv-with-cuda-torch/bin/python \
+   FTORCH_GPU_DEVICE=CUDA FTORCH_PREFIX=$PWD/build/ftorch-cuda \
+   PATH=/path/to/cuda-toolkit/bin:$PATH CUDAToolkit_ROOT=/path/to/cuda-toolkit \
+   tools/build_ftorch.sh
+   ```
+
+   (a CUDA torch wheel of the same torch version as the checkout's, e.g. from
+   the `cu126` index; the toolkit's major version must be the wheel's).  The
+   prefix records the libtorch it was built against, and an image built with
+   `FREECAM_FTORCH_ROOT=$PWD/build/ftorch-cuda` links and rpaths that one, so
+   it runs on GPU nodes only.  Both rpaths list the CUDA libraries the wheel
+   bundles (`nvidia/<component>/lib`) ahead of the toolkit CMake appends, so
+   NVRTC -- which TorchScript's fuser calls at the first forward -- and its
+   builtins come from the wheel, in one version; the toolkit's NVRTC found
+   first wants builtins of its own version that a run cannot see.  `--model-device cuda` (job knob
+   `PYCAM_MODEL_DEVICE=cuda`) then loads the bound models on each rank's share
+   of the node's GPUs, the node-local rank over `CUDA_VISIBLE_DEVICES`; the
+   hook's input tensors are made on the device and the answer comes back on
+   the host.  The jobs launch that path as `env -u CUDA_VISIBLE_DEVICES
+   mpiexec ... bash validation/jobs/gpu_rank_env.sh python -m
+   freecam.pi_cam.cli ...`: `mpiexec` hands every node the launching shell's
+   environment, and PBS's `CUDA_VISIBLE_DEVICES` there names the head node's
+   GPUs by UUID, which match nothing elsewhere; the wrapper gives each rank its
+   node-local GPU by index, one CUDA context a rank, with
+   `CUDA_MODULE_LOADING=LAZY` and a 32 MB cuBLAS workspace so that 32 contexts
+   fit a 40 GB A100.  `PYCAM_GPU_MPS=1` starts one NVIDIA MPS server a GPU on
+   every node instead (`validation/jobs/gpu_mps_per_gpu.sh`), each rank then
+   seeing its own GPU only; an MPS client costs about 0.6 GB of the device at
+   the default thread stack (each client keeps context storage of its own,
+   sized by the threads it may use), so 32 a GPU take about 19 GB.  NVIDIA limits an MPS server's clients per device (48
+   in older releases, 60 now), not per server: the site's `mps=1` (one server
+   a node for its four GPUs) refusing 80 of a node's 128 ranks in an early run
+   was a device-mapping fault (every refused rank was on GPUs 1-3), not a client
+   limit: with the per-rank binding above it serves all 128 ranks of a node
+   (gate `pi_cam_pausable_g35-uwshcu-sub-live-gpu-4x128-sitemps_50step`,
+   4.20 ms a call), so requesting `:mps=1` in the select and leaving
+   `PYCAM_GPU_MPS` unset works as well.  The record of what went wrong before
+   this worked is
+   `validation/pi_cam_pausable_g34-uwshcu-sub-gpu-4x128_50step_failure.json`.
    The hooks module links it so a hooked kernel can be bound to a
    TorchScript model that the image runs itself (see
    [physics_kernel_decoupling.md](physics_kernel_decoupling.md)); a rank

@@ -1636,6 +1636,8 @@ class PICAMNotebookSession:
         request_timeout: float = 300.0,
         log_path: str | Path | None = None,
         trace_limit: int | None = DEFAULT_TRACE_LIMIT,
+        timeline_dir: str | Path | None = None,
+        timeline_flush_every: int = 100,
     ) -> None:
         if isinstance(config, PICAMConfig):
             raise TypeError("PICAMNotebookSession currently requires a YAML config path")
@@ -1666,6 +1668,9 @@ class PICAMNotebookSession:
         self.pbs_memory_per_node = normalized_memory
         self.verify_boundary_exports = bool(verify_boundary_exports)
         self.trace_limit = validate_trace_limit(trace_limit)
+        #: where the rank workers record their action timeline (freecam timeline DIR), or None
+        self.timeline_dir = None if timeline_dir is None else Path(timeline_dir)
+        self.timeline_flush_every = int(timeline_flush_every)
         self.startup_timeout = float(startup_timeout)
         self.request_timeout = float(request_timeout)
         self.log_path = Path(log_path or self.run_dir / "pi_cam_notebook_worker.log").resolve()
@@ -1796,6 +1801,9 @@ class PICAMNotebookSession:
                 "none" if self.trace_limit is None else str(self.trace_limit),
             ]
         )
+        if self.timeline_dir is not None:
+            command.extend(["--timeline-dir", str(self.timeline_dir),
+                            "--timeline-flush-every", str(self.timeline_flush_every)])
         return command
 
     def _boundary_arguments(self) -> list[str]:

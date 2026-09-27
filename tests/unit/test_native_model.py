@@ -118,7 +118,10 @@ def test_the_generated_module_answers_a_bound_model_inside_the_image() -> None:
     # a bound model and a Python replacement cannot share a hook
     assert "if (flag /= 0_c_int .and. modeled(hook)) then" in text
     # the warm-up at bind: one forward on zeros of the contract's extents, timed apart from the calls
-    assert "call torch_model_load(models(hook), filename(1:length), torch_kCPU)\n" in text
+    # the model is loaded where it will run: the host, or this rank's GPU (bind v2); v1 keeps the host
+    assert "call torch_model_load(models(hook), filename(1:length), device_type, int(device_index))\n" in text
+    assert "status = pycam_hooks_bind_model_v2(hook, path, length, shadow_flag, torch_kCPU, -1_c_int)" in text
+    assert "bind(C, name='pycam_hooks_bind_model_v2')" in text and "integer(c_int), save :: model_device(nhooks) = torch_kCPU" in text
     assert text.count("\n  subroutine warm_") == len(table.hooks) and "      call warm_micro_mg_tend()" in text
     # a compiled plugin takes the same arrays as pointer and extent tables, in place of the forward
     assert "bind(C, name='pycam_hooks_bind_plugin_v1')" in text and "type(c_funptr), save :: plugins(nhooks)" in text
@@ -126,7 +129,9 @@ def test_the_generated_module_answers_a_bound_model_inside_the_image() -> None:
     assert "plugin_status = plugin(1_c_int, in_p, in_s, 2_c_int, out_p, out_s)" in text
     assert "in_p(1) = c_loc(s_k); in_s(:, 1) = (/ 1_c_int64_t, 0_c_int64_t, 0_c_int64_t /)" in text
     assert "out_p(1) = c_loc(o_qc); out_s(:, 1) = (/ int(pcols, c_int64_t), int(pver, c_int64_t), 0_c_int64_t /)" in text
-    assert "if (.not. plugged(4)) call torch_tensor_from_array(in_t(1), sp_deltatin, torch_kCPU)" in text
+    # input tensors are made on the model's device; the output tensor stays on the host
+    assert "if (.not. plugged(4)) call torch_tensor_from_array(in_t(1), sp_deltatin, model_device(4), model_device_index(4))" in text
+    assert "if (.not. plugged(4)) call torch_tensor_from_array(out_t(1), op_qc, torch_kCPU)" in text
     assert "real(c_double), target :: z_tn(16, 30)" in text and "real(c_double), target :: y_rflx(16, 31)" in text
     assert "warm_ticks(hook) = w1 - w0" in text and "warm_seconds = real(warm_ticks(hook), c_double)" in text
     # in shadow the original is timed too, on the same calls: both prices from one run
@@ -158,6 +163,12 @@ class _Library:
             self.bound[hook] = (path[:length], int(shadow))
             return 0
 
+        def bind_v2(hook, path, length, shadow, device, index):
+            if status:
+                return status
+            self.bound[hook] = (path[:length], int(shadow), int(device), int(index))
+            return 0
+
         def unbind(hook):
             self.unbound.append(hook)
             return 0
@@ -173,6 +184,7 @@ class _Library:
             return 0
 
         self.pycam_hooks_bind_model_v1 = _Entry(bind)
+        self.pycam_hooks_bind_model_v2 = _Entry(bind_v2)
         self.pycam_hooks_bind_plugin_v1 = _Entry(bind_plugin)
         self.pycam_hooks_unbind_model_v1 = _Entry(unbind)
         self.pycam_hooks_modeled_v1 = _Entry(modeled)
@@ -257,6 +269,8 @@ def test_the_command_line_tells_a_torchscript_archive_from_a_pickle(tmp_path: Pa
     summary = _kernel_models_summary({"instratus_condensate": archive}, {"micro_mg_tend": archive})
     assert summary["instratus_condensate"]["binding"] == "torchscript" and "shadow" not in summary["instratus_condensate"]
     assert summary["micro_mg_tend"]["shadow"] is True
+    assert summary["instratus_condensate"]["device"] == "cpu"               # where the image ran it
+    assert _kernel_models_summary({"k": archive}, device="cuda")["k"]["device"] == "cuda"
     plain = tmp_path / "weights.pkl"; plain.write_bytes(b"\x80\x04not a zip")
     with pytest.raises(SystemExit):
         _load_kernel_model(plain, shadow=True)                   # only a native model can shadow
@@ -447,3 +461,90 @@ def test_a_compiled_function_fills_a_packed_output_in_the_hooks_layout() -> None
     tr = packed[:, 582:942].reshape(16, 30, 12)                                   # level-major, the subset's 12 slots
     assert np.all(tr[:, :, 0] == 1.0) and tr[0, 5, 11] == 2.0 and tr[0, 4, 11] == 0.0 and np.all(tr[:, :, 1:11] == 0.0)
     assert np.all(packed[:, 942:1182] == 0.0) and np.all(packed[:, 1182:1186] == 5.0) and np.all(packed[:, 1186:] == 0.0)
+
+
+def test_a_native_model_on_a_gpu_is_bound_on_this_ranks_device(tmp_path: Path, monkeypatch) -> None:
+    from freecam.physics.cloud_macro_microphysics import CloudMacroMicrophysics
+    from freecam.physics.native_model import NativeModel, local_gpu_index
+    from freecam.pi_cam.hooks import bind_hook_model
+
+    # the node-local rank spread over the visible GPUs
+    monkeypatch.setenv("PMI_LOCAL_RANK", "6"); monkeypatch.delenv("CUDA_VISIBLE_DEVICES", raising=False)
+    assert local_gpu_index() == 2                                              # 6 of 4 GPUs
+    monkeypatch.setenv("CUDA_VISIBLE_DEVICES", "0,1")
+    assert local_gpu_index() == 0
+    model = NativeModel(torchscript_archive(tmp_path / "m.pt"), device="cuda")
+    assert model.device == "cuda" and model.resolved_device_index() == 0 and model.describe()["device_index"] == 0
+    assert model.key.endswith(":cuda:0") and "device='cuda'" in repr(model)
+    pinned = NativeModel(torchscript_archive(tmp_path / "m.pt"), device="cuda", device_index=3, shadow=True)
+    assert pinned.resolved_device_index() == 3 and pinned.key.endswith(":cuda:3:shadow")
+    with pytest.raises(PhysicsError):
+        NativeModel(torchscript_archive(tmp_path / "m.pt"), device="tpu")
+    # the stage binds it through the device-aware entry with the rank's index; the host model through v1
+    # (the CUDA runtime's own count is asked first; here it is stood in for)
+    import freecam.pi_cam.hooks as hooks_module
+    monkeypatch.setattr(hooks_module, "_cuda_device_report", lambda: (4, "four devices"))
+    # a CPU-only torch another test imported would be refused (below); stand in a CUDA one
+    monkeypatch.setitem(sys.modules, "torch", SimpleNamespace(__version__="2.14.0+cu126", version=SimpleNamespace(cuda="12.6")))
+    stage = CloudMacroMicrophysics()
+    stage.kernels["instratus_condensate"] = pinned
+    library = _Library()
+    native = SimpleNamespace(library=library, run_action=lambda name, phase=None: None, segment_runner=lambda s: None)
+    stage.tend(None, SimpleNamespace(native=native, step=1))
+    assert library.bound[3][1:] == (1, 1, 3)                                   # shadow, torch_kCUDA, device 3
+    # an image without the entry refuses a GPU model instead of binding it on the host
+    old = _Library(); del old.pycam_hooks_bind_model_v2
+    with pytest.raises(Exception, match="device-aware bind entry"):
+        bind_hook_model(old, 3, pinned.path, shadow=True, device="cuda", device_index=3)
+    # a CPU-only torch imported into this process loaded its libtorch first under the names the
+    # image's CUDA libtorch uses; the image would see no device, so the bind is refused up front
+    fresh = _Library()
+    monkeypatch.setitem(sys.modules, "torch", SimpleNamespace(__version__="2.14.0+cpu", __file__="/venv/torch/__init__.py",
+                                                              version=SimpleNamespace(cuda=None)))
+    with pytest.raises(PICAMConfigurationError, match="CPU-only torch"):
+        bind_hook_model(fresh, 3, pinned.path, shadow=True, device="cuda", device_index=3)
+    assert 3 not in fresh.bound
+    bind_hook_model(fresh, 3, pinned.path, shadow=True, device="cpu")       # the host path does not care
+    monkeypatch.setitem(sys.modules, "torch", SimpleNamespace(__version__="2.14.0+cu126", version=SimpleNamespace(cuda="12.6")))
+    bind_hook_model(fresh, 3, pinned.path, shadow=True, device="cuda", device_index=3)
+    assert fresh.bound[3][1:] == (1, 1, 3)
+    # a runtime that sees no device, or fewer than the index asks for, refuses with the facts
+    monkeypatch.setattr(hooks_module, "_cuda_device_report", lambda: (0, "cudaGetDeviceCount status 100 (no CUDA-capable device is detected)"))
+    with pytest.raises(PICAMConfigurationError, match="sees 0 device.*no CUDA-capable device"):
+        bind_hook_model(_Library(), 3, pinned.path, shadow=True, device="cuda", device_index=0)
+    monkeypatch.setattr(hooks_module, "_cuda_device_report", lambda: (2, "two devices"))
+    with pytest.raises(PICAMConfigurationError, match="sees 2 device"):
+        bind_hook_model(_Library(), 3, pinned.path, shadow=True, device="cuda", device_index=3)
+    bind_hook_model(_Library(), 3, pinned.path, shadow=True, device="cuda", device_index=-1)   # FTorch picks device 0
+
+
+def test_a_plugin_from_a_shared_library_is_bound_as_it_is(tmp_path: Path) -> None:
+    """A C library's entry stands in a kernel slot through NativePlugin.from_library, and a
+    module may hand such a plugin to the CLI, which sets the mode and binds it unchanged."""
+    import ctypes
+    import pickle
+
+    from freecam.physics.native_model import NativePlugin
+    from freecam.pi_cam.cli import _load_kernel_plugin
+
+    libc = ctypes.CDLL(None)
+    plugin = NativePlugin.from_library(libc, "strlen", kernel="compute_uwshcu_inv")
+    assert plugin.address == ctypes.cast(libc.strlen, ctypes.c_void_p).value and plugin.kernel == "compute_uwshcu_inv"
+    assert plugin.identity.startswith("library:") and plugin.label.endswith(":strlen") and not plugin.shadow
+    # the pickle carries the identity and the code is found again in this process
+    twin = pickle.loads(pickle.dumps(plugin))
+    assert twin.address == plugin.address and twin.identity == plugin.identity
+    with pytest.raises(PhysicsError, match="no symbol"):
+        NativePlugin.from_library(libc, "no_such_symbol_in_libc", kernel="compute_uwshcu_inv")
+    with pytest.raises(PhysicsError, match="not a file"):
+        NativePlugin.from_library(tmp_path / "missing.so", "f", kernel="compute_uwshcu_inv")
+    # a module that hands the plugin over: bound as it is, in the mode the flag names
+    module = tmp_path / "handover.py"
+    module.write_text(
+        "import ctypes\nfrom freecam.physics.native_model import NativePlugin\n"
+        "plugin = NativePlugin.from_library(ctypes.CDLL(None), 'strlen', kernel='compute_uwshcu_inv')\n"
+        "other = NativePlugin.from_library(ctypes.CDLL(None), 'strlen', kernel='cldfrc_fice')\n")
+    bound = _load_kernel_plugin("compute_uwshcu_inv", f"{module}:plugin", shadow=True)
+    assert isinstance(bound, NativePlugin) and bound.shadow and bound.address == plugin.address
+    with pytest.raises(SystemExit, match="plugin for 'cldfrc_fice'"):
+        _load_kernel_plugin("compute_uwshcu_inv", f"{module}:other")

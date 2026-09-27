@@ -388,7 +388,7 @@ def _model_procedure(hook: Hook, spec: FunctionSpec, index: int) -> str:
             lines.append(f"    s_{item.name}(1) = {value}")
             lines.append(f"    sp_{item.name} => s_{item.name}")
             lines.append(f"    in_p({slot}) = c_loc(s_{item.name}); in_s(:, {slot}) = (/ 1_c_int64_t, 0_c_int64_t, 0_c_int64_t /)")
-            lines.append(f"    if (.not. plugged({index})) call torch_tensor_from_array(in_t({slot}), sp_{item.name}, torch_kCPU)")
+            lines.append(f"    if (.not. plugged({index})) call torch_tensor_from_array(in_t({slot}), sp_{item.name}, model_device({index}), model_device_index({index}))")
         elif item.pointer:
             bounds = ", ".join(f"1:{_axis(hook, spec, axis)}" for axis in item.native_shape)
             lines.append(f"    if (associated({item.name})) then")
@@ -398,11 +398,11 @@ def _model_procedure(hook: Hook, spec: FunctionSpec, index: int) -> str:
             lines.append("    end if")
             lines.append(f"    v_{item.name} => l_{item.name}")
             lines.append(f"    in_p({slot}) = c_loc(l_{item.name}); in_s(:, {slot}) = (/ {_shape3(hook, spec, item)} /)")
-            lines.append(f"    if (.not. plugged({index})) call torch_tensor_from_array(in_t({slot}), v_{item.name}, torch_kCPU)")
+            lines.append(f"    if (.not. plugged({index})) call torch_tensor_from_array(in_t({slot}), v_{item.name}, model_device({index}), model_device_index({index}))")
         else:
             lines.append(f"    call c_f_pointer(c_loc({first(item)}), v_{item.name}, (/ {_extents(spec, item, hook)} /))")
             lines.append(f"    in_p({slot}) = c_loc({first(item)}); in_s(:, {slot}) = (/ {_shape3(hook, spec, item)} /)")
-            lines.append(f"    if (.not. plugged({index})) call torch_tensor_from_array(in_t({slot}), v_{item.name}, torch_kCPU)")
+            lines.append(f"    if (.not. plugged({index})) call torch_tensor_from_array(in_t({slot}), v_{item.name}, model_device({index}), model_device_index({index}))")
     if packed:
         lines.append("    op_packed => o_packed")
         lines.append(f"    if (.not. plugged({index})) call torch_tensor_from_array(out_t(1), op_packed, torch_kCPU)")
@@ -494,7 +494,7 @@ def _warm_procedure(hook: Hook, spec: FunctionSpec, index: int) -> str:
     for slot, item in enumerate(inputs, start=1):
         lines.append(f"    z_{item.name} = 0.0_c_double")
         lines.append(f"    zp_{item.name} => z_{item.name}")
-        lines.append(f"    call torch_tensor_from_array(in_t({slot}), zp_{item.name}, torch_kCPU)")
+        lines.append(f"    call torch_tensor_from_array(in_t({slot}), zp_{item.name}, model_device({index}), model_device_index({index}))")
     if packed:
         lines.append("    yp_packed => y_packed")
         lines.append("    call torch_tensor_from_array(out_t(1), yp_packed, torch_kCPU)")
@@ -630,13 +630,13 @@ def render(table: HookTable) -> str:
 module pycam_hooks
   use, intrinsic :: iso_c_binding, only: c_int, c_int32_t, c_int64_t, c_double, c_ptr, c_loc, c_f_pointer, c_null_ptr, c_char, c_null_char, &
                                          c_funptr, c_null_funptr, c_f_procpointer
-  use ftorch, only: torch_model, torch_tensor, torch_kCPU, torch_model_load, torch_model_forward, &
+  use ftorch, only: torch_model, torch_tensor, torch_kCPU, torch_kCUDA, torch_model_load, torch_model_forward, &
                     torch_tensor_from_array, torch_delete
   implicit none
   private
   public :: pycam_hooks_arm_v1, pycam_hooks_counts_v1, pycam_hooks_paused_v1, pycam_hooks_frame_v1, &
             pycam_hooks_original_v1, pycam_hooks_reset_v1, pycam_hooks_count_v1, pycam_hooks_name_v1, &
-            pycam_hooks_bind_model_v1, pycam_hooks_unbind_model_v1, pycam_hooks_modeled_v1, &
+            pycam_hooks_bind_model_v1, pycam_hooks_bind_model_v2, pycam_hooks_unbind_model_v1, pycam_hooks_modeled_v1, &
             pycam_hooks_model_seconds_v1, pycam_hooks_bind_plugin_v1
 
   integer, parameter :: nhooks = {len(table.hooks)}
@@ -667,6 +667,11 @@ module pycam_hooks
   ! calls a shadow model also answered
   integer(c_int64_t), save :: warm_ticks(nhooks) = 0_c_int64_t, original_ticks(nhooks) = 0_c_int64_t
   type(torch_model), save :: models(nhooks)
+  ! where a bound model lives and runs: torch_kCPU, or torch_kCUDA with the device index this rank
+  ! was given.  Input tensors are made on that device (FTorch copies the host arrays over); the
+  ! output tensor stays on the host and the forward copies the answer back into it
+  integer(c_int), save :: model_device(nhooks) = torch_kCPU
+  integer, save :: model_device_index(nhooks) = -1
   ! compiled plugins (a C function pointer, e.g. a Numba cfunc) bound at hooks with a model block:
   ! the hook hands them the same arrays it would hand a model, as pointer and extent tables
   logical, save :: plugged(nhooks) = .false.
@@ -742,8 +747,17 @@ contains
   integer(c_int) function pycam_hooks_bind_model_v1(hook, path, length, shadow_flag) &
        bind(C, name='pycam_hooks_bind_model_v1') result(status)
     ! load the TorchScript file at path (length bytes) and answer the hook's calls with it from
-    ! now on; with shadow_flag /= 0 the model runs but the original keeps answering
+    ! now on, on the host; with shadow_flag /= 0 the model runs but the original keeps answering
     integer(c_int), value, intent(in) :: hook, length, shadow_flag
+    character(kind=c_char), intent(in) :: path(*)
+    status = pycam_hooks_bind_model_v2(hook, path, length, shadow_flag, torch_kCPU, -1_c_int)
+  end function pycam_hooks_bind_model_v1
+
+  integer(c_int) function pycam_hooks_bind_model_v2(hook, path, length, shadow_flag, device_type, device_index) &
+       bind(C, name='pycam_hooks_bind_model_v2') result(status)
+    ! as v1, with the device the model lives and runs on: torch_kCPU, or torch_kCUDA and the
+    ! index of this rank's GPU.  The output tensor stays on the host either way
+    integer(c_int), value, intent(in) :: hook, length, shadow_flag, device_type, device_index
     character(kind=c_char), intent(in) :: path(*)
     character(len=4096) :: filename
     integer :: i
@@ -763,9 +777,14 @@ contains
     do i = 1, length
       filename(i:i) = path(i)
     end do
+    if (device_type /= torch_kCPU .and. device_type /= torch_kCUDA) then
+      status = 7_c_int; return
+    end if
     if (modeled(hook) .and. .not. plugged(hook)) call torch_delete(models(hook))
     plugged(hook) = .false.; plugins(hook) = c_null_funptr
-    call torch_model_load(models(hook), filename(1:length), torch_kCPU)
+    model_device(hook) = device_type
+    model_device_index(hook) = int(device_index)
+    call torch_model_load(models(hook), filename(1:length), device_type, int(device_index))
     ! one forward on zeros now: the first step does not pay the model's warm-up
     call system_clock(w0)
     call warm_model(hook)
@@ -774,7 +793,7 @@ contains
     modeled(hook) = .true.
     shadow(hook) = shadow_flag /= 0_c_int
     status = 0_c_int
-  end function pycam_hooks_bind_model_v1
+  end function pycam_hooks_bind_model_v2
 
   integer(c_int) function pycam_hooks_unbind_model_v1(hook) bind(C, name='pycam_hooks_unbind_model_v1') result(status)
     ! release the bound model or plugin: the hook answers with the original again
@@ -784,6 +803,7 @@ contains
     if (modeled(hook)) then
       if (.not. plugged(hook)) call torch_delete(models(hook))
       modeled(hook) = .false.
+    model_device(hook) = torch_kCPU; model_device_index(hook) = -1
       plugged(hook) = .false.
       plugins(hook) = c_null_funptr
       shadow(hook) = .false.

@@ -1,0 +1,229 @@
+#!/bin/bash
+# Submit with (CPU nodes: the original Fortran, freeCAM, freeCAM with the model on the host):
+#   validation/jobs/submit.sh validation/jobs/pi_cam_online_model_1month.pbs \
+#     -v PYCAM_LEGS=ACM,PYCAM_RUN_TAG=cpu-ACM,PYCAM_MODEL=<model.pt>,PYCAM_NATIVE_MANIFEST=<image manifest>
+# and on GPU nodes (the model on the host and on the device, one MPS server a GPU):
+#   validation/jobs/submit.sh validation/jobs/pi_cam_online_model_1month.pbs \
+#     -v PYCAM_LEGS=AMG,PYCAM_RUN_TAG=gpu-AMG,PYCAM_MODEL=<model.pt>,PYCAM_NATIVE_MANIFEST=<CUDA image> \
+#     -l select=4:ncpus=64:mpiprocs=128:ompthreads=1:ngpus=4:gpu_type=a100:mem=400GB -l walltime=01:30:00
+# the site's MPS for G instead of servers of the job's own: PYCAM_GPU_MPS_MODE=site and
+#     -l select=4:ncpus=64:mpiprocs=128:ompthreads=1:ngpus=4:gpu_type=a100:mem=400GB:mps=1
+#PBS -N freecam-online-model
+#PBS -q main
+# 512 ranks on four whole nodes; 235GB a node because a rank that carries a model in a kernel
+# slot holds it beside CAM's state
+#PBS -l select=4:ncpus=128:mpiprocs=128:ompthreads=1:mem=235GB
+#PBS -l place=scatter:exclhost
+#PBS -l walltime=01:00:00
+#PBS -j oe
+#PBS -o logs/
+#PBS -V
+
+# The PI-atm month (1488 steps) online -- CLM, CICE, DOCN, RTM and the coupler live in every
+# leg, as freeCAM runs by default -- in up to four legs back to back in one allocation, each in
+# its own directory, in the order PYCAM_LEGS gives (reverse it between jobs: the second run of
+# an allocation has been ~10% slower whichever model it was):
+#
+#   A  the original Fortran model (the pyCESM case executable), timed by GPTL CPL:RUN_LOOP;
+#   C  freeCAM online, the cloud class and the PYCAM_PYTHON_STAGES classes installed, nothing
+#      replaced -- compared bit-for-bit with the oracle month;
+#   M  C with PYCAM_MODEL_KERNEL answered by the TorchScript model PYCAM_MODEL inside the
+#      image, on the host CPU;
+#   G  the same on the node's GPUs through MPS (GPU nodes, a CUDA FTorch image): one server of
+#      the job's own a GPU (PYCAM_GPU_MPS_MODE=own, the default), or the site's server of a
+#      node that PBS starts for :mps=1 in the select (PYCAM_GPU_MPS_MODE=site).
+#
+# M and G are not bit-for-bit by construction: their drift from the oracle month and their
+# health (the log's repair counts) are recorded instead.  One record for the allocation:
+# validation/pi_cam_online_model_1month_<PYCAM_RUN_TAG>.json (tools/report_pi_cam_online_legs.py).
+#
+#   PYCAM_LEGS             the legs in run order, from A C M G (default ACM)
+#   PYCAM_MODEL            the TorchScript archive for M and G
+#   PYCAM_MODEL_KERNEL     the kernel slot it answers (default compute_uwshcu_inv)
+#   PYCAM_PYTHON_STAGES    the stage classes installed in every freeCAM leg (default
+#                          shallow_convection, the class that owns compute_uwshcu_inv)
+#   PYCAM_NATIVE_MANIFEST  the image for every freeCAM leg (one linked with FTorch for M, with a
+#                          CUDA FTorch for G)
+#   PYCAM_GPU_MPS_MODE     own (default) or site: whose MPS server G's ranks reach
+#   PYCAM_RUN_TAG          names the record (default the legs)
+
+set -euo pipefail
+
+source "${FREECAM_REPO:-${PBS_O_WORKDIR:-$PWD}}/validation/jobs/common.sh"
+
+repo=${FREECAM_REPO}
+python=${repo}/.venv/bin/python
+legs=${PYCAM_LEGS:-ACM}
+tag=${PYCAM_RUN_TAG:-${legs}}
+kernel=${PYCAM_MODEL_KERNEL:-compute_uwshcu_inv}
+stages=${PYCAM_PYTHON_STAGES:-shallow_convection}
+policy=${PYCAM_STAGE_EXECUTION:-auto}
+mps_mode=${PYCAM_GPU_MPS_MODE:-own}
+case "${mps_mode}" in
+  own|site) ;;
+  *) echo "PYCAM_GPU_MPS_MODE is own or site, not '${mps_mode}'" >&2; exit 2 ;;
+esac
+case "${legs}" in
+  *[!ACMG]*|"") echo "PYCAM_LEGS takes the letters A C M G, not '${legs}'" >&2; exit 2 ;;
+esac
+if [[ "${legs}" == *[MG]* ]]; then
+  if [ -z "${PYCAM_MODEL:-}" ] || [ ! -f "${PYCAM_MODEL}" ]; then
+    echo "legs ${legs} need PYCAM_MODEL, a TorchScript archive" >&2; exit 2
+  fi
+  if [ -z "${PYCAM_NATIVE_MANIFEST:-}" ]; then
+    echo "legs ${legs} need PYCAM_NATIVE_MANIFEST, an image linked with FTorch" >&2; exit 2
+  fi
+fi
+pycesm_case=${FREECAM_PYCESM_CASE}
+reference_case=${FREECAM_REFERENCE_CASE}
+executable=${FREECAM_SCRATCH}/pyCESM/PI-atm/f.e13.F1850C5.ne16_g16.icesm131_ihesp.PI-atm.pycesm-ref.50step/bld/cesm.exe
+oracle_run=${FREECAM_SCRATCH}/pyCESM/PI-atm/oracle-1month/run
+library=${FREECAM_CESM_PROVIDER_LIBRARY:-${repo}/build/cesm/pi_atm/production-components/libpycesm_external_atm.so}
+root=${FREECAM_SCRATCH}/freeCAM/PI-cam/online-model-1month-${tag}-${PBS_JOBID}
+seed=${root}/seed
+config=configs/pi_cam_icesm131_exact_online_1month.yaml
+record=validation/pi_cam_online_model_1month_${tag}.json
+steps=1488
+
+common_env() {
+  export OMP_NUM_THREADS=1
+  export OMP_STACKSIZE=64M
+  export FI_CXI_RX_MATCH_MODE=hybrid
+  export FI_MR_CACHE_MONITOR=memhooks
+  export MPICH_MPIIO_HINTS='*:romio_cb_read=enable:romio_cb_write=enable:striping_factor=24'
+}
+
+prepare_seed() {
+  mkdir -p "${seed}"
+  rsync -a --exclude '*.nc' --exclude '*.bin' --exclude '*.log*' \
+    --exclude 'rpointer.*' --exclude 'timing/' "${oracle_run}/" "${seed}/"
+  cp "${oracle_run}/SEMapping.nc" "${seed}/" 2>/dev/null || true
+}
+
+run_a() {
+  local a_run=${root}/A-original-fortran/run
+  echo "=== A: original Fortran, online month ($(date)) ==="
+  ( source "${pycesm_case}/.env_mach_specific.sh" >/dev/null 2>&1
+    common_env
+    mkdir -p "${a_run}"
+    rsync -a "${seed}/" "${a_run}/"
+    mkdir -p "${a_run}/timing/checkpoints"
+    cd "${a_run}"
+    mpiexec --label -n 512 "${executable}" > original-fortran.log 2>&1 ) || echo "A exited $?"
+  echo "A done ($(date))"
+}
+
+count_health() {
+  # how often the physics had to be repaired, from the leg's log
+  "${python}" - "$1" "$2" <<'PY' || true
+import json, sys
+log, out = sys.argv[1], sys.argv[2]
+counts = {"big_error": 0, "isotopic_mass_error": 0, "qneg3_macro": 0, "qneg3_total": 0, "tracebacks": 0}
+with open(log, errors="replace") as fh:
+    for line in fh:
+        if "BIG ERROR" in line: counts["big_error"] += 1
+        if "isotopic stratiform precipitation mass error" in line: counts["isotopic_mass_error"] += 1
+        if "QNEG3 from" in line:
+            counts["qneg3_total"] += 1
+            if "QNEG3 from macro" in line: counts["qneg3_macro"] += 1
+        if "Traceback" in line: counts["tracebacks"] += 1
+json.dump({"schema_version": 1, "counts": counts}, open(out, "w"), indent=1)
+print("health:", json.dumps(counts))
+PY
+}
+
+run_freecam() {
+  local leg=$1
+  local dir=${root}/${leg}-freecam
+  local cam_run=${dir}/cam-run cesm_run=${dir}/cesm-provider-run
+  local flags=(--cloud-macro-micro-python --python-stages "${stages}" --stage-execution "${policy}")
+  local launch=(mpiexec) rank_env=()
+  if [ -n "${PYCAM_NATIVE_MANIFEST:-}" ]; then
+    flags+=(--native-manifest "${PYCAM_NATIVE_MANIFEST}")
+  fi
+  case "${leg}" in
+    M) flags+=(--kernel-model "${kernel}=${PYCAM_MODEL}" --model-device cpu) ;;
+    G) flags+=(--kernel-model "${kernel}=${PYCAM_MODEL}" --model-device cuda)
+       # the job shell's CUDA_VISIBLE_DEVICES names the head node's GPUs and must not reach the
+       # other nodes; every rank sees its own GPU only, through its GPU's server of the job's own
+       # or through the site's server of the node (validation/jobs/gpu_rank_env.sh)
+       launch=(env -u CUDA_VISIBLE_DEVICES mpiexec)
+       rank_env=(bash "${repo}/validation/jobs/gpu_rank_env.sh") ;;
+  esac
+  echo "=== ${leg}: freeCAM online month ($(date)) ==="
+  ( source "${reference_case}/.env_mach_specific.sh" >/dev/null 2>&1
+    mpi_root=${CRAY_MPICH_DIR:-/opt/cray/pe/mpich/8.1.25/ofi/intel/19.0}
+    export LD_LIBRARY_PATH="${mpi_root}/lib-abi-mpich:${mpi_root}/lib:${LD_LIBRARY_PATH:-}"
+    export LD_PRELOAD=${FREECAM_LD_PRELOAD}${LD_PRELOAD:+:${LD_PRELOAD}}
+    export PYTHONPATH=${repo}/src
+    export PYTHONHASHSEED=0
+    common_env
+    mkdir -p "${cam_run}" "${cesm_run}"
+    for d in "${cam_run}" "${cesm_run}"; do
+      rsync -a "${seed}/" "${d}/"
+      mkdir -p "${d}/timing/checkpoints"
+    done
+    "${python}" - <<PY
+from pathlib import Path
+import cloudpickle
+from freecam import CESMOnlineBoundaryProvider
+provider = CESMOnlineBoundaryProvider(library=Path("${library}"), run_dir=Path("${cesm_run}"))
+Path("${cam_run}/.exact-cesm-provider.pkl").write_bytes(cloudpickle.dumps(provider, protocol=5))
+PY
+    cd "${repo}"
+    if [ "${leg}" = G ] && [ "${mps_mode}" = own ]; then
+      "${launch[@]}" -ppn 1 -n 4 bash "${repo}/validation/jobs/gpu_mps_per_gpu.sh" start
+    fi
+    "${launch[@]}" --label -n 512 "${rank_env[@]}" "${python}" -m freecam.pi_cam.cli \
+      --config "${config}" \
+      --boundary-provider "${cam_run}/.exact-cesm-provider.pkl" \
+      --run-dir "${cam_run}" \
+      "${flags[@]}" \
+      --steps "${steps}" \
+      --memory-sample-every 0 \
+      --summary "${dir}/summary.json" \
+      > "${cam_run}/freecam.log" 2>&1 || echo "${leg} exited $?"
+    if [ "${leg}" = G ] && [ "${mps_mode}" = own ]; then
+      "${launch[@]}" -ppn 1 -n 4 bash "${repo}/validation/jobs/gpu_mps_per_gpu.sh" stop | tee "${dir}/mps.txt"
+    elif [ "${leg}" = G ]; then
+      # the site's server: the GPUs in Exclusive_Process mode refuse any rank that missed MPS,
+      # so a node's four GPUs in that mode and no refused rank show every rank went through it
+      "${launch[@]}" -ppn 1 -n 4 bash -c 'echo "$(hostname): site MPS exclusive GPUs $(nvidia-smi --query-gpu=compute_mode --format=csv,noheader | grep -c Exclusive_Process) of $(nvidia-smi --query-gpu=index --format=csv,noheader | wc -l)"' | tee "${dir}/mps.txt" || true
+      echo "refused ranks $(grep -a -c "busy or unavailable" "${cam_run}/freecam.log" || true)" | tee -a "${dir}/mps.txt"
+    fi ) || echo "${leg} setup exited $?"
+  echo "${leg} done ($(date))"
+  count_health "${cam_run}/freecam.log" "${dir}/health.json"
+  if [ "${leg}" = C ]; then
+    "${python}" "${repo}/tools/verify_pi_cam.py" --reference "${oracle_run}" --candidate "${cam_run}" \
+      --output "${dir}/bfb.json" || echo "C is not bit-for-bit (recorded)"
+  else
+    "${python}" "${repo}/tools/report_pi_cam_surrogate_drift.py" --reference "${oracle_run}" \
+      --candidate "${cam_run}" --output "${dir}/drift.json" || true
+  fi
+}
+
+mkdir -p "${root}"
+prepare_seed
+for (( i = 0; i < ${#legs}; i++ )); do
+  leg=${legs:i:1}
+  if [ "${leg}" = A ]; then run_a; else run_freecam "${leg}"; fi
+done
+
+cd "${repo}"
+# qstat -f folds long values over lines; its JSON form does not
+resources=$(qstat -f -F json "${PBS_JOBID}" 2>/dev/null | "${python}" -c '
+import json, sys
+job = next(iter(json.load(sys.stdin)["Jobs"].values()))["Resource_List"]
+print("select=" + job.get("select", "") + " place=" + job.get("place", ""))' || true)
+"${python}" tools/report_pi_cam_online_legs.py \
+  --root "${root}" \
+  --legs "${legs}" \
+  --kernel "${kernel}" \
+  --a-executable "${executable}" \
+  --hardware "${resources}" \
+  --gpu-mps "${mps_mode}" \
+  --root-label "${root#${FREECAM_SCRATCH}/}" \
+  --pbs-job-id "${PBS_JOBID}" \
+  --git-commit "$(git rev-parse HEAD)" \
+  --output "${record}"
+echo "root: ${root}"

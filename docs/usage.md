@@ -228,6 +228,7 @@ deep = driver.processes["deep_convection"]
 deep.kernels["cldfrc_fice"] = my_ice_fraction        # a function over the kernel's arrays: compiled, called by Fortran at the hook
 deep.kernels["cldfrc_fice"] = compile_kernel("cldfrc_fice", my_numba_kernel)   # compiled, called by Fortran at the hook
 deep.kernels["cldfrc_fice"] = fc.NativeModel("ice.pt")                          # TorchScript, run by the image through FTorch
+deep.kernels["cldfrc_fice"] = fc.NativeModel("ice.pt", device="cuda")           # the same, on this rank's GPU (a CUDA-linked image)
 ```
 
 A function in a slot runs where the stage can run it.  Written over the
@@ -328,6 +329,54 @@ The in-memory action trace is bounded to the most recent 4,096 records per
 rank by default. Run results always report exact action counts and state
 whether the trace was truncated; pass `trace_limit=None` to `fc.Driver` only
 when a complete in-memory trace is explicitly needed.
+
+### The action timeline
+
+The reports above say how long each region took in total. The timeline says
+when, on every rank, step by step: which action ran, how long it took, and how
+long the rank then waited for the others. It is off unless asked for:
+
+```bash
+# the rank command line (the job knob is PYCAM_TIMELINE=1)
+mpiexec -n 512 python -m freecam.pi_cam.cli ... --timeline-dir <run>/timeline
+```
+
+```python
+fc.Driver(case="PI-atm", timeline=True)   # into the run directory's timeline/
+```
+
+Each rank keeps one record per action in memory (two clock readings and an
+append), plus the time spent inside the driver's collective agreement calls,
+and appends them to its own file every `--timeline-flush-every` steps
+(default 100). Nothing is exchanged between ranks while the model steps; the
+only collectives are a barrier that sets a common time origin and one gather,
+after initialization, of each rank's host and column coordinates.
+
+```bash
+freecam timeline <run>/timeline                  # serve the viewer on loopback; it follows a running model
+freecam timeline <run>/timeline --html view.html # one self-contained page instead
+```
+
+The server prints an address with a token; from a login node, forward the
+port (`ssh -L`, or the editor's port forwarding). The page has three views:
+
+- **Where the time goes**: actions by steps, each cell the slowest rank's
+  time in that action (or the mean, the imbalance between the two, or the
+  time spent waiting), with each step's duration above. The step waits for
+  its slowest rank, so that is the default colour.
+- **One step, every rank**: the ranks, grouped by node, against time within
+  the chosen step. Load imbalance shows as a ragged edge; waiting in a
+  collective is grey.
+- **Where on Earth**: the chosen action's time on each rank, painted on the
+  columns that rank computes. CAM's physics load balancing gives each rank
+  pairs of columns spread over a wide area (at ne16, a rank's 28 columns span
+  some 80 degrees of latitude), so the globe shows which ranks are slow and
+  where their columns lie, not a map of cost by place; the `rank` and `node`
+  colourings show that decomposition itself. A per-place cost would need
+  timing per column, which the chunked kernels do not have.
+
+A snapshot embeds the overview, the globe for every action, and the timelines
+of the first, slowest, a typical and the last step (`--steps` chooses others).
 
 ## The Workflow Builder
 

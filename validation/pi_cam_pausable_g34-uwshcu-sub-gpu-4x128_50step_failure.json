@@ -1,0 +1,62 @@
+{
+ "schema_version": 1,
+ "what": "The first runs of the compute_uwshcu_inv TorchScript model on the GPU inside the image (four A100 nodes x 128 ranks, the validated layout) failed three times over, each fault behind the previous one; the CPU path of the same image and layout passed (records pi_cam_pausable_g33-*-4x128, g34-nothing-armed-4x128).",
+ "jobs": {
+  "device_count_zero": {
+   "shadow_gpu": "7541268.desched1",
+   "live_gpu": "7541269.desched1",
+   "shadow_gpu_traced": "7542757.desched1"
+  },
+  "nvrtc_builtins": {
+   "shadow_gpu_traced": "7543558.desched1"
+  },
+  "cuda_out_of_memory": {
+   "shadow_gpu": "7544228.desched1",
+   "live_gpu": "7544229.desched1"
+  },
+  "probes_one_node": {
+   "bind_as_the_run_does": "7542680.desched1",
+   "mpi_initialised_first": "7543557.desched1",
+   "site_mps_bind_128_ranks": "7545283.desched1",
+   "own_mps_bind_128_ranks": "7545287.desched1"
+  },
+  "mps_one_server_a_node": {
+   "shadow_gpu": "7544558.desched1",
+   "live_gpu": "7544559.desched1",
+   "shadow_gpu_diagnostic": "7545429.desched1"
+  },
+  "mps_one_server_a_gpu": {
+   "shadow_gpu_index_bug": "7545856.desched1",
+   "shadow_gpu_oom": "7545999.desched1",
+   "live_gpu_oom": "7546000.desched1",
+   "footprint_probe_one_node": "7546067.desched1"
+  },
+  "one_context_a_rank_passed": {
+   "shadow_gpu": "7546109.desched1",
+   "live_gpu": "7546110.desched1"
+  },
+  "mps_one_server_a_gpu_32_a_gpu_passed": {
+   "shadow_gpu": "7573341.desched1",
+   "live_gpu": "7573342.desched1",
+   "footprint_probe": "7572615.desched1"
+  }
+ },
+ "layout": "select=4:ncpus=64:mpiprocs=128:ngpus=4:gpu_type=a100:mem=400GB; 32 ranks a GPU",
+ "native_image": "build/pi_cam_promoted_p34 (FTorch on torch 2.14.0+cu126, commit ddff0d18); p35 = p34 with the wheel's CUDA libraries on the rpath (commit 556c0fb1)",
+ "model": "compute_uwshcu_inv, h256, compact subset, bound in shadow (bit-for-bit) and live, --model-device cuda",
+ "ranks": 512,
+ "steps_completed": 2,
+ "outcome": [
+  "device_count_zero: at the bind (first shallow-convection step) FTorch exited 384 ranks with 'invalid device index N for device count 0' -- the 128 ranks of each of the three nodes other than the job's head node, never the head node's.  Cause (found with the 512-rank bind probe inside 7545429): mpiexec hands every rank the job shell's environment, and PBS had set CUDA_VISIBLE_DEVICES there to the HEAD node's GPU UUIDs; on the other nodes those UUIDs match no device (cudaGetDeviceCount status 100, no CUDA-capable device is detected).  One-node probes could not show it: their only node is the head node.  The Python-side device count before the bind (23ee6c2c, 627ff629) names this now instead of letting FTorch exit; it does not repair it.",
+  "nvrtc_builtins: the first forward on the device failed on every rank of a node: TorchScript's fuser compiles with NVRTC, libftorch's runpath resolved the CUDA 12.9 toolkit's libnvrtc.so.12, and that copy wants libnvrtc-builtins.so.12.9, which no run can see; the wheel's NVRTC is 12.6 with its builtins beside it.  Fixed in the build tools (556c0fb1): FTorch's install rpath and the image rpath list the wheel's nvidia/<component>/lib directories ahead of the toolkit; image p35.",
+  "cuda_out_of_memory: with the wheel's NVRTC on the library path (p34), 72 and 76 ranks reported 'CUDA error: out of memory' at the first forward: 32 ranks share one 40 GB A100 and each carries its own CUDA context, libtorch's kernels and cuBLAS workspaces.  Nothing else was wrong: no device error, no NVRTC error, no traceback.",
+  "mps_one_server_a_node: with mps=1 (one MPS server a node serving the four GPUs, exclusive-process mode) exactly 48 of the head node's 128 ranks bound and the rest got 'CUDA-capable device(s) is/are busy or unavailable': an MPS server serves at most 48 client contexts, and one server was serving all four GPUs.  A user-started daemon in default compute mode works the same way on one node (probe 7545287).",
+  "mps_one_server_a_gpu: with one user MPS daemon a GPU on every node, a client naming its GPU by index k>0 found no device (an MPS client's CUDA_VISIBLE_DEVICES is read against its server's devices, one); naming index 0 and choosing the server by pipe directory reached every device, and then 409 of 512 ranks hit CUDA out of memory: an MPS client costs about 2.3 GB of the device (probe 7546067: 8 clients a GPU use 18.8 GB, lazy module loading or not), so 32 a GPU cannot use MPS at all.",
+  "one_context_a_rank: without MPS, CUDA_VISIBLE_DEVICES unset for mpiexec and set per rank to the node-local GPU index, CUDA_MODULE_LOADING=LAZY and CUBLAS_WORKSPACE_CONFIG=:4096:8, all 512 ranks bound and ran: shadow bit-for-bit (pi_cam_pausable_g35-uwshcu-sub-shadow-gpu-4x128-repo3), live with the CPU model's health signature (pi_cam_pausable_g35-uwshcu-sub-live-gpu-4x128-repo3)."
+ ],
+ "diagnosis": "Node-level facts, none of them the model's: CUDA_VISIBLE_DEVICES must be set per node and per rank (unset before mpiexec, then the node-local rank's GPU index); the site's mps=1 is one server a node (the 48-client reading is withdrawn: see correction_site_mps); a per-GPU MPS client costs about 2.3 GB of the device, so at 32 ranks a GPU MPS does not fit; one CUDA context a rank fits a 40 GB A100 32 times over with lazy module loading and a 32 MB cuBLAS workspace.",
+ "disposition": "validation/jobs/pi_cam_pausable_{50step,1month}.pbs launch the CUDA path with CUDA_VISIBLE_DEVICES unset for mpiexec and validation/jobs/gpu_rank_env.sh a rank (one context a rank by default; PYCAM_GPU_MPS=1 starts one MPS server a GPU through validation/jobs/gpu_mps_per_gpu.sh for layouts with few ranks a GPU).  The passing gates are 7546109 (shadow) and 7546110 (live) on image p35; the nothing-armed p35 gate 7544284 passed without any of this.  The one-rank-a-GPU alternative (64 ranks a node) is the layout that fails at initialisation (pi_cam_pausable_gpu-nodes-8x64_50step_failure.json).",
+ "correction": "The MPS footprint above (2.3 GB a client, from probe 7546067) was wrong: that probe's daemons were started through a pipe directory the ranks did not see, and the node held stale servers.  With the helper scripts fixed (one explicit base path on every node, the daemons detached; commit 3aaacaae) a client costs about 0.59 GB of the device at the default 1 KB thread stack (probe 7572615: 8 and 16 a GPU in 4.70 and 9.35 GB) and about 0.48 GB with a 512 B stack (32 a GPU in 15.2 GB, measured only with that smaller stack); at the default stack the gates' 32 a GPU hold about 18.7 GB.  Each client keeps context storage of its own, sized by the threads it may use (NVIDIA's MPS documentation; halving the stack saves 0.11 GB a client, 108 SMs x 2,048 threads x 512 B), and no CUDA_MPS_ACTIVE_THREAD_PERCENTAGE was set.  One plain context a rank (no MPS) was never measured directly: 32 fitted a 40 GB device with a 32 MB cuBLAS workspace and some did not with 136 MB, which bounds it near 1.1-1.2 GB only.  With MPS the 4 x 128 gates with one MPS server a GPU ran: 3.98 ms a call after the first against 3.90 ms on the host (pi_cam_pausable_g35-uwshcu-sub-{shadow,live}-gpu-4x128-mps32_50step).",
+ "correction_site_mps": "The reading of mps_one_server_a_node above -- 'an MPS server serves at most 48 client contexts, and one server was serving all four GPUs' -- is not supported by these jobs' own evidence and is withdrawn.  NVIDIA states the limit per device (48 client CUDA contexts per device in older releases, 60 in current ones), not per server.  The one-node probe with the site's own server (7545283, mps=1, four GPUs in Exclusive_Process mode) bound all 128 ranks, as did a user daemon serving four GPUs (7545287) and the head node of the 512-rank bind probe (7545429).  In the model run 7544558 the 80 ranks refused ('busy or unavailable') were all on the head node and none of them used GPU 0: by node-local rank mod 4, GPU 0 lost 0 of 32, GPUs 1-3 lost 28, 26 and 26 of 32 each; 48 bound = 32 on GPU 0 + 16 elsewhere.  That is a device-mapping fault, not a client-count limit; 48 matching the per-device limit suggests the ranks meant for GPUs 1-3 also opened contexts on GPU 0, but the logs do not prove it.  One MPS server a GPU works because each rank sees only its own GPU.  Whether the site's mps=1 works with the per-rank binding the jobs now use (CUDA_VISIBLE_DEVICES unset for mpiexec, the node-local rank's GPU index a rank) was tested by g35-uwshcu-sub-live-gpu-4x128-sitemps (job 7587576, mps=1, no daemons of the job's own, the four GPUs of every node in Exclusive_Process mode): all 512 ranks bound and ran, none refused, 4.20 ms a call after the first (4.23 ms with one server a GPU, 7573342), live health identical (60 big-error lines).  The site's MPS serves 128 ranks a node once each rank sees only its own GPU.",
+ "correction_footprint_probe": "What probe 7546067 measured, read again (2026-09-24): its daemons had gone when the ranks ran, but the rank wrapper still found their marker file and set CUDA_VISIBLE_DEVICES=0 with a pipe no daemon served; CUDA then runs without MPS ('If the connection attempt fails, the program continues to run as it normally would without MPS', NVIDIA), and without MPS device 0 is the node's first GPU, so every rank opened a plain context on GPU 0.  The four ranks meant for GPUs 0-3 report the same 18,767 MiB to the MiB, and the probe's own no-MPS control (each rank on its own GPU, 32 a GPU) ran with no error.  So 18.8 GB was 32 plain contexts on one GPU, about 0.59 GB each, and the out-of-memory at '32 a GPU' was 128 on one GPU -- not 8 contexts of 2.3 GB, and not 32 plain contexts a GPU failing to fit.  A plain context and an MPS client (probe 7572615, 0.59 GB) cost about the same device memory: MPS buys concurrency here, not memory.  The in-model out-of-memory with the 136 MB cuBLAS workspace (p34 above) is not explained by these probe figures; a rank of the model was never measured."
+}

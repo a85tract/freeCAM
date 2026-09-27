@@ -44,6 +44,7 @@ rm -rf "${prepared_source}"
   --output native/pi_cam/direct_kernels_promoted.yaml
 
 "${python}" tools/build_pi_cam_devices.py \
+  --ftorch-root "${FREECAM_FTORCH_ROOT:-${repo}/build/ftorch}" \
   --case "${case_root}" \
   --source-root "${prepared_source}" \
   --zero-copy-state \

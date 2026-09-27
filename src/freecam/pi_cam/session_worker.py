@@ -499,6 +499,9 @@ def main(argv: list[str] | None = None) -> int:
         default=DEFAULT_TRACE_LIMIT,
         help="retained action-trace records per rank; 'none' for unbounded",
     )
+    parser.add_argument("--timeline-dir", type=Path, default=None,
+                        help="record every rank's action timeline into DIR (freecam timeline DIR); off by default")
+    parser.add_argument("--timeline-flush-every", type=int, default=100)
     args = parser.parse_args(argv)
     comm = MPI.COMM_WORLD
     connection = None
@@ -532,6 +535,13 @@ def main(argv: list[str] | None = None) -> int:
                 run_dir=args.run_dir,
                 trace_limit=args.trace_limit,
             )
+            if args.timeline_dir is not None:
+                from .timeline import TimelineRecorder
+
+                driver.attach_timeline(TimelineRecorder(
+                    args.timeline_dir, rank=comm.rank, size=comm.size, comm=comm,
+                    flush_every=args.timeline_flush_every, run_label=str(args.run_dir),
+                ))
             driver.initialize()
             startup_error = None
         except BaseException:
