@@ -148,8 +148,9 @@ if [ -n "${PYCAM_MODEL_DEVICE:-}" ]; then
     # every rank takes its node-local GPU by index (one CUDA context a rank; 32 ranks fit a
     # 40 GB A100 with lazy module loading and a small cuBLAS workspace); the job shell's
     # CUDA_VISIBLE_DEVICES names the head node's GPUs and must not reach the other nodes.
-    # PYCAM_GPU_MPS=1 starts one MPS server a GPU on every node instead, for layouts with few
-    # enough ranks a GPU (an MPS client costs about 2.3 GB of the device).  See
+    # PYCAM_GPU_MPS=1 starts one MPS server a GPU on every node instead; :mps=1 in the select uses
+    # the site's server of each node.  An MPS client costs about 0.6 GB of the device at the
+    # default thread stack, so 32 a GPU take about 19 GB (docs/installation.md).  See
     # validation/jobs/gpu_*.sh.
     launch=(env -u CUDA_VISIBLE_DEVICES mpiexec)
     rank_env=(bash "${repo}/validation/jobs/gpu_rank_env.sh")
