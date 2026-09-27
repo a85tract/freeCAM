@@ -2648,7 +2648,7 @@
   "use_gw_oro": true,
   "use_subcol_microp": false
  },
- "content_hash": "9ab91e57c52afac44b7c422f85c35a25cdf692c14e272990e9f73e9dd4c4143a",
+ "content_hash": "9cb4afea9fbbbfb392661e3a615b6070c61d980b8d1576accf19f72244eb4134",
  "evidence": {
   "pi_cam_cldfrc_fice_frame_replay.json": {
    "bfb": true,
@@ -6635,7 +6635,7 @@
   "validation/pi_cam_kernel_api_redirectable_calls.json": "b97f6f7f8f7099cb42e9cebcde6102f9d4d05d17852ba7a5495b29edb1d4fbaf",
   "validation/pi_cam_kernel_runtime_coverage_1month.json": "48f77d6ec78b4026806d4ab6fb9517ef31c1d526481b4ad68e55f77af0d303bd",
   "validation/pi_cam_kernel_runtime_coverage_50step.json": "222961fc5274dbaaf71c40f6c131a683536b5a85ef14cd047a2fd196d8ca38c5",
-  "web/public/catalog.json": "059555a7528f9fbd1986638f8321545e4a3efc85cea2febae5f8d3b9f8c4cee0"
+  "web/public/catalog.json": "82b6d8443df6cd92b82e88ff40035409ec1f6c413ea4f785d4c0f29981dc3384"
  },
  "kernels": {
   "aer_rad_props::aer_rad_props_lw": {
@@ -74226,9 +74226,9 @@
   "mo_lightning::lightning_no_prod"
  ],
  "volatile": {
-  "branch": "online-model-month",
-  "commit": "e3a5f4b5fd1b1d45150ffbad7a2e0827d5677faf",
-  "generated_at": "2026-09-25T00:56:46+00:00"
+  "branch": "HEAD",
+  "commit": "786fbe2bf543d00730bdeb692847316964639de5",
+  "generated_at": "2026-09-27T20:31:14+00:00"
  },
  "work_items": [
   {
