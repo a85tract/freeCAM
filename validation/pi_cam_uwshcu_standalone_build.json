@@ -1,0 +1,919 @@
+{
+  "abort_probe": {
+    "source_sha256": "e5645c63548f7fef3b028dccd5ba4fa0f6b35ec1a08496ed8fc5a8f290fa32fe"
+  },
+  "compile_commands": {
+    "abort_probe": [
+      "ftn",
+      "-c",
+      "-I.",
+      "-I${FREECAM_SCRATCH}/pyCAM/PI-cam/f.e13.F1850C5.ne16_g16.icesm131_ihesp.PI-cam-oracle.50step/bld/atm/obj",
+      "-I${FREECAM_SCRATCH}/pyCAM/PI-cam/f.e13.F1850C5.ne16_g16.icesm131_ihesp.PI-cam-oracle.50step/bld/intel/mpich/nodebug/nothreads/mct/include",
+      "-I${FREECAM_SCRATCH}/pyCAM/PI-cam/f.e13.F1850C5.ne16_g16.icesm131_ihesp.PI-cam-oracle.50step/bld/intel/mpich/nodebug/nothreads/mct/mct/noesmf/c1a1l1i1o1r1g1w1e1/include",
+      "-I/glade/u/apps/derecho/23.06/spack/opt/spack/netcdf/4.9.2/cray-mpich/8.1.25/oneapi/2023.0.0/wzol/include",
+      "-I/glade/u/apps/derecho/23.06/spack/opt/spack/parallel-netcdf/1.12.3/cray-mpich/8.1.25/oneapi/2023.0.0/blyr/include",
+      "-I${FREECAM_SCRATCH}/pyCAM/PI-cam/f.e13.F1850C5.ne16_g16.icesm131_ihesp.PI-cam-oracle.50step/bld/intel/mpich/nodebug/nothreads/mct/include",
+      "-I${FREECAM_SCRATCH}/pyCAM/PI-cam/f.e13.F1850C5.ne16_g16.icesm131_ihesp.PI-cam-oracle.50step/bld/intel/mpich/nodebug/nothreads/mct/mct/noesmf/include",
+      "-I${FREECAM_SCRATCH}/pyCAM/PI-cam/f.e13.F1850C5.ne16_g16.icesm131_ihesp.PI-cam-oracle.50step/bld/intel/mpich/nodebug/nothreads/mct/mct/noesmf/clm/obj",
+      "-I.",
+      "-I${FREECAM_CASES}/f.e13.F1850C5.ne16_g16.icesm131_ihesp.PI-cam-oracle.50step/SourceMods/src.cam",
+      "-I/SourceMods/src.cam",
+      "-I${WORK}/iCESM1.3.1_PI_cam_only/components//cam/src/unit_drivers",
+      "-I${WORK}/iCESM1.3.1_PI_cam_only/components//cam/src/unit_drivers/stub",
+      "-I${WORK}/iCESM1.3.1_PI_cam_only/components/cam/src/chemistry/pp_trop_mam3",
+      "-I${WORK}/iCESM1.3.1_PI_cam_only/components//cam/src/chemistry/modal_aero",
+      "-I${WORK}/iCESM1.3.1_PI_cam_only/components//cam/src/chemistry/aerosol",
+      "-I${WORK}/iCESM1.3.1_PI_cam_only/components//cam/src/chemistry/mozart",
+      "-I${WORK}/iCESM1.3.1_PI_cam_only/components//cam/src/chemistry/utils",
+      "-I${WORK}/iCESM1.3.1_PI_cam_only/components//cam/src/physics/rrtmg",
+      "-I${WORK}/iCESM1.3.1_PI_cam_only/components//cam/src/physics/rrtmg/ext/rrtmg_mcica",
+      "-I${WORK}/iCESM1.3.1_PI_cam_only/components//cam/src/physics/rrtmg/ext/rrtmg_lw",
+      "-I${WORK}/iCESM1.3.1_PI_cam_only/components//cam/src/physics/rrtmg/ext/rrtmg_sw",
+      "-I${WORK}/iCESM1.3.1_PI_cam_only/components//cam/src/physics/cam",
+      "-I${WORK}/iCESM1.3.1_PI_cam_only/components//cam/src/dynamics/se",
+      "-I${WORK}/iCESM1.3.1_PI_cam_only/components//cam/src/dynamics/se/share",
+      "-I${WORK}/iCESM1.3.1_PI_cam_only/components//cam/src/cpl",
+      "-I${WORK}/iCESM1.3.1_PI_cam_only/components//cam/src/control",
+      "-I${WORK}/iCESM1.3.1_PI_cam_only/components//cam/src/utils",
+      "-I${FREECAM_SCRATCH}/pyCAM/PI-cam/f.e13.F1850C5.ne16_g16.icesm131_ihesp.PI-cam-oracle.50step/bld/lib/include",
+      "-qno-opt-dynamic-align",
+      "-convert",
+      "big_endian",
+      "-assume",
+      "byterecl",
+      "-ftz",
+      "-traceback",
+      "-assume",
+      "realloc_lhs",
+      "-fp-model",
+      "source",
+      "-O2",
+      "-debug",
+      "minimal",
+      "-DCO2A",
+      "-DMAXPATCH_PFT=numpft+1",
+      "-DLSMLAT=1",
+      "-DLSMLON=1",
+      "-DPLON=13826",
+      "-DPLAT=1",
+      "-DNP=4",
+      "-DNC=4",
+      "-DHAVE_F2003_PTR_BND_REMAP",
+      "-DPLEV=30",
+      "-DPCNST=57",
+      "-DPCOLS=16",
+      "-DPSUBCOLS=1",
+      "-DN_RAD_CNST=30",
+      "-DPTRM=1",
+      "-DPTRN=1",
+      "-DPTRK=1",
+      "-D_MPI",
+      "-DCAM",
+      "-D_WK_GRAD",
+      "-D_PRIM",
+      "-DSPMD",
+      "-DMODAL_AERO",
+      "-DMODAL_AERO_3MODE",
+      "-DCNL",
+      "-DCESMCOUPLED",
+      "-DLINUX",
+      "-DFORTRANUNDERSCORE",
+      "-DCPRINTEL",
+      "-DNDEBUG",
+      "-DMCT_INTERFACE",
+      "-DHAVE_MPI",
+      "-DPIO1",
+      "-DHAVE_SLASHPROC",
+      "-D_PNETCDF",
+      "-free",
+      "-DUSE_CONTIGUOUS=",
+      "native/pi_cam/standalone/abort_probe.F90",
+      "-o",
+      "build/pi_cam_standalone/uwshcu/objects/abort_probe.o"
+    ],
+    "floating_environment": [
+      "cc",
+      "-c",
+      "-O2",
+      "native/pi_cam/floating_environment.c",
+      "-o",
+      "build/pi_cam_standalone/uwshcu/objects/floating_environment.o"
+    ],
+    "stubs": [
+      "cc",
+      "-c",
+      "-O2",
+      "-Ibuild/pi_cam_standalone/uwshcu/objects",
+      "native/pi_cam/standalone/cam_stubs.c",
+      "-o",
+      "build/pi_cam_standalone/uwshcu/objects/cam_stubs.o"
+    ],
+    "wrapper": [
+      "ftn",
+      "-c",
+      "-I.",
+      "-I${FREECAM_SCRATCH}/pyCAM/PI-cam/f.e13.F1850C5.ne16_g16.icesm131_ihesp.PI-cam-oracle.50step/bld/atm/obj",
+      "-I${FREECAM_SCRATCH}/pyCAM/PI-cam/f.e13.F1850C5.ne16_g16.icesm131_ihesp.PI-cam-oracle.50step/bld/intel/mpich/nodebug/nothreads/mct/include",
+      "-I${FREECAM_SCRATCH}/pyCAM/PI-cam/f.e13.F1850C5.ne16_g16.icesm131_ihesp.PI-cam-oracle.50step/bld/intel/mpich/nodebug/nothreads/mct/mct/noesmf/c1a1l1i1o1r1g1w1e1/include",
+      "-I/glade/u/apps/derecho/23.06/spack/opt/spack/netcdf/4.9.2/cray-mpich/8.1.25/oneapi/2023.0.0/wzol/include",
+      "-I/glade/u/apps/derecho/23.06/spack/opt/spack/parallel-netcdf/1.12.3/cray-mpich/8.1.25/oneapi/2023.0.0/blyr/include",
+      "-I${FREECAM_SCRATCH}/pyCAM/PI-cam/f.e13.F1850C5.ne16_g16.icesm131_ihesp.PI-cam-oracle.50step/bld/intel/mpich/nodebug/nothreads/mct/include",
+      "-I${FREECAM_SCRATCH}/pyCAM/PI-cam/f.e13.F1850C5.ne16_g16.icesm131_ihesp.PI-cam-oracle.50step/bld/intel/mpich/nodebug/nothreads/mct/mct/noesmf/include",
+      "-I${FREECAM_SCRATCH}/pyCAM/PI-cam/f.e13.F1850C5.ne16_g16.icesm131_ihesp.PI-cam-oracle.50step/bld/intel/mpich/nodebug/nothreads/mct/mct/noesmf/clm/obj",
+      "-I.",
+      "-I${FREECAM_CASES}/f.e13.F1850C5.ne16_g16.icesm131_ihesp.PI-cam-oracle.50step/SourceMods/src.cam",
+      "-I/SourceMods/src.cam",
+      "-I${WORK}/iCESM1.3.1_PI_cam_only/components//cam/src/unit_drivers",
+      "-I${WORK}/iCESM1.3.1_PI_cam_only/components//cam/src/unit_drivers/stub",
+      "-I${WORK}/iCESM1.3.1_PI_cam_only/components/cam/src/chemistry/pp_trop_mam3",
+      "-I${WORK}/iCESM1.3.1_PI_cam_only/components//cam/src/chemistry/modal_aero",
+      "-I${WORK}/iCESM1.3.1_PI_cam_only/components//cam/src/chemistry/aerosol",
+      "-I${WORK}/iCESM1.3.1_PI_cam_only/components//cam/src/chemistry/mozart",
+      "-I${WORK}/iCESM1.3.1_PI_cam_only/components//cam/src/chemistry/utils",
+      "-I${WORK}/iCESM1.3.1_PI_cam_only/components//cam/src/physics/rrtmg",
+      "-I${WORK}/iCESM1.3.1_PI_cam_only/components//cam/src/physics/rrtmg/ext/rrtmg_mcica",
+      "-I${WORK}/iCESM1.3.1_PI_cam_only/components//cam/src/physics/rrtmg/ext/rrtmg_lw",
+      "-I${WORK}/iCESM1.3.1_PI_cam_only/components//cam/src/physics/rrtmg/ext/rrtmg_sw",
+      "-I${WORK}/iCESM1.3.1_PI_cam_only/components//cam/src/physics/cam",
+      "-I${WORK}/iCESM1.3.1_PI_cam_only/components//cam/src/dynamics/se",
+      "-I${WORK}/iCESM1.3.1_PI_cam_only/components//cam/src/dynamics/se/share",
+      "-I${WORK}/iCESM1.3.1_PI_cam_only/components//cam/src/cpl",
+      "-I${WORK}/iCESM1.3.1_PI_cam_only/components//cam/src/control",
+      "-I${WORK}/iCESM1.3.1_PI_cam_only/components//cam/src/utils",
+      "-I${FREECAM_SCRATCH}/pyCAM/PI-cam/f.e13.F1850C5.ne16_g16.icesm131_ihesp.PI-cam-oracle.50step/bld/lib/include",
+      "-qno-opt-dynamic-align",
+      "-convert",
+      "big_endian",
+      "-assume",
+      "byterecl",
+      "-ftz",
+      "-traceback",
+      "-assume",
+      "realloc_lhs",
+      "-fp-model",
+      "source",
+      "-O2",
+      "-debug",
+      "minimal",
+      "-DCO2A",
+      "-DMAXPATCH_PFT=numpft+1",
+      "-DLSMLAT=1",
+      "-DLSMLON=1",
+      "-DPLON=13826",
+      "-DPLAT=1",
+      "-DNP=4",
+      "-DNC=4",
+      "-DHAVE_F2003_PTR_BND_REMAP",
+      "-DPLEV=30",
+      "-DPCNST=57",
+      "-DPCOLS=16",
+      "-DPSUBCOLS=1",
+      "-DN_RAD_CNST=30",
+      "-DPTRM=1",
+      "-DPTRN=1",
+      "-DPTRK=1",
+      "-D_MPI",
+      "-DCAM",
+      "-D_WK_GRAD",
+      "-D_PRIM",
+      "-DSPMD",
+      "-DMODAL_AERO",
+      "-DMODAL_AERO_3MODE",
+      "-DCNL",
+      "-DCESMCOUPLED",
+      "-DLINUX",
+      "-DFORTRANUNDERSCORE",
+      "-DCPRINTEL",
+      "-DNDEBUG",
+      "-DMCT_INTERFACE",
+      "-DHAVE_MPI",
+      "-DPIO1",
+      "-DHAVE_SLASHPROC",
+      "-D_PNETCDF",
+      "-free",
+      "-DUSE_CONTIGUOUS=",
+      "build/pi_cam_standalone/uwshcu/objects/freecam_standalone_uwshcu.F90",
+      "-o",
+      "build/pi_cam_standalone/uwshcu/objects/wrapper.o"
+    ]
+  },
+  "dynamic": {
+    "needed": [
+      "libpmi.so.0",
+      "libpmi2.so.0",
+      "libpals.so.0",
+      "libmpifort_intel.so.12",
+      "libmpi_intel.so.12",
+      "libimf.so",
+      "libifport.so.5",
+      "libifcoremt.so.5",
+      "libsvml.so",
+      "libm.so.6",
+      "libintlc.so.5",
+      "libc.so.6",
+      "libgcc_s.so.1"
+    ],
+    "rpath": [
+      "/glade/u/apps/common/23.04/spack/opt/spack/intel-oneapi-compilers/2023.0.0/compiler/2023.0.0/linux/lib:/glade/u/apps/common/23.04/spack/opt/spack/intel-oneapi-compilers/2023.0.0/compiler/2023.0.0/linux/lib/x64:/glade/u/apps/common/23.04/spack/opt/spack/intel-oneapi-compilers/2023.0.0/compiler/2023.0.0/linux/lib/oclfpga/host/linux64/lib:/glade/u/apps/common/23.04/spack/opt/spack/intel-oneapi-compilers/2023.0.0/compiler/2023.0.0/linux/lib/oclfpga/linux64/lib:/glade/u/apps/common/23.04/spack/opt/spack/intel-oneapi-compilers/2023.0.0/compiler/2023.0.0/linux/compiler/lib/intel64_lin:/glade/u/apps/derecho/23.06/spack/opt/spack/parallel-netcdf/1.12.3/cray-mpich/8.1.25/oneapi/2023.0.0/blyr/lib:/glade/u/apps/derecho/23.06/spack/opt/spack/netcdf/4.9.2/cray-mpich/8.1.25/oneapi/2023.0.0/wzol/lib:/glade/u/apps/derecho/23.06/spack/opt/spack/intel-oneapi-mkl/2023.0.0/oneapi/2023.0.0/f2sh/mkl/2023.0.0/lib/intel64:/glade/u/apps/common/23.04/spack/opt/spack/intel-oneapi-compilers/2023.0.0/lib:/glade/u/apps/derecho/23.06/spack/opt/spack/hdf5/1.12.2/cray-mpich/8.1.25/oneapi/2023.0.0/ktun/lib:/glade/u/apps/derecho/23.06/opt/lib64:/glade/u/apps/derecho/23.06/opt/lib:/glade/u/apps/common/23.04/spack/opt/spack/intel-oneapi-compilers/2023.0.0/linux/compiler/lib/intel64:/opt/cray/pe/mpich/8.1.25/ofi/intel/19.0/lib:/opt/cray/pe/pmi/6.1.10/lib:/opt/cray/pe/pals/1.2.11/lib"
+    ]
+  },
+  "execution_model": "fixed-address-nonpic-standalone-function",
+  "function": "uwshcu",
+  "intel_math_library": "/glade/u/apps/common/23.04/spack/opt/spack/intel-oneapi-compilers/2023.0.0/compiler/2023.0.0/linux/compiler/lib/intel64_lin/libimf.so",
+  "intel_math_library_sha256": "165b270fcc422b05acd8e7cd52ae2dfb3c68609da6e1855fd6c0109e045943a3",
+  "library": "build/pi_cam_standalone/uwshcu/libfreecam_uwshcu.so",
+  "library_bytes": 920896,
+  "library_sha256": "e228f72801adb9f2a62eb3868b0c4af618dfa512dd49d1b9e498178cb5a0279e",
+  "link": {
+    "command": [
+      "ftn",
+      "-nostartfiles",
+      "-nofor-main",
+      "-shared-intel",
+      "-Wl,-e,0,-Ttext-segment=0x50000000,--export-dynamic,-Bsymbolic-functions,-soname,libfreecam_uwshcu.so",
+      "-Wl,--trace,-Map=build/pi_cam_standalone/uwshcu/link.map",
+      "-Wl,-u,freecam_standalone_uwshcu_v1",
+      "-Wl,-u,freecam_standalone_abort_probe_v1",
+      "build/pi_cam_standalone/uwshcu/objects/wrapper.o",
+      "build/pi_cam_standalone/uwshcu/objects/abort_probe.o",
+      "build/pi_cam_standalone/uwshcu/objects/cam_stubs.o",
+      "build/pi_cam_standalone/uwshcu/objects/floating_environment.o",
+      "build/pi_cam_standalone/uwshcu/objects/uwshcu.o",
+      "build/pi_cam_standalone/uwshcu/objects/constituents.o",
+      "build/pi_cam_standalone/uwshcu/objects/water_tracers.o",
+      "build/pi_cam_standalone/uwshcu/objects/water_tracer_vars.o",
+      "build/pi_cam_standalone/uwshcu/objects/wv_saturation.o",
+      "build/pi_cam_standalone/uwshcu/objects/wv_sat_methods.o",
+      "build/pi_cam_standalone/uwshcu/objects/physconst.o",
+      "build/pi_cam_standalone/uwshcu/objects/ppgrid.o",
+      "build/pi_cam_standalone/uwshcu/objects/cam_logfile.o",
+      "build/pi_cam_standalone/uwshcu/objects/error_messages.o",
+      "build/pi_cam_standalone/uwshcu/objects/shr_spfn_mod.o",
+      "build/pi_cam_standalone/uwshcu/objects/water_isotopes.o",
+      "build/pi_cam_standalone/uwshcu/objects/water_types.o",
+      "-o",
+      "build/pi_cam_standalone/uwshcu/libfreecam_uwshcu.exec"
+    ],
+    "map": "build/pi_cam_standalone/uwshcu/link.map",
+    "own_objects": [
+      "build/pi_cam_standalone/uwshcu/objects/wrapper.o",
+      "build/pi_cam_standalone/uwshcu/objects/abort_probe.o",
+      "build/pi_cam_standalone/uwshcu/objects/cam_stubs.o",
+      "build/pi_cam_standalone/uwshcu/objects/floating_environment.o",
+      "build/pi_cam_standalone/uwshcu/objects/uwshcu.o",
+      "build/pi_cam_standalone/uwshcu/objects/constituents.o",
+      "build/pi_cam_standalone/uwshcu/objects/water_tracers.o",
+      "build/pi_cam_standalone/uwshcu/objects/water_tracer_vars.o",
+      "build/pi_cam_standalone/uwshcu/objects/wv_saturation.o",
+      "build/pi_cam_standalone/uwshcu/objects/wv_sat_methods.o",
+      "build/pi_cam_standalone/uwshcu/objects/physconst.o",
+      "build/pi_cam_standalone/uwshcu/objects/ppgrid.o",
+      "build/pi_cam_standalone/uwshcu/objects/cam_logfile.o",
+      "build/pi_cam_standalone/uwshcu/objects/error_messages.o",
+      "build/pi_cam_standalone/uwshcu/objects/shr_spfn_mod.o",
+      "build/pi_cam_standalone/uwshcu/objects/water_isotopes.o",
+      "build/pi_cam_standalone/uwshcu/objects/water_types.o"
+    ],
+    "runtime_inputs": [
+      "/opt/cray/pe/pmi/6.1.10/lib/libpmi.so",
+      "/opt/cray/pe/pmi/6.1.10/lib/libpmi2.so",
+      "/usr/lib64/gcc/x86_64-suse-linux/7/../../../../lib64/libpthread.a",
+      "/opt/cray/pe/pals/1.2.11/lib/libpals.so",
+      "/opt/cray/pe/mpich/8.1.25/ofi/intel/19.0/lib/libmpifort_intel.so",
+      "/opt/cray/pe/mpich/8.1.25/ofi/intel/19.0/lib/libmpi_intel.so",
+      "/usr/lib64/gcc/x86_64-suse-linux/7/../../../../lib64/librt.a",
+      "/usr/lib64/gcc/x86_64-suse-linux/7/../../../../lib64/libpthread.a",
+      "/opt/cray/pe/pmi/6.1.10/lib/libpmi.so",
+      "/opt/cray/pe/pmi/6.1.10/lib/libpmi2.so",
+      "/glade/u/apps/common/23.04/spack/opt/spack/intel-oneapi-compilers/2023.0.0/compiler/2023.0.0/linux/compiler/lib/intel64_lin/libimf.so",
+      "/usr/lib64/gcc/x86_64-suse-linux/7/../../../../lib64/libm.so",
+      "/lib64/libm.so.6",
+      "/lib64/libmvec.so.1",
+      "/usr/lib64/gcc/x86_64-suse-linux/7/../../../../lib64/libpthread.a",
+      "/glade/u/apps/common/23.04/spack/opt/spack/intel-oneapi-compilers/2023.0.0/compiler/2023.0.0/linux/compiler/lib/intel64_lin/libifport.so",
+      "/glade/u/apps/common/23.04/spack/opt/spack/intel-oneapi-compilers/2023.0.0/compiler/2023.0.0/linux/compiler/lib/intel64_lin/libifport.so.5",
+      "/glade/u/apps/common/23.04/spack/opt/spack/intel-oneapi-compilers/2023.0.0/compiler/2023.0.0/linux/compiler/lib/intel64_lin/libifcoremt.so",
+      "/glade/u/apps/common/23.04/spack/opt/spack/intel-oneapi-compilers/2023.0.0/compiler/2023.0.0/linux/compiler/lib/intel64_lin/libifcoremt.so.5",
+      "/glade/u/apps/common/23.04/spack/opt/spack/intel-oneapi-compilers/2023.0.0/compiler/2023.0.0/linux/compiler/lib/intel64_lin/libimf.so",
+      "/glade/u/apps/common/23.04/spack/opt/spack/intel-oneapi-compilers/2023.0.0/compiler/2023.0.0/linux/compiler/lib/intel64_lin/libsvml.so",
+      "/usr/lib64/gcc/x86_64-suse-linux/7/../../../../lib64/libm.so",
+      "/lib64/libm.so.6",
+      "/lib64/libmvec.so.1",
+      "/lib64/libmvec.so.1",
+      "/glade/u/apps/common/23.04/spack/opt/spack/intel-oneapi-compilers/2023.0.0/compiler/2023.0.0/linux/compiler/lib/intel64_lin/libipgo.a",
+      "/glade/u/apps/common/23.04/spack/opt/spack/intel-oneapi-compilers/2023.0.0/compiler/2023.0.0/linux/compiler/lib/intel64_lin/libintlc.so",
+      "/glade/u/apps/common/23.04/spack/opt/spack/intel-oneapi-compilers/2023.0.0/compiler/2023.0.0/linux/compiler/lib/intel64_lin/libintlc.so.5",
+      "/usr/lib64/gcc/x86_64-suse-linux/7/../../../../lib64/libpthread.a",
+      "/glade/u/apps/common/23.04/spack/opt/spack/intel-oneapi-compilers/2023.0.0/compiler/2023.0.0/linux/compiler/lib/intel64_lin/libsvml.so",
+      "/usr/lib64/gcc/x86_64-suse-linux/7/../../../../lib64/libc.so",
+      "/lib64/libc.so.6",
+      "/usr/lib64/libc_nonshared.a",
+      "/lib64/ld-linux-x86-64.so.2",
+      "/usr/lib64/libc_nonshared.a",
+      "/lib64/ld-linux-x86-64.so.2",
+      "/usr/lib64/gcc/x86_64-suse-linux/7//libgcc.a",
+      "/usr/lib64/gcc/x86_64-suse-linux/7//libgcc_s.so",
+      "/lib/../lib64/libgcc_s.so.1",
+      "/usr/lib64/gcc/x86_64-suse-linux/7//libgcc.a",
+      "/glade/u/apps/common/23.04/spack/opt/spack/intel-oneapi-compilers/2023.0.0/compiler/2023.0.0/linux/compiler/lib/intel64_lin/libirc_s.a",
+      "/usr/lib64/gcc/x86_64-suse-linux/7/../../../../lib64/libdl.a",
+      "/usr/lib64/gcc/x86_64-suse-linux/7/../../../../lib64/libc.so",
+      "/lib64/libc.so.6",
+      "/usr/lib64/libc_nonshared.a",
+      "/lib64/ld-linux-x86-64.so.2"
+    ]
+  },
+  "load_end": "0x501511c0",
+  "load_start": "0x50000000",
+  "members": [
+    {
+      "archive": "atm",
+      "name": "uwshcu.o",
+      "sha256": "8c6730bfbbb31867eb5c8dd4df0e014af1f02f21b2f969a4fa8bdd9d457675f4"
+    },
+    {
+      "archive": "atm",
+      "name": "constituents.o",
+      "sha256": "343b35e2e0940fa7d05aa5ec064e7da418baa138c08059f89bc08188b89c5a84"
+    },
+    {
+      "archive": "atm",
+      "name": "water_tracers.o",
+      "sha256": "769da63d78e4c2a155f1877e4e1094bcc390ed302b83b4119e16c3b197f0eec0"
+    },
+    {
+      "archive": "atm",
+      "name": "water_tracer_vars.o",
+      "sha256": "0bc2077a669867caf54ea3cd0336672c370c2168a1b25c4e2235ee9f226c143f"
+    },
+    {
+      "archive": "atm",
+      "name": "wv_saturation.o",
+      "sha256": "c08d33ee3f49becf8bd2409e1a103fea55bea1b2560b96c7abb84fc25ea78ba9"
+    },
+    {
+      "archive": "atm",
+      "name": "wv_sat_methods.o",
+      "sha256": "082b6f1d649f0e7b029365704154b12c8103c240c5a51d36b56ef44711e456fb"
+    },
+    {
+      "archive": "atm",
+      "name": "physconst.o",
+      "sha256": "0e8f6347691d4d6e8f7f2e84c69e8bda82554457bcc3dd924244a577a6fb61b5"
+    },
+    {
+      "archive": "atm",
+      "name": "ppgrid.o",
+      "sha256": "4be30a7e743d68bd266765ced612cd900431ecb735cf42e192b521eaeed0d165"
+    },
+    {
+      "archive": "atm",
+      "name": "cam_logfile.o",
+      "sha256": "d0e47ef522fc07056154a32e0709a466ab4fde85b89132100eb7236ddb8e7f18"
+    },
+    {
+      "archive": "atm",
+      "name": "error_messages.o",
+      "sha256": "eed34d62c58062fb58a202e6b15c291fb06eb13c8c1d067a56bc701a9ee9b8d5"
+    },
+    {
+      "archive": "csm_share",
+      "name": "shr_spfn_mod.o",
+      "sha256": "4ecd823f3e7cf192f28e6b601e9afe70db799809889f003bd9f380dbb1b17a1a"
+    },
+    {
+      "archive": "csm_share",
+      "name": "water_isotopes.o",
+      "sha256": "28abf6ff835845efc16232ebecc37617df10199371f1fa04885868bf2b497392"
+    },
+    {
+      "archive": "csm_share",
+      "name": "water_types.o",
+      "sha256": "d223dd96696cbf366a74d13135b1f2d4fecc1b72d63b62261a5bd0a675268bd4"
+    }
+  ],
+  "numerical_archives": {
+    "atm": {
+      "path": "${FREECAM_SCRATCH}/pyCAM/PI-cam/f.e13.F1850C5.ne16_g16.icesm131_ihesp.PI-cam-oracle.50step/bld/lib/libatm.a",
+      "sha256": "56eae2ed53b1fc529d149489e320b9cab83a0cf715c02745f211c3fdbc943930"
+    },
+    "csm_share": {
+      "path": "${FREECAM_SCRATCH}/pyCAM/PI-cam/f.e13.F1850C5.ne16_g16.icesm131_ihesp.PI-cam-oracle.50step/bld/intel/mpich/nodebug/nothreads/mct/mct/noesmf/c1a1l1i1o1r1g1w1e1/csm_share/libcsm_share.a",
+      "sha256": "ca4b330f182a54feafb321318b8dc745f3b08f4d0b66082d68585255462c4e13"
+    }
+  },
+  "original_call_proof": "50010a73:\te8 a8 75 00 00       \tcall   50018020 <uwshcu_mp_compute_uwshcu_inv_>",
+  "pbs_job_id": "7620283.desched1",
+  "qualified_name": "uwshcu::compute_uwshcu_inv",
+  "schema_version": 1,
+  "smoke_load": {
+    "abort_probe": {
+      "exit_status": 86,
+      "stderr_line": "FREECAM_FORTRAN_ABORT: freecam standalone abort probe"
+    },
+    "base_matches": true,
+    "fortran_runtime": [
+      "/glade/u/apps/common/23.04/spack/opt/spack/intel-oneapi-compilers/2023.0.0/compiler/2023.0.0/linux/compiler/lib/intel64_lin/libifcore.so.5",
+      "/glade/u/apps/common/23.04/spack/opt/spack/intel-oneapi-compilers/2023.0.0/compiler/2023.0.0/linux/compiler/lib/intel64_lin/libifcoremt.so.5"
+    ],
+    "initializers_returned": [
+      "wv_saturation_mp_wv_sat_init_"
+    ],
+    "ld_preload": "/glade/u/apps/common/23.04/spack/opt/spack/intel-oneapi-compilers/2023.0.0/compiler/2023.0.0/linux/compiler/lib/intel64_lin/libimf.so",
+    "loaded_base": "0x50000000",
+    "math_runtime": [
+      "/glade/u/apps/common/23.04/spack/opt/spack/intel-oneapi-compilers/2023.0.0/compiler/2023.0.0/linux/compiler/lib/intel64_lin/libimf.so"
+    ],
+    "mpi_initialized": false,
+    "mxcsr_after": "0x9fc0",
+    "mxcsr_before": "0x1fa0"
+  },
+  "spec": "native/pi_cam/functions/uwshcu.yaml",
+  "spec_sha256": "613e890da7a5f1c216e16282556c8710d24402720710252bd8d42dd807dcaec4",
+  "stubs": {
+    "cesm_symbols_needed": [
+      "cam_history_mp_add_default_",
+      "cam_history_mp_addfld_",
+      "cam_history_mp_outfld_",
+      "cam_initfiles_mp_initial_file_get_id_",
+      "cloud_fraction_mp_cldfrc_fice_",
+      "mpibcast_",
+      "mpishorthand_mp_mpichar_",
+      "mpishorthand_mp_mpicom_",
+      "mpishorthand_mp_mpiint_",
+      "mpishorthand_mp_mpilog_",
+      "mpishorthand_mp_mpir8_",
+      "netcdf_mp_nf90_strerror_",
+      "physics_buffer_mp_get_pbuf1d_field_by_index_1d_double_",
+      "physics_buffer_mp_pbuf_add_field_double_",
+      "physics_buffer_mp_pbuf_get_field_name_",
+      "shr_assert_mod_mp_shr_assert_in_domain_0d_double_",
+      "shr_nl_mod_mp_shr_nl_find_group_name_",
+      "shr_sys_mod_mp_shr_sys_abort_",
+      "spmd_utils_mp_masterproc_",
+      "units_mp_freeunit_",
+      "units_mp_getunit_"
+    ],
+    "list": "/* Generated by build_pi_cam_standalone_function.py from the function YAML. */\nFREECAM_INERT_VOID(cam_history_mp_outfld_)\nFREECAM_INERT_VOID(shr_assert_mod_mp_shr_assert_in_domain_0d_double_)\nFREECAM_INERT_DATA_INT32(spmd_utils_mp_masterproc_)\nFREECAM_INERT_DATA_INT32(mpishorthand_mp_mpicom_)\nFREECAM_INERT_DATA_INT32(mpishorthand_mp_mpir8_)\nFREECAM_INERT_DATA_INT32(mpishorthand_mp_mpichar_)\nFREECAM_INERT_DATA_INT32(mpishorthand_mp_mpiint_)\nFREECAM_INERT_DATA_INT32(mpishorthand_mp_mpilog_)\nFREECAM_FAIL_CLOSED(cam_history_mp_addfld_)\nFREECAM_FAIL_CLOSED(cam_history_mp_add_default_)\nFREECAM_FAIL_CLOSED(cam_initfiles_mp_initial_file_get_id_)\nFREECAM_FAIL_CLOSED(cloud_fraction_mp_cldfrc_fice_)\nFREECAM_FAIL_CLOSED(physics_buffer_mp_pbuf_add_field_double_)\nFREECAM_FAIL_CLOSED(physics_buffer_mp_pbuf_get_field_name_)\nFREECAM_FAIL_CLOSED(physics_buffer_mp_get_pbuf1d_field_by_index_1d_double_)\nFREECAM_FAIL_CLOSED(mpibcast_)\nFREECAM_FAIL_CLOSED(shr_nl_mod_mp_shr_nl_find_group_name_)\nFREECAM_FAIL_CLOSED(units_mp_getunit_)\nFREECAM_FAIL_CLOSED(units_mp_freeunit_)\nFREECAM_FAIL_CLOSED(netcdf_mp_nf90_strerror_)\nFREECAM_ABORT(shr_sys_mod_mp_shr_sys_abort_)\n",
+    "source": "native/pi_cam/standalone/cam_stubs.c",
+    "source_sha256": "ebe1366c902f0827e5480c9acfb82c6e28d1ef2eec57aa90acff541acd91c3c4",
+    "stubs": [
+      "cam_history_mp_add_default_",
+      "cam_history_mp_addfld_",
+      "cam_history_mp_outfld_",
+      "cam_initfiles_mp_initial_file_get_id_",
+      "cloud_fraction_mp_cldfrc_fice_",
+      "mpibcast_",
+      "mpishorthand_mp_mpichar_",
+      "mpishorthand_mp_mpicom_",
+      "mpishorthand_mp_mpiint_",
+      "mpishorthand_mp_mpilog_",
+      "mpishorthand_mp_mpir8_",
+      "netcdf_mp_nf90_strerror_",
+      "physics_buffer_mp_get_pbuf1d_field_by_index_1d_double_",
+      "physics_buffer_mp_pbuf_add_field_double_",
+      "physics_buffer_mp_pbuf_get_field_name_",
+      "shr_assert_mod_mp_shr_assert_in_domain_0d_double_",
+      "shr_nl_mod_mp_shr_nl_find_group_name_",
+      "shr_sys_mod_mp_shr_sys_abort_",
+      "spmd_utils_mp_masterproc_",
+      "units_mp_freeunit_",
+      "units_mp_getunit_"
+    ]
+  },
+  "symbols": {
+    "cam_history_symbols": [
+      "cam_history_mp_add_default_",
+      "cam_history_mp_addfld_",
+      "cam_history_mp_outfld_"
+    ],
+    "module_state_sizes": {
+      "cam_logfile_mp_iulog_": 4,
+      "constituents_mp_cnst_name_": 912,
+      "constituents_mp_cnst_type_": 171,
+      "constituents_mp_qmin_": 456,
+      "physconst_mp_epsilo_": 8,
+      "physconst_mp_gravit_": 8,
+      "physconst_mp_rair_": 8,
+      "physconst_mp_rh2o_": 8,
+      "physconst_mp_tmelt_": 8,
+      "uwshcu_mp_cp_": 8,
+      "uwshcu_mp_ep2_": 8,
+      "uwshcu_mp_g_": 8,
+      "uwshcu_mp_p00_": 8,
+      "uwshcu_mp_r_": 8,
+      "uwshcu_mp_rovcp_": 8,
+      "uwshcu_mp_rpen_": 8,
+      "uwshcu_mp_xlf_": 8,
+      "uwshcu_mp_xls_": 8,
+      "uwshcu_mp_xlv_": 8,
+      "uwshcu_mp_zvir_": 8,
+      "water_isotopes_mp_akrfa_": 32,
+      "water_isotopes_mp_akrfb_": 32,
+      "water_isotopes_mp_aksmc_": 32,
+      "water_isotopes_mp_alpai_": 32,
+      "water_isotopes_mp_alpal_": 32,
+      "water_isotopes_mp_alpbi_": 32,
+      "water_isotopes_mp_alpbl_": 32,
+      "water_isotopes_mp_alpci_": 32,
+      "water_isotopes_mp_alpcl_": 32,
+      "water_isotopes_mp_alpdl_": 32,
+      "water_isotopes_mp_alpel_": 32,
+      "water_isotopes_mp_boce_": 32,
+      "water_isotopes_mp_difrm_": 32,
+      "water_isotopes_mp_epsmw_": 32,
+      "water_isotopes_mp_fisub_": 32,
+      "water_isotopes_mp_mwisp_": 32,
+      "water_isotopes_mp_rnat_": 32,
+      "water_isotopes_mp_rstd_": 32,
+      "water_tracer_vars_mp_iwater_": 228,
+      "water_tracer_vars_mp_iwistag_": 228,
+      "water_tracer_vars_mp_iwspec_": 228,
+      "water_tracer_vars_mp_trace_water_": 4,
+      "water_tracer_vars_mp_wisotope_": 4,
+      "water_tracer_vars_mp_wtrc_add_cvprecip_": 4,
+      "water_tracer_vars_mp_wtrc_add_stprecip_": 4,
+      "water_tracer_vars_mp_wtrc_alpha_kinetic_": 4,
+      "water_tracer_vars_mp_wtrc_bulk_indices_": 28,
+      "water_tracer_vars_mp_wtrc_check_show_types_": 4,
+      "water_tracer_vars_mp_wtrc_check_total_h2o_": 4,
+      "water_tracer_vars_mp_wtrc_citer_": 4,
+      "water_tracer_vars_mp_wtrc_detrain_in_macrop_": 4,
+      "water_tracer_vars_mp_wtrc_fixed_alpha_": 32,
+      "water_tracer_vars_mp_wtrc_fixed_rstd_": 32,
+      "water_tracer_vars_mp_wtrc_iaspec_": 11200,
+      "water_tracer_vars_mp_wtrc_iasrfpcp_": 2800,
+      "water_tracer_vars_mp_wtrc_iasrfvap_": 2800,
+      "water_tracer_vars_mp_wtrc_iatype_": 19600,
+      "water_tracer_vars_mp_wtrc_iawset_": 2800,
+      "water_tracer_vars_mp_wtrc_indices_": 2800,
+      "water_tracer_vars_mp_wtrc_is_tag_": 2800,
+      "water_tracer_vars_mp_wtrc_lh2oadj_": 4,
+      "water_tracer_vars_mp_wtrc_limiter_18o_hgh_": 8,
+      "water_tracer_vars_mp_wtrc_limiter_18o_low_": 8,
+      "water_tracer_vars_mp_wtrc_limiter_hdo_hgh_": 8,
+      "water_tracer_vars_mp_wtrc_limiter_hdo_low_": 8,
+      "water_tracer_vars_mp_wtrc_limiter_phis_crit_": 8,
+      "water_tracer_vars_mp_wtrc_lzmlin_": 4,
+      "water_tracer_vars_mp_wtrc_ncnst_": 4,
+      "water_tracer_vars_mp_wtrc_niter_": 4,
+      "water_tracer_vars_mp_wtrc_nspec_": 16,
+      "water_tracer_vars_mp_wtrc_nsrfpcp_": 4,
+      "water_tracer_vars_mp_wtrc_nsrfvap_": 4,
+      "water_tracer_vars_mp_wtrc_ntype_": 28,
+      "water_tracer_vars_mp_wtrc_nwset_": 4,
+      "water_tracer_vars_mp_wtrc_qchkmin_": 8,
+      "water_tracer_vars_mp_wtrc_qmin_": 8,
+      "water_tracer_vars_mp_wtrc_species_": 2800,
+      "water_tracer_vars_mp_wtrc_srf_bucket_mode_": 4,
+      "water_tracer_vars_mp_wtrc_types_": 2800,
+      "water_tracer_vars_mp_wtrc_warn_only_": 4,
+      "wv_sat_methods_mp_default_idx_": 4,
+      "wv_sat_methods_mp_epsilo_": 8,
+      "wv_sat_methods_mp_h2otrip_": 8,
+      "wv_sat_methods_mp_omeps_": 8,
+      "wv_sat_methods_mp_tboil_": 8,
+      "wv_sat_methods_mp_tmelt_": 8,
+      "wv_sat_methods_mp_ttrice_": 8,
+      "wv_saturation_mp_c3_": 8,
+      "wv_saturation_mp_omeps_": 8,
+      "wv_saturation_mp_plenest_": 4
+    }
+  },
+  "wrapper": {
+    "action_id": 1,
+    "operation": {
+      "action_id": 1,
+      "arguments": [
+        {
+          "dtype": "int32",
+          "field": "uwshcu.mix",
+          "intent": "in",
+          "rank": 1
+        },
+        {
+          "dtype": "int32",
+          "field": "uwshcu.mkx",
+          "intent": "in",
+          "rank": 1
+        },
+        {
+          "dtype": "int32",
+          "field": "uwshcu.iend",
+          "intent": "in",
+          "rank": 1
+        },
+        {
+          "dtype": "int32",
+          "field": "uwshcu.ncnst",
+          "intent": "in",
+          "rank": 1
+        },
+        {
+          "dtype": "float64",
+          "field": "uwshcu.dt",
+          "intent": "in",
+          "rank": 1
+        },
+        {
+          "dtype": "float64",
+          "field": "uwshcu.ps0_inv",
+          "intent": "in",
+          "rank": 3
+        },
+        {
+          "dtype": "float64",
+          "field": "uwshcu.zs0_inv",
+          "intent": "in",
+          "rank": 3
+        },
+        {
+          "dtype": "float64",
+          "field": "uwshcu.p0_inv",
+          "intent": "in",
+          "rank": 3
+        },
+        {
+          "dtype": "float64",
+          "field": "uwshcu.z0_inv",
+          "intent": "in",
+          "rank": 3
+        },
+        {
+          "dtype": "float64",
+          "field": "uwshcu.dp0_inv",
+          "intent": "in",
+          "rank": 3
+        },
+        {
+          "dtype": "float64",
+          "field": "uwshcu.u0_inv",
+          "intent": "in",
+          "rank": 3
+        },
+        {
+          "dtype": "float64",
+          "field": "uwshcu.v0_inv",
+          "intent": "in",
+          "rank": 3
+        },
+        {
+          "dtype": "float64",
+          "field": "uwshcu.qv0_inv",
+          "intent": "in",
+          "rank": 3
+        },
+        {
+          "dtype": "float64",
+          "field": "uwshcu.ql0_inv",
+          "intent": "in",
+          "rank": 3
+        },
+        {
+          "dtype": "float64",
+          "field": "uwshcu.qi0_inv",
+          "intent": "in",
+          "rank": 3
+        },
+        {
+          "dtype": "float64",
+          "field": "uwshcu.t0_inv",
+          "intent": "in",
+          "rank": 3
+        },
+        {
+          "dtype": "float64",
+          "field": "uwshcu.s0_inv",
+          "intent": "in",
+          "rank": 3
+        },
+        {
+          "dtype": "float64",
+          "field": "uwshcu.tr0_inv",
+          "intent": "in",
+          "rank": 4
+        },
+        {
+          "dtype": "float64",
+          "field": "uwshcu.tke_inv",
+          "intent": "in",
+          "rank": 3
+        },
+        {
+          "dtype": "float64",
+          "field": "uwshcu.cldfrct_inv",
+          "intent": "in",
+          "rank": 3
+        },
+        {
+          "dtype": "float64",
+          "field": "uwshcu.concldfrct_inv",
+          "intent": "in",
+          "rank": 3
+        },
+        {
+          "dtype": "float64",
+          "field": "uwshcu.pblh",
+          "intent": "in",
+          "rank": 2
+        },
+        {
+          "dtype": "float64",
+          "field": "uwshcu.cush",
+          "intent": "inout",
+          "rank": 2
+        },
+        {
+          "dtype": "float64",
+          "field": "uwshcu.umf_inv",
+          "intent": "out",
+          "rank": 3
+        },
+        {
+          "dtype": "float64",
+          "field": "uwshcu.slflx_inv",
+          "intent": "out",
+          "rank": 3
+        },
+        {
+          "dtype": "float64",
+          "field": "uwshcu.qtflx_inv",
+          "intent": "out",
+          "rank": 3
+        },
+        {
+          "dtype": "float64",
+          "field": "uwshcu.flxprc1_inv",
+          "intent": "out",
+          "rank": 3
+        },
+        {
+          "dtype": "float64",
+          "field": "uwshcu.flxsnow1_inv",
+          "intent": "out",
+          "rank": 3
+        },
+        {
+          "dtype": "float64",
+          "field": "uwshcu.qvten_inv",
+          "intent": "out",
+          "rank": 3
+        },
+        {
+          "dtype": "float64",
+          "field": "uwshcu.qlten_inv",
+          "intent": "out",
+          "rank": 3
+        },
+        {
+          "dtype": "float64",
+          "field": "uwshcu.qiten_inv",
+          "intent": "out",
+          "rank": 3
+        },
+        {
+          "dtype": "float64",
+          "field": "uwshcu.sten_inv",
+          "intent": "out",
+          "rank": 3
+        },
+        {
+          "dtype": "float64",
+          "field": "uwshcu.uten_inv",
+          "intent": "out",
+          "rank": 3
+        },
+        {
+          "dtype": "float64",
+          "field": "uwshcu.vten_inv",
+          "intent": "out",
+          "rank": 3
+        },
+        {
+          "dtype": "float64",
+          "field": "uwshcu.trten_inv",
+          "intent": "out",
+          "rank": 4
+        },
+        {
+          "dtype": "float64",
+          "field": "uwshcu.qrten_inv",
+          "intent": "out",
+          "rank": 3
+        },
+        {
+          "dtype": "float64",
+          "field": "uwshcu.qsten_inv",
+          "intent": "out",
+          "rank": 3
+        },
+        {
+          "dtype": "float64",
+          "field": "uwshcu.precip",
+          "intent": "out",
+          "rank": 2
+        },
+        {
+          "dtype": "float64",
+          "field": "uwshcu.snow",
+          "intent": "out",
+          "rank": 2
+        },
+        {
+          "dtype": "float64",
+          "field": "uwshcu.evapc_inv",
+          "intent": "out",
+          "rank": 3
+        },
+        {
+          "dtype": "float64",
+          "field": "uwshcu.cufrc_inv",
+          "intent": "out",
+          "rank": 3
+        },
+        {
+          "dtype": "float64",
+          "field": "uwshcu.qcu_inv",
+          "intent": "out",
+          "rank": 3
+        },
+        {
+          "dtype": "float64",
+          "field": "uwshcu.qlu_inv",
+          "intent": "out",
+          "rank": 3
+        },
+        {
+          "dtype": "float64",
+          "field": "uwshcu.qiu_inv",
+          "intent": "out",
+          "rank": 3
+        },
+        {
+          "dtype": "float64",
+          "field": "uwshcu.cbmf",
+          "intent": "out",
+          "rank": 2
+        },
+        {
+          "dtype": "float64",
+          "field": "uwshcu.qc_inv",
+          "intent": "out",
+          "rank": 3
+        },
+        {
+          "dtype": "float64",
+          "field": "uwshcu.rliq",
+          "intent": "out",
+          "rank": 2
+        },
+        {
+          "dtype": "float64",
+          "field": "uwshcu.cnt_inv",
+          "intent": "out",
+          "rank": 2
+        },
+        {
+          "dtype": "float64",
+          "field": "uwshcu.cnb_inv",
+          "intent": "out",
+          "rank": 2
+        },
+        {
+          "dtype": "int32",
+          "field": "uwshcu.lchnk",
+          "intent": "in",
+          "rank": 1
+        },
+        {
+          "dtype": "float64",
+          "field": "uwshcu.dpdry0_inv",
+          "intent": "in",
+          "rank": 3
+        },
+        {
+          "dtype": "float64",
+          "field": "uwshcu.wtprec",
+          "intent": "out",
+          "rank": 3
+        },
+        {
+          "dtype": "float64",
+          "field": "uwshcu.wtsnow",
+          "intent": "out",
+          "rank": 3
+        },
+        {
+          "dtype": "float64",
+          "field": "uwshcu.wtqc_inv",
+          "intent": "out",
+          "rank": 4
+        }
+      ],
+      "symbol": "freecam_standalone_uwshcu_v1"
+    },
+    "source": "build/pi_cam_standalone/uwshcu/objects/freecam_standalone_uwshcu.F90",
+    "source_sha256": "a005c1b9c6b03d9f4102f508e111499438fdbf3aad401948368be27c1266e079",
+    "symbol": "freecam_standalone_uwshcu_v1"
+  }
+}

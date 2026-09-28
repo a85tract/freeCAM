@@ -551,7 +551,8 @@ module_state:
     shape: []
     write: verify
     expected: 6
-initializers: []
+# sets the wv_saturation and wv_sat_methods state marked write: initializer
+initializers: [wv_saturation_mp_wv_sat_init_]
 image:
   archive_members:
     - cldwat2m_macro.o

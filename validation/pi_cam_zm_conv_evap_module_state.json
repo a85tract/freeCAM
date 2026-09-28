@@ -1,0 +1,213 @@
+{
+  "atm_in_sha256": "6cf906571702ac0c912c22c42d7a5b4568ef2001697d59a05078538ed8bc3472",
+  "config": "configs/pi_cam_icesm131_replay.yaml",
+  "digest": "ec60eb1ce0de042955b66537d71bcd715fc357b12080025714e7fc4c78e61c93",
+  "drifted_after_one_step": [],
+  "entries": {
+    "cam_logfile_mp_iulog_": {
+      "dtype": "int32",
+      "sha256": "7aa8ca4a02506da9133d8f889678b76f716ce45d02e22fdb7b70a15e56a0eff8",
+      "shape": [],
+      "symbol": "cam_logfile_mp_iulog_",
+      "values": [
+        6
+      ],
+      "write": "verify"
+    },
+    "physconst_mp_gravit_": {
+      "dtype": "float64",
+      "hex": [
+        "0x1.39cc100e6afcdp+3"
+      ],
+      "sha256": "7341442b4be7727cdbed7b80fe44d8c4c8becf2b6b3016893aa8317f95c9fd8e",
+      "shape": [],
+      "symbol": "physconst_mp_gravit_",
+      "values": [
+        9.80616
+      ],
+      "write": "verify"
+    },
+    "physconst_mp_tmelt_": {
+      "dtype": "float64",
+      "hex": [
+        "0x1.1126666666666p+8"
+      ],
+      "sha256": "0c7c057ab37e5dca4056470f25805733cd4824f81cd636f6158e9aba1fa25d0c",
+      "shape": [],
+      "symbol": "physconst_mp_tmelt_",
+      "values": [
+        273.15
+      ],
+      "write": "verify"
+    },
+    "wv_sat_methods_mp_default_idx_": {
+      "dtype": "int32",
+      "sha256": "67abdd721024f0ff4e0b3f4c2fc13bc5bad42d0b7851d456d88d203d15aaa450",
+      "shape": [],
+      "symbol": "wv_sat_methods_mp_default_idx_",
+      "values": [
+        1
+      ],
+      "write": "verify"
+    },
+    "wv_sat_methods_mp_epsilo_": {
+      "dtype": "float64",
+      "hex": [
+        "0x1.3e72edbda50a2p-1"
+      ],
+      "sha256": "6c865aea9dd5666b70e01153b76d73ca70d7641d197e234ebeededa3b6e0b529",
+      "shape": [],
+      "symbol": "wv_sat_methods_mp_epsilo_",
+      "values": [
+        0.6219705862045155
+      ],
+      "write": "initializer"
+    },
+    "wv_sat_methods_mp_h2otrip_": {
+      "dtype": "float64",
+      "hex": [
+        "0x1.1128f5c28f5c3p+8"
+      ],
+      "sha256": "065a76ad7baeb5b421933eb2373bffed5929e92a7554fec1905ab298c1cf6be0",
+      "shape": [],
+      "symbol": "wv_sat_methods_mp_h2otrip_",
+      "values": [
+        273.16
+      ],
+      "write": "initializer"
+    },
+    "wv_sat_methods_mp_omeps_": {
+      "dtype": "float64",
+      "hex": [
+        "0x1.831a2484b5ebcp-2"
+      ],
+      "sha256": "859c24a3404d665d2e11d1adb077184d524038ca68aca8c486135af5856752e1",
+      "shape": [],
+      "symbol": "wv_sat_methods_mp_omeps_",
+      "values": [
+        0.3780294137954845
+      ],
+      "write": "initializer"
+    },
+    "wv_sat_methods_mp_tboil_": {
+      "dtype": "float64",
+      "hex": [
+        "0x1.7528f5c28f5c3p+8"
+      ],
+      "sha256": "3142571366f7a25c09bddaf489a02b3058ca80726c9143d65864f668150c68f0",
+      "shape": [],
+      "symbol": "wv_sat_methods_mp_tboil_",
+      "values": [
+        373.16
+      ],
+      "write": "initializer"
+    },
+    "wv_sat_methods_mp_tmelt_": {
+      "dtype": "float64",
+      "hex": [
+        "0x1.1126666666666p+8"
+      ],
+      "sha256": "0c7c057ab37e5dca4056470f25805733cd4824f81cd636f6158e9aba1fa25d0c",
+      "shape": [],
+      "symbol": "wv_sat_methods_mp_tmelt_",
+      "values": [
+        273.15
+      ],
+      "write": "initializer"
+    },
+    "wv_sat_methods_mp_ttrice_": {
+      "dtype": "float64",
+      "hex": [
+        "0x1.4000000000000p+4"
+      ],
+      "sha256": "055e7dd5bc7591c950c5683cab13f99a935400b719798b39b6152f8c1bf71555",
+      "shape": [],
+      "symbol": "wv_sat_methods_mp_ttrice_",
+      "values": [
+        20.0
+      ],
+      "write": "initializer"
+    },
+    "wv_saturation_mp_c3_": {
+      "dtype": "float64",
+      "hex": [
+        "0x1.3bc87924248e1p+2"
+      ],
+      "sha256": "3dd8e1620bdcebed16d0c52b226407ca83844d9c1e7fe5e398db82621f24e8c5",
+      "shape": [],
+      "symbol": "wv_saturation_mp_c3_",
+      "values": [
+        4.93411091355867
+      ],
+      "write": "initializer"
+    },
+    "wv_saturation_mp_omeps_": {
+      "dtype": "float64",
+      "hex": [
+        "0x1.831a2484b5ebcp-2"
+      ],
+      "sha256": "859c24a3404d665d2e11d1adb077184d524038ca68aca8c486135af5856752e1",
+      "shape": [],
+      "symbol": "wv_saturation_mp_omeps_",
+      "values": [
+        0.3780294137954845
+      ],
+      "write": "initializer"
+    },
+    "wv_saturation_mp_plenest_": {
+      "dtype": "int32",
+      "sha256": "ae63ced5b9c3aba1a445d14e59e7f123159f9e8dbbb5afff328a0f3e6149caaf",
+      "shape": [],
+      "symbol": "wv_saturation_mp_plenest_",
+      "values": [
+        251
+      ],
+      "write": "initializer"
+    },
+    "zm_conv_mp_ke_": {
+      "dtype": "float64",
+      "hex": [
+        "0x1.0c6f7a0b5ed8dp-20"
+      ],
+      "sha256": "7b0355ed5a68124501a73561e1be6ccc44d9d9920beea11896f7f1dd926b2012",
+      "shape": [],
+      "symbol": "zm_conv_mp_ke_",
+      "values": [
+        1e-06
+      ],
+      "write": "snapshot"
+    },
+    "zm_conv_mp_ke_lnd_": {
+      "dtype": "float64",
+      "hex": [
+        "0x1.92a737110e454p-19"
+      ],
+      "sha256": "0a204ddca4cbe5952288601bbd490c868b2f77b9c9a3804f8af88a7f27c91ac9",
+      "shape": [],
+      "symbol": "zm_conv_mp_ke_lnd_",
+      "values": [
+        3e-06
+      ],
+      "write": "snapshot"
+    },
+    "zm_conv_mp_zm_org_": {
+      "dtype": "int32",
+      "sha256": "df3f619804a92fdb4057192dc43dd748ea778adc52bc498ce80524c014b81119",
+      "shape": [],
+      "symbol": "zm_conv_mp_zm_org_",
+      "values": [
+        0
+      ],
+      "write": "snapshot"
+    }
+  },
+  "function": "zm_conv_evap",
+  "library_sha256": "15cb94f9cd96c99747b68b8da66d30ee7420cb1004d7a2149a900633dbc98708",
+  "mpi_ranks": 512,
+  "native_manifest": "build/pi_cam_promoted_p33/native_cam_manifest.json",
+  "pbs_job_id": "7623808.desched1",
+  "qualified_name": "zm_conv::zm_conv_evap",
+  "schema_version": 1,
+  "spec_sha256": "bf3fb18060494532fb2fbc48e5db230785f8f1be3b102e2ae234d3eeb6ab15c3",
+  "stable_after_one_step": true
+}

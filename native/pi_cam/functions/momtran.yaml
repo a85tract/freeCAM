@@ -15,6 +15,15 @@ source: components/cam/src/physics/cam/zm_conv.F90
 module: zm_conv
 binding: module
 layout: column
+# The routine works on the columns zm_convr gathered: mu, md, du, eu, ed, dp,
+# dsubcld, jt and mx are indexed by that packing (ideep, il1g:il2g), not by column.
+# One column cannot be replayed alone; a captured chunk is replayed whole.
+columns: gathered
+gathered:
+  # zm_convr's gathered arrays, read over il1g:il2g; every output is scattered back
+  # to its column through ideep
+  count: il2g
+  arguments: [mu, md, du, eu, ed, dp, dsubcld, jt, mx, ideep]
 dimensions: {pcols: 16, pver: 30, pverp: 31, pcnst: 57, ncnst: 2}
 public_axes: {pver: lev, pverp: ilev}
 arguments:

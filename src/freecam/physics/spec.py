@@ -24,6 +24,10 @@ from .errors import PhysicsSpecError
 
 ROLES = ("structural", "input", "inout", "output", "workspace", "result")
 LAYOUTS = ("column", "direct")
+#: independent: lane i of every (pcols, ...) array is column i, so one column replays alone;
+#: gathered: the routine packs the columns it works on first (ZM's ideep/lengath), and its
+#: gathered arrays are indexed by that packing, not by column
+COLUMNS = ("independent", "gathered")
 BINDINGS = ("module", "mangled", "external")
 USER_ROLES = ("input", "inout")
 INTENTS = ("in", "out", "inout")
@@ -63,6 +67,9 @@ class ArgumentSpec:
     optional: bool = False
     #: the declared lower bound of every axis (``ps0(0:mkx)`` is ``[0]``); 1 when unstated
     lower_bounds: tuple[int, ...] = ()
+    #: an intent(inout) dummy whose live section the routine assigns whole, at this line of
+    #: the pinned source, before anything reads it: the value handed in is never read
+    overwritten_on_entry: int | None = None
 
     @property
     def user_visible(self) -> bool:
@@ -166,6 +173,12 @@ class FunctionSpec:
     #: module: ``use module, only: routine``; mangled: a private module procedure reached
     #: through its ifort external symbol behind an explicit interface; external: a bare routine
     binding: str = "module"
+    #: whether lane i of the chunk is column i (see COLUMNS)
+    columns: str = "independent"
+    #: for gathered columns: the scalar argument that counts the gathered positions, and the
+    #: arrays indexed by gathered position (1..count), not by column
+    gather_count: str | None = None
+    gathered: tuple[str, ...] = ()
 
     @property
     def kind(self) -> str:
@@ -344,6 +357,12 @@ def _argument(entry: Mapping[str, Any], dimensions: Mapping[str, int], layout: s
                 or not all(isinstance(item, int) and not isinstance(item, bool) for item in raw_bounds):
             raise PhysicsSpecError(f"{where} lower_bounds must list one integer per axis")
         lower_bounds = tuple(int(item) for item in raw_bounds)
+    overwritten = entry.get("overwritten_on_entry")
+    if overwritten is not None:
+        if role != "inout":
+            raise PhysicsSpecError(f"{where} is {role}; only an inout dummy can be overwritten on entry")
+        if not isinstance(overwritten, int) or isinstance(overwritten, bool) or overwritten < 1:
+            raise PhysicsSpecError(f"{where} overwritten_on_entry must be a source line number")
     return ArgumentSpec(
         name=name,
         role=role,
@@ -363,6 +382,7 @@ def _argument(entry: Mapping[str, Any], dimensions: Mapping[str, int], layout: s
         carrier=None if entry.get("carrier") is None else str(entry["carrier"]),
         optional=optional,
         lower_bounds=lower_bounds,
+        overwritten_on_entry=overwritten,
     )
 
 
@@ -491,6 +511,12 @@ def parse_function_spec(document: Mapping[str, Any], *, path: Path | None = None
     layout = str(document.get("layout", "column"))
     if layout not in LAYOUTS:
         raise PhysicsSpecError(f"layout must be one of {LAYOUTS}, not {layout!r}")
+    columns = str(document.get("columns", "independent"))
+    if columns not in COLUMNS:
+        raise PhysicsSpecError(f"columns must be one of {COLUMNS}, not {columns!r}")
+    gather = document.get("gathered")
+    if (gather is not None) != (columns == "gathered"):
+        raise PhysicsSpecError("columns: gathered and a gathered block go together")
     binding = str(document.get("binding", "module" if document.get("module") is not None else "external"))
     if binding not in BINDINGS:
         raise PhysicsSpecError(f"binding must be one of {BINDINGS}, not {binding!r}")
@@ -544,6 +570,26 @@ def parse_function_spec(document: Mapping[str, Any], *, path: Path | None = None
     orphans = [item.symbol for item in module_state if item.write == "parameter" and item.symbol not in owned]
     if orphans:
         raise PhysicsSpecError("module_state parameter symbols without a parameter: " + ", ".join(orphans))
+    initializers = _tuple_of_str(document.get("initializers"), "initializers")
+    initialized = [item.symbol for item in module_state if item.write == "initializer"]
+    if initialized and not initializers:
+        # nothing would set them: the image would keep zeros where the model has values
+        raise PhysicsSpecError("module_state written by an initializer, but no initializers are named: "
+                               + ", ".join(initialized))
+    gather_count, gathered = None, ()
+    if gather is not None:
+        if not isinstance(gather, Mapping) or set(gather) != {"count", "arguments"}:
+            raise PhysicsSpecError("gathered holds count and arguments")
+        by_name = {item.name: item for item in arguments}
+        gather_count = str(gather["count"])
+        counter = by_name.get(gather_count)
+        if counter is None or counter.rank != 0 or counter.dtype != "int32":
+            raise PhysicsSpecError(f"gathered count {gather_count!r} is not an integer scalar argument")
+        gathered = _tuple_of_str(gather["arguments"], "gathered arguments")
+        for name in gathered:
+            item = by_name.get(name)
+            if item is None or not item.native_shape or item.native_shape[0] != "pcols":
+                raise PhysicsSpecError(f"gathered argument {name!r} is not an argument with a column axis")
     aliases_raw = document.get("dimension_aliases") or {}
     if not isinstance(aliases_raw, Mapping):
         raise PhysicsSpecError("dimension_aliases must be a mapping")
@@ -568,11 +614,14 @@ def parse_function_spec(document: Mapping[str, Any], *, path: Path | None = None
         arguments=arguments,
         parameters=parameters,
         module_state=module_state,
-        initializers=_tuple_of_str(document.get("initializers"), "initializers"),
+        initializers=initializers,
         image=image,
         path=path,
         layout=layout,
         binding=binding,
+        columns=columns,
+        gather_count=gather_count,
+        gathered=gathered,
     )
 
 

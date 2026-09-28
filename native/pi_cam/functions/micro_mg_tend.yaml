@@ -755,6 +755,9 @@ arguments:
   range: null
   constraints: null
   description: rain effective radius (micron)
+  # zeroed over 1:ncol, 1:pver at this line before anything reads it: the
+  # value handed in is never read (the model's caller passes storage it discards)
+  overwritten_on_entry: 995
 - name: reff_snow
   role: inout
   fortran_type: real
@@ -770,6 +773,9 @@ arguments:
   range: null
   constraints: null
   description: snow effective radius (micron)
+  # zeroed over 1:ncol, 1:pver at this line before anything reads it: the
+  # value handed in is never read (the model's caller passes storage it discards)
+  overwritten_on_entry: 996
 - name: qcsevap
   role: output
   fortran_type: real

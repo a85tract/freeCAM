@@ -119,6 +119,8 @@ Model block: 9 inputs (ncol, u, v, t, pmid, exner, zm, sgh, landfrac), 3 outputs
 | `tauy` | output | out | real/float64 | pcols | scalar | N/m2 | Surface meridional wind stress |
 | `landfrac` | input | in | real/float64 | pcols | scalar | fraction | Land fraction |
 
+Module state the routine depends on: `trb_mtn_stress_mp_gravit_`, `trb_mtn_stress_mp_karman_`, `trb_mtn_stress_mp_orocnst_`, `trb_mtn_stress_mp_rair_`, `trb_mtn_stress_mp_z0fac_`.
+
 ### `dadadj` (no module)
 
 Contract `native/pi_cam/functions/dadadj.yaml`; source `components/cam/src/physics/cam/dadadj.F90`; binding `external`, layout `column`.
@@ -203,7 +205,9 @@ Model block: 19 inputs (k, p_in, t0_in, qv0_in, ql0_in, qi0_in, ni0_in, a_dc_in,
 | `ql_st_out` | output | out | real/float64 | pcols | scalar | kg/kg | In-stratus LWC. |
 | `qi_st_out` | output | out | real/float64 | pcols | scalar | kg/kg | In-stratus IWC. |
 
-Module state the routine depends on: `physconst_mp_cpair_`, `physconst_mp_latvap_`, `physconst_mp_latice_`.
+Parameters read from the module: `cldfrc2m_rhmaxi`, `cldfrc2m_rhmini`, `cldfrc_icecrit`, `cldfrc_iceopt`, `cldfrc_premib`, `cldfrc_premit`, `cldfrc_rhminh`, `cldfrc_rhminl`, `cldfrc_rhminl_adj_land`.
+
+Module state the routine depends on: `ref_pres_mp_trop_cloud_top_lev_`, `constituents_mp_cnst_name_`, `constituents_mp_qmin_`, `cldwat2m_macro_mp_i_rhminl_`, `cldwat2m_macro_mp_i_rhmini_`, `cldwat2m_macro_mp_rhminl_const_`, `cldwat2m_macro_mp_rhminl_adj_land_const_`, `cldwat2m_macro_mp_rhminh_const_`, `cldwat2m_macro_mp_premit_`, `cldwat2m_macro_mp_premib_`, `cldfrc2m_mp_rhminl_const_`, `cldfrc2m_mp_rhminl_adj_land_const_`, `cldfrc2m_mp_rhminh_const_`, `cldfrc2m_mp_premit_`, `cldfrc2m_mp_premib_`, `cldfrc2m_mp_rhmini_const_`, `cldfrc2m_mp_rhmaxi_const_`, `cldfrc2m_mp_icecrit_`, `cldfrc2m_mp_iceopt_`, `wv_saturation_mp_c3_`, `wv_saturation_mp_omeps_`, `wv_saturation_mp_plenest_`, `wv_sat_methods_mp_epsilo_`, `wv_sat_methods_mp_omeps_`, `wv_sat_methods_mp_tboil_`, `wv_sat_methods_mp_tmelt_`, `wv_sat_methods_mp_h2otrip_`, `wv_sat_methods_mp_ttrice_`, `wv_sat_methods_mp_default_idx_`, `physconst_mp_gravit_`, `physconst_mp_rair_`, `physconst_mp_rh2o_`, `physconst_mp_epsilo_`, `physconst_mp_tmelt_`, `cam_logfile_mp_iulog_`.
 
 ### `micro_mg_tend` (micro_mg1_0)
 
@@ -264,8 +268,8 @@ Model block: 26 inputs (deltatin, tn, qn, qc, qi, nc, ni, p, pdel, cldn, liqcldf
 | `rflx` | output | out | real/float64 | pcols,pverp | pverp |  | grid-box average rain flux (kg m^-2 s^-1) |
 | `sflx` | output | out | real/float64 | pcols,pverp | pverp |  | grid-box average snow flux (kg m^-2 s^-1) |
 | `qrout` | output | out | real/float64 | pcols,pver | pver |  | grid-box average rain mixing ratio (kg/kg) |
-| `reff_rain` | inout | inout | real/float64 | pcols,pver | pver |  | rain effective radius (micron) |
-| `reff_snow` | inout | inout | real/float64 | pcols,pver | pver |  | snow effective radius (micron) |
+| `reff_rain` | inout | inout | real/float64 | pcols,pver | pver |  | overwritten at source line 995 before any read; the value in is unused; rain effective radius (micron) |
+| `reff_snow` | inout | inout | real/float64 | pcols,pver | pver |  | overwritten at source line 996 before any read; the value in is unused; snow effective radius (micron) |
 | `qcsevap` | output | out | real/float64 | pcols,pver | pver |  | cloud water evaporation due to sedimentation |
 | `qisevap` | output | out | real/float64 | pcols,pver | pver |  | cloud ice sublimation due to sublimation |
 | `qvres` | output | out | real/float64 | pcols,pver | pver |  | residual condensation term to ensure RH < 100% |
@@ -413,6 +417,8 @@ Module state the routine depends on: `ref_pres_mp_trop_cloud_top_lev_`, `constit
 
 Contract `native/pi_cam/functions/momtran.yaml`; source `components/cam/src/physics/cam/zm_conv.F90`; binding `module`, layout `column`.
 Extents: ncnst=2, pcnst=57, pcols=16, pver=30, pverp=31.  Public axes: pver is the `lev` axis, pverp is the `ilev` axis.
+
+Columns are gathered: `il2g` counts the gathered positions, and `mu`, `md`, `du`, `eu`, `ed`, `dp`, `dsubcld`, `jt`, `mx`, `ideep` are indexed by gathered position, not by column.  One column is not replayed alone; a captured call is replayed whole.
 
 Hook `momtran`: `rename-references` on `zm_conv_tend` (zm_conv_intr.o); binding `fortran`; callee `zm_conv_mp_momtran_`.
 Model block: 14 inputs (lchnk, ncol, q, mu, md, du, eu, ed, dp, dsubcld, il1g, il2g, nstep, dt), 6 outputs (dqdt, pguall, pgdall, icwu, icwd, seten).
@@ -562,10 +568,14 @@ Model block: 13 inputs (ncol, lchnk, t, pmid, pdel, q, landfrac, tend_s, tend_q,
 | `flxprec` | output | out | real/float64 | pcols,pverp | pverp |  | Convective-scale flux of precip at interfaces (kg/m2/s) |
 | `flxsnow` | output | out | real/float64 | pcols,pverp | pverp |  | Convective-scale flux of snow   at interfaces (kg/m2/s) |
 
+Module state the routine depends on: `zm_conv_mp_ke_`, `zm_conv_mp_ke_lnd_`, `zm_conv_mp_zm_org_`, `physconst_mp_gravit_`, `physconst_mp_tmelt_`, `cam_logfile_mp_iulog_`, `wv_saturation_mp_c3_`, `wv_saturation_mp_omeps_`, `wv_saturation_mp_plenest_`, `wv_sat_methods_mp_epsilo_`, `wv_sat_methods_mp_omeps_`, `wv_sat_methods_mp_tboil_`, `wv_sat_methods_mp_tmelt_`, `wv_sat_methods_mp_h2otrip_`, `wv_sat_methods_mp_ttrice_`, `wv_sat_methods_mp_default_idx_`.
+
 ### `zm_convr` (zm_conv)
 
 Contract `native/pi_cam/functions/zm_convr.yaml`; source `components/cam/src/physics/cam/zm_conv.F90`; binding `module`, layout `column`.
 Extents: pcnst=57, pcols=16, pver=30, pverp=31.  Public axes: pver is the `lev` axis, pverp is the `ilev` axis.
+
+Columns are gathered: `lengath` counts the gathered positions, and `mu`, `md`, `du`, `eu`, `ed`, `dp`, `dsubcld`, `jt`, `maxg`, `ideep`, `qu`, `qd`, `dz`, `rppe`, `eps0`, `jd`, `done`, `jlcl`, `qs`, `qsthat`, `hmn`, `hsat`, `hsthat`, `wteu`, `wted`, `wtdu`, `wtmu`, `wtmd`, `wtcu`, `c0mask`, `wtrpd`, `qds`, `wtevp` are indexed by gathered position, not by column.  One column is not replayed alone; a captured call is replayed whole.
 
 Hook `zm_convr`: `rename-references` on `zm_conv_tend` (zm_conv_intr.o); binding `fortran`; callee `zm_conv_mp_zm_convr_`.
 Model block: 16 inputs (lchnk, ncol, t, qh, pblh, zm, geos, zi, pap, paph, dpp, delt, tpert, lengath, ql, landfrac), 45 outputs (prec, jctop, jcbot, qtnd, heat, mcon, cme, cape, dlf, pflx, zdu, rprd, mu, md, du, eu, ed, dp, dsubcld, ql, rliq, qu, qd, dz, rppe, eps0, cu, evp, tu, td, qs, qsthat, hmn, hsat, hsthat, wteu, wted, wtdu, wtmu, wtmd, wtcu, c0mask, wtrpd, qds, wtevp).
@@ -642,6 +652,8 @@ Model block: 16 inputs (lchnk, ncol, t, qh, pblh, zm, geos, zi, pap, paph, dpp, 
 | `wtrpd` | output | out | real/float64 | pcols,pver | pver |  | g: rprd pre-unit conversion |
 | `qds` | output | out | real/float64 | pcols,pver | pver |  | wg downdraft saturation mixing ratio |
 | `wtevp` | output | out | real/float64 | pcols,pver | pver |  | g: evp pre-unit conversion |
+
+Module state the routine depends on: `zm_conv_mp_c0_lnd_`, `zm_conv_mp_c0_ocn_`, `zm_conv_mp_cpres_`, `zm_conv_mp_eps1_`, `zm_conv_mp_grav_`, `zm_conv_mp_limcnv_`, `zm_conv_mp_no_deep_pbl_`, `zm_conv_mp_rgas_`, `zm_conv_mp_rgrav_`, `zm_conv_mp_rl_`, `zm_conv_mp_tau_`, `zm_conv_mp_tfreez_`, `zm_conv_mp_zm_org_`, `phys_control_mp_cam_physpkg_`, `physconst_mp_cpwv_`, `physconst_mp_gravit_`, `physconst_mp_rh2o_`, `cam_logfile_mp_iulog_`, `wv_saturation_mp_c3_`, `wv_saturation_mp_omeps_`, `wv_saturation_mp_plenest_`, `wv_sat_methods_mp_epsilo_`, `wv_sat_methods_mp_omeps_`, `wv_sat_methods_mp_tboil_`, `wv_sat_methods_mp_tmelt_`, `wv_sat_methods_mp_h2otrip_`, `wv_sat_methods_mp_ttrice_`, `wv_sat_methods_mp_default_idx_`.
 
 ## Block contracts
 

@@ -6,16 +6,19 @@ import copy
 import json
 from pathlib import Path
 
+import numpy as np
 import pytest
 import yaml
 
 from freecam.physics import PhysicsSpecError, load_function_spec
 from freecam.physics.spec import default_functions_dir, parse_function_spec
+from freecam.physics.column import InvalidInput, coerce_inputs
 from freecam.physics.verify import (
     VerificationReport,
     declaration_units,
     verify_against_inventory,
     verify_against_source,
+    verify_overwritten_on_entry,
 )
 
 PROJECT = Path(__file__).resolve().parents[2]
@@ -224,3 +227,104 @@ def test_uwshcu_boundary_is_single_column_and_complete() -> None:
     assert pinned["constituents_mp_cnst_type_"].dtype == "S3"
     assert pinned["uwshcu_mp_rpen_"].write == "parameter"
     assert pinned["uwshcu_mp_xlv_"].write == "snapshot"
+
+
+def test_overwritten_on_entry_is_for_an_inout_at_a_source_line() -> None:
+    document = copy.deepcopy(_document("micro_mg_tend"))
+    reff = next(item for item in document["arguments"] if item["name"] == "reff_rain")
+    assert parse_function_spec(document).argument("reff_rain").overwritten_on_entry == 995
+    reff["overwritten_on_entry"] = "995"
+    with pytest.raises(PhysicsSpecError, match="source line number"):
+        parse_function_spec(document)
+    reff["overwritten_on_entry"] = 995
+    tn = next(item for item in document["arguments"] if item["name"] == "tn")
+    tn["overwritten_on_entry"] = 900
+    with pytest.raises(PhysicsSpecError, match="only an inout dummy"):
+        parse_function_spec(document)
+
+
+def test_a_dummy_overwritten_on_entry_may_carry_a_non_finite_value_in() -> None:
+    spec = load_function_spec("micro_mg_tend")
+    inputs = {item.name: np.zeros(item.public_extent(spec.dimensions)) for item in spec.user_arguments}
+    inputs["reff_rain"] = np.full_like(inputs["reff_rain"], np.nan)
+    assert np.isnan(coerce_inputs(spec, inputs)["reff_rain"]).all()
+    inputs["qc"] = np.full_like(inputs["qc"], np.nan)
+    with pytest.raises(InvalidInput, match="qc contains non-finite"):
+        coerce_inputs(spec, inputs)
+
+
+def test_micro_mg_tend_zeroes_reff_rain_and_reff_snow_before_reading_them() -> None:
+    spec = load_function_spec("micro_mg_tend")
+    record = _inventory_record(spec.qualified_name)
+    source = (PROJECT / "external/iCESM1.3.1_fzhu" / record["source"]).read_text(
+        encoding="utf-8", errors="replace").splitlines()
+    report = verify_overwritten_on_entry(spec, source, line_start=record["line_start"], line_end=record["line_end"])
+    assert report.passed, report.failures
+    assert len(report.checks) == 2
+
+
+_TOY_ROUTINE = """subroutine toy(ncol, a, &
+     b)
+  integer, intent(in) :: ncol
+  real(r8), intent(inout) :: a(pcols,pver) ! a (m)
+  real(r8), intent(in) :: b(pcols)
+  {before}
+  a(1:ncol,1:pver) = 0._r8   ! the claim
+  a(1,1) = b(1)
+{contains}end subroutine toy"""
+
+
+@pytest.mark.parametrize("before, contains, line, message", [
+    ("", "", 7, None),
+    ("b(1) = a(1,1)", "", 7, "uses it before the assignment"),
+    ("", "contains\n  subroutine inner\n  a = 1\n  end subroutine inner\n", 7, "internal procedure"),
+    ("", "", 8, "a part of it"),
+    ("", "", 5, "not an assignment"),
+])
+def test_the_overwrite_claim_is_checked_against_the_routine(before, contains, line, message) -> None:
+    from freecam.physics.spec import parse_function_spec as parse
+    document = {
+        "schema_version": 1, "function": "toy", "qualified_name": "toymod::toy", "routine": "toy", "source": "toy.F90",
+        "module": "toymod", "dimensions": {"pcols": 4, "pver": 3},
+        "arguments": [
+            {"name": "ncol", "role": "structural", "fortran_type": "integer", "dtype": "int32", "rank": 0,
+             "intent": "in", "native_shape": [], "value": 1},
+            {"name": "a", "role": "inout", "fortran_type": "real", "dtype": "float64", "rank": 2, "intent": "inout",
+             "native_shape": ["pcols", "pver"], "public_shape": ["pver"], "overwritten_on_entry": line},
+            {"name": "b", "role": "input", "fortran_type": "real", "dtype": "float64", "rank": 1, "intent": "in",
+             "native_shape": ["pcols"], "public_shape": []},
+        ],
+        "image": {"archive_members": ["toy.o"], "stubs": {}, "base_address": 0x50000000},
+    }
+    source = _TOY_ROUTINE.format(before=before or "! nothing", contains=contains).splitlines()
+    report = verify_overwritten_on_entry(parse(document), source, line_start=1, line_end=len(source))
+    if message is None:
+        assert report.passed, report.failures
+    else:
+        assert not report.passed and message in report.failures[0]
+
+
+def test_gathered_columns_name_their_count_and_arrays() -> None:
+    spec = load_function_spec("zm_convr")
+    assert spec.columns == "gathered" and spec.gather_count == "lengath" and "mu" in spec.gathered
+    assert load_function_spec("zm_conv_evap").columns == "independent"
+    document = copy.deepcopy(_document("zm_convr"))
+    document.pop("gathered")
+    with pytest.raises(PhysicsSpecError, match="go together"):
+        parse_function_spec(document)
+    document = copy.deepcopy(_document("zm_convr"))
+    document["gathered"]["count"] = "t"
+    with pytest.raises(PhysicsSpecError, match="integer scalar"):
+        parse_function_spec(document)
+    document = copy.deepcopy(_document("zm_convr"))
+    document["gathered"]["arguments"].append("delt")
+    with pytest.raises(PhysicsSpecError, match="column axis"):
+        parse_function_spec(document)
+
+
+def test_state_set_by_an_initializer_needs_an_initializer() -> None:
+    document = copy.deepcopy(_document("instratus_condensate"))
+    assert parse_function_spec(document).initializers == ("wv_saturation_mp_wv_sat_init_",)
+    document["initializers"] = []
+    with pytest.raises(PhysicsSpecError, match="no initializers are named"):
+        parse_function_spec(document)

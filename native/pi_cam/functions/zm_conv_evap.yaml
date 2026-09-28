@@ -15,6 +15,11 @@ source: components/cam/src/physics/cam/zm_conv.F90
 module: zm_conv
 binding: module
 layout: column
+# A column's answer can differ in the last bit with its lane in the chunk: the
+# compiled column loop rounds lanes by position.  Replayed alone (lane 0, ncol 1)
+# 106 of the 2240 columns captured on ranks 0-7 differ in tend_s; replayed at
+# their own lane with the call's ncol and every other lane zero, none does.
+# The captured frame is complete; bit-for-bit replay is a whole call at a time.
 dimensions: {pcols: 16, pver: 30, pverp: 31, pcnst: 57}
 public_axes: {pver: lev, pverp: ilev}
 arguments:

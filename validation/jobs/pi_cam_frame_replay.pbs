@@ -17,9 +17,11 @@
 # (<run dir>/../frame-capture); PYCAM_REPLAY_KERNEL the kernel name in the
 # capture files when it differs from the function's; PYCAM_REPLAY_SHARDS the
 # number of processes the rank files are split over (default 32), each writing
-# a shard record the last step merges.  The record lands in
-# validation/pi_cam_<function>_frame_replay.json unless PYCAM_REPLAY_OUTPUT
-# says otherwise.
+# a shard record the last step merges.  PYCAM_REPLAY_MODE=chunk replays every
+# call whole instead of lane by lane (tools/replay_pi_cam_frame_capture.py
+# --mode).  The record lands in validation/pi_cam_<function>_frame_replay.json
+# (..._frame_replay_chunk.json in chunk mode) unless PYCAM_REPLAY_OUTPUT says
+# otherwise.
 set -euo pipefail
 
 source "${FREECAM_REPO:-${PBS_O_WORKDIR:-$PWD}}/validation/jobs/common.sh"
@@ -41,6 +43,12 @@ fi
 if [ -n "${PYCAM_REPLAY_OUTPUT:-}" ]; then
   flags+=(--output "${PYCAM_REPLAY_OUTPUT}")
 fi
+mode=${PYCAM_REPLAY_MODE:-lane}
+flags+=(--mode "${mode}")
+suffix=""
+if [ "${mode}" = chunk ]; then
+  suffix=_chunk
+fi
 shards=${PYCAM_REPLAY_SHARDS:-32}
 status=0
 for ((i = 0; i < shards; i++)); do
@@ -51,4 +59,4 @@ for job in $(jobs -p); do
 done
 echo "shards finished (any mismatch: ${status})"
 "${python}" tools/replay_pi_cam_frame_capture.py "${flags[@]}" --merge-shards "${shards}" && \
-  rm -f "${PYCAM_REPLAY_OUTPUT:-validation/pi_cam_${PYCAM_REPLAY_FUNCTION}_frame_replay.json}".shard-*-of-"${shards}".json
+  rm -f "${PYCAM_REPLAY_OUTPUT:-validation/pi_cam_${PYCAM_REPLAY_FUNCTION}_frame_replay${suffix}.json}".shard-*-of-"${shards}".json

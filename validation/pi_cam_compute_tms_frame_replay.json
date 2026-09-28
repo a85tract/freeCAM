@@ -1,0 +1,60 @@
+{
+  "schema_version": 1,
+  "what": "every frame captured at the kernel's pause replayed through the standalone function; bit-for-bit or not",
+  "function": "trb_mtn_stress::compute_tms",
+  "kernel": "compute_tms",
+  "layout": "column",
+  "binding": "module",
+  "capture": {
+    "pbs_job_id": "7622015.desched1",
+    "run_tag": "pi_cam_pausable_kernels-a-capture_50step",
+    "native_library_sha256": "15cb94f9cd96c99747b68b8da66d30ee7420cb1004d7a2149a900633dbc98708",
+    "kernels": [
+      "micro_mg_tend",
+      "compute_uwshcu_inv",
+      "zm_convr",
+      "zm_conv_evap",
+      "momtran",
+      "compute_tms",
+      "compute_eddy_diff"
+    ],
+    "bfb_record": "pi_cam_pausable_kernels-a-capture_vs_oracle_50step_bfb.json"
+  },
+  "rank_files": 512,
+  "calls": 10240,
+  "samples": 138260,
+  "compared_values": 414780,
+  "steps_covered": [
+    0,
+    2,
+    5,
+    7,
+    10,
+    12,
+    15,
+    17,
+    20,
+    22,
+    25,
+    27,
+    30,
+    32,
+    35,
+    37,
+    40,
+    42,
+    45,
+    47
+  ],
+  "statuses": {
+    "ok": 138260
+  },
+  "mismatches": [],
+  "mismatches_truncated": false,
+  "bfb": true,
+  "image_sha256": "6e13d91cbdf9504ce9a9fd03982ba4e08b218f934a11e8f2a2a52fff8fe158ce",
+  "module_state_digest": "f8c32c3a01d6d6bf6cdb5946056e0862ddadd891f2b3433d88c778c0a0911cac",
+  "seconds": 104.8,
+  "pbs_job_id": "7623850.desched1",
+  "shards": 32
+}

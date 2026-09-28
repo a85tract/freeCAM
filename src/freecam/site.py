@@ -29,7 +29,7 @@ import re
 import sys
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Iterable, Mapping, Sequence
+from typing import Any, Iterable, Mapping, Sequence
 
 __all__ = [
     "Check",
@@ -47,6 +47,7 @@ __all__ = [
     "setting",
     "site_file",
     "site_relative",
+    "spell_site_paths",
 ]
 
 SITE_FILE_NAME = "site.env"
@@ -199,6 +200,49 @@ def site_relative(target: str | Path, *, repo: str | Path | None = None) -> str:
                 return variable
             if text.startswith(spelled + "/"):
                 return variable + text[len(spelled):]
+    return text
+
+
+def spell_site_paths(value: Any, *, repo: str | Path | None = None) -> Any:
+    """Every site path inside a record's strings spelled as :func:`site_relative` spells a path.
+
+    Paths also stand inside strings -- a compiler's ``-I/...``, a ``key=/...`` -- so each
+    occurrence is replaced where it starts: this checkout by the repo-relative remainder
+    (``.`` for the checkout itself), the case root by ``${FREECAM_CASES}``, then the scratch
+    root and ``$WORK``.  Lists and mappings are walked; other values pass through.
+    """
+
+    if isinstance(value, Mapping):
+        return {key: spell_site_paths(item, repo=repo) for key, item in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [spell_site_paths(item, repo=repo) for item in value]
+    if not isinstance(value, str) or "/" not in value:
+        return value
+    user = os.environ.get("USER", "")
+    try:
+        root = repository_root(repo) if repo is not None else repository_root()
+    except FileNotFoundError:
+        root = None
+    work = os.environ.get("WORK") or (f"/glade/work/{user}" if user else "")
+    roots: list[tuple[str, str]] = []
+    if root is not None:
+        roots.append((str(root), ""))
+    cases = os.environ.get("FREECAM_CASES") or (str(root.parent / "CESM_cases") if root is not None else "")
+    roots.append((cases, "${FREECAM_CASES}"))
+    roots.append((os.environ.get("FREECAM_SCRATCH") or os.environ.get("SCRATCH")
+                  or (f"/glade/derecho/scratch/{user}" if user else ""), "${FREECAM_SCRATCH}"))
+    roots.append((work, "${WORK}"))
+    text = value
+    for prefix, variable in roots:
+        if not prefix:
+            continue
+        for spelled in sorted({prefix.rstrip("/"), str(Path(prefix).resolve()).rstrip("/")}, key=len, reverse=True):
+            if variable:
+                text = re.sub(re.escape(spelled) + r"(?=/|$|[\s\"':])", lambda _: variable, text)
+            else:
+                # this checkout: its paths become relative, the checkout itself "."
+                text = re.sub(re.escape(spelled) + r"/", "", text)
+                text = re.sub(re.escape(spelled) + r"(?=$|[\s\"':])", ".", text)
     return text
 
 

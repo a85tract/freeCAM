@@ -15,6 +15,19 @@ source: components/cam/src/physics/cam/zm_conv.F90
 module: zm_conv
 binding: module
 layout: column
+# The routine packs the columns that convect first: ideep(1:lengath) names them,
+# and its gathered outputs (mu, md, du, eu, ed, dp, jt, maxg, ...) are indexed by
+# that packing, not by column.  One column cannot be replayed alone; a captured
+# chunk is replayed whole.
+columns: gathered
+gathered:
+  # ideep(1:lengath) names the gathered columns.  These are cldprp's and closure's
+  # gathered arrays, and wtcu/wtrpd copied whole from gathered locals (716-717):
+  # past lengath they hold whatever those locals held, which no replay reproduces
+  count: lengath
+  arguments: [mu, md, du, eu, ed, dp, dsubcld, jt, maxg, ideep, qu, qd, dz, rppe, eps0, jd,
+              done, jlcl, qs, qsthat, hmn, hsat, hsthat, wteu, wted, wtdu, wtmu, wtmd, wtcu,
+              c0mask, wtrpd, qds, wtevp]
 dimensions: {pcols: 16, pver: 30, pverp: 31, pcnst: 57}
 public_axes: {pver: lev, pverp: ilev}
 arguments:

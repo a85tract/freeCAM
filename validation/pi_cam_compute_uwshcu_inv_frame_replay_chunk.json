@@ -1,0 +1,70 @@
+{
+  "schema_version": 1,
+  "what": "every call captured at the kernel's pause replayed whole through the standalone routine, every live lane at the model's ncol; positions an intent(out) array was left unwritten, and positions past the gathered count of a gathered array, are counted, not compared",
+  "mode": "chunk",
+  "function": "uwshcu::compute_uwshcu_inv",
+  "kernel": "compute_uwshcu_inv",
+  "layout": "column",
+  "columns": "independent",
+  "structural_from_capture": [
+    "mix",
+    "mkx",
+    "iend",
+    "ncnst",
+    "lchnk"
+  ],
+  "binding": "module",
+  "capture": {
+    "pbs_job_id": "7622015.desched1",
+    "run_tag": "pi_cam_pausable_kernels-a-capture_50step",
+    "native_library_sha256": "15cb94f9cd96c99747b68b8da66d30ee7420cb1004d7a2149a900633dbc98708",
+    "kernels": [
+      "micro_mg_tend",
+      "compute_uwshcu_inv",
+      "zm_convr",
+      "zm_conv_evap",
+      "momtran",
+      "compute_tms",
+      "compute_eddy_diff"
+    ],
+    "bfb_record": "pi_cam_pausable_kernels-a-capture_vs_oracle_50step_bfb.json"
+  },
+  "rank_files": 512,
+  "calls": 10240,
+  "samples": 10240,
+  "compared_values": 569078160,
+  "steps_covered": [
+    1,
+    3,
+    6,
+    8,
+    11,
+    13,
+    16,
+    18,
+    21,
+    23,
+    26,
+    28,
+    31,
+    33,
+    36,
+    38,
+    41,
+    43,
+    46,
+    48
+  ],
+  "statuses": {
+    "ok": 10240
+  },
+  "mismatches": [],
+  "mismatches_truncated": false,
+  "bfb": true,
+  "image_sha256": "e228f72801adb9f2a62eb3868b0c4af618dfa512dd49d1b9e498178cb5a0279e",
+  "module_state_digest": "7645dabf8136936d040b40f56037ebc23fc4989d28864ac9a7f759710bb2350f",
+  "seconds": 198.2,
+  "pbs_job_id": "7630954.desched1",
+  "unwritten_positions": {},
+  "shards": 32
+}
