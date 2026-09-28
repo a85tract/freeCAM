@@ -247,9 +247,32 @@ arguments:
 parameters: {}
 module_state: []
 image:
-  archive_members: [zm_conv.o]
+  archive_members:
+  - zm_conv.o
   stubs:
-    inert: []
-    fail_closed: []
-    abort: []
+    inert:
+    - spmd_utils_mp_masterproc_
+    fail_closed:
+    - cam_logfile_mp_iulog_
+    - cloud_fraction_mp_cldfrc_fice_
+    - constituents_mp_cnst_get_type_byind_
+    - dycore_mp_get_resolution_
+    - phys_control_mp_cam_physpkg_is_
+    - phys_grid_mp_get_rlat_p_
+    - phys_grid_mp_get_rlon_p_
+    - physconst_mp_cpwv_
+    - physconst_mp_epsilo_
+    - physconst_mp_gravit_
+    - physconst_mp_rair_
+    - physconst_mp_rh2o_
+    - physconst_mp_tmelt_
+    - water_tracer_vars_mp_iwspec_
+    - water_tracer_vars_mp_trace_water_
+    - water_tracer_vars_mp_wtrc_iatype_
+    - water_tracer_vars_mp_wtrc_ntype_
+    - water_tracers_mp_wtrc_ratio_
+    - wv_saturation_mp_qsat_
+    - wv_saturation_mp_qsat_water_
+    abort:
+    - shr_sys_mod_mp_shr_sys_abort_
   base_address: 1342177280
