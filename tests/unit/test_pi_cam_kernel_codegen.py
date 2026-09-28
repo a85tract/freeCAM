@@ -253,3 +253,24 @@ def test_a_character_carrier_must_be_one_int32_per_chunk_and_intent_out() -> Non
         DirectKernelArgument.from_payload({**payload, "intent": "inout"})
     with pytest.raises(PICAMConfigurationError, match="one int32 value per chunk"):
         DirectKernelArgument.from_payload({**payload, "dtype": "float64"})
+
+
+def test_logical_array_dummies_get_arrays_of_the_section_and_outputs_are_written_back() -> None:
+    """A standalone function hands a logical dummy of any rank: the int32 carrier becomes a logical
+    array of the chunk's section before the call, and an intent(out) one is read back after it."""
+
+    from freecam.pi_cam.kernel_codegen import DirectKernel, DirectKernelArgument
+
+    def argument(field: str, rank: int, intent: str) -> DirectKernelArgument:
+        return DirectKernelArgument(field=field, dtype="<i4", rank=rank, intent=intent, chunk_axis=rank,
+                                    fortran_type="logical")
+
+    kernel = DirectKernel(name="flags", routine="original_flags", symbol="pycam_flags_v1", arguments=(
+        argument("f.scalar", 1, "in"), argument("f.domomtran", 2, "in"), argument("f.done", 3, "out")))
+    source = generate_direct_kernel_module([kernel])
+    assert "  logical :: field_1_value" in source                                  # a scalar a chunk, as before
+    assert "  logical, allocatable :: field_2_value(:)" in source
+    assert "  logical, allocatable :: field_3_value(:,:)" in source
+    assert "    field_3_value = (field_3(:,:,chunk) /= 0_c_int32_t)" in source
+    assert "    field_3(:,:,chunk) = merge(1_c_int32_t, 0_c_int32_t, field_3_value)" in source
+    assert "merge(1_c_int32_t, 0_c_int32_t, field_2_value)" not in source           # an input is not written back

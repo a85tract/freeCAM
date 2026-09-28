@@ -336,20 +336,221 @@ arguments:
     public_shape: []
     units: kg/kg
     description: In-stratus IWC.
-parameters: {}
+parameters:
+  cldfrc_rhminl:
+    dtype: float64
+    symbols: [cldwat2m_macro_mp_rhminl_const_, cldfrc2m_mp_rhminl_const_]
+    default: 0.87
+    range: [0.7, 0.99]
+    description: Minimum RH for low stratus.
+  cldfrc_rhminl_adj_land:
+    dtype: float64
+    symbols: [cldwat2m_macro_mp_rhminl_adj_land_const_, cldfrc2m_mp_rhminl_adj_land_const_]
+    default: 0.1
+    range: [0.0, 0.2]
+    description: Snow-free-land adjustment to rhminl.
+  cldfrc_rhminh:
+    dtype: float64
+    symbols: [cldwat2m_macro_mp_rhminh_const_, cldfrc2m_mp_rhminh_const_]
+    default: 0.8
+    range: [0.6, 0.99]
+    description: Minimum RH for high stable clouds.
+  cldfrc_premit:
+    dtype: float64
+    symbols: [cldwat2m_macro_mp_premit_, cldfrc2m_mp_premit_]
+    default: 40000.0
+    range: [20000.0, 60000.0]
+    units: Pa
+    description: Top of the mid-level RH ramp.
+  cldfrc_premib:
+    dtype: float64
+    symbols: [cldwat2m_macro_mp_premib_, cldfrc2m_mp_premib_]
+    default: 70000.0
+    range: [50000.0, 90000.0]
+    units: Pa
+    constraints: ['greater_than:cldfrc_premit']
+    description: Bottom of the mid-level RH ramp.
+  cldfrc2m_rhmini:
+    dtype: float64
+    symbols: [cldfrc2m_mp_rhmini_const_]
+    default: 0.8
+    range: [0.6, 0.99]
+    description: Minimum RH for ice stratus.
+  cldfrc2m_rhmaxi:
+    dtype: float64
+    symbols: [cldfrc2m_mp_rhmaxi_const_]
+    default: 1.1
+    range: [1.0, 1.3]
+    constraints: ['greater_than:cldfrc2m_rhmini']
+    description: RH at which ice stratus fraction reaches one.
+  cldfrc_icecrit:
+    dtype: float64
+    symbols: [cldfrc2m_mp_icecrit_]
+    default: 0.93
+    range: [0.8, 1.0]
+    description: Critical RH for ice cloud under iceopt 4.
+  cldfrc_iceopt:
+    dtype: int32
+    symbols: [cldfrc2m_mp_iceopt_]
+    default: 5
+    values: [1, 2, 3, 4, 5]
+    description: Ice-cloud-fraction parameterization selector (categorical).
 module_state:
-  - symbol: physconst_mp_cpair_
+  - symbol: ref_pres_mp_trop_cloud_top_lev_
+    dtype: int32
+    shape: []
+    write: snapshot
+    expected: 1
+    note: 'Lower bound of nearly every vertical loop.  `protected`, set only by ref_pres_init from the reference pressures
+      (PIO + initial file), so the standalone image takes the live value; 1 for the L30 grid.
+
+      '
+  - symbol: constituents_mp_cnst_name_
+    dtype: S16
+    shape: [57]
+    write: snapshot
+    expected: [Q, CLDLIQ, CLDICE, NUMLIQ, NUMICE]
+    note: 'cnst_get_ind(''CLDLIQ''/''CLDICE'') scans this table and endruns if absent. The whole table is taken from
+      the live model; the first five slots must be these names or the configuration is not the one this spec describes.
+
+      '
+  - symbol: constituents_mp_qmin_
+    dtype: float64
+    shape: [57]
+    write: snapshot
+    expected: [1.0e-12, 0.0, 0.0, 0.0, 0.0]
+  - symbol: cldwat2m_macro_mp_i_rhminl_
+    dtype: int32
+    shape: []
+    write: declared
+    value: 0
+    note: Guards the six pointer dummies; non-zero only under UNICON.
+  - symbol: cldwat2m_macro_mp_i_rhmini_
+    dtype: int32
+    shape: []
+    write: declared
+    value: 0
+  - symbol: cldwat2m_macro_mp_rhminl_const_
+    dtype: float64
+    shape: []
+    write: parameter
+  - symbol: cldwat2m_macro_mp_rhminl_adj_land_const_
+    dtype: float64
+    shape: []
+    write: parameter
+  - symbol: cldwat2m_macro_mp_rhminh_const_
+    dtype: float64
+    shape: []
+    write: parameter
+  - symbol: cldwat2m_macro_mp_premit_
+    dtype: float64
+    shape: []
+    write: parameter
+  - symbol: cldwat2m_macro_mp_premib_
+    dtype: float64
+    shape: []
+    write: parameter
+  - symbol: cldfrc2m_mp_rhminl_const_
+    dtype: float64
+    shape: []
+    write: parameter
+  - symbol: cldfrc2m_mp_rhminl_adj_land_const_
+    dtype: float64
+    shape: []
+    write: parameter
+  - symbol: cldfrc2m_mp_rhminh_const_
+    dtype: float64
+    shape: []
+    write: parameter
+  - symbol: cldfrc2m_mp_premit_
+    dtype: float64
+    shape: []
+    write: parameter
+  - symbol: cldfrc2m_mp_premib_
+    dtype: float64
+    shape: []
+    write: parameter
+  - symbol: cldfrc2m_mp_rhmini_const_
+    dtype: float64
+    shape: []
+    write: parameter
+  - symbol: cldfrc2m_mp_rhmaxi_const_
+    dtype: float64
+    shape: []
+    write: parameter
+  - symbol: cldfrc2m_mp_icecrit_
+    dtype: float64
+    shape: []
+    write: parameter
+  - symbol: cldfrc2m_mp_iceopt_
+    dtype: int32
+    shape: []
+    write: parameter
+  - symbol: wv_saturation_mp_c3_
+    dtype: float64
+    shape: []
+    write: initializer
+  - symbol: wv_saturation_mp_omeps_
+    dtype: float64
+    shape: []
+    write: initializer
+  - symbol: wv_saturation_mp_plenest_
+    dtype: int32
+    shape: []
+    write: initializer
+  - symbol: wv_sat_methods_mp_epsilo_
+    dtype: float64
+    shape: []
+    write: initializer
+  - symbol: wv_sat_methods_mp_omeps_
+    dtype: float64
+    shape: []
+    write: initializer
+  - symbol: wv_sat_methods_mp_tboil_
+    dtype: float64
+    shape: []
+    write: initializer
+  - symbol: wv_sat_methods_mp_tmelt_
+    dtype: float64
+    shape: []
+    write: initializer
+  - symbol: wv_sat_methods_mp_h2otrip_
+    dtype: float64
+    shape: []
+    write: initializer
+  - symbol: wv_sat_methods_mp_ttrice_
+    dtype: float64
+    shape: []
+    write: initializer
+  - symbol: wv_sat_methods_mp_default_idx_
+    dtype: int32
+    shape: []
+    write: verify
+  - symbol: physconst_mp_gravit_
     dtype: float64
     shape: []
     write: verify
-  - symbol: physconst_mp_latvap_
+  - symbol: physconst_mp_rair_
     dtype: float64
     shape: []
     write: verify
-  - symbol: physconst_mp_latice_
+  - symbol: physconst_mp_rh2o_
     dtype: float64
     shape: []
     write: verify
+  - symbol: physconst_mp_epsilo_
+    dtype: float64
+    shape: []
+    write: verify
+  - symbol: physconst_mp_tmelt_
+    dtype: float64
+    shape: []
+    write: verify
+  - symbol: cam_logfile_mp_iulog_
+    dtype: int32
+    shape: []
+    write: verify
+    expected: 6
 initializers: []
 image:
   archive_members:
