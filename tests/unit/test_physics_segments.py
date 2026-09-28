@@ -219,3 +219,179 @@ def test_an_empty_output_takes_any_empty_answer_and_nothing_else() -> None:
     assert frame.write_back({"nothing": np.zeros((0, 30)), "empty_rows": np.zeros((0, 30))}) == ("nothing", "empty_rows")
     with pytest.raises(PhysicsError, match="no storage"):
         frame.write_back({"nothing": np.zeros((2, 30)), "empty_rows": np.zeros((0, 30))})
+
+
+# -- batched mode: every chunk waits at the kernel together ---------------------
+
+import dataclasses  # noqa: E402
+
+from freecam.physics.segments import ByChunk, ChunkBatch  # noqa: E402
+
+
+class BatchedFakeRunner(FakeRunner):
+    """The fake stage with the runner's batched mode: a slot per chunk, one live at a time.
+
+    A slot runs its own chunk only; its program counter and pause token are kept
+    while another slot is live.  Kernel a is also handed the chunk's column count
+    ``n`` (a chunk's own) and a time step ``dt`` (every chunk's alike).
+    """
+
+    offers_batch = True
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.batched = False
+
+    def batch_begin(self, cid, mask):
+        ctx = self.contexts[cid]
+        ctx.update(mask=dict(mask), pc=None, token=None, calls=0, live=None,
+                   slot_pc={0: (0, 0, "a"), 1: (1, 0, "a")}, slot_token={0: None, 1: None})
+        self.batched = True
+        self.log.append(("batch_begin",))
+        return 2
+
+    def batch_select(self, cid, slot):
+        ctx = self.contexts[cid]
+        if ctx["live"] is not None:
+            ctx["slot_pc"][ctx["live"]], ctx["slot_token"][ctx["live"]] = ctx["pc"], ctx["token"]
+        ctx["live"], ctx["pc"], ctx["token"] = slot, ctx["slot_pc"][slot], ctx["slot_token"][slot]
+        self.log.append(("select", slot))
+
+    def batch_advance(self, cid):
+        return self._advance(cid)
+
+    def batch_end(self, cid):
+        ctx = self.contexts[cid]
+        ctx["slot_pc"][ctx["live"]] = ctx["pc"]
+        assert all(pc is None for pc in ctx["slot_pc"].values()), ctx["slot_pc"]
+        self.batched = False
+        self.log.append(("batch_end",))
+
+    def frame(self, cid):
+        # a pause has one token, however often its frame is read
+        ctx = self.contexts[cid]
+        token = ctx["token"]
+        frame = super().frame(cid)
+        if token is not None:
+            ctx["token"] = token
+            frame = dataclasses.replace(frame, token=token)
+        if frame.kernel == "a":
+            extra = (FrameArgument("n", np.array(frame.ncol, dtype=np.int32), "in"),
+                     FrameArgument("dt", np.array(1800.0), "in"))
+            frame = dataclasses.replace(frame, arguments=frame.arguments + extra)
+        return frame
+
+    def _next(self, pc):
+        chunk_i, substep, kernel = pc
+        if kernel == "a":
+            return (chunk_i, substep, "b")
+        if substep == 0:
+            return (chunk_i, 1, "a")
+        if chunk_i == 0 and not self.batched:
+            return (1, 0, "a")
+        return None
+
+
+class StackedOriginal:
+    """A chunk-batch model computing kernel a's original on the stacked lanes, recording what it saw."""
+
+    takes_chunk_batches = True
+
+    def __init__(self) -> None:
+        self.seen: list[ChunkBatch] = []
+
+    def __call__(self, batch: ChunkBatch):
+        self.seen.append(batch)
+        return _original_a(batch.inputs)
+
+
+def _whole() -> FakeRunner:
+    whole = FakeRunner()
+    assert whole.start(whole.create("s"), {"a": False, "b": False}) == SegmentEvent.DONE
+    return whole
+
+
+def test_batched_chunks_are_answered_in_one_call_a_round_and_leave_what_the_original_did() -> None:
+    runner, model = BatchedFakeRunner(), StackedOriginal()
+    stage = SegmentedStage("s", runner)
+    stage.run({"a": model, "b": None}, batched=True)
+    whole = _whole()
+    for c in (10, 11):
+        assert np.array_equal(whole.y[c], runner.y[c]) and np.array_equal(whole.z[c], runner.z[c])
+    # two rounds (a's two substeps), each one call for both chunks: 6 + 5 columns stacked
+    assert stage.counters.model_calls == 2 and stage.counters.pauses == 4 and stage.counters.resumes == 4
+    first = model.seen[0]
+    assert first.rows == (6, 5) and first.lchnks == (10, 11) and first.columns == 11
+    assert first.inputs["x"].shape == (11, PVER) and first.stacked == {"x", "z"}
+    assert np.array_equal(first.inputs["x"][6:], np.full((5, PVER), 5.0))
+    assert float(first.inputs["dt"]) == 1800.0 and "n" not in first.inputs           # alike: once
+    assert [int(v) for v in first.per_chunk["n"]] == [6, 5]                            # a chunk's own
+    assert stage.idle and ("batch_end",) in runner.log
+
+
+def test_the_chunks_run_interleaved_and_the_last_parked_resumes_first() -> None:
+    runner = BatchedFakeRunner()
+    SegmentedStage("s", runner).run({"a": StackedOriginal(), "b": None}, batched=True)
+    steps = [e for e in runner.log if e[0] in ("select", "frame", "resume")]
+    assert steps[:6] == [("select", 0), ("frame", "a", 10, 0), ("select", 1), ("frame", "a", 11, 0),
+                         ("select", 1), ("frame", "a", 11, 0)]
+    assert steps[6] == ("resume", "a")                                                 # slot 1 first, it is live
+
+
+def test_a_per_chunk_model_is_called_for_each_chunk_and_by_chunk_matches_it() -> None:
+    plain, wrapped = BatchedFakeRunner(), BatchedFakeRunner()
+    calls = []
+
+    def per_chunk(batch):
+        calls.append(batch["x"].shape[0])
+        return _original_a(batch)
+
+    first = SegmentedStage("s", plain)
+    first.run({"a": per_chunk, "b": None}, batched=True)
+    assert first.counters.model_calls == 4 and calls == [5, 6, 5, 6]                   # at resume, last first
+    second = SegmentedStage("s", wrapped)
+    second.run({"a": ByChunk(per_chunk), "b": None}, batched=True)
+    assert second.counters.model_calls == 2
+    assert calls[4:] == [6, 5, 6, 5]                                                   # chunk order inside a call
+    for c in (10, 11):
+        assert np.array_equal(plain.y[c], wrapped.y[c]) and np.array_equal(plain.z[c], wrapped.z[c])
+
+
+def test_a_frame_taking_model_answers_each_chunk_on_its_live_frame() -> None:
+    runner = BatchedFakeRunner()
+    seen = []
+
+    class AtFrame:
+        takes_frame = True
+
+        def __call__(self, frame, runner_, context):
+            seen.append(frame.lchnk)
+            n = frame.ncol
+            return {"y": 2.0 * frame.argument("x").array[:n], "z": frame.argument("z").array[:n] + 1.0}
+
+    SegmentedStage("s", runner).run({"a": AtFrame(), "b": None}, batched=True)
+    assert seen == [11, 10, 11, 10]
+    whole = _whole()
+    assert all(np.array_equal(whole.y[c], runner.y[c]) for c in (10, 11))
+
+
+def test_a_chunk_batch_answer_of_the_wrong_length_taints_the_stage() -> None:
+    runner = BatchedFakeRunner()
+
+    class Short:
+        takes_chunk_batches = True
+
+        def __call__(self, batch):
+            answer = _original_a(batch.inputs)
+            return {name: value[:-1] for name, value in answer.items()}
+
+    stage = SegmentedStage("s", runner)
+    with pytest.raises(PhysicsError, match="answered for every stacked column \\(11\\)"):
+        stage.run({"a": Short(), "b": None}, batched=True)
+    assert stage.tainted and not runner.contexts
+
+
+def test_batched_chunks_need_a_runner_with_a_batched_mode() -> None:
+    stage = SegmentedStage("s", FakeRunner())
+    with pytest.raises(PhysicsError, match="no batched mode"):
+        stage.run({"a": _original_a, "b": None}, batched=True)

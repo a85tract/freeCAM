@@ -15,9 +15,11 @@ module pycam_shcu_runner
   use, intrinsic :: iso_c_binding, only: c_int, c_int32_t, c_int64_t, c_double, c_ptr, c_char, c_null_ptr, c_loc, c_funloc, c_funptr
   use ppgrid, only: begchunk, endchunk
   use pycam_stage_hosts, only: stage_hosts_ok
-  use pycam_shcu_glue, only: glue_piece_1, glue_piece_2, glue_bind_driver, glue_enter, glue_resolve_indices
+  use pycam_shcu_glue, only: glue_piece_1, glue_piece_2, glue_bind_driver, glue_enter, glue_resolve_indices, glue_chunk_slots, &
+       glue_store_chunk, glue_load_chunk
   use pycam_shcu_driver, only: driver_piece_1, driver_piece_2, driver_piece_3, driver_piece_4, compute_uwshcu_inv_frame, compute_uwshcu_inv_original, &
-       driver_resolve_indices, driver_configure, microp_scheme, shallow_scheme
+       driver_resolve_indices, driver_configure, driver_chunk_slots, driver_store_chunk, driver_load_chunk, microp_scheme, &
+       shallow_scheme
   use pycam_hooks, only: pycam_hooks_arm_v1, pycam_hooks_paused_v1, pycam_hooks_frame_v1, &
        pycam_hooks_original_v1, pycam_hooks_reset_v1
   implicit none
@@ -73,6 +75,13 @@ module pycam_shcu_runner
   integer(c_int), save :: token = 0_c_int, call_index = 0_c_int
   logical, save :: replace(nkernels) = .false.
   character(len=256), save :: last_error = ' '
+  ! batched mode: every chunk of the rank in a slot of its own, one of them live; the
+  ! units keep the others' state (their chunk_store), the runner their registers
+  logical, save :: batched = .false.
+  integer, save :: nslots = 0, live = 0
+  integer, allocatable, save :: slot_pc(:), slot_lchnk(:)
+  integer(c_int), allocatable, save :: slot_token(:)
+  logical, allocatable, save :: slot_stored(:)
   ! kernels reached inside compiled code: their hook ids, and the fiber the stage runs on
   integer, parameter :: hook_of(nkernels) = (/ 0, 2 /)
   integer(c_int64_t), parameter :: fiber_stack_bytes = 536870912_c_int64_t
@@ -221,7 +230,7 @@ contains
     if (.not. created .or. context /= context_id) then
       last_error = 'no shcu context'; return
     end if
-    if (pc /= pc_idle) then
+    if (pc /= pc_idle .or. batched) then
       last_error = 'shcu is not idle; resume or reset it first'; status = 2_c_int; return
     end if
     if (count < nkernels) then
@@ -363,6 +372,8 @@ contains
     status = 1_c_int
     if (.not. created .or. context /= context_id) return
     call abandon_fiber()
+    batched = .false.
+    live = 0
     pc = pc_idle
     status = 0_c_int
   end function pycam_shcu_reset_v1
@@ -372,10 +383,144 @@ contains
     status = 1_c_int
     if (.not. created .or. context /= context_id) return
     call abandon_fiber()
+    batched = .false.
+    live = 0
     created = .false.
     pc = pc_idle
     status = 0_c_int
   end function pycam_shcu_destroy_v1
+
+  ! ------------------------------------------------------------------ !
+  ! Batched mode: the chunks wait at a kernel together
+  ! ------------------------------------------------------------------ !
+
+  integer(c_int) function pycam_shcu_batch_begin_v1(context, count, mask, slots) bind(C, name='pycam_shcu_batch_begin_v1') result(status)
+    ! Every chunk of this rank gets a slot, none started.  Python makes a slot live
+    ! (batch_select), runs it to its next pause or the end of its chunk (batch_advance,
+    ! resume), and may leave it paused while it makes another live; frame, resume and
+    ! original act on the live slot.  The chunks run interleaved, not one after another.
+    integer(c_int), value, intent(in) :: context, count
+    integer(c_int), intent(in) :: mask(count)
+    integer(c_int), intent(out) :: slots
+    integer :: k, s
+    slots = 0_c_int
+    status = 1_c_int
+    if (.not. created .or. context /= context_id) then
+      last_error = 'no shcu context'; return
+    end if
+    if (pc /= pc_idle .or. batched) then
+      last_error = 'shcu is not idle; resume or reset it first'; status = 2_c_int; return
+    end if
+    if (count < nkernels) then
+      last_error = 'replacement mask is too short'; status = 3_c_int; return
+    end if
+    do k = 1, nkernels
+      replace(k) = mask(k) /= 0_c_int
+    end do
+    do k = 1, nkernels
+      if (hook_of(k) /= 0 .and. replace(k)) then
+        last_error = 'shcu: a kernel inside compiled code pauses on a fiber, which batched mode '// &
+             'does not keep per chunk'
+        status = 5_c_int; return
+      end if
+    end do
+    nslots = endchunk - begchunk + 1
+    if (allocated(slot_pc)) deallocate(slot_pc, slot_lchnk, slot_token, slot_stored)
+    allocate(slot_pc(nslots), slot_lchnk(nslots), slot_token(nslots), slot_stored(nslots))
+    do s = 1, nslots
+      slot_pc(s) = pc_chunk_begin
+      slot_lchnk(s) = begchunk + s - 1
+      ! tokens apart by slot, so a frame of one slot never resumes another
+      slot_token(s) = int(s, c_int) * 1048576_c_int
+      slot_stored(s) = .false.
+    end do
+    call glue_chunk_slots(nslots)
+    call driver_chunk_slots(nslots)
+    call_index = 0_c_int
+    live = 0
+    pc = pc_idle
+    batched = .true.
+    slots = int(nslots, c_int)
+    status = 0_c_int
+  end function pycam_shcu_batch_begin_v1
+
+  integer(c_int) function pycam_shcu_batch_select_v1(context, slot) bind(C, name='pycam_shcu_batch_select_v1') result(status)
+    ! Make a slot live: the live slot's registers kept, and its units' state stored
+    ! unless its chunk has finished; the slot's state loaded if it was stored.
+    integer(c_int), value, intent(in) :: context, slot
+    status = 1_c_int
+    if (.not. created .or. context /= context_id) then
+      last_error = 'no shcu context'; return
+    end if
+    if (.not. batched) then
+      last_error = 'shcu is not in batched mode'; status = 2_c_int; return
+    end if
+    if (slot < 1_c_int .or. slot > int(nslots, c_int)) then
+      last_error = 'shcu: no such slot'; status = 3_c_int; return
+    end if
+    if (live == int(slot)) then
+      status = 0_c_int; return
+    end if
+    if (live /= 0) then
+      slot_pc(live) = pc
+      slot_lchnk(live) = lchnk
+      slot_token(live) = token
+      slot_stored(live) = pc /= pc_idle
+      if (slot_stored(live)) then
+      call glue_store_chunk(live)
+      call driver_store_chunk(live)
+      end if
+    end if
+    live = int(slot)
+    pc = slot_pc(live)
+    lchnk = slot_lchnk(live)
+    token = slot_token(live)
+    if (slot_stored(live)) then
+      call glue_load_chunk(live)
+      call driver_load_chunk(live)
+    end if
+    status = 0_c_int
+  end function pycam_shcu_batch_select_v1
+
+  integer(c_int) function pycam_shcu_batch_advance_v1(context, event) bind(C, name='pycam_shcu_batch_advance_v1') result(status)
+    ! Run the live slot, not yet started, to its first pause or the end of its chunk
+    ! (DONE for the slot); a paused slot continues through resume.
+    integer(c_int), value, intent(in) :: context
+    integer(c_int), intent(out) :: event
+    event = ev_error
+    status = 1_c_int
+    if (.not. created .or. context /= context_id) then
+      last_error = 'no shcu context'; return
+    end if
+    if (.not. batched .or. live == 0) then
+      last_error = 'shcu: no live slot'; status = 2_c_int; return
+    end if
+    if (pc /= pc_chunk_begin) then
+      last_error = 'shcu: the live slot has started; resume continues it'; status = 4_c_int; return
+    end if
+    call advance(event)
+    status = 0_c_int
+  end function pycam_shcu_batch_advance_v1
+
+  integer(c_int) function pycam_shcu_batch_end_v1(context) bind(C, name='pycam_shcu_batch_end_v1') result(status)
+    ! Leave batched mode once every slot's chunk has finished.
+    integer(c_int), value, intent(in) :: context
+    status = 1_c_int
+    if (.not. created .or. context /= context_id) then
+      last_error = 'no shcu context'; return
+    end if
+    if (.not. batched) then
+      last_error = 'shcu is not in batched mode'; status = 2_c_int; return
+    end if
+    if (live /= 0) slot_pc(live) = pc
+    if (any(slot_pc /= pc_idle)) then
+      last_error = 'shcu: a slot has not finished its chunk'; status = 4_c_int; return
+    end if
+    batched = .false.
+    live = 0
+    pc = pc_idle
+    status = 0_c_int
+  end function pycam_shcu_batch_end_v1
 
   ! ------------------------------------------------------------------ !
   ! The state machine
@@ -394,6 +539,12 @@ contains
         call glue_enter(lchnk)
         pc = pc_glue_piece_1_1
       case (pc_chunk_end)
+        if (batched) then
+          ! a slot runs its own chunk only
+          pc = pc_idle
+          event = ev_done
+          return
+        end if
         lchnk = lchnk + 1
         pc = pc_chunk_begin
       case (pc_glue_piece_2_1)

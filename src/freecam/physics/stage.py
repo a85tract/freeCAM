@@ -41,7 +41,7 @@ from ..pi_cam.kernel_codegen import load_direct_kernels
 from .capture import lane_sha256
 from .errors import PhysicsError
 from .native_model import NativeModel, NativePlugin
-from .segments import OriginalAtPause, OriginalKernel, SegmentedStage
+from .segments import ByChunk, OriginalAtPause, OriginalByChunk, OriginalKernel, SegmentedStage
 
 REPO = Path(__file__).resolve().parents[3]
 
@@ -1300,6 +1300,9 @@ class NativeStage:
         self.execution = StageExecution()
         #: The segment runner's driver, created on the first segmented step.
         self._segmented: "SegmentedStage | None" = None
+        #: Segmented steps run every chunk of the rank to a kernel before any is answered,
+        #: so a chunk-batch model answers them in one call (the runner's batched mode).
+        self.batch_chunks: bool = False
         if kernels is not None:
             unknown = [name for name in kernels if name not in self.kernels]
             if unknown:
@@ -1852,7 +1855,7 @@ class NativeStage:
         for model in kernels.values():
             if hasattr(model, "current_step"):
                 model.current_step = getattr(self, "_current_step", None)
-        segmented.run(kernels)
+        segmented.run(kernels, batched=getattr(self, "batch_chunks", False))
         counters = segmented.counters
         self.execution.native_segment_calls = counters.starts + counters.resumes
         self.execution.python_model_calls = counters.model_calls
@@ -1866,6 +1869,10 @@ class NativeStage:
         for name, kernel in self.kernels.items():
             if kernel is None:
                 kernels[name] = None
+            elif isinstance(kernel, OriginalByChunk):
+                # the batched path's gate: the original through Python, every waiting
+                # chunk handed over in one call and the answer split back by chunk
+                kernels[name] = ByChunk(self._owner_of(name).original_kernel_through_python(native, name))
             elif isinstance(kernel, OriginalKernel):
                 owner = self._owner_of(name)
                 if getattr(runner, "runs_original", False):

@@ -453,6 +453,10 @@ class Spec:
     #: a process slot the runner can pause at for Python (keys: name, prepare, finish, discard,
     #: frame, inputs, outputs); the render records its program counters here
     process_slot: dict | None = None
+    #: batched mode: every chunk of the rank in a slot of its own, so all of them can wait at a
+    #: kernel together and be answered in one call; each unit stores a slot's state while
+    #: another runs.  Opt-in per stage: it interleaves the chunks, which the stage's gate admits
+    batch_chunks: bool = False
 
     @property
     def runner_module(self) -> str:
@@ -587,7 +591,10 @@ def load_spec(path: Path) -> Spec:
                 refuse=list(payload.get("refuse") or []), getopts=[str(x) for x in payload.get("getopts") or []],
                 units=units, kernels=kernels, hosts=str(payload.get("hosts", "pycam_stage_hosts")),
                 runner_uses=[str(x) for x in payload.get("runner_uses") or []],
-                process_slot=_parse_process_slot(payload.get("process_slot")))
+                process_slot=_parse_process_slot(payload.get("process_slot")),
+                batch_chunks=bool(payload.get("batch_chunks", False)))
+    if spec.batch_chunks and spec.process_slot is not None:
+        raise SystemExit(f"{path}: batch_chunks with a process slot is not supported: the slot's branch is per pause")
     _resolve(spec)
     return spec
 
@@ -1640,7 +1647,8 @@ def render_unit(spec: Spec, unit: Unit) -> str:
         [n.name for n in unit.pieces] + [f"{p.tag}_frame" for p in unit.pauses] + [f"{p.tag}_original" for p in unit.pauses]
         + ([f"{unit.key}_bind"] if unit.key != "glue" else ["glue_enter"] + (["glue_leave"] if unit.postamble else []))
         + [f"{unit.key}_bind_{c.unit}" for c in unit.unit_calls]
-        + ([f"{unit.key}_resolve_indices"] if unit.pbuf_indices else []) + ([f"{unit.key}_configure"] if unit.getopts else [])),
+        + ([f"{unit.key}_resolve_indices"] if unit.pbuf_indices else []) + ([f"{unit.key}_configure"] if unit.getopts else [])
+        + ([f"{unit.key}_chunk_slots", f"{unit.key}_store_chunk", f"{unit.key}_load_chunk"] if spec.batch_chunks else [])),
         "", "  integer(c_int64_t), parameter :: zero_shape(1) = (/ 0_c_int64_t /)", "",
         "  ! the routine's dummies, bound by the caller"]
     header += _dummy_state(unit)
@@ -1664,6 +1672,8 @@ def render_unit(spec: Spec, unit: Unit) -> str:
         indices = _unit_pbuf_indices(unit)
         header += ["", "  ! the module's private physics-buffer indices, resolved by name at configure"]
         header += [f"  integer, save, public :: {name} = -1" for name, _ in indices]
+    if spec.batch_chunks:
+        header += _chunk_store_declarations(unit)
     body = ["", "contains", ""]
     if unit.key == "glue":
         body.append(_glue_enter(spec, unit))
@@ -1711,10 +1721,130 @@ def render_unit(spec: Spec, unit: Unit) -> str:
         if ranks:
             body.append(_section_helpers(ranks))
             body.append("")
+    if spec.batch_chunks:
+        body.append(_chunk_store_routines(unit))
+        body.append("")
     body.append(SLOT_HELPERS)
     body.append("")
     body.append(f"end module {unit.module}")
     return "\n".join(header + body) + "\n"
+
+
+@dataclass
+class ChunkVar:
+    """A module variable holding one chunk's state, and how a slot keeps it."""
+
+    name: str
+    component: str      # its declaration as a component of the unit's chunk_state_t
+    mode: str           # pointer (association kept), allocatable (allocation and value), value
+
+
+def _chunk_state_rows(unit: Unit) -> list[str]:
+    """Every module variable a chunk leaves its state in: dummies, copies, carries, records, locals, flow, hoisted locals.
+
+    Not the options (read at configure), the physics-buffer indices (resolved at create)
+    or the module's own verbatim declarations: those are the same for every chunk, and
+    shared between chunks in the original too.
+    """
+
+    rows = list(_dummy_state(unit))
+    if unit.key == "glue" and _copied_dummies(unit):
+        rows += _copy_state(unit)
+    if unit.carries:
+        rows += _carry_state(unit)
+    if unit.records:
+        rows += _record_state(unit)
+    if unit.locals:
+        rows += _local_state(unit)
+    rows.append("  integer, save, public :: flow = 0")
+    rows += _hoisted_state(unit)
+    return rows
+
+
+def _chunk_state(unit: Unit) -> list[ChunkVar]:
+    out: list[ChunkVar] = []
+    for row in _chunk_state_rows(unit):
+        left, _, right = row.partition("::")
+        attributes = [a for a in _split_top(left.strip())]
+        lowered = [a.lower() for a in attributes]
+        if any(a == "parameter" for a in lowered):
+            continue
+        kept = [a for a, low in zip(attributes, lowered) if low not in ("save", "public", "target")]
+        right = right.strip()
+        match = re.match(r"(\w+)", right)
+        if match is None:
+            raise SystemExit(f"{unit.key}: cannot read the module variable in {row!r}")
+        name, rest = match.group(1), right[match.end():].lstrip()
+        shape = ""
+        if rest.startswith("("):
+            depth = 0
+            for index, character in enumerate(rest):
+                depth += character == "("
+                depth -= character == ")"
+                if depth == 0:
+                    shape = rest[: index + 1]
+                    break
+        mode = "pointer" if "pointer" in (a.lower() for a in kept) else \
+            "allocatable" if "allocatable" in (a.lower() for a in kept) else "value"
+        component = f"{', '.join(kept)} :: {name}{shape}" + (" => null()" if mode == "pointer" else "")
+        out.append(ChunkVar(name=name, component=component, mode=mode))
+    return out
+
+
+def _chunk_store_declarations(unit: Unit) -> list[str]:
+    return (["", "  ! batched mode: a chunk's state, kept in its slot while another chunk runs",
+             "  type :: chunk_state_t"]
+            + [f"    {var.component}" for var in _chunk_state(unit)]
+            + ["  end type chunk_state_t", "  type(chunk_state_t), allocatable, save :: chunk_store(:)"])
+
+
+def _chunk_store_routines(unit: Unit) -> str:
+    key = unit.key
+    store: list[str] = []
+    load: list[str] = []
+    for var in _chunk_state(unit):
+        kept = f"chunk_store(slot)%{var.name}"
+        if var.mode == "pointer":
+            store.append(f"    {kept} => {var.name}")
+            load.append(f"    {var.name} => {kept}")
+        elif var.mode == "allocatable":
+            # in place when the shape holds, so the storage keeps its address
+            for target, source, lines in ((kept, var.name, store), (var.name, kept, load)):
+                lines += [f"    if (allocated({source})) then",
+                          f"      if (allocated({target})) then",
+                          f"        if (any(shape({target}) /= shape({source}))) deallocate({target})",
+                          "      end if",
+                          f"      if (.not. allocated({target})) allocate({target}, mold={source})",
+                          f"      {target} = {source}",
+                          f"    else if (allocated({target})) then",
+                          f"      deallocate({target})",
+                          "    end if"]
+        else:
+            store.append(f"    {kept} = {var.name}")
+            load.append(f"    {var.name} = {kept}")
+    return "\n".join([
+        f"  subroutine {key}_chunk_slots(slots)",
+        "    ! room for every chunk's state; zero releases it",
+        "    integer, intent(in) :: slots",
+        "    if (allocated(chunk_store)) then",
+        "      if (size(chunk_store) == slots) return",
+        "      deallocate(chunk_store)",
+        "    end if",
+        "    if (slots > 0) allocate(chunk_store(slots))",
+        f"  end subroutine {key}_chunk_slots",
+        "",
+        f"  subroutine {key}_store_chunk(slot)",
+        "    ! the chunk in flight's state into its slot",
+        "    integer, intent(in) :: slot",
+        *store,
+        f"  end subroutine {key}_store_chunk",
+        "",
+        f"  subroutine {key}_load_chunk(slot)",
+        "    ! a slot's chunk back in flight",
+        "    integer, intent(in) :: slot",
+        *load,
+        f"  end subroutine {key}_load_chunk",
+    ])
 
 
 def _unit_pbuf_indices(unit: Unit) -> list[tuple[str, str]]:
@@ -2245,6 +2375,8 @@ def render_runner(spec: Spec) -> str:
             names.append(f"{unit.key}_resolve_indices")
         if unit.getopts:
             names.append(f"{unit.key}_configure")
+        if spec.batch_chunks:
+            names += [f"{unit.key}_chunk_slots", f"{unit.key}_store_chunk", f"{unit.key}_load_chunk"]
         # the skeleton's conditions and loop variables live in the unit, as do
         # the indices and options the refusals test
         names += sorted(_skeleton_names(unit, spec) | set(unit.getopts) | _refusal_names(spec, unit))
@@ -2277,6 +2409,7 @@ def render_runner(spec: Spec) -> str:
     paused_pcs = ", ".join(p.pc_at for p in all_pauses) or "-1"
     advance_cases = "\n".join(f"      case ({s.name})\n        {s.code}" for s in states)
     ep = spec.entry_prefix
+    batch_state, batch_entries, batch_chunk_end, idle_test, batch_clear = _batch_pieces(spec, hooked, paused_pcs)
     if hooked:
         c_binding = "c_int, c_int32_t, c_int64_t, c_double, c_ptr, c_char, c_null_ptr, c_loc, c_funloc, c_funptr"
         hook_uses = ("  use pycam_hooks, only: pycam_hooks_arm_v1, pycam_hooks_paused_v1, pycam_hooks_frame_v1, &\n"
@@ -2334,7 +2467,7 @@ module {spec.runner_module}
   integer(c_int), save :: token = 0_c_int, call_index = 0_c_int
   logical, save :: replace(nkernels) = .false.
   character(len=256), save :: last_error = ' '
-{"  ! the process slot paused for Python: whether Python asked for the original branch instead" + chr(10) + "  logical, save :: slot_original = .false." + chr(10) if slot else ""}{hook_state}{getopt_decls}
+{batch_state}{"  ! the process slot paused for Python: whether Python asked for the original branch instead" + chr(10) + "  logical, save :: slot_original = .false." + chr(10) if slot else ""}{hook_state}{getopt_decls}
 contains
 {hook_procedures}
   ! ------------------------------------------------------------------ !
@@ -2368,7 +2501,7 @@ contains
     if (.not. created .or. context /= context_id) then
       last_error = 'no {spec.prefix} context'; return
     end if
-    if (pc /= pc_idle) then
+    if ({idle_test}) then
       last_error = '{spec.prefix} is not idle; resume or reset it first'; status = 2_c_int; return
     end if
     if (count < nkernels) then
@@ -2466,7 +2599,7 @@ contains
     integer(c_int), value, intent(in) :: context
     status = 1_c_int
     if (.not. created .or. context /= context_id) return
-{reset_hook}    pc = pc_idle
+{reset_hook}{batch_clear}    pc = pc_idle
     status = 0_c_int
   end function {ep}_reset_v1
 
@@ -2474,11 +2607,11 @@ contains
     integer(c_int), value, intent(in) :: context
     status = 1_c_int
     if (.not. created .or. context /= context_id) return
-{reset_hook}    created = .false.
+{reset_hook}{batch_clear}    created = .false.
     pc = pc_idle
     status = 0_c_int
   end function {ep}_destroy_v1
-
+{batch_entries}
   ! ------------------------------------------------------------------ !
   ! The state machine
   ! ------------------------------------------------------------------ !
@@ -2496,7 +2629,7 @@ contains
         call glue_enter(lchnk)
         pc = {first_pc}
       case (pc_chunk_end)
-{"        call glue_leave()" + chr(10) if glue.postamble else ""}        lchnk = lchnk + 1
+{"        call glue_leave()" + chr(10) if glue.postamble else ""}{batch_chunk_end}        lchnk = lchnk + 1
         pc = pc_chunk_begin
 {advance_cases}
       case default
@@ -2509,6 +2642,163 @@ contains
 
 end module {spec.runner_module}
 '''
+
+
+def _batch_pieces(spec: Spec, hooked: list[str], paused_pcs: str) -> tuple[str, str, str, str, str]:
+    """The runner's batched mode, when the spec asks for it: its state, entries and the chunk end."""
+
+    if not spec.batch_chunks:
+        return "", "", "", "pc /= pc_idle", ""
+    ep, prefix = spec.entry_prefix, spec.prefix
+    units = list(spec.units.values())
+    slots_calls = "".join(f"    call {u.key}_chunk_slots(nslots)\n" for u in units)
+    store_calls = "".join(f"      call {u.key}_store_chunk(live)\n" for u in units)
+    load_calls = "".join(f"      call {u.key}_load_chunk(live)\n" for u in units)
+    hook_refusal = ""
+    if hooked:
+        hook_refusal = (
+            "    do k = 1, nkernels\n"
+            "      if (hook_of(k) /= 0 .and. replace(k)) then\n"
+            f"        last_error = '{prefix}: a kernel inside compiled code pauses on a fiber, which batched mode '// &\n"
+            "             'does not keep per chunk'\n"
+            "        status = 5_c_int; return\n"
+            "      end if\n"
+            "    end do\n")
+    state = ("  ! batched mode: every chunk of the rank in a slot of its own, one of them live; the\n"
+             "  ! units keep the others' state (their chunk_store), the runner their registers\n"
+             "  logical, save :: batched = .false.\n"
+             "  integer, save :: nslots = 0, live = 0\n"
+             "  integer, allocatable, save :: slot_pc(:), slot_lchnk(:)\n"
+             "  integer(c_int), allocatable, save :: slot_token(:)\n"
+             "  logical, allocatable, save :: slot_stored(:)\n")
+    entries = f'''
+  ! ------------------------------------------------------------------ !
+  ! Batched mode: the chunks wait at a kernel together
+  ! ------------------------------------------------------------------ !
+
+  integer(c_int) function {ep}_batch_begin_v1(context, count, mask, slots) bind(C, name='{ep}_batch_begin_v1') result(status)
+    ! Every chunk of this rank gets a slot, none started.  Python makes a slot live
+    ! (batch_select), runs it to its next pause or the end of its chunk (batch_advance,
+    ! resume), and may leave it paused while it makes another live; frame, resume and
+    ! original act on the live slot.  The chunks run interleaved, not one after another.
+    integer(c_int), value, intent(in) :: context, count
+    integer(c_int), intent(in) :: mask(count)
+    integer(c_int), intent(out) :: slots
+    integer :: k, s
+    slots = 0_c_int
+    status = 1_c_int
+    if (.not. created .or. context /= context_id) then
+      last_error = 'no {prefix} context'; return
+    end if
+    if (pc /= pc_idle .or. batched) then
+      last_error = '{prefix} is not idle; resume or reset it first'; status = 2_c_int; return
+    end if
+    if (count < nkernels) then
+      last_error = 'replacement mask is too short'; status = 3_c_int; return
+    end if
+    do k = 1, nkernels
+      replace(k) = mask(k) /= 0_c_int
+    end do
+{hook_refusal}    nslots = endchunk - begchunk + 1
+    if (allocated(slot_pc)) deallocate(slot_pc, slot_lchnk, slot_token, slot_stored)
+    allocate(slot_pc(nslots), slot_lchnk(nslots), slot_token(nslots), slot_stored(nslots))
+    do s = 1, nslots
+      slot_pc(s) = pc_chunk_begin
+      slot_lchnk(s) = begchunk + s - 1
+      ! tokens apart by slot, so a frame of one slot never resumes another
+      slot_token(s) = int(s, c_int) * 1048576_c_int
+      slot_stored(s) = .false.
+    end do
+{slots_calls}    call_index = 0_c_int
+    live = 0
+    pc = pc_idle
+    batched = .true.
+    slots = int(nslots, c_int)
+    status = 0_c_int
+  end function {ep}_batch_begin_v1
+
+  integer(c_int) function {ep}_batch_select_v1(context, slot) bind(C, name='{ep}_batch_select_v1') result(status)
+    ! Make a slot live: the live slot's registers kept, and its units' state stored
+    ! unless its chunk has finished; the slot's state loaded if it was stored.
+    integer(c_int), value, intent(in) :: context, slot
+    status = 1_c_int
+    if (.not. created .or. context /= context_id) then
+      last_error = 'no {prefix} context'; return
+    end if
+    if (.not. batched) then
+      last_error = '{prefix} is not in batched mode'; status = 2_c_int; return
+    end if
+    if (slot < 1_c_int .or. slot > int(nslots, c_int)) then
+      last_error = '{prefix}: no such slot'; status = 3_c_int; return
+    end if
+    if (live == int(slot)) then
+      status = 0_c_int; return
+    end if
+    if (live /= 0) then
+      slot_pc(live) = pc
+      slot_lchnk(live) = lchnk
+      slot_token(live) = token
+      slot_stored(live) = pc /= pc_idle
+      if (slot_stored(live)) then
+{store_calls}      end if
+    end if
+    live = int(slot)
+    pc = slot_pc(live)
+    lchnk = slot_lchnk(live)
+    token = slot_token(live)
+    if (slot_stored(live)) then
+{load_calls}    end if
+    status = 0_c_int
+  end function {ep}_batch_select_v1
+
+  integer(c_int) function {ep}_batch_advance_v1(context, event) bind(C, name='{ep}_batch_advance_v1') result(status)
+    ! Run the live slot, not yet started, to its first pause or the end of its chunk
+    ! (DONE for the slot); a paused slot continues through resume.
+    integer(c_int), value, intent(in) :: context
+    integer(c_int), intent(out) :: event
+    event = ev_error
+    status = 1_c_int
+    if (.not. created .or. context /= context_id) then
+      last_error = 'no {prefix} context'; return
+    end if
+    if (.not. batched .or. live == 0) then
+      last_error = '{prefix}: no live slot'; status = 2_c_int; return
+    end if
+    if (pc /= pc_chunk_begin) then
+      last_error = '{prefix}: the live slot has started; resume continues it'; status = 4_c_int; return
+    end if
+    call advance(event)
+    status = 0_c_int
+  end function {ep}_batch_advance_v1
+
+  integer(c_int) function {ep}_batch_end_v1(context) bind(C, name='{ep}_batch_end_v1') result(status)
+    ! Leave batched mode once every slot's chunk has finished.
+    integer(c_int), value, intent(in) :: context
+    status = 1_c_int
+    if (.not. created .or. context /= context_id) then
+      last_error = 'no {prefix} context'; return
+    end if
+    if (.not. batched) then
+      last_error = '{prefix} is not in batched mode'; status = 2_c_int; return
+    end if
+    if (live /= 0) slot_pc(live) = pc
+    if (any(slot_pc /= pc_idle)) then
+      last_error = '{prefix}: a slot has not finished its chunk'; status = 4_c_int; return
+    end if
+    batched = .false.
+    live = 0
+    pc = pc_idle
+    status = 0_c_int
+  end function {ep}_batch_end_v1
+'''
+    chunk_end = ("        if (batched) then\n"
+                 "          ! a slot runs its own chunk only\n"
+                 "          pc = pc_idle\n"
+                 "          event = ev_done\n"
+                 "          return\n"
+                 "        end if\n")
+    clear = "    batched = .false.\n    live = 0\n"
+    return state, entries, chunk_end, "pc /= pc_idle .or. batched", clear
 
 
 def _refusal_names(spec: Spec, unit: Unit) -> set[str]:

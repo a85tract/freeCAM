@@ -71,6 +71,8 @@ def _stage_executions(cam) -> dict[str, dict[str, object]]:
         execution = getattr(stage, "execution", None)
         if execution is not None and hasattr(execution, "describe"):
             described = execution.describe()
+            if getattr(stage, "batch_chunks", False):
+                described["batch_chunks"] = True
             describe_kernels = getattr(stage, "describe_kernels", None)
             if callable(describe_kernels):
                 described["kernels"] = list(describe_kernels())
@@ -315,7 +317,8 @@ def _load_kernel_plugin(kernel: str, spec: str, *, shadow: bool = False):
     return compile_kernel(kernel, function, shadow=shadow)
 
 
-def _pausable_stage(stage_name: str, policy: str, *, original_kernels, capture_kernels, kernel_models, capture_every: int = 1):
+def _pausable_stage(stage_name: str, policy: str, *, original_kernels, capture_kernels, kernel_models, capture_every: int = 1,
+                    batch_chunks: bool = False, original_by_chunk: bool = False):
     """A pausable stage class with every slot filled before its ``tend`` is installed.
 
     Installing pickles the bound method, so a slot filled afterwards never reaches
@@ -330,11 +333,12 @@ def _pausable_stage(stage_name: str, policy: str, *, original_kernels, capture_k
         raise SystemExit(f"--python-stages: {stage_name!r} is not one of {sorted(STAGES)}")
     stage = STAGES[stage_name]()
     stage.execution_policy = policy
+    stage.batch_chunks = bool(batch_chunks)
     if original_kernels:
-        from freecam.physics.segments import OriginalKernel
+        from freecam.physics.segments import OriginalByChunk, OriginalKernel
         for kernel_name in original_kernels:
             if kernel_name in stage.kernels:
-                stage.kernels[kernel_name] = OriginalKernel()
+                stage.kernels[kernel_name] = OriginalByChunk() if original_by_chunk else OriginalKernel()
     for kernel_name in capture_kernels:
         if kernel_name in stage.kernels:
             from freecam.physics.segments import FrameCapture
@@ -657,6 +661,24 @@ def main(argv: list[str] | None = None) -> int:
         help=(
             "test only: with --segmented-original, the kernels (comma-separated) put in "
             "the slots as ORIGINAL replacements; each must be one the image's runner pauses at"
+        ),
+    )
+    parser.add_argument(
+        "--segmented-original-by-chunk",
+        action="store_true",
+        help=(
+            "test only: with --segmented-original and --batch-chunks, answer the original kernels "
+            "through Python with every waiting chunk in one call, split back by chunk -- the batched "
+            "path's own gate -- instead of the original at each pause"
+        ),
+    )
+    parser.add_argument(
+        "--batch-chunks",
+        default="",
+        help=(
+            "run these pausable stages (comma-separated, as --python-stages names them) with every "
+            "chunk of a rank waiting at a replaced kernel together, so a model taking chunk batches "
+            "answers all of them in one call; the stage's runner must have a batched mode"
         ),
     )
     parser.add_argument(
@@ -1212,7 +1234,15 @@ def main(argv: list[str] | None = None) -> int:
         for qualified in [s.strip() for s in args.disable_actions.split(",") if s.strip()]:
             phase, _, action_name = qualified.partition(".")
             cam.step_plan.set_enabled(action_name, False, phase=phase, experimental=True)
-        for stage_name in [s.strip() for s in args.python_stages.split(",") if s.strip()]:
+        python_stage_names = [s.strip() for s in args.python_stages.split(",") if s.strip()]
+        batch_stage_names = [s.strip() for s in args.batch_chunks.split(",") if s.strip()]
+        strays = [name for name in batch_stage_names if name not in python_stage_names]
+        if strays:
+            raise SystemExit(f"--batch-chunks: {strays} are not installed by --python-stages")
+        if args.segmented_original_by_chunk and not (args.segmented_original and batch_stage_names):
+            raise SystemExit("--segmented-original-by-chunk answers batched chunks: it needs "
+                             "--segmented-original and --batch-chunks")
+        for stage_name in python_stage_names:
             # a pausable stage class in its action's place: the original Fortran
             # whole, or the image's runner paused at a replaced kernel
             from freecam.model.python_processes import PythonProcessSpec
@@ -1221,7 +1251,9 @@ def main(argv: list[str] | None = None) -> int:
                 stage_name, args.stage_execution,
                 original_kernels=[k.strip() for k in args.segmented_original_kernels.split(",") if k.strip()]
                 if args.segmented_original else [],
-                capture_kernels=capture_kernels, kernel_models=kernel_models, capture_every=args.capture_every)
+                capture_kernels=capture_kernels, kernel_models=kernel_models, capture_every=args.capture_every,
+                batch_chunks=stage_name in batch_stage_names,
+                original_by_chunk=args.segmented_original_by_chunk and stage_name in batch_stage_names)
             phase, _, action_name = pausable_stage.STAGE.partition(".")
             cam.step_plan.set_enabled(action_name, False, phase=phase, experimental=True)
             cam.python_processes.install(
@@ -1576,6 +1608,8 @@ def main(argv: list[str] | None = None) -> int:
             "segmented_original": bool(args.segmented_original),
             "segmented_original_kernels": (args.segmented_original_kernels if args.segmented_original else None),
             "python_stages": [s.strip() for s in args.python_stages.split(",") if s.strip()],
+            "batch_chunks": [s.strip() for s in args.batch_chunks.split(",") if s.strip()],
+            "segmented_original_by_chunk": bool(args.segmented_original_by_chunk),
             "disabled_actions": [s.strip() for s in args.disable_actions.split(",") if s.strip()],
             "stage_execution": _stage_executions(cam),
             "frame_capture": _frame_capture_summary(records, args, native_evidence),

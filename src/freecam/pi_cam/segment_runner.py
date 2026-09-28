@@ -262,6 +262,13 @@ class ImageSegmentRunner:
         if spec.original and self._original is None:
             raise NativeCAMError(f"the manifest says the {spec.prefix} runner runs the original at a pause, "
                                  f"but the image exports no {spec.prefix}_original_v1")
+        # the batched mode, in a runner whose spec asks for it (batch_chunks): all four or none
+        batch = {suffix: getattr(library, f"{spec.prefix}_batch_{suffix}_v1", None)
+                 for suffix in ("begin", "select", "advance", "end")}
+        present = [suffix for suffix, entry in batch.items() if entry is not None]
+        if present and len(present) != len(batch):
+            raise NativeCAMError(f"the image exports only {present} of the {spec.prefix} runner's batched entries")
+        self._batch = batch if present else None
         self._bind()
 
     def _bind(self) -> None:
@@ -280,6 +287,13 @@ class ImageSegmentRunner:
         if self._original is not None:
             self._original.restype = c_int
             self._original.argtypes = [c_int, c_int]
+        if self._batch is not None:
+            for entry in self._batch.values():
+                entry.restype = c_int
+            self._batch["begin"].argtypes = [c_int, c_int, pi, pi]
+            self._batch["select"].argtypes = [c_int, c_int]
+            self._batch["advance"].argtypes = [c_int, pi]
+            self._batch["end"].argtypes = [c_int]
 
     @property
     def runs_original(self) -> bool:
@@ -378,6 +392,55 @@ class ImageSegmentRunner:
 
     def reset(self, context: int) -> None:
         self._entry["reset"](context)
+
+    # -- the batched mode -----------------------------------------------------
+
+    @property
+    def offers_batch(self) -> bool:
+        """Whether this runner keeps every chunk in a slot of its own (batch_chunks in its spec)."""
+
+        return self._batch is not None
+
+    def _batched(self, suffix: str):
+        if self._batch is None:
+            raise NativeCAMError(f"the {self.spec.prefix} runner has no batched mode")
+        return self._batch[suffix]
+
+    def batch_begin(self, context: int, mask: Mapping[str, bool]) -> int:
+        """Batched mode for one run: every chunk in a slot, none started; the slot count."""
+
+        unknown = sorted(name for name, replaced in mask.items() if replaced and name not in self.kernels)
+        if unknown:
+            raise NativeCAMError(f"the {self.spec.prefix} runner cannot pause at {unknown}; it pauses at {list(self.kernels)}")
+        flags = (ctypes.c_int * len(self.kernels))(*(1 if mask.get(name) else 0 for name in self.kernels))
+        slots = ctypes.c_int(0)
+        status = self._batched("begin")(context, len(self.kernels), flags, ctypes.byref(slots))
+        if status:
+            raise NativeCAMError(f"{self.spec.prefix} runner refused batched mode ({status}): {self.error(context)}")
+        return int(slots.value)
+
+    def batch_select(self, context: int, slot: int) -> None:
+        """Make chunk slot ``slot`` (from 0) live; the one it replaces is kept."""
+
+        status = self._batched("select")(context, int(slot) + 1)
+        if status:
+            raise NativeCAMError(f"{self.spec.prefix} runner refused to select slot {slot} ({status}): {self.error(context)}")
+
+    def batch_advance(self, context: int) -> SegmentEvent:
+        """Run the live slot, not yet started, to its first pause or the end of its chunk."""
+
+        event = ctypes.c_int(2)
+        status = self._batched("advance")(context, ctypes.byref(event))
+        if status:
+            raise NativeCAMError(f"{self.spec.prefix} runner refused to advance ({status}): {self.error(context)}")
+        return SegmentEvent(event.value)
+
+    def batch_end(self, context: int) -> None:
+        """Leave batched mode, every slot's chunk finished."""
+
+        status = self._batched("end")(context)
+        if status:
+            raise NativeCAMError(f"{self.spec.prefix} runner refused to end batched mode ({status}): {self.error(context)}")
 
     def destroy(self, context: int) -> None:
         self._entry["destroy"](context)

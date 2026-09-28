@@ -28,6 +28,9 @@
 # `freecam timeline`); PYCAM_TIMELINE_FLUSH sets the steps between its writes.
 # PYCAM_KERNEL_PLUGINS=name=file.py:function[,...] binds Numba-compiled Python kernels at
 # their hooks; PYCAM_SHADOW_PLUGINS does the same in shadow.
+# PYCAM_BATCH_CHUNKS names stages whose chunks wait at a replaced kernel together
+# (--batch-chunks); PYCAM_ORIGINAL_BY_CHUNK=1 answers the original kernels through
+# Python with every waiting chunk in one call (--segmented-original-by-chunk).
 # PYCAM_SHADOW_MODELS=name=path[,...] binds TorchScript models in shadow: the model
 # runs, the original answers, the run stays bit-for-bit and the cost is measured.
 # Every run's log is counted for the model's health -- water-isotope BIG ERROR
@@ -129,6 +132,12 @@ if [ ${#stage_flags[@]} -gt 0 ]; then
 fi
 if [ -n "${PYCAM_ORIGINAL_KERNELS:-}" ]; then
   stage_flags+=(--segmented-original --segmented-original-kernels "${PYCAM_ORIGINAL_KERNELS}")
+fi
+if [ -n "${PYCAM_BATCH_CHUNKS:-}" ]; then
+  stage_flags+=(--batch-chunks "${PYCAM_BATCH_CHUNKS}")
+fi
+if [ "${PYCAM_ORIGINAL_BY_CHUNK:-0}" = 1 ]; then
+  stage_flags+=(--segmented-original-by-chunk)
 fi
 if [ -n "${PYCAM_DISABLE_ACTIONS:-}" ]; then
   # the inertness gate: actions expected to do no numerical work, switched off

@@ -6,6 +6,10 @@
 schema_version: 1
 prefix: shcu
 stage: cam_run1.shallow_convection
+# Every chunk of the rank can wait at compute_uwshcu_inv together and be answered in
+# one call (the runner's batched mode): the stage's chunks are independent between
+# its entry and its end, which the batched gate checks bit-for-bit.
+batch_chunks: true
 refuse:
   - {when: "trim(shallow_scheme) /= 'UW'", message: "written for the UW shallow scheme"}
 units:

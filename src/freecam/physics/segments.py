@@ -144,6 +144,18 @@ class OriginalKernel:
         return "OriginalKernel()"
 
 
+class OriginalByChunk:
+    """Put in a kernel slot: the original through Python, answering every waiting chunk in one call.
+
+    Resolved by the stage to :class:`ByChunk` around its original kernel through
+    Python: the batched mode's stacking and split, around arithmetic that is the
+    original routine chunk by chunk -- bit-for-bit is the proof of that path.
+    """
+
+    def __repr__(self) -> str:
+        return "OriginalByChunk()"
+
+
 class OriginalAtPause:
     """Put in a kernel slot: the original call, run by the runner itself at the pause.
 
@@ -271,7 +283,10 @@ class SegmentRunner(Protocol):
     original code from the top of the stage with ``mask`` naming the kernels
     Python computes; ``frame`` describes the pause ``start``/``resume``
     reported; ``resume`` continues past the kernel named.  ``reset`` returns
-    a context to idle after a failure; ``destroy`` frees it.
+    a context to idle after a failure; ``destroy`` frees it.  A runner with a
+    batched mode (``offers_batch``) also has ``batch_begin`` (the slot count),
+    ``batch_select``, ``batch_advance`` and ``batch_end``; frame, resume and
+    the original then act on the live slot.
     """
 
     def create(self, stage: str) -> int: ...
@@ -281,6 +296,82 @@ class SegmentRunner(Protocol):
     def error(self, context: int) -> str: ...
     def reset(self, context: int) -> None: ...
     def destroy(self, context: int) -> None: ...
+
+
+@dataclass(frozen=True, slots=True)
+class ChunkBatch:
+    """Every chunk waiting at one kernel, as one batch: what a chunk-batch model is handed.
+
+    ``inputs`` stacks the live lanes of every column-shaped input chunk after chunk,
+    ``rows[i]`` of them from the i-th; an input with no column axis (a time step, a
+    per-constituent flag) is there once when every chunk has the same, and otherwise
+    only in ``per_chunk`` (a chunk's own count or id), chunk by chunk.  The model
+    answers every output the kernel writes, stacked the same way.
+    """
+
+    kernel: str
+    inputs: Mapping[str, np.ndarray]
+    rows: tuple[int, ...]
+    lchnks: tuple[int, ...]
+    per_chunk: Mapping[str, tuple[np.ndarray, ...]]
+    #: the inputs stacked chunk after chunk; the rest of ``inputs`` is every chunk's alike
+    stacked: frozenset[str] = frozenset()
+
+    @property
+    def columns(self) -> int:
+        return int(sum(self.rows))
+
+
+class ByChunk:
+    """A per-chunk model taking chunk batches: each chunk's rows handed to it alone.
+
+    The stacking and the split around the model, without changing what it
+    computes -- so the original kernel through Python, wrapped here, proves the
+    batched path bit-for-bit.
+    """
+
+    takes_chunk_batches = True
+
+    def __init__(self, model: Callable[[Mapping[str, Any]], Mapping[str, Any]]) -> None:
+        self.model = model
+
+    def __call__(self, batch: ChunkBatch) -> dict[str, np.ndarray]:
+        pieces: list[Mapping[str, Any]] = []
+        start = 0
+        for index, rows in enumerate(batch.rows):
+            one: dict[str, Any] = {}
+            for name, value in batch.inputs.items():
+                one[name] = value[start:start + rows] if name in batch.stacked else value
+            for name, values in batch.per_chunk.items():
+                one[name] = values[index]
+            pieces.append(self.model(one))
+            start += rows
+        return {name: np.concatenate([np.asarray(piece[name]) for piece in pieces], axis=0) for name in pieces[0]}
+
+    def __repr__(self) -> str:
+        return f"ByChunk({self.model!r})"
+
+
+@dataclass(slots=True)
+class _Waiting:
+    """A slot paused at a kernel in batched mode, and what was read from it before it was parked."""
+
+    kernel: str
+    token: int
+    lchnk: int
+    ncol: int
+    batch: dict[str, np.ndarray] | None
+    lanes: frozenset[str]
+
+
+def _lane_names(frame: KernelFrame) -> frozenset[str]:
+    """The frame's column-shaped arguments: those whose first extent is the chunk's (pcols)."""
+
+    extents = [a.array.shape[0] for a in frame.arguments if a.array.ndim > 0]
+    if frame.ncol <= 0 or not extents:
+        return frozenset()
+    pcols = max(extents)
+    return frozenset(a.name for a in frame.arguments if a.array.ndim > 0 and a.array.shape[0] == pcols >= frame.ncol)
 
 
 @dataclass(slots=True)
@@ -328,12 +419,15 @@ class SegmentedStage:
     def idle(self) -> bool:
         return self.paused_on is None and self.tainted is None
 
-    def run(self, kernels: Mapping[str, Callable[..., Mapping[str, Any]] | None], *, whole: bool = False) -> None:
+    def run(self, kernels: Mapping[str, Callable[..., Mapping[str, Any]] | None], *, whole: bool = False,
+            batched: bool = False) -> None:
         """One step of the stage: the original Fortran with ``kernels`` at their pauses.
 
         ``whole`` runs the driver through the runner with no pause armed: for a stage whose
         process slot inside the runner (a compiled plugin bound in the image) answers a
-        branch, so the run is one crossing and no Python in the step.
+        branch, so the run is one crossing and no Python in the step.  ``batched`` runs
+        every chunk of the rank to the kernel before any is answered, so a chunk-batch
+        model answers all of them in one call (see :meth:`_run_batched`).
         """
 
         if self.tainted is not None:
@@ -355,10 +449,17 @@ class SegmentedStage:
             raise PhysicsError(
                 f"{self.stage_name}: a kernel and the kernel it runs inside are both replaced: {detail}. "
                 f"Replace one or the other; a replaced outer kernel never reaches the inner call")
+        if batched and not getattr(self.runner, "offers_batch", False):
+            raise PhysicsError(
+                f"{self.stage_name}: batched chunks were asked for, but the image's runner has no "
+                f"batched mode (batch_chunks in its pausable spec)")
         if self.context is None:
             self.context = self.runner.create(self.stage_name)
             self.counters.crossings += 1
         self.generation += 1
+        if batched:
+            self._run_batched(kernels, mask)
+            return
         counters = self.counters
         pauses_before = counters.pauses
         event = self.runner.start(self.context, mask)
@@ -399,6 +500,132 @@ class SegmentedStage:
             self._fail(f"{type(exc).__name__}: {exc}")
             raise
 
+    def _run_batched(self, kernels: Mapping[str, Callable[..., Mapping[str, Any]] | None],
+                     mask: Mapping[str, bool]) -> None:
+        """Every chunk of the rank to its next pause, then every waiting chunk answered, until all finish.
+
+        Each chunk runs in a slot of the runner's own; one is live at a time.  A round
+        runs every slot to its next pause or the end of its chunk.  The slots waiting at
+        a kernel whose model takes chunk batches are answered by one call with their
+        lanes stacked (:class:`ChunkBatch`); any other model -- the original at the
+        pause, a capture, a per-chunk model -- answers each slot on its own frame.  The
+        slots then resume, the last parked first (it is live already).
+        """
+
+        runner, counters, context = self.runner, self.counters, self.context
+        pauses_before = counters.pauses
+        slots = runner.batch_begin(context, mask)
+        counters.starts += 1
+        counters.crossings += 1
+        waiting: dict[int, _Waiting] = {}
+
+        def note(slot: int, event: SegmentEvent) -> None:
+            if event == SegmentEvent.ERROR:
+                raise PhysicsError(
+                    f"{self.stage_name}: the runner failed in chunk slot {slot} after "
+                    f"{counters.pauses - pauses_before} pause(s) this run: {runner.error(context)}")
+            if event != SegmentEvent.NEEDS_PYTHON_KERNEL:
+                return
+            frame = runner.frame(context)
+            counters.crossings += 1
+            counters.pauses += 1
+            model = kernels.get(frame.kernel)
+            if model is None:
+                raise PhysicsError(f"{self.stage_name}: the runner paused on {frame.kernel!r}, which is not replaced")
+            stacked = getattr(model, "takes_chunk_batches", False)
+            batch = frame.batch() if stacked else None
+            if batch is not None:
+                counters.bytes_copied_in += sum(v.nbytes for v in batch.values())
+            waiting[slot] = _Waiting(kernel=frame.kernel, token=frame.token, lchnk=frame.lchnk, ncol=frame.ncol,
+                                     batch=batch, lanes=_lane_names(frame))
+
+        try:
+            for slot in range(slots):
+                runner.batch_select(context, slot)
+                event = runner.batch_advance(context)
+                counters.crossings += 2
+                note(slot, event)
+            while waiting:
+                current, waiting = waiting, {}
+                answers: dict[int, dict[str, np.ndarray]] = {}
+                for kernel in dict.fromkeys(w.kernel for w in current.values()):
+                    model = kernels[kernel]
+                    if not getattr(model, "takes_chunk_batches", False):
+                        continue
+                    group = [slot for slot in sorted(current) if current[slot].kernel == kernel]
+                    answers.update(self._answer_chunks(kernel, model, group, current))
+                    counters.model_calls += 1
+                    counters.calls_by_kernel[kernel] = counters.calls_by_kernel.get(kernel, 0) + 1
+                for slot in sorted(current, reverse=True):
+                    parked = current[slot]
+                    runner.batch_select(context, slot)
+                    frame = runner.frame(context)
+                    counters.crossings += 2
+                    if frame.kernel != parked.kernel or frame.token != parked.token:
+                        raise PhysicsError(
+                            f"{self.stage_name}: chunk slot {slot} came back paused on {frame.kernel!r} "
+                            f"(token {frame.token}), not where it was parked ({parked.kernel!r}, {parked.token})")
+                    self.paused_on = frame
+                    model = kernels[frame.kernel]
+                    if slot in answers:
+                        answer = answers[slot]
+                    else:
+                        if getattr(model, "takes_frame", False):
+                            answer = model(frame, runner, context)
+                        else:
+                            batch = frame.batch()
+                            counters.bytes_copied_in += sum(v.nbytes for v in batch.values())
+                            answer = model(batch)
+                        counters.model_calls += 1
+                        counters.calls_by_kernel[frame.kernel] = counters.calls_by_kernel.get(frame.kernel, 0) + 1
+                    written = frame.write_back(answer)
+                    counters.bytes_copied_out += sum(
+                        _live_bytes(frame.argument(name).array, frame.ncol) for name in written)
+                    event = runner.resume(context, frame.kernel, frame.token)
+                    counters.resumes += 1
+                    counters.crossings += 1
+                    self.paused_on = None
+                    note(slot, event)
+            runner.batch_end(context)
+            counters.crossings += 1
+        except BaseException as exc:
+            self._fail(f"{type(exc).__name__}: {exc}")
+            raise
+
+    def _answer_chunks(self, kernel: str, model: Callable[[ChunkBatch], Mapping[str, Any]], group: list[int],
+                       waiting: Mapping[int, _Waiting]) -> dict[int, dict[str, np.ndarray]]:
+        """One chunk-batch call for the slots waiting at ``kernel``, its answer split back by slot."""
+
+        parked = [waiting[slot] for slot in group]
+        rows = tuple(w.ncol for w in parked)
+        lanes = frozenset.intersection(*(w.lanes for w in parked))
+        inputs: dict[str, np.ndarray] = {}
+        per_chunk: dict[str, tuple[np.ndarray, ...]] = {}
+        for name in parked[0].batch:
+            values = [w.batch[name] for w in parked]
+            if name in lanes:
+                inputs[name] = np.concatenate(values, axis=0)
+            elif all(np.array_equal(values[0], v) for v in values[1:]):
+                inputs[name] = values[0]
+            else:
+                per_chunk[name] = tuple(values)
+        batch = ChunkBatch(kernel=kernel, inputs=inputs, rows=rows, lchnks=tuple(w.lchnk for w in parked),
+                           per_chunk=per_chunk, stacked=frozenset(name for name in inputs if name in lanes))
+        answer = model(batch)
+        total = batch.columns
+        split: dict[int, dict[str, np.ndarray]] = {slot: {} for slot in group}
+        for name, value in answer.items():
+            value = np.asarray(value)
+            if name not in lanes or value.ndim == 0 or value.shape[0] != total:
+                raise PhysicsError(
+                    f"{self.stage_name}: {kernel}'s chunk-batch answer {name} has shape {value.shape}; "
+                    f"an output is answered for every stacked column ({total})")
+            start = 0
+            for slot, count in zip(group, rows):
+                split[slot][name] = value[start:start + count]
+                start += count
+        return split
+
     def _fail(self, detail: str) -> None:
         """A failure mid-stage: the context is gone and the stage is tainted."""
 
@@ -420,5 +647,5 @@ class SegmentedStage:
             self.context = None
 
 
-__all__ = ["FrameArgument", "KernelFrame", "OriginalAtPause", "OriginalKernel", "SegmentCounters",
+__all__ = ["ByChunk", "ChunkBatch", "FrameArgument", "KernelFrame", "OriginalAtPause", "OriginalByChunk", "OriginalKernel", "SegmentCounters",
            "SegmentEvent", "SegmentRunner", "SegmentedStage"]
